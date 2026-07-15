@@ -17,7 +17,7 @@ import (
 )
 
 // PermissionHookServer handles Claude CLI PreToolUse hook requests.
-// When the CliBackend spawns Claude CLI, Claude CLI can call PreToolUse hooks
+// When the ClaudeCodeBackend spawns Claude CLI, Claude CLI can call PreToolUse hooks
 // via HTTP. This server handles those requests and routes them through the
 // Go permission engine.
 // PermissionAskCallback is called when the permission engine returns "ask".

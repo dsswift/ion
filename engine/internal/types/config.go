@@ -39,12 +39,12 @@ type NewConversationDefaultsPolicy struct {
 
 // EnterpriseConfig represents MDM/system-level sealed configuration.
 type EnterpriseConfig struct {
-	AllowedModels    []string                 `json:"allowedModels,omitempty"`
-	BlockedModels    []string                 `json:"blockedModels,omitempty"`
-	AllowedProviders []string                 `json:"allowedProviders,omitempty"`
-	RequiredHooks    []HookDef                `json:"requiredHooks,omitempty"`
-	McpAllowlist     []string                 `json:"mcpAllowlist,omitempty"`
-	McpDenylist      []string                 `json:"mcpDenylist,omitempty"`
+	AllowedModels    []string  `json:"allowedModels,omitempty"`
+	BlockedModels    []string  `json:"blockedModels,omitempty"`
+	AllowedProviders []string  `json:"allowedProviders,omitempty"`
+	RequiredHooks    []HookDef `json:"requiredHooks,omitempty"`
+	McpAllowlist     []string  `json:"mcpAllowlist,omitempty"`
+	McpDenylist      []string  `json:"mcpDenylist,omitempty"`
 	// PluginAllowlist, when non-empty, restricts plugins to only matching sources.
 	// Glob patterns supported (e.g. "JuliusBrussee/*"). Sealed ceiling: overrides
 	// any per-user allowlist. Empty means no restriction (all sources permitted).
@@ -55,12 +55,12 @@ type EnterpriseConfig struct {
 	// PluginForceInstalled lists plugin sources the engine must install on boot.
 	// Merged with the user-layer forceInstalled list. Enterprise-declared plugins
 	// bypass user allowlist checks — the enterprise controls what it mandates.
-	PluginForceInstalled []string `json:"pluginForceInstalled,omitempty"`
-	ToolRestrictions *ToolRestrictions        `json:"toolRestrictions,omitempty"`
-	Permissions      *PermissionPolicy        `json:"permissions,omitempty"`
-	Telemetry        *TelemetryConfig         `json:"telemetry,omitempty"`
-	Network          *NetworkConfig           `json:"network,omitempty"`
-	Sandbox          *SandboxEnterpriseConfig `json:"sandbox,omitempty"`
+	PluginForceInstalled []string                 `json:"pluginForceInstalled,omitempty"`
+	ToolRestrictions     *ToolRestrictions        `json:"toolRestrictions,omitempty"`
+	Permissions          *PermissionPolicy        `json:"permissions,omitempty"`
+	Telemetry            *TelemetryConfig         `json:"telemetry,omitempty"`
+	Network              *NetworkConfig           `json:"network,omitempty"`
+	Sandbox              *SandboxEnterpriseConfig `json:"sandbox,omitempty"`
 	// NewConversationDefaults sets organisation-wide defaults for new-conversation
 	// working directory and engine profile. When nil, clients use the per-user
 	// defaultBaseDirectory and defaultEngineProfileId preferences. Overlay
@@ -119,6 +119,9 @@ type PluginsConfig struct {
 
 // EngineRuntimeConfig is the fully merged engine configuration.
 type EngineRuntimeConfig struct {
+	// Backend selects the top-level run backend. Canonical values:
+	// "api" | "claude-code" | "hybrid". "cli" is a permanently accepted
+	// legacy input alias for "claude-code" and is normalized to it at load.
 	Backend      string                     `json:"backend"`
 	DefaultModel string                     `json:"defaultModel"`
 	Providers    map[string]ProviderConfig  `json:"providers,omitempty"`
@@ -127,19 +130,19 @@ type EngineRuntimeConfig struct {
 	// Plugins holds the user-layer plugin policy (force-installs, allow/deny
 	// lists). Enterprise policy layers on top via PluginAllowlist /
 	// PluginDenylist / PluginForceInstalled on EnterpriseConfig.
-	Plugins      *PluginsConfig             `json:"plugins,omitempty"`
-	Profiles     []EngineProfileConfig      `json:"profiles,omitempty"`
-	Permissions  *PermissionPolicy          `json:"permissions,omitempty"`
-	Auth         *AuthConfig                `json:"auth,omitempty"`
-	Network      *NetworkConfig             `json:"network,omitempty"`
-	Telemetry    *TelemetryConfig           `json:"telemetry,omitempty"`
-	Compaction   *CompactionConfig          `json:"compaction,omitempty"`
-	Security     *SecurityConfig            `json:"security,omitempty"`
-	Enterprise   *EnterpriseConfig          `json:"enterprise,omitempty"`
-	FeatureFlags *FeatureFlagsConfig        `json:"featureFlags,omitempty"`
-	Relay        *RelayConfig               `json:"relay,omitempty"`
-	Timeouts     *TimeoutsConfig            `json:"timeouts,omitempty"`
-	WebSearch    *WebSearchConfig           `json:"webSearch,omitempty"`
+	Plugins      *PluginsConfig        `json:"plugins,omitempty"`
+	Profiles     []EngineProfileConfig `json:"profiles,omitempty"`
+	Permissions  *PermissionPolicy     `json:"permissions,omitempty"`
+	Auth         *AuthConfig           `json:"auth,omitempty"`
+	Network      *NetworkConfig        `json:"network,omitempty"`
+	Telemetry    *TelemetryConfig      `json:"telemetry,omitempty"`
+	Compaction   *CompactionConfig     `json:"compaction,omitempty"`
+	Security     *SecurityConfig       `json:"security,omitempty"`
+	Enterprise   *EnterpriseConfig     `json:"enterprise,omitempty"`
+	FeatureFlags *FeatureFlagsConfig   `json:"featureFlags,omitempty"`
+	Relay        *RelayConfig          `json:"relay,omitempty"`
+	Timeouts     *TimeoutsConfig       `json:"timeouts,omitempty"`
+	WebSearch    *WebSearchConfig      `json:"webSearch,omitempty"`
 	// Shell controls how the Bash tool selects the shell used to execute
 	// commands. Pointer so engine.json can fully omit the block and inherit
 	// the default (non-login bash -c). When Shell.UseLoginShell is true, the
@@ -403,6 +406,17 @@ type ProviderConfig struct {
 	APIKey     string `json:"apiKey,omitempty"`
 	BaseURL    string `json:"baseURL,omitempty"`
 	AuthHeader string `json:"authHeader,omitempty"`
+	// Backend selects which run backend serves this provider's models when
+	// the top-level backend is "hybrid". Empty means "use the default rule"
+	// (anthropic → claude-code, every other provider → api). Allowed values
+	// are provider-specific and validated at config load:
+	//   anthropic → "api" | "claude-code"
+	//   openai    → "api" | "codex"
+	//   xai       → "api" | "grok"
+	//   cursor    → "cursor"
+	//   all others→ "api"
+	// An invalid value is reset to "" (default rule) with an ERROR log.
+	Backend string `json:"backend,omitempty"`
 }
 
 // LimitsConfig defines resource limits for a run.

@@ -10,7 +10,7 @@ import (
 )
 
 // fireCliTurnHooks fires turn_start / turn_end extension hooks for CLI
-// backend runs. No-op when the backend is not CliBackend or when the
+// backend runs. No-op when the backend is not ClaudeCodeBackend or when the
 // session has no extension group.
 //
 // Turn boundaries are derived from the normalised event stream:
@@ -25,9 +25,9 @@ import (
 // on the model that started it. We use s.lastModel (set in prompt_dispatch
 // when StartRun is called) to drive the resolution. If lastModel is empty
 // (no run yet), this is a no-op — matching the pre-hybrid behavior of
-// returning early when the backend wasn't CliBackend.
+// returning early when the backend wasn't ClaudeCodeBackend.
 func (m *Manager) fireCliTurnHooks(s *engineSession, key string, sOk bool, event types.NormalizedEvent) {
-	if _, isCli := m.resolvedBackend(s.lastModel).(*backend.CliBackend); !isCli {
+	if _, isCli := m.resolvedBackend(s.lastModel).(*backend.ClaudeCodeBackend); !isCli {
 		return
 	}
 	if !sOk || s.extGroup == nil || s.extGroup.IsEmpty() {

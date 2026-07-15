@@ -114,17 +114,17 @@ type RateLimitInfo struct {
 
 // ResultEvent signals completion (success or error) of a Claude run.
 type ResultEvent struct {
-	Type                    string                  `json:"type"`
-	Subtype                 string                  `json:"subtype"`
-	IsError                 bool                    `json:"is_error"`
-	DurationMs              int64                   `json:"duration_ms"`
-	NumTurns                int                     `json:"num_turns"`
-	Result                  string                  `json:"result"`
-	TotalCostUsd            float64                 `json:"total_cost_usd"`
-	SessionID               string                  `json:"session_id"`
-	Usage                   UsageData               `json:"usage"`
-	PermissionDenials       []PermissionDenialEntry `json:"permission_denials"`
-	UUID                    string                  `json:"uuid"`
+	Type              string                  `json:"type"`
+	Subtype           string                  `json:"subtype"`
+	IsError           bool                    `json:"is_error"`
+	DurationMs        int64                   `json:"duration_ms"`
+	NumTurns          int                     `json:"num_turns"`
+	Result            string                  `json:"result"`
+	TotalCostUsd      float64                 `json:"total_cost_usd"`
+	SessionID         string                  `json:"session_id"`
+	Usage             UsageData               `json:"usage"`
+	PermissionDenials []PermissionDenialEntry `json:"permission_denials"`
+	UUID              string                  `json:"uuid"`
 }
 
 // UsageData tracks token usage for a message or session.

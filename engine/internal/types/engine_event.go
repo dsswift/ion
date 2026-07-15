@@ -256,6 +256,12 @@ type EngineEvent struct {
 	OidcUserCode         string `json:"oidcUserCode,omitempty"`
 	OidcVerificationURI  string `json:"oidcVerificationUri,omitempty"`
 
+	// engine_provider_login — one stage transition of a delegated-CLI login
+	// (codex/grok/cursor). Incremental: consumers render the current stage; a
+	// terminal completed/failed/cancelled stage ends the flow. Nil on every
+	// other event.
+	ProviderLogin *ProviderLoginUpdate `json:"providerLogin,omitempty"`
+
 	// engine_oidc_identity — complete snapshot of the operator's OIDC
 	// identity state. OidcSignedIn is a pointer so the false (signed-out)
 	// snapshot survives omitempty; consumers replace their local identity

@@ -343,6 +343,7 @@
     "planProposalKind",
     "planSlug",
     "planWriteOperation",
+    "providerLogin",
     "push",
     "pushBody",
     "pushTitle",
@@ -487,12 +488,36 @@
       "kind",
       "label"
     ],
+    "ProviderCliStatus": [
+      "authMethod",
+      "authenticated",
+      "backend",
+      "binaryPath",
+      "email",
+      "installed",
+      "label",
+      "planType",
+      "probedAt",
+      "version"
+    ],
     "ProviderEntry": [
       "apiKeyRef",
       "authSource",
+      "backend",
       "baseURL",
+      "cli",
       "hasAuth",
       "id"
+    ],
+    "ProviderLoginUpdate": [
+      "authUrl",
+      "backend",
+      "loginError",
+      "loginId",
+      "provider",
+      "stage",
+      "userCode",
+      "verificationUrl"
     ],
     "SessionMessage": [
       "attachments",

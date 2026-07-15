@@ -16,6 +16,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/backend"
+	"github.com/dsswift/ion/engine/internal/cliprobe"
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/session"
 	"github.com/dsswift/ion/engine/internal/telemetry"
@@ -42,13 +43,13 @@ var broadcastWriteDeadline = 5 * time.Second
 // Server listens on a Unix domain socket (or TCP on Windows), accepts NDJSON
 // commands from clients, and broadcasts session events back to all connected clients.
 type Server struct {
-	socketPath         string
-	listener           net.Listener
-	clients            map[net.Conn]*clientWriter
-	mu                 sync.RWMutex
-	manager            *session.Manager
-	config             *types.EngineRuntimeConfig
-	authResolver       *auth.Resolver
+	socketPath   string
+	listener     net.Listener
+	clients      map[net.Conn]*clientWriter
+	mu           sync.RWMutex
+	manager      *session.Manager
+	config       *types.EngineRuntimeConfig
+	authResolver *auth.Resolver
 	// identity is the engine-owned operator OIDC identity manager (nil when
 	// no auth.identityProvider is configured). See dispatch_oidc.go.
 	identity           *auth.IdentityManager
@@ -58,10 +59,21 @@ type Server struct {
 	version            string
 	startedAt          time.Time
 	// cliCapable is true when the engine is running with a backend that can
-	// serve Anthropic models via the Claude CLI (i.e. CliBackend or
+	// serve Anthropic models via the Claude CLI (i.e. ClaudeCodeBackend or
 	// HybridBackend). list_models uses this to mark the anthropic provider
 	// as authed via CLI when no API key is configured.
 	cliCapable bool
+
+	// probes caches the install/auth state of the delegated provider CLIs
+	// (claude/codex/grok/cursor). list_models reads it to populate each
+	// provider's cli status; it is refreshed asynchronously at startup and on
+	// refresh_models. Never nil after NewServer.
+	probes *cliprobe.Registry
+
+	// loginFn/logoutFn drive the interactive provider CLI login/logout. Nil
+	// uses the real cliprobe implementations; tests override via SetLoginFuncs.
+	loginFn  cliprobe.LoginFunc
+	logoutFn cliprobe.LogoutFunc
 
 	// ownership binds live session keys to the client connections that
 	// claimed them, reaping a session a grace window after its last owning
@@ -102,6 +114,10 @@ func (s *Server) SetConfig(cfg *types.EngineRuntimeConfig) {
 	// Store the config after the collector wiring so the field assignment
 	// below is not racing the SetTelemetry lock above.
 	s.config = cfg
+	// Probe the delegated provider CLIs (install/auth/models) now that the
+	// backend selection is known. Runs in the background; list_models reads the
+	// cache and updates as probes land.
+	s.RefreshProviderProbes()
 	// Apply the configurable orphaned-session reap grace window. Nil-safe:
 	// SessionReapGrace returns the compiled default for a nil Workspace block.
 	if s.ownership != nil {
@@ -127,7 +143,7 @@ func NewServer(socketPath string, b backend.RunBackend) *Server {
 	// Detect whether the backend can serve Anthropic models via Claude CLI.
 	var cliCapable bool
 	switch b.(type) {
-	case *backend.CliBackend, *backend.HybridBackend:
+	case *backend.ClaudeCodeBackend, *backend.HybridBackend:
 		cliCapable = true
 	}
 	utils.LogWithFields(utils.LevelInfo, "server", "backend type", map[string]any{"reason": cliCapable})
@@ -139,6 +155,7 @@ func NewServer(socketPath string, b backend.RunBackend) *Server {
 		done:       make(chan struct{}),
 		startedAt:  time.Now(),
 		cliCapable: cliCapable,
+		probes:     cliprobe.NewRegistry(),
 	}
 	// Reap orphaned sessions a grace window after their last owning
 	// connection disconnects. Wired to StopSession so the full teardown

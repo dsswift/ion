@@ -336,7 +336,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// extension context, MCP tools, and agent spawn rules.
 	//
 	// resolvedBackend(opts.Model) collapses the hybrid case: for plain
-	// CliBackend/ApiBackend it returns m.backend as-is; for HybridBackend
+	// ClaudeCodeBackend/ApiBackend it returns m.backend as-is; for HybridBackend
 	// it returns the inner backend that will actually handle this model.
 	var runCfg *backend.RunConfig
 	if apiBackend, ok := m.resolvedBackend(opts.Model).(*backend.ApiBackend); ok {
@@ -344,10 +344,11 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	}
 
 	m.wirePermissionHookServer(s, key, &opts, permEng)
+	m.wireDelegatedPermissions(key, &opts)
 	m.wireToolServer(s, key, &opts, extGroup)
 	m.wireAgentToolServer(s, key, &opts)
 
-	// Fire before_prompt for CliBackend (ApiBackend wires this inside buildRunConfig).
+	// Fire before_prompt for ClaudeCodeBackend (ApiBackend wires this inside buildRunConfig).
 	m.fireBeforePromptCli(s, key, extGroup, skipExtensions, &opts)
 
 	m.mu.RLock()
@@ -397,11 +398,11 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 
 	// Dispatch to backend. ApiBackend uses the per-run config built above so
 	// every closure on this run sees this session's hooks/tools/perms.
-	// CliBackend ignores runCfg and follows its own subprocess wiring.
+	// ClaudeCodeBackend ignores runCfg and follows its own subprocess wiring.
 	//
 	// HybridBackend implements both StartRun and StartRunWithConfig: it
 	// records the routing decision for opts.Model and forwards to the
-	// inner *ApiBackend (with runCfg) or inner *CliBackend (without).
+	// inner *ApiBackend (with runCfg) or inner *ClaudeCodeBackend (without).
 	// We dispatch through m.backend here (not resolvedBackend) so the
 	// hybrid layer sees the call and can record its routing table entry
 	// before forwarding.

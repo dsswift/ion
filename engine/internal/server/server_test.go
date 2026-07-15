@@ -56,11 +56,11 @@ func (m *mockBackend) IsRunning(requestID string) bool {
 	return ok
 }
 
-func (m *mockBackend) WriteToStdin(_ string, _ interface{}) error            { return nil }
-func (m *mockBackend) FlushConversations()                                    {}
+func (m *mockBackend) WriteToStdin(_ string, _ interface{}) error          { return nil }
+func (m *mockBackend) FlushConversations()                                 {}
 func (m *mockBackend) OnNormalized(fn func(string, types.NormalizedEvent)) { m.onNorm = fn }
-func (m *mockBackend) OnExit(fn func(string, *int, *string, string))      { m.onExit = fn }
-func (m *mockBackend) OnError(fn func(string, error))                     { m.onErr = fn }
+func (m *mockBackend) OnExit(fn func(string, *int, *string, string))       { m.onExit = fn }
+func (m *mockBackend) OnError(fn func(string, error))                      { m.onErr = fn }
 
 // helpers
 
@@ -1055,9 +1055,9 @@ func TestResourcePublishRouting(t *testing.T) {
 	// Case 2: resource_publish with all required fields but a key that has no
 	// session. The dispatch layer should return a "no session or broker" error.
 	sendJSON(t, conn, map[string]interface{}{
-		"cmd":        "resource_publish",
-		"key":        "nonexistent-session",
-		"resourceOp": "upsert",
+		"cmd":          "resource_publish",
+		"key":          "nonexistent-session",
+		"resourceOp":   "upsert",
 		"resourceKind": "notes",
 		"resourceItem": map[string]interface{}{
 			"id":             "item-2",

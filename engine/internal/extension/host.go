@@ -67,7 +67,7 @@ type Host struct {
 	version string
 
 	// Bidirectional RPC: context stack for extension-initiated requests.
-	// Supports concurrent tool/hook/async-fire contexts on CliBackend.
+	// Supports concurrent tool/hook/async-fire contexts on ClaudeCodeBackend.
 	ctxStack ctxStack
 
 	// notifMu guards the callbacks the readLoop reads when dispatching

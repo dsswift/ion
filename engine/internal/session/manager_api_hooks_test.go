@@ -10,7 +10,7 @@ import (
 
 // Tests for task_created / task_completed hook wiring on ApiBackend.
 //
-// Background: commit bc93caac wired these hooks for CliBackend at the
+// Background: commit bc93caac wired these hooks for ClaudeCodeBackend at the
 // natural turn-start / turn-end points in fireCliTurnHooks. ApiBackend
 // did not fire the hooks at all — the docs documented them as universal,
 // but in practice only CLI-routed runs exercised them. Fix 5 of the
@@ -20,7 +20,7 @@ import (
 //
 // The wiring lives in `wireExtensionHooks` on `prompt_runconfig.go`:
 // the OnTurnStart hook now also fires task_created, and OnTurnEnd
-// fires task_completed. TaskID format matches CliBackend exactly:
+// fires task_completed. TaskID format matches ClaudeCodeBackend exactly:
 // `<session-key>-t<turn-number>`.
 //
 // Test strategy: call `wireExtensionHooks` to populate `runCfg.Hooks`
@@ -82,7 +82,7 @@ func newApiTaskGroup(rec *apiTaskRecorder) *extension.ExtensionGroup {
 
 // TestApiBackend_TaskCreated_FiresOnTurnStart verifies the
 // task_created hook fires when ApiBackend's runloop transitions
-// turn N → N+1. The TaskID format matches CliBackend exactly so
+// turn N → N+1. The TaskID format matches ClaudeCodeBackend exactly so
 // external consumers (SDK observers, telemetry pipelines) get a
 // consistent shape regardless of which backend routed the run.
 func TestApiBackend_TaskCreated_FiresOnTurnStart(t *testing.T) {
@@ -158,7 +158,7 @@ func TestApiBackend_TaskCompleted_FiresOnTurnEnd(t *testing.T) {
 
 // TestApiBackend_TaskLifecycle_PairedTaskIDs verifies a full
 // turn-start → turn-end sequence produces paired TaskIDs, matching
-// the CliBackend pairing semantics in
+// the ClaudeCodeBackend pairing semantics in
 // TestFireCliTurnHooks_MultipleTurnsPairs from
 // manager_cli_hooks_test.go.
 func TestApiBackend_TaskLifecycle_PairedTaskIDs(t *testing.T) {

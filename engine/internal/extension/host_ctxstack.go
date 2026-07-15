@@ -8,11 +8,11 @@ import (
 
 // ctxStack is a concurrency-safe stack of extension Contexts. It
 // replaces the former single-slot atomic.Pointer[Context] to handle
-// concurrent tool/hook/async-fire executions on CliBackend.
+// concurrent tool/hook/async-fire executions on ClaudeCodeBackend.
 //
 // On ApiBackend, at most one context is active at a time (serial
 // execution), so the stack has depth 0 or 1 (identical behavior to
-// the old atomic pointer). On CliBackend, the ToolServer may invoke
+// the old atomic pointer). On ClaudeCodeBackend, the ToolServer may invoke
 // multiple tool handlers concurrently while hooks fire on other
 // goroutines. Each pushes its own Context; Current() returns the most
 // recently pushed (top of stack). All contexts for the same session

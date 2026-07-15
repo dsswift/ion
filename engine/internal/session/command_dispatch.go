@@ -187,7 +187,7 @@ func (m *Manager) dispatchClear(s *engineSession, key string) {
 
 // compactable is the local interface satisfied by any backend that can
 // run engine-side compaction in process. ApiBackend (and HybridBackend
-// when its current run is API-routed) implements this; CliBackend does
+// when its current run is API-routed) implements this; ClaudeCodeBackend does
 // not — its conversation lives in the Claude Code subprocess, which
 // runs its own /compact natively.
 //
@@ -236,7 +236,7 @@ func (m *Manager) dispatchCompact(s *engineSession, key string) {
 
 	// Path A: backend supports engine-side compaction. ApiBackend
 	// (and HybridBackend when its run is API-routed) implements
-	// compactable; the assertion fails for CliBackend, which falls
+	// compactable; the assertion fails for ClaudeCodeBackend, which falls
 	// through to Path B.
 	//
 	// This path runs asynchronously: CompactNow performs an LLM

@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -16,62 +15,32 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/cliprobe"
 	"github.com/dsswift/ion/engine/internal/normalizer"
+	"github.com/dsswift/ion/engine/internal/rpcstdio"
 	"github.com/dsswift/ion/engine/internal/stream"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// ringBuffer holds the last N lines written to it, used to capture stderr
-// output for diagnostics when a CLI process fails.
-type ringBuffer struct {
-	lines []string
-	size  int
-	mu    sync.Mutex
-}
-
-func newRingBuffer(size int) *ringBuffer {
-	return &ringBuffer{
-		lines: make([]string, 0, size),
-		size:  size,
-	}
-}
-
-func (rb *ringBuffer) Write(line string) {
-	rb.mu.Lock()
-	defer rb.mu.Unlock()
-	if len(rb.lines) >= rb.size {
-		rb.lines = rb.lines[1:]
-	}
-	rb.lines = append(rb.lines, line)
-}
-
-func (rb *ringBuffer) Lines() []string {
-	rb.mu.Lock()
-	defer rb.mu.Unlock()
-	out := make([]string, len(rb.lines))
-	copy(out, rb.lines)
-	return out
-}
-
-// cliRun tracks an active Claude CLI process.
-type cliRun struct {
+// claudeCodeRun tracks an active Claude CLI process.
+type claudeCodeRun struct {
 	requestID    string
 	cmd          *exec.Cmd
 	cancel       context.CancelFunc
-	stderr       *ringBuffer
+	stderr       *rpcstdio.RingBuffer
 	stdinPipe    io.WriteCloser
 	stdinMu      sync.Mutex
 	planMode     bool
 	planFilePath string
 }
 
-// CliBackend implements RunBackend by spawning the Claude Code CLI
+// ClaudeCodeBackend implements RunBackend by spawning the Claude Code CLI
 // (`claude -p --output-format stream-json`) and parsing its NDJSON output
 // through the normalizer pipeline.
-type CliBackend struct {
+type ClaudeCodeBackend struct {
 	mu         sync.Mutex
-	activeRuns map[string]*cliRun
+	activeRuns map[string]*claudeCodeRun
 
 	// lastCumulativeCost tracks the Claude CLI's cumulative total_cost_usd
 	// per conversation so TaskCompleteEvent.CostUsd can be delta-normalized
@@ -86,37 +55,37 @@ type CliBackend struct {
 	onError      func(string, error)
 }
 
-// NewCliBackend creates a CliBackend ready for use.
-func NewCliBackend() *CliBackend {
-	return &CliBackend{
-		activeRuns:         make(map[string]*cliRun),
+// NewClaudeCodeBackend creates a ClaudeCodeBackend ready for use.
+func NewClaudeCodeBackend() *ClaudeCodeBackend {
+	return &ClaudeCodeBackend{
+		activeRuns:         make(map[string]*claudeCodeRun),
 		lastCumulativeCost: make(map[string]float64),
 	}
 }
 
 // OnNormalized registers the callback for normalized events.
-func (b *CliBackend) OnNormalized(fn func(string, types.NormalizedEvent)) {
+func (b *ClaudeCodeBackend) OnNormalized(fn func(string, types.NormalizedEvent)) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.onNormalized = fn
 }
 
 // OnExit registers the callback for run exit events.
-func (b *CliBackend) OnExit(fn func(string, *int, *string, string)) {
+func (b *ClaudeCodeBackend) OnExit(fn func(string, *int, *string, string)) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.onExit = fn
 }
 
 // OnError registers the callback for run errors.
-func (b *CliBackend) OnError(fn func(string, error)) {
+func (b *ClaudeCodeBackend) OnError(fn func(string, error)) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.onError = fn
 }
 
 // IsRunning reports whether a run is currently active.
-func (b *CliBackend) IsRunning(requestID string) bool {
+func (b *ClaudeCodeBackend) IsRunning(requestID string) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	_, ok := b.activeRuns[requestID]
@@ -125,7 +94,7 @@ func (b *CliBackend) IsRunning(requestID string) bool {
 
 // Cancel stops a running CLI process. Sends SIGINT first, then escalates
 // to SIGKILL after 5 seconds if the process hasn't exited.
-func (b *CliBackend) Cancel(requestID string) bool {
+func (b *ClaudeCodeBackend) Cancel(requestID string) bool {
 	b.mu.Lock()
 	run, ok := b.activeRuns[requestID]
 	b.mu.Unlock()
@@ -148,7 +117,7 @@ func (b *CliBackend) Cancel(requestID string) bool {
 	}
 
 	if err := proc.Signal(syscall.SIGINT); err != nil {
-		utils.LogWithFields(utils.LevelInfo, "backend.cli", "SIGINT failed, killing", map[string]any{
+		utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "SIGINT failed, killing", map[string]any{
 			"error": utils.ErrStr(err),
 		})
 		_ = proc.Kill()
@@ -167,7 +136,7 @@ func (b *CliBackend) Cancel(requestID string) bool {
 		_, stillActive := b.activeRuns[requestID]
 		b.mu.Unlock()
 		if stillActive {
-			utils.LogWithFields(utils.LevelInfo, "backend.cli", "process did not exit after SIGINT, sending SIGKILL", map[string]any{
+			utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "process did not exit after SIGINT, sending SIGKILL", map[string]any{
 				"request_id": requestID,
 			})
 			_ = proc.Signal(syscall.SIGKILL)
@@ -180,7 +149,7 @@ func (b *CliBackend) Cancel(requestID string) bool {
 
 // StartRun spawns a Claude CLI process and streams its output through
 // the normalizer pipeline.
-func (b *CliBackend) StartRun(requestID string, options types.RunOptions) {
+func (b *ClaudeCodeBackend) StartRun(requestID string, options types.RunOptions) {
 	// Derive the run's cancellation context from the session root when the
 	// caller threaded one (RunOptions.ParentCtx), so a session-level abort
 	// cascades to this CLI process's context (which the run loop honors via
@@ -189,20 +158,20 @@ func (b *CliBackend) StartRun(requestID string, options types.RunOptions) {
 	parent := options.ParentCtx
 	if parent == nil {
 		parent = context.Background()
-		utils.LogWithFields(utils.LevelDebug, "backend.cli", "StartRun: no ParentCtx; using Background", map[string]any{
+		utils.LogWithFields(utils.LevelDebug, "backend.claude_code", "StartRun: no ParentCtx; using Background", map[string]any{
 			"request_id": requestID,
 		})
 	} else {
-		utils.LogWithFields(utils.LevelDebug, "backend.cli", "StartRun: deriving run ctx from session ParentCtx", map[string]any{
+		utils.LogWithFields(utils.LevelDebug, "backend.claude_code", "StartRun: deriving run ctx from session ParentCtx", map[string]any{
 			"request_id": requestID,
 		})
 	}
 	ctx, cancel := context.WithCancel(parent)
 
-	run := &cliRun{
+	run := &claudeCodeRun{
 		requestID: requestID,
 		cancel:    cancel,
-		stderr:    newRingBuffer(100),
+		stderr:    rpcstdio.NewRingBuffer(100),
 	}
 
 	b.mu.Lock()
@@ -212,50 +181,14 @@ func (b *CliBackend) StartRun(requestID string, options types.RunOptions) {
 	go b.runProcess(ctx, run, options)
 }
 
-// findClaudeBinary locates the claude CLI binary on the system.
-// Search order matches TS run-manager.ts:
-//  1. /usr/local/bin/claude
-//  2. /opt/homebrew/bin/claude
-//  3. ~/.npm-global/bin/claude
-//  4. exec.LookPath (current $PATH)
-//  5. login shell fallback (zsh/bash -l -c "which claude"), covers npm-global
-//     installs where $PATH is set only in shell profiles (Unix only)
+// findClaudeBinary locates the claude CLI binary via the shared cliprobe.Find
+// discovery (fixed install paths, $PATH, then a login-shell fallback).
 func findClaudeBinary() (string, error) {
-	home, _ := os.UserHomeDir()
-	candidates := []string{
-		"/usr/local/bin/claude",
-		"/opt/homebrew/bin/claude",
-		filepath.Join(home, ".npm-global", "bin", "claude"),
-	}
-	for _, p := range candidates {
-		if _, err := os.Stat(p); err == nil {
-			return p, nil
-		}
-	}
-	if p, err := exec.LookPath("claude"); err == nil {
-		return p, nil
-	}
-	// Login shell fallback for environments where PATH is set in shell profiles
-	// (e.g. ~/.zshrc, ~/.bash_profile) but not in the Go process environment.
-	if runtime.GOOS != "windows" {
-		for _, shell := range []string{"zsh", "bash"} {
-			if shellPath, err := exec.LookPath(shell); err == nil {
-				out, err := exec.Command(shellPath, "-l", "-c", "which claude 2>/dev/null").Output()
-				if err == nil {
-					if p := strings.TrimSpace(string(out)); p != "" {
-						if _, err := os.Stat(p); err == nil {
-							return p, nil
-						}
-					}
-				}
-			}
-		}
-	}
-	return "", fmt.Errorf("claude CLI not found: checked /usr/local/bin/claude, /opt/homebrew/bin/claude, ~/.npm-global/bin/claude, $PATH, and login shell")
+	return cliprobe.Find("claude", nil)
 }
 
 // runProcess is the goroutine that manages the Claude CLI process lifecycle.
-func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.RunOptions) {
+func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, opts types.RunOptions) {
 	// Capture plan state so the event loop can enrich ExitPlanMode denials.
 	run.planMode = opts.PlanMode
 	run.planFilePath = opts.PlanFilePath
@@ -269,7 +202,7 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 
 	claudePath, err := findClaudeBinary()
 	if err != nil {
-		utils.LogWithFields(utils.LevelError, "backend.cli", "claude binary not found", map[string]any{
+		utils.LogWithFields(utils.LevelError, "backend.claude_code", "claude binary not found", map[string]any{
 			"error": utils.ErrStr(err),
 		})
 		b.emitError(run.requestID, err)
@@ -364,7 +297,7 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 	// the CLI offers all tools from the ion-extensions MCP server to the model.
 	if opts.McpConfig != "" {
 		allowedTools = append(allowedTools, "mcp__"+McpServerName+"__*")
-		utils.LogWithFields(utils.LevelInfo, "backend.cli", "added MCP wildcard to allowedTools: mcp____*", map[string]any{
+		utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "added MCP wildcard to allowedTools: mcp____*", map[string]any{
 			"mcp_server_name": McpServerName,
 		})
 	}
@@ -378,7 +311,7 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 		args = append(args, "--settings", opts.HookSettingsPath)
 	}
 
-	utils.LogWithFields(utils.LevelInfo, "backend.cli", "spawning", map[string]any{
+	utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "spawning", map[string]any{
 		"claude_path": claudePath,
 		"args":        strings.Join(args, " "),
 	})
@@ -387,7 +320,7 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 	// plan-mode flag for this run.
 	if run.planMode {
 		b.emit(run.requestID, types.NormalizedEvent{Data: &types.PlanModeChangedEvent{Enabled: true}})
-		utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "cli", map[string]any{
+		utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "plan mode enabled for claude-code run", map[string]any{
 			"run_id":    run.requestID,
 			"plan_file": run.planFilePath,
 		})
@@ -401,7 +334,7 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 	// in headless (-p) mode.
 	if opts.McpConfig != "" {
 		cmd.Env = append(os.Environ(), "ENABLE_TOOL_SEARCH=false")
-		utils.Log("CliBackend", "set ENABLE_TOOL_SEARCH=false for MCP tools")
+		utils.Log("ClaudeCodeBackend", "set ENABLE_TOOL_SEARCH=false for MCP tools")
 	}
 
 	// Set working directory if specified
@@ -414,7 +347,7 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 	// Pipe stdin for bidirectional stream-json communication
 	stdinPipe, err := cmd.StdinPipe()
 	if err != nil {
-		utils.LogWithFields(utils.LevelError, "backend.cli", "stdin pipe failed", map[string]any{
+		utils.LogWithFields(utils.LevelError, "backend.claude_code", "stdin pipe failed", map[string]any{
 			"error": utils.ErrStr(err),
 		})
 		b.emitError(run.requestID, fmt.Errorf("failed to create stdin pipe: %w", err))
@@ -426,7 +359,7 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 	// Pipe stdout for NDJSON parsing
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		utils.LogWithFields(utils.LevelError, "backend.cli", "stdout pipe failed", map[string]any{
+		utils.LogWithFields(utils.LevelError, "backend.claude_code", "stdout pipe failed", map[string]any{
 			"error": utils.ErrStr(err),
 		})
 		b.emitError(run.requestID, fmt.Errorf("failed to create stdout pipe: %w", err))
@@ -437,7 +370,7 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 	// Pipe stderr for diagnostics capture
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		utils.LogWithFields(utils.LevelError, "backend.cli", "stderr pipe failed", map[string]any{
+		utils.LogWithFields(utils.LevelError, "backend.claude_code", "stderr pipe failed", map[string]any{
 			"error": utils.ErrStr(err),
 		})
 		b.emitError(run.requestID, fmt.Errorf("failed to create stderr pipe: %w", err))
@@ -446,7 +379,7 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 	}
 
 	if err := cmd.Start(); err != nil {
-		utils.LogWithFields(utils.LevelError, "backend.cli", "process start failed", map[string]any{
+		utils.LogWithFields(utils.LevelError, "backend.claude_code", "process start failed", map[string]any{
 			"error": utils.ErrStr(err),
 		})
 		b.emitError(run.requestID, fmt.Errorf("failed to start claude CLI: %w", err))
@@ -454,7 +387,7 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 		return
 	}
 
-	utils.LogWithFields(utils.LevelInfo, "backend.cli", "process started", map[string]any{
+	utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "process started", map[string]any{
 		"pid":        cmd.Process.Pid,
 		"request_id": run.requestID,
 	})
@@ -539,7 +472,7 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 				b.lastCumulativeCost[costKey] = cumulativeCost
 				b.mu.Unlock()
 				e.CostUsd = runCost
-				utils.LogWithFields(utils.LevelDebug, "backend.cli", "cost delta", map[string]any{
+				utils.LogWithFields(utils.LevelDebug, "backend.claude_code", "cost delta", map[string]any{
 					"run_id":     run.requestID,
 					"key":        costKey,
 					"cumulative": cumulativeCost,
@@ -576,7 +509,7 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 									PlanSlug:     types.PlanSlugFromPath(run.planFilePath),
 								},
 							})
-							utils.LogWithFields(utils.LevelInfo, "backend.cli", "exit_tool emit plan_proposal kind=exit (mode change deferred to user approval, per ADR-003)", map[string]any{
+							utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "exit_tool emit plan_proposal kind=exit (mode change deferred to user approval, per ADR-003)", map[string]any{
 								"run_id":    run.requestID,
 								"plan_file": run.planFilePath,
 							})
@@ -605,7 +538,7 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 		}
 	}
 
-	utils.LogWithFields(utils.LevelInfo, "backend.cli", "process exited", map[string]any{
+	utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "process exited", map[string]any{
 		"pid":        cmd.Process.Pid,
 		"code":       exitCode,
 		"request_id": run.requestID,
@@ -626,11 +559,11 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 
 // WriteToStdin sends a JSON message to a running CLI process over its stdin pipe.
 // The message is marshalled to JSON and written as a single NDJSON line.
-// FlushConversations is a no-op for CliBackend; the underlying CLI process
+// FlushConversations is a no-op for ClaudeCodeBackend; the underlying CLI process
 // owns its own persistence. RunBackend interface compliance.
-func (b *CliBackend) FlushConversations() {}
+func (b *ClaudeCodeBackend) FlushConversations() {}
 
-func (b *CliBackend) WriteToStdin(requestID string, msg interface{}) error {
+func (b *ClaudeCodeBackend) WriteToStdin(requestID string, msg interface{}) error {
 	b.mu.Lock()
 	run, ok := b.activeRuns[requestID]
 	b.mu.Unlock()
@@ -654,7 +587,7 @@ func (b *CliBackend) WriteToStdin(requestID string, msg interface{}) error {
 	return nil
 }
 
-func (b *CliBackend) removeRun(requestID string) {
+func (b *ClaudeCodeBackend) removeRun(requestID string) {
 	b.mu.Lock()
 	run, ok := b.activeRuns[requestID]
 	if ok {
@@ -670,7 +603,7 @@ func (b *CliBackend) removeRun(requestID string) {
 	b.mu.Unlock()
 }
 
-func (b *CliBackend) emit(runID string, event types.NormalizedEvent) {
+func (b *ClaudeCodeBackend) emit(runID string, event types.NormalizedEvent) {
 	b.mu.Lock()
 	fn := b.onNormalized
 	b.mu.Unlock()
@@ -679,7 +612,7 @@ func (b *CliBackend) emit(runID string, event types.NormalizedEvent) {
 	}
 }
 
-func (b *CliBackend) emitExit(runID string, code *int, signal *string, sessionID string) {
+func (b *ClaudeCodeBackend) emitExit(runID string, code *int, signal *string, sessionID string) {
 	codeStr, sigStr := "nil", "nil"
 	if code != nil {
 		codeStr = fmt.Sprintf("%d", *code)
@@ -687,7 +620,7 @@ func (b *CliBackend) emitExit(runID string, code *int, signal *string, sessionID
 	if signal != nil {
 		sigStr = *signal
 	}
-	utils.LogWithFields(utils.LevelInfo, "backend.cli", "emitExit", map[string]any{
+	utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "emitExit", map[string]any{
 		"run_id":     runID,
 		"code":       codeStr,
 		"signal":     sigStr,
@@ -701,8 +634,8 @@ func (b *CliBackend) emitExit(runID string, code *int, signal *string, sessionID
 	}
 }
 
-func (b *CliBackend) emitError(runID string, err error) {
-	utils.LogWithFields(utils.LevelError, "backend.cli", "emitError", map[string]any{
+func (b *ClaudeCodeBackend) emitError(runID string, err error) {
+	utils.LogWithFields(utils.LevelError, "backend.claude_code", "emitError", map[string]any{
 		"run_id": runID,
 		"error":  utils.ErrStr(err),
 	})

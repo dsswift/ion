@@ -108,16 +108,18 @@ func buildManifest() contractManifest {
 
 	// Shared types used across language boundaries
 	shared := map[string]reflect.Type{
-		"StatusFields":     reflect.TypeOf(StatusFields{}),
-		"SessionStatus":    reflect.TypeOf(SessionStatus{}),
-		"EngineConfig":     reflect.TypeOf(EngineConfig{}),
-		"MessageEndUsage":  reflect.TypeOf(MessageEndUsage{}),
-		"PermissionOpt":    reflect.TypeOf(PermissionOpt{}),
-		"McpServerInfo":    reflect.TypeOf(McpServerInfo{}),
-		"UsageData":        reflect.TypeOf(UsageData{}),
-		"AgentStateUpdate": reflect.TypeOf(AgentStateUpdate{}),
-		"ModelEntry":       reflect.TypeOf(ModelEntry{}),
-		"ProviderEntry":    reflect.TypeOf(ProviderEntry{}),
+		"StatusFields":        reflect.TypeOf(StatusFields{}),
+		"SessionStatus":       reflect.TypeOf(SessionStatus{}),
+		"EngineConfig":        reflect.TypeOf(EngineConfig{}),
+		"MessageEndUsage":     reflect.TypeOf(MessageEndUsage{}),
+		"PermissionOpt":       reflect.TypeOf(PermissionOpt{}),
+		"McpServerInfo":       reflect.TypeOf(McpServerInfo{}),
+		"UsageData":           reflect.TypeOf(UsageData{}),
+		"AgentStateUpdate":    reflect.TypeOf(AgentStateUpdate{}),
+		"ModelEntry":          reflect.TypeOf(ModelEntry{}),
+		"ProviderEntry":       reflect.TypeOf(ProviderEntry{}),
+		"ProviderCliStatus":   reflect.TypeOf(ProviderCliStatus{}),
+		"ProviderLoginUpdate": reflect.TypeOf(ProviderLoginUpdate{}),
 		// Slash-command registry. Emitted inside engine_command_registry events
 		// so consumers can populate a routing-hint cache without parsing
 		// engine internals. Snapshot semantics — see types.go comment.

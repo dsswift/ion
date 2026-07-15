@@ -65,7 +65,11 @@ Client --[Unix socket, NDJSON]--> Server
 | `internal/protocol` | NDJSON wire format |
 | `internal/server` | Unix socket server, multi-client broadcast |
 | `internal/session` | SessionManager: lifecycle, event routing (decomposing) |
-| `internal/backend` | RunBackend interface, ApiBackend (agent loop), CliBackend (Claude Code subprocess), HybridBackend (routes per-run by model) |
+| `internal/backend` | RunBackend interface, ApiBackend (agent loop), ClaudeCodeBackend / CodexBackend / AcpBackend (grok, cursor) delegated-CLI subprocesses, HybridBackend (routes per-run by provider + operator preference) |
+| `internal/rpcstdio` | Symmetric JSON-RPC 2.0 over stdio (shared transport for the delegated-CLI backends) |
+| `internal/codexrpc` | Typed client for the `codex app-server` protocol |
+| `internal/acp` | Typed client for the Agent Client Protocol (grok/cursor CLIs) |
+| `internal/cliprobe` | Delegated-CLI discovery, install/auth probes + cache, interactive login/logout |
 | `internal/providers` | LlmProvider interface + implementations + retry |
 | `internal/tools` | Registry, core tools, BashOperations |
 | `internal/extension` | SDK, Host (subprocess JSON-RPC), agent discovery (decomposing) |

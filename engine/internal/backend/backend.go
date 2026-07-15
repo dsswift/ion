@@ -9,15 +9,24 @@ import (
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
+// PermissionAskable is implemented by backends whose subprocess asks the engine
+// to approve tool calls (the codex/ACP backends). The session installs the same
+// ask closure it builds for the claude-code hook server, so approvals from any
+// delegated CLI surface as engine_permission_request events. Backends that do
+// not delegate approvals (ApiBackend, ClaudeCodeBackend) do not implement it.
+type PermissionAskable interface {
+	SetPermissionAskCallback(cb PermissionAskCallback)
+}
+
 // RunBackend abstracts the LLM execution backend.
-// Both ApiBackend (direct API) and CliBackend (Claude CLI wrapper) implement this.
+// Both ApiBackend (direct API) and ClaudeCodeBackend (Claude CLI wrapper) implement this.
 type RunBackend interface {
 	StartRun(requestID string, options types.RunOptions)
 	Cancel(requestID string) bool
 	IsRunning(requestID string) bool
 
 	// WriteToStdin sends a follow-up message to a running process over stdin.
-	// Used by CliBackend for bidirectional stream-json communication.
+	// Used by ClaudeCodeBackend for bidirectional stream-json communication.
 	// ApiBackend returns nil (no stdin pipe -- uses conversation injection).
 	WriteToStdin(requestID string, msg interface{}) error
 

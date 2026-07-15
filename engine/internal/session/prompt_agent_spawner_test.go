@@ -27,7 +27,7 @@ import (
 // ---------------------------------------------------------------------------
 
 // childStubBackend is an in-process RunBackend used to drive the agent
-// spawner closure without spinning up a real ApiBackend or CliBackend.
+// spawner closure without spinning up a real ApiBackend or ClaudeCodeBackend.
 // Callers configure the events it should emit on StartRun and whether
 // completion is immediate or gated on an explicit Release() call (for
 // cancellation testing).

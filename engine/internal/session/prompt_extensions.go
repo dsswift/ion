@@ -122,17 +122,17 @@ func (m *Manager) fireBeforeAgentStart(s *engineSession, key string, extGroup *e
 	}
 }
 
-// fireBeforePromptCli fires the before_prompt hook for CliBackend runs.
-// ApiBackend wires this hook inside buildRunConfig; CliBackend skips that path,
+// fireBeforePromptCli fires the before_prompt hook for ClaudeCodeBackend runs.
+// ApiBackend wires this hook inside buildRunConfig; ClaudeCodeBackend skips that path,
 // so we fire the hook here and materialise the result into RunOptions before
-// the subprocess is launched. No-op when the backend is not CliBackend.
+// the subprocess is launched. No-op when the backend is not ClaudeCodeBackend.
 //
 // Under HybridBackend, this only fires when the model resolves to the
-// inner *CliBackend (Anthropic models). API-routed hybrid runs use the
+// inner *ClaudeCodeBackend (Anthropic models). API-routed hybrid runs use the
 // ApiBackend's buildRunConfig path for before_prompt, identical to plain
 // "backend": "api".
 func (m *Manager) fireBeforePromptCli(s *engineSession, key string, extGroup *extension.ExtensionGroup, skipExtensions bool, opts *types.RunOptions) {
-	if _, isCli := m.resolvedBackend(opts.Model).(*backend.CliBackend); !isCli {
+	if _, isCli := m.resolvedBackend(opts.Model).(*backend.ClaudeCodeBackend); !isCli {
 		return
 	}
 	if extGroup == nil || extGroup.IsEmpty() || skipExtensions {

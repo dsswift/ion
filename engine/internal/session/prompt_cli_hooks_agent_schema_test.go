@@ -16,7 +16,7 @@ import (
 // (say) "model" from its properties map, the CLI backend's MCP wire
 // description loses it too. Pinning the contract from the consumer's
 // perspective surfaces the failure where it would actually break the
-// CliBackend's user-facing behavior. Cross-tested with the existing
+// ClaudeCodeBackend's user-facing behavior. Cross-tested with the existing
 // session-package tests so a regression here also fails alongside any
 // other CLI-backend regression in the same run.
 func TestAgentToolSchema_HasRequiredProperties(t *testing.T) {
@@ -47,7 +47,7 @@ func TestAgentToolSchema_HasRequiredProperties(t *testing.T) {
 	want := []string{"prompt", "name", "description", "model"}
 	for _, name := range want {
 		if _, present := props[name]; !present {
-			t.Errorf("AgentTool.InputSchema.properties: missing %q — adding/removing fields here is a contract change for CliBackend's MCP tool registration in prompt_cli_hooks.go", name)
+			t.Errorf("AgentTool.InputSchema.properties: missing %q — adding/removing fields here is a contract change for ClaudeCodeBackend's MCP tool registration in prompt_cli_hooks.go", name)
 		}
 	}
 

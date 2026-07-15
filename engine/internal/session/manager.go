@@ -50,7 +50,7 @@ type Manager struct {
 	// childBackendOverride is a test-only seam: when non-nil, newChildBackend
 	// returns this factory's output instead of constructing a real backend.
 	// Lets unit tests substitute an in-process stub for the child-agent
-	// spawner closure (which otherwise hardcodes an ApiBackend or CliBackend).
+	// spawner closure (which otherwise hardcodes an ApiBackend or ClaudeCodeBackend).
 	// Production callers must never set this -- it has no setter on the
 	// public API.
 	childBackendOverride func() backend.RunBackend

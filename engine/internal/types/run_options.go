@@ -11,8 +11,8 @@ import "context"
 
 // RunOptions configures a Claude run.
 type RunOptions struct {
-	Prompt         string `json:"prompt"`
-	ProjectPath    string `json:"projectPath"`
+	Prompt      string `json:"prompt"`
+	ProjectPath string `json:"projectPath"`
 	// ConversationID is the engine-minted conversation-file identity,
 	// format `{unix-millis}-{12-hex-chars}` (e.g. `1780093348767-c1c03e998388`).
 	// The API backend uses it to load/create `~/.ion/conversations/<id>.*` and
@@ -54,7 +54,7 @@ type RunOptions struct {
 	// Ion's ConversationID (the `{millis}-{hex}` id) to `claude --resume` is the
 	// defect this field fixes — claude rejects non-UUID resume ids with exit
 	// code 1, killing every fresh manager-driven CLI run.
-	CliResumeSessionID string          `json:"cliResumeSessionId,omitempty"`
+	CliResumeSessionID string `json:"cliResumeSessionId,omitempty"`
 	// ParentConversationID, when set, is written as the new conversation's
 	// `parentId` IF this run creates a fresh conversation file (SessionID names
 	// an id with no backing file yet). It records that the new session descends
@@ -62,28 +62,28 @@ type RunOptions struct {
 	// (e.g. a desktop "clear context" that starts a new conversation for an
 	// existing tab). Ignored when resuming an existing conversation. Additive
 	// and non-breaking: an absent value leaves parentId empty as before.
-	ParentConversationID string         `json:"parentConversationId,omitempty"`
-	AllowedTools       []string        `json:"allowedTools,omitempty"`
-	SuppressTools      []string        `json:"suppressTools,omitempty"`
-	MaxTurns           int             `json:"maxTurns,omitempty"`
-	MaxBudgetUsd       float64         `json:"maxBudgetUsd,omitempty"`
-	SystemPrompt       string          `json:"systemPrompt,omitempty"`
-	Model              string          `json:"model,omitempty"`
-	HookSettingsPath   string          `json:"hookSettingsPath,omitempty"`
-	AddDirs            []string        `json:"addDirs,omitempty"`
-	PermissionModeCli  string          `json:"permissionModeCli,omitempty"`
-	AppendSystemPrompt string          `json:"appendSystemPrompt,omitempty"`
-	Source             string          `json:"source,omitempty"`
-	McpConfig          string          `json:"mcpConfig,omitempty"`
-	MaxTokens          int             `json:"maxTokens,omitempty"`
-	Thinking           *ThinkingConfig `json:"thinking,omitempty"`
-	MaxRetries         int             `json:"maxRetries,omitempty"`
-	FallbackChain      []string        `json:"fallbackChain,omitempty"`
-	Persistent         bool            `json:"persistent,omitempty"`
-	PlanMode           bool            `json:"planMode,omitempty"`
-	PlanModeTools      []string        `json:"planModeTools,omitempty"`
-	PlanFilePath       string          `json:"planFilePath,omitempty"`
-	PlanModePrompt     string          `json:"planModePrompt,omitempty"`
+	ParentConversationID string          `json:"parentConversationId,omitempty"`
+	AllowedTools         []string        `json:"allowedTools,omitempty"`
+	SuppressTools        []string        `json:"suppressTools,omitempty"`
+	MaxTurns             int             `json:"maxTurns,omitempty"`
+	MaxBudgetUsd         float64         `json:"maxBudgetUsd,omitempty"`
+	SystemPrompt         string          `json:"systemPrompt,omitempty"`
+	Model                string          `json:"model,omitempty"`
+	HookSettingsPath     string          `json:"hookSettingsPath,omitempty"`
+	AddDirs              []string        `json:"addDirs,omitempty"`
+	PermissionModeCli    string          `json:"permissionModeCli,omitempty"`
+	AppendSystemPrompt   string          `json:"appendSystemPrompt,omitempty"`
+	Source               string          `json:"source,omitempty"`
+	McpConfig            string          `json:"mcpConfig,omitempty"`
+	MaxTokens            int             `json:"maxTokens,omitempty"`
+	Thinking             *ThinkingConfig `json:"thinking,omitempty"`
+	MaxRetries           int             `json:"maxRetries,omitempty"`
+	FallbackChain        []string        `json:"fallbackChain,omitempty"`
+	Persistent           bool            `json:"persistent,omitempty"`
+	PlanMode             bool            `json:"planMode,omitempty"`
+	PlanModeTools        []string        `json:"planModeTools,omitempty"`
+	PlanFilePath         string          `json:"planFilePath,omitempty"`
+	PlanModePrompt       string          `json:"planModePrompt,omitempty"`
 	// PlanModeSparseReminder is the harness-supplied text for the sparse
 	// plan-mode reminder injected periodically during plan-mode runs.
 	// Empty (the default) means the engine builds the reminder via
@@ -194,11 +194,11 @@ type RunOptions struct {
 	// for this run. Results exceeding this limit are persisted to disk and
 	// replaced with a preview. Zero means "inherit from engine.json or
 	// built-in default". Negative disables the cap entirely for this run.
-	MaxToolResultChars      int          `json:"maxToolResultChars,omitempty"`
-	SuppressSystemMessages  bool         `json:"suppressSystemMessages,omitempty"`
-	DisablePlanModeReminder bool         `json:"disablePlanModeReminder,omitempty"`
-	DisableTurnLimitWarning bool         `json:"disableTurnLimitWarning,omitempty"`
-	DisableMaxTokenContinue bool         `json:"disableMaxTokenContinue,omitempty"`
+	MaxToolResultChars      int  `json:"maxToolResultChars,omitempty"`
+	SuppressSystemMessages  bool `json:"suppressSystemMessages,omitempty"`
+	DisablePlanModeReminder bool `json:"disablePlanModeReminder,omitempty"`
+	DisableTurnLimitWarning bool `json:"disableTurnLimitWarning,omitempty"`
+	DisableMaxTokenContinue bool `json:"disableMaxTokenContinue,omitempty"`
 	// ClaudeCompat mirrors EngineConfig.ClaudeCompat onto the run so the
 	// backend's read-triggered nested context loader applies the same Ion-vs-
 	// Claude gate as the eager context walk: Ion-native instruction files
@@ -211,7 +211,7 @@ type RunOptions struct {
 	// means the feature is ON by default; set true to suppress nested
 	// injections (the per-run analogue of SuppressSystemMessages but scoped to
 	// the nested-context mechanism specifically).
-	DisableNestedContext    bool         `json:"disableNestedContext,omitempty"`
+	DisableNestedContext bool `json:"disableNestedContext,omitempty"`
 	// DisableSkillSystemPrompt turns off the engine's skill-listing +
 	// proactive-invocation system-prompt section for this run (see
 	// tools.BuildSkillSystemPromptSection). Zero value (false) means the
@@ -221,9 +221,9 @@ type RunOptions struct {
 	// precedence over it. The system_inject hook (kind "skill_listing") can
 	// still observe, replace, or suppress the section even when this is false.
 	DisableSkillSystemPrompt bool         `json:"disableSkillSystemPrompt,omitempty"`
-	CapabilityTools         []LlmToolDef `json:"-"` // capability tools injected by session manager
-	CapabilityPrompt        string       `json:"-"` // capability prompt content injected by session manager
-	WebSearchMode           string       `json:"-"` // "auto", "client", or "server", propagated from config
+	CapabilityTools          []LlmToolDef `json:"-"` // capability tools injected by session manager
+	CapabilityPrompt         string       `json:"-"` // capability prompt content injected by session manager
+	WebSearchMode            string       `json:"-"` // "auto", "client", or "server", propagated from config
 
 	// --- Early-stop continuation (Claude-Code-style "keep working" nudge) ---
 	//

@@ -43,6 +43,11 @@ func loadDesktopProtectedIDs(homeDir string) []string {
 	// session-chains-{backend}.json shape: {"chains": {rootId: [contIds...]}, "reverse": {contId: rootId}}
 	// Every key and every value in both maps is a conversation ID that some tab
 	// references — they all need protection.
+	//
+	// The token stays "cli" (not "claude-code"): these files are written by the
+	// desktop, whose local backend union is intentionally "api" | "cli" and keys
+	// the on-disk file names. Renaming the engine backend does not rename those
+	// files; the engine must read the names the desktop actually writes.
 	for _, backend := range []string{"api", "cli"} {
 		path := filepath.Join(homeDir, "session-chains-"+backend+".json")
 		fromChains := loadChainIDs(path)

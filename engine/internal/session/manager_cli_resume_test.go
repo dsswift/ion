@@ -32,7 +32,7 @@ func TestHandleRunExit_CapturesCliSessionIDNotConversationID(t *testing.T) {
 	mgr.mu.Unlock()
 
 	// Drive run exit with a claude-native UUID as the backend-reported
-	// sessionID (mirrors CliBackend.emitExit on a successful first run).
+	// sessionID (mirrors ClaudeCodeBackend.emitExit on a successful first run).
 	mgr.handleRunExit("run-cli-resume", intPtr(0), nil, claudeUUID)
 
 	mgr.mu.RLock()

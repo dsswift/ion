@@ -28,7 +28,7 @@ func newCliSession(key string) *engineSession {
 // ---------------------------------------------------------------------------
 
 func TestFireBeforePromptCli_ModifiesPromptAndSystem(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("cli1")
 
@@ -54,7 +54,7 @@ func TestFireBeforePromptCli_ModifiesPromptAndSystem(t *testing.T) {
 }
 
 func TestFireBeforePromptCli_AppendsToExistingSystem(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("cli2")
 
@@ -95,7 +95,7 @@ func TestFireBeforePromptCli_AppendsToExistingSystem(t *testing.T) {
 // the handler receives (not merely that the hook fired) is what makes this a
 // real regression guard rather than false coverage.
 func TestFireBeforeAgentStart_RootCallSiteSetsIsRoot(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("agentstart1")
 
@@ -152,7 +152,7 @@ func TestFireBeforePromptCli_NoopForNonCliBackend(t *testing.T) {
 }
 
 func TestFireBeforePromptCli_SkippedWhenSkipExtensions(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("cli3")
 
@@ -172,7 +172,7 @@ func TestFireBeforePromptCli_SkippedWhenSkipExtensions(t *testing.T) {
 }
 
 func TestFireBeforePromptCli_NoopWhenNoExtGroup(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("cli4")
 
@@ -318,7 +318,7 @@ func newTurnGroup(rec *turnRecorder) *extension.ExtensionGroup {
 }
 
 func TestFireCliTurnHooks_TextChunkStartsTurn(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("turn1")
 
@@ -351,7 +351,7 @@ func TestFireCliTurnHooks_TextChunkStartsTurn(t *testing.T) {
 }
 
 func TestFireCliTurnHooks_ToolCallStartsTurn(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("turn2")
 
@@ -373,7 +373,7 @@ func TestFireCliTurnHooks_ToolCallStartsTurn(t *testing.T) {
 }
 
 func TestFireCliTurnHooks_TaskUpdateEndsTurn(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("turn3")
 
@@ -401,7 +401,7 @@ func TestFireCliTurnHooks_TaskUpdateEndsTurn(t *testing.T) {
 }
 
 func TestFireCliTurnHooks_MultiTurnSequence(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("turn4")
 
@@ -459,7 +459,7 @@ func TestFireCliTurnHooks_MultiTurnSequence(t *testing.T) {
 }
 
 func TestFireCliTurnHooks_TaskCompleteClosesActiveTurn(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("turn5")
 
@@ -511,7 +511,7 @@ func TestFireCliTurnHooks_NoopForNonCliBackend(t *testing.T) {
 }
 
 func TestFireCliTurnHooks_NoopWithoutExtGroup(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("turn6")
 	// No extGroup set
@@ -539,7 +539,7 @@ func TestFireCliTurnHooks_NoopWithoutExtGroup(t *testing.T) {
 // through the full handleNormalizedEvent path. This is the regression test for
 // the bug where fireCliTurnHooks was placed after the ee.Type == "" early return.
 func TestHandleNormalizedEvent_TaskUpdateFiresTurnEnd(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 
 	s := newCliSession("hn1")
@@ -576,7 +576,7 @@ func TestHandleNormalizedEvent_TaskUpdateFiresTurnEnd(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestWireAgentToolServer_RegistersToolForCliBackend(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("agent-ts1")
 
@@ -623,7 +623,7 @@ func TestWireAgentToolServer_NoopForNonCliBackend(t *testing.T) {
 }
 
 func TestWireAgentToolServer_ReusesExistingToolServer(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("agent-ts3")
 
@@ -659,7 +659,7 @@ func TestWireAgentToolServer_ReusesExistingToolServer(t *testing.T) {
 }
 
 func TestWireAgentToolServer_SpecResolution(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("agent-ts4")
 
@@ -733,7 +733,7 @@ func newMsgUpdateGroup(rec *msgRecorder) *extension.ExtensionGroup {
 }
 
 func TestFireCliTurnHooks_MessageUpdateAccumulation(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("mu1")
 
@@ -771,7 +771,7 @@ func TestFireCliTurnHooks_MessageUpdateAccumulation(t *testing.T) {
 }
 
 func TestFireCliTurnHooks_MessageUpdateOnTaskComplete(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("mu2")
 
@@ -800,7 +800,7 @@ func TestFireCliTurnHooks_MessageUpdateOnTaskComplete(t *testing.T) {
 }
 
 func TestFireCliTurnHooks_NoMessageUpdateWithoutText(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("mu3")
 
@@ -826,7 +826,7 @@ func TestFireCliTurnHooks_NoMessageUpdateWithoutText(t *testing.T) {
 }
 
 func TestFireCliTurnHooks_MultiTurnMessageUpdate(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("mu4")
 
@@ -894,7 +894,7 @@ func newToolExtGroup(toolNames []string) *extension.ExtensionGroup {
 // wireToolServer runs on a CLI backend with non-empty extension tools, each
 // bare name and its mcp__<server>__<name> form appear in AppendSystemPrompt.
 func TestWireToolServer_AppendSystemPromptContainsAliases(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("wts1")
 
@@ -927,7 +927,7 @@ func TestWireToolServer_AppendSystemPromptContainsAliases(t *testing.T) {
 // pre-existing AppendSystemPrompt content is preserved when the directive is
 // appended.  Mirrors the accumulation assertions near lines 70-80.
 func TestWireToolServer_PreservesExistingAppendSystemPrompt(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("wts2")
 
@@ -973,7 +973,7 @@ func TestWireToolServer_NoopForAPIBackend(t *testing.T) {
 // after wireAgentToolServer, the ion_agent bare and prefixed forms appear in
 // AppendSystemPrompt.
 func TestWireAgentToolServer_AppendSystemPromptContainsIonAgent(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("wats1")
 

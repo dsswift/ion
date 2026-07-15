@@ -280,7 +280,7 @@ func (r *DispatchRegistry) Deregister(id string) {
 	// and then the normal Deregister path also ran) or a desync (panic recovery
 	// deregistered but the run survived the panic). Log it so the next occurrence
 	// is attributable to a specific code path rather than lost in log truncation.
-	// Best-effort: IsRunning is false for CliBackend (external processes), which
+	// Best-effort: IsRunning is false for ClaudeCodeBackend (external processes), which
 	// is acceptable — the ERROR log on the in-process backends is what matters.
 	if d.Child != nil && d.Child.IsRunning(d.ChildRunID) {
 		utils.LogWithFields(utils.LevelError, "session.extcontext.dispatch_registry", "deregister invariant violation removing registry entry while child run is active", map[string]any{

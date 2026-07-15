@@ -297,7 +297,7 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 			// Emit a run-level telemetry event. This is the one place every
 			// backend's TaskCompleteEvent converges, so a single guarded
 			// emission here gives uniform run-level coverage across all
-			// backends — including CliBackend, which emits no per-call
+			// backends — including ClaudeCodeBackend, which emits no per-call
 			// telemetry spans of its own (ApiBackend keeps its finer-grained
 			// llm.call / tool.execute spans regardless). Additive only:
 			// guarded on a non-nil collector, and the collector itself is a

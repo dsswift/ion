@@ -29,7 +29,7 @@ func loadEnterpriseConfig(goos string) *types.EnterpriseConfig {
 	// Env var override (all platforms)
 	if envPath := os.Getenv("ION_ENTERPRISE_CONFIG"); envPath != "" {
 		if cfg := readJSONFile[types.EnterpriseConfig](envPath); cfg != nil {
-		utils.LogWithFields(utils.LevelInfo, "config.enterprise", "loaded config from env var", map[string]any{"path": envPath})
+			utils.LogWithFields(utils.LevelInfo, "config.enterprise", "loaded config from env var", map[string]any{"path": envPath})
 			return cfg
 		}
 	}
@@ -149,7 +149,7 @@ func readWindowsRegistryValue(valueName string) *types.EnterpriseConfig {
 		jsonStr := strings.TrimSpace(parts[1])
 		var cfg types.EnterpriseConfig
 		if err := json.Unmarshal([]byte(jsonStr), &cfg); err != nil {
-		utils.LogWithFields(utils.LevelInfo, "config.enterprise", "failed to parse windows registry value", map[string]any{"path": valueName, "error": err.Error()})
+			utils.LogWithFields(utils.LevelInfo, "config.enterprise", "failed to parse windows registry value", map[string]any{"path": valueName, "error": err.Error()})
 			return nil
 		}
 		utils.LogWithFields(utils.LevelInfo, "config.enterprise", "loaded config from windows registry", map[string]any{"path": valueName})

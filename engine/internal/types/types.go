@@ -86,7 +86,7 @@ type EngineConfig struct {
 
 // ThinkingConfig controls extended thinking for API-backend runs.
 type ThinkingConfig struct {
-	Enabled      bool `json:"enabled"`
+	Enabled bool `json:"enabled"`
 	// Effort is the cross-provider reasoning level: "low" | "medium" | "high".
 	// It is the forward-compatible control that the whole provider landscape
 	// has converged on (Anthropic adaptive `effort`, OpenAI `reasoning_effort`,
@@ -180,13 +180,13 @@ type SlashCommandListing struct {
 
 // StatusFields are the fields emitted by engine_status events.
 type StatusFields struct {
-	Label             string             `json:"label"`
-	State             string             `json:"state"`
-	SessionID         string             `json:"sessionId,omitempty"`
-	Team              string             `json:"team,omitempty"`
-	Model             string             `json:"model"`
-	ContextPercent    int                `json:"contextPercent"`
-	ContextWindow     int                `json:"contextWindow"`
+	Label          string `json:"label"`
+	State          string `json:"state"`
+	SessionID      string `json:"sessionId,omitempty"`
+	Team           string `json:"team,omitempty"`
+	Model          string `json:"model"`
+	ContextPercent int    `json:"contextPercent"`
+	ContextWindow  int    `json:"contextWindow"`
 	// RunCostUsd is the cumulative cost of the most recent run in USD. It
 	// represents the sum of all turns in the run (cache-aware, descendants
 	// included). Replaces the former totalCostUsd field; the rename makes

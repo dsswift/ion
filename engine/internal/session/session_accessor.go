@@ -235,7 +235,7 @@ func (a *sessionAccessor) SearchHistory(query string, maxResults int) []extensio
 	}
 	// resolvedBackend resolves to the inner *ApiBackend for hybrid (when the
 	// last dispatched model was non-Anthropic) or returns m.backend as-is
-	// for plain ApiBackend. CLI-routed hybrid runs and plain CliBackend
+	// for plain ApiBackend. CLI-routed hybrid runs and plain ClaudeCodeBackend
 	// return nil here — SearchHistory only operates on the API backend's
 	// in-process conversation buffer.
 	apiBackend, ok := a.m.resolvedBackend(lastModel).(*backend.ApiBackend)

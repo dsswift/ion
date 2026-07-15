@@ -42,8 +42,8 @@ const (
 	// reloading the file. Client-submitted prompts never emit it (each
 	// client does its own optimistic transcript insert).
 	EventPromptInjected = "prompt_injected"
-	EventModelFallback   = "model_fallback"
-	EventRunStalled      = "run_stalled"
+	EventModelFallback  = "model_fallback"
+	EventRunStalled     = "run_stalled"
 	// EventTaskSuspend is the engine-internal signal that ends an LLM run
 	// without completing the dispatch. The agent's LLM run exits (saving
 	// tokens, showing as idle in the UI) but its parent's OnComplete callback

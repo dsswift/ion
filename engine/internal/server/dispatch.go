@@ -367,6 +367,15 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "oidc_token":
 		s.dispatchOidcToken(conn, cmd)
 
+	case "provider_login":
+		s.dispatchProviderLogin(conn, cmd)
+
+	case "provider_login_cancel":
+		s.dispatchProviderLoginCancel(conn, cmd)
+
+	case "provider_logout":
+		s.dispatchProviderLogout(conn, cmd)
+
 	case "refresh_models":
 		providerConfigs := make(map[string]types.ProviderConfig)
 		if s.config != nil {
@@ -380,6 +389,9 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		}
 		// Provider field is optional: empty = refresh all
 		providers.RefreshModels(cmd.Provider, true, resolveKey, providerConfigs)
+		// Re-probe the delegated CLIs too, so their install/auth state and
+		// model lists refresh alongside the HTTP providers.
+		s.RefreshProviderProbes()
 		s.sendResult(conn, cmd, nil, nil)
 
 	case "clear_conversation_file":

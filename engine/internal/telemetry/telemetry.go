@@ -26,7 +26,7 @@ const (
 	Compaction   = "compaction"
 	ErrorEvent   = "error"
 	// RunComplete is emitted once per run at the session layer (in the
-	// TaskCompleteEvent handler) so every backend — including CliBackend,
+	// TaskCompleteEvent handler) so every backend — including ClaudeCodeBackend,
 	// which emits no per-call spans — gets uniform run-level telemetry
 	// (model, cost, duration, turn count, token usage).
 	RunComplete = "run.complete"

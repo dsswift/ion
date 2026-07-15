@@ -11,7 +11,7 @@ import (
 // flowing through handleNormalizedEvent emits a single run.complete telemetry
 // event carrying the run-level fields (model, cost, duration, turns, token
 // usage). This is the backend-agnostic funnel — every backend's
-// TaskCompleteEvent passes through this path, so CliBackend (which emits no
+// TaskCompleteEvent passes through this path, so ClaudeCodeBackend (which emits no
 // per-call spans) gets uniform run-level coverage here.
 //
 // Regression definition: with the run.complete emission removed, the collector

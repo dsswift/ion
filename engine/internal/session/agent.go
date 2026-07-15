@@ -27,7 +27,7 @@ const (
 	// next drainSteer checkpoint in the run loop.
 	SteerDelivered
 	// SteerDeliveredViaStdin: the steer was written to the backend's stdin
-	// pipe (CliBackend / hybrid CLI-routed runs).
+	// pipe (ClaudeCodeBackend / hybrid CLI-routed runs).
 	SteerDeliveredViaStdin
 	// SteerDeliveredToAgent: a named (non-main-loop) agent received the steer
 	// over its stdin-write handle.
@@ -115,7 +115,7 @@ func (m *Manager) AbortAgent(key, agentName string, subtree bool) {
 // steerable is a local interface satisfied by any backend that can steer
 // a running agent loop via an in-process message rather than the stdin
 // pipe. Both *backend.ApiBackend and *backend.HybridBackend implement it.
-// CliBackend does not — its runs are steered via WriteToStdin (the
+// ClaudeCodeBackend does not — its runs are steered via WriteToStdin (the
 // stream-json stdin pipe of the Claude Code subprocess).
 //
 // SteerWithReason returns a typed backend.SteerResult so the session layer can
@@ -182,7 +182,7 @@ func (m *Manager) SteerAgent(key, agentName, message string) SteerOutcome {
 		} else {
 			utils.LogWithFields(utils.LevelInfo, "session", "steeragent: backend does not implement steerable, using stdin path", map[string]any{"session_id": key, "rid": rid})
 		}
-		// CliBackend (or hybrid CLI-routed): write follow-up message over
+		// ClaudeCodeBackend (or hybrid CLI-routed): write follow-up message over
 		// stdin pipe of the Claude Code subprocess.
 		stdinMsg := map[string]interface{}{
 			"type": "user",

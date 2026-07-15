@@ -23,7 +23,7 @@ import (
 // ~/.ion/engine.log alone.
 func cliResumeArgs(opts types.RunOptions) []string {
 	if opts.CliResumeSessionID != "" {
-		utils.LogWithFields(utils.LevelInfo, "backend.cli", "resume: --resume", map[string]any{
+		utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "resume: --resume", map[string]any{
 			"cli_resume_session_id": opts.CliResumeSessionID,
 		})
 		return []string{"--resume", opts.CliResumeSessionID}
@@ -31,7 +31,7 @@ func cliResumeArgs(opts types.RunOptions) []string {
 	// First run of this session: no claude UUID captured yet. Omitting
 	// --resume is mandatory — claude rejects a missing/invalid resume id.
 	// SessionID (Ion's conversation id) is intentionally NOT used here.
-	utils.LogWithFields(utils.LevelInfo, "backend.cli", "resume: omitting --resume (first CLI run, no captured claude session UUID; )", map[string]any{
+	utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "resume: omitting --resume (first CLI run, no captured claude session UUID; )", map[string]any{
 		"conversation_id": opts.ConversationID,
 	})
 	return nil

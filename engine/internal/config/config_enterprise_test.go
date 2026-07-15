@@ -714,7 +714,7 @@ func TestEnforceEnterprise_ShipSourcesMatrix(t *testing.T) {
 func TestEnforceEnterprise_PluginAllowlist(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Plugins = &types.PluginsConfig{
-		Allowlist: []string{"user-allowed/*"},
+		Allowlist:      []string{"user-allowed/*"},
 		ForceInstalled: []string{"user-allowed/tool"},
 	}
 	enterprise := &types.EnterpriseConfig{

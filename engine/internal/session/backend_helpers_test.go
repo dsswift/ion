@@ -22,17 +22,17 @@ func TestNewChildBackend_ApiParent(t *testing.T) {
 }
 
 func TestNewChildBackend_CliParent(t *testing.T) {
-	mgr := NewManager(backend.NewCliBackend())
+	mgr := NewManager(backend.NewClaudeCodeBackend())
 	child := mgr.newChildBackend()
-	if _, ok := child.(*backend.CliBackend); !ok {
-		t.Errorf("expected *CliBackend child, got %T", child)
+	if _, ok := child.(*backend.ClaudeCodeBackend); !ok {
+		t.Errorf("expected *ClaudeCodeBackend child, got %T", child)
 	}
 }
 
 func TestNewChildBackend_MockParent(t *testing.T) {
 	mgr := NewManager(newMockBackend())
 	child := mgr.newChildBackend()
-	// Mock is neither CliBackend nor ApiBackend; should default to ApiBackend
+	// Mock is neither ClaudeCodeBackend nor ApiBackend; should default to ApiBackend
 	if _, ok := child.(*backend.ApiBackend); !ok {
 		t.Errorf("expected *ApiBackend child for unknown parent, got %T", child)
 	}
@@ -84,12 +84,12 @@ func registerSessionTestModels(t *testing.T) {
 
 func TestResolvedBackend_PlainCli_PassesThrough(t *testing.T) {
 	registerSessionTestModels(t)
-	cli := backend.NewCliBackend()
+	cli := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cli)
 	// Even for a non-Anthropic model, resolvedBackend returns m.backend
 	// unchanged because m.backend is not a HybridBackend.
 	if got := mgr.resolvedBackend("gpt-session-test"); got != cli {
-		t.Fatalf("expected plain CliBackend to pass through unchanged, got %T", got)
+		t.Fatalf("expected plain ClaudeCodeBackend to pass through unchanged, got %T", got)
 	}
 }
 
@@ -108,7 +108,7 @@ func TestResolvedBackend_MockBackend_PassesThrough(t *testing.T) {
 	mock := newMockBackend()
 	mgr := NewManager(mock)
 	// Tests in the session package use a mockBackend that is neither
-	// CliBackend nor ApiBackend nor HybridBackend. resolvedBackend must
+	// ClaudeCodeBackend nor ApiBackend nor HybridBackend. resolvedBackend must
 	// return it unchanged so the existing test suite keeps working.
 	if got := mgr.resolvedBackend("any-model"); got != mock {
 		t.Fatalf("expected mockBackend to pass through unchanged, got %T", got)
@@ -120,11 +120,11 @@ func TestResolvedBackend_Hybrid_ClaudeRoutesToCli(t *testing.T) {
 	hybrid := backend.NewHybridBackend()
 	mgr := NewManager(hybrid)
 	got := mgr.resolvedBackend("claude-session-test")
-	if _, ok := got.(*backend.CliBackend); !ok {
-		t.Fatalf("expected hybrid + claude-* to resolve to *CliBackend, got %T", got)
+	if _, ok := got.(*backend.ClaudeCodeBackend); !ok {
+		t.Fatalf("expected hybrid + claude-* to resolve to *ClaudeCodeBackend, got %T", got)
 	}
-	if got != hybrid.InnerCli() {
-		t.Fatalf("expected exactly the hybrid's inner CliBackend, got different pointer")
+	if got != hybrid.InnerClaudeCode() {
+		t.Fatalf("expected exactly the hybrid's inner ClaudeCodeBackend, got different pointer")
 	}
 }
 

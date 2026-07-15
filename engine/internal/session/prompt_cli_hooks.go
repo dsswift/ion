@@ -21,10 +21,10 @@ import (
 // events to consumers and block the subprocess until the user responds.
 //
 // Under HybridBackend, this only wires when the model resolves to the
-// inner *CliBackend. API-routed hybrid runs use the in-process permission
+// inner *ClaudeCodeBackend. API-routed hybrid runs use the in-process permission
 // engine path (identical to plain "backend": "api").
 func (m *Manager) wirePermissionHookServer(s *engineSession, key string, opts *types.RunOptions, permEng *permissions.Engine) {
-	if _, isCli := m.resolvedBackend(opts.Model).(*backend.CliBackend); !isCli {
+	if _, isCli := m.resolvedBackend(opts.Model).(*backend.ClaudeCodeBackend); !isCli {
 		return
 	}
 	if permEng == nil {
@@ -49,28 +49,9 @@ func (m *Manager) wirePermissionHookServer(s *engineSession, key string, opts *t
 
 	// When the hook server gets an "ask" decision, emit
 	// engine_permission_request and block until the user responds with an
-	// option ID.
-	hookServer.SetOnAsk(func(reqToken string, questionID string, toolName string, toolDesc string, toolInput map[string]any, options []types.PermissionOpt) chan string {
-		ch := m.RegisterPendingPermission(key, questionID)
-		if ch == nil {
-			return nil
-		}
-		m.emit(key, types.EngineEvent{
-			Type:          "engine_permission_request",
-			QuestionID:    questionID,
-			PermToolName:  toolName,
-			PermToolDesc:  toolDesc,
-			PermToolInput: toolInput,
-			PermOptions:   options,
-		})
-		result := make(chan string, 1)
-		go func() {
-			optionID := <-ch
-			m.UnregisterPendingPermission(key, questionID)
-			result <- optionID
-		}()
-		return result
-	})
+	// option ID. The same closure serves the codex backend's approvals
+	// (see wireCodexPermissions).
+	hookServer.SetOnAsk(m.permissionAskClosure(key))
 
 	settingsJSON := hookServer.GenerateSettingsJSON(token)
 
@@ -125,10 +106,10 @@ func appendDirective(opts *types.RunOptions, directive string, names []string) {
 // tools, exposing them via an MCP config that Claude Code subprocess loads.
 //
 // Under HybridBackend, this only fires when the model resolves to the
-// inner *CliBackend. API-routed hybrid runs expose extension tools via
+// inner *ClaudeCodeBackend. API-routed hybrid runs expose extension tools via
 // the in-process tool registry instead.
 func (m *Manager) wireToolServer(s *engineSession, key string, opts *types.RunOptions, extGroup *extension.ExtensionGroup) {
-	if _, isCli := m.resolvedBackend(opts.Model).(*backend.CliBackend); !isCli {
+	if _, isCli := m.resolvedBackend(opts.Model).(*backend.ClaudeCodeBackend); !isCli {
 		return
 	}
 	if extGroup == nil || extGroup.IsEmpty() {
@@ -176,10 +157,10 @@ func (m *Manager) wireToolServer(s *engineSession, key string, opts *types.RunOp
 // backend sessions.
 //
 // Under HybridBackend, this only fires when the model resolves to the
-// inner *CliBackend. API-routed hybrid runs expose ion_agent via the
+// inner *ClaudeCodeBackend. API-routed hybrid runs expose ion_agent via the
 // in-process agent spawner path (wired in buildRunConfig).
 func (m *Manager) wireAgentToolServer(s *engineSession, key string, opts *types.RunOptions) {
-	if _, isCli := m.resolvedBackend(opts.Model).(*backend.CliBackend); !isCli {
+	if _, isCli := m.resolvedBackend(opts.Model).(*backend.ClaudeCodeBackend); !isCli {
 		return
 	}
 

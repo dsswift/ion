@@ -14,7 +14,7 @@ import (
 // ctx.Model population in fireBeforePromptCli turns this red (ctx.Model is nil,
 // so gotModelID stays empty).
 func TestFireBeforePromptCli_CtxModelIsSelectedModel(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("bp-model")
 

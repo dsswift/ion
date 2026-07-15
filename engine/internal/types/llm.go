@@ -143,12 +143,12 @@ type ImageSource struct {
 //
 // Supported MediaType values:
 //   - "image/*"         — any image/* MIME type (e.g. "image/jpeg", "image/png",
-//                         "image/gif", "image/webp"). The engine emits a native
-//                         image block for the provider.
+//     "image/gif", "image/webp"). The engine emits a native
+//     image block for the provider.
 //   - "application/pdf" — the engine emits a native document block (the provider's
-//                         first-class PDF support). This is the standard path for
-//                         remote clients that cannot expose a filesystem path to
-//                         the engine host (#853).
+//     first-class PDF support). This is the standard path for
+//     remote clients that cannot expose a filesystem path to
+//     the engine host (#853).
 //
 // Any other MediaType value is silently skipped by the backend; the
 // corresponding marker (if any) remains in the prompt for the Read-tool
@@ -241,10 +241,10 @@ type LlmStreamDelta struct {
 
 // ModelInfo contains metadata about a supported model.
 type ModelInfo struct {
-	ProviderID       string  `json:"providerId"`
-	ContextWindow    int     `json:"contextWindow"`
-	CostPer1kInput   float64 `json:"costPer1kInput"`
-	CostPer1kOutput  float64 `json:"costPer1kOutput"`
+	ProviderID      string  `json:"providerId"`
+	ContextWindow   int     `json:"contextWindow"`
+	CostPer1kInput  float64 `json:"costPer1kInput"`
+	CostPer1kOutput float64 `json:"costPer1kOutput"`
 	// CostPer1kCacheCreation is the per-1k-token cost for prompt-cache creation
 	// (writing new tokens into the cache). When zero the cost.TurnCost function
 	// falls back to 1.25× CostPer1kInput, which matches Anthropic's published
@@ -255,9 +255,9 @@ type ModelInfo struct {
 	// which matches Anthropic's published cache-read discount for models that
 	// do not yet carry explicit pricing.
 	CostPer1kCacheRead float64 `json:"costPer1kCacheRead,omitempty"`
-	SupportsCaching  bool    `json:"supportsCaching,omitempty"`
-	SupportsThinking bool    `json:"supportsThinking,omitempty"`
-	SupportsImages   bool    `json:"supportsImages,omitempty"`
+	SupportsCaching    bool    `json:"supportsCaching,omitempty"`
+	SupportsThinking   bool    `json:"supportsThinking,omitempty"`
+	SupportsImages     bool    `json:"supportsImages,omitempty"`
 	// MaxOutputTokens is the model's maximum output-token capacity per response.
 	// It is the per-model source of truth the provider body-builders use to size
 	// the outbound max_tokens directive when the caller sets no explicit override.
@@ -290,14 +290,14 @@ type ModelInfo struct {
 // ModelEntry is the wire-format model information returned by list_models.
 // Tracked by contract sync.
 type ModelEntry struct {
-	ID               string   `json:"id"`
-	ProviderID       string   `json:"providerId"`
-	ContextWindow    int      `json:"contextWindow"`
-	CostPer1kInput   float64  `json:"costPer1kInput"`
-	CostPer1kOutput  float64  `json:"costPer1kOutput"`
-	SupportsCaching  bool     `json:"supportsCaching,omitempty"`
-	SupportsThinking bool     `json:"supportsThinking,omitempty"`
-	SupportsImages   bool     `json:"supportsImages,omitempty"`
+	ID               string  `json:"id"`
+	ProviderID       string  `json:"providerId"`
+	ContextWindow    int     `json:"contextWindow"`
+	CostPer1kInput   float64 `json:"costPer1kInput"`
+	CostPer1kOutput  float64 `json:"costPer1kOutput"`
+	SupportsCaching  bool    `json:"supportsCaching,omitempty"`
+	SupportsThinking bool    `json:"supportsThinking,omitempty"`
+	SupportsImages   bool    `json:"supportsImages,omitempty"`
 	// MaxOutputTokens is the model's maximum output-token capacity per response.
 	// See ModelInfo.MaxOutputTokens for the value contract. Additive, omitempty.
 	MaxOutputTokens int      `json:"maxOutputTokens,omitempty"`
@@ -317,4 +317,41 @@ type ProviderEntry struct {
 	AuthSource string `json:"authSource,omitempty"`
 	BaseURL    string `json:"baseURL,omitempty"`
 	APIKeyRef  string `json:"apiKeyRef,omitempty"`
+	// Backend is the run backend currently selected for this provider
+	// ("api" | "claude-code" | "codex" | "grok" | "cursor"). Additive,
+	// omitempty; absent for providers with no CLI backend option.
+	Backend string `json:"backend,omitempty"`
+	// Cli carries the install/auth state of this provider's delegated CLI when
+	// the provider has a CLI backend option (anthropic→claude-code,
+	// openai→codex, xai→grok, cursor→cursor). Nil for API-only providers.
+	// Additive, omitempty.
+	Cli *ProviderCliStatus `json:"cli,omitempty"`
+}
+
+// ProviderCliStatus reports the install and authentication state of a
+// provider's delegated CLI (the codex/claude/grok/cursor binaries). It is a
+// probe snapshot the engine caches and refreshes; clients render it to guide
+// install and sign-in. Additive wire type, tracked by contract sync.
+type ProviderCliStatus struct {
+	// Backend names the CLI backend this status describes.
+	Backend string `json:"backend"`
+	// Installed is true when the CLI binary was found on the host.
+	Installed bool `json:"installed"`
+	// BinaryPath is the resolved binary path when installed.
+	BinaryPath string `json:"binaryPath,omitempty"`
+	// Version is the CLI version string when detectable.
+	Version string `json:"version,omitempty"`
+	// Authenticated is true when the CLI reports a usable credential.
+	Authenticated bool `json:"authenticated"`
+	// AuthMethod is the CLI's active auth method (e.g. "chatgpt", "apiKey",
+	// "cached_token").
+	AuthMethod string `json:"authMethod,omitempty"`
+	// PlanType is the subscription plan when known (e.g. "pro", "plus").
+	PlanType string `json:"planType,omitempty"`
+	// Email is the signed-in account email when known.
+	Email string `json:"email,omitempty"`
+	// Label is a human-friendly auth summary (e.g. "ChatGPT Pro").
+	Label string `json:"label,omitempty"`
+	// ProbedAt is the RFC3339 timestamp of this probe snapshot.
+	ProbedAt string `json:"probedAt,omitempty"`
 }

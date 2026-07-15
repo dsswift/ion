@@ -47,7 +47,52 @@ var (
 	discoveryCache = make(map[string]*providerDiscovery)
 	discoveryMu    sync.RWMutex
 	discoveryOnce  sync.Once
+
+	// cliBackedProviders is the set of providers whose models come from a
+	// delegated CLI (via SetExternalModels) rather than the HTTP /models
+	// endpoint. The server sets it from the operator's backend selection.
+	cliBackedProviders   = make(map[string]bool)
+	cliBackedProvidersMu sync.RWMutex
 )
+
+// SetCliBackedProviders records which providers are served by a CLI backend, so
+// HTTP model discovery skips them. Replaces the set wholesale.
+func SetCliBackedProviders(ids map[string]bool) {
+	cliBackedProvidersMu.Lock()
+	defer cliBackedProvidersMu.Unlock()
+	cliBackedProviders = make(map[string]bool, len(ids))
+	for id, v := range ids {
+		if v {
+			cliBackedProviders[id] = true
+		}
+	}
+}
+
+// isCliBacked reports whether a provider's models come from a CLI backend.
+func isCliBacked(providerID string) bool {
+	cliBackedProvidersMu.RLock()
+	defer cliBackedProvidersMu.RUnlock()
+	return cliBackedProviders[providerID]
+}
+
+// SetExternalModels records models discovered outside the HTTP path (e.g. a CLI
+// backend's own model listing) so they surface in ListModels and
+// GetDiscoveredModels for the provider. It replaces the provider's discovered
+// set and registers each model in the provider registry for exact-id routing.
+func SetExternalModels(providerID string, models []types.ModelEntry) {
+	discoveryMu.Lock()
+	discoveryCache[providerID] = &providerDiscovery{models: models}
+	discoveryMu.Unlock()
+
+	mu.Lock()
+	for _, m := range models {
+		if _, exists := modelRegistry[m.ID]; !exists {
+			modelRegistry[m.ID] = types.ModelInfo{ProviderID: providerID}
+		}
+	}
+	mu.Unlock()
+	utils.LogWithFields(utils.LevelInfo, "ModelDiscovery", "external models set", map[string]any{"provider": providerID, "count": len(models)})
+}
 
 type keyResolver func(provider string) (string, error)
 
@@ -64,6 +109,10 @@ func StartModelDiscovery(resolveKey keyResolver, providerConfigs map[string]type
 // after store_credential so newly-authed providers get their models
 // without an engine restart.
 func DiscoverProvider(providerID, apiKey string, providerConfigs map[string]types.ProviderConfig) {
+	if isCliBacked(providerID) {
+		utils.LogWithFields(utils.LevelDebug, "ModelDiscovery", "skipping on-demand http discovery for cli-backed provider", map[string]any{"provider": providerID})
+		return
+	}
 	baseURL := resolveBaseURL(providerID, providerConfigs)
 	if baseURL == "" {
 		utils.LogWithFields(utils.LevelInfo, "ModelDiscovery", "no base url skipping", map[string]any{"provider": providerID})
@@ -80,6 +129,10 @@ func DiscoverProvider(providerID, apiKey string, providerConfigs map[string]type
 func RefreshModels(providerID string, force bool, resolveKey keyResolver, providerConfigs map[string]types.ProviderConfig) {
 	utils.LogWithFields(utils.LevelInfo, "ModelDiscovery", "refresh requested", map[string]any{"provider": providerID, "status": force})
 	if providerID != "" {
+		if isCliBacked(providerID) {
+			utils.LogWithFields(utils.LevelDebug, "ModelDiscovery", "skipping http refresh for cli-backed provider", map[string]any{"provider": providerID})
+			return
+		}
 		apiKey, err := resolveKey(providerID)
 		if apiKey == "" && providerID != "ollama" {
 			utils.LogWithFields(utils.LevelInfo, "ModelDiscovery", "no api key skipping refresh", map[string]any{"provider": providerID, "error": err})
@@ -146,6 +199,14 @@ func runDiscoveryAll(resolveKey keyResolver, providerConfigs map[string]types.Pr
 
 	for _, pid := range providerIDs {
 		pid := pid
+		if isCliBacked(pid) {
+			// CLI-backed providers get their model list from the delegated CLI
+			// (via SetExternalModels), not the HTTP /models endpoint. Skipping
+			// the fetch is the structural fix for the ChatGPT-token 403 + stale
+			// fallback catalog.
+			utils.LogWithFields(utils.LevelDebug, "ModelDiscovery", "skipping http discovery for cli-backed provider", map[string]any{"provider": pid})
+			continue
+		}
 		if !force && !isStale(pid) {
 			continue
 		}

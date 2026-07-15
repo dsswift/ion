@@ -166,7 +166,7 @@ func wireChildExtensionTools(
 
 // suspendableBackend is satisfied by backends that can park an in-flight run
 // without cancelling it (the suspend primitive). Both *ApiBackend and any
-// backend that wraps it implement this. CliBackend does not; dispatch children
+// backend that wraps it implement this. ClaudeCodeBackend does not; dispatch children
 // always use ApiBackend via HybridBackend, so this is always resolvable for
 // dispatched children.
 type suspendableBackend interface {
@@ -196,7 +196,7 @@ func startChild(child backend.RunBackend, reqID string, runOpts types.RunOptions
 			return
 		}
 	}
-	// CliBackend, generic test stubs, or any backend that doesn't carry
+	// ClaudeCodeBackend, generic test stubs, or any backend that doesn't carry
 	// RunConfig fall through to the plain interface method.
 	child.StartRun(reqID, runOpts)
 }

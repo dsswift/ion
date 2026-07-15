@@ -14,7 +14,7 @@ import (
 )
 
 // McpServerName is the MCP server name used in config and --allowedTools.
-// Shared between ToolServer (config generation) and CliBackend (allowlist).
+// Shared between ToolServer (config generation) and ClaudeCodeBackend (allowlist).
 const McpServerName = "ion-extensions"
 
 // ToolServer exposes extension-registered tools as an MCP server

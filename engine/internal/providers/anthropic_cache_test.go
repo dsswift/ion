@@ -9,7 +9,8 @@ import (
 // TestCacheControl_SkipsEmptyTextBlocks verifies that the cache_control loop
 // in formatMessages does NOT attach cache_control to user messages whose
 // last block is an empty text block. Anthropic rejects such requests with:
-//   "cache_control cannot be set for empty text blocks"
+//
+//	"cache_control cannot be set for empty text blocks"
 func TestCacheControl_SkipsEmptyTextBlocks(t *testing.T) {
 	p := &anthropicProvider{}
 	msgs := []types.LlmMessage{

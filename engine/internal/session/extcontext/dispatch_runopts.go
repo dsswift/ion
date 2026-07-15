@@ -17,7 +17,7 @@ import (
 // opts.ParentCtx when the caller supplied one (e.g. the orchestrator's
 // per-tool-call context), else the session cancellation root. Threading it
 // here makes in-process backends (ApiBackend) cascade an abort; process-backed
-// backends (CliBackend) are additionally reaped by PID kill in the manager's
+// backends (ClaudeCodeBackend) are additionally reaped by PID kill in the manager's
 // abortAllDescendants.
 func buildDispatchRunOptions(opts *extension.DispatchAgentOpts, model, projectPath string, dispatchParentCtx context.Context, claudeCompat bool, sa SessionAccessor) types.RunOptions {
 	runOpts := types.RunOptions{

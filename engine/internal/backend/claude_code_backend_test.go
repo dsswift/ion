@@ -6,48 +6,22 @@ import (
 	"io"
 	"sync"
 	"testing"
+
+	"github.com/dsswift/ion/engine/internal/rpcstdio"
 )
-
-func TestRingBuffer(t *testing.T) {
-	rb := newRingBuffer(3)
-
-	rb.Write("line1")
-	rb.Write("line2")
-	rb.Write("line3")
-	rb.Write("line4") // should evict line1
-
-	lines := rb.Lines()
-	if len(lines) != 3 {
-		t.Fatalf("expected 3 lines, got %d", len(lines))
-	}
-	if lines[0] != "line2" {
-		t.Errorf("expected first line 'line2', got %q", lines[0])
-	}
-	if lines[2] != "line4" {
-		t.Errorf("expected last line 'line4', got %q", lines[2])
-	}
-}
-
-func TestRingBufferEmpty(t *testing.T) {
-	rb := newRingBuffer(5)
-	lines := rb.Lines()
-	if len(lines) != 0 {
-		t.Fatalf("expected 0 lines, got %d", len(lines))
-	}
-}
 
 func TestWriteToStdinWritesNDJSON(t *testing.T) {
 	// Create a pipe to capture what WriteToStdin writes
 	pr, pw := io.Pipe()
 
-	run := &cliRun{
+	run := &claudeCodeRun{
 		requestID: "test-run",
 		stdinPipe: pw,
-		stderr:    newRingBuffer(10),
+		stderr:    rpcstdio.NewRingBuffer(10),
 	}
 
-	b := &CliBackend{
-		activeRuns: map[string]*cliRun{"test-run": run},
+	b := &ClaudeCodeBackend{
+		activeRuns: map[string]*claudeCodeRun{"test-run": run},
 	}
 
 	msg := map[string]interface{}{
@@ -102,14 +76,14 @@ func TestWriteToStdinClosedPipe(t *testing.T) {
 	pw.Close()
 	pr.Close()
 
-	run := &cliRun{
+	run := &claudeCodeRun{
 		requestID: "closed-run",
 		stdinPipe: nil, // already nil
-		stderr:    newRingBuffer(10),
+		stderr:    rpcstdio.NewRingBuffer(10),
 	}
 
-	b := &CliBackend{
-		activeRuns: map[string]*cliRun{"closed-run": run},
+	b := &ClaudeCodeBackend{
+		activeRuns: map[string]*claudeCodeRun{"closed-run": run},
 	}
 
 	err := b.WriteToStdin("closed-run", "hello")
@@ -119,8 +93,8 @@ func TestWriteToStdinClosedPipe(t *testing.T) {
 }
 
 func TestWriteToStdinRunNotFound(t *testing.T) {
-	b := &CliBackend{
-		activeRuns: make(map[string]*cliRun),
+	b := &ClaudeCodeBackend{
+		activeRuns: make(map[string]*claudeCodeRun),
 	}
 
 	err := b.WriteToStdin("nonexistent", "hello")
@@ -135,11 +109,11 @@ func TestCliBackendBuildArgs(t *testing.T) {
 	// builder logic by examining the code path indirectly through
 	// the findClaudeBinary + arg construction.
 	//
-	// For now, verify the CliBackend interface is satisfied and
+	// For now, verify the ClaudeCodeBackend interface is satisfied and
 	// the struct fields are present.
-	b := NewCliBackend()
+	b := NewClaudeCodeBackend()
 	if b == nil {
-		t.Fatal("NewCliBackend returned nil")
+		t.Fatal("NewClaudeCodeBackend returned nil")
 	}
 
 	// Verify interface satisfaction
@@ -147,9 +121,9 @@ func TestCliBackendBuildArgs(t *testing.T) {
 }
 
 func TestCliRunFieldsPresent(t *testing.T) {
-	run := &cliRun{
+	run := &claudeCodeRun{
 		requestID: "test",
-		stderr:    newRingBuffer(5),
+		stderr:    rpcstdio.NewRingBuffer(5),
 	}
 
 	// stdinPipe should default to nil

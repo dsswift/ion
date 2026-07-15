@@ -21,7 +21,7 @@ package session
 //   - For a historical session conversation.Load restores the full LLM-visible
 //     message list; the breakdown carries those conversation tokens.
 //
-//   - For a CliBackend session (nil provider) BuildContextBreakdown falls back
+//   - For a ClaudeCodeBackend session (nil provider) BuildContextBreakdown falls back
 //     to local BPE / char4 and still emits.
 //
 //   - Tool list assembly mirrors wireExternalTools (same sources: built-in
@@ -177,7 +177,7 @@ func (m *Manager) ComputeAndEmitContextBreakdown(key string) {
 		Tools:    toolDefs,
 	}
 
-	// Resolve the provider. For CliBackend (or any path where the type assertion
+	// Resolve the provider. For ClaudeCodeBackend (or any path where the type assertion
 	// fails) provider is nil — BuildContextBreakdown degrades to local BPE / char4.
 	var provider providers.LlmProvider
 	if apiBackend, ok2 := m.resolvedBackend(opts.Model).(*backend.ApiBackend); ok2 {

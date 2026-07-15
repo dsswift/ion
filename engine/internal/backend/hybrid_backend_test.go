@@ -14,7 +14,7 @@ import (
 // Test model registry setup
 // ---------------------------------------------------------------------------
 
-// registerHybridTestModels seeds the global model registry so chooseFor can
+// registerHybridTestModels seeds the global model registry so routing can
 // resolve provider IDs deterministically. Models registered here are inert
 // for actual run execution — they only need ProviderID set so routing
 // decisions are deterministic.
@@ -37,51 +37,99 @@ func registerHybridTestModels(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// chooseFor: pure routing logic
+// kindFor / ResolveFor: default routing rule (no per-provider preferences)
 // ---------------------------------------------------------------------------
 
-func TestHybrid_ChooseFor_AnthropicGoesCli(t *testing.T) {
+func TestHybrid_DefaultRule_AnthropicGoesClaudeCode(t *testing.T) {
 	registerHybridTestModels(t)
 	h := NewHybridBackend()
-	got := h.chooseFor("claude-test-sonnet")
-	if got != h.cli {
-		t.Fatalf("expected inner CliBackend for claude-* model, got %T", got)
+	if kind := h.kindFor("claude-test-sonnet"); kind != "claude-code" {
+		t.Fatalf("expected claude-code for anthropic model, got %q", kind)
+	}
+	if got := h.ResolveFor("claude-test-sonnet"); got != h.InnerClaudeCode() {
+		t.Fatalf("expected inner ClaudeCodeBackend for claude-* model, got %T", got)
 	}
 }
 
-func TestHybrid_ChooseFor_OpenAIGoesApi(t *testing.T) {
+func TestHybrid_DefaultRule_OpenAIGoesApi(t *testing.T) {
 	registerHybridTestModels(t)
 	h := NewHybridBackend()
-	got := h.chooseFor("gpt-test-4o")
-	if got != h.api {
+	if kind := h.kindFor("gpt-test-4o"); kind != "api" {
+		t.Fatalf("expected api for openai model under default rule, got %q", kind)
+	}
+	if got := h.ResolveFor("gpt-test-4o"); got != h.InnerApi() {
 		t.Fatalf("expected inner ApiBackend for gpt-* model, got %T", got)
 	}
 }
 
-func TestHybrid_ChooseFor_GoogleGoesApi(t *testing.T) {
+func TestHybrid_DefaultRule_GoogleGoesApi(t *testing.T) {
 	registerHybridTestModels(t)
 	h := NewHybridBackend()
-	got := h.chooseFor("gemini-test-pro")
-	if got != h.api {
+	if got := h.ResolveFor("gemini-test-pro"); got != h.InnerApi() {
 		t.Fatalf("expected inner ApiBackend for gemini-* model, got %T", got)
 	}
 }
 
-func TestHybrid_ChooseFor_UnknownModelGoesApi(t *testing.T) {
+func TestHybrid_DefaultRule_UnknownModelGoesApi(t *testing.T) {
 	registerHybridTestModels(t)
 	h := NewHybridBackend()
-	got := h.chooseFor("totally-unknown-model")
-	if got != h.api {
-		t.Fatalf("expected inner ApiBackend for unknown model (safe default), got %T", got)
+	if kind := h.kindFor("totally-unknown-model"); kind != "api" {
+		t.Fatalf("expected api for unknown model (safe default), got %q", kind)
+	}
+	if got := h.ResolveFor("totally-unknown-model"); got != h.InnerApi() {
+		t.Fatalf("expected inner ApiBackend for unknown model, got %T", got)
 	}
 }
 
-func TestHybrid_ChooseFor_EmptyModelGoesApi(t *testing.T) {
+func TestHybrid_DefaultRule_EmptyModelGoesApi(t *testing.T) {
 	registerHybridTestModels(t)
 	h := NewHybridBackend()
-	got := h.chooseFor("")
-	if got != h.api {
+	if got := h.ResolveFor(""); got != h.InnerApi() {
 		t.Fatalf("expected inner ApiBackend for empty model, got %T", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Per-provider backend preferences override the default rule
+// ---------------------------------------------------------------------------
+
+func TestHybrid_Prefs_OpenAIPinnedToCodex(t *testing.T) {
+	registerHybridTestModels(t)
+	h := NewHybridBackendWithPrefs(map[string]string{"openai": "codex"})
+	// The routing DECISION honors the preference (red on the old hardcoded
+	// anthropic-only rule, which always sent openai to api).
+	if kind := h.kindFor("gpt-test-4o"); kind != "codex" {
+		t.Fatalf("expected codex for openai when pinned, got %q", kind)
+	}
+	// The codex backend is buildable, so ResolveFor returns a *CodexBackend
+	// (not the api inner).
+	if _, ok := h.ResolveFor("gpt-test-4o").(*CodexBackend); !ok {
+		t.Fatalf("expected openai pinned-to-codex to resolve to *CodexBackend, got %T", h.ResolveFor("gpt-test-4o"))
+	}
+}
+
+func TestHybrid_Prefs_AnthropicPinnedToApi(t *testing.T) {
+	registerHybridTestModels(t)
+	h := NewHybridBackendWithPrefs(map[string]string{"anthropic": "api"})
+	// Preference overrides the default anthropic → claude-code rule.
+	if kind := h.kindFor("claude-test-sonnet"); kind != "api" {
+		t.Fatalf("expected api for anthropic when pinned to api, got %q", kind)
+	}
+	if got := h.ResolveFor("claude-test-sonnet"); got != h.InnerApi() {
+		t.Fatalf("expected inner ApiBackend when anthropic pinned to api, got %T", got)
+	}
+}
+
+func TestHybrid_Prefs_DoNotLeakToOtherProviders(t *testing.T) {
+	registerHybridTestModels(t)
+	h := NewHybridBackendWithPrefs(map[string]string{"openai": "codex"})
+	// Anthropic still follows the default rule.
+	if kind := h.kindFor("claude-test-sonnet"); kind != "claude-code" {
+		t.Fatalf("expected anthropic to keep default claude-code, got %q", kind)
+	}
+	// Google still follows the default rule.
+	if kind := h.kindFor("gemini-test-pro"); kind != "api" {
+		t.Fatalf("expected google to keep default api, got %q", kind)
 	}
 }
 
@@ -92,16 +140,18 @@ func TestHybrid_ChooseFor_EmptyModelGoesApi(t *testing.T) {
 func TestHybrid_RoutingTable_PopulatedOnStartRun(t *testing.T) {
 	registerHybridTestModels(t)
 	h := NewHybridBackend()
+	api := h.InnerApi()
 
 	// Use an API-routed model so we don't try to spawn the Claude CLI
-	// subprocess (which would fail without the `claude` binary). The inner
-	// ApiBackend.StartRun is safe to call with no provider key — the run
-	// will error out quickly via the standard error path, but the routing
-	// table mutation happens before that.
-	h.recordRun("req-1", h.api, "gpt-test-4o")
+	// subprocess. recordRun mutates the table before any run executes.
+	h.recordRun("req-1", api, "api", "gpt-test-4o")
 
-	if got := h.lookup("req-1"); got != h.api {
+	got, kind := h.lookup("req-1")
+	if got != api {
 		t.Fatalf("expected routing table to contain req-1 → api, got %T", got)
+	}
+	if kind != "api" {
+		t.Fatalf("expected recorded kind api, got %q", kind)
 	}
 	if size := len(h.runs); size != 1 {
 		t.Fatalf("expected table size 1, got %d", size)
@@ -111,14 +161,16 @@ func TestHybrid_RoutingTable_PopulatedOnStartRun(t *testing.T) {
 func TestHybrid_RoutingTable_MultipleEntries(t *testing.T) {
 	registerHybridTestModels(t)
 	h := NewHybridBackend()
+	api := h.InnerApi()
+	cc := h.InnerClaudeCode()
 
-	h.recordRun("req-cli", h.cli, "claude-test-sonnet")
-	h.recordRun("req-api", h.api, "gpt-test-4o")
+	h.recordRun("req-cc", cc, "claude-code", "claude-test-sonnet")
+	h.recordRun("req-api", api, "api", "gpt-test-4o")
 
-	if got := h.lookup("req-cli"); got != h.cli {
-		t.Fatalf("expected req-cli → cli, got %T", got)
+	if got, _ := h.lookup("req-cc"); got != cc {
+		t.Fatalf("expected req-cc → claude-code inner, got %T", got)
 	}
-	if got := h.lookup("req-api"); got != h.api {
+	if got, _ := h.lookup("req-api"); got != api {
 		t.Fatalf("expected req-api → api, got %T", got)
 	}
 	if size := len(h.runs); size != 2 {
@@ -130,7 +182,7 @@ func TestHybrid_RoutingTable_PrunedOnFanOutExit(t *testing.T) {
 	registerHybridTestModels(t)
 	h := NewHybridBackend()
 
-	h.recordRun("req-1", h.api, "gpt-test-4o")
+	h.recordRun("req-1", h.InnerApi(), "api", "gpt-test-4o")
 	if size := len(h.runs); size != 1 {
 		t.Fatalf("setup: expected size 1, got %d", size)
 	}
@@ -141,7 +193,7 @@ func TestHybrid_RoutingTable_PrunedOnFanOutExit(t *testing.T) {
 	h.OnExit(func(runID string, _ *int, _ *string, _ string) {
 		atomic.AddInt32(&outerCalled, 1)
 		// Inside the outer handler, the table should already be pruned.
-		if got := h.lookup(runID); got != nil {
+		if got, _ := h.lookup(runID); got != nil {
 			t.Errorf("outer OnExit: expected req-1 already removed from table, got %T", got)
 		}
 	})
@@ -183,47 +235,42 @@ func TestHybrid_WriteToStdin_UnknownRunID_NoError(t *testing.T) {
 func TestHybrid_Cancel_RoutesToInner(t *testing.T) {
 	registerHybridTestModels(t)
 	h := NewHybridBackend()
-	// Plant a routing entry pointing at the inner ApiBackend. Cancel will
-	// then call ApiBackend.Cancel("req-1"), which returns false because no
-	// such activeRun exists — the important assertion is that the call
-	// reached the inner backend (and didn't return false-from-lookup).
-	h.recordRun("req-1", h.api, "gpt-test-4o")
-
-	// Since the inner ApiBackend has no run with id "req-1" registered,
-	// it returns false — but the call must reach it (lookup found the
-	// inner). We assert "no panic, returns the inner backend's verdict".
+	api := h.InnerApi()
+	// Plant a routing entry pointing at the inner ApiBackend. Cancel then
+	// calls ApiBackend.Cancel("req-1"), which returns false because no such
+	// activeRun exists — the assertion is that the call reached the inner
+	// (and didn't short-circuit false-from-lookup) and left the table intact.
+	h.recordRun("req-1", api, "api", "gpt-test-4o")
 	_ = h.Cancel("req-1") // inner returns false; the value isn't the point
-	// Table is not pruned by Cancel — only by OnExit.
-	if got := h.lookup("req-1"); got != h.api {
+	if got, _ := h.lookup("req-1"); got != api {
 		t.Fatalf("Cancel should not prune table; got %T", got)
 	}
 }
 
 // ---------------------------------------------------------------------------
-// Steer: API-routed returns the inner's verdict; CLI-routed returns false
+// Steer: API-routed returns the inner's verdict; non-API returns false
 // ---------------------------------------------------------------------------
 
 func TestHybrid_Steer_ApiRouted_ReachesInner(t *testing.T) {
 	registerHybridTestModels(t)
 	h := NewHybridBackend()
-	h.recordRun("req-api", h.api, "gpt-test-4o")
+	api := h.InnerApi()
+	h.recordRun("req-api", api, "api", "gpt-test-4o")
 	// Inner ApiBackend has no activeRun with id "req-api", so Steer returns
-	// false. The assertion is on the routing: the call must have been
-	// forwarded to the inner *ApiBackend, not short-circuited to false at
-	// the hybrid layer.
+	// false — the assertion is that the call was forwarded to the inner
+	// *ApiBackend, not short-circuited at the hybrid layer.
 	_ = h.Steer("req-api", "follow up")
-	// No panic, table unchanged.
-	if got := h.lookup("req-api"); got != h.api {
+	if got, _ := h.lookup("req-api"); got != api {
 		t.Fatalf("Steer should not mutate routing table; got %T", got)
 	}
 }
 
-func TestHybrid_Steer_CliRouted_ReturnsFalse(t *testing.T) {
+func TestHybrid_Steer_ClaudeCodeRouted_ReturnsFalse(t *testing.T) {
 	registerHybridTestModels(t)
 	h := NewHybridBackend()
-	h.recordRun("req-cli", h.cli, "claude-test-sonnet")
-	if h.Steer("req-cli", "follow up") {
-		t.Fatalf("expected Steer to return false for CLI-routed run (caller falls back to stdin)")
+	h.recordRun("req-cc", h.InnerClaudeCode(), "claude-code", "claude-test-sonnet")
+	if h.Steer("req-cc", "follow up") {
+		t.Fatalf("expected Steer to return false for claude-code-routed run (caller falls back to stdin)")
 	}
 }
 
@@ -235,7 +282,7 @@ func TestHybrid_Steer_UnknownRunID_ReturnsFalse(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// NewChild: auth resolver propagation
+// NewChild: auth resolver + preference propagation
 // ---------------------------------------------------------------------------
 
 func TestHybrid_NewChild_PropagatesAuthResolver(t *testing.T) {
@@ -251,12 +298,21 @@ func TestHybrid_NewChild_PropagatesAuthResolver(t *testing.T) {
 	if child == h {
 		t.Fatalf("NewChild returned parent (should be a fresh instance)")
 	}
-	if child.api.AuthResolver() == nil {
+	if child.InnerApi().AuthResolver() == nil {
 		t.Fatalf("expected child's inner ApiBackend to have an auth resolver propagated")
 		return
 	}
-	if child.api.AuthResolver() != r {
+	if child.InnerApi().AuthResolver() != r {
 		t.Fatalf("expected child to share parent's resolver reference")
+	}
+}
+
+func TestHybrid_NewChild_PropagatesPrefs(t *testing.T) {
+	registerHybridTestModels(t)
+	h := NewHybridBackendWithPrefs(map[string]string{"openai": "codex"})
+	child := h.NewChild()
+	if kind := child.kindFor("gpt-test-4o"); kind != "codex" {
+		t.Fatalf("expected child to inherit openai→codex preference, got %q", kind)
 	}
 }
 
@@ -268,7 +324,7 @@ func TestHybrid_NewChild_NoResolver(t *testing.T) {
 		t.Fatalf("NewChild returned nil")
 		return
 	}
-	if child.api.AuthResolver() != nil {
+	if child.InnerApi().AuthResolver() != nil {
 		t.Fatalf("expected child to have nil resolver when parent has none")
 	}
 }
@@ -324,9 +380,11 @@ func TestHybrid_FanOutError_ForwardsToOuter(t *testing.T) {
 func TestHybrid_Concurrent_RecordAndPrune_NoRace(t *testing.T) {
 	registerHybridTestModels(t)
 	h := NewHybridBackend()
+	apiInner := h.InnerApi()
+	ccInner := h.InnerClaudeCode()
 
 	// Fire 100 goroutines that each record a run, then exit it. Run with
-	// -race to detect any unsynchronized access to h.runs.
+	// -race to detect any unsynchronized access to h.runs / h.runKinds.
 	const N = 100
 	var wg sync.WaitGroup
 	wg.Add(N)
@@ -334,11 +392,11 @@ func TestHybrid_Concurrent_RecordAndPrune_NoRace(t *testing.T) {
 		go func(idx int) {
 			defer wg.Done()
 			rid := "req-" + itoa(idx)
-			var inner RunBackend = h.api
+			inner, kind := RunBackend(apiInner), "api"
 			if idx%2 == 0 {
-				inner = h.cli
+				inner, kind = ccInner, "claude-code"
 			}
-			h.recordRun(rid, inner, "gpt-test-4o")
+			h.recordRun(rid, inner, kind, "gpt-test-4o")
 			// Simulate the inner backend's OnExit firing.
 			h.fanOutExit(rid, nil, nil, "session-x")
 		}(i)
@@ -367,13 +425,14 @@ func itoa(i int) string {
 }
 
 // ---------------------------------------------------------------------------
-// FlushConversations: forwards to both inner backends
+// FlushConversations: forwards to every constructed inner backend
 // ---------------------------------------------------------------------------
 
 func TestHybrid_FlushConversations_NoError(t *testing.T) {
 	h := NewHybridBackend()
-	// FlushConversations is a no-op on CliBackend and a best-effort sweep
-	// on ApiBackend; verify the wrapper does not panic and reaches both.
+	// Construct both inners so Flush reaches them; verify no panic.
+	_ = h.InnerApi()
+	_ = h.InnerClaudeCode()
 	defer func() {
 		if r := recover(); r != nil {
 			t.Fatalf("expected no panic, got %v", r)
@@ -388,12 +447,12 @@ func TestHybrid_FlushConversations_NoError(t *testing.T) {
 
 func TestHybrid_SetAuthResolver_ForwardsToInnerApi(t *testing.T) {
 	h := NewHybridBackend()
-	if h.api.AuthResolver() != nil {
+	if h.InnerApi().AuthResolver() != nil {
 		t.Fatalf("setup: expected inner ApiBackend to start with nil resolver")
 	}
 	r := auth.NewResolver(nil)
 	h.SetAuthResolver(r)
-	if h.api.AuthResolver() != r {
+	if h.InnerApi().AuthResolver() != r {
 		t.Fatalf("expected SetAuthResolver to forward to inner ApiBackend")
 	}
 }

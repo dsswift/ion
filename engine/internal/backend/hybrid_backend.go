@@ -9,36 +9,46 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// HybridBackend implements RunBackend by wrapping both a *CliBackend and a
-// *ApiBackend and routing each individual run to the correct inner backend
-// based on the resolved provider ID of the run's model.
+// HybridBackend implements RunBackend by owning a set of inner backends keyed
+// by kind ("api", "claude-code", "codex", "grok", "cursor") and routing each
+// individual run to the correct inner backend based on the resolved provider
+// ID of the run's model and the operator's per-provider backend preferences.
 //
-// Routing rule:
+// Routing:
 //
-//   - providers.GetModelInfo(model).ProviderID == "anthropic" → *CliBackend
-//     (the Claude Code subscription path, no API key required)
-//   - everything else, including unregistered models → *ApiBackend
-//     (the native HTTP provider path, uses provider API keys)
+//   - resolve the model's provider ID via providers.GetModelInfo
+//   - if the operator pinned that provider to a backend kind
+//     (providers.<id>.backend in engine.json), use it
+//   - otherwise apply the default rule: anthropic → "claude-code",
+//     every other provider (including unregistered models) → "api"
 //
 // The routing decision is made once per run, at StartRun / StartRunWithConfig
 // time, and recorded in a per-run table. All subsequent Cancel / IsRunning /
 // WriteToStdin / Steer calls look up the table instead of re-resolving the
-// model — this guarantees consistency across the lifetime of a run even if
-// the global model catalog mutates underneath us.
+// model — this guarantees consistency across the lifetime of a run even if the
+// global model catalog mutates underneath us.
 //
-// Activation: set "backend": "hybrid" in ~/.ion/engine.json. The existing
-// "cli" and "api" values continue to behave exactly as today; "hybrid" is
-// purely additive and opt-in.
+// Inner backends are constructed lazily on first route to their kind, so a
+// process that never routes to codex does not spawn a codex app-server.
+//
+// Activation: set "backend": "hybrid" in ~/.ion/engine.json. The top-level
+// "claude-code" and "api" values keep all-runs-one-backend semantics; "hybrid"
+// is purely additive and opt-in.
 //
 // HybridBackend never blocks for user input, never persists user preferences,
 // and never knows that a UI exists. Routing is a pure mechanical decision
 // based on the resolved model. See docs/engine-grounding.md §2.
 type HybridBackend struct {
-	cli *CliBackend
-	api *ApiBackend
+	// prefs maps providerID → backend kind for operator-pinned providers.
+	// Providers using the default rule are absent. Immutable after
+	// construction (copied in), so it needs no lock.
+	prefs map[string]string
 
-	mu   sync.RWMutex
-	runs map[string]RunBackend // requestID → inner backend (h.cli or h.api)
+	mu       sync.Mutex
+	inner    map[string]RunBackend // kind → backend (lazily constructed)
+	runs     map[string]RunBackend // requestID → inner backend
+	runKinds map[string]string     // requestID → kind (for observability)
+	resolver *auth.Resolver        // applied to every api-capable inner
 
 	// Outer hooks registered by the server / session manager. The inner
 	// backends fan out through us so we can prune the routing table on
@@ -49,111 +59,224 @@ type HybridBackend struct {
 	onError      func(string, error)
 }
 
-// NewHybridBackend constructs a HybridBackend with fresh inner CLI and API
-// backends. Callers should attach the process-wide auth resolver via
-// SetAuthResolver before dispatching any runs.
+// NewHybridBackend constructs a HybridBackend using the default routing rule
+// (no per-provider preferences). Callers should attach the process-wide auth
+// resolver via SetAuthResolver before dispatching any runs.
 func NewHybridBackend() *HybridBackend {
-	h := &HybridBackend{
-		cli:  NewCliBackend(),
-		api:  NewApiBackend(),
-		runs: make(map[string]RunBackend),
+	return NewHybridBackendWithPrefs(nil)
+}
+
+// NewHybridBackendWithPrefs constructs a HybridBackend with the given
+// provider→kind preferences (typically built from engine.json via
+// config.ProviderBackendPrefs). A nil or empty map yields pure default-rule
+// routing, identical to NewHybridBackend.
+func NewHybridBackendWithPrefs(prefs map[string]string) *HybridBackend {
+	copied := make(map[string]string, len(prefs))
+	for k, v := range prefs {
+		copied[k] = v
 	}
-	// Wire the inner backends' callbacks to our fan-out methods. This
-	// chokepoint is what lets us prune the routing table on OnExit before
-	// the manager's handler runs.
-	h.cli.OnNormalized(h.fanOutNormalized)
-	h.api.OnNormalized(h.fanOutNormalized)
-	h.cli.OnExit(h.fanOutExit)
-	h.api.OnExit(h.fanOutExit)
-	h.cli.OnError(h.fanOutError)
-	h.api.OnError(h.fanOutError)
-	utils.Log("Hybrid", "NewHybridBackend: constructed (inner cli + api callbacks wired)")
+	h := &HybridBackend{
+		prefs:    copied,
+		inner:    make(map[string]RunBackend),
+		runs:     make(map[string]RunBackend),
+		runKinds: make(map[string]string),
+	}
+	utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "constructed", map[string]any{"pref_count": len(copied)})
 	return h
 }
 
-// SetAuthResolver forwards the auth resolver to the inner *ApiBackend. The
-// CLI path is subscription-based and never touches the resolver, so it
-// receives no notification here.
-func (h *HybridBackend) SetAuthResolver(r *auth.Resolver) {
-	utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "SetAuthResolver: forwarding to inner ApiBackend", map[string]any{
-		"nil": r == nil,
-	})
-	h.api.SetAuthResolver(r)
+// build constructs the inner backend for a kind, wires its fan-out callbacks,
+// and applies the auth resolver to api-capable inners. Must be called with
+// h.mu held. Unknown kinds (codex/grok/cursor before their backends land, or a
+// typo that slipped past validation) fall back to the API backend with a WARN
+// so the engine keeps serving.
+func (h *HybridBackend) build(kind string) RunBackend {
+	var b RunBackend
+	switch kind {
+	case "claude-code":
+		b = NewClaudeCodeBackend()
+	case "codex":
+		b = NewCodexBackend()
+	case "grok":
+		b = NewGrokBackend()
+	case "cursor":
+		b = NewCursorBackend()
+	case "api":
+		b = h.newAPI()
+	default:
+		utils.LogWithFields(utils.LevelWarn, "backend.hybrid", "backend kind not available, falling back to api", map[string]any{"kind": kind})
+		b = h.newAPI()
+	}
+	b.OnNormalized(h.fanOutNormalized)
+	b.OnExit(h.fanOutExit)
+	b.OnError(h.fanOutError)
+	utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "inner backend constructed", map[string]any{"kind": kind})
+	return b
 }
 
-// InnerApi returns the inner *ApiBackend. Used by the session package's
-// resolvedBackend helper so existing call sites that need API-only methods
-// (StartRunWithConfig, GetContextUsage, SearchHistory) can reach them.
-func (h *HybridBackend) InnerApi() *ApiBackend { return h.api }
-
-// InnerCli returns the inner *CliBackend. Used by the session package's
-// resolvedBackend helper so existing call sites that need to detect CLI
-// behavior continue to work.
-func (h *HybridBackend) InnerCli() *CliBackend { return h.cli }
-
-// chooseFor returns the inner backend that should handle a run for the
-// given model. The lookup goes through the canonical model→provider
-// resolver (providers.GetModelInfo); unknown models default to ApiBackend
-// so the user sees a clean provider error rather than the misleading
-// "model not available" surface CLI would emit.
-func (h *HybridBackend) chooseFor(model string) RunBackend {
-	info := providers.GetModelInfo(model)
-	if info != nil && info.ProviderID == "anthropic" {
-		return h.cli
+// newAPI constructs an *ApiBackend with the current auth resolver applied.
+// Must be called with h.mu held.
+func (h *HybridBackend) newAPI() *ApiBackend {
+	api := NewApiBackend()
+	if h.resolver != nil {
+		api.SetAuthResolver(h.resolver)
 	}
-	return h.api
+	return api
+}
+
+// get returns the inner backend for a kind, constructing it on first use.
+func (h *HybridBackend) get(kind string) RunBackend {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if b, ok := h.inner[kind]; ok {
+		return b
+	}
+	b := h.build(kind)
+	h.inner[kind] = b
+	return b
+}
+
+// kindFor resolves the backend kind that should serve a run for the given
+// model: an operator preference if present, otherwise the default rule. This
+// is the requested kind, which may name a backend that has no implementation
+// yet (see effectiveKind).
+func (h *HybridBackend) kindFor(model string) string {
+	providerID := "<unknown>"
+	if info := providers.GetModelInfo(model); info != nil {
+		providerID = info.ProviderID
+	}
+	if k, ok := h.prefs[providerID]; ok && k != "" {
+		return k
+	}
+	if providerID == "anthropic" {
+		return "claude-code"
+	}
+	return "api"
+}
+
+// effectiveKind maps a requested backend kind to the kind that actually has an
+// implementation. Kinds whose backend has not landed yet (codex, grok, cursor
+// before their respective commits) degrade to "api" so routing never spawns a
+// duplicate stand-in under the requested key. This is the single list of
+// buildable kinds; each new backend commit adds its kind here and a matching
+// case in build.
+func effectiveKind(requested string) string {
+	switch requested {
+	case "api", "claude-code", "codex", "grok", "cursor":
+		return requested
+	default:
+		return "api"
+	}
+}
+
+// resolveKind returns the effective kind for a model and logs a downgrade when
+// the requested kind is not yet available.
+func (h *HybridBackend) resolveKind(model string) string {
+	requested := h.kindFor(model)
+	eff := effectiveKind(requested)
+	if eff != requested {
+		utils.LogWithFields(utils.LevelWarn, "backend.hybrid", "requested backend kind unavailable, routing to api", map[string]any{
+			"model":     model,
+			"requested": requested,
+			"effective": eff,
+		})
+	}
+	return eff
+}
+
+// ResolveFor returns the inner backend that should handle a run for the given
+// model, constructing it if necessary. This is the single routing entry point;
+// the session package's resolvedBackend helper delegates here so routing logic
+// lives in exactly one place.
+func (h *HybridBackend) ResolveFor(model string) RunBackend {
+	return h.get(h.resolveKind(model))
+}
+
+// SetAuthResolver stores the resolver and forwards it to every api-capable
+// inner backend (existing and future). CLI-subscription inners
+// (claude-code/codex/grok/cursor) do not consult the resolver.
+func (h *HybridBackend) SetAuthResolver(r *auth.Resolver) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.resolver = r
+	applied := 0
+	for _, b := range h.inner {
+		if api, ok := b.(*ApiBackend); ok {
+			api.SetAuthResolver(r)
+			applied++
+		}
+	}
+	utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "SetAuthResolver: stored and forwarded to api inners", map[string]any{
+		"nil":     r == nil,
+		"applied": applied,
+	})
+}
+
+// InnerApi returns the inner *ApiBackend, constructing it if necessary. Used by
+// the session package's watchdog / human-wait helpers, which only the
+// ApiBackend implements.
+func (h *HybridBackend) InnerApi() *ApiBackend { return h.get("api").(*ApiBackend) }
+
+// InnerClaudeCode returns the inner *ClaudeCodeBackend, constructing it if
+// necessary. Used by the session package's resolvedBackend helper for the
+// Claude Code path. Returns nil if the "claude-code" inner had to fall back
+// (should never happen — claude-code is always buildable).
+func (h *HybridBackend) InnerClaudeCode() *ClaudeCodeBackend {
+	if cc, ok := h.get("claude-code").(*ClaudeCodeBackend); ok {
+		return cc
+	}
+	return nil
 }
 
 // StartRun records the routing decision and dispatches to the chosen inner
-// backend. CLI-routed runs go through CliBackend.StartRun directly; API-
-// routed runs go through ApiBackend.StartRun (no per-run config). Callers
-// who need per-run config should use StartRunWithConfig.
+// backend. Callers who need per-run config should use StartRunWithConfig.
 func (h *HybridBackend) StartRun(requestID string, options types.RunOptions) {
-	inner := h.chooseFor(options.Model)
-	h.recordRun(requestID, inner, options.Model)
+	kind := h.resolveKind(options.Model)
+	inner := h.get(kind)
+	h.recordRun(requestID, inner, kind, options.Model)
 	inner.StartRun(requestID, options)
 }
 
-// StartRunWithConfig is the per-run-config dispatch path used by the
-// session manager. For API-routed runs we forward the RunConfig to the
-// inner ApiBackend.StartRunWithConfig so hooks, permission engine, MCP
-// tools, agent spawner, and telemetry attach correctly. For CLI-routed
-// runs we fall back to StartRun on the inner CliBackend (which wires its
-// own hooks via subprocess flags and ignores per-run config).
+// StartRunWithConfig is the per-run-config dispatch path used by the session
+// manager. For API-routed runs we forward the RunConfig to the inner
+// ApiBackend.StartRunWithConfig so hooks, permission engine, MCP tools, agent
+// spawner, and telemetry attach correctly. For subscription-routed runs
+// (claude-code/codex/grok/cursor) we fall back to StartRun on the inner
+// backend, which wires its own hooks via its subprocess protocol.
 func (h *HybridBackend) StartRunWithConfig(requestID string, options types.RunOptions, cfg *RunConfig) {
-	inner := h.chooseFor(options.Model)
-	h.recordRun(requestID, inner, options.Model)
+	kind := h.resolveKind(options.Model)
+	inner := h.get(kind)
+	h.recordRun(requestID, inner, kind, options.Model)
 	if api, ok := inner.(*ApiBackend); ok {
 		utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "StartRunWithConfig: forwarding to inner ApiBackend", map[string]any{
 			"request_id": requestID,
+			"kind":       kind,
 			"cfg":        cfg != nil,
 		})
 		api.StartRunWithConfig(requestID, options, cfg)
 		return
 	}
-	utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "StartRunWithConfig: CLI-routed, falling back to StartRun (cfg ignored)", map[string]any{
+	utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "StartRunWithConfig: subscription-routed, falling back to StartRun (cfg ignored)", map[string]any{
 		"request_id": requestID,
+		"kind":       kind,
 	})
 	inner.StartRun(requestID, options)
 }
 
-// recordRun is the single place that mutates the routing table on entry.
-// It records the chosen inner backend and emits a routing log line that
-// makes the decision visible in ~/.ion/engine.log.
-func (h *HybridBackend) recordRun(requestID string, inner RunBackend, model string) {
+// recordRun is the single place that mutates the routing table on entry. It
+// records the chosen inner backend and its kind, and emits a routing log line
+// that makes the decision visible in ~/.ion/engine.jsonl.
+func (h *HybridBackend) recordRun(requestID string, inner RunBackend, kind, model string) {
 	h.mu.Lock()
 	h.runs[requestID] = inner
+	h.runKinds[requestID] = kind
 	size := len(h.runs)
 	h.mu.Unlock()
-	kind := "api"
-	if inner == h.cli {
-		kind = "cli"
-	}
 	providerID := "<unknown>"
 	if info := providers.GetModelInfo(model); info != nil {
 		providerID = info.ProviderID
 	}
-	utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "StartRun: → (table )", map[string]any{
+	utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "StartRun routed", map[string]any{
 		"request_id":  requestID,
 		"model":       model,
 		"provider_id": providerID,
@@ -162,30 +285,26 @@ func (h *HybridBackend) recordRun(requestID string, inner RunBackend, model stri
 	})
 }
 
-// lookup returns the inner backend recorded for a requestID, or nil if no
-// such run is registered (e.g. Cancel called for an unknown ID).
-func (h *HybridBackend) lookup(requestID string) RunBackend {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	return h.runs[requestID]
+// lookup returns the inner backend and kind recorded for a requestID, or (nil,
+// "") if no such run is registered.
+func (h *HybridBackend) lookup(requestID string) (RunBackend, string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.runs[requestID], h.runKinds[requestID]
 }
 
 // Cancel routes to the recorded inner backend. Returns false when the
 // requestID is not in the routing table; the miss is logged so unexpected
 // cancel calls are observable.
 func (h *HybridBackend) Cancel(requestID string) bool {
-	inner := h.lookup(requestID)
+	inner, kind := h.lookup(requestID)
 	if inner == nil {
 		utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "Cancel: not in routing table", map[string]any{
 			"request_id": requestID,
 		})
 		return false
 	}
-	kind := "api"
-	if inner == h.cli {
-		kind = "cli"
-	}
-	utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "Cancel: →", map[string]any{
+	utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "Cancel routed", map[string]any{
 		"request_id": requestID,
 		"kind":       kind,
 	})
@@ -193,21 +312,19 @@ func (h *HybridBackend) Cancel(requestID string) bool {
 }
 
 // IsRunning routes to the recorded inner backend. Returns false when the
-// requestID is unknown (not started under this hybrid, or already exited
-// and pruned from the table).
+// requestID is unknown (not started under this hybrid, or already exited and
+// pruned from the table).
 func (h *HybridBackend) IsRunning(requestID string) bool {
-	inner := h.lookup(requestID)
+	inner, _ := h.lookup(requestID)
 	if inner == nil {
 		return false
 	}
 	return inner.IsRunning(requestID)
 }
 
-// WriteToStdin routes to the recorded inner backend. CLI-routed runs use
-// the stdin pipe; API-routed runs are a no-op (the inner ApiBackend's
-// WriteToStdin is a no-op by design — see api_backend.go).
+// WriteToStdin routes to the recorded inner backend.
 func (h *HybridBackend) WriteToStdin(requestID string, msg interface{}) error {
-	inner := h.lookup(requestID)
+	inner, _ := h.lookup(requestID)
 	if inner == nil {
 		utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "WriteToStdin: not in routing table", map[string]any{
 			"request_id": requestID,
@@ -218,17 +335,16 @@ func (h *HybridBackend) WriteToStdin(requestID string, msg interface{}) error {
 }
 
 // Steer satisfies a local `steerable` interface in the session package.
-// Returns true if the run was steered via the API path (inner ApiBackend.Steer
-// returned true). Returns false for CLI-routed runs so the caller can fall
-// back to the stdin pipe path. Steer is not part of the RunBackend interface;
-// it is an additive method to keep the contract surface stable.
+// Returns true if the run was steered via the API path. Returns false for
+// non-API-routed runs so the caller can fall back to the stdin pipe path.
+// Steer is not part of the RunBackend interface; it is additive.
 func (h *HybridBackend) Steer(requestID, message string) bool {
-	inner := h.lookup(requestID)
+	inner, kind := h.lookup(requestID)
 	api, ok := inner.(*ApiBackend)
 	if !ok {
-		utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "Steer: not API-routed , falling back", map[string]any{
+		utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "Steer: not API-routed, falling back", map[string]any{
 			"request_id": requestID,
-			"inner":      inner,
+			"kind":       kind,
 		})
 		return false
 	}
@@ -236,33 +352,39 @@ func (h *HybridBackend) Steer(requestID, message string) bool {
 }
 
 // SteerWithReason mirrors Steer but returns the typed backend verdict so the
-// session layer can distinguish "no run" from "channel full". For a CLI-routed
-// run it returns SteerResultNoRun, which the session layer treats as "not
-// API-steerable, fall back to the stdin pipe" — exactly the contract Steer's
-// false return carried, but now self-describing in logs (engine-grounding §7).
+// session layer can distinguish "no run" from "channel full". For a non-API-
+// routed run it returns SteerResultNoRun, which the session layer treats as
+// "not API-steerable, fall back to the stdin pipe".
 func (h *HybridBackend) SteerWithReason(requestID, message string) SteerResult {
-	inner := h.lookup(requestID)
+	inner, kind := h.lookup(requestID)
 	api, ok := inner.(*ApiBackend)
 	if !ok {
-		utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "SteerWithReason: not API-routed , falling back to stdin", map[string]any{
+		utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "SteerWithReason: not API-routed, falling back to stdin", map[string]any{
 			"request_id": requestID,
-			"inner":      inner,
+			"kind":       kind,
 		})
 		return SteerResultNoRun
 	}
 	return api.SteerWithReason(requestID, message)
 }
 
-// FlushConversations forwards to both inner backends. ApiBackend persists
-// in-flight conversations; CliBackend is a no-op (the subprocess persists
-// its own).
+// FlushConversations forwards to every constructed inner backend. ApiBackend
+// persists in-flight conversations; subscription inners are no-ops (their
+// subprocess persists its own).
 func (h *HybridBackend) FlushConversations() {
-	h.api.FlushConversations()
-	h.cli.FlushConversations()
+	h.mu.Lock()
+	inners := make([]RunBackend, 0, len(h.inner))
+	for _, b := range h.inner {
+		inners = append(inners, b)
+	}
+	h.mu.Unlock()
+	for _, b := range inners {
+		b.FlushConversations()
+	}
 }
 
-// OnNormalized stores the outer normalized-event handler. Inner backends
-// invoke fanOutNormalized which forwards to this handler.
+// OnNormalized stores the outer normalized-event handler. Inner backends invoke
+// fanOutNormalized which forwards to this handler.
 func (h *HybridBackend) OnNormalized(fn func(string, types.NormalizedEvent)) {
 	h.hookMu.Lock()
 	defer h.hookMu.Unlock()
@@ -276,17 +398,16 @@ func (h *HybridBackend) OnError(fn func(string, error)) {
 	h.onError = fn
 }
 
-// OnExit stores the outer exit handler. The inner backends invoke
-// fanOutExit, which prunes the routing table and then forwards to this
-// handler.
+// OnExit stores the outer exit handler. The inner backends invoke fanOutExit,
+// which prunes the routing table and then forwards to this handler.
 func (h *HybridBackend) OnExit(fn func(string, *int, *string, string)) {
 	h.hookMu.Lock()
 	defer h.hookMu.Unlock()
 	h.onExit = fn
 }
 
-// fanOutNormalized is registered on both inner backends. It forwards
-// normalized events to the outer handler set via OnNormalized.
+// fanOutNormalized forwards normalized events from any inner backend to the
+// outer handler set via OnNormalized.
 func (h *HybridBackend) fanOutNormalized(runID string, ev types.NormalizedEvent) {
 	h.hookMu.RLock()
 	fn := h.onNormalized
@@ -296,8 +417,8 @@ func (h *HybridBackend) fanOutNormalized(runID string, ev types.NormalizedEvent)
 	}
 }
 
-// fanOutError is registered on both inner backends. It forwards run errors
-// to the outer handler set via OnError.
+// fanOutError forwards run errors from any inner backend to the outer handler
+// set via OnError.
 func (h *HybridBackend) fanOutError(runID string, err error) {
 	h.hookMu.RLock()
 	fn := h.onError
@@ -307,17 +428,17 @@ func (h *HybridBackend) fanOutError(runID string, err error) {
 	}
 }
 
-// fanOutExit is registered on both inner backends. It prunes the routing
-// table for the exiting run before forwarding to the outer handler set
-// via OnExit. The prune happens unconditionally so the table never leaks
-// — even if the manager has not registered an OnExit handler.
+// fanOutExit prunes the routing table for the exiting run before forwarding to
+// the outer handler set via OnExit. The prune happens unconditionally so the
+// table never leaks — even if the manager has not registered an OnExit handler.
 func (h *HybridBackend) fanOutExit(runID string, code *int, signal *string, sessionID string) {
 	h.mu.Lock()
 	_, existed := h.runs[runID]
 	delete(h.runs, runID)
+	delete(h.runKinds, runID)
 	size := len(h.runs)
 	h.mu.Unlock()
-	utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "OnExit: routing table", map[string]any{
+	utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "OnExit: routing table pruned", map[string]any{
 		"request_id": runID,
 		"removed":    existed,
 		"size":       size,
@@ -331,24 +452,23 @@ func (h *HybridBackend) fanOutExit(runID string, code *int, signal *string, sess
 	}
 }
 
-// NewChild produces a fresh HybridBackend for ion_agent child dispatches.
-// The child's inner *ApiBackend inherits the parent's auth resolver so
+// NewChild produces a fresh HybridBackend for ion_agent child dispatches. The
+// child inherits the parent's provider preferences and auth resolver so
 // non-Claude child runs (gpt-*, gemini-*, ollama) can resolve provider
-// credentials. Without this propagation, child agents dispatched under
-// hybrid would fail silently for non-Claude models.
-//
-// The child has its own independent routing table and its own inner
-// CliBackend / ApiBackend instances; it does not share state with the
-// parent. This mirrors how newChildBackend behaves for plain Cli/Api
-// backends.
+// credentials and honor the same per-provider routing. The child has its own
+// independent routing table and inner backends; it does not share state with
+// the parent.
 func (h *HybridBackend) NewChild() *HybridBackend {
-	child := NewHybridBackend()
-	resolver := h.api.AuthResolver()
+	child := NewHybridBackendWithPrefs(h.prefs)
+	h.mu.Lock()
+	resolver := h.resolver
+	h.mu.Unlock()
 	if resolver != nil {
-		child.api.SetAuthResolver(resolver)
+		child.SetAuthResolver(resolver)
 	}
 	utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "NewChild: created child hybrid backend", map[string]any{
 		"auth_resolver": resolver != nil,
+		"pref_count":    len(h.prefs),
 	})
 	return child
 }

@@ -51,6 +51,20 @@ func LoadConfig(projectDir string) *types.EngineRuntimeConfig {
 	// Merge: defaults < global < project
 	merged := MergeConfigs(nil, defaults, fromMap(globalConfig), fromMap(projectConfig))
 
+	// Normalize the legacy backend alias. "cli" is the historical name for
+	// the Claude Code backend; "claude-code" is canonical. "cli" remains a
+	// permanently accepted input alias so existing engine.json files keep
+	// working. Normalizing here means every downstream consumer (serve
+	// switch, provider auth-source labeling) sees the canonical value.
+	if merged.Backend == "cli" {
+		utils.LogWithFields(utils.LevelInfo, "config", "normalized legacy backend alias", map[string]any{"from": "cli", "to": "claude-code"})
+		merged.Backend = "claude-code"
+	}
+
+	// Validate per-provider backend preferences (providers.<id>.backend),
+	// resetting any invalid value to the default rule with an ERROR log.
+	validateProviderBackends(merged)
+
 	// Load and enforce enterprise config
 	enterprise := LoadEnterpriseConfig()
 	if enterprise != nil {

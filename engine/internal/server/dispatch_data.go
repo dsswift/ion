@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
+	"sort"
 
+	ionconfig "github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/providers"
@@ -133,19 +135,19 @@ func (s *Server) dispatchMigrateConversation(conn net.Conn, cmd *protocol.Client
 // render in their model pickers. Three responsibilities packed into the
 // arm:
 //
-//   1. Build a ProviderEntry per provider with auth status filled in
-//      from the resolver (env, keychain, or none). Ollama is special-
-//      cased to "no auth needed" since it's a local server.
+//  1. Build a ProviderEntry per provider with auth status filled in
+//     from the resolver (env, keychain, or none). Ollama is special-
+//     cased to "no auth needed" since it's a local server.
 //
-//   2. Surface configured baseURL / APIKeyRef on each provider so
-//      consumers can attribute model entries to the gateway they
-//      reach (e.g. "via example.com").
+//  2. Surface configured baseURL / APIKeyRef on each provider so
+//     consumers can attribute model entries to the gateway they
+//     reach (e.g. "via example.com").
 //
-//   3. For providers with a custom gateway, filter the hardcoded model
-//      catalog down to only user-configured or live-discovered models.
-//      The hardcoded catalog reflects the public Anthropic/OpenAI/etc
-//      offerings and is meaningless when the user has pointed the
-//      provider at a private LLM gateway.
+//  3. For providers with a custom gateway, filter the hardcoded model
+//     catalog down to only user-configured or live-discovered models.
+//     The hardcoded catalog reflects the public Anthropic/OpenAI/etc
+//     offerings and is meaningless when the user has pointed the
+//     provider at a private LLM gateway.
 func (s *Server) dispatchListModels(conn net.Conn, cmd *protocol.ClientCommand) {
 	models := providers.ListModels()
 	providerEntries := s.buildProviderEntries()
@@ -188,9 +190,8 @@ func (s *Server) dispatchListModels(conn net.Conn, cmd *protocol.ClientCommand) 
 // for ollama (no auth needed) and CLI-capable anthropic fallback. Extracted
 // from dispatchListModels to allow direct testing of auth-resolution logic.
 func (s *Server) buildProviderEntries() []types.ProviderEntry {
-	providerIDs := providers.ListProviderIDs()
-	providerEntries := make([]types.ProviderEntry, len(providerIDs))
-	for i, pid := range providerIDs {
+	providerEntries := make([]types.ProviderEntry, 0)
+	for _, pid := range providerEntryIDs() {
 		entry := types.ProviderEntry{ID: pid}
 		if s.authResolver != nil {
 			entry.HasAuth, entry.AuthSource = s.authResolver.HasKey(pid)
@@ -200,14 +201,36 @@ func (s *Server) buildProviderEntries() []types.ProviderEntry {
 			entry.HasAuth = true
 			entry.AuthSource = "none"
 		}
-		// CLI-capable backend (cli or hybrid) handles Anthropic auth via the
-		// Claude CLI itself. Surface that to clients so the model picker
-		// doesn't hide Anthropic models when no separate API key is configured.
+
+		// Project the delegated-CLI status (install/auth) and the currently
+		// selected backend for providers that have a CLI option.
+		cliStatus, selectedBackend := s.providerCliStatus(pid)
+		if selectedBackend != "" {
+			entry.Backend = selectedBackend
+		}
+		entry.Cli = cliStatus
+
+		// When the selected backend is a delegated CLI and the CLI reports a
+		// usable credential, the provider is authed via that CLI (generalizing
+		// the former anthropic-only "cli" fallback across codex/grok/cursor).
+		if isCliKind(selectedBackend) && cliStatus != nil && cliStatus.Authenticated && !entry.HasAuth {
+			entry.HasAuth = true
+			entry.AuthSource = selectedBackend
+			utils.LogWithFields(utils.LevelDebug, "server", "provider cli-auth applied", map[string]any{"provider": pid, "backend": selectedBackend})
+		}
+
+		// Startup fallback: before the async claude-code probe populates, keep
+		// the historical behavior of marking anthropic authed via claude-code
+		// when a CLI-capable backend is active and no API key is configured.
 		if s.cliCapable && pid == "anthropic" && !entry.HasAuth {
 			entry.HasAuth = true
-			entry.AuthSource = "cli"
-			utils.LogWithFields(utils.LevelDebug, "server", "provider cli-auth fallback applied", map[string]any{"provider": pid})
+			entry.AuthSource = "claude-code"
+			if entry.Backend == "" {
+				entry.Backend = "claude-code"
+			}
+			utils.LogWithFields(utils.LevelDebug, "server", "provider claude-code-auth fallback applied", map[string]any{"provider": pid})
 		}
+
 		// Populate config details (gateway URL, API key reference)
 		if s.config != nil {
 			if pc, ok := s.config.Providers[pid]; ok {
@@ -223,7 +246,29 @@ func (s *Server) buildProviderEntries() []types.ProviderEntry {
 				}
 			}
 		}
-		providerEntries[i] = entry
+		providerEntries = append(providerEntries, entry)
 	}
 	return providerEntries
+}
+
+// providerEntryIDs returns the sorted union of registered providers and the
+// CLI-backed providers (e.g. cursor) that have no HTTP registration. The union
+// ensures a CLI-only provider still gets a provider entry.
+func providerEntryIDs() []string {
+	seen := make(map[string]bool)
+	var ids []string
+	for _, pid := range providers.ListProviderIDs() {
+		if !seen[pid] {
+			seen[pid] = true
+			ids = append(ids, pid)
+		}
+	}
+	for _, pid := range ionconfig.CliBackedProviderIDs() {
+		if !seen[pid] {
+			seen[pid] = true
+			ids = append(ids, pid)
+		}
+	}
+	sort.Strings(ids)
+	return ids
 }

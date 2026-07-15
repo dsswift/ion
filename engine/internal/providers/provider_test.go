@@ -14,11 +14,11 @@ import (
 // --- Mock provider for testing ---
 
 type mockProvider struct {
-	id          string
-	failCount   int
-	failErr     *ProviderError
-	callCount   int
-	events      []types.LlmStreamEvent
+	id        string
+	failCount int
+	failErr   *ProviderError
+	callCount int
+	events    []types.LlmStreamEvent
 }
 
 func (m *mockProvider) ID() string { return m.id }
@@ -103,9 +103,9 @@ func TestResolveProviderByPrefix(t *testing.T) {
 	}()
 
 	tests := []struct {
-		model      string
-		wantID     string
-		wantNil    bool
+		model   string
+		wantID  string
+		wantNil bool
 	}{
 		{"claude-opus-4-6", "anthropic", false},
 		{"claude_haiku", "anthropic", false},
@@ -194,8 +194,8 @@ func TestModelInfo(t *testing.T) {
 
 func TestRegisterModel(t *testing.T) {
 	RegisterModel("test-model-xyz", types.ModelInfo{
-		ProviderID:    "test",
-		ContextWindow: 50000,
+		ProviderID:     "test",
+		ContextWindow:  50000,
 		CostPer1kInput: 0.001,
 	})
 	defer func() {
@@ -1479,4 +1479,3 @@ func TestFirstNonEmpty(t *testing.T) {
 		}
 	}
 }
-
