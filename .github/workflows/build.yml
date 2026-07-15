@@ -67,7 +67,10 @@ jobs:
       - name: Build binary
         working-directory: engine
         env:
-          CGO_ENABLED: '0'
+          # Darwin needs cgo for the Local Network warmup probe
+          # (internal/network/lanwarmup_darwin.go); darwin jobs run on macOS
+          # runners so the SDK is native. Other targets stay CGO-free static.
+          CGO_ENABLED: ${{ matrix.goos == 'darwin' && '1' || '0' }}
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
@@ -108,7 +111,10 @@ jobs:
           ASSET="ion-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
           IDENTITY=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/')
           echo "Signing with: $IDENTITY"
-          codesign --force --sign "$IDENTITY" --options runtime "$ASSET"
+          # Namespaced identifier: macOS Local Network grants key to the code
+          # identity; keep in sync with engine/commands/install.command and
+          # desktop/scripts/afterPack.js.
+          codesign --force --sign "$IDENTITY" --identifier house.sprague.ion.engine --options runtime "$ASSET"
           codesign --verify --verbose "$ASSET"
 
       - name: Notarize binary
@@ -289,8 +295,11 @@ jobs:
       - name: Build engine for macOS universal
         working-directory: engine
         run: |
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w" -o ion-arm64 ./cmd/ion/
-          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w" -o ion-amd64 ./cmd/ion/
+          # cgo required for the Local Network warmup probe
+          # (internal/network/lanwarmup_darwin.go); this job runs on macOS so
+          # cross-arch darwin cgo builds work natively.
+          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w" -o ion-arm64 ./cmd/ion/
+          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w" -o ion-amd64 ./cmd/ion/
           lipo -create -output ion ion-arm64 ion-amd64
           rm ion-arm64 ion-amd64
           file ion
