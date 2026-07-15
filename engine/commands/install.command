@@ -33,7 +33,25 @@ rm -f "$ION_HOME/engine.sock"
 rm -f "$BIN_DIR/ion"
 cp bin/ion "$BIN_DIR/ion"
 chmod +x "$BIN_DIR/ion"
-codesign --force --sign - "$BIN_DIR/ion" 2>/dev/null || true
+
+# Sign with a stable identity so macOS treats every rebuild as the same app.
+# Ad-hoc signing derives the identifier from the binary's CDHash ("ion-<hash>"),
+# which changes on every build — macOS Local Network privacy keys its grant to
+# that identity, so each ad-hoc rebuild silently resets the grant and the
+# headless LaunchAgent gets EHOSTUNREACH ("no route to host") on LAN targets
+# with no prompt. A certificate-backed signature keeps identifier "ion" and a
+# stable designated requirement, so the grant survives rebuilds. Identity
+# precedence mirrors desktop/scripts/afterPack.js: APPLE_SIGNING_IDENTITY env,
+# then the "Ion Local Dev" self-signed cert, then ad-hoc as a last resort.
+SIGN_IDENTITY="${APPLE_SIGNING_IDENTITY:-Ion Local Dev}"
+if security find-identity -v -p codesigning 2>/dev/null | grep -qF "$SIGN_IDENTITY"; then
+    echo "==> Signing engine binary (identity: $SIGN_IDENTITY)..."
+    codesign --force --sign "$SIGN_IDENTITY" --identifier ion --options runtime "$BIN_DIR/ion" \
+        || codesign --force --sign - "$BIN_DIR/ion" 2>/dev/null || true
+else
+    echo "==> Signing engine binary (ad-hoc — identity \"$SIGN_IDENTITY\" not in keychain)..."
+    codesign --force --sign - "$BIN_DIR/ion" 2>/dev/null || true
+fi
 xattr -cr "$BIN_DIR/ion" 2>/dev/null || true
 
 if [[ "${1:-}" == "--standalone" ]]; then
