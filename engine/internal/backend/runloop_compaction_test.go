@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/compaction"
@@ -59,13 +60,20 @@ func TestCompactIfNeeded_CircuitBreaker(t *testing.T) {
 	cp.summaryEnabled = false
 
 	// Each iteration simulates a runloop pass where the reported token count
-	// is stuck above the limit (e.g. the model keeps returning a huge prompt
-	// usage figure). Re-priming LastInputTokens between calls mimics what
-	// would happen if a successful response set it high and compaction
-	// failed to shrink the working set.
+	// is stuck above the limit. Re-priming Usage on the last assistant message
+	// between calls mimics what would happen if a successful response set it
+	// high and compaction failed to shrink the working set.
+	primeUsage := func() {
+		for i := len(conv.Messages) - 1; i >= 0; i-- {
+			if conv.Messages[i].Role == "assistant" {
+				u := types.LlmUsage{InputTokens: 180_000}
+				conv.Messages[i].Usage = &u
+				break
+			}
+		}
+	}
 	for i := 0; i < maxConsecutiveCompactions; i++ {
-		conv.LastInputTokens = 180_000
-		conv.LastInputTokensMsgCount = len(conv.Messages)
+		primeUsage()
 		b.compactIfNeeded(ctx, run, conv, RunHooks{}, 200_000, 100_000, cp)
 	}
 
@@ -76,8 +84,7 @@ func TestCompactIfNeeded_CircuitBreaker(t *testing.T) {
 
 	// Fourth attempt: should hit the circuit breaker and emit
 	// compact_loop_aborted instead of running another compaction.
-	conv.LastInputTokens = 180_000
-	conv.LastInputTokensMsgCount = len(conv.Messages)
+	primeUsage()
 	beforeCounter := run.compactionsWithoutProgress
 	b.compactIfNeeded(ctx, run, conv, RunHooks{}, 200_000, 100_000, cp)
 
@@ -105,8 +112,10 @@ func TestCompactIfNeeded_BelowLimitIsNoOp(t *testing.T) {
 
 	conv := conversation.CreateConversation("below-limit", "", "test-model")
 	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: "hi"})
-	conv.LastInputTokens = 1000
-	conv.LastInputTokensMsgCount = 1
+	// Prime Usage on an assistant message so GetContextUsage uses the API path
+	// with 1000 tokens — well below the 100k compaction threshold.
+	u := types.LlmUsage{InputTokens: 1000}
+	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: "ok", Usage: &u})
 
 	run := &activeRun{requestID: "below-limit", conv: conv}
 	ctx := context.Background()
@@ -128,8 +137,8 @@ func TestCompactIfNeeded_DisabledByConfig(t *testing.T) {
 
 	conv := conversation.CreateConversation("disabled-test", "", "test-model")
 	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: "hi"})
-	conv.LastInputTokens = 180_000
-	conv.LastInputTokensMsgCount = 1
+	u := types.LlmUsage{InputTokens: 180_000}
+	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: "ok", Usage: &u})
 
 	disabled := false
 	run := &activeRun{
@@ -238,9 +247,15 @@ func TestPerformCompact_HardTruncateNotMicroOnly(t *testing.T) {
 			types.LlmMessage{Role: "assistant", Content: []types.LlmContentBlock{{Type: "text", Text: "answer here"}}},
 		)
 	}
-	// Force the post-micro usage above the limit so step 2 runs.
-	conv.LastInputTokens = 180_000
-	conv.LastInputTokensMsgCount = len(conv.Messages)
+	// Force the post-micro usage above the limit so step 2 runs by setting
+	// Usage on the last assistant message.
+	for i := len(conv.Messages) - 1; i >= 0; i-- {
+		if conv.Messages[i].Role == "assistant" {
+			u := types.LlmUsage{InputTokens: 180_000}
+			conv.Messages[i].Usage = &u
+			break
+		}
+	}
 
 	run := &activeRun{requestID: "hard-trunc", conv: conv}
 	cp := testCompactParams()
@@ -263,6 +278,151 @@ func TestPerformCompact_HardTruncateNotMicroOnly(t *testing.T) {
 	}
 	if done.MicroOnly {
 		t.Errorf("expected MicroOnly=false on a hard-truncate pass, got true")
+	}
+}
+
+// TestPerformCompact_UserNoOpIsNonDestructive is the regression guard for the
+// destructive-no-op defect. A manual (trigger:"user") /compact on a
+// conversation whose only content is a prior compaction boundary has nothing
+// to summarize, clear, or drop. The old code still injected an empty boundary,
+// appended an empty EntryCompaction, and saved — which orphaned the PRIOR
+// summary because BuildContextPath restarts the LLM view from the newest
+// compaction entry. The fix skips all mutation on a no-op.
+//
+// Assertions: no new tree entry, no new message (boundary not injected), and
+// the prior summary still present in conv.Messages. Reverting the noOp guard
+// in performCompact makes the entry-count and message-count deltas non-zero.
+func TestPerformCompact_UserNoOpIsNonDestructive(t *testing.T) {
+	b := NewApiBackend()
+	events := captureEvents(b, "user-noop")
+
+	conv := conversation.CreateConversation("user-noop", "", "test-model")
+	// Simulate an already-compacted conversation: a prior EntryCompaction in
+	// the tree carrying a real summary, and conv.Messages holding only the
+	// reconstructed boundary (what BuildContextPath would produce on load).
+	const priorSummary = "## Prior summary\n- decided to use Go\n- fixed the linker error"
+	conversation.AppendEntry(conv, conversation.EntryCompaction, conversation.CompactionData{
+		Summary:      priorSummary,
+		TokensBefore: 180_000,
+		Strategy:     "user",
+	})
+	conv.Messages = []types.LlmMessage{
+		conversation.BuildCompactBoundaryMessage(conversation.CompactMeta{
+			Trigger:      "user",
+			Summary:      priorSummary,
+			TokensBefore: 180_000,
+		}),
+	}
+
+	entriesBefore := len(conv.Entries)
+	msgsBefore := len(conv.Messages)
+
+	run := &activeRun{requestID: "user-noop", conv: conv}
+	cp := testCompactParams()
+	cp.summaryEnabled = false // hermetic: no live provider call; no summary tier
+
+	b.performCompact(performCompactParams{
+		ctx:           context.Background(),
+		run:           run,
+		conv:          conv,
+		hooks:         RunHooks{},
+		contextWindow: 200_000,
+		tokenLimit:    100_000,
+		cp:            cp,
+		trigger:       "user",
+	})
+
+	// No new tree entry: the empty compaction must not be recorded.
+	if got := len(conv.Entries); got != entriesBefore {
+		t.Errorf("no-op /compact appended a tree entry: entries before=%d after=%d (want unchanged)", entriesBefore, got)
+	}
+	// No injected boundary: message count unchanged.
+	if got := len(conv.Messages); got != msgsBefore {
+		t.Errorf("no-op /compact mutated conv.Messages: before=%d after=%d (want unchanged)", msgsBefore, got)
+	}
+	// The prior summary must survive intact.
+	slice := conversation.MessagesAfterLastCompactBoundary(conv)
+	if len(slice) == 0 || !conversation.IsCompactBoundary(slice[0]) {
+		t.Fatal("expected the prior boundary to still be the last boundary in conv.Messages")
+	}
+	blocks, ok := slice[0].Content.([]types.LlmContentBlock)
+	if !ok || len(blocks) == 0 || blocks[0].Summary != priorSummary {
+		t.Errorf("prior summary was not preserved after no-op /compact; got %+v", slice[0].Content)
+	}
+
+	// The completion event must still fire so the client leaves the
+	// "Compacting…" state, and it reports a no-op (before == after).
+	done := lastCompactingDone(*events)
+	if done == nil {
+		t.Fatal("expected a CompactingEvent with Active=false even on a no-op")
+	}
+	if done.MessagesBefore != done.MessagesAfter {
+		t.Errorf("no-op completion event must report before==after: before=%d after=%d", done.MessagesBefore, done.MessagesAfter)
+	}
+	if done.Summary != "" {
+		t.Errorf("no-op completion event must carry no summary, got %q", done.Summary)
+	}
+}
+
+// TestPerformCompact_UserRealCompactionStillRecords proves the no-op guard does
+// not suppress a genuine compaction: a trigger:"user" pass with enough messages
+// to drop must still inject a boundary, append exactly one EntryCompaction, and
+// leave a boundary at the head of the kept slice.
+func TestPerformCompact_UserRealCompactionStillRecords(t *testing.T) {
+	b := NewApiBackend()
+	_ = captureEvents(b, "user-real")
+
+	conv := conversation.CreateConversation("user-real", "", "test-model")
+	// Bodies large enough that hard-truncate genuinely drops messages (the
+	// no-op guard must NOT fire here). test-model resolves to the default
+	// ~200k window; 50% target = ~100k-token budget, so total content must
+	// exceed that.
+	bigBody := strings.Repeat("lorem ipsum dolor sit amet ", 400)
+	for i := 0; i < 80; i++ {
+		conv.Messages = append(conv.Messages,
+			types.LlmMessage{Role: "user", Content: []types.LlmContentBlock{{Type: "text", Text: bigBody}}},
+			types.LlmMessage{Role: "assistant", Content: []types.LlmContentBlock{{Type: "text", Text: bigBody}}},
+		)
+	}
+	// Force tokens above the limit by setting Usage on the last assistant message.
+	for i := len(conv.Messages) - 1; i >= 0; i-- {
+		if conv.Messages[i].Role == "assistant" {
+			u := types.LlmUsage{InputTokens: 180_000}
+			conv.Messages[i].Usage = &u
+			break
+		}
+	}
+	// Seed one tree entry so conv.Entries is non-nil (AppendEntry path is taken).
+	conversation.AppendEntry(conv, conversation.EntryMessage, conversation.MessageData{Role: "user"})
+	entriesBefore := len(conv.Entries)
+
+	run := &activeRun{requestID: "user-real", conv: conv}
+	cp := testCompactParams()
+	cp.summaryEnabled = false // regex/fact tier still runs; keeps it hermetic
+
+	b.performCompact(performCompactParams{
+		ctx:           context.Background(),
+		run:           run,
+		conv:          conv,
+		hooks:         RunHooks{},
+		contextWindow: 200_000,
+		tokenLimit:    100_000,
+		cp:            cp,
+		trigger:       "user",
+	})
+
+	// Exactly one new EntryCompaction recorded.
+	if got := len(conv.Entries); got != entriesBefore+1 {
+		t.Errorf("real compaction should append exactly one tree entry: before=%d after=%d", entriesBefore, got)
+	}
+	last := conv.Entries[len(conv.Entries)-1]
+	if last.Type != conversation.EntryCompaction {
+		t.Errorf("last tree entry type = %q, want EntryCompaction", last.Type)
+	}
+	// A boundary must head the kept slice.
+	slice := conversation.MessagesAfterLastCompactBoundary(conv)
+	if len(slice) == 0 || !conversation.IsCompactBoundary(slice[0]) {
+		t.Error("expected an injected boundary at the head of the kept slice after real compaction")
 	}
 }
 
@@ -541,8 +701,13 @@ func TestCompactIfNeeded_SessionMemoryCoverageCheck(t *testing.T) {
 	}
 
 	// Force tokens above the limit.
-	conv.LastInputTokens = 180_000
-	conv.LastInputTokensMsgCount = len(conv.Messages)
+	for i := len(conv.Messages) - 1; i >= 0; i-- {
+		if conv.Messages[i].Role == "assistant" {
+			u := types.LlmUsage{InputTokens: 180_000}
+			conv.Messages[i].Usage = &u
+			break
+		}
+	}
 
 	run := &activeRun{requestID: "stale-mem", conv: conv}
 	ctx := context.Background()

@@ -607,25 +607,56 @@ func (b *ApiBackend) executeTools(
 				})
 			}
 
-			// Append the redirect notice when applyPlanModeWriteGate rewrote
-			// a stray plan-shaped target to the canonical plan file. The
-			// notice is block-scoped (returned from the gate, not run state)
-			// so it cannot leak onto another concurrent tool block's result.
+			// When applyPlanModeWriteGate rewrote a stray plan-shaped target to
+			// the canonical plan file, the physical write already succeeded
+			// (block.Input["file_path"] was rewritten in-place so the tool ran
+			// against the canonical path). But returning success would leave
+			// the model believing its wrong path is valid, causing repeated
+			// stray writes on every subsequent turn. Return an error instead:
+			// the model treats errors as mistakes requiring correction, reads
+			// the canonical path from the message, and retries with it. The
+			// content IS on disk; the error is purely a behavioral correction
+			// signal, not a data-loss report.
 			if planWriteRedirectNotice != "" && !results[i].IsError {
-				results[i].Content += "\n\n" + planWriteRedirectNotice
+				wrongPath, _ := block.Input["file_path"].(string)
+				msg := fmt.Sprintf(
+					"Plan mode: %s targeted %q — that path is not the plan file for this session "+
+						"and the engine redirected the write to the canonical plan file (%s). "+
+						"Do NOT use that path again. Always target %s directly. "+
+						"The content was written to the canonical file. Resubmit targeting %s.",
+					block.Name, wrongPath, run.planFilePath, run.planFilePath, run.planFilePath)
+				results[i].Content = msg
+				results[i].IsError = true
+				utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "redirect_as_error", map[string]any{
+					"run_id":    run.requestID,
+					"wrong":     wrongPath,
+					"canonical": run.planFilePath,
+				})
 			}
 
-			// Emit the plan-file-written marker AFTER a successful Write/Edit
-			// to the canonical plan file. This is the accurate trigger for the
+			// Emit the plan-file-written marker AFTER a Write/Edit to the
+			// canonical plan file. This is the accurate trigger for the
 			// "plan created / updated" conversation marker: the file now exists
 			// on disk with content, so the marker lands at the true point in
 			// the transcript and any link to the plan resolves. The
 			// created-vs-updated discriminator comes from the file's prior
 			// state captured pre-execution by the gate (planFileHadContentBefore).
 			// Plan-mode entry no longer drives this marker — entry happens
-			// before any file exists. Skipped on error (the write failed, so
-			// nothing changed on disk).
-			if planWriteToCanonical && !results[i].IsError {
+			// before any file exists.
+			//
+			// For redirected writes: the physical file WAS written successfully
+			// (the redirect executed the tool against the canonical path), so
+			// the marker should still fire — the plan file genuinely changed.
+			// The error result above is a behavioral correction signal, not a
+			// data-loss indicator. We fire the marker when planWriteToCanonical
+			// is set and the underlying tool execution succeeded (no Go-level
+			// error), regardless of the IsError flag on the result.
+			//
+			// For non-redirect errors (the tool itself reported failure — e.g.
+			// Edit's old_string-not-found): results[i].IsError is true AND
+			// planWriteRedirectNotice is empty, so the marker is correctly skipped.
+			markerEligible := planWriteToCanonical && (!results[i].IsError || planWriteRedirectNotice != "")
+			if markerEligible {
 				op := "created"
 				if planFileHadContentBefore {
 					op = "updated"

@@ -58,8 +58,13 @@ type Host struct {
 	// Temp files created by TS transpilation, cleaned up on Dispose.
 	tempFiles []string
 
-	// Extension name returned from init handshake.
+	// Extension name returned from init handshake (or manifest/directory fallback).
 	name string
+
+	// version is the extension version read from extension.json at load time.
+	// Empty when the manifest is absent or carries no version field.
+	// Not updated after load; manifest version is a build-time constant.
+	version string
 
 	// Bidirectional RPC: context stack for extension-initiated requests.
 	// Supports concurrent tool/hook/async-fire contexts on CliBackend.
@@ -74,11 +79,34 @@ type Host struct {
 	onSendMessage  func(SendPromptPayload)
 	persistentEmit func(types.EngineEvent)
 
+	// telemFn is the session-scoped telemetry sink used by callHook to emit
+	// per-handler extension.hook_latency events. Set by the session manager
+	// alongside persistentEmit (identical injection pattern) when the session
+	// has a telemetry collector; left nil otherwise. Guarded by notifMu.
+	// A nil sink means callHook emits nothing (telemetry-disabled and pre-wire
+	// loads pay only a nil check). The signature matches telemetry.Collector.Event.
+	telemFn func(event string, payload, ctx map[string]any)
+
 	// persistentPublishResource is the fallback for ext/publish_resource
 	// when no hook/tool context is active (e.g., onComplete callbacks
 	// from background dispatches fire after the run exits). Set by the
 	// session manager alongside persistentEmit.
 	persistentPublishResource func(kind string, delta types.ResourceDelta) error
+
+	// persistentRecall is a session-scoped fallback for ext/recall_agent when
+	// no hook/run context is active (i.e. the parent run is idle). The registry
+	// outlives runs by design, so recall must work even when ctxStack is empty.
+	// Set by the session manager alongside persistentEmit. Guarded by notifMu.
+	persistentRecall func(name, reason string) (bool, error)
+
+	// persistentSteer is a session-scoped fallback for ext/steer_dispatch when
+	// no hook/run context is active. Guarded by notifMu.
+	persistentSteer func(dispatchID, message string) (SteerDispatchResult, error)
+
+	// persistentSteerByName is a session-scoped fallback for
+	// ext/steer_dispatch_by_name when no hook/run context is active. Guarded
+	// by notifMu.
+	persistentSteerByName func(name, message string) (SteerDispatchResult, error)
 
 	// Rate limit for parse-failure WARNs so a misbehaving extension that
 	// floods stdout with non-JSON cannot bury other log signal. Holds a
@@ -105,6 +133,13 @@ type Host struct {
 	respawnWindowStart atomic.Int64 // unix nanos
 	lastHealthyAt      atomic.Int64 // unix nanos when last successfully spawned
 	respawnPermanent   atomic.Bool
+
+	// lastSpawnReadyMs is the wall-clock (in milliseconds) that the most
+	// recent spawnAndInit took from process launch to a successful init
+	// handshake. Surfaced via SpawnReadyMs for the extension.coldstart
+	// telemetry event (family 4e). Written under h.mu inside spawnAndInit;
+	// read under h.mu via SpawnReadyMs.
+	lastSpawnReadyMs int64
 
 	// onDeath is invoked from a goroutine after readLoop detects the
 	// subprocess is dead. Set by the session manager so it can schedule
@@ -179,6 +214,22 @@ type Host struct {
 	// parent run has moved on). sync.Map is used so concurrent dispatches do
 	// not contend on a single mutex.
 	childQuestions sync.Map
+
+	// boundSessionID and boundConversationID are set when the host is
+	// associated with a session, and are stamped on all extension log
+	// notifications so cross-surface log correlation works. Guarded by
+	// boundMu. See host_session_binding.go for the accessors.
+	boundSessionID      string
+	boundConversationID string
+	boundMu             sync.RWMutex
+
+	// dispatchContextDefaults is the session-level default context policy
+	// (level 3 of the dispatch context cascade), set by the extension via
+	// ctx.setDispatchContextDefaults. Guarded by dispatchCtxMu. See
+	// host_dispatch_context.go for the accessors. Session-scoped state in the
+	// same spirit as tool suppression.
+	dispatchContextDefaults *ContextPolicy
+	dispatchCtxMu           sync.RWMutex
 }
 
 // childQuestionReply carries the dispatcher's answer to a child's
@@ -198,6 +249,16 @@ func (h *Host) SetPersistentEmit(fn func(types.EngineEvent)) {
 	h.persistentEmit = fn
 }
 
+// SetTelemetrySink sets the session-scoped telemetry sink used by callHook to
+// emit per-handler extension.hook_latency events. Mirrors SetPersistentEmit:
+// guarded by notifMu, snapshotted under the lock at emit time. Passing nil
+// disables emission (the default for sessions without a telemetry collector).
+func (h *Host) SetTelemetrySink(fn func(event string, payload, ctx map[string]any)) {
+	h.notifMu.Lock()
+	defer h.notifMu.Unlock()
+	h.telemFn = fn
+}
+
 // SetPersistentPublishResource sets a fallback publish function for
 // ext/publish_resource when no hook/tool context is active. This is
 // needed because onComplete callbacks from background dispatches fire
@@ -206,6 +267,32 @@ func (h *Host) SetPersistentPublishResource(fn func(string, types.ResourceDelta)
 	h.notifMu.Lock()
 	defer h.notifMu.Unlock()
 	h.persistentPublishResource = fn
+}
+
+// SetPersistentRecall sets the fallback recall function used when no run
+// context is active (parent session is idle between dispatch runs). The
+// dispatch registry outlives runs by design, so recall must succeed even when
+// ctxStack is empty.
+func (h *Host) SetPersistentRecall(fn func(name, reason string) (bool, error)) {
+	h.notifMu.Lock()
+	defer h.notifMu.Unlock()
+	h.persistentRecall = fn
+}
+
+// SetPersistentSteer sets the fallback steer function used when no run
+// context is active (parent session is idle between dispatch runs).
+func (h *Host) SetPersistentSteer(fn func(dispatchID, message string) (SteerDispatchResult, error)) {
+	h.notifMu.Lock()
+	defer h.notifMu.Unlock()
+	h.persistentSteer = fn
+}
+
+// SetPersistentSteerByName sets the fallback name-based steer function used
+// when no run context is active (parent session is idle between dispatch runs).
+func (h *Host) SetPersistentSteerByName(fn func(name, message string) (SteerDispatchResult, error)) {
+	h.notifMu.Lock()
+	defer h.notifMu.Unlock()
+	h.persistentSteerByName = fn
 }
 
 // NewHost creates a new extension host with an empty SDK.
@@ -238,11 +325,25 @@ func (h *Host) Name() string {
 	return h.name
 }
 
+// Version returns the extension's version as read from extension.json at load
+// time. Returns empty string when the manifest is absent or carries no
+// version field.
+func (h *Host) Version() string {
+	return h.version
+}
+
 // SetNameForTest sets the host's name without loading an extension.
 // Intended for unit tests in other packages that need hosts with
 // specific names for grouping/coordination testing.
 func (h *Host) SetNameForTest(name string) {
 	h.name = name
+}
+
+// SetVersionForTest sets the host's version without loading an extension.
+// Intended for unit tests that need to exercise the extension attribution
+// telemetry path (correlationCtxExt / buildTelemCtx extension fields).
+func (h *Host) SetVersionForTest(version string) {
+	h.version = version
 }
 
 // MarkDeadForTest marks the host as dead without closing any channels.

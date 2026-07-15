@@ -589,6 +589,37 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 		utils.LogWithFields(utils.LevelDebug, "extension", "ext/get_context_usage: returning", map[string]any{"percent": usage.Percent, "tokens": usage.Tokens, "cost": usage.Cost})
 		h.sendResponse(id, json.RawMessage(data), nil)
 
+	case "ext/list_dispatch_state":
+		// Read-only query: return every active dispatch in the session's
+		// DispatchRegistry as a { dispatches: [...] } envelope. Returns an
+		// empty array (not null) when no dispatches are active or when the
+		// getter is not wired (extensions loaded outside a dispatch-capable
+		// session see an empty result and can branch on it safely).
+		if ctx == nil || ctx.ListDispatchState == nil {
+			utils.Debug("extension", "ext/list_dispatch_state: no ctx or no getter, returning empty array")
+			h.sendResponse(id, json.RawMessage(`{"dispatches":[]}`), nil)
+			return
+		}
+		entries, err := ctx.ListDispatchState()
+		if err != nil {
+			utils.LogWithFields(utils.LevelError, "extension", "ext/list_dispatch_state: getter returned error", map[string]any{"error": err})
+			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
+			return
+		}
+		if entries == nil {
+			entries = []DispatchStateEntry{}
+		}
+		data, err := json.Marshal(struct {
+			Dispatches []DispatchStateEntry `json:"dispatches"`
+		}{Dispatches: entries})
+		if err != nil {
+			utils.LogWithFields(utils.LevelError, "extension", "ext/list_dispatch_state: marshal failed", map[string]any{"error": err})
+			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
+			return
+		}
+		utils.LogWithFields(utils.LevelDebug, "extension", "ext/list_dispatch_state: returning", map[string]any{"count": len(entries)})
+		h.sendResponse(id, json.RawMessage(data), nil)
+
 	case "ext/search_history":
 		var req struct {
 			Params struct {

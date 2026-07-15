@@ -46,6 +46,8 @@ func main() {
 		cmdUpgrade()
 	case "install-assets":
 		cmdInstallAssets()
+	case "plugin":
+		cmdPlugin(positional)
 	case "version":
 		fmt.Printf("ion-engine %s\n", version)
 	default:
@@ -77,6 +79,9 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "  rpc                      JSON-RPC over stdin/stdout")
 	fmt.Fprintln(os.Stderr, "  upgrade                  Upgrade to latest release")
 	fmt.Fprintln(os.Stderr, "  install-assets           Install SDK, ion-meta, and canonical docs to ~/.ion")
+	fmt.Fprintln(os.Stderr, "  plugin install <owner/repo>  Install a plugin")
+	fmt.Fprintln(os.Stderr, "  plugin list                  List installed plugins")
+	fmt.Fprintln(os.Stderr, "  plugin remove <name>         Remove a plugin")
 	fmt.Fprintln(os.Stderr, "  version                  Show version")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Options:")

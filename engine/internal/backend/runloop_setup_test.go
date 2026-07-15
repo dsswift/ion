@@ -280,14 +280,29 @@ func TestBuildPlanModePrompt_ExistingFile(t *testing.T) {
 func TestBuildPlanModePrompt_NewFile(t *testing.T) {
 	prompt := buildPlanModePrompt("/tmp/plan.md", false, nil)
 
-	if !strings.Contains(prompt, "Create your plan at") {
-		t.Error("expected 'Create your plan at' for new file")
+	if !strings.Contains(prompt, "No plan file exists yet") {
+		t.Error("expected 'No plan file exists yet' for new file")
 	}
 	if !strings.Contains(prompt, "Write tool") {
 		t.Error("expected 'Write tool' guidance for new file")
 	}
 	if strings.Contains(prompt, "Amending an Existing Plan") {
 		t.Error("amend section should not appear for new file")
+	}
+}
+
+func TestBuildPlanModePrompt_DispatchAllowed(t *testing.T) {
+	// The prompt is written in read-only terms, but dispatching to a
+	// plan-mode-safe sub-agent tool is not a system mutation and must be
+	// explicitly permitted so the model does not refuse to call such tools.
+	for _, exists := range []bool{true, false} {
+		prompt := buildPlanModePrompt("/tmp/plan.md", exists, nil)
+		if !strings.Contains(prompt, "Dispatching or delegating to a sub-agent via a plan-mode-safe tool IS permitted") {
+			t.Errorf("planFileExists=%v: expected prompt to permit plan-mode-safe dispatch", exists)
+		}
+		if !strings.Contains(prompt, "the dispatched sub-agent may itself run in plan mode") {
+			t.Errorf("planFileExists=%v: expected prompt to note dispatched sub-agent may itself plan", exists)
+		}
 	}
 }
 
@@ -629,10 +644,10 @@ func TestPlanModeSparseReminderOverride_RunOptions(t *testing.T) {
 	b := NewApiBackend()
 	customReminder := "CUSTOM SPARSE REMINDER TEXT"
 	opts := types.RunOptions{
-		Prompt:                  "hi",
-		PlanMode:                true,
-		PlanFilePath:            "/tmp/test-plan.md",
-		PlanModeSparseReminder:  customReminder,
+		Prompt:                 "hi",
+		PlanMode:               true,
+		PlanFilePath:           "/tmp/test-plan.md",
+		PlanModeSparseReminder: customReminder,
 		// Minimal required field to not crash startRunWithConfig
 	}
 	// StartRunWithConfig creates an activeRun with the override pre-cached.
@@ -686,7 +701,7 @@ func TestPlanModeSparseReminderOverride_RunOptionsWinsOverHook(t *testing.T) {
 	runOptionsReminder := "RUN OPTIONS REMINDER"
 	hookReminder := "HOOK REMINDER"
 	run := &activeRun{
-		requestID:                     "runoptions-wins",
+		requestID:                      "runoptions-wins",
 		planModeSparseReminderOverride: runOptionsReminder, // pre-set from StartRunWithConfig
 	}
 	conv := &conversation.Conversation{}
@@ -731,33 +746,33 @@ func TestPlanModeSparseReminderOverride_DefaultWhenBothEmpty(t *testing.T) {
 
 // --- loadOrCreateConversation tests ---
 
-// TestLoadOrCreateConversation_SessionIDNotFound_CreatesNew verifies
-// that when a caller supplies a SessionID that does not correspond to any
+// TestLoadOrCreateConversation_ConversationIDNotFound_CreatesNew verifies
+// that when a caller supplies a ConversationID that does not correspond to any
 // persisted conversation file, loadOrCreateConversation creates a new
 // conversation with the requested ID. This is the first-run case: the
 // session doesn't exist yet, so we create it.
 func TestLoadOrCreateConversation_SessionIDNotFound_CreatesNew(t *testing.T) {
 	opts := types.RunOptions{
-		SessionID: "nonexistent-conv-id-12345",
+		ConversationID: "nonexistent-conv-id-12345",
 	}
 	conv, err := loadOrCreateConversation(opts, "mock-model")
 	if err != nil {
-		t.Fatalf("expected no error for first-run SessionID, got %v", err)
+		t.Fatalf("expected no error for first-run ConversationID, got %v", err)
 	}
 	if conv == nil {
-		t.Fatal("expected non-nil conversation for first-run SessionID")
+		t.Fatal("expected non-nil conversation for first-run ConversationID")
 	}
-	if conv.ID != opts.SessionID {
-		t.Errorf("expected conversation ID=%q, got %q", opts.SessionID, conv.ID)
+	if conv.ID != opts.ConversationID {
+		t.Errorf("expected conversation ID=%q, got %q", opts.ConversationID, conv.ID)
 	}
 }
 
-// TestLoadOrCreateConversation_NoSessionID_CreatesFresh verifies the
-// fresh-creation path: when SessionID is empty, loadOrCreateConversation
+// TestLoadOrCreateConversation_NoConversationID_CreatesFresh verifies the
+// fresh-creation path: when ConversationID is empty, loadOrCreateConversation
 // must create and return a new conversation with a non-empty ID and no error.
 func TestLoadOrCreateConversation_NoSessionID_CreatesFresh(t *testing.T) {
 	opts := types.RunOptions{
-		SessionID: "",
+		ConversationID: "",
 	}
 	conv, err := loadOrCreateConversation(opts, "mock-model")
 	if err != nil {
@@ -771,14 +786,14 @@ func TestLoadOrCreateConversation_NoSessionID_CreatesFresh(t *testing.T) {
 	}
 }
 
-// TestLoadOrCreateConversation_ParentConversationID_SetOnFreshWithSessionID
+// TestLoadOrCreateConversation_ParentConversationID_SetOnFreshWithConversationID
 // verifies that a client-driven checkpoint cut (ParentConversationID set,
-// SessionID names an unsaved id) records the descent: the new conversation's
+// ConversationID names an unsaved id) records the descent: the new conversation's
 // ParentID equals the supplied parent. Revert the parentId wiring in
 // loadOrCreateConversation and this goes red (ParentID stays empty).
 func TestLoadOrCreateConversation_ParentConversationID_SetOnFreshWithSessionID(t *testing.T) {
 	opts := types.RunOptions{
-		SessionID:            "child-conv-id-99999",
+		ConversationID:       "child-conv-id-99999",
 		ParentConversationID: "parent-conv-id-00001",
 	}
 	conv, err := loadOrCreateConversation(opts, "mock-model")
@@ -790,11 +805,11 @@ func TestLoadOrCreateConversation_ParentConversationID_SetOnFreshWithSessionID(t
 	}
 }
 
-// TestLoadOrCreateConversation_ParentConversationID_SetOnFreshNoSessionID
-// verifies the same descent linkage on the empty-SessionID fresh-mint path.
+// TestLoadOrCreateConversation_ParentConversationID_SetOnFreshNoConversationID
+// verifies the same descent linkage on the empty-ConversationID fresh-mint path.
 func TestLoadOrCreateConversation_ParentConversationID_SetOnFreshNoSessionID(t *testing.T) {
 	opts := types.RunOptions{
-		SessionID:            "",
+		ConversationID:       "",
 		ParentConversationID: "parent-conv-id-fresh",
 	}
 	conv, err := loadOrCreateConversation(opts, "mock-model")
@@ -809,7 +824,7 @@ func TestLoadOrCreateConversation_ParentConversationID_SetOnFreshNoSessionID(t *
 // TestLoadOrCreateConversation_NoParent_LeavesParentIDEmpty verifies the
 // non-breaking default: absent ParentConversationID leaves ParentID empty.
 func TestLoadOrCreateConversation_NoParent_LeavesParentIDEmpty(t *testing.T) {
-	opts := types.RunOptions{SessionID: "no-parent-conv-id"}
+	opts := types.RunOptions{ConversationID: "no-parent-conv-id"}
 	conv, err := loadOrCreateConversation(opts, "mock-model")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -828,8 +843,8 @@ func TestBuildToolDefs_PlanModeBashIncludedWhenAllowlistSet(t *testing.T) {
 	b := NewApiBackend()
 	run := &activeRun{requestID: "bash-allow", planMode: true, planFilePath: "/tmp/plan.md"}
 	opts := types.RunOptions{
-		PlanMode:                     true,
-		PlanFilePath:                 "/tmp/plan.md",
+		PlanMode:                    true,
+		PlanFilePath:                "/tmp/plan.md",
 		PlanModeAllowedBashCommands: []string{"gh", "git log"},
 	}
 	provider := &mockLlmProvider{id: "anthropic"}
@@ -1021,9 +1036,10 @@ func TestBuildToolDefs_PerPromptBashAdditionsAppearInRunState(t *testing.T) {
 // during plan mode. The session has NO bash allowlist; the only allowances are
 // per-prompt additions carried on RunOptions (the path the extension SDK's
 // sendPrompt now feeds). The engine must, for this run only:
-//   (a) include Bash in the plan-mode tool list, and
-//   (b) install the additions on activeRun.planModeAllowedBashCommands so the
-//       runtime gate enforces exactly those prefixes.
+//
+//	(a) include Bash in the plan-mode tool list, and
+//	(b) install the additions on activeRun.planModeAllowedBashCommands so the
+//	    runtime gate enforces exactly those prefixes.
 //
 // Before the fix, an extension-command dispatch carried no additions, so the
 // effective allowlist was empty, Bash was excluded, and the command's
@@ -1068,8 +1084,8 @@ func TestBuildToolDefs_PerPromptBashAdditionsOnly_NoSessionAllowlist(t *testing.
 func TestBuildToolDefs_PlanModeSafe_SurvivesFilter(t *testing.T) {
 	b := NewApiBackend()
 	run := &activeRun{
-		requestID: "plan-safe-survives",
-		planMode:  true,
+		requestID:    "plan-safe-survives",
+		planMode:     true,
 		planFilePath: "/tmp/plan.md",
 		cfg: &RunConfig{
 			ExternalTools: []types.LlmToolDef{
@@ -1098,8 +1114,8 @@ func TestBuildToolDefs_PlanModeSafe_SurvivesFilter(t *testing.T) {
 func TestBuildToolDefs_PlanModeSafe_UnsafeFiltered(t *testing.T) {
 	b := NewApiBackend()
 	run := &activeRun{
-		requestID: "plan-safe-filtered",
-		planMode:  true,
+		requestID:    "plan-safe-filtered",
+		planMode:     true,
 		planFilePath: "/tmp/plan.md",
 		cfg: &RunConfig{
 			ExternalTools: []types.LlmToolDef{
@@ -1124,8 +1140,8 @@ func TestBuildToolDefs_PlanModeSafe_UnsafeFiltered(t *testing.T) {
 func TestBuildToolDefs_PlanModeSafe_AdditiveToDefaultTools(t *testing.T) {
 	b := NewApiBackend()
 	run := &activeRun{
-		requestID: "plan-safe-additive",
-		planMode:  true,
+		requestID:    "plan-safe-additive",
+		planMode:     true,
 		planFilePath: "/tmp/plan.md",
 		cfg: &RunConfig{
 			ExternalTools: []types.LlmToolDef{

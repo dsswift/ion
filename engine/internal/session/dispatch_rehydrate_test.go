@@ -162,6 +162,61 @@ func TestRehydrateDispatchState_LoadsCompletedDispatches(t *testing.T) {
 	_ = m // Manager created for consistency but not needed in this unit test path.
 }
 
+// TestRehydrateDispatchState_ReturnsLoadedConv pins the return contract that
+// startSession relies on to avoid a second full conversation load. Before this
+// fix startSession loaded the conversation file twice per resumed tab (once here
+// for dispatch rehydration, then again to seed lastModel/lastContextPct); the
+// second load dominated startup parse time when many tabs restore at once.
+// rehydrateDispatchState now returns the *Conversation it already parsed so the
+// seeding block reuses it. This test asserts a non-nil conv with the persisted
+// model is returned even when there are no dispatch entries (the file loaded
+// fine, it just has nothing to rehydrate), and nil when no file exists.
+func TestRehydrateDispatchState_ReturnsLoadedConv(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	convDir := home + "/.ion/conversations"
+
+	const convID = "rehydrate-return-1"
+	const wantModel = "claude-opus-4-8"
+	conv := conversation.CreateConversation(convID, "sys", wantModel)
+	conversation.AddUserMessage(conv, "hello")
+	// Intentionally NO agent_dispatch entries: the no-dispatch path must still
+	// return the loaded conv so seeding can reuse it.
+	if err := conversation.Save(conv, convDir); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	m := newTestManager(t)
+	s := &engineSession{
+		key:              "k",
+		conversationID:   convID,
+		agents:           agents.NewRegistry(),
+		dispatchRegistry: extcontext.NewDispatchRegistry(),
+		pending:          pending.New(),
+	}
+	m.sessions["k"] = s
+
+	got := m.rehydrateDispatchState(s, "k")
+	if got == nil {
+		t.Fatal("rehydrateDispatchState returned nil for an existing conversation; startSession would fall back to a second load")
+	}
+	if got.Model != wantModel {
+		t.Errorf("returned conv Model = %q, want %q (seeding reads conv.Model)", got.Model, wantModel)
+	}
+
+	// No conversation file on disk → nil, so startSession skips seeding.
+	sMissing := &engineSession{
+		key:              "missing",
+		conversationID:   "no-such-conversation",
+		agents:           agents.NewRegistry(),
+		dispatchRegistry: extcontext.NewDispatchRegistry(),
+		pending:          pending.New(),
+	}
+	if got := m.rehydrateDispatchState(sMissing, "missing"); got != nil {
+		t.Errorf("expected nil for missing conversation, got %+v", got)
+	}
+}
+
 // TestRehydrateDispatchState_MergesWithExtensionRoster verifies that
 // rehydrated dispatch entries survive when the extension emits its
 // fresh roster (all idle). The engine-managed entries should win.

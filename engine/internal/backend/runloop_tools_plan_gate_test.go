@@ -70,7 +70,7 @@ func TestPlanGate_WriteToWrongFileBlocked(t *testing.T) {
 	if !results[0].IsError {
 		t.Error("expected Write to wrong file to be blocked")
 	}
-	if !strings.Contains(results[0].Content, "Plan mode: cannot write to") {
+	if !strings.Contains(results[0].Content, "not the plan file for this session") {
 		t.Errorf("expected plan-mode error message, got: %s", results[0].Content)
 	}
 	// The file must not exist on disk — the gate blocked before execution.
@@ -137,7 +137,7 @@ func TestPlanGate_EditToWrongFileBlocked(t *testing.T) {
 	if !results[0].IsError {
 		t.Error("expected Edit to wrong file to be blocked")
 	}
-	if !strings.Contains(results[0].Content, "Plan mode: cannot write to") {
+	if !strings.Contains(results[0].Content, "not the plan file for this session") {
 		t.Errorf("expected plan-mode error message, got: %s", results[0].Content)
 	}
 }
@@ -350,6 +350,104 @@ func TestPlanGate_ExitPlanModeAutoModeNoPlanFile(t *testing.T) {
 		if _, ok := ev.Data.(*types.PlanProposalEvent); ok {
 			t.Error("expected no PlanProposalEvent when planFilePath is empty")
 		}
+	}
+}
+
+// Test 11: Write to a stray plan-shaped path (inside the plans dir but not
+// the canonical file) returns IsError=true and names the canonical path.
+// The physical write still lands at the canonical path (the redirect runs),
+// so the canonical file must contain the written content.
+func TestPlanGate_StrayPlanShapedPathRedirectIsError(t *testing.T) {
+	cwd := t.TempDir()
+	plansDir := filepath.Join(cwd, ".ion", "plans")
+	if err := os.MkdirAll(plansDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	canonicalFile := filepath.Join(plansDir, "canonical-plan.md")
+	strayFile := filepath.Join(plansDir, "old-stray-plan.md")
+	b, run, _ := planGateHelper(t, true, canonicalFile)
+
+	content := "# my plan content"
+	blocks := []types.LlmContentBlock{{
+		Name:  "Write",
+		ID:    "tc-11",
+		Input: map[string]interface{}{"file_path": strayFile, "content": content},
+	}}
+	results, err := b.executeTools(context.Background(), run, blocks, cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Result must be an error — redirect is a behavioral correction, not silent success.
+	if !results[0].IsError {
+		t.Errorf("expected redirect to stray plan-shaped path to return IsError=true, got success: %s", results[0].Content)
+	}
+
+	// Error message must name the canonical path so the model knows where to write next.
+	if !strings.Contains(results[0].Content, canonicalFile) {
+		t.Errorf("expected error message to name canonical path %s, got: %s", canonicalFile, results[0].Content)
+	}
+
+	// The content must have been physically written to the canonical file.
+	got, readErr := os.ReadFile(canonicalFile)
+	if readErr != nil {
+		t.Fatalf("canonical file not written: %v", readErr)
+	}
+	if !strings.Contains(string(got), "my plan content") {
+		t.Errorf("canonical file missing expected content; got: %s", string(got))
+	}
+
+	// The stray file must NOT exist (write was redirected away from it).
+	if _, statErr := os.Stat(strayFile); statErr == nil {
+		t.Error("stray file should not exist on disk — write was redirected")
+	}
+}
+
+// Test 12: Hard-block error message names the canonical path and gives a
+// directive to resubmit. Targets a non-plan-shaped path (not inside any
+// plans dir), so no redirect fires — it's a straight block.
+func TestPlanGate_HardBlockMessageNamesCanonicalPath(t *testing.T) {
+	cwd := t.TempDir()
+	plansDir := filepath.Join(cwd, ".ion", "plans")
+	if err := os.MkdirAll(plansDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	canonicalFile := filepath.Join(plansDir, "canonical-plan.md")
+	// nonPlanFile lives in cwd/src — inside cwd but NOT inside the plans dir.
+	srcDir := filepath.Join(cwd, "src")
+	if err := os.MkdirAll(srcDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	nonPlanFile := filepath.Join(srcDir, "not-a-plan.md")
+	b, run, _ := planGateHelper(t, true, canonicalFile)
+
+	blocks := []types.LlmContentBlock{{
+		Name:  "Write",
+		ID:    "tc-12",
+		Input: map[string]interface{}{"file_path": nonPlanFile, "content": "anything"},
+	}}
+	results, err := b.executeTools(context.Background(), run, blocks, cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !results[0].IsError {
+		t.Error("expected hard-block to return IsError=true")
+	}
+
+	// Error must name the canonical path so the model knows where to go.
+	if !strings.Contains(results[0].Content, canonicalFile) {
+		t.Errorf("expected hard-block message to name canonical path %s, got: %s", canonicalFile, results[0].Content)
+	}
+
+	// Error must contain the directive to resubmit.
+	if !strings.Contains(strings.ToLower(results[0].Content), "resubmit") {
+		t.Errorf("expected hard-block message to say 'Resubmit', got: %s", results[0].Content)
+	}
+
+	// The non-plan file must not exist.
+	if _, statErr := os.Stat(nonPlanFile); statErr == nil {
+		t.Error("non-plan file should not exist on disk after hard block")
 	}
 }
 
@@ -585,13 +683,13 @@ func TestPlanGate_BashAllowlist_PerPromptAdditionStillDeniesOthers(t *testing.T)
 	}
 }
 
-// TestPlanGate_StrayPlanFileWriteRedirectedToCanonical pins the core fix: a
-// Write to a DIFFERENT plan-shaped filename (the model invented a new plan
-// name, e.g. on a revision turn) is redirected to the canonical plan file
-// rather than blocked or written as a second stray plan file. Before the fix,
-// this path hard-blocked (IsError, canonical never written, stray never
-// created); after the fix, the write lands on the canonical file and the
-// stray name is never created.
+// TestPlanGate_StrayPlanFileWriteRedirectedToCanonical verifies that a Write
+// to a plan-shaped path that is NOT the canonical plan file (i.e. a stray
+// filename the model invented) is redirected — the content lands on the
+// canonical file — AND the tool result is an error so the model corrects its
+// path on the next attempt. Before this change, the redirect returned success
+// with a notice appended; that failed to reliably correct the model's behavior
+// when conversation history anchored it to the stray path.
 func TestPlanGate_StrayPlanFileWriteRedirectedToCanonical(t *testing.T) {
 	cwd := t.TempDir()
 	plansDir := filepath.Join(cwd, ".ion", "plans")
@@ -615,15 +713,20 @@ func TestPlanGate_StrayPlanFileWriteRedirectedToCanonical(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Not an error — the write was redirected, not blocked.
-	if results[0].IsError {
-		t.Errorf("expected redirected plan write to succeed, got error: %s", results[0].Content)
+	// Result MUST be an error — redirect is a behavioral correction signal so
+	// the model updates its path model and retries with the canonical path.
+	if !results[0].IsError {
+		t.Errorf("expected redirect to return IsError=true; got success: %s", results[0].Content)
+	}
+	// Error message must name the canonical path.
+	if !strings.Contains(results[0].Content, canonical) {
+		t.Errorf("expected error to name canonical path %s, got: %s", canonical, results[0].Content)
 	}
 	// The invented (stray) file must NOT exist on disk.
 	if _, statErr := os.Stat(invented); statErr == nil {
 		t.Error("stray plan file should not have been created")
 	}
-	// The canonical file must contain the redirected content.
+	// The canonical file must contain the redirected content — the physical write happened.
 	got, readErr := os.ReadFile(canonical)
 	if readErr != nil {
 		t.Fatalf("canonical plan file unreadable: %v", readErr)
@@ -631,15 +734,12 @@ func TestPlanGate_StrayPlanFileWriteRedirectedToCanonical(t *testing.T) {
 	if string(got) != "# revised plan" {
 		t.Errorf("canonical plan file should contain redirected content, got: %q", string(got))
 	}
-	// The tool result must carry the redirect notice so the model learns.
-	if !strings.Contains(results[0].Content, "redirected the write to the canonical plan file") {
-		t.Errorf("expected redirect notice in tool result, got: %s", results[0].Content)
-	}
 }
 
 // TestPlanGate_StrayPlanFileEditRedirectedToCanonical mirrors the Write case
 // for Edit: an Edit targeting a stray plan-shaped filename is redirected to
-// the canonical plan file.
+// the canonical plan file, but returns IsError=true as a behavioral correction
+// signal (same semantics as the Write redirect).
 func TestPlanGate_StrayPlanFileEditRedirectedToCanonical(t *testing.T) {
 	cwd := t.TempDir()
 	plansDir := filepath.Join(cwd, ".ion", "plans")
@@ -667,12 +767,18 @@ func TestPlanGate_StrayPlanFileEditRedirectedToCanonical(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if results[0].IsError {
-		t.Errorf("expected redirected plan Edit to succeed, got error: %s", results[0].Content)
+	// Result MUST be an error — redirect is a behavioral correction signal.
+	if !results[0].IsError {
+		t.Errorf("expected redirect to return IsError=true; got success: %s", results[0].Content)
+	}
+	// Error message must name the canonical path.
+	if !strings.Contains(results[0].Content, canonical) {
+		t.Errorf("expected error to name canonical path %s, got: %s", canonical, results[0].Content)
 	}
 	if _, statErr := os.Stat(invented); statErr == nil {
 		t.Error("stray plan file should not have been created by Edit")
 	}
+	// The canonical file must reflect the redirected Edit — the physical write happened.
 	got, readErr := os.ReadFile(canonical)
 	if readErr != nil {
 		t.Fatalf("canonical plan file unreadable: %v", readErr)
@@ -712,7 +818,7 @@ func TestPlanGate_NonPlanWriteStillBlocked(t *testing.T) {
 	if !results[0].IsError {
 		t.Error("expected non-plan Write to remain blocked")
 	}
-	if !strings.Contains(results[0].Content, "Plan mode: cannot write to") {
+	if !strings.Contains(results[0].Content, "not the plan file for this session") {
 		t.Errorf("expected hard-block message, got: %s", results[0].Content)
 	}
 	if _, statErr := os.Stat(nonPlan); statErr == nil {

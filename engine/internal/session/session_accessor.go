@@ -8,6 +8,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/modelconfig"
+	"github.com/dsswift/ion/engine/internal/plugins"
 	"github.com/dsswift/ion/engine/internal/permissions"
 	"github.com/dsswift/ion/engine/internal/resource"
 	"github.com/dsswift/ion/engine/internal/telemetry"
@@ -432,4 +433,37 @@ func (a *sessionAccessor) RunOnceComplete(operationID string, failed bool) {
 // disabled). Used by the dispatch path to emit dispatch.agent spans (family 4b).
 func (a *sessionAccessor) Telemetry() *telemetry.Collector {
 	return a.s.telemetry
+}
+
+// PluginSessionMessages returns the pre-built <system-reminder> user messages
+// from installed plugins' SessionStart hooks. These are set once at session
+// start and prepended to the provider message slice on every turn (including
+// dispatched child runs) so plugin instructions have full conversational
+// attention weight regardless of system prompt length.
+func (a *sessionAccessor) PluginSessionMessages() []types.LlmMessage {
+	return a.s.pluginSessionMessages
+}
+
+// PluginTurnMessages fires all installed plugins' UserPromptSubmit hooks with
+// the given prompt (passed via stdin as Claude Code JSON protocol) and returns
+// the resulting <system-reminder>-wrapped user messages. Called per turn by the
+// dispatch path to produce per-turn plugin reinforcement for dispatched agents.
+func (a *sessionAccessor) PluginTurnMessages(prompt string) []types.LlmMessage {
+	if len(a.s.pluginUserPromptHooks) == 0 {
+		return nil
+	}
+	stdinPayload := buildPromptStdinPayload(prompt)
+	var msgs []types.LlmMessage
+	for _, cmd := range a.s.pluginUserPromptHooks {
+		out, err := plugins.RunHookCommandWithStdin(cmd.Entry, cmd.PluginRoot, nil, stdinPayload)
+		if err == nil {
+			if ctx := plugins.ParseHookOutput(out); ctx != "" {
+				msgs = append(msgs, types.LlmMessage{
+					Role:    "user",
+					Content: wrapInSystemReminder("UserPromptSubmit hook additional context: " + ctx),
+				})
+			}
+		}
+	}
+	return msgs
 }

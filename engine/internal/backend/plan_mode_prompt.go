@@ -61,9 +61,10 @@ func shouldInjectPlanModeReminderForRun(turn, lastReminderTurn, conversationMess
 }
 
 func buildPlanModePrompt(planFilePath string, planFileExists bool, allowedBashCommands []string) string {
-	planFileInfo := fmt.Sprintf("No plan file exists yet. Create your plan at: %s using the Write tool.", planFilePath)
+	planFileHeader := fmt.Sprintf("**Your plan file for this session: `%s`**", planFilePath)
+	planFileInfo := fmt.Sprintf("%s\n\nNo plan file exists yet. Create it using the Write tool at that exact path.\n**This path is the plan file for your CURRENT planning cycle.** If you see different plan file paths elsewhere in this conversation (from previous planning cycles that have already been implemented), those paths are from completed cycles and are no longer active — do not write to them. Do not invent a different filename.", planFileHeader)
 	if planFileExists {
-		planFileInfo = fmt.Sprintf("Plan file exists at: %s\nYou MUST Read it first before making any changes. Use the Edit tool for targeted modifications.\nDo NOT use Write to replace the entire plan file unless you are intentionally starting over.", planFilePath)
+		planFileInfo = fmt.Sprintf("%s\n\nThe plan file already exists. You MUST Read it first before making any changes. Use the Edit tool for targeted modifications.\nDo NOT use Write to replace the entire plan file unless you are intentionally starting over.", planFileHeader)
 	}
 
 	amendSection := ""
@@ -95,7 +96,7 @@ When the user requests changes or additions, **amend the existing plan** -- do n
 
 ## Plan File
 %s
-Build your plan incrementally by writing to this file. This is the ONLY file you are allowed to create or edit. Always write to this exact path -- do not invent a new plan filename, even on a revision or when starting the plan over. If you write a plan-shaped file under a different name, the engine redirects the write to this path. All other actions must be read-only.
+Build your plan incrementally by writing to this file. This is the ONLY file you are allowed to create or edit. Always write to this exact path — do not invent a new plan filename, even on a revision or when starting the plan over. If you attempt to write to a different plan-shaped path the engine will return an error naming the canonical path above; always target it directly. All other actions must be read-only.
 %s
 ## Workflow
 
@@ -105,6 +106,7 @@ Gain a thorough understanding of the request and the code involved.
 - Actively search for existing functions, utilities, and patterns that can be reused -- do not propose new code when suitable implementations already exist
 - If spawning Agent sub-tasks, they are also restricted to read-only actions
 - Ask clarifying questions using AskUserQuestion if the request is ambiguous or if you need the user to choose between approaches
+- When you call AskUserQuestion, write the context the user needs to answer as visible assistant text before the tool call, in the same turn. The user sees only visible assistant text alongside the question — private reasoning is never shown to them, so a question with no visible lead-up gives the user nothing to decide with
 
 ### Phase 2: Design
 Design your implementation approach based on what you found.
@@ -135,6 +137,7 @@ Do not use AskUserQuestion as a way to delay calling ExitPlanMode. When you beli
 Each of your turns should end in one of two ways:
 1. **AskUserQuestion** -- if you need clarification before you can finish the plan (never for "is the plan ready?" or "should I proceed?" -- use ExitPlanMode)
    AskUserQuestion is never appropriate for: implementation logistics, execution strategy, "how should I handle X after the plan?", or any question whose answer would not change what gets written in the plan file. The user has no visibility into plan content until ExitPlanMode is called — do not ask about it.
+   Every AskUserQuestion call must be preceded by visible assistant text (in the same turn) carrying whatever context the user needs to answer. Private reasoning does not reach the user; a bare question with no visible lead-up is a defect.
 2. **ExitPlanMode** -- if the plan is complete and ready for review
 
 Do not end a turn without one of these. Do not implement anything.
@@ -144,9 +147,10 @@ Phrases like "Is this plan okay?", "Should I proceed?", "How does this plan look
 
 ## Restrictions
 - You MUST NOT call Write or Edit on any file except the plan file
-- You MUST NOT invent a new plan filename; always write to the exact plan file path above (the engine redirects stray plan writes to it)
+- You MUST NOT write to any plan file path other than the one shown above — not a plan file from a previous cycle, not any path you invent. The path shown above is the ONLY valid plan file for this session. If you attempt to write to a different plan-shaped path the engine will return an error and name the canonical path; always target the path above directly
 %s
 - You MUST NOT make commits, change configs, or install packages
+- Dispatching or delegating to a sub-agent via a plan-mode-safe tool IS permitted: spawning a child agent does not mutate the system, and the dispatched sub-agent may itself run in plan mode and surface a plan back to you
 - Sub-agents you spawn are also read-only -- do not instruct them to make edits
 - If you are unsure whether an action is read-only, do not take it%s`, planFileInfo, amendSection, readOnlyTools, bashRestriction, bashSection)
 }
@@ -161,12 +165,14 @@ func buildPlanModeSparseReminder(planFilePath string) string {
 	}
 
 	return fmt.Sprintf(
-		"Plan mode still active (see full instructions from earlier in conversation). "+
-			"Read-only except the plan file (%s) — that exact path is the ONLY file you may write. "+
-			"Do not invent a new plan filename, even on a revision; always reuse that path. "+
-			"If you write to a different plan filename the engine redirects it to the canonical path above.%s "+
+		"Plan mode still active (see full instructions earlier in conversation). "+
+			"Read-only except the plan file. "+
+			"**Your plan file for this session: `%s`** — this is the only valid plan file for this session. "+
+			"Do NOT use any plan file path you see elsewhere in conversation history — those paths are from prior completed cycles and are no longer valid. "+
+			"Do not invent a new plan filename. Always target the path above directly.%s "+
 			"End turns with AskUserQuestion (for clarifications) or ExitPlanMode (for plan approval). "+
 			"Never use AskUserQuestion to ask for plan approval -- that is what ExitPlanMode is for. "+
+			"AskUserQuestion must be preceded by visible assistant text giving the user the context needed to answer; a bare question with no visible lead-up (reasoning only) is a defect. "+
 			"If the plan is written and complete, call ExitPlanMode — do not delay with another question. The user has no visibility into plan content until ExitPlanMode is called. "+
 			"Forbidden as prose: \"Is this plan okay?\", \"Should I proceed?\", \"Let me know if you'd like changes\", \"How does this plan look?\" -- these must use ExitPlanMode or AskUserQuestion.",
 		planFilePath, amendHint)

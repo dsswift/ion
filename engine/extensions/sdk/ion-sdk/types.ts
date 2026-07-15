@@ -150,6 +150,26 @@ export interface DispatchAgentOpts {
   allowedSubAgents?: string[]
 
   /**
+   * Marks this dispatch as the "implement" half of a plan-then-implement
+   * flow: the plan is already approved and the child must execute it
+   * directly. When true, the engine skips injecting the EnterPlanMode
+   * sentinel tool into the child run, so the child can never stall by
+   * proposing plan mode mid-implementation. Set this on every dispatch that
+   * hands over an approved plan or a pre-investigated execute-mode brief.
+   */
+  implementationPhase?: boolean
+
+  /**
+   * Removes the named tools from the child session's tool set. Unlike
+   * allowedTools (a whitelist replacing the default set), this is a targeted
+   * blacklist layered on top of whatever set the child would otherwise get.
+   * Canonical use: suppress the engine's built-in Agent tool in children
+   * whose delegation must route through the harness's own dispatch tool, so
+   * the child cannot bypass the harness's tier resolution and allowlists.
+   */
+  suppressTools?: string[]
+
+  /**
    * Ordered list of alternative model IDs the child run's retry loop walks
    * when the primary model is overloaded (typically the tail of a resolved
    * tier chain). When empty, the child relies only on the engine's default
@@ -479,6 +499,34 @@ export interface HistoryMatch {
 }
 
 /**
+ * A single active dispatch entry returned by {@link IonContext.listDispatchState}.
+ *
+ * - `dispatchId`: collision-safe unique ID for this dispatch instance. Use this
+ *   to address {@link IonContext.recallAgent} / {@link IonContext.steerDispatch}
+ *   when multiple dispatches of the same agent name may be running.
+ * - `name`: the agent name (e.g. `"code-reviewer"`).
+ * - `status`: always `"running"` — the registry only tracks in-flight dispatches.
+ *   Terminal entries are deregistered on completion and absent from the snapshot.
+ * - `parentDispatchId`: the dispatch ID of the parent that spawned this dispatch.
+ *   Empty for top-level dispatches (depth 1) whose parent is the depth-0
+ *   orchestrator (which has no dispatch ID).
+ * - `depth`: nesting depth. `1` = direct child of the orchestrator, `2` =
+ *   grandchild, etc.
+ * - `startedAt`: UTC ISO-8601 timestamp (RFC3339Nano) when the dispatch was
+ *   registered in the engine registry.
+ * - `elapsedMs`: milliseconds elapsed since `startedAt` at snapshot time.
+ */
+export interface DispatchEntry {
+  dispatchId: string
+  name: string
+  status: 'running'
+  parentDispatchId?: string
+  depth: number
+  startedAt: string
+  elapsedMs: number
+}
+
+/**
  * Options for {@link IonContext.llmCall}. The lightweight one-shot
  * inference primitive — a single round-trip to the provider with no
  * tools, no agent loop, no fallback chain.
@@ -657,6 +705,33 @@ export interface IonContext {
    *  engine restarts. Use this for resource scoping, audit trails, and
    *  persistent identity. Empty when no conversation is active. */
   conversationId: string
+  /**
+   * Dispatch depth of the session that fired the hook: `0` for the root
+   * (orchestrator) session, `1` for a directly dispatched child agent,
+   * `2` for a grandchild, and so on.
+   *
+   * This is the explicit root-vs-child discriminator for hooks whose
+   * payload carries no agent identity — `session_start`, `session_end`,
+   * `turn_start` and friends. A handler that should only act for the root
+   * session (a greeting toast, a startup git sync, a one-time bootstrap)
+   * branches on `ctx.depth === 0`. Mirrors `AgentInfo.isRoot` on
+   * `before_agent_start`, which discriminates per-firing rather than
+   * per-session.
+   *
+   * @example
+   * ```ts
+   * ion.on('session_start', (ctx) => {
+   *   if (ctx.depth > 0) return // dispatched child — skip root-only bootstrap
+   *   ctx.emit({ type: 'engine_notify', message: 'harness online', level: 'info' })
+   * })
+   * ```
+   */
+  depth: number
+  /** Dispatch ID owning this context. Empty for the root session
+   *  (`depth === 0`); populated for child sessions with the ID minted when
+   *  the agent was spawned, so per-dispatch state can be keyed without
+   *  inventing a session-local identity. */
+  dispatchId: string
   cwd: string
   model: { id: string; contextWindow: number } | null
   config: ExtensionConfig
@@ -815,6 +890,22 @@ export interface IonContext {
    */
   steerDispatch(dispatchId: string, message: string): Promise<SteerDispatchResult>
   /**
+   * Deliver a steering message to a running background dispatch identified by
+   * its agent **name**. This is the name-based peer of {@link steerDispatch}:
+   * where `steerDispatch` requires the full collision-safe dispatch ID returned
+   * by {@link dispatchAgent}, `steerDispatchByName` resolves by the
+   * human-readable agent name (e.g. `'code-reviewer'`). When multiple
+   * dispatches share a name, the first one found is steered (non-deterministic
+   * order, matching {@link recallAgent}'s name-based semantics). Use
+   * {@link steerDispatch} when the exact dispatch ID is available for precise
+   * targeting.
+   *
+   * @param name    - The agent name as registered (e.g. `'code-reviewer'`).
+   * @param message - The steering message to inject.
+   * @returns A result describing the delivery outcome.
+   */
+  steerDispatchByName(name: string, message: string): Promise<SteerDispatchResult>
+  /**
    * Answer a pending child dispatch question raised via AskUserQuestion.
    * Normally called by the SDK runtime on the dispatcher's behalf after the
    * `onChildQuestion` callback resolves; harnesses implementing custom
@@ -955,6 +1046,24 @@ export interface IonContext {
    * ```
    */
   searchHistory(query: string, maxResults?: number): Promise<HistoryMatch[]>
+
+  /**
+   * Returns a point-in-time snapshot of every dispatch currently active in
+   * this session's engine registry. All returned entries carry
+   * `status: "running"` because the registry only tracks in-flight dispatches
+   * — terminal entries are deregistered on completion and absent from the
+   * snapshot.
+   *
+   * Use this to enumerate running background agents and their nesting
+   * relationships without subscribing to `engine_agent_state` events.
+   * Complements {@link IonContext.recallAgent} and
+   * {@link IonContext.steerDispatch}: get the `dispatchId` from here, then
+   * target the specific dispatch precisely.
+   *
+   * Returns an empty array when no dispatches are active or when the engine
+   * does not support this RPC (older engine builds).
+   */
+  listDispatchState(): Promise<DispatchEntry[]>
 
   /**
    * One-shot lightweight inference call. Fires a single round-trip to

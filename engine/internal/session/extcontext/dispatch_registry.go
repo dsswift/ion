@@ -1,12 +1,36 @@
 package extcontext
 
 import (
-	"fmt"
 	"sync"
+	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
+
+// DispatchStateEntry is a point-in-time snapshot of a single active dispatch.
+// Returned by DispatchRegistry.Snapshot for the ext/list_dispatch_state RPC.
+// Only active (running) dispatches appear; terminal entries are deregistered
+// and therefore absent.
+type DispatchStateEntry struct {
+	// DispatchID is the collision-safe unique ID for this dispatch instance.
+	DispatchID string `json:"dispatchId"`
+	// Name is the agent name (e.g. "code-reviewer").
+	Name string `json:"name"`
+	// Status is always "running" — the registry only holds active dispatches.
+	Status string `json:"status"`
+	// ParentDispatchID is the dispatch ID of the parent that spawned this
+	// dispatch. Empty for top-level dispatches (depth 1 whose parent is the
+	// depth-0 orchestrator, which has no dispatch ID).
+	ParentDispatchID string `json:"parentDispatchId,omitempty"`
+	// Depth is the nesting depth. 1 = direct child of the orchestrator,
+	// 2 = grandchild, etc.
+	Depth int `json:"depth"`
+	// StartedAt is the UTC wall-clock time when the dispatch was registered.
+	StartedAt time.Time `json:"startedAt"`
+	// ElapsedMs is the milliseconds elapsed since StartedAt at snapshot time.
+	ElapsedMs int64 `json:"elapsedMs"`
+}
 
 // DispatchRegistry is a thread-safe registry of active background dispatches,
 // keyed by dispatch ID (the collision-safe agentID). Multiple concurrent
@@ -83,6 +107,10 @@ type activeDispatch struct {
 	// initialises and emits its SessionID. Updated via SetChildConvID.
 	// Empty until the child session initialises.
 	ChildConvID string
+
+	// StartedAt is the wall-clock time when the dispatch was registered.
+	// Used by Snapshot to compute ElapsedMs without per-entry timers.
+	StartedAt time.Time
 }
 
 // NewDispatchRegistry returns an empty, ready-to-use registry.
@@ -111,9 +139,7 @@ func (r *DispatchRegistry) RegisterWithID(id, name string, cancel func(), child 
 	r.totalRegistrations++
 
 	if _, exists := r.dispatches[id]; exists {
-		utils.Warn("DispatchRegistry", fmt.Sprintf(
-			"Register: overwriting existing dispatch id=%q name=%q session=%s", id, name, sessionID,
-		))
+		utils.LogWithFields(utils.LevelWarn, "session.extcontext.dispatch_registry", "register overwriting existing dispatch", map[string]any{"run_id": id, "model": name, "session_id": sessionID})
 	}
 
 	r.dispatches[id] = &activeDispatch{
@@ -124,10 +150,9 @@ func (r *DispatchRegistry) RegisterWithID(id, name string, cancel func(), child 
 		SessionID: sessionID,
 		ParentID:  parentID,
 		Depth:     depth,
+		StartedAt: time.Now(),
 	}
-	utils.Log("DispatchRegistry", fmt.Sprintf(
-		"Register: id=%q name=%q session=%s depth=%d parentID=%q active=%d", id, name, sessionID, depth, parentID, len(r.dispatches),
-	))
+	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "register", map[string]any{"run_id": id, "model": name, "session_id": sessionID, "count": depth, "max": len(r.dispatches)})
 }
 
 // SetChildRunID updates the ChildRunID on an existing dispatch entry.
@@ -140,15 +165,11 @@ func (r *DispatchRegistry) SetChildRunID(id, childRunID string) {
 	defer r.mu.Unlock()
 	d, ok := r.dispatches[id]
 	if !ok {
-		utils.Debug("DispatchRegistry", fmt.Sprintf(
-			"SetChildRunID: id=%q not found (no-op)", id,
-		))
+		utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "set child run id not found", map[string]any{"run_id": id})
 		return
 	}
 	d.ChildRunID = childRunID
-	utils.Debug("DispatchRegistry", fmt.Sprintf(
-		"SetChildRunID: id=%q childRunID=%q", id, childRunID,
-	))
+	utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "set child run id", map[string]any{"run_id": id, "reason": childRunID})
 }
 
 // SetAllowedSubAgents records the set of agent names the dispatch identified
@@ -159,15 +180,11 @@ func (r *DispatchRegistry) SetAllowedSubAgents(id string, allowed []string) {
 	defer r.mu.Unlock()
 	d, ok := r.dispatches[id]
 	if !ok {
-		utils.Debug("DispatchRegistry", fmt.Sprintf(
-			"SetAllowedSubAgents: id=%q not found (no-op)", id,
-		))
+		utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "setallowedsubagents: not found (no-op)", map[string]any{"run_id": id})
 		return
 	}
 	d.AllowedSubAgents = allowed
-	utils.Debug("DispatchRegistry", fmt.Sprintf(
-		"SetAllowedSubAgents: id=%q allowed=%v", id, allowed,
-	))
+	utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "set allowed sub agents", map[string]any{"run_id": id, "count": len(allowed)})
 }
 
 // AllowedSubAgentsForID returns the allowlist recorded for the dispatch
@@ -179,7 +196,7 @@ func (r *DispatchRegistry) AllowedSubAgentsForID(id string) ([]string, bool) {
 	defer r.mu.Unlock()
 	d, ok := r.dispatches[id]
 	if !ok {
-		utils.Debug("DispatchRegistry", fmt.Sprintf("AllowedSubAgentsForID: id=%q not found", id))
+		utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "allowedsubagentsforid: not found", map[string]any{"run_id": id})
 		return nil, false
 	}
 	return d.AllowedSubAgents, true
@@ -193,17 +210,27 @@ func (r *DispatchRegistry) Deregister(id string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if _, exists := r.dispatches[id]; !exists {
-		utils.Debug("DispatchRegistry", fmt.Sprintf(
-			"Deregister: id=%q not found (no-op)", id,
-		))
+	d, exists := r.dispatches[id]
+	if !exists {
+		utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "deregister not found", map[string]any{"run_id": id})
 		return
 	}
 
+	// Invariant check: deregistering a dispatch whose child run is still active
+	// is anomalous — it means either a race (Recall fired while the run was live
+	// and then the normal Deregister path also ran) or a desync (panic recovery
+	// deregistered but the run survived the panic). Log it so the next occurrence
+	// is attributable to a specific code path rather than lost in log truncation.
+	// Best-effort: IsRunning is false for CliBackend (external processes), which
+	// is acceptable — the ERROR log on the in-process backends is what matters.
+	if d.Child != nil && d.Child.IsRunning(d.ChildRunID) {
+		utils.LogWithFields(utils.LevelError, "session.extcontext.dispatch_registry", "deregister invariant violation removing registry entry while child run is active", map[string]any{
+			"run_id": id, "model": d.Name, "session_id": d.SessionID,
+		})
+	}
+
 	delete(r.dispatches, id)
-	utils.Log("DispatchRegistry", fmt.Sprintf(
-		"Deregister: id=%q removed active=%d", id, len(r.dispatches),
-	))
+	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "deregister removed", map[string]any{"run_id": id, "count": len(r.dispatches)})
 }
 
 // Get retrieves the active dispatch for the given ID. The second return
@@ -215,12 +242,10 @@ func (r *DispatchRegistry) Get(id string) (*activeDispatch, bool) {
 
 	d, ok := r.dispatches[id]
 	if !ok {
-		utils.Debug("DispatchRegistry", fmt.Sprintf("Get: id=%q not found", id))
+		utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "get: not found", map[string]any{"run_id": id})
 		return nil, false
 	}
-	utils.Debug("DispatchRegistry", fmt.Sprintf(
-		"Get: id=%q name=%q session=%s depth=%d parentID=%q", id, d.Name, d.SessionID, d.Depth, d.ParentID,
-	))
+	utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "get", map[string]any{"run_id": id, "model": d.Name, "session_id": d.SessionID})
 	return d, true
 }
 
@@ -237,10 +262,10 @@ func (r *DispatchRegistry) NameForID(id string) (string, bool) {
 
 	d, ok := r.dispatches[id]
 	if !ok {
-		utils.Debug("DispatchRegistry", fmt.Sprintf("NameForID: id=%q not found", id))
+		utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "nameforid: not found", map[string]any{"run_id": id})
 		return "", false
 	}
-	utils.Debug("DispatchRegistry", fmt.Sprintf("NameForID: id=%q name=%q", id, d.Name))
+	utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "nameforid", map[string]any{"run_id": id, "model": d.Name})
 	return d.Name, true
 }
 
@@ -263,9 +288,7 @@ func (r *DispatchRegistry) Recall(name string, reason string) bool {
 	}
 	if found == nil {
 		r.mu.Unlock()
-		utils.Log("DispatchRegistry", fmt.Sprintf(
-			"Recall: name=%q not found reason=%q", name, reason,
-		))
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recall: not found", map[string]any{"model": name, "reason": reason})
 		return false
 	}
 
@@ -294,26 +317,18 @@ func (r *DispatchRegistry) Recall(name string, reason string) bool {
 	// Cancel descendants first (leaves before parent) for orderly teardown.
 	for i := len(descDispatches) - 1; i >= 0; i-- {
 		dd := descDispatches[i]
-		utils.Log("DispatchRegistry", fmt.Sprintf(
-			"Recall: cascade cancelling descendant id=%q name=%q reason=%q",
-			descIDs[i], dd.Name, reason,
-		))
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recall: cascade cancelling descendant", map[string]any{"desc_i_ds_i": descIDs[i], "model": dd.Name, "reason": reason})
 		if dd.Cancel != nil {
 			dd.Cancel()
 		}
 	}
 
-	utils.Log("DispatchRegistry", fmt.Sprintf(
-		"Recall: cancelling id=%q name=%q session=%s reason=%q descendants=%d active=%d",
-		foundID, name, found.SessionID, reason, len(descDispatches), r.Count(),
-	))
+	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recall: cancelling", map[string]any{"found_i_d": foundID, "model": name, "session_id": found.SessionID, "reason": reason, "count": len(descDispatches), "count_5": r.Count()})
 
 	if found.Cancel != nil {
 		found.Cancel()
 	} else {
-		utils.Error("DispatchRegistry", fmt.Sprintf(
-			"Recall: id=%q name=%q has nil Cancel func, dispatch leaked", foundID, name,
-		))
+		utils.LogWithFields(utils.LevelError, "session.extcontext.dispatch_registry", "recall: has nil cancel func, dispatch leaked", map[string]any{"found_i_d": foundID, "model": name})
 	}
 
 	return true
@@ -327,9 +342,7 @@ func (r *DispatchRegistry) RecallByID(id string, reason string) bool {
 	d, exists := r.dispatches[id]
 	if !exists {
 		r.mu.Unlock()
-		utils.Log("DispatchRegistry", fmt.Sprintf(
-			"RecallByID: id=%q not found reason=%q", id, reason,
-		))
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recallbyid: not found", map[string]any{"run_id": id, "reason": reason})
 		return false
 	}
 
@@ -358,26 +371,18 @@ func (r *DispatchRegistry) RecallByID(id string, reason string) bool {
 	// Cancel descendants first (leaves before parent).
 	for i := len(descDispatches) - 1; i >= 0; i-- {
 		dd := descDispatches[i]
-		utils.Log("DispatchRegistry", fmt.Sprintf(
-			"RecallByID: cascade cancelling descendant id=%q name=%q reason=%q",
-			descIDs[i], dd.Name, reason,
-		))
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recallbyid: cascade cancelling descendant", map[string]any{"desc_i_ds_i": descIDs[i], "model": dd.Name, "reason": reason})
 		if dd.Cancel != nil {
 			dd.Cancel()
 		}
 	}
 
-	utils.Log("DispatchRegistry", fmt.Sprintf(
-		"RecallByID: cancelling id=%q name=%q session=%s reason=%q descendants=%d active=%d",
-		id, d.Name, d.SessionID, reason, len(descDispatches), r.Count(),
-	))
+	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recallbyid: cancelling", map[string]any{"run_id": id, "model": d.Name, "session_id": d.SessionID, "reason": reason, "count": len(descDispatches), "count_5": r.Count()})
 
 	if d.Cancel != nil {
 		d.Cancel()
 	} else {
-		utils.Error("DispatchRegistry", fmt.Sprintf(
-			"RecallByID: id=%q name=%q has nil Cancel func, dispatch leaked", id, d.Name,
-		))
+		utils.LogWithFields(utils.LevelError, "session.extcontext.dispatch_registry", "recallbyid: has nil cancel func, dispatch leaked", map[string]any{"run_id": id, "model": d.Name})
 	}
 
 	return true
@@ -398,26 +403,18 @@ func (r *DispatchRegistry) RecallAll(reason string) int {
 	r.mu.Unlock()
 
 	if len(snapshot) == 0 {
-		utils.Debug("DispatchRegistry", fmt.Sprintf(
-			"RecallAll: no active dispatches reason=%q", reason,
-		))
+		utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "recallall: no active dispatches", map[string]any{"reason": reason})
 		return 0
 	}
 
-	utils.Log("DispatchRegistry", fmt.Sprintf(
-		"RecallAll: cancelling %d dispatch(es) reason=%q", len(snapshot), reason,
-	))
+	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recallall: cancelling dispatch(es)", map[string]any{"count": len(snapshot), "reason": reason})
 
 	for _, d := range snapshot {
-		utils.Log("DispatchRegistry", fmt.Sprintf(
-			"RecallAll: cancelling id=%q name=%q session=%s reason=%q", d.ID, d.Name, d.SessionID, reason,
-		))
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recallall: cancelling", map[string]any{"run_id": d.ID, "model": d.Name, "session_id": d.SessionID, "reason": reason})
 		if d.Cancel != nil {
 			d.Cancel()
 		} else {
-			utils.Error("DispatchRegistry", fmt.Sprintf(
-				"RecallAll: id=%q name=%q has nil Cancel func, dispatch leaked", d.ID, d.Name,
-			))
+			utils.LogWithFields(utils.LevelError, "session.extcontext.dispatch_registry", "recallall: has nil cancel func, dispatch leaked", map[string]any{"run_id": d.ID, "model": d.Name})
 		}
 	}
 
@@ -517,10 +514,7 @@ func (r *DispatchRegistry) SteerByID(dispatchID, message string) SteerDispatchOu
 	entry, ok := r.dispatches[dispatchID]
 	if !ok {
 		r.mu.Unlock()
-		utils.Log("DispatchRegistry", fmt.Sprintf(
-			"SteerByID: id=%q not found msgLen=%d outcome=%s",
-			dispatchID, len(message), SteerOutcomeNotFound,
-		))
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "steerbyid: not found", map[string]any{"run_id": dispatchID, "count": len(message), "steer_outcome_not_found": SteerOutcomeNotFound})
 		return SteerOutcomeNotFound
 	}
 	child := entry.Child
@@ -530,10 +524,7 @@ func (r *DispatchRegistry) SteerByID(dispatchID, message string) SteerDispatchOu
 
 	s, ok := child.(Steerable)
 	if !ok {
-		utils.Warn("DispatchRegistry", fmt.Sprintf(
-			"SteerByID: id=%q name=%q child backend does not implement Steerable outcome=%s",
-			dispatchID, name, SteerOutcomeNoRun,
-		))
+		utils.LogWithFields(utils.LevelWarn, "session.extcontext.dispatch_registry", "steerbyid: child backend does not implement steerable", map[string]any{"run_id": dispatchID, "model": name, "steer_outcome_no_run": SteerOutcomeNoRun})
 		return SteerOutcomeNoRun
 	}
 
@@ -550,11 +541,35 @@ func (r *DispatchRegistry) SteerByID(dispatchID, message string) SteerDispatchOu
 		outcome = SteerOutcomeNoRun
 	}
 
-	utils.Log("DispatchRegistry", fmt.Sprintf(
-		"SteerByID: id=%q name=%q childRunID=%q msgLen=%d backendResult=%s outcome=%s",
-		dispatchID, name, childRunID, len(message), result, outcome,
-	))
+	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "steerbyid", map[string]any{"run_id": dispatchID, "model": name, "run_id_2": childRunID, "count": len(message), "result": result, "outcome": outcome})
 	return outcome
+}
+
+// SteerByName delivers a steering message to a running background dispatch
+// identified by its agent name. It iterates the registry to find the first
+// entry where d.Name == name, then delegates to SteerByID on that entry's
+// dispatch ID. Returns SteerOutcomeNotFound when no dispatch with that name
+// exists. When multiple dispatches share a name, the first one found is
+// steered (non-deterministic order, matching Recall's existing semantics).
+// Use SteerByID for precise targeting when a specific dispatch ID is known.
+func (r *DispatchRegistry) SteerByName(name, message string) SteerDispatchOutcome {
+	r.mu.Lock()
+	var foundID string
+	for id, d := range r.dispatches {
+		if d.Name == name {
+			foundID = id
+			break
+		}
+	}
+	r.mu.Unlock()
+
+	if foundID == "" {
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "steerbyname: not found", map[string]any{"model": name, "count": len(message), "steer_outcome_not_found": SteerOutcomeNotFound})
+		return SteerOutcomeNotFound
+	}
+
+	utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "steerbyname: resolved to id", map[string]any{"model": name, "run_id": foundID})
+	return r.SteerByID(foundID, message)
 }
 
 // SetChildConvID records the child conversation ID for a dispatch entry once
@@ -568,7 +583,7 @@ func (r *DispatchRegistry) SetChildConvID(id, convID string) {
 		return
 	}
 	d.ChildConvID = convID
-	utils.Debug("DispatchRegistry", fmt.Sprintf("SetChildConvID: id=%q convID=%q", id, convID))
+	utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "setchildconvid", map[string]any{"run_id": id, "run_id_1": convID})
 }
 
 // LiveConvIDs returns the child conversation IDs of all currently active
@@ -585,4 +600,28 @@ func (r *DispatchRegistry) LiveConvIDs() []string {
 		}
 	}
 	return ids
+}
+
+// Snapshot returns a point-in-time copy of every currently active dispatch as
+// a slice of DispatchStateEntry values. Entries are always status="running"
+// because the registry only holds in-flight dispatches (Deregister removes
+// entries on completion). Thread-safe; safe to call from any goroutine.
+func (r *DispatchRegistry) Snapshot() []DispatchStateEntry {
+	now := time.Now()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	entries := make([]DispatchStateEntry, 0, len(r.dispatches))
+	for _, d := range r.dispatches {
+		entries = append(entries, DispatchStateEntry{
+			DispatchID:       d.ID,
+			Name:             d.Name,
+			Status:           "running",
+			ParentDispatchID: d.ParentID,
+			Depth:            d.Depth,
+			StartedAt:        d.StartedAt,
+			ElapsedMs:        now.Sub(d.StartedAt).Milliseconds(),
+		})
+	}
+	return entries
 }

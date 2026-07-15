@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -198,6 +199,101 @@ func (h *Host) callHook(method string, ctx *Context, payload interface{}) (json.
 		}
 		return nil, errExtensionDeadSilent
 	}
+	wrapped := h.buildHookEnvelope(ctx, payload)
+
+	h.ctxStack.Push(ctx)
+	defer h.ctxStack.Pop()
+
+	// Snapshot the telemetry sink under notifMu (identical discipline to the
+	// persistentEmit callbacks the readLoop reads). A nil sink means telemetry
+	// is disabled for this session (or the host was loaded before wiring): the
+	// terminal round-trip runs exactly as before and nothing is emitted.
+	h.notifMu.RLock()
+	telemFn := h.telemFn
+	h.notifMu.RUnlock()
+
+	// This is the per-handler chokepoint every subprocess hook funnels through,
+	// so it is the single seam where extension identity, the real fired hook
+	// kind, the subprocess RPC latency, and session correlation all coexist.
+	// Emit the authoritative extension.hook_latency here, wrapping the round-trip.
+	start := time.Now()
+	raw, err := h.call(method, wrapped)
+	if telemFn == nil {
+		return raw, err
+	}
+
+	latencyMs := float64(time.Since(start).Microseconds()) / 1000.0
+	hookKind := strings.TrimPrefix(method, "hook/")
+
+	// blocked is read precisely from the RPC result, not heuristically: the
+	// veto forwarders decode the same top-level {block} field from the raw
+	// response. Non-veto hooks omit the field, so blocked stays false.
+	blocked := false
+	if err == nil && len(raw) > 0 {
+		var parsed struct {
+			Block bool `json:"block"`
+		}
+		if json.Unmarshal(raw, &parsed) == nil {
+			blocked = parsed.Block
+		}
+	}
+
+	// turn is the live run turn at hook-fire time. Nil when the context is not
+	// bound to an active run (session_start, schedules) — guarded to 0.
+	var turn int64
+	if ctx != nil && ctx.GetTurn != nil {
+		turn = ctx.GetTurn()
+	}
+
+	sessionKey := ""
+	conversationID := ""
+	if ctx != nil {
+		sessionKey = ctx.SessionKey
+		conversationID = ctx.ConversationID
+	}
+
+	// Correlation ctx mirrors session/telemetry_ctx.go correlationCtxExt:
+	// {session_id, conversation_id, extension, extension_version}. run_id is
+	// intentionally omitted — the extension layer holds no run pointer, and the
+	// peer session-layer builder omits it too. session_id + conversation_id are
+	// the join keys.
+	corr := map[string]any{
+		"session_id": sessionKey,
+		"extension":  h.name,
+	}
+	if conversationID != "" {
+		corr["conversation_id"] = conversationID
+	}
+	if h.version != "" {
+		corr["extension_version"] = h.version
+	}
+
+	telemFn("extension.hook_latency", map[string]any{
+		"extension":  h.name,
+		"hook":       hookKind,
+		"latency_ms": latencyMs,
+		"turn":       turn,
+		"blocked":    blocked,
+	}, corr)
+
+	utils.LogWithFields(utils.LevelDebug, "extension", "hook_latency emitted", map[string]any{
+		"extension":      h.name,
+		"hook":           hookKind,
+		"latency_ms":     latencyMs,
+		"turn":           turn,
+		"blocked":        blocked,
+		"session_id":      sessionKey,
+		"conversation_id": conversationID,
+	})
+	return raw, err
+}
+
+// buildHookEnvelope wraps a hook payload with the `_ctx` context-metadata
+// block sent to the subprocess, then merges the hook-specific payload into
+// the same map. Pure with respect to IPC — extracted from callHook so the
+// wire shape of `_ctx` (which keys appear, and when) can be pinned by tests
+// without a live subprocess.
+func (h *Host) buildHookEnvelope(ctx *Context, payload interface{}) map[string]interface{} {
 	wrapped := map[string]interface{}{
 		"_ctx": map[string]interface{}{
 			"cwd": ctx.Cwd,
@@ -208,6 +304,15 @@ func (h *Host) callHook(method string, ctx *Context, payload interface{}) (json.
 	}
 	if ctx.ConversationID != "" {
 		wrapped["_ctx"].(map[string]interface{})["conversationId"] = ctx.ConversationID
+	}
+	// Dispatch identity: emitted only for child sessions (depth > 0) so the
+	// wire stays additive — SDK runtimes default depth to 0 / dispatchId to
+	// "" when the keys are absent, which is exactly the root-session shape.
+	if ctx.Depth > 0 {
+		wrapped["_ctx"].(map[string]interface{})["depth"] = ctx.Depth
+	}
+	if ctx.DispatchId != "" {
+		wrapped["_ctx"].(map[string]interface{})["dispatchId"] = ctx.DispatchId
 	}
 	if ctx.Model != nil {
 		wrapped["_ctx"].(map[string]interface{})["model"] = map[string]interface{}{
@@ -246,10 +351,7 @@ func (h *Host) callHook(method string, ctx *Context, payload interface{}) (json.
 			wrapped["_payload"] = payload
 		}
 	}
-
-	h.ctxStack.Push(ctx)
-	defer h.ctxStack.Pop()
-	return h.call(method, wrapped)
+	return wrapped
 }
 
 // readLoop continuously reads JSON-RPC responses from subprocess stdout and
@@ -266,7 +368,7 @@ func (h *Host) readLoop(stdout *bufio.Scanner) {
 		wasAlive := !h.dead.Load()
 		if wasAlive {
 			h.dead.Store(true)
-			utils.Log("extension", fmt.Sprintf("subprocess stdout closed unexpectedly (ext=%s)", h.name))
+			utils.LogWithFields(utils.LevelInfo, "extension", "subprocess stdout closed unexpectedly ()", map[string]any{"model": h.name})
 		}
 		// Signal dead BEFORE draining so callers racing the add-to-pending
 		// step (between dead.Load() and pending[id]=ch) can observe death
@@ -347,7 +449,7 @@ func (h *Host) readLoop(stdout *bufio.Scanner) {
 				if len(preview) > 200 {
 					preview = preview[:200] + "...(truncated)"
 				}
-				utils.Warn("extension", fmt.Sprintf("non-JSON line from subprocess (ext=%s err=%v): %q", h.name, err, preview))
+				utils.LogWithFields(utils.LevelWarn, "extension", "non-json line from subprocess ( )", map[string]any{"model": h.name, "error": err, "preview": preview})
 			}
 			continue
 		}
@@ -362,13 +464,13 @@ func (h *Host) readLoop(stdout *bufio.Scanner) {
 		if ok {
 			ch <- &resp
 		} else {
-			utils.Log("extension", fmt.Sprintf("unexpected response id=%d (no pending call)", resp.ID))
+			utils.LogWithFields(utils.LevelInfo, "extension", "unexpected response (no pending call)", map[string]any{"run_id": resp.ID})
 		}
 	}
 	// Log scanner errors explicitly so buffer overflows and I/O failures
 	// are never silently swallowed as "subprocess died".
 	if err := stdout.Err(); err != nil {
-		utils.Error("extension", fmt.Sprintf("stdout scanner error (ext=%s): %v", h.name, err))
+		utils.LogWithFields(utils.LevelError, "extension", "stdout scanner error ()", map[string]any{"model": h.name, "error": err})
 	}
 }
 

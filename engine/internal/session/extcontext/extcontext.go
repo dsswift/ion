@@ -189,6 +189,22 @@ type SessionAccessor interface {
 	// telemetry is disabled. Used by the dispatch path to emit dispatch.agent
 	// spans (family 4b). Nil-safe: callers guard on a nil return.
 	Telemetry() *telemetry.Collector
+
+	// PluginSessionMessages returns the ephemeral LlmMessage values built from
+	// all installed plugins' SessionStart hook output for this session. These
+	// are <system-reminder>-wrapped user messages to be prepended to the
+	// provider message slice on every turn, giving plugin instructions full
+	// conversational attention weight. The slice is nil when no plugins are
+	// installed or no SessionStart hooks produced output. Callers must not
+	// mutate the returned slice.
+	PluginSessionMessages() []types.LlmMessage
+
+	// PluginTurnMessages fires all installed plugins' UserPromptSubmit hooks
+	// with the given prompt (passed via stdin as Claude Code JSON protocol)
+	// and returns the resulting <system-reminder>-wrapped user messages. Called
+	// on each turn by the dispatch path to produce per-turn plugin reinforcement
+	// messages. Returns nil when no plugins have UserPromptSubmit hooks.
+	PluginTurnMessages(prompt string) []types.LlmMessage
 }
 
 // ExtContextOpts holds optional configuration for NewExtContext. All fields
@@ -231,7 +247,12 @@ func NewExtContext(sa SessionAccessor, args ...interface{}) *extension.Context {
 	ctx := &extension.Context{
 		SessionKey:     sa.SessionKey(),
 		ConversationID: sa.ConversationID(),
-		Cwd:            sa.WorkingDirectory(),
+		// Dispatch identity travels on the context so every hook fired in a
+		// child session (session_start included, whose payload is nil) can
+		// discriminate root (Depth 0) from dispatched children (Depth > 0).
+		Depth:      depth,
+		DispatchId: dispatchId,
+		Cwd:        sa.WorkingDirectory(),
 		Emit: func(ev types.EngineEvent) {
 			if ev.Type == "engine_agent_state" {
 				// Cache extension-emitted agent states, then re-emit a merged
@@ -355,6 +376,34 @@ func NewExtContext(sa SessionAccessor, args ...interface{}) *extension.Context {
 				Delivered: outcome == SteerOutcomeDelivered,
 				Outcome:   string(outcome),
 			}, nil
+		}
+		ctx.SteerDispatchByName = func(name, message string) (extension.SteerDispatchResult, error) {
+			outcome := registry.SteerByName(name, message)
+			return extension.SteerDispatchResult{
+				Delivered: outcome == SteerOutcomeDelivered,
+				Outcome:   string(outcome),
+			}, nil
+		}
+
+		// Wire dispatch-state listing: exposes the live registry snapshot to
+		// extensions so they can inspect running dispatches without polling
+		// engine_agent_state events. Always available when a registry is wired;
+		// returns an empty slice (not nil) when no dispatches are active.
+		ctx.ListDispatchState = func() ([]extension.DispatchStateEntry, error) {
+			snap := registry.Snapshot()
+			entries := make([]extension.DispatchStateEntry, len(snap))
+			for i, s := range snap {
+				entries[i] = extension.DispatchStateEntry{
+					DispatchID:       s.DispatchID,
+					Name:             s.Name,
+					Status:           s.Status,
+					ParentDispatchID: s.ParentDispatchID,
+					Depth:            s.Depth,
+					StartedAt:        s.StartedAt.UTC().Format(time.RFC3339Nano),
+					ElapsedMs:        s.ElapsedMs,
+				}
+			}
+			return entries, nil
 		}
 	}
 

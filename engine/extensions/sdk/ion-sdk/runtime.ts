@@ -34,6 +34,7 @@ import type {
   DiscoveredContext,
   DispatchAgentOpts,
   DispatchAgentResult,
+  DispatchEntry,
   ElicitOptions,
   ElicitResult,
   EngineEvent,
@@ -189,6 +190,10 @@ function buildContext(ctxData: any): IonContext {
   return {
     sessionKey: typeof ctxData?.sessionKey === 'string' ? ctxData.sessionKey : '',
     conversationId: typeof ctxData?.conversationId === 'string' ? ctxData.conversationId : '',
+    // Dispatch identity: the engine omits both keys for root sessions, so
+    // the defaults (0 / '') ARE the root-session shape.
+    depth: typeof ctxData?.depth === 'number' ? ctxData.depth : 0,
+    dispatchId: typeof ctxData?.dispatchId === 'string' ? ctxData.dispatchId : '',
     cwd: ctxData?.cwd || initConfig?.workingDirectory || '',
     model: ctxData?.model || null,
     config: ctxData?.config || initConfig || emptyConfig,
@@ -383,6 +388,10 @@ function buildContext(ctxData: any): IonContext {
       const result = await request('ext/steer_dispatch', { dispatchId, message })
       return { delivered: !!result?.delivered, outcome: result?.outcome ?? 'not_found' }
     },
+    async steerDispatchByName(name: string, message: string): Promise<SteerDispatchResult> {
+      const result = await request('ext/steer_dispatch_by_name', { name, message })
+      return { delivered: !!result?.delivered, outcome: result?.outcome ?? 'not_found' }
+    },
     async answerDispatchQuestion(dispatchId: string, requestId: string, answer: string | undefined, cancelled: boolean): Promise<void> {
       await request('ext/answer_dispatch_question', { dispatchId, requestId, answer, cancelled })
     },
@@ -395,6 +404,20 @@ function buildContext(ctxData: any): IonContext {
       // completion queueing behind the live run until it happens to go idle.
       const result = await request('ext/steer_self', { message })
       return { delivered: !!result?.delivered, outcome: result?.outcome ?? 'not_found' }
+    },
+    async listDispatchState(): Promise<DispatchEntry[]> {
+      // Returns a point-in-time snapshot of every active dispatch in the
+      // engine's DispatchRegistry for this session. All entries carry
+      // status:"running" — the registry only holds in-flight dispatches.
+      // Returns [] when no dispatches are active or the engine does not yet
+      // support this RPC (older builds without ext/list_dispatch_state return
+      // an error; the catch returns the empty default gracefully).
+      try {
+        const result = await request('ext/list_dispatch_state', {})
+        return result?.dispatches ?? []
+      } catch {
+        return []
+      }
     },
     async discoverAgents(opts?: DiscoverAgentsOpts): Promise<DiscoveredAgent[]> {
       const result = await request('ext/discover_agents', opts || {})

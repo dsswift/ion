@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
@@ -28,14 +29,18 @@ func TestCompactNow_HappyPath(t *testing.T) {
 
 	b := NewApiBackend()
 
-	// Create a conversation with enough turns that performCompact's
-	// hard-truncate step actually has something to truncate (the user
-	// trigger always runs step 2; with too few messages it'd no-op).
+	// Create a conversation large enough that performCompact's hard-truncate
+	// step actually drops messages. The user trigger always runs step 2, but a
+	// no-op /compact (nothing summarized, cleared, or dropped) is now correctly
+	// non-destructive — it injects no boundary — so the fixture must exceed the
+	// truncation budget (50% of the ~200k window = ~100k tokens) to force a real
+	// drop. Each turn carries a large body so total content clears that budget.
 	convID := "user-compact-happy"
 	conv := conversation.CreateConversation(convID, tmp, "claude-sonnet-4-6")
-	for i := 0; i < 20; i++ {
-		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: "hello hello hello hello hello hello hello"})
-		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: "ack ack ack ack ack ack ack ack ack ack"})
+	bigBody := strings.Repeat("lorem ipsum dolor sit amet ", 400) // ~2.7KB/turn
+	for i := 0; i < 80; i++ {
+		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: bigBody})
+		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: bigBody})
 	}
 	if err := conversation.Save(conv, ""); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -159,11 +164,15 @@ func TestCompactNow_AppendsTreeEntry(t *testing.T) {
 	convID := "user-compact-tree-entry"
 	conv := conversation.CreateConversation(convID, tmp, "claude-sonnet-4-6")
 	// Build the conversation through the documented helpers so tree
-	// entries get populated alongside Messages.
-	for i := 0; i < 20; i++ {
-		conversation.AddUserMessage(conv, "hello hello hello hello hello hello")
+	// entries get populated alongside Messages. Bodies are large enough that
+	// hard-truncate actually drops messages — a no-op /compact is now
+	// non-destructive and records no tree entry, so the fixture must force a
+	// genuine compaction to exercise the EntryCompaction append.
+	bigBody := strings.Repeat("lorem ipsum dolor sit amet ", 400) // ~2.7KB/turn
+	for i := 0; i < 80; i++ {
+		conversation.AddUserMessage(conv, bigBody)
 		conversation.AddAssistantMessage(conv,
-			[]types.LlmContentBlock{{Type: "text", Text: "ack ack ack ack ack ack ack"}},
+			[]types.LlmContentBlock{{Type: "text", Text: bigBody}},
 			types.LlmUsage{},
 		)
 	}

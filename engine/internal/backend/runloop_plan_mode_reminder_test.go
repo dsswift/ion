@@ -155,17 +155,18 @@ func TestBuildPlanModeSparseReminder_ContainsForbiddenProseCallout(t *testing.T)
 }
 
 // TestBuildPlanModeSparseReminder_ContainsCanonicalPathAndNoInventClause pins
-// the redirect-fix prompt hardening: the sparse reminder must restate the
-// canonical plan file path and explicitly tell the model not to invent a new
-// plan filename (the engine redirects stray plan writes to the canonical
-// path). Fails until the reminder text carries both signals.
+// that the sparse reminder contains the canonical path, forbids inventing a new
+// filename, and names prior cycles as invalid — the signals that anchor the
+// model to the correct path between turns. The redirect explanation was removed
+// from the reminder when redirect was upgraded from silent-success to error-signal.
 func TestBuildPlanModeSparseReminder_ContainsCanonicalPathAndNoInventClause(t *testing.T) {
 	planPath := "/tmp/canonical-plan.md"
 	result := buildPlanModeSparseReminder(planPath)
 	phrases := []string{
-		planPath,                        // the exact canonical path
-		"Do not invent a new plan",      // forbids inventing a filename
-		"redirects it to the canonical", // explains the redirect behavior
+		planPath,                               // the exact canonical path
+		"Do not invent a new plan",             // forbids inventing a filename
+		"only valid plan file for this session", // anchors to this session's path
+		"prior completed cycles",               // names stale history paths explicitly
 	}
 	for _, phrase := range phrases {
 		if !strings.Contains(result, phrase) {
@@ -176,16 +177,55 @@ func TestBuildPlanModeSparseReminder_ContainsCanonicalPathAndNoInventClause(t *t
 
 // TestBuildPlanModePrompt_ContainsNoInventClause pins that the full plan-mode
 // prompt's Plan File / Restrictions sections forbid inventing a new plan
-// filename and document the redirect, matching the sparse reminder.
+// filename. The redirect explanation was updated when redirect was upgraded from
+// silent-success to error-signal: the prompt now says the engine returns an error
+// rather than silently redirecting.
 func TestBuildPlanModePrompt_ContainsNoInventClause(t *testing.T) {
 	result := buildPlanModePrompt("/tmp/test-plan.md", false, nil)
 	phrases := []string{
 		"do not invent a new plan filename",
-		"redirects",
+		"engine will return an error",
 	}
 	for _, phrase := range phrases {
 		if !strings.Contains(result, phrase) {
 			t.Errorf("buildPlanModePrompt output missing expected phrase %q", phrase)
+		}
+	}
+}
+
+// TestBuildPlanModePrompt_ContainsVisibleLeadUpRule pins the channel-
+// correctness rule for AskUserQuestion in the full plan-mode prompt: a
+// question must be preceded by visible assistant text in the same turn,
+// because private reasoning never reaches the user. Appears in both the
+// Phase 1 exploration bullet and the Turn Behavior section.
+func TestBuildPlanModePrompt_ContainsVisibleLeadUpRule(t *testing.T) {
+	result := buildPlanModePrompt("/tmp/test-plan.md", false, nil)
+	phrases := []string{
+		"visible assistant text before the tool call",
+		"private reasoning is never shown to them",
+		"Private reasoning does not reach the user",
+		"a bare question with no visible lead-up is a defect",
+	}
+	for _, phrase := range phrases {
+		if !strings.Contains(result, phrase) {
+			t.Errorf("buildPlanModePrompt output missing visible-lead-up phrase %q", phrase)
+		}
+	}
+}
+
+// TestBuildPlanModeSparseReminder_ContainsVisibleLeadUpRule pins the same
+// channel rule in the sparse per-turn reminder — the reminder is the surface
+// that actually reaches long plan-mode conversations (the full prompt scrolls
+// hundreds of messages back), so it must carry the rule too.
+func TestBuildPlanModeSparseReminder_ContainsVisibleLeadUpRule(t *testing.T) {
+	result := buildPlanModeSparseReminder("/tmp/test-plan.md")
+	phrases := []string{
+		"must be preceded by visible assistant text",
+		"a bare question with no visible lead-up (reasoning only) is a defect",
+	}
+	for _, phrase := range phrases {
+		if !strings.Contains(result, phrase) {
+			t.Errorf("buildPlanModeSparseReminder output missing visible-lead-up phrase %q\ngot: %s", phrase, result)
 		}
 	}
 }

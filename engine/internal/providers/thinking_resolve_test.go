@@ -67,3 +67,34 @@ func TestResolveThinking(t *testing.T) {
 		})
 	}
 }
+
+// TestValidateThinkingBudget pins the FINDING 3 guard: a thinking budget that
+// meets or exceeds the output window is an error (the model would have no
+// headroom for text/tool output), while a budget with headroom, or an absent
+// output cap, is fine.
+func TestValidateThinkingBudget(t *testing.T) {
+	cases := []struct {
+		name      string
+		budget    int
+		maxTokens int
+		wantErr   bool
+	}{
+		{"budget below max", 4000, 8192, false},
+		{"budget equals max", 8192, 8192, true},
+		{"budget above max", 12000, 8192, true},
+		{"no max cap (0)", 24000, 0, false},
+		{"negative max treated as no cap", 24000, -1, false},
+		{"budget one below max", 8191, 8192, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := ValidateThinkingBudget(c.budget, c.maxTokens)
+			if c.wantErr && err == nil {
+				t.Errorf("ValidateThinkingBudget(%d, %d): want error, got nil", c.budget, c.maxTokens)
+			}
+			if !c.wantErr && err != nil {
+				t.Errorf("ValidateThinkingBudget(%d, %d): want nil, got %v", c.budget, c.maxTokens, err)
+			}
+		})
+	}
+}

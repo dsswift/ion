@@ -1,6 +1,7 @@
 package extcontext
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/dsswift/ion/engine/internal/backend"
@@ -36,12 +37,9 @@ func loadChildExtension(sa SessionAccessor, registry *DispatchRegistry, opts *ex
 	// Make nested dispatch working-directory resolution observable: the child
 	// extension is configured with the resolved projectPath here, so log it
 	// alongside the dispatch id and depth for the child.
-	utils.Debug("Dispatch", fmt.Sprintf(
-		"dispatch child setup: agent=%q workingDirectory=%q dispatchId=%s depth=%d session=%s",
-		opts.Name, projectPath, childDispatchId, childDepth, sa.SessionKey(),
-	))
+	utils.LogWithFields(utils.LevelDebug, "server", "dispatch child setup", map[string]any{"model": opts.Name, "project_path": projectPath, "child_dispatch_id": childDispatchId, "child_depth": childDepth, "session_key": sa.SessionKey()})
 	if err := childExtHost.Load(opts.ExtensionDir, extCfg); err != nil {
-		utils.Log("Session", "child extension load failed: "+err.Error())
+		utils.LogWithFields(utils.LevelInfo, "session", "child extension load failed", map[string]any{"error": err.Error()})
 		return nil
 	}
 
@@ -72,6 +70,84 @@ func loadChildExtension(sa SessionAccessor, registry *DispatchRegistry, opts *ex
 	}
 
 	return childExtHost
+}
+
+// wireChildExtensionTools attaches the child extension's registered tools to
+// the child RunConfig so the child's LLM can call them (ExternalTools) and
+// route their execution back to the child extension host (McpToolRouter).
+//
+// This is the dispatch-path analogue of Manager.wireExternalTools
+// (prompt_runconfig.go), which performs the same wiring for root sessions.
+// Without it, loadChildExtension composed the child's persona and fired its
+// hooks but the extension's tools never reached the child's tool list — the
+// gap that silently broke every harness whose dispatched leads delegate via a
+// harness-registered dispatch tool.
+//
+// Tool execute contexts carry the child's depth and dispatch ID so a
+// harness dispatch tool invoked from inside the child produces grandchildren
+// with correct ancestry (depth+1 chains, allowlist carry-forward).
+//
+// MCP connections are intentionally NOT wired here: MCP servers belong to the
+// root session's lifecycle. Only extension-registered tools are forwarded.
+func wireChildExtensionTools(
+	sa SessionAccessor,
+	registry *DispatchRegistry,
+	childExtHost *extension.Host,
+	childCfg *backend.RunConfig,
+	childDepth int,
+	childDispatchId string,
+) {
+	extTools := childExtHost.Tools()
+	if len(extTools) == 0 {
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext", "child extension tools: none registered", map[string]any{"child_dispatch_id": childDispatchId, "child_depth": childDepth, "session_key": sa.SessionKey()})
+		return
+	}
+
+	toolDefs := make([]types.LlmToolDef, 0, len(extTools))
+	for _, tool := range extTools {
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext", "child extension tool wired", map[string]any{"model": tool.Name, "child_dispatch_id": childDispatchId, "child_depth": childDepth, "session_key": sa.SessionKey()})
+		toolDefs = append(toolDefs, types.LlmToolDef{
+			Name:         tool.Name,
+			Description:  tool.Description,
+			InputSchema:  tool.Parameters,
+			PlanModeSafe: tool.PlanModeSafe,
+		})
+	}
+	childCfg.ExternalTools = toolDefs
+
+	capturedHost := childExtHost
+	capturedSA := sa
+	capturedRegistry := registry
+	capturedDepth := childDepth
+	capturedDispatchId := childDispatchId
+	childCfg.McpToolRouter = func(ctx context.Context, name string, input map[string]interface{}) (*types.ToolResult, error) {
+		for _, tool := range capturedHost.Tools() {
+			if tool.Name != name {
+				continue
+			}
+			// Build a depth-aware extension context so tools that dispatch
+			// (the harness's dispatch_agent) mint grandchildren at depth+1
+			// under this child's dispatch ID. The accessor carries no
+			// per-tool DeadlineSuspender (that is a root-session Manager
+			// facility); an Elicit reached through a child tool waits under
+			// session lifecycle only, the same as hook-path elicits.
+			_ = ctx
+			extCtx := NewExtContext(capturedSA, ExtContextOpts{
+				Depth:      capturedDepth,
+				DispatchId: capturedDispatchId,
+				Registry:   capturedRegistry,
+			})
+			result, err := tool.Execute(input, extCtx)
+			if err != nil {
+				return &types.ToolResult{Content: err.Error(), IsError: true}, nil
+			}
+			if result == nil {
+				return &types.ToolResult{}, nil
+			}
+			return result, nil
+		}
+		return nil, fmt.Errorf("extension tool %q not found in child host", name)
+	}
 }
 
 // configurableBackend is satisfied by any backend that can accept a per-run
@@ -110,8 +186,7 @@ func startChild(child backend.RunBackend, reqID string, runOpts types.RunOptions
 // previously never logged. Lives here (rather than inline in dispatch_agent.go)
 // to keep that file under the 800-line cap; it is a pure log addition.
 func logDispatchWorkdir(agentName, projectPath, source, dispatchID string, depth int, sessionKey string) {
-	utils.Log("Dispatch", fmt.Sprintf(
-		"dispatch working directory resolved: agent=%q path=%q source=%s dispatchId=%s depth=%d session=%s",
-		agentName, projectPath, source, dispatchID, depth, sessionKey,
-	))
+	utils.LogWithFields(utils.LevelInfo, "session.extcontext", "dispatch working directory resolved", map[string]any{
+		"model": agentName, "path": projectPath, "source": source, "run_id": dispatchID, "count": depth, "session_id": sessionKey,
+	})
 }

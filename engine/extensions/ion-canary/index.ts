@@ -141,6 +141,19 @@ ion.registerTool({
   execute: async () => ({ content: 'typed_payloads_compile_ok' }),
 })
 
+ion.registerTool({
+  name: 'canary_ctx_identity',
+  description: 'Return the dispatch identity fields of the received context',
+  parameters: { type: 'object', properties: {} },
+  execute: async (_params, ctx) => ({
+    content: JSON.stringify({
+      depth: ctx.depth,
+      dispatchId: ctx.dispatchId,
+      sessionKey: ctx.sessionKey,
+    }),
+  }),
+})
+
 ion.on('session_start', () => {
   log.info('ion-canary loaded')
 })
