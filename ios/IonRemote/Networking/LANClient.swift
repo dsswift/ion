@@ -15,6 +15,19 @@ final class LANClient {
 
     private(set) var isConnected = false
 
+    /// Raw WebSocket close code from the most recent disconnect of the
+    /// CURRENT connection, or `nil` when the socket failed without a close
+    /// frame (e.g. "Socket is not connected", connection refused).
+    /// Reset on every `connect()`. `TransportManager.startLANWithAuth` reads
+    /// this after a failed auth to classify the failure: application close
+    /// codes 4000–4999 are definitive identity rejections (4003 = unknown /
+    /// removed device); everything else (1008 auth cooldown, no close frame)
+    /// is transient. See `LANAuthOutcome.resolve`.
+    private(set) var lastCloseCode: Int?
+    /// UTF-8 close reason accompanying `lastCloseCode`, when the desktop
+    /// supplied one. Diagnostic only.
+    private(set) var lastCloseReason: String?
+
     // MARK: - Internals
 
     private var task: URLSessionWebSocketTask?
@@ -56,6 +69,10 @@ final class LANClient {
     /// Connect to an Ion instance at the given host and port.
     func connect(host: String, port: UInt16) async {
         intentionallyClosed = false
+        // Fresh connection — the previous close verdict must not leak into
+        // this attempt's auth-failure classification.
+        lastCloseCode = nil
+        lastCloseReason = nil
 
         // Finish old stream so any `for await` on the previous connection ends.
         messageContinuation?.finish()
@@ -192,8 +209,16 @@ final class LANClient {
             ])
             return
         }
+        // Capture the close verdict BEFORE nilling the task. closeCode is
+        // `.invalid` (raw 0) when the socket died without a close frame —
+        // store nil in that case so classification treats it as "no verdict".
+        let rawCode = task?.closeCode.rawValue ?? 0
+        lastCloseCode = rawCode > 0 ? rawCode : nil
+        lastCloseReason = task?.closeReason.flatMap { String(data: $0, encoding: .utf8) }
         DiagnosticLog.log("lan websocket handle disconnect", tag: "lan.client", fields: [
-            "gen": String(gen)
+            "gen": String(gen),
+            "close_code": lastCloseCode.map(String.init) ?? "none",
+            "close_reason": lastCloseReason ?? ""
         ])
         isConnected = false
         task = nil

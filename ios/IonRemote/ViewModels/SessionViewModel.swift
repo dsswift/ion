@@ -416,6 +416,11 @@ final class SessionViewModel {
     var flushTask: Task<Void, Never>?
     /// Safety timer: if `.reconnecting` lingers too long, force a full reconnect.
     var reconnectSafetyTask: Task<Void, Never>?
+    /// Delays between in-place retries of a *transient* LAN auth failure in
+    /// `connectLAN` (socket dropped / cooldown close / timeout — the desktop
+    /// delivered no verdict). Instance-configurable so tests can shrink the
+    /// waits; production keeps 2s then 5s. Definitive rejections never retry.
+    var lanAuthRetryDelays: [Duration] = [.seconds(2), .seconds(5)]
     let eventBatcher = EventBatcher()
     /// Standalone browser for pairing discovery (before a transport exists).
     private(set) var pairingBrowser = BonjourBrowser()

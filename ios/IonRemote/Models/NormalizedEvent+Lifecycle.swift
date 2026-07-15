@@ -87,6 +87,9 @@ extension RemoteEvent {
         case .transportReconnecting:
             return .transportReconnecting
 
+        case .lanAuthRejected:
+            return .lanAuthRejected
+
         case .heartbeat:
             let senderTs = try container.decodeIfPresent(Double.self, forKey: .ts) ?? 0
             let buffered = try container.decodeIfPresent(Int.self, forKey: .buffered) ?? 0
@@ -196,6 +199,10 @@ extension RemoteEvent {
 
         case .transportReconnecting:
             try container.encode(TypeKey.transportReconnecting, forKey: .type)
+            return true
+
+        case .lanAuthRejected:
+            try container.encode(TypeKey.lanAuthRejected, forKey: .type)
             return true
 
         case .heartbeat(let senderTs, let buffered):

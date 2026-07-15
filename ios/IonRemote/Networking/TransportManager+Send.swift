@@ -37,24 +37,30 @@ extension TransportManager {
     /// Perform challenge-response authentication on the active LAN connection.
     /// Waits for AuthChallenge from Ion, proves we hold the shared secret,
     /// and waits for AuthResult. Races against an 8-second timeout.
-    func performLANAuth() async -> Bool {
-        await withTaskGroup(of: Bool.self) { [weak self] group in
-            guard let self else { return false }
+    ///
+    /// Returns the STREAM outcome only: `.rejected` requires an explicit
+    /// `auth_result success=false`; the timeout and every verdict-less stream
+    /// end are `.transient`. `startLANWithAuth` combines this with the
+    /// socket's close code (`LANAuthOutcome.resolve`) for the final verdict.
+    func performLANAuth() async -> LANAuthOutcome {
+        await withTaskGroup(of: LANAuthOutcome.self) { [weak self] group in
+            guard let self else { return .transient }
             group.addTask { await self.performLANAuthCore() }
             group.addTask { [weak self] in
                 try? await Task.sleep(for: .seconds(8))
-                guard !Task.isCancelled else { return false }
+                guard !Task.isCancelled else { return .transient }
                 DiagnosticLog.log("AUTH: timeout fired, disconnecting LAN")
                 self?.lan.disconnect()
-                return false
+                // A timeout is NOT a rejection — the desktop never answered.
+                return .transient
             }
-            let result = await group.next() ?? false
+            let result = await group.next() ?? .transient
             group.cancelAll()
             return result
         }
     }
 
-    private func performLANAuthCore() async -> Bool {
+    private func performLANAuthCore() async -> LANAuthOutcome {
         // IMPORTANT: AsyncStream is single-consumer. We must use exactly ONE
         // `for await` loop here so that `startLANListener` can later create
         // the next (and only) iterator on the same stream. Nested `for await`
@@ -75,11 +81,13 @@ extension TransportManager {
                     DiagnosticLog.log("lan auth unexpected type in phase1", tag: "transport.auth", level: .warn, fields: [
                         "type": type
                     ])
-                    return false
+                    // Protocol anomaly, not a verdict — the desktop never
+                    // refused this identity.
+                    return .transient
                 }
 
                 DiagnosticLog.log("AUTH: challenge received")
-                guard let nonceData = Data(base64Encoded: nonceB64) else { return false }
+                guard let nonceData = Data(base64Encoded: nonceB64) else { return .transient }
                 let proof = E2ECrypto.createAuthProof(nonce: nonceData, sharedSecret: sharedKey)
 
                 let authResponse: [String: Any] = [
@@ -97,31 +105,25 @@ extension TransportManager {
                 awaitingResult = true
                 DiagnosticLog.log("AUTH-CORE: sent response, awaiting result")
             } else {
-                // Phase 2: waiting for auth_result
-                if type == "auth_result" {
-                    let ok = json["success"] as? Bool == true
+                // Phase 2: waiting for auth_result (bare or WireMessage-wrapped;
+                // parsing lives in LANAuthOutcome.verdict so tests can pin it
+                // with real frames). An explicit success=false is the ONLY
+                // stream-level definitive rejection.
+                if let verdict = LANAuthOutcome.verdict(fromAuthFrame: json) {
                     DiagnosticLog.log("lan auth result received", tag: "transport.auth", fields: [
-                        "success": String(ok)
+                        "success": String(verdict == .success)
                     ])
-                    return ok
-                }
-                // Also check for WireMessage wrapping an auth_result
-                if let payload = json["payload"] as? String,
-                   let inner = try? JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: Any],
-                   inner["type"] as? String == "auth_result" {
-                    let ok = inner["success"] as? Bool == true
-                    DiagnosticLog.log("lan auth result received (wire)", tag: "transport.auth", fields: [
-                        "success": String(ok)
-                    ])
-                    return ok
+                    return verdict
                 }
                 DiagnosticLog.log("lan auth unexpected type in phase2", tag: "transport.auth", level: .warn, fields: [
                     "type": type
                 ])
             }
         }
+        // Stream ended without an auth_result — no verdict from the desktop
+        // (socket dropped, cooldown close, desktop died mid-handshake).
         DiagnosticLog.log("AUTH-CORE: for-await ended (stream finished)")
-        return false
+        return .transient
     }
 
     // MARK: - Wire message builder

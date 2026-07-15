@@ -86,6 +86,25 @@ final class TransportManager {
     var disconnectGraceTask: Task<Void, Never>?
     static let disconnectGracePeriod: Duration = .seconds(4)
 
+    /// Escalating backoff for consecutive failed LAN auto-reconnect attempts.
+    /// The Bonjour observation loop consults `nextLANAttemptAllowedAt` before
+    /// each connect attempt; on a transient failure `applyLANAuthOutcome`
+    /// records the failure and pushes the next-allowed time out (1s → 2s →
+    /// 5s → 10s → 30s cap); a successful auth resets the ladder. See
+    /// TransportManager+BonjourReconnect.swift.
+    var lanReconnectBackoff = LANReconnectBackoff()
+    /// Earliest wall-clock time the auto-reconnect loop may attempt the next
+    /// LAN connect. `.distantPast` = no backoff window open.
+    var nextLANAttemptAllowedAt: Date = .distantPast
+    /// Latched when the desktop definitively rejected this device identity
+    /// (auth_result success=false or application close 4000–4999, e.g. 4003
+    /// "unknown device"). While set, the auto-reconnect loop makes no further
+    /// LAN connect attempts on this transport — the pairing is dead and only
+    /// a re-pair (which builds a fresh TransportManager) can revive it. Set
+    /// by `applyLANAuthOutcome`, which also yields `.lanAuthRejected` so the
+    /// ViewModel routes the user to the pairing screen.
+    var lanAuthRejectedDefinitively = false
+
     /// Watchdog that monitors LAN heartbeat liveness. The desktop sends a
     /// heartbeat every `HEARTBEAT_INTERVAL_MS` (15s). If two intervals (30s)
     /// pass with no heartbeat while LAN is the active transport, the socket is
@@ -181,8 +200,15 @@ final class TransportManager {
     }
 
     /// Connect to a LAN host with challenge-response auth handshake.
-    /// Returns `true` if auth succeeded, `false` if rejected.
-    func startLANWithAuth(host: String, port: UInt16) async -> Bool {
+    ///
+    /// Returns a classified `LANAuthOutcome` so callers can distinguish a
+    /// definitive identity rejection (explicit `auth_result success=false`,
+    /// or an application close code 4000–4999 such as 4003 "unknown device")
+    /// from a transient failure with no verdict (socket error, auth-cooldown
+    /// close 1008, timeout, stream ended silently). Only `.rejected` may be
+    /// surfaced as an auth failure; `.transient` is a normal connection
+    /// failure and must go through the reconnect machinery.
+    func startLANWithAuth(host: String, port: UInt16) async -> LANAuthOutcome {
         DiagnosticLog.log("lan auth start", tag: "transport.auth", fields: [
             "host": host,
             "port": String(port),
@@ -190,13 +216,21 @@ final class TransportManager {
         ])
         await lan.connect(host: host, port: port)
 
-        let success = await performLANAuth()
+        let streamOutcome = await performLANAuth()
+        // The auth stream alone can't see WHY a socket died; fold in the
+        // close code captured by LANClient.handleDisconnect (4000–4999 →
+        // definitive rejection even without an auth_result frame).
+        let outcome = LANAuthOutcome.resolve(
+            streamOutcome: streamOutcome,
+            closeCode: lan.lastCloseCode
+        )
         DiagnosticLog.log("lan auth result", tag: "transport.auth", fields: [
-            "success": String(success),
+            "outcome": String(describing: outcome),
+            "close_code": lan.lastCloseCode.map(String.init) ?? "none",
             "host": host,
             "port": String(port)
         ])
-        if success {
+        if outcome == .success {
             // Record as current LAN host so Bonjour observation doesn't re-discover and clobber us.
             currentLANHost = DiscoveredHost(
                 id: "lan-direct:\(host):\(port)",
@@ -220,7 +254,7 @@ final class TransportManager {
         } else {
             lan.disconnect()
         }
-        return success
+        return outcome
     }
 
     /// Disconnect all transports and stop discovery.
@@ -336,103 +370,11 @@ final class TransportManager {
     // TransportManager+Watchdog.swift — this file is allowlisted
     // "don't extend; extract". See CLAUDE.md → file-architecture rules.
 
-    // MARK: - Bonjour observation
-
-    func startBonjourObservation() {
-        bonjourObservationTask?.cancel()
-        bonjourObservationTask = Task { [weak self] in
-            var lastKnownCount = 0
-            /// Tracks whether we've already restarted the browser after a
-            /// disconnect. Reset once we reconnect so future disconnects also
-            /// trigger a restart.
-            var didRestartBrowser = false
-            while !Task.isCancelled {
-                guard let self else { break }
-
-                let hosts = await MainActor.run { self.bonjour.discoveredHosts }
-                let countChanged = hosts.count != lastKnownCount
-                if countChanged {
-                    lastKnownCount = hosts.count
-                }
-
-                // Detect LAN socket disconnect even if Bonjour hasn't noticed yet.
-                if self.currentLANHost != nil, !self.lan.isConnected {
-                    DiagnosticLog.log("BONJOUR: LAN socket lost, clearing host")
-                    self.currentLANHost = nil
-                    self.lanListenTask?.cancel()
-                    self.lanListenTask = nil
-                    self.updateState()
-                }
-
-                let needsConnect = self.currentLANHost == nil && !self.lan.isConnected
-                if needsConnect { DiagnosticLog.log("BONJOUR: needsConnect=true") }
-
-                // When disconnected with no hosts visible, restart the Bonjour
-                // browser once to force NWBrowser to re-discover services.
-                // NWBrowser can miss re-advertisements of a service with the
-                // same name after the old one disappears.
-                if needsConnect, self.matchingLANHost(hosts) == nil, !didRestartBrowser {
-                    didRestartBrowser = true
-                    lastKnownCount = 0
-                    await MainActor.run { self.bonjour.startBrowsing() }
-                }
-
-                if countChanged || needsConnect {
-                    if let host = self.matchingLANHost(hosts),
-                       !self.lan.isConnected {
-                        DiagnosticLog.log("bonjour connecting to host", tag: "transport.bonjour", fields: [
-                            "name": host.name,
-                            "host": host.host,
-                            "port": String(host.port)
-                        ])
-                        self.currentLANHost = host
-                        let authed = await self.startLANWithAuth(host: host.host, port: host.port)
-                        if authed {
-                            didRestartBrowser = false
-                            // Retryable handshake — a single failed sync used
-                            // to leave the fresh LAN session snapshot-less.
-                            // Detached so a slow handshake never blocks the
-                            // Bonjour observation loop.
-                            Task { [weak self] in
-                                await self?.sendSyncWithRetry(reason: "bonjour-lan-auth")
-                            }
-                        } else {
-                            self.currentLANHost = nil
-                        }
-                    } else if hosts.isEmpty, self.currentLANHost != nil {
-                        // LAN host disappeared.
-                        self.currentLANHost = nil
-                        self.lan.disconnect()
-                        self.lanListenTask?.cancel()
-                        self.lanListenTask = nil
-                        self.updateState()
-                    }
-                }
-
-                try? await Task.sleep(for: .milliseconds(500))
-            }
-        }
-    }
-
-    /// Find the Bonjour host that matches the active paired device.
-    /// When `deviceName` is set, only the host with a matching Bonjour service
-    /// name is returned. This prevents connecting to the wrong desktop when
-    /// multiple Ion instances are on the network.
-    private func matchingLANHost(_ hosts: [DiscoveredService]) -> DiscoveredService? {
-        let ionHosts = hosts.filter { $0.kind == .ionDirect }
-        if let name = deviceName {
-            let match = ionHosts.first { $0.name == name }
-            if match == nil && !ionHosts.isEmpty {
-                DiagnosticLog.log("bonjour host filter no match", tag: "transport.bonjour", fields: [
-                    "filter": name,
-                    "available": String(describing: ionHosts.map(\.name))
-                ])
-            }
-            return match
-        }
-        // Fallback: no name filter (single desktop / legacy).
-        return ionHosts.first
-    }
+    // The Bonjour observation loop (startBonjourObservation, matchingLANHost)
+    // and the LAN auto-reconnect policy (applyLANAuthOutcome,
+    // shouldAttemptLANConnect) live in TransportManager+BonjourReconnect.swift
+    // — this file is allowlisted "don't extend; extract". See CLAUDE.md →
+    // file-architecture rules.
 
     // MARK: - Network monitor
 

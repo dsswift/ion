@@ -96,8 +96,32 @@ extension SessionViewModel {
         connectionState = .connecting
 
         Task {
-            let authed = await tm.startLANWithAuth(host: host, port: port)
-            if authed {
+            var outcome = await tm.startLANWithAuth(host: host, port: port)
+
+            // Transient failures (socket error, auth-cooldown close 1008,
+            // timeout, stream ended without a verdict) get bounded in-place
+            // retries before handing off to the reconnect machinery. A
+            // definitive rejection (auth_result success=false, close 4000-4999)
+            // never retries — the desktop refused this identity.
+            var attempt = 0
+            while outcome == .transient, attempt < self.lanAuthRetryDelays.count {
+                let delay = self.lanAuthRetryDelays[attempt]
+                attempt += 1
+                DiagnosticLog.log("lan connect transient failure, retrying", tag: "session.lifecycle", level: .warn, fields: [
+                    "reason": device.name,
+                    "count": String(attempt),
+                    "max": String(self.lanAuthRetryDelays.count)
+                ])
+                try? await Task.sleep(for: delay)
+                // Bail if this connect attempt was superseded (user switched
+                // desktop, softReconnect built a new transport, teardown).
+                let stillCurrent = await MainActor.run { self.transport === tm }
+                guard !Task.isCancelled, stillCurrent else { return }
+                outcome = await tm.startLANWithAuth(host: host, port: port)
+            }
+
+            switch outcome {
+            case .success:
                 ionLog.info("connectLAN: auth succeeded for \(device.name)")
                 DiagnosticLog.log("lan connect auth ok", tag: "session.lifecycle", fields: [
                     "reason": device.name
@@ -106,15 +130,33 @@ extension SessionViewModel {
                     self.connectionState = .connected
                     self.send(.sync, intent: .automaticEssential)
                 }
-            } else {
-                ionLog.error("connectLAN: auth FAILED for \(device.name)")
-                DiagnosticLog.log("lan connect auth failed", tag: "session.lifecycle", level: .warn, fields: [
+            case .rejected:
+                ionLog.error("connectLAN: auth REJECTED for \(device.name)")
+                DiagnosticLog.log("lan connect auth rejected", tag: "session.lifecycle", level: .warn, fields: [
                     "reason": device.name
                 ])
                 await MainActor.run {
                     self.connectionState = .authFailed
                     self.transport?.stop()
                     self.transport = nil
+                }
+            case .transient:
+                // NOT .authFailed: the desktop never rejected this identity —
+                // the socket dropped without a verdict (auth cooldown, network
+                // blip, desktop restarting). Surfacing .authFailed here would
+                // bounce the user to the pairing screen over a valid pairing.
+                // Tear down and let the reconnect machinery (safety timer +
+                // disconnected-view auto-retry) keep trying.
+                ionLog.warning("connectLAN: transient auth failure for \(device.name), deferring to reconnect")
+                DiagnosticLog.log("lan connect transient, deferring to reconnect", tag: "session.lifecycle", level: .warn, fields: [
+                    "reason": device.name,
+                    "count": String(attempt)
+                ])
+                await MainActor.run {
+                    self.transport?.stop()
+                    self.transport = nil
+                    self.connectionState = .disconnected
+                    self.startReconnectSafetyTimer()
                 }
             }
         }
@@ -283,13 +325,17 @@ extension SessionViewModel {
     // MARK: - Reconnect Safety Timer
 
     /// Start a safety timer that forces a soft reconnect if the app stays
-    /// in `.reconnecting` for too long (e.g. the relay can't reach the peer).
+    /// in `.reconnecting` (relay can't reach the peer) or `.disconnected`
+    /// (a transient LAN auth failure exhausted its in-place retries and
+    /// handed off here) for too long. Cancelled on `.connected` and by
+    /// `disconnect()`, so it never fires against a healthy or intentionally
+    /// torn-down session.
     func startReconnectSafetyTimer() {
         reconnectSafetyTask?.cancel()
         reconnectSafetyTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(30))
             guard !Task.isCancelled, let self else { return }
-            if self.connectionState == .reconnecting {
+            if self.connectionState == .reconnecting || self.connectionState == .disconnected {
                 self.softReconnect()
             }
         }

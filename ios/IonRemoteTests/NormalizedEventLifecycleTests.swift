@@ -508,4 +508,29 @@ final class NormalizedEventLifecycleTests: XCTestCase {
             XCTFail("Expected engineSteerInjected, got \(event)")
         }
     }
+
+    // MARK: - lanAuthRejected (synthesized by TransportManager)
+
+    /// Pins the codec for the transport-synthesized definitive-rejection
+    /// event. Payload-free like peerDisconnected/transportReconnecting; the
+    /// typeKey assertion also protects the receive-latency logger, which
+    /// derives the wire string by re-encoding.
+    func testRoundTripLanAuthRejected() throws {
+        let data = try encoder.encode(RemoteEvent.lanAuthRejected)
+        XCTAssertEqual(RemoteEvent.lanAuthRejected.typeKey, "lan_auth_rejected")
+        let decoded = try decoder.decode(RemoteEvent.self, from: data)
+        guard case .lanAuthRejected = decoded else {
+            return XCTFail("Round-trip lanAuthRejected failed, got \(decoded)")
+        }
+    }
+
+    func testDecodeLanAuthRejected() throws {
+        let json = """
+        {"type":"lan_auth_rejected"}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        guard case .lanAuthRejected = event else {
+            return XCTFail("Expected lanAuthRejected, got \(event)")
+        }
+    }
 }
