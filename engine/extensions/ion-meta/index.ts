@@ -62,7 +62,7 @@ ion.registerAgentTools()
 // ─── Hook wiring ──────────────────────────────────────────────────────────
 
 ion.on('session_start', (ctx) => {
-  log.info('ion-meta extension active', { sessionKey: ctx.sessionKey })
+  log.info('ion-meta extension active', { sessionKey: ctx.sessionKey, depth: ctx.depth })
   // Suppress the generic Agent tool so the LLM can only use the
   // per-specialist dispatch tools registered by registerAgentTools().
   // This eliminates the ambiguity where the LLM might call Agent()
@@ -72,6 +72,13 @@ ion.on('session_start', (ctx) => {
   } catch (err) {
     log.error('ion-meta: failed to suppress Agent tool', { err: (err as Error).message })
   }
+  // Dispatched child sessions (ctx.depth > 0) fire session_start on their
+  // own extension host too. Suppressing the Agent tool above applies to
+  // the child as well, but the panel snapshot and welcome below are
+  // root-session chrome — a child conversation is always "fresh", so
+  // without this gate every dispatch that loads ion-meta as its child
+  // extension would re-emit the welcome and the initial panel snapshot.
+  if (ctx.depth > 0) return
   // Emit an initial agent-state snapshot so the desktop's Agents panel
   // reflects ion-meta the moment the session begins. Complete-snapshot
   // contract: this snapshot lists every specialist ion-meta exposes,
@@ -84,37 +91,43 @@ ion.on('session_start', (ctx) => {
   // First-touch greeting. Emit the canonical welcome markdown as an
   // engine_harness_message exactly once per logically-new conversation.
   // Freshness is detected by the absence of any on-disk conversation
-  // file under ~/.ion/conversations/<sessionKey>.* — see
-  // fresh-session.ts for the rationale (sessionKey is client-supplied
-  // and not reliable on its own). Ordering: snapshot first so the
-  // Agents panel populates before the welcome message renders.
+  // file under ~/.ion/conversations/<conversationId>.* — conversation
+  // files are named by conversationId (persistence.go: conv.ID+".llm.jsonl"),
+  // and conversationId is durable across engine restarts, making it the
+  // correct freshness key. See fresh-session.ts for full rationale.
+  // Ordering: snapshot first so the Agents panel populates before the
+  // welcome message renders.
   try {
-    const fresh = isFreshConversation(ctx.sessionKey)
+    const fresh = isFreshConversation(ctx.conversationId)
     if (fresh) {
       log.info('ion-meta: emitting first-session welcome', {
         sessionKey: ctx.sessionKey,
+        conversationId: ctx.conversationId,
         messageLength: WELCOME_MARKDOWN.length,
       })
       ctx.emit({
         type: 'engine_harness_message',
         message: WELCOME_MARKDOWN,
         source: 'ion-meta',
-        // Renderer-honored dedup hint. The desktop suppresses repeated
-        // harness messages carrying the same `metadata.dedupKey` within
-        // a single engine-instance scrollback, so the welcome is shown
-        // at most once per tab even if `session_start` fires several
-        // times before any user turn (e.g. app restart with no message
-        // typed). The filesystem-based isFreshConversation check above
-        // is the pre-emit optimization; this metadata is the safety
-        // net. Namespace convention: `<extensionName>:<messageKey>`.
+        // Renderer-honored dedup hint. The desktop persists dedupKeys
+        // across restarts, so the welcome is shown at most once per
+        // conversation even if `session_start` fires multiple times
+        // (e.g. daemon restart, app relaunch). The filesystem-based
+        // isFreshConversation check above is the pre-emit optimization;
+        // this metadata is the cross-restart safety net. Namespace
+        // convention: `<extensionName>:<messageKey>`.
         // See engine-event-slice.ts (desktop) for the consumer side and
         // docs/protocol/server-events.md for the well-known-keys table.
         metadata: { dedupKey: 'ion-meta:welcome' },
       })
-      log.info('ion-meta: welcome emit returned', { sessionKey: ctx.sessionKey })
+      log.info('ion-meta: welcome emit returned', {
+        sessionKey: ctx.sessionKey,
+        conversationId: ctx.conversationId,
+      })
     } else {
       log.info('ion-meta: continued conversation, suppressing welcome', {
         sessionKey: ctx.sessionKey,
+        conversationId: ctx.conversationId,
       })
     }
   } catch (err) {

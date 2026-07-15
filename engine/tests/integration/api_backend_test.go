@@ -100,9 +100,9 @@ func TestApiBackendSimpleTextResponse(t *testing.T) {
 
 	convDir := t.TempDir()
 	b.StartRun("run-text", types.RunOptions{
-		Prompt:    "Say hello",
-		Model:     "mock-model",
-		SessionID: filepath.Join(convDir, "conv-text"),
+		Prompt:         "Say hello",
+		Model:          "mock-model",
+		ConversationID: filepath.Join(convDir, "conv-text"),
 	})
 
 	be.waitForExit(t, 5*time.Second)
@@ -146,9 +146,9 @@ func TestApiBackendTaskCompleteUsage(t *testing.T) {
 
 	convDir := t.TempDir()
 	b.StartRun("run-usage", types.RunOptions{
-		Prompt:    "test usage",
-		Model:     "mock-model",
-		SessionID: filepath.Join(convDir, "conv-usage"),
+		Prompt:         "test usage",
+		Model:          "mock-model",
+		ConversationID: filepath.Join(convDir, "conv-usage"),
 	})
 
 	be.waitForExit(t, 5*time.Second)
@@ -397,23 +397,23 @@ func TestApiBackendConversationPersistence(t *testing.T) {
 	mp.SetResponse(helpers.TextResponse("Persisted response"))
 
 	convDir := t.TempDir()
-	sessionID := "persist-test"
+	conversationID := "persist-test"
 
 	b := backend.NewApiBackend()
 	be := newBackendCollector(b)
 
-	// Override conversation save directory via the sessionID path
+	// Override conversation save directory via the conversation-ID path
 	b.StartRun("run-persist", types.RunOptions{
-		Prompt:    "Save this",
-		Model:     "mock-model",
-		SessionID: sessionID,
+		Prompt:         "Save this",
+		Model:          "mock-model",
+		ConversationID: conversationID,
 	})
 
 	be.waitForExit(t, 5*time.Second)
 
-	// The conversation should have been saved to ~/.ion/conversations/<sessionID>.jsonl
-	// Load it back to verify
-	loaded, err := conversation.Load(sessionID, "")
+	// The conversation should have been saved to
+	// ~/.ion/conversations/<conversationID>.jsonl. Load it back to verify.
+	loaded, err := conversation.Load(conversationID, "")
 	if err != nil {
 		// If default dir doesn't work, that's expected in test environment
 		// The important thing is that the run completed without error
@@ -435,14 +435,14 @@ func TestApiBackendConversationPersistence(t *testing.T) {
 		return
 	}
 
-	if loaded.ID != sessionID {
-		t.Errorf("expected conversation ID=%q, got %q", sessionID, loaded.ID)
+	if loaded.ID != conversationID {
+		t.Errorf("expected conversation ID=%q, got %q", conversationID, loaded.ID)
 	}
 
 	// Cleanup saved file
 	home, _ := os.UserHomeDir()
-	os.Remove(filepath.Join(home, ".ion", "conversations", sessionID+".jsonl"))
-	os.Remove(filepath.Join(home, ".ion", "conversations", sessionID+".json"))
+	os.Remove(filepath.Join(home, ".ion", "conversations", conversationID+".jsonl"))
+	os.Remove(filepath.Join(home, ".ion", "conversations", conversationID+".json"))
 
 	_ = convDir // suppress unused
 }

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -56,6 +57,12 @@ func (h *Host) Load(extensionPath string, config *ExtensionConfig) error {
 // re-registered (they were already registered on the SDK during Load and
 // the SDK is shared across respawns).
 func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRespawn bool) error {
+	// Capture spawn start so we can record the cold-start readiness latency
+	// (process launch → successful init handshake) for extension.coldstart
+	// telemetry (family 4e). Caller holds h.mu, so the write to
+	// h.lastSpawnReadyMs below is serialized with SpawnReadyMs's read.
+	spawnStart := time.Now()
+
 	// Expand ~ to home directory
 	if strings.HasPrefix(extensionPath, "~/") {
 		home, _ := os.UserHomeDir()
@@ -69,13 +76,24 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 	}
 	extensionPath = absPath
 
-	// Verify the path exists and is a file
+	// Verify the path exists. A directory is resolved to its conventional
+	// entry point (extension.ts, index.ts, extension.js, index.js — first
+	// match wins). This is what lets dispatch-path callers pass the
+	// DispatchAgentOpts.ExtensionDir they already hold (the SDK field is a
+	// directory by name and by convention: ctx.config.extensionDir) without
+	// every harness re-implementing entry-point discovery. Root-session
+	// loads still pass full file paths and take the file branch unchanged.
 	info, err := os.Stat(extensionPath)
 	if err != nil {
 		return fmt.Errorf("extension path not found: %w", err)
 	}
 	if info.IsDir() {
-		return fmt.Errorf("expected extension file, got directory: %s (point to the entry point file directly, e.g. %s/index.js)", extensionPath, extensionPath)
+		entry, entryErr := resolveExtensionEntry(extensionPath)
+		if entryErr != nil {
+			return entryErr
+		}
+		utils.LogWithFields(utils.LevelInfo, "extension", "resolved directory to entry point", map[string]any{"ext_dir": extensionPath, "entry": entry})
+		extensionPath = entry
 	}
 
 	extensionDir := filepath.Dir(extensionPath)
@@ -94,6 +112,13 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 		h.name = manifest.Name
 	} else {
 		h.name = filepath.Base(extensionDir)
+	}
+	// Capture the extension version from the manifest. This is stamped once at
+	// load time and never changes — manifest version is a build-time constant.
+	// The version reaches the session layer via Host.Version(), read from
+	// start_session.go when the extension group is assembled.
+	if manifest != nil && manifest.Version != "" {
+		h.version = manifest.Version
 	}
 
 	// Run `npm install` if the extension declares dependencies. Idempotent:
@@ -179,15 +204,7 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 	h.stderrMu.Lock()
 	h.stderrBuf = nil // reset for respawns
 	h.stderrMu.Unlock()
-	go func() {
-		sc := bufio.NewScanner(stderr)
-		tag := "ext:" + h.name
-		for sc.Scan() {
-			line := sc.Text()
-			h.appendStderr(line)
-			utils.Debug(tag, line)
-		}
-	}()
+	h.launchStderrDrain(stderr)
 
 	scanner := bufio.NewScanner(stdout)
 	// Raise the scanner's max token size from the 64 KB default to 4 MB.
@@ -233,6 +250,10 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 	// Parse init response to register tools and commands
 	h.parseInitResult(initResult)
 
+	// Record the cold-start readiness latency now that the init handshake
+	// succeeded. Caller holds h.mu.
+	h.lastSpawnReadyMs = time.Since(spawnStart).Milliseconds()
+
 	// Hook forwarders are registered on the SDK once, on first Load. The
 	// SDK survives respawns; the subprocess does not.
 	if !isRespawn {
@@ -243,8 +264,29 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 	if isRespawn {
 		verb = "respawned"
 	}
-	utils.Log("extension", fmt.Sprintf("%s extension from %s (pid %d)", verb, extensionPath, cmd.Process.Pid))
+	utils.LogWithFields(utils.LevelInfo, "extension", "extension from (pid )", map[string]any{"verb": verb, "extension_path": extensionPath, "run_id": cmd.Process.Pid})
 	return nil
+}
+
+// launchStderrDrain starts the background goroutine that copies subprocess
+// stderr into the ring buffer and logs each line. It snapshots h.name into a
+// local BEFORE launching the goroutine: parseInitResult may write h.name
+// concurrently (when the init message carries a different name than the
+// manifest), and reading h.name from inside the goroutine would be an
+// unsynchronised access the race detector flags. The tag is cosmetic debug
+// output; the pre-launch snapshot is the correct identity for this subprocess
+// lifetime. Extracted from spawnAndInit so the snapshot-before-launch
+// ordering is pinned by a regression test (host_stderr_race_test.go).
+func (h *Host) launchStderrDrain(stderr io.Reader) {
+	stderrTag := "ext:" + h.name
+	go func() {
+		sc := bufio.NewScanner(stderr)
+		for sc.Scan() {
+			line := sc.Text()
+			h.appendStderr(line)
+			utils.Debug(stderrTag, line)
+		}
+	}()
 }
 
 // Respawn relaunches the subprocess after a death has been detected. Returns
@@ -312,6 +354,25 @@ func (h *Host) SetOnDeath(fn func(*Host)) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.onDeath = fn
+}
+
+// RespawnAttempt returns the current respawn attempt count within the active
+// rolling strike window. Surfaced on extension.respawn telemetry (family 4e).
+func (h *Host) RespawnAttempt() int { return int(h.respawnAttempts.Load()) }
+
+// RespawnBudget returns the maximum number of respawn attempts allowed within
+// the rolling strike window. Surfaced on extension.respawn telemetry (family 4e).
+func (h *Host) RespawnBudget() int { return int(respawnBudgetMax) }
+
+// SpawnReadyMs returns the wall-clock (milliseconds) that the most recent
+// spawnAndInit took from process launch to a successful init handshake.
+// Surfaced on extension.coldstart telemetry (family 4e). Returns 0 before the
+// first successful spawn.
+func (h *Host) SpawnReadyMs() int64 {
+	h.mu.Lock()
+	v := h.lastSpawnReadyMs
+	h.mu.Unlock()
+	return v
 }
 
 // Dead reports whether the subprocess has died (reader loop terminated).
@@ -407,3 +468,28 @@ func (h *Host) captureExitStatus() {
 }
 
 
+// extensionEntryCandidates is the conventional entry-point search order used
+// when Load is given a directory instead of a file. TypeScript-first because
+// the SDK's primary consumers are TS extensions (the engine transpiles .ts
+// on load); .js/.mjs cover pre-bundled extensions.
+var extensionEntryCandidates = []string{
+	"extension.ts",
+	"index.ts",
+	"extension.js",
+	"index.js",
+	"extension.mjs",
+	"index.mjs",
+}
+
+// resolveExtensionEntry maps an extension directory to its entry-point file
+// by probing the conventional candidates in order. Returns a descriptive
+// error naming the directory and the probed candidates when none exists.
+func resolveExtensionEntry(extDir string) (string, error) {
+	for _, name := range extensionEntryCandidates {
+		candidate := filepath.Join(extDir, name)
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("no extension entry point in %s (looked for %s)", extDir, strings.Join(extensionEntryCandidates, ", "))
+}

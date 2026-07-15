@@ -109,9 +109,9 @@ func TestHybridBackend_ApiRoutedRunStreamsTextThroughInnerApi(t *testing.T) {
 	convDir := t.TempDir()
 	rid := "hybrid-api-run"
 	h.StartRun(rid, types.RunOptions{
-		Prompt:    "say hi",
-		Model:     "mock-hybrid-api",
-		SessionID: filepath.Join(convDir, "conv-api"),
+		Prompt:         "say hi",
+		Model:          "mock-hybrid-api",
+		ConversationID: filepath.Join(convDir, "conv-api"),
 	})
 
 	// While the run is in flight, the hybrid's routing table should know

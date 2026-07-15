@@ -10,6 +10,60 @@ LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
 
 cd "$SCRIPT_DIR"
 
+# ── Preflight ──
+#
+# Checks Go version and Xcode CLT before attempting the build. Catches the
+# most common first-run failure modes with actionable messages.
+preflight_check() {
+  local fail=0
+  local required_go
+  required_go=$(awk '/^go / {print $2}' go.mod 2>/dev/null || echo "")
+
+  echo "==> Checking build dependencies..."
+
+  # Go — version must meet or exceed go.mod's `go` directive.
+  if command -v go >/dev/null 2>&1; then
+    local installed_go
+    installed_go=$(go version | awk '{print $3}' | sed 's/^go//')
+    if [[ -n "$required_go" ]]; then
+      # Simple lexicographic comparison works for semver with equal depth.
+      if [[ "$(printf '%s\n%s' "$installed_go" "$required_go" | sort -V | head -1)" == "$required_go" ]]; then
+        echo "  ✓ Go $installed_go (≥ $required_go required)"
+      else
+        echo "  ✗ Go $installed_go is too old. go.mod requires ≥ $required_go."
+        echo "    Update: brew install go  or  https://go.dev/dl/"
+        fail=1
+      fi
+    else
+      echo "  ✓ Go $installed_go"
+    fi
+  else
+    local req="${required_go:-1.21}"
+    echo "  ✗ Go is not installed (go.mod requires ≥ $req)."
+    echo "    Install: brew install go  or  https://go.dev/dl/"
+    fail=1
+  fi
+
+  # Xcode CLT — needed for CGO (cgo calls into macOS system libraries).
+  if xcode-select -p >/dev/null 2>&1; then
+    echo "  ✓ Xcode toolchain at $(xcode-select -p)"
+  else
+    echo "  ✗ Xcode Command Line Tools not installed."
+    echo "    Install: xcode-select --install"
+    fail=1
+  fi
+
+  if [[ $fail -ne 0 ]]; then
+    echo
+    echo "✗ Preflight failed. Fix the issues above and retry."
+    exit 1
+  fi
+
+  echo
+}
+
+preflight_check
+
 echo "==> Building Ion Engine..."
 go build -o bin/ion ./cmd/ion
 

@@ -21,6 +21,16 @@ export interface DispatchAgentOpts {
   name: string
   task: string
   model?: string
+  /**
+   * Extension to load into the child session so the child receives the
+   * extension's hooks, persona composition, AND its registered tools
+   * (including this extension's own dispatch tool, enabling n-tier
+   * delegation). Accepts a directory (resolved to the conventional entry
+   * point: extension.ts, index.ts, extension.js, index.js, extension.mjs,
+   * index.mjs — first match wins) or a direct entry-point file path.
+   * Pass `ctx.config.extensionDir` to give the child the same extension
+   * as the dispatcher.
+   */
   extensionDir?: string
   systemPrompt?: string
   projectPath?: string
