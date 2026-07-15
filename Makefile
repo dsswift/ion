@@ -1,4 +1,4 @@
-.PHONY: default desktop engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test test test-all test-linux test-linux-engine test-linux-desktop clean check-file-sizes check-contracts check-status-writers check-atv-parity check-logging check-dashboards claude-symlinks hooks
+.PHONY: default desktop engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test test test-all test-linux test-linux-engine test-linux-desktop clean check-file-sizes check-contracts check-status-writers check-atv-parity check-logging check-dashboards claude-symlinks hooks lint-desktop
 
 # Homebrew installs node/npm under /opt/homebrew/bin on Apple Silicon.
 # Make runs recipes with /bin/sh which only has /usr/bin:/bin in PATH,
@@ -64,6 +64,9 @@ engine-test:
 
 desktop-test:
 	@cd desktop && npm test
+
+lint-desktop:
+	@cd desktop && npm run lint
 
 test:
 	@cd engine && go test ./...
