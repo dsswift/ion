@@ -37,7 +37,7 @@ function updateCache(result: { models: any[]; providers: any[] }): void {
 }
 
 /** Fetch models from engine and update the cache. Notifies renderer windows. */
-async function refreshModelCache(): Promise<void> {
+export async function refreshModelCache(): Promise<void> {
   try {
     const result = await engineBridge.listModels()
     updateCache(result)

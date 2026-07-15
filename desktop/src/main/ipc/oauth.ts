@@ -2,7 +2,6 @@ import { ipcMain } from 'electron'
 import { IPC } from '../../shared/types'
 import { log as _log } from '../logger'
 import {
-  loginOpenAI, refreshOpenAI,
   loginGoogle, refreshGoogle,
   startGitHubDeviceFlow, pollGitHubAccessToken, exchangeGitHubForCopilotToken, refreshGitHubCopilot,
   storeTokens, clearTokens, hasTokens, registerRefreshFn,
@@ -14,7 +13,6 @@ function log(msg: string, fields?: Record<string, unknown>): void { _log('oauth'
 const activeFlows = new Map<string, AbortController>()
 
 export function registerOAuthIpc(): void {
-  registerRefreshFn('openai', async (rt) => refreshOpenAI(rt))
   registerRefreshFn('google', async (rt) => refreshGoogle(rt))
   registerRefreshFn('github-copilot', async (rt) => refreshGitHubCopilot(rt))
 
@@ -26,7 +24,6 @@ export function registerOAuthIpc(): void {
     try {
       let tokens: { accessToken: string; refreshToken: string; expiresAt: number }
       switch (provider) {
-        case 'openai': tokens = await loginOpenAI(); break
         case 'google': tokens = await loginGoogle(); break
         case 'github-copilot': {
           const device = await startGitHubDeviceFlow()

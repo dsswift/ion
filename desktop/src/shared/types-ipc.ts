@@ -260,6 +260,13 @@ export const IPC = {
   STORE_CREDENTIAL: 'ion:store-credential',
   REFRESH_MODELS: 'ion:refresh-models',
 
+  // Delegated-CLI provider auth (codex/grok/cursor) + per-provider backend
+  PROVIDER_LOGIN: 'ion:provider-login',
+  PROVIDER_LOGIN_CANCEL: 'ion:provider-login-cancel',
+  PROVIDER_LOGOUT: 'ion:provider-logout',
+  PROVIDER_SET_BACKEND: 'ion:provider-set-backend',
+  PROVIDER_LOGIN_EVENT: 'ion:provider-login-event',
+
   // OAuth
   OAUTH_START: 'ion:oauth-start',
   OAUTH_LOGOUT: 'ion:oauth-logout',

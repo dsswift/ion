@@ -35,13 +35,35 @@ export interface ModelEntry {
   isCustom?: boolean
 }
 
+/**
+ * Install and auth state of a provider's delegated CLI (claude/codex/grok/
+ * cursor). A probe snapshot the engine caches; mirrors Go ProviderCliStatus.
+ */
+export interface ProviderCliStatus {
+  backend: string
+  installed: boolean
+  binaryPath?: string
+  version?: string
+  authenticated: boolean
+  authMethod?: string
+  planType?: string
+  email?: string
+  label?: string
+  probedAt?: string
+}
+
 /** Wire-format provider information returned by the engine's list_models command. */
 export interface ProviderEntry {
   id: string
   hasAuth: boolean
+  /** "env" | "keychain" | "filestore" | "oauth" | "claude-code" | "codex" | "grok" | "cursor" | "none" | ... */
   authSource?: string
   baseURL?: string
   apiKeyRef?: string
+  /** Run backend currently selected for this provider (api | claude-code | codex | grok | cursor). */
+  backend?: string
+  /** Delegated-CLI install/auth status; present only for providers with a CLI backend option. */
+  cli?: ProviderCliStatus
 }
 
 /** Response shape from the list_models engine command. */

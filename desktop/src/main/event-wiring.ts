@@ -1,5 +1,6 @@
 import type { NormalizedEvent, EnrichedError } from '../shared/types'
 import { log as _log, trace as _trace } from './logger'
+import { handleProviderLoginEvent } from './event-wiring-provider-login'
 import { state, sessionPlane, engineBridge, extensionCommandRegistry, forwardedEnginePermissionDenials, lastForwardedTabStatus, lastForwardedTabMeta } from './state'
 import { broadcast } from './broadcast'
 import { currentBackend, shouldStreamThinkingToRemote } from './settings-store'
@@ -154,6 +155,10 @@ export function wireEngineBridgeEvents(): void {
     if (event.type === 'engine_status' && event.fields) {
       event = { ...event, fields: { ...event.fields, backend: currentBackend } }
     }
+
+    // engine_provider_login: forward each stage to the renderer and refresh the
+    // model cache on completion (see event-wiring-provider-login.ts).
+    if (handleProviderLoginEvent(event)) return
 
     // engine_command_registry: refresh the main-process routing-hint cache
     // BEFORE broadcasting so the unified prompt pipeline always observes the

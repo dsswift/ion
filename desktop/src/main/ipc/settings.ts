@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { ipcMain } from 'electron'
 import { existsSync, mkdirSync, readFileSync, renameSync } from 'fs'
 import { IPC } from '../../shared/types'
 import { log as _log, debug as _debug } from '../logger'
@@ -15,14 +15,13 @@ import {
   currentBackend,
   loadSessionChains,
   loadSessionLabels,
-  readEngineConfig,
   readSettings,
   saveSessionChains,
   saveSessionLabels,
-  writeEngineConfig,
 } from '../settings-store'
 import { initRemoteTransport } from '../remote/transport-init'
 import { persistAndBroadcastSettings } from '../settings-broadcast'
+import { writeConfigAndRelaunch } from '../engine-restart'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -137,24 +136,11 @@ export function registerSettingsIpc(): void {
 
   ipcMain.handle(IPC.SWITCH_BACKEND, async (_event, newBackend: 'api' | 'cli') => {
     if (newBackend === currentBackend) return { ok: true }
-
-    for (const win of BrowserWindow.getAllWindows()) {
-      try {
-        await win.webContents.executeJavaScript(
-          'window.__ionForceFlushTabs && window.__ionForceFlushTabs()',
-        )
-      } catch {}
-    }
-
-    const cfg = readEngineConfig()
-    cfg.backend = newBackend
-    writeEngineConfig(cfg)
-
-    await engineBridge.shutdownAndWait()
-
-    state.forceQuit = true
-    app.relaunch()
-    app.quit()
+    // Write the canonical engine value: "claude-code" (formerly "cli").
+    const canonical = newBackend === 'api' ? 'api' : 'claude-code'
+    await writeConfigAndRelaunch((cfg) => {
+      cfg.backend = canonical
+    })
   })
 
   ipcMain.handle(IPC.LOAD_TABS, () => {

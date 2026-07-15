@@ -213,9 +213,37 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
   ProviderEntry: [
     'apiKeyRef',
     'authSource',
+    'backend',
     'baseURL',
+    'cli',
     'hasAuth',
     'id',
+  ],
+  // Delegated-CLI install/auth status carried on ProviderEntry.cli. Mirrors
+  // Go's ProviderCliStatus.
+  ProviderCliStatus: [
+    'authMethod',
+    'authenticated',
+    'backend',
+    'binaryPath',
+    'email',
+    'installed',
+    'label',
+    'planType',
+    'probedAt',
+    'version',
+  ],
+  // Payload of engine_provider_login (EngineEvent.providerLogin). Mirrors Go's
+  // ProviderLoginUpdate.
+  ProviderLoginUpdate: [
+    'authUrl',
+    'backend',
+    'loginError',
+    'loginId',
+    'provider',
+    'stage',
+    'userCode',
+    'verificationUrl',
   ],
   // Slash-command listing carried inside engine_command_registry snapshots.
   // The desktop's prompt pipeline reads this off the wire to populate a

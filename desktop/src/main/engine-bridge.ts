@@ -8,6 +8,7 @@ import { sendReconcileState as sendReconcileStateImpl, sendQuerySessionStatus as
 import { stopAll as stopAllImpl, shutdownAndWait as shutdownAndWaitImpl } from './engine-bridge-lifecycle'
 import { buildSendPromptMessage, buildSendPromptLogLine } from './engine-bridge-prompts'
 import * as conv from './engine-bridge-conversations'
+import * as prov from './engine-bridge-providers'
 import type { EngineConfig, EngineEvent, ImageAttachmentPayload, DiscoveredCommand } from '../shared/types'
 
 const TAG = 'EngineBridge'
@@ -561,23 +562,14 @@ export class EngineBridge extends EventEmitter {
     return conv.migrateConversation(this, sessionId, targetFormat, targetDir, sourceDir)
   }
 
-  async listModels(): Promise<{ models: any[]; providers: any[] }> {
-    await this.connect()
-    const result = await this._sendWithData<{ models: any[]; providers: any[] }>({ cmd: 'list_models' })
-    return result.data || { models: [], providers: [] }
-  }
-
-  async storeCredential(provider: string, credential: string): Promise<{ ok: boolean; error?: string }> {
-    await this.connect()
-    return this._sendWithResult({ cmd: 'store_credential', provider, credential })
-  }
-
-  async refreshModels(provider?: string): Promise<{ ok: boolean; error?: string }> {
-    await this.connect()
-    const msg: Record<string, unknown> = { cmd: 'refresh_models' }
-    if (provider) msg.provider = provider
-    return this._sendWithResult(msg)
-  }
+  // Model / credential / delegated-CLI provider RPCs delegate to
+  // engine-bridge-providers.ts (file-size cap).
+  async listModels(): Promise<{ models: any[]; providers: any[] }> { return prov.listModels(this) }
+  async storeCredential(provider: string, credential: string): Promise<{ ok: boolean; error?: string }> { return prov.storeCredential(this, provider, credential) }
+  async refreshModels(provider?: string): Promise<{ ok: boolean; error?: string }> { return prov.refreshModels(this, provider) }
+  async providerLogin(provider: string): Promise<{ ok: boolean; error?: string }> { return prov.providerLogin(this, provider) }
+  async providerLoginCancel(provider: string): Promise<{ ok: boolean; error?: string }> { return prov.providerLoginCancel(this, provider) }
+  async providerLogout(provider: string): Promise<{ ok: boolean; error?: string }> { return prov.providerLogout(this, provider) }
 
   sendReconcileState(key: string): void { sendReconcileStateImpl(this, key) }
   sendQuerySessionStatus(key: string): void { sendQuerySessionStatusImpl(this, key) }

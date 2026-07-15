@@ -17,6 +17,22 @@ import type {
   ContextBreakdownPayload,
 } from './types-engine'
 
+/**
+ * One stage transition of a delegated-CLI login (codex/grok/cursor). Payload of
+ * the engine_provider_login event; mirrors Go ProviderLoginUpdate.
+ */
+export interface ProviderLoginUpdate {
+  provider: string
+  backend: string
+  /** started | await_browser | await_device_code | completed | failed | cancelled */
+  stage: string
+  authUrl?: string
+  userCode?: string
+  verificationUrl?: string
+  loginError?: string
+  loginId?: string
+}
+
 export type EngineEvent =
   | { type: 'engine_agent_state'; agents: AgentStateUpdate[] }
   | { type: 'engine_status'; fields: StatusFields; metadata?: Record<string, unknown> }
@@ -63,6 +79,10 @@ export type EngineEvent =
   // exchange); device-code carries oidcUserCode + oidcVerificationUri
   // (display them; the engine polls to completion).
   | { type: 'engine_oidc_login_url'; oidcAuthorizationUrl?: string; oidcUserCode?: string; oidcVerificationUri?: string }
+  // engine_provider_login — one stage transition of a delegated-CLI login
+  // (codex/grok/cursor). Incremental: consumers render the current stage; a
+  // terminal completed/failed/cancelled stage ends the flow.
+  | { type: 'engine_provider_login'; providerLogin?: ProviderLoginUpdate }
   // engine_oidc_identity — complete SNAPSHOT of the operator's OIDC
   // identity state, broadcast on every login/logout transition and
   // answered to oidc_identity queries. Consumers REPLACE their local

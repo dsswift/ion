@@ -208,6 +208,14 @@ export function writeEngineConfig(config: Record<string, any>): void {
   atomicWriteFileSync(ENGINE_CONFIG_FILE, JSON.stringify(config, null, 2), 0o644)
 }
 
+/**
+ * The desktop-local backend union stays 'api' | 'cli' — it keys the on-disk tab
+ * file names (tabs-api.json / tabs-cli.json) and renaming it would force a
+ * user-data migration for no benefit. It maps the engine's on-disk backend
+ * value ('api' | 'cli' (legacy alias) | 'claude-code' | 'hybrid') onto that
+ * union: only 'api' is 'api'; every other value (subscription or hybrid
+ * routing) is 'cli'.
+ */
 export function getCurrentBackend(): 'api' | 'cli' {
   const cfg = readEngineConfig()
   return cfg.backend === 'api' ? 'api' : 'cli'
