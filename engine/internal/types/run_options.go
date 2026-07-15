@@ -62,28 +62,37 @@ type RunOptions struct {
 	// (e.g. a desktop "clear context" that starts a new conversation for an
 	// existing tab). Ignored when resuming an existing conversation. Additive
 	// and non-breaking: an absent value leaves parentId empty as before.
-	ParentConversationID string          `json:"parentConversationId,omitempty"`
-	AllowedTools         []string        `json:"allowedTools,omitempty"`
-	SuppressTools        []string        `json:"suppressTools,omitempty"`
-	MaxTurns             int             `json:"maxTurns,omitempty"`
-	MaxBudgetUsd         float64         `json:"maxBudgetUsd,omitempty"`
-	SystemPrompt         string          `json:"systemPrompt,omitempty"`
-	Model                string          `json:"model,omitempty"`
-	HookSettingsPath     string          `json:"hookSettingsPath,omitempty"`
-	AddDirs              []string        `json:"addDirs,omitempty"`
-	PermissionModeCli    string          `json:"permissionModeCli,omitempty"`
-	AppendSystemPrompt   string          `json:"appendSystemPrompt,omitempty"`
-	Source               string          `json:"source,omitempty"`
-	McpConfig            string          `json:"mcpConfig,omitempty"`
-	MaxTokens            int             `json:"maxTokens,omitempty"`
-	Thinking             *ThinkingConfig `json:"thinking,omitempty"`
-	MaxRetries           int             `json:"maxRetries,omitempty"`
-	FallbackChain        []string        `json:"fallbackChain,omitempty"`
-	Persistent           bool            `json:"persistent,omitempty"`
-	PlanMode             bool            `json:"planMode,omitempty"`
-	PlanModeTools        []string        `json:"planModeTools,omitempty"`
-	PlanFilePath         string          `json:"planFilePath,omitempty"`
-	PlanModePrompt       string          `json:"planModePrompt,omitempty"`
+	ParentConversationID string   `json:"parentConversationId,omitempty"`
+	AllowedTools         []string `json:"allowedTools,omitempty"`
+	SuppressTools        []string `json:"suppressTools,omitempty"`
+	MaxTurns             int      `json:"maxTurns,omitempty"`
+	MaxBudgetUsd         float64  `json:"maxBudgetUsd,omitempty"`
+	SystemPrompt         string   `json:"systemPrompt,omitempty"`
+	Model                string   `json:"model,omitempty"`
+	HookSettingsPath     string   `json:"hookSettingsPath,omitempty"`
+	AddDirs              []string `json:"addDirs,omitempty"`
+	PermissionModeCli    string   `json:"permissionModeCli,omitempty"`
+	AppendSystemPrompt   string   `json:"appendSystemPrompt,omitempty"`
+	Source               string   `json:"source,omitempty"`
+	McpConfig            string   `json:"mcpConfig,omitempty"`
+	// CliMcpServers carries structured per-session MCP-server specs to inject
+	// into a delegated-CLI backend that accepts inline MCP servers on session
+	// creation — the ACP backends (grok, cursor) pass these on `session/new`.
+	// claude-code uses McpConfig (a file path) instead; codex's shared
+	// app-server takes MCP only at process-spawn time and is not wired via
+	// this field. Each entry is a structured server spec (see
+	// backend.ToolServer.McpServerSpec). Additive/omitempty; not part of the
+	// cross-language contract manifest (engine-internal RunOptions field).
+	CliMcpServers  []map[string]interface{} `json:"cliMcpServers,omitempty"`
+	MaxTokens      int                      `json:"maxTokens,omitempty"`
+	Thinking       *ThinkingConfig          `json:"thinking,omitempty"`
+	MaxRetries     int                      `json:"maxRetries,omitempty"`
+	FallbackChain  []string                 `json:"fallbackChain,omitempty"`
+	Persistent     bool                     `json:"persistent,omitempty"`
+	PlanMode       bool                     `json:"planMode,omitempty"`
+	PlanModeTools  []string                 `json:"planModeTools,omitempty"`
+	PlanFilePath   string                   `json:"planFilePath,omitempty"`
+	PlanModePrompt string                   `json:"planModePrompt,omitempty"`
 	// PlanModeSparseReminder is the harness-supplied text for the sparse
 	// plan-mode reminder injected periodically during plan-mode runs.
 	// Empty (the default) means the engine builds the reminder via

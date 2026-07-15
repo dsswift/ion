@@ -309,6 +309,12 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		// emitExit can fire on both the error path and the cancel path, and a
 		// negative WaitGroup counter is fatal.
 		var childDoneOnce sync.Once
+		// childToolServer is set at startChild time when this child routes to a
+		// delegated-CLI backend and needs its ion tools bridged over MCP. It is
+		// Stopped in the child's OnExit below so the per-child Unix socket does
+		// not leak. Declared here so the OnExit closure (wired before startChild)
+		// can reference it; it is populated by the time the run can exit.
+		var childToolServer *backend.ToolServer
 
 		// Estimated reasoning-token total for the child run (issue #158),
 		// accumulated from the child's ThinkingBlockEndEvent stream. Surfaced
@@ -557,6 +563,22 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			extensionVersion: sa.ExtensionVersion(),
 		})
 
+		// When this child routes to a delegated-CLI backend, its RunConfig is
+		// dropped at dispatch (the CLI path ignores it), so the child would be
+		// tool-orphaned: no extension tools (emit_briefing etc.) and no
+		// ion_agent, unable to dispatch grandchildren. Wire a per-child tool
+		// server from the already-built childCfg — extension tools routed via
+		// its McpToolRouter, ion_agent via its AgentSpawner (grandchildren at
+		// depth+1) — and attach it to runOpts (McpConfig / CliMcpServers). No-op
+		// for API-routed children (they consume the RunConfig directly). The
+		// server is Stopped after runChild fully returns (both call sites below),
+		// spanning any suspend/revive iterations.
+		if ts, err := backend.BuildDelegatedChildToolServer(child, childReqID, childCfg, &runOpts); err != nil {
+			utils.LogWithFields(utils.LevelWarn, "session", "dispatch: cli child tool-server wiring failed", map[string]any{"session_key": key, "agent": agentName, "error": err.Error()})
+		} else {
+			childToolServer = ts
+		}
+
 		// runChild encapsulates the child backend start + wait + result
 		// building logic. It is called directly for foreground dispatches
 		// and in a goroutine for background dispatches.
@@ -600,7 +622,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				// conditions are met.
 				if suspendSig != nil && !recalled {
 					utils.LogWithFields(utils.LevelInfo, "server", "dispatch suspended, parking until revive", map[string]any{
-						"model":   opts.Name,
+						"model":    opts.Name,
 						"awaiting": len(suspendSig.AwaitingDispatchIDs),
 					})
 
@@ -863,6 +885,11 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 					}
 				}()
 				result := runChild()
+				// The dispatch is fully done (including any suspend/revive
+				// iterations); release the per-child CLI tool-server socket.
+				if childToolServer != nil {
+					childToolServer.Stop()
+				}
 
 				// Fire the appropriate callback.
 				if recalled {
@@ -918,6 +945,12 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		}, child, key, currentDispatchId, childDepth, childReqID, opts.AllowedSubAgents)
 
 		defer cancelFn() // clean up the context
+		// Release the per-child CLI tool-server socket on every return path.
+		defer func() {
+			if childToolServer != nil {
+				childToolServer.Stop()
+			}
+		}()
 		result := runChild()
 
 		if childErr != nil {
@@ -930,4 +963,3 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 // fireLifecycleCallbacks and truncate live in dispatch_lifecycle_callbacks.go,
 // and loadChildExtension and startChild live in dispatch_child_setup.go (all
 // same package) to keep this file under the 800-line cap.
-

@@ -9,6 +9,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/modelconfig"
 	"github.com/dsswift/ion/engine/internal/session/extcontext"
+	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -40,11 +41,24 @@ import (
 // are documented as "Observe only": the parent observes its children's
 // lifecycle.
 func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel string, extGroup *extension.ExtensionGroup, runCfg *backend.RunConfig) {
+	runCfg.AgentSpawner = m.buildRootAgentSpawner(s, key, parentModel, extGroup)
+}
+
+// buildRootAgentSpawner returns the depth-0 AgentSpawner used by BOTH the
+// ApiBackend orchestrator run (via wireAgentSpawner → runCfg.AgentSpawner) and
+// the delegated-CLI ion_agent MCP tool (buildAgentToolHandler in
+// prompt_cli_hooks.go). Routing both through one builder means a CLI parent's
+// model-called ion_agent gets the SAME full dispatch as the API path:
+// DispatchRegistry registration, engine_agent_state (agent panel), dispatch
+// telemetry, child tool wiring (BuildDelegatedChildToolServer), and a
+// grandchild-capable spawner — instead of the old bare synchronous child run
+// that surfaced no agent and left the child tool-orphaned.
+func (m *Manager) buildRootAgentSpawner(s *engineSession, key string, parentModel string, extGroup *extension.ExtensionGroup) tools.AgentSpawner {
 	capturedModel := parentModel
 	capturedKey := key
 	capturedExtGroup := extGroup
 
-	runCfg.AgentSpawner = func(ctx context.Context, requestedName, prompt, description, cwd, model string) (string, error) {
+	return func(ctx context.Context, requestedName, prompt, description, cwd, model string) (string, error) {
 		// If the LLM named a specialist, resolve it. Fires capability_match
 		// when not registered so a harness extension can promote a draft
 		// (via ctx.RegisterAgentSpec) and we resolve on the same call.
@@ -212,4 +226,3 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 		return result.Output, nil
 	}
 }
-

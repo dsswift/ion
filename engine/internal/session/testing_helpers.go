@@ -97,7 +97,7 @@ func (m *Manager) TestBuildAgentToolHandler(key string) backend.ToolHandler {
 	if !ok {
 		return nil
 	}
-	return m.buildAgentToolHandler(s, key)
+	return m.buildAgentToolHandler(s, key, s.lastModel)
 }
 
 // TestGetPlanModeBashAllowlist returns the session's bash allowlist

@@ -104,6 +104,32 @@ func TestMcpServerName_Constant(t *testing.T) {
 	}
 }
 
+// TestMcpServerSpec_AcpStdioShape pins the inline MCP-server spec the ACP
+// backends (grok, cursor) pass on session/new: name + command + args + env,
+// bridging to the tool server's Unix socket via socat. env must be present —
+// grok's stdio McpServer serde rejects the entry without it.
+func TestMcpServerSpec_AcpStdioShape(t *testing.T) {
+	ts := NewToolServer("spec-test")
+	spec := ts.McpServerSpec()
+
+	if spec["name"] != McpServerName {
+		t.Errorf("name = %v, want %q", spec["name"], McpServerName)
+	}
+	if spec["command"] != "socat" {
+		t.Errorf("command = %v, want socat", spec["command"])
+	}
+	args, ok := spec["args"].([]string)
+	if !ok || len(args) != 2 || args[1] != "STDIO" {
+		t.Errorf("args = %v, want [UNIX-CONNECT:<sock> STDIO]", spec["args"])
+	}
+	if !strings.HasPrefix(args[0], "UNIX-CONNECT:") || !strings.Contains(args[0], ts.SocketPath()) {
+		t.Errorf("args[0] = %q, want UNIX-CONNECT to the tool-server socket %q", args[0], ts.SocketPath())
+	}
+	if _, hasEnv := spec["env"]; !hasEnv {
+		t.Error("spec missing env (grok's stdio McpServer serde requires it)")
+	}
+}
+
 // sendJSONRPC sends a request and reads the response over a connection.
 func sendJSONRPC(t *testing.T, conn net.Conn, method string, id interface{}, params interface{}) map[string]interface{} {
 	t.Helper()

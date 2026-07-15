@@ -658,6 +658,56 @@ func TestWireAgentToolServer_ReusesExistingToolServer(t *testing.T) {
 	existingTS.Stop()
 }
 
+// TestBuildAgentToolHandler_RoutesThroughDispatch pins the root-model-called
+// ion_agent fix: when a CLI parent's model invokes the ion_agent MCP tool, the
+// handler routes through the shared depth-0 dispatch (buildRootAgentSpawner),
+// so the dispatched agent registers and emits engine_agent_state (it appears in
+// the agent panel) — instead of the old bare synchronous child run that
+// surfaced no agent. Reverting buildAgentToolHandler to the bare child.StartRun
+// path turns this red (no engine_agent_state with a live agent).
+func TestBuildAgentToolHandler_RoutesThroughDispatch(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	stub := &childStubBackend{resultText: "child output"}
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	mgr.childBackendOverride = func() backend.RunBackend { return stub }
+
+	if _, err := mgr.StartSession("cli-ion-agent", defaultConfig()); err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	mgr.mu.Lock()
+	s := mgr.sessions["cli-ion-agent"]
+	mgr.mu.Unlock()
+
+	var mu sync.Mutex
+	var sawLiveAgent bool
+	mgr.OnEvent(func(_ string, ev types.EngineEvent) {
+		if ev.Type == "engine_agent_state" && len(ev.Agents) > 0 {
+			mu.Lock()
+			sawLiveAgent = true
+			mu.Unlock()
+		}
+	})
+
+	handler := mgr.buildAgentToolHandler(s, "cli-ion-agent", "claude-opus-4-8")
+	res, err := handler(map[string]interface{}{"prompt": "do the thing", "name": "worker"})
+	if err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("unexpected error result: %s", res.Content)
+	}
+	if res.Content != "child output" {
+		t.Errorf("result = %q, want %q (child dispatch output)", res.Content, "child output")
+	}
+	mu.Lock()
+	got := sawLiveAgent
+	mu.Unlock()
+	if !got {
+		t.Error("CLI ion_agent dispatch emitted no engine_agent_state with a live agent — the dispatched agent would be invisible in the panel (did it route through the dispatch path?)")
+	}
+}
+
 func TestWireAgentToolServer_SpecResolution(t *testing.T) {
 	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
@@ -676,7 +726,7 @@ func TestWireAgentToolServer_SpecResolution(t *testing.T) {
 	mgr.mu.Unlock()
 
 	// Build the handler directly and test spec resolution
-	handler := mgr.buildAgentToolHandler(s, "agent-ts4")
+	handler := mgr.buildAgentToolHandler(s, "agent-ts4", "claude-opus-4-8")
 
 	// Unknown agent names now fall through as unnamed agents (no error).
 	// We only verify the missing-prompt guard here since spawning a real

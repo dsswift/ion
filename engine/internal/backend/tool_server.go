@@ -125,6 +125,15 @@ func (ts *ToolServer) SocketPath() string {
 	return ts.sockPath
 }
 
+// HasTool reports whether a tool of the given name is registered. Exposed for
+// tests that assert which tools a delegated-CLI child's tool server carries.
+func (ts *ToolServer) HasTool(name string) bool {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	_, ok := ts.tools[name]
+	return ok
+}
+
 // McpConfigPath writes MCP config JSON for the Claude CLI --mcp-config flag.
 func (ts *ToolServer) McpConfigPath(sessionID string) (string, error) {
 	home, _ := os.UserHomeDir()
@@ -153,6 +162,24 @@ func (ts *ToolServer) McpConfigPath(sessionID string) (string, error) {
 		return "", err
 	}
 	return configPath, nil
+}
+
+// McpServerSpec returns the tool server as a single structured MCP-server
+// entry, for delegated CLIs that take per-session MCP servers as inline params
+// rather than a config-file path. The ACP backends (grok, cursor) pass this on
+// `session/new`. The shape is the ACP stdio `McpServer` variant — the grok
+// agent's serde requires `env` to be present (an empty array is accepted), so
+// it is always included. Same socat→Unix-socket bridge as McpConfigPath.
+func (ts *ToolServer) McpServerSpec() map[string]interface{} {
+	return map[string]interface{}{
+		"name":    McpServerName,
+		"command": "socat",
+		"args": []string{
+			fmt.Sprintf("UNIX-CONNECT:%s", ts.sockPath),
+			"STDIO",
+		},
+		"env": []interface{}{},
+	}
 }
 
 func (ts *ToolServer) acceptLoop() {

@@ -141,25 +141,37 @@ func (c *Client) Authenticate(ctx context.Context, methodID string) error {
 }
 
 // SessionNew opens a new session and returns its id and any advertised models.
-// mcpServers is sent as an empty (non-nil) slice so it serializes as the
-// spec-required `[]` rather than being omitted — grok's ACP rejects a session/new
-// that lacks the field. The delegated CLI loads its own MCP configuration.
-func (c *Client) SessionNew(ctx context.Context, cwd string) (*SessionResult, error) {
+// mcpServers carries the engine's per-session MCP tool bridge (extension tools
+// + ion_agent), or an empty slice when there are none. It is always sent as a
+// non-nil array so it serializes as the spec-required `[]` rather than being
+// omitted — grok's ACP rejects a session/new that lacks the field. The
+// delegated CLI additionally loads its own MCP configuration.
+func (c *Client) SessionNew(ctx context.Context, cwd string, mcpServers []map[string]interface{}) (*SessionResult, error) {
 	var res SessionResult
-	if err := c.call(ctx, MethodSessionNew, SessionNewParams{Cwd: cwd, McpServers: []any{}}, &res); err != nil {
+	if err := c.call(ctx, MethodSessionNew, SessionNewParams{Cwd: cwd, McpServers: mcpServersOrEmpty(mcpServers)}, &res); err != nil {
 		return nil, err
 	}
 	return &res, nil
 }
 
 // SessionLoad reopens an existing session (requires agentCapabilities.loadSession).
-// Same empty-slice contract as SessionNew for the required mcpServers field.
-func (c *Client) SessionLoad(ctx context.Context, sessionID, cwd string) (*SessionResult, error) {
+// Same required-mcpServers contract as SessionNew.
+func (c *Client) SessionLoad(ctx context.Context, sessionID, cwd string, mcpServers []map[string]interface{}) (*SessionResult, error) {
 	var res SessionResult
-	if err := c.call(ctx, MethodSessionLoad, SessionLoadParams{SessionID: sessionID, Cwd: cwd, McpServers: []any{}}, &res); err != nil {
+	if err := c.call(ctx, MethodSessionLoad, SessionLoadParams{SessionID: sessionID, Cwd: cwd, McpServers: mcpServersOrEmpty(mcpServers)}, &res); err != nil {
 		return nil, err
 	}
 	return &res, nil
+}
+
+// mcpServersOrEmpty widens typed MCP specs to the []any the ACP params carry,
+// guaranteeing a non-nil slice so the required field serializes as `[]`.
+func mcpServersOrEmpty(specs []map[string]interface{}) []any {
+	out := make([]any, 0, len(specs))
+	for _, s := range specs {
+		out = append(out, s)
+	}
+	return out
 }
 
 // SessionPrompt runs a prompt to completion and returns the stop reason.

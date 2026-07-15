@@ -350,14 +350,19 @@ func (b *AcpBackend) openSession(ctx context.Context, options types.RunOptions, 
 	client := b.client
 	b.mu.Unlock()
 	if options.CliResumeSessionID != "" && loadCapable {
-		if res, err := client.SessionLoad(ctx, options.CliResumeSessionID, options.ProjectPath); err == nil {
+		if res, err := client.SessionLoad(ctx, options.CliResumeSessionID, options.ProjectPath, options.CliMcpServers); err == nil {
 			return options.CliResumeSessionID, res.Modes, nil
 		}
 		// Fall through to a fresh session if load fails.
 	}
-	res, err := client.SessionNew(ctx, options.ProjectPath)
+	res, err := client.SessionNew(ctx, options.ProjectPath, options.CliMcpServers)
 	if err != nil {
 		return "", nil, err
+	}
+	if len(options.CliMcpServers) > 0 {
+		utils.LogWithFields(utils.LevelInfo, "backend.acp", "session opened with ion tool-server mcp bridge", map[string]any{
+			"kind": b.spec.kind, "session_id": res.SessionID, "mcp_servers": len(options.CliMcpServers),
+		})
 	}
 	return res.SessionID, res.Modes, nil
 }

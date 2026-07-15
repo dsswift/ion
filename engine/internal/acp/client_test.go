@@ -143,7 +143,7 @@ func TestACP_SessionNew_WithModels(t *testing.T) {
 			},
 		}
 	})
-	res, err := c.SessionNew(context.Background(), "/repo")
+	res, err := c.SessionNew(context.Background(), "/repo", nil)
 	if err != nil {
 		t.Fatalf("session/new: %v", err)
 	}
@@ -168,6 +168,37 @@ func TestACP_SessionNew_WithModels(t *testing.T) {
 	}
 }
 
+// TestACP_SessionNew_SendsMcpServerSpec pins that a provided MCP server spec
+// (the engine's ToolServer bridge) reaches the wire on session/new, so grok /
+// cursor can call Ion's extension tools + ion_agent. This is the ACP half of
+// the "extension tools + dispatch on codex/grok/cursor" closure.
+func TestACP_SessionNew_SendsMcpServerSpec(t *testing.T) {
+	c, agent := newFakeAgent(t, "grok", Handlers{})
+	agent.on("session/new", func(json.RawMessage) any { return SessionResult{SessionID: "sess_mcp"} })
+
+	spec := []map[string]interface{}{
+		{"name": "ion-extensions", "command": "socat", "args": []string{"UNIX-CONNECT:/tmp/x.sock", "STDIO"}, "env": []interface{}{}},
+	}
+	if _, err := c.SessionNew(context.Background(), "/repo", spec); err != nil {
+		t.Fatalf("session/new: %v", err)
+	}
+	var got struct {
+		McpServers []map[string]json.RawMessage `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(agent.paramsFor("session/new"), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got.McpServers) != 1 {
+		t.Fatalf("want 1 mcpServer on the wire, got %d", len(got.McpServers))
+	}
+	if string(got.McpServers[0]["name"]) != `"ion-extensions"` {
+		t.Errorf("mcpServer name = %s, want ion-extensions", got.McpServers[0]["name"])
+	}
+	if _, hasEnv := got.McpServers[0]["env"]; !hasEnv {
+		t.Error("mcpServer missing env (grok's stdio serde requires it)")
+	}
+}
+
 // TestACP_SessionLoad_SendsMcpServers pins the same required-field contract on
 // session/load: mcpServers must be present as `[]`, not omitted.
 func TestACP_SessionLoad_SendsMcpServers(t *testing.T) {
@@ -175,7 +206,7 @@ func TestACP_SessionLoad_SendsMcpServers(t *testing.T) {
 	agent.on("session/load", func(json.RawMessage) any {
 		return SessionResult{SessionID: "sess_9"}
 	})
-	if _, err := c.SessionLoad(context.Background(), "sess_9", "/repo"); err != nil {
+	if _, err := c.SessionLoad(context.Background(), "sess_9", "/repo", nil); err != nil {
 		t.Fatalf("session/load: %v", err)
 	}
 	raw := agent.paramsFor("session/load")
