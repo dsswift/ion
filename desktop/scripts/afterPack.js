@@ -49,7 +49,12 @@ exports.default = async function afterPack(context) {
 
   const sign = identityAvailable ? `"${IDENTITY}"` : "-";
 
-  const cmd = `codesign --force --sign ${sign} --options runtime ${entitlementsArgs} "${engineBin}"`;
+  // Explicit namespaced identifier: macOS Local Network grants key to the
+  // code identity, and grant creation is silently suppressed for identities
+  // with stale records in the SIP-locked NetworkExtension policy store (the
+  // default filename-derived identifier "ion" is poisoned that way). Keep in
+  // sync with engine/commands/install.command and the release workflow.
+  const cmd = `codesign --force --sign ${sign} --identifier house.sprague.ion.engine --options runtime ${entitlementsArgs} "${engineBin}"`;
 
   console.log(`  afterPack: signing engine binary (identity: ${identityAvailable ? IDENTITY : "ad-hoc"})`);
   try {

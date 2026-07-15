@@ -140,7 +140,7 @@ export class LANServer extends EventEmitter {
         // Route /pair connections to the pairing handler.
         if (req.url === '/pair') {
           log('lan_server: pairing connection', { ip })
-          this._handlePairingConnection(ws)
+          this._handlePairingConnection(ws, ip)
           return
         }
 
@@ -295,7 +295,7 @@ export class LANServer extends EventEmitter {
    *  3. Ion sends: { type: "pair_response", publicKey: base64, relayUrl?, relayApiKey? }
    *     OR: { type: "pair_error", message: string }
    */
-  private _handlePairingConnection(ws: WebSocket): void {
+  private _handlePairingConnection(ws: WebSocket, ip = ''): void {
     ws.on('message', (raw: Buffer | string) => {
       try {
         const msg = JSON.parse(raw.toString())
@@ -307,6 +307,16 @@ export class LANServer extends EventEmitter {
             deviceName: msg.deviceName,
             recovery: !!msg.recovery,
             respond: (response: Record<string, unknown>) => {
+              // A successful pairing (response carries the desktop public key)
+              // proves the peer at this IP is legitimate — clear any auth
+              // cooldown accrued from its previous (now-revoked) identity.
+              // Without this, the just-paired device's /ws auth connection is
+              // rejected by the cooldown gate (close 1008) and the client
+              // sees an immediate auth failure right after entering the PIN.
+              if (response.publicKey) {
+                this.recordAuthSuccess(ip)
+                log('lan_server: pair success, cleared auth cooldown', { ip })
+              }
               try {
                 ws.send(JSON.stringify(response))
               } catch (err) {
