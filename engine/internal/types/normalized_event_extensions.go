@@ -62,6 +62,11 @@ type HarnessMessageEvent struct {
 	// Source is an optional string identifying the origin of the message
 	// (e.g. "clear" for /clear dividers). Informational only.
 	Source string `json:"source,omitempty"`
+	// DedupMode is a client-honored retention hint. Absent/"" = suppress-later
+	// (default: ignore a later message with the same DedupKey). "relocate" =
+	// move-forward (remove any existing message with this DedupKey, append the
+	// new one at the end).
+	DedupMode string `json:"dedupMode,omitempty"`
 }
 
 func (HarnessMessageEvent) eventType() string { return EventHarnessMessage }
