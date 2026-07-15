@@ -877,6 +877,17 @@ Advisory workflow signal emitted once per run when the engine's progress watchdo
 | `runStalledDuration` | number | Seconds since last progress event |
 | `runStalledLastActivity` | string | Description of the most recent progress event (optional) |
 
+#### engine_capability_unsupported
+
+Workflow signal emitted when a requested feature (e.g. plan mode) is not supported by the backend that would serve the run, and the engine declined the prompt cleanly instead of dispatching a run that would fail. No run starts and the session stays idle and immediately usable for the next prompt. The engine reports; the consumer decides — reroute the prompt to a capable model, surface the reason, or ignore the event. Not retained or replayed on reconnect.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_capability_unsupported"` | Event type |
+| `capability` | string | Machine-readable name of the unsupported feature (`"plan_mode"` today; the vocabulary grows with the backend capability contract) |
+| `capabilityBackend` | string | Routing kind of the backend that would have served the run (`"grok"`, `"cursor"`, `"codex"`, `"claude-code"`, `"api"`) |
+| `capabilityReason` | string | Human-readable explanation suitable for direct display |
+
 #### engine_prompt_injected
 
 Emitted when an extension injects a prompt via `ctx.sendPrompt` (dispatch-completion delivery, check-ins, orchestrator revives) and the engine accepts a run on it. No client submitted this user turn, so no client performed an optimistic transcript insert — consumers that maintain a live transcript should append the prompt as a user turn. The same text is persisted as the run's user turn in the conversation file, so a history reload shows the identical transcript. Client-submitted prompts (the wire `prompt` command) never emit this event. Not retained or replayed on reconnect.

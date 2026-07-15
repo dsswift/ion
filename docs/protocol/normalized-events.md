@@ -307,6 +307,39 @@ emitted at the model-fallback swap site in `runloop.go`.
 
 ---
 
+### capability_unsupported
+
+Workflow event emitted when a requested feature is not supported by the
+backend that would serve the run, and the engine declined the request
+cleanly instead of dispatching a run that would fail — e.g. plan mode on a
+backend without a plan/architect mode. The primary emitter is the session
+layer's dispatch-time capability gate, which consults the serving backend's
+static `Capabilities()` descriptor after the model is final; no run starts,
+no crash-shaped exit fires, and the session stays idle and immediately
+usable for the next prompt.
+
+The engine reports; the consumer decides. A harness may reroute the prompt
+to a capable model, abort, notify the user, or ignore the event — the
+engine has no opinion and never auto-reroutes. The event is the engine's
+complete signaling surface for the declined request; no stream content is
+synthesized. See [CLAUDE.md § "The typed-event corollary"](https://github.com/dsswift/ion/blob/main/CLAUDE.md).
+
+Snapshot semantics: workflow signal, not state. The event fires once at
+the decline site and is not retained or replayed on reconnect.
+
+| Field        | Type                        | Description |
+|--------------|-----------------------------|-------------|
+| `type`       | `"capability_unsupported"`  | Event type |
+| `capability` | string                      | Machine-readable name of the unsupported feature (`"plan_mode"` today; the vocabulary grows with the backend capability contract). |
+| `backend`    | string                      | Routing kind of the backend that would have served the run (`"grok"`, `"cursor"`, `"codex"`, `"claude-code"`, `"api"`). |
+| `reason`     | string                      | Human-readable explanation suitable for direct display. |
+
+**Produced from:** `CapabilityUnsupportedEvent` in
+[`engine/internal/types/normalized_event_capability.go`](https://github.com/dsswift/ion/blob/main/engine/internal/types/normalized_event_capability.go),
+emitted by the capability gate in `session/prompt_dispatch.go`.
+
+---
+
 ### plan_mode_auto_exit
 
 Workflow event emitted when the engine synthesizes an ExitPlanMode tool call at end-of-turn because the extension did not call ExitPlanMode itself. Sibling to `plan_proposal`. Both `plan_mode_auto_exit` and `plan_proposal` fire on synthesis: this event identifies that synthesis occurred, while `plan_proposal` carries the normal plan-approval payload.

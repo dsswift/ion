@@ -141,7 +141,7 @@ The ApiBackend implements plan mode itself (tool gating, write gates, `ExitPlanM
 | claude-code | `--permission-mode plan` | The `ExitPlanMode` tool argument (`plan`) streamed in the assistant message |
 | codex | `turn/start` `collaborationMode{mode:"plan"}` | The completed `plan` thread item (authoritative over `item/plan/delta`) |
 | cursor (ACP) | `session/set_mode` to the advertised plan/architect mode | The `plan` session update's entries, snapshotted at prompt return |
-| grok (ACP) | none — surfaces a clean `engine_error` with `errorCode: plan_mode_unsupported` and a deliberate exit 0 | n/a |
+| grok (ACP) | none — the dispatch-time capability gate declines the prompt with a typed `engine_capability_unsupported` event before any run starts (grok's `Capabilities()` reports `PlanMode: false`). A direct backend consumer that dispatches anyway gets the runtime backstop: a clean `engine_error` with `errorCode: plan_mode_unsupported` and a deliberate exit 0 | n/a |
 
 The captured native plan markdown is written atomically to the run's `planFilePath`, so file-centric consumers work unchanged. On codex, `RunOptions.PlanModePrompt` doubles as the `developer_instructions` sent with the plan collaboration mode (engine default when empty); the `plan_mode_prompt` hook layer does not reach delegated-CLI backends (it rides `RunConfig`, which only the ApiBackend receives). Each CLI backend also carries the end-of-turn safety net: a plan-mode turn that ends without a native plan/exit synthesizes `engine_plan_mode_auto_exit` + `engine_plan_proposal`, gated on `planModeAutoExit`.
 

@@ -20,7 +20,7 @@ Legacy formats may also exist: `.jsonl` (v1) and `.json` (v0). The engine auto-m
 
 ## `.tree.jsonl` structure
 
-- **Line 1 (header):** JSON object with `"meta": true`, `"id"`, `"leafId"`, `"workingDirectory"`, `"version"`.
+- **Line 1 (header):** JSON object with `"meta": true`, `"id"`, `"leafId"`, `"workingDirectory"`, `"version"`, optional `"backend"`, and optional `"nativeSessions"` — a map of delegated-CLI backend kind (`claude-code` / `codex` / `grok` / `cursor`) to `{cursor, headEntryId}`, where `cursor` is that backend's native resume handle and `headEntryId` is the conversation's `leafId` at capture time. A cursor is a disposable per-provider cache over the transcript: it is valid for native resume only while `headEntryId` still equals the live `leafId`; otherwise the next run on that backend re-bridges from the transcript. Persisted here so delegated-CLI continuity survives an engine restart.
 - **Subsequent lines:** `SessionEntry` objects (`engine/internal/conversation/conversation.go`), each with:
   - `id` — unique entry identifier
   - `parentId` — pointer to parent entry (null for roots)

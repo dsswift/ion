@@ -27,6 +27,11 @@ principle: the engine owns the mechanism (spawn, transport, translation,
 approval routing) and lets each vendor's CLI own the opinion (which tools, which
 models, how it authenticates).
 
+> **Feature parity.** Because the CLI owns the agent loop, not every ApiBackend
+> feature is available on every CLI backend. The authoritative, per-backend
+> parity reference — including which gaps are closeable and which are gated by
+> the CLI's own rules — is the [Backend Capability Matrix](backend-capability-matrix.md).
+
 ## Delegation, not reimplementation
 
 The engine deliberately does **not** own OpenAI's ChatGPT protocol, xAI's, or
