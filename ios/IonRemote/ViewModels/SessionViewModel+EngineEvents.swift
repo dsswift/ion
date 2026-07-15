@@ -137,6 +137,52 @@ extension SessionViewModel {
     }
 
     @MainActor
+    func handleEngineImageContent(tabId: String, instanceId: String?, path: String, mediaType: String, source: String, toolId: String?) {
+        DiagnosticLog.log("engine image content", tag: "session.engine", level: .debug, fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "reason": source,
+            "status": (path as NSString).lastPathComponent
+        ])
+        // The engine forwards the FILE PATH (never base64). Attach it to the
+        // owning message so EngineMessageRow renders it via InlineAttachmentImage,
+        // which fetches bytes lazily through RemoteImageFetcher on a cache miss.
+        // Mirrors the desktop attachImageToMessages reducer (event-slice-images.ts):
+        //   - source "tool" (toolId set): attach to the matching tool message.
+        //   - source "provider" (or no toolId): attach to the last assistant
+        //     message, creating an empty one if the run produced none yet.
+        let attachment = MessageAttachment(
+            id: "img:\(path)",
+            type: .image,
+            name: (path as NSString).lastPathComponent,
+            path: path
+        )
+        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { inst in
+            func alreadyAttached(_ msg: Message) -> Bool {
+                msg.attachments?.contains(where: { $0.path == path }) ?? false
+            }
+            if source == "tool", let toolId {
+                guard let idx = inst.messages.lastIndex(where: { $0.toolId == toolId }) else { return }
+                if alreadyAttached(inst.messages[idx]) { return }
+                inst.messages[idx].attachments = (inst.messages[idx].attachments ?? []) + [attachment]
+                return
+            }
+            if let idx = inst.messages.lastIndex(where: { $0.role == .assistant }) {
+                if alreadyAttached(inst.messages[idx]) { return }
+                inst.messages[idx].attachments = (inst.messages[idx].attachments ?? []) + [attachment]
+                return
+            }
+            let msg = Message(
+                id: UUID().uuidString,
+                role: .assistant,
+                content: "",
+                attachments: [attachment],
+                timestamp: Date().timeIntervalSince1970 * 1000
+            )
+            inst.messages.append(msg)
+        }
+    }
+
+    @MainActor
     func handleEngineError(tabId: String, instanceId: String?, message: String) {
         DiagnosticLog.log("engine error", tag: "session.engine", level: .error, fields: [
             "tab_id": String(tabId.prefix(8)),

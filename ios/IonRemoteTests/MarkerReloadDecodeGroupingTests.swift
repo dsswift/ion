@@ -173,6 +173,72 @@ final class MarkerReloadDecodeGroupingTests: XCTestCase {
         }
     }
 
+    // MARK: - Tool-result image reload
+
+    /// The engine's flattenEntries replays a persisted tool-result image as a
+    /// `SessionMessage.attachments` entry on the owning tool row (image support,
+    /// historical reload path). The engineJSON decoder (direct engine-wire path,
+    /// used by agent conversation history) must decode that attachment so
+    /// engine-generated tool images survive reload — matching the desktop→iOS
+    /// conversationHistory path which decodes attachments via standard Codable.
+    ///
+    /// Regression contract: revert the `attachments` decode in `Message(engineJSON:)`
+    /// (back to `attachments = nil`) and this goes red — the reloaded image is lost.
+    func testToolImageAttachmentDecodesOnEngineWire() throws {
+        let json = """
+        {
+          "role": "tool",
+          "content": "[Image: screenshot]",
+          "timestamp": 123,
+          "toolName": "Screenshot",
+          "toolId": "tu_shot",
+          "attachments": [
+            {
+              "id": "img:/home/u/.ion/conversations/c/images/abc.png",
+              "type": "image",
+              "name": "abc.png",
+              "path": "/home/u/.ion/conversations/c/images/abc.png"
+            }
+          ]
+        }
+        """
+        let msg = try decodeEngine(json)
+        XCTAssertEqual(msg.role, .tool)
+        XCTAssertEqual(msg.attachments?.count, 1,
+                       "engine tool-result image must decode on the engine-wire path")
+        XCTAssertEqual(msg.attachments?.first?.type, .image)
+        XCTAssertEqual(msg.attachments?.first?.path,
+                       "/home/u/.ion/conversations/c/images/abc.png")
+    }
+
+    /// The desktop→iOS conversationHistory path decodes Message via standard
+    /// Codable; pin that the same reloaded tool image survives there too, so both
+    /// reload paths reach parity.
+    func testToolImageAttachmentDecodesOnStandardWire() throws {
+        let json = """
+        {
+          "id": "t1",
+          "role": "tool",
+          "content": "[Image: screenshot]",
+          "timestamp": 123,
+          "toolName": "Screenshot",
+          "toolId": "tu_shot",
+          "attachments": [
+            {
+              "id": "img:/c/images/abc.png",
+              "type": "image",
+              "name": "abc.png",
+              "path": "/c/images/abc.png"
+            }
+          ]
+        }
+        """
+        let msg = try decodeStandard(json)
+        XCTAssertEqual(msg.attachments?.count, 1)
+        XCTAssertEqual(msg.attachments?.first?.type, .image)
+        XCTAssertEqual(msg.attachments?.first?.path, "/c/images/abc.png")
+    }
+
     // MARK: - Mixed reload transcript
 
     func testMixedMarkerTranscriptGroupsInOrder() throws {

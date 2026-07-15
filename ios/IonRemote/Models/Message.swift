@@ -180,9 +180,17 @@ extension Message {
             planFilePath = try container.decodeIfPresent(String.self, forKey: .markerPlanFilePath)
         }
 
+        // Engine SessionMessage carries image references on historical reload
+        // in `attachments` (engine flattenEntries replays a persisted tool-result
+        // image as a SessionMessageAttachment on the owning tool row). Decode it
+        // so engine-generated images survive reload on the direct engine-wire
+        // path (agent conversation history), matching the desktop→iOS
+        // conversationHistory path which decodes attachments via the standard
+        // Codable init. Without this the images are dropped on reload.
+        attachments = try container.decodeIfPresent([MessageAttachment].self, forKey: .attachments)
+
         // Engine messages don't carry these fields
         toolInput = nil
-        attachments = nil
         source = nil
         bootstrapCollapsedCount = nil
     }
@@ -193,6 +201,7 @@ extension Message {
         case slashCommand, slashArgs, slashSource
         case planFilePath
         case markerKind, markerPlanFilePath
+        case attachments
     }
 
     /// Decode an array of Message from engine wire-format JSON.

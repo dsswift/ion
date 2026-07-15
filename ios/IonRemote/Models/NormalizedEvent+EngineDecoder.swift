@@ -435,6 +435,23 @@ extension RemoteEvent {
             let payload = try container.decode(ContextBreakdownPayload.self, forKey: .contextBreakdown)
             return .desktopContextBreakdown(tabId: tabId, instanceId: instanceId, contextBreakdown: payload)
 
+        case .engineImageContent:
+            // engine_image_content — a run-produced image (tool-returned or
+            // provider-generated). The engine saves bytes to disk and emits
+            // the FILE PATH, never base64 (its never-base64-on-the-wire
+            // contract). iOS attaches the path to the owning message and
+            // fetches bytes lazily via RemoteImageFetcher. tabId/instanceId
+            // follow the standard engine event shape; path/mediaType/source/
+            // toolId mirror the Go ImageContentEvent json tags. source is
+            // "tool" (with toolId) or "provider" (no toolId).
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            let path = try container.decode(String.self, forKey: .path)
+            let mediaType = try container.decodeIfPresent(String.self, forKey: .mediaType) ?? "image/png"
+            let source = try container.decodeIfPresent(String.self, forKey: .source) ?? "tool"
+            let toolId = try container.decodeIfPresent(String.self, forKey: .toolId)
+            return .engineImageContent(tabId: tabId, instanceId: instanceId, path: path, mediaType: mediaType, source: source, toolId: toolId)
+
         default:
             return nil
         }

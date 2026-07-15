@@ -403,6 +403,72 @@ final class ContractSyncTests: XCTestCase {
             XCTFail("Expected engineDead")
         }
     }
+    func testEngineImageContentDecode_tool() throws {
+        // source "tool" carries a toolId; iOS attaches to the matching tool row.
+        let json = """
+        {"type":"desktop_image_content","tabId":"t1","instanceId":"i1","path":"/Users/x/.ion/conversations/c1/images/abc.png","mediaType":"image/png","source":"tool","toolId":"tid-9"}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        guard case .engineImageContent(let tabId, let instanceId, let path, let mediaType, let source, let toolId) = event else {
+            return XCTFail("Expected engineImageContent (tool)")
+        }
+        XCTAssertEqual(tabId, "t1")
+        XCTAssertEqual(instanceId, "i1")
+        XCTAssertEqual(path, "/Users/x/.ion/conversations/c1/images/abc.png")
+        XCTAssertEqual(mediaType, "image/png")
+        XCTAssertEqual(source, "tool")
+        XCTAssertEqual(toolId, "tid-9")
+    }
+
+    func testEngineImageContentDecode_provider() throws {
+        // source "provider" omits toolId; iOS attaches to the last assistant row.
+        let json = """
+        {"type":"desktop_image_content","tabId":"t1","path":"/img/gen.png","mediaType":"image/png","source":"provider"}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        guard case .engineImageContent(_, _, let path, _, let source, let toolId) = event else {
+            return XCTFail("Expected engineImageContent (provider)")
+        }
+        XCTAssertEqual(path, "/img/gen.png")
+        XCTAssertEqual(source, "provider")
+        XCTAssertNil(toolId)
+    }
+
+    /// Round-trip encode → decode to pin the wire shape stays symmetric.
+    func testEngineImageContentRoundTrip() throws {
+        let original = RemoteEvent.engineImageContent(
+            tabId: "t1", instanceId: "i1", path: "/img/a.png",
+            mediaType: "image/png", source: "tool", toolId: "tid-1"
+        )
+        let data = try JSONEncoder().encode(original)
+        let decoded = try decoder.decode(RemoteEvent.self, from: data)
+        guard case .engineImageContent(_, _, let path, let mediaType, let source, let toolId) = decoded else {
+            return XCTFail("Expected engineImageContent round-trip")
+        }
+        XCTAssertEqual(path, "/img/a.png")
+        XCTAssertEqual(mediaType, "image/png")
+        XCTAssertEqual(source, "tool")
+        XCTAssertEqual(toolId, "tid-1")
+    }
+
+    /// Pin that every Go-side image_content field is tracked by the Swift
+    /// engineImageContent case. Fails if Go adds a field iOS doesn't decode.
+    func testImageContentNormalizedEventFields() throws {
+        let manifest = try loadManifest()
+        guard let goFields = manifest.normalizedEvents["image_content"] ?? nil else {
+            XCTFail("image_content not found in Go normalizedEvents manifest")
+            return
+        }
+        // tabId/instanceId are session correlators added by the desktop wire
+        // envelope, not part of the engine ImageContentEvent struct.
+        let swiftHandled: Set<String> = ["path", "mediaType", "source", "toolId"]
+        let goSet = Set(goFields)
+        let unhandled = goSet.subtracting(swiftHandled)
+        XCTAssert(
+            unhandled.isEmpty,
+            "Go image_content has fields not tracked in Swift test: \(unhandled.sorted())"
+        )
+    }
 
     func testEngineDispatchActivityDecode() throws {
         // tool_start (with dispatchActivityTs — the full wire shape)
