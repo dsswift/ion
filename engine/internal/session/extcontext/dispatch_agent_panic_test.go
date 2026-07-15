@@ -44,7 +44,8 @@ func (p *panicTestAccessor) Emit(ev types.EngineEvent) {
 }
 func (p *panicTestAccessor) SendAbort()                               {}
 func (p *panicTestAccessor) RootContext() context.Context             { return context.Background() }
-func (p *panicTestAccessor) SendPrompt(_, _ string, _ []string) error { return nil }
+func (p *panicTestAccessor) SendPrompt(_, _ string, _ []string) error                 { return nil }
+func (p *panicTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error { return nil }
 func (p *panicTestAccessor) SteerSelfMainLoop(_ string) bool          { return false }
 func (p *panicTestAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil

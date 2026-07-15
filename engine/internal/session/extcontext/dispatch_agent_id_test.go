@@ -71,6 +71,7 @@ func (a *idTestAccessor) ConversationID() string                   { return "" }
 func (a *idTestAccessor) WorkingDirectory() string                 { return "/tmp" }
 func (a *idTestAccessor) SendAbort()                               {}
 func (a *idTestAccessor) SendPrompt(_, _ string, _ []string) error { return nil }
+func (a *idTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error { return nil }
 func (a *idTestAccessor) SteerSelfMainLoop(_ string) bool          { return false }
 func (a *idTestAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil

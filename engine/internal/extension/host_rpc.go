@@ -1,3 +1,4 @@
+// @file-size-exception: large RPC dispatch switch; each case is a self-contained handler
 package extension
 
 import (
@@ -467,6 +468,7 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 				Text                   string   `json:"text"`
 				Model                  string   `json:"model,omitempty"`
 				BashAllowlistAdditions []string `json:"bashAllowlistAdditions,omitempty"`
+				Kind                   string   `json:"kind,omitempty"`
 			} `json:"params"`
 		}
 		if err := json.Unmarshal(raw, &req); err != nil {
@@ -479,10 +481,23 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 		}
 		if ctx != nil && ctx.SendPrompt != nil {
 			// Active hook context: use hook-aware path (supports model override,
-			// per-prompt bash-allowlist additions, recursion guard).
-			utils.LogWithFields(utils.LevelDebug, "extension", "ext/send_prompt: hook ctx path", map[string]any{"model": req.Params.Model, "count": len(req.Params.BashAllowlistAdditions)})
+			// per-prompt bash-allowlist additions, recursion guard). When Kind is
+			// set, use SendPromptPayload (if wired) so Kind reaches emitPromptInjected;
+			// fall back to SendPrompt for callers that have not wired the payload variant.
+			utils.LogWithFields(utils.LevelDebug, "extension", "ext/send_prompt: hook ctx path", map[string]any{"model": req.Params.Model, "count": len(req.Params.BashAllowlistAdditions), "kind": req.Params.Kind})
 			go func() {
-				if err := ctx.SendPrompt(req.Params.Text, req.Params.Model, req.Params.BashAllowlistAdditions); err != nil {
+				var err error
+				if req.Params.Kind != "" && ctx.SendPromptPayload != nil {
+					err = ctx.SendPromptPayload(SendPromptPayload{
+						Text:                   req.Params.Text,
+						Model:                  req.Params.Model,
+						BashAllowlistAdditions: req.Params.BashAllowlistAdditions,
+						Kind:                   req.Params.Kind,
+					})
+				} else {
+					err = ctx.SendPrompt(req.Params.Text, req.Params.Model, req.Params.BashAllowlistAdditions)
+				}
+				if err != nil {
 					h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 					return
 				}
@@ -493,7 +508,7 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 		// No active hook context (e.g. called from a timer/scheduler): fall back to
 		// the session-level SendPrompt wired by the session manager via onSendMessage.
 		// The fallback path now carries the FULL payload (model override +
-		// bash-allowlist additions), identical to the active-hook path above —
+		// bash-allowlist additions + kind), identical to the active-hook path above —
 		// onSendMessage takes a SendPromptPayload, and both session wiring sites
 		// build PromptOverrides from it via the shared buildPromptOverrides helper.
 		// There is no per-feature divergence between the two dispatch paths.
@@ -505,12 +520,13 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "sendPrompt not available: no active session"})
 			return
 		}
-		utils.LogWithFields(utils.LevelInfo, "extension", "ext/send_prompt: fallback path via onsendmessage forwarding full payload", map[string]any{"model": req.Params.Model, "count": len(req.Params.BashAllowlistAdditions)})
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/send_prompt: fallback path via onsendmessage forwarding full payload", map[string]any{"model": req.Params.Model, "count": len(req.Params.BashAllowlistAdditions), "kind": req.Params.Kind})
 		go func() {
 			fn(SendPromptPayload{
 				Text:                   req.Params.Text,
 				Model:                  req.Params.Model,
 				BashAllowlistAdditions: req.Params.BashAllowlistAdditions,
+				Kind:                   req.Params.Kind,
 			})
 			h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
 		}()

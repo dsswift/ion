@@ -42,6 +42,10 @@ func (a *steerSelfAccessor) SendPrompt(text string, model string, bash []string)
 	return nil
 }
 
+func (a *steerSelfAccessor) SendPromptWithKind(text string, model string, bash []string, _ string) error {
+	return a.SendPrompt(text, model, bash)
+}
+
 func (a *steerSelfAccessor) SteerSelfMainLoop(message string) bool {
 	a.mu.Lock()
 	a.steerMainLoopCalls = append(a.steerMainLoopCalls, message)

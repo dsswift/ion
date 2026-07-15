@@ -49,6 +49,14 @@ func (a *sessionAccessor) SendAbort() { a.m.SendAbort(a.key) }
 func (a *sessionAccessor) RootContext() context.Context { return a.s.rootContext() }
 
 func (a *sessionAccessor) SendPrompt(text string, model string, bashAllowlistAdditions []string) error {
+	return a.SendPromptWithKind(text, model, bashAllowlistAdditions, "")
+}
+
+// SendPromptWithKind is the Kind-aware variant of SendPrompt. The Kind field
+// propagates into PromptInjectedEvent.Kind and the wire field
+// InjectedPromptKind so clients can classify injections and suppress
+// rendering of machine-to-machine signals (e.g. agent completion callbacks).
+func (a *sessionAccessor) SendPromptWithKind(text string, model string, bashAllowlistAdditions []string, kind string) error {
 	overrides := buildPromptOverrides(model, bashAllowlistAdditions)
 	if len(bashAllowlistAdditions) > 0 {
 		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sessionaccessor.sendprompt: threading bash-allowlist additions for this prompt", map[string]any{"key": a.key, "count": len(bashAllowlistAdditions), "bash_allowlist_additions": bashAllowlistAdditions})
@@ -59,7 +67,7 @@ func (a *sessionAccessor) SendPrompt(text string, model string, bashAllowlistAdd
 	// Extension-initiated prompt (ctx.sendPrompt / steerSelf fallback):
 	// surface the injected turn to live clients. Client wire prompts never
 	// route through this accessor. See emitPromptInjected.
-	a.m.emitPromptInjected(a.key, text)
+	a.m.emitPromptInjected(a.key, text, kind)
 	return nil
 }
 

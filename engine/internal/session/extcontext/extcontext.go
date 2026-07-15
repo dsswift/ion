@@ -42,6 +42,13 @@ type SessionAccessor interface {
 	// unconditionally.
 	RootContext() context.Context
 	SendPrompt(text string, model string, bashAllowlistAdditions []string) error
+	// SendPromptWithKind is the Kind-aware variant of SendPrompt. It threads
+	// the Kind classification into PromptInjectedEvent.Kind so clients can
+	// suppress rendering of machine-to-machine injections (e.g. agent
+	// completion callbacks with kind="agent_completion"). Callers that do not
+	// need Kind should use SendPrompt; this method exists so the ext/send_prompt
+	// active-hook path can pass Kind without changing SendPrompt's signature.
+	SendPromptWithKind(text string, model string, bashAllowlistAdditions []string, kind string) error
 
 	// SteerSelfMainLoop attempts to steer the session's OWN main run loop
 	// (the depth-0 / orchestrator run) by injecting message onto its steer
@@ -325,6 +332,9 @@ func NewExtContext(sa SessionAccessor, args ...interface{}) *extension.Context {
 		},
 		SendPrompt: func(text string, model string, bashAllowlistAdditions []string) error {
 			return sa.SendPrompt(text, model, bashAllowlistAdditions)
+		},
+		SendPromptPayload: func(payload extension.SendPromptPayload) error {
+			return sa.SendPromptWithKind(payload.Text, payload.Model, payload.BashAllowlistAdditions, payload.Kind)
 		},
 		SearchHistory: func(query string, maxResults int) ([]extension.HistoryMatch, error) {
 			matches := sa.SearchHistory(query, maxResults)

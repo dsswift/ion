@@ -132,9 +132,15 @@ type EngineEvent struct {
 	// turn, so live clients must render it from this event (the text is
 	// also persisted as the run's user turn — a conversation reload shows
 	// the same content). InjectedPromptOrigin names the hosting extension
-	// when known. See PromptInjectedEvent for the normalized variant.
+	// when known. InjectedPromptKind classifies the injection: the value
+	// "agent_completion" means this is an internal agent dispatch callback
+	// (a completed child agent's result routed back to a parent) — clients
+	// must NOT render these as user-visible bubbles. Empty means a genuine
+	// extension-initiated user turn. See PromptInjectedEvent for the
+	// normalized variant.
 	InjectedPrompt       string `json:"injectedPrompt,omitempty"`
 	InjectedPromptOrigin string `json:"injectedPromptOrigin,omitempty"`
+	InjectedPromptKind   string `json:"injectedPromptKind,omitempty"`
 
 	// engine_model_fallback — workflow signal emitted when the engine
 	// fell back to its configured defaultModel because the requested

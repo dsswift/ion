@@ -39,6 +39,9 @@ func (a *dispatchContextTestAccessor) RootContext() context.Context {
 func (a *dispatchContextTestAccessor) SendPrompt(text, model string, bash []string) error {
 	return nil
 }
+func (a *dispatchContextTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error {
+	return nil
+}
 func (a *dispatchContextTestAccessor) SteerSelfMainLoop(message string) bool { return false }
 func (a *dispatchContextTestAccessor) Elicit(info extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil

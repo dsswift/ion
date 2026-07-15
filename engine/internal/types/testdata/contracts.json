@@ -121,6 +121,7 @@
       "planSlug"
     ],
     "prompt_injected": [
+      "kind",
       "origin",
       "prompt"
     ],
@@ -287,6 +288,7 @@
     "images",
     "index",
     "injectedPrompt",
+    "injectedPromptKind",
     "injectedPromptOrigin",
     "interceptLevel",
     "interceptMessage",

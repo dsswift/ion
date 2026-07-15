@@ -34,6 +34,7 @@ func (noopSA) Emit(_ types.EngineEvent)                                         
 func (noopSA) SendAbort()                                                                  {}
 func (noopSA) RootContext() context.Context                                                { return context.Background() }
 func (noopSA) SendPrompt(_ string, _ string, _ []string) error                             { return nil }
+func (noopSA) SendPromptWithKind(_ string, _ string, _ []string, _ string) error           { return nil }
 func (noopSA) SteerSelfMainLoop(_ string) bool                                             { return false }
 func (noopSA) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil

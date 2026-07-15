@@ -43,6 +43,20 @@ func loadChildExtension(sa SessionAccessor, registry *DispatchRegistry, opts *ex
 		return nil
 	}
 
+	// Wire sendPrompt on the child host so background lifecycle callbacks
+	// (e.g. onChildQuestion → bubbleToParent → ctx.sendPrompt) can reach the
+	// root session's prompt queue at any dispatch depth. Without this, the child
+	// host's ext/send_prompt fallback path reads h.onSendMessage — which is nil
+	// on child hosts (only the root host gets it wired in start_session.go) —
+	// and returns "sendPrompt not available: no active session", silently
+	// dropping the delivery and leaving the child run blocked until timeout.
+	// Mirrors the root wiring in start_session.go exactly: route through
+	// sa.SendPrompt so the delivery lands on the root session's run loop.
+	capturedSA := sa
+	childExtHost.SetOnSendMessage(func(payload extension.SendPromptPayload) {
+		_ = capturedSA.SendPrompt(payload.Text, payload.Model, payload.BashAllowlistAdditions)
+	})
+
 	// Fire session_start on child extension.
 	childCtx := NewExtContext(sa, ExtContextOpts{
 		Depth:      childDepth,

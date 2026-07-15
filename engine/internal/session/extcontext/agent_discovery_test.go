@@ -32,6 +32,9 @@ func (a *agentDiscoveryTestAccessor) Emit(ev types.EngineEvent)                {
 func (a *agentDiscoveryTestAccessor) SendAbort()                               {}
 func (a *agentDiscoveryTestAccessor) RootContext() context.Context             { return context.Background() }
 func (a *agentDiscoveryTestAccessor) SendPrompt(_, _ string, _ []string) error { return nil }
+func (a *agentDiscoveryTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error {
+	return nil
+}
 func (a *agentDiscoveryTestAccessor) SteerSelfMainLoop(_ string) bool          { return false }
 func (a *agentDiscoveryTestAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil

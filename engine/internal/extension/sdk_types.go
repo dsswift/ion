@@ -160,6 +160,16 @@ type Context struct {
 	// per-feature divergence between the two paths.
 	SendPrompt func(text string, model string, bashAllowlistAdditions []string) error
 
+	// SendPromptPayload is the full-payload variant of SendPrompt. It carries
+	// the same text/model/bash parameters plus a Kind classification that the
+	// engine threads into PromptInjectedEvent.Kind and the wire field
+	// InjectedPromptKind. Extensions should prefer ctx.sendPrompt() from the
+	// TypeScript SDK (which calls ext/send_prompt including the kind field);
+	// this func is wired by the engine to support the active-hook code path
+	// when Kind is non-empty. Nil when the engine has not wired it (safe to
+	// nil-check; callers fall back to SendPrompt when nil).
+	SendPromptPayload func(payload SendPromptPayload) error
+
 	// Engine-native agent dispatch. Creates a child session within the engine
 	// with optional extension loading, system prompt injection, and event streaming.
 	DispatchAgent func(opts DispatchAgentOpts) (*DispatchAgentResult, error)

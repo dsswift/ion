@@ -40,6 +40,9 @@ func (a *depthTestAccessor) Emit(ev types.EngineEvent) {
 func (a *depthTestAccessor) SendAbort()              {}
 func (a *depthTestAccessor) RootContext() context.Context { return context.Background() }
 func (a *depthTestAccessor) SendPrompt(text string, model string, bash []string) error {
+	return a.SendPromptWithKind(text, model, bash, "")
+}
+func (a *depthTestAccessor) SendPromptWithKind(text string, _ string, _ []string, _ string) error {
 	return nil
 }
 func (a *depthTestAccessor) SteerSelfMainLoop(message string) bool { return false }

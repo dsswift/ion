@@ -352,6 +352,20 @@ func (h *Host) MarkDeadForTest() {
 	h.dead.Store(true)
 }
 
+// ExecOnSendMessageForTest invokes the onSendMessage callback if one has been
+// set via SetOnSendMessage. A no-op when no callback is set. Exposed for unit
+// tests that verify SetOnSendMessage wiring without starting a subprocess;
+// the production RPC path (ext/send_prompt fallback in host_rpc.go) is the
+// only non-test caller.
+func (h *Host) ExecOnSendMessageForTest(payload SendPromptPayload) {
+	h.notifMu.RLock()
+	fn := h.onSendMessage
+	h.notifMu.RUnlock()
+	if fn != nil {
+		fn(payload)
+	}
+}
+
 // ExtensionDir returns the directory containing the extension entry point,
 // as resolved during Load. Empty before Load completes.
 func (h *Host) ExtensionDir() string {
@@ -394,6 +408,14 @@ type SendPromptPayload struct {
 	// prefixes, unioned with the session allowlist for the single run this
 	// prompt starts. Never persisted on the session. Empty/nil is a no-op.
 	BashAllowlistAdditions []string
+	// Kind classifies the injection for downstream clients. "agent_completion"
+	// means this is an internal dispatch callback (a completed child agent's
+	// result being routed back to its parent agent) — clients must NOT render
+	// these as user-visible bubbles. Empty means a genuine extension-initiated
+	// user turn and should be rendered normally. Propagates to
+	// PromptInjectedEvent.Kind and the engine_prompt_injected wire field
+	// InjectedPromptKind.
+	Kind string
 }
 
 // SetOnSendMessage sets the callback invoked when the extension sends an

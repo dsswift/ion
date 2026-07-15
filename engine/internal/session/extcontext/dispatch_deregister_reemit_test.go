@@ -118,7 +118,8 @@ func (a *dispatchCountSpyAccessor) Emit(ev types.EngineEvent) {
 	a.mu.Unlock()
 }
 func (a *dispatchCountSpyAccessor) SendAbort()                               {}
-func (a *dispatchCountSpyAccessor) SendPrompt(_, _ string, _ []string) error { return nil }
+func (a *dispatchCountSpyAccessor) SendPrompt(_, _ string, _ []string) error                 { return nil }
+func (a *dispatchCountSpyAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error { return nil }
 func (a *dispatchCountSpyAccessor) SteerSelfMainLoop(_ string) bool          { return false }
 func (a *dispatchCountSpyAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil

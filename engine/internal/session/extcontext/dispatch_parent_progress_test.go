@@ -55,7 +55,8 @@ func (a *bumpCountingAccessor) ConversationID() string                   { retur
 func (a *bumpCountingAccessor) WorkingDirectory() string                 { return "/tmp" }
 func (a *bumpCountingAccessor) Emit(_ types.EngineEvent)                 {}
 func (a *bumpCountingAccessor) SendAbort()                               {}
-func (a *bumpCountingAccessor) SendPrompt(_, _ string, _ []string) error { return nil }
+func (a *bumpCountingAccessor) SendPrompt(_, _ string, _ []string) error                 { return nil }
+func (a *bumpCountingAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error { return nil }
 func (a *bumpCountingAccessor) SteerSelfMainLoop(_ string) bool          { return false }
 func (a *bumpCountingAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil

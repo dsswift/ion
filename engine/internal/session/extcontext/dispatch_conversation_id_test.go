@@ -119,7 +119,8 @@ func (a *convIDRecordingAccessor) ConversationID() string                   { re
 func (a *convIDRecordingAccessor) WorkingDirectory() string                 { return "/tmp" }
 func (a *convIDRecordingAccessor) Emit(_ types.EngineEvent)                 {}
 func (a *convIDRecordingAccessor) SendAbort()                               {}
-func (a *convIDRecordingAccessor) SendPrompt(_, _ string, _ []string) error { return nil }
+func (a *convIDRecordingAccessor) SendPrompt(_, _ string, _ []string) error                 { return nil }
+func (a *convIDRecordingAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error { return nil }
 func (a *convIDRecordingAccessor) SteerSelfMainLoop(_ string) bool          { return false }
 func (a *convIDRecordingAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
