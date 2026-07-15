@@ -70,6 +70,11 @@ type Server struct {
 	// refresh_models. Never nil after NewServer.
 	probes *cliprobe.Registry
 
+	// hybrid is the typed view of the backend when it is a *HybridBackend,
+	// captured at NewServer so SetConfig can wire the live CLI-auth probe into
+	// credential-based routing. Nil for non-hybrid backends.
+	hybrid *backend.HybridBackend
+
 	// loginFn/logoutFn drive the interactive provider CLI login/logout. Nil
 	// uses the real cliprobe implementations; tests override via SetLoginFuncs.
 	loginFn  cliprobe.LoginFunc
@@ -118,6 +123,13 @@ func (s *Server) SetConfig(cfg *types.EngineRuntimeConfig) {
 	// backend selection is known. Runs in the background; list_models reads the
 	// cache and updates as probes land.
 	s.RefreshProviderProbes()
+	// Wire credential-based routing: the hybrid consults the live probe
+	// registry on every routing decision, so a completed CLI login or an
+	// added/removed API key changes routing on the next run — no restart.
+	if s.hybrid != nil {
+		s.hybrid.SetCliAuthProbe(s.cliAuthedProbe())
+		utils.LogWithFields(utils.LevelInfo, "server", "hybrid cli-auth probe wired", nil)
+	}
 	// Apply the configurable orphaned-session reap grace window. Nil-safe:
 	// SessionReapGrace returns the compiled default for a nil Workspace block.
 	if s.ownership != nil {
@@ -140,13 +152,18 @@ func (s *Server) SetAuthResolver(r *auth.Resolver) {
 func NewServer(socketPath string, b backend.RunBackend) *Server {
 	mgr := session.NewManager(b)
 
-	// Detect whether the backend can serve Anthropic models via Claude CLI.
+	// Detect whether the backend can serve Anthropic models via Claude CLI,
+	// and retain the typed hybrid so SetConfig can wire credential routing.
 	var cliCapable bool
-	switch b.(type) {
-	case *backend.ClaudeCodeBackend, *backend.HybridBackend:
+	var hybrid *backend.HybridBackend
+	switch v := b.(type) {
+	case *backend.ClaudeCodeBackend:
 		cliCapable = true
+	case *backend.HybridBackend:
+		cliCapable = true
+		hybrid = v
 	}
-	utils.LogWithFields(utils.LevelInfo, "server", "backend type", map[string]any{"reason": cliCapable})
+	utils.LogWithFields(utils.LevelInfo, "server", "backend type", map[string]any{"reason": cliCapable, "hybrid": hybrid != nil})
 
 	s := &Server{
 		socketPath: socketPath,
@@ -156,6 +173,7 @@ func NewServer(socketPath string, b backend.RunBackend) *Server {
 		startedAt:  time.Now(),
 		cliCapable: cliCapable,
 		probes:     cliprobe.NewRegistry(),
+		hybrid:     hybrid,
 	}
 	// Reap orphaned sessions a grace window after their last owning
 	// connection disconnects. Wired to StopSession so the full teardown

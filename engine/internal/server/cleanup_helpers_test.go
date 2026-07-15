@@ -142,6 +142,29 @@ func TestLoadDesktopProtectedIDs(t *testing.T) {
 		}
 	})
 
+	t.Run("unified files are read alongside legacy per-backend twins", func(t *testing.T) {
+		home := t.TempDir()
+		// Post-unification desktop layout: the live unified files plus one
+		// not-yet-merged legacy twin. IDs from ALL of them must be protected.
+		writeTestFile(t, filepath.Join(home, "session-chains.json"), `{"chains":{"uni-root":["uni-cont"]},"reverse":{"uni-cont":"uni-root"}}`)
+		writeTestFile(t, filepath.Join(home, "session-labels.json"), `{"uni-labeled":"unified label"}`)
+		writeTestFile(t, filepath.Join(home, "session-labels-cli.json"), `{"legacy-labeled":"legacy label"}`)
+
+		ids := loadDesktopProtectedIDs(home)
+		got := make(map[string]bool, len(ids))
+		for _, id := range ids {
+			got[id] = true
+		}
+		for _, want := range []string{"uni-root", "uni-cont", "uni-labeled", "legacy-labeled"} {
+			if !got[want] {
+				t.Errorf("expected ID %q from unified+legacy read set, got %v", want, ids)
+			}
+		}
+		if len(got) != 4 {
+			t.Errorf("expected exactly 4 IDs, got %d: %v", len(got), ids)
+		}
+	})
+
 	t.Run("home defaults to ~/.ion when empty string passed", func(t *testing.T) {
 		// We can't safely write to the real ~/.ion in a test, so this case
 		// just verifies the function doesn't panic and returns a slice

@@ -215,6 +215,9 @@ func saveSplit(conv *Conversation, dir string) error {
 	if conv.ParentID != "" {
 		llmHeader["parentId"] = conv.ParentID
 	}
+	if conv.Backend != "" {
+		llmHeader["backend"] = conv.Backend
+	}
 
 	// Determine which messages to write:
 	//   - nil Messages means explicitly cleared — write nothing (header only).
@@ -243,6 +246,12 @@ func saveSplit(conv *Conversation, dir string) error {
 		"version":          conv.Version,
 		"leafId":           leafSnap,
 		"workingDirectory": conv.WorkingDirectory,
+	}
+	// Mirror the backend discriminator onto the tree header too: consumers
+	// that only read the tree file (rendering/branching) can still assert the
+	// history format without opening the llm file.
+	if conv.Backend != "" {
+		treeHeader["backend"] = conv.Backend
 	}
 	isLegacy := conv._isLegacy
 	conv.unlock()
@@ -622,6 +631,9 @@ func loadSplit(id, llmPath, treePath string) (*Conversation, error) {
 		CreatedAt:               int64(jsonFloat(llmHeader, "createdAt", float64(nowMillis()))),
 		Version:                 int(jsonFloat(llmHeader, "version", 2)),
 		ParentID:                jsonString(llmHeader, "parentId"),
+		// Backend discriminator (additive). Legacy headers without the field
+		// decode "" — treated as api by consumers.
+		Backend: jsonString(llmHeader, "backend"),
 		// LLM context from .llm.jsonl body — verbatim, NOT rebuilt from Entries
 		Messages: messages,
 		// Tree fields from .tree.jsonl

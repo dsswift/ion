@@ -89,26 +89,37 @@ func TestCliBackendKind(t *testing.T) {
 	}
 }
 
-func TestSelectedBackend_DefaultRuleAndPref(t *testing.T) {
-	// Default rule (no config): anthropic → claude-code, cursor → cursor, else api.
-	if got := SelectedBackend(nil, "anthropic"); got != "claude-code" {
-		t.Errorf("expected anthropic default claude-code, got %q", got)
+func TestExplicitBackendPref_NoDefaultRule(t *testing.T) {
+	// No config → no preference. The credential-based rule (backend package)
+	// decides; this helper must NOT reintroduce a static default.
+	if got := ExplicitBackendPref(nil, "anthropic"); got != "" {
+		t.Errorf("expected empty pref for anthropic with no config, got %q", got)
 	}
-	if got := SelectedBackend(nil, "cursor"); got != "cursor" {
-		t.Errorf("expected cursor default cursor, got %q", got)
+	if got := ExplicitBackendPref(nil, "cursor"); got != "" {
+		t.Errorf("expected empty pref for cursor with no config, got %q", got)
 	}
-	if got := SelectedBackend(nil, "openai"); got != "api" {
-		t.Errorf("expected openai default api, got %q", got)
-	}
-	// Explicit valid preference wins.
+	// Explicit valid preference is returned verbatim.
 	cfg := cfgWithProviderBackend("openai", "codex")
-	if got := SelectedBackend(cfg, "openai"); got != "codex" {
+	if got := ExplicitBackendPref(cfg, "openai"); got != "codex" {
 		t.Errorf("expected openai pref codex, got %q", got)
 	}
-	// Invalid preference falls back to the default rule.
+	// Invalid preference is treated as no preference.
 	bad := cfgWithProviderBackend("openai", "grok") // grok is xai-only
-	if got := SelectedBackend(bad, "openai"); got != "api" {
-		t.Errorf("expected invalid pref to fall back to api, got %q", got)
+	if got := ExplicitBackendPref(bad, "openai"); got != "" {
+		t.Errorf("expected invalid pref to yield empty, got %q", got)
+	}
+}
+
+func TestApiBackendAllowed(t *testing.T) {
+	for pid, want := range map[string]bool{
+		"anthropic": true,  // api or claude-code
+		"openai":    true,  // api or codex
+		"cursor":    false, // CLI-only
+		"google":    true,  // no entry → api-only
+	} {
+		if got := ApiBackendAllowed(pid); got != want {
+			t.Errorf("%s: expected ApiBackendAllowed=%v, got %v", pid, want, got)
+		}
 	}
 }
 

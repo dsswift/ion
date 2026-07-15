@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/dsswift/ion/engine/internal/backend"
 	ionconfig "github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -17,12 +18,43 @@ func isCliKind(kind string) bool {
 	}
 }
 
-// selectedCliBackedProviders returns the providers whose currently-selected
-// backend is a delegated CLI, mapped to that CLI kind.
+// cliAuthedProbe returns the live install+auth predicate over the server's
+// probe registry, in the shape backend.EffectiveBackendForProvider and
+// HybridBackend.SetCliAuthProbe expect. The closure captures the registry, so
+// every call observes the current probe state — a login completed after
+// wiring is visible on the very next routing decision. Nil when the registry
+// is absent (routing then degrades to api).
+func (s *Server) cliAuthedProbe() func(kind string) bool {
+	if s.probes == nil {
+		return nil
+	}
+	probes := s.probes
+	return func(kind string) bool {
+		p, ok := probes.Get(kind)
+		return ok && p.Installed && p.Authenticated
+	}
+}
+
+// effectiveBackendFor returns the credential-derived backend for a provider —
+// the same decision HybridBackend routing makes, via the shared helper — so
+// every server-side projection (provider entries, discovery skip set, model
+// feeding) matches what routing actually picks.
+func (s *Server) effectiveBackendFor(providerID string) string {
+	var keys backend.KeyHaver
+	if s.authResolver != nil {
+		keys = s.authResolver
+	}
+	pref := ionconfig.ExplicitBackendPref(s.config, providerID)
+	return backend.EffectiveBackendForProvider(providerID, keys, s.cliAuthedProbe(), pref)
+}
+
+// selectedCliBackedProviders returns the providers whose credential-derived
+// effective backend is a delegated CLI, mapped to that CLI kind. Live: the
+// answer changes as keys are added/removed and CLI logins complete.
 func (s *Server) selectedCliBackedProviders() map[string]string {
 	out := make(map[string]string)
 	for _, pid := range ionconfig.CliBackedProviderIDs() {
-		kind := ionconfig.SelectedBackend(s.config, pid)
+		kind := s.effectiveBackendFor(pid)
 		if isCliKind(kind) {
 			out[pid] = kind
 		}
@@ -64,32 +96,44 @@ func (s *Server) RefreshProviderProbes() {
 
 	go func() {
 		s.probes.Refresh(kindList)
-		// Feed CLI-advertised models for the selected CLI-backed providers.
-		for pid, kind := range selected {
+		// Recompute the effective selection with FRESH probes: a CLI that just
+		// probed as authed flips its provider to CLI-backed, and vice versa.
+		// The pre-refresh `selected` above seeded the skip set from the prior
+		// probe state; this post-refresh pass is the authoritative one.
+		refreshed := s.selectedCliBackedProviders()
+		skip := make(map[string]bool, len(refreshed))
+		for pid := range refreshed {
+			skip[pid] = true
+		}
+		providers.SetCliBackedProviders(skip)
+		// Feed CLI-advertised models for the CLI-backed providers.
+		for pid, kind := range refreshed {
 			if p, ok := s.probes.Get(kind); ok && len(p.Models) > 0 {
 				providers.SetExternalModels(pid, p.Models)
 			}
 		}
-		utils.LogWithFields(utils.LevelInfo, "server", "provider probes refreshed", map[string]any{"kinds": kindList, "selected": len(selected)})
+		utils.LogWithFields(utils.LevelInfo, "server", "provider probes refreshed", map[string]any{"kinds": kindList, "selected_pre": len(selected), "selected_post": len(refreshed)})
 	}()
 }
 
 // providerCliStatus projects a cached probe onto the wire status type. Returns
-// nil when the provider has no CLI backend option.
+// nil when the provider has no CLI backend option. The second return is the
+// credential-derived effective backend (what routing will actually pick), not
+// a stored preference.
 func (s *Server) providerCliStatus(providerID string) (*types.ProviderCliStatus, string) {
 	kind, ok := ionconfig.CliBackendKind(providerID)
 	if !ok {
 		return nil, ""
 	}
-	selected := ionconfig.SelectedBackend(s.config, providerID)
+	effective := s.effectiveBackendFor(providerID)
 	if s.probes == nil {
-		return nil, selected
+		return nil, effective
 	}
 	p, probed := s.probes.Get(kind)
 	if !probed {
-		// No probe yet: report the selected backend but leave cli status nil so
+		// No probe yet: report the effective backend but leave cli status nil so
 		// the client shows "unknown" rather than a false "not installed".
-		return nil, selected
+		return nil, effective
 	}
 	status := &types.ProviderCliStatus{
 		Backend:       kind,
@@ -102,5 +146,5 @@ func (s *Server) providerCliStatus(providerID string) (*types.ProviderCliStatus,
 		Email:         p.Email,
 		Label:         p.Label,
 	}
-	return status, selected
+	return status, effective
 }

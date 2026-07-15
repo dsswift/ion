@@ -106,6 +106,11 @@ func (b *ApiBackend) resolveProvider(model string) providers.LlmProvider {
 // (corrupt file, permission denied, etc.), the error is returned instead
 // of silently creating a replacement — this prevents overwriting existing
 // conversation files on transient read failures.
+// Every conversation this seam returns is stamped Backend="api": only the
+// API backend persists to the Ion conversation store (delegated-CLI backends
+// keep their own stores), so the discriminator is a fact of this call site.
+// Loaded legacy files with no backend header are backfilled and heal on the
+// next Save.
 func loadOrCreateConversation(opts types.RunOptions, model string) (*conversation.Conversation, error) {
 	if opts.ConversationID != "" {
 		loaded, err := conversation.Load(opts.ConversationID, "")
@@ -120,6 +125,7 @@ func loadOrCreateConversation(opts types.RunOptions, model string) (*conversatio
 					"conversation_id": opts.ConversationID,
 				})
 				created := conversation.CreateConversation(opts.ConversationID, opts.SystemPrompt, model)
+				created.Backend = "api"
 				// Record on-disk descent when the caller supplied a parent (a
 				// client-driven checkpoint cut for an existing tab). Empty leaves
 				// parentId unset, as before.
@@ -146,6 +152,9 @@ func loadOrCreateConversation(opts types.RunOptions, model string) (*conversatio
 		if opts.PlanFilePath != "" {
 			conversation.ReplacePlanFilePlaceholder(loaded, opts.PlanFilePath)
 		}
+		if loaded.Backend == "" {
+			loaded.Backend = "api"
+		}
 		return loaded, nil
 	}
 	// Use the canonical conversation ID generator so two runs that begin
@@ -155,6 +164,7 @@ func loadOrCreateConversation(opts types.RunOptions, model string) (*conversatio
 		opts.SystemPrompt,
 		model,
 	)
+	created.Backend = "api"
 	if opts.ParentConversationID != "" {
 		created.ParentID = opts.ParentConversationID
 		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "new conversation descends from", map[string]any{

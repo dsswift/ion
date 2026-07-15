@@ -47,23 +47,28 @@ func CliBackedProviderIDs() []string {
 	return ids
 }
 
-// SelectedBackend returns the run backend currently selected for a provider:
-// the operator's explicit preference when valid, otherwise the default rule
-// (anthropic → claude-code, cursor → cursor, every other provider → api).
-func SelectedBackend(cfg *types.EngineRuntimeConfig, providerID string) string {
+// ExplicitBackendPref returns the operator's explicit, valid backend
+// preference for a provider, or "" when the provider has none and routing
+// should fall through to the credential-based rule (see
+// backend.EffectiveBackendForProvider). Unlike the removed SelectedBackend,
+// this carries no default rule: the default is decided live from credentials,
+// not from a static provider table.
+func ExplicitBackendPref(cfg *types.EngineRuntimeConfig, providerID string) string {
 	if cfg != nil {
 		if pc, ok := cfg.Providers[providerID]; ok && pc.Backend != "" && backendAllowedFor(providerID, pc.Backend) {
 			return pc.Backend
 		}
 	}
-	switch providerID {
-	case "anthropic":
-		return "claude-code"
-	case "cursor":
-		return "cursor"
-	default:
-		return "api"
-	}
+	return ""
+}
+
+// ApiBackendAllowed reports whether the API backend may serve the given
+// provider. CLI-only providers (e.g. cursor) return false; routing keeps them
+// on their delegated CLI even when it is not authenticated, so the resulting
+// error names the real problem (CLI not signed in) instead of a bogus missing
+// API key.
+func ApiBackendAllowed(providerID string) bool {
+	return backendAllowedFor(providerID, "api")
 }
 
 // backendAllowedFor reports whether kind is a permitted backend for the given

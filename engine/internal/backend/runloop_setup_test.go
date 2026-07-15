@@ -1225,3 +1225,47 @@ func TestBuildToolDefs_PerPromptBashAdditionsDoNotPersist(t *testing.T) {
 		t.Errorf("per-prompt additions leaked into a subsequent run: got %v, want [gh]", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// loadOrCreateConversation: backend discriminator stamping (per-conversation
+// history-format attribution — replaces the global api/cli mode)
+// ---------------------------------------------------------------------------
+
+func TestLoadOrCreateConversation_StampsApiBackend_NewWithID(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	conv, err := loadOrCreateConversation(types.RunOptions{ConversationID: "conv-stamp-1"}, "claude-3-5-sonnet")
+	if err != nil {
+		t.Fatalf("loadOrCreateConversation: %v", err)
+	}
+	if conv.Backend != "api" {
+		t.Fatalf("Backend = %q, want api on newly created conversation", conv.Backend)
+	}
+}
+
+func TestLoadOrCreateConversation_StampsApiBackend_NewWithoutID(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	conv, err := loadOrCreateConversation(types.RunOptions{}, "claude-3-5-sonnet")
+	if err != nil {
+		t.Fatalf("loadOrCreateConversation: %v", err)
+	}
+	if conv.Backend != "api" {
+		t.Fatalf("Backend = %q, want api on generated-id conversation", conv.Backend)
+	}
+}
+
+func TestLoadOrCreateConversation_BackfillsLegacyLoadedConversation(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	// Persist a conversation with NO backend header (legacy writer shape).
+	legacy := conversation.CreateConversation("conv-stamp-legacy", "sys", "claude-3-5-sonnet")
+	conversation.AddUserMessage(legacy, "hello")
+	if err := conversation.Save(legacy, ""); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	loaded, err := loadOrCreateConversation(types.RunOptions{ConversationID: "conv-stamp-legacy"}, "claude-3-5-sonnet")
+	if err != nil {
+		t.Fatalf("loadOrCreateConversation: %v", err)
+	}
+	if loaded.Backend != "api" {
+		t.Fatalf("Backend = %q, want api backfilled on legacy load", loaded.Backend)
+	}
+}

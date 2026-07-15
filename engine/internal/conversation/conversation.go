@@ -177,6 +177,14 @@ type Conversation struct {
 	LeafID                  *string            `json:"leafId"`
 	WorkingDirectory        string             `json:"workingDirectory,omitempty"`
 
+	// Backend records which run backend produced this conversation ("api"
+	// today; CLI kinds if delegated backends ever write the Ion store).
+	// Additive: legacy files decode with "" and consumers treat "" as api,
+	// since only the API backend has ever written Ion conversation files.
+	// Lets a consumer assert the history format per conversation instead of
+	// inferring it from a global mode.
+	Backend string `json:"backend,omitempty"`
+
 	// _isLegacy is set by Load when reading a legacy .jsonl or .json file.
 	// Save reads this flag to decide whether to unlink the legacy file after
 	// writing the new split format. Not JSON-tagged — never persisted.

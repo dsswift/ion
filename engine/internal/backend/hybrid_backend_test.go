@@ -40,14 +40,16 @@ func registerHybridTestModels(t *testing.T) {
 // kindFor / ResolveFor: default routing rule (no per-provider preferences)
 // ---------------------------------------------------------------------------
 
-func TestHybrid_DefaultRule_AnthropicGoesClaudeCode(t *testing.T) {
+func TestHybrid_DefaultRule_AnthropicNoCredentialsGoesApi(t *testing.T) {
 	registerHybridTestModels(t)
 	h := NewHybridBackend()
-	if kind := h.kindFor("claude-test-sonnet"); kind != "claude-code" {
-		t.Fatalf("expected claude-code for anthropic model, got %q", kind)
+	// No resolver, no CLI-auth probe: credential-based routing degrades to api
+	// (the old hardcoded anthropic → claude-code default is gone).
+	if kind := h.kindFor("claude-test-sonnet"); kind != "api" {
+		t.Fatalf("expected api for anthropic model with no credentials, got %q", kind)
 	}
-	if got := h.ResolveFor("claude-test-sonnet"); got != h.InnerClaudeCode() {
-		t.Fatalf("expected inner ClaudeCodeBackend for claude-* model, got %T", got)
+	if got := h.ResolveFor("claude-test-sonnet"); got != h.InnerApi() {
+		t.Fatalf("expected inner ApiBackend for credential-less anthropic model, got %T", got)
 	}
 }
 
@@ -123,13 +125,13 @@ func TestHybrid_Prefs_AnthropicPinnedToApi(t *testing.T) {
 func TestHybrid_Prefs_DoNotLeakToOtherProviders(t *testing.T) {
 	registerHybridTestModels(t)
 	h := NewHybridBackendWithPrefs(map[string]string{"openai": "codex"})
-	// Anthropic still follows the default rule.
-	if kind := h.kindFor("claude-test-sonnet"); kind != "claude-code" {
-		t.Fatalf("expected anthropic to keep default claude-code, got %q", kind)
+	// Anthropic follows the credential rule (no creds here → api).
+	if kind := h.kindFor("claude-test-sonnet"); kind != "api" {
+		t.Fatalf("expected anthropic to follow credential rule (api), got %q", kind)
 	}
-	// Google still follows the default rule.
+	// Google follows the credential rule too.
 	if kind := h.kindFor("gemini-test-pro"); kind != "api" {
-		t.Fatalf("expected google to keep default api, got %q", kind)
+		t.Fatalf("expected google to keep api, got %q", kind)
 	}
 }
 

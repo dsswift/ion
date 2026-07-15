@@ -317,9 +317,11 @@ type ProviderEntry struct {
 	AuthSource string `json:"authSource,omitempty"`
 	BaseURL    string `json:"baseURL,omitempty"`
 	APIKeyRef  string `json:"apiKeyRef,omitempty"`
-	// Backend is the run backend currently selected for this provider
-	// ("api" | "claude-code" | "codex" | "grok" | "cursor"). Additive,
-	// omitempty; absent for providers with no CLI backend option.
+	// Backend is the credential-derived effective run backend for this
+	// provider ("api" | "claude-code" | "codex" | "grok" | "cursor") — the
+	// kind hybrid routing will actually pick for the next run (explicit
+	// operator pref → api key wins → authed CLI → api). Additive, omitempty;
+	// absent for providers with no CLI backend option.
 	Backend string `json:"backend,omitempty"`
 	// Cli carries the install/auth state of this provider's delegated CLI when
 	// the provider has a CLI backend option (anthropic→claude-code,

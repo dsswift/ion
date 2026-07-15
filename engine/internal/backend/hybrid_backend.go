@@ -14,13 +14,15 @@ import (
 // individual run to the correct inner backend based on the resolved provider
 // ID of the run's model and the operator's per-provider backend preferences.
 //
-// Routing:
+// Routing (see EffectiveBackendForProvider in hybrid_routing.go):
 //
 //   - resolve the model's provider ID via providers.GetModelInfo
 //   - if the operator pinned that provider to a backend kind
 //     (providers.<id>.backend in engine.json), use it
-//   - otherwise apply the default rule: anthropic → "claude-code",
-//     every other provider (including unregistered models) → "api"
+//   - otherwise decide from live credentials: an available API key wins
+//     ("api"); else an installed+authenticated delegated CLI wins (its kind);
+//     else "api" (clean missing-key error), except CLI-only providers which
+//     stay on their CLI so the error names the real problem
 //
 // The routing decision is made once per run, at StartRun / StartRunWithConfig
 // time, and recorded in a per-run table. All subsequent Cancel / IsRunning /
@@ -49,6 +51,18 @@ type HybridBackend struct {
 	runs     map[string]RunBackend // requestID → inner backend
 	runKinds map[string]string     // requestID → kind (for observability)
 	resolver *auth.Resolver        // applied to every api-capable inner
+
+	// keys is the routing view of the resolver (set alongside resolver in
+	// SetAuthResolver; tests substitute a fake). Nil ⇒ "no key anywhere", so
+	// routing falls through to the CLI-auth check. Guarded by h.mu.
+	keys KeyHaver
+
+	// cliAuthed reports whether the delegated CLI for a kind
+	// ("claude-code"/"codex"/"grok"/"cursor") is installed AND authenticated
+	// right now. Injected by the server from its live cliprobe.Registry via
+	// SetCliAuthProbe. Nil ⇒ treated as "no CLI available" (routing degrades
+	// safely to api). Guarded by h.mu.
+	cliAuthed func(kind string) bool
 
 	// Outer hooks registered by the server / session manager. The inner
 	// backends fan out through us so we can prune the routing table on
@@ -136,23 +150,8 @@ func (h *HybridBackend) get(kind string) RunBackend {
 	return b
 }
 
-// kindFor resolves the backend kind that should serve a run for the given
-// model: an operator preference if present, otherwise the default rule. This
-// is the requested kind, which may name a backend that has no implementation
-// yet (see effectiveKind).
-func (h *HybridBackend) kindFor(model string) string {
-	providerID := "<unknown>"
-	if info := providers.GetModelInfo(model); info != nil {
-		providerID = info.ProviderID
-	}
-	if k, ok := h.prefs[providerID]; ok && k != "" {
-		return k
-	}
-	if providerID == "anthropic" {
-		return "claude-code"
-	}
-	return "api"
-}
+// kindFor lives in hybrid_routing.go alongside the shared credential-based
+// decision helper (EffectiveBackendForProvider).
 
 // effectiveKind maps a requested backend kind to the kind that actually has an
 // implementation. Kinds whose backend has not landed yet (codex, grok, cursor
@@ -199,6 +198,14 @@ func (h *HybridBackend) SetAuthResolver(r *auth.Resolver) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.resolver = r
+	// Mirror into the routing seam. Assign nil explicitly rather than a typed
+	// nil *auth.Resolver, which would make the interface non-nil and panic on
+	// HasKey.
+	if r != nil {
+		h.keys = r
+	} else {
+		h.keys = nil
+	}
 	applied := 0
 	for _, b := range h.inner {
 		if api, ok := b.(*ApiBackend); ok {
@@ -462,13 +469,20 @@ func (h *HybridBackend) NewChild() *HybridBackend {
 	child := NewHybridBackendWithPrefs(h.prefs)
 	h.mu.Lock()
 	resolver := h.resolver
+	cliAuthed := h.cliAuthed
 	h.mu.Unlock()
 	if resolver != nil {
 		child.SetAuthResolver(resolver)
 	}
+	// Propagate the live CLI-auth probe so child agent dispatches route by the
+	// same credential view as the parent.
+	if cliAuthed != nil {
+		child.SetCliAuthProbe(cliAuthed)
+	}
 	utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "NewChild: created child hybrid backend", map[string]any{
-		"auth_resolver": resolver != nil,
-		"pref_count":    len(h.prefs),
+		"auth_resolver":  resolver != nil,
+		"cli_auth_probe": cliAuthed != nil,
+		"pref_count":     len(h.prefs),
 	})
 	return child
 }

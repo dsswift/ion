@@ -202,27 +202,33 @@ func (s *Server) buildProviderEntries() []types.ProviderEntry {
 			entry.AuthSource = "none"
 		}
 
-		// Project the delegated-CLI status (install/auth) and the currently
-		// selected backend for providers that have a CLI option.
-		cliStatus, selectedBackend := s.providerCliStatus(pid)
-		if selectedBackend != "" {
-			entry.Backend = selectedBackend
+		// Project the delegated-CLI status (install/auth) and the
+		// credential-derived effective backend for providers that have a CLI
+		// option. The effective backend comes from the same shared helper
+		// routing uses (backend.EffectiveBackendForProvider), so what the UI
+		// shows is what the next run will actually pick.
+		cliStatus, effectiveBackend := s.providerCliStatus(pid)
+		if effectiveBackend != "" {
+			entry.Backend = effectiveBackend
 		}
 		entry.Cli = cliStatus
 
-		// When the selected backend is a delegated CLI and the CLI reports a
+		// When the effective backend is a delegated CLI and the CLI reports a
 		// usable credential, the provider is authed via that CLI (generalizing
 		// the former anthropic-only "cli" fallback across codex/grok/cursor).
-		if isCliKind(selectedBackend) && cliStatus != nil && cliStatus.Authenticated && !entry.HasAuth {
+		if isCliKind(effectiveBackend) && cliStatus != nil && cliStatus.Authenticated && !entry.HasAuth {
 			entry.HasAuth = true
-			entry.AuthSource = selectedBackend
-			utils.LogWithFields(utils.LevelDebug, "server", "provider cli-auth applied", map[string]any{"provider": pid, "backend": selectedBackend})
+			entry.AuthSource = effectiveBackend
+			utils.LogWithFields(utils.LevelDebug, "server", "provider cli-auth applied", map[string]any{"provider": pid, "backend": effectiveBackend})
 		}
 
-		// Startup fallback: before the async claude-code probe populates, keep
-		// the historical behavior of marking anthropic authed via claude-code
-		// when a CLI-capable backend is active and no API key is configured.
-		if s.cliCapable && pid == "anthropic" && !entry.HasAuth {
+		// Startup fallback for the explicit top-level "claude-code" backend
+		// only: every run goes to the Claude CLI there regardless of API keys,
+		// so anthropic is reported authed via claude-code before the async
+		// probe populates. Hybrid mode is deliberately excluded — its entries
+		// are credential-derived above, and claiming claude-code auth pre-probe
+		// would contradict the router (which picks api until the probe lands).
+		if s.cliCapable && s.hybrid == nil && pid == "anthropic" && !entry.HasAuth {
 			entry.HasAuth = true
 			entry.AuthSource = "claude-code"
 			if entry.Backend == "" {

@@ -443,11 +443,12 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		// has zero in-memory sessions even though the desktop may have 60+
 		// persisted tabs whose conversationIds need protection.
 		//
-		// Read the desktop's session-chains-{api,cli}.json and
-		// session-labels-{api,cli}.json directly. Every ID that appears
-		// in any of those files is a conversation some tab has resumed
-		// or labeled — load-bearing IDs that must survive cleanup even
-		// when cmd.ExcludeIDs is empty.
+		// Read the desktop's session-chains / session-labels files
+		// directly (the unified names plus the legacy per-backend
+		// twins). Every ID that appears in any of those files is a
+		// conversation some tab has resumed or labeled — load-bearing
+		// IDs that must survive cleanup even when cmd.ExcludeIDs is
+		// empty.
 		//
 		// Pass "" so the helper resolves ~/.ion/. Reading these files is
 		// always safe: missing files contribute zero IDs, malformed JSON
