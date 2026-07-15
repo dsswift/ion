@@ -300,6 +300,30 @@ jobs:
           mkdir -p desktop/resources/engine
           cp engine/ion desktop/resources/engine/ion
 
+      - name: Bundle engine extensions and plist
+        run: |
+          # Copy SDK and ion-meta into the resources tree so they are packaged
+          # as extraResources alongside the engine binary. The plist template is
+          # written by engine-bootstrap.ts at first launch after $HOME substitution.
+          mkdir -p desktop/resources/engine/extensions
+          cp -r engine/extensions/sdk desktop/resources/engine/extensions/sdk
+          cp -r engine/extensions/ion-meta desktop/resources/engine/extensions/ion-meta
+
+          # Pre-bundle canonical docs into ion-meta so install-assets can install
+          # them without a repo docs/ directory being present. Delete first so
+          # renames and deletions propagate (mirrors install.command behaviour).
+          CANON_DST="desktop/resources/engine/extensions/ion-meta/docs/canonical"
+          rm -rf "$CANON_DST"
+          mkdir -p "$CANON_DST"
+          for ns in extensions hooks agents architecture; do
+            if [ -d "docs/$ns" ]; then
+              cp -r "docs/$ns" "$CANON_DST/$ns"
+            fi
+          done
+
+          # Copy plist template; engine-bootstrap.ts substitutes $HOME at runtime.
+          cp packaging/launchd/com.ion.engine.plist desktop/resources/engine/com.ion.engine.plist
+
       - name: Install dependencies
         working-directory: desktop
         run: npm ci
