@@ -67,6 +67,26 @@ func (b *ApiBackend) processStream(
 		}
 
 		switch ev.Type {
+		case types.LlmStreamEventStreamReset:
+			// The retry wrapper (providers.WithRetry) interrupted a
+			// partially-forwarded attempt and is about to re-stream the turn.
+			// Discard everything accumulated for the failed attempt and emit
+			// StreamResetEvent so consumers discard their partial view too.
+			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "stream reset: discarding partial attempt state", map[string]any{
+				"run_id": run.requestID,
+				"blocks": len(assistantBlocks),
+			})
+			assistantBlocks = nil
+			currentBlockIndex = 0
+			currentPartialJSON.Reset()
+			stopReason = ""
+			cumUsage = types.LlmUsage{}
+			toolCallIndex = 0
+			thinkingActive = false
+			thinkingRedacted = false
+			thinkingTextLen = 0
+			b.emit(run, types.NormalizedEvent{Data: &types.StreamResetEvent{}})
+
 		case "message_start":
 			if ev.MessageInfo != nil {
 				cumUsage = ev.MessageInfo.Usage

@@ -135,6 +135,11 @@ func buildManifest() contractManifest {
 		// ContextBreakdownPayload.ModelBreakdown. Tracked so cross-language
 		// mirrors stay in sync.
 		"ModelBreakdown": reflect.TypeOf(ModelBreakdown{}),
+		// SessionMessage is the history-load row (load_session_history /
+		// get_conversation responses). Tracked so its canonical row id and
+		// error-flag fields stay mirrored in the desktop mapper and iOS model.
+		"SessionMessage":           reflect.TypeOf(SessionMessage{}),
+		"SessionMessageAttachment": reflect.TypeOf(SessionMessageAttachment{}),
 	}
 	for name, typ := range shared {
 		m.SharedTypes[name] = jsonFieldNames(typ)

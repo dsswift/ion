@@ -24,6 +24,14 @@ type MessageEndEvent struct {
 	ContextPercent float64 `json:"contextPercent,omitempty"`
 	// Cost is the estimated USD cost of this LLM message.
 	Cost float64 `json:"cost,omitempty"`
+	// EntryID is the canonical persisted entry id of the assistant message
+	// this end closes (mirrors MessageEndUsage.EntryID). Consumers re-key the
+	// just-sealed assistant row to it so a later history load
+	// (SessionMessage.ID) dedups against the live row.
+	EntryID string `json:"entryId,omitempty"`
+	// UserEntryID is the canonical persisted entry id of the run-opening user
+	// turn (mirrors MessageEndUsage.UserEntryID).
+	UserEntryID string `json:"userEntryId,omitempty"`
 }
 
 func (MessageEndEvent) eventType() string { return EventMessageEnd }

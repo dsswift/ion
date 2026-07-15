@@ -13,11 +13,11 @@ package server
 import (
 	"fmt"
 	"net"
-	"runtime"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/conversation"
+	"github.com/dsswift/ion/engine/internal/plugins"
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/session"
@@ -28,14 +28,12 @@ import (
 func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 	defer func() {
 		if r := recover(); r != nil {
-			buf := make([]byte, 4096)
-			n := runtime.Stack(buf, false)
-			utils.Error("Server", fmt.Sprintf("panic in dispatch cmd=%s key=%s: %v\n%s", cmd.Cmd, cmd.Key, r, buf[:n]))
+			utils.LogWithFields(utils.LevelError, "server", "panic in dispatch", map[string]any{"status": cmd.Cmd, "session_id": cmd.Key, "error": r})
 			s.sendResult(conn, cmd, fmt.Errorf("internal error"), nil)
 		}
 	}()
 
-	utils.Debug("Server", fmt.Sprintf("dispatch: cmd=%s key=%s requestID=%s", cmd.Cmd, cmd.Key, cmd.RequestID))
+	utils.LogWithFields(utils.LevelDebug, "server", "dispatch", map[string]any{"status": cmd.Cmd, "session_id": cmd.Key, "run_id": cmd.RequestID})
 	switch cmd.Cmd {
 	case "start_session":
 		result, err := s.manager.StartSession(cmd.Key, *cmd.Config)
@@ -88,13 +86,13 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 
 	case "abort":
 		// Fire-and-forget: no response sent (matches TS behavior).
-		utils.Info("Server", fmt.Sprintf("abort: key=%s", cmd.Key))
+		utils.LogWithFields(utils.LevelInfo, "server", "abort", map[string]any{"session_id": cmd.Key})
 		s.manager.SendAbort(cmd.Key)
 
 	case "abort_agent":
 		// Fire-and-forget: no response sent (matches TS behavior).
 		subtree := cmd.Subtree != nil && *cmd.Subtree
-		utils.Info("Server", fmt.Sprintf("abort_agent: key=%s agent=%s subtree=%v", cmd.Key, cmd.AgentName, subtree))
+		utils.LogWithFields(utils.LevelInfo, "server", "abort agent", map[string]any{"session_id": cmd.Key, "model": cmd.AgentName})
 		s.manager.AbortAgent(cmd.Key, cmd.AgentName, subtree)
 
 	case "steer_agent":
@@ -102,12 +100,12 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		// returns a typed outcome so the steer can never be silently dropped;
 		// we log both the attempt and the resolved outcome (engine-grounding
 		// §7), at parity with the abort/abort_agent cases above.
-		utils.Info("Server", fmt.Sprintf("steer_agent: key=%s agent=%s msgLen=%d", cmd.Key, cmd.AgentName, len(cmd.Message)))
+		utils.LogWithFields(utils.LevelInfo, "server", "steer agent", map[string]any{"session_id": cmd.Key, "model": cmd.AgentName, "count": len(cmd.Message)})
 		outcome := s.manager.SteerAgent(cmd.Key, cmd.AgentName, cmd.Message)
 		if outcome.Delivered() {
-			utils.Info("Server", fmt.Sprintf("steer_agent delivered: key=%s agent=%s outcome=%s", cmd.Key, cmd.AgentName, outcome))
+			utils.LogWithFields(utils.LevelInfo, "server", "steer agent delivered", map[string]any{"session_id": cmd.Key, "model": cmd.AgentName, "status": outcome})
 		} else {
-			utils.Warn("Server", fmt.Sprintf("steer_agent NOT delivered: key=%s agent=%s outcome=%s", cmd.Key, cmd.AgentName, outcome))
+			utils.LogWithFields(utils.LevelWarn, "server", "steer agent not delivered", map[string]any{"session_id": cmd.Key, "model": cmd.AgentName, "status": outcome})
 		}
 
 	case "dialog_response":
@@ -161,7 +159,7 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		// next prompt reuses the conversation's existing plan instead of
 		// allocating a fresh slug. Empty for clients that do not track a path.
 		if cmd.PlanFilePath != "" {
-			utils.Log("Server", fmt.Sprintf("set_plan_mode: key=%s enabled=%v planFilePath supplied=%s", cmd.Key, enabled, cmd.PlanFilePath))
+			utils.LogWithFields(utils.LevelInfo, "server", "set plan mode", map[string]any{"session_id": cmd.Key, "count": enabled, "path": cmd.PlanFilePath})
 		}
 		s.manager.SetPlanMode(cmd.Key, enabled, cmd.AllowedTools, cmd.Source, cmd.PlanFilePath)
 		// Tri-valued PlanModeAllowedBashCommands per the protocol doc:
@@ -179,6 +177,14 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 
 	case "branch":
 		err := s.manager.BranchSession(cmd.Key, cmd.EntryID)
+		s.sendResult(conn, cmd, err, nil)
+
+	case "branch_before":
+		// Tree-native rewind: move the leaf to the PARENT of the given entry
+		// so the next prompt replaces that entry on the active path (a new
+		// sibling branch) instead of chaining after the old leaf and
+		// duplicating the turn.
+		err := s.manager.BranchSessionBefore(cmd.Key, cmd.EntryID)
 		s.sendResult(conn, cmd, err, nil)
 
 	case "navigate_tree":
@@ -258,9 +264,9 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 			offset = 0
 		}
 		if limit == 0 {
-			utils.Log("Server", fmt.Sprintf("get_conversation key=%s offset=%d limit=0 (unbounded)", cmd.Key, offset))
+			utils.LogWithFields(utils.LevelInfo, "server", "get conversation unbounded", map[string]any{"session_id": cmd.Key, "count": offset})
 		} else {
-			utils.Log("Server", fmt.Sprintf("get_conversation key=%s offset=%d limit=%d", cmd.Key, offset, limit))
+			utils.LogWithFields(utils.LevelInfo, "server", "get conversation", map[string]any{"session_id": cmd.Key, "count": offset, "max": limit})
 		}
 		result, err := conversation.LoadMessagesPaginated(cmd.Key, "", offset, limit)
 		s.sendResult(conn, cmd, err, result)
@@ -289,9 +295,9 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		// active run and emits engine_context_breakdown via the normal
 		// event bus. RPC result is empty — the caller observes the
 		// emission through the event stream.
-		utils.Log("Dispatch", fmt.Sprintf("get_context_breakdown: key=%s computing on-demand breakdown", cmd.Key))
+		utils.LogWithFields(utils.LevelInfo, "server", "get context breakdown computing on-demand", map[string]any{"session_id": cmd.Key})
 		s.manager.ComputeAndEmitContextBreakdown(cmd.Key)
-		utils.Log("Dispatch", fmt.Sprintf("get_context_breakdown: key=%s dispatched (emission via event bus)", cmd.Key))
+		utils.LogWithFields(utils.LevelInfo, "server", "get context breakdown dispatched emission via event bus", map[string]any{"session_id": cmd.Key})
 		s.sendResult(conn, cmd, nil, nil)
 
 	case "migrate_conversation":
@@ -349,6 +355,18 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		}
 		s.sendResult(conn, cmd, nil, nil)
 
+	case "oidc_begin_login":
+		s.dispatchOidcBeginLogin(conn, cmd)
+
+	case "oidc_logout":
+		s.dispatchOidcLogout(conn, cmd)
+
+	case "oidc_identity":
+		s.dispatchOidcIdentity(conn, cmd)
+
+	case "oidc_token":
+		s.dispatchOidcToken(conn, cmd)
+
 	case "refresh_models":
 		providerConfigs := make(map[string]types.ProviderConfig)
 		if s.config != nil {
@@ -371,7 +389,7 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		// against it (e.g. a tab that was loaded from disk but never sent a
 		// prompt, so no in-memory session exists to receive a dispatchClear).
 		// The key field carries the conversationId (sessionId) to wipe.
-		utils.Log("Server", fmt.Sprintf("clear_conversation_file: sessionId=%s", cmd.Key))
+		utils.LogWithFields(utils.LevelInfo, "server", "clear conversation file", map[string]any{"session_id": cmd.Key})
 		err := s.manager.ClearConversationFile(cmd.Key)
 		s.sendResult(conn, cmd, err, nil)
 
@@ -415,10 +433,9 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		activeIDs = append(activeIDs, inMemoryActiveIDs...)
 		activeIDs = append(activeIDs, desktopProtectedIDs...)
 
-		utils.Log("Server", fmt.Sprintf(
-			"delete_stored_sessions: clientExcludeCount=%d inMemoryActive=%d desktopProtected=%d totalEngineGuard=%d dryRun=%v",
-			len(cmd.ExcludeIDs), len(inMemoryActiveIDs), len(desktopProtectedIDs), len(activeIDs), cmd.DryRun,
-		))
+		utils.LogWithFields(utils.LevelInfo, "server", "delete stored sessions", map[string]any{
+			"count": len(cmd.ExcludeIDs), "turn": len(inMemoryActiveIDs), "max": len(desktopProtectedIDs),
+		})
 
 		deleted, err := conversation.CleanupStored("", maxAge, cmd.ExcludeIDs, activeIDs, cmd.DryRun)
 		s.sendResult(conn, cmd, err, map[string]int{"deleted": deleted})
@@ -452,6 +469,43 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "shutdown":
 		_ = s.Stop()
 
+	case "plugin_install":
+		utils.LogWithFields(utils.LevelInfo, "server", "plugin install", map[string]any{"source": cmd.Source})
+		p, err := plugins.Install(cmd.Source, nil)
+		if err != nil {
+			s.sendResult(conn, cmd, err, nil)
+			return
+		}
+		s.sendResult(conn, cmd, nil, map[string]any{
+			"name":    p.Name,
+			"source":  p.Source,
+			"version": p.Version,
+		})
+
+	case "plugin_list":
+		installed, err := plugins.ListInstalled()
+		if err != nil {
+			s.sendResult(conn, cmd, err, nil)
+			return
+		}
+		var infos []map[string]any
+		for _, p := range installed {
+			infos = append(infos, map[string]any{
+				"name":        p.Name,
+				"source":      p.Source,
+				"version":     p.Version,
+				"installedAt": p.InstalledAt,
+			})
+		}
+		s.sendResult(conn, cmd, nil, infos)
+
+	case "plugin_remove":
+		utils.LogWithFields(utils.LevelInfo, "server", "plugin remove", map[string]any{"name": cmd.Label})
+		if err := plugins.Remove(cmd.Label); err != nil {
+			s.sendResult(conn, cmd, err, nil)
+			return
+		}
+		s.sendResult(conn, cmd, nil, map[string]any{"removed": cmd.Label})
 	case "health":
 		type healthResult struct {
 			data map[string]interface{}
@@ -471,7 +525,7 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		}
 
 	default:
-		utils.Warn("Server", "unknown command: "+cmd.Cmd)
+		utils.LogWithFields(utils.LevelWarn, "server", "unknown command", map[string]any{"status": cmd.Cmd})
 		s.sendResult(conn, cmd, fmt.Errorf("unknown command: %s", cmd.Cmd), nil)
 	}
 }

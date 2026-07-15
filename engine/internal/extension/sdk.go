@@ -307,6 +307,12 @@ func (s *SDK) AppendEntry(entryType string, data interface{}) error {
 
 // SetAppendEntryFn sets the function used by AppendEntry.
 // Called by the session manager when a session is active.
+//
+// The provided fn runs on extension-host goroutines, concurrent with the
+// runloop's own tree appends. Any implementation MUST mutate the tree only
+// through the conversation package's exported (locked) functions —
+// conversation.AppendEntry / AppendDetachedEntry — never by touching
+// conv.Entries or conv.LeafID directly. See conversation/lock.go.
 func (s *SDK) SetAppendEntryFn(fn func(entryType string, data interface{}) error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

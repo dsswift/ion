@@ -1,7 +1,9 @@
 package providers
 
 import (
+	"context"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -58,7 +60,7 @@ const defaultStreamIdle = 90 * time.Second
 // (the wrapper relies solely on the transport + the run-progress watchdog).
 func SetStreamIdleTimeout(d time.Duration) {
 	streamIdleNanos.Store(int64(d))
-	utils.Log("providers", fmt.Sprintf("SetStreamIdleTimeout: streamIdle=%s", d))
+	utils.LogWithFields(utils.LevelInfo, "providers", "set stream idle timeout", map[string]any{"duration_ms": d.Milliseconds()})
 }
 
 // resolvedStreamIdle reads the configured deadline, falling back to the
@@ -72,6 +74,79 @@ func resolvedStreamIdle() (time.Duration, bool) {
 		return defaultStreamIdle, true
 	}
 	return time.Duration(v), true
+}
+
+// StreamTelemetrySink is the minimal telemetry surface the provider stream
+// wrapper emits to. It mirrors telemetry.Collector.Event without importing the
+// telemetry package (which would create an import cycle: telemetry is a leaf
+// consumed by the session/backend layers, and providers must stay
+// dependency-light). The session/backend layer installs a concrete sink via
+// SetStreamTelemetry at engine startup, adapting its telemetry.Collector.
+type StreamTelemetrySink interface {
+	Event(name string, payload, ctx map[string]any)
+}
+
+// streamTelemetry holds the process-wide stream telemetry sink. Guarded by
+// streamTelemetryMu because SetStreamTelemetry (called once at startup) races
+// the long-lived provider stream goroutines that read it. Nil until installed;
+// nil means stream stall/summary telemetry is disabled (the events are pure
+// observability and have no behavioral effect).
+var (
+	streamTelemetry   StreamTelemetrySink
+	streamTelemetryMu sync.RWMutex
+)
+
+// SetStreamTelemetry installs the process-wide telemetry sink for provider
+// stream stall / summary events. Pass nil to disable. Idempotent; a later call
+// replaces the sink. Mirrors SetStreamIdleTimeout's setter pattern.
+func SetStreamTelemetry(sink StreamTelemetrySink) {
+	streamTelemetryMu.Lock()
+	streamTelemetry = sink
+	streamTelemetryMu.Unlock()
+}
+
+// resolvedStreamTelemetry reads the installed sink under the lock.
+func resolvedStreamTelemetry() StreamTelemetrySink {
+	streamTelemetryMu.RLock()
+	defer streamTelemetryMu.RUnlock()
+	return streamTelemetry
+}
+
+// telemetryCorrelationKey is the unexported context key under which the backend
+// stashes the run's telemetry correlation block (session_id / conversation_id /
+// run_id / model) so the provider stream layer can attribute provider.stall and
+// provider.stream_summary events to the originating conversation. A dedicated
+// unexported type prevents collisions with any other context value.
+type telemetryCorrelationKey struct{}
+
+// WithTelemetryCorrelation returns a child context carrying the telemetry
+// correlation block for the run about to stream. The provider stream wrapper
+// reads it via telemetryCorrelationFromContext and stamps it on the stall /
+// summary events so forensics ("provider trouble" scoring) can join those
+// events to the conversation. Passing a nil map is a no-op (returns ctx
+// unchanged), so callers without a correlation block are unaffected.
+//
+// This is the ctx-value complement to SetStreamTelemetry's package-level sink:
+// the sink is process-wide, but the correlation is per-run, so it must travel
+// with the request context rather than a global.
+func WithTelemetryCorrelation(ctx context.Context, correlation map[string]any) context.Context {
+	if ctx == nil || correlation == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, telemetryCorrelationKey{}, correlation)
+}
+
+// telemetryCorrelationFromContext extracts the correlation block stashed by
+// WithTelemetryCorrelation. Returns nil when absent (direct provider calls,
+// unit tests) so the stall / summary events fall back to an unattributed emit.
+func telemetryCorrelationFromContext(ctx context.Context) map[string]any {
+	if ctx == nil {
+		return nil
+	}
+	if v, ok := ctx.Value(telemetryCorrelationKey{}).(map[string]any); ok {
+		return v
+	}
+	return nil
 }
 
 // streamProgress is an optional callback invoked on every received SSE event
@@ -88,25 +163,34 @@ type streamProgress func()
 //     transport error → that error).
 //
 // tag/model/requestID are logging context only. onProgress may be nil.
+// correlationCtx (nil-safe) is stamped on the provider.stall and
+// provider.stream_summary telemetry events so they attribute to the
+// originating conversation (session_id / conversation_id / run_id). Callers
+// without a run context pass nil, and the events emit unattributed as before.
 func streamWithIdle(
 	src <-chan SSEEvent,
 	srcErr func() error,
 	tag, model, requestID string,
 	onProgress streamProgress,
+	correlationCtx map[string]any,
 ) (<-chan SSEEvent, func() error) {
 	out := make(chan SSEEvent, 16)
 
 	idle, idleEnabled := resolvedStreamIdle()
 
 	var (
-		idleErr  *ProviderError
-		doneCh   = make(chan struct{})
+		idleErr *ProviderError
+		doneCh  = make(chan struct{})
 	)
 
-	utils.Debug(tag, fmt.Sprintf(
-		"stream start: model=%s requestID=%s idleDeadline=%s idleEnabled=%t",
-		model, requestID, idle, idleEnabled,
-	))
+	// INFO, not DEBUG: engine.jsonl carries INFO and above, and this line is
+	// the marker that the run entered the provider stream. Without it the log
+	// is silent from prompt assembly until the first stream outcome, which is
+	// indistinguishable from a hang (the blind spot behind the
+	// 1783901108497-c95abcd11560 investigation).
+	utils.LogWithFields(utils.LevelInfo, tag, "stream start", map[string]any{
+		"model": model, "request_id": requestID, "duration_ms": idle.Milliseconds(), "status": idleEnabled,
+	})
 
 	go func() {
 		defer close(out)
@@ -128,21 +212,39 @@ func streamWithIdle(
 		start := time.Now()
 		lastEventAt := start
 		eventCount := 0
+		var maxGap time.Duration
 
 		for {
 			select {
 			case sse, ok := <-src:
 				if !ok {
 					// Source drained (EOF or read error). errFn defers to
-					// srcErr below. Log the clean end for observability.
-					utils.Debug(tag, fmt.Sprintf(
-						"stream end: model=%s requestID=%s events=%d elapsed=%s",
-						model, requestID, eventCount, time.Since(start).Round(time.Millisecond),
-					))
+					// srcErr below. Log the clean end for observability — INFO
+					// to pair with the INFO "stream start" (log both sides).
+					elapsed := time.Since(start)
+					utils.LogWithFields(utils.LevelInfo, tag, "stream end", map[string]any{
+						"model": model, "request_id": requestID, "count": eventCount, "duration_ms": elapsed.Milliseconds(),
+					})
+					// provider.stream_summary telemetry (family 4d): a per-stream
+					// rollup on clean drain. Pure observability; nil-safe.
+					// R11: event name is carried by Event.Name; payload.kind removed.
+					if sink := resolvedStreamTelemetry(); sink != nil {
+						sink.Event("provider.stream_summary", map[string]any{
+							"model":       model,
+							"request_id":  requestID,
+							"event_count": eventCount,
+							"duration_ms": elapsed.Milliseconds(),
+							"max_gap_ms":  maxGap.Milliseconds(),
+						}, correlationCtx)
+					}
 					return
 				}
 				eventCount++
-				lastEventAt = time.Now()
+				now := time.Now()
+				if gap := now.Sub(lastEventAt); gap > maxGap {
+					maxGap = gap
+				}
+				lastEventAt = now
 				if onProgress != nil {
 					onProgress()
 				}
@@ -167,10 +269,21 @@ func streamWithIdle(
 				// holding the stream open but sending nothing. Surface a
 				// retryable error so WithRetry re-streams.
 				gap := time.Since(lastEventAt).Round(time.Millisecond)
-				utils.Error(tag, fmt.Sprintf(
-					"stream idle deadline exceeded: model=%s requestID=%s noEventFor=%s events=%d — cancelling read for retry",
-					model, requestID, gap, eventCount,
-				))
+				utils.LogWithFields(utils.LevelError, tag, "stream idle deadline exceeded cancelling read for retry", map[string]any{
+					"model": model, "request_id": requestID, "duration_ms": gap.Milliseconds(), "count": eventCount,
+				})
+				// provider.stall telemetry (family 4d): the upstream held the
+				// stream open past the idle deadline. Pure observability; nil-safe.
+				// R11: event name is carried by Event.Name; payload.kind removed.
+				if sink := resolvedStreamTelemetry(); sink != nil {
+					sink.Event("provider.stall", map[string]any{
+						"model":            model,
+						"request_id":       requestID,
+						"gap_ms":           gap.Milliseconds(),
+						"idle_deadline_ms": idle.Milliseconds(),
+						"event_count":      eventCount,
+					}, correlationCtx)
+				}
 				idleErr = &ProviderError{
 					Code: ErrStreamTruncated,
 					Message: fmt.Sprintf(
@@ -183,16 +296,19 @@ func streamWithIdle(
 
 			case <-heartbeat.C:
 				// Pure observability + progress bump for a slow-but-alive
-				// stream. Logged at DEBUG so it never spams INFO.
+				// stream. Logged at INFO: engine.jsonl carries INFO and above,
+				// and this heartbeat is the only in-file liveness signal for a
+				// stream that is healthy but slow (long prefill on a huge
+				// context). One line per 15s per active stream is bounded and
+				// is exactly what distinguishes "slow" from "hung" during an
+				// incident.
 				if onProgress != nil {
 					onProgress()
 				}
-				utils.Debug(tag, fmt.Sprintf(
-					"stream alive: model=%s requestID=%s events=%d sinceLastEvent=%s totalElapsed=%s",
-					model, requestID, eventCount,
-					time.Since(lastEventAt).Round(time.Second),
-					time.Since(start).Round(time.Second),
-				))
+				utils.LogWithFields(utils.LevelInfo, tag, "stream alive", map[string]any{
+					"model": model, "request_id": requestID, "count": eventCount,
+					"duration_ms": time.Since(start).Milliseconds(),
+				})
 			}
 		}
 	}()

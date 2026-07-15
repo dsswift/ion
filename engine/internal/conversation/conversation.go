@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -180,6 +181,13 @@ type Conversation struct {
 	// Save reads this flag to decide whether to unlink the legacy file after
 	// writing the new split format. Not JSON-tagged — never persisted.
 	_isLegacy bool
+
+	// mu serializes access to Entries, LeafID, and Messages. A live
+	// conversation is mutated from multiple goroutines (runloop appends,
+	// plan/steer markers inside parallel tool goroutines, Save from the
+	// signal-handler flush). Unexported — encoding/json ignores it, so the
+	// persisted shape is unchanged. See lock.go for the locking discipline.
+	mu sync.Mutex
 }
 
 // ContextUsageInfo describes current context window consumption.
@@ -248,10 +256,12 @@ func CreateConversation(id, system, model string) *Conversation {
 func AddUserMessage(conv *Conversation, content any) *SessionEntry {
 	blocks := toContentBlocks(content)
 
+	conv.lock()
+	defer conv.unlock()
 	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: blocks})
 
 	if conv.Entries != nil {
-		return AppendEntry(conv, EntryMessage, MessageData{Role: "user", Content: blocks})
+		return appendEntryLocked(conv, EntryMessage, MessageData{Role: "user", Content: blocks}, "")
 	}
 	return nil
 }
@@ -296,6 +306,9 @@ type SlashInvocation struct {
 func AddUserMessageWithInvocation(conv *Conversation, expandedContent any, inv SlashInvocation) *SessionEntry {
 	expandedBlocks := toContentBlocks(expandedContent)
 
+	conv.lock()
+	defer conv.unlock()
+
 	// LLM sees the expanded template body.
 	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: expandedBlocks})
 
@@ -305,13 +318,13 @@ func AddUserMessageWithInvocation(conv *Conversation, expandedContent any, inv S
 		if inv.Args != "" {
 			display = inv.Command + " " + inv.Args
 		}
-		return AppendEntry(conv, EntryMessage, MessageData{
+		return appendEntryLocked(conv, EntryMessage, MessageData{
 			Role:         "user",
 			Content:      []types.LlmContentBlock{textBlock(display)},
 			SlashCommand: inv.Command,
 			SlashArgs:    inv.Args,
 			SlashSource:  inv.Source,
-		})
+		}, "")
 	}
 	return nil
 }
@@ -336,6 +349,8 @@ func toContentBlocks(content any) []types.LlmContentBlock {
 // it won't appear in session history on reload.
 func AddTransientUserMessage(conv *Conversation, content string) {
 	blocks := []types.LlmContentBlock{textBlock(content)}
+	conv.lock()
+	defer conv.unlock()
 	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: blocks})
 }
 
@@ -352,18 +367,31 @@ func AddTransientUserMessage(conv *Conversation, content string) {
 // seeder recovers it on the next session.
 func AddContextInjectionMessage(conv *Conversation, paths []string, renderedText string, transient bool) {
 	msg := BuildContextInjectionMessage(paths, renderedText)
+	conv.lock()
+	defer conv.unlock()
 	conv.Messages = append(conv.Messages, msg)
 	if transient {
 		return
 	}
 	blocks, _ := msg.Content.([]types.LlmContentBlock)
 	if conv.Entries != nil {
-		AppendEntry(conv, EntryMessage, MessageData{Role: "user", Content: blocks})
+		appendEntryLocked(conv, EntryMessage, MessageData{Role: "user", Content: blocks}, "")
 	}
 }
 
 // AddAssistantMessage appends an assistant message with usage tracking.
 func AddAssistantMessage(conv *Conversation, blocks []types.LlmContentBlock, usage types.LlmUsage) {
+	AddAssistantMessageWithEntryID(conv, blocks, usage, "")
+}
+
+// AddAssistantMessageWithEntryID is AddAssistantMessage with a pre-minted
+// entry id. The runloop mints the id before emitting message_end so consumers
+// can re-key their live-streamed assistant rows to the canonical persisted
+// identity; passing the same id here guarantees the persisted entry matches
+// what already went out on the wire. An empty entryID generates a fresh one.
+func AddAssistantMessageWithEntryID(conv *Conversation, blocks []types.LlmContentBlock, usage types.LlmUsage, entryID string) {
+	conv.lock()
+	defer conv.unlock()
 	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: blocks})
 	// Track total context size including cached tokens. The API's input_tokens
 	// field only counts non-cached tokens; cache_read and cache_creation must
@@ -374,7 +402,7 @@ func AddAssistantMessage(conv *Conversation, blocks []types.LlmContentBlock, usa
 	conv.Messages[len(conv.Messages)-1].Usage = &usage
 
 	if conv.Entries != nil {
-		AppendEntry(conv, EntryMessage, MessageData{Role: "assistant", Content: blocks, Usage: &usage})
+		appendEntryLocked(conv, EntryMessage, MessageData{Role: "assistant", Content: blocks, Usage: &usage}, entryID)
 	}
 }
 
@@ -415,6 +443,8 @@ func AddToolResults(conv *Conversation, results []ToolResultEntry) {
 		}
 	}
 	blocks = append(blocks, imageBlocks...)
+	conv.lock()
+	defer conv.unlock()
 	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: blocks})
 
 	if conv.Entries != nil {
@@ -422,7 +452,7 @@ func AddToolResults(conv *Conversation, results []ToolResultEntry) {
 		// cannot corrupt the persisted entry history.
 		entryCopy := make([]types.LlmContentBlock, len(blocks))
 		copy(entryCopy, blocks)
-		AppendEntry(conv, EntryMessage, MessageData{Role: "user", Content: entryCopy})
+		appendEntryLocked(conv, EntryMessage, MessageData{Role: "user", Content: entryCopy}, "")
 	}
 }
 
@@ -442,6 +472,8 @@ func AddToolResultsWithSizeCheck(conv *Conversation, results []ToolResultEntry, 
 
 // UpdateCost adds to the running cost total.
 func UpdateCost(conv *Conversation, costUsd float64) {
+	conv.lock()
+	defer conv.unlock()
 	conv.TotalCost += costUsd
 }
 
@@ -449,6 +481,8 @@ func UpdateCost(conv *Conversation, costUsd float64) {
 // stop reason metadata. This is called after AddAssistantMessage so callers
 // that don't need metadata don't have to change.
 func SetAssistantMeta(conv *Conversation, model, stopReason string) {
+	conv.lock()
+	defer conv.unlock()
 	if conv.Entries == nil {
 		return
 	}

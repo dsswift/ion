@@ -2,10 +2,10 @@ package backend
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
+	"github.com/dsswift/ion/engine/internal/cost"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -76,14 +76,23 @@ var toolStallThreshold = 30 * time.Second
 func resolveContextWindow(model string) int {
 	info := providers.GetModelInfo(model)
 	if info == nil {
-		utils.Warn("ApiBackend", fmt.Sprintf("resolveContextWindow: model=%s window=%d (fallback, model not in registry)", model, conversation.DefaultContext))
+		utils.LogWithFields(utils.LevelWarn, "backend.runloop", "resolveContextWindow: (fallback, model not in registry)", map[string]any{
+			"model":  model,
+			"window": conversation.DefaultContext,
+		})
 		return conversation.DefaultContext
 	}
 	if info.ContextWindow > 0 {
-		utils.Log("ApiBackend", fmt.Sprintf("resolveContextWindow: model=%s window=%d (from registry)", model, info.ContextWindow))
+		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "resolveContextWindow: (from registry)", map[string]any{
+			"model":  model,
+			"window": info.ContextWindow,
+		})
 		return info.ContextWindow
 	}
-	utils.Warn("ApiBackend", fmt.Sprintf("resolveContextWindow: model=%s registry window=0, using default=%d (zero-guard)", model, conversation.DefaultContext))
+	utils.LogWithFields(utils.LevelWarn, "backend.runloop", "resolveContextWindow: registry window=0, using (zero-guard)", map[string]any{
+		"model":   model,
+		"default": conversation.DefaultContext,
+	})
 	return conversation.DefaultContext
 }
 
@@ -98,7 +107,10 @@ func resolveContextWindow(model string) int {
 //   - anything else: log it and exit 0 (the prior, preserved behavior).
 func (b *ApiBackend) handleUnknownStopReason(run *activeRun, conv *conversation.Conversation, stopReason string, turn int) {
 	if stopReason == "error" {
-		utils.Error("ApiBackend", fmt.Sprintf("stop reason=error reached run loop: runID=%s turn=%d — emitting ErrorEvent + exit 1", run.requestID, turn))
+		utils.LogWithFields(utils.LevelError, "backend.runloop", "stop reason=error reached run loop: — emitting ErrorEvent + exit 1", map[string]any{
+			"run_id": run.requestID,
+			"turn":   turn,
+		})
 		b.emit(run, types.NormalizedEvent{Data: &types.ErrorEvent{
 			ErrorMessage: "The provider reported an error mid-stream.",
 			IsError:      true,
@@ -107,19 +119,20 @@ func (b *ApiBackend) handleUnknownStopReason(run *activeRun, conv *conversation.
 		b.emitExit(run.requestID, intPtr(1), nil, conv.ID)
 		return
 	}
-	utils.Log("ApiBackend", fmt.Sprintf("unexpected stop reason: %s (runID=%s turn=%d) — exit 0", stopReason, run.requestID, turn))
+	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "unexpected stop reason: — exit 0", map[string]any{
+		"stop_reason": stopReason,
+		"run_id":      run.requestID,
+		"turn":        turn,
+	})
 	b.emitExit(run.requestID, intPtr(0), nil, conv.ID)
 }
 
-// computeCost estimates the USD cost for a turn using the model registry.
+// computeCost estimates the USD cost for a turn using the centralized
+// cache-aware cost calculator. Delegates to cost.TurnCost, which accounts for
+// cache-creation, cache-read, and regular input tokens at their respective
+// per-model rates (with fallbacks for models that lack explicit cache pricing).
 func computeCost(model string, usage types.LlmUsage) float64 {
-	info := providers.GetModelInfo(model)
-	if info == nil {
-		return 0
-	}
-	inputCost := float64(usage.InputTokens) / 1000.0 * info.CostPer1kInput
-	outputCost := float64(usage.OutputTokens) / 1000.0 * info.CostPer1kOutput
-	return inputCost + outputCost
+	return cost.TurnCost(model, usage)
 }
 
 // appendOrGrow ensures the slice is large enough for the given index.
@@ -131,7 +144,7 @@ func appendOrGrow(blocks []types.LlmContentBlock, idx int, block types.LlmConten
 	return blocks
 }
 
-func intPtr(v int) *int       { return &v }
+func intPtr(v int) *int { return &v }
 
 // cumulativeUsage snapshots the run's cumulative token counters into a
 // UsageData suitable for TaskCompleteEvent. Each field is a fresh pointer
@@ -206,6 +219,22 @@ func buildUserContentBlocks(prompt string, attachments []types.ImageAttachment) 
 //
 // Extracted from RunAgentLoop to keep runloop.go under the file-size cap.
 func appendInboundUserMessage(conv *conversation.Conversation, opts *types.RunOptions) *conversation.SessionEntry {
+	// Duplicate-turn sentinel: a user turn byte-identical to the current leaf
+	// means the same input was dispatched twice (e.g. a client re-submitting
+	// after a stop/restart recovery — the forensic case behind this check was
+	// a slash command persisted twice, 15s apart, with no assistant turn
+	// between). The engine appends faithfully — suppressing a user turn is
+	// policy, which the engine does not own — but says so loudly so the
+	// double-dispatching client is identifiable from logs alone.
+	if inboundDuplicatesLeaf(conv, opts) {
+		utils.LogWithFields(utils.LevelWarn, "backend.runloop", "append: user turn duplicates current leaf", map[string]any{
+			"conversation_id": conv.ID,
+			"leaf_id":         conversation.CurrentLeafID(conv),
+			"content_len":     len(opts.Prompt),
+			"slash_command":   opts.ResolvedSlashCommand,
+		})
+	}
+
 	switch {
 	case opts.ResolvedSlashCommand != "":
 		return conversation.AddUserMessageWithInvocation(conv, opts.Prompt, conversation.SlashInvocation{
@@ -218,4 +247,19 @@ func appendInboundUserMessage(conv *conversation.Conversation, opts *types.RunOp
 	default:
 		return conversation.AddUserMessage(conv, opts.Prompt)
 	}
+}
+
+// inboundDuplicatesLeaf reports whether the inbound user turn is
+// byte-identical to the current leaf entry's user content — the signature of
+// a double dispatch. Compares the DISPLAY content (raw slash invocation when
+// resolved, prompt text otherwise), because that is what the tree persists.
+func inboundDuplicatesLeaf(conv *conversation.Conversation, opts *types.RunOptions) bool {
+	display := opts.Prompt
+	if opts.ResolvedSlashCommand != "" {
+		display = opts.ResolvedSlashCommand
+		if opts.ResolvedSlashArgs != "" {
+			display = opts.ResolvedSlashCommand + " " + opts.ResolvedSlashArgs
+		}
+	}
+	return display != "" && display == conversation.LeafUserText(conv)
 }

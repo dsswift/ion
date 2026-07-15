@@ -420,6 +420,19 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 	var result []types.SessionMessage
 	toolCallIndex := map[string]int{} // toolID → index in result
 
+	// rowID assigns the canonical row id: the entry id for the first row an
+	// entry produces, "<entryId>:<n>" for subsequent rows. Stable across
+	// reloads (entry ids are persisted), so every consumer shares one
+	// id-space and history reloads dedup against live rows re-keyed at
+	// message_end. The scheme is part of the wire contract — see
+	// types.SessionMessage.ID.
+	rowID := func(entryID string, rowIdx int) string {
+		if rowIdx == 0 {
+			return entryID
+		}
+		return fmt.Sprintf("%s:%d", entryID, rowIdx)
+	}
+
 	for _, entry := range path {
 		switch entry.Type {
 		case EntryCompaction:
@@ -434,6 +447,7 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 				continue
 			}
 			result = append(result, types.SessionMessage{
+				ID:                   rowID(entry.ID, 0),
 				Role:                 "system",
 				Content:              "[Compaction]",
 				Timestamp:            entry.Timestamp,
@@ -456,6 +470,7 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 				continue
 			}
 			result = append(result, types.SessionMessage{
+				ID:                  rowID(entry.ID, 0),
 				Role:                "system",
 				Content:             "──",
 				Timestamp:           entry.Timestamp,
@@ -475,6 +490,7 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 				continue
 			}
 			result = append(result, types.SessionMessage{
+				ID:                  rowID(entry.ID, 0),
 				Role:                "system",
 				Content:             "──",
 				Timestamp:           entry.Timestamp,
@@ -506,8 +522,21 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 					// Merge result content into the matching tool-call message.
 					if idx, ok := toolCallIndex[b.ToolUseID]; ok {
 						result[idx].Content = b.Content
+						// Carry the persisted error flag so reloaded tool rows
+						// keep their failed state (live path sets it via the
+						// tool_result event; history must not coerce to
+						// success).
+						result[idx].IsError = b.IsError != nil && *b.IsError
+					} else {
+						// No matching tool call: the orphan result is dropped
+						// from the flattened view. Post-repair this should
+						// never fire; if it does, the chain is losing data
+						// again — say so instead of silently thinning history.
+						utils.LogWithFields(utils.LevelWarn, "conversation", "flatten: orphan tool_result dropped", map[string]any{
+							"conversation_id": conv.ID,
+							"tool_use_id":     b.ToolUseID,
+						})
 					}
-					// If no matching tool call found, drop the orphan result.
 				case "image":
 					// A persisted tool-result image block. The live path emitted
 					// an ImageContentEvent per image and clients attached it to
@@ -551,6 +580,7 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 			if len(textParts) > 0 {
 				content := strings.Join(textParts, "\n")
 				result = append(result, types.SessionMessage{
+					ID:        rowID(entry.ID, 0),
 					Role:      "user",
 					Content:   content,
 					Timestamp: entry.Timestamp,
@@ -567,15 +597,18 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 			}
 
 		case "assistant":
+			entryRowIdx := 0
 			for _, b := range blocks {
 				switch b.Type {
 				case "text":
 					if b.Text != "" {
 						result = append(result, types.SessionMessage{
+							ID:        rowID(entry.ID, entryRowIdx),
 							Role:      "assistant",
 							Content:   b.Text,
 							Timestamp: entry.Timestamp,
 						})
+						entryRowIdx++
 					}
 				case "tool_use":
 					inputJSON := ""
@@ -587,12 +620,14 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 					}
 					toolCallIndex[b.ID] = len(result)
 					result = append(result, types.SessionMessage{
+						ID:        rowID(entry.ID, entryRowIdx),
 						Role:      "tool",
 						ToolName:  b.Name,
 						ToolID:    b.ID,
 						ToolInput: inputJSON,
 						Timestamp: entry.Timestamp,
 					})
+					entryRowIdx++
 				}
 			}
 		}

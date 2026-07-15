@@ -138,7 +138,14 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	// duplicate the client's own input and force a dedup contract on every
 	// consumer; it also surfaced extension-injected turns (ctx.sendMessage) as
 	// phantom user bubbles. See the removal of engine_user_turn.
-	appendInboundUserMessage(conv, &opts)
+	userEntry := appendInboundUserMessage(conv, &opts)
+	// The run-opening user turn's canonical entry id rides every
+	// message_end of this run (UsageEvent.UserEntryID) so consumers can
+	// re-key their optimistic user row to the persisted identity.
+	runUserEntryID := ""
+	if userEntry != nil {
+		runUserEntryID = userEntry.ID
+	}
 	// Persist immediately: if the engine dies mid-stream, the user prompt
 	// must survive so the user does not lose what they just typed.
 	if err := conversation.Save(conv, ""); err != nil {
@@ -523,6 +530,10 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 					b.emitExit(run.requestID, intPtr(1), nil, conv.ID)
 					return
 				}
+				// The failed attempt may have live-streamed partial output to
+				// consumers before the provider rejected it; tell them to
+				// discard it before the turn is retried post-compaction.
+				b.emit(run, types.NormalizedEvent{Data: &types.StreamResetEvent{}})
 				b.compactReactive(ctx, run, conv, hooks, contextWindow, promptTooLongRetries, cp)
 				continue // retry the turn after compaction
 			}
@@ -584,6 +595,16 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		truncationRetries = 0
 		run.compactionsWithoutProgress = 0
 
+		// Pre-mint the assistant entry id so the message_end event carries
+		// the SAME identity the tree persists below — consumers re-key their
+		// live-streamed assistant row to it and a later history load
+		// (SessionMessage.ID) dedups against that row. Minting before the
+		// emit keeps the event order unchanged on the wire.
+		assistantEntryID := ""
+		if len(assistantBlocks) > 0 {
+			assistantEntryID = conversation.GenEntryID()
+		}
+
 		// Track usage and cost
 		currentTurnOutputTokens := 0
 		if turnUsage != nil {
@@ -609,6 +630,8 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 					CacheReadInputTokens:     &cacheRead,
 					CacheCreationInputTokens: &cacheCreate,
 				},
+				EntryID:     assistantEntryID,
+				UserEntryID: runUserEntryID,
 			}})
 
 			// Reconcile the context breakdown with the provider-reported input
@@ -642,7 +665,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			// text. Never affects provider re-submission (SanitizeMessages
 			// always strips thinking). See blocksForPersistence.
 			blocksToPersist := b.blocksForPersistence(run, assistantBlocks)
-			conversation.AddAssistantMessage(conv, blocksToPersist, llmUsage)
+			conversation.AddAssistantMessageWithEntryID(conv, blocksToPersist, llmUsage, assistantEntryID)
 			conversation.SetAssistantMeta(conv, model, stopReason)
 			// Persist immediately so the assistant turn survives mid-loop crashes.
 			// The end-of-turn Save() below remains as the canonical write that

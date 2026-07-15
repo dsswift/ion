@@ -247,6 +247,7 @@ var validCommands = map[string]bool{
 	"fork_session":    true,
 	"set_plan_mode":   true,
 	"branch":          true,
+	"branch_before":   true,
 	"navigate_tree":   true,
 	"get_tree":        true,
 	"shutdown":               true,
@@ -488,6 +489,8 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasNonEmptyString(raw, "key") && hasBool(raw, "enabled")
 	case "branch":
 		return hasNonEmptyString(raw, "key") && hasString(raw, "entryId")
+	case "branch_before":
+		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "entryId")
 	case "navigate_tree":
 		return hasNonEmptyString(raw, "key") && hasString(raw, "targetId")
 	case "permission_response":

@@ -101,6 +101,8 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 				InputTokens:    derefInt(e.Usage.InputTokens),
 				OutputTokens:   derefInt(e.Usage.OutputTokens),
 				ContextPercent: pct,
+				EntryID:        e.EntryID,
+				UserEntryID:    e.UserEntryID,
 			},
 		}
 

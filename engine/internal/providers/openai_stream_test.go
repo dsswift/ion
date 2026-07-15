@@ -253,14 +253,19 @@ func TestOpenAIStreamNumericErrorCode(t *testing.T) {
 	}
 }
 
-// TestOpenAIStreamWithRetryDiscardsPartialBuffer pins the Defect-2 assumption
-// that WithRetry buffers events per attempt and discards them when the attempt
-// ends in a *ProviderError. A consumer must never see the pre-error
-// content_block_delta text from a failed attempt. Uses a non-retryable error
-// so the run terminates after one attempt with the buffer dropped.
-func TestOpenAIStreamWithRetryDiscardsPartialBuffer(t *testing.T) {
+// TestOpenAIStreamWithRetryForwardsPartialThenError pins the live-forwarding
+// contract at the OpenAI provider boundary: WithRetry forwards events as they
+// arrive, so a stream that dies mid-attempt with a NON-retryable error still
+// delivers the pre-error partial events, followed by the *ProviderError on the
+// error channel. Discarding partial state is the CALLER's job — on a terminal
+// error the backend run loop aborts the turn without persisting the partial
+// blocks (and on a retryable failure WithRetry injects a stream_reset marker;
+// see retry_test.go). The pre-live-forwarding behavior (buffer per attempt,
+// drop on error) is gone by design: it delayed every healthy stream's output
+// until completion, which read as a hung conversation on long turns.
+func TestOpenAIStreamWithRetryForwardsPartialThenError(t *testing.T) {
 	body := strings.Join([]string{
-		`data: {"choices":[{"delta":{"content":"leaked partial text"},"finish_reason":null}]}`,
+		`data: {"choices":[{"delta":{"content":"partial text before failure"},"finish_reason":null}]}`,
 		`data: {"choices":[],"error":{"message":"the model does not exist","type":"invalid_request_error","code":"model_not_found"}}`,
 		`data: [DONE]`,
 		"",
@@ -284,10 +289,17 @@ func TestOpenAIStreamWithRetryDiscardsPartialBuffer(t *testing.T) {
 	if streamErr == nil {
 		t.Fatal("expected a non-retryable *ProviderError from WithRetry")
 	}
+	sawPartial := false
 	for _, ev := range collected {
-		if ev.Type == "content_block_delta" && ev.Delta != nil && strings.Contains(ev.Delta.Text, "leaked partial text") {
-			t.Fatal("WithRetry forwarded partial text from a failed attempt; the buffer must be discarded on error")
+		if ev.Type == "content_block_delta" && ev.Delta != nil && strings.Contains(ev.Delta.Text, "partial text before failure") {
+			sawPartial = true
 		}
+		if ev.Type == types.LlmStreamEventStreamReset {
+			t.Fatal("stream_reset marker emitted for a NON-retryable error; the marker is reserved for retried attempts")
+		}
+	}
+	if !sawPartial {
+		t.Fatal("pre-error partial event was not forwarded live to the caller")
 	}
 }
 

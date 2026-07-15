@@ -75,8 +75,10 @@
     "message_end": [
       "contextPercent",
       "cost",
+      "entryId",
       "inputTokens",
-      "outputTokens"
+      "outputTokens",
+      "userEntryId"
     ],
     "model_fallback": [
       "fallbackModel",
@@ -198,7 +200,9 @@
       "toolName"
     ],
     "usage": [
-      "usage"
+      "entryId",
+      "usage",
+      "userEntryId"
     ],
     "working_message": [
       "message"
@@ -443,8 +447,10 @@
     "MessageEndUsage": [
       "contextPercent",
       "cost",
+      "entryId",
       "inputTokens",
-      "outputTokens"
+      "outputTokens",
+      "userEntryId"
     ],
     "ModelBreakdown": [
       "conversations",
@@ -480,6 +486,39 @@
       "baseURL",
       "hasAuth",
       "id"
+    ],
+    "SessionMessage": [
+      "attachments",
+      "content",
+      "id",
+      "internal",
+      "isError",
+      "markerClearedBlocks",
+      "markerKind",
+      "markerMessageLength",
+      "markerMessagesAfter",
+      "markerMessagesBefore",
+      "markerMicroOnly",
+      "markerPlanFilePath",
+      "markerPlanOperation",
+      "markerPlanSlug",
+      "markerStrategy",
+      "markerSummary",
+      "role",
+      "slashArgs",
+      "slashCommand",
+      "slashSource",
+      "timestamp",
+      "toolId",
+      "toolInput",
+      "toolName"
+    ],
+    "SessionMessageAttachment": [
+      "id",
+      "mimeType",
+      "name",
+      "path",
+      "type"
     ],
     "SessionStatus": [
       "backgroundAgentCount",

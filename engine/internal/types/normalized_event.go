@@ -428,6 +428,18 @@ func (RateLimitNormalizedEvent) eventType() string { return EventRateLimit }
 // UsageEvent carries a standalone usage update.
 type UsageEvent struct {
 	Usage UsageData `json:"usage"`
+	// EntryID is the canonical persisted entry id of the assistant message
+	// this usage event closes. The runloop pre-mints it before emission and
+	// persists the assistant entry under the same id, so consumers can re-key
+	// their live-streamed assistant rows to the identity a later history load
+	// returns (SessionMessage.ID). Empty on usage events that do not close an
+	// assistant message (cache-token progress, compaction summaries).
+	EntryID string `json:"entryId,omitempty"`
+	// UserEntryID is the canonical persisted entry id of the user turn that
+	// opened this run, letting consumers re-key their optimistic user row to
+	// the same identity a history load returns. Empty when the run wrote no
+	// user tree entry.
+	UserEntryID string `json:"userEntryId,omitempty"`
 }
 
 func (UsageEvent) eventType() string { return EventUsage }

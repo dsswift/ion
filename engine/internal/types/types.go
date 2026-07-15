@@ -309,6 +309,12 @@ type MessageEndUsage struct {
 	OutputTokens   int     `json:"outputTokens"`
 	ContextPercent int     `json:"contextPercent"`
 	Cost           float64 `json:"cost"`
+	// EntryID / UserEntryID mirror UsageEvent: the canonical persisted entry
+	// ids of the assistant message this end closes and of the run-opening
+	// user turn. Consumers re-key live rows to these ids so history reloads
+	// (SessionMessage.ID) dedup against them. Both optional and additive.
+	EntryID     string `json:"entryId,omitempty"`
+	UserEntryID string `json:"userEntryId,omitempty"`
 }
 
 // EarlyStopContinueConfig holds the engine-wide defaults for the early-stop
@@ -376,6 +382,14 @@ type StoredSessionInfo struct {
 
 // SessionMessage is a flattened message for client display.
 type SessionMessage struct {
+	// ID is the canonical row id, stable across reloads: the persisted tree
+	// entry id for the first row an entry produces, "<entryId>:<n>" (n = row
+	// ordinal within the entry, starting at 1) for subsequent rows. All
+	// consumers share this id-space — a history reload dedups against live
+	// rows re-keyed via the message_end entryId — so no client needs to
+	// invent local identities for persisted rows. Additive (omitempty):
+	// absent from rows produced by engines predating the field.
+	ID        string `json:"id,omitempty"`
 	Role      string `json:"role"`
 	Content   string `json:"content"`
 	ToolName  string `json:"toolName,omitempty"`
@@ -383,6 +397,10 @@ type SessionMessage struct {
 	ToolInput string `json:"toolInput,omitempty"`
 	Timestamp int64  `json:"timestamp"`
 	Internal  bool   `json:"internal,omitempty"`
+	// IsError carries the persisted tool_result error flag on tool-role rows
+	// so reloaded history keeps failed tool state instead of coercing every
+	// result to success. Additive (omitempty).
+	IsError bool `json:"isError,omitempty"`
 	// SlashCommand / SlashArgs / SlashSource carry the raw slash-command
 	// invocation when this user turn originated from a slash command the engine
 	// resolved and expanded. Content holds the raw invocation for display; the

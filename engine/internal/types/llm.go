@@ -177,6 +177,14 @@ type LlmUsage struct {
 
 // --- LLM Stream Events (Anthropic-canonical SSE shape) ---
 
+// LlmStreamEventStreamReset is an in-band marker injected by the retry
+// wrapper (providers.WithRetry) when a retryable failure interrupted a
+// stream after events were already forwarded to the caller. On receipt the
+// consumer must discard all state accumulated for the current attempt; the
+// events that follow re-stream the turn from the start. This is an
+// engine-internal marker, not a provider SSE event type.
+const LlmStreamEventStreamReset = "stream_reset"
+
 // LlmStreamEvent is a tagged union for streaming events from providers.
 type LlmStreamEvent struct {
 	Type string `json:"type"`

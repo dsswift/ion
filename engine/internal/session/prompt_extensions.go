@@ -69,7 +69,21 @@ func (m *Manager) lateLoadExtensions(s *engineSession, key string, overrides *Pr
 		}
 		host.SetPersistentEmit(func(ev types.EngineEvent) {
 			if ev.Type == "engine_agent_state" {
+				// Cache the extension's roster, then re-emit a merged snapshot
+				// that includes engine-managed entries (dispatch state with
+				// task, conversationId, progress). Forwarding the extension's
+				// raw event would overwrite engine-managed entries on the
+				// desktop due to the complete-snapshot contract.
 				s.agents.CacheExtStates(ev.Agents)
+				merged := s.agents.MergedSnapshot()
+				utils.LogWithFields(utils.LevelInfo, "session", "agent_snapshot_emitted reason=ext_emit_merged", map[string]any{"captured_key": capturedKey, "count": len(merged)})
+				m.emit(capturedKey, types.EngineEvent{Type: "engine_agent_state", Agents: merged})
+				return
+			}
+			if ev.Type == "engine_status" && ev.Fields != nil && ev.Fields.ExtensionName != "" {
+				m.mu.Lock()
+				s.extensionName = ev.Fields.ExtensionName
+				m.mu.Unlock()
 			}
 			m.emit(capturedKey, ev)
 		})

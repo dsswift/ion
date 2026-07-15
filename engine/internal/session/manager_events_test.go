@@ -169,7 +169,7 @@ func TestHandleNormalizedEvent_TaskComplete(t *testing.T) {
 	statusEvents := ec.byType("engine_status")
 	found := false
 	for _, e := range statusEvents {
-		if e.event.Fields != nil && e.event.Fields.TotalCostUsd == 0.05 {
+		if e.event.Fields != nil && e.event.Fields.RunCostUsd == 0.05 {
 			found = true
 			break
 		}
@@ -405,8 +405,8 @@ func TestHandleRunExit_CapturesBackendSessionIDIntoCliSessionID(t *testing.T) {
 			if opts.CliResumeSessionID != "session-abc" {
 				t.Errorf("expected CliResumeSessionID 'session-abc', got %q", opts.CliResumeSessionID)
 			}
-			if opts.SessionID != ionConvID {
-				t.Errorf("expected SessionID %q (Ion id), got %q", ionConvID, opts.SessionID)
+			if opts.ConversationID != ionConvID {
+				t.Errorf("expected ConversationID %q (Ion id), got %q", ionConvID, opts.ConversationID)
 			}
 			return
 		}
@@ -715,6 +715,29 @@ func TestTranslateToEngineEvent_AllTypes(t *testing.T) {
 				t.Errorf("expected type %q, got %q", tt.wantType, result.Type)
 			}
 		})
+	}
+}
+
+func TestTranslateToEngineEvent_UsageEntryIDs(t *testing.T) {
+	// The pre-minted assistant entry id and the run-opening user entry id
+	// must survive translation into engine_message_end — consumers re-key
+	// live rows to them (see UsageEvent.EntryID / UserEntryID).
+	result := translateToEngineEvent(types.NormalizedEvent{Data: &types.UsageEvent{
+		Usage:       types.UsageData{InputTokens: intPtr(100), OutputTokens: intPtr(50)},
+		EntryID:     "aabbccdd",
+		UserEntryID: "11223344",
+	}}, 200000)
+	if result.Type != "engine_message_end" {
+		t.Fatalf("expected engine_message_end, got %q", result.Type)
+	}
+	if result.EndUsage == nil {
+		t.Fatal("EndUsage is nil")
+	}
+	if result.EndUsage.EntryID != "aabbccdd" {
+		t.Errorf("EntryID = %q, want aabbccdd", result.EndUsage.EntryID)
+	}
+	if result.EndUsage.UserEntryID != "11223344" {
+		t.Errorf("UserEntryID = %q, want 11223344", result.EndUsage.UserEntryID)
 	}
 }
 

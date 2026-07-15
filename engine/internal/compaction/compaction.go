@@ -4,6 +4,7 @@ package compaction
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -50,7 +51,7 @@ const MaxFactsPerSection = 20
 // boundary summaries from being re-scanned — see the gentle-knitting-cup
 // plan for the structural rationale.
 func ExtractFacts(messages []types.LlmMessage) []Fact {
-	utils.Debug("Compaction", fmt.Sprintf("ExtractFacts: scanning %d messages", len(messages)))
+	utils.LogWithFields(utils.LevelDebug, "compaction", "extract facts scanning", map[string]any{"count": len(messages)})
 	var facts []Fact
 	// (Type, Content) dedupe key. The map value is unused — we only need
 	// presence. Using a string key sidesteps tuple-key gymnastics; the
@@ -117,8 +118,9 @@ func ExtractFacts(messages []types.LlmMessage) []Fact {
 	for _, f := range facts {
 		counts[f.Type]++
 	}
-	utils.Debug("Compaction", fmt.Sprintf("ExtractFacts: done total=%d decisions=%d file_mods=%d errors=%d preferences=%d discoveries=%d",
-		len(facts), counts["decision"], counts["file_mod"], counts["error"], counts["preference"], counts["discovery"]))
+	utils.LogWithFields(utils.LevelDebug, "compaction", "extract facts done", map[string]any{
+		"count": len(facts), "turn": counts["decision"], "max": counts["file_mod"],
+	})
 
 	return facts
 }
@@ -181,37 +183,23 @@ func FormatFactsSummary(facts []Fact) string {
 // CompactPartial removes entries from a conversation tree, keeping everything
 // after pivotEntryID. Direction is "before" (remove older) or "after" (remove newer).
 func CompactPartial(conv *conversation.Conversation, pivotEntryID string, direction string) error {
-	utils.Debug("Compaction", fmt.Sprintf("CompactPartial: pivotID=%s direction=%s entries=%d", pivotEntryID, direction, len(conv.Entries)))
+	utils.LogWithFields(utils.LevelDebug, "compaction", "compact partial", map[string]any{"run_id": pivotEntryID, "reason": direction, "count": len(conv.Entries)})
 	if len(conv.Entries) == 0 {
 		return nil
 	}
 
-	pivotIdx := -1
-	for i, e := range conv.Entries {
-		if e.ID == pivotEntryID {
-			pivotIdx = i
-			break
+	// The truncation, leaf move, and Messages rebuild are owned by the
+	// conversation package's locked funnel — tree state is never mutated
+	// directly from outside the package (see conversation/lock.go).
+	if err := conversation.TruncateEntriesAtPivot(conv, pivotEntryID, direction); err != nil {
+		var notFound *conversation.PivotNotFoundError
+		if errors.As(err, &notFound) {
+			utils.LogWithFields(utils.LevelWarn, "compaction", "compact partial pivot not found", map[string]any{"run_id": pivotEntryID})
 		}
-	}
-	if pivotIdx < 0 {
-		utils.Warn("Compaction", fmt.Sprintf("CompactPartial: pivot not found: %s", pivotEntryID))
-		return fmt.Errorf("pivot entry not found: %s", pivotEntryID)
+		return err
 	}
 
-	switch direction {
-	case "before":
-		// Keep entries from pivot onward.
-		conv.Entries = conv.Entries[pivotIdx:]
-	case "after":
-		// Keep entries up to and including pivot.
-		conv.Entries = conv.Entries[:pivotIdx+1]
-		conv.LeafID = &conv.Entries[len(conv.Entries)-1].ID
-	default:
-		return fmt.Errorf("invalid direction: %s (expected 'before' or 'after')", direction)
-	}
-
-	utils.Debug("Compaction", fmt.Sprintf("CompactPartial: complete direction=%s entriesAfter=%d", direction, len(conv.Entries)))
-	conv.Messages = conversation.BuildContextPath(conv)
+	utils.LogWithFields(utils.LevelDebug, "compaction", "compact partial complete", map[string]any{"reason": direction, "count": len(conv.Entries)})
 	return nil
 }
 
@@ -261,7 +249,7 @@ func ExtractRecentFiles(messages []types.LlmMessage) []string {
 		}
 	}
 
-	utils.Debug("Compaction", fmt.Sprintf("ExtractRecentFiles: found %d files from %d messages", len(files), len(messages)))
+	utils.LogWithFields(utils.LevelDebug, "compaction", "extract recent files", map[string]any{"count": len(files), "max": len(messages)})
 	return files
 }
 

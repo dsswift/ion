@@ -1,7 +1,6 @@
 package session
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
@@ -19,19 +18,25 @@ import (
 // these entries merge with the extension roster — engine-managed
 // entries win for deduplication, preserving task, conversationId,
 // and elapsed metadata.
-func (m *Manager) rehydrateDispatchState(s *engineSession, key string) {
+//
+// The loaded *conversation.Conversation is returned so the caller can reuse it
+// (model seed, context-usage computation) without re-reading and re-parsing the
+// conversation file. Returns nil when no conversation file exists yet (first run
+// on this session ID). A non-nil conv is returned even when there are no
+// dispatch entries — the file loaded fine, it just has nothing to rehydrate.
+func (m *Manager) rehydrateDispatchState(s *engineSession, key string) *conversation.Conversation {
 	conv, err := conversation.Load(s.conversationID, "")
 	if err != nil {
 		// No conversation file yet — first run on this session ID.
 		// Nothing to rehydrate; this is the normal path for new sessions.
-		utils.Debug("Session", fmt.Sprintf("rehydrateDispatchState: no conversation file for key=%s id=%s (expected for new sessions)", key, s.conversationID))
-		return
+		utils.LogWithFields(utils.LevelDebug, "session", "rehydratedispatchstate: no conversation file for (expected for new sessions)", map[string]any{"key": key, "run_id": s.conversationID})
+		return nil
 	}
 
 	dispatches := conversation.AgentDispatchEntries(conv)
 	if len(dispatches) == 0 {
-		utils.Debug("Session", fmt.Sprintf("rehydrateDispatchState: no dispatch entries key=%s id=%s", key, s.conversationID))
-		return
+		utils.LogWithFields(utils.LevelDebug, "session", "rehydratedispatchstate: no dispatch entries", map[string]any{"key": key, "run_id": s.conversationID})
+		return conv
 	}
 
 	for _, d := range dispatches {
@@ -147,7 +152,8 @@ func (m *Manager) rehydrateDispatchState(s *engineSession, key string) {
 		})
 	}
 
-	utils.Log("Session", fmt.Sprintf("rehydrateDispatchState: loaded %d dispatch entries key=%s id=%s", len(dispatches), key, s.conversationID))
+	utils.LogWithFields(utils.LevelInfo, "session", "rehydratedispatchstate: loaded dispatch entries", map[string]any{"count": len(dispatches), "key": key, "run_id": s.conversationID})
+	return conv
 }
 
 // dedupDispatchesByID unions an existing []interface{} dispatches slice with a
@@ -324,7 +330,7 @@ func (m *Manager) persistTerminalDispatches(key, convID string) {
 
 	conv, err := conversation.Load(convID, "")
 	if err != nil {
-		utils.Log("Session", fmt.Sprintf("persistTerminalDispatches: load failed id=%s err=%v", convID, err))
+		utils.LogWithFields(utils.LevelInfo, "session", "persistterminaldispatches: load failed", map[string]any{"run_id": convID, "error": err})
 		return
 	}
 
@@ -341,7 +347,10 @@ func (m *Manager) persistTerminalDispatches(key, convID string) {
 		if existing[d.ID] {
 			continue
 		}
-		conv.Entries = append(conv.Entries, d)
+		// Dispatch records are intentional extra roots (ParentID nil) that do
+		// not move the leaf; append through the locked detached funnel rather
+		// than mutating conv.Entries directly (see conversation/lock.go).
+		conversation.AppendDetachedEntry(conv, d)
 		added++
 	}
 
@@ -350,9 +359,9 @@ func (m *Manager) persistTerminalDispatches(key, convID string) {
 	}
 
 	if err := conversation.Save(conv, ""); err != nil {
-		utils.Log("Session", fmt.Sprintf("persistTerminalDispatches: save failed id=%s err=%v", convID, err))
+		utils.LogWithFields(utils.LevelInfo, "session", "persistterminaldispatches: save failed", map[string]any{"run_id": convID, "error": err})
 		return
 	}
 
-	utils.Log("Session", fmt.Sprintf("persistTerminalDispatches: persisted %d dispatch entries convId=%s key=%s", added, convID, key))
+	utils.LogWithFields(utils.LevelInfo, "session", "persistterminaldispatches: persisted dispatch entries", map[string]any{"added": added, "run_id": convID, "key": key})
 }

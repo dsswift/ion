@@ -2,7 +2,6 @@ package conversation
 
 import (
 	"encoding/json"
-	"fmt"
 	"math"
 	"strings"
 
@@ -59,7 +58,7 @@ func EstimateTokens(content any) int {
 	default:
 		b, err := json.Marshal(c)
 		if err != nil {
-			utils.Warn("Compaction", fmt.Sprintf("EstimateTokens: json.Marshal failed: %v", err))
+			utils.LogWithFields(utils.LevelWarn, "conversation.compact", "estimate tokens json marshal failed", map[string]any{"error": err.Error()})
 			return 0
 		}
 		return int(math.Ceil(float64(len(b)) / 3.5))
@@ -90,7 +89,7 @@ func estimateBlocksTokens(blocks []types.LlmContentBlock) int {
 		}
 		b, err := json.Marshal(blk)
 		if err != nil {
-			utils.Warn("Compaction", fmt.Sprintf("EstimateTokens: block marshal failed: %v", err))
+			utils.LogWithFields(utils.LevelWarn, "conversation.compact", "estimate tokens block marshal failed", map[string]any{"error": err.Error()})
 			continue
 		}
 		total += int(math.Ceil(float64(len(b)) / 3.5))
@@ -148,16 +147,16 @@ func EffectiveContextWindow(window, maxOutputTokens, summaryReserve int) int {
 		return 0
 	}
 	if maxOutputTokens <= 0 {
-		utils.Debug("Compaction", fmt.Sprintf("EffectiveContextWindow: maxOutputTokens=%d, defaulting to %d", maxOutputTokens, DefaultMaxOutputTokens))
+		utils.LogWithFields(utils.LevelDebug, "conversation.compact", "effective context window max output tokens defaulting", map[string]any{"max": maxOutputTokens, "count": DefaultMaxOutputTokens})
 		maxOutputTokens = DefaultMaxOutputTokens
 	}
 	if summaryReserve <= 0 {
-		utils.Debug("Compaction", fmt.Sprintf("EffectiveContextWindow: summaryReserve=%d, defaulting to %d", summaryReserve, DefaultCompactSummaryReserve))
+		utils.LogWithFields(utils.LevelDebug, "conversation.compact", "effective context window summary reserve defaulting", map[string]any{"max": summaryReserve, "count": DefaultCompactSummaryReserve})
 		summaryReserve = DefaultCompactSummaryReserve
 	}
 	effective := window - maxOutputTokens - summaryReserve
 	if effective <= 0 {
-		utils.Debug("Compaction", fmt.Sprintf("EffectiveContextWindow: effective=%d <= 0 (window=%d - maxOut=%d - reserve=%d), returning raw window=%d", effective, window, maxOutputTokens, summaryReserve, window))
+		utils.LogWithFields(utils.LevelDebug, "conversation.compact", "effective context window zero or negative returning raw", map[string]any{"count": effective, "max": window})
 		return window
 	}
 	return effective
@@ -168,57 +167,78 @@ func EffectiveContextWindow(window, maxOutputTokens, summaryReserve int) int {
 // This is the effective window minus the configured summary reserve.
 func AutoCompactTokenLimit(window, maxOutputTokens int) int {
 	result := EffectiveContextWindow(window, maxOutputTokens, DefaultCompactSummaryReserve)
-	utils.Debug("Compaction", fmt.Sprintf("AutoCompactTokenLimit: window=%d maxOutputTokens=%d result=%d", window, maxOutputTokens, result))
+	utils.LogWithFields(utils.LevelDebug, "conversation.compact", "auto compact token limit", map[string]any{"count": window, "max": maxOutputTokens, "turn": result})
 	return result
 }
 
-// invalidateTokenCache clears the cached "last input token" figure after the
-// conversation has been mutated by compaction. GetContextUsage uses this
-// figure to avoid re-estimating large message slices; once the slice changes
-// it is stale and would trigger another compaction immediately if reused.
-// Cleared values force re-estimation until the next API response updates the
-// cache.
-func invalidateTokenCache(conv *Conversation) {
-	utils.Debug("Compaction", fmt.Sprintf("invalidateTokenCache: zeroing LastInputTokens=%d LastInputTokensMsgCount=%d", conv.LastInputTokens, conv.LastInputTokensMsgCount))
-	conv.LastInputTokens = 0
-	conv.LastInputTokensMsgCount = 0
-}
-
-// GetContextUsage computes context window consumption. When LastInputTokens
-// is available (from the previous API response), it adds an estimate for any
-// messages added since (e.g. tool results) so the count isn't stale.
+// GetContextUsage computes context window consumption. It scans conv.Messages
+// backward for the most recent assistant message that carries API-reported
+// Usage (set by AddAssistantMessage and rehydrated from entries at load time),
+// reads its token total, and adds an estimate for any messages appended after
+// it (e.g. tool results added in the current turn that have not yet been sent
+// to the API). When no such message exists (new conversation or immediately
+// after compaction), it falls back to a heuristic estimate of conv.Messages
+// plus conv.System, which is used until the next API response populates Usage
+// on a new assistant message.
 func GetContextUsage(conv *Conversation, contextWindow int) ContextUsageInfo {
+	conv.lock()
+	defer conv.unlock()
 	limit := contextWindow
 	if limit <= 0 {
-		utils.Debug("Compaction", fmt.Sprintf("GetContextUsage: contextWindow=%d <= 0, falling back to DefaultContext=%d", contextWindow, DefaultContext))
+		utils.LogWithFields(utils.LevelDebug, "conversation.compact", "get context usage context window zero falling back to default", map[string]any{"count": contextWindow, "max": DefaultContext})
 		limit = DefaultContext
 	}
 
-	reported := conv.LastInputTokens
-	if reported > 0 && (conv.LastInputTokensMsgCount <= 0 || len(conv.Messages) >= conv.LastInputTokensMsgCount) {
-		total := reported
-		if conv.LastInputTokensMsgCount > 0 && len(conv.Messages) > conv.LastInputTokensMsgCount {
-			for _, msg := range conv.Messages[conv.LastInputTokensMsgCount:] {
-				total += EstimateTokens(msg.Content)
-			}
+	// Backward scan: find the last assistant message with API-reported usage.
+	lastUsageIdx := -1
+	for i := len(conv.Messages) - 1; i >= 0; i-- {
+		if conv.Messages[i].Role == "assistant" && conv.Messages[i].Usage != nil {
+			lastUsageIdx = i
+			break
 		}
-		pct := int(math.Min(100, math.Round(float64(total)/float64(limit)*100)))
-		utils.Debug("Compaction", fmt.Sprintf("GetContextUsage: branch=api-cached reported=%d msgCount=%d currentMsgs=%d total=%d limit=%d pct=%d", reported, conv.LastInputTokensMsgCount, len(conv.Messages), total, limit, pct))
-		return ContextUsageInfo{Percent: pct, Tokens: total, Limit: limit, Estimated: false}
-	}
-	if reported > 0 {
-		utils.Debug("Compaction", fmt.Sprintf("GetContextUsage: branch=stale-cache-invalidated reported=%d lastMsgCount=%d currentMsgs=%d — falling through to heuristic", reported, conv.LastInputTokensMsgCount, len(conv.Messages)))
 	}
 
+	if lastUsageIdx >= 0 {
+		u := conv.Messages[lastUsageIdx].Usage
+		total := u.InputTokens + u.CacheReadInputTokens + u.CacheCreationInputTokens
+		// Estimate any messages appended after the last API response (e.g. tool
+		// results in the current turn). These are not yet reflected in the API
+		// count and may be substantial in a tool-heavy turn.
+		for _, msg := range conv.Messages[lastUsageIdx+1:] {
+			total += EstimateTokens(msg.Content)
+		}
+		pct := int(math.Min(100, math.Round(float64(total)/float64(limit)*100)))
+		utils.LogWithFields(utils.LevelDebug, "conversation.compact", "get context usage api cached", map[string]any{
+			"turn": total, "count": lastUsageIdx, "max": len(conv.Messages),
+		})
+		return ContextUsageInfo{Percent: pct, Tokens: total, Limit: limit, Estimated: false}
+	}
+
+	// Fallback: no API-reported usage available. This occurs on truly new
+	// conversations and immediately after compaction (before the next API
+	// response populates Usage). Estimate from message content plus system
+	// prompt so the threshold check has a reasonable signal.
 	estimated := EstimateTokens(conv.Messages)
+	if conv.System != "" {
+		estimated += EstimateTokens(conv.System)
+	}
 	pct := int(math.Min(100, math.Round(float64(estimated)/float64(limit)*100)))
-	utils.Debug("Compaction", fmt.Sprintf("GetContextUsage: branch=heuristic msgs=%d estimated=%d limit=%d pct=%d", len(conv.Messages), estimated, limit, pct))
+	utils.LogWithFields(utils.LevelDebug, "conversation.compact", "get context usage heuristic", map[string]any{
+		"count": len(conv.Messages), "turn": estimated,
+	})
 	return ContextUsageInfo{Percent: pct, Tokens: estimated, Limit: limit, Estimated: true}
 }
 
 // Compact drops the oldest messages, keeping keepTurns user+assistant pairs.
 func Compact(conv *Conversation, keepTurns int) {
-	utils.Debug("Compaction", fmt.Sprintf("Compact: entry keepTurns=%d len(msgs)=%d", keepTurns, len(conv.Messages)))
+	conv.lock()
+	defer conv.unlock()
+	compactLocked(conv, keepTurns)
+}
+
+// compactLocked is Compact's body; callers must hold conv.mu.
+func compactLocked(conv *Conversation, keepTurns int) {
+	utils.LogWithFields(utils.LevelDebug, "conversation.compact", "compact entry", map[string]any{"turn": keepTurns, "count": len(conv.Messages)})
 	if keepTurns <= 0 {
 		keepTurns = 10
 	}
@@ -234,12 +254,13 @@ func Compact(conv *Conversation, keepTurns int) {
 			break
 		}
 	}
-	utils.Debug("Compaction", fmt.Sprintf("Compact: cutIdx=%d pairs=%d", cutIdx, pairs))
+	utils.LogWithFields(utils.LevelDebug, "conversation.compact", "compact cut index and pairs", map[string]any{"count": cutIdx, "max": pairs})
 	if cutIdx > 0 {
 		msgsBefore := len(conv.Messages)
 		conv.Messages = conv.Messages[cutIdx:]
-		utils.Debug("Compaction", fmt.Sprintf("Compact: truncated msgsBefore=%d msgsAfter=%d msgsDropped=%d", msgsBefore, len(conv.Messages), msgsBefore-len(conv.Messages)))
-		invalidateTokenCache(conv)
+		utils.LogWithFields(utils.LevelDebug, "conversation.compact", "compact truncated", map[string]any{
+			"count": msgsBefore, "max": len(conv.Messages),
+		})
 	} else {
 		utils.Debug("Compaction", "Compact: cutIdx=0, no-op")
 	}
@@ -252,11 +273,16 @@ func Compact(conv *Conversation, keepTurns int) {
 // conversation summary]: …" prefix. Consumers that walk conv.Messages
 // recognise the boundary by block Type, not by substring matching.
 func CompactWithSummary(conv *Conversation, summarize func(string) (string, error), keepTurns int) error {
-	utils.Debug("Compaction", fmt.Sprintf("CompactWithSummary: entry keepTurns=%d len(msgs)=%d", keepTurns, len(conv.Messages)))
+	utils.LogWithFields(utils.LevelDebug, "conversation.compact", "compact with summary entry", map[string]any{"turn": keepTurns, "count": len(conv.Messages)})
 	if keepTurns <= 0 {
 		keepTurns = 10
 	}
 
+	// Scan under the lock; release it before the summarize call (an LLM
+	// round-trip) so persistence flushes are never blocked on network I/O.
+	// Messages appends are single-writer (the runloop), so cutIdx stays valid
+	// across the unlocked window.
+	conv.lock()
 	pairs := 0
 	cutIdx := 0
 	for i := len(conv.Messages) - 1; i >= 0; i-- {
@@ -269,11 +295,12 @@ func CompactWithSummary(conv *Conversation, summarize func(string) (string, erro
 		}
 	}
 	if cutIdx <= 0 {
+		conv.unlock()
 		return nil
 	}
 
 	toDrop := conv.Messages[:cutIdx]
-	utils.Debug("Compaction", fmt.Sprintf("CompactWithSummary: len(toDrop)=%d cutIdx=%d", len(toDrop), cutIdx))
+	utils.LogWithFields(utils.LevelDebug, "conversation.compact", "compact with summary len to drop and cut index", map[string]any{"count": len(toDrop), "max": cutIdx})
 
 	var textParts []string
 	for _, msg := range toDrop {
@@ -285,17 +312,21 @@ func CompactWithSummary(conv *Conversation, summarize func(string) (string, erro
 
 	if len(textParts) == 0 {
 		utils.Debug("Compaction", "CompactWithSummary: no text parts extracted, falling back to plain Compact")
-		Compact(conv, keepTurns)
+		compactLocked(conv, keepTurns)
+		conv.unlock()
 		return nil
 	}
+	conv.unlock()
 
 	summary, err := summarize(strings.Join(textParts, "\n\n"))
 	if err != nil {
-		utils.Debug("Compaction", fmt.Sprintf("CompactWithSummary: summarize error (%v), falling back to plain Compact", err))
+		utils.LogWithFields(utils.LevelDebug, "conversation.compact", "compact with summary summarize error falling back to plain compact", map[string]any{"error": err.Error()})
 		Compact(conv, keepTurns)
 		return err
 	}
 
+	conv.lock()
+	defer conv.unlock()
 	droppedCount := cutIdx
 	conv.Messages = conv.Messages[cutIdx:]
 	summaryMsg := BuildCompactBoundaryMessage(CompactMeta{
@@ -306,7 +337,6 @@ func CompactWithSummary(conv *Conversation, summarize func(string) (string, erro
 		Summary:            summary,
 	})
 	conv.Messages = append([]types.LlmMessage{summaryMsg}, conv.Messages...)
-	PostCompactReset(conv)
 	return nil
 }
 
@@ -361,9 +391,11 @@ const DefaultEstimationPadding = 1.33
 // they exceed the budget. padding is applied to each message's token
 // estimate (e.g. 1.33 for 33% conservative buffer).
 func CompactToTokenBudget(conv *Conversation, targetTokens, minKeepTurns int, padding float64) {
-	utils.Debug("Compaction", fmt.Sprintf("CompactToTokenBudget: entry targetTokens=%d minKeepTurns=%d padding=%.2f len(msgs)=%d", targetTokens, minKeepTurns, padding, len(conv.Messages)))
+	utils.LogWithFields(utils.LevelDebug, "conversation.compact", "compact to token budget entry", map[string]any{
+		"turn": targetTokens, "count": minKeepTurns, "max": len(conv.Messages),
+	})
 	if targetTokens <= 0 {
-		utils.Debug("Compaction", fmt.Sprintf("CompactToTokenBudget: targetTokens=%d <= 0, no-op", targetTokens))
+		utils.LogWithFields(utils.LevelDebug, "conversation.compact", "compact to token budget target zero no-op", map[string]any{"turn": targetTokens})
 		return
 	}
 	if minKeepTurns <= 0 {
@@ -391,7 +423,9 @@ func CompactToTokenBudget(conv *Conversation, targetTokens, minKeepTurns int, pa
 		// from i onward is kept.
 		if accumulated > targetTokens && userTurns >= minKeepTurns {
 			cutIdx = i
-			utils.Debug("Compaction", fmt.Sprintf("CompactToTokenBudget: budget exceeded at i=%d accumulated=%d userTurns=%d", i, accumulated, userTurns))
+			utils.LogWithFields(utils.LevelDebug, "conversation.compact", "compact to token budget budget exceeded", map[string]any{
+				"count": i, "turn": accumulated, "max": userTurns,
+			})
 			break
 		}
 	}
@@ -403,16 +437,15 @@ func CompactToTokenBudget(conv *Conversation, targetTokens, minKeepTurns int, pa
 		cutIdx++
 	}
 	if cutIdx != prevCutIdx {
-		utils.Debug("Compaction", fmt.Sprintf("CompactToTokenBudget: turn-boundary adjustment advanced cutIdx %d -> %d", prevCutIdx, cutIdx))
+		utils.LogWithFields(utils.LevelDebug, "conversation.compact", "compact to token budget turn boundary adjustment advanced cut index", map[string]any{"count": prevCutIdx, "max": cutIdx})
 	}
 
 	if cutIdx > 0 && cutIdx < len(conv.Messages) {
 		msgsBefore := len(conv.Messages)
 		conv.Messages = conv.Messages[cutIdx:]
-		utils.Debug("Compaction", fmt.Sprintf("CompactToTokenBudget: truncated msgsBefore=%d msgsAfter=%d msgsDropped=%d", msgsBefore, len(conv.Messages), msgsBefore-len(conv.Messages)))
-		invalidateTokenCache(conv)
+		utils.LogWithFields(utils.LevelDebug, "conversation.compact", "compact to token budget truncated", map[string]any{"count": msgsBefore, "max": len(conv.Messages)})
 	} else {
-		utils.Debug("Compaction", fmt.Sprintf("CompactToTokenBudget: no-op cutIdx=%d len(msgs)=%d", cutIdx, len(conv.Messages)))
+		utils.LogWithFields(utils.LevelDebug, "conversation.compact", "compact to token budget no-op cut index", map[string]any{"count": cutIdx, "max": len(conv.Messages)})
 	}
 }
 
@@ -425,7 +458,9 @@ func CompactToTokenBudget(conv *Conversation, targetTokens, minKeepTurns int, pa
 // Pass 2 (when pass 1 returns 0): also truncates long assistant text blocks.
 // Returns the number of blocks modified.
 func MicroCompact(conv *Conversation, keepTurns int) int {
-	utils.Debug("Compaction", fmt.Sprintf("MicroCompact: entry keepTurns=%d len(msgs)=%d", keepTurns, len(conv.Messages)))
+	conv.lock()
+	defer conv.unlock()
+	utils.LogWithFields(utils.LevelDebug, "conversation.compact", "micro compact entry", map[string]any{"turn": keepTurns, "count": len(conv.Messages)})
 	if keepTurns <= 0 {
 		keepTurns = 10
 	}
@@ -441,7 +476,7 @@ func MicroCompact(conv *Conversation, keepTurns int) int {
 			break
 		}
 	}
-	utils.Debug("Compaction", fmt.Sprintf("MicroCompact: cutIdx=%d (scanning messages 0..%d)", cutIdx, cutIdx-1))
+	utils.LogWithFields(utils.LevelDebug, "conversation.compact", "micro compact cut index scanning", map[string]any{"count": cutIdx})
 
 	cleared := 0
 	scanned := 0
@@ -462,10 +497,9 @@ func MicroCompact(conv *Conversation, keepTurns int) int {
 			}
 		}
 	}
-	utils.Debug("Compaction", fmt.Sprintf("MicroCompact: pass 1: scanned %d messages, cleared %d tool_result blocks", scanned, cleared))
+	utils.LogWithFields(utils.LevelDebug, "conversation.compact", "micro compact pass 1 scanned and cleared tool result blocks", map[string]any{"count": scanned, "max": cleared})
 	if cleared > 0 {
 		utils.Debug("Compaction", "MicroCompact: pass 1 sufficient, skipping pass 2")
-		invalidateTokenCache(conv)
 		return cleared
 	}
 
@@ -492,9 +526,6 @@ func MicroCompact(conv *Conversation, keepTurns int) int {
 			}
 		}
 	}
-	utils.Debug("Compaction", fmt.Sprintf("MicroCompact: pass 2: truncated %d assistant text blocks", cleared))
-	if cleared > 0 {
-		invalidateTokenCache(conv)
-	}
+	utils.LogWithFields(utils.LevelDebug, "conversation.compact", "micro compact pass 2 truncated assistant text blocks", map[string]any{"count": cleared})
 	return cleared
 }
