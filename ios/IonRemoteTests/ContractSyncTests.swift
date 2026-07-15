@@ -760,6 +760,10 @@ final class ContractSyncTests: XCTestCase {
         let swiftHandled: Set<String> = [
             "id", "hasAuth", "authSource",
             "baseURL", "apiKeyRef",
+            // Delegated-CLI backend selection + install/auth status. iOS does
+            // not run CLIs, so it does not act on these, but the contract test
+            // tracks awareness of every Go field (see testProviderCliStatus).
+            "backend", "cli",
         ]
         let goSet = Set(goFields)
         let unhandled = goSet.subtracting(swiftHandled)
@@ -767,6 +771,44 @@ final class ContractSyncTests: XCTestCase {
             unhandled.isEmpty,
             "Go ProviderEntry has fields not tracked in Swift test: \(unhandled.sorted())"
         )
+    }
+
+    // MARK: - ProviderCliStatus / ProviderLoginUpdate awareness
+
+    /// Tracks the delegated-CLI status shape carried on ProviderEntry.cli. iOS
+    /// is a thin client and does not render CLI install/auth state (login is
+    /// desktop-only — the CLIs live on the desktop machine), but the test pins
+    /// awareness of every Go field so a future consumer starts from truth.
+    func testProviderCliStatus() throws {
+        let manifest = try loadManifest()
+        guard let goFields = manifest.sharedTypes["ProviderCliStatus"] else {
+            XCTFail("ProviderCliStatus not found in Go manifest")
+            return
+        }
+        let swiftHandled: Set<String> = [
+            "backend", "installed", "binaryPath", "version",
+            "authenticated", "authMethod", "planType", "email", "label", "probedAt",
+        ]
+        let unhandled = Set(goFields).subtracting(swiftHandled)
+        XCTAssert(unhandled.isEmpty, "Go ProviderCliStatus has fields not tracked in Swift test: \(unhandled.sorted())")
+    }
+
+    /// Tracks the engine_provider_login payload (EngineEvent.providerLogin).
+    /// Provider-CLI login is a desktop-only flow; iOS drops the forwarded
+    /// desktop_provider_login events at trace level. The test pins field
+    /// awareness for parity.
+    func testProviderLoginUpdate() throws {
+        let manifest = try loadManifest()
+        guard let goFields = manifest.sharedTypes["ProviderLoginUpdate"] else {
+            XCTFail("ProviderLoginUpdate not found in Go manifest")
+            return
+        }
+        let swiftHandled: Set<String> = [
+            "provider", "backend", "stage",
+            "authUrl", "userCode", "verificationUrl", "loginError", "loginId",
+        ]
+        let unhandled = Set(goFields).subtracting(swiftHandled)
+        XCTAssert(unhandled.isEmpty, "Go ProviderLoginUpdate has fields not tracked in Swift test: \(unhandled.sorted())")
     }
 
     // MARK: - EngineEvent dispatch field coverage
