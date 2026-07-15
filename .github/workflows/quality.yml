@@ -193,6 +193,27 @@ jobs:
         working-directory: desktop
         run: npm test
 
+  desktop-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Install dependencies
+        working-directory: desktop
+        run: npm ci --ignore-scripts
+      - name: ESLint
+        # Enforces react-hooks/rules-of-hooks and react-hooks/exhaustive-deps
+        # as errors in renderer/ — the primary structural gate against React
+        # error #185 (infinite re-render loops). Also enforces no-console and
+        # no-unstable-nested-components in renderer/. See desktop/eslint.config.mjs.
+        working-directory: desktop
+        run: npm run lint
+
   desktop-audit:
     runs-on: ubuntu-latest
     steps:
