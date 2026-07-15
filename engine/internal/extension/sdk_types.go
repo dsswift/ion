@@ -321,6 +321,19 @@ type Context struct {
 	// type only — the engine enforces this by comparing extension names.
 	SendToSession func(targetKey string, kind string, payload map[string]interface{}) error
 
+	// FireSchedule triggers an immediate fire of the named schedule job,
+	// reusing the existing fireJob machinery (in-flight guard, single-
+	// concurrency arbitration, last-run recording). Returns nil on success
+	// or a benign nil when the job is already in-flight. Returns an error
+	// when the job ID is not found or no resolver is wired.
+	FireSchedule func(jobID string) error
+
+	// GetScheduleStatus returns status entries for registered schedule jobs.
+	// When jobID is non-empty, only the matching job is returned (or an empty
+	// slice when not found). When jobID is empty, all jobs on the session's
+	// hosts are returned.
+	GetScheduleStatus func(jobID string) ([]ScheduleStatusEntry, error)
+
 	// RunOnceCheck coordinates cross-instance dedup for ctx.runOnce.
 	// Returns (execute=true, "") when this instance wins the dedup check.
 	// Returns (execute=false, reason) when another instance is running or

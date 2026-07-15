@@ -173,6 +173,17 @@ type SessionAccessor interface {
 	// has a different extension type, or has no session_message hook.
 	SendToSession(senderKey, targetKey, kind string, payload map[string]interface{}) error
 
+	// FireSchedule triggers an immediate fire of the named schedule job
+	// on this session. Returns an error if the job is not found or the
+	// scheduler is not wired.
+	FireSchedule(sessionKey, jobID string) error
+
+	// GetScheduleStatus returns status entries for registered schedule jobs
+	// on this session. When jobID is non-empty, only the matching job is
+	// returned. When jobID is empty, all jobs on the session's hosts are
+	// returned.
+	GetScheduleStatus(sessionKey, jobID string) ([]extension.ScheduleStatusEntry, error)
+
 	// RunOnceCheck is the dedup coordinator for ctx.runOnce. It returns
 	// Execute=true when this instance should run the operation (and the
 	// engine has marked it as running). Returns Execute=false with a
@@ -521,6 +532,14 @@ func NewExtContext(sa SessionAccessor, args ...interface{}) *extension.Context {
 
 	ctx.SendToSession = func(targetKey string, kind string, payload map[string]interface{}) error {
 		return sa.SendToSession(sa.SessionKey(), targetKey, kind, payload)
+	}
+
+	ctx.FireSchedule = func(jobID string) error {
+		return sa.FireSchedule(sa.SessionKey(), jobID)
+	}
+
+	ctx.GetScheduleStatus = func(jobID string) ([]extension.ScheduleStatusEntry, error) {
+		return sa.GetScheduleStatus(sa.SessionKey(), jobID)
 	}
 
 	ctx.RunOnceCheck = func(operationID string, debounceMs int64) (bool, string) {

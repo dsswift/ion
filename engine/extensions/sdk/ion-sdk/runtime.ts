@@ -532,6 +532,13 @@ function buildContext(ctxData: any): IonContext {
         await request('ext/send_to_session', { targetKey, kind, payload })
       },
     },
+    async fireSchedule(id: string): Promise<void> {
+      await request('ext/fire_schedule', { id })
+    },
+    async getScheduleStatus(id?: string): Promise<import('./types').ScheduleStatus[]> {
+      const r = await request('ext/get_schedule_status', { id: id ?? '' })
+      return Array.isArray(r) ? r as import('./types').ScheduleStatus[] : []
+    },
     async runOnce<T = void>(
       id: string,
       opts: RunOnceOpts,

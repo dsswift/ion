@@ -106,6 +106,11 @@ func (a *llmCallTestAccessor) ListAllSessions() []extension.SessionListEntry    
 func (a *llmCallTestAccessor) SendToSession(_, _, _ string, _ map[string]interface{}) error {
 	return nil
 }
+
+func (a *llmCallTestAccessor) FireSchedule(_, _ string) error { return nil }
+func (a *llmCallTestAccessor) GetScheduleStatus(_, _ string) ([]extension.ScheduleStatusEntry, error) {
+	return nil, nil
+}
 func (a *llmCallTestAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
 func (a *llmCallTestAccessor) RunOnceComplete(_ string, _ bool)              {}
 func (a *llmCallTestAccessor) Telemetry() *telemetry.Collector { return nil }

@@ -161,6 +161,11 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 	if h.handleSteerRPC(ctx, method, id, raw) {
 		return
 	}
+	// Schedule RPCs (ext/fire_schedule, ext/get_schedule_status) live in
+	// host_rpc_schedule.go.
+	if h.handleScheduleRPC(method, id, raw) {
+		return
+	}
 	// Pre-authenticated outbound HTTP (ext/http_request) lives in
 	// host_rpc_http.go. Session-independent: works outside active sessions.
 	if h.handleHTTPRPC(method, id, raw) {

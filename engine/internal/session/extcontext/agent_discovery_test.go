@@ -84,6 +84,11 @@ func (a *agentDiscoveryTestAccessor) ListAllSessions() []extension.SessionListEn
 func (a *agentDiscoveryTestAccessor) SendToSession(_, _, _ string, _ map[string]interface{}) error {
 	return nil
 }
+
+func (a *agentDiscoveryTestAccessor) FireSchedule(_, _ string) error { return nil }
+func (a *agentDiscoveryTestAccessor) GetScheduleStatus(_, _ string) ([]extension.ScheduleStatusEntry, error) {
+	return nil, nil
+}
 func (a *agentDiscoveryTestAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
 func (a *agentDiscoveryTestAccessor) RunOnceComplete(_ string, _ bool)              {}
 func (a *agentDiscoveryTestAccessor) Telemetry() *telemetry.Collector { return nil }

@@ -99,6 +99,11 @@ func (a *depthTestAccessor) ListAllSessions() []extension.SessionListEntry      
 func (a *depthTestAccessor) SendToSession(senderKey, targetKey, kind string, payload map[string]interface{}) error {
 	return nil
 }
+
+func (a *depthTestAccessor) FireSchedule(_, _ string) error { return nil }
+func (a *depthTestAccessor) GetScheduleStatus(_, _ string) ([]extension.ScheduleStatusEntry, error) {
+	return nil, nil
+}
 func (a *depthTestAccessor) RunOnceCheck(operationID string, debounceMs int64) (bool, string) {
 	return false, ""
 }

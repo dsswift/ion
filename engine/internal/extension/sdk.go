@@ -162,6 +162,7 @@ const (
 	HookWebhookDeregistered  = "webhook_deregistered"
 	HookScheduleRegistered   = "schedule_registered"
 	HookScheduleDeregistered = "schedule_deregistered"
+	HookScheduleMissed       = "schedule_missed"
 
 	// Cross-session messaging hook. Fires when another session of the
 	// same extension type sends a message via ctx.sessions.send().
@@ -320,6 +321,14 @@ func (s *SDK) Handlers(event string) []HookHandler {
 	out := make([]HookHandler, len(handlers))
 	copy(out, handlers)
 	return out
+}
+
+// HasHandlers returns true when at least one handler is registered for the
+// given event. Cheaper than Handlers when the caller only needs the boolean.
+func (s *SDK) HasHandlers(event string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.hooks[event]) > 0
 }
 
 // FireIntercept emits an engine_intercept event through the active session

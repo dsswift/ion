@@ -417,6 +417,16 @@ func (a *sessionAccessor) SendToSession(senderKey, targetKey, kind string, paylo
 	return nil
 }
 
+// FireSchedule triggers an immediate fire of the named schedule job.
+func (a *sessionAccessor) FireSchedule(sessionKey, jobID string) error {
+	return a.m.fireScheduleForSession(sessionKey, jobID)
+}
+
+// GetScheduleStatus returns status entries for registered schedule jobs.
+func (a *sessionAccessor) GetScheduleStatus(sessionKey, jobID string) ([]extension.ScheduleStatusEntry, error) {
+	return a.m.scheduleStatusForSession(sessionKey, jobID)
+}
+
 // RunOnceCheck delegates to the Manager's runOnce registry, scoped to this
 // session's loaded extension directory.
 func (a *sessionAccessor) RunOnceCheck(operationID string, debounceMs int64) (bool, string) {

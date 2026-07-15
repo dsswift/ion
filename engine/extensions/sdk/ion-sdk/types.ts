@@ -1149,6 +1149,23 @@ export interface IonContext {
   }
 
   /**
+   * Trigger an immediate fire of the named schedule job. Reuses the engine's
+   * existing fireJob machinery (in-flight guard, single-concurrency
+   * arbitration, last-run recording). The handler receives a
+   * {@link ScheduleFireMeta} with `backfill: true` so it can distinguish
+   * a backfill from a live tick fire. Returns when the fire is queued (the
+   * handler runs asynchronously).
+   */
+  fireSchedule(id: string): Promise<void>
+
+  /**
+   * Query the status of registered schedule jobs. When `id` is provided,
+   * returns only the matching job (or an empty array when not found). When
+   * `id` is omitted, returns all schedule jobs on this session.
+   */
+  getScheduleStatus(id?: string): Promise<ScheduleStatus[]>
+
+  /**
    * Run an operation on exactly one instance when multiple sessions load the
    * same extension simultaneously.
    *
@@ -2022,6 +2039,10 @@ export interface HookPayloadMap {
   // Cross-session messaging (1) -- fires when another session of the same
   // extension type sends a message via ctx.sessions.send().
   session_message: SessionMessageInfo
+
+  // Schedule missed (1) -- fires when the scheduler detects a daily/weekly
+  // slot was missed while the engine was down. Observation-only: no veto.
+  schedule_missed: ScheduleMissedInfo
 }
 
 /** Payload for the `session_message` hook. */
@@ -2339,10 +2360,13 @@ export interface ScheduleOnce {
  * Handler function for any schedule kind. The second parameter carries a
  * {@link ScheduleControl} object that lets the handler inspect its own
  * job ID and imperatively unregister itself before the engine's natural
- * lifecycle removes it. The parameter is optional — existing handlers
- * that only accept `(ctx: IonContext)` continue to work unchanged.
+ * lifecycle removes it. The third parameter carries fire metadata so the
+ * handler can distinguish a live tick fire from a backfill fire triggered
+ * by {@link IonContext.fireSchedule}. Both optional parameters are
+ * backward-compatible — existing handlers that only accept
+ * `(ctx: IonContext)` continue to work unchanged.
  */
-export type ScheduleHandler = (ctx: IonContext, control?: ScheduleControl) => Promise<void> | void
+export type ScheduleHandler = (ctx: IonContext, control?: ScheduleControl, meta?: ScheduleFireMeta) => Promise<void> | void
 
 /**
  * Control object passed to every schedule handler at invocation time.
@@ -2360,6 +2384,54 @@ export interface ScheduleControl {
    * job should stop.
    */
   unregister(): Promise<void>
+}
+
+/**
+ * Metadata passed as the third argument to a schedule handler. Lets the
+ * handler distinguish a live tick fire from a backfill fire triggered by
+ * {@link IonContext.fireSchedule}.
+ */
+export interface ScheduleFireMeta {
+  /** RFC3339 UTC timestamp when the engine fired the job. */
+  firedAt: string
+  /** True when the fire was triggered by ctx.fireSchedule (a backfill). */
+  backfill: boolean
+  /** RFC3339 UTC of the missed slot that triggered the backfill (when backfill=true). */
+  missedSlotUtc?: string
+}
+
+/**
+ * Payload for the `schedule_missed` hook. Fired when the scheduler detects
+ * a daily/weekly slot was missed while the engine was down.
+ */
+export interface ScheduleMissedInfo {
+  /** The schedule job's stable identifier. */
+  id: string
+  /** "daily" or "weekly". */
+  kind: 'daily' | 'weekly' | 'interval' | 'once'
+  /** RFC3339 UTC of the missed slot. */
+  missedSlotUtc: string
+  /** True when a last-run marker existed on disk at detection time. */
+  hadMarker: boolean
+  /** True when the job ran inside its current interval-scope window. */
+  ranWithinScope: boolean
+}
+
+/**
+ * Status of a registered schedule job, returned by
+ * {@link IonContext.getScheduleStatus}.
+ */
+export interface ScheduleStatus {
+  /** The job's stable identifier. */
+  id: string
+  /** "daily", "weekly", "interval", or "once". */
+  kind: string
+  /** RFC3339 UTC of the last successful fire. Empty when never run. */
+  lastRunUtc?: string
+  /** True when the job ran inside its current interval-scope window. */
+  ranWithinScope: boolean
+  /** RFC3339 UTC of the next scheduled fire. */
+  nextRunUtc?: string
 }
 
 /** Wire-format job (handler stripped — kept locally). Used internally

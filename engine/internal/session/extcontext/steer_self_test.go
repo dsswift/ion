@@ -100,6 +100,11 @@ func (a *steerSelfAccessor) ListAllSessions() []extension.SessionListEntry      
 func (a *steerSelfAccessor) SendToSession(senderKey, targetKey, kind string, payload map[string]interface{}) error {
 	return nil
 }
+
+func (a *steerSelfAccessor) FireSchedule(_, _ string) error { return nil }
+func (a *steerSelfAccessor) GetScheduleStatus(_, _ string) ([]extension.ScheduleStatusEntry, error) {
+	return nil, nil
+}
 func (a *steerSelfAccessor) RunOnceCheck(operationID string, debounceMs int64) (bool, string) {
 	return false, ""
 }

@@ -95,6 +95,11 @@ func (a *dispatchContextTestAccessor) ListAllSessions() []extension.SessionListE
 func (a *dispatchContextTestAccessor) SendToSession(senderKey, targetKey, kind string, payload map[string]interface{}) error {
 	return nil
 }
+
+func (a *dispatchContextTestAccessor) FireSchedule(_, _ string) error { return nil }
+func (a *dispatchContextTestAccessor) GetScheduleStatus(_, _ string) ([]extension.ScheduleStatusEntry, error) {
+	return nil, nil
+}
 func (a *dispatchContextTestAccessor) RunOnceCheck(operationID string, debounceMs int64) (bool, string) {
 	return false, ""
 }

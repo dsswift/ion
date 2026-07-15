@@ -108,6 +108,11 @@ func (p *panicTestAccessor) ListAllSessions() []extension.SessionListEntry { ret
 func (p *panicTestAccessor) SendToSession(_, _, _ string, _ map[string]interface{}) error {
 	return nil
 }
+
+func (p *panicTestAccessor) FireSchedule(_, _ string) error { return nil }
+func (p *panicTestAccessor) GetScheduleStatus(_, _ string) ([]extension.ScheduleStatusEntry, error) {
+	return nil, nil
+}
 func (p *panicTestAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
 func (p *panicTestAccessor) RunOnceComplete(_ string, _ bool)              {}
 func (p *panicTestAccessor) Telemetry() *telemetry.Collector               { return p.telem }

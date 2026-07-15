@@ -48,3 +48,22 @@ func (s *Scheduler) emitScheduleFailed(job extension.ScheduleJob, reason string,
 		AsyncDurationMs: elapsed.Milliseconds(),
 	})
 }
+
+func (s *Scheduler) emitScheduleDeregistered(job extension.ScheduleJob, reason string) {
+	s.publish(types.EngineEvent{
+		Type:        "engine_schedule_deregistered",
+		AsyncKind:   string(asyncreg.KindSchedule),
+		AsyncID:     job.JobID,
+		AsyncReason: reason,
+	})
+}
+
+func (s *Scheduler) emitScheduleMissed(job extension.ScheduleJob, missedSlotUtc time.Time, hadMarker bool) {
+	s.publish(types.EngineEvent{
+		Type:            "engine_schedule_missed",
+		AsyncKind:       string(asyncreg.KindSchedule),
+		AsyncID:         job.JobID,
+		AsyncMissedSlot: missedSlotUtc.UTC().Format(time.RFC3339),
+		AsyncHadMarker:  hadMarker,
+	})
+}

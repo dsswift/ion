@@ -101,6 +101,11 @@ func (a *bumpCountingAccessor) ListAllSessions() []extension.SessionListEntry   
 func (a *bumpCountingAccessor) SendToSession(_, _, _ string, _ map[string]interface{}) error {
 	return nil
 }
+
+func (a *bumpCountingAccessor) FireSchedule(_, _ string) error { return nil }
+func (a *bumpCountingAccessor) GetScheduleStatus(_, _ string) ([]extension.ScheduleStatusEntry, error) {
+	return nil, nil
+}
 func (a *bumpCountingAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
 func (a *bumpCountingAccessor) RunOnceComplete(_ string, _ bool)              {}
 func (a *bumpCountingAccessor) Telemetry() *telemetry.Collector { return nil }

@@ -95,7 +95,7 @@ func (h *Host) SetSessionKey(key string) {
 	h.async.mu.Lock()
 	defer h.async.mu.Unlock()
 	h.async.sessionKey = key
-	utils.Debug("extension", fmt.Sprintf("Host.SetSessionKey: ext=%s key=%s", h.name, key))
+	utils.LogWithFields(utils.LevelDebug, "extension", "host.setsessionkey", map[string]any{"model": h.name, "key": key})
 }
 
 // SessionKey returns the engine session key this host is bound to, or
@@ -224,6 +224,15 @@ func (h *Host) DeregisterScheduleDecl(id string) bool {
 	return h.asyncRegistry().Deregister(asyncreg.KindSchedule, id, notify)
 }
 
+// DeregisterScheduleDeclSilent removes a job from the registry
+// WITHOUT firing the subprocess lifecycle hook. Used by the
+// scheduler's once-job deregister path where the subprocess already
+// knows the handler ran and calling back into it with rpcTimeout=0
+// risks a permanent deadlock if the readLoop is blocked.
+func (h *Host) DeregisterScheduleDeclSilent(id string) bool {
+	return h.asyncRegistry().Deregister(asyncreg.KindSchedule, id, nil)
+}
+
 // Webhooks returns a snapshot of currently-registered webhook routes
 // for this host. Used by the session wiring layer to enumerate the
 // initial set after init handshake completes.
@@ -289,7 +298,7 @@ func (h *Host) ResetAsyncRegistrations() int {
 	}
 	w := reg.Reset(asyncreg.KindWebhook, notifyWebhook)
 	s := reg.Reset(asyncreg.KindSchedule, notifySchedule)
-	utils.Log("extension", fmt.Sprintf("ResetAsyncRegistrations: ext=%s webhooks=%d schedules=%d", h.name, w, s))
+	utils.LogWithFields(utils.LevelInfo, "extension", "resetasyncregistrations", map[string]any{"model": h.name, "w": w, "s": s})
 	return w + s
 }
 
@@ -326,19 +335,32 @@ func (h *Host) CommitPendingAsyncDecls() []error {
 	var errs []error
 	for _, w := range webhooks {
 		if err := h.RegisterWebhookDecl(w, asyncreg.OriginInit); err != nil {
-			utils.Log("extension", fmt.Sprintf("CommitPendingAsyncDecls: webhook %s rejected: %v", w.Path, err))
+			utils.LogWithFields(utils.LevelInfo, "extension", "commitpendingasyncdecls: webhook rejected", map[string]any{"path": w.Path, "error": err})
 			errs = append(errs, fmt.Errorf("webhook %s: %w", w.Path, err))
 			continue
 		}
 	}
 	for _, j := range schedules {
 		if err := h.RegisterScheduleDecl(j, asyncreg.OriginInit); err != nil {
-			utils.Log("extension", fmt.Sprintf("CommitPendingAsyncDecls: schedule %s rejected: %v", j.JobID, err))
+			utils.LogWithFields(utils.LevelInfo, "extension", "commitpendingasyncdecls: schedule rejected", map[string]any{"run_id": j.JobID, "error": err})
 			errs = append(errs, fmt.Errorf("schedule %s: %w", j.JobID, err))
 			continue
 		}
 	}
-	utils.Log("extension", fmt.Sprintf("CommitPendingAsyncDecls: ext=%s committed webhooks=%d schedules=%d errors=%d",
-		h.name, len(webhooks), len(schedules), len(errs)))
+	utils.LogWithFields(utils.LevelInfo, "extension", "commit pending async decls", map[string]any{"model": h.name, "count": len(webhooks), "max": len(schedules), "error": len(errs)})
 	return errs
+}
+
+// HasScheduleMissedHandler returns true when any extension on this host has
+// registered a schedule_missed hook handler. Used by the scheduler at
+// bootstrap time to decide between auto-catch-up and extension-decided
+// catch-up.
+func (h *Host) HasScheduleMissedHandler() bool {
+	return h.sdk.HasHandlers(HookScheduleMissed)
+}
+
+// FireScheduleMissed fires the schedule_missed hook on this host's SDK.
+// Observation-only — no veto; handler return values are ignored.
+func (h *Host) FireScheduleMissed(ctx *Context, info ScheduleMissedInfo) {
+	h.sdk.FireScheduleMissed(ctx, info)
 }

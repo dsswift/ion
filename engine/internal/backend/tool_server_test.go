@@ -15,8 +15,17 @@ func TestNewToolServer_CreatesWithSessionID(t *testing.T) {
 	if ts == nil {
 		t.Fatal("NewToolServer returned nil")
 	}
-	if !strings.Contains(ts.SocketPath(), "sock-test-session-123") {
-		t.Errorf("socket path should contain session ID, got: %s", ts.SocketPath())
+	// The socket filename is derived from a SHA-256 digest of the session
+	// key, not the raw key — session keys are opaque and may contain
+	// characters (colon, slash, space) that are illegal or dangerous in a
+	// socket path. The raw key must therefore NOT appear in the path, and
+	// the derived filename must carry the digest-based prefix.
+	if strings.Contains(ts.SocketPath(), "test-session-123") {
+		t.Errorf("socket path must not contain the raw session ID, got: %s", ts.SocketPath())
+	}
+	want := "sock-" + socketToken("test-session-123")
+	if !strings.Contains(ts.SocketPath(), want) {
+		t.Errorf("socket path should contain derived token %q, got: %s", want, ts.SocketPath())
 	}
 }
 

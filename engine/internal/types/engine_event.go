@@ -282,7 +282,7 @@ type EngineEvent struct {
 	// engine_webhook_handler_error, engine_webhook_responded.
 	// Webhook lifecycle events: engine_webhook_registered, engine_webhook_deregistered.
 	// Schedule fire events: engine_schedule_fired, engine_schedule_skipped,
-	// engine_schedule_failed.
+	// engine_schedule_failed, engine_schedule_missed.
 	// Schedule lifecycle events: engine_schedule_registered, engine_schedule_deregistered.
 	// Shared error: engine_async_fire_dropped.
 	//
@@ -332,6 +332,12 @@ type EngineEvent struct {
 	// AsyncDurationMs is the elapsed time of a fire from receipt to
 	// response (webhook) or fire to handler-return (schedule).
 	AsyncDurationMs int64 `json:"asyncDurationMs,omitempty"`
+	// AsyncMissedSlot is the RFC3339 UTC timestamp of the scheduled slot
+	// that was missed. Set only on engine_schedule_missed events.
+	AsyncMissedSlot string `json:"asyncMissedSlot,omitempty"`
+	// AsyncHadMarker is true when a last-run marker existed on disk at the
+	// time the missed slot was detected. Set only on engine_schedule_missed.
+	AsyncHadMarker bool `json:"asyncHadMarker,omitempty"`
 
 	// --- engine_llm_call ---
 	//

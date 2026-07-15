@@ -281,3 +281,100 @@ func TestPersistence_MakeDirFailureDoesNotPanic(t *testing.T) {
 }
 
 // ─── End: persistence specifics ───
+
+// ─── lastRunWithinScope tests ───
+
+// TestLastRunWithinScope_Daily — ran today after slot => true; ran
+// yesterday => false.
+func TestLastRunWithinScope_Daily(t *testing.T) {
+	dir := t.TempDir()
+	s := New(Config{PersistDir: dir})
+
+	job := stubDailyJob("d") // 09:30 UTC daily
+	now := time.Date(2026, 5, 25, 11, 0, 0, 0, time.UTC) // Mon 11:00
+
+	// Ran today at 09:30 (within scope).
+	s.recordLastRunByName("ext-a", job, time.Date(2026, 5, 25, 9, 30, 0, 0, time.UTC))
+	if !s.lastRunWithinScopeByName("ext-a", job, now, time.UTC) {
+		t.Error("expected true: ran today after the slot")
+	}
+
+	// Ran yesterday at 09:30 (outside scope).
+	s.recordLastRunByName("ext-b", job, time.Date(2026, 5, 24, 9, 30, 0, 0, time.UTC))
+	if s.lastRunWithinScopeByName("ext-b", job, now, time.UTC) {
+		t.Error("expected false: ran yesterday, not within today's scope")
+	}
+}
+
+// TestLastRunWithinScope_Weekly — ran this week's slot => true; ran
+// last week => false.
+func TestLastRunWithinScope_Weekly(t *testing.T) {
+	dir := t.TempDir()
+	s := New(Config{PersistDir: dir})
+
+	// Monday 09:30 weekly.
+	job := newWeeklyJob("w", "09:30", "monday")
+	// 2026-05-25 is a Monday. Now is Tuesday 10:00.
+	now := time.Date(2026, 5, 26, 10, 0, 0, 0, time.UTC) // Tue
+
+	// Ran this Monday 09:30 (within scope).
+	s.recordLastRunByName("ext-a", job, time.Date(2026, 5, 25, 9, 30, 0, 0, time.UTC))
+	if !s.lastRunWithinScopeByName("ext-a", job, now, time.UTC) {
+		t.Error("expected true: ran this week's Monday slot")
+	}
+
+	// Ran last Monday 09:30 (outside scope).
+	s.recordLastRunByName("ext-b", job, time.Date(2026, 5, 18, 9, 30, 0, 0, time.UTC))
+	if s.lastRunWithinScopeByName("ext-b", job, now, time.UTC) {
+		t.Error("expected false: ran last week, not this week's scope")
+	}
+}
+
+// TestPersistence_ReadModifyWritePreservesFirstSeen verifies that
+// recordLastRunByName preserves an existing FirstSeenUtc field.
+func TestPersistence_ReadModifyWritePreservesFirstSeen(t *testing.T) {
+	dir := t.TempDir()
+	s := New(Config{PersistDir: dir})
+
+	job := stubDailyJob("d")
+	firstSeen := time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC)
+	s.recordFirstSeenByName("ext-a", job, firstSeen)
+
+	// Now record a last run. FirstSeenUtc should survive.
+	lastRun := time.Date(2026, 5, 25, 9, 30, 0, 0, time.UTC)
+	s.recordLastRunByName("ext-a", job, lastRun)
+
+	marker, ok := s.readMarker("ext-a", job)
+	if !ok {
+		t.Fatal("expected marker to exist")
+	}
+	if marker.FirstSeenUtc != firstSeen.UTC().Format(time.RFC3339) {
+		t.Errorf("FirstSeenUtc = %q, want %q", marker.FirstSeenUtc, firstSeen.UTC().Format(time.RFC3339))
+	}
+	if marker.LastRunUtc != lastRun.UTC().Format(time.RFC3339) {
+		t.Errorf("LastRunUtc = %q, want %q", marker.LastRunUtc, lastRun.UTC().Format(time.RFC3339))
+	}
+}
+
+// TestPersistence_FirstSeenNoOpWhenExists verifies that
+// recordFirstSeenByName is a no-op when a marker already exists.
+func TestPersistence_FirstSeenNoOpWhenExists(t *testing.T) {
+	dir := t.TempDir()
+	s := New(Config{PersistDir: dir})
+
+	job := stubDailyJob("d")
+	firstSeen := time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC)
+	s.recordFirstSeenByName("ext-a", job, firstSeen)
+
+	// Try again with a different time.
+	s.recordFirstSeenByName("ext-a", job, time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC))
+
+	marker, ok := s.readMarker("ext-a", job)
+	if !ok {
+		t.Fatal("expected marker to exist")
+	}
+	// Should still be the first time.
+	if marker.FirstSeenUtc != firstSeen.UTC().Format(time.RFC3339) {
+		t.Errorf("FirstSeenUtc = %q, want %q (first write should stick)", marker.FirstSeenUtc, firstSeen.UTC().Format(time.RFC3339))
+	}
+}

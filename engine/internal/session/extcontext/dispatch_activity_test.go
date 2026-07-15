@@ -135,6 +135,11 @@ func (a *activityRecordingAccessor) ListAllSessions() []extension.SessionListEnt
 func (a *activityRecordingAccessor) SendToSession(_, _, _ string, _ map[string]interface{}) error {
 	return nil
 }
+
+func (a *activityRecordingAccessor) FireSchedule(_, _ string) error { return nil }
+func (a *activityRecordingAccessor) GetScheduleStatus(_, _ string) ([]extension.ScheduleStatusEntry, error) {
+	return nil, nil
+}
 func (a *activityRecordingAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
 func (a *activityRecordingAccessor) RunOnceComplete(_ string, _ bool)              {}
 func (a *activityRecordingAccessor) Telemetry() *telemetry.Collector { return nil }

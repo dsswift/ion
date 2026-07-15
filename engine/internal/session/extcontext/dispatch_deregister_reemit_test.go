@@ -177,6 +177,11 @@ func (a *dispatchCountSpyAccessor) ListAllSessions() []extension.SessionListEntr
 func (a *dispatchCountSpyAccessor) SendToSession(_, _, _ string, _ map[string]interface{}) error {
 	return nil
 }
+
+func (a *dispatchCountSpyAccessor) FireSchedule(_, _ string) error { return nil }
+func (a *dispatchCountSpyAccessor) GetScheduleStatus(_, _ string) ([]extension.ScheduleStatusEntry, error) {
+	return nil, nil
+}
 func (a *dispatchCountSpyAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
 func (a *dispatchCountSpyAccessor) RunOnceComplete(_ string, _ bool)              {}
 func (a *dispatchCountSpyAccessor) Telemetry() *telemetry.Collector { return nil }
