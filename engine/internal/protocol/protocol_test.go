@@ -671,6 +671,47 @@ func TestParseClientCommand_StoreCredentialMissingProvider(t *testing.T) {
 	}
 }
 
+// --- oidc identity command tests ---
+
+func TestParseClientCommand_OidcBeginLogin(t *testing.T) {
+	raw := `{"cmd":"oidc_begin_login","requestId":"r-oidc","oidcFlow":"device"}`
+	cmd := ParseClientCommand(raw)
+	if cmd == nil {
+		t.Fatal("expected valid command")
+	}
+	if cmd.Cmd != "oidc_begin_login" {
+		t.Errorf("expected cmd 'oidc_begin_login', got %q", cmd.Cmd)
+	}
+	if cmd.OidcFlow != "device" {
+		t.Errorf("expected oidcFlow 'device', got %q", cmd.OidcFlow)
+	}
+}
+
+func TestParseClientCommand_OidcBeginLoginDefaultFlow(t *testing.T) {
+	// oidcFlow is optional; omitting it is a valid PKCE-default login.
+	raw := `{"cmd":"oidc_begin_login","requestId":"r-oidc2"}`
+	cmd := ParseClientCommand(raw)
+	if cmd == nil {
+		t.Fatal("expected valid command without oidcFlow")
+	}
+	if cmd.OidcFlow != "" {
+		t.Errorf("expected empty oidcFlow, got %q", cmd.OidcFlow)
+	}
+}
+
+func TestParseClientCommand_OidcLogoutAndIdentity(t *testing.T) {
+	for _, name := range []string{"oidc_logout", "oidc_identity"} {
+		raw := `{"cmd":"` + name + `","requestId":"r-x"}`
+		cmd := ParseClientCommand(raw)
+		if cmd == nil {
+			t.Fatalf("expected valid %s command", name)
+		}
+		if cmd.Cmd != name {
+			t.Errorf("expected cmd %q, got %q", name, cmd.Cmd)
+		}
+	}
+}
+
 func TestParseClientCommand_StoreCredentialMissingCredential(t *testing.T) {
 	raw := `{"cmd":"store_credential","requestId":"r4","provider":"openai"}`
 	cmd := ParseClientCommand(raw)

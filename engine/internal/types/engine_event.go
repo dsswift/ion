@@ -203,6 +203,26 @@ type EngineEvent struct {
 	ElicitResponse  map[string]interface{} `json:"response,omitempty"`
 	ElicitCancelled bool                   `json:"cancelled,omitempty"`
 
+	// engine_oidc_login_url — delivered to the client that issued
+	// oidc_begin_login. Exactly one of the two shapes is populated:
+	// interactive PKCE carries OidcAuthorizationURL (the consumer opens it
+	// in a browser; the engine's loopback callback completes the exchange),
+	// device-code carries OidcUserCode + OidcVerificationURI (the consumer
+	// displays them; the engine polls to completion).
+	OidcAuthorizationURL string `json:"oidcAuthorizationUrl,omitempty"`
+	OidcUserCode         string `json:"oidcUserCode,omitempty"`
+	OidcVerificationURI  string `json:"oidcVerificationUri,omitempty"`
+
+	// engine_oidc_identity — complete snapshot of the operator's OIDC
+	// identity state. OidcSignedIn is a pointer so the false (signed-out)
+	// snapshot survives omitempty; consumers replace their local identity
+	// view with the payload. Claim fields are empty when signed out.
+	OidcSignedIn    *bool  `json:"oidcSignedIn,omitempty"`
+	OidcProvider    string `json:"oidcProvider,omitempty"`
+	OidcSubject     string `json:"oidcSubject,omitempty"`
+	OidcUsername    string `json:"oidcUsername,omitempty"`
+	OidcDisplayName string `json:"oidcDisplayName,omitempty"`
+
 	// engine_command_registry — complete snapshot of slash commands exposed by
 	// the session's currently-loaded extensions. Emitted at session_start (after
 	// extensions wire up) and on every subsequent change to the command map
@@ -558,4 +578,8 @@ type ContextBreakdownPayload struct {
 	// dispatch session's cost, computed on demand. Zero for sessions with no
 	// dispatches or no cost yet.
 	AggregateCostUsd float64 `json:"aggregateCostUsd,omitempty"`
+	// ModelBreakdown is the per-model cost breakdown for the conversation dispatch
+	// tree. Populated by the on-demand breakdown. Sorted by CostUsd descending.
+	// Empty for runloop-emitted breakdowns.
+	ModelBreakdown []ModelBreakdown `json:"modelBreakdown,omitempty"`
 }

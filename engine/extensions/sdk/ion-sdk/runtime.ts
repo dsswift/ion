@@ -27,9 +27,11 @@ import { emitLog as sharedEmitLog, type LogLevel as SharedLogLevel } from './run
 import type {
   AgentSpec,
   CommandDef,
+  ContextPolicy,
   ContextUsage,
   DiscoverAgentsOpts,
   DiscoveredAgent,
+  DiscoveredContext,
   DispatchAgentOpts,
   DispatchAgentResult,
   ElicitOptions,
@@ -38,6 +40,8 @@ import type {
   ExtensionConfig,
   HistoryMatch,
   IonContext,
+  IonHttpRequestOptions,
+  IonHttpResponse,
   IonSDK,
   LLMCallOpts,
   LLMCallResult,
@@ -52,6 +56,7 @@ import type {
   SendPromptOpts,
   SteerDispatchResult,
   ToolDef,
+  WalkContextFilesOpts,
 } from './types'
 
 // ---------------------------------------------------------------------------
@@ -217,6 +222,18 @@ function buildContext(ctxData: any): IonContext {
     async suppressTool(name: string): Promise<void> {
       await request('ext/suppress_tool', { name })
     },
+    async walkContextFiles(opts?: WalkContextFilesOpts): Promise<DiscoveredContext[]> {
+      const result = await request('ext/walk_context_files', {
+        cwd: opts?.cwd || '',
+        includeGlobal: opts?.includeGlobal,
+        includeProject: opts?.includeProject,
+        claudeCompat: opts?.claudeCompat,
+      })
+      return Array.isArray(result) ? (result as DiscoveredContext[]) : []
+    },
+    async setDispatchContextDefaults(policy: ContextPolicy): Promise<void> {
+      await request('ext/set_dispatch_context_defaults', policy)
+    },
     async callTool(name: string, input: Record<string, unknown>) {
       const result = await request('ext/call_tool', { name, input: input || {} })
       return {
@@ -224,6 +241,42 @@ function buildContext(ctxData: any): IonContext {
         isError: !!result?.isError,
       }
     },
+    // Pre-authenticated outbound HTTP. Each verb funnels into the single
+    // ext/http_request RPC; the engine mints the operator token for the
+    // declared scope and injects the Authorization header. The token never
+    // reaches this process.
+    http: (() => {
+      const doRequest = async (
+        method: string,
+        url: string,
+        opts?: IonHttpRequestOptions,
+      ): Promise<IonHttpResponse> => {
+        const result = await request('ext/http_request', {
+          method,
+          url,
+          scope: opts?.scope || '',
+          audience: opts?.audience || '',
+          headers: opts?.headers || undefined,
+          body: opts?.body || '',
+          timeoutMs: opts?.timeoutMs || 0,
+          maxBytes: opts?.maxBytes || 0,
+          allowPrivateNetwork: !!opts?.allowPrivateNetwork,
+        })
+        return {
+          status: typeof result?.status === 'number' ? result.status : 0,
+          headers: (result?.headers as Record<string, string>) || {},
+          body: typeof result?.body === 'string' ? result.body : '',
+        }
+      }
+      return {
+        request: doRequest,
+        get: (url: string, opts?: IonHttpRequestOptions) => doRequest('GET', url, opts),
+        post: (url: string, opts?: IonHttpRequestOptions) => doRequest('POST', url, opts),
+        put: (url: string, opts?: IonHttpRequestOptions) => doRequest('PUT', url, opts),
+        patch: (url: string, opts?: IonHttpRequestOptions) => doRequest('PATCH', url, opts),
+        delete: (url: string, opts?: IonHttpRequestOptions) => doRequest('DELETE', url, opts),
+      }
+    })(),
     async sendPrompt(text: string, opts?: SendPromptOpts): Promise<void> {
       // Forward per-prompt, run-scoped plan-mode bash-allowlist additions only
       // when present so the omitempty contract on the engine side holds (an

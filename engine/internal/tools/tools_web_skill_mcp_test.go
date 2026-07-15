@@ -29,9 +29,9 @@ func TestWebFetchBlockedHosts(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.host, func(t *testing.T) {
-			got := isBlockedHost(tc.host)
+			got := IsBlockedHost(tc.host)
 			if got != tc.blocked {
-				t.Errorf("isBlockedHost(%q) = %v, want %v", tc.host, got, tc.blocked)
+				t.Errorf("IsBlockedHost(%q) = %v, want %v", tc.host, got, tc.blocked)
 			}
 		})
 	}
@@ -55,9 +55,9 @@ func TestWebFetchBlockedHostsExtended(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.host, func(t *testing.T) {
-			got := isBlockedHost(tc.host)
+			got := IsBlockedHost(tc.host)
 			if got != tc.blocked {
-				t.Errorf("isBlockedHost(%q) = %v, want %v", tc.host, got, tc.blocked)
+				t.Errorf("IsBlockedHost(%q) = %v, want %v", tc.host, got, tc.blocked)
 			}
 		})
 	}
@@ -454,6 +454,13 @@ func TestSkillToolManifestInDescription(t *testing.T) {
 	if !strings.Contains(desc, "Available skills:") {
 		t.Errorf("expected 'Available skills:' header in description, got:\n%s", desc)
 	}
+	// Proactive-invocation instruction must be in the tool description.
+	if !strings.Contains(desc, "BEFORE generating any other response") {
+		t.Errorf("expected proactive-invocation instruction in description, got:\n%s", desc)
+	}
+	if !strings.Contains(desc, "blocking requirement") {
+		t.Errorf("expected 'blocking requirement' in description, got:\n%s", desc)
+	}
 }
 
 func TestSkillToolDisableModelInvocationBlocked(t *testing.T) {
@@ -731,6 +738,105 @@ func TestResolvePath(t *testing.T) {
 				t.Errorf("expected %q, got %q", tc.expected, got)
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// BuildSkillSystemPromptSection tests
+// ---------------------------------------------------------------------------
+
+func TestBuildSkillSystemPromptSection_WithSkills(t *testing.T) {
+	skills.ClearSkillRegistry()
+	defer skills.ClearSkillRegistry()
+
+	skills.RegisterSkill(&skills.Skill{
+		Name:        "caveman",
+		Description: "Compressed communication mode",
+		Content:     "Talk like caveman.",
+		WhenToUse:   "Use when user asks for brevity",
+	})
+
+	section := BuildSkillSystemPromptSection()
+
+	if section == "" {
+		t.Fatal("expected non-empty section when skills are registered")
+	}
+	// Header present.
+	if !strings.Contains(section, "# Available Skills") {
+		t.Errorf("expected '# Available Skills' header, got:\n%s", section)
+	}
+	// Skill listed.
+	if !strings.Contains(section, "caveman") {
+		t.Errorf("expected skill name in section, got:\n%s", section)
+	}
+	if !strings.Contains(section, "Compressed communication mode") {
+		t.Errorf("expected skill description in section, got:\n%s", section)
+	}
+	if !strings.Contains(section, "Use when user asks for brevity") {
+		t.Errorf("expected when_to_use in section, got:\n%s", section)
+	}
+	// Behavioral instruction.
+	if !strings.Contains(section, "BEFORE generating any other response") {
+		t.Errorf("expected proactive-invocation instruction in section, got:\n%s", section)
+	}
+	if !strings.Contains(section, "blocking requirement") {
+		t.Errorf("expected 'blocking requirement' in section, got:\n%s", section)
+	}
+}
+
+func TestBuildSkillSystemPromptSection_Empty(t *testing.T) {
+	skills.ClearSkillRegistry()
+	defer skills.ClearSkillRegistry()
+
+	section := BuildSkillSystemPromptSection()
+
+	if section != "" {
+		t.Errorf("expected empty section when no skills registered, got:\n%s", section)
+	}
+}
+
+func TestBuildSkillSystemPromptSection_ExcludesDisabled(t *testing.T) {
+	skills.ClearSkillRegistry()
+	defer skills.ClearSkillRegistry()
+
+	skills.RegisterSkill(&skills.Skill{
+		Name:                   "hidden",
+		Description:            "Should not appear",
+		Content:                "secret",
+		DisableModelInvocation: true,
+	})
+	skills.RegisterSkill(&skills.Skill{
+		Name:        "visible",
+		Description: "Should appear",
+		Content:     "visible content",
+	})
+
+	section := BuildSkillSystemPromptSection()
+
+	if strings.Contains(section, "hidden") {
+		t.Errorf("disabled skill 'hidden' should not appear in section, got:\n%s", section)
+	}
+	if !strings.Contains(section, "visible") {
+		t.Errorf("expected 'visible' skill in section, got:\n%s", section)
+	}
+}
+
+func TestBuildSkillSystemPromptSection_AllDisabledReturnsEmpty(t *testing.T) {
+	skills.ClearSkillRegistry()
+	defer skills.ClearSkillRegistry()
+
+	// All skills disabled — manifest is empty — section should be empty too.
+	skills.RegisterSkill(&skills.Skill{
+		Name:                   "onlydisabled",
+		Description:            "Disabled",
+		Content:                "secret",
+		DisableModelInvocation: true,
+	})
+
+	section := BuildSkillSystemPromptSection()
+
+	if section != "" {
+		t.Errorf("expected empty section when all skills are disabled, got:\n%s", section)
 	}
 }
 

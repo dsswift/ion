@@ -169,6 +169,44 @@ export interface DispatchAgentOpts {
    * to let the child terminate; omit for default termination behavior.
    */
   onChildQuestion?: (info: DispatchChildQuestionInfo) => Promise<DispatchChildQuestionAnswer>
+
+  /**
+   * Per-dispatch context-layer override (level 4 of the four-level context
+   * cascade). Overrides the session default (set via
+   * {@link IonContext.setDispatchContextDefaults}), the engine.json
+   * dispatchContext config, and the built-in default (all layers on). Tri-state
+   * fields: omit a field to inherit from the level below.
+   */
+  contextPolicy?: ContextPolicy
+}
+
+/**
+ * Controls which context layers a dispatched agent receives. All fields are
+ * tri-state (undefined = inherit from the level above).
+ */
+export interface ContextPolicy {
+  /** Include home roots (~/.ion, ~/.claude under compat). Default: true. */
+  includeGlobalContext?: boolean
+  /** Include the child's cwd + ancestor walk. Default: true. */
+  includeProjectContext?: boolean
+  /** Override ClaudeCompat for this walk. Default: inherit from engine. */
+  claudeCompat?: boolean
+}
+
+/** A single context file discovered during a walk. */
+export interface DiscoveredContext {
+  path: string
+  content: string
+  source: 'global' | 'project' | 'parent' | 'include'
+  level: number
+}
+
+/** Options for {@link IonContext.walkContextFiles}. */
+export interface WalkContextFilesOpts {
+  cwd?: string
+  includeGlobal?: boolean
+  includeProject?: boolean
+  claudeCompat?: boolean
 }
 
 export interface DispatchAgentResult {
@@ -319,6 +357,13 @@ export interface DispatchChildQuestionInfo {
   name: string
   /** Engine-assigned dispatch ID for this dispatch instance. */
   dispatchId: string
+  /**
+   * Engine-assigned request ID unique within this dispatch. Keyed together
+   * with dispatchId on the engine's pending reply channel so a single dispatch
+   * can ask multiple sequential questions without collisions. The SDK runtime
+   * sends this back via ext/answer_dispatch_question to unblock the child.
+   */
+  requestId: string
   /** The text from the child's AskUserQuestion call. */
   question: string
   /** Dispatch nesting depth of the child (1 = direct child of orchestrator). */
@@ -529,6 +574,49 @@ export interface AgentSpec {
   systemPrompt?: string
 }
 
+/**
+ * Options for a pre-authenticated HTTP request (see {@link IonContext.http}).
+ */
+export interface IonHttpRequestOptions {
+  /** Downstream resource scope for the minted token (e.g.
+   *  `api://<app-id>/Billing.Read`). Omit for the base grant's scope. */
+  scope?: string
+  /** Explicit audience/resource for the minted token, for identity
+   *  providers that bind grants to one (Auth0, RFC 8707) instead of
+   *  encoding the resource in the scope string. Omit to use the
+   *  provider's configured default audience. */
+  audience?: string
+  /** Request headers. `Authorization` is reserved and overwritten by the
+   *  engine-minted operator token. */
+  headers?: Record<string, string>
+  /** Request body, sent verbatim. */
+  body?: string
+  /** Request deadline in milliseconds (default 30 000). */
+  timeoutMs?: number
+  /** Response size cap in bytes (default 5 MB). */
+  maxBytes?: number
+  /** Opt this request out of the private/reserved-address guard to reach
+   *  intranet APIs. Default false. */
+  allowPrivateNetwork?: boolean
+}
+
+/** Response from a pre-authenticated HTTP request. Carries no token. */
+export interface IonHttpResponse {
+  status: number
+  headers: Record<string, string>
+  body: string
+}
+
+/** Pre-authenticated HTTP surface (see {@link IonContext.http}). */
+export interface IonHttp {
+  request(method: string, url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>
+  get(url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>
+  post(url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>
+  put(url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>
+  patch(url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>
+  delete(url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>
+}
+
 export interface IonContext {
   /**
    * Identifier of the engine session that fired this hook (the same key
@@ -608,6 +696,39 @@ export interface IonContext {
   ): Promise<{ content: string; isError?: boolean }>
 
   /**
+   * Pre-authenticated outbound HTTP as the signed-in operator.
+   *
+   * The engine performs the request and injects an `Authorization: Bearer`
+   * header carrying an access token minted for the `scope` you declare
+   * (from the operator's OIDC grant — one refresh token mints per-resource
+   * tokens). The raw token is NEVER exposed to extension code: you hand
+   * the engine a request, you get back status/headers/body. Any
+   * `Authorization` header you supply is overwritten — carrying the
+   * credential is the wrapper's job. Extensions that need unauthenticated
+   * HTTP should use plain fetch or the WebFetch tool; this surface always
+   * authenticates.
+   *
+   * `scope` names the downstream resource (e.g.
+   * `api://<app-id>/Billing.Read`); omit it to use the base grant's scope.
+   * Requests to private/reserved addresses are blocked by default; set
+   * `allowPrivateNetwork: true` per request to reach intranet APIs.
+   *
+   * Fails when no operator identity is configured
+   * (`auth.identityProvider` in engine.json) or no operator is signed in.
+   *
+   * @example
+   * ```ts
+   * const res = await ctx.http.post('https://api.example.com/v1/items', {
+   *   scope: 'api://my-api/Items.Write',
+   *   headers: { 'Content-Type': 'application/json' },
+   *   body: JSON.stringify({ name: 'widget' }),
+   * })
+   * if (res.status === 201) ctx.sendMessage('created')
+   * ```
+   */
+  http: IonHttp
+
+  /**
    * Queue a fresh prompt on this session's agent loop. Returns once the
    * engine has accepted the prompt; does NOT wait for the LLM to finish.
    * Pass `opts.model` to override the model for this single prompt.
@@ -634,6 +755,21 @@ export interface IonContext {
    */
   sendPrompt(text: string, opts?: SendPromptOpts): Promise<void>
   dispatchAgent(opts: DispatchAgentOpts): Promise<DispatchAgentResult>
+
+  /**
+   * Walk context files (read-only). Returns discovered AGENTS.md/ION.md/
+   * CLAUDE.md files for the given cwd. Does not inject — use it in
+   * before_agent_start to compose custom context. Part of the four-level
+   * context cascade seam (see docs/context-loading.md).
+   */
+  walkContextFiles(opts?: WalkContextFilesOpts): Promise<DiscoveredContext[]>
+
+  /**
+   * Set the session-level default context policy for all subsequent dispatches
+   * (level 3 of the four-level cascade). A per-dispatch
+   * {@link DispatchAgentOpts.contextPolicy} overrides it.
+   */
+  setDispatchContextDefaults(policy: ContextPolicy): Promise<void>
 
   /**
    * Terminate a running background dispatch by agent name. Returns `true` if
@@ -1239,6 +1375,14 @@ export interface MessageUpdateInfo {
 export interface ModelSelectInfo {
   requestedModel: string
   availableModels?: string[]
+  /**
+   * The RAW user prompt for this turn, captured BEFORE any `before_prompt`
+   * rewrite. `model_select` routes on this raw text (content/length routing:
+   * pick the model that fits the request); `before_prompt` then adapts the
+   * chosen model's prompt, readable via `ctx.model`. Absent when the firing
+   * site has no prompt in hand.
+   */
+  prompt?: string
 }
 
 /** Payload for `context_discover`. */
@@ -1871,7 +2015,7 @@ export interface IonSDK {
   }
 
   /**
-   * Scheduled job registration. Three kinds: daily, weekly, interval.
+   * Scheduled job registration. Four kinds: daily, weekly, interval, once.
    * Each returns a `ScheduleHandle` with `.unregister()`. Static and
    * dynamic registration share the same shape.
    *
@@ -1893,12 +2037,25 @@ export interface IonSDK {
    *     // ...
    *   },
    * })
+   *
+   * // One-shot: fires once after 5s then self-deregisters.
+   * ion.schedule.once({
+   *   id: 'startup-check',
+   *   delayMs: 5_000,
+   *   handler: async (ctx) => {
+   *     await ctx.dispatchAgent({ name: 'checker', task: 'startup' })
+   *   },
+   * })
    * ```
    */
   schedule: {
     daily(opts: ScheduleDaily): Promise<ScheduleHandle>
     weekly(opts: ScheduleWeekly): Promise<ScheduleHandle>
     interval(opts: ScheduleInterval): Promise<ScheduleHandle>
+    /** Register a one-shot schedule that fires once after delayMs and self-deregisters. */
+    once(opts: ScheduleOnce): Promise<ScheduleHandle>
+    /** Imperatively cancel a registered schedule by its id. */
+    cancel(id: string): Promise<void>
   }
 
   /**
@@ -2012,7 +2169,7 @@ export interface ScheduleDaily {
   /** Concurrency mode: "single" (default) fires on one instance, "all" fires on every instance. */
   concurrency?: 'single' | 'all'
   enabled?: () => boolean | Promise<boolean>
-  handler: (ctx: IonContext) => Promise<void> | void
+  handler: ScheduleHandler
 }
 
 /** Weekly schedule: fires once per week on dayOfWeek at time. */
@@ -2025,7 +2182,7 @@ export interface ScheduleWeekly {
   /** Concurrency mode: "single" (default) fires on one instance, "all" fires on every instance. */
   concurrency?: 'single' | 'all'
   enabled?: () => boolean | Promise<boolean>
-  handler: (ctx: IonContext) => Promise<void> | void
+  handler: ScheduleHandler
 }
 
 /** Interval schedule: fires every intervalMs (>=1000ms required). */
@@ -2036,20 +2193,69 @@ export interface ScheduleInterval {
   /** Concurrency mode: "single" (default) fires on one instance, "all" fires on every instance. */
   concurrency?: 'single' | 'all'
   enabled?: () => boolean | Promise<boolean>
-  handler: (ctx: IonContext) => Promise<void> | void
+  handler: ScheduleHandler
+}
+
+/**
+ * One-shot schedule: fires exactly once after delayMs (>=1000ms required),
+ * then self-deregisters. The engine removes the job from the registry after
+ * the handler returns — no second fire is possible.
+ *
+ * A once job whose enabled predicate returns false is skipped for that tick
+ * but remains armed; the predicate skip does NOT consume the shot.
+ */
+export interface ScheduleOnce {
+  id: string
+  /** Milliseconds after registration to fire. Minimum 1000ms. */
+  delayMs: number
+  tz?: string
+  timeoutMs?: number
+  /** Concurrency mode: "single" (default) fires on one instance, "all" fires on every instance. */
+  concurrency?: 'single' | 'all'
+  enabled?: () => boolean | Promise<boolean>
+  handler: ScheduleHandler
+}
+
+/**
+ * Handler function for any schedule kind. The second parameter carries a
+ * {@link ScheduleControl} object that lets the handler inspect its own
+ * job ID and imperatively unregister itself before the engine's natural
+ * lifecycle removes it. The parameter is optional — existing handlers
+ * that only accept `(ctx: IonContext)` continue to work unchanged.
+ */
+export type ScheduleHandler = (ctx: IonContext, control?: ScheduleControl) => Promise<void> | void
+
+/**
+ * Control object passed to every schedule handler at invocation time.
+ * Lets a handler inspect its own job ID or imperatively cancel future
+ * fires without waiting for the engine's self-deregister lifecycle.
+ */
+export interface ScheduleControl {
+  /** The stable job ID this handler was registered under. */
+  jobId: string
+  /**
+   * Unregisters this job so no further fires occur. For once jobs the engine
+   * auto-deregisters after the handler returns; calling this inside the
+   * handler is a no-op for once (the result is the same). For interval /
+   * daily / weekly jobs it lets the handler decide mid-execution that the
+   * job should stop.
+   */
+  unregister(): Promise<void>
 }
 
 /** Wire-format job (handler stripped — kept locally). Used internally
  *  by the SDK runtime to ship init-time and runtime declarations to
  *  the engine. Extension authors normally don't construct this shape
- *  directly; use the ScheduleDaily/Weekly/Interval inputs above.
+ *  directly; use the ScheduleDaily/Weekly/Interval/Once inputs above.
  */
 export interface ScheduleJob {
   id: string
-  kind: 'daily' | 'weekly' | 'interval'
+  kind: 'daily' | 'weekly' | 'interval' | 'once'
   time?: string
   dayOfWeek?: string
   intervalMs?: number
+  /** Milliseconds-to-first-fire for once jobs. Ignored for other kinds. */
+  delayMs?: number
   tz?: string
   timeoutMs?: number
   enabledRefName?: string
@@ -2057,7 +2263,7 @@ export interface ScheduleJob {
   concurrency?: 'single' | 'all'
 }
 
-/** Handle returned by ion.schedule.daily/weekly/interval. */
+/** Handle returned by ion.schedule.daily/weekly/interval/once. */
 export interface ScheduleHandle {
   id: string
   unregister(): Promise<void>

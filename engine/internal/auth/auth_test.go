@@ -250,7 +250,7 @@ func TestInitiateDeviceFlow(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result, err := InitiateDeviceFlow("client-id", server.URL)
+	result, err := InitiateDeviceFlow("client-id", server.URL, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -274,7 +274,7 @@ func TestInitiateDeviceFlow_DefaultInterval(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result, err := InitiateDeviceFlow("client-id", server.URL)
+	result, err := InitiateDeviceFlow("client-id", server.URL, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -290,7 +290,7 @@ func TestInitiateDeviceFlow_ServerError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := InitiateDeviceFlow("client-id", server.URL)
+	_, err := InitiateDeviceFlow("client-id", server.URL, "", "", "")
 	if err == nil {
 		t.Fatal("expected error for server error response")
 	}
@@ -309,8 +309,11 @@ func TestExchangeDeviceCode_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if token != "at-success-123" {
-		t.Fatalf("expected at-success-123, got %q", token)
+	if token.AccessToken != "at-success-123" {
+		t.Fatalf("expected at-success-123, got %q", token.AccessToken)
+	}
+	if token.TokenType != "bearer" {
+		t.Fatalf("expected token_type bearer, got %q", token.TokenType)
 	}
 }
 
@@ -751,14 +754,14 @@ func TestInitiateDeviceFlow_MalformedJSON(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := InitiateDeviceFlow("client-id", server.URL)
+	_, err := InitiateDeviceFlow("client-id", server.URL, "", "", "")
 	if err == nil {
 		t.Fatal("expected error for malformed JSON")
 	}
 }
 
 func TestInitiateDeviceFlow_NetworkError(t *testing.T) {
-	_, err := InitiateDeviceFlow("client-id", "http://localhost:1")
+	_, err := InitiateDeviceFlow("client-id", "http://localhost:1", "", "", "")
 	if err == nil {
 		t.Fatal("expected error for network failure")
 	}
@@ -783,7 +786,7 @@ func TestInitiateDeviceFlow_VerifiesAllFields(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result, err := InitiateDeviceFlow("client-id", server.URL)
+	result, err := InitiateDeviceFlow("client-id", server.URL, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -821,7 +824,7 @@ func TestInitiateDeviceFlow_PostMethod(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := InitiateDeviceFlow("client-id", server.URL)
+	_, err := InitiateDeviceFlow("client-id", server.URL, "", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -852,8 +855,8 @@ func TestExchangeDeviceCode_SendsCorrectFormData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if token != "at-check" {
-		t.Fatalf("expected at-check, got %q", token)
+	if token.AccessToken != "at-check" {
+		t.Fatalf("expected at-check, got %q", token.AccessToken)
 	}
 }
 
@@ -864,7 +867,7 @@ func TestInitiateDeviceFlow_HttpStatus4xx(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := InitiateDeviceFlow("client-id", server.URL)
+	_, err := InitiateDeviceFlow("client-id", server.URL, "", "", "")
 	if err == nil {
 		t.Fatal("expected error for 400 response")
 	}

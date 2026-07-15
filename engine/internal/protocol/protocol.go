@@ -63,6 +63,25 @@ type ClientCommand struct {
 	EarlyStopOverrideThresholdPct int    `json:"earlyStopOverrideThresholdPct,omitempty"`
 	EarlyStopContinueMessage      string `json:"earlyStopContinueMessage,omitempty"`
 
+	// oidc_begin_login: which grant flow to start. "pkce" (default when
+	// empty) runs the interactive authorization-code + PKCE flow — the
+	// engine returns an authorization URL for the consumer to open and its
+	// loopback callback server completes the exchange. "device" runs the
+	// device-code flow for headless hosts — the engine returns a user code
+	// + verification URI and polls the token endpoint to completion.
+	OidcFlow string `json:"oidcFlow,omitempty"`
+
+	// oidc_token: downstream resource scope for the minted access token
+	// (e.g. "api://<app-id>/Telemetry.Write"). Empty uses the operator
+	// grant's base scope.
+	OidcScope string `json:"oidcScope,omitempty"`
+
+	// oidc_token: explicit audience/resource for the minted token, for
+	// identity providers that bind grants to one (Auth0, RFC 8707) instead
+	// of encoding the resource in the scope string. Empty uses the
+	// provider's configured default audience.
+	OidcAudience string `json:"oidcAudience,omitempty"`
+
 	// list_directory: absolute path to enumerate on the engine's host.
 	// Empty or "~" resolves to the engine user's home directory. ShowHidden
 	// includes dotfiles in the result.
@@ -251,11 +270,28 @@ var validCommands = map[string]bool{
 	"list_models":           true,
 	"store_credential":      true,
 	"refresh_models":        true,
+	// oidc_begin_login / oidc_logout / oidc_identity: operator OIDC
+	// identity lifecycle. The engine owns the token (storage, refresh,
+	// per-scope minting); these commands let a consumer start a login
+	// (the engine returns what to surface — an authorization URL or a
+	// device code — and completes the exchange itself), sign out, and
+	// query the current identity snapshot. Identity state transitions
+	// broadcast engine_oidc_identity to all clients.
+	"oidc_begin_login": true,
+	"oidc_logout":      true,
+	"oidc_identity":    true,
+	// oidc_token: mint a short-lived access token for the signed-in
+	// operator, scoped to cmd.oidcScope (empty = base grant scope).
+	// Delivered ONLY to the requester via the result payload -- never
+	// broadcast. This is how a trusted local client (e.g. the desktop
+	// shipping its own logs) authenticates without owning the grant:
+	// the engine keeps the refresh token; clients pull ephemeral access
+	// tokens on demand.
+	"oidc_token": true,
 	"get_host_info":         true,
 	"list_directory":        true,
-	// clear_conversation_file: wipes the LLM-visible Messages (and resets
-	// LastInputTokens / LastInputTokensMsgCount) on a stored conversation
-	// file by sessionId, without requiring a live engine session. Used by
+	// clear_conversation_file: wipes the LLM-visible Messages on a stored
+	// conversation file by sessionId, without requiring a live engine session. Used by
 	// consumers that need to reset a conversation file when no in-memory
 	// session is running against it (so dispatchClear cannot be used).
 	// Non-breaking additive command. Requires key (sessionId).
@@ -301,6 +337,15 @@ var validCommands = map[string]bool{
 	// system prompt + tools with zero conversation tokens; for a historical
 	// session it reflects all on-disk messages. Requires only key.
 	"get_context_breakdown": true,
+	// plugin_install: download and install a Claude Code-compatible plugin from
+	// a GitHub source ("owner/repo"). The source field carries the repo path.
+	// Returns the installed plugin record in the result data.
+	"plugin_install": true,
+	// plugin_list: list all installed plugins. Returns a slice of plugin records.
+	"plugin_list": true,
+	// plugin_remove: uninstall a plugin by name. The label field carries the
+	// plugin name to remove.
+	"plugin_remove": true,
 }
 
 // ParseClientCommand parses a single NDJSON line into a ClientCommand.
@@ -473,6 +518,16 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return true
 	case "store_credential":
 		return hasNonEmptyString(raw, "provider") && hasString(raw, "credential")
+	case "oidc_begin_login":
+		// oidcFlow is optional ("pkce" default; "device" for headless).
+		return true
+	case "oidc_logout":
+		return true
+	case "oidc_identity":
+		return true
+	case "oidc_token":
+		// oidcScope is optional (empty = base grant scope).
+		return true
 	case "refresh_models":
 		return true // optional: provider field to refresh a single provider
 	case "get_host_info":
@@ -511,6 +566,12 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 	case "get_context_breakdown":
 		// On-demand breakdown for the given session key. Only key is required.
 		return hasNonEmptyString(raw, "key")
+	case "plugin_install":
+		return hasNonEmptyString(raw, "source")
+	case "plugin_list":
+		return true
+	case "plugin_remove":
+		return hasNonEmptyString(raw, "label")
 	}
 	return false
 }

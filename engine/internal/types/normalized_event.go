@@ -40,6 +40,20 @@ const (
 	// It carries a bounded byte-range window of a plan file so remote clients
 	// can page through large plans without filesystem access to the engine host.
 	EventPlanContent = "engine_plan_content"
+	// EventOidcLoginURL is delivered to the client that issued an
+	// oidc_begin_login command. It carries what that consumer must surface
+	// to the user: the authorization URL to open (interactive PKCE) or the
+	// user code + verification URI to display (device-code flow). The
+	// engine owns the rest of the flow — its loopback callback server (or
+	// device-code polling) completes the exchange without further client
+	// involvement.
+	EventOidcLoginURL = "engine_oidc_login_url"
+	// EventOidcIdentity is a complete snapshot of the operator's OIDC
+	// identity state (signed in with claims, or signed out). Broadcast to
+	// all clients on every state transition (login completion, logout) and
+	// delivered to the requester of an oidc_identity command. Consumers
+	// replace their local identity view with the payload.
+	EventOidcIdentity = "engine_oidc_identity"
 	// Extended-thinking events surface the model's reasoning activity as a
 	// first-class signal (issue #158). The engine receives Anthropic
 	// thinking_delta stream events; these variants make them observable so
@@ -302,10 +316,23 @@ func (TaskUpdateEvent) eventType() string { return EventTaskUpdate }
 
 // TaskCompleteEvent signals the end of an engine run.
 type TaskCompleteEvent struct {
-	Result            string             `json:"result"`
-	CostUsd           float64            `json:"costUsd"`
-	DurationMs        int64              `json:"durationMs"`
-	NumTurns          int                `json:"numTurns"`
+	Result string `json:"result"`
+	// LastText is the last non-empty assistant text produced across all turns
+	// of this run. When the final turn produces only thinking blocks (pure
+	// reasoning), Result is empty but LastText carries the last substantive
+	// text, letting consumers distinguish "silent final turn" from "silent run".
+	// Empty when the run produced no text output at all.
+	LastText   string  `json:"lastText,omitempty"`
+	CostUsd    float64 `json:"costUsd"`
+	DurationMs int64   `json:"durationMs"`
+	NumTurns   int     `json:"numTurns"`
+	// ConversationTurns is the conversation-lifetime prompt count: the number
+	// of real user prompts across the whole conversation (see
+	// conversation.CountUserPrompts), NOT the per-run round-trip count NumTurns
+	// carries. The runloop computes it from the loaded conversation tree at
+	// run-completion. Additive (omitempty): zero on backends/paths that do not
+	// populate it, which serializes as absent.
+	ConversationTurns int                `json:"conversationTurns,omitempty"`
 	Usage             UsageData          `json:"usage"`
 	SessionID         string             `json:"sessionId"`
 	PermissionDenials []PermissionDenial `json:"permissionDenials,omitempty"`
@@ -720,70 +747,7 @@ type PlanContentEvent struct {
 
 func (PlanContentEvent) eventType() string { return EventPlanContent }
 
-// --- Extended-thinking events (issue #158) ---
-//
-// These three variants surface the model's reasoning activity as a first-class
-// signal so consumers can (a) distinguish "actively reasoning" from "genuinely
-// stalled" during long reasoning phases that produce no user-facing text, and
-// (b) render a "thinking" view (collapsed-by-default reasoning panel) the way
-// products like Claude and ChatGPT do.
-//
-// Emission contract:
-//   - The engine emits these ONLY when the provider supplies a reasoning
-//     stream (Anthropic extended thinking). Providers that don't stream
-//     reasoning emit nothing — consumers must treat a thinking block as
-//     OPTIONAL per turn and must not assume one exists.
-//   - Boundaries (ThinkingBlockStartEvent / ThinkingBlockEndEvent) always emit
-//     when a reasoning block is present; the per-token ThinkingDeltaEvent
-//     stream is gated by ThinkingConfig.StreamDeltas (default on). A consumer
-//     that disables delta streaming still receives the boundaries, so the
-//     liveness signal and the block summary survive.
-//   - signature_delta (Anthropic's opaque per-block signature) is NOT display
-//     text and is never surfaced as a ThinkingDeltaEvent; it rides only in the
-//     persisted assistant block.
-//   - redacted_thinking blocks (encrypted, no readable text) emit
-//     ThinkingBlockStartEvent and a ThinkingBlockEndEvent with Redacted=true
-//     and produce no ThinkingDeltaEvent.
-
-// ThinkingBlockStartEvent marks the start of a reasoning block. Empty payload;
-// its arrival is the signal. Consumers create a "thinking" UI affordance and
-// start a pulse/elapsed timer on receipt.
-type ThinkingBlockStartEvent struct{}
-
-func (ThinkingBlockStartEvent) eventType() string { return EventThinkingBlockStart }
-
-// ThinkingDeltaEvent carries an incremental chunk of reasoning text — the peer
-// of TextChunkEvent for the thinking channel. Gated by
-// ThinkingConfig.StreamDeltas (default on).
-type ThinkingDeltaEvent struct {
-	Text string `json:"text"`
-}
-
-func (ThinkingDeltaEvent) eventType() string { return EventThinkingDelta }
-
-// ThinkingBlockEndEvent marks the end of a reasoning block and carries a
-// summary so consumers can render "💭 Thought for 14s" without having
-// accumulated the deltas (and so consumers that disabled delta streaming, or
-// that loaded the block from history without persisted text, still have a
-// summary).
-type ThinkingBlockEndEvent struct {
-	// TotalTokens is an APPROXIMATE thinking-token count for this block.
-	// Providers fold thinking into the final output-token usage (Anthropic
-	// does not break out a per-block thinking-token count), so the engine
-	// estimates this from accumulated reasoning text length (~chars/4) when
-	// no authoritative count is available. Treat as advisory, not billing
-	// ground truth.
-	TotalTokens int `json:"totalTokens,omitempty"`
-	// ElapsedSeconds is the wall-clock duration from block start to block end.
-	ElapsedSeconds float64 `json:"elapsedSeconds,omitempty"`
-	// Redacted is true for redacted_thinking blocks (encrypted reasoning with
-	// no readable text). Consumers render a "redacted reasoning" affordance
-	// rather than an empty block. When true, no ThinkingDeltaEvent was emitted
-	// for this block.
-	Redacted bool `json:"redacted,omitempty"`
-}
-
-func (ThinkingBlockEndEvent) eventType() string { return EventThinkingBlockEnd }
-
+// Extended-thinking events (ThinkingBlockStartEvent / ThinkingDeltaEvent /
+// ThinkingBlockEndEvent) are in normalized_event_thinking.go.
 // Extension-surface NormalizedEvent types are in normalized_event_extensions.go.
 // ContextBreakdownEvent and its row type are in context_breakdown_event.go.
