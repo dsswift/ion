@@ -148,16 +148,21 @@ For macOS hosts running the engine at login:
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
-    <true/>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
     <key>StandardErrorPath</key>
     <string>/tmp/ion-engine.err</string>
 </dict>
 </plist>
 ```
 
+`KeepAlive.SuccessfulExit=false` restarts the engine on a crash (non-zero exit) but leaves it stopped after a graceful `ion shutdown` (exit 0), so `launchctl bootout` cleanly stops it.
+
 ```bash
 cp com.ion.engine.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.ion.engine.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ion.engine.plist
 ```
 
 ## File layout
@@ -168,7 +173,8 @@ The engine creates and uses `~/.ion/` as its data directory:
 ~/.ion/
   engine.sock       # Unix socket (runtime)
   engine.pid        # PID lock (runtime)
-  engine.log        # Log output
+  engine.log        # Raw stdout/stderr capture (startup banner, pre-logging fatals)
+  engine.jsonl      # Structured operational log (utils.Log)
   config.json       # User config (layer 2 of 4)
   conversations/    # JSONL session persistence
   extensions/       # Installed extensions
