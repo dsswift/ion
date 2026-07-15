@@ -17,6 +17,7 @@ import (
 // checkDispatchEligibility. Only SessionKey and EngineConfig carry behavior;
 // every other method is an inert stub (the eligibility guard never calls them).
 type eligibilityTestAccessor struct {
+	noopPluginMethods
 	cfg *types.EngineRuntimeConfig
 }
 

@@ -17,6 +17,7 @@ import (
 // SteerSelf wiring can be asserted. mainLoopLive controls whether the
 // depth-0 main-loop steer reports a live run.
 type steerSelfAccessor struct {
+	noopPluginMethods
 	mu sync.Mutex
 
 	mainLoopLive bool

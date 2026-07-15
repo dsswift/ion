@@ -20,6 +20,7 @@ import (
 // levers: the engine.json DispatchContext (via engineConfig) and the session
 // default (via sessionDefault), plus the session ClaudeCompat flag.
 type dispatchContextTestAccessor struct {
+	noopPluginMethods
 	engineConfig   *types.EngineRuntimeConfig
 	sessionDefault *extension.ContextPolicy
 	claudeCompat   bool

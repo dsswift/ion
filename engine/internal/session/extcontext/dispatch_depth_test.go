@@ -19,6 +19,7 @@ import (
 
 // depthTestAccessor is a minimal SessionAccessor that records emitted events.
 type depthTestAccessor struct {
+	noopPluginMethods
 	mu         sync.Mutex
 	events     []types.EngineEvent
 	config     *types.EngineRuntimeConfig

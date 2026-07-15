@@ -19,6 +19,7 @@ import (
 // UpdateAgentStateByID closures and EmitAgentSnapshot reasons so the
 // test can assert the synthesized terminal transition happens.
 type panicTestAccessor struct {
+	noopPluginMethods
 	mu              sync.Mutex
 	extGroup        *extension.ExtensionGroup
 	updatedAgentID  string

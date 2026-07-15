@@ -24,6 +24,7 @@ import (
 // delegates to Manager.emitDispatchCountStatus). This keeps the spy fully
 // self-contained without pulling in the full session.Manager.
 type dispatchCountSpyAccessor struct {
+	noopPluginMethods
 	child   backend.RunBackend
 	rootCtx context.Context
 

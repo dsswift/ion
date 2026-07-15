@@ -19,6 +19,7 @@ import (
 // produces. Agent-state methods store a single entry so SessionInitEvent
 // capture works end to end.
 type activityRecordingAccessor struct {
+	noopPluginMethods
 	child backend.RunBackend
 
 	mu      sync.Mutex

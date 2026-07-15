@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -94,6 +95,37 @@ func (m *Manager) buildRunConfig(
 
 	if extGroup != nil && !extGroup.IsEmpty() && !skipExtensions {
 		m.wireExtensionHooks(s, key, requestID, apiBackend, extGroup, runCfg, currentModel)
+	}
+
+	// Wire plugin UserPromptSubmit hooks via OnInitialMessages so their output
+	// is injected as <system-reminder> user messages in the conversation history
+	// rather than appended to the system prompt. This matches Claude Code's
+	// hook_additional_context mechanism: per-turn hook output lands at the top
+	// of the message history before each LLM call, giving it full attention
+	// weight regardless of system prompt length.
+	//
+	// OnBeforePrompt is left solely for extension hooks (TS/Go SDK) — plugin
+	// hooks use the parallel OnInitialMessages path to keep the two surfaces
+	// cleanly separated.
+	if len(s.pluginUserPromptHooks) > 0 {
+		capturedPluginHooks := s.pluginUserPromptHooks
+		runCfg.Hooks.OnInitialMessages = func(runID string, prompt string) []types.LlmMessage {
+			// Build the Claude Code UserPromptSubmit stdin payload.
+			stdinPayload := buildPromptStdinPayload(prompt)
+			var msgs []types.LlmMessage
+			for _, cmd := range capturedPluginHooks {
+				out, hookErr := plugins.RunHookCommandWithStdin(cmd.Entry, cmd.PluginRoot, nil, stdinPayload)
+				if hookErr == nil {
+					if ctx := plugins.ParseHookOutput(out); ctx != "" {
+						msgs = append(msgs, types.LlmMessage{
+							Role:    "user",
+							Content: wrapInSystemReminder("UserPromptSubmit hook additional context: " + ctx),
+						})
+					}
+				}
+			}
+			return msgs
+		}
 	}
 
 	if telemCollector != nil {
@@ -286,17 +318,6 @@ func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID str
 
 	runCfg.Hooks.OnBeforePrompt = func(_ string, prompt string) (string, string) {
 		rewritten, sysPrompt, _ := extGroup.FireBeforePrompt(ctx, prompt)
-		// Fire plugin UserPromptSubmit hooks. Output is appended as extra system
-		// prompt content, mirroring Claude Code's per-turn hook additionalContext
-		// injection. Non-fatal: hook failures are logged inside RunHookCommand.
-		for _, cmd := range s.pluginUserPromptHooks {
-			out, hookErr := plugins.RunHookCommand(cmd.Entry, cmd.PluginRoot, nil)
-			if hookErr == nil {
-				if ctx2 := plugins.ParseHookOutput(out); ctx2 != "" {
-					sysPrompt += "\n\n" + ctx2
-				}
-			}
-		}
 		return rewritten, sysPrompt
 	}
 
@@ -560,4 +581,23 @@ func (m *Manager) mcpCallTimeout() time.Duration {
 		return m.config.Timeouts.McpCall()
 	}
 	return 60 * time.Second
+}
+
+// buildPromptStdinPayload serializes the prompt into the JSON payload that
+// Claude Code pipes to UserPromptSubmit hook stdin. The format is:
+//
+//	{"prompt": "<prompt text>"}
+//
+// transcript_path is omitted — the engine has no equivalent concept and the
+// caveman hook (the primary consumer) only reads data.prompt. Falls back to
+// the raw prompt string on marshal error (hooks that read stdin as plain text
+// will still see the right content; hooks that parse JSON will fail gracefully
+// via their own try/catch).
+func buildPromptStdinPayload(prompt string) string {
+	payload := map[string]string{"prompt": prompt}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return prompt
+	}
+	return string(data)
 }

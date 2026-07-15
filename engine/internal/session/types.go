@@ -224,16 +224,18 @@ type engineSession struct {
 	// feature is not enabled or the session has no conversation ID.
 	sessionMemory *SessionMemory
 
-	// pluginContextEntries holds the accumulated additionalContext strings from
-	// each installed plugin's SessionStart hooks. These are injected into the
-	// system prompt on every run via injectPluginContext in prompt_options.go.
+	// pluginSessionMessages holds LlmMessage values (role=user, wrapped in
+	// <system-reminder>) from each installed plugin's SessionStart hook output.
+	// These are prepended to the provider message slice on every run turn via
+	// opts.InitialMessages, giving the plugin instructions full conversational
+	// attention weight — matching Claude Code's hook_additional_context injection.
 	// Populated in loadAndWirePlugins (plugin_session.go) at session start.
-	pluginContextEntries []string
+	pluginSessionMessages []types.LlmMessage
 
 	// pluginUserPromptHooks holds the hook commands from all installed plugins'
-	// UserPromptSubmit hooks paired with their plugin root path. These are run
-	// on every OnBeforePrompt dispatch (prompt_runconfig.go) and their output
-	// is appended to the run's system prompt.
+	// UserPromptSubmit hooks paired with their plugin root path. Fired on each
+	// turn via hooks.OnInitialMessages; output is wrapped in <system-reminder>
+	// and prepended to the provider message slice (not the system prompt).
 	pluginUserPromptHooks []pluginUserPromptCmd
 
 	// pendingSlashInvocation carries the raw command/args for a slash command

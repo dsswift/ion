@@ -346,10 +346,41 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		}
 
 		// Build stream options (sanitize before each API call to catch orphaned tool blocks)
+		sanitized := conversation.SanitizeMessages(conv.Messages)
+
+		// Prepend ephemeral initial messages from plugins and hooks. These are
+		// never persisted to disk — they are constructed fresh per run and
+		// prepended to the provider's message view only.
+		//
+		// Two categories (matching Claude Code's hook injection model):
+		//   1. opts.InitialMessages — SessionStart hook output. Injected on
+		//      every turn so the model always sees the plugin rules at the
+		//      front of the conversation, not buried in the system prompt.
+		//   2. hooks.OnInitialMessages — UserPromptSubmit hook output. Called
+		//      fresh on each turn with the current prompt so per-turn
+		//      reinforcement messages are always at the top of recent context.
+		//
+		// Both are wrapped in <system-reminder> by the session layer before
+		// arriving here, matching Claude Code's wrapInSystemReminder format.
+		var initialMsgs []types.LlmMessage
+		initialMsgs = append(initialMsgs, opts.InitialMessages...)
+		if hooks.OnInitialMessages != nil {
+			perTurn := hooks.OnInitialMessages(run.requestID, opts.Prompt)
+			initialMsgs = append(initialMsgs, perTurn...)
+		}
+		var messages []types.LlmMessage
+		if len(initialMsgs) > 0 {
+			messages = make([]types.LlmMessage, 0, len(initialMsgs)+len(sanitized))
+			messages = append(messages, initialMsgs...)
+			messages = append(messages, sanitized...)
+		} else {
+			messages = sanitized
+		}
+
 		streamOpts := types.LlmStreamOptions{
 			Model:       model,
 			System:      conv.System,
-			Messages:    conversation.SanitizeMessages(conv.Messages),
+			Messages:    messages,
 			Tools:       toolDefs,
 			ServerTools: serverTools,
 		}

@@ -20,6 +20,7 @@ import (
 // from NewChildBackend so a foreground dispatch can run end to end. All other
 // methods are inert.
 type bumpCountingAccessor struct {
+	noopPluginMethods
 	child     backend.RunBackend
 	bumpCount atomic.Int64
 	rootCtx   context.Context

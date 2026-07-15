@@ -93,3 +93,54 @@ func TestRunHookCommand_PluginRootExpansion(t *testing.T) {
 		t.Errorf("got %q, want %q", out, "from-plugin")
 	}
 }
+
+// TestRunHookCommandWithStdin_PassesStdin verifies that stdinData is piped to
+// the subprocess. The script reads JSON from stdin and echoes data.prompt —
+// the same pattern caveman-mode-tracker.js uses. Without stdin support, the
+// hook receives an immediate EOF and JSON.parse fails silently.
+func TestRunHookCommandWithStdin_PassesStdin(t *testing.T) {
+	dir := t.TempDir()
+	script := dir + "/echo-prompt.js"
+	os.WriteFile(script, []byte(`
+let input = '';
+process.stdin.on('data', chunk => { input += chunk; });
+process.stdin.on('end', () => {
+  try {
+    const data = JSON.parse(input);
+    process.stdout.write(data.prompt);
+  } catch(e) {
+    process.stdout.write('parse-error');
+  }
+});
+`), 0o755)
+
+	entry := PluginHookEntry{
+		Type:    "command",
+		Command: "node " + script,
+		Timeout: 5,
+	}
+	out, err := RunHookCommandWithStdin(entry, dir, nil, `{"prompt":"hello-from-test"}`)
+	if err != nil {
+		t.Fatalf("RunHookCommandWithStdin: %v", err)
+	}
+	if out != "hello-from-test" {
+		t.Errorf("got %q, want %q", out, "hello-from-test")
+	}
+}
+
+// TestRunHookCommandWithStdin_EmptyStdin verifies that an empty stdinData arg
+// behaves identically to RunHookCommand — no regression on the no-stdin path.
+func TestRunHookCommandWithStdin_EmptyStdin(t *testing.T) {
+	entry := PluginHookEntry{
+		Type:    "command",
+		Command: "echo ok",
+		Timeout: 5,
+	}
+	out, err := RunHookCommandWithStdin(entry, "/tmp", nil, "")
+	if err != nil {
+		t.Fatalf("RunHookCommandWithStdin empty stdin: %v", err)
+	}
+	if out != "ok" {
+		t.Errorf("got %q, want %q", out, "ok")
+	}
+}

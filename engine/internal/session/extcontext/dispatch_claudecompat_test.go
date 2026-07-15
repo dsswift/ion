@@ -21,14 +21,14 @@ func TestBuildDispatchRunOptionsThreadsClaudeCompat(t *testing.T) {
 	}
 
 	t.Run("compat_enabled", func(t *testing.T) {
-		runOpts := buildDispatchRunOptions(opts, "model-x", "/tmp/proj", context.Background(), true)
+		runOpts := buildDispatchRunOptions(opts, "model-x", "/tmp/proj", context.Background(), true, noopSA{})
 		if !runOpts.ClaudeCompat {
 			t.Fatalf("expected RunOptions.ClaudeCompat=true when compat threaded in, got false")
 		}
 	})
 
 	t.Run("compat_disabled", func(t *testing.T) {
-		runOpts := buildDispatchRunOptions(opts, "model-x", "/tmp/proj", context.Background(), false)
+		runOpts := buildDispatchRunOptions(opts, "model-x", "/tmp/proj", context.Background(), false, noopSA{})
 		if runOpts.ClaudeCompat {
 			t.Fatalf("expected RunOptions.ClaudeCompat=false when compat off, got true")
 		}

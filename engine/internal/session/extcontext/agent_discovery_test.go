@@ -19,6 +19,7 @@ import (
 // BuildDiscoverAgentsFunc actually exercises is wired; the rest of the
 // methods are zero-value stubs.
 type agentDiscoveryTestAccessor struct {
+	noopPluginMethods
 	extGroup *extension.ExtensionGroup
 }
 

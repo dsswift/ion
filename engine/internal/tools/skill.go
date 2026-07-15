@@ -39,8 +39,10 @@ func buildSkillManifest() string {
 	// Sort for deterministic output.
 	sort.Slice(all, func(i, j int) bool { return all[i].Name < all[j].Name })
 
-	var sb strings.Builder
-	sb.WriteString("\n\nAvailable skills:\n")
+	// Build entries first so we can return "" when every skill is disabled.
+	// Writing the header before iterating would produce a non-empty string
+	// even when all entries are filtered out by DisableModelInvocation.
+	var entries strings.Builder
 	totalChars := 0
 	listed := 0
 
@@ -72,29 +74,64 @@ func buildSkillManifest() string {
 		if totalChars+len(line)+1 > SkillManifestDefaultBudget {
 			// Budget exhausted — note that some skills were omitted.
 			remaining := len(all) - listed
-			fmt.Fprintf(&sb, "… and %d more skill(s) not shown (budget limit).\n", remaining)
+			fmt.Fprintf(&entries, "… and %d more skill(s) not shown (budget limit).\n", remaining)
 			break
 		}
 
-		sb.WriteString(line)
-		sb.WriteString("\n")
+		entries.WriteString(line)
+		entries.WriteString("\n")
 		totalChars += len(line) + 1
 		listed++
 	}
-	return sb.String()
+
+	if listed == 0 && entries.Len() == 0 {
+		// Every skill was filtered out by DisableModelInvocation.
+		return ""
+	}
+
+	return "\n\nAvailable skills:\n" + entries.String()
 }
 
+// skillProactiveInstruction is the behavioral instruction appended to the Skill
+// tool description and injected into the system prompt when skills are loaded.
+// Mirrors Claude Code's "BLOCKING REQUIREMENT" language from SkillTool/prompt.ts
+// so third-party skills authored for Claude Code behave identically on Ion.
+const skillProactiveInstruction = "When a user's request matches an available skill, " +
+	"you MUST invoke this tool for that skill BEFORE generating any other response. " +
+	"This is a blocking requirement — never mention a skill without calling this tool."
+
 // buildSkillToolDescription constructs the full Skill tool description string,
-// embedding a budgeted manifest of currently-registered model-invocable skills.
-// It is called at session start after skill loading completes so the description
-// reflects the actual loaded registry.
+// embedding a budgeted manifest of currently-registered model-invocable skills
+// and the proactive-invocation instruction. It is called at session start after
+// skill loading completes so the description reflects the actual loaded registry.
 func buildSkillToolDescription() string {
-	base := "Execute a skill by name. Returns the skill content for execution."
 	manifest := buildSkillManifest()
 	if manifest == "" {
-		return base
+		return "Execute a skill by name. Returns the skill content for execution."
 	}
-	return base + manifest
+	return "Execute a skill by name. Returns the skill content for execution. " +
+		skillProactiveInstruction + manifest
+}
+
+// BuildSkillSystemPromptSection returns a system prompt section that lists all
+// model-invocable skills and instructs the model to invoke them proactively.
+// Returns empty string when no skills are registered so callers can skip the
+// append without injecting blank content. Mirrors Claude Code's skill_listing
+// attachment (attachments.ts → messages.ts skill_listing case) which wraps the
+// skill list in a <system-reminder> user message on every turn — Ion delivers
+// the same information more cleanly via the system prompt assembled per run in
+// buildSystemPrompt.
+func BuildSkillSystemPromptSection() string {
+	manifest := buildSkillManifest()
+	if manifest == "" {
+		return ""
+	}
+	return "# Available Skills\n\n" +
+		"The following skills are available via the Skill tool. " +
+		"When a user's request matches a skill, you MUST invoke the Skill tool for that skill " +
+		"BEFORE generating any other response. " +
+		"This is a blocking requirement — never mention a skill without calling the Skill tool." +
+		manifest
 }
 
 // SkillTool returns a ToolDef that invokes a loaded skill by name. The tool

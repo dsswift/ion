@@ -22,6 +22,7 @@ import (
 // agent state updates and emitted events so the test can assert dispatch id
 // population, collision safety, and conversationIds dedup.
 type idTestAccessor struct {
+	noopPluginMethods
 	child backend.RunBackend
 
 	mu      sync.Mutex

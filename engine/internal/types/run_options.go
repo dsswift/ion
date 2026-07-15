@@ -11,13 +11,35 @@ import "context"
 
 // RunOptions configures a Claude run.
 type RunOptions struct {
-	Prompt      string `json:"prompt"`
-	ProjectPath string `json:"projectPath"`
-	SessionID   string `json:"sessionId,omitempty"`
+	Prompt         string `json:"prompt"`
+	ProjectPath    string `json:"projectPath"`
+	// ConversationID is the engine-minted conversation-file identity,
+	// format `{unix-millis}-{12-hex-chars}` (e.g. `1780093348767-c1c03e998388`).
+	// The API backend uses it to load/create `~/.ion/conversations/<id>.*` and
+	// to resume an existing conversation. Previously named SessionID; renamed
+	// to reflect the actual identity space (conversation-file, not session key).
+	ConversationID string `json:"conversationId,omitempty"`
+	// SessionKey is the opaque client-supplied key that identifies the engine
+	// session. For desktop clients this is the tab UUID (`ClientCommand.Key`).
+	// For API backends or external consumers it may be any string. This is what
+	// the session layer stamps as session_id in telemetry (see
+	// session/telemetry_ctx.go). It is distinct from ConversationID (the
+	// engine conversation-file identity).
+	SessionKey string `json:"sessionKey,omitempty"`
+	// ExtensionName is the hosting extension's friendly name, threaded from
+	// engineSession.extensionName (captured from the engine_status broadcast)
+	// into the backend so buildTelemCtx can stamp "extension" on llm.call and
+	// dispatch.agent spans. Empty for non-extension runs; omit-when-empty.
+	ExtensionName string `json:"extensionName,omitempty"`
+	// ExtensionVersion is the hosting extension's version from extension.json,
+	// threaded from engineSession.extensionVersion into the backend so
+	// buildTelemCtx can stamp "extension_version" on cost-bearing spans.
+	// Empty when the manifest is absent or carries no version; omit-when-empty.
+	ExtensionVersion string `json:"extensionVersion,omitempty"`
 	// CliResumeSessionID is the claude-native session UUID passed to
 	// `claude --resume`. It belongs to a *different identity space* than
-	// SessionID: the CLI backend (Claude Code subprocess) issues and owns
-	// its own session UUIDs, whereas SessionID is Ion's conversation-file
+	// ConversationID: the CLI backend (Claude Code subprocess) issues and owns
+	// its own session UUIDs, whereas ConversationID is Ion's conversation-file
 	// identity (`{unix-millis}-{12hex}`) used by the API backend to
 	// load/create `~/.ion/conversations/<id>.*`.
 	//
@@ -28,8 +50,8 @@ type RunOptions struct {
 	//     on run exit).
 	//   - Subsequent runs: the captured claude UUID → `--resume <uuid>`.
 	//
-	// The API backend ignores this field; it resumes via SessionID. Passing
-	// Ion's SessionID (the `{millis}-{hex}` id) to `claude --resume` is the
+	// The API backend ignores this field; it resumes via ConversationID. Passing
+	// Ion's ConversationID (the `{millis}-{hex}` id) to `claude --resume` is the
 	// defect this field fixes — claude rejects non-UUID resume ids with exit
 	// code 1, killing every fresh manager-driven CLI run.
 	CliResumeSessionID string          `json:"cliResumeSessionId,omitempty"`
@@ -100,6 +122,14 @@ type RunOptions struct {
 	// session-side entries' positions. Mirrors
 	// ClientCommand.BashAllowlistAdditionsForThisPrompt one-for-one.
 	BashAllowlistAdditionsForThisPrompt []string `json:"bashAllowlistAdditionsForThisPrompt,omitempty"`
+	// InitialMessages are ephemeral messages prepended to the conversation
+	// just before each LLM provider call. They are NOT persisted to disk and
+	// are rebuilt fresh on every run. Used by the plugin system to inject
+	// SessionStart hook output as <system-reminder> user messages — matching
+	// Claude Code's hook_additional_context attachment mechanism — so the model
+	// receives plugin instructions at full conversational attention weight
+	// rather than buried at the end of the system prompt.
+	InitialMessages []LlmMessage `json:"initialMessages,omitempty"`
 	// ImplementationPhase tells the engine that this run is the "implement"
 	// half of a plan-then-implement flow — the user has already approved a
 	// plan and the model should execute it directly without proposing
@@ -182,6 +212,15 @@ type RunOptions struct {
 	// injections (the per-run analogue of SuppressSystemMessages but scoped to
 	// the nested-context mechanism specifically).
 	DisableNestedContext    bool         `json:"disableNestedContext,omitempty"`
+	// DisableSkillSystemPrompt turns off the engine's skill-listing +
+	// proactive-invocation system-prompt section for this run (see
+	// tools.BuildSkillSystemPromptSection). Zero value (false) means the
+	// section is ON by default (injected whenever skills are registered);
+	// set true to suppress the engine's injection for this run. This is the
+	// per-run analogue of LimitsConfig.DisableSkillSystemPrompt and takes
+	// precedence over it. The system_inject hook (kind "skill_listing") can
+	// still observe, replace, or suppress the section even when this is false.
+	DisableSkillSystemPrompt bool         `json:"disableSkillSystemPrompt,omitempty"`
 	CapabilityTools         []LlmToolDef `json:"-"` // capability tools injected by session manager
 	CapabilityPrompt        string       `json:"-"` // capability prompt content injected by session manager
 	WebSearchMode           string       `json:"-"` // "auto", "client", or "server", propagated from config

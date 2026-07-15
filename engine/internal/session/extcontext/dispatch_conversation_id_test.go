@@ -19,6 +19,7 @@ import (
 // reason. It lets the test observe what conversationId the agent metadata holds
 // at the instant each snapshot fires — proving the id is populated mid-run.
 type convIDRecordingAccessor struct {
+	noopPluginMethods
 	child backend.RunBackend
 
 	mu sync.Mutex

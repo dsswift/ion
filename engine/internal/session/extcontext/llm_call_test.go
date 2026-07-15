@@ -24,6 +24,7 @@ import (
 // the methods are zero-value stubs so the test stays focused on the
 // LLMCall code path.
 type llmCallTestAccessor struct {
+	noopPluginMethods
 	mu       sync.Mutex
 	emitted  []types.EngineEvent
 	extGroup *extension.ExtensionGroup

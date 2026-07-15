@@ -168,6 +168,14 @@ type RunHooks struct {
 	// rewritten prompt and additional system-prompt content.
 	OnBeforePrompt func(runID string, prompt string) (rewrittenPrompt, extraSystemPrompt string)
 
+	// OnInitialMessages returns messages to prepend to the conversation before
+	// each LLM provider call. Used by the plugin system to inject per-turn
+	// UserPromptSubmit hook output as <system-reminder> user messages, matching
+	// Claude Code's hook_additional_context injection mechanism. The messages
+	// are ephemeral — never persisted to disk — and are prepended fresh on
+	// every turn. Nil return means no injection.
+	OnInitialMessages func(runID string, prompt string) []types.LlmMessage
+
 	// OnPlanModePrompt provides plan-mode prompt customization.
 	// Returns (customPrompt, customTools, customSparseReminder). Empty values
 	// mean "use the engine default" for that field. The sparse reminder

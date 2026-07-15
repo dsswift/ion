@@ -3,11 +3,12 @@ package session
 import (
 	"github.com/dsswift/ion/engine/internal/plugins"
 	"github.com/dsswift/ion/engine/internal/skills"
+	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // pluginUserPromptCmd pairs a UserPromptSubmit hook entry with the plugin root
-// path needed by RunHookCommand. Stored on engineSession so the OnBeforePrompt
+// path needed by RunHookCommand. Stored on engineSession so the OnInitialMessages
 // closure in prompt_runconfig.go can fire the commands without re-reading the
 // registry on every prompt.
 type pluginUserPromptCmd struct {
@@ -15,10 +16,18 @@ type pluginUserPromptCmd struct {
 	PluginRoot string
 }
 
+// wrapInSystemReminder wraps content in a <system-reminder> block, matching
+// Claude Code's wrapInSystemReminder format (messages.ts:3098). This gives
+// plugin hook output full conversational attention weight when it appears as
+// a user message in the conversation history.
+func wrapInSystemReminder(content string) string {
+	return "<system-reminder>\n" + content + "\n</system-reminder>"
+}
+
 // loadAndWirePlugins loads all installed plugins at session start:
 //   - Runs each plugin's SessionStart hooks and stores their output as
-//     pluginContextEntries on the session (injected into every run's system prompt).
-//   - Stores each plugin's UserPromptSubmit hook commands for per-run firing.
+//     pluginSessionMessages on the session (prepended to provider messages each turn).
+//   - Stores each plugin's UserPromptSubmit hook commands for per-turn firing.
 //   - Loads any skills/ directory the plugin ships into the skill registry.
 //
 // Called from StartSession after the Ion skill directories are loaded, before
@@ -52,7 +61,10 @@ func (m *Manager) loadAndWirePlugins(s *engineSession, key string) {
 			continue
 		}
 
-		// Run SessionStart hooks and collect context.
+		// Run SessionStart hooks and collect output as system-reminder messages.
+		// Using LlmMessage (not AppendSystemPrompt) so the content appears in the
+		// conversation history at full attention weight, matching Claude Code's
+		// hook_additional_context injection via processUserInput → createAttachmentMessage.
 		for _, entry := range manifest.SessionStartCommands() {
 			if entry.Type != "command" {
 				continue
@@ -66,14 +78,18 @@ func (m *Manager) loadAndWirePlugins(s *engineSession, key string) {
 			}
 			ctx := plugins.ParseHookOutput(out)
 			if ctx != "" {
-				s.pluginContextEntries = append(s.pluginContextEntries, ctx)
-				utils.LogWithFields(utils.LevelInfo, "plugins", "SessionStart hook injected context", map[string]any{
+				msg := types.LlmMessage{
+					Role:    "user",
+					Content: wrapInSystemReminder("SessionStart hook additional context: " + ctx),
+				}
+				s.pluginSessionMessages = append(s.pluginSessionMessages, msg)
+				utils.LogWithFields(utils.LevelInfo, "plugins", "SessionStart hook produced system-reminder message", map[string]any{
 					"key": key, "plugin": p.Name, "len": len(ctx),
 				})
 			}
 		}
 
-		// Store UserPromptSubmit hooks for per-run firing.
+		// Store UserPromptSubmit hooks for per-turn firing via OnInitialMessages.
 		for _, entry := range manifest.UserPromptSubmitCommands() {
 			if entry.Type != "command" {
 				continue

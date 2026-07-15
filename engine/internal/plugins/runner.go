@@ -13,13 +13,31 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// RunHookCommand executes a plugin hook command, captures stdout, and returns it.
-// pluginRoot is the installed plugin directory (substituted for ${CLAUDE_PLUGIN_ROOT}).
-// Non-zero exit codes are logged and skipped (return "", nil).
+// RunHookCommand executes a plugin hook command with no stdin, captures stdout,
+// and returns it. pluginRoot is the installed plugin directory (substituted for
+// ${CLAUDE_PLUGIN_ROOT}). Non-zero exit codes are logged and skipped (return "", nil).
+//
+// Use this for SessionStart hooks, which read no stdin. For UserPromptSubmit
+// hooks, use RunHookCommandWithStdin to pass the prompt JSON payload.
 func RunHookCommand(entry PluginHookEntry, pluginRoot string, extraEnv []string) (string, error) {
+	return RunHookCommandWithStdin(entry, pluginRoot, extraEnv, "")
+}
+
+// RunHookCommandWithStdin executes a plugin hook command, writes stdinData to
+// the subprocess stdin (when non-empty), captures stdout, and returns it.
+//
+// Claude Code's hook protocol pipes {"prompt": "...", "transcript_path": "..."}
+// as JSON to UserPromptSubmit hook stdin. Without this, hooks that read stdin
+// (like caveman-mode-tracker.js) receive an immediate EOF, fail JSON.parse, and
+// silently produce no output — suppressing both mode-switching and per-turn
+// reinforcement.
+//
+// pluginRoot is the installed plugin directory (substituted for
+// ${CLAUDE_PLUGIN_ROOT}). Non-zero exit codes are logged and skipped (return "", nil).
+func RunHookCommandWithStdin(entry PluginHookEntry, pluginRoot string, extraEnv []string, stdinData string) (string, error) {
 	timeout := entry.EffectiveTimeout()
 	cmd := expandPluginRoot(entry.Command, pluginRoot)
-	return runCommand(cmd, pluginRoot, timeout, extraEnv)
+	return runCommand(cmd, pluginRoot, timeout, extraEnv, stdinData)
 }
 
 // expandPluginRoot replaces ${CLAUDE_PLUGIN_ROOT} in a command string.
@@ -27,7 +45,7 @@ func expandPluginRoot(cmd, pluginRoot string) string {
 	return strings.ReplaceAll(cmd, "${CLAUDE_PLUGIN_ROOT}", pluginRoot)
 }
 
-func runCommand(cmdStr, pluginRoot string, timeout time.Duration, extraEnv []string) (string, error) {
+func runCommand(cmdStr, pluginRoot string, timeout time.Duration, extraEnv []string, stdinData string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -49,6 +67,13 @@ func runCommand(cmdStr, pluginRoot string, timeout time.Duration, extraEnv []str
 		"ION_CONFIG_DIR="+ionDir,
 	)
 	cmd.Env = append(cmd.Env, extraEnv...)
+
+	// When stdinData is non-empty, pipe it to the subprocess. This implements
+	// Claude Code's hook stdin protocol: UserPromptSubmit hooks receive the
+	// prompt payload as JSON on stdin rather than reading it from args or env.
+	if stdinData != "" {
+		cmd.Stdin = strings.NewReader(stdinData)
+	}
 
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout

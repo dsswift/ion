@@ -378,15 +378,13 @@ func injectGitContext(s *engineSession, opts *types.RunOptions) {
 	}
 }
 
-// injectPluginContext appends plugin SessionStart context entries to the
-// system prompt. This is the Ion equivalent of Claude Code's SessionStart hook
-// additionalContext injection: each plugin's activate script runs at session
-// start and its output is stored here, then included in every run's system
-// prompt so the model operates under the plugin's instructions from turn 1.
+// injectPluginContext populates opts.InitialMessages with the plugin SessionStart
+// messages so they are prepended to the provider message slice on every turn,
+// matching Claude Code's hook_additional_context injection into conversation history
+// (not the system prompt). The messages are already wrapped in <system-reminder>
+// by loadAndWirePlugins.
 func injectPluginContext(s *engineSession, opts *types.RunOptions) {
-	for _, ctx := range s.pluginContextEntries {
-		if ctx != "" {
-			opts.AppendSystemPrompt += "\n\n" + ctx
-		}
+	if len(s.pluginSessionMessages) > 0 {
+		opts.InitialMessages = append(opts.InitialMessages, s.pluginSessionMessages...)
 	}
 }
