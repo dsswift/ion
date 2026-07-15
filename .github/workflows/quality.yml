@@ -36,6 +36,17 @@ jobs:
         # state-ownership rule documented in CLAUDE.md.
         run: bash scripts/check-status-writers.sh
 
+  atv-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Overlay-ATV broadcast parity
+        # The overlay and ATV shell are two clients of one event stream:
+        # pushes to the overlay renderer must route through broadcast()
+        # (which fans out to the ATV mirror) unless the sending file is on
+        # the owner-only allowlist in the script, each entry with a reason.
+        run: bash scripts/check-atv-parity.sh
+
   check-logging:
     runs-on: ubuntu-latest
     steps:
