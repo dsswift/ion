@@ -148,3 +148,43 @@ final class AgentPanelNameKeyTests: XCTestCase {
         XCTAssertEqual(snapshot.first { $0.name == "qa-lead"  }?.dispatches.count, 3)
     }
 }
+
+/// Pins the agent-panel header breakdown (`total` / `active` / `done`) that the
+/// desktop and iOS headers both render. `active` counts running agents, `done`
+/// counts completed agents, and `error`/`idle` fold into NEITHER count (they are
+/// surfaced by the row's status dot). Reverting any branch — e.g. counting
+/// `error` as `done`, or `idle` as `active` — turns these red.
+final class AgentHeaderBreakdownTests: XCTestCase {
+
+    private func agent(_ name: String, status: String) -> AgentStateUpdate {
+        let raw: [String: Any] = [
+            "id": "d-\(name)",
+            "name": name,
+            "status": status,
+            "metadata": ["displayName": name, "visibility": "always"],
+        ]
+        let data = try! JSONSerialization.data(withJSONObject: raw)
+        return try! JSONDecoder().decode(AgentStateUpdate.self, from: data)
+    }
+
+    func test_breakdown_countsActiveAndDone_foldsErrorAndIdle() {
+        let agents = [
+            agent("a", status: "running"),
+            agent("b", status: "running"),
+            agent("c", status: "done"),
+            agent("d", status: "error"),
+            agent("e", status: "idle"),
+        ]
+        let b = agents.agentHeaderBreakdown
+        XCTAssertEqual(b.total, 5, "total is the full visible set")
+        XCTAssertEqual(b.active, 2, "only running agents are active")
+        XCTAssertEqual(b.done, 1, "only done agents are done — error/idle fold into neither")
+    }
+
+    func test_breakdown_empty() {
+        let b = [AgentStateUpdate]().agentHeaderBreakdown
+        XCTAssertEqual(b.total, 0)
+        XCTAssertEqual(b.active, 0)
+        XCTAssertEqual(b.done, 0)
+    }
+}

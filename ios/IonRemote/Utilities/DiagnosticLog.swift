@@ -1,5 +1,6 @@
 import Foundation
 import os
+import UIKit
 
 /// Thread-safe diagnostic logger with file-backed rolling storage.
 ///
@@ -90,6 +91,59 @@ final class DiagnosticLog: @unchecked Sendable {
     func _setSessionIdOnQueue(_ id: String?) { currentSessionId = id }
     func _setConversationIdOnQueue(_ id: String?) { currentConversationId = id }
 
+    // MARK: - Device identity + per-line sequence
+
+    /// Device-identity fields stamped into every emitted line's `fields` map so
+    /// the central log sink can attribute lines to a specific device / OS /
+    /// app build. Computed once at init (they never change during a process's
+    /// lifetime) and merged in `encodeLine`. These are what the desktop cannot
+    /// know — the model, OS version, and the app version/build that produced the
+    /// line. The desktop injects its own half (device_id/name, desktop_host) at
+    /// persist time.
+    let deviceFields: [String: String]
+
+    /// UserDefaults key for the monotonic per-line sequence high-water mark.
+    /// Persisted so `seq` never resets across app launches — the desktop uses it
+    /// as the exactly-once resume/dedup cursor for the incremental log pull, and
+    /// a reset would make every reconnect re-ship the whole retained history.
+    private static let seqDefaultsKey = "com.ion.diag.seq"
+
+    /// Next sequence number to stamp. Loaded from UserDefaults at init, bumped
+    /// per emitted line, and persisted after each bump. Access synchronized via
+    /// `writeQueue` (all mutation happens on the writer).
+    private var nextSeq: Int
+
+    /// writeQueue-internal: return the next monotonic seq and advance+persist the
+    /// high-water mark. Called once per emitted line from `encodeLine`.
+    func _nextSeqOnQueue() -> Int {
+        let seq = nextSeq
+        nextSeq += 1
+        UserDefaults.standard.set(nextSeq, forKey: Self.seqDefaultsKey)
+        return seq
+    }
+
+    /// Compute the immutable device-identity fields once. `utsname.machine` is
+    /// the hardware model identifier (e.g. `iPhone15,3`); `UIDevice` gives the OS
+    /// version; the bundle gives the app version/build. Runs on the app's main
+    /// actor context is not required — these are all thread-safe reads.
+    private static func computeDeviceFields() -> [String: String] {
+        var sysinfo = utsname()
+        uname(&sysinfo)
+        let machine = withUnsafeBytes(of: &sysinfo.machine) { raw -> String in
+            let bytes = raw.prefix { $0 != 0 }
+            return String(decoding: bytes, as: UTF8.self)
+        }
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        let osVersion = UIDevice.current.systemVersion
+        return [
+            "device_model": machine,
+            "app_version": version,
+            "app_build": build,
+            "os_version": osVersion,
+        ]
+    }
+
     struct Entry: Sendable {
         let timestamp: Date
         let message: String
@@ -101,6 +155,16 @@ final class DiagnosticLog: @unchecked Sendable {
         let libDir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first!
         logDirectory = libDir.appendingPathComponent("Logs/diagnostics", isDirectory: true)
         currentLogURL = logDirectory.appendingPathComponent("current.log")
+
+        // Device identity + seq cursor are established before any line is
+        // written (writeSessionMarker below emits the first line, which must
+        // already carry both). Seq is 1-based: a full pull uses sinceSeq=0 and
+        // filters seq > 0, so the very first line (seq 1) must never be 0, or a
+        // full export would silently drop it. UserDefaults returns 0 when unset,
+        // so max(1, ...) yields 1 on first launch and the persisted value on
+        // every subsequent launch.
+        deviceFields = Self.computeDeviceFields()
+        nextSeq = max(1, UserDefaults.standard.integer(forKey: Self.seqDefaultsKey))
 
         try? FileManager.default.createDirectory(at: logDirectory, withIntermediateDirectories: true)
         rotateIfNeeded()
@@ -153,23 +217,46 @@ final class DiagnosticLog: @unchecked Sendable {
         shared.readAllSessions()
     }
 
-    /// Return all log lines after `lineOffset` (0-based count of lines already sent).
-    /// Used by the desktop's incremental log pull so repeated pulls transfer only
-    /// new lines instead of the entire session history.
+    /// Return all retained log lines whose `fields.seq` is strictly greater than
+    /// `sinceSeq`. Used by the desktop's incremental log pull so repeated pulls
+    /// transfer only new lines and never re-ship history already persisted.
     ///
-    /// Returns `(logs: "<new JSONL lines>", nextOffset: <new cumulative line count>)`.
-    /// When `lineOffset` is 0 (initial pull), equivalent to `exportAllSessions`.
-    /// When `lineOffset` >= total lines, returns `("", totalLines)`.
-    static func exportIncrementalSince(lineOffset: Int) -> (logs: String, nextOffset: Int) {
+    /// Returns `(logs: "<new JSONL lines>", nextSeq: <max seq seen + 1, or the
+    /// input floor when nothing is newer>)`. The desktop advances its persisted
+    /// per-device cursor to `nextSeq`.
+    ///
+    /// Seq-based rather than line-count-based: a line count is invalidated the
+    /// moment an on-device session file rotates out (the Nth line no longer
+    /// addresses the same logical entry), whereas `seq` is a monotonic per-line
+    /// identity independent of file layout. Lines with no parseable `seq` (only
+    /// possible from a pre-upgrade retained session) are treated as already-seen
+    /// and skipped, so a mixed-schema history never re-ships.
+    static func exportIncrementalSince(sinceSeq: Int) -> (logs: String, nextSeq: Int) {
         let all = shared.readAllSessions()
         let lines = all.isEmpty ? [] : all.components(separatedBy: "\n").filter { !$0.isEmpty }
-        let total = lines.count
-        guard lineOffset < total else {
-            return ("", total)
+        var newLines: [String] = []
+        var maxSeq = sinceSeq
+        for line in lines {
+            guard let seq = Self.parseSeq(line) else { continue }
+            if seq > sinceSeq {
+                newLines.append(line)
+                if seq > maxSeq { maxSeq = seq }
+            }
         }
-        let newLines = lines.dropFirst(lineOffset)
-        let newContent = newLines.joined(separator: "\n") + (newLines.isEmpty ? "" : "\n")
-        return (newContent, total)
+        let nextSeq = maxSeq + (newLines.isEmpty ? 0 : 1)
+        let newContent = newLines.isEmpty ? "" : newLines.joined(separator: "\n") + "\n"
+        return (newContent, nextSeq)
+    }
+
+    /// Extract `fields.seq` from a single JSONL line. Returns nil when the line
+    /// is unparseable or carries no numeric seq (pre-upgrade lines).
+    private static func parseSeq(_ line: String) -> Int? {
+        guard let data = line.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let fields = obj["fields"] as? [String: Any] else { return nil }
+        if let n = fields["seq"] as? Int { return n }
+        if let s = fields["seq"] as? String { return Int(s) }
+        return nil
     }
 
     /// Format only the current session's log.
@@ -292,12 +379,16 @@ final class DiagnosticLog: @unchecked Sendable {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
         let os = ProcessInfo.processInfo.operatingSystemVersionString
-        let device = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] ?? "device"
         // Compute locally — can't call Self.sessionCount() during init (reentrancy deadlock).
         let sessions = allLogFiles().count + 1
         // Call the instance `append` directly, NOT the static `DiagnosticLog.log`:
         // we are still inside `shared`'s one-time initializer, so touching
         // `DiagnosticLog.shared` here would deadlock on dispatch_once.
+        //
+        // No `device` field here: the real hardware model arrives on every line
+        // (including this one) as `device_model`, merged from `deviceFields` in
+        // encodeLine. The old `device` field read SIMULATOR_DEVICE_NAME, which is
+        // the literal string "device" on real hardware — a lie, now removed.
         append(
             "session start",
             tag: "session",
@@ -305,7 +396,6 @@ final class DiagnosticLog: @unchecked Sendable {
             fields: [
                 "version": "\(version)(\(build))",
                 "os": os,
-                "device": device,
                 "sessions": String(sessions),
             ]
         )

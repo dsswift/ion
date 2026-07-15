@@ -106,8 +106,8 @@ extension RemoteEvent {
             return .error(tabId: tabId, message: message)
 
         case .requestDiagnosticLogs:
-            let lineOffset = try container.decodeIfPresent(Int.self, forKey: .lineOffset) ?? 0
-            return .requestDiagnosticLogs(lineOffset: lineOffset)
+            let sinceSeq = try container.decodeIfPresent(Int.self, forKey: .sinceSeq) ?? 0
+            return .requestDiagnosticLogs(sinceSeq: sinceSeq)
 
         default:
             return nil
@@ -218,10 +218,10 @@ extension RemoteEvent {
             try container.encode(fromSeq, forKey: .fromSeq)
             return true
 
-        case .requestDiagnosticLogs(let lineOffset):
+        case .requestDiagnosticLogs(let sinceSeq):
             try container.encode(TypeKey.requestDiagnosticLogs, forKey: .type)
-            if lineOffset > 0 {
-                try container.encode(lineOffset, forKey: .lineOffset)
+            if sinceSeq > 0 {
+                try container.encode(sinceSeq, forKey: .sinceSeq)
             }
             return true
 

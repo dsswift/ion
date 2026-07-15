@@ -54,6 +54,14 @@ extension DiagnosticLog {
     /// Build one JSONL line (including trailing `\n`) for an entry.
     /// Called on `writeQueue`, so correlation-ID reads are already serialized.
     func encodeLine(entry: Entry, fields: [String: String]) -> String {
+        // Merge the immutable device-identity fields and a fresh monotonic seq
+        // into every line's `fields`. Call-site fields win on key collision so a
+        // caller can never be silently shadowed; device_model/app_version/etc.
+        // and seq are reserved keys no caller sets. `seq` is the desktop's
+        // exactly-once pull cursor (see exportIncrementalSince).
+        var merged = deviceFields
+        for (k, v) in fields { merged[k] = v }
+        merged["seq"] = String(_nextSeqOnQueue())
         let line = LogLine(
             ts: tsFormatter.string(from: entry.timestamp),
             level: entry.level,
@@ -62,7 +70,7 @@ extension DiagnosticLog {
             msg: entry.message,
             session_id: currentSessionId,
             conversation_id: currentConversationId,
-            fields: fields
+            fields: merged
         )
         guard let data = try? jsonEncoder.encode(line),
               let json = String(data: data, encoding: .utf8) else {

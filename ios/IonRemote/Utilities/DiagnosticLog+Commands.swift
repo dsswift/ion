@@ -190,8 +190,8 @@ extension DiagnosticLog {
         case .voiceConfig(let enabled, let mode, _):
             log("CMD: voiceConfig enabled=\(enabled) mode=\(mode)", tag: "ipc", level: .info)
 
-        case .diagnosticLogsResponse(let logs, _, _):
-            log("CMD: diagnosticLogsResponse len=\(logs.count)", tag: "ipc", level: .info)
+        case .diagnosticLogsResponse(let logs, _, _, let nextSeq):
+            log("CMD: diagnosticLogsResponse len=\(logs.count) nextSeq=\(nextSeq)", tag: "ipc", level: .info)
 
         case .reorderTabGroups(let orderedIds):
             log("CMD: reorderTabGroups count=\(orderedIds.count)", tag: "ipc", level: .info)

@@ -557,17 +557,18 @@ extension SessionViewModel {
     // MARK: - Diagnostic log request
 
     @MainActor
-    func handleRequestDiagnosticLogs(lineOffset: Int = 0) {
-        let (logs, nextOffset) = lineOffset > 0
-            ? DiagnosticLog.exportIncrementalSince(lineOffset: lineOffset)
-            : (DiagnosticLog.exportAllSessions(), 0)
+    func handleRequestDiagnosticLogs(sinceSeq: Int = 0) {
+        // One uniform path: sinceSeq=0 (full pull) filters seq > 0, which is
+        // every line, so there is no special-case export branch. nextSeq is the
+        // cursor the desktop persists and echoes on the next request.
+        let (logs, nextSeq) = DiagnosticLog.exportIncrementalSince(sinceSeq: sinceSeq)
         let deviceId = activeDeviceId ?? "unknown"
         let deviceName = UIDevice.current.name
         DiagnosticLog.log("diagnostic export", tag: "session", level: .debug, fields: [
-            "count": String(lineOffset),
-            "max": String(nextOffset - lineOffset)
+            "since_seq": String(sinceSeq),
+            "next_seq": String(nextSeq)
         ])
-        send(.diagnosticLogsResponse(logs: logs, deviceId: deviceId, deviceName: deviceName), intent: .automaticEssential)
+        send(.diagnosticLogsResponse(logs: logs, deviceId: deviceId, deviceName: deviceName, nextSeq: nextSeq), intent: .automaticEssential)
     }
 
     // MARK: - Dispatch terminal cleanup

@@ -418,9 +418,9 @@ enum RemoteEvent: Sendable {
     case uploadAttachmentResult(id: String, name: String, path: String, correlationId: String?, error: String?)
     // Tab attachments response
     case tabAttachments(tabId: String, attachments: [TabAttachmentEntry])
-    // Diagnostic log request from desktop. lineOffset = 0 → full export;
-    // lineOffset > 0 → incremental export since that cumulative line count.
-    case requestDiagnosticLogs(lineOffset: Int)
+    // Diagnostic log request from desktop. sinceSeq = 0 → full export;
+    // sinceSeq > 0 → incremental export of lines whose fields.seq exceeds it.
+    case requestDiagnosticLogs(sinceSeq: Int)
 
     /// Full content for a single resource item, fetched on demand.
     /// Sent by the desktop in response to a `request_resource_content`
@@ -581,7 +581,7 @@ enum RemoteEvent: Sendable {
         case clientCmdId
         case runCostUsd, totalCostUsd, groupId  // desktop_tab_meta delta fields (title is already below); runCostUsd is canonical, totalCostUsd is deprecated compat alias
         case content, isError, result, costUsd
-        case lineOffset  // desktop_request_diagnostic_logs incremental cursor
+        case sinceSeq  // desktop_request_diagnostic_logs incremental seq cursor
         case questionId, toolInput, options, message
         case messages, hasMore, cursor, messageId, prompts, relayUrl, relayApiKey
         // desktop_conversation_history — echo of the REQUEST cursor from the

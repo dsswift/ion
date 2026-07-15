@@ -495,8 +495,8 @@ extension SessionViewModel {
             discoveredCommands[directory] = commands
 
         // Diagnostic log request from desktop
-        case .requestDiagnosticLogs(let lineOffset):
-            handleRequestDiagnosticLogs(lineOffset: lineOffset)
+        case .requestDiagnosticLogs(let sinceSeq):
+            handleRequestDiagnosticLogs(sinceSeq: sinceSeq)
 
         // Resource events (D-007)
         case .engineResourceSnapshot(_, _, let kind, _, let rawItems):

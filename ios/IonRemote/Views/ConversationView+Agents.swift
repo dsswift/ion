@@ -27,13 +27,24 @@ extension ConversationView {
                             .font(.caption2)
                         Text("Agents")
                             .font(.caption.weight(.semibold))
-                        Text("(\(visibleAgents.count))")
+                        // Segmented breakdown "· total · active active · done done",
+                        // matching the desktop AgentPanel header. Each count segment
+                        // carries the same token as its row dot (active → statusRunning,
+                        // done → statusDone). Zero segments are dropped. Counts are
+                        // derived over the visible set (agentHeaderBreakdown).
+                        let counts = visibleAgents.agentHeaderBreakdown
+                        Text("· \(counts.total)")
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
-                        if runningAgentCount > 0 {
-                            Text("\(runningAgentCount) active")
+                        if counts.active > 0 {
+                            Text("· \(counts.active) active")
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(theme.accent)
+                                .foregroundStyle(theme.statusRunning)
+                        }
+                        if counts.done > 0 {
+                            Text("· \(counts.done) done")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(theme.statusDone)
                         }
                     }
                     .foregroundStyle(.secondary)

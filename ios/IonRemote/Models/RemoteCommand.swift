@@ -146,7 +146,7 @@ enum RemoteCommand: Codable, Sendable {
     case uploadAttachment(dataUrl: String, name: String, correlationId: String)
     case loadAttachments(tabId: String)
     case voiceConfig(enabled: Bool, mode: String, systemPrompt: String?)
-    case diagnosticLogsResponse(logs: String, deviceId: String, deviceName: String)
+    case diagnosticLogsResponse(logs: String, deviceId: String, deviceName: String, nextSeq: Int)
     /// Set the per-desktop display override. `updatedAt` is ms since epoch
     /// (`Date().timeIntervalSince1970 * 1000`). The desktop applies LWW and
     /// broadcasts the canonical value back via `.remoteDisplay`.
@@ -325,7 +325,7 @@ enum RemoteCommand: Codable, Sendable {
         case oldPath, newPath
         case attachments, dataUrl, name, correlationId, orderedIds, implementationPhase
         case enabled, systemPrompt
-        case logs, deviceId, deviceName
+        case logs, deviceId, deviceName, nextSeq
         case sourceTabId, targetTabId
         case customName, customIcon, updatedAt
         // setDesktopSetting payload. `key` is unique to this command;
