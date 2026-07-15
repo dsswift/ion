@@ -113,6 +113,9 @@ Passed to every hook handler, tool execute function, and command execute functio
 ```typescript
 interface IonContext {
   sessionKey: string
+  conversationId: string
+  depth: number
+  dispatchId: string
   cwd: string
   model: { id: string; contextWindow: number } | null
   config: ExtensionConfig
@@ -156,6 +159,19 @@ ion.on('session_end', (ctx) => {
 ```
 
 Always delete the session entry on `session_end` to avoid leaking state across long-lived extension processes.
+
+**`conversationId: string`** -- durable conversation identity (`{unix_millis}-{hex}`), stable across engine restarts and reattaches. Use it for resource scoping, audit trails, and persistent identity. Empty when no conversation is active.
+
+**`depth: number`** -- dispatch depth of the session that fired the hook: `0` for the root (orchestrator) session, `1` for a directly dispatched child agent, `2` for a grandchild, and so on. This is the explicit root-vs-child discriminator for hooks whose payload carries no agent identity (`session_start`, `session_end`, `turn_start` and friends). A handler that should only act for the root session — a greeting toast, a startup git sync, a one-time bootstrap — branches on `ctx.depth === 0`. Mirrors `AgentInfo.isRoot` on `before_agent_start`, which discriminates per-firing rather than per-session.
+
+```typescript
+ion.on('session_start', (ctx) => {
+  if (ctx.depth > 0) return // dispatched child — skip root-only bootstrap
+  ctx.emit({ type: 'engine_notify', message: 'harness online', level: 'info' })
+})
+```
+
+**`dispatchId: string`** -- dispatch ID owning this context. Empty for the root session (`depth === 0`); populated for child sessions with the ID minted when the agent was spawned, so per-dispatch state can be keyed without inventing a session-local identity.
 
 **`cwd: string`** -- the working directory for the current session.
 

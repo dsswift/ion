@@ -26,6 +26,20 @@ All hooks grouped by category. For each hook: when it fires, what payload it rec
 | `agent_start` | Sub-agent starts | `AgentInfo{Name, Task}` | ignored | Observe only |
 | `agent_end` | Sub-agent ends | `AgentInfo{Name, Task}` | ignored | Observe only |
 
+> **`session_start` fires once per extension host — including dispatched
+> child sessions.** When a dispatch specifies an `extensionDir`, the engine
+> loads a fresh extension host for the child and fires `session_start` on it
+> before the child run begins. Because the payload is `nil`, the context
+> carries the discriminator: `ctx.depth` is `0` for the root (orchestrator)
+> session and `> 0` for dispatched children (`ctx.dispatchId` names the
+> owning dispatch). Handlers that perform root-only work — greeting toasts,
+> startup syncs, one-time bootstraps — must branch on `ctx.depth === 0` or
+> they will repeat that work for every dispatched agent. `ctx.depth` and
+> `ctx.dispatchId` are populated on **every** hook's context, not just
+> `session_start`; they are the session-level counterpart of
+> `AgentInfo.IsRoot` on `before_agent_start` (which discriminates
+> per-firing rather than per-session).
+
 ### Payload Types
 
 **TurnInfo**

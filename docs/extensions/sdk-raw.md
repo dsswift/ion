@@ -306,7 +306,7 @@ Handle these by checking the `method` field on incoming messages alongside the e
 2. **Handle unknown hooks gracefully.** The engine may send any hook to subprocess extensions. Return null for hooks you don't care about.
 3. **Respect the RPC timeout.** The engine drops calls that don't respond within the configured timeout (default: 30 seconds, configurable via `timeouts.extensionRpcMs` in `engine.json`).
 4. **Never write non-JSON to stdout.** Debug output goes to stderr.
-5. **Parse the `_ctx` field** from hook and tool params if you need session context (cwd, model, config).
+5. **Parse the `_ctx` field** from hook and tool params if you need session context (`cwd`, `sessionKey`, `conversationId`, `model`, `config`, and — for dispatched child sessions only — `depth` and `dispatchId`; both keys are omitted for the root session, so treat absence as `depth: 0`).
 6. **Use unique IDs for outgoing requests.** Start from a high number (e.g., 100000) to avoid collisions with engine-assigned IDs.
 
 ## Compiled binary extensions
