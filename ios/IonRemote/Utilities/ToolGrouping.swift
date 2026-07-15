@@ -88,32 +88,38 @@ private func groupConversationItemsClassic(_ messages: [Message]) -> [Conversati
 
 /// Unified turn grouping: accumulate tool + assistant messages between user
 /// boundaries and emit `.agentTurn` when tools are present.
-/// Thinking blocks are hoisted into the turn header when tools are present,
-/// matching the desktop's `flushTurn` behavior in `tool-helpers.ts:150-178`.
+/// A turn's thinking rows are MERGED into a single display row
+/// (mergeThinkingMessages) and hoisted into the turn header when tools are
+/// present, matching the desktop's `flushTurn` behavior in `tool-helpers.ts`.
 private func groupConversationItemsUnified(_ messages: [Message]) -> [ConversationItem] {
     var result: [ConversationItem] = []
     var turnTools: [Message] = []
     var turnAssistants: [Message] = []
-    // The thinking row for the current turn, if the model reasoned this turn.
-    // Hoisted into the agentTurn header when tools are present. When there
-    // are no tools it is emitted standalone before the assistant messages,
-    // mirroring desktop tool-helpers.ts:163-173.
-    var turnThinking: Message? = nil
+    // All thinking rows for the current turn, in stream order. A single run
+    // makes many API rounds and each opens its own thinking block, so a turn
+    // routinely accumulates many `.thinking` rows. They merge into ONE
+    // display row per turn at flush time — one continuous thought stream
+    // pinned at the top of the turn, mirroring the desktop's grouping.
+    var turnThinking: [Message] = []
 
     func flushTurn() {
+        // One merged thought row per turn (or nil when the model did not
+        // reason this turn).
+        let merged = turnThinking.isEmpty ? nil : mergeThinkingMessages(turnThinking)
         if !turnTools.isEmpty {
             let isActive = turnTools.contains { $0.toolStatus == .running }
             result.append(.agentTurn(
                 tools: turnTools,
                 assistantMessages: turnAssistants,
                 isActive: isActive,
-                thinking: turnThinking
+                thinking: merged
             ))
         } else {
-            // No tools — emit thinking standalone first (if any), then each
-            // assistant message. Thinking precedes assistant output, matching
-            // the engine's block_start → text ordering within a turn.
-            if let t = turnThinking {
+            // No tools — emit the merged thinking row standalone first (if
+            // any), then each assistant message. Thinking precedes assistant
+            // output, matching the engine's block_start → text ordering
+            // within a turn.
+            if let t = merged {
                 result.append(.thinking(t))
             }
             for m in turnAssistants {
@@ -122,7 +128,7 @@ private func groupConversationItemsUnified(_ messages: [Message]) -> [Conversati
         }
         turnTools = []
         turnAssistants = []
-        turnThinking = nil
+        turnThinking = []
     }
 
     for msg in messages {
@@ -143,16 +149,12 @@ private func groupConversationItemsUnified(_ messages: [Message]) -> [Conversati
             continue
         }
 
-        // Capture the turn's thinking row to hoist into the turn header.
-        // If a turn somehow produced a second thinking row before flushing,
-        // emit the prior one standalone so neither is lost, then keep the
-        // newest as the turn's header block (mirroring desktop
-        // tool-helpers.ts:187-196).
+        // Accumulate the turn's thinking rows; they merge into one display
+        // row per turn at flush time (see flushTurn). Never emitted
+        // standalone mid-turn — that is what fragmented a turn into dozens
+        // of independent "Thought" rows (desktop parity: tool-helpers.ts).
         if msg.role == .thinking {
-            if let prior = turnThinking {
-                result.append(.thinking(prior))
-            }
-            turnThinking = msg
+            turnThinking.append(msg)
             continue
         }
 
@@ -164,6 +166,44 @@ private func groupConversationItemsUnified(_ messages: [Message]) -> [Conversati
     }
     flushTurn()
     return result
+}
+
+// MARK: - Thinking merge (one thought row per turn)
+
+/// Merge all of a turn's thinking rows into ONE display message (unified
+/// turn view). Display-level only — the underlying messages are never
+/// mutated. Mirrors the desktop's `mergeThinkingMessages` in
+/// `thinking-block-helpers.ts`; the two implementations are lockstep.
+///
+/// Field rules:
+///   - id: the FIRST row's id (stable identity — no re-render churn as
+///     later blocks arrive).
+///   - content: non-empty contents joined with a blank line, in order.
+///   - thinkingActive: true if ANY row is still active.
+///   - thinkingElapsedSeconds / thinkingTotalTokens: summed across rows
+///     (nil when no row carried the field).
+///   - thinkingRedacted: true only when EVERY row is redacted.
+///
+/// Single-row input returns the row unchanged.
+func mergeThinkingMessages(_ msgs: [Message]) -> Message {
+    guard msgs.count > 1 else { return msgs[0] }
+
+    let contents = msgs.map(\.content).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    var elapsed: Double?
+    var tokens: Int?
+    for m in msgs {
+        if let s = m.thinkingElapsedSeconds { elapsed = (elapsed ?? 0) + s }
+        if let t = m.thinkingTotalTokens { tokens = (tokens ?? 0) + t }
+    }
+
+    var merged = msgs[0]
+    merged.content = contents.joined(separator: "\n\n")
+    merged.thinkingActive = msgs.contains { $0.thinkingActive }
+    merged.thinkingElapsedSeconds = elapsed
+    merged.thinkingTotalTokens = tokens
+    merged.thinkingRedacted = msgs.allSatisfy { $0.thinkingRedacted }
+    return merged
 }
 
 // MARK: - Consecutive assistant content

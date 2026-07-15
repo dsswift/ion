@@ -57,6 +57,15 @@ final class PlanContentStore {
         states[questionId]?.complete ?? false
     }
 
+    /// Returns the accumulated content for a questionId regardless of whether
+    /// the fetch is complete. Returns nil when no content has arrived yet.
+    /// Allows the plan card to show partial content while pages are still in
+    /// flight, rather than showing nothing until the final page arrives.
+    func currentContent(for questionId: String) -> String? {
+        guard let s = states[questionId], !s.content.isEmpty else { return nil }
+        return s.content
+    }
+
     // MARK: - Mutations
 
     /// Record that a fetch has been initiated for a questionId. Marks the
@@ -71,7 +80,10 @@ final class PlanContentStore {
             states[questionId]?.tabId = tabId
         }
         states[questionId]?.fetching = true
-        DiagnosticLog.log("PLAN-CONTENT-STORE: markFetching questionId=\(questionId.prefix(12)) tabId=\(tabId.prefix(8))")
+        DiagnosticLog.log("plan content mark fetching", tag: "plan.contentstore", fields: [
+            "question_id": String(questionId.prefix(12)),
+            "tab_id": String(tabId.prefix(8))
+        ])
     }
 
     /// The tabId that initiated the fetch, for use in continuation requests.
@@ -94,10 +106,17 @@ final class PlanContentStore {
         if !hasMore {
             states[questionId]?.complete = true
             states[questionId]?.fetching = false
-            DiagnosticLog.log("PLAN-CONTENT-STORE: complete questionId=\(questionId.prefix(12)) totalBytes=\(totalBytes) contentLen=\(states[questionId]?.content.count ?? 0)")
+            DiagnosticLog.log("plan content complete", tag: "plan.contentstore", fields: [
+                "question_id": String(questionId.prefix(12)),
+                "count": String(totalBytes),
+                "max": String(states[questionId]?.content.count ?? 0)
+            ])
         } else {
             states[questionId]?.fetching = true
-            DiagnosticLog.log("PLAN-CONTENT-STORE: page questionId=\(questionId.prefix(12)) offset=\(states[questionId]?.content.count ?? 0) hasMore=true")
+            DiagnosticLog.log("plan content page", tag: "plan.contentstore", fields: [
+                "question_id": String(questionId.prefix(12)),
+                "count": String(states[questionId]?.content.count ?? 0)
+            ])
         }
     }
 

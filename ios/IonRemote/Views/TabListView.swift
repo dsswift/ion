@@ -1,7 +1,11 @@
 import SwiftUI
 
 struct TabListView: View {
-    @Environment(\.appTheme) private var theme
+    // Internal (not private) so the same-module TabListView+DetailViews
+    // extension can read it (the detail/destination + shared-component view
+    // builders were extracted there to keep this file under the Swift 600-line
+    // cap; private is file-scoped and does not cross the extension boundary).
+    @Environment(\.appTheme) var theme
     // Internal (not private) so the same-module TabListView+Helpers extension
     // can read it — the helper extraction (ca74c229) moved viewModel-reading
     // helpers out but left this `private`, which doesn't cross file boundaries
@@ -12,7 +16,9 @@ struct TabListView: View {
 
     @State private var showSettings = false
     @State private var showNotifications = false
-    @State private var showNewTab = false
+    // Internal (not private) so the same-module TabListView+DetailViews
+    // extension can read it — see the note on `theme` above.
+    @State var showNewTab = false
     // When the new-tab sheet was opened from a group header's `+` button,
     // this holds the target group's id so we can stamp `pinToGroupId` on
     // the outbound createTab command (fix for issue: per-group `+` would
@@ -22,6 +28,13 @@ struct TabListView: View {
     // Reset to nil on every sheet close so the global toolbar `+` is
     // never accidentally treated as a per-group request.
     @State private var pendingPinToGroupId: String? = nil
+    // Pending new-conversation request from TabListNewTabSheet. Stored here
+    // so `requestNewConversation` fires in `onDismiss` — after the sheet
+    // animation completes — rather than mid-animation. SwiftUI silently drops
+    // a confirmationDialog that is presented while a sheet is still animating
+    // out, which caused the "Plain conversation" tap to appear to do nothing.
+    @State private var pendingNewConversationDir: String? = nil
+    @State private var pendingNewConversationPin: String? = nil
     @State private var showPairingSheet = false
     // When non-nil, the new-conversation profile picker is shown.
     // Holds the target directory for tab creation and optional group pin id.
@@ -37,8 +50,10 @@ struct TabListView: View {
     }()
     @State var searchText: String = ""
 
-    // iPad: selection-based navigation
-    @State private var selectedTabId: String?
+    // iPad: selection-based navigation. selectedTabId is internal (not private)
+    // so the same-module TabListView+DetailViews extension can read it — see the
+    // note on `theme` above.
+    @State var selectedTabId: String?
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     // iPhone: path-based navigation
@@ -78,13 +93,31 @@ struct TabListView: View {
             // the sheet has multiple dismissal paths (Cancel button, tap
             // on a row's `+`, swipe-down).
             pendingPinToGroupId = nil
+            // Drain any pending new-conversation request that the sheet
+            // stored (instead of calling requestNewConversation immediately).
+            // Calling requestNewConversation from inside the sheet button's
+            // action (while isPresented=false is mid-animation) causes
+            // SwiftUI to silently drop the confirmationDialog presented by
+            // the .showPicker routing outcome. onDismiss fires after the
+            // animation completes, so the dialog presents cleanly.
+            if let dir = pendingNewConversationDir {
+                let pin = pendingNewConversationPin
+                pendingNewConversationDir = nil
+                pendingNewConversationPin = nil
+                requestNewConversation(directory: dir, pinToGroupId: pin)
+            }
         }) {
             TabListNewTabSheet(
                 directories: allDirectories,
                 pendingPinToGroupId: pendingPinToGroupId,
                 isPresented: $showNewTab,
                 onNewConversation: { dir, pin in
-                    requestNewConversation(directory: dir, pinToGroupId: pin)
+                    // Store the request; onDismiss drains it once the sheet
+                    // animation completes. This prevents the confirmationDialog
+                    // from being presented while the sheet is still animating out
+                    // (SwiftUI silently drops overlapping sheet/dialog presentations).
+                    pendingNewConversationDir = dir
+                    pendingNewConversationPin = pin
                 },
                 onCreateTerminalTab: { dir in
                     viewModel.createTerminalTab(workingDirectory: dir)
@@ -108,7 +141,9 @@ struct TabListView: View {
                 let pin = conversationPickerPinToGroupId
                 conversationPickerDirectory = nil
                 conversationPickerPinToGroupId = nil
-                DiagnosticLog.log("NEW-CONV: picker selected plain dir=\(dir?.prefix(40) ?? "nil")")
+                DiagnosticLog.log("new conv picker selected plain", tag: "view.tablist", fields: [
+                    "path": dir?.prefix(40).description ?? "nil"
+                ])
                 viewModel.createTab(workingDirectory: dir, pinToGroupId: pin)
             }
             // Engine profiles.
@@ -118,7 +153,10 @@ struct TabListView: View {
                     let pin = conversationPickerPinToGroupId
                     conversationPickerDirectory = nil
                     conversationPickerPinToGroupId = nil
-                    DiagnosticLog.log("NEW-CONV: picker selected profile=\(profile.id.prefix(8)) dir=\(dir?.prefix(40) ?? "nil")")
+                    DiagnosticLog.log("new conv picker selected profile", tag: "view.tablist", fields: [
+                        "reason": String(profile.id.prefix(8)),
+                        "path": dir?.prefix(40).description ?? "nil"
+                    ])
                     viewModel.createTab(workingDirectory: dir, pinToGroupId: pin, profileId: profile.id)
                 }
             }
@@ -177,13 +215,18 @@ struct TabListView: View {
         .navigationSplitViewStyle(.balanced)
         .onChange(of: viewModel.pendingNavigationTabId) { _, tabId in
             if let tabId {
-                DiagnosticLog.log("NAV: iPad pendingNavigation -> selectedTabId=\(tabId.prefix(8))")
+                DiagnosticLog.log("nav ipad pending navigation", tag: "view.nav", fields: [
+                    "tab_id": String(tabId.prefix(8))
+                ])
                 selectedTabId = tabId
                 viewModel.pendingNavigationTabId = nil
             }
         }
         .onChange(of: selectedTabId) { old, tabId in
-            DiagnosticLog.log("NAV: iPad selectedTabId changed old=\(old?.prefix(8) ?? "nil") new=\(tabId?.prefix(8) ?? "nil")")
+            DiagnosticLog.log("nav ipad selected tab changed", tag: "view.nav", fields: [
+                "reason": old?.prefix(8).description ?? "nil",
+                "tab_id": tabId?.prefix(8).description ?? "nil"
+            ])
             // Notify the desktop which tab is focused so it can route
             // intercept events to this device correctly.
             viewModel.sendReportFocus(tabId: tabId)
@@ -199,7 +242,9 @@ struct TabListView: View {
             }
             if let bg = theme.backgroundView {
                 bg.ignoresSafeArea().opacity(0.9)
-                let _ = DiagnosticLog.log("THEME-BG: rendering backgroundView for theme \(theme.id)")
+                let _ = DiagnosticLog.trace("theme background rendering", tag: "view.themebg", fields: [
+                    "status": theme.id
+                ])
             }
             NavigationStack(path: $navigationPath) {
                 List {
@@ -244,17 +289,25 @@ struct TabListView: View {
                 }
                 .navigationDestination(for: String.self) { tabId in
                     let tab = viewModel.tab(for: tabId)
-                    let _ = DiagnosticLog.log("NAV: iPhone push tabId=\(tabId.prefix(8)) isEngine=\(tab?.hasEngineExtension ?? false) isTerminal=\(tab?.isTerminalOnly ?? false)")
+                    let _ = DiagnosticLog.log("nav iphone push", tag: "view.nav", fields: [
+                        "tab_id": String(tabId.prefix(8)),
+                        "agent": String(tab?.hasEngineExtension ?? false),
+                        "status": String(tab?.isTerminalOnly ?? false)
+                    ])
                     destinationView(for: tabId)
                         .onAppear {
-                            DiagnosticLog.log("NAV: iPhone onAppear tabId=\(tabId.prefix(8))")
+                            DiagnosticLog.log("nav iphone on appear", tag: "view.nav", fields: [
+                                "tab_id": String(tabId.prefix(8))
+                            ])
                             viewModel.sendReportFocus(tabId: tabId)
                         }
                         .onDisappear {
                             // Only clear focus if we're popping back to the list,
                             // not when a child sheet appears over the conversation.
                             if navigationPath.isEmpty {
-                                DiagnosticLog.log("NAV: iPhone onDisappear tabId=\(tabId.prefix(8)) popped to list")
+                                DiagnosticLog.log("nav iphone on disappear popped to list", tag: "view.nav", fields: [
+                                    "tab_id": String(tabId.prefix(8))
+                                ])
                                 viewModel.sendReportFocus(tabId: nil)
                             }
                         }
@@ -265,7 +318,9 @@ struct TabListView: View {
                 }
                 .onChange(of: viewModel.pendingNavigationTabId) { _, tabId in
                     if let tabId {
-                        DiagnosticLog.log("NAV: iPhone pendingNavigation push tabId=\(tabId.prefix(8))")
+                        DiagnosticLog.log("nav iphone pending navigation push", tag: "view.nav", fields: [
+                            "tab_id": String(tabId.prefix(8))
+                        ])
                         navigationPath.append(tabId)
                         viewModel.pendingNavigationTabId = nil
                     }
@@ -472,103 +527,6 @@ struct TabListView: View {
                 toggleGroupCollapsed(group.id)
             }
         )
-    }
-
-    // MARK: - Detail / Destination
-
-    @ViewBuilder
-    private func destinationView(for tabId: String) -> some View {
-        if viewModel.tab(for: tabId)?.isTerminalOnly == true {
-            RemoteTerminalView(tabId: tabId)
-        } else {
-            // One unified conversation view for every non-terminal tab — plain
-            // or extension (#256). Engine-only chrome self-gates on
-            // `tabHasExtensions` inside the view.
-            ConversationView(tabId: tabId)
-        }
-    }
-
-    @ViewBuilder
-    private var detailView: some View {
-        if let tabId = selectedTabId, viewModel.tab(for: tabId) != nil {
-            destinationView(for: tabId)
-                .id(tabId)
-        } else {
-            VStack(spacing: 12) {
-                Image(systemName: "sidebar.leading")
-                    .font(.system(size: 40))
-                    .foregroundStyle(.tertiary)
-                Text("Select a tab")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text("Choose a conversation from the sidebar.")
-                    .font(.subheadline)
-                    .foregroundStyle(.tertiary)
-            }
-        }
-    }
-
-    // MARK: - Shared Components
-
-    private var newTabButton: some View {
-        Button {
-            if allDirectories.isEmpty {
-                // No directories known yet: route immediately (will create plain).
-                requestNewConversation(directory: nil, pinToGroupId: nil)
-            } else {
-                showNewTab = true
-            }
-        } label: {
-            Image(systemName: "plus")
-        }
-        .contextMenu {
-            if let defaultDir = allDirectories.first {
-                Button { requestNewConversation(directory: defaultDir.fullPath, pinToGroupId: nil) } label: {
-                    Label("New Tab", systemImage: "plus")
-                }
-                Button { viewModel.createTerminalTab(workingDirectory: defaultDir.fullPath) } label: {
-                    Label("New Terminal", systemImage: "terminal")
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var emptyStateOverlay: some View {
-        if viewModel.tabs.isEmpty {
-            VStack(spacing: 12) {
-                Image(systemName: "terminal")
-                    .font(.system(size: 40))
-                    .foregroundStyle(theme.accent)
-                Text("No Tabs")
-                    .font(.title3.weight(.semibold))
-                Text("Tap + to create a new tab or pull to refresh.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            .padding()
-        }
-    }
-
-    @ViewBuilder
-    private var searchEmptyStateOverlay: some View {
-        let isSearching = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        if isSearching && filteredDisplayGroups.isEmpty && !viewModel.tabs.isEmpty {
-            VStack(spacing: 12) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 40))
-                    .foregroundStyle(.tertiary)
-                Text("No Results")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text("No tabs match \"\(searchText.trimmingCharacters(in: .whitespacesAndNewlines))\".")
-                    .font(.subheadline)
-                    .foregroundStyle(.tertiary)
-                    .multilineTextAlignment(.center)
-            }
-            .padding()
-        }
     }
 
     // MARK: - Filtered Display Groups

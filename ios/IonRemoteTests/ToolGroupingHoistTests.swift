@@ -4,14 +4,16 @@ import XCTest
 /// Behavior tests for the unified-turn thinking-hoist algorithm in
 /// groupConversationItemsUnified (ToolGrouping.swift).
 ///
-/// Four cases pinned here:
+/// Cases pinned here:
 ///   (a) Hoist      — [thinking, tool, tool, assistant] → ONE .agentTurn with
 ///                    thinking set and tools/assistantMessages populated.
 ///   (b) No-tools   — [thinking, assistant] → standalone .thinking then
 ///                    .assistant, no .agentTurn.
-///   (c) Two-think  — [thinkingA, tool, thinkingB, tool, assistant] → one
-///                    standalone .thinking(A) then one .agentTurn whose
-///                    thinking == B (newest wins, A emitted standalone first).
+///   (c) Merge      — N thinking rows in one turn merge into ONE thought row
+///                    (stable first id, joined content, summed summary
+///                    fields, any-active liveness, all-redacted). Never
+///                    emitted standalone mid-turn. Desktop lockstep:
+///                    mergeThinkingMessages in thinking-block-helpers.ts.
 ///   (d) Label      — AgentTurnRow idle label "Used N tools", active
 ///                    "Running tools…" (desktop parity).
 final class ToolGroupingHoistTests: XCTestCase {
@@ -91,12 +93,14 @@ final class ToolGroupingHoistTests: XCTestCase {
         XCTAssertEqual(a.id, "as1")
     }
 
-    // MARK: - (c) Two-thinking defensive: prior thinking flushed standalone
+    // MARK: - (c) Merge: one thought row per turn
 
-    /// [thinkingA, tool, thinkingB, tool, assistant]:
-    /// thinkingB arrived during the same turn (before flush), so A must be
-    /// emitted standalone defensively and B wins as the turn's thinking.
-    func testTwoThinkingKeepsNewestEmitsPriorStandalone() {
+    /// [thinkingA, tool, thinkingB, tool, assistant]: both thinking rows
+    /// belong to the same turn, so they MERGE into one thought row on the
+    /// agentTurn — nothing is emitted standalone. Regression guard for the
+    /// old behavior that flushed A standalone and kept only B (fragmenting
+    /// a turn into dozens of independent "Thought" rows).
+    func testMultipleThinkingRowsMergeIntoOneTurnRow() {
         let thinkingA = makeMsg(id: "thA", role: .thinking)
         let tool1     = makeMsg(id: "to1", role: .tool)
         let thinkingB = makeMsg(id: "thB", role: .thinking)
@@ -108,21 +112,96 @@ final class ToolGroupingHoistTests: XCTestCase {
             unifiedTurnView: true
         )
 
-        // Expected: standalone .thinking(A), then .agentTurn(thinking: B)
-        XCTAssertEqual(items.count, 2, "Expected standalone thinkingA + agentTurn(thinkingB)")
-        guard case .thinking(let a) = items[0] else {
-            XCTFail("Expected standalone .thinking(A) at index 0, got \(items[0])")
-            return
-        }
-        XCTAssertEqual(a.id, "thA", "first item must be thinkingA flushed standalone")
-
-        guard case .agentTurn(let tools, let assistants, _, let hoisted) = items[1] else {
-            XCTFail("Expected .agentTurn at index 1, got \(items[1])")
+        // ONE item: the agentTurn with a single merged thought row.
+        XCTAssertEqual(items.count, 1, "Expected one agentTurn with merged thinking; got \(items.count) items")
+        guard case .agentTurn(let tools, let assistants, _, let merged) = items[0] else {
+            XCTFail("Expected .agentTurn, got \(items[0])")
             return
         }
         XCTAssertEqual(tools.count, 2)
         XCTAssertEqual(assistants.count, 1)
-        XCTAssertEqual(hoisted?.id, "thB", "newest thinking (B) must be the turn's hoisted thinking")
+        XCTAssertEqual(merged?.id, "thA", "merged row keeps the FIRST row's id (stable identity)")
+        XCTAssertEqual(merged?.content, "content-thA\n\ncontent-thB", "contents join in stream order")
+    }
+
+    /// mergeThinkingMessages field rules: summed summary fields, any-active
+    /// liveness, all-redacted only when every row is redacted.
+    func testMergeThinkingMessagesFieldRules() {
+        var a = makeMsg(id: "a", role: .thinking)
+        a.thinkingActive = false
+        a.thinkingElapsedSeconds = 2.5
+        a.thinkingTotalTokens = 100
+        var b = makeMsg(id: "b", role: .thinking)
+        b.thinkingActive = true
+        b.thinkingElapsedSeconds = 3.5
+        b.thinkingTotalTokens = 250
+
+        let merged = mergeThinkingMessages([a, b])
+        XCTAssertEqual(merged.id, "a")
+        XCTAssertTrue(merged.thinkingActive, "live while ANY row is active")
+        XCTAssertEqual(merged.thinkingElapsedSeconds, 6.0)
+        XCTAssertEqual(merged.thinkingTotalTokens, 350)
+        XCTAssertFalse(merged.thinkingRedacted, "not redacted unless EVERY row is")
+
+        var r1 = makeMsg(id: "r1", role: .thinking)
+        r1.thinkingRedacted = true
+        r1.content = ""
+        var r2 = makeMsg(id: "r2", role: .thinking)
+        r2.thinkingRedacted = true
+        r2.content = ""
+        XCTAssertTrue(mergeThinkingMessages([r1, r2]).thinkingRedacted)
+    }
+
+    /// Single-row input passes through unchanged (no synthesis).
+    func testMergeSingleRowPassthrough() {
+        var only = makeMsg(id: "solo", role: .thinking)
+        only.thinkingElapsedSeconds = 4
+        let merged = mergeThinkingMessages([only])
+        XCTAssertEqual(merged.id, "solo")
+        XCTAssertEqual(merged.content, "content-solo")
+        XCTAssertEqual(merged.thinkingElapsedSeconds, 4)
+    }
+
+    /// No-tools path: multiple thinking rows still merge into ONE standalone
+    /// .thinking item before the assistant text.
+    func testNoToolsPathMergesThinkingRows() {
+        let thinkingA = makeMsg(id: "thA", role: .thinking)
+        let thinkingB = makeMsg(id: "thB", role: .thinking)
+        let assistant = makeMsg(id: "as1", role: .assistant)
+
+        let items = groupConversationItems([thinkingA, thinkingB, assistant], unifiedTurnView: true)
+
+        XCTAssertEqual(items.count, 2, "Expected merged .thinking then .assistant")
+        guard case .thinking(let t) = items[0] else {
+            XCTFail("Expected .thinking at index 0, got \(items[0])")
+            return
+        }
+        XCTAssertEqual(t.id, "thA")
+        XCTAssertEqual(t.content, "content-thA\n\ncontent-thB")
+    }
+
+    /// Thinking rows never merge across user-turn boundaries.
+    func testThinkingDoesNotMergeAcrossUserBoundary() {
+        let thinkingA = makeMsg(id: "thA", role: .thinking)
+        let tool1     = makeMsg(id: "to1", role: .tool)
+        let user      = makeMsg(id: "us1", role: .user)
+        let thinkingB = makeMsg(id: "thB", role: .thinking)
+        let tool2     = makeMsg(id: "to2", role: .tool)
+
+        let items = groupConversationItems(
+            [thinkingA, tool1, user, thinkingB, tool2],
+            unifiedTurnView: true
+        )
+
+        // [agentTurn(thA), user, agentTurn(thB)]
+        XCTAssertEqual(items.count, 3)
+        guard case .agentTurn(_, _, _, let first) = items[0],
+              case .agentTurn(_, _, _, let second) = items[2] else {
+            XCTFail("Expected agentTurn at 0 and 2, got \(items)")
+            return
+        }
+        XCTAssertEqual(first?.content, "content-thA")
+        XCTAssertEqual(second?.content, "content-thB")
     }
 
     // MARK: - (d) Label parity with desktop
