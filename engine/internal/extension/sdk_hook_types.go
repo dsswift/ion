@@ -279,6 +279,12 @@ type ElicitationResultInfo struct {
 type ModelSelectInfo struct {
 	RequestedModel  string   `json:"requestedModel"`
 	AvailableModels []string `json:"availableModels,omitempty"`
+	// Prompt is the RAW user prompt for this turn, captured BEFORE any
+	// before_prompt rewrite. model_select routes on this raw text (content
+	// and length routing: pick the model that fits the request), while
+	// before_prompt then adapts the chosen model's prompt. Empty when the
+	// firing site has no prompt in hand.
+	Prompt string `json:"prompt,omitempty"`
 }
 
 // SlashResolvedInfo describes a resolved slash-command invocation passed to the

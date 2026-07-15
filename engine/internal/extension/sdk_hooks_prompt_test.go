@@ -164,13 +164,16 @@ func TestSDK_FireSessionBeforeFork_Cancel(t *testing.T) {
 func TestSDK_FireModelSelect_Override(t *testing.T) {
 	sdk := NewSDK()
 
+	var received ModelSelectInfo
 	sdk.On(HookModelSelect, func(ctx *Context, payload interface{}) (interface{}, error) {
+		received = payload.(ModelSelectInfo)
 		return "claude-opus-4-20250514", nil
 	})
 
 	model, err := sdk.FireModelSelect(testCtx(), ModelSelectInfo{
 		RequestedModel:  "claude-sonnet-4-20250514",
 		AvailableModels: []string{"claude-sonnet-4-20250514", "claude-opus-4-20250514"},
+		Prompt:          "summarize this very long document",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -178,19 +181,33 @@ func TestSDK_FireModelSelect_Override(t *testing.T) {
 	if model != "claude-opus-4-20250514" {
 		t.Fatalf("expected model override, got %q", model)
 	}
+	// The handler must see the RAW prompt so it can route on content/length.
+	if received.Prompt != "summarize this very long document" {
+		t.Fatalf("expected raw prompt in payload, got %q", received.Prompt)
+	}
 }
 
 func TestSDK_FireModelSelect_NoOverride(t *testing.T) {
 	sdk := NewSDK()
 
+	var received ModelSelectInfo
+	sdk.On(HookModelSelect, func(ctx *Context, payload interface{}) (interface{}, error) {
+		received = payload.(ModelSelectInfo)
+		return nil, nil
+	})
+
 	model, err := sdk.FireModelSelect(testCtx(), ModelSelectInfo{
 		RequestedModel: "claude-sonnet-4-20250514",
+		Prompt:         "hello",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if model != "claude-sonnet-4-20250514" {
 		t.Fatalf("expected original model, got %q", model)
+	}
+	if received.Prompt != "hello" {
+		t.Fatalf("expected raw prompt in payload, got %q", received.Prompt)
 	}
 }
 

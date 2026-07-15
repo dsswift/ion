@@ -98,7 +98,7 @@ func TestApiBackend_TaskCreated_FiresOnTurnStart(t *testing.T) {
 	s.extGroup = group
 
 	runCfg := &backend.RunConfig{}
-	mgr.wireExtensionHooks(s, "api-task1", "req-1", apiBackend, group, runCfg)
+	mgr.wireExtensionHooks(s, "api-task1", "req-1", apiBackend, group, runCfg, "")
 
 	if runCfg.Hooks.OnTurnStart == nil {
 		t.Fatal("expected OnTurnStart hook to be wired")
@@ -138,7 +138,7 @@ func TestApiBackend_TaskCompleted_FiresOnTurnEnd(t *testing.T) {
 	s.extGroup = group
 
 	runCfg := &backend.RunConfig{}
-	mgr.wireExtensionHooks(s, "api-task2", "req-2", apiBackend, group, runCfg)
+	mgr.wireExtensionHooks(s, "api-task2", "req-2", apiBackend, group, runCfg, "")
 
 	if runCfg.Hooks.OnTurnEnd == nil {
 		t.Fatal("expected OnTurnEnd hook to be wired")
@@ -174,7 +174,7 @@ func TestApiBackend_TaskLifecycle_PairedTaskIDs(t *testing.T) {
 	s.extGroup = group
 
 	runCfg := &backend.RunConfig{}
-	mgr.wireExtensionHooks(s, "api-task3", "req-3", apiBackend, group, runCfg)
+	mgr.wireExtensionHooks(s, "api-task3", "req-3", apiBackend, group, runCfg, "")
 
 	// Three full turns.
 	for i := 1; i <= 3; i++ {
