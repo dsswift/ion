@@ -43,6 +43,12 @@ const (
 	NotifTurnCompleted      = "turn/completed"
 	NotifError              = "error"
 	NotifLoginCompleted     = "account/login/completed"
+	// NotifPlanDelta streams incremental plan markdown while a plan-mode turn
+	// drafts its proposal. The schema marks the COMPLETED plan item (an
+	// item/completed whose item.type is "plan") as authoritative — its text may
+	// not match the delta concatenation — so the engine captures the plan from
+	// the completed item and does not accumulate these deltas.
+	NotifPlanDelta = "item/plan/delta"
 )
 
 // --- Server → client request methods (approvals) ---
@@ -69,9 +75,18 @@ type ClientInfo struct {
 	Title   string `json:"title,omitempty"`
 }
 
+// InitializeCapabilities declares the client capabilities negotiated in the
+// initialize handshake. experimentalApi opts into codex's experimental API
+// methods and fields — required for turn/start to accept collaborationMode
+// (plan mode). Without it codex rejects the field with rpc error -32600.
+type InitializeCapabilities struct {
+	ExperimentalApi bool `json:"experimentalApi,omitempty"`
+}
+
 // InitializeParams is the "initialize" request payload.
 type InitializeParams struct {
-	ClientInfo ClientInfo `json:"clientInfo"`
+	ClientInfo   ClientInfo              `json:"clientInfo"`
+	Capabilities *InitializeCapabilities `json:"capabilities,omitempty"`
 }
 
 // InitializeResult is the "initialize" response payload.
@@ -197,15 +212,33 @@ type SandboxPolicy struct {
 	Type string `json:"type"`
 }
 
+// CollaborationModeSettings carries the per-mode settings inside a
+// CollaborationMode. Model is required by the codex schema whenever a
+// collaboration mode is sent; the other fields are optional.
+type CollaborationModeSettings struct {
+	Model                 string `json:"model"`
+	ReasoningEffort       string `json:"reasoning_effort,omitempty"`
+	DeveloperInstructions string `json:"developer_instructions,omitempty"`
+}
+
+// CollaborationMode selects the codex collaboration mode for a turn. Mode is
+// "plan" or "default". It is a per-turn parameter: sending it sets the mode
+// for that turn; omitting it leaves codex's current thread mode in place.
+type CollaborationMode struct {
+	Mode     string                    `json:"mode"`
+	Settings CollaborationModeSettings `json:"settings"`
+}
+
 // TurnStartParams is the "turn/start" request payload.
 type TurnStartParams struct {
-	ThreadID       string         `json:"threadId"`
-	Input          []any          `json:"input"`
-	Model          string         `json:"model,omitempty"`
-	Effort         string         `json:"effort,omitempty"`
-	ServiceTier    string         `json:"serviceTier,omitempty"`
-	ApprovalPolicy string         `json:"approvalPolicy,omitempty"`
-	SandboxPolicy  *SandboxPolicy `json:"sandboxPolicy,omitempty"`
+	ThreadID          string             `json:"threadId"`
+	Input             []any              `json:"input"`
+	Model             string             `json:"model,omitempty"`
+	Effort            string             `json:"effort,omitempty"`
+	ServiceTier       string             `json:"serviceTier,omitempty"`
+	ApprovalPolicy    string             `json:"approvalPolicy,omitempty"`
+	SandboxPolicy     *SandboxPolicy     `json:"sandboxPolicy,omitempty"`
+	CollaborationMode *CollaborationMode `json:"collaborationMode,omitempty"`
 }
 
 // turnResult wraps the turn descriptor in the turn/start response.

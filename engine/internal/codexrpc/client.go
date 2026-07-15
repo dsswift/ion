@@ -116,9 +116,15 @@ func (c *Client) call(ctx context.Context, method string, params any, out any) e
 }
 
 // Initialize performs the handshake and sends the initialized notification.
+// It negotiates the experimentalApi capability so turn/start accepts the
+// collaborationMode field used for plan mode.
 func (c *Client) Initialize(ctx context.Context, info ClientInfo) (*InitializeResult, error) {
 	var res InitializeResult
-	if err := c.call(ctx, MethodInitialize, InitializeParams{ClientInfo: info}, &res); err != nil {
+	params := InitializeParams{
+		ClientInfo:   info,
+		Capabilities: &InitializeCapabilities{ExperimentalApi: true},
+	}
+	if err := c.call(ctx, MethodInitialize, params, &res); err != nil {
 		return nil, err
 	}
 	if err := c.rpc.Notify(MethodInitialized, nil); err != nil {

@@ -22,6 +22,7 @@ const (
 	MethodSessionLoad      = "session/load"
 	MethodSessionPrompt    = "session/prompt"
 	MethodSessionSetModel  = "session/set_model"
+	MethodSessionSetMode   = "session/set_mode"
 	MethodCursorListModels = "cursor/list_available_models"
 )
 
@@ -33,6 +34,18 @@ const NotifSessionUpdate = "session/update"
 
 // ReqRequestPermission is the agent → client approval request.
 const ReqRequestPermission = "session/request_permission"
+
+// Cursor-specific ACP extension methods (agent → client). Cursor drives plan
+// mode through these rather than the standard `plan` session update: it
+// proposes a plan via cursor/create_plan (a request expecting {accepted:true}),
+// asks the user questions via cursor/ask_question, and streams progress todos
+// via cursor/update_todos (a notification). See
+// https://cursor.com/docs/cli/acp#cursor-extension-methods
+const (
+	ReqCursorCreatePlan    = "cursor/create_plan"
+	ReqCursorAskQuestion   = "cursor/ask_question"
+	NotifCursorUpdateTodos = "cursor/update_todos"
+)
 
 // --- session/update discriminator values (the "sessionUpdate" field) ---
 
@@ -105,6 +118,22 @@ type ModelState struct {
 	AvailableModels []ModelInfo `json:"availableModels"`
 }
 
+// SessionMode is one selectable agent mode (e.g. a plan/architect mode)
+// advertised in the session's mode state.
+type SessionMode struct {
+	ID          string `json:"id"`
+	Name        string `json:"name,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+// SessionModeState carries the current and available session modes. Agents
+// that support mode switching (cursor) advertise it on session/new; agents
+// without modes (grok) omit it.
+type SessionModeState struct {
+	CurrentModeID  string        `json:"currentModeId,omitempty"`
+	AvailableModes []SessionMode `json:"availableModes,omitempty"`
+}
+
 // InitializeResult is the "initialize" response payload.
 type InitializeResult struct {
 	ProtocolVersion   int               `json:"protocolVersion"`
@@ -132,8 +161,9 @@ type SessionNewParams struct {
 
 // SessionResult is the shared result of session/new and session/load.
 type SessionResult struct {
-	SessionID string      `json:"sessionId,omitempty"`
-	Models    *ModelState `json:"models,omitempty"`
+	SessionID string            `json:"sessionId,omitempty"`
+	Models    *ModelState       `json:"models,omitempty"`
+	Modes     *SessionModeState `json:"modes,omitempty"`
 }
 
 // SessionLoadParams is the "session/load" request payload.
@@ -187,6 +217,13 @@ type SessionCancelParams struct {
 type SessionSetModelParams struct {
 	SessionID string `json:"sessionId"`
 	ModelID   string `json:"modelId"`
+}
+
+// SessionSetModeParams is the "session/set_mode" request payload. ModeID names
+// one of the modes advertised in SessionModeState.AvailableModes.
+type SessionSetModeParams struct {
+	SessionID string `json:"sessionId"`
+	ModeID    string `json:"modeId"`
 }
 
 // --- cursor model extension ---
@@ -251,4 +288,44 @@ type RequestPermissionParams struct {
 type PermissionOutcome struct {
 	Outcome  string `json:"outcome"`
 	OptionID string `json:"optionId,omitempty"`
+}
+
+// --- cursor extension payloads ---
+
+// CursorCreatePlanParams is the "cursor/create_plan" request payload. Plan is
+// the proposed plan markdown (the artifact the engine captures). SessionID is
+// carried when cursor scopes the request; when absent the backend maps it to
+// the single active plan-mode run. Extra cursor fields (name, overview, todos,
+// phases) are ignored — Plan is authoritative.
+type CursorCreatePlanParams struct {
+	SessionID  string `json:"sessionId,omitempty"`
+	ToolCallID string `json:"toolCallId,omitempty"`
+	Plan       string `json:"plan"`
+}
+
+// CursorCreatePlanResult is the reply cursor expects for cursor/create_plan.
+type CursorCreatePlanResult struct {
+	Accepted bool `json:"accepted"`
+}
+
+// CursorQuestionOption is one selectable answer for a cursor question.
+type CursorQuestionOption struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
+// CursorQuestion is one question in a cursor/ask_question request.
+type CursorQuestion struct {
+	ID            string                 `json:"id"`
+	Prompt        string                 `json:"prompt"`
+	Options       []CursorQuestionOption `json:"options"`
+	AllowMultiple bool                   `json:"allowMultiple,omitempty"`
+}
+
+// CursorAskQuestionParams is the "cursor/ask_question" request payload.
+type CursorAskQuestionParams struct {
+	SessionID  string           `json:"sessionId,omitempty"`
+	ToolCallID string           `json:"toolCallId,omitempty"`
+	Title      string           `json:"title,omitempty"`
+	Questions  []CursorQuestion `json:"questions"`
 }

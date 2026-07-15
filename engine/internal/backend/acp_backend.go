@@ -24,6 +24,10 @@ type acpSpec struct {
 	envExtra     []string // extra environment appended to os.Environ()
 	authMethodID func() string
 	defaultModel string
+	// planCapable marks agents that advertise a plan/architect session mode
+	// (cursor). Agents without one (grok) surface a clean plan_mode_unsupported
+	// error instead of entering a mode they do not have.
+	planCapable bool
 }
 
 // AcpBackend implements RunBackend by delegating to a persistent ACP agent
@@ -59,6 +63,15 @@ type acpRun struct {
 	thinkingOpen bool
 	lastText     string
 	nextTool     int
+
+	// plan-mode state. For cursor, the proposal arrives as a cursor/create_plan
+	// extension REQUEST (onExtRequest) that captures the plan immediately and
+	// sets planCaptured; finishPlanRun consults it at prompt-return to decide
+	// whether the auto-exit safety net should synthesize a proposal.
+	planMode     bool
+	planFilePath string
+	planAutoExit bool
+	planCaptured bool
 }
 
 // acpLauncher connects to an ACP agent wired with the given handlers.
@@ -85,6 +98,7 @@ func NewCursorBackend() *AcpBackend {
 		binary:       "agent",
 		args:         []string{"acp"},
 		authMethodID: func() string { return "cursor_login" },
+		planCapable:  true,
 	})
 }
 
@@ -162,14 +176,33 @@ func (b *AcpBackend) WriteToStdin(requestID string, msg interface{}) error {
 	return nil
 }
 
-// StartRun begins a run. Plan mode is unsupported and fails fast.
+// StartRun begins a run. Plan mode maps onto the agent's native plan/architect
+// session mode when the spec is planCapable (cursor); agents without one
+// (grok) surface a clean unsupported error — a normalized ErrorEvent plus a
+// DELIBERATE exit 0, never a crash-shaped nonzero exit that consumers would
+// render as a dead engine process.
 func (b *AcpBackend) StartRun(requestID string, options types.RunOptions) {
-	if options.PlanMode {
-		b.emitError(requestID, fmt.Errorf("plan mode is not supported on the %s backend", b.spec.kind))
-		b.emitExit(requestID, intPtr(1), nil, "")
+	if options.PlanMode && !b.spec.planCapable {
+		b.emitPlanModeUnsupported(requestID, "")
 		return
 	}
 	go b.runPrompt(requestID, options)
+}
+
+// emitPlanModeUnsupported surfaces the clean plan-mode-unsupported error for
+// agents without a native plan mode (or a plan-capable agent that advertised
+// no plan mode at runtime), then ends the run deliberately with exit 0.
+func (b *AcpBackend) emitPlanModeUnsupported(requestID, sessionID string) {
+	utils.LogWithFields(utils.LevelWarn, "backend.acp", "plan mode unsupported", map[string]any{
+		"kind": b.spec.kind, "run_id": requestID,
+	})
+	b.emit(requestID, types.NormalizedEvent{Data: &types.ErrorEvent{
+		ErrorMessage: fmt.Sprintf("plan mode is not supported on the %s backend", b.spec.kind),
+		ErrorCode:    "plan_mode_unsupported",
+		IsError:      true,
+		SessionID:    sessionID,
+	}})
+	b.emitExit(requestID, intPtr(0), nil, sessionID)
 }
 
 // runPrompt ensures the agent+session, then runs one blocking prompt.
@@ -182,7 +215,7 @@ func (b *AcpBackend) runPrompt(requestID string, options types.RunOptions) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	sessionID, err := b.openSession(ctx, options, loadCapable)
+	sessionID, modes, err := b.openSession(ctx, options, loadCapable)
 	if err != nil {
 		cancel()
 		b.emitError(requestID, fmt.Errorf("%s session setup: %w", b.spec.kind, err))
@@ -190,7 +223,28 @@ func (b *AcpBackend) runPrompt(requestID string, options types.RunOptions) {
 		return
 	}
 
-	run := &acpRun{requestID: requestID, sessionID: sessionID, model: options.Model, cancel: cancel}
+	// Plan mode needs the agent to actually advertise a plan mode. A
+	// plan-capable spec whose live session offers none degrades to the same
+	// clean unsupported surface grok gets — never a crash-shaped exit.
+	planModeID := ""
+	if options.PlanMode {
+		planModeID = acpPlanModeID(modes)
+		if planModeID == "" {
+			cancel()
+			b.emitPlanModeUnsupported(requestID, sessionID)
+			return
+		}
+	}
+
+	run := &acpRun{
+		requestID:    requestID,
+		sessionID:    sessionID,
+		model:        options.Model,
+		cancel:       cancel,
+		planMode:     options.PlanMode,
+		planFilePath: options.PlanFilePath,
+		planAutoExit: resolveCliPlanModeAutoExit(&options),
+	}
 	b.mu.Lock()
 	b.runs[requestID] = run
 	b.sessionToRun[sessionID] = requestID
@@ -200,6 +254,34 @@ func (b *AcpBackend) runPrompt(requestID string, options types.RunOptions) {
 	if options.Model != "" {
 		if err := client.SessionSetModel(ctx, sessionID, options.Model); err != nil {
 			utils.LogWithFields(utils.LevelDebug, "backend.acp", "set_model failed (continuing)", map[string]any{"kind": b.spec.kind, "error": err.Error()})
+		}
+	}
+
+	// Session modes are sticky agent-side state. Enter the plan mode for plan
+	// runs; for non-plan runs on a plan-capable agent, reset a session left in
+	// a plan mode (e.g. a resumed session whose previous run planned) so the
+	// implement run does not silently execute read-only.
+	if options.PlanMode {
+		if err := client.SessionSetMode(ctx, sessionID, planModeID); err != nil {
+			b.emitError(requestID, fmt.Errorf("%s plan mode entry: %w", b.spec.kind, err))
+			b.finish(requestID, intPtr(1), sessionID)
+			return
+		}
+		b.emit(requestID, types.NormalizedEvent{Data: &types.PlanModeChangedEvent{
+			Enabled:      true,
+			PlanFilePath: options.PlanFilePath,
+			PlanSlug:     types.PlanSlugFromPath(options.PlanFilePath),
+		}})
+		utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "plan mode enabled for acp run", map[string]any{
+			"kind": b.spec.kind, "run_id": requestID, "mode_id": planModeID, "plan_file": options.PlanFilePath,
+		})
+	} else if b.spec.planCapable && modes != nil && modes.CurrentModeID != "" && modes.CurrentModeID == acpPlanModeID(modes) {
+		if defaultID := acpDefaultModeID(modes); defaultID != "" {
+			if err := client.SessionSetMode(ctx, sessionID, defaultID); err != nil {
+				utils.LogWithFields(utils.LevelWarn, "backend.acp", "sticky plan mode reset failed (continuing)", map[string]any{"kind": b.spec.kind, "error": err.Error()})
+			} else {
+				utils.LogWithFields(utils.LevelInfo, "backend.acp", "sticky plan mode reset to default", map[string]any{"kind": b.spec.kind, "mode_id": defaultID})
+			}
 		}
 	}
 
@@ -213,6 +295,12 @@ func (b *AcpBackend) runPrompt(requestID string, options types.RunOptions) {
 		return
 	}
 	b.emit(requestID, b.closeThinkingEvent(requestID))
+	// Prompt return is the natural proposal boundary for ACP plan mode:
+	// bridge the last streamed plan snapshot into the plan file (proposal
+	// included), or synthesize the auto-exit net when the turn produced none.
+	if run.planMode {
+		b.finishPlanRun(run)
+	}
 	b.emit(requestID, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
 		Result:    b.runLastText(requestID),
 		LastText:  b.runLastText(requestID),
@@ -223,23 +311,52 @@ func (b *AcpBackend) runPrompt(requestID string, options types.RunOptions) {
 	b.finish(requestID, intPtr(0), sessionID)
 }
 
+// finishPlanRun runs at the prompt-return boundary: if no plan was captured
+// during the turn (cursor never sent cursor/create_plan) and auto-exit is on,
+// it synthesizes the PlanModeAutoExit safety net so the proposal still
+// surfaces. The plan itself is captured earlier, in onExtRequest.
+func (b *AcpBackend) finishPlanRun(run *acpRun) {
+	b.mu.Lock()
+	captured := run.planCaptured
+	b.mu.Unlock()
+
+	if !captured && run.planAutoExit {
+		slug := types.PlanSlugFromPath(run.planFilePath)
+		b.emit(run.requestID, types.NormalizedEvent{Data: &types.PlanModeAutoExitEvent{
+			RunID:        run.requestID,
+			StopReason:   "end_turn",
+			PlanFilePath: run.planFilePath,
+			PlanSlug:     slug,
+			Reason:       "engine-synthesized: run ended in plan mode without a plan update",
+		}})
+		b.emit(run.requestID, types.NormalizedEvent{Data: &types.PlanProposalEvent{
+			Kind:         "exit",
+			PlanFilePath: run.planFilePath,
+			PlanSlug:     slug,
+		}})
+		utils.LogWithFields(utils.LevelInfo, "backend.acp", "plan mode auto-exit synthesized", map[string]any{
+			"kind": b.spec.kind, "run_id": run.requestID, "plan_file": run.planFilePath,
+		})
+	}
+}
+
 // openSession loads the resumable ACP session when possible, else opens a new
-// one. Returns the session id.
-func (b *AcpBackend) openSession(ctx context.Context, options types.RunOptions, loadCapable bool) (string, error) {
+// one. Returns the session id and any advertised session-mode state.
+func (b *AcpBackend) openSession(ctx context.Context, options types.RunOptions, loadCapable bool) (string, *acp.SessionModeState, error) {
 	b.mu.Lock()
 	client := b.client
 	b.mu.Unlock()
 	if options.CliResumeSessionID != "" && loadCapable {
-		if _, err := client.SessionLoad(ctx, options.CliResumeSessionID, options.ProjectPath); err == nil {
-			return options.CliResumeSessionID, nil
+		if res, err := client.SessionLoad(ctx, options.CliResumeSessionID, options.ProjectPath); err == nil {
+			return options.CliResumeSessionID, res.Modes, nil
 		}
 		// Fall through to a fresh session if load fails.
 	}
 	res, err := client.SessionNew(ctx, options.ProjectPath)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
-	return res.SessionID, nil
+	return res.SessionID, res.Modes, nil
 }
 
 // Cancel cancels the active session's prompt.
@@ -353,6 +470,7 @@ func (b *AcpBackend) ensureStarted() (bool, error) {
 	handlers := acp.Handlers{
 		OnSessionUpdate: b.onSessionUpdate,
 		OnPermission:    b.onPermission,
+		OnExtRequest:    b.onExtRequest,
 		OnClosed:        b.onProcessClosed,
 	}
 	client, kill, err := b.launch(b.spec, handlers)

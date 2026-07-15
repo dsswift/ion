@@ -17,6 +17,13 @@ type Handlers struct {
 	// OnPermission answers a session/request_permission. It may block on a user
 	// decision. A nil handler cancels the request.
 	OnPermission func(p RequestPermissionParams) PermissionOutcome
+	// OnExtRequest handles an agent → client request whose method is not one of
+	// the ACP core methods — e.g. cursor's cursor/create_plan and
+	// cursor/ask_question extension methods. It returns the JSON-RPC result and
+	// a handled flag; when handled is false (or the handler is nil) the client
+	// replies with a method-not-found error. Like OnPermission it may block on
+	// a user decision.
+	OnExtRequest func(method string, params json.RawMessage) (result any, handled bool)
 	// OnClosed fires when the transport ends.
 	OnClosed func(err error)
 }
@@ -75,19 +82,27 @@ func (c *Client) onNotification(method string, params json.RawMessage) {
 }
 
 func (c *Client) onRequest(method string, params json.RawMessage) (any, *rpcstdio.RPCError) {
-	if method != ReqRequestPermission {
-		return nil, &rpcstdio.RPCError{Code: -32601, Message: "unhandled acp request: " + method}
+	if method == ReqRequestPermission {
+		var p RequestPermissionParams
+		if err := json.Unmarshal(params, &p); err != nil {
+			return nil, &rpcstdio.RPCError{Code: -32602, Message: "invalid permission params: " + err.Error()}
+		}
+		if c.handlers.OnPermission == nil {
+			return PermissionOutcome{Outcome: OutcomeCancelled}, nil
+		}
+		outcome := c.handlers.OnPermission(p)
+		utils.LogWithFields(utils.LevelInfo, "acp", "permission answered", map[string]any{"tag": c.tag, "tool_call": p.ToolCall.ToolCallID, "outcome": outcome.Outcome})
+		return outcome, nil
 	}
-	var p RequestPermissionParams
-	if err := json.Unmarshal(params, &p); err != nil {
-		return nil, &rpcstdio.RPCError{Code: -32602, Message: "invalid permission params: " + err.Error()}
+	// Non-core agent request (cursor/create_plan, cursor/ask_question, …).
+	// Route to the extension handler; a handled=false or absent handler is a
+	// method-not-found for the agent.
+	if c.handlers.OnExtRequest != nil {
+		if result, handled := c.handlers.OnExtRequest(method, params); handled {
+			return result, nil
+		}
 	}
-	if c.handlers.OnPermission == nil {
-		return PermissionOutcome{Outcome: OutcomeCancelled}, nil
-	}
-	outcome := c.handlers.OnPermission(p)
-	utils.LogWithFields(utils.LevelInfo, "acp", "permission answered", map[string]any{"tag": c.tag, "tool_call": p.ToolCall.ToolCallID, "outcome": outcome.Outcome})
-	return outcome, nil
+	return nil, &rpcstdio.RPCError{Code: -32601, Message: "unhandled acp request: " + method}
 }
 
 func (c *Client) call(ctx context.Context, method string, params any, out any) error {
@@ -160,6 +175,15 @@ func (c *Client) SessionCancel(sessionID string) error {
 // SessionSetModel switches the active model for a session.
 func (c *Client) SessionSetModel(ctx context.Context, sessionID, modelID string) error {
 	return c.call(ctx, MethodSessionSetModel, SessionSetModelParams{SessionID: sessionID, ModelID: modelID}, nil)
+}
+
+// SessionSetMode switches the active session mode (e.g. into a plan/architect
+// mode advertised in the session's availableModes). Session modes are STICKY
+// agent-side state: a mode set on a session persists across prompts until
+// changed, so callers must reset it explicitly when the mode should not carry
+// into the next prompt.
+func (c *Client) SessionSetMode(ctx context.Context, sessionID, modeID string) error {
+	return c.call(ctx, MethodSessionSetMode, SessionSetModeParams{SessionID: sessionID, ModeID: modeID}, nil)
 }
 
 // CursorListModels calls the cursor-specific model listing extension.

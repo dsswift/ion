@@ -59,6 +59,16 @@ type codexRun struct {
 	thinkingOpen  bool
 	lastText      string
 	nextToolIndex int
+
+	// plan-mode state. The translate function stashes the completed plan
+	// item's markdown in pendingPlanMarkdown under the backend mutex; the
+	// notification handler consumes it AFTER unlocking (capturePlanMarkdown
+	// does file IO + emits) and latches planCaptured.
+	planMode            bool
+	planFilePath        string
+	planAutoExit        bool
+	planCaptured        bool
+	pendingPlanMarkdown string
 }
 
 // NewCodexBackend constructs an idle CodexBackend. The codex process is spawned
@@ -126,14 +136,9 @@ func (b *CodexBackend) IsRunning(requestID string) bool {
 // FlushConversations is a no-op: codex persists its own threads.
 func (b *CodexBackend) FlushConversations() {}
 
-// StartRun begins a run. Plan mode is unsupported on codex and fails fast.
+// StartRun begins a run. Plan mode maps onto codex's native collaboration
+// mode (see runTurn); no engine-side gating is layered on top.
 func (b *CodexBackend) StartRun(requestID string, options types.RunOptions) {
-	if options.PlanMode {
-		utils.LogWithFields(utils.LevelWarn, "backend.codex", "plan mode not supported", map[string]any{"request_id": requestID})
-		b.emitError(requestID, fmt.Errorf("plan mode is not supported on the codex backend"))
-		b.emitExit(requestID, intPtr(1), nil, "")
-		return
-	}
 	go b.runTurn(requestID, options)
 }
 
@@ -148,7 +153,11 @@ func (b *CodexBackend) runTurn(requestID string, options types.RunOptions) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Resume an existing codex thread when the session carries one, else start
-	// fresh. CliResumeSessionID is the codex threadId (see run_options.go).
+	// fresh. CliResumeSessionID is the codex threadId (see run_options.go). A
+	// resume can fail when the thread's rollout no longer exists on disk (codex
+	// returns "no rollout found for thread id ..."); fall back to a fresh
+	// thread rather than failing the run, mirroring the claude-code / ACP
+	// backends' resume-then-fresh behavior.
 	var threadID string
 	var err error
 	if options.CliResumeSessionID != "" {
@@ -157,7 +166,15 @@ func (b *CodexBackend) runTurn(requestID string, options types.RunOptions) {
 			Cwd:      options.ProjectPath,
 			Model:    options.Model,
 		})
-	} else {
+		if err != nil {
+			utils.LogWithFields(utils.LevelInfo, "backend.codex", "thread resume failed, starting fresh", map[string]any{
+				"request_id": requestID, "thread_id": options.CliResumeSessionID, "error": err.Error(),
+			})
+			err = nil
+			options.CliResumeSessionID = ""
+		}
+	}
+	if threadID == "" {
 		threadID, err = b.client.ThreadStart(ctx, codexrpc.ThreadStartParams{
 			Cwd:            options.ProjectPath,
 			Model:          options.Model,
@@ -172,7 +189,15 @@ func (b *CodexBackend) runTurn(requestID string, options types.RunOptions) {
 		return
 	}
 
-	run := &codexRun{requestID: requestID, threadID: threadID, model: options.Model, cancel: cancel}
+	run := &codexRun{
+		requestID:    requestID,
+		threadID:     threadID,
+		model:        options.Model,
+		cancel:       cancel,
+		planMode:     options.PlanMode,
+		planFilePath: options.PlanFilePath,
+		planAutoExit: resolveCliPlanModeAutoExit(&options),
+	}
 	b.mu.Lock()
 	b.runs[requestID] = run
 	b.threadToRun[threadID] = requestID
@@ -181,12 +206,39 @@ func (b *CodexBackend) runTurn(requestID string, options types.RunOptions) {
 	// Announce the session so consumers can key their view to the codex thread.
 	b.emit(requestID, types.NormalizedEvent{Data: &types.SessionInitEvent{SessionID: threadID, Model: options.Model}})
 
+	// Plan mode rides codex's native collaboration mode, sent only for plan
+	// turns. Non-plan turns omit collaborationMode entirely — byte-identical
+	// wire to before plan-mode support. (The plan→implement flow starts a
+	// fresh session, so there is no sticky plan mode to clear on a non-plan
+	// turn; sending a "default" mode here would needlessly require the
+	// experimental API on every ordinary turn.)
+	var collab *codexrpc.CollaborationMode
+	if options.PlanMode {
+		collab = &codexrpc.CollaborationMode{
+			Mode: "plan",
+			Settings: codexrpc.CollaborationModeSettings{
+				Model:                 options.Model,
+				DeveloperInstructions: resolveCodexPlanInstructions(&options),
+			},
+		}
+		b.emit(requestID, types.NormalizedEvent{Data: &types.PlanModeChangedEvent{
+			Enabled:      true,
+			PlanFilePath: options.PlanFilePath,
+			PlanSlug:     types.PlanSlugFromPath(options.PlanFilePath),
+		}})
+		utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "plan mode enabled for codex run", map[string]any{
+			"run_id":    requestID,
+			"plan_file": options.PlanFilePath,
+		})
+	}
+
 	turnID, err := b.client.TurnStart(ctx, codexrpc.TurnStartParams{
-		ThreadID:       threadID,
-		Input:          codexrpc.NewTextInput(options.Prompt),
-		Model:          options.Model,
-		ApprovalPolicy: "on-request",
-		SandboxPolicy:  &codexrpc.SandboxPolicy{Type: "workspaceWrite"},
+		ThreadID:          threadID,
+		Input:             codexrpc.NewTextInput(options.Prompt),
+		Model:             options.Model,
+		ApprovalPolicy:    "on-request",
+		SandboxPolicy:     &codexrpc.SandboxPolicy{Type: "workspaceWrite"},
+		CollaborationMode: collab,
 	})
 	if err != nil {
 		b.emitError(requestID, fmt.Errorf("codex turn start: %w", err))
@@ -286,10 +338,27 @@ func (b *CodexBackend) onNotification(method string, params json.RawMessage) {
 	run := b.runs[requestID]
 	// Translate under the lock (mutates run state) but emit after releasing it.
 	events, exit := translateCodexNotification(run, method, params)
+	// A completed plan item stashed its markdown; consume it under the lock
+	// and latch planCaptured so a later turn/completed skips the auto-exit
+	// synthesis. The capture itself (file IO + emits) runs after unlock.
+	var pendingPlan, planPath string
+	if run != nil && run.pendingPlanMarkdown != "" {
+		pendingPlan = run.pendingPlanMarkdown
+		planPath = run.planFilePath
+		run.pendingPlanMarkdown = ""
+		run.planCaptured = true
+	}
 	b.mu.Unlock()
 
 	if run == nil && method != codexrpc.NotifError {
 		return
+	}
+	if pendingPlan != "" {
+		if _, err := capturePlanMarkdown(requestID, pendingPlan, planPath, true, 0, b.emit); err != nil {
+			utils.LogWithFields(utils.LevelError, "backend.codex", "native plan capture failed", map[string]any{
+				"run_id": requestID, "error": err.Error(),
+			})
+		}
 	}
 	for _, ev := range events {
 		b.emit(requestID, ev)

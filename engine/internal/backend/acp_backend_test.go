@@ -4,6 +4,9 @@ import (
 	"bufio"
 	"encoding/json"
 	"io"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -19,6 +22,10 @@ type fakeAcpAgent struct {
 	toClient   *io.PipeWriter
 	fromClient *bufio.Reader
 	writeMu    sync.Mutex
+
+	// modes, when set, is advertised on session/new (agents like cursor
+	// advertise plan/architect session modes; grok advertises none).
+	modes *acp.SessionModeState
 
 	mu       sync.Mutex
 	seen     map[string]json.RawMessage
@@ -55,7 +62,7 @@ func (a *fakeAcpAgent) handle(id json.RawMessage, method string) {
 	case acp.MethodInitialize:
 		a.reply(id, acp.InitializeResult{ProtocolVersion: 1, AgentCapabilities: acp.AgentCapabilities{LoadSession: true}, AuthMethods: []acp.AuthMethod{{ID: "cached_token", Name: "Cached"}}})
 	case acp.MethodSessionNew:
-		a.reply(id, acp.SessionResult{SessionID: "sess_1"})
+		a.reply(id, acp.SessionResult{SessionID: "sess_1", Modes: a.modes})
 	case acp.MethodSessionPrompt:
 		// Defer the response so the test can stream updates first.
 		a.mu.Lock()
@@ -105,13 +112,24 @@ func (a *fakeAcpAgent) sawMethod(method string) bool {
 
 func newTestAcpBackend(t *testing.T) (*AcpBackend, chan *fakeAcpAgent) {
 	t.Helper()
-	b := NewGrokBackend()
+	return wireFakeAcpAgent(t, NewGrokBackend(), nil)
+}
+
+// newTestCursorBackend wires a cursor backend to a fake agent advertising the
+// given session modes on session/new.
+func newTestCursorBackend(t *testing.T, modes *acp.SessionModeState) (*AcpBackend, chan *fakeAcpAgent) {
+	t.Helper()
+	return wireFakeAcpAgent(t, NewCursorBackend(), modes)
+}
+
+func wireFakeAcpAgent(t *testing.T, b *AcpBackend, modes *acp.SessionModeState) (*AcpBackend, chan *fakeAcpAgent) {
+	t.Helper()
 	agentCh := make(chan *fakeAcpAgent, 1)
-	b.launch = func(_ acpSpec, h acp.Handlers) (*acp.Client, func(), error) {
+	b.launch = func(spec acpSpec, h acp.Handlers) (*acp.Client, func(), error) {
 		inR, inW := io.Pipe()
 		outR, outW := io.Pipe()
-		agent := &fakeAcpAgent{toClient: outW, fromClient: bufio.NewReader(inR), seen: map[string]json.RawMessage{}}
-		client := acp.NewClient(inW, outR, "grok", h)
+		agent := &fakeAcpAgent{toClient: outW, fromClient: bufio.NewReader(inR), seen: map[string]json.RawMessage{}, modes: modes}
+		client := acp.NewClient(inW, outR, spec.kind, h)
 		go agent.serve()
 		agentCh <- agent
 		return client, func() { _ = inW.Close(); _ = outW.Close() }, nil
@@ -184,7 +202,11 @@ func TestCursorSpec(t *testing.T) {
 	}
 }
 
-func TestAcpBackend_PlanModeRejected(t *testing.T) {
+// TestAcpBackend_GrokPlanModeCleanError pins the grok surface: no native plan
+// mode exists, so plan mode yields a normalized ErrorEvent with the
+// plan_mode_unsupported code and a DELIBERATE exit 0 — never the crash-shaped
+// exit 1 consumers render as a dead engine process.
+func TestAcpBackend_GrokPlanModeCleanError(t *testing.T) {
 	b := NewGrokBackend()
 	launched := false
 	b.launch = func(acpSpec, acp.Handlers) (*acp.Client, func(), error) { launched = true; return nil, nil, nil }
@@ -195,6 +217,225 @@ func TestAcpBackend_PlanModeRejected(t *testing.T) {
 	if launched {
 		t.Fatal("plan mode must not spawn the agent")
 	}
+	if n := r.count(func(e types.NormalizedEvent) bool {
+		err, ok := e.Data.(*types.ErrorEvent)
+		return ok && err.ErrorCode == "plan_mode_unsupported"
+	}); n != 1 {
+		t.Fatalf("expected 1 plan_mode_unsupported ErrorEvent, got %d", n)
+	}
+	if c := r.lastExitCode(); c == nil || *c != 0 {
+		t.Fatalf("expected deliberate exit 0, got %v", c)
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.errs) != 0 {
+		t.Fatalf("clean surface must not also fire the run-error channel: %v", r.errs)
+	}
+}
+
+// cursorPlanModes is a session-mode state advertising cursor-style modes.
+func cursorPlanModes() *acp.SessionModeState {
+	return &acp.SessionModeState{
+		CurrentModeID: "agent",
+		AvailableModes: []acp.SessionMode{
+			{ID: "agent", Name: "Agent"},
+			{ID: "plan", Name: "Plan"},
+		},
+	}
+}
+
+// TestAcpBackend_CursorPlanModeNativeCapture pins cursor native plan mode:
+// session/set_mode selects the advertised plan mode, the streamed plan update
+// is bridged into the plan file at prompt return, and the plan events precede
+// TaskComplete.
+func TestAcpBackend_CursorPlanModeNativeCapture(t *testing.T) {
+	b, agentCh := newTestCursorBackend(t, cursorPlanModes())
+	r := newAcpRecorder()
+	r.attach(b)
+	planPath := filepath.Join(t.TempDir(), "cursor-plan.md")
+
+	agent := startAcp(t, b, agentCh, "req-plan", types.RunOptions{
+		Model: "cursor-fast", Prompt: "plan it", ProjectPath: "/repo",
+		PlanMode: true, PlanFilePath: planPath,
+	})
+	acpWaitFor(t, func() bool { return agent.sawMethod(acp.MethodSessionPrompt) }, "session/prompt")
+
+	// The wire selected the plan session mode before prompting.
+	agent.mu.Lock()
+	rawSetMode := agent.seen[acp.MethodSessionSetMode]
+	agent.mu.Unlock()
+	var setMode acp.SessionSetModeParams
+	if err := json.Unmarshal(rawSetMode, &setMode); err != nil {
+		t.Fatalf("session/set_mode params decode: %v (raw %s)", err, rawSetMode)
+	}
+	if setMode.ModeID != "plan" {
+		t.Fatalf("session/set_mode selected %q, want plan", setMode.ModeID)
+	}
+
+	// Cursor proposes its plan via the cursor/create_plan extension REQUEST
+	// (not the standard ACP plan update). It arrives while session/prompt is in
+	// flight; the backend captures it into the plan file immediately.
+	agent.request("1", acp.ReqCursorCreatePlan, acp.CursorCreatePlanParams{
+		ToolCallID: "tc1",
+		Plan:       "# Cursor Plan\n\nsteps\n",
+	})
+	acpWaitFor(t, func() bool {
+		return r.count(func(e types.NormalizedEvent) bool {
+			_, ok := e.Data.(*types.PlanFileWrittenEvent)
+			return ok
+		}) == 1
+	}, "plan file written from cursor/create_plan")
+
+	agent.completePrompt("end_turn")
+	acpWaitFor(t, func() bool { return r.exitCount() == 1 }, "exit")
+
+	data, err := os.ReadFile(planPath)
+	if err != nil {
+		t.Fatalf("plan file not written from cursor/create_plan: %v", err)
+	}
+	if string(data) != "# Cursor Plan\n\nsteps\n" {
+		t.Fatalf("plan file content wrong: %q", string(data))
+	}
+
+	r.mu.Lock()
+	var order []string
+	for _, e := range r.events {
+		switch e.Data.(type) {
+		case *types.PlanModeChangedEvent:
+			order = append(order, "changed")
+		case *types.PlanFileWrittenEvent:
+			order = append(order, "written")
+		case *types.PlanProposalEvent:
+			order = append(order, "proposal")
+		case *types.PlanModeAutoExitEvent:
+			order = append(order, "auto_exit")
+		case *types.TaskCompleteEvent:
+			order = append(order, "complete")
+		}
+	}
+	r.mu.Unlock()
+	want := "changed,written,proposal,complete"
+	if strings.Join(order, ",") != want {
+		t.Fatalf("plan event order = %v, want %s", order, want)
+	}
+	if c := r.lastExitCode(); c == nil || *c != 0 {
+		t.Fatalf("expected clean exit 0, got %v", c)
+	}
+}
+
+// TestAcpBackend_ExtRequestRejectsUnknown pins that the extension-request seam
+// only claims cursor's methods — any other agent request stays a
+// method-not-found so we don't silently swallow unknown protocol traffic.
+func TestAcpBackend_ExtRequestRejectsUnknown(t *testing.T) {
+	b := NewCursorBackend()
+	if _, handled := b.onExtRequest("some/unknown_method", json.RawMessage(`{}`)); handled {
+		t.Fatal("unknown extension method must not be handled")
+	}
+}
+
+// TestAcpBackend_CreatePlanNoActiveRunAcks pins that a cursor/create_plan with
+// no resolvable plan-mode run still acks {accepted:true} rather than erroring
+// cursor's flow.
+func TestAcpBackend_CreatePlanNoActiveRunAcks(t *testing.T) {
+	b := NewCursorBackend()
+	params, _ := json.Marshal(acp.CursorCreatePlanParams{Plan: "# Plan\n"})
+	res, handled := b.onExtRequest(acp.ReqCursorCreatePlan, params)
+	if !handled {
+		t.Fatal("cursor/create_plan must be handled")
+	}
+	r, ok := res.(acp.CursorCreatePlanResult)
+	if !ok || !r.Accepted {
+		t.Fatalf("expected accepted result, got %#v", res)
+	}
+}
+
+// TestAcpBackend_CursorPlanModeAutoExit pins the safety net: a plan-mode
+// prompt that returns without any plan update synthesizes PlanModeAutoExit +
+// PlanProposal.
+func TestAcpBackend_CursorPlanModeAutoExit(t *testing.T) {
+	b, agentCh := newTestCursorBackend(t, cursorPlanModes())
+	r := newAcpRecorder()
+	r.attach(b)
+
+	agent := startAcp(t, b, agentCh, "req-plan-auto", types.RunOptions{
+		Model: "cursor-fast", Prompt: "plan it", ProjectPath: "/repo",
+		PlanMode: true, PlanFilePath: filepath.Join(t.TempDir(), "p.md"),
+	})
+	acpWaitFor(t, func() bool { return agent.sawMethod(acp.MethodSessionPrompt) }, "session/prompt")
+	agent.completePrompt("end_turn")
+	acpWaitFor(t, func() bool { return r.exitCount() == 1 }, "exit")
+
+	if n := r.count(func(e types.NormalizedEvent) bool {
+		_, ok := e.Data.(*types.PlanModeAutoExitEvent)
+		return ok
+	}); n != 1 {
+		t.Fatalf("expected 1 PlanModeAutoExitEvent, got %d", n)
+	}
+	if n := r.count(func(e types.NormalizedEvent) bool {
+		p, ok := e.Data.(*types.PlanProposalEvent)
+		return ok && p.Kind == "exit"
+	}); n != 1 {
+		t.Fatalf("expected 1 PlanProposalEvent, got %d", n)
+	}
+}
+
+// TestAcpBackend_CursorPlanModeNotAdvertised pins the runtime degradation: a
+// plan-capable spec whose live session advertises no plan mode surfaces the
+// same clean unsupported error as grok.
+func TestAcpBackend_CursorPlanModeNotAdvertised(t *testing.T) {
+	b, agentCh := newTestCursorBackend(t, &acp.SessionModeState{
+		CurrentModeID:  "agent",
+		AvailableModes: []acp.SessionMode{{ID: "agent", Name: "Agent"}},
+	})
+	r := newAcpRecorder()
+	r.attach(b)
+
+	startAcp(t, b, agentCh, "req-plan", types.RunOptions{
+		Model: "cursor-fast", Prompt: "plan it", ProjectPath: "/repo",
+		PlanMode: true, PlanFilePath: "/tmp/p.md",
+	})
+	acpWaitFor(t, func() bool { return r.exitCount() == 1 }, "clean unsupported exit")
+	if n := r.count(func(e types.NormalizedEvent) bool {
+		err, ok := e.Data.(*types.ErrorEvent)
+		return ok && err.ErrorCode == "plan_mode_unsupported"
+	}); n != 1 {
+		t.Fatalf("expected 1 plan_mode_unsupported ErrorEvent, got %d", n)
+	}
+	if c := r.lastExitCode(); c == nil || *c != 0 {
+		t.Fatalf("expected deliberate exit 0, got %v", c)
+	}
+}
+
+// TestAcpBackend_CursorStickyPlanModeReset pins the sticky-mode reset: a
+// NON-plan run against a session currently sitting in the plan mode resets it
+// to the default mode before prompting, so the implement run is not silently
+// read-only.
+func TestAcpBackend_CursorStickyPlanModeReset(t *testing.T) {
+	b, agentCh := newTestCursorBackend(t, &acp.SessionModeState{
+		CurrentModeID: "plan", // left sticky by a prior plan run
+		AvailableModes: []acp.SessionMode{
+			{ID: "agent", Name: "Agent"},
+			{ID: "plan", Name: "Plan"},
+		},
+	})
+	r := newAcpRecorder()
+	r.attach(b)
+
+	agent := startAcp(t, b, agentCh, "req-impl", types.RunOptions{Model: "cursor-fast", Prompt: "implement", ProjectPath: "/repo"})
+	acpWaitFor(t, func() bool { return agent.sawMethod(acp.MethodSessionPrompt) }, "session/prompt")
+
+	agent.mu.Lock()
+	rawSetMode := agent.seen[acp.MethodSessionSetMode]
+	agent.mu.Unlock()
+	var setMode acp.SessionSetModeParams
+	if err := json.Unmarshal(rawSetMode, &setMode); err != nil {
+		t.Fatalf("session/set_mode not sent for sticky reset: %v", err)
+	}
+	if setMode.ModeID != "agent" {
+		t.Fatalf("sticky reset selected %q, want agent", setMode.ModeID)
+	}
+	agent.completePrompt("end_turn")
+	acpWaitFor(t, func() bool { return r.exitCount() == 1 }, "exit")
 }
 
 func TestAcpBackend_HappyPath(t *testing.T) {
@@ -329,10 +570,11 @@ func TestAcpBackend_ProcessDeath(t *testing.T) {
 // --- recorder (local to avoid coupling to the codex test's *CodexBackend) ---
 
 type acpRecorder struct {
-	mu     sync.Mutex
-	events []types.NormalizedEvent
-	exits  []string
-	errs   []string
+	mu        sync.Mutex
+	events    []types.NormalizedEvent
+	exits     []string
+	exitCodes []*int
+	errs      []string
 }
 
 func newAcpRecorder() *acpRecorder { return &acpRecorder{} }
@@ -343,9 +585,10 @@ func (r *acpRecorder) attach(b *AcpBackend) {
 		r.events = append(r.events, ev)
 		r.mu.Unlock()
 	})
-	b.OnExit(func(_ string, _ *int, _ *string, sessionID string) {
+	b.OnExit(func(_ string, code *int, _ *string, sessionID string) {
 		r.mu.Lock()
 		r.exits = append(r.exits, sessionID)
+		r.exitCodes = append(r.exitCodes, code)
 		r.mu.Unlock()
 	})
 	b.OnError(func(_ string, err error) {
@@ -380,6 +623,15 @@ func (r *acpRecorder) lastExitSession() string {
 		return ""
 	}
 	return r.exits[len(r.exits)-1]
+}
+
+func (r *acpRecorder) lastExitCode() *int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.exitCodes) == 0 {
+		return nil
+	}
+	return r.exitCodes[len(r.exitCodes)-1]
 }
 
 func acpWaitFor(t *testing.T, cond func() bool, msg string) {

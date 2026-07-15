@@ -79,6 +79,14 @@ func translateCodexNotification(run *codexRun, method string, params json.RawMes
 		if n.Item.Type == "agentMessage" && n.Item.Text != "" {
 			run.lastText = n.Item.Text
 		}
+		// A completed plan item is codex's authoritative native plan proposal
+		// (its text supersedes any item/plan/delta stream). Stash it for the
+		// notification handler, which bridges it into Ion's plan-file contract
+		// after releasing the backend mutex. Not a tool call, not stream text.
+		if n.Item.Type == "plan" && n.Item.Text != "" && run.planMode {
+			run.pendingPlanMarkdown = n.Item.Text
+			return closeThinking(run), nil
+		}
 		return nil, nil
 
 	case codexrpc.NotifTokenUsageUpdated:
@@ -86,8 +94,35 @@ func translateCodexNotification(run *codexRun, method string, params json.RawMes
 		_ = json.Unmarshal(params, &n)
 		return []types.NormalizedEvent{{Data: &types.UsageEvent{Usage: codexUsage(n.TokenUsage.Last)}}}, nil
 
+	case codexrpc.NotifPlanDelta:
+		// Streaming plan drafts are deliberately not accumulated: the completed
+		// plan item is authoritative (see NotifPlanDelta in codexrpc) and the
+		// plan file is written once, atomically, from that item.
+		return nil, nil
+
 	case codexrpc.NotifTurnCompleted:
 		events := closeThinking(run)
+		// Auto-exit safety net: a plan-mode turn that ends without ever
+		// producing a plan item is the stuck-in-plan-mode failure mode.
+		// Synthesize the exit (mirroring the ApiBackend's end-of-turn
+		// synthesis) so the proposal surfaces ahead of TaskCompleteEvent.
+		if run.planMode && !run.planCaptured && run.pendingPlanMarkdown == "" && run.planAutoExit {
+			slug := types.PlanSlugFromPath(run.planFilePath)
+			events = append(events,
+				types.NormalizedEvent{Data: &types.PlanModeAutoExitEvent{
+					RunID:        run.requestID,
+					StopReason:   "end_turn",
+					PlanFilePath: run.planFilePath,
+					PlanSlug:     slug,
+					Reason:       "engine-synthesized: run ended in plan mode without a plan item",
+				}},
+				types.NormalizedEvent{Data: &types.PlanProposalEvent{
+					Kind:         "exit",
+					PlanFilePath: run.planFilePath,
+					PlanSlug:     slug,
+				}},
+			)
+		}
 		events = append(events, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
 			Result:    run.lastText,
 			LastText:  run.lastText,

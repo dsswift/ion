@@ -142,6 +142,26 @@ func TestParseClientCommand_ValidCommands(t *testing.T) {
 			line: `{"cmd":"get_enterprise_policy"}`,
 			cmd:  "get_enterprise_policy",
 		},
+		{
+			// provider_login / provider_login_cancel / provider_logout must be
+			// in the validCommands allowlist AND pass field validation, or the
+			// engine rejects them as "invalid command" before dispatch — which
+			// left the desktop's delegated-CLI sign-in/out buttons a silent
+			// no-op even though dispatch_provider_login.go handles them.
+			name: "provider_login",
+			line: `{"cmd":"provider_login","provider":"openai","requestId":"r1"}`,
+			cmd:  "provider_login",
+		},
+		{
+			name: "provider_login_cancel",
+			line: `{"cmd":"provider_login_cancel","provider":"openai","requestId":"r1"}`,
+			cmd:  "provider_login_cancel",
+		},
+		{
+			name: "provider_logout",
+			line: `{"cmd":"provider_logout","provider":"openai","requestId":"r1"}`,
+			cmd:  "provider_logout",
+		},
 	}
 
 	for _, tt := range tests {
@@ -162,6 +182,10 @@ func TestParseClientCommand_MissingRequired(t *testing.T) {
 		name string
 		line string
 	}{
+		{
+			name: "provider_logout missing provider",
+			line: `{"cmd":"provider_logout","requestId":"r1"}`,
+		},
 		{
 			name: "start_session missing key",
 			line: `{"cmd":"start_session","config":{"profileId":"p","extensionDir":"/ext","workingDirectory":"/tmp"}}`,

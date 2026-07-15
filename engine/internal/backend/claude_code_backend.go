@@ -33,6 +33,10 @@ type claudeCodeRun struct {
 	stdinMu      sync.Mutex
 	planMode     bool
 	planFilePath string
+	// planCaptured latches once the native ExitPlanMode plan argument has been
+	// written to the plan file (see handlePlanModeAssistant), so the result
+	// handler does not double-surface the proposal.
+	planCaptured bool
 }
 
 // ClaudeCodeBackend implements RunBackend by spawning the Claude Code CLI
@@ -253,24 +257,18 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 		args = append(args, "--system-prompt", opts.SystemPrompt)
 	}
 
-	// Plan mode: append a supplementary directive telling the model to write
-	// the plan to our managed file path. The CLI's native plan mode handles
-	// the behavioral framework (read-only tools, phases, ExitPlanMode); we
-	// just redirect where the plan lands on disk.
-	appendSys := opts.AppendSystemPrompt
-	if opts.PlanMode && opts.PlanFilePath != "" {
-		planDirective := fmt.Sprintf("\n\n[ION PLAN FILE]\nWrite your implementation plan to this file: %s\n"+
-			"This is the only file you should create or edit. Use the Write tool to write the plan.\n"+
-			"When the plan is complete, call ExitPlanMode.", opts.PlanFilePath)
-		appendSys += planDirective
-	}
-	if appendSys != "" {
-		args = append(args, "--append-system-prompt", appendSys)
+	// Plan mode adds no supplementary prompt: the CLI's native plan mode owns
+	// the behavioral framework (read-only tools, phases, ExitPlanMode), and the
+	// engine captures the plan text from the native ExitPlanMode tool argument
+	// (see handlePlanModeAssistant), writing it to the Ion plan file itself.
+	if opts.AppendSystemPrompt != "" {
+		args = append(args, "--append-system-prompt", opts.AppendSystemPrompt)
 	}
 
 	// Allowed tools: use provided list, or restrict when hook settings injected.
-	// Plan mode: always include Write and Edit so the model can write the plan
-	// file (the CLI's native plan mode gates which paths are writable).
+	// Plan mode deliberately does NOT force Write/Edit in: the plan is captured
+	// from the native ExitPlanMode argument, so the model never authors a plan
+	// file itself and stray plan-file writes are not a supported path.
 	allowedTools := opts.AllowedTools
 	if len(allowedTools) == 0 {
 		if opts.HookSettingsPath != "" {
@@ -278,19 +276,6 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 			allowedTools = []string{"Read", "Glob", "Grep", "WebSearch", "WebFetch", "Agent", "TaskCreate", "TaskList", "TaskGet", "LSP", "NotebookEdit"}
 		} else {
 			allowedTools = []string{"Read", "Glob", "Grep", "LS", "Agent", "WebSearch", "WebFetch"}
-		}
-	}
-	if opts.PlanMode {
-		// Ensure Write/Edit are available for the plan file even if not in
-		// the base set. The CLI's plan mode restricts what can be written.
-		has := make(map[string]bool, len(allowedTools))
-		for _, t := range allowedTools {
-			has[t] = true
-		}
-		for _, need := range []string{"Write", "Edit"} {
-			if !has[need] {
-				allowedTools = append(allowedTools, need)
-			}
 		}
 	}
 	// When an MCP ToolServer is wired, add the wildcard allowlist entry so
@@ -317,9 +302,14 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 	})
 
 	// Emit the state-transition event so consumers can mirror the active
-	// plan-mode flag for this run.
+	// plan-mode flag for this run. Carries the plan file path + slug so
+	// consumers can key the plan surface without waiting for the proposal.
 	if run.planMode {
-		b.emit(run.requestID, types.NormalizedEvent{Data: &types.PlanModeChangedEvent{Enabled: true}})
+		b.emit(run.requestID, types.NormalizedEvent{Data: &types.PlanModeChangedEvent{
+			Enabled:      true,
+			PlanFilePath: run.planFilePath,
+			PlanSlug:     types.PlanSlugFromPath(run.planFilePath),
+		}})
 		utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "plan mode enabled for claude-code run", map[string]any{
 			"run_id":    run.requestID,
 			"plan_file": run.planFilePath,
@@ -447,6 +437,13 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 				if e.SessionID != "" {
 					sessionID = e.SessionID
 				}
+			case *types.TaskUpdateEvent:
+				// Plan mode: the CLI streams the fully-populated ExitPlanMode
+				// tool_use (its input carries the plan text) in the assistant
+				// message BEFORE the result/denial arrives. Capture it here.
+				if run.planMode && !run.planCaptured {
+					b.handlePlanModeAssistant(run, e)
+				}
 			case *types.TaskCompleteEvent:
 				if e.SessionID != "" {
 					sessionID = e.SessionID
@@ -480,42 +477,13 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 					"delta":      runCost,
 				})
 
-				// Plan mode enrichment: when the CLI's result contains an
-				// ExitPlanMode denial, inject our planFilePath (which the
-				// CLI's wire format doesn't carry) and emit a
-				// PlanProposalEvent{Kind:"exit"} before the TaskCompleteEvent
-				// so consumers see the path before the run terminates.
-				//
-				// Per ADR-003 (state events vs workflow events): the model
-				// calling ExitPlanMode is a *proposal*, not a confirmed mode
-				// change. The engine must NOT emit a
-				// PlanModeChangedEvent{Enabled:false} here — the mode flip is
-				// deferred to the user-approval chokepoint. Instead it emits
-				// the first-class workflow signal PlanProposalEvent{Kind:"exit"},
-				// matching the API backend's interceptExitPlanMode path
-				// (runloop_plan_mode_gates.go). The enriched ExitPlanMode
-				// permission denial keeps flowing through engine_status /
-				// task_complete for the existing card-render path.
-				if run.planMode && run.planFilePath != "" {
-					for i := range e.PermissionDenials {
-						if e.PermissionDenials[i].ToolName == "ExitPlanMode" {
-							e.PermissionDenials[i].ToolInput = map[string]any{
-								"planFilePath": run.planFilePath,
-							}
-							b.emit(run.requestID, types.NormalizedEvent{
-								Data: &types.PlanProposalEvent{
-									Kind:         "exit",
-									PlanFilePath: run.planFilePath,
-									PlanSlug:     types.PlanSlugFromPath(run.planFilePath),
-								},
-							})
-							utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "exit_tool emit plan_proposal kind=exit (mode change deferred to user approval, per ADR-003)", map[string]any{
-								"run_id":    run.requestID,
-								"plan_file": run.planFilePath,
-							})
-							break
-						}
-					}
+				// Plan mode result handling: enrich the ExitPlanMode denial
+				// with the plan file path and, when needed, surface the
+				// proposal or synthesize the auto-exit safety net — all
+				// BEFORE the TaskCompleteEvent is emitted, matching the
+				// ApiBackend's contract order. See handlePlanModeResult.
+				if run.planMode {
+					b.handlePlanModeResult(run, e, &opts)
 				}
 			}
 			b.emit(run.requestID, ev)
