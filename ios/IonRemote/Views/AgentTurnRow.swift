@@ -64,7 +64,7 @@ struct AgentTurnRow: View {
                         }
                         Text(isActive
                             ? "Running tools\u{2026}"
-                            : "Used \(tools.count) tool\(tools.count == 1 ? "" : "s")")
+                            : settledLabel)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(theme.textSecondary)
                     }
@@ -81,13 +81,29 @@ struct AgentTurnRow: View {
     // MARK: - Helpers
 
     private var compositeIcon: String {
-        if tools.contains(where: { $0.toolStatus == .error }) { return "xmark.circle.fill" }
-        return "checkmark.circle.fill"
+        // isActive (any tool running) renders a spinner in the label; icon not used.
+        // Here we produce the settled icon for the non-active branch.
+        let summary = toolGroupFailureSummary(tools)
+        if summary.failed == 0 { return "checkmark.circle.fill" }
+        if summary.failed == summary.total { return "xmark.circle.fill" }
+        return "exclamationmark.triangle.fill"
     }
 
     private var compositeColor: Color {
-        if tools.contains(where: { $0.toolStatus == .error }) { return theme.statusError }
-        return theme.statusDone
+        let summary = toolGroupFailureSummary(tools)
+        if summary.failed == 0 { return theme.statusDone }
+        if summary.failed == summary.total { return theme.statusError }
+        return theme.statusWarning
+    }
+
+    /// Label for the disclosure group header (settled state only — active state
+    /// shows "Running tools…" and no icon/suffix).
+    private var settledLabel: String {
+        let base = "Used \(tools.count) tool\(tools.count == 1 ? "" : "s")"
+        let summary = toolGroupFailureSummary(tools)
+        guard summary.failed > 0 else { return base }
+        if summary.failed == summary.total { return "\(base), all failed" }
+        return "\(base), \(summary.failed) failed"
     }
 
     @ViewBuilder

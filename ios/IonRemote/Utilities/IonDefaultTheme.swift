@@ -23,6 +23,10 @@ struct IonDefaultTheme: AppTheme {
     // (#E8854A) so foreground vs. background activity is legible at
     // a glance.
     let statusWaitingChildren = Color(hex: 0xF59E0B)
+    // "Mixed failure" — some tools in a group failed but not all.
+    // Same amber as statusWaitingChildren so the amber vocabulary
+    // stays consistent (amber = partial/advisory, red = total failure).
+    let statusWarning = Color(hex: 0xF59E0B)
     let surfaceElevated = Color(.tertiarySystemBackground)
     let codeBg = Color(.secondarySystemFill).opacity(0.7)
     let userBubbleTint = Color(hex: 0x4ECDC4, opacity: 0.08)

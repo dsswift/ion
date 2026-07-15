@@ -217,6 +217,28 @@ func toolGroupSummary(_ tools: [Message]) -> String {
     return "\(desc) and \(remaining) more tool\(remaining > 1 ? "s" : "")"
 }
 
+/// Failure summary for a collapsed tool group.
+///
+/// Returns the count of tools with `.error` status, the total tool count,
+/// and whether any tool is still `.running`.
+///
+/// Callers use these values to choose the three-state icon/color and to
+/// build the failure suffix string:
+///   - running == true  → spinner wins; suppress the suffix.
+///   - failed == 0      → all-success: `checkmark.circle.fill` / `statusDone`.
+///   - failed == settled (total - runningCount) → all-failed: `xmark.circle.fill` / `statusError`.
+///   - otherwise        → mixed: `exclamationmark.triangle.fill` / `statusWarning`, append ", N failed".
+///
+/// `settled` excludes running tools because a running tool hasn't produced
+/// an outcome yet — counting it against the denominator would make partial
+/// failures look worse than they are.
+func toolGroupFailureSummary(_ tools: [Message]) -> (failed: Int, total: Int, running: Bool) {
+    let total = tools.count
+    let failedCount = tools.filter { $0.toolStatus == .error }.count
+    let runningCount = tools.filter { $0.toolStatus == .running }.count
+    return (failed: failedCount, total: total, running: runningCount > 0)
+}
+
 // MARK: - Private helpers
 
 private func toolDescriptionFromDict(name: String, dict: [String: Any]) -> String {

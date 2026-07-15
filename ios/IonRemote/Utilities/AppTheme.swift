@@ -31,6 +31,10 @@ protocol AppTheme {
     /// `ConversationStatusBar.swift` and `TabRowView.swift` for the
     /// render sites.
     var statusWaitingChildren: Color { get }
+    /// Mixed tool-group outcome: some tools failed, but not all. Amber
+    /// triangle. Distinct from `statusError` (all failed) so partial
+    /// failure is visually differentiated from total failure.
+    var statusWarning: Color { get }
     var surfaceElevated: Color { get }
     var codeBg: Color { get }
     var userBubbleTint: Color { get }
@@ -80,9 +84,14 @@ final class ThemeManager: AppTheme {
     var selectedThemeId: String {
         didSet {
             guard selectedThemeId != oldValue else { return }
-            DiagnosticLog.log("[ThemeManager] selectedThemeId changed: \(oldValue) -> \(selectedThemeId)")
+            DiagnosticLog.log("theme selected id changed", tag: "theme.manager", fields: [
+                "reason": oldValue,
+                "status": selectedThemeId
+            ])
             _currentTheme = ThemeRegistry.theme(for: selectedThemeId)
-            DiagnosticLog.log("[ThemeManager] resolved theme id: \(_currentTheme.id)")
+            DiagnosticLog.log("theme resolved id", tag: "theme.manager", fields: [
+                "status": _currentTheme.id
+            ])
             UserDefaults.standard.set(selectedThemeId, forKey: "selectedTheme")
         }
     }
@@ -91,9 +100,11 @@ final class ThemeManager: AppTheme {
         let saved = UserDefaults.standard.string(forKey: "selectedTheme") ?? "ion-default"
         self.selectedThemeId = saved
         self._currentTheme = ThemeRegistry.theme(for: saved)
-        DiagnosticLog.log("[ThemeManager] init — loaded theme: \(saved)")
-        DiagnosticLog.log("[ThemeManager] init — accent color: \(self._currentTheme.accent)")
-        DiagnosticLog.log("[ThemeManager] init — _currentTheme type: \(type(of: self._currentTheme))")
+        DiagnosticLog.log("theme manager init", tag: "theme.manager", fields: [
+            "status": saved,
+            "reason": String(describing: self._currentTheme.accent),
+            "count": String(describing: type(of: self._currentTheme))
+        ])
     }
 
     // MARK: - AppTheme conformance (delegates to _currentTheme)
@@ -116,6 +127,7 @@ final class ThemeManager: AppTheme {
     var statusError: Color { _currentTheme.statusError }
     var statusPending: Color { _currentTheme.statusPending }
     var statusWaitingChildren: Color { _currentTheme.statusWaitingChildren }
+    var statusWarning: Color { _currentTheme.statusWarning }
     var surfaceElevated: Color { _currentTheme.surfaceElevated }
     var codeBg: Color { _currentTheme.codeBg }
     var userBubbleTint: Color { _currentTheme.userBubbleTint }

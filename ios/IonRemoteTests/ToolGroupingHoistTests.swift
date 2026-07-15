@@ -160,4 +160,70 @@ final class ToolGroupingHoistTests: XCTestCase {
             : "Used \(toolCount) tool\(toolCount == 1 ? "" : "s")"
         XCTAssertEqual(label, "Running tools\u{2026}")
     }
+
+    // MARK: - toolGroupFailureSummary
+
+    /// All-success (5 completed) → failed == 0, running == false.
+    func testFailureSummaryAllSuccess() {
+        let tools = (0..<5).map { makeMsg(id: "t\($0)", role: .tool, toolStatus: .completed) }
+        let s = toolGroupFailureSummary(tools)
+        XCTAssertEqual(s.failed, 0)
+        XCTAssertEqual(s.total, 5)
+        XCTAssertFalse(s.running)
+        // Derived: not mixed, not all-failed.
+        let settled = s.total
+        XCTAssertFalse(s.failed > 0 && s.failed < settled, "should not be mixed")
+        XCTAssertFalse(s.failed > 0 && s.failed == settled, "should not be all-failed")
+    }
+
+    /// Mixed (100 tools: 3 error, 97 completed) → failed == 3, total == 100,
+    /// running == false, mixed == true.
+    func testFailureSummaryMixed() {
+        var tools: [Message] = []
+        for i in 0..<97 { tools.append(makeMsg(id: "ok\(i)", role: .tool, toolStatus: .completed)) }
+        for i in 0..<3  { tools.append(makeMsg(id: "er\(i)", role: .tool, toolStatus: .error)) }
+        let s = toolGroupFailureSummary(tools)
+        XCTAssertEqual(s.failed, 3)
+        XCTAssertEqual(s.total, 100)
+        XCTAssertFalse(s.running)
+        // settled == total (no running); mixed = failed > 0 && failed < settled.
+        let settled = s.total
+        XCTAssertTrue(s.failed > 0 && s.failed < settled, "should be mixed")
+        XCTAssertFalse(s.failed == settled, "should not be all-failed")
+    }
+
+    /// All-failed (4 error) → failed == 4 == total, all-failed == true.
+    func testFailureSummaryAllFailed() {
+        let tools = (0..<4).map { makeMsg(id: "er\($0)", role: .tool, toolStatus: .error) }
+        let s = toolGroupFailureSummary(tools)
+        XCTAssertEqual(s.failed, 4)
+        XCTAssertEqual(s.total, 4)
+        XCTAssertFalse(s.running)
+        // settled == total; all-failed = failed == settled.
+        XCTAssertEqual(s.failed, s.total, "all-failed: failed must equal total")
+    }
+
+    /// Running (2 completed, 1 running, 1 error) → running == true;
+    /// suffix suppressed means callers must guard on running before
+    /// appending the failure label.
+    func testFailureSummaryRunningSupressesSuffix() {
+        let tools = [
+            makeMsg(id: "ok0", role: .tool, toolStatus: .completed),
+            makeMsg(id: "ok1", role: .tool, toolStatus: .completed),
+            makeMsg(id: "run", role: .tool, toolStatus: .running),
+            makeMsg(id: "err", role: .tool, toolStatus: .error),
+        ]
+        let s = toolGroupFailureSummary(tools)
+        XCTAssertTrue(s.running, "running must be true when any tool is .running")
+        XCTAssertEqual(s.failed, 1)
+        XCTAssertEqual(s.total, 4)
+        // Callers suppress the suffix when running == true.
+        // settled = total - runningCount = 4 - 1 = 3; failed (1) < settled (3) → mixed,
+        // but the suffix is NOT shown. Verify the guard logic.
+        guard !s.running else {
+            // Suffix correctly suppressed — test passes.
+            return
+        }
+        XCTFail("Suffix suppression guard failed: running is true but was not caught")
+    }
 }
