@@ -773,3 +773,23 @@ type PeerExtensionInfo struct {
 | `payload` | `map[string]interface{}` | Arbitrary structured data |
 
 Same extension type only. The engine enforces this by comparing extension names; cross-type messaging returns an error to the sender.
+
+## Schedule Missed
+
+| Hook | When | Payload | Return | Effect |
+|------|------|---------|--------|--------|
+| `schedule_missed` | Scheduler detects a daily/weekly slot was missed while the engine was down | `ScheduleMissedInfo{ID, Kind, MissedSlotUtc, HadMarker, RanWithinScope}` | ignored | Observation-only. The extension decides whether to backfill via `ctx.fireSchedule(id)`. When no handler is registered, the scheduler auto-catches-up (existing behavior). |
+
+### Payload Types
+
+**ScheduleMissedInfo**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | Schedule job's stable identifier |
+| `kind` | `string` | `"daily"` or `"weekly"` |
+| `missedSlotUtc` | `string` | RFC3339 UTC of the missed slot |
+| `hadMarker` | `bool` | True when a last-run marker existed on disk |
+| `ranWithinScope` | `bool` | True when the job ran inside its current window (today for daily, this week for weekly) |
+
+When a `schedule_missed` handler is registered, the scheduler does NOT auto-fire the missed slot. Instead it emits `engine_schedule_missed` and fires this hook. The handler can call `ctx.fireSchedule(id)` to backfill, or choose to skip. When no handler is registered, auto-catch-up fires as before (backward-compatible).
