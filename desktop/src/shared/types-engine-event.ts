@@ -49,6 +49,18 @@ export type EngineEvent =
   | { type: 'engine_error'; message: string; errorCode?: string; errorCategory?: string; retryable?: boolean; retryAfterMs?: number; httpStatus?: number }
   | { type: 'engine_permission_request'; questionId: string; permToolName: string; permToolDescription?: string; permToolInput?: Record<string, unknown>; permOptions: Array<{ id: string; label: string; kind?: string }> }
   | { type: 'engine_plan_mode_changed'; planModeEnabled: boolean; planFilePath?: string; planSlug?: string }
+  // engine_oidc_login_url — delivered to the client that issued
+  // oidc_begin_login. Interactive PKCE carries oidcAuthorizationUrl (open
+  // it in a browser; the engine's loopback callback completes the
+  // exchange); device-code carries oidcUserCode + oidcVerificationUri
+  // (display them; the engine polls to completion).
+  | { type: 'engine_oidc_login_url'; oidcAuthorizationUrl?: string; oidcUserCode?: string; oidcVerificationUri?: string }
+  // engine_oidc_identity — complete SNAPSHOT of the operator's OIDC
+  // identity state, broadcast on every login/logout transition and
+  // answered to oidc_identity queries. Consumers REPLACE their local
+  // identity view with the payload; claim fields are absent when signed
+  // out.
+  | { type: 'engine_oidc_identity'; oidcSignedIn: boolean; oidcProvider?: string; oidcSubject?: string; oidcUsername?: string; oidcDisplayName?: string }
   // engine_plan_file_written fires when a Write/Edit lands on the canonical
   // plan file during plan mode — the accurate trigger for the "plan created /
   // updated" conversation marker (the file now exists with content, so the

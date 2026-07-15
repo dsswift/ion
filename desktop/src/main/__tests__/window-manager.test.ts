@@ -67,7 +67,7 @@ vi.mock('electron', () => {
       },
     },
     globalShortcut: { unregisterAll: vi.fn() },
-    Menu: { buildFromTemplate: vi.fn() },
+    Menu: { buildFromTemplate: vi.fn((template: any) => template) },
     nativeImage: { createFromPath: vi.fn().mockReturnValue({ setTemplateImage: vi.fn() }) },
     Tray: vi.fn().mockImplementation(function () {
       return { setToolTip: vi.fn(), setContextMenu: vi.fn(), isDestroyed: vi.fn().mockReturnValue(false), destroy: vi.fn() }
@@ -93,6 +93,17 @@ vi.mock('../broadcast', () => ({ broadcast: vi.fn() }))
 
 vi.mock('../terminal-manager-instance', () => ({
   terminalManager: { destroyAll: vi.fn() },
+}))
+
+const mockRestartEngineDaemon = vi.fn().mockReturnValue(true)
+vi.mock('../engine-bootstrap', () => ({
+  restartEngineDaemon: mockRestartEngineDaemon,
+}))
+
+vi.mock('../atv-window-manager', () => ({
+  openAtvWindow: vi.fn(),
+  hideAtvInSympathy: vi.fn(),
+  showAtvInSympathy: vi.fn(),
 }))
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -127,5 +138,30 @@ describe('window-manager createWindow()', () => {
 
     const enabledArg = mockSetAlwaysOnTop.mock.calls[0][0]
     expect(enabledArg).toBe(true)
+  })
+})
+
+describe('window-manager createTray()', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('exposes a "Restart Engine" item that recycles the daemon (kickstart -k) without quitting', async () => {
+    const electron = await import('electron')
+    const { createTray } = await import('../window-manager')
+    createTray()
+
+    // The tray context menu was built from a template; find the Restart item.
+    const buildCalls = (electron.Menu.buildFromTemplate as any).mock.calls
+    const template = buildCalls[buildCalls.length - 1][0] as Array<{ label?: string; click?: () => void }>
+    const restartItem = template.find((i) => i.label === 'Restart Engine')
+
+    expect(restartItem).toBeDefined()
+    expect(typeof restartItem!.click).toBe('function')
+
+    // Invoking it force-restarts the persistent daemon so it re-reads config,
+    // without booting it out or quitting the desktop.
+    restartItem!.click!()
+    expect(mockRestartEngineDaemon).toHaveBeenCalledTimes(1)
   })
 })
