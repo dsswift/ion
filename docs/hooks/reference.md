@@ -14,7 +14,7 @@ All hooks grouped by category. For each hook: when it fires, what payload it rec
 |------|------|---------|--------|--------|
 | `session_start` | Session initialized | `nil` | ignored | Observe only |
 | `session_end` | Session teardown | `nil` | ignored | Observe only |
-| `before_prompt` | Before prompt sent to LLM | `string` (prompt) | `BeforePromptResult{Prompt, SystemPrompt}` or `string` | Last non-nil wins. String = prompt rewrite. Struct can set both prompt and system prompt addition. |
+| `before_prompt` | Before prompt sent to LLM | `string` (prompt) | `BeforePromptResult{Prompt, SystemPrompt}` or `string` | Last non-nil wins. String = prompt rewrite. Struct can set both prompt and system prompt addition. `ctx.model` carries the selected model (ID + context window) for model-aware rewriting. |
 | `turn_start` | Start of each LLM turn | `TurnInfo{TurnNumber}` | ignored | Observe only |
 | `turn_end` | End of each LLM turn | `TurnInfo{TurnNumber}` | ignored | Observe only |
 | `message_start` | Before LLM streaming begins | `nil` | ignored | Observe only |
@@ -216,7 +216,7 @@ type BeforeProviderRequestInfo struct {
 | `message_update` | Message content updated | `MessageUpdateInfo{Role, Content}` | ignored | Observe only |
 | `tool_result` | Tool returns a result | tool result data | ignored | Observe only |
 | `input` | User input received | `string` (prompt) | `string` | Last non-nil string wins. Rewrites the user prompt. |
-| `model_select` | Model selection occurs | `ModelSelectInfo{RequestedModel, AvailableModels}` | `string` (model ID) | Last non-nil string wins. Overrides model selection. Wired in session manager -- fires on every model resolution. |
+| `model_select` | Model selection occurs | `ModelSelectInfo{RequestedModel, AvailableModels, Prompt}` | `string` (model ID) | Last non-nil string wins. Overrides model selection. Wired in session manager -- fires on every model resolution. Routes on the RAW prompt (`Prompt`); see the routing-vs-payload note below. |
 | `user_bash` | User runs bash command | `string` (command) | ignored | Observe only |
 
 ### Payload Types
@@ -234,8 +234,11 @@ type MessageUpdateInfo struct {
 type ModelSelectInfo struct {
     RequestedModel  string
     AvailableModels []string
+    Prompt          string // RAW user prompt, before before_prompt rewrite
 }
 ```
+
+**Routing vs. payload — `model_select` then `before_prompt`.** The two hooks split one concern into two stages. `model_select` *routes*: it reads the RAW user prompt (`ModelSelectInfo.Prompt`, captured before any rewrite) and picks the model that fits the request (content and length routing). `before_prompt` then *adapts the payload*: it rewrites the prompt text for the model that was chosen, and can read that chosen model via `ctx.model` (populated with the selected model's ID and context window). Route on the raw prompt first; shape the text to the winning model second.
 
 ## Per-Tool Call
 
