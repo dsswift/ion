@@ -19,7 +19,7 @@ Sessions move through a predictable sequence: create, run, stop. The engine mana
 5. Load the extension host if `extensionDir` is set in config.
 6. Fire `session_start` hook on the extension.
 7. Discover capabilities from extensions.
-8. Load skills from `~/.ion/skills/` and `.ion/skills/`.
+8. Load skills from `~/.ion/skills/` and `.ion/skills/`. Both flat markdown files (`<name>.md`) and the subdirectory layout (`<name>/SKILL.md`) are supported and may coexist in the same directory.
 9. Connect MCP servers from engine config.
 10. Emit `engine_status` with state `idle`.
 
@@ -32,7 +32,7 @@ If a session with the same key already exists, `StartSession` returns an error.
 1. If a run is active, queue the prompt (up to 32 pending prompts).
 2. Generate a unique request ID.
 3. Build `RunOptions` from session config, per-prompt overrides, and engine defaults.
-4. Discover context files (ION.md, CLAUDE.md) from the working directory.
+4. Discover context files (AGENTS.md, ION.md, CLAUDE.md) from the working directory. Dispatched sub-agents receive the same grounding via the [context loading cascade](../context-loading.md).
 5. Fire `context_inject` hook for extension-provided context.
 6. Inject git context from the working directory.
 7. Fire `before_agent_start` for system prompt injection.

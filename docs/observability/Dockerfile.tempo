@@ -1,0 +1,3 @@
+FROM grafana/tempo:2.10.7
+COPY tempo-config.yaml /etc/tempo/tempo.yaml
+CMD ["-config.file=/etc/tempo/tempo.yaml"]

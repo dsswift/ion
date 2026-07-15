@@ -16,6 +16,7 @@ sidebar_position: 6
 | TypeScript extension with pure-JS npm deps (chokidar, lodash, ...) | No -- a `package.json` alone is enough; the engine runs `npm install` automatically. |
 | Extension that imports a native module (`.node` file like `keytar`, `better-sqlite3`) | **Yes**, declare it in `external`. |
 | Extension that wants a non-default display name in logs | Optional |
+| Extension that wants cost telemetry attributed by version in Grafana dashboards | Optional -- add `version` |
 | Pin a minimum engine version | Optional (reserved; not yet enforced) |
 
 ## File location
@@ -37,6 +38,7 @@ my-extension/
 {
   "$schema": "https://ion.example.com/schemas/extension.json",
   "name": "jarvis",
+  "version": "1.2.0",
   "external": ["keytar"],
   "engineVersion": ">=0.5.0"
 }
@@ -53,6 +55,18 @@ Display name for the extension. Used in logs and event source attribution. Defau
 ```json
 { "name": "jarvis" }
 ```
+
+#### `version` (optional, string)
+
+Version string for this extension release. Conventional semver (e.g. `"1.2.0"`) but not enforced. Used for cost attribution in the Ion Extensions Grafana dashboard — when set, every `run.complete`, `cache.savings`, `llm.call`, and `dispatch.agent` telemetry event carries `extension_version` in its context block so operators can distinguish spend across releases in version-comparison panels.
+
+```json
+{ "name": "jarvis", "version": "1.2.0" }
+```
+
+**How the version reaches telemetry:** the engine reads `extension.json` at host load time and stamps `Host.Version()` from `Manifest.Version`. The version is then threaded through `RunOptions.ExtensionVersion` → `buildTelemCtx` → every cost-bearing event context. It is a build-time constant: changing the manifest version requires a reload (engine restart), not a running state update.
+
+**Old engines:** engines that pre-date this field use `DisallowUnknownFields` in the JSON decoder and will reject manifests that carry `version`. Only add `version` to your manifest once your minimum supported engine version includes this field (introduced alongside ADR-019's first extension attribution release).
 
 #### `external` (optional, string array)
 

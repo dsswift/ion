@@ -1,0 +1,528 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "description": "Cost attribution by extension. Panels use context_extension and context_extension_version structured-metadata fields (promoted by Alloy from the telemetry context block). Old log lines without these fields group as 'unattributed'.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Spend by Extension",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "bargauge",
+      "title": "Spend by Extension (ranked)",
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 12,
+        "h": 8
+      },
+      "description": "Total run.complete cost summed per extension. Lines without context_extension group as 'unattributed'. Filter using the Extension variable above.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 4,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.1
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ]
+        },
+        "displayMode": "gradient",
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (context_extension) (sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | context_extension =~ \"$extension\" | label_format context_extension=`{{if .context_extension}}{{.context_extension}}{{else}}unattributed{{end}}` | unwrap run_cost_usd [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "{{context_extension}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "piechart",
+      "title": "Spend Share by Extension",
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 12,
+        "h": 8
+      },
+      "description": "Proportion of total cost attributable to each extension. Unattributed runs (no context_extension) appear as a separate slice when present.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 4
+        }
+      },
+      "options": {
+        "pieType": "pie",
+        "displayLabels": [
+          "name",
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "value",
+            "percent"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (context_extension) (sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | context_extension =~ \"$extension\" | label_format context_extension=`{{if .context_extension}}{{.context_extension}}{{else}}unattributed{{end}}` | unwrap run_cost_usd [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "{{context_extension}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "row",
+      "title": "Model Mix and Cost Over Time",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 5,
+      "type": "bargauge",
+      "title": "Per-Extension Model Mix (spend)",
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 12,
+        "h": 8
+      },
+      "description": "Cost broken down by extension AND model. Shows which models each extension drives and how much each model costs within an extension. Filter by Extension variable to drill into one extension.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 4
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ]
+        },
+        "displayMode": "gradient"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (context_extension, model) (sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | context_extension =~ \"$extension\" | label_format context_extension=`{{if .context_extension}}{{.context_extension}}{{else}}unattributed{{end}}` | unwrap run_cost_usd [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "{{context_extension}} / {{model}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Cost Over Time by Extension (with version legend)",
+      "gridPos": {
+        "x": 12,
+        "y": 10,
+        "w": 12,
+        "h": 8
+      },
+      "description": "Run cost summed per $__interval window (matches the panel's step so the area integrates to the same range total as the ranked bar and pie), colored by extension. When multiple versions of the same extension exist in the window, each context_extension_version appears as a distinct series so version rollouts are visible. Extensions with no version report just the extension name (no trailing 'v'); lines with no extension group as 'unattributed'.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "custom": {
+            "lineWidth": 2
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "sum"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "label_replace(sum by (context_extension, context_extension_version) (sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | context_extension =~ \"$extension\" | context_extension_version =~ \"$version\" | label_format context_extension=`{{if .context_extension}}{{.context_extension}}{{else}}unattributed{{end}}` | unwrap run_cost_usd [$__interval])), \"vsuffix\", \" v$1\", \"context_extension_version\", \"(.+)\")",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "{{context_extension}}{{vsuffix}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "row",
+      "title": "Agent Dispatch Attribution",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Extension → Agent Drill-Down (dispatch.agent)",
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 24,
+        "h": 10
+      },
+      "description": "Every dispatch.agent span attributed to an extension. Shows which agent names each extension dispatched, how many times, and the total dispatch cost (run_cost_usd from the matching run.complete). Useful for understanding sub-agent spend per extension.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "sortBy": [
+          {
+            "displayName": "Dispatch Count",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "payload_extension": "Extension",
+              "payload_extension_version": "Version",
+              "payload_agent": "Agent",
+              "Value": "Dispatch Count"
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (payload_extension, payload_extension_version, payload_agent) (count_over_time({service_name=\"ion-telemetry\", kind=\"dispatch.agent\"} | json | payload_extension =~ \"$extension\" [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "{{payload_extension}} | v{{payload_extension_version}} | {{payload_agent}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "row",
+      "title": "Version Comparison",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 29
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 10,
+      "type": "bargauge",
+      "title": "Cost per Version",
+      "gridPos": {
+        "x": 0,
+        "y": 30,
+        "w": 12,
+        "h": 8
+      },
+      "description": "Total run.complete cost grouped by extension_version. Use this to compare spend before and after a version bump. Select a specific extension using the Extension variable to isolate one extension's versions.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 4
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ]
+        },
+        "displayMode": "gradient"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (context_extension, context_extension_version) (sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | context_extension =~ \"$extension\" | context_extension_version =~ \"$version\" | unwrap run_cost_usd [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "{{context_extension}} v{{context_extension_version}}"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Runs per Version",
+      "gridPos": {
+        "x": 12,
+        "y": 30,
+        "w": 12,
+        "h": 8
+      },
+      "description": "Total run count grouped by extension version. A version comparison companion to the cost panel — shows whether a cost change is driven by price-per-run or run volume.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ]
+        },
+        "orientation": "horizontal"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (context_extension, context_extension_version) (count_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | context_extension =~ \"$extension\" | context_extension_version =~ \"$version\" [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "{{context_extension}} v{{context_extension_version}}"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "row",
+      "title": "Runs and Tokens",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 38
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Token Usage Over Time by Extension",
+      "gridPos": {
+        "x": 0,
+        "y": 39,
+        "w": 24,
+        "h": 8
+      },
+      "description": "Input and output tokens summed per $__interval window (matches the panel's step so the totals do not overcount), colored by extension. Helps distinguish token-volume growth from model-price changes when cost trends diverge.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "sum"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (context_extension) (sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | context_extension =~ \"$extension\" | unwrap input_tokens [$__interval]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "{{context_extension}} input"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (context_extension) (sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | context_extension =~ \"$extension\" | unwrap output_tokens [$__interval]))",
+          "queryType": "range",
+          "refId": "B",
+          "__ionClass": "accumulation",
+          "legendFormat": "{{context_extension}} output"
+        }
+      ]
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 36,
+  "tags": [
+    "ion",
+    "extensions",
+    "cost"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "extension",
+        "label": "Extension",
+        "type": "textbox",
+        "description": "Extension name (e.g. 'ion-dev') to scope panels. Accepts regex. Default matches all, including unattributed runs.",
+        "query": ".*",
+        "current": {
+          "value": ".*"
+        },
+        "hide": 0
+      },
+      {
+        "name": "version",
+        "label": "Version",
+        "type": "textbox",
+        "description": "Extension manifest version to scope panels. Accepts regex. Default matches all.",
+        "query": ".*",
+        "current": {
+          "value": ".*"
+        },
+        "hide": 0
+      }
+    ]
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Ion Extensions",
+  "uid": "ion-extensions",
+  "version": 3
+}

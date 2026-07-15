@@ -1,0 +1,76 @@
+apiVersion: 1
+
+datasources:
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: http://loki:3100
+    isDefault: true
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        - datasourceUid: tempo
+          matcherRegex: '"trace_id":"([a-f0-9]{32})"'
+          name: TraceID
+          url: '${__value.raw}'
+          urlDisplayLabel: View trace in Tempo
+    # Provisioned correlations for Explore deep-linking (Grafana 13.1.0+).
+    # Schema: correlations is a list under the source datasource. Each entry:
+    #   targetUID: UID of the target datasource (must match a provisioned uid above).
+    #   label: short label shown in the Explore link button.
+    #   description: tooltip / detail description.
+    #   type: "query" for datasource queries; "external" for URL links.
+    #   config.target: the query model sent to the target datasource.
+    #   config.field: the field whose value drives the variable substitution.
+    # Verified against the Grafana correlations provisioning schema used by
+    # grafana/grafana:13.1.0 (see grafana/devenv/datasources.yaml and
+    # https://grafana.com/docs/grafana/latest/administration/correlations/create-a-new-correlation/).
+    correlations:
+      # conversation_id → Explore: all log lines for this conversation across components.
+      - targetUID: loki
+        label: "All logs for conversation"
+        description: "Open Explore filtered to all log lines sharing this conversation_id (engine + extensions + desktop)."
+        type: query
+        config:
+          target:
+            expr: '{component=~".+"} | json | context_conversation_id = "${__value.raw}"'
+          field: context_conversation_id
+
+      # session_id → Explore: all telemetry events for a session.
+      - targetUID: loki
+        label: "Session telemetry"
+        description: "Open Explore filtered to all telemetry events for this session_id (llm.call, run.complete, dispatch.agent, cache.savings)."
+        type: query
+        config:
+          target:
+            expr: '{component=~".+"} | json | context_session_id = "${__value.raw}"'
+          field: context_session_id
+
+      # trace_id → Tempo: jump from a Loki log line to the corresponding trace.
+      - targetUID: tempo
+        label: "View trace"
+        description: "Open this trace in Tempo. Requires the trace_id structured-metadata field to be present (emitted on LLM call spans)."
+        type: query
+        config:
+          target:
+            query: "${__value.raw}"
+          field: trace_id
+
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    access: proxy
+    url: http://tempo:3200
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: '-1m'
+        spanEndTimeShift: '1m'
+        filterByTraceID: true
+        customQuery: true
+        query: '{component=~".+"} | json | trace_id = "${__span.traceId}"'
+      serviceMap:
+        datasourceUid: prometheus
+      nodeGraph:
+        enabled: true

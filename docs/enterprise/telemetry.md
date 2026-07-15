@@ -12,6 +12,24 @@ Telemetry is disabled by default. Enterprise config can enable it and enforce co
 
 ## Configuration
 
+### Minimal configuration
+
+Enabling telemetry with no other fields is a complete, working configuration. When `targets` and `filePath` are omitted, the engine defaults to the file target at `~/.ion/telemetry.jsonl`:
+
+```json
+{
+  "telemetry": {
+    "enabled": true
+  }
+}
+```
+
+The engine fills in `targets: ["file"]` and expands `~/.ion/telemetry.jsonl` to the operator's home directory automatically. No additional fields are required to start capturing telemetry locally.
+
+Any field the operator sets explicitly is never overridden. If `targets` is set (e.g. `["http"]`), no file target is injected. If `filePath` is set, it is kept as-is.
+
+### Full configuration
+
 ```json
 {
   "telemetry": {
@@ -136,3 +154,37 @@ When telemetry is enabled at the enterprise layer, it cannot be disabled by user
 ```
 
 This guarantees that all sessions produce telemetry records shipped to the configured destination. Users cannot opt out.
+
+## Operational logs vs. telemetry
+
+The engine produces two distinct observability streams. They are complementary, not redundant.
+
+| Dimension | Operational logs | Telemetry |
+|---|---|---|
+| Format | JSONL (one structured line per event) | OpenTelemetry spans and log records |
+| Emitter | `utils.Log` / `utils.LogCtx` (Go slog) | `internal/telemetry` package |
+| Destination | `~/.ion/*.jsonl` (local); optional downstream egress via `logging.egressTargets` (HTTP endpoint or OTLP collector); Loki (observability stack) | File, HTTP endpoint, or OTLP collector |
+| Purpose | Real-time debugging, investigation, agent guidance | Session metrics, audit trail, enterprise compliance |
+| Enabled by default | Yes — always on (local file); egress is opt-in | No — opt-in via config |
+
+Operational logs are no longer local-only. The `logging.egressTargets` config (`"http"` and/or
+`"otel"`) ships every operational log line downstream in addition to the local file, using the same
+config shape as telemetry's targets — so an enterprise can point both streams at the same collector.
+Enterprise config can seal egress on so users cannot disable it. See
+[`docs/observability/consuming-logs.md`](../observability/consuming-logs.md) for the full egress
+reference and consumer guide.
+
+### Correlation model
+
+Every log line and every telemetry span that belongs to a session carries the same `session_id` and `trace_id`. This means you can move between the two streams without losing the thread:
+
+1. Find an error in Loki: `{level="ERROR"} | json | session_id = "01932abc1234"`
+2. Copy the `trace_id` from that log line
+3. Open Tempo and search by that `trace_id` to see the full span tree for the session
+4. Drill back into Loki from any Tempo span using the derived-field link (pre-configured in the provisioned datasource)
+
+The `trace_id` field is an OpenTelemetry-compatible 32-hex trace ID. The `span_id` field is a 16-hex span ID. Both are omitted when no trace is active.
+
+### Schema reference
+
+The full JSONL schema — all fields, types, required/optional status, and the Loki label policy — is documented at [`docs/observability/log-schema.md`](../observability/log-schema.md).

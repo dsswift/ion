@@ -679,7 +679,7 @@ Request an on-demand context breakdown for a session. The engine reconstructs th
 
 **Aggregate cost model.** `aggregateCostUsd` is recomputed on every `get_context_breakdown` request — no accumulator, no persistence. The engine reads each session's persisted `totalCost` from its `.llm.jsonl` header, then recursively follows `AgentDispatchData.ConversationIDs` entries in the parent's `.tree.jsonl` to collect every descendant dispatch session. In-flight background dispatches (not yet written to `.tree.jsonl`) are also included via the live dispatch registry, as of their last cost flush. Each conversation ID is counted at most once (cycle/dup guard). A mid-turn child may undercount by its unflushed turn — this self-heals on the next drawer-open after the child's next flush.
 
-Two cost numbers in the Status Drawer are intentionally distinct: the Context section shows the **top-level session cost only** (`StatusFields.totalCostUsd`), while the Session section shows the **end-to-end aggregate** (`aggregateCostUsd`). When there are no descendant dispatches, the two are equal.
+Two cost numbers in the Status Drawer are intentionally distinct: the Context section shows the **per-run cost only** (`StatusFields.runCostUsd`), while the Session section shows the **end-to-end aggregate** (`conversationCostUsd` / `aggregateCostUsd`). When there are no descendant dispatches, the two are equal.
 
 **iOS companion.** iOS sends `desktop_request_context_breakdown { tabId }` to the desktop on drawer open. The desktop's `command-handler.ts` forwards a `get_context_breakdown` to the engine for that tab. The resulting `engine_context_breakdown` is forwarded to iOS as `desktop_context_breakdown` by `event-wiring.ts`, which populates `inst.contextBreakdown` and re-renders the Status Drawer. This is the on-demand recompute model: no persistence, no stale cache — every drawer open triggers a fresh computation.
 
@@ -702,3 +702,131 @@ Remove stale conversation files from disk. All filter fields are optional with s
 ```
 
 **Response:** `ServerResult` with `data: { deleted: number, totalSize: number, dryRun: boolean }`.
+
+---
+
+### oidc_begin_login
+
+Start an operator OIDC login. The engine owns the operator's OIDC identity; this command begins a grant flow and returns only the user-facing half the consumer must surface. The flow completes engine-side (or via background polling for device-code); completion broadcasts an `engine_oidc_identity` snapshot to all clients. Requires an identity provider configured via `auth.identityProvider` in `engine.json`; without one, the command returns an error.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"oidc_begin_login"` | yes | Command discriminator |
+| `oidcFlow` | string | no | `"pkce"` (default when empty) runs the interactive authorization-code + PKCE flow; `"device"` runs the device-code flow for headless hosts |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"oidc_begin_login","oidcFlow":"device","requestId":"r40"}
+```
+
+**Response.** An `engine_oidc_login_url` event is delivered to the requesting client with the flow's user-facing half. The `ServerResult` payload mirrors it:
+- PKCE flow: `{ authorizationUrl }`.
+- Device-code flow: `{ userCode, verificationUri, expiresIn }`.
+
+Login completion is asynchronous: the engine polls (device) or awaits the loopback callback (PKCE) in the background and broadcasts `engine_oidc_identity` when it lands.
+
+---
+
+### oidc_logout
+
+Sign the operator out and broadcast the signed-out identity snapshot to all clients. Requires a configured identity provider.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"oidc_logout"` | yes | Command discriminator |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"oidc_logout","requestId":"r41"}
+```
+
+**Response:** `ServerResult` with `ok: true` (empty data). A follow-up `engine_oidc_identity` snapshot (with `oidcSignedIn: false`) is broadcast to all clients.
+
+---
+
+### oidc_identity
+
+Request the current operator identity snapshot. Requires a configured identity provider.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"oidc_identity"` | yes | Command discriminator |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"oidc_identity","requestId":"r42"}
+```
+
+**Response.** An `engine_oidc_identity` event is delivered to the requesting client. The `ServerResult` payload mirrors it: `{ signedIn: boolean, subject, username, name, provider }`.
+
+---
+
+### oidc_token
+
+Mint a short-lived access token for the requested scope and return it in the result payload — **requester-only delivery, never broadcast**. This is the seam that lets a trusted local client authenticate downstream calls without owning the grant: the refresh token never leaves the engine; clients pull ephemeral access tokens on demand. Requires a configured identity provider and a signed-in operator.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"oidc_token"` | yes | Command discriminator |
+| `oidcScope` | string | no | Downstream resource scope for the minted token (e.g. `api://<app-id>/Telemetry.Write`). Empty uses the operator grant's base scope. |
+| `oidcAudience` | string | no | Explicit audience/resource for the minted token, for IdPs that bind grants to one (Auth0, RFC 8707) instead of encoding the resource in the scope string. Empty uses the provider's configured default audience. |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"oidc_token","oidcScope":"api://app-id/Telemetry.Write","requestId":"r43"}
+```
+
+**Response:** `ServerResult` with `data: { accessToken: string }`. The token is bounded (30 s mint deadline) and returned only to the requesting connection.
+
+---
+
+### plugin_install
+
+Download and install a Claude Code-compatible plugin from a GitHub source (`"owner/repo"`). The `source` field carries the repo path.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"plugin_install"` | yes | Command discriminator |
+| `source` | string | yes | GitHub source path (`"owner/repo"`) |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"plugin_install","source":"owner/repo","requestId":"r44"}
+```
+
+**Response:** `ServerResult` with `data: { name, source, version }` describing the installed plugin.
+
+---
+
+### plugin_list
+
+List all installed plugins.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"plugin_list"` | yes | Command discriminator |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"plugin_list","requestId":"r45"}
+```
+
+**Response:** `ServerResult` with `data` as a JSON array of plugin records, each `{ name, source, version, installedAt }`.
+
+---
+
+### plugin_remove
+
+Uninstall a plugin by name. The `label` field carries the plugin name to remove.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"plugin_remove"` | yes | Command discriminator |
+| `label` | string | yes | Name of the plugin to remove |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"plugin_remove","label":"my-plugin","requestId":"r46"}
+```
+
+**Response:** `ServerResult` with `data: { removed: string }` echoing the removed plugin name.
