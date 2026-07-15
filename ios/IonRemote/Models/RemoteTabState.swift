@@ -76,10 +76,26 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     /// by `TabRowView` to resolve the profile display name for the harness
     /// badge. Mirrors `RemoteTabState.engineProfileId` in protocol.ts.
     var engineProfileId: String?
-    /// Cumulative cost in USD for this tab across all turns. Projected from
-    /// StatusFields.totalCostUsd via the desktop snapshot so iOS has the correct
-    /// value on cold open without waiting for a live engine_status event. Optional
-    /// so tabs that have never had a run omit it. Mirrors protocol.ts RemoteTabState.
+    /// Cost of the most recent run in USD (cache-aware, descendants included).
+    /// Projected from StatusFields.runCostUsd via the desktop snapshot so iOS
+    /// has the correct value on cold open without waiting for a live
+    /// engine_status event. Nil when the tab has never had a run.
+    /// Mirrors protocol.ts RemoteTabState.runCostUsd.
+    var runCostUsd: Double?
+    /// Cumulative cost of the entire conversation (this session + all descendant
+    /// dispatches) in USD. Nil when the tab has never had a run.
+    /// Mirrors protocol.ts RemoteTabState.conversationCostUsd.
+    var conversationCostUsd: Double?
+    /// Conversation-lifetime prompt count: the number of real user prompts
+    /// across the whole conversation (engine's conversation.CountUserPrompts),
+    /// NOT the per-run round-trip count. Projected from lastResult via the
+    /// desktop snapshot so the StatusDrawer "Turns" row renders the lifetime
+    /// value on cold open. Nil when the tab has never had a run report it.
+    /// Mirrors protocol.ts RemoteTabState.conversationTurns.
+    var conversationTurns: Int?
+    /// @deprecated Use runCostUsd. Kept for lockstep wire compat until the
+    /// desktop snapshot fully removes it. Set to the same value as runCostUsd
+    /// when both fields are present. Mirrors protocol.ts RemoteTabState.totalCostUsd.
     var totalCostUsd: Double?
     /// Cumulative provider-reported input tokens for this tab. Projected from the
     /// engine's usage tracking via the desktop snapshot (cold-start parity fix,

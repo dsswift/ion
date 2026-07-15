@@ -107,12 +107,15 @@ final class ContractSyncTests: XCTestCase {
             "model": "claude-4",
             "contextPercent": 42,
             "contextWindow": 200000,
-            "totalCostUsd": 1.23,
+            "runCostUsd": 1.23,
+            "conversationCostUsd": 2.34,
             "permissionDenials": [
                 ["toolName": "bash", "toolUseId": "tu-1"],
             ],
             "extensionName": "Chief of Staff",
             "backgroundAgents": 2,
+            "numTurns": 3,
+            "conversationTurns": 210,
         ]
 
         let data = try JSONSerialization.data(withJSONObject: json)
@@ -123,12 +126,16 @@ final class ContractSyncTests: XCTestCase {
         XCTAssertEqual(fields.model, "claude-4")
         XCTAssertEqual(fields.contextPercent, 42.0) // Double decodes int fine
         XCTAssertEqual(fields.extensionName, "Chief of Staff")
+        XCTAssertEqual(fields.runCostUsd, 1.23)
+        XCTAssertEqual(fields.conversationCostUsd, 2.34)
+        XCTAssertEqual(fields.numTurns, 3)
+        XCTAssertEqual(fields.conversationTurns, 210)
 
         // Verify we know about all Go fields (document any intentional gaps)
         let swiftHandled: Set<String> = [
             "backgroundAgents", "label", "state", "sessionId", "team", "model",
-            "contextPercent", "contextWindow", "totalCostUsd",
-            "permissionDenials", "extensionName",
+            "contextPercent", "contextWindow", "runCostUsd", "conversationCostUsd",
+            "permissionDenials", "extensionName", "numTurns", "conversationTurns",
         ]
         let goSet = Set(goFields)
         let unhandled = goSet.subtracting(swiftHandled)
@@ -163,7 +170,8 @@ final class ContractSyncTests: XCTestCase {
             "model": "claude-4",
             "contextPercent": 42,
             "contextWindow": 200_000,
-            "totalCostUsd": 1.23,
+            "runCostUsd": 1.23,
+            "conversationCostUsd": 2.34,
             "sessionId": "conv-abc",
             "extensionName": "Chief of Staff",
         ]
@@ -177,14 +185,16 @@ final class ContractSyncTests: XCTestCase {
         XCTAssertEqual(status.backgroundAgentCount, 3)
         XCTAssertEqual(status.sessionId, "conv-abc")
         XCTAssertEqual(status.extensionName, "Chief of Staff")
+        XCTAssertEqual(status.runCostUsd, 1.23)
+        XCTAssertEqual(status.conversationCostUsd, 2.34)
 
         // Verify we know about all Go fields (any intentional gap is
         // documented in the assertion message — there should be none).
         let swiftHandled: Set<String> = [
             "backgroundAgentCount", "contextPercent", "contextWindow",
-            "extensionName", "hasInflightRun", "key", "lastEmittedAt",
-            "model", "permissionDenialsPending", "sessionId", "state",
-            "stateSince", "totalCostUsd",
+            "conversationCostUsd", "extensionName", "hasInflightRun", "key",
+            "lastEmittedAt", "model", "permissionDenialsPending", "runCostUsd",
+            "sessionId", "state", "stateSince",
         ]
         let goSet = Set(goFields)
         let unhandled = goSet.subtracting(swiftHandled)
@@ -242,7 +252,8 @@ final class ContractSyncTests: XCTestCase {
                 "model": "claude-4",
                 "contextPercent": 42,
                 "contextWindow": 200000,
-                "totalCostUsd": 1.23,
+                "runCostUsd": 1.23,
+                "conversationCostUsd": 5.67,
                 "sessionId": "conv-abc"
             }
         }
@@ -259,7 +270,8 @@ final class ContractSyncTests: XCTestCase {
             XCTAssertEqual(status.backgroundAgentCount, 1)
             XCTAssertEqual(status.model, "claude-4")
             XCTAssertEqual(status.contextPercent, 42)
-            XCTAssertEqual(status.totalCostUsd, 1.23)
+            XCTAssertEqual(status.runCostUsd, 1.23)
+            XCTAssertEqual(status.conversationCostUsd, 5.67)
             XCTAssertEqual(status.sessionId, "conv-abc")
         } else {
             XCTFail("Expected engineSessionStatus, got \(event)")
@@ -286,7 +298,8 @@ final class ContractSyncTests: XCTestCase {
                 model: "claude-4",
                 contextPercent: 12,
                 contextWindow: 200_000,
-                totalCostUsd: 0.5,
+                runCostUsd: 0.5,
+                conversationCostUsd: 2.5,
                 sessionId: "conv-x",
                 extensionName: nil
             ),
@@ -547,6 +560,7 @@ final class ContractSyncTests: XCTestCase {
             "thinkingMode", "thinkingEfforts",
             "isCustom",
             "tokenizer", // engine field; iOS does not consume it (thin client)
+            "maxOutputTokens", // engine field; iOS does not consume it (thin client)
         ]
         let goSet = Set(goFields)
         let unhandled = goSet.subtracting(swiftHandled)
@@ -636,13 +650,69 @@ final class ContractSyncTests: XCTestCase {
         // Fields decoded by ContextBreakdownPayload / ContextBreakdownCategory on iOS.
         let swiftHandled: Set<String> = [
             "aggregateCostUsd", "apiReportedTotal", "cacheCreationTokens", "cacheReadTokens",
-            "categories", "contextWindow", "model", "totalTokens", "unaccounted",
+            "categories", "contextWindow", "model", "modelBreakdown", "totalTokens", "unaccounted",
         ]
         let goSet = Set(goFields)
         let unhandled = goSet.subtracting(swiftHandled)
         XCTAssert(
             unhandled.isEmpty,
             "Go context_breakdown has fields not tracked in Swift test: \(unhandled.sorted())"
+        )
+    }
+
+    // MARK: - ModelBreakdown decode
+
+    /// Pins that ModelBreakdown decodes all fields correctly. The struct was added
+    /// in the early-grinning-sunset plan (WS2) to carry per-model cost breakdowns
+    /// inside ContextBreakdownPayload. This test must fail if a future Go-side
+    /// field addition goes un-mirrored in Swift.
+    func testModelBreakdownDecode() throws {
+        let json = """
+        [
+          {"model":"claude-opus-4-5","conversations":1,"inputTokens":1500000,"outputTokens":45000,"costUsd":195.71,"isSelf":true},
+          {"model":"claude-opus-4-5","conversations":12,"inputTokens":900000,"outputTokens":30000,"costUsd":80.00},
+          {"model":"claude-sonnet-4-6","conversations":9,"inputTokens":800000,"outputTokens":25000,"costUsd":110.50}
+        ]
+        """.data(using: .utf8)!
+        let rows = try decoder.decode([ModelBreakdown].self, from: json)
+        XCTAssertEqual(rows.count, 3)
+        // Row 0: the viewing conversation's OWN opus spend (isSelf=true, count 1).
+        XCTAssertEqual(rows[0].model, "claude-opus-4-5")
+        XCTAssertEqual(rows[0].conversations, 1)
+        XCTAssertEqual(rows[0].inputTokens, 1_500_000)
+        XCTAssertEqual(rows[0].outputTokens, 45_000)
+        XCTAssertEqual(rows[0].costUsd, 195.71, accuracy: 0.01)
+        XCTAssertEqual(rows[0].isSelf, true)
+        // Row 1: opus DISPATCHES (isSelf omitted on the wire -> nil).
+        XCTAssertEqual(rows[1].model, "claude-opus-4-5")
+        XCTAssertEqual(rows[1].conversations, 12)
+        XCTAssertNil(rows[1].isSelf)
+        // Row 2: sonnet dispatches (also a dispatch -> isSelf nil).
+        XCTAssertEqual(rows[2].model, "claude-sonnet-4-6")
+        XCTAssertEqual(rows[2].conversations, 9)
+        XCTAssertEqual(rows[2].costUsd, 110.50, accuracy: 0.01)
+        XCTAssertNil(rows[2].isSelf)
+        // The self row and the dispatch row share a model but must have distinct
+        // Identifiable ids so SwiftUI ForEach renders both.
+        XCTAssertNotEqual(rows[0].id, rows[1].id)
+    }
+
+    /// Verifies ModelBreakdown fields are covered in the Go contract manifest.
+    func testModelBreakdownFieldsInManifest() throws {
+        let manifest = try loadManifest()
+        guard let goFields = manifest.sharedTypes["ModelBreakdown"] else {
+            XCTFail("ModelBreakdown not found in Go manifest")
+            return
+        }
+
+        let swiftHandled: Set<String> = [
+            "model", "conversations", "inputTokens", "outputTokens", "costUsd", "isSelf",
+        ]
+        let goSet = Set(goFields)
+        let unhandled = goSet.subtracting(swiftHandled)
+        XCTAssert(
+            unhandled.isEmpty,
+            "Go ModelBreakdown has fields not tracked in Swift test: \(unhandled.sorted())"
         )
     }
 

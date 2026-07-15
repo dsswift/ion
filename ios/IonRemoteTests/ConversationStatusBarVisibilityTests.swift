@@ -30,10 +30,13 @@ final class ConversationStatusBarVisibilityTests: XCTestCase {
             model: model,
             contextPercent: contextPercent,
             contextWindow: contextWindow,
-            totalCostUsd: nil,
+            runCostUsd: nil,
+            conversationCostUsd: nil,
             permissionDenials: nil,
             extensionName: extensionName,
-            backgroundAgents: nil
+            backgroundAgents: nil,
+            numTurns: nil,
+            conversationTurns: nil
         )
     }
 

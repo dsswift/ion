@@ -72,7 +72,8 @@ enum SessionStatusSynthesis {
     ///     is non-optional)
     ///   - contextPercent → contextPercent (cast Int → Double)
     ///   - contextWindow → contextWindow (0 when nil)
-    ///   - totalCostUsd → totalCostUsd (preserve nil)
+    ///   - runCostUsd → runCostUsd (preserve nil)
+    ///   - conversationCostUsd → conversationCostUsd (preserve nil)
     ///   - permissionDenialsPending → permissionDenials
     ///   - extensionName → extensionName
     ///   - backgroundAgentCount → backgroundAgents
@@ -80,6 +81,11 @@ enum SessionStatusSynthesis {
     /// Fields unique to SessionStatus (lastEmittedAt, hasInflightRun,
     /// stateSince) have no analogue in StatusFields and are dropped at
     /// this seam. Phase 4 introduces an iOS-side store for them.
+    ///
+    /// Conversely, StatusFields.numTurns and StatusFields.conversationTurns
+    /// have no SessionStatus source (both counts are stamped from
+    /// TaskCompleteEvent, not carried on SessionStatus), so they map to nil
+    /// here.
     static func toStatusFields(tabId: String, status: SessionStatus) -> StatusFields {
         return StatusFields(
             label: tabId,
@@ -89,10 +95,13 @@ enum SessionStatusSynthesis {
             model: status.model ?? "",
             contextPercent: Double(status.contextPercent ?? 0),
             contextWindow: status.contextWindow ?? 0,
-            totalCostUsd: status.totalCostUsd,
+            runCostUsd: status.runCostUsd,
+            conversationCostUsd: status.conversationCostUsd,
             permissionDenials: status.permissionDenialsPending,
             extensionName: status.extensionName,
-            backgroundAgents: status.backgroundAgentCount
+            backgroundAgents: status.backgroundAgentCount,
+            numTurns: nil,
+            conversationTurns: nil
         )
     }
 }

@@ -277,7 +277,12 @@ struct StatusFields: Codable, Sendable {
     let model: String
     let contextPercent: Double
     let contextWindow: Int
-    let totalCostUsd: Double?
+    /// Cost of the most recent run in USD (cache-aware, descendants included).
+    /// Replaces the former totalCostUsd; the rename makes the scope unambiguous.
+    let runCostUsd: Double?
+    /// Cumulative cost of the entire conversation (this session + all descendant
+    /// dispatches) in USD. Absent when never-run.
+    let conversationCostUsd: Double?
     let permissionDenials: [PermissionDenialEntry]?
     /// Friendly display name broadcast by the extension (e.g. "Chief of Staff").
     let extensionName: String?
@@ -286,6 +291,16 @@ struct StatusFields: Codable, Sendable {
     /// progress. Clients use this to keep the tab status active and the
     /// interrupt button visible.
     let backgroundAgents: Int?
+    /// Number of LLM turns completed in the most recent run. Stamped from
+    /// TaskCompleteEvent.NumTurns; nil/absent on idle and heartbeat status
+    /// events that have no associated run.
+    let numTurns: Int?
+    /// Conversation-lifetime prompt count: the number of real user prompts
+    /// across the whole conversation, not just the most recent run. Stamped
+    /// from TaskCompleteEvent.ConversationTurns; nil/absent on idle and
+    /// heartbeat status events. The drawer "Turns" row renders this (lifetime),
+    /// whereas numTurns is the per-run round-trip count.
+    let conversationTurns: Int?
 
     /// Returns a copy with the label replaced.
     func withLabel(_ newLabel: String) -> StatusFields {
@@ -335,7 +350,10 @@ struct SessionStatus: Codable, Sendable {
     let model: String?
     let contextPercent: Int?
     let contextWindow: Int?
-    let totalCostUsd: Double?
+    /// Cost of the most recent run in USD. Renamed from totalCostUsd per Commit 2.
+    let runCostUsd: Double?
+    /// Cumulative conversation cost (this session + all descendant dispatches).
+    let conversationCostUsd: Double?
     let sessionId: String?
     let extensionName: String?
 }

@@ -94,18 +94,39 @@ struct StatusDrawerView: View {
         return Int(round(contextPercent / 100.0 * Double(w)))
     }
 
-    /// Total cost (prefer live fields, then instance, then snapshot-projected).
-    private var totalCostUsd: Double? {
-        fields?.totalCostUsd
-            ?? inst?.statusFields?.totalCostUsd
-            ?? viewModel.tab(for: tabId)?.totalCostUsd
+    /// Run cost (prefer live fields, then instance, then snapshot-projected).
+    /// Uses runCostUsd (canonical) with no fallback to totalCostUsd since both
+    /// are projected in lockstep from Commit 3 onward.
+    private var runCostUsd: Double? {
+        fields?.runCostUsd
+            ?? inst?.statusFields?.runCostUsd
+            ?? viewModel.tab(for: tabId)?.runCostUsd
     }
 
-    /// Aggregate cost: this session's cost plus every descendant dispatch
-    /// session's cost, computed by the engine and forwarded on the context
-    /// breakdown payload. Distinct from `totalCostUsd`, which is top-level only.
+    /// Conversation cost (this session + all descendant dispatches).
+    /// Available when the engine has emitted ConversationCostUsd via the
+    /// status fields or the context breakdown payload.
+    private var conversationCostUsd: Double? {
+        fields?.conversationCostUsd
+            ?? inst?.statusFields?.conversationCostUsd
+            ?? viewModel.tab(for: tabId)?.conversationCostUsd
+            ?? inst?.contextBreakdown?.aggregateCostUsd
+    }
+
+    /// Aggregate cost from the context breakdown payload (same value as
+    /// conversationCostUsd, kept as a distinct accessor for the breakdown row).
     private var aggregateCostUsd: Double? {
         inst?.contextBreakdown?.aggregateCostUsd
+    }
+
+    /// Conversation-lifetime prompt count for the drawer "Turns" row. Prefers
+    /// the live status field (stamped from the latest task_complete), then the
+    /// snapshot-projected value on the tab (cold-open / historical parity).
+    /// Nil collapses the row entirely.
+    private var conversationTurns: Int? {
+        fields?.conversationTurns
+            ?? inst?.statusFields?.conversationTurns
+            ?? viewModel.tab(for: tabId)?.conversationTurns
     }
 
     /// Engine state string (prefer live fields, then instance).
@@ -193,7 +214,7 @@ struct StatusDrawerView: View {
             // sessions. Rendered only when the breakdown payload carries it.
             if let cost = aggregateCostUsd {
                 HStack {
-                    Text("Total cost")
+                    Text("Total cost (incl. dispatches)")
                         .font(.caption)
                         .foregroundStyle(theme.textSecondary)
                     Spacer()
@@ -201,15 +222,69 @@ struct StatusDrawerView: View {
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(theme.textSecondary)
                 }
+                // Per-model breakdown rows. Sourced from the on-demand
+                // context breakdown; sorted by the engine (self rows first,
+                // then dispatch rows by cost desc). Split into two labeled
+                // groups so the viewing conversation's OWN spend is visually
+                // separate from the dispatch spend.
+                if let breakdown = contextBreakdown?.modelBreakdown, !breakdown.isEmpty {
+                    let selfRows = breakdown.filter { $0.isSelf == true }
+                    let dispatchRows = breakdown.filter { $0.isSelf != true }
+                    if !selfRows.isEmpty {
+                        modelGroupLabel("This conversation")
+                        ForEach(selfRows) { mb in modelRow(mb) }
+                    }
+                    if !dispatchRows.isEmpty {
+                        modelGroupLabel("Dispatches")
+                        ForEach(dispatchRows) { mb in modelRow(mb) }
+                    }
+                }
             }
-            // Turns / duration are shown only when the snapshot carries them.
-            // iOS does not currently receive a per-run result summary, so these
-            // gracefully collapse to nothing until the wire surfaces them.
+            // Conversation-lifetime turn count. Shown when the snapshot/live
+            // fields carry it (real user prompts across the whole conversation,
+            // not the per-run round-trip count). Collapses when absent.
+            if let turns = conversationTurns {
+                HStack {
+                    Text("Turns")
+                        .font(.caption)
+                        .foregroundStyle(theme.textSecondary)
+                    Spacer()
+                    Text("\(turns)")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(theme.textSecondary)
+                }
+            }
         }
     }
 
-    private func copyButton(_ id: String) -> some View {
-        Button {
+    /// Sub-label separating the self ("This conversation") and dispatch model
+    /// groups within the per-model cost breakdown.
+    private func modelGroupLabel(_ label: String) -> some View {
+        Text(label.uppercased())
+            .font(.system(size: 8, weight: .semibold))
+            .tracking(0.8)
+            .foregroundStyle(theme.textSecondary.opacity(0.5))
+            .padding(.leading, 12)
+            .padding(.top, 2)
+    }
+
+    /// One per-model cost row (model name + conversation count + cost).
+    private func modelRow(_ mb: ModelBreakdown) -> some View {
+        HStack {
+            Text("\(mb.model) (\(mb.conversations))")
+                .font(.system(size: 10))
+                .foregroundStyle(theme.textSecondary.opacity(0.65))
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer()
+            Text(String(format: "$%.4f", mb.costUsd))
+                .font(.system(size: 10).monospacedDigit())
+                .foregroundStyle(theme.textSecondary.opacity(0.65))
+        }
+        .padding(.leading, 20)
+    }
+
+    private func copyButton(_ id: String) -> some View {        Button {
             UIPasteboard.general.string = id
             copiedSessionId = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
@@ -239,7 +314,7 @@ struct StatusDrawerView: View {
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(theme.textSecondary)
                 Spacer()
-                if let cost = totalCostUsd {
+                if let cost = runCostUsd {
                     Text(String(format: "$%.4f", cost))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(theme.textSecondary)
