@@ -1,7 +1,6 @@
 package session
 
 import (
-	"fmt"
 	"strings"
 
 	ioncontext "github.com/dsswift/ion/engine/internal/context"
@@ -56,10 +55,10 @@ func buildPromptOverrides(model string, bashAllowlistAdditions []string) *Prompt
 func (m *Manager) dispatchSendPromptPayload(key, origin string, payload extension.SendPromptPayload) {
 	overrides := buildPromptOverrides(payload.Model, payload.BashAllowlistAdditions)
 	if len(payload.BashAllowlistAdditions) > 0 {
-		utils.Info("PlanMode", fmt.Sprintf("onSendMessage(%s): key=%s forwarding %d bash-allowlist additions: %v", origin, key, len(payload.BashAllowlistAdditions), payload.BashAllowlistAdditions))
+		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "onsendmessage(): forwarding bash-allowlist additions", map[string]any{"origin": origin, "key": key, "count": len(payload.BashAllowlistAdditions), "bash_allowlist_additions": payload.BashAllowlistAdditions})
 	}
 	if err := m.SendPrompt(key, payload.Text, overrides); err != nil {
-		utils.Log("Session", fmt.Sprintf("ext/send_message failed: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "session", "ext/send_message failed", map[string]any{"error": err})
 	}
 }
 
@@ -72,9 +71,20 @@ func buildRunOptions(s *engineSession, text string, overrides *PromptOverrides) 
 		// (CLAUDE.md) the same way the eager walk does. Ion-native files load
 		// regardless of this flag.
 		ClaudeCompat: s.config.ClaudeCompat,
-		// SessionID is Ion's conversation-file identity. The API backend
+		// ConversationID is Ion's conversation-file identity. The API backend
 		// uses it to load/create ~/.ion/conversations/<id>.* and to resume.
-		SessionID: s.conversationID,
+		ConversationID: s.conversationID,
+		// SessionKey is the opaque client-supplied key for this session (the
+		// tab UUID for desktop clients). The backend threads it into telemetry
+		// so tier-4 events stamp session_id = the session key, consistent with
+		// the session-layer correlationCtx emissions.
+		SessionKey: s.key,
+		// ExtensionName and ExtensionVersion carry the hosting extension's
+		// identity into the backend so buildTelemCtx can stamp "extension" and
+		// "extension_version" on llm.call and dispatch.agent spans. Both are
+		// omit-when-empty so non-extension runs are unaffected.
+		ExtensionName:    s.extensionName,
+		ExtensionVersion: s.extensionVersion,
 		// ParentConversationID is forwarded so a fresh conversation created by
 		// this run records its descent from a prior session (client-driven
 		// checkpoint cut). Inert when resuming an existing conversation.
@@ -248,6 +258,9 @@ func (m *Manager) applyConfigDefaults(opts *types.RunOptions) {
 	if m.config.Limits.DisableMaxTokenContinue != nil && *m.config.Limits.DisableMaxTokenContinue {
 		opts.DisableMaxTokenContinue = true
 	}
+	if m.config.Limits.DisableSkillSystemPrompt != nil && *m.config.Limits.DisableSkillSystemPrompt {
+		opts.DisableSkillSystemPrompt = true
+	}
 	if m.config.WebSearch != nil && m.config.WebSearch.Mode != "" {
 		opts.WebSearchMode = m.config.WebSearch.Mode
 	}
@@ -281,23 +294,25 @@ func injectContextFiles(s *engineSession, opts *types.RunOptions) {
 		utils.Log("Session", "injectContextFiles: skipped (empty WorkingDirectory)")
 		return
 	}
-	cfg := ioncontext.IonPreset()
-	cfg.ClaudeCompat = s.config.ClaudeCompat
-	ctxFiles := ioncontext.WalkContextFiles(s.config.WorkingDirectory, cfg)
+	// Root sessions always walk both layers; compat follows the session flag.
+	// Shares the BuildContextPrompt formatter with the dispatch path so root
+	// and child produce identical `# Context from <path>` framing.
+	policy := ioncontext.ResolvedPolicy{
+		IncludeGlobalContext:  true,
+		IncludeProjectContext: true,
+		ClaudeCompat:          s.config.ClaudeCompat,
+	}
+	content, ctxFiles := ioncontext.BuildContextPrompt(s.config.WorkingDirectory, "root", policy)
 	if s.config.ClaudeCompat {
-		utils.Log("Session", fmt.Sprintf("injectContextFiles: claudeCompat=true, discovered %d context file(s) (Ion-native + Claude-compat)", len(ctxFiles)))
+		utils.LogWithFields(utils.LevelInfo, "session", "injectcontextfiles: claudecompat=true, discovered context file(s) (ion-native + claude-compat)", map[string]any{"count": len(ctxFiles)})
 	} else {
-		utils.Log("Session", fmt.Sprintf("injectContextFiles: claudeCompat=false, discovered %d context file(s) (Ion-native only)", len(ctxFiles)))
+		utils.LogWithFields(utils.LevelInfo, "session", "injectcontextfiles: claudecompat=false, discovered context file(s) (ion-native only)", map[string]any{"count": len(ctxFiles)})
 	}
-	var ctxContent strings.Builder
 	for _, cf := range ctxFiles {
-		utils.Debug("Session", fmt.Sprintf("injectContextFiles: including %s (source=%s)", cf.Path, cf.Source))
-		ctxContent.WriteString("\n# Context from " + cf.Path + "\n")
-		ctxContent.WriteString(cf.Content)
-		ctxContent.WriteString("\n")
+		utils.LogWithFields(utils.LevelDebug, "session", "injectcontextfiles: including ()", map[string]any{"path": cf.Path, "source": cf.Source})
 	}
-	if ctxContent.Len() > 0 {
-		opts.AppendSystemPrompt += ctxContent.String()
+	if content != "" {
+		opts.AppendSystemPrompt += content
 	}
 }
 
@@ -314,7 +329,7 @@ func (m *Manager) injectExtensionContext(s *engineSession, key string, opts *typ
 		for _, cf := range ctxFiles {
 			discoveredPaths = append(discoveredPaths, cf.Path)
 		}
-		utils.Debug("Session", fmt.Sprintf("injectExtensionContext: claudeCompat=%v, %d discovered path(s) for context_inject", s.config.ClaudeCompat, len(discoveredPaths)))
+		utils.LogWithFields(utils.LevelDebug, "session", "injectextensioncontext: , discovered path(s) for context_inject", map[string]any{"claude_compat": s.config.ClaudeCompat, "count": len(discoveredPaths)})
 	}
 
 	ctx := m.newExtContext(s, key)
@@ -359,6 +374,19 @@ func injectGitContext(s *engineSession, opts *types.RunOptions) {
 	if gitCtx := gitcontext.GetGitContext(s.config.WorkingDirectory); gitCtx != nil {
 		if formatted := gitcontext.FormatForPrompt(gitCtx); formatted != "" {
 			opts.AppendSystemPrompt += "\n\n" + formatted
+		}
+	}
+}
+
+// injectPluginContext appends plugin SessionStart context entries to the
+// system prompt. This is the Ion equivalent of Claude Code's SessionStart hook
+// additionalContext injection: each plugin's activate script runs at session
+// start and its output is stored here, then included in every run's system
+// prompt so the model operates under the plugin's instructions from turn 1.
+func injectPluginContext(s *engineSession, opts *types.RunOptions) {
+	for _, ctx := range s.pluginContextEntries {
+		if ctx != "" {
+			opts.AppendSystemPrompt += "\n\n" + ctx
 		}
 	}
 }

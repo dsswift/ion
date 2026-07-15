@@ -22,9 +22,9 @@ func loadPlatformMDM() map[string]interface{} {
 	// Main config file.
 	if data, err := os.ReadFile(mdmMainPath); err == nil {
 		if err := json.Unmarshal(data, &result); err != nil {
-			utils.Log("MDM", "failed to parse "+mdmMainPath+": "+err.Error())
+			utils.LogWithFields(utils.LevelInfo, "config.mdm", "failed to parse main config", map[string]any{"path": mdmMainPath, "error": err.Error()})
 		} else {
-			utils.Log("MDM", "loaded config from "+mdmMainPath)
+			utils.LogWithFields(utils.LevelInfo, "config.mdm", "loaded main config", map[string]any{"path": mdmMainPath})
 		}
 	}
 
@@ -48,7 +48,7 @@ func loadPlatformMDM() map[string]interface{} {
 		}
 		var partial map[string]interface{}
 		if err := json.Unmarshal(data, &partial); err != nil {
-			utils.Log("MDM", "failed to parse drop-in "+entry.Name()+": "+err.Error())
+			utils.LogWithFields(utils.LevelInfo, "config.mdm", "failed to parse drop-in config", map[string]any{"path": entry.Name(), "error": err.Error()})
 			continue
 		}
 		if result == nil {
@@ -58,7 +58,7 @@ func loadPlatformMDM() map[string]interface{} {
 				result[k] = v
 			}
 		}
-		utils.Log("MDM", "merged drop-in config: "+entry.Name())
+		utils.LogWithFields(utils.LevelInfo, "config.mdm", "merged drop-in config", map[string]any{"path": entry.Name()})
 	}
 
 	return result

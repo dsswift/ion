@@ -18,6 +18,12 @@ import (
 // response, executes tools, and loops until the model signals end_turn,
 // the budget is exceeded, or the context is cancelled.
 func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.RunOptions) {
+	// Install the run's correlation context as this goroutine's ambient logger
+	// context, then clear it on exit. See installAmbientLogging (runloop_ambient.go)
+	// for the full rationale: every utils.Log/Debug/Info/Warn/Error call made
+	// from this goroutine auto-stamps session_id/conversation_id/trace_id.
+	defer installAmbientLogging(ctx)()
+
 	defer b.removeRun(run.requestID)
 
 	// Snapshot per-run hooks once. Nil cfg means "no hooks" -- the empty
@@ -37,11 +43,16 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	// snapshot once at INFO so a reader can reconstruct the decision path
 	// from logs alone (per CLAUDE.md logging policy).
 	earlyStop := mergeEarlyStopConfig(opts, run.cfg)
-	utils.Info("ApiBackend", fmt.Sprintf(
-		"earlyStop: runID=%s enabled=%v budget=%d threshold=%d cap=%d diminishingDelta=%d source=%s isSubagent=%v",
-		run.requestID, earlyStop.enabled, earlyStop.budget, earlyStop.thresholdPct,
-		earlyStop.maxContinuations, earlyStop.diminishingDelta, earlyStop.source, opts.IsSubagent,
-	))
+	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "earlyStop", map[string]any{
+		"run_id":            run.requestID,
+		"enabled":           earlyStop.enabled,
+		"budget":            earlyStop.budget,
+		"threshold":         earlyStop.thresholdPct,
+		"cap":               earlyStop.maxContinuations,
+		"diminishing_delta": earlyStop.diminishingDelta,
+		"source":            earlyStop.source,
+		"is_subagent":       opts.IsSubagent,
+	})
 
 	// Resolve provider — applies the engine's graceful-degradation
 	// policy (fall back to DefaultModel when the requested model is
@@ -57,14 +68,14 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	// Load or create conversation
 	conv, convErr := loadOrCreateConversation(opts, model)
 	if convErr != nil {
-		msg := fmt.Sprintf("Failed to load conversation %s: %v. Your conversation history is safe on disk — please retry.", opts.SessionID, convErr)
+		msg := fmt.Sprintf("Failed to load conversation %s: %v. Your conversation history is safe on disk — please retry.", opts.ConversationID, convErr)
 		utils.Error("ApiBackend", msg)
 		b.emit(run, types.NormalizedEvent{Data: &types.ErrorEvent{
 			ErrorMessage: msg,
 			ErrorCode:    "conversation_load_failed",
 		}})
 		b.emitError(run, fmt.Errorf("%s", msg))
-		b.emitExit(run.requestID, intPtr(1), nil, opts.SessionID)
+		b.emitExit(run.requestID, intPtr(1), nil, opts.ConversationID)
 		return
 	}
 	run.conv = conv
@@ -107,7 +118,10 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	run.mu.Lock()
 	run.injectedNestedPaths = seeded
 	run.mu.Unlock()
-	utils.Debug("ApiBackend", fmt.Sprintf("nestedContext: run=%s seeded %d already-present context path(s)", run.requestID, len(seeded)))
+	utils.LogWithFields(utils.LevelDebug, "backend.runloop", "nestedContext: seeded already-present context path(s)", map[string]any{
+		"run_id": run.requestID,
+		"count":  len(seeded),
+	})
 
 	// Append the inbound user turn. See appendInboundUserMessage for the
 	// attachment / slash-command-split handling (extracted to keep this file
@@ -128,7 +142,9 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	// Persist immediately: if the engine dies mid-stream, the user prompt
 	// must survive so the user does not lose what they just typed.
 	if err := conversation.Save(conv, ""); err != nil {
-		utils.Log("ApiBackend", "failed to save conversation after AddUserMessage: "+err.Error())
+		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation after AddUserMessage", map[string]any{
+			"error": utils.ErrStr(err),
+		})
 	}
 
 	// Resolve limits. Engine ships unopinionated: maxTurns/maxBudget <= 0 means
@@ -158,7 +174,11 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	var turn int
 	for maxTurns <= 0 || turn < maxTurns {
 		if ctx.Err() != nil {
-			utils.Warn("ApiBackend", fmt.Sprintf("run cancelled: runID=%s turns=%d cost=$%.4f", run.requestID, turn, run.totalCost))
+			utils.LogWithFields(utils.LevelWarn, "backend.runloop", "run cancelled: cost=$", map[string]any{
+				"run_id":     run.requestID,
+				"turns":      turn,
+				"total_cost": run.totalCost,
+			})
 			b.emitExit(run.requestID, intPtr(0), strPtr("cancelled"), conv.ID)
 			return
 		}
@@ -185,7 +205,11 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			b.injectSystemMessage(run, conv, hooks, opts, "turn_limit_warning",
 				"[SYSTEM] You are approaching your turn limit. You have 2 turns remaining. Wrap up your current work, summarize what you've accomplished and what remains, then return your response.",
 				turn, maxTurns)
-			utils.Log("ApiBackend", fmt.Sprintf("wind-down injected: runID=%s turn=%d/%d", run.requestID, turn, maxTurns))
+			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "wind-down injected: /", map[string]any{
+				"run_id":    run.requestID,
+				"turn":      turn,
+				"max_turns": maxTurns,
+			})
 		}
 
 		// Plan mode: inject sparse reminder so the LLM doesn't drift from
@@ -223,9 +247,22 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 				b.injectSystemMessage(run, conv, hooks, opts, "plan_mode_reminder",
 					"[SYSTEM] "+reminderText,
 					turn, maxTurns)
-				utils.Info("PlanMode", fmt.Sprintf("run=%s reminder injected turn=%d lastTurn=%d interval=%d gate=%s msgCount=%d source=%s", run.requestID, turn, lastReminderTurn, planModeReminderInterval, gate, msgCount, source))
+				utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "reminder injected", map[string]any{
+					"run_id":    run.requestID,
+					"turn":      turn,
+					"last_turn": lastReminderTurn,
+					"interval":  planModeReminderInterval,
+					"gate":      gate,
+					"count":     msgCount,
+					"source":    source,
+				})
 			} else {
-				utils.Debug("PlanMode", fmt.Sprintf("run=%s reminder throttled turn=%d lastTurn=%d nextAt=%d", run.requestID, turn, lastReminderTurn, lastReminderTurn+planModeReminderInterval))
+				utils.LogWithFields(utils.LevelDebug, "backend.plan_mode", "reminder throttled", map[string]any{
+					"run_id":    run.requestID,
+					"turn":      turn,
+					"last_turn": lastReminderTurn,
+					"next_at":   lastReminderTurn + planModeReminderInterval,
+				})
 			}
 		}
 
@@ -235,7 +272,10 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 				hooks.OnTurnStart(run.requestID, turn)
 				return struct{}{}
 			}); err != nil {
-				utils.Warn("ApiBackend", fmt.Sprintf("turn_start hook cancelled: runID=%s turn=%d", run.requestID, turn))
+				utils.LogWithFields(utils.LevelWarn, "backend.runloop", "turn_start hook cancelled", map[string]any{
+					"run_id": run.requestID,
+					"turn":   turn,
+				})
 				b.emitExit(run.requestID, intPtr(0), strPtr("cancelled"), conv.ID)
 				return
 			}
@@ -243,7 +283,11 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 
 		// Check budget
 		if maxBudget > 0 && run.totalCost >= maxBudget {
-			utils.Warn("ApiBackend", fmt.Sprintf("budget exceeded: runID=%s cost=$%.4f budget=$%.4f", run.requestID, run.totalCost, maxBudget))
+			utils.LogWithFields(utils.LevelWarn, "backend.runloop", "budget exceeded: cost=$ budget=$", map[string]any{
+				"run_id":     run.requestID,
+				"total_cost": run.totalCost,
+				"max_budget": maxBudget,
+			})
 			b.emit(run, types.NormalizedEvent{Data: &types.ErrorEvent{
 				ErrorMessage: fmt.Sprintf("budget exceeded: $%.4f >= $%.4f", run.totalCost, maxBudget),
 				IsError:      true,
@@ -260,9 +304,17 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		compactLimit := conversation.AutoCompactTokenLimit(contextWindow, opts.MaxTokens)
 		if opts.CompactThreshold > 0 {
 			compactLimit = int(float64(contextWindow) * opts.CompactThreshold / 100.0)
-			utils.Debug("ApiBackend", fmt.Sprintf("compactLimit=%d source=legacy-override threshold=%.0f%% window=%d", compactLimit, opts.CompactThreshold, contextWindow))
+			utils.LogWithFields(utils.LevelDebug, "backend.runloop", "source=legacy-override %", map[string]any{
+				"compact_limit": compactLimit,
+				"threshold":     opts.CompactThreshold,
+				"window":        contextWindow,
+			})
 		} else {
-			utils.Debug("ApiBackend", fmt.Sprintf("compactLimit=%d source=auto maxTokens=%d window=%d", compactLimit, opts.MaxTokens, contextWindow))
+			utils.LogWithFields(utils.LevelDebug, "backend.runloop", "source=auto", map[string]any{
+				"compact_limit": compactLimit,
+				"max_tokens":    opts.MaxTokens,
+				"window":        contextWindow,
+			})
 		}
 		cp := buildCompactParams(&opts, convDir)
 		if run.cfg != nil && run.cfg.GetSessionMemory != nil {
@@ -275,6 +327,23 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			cp.resetMemoryTracking = run.cfg.ResetMemoryTracking
 		}
 		b.compactIfNeeded(ctx, run, conv, hooks, contextWindow, compactLimit, cp)
+
+		// Context-economy telemetry (family 4c): emit a context.pressure data
+		// point once per turn after the compaction gate has run, so consumers
+		// see the post-compaction token pressure for this turn. Nil-safe on
+		// telemetry (disabled runs skip the GetContextUsage call entirely).
+		if run.cfg != nil && run.cfg.Telemetry != nil {
+			usage := conversation.GetContextUsage(conv, contextWindow)
+			// R11: event name is carried by Event.Name; payload.kind removed.
+			run.cfg.Telemetry.Event("context.pressure", map[string]any{
+				"turn":           turn,
+				"tokens_used":    usage.Tokens,
+				"context_window": contextWindow,
+				"percent":        usage.Percent,
+				"estimated":      usage.Estimated,
+				"compact_limit":  compactLimit,
+			}, buildTelemCtx(run))
+		}
 
 		// Build stream options (sanitize before each API call to catch orphaned tool blocks)
 		streamOpts := types.LlmStreamOptions{
@@ -298,31 +367,10 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 
 		// Call provider with retry (with telemetry span)
 		runIDCopy, turnCopy := run.requestID, turn
-		retryConfig := &providers.RetryConfig{
-			MaxRetries:    opts.MaxRetries,
-			FallbackChain: opts.FallbackChain,
-			Persistent:    opts.Persistent,
-			OnRetryWait: func(attempt, delayMs int, pe *providers.ProviderError) {
-				cause := ""
-				if pe != nil && pe.Cause != nil {
-					cause = fmt.Sprintf(" cause=%v", pe.Cause)
-				}
-				code := ""
-				if pe != nil {
-					code = pe.Code
-				}
-				utils.Warn("ApiBackend", fmt.Sprintf(
-					"provider retry: runID=%s turn=%d attempt=%d delay=%dms code=%s err=%q%s",
-					runIDCopy, turnCopy, attempt, delayMs, code, fmt.Sprint(pe), cause,
-				))
-			},
-			OnFallback: func(fromModel, toModel string, hop int) {
-				utils.Warn("ApiBackend", fmt.Sprintf(
-					"model fallback: runID=%s turn=%d hop=%d %s -> %s",
-					runIDCopy, turnCopy, hop, fromModel, toModel,
-				))
-			},
-		}
+		// The RetryConfig (including the provider.retry / provider.fallback
+		// telemetry closures, family 4d) is assembled in buildRetryConfig
+		// (runloop_telemetry.go) to keep this file under the size cap.
+		retryConfig := buildRetryConfig(run, &opts, model, runIDCopy, turnCopy)
 
 		var telem TelemetryCollector
 		if run.cfg != nil {
@@ -330,10 +378,10 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		}
 		var llmSpan Span
 		if telem != nil {
-			llmSpan = telem.StartSpan("llm.call", map[string]interface{}{
+			llmSpan = telem.StartSpanCtx("llm.call", map[string]interface{}{
 				"model": model,
 				"turn":  turn,
-			})
+			}, buildTelemCtx(run))
 		}
 
 		// Fire the before_provider_request extension hook immediately before
@@ -357,31 +405,46 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 				HasSystemPrompt: streamOpts.System != "",
 				MaxTokens:       streamOpts.MaxTokens,
 			}
-			utils.Debug("ApiBackend", fmt.Sprintf(
-				"OnBeforeProviderRequest: runID=%s provider=%s model=%s turn=%d messages=%d tools=%d sysPrompt=%v maxTokens=%d",
-				run.requestID, info.Provider, info.Model, info.TurnNumber,
-				info.MessageCount, info.ToolCount, info.HasSystemPrompt, info.MaxTokens,
-			))
+			utils.LogWithFields(utils.LevelDebug, "backend.runloop", "OnBeforeProviderRequest", map[string]any{
+				"run_id":     run.requestID,
+				"provider":   info.Provider,
+				"model":      info.Model,
+				"turn":       info.TurnNumber,
+				"messages":   info.MessageCount,
+				"tools":      info.ToolCount,
+				"sys_prompt": info.HasSystemPrompt,
+				"max_tokens": info.MaxTokens,
+			})
 			func() {
 				// Defensive: a panicking handler must not crash the agent loop.
 				// The hook is observe-only; recover, log, and proceed.
 				defer func() {
 					if r := recover(); r != nil {
-						utils.Error("ApiBackend", fmt.Sprintf(
-							"OnBeforeProviderRequest panicked: runID=%s panic=%v", run.requestID, r,
-						))
+						utils.LogWithFields(utils.LevelError, "backend.runloop", "OnBeforeProviderRequest panicked", map[string]any{
+							"run_id": run.requestID,
+							"panic":  r,
+						})
 					}
 				}()
 				hooks.OnBeforeProviderRequest(run.requestID, info)
 			}()
 		} else {
-			utils.Debug("ApiBackend", fmt.Sprintf(
-				"OnBeforeProviderRequest: no callback registered, skipping (runID=%s turn=%d)",
-				run.requestID, turn,
-			))
+			utils.LogWithFields(utils.LevelDebug, "backend.runloop", "OnBeforeProviderRequest: no callback registered, skipping", map[string]any{
+				"run_id": run.requestID,
+				"turn":   turn,
+			})
 		}
 
-		events, errc := providers.WithRetry(ctx, provider, streamOpts, retryConfig)
+		// Stash the run's telemetry correlation block on the streaming context
+		// so the provider stream-idle wrapper (sse_idle.go) can attribute
+		// provider.stall / provider.stream_summary events to the originating
+		// conversation. buildTelemCtx carries session_id / conversation_id /
+		// run_id / extension — exactly what the forensics "provider trouble"
+		// scoring joins on. Nil-safe: WithTelemetryCorrelation returns ctx
+		// unchanged when the block is nil.
+		streamCtx := providers.WithTelemetryCorrelation(ctx, buildTelemCtx(run))
+
+		events, errc := providers.WithRetry(streamCtx, provider, streamOpts, retryConfig)
 
 		// Process stream events
 		assistantBlocks, stopReason, turnUsage, streamErr := b.processStream(ctx, run, events, errc)
@@ -392,12 +455,16 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			if streamErr != nil {
 				errStr = streamErr.Error()
 			}
-			llmSpan.End(map[string]interface{}{"stopReason": stopReason}, errStr)
+			// R7: snake_case telemetry payload keys.
+			llmSpan.End(map[string]interface{}{"stop_reason": stopReason}, errStr)
 		}
 
 		if streamErr != nil {
 			if ctx.Err() != nil {
-				utils.Warn("ApiBackend", fmt.Sprintf("stream cancelled: runID=%s turn=%d", run.requestID, turn))
+				utils.LogWithFields(utils.LevelWarn, "backend.runloop", "stream cancelled", map[string]any{
+					"run_id": run.requestID,
+					"turn":   turn,
+				})
 				b.emitExit(run.requestID, intPtr(0), strPtr("cancelled"), conv.ID)
 				return
 			}
@@ -406,9 +473,17 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			if (strings.Contains(errMsg, "prompt_too_long") || strings.Contains(errMsg, "prompt is too long") ||
 				strings.Contains(errMsg, "overloaded_error")) && turn > 0 {
 				promptTooLongRetries++
-				utils.Debug("ApiBackend", fmt.Sprintf("prompt_too_long: retry=%d/%d runID=%s turn=%d", promptTooLongRetries, maxPromptTooLongRetries, run.requestID, turn))
+				utils.LogWithFields(utils.LevelDebug, "backend.runloop", "prompt_too_long: /", map[string]any{
+					"retry":                       promptTooLongRetries,
+					"max_prompt_too_long_retries": maxPromptTooLongRetries,
+					"run_id":                      run.requestID,
+					"turn":                        turn,
+				})
 				if promptTooLongRetries > maxPromptTooLongRetries {
-					utils.Error("ApiBackend", fmt.Sprintf("prompt_too_long: %d retries exhausted, giving up: runID=%s", maxPromptTooLongRetries, run.requestID))
+					utils.LogWithFields(utils.LevelError, "backend.runloop", "prompt_too_long: retries exhausted, giving up", map[string]any{
+						"max_prompt_too_long_retries": maxPromptTooLongRetries,
+						"run_id":                      run.requestID,
+					})
 					b.emit(run, types.NormalizedEvent{Data: &types.ErrorEvent{
 						ErrorMessage: fmt.Sprintf("Context too large after %d compaction attempts. Start a new conversation or manually reduce context.", maxPromptTooLongRetries),
 						IsError:      true,
@@ -424,7 +499,12 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			if pe, ok := streamErr.(*providers.ProviderError); ok && pe.Cause != nil {
 				cause = fmt.Sprintf(" cause=%v", pe.Cause)
 			}
-			utils.Error("ApiBackend", fmt.Sprintf("stream error: runID=%s turn=%d err=%s%s", run.requestID, turn, streamErr.Error(), cause))
+			utils.LogWithFields(utils.LevelError, "backend.runloop", "stream error", map[string]any{
+				"run_id": run.requestID,
+				"turn":   turn,
+				"error":  utils.ErrStr(streamErr),
+				"cause":  cause,
+			})
 			b.emitError(run, streamErr)
 			b.emitExit(run.requestID, intPtr(1), nil, conv.ID)
 			return
@@ -440,7 +520,10 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 				maxTruncation = run.cfg.Timeouts.TruncationRetryLimit()
 			}
 			if truncationRetries > maxTruncation {
-				utils.Error("ApiBackend", fmt.Sprintf("stream truncated %d consecutive times, giving up: runID=%s", truncationRetries, run.requestID))
+				utils.LogWithFields(utils.LevelError, "backend.runloop", "stream truncated consecutive times, giving up", map[string]any{
+					"truncation_retries": truncationRetries,
+					"run_id":             run.requestID,
+				})
 				b.emit(run, types.NormalizedEvent{Data: &types.ErrorEvent{
 					ErrorMessage: fmt.Sprintf("Stream truncated %d consecutive times. The provider may be experiencing issues.", truncationRetries),
 					IsError:      true,
@@ -449,14 +532,22 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 				b.emitExit(run.requestID, intPtr(1), nil, conv.ID)
 				return
 			}
-			utils.Warn("ApiBackend", fmt.Sprintf("stream truncated (no stop reason): runID=%s turn=%d attempt=%d/3, retrying", run.requestID, turn, truncationRetries))
+			utils.LogWithFields(utils.LevelWarn, "backend.runloop", "stream truncated (no stop reason): /3, retrying", map[string]any{
+				"run_id":  run.requestID,
+				"turn":    turn,
+				"attempt": truncationRetries,
+			})
 			b.emit(run, types.NormalizedEvent{Data: &types.StreamResetEvent{}})
 			continue
 		}
 
 		// Stream succeeded with a valid stop reason -- reset retry counters.
 		if promptTooLongRetries > 0 || truncationRetries > 0 || run.compactionsWithoutProgress > 0 {
-			utils.Debug("ApiBackend", fmt.Sprintf("counters reset: promptTooLong=%d truncation=%d compactionsWithoutProgress=%d", promptTooLongRetries, truncationRetries, run.compactionsWithoutProgress))
+			utils.LogWithFields(utils.LevelDebug, "backend.runloop", "counters reset", map[string]any{
+				"prompt_too_long":              promptTooLongRetries,
+				"truncation":                   truncationRetries,
+				"compactions_without_progress": run.compactionsWithoutProgress,
+			})
 		}
 		promptTooLongRetries = 0
 		truncationRetries = 0
@@ -501,10 +592,12 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			// a harness hook flips ForceContinue on later in the run.
 			currentTurnOutputTokens = outTok
 			run.cumulativeOutputTokens += outTok
-			utils.Debug("ApiBackend", fmt.Sprintf(
-				"earlyStop: tokens: runID=%s turn=%d turnOut=%d cumOut=%d",
-				run.requestID, turn, outTok, run.cumulativeOutputTokens,
-			))
+			utils.LogWithFields(utils.LevelDebug, "backend.runloop", "earlyStop: tokens", map[string]any{
+				"run_id":   run.requestID,
+				"turn":     turn,
+				"turn_out": outTok,
+				"cum_out":  run.cumulativeOutputTokens,
+			})
 		}
 
 		// Add assistant message to conversation
@@ -524,7 +617,9 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 			// The end-of-turn Save() below remains as the canonical write that
 			// also captures stop-reason transitions.
 			if err := conversation.Save(conv, ""); err != nil {
-				utils.Log("ApiBackend", "failed to save conversation after AddAssistantMessage: "+err.Error())
+				utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation after AddAssistantMessage", map[string]any{
+					"error": utils.ErrStr(err),
+				})
 			}
 		}
 
@@ -534,260 +629,48 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 				hooks.OnTurnEnd(run.requestID, turn)
 				return struct{}{}
 			}); err != nil {
-				utils.Warn("ApiBackend", fmt.Sprintf("turn_end hook cancelled: runID=%s turn=%d", run.requestID, turn))
+				utils.LogWithFields(utils.LevelWarn, "backend.runloop", "turn_end hook cancelled", map[string]any{
+					"run_id": run.requestID,
+					"turn":   turn,
+				})
 				b.emitExit(run.requestID, intPtr(0), strPtr("cancelled"), conv.ID)
 				return
 			}
 		}
 
-		// Handle stop reason
-		switch stopReason {
-		case "end_turn", "stop":
-			// Extract final text for task_complete
-			var resultText string
-			for _, block := range assistantBlocks {
-				if block.Type == "text" {
-					resultText += block.Text
-				}
-			}
-
-			// Early-stop continuation decision. When the model stops well
-			// below the configured token budget the engine injects a
-			// "keep working" nudge and re-runs the turn instead of
-			// emitting TaskCompleteEvent. Engine-side defaults can be
-			// overridden globally (engine.json), per-run (RunOptions), or
-			// programmatically (before_early_stop_decision hook). See
-			// runloop_early_stop.go for full decision logic.
-			if b.maybeContinueEarlyStop(run, conv, hooks, opts, earlyStop, currentTurnOutputTokens, stopReason, turn, maxTurns) {
-				// Persist before looping so the injected user message
-				// survives a mid-loop crash. Same write semantics as the
-				// existing post-assistant-message Save above.
-				if err := conversation.Save(conv, ""); err != nil {
-					utils.Log("ApiBackend", "failed to save conversation after early-stop continuation: "+err.Error())
-				}
-				continue
-			}
-
-			// Plan-mode auto-exit safety net (issue #187). When the
-			// model ends a plan-mode turn without invoking ExitPlanMode
-			// or AskUserQuestion, the engine deterministically
-			// synthesizes the exit so consumers reliably see the
-			// plan-approval card. Returns true only when synthesis
-			// fired (all preconditions met and no hook suppressed it);
-			// in that case we fall through to a wrap-up branch that
-			// emits TaskCompleteEvent carrying the synthesized
-			// PermissionDenial, mirroring the model-driven exit path
-			// in the tool_use case below. See
-			// runloop_plan_mode_auto_exit.go for the precondition list
-			// and the resolved-defaults precedence chain.
-			if b.maybeSynthesizeExitPlanMode(run, conv, hooks, assistantBlocks, stopReason, turn) {
-				if err := conversation.Save(conv, ""); err != nil {
-					utils.Log("ApiBackend", "failed to save conversation after plan-mode auto-exit: "+err.Error())
-				}
-				elapsed := time.Since(run.startTime).Milliseconds()
-				run.mu.Lock()
-				denials := run.permissionDenials
-				run.mu.Unlock()
-				utils.Info("ApiBackend", fmt.Sprintf(
-					"plan mode auto-exited: runID=%s turns=%d cost=$%.4f elapsed=%dms sessionID=%s",
-					run.requestID, turn, run.totalCost, elapsed, conv.ID,
-				))
-				b.emit(run, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
-					Result:            "Plan mode auto-exited.",
-					CostUsd:           run.totalCost,
-					DurationMs:        elapsed,
-					NumTurns:          turn,
-					SessionID:         conv.ID,
-					Usage:             cumulativeUsage(run),
-					PermissionDenials: denials,
-				}})
-				b.emitExit(run.requestID, intPtr(0), nil, conv.ID)
-				return
-			}
-
-			// Check for a steer message that arrived while the model was
-			// streaming its final response. If present, inject it and
-			// continue the loop so the model reacts on its next turn
-			// rather than the message being treated as a new run by the
-			// session layer. This is the critical fix for "steer during
-			// end_turn is orphaned."
-			if b.drainSteer(run, conv) {
-				if err := conversation.Save(conv, ""); err != nil {
-					utils.Log("ApiBackend", "failed to save conversation after end_turn steer: "+err.Error())
-				}
-				continue
-			}
-
-			// Save conversation
-			if err := conversation.Save(conv, ""); err != nil {
-				utils.Log("ApiBackend", "failed to save conversation: "+err.Error())
-			}
-
-			elapsed := time.Since(run.startTime).Milliseconds()
-			utils.Info("ApiBackend", fmt.Sprintf("run complete: runID=%s turns=%d cost=$%.4f elapsed=%dms sessionID=%s", run.requestID, turn, run.totalCost, elapsed, conv.ID))
-			b.emit(run, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
-				Result:     resultText,
-				CostUsd:    run.totalCost,
-				DurationMs: elapsed,
-				NumTurns:   turn,
-				SessionID:  conv.ID,
-				Usage:      cumulativeUsage(run),
-			}})
-			b.emitExit(run.requestID, intPtr(0), nil, conv.ID)
-			return
-
-		case "tool_use":
-			// Extract tool_use blocks
-			var toolUseBlocks []types.LlmContentBlock
-			for _, block := range assistantBlocks {
-				if block.Type == "tool_use" {
-					toolUseBlocks = append(toolUseBlocks, block)
-				}
-			}
-
-			if len(toolUseBlocks) == 0 {
-				// No tool calls despite tool_use stop reason; treat as end_turn
-				utils.Warn("ApiBackend", fmt.Sprintf("tool_use stop reason with zero tool blocks: runID=%s turn=%d", run.requestID, turn))
-				continue
-			}
-
-			// Execute tools in parallel
-			results, err := b.executeTools(ctx, run, toolUseBlocks, opts.ProjectPath)
-			if err != nil {
-				if ctx.Err() != nil {
-					utils.Warn("ApiBackend", fmt.Sprintf("tool execution cancelled: runID=%s", run.requestID))
-					b.emitExit(run.requestID, intPtr(0), strPtr("cancelled"), conv.ID)
-					return
-				}
-				utils.Error("ApiBackend", fmt.Sprintf("tool execution failed: runID=%s err=%s", run.requestID, err.Error()))
-				b.emitError(run, err)
-				b.emitExit(run.requestID, intPtr(1), nil, conv.ID)
-				return
-			}
-
-			// Check for cancellation even when tools completed successfully.
-			// Tool goroutines return nil unconditionally, so executeTools may
-			// return (results, nil) even after the context was cancelled.
-			// Without this check the loop would add results and start a new
-			// LLM turn before noticing the abort at the top of the loop.
-			if ctx.Err() != nil {
-				utils.Warn("ApiBackend", fmt.Sprintf("run cancelled after tool execution: runID=%s", run.requestID))
-				b.emitExit(run.requestID, intPtr(0), strPtr("cancelled"), conv.ID)
-				return
-			}
-
-			// If ExitPlanMode was triggered, wrap up the run now.
-			run.mu.Lock()
-			exiting := run.exitPlanMode
-			denials := run.permissionDenials
-			run.mu.Unlock()
-			if exiting {
-				if err := conversation.Save(conv, ""); err != nil {
-					utils.Log("ApiBackend", "failed to save conversation: "+err.Error())
-				}
-				elapsed := time.Since(run.startTime).Milliseconds()
-				utils.Info("ApiBackend", fmt.Sprintf("plan mode exited: runID=%s turns=%d cost=$%.4f elapsed=%dms sessionID=%s", run.requestID, turn, run.totalCost, elapsed, conv.ID))
-				b.emit(run, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
-					Result:            "Plan mode exited.",
-					CostUsd:           run.totalCost,
-					DurationMs:        elapsed,
-					NumTurns:          turn,
-					SessionID:         conv.ID,
-					Usage:             cumulativeUsage(run),
-					PermissionDenials: denials,
-				}})
-				b.emitExit(run.requestID, intPtr(0), nil, conv.ID)
-				return
-			}
-
-			// Apply system-wide tool result size cap. Oversized results
-			// (dispatch transcripts, large file reads, verbose command
-			// output) are persisted to disk with a preview so the LLM
-			// retains access without consuming context window tokens.
-			maxToolResultChars := opts.MaxToolResultChars
-			if maxToolResultChars == 0 && run.cfg != nil && run.cfg.MaxToolResultChars > 0 {
-				maxToolResultChars = run.cfg.MaxToolResultChars
-			}
-			if convDir != "" && maxToolResultChars >= 0 {
-				conversation.AddToolResultsWithSizeCheck(conv, results, convDir, maxToolResultChars)
-			} else {
-				conversation.AddToolResults(conv, results)
-			}
-			// Persist immediately so tool history survives mid-multi-turn crashes.
-			if err := conversation.Save(conv, ""); err != nil {
-				utils.Log("ApiBackend", "failed to save conversation after AddToolResults: "+err.Error())
-			}
-
-			// Check for a steer message that arrived during tool execution.
-			// Injecting it here (rather than waiting for the top-of-loop
-			// check) ensures it lands in the conversation before the very
-			// next LLM call, minimizing latency.
-			b.drainSteer(run, conv)
-
-			// Reset early-stop continuation counters on tool_use: the model
-			// is making forward progress through tools, so the next end_turn
-			// gets a fresh cap. Without this reset a long multi-tool run
-			// (e.g. a 10-step refactor) would consume the continuation
-			// budget on tool turns that produce little output text.
-			if run.continuationCount != 0 || run.lastContinuationDelta != 0 {
-				utils.Debug("ApiBackend", fmt.Sprintf(
-					"earlyStop: reset continuation counters on tool_use: runID=%s turn=%d prevCount=%d",
-					run.requestID, turn, run.continuationCount,
-				))
-				run.continuationCount = 0
-				run.lastContinuationDelta = 0
-			}
-
-		case "max_tokens":
-			// Detect whether a tool_use block was truncated. When the stream
-			// is cut mid-tool-call the input JSON is unparseable and gets
-			// coerced to {} in processStream. Tell the model what happened
-			// so it can retry with a smaller payload or split the work,
-			// rather than blindly repeating the same too-large call.
-			truncatedTool := ""
-			for _, block := range assistantBlocks {
-				if block.Type == "tool_use" && len(block.Input) == 0 && block.Name != "" {
-					truncatedTool = block.Name
-					break
-				}
-			}
-
-			if truncatedTool != "" {
-				utils.Warn("ApiBackend", fmt.Sprintf("max_tokens truncated tool_use (tool=%s): runID=%s turn=%d", truncatedTool, run.requestID, turn))
-				b.injectSystemMessage(run, conv, hooks, opts, "max_token_continue",
-					fmt.Sprintf("Your previous response was cut off by the output token limit while generating the input for tool '%s'. The tool call was NOT executed. Break the work into smaller pieces — for example, write the file in multiple parts using Bash with heredocs or sequential Write calls.", truncatedTool),
-					turn, maxTurns)
-			} else {
-				utils.Info("ApiBackend", fmt.Sprintf("max_tokens reached, continuing: runID=%s turn=%d", run.requestID, turn))
-				b.injectSystemMessage(run, conv, hooks, opts, "max_token_continue",
-					"Continue from where you left off.",
-					turn, maxTurns)
-			}
-
-		default:
-			// Non-standard stop reason. Delegate to the helper, which
-			// distinguishes a provider "error" (ErrorEvent + non-zero exit)
-			// from a genuinely-unknown reason (clean exit 0). See
-			// handleUnknownStopReason in runloop_helpers.go.
-			b.handleUnknownStopReason(run, conv, stopReason, turn)
+		// Handle stop reason. The per-stop-reason switch lives in
+		// dispatchStopReason (runloop_stop_reason.go) to keep this file under
+		// the size cap. A true return means the run terminated (a
+		// TaskCompleteEvent + exit was already emitted, or a cancellation was
+		// handled) and runLoop should return; false means keep iterating.
+		if b.dispatchStopReason(ctx, run, conv, hooks, opts, earlyStop, assistantBlocks, stopReason, currentTurnOutputTokens, turn, maxTurns, convDir) {
 			return
 		}
 	}
 
 	// Exceeded max turns
 	if err := conversation.Save(conv, ""); err != nil {
-		utils.Log("ApiBackend", "failed to save conversation: "+err.Error())
+		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation", map[string]any{
+			"error": utils.ErrStr(err),
+		})
 	}
 
 	elapsed := time.Since(run.startTime).Milliseconds()
 	b.emit(run, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
-		Result:     fmt.Sprintf("Reached max turns (%d)", maxTurns),
-		CostUsd:    run.totalCost,
-		DurationMs: elapsed,
-		NumTurns:   turn,
-		SessionID:  conv.ID,
-		Usage:      cumulativeUsage(run),
+		Result:            fmt.Sprintf("Reached max turns (%d)", maxTurns),
+		LastText:          run.lastNonEmptyResultText,
+		CostUsd:           run.totalCost,
+		DurationMs:        elapsed,
+		NumTurns:          turn,
+		ConversationTurns: conversation.CountUserPrompts(conv),
+		SessionID:         conv.ID,
+		Usage:             cumulativeUsage(run),
 	}})
-	utils.Warn("ApiBackend", fmt.Sprintf("max turns exceeded: runID=%s turns=%d/%d cost=$%.4f", run.requestID, turn, maxTurns, run.totalCost))
+	utils.LogWithFields(utils.LevelWarn, "backend.runloop", "max turns exceeded: / cost=$", map[string]any{
+		"run_id":     run.requestID,
+		"turns":      turn,
+		"max_turns":  maxTurns,
+		"total_cost": run.totalCost,
+	})
 	b.emitExit(run.requestID, intPtr(0), nil, conv.ID)
 }

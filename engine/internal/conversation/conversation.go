@@ -168,8 +168,6 @@ type Conversation struct {
 	Messages                []types.LlmMessage `json:"messages"`
 	TotalInputTokens        int                `json:"totalInputTokens"`
 	TotalOutputTokens       int                `json:"totalOutputTokens"`
-	LastInputTokens         int                `json:"lastInputTokens"`
-	LastInputTokensMsgCount int                `json:"lastInputTokensMsgCount,omitempty"`
 	TotalCost               float64            `json:"totalCost"`
 	CreatedAt               int64              `json:"createdAt"`
 	Version                 int                `json:"version,omitempty"`
@@ -373,8 +371,7 @@ func AddAssistantMessage(conv *Conversation, blocks []types.LlmContentBlock, usa
 	totalInput := usage.InputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens
 	conv.TotalInputTokens += totalInput
 	conv.TotalOutputTokens += usage.OutputTokens
-	conv.LastInputTokens = totalInput
-	conv.LastInputTokensMsgCount = len(conv.Messages)
+	conv.Messages[len(conv.Messages)-1].Usage = &usage
 
 	if conv.Entries != nil {
 		AppendEntry(conv, EntryMessage, MessageData{Role: "assistant", Content: blocks, Usage: &usage})

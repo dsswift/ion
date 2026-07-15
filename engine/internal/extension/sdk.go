@@ -239,14 +239,14 @@ func (s *SDK) RegisterCommand(name string, def CommandDefinition) {
 	cb := s.onCommandsChange
 	s.mu.Unlock()
 	if replaced {
-		utils.Log("extension", fmt.Sprintf("RegisterCommand: replaced existing entry name=%s", name))
+		utils.LogWithFields(utils.LevelInfo, "extension", "registercommand: replaced existing entry", map[string]any{"model": name})
 	} else {
-		utils.Log("extension", fmt.Sprintf("RegisterCommand: added name=%s desc=%q", name, def.Description))
+		utils.LogWithFields(utils.LevelInfo, "extension", "registercommand: added", map[string]any{"model": name, "description": def.Description})
 	}
 	if cb != nil {
 		cb()
 	} else {
-		utils.Debug("extension", fmt.Sprintf("RegisterCommand: no onCommandsChange observer wired for name=%s", name))
+		utils.LogWithFields(utils.LevelDebug, "extension", "registercommand: no oncommandschange observer wired for", map[string]any{"model": name})
 	}
 }
 
@@ -260,7 +260,7 @@ func (s *SDK) SetOnCommandsChange(fn func()) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.onCommandsChange = fn
-	utils.Debug("extension", fmt.Sprintf("SetOnCommandsChange: observer %s", boolStr(fn != nil, "wired", "cleared")))
+	utils.LogWithFields(utils.LevelDebug, "extension", "setoncommandschange: observer", map[string]any{"bool_str": boolStr(fn != nil, "wired", "cleared")})
 }
 
 // boolStr is a tiny helper used by logging to render a boolean as one of two
@@ -343,7 +343,7 @@ func (s *SDK) fire(event string, ctx *Context, payload interface{}) []interface{
 	for i, h := range handlers {
 		result, err := h(ctx, payload)
 		if err != nil {
-			utils.Log("extension", fmt.Sprintf("hook %s handler[%d] error: %v", event, i, err))
+			utils.LogWithFields(utils.LevelInfo, "extension", "hook handler[] error", map[string]any{"event": event, "i": i, "error": err})
 			continue
 		}
 		if result != nil {

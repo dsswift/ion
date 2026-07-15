@@ -11,6 +11,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/resource"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -97,6 +98,7 @@ func (a *dispatchCountSpyAccessor) dispatchCountCallCount() int {
 func (a *dispatchCountSpyAccessor) BumpParentProgress() {}
 
 func (a *dispatchCountSpyAccessor) NewChildBackend() backend.RunBackend { return a.child }
+func (a *dispatchCountSpyAccessor) AllocatePlanFilePath() string        { return "/tmp/.ion/plans/plan.md" }
 func (a *dispatchCountSpyAccessor) RootContext() context.Context {
 	if a.rootCtx != nil {
 		return a.rootCtx
@@ -105,6 +107,8 @@ func (a *dispatchCountSpyAccessor) RootContext() context.Context {
 }
 
 func (a *dispatchCountSpyAccessor) SessionKey() string       { return "spy-session" }
+func (a *dispatchCountSpyAccessor) ExtensionName() string    { return "" }
+func (a *dispatchCountSpyAccessor) ExtensionVersion() string { return "" }
 func (a *dispatchCountSpyAccessor) ConversationID() string   { return "" }
 func (a *dispatchCountSpyAccessor) WorkingDirectory() string { return "/tmp" }
 func (a *dispatchCountSpyAccessor) Emit(ev types.EngineEvent) {
@@ -132,6 +136,8 @@ func (a *dispatchCountSpyAccessor) ExtGroup() *extension.ExtensionGroup      { r
 func (a *dispatchCountSpyAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
 func (a *dispatchCountSpyAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
 func (a *dispatchCountSpyAccessor) EngineConfig() *types.EngineRuntimeConfig { return nil }
+func (a *dispatchCountSpyAccessor) ClaudeCompat() bool { return false }
+func (a *dispatchCountSpyAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
 func (a *dispatchCountSpyAccessor) ResolveTier(_ string) string              { return "" }
 func (a *dispatchCountSpyAccessor) PermissionCheck(_ string, _ map[string]interface{}) (string, string) {
 	return "", ""
@@ -173,6 +179,7 @@ func (a *dispatchCountSpyAccessor) SendToSession(_, _, _ string, _ map[string]in
 }
 func (a *dispatchCountSpyAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
 func (a *dispatchCountSpyAccessor) RunOnceComplete(_ string, _ bool)              {}
+func (a *dispatchCountSpyAccessor) Telemetry() *telemetry.Collector { return nil }
 
 // TestDeregisterReEmitsDispatchCount is the primary regression test for the
 // nested-dispatch completion race (Bug 1).

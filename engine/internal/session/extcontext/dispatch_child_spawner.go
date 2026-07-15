@@ -2,7 +2,6 @@ package extcontext
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/tools"
@@ -46,10 +45,7 @@ func BuildChildAgentSpawner(
 	// invokes the Agent tool, the grandchild will be at childDepth+1.
 	dispatchFn := BuildDispatchAgentFunc(sa, registry, childDepth, childDispatchId)
 
-	utils.Log("Dispatch", fmt.Sprintf(
-		"child spawner wired: depth=%d dispatchId=%s session=%s",
-		childDepth, childDispatchId, sa.SessionKey(),
-	))
+	utils.LogWithFields(utils.LevelInfo, "server", "child spawner wired", map[string]any{"child_depth": childDepth, "child_dispatch_id": childDispatchId, "session_key": sa.SessionKey()})
 
 	return func(ctx context.Context, name, prompt, description, cwd, model string) (string, error) {
 		// Map the AgentSpawner parameters to DispatchAgentOpts.
@@ -59,10 +55,7 @@ func BuildChildAgentSpawner(
 		// Log the working directory the child spawner threads into the nested
 		// dispatch (ProjectPath below) so grandchild cwd resolution is
 		// observable. childDepth/childDispatchId identify the spawning child.
-		utils.Debug("Dispatch", fmt.Sprintf(
-			"child spawner dispatch: name=%q projectPath=%q dispatchId=%s depth=%d session=%s",
-			name, cwd, childDispatchId, childDepth, sa.SessionKey(),
-		))
+		utils.LogWithFields(utils.LevelDebug, "server", "child spawner dispatch", map[string]any{"model": name, "cwd": cwd, "child_dispatch_id": childDispatchId, "child_depth": childDepth, "session_key": sa.SessionKey()})
 		//
 		// AllowedSubAgents is intentionally left unset on this path. The
 		// engine's built-in Agent tool has no per-call source for "which

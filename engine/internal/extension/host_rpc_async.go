@@ -21,7 +21,6 @@ package extension
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 
 	"github.com/dsswift/ion/engine/internal/asyncreg"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -53,7 +52,7 @@ func (h *Host) rpcRegisterWebhook(id int64, raw []byte) {
 		Params WebhookRoute `json:"params"`
 	}
 	if err := json.Unmarshal(raw, &req); err != nil {
-		utils.Error("extension", fmt.Sprintf("ext/register_webhook: parse error: %v", err))
+		utils.LogWithFields(utils.LevelError, "extension", "ext/register_webhook: parse error", map[string]any{"error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "parse error: " + err.Error()})
 		return
 	}
@@ -66,11 +65,11 @@ func (h *Host) rpcRegisterWebhook(id int64, raw []byte) {
 		err := h.RegisterWebhookDecl(req.Params, asyncreg.OriginRuntime)
 		if err != nil {
 			code := asyncRPCErrorCode(err)
-			utils.Log("extension", fmt.Sprintf("ext/register_webhook: ext=%s path=%q rejected: %v", h.name, req.Params.Path, err))
+			utils.LogWithFields(utils.LevelInfo, "extension", "ext/register_webhook: rejected", map[string]any{"model": h.name, "path": req.Params.Path, "error": err})
 			h.sendResponse(id, nil, &jsonrpcError{Code: code, Message: err.Error()})
 			return
 		}
-		utils.Log("extension", fmt.Sprintf("ext/register_webhook: ext=%s path=%q registered (origin=runtime)", h.name, req.Params.Path))
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/register_webhook: registered (origin=runtime)", map[string]any{"model": h.name, "path": req.Params.Path})
 		resp, _ := json.Marshal(struct {
 			OK bool   `json:"ok"`
 			ID string `json:"id"`
@@ -86,7 +85,7 @@ func (h *Host) rpcDeregisterWebhook(id int64, raw []byte) {
 		} `json:"params"`
 	}
 	if err := json.Unmarshal(raw, &req); err != nil {
-		utils.Error("extension", fmt.Sprintf("ext/deregister_webhook: parse error: %v", err))
+		utils.LogWithFields(utils.LevelError, "extension", "ext/deregister_webhook: parse error", map[string]any{"error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "parse error: " + err.Error()})
 		return
 	}
@@ -96,7 +95,7 @@ func (h *Host) rpcDeregisterWebhook(id int64, raw []byte) {
 	}
 	go func() {
 		removed := h.DeregisterWebhookDecl(req.Params.Path)
-		utils.Log("extension", fmt.Sprintf("ext/deregister_webhook: ext=%s path=%q removed=%t", h.name, req.Params.Path, removed))
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/deregister_webhook", map[string]any{"model": h.name, "path": req.Params.Path, "removed": removed})
 		resp, _ := json.Marshal(struct {
 			OK      bool `json:"ok"`
 			Removed bool `json:"removed"`
@@ -110,7 +109,7 @@ func (h *Host) rpcRegisterSchedule(id int64, raw []byte) {
 		Params ScheduleJob `json:"params"`
 	}
 	if err := json.Unmarshal(raw, &req); err != nil {
-		utils.Error("extension", fmt.Sprintf("ext/register_schedule: parse error: %v", err))
+		utils.LogWithFields(utils.LevelError, "extension", "ext/register_schedule: parse error", map[string]any{"error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "parse error: " + err.Error()})
 		return
 	}
@@ -118,11 +117,11 @@ func (h *Host) rpcRegisterSchedule(id int64, raw []byte) {
 		err := h.RegisterScheduleDecl(req.Params, asyncreg.OriginRuntime)
 		if err != nil {
 			code := asyncRPCErrorCode(err)
-			utils.Log("extension", fmt.Sprintf("ext/register_schedule: ext=%s id=%q rejected: %v", h.name, req.Params.JobID, err))
+			utils.LogWithFields(utils.LevelInfo, "extension", "ext/register_schedule: rejected", map[string]any{"model": h.name, "run_id": req.Params.JobID, "error": err})
 			h.sendResponse(id, nil, &jsonrpcError{Code: code, Message: err.Error()})
 			return
 		}
-		utils.Log("extension", fmt.Sprintf("ext/register_schedule: ext=%s id=%q registered (origin=runtime)", h.name, req.Params.JobID))
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/register_schedule: registered (origin=runtime)", map[string]any{"model": h.name, "run_id": req.Params.JobID})
 		resp, _ := json.Marshal(struct {
 			OK bool   `json:"ok"`
 			ID string `json:"id"`
@@ -138,7 +137,7 @@ func (h *Host) rpcDeregisterSchedule(id int64, raw []byte) {
 		} `json:"params"`
 	}
 	if err := json.Unmarshal(raw, &req); err != nil {
-		utils.Error("extension", fmt.Sprintf("ext/deregister_schedule: parse error: %v", err))
+		utils.LogWithFields(utils.LevelError, "extension", "ext/deregister_schedule: parse error", map[string]any{"error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "parse error: " + err.Error()})
 		return
 	}
@@ -148,7 +147,7 @@ func (h *Host) rpcDeregisterSchedule(id int64, raw []byte) {
 	}
 	go func() {
 		removed := h.DeregisterScheduleDecl(req.Params.ID)
-		utils.Log("extension", fmt.Sprintf("ext/deregister_schedule: ext=%s id=%q removed=%t", h.name, req.Params.ID, removed))
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/deregister_schedule", map[string]any{"model": h.name, "run_id": req.Params.ID, "removed": removed})
 		resp, _ := json.Marshal(struct {
 			OK      bool `json:"ok"`
 			Removed bool `json:"removed"`

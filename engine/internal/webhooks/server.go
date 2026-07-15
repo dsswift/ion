@@ -182,7 +182,7 @@ func (s *Server) AddHost(h *extension.Host) {
 		}
 	}
 	s.hosts = append(s.hosts, h)
-	utils.Debug("webhooks", fmt.Sprintf("AddHost: ext=%s total_hosts=%d", h.Name(), len(s.hosts)))
+	utils.LogWithFields(utils.LevelDebug, "webhooks", "add host", map[string]any{"model": h.Name(), "count": len(s.hosts)})
 }
 
 // RemoveHost removes a host from the routing pool. Called at session
@@ -197,7 +197,7 @@ func (s *Server) RemoveHost(h *extension.Host) {
 	for i, existing := range s.hosts {
 		if existing == h {
 			s.hosts = append(s.hosts[:i], s.hosts[i+1:]...)
-			utils.Debug("webhooks", fmt.Sprintf("RemoveHost: ext=%s remaining_hosts=%d", h.Name(), len(s.hosts)))
+			utils.LogWithFields(utils.LevelDebug, "webhooks", "remove host", map[string]any{"model": h.Name(), "count": len(s.hosts)})
 			return
 		}
 	}
@@ -221,7 +221,7 @@ func (s *Server) Start() error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		s.mu.Unlock()
-		utils.Error("webhooks", fmt.Sprintf("Start: bind failed addr=%s err=%v", addr, err))
+		utils.LogWithFields(utils.LevelError, "webhooks", "start bind failed", map[string]any{"path": addr, "error": err.Error()})
 		return fmt.Errorf("webhooks: bind %s: %w", addr, err)
 	}
 	srv := &http.Server{
@@ -233,16 +233,16 @@ func (s *Server) Start() error {
 	s.server = srv
 	s.mu.Unlock()
 
-	utils.Log("webhooks", fmt.Sprintf("Start: listening on %s (default-cap=%d bytes, fire-timeout=%s)",
-		addr, s.cfg.DefaultMaxBodyBytes, s.cfg.FireTimeout))
+	utils.LogWithFields(utils.LevelInfo, "webhooks", "start listening", map[string]any{
+		"path": addr, "count": s.cfg.DefaultMaxBodyBytes, "duration_ms": s.cfg.FireTimeout.Milliseconds(),
+	})
 	if s.cfg.BindInterface != "" && s.cfg.BindInterface != "127.0.0.1" && s.cfg.BindInterface != "localhost" && s.cfg.BindInterface != "::1" {
-		utils.Warn("webhooks",
-			fmt.Sprintf("non-loopback bind interface %q — webhook routes are exposed beyond localhost; verify auth on every route", s.cfg.BindInterface))
+		utils.LogWithFields(utils.LevelWarn, "webhooks", "non-loopback bind interface routes exposed beyond localhost verify auth", map[string]any{"path": s.cfg.BindInterface})
 	}
 
 	go func() {
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
-			utils.Error("webhooks", fmt.Sprintf("server.Serve returned error: %v", err))
+			utils.LogWithFields(utils.LevelError, "webhooks", "serve returned error", map[string]any{"error": err.Error()})
 		}
 	}()
 	return nil
@@ -263,7 +263,7 @@ func (s *Server) Stop() {
 	defer cancel()
 	utils.Log("webhooks", "Stop: shutting down listener")
 	if err := srv.Shutdown(ctx); err != nil {
-		utils.Warn("webhooks", fmt.Sprintf("Shutdown returned %v (forcing close)", err))
+		utils.LogWithFields(utils.LevelWarn, "webhooks", "shutdown returned error forcing close", map[string]any{"error": err.Error()})
 		_ = srv.Close()
 	}
 }
@@ -337,8 +337,9 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		s.emitWebhookError(requestID, "", r.Method, r.URL.Path, http.StatusNotFound, "not_found", start)
 		return
 	}
-	utils.Debug("webhooks", fmt.Sprintf("serveHTTP: req=%s path=%s method=%s host=%s",
-		requestID, r.URL.Path, r.Method, host.Name()))
+	utils.LogWithFields(utils.LevelDebug, "webhooks", "serve http", map[string]any{
+		"run_id": requestID, "path": r.URL.Path, "status": r.Method, "model": host.Name(),
+	})
 	s.emitWebhookReceived(requestID, route, r)
 
 	// Body-size enforcement happens before auth so a giant unauth'd
@@ -351,7 +352,7 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.respond(w, http.StatusRequestEntityTooLarge, "body too large", nil)
 		s.emitWebhookError(requestID, route.Path, r.Method, route.Path, http.StatusRequestEntityTooLarge, "body_size", start)
-		utils.Log("webhooks", fmt.Sprintf("serveHTTP: req=%s body too large (max=%d): %v", requestID, maxBytes, err))
+		utils.LogWithFields(utils.LevelInfo, "webhooks", "request body too large", map[string]any{"run_id": requestID, "max": maxBytes, "error": err.Error()})
 		return
 	}
 
@@ -362,7 +363,7 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.respond(w, code, authErr.Message, nil)
 		s.emitWebhookError(requestID, route.Path, r.Method, route.Path, code, "auth", start)
-		utils.Log("webhooks", fmt.Sprintf("serveHTTP: req=%s auth rejected: %s (status=%d)", requestID, authErr.Message, code))
+		utils.LogWithFields(utils.LevelInfo, "webhooks", "auth rejected", map[string]any{"run_id": requestID, "reason": authErr.Message, "status": code})
 		return
 	}
 	s.emitWebhookAuthenticated(requestID, route, r)
@@ -373,14 +374,14 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	if resolve == nil {
 		s.respond(w, http.StatusServiceUnavailable, "session resolver not configured", nil)
 		s.emitAsyncFireDropped(string(asyncreg.KindWebhook), route.Path, "no_resolver")
-		utils.Error("webhooks", fmt.Sprintf("serveHTTP: req=%s no session resolver wired", requestID))
+		utils.LogWithFields(utils.LevelError, "webhooks", "no session resolver wired", map[string]any{"run_id": requestID})
 		return
 	}
 	ctx, err := resolve(host)
 	if err != nil || ctx == nil {
 		s.respond(w, http.StatusServiceUnavailable, "session not available", nil)
 		s.emitAsyncFireDropped(string(asyncreg.KindWebhook), route.Path, "no_session")
-		utils.Log("webhooks", fmt.Sprintf("serveHTTP: req=%s session resolve failed: %v", requestID, err))
+		utils.LogWithFields(utils.LevelInfo, "webhooks", "session resolve failed", map[string]any{"run_id": requestID, "error": err.Error()})
 		return
 	}
 
@@ -390,7 +391,7 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.respond(w, http.StatusInternalServerError, fmt.Sprintf("handler error: %v", err), nil)
 		s.emitWebhookError(requestID, route.Path, r.Method, route.Path, http.StatusInternalServerError, "handler_failed", start)
-		utils.Log("webhooks", fmt.Sprintf("serveHTTP: req=%s handler failed: %v", requestID, err))
+		utils.LogWithFields(utils.LevelInfo, "webhooks", "handler failed", map[string]any{"run_id": requestID, "error": err.Error()})
 		return
 	}
 
@@ -408,8 +409,9 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, respBody)
 	}
 	s.emitWebhookResponded(requestID, route, r, status, start)
-	utils.Debug("webhooks", fmt.Sprintf("serveHTTP: req=%s responded status=%d body_len=%d elapsed=%s",
-		requestID, status, len(respBody), time.Since(start)))
+	utils.LogWithFields(utils.LevelDebug, "webhooks", "respond", map[string]any{
+		"run_id": requestID, "status": status, "count": len(respBody), "duration_ms": time.Since(start).Milliseconds(),
+	})
 }
 
 // pathExistsAnyMethod returns true when the given path is registered
@@ -471,8 +473,9 @@ func (s *Server) resolveToken(host *extension.Host, route extension.WebhookRoute
 		}
 		raw, err := host.ResolveToken(route.Auth.TokenRefName)
 		if err != nil {
-			utils.Log("webhooks", fmt.Sprintf("resolveToken: ext=%s ref=%s failed: %v",
-				host.Name(), route.Auth.TokenRefName, err))
+			utils.LogWithFields(utils.LevelInfo, "webhooks", "resolve token failed", map[string]any{
+				"model": host.Name(), "reason": route.Auth.TokenRefName, "error": err.Error(),
+			})
 			return ""
 		}
 		return raw

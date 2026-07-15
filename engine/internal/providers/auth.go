@@ -1,7 +1,6 @@
 package providers
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -20,9 +19,9 @@ import (
 //
 // Enterprise deployments can set any header their gateway expects.
 func setAuthHeader(req *http.Request, style string, apiKey string) {
-	utils.Log("Auth", fmt.Sprintf("setAuthHeader: style=%q keyLen=%d url=%s", style, len(apiKey), req.URL.Host))
+	utils.LogWithFields(utils.LevelDebug, "Auth", "set auth header", map[string]any{"reason": style, "count": len(apiKey), "path": req.URL.Host})
 	if apiKey == "" {
-		utils.Log("Auth", fmt.Sprintf("WARNING: setAuthHeader called with empty API key for %s", req.URL.Host))
+		utils.LogWithFields(utils.LevelWarn, "Auth", "set auth header called with empty api key", map[string]any{"path": req.URL.Host})
 	}
 	switch strings.ToLower(style) {
 	case "bearer", "":

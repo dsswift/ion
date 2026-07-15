@@ -99,8 +99,9 @@ func TestSendCommand_Clear_WipesConversationMessages(t *testing.T) {
 		{Role: "user", Content: "hello"},
 		{Role: "assistant", Content: "world"},
 	}
-	conv.LastInputTokens = 42
-	conv.LastInputTokensMsgCount = 2
+	// Prime Usage on the assistant message so GetContextUsage reports API-path tokens.
+	u := types.LlmUsage{InputTokens: 42}
+	conv.Messages[1].Usage = &u
 	if err := conversation.Save(conv, ""); err != nil {
 		t.Fatalf("seed conversation save: %v", err)
 	}
@@ -126,11 +127,11 @@ func TestSendCommand_Clear_WipesConversationMessages(t *testing.T) {
 	if len(cleared.Messages) != 0 {
 		t.Errorf("expected Messages wiped after /clear, got %d messages: %+v", len(cleared.Messages), cleared.Messages)
 	}
-	if cleared.LastInputTokens != 0 {
-		t.Errorf("expected LastInputTokens reset to 0, got %d", cleared.LastInputTokens)
-	}
-	if cleared.LastInputTokensMsgCount != 0 {
-		t.Errorf("expected LastInputTokensMsgCount reset to 0, got %d", cleared.LastInputTokensMsgCount)
+	// After /clear, GetContextUsage must fall back to the heuristic (no
+	// assistant messages with Usage remain).
+	usage := conversation.GetContextUsage(cleared, 200000)
+	if !usage.Estimated {
+		t.Errorf("expected Estimated=true after /clear (no messages to backward-scan), got Estimated=false")
 	}
 }
 
@@ -170,7 +171,7 @@ func TestSendCommand_Clear_NoExtensionsIsOk(t *testing.T) {
 //
 // Key invariants:
 //   - Messages is nil after the wipe (LLM sees no prior history).
-//   - LastInputTokens and LastInputTokensMsgCount are zeroed.
+//   - GetContextUsage falls back to Estimated=true (no messages with Usage remain).
 //   - Fields that MUST be preserved (TotalInputTokens, TotalCost, Entries,
 //     ID, Model, …) are untouched so the conversation tree, cost accounting,
 //     and metadata survive the /clear checkpoint.
@@ -184,15 +185,12 @@ func TestClearConversationFile(t *testing.T) {
 	const convID = "no-session-clear-conv"
 	convDir := filepath.Join(tempHome, ".ion", "conversations")
 
-	// Seed a conversation with messages and non-zero counters.
+	// Seed a conversation with messages and token data.
 	conv := conversation.CreateConversation(convID, "system prompt", "test-model")
-	conv.Messages = []types.LlmMessage{
-		{Role: "user", Content: "msg 1"},
-		{Role: "assistant", Content: "reply 1"},
-		{Role: "user", Content: "msg 2"},
-	}
-	conv.LastInputTokens = 500
-	conv.LastInputTokensMsgCount = 3
+	conversation.AddUserMessage(conv, "msg 1")
+	u := types.LlmUsage{InputTokens: 500}
+	conversation.AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "reply 1"}}, u)
+	conversation.AddUserMessage(conv, "msg 2")
 	conv.TotalInputTokens = 1200
 	conv.TotalCost = 0.42
 	if err := conversation.Save(conv, ""); err != nil {
@@ -222,11 +220,10 @@ func TestClearConversationFile(t *testing.T) {
 	if len(cleared.Messages) != 0 {
 		t.Errorf("Messages not wiped: got %d message(s): %+v", len(cleared.Messages), cleared.Messages)
 	}
-	if cleared.LastInputTokens != 0 {
-		t.Errorf("LastInputTokens not reset: got %d", cleared.LastInputTokens)
-	}
-	if cleared.LastInputTokensMsgCount != 0 {
-		t.Errorf("LastInputTokensMsgCount not reset: got %d", cleared.LastInputTokensMsgCount)
+	// After /clear, GetContextUsage must fall back to heuristic (no messages).
+	usage := conversation.GetContextUsage(cleared, 200000)
+	if !usage.Estimated {
+		t.Errorf("expected Estimated=true after clear (no messages with Usage), got Estimated=false")
 	}
 
 	// Preserved fields must be untouched.
@@ -401,8 +398,10 @@ func TestClearConversationFile_MessagesDurableAfterReload(t *testing.T) {
 		t.Errorf("Entries count changed after clear: got %d, want %d",
 			len(cleared.Entries), seedEntryCount)
 	}
-	if cleared.LastInputTokens != 0 {
-		t.Errorf("LastInputTokens = %d after clear, want 0", cleared.LastInputTokens)
+	// After /clear, GetContextUsage must use the heuristic path (no messages).
+	usage := conversation.GetContextUsage(cleared, 200000)
+	if !usage.Estimated {
+		t.Errorf("expected Estimated=true after clear (no messages with Usage), got Estimated=false")
 	}
 }
 

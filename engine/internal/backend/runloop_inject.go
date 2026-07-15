@@ -1,8 +1,6 @@
 package backend
 
 import (
-	"fmt"
-
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -45,10 +43,10 @@ func (b *ApiBackend) injectSystemMessage(
 		}
 	case earlyStopContinueKind:
 		if opts.DisableEarlyStopContinue {
-			utils.Debug("ApiBackend", fmt.Sprintf(
-				"earlyStop: injection suppressed by DisableEarlyStopContinue: runID=%s turn=%d",
-				run.requestID, turn,
-			))
+			utils.LogWithFields(utils.LevelDebug, "backend.runloop", "earlyStop: injection suppressed by DisableEarlyStopContinue", map[string]any{
+				"run_id": run.requestID,
+				"turn":   turn,
+			})
 			return
 		}
 	}
@@ -65,13 +63,25 @@ func (b *ApiBackend) injectSystemMessage(
 		}
 	}
 
-	// Add message: transient (in-memory only) or persistent
-	if opts.SuppressSystemMessages {
+	// Add message: transient (in-memory only) or persistent.
+	//
+	// plan_mode_reminder is ALWAYS transient regardless of SuppressSystemMessages:
+	// a "plan mode still active" claim is only true for the turn it is injected
+	// and becomes a lie the moment the mode changes. Persisting it (as the old
+	// code did) causes the model to read stale mode-claims in later turns after
+	// a mode transition, and bloats the conversation history with identical
+	// copies. Other kinds (turn_limit_warning, max_token_continue, nested_context,
+	// early-stop) are legitimately part of history and keep the existing
+	// persist-on-default path.
+	transient := opts.SuppressSystemMessages || kind == "plan_mode_reminder"
+	if transient {
 		conversation.AddTransientUserMessage(conv, text)
 	} else {
 		conversation.AddUserMessage(conv, text)
 		if err := conversation.Save(conv, ""); err != nil {
-			utils.Log("ApiBackend", "failed to save conversation after system inject: "+err.Error())
+			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation after system inject", map[string]any{
+				"error": utils.ErrStr(err),
+			})
 		}
 	}
 }

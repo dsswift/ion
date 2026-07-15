@@ -2,7 +2,6 @@ package extension
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -122,7 +121,7 @@ func (h *Host) registerNoOpForwarder(hook string) {
 		}
 		if len(raw) > 0 {
 			n := len(raw); if n > 2000 { n = 2000 }
-				utils.Log("extension", fmt.Sprintf("hook/%s raw response: %s", hook, string(raw[:n])))
+				utils.LogWithFields(utils.LevelInfo, "extension", "hook/ raw response", map[string]any{"hook": hook, "string": string(raw[:n])})
 		}
 		emitHookEvents(ctx, raw)
 		return nil, nil
@@ -185,7 +184,7 @@ func (h *Host) registerBeforeAgentStartForwarder() {
 			AgentName    string `json:"agentName"`
 		}
 		if err := json.Unmarshal(raw, &result); err != nil {
-			utils.Log("extension", fmt.Sprintf("hook/%s: bad result: %v", HookBeforeAgentStart, err))
+			utils.LogWithFields(utils.LevelInfo, "extension", "hook/: bad result", map[string]any{"hook_before_agent_start": HookBeforeAgentStart, "error": err})
 			return nil, nil
 		}
 		if result.SystemPrompt == "" && result.AgentName == "" {
@@ -221,7 +220,7 @@ func (h *Host) registerBeforePromptForwarder() {
 			SystemPrompt string `json:"systemPrompt"`
 		}
 		if err := json.Unmarshal(raw, &result); err != nil {
-			utils.Log("extension", fmt.Sprintf("hook/%s: bad result: %v", HookBeforePrompt, err))
+			utils.LogWithFields(utils.LevelInfo, "extension", "hook/: bad result", map[string]any{"hook_before_prompt": HookBeforePrompt, "error": err})
 			return nil, nil
 		}
 		// If systemPrompt is set, return structured result
@@ -262,7 +261,7 @@ func (h *Host) registerBlockForwarder(hook string) {
 			Reason string `json:"reason"`
 		}
 		if err := json.Unmarshal(raw, &result); err != nil {
-			utils.Log("extension", fmt.Sprintf("hook/%s: bad result: %v", hook, err))
+			utils.LogWithFields(utils.LevelInfo, "extension", "hook/: bad result", map[string]any{"hook": hook, "error": err})
 			return nil, nil
 		}
 		if !result.Block {
@@ -299,7 +298,7 @@ func (h *Host) registerPerToolCallForwarder(hook string) {
 			Mutate map[string]interface{} `json:"mutate"`
 		}
 		if err := json.Unmarshal(raw, &result); err != nil {
-			utils.Log("extension", fmt.Sprintf("hook/%s: bad result: %v", hook, err))
+			utils.LogWithFields(utils.LevelInfo, "extension", "hook/: bad result", map[string]any{"hook": hook, "error": err})
 			return nil, nil
 		}
 		if !result.Block && result.Mutate == nil {
@@ -333,7 +332,7 @@ func (h *Host) registerBoolForwarder(hook string) {
 		}
 		var cancel bool
 		if err := json.Unmarshal(raw, &cancel); err != nil {
-			utils.Log("extension", fmt.Sprintf("hook/%s: bad result: %v", hook, err))
+			utils.LogWithFields(utils.LevelInfo, "extension", "hook/: bad result", map[string]any{"hook": hook, "error": err})
 			return nil, nil
 		}
 		if !cancel {
@@ -366,7 +365,7 @@ func (h *Host) registerRejectionForwarder(hook string) {
 			Reject  bool   `json:"reject"`
 		}
 		if err := json.Unmarshal(raw, &result); err != nil {
-			utils.Log("extension", fmt.Sprintf("hook/%s: bad result: %v", hook, err))
+			utils.LogWithFields(utils.LevelInfo, "extension", "hook/: bad result", map[string]any{"hook": hook, "error": err})
 			return nil, nil
 		}
 		if result.Reject {
@@ -399,7 +398,7 @@ func (h *Host) registerContentForwarder(hook string) {
 		}
 		var result map[string]interface{}
 		if err := json.Unmarshal(raw, &result); err != nil {
-			utils.Log("extension", fmt.Sprintf("hook/%s: bad result: %v", hook, err))
+			utils.LogWithFields(utils.LevelInfo, "extension", "hook/: bad result", map[string]any{"hook": hook, "error": err})
 			return nil, nil
 		}
 		return result, nil
@@ -425,7 +424,7 @@ func (h *Host) registerBeforePlanModeEnterForwarder() {
 			Reason string `json:"reason"`
 		}
 		if err := json.Unmarshal(raw, &result); err != nil {
-			utils.Log("extension", fmt.Sprintf("hook/%s: bad result: %v", HookBeforePlanModeEnter, err))
+			utils.LogWithFields(utils.LevelInfo, "extension", "hook/: bad result", map[string]any{"hook_before_plan_mode_enter": HookBeforePlanModeEnter, "error": err})
 			return nil, nil
 		}
 		if result.Allow == nil {
@@ -454,7 +453,7 @@ func (h *Host) registerBeforePlanModeExitForwarder() {
 			Reason string `json:"reason"`
 		}
 		if err := json.Unmarshal(raw, &result); err != nil {
-			utils.Log("extension", fmt.Sprintf("hook/%s: bad result: %v", HookBeforePlanModeExit, err))
+			utils.LogWithFields(utils.LevelInfo, "extension", "hook/: bad result", map[string]any{"hook_before_plan_mode_exit": HookBeforePlanModeExit, "error": err})
 			return nil, nil
 		}
 		if result.Allow == nil {
@@ -490,7 +489,7 @@ func (h *Host) registerBeforePlanModeAutoExitForwarder() {
 			Reason       string `json:"reason"`
 		}
 		if err := json.Unmarshal(raw, &result); err != nil {
-			utils.Log("extension", fmt.Sprintf("hook/%s: bad result: %v", HookBeforePlanModeAutoExit, err))
+			utils.LogWithFields(utils.LevelInfo, "extension", "hook/: bad result", map[string]any{"hook_before_plan_mode_auto_exit": HookBeforePlanModeAutoExit, "error": err})
 			return nil, nil
 		}
 		// Skip returning a result when every field is zero — saves the

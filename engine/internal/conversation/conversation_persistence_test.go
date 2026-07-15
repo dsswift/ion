@@ -477,9 +477,9 @@ func TestSaveLoadJSONL_PreservesMetadata(t *testing.T) {
 	conv := CreateConversation("meta-test", "sys", "claude-3")
 	conv.TotalInputTokens = 500
 	conv.TotalOutputTokens = 200
-	conv.LastInputTokens = 300
 	conv.TotalCost = 0.05
 	AddUserMessage(conv, "test")
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "response"}}, types.LlmUsage{InputTokens: 300, OutputTokens: 50})
 
 	if err := Save(conv, dir); err != nil {
 		t.Fatal(err)
@@ -490,14 +490,21 @@ func TestSaveLoadJSONL_PreservesMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if loaded.TotalInputTokens != 500 {
-		t.Errorf("TotalInputTokens = %d", loaded.TotalInputTokens)
+	if loaded.TotalInputTokens != conv.TotalInputTokens {
+		t.Errorf("TotalInputTokens = %d, want %d", loaded.TotalInputTokens, conv.TotalInputTokens)
 	}
-	if loaded.TotalOutputTokens != 200 {
+	if loaded.TotalOutputTokens != conv.TotalOutputTokens {
 		t.Errorf("TotalOutputTokens = %d", loaded.TotalOutputTokens)
 	}
-	if loaded.LastInputTokens != 300 {
-		t.Errorf("LastInputTokens = %d, want 300", loaded.LastInputTokens)
+	// Verify rehydration of Usage on the assistant message.
+	var found bool
+	for _, m := range loaded.Messages {
+		if m.Role == "assistant" && m.Usage != nil && m.Usage.InputTokens == 300 {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected assistant message with Usage.InputTokens=300 after rehydration")
 	}
 	if loaded.TotalCost < 0.049 || loaded.TotalCost > 0.051 {
 		t.Errorf("TotalCost = %f", loaded.TotalCost)
@@ -671,19 +678,14 @@ func TestSaveLoadPreservesTreeStructure(t *testing.T) {
 	}
 }
 
-// --- Token cache persistence (round-trip tests) ---
+// --- Usage rehydration persistence (round-trip tests) ---
 
-func TestLoadJSONL_PreservesTokenCache(t *testing.T) {
+func TestLoadJSONL_RehydratesUsageOnAssistantMessages(t *testing.T) {
 	dir := t.TempDir()
 
 	conv := CreateConversation("tokens-jsonl", "sys", "claude-3")
 	AddUserMessage(conv, "hello")
 	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "hi"}}, types.LlmUsage{InputTokens: 500000, OutputTokens: 100})
-	savedTokens := conv.LastInputTokens
-	savedMsgCount := conv.LastInputTokensMsgCount
-	if savedTokens == 0 || savedMsgCount == 0 {
-		t.Fatal("setup: LastInputTokens and LastInputTokensMsgCount should be non-zero")
-	}
 
 	if err := Save(conv, dir); err != nil {
 		t.Fatal(err)
@@ -694,20 +696,29 @@ func TestLoadJSONL_PreservesTokenCache(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Token cache preserved across save/load — the API-reported value is
-	// exact for this conversation state and is trusted on reload.
-	if loaded.LastInputTokens != savedTokens {
-		t.Errorf("LastInputTokens = %d, want %d", loaded.LastInputTokens, savedTokens)
+	// Usage must be rehydrated from entries so GetContextUsage uses the API path.
+	var assistantMsg *types.LlmMessage
+	for i := range loaded.Messages {
+		if loaded.Messages[i].Role == "assistant" {
+			assistantMsg = &loaded.Messages[i]
+			break
+		}
 	}
-	if loaded.LastInputTokensMsgCount != savedMsgCount {
-		t.Errorf("LastInputTokensMsgCount = %d, want %d", loaded.LastInputTokensMsgCount, savedMsgCount)
+	if assistantMsg == nil {
+		t.Fatal("no assistant message after load")
+	}
+	if assistantMsg.Usage == nil {
+		t.Fatal("Usage is nil on assistant message after load — rehydration failed")
+	}
+	if assistantMsg.Usage.InputTokens != 500000 {
+		t.Errorf("Usage.InputTokens = %d, want 500000", assistantMsg.Usage.InputTokens)
 	}
 	if loaded.TotalInputTokens != conv.TotalInputTokens {
 		t.Errorf("TotalInputTokens = %d, want %d", loaded.TotalInputTokens, conv.TotalInputTokens)
 	}
 }
 
-func TestLoadJSON_PreservesLastInputTokens(t *testing.T) {
+func TestLoadJSON_LegacyConvPreservesTotalTokens(t *testing.T) {
 	dir := t.TempDir()
 
 	v1 := map[string]any{
@@ -730,16 +741,13 @@ func TestLoadJSON_PreservesLastInputTokens(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// LastInputTokens survives JSON migration
-	if loaded.LastInputTokens != 300000 {
-		t.Errorf("LastInputTokens = %d, want 300000", loaded.LastInputTokens)
-	}
+	// TotalInputTokens survives JSON migration.
 	if loaded.TotalInputTokens != 300000 {
 		t.Errorf("TotalInputTokens = %d, want 300000", loaded.TotalInputTokens)
 	}
 }
 
-func TestLoadJSONL_TokenCache_WithBranching(t *testing.T) {
+func TestLoadJSONL_RehydratesUsageWithBranching(t *testing.T) {
 	dir := t.TempDir()
 
 	conv := CreateConversation("tokens-branch", "", "claude-3")
@@ -749,7 +757,6 @@ func TestLoadJSONL_TokenCache_WithBranching(t *testing.T) {
 
 	Branch(conv, rootID)
 	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "alt-resp1"}}, types.LlmUsage{InputTokens: 400000, OutputTokens: 50})
-	savedTokens := conv.LastInputTokens
 
 	if err := Save(conv, dir); err != nil {
 		t.Fatal(err)
@@ -760,9 +767,22 @@ func TestLoadJSONL_TokenCache_WithBranching(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Token cache preserved, branch structure intact
-	if loaded.LastInputTokens != savedTokens {
-		t.Errorf("LastInputTokens = %d, want %d", loaded.LastInputTokens, savedTokens)
+	// Rehydrated usage should be set on the assistant message.
+	var assistantMsg *types.LlmMessage
+	for i := range loaded.Messages {
+		if loaded.Messages[i].Role == "assistant" {
+			assistantMsg = &loaded.Messages[i]
+			break
+		}
+	}
+	if assistantMsg == nil {
+		t.Fatal("no assistant message found after load")
+	}
+	if assistantMsg.Usage == nil {
+		t.Fatal("Usage is nil on assistant message after load")
+	}
+	if assistantMsg.Usage.InputTokens != 400000 {
+		t.Errorf("Usage.InputTokens = %d, want 400000", assistantMsg.Usage.InputTokens)
 	}
 	if len(loaded.Entries) != 3 {
 		t.Errorf("expected 3 entries, got %d", len(loaded.Entries))
@@ -777,17 +797,13 @@ func TestLoadJSONL_TokenCache_WithBranching(t *testing.T) {
 	}
 }
 
-func TestLoadJSONL_ContextUsageAfterLoad_UsesPersistedTokens(t *testing.T) {
+func TestLoadJSONL_ContextUsageAfterLoad_UsesRehydratedUsage(t *testing.T) {
 	dir := t.TempDir()
 
 	conv := CreateConversation("tokens-e2e", "sys", "claude-3")
 	for i := 0; i < 10; i++ {
 		AddUserMessage(conv, fmt.Sprintf("question %d", i))
 		AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: fmt.Sprintf("answer %d with some extra text", i)}}, types.LlmUsage{InputTokens: 150000, OutputTokens: 100})
-	}
-	savedTokens := conv.LastInputTokens
-	if savedTokens != 150000 {
-		t.Fatalf("setup: LastInputTokens = %d, want 150000", savedTokens)
 	}
 
 	if err := Save(conv, dir); err != nil {
@@ -799,14 +815,15 @@ func TestLoadJSONL_ContextUsageAfterLoad_UsesPersistedTokens(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// GetContextUsage should use the persisted API-reported tokens, not
-	// the heuristic estimator. Against a 1M window, 150K = 15%.
+	// GetContextUsage should use the rehydrated API-reported tokens from
+	// the last assistant message's Usage, not the heuristic estimator.
+	// Against a 1M window, 150K = 15%.
 	info := GetContextUsage(loaded, 1000000)
 	if info.Estimated {
-		t.Error("expected estimated=false (persisted token count should be used)")
+		t.Error("expected estimated=false (rehydrated usage should be used)")
 	}
-	if info.Tokens != savedTokens {
-		t.Errorf("tokens = %d, want %d", info.Tokens, savedTokens)
+	if info.Tokens != 150000 {
+		t.Errorf("tokens = %d, want 150000", info.Tokens)
 	}
 	if info.Percent != 15 {
 		t.Errorf("percent = %d, want 15", info.Percent)

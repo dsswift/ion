@@ -3,7 +3,6 @@ package backend
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
@@ -38,9 +37,33 @@ func (b *ApiBackend) processStream(
 	var thinkingStartedAt time.Time
 	var thinkingTextLen int
 
+	// provider.ttft measurement (family 4d): the wall-clock from the start of
+	// stream consumption to the first event received. Emitted exactly once per
+	// stream. callStart is captured before the range loop; ttftEmitted latches
+	// the one-shot emit on the first iteration.
+	callStart := time.Now()
+	ttftEmitted := false
+
 	for ev := range events {
 		if ctx.Err() != nil {
 			return nil, "", nil, ctx.Err()
+		}
+
+		if !ttftEmitted {
+			ttftEmitted = true
+			if telem := runTelemetry(run); telem != nil {
+				model := ""
+				if run != nil && run.opts != nil {
+					model = run.opts.Model
+				}
+				// R11: event name is carried by Event.Name; payload.kind removed.
+				telem.Event("provider.ttft", map[string]any{
+					"provider": resolveProviderName(run),
+					"model":    model,
+					"ttft_ms":  time.Since(callStart).Milliseconds(),
+					"attempt":  streamAttempt(run),
+				}, buildTelemCtx(run))
+			}
 		}
 
 		switch ev.Type {
@@ -93,9 +116,11 @@ func (b *ApiBackend) processStream(
 				thinkingRedacted = cb.Type == "redacted_thinking"
 				thinkingStartedAt = time.Now()
 				thinkingTextLen = 0
-				utils.Debug("ApiBackend", fmt.Sprintf(
-					"thinking block start: type=%s blockIndex=%d runID=%s",
-					cb.Type, currentBlockIndex, run.requestID))
+				utils.LogWithFields(utils.LevelDebug, "backend.runloop", "thinking block start", map[string]any{
+					"type":        cb.Type,
+					"block_index": currentBlockIndex,
+					"run_id":      run.requestID,
+				})
 				b.emit(run, types.NormalizedEvent{Data: &types.ThinkingBlockStartEvent{}})
 			} else {
 				// Non-thinking block opened: any prior thinking block was
@@ -193,9 +218,10 @@ func (b *ApiBackend) processStream(
 						Text: delta.Thinking,
 					}})
 				} else {
-					utils.Debug("ApiBackend", fmt.Sprintf(
-						"thinking delta suppressed (streamDeltas off): len=%d runID=%s",
-						len(delta.Thinking), run.requestID))
+					utils.LogWithFields(utils.LevelDebug, "backend.runloop", "thinking delta suppressed (streamDeltas off)", map[string]any{
+						"len":    len(delta.Thinking),
+						"run_id": run.requestID,
+					})
 				}
 			}
 
@@ -206,8 +232,9 @@ func (b *ApiBackend) processStream(
 				// thinking signature is reconstructed by the provider layer on
 				// re-submission, which is moot here because sanitize strips
 				// thinking before submission.)
-				utils.Debug("ApiBackend", fmt.Sprintf(
-					"signature_delta received (not emitted as display text) runID=%s", run.requestID))
+				utils.LogWithFields(utils.LevelDebug, "backend.runloop", "signature_delta received (not emitted as display text)", map[string]any{
+					"run_id": run.requestID,
+				})
 			}
 
 		case "content_block_stop":
@@ -226,9 +253,12 @@ func (b *ApiBackend) processStream(
 					estTokens = thinkingTextLen / 4
 				}
 				run.thinkingTokens.Add(int64(estTokens))
-				utils.Debug("ApiBackend", fmt.Sprintf(
-					"thinking block end: redacted=%t estTokens=%d elapsed=%.2fs runID=%s",
-					thinkingRedacted, estTokens, elapsed, run.requestID))
+				utils.LogWithFields(utils.LevelDebug, "backend.runloop", "thinking block end: s", map[string]any{
+					"redacted":    thinkingRedacted,
+					"est_tokens":  estTokens,
+					"duration_ms": elapsed,
+					"run_id":      run.requestID,
+				})
 				b.emit(run, types.NormalizedEvent{Data: &types.ThinkingBlockEndEvent{
 					TotalTokens:    estTokens,
 					ElapsedSeconds: elapsed,
@@ -260,10 +290,18 @@ func (b *ApiBackend) processStream(
 						// parsed and reset it. Only default to {} when the input
 						// has not already been set — never clobber a parsed input.
 						if block.Input == nil {
-							utils.Debug("ApiBackend", fmt.Sprintf("content_block_stop: empty accumulator, defaulting input to {} (toolID=%s name=%s idx=%d)", block.ID, block.Name, currentBlockIndex))
+							utils.LogWithFields(utils.LevelDebug, "backend.runloop", "content_block_stop: empty accumulator, defaulting input to {}", map[string]any{
+								"tool_id": block.ID,
+								"name":    block.Name,
+								"idx":     currentBlockIndex,
+							})
 							block.Input = map[string]any{}
 						} else {
-							utils.Debug("ApiBackend", fmt.Sprintf("content_block_stop: empty accumulator but input already set, preserving (toolID=%s name=%s idx=%d)", block.ID, block.Name, currentBlockIndex))
+							utils.LogWithFields(utils.LevelDebug, "backend.runloop", "content_block_stop: empty accumulator but input already set, preserving", map[string]any{
+								"tool_id": block.ID,
+								"name":    block.Name,
+								"idx":     currentBlockIndex,
+							})
 						}
 					} else {
 						var input map[string]any
@@ -274,7 +312,12 @@ func (b *ApiBackend) processStream(
 							if len(preview) > 500 {
 								preview = preview[:500] + "...(truncated)"
 							}
-							utils.Warn("ApiBackend", fmt.Sprintf("tool_use input parse failed (toolID=%s name=%s err=%v) coercing to {}: %s", block.ID, block.Name, err, preview))
+							utils.LogWithFields(utils.LevelWarn, "backend.runloop", "tool_use input parse failed coercing to {}", map[string]any{
+								"tool_id": block.ID,
+								"name":    block.Name,
+								"error":   utils.ErrStr(err),
+								"preview": preview,
+							})
 							block.Input = map[string]any{}
 						}
 					}
@@ -368,8 +411,9 @@ func (b *ApiBackend) blocksForPersistence(run *activeRun, blocks []types.LlmCont
 	if run != nil {
 		runID = run.requestID
 	}
-	utils.Debug("ApiBackend", fmt.Sprintf(
-		"persistThinking off: stripping reasoning text from assistant blocks runID=%s", runID))
+	utils.LogWithFields(utils.LevelDebug, "backend.runloop", "persistThinking off: stripping reasoning text from assistant blocks", map[string]any{
+		"run_id": runID,
+	})
 	return stripThinkingText(blocks)
 }
 

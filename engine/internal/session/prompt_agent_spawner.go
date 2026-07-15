@@ -64,7 +64,7 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 				Task: prompt,
 			})
 			if hookName != "" {
-				utils.Log("Session", fmt.Sprintf("before_agent_start resolved agentName=%s key=%s", hookName, capturedKey))
+				utils.LogWithFields(utils.LevelInfo, "session", "before_agent_start resolved", map[string]any{"model": hookName, "captured_key": capturedKey})
 				requestedName = hookName
 			}
 		}
@@ -74,7 +74,7 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 				spec = matched
 				specMatched = true
 			} else {
-				utils.Debug("Session", fmt.Sprintf("agent spec not resolved: name=%q key=%s (continuing as unnamed)", requestedName, key))
+				utils.LogWithFields(utils.LevelDebug, "session", "agent spec not resolved: (continuing as unnamed)", map[string]any{"model": requestedName, "key": key})
 			}
 			// When resolution fails, continue with an unnamed agent rather
 			// than hard-failing. The model's intent was to parallelize work;
@@ -128,20 +128,15 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 		if childModel != "" {
 			resolved, fallbacks := modelconfig.ResolveTierChain(childModel)
 			if resolved != childModel {
-				utils.Log("Session", fmt.Sprintf("agent tier resolved: %s -> %s (fallbacks=%v) name=%s", childModel, resolved, fallbacks, agentName))
+				utils.LogWithFields(utils.LevelInfo, "session", "agent tier resolved: -> ()", map[string]any{"model": childModel, "resolved": resolved, "fallbacks": fallbacks, "model_3": agentName})
 				childModel = resolved
 			} else {
-				utils.Debug("Session", fmt.Sprintf("agent tier passthrough: model=%s name=%s", childModel, agentName))
+				utils.LogWithFields(utils.LevelDebug, "session", "agent tier passthrough", map[string]any{"model": childModel, "model_1": agentName})
 			}
 			childFallbacks = fallbacks
 		}
 
-		utils.Debug("Session", fmt.Sprintf("child model resolved: requested=%q spec=%q parent=%q resolved=%q name=%s", model, func() string {
-			if specMatched {
-				return spec.Model
-			}
-			return ""
-		}(), capturedModel, childModel, agentName))
+		utils.LogWithFields(utils.LevelDebug, "session", "child model resolved", map[string]any{"model": model, "agent": agentName, "child_model": childModel})
 
 		// Delegate the actual dispatch to the single shared dispatch
 		// mechanism (extcontext.BuildDispatchAgentFunc). The orchestrator's
@@ -202,18 +197,18 @@ func (m *Manager) wireAgentSpawner(s *engineSession, key string, parentModel str
 		// report context.Canceled so the run loop sees the abort. Checked first
 		// so cancellation wins over any partial output.
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			utils.Debug("Session", fmt.Sprintf("agent spawner cancelled: name=%s err=%v", agentName, ctxErr))
+			utils.LogWithFields(utils.LevelDebug, "session", "agent spawner cancelled", map[string]any{"model": agentName, "error": ctxErr})
 			return "", ctxErr
 		}
 		if err != nil {
-			utils.Debug("Session", fmt.Sprintf("agent spawner returning error: name=%s err=%v", agentName, err))
+			utils.LogWithFields(utils.LevelDebug, "session", "agent spawner returning error", map[string]any{"model": agentName, "error": err})
 			return "", err
 		}
 		if result == nil {
-			utils.Debug("Session", fmt.Sprintf("agent spawner returning empty: name=%s", agentName))
+			utils.LogWithFields(utils.LevelDebug, "session", "agent spawner returning empty", map[string]any{"model": agentName})
 			return "", nil
 		}
-		utils.Debug("Session", fmt.Sprintf("agent spawner returning: name=%s exitCode=%d resultLen=%d", agentName, result.ExitCode, len(result.Output)))
+		utils.LogWithFields(utils.LevelDebug, "session", "agent spawner returning", map[string]any{"model": agentName, "exit_code": result.ExitCode, "count": len(result.Output)})
 		return result.Output, nil
 	}
 }

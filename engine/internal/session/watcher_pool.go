@@ -73,7 +73,7 @@ func (p *watcherPool) acquire(root string, ignores []string, sessionKey string, 
 		entry.subscribers[sessionKey] = onEvent
 		entry.refCount++
 		entry.subMu.Unlock()
-		utils.Info("session", fmt.Sprintf("watcherPool.acquire: shared key=%s session=%s refcount=%d root=%s", key, sessionKey, entry.refCount, root))
+		utils.LogWithFields(utils.LevelInfo, "session", "watcherpool.acquire: shared", map[string]any{"key": key, "session_key": sessionKey, "ref_count": entry.refCount, "root": root})
 		return p.releaseFunc(key, sessionKey), nil
 	}
 
@@ -107,7 +107,7 @@ func (p *watcherPool) acquire(root string, ignores []string, sessionKey string, 
 		return nil, err
 	}
 
-	utils.Info("session", fmt.Sprintf("watcherPool.acquire: created key=%s session=%s root=%s", key, sessionKey, root))
+	utils.LogWithFields(utils.LevelInfo, "session", "watcherpool.acquire: created", map[string]any{"key": key, "session_key": sessionKey, "root": root})
 	return p.releaseFunc(key, sessionKey), nil
 }
 
@@ -122,7 +122,7 @@ func (p *watcherPool) releaseFunc(key, sessionKey string) func() {
 
 			entry, exists := p.entries[key]
 			if !exists {
-				utils.Debug("session", fmt.Sprintf("watcherPool.release: entry gone key=%s session=%s", key, sessionKey))
+				utils.LogWithFields(utils.LevelDebug, "session", "watcherpool.release: entry gone", map[string]any{"key": key, "session_key": sessionKey})
 				return
 			}
 
@@ -132,14 +132,14 @@ func (p *watcherPool) releaseFunc(key, sessionKey string) func() {
 			remaining := entry.refCount
 			entry.subMu.Unlock()
 
-			utils.Info("session", fmt.Sprintf("watcherPool.release: session=%s key=%s remaining=%d", sessionKey, key, remaining))
+			utils.LogWithFields(utils.LevelInfo, "session", "watcherpool.release", map[string]any{"session_key": sessionKey, "key": key, "remaining": remaining})
 
 			if remaining <= 0 {
 				delete(p.entries, key)
 				if err := entry.w.Close(); err != nil {
-					utils.Error("session", fmt.Sprintf("watcherPool.release: close failed key=%s err=%v", key, err))
+					utils.LogWithFields(utils.LevelError, "session", "watcherpool.release: close failed", map[string]any{"key": key, "error": err})
 				}
-				utils.Info("session", fmt.Sprintf("watcherPool.release: watcher closed key=%s", key))
+				utils.LogWithFields(utils.LevelInfo, "session", "watcherpool.release: watcher closed", map[string]any{"key": key})
 			}
 		})
 	}

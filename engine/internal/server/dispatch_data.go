@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
-	"runtime"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/protocol"
@@ -47,9 +46,7 @@ func (s *Server) dispatchGenerateTitle(conn net.Conn, cmd *protocol.ClientComman
 	go func(c net.Conn, command *protocol.ClientCommand) {
 		defer func() {
 			if r := recover(); r != nil {
-				buf := make([]byte, 4096)
-				n := runtime.Stack(buf, false)
-				utils.Error("Server", fmt.Sprintf("panic in generate_title: %v\n%s", r, buf[:n]))
+				utils.LogWithFields(utils.LevelError, "server", "panic in generate title", map[string]any{"error": r})
 				s.sendResult(c, command, fmt.Errorf("internal error"), nil)
 			}
 		}()
@@ -74,9 +71,7 @@ func (s *Server) dispatchMigrateConversation(conn net.Conn, cmd *protocol.Client
 	go func(c net.Conn, command *protocol.ClientCommand) {
 		defer func() {
 			if r := recover(); r != nil {
-				buf := make([]byte, 4096)
-				n := runtime.Stack(buf, false)
-				utils.Error("Server", fmt.Sprintf("panic in migrate_conversation: %v\n%s", r, buf[:n]))
+				utils.LogWithFields(utils.LevelError, "server", "panic in migrate conversation", map[string]any{"error": r})
 				s.sendResult(c, command, fmt.Errorf("internal error"), nil)
 			}
 		}()
@@ -211,7 +206,7 @@ func (s *Server) buildProviderEntries() []types.ProviderEntry {
 		if s.cliCapable && pid == "anthropic" && !entry.HasAuth {
 			entry.HasAuth = true
 			entry.AuthSource = "cli"
-			utils.Debug("Models", fmt.Sprintf("provider=%s: CLI-auth fallback applied", pid))
+			utils.LogWithFields(utils.LevelDebug, "server", "provider cli-auth fallback applied", map[string]any{"provider": pid})
 		}
 		// Populate config details (gateway URL, API key reference)
 		if s.config != nil {

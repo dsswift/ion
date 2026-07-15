@@ -1,7 +1,6 @@
 package session
 
 import (
-	"fmt"
 	"path/filepath"
 
 	"github.com/dsswift/ion/engine/internal/backend"
@@ -38,7 +37,7 @@ func (m *Manager) lateLoadExtensions(s *engineSession, key string, overrides *Pr
 			WorkingDirectory: s.config.WorkingDirectory,
 		}
 		if err := host.Load(extPath, extCfg); err != nil {
-			utils.Log("Session", "per-prompt extension load failed for "+extPath+": "+err.Error())
+			utils.LogWithFields(utils.LevelInfo, "session", "per-prompt extension load failed for", map[string]any{"ext_path": extPath, "error": err.Error()})
 			continue
 		}
 		capturedKey := key
@@ -53,12 +52,21 @@ func (m *Manager) lateLoadExtensions(s *engineSession, key string, overrides *Pr
 
 	for _, host := range group.Hosts() {
 		capturedKey := key
+		// Bind session/conversation IDs so extension log notifications are
+		// stamped with the correlating IDs (unified log schema).
+		host.BindSession(s.key, s.conversationID)
 		host.SetOnSendMessage(func(payload extension.SendPromptPayload) {
 			// Shared dispatch body (prompt_options.go) so this late-loaded-
 			// extension path produces identical run configuration to the
 			// primary wiring in start_session.go. The two sites must not diverge.
 			go m.dispatchSendPromptPayload(capturedKey, "prompt_extensions", payload)
 		})
+		// Wire the per-handler hook_latency telemetry sink (mirrors the primary
+		// wiring in start_session.go — the two sites must not diverge). Nil sink
+		// when the session has no collector; callHook then emits nothing.
+		if s.telemetry != nil {
+			host.SetTelemetrySink(s.telemetry.Event)
+		}
 		host.SetPersistentEmit(func(ev types.EngineEvent) {
 			if ev.Type == "engine_agent_state" {
 				s.agents.CacheExtStates(ev.Agents)
@@ -67,6 +75,20 @@ func (m *Manager) lateLoadExtensions(s *engineSession, key string, overrides *Pr
 		})
 	}
 	s.extGroup = group
+	// Capture extension identity for telemetry attribution (run.complete /
+	// llm.call ctx.extension). Same capture as loadAndWireExtensions — the
+	// two wiring sites must not diverge. Caller holds m.mu, so no extra
+	// locking here. Name resolves manifest → init-handshake → directory
+	// basename (host_lifecycle.go / parseInitResult); Version is
+	// manifest-only.
+	for _, h := range group.Hosts() {
+		if s.extensionName == "" && h.Name() != "" {
+			s.extensionName = h.Name()
+		}
+		if s.extensionVersion == "" && h.Version() != "" {
+			s.extensionVersion = h.Version()
+		}
+	}
 	ctx := m.newExtContext(s, key)
 	_ = group.FireSessionStart(ctx)
 }
@@ -77,12 +99,12 @@ func (m *Manager) fireBeforeAgentStart(s *engineSession, key string, extGroup *e
 	if extGroup == nil || extGroup.IsEmpty() || skipExtensions {
 		return
 	}
-	utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: firing before_agent_start", key))
+	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: firing before_agent_start", map[string]any{"key": key})
 	basCtx := m.newExtContext(s, key)
 	agentSysPrompt, _, _ := extGroup.FireBeforeAgentStart(basCtx, extension.AgentInfo{IsRoot: true})
 	if agentSysPrompt != "" {
 		opts.AppendSystemPrompt += "\n\n" + agentSysPrompt
-		utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: before_agent_start injected %d chars", key, len(agentSysPrompt)))
+		utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: before_agent_start injected chars", map[string]any{"key": key, "count": len(agentSysPrompt)})
 	}
 }
 
@@ -102,11 +124,16 @@ func (m *Manager) fireBeforePromptCli(s *engineSession, key string, extGroup *ex
 	if extGroup == nil || extGroup.IsEmpty() || skipExtensions {
 		return
 	}
-	utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: firing before_prompt (cli)", key))
+	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: firing before_prompt (cli)", map[string]any{"key": key})
 	ctx := m.newExtContext(s, key)
+	// Populate ctx.Model with the SELECTED model (opts.Model is already the
+	// routed model at this point, post model_select) so a before_prompt handler
+	// can adapt the prompt to the chosen model — the payload half of the
+	// model_select→before_prompt handoff.
+	ctx.Model = modelRefFor(opts.Model)
 	rewritten, extraSystem, err := extGroup.FireBeforePrompt(ctx, opts.Prompt)
 	if err != nil {
-		utils.Log("Session", fmt.Sprintf("before_prompt hook error (cli): %v", err))
+		utils.LogWithFields(utils.LevelInfo, "session", "before_prompt hook error (cli)", map[string]any{"error": err})
 		return
 	}
 	if rewritten != "" {
@@ -126,13 +153,14 @@ func (m *Manager) fireModelSelect(s *engineSession, key string, extGroup *extens
 	if extGroup == nil || extGroup.IsEmpty() || skipExtensions {
 		return
 	}
-	utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: firing model_select (requested=%s)", key, opts.Model))
+	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: firing model_select ()", map[string]any{"key": key, "model": opts.Model})
 	msCtx := m.newExtContext(s, key)
 	if overridden, _ := extGroup.FireModelSelect(msCtx, extension.ModelSelectInfo{
 		RequestedModel: opts.Model,
+		Prompt:         opts.Prompt,
 	}); overridden != "" {
-		utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: model_select override: %s -> %s", key, opts.Model, overridden))
+		utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: model_select override: ->", map[string]any{"key": key, "model": opts.Model, "run_id": overridden})
 		opts.Model = overridden
 	}
-	utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: model_select complete", key))
+	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: model_select complete", map[string]any{"key": key})
 }

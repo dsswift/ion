@@ -43,7 +43,9 @@ func computeHostInfo() map[string]interface{} {
 			"pathSep":  string(os.PathSeparator),
 		}
 	})
-	utils.Log("FS", fmt.Sprintf("host info cached: home=%s user=%s host=%s os=%s", hostInfoCached["home"], hostInfoCached["username"], hostInfoCached["hostname"], hostInfoCached["os"]))
+	utils.LogWithFields(utils.LevelInfo, "server.fs", "host info cached", map[string]any{
+		"path": hostInfoCached["home"], "model": hostInfoCached["username"], "reason": hostInfoCached["hostname"], "status": hostInfoCached["os"],
+	})
 	return hostInfoCached
 }
 
@@ -71,17 +73,17 @@ type fsEntry struct {
 // Symlinks are reported but never followed; the client may pass an explicit
 // target path to navigate into one.
 func listDirectory(path string, showHidden bool) (map[string]interface{}, error) {
-	utils.Debug("FS", fmt.Sprintf("list_directory: path=%q showHidden=%v", path, showHidden))
+	utils.LogWithFields(utils.LevelDebug, "server.fs", "list directory", map[string]any{"path": path, "count": showHidden})
 	resolved, err := resolveBrowsePath(path)
 	if err != nil {
-		utils.Error("FS", fmt.Sprintf("list_directory: resolve failed path=%q err=%v", path, err))
+		utils.LogWithFields(utils.LevelError, "server.fs", "list directory resolve failed", map[string]any{"path": path, "error": err.Error()})
 		return nil, err
 	}
-	utils.Debug("FS", fmt.Sprintf("list_directory: resolved=%s", resolved))
+	utils.LogWithFields(utils.LevelDebug, "server.fs", "list directory resolved", map[string]any{"path": resolved})
 
 	dirEntries, err := os.ReadDir(resolved)
 	if err != nil {
-		utils.Error("FS", fmt.Sprintf("list_directory: readdir failed resolved=%s err=%v", resolved, err))
+		utils.LogWithFields(utils.LevelError, "server.fs", "list directory readdir failed", map[string]any{"path": resolved, "error": err.Error()})
 		return nil, err
 	}
 
@@ -120,7 +122,7 @@ func listDirectory(path string, showHidden bool) (map[string]interface{}, error)
 		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
 	})
 
-	utils.Log("FS", fmt.Sprintf("list_directory: resolved=%s entries=%d truncated=%v", resolved, len(out), truncated))
+	utils.LogWithFields(utils.LevelInfo, "server.fs", "list directory", map[string]any{"path": resolved, "count": len(out)})
 
 	resp := map[string]interface{}{
 		"path":      resolved,

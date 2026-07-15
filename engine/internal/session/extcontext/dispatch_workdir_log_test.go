@@ -1,7 +1,6 @@
 package extcontext
 
 import (
-	"strings"
 	"sync"
 	"testing"
 
@@ -17,21 +16,26 @@ import (
 // the sink is process-global logger state.
 var workdirLogMu sync.Mutex
 
-func captureDispatchLogs(t *testing.T) func() []string {
+type workdirLogEntry struct {
+	msg    string
+	fields map[string]any
+}
+
+func captureDispatchLogs(t *testing.T) func() []workdirLogEntry {
 	t.Helper()
 	workdirLogMu.Lock()
 
 	var mu sync.Mutex
-	var lines []string
+	var entries []workdirLogEntry
 
 	prevLevel := utils.GetLevel()
 	utils.SetLevel(utils.LevelDebug)
-	utils.SetTestSink(func(_ utils.LogLevel, tag, msg string) {
-		if tag != "Dispatch" {
+	utils.SetTestSink(func(_ utils.LogLevel, tag, msg string, fields map[string]any, _, _ string) {
+		if tag != "session.extcontext" {
 			return
 		}
 		mu.Lock()
-		lines = append(lines, msg)
+		entries = append(entries, workdirLogEntry{msg: msg, fields: fields})
 		mu.Unlock()
 	})
 
@@ -41,24 +45,24 @@ func captureDispatchLogs(t *testing.T) func() []string {
 		workdirLogMu.Unlock()
 	})
 
-	return func() []string {
+	return func() []workdirLogEntry {
 		mu.Lock()
 		defer mu.Unlock()
-		out := make([]string, len(lines))
-		copy(out, lines)
+		out := make([]workdirLogEntry, len(entries))
+		copy(out, entries)
 		return out
 	}
 }
 
-// findWorkdirLog returns the first "dispatch working directory resolved:" line
-// captured, or "" if none was emitted.
-func findWorkdirLog(lines []string) string {
-	for _, l := range lines {
-		if strings.HasPrefix(l, "dispatch working directory resolved:") {
-			return l
+// findWorkdirLog returns the first "dispatch working directory resolved" entry
+// captured, or nil if none was emitted.
+func findWorkdirLog(entries []workdirLogEntry) *workdirLogEntry {
+	for i, e := range entries {
+		if e.msg == "dispatch working directory resolved" {
+			return &entries[i]
 		}
 	}
-	return ""
+	return nil
 }
 
 // TestDispatchWorkdirLog_ExplicitProjectPath verifies that a dispatch supplied
@@ -82,15 +86,15 @@ func TestDispatchWorkdirLog_ExplicitProjectPath(t *testing.T) {
 		ProjectPath: explicitPath,
 	})
 
-	line := findWorkdirLog(snapshot())
-	if line == "" {
+	entry := findWorkdirLog(snapshot())
+	if entry == nil {
 		t.Fatal("expected a \"dispatch working directory resolved\" log line, got none")
 	}
-	if !strings.Contains(line, "source=opts") {
-		t.Errorf("expected source=opts in log line, got: %s", line)
+	if entry.fields["source"] != "opts" {
+		t.Errorf("expected source=opts in log fields, got: %v", entry.fields["source"])
 	}
-	if !strings.Contains(line, `path="`+explicitPath+`"`) {
-		t.Errorf("expected path=%q in log line, got: %s", explicitPath, line)
+	if entry.fields["path"] != explicitPath {
+		t.Errorf("expected path=%q in log fields, got: %v", explicitPath, entry.fields["path"])
 	}
 }
 
@@ -113,15 +117,15 @@ func TestDispatchWorkdirLog_FallbackToParentCwd(t *testing.T) {
 		Task: "do work",
 	})
 
-	line := findWorkdirLog(snapshot())
-	if line == "" {
+	entry := findWorkdirLog(snapshot())
+	if entry == nil {
 		t.Fatal("expected a \"dispatch working directory resolved\" log line, got none")
 	}
-	if !strings.Contains(line, "source=fallback") {
-		t.Errorf("expected source=fallback in log line, got: %s", line)
+	if entry.fields["source"] != "fallback" {
+		t.Errorf("expected source=fallback in log fields, got: %v", entry.fields["source"])
 	}
 	// The parent cwd from depthTestAccessor.WorkingDirectory().
-	if !strings.Contains(line, `path="/tmp"`) {
-		t.Errorf("expected path=%q in log line, got: %s", "/tmp", line)
+	if entry.fields["path"] != "/tmp" {
+		t.Errorf("expected path=/tmp in log fields, got: %v", entry.fields["path"])
 	}
 }

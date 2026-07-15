@@ -102,8 +102,15 @@ type engineSession struct {
 	// navigation, and the client-facing session id, all of which key on the
 	// Ion id. Empty until the first successful CLI run reports a UUID.
 	cliSessionID                string
+	// traceID is a stable per-session OpenTelemetry-compatible 32-hex trace ID.
+	// Generated once in newSessionRootContext and threaded into rootCtx via
+	// utils.WithTraceID so every log line and telemetry span emitted for this
+	// session shares one trace ID. Not a wire-contract surface; internal
+	// observability correlation only.
+	traceID                     string
 	agents                      *agents.Registry
 	extensionName               string // friendly name broadcast by the extension
+	extensionVersion            string // version from extension.json manifest (empty when absent)
 	suppressedTools             []string
 	childPIDs                   map[int]struct{}
 	planMode                    bool
@@ -111,6 +118,19 @@ type engineSession struct {
 	planModeAllowedBashCommands []string
 	planFilePath                string
 	planModePromptSent          bool
+	// compactInFlight is true while an async user-initiated /compact goroutine
+	// is running for this session (dispatchCompact Path A). It serves two
+	// guards, both read/written under m.mu:
+	//   1. Double-run: a second /compact while one is in flight is rejected
+	//      (compact_in_progress) rather than launching a concurrent CompactNow
+	//      that would clobber the first's load-mutate-save cycle.
+	//   2. Busy visibility: the async compaction does NOT set s.requestID (its
+	//      synthetic user-compact-<convID> runID is deliberately unregistered
+	//      in the backend's activeRuns), so SendPrompt's busy check must also
+	//      consult this flag — otherwise a prompt submitted mid-compaction
+	//      would start a real run that clobbers the compaction's save. See
+	//      dispatchCompact and SendPrompt.
+	compactInFlight             bool
 	hasExitedPlanMode           bool // set when ExitPlanMode fires; enables reentry detection
 	promptQueue                 []pendingPrompt
 	maxQueueDepth               int // default 32
@@ -133,10 +153,11 @@ type engineSession struct {
 
 	// Last-known context usage state, carried forward across status
 	// emissions so the footer always reflects the most recent data.
-	lastContextPct    int
-	lastContextWindow int
-	lastModel         string
-	lastTotalCost     float64
+	lastContextPct     int
+	lastContextWindow  int
+	lastModel          string
+	lastTotalCost      float64  // run-scoped cost (alias: RunCostUsd)
+	lastConvCost       float64  // conversation-scoped cost (alias: ConversationCostUsd)
 
 	// lastPermissionDenials retains the PermissionDenials slice from the
 	// most recent TaskCompleteEvent. The slice typically contains
@@ -202,6 +223,18 @@ type engineSession struct {
 	// zero-cost compaction recovery. Created in StartSession, nil when the
 	// feature is not enabled or the session has no conversation ID.
 	sessionMemory *SessionMemory
+
+	// pluginContextEntries holds the accumulated additionalContext strings from
+	// each installed plugin's SessionStart hooks. These are injected into the
+	// system prompt on every run via injectPluginContext in prompt_options.go.
+	// Populated in loadAndWirePlugins (plugin_session.go) at session start.
+	pluginContextEntries []string
+
+	// pluginUserPromptHooks holds the hook commands from all installed plugins'
+	// UserPromptSubmit hooks paired with their plugin root path. These are run
+	// on every OnBeforePrompt dispatch (prompt_runconfig.go) and their output
+	// is appended to the run's system prompt.
+	pluginUserPromptHooks []pluginUserPromptCmd
 
 	// pendingSlashInvocation carries the raw command/args for a slash command
 	// dispatched via the extension command registry (dispatchCommand). When an

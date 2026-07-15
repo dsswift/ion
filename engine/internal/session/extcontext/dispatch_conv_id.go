@@ -8,7 +8,6 @@ package extcontext
 // a non-empty child session ID.
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/session/agents"
@@ -44,8 +43,5 @@ func recordChildConvID(sa SessionAccessor, agentID, childSessionID, agentName st
 		agents.UpdateDispatchEntry(state.Metadata, agentID, "running", elapsedSoFar, childSessionID)
 	})
 	sa.EmitAgentSnapshot("dispatch_conversation_id")
-	utils.Log("Dispatch", fmt.Sprintf(
-		"captured child conversation id early agent=%q convId=%s session=%s",
-		agentName, childSessionID, sa.SessionKey(),
-	))
+	utils.LogWithFields(utils.LevelInfo, "server", "captured child conversation id early", map[string]any{"agent_name": agentName, "child_session_i_d": childSessionID, "session_key": sa.SessionKey()})
 }

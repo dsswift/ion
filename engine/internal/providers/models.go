@@ -11,17 +11,20 @@ import (
 // catalogEntry mirrors the JSON shape in models.json. Booleans default to
 // false when omitted from the JSON, which matches the Go zero-value semantics.
 type catalogEntry struct {
-	ID               string   `json:"id"`
-	ProviderID       string   `json:"providerId"`
-	ContextWindow    int      `json:"contextWindow"`
-	CostPer1kInput   float64  `json:"costPer1kInput"`
-	CostPer1kOutput  float64  `json:"costPer1kOutput"`
-	SupportsCaching  bool     `json:"supportsCaching,omitempty"`
-	SupportsThinking bool     `json:"supportsThinking,omitempty"`
-	SupportsImages   bool     `json:"supportsImages,omitempty"`
-	ThinkingMode     string   `json:"thinkingMode,omitempty"`
-	ThinkingEfforts  []string `json:"thinkingEfforts,omitempty"`
-	Tokenizer        string   `json:"tokenizer,omitempty"`
+	ID                     string   `json:"id"`
+	ProviderID             string   `json:"providerId"`
+	ContextWindow          int      `json:"contextWindow"`
+	CostPer1kInput         float64  `json:"costPer1kInput"`
+	CostPer1kOutput        float64  `json:"costPer1kOutput"`
+	CostPer1kCacheCreation float64  `json:"costPer1kCacheCreation,omitempty"`
+	CostPer1kCacheRead     float64  `json:"costPer1kCacheRead,omitempty"`
+	SupportsCaching        bool     `json:"supportsCaching,omitempty"`
+	SupportsThinking       bool     `json:"supportsThinking,omitempty"`
+	SupportsImages         bool     `json:"supportsImages,omitempty"`
+	MaxOutputTokens        int      `json:"maxOutputTokens,omitempty"`
+	ThinkingMode           string   `json:"thinkingMode,omitempty"`
+	ThinkingEfforts        []string `json:"thinkingEfforts,omitempty"`
+	Tokenizer              string   `json:"tokenizer,omitempty"`
 }
 
 // MergeModelInfo overlays user-config fields onto a catalog (base) entry.
@@ -40,6 +43,18 @@ func MergeModelInfo(base, user types.ModelInfo) types.ModelInfo {
 	}
 	if user.CostPer1kOutput != 0 {
 		merged.CostPer1kOutput = user.CostPer1kOutput
+	}
+	// Cache pricing: user config overrides catalog values when non-zero.
+	if user.CostPer1kCacheCreation != 0 {
+		merged.CostPer1kCacheCreation = user.CostPer1kCacheCreation
+	}
+	if user.CostPer1kCacheRead != 0 {
+		merged.CostPer1kCacheRead = user.CostPer1kCacheRead
+	}
+	// MaxOutputTokens: non-zero user value wins (additive, matches the rule
+	// above). Lets a custom/user-config model declare its own output cap.
+	if user.MaxOutputTokens != 0 {
+		merged.MaxOutputTokens = user.MaxOutputTokens
 	}
 	// Boolean capabilities: user config can only ADD capabilities, not remove
 	// catalog capabilities. This prevents a user config that omits a field
@@ -78,18 +93,21 @@ func loadModelsFromJSON(data []byte) error {
 	}
 	for _, e := range entries {
 		RegisterModel(e.ID, types.ModelInfo{
-			ProviderID:       e.ProviderID,
-			ContextWindow:    e.ContextWindow,
-			CostPer1kInput:   e.CostPer1kInput,
-			CostPer1kOutput:  e.CostPer1kOutput,
-			SupportsCaching:  e.SupportsCaching,
-			SupportsThinking: e.SupportsThinking,
-			SupportsImages:   e.SupportsImages,
-			ThinkingMode:     e.ThinkingMode,
-			ThinkingEfforts:  e.ThinkingEfforts,
-			Tokenizer:        e.Tokenizer,
+			ProviderID:             e.ProviderID,
+			ContextWindow:          e.ContextWindow,
+			CostPer1kInput:         e.CostPer1kInput,
+			CostPer1kOutput:        e.CostPer1kOutput,
+			CostPer1kCacheCreation: e.CostPer1kCacheCreation,
+			CostPer1kCacheRead:     e.CostPer1kCacheRead,
+			SupportsCaching:        e.SupportsCaching,
+			SupportsThinking:       e.SupportsThinking,
+			SupportsImages:         e.SupportsImages,
+			MaxOutputTokens:        e.MaxOutputTokens,
+			ThinkingMode:           e.ThinkingMode,
+			ThinkingEfforts:        e.ThinkingEfforts,
+			Tokenizer:              e.Tokenizer,
 		})
 	}
-	utils.Log("Registry", fmt.Sprintf("loaded %d models from catalog", len(entries)))
+	utils.LogWithFields(utils.LevelInfo, "Registry", "models loaded from catalog", map[string]any{"count": len(entries)})
 	return nil
 }

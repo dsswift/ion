@@ -3,7 +3,6 @@ package titling
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/dsswift/ion/engine/internal/modelconfig"
@@ -37,7 +36,7 @@ func GenerateTitle(ctx context.Context, firstMessage string) (string, error) {
 		utils.Log("Titling", "no model configured for titling, skipping")
 		return "", nil
 	}
-	utils.Log("Titling", fmt.Sprintf("generating title: model=%s inputLen=%d", model, len(firstMessage)))
+	utils.LogWithFields(utils.LevelInfo, "titling", "generating title", map[string]any{"model": model, "count": len(firstMessage)})
 
 	// Ensure the provider has a valid API key before we attempt to stream.
 	// The provider init may not have the key (e.g. stored in keychain, not
@@ -50,7 +49,7 @@ func GenerateTitle(ctx context.Context, firstMessage string) (string, error) {
 
 	provider := providers.ResolveProvider(model)
 	if provider == nil {
-		utils.Warn("Titling", "no provider for model: "+model)
+		utils.LogWithFields(utils.LevelWarn, "titling", "no provider for model", map[string]any{"model": model})
 		return "", nil
 	}
 
@@ -83,7 +82,7 @@ func GenerateTitle(ctx context.Context, firstMessage string) (string, error) {
 	}
 	if errc != nil {
 		if err := <-errc; err != nil {
-			utils.Warn("Titling", "LLM error: "+err.Error())
+			utils.LogWithFields(utils.LevelWarn, "titling", "llm error", map[string]any{"error": err.Error()})
 			return "", nil
 		}
 	}
@@ -93,7 +92,7 @@ func GenerateTitle(ctx context.Context, firstMessage string) (string, error) {
 	title = strings.Trim(title, "\"'")
 	title = strings.TrimSpace(title)
 
-	utils.Log("Titling", fmt.Sprintf("generated title: %q", title))
+	utils.LogWithFields(utils.LevelInfo, "titling", "generated title", map[string]any{"reason": title})
 	return title, nil
 }
 

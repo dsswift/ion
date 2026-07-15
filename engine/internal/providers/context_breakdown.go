@@ -341,7 +341,7 @@ func BuildContextBreakdown(
 		bd.ContextWindow = info.ContextWindow
 	}
 
-	utils.Debug("ContextBreakdown", "built breakdown model="+model+" categories="+strconv.Itoa(len(bd.Categories))+" total="+strconv.Itoa(total))
+	utils.LogWithFields(utils.LevelDebug, "ContextBreakdown", "built breakdown", map[string]any{"model": model, "count": len(bd.Categories), "max": total})
 	return bd, nil
 }
 

@@ -10,6 +10,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/resource"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -57,6 +58,7 @@ func (a *activityRecordingAccessor) terminalEmitted() bool {
 }
 
 func (a *activityRecordingAccessor) NewChildBackend() backend.RunBackend { return a.child }
+func (a *activityRecordingAccessor) AllocatePlanFilePath() string        { return "/tmp/.ion/plans/plan.md" }
 func (a *activityRecordingAccessor) RootContext() context.Context        { return context.Background() }
 
 func (a *activityRecordingAccessor) AppendOrUpdateAgentState(s types.AgentStateUpdate) string {
@@ -84,6 +86,8 @@ func (a *activityRecordingAccessor) BumpParentProgress()              {}
 func (a *activityRecordingAccessor) EmitDispatchCountStatus(_ string) {}
 
 func (a *activityRecordingAccessor) SessionKey() string                       { return "activity-test-session" }
+func (a *activityRecordingAccessor) ExtensionName() string    { return "" }
+func (a *activityRecordingAccessor) ExtensionVersion() string { return "" }
 func (a *activityRecordingAccessor) ConversationID() string                   { return "" }
 func (a *activityRecordingAccessor) WorkingDirectory() string                 { return "/tmp" }
 func (a *activityRecordingAccessor) SendAbort()                               {}
@@ -106,6 +110,8 @@ func (a *activityRecordingAccessor) ExtGroup() *extension.ExtensionGroup      { 
 func (a *activityRecordingAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
 func (a *activityRecordingAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
 func (a *activityRecordingAccessor) EngineConfig() *types.EngineRuntimeConfig { return nil }
+func (a *activityRecordingAccessor) ClaudeCompat() bool { return false }
+func (a *activityRecordingAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
 func (a *activityRecordingAccessor) ResolveTier(_ string) string              { return "" }
 func (a *activityRecordingAccessor) PermissionCheck(_ string, _ map[string]interface{}) (string, string) {
 	return "", ""
@@ -131,6 +137,7 @@ func (a *activityRecordingAccessor) SendToSession(_, _, _ string, _ map[string]i
 }
 func (a *activityRecordingAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
 func (a *activityRecordingAccessor) RunOnceComplete(_ string, _ bool)              {}
+func (a *activityRecordingAccessor) Telemetry() *telemetry.Collector { return nil }
 
 // activityChildBackend emits, before any TaskCompleteEvent: SessionInitEvent
 // (the conv id), then a ToolCallEvent + ToolResultEvent pair, then a

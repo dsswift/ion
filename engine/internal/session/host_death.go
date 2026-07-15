@@ -30,7 +30,7 @@ func (m *Manager) handleHostDeath(key string, h *extension.Host) {
 	s, ok := m.sessions[key]
 	if !ok {
 		m.mu.RUnlock()
-		utils.Warn("Session", fmt.Sprintf("handleHostDeath: session not found key=%s ext=%s", key, h.Name()))
+		utils.LogWithFields(utils.LevelWarn, "session", "handlehostdeath: session not found", map[string]any{"key": key, "model": h.Name()})
 		return
 	}
 	turnActive := s.requestID != ""
@@ -39,8 +39,7 @@ func (m *Manager) handleHostDeath(key string, h *extension.Host) {
 	h.MarkTurnInFlight(turnActive)
 
 	exitCode, signal := h.LastExit()
-	utils.Warn("Session", fmt.Sprintf("extension subprocess died: key=%s ext=%s code=%v signal=%q turnActive=%v",
-		key, h.Name(), exitCode, signal, turnActive))
+	utils.LogWithFields(utils.LevelWarn, "session", "extension subprocess died", map[string]any{"session_id": key, "model": h.Name(), "exit_code": exitCode, "signal": signal, "turn_active": turnActive})
 
 	m.emit(key, types.EngineEvent{
 		Type:          "engine_extension_died",
@@ -62,7 +61,7 @@ func (m *Manager) handleHostDeath(key string, h *extension.Host) {
 	prevExtCount := len(s.agents.LastExtStates())
 	s.agents.CacheExtStates(nil)
 	snapshot := s.agents.MergedSnapshot()
-	utils.Log("Session", fmt.Sprintf("agent_recovery_snapshot key=%s reason=extension_died ext=%s dropped_ext_states=%d snapshot_count=%d", key, h.Name(), prevExtCount, len(snapshot)))
+	utils.LogWithFields(utils.LevelInfo, "session", "agent_recovery_snapshot reason=extension_died", map[string]any{"key": key, "model": h.Name(), "prev_ext_count": prevExtCount, "count": len(snapshot)})
 	m.emit(key, types.EngineEvent{
 		Type:   "engine_agent_state",
 		Agents: snapshot,
@@ -87,10 +86,10 @@ func (m *Manager) handleHostDeath(key string, h *extension.Host) {
 	// If no run is active, respawn immediately. Otherwise the manager's
 	// handleRunExit will call respawnDeadExtensions after the run ends.
 	if !turnActive {
-		utils.Debug("Session", fmt.Sprintf("handleHostDeath: no active turn — respawning immediately key=%s ext=%s", key, h.Name()))
+		utils.LogWithFields(utils.LevelDebug, "session", "handlehostdeath: no active turn — respawning immediately", map[string]any{"key": key, "model": h.Name()})
 		m.respawnDeadExtensions(key)
 	} else {
-		utils.Debug("Session", fmt.Sprintf("handleHostDeath: deferring respawn until run exits key=%s ext=%s", key, h.Name()))
+		utils.LogWithFields(utils.LevelDebug, "session", "handlehostdeath: deferring respawn until run exits", map[string]any{"key": key, "model": h.Name()})
 	}
 }
 
@@ -126,14 +125,15 @@ func (m *Manager) respawnDeadExtensions(key string) {
 				ContextPercent: s.lastContextPct,
 				ContextWindow:  s.lastContextWindow,
 				Model:          s.lastModel,
-				TotalCostUsd:   s.lastTotalCost,
+				RunCostUsd:     s.lastTotalCost,
 			},
 		})
 
 		attempt, err := h.Respawn()
 		if err != nil {
+			m.emitExtensionRespawnTelemetry(s, key, h, attempt, err)
 			if errors.Is(err, extension.ErrBudgetExceeded) {
-				utils.Error("Session", fmt.Sprintf("extension respawn budget exceeded: key=%s ext=%s attempts=%d", key, h.Name(), attempt))
+				utils.LogWithFields(utils.LevelError, "session", "extension respawn budget exceeded", map[string]any{"key": key, "model": h.Name(), "attempt": attempt})
 				m.emit(key, types.EngineEvent{
 					Type:          "engine_extension_dead_permanent",
 					ExtensionName: h.Name(),
@@ -142,7 +142,7 @@ func (m *Manager) respawnDeadExtensions(key string) {
 				})
 				continue
 			}
-			utils.Error("Session", fmt.Sprintf("extension respawn failed: key=%s ext=%s err=%v", key, h.Name(), err))
+			utils.LogWithFields(utils.LevelError, "session", "extension respawn failed", map[string]any{"key": key, "model": h.Name(), "error": err})
 			m.emit(key, types.EngineEvent{
 				Type:         "engine_error",
 				EventMessage: fmt.Sprintf("extension %s respawn failed: %v", h.Name(), err),
@@ -151,7 +151,8 @@ func (m *Manager) respawnDeadExtensions(key string) {
 			continue
 		}
 
-		utils.Info("Session", fmt.Sprintf("extension respawned: key=%s ext=%s attempt=%d", key, h.Name(), attempt))
+		utils.LogWithFields(utils.LevelInfo, "session", "extension respawned", map[string]any{"key": key, "model": h.Name(), "attempt": attempt})
+		m.emitExtensionRespawnTelemetry(s, key, h, attempt, nil)
 
 		// On respawn, the previous subprocess's webhook/schedule
 		// registrations are gone with it but the per-host registry
@@ -202,12 +203,13 @@ func (m *Manager) respawnDeadExtensions(key string) {
 	m.mu.RLock()
 	var idlePct, idleCW int
 	var idleModel string
-	var idleCost float64
+	var idleCost, idleConvCost float64
 	if sess, ok2 := m.sessions[key]; ok2 {
 		idlePct = sess.lastContextPct
 		idleCW = sess.lastContextWindow
 		idleModel = sess.lastModel
 		idleCost = sess.lastTotalCost
+		idleConvCost = sess.lastConvCost
 	}
 	m.mu.RUnlock()
 	m.emit(key, types.EngineEvent{
@@ -215,7 +217,7 @@ func (m *Manager) respawnDeadExtensions(key string) {
 		Fields: &types.StatusFields{
 			Label: key, State: "idle",
 			ContextPercent: idlePct, ContextWindow: idleCW,
-			Model: idleModel, TotalCostUsd: idleCost,
+			Model: idleModel, RunCostUsd: idleCost, ConversationCostUsd: idleConvCost,
 		},
 	})
 }

@@ -29,7 +29,7 @@ func loadEnterpriseConfig(goos string) *types.EnterpriseConfig {
 	// Env var override (all platforms)
 	if envPath := os.Getenv("ION_ENTERPRISE_CONFIG"); envPath != "" {
 		if cfg := readJSONFile[types.EnterpriseConfig](envPath); cfg != nil {
-			utils.Log("Enterprise", "loaded config from ION_ENTERPRISE_CONFIG: "+envPath)
+		utils.LogWithFields(utils.LevelInfo, "config.enterprise", "loaded config from env var", map[string]any{"path": envPath})
 			return cfg
 		}
 	}
@@ -58,13 +58,13 @@ func readMacOS() *types.EnterpriseConfig {
 
 	out, err := exec.CommandContext(ctx, "plutil", "-convert", "json", plistPath, "-o", "-").Output()
 	if err != nil {
-		utils.Log("Enterprise", "failed to read macOS plist: "+err.Error())
+		utils.LogWithFields(utils.LevelInfo, "config.enterprise", "failed to read macos plist", map[string]any{"error": err.Error()})
 		return nil
 	}
 
 	var cfg types.EnterpriseConfig
 	if err := json.Unmarshal(out, &cfg); err != nil {
-		utils.Log("Enterprise", "failed to parse macOS plist JSON: "+err.Error())
+		utils.LogWithFields(utils.LevelInfo, "config.enterprise", "failed to parse macos plist json", map[string]any{"error": err.Error()})
 		return nil
 	}
 	utils.Log("Enterprise", "loaded config from macOS plist")
@@ -79,7 +79,7 @@ func readLinux() *types.EnterpriseConfig {
 	const mainPath = "/etc/ion/config.json"
 	cfg = readJSONFile[types.EnterpriseConfig](mainPath)
 	if cfg != nil {
-		utils.Log("Enterprise", "loaded config from "+mainPath)
+		utils.LogWithFields(utils.LevelInfo, "config.enterprise", "loaded config from main file", map[string]any{"path": mainPath})
 	}
 
 	// Drop-in directory (alphabetical merge)
@@ -107,7 +107,7 @@ func readLinux() *types.EnterpriseConfig {
 		} else {
 			cfg = mergeEnterprisePartial(cfg, partial)
 		}
-		utils.Log("Enterprise", "merged drop-in config: "+entry.Name())
+		utils.LogWithFields(utils.LevelInfo, "config.enterprise", "merged drop-in config", map[string]any{"path": entry.Name()})
 	}
 
 	return cfg
@@ -149,10 +149,10 @@ func readWindowsRegistryValue(valueName string) *types.EnterpriseConfig {
 		jsonStr := strings.TrimSpace(parts[1])
 		var cfg types.EnterpriseConfig
 		if err := json.Unmarshal([]byte(jsonStr), &cfg); err != nil {
-			utils.Log("Enterprise", "failed to parse Windows registry "+valueName+": "+err.Error())
+		utils.LogWithFields(utils.LevelInfo, "config.enterprise", "failed to parse windows registry value", map[string]any{"path": valueName, "error": err.Error()})
 			return nil
 		}
-		utils.Log("Enterprise", "loaded config from Windows registry ("+valueName+")")
+		utils.LogWithFields(utils.LevelInfo, "config.enterprise", "loaded config from windows registry", map[string]any{"path": valueName})
 		return &cfg
 	}
 	return nil
@@ -179,6 +179,15 @@ func mergeEnterprisePartial(base, overlay *types.EnterpriseConfig) *types.Enterp
 	if len(overlay.McpDenylist) > 0 {
 		result.McpDenylist = overlay.McpDenylist
 	}
+	if len(overlay.PluginAllowlist) > 0 {
+		result.PluginAllowlist = overlay.PluginAllowlist
+	}
+	if len(overlay.PluginDenylist) > 0 {
+		result.PluginDenylist = overlay.PluginDenylist
+	}
+	if len(overlay.PluginForceInstalled) > 0 {
+		result.PluginForceInstalled = overlay.PluginForceInstalled
+	}
 	if overlay.ToolRestrictions != nil {
 		result.ToolRestrictions = overlay.ToolRestrictions
 	}
@@ -194,6 +203,9 @@ func mergeEnterprisePartial(base, overlay *types.EnterpriseConfig) *types.Enterp
 	if overlay.NewConversationDefaults != nil {
 		result.NewConversationDefaults = overlay.NewConversationDefaults
 	}
+	if overlay.Logging != nil {
+		result.Logging = overlay.Logging
+	}
 	if len(overlay.CustomFields) > 0 {
 		result.CustomFields = overlay.CustomFields
 	}
@@ -207,7 +219,7 @@ func readJSONFile[T any](path string) *T {
 	}
 	var v T
 	if err := json.Unmarshal(data, &v); err != nil {
-		utils.Log("Enterprise", "failed to parse "+path+": "+err.Error())
+		utils.LogWithFields(utils.LevelInfo, "config.enterprise", "failed to parse json file", map[string]any{"path": path, "error": err.Error()})
 		return nil
 	}
 	return &v

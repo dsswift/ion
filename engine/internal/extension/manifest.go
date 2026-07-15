@@ -22,6 +22,15 @@ type Manifest struct {
 	// Empty defaults to the parent directory name.
 	Name string `json:"name,omitempty"`
 
+	// Version is an optional semver string (e.g. "1.2.0") identifying this
+	// extension release. Used for cost attribution (extension_version in
+	// telemetry context) so operators can distinguish spend across releases.
+	// Semver is conventional, not enforced. Omit-when-absent: old engines
+	// that use DisallowUnknownFields will REJECT manifests carrying this field
+	// — extension authors should only add it once their minimum engine version
+	// includes this change.
+	Version string `json:"version,omitempty"`
+
 	// External lists package names that should NOT be bundled by esbuild.
 	// Each entry becomes a `--external:<name>` flag. Use for native modules
 	// (`.node` files like keytar) and any package the extension explicitly
@@ -55,6 +64,6 @@ func LoadManifest(extDir string) (*Manifest, error) {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 
-	utils.Log("extension", fmt.Sprintf("loaded manifest from %s (external=%d)", path, len(m.External)))
+	utils.LogWithFields(utils.LevelInfo, "extension", "loaded manifest from ()", map[string]any{"path": path, "count": len(m.External)})
 	return &m, nil
 }

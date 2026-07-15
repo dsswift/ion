@@ -583,3 +583,201 @@ func TestMergeEnterprisePartial_NewConversationDefaults_PlainConversation(t *tes
 // ---------------------------------------------------------------------------
 // Config Loading (file-based)
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Logging egress enterprise seal (C2)
+// ---------------------------------------------------------------------------
+
+// TestEnforceEnterprise_LoggingEgressForced verifies that when enterprise
+// config sets Logging.EgressTargets, the targets are forced onto the result
+// (C2 enterprise-seal requirement).
+func TestEnforceEnterprise_LoggingEgressForced(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Logging = &types.LoggingConfig{Format: "json"}
+
+	enterprise := &types.EnterpriseConfig{
+		Logging: &types.LoggingConfig{
+			EgressTargets:  []string{"http"},
+			EgressEndpoint: "https://logs.corp.example/ingest",
+			EgressHeaders:  map[string]string{"Authorization": "Bearer corp-token"},
+		},
+	}
+
+	result := EnforceEnterprise(cfg, enterprise)
+
+	if result.Logging == nil {
+		t.Fatal("expected Logging block on result")
+	}
+	if len(result.Logging.EgressTargets) != 1 || result.Logging.EgressTargets[0] != "http" {
+		t.Errorf("EgressTargets = %v, want [http]", result.Logging.EgressTargets)
+	}
+	if result.Logging.EgressEndpoint != "https://logs.corp.example/ingest" {
+		t.Errorf("EgressEndpoint = %q, want corp endpoint", result.Logging.EgressEndpoint)
+	}
+	if result.Logging.EgressHeaders["Authorization"] != "Bearer corp-token" {
+		t.Errorf("EgressHeaders missing Authorization")
+	}
+	// Non-egress user field (Format) must be preserved.
+	if result.Logging.Format != "json" {
+		t.Errorf("user Format should be preserved, got %q", result.Logging.Format)
+	}
+}
+
+// TestEnforceEnterprise_LoggingEgressForcedOnNilLogging verifies that when the
+// user has no Logging block, EnforceEnterprise creates one.
+func TestEnforceEnterprise_LoggingEgressForcedOnNilLogging(t *testing.T) {
+	cfg := DefaultConfig()
+
+	enterprise := &types.EnterpriseConfig{
+		Logging: &types.LoggingConfig{
+			EgressTargets:  []string{"otel"},
+			EgressEndpoint: "https://otel.corp.example",
+		},
+	}
+
+	result := EnforceEnterprise(cfg, enterprise)
+
+	if result.Logging == nil {
+		t.Fatal("expected Logging block to be created by enterprise enforcement")
+	}
+	if len(result.Logging.EgressTargets) != 1 || result.Logging.EgressTargets[0] != "otel" {
+		t.Errorf("EgressTargets = %v, want [otel]", result.Logging.EgressTargets)
+	}
+}
+
+// TestEnforceEnterprise_LoggingNoEnforcementWhenEnterpriseNil verifies that
+// when enterprise.Logging is nil, user logging config is not modified.
+func TestEnforceEnterprise_LoggingNoEnforcementWhenEnterpriseNil(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Logging = &types.LoggingConfig{Format: "json"}
+
+	enterprise := &types.EnterpriseConfig{}
+
+	result := EnforceEnterprise(cfg, enterprise)
+
+	if result.Logging == nil {
+		t.Fatal("expected Logging to be preserved")
+	}
+	if result.Logging.Format != "json" {
+		t.Errorf("user Format changed unexpectedly: %q", result.Logging.Format)
+	}
+	if len(result.Logging.EgressTargets) != 0 {
+		t.Errorf("unexpected EgressTargets: %v", result.Logging.EgressTargets)
+	}
+}
+
+// TestEnforceEnterprise_ShipSourcesMatrix verifies the shipping-
+// responsibility matrix sealing: enterprise MAY seal EgressShipSources and
+// EgressTokenScope; when silent, an explicit lower-layer assignment stands
+// (the don't-clobber principle shared with EgressManagedByClient).
+func TestEnforceEnterprise_ShipSourcesMatrix(t *testing.T) {
+	// Enterprise silent → lower-layer matrix preserved.
+	cfg := DefaultConfig()
+	cfg.Logging = &types.LoggingConfig{
+		EgressShipSources: []string{"engine", "desktop"},
+		EgressTokenScope:  "api://app/Telemetry.Write",
+	}
+	enterprise := &types.EnterpriseConfig{
+		Logging: &types.LoggingConfig{
+			EgressTargets:  []string{"http"},
+			EgressEndpoint: "https://logs.corp.example/ingest",
+		},
+	}
+	result := EnforceEnterprise(cfg, enterprise)
+	if len(result.Logging.EgressShipSources) != 2 {
+		t.Errorf("silent enterprise must preserve lower-layer matrix, got %v", result.Logging.EgressShipSources)
+	}
+	if result.Logging.EgressTokenScope != "api://app/Telemetry.Write" {
+		t.Errorf("silent enterprise must preserve lower-layer token scope, got %q", result.Logging.EgressTokenScope)
+	}
+
+	// Enterprise explicit → matrix and scope sealed.
+	cfg2 := DefaultConfig()
+	cfg2.Logging = &types.LoggingConfig{EgressShipSources: []string{"engine"}}
+	enterprise2 := &types.EnterpriseConfig{
+		Logging: &types.LoggingConfig{
+			EgressTargets:     []string{"http"},
+			EgressEndpoint:    "https://logs.corp.example/ingest",
+			EgressShipSources: []string{"engine", "desktop", "ios", "telemetry"},
+			EgressTokenScope:  "api://corp/Telemetry.Write",
+		},
+	}
+	result2 := EnforceEnterprise(cfg2, enterprise2)
+	if len(result2.Logging.EgressShipSources) != 4 {
+		t.Errorf("enterprise matrix must seal, got %v", result2.Logging.EgressShipSources)
+	}
+	if result2.Logging.EgressTokenScope != "api://corp/Telemetry.Write" {
+		t.Errorf("enterprise token scope must seal, got %q", result2.Logging.EgressTokenScope)
+	}
+}
+
+func TestEnforceEnterprise_PluginAllowlist(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Plugins = &types.PluginsConfig{
+		Allowlist: []string{"user-allowed/*"},
+		ForceInstalled: []string{"user-allowed/tool"},
+	}
+	enterprise := &types.EnterpriseConfig{
+		PluginAllowlist: []string{"corp-approved/*"},
+	}
+	result := EnforceEnterprise(cfg, enterprise)
+	if len(result.Plugins.Allowlist) != 1 || result.Plugins.Allowlist[0] != "corp-approved/*" {
+		t.Errorf("enterprise allowlist should seal user allowlist, got %v", result.Plugins.Allowlist)
+	}
+}
+
+func TestEnforceEnterprise_PluginDenylist_Additive(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Plugins = &types.PluginsConfig{
+		Denylist: []string{"bad/plugin"},
+	}
+	enterprise := &types.EnterpriseConfig{
+		PluginDenylist: []string{"evil/*"},
+	}
+	result := EnforceEnterprise(cfg, enterprise)
+	if len(result.Plugins.Denylist) != 2 {
+		t.Errorf("enterprise denylist should be additive with user denylist, got %v", result.Plugins.Denylist)
+	}
+}
+
+func TestEnforceEnterprise_PluginForceInstalled_Union(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Plugins = &types.PluginsConfig{
+		ForceInstalled: []string{"user/plugin-a"},
+	}
+	enterprise := &types.EnterpriseConfig{
+		PluginForceInstalled: []string{"corp/plugin-b"},
+	}
+	result := EnforceEnterprise(cfg, enterprise)
+	if len(result.Plugins.ForceInstalled) != 2 {
+		t.Errorf("force-install lists should be unioned, got %v", result.Plugins.ForceInstalled)
+	}
+}
+
+func TestEnforceEnterprise_PluginForceInstalled_NoDuplicates(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Plugins = &types.PluginsConfig{
+		ForceInstalled: []string{"user/plugin-a", "user/plugin-b"},
+	}
+	enterprise := &types.EnterpriseConfig{
+		PluginForceInstalled: []string{"user/plugin-a", "corp/plugin-c"},
+	}
+	result := EnforceEnterprise(cfg, enterprise)
+	// "user/plugin-a" appears in both — should only be in the result once.
+	if len(result.Plugins.ForceInstalled) != 3 {
+		t.Errorf("duplicates should be de-duped in union, got %v", result.Plugins.ForceInstalled)
+	}
+}
+
+func TestEnforceEnterprise_PluginNoEnterprise(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Plugins = &types.PluginsConfig{
+		Allowlist: []string{"user-allowed/*"},
+	}
+	// No enterprise config — user settings must be preserved unchanged.
+	enterprise := &types.EnterpriseConfig{}
+	result := EnforceEnterprise(cfg, enterprise)
+	if len(result.Plugins.Allowlist) != 1 || result.Plugins.Allowlist[0] != "user-allowed/*" {
+		t.Errorf("empty enterprise should preserve user allowlist, got %v", result.Plugins.Allowlist)
+	}
+}

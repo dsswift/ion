@@ -2,7 +2,6 @@ package server
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -33,7 +32,7 @@ func loadDesktopProtectedIDs(homeDir string) []string {
 	if homeDir == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			utils.Error("Cleanup", fmt.Sprintf("loadDesktopProtectedIDs: cannot resolve home dir: %v", err))
+			utils.LogWithFields(utils.LevelError, "server", "load desktop protected ids cannot resolve home dir", map[string]any{"error": err.Error()})
 			return nil
 		}
 		homeDir = filepath.Join(home, ".ion")
@@ -52,7 +51,7 @@ func loadDesktopProtectedIDs(homeDir string) []string {
 				ids[id] = true
 			}
 		}
-		utils.Debug("Cleanup", fmt.Sprintf("loadDesktopProtectedIDs: chains backend=%s path=%s ids=%d", backend, path, len(fromChains)))
+		utils.LogWithFields(utils.LevelDebug, "server", "load desktop protected ids chains", map[string]any{"provider": backend, "path": path, "count": len(fromChains)})
 	}
 
 	// session-labels-{backend}.json shape: {conversationId: "user-given title"}
@@ -65,14 +64,14 @@ func loadDesktopProtectedIDs(homeDir string) []string {
 				ids[id] = true
 			}
 		}
-		utils.Debug("Cleanup", fmt.Sprintf("loadDesktopProtectedIDs: labels backend=%s path=%s ids=%d", backend, path, len(fromLabels)))
+		utils.LogWithFields(utils.LevelDebug, "server", "load desktop protected ids labels", map[string]any{"provider": backend, "path": path, "count": len(fromLabels)})
 	}
 
 	out := make([]string, 0, len(ids))
 	for id := range ids {
 		out = append(out, id)
 	}
-	utils.Log("Cleanup", fmt.Sprintf("loadDesktopProtectedIDs: home=%s total=%d", homeDir, len(out)))
+	utils.LogWithFields(utils.LevelInfo, "server", "load desktop protected ids", map[string]any{"path": homeDir, "count": len(out)})
 	return out
 }
 
@@ -85,7 +84,7 @@ func loadChainIDs(path string) []string {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			utils.Error("Cleanup", fmt.Sprintf("loadChainIDs: read failed path=%s err=%v", path, err))
+			utils.LogWithFields(utils.LevelError, "server", "load chain ids read failed", map[string]any{"path": path, "error": err.Error()})
 		}
 		return nil
 	}
@@ -94,7 +93,7 @@ func loadChainIDs(path string) []string {
 		Reverse map[string]string   `json:"reverse"`
 	}
 	if err := json.Unmarshal(data, &parsed); err != nil {
-		utils.Error("Cleanup", fmt.Sprintf("loadChainIDs: malformed JSON path=%s err=%v", path, err))
+		utils.LogWithFields(utils.LevelError, "server", "load chain ids malformed json", map[string]any{"path": path, "error": err.Error()})
 		return nil
 	}
 	seen := make(map[string]bool)
@@ -126,13 +125,13 @@ func loadLabelIDs(path string) []string {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			utils.Error("Cleanup", fmt.Sprintf("loadLabelIDs: read failed path=%s err=%v", path, err))
+			utils.LogWithFields(utils.LevelError, "server", "load label ids read failed", map[string]any{"path": path, "error": err.Error()})
 		}
 		return nil
 	}
 	var parsed map[string]string
 	if err := json.Unmarshal(data, &parsed); err != nil {
-		utils.Error("Cleanup", fmt.Sprintf("loadLabelIDs: malformed JSON path=%s err=%v", path, err))
+		utils.LogWithFields(utils.LevelError, "server", "load label ids malformed json", map[string]any{"path": path, "error": err.Error()})
 		return nil
 	}
 	out := make([]string, 0, len(parsed))

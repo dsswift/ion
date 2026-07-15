@@ -71,11 +71,16 @@ func TestSplit_NewFormatRoundTrip(t *testing.T) {
 	if loaded.TotalInputTokens != conv.TotalInputTokens {
 		t.Errorf("TotalInputTokens = %d, want %d", loaded.TotalInputTokens, conv.TotalInputTokens)
 	}
-	if loaded.LastInputTokens != conv.LastInputTokens {
-		t.Errorf("LastInputTokens = %d, want %d", loaded.LastInputTokens, conv.LastInputTokens)
+	// Verify rehydration: the assistant message should have Usage set after load.
+	var assistantMsg *types.LlmMessage
+	for i := range loaded.Messages {
+		if loaded.Messages[i].Role == "assistant" {
+			assistantMsg = &loaded.Messages[i]
+			break
+		}
 	}
-	if loaded.LastInputTokensMsgCount != conv.LastInputTokensMsgCount {
-		t.Errorf("LastInputTokensMsgCount = %d, want %d", loaded.LastInputTokensMsgCount, conv.LastInputTokensMsgCount)
+	if assistantMsg != nil && assistantMsg.Usage == nil {
+		t.Error("expected Usage to be rehydrated on assistant message after load")
 	}
 }
 
@@ -202,8 +207,7 @@ func TestSplit_ClearMessagesPersists(t *testing.T) {
 	}
 
 	loaded.Messages = nil
-	loaded.LastInputTokens = 0
-	loaded.LastInputTokensMsgCount = 0
+	// (legacy: loaded.LastInputTokens = 0; loaded.LastInputTokensMsgCount = 0 — scalars removed)
 
 	if err := Save(loaded, dir); err != nil {
 		t.Fatalf("Save after clear: %v", err)
@@ -230,12 +234,11 @@ func TestSplit_ClearMessagesPersists(t *testing.T) {
 	if savedLeafID != nil && (reloaded.LeafID == nil || *reloaded.LeafID != *savedLeafID) {
 		t.Errorf("LeafID changed after clear: got %v, want %v", reloaded.LeafID, savedLeafID)
 	}
-	// Token counters must be zero.
-	if reloaded.LastInputTokens != 0 {
-		t.Errorf("LastInputTokens = %d after clear, want 0", reloaded.LastInputTokens)
-	}
-	if reloaded.LastInputTokensMsgCount != 0 {
-		t.Errorf("LastInputTokensMsgCount = %d after clear, want 0", reloaded.LastInputTokensMsgCount)
+	// After clear, GetContextUsage should fall back to the heuristic (no
+	// assistant messages with Usage survive the clear).
+	usage := GetContextUsage(reloaded, 200000)
+	if !usage.Estimated {
+		t.Errorf("expected Estimated=true after /clear (no messages to backward-scan), got Estimated=false")
 	}
 }
 

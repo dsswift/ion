@@ -32,10 +32,10 @@ package session
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/conversation"
+	"github.com/dsswift/ion/engine/internal/cost"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/providers"
@@ -75,7 +75,7 @@ func (m *Manager) ComputeAndEmitContextBreakdown(key string) {
 	s, ok := m.sessions[key]
 	if !ok {
 		m.mu.RUnlock()
-		utils.Warn("Session", fmt.Sprintf("ComputeAndEmitContextBreakdown: session not found key=%s", key))
+		utils.LogWithFields(utils.LevelWarn, "session", "computeandemitcontextbreakdown: session not found", map[string]any{"key": key})
 		return
 	}
 
@@ -93,7 +93,7 @@ func (m *Manager) ComputeAndEmitContextBreakdown(key string) {
 	}
 	m.mu.RUnlock()
 
-	utils.Log("Session", fmt.Sprintf("ComputeAndEmitContextBreakdown: key=%s model=%s conversationID=%s", key, snap.model, snap.conversationID))
+	utils.LogWithFields(utils.LevelInfo, "session", "computeandemitcontextbreakdown", map[string]any{"key": key, "model": snap.model, "run_id": snap.conversationID})
 
 	// --- Phase 2: load conversation outside the lock (disk I/O). ---
 	var conv *conversation.Conversation
@@ -103,7 +103,7 @@ func (m *Manager) ComputeAndEmitContextBreakdown(key string) {
 			// Non-fatal: not-found is expected for a session whose conversation
 			// file has not been written yet. Use an empty conversation so the
 			// breakdown reflects system + tools only.
-			utils.Log("Session", fmt.Sprintf("ComputeAndEmitContextBreakdown: key=%s conv load: %v (using empty)", key, err))
+			utils.LogWithFields(utils.LevelInfo, "session", "computeandemitcontextbreakdown: conv load: (using empty)", map[string]any{"key": key, "error": err})
 			conv = conversation.CreateConversation("", "", "")
 		} else {
 			conv = loaded
@@ -127,7 +127,7 @@ func (m *Manager) ComputeAndEmitContextBreakdown(key string) {
 	s, ok = m.sessions[key]
 	if !ok {
 		m.mu.RUnlock()
-		utils.Warn("Session", fmt.Sprintf("ComputeAndEmitContextBreakdown: session disappeared key=%s", key))
+		utils.LogWithFields(utils.LevelWarn, "session", "computeandemitcontextbreakdown: session disappeared", map[string]any{"key": key})
 		return
 	}
 	sForInject := s
@@ -136,6 +136,7 @@ func (m *Manager) ComputeAndEmitContextBreakdown(key string) {
 	injectContextFiles(sForInject, &opts)
 	m.injectExtensionContext(sForInject, key, &opts)
 	injectGitContext(sForInject, &opts)
+	injectPluginContext(sForInject, &opts)
 	if snap.sessionMemory != nil {
 		snap.sessionMemory.InjectMemoryIntoSystemPrompt(&opts)
 	}
@@ -186,25 +187,27 @@ func (m *Manager) ComputeAndEmitContextBreakdown(key string) {
 	ctx := context.Background()
 	bd, err := providers.BuildContextBreakdown(ctx, opts.Model, provider, &streamOpts, nil, nil, "")
 	if err != nil {
-		utils.Warn("Session", fmt.Sprintf("ComputeAndEmitContextBreakdown: BuildContextBreakdown failed key=%s err=%v", key, err))
+		utils.LogWithFields(utils.LevelWarn, "session", "computeandemitcontextbreakdown: buildcontextbreakdown failed", map[string]any{"key": key, "error": err})
 		return
 	}
 	if bd == nil {
 		return
 	}
 
-	// Compute aggregate cost: this session + all descendant dispatches.
+	// Compute aggregate cost: this session + all descendant dispatches,
+	// with per-model breakdown for cost visibility.
 	liveIDs := m.liveChildConvIDs(key)
-	aggregateCost, err := ComputeAggregateCost(snap.conversationID, liveIDs, "")
+	aggregateCost, modelBreakdown, err := cost.ConversationCostBreakdown(snap.conversationID, liveIDs, "")
 	if err != nil {
-		utils.Warn("Session", fmt.Sprintf("ComputeAndEmitContextBreakdown: aggregate cost failed key=%s err=%v", key, err))
+		utils.LogWithFields(utils.LevelWarn, "session", "computeandemitcontextbreakdown: aggregate cost failed", map[string]any{"key": key, "error": err})
 	}
 
-	utils.Log("Session", fmt.Sprintf("ComputeAndEmitContextBreakdown: emitting key=%s model=%s categories=%d total=%d aggregateCost=%f", key, opts.Model, len(bd.Categories), bd.TotalTokens, aggregateCost))
+	utils.LogWithFields(utils.LevelInfo, "session", "computeandemitcontextbreakdown: emitting", map[string]any{"key": key, "model": opts.Model, "count": len(bd.Categories), "count_3": bd.TotalTokens, "aggregate_cost": aggregateCost})
 
 	bdEvent := bd.ToNormalizedEvent()
 	if bdEvent != nil {
 		bdEvent.AggregateCostUsd = aggregateCost
+		bdEvent.ModelBreakdown = modelBreakdown
 	}
 	engineEvent := translateToEngineEvent(types.NormalizedEvent{Data: bdEvent}, snap.contextWindow)
 	m.emit(key, engineEvent)

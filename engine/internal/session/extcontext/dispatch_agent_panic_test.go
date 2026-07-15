@@ -9,6 +9,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/resource"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -25,9 +26,14 @@ type panicTestAccessor struct {
 	finalState      types.AgentStateUpdate
 	snapshotReasons []string
 	emittedEvents   []types.EngineEvent
+	// telem, when set, is returned by Telemetry() so span-emitting tests can
+	// assert dispatch.agent telemetry. Nil by default (telemetry disabled).
+	telem *telemetry.Collector
 }
 
 func (p *panicTestAccessor) SessionKey() string       { return "panic-test-session" }
+func (p *panicTestAccessor) ExtensionName() string    { return "" }
+func (p *panicTestAccessor) ExtensionVersion() string { return "" }
 func (p *panicTestAccessor) ConversationID() string   { return "" }
 func (p *panicTestAccessor) WorkingDirectory() string { return "/tmp" }
 func (p *panicTestAccessor) Emit(ev types.EngineEvent) {
@@ -56,9 +62,12 @@ func (p *panicTestAccessor) ExtGroup() *extension.ExtensionGroup      { return p
 func (p *panicTestAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
 func (p *panicTestAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
 func (p *panicTestAccessor) NewChildBackend() backend.RunBackend      { return nil }
+func (p *panicTestAccessor) AllocatePlanFilePath() string             { return "/tmp/.ion/plans/plan.md" }
 func (p *panicTestAccessor) BumpParentProgress()                      {}
 func (p *panicTestAccessor) EmitDispatchCountStatus(_ string)         {}
 func (p *panicTestAccessor) EngineConfig() *types.EngineRuntimeConfig { return nil }
+func (p *panicTestAccessor) ClaudeCompat() bool { return false }
+func (p *panicTestAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
 func (p *panicTestAccessor) ResolveTier(_ string) string              { return "" }
 func (p *panicTestAccessor) PermissionCheck(_ string, _ map[string]interface{}) (string, string) {
 	return "", ""
@@ -101,6 +110,7 @@ func (p *panicTestAccessor) SendToSession(_, _, _ string, _ map[string]interface
 }
 func (p *panicTestAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
 func (p *panicTestAccessor) RunOnceComplete(_ string, _ bool)              {}
+func (p *panicTestAccessor) Telemetry() *telemetry.Collector               { return p.telem }
 
 // TestRecoverBackgroundDispatchPanic_SynthesizesTerminalState is the
 // invariant test for the silent-wedge defect. A background dispatch

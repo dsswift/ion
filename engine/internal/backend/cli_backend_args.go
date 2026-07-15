@@ -11,7 +11,7 @@ import (
 // The resume id is sourced *only* from opts.CliResumeSessionID — the
 // claude-native session UUID the manager captured from a previous run's
 // SessionInitEvent/TaskCompleteEvent. It is never sourced from
-// opts.SessionID (Ion's `{millis}-{12hex}` conversation-file identity),
+// opts.ConversationID (Ion's `{millis}-{12hex}` conversation-file identity),
 // which the claude CLI rejects with exit code 1.
 //
 // Contract:
@@ -23,12 +23,16 @@ import (
 // ~/.ion/engine.log alone.
 func cliResumeArgs(opts types.RunOptions) []string {
 	if opts.CliResumeSessionID != "" {
-		utils.Log("CliBackend", "resume: --resume "+opts.CliResumeSessionID)
+		utils.LogWithFields(utils.LevelInfo, "backend.cli", "resume: --resume", map[string]any{
+			"cli_resume_session_id": opts.CliResumeSessionID,
+		})
 		return []string{"--resume", opts.CliResumeSessionID}
 	}
 	// First run of this session: no claude UUID captured yet. Omitting
 	// --resume is mandatory — claude rejects a missing/invalid resume id.
 	// SessionID (Ion's conversation id) is intentionally NOT used here.
-	utils.Log("CliBackend", "resume: omitting --resume (first CLI run, no captured claude session UUID; sessionID="+opts.SessionID+")")
+	utils.LogWithFields(utils.LevelInfo, "backend.cli", "resume: omitting --resume (first CLI run, no captured claude session UUID; )", map[string]any{
+		"conversation_id": opts.ConversationID,
+	})
 	return nil
 }

@@ -1,7 +1,6 @@
 package extension
 
 import (
-	"fmt"
 
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -48,7 +47,7 @@ func (g *ExtensionGroup) Tools() []ToolDefinition {
 		for _, t := range h.Tools() {
 			if idx, ok := seen[t.Name]; ok {
 				all[idx] = t
-				utils.Debug("ExtensionGroup", fmt.Sprintf("duplicate tool %q from host %q, last-registered wins", t.Name, h.Name()))
+				utils.LogWithFields(utils.LevelDebug, "extension.group", "duplicate tool from host , last-registered wins", map[string]any{"model": t.Name, "model_1": h.Name()})
 			} else {
 				seen[t.Name] = len(all)
 				all = append(all, t)
@@ -113,7 +112,7 @@ func (g *ExtensionGroup) FireModelSelect(ctx *Context, info ModelSelectInfo) (st
 	for _, h := range g.hosts {
 		m, err := h.FireModelSelect(ctx, info)
 		if err != nil {
-			utils.Log("ExtensionGroup", fmt.Sprintf("FireModelSelect error: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "extension.group", "firemodelselect error", map[string]any{"error": err})
 			return model, err
 		}
 		if m != "" {
@@ -158,7 +157,7 @@ func (g *ExtensionGroup) fireVoid(fn func(h *Host) error) error {
 	var firstErr error
 	for _, h := range g.hosts {
 		if err := fn(h); err != nil {
-			utils.Log("ExtensionGroup", fmt.Sprintf("hook error: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "extension.group", "hook error", map[string]any{"error": err})
 			if firstErr == nil {
 				firstErr = err
 			}
@@ -175,7 +174,7 @@ func (g *ExtensionGroup) FireToolCall(ctx *Context, info ToolCallInfo) (*ToolCal
 	for _, h := range g.hosts {
 		result, err := h.FireToolCall(ctx, info)
 		if err != nil {
-			utils.Log("ExtensionGroup", fmt.Sprintf("FireToolCall error: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "extension.group", "firetoolcall error", map[string]any{"error": err})
 			return nil, err
 		}
 		if result != nil {
@@ -189,7 +188,7 @@ func (g *ExtensionGroup) FirePerToolCall(ctx *Context, toolName string, info int
 	for _, h := range g.hosts {
 		result, err := h.FirePerToolCall(ctx, toolName, info)
 		if err != nil {
-			utils.Log("ExtensionGroup", fmt.Sprintf("FirePerToolCall error: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "extension.group", "firepertoolcall error", map[string]any{"error": err})
 			return nil, err
 		}
 		if result != nil {
@@ -210,7 +209,7 @@ func (g *ExtensionGroup) FireBeforePrompt(ctx *Context, prompt string) (string, 
 	for _, h := range g.hosts {
 		newPrompt, sp, err := h.FireBeforePrompt(ctx, prompt)
 		if err != nil {
-			utils.Log("ExtensionGroup", fmt.Sprintf("FireBeforePrompt error: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "extension.group", "firebeforeprompt error", map[string]any{"error": err})
 			return prompt, systemPrompt, err
 		}
 		prompt = newPrompt
@@ -226,7 +225,7 @@ func (g *ExtensionGroup) FireInput(ctx *Context, prompt string) (string, error) 
 	for _, h := range g.hosts {
 		newPrompt, err := h.FireInput(ctx, prompt)
 		if err != nil {
-			utils.Log("ExtensionGroup", fmt.Sprintf("FireInput error: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "extension.group", "fireinput error", map[string]any{"error": err})
 			return prompt, err
 		}
 		prompt = newPrompt
@@ -241,7 +240,7 @@ func (g *ExtensionGroup) FireBeforeAgentStart(ctx *Context, info AgentInfo) (str
 	for _, h := range g.hosts {
 		sp, an, err := h.FireBeforeAgentStart(ctx, info)
 		if err != nil {
-			utils.Log("ExtensionGroup", fmt.Sprintf("FireBeforeAgentStart error: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "extension.group", "firebeforeagentstart error", map[string]any{"error": err})
 			return systemPrompt, agentName, err
 		}
 		if sp != "" {
@@ -260,7 +259,7 @@ func (g *ExtensionGroup) FirePerToolResult(ctx *Context, toolName string, info i
 	for _, h := range g.hosts {
 		r, err := h.FirePerToolResult(ctx, toolName, info)
 		if err != nil {
-			utils.Log("ExtensionGroup", fmt.Sprintf("FirePerToolResult error: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "extension.group", "firepertoolresult error", map[string]any{"error": err})
 			return result, err
 		}
 		result = r
@@ -288,7 +287,7 @@ func (g *ExtensionGroup) fireBool(fn func(h *Host) (bool, error)) (bool, error) 
 	for _, h := range g.hosts {
 		cancel, err := fn(h)
 		if err != nil {
-			utils.Log("ExtensionGroup", fmt.Sprintf("bool hook error: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "extension.group", "bool hook error", map[string]any{"error": err})
 			return false, err
 		}
 		if cancel {
@@ -307,7 +306,7 @@ func (g *ExtensionGroup) FireContextLoad(ctx *Context, info ContextLoadInfo) (st
 	for _, h := range g.hosts {
 		c, rejected, err := h.FireContextLoad(ctx, info)
 		if err != nil {
-			utils.Log("ExtensionGroup", fmt.Sprintf("FireContextLoad error: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "extension.group", "firecontextload error", map[string]any{"error": err})
 			return "", false, err
 		}
 		if rejected {
@@ -346,9 +345,7 @@ func (g *ExtensionGroup) FirePlanModePrompt(ctx *Context, planFilePath string) (
 // Allow across all hosts wins. Returns (true, "") when no handler has an opinion.
 func (g *ExtensionGroup) FireBeforePlanModeExit(ctx *Context, info BeforePlanModeExitInfo) (allowed bool, reason string) {
 	allowed = true
-	utils.Log("ExtensionGroup", fmt.Sprintf(
-		"FireBeforePlanModeExit: dispatching to %d host(s) planFile=%s", len(g.hosts), info.PlanFilePath,
-	))
+	utils.LogWithFields(utils.LevelInfo, "extension_group", "firebeforeplanmodeexit: dispatching to host(s)", map[string]any{"count": len(g.hosts), "plan_file_path": info.PlanFilePath})
 	for _, h := range g.hosts {
 		a, r := h.FireBeforePlanModeExit(ctx, info)
 		if !a {
@@ -373,10 +370,7 @@ func (g *ExtensionGroup) FireBeforePlanModeExit(ctx *Context, info BeforePlanMod
 func (g *ExtensionGroup) FireBeforePlanModeAutoExit(
 	ctx *Context, info BeforePlanModeAutoExitInfo,
 ) (suppress bool, planFilePathOverride, reasonOverride string) {
-	utils.Log("ExtensionGroup", fmt.Sprintf(
-		"FireBeforePlanModeAutoExit: dispatching to %d host(s) planFile=%s stopReason=%s",
-		len(g.hosts), info.PlanFilePath, info.StopReason,
-	))
+	utils.LogWithFields(utils.LevelInfo, "extension_group", "firebeforeplanmodeautoexit: dispatching to host(s)", map[string]any{"count": len(g.hosts), "plan_file_path": info.PlanFilePath, "stop_reason": info.StopReason})
 	for _, h := range g.hosts {
 		sp, pf, rs := h.FireBeforePlanModeAutoExit(ctx, info)
 		// Suppress is sticky-on within a single host's reply (handled
@@ -413,9 +407,7 @@ func (g *ExtensionGroup) FireBeforePlanModeAutoExit(
 // field-merge semantics). Returns (true, "") when no handler has an opinion.
 func (g *ExtensionGroup) FireBeforePlanModeEnter(ctx *Context, info PlanModeEnterInfo) (allowed bool, reason string) {
 	allowed = true // default: allow
-	utils.Log("ExtensionGroup", fmt.Sprintf(
-		"FireBeforePlanModeEnter: dispatching to %d host(s) source=%s", len(g.hosts), info.Source,
-	))
+	utils.LogWithFields(utils.LevelInfo, "extension_group", "firebeforeplanmodeenter: dispatching to host(s)", map[string]any{"count": len(g.hosts), "source": info.Source})
 	for _, h := range g.hosts {
 		a, r := h.FireBeforePlanModeEnter(ctx, info)
 		// Only override decision if the host explicitly said something.
@@ -488,7 +480,7 @@ func (g *ExtensionGroup) FireCapabilityMatch(ctx *Context, info CapabilityMatchI
 func (g *ExtensionGroup) FireTurnStart(ctx *Context, info TurnInfo) {
 	for _, h := range g.hosts {
 		if err := h.SDK().FireTurnStart(ctx, info); err != nil {
-			utils.Log("ExtensionGroup", fmt.Sprintf("FireTurnStart error: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "extension.group", "fireturnstart error", map[string]any{"error": err})
 		}
 	}
 }
@@ -499,13 +491,10 @@ func (g *ExtensionGroup) FireTurnStart(ctx *Context, info TurnInfo) {
 // extension failure. The number of hosts notified is logged at INFO so
 // operators can confirm the hook is actually reaching extensions.
 func (g *ExtensionGroup) FireBeforeProviderRequest(ctx *Context, info BeforeProviderRequestInfo) {
-	utils.Log("ExtensionGroup", fmt.Sprintf(
-		"FireBeforeProviderRequest: dispatching to %d host(s) provider=%s model=%s turn=%d messages=%d tools=%d",
-		len(g.hosts), info.Provider, info.Model, info.TurnNumber, info.MessageCount, info.ToolCount,
-	))
+	utils.LogWithFields(utils.LevelInfo, "extension_group", "firebeforeproviderrequest: dispatching to host(s)", map[string]any{"count": len(g.hosts), "provider": info.Provider, "model": info.Model, "turn_number": info.TurnNumber, "message_count": info.MessageCount, "tool_count": info.ToolCount})
 	for _, h := range g.hosts {
 		if err := h.SDK().FireBeforeProviderRequest(ctx, info); err != nil {
-			utils.Log("ExtensionGroup", fmt.Sprintf("FireBeforeProviderRequest error: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "extension.group", "firebeforeproviderrequest error", map[string]any{"error": err})
 		}
 	}
 }
@@ -513,7 +502,7 @@ func (g *ExtensionGroup) FireBeforeProviderRequest(ctx *Context, info BeforeProv
 func (g *ExtensionGroup) FireTurnEnd(ctx *Context, info TurnInfo) {
 	for _, h := range g.hosts {
 		if err := h.SDK().FireTurnEnd(ctx, info); err != nil {
-			utils.Log("ExtensionGroup", fmt.Sprintf("FireTurnEnd error: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "extension.group", "fireturnend error", map[string]any{"error": err})
 		}
 	}
 }
@@ -527,10 +516,7 @@ func (g *ExtensionGroup) FireTurnEnd(ctx *Context, info TurnInfo) {
 // Returns nil when no host expressed an opinion. The runloop treats a nil
 // return as "use the engine's default decision".
 func (g *ExtensionGroup) FireBeforeEarlyStopDecision(ctx *Context, info EarlyStopDecisionInfo) *EarlyStopDecisionResult {
-	utils.Log("ExtensionGroup", fmt.Sprintf(
-		"FireBeforeEarlyStopDecision: dispatching to %d host(s) runID=%s turn=%d cumOut=%d budget=%d wouldContinue=%v",
-		len(g.hosts), info.RunID, info.TurnNumber, info.CumulativeOutputTokens, info.Budget, info.WouldContinue,
-	))
+	utils.LogWithFields(utils.LevelInfo, "extension_group", "firebeforeearlystopdecision: dispatching to host(s)", map[string]any{"count": len(g.hosts), "run_id": info.RunID, "turn_number": info.TurnNumber, "cumulative_output_tokens": info.CumulativeOutputTokens, "budget": info.Budget, "would_continue": info.WouldContinue})
 	var out EarlyStopDecisionResult
 	anySet := false
 	for _, h := range g.hosts {
@@ -564,13 +550,10 @@ func (g *ExtensionGroup) FireBeforeEarlyStopDecision(ctx *Context, info EarlySto
 // FireEarlyStopContinued fans the early_stop_continued hook out to every
 // host. Observe-only: errors are logged per host but never propagate.
 func (g *ExtensionGroup) FireEarlyStopContinued(ctx *Context, info EarlyStopContinuedInfo) {
-	utils.Log("ExtensionGroup", fmt.Sprintf(
-		"FireEarlyStopContinued: dispatching to %d host(s) runID=%s turn=%d count=%d pct=%d",
-		len(g.hosts), info.RunID, info.TurnNumber, info.ContinuationCount, info.Pct,
-	))
+	utils.LogWithFields(utils.LevelInfo, "extension_group", "fireearlystopcontinued: dispatching to host(s)", map[string]any{"count": len(g.hosts), "run_id": info.RunID, "turn_number": info.TurnNumber, "continuation_count": info.ContinuationCount, "pct": info.Pct})
 	for _, h := range g.hosts {
 		if err := h.SDK().FireEarlyStopContinued(ctx, info); err != nil {
-			utils.Log("ExtensionGroup", fmt.Sprintf("FireEarlyStopContinued error: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "extension.group", "fireearlystopcontinued error", map[string]any{"error": err})
 		}
 	}
 }
@@ -580,13 +563,10 @@ func (g *ExtensionGroup) FireEarlyStopContinued(ctx *Context, info EarlyStopCont
 // session's agent-spawner when a child agent begins running, so parent-host
 // extensions can observe child-agent lifecycle (start time, identity, task).
 func (g *ExtensionGroup) FireAgentStart(ctx *Context, info AgentInfo) {
-	utils.Log("ExtensionGroup", fmt.Sprintf(
-		"FireAgentStart: dispatching to %d host(s) name=%s",
-		len(g.hosts), info.Name,
-	))
+	utils.LogWithFields(utils.LevelInfo, "extension_group", "fireagentstart: dispatching to host(s)", map[string]any{"count": len(g.hosts), "model": info.Name})
 	for _, h := range g.hosts {
 		if err := h.SDK().FireAgentStart(ctx, info); err != nil {
-			utils.Log("ExtensionGroup", fmt.Sprintf("FireAgentStart error: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "extension.group", "fireagentstart error", map[string]any{"error": err})
 		}
 	}
 }
@@ -598,13 +578,10 @@ func (g *ExtensionGroup) FireAgentStart(ctx *Context, info AgentInfo) {
 // observe child-agent lifecycle without resorting to tool_start/tool_end
 // watchdog tricks on the Agent tool.
 func (g *ExtensionGroup) FireAgentEnd(ctx *Context, info AgentInfo) {
-	utils.Log("ExtensionGroup", fmt.Sprintf(
-		"FireAgentEnd: dispatching to %d host(s) name=%s",
-		len(g.hosts), info.Name,
-	))
+	utils.LogWithFields(utils.LevelInfo, "extension_group", "fireagentend: dispatching to host(s)", map[string]any{"count": len(g.hosts), "model": info.Name})
 	for _, h := range g.hosts {
 		if err := h.SDK().FireAgentEnd(ctx, info); err != nil {
-			utils.Log("ExtensionGroup", fmt.Sprintf("FireAgentEnd error: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "extension.group", "fireagentend error", map[string]any{"error": err})
 		}
 	}
 }
@@ -612,7 +589,7 @@ func (g *ExtensionGroup) FireAgentEnd(ctx *Context, info AgentInfo) {
 func (g *ExtensionGroup) FireSessionCompact(ctx *Context, info CompactionInfo) {
 	for _, h := range g.hosts {
 		if err := h.SDK().FireSessionCompact(ctx, info); err != nil {
-			utils.Log("ExtensionGroup", fmt.Sprintf("FireSessionCompact error: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "extension.group", "firesessioncompact error", map[string]any{"error": err})
 		}
 	}
 }
@@ -627,11 +604,11 @@ func (g *ExtensionGroup) FireCompactSummaryRequest(ctx *Context, info CompactSum
 	for _, h := range g.hosts {
 		summary, ok := h.FireCompactSummaryRequest(ctx, info)
 		if ok && summary != "" {
-			utils.Log("ExtensionGroup", fmt.Sprintf("FireCompactSummaryRequest: host produced summary len=%d msgCount=%d", len(summary), info.MessageCount))
+			utils.LogWithFields(utils.LevelInfo, "extension.group", "firecompactsummaryrequest: host produced summary", map[string]any{"count": len(summary), "message_count": info.MessageCount})
 			return summary, true
 		}
 	}
-	utils.Debug("ExtensionGroup", fmt.Sprintf("FireCompactSummaryRequest: no host produced a summary, falling through (msgCount=%d hosts=%d)", info.MessageCount, len(g.hosts)))
+	utils.LogWithFields(utils.LevelDebug, "extension.group", "firecompactsummaryrequest: no host produced a summary, falling through ( )", map[string]any{"message_count": info.MessageCount, "count": len(g.hosts)})
 	return "", false
 }
 

@@ -62,6 +62,12 @@ func LoadConfig(projectDir string) *types.EngineRuntimeConfig {
 		utils.SetLevelFromString(merged.LogLevel)
 	}
 
+	// Wire structured-logging config (format, output destination, size cap,
+	// rotation toggle). Nil block leaves the compiled defaults in place.
+	if merged.Logging != nil {
+		utils.ConfigureLogging(merged.Logging)
+	}
+
 	return merged
 }
 
@@ -78,16 +84,11 @@ func FindProfile(name string, config *types.EngineRuntimeConfig) *types.EnginePr
 	return nil
 }
 
-// ExpandTilde replaces a leading ~ with the user's home directory.
+// ExpandTilde replaces a leading ~ with the user's home directory. It delegates
+// to utils.ExpandHomePath, the single engine-wide home-path expansion helper, so
+// every config field that accepts a filesystem path expands identically.
 func ExpandTilde(path string) string {
-	if len(path) == 0 || path[0] != '~' {
-		return path
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return path
-	}
-	return home + path[1:]
+	return utils.ExpandHomePath(path)
 }
 
 func globalConfigPath() string {
@@ -125,7 +126,7 @@ func loadJSONConfig(path string) map[string]any {
 	}
 	var m map[string]any
 	if err := json.Unmarshal(data, &m); err != nil {
-		utils.Log("Config", "failed to parse "+path+": "+err.Error())
+		utils.LogWithFields(utils.LevelInfo, "config", "failed to parse config file", map[string]any{"path": path, "error": err.Error()})
 		return nil
 	}
 	return m

@@ -10,7 +10,7 @@ import (
 // TestCliResumeArgs pins the precise resume mechanism: the CLI backend
 // resumes ONLY with a captured claude-native session UUID
 // (RunOptions.CliResumeSessionID), never with Ion's conversation id
-// (RunOptions.SessionID).
+// (RunOptions.ConversationID).
 func TestCliResumeArgs(t *testing.T) {
 	cases := []struct {
 		name string
@@ -28,14 +28,14 @@ func TestCliResumeArgs(t *testing.T) {
 			want: []string{"--resume", "11111111-2222-3333-4444-555555555555"},
 		},
 		{
-			name: "Ion SessionID set but no claude UUID -> still no --resume",
-			opts: types.RunOptions{SessionID: "1781483744990-37463b20c27b"},
+			name: "Ion ConversationID set but no claude UUID -> still no --resume",
+			opts: types.RunOptions{ConversationID: "1781483744990-37463b20c27b"},
 			want: nil,
 		},
 		{
-			name: "both set -> resume uses the claude UUID, ignores Ion SessionID",
+			name: "both set -> resume uses the claude UUID, ignores Ion ConversationID",
 			opts: types.RunOptions{
-				SessionID:          "1781483744990-37463b20c27b",
+				ConversationID:     "1781483744990-37463b20c27b",
 				CliResumeSessionID: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
 			},
 			want: []string{"--resume", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},

@@ -2,9 +2,23 @@ package session
 
 import (
 	"github.com/dsswift/ion/engine/internal/backend"
+	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
+
+// modelRefFor builds the extension.ModelRef the engine hangs on ctx.Model for
+// model-aware hooks (notably before_prompt). It carries the SELECTED model ID
+// and its context window, resolved from the same registry cost/thinking/routing
+// all read (providers.GetModelInfo). Unknown models yield a zero-value window,
+// so a handler can still branch on ctx.Model.ID without a nil-window panic.
+func modelRefFor(model string) *extension.ModelRef {
+	ref := &extension.ModelRef{ID: model}
+	if info := providers.GetModelInfo(model); info != nil {
+		ref.ContextWindow = info.ContextWindow
+	}
+	return ref
+}
 
 // resolvedBackend returns the inner backend that should handle a run for
 // the given model. For non-hybrid backends (plain CliBackend or ApiBackend,
@@ -26,10 +40,10 @@ func (m *Manager) resolvedBackend(model string) backend.RunBackend {
 		return m.backend
 	}
 	if info := providers.GetModelInfo(model); info != nil && info.ProviderID == "anthropic" {
-		utils.Debug("Session", "resolvedBackend: model="+model+" providerID=anthropic → inner CliBackend")
+		utils.LogWithFields(utils.LevelDebug, "session", "resolvedbackend: model= providerid=anthropic → inner clibackend", map[string]any{"model": model})
 		return h.InnerCli()
 	}
-	utils.Debug("Session", "resolvedBackend: model="+model+" → inner ApiBackend (default)")
+	utils.LogWithFields(utils.LevelDebug, "session", "resolvedbackend: model= → inner apibackend (default)", map[string]any{"model": model})
 	return h.InnerApi()
 }
 

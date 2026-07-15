@@ -1,7 +1,6 @@
 package session
 
 import (
-	"fmt"
 
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -19,20 +18,21 @@ func (m *Manager) buildIdleStatusFields(s *engineSession, key string, bgCount in
 	m.mu.RLock()
 	var pct, cw int
 	var model string
-	var cost float64
+	var runCost, convCost float64
 	var sessionID string
 	if s2, ok := m.sessions[key]; ok {
 		pct = s2.lastContextPct
 		cw = s2.lastContextWindow
 		model = s2.lastModel
-		cost = s2.lastTotalCost
+		runCost = s2.lastTotalCost
+		convCost = s2.lastConvCost
 		sessionID = s2.conversationID
 	}
 	m.mu.RUnlock()
 	return &types.StatusFields{
 		Label: key, State: "idle", SessionID: sessionID,
 		ContextPercent: pct, ContextWindow: cw,
-		Model: model, TotalCostUsd: cost,
+		Model: model, RunCostUsd: runCost, ConversationCostUsd: convCost,
 		BackgroundAgents: bgCount,
 	}
 }
@@ -55,7 +55,7 @@ func (m *Manager) emitDispatchCountStatus(s *engineSession, reason string) {
 	}
 	m.mu.RUnlock()
 
-	utils.Log("Session", fmt.Sprintf("emitDispatchCountStatus: key=%s reason=%s backgroundAgents=%d", key, reason, bgCount))
+	utils.LogWithFields(utils.LevelInfo, "session", "emitdispatchcountstatus", map[string]any{"key": key, "reason": reason, "bg_count": bgCount})
 
 	fields := m.buildIdleStatusFields(s, key, bgCount)
 	m.emit(key, types.EngineEvent{Type: "engine_status", Fields: fields})

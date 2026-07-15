@@ -1,8 +1,6 @@
 package backend
 
 import (
-	"fmt"
-
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -147,10 +145,11 @@ func (b *ApiBackend) maybeContinueEarlyStop(
 	turn, maxTurns int,
 ) bool {
 	if !cfg.enabled {
-		utils.Debug("ApiBackend", fmt.Sprintf(
-			"earlyStop: disabled (skip): runID=%s turn=%d source=%s",
-			run.requestID, turn, cfg.source,
-		))
+		utils.LogWithFields(utils.LevelDebug, "backend.runloop", "earlyStop: disabled (skip)", map[string]any{
+			"run_id": run.requestID,
+			"turn":   turn,
+			"source": cfg.source,
+		})
 		return false
 	}
 
@@ -206,20 +205,23 @@ func (b *ApiBackend) maybeContinueEarlyStop(
 			// Mirrors OnBeforeProviderRequest's recovery shape.
 			defer func() {
 				if r := recover(); r != nil {
-					utils.Error("ApiBackend", fmt.Sprintf(
-						"OnBeforeEarlyStopDecision panicked: runID=%s panic=%v", run.requestID, r,
-					))
+					utils.LogWithFields(utils.LevelError, "backend.runloop", "OnBeforeEarlyStopDecision panicked", map[string]any{
+						"run_id": run.requestID,
+						"panic":  r,
+					})
 				}
 			}()
 			result = hooks.OnBeforeEarlyStopDecision(info)
 		}()
 		if result != nil {
-			utils.Log("ApiBackend", fmt.Sprintf(
-				"earlyStop: hook returned overrides: runID=%s turn=%d forceContinue=%v overrideBudget=%d overrideThreshold=%d customMsg=%v",
-				run.requestID, turn,
-				result.ForceContinue != nil, result.OverrideBudget,
-				result.OverrideThresholdPct, result.ContinueMessage != "",
-			))
+			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "earlyStop: hook returned overrides", map[string]any{
+				"run_id":             run.requestID,
+				"turn":               turn,
+				"force_continue":     result.ForceContinue != nil,
+				"override_budget":    result.OverrideBudget,
+				"override_threshold": result.OverrideThresholdPct,
+				"custom_msg":         result.ContinueMessage != "",
+			})
 			if result.OverrideBudget > 0 {
 				effBudget = result.OverrideBudget
 				// Recompute pct against the new budget. Don't update
@@ -249,21 +251,33 @@ func (b *ApiBackend) maybeContinueEarlyStop(
 	if !wouldContinue {
 		switch {
 		case diminishing:
-			utils.Log("ApiBackend", fmt.Sprintf(
-				"earlyStop: diminishing returns, stopping: runID=%s turn=%d count=%d pct=%d budget=%d cumOut=%d lastDelta=%d currDelta=%d",
-				run.requestID, turn, run.continuationCount, pct, effBudget,
-				run.cumulativeOutputTokens, run.lastContinuationDelta, currentDelta,
-			))
+			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "earlyStop: diminishing returns, stopping", map[string]any{
+				"run_id":     run.requestID,
+				"turn":       turn,
+				"count":      run.continuationCount,
+				"pct":        pct,
+				"budget":     effBudget,
+				"cum_out":    run.cumulativeOutputTokens,
+				"last_delta": run.lastContinuationDelta,
+				"curr_delta": currentDelta,
+			})
 		case run.continuationCount >= cfg.maxContinuations:
-			utils.Log("ApiBackend", fmt.Sprintf(
-				"earlyStop: cap reached (%d), stopping: runID=%s turn=%d pct=%d budget=%d",
-				cfg.maxContinuations, run.requestID, turn, pct, effBudget,
-			))
+			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "earlyStop: cap reached , stopping", map[string]any{
+				"max_continuations": cfg.maxContinuations,
+				"run_id":            run.requestID,
+				"turn":              turn,
+				"pct":               pct,
+				"budget":            effBudget,
+			})
 		default:
-			utils.Debug("ApiBackend", fmt.Sprintf(
-				"earlyStop: at/above threshold or hook vetoed: runID=%s turn=%d pct=%d threshold=%d budget=%d count=%d",
-				run.requestID, turn, pct, effThresholdPct, effBudget, run.continuationCount,
-			))
+			utils.LogWithFields(utils.LevelDebug, "backend.runloop", "earlyStop: at/above threshold or hook vetoed", map[string]any{
+				"run_id":    run.requestID,
+				"turn":      turn,
+				"pct":       pct,
+				"threshold": effThresholdPct,
+				"budget":    effBudget,
+				"count":     run.continuationCount,
+			})
 		}
 		return false
 	}
@@ -274,10 +288,13 @@ func (b *ApiBackend) maybeContinueEarlyStop(
 	// normal task-complete emission (semantically: "engine is willing to
 	// continue, but nobody asked it to inject anything, so don't").
 	if customMessage == "" {
-		utils.Log("ApiBackend", fmt.Sprintf(
-			"earlyStop: enabled but no ContinueMessage supplied by hook; skipping injection: runID=%s turn=%d pct=%d budget=%d count=%d",
-			run.requestID, turn, pct, effBudget, run.continuationCount,
-		))
+		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "earlyStop: enabled but no ContinueMessage supplied by hook; skipping injection", map[string]any{
+			"run_id": run.requestID,
+			"turn":   turn,
+			"pct":    pct,
+			"budget": effBudget,
+			"count":  run.continuationCount,
+		})
 		return false
 	}
 	text := customMessage
@@ -293,10 +310,10 @@ func (b *ApiBackend) maybeContinueEarlyStop(
 	b.injectSystemMessage(run, conv, hooks, opts, earlyStopContinueKind, text, turn, maxTurns)
 	injected := len(conv.Messages) > beforeLen
 	if !injected {
-		utils.Info("ApiBackend", fmt.Sprintf(
-			"earlyStop: injection suppressed (OnSystemInject or DisableEarlyStopContinue), stopping run: runID=%s turn=%d",
-			run.requestID, turn,
-		))
+		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "earlyStop: injection suppressed (OnSystemInject or DisableEarlyStopContinue), stopping run", map[string]any{
+			"run_id": run.requestID,
+			"turn":   turn,
+		})
 		// Fire the observed-only hook so handlers see "we tried but were
 		// suppressed". Bookkeeping is NOT updated since no nudge actually
 		// happened — the run is about to stop.
@@ -313,9 +330,10 @@ func (b *ApiBackend) maybeContinueEarlyStop(
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						utils.Error("ApiBackend", fmt.Sprintf(
-							"OnEarlyStopContinued panicked: runID=%s panic=%v", run.requestID, r,
-						))
+						utils.LogWithFields(utils.LevelError, "backend.runloop", "OnEarlyStopContinued panicked", map[string]any{
+							"run_id": run.requestID,
+							"panic":  r,
+						})
 					}
 				}()
 				hooks.OnEarlyStopContinued(info)
@@ -329,11 +347,16 @@ func (b *ApiBackend) maybeContinueEarlyStop(
 	run.continuationCount++
 	run.lastContinuationDelta = currentDelta
 
-	utils.Info("ApiBackend", fmt.Sprintf(
-		"earlyStop: continuation injected: runID=%s turn=%d count=%d pct=%d budget=%d cumOut=%d delta=%d customMessage=%v",
-		run.requestID, turn, run.continuationCount, pct, effBudget,
-		run.cumulativeOutputTokens, currentDelta, customMessage != "",
-	))
+	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "earlyStop: continuation injected", map[string]any{
+		"run_id":         run.requestID,
+		"turn":           turn,
+		"count":          run.continuationCount,
+		"pct":            pct,
+		"budget":         effBudget,
+		"cum_out":        run.cumulativeOutputTokens,
+		"delta":          currentDelta,
+		"custom_message": customMessage != "",
+	})
 
 	if hooks.OnEarlyStopContinued != nil {
 		info := EarlyStopContinuedInfo{
@@ -348,9 +371,10 @@ func (b *ApiBackend) maybeContinueEarlyStop(
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					utils.Error("ApiBackend", fmt.Sprintf(
-						"OnEarlyStopContinued panicked: runID=%s panic=%v", run.requestID, r,
-					))
+					utils.LogWithFields(utils.LevelError, "backend.runloop", "OnEarlyStopContinued panicked", map[string]any{
+						"run_id": run.requestID,
+						"panic":  r,
+					})
 				}
 			}()
 			hooks.OnEarlyStopContinued(info)

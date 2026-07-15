@@ -23,9 +23,7 @@ import (
 // opts carries the expanded body (opts.Prompt) and the resolved invocation
 // metadata. Called after SendPrompt has released m.mu.
 func (m *Manager) forkResolvedSlash(s *engineSession, key string, opts *types.RunOptions) {
-	utils.Log("SlashResolve", fmt.Sprintf(
-		"fork dispatch key=%s command=%s expandedLen=%d",
-		key, opts.ResolvedSlashCommand, len(opts.Prompt)))
+	utils.LogWithFields(utils.LevelInfo, "session.slash", "fork dispatch", map[string]any{"session_id": key, "reason": opts.ResolvedSlashCommand, "count": len(opts.Prompt)})
 
 	// Record the raw invocation as the parent's display turn so the user sees
 	// the command they ran in the parent scrollback, even though the work runs
@@ -52,11 +50,11 @@ func (m *Manager) forkResolvedSlash(s *engineSession, key string, opts *types.Ru
 					DisplayOnly:  true,
 				})
 				if saveErr := conversation.Save(conv, ""); saveErr != nil {
-					utils.Log("SlashResolve", fmt.Sprintf("fork: failed to persist parent display turn key=%s: %v", key, saveErr))
+					utils.LogWithFields(utils.LevelInfo, "session.slash", "fork: failed to persist parent display turn", map[string]any{"key": key, "error": saveErr})
 				}
 			}
 		} else {
-			utils.Log("SlashResolve", fmt.Sprintf("fork: could not load parent conversation key=%s: %v", key, err))
+			utils.LogWithFields(utils.LevelInfo, "session.slash", "fork: could not load parent conversation", map[string]any{"key": key, "error": err})
 		}
 	}
 
@@ -76,7 +74,7 @@ func (m *Manager) forkResolvedSlash(s *engineSession, key string, opts *types.Ru
 	// registration the background path provides) and returns a stub immediately.
 	ctx := m.newExtContext(s, key)
 	if ctx.DispatchAgent == nil {
-		utils.Error("SlashResolve", fmt.Sprintf("fork: DispatchAgent unavailable key=%s — cannot run forked command %s", key, opts.ResolvedSlashCommand))
+		utils.LogWithFields(utils.LevelError, "session.slash", "fork: dispatchagent unavailable — cannot run forked command", map[string]any{"key": key, "resolved_slash_command": opts.ResolvedSlashCommand})
 		m.emit(key, types.EngineEvent{
 			Type:         "engine_error",
 			EventMessage: fmt.Sprintf("forked command %s could not be dispatched", opts.ResolvedSlashCommand),
@@ -105,7 +103,7 @@ func (m *Manager) forkResolvedSlash(s *engineSession, key string, opts *types.Ru
 			// succeeded (stub), so a non-zero child exit surfaces here. Emit
 			// the same engine_error shape the launch-failure path uses so the
 			// consumer learns the forked command failed.
-			utils.Log("SlashResolve", fmt.Sprintf("fork child errored key=%s command=%s exit=%d: %s", key, agentName, de.ExitCode, de.Message))
+			utils.LogWithFields(utils.LevelInfo, "session.slash", "fork child errored", map[string]any{"key": key, "model": agentName, "exit_code": de.ExitCode, "message": de.Message})
 			m.emit(key, types.EngineEvent{
 				Type:         "engine_error",
 				EventMessage: fmt.Sprintf("forked command %s failed: %s", agentName, de.Message),
@@ -114,7 +112,7 @@ func (m *Manager) forkResolvedSlash(s *engineSession, key string, opts *types.Ru
 		},
 	})
 	if err != nil {
-		utils.Log("SlashResolve", fmt.Sprintf("fork dispatch launch failed key=%s command=%s: %v", key, agentName, err))
+		utils.LogWithFields(utils.LevelInfo, "session.slash", "fork dispatch launch failed", map[string]any{"key": key, "model": agentName, "error": err})
 		m.emit(key, types.EngineEvent{
 			Type:         "engine_error",
 			EventMessage: fmt.Sprintf("forked command %s failed: %v", agentName, err),
@@ -122,5 +120,5 @@ func (m *Manager) forkResolvedSlash(s *engineSession, key string, opts *types.Ru
 		})
 		return
 	}
-	utils.Log("SlashResolve", fmt.Sprintf("fork dispatch launched (background) key=%s command=%s", key, agentName))
+	utils.LogWithFields(utils.LevelInfo, "session.slash", "fork dispatch launched (background)", map[string]any{"key": key, "model": agentName})
 }

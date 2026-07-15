@@ -1,7 +1,6 @@
 package session
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -71,7 +70,7 @@ func discoverSlashCommands(workingDir string, claudeCompat bool) []types.SlashCo
 	}
 
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	utils.Log("SlashResolve", fmt.Sprintf("discoverSlashCommands found %d commands (claudeCompat=%v)", len(out), claudeCompat))
+	utils.LogWithFields(utils.LevelInfo, "session.slash", "discoverslashcommands found commands ()", map[string]any{"count": len(out), "claude_compat": claudeCompat})
 	return out
 }
 

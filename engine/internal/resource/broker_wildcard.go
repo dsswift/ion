@@ -54,7 +54,7 @@ func (b *Broker) SubscribeWildcard(filter types.ResourceFilter, deliver func(Res
 	}
 	b.mu.Unlock()
 
-	utils.Log("resource", fmt.Sprintf("subscribeWildcard sub=%s producers=%d", subID, len(producers)))
+	utils.LogWithFields(utils.LevelInfo, "resource", "subscribe wildcard", map[string]any{"run_id": subID, "count": len(producers)})
 
 	// Deliver one snapshot per registered kind, each carrying the real kind.
 	for _, entry := range producers {
@@ -62,7 +62,7 @@ func (b *Broker) SubscribeWildcard(filter types.ResourceFilter, deliver func(Res
 		kindFilter.Kind = entry.kind
 		items, err := entry.host.HandleQuery(kindFilter)
 		if err != nil {
-			utils.Log("resource", fmt.Sprintf("subscribeWildcard HandleQuery failed kind=%s sub=%s err=%v", entry.kind, subID, err))
+			utils.LogWithFields(utils.LevelInfo, "resource", "subscribe wildcard handle query failed", map[string]any{"reason": entry.kind, "run_id": subID, "error": err.Error()})
 			items = nil
 		}
 		deliver(ResourceMessage{
@@ -71,7 +71,7 @@ func (b *Broker) SubscribeWildcard(filter types.ResourceFilter, deliver func(Res
 			SubID: subID,
 			Items: items,
 		})
-		utils.Debug("resource", fmt.Sprintf("subscribeWildcard snapshot kind=%s sub=%s items=%d", entry.kind, subID, len(items)))
+		utils.LogWithFields(utils.LevelDebug, "resource", "subscribe wildcard snapshot", map[string]any{"reason": entry.kind, "run_id": subID, "count": len(items)})
 	}
 	return sub
 }
@@ -92,7 +92,7 @@ func (b *Broker) SubscribeDirectWildcard(filter types.ResourceFilter, deliver fu
 	b.subscribers[WildcardKind] = append(b.subscribers[WildcardKind], sub)
 	b.subsByID[subID] = sub
 	b.mu.Unlock()
-	utils.Log("resource", fmt.Sprintf("subscribeDirectWildcard sub=%s", subID))
+	utils.LogWithFields(utils.LevelInfo, "resource", "subscribe direct wildcard", map[string]any{"run_id": subID})
 	return sub
 }
 

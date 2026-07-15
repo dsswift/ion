@@ -1,7 +1,6 @@
 package session
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -59,11 +58,11 @@ func resolveWatchIgnores(cfg types.EngineConfig) []string {
 // exhaustion on macOS where kqueue requires one FD per watched directory.
 func (m *Manager) startWorkspaceWatcher(s *engineSession, key string, group *extension.ExtensionGroup) func() {
 	if group == nil || group.IsEmpty() {
-		utils.Debug("session", fmt.Sprintf("startWorkspaceWatcher: skip key=%s reason=no_extensions", key))
+		utils.LogWithFields(utils.LevelDebug, "session", "startworkspacewatcher: skip reason=no_extensions", map[string]any{"key": key})
 		return nil
 	}
 	if s.config.WorkingDirectory == "" {
-		utils.Debug("session", fmt.Sprintf("startWorkspaceWatcher: skip key=%s reason=empty_working_directory", key))
+		utils.LogWithFields(utils.LevelDebug, "session", "startworkspacewatcher: skip reason=empty_working_directory", map[string]any{"key": key})
 		return nil
 	}
 
@@ -78,7 +77,7 @@ func (m *Manager) startWorkspaceWatcher(s *engineSession, key string, group *ext
 		ionHome := filepath.Clean(filepath.Join(home, ".ion"))
 		cwdClean := filepath.Clean(s.config.WorkingDirectory)
 		if cwdClean == ionHome {
-			utils.Info("session", fmt.Sprintf("startWorkspaceWatcher: skip key=%s reason=working_directory_is_ion_home cwd=%s", key, cwdClean))
+			utils.LogWithFields(utils.LevelInfo, "session", "startworkspacewatcher: skip reason=working_directory_is_ion_home", map[string]any{"key": key, "cwd_clean": cwdClean})
 			return nil
 		}
 	}
@@ -89,7 +88,7 @@ func (m *Manager) startWorkspaceWatcher(s *engineSession, key string, group *ext
 		source = "harness_override"
 	}
 	if source == "harness_override" {
-		utils.Debug("session", fmt.Sprintf("startWorkspaceWatcher: harness override patterns key=%s patterns=%v", key, ignores))
+		utils.LogWithFields(utils.LevelDebug, "session", "startworkspacewatcher: harness override patterns", map[string]any{"key": key, "ignores": ignores})
 	}
 
 	onEvent := func(info watcher.Info) {
@@ -112,10 +111,10 @@ func (m *Manager) startWorkspaceWatcher(s *engineSession, key string, group *ext
 
 	release, err := m.watchers.acquire(s.config.WorkingDirectory, ignores, key, maxDirs, onEvent)
 	if err != nil {
-		utils.Error("session", fmt.Sprintf("startWorkspaceWatcher: acquire failed key=%s cwd=%s err=%v", key, s.config.WorkingDirectory, err))
+		utils.LogWithFields(utils.LevelError, "session", "startworkspacewatcher: acquire failed", map[string]any{"key": key, "working_directory": s.config.WorkingDirectory, "error": err})
 		return nil
 	}
 
-	utils.Info("session", fmt.Sprintf("startWorkspaceWatcher: acquired key=%s cwd=%s ignore_count=%d ignore_source=%s", key, s.config.WorkingDirectory, len(ignores), source))
+	utils.LogWithFields(utils.LevelInfo, "session", "startworkspacewatcher: acquired", map[string]any{"key": key, "working_directory": s.config.WorkingDirectory, "count": len(ignores), "source": source})
 	return release
 }

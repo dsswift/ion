@@ -51,7 +51,7 @@ func (m *Manager) fireCliTurnHooks(s *engineSession, key string, sOk bool, event
 			ctx := m.newExtContext(s, key)
 			s.extGroup.FireTurnStart(ctx, extension.TurnInfo{TurnNumber: turnNum})
 			taskID := fmt.Sprintf("%s-t%d", key, turnNum)
-			utils.Debug("Session", fmt.Sprintf("fireCliTurnHooks: task_created taskID=%s key=%s turn=%d", taskID, key, turnNum))
+			utils.LogWithFields(utils.LevelDebug, "session", "firecliturnhooks: task_created", map[string]any{"run_id": taskID, "key": key, "turn": turnNum})
 			_ = s.extGroup.FireTaskCreated(ctx, extension.TaskLifecycleInfo{
 				TaskID: taskID,
 				Name:   fmt.Sprintf("turn-%d", turnNum),
@@ -74,7 +74,7 @@ func (m *Manager) fireCliTurnHooks(s *engineSession, key string, sOk bool, event
 			ctx := m.newExtContext(s, key)
 			s.extGroup.FireTurnStart(ctx, extension.TurnInfo{TurnNumber: turnNum})
 			taskID := fmt.Sprintf("%s-t%d", key, turnNum)
-			utils.Debug("Session", fmt.Sprintf("fireCliTurnHooks: task_created taskID=%s key=%s turn=%d", taskID, key, turnNum))
+			utils.LogWithFields(utils.LevelDebug, "session", "firecliturnhooks: task_created", map[string]any{"run_id": taskID, "key": key, "turn": turnNum})
 			_ = s.extGroup.FireTaskCreated(ctx, extension.TaskLifecycleInfo{
 				TaskID: taskID,
 				Name:   fmt.Sprintf("turn-%d", turnNum),
@@ -128,7 +128,7 @@ func (m *Manager) fireCliTurnHooks(s *engineSession, key string, sOk bool, event
 		if turnNum > 0 {
 			ctx := m.newExtContext(s, key)
 			taskID := fmt.Sprintf("%s-t%d", key, turnNum)
-			utils.Debug("Session", fmt.Sprintf("fireCliTurnHooks: task_completed taskID=%s key=%s turn=%d", taskID, key, turnNum))
+			utils.LogWithFields(utils.LevelDebug, "session", "firecliturnhooks: task_completed", map[string]any{"run_id": taskID, "key": key, "turn": turnNum})
 			_ = s.extGroup.FireTaskCompleted(ctx, extension.TaskLifecycleInfo{
 				TaskID: taskID,
 				Name:   fmt.Sprintf("turn-%d", turnNum),

@@ -69,52 +69,74 @@ func (b *ApiBackend) resolveProvider(model string) providers.LlmProvider {
 	if authRes != nil && providerName != "" {
 		if key, err := authRes.ResolveKey(providerName); err == nil && key != "" {
 			providers.SetProviderKey(providerName, key)
-			utils.Log("ApiBackend", fmt.Sprintf("resolved key for provider=%s (len=%d)", providerName, len(key)))
+			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "resolved key for", map[string]any{
+				"provider": providerName,
+				"len":      len(key),
+			})
 		} else if err != nil {
-			utils.Log("ApiBackend", fmt.Sprintf("no key for provider=%s: %v", providerName, err))
+			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "no key for", map[string]any{
+				"provider": providerName,
+				"error":    utils.ErrStr(err),
+			})
 		}
 	}
 	p := providers.ResolveProvider(model)
 	if p != nil {
 		// Also check what key the provider will actually use at request time
 		runtimeKey := providers.GetProviderKey(p.ID())
-		utils.Log("ApiBackend", fmt.Sprintf("resolved model=%s → provider=%s (nameForModel=%s, runtimeKeyLen=%d)", model, p.ID(), providerName, len(runtimeKey)))
+		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "resolved → (, )", map[string]any{
+			"model":           model,
+			"provider":        p.ID(),
+			"name_for_model":  providerName,
+			"runtime_key_len": len(runtimeKey),
+		})
 	} else {
-		utils.Log("ApiBackend", fmt.Sprintf("resolved model=%s → nil (nameForModel=%s)", model, providerName))
+		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "resolved → nil", map[string]any{
+			"model":          model,
+			"name_for_model": providerName,
+		})
 	}
 	return p
 }
 
-// loadOrCreateConversation returns an existing conversation when SessionID
+// loadOrCreateConversation returns an existing conversation when ConversationID
 // resolves to one on disk, otherwise creates a new conversation with a
 // timestamp+random suffix id that cannot collide with same-millisecond peers.
-// When SessionID is non-empty and Load fails with a non-not-found error
+// When ConversationID is non-empty and Load fails with a non-not-found error
 // (corrupt file, permission denied, etc.), the error is returned instead
 // of silently creating a replacement — this prevents overwriting existing
 // conversation files on transient read failures.
 func loadOrCreateConversation(opts types.RunOptions, model string) (*conversation.Conversation, error) {
-	if opts.SessionID != "" {
-		loaded, err := conversation.Load(opts.SessionID, "")
+	if opts.ConversationID != "" {
+		loaded, err := conversation.Load(opts.ConversationID, "")
 		if err != nil {
-			// Distinguish "not found" (first run with this SessionID) from
+			// Distinguish "not found" (first run with this ConversationID) from
 			// real failures (corrupt file, permission denied). Not-found is
 			// the normal first-run case — create a new conversation with the
 			// caller's desired ID. Real errors surface immediately so the
 			// caller can diagnose and retry without data loss.
 			if errors.Is(err, conversation.ErrNotFound) {
-				utils.Log("ApiBackend", "creating new conversation: "+opts.SessionID)
-				created := conversation.CreateConversation(opts.SessionID, opts.SystemPrompt, model)
+				utils.LogWithFields(utils.LevelInfo, "backend.runloop", "creating new conversation", map[string]any{
+					"conversation_id": opts.ConversationID,
+				})
+				created := conversation.CreateConversation(opts.ConversationID, opts.SystemPrompt, model)
 				// Record on-disk descent when the caller supplied a parent (a
 				// client-driven checkpoint cut for an existing tab). Empty leaves
 				// parentId unset, as before.
 				if opts.ParentConversationID != "" {
 					created.ParentID = opts.ParentConversationID
-					utils.Log("ApiBackend", fmt.Sprintf("new conversation %s descends from parentId=%s", opts.SessionID, opts.ParentConversationID))
+					utils.LogWithFields(utils.LevelInfo, "backend.runloop", "new conversation descends from", map[string]any{
+						"conversation_id": opts.ConversationID,
+						"parent_id":       opts.ParentConversationID,
+					})
 				}
 				return created, nil
 			}
-			utils.Error("ApiBackend", fmt.Sprintf("failed to load conversation %s: %v", opts.SessionID, err))
-			return nil, fmt.Errorf("failed to load conversation %s: %w", opts.SessionID, err)
+			utils.LogWithFields(utils.LevelError, "backend.runloop", "failed to load conversation", map[string]any{
+				"conversation_id": opts.ConversationID,
+				"error":           utils.ErrStr(err),
+			})
+			return nil, fmt.Errorf("failed to load conversation %s: %w", opts.ConversationID, err)
 		}
 		// Sanitize loaded messages (fix orphaned tool_result blocks, remove thinking)
 		loaded.Messages = conversation.SanitizeMessages(loaded.Messages)
@@ -135,7 +157,10 @@ func loadOrCreateConversation(opts types.RunOptions, model string) (*conversatio
 	)
 	if opts.ParentConversationID != "" {
 		created.ParentID = opts.ParentConversationID
-		utils.Log("ApiBackend", fmt.Sprintf("new conversation %s descends from parentId=%s", created.ID, opts.ParentConversationID))
+		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "new conversation descends from", map[string]any{
+			"id":        created.ID,
+			"parent_id": opts.ParentConversationID,
+		})
 	}
 	return created, nil
 }
@@ -178,7 +203,10 @@ func buildSystemPrompt(opts *types.RunOptions, conv *conversation.Conversation, 
 			// result here; the resolution priority check happens at injection time.
 			if customSparseReminder != "" && run != nil && run.planModeSparseReminderOverride == "" {
 				run.planModeSparseReminderOverride = customSparseReminder
-				utils.Info("PlanMode", fmt.Sprintf("run=%s sparse_reminder_override=hook len=%d", requestID, len(customSparseReminder)))
+				utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "sparse_reminder_override=hook", map[string]any{
+					"run_id": requestID,
+					"len":    len(customSparseReminder),
+				})
 			}
 		}
 		if planPrompt == "" {
@@ -213,6 +241,40 @@ func buildSystemPrompt(opts *types.RunOptions, conv *conversation.Conversation, 
 	if opts.CapabilityPrompt != "" {
 		systemPrompt += "\n" + opts.CapabilityPrompt
 	}
+
+	// Inject skill listing + proactive-invocation instruction when skills are
+	// loaded. Mirrors Claude Code's skill_listing attachment which injects the
+	// same block as a <system-reminder> user message on every turn. Doing it
+	// here means the listing is present from turn 1 and survives compaction
+	// (buildSystemPrompt is called fresh for every run, including post-compact
+	// runs). Skills with disable-model-invocation:true are excluded by
+	// BuildSkillSystemPromptSection.
+	//
+	// This is an opinion the engine carries generically: the coarse gate is
+	// RunOptions.DisableSkillSystemPrompt (from engine.json's
+	// LimitsConfig.DisableSkillSystemPrompt), and the fine-grained seam is the
+	// system_inject hook (kind "skill_listing"), which lets a harness observe,
+	// replace, or suppress the exact section text per run even when injection
+	// is enabled. A consumer that wants softer phrasing, a fully custom block,
+	// or no skill directive at all reaches it through one of these two paths
+	// instead of being forced onto the engine's default directive.
+	if !opts.DisableSkillSystemPrompt {
+		if skillSection := tools.BuildSkillSystemPromptSection(); skillSection != "" {
+			text := skillSection
+			if hooks.OnSystemInject != nil {
+				hookText, suppress := hooks.OnSystemInject("skill_listing", skillSection, 0, 0)
+				if suppress {
+					text = ""
+				} else if hookText != "" {
+					text = hookText
+				}
+			}
+			if text != "" {
+				systemPrompt += "\n\n" + text
+			}
+		}
+	}
+
 	return systemPrompt
 }
 
@@ -230,7 +292,11 @@ func (b *ApiBackend) buildToolDefs(run *activeRun, opts types.RunOptions, provid
 	if extToolCount > 0 {
 		toolDefs = append(toolDefs, externalTools...)
 	}
-	utils.Log("ApiBackend", fmt.Sprintf("tool count: builtin=%d external=%d total=%d", len(toolDefs)-extToolCount, extToolCount, len(toolDefs)))
+	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "tool count", map[string]any{
+		"builtin":  len(toolDefs) - extToolCount,
+		"external": extToolCount,
+		"total":    len(toolDefs),
+	})
 	if len(opts.CapabilityTools) > 0 {
 		toolDefs = append(toolDefs, opts.CapabilityTools...)
 	}
@@ -312,7 +378,11 @@ func (b *ApiBackend) buildToolDefs(run *activeRun, opts types.RunOptions, provid
 			PlanFilePath: run.planFilePath,
 			PlanSlug:     types.PlanSlugFromPath(run.planFilePath),
 		}})
-		utils.Info("PlanMode", fmt.Sprintf("run=%s tools_filtered=%d allowed=%v", run.requestID, len(toolDefs), planTools))
+		utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "event", map[string]any{
+			"run_id":         run.requestID,
+			"tools_filtered": len(toolDefs),
+			"allowed":        planTools,
+		})
 		// Install the EFFECTIVE allowlist on the run so applyPlanModeBashGate
 		// (executed per-tool-call in runloop_plan_mode_gates.go) sees the
 		// same set the system prompt advertised and the tool-list gate
@@ -330,14 +400,22 @@ func (b *ApiBackend) buildToolDefs(run *activeRun, opts types.RunOptions, provid
 		// additions when investigating "why was this command allowed?"
 		if len(effectiveAllowlist) > 0 {
 			if len(opts.BashAllowlistAdditionsForThisPrompt) > 0 {
-				utils.Info("PlanMode", fmt.Sprintf(
-					"run=%s bash_allowlist=%v applied_to_run (session=%v + per_prompt_additions=%v)",
-					run.requestID, effectiveAllowlist, opts.PlanModeAllowedBashCommands, opts.BashAllowlistAdditionsForThisPrompt))
+				utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "applied_to_run ( + )", map[string]any{
+					"run_id":               run.requestID,
+					"bash_allowlist":       effectiveAllowlist,
+					"session_id":           opts.PlanModeAllowedBashCommands,
+					"per_prompt_additions": opts.BashAllowlistAdditionsForThisPrompt,
+				})
 			} else {
-				utils.Info("PlanMode", fmt.Sprintf("run=%s bash_allowlist=%v applied_to_run", run.requestID, effectiveAllowlist))
+				utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "applied_to_run", map[string]any{
+					"run_id":         run.requestID,
+					"bash_allowlist": effectiveAllowlist,
+				})
 			}
 		} else {
-			utils.Debug("PlanMode", fmt.Sprintf("run=%s no bash_allowlist (default-deny)", run.requestID))
+			utils.LogWithFields(utils.LevelDebug, "backend.plan_mode", "no bash_allowlist (default-deny)", map[string]any{
+				"run_id": run.requestID,
+			})
 		}
 	} else {
 		// Inject EnterPlanMode sentinel in auto mode so the LLM can request
@@ -353,7 +431,9 @@ func (b *ApiBackend) buildToolDefs(run *activeRun, opts types.RunOptions, provid
 		// boolean — see the field comment in
 		// engine/internal/types/types.go.
 		if opts.ImplementationPhase {
-			utils.Info("PlanMode", fmt.Sprintf("run=%s skipping EnterPlanMode injection (implementation_phase=true)", run.requestID))
+			utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "skipping EnterPlanMode injection (implementation_phase=true)", map[string]any{
+				"run_id": run.requestID,
+			})
 		} else {
 			// Resolve the EnterPlanMode tool description: harness-supplied
 			// prose wins; empty falls back to the engine's one-line
@@ -374,7 +454,11 @@ func (b *ApiBackend) buildToolDefs(run *activeRun, opts types.RunOptions, provid
 				Description: enterPlanDef.Description,
 				InputSchema: enterPlanDef.InputSchema,
 			})
-			utils.Info("PlanMode", fmt.Sprintf("run=%s injected EnterPlanMode in auto mode enter_plan_mode_desc=%s len=%d", run.requestID, descSource, descLen))
+			utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "injected EnterPlanMode in auto mode", map[string]any{
+				"run_id":               run.requestID,
+				"enter_plan_mode_desc": descSource,
+				"len":                  descLen,
+			})
 		}
 	}
 

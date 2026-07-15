@@ -103,11 +103,14 @@ func TestSetPlanModeBashAllowlist_NoCallLeavesAllowlistUnchanged(t *testing.T) {
 	}
 }
 
-// TestSetPlanModeBashAllowlist_UnknownSessionIsNoOp pins the invariant
-// guard from plan_mode.go:192-201 — a session-not-found is logged at
-// Error level but does not panic. Repeats this here so the three-case
-// suite is self-contained: nil case (no-call), [] (clear), [...]
-// (replace), plus the negative path.
+// TestSetPlanModeBashAllowlist_UnknownSessionIsNoOp pins the timing-safe
+// no-op path from plan_mode.go — a session-not-found is logged at Debug
+// level (same as SetPlanMode's parallel "not yet started?" path) and does
+// not panic. The desktop legitimately fires set_plan_mode before any engine
+// session exists at tab-create, tab-restore, and fork time; this is not an
+// invariant violation. Repeats the negative path here so the three-case
+// suite is self-contained: nil case (no-call), [] (clear), [...] (replace),
+// plus this negative path.
 func TestSetPlanModeBashAllowlist_UnknownSessionIsNoOp(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
@@ -115,7 +118,7 @@ func TestSetPlanModeBashAllowlist_UnknownSessionIsNoOp(t *testing.T) {
 	// No session started; this should not panic.
 	mgr.SetPlanModeBashAllowlist("unknown-key", []string{"gh"})
 
-	// No assertion needed beyond "did not panic". The Error log is the
+	// No assertion needed beyond "did not panic". The Debug log is the
 	// observable side effect and is verified by inspection — see
-	// plan_mode.go:200 for the log site.
+	// plan_mode.go for the log site.
 }

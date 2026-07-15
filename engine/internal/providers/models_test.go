@@ -114,7 +114,7 @@ func TestModelCatalogJSON_AllModelsRegistered(t *testing.T) {
 	}{
 		{"claude-opus-4-6", "anthropic", 1000000},
 		{"claude-opus-4-7", "anthropic", 1000000},
-		{"claude-sonnet-4-6", "anthropic", 200000},
+		{"claude-sonnet-4-6", "anthropic", 1000000},
 		{"claude-haiku-4-5-20251001", "anthropic", 200000},
 		{"gpt-4.1", "openai", 1047576},
 		{"gpt-4.1-mini", "openai", 1047576},

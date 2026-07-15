@@ -35,6 +35,12 @@ type Context struct {
 
 	// Functional getters
 	GetContextUsage func() *ContextUsage
+	// GetTurn returns the live turn number of the run that fired the hook, or
+	// 0 when no run is active (non-run fires like session_start/schedules) or
+	// the accessor is unset. Wired in the session layer as a closure over the
+	// backend's live turn counter, mirroring GetContextUsage. Never serialized
+	// (func field); consumed only by callHook for hook_latency attribution.
+	GetTurn         func() int64
 	Abort           func()
 	RegisterAgent   func(name string, handle types.AgentHandle)
 	DeregisterAgent func(name string)
@@ -91,6 +97,17 @@ type Context struct {
 	// that deadline. This is wired by the ext/call_tool RPC handler when the
 	// extension provides a timeout parameter.
 	CallToolWithContext func(toolName string, input map[string]interface{}, timeoutMs *float64) (string, bool, error)
+
+	// HTTPRequest performs an outbound HTTP request pre-authenticated as
+	// the signed-in operator: the engine mints an access token for the
+	// scope the extension declares (from the operator's OIDC grant) and
+	// injects it as the Authorization header. The raw token never crosses
+	// into extension code — params carry no credential and the response
+	// carries only status/headers/body. Fails with a clear error when no
+	// operator identity is configured or signed in. The TypeScript SDK
+	// exposes this as ctx.http.get/post/put/patch/delete via the
+	// ext/http_request RPC.
+	HTTPRequest func(params OperatorHTTPRequestParams) (*OperatorHTTPResponse, error)
 
 	// SendPrompt queues a fresh prompt on this session's agent loop. The
 	// call returns once the engine has accepted (or rejected) the prompt;
@@ -389,6 +406,12 @@ type DispatchAgentOpts struct {
 	// it get the prior behavior (self-rail only).
 	AllowedSubAgents []string `json:"allowedSubAgents,omitempty"`
 
+	// ContextPolicy is the per-dispatch context-layer override (level 4 of the
+	// four-level cascade). When nil, the session default (level 3) or engine.json
+	// (level 2) or built-in default (level 1, all on) applies. Tri-state fields:
+	// nil = inherit.
+	ContextPolicy *ContextPolicy `json:"contextPolicy,omitempty"`
+
 	// FallbackChain is an ordered list of alternative model IDs the child
 	// run's retry loop walks when the primary model is overloaded. Typically
 	// the tail of a resolved tier chain (e.g. resolving a "standard" tier
@@ -559,6 +582,21 @@ type RecallInfo struct {
 // RecallAgentOpts configures a recall operation.
 type RecallAgentOpts struct {
 	Reason string `json:"reason,omitempty"`
+}
+
+// ContextPolicy configures which context layers a dispatched agent receives.
+// All fields are tri-state (pointer bools): nil = inherit from the level above.
+// Resolution order: per-dispatch > session default > engine.json > built-in (all on).
+type ContextPolicy struct {
+	// IncludeGlobalContext controls whether home roots (~/.ion, ~/.claude under
+	// compat) are included. Nil inherits from the enclosing level.
+	IncludeGlobalContext *bool `json:"includeGlobalContext,omitempty"`
+	// IncludeProjectContext controls whether the child's cwd + ancestor walk is
+	// performed. Nil inherits from the enclosing level.
+	IncludeProjectContext *bool `json:"includeProjectContext,omitempty"`
+	// ClaudeCompat overrides the engine's ClaudeCompat setting for this walk.
+	// Nil means inherit from engine config.
+	ClaudeCompat *bool `json:"claudeCompat,omitempty"`
 }
 
 // SteerDispatchResult is the typed outcome of a SteerDispatch call.

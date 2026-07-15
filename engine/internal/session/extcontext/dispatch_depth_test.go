@@ -13,6 +13,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/resource"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -22,10 +23,13 @@ type depthTestAccessor struct {
 	events     []types.EngineEvent
 	config     *types.EngineRuntimeConfig
 	childStart chan struct{} // signalled when child backend is created
+	telem      *telemetry.Collector
 }
 
 func (a *depthTestAccessor) SessionKey() string       { return "depth-test" }
 func (a *depthTestAccessor) ConversationID() string   { return "conv-depth" }
+func (a *depthTestAccessor) ExtensionName() string    { return "" }
+func (a *depthTestAccessor) ExtensionVersion() string { return "" }
 func (a *depthTestAccessor) WorkingDirectory() string { return "/tmp" }
 func (a *depthTestAccessor) Emit(ev types.EngineEvent) {
 	a.mu.Lock()
@@ -62,8 +66,11 @@ func (a *depthTestAccessor) NewChildBackend() backend.RunBackend {
 	return b
 }
 func (a *depthTestAccessor) BumpParentProgress()                         {}
+func (a *depthTestAccessor) AllocatePlanFilePath() string                { return "/tmp/.ion/plans/plan.md" }
 func (a *depthTestAccessor) EmitDispatchCountStatus(_ string)            {}
 func (a *depthTestAccessor) EngineConfig() *types.EngineRuntimeConfig    { return a.config }
+func (a *depthTestAccessor) ClaudeCompat() bool { return false }
+func (a *depthTestAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
 func (a *depthTestAccessor) ResolveTier(name string) string              { return name }
 func (a *depthTestAccessor) PermissionCheck(toolName string, input map[string]interface{}) (string, string) {
 	return "", ""
@@ -96,6 +103,7 @@ func (a *depthTestAccessor) RunOnceCheck(operationID string, debounceMs int64) (
 	return false, ""
 }
 func (a *depthTestAccessor) RunOnceComplete(operationID string, failed bool) {}
+func (a *depthTestAccessor) Telemetry() *telemetry.Collector { return a.telem }
 
 func (a *depthTestAccessor) emittedEvents() []types.EngineEvent {
 	a.mu.Lock()

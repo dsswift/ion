@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -184,14 +185,43 @@ func Connect(name string, config types.McpServerConfig) (*Connection, error) {
 		}
 	}
 
+	// Operator-token forwarding (config.forwardUserToken): resolve the
+	// signed-in operator's bearer token for this server's declared scope.
+	// The closure defers resolution to request time so long-lived
+	// connections ride the identity manager's cache + silent refresh
+	// instead of pinning a connect-time token.
+	var userToken func() (string, error)
+	if config.ForwardUserToken {
+		scope := config.UserTokenScope
+		audience := config.UserTokenAudience
+		userToken = func() (string, error) {
+			op := auth.Operator()
+			if op == nil {
+				return "", fmt.Errorf("forwardUserToken configured but no operator identity is available (set auth.identityProvider in engine.json and sign in)")
+			}
+			return op.GetTokenWithAudience(context.Background(), scope, audience)
+		}
+	}
+
 	switch config.Type {
 	case "stdio", "":
 		transport, err = newStdioTransport(config)
 	case "sse":
-		transport, err = newSSETransport(config)
+		transport, err = newSSETransport(config, headers, userToken)
 	case "http":
-		transport, err = newHTTPTransport(config.URL, headers)
+		transport, err = newHTTPTransport(config.URL, headers, userToken)
 	case "ws", "websocket":
+		// WebSocket headers apply once at dial time; a forwarded token is
+		// resolved fresh here and rides the upgrade request. Refreshing it
+		// requires a reconnect -- prefer the http transport for
+		// token-forwarded servers.
+		if userToken != nil {
+			token, tokenErr := userToken()
+			if tokenErr != nil {
+				return nil, fmt.Errorf("mcp connect %s: %w", name, tokenErr)
+			}
+			headers["Authorization"] = "Bearer " + token
+		}
 		transport, err = newWSTransport(config.URL, headers)
 	default:
 		return nil, fmt.Errorf("unsupported MCP transport type: %s", config.Type)
@@ -212,7 +242,7 @@ func Connect(name string, config types.McpServerConfig) (*Connection, error) {
 	// Initialize the connection.
 	if err := conn.initialize(); err != nil {
 		if closeErr := transport.Close(); closeErr != nil {
-			utils.Log("mcp", fmt.Sprintf("connect %s: transport close after initialize failure: %v", name, closeErr))
+			utils.LogWithFields(utils.LevelInfo, "mcp", "transport close after initialize failure", map[string]any{"tool": name, "error": closeErr.Error()})
 		}
 		return nil, fmt.Errorf("mcp initialize %s: %w", name, err)
 	}
@@ -221,7 +251,7 @@ func Connect(name string, config types.McpServerConfig) (*Connection, error) {
 	tools, err := conn.listTools()
 	if err != nil {
 		if closeErr := transport.Close(); closeErr != nil {
-			utils.Log("mcp", fmt.Sprintf("connect %s: transport close after listTools failure: %v", name, closeErr))
+			utils.LogWithFields(utils.LevelInfo, "mcp", "transport close after list tools failure", map[string]any{"tool": name, "error": closeErr.Error()})
 		}
 		return nil, fmt.Errorf("mcp list tools %s: %w", name, err)
 	}
@@ -532,23 +562,32 @@ func (t *stdioTransport) Close() error {
 
 type sseTransport struct {
 	baseURL   string
+	headers   map[string]string
 	msgCh     chan json.RawMessage
 	client    *http.Client
 	done      chan struct{}
 	closeOnce sync.Once
 	wg        sync.WaitGroup
+	// userToken mirrors httpTransport.userToken: per-request operator
+	// bearer resolution when config.forwardUserToken is set. Each message
+	// POST re-resolves so a long-lived stream doesn't pin an expiring
+	// token on the send path; the stream GET carries the token minted at
+	// stream open.
+	userToken func() (string, error)
 }
 
-func newSSETransport(config types.McpServerConfig) (*sseTransport, error) {
+func newSSETransport(config types.McpServerConfig, headers map[string]string, userToken func() (string, error)) (*sseTransport, error) {
 	if config.URL == "" {
 		return nil, fmt.Errorf("SSE transport requires URL")
 	}
 
 	t := &sseTransport{
-		baseURL: strings.TrimRight(config.URL, "/"),
-		msgCh:   make(chan json.RawMessage, 64),
-		client:  &http.Client{},
-		done:    make(chan struct{}),
+		baseURL:   strings.TrimRight(config.URL, "/"),
+		headers:   headers,
+		msgCh:     make(chan json.RawMessage, 64),
+		client:    &http.Client{},
+		done:      make(chan struct{}),
+		userToken: userToken,
 	}
 
 	// Start SSE event stream reader goroutine.
@@ -556,6 +595,23 @@ func newSSETransport(config types.McpServerConfig) (*sseTransport, error) {
 	go t.readEventStream()
 
 	return t, nil
+}
+
+// applyHeaders stamps the configured static headers and, when forwarding
+// is configured, the operator bearer token (which wins over any static
+// Authorization value).
+func (t *sseTransport) applyHeaders(req *http.Request) error {
+	for k, v := range t.headers {
+		req.Header.Set(k, v)
+	}
+	if t.userToken != nil {
+		token, err := t.userToken()
+		if err != nil {
+			return fmt.Errorf("resolve operator token: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	return nil
 }
 
 // readEventStream connects to the SSE endpoint and reads events into msgCh.
@@ -567,6 +623,10 @@ func (t *sseTransport) readEventStream() {
 		return
 	}
 	req.Header.Set("Accept", "text/event-stream")
+	if err := t.applyHeaders(req); err != nil {
+		utils.LogWithFields(utils.LevelError, "mcp.sse", "event stream header resolution failed", map[string]any{"error": err.Error()})
+		return
+	}
 
 	resp, err := t.client.Do(req)
 	if err != nil {
@@ -612,6 +672,9 @@ func (t *sseTransport) Send(msg json.RawMessage) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if err := t.applyHeaders(req); err != nil {
+		return err
+	}
 
 	resp, err := t.client.Do(req)
 	if err != nil {

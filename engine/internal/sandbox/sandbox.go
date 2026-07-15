@@ -97,10 +97,13 @@ func ValidateShellSyntax(command string) (safe bool, reason string) {
 }
 
 // ValidateWithConfig checks a command against both default and custom patterns.
-func ValidateWithConfig(command string, cfg Config) (safe bool, reason string) {
+// The returned source names which pattern set produced a block: "default" when
+// a built-in dangerous pattern matched, "custom" when a config-supplied pattern
+// matched. When the command is safe, source is "" (no block occurred).
+func ValidateWithConfig(command string, cfg Config) (safe bool, reason string, source string) {
 	// Check default patterns first.
 	if safe, reason := ValidateShellSyntax(command); !safe {
-		return false, reason
+		return false, reason, "default"
 	}
 
 	// Check custom patterns.
@@ -110,11 +113,11 @@ func ValidateWithConfig(command string, cfg Config) (safe bool, reason string) {
 			continue
 		}
 		if re.MatchString(command) {
-			return false, p.Reason
+			return false, p.Reason, "custom"
 		}
 	}
 
-	return true, ""
+	return true, "", ""
 }
 
 // WrapCommand wraps a command with platform-appropriate sandbox restrictions.
@@ -127,7 +130,7 @@ func WrapCommand(command string, cfg Config, platform string) (string, error) {
 	}
 
 	// Validate first.
-	if safe, reason := ValidateWithConfig(command, cfg); !safe {
+	if safe, reason, _ := ValidateWithConfig(command, cfg); !safe {
 		return "", fmt.Errorf("command blocked: %s", reason)
 	}
 

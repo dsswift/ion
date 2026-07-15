@@ -1,7 +1,6 @@
 package server
 
 import (
-	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -77,7 +76,7 @@ func (o *sessionOwnership) setGraceWindow(d time.Duration) {
 	o.mu.Lock()
 	o.graceWindow = d
 	o.mu.Unlock()
-	utils.Info("Server", fmt.Sprintf("sessionOwnership: reap grace window set to %s", d))
+	utils.LogWithFields(utils.LevelInfo, "server", "session ownership reap grace window set", map[string]any{"duration_ms": d.Milliseconds()})
 }
 
 // claim records that conn owns the given session key. Idempotent. If the key
@@ -104,7 +103,7 @@ func (o *sessionOwnership) claim(conn net.Conn, key string) {
 	if t, ok := o.pendingReaps[key]; ok {
 		t.Stop()
 		delete(o.pendingReaps, key)
-		utils.Info("Server", fmt.Sprintf("sessionOwnership.claim: cancelled pending reap key=%s (re-owned)", key))
+		utils.LogWithFields(utils.LevelInfo, "server", "session ownership claim cancelled pending reap re-owned", map[string]any{"session_id": key})
 	}
 }
 
@@ -131,7 +130,7 @@ func (o *sessionOwnership) releaseConn(conn net.Conn) {
 			delete(o.owners, key)
 			o.scheduleReapLocked(key)
 		} else {
-			utils.Debug("Server", fmt.Sprintf("sessionOwnership.releaseConn: key=%s still has %d owner(s), not reaping", key, len(owners)))
+			utils.LogWithFields(utils.LevelDebug, "server", "session ownership release conn still has owners not reaping", map[string]any{"session_id": key, "count": len(owners)})
 		}
 	}
 }
@@ -145,7 +144,7 @@ func (o *sessionOwnership) scheduleReapLocked(key string) {
 	if _, exists := o.pendingReaps[key]; exists {
 		return
 	}
-	utils.Info("Server", fmt.Sprintf("sessionOwnership: last owner gone, scheduling reap key=%s grace=%s", key, o.graceWindow))
+	utils.LogWithFields(utils.LevelInfo, "server", "session ownership last owner gone scheduling reap", map[string]any{"session_id": key, "duration_ms": o.graceWindow.Milliseconds()})
 	o.pendingReaps[key] = time.AfterFunc(o.graceWindow, func() {
 		o.mu.Lock()
 		// Re-check: a reconnect within the window may have re-claimed the key,
@@ -159,13 +158,13 @@ func (o *sessionOwnership) scheduleReapLocked(key string) {
 		// Owners may have reappeared between Stop races; double-check.
 		if owners := o.owners[key]; len(owners) > 0 {
 			o.mu.Unlock()
-			utils.Info("Server", fmt.Sprintf("sessionOwnership: reap aborted key=%s (re-owned during window)", key))
+			utils.LogWithFields(utils.LevelInfo, "server", "session ownership reap aborted re-owned during window", map[string]any{"session_id": key})
 			return
 		}
 		reap := o.reap
 		o.mu.Unlock()
 
-		utils.Info("Server", fmt.Sprintf("sessionOwnership: grace window expired, reaping orphaned session key=%s", key))
+		utils.LogWithFields(utils.LevelInfo, "server", "session ownership grace window expired reaping orphaned session", map[string]any{"session_id": key})
 		if reap != nil {
 			reap(key)
 		}
@@ -205,7 +204,7 @@ func (s *Server) evictClient(conn net.Conn) {
 			close(cw.done)
 		}
 		if err := conn.Close(); err != nil {
-			utils.Log("Server", fmt.Sprintf("removeClient: conn close failed: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "server", "remove client conn close failed", map[string]any{"error": err.Error()})
 		}
 	}
 }

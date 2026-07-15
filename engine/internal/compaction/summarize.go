@@ -62,20 +62,20 @@ Be concise but specific. Preserve exact file paths, function names, error messag
 // call rather than substitute a built-in default.
 func resolveSummaryModel(explicitModel string) string {
 	if explicitModel != "" {
-		utils.Debug("Compaction", fmt.Sprintf("resolveSummaryModel: explicit=%s", explicitModel))
+		utils.LogWithFields(utils.LevelDebug, "compaction", "resolve summary model explicit", map[string]any{"model": explicitModel})
 		return explicitModel
 	}
 
 	// Check if user configured a "fast" tier in models.json.
 	if fast := modelconfig.ResolveTier("fast"); fast != "" && fast != "fast" {
-		utils.Debug("Compaction", fmt.Sprintf("resolveSummaryModel: fast-tier=%s", fast))
+		utils.LogWithFields(utils.LevelDebug, "compaction", "resolve summary model fast tier", map[string]any{"model": fast})
 		return fast
 	}
 
 	// Fall back to the user's defaultModel.
 	config := modelconfig.LoadModelsConfig()
 	if dm, ok := config["defaultModel"].(string); ok && dm != "" {
-		utils.Debug("Compaction", fmt.Sprintf("resolveSummaryModel: defaultModel=%s", dm))
+		utils.LogWithFields(utils.LevelDebug, "compaction", "resolve summary model default", map[string]any{"model": dm})
 		return dm
 	}
 
@@ -113,11 +113,11 @@ func Summarize(ctx context.Context, text, model string, maxTokens int) (string, 
 
 	provider := providers.ResolveProvider(resolved)
 	if provider == nil {
-		utils.Log("Compaction", fmt.Sprintf("Summarize: no provider found for model %q", resolved))
+		utils.LogWithFields(utils.LevelInfo, "compaction", "summarize no provider found for model", map[string]any{"model": resolved})
 		return "", nil
 	}
 
-	utils.Log("Compaction", fmt.Sprintf("Summarize: starting LLM summary call model=%s maxTokens=%d inputLen=%d", resolved, maxTokens, len(text)))
+	utils.LogWithFields(utils.LevelInfo, "compaction", "summarize starting llm summary call", map[string]any{"model": resolved, "max": maxTokens, "count": len(text)})
 
 	messages := []types.LlmMessage{
 		{
@@ -158,16 +158,15 @@ func Summarize(ctx context.Context, text, model string, maxTokens int) (string, 
 	// Drain the error channel (same pattern as titling.go).
 	if errc != nil {
 		if err := <-errc; err != nil {
-			utils.Warn("Compaction", fmt.Sprintf("Summarize: LLM call failed: %v", err))
+			utils.LogWithFields(utils.LevelWarn, "compaction", "summarize llm call failed", map[string]any{"error": err.Error()})
 			return "", nil
 		}
 	}
 
 	result := strings.TrimSpace(response.String())
-	utils.Log("Compaction", fmt.Sprintf(
-		"Summarize: completed, summary length=%d chars, inputTokens=%d outputTokens=%d",
-		len(result), usage.InputTokens, usage.OutputTokens,
-	))
+	utils.LogWithFields(utils.LevelInfo, "compaction", "summarize completed", map[string]any{
+		"count": len(result), "turn": usage.InputTokens, "max": usage.OutputTokens,
+	})
 
 	if result == "" {
 		utils.Warn("Compaction", "Summarize: LLM returned empty response")
@@ -185,7 +184,7 @@ func Summarize(ctx context.Context, text, model string, maxTokens int) (string, 
 // messages (2000 chars) because tool results often contain system prompt echoes,
 // verbose command output, and file content that the LLM should not memorize.
 func FormatMessagesForSummary(messages []types.LlmMessage) string {
-	utils.Debug("Compaction", fmt.Sprintf("FormatMessagesForSummary: %d messages", len(messages)))
+	utils.LogWithFields(utils.LevelDebug, "compaction", "format messages for summary", map[string]any{"count": len(messages)})
 	var parts []string
 	truncated := 0
 	toolResultsTruncated := 0
@@ -213,6 +212,8 @@ func FormatMessagesForSummary(messages []types.LlmMessage) string {
 		parts = append(parts, fmt.Sprintf("[%s]: %s", msg.Role, text))
 	}
 	result := strings.Join(parts, "\n\n")
-	utils.Debug("Compaction", fmt.Sprintf("FormatMessagesForSummary: done totalLen=%d truncatedMsgs=%d toolResultsTruncated=%d", len(result), truncated, toolResultsTruncated))
+	utils.LogWithFields(utils.LevelDebug, "compaction", "format messages for summary done", map[string]any{
+		"count": len(result), "turn": truncated, "max": toolResultsTruncated,
+	})
 	return result
 }

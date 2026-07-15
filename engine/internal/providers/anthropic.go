@@ -14,6 +14,14 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
+// anthropicDefaultMaxTokens is the conservative fallback for the REQUIRED
+// max_tokens field when the engine has no per-model MaxOutputTokens value and
+// the caller set no explicit override (an unknown discovered/custom model). It
+// is deliberately conservative: an unknown model's true output cap cannot be
+// known, and overshooting risks a provider 400. Known catalog models carry their
+// real cap in models.json and never hit this path.
+const anthropicDefaultMaxTokens = 16384
+
 // ProviderOptions configures API key and base URL for a provider.
 type ProviderOptions struct {
 	ID         string // override provider ID (default: provider-specific)
@@ -109,11 +117,18 @@ func (p *anthropicProvider) doStream(ctx context.Context, opts types.LlmStreamOp
 
 	resp, err := p.client.Do(req)
 	if err != nil {
+		// Try transport classification first (covers "use of closed network
+		// connection", connection resets, etc. that FromAnthropicError's
+		// narrower checks miss and would otherwise collapse into a
+		// non-retryable ErrUnknown).
+		if pe := ClassifyTransportError(err); pe != nil {
+			return pe
+		}
 		return FromAnthropicError(err, 0, "")
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			utils.Log("anthropic", fmt.Sprintf("Stream: response body close failed: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "anthropic", "stream response body close failed", map[string]any{"error": err.Error()})
 		}
 	}()
 
@@ -133,7 +148,7 @@ func (p *anthropicProvider) doStream(ctx context.Context, opts types.LlmStreamOp
 	// Wrap with the per-event idle deadline + heartbeat so a stream that
 	// returns headers then goes silent is caught fast and retried, instead of
 	// blocking this loop indefinitely. See sse_idle.go.
-	sseCh, sseErr := streamWithIdle(rawCh, rawErr, "anthropic", opts.Model, "", nil)
+	sseCh, sseErr := streamWithIdle(rawCh, rawErr, "anthropic", opts.Model, "", nil, telemetryCorrelationFromContext(ctx))
 	for sse := range sseCh {
 		if sse.Data == "" {
 			continue
@@ -202,9 +217,14 @@ func (p *anthropicProvider) doStream(ctx context.Context, opts types.LlmStreamOp
 }
 
 func (p *anthropicProvider) buildRequestBody(opts types.LlmStreamOptions) map[string]any {
-	maxTokens := opts.MaxTokens
-	if maxTokens == 0 {
-		maxTokens = 16384
+	// Anthropic's Messages API REQUIRES max_tokens, so the field is always
+	// present. Prefer the resolved per-model value (caller override → registry
+	// MaxOutputTokens); fall back to a conservative constant only when the engine
+	// has no value for this model (unknown discovered/custom model), where the
+	// true cap is genuinely unknowable and a conservative value avoids a 400.
+	maxTokens, ok := resolveMaxOutputTokens(opts)
+	if !ok {
+		maxTokens = anthropicDefaultMaxTokens
 	}
 
 	body := map[string]any{
@@ -272,9 +292,42 @@ func (p *anthropicProvider) buildRequestBody(opts types.LlmStreamOptions) map[st
 		}
 	case "budget":
 		// Legacy mechanism for older models that lack adaptive support.
+		// Guard against a thinking budget that would consume the entire
+		// output window: if budget >= max_tokens the model can only ever emit
+		// thinking tokens, producing a max_tokens stop every turn with no
+		// usable output. Clamp to max_tokens-1 so the model retains at least
+		// one token of headroom for text/tool output. Logged at ERROR so the
+		// misconfiguration is visible in the logs (see runloop's max_tokens
+		// circuit breaker, which is the runtime backstop for this pathology).
+		budgetTokens := res.Budget
+		if err := ValidateThinkingBudget(budgetTokens, maxTokens); err != nil {
+			clamped := maxTokens - 1
+			utils.LogWithFields(utils.LevelError, "Thinking", "build request body clamping thinking budget", map[string]any{
+				"model": opts.Model, "error": err.Error(), "count": budgetTokens, "max": clamped})
+			budgetTokens = clamped
+		}
 		body["thinking"] = map[string]any{
 			"type":          "enabled",
-			"budget_tokens": res.Budget,
+			"budget_tokens": budgetTokens,
+		}
+	case "none":
+		// Self-engaged adaptive thinking (no consumer directive): adaptive
+		// models reason on their own even when the consumer sent no thinking
+		// config — but without a directive the API defaults display to
+		// "omitted", so the reasoning happens invisibly (empty thinking
+		// blocks: no deltas, estTokens=0). Send a display-only adaptive
+		// directive — NO output_config/effort, so reasoning depth is exactly
+		// what the model would self-regulate anyway — purely to make the
+		// reasoning the model already performs observable to consumers.
+		// Consumers that never want reasoning text keep their existing
+		// opt-outs: ThinkingConfig.StreamDeltas=false (wire) and
+		// Persist=false (history).
+		if info := GetModelInfo(opts.Model); info != nil && info.ThinkingMode == "adaptive" {
+			utils.LogWithFields(utils.LevelInfo, "Thinking", "build request body adaptive self-engaged display-only directive", map[string]any{"model": opts.Model})
+			body["thinking"] = map[string]any{
+				"type":    "adaptive",
+				"display": "summarized",
+			}
 		}
 	}
 
@@ -323,8 +376,7 @@ func (p *anthropicProvider) formatMessages(messages []types.LlmMessage) []map[st
 		// message's cache slot rather than poisoning the whole request.
 		if t, isText := last["type"].(string); isText && t == "text" {
 			if s, _ := last["text"].(string); s == "" {
-				utils.Debug("anthropic", fmt.Sprintf(
-					"cache_control: skipping empty text block at message %d", i))
+				utils.LogWithFields(utils.LevelDebug, "anthropic", "cache control skipping empty text block", map[string]any{"count": i})
 				continue
 			}
 		}

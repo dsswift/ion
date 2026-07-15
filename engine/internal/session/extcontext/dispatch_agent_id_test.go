@@ -12,6 +12,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/resource"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -60,8 +61,11 @@ func (a *idTestAccessor) BumpParentProgress()        {}
 func (a *idTestAccessor) EmitDispatchCountStatus(_ string) {}
 
 func (a *idTestAccessor) NewChildBackend() backend.RunBackend { return a.child }
+func (a *idTestAccessor) AllocatePlanFilePath() string        { return "/tmp/.ion/plans/plan.md" }
 func (a *idTestAccessor) RootContext() context.Context        { return context.Background() }
 func (a *idTestAccessor) SessionKey() string                       { return "id-test-session" }
+func (a *idTestAccessor) ExtensionName() string    { return "" }
+func (a *idTestAccessor) ExtensionVersion() string { return "" }
 func (a *idTestAccessor) ConversationID() string                   { return "" }
 func (a *idTestAccessor) WorkingDirectory() string                 { return "/tmp" }
 func (a *idTestAccessor) SendAbort()                               {}
@@ -84,6 +88,8 @@ func (a *idTestAccessor) ExtGroup() *extension.ExtensionGroup      { return nil 
 func (a *idTestAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
 func (a *idTestAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
 func (a *idTestAccessor) EngineConfig() *types.EngineRuntimeConfig { return nil }
+func (a *idTestAccessor) ClaudeCompat() bool { return false }
+func (a *idTestAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
 func (a *idTestAccessor) ResolveTier(_ string) string              { return "" }
 func (a *idTestAccessor) PermissionCheck(_ string, _ map[string]interface{}) (string, string) {
 	return "", ""
@@ -109,6 +115,7 @@ func (a *idTestAccessor) SendToSession(_, _, _ string, _ map[string]interface{})
 }
 func (a *idTestAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
 func (a *idTestAccessor) RunOnceComplete(_ string, _ bool)              {}
+func (a *idTestAccessor) Telemetry() *telemetry.Collector { return nil }
 
 // --- deterministic child backend ---
 

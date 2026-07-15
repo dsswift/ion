@@ -33,7 +33,7 @@ func (m *Manager) wirePermissionHookServer(s *engineSession, key string, opts *t
 
 	hookServer, err := backend.NewPermissionHookServer(permEng)
 	if err != nil {
-		utils.Log("Session", "PermissionHookServer start failed: "+err.Error())
+		utils.LogWithFields(utils.LevelInfo, "session", "permissionhookserver start failed", map[string]any{"error": err.Error()})
 		return
 	}
 	token := fmt.Sprintf("run-%d", time.Now().UnixMilli())
@@ -76,12 +76,12 @@ func (m *Manager) wirePermissionHookServer(s *engineSession, key string, opts *t
 
 	tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("ion-settings-%s.json", token))
 	if err := os.WriteFile(tmpFile, settingsJSON, 0600); err != nil {
-		utils.Log("Session", "failed to write hook settings: "+err.Error())
+		utils.LogWithFields(utils.LevelInfo, "session", "failed to write hook settings", map[string]any{"error": err.Error()})
 		hookServer.Close()
 		return
 	}
 	opts.HookSettingsPath = tmpFile
-	utils.Log("Session", fmt.Sprintf("hook settings written to %s", tmpFile))
+	utils.LogWithFields(utils.LevelInfo, "session", "hook settings written to", map[string]any{"tmp_file": tmpFile})
 }
 
 // buildToolAliasDirective renders a system-prompt directive that maps bare
@@ -118,7 +118,7 @@ func appendDirective(opts *types.RunOptions, directive string, names []string) {
 		opts.AppendSystemPrompt += "\n\n"
 	}
 	opts.AppendSystemPrompt += directive
-	utils.Log("Session", fmt.Sprintf("tool alias directive built (%d tools: %s)", len(names), strings.Join(names, ", ")))
+	utils.LogWithFields(utils.LevelInfo, "session", "tool alias directive built ( tools: )", map[string]any{"count": len(names), "join": strings.Join(names, ", ")})
 }
 
 // wireToolServer starts a ToolServer for CLI backend when extensions provide
@@ -148,12 +148,12 @@ func (m *Manager) wireToolServer(s *engineSession, key string, opts *types.RunOp
 		ts.RegisterTool(capturedTool.Name, handler, capturedTool.Description, capturedTool.Parameters)
 	}
 	if err := ts.Start(); err != nil {
-		utils.Log("Session", "ToolServer start failed: "+err.Error())
+		utils.LogWithFields(utils.LevelInfo, "session", "toolserver start failed", map[string]any{"error": err.Error()})
 		return
 	}
 	mcpPath, err := ts.McpConfigPath(key)
 	if err != nil {
-		utils.Log("Session", "ToolServer MCP config failed: "+err.Error())
+		utils.LogWithFields(utils.LevelInfo, "session", "toolserver mcp config failed", map[string]any{"error": err.Error()})
 		ts.Stop()
 		return
 	}
@@ -169,7 +169,7 @@ func (m *Manager) wireToolServer(s *engineSession, key string, opts *types.RunOp
 	directive := buildToolAliasDirective(bareNames, backend.McpServerName)
 	appendDirective(opts, directive, bareNames)
 
-	utils.Log("Session", fmt.Sprintf("ToolServer started for CLI backend (%d tools)", len(extTools)))
+	utils.LogWithFields(utils.LevelInfo, "session", "toolserver started for cli backend ( tools)", map[string]any{"count": len(extTools)})
 }
 
 // wireAgentToolServer registers an ion_agent tool on the ToolServer for CLI
@@ -211,12 +211,12 @@ func (m *Manager) wireAgentToolServer(s *engineSession, key string, opts *types.
 
 	if needsStart {
 		if err := ts.Start(); err != nil {
-			utils.Log("Session", "ToolServer start failed (agent tool): "+err.Error())
+			utils.LogWithFields(utils.LevelInfo, "session", "toolserver start failed (agent tool)", map[string]any{"error": err.Error()})
 			return
 		}
 		mcpPath, err := ts.McpConfigPath(key)
 		if err != nil {
-			utils.Log("Session", "ToolServer MCP config failed (agent tool): "+err.Error())
+			utils.LogWithFields(utils.LevelInfo, "session", "toolserver mcp config failed (agent tool)", map[string]any{"error": err.Error()})
 			ts.Stop()
 			return
 		}

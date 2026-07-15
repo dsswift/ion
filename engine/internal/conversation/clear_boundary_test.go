@@ -70,14 +70,21 @@ func TestClear_ContextBoundaryDuality(t *testing.T) {
 	if len(pre.Messages) == 0 {
 		t.Fatalf("setup: expected non-zero Messages before clear, got 0")
 	}
-	if pre.LastInputTokens == 0 {
-		t.Fatalf("setup: expected non-zero LastInputTokens before clear, got 0")
+	// After AddAssistantMessage, the last assistant message should have Usage set.
+	// Verify at least one assistant message has usage (i.e., GetContextUsage will use API path).
+	hasUsage := false
+	for _, msg := range pre.Messages {
+		if msg.Role == "assistant" && msg.Usage != nil {
+			hasUsage = true
+			break
+		}
+	}
+	if !hasUsage {
+		t.Fatalf("setup: expected at least one assistant message with Usage before clear")
 	}
 
-	// Simulate clear_core.go:112-114.
+	// Simulate clear_core.go: wipe Messages only (scalar was removed).
 	pre.Messages = nil
-	pre.LastInputTokens = 0
-	pre.LastInputTokensMsgCount = 0
 
 	if err := Save(pre, dir); err != nil {
 		t.Fatalf("post-clear Save: %v", err)
@@ -92,11 +99,11 @@ func TestClear_ContextBoundaryDuality(t *testing.T) {
 		t.Errorf("(a) Messages must be nil after /clear — LLM should see empty context; got %d messages: %+v",
 			len(post.Messages), post.Messages)
 	}
-	if post.LastInputTokens != 0 {
-		t.Errorf("(b) LastInputTokens must be 0 after /clear; got %d", post.LastInputTokens)
-	}
-	if post.LastInputTokensMsgCount != 0 {
-		t.Errorf("(b) LastInputTokensMsgCount must be 0 after /clear; got %d", post.LastInputTokensMsgCount)
+	// After clear, GetContextUsage should fall back to the heuristic (no assistant
+	// messages with Usage remain because Messages is nil).
+	usage := GetContextUsage(post, 200000)
+	if !usage.Estimated {
+		t.Errorf("(b) expected Estimated=true after /clear (no assistant messages to scan), got Estimated=false")
 	}
 
 	// (c): Inspect .tree.jsonl directly to prove the tree is intact.
@@ -168,15 +175,13 @@ func TestClear_RestartReattach(t *testing.T) {
 		t.Fatalf("initial Save: %v", err)
 	}
 
-	// Step 2: simulate /clear by loading, wiping Messages and counters, saving.
-	// This models the clearConversationCore path.
+	// Step 2: simulate /clear by loading, wiping Messages, saving.
+	// This models the clearConversationCore path (scalar removed).
 	mid, err := Load(id, dir)
 	if err != nil {
 		t.Fatalf("pre-clear Load: %v", err)
 	}
-	mid.Messages = nil               // clear_core.go:112
-	mid.LastInputTokens = 0          // clear_core.go:113
-	mid.LastInputTokensMsgCount = 0  // clear_core.go:114
+	mid.Messages = nil // clear_core.go: wipe the LLM context
 
 	if err := Save(mid, dir); err != nil {
 		t.Fatalf("post-clear Save: %v", err)
@@ -199,11 +204,10 @@ func TestClear_RestartReattach(t *testing.T) {
 		t.Errorf("restart: Messages must be nil after /clear — engine reconstructed %d messages from tree instead of reading empty .llm.jsonl: %+v",
 			len(reattached.Messages), reattached.Messages)
 	}
-	if reattached.LastInputTokens != 0 {
-		t.Errorf("restart: LastInputTokens must be 0 after /clear, got %d", reattached.LastInputTokens)
-	}
-	if reattached.LastInputTokensMsgCount != 0 {
-		t.Errorf("restart: LastInputTokensMsgCount must be 0 after /clear, got %d", reattached.LastInputTokensMsgCount)
+	// After /clear, GetContextUsage must fall back to heuristic (no messages to scan).
+	usage := GetContextUsage(reattached, 200000)
+	if !usage.Estimated {
+		t.Errorf("restart: expected Estimated=true after /clear (no assistant messages with Usage), got Estimated=false")
 	}
 
 	// The tree must still be intact — the human transcript survives.

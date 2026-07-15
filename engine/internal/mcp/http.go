@@ -22,18 +22,40 @@ type httpTransport struct {
 	respCh    chan json.RawMessage
 	closed    atomic.Bool
 	closeOnce sync.Once
+	// userToken, when non-nil, resolves the signed-in operator's bearer
+	// token (config.forwardUserToken). Resolved on EVERY request -- the
+	// connection is long-lived, so a connect-time token would expire
+	// mid-session; per-request resolution rides the identity manager's
+	// cache + silent refresh instead.
+	userToken func() (string, error)
 }
 
-func newHTTPTransport(baseURL string, headers map[string]string) (*httpTransport, error) {
+func newHTTPTransport(baseURL string, headers map[string]string, userToken func() (string, error)) (*httpTransport, error) {
 	if baseURL == "" {
 		return nil, fmt.Errorf("HTTP transport requires base URL")
 	}
 	return &httpTransport{
-		baseURL: baseURL,
-		headers: headers,
-		client:  &http.Client{},
-		respCh:  make(chan json.RawMessage, 64),
+		baseURL:   baseURL,
+		headers:   headers,
+		client:    &http.Client{},
+		respCh:    make(chan json.RawMessage, 64),
+		userToken: userToken,
 	}, nil
+}
+
+// applyUserToken stamps the operator bearer token when forwarding is
+// configured. Applied after static headers so the freshly-minted token
+// wins over any stale static Authorization value.
+func (t *httpTransport) applyUserToken(req *http.Request) error {
+	if t.userToken == nil {
+		return nil
+	}
+	token, err := t.userToken()
+	if err != nil {
+		return fmt.Errorf("resolve operator token: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	return nil
 }
 
 func (t *httpTransport) Send(msg json.RawMessage) error {
@@ -53,13 +75,17 @@ func (t *httpTransport) Send(msg json.RawMessage) error {
 	}
 	t.mu.Unlock()
 
+	if err := t.applyUserToken(req); err != nil {
+		return err
+	}
+
 	resp, err := t.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("http send: %w", err)
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			utils.Log("mcp-http", fmt.Sprintf("send: response body close failed: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "mcp.http", "response body close failed", map[string]any{"error": err.Error()})
 		}
 	}()
 
@@ -111,6 +137,11 @@ func (t *httpTransport) Close() error {
 				req.Header.Set("Mcp-Session-Id", sid)
 				for k, v := range t.headers {
 					req.Header.Set(k, v)
+				}
+				if tokenErr := t.applyUserToken(req); tokenErr != nil {
+					// Best-effort session cleanup: log and send without the
+					// token rather than leaking the server-side session.
+					utils.LogWithFields(utils.LevelInfo, "mcp.http", "operator token unavailable for session delete", map[string]any{"error": tokenErr.Error()})
 				}
 				resp, err := t.client.Do(req)
 				if err == nil {

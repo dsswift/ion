@@ -48,7 +48,7 @@ func (b *BraveSearchBackend) Search(ctx context.Context, query string, maxResult
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			utils.Log("web_search", fmt.Sprintf("brave: response body close failed: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "tools.web_search", "brave response body close failed", map[string]any{"error": err.Error()})
 		}
 	}()
 
@@ -108,7 +108,7 @@ func (t *TavilyBackend) Search(ctx context.Context, query string, maxResults int
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			utils.Log("web_search", fmt.Sprintf("tavily: response body close failed: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "tools.web_search", "tavily response body close failed", map[string]any{"error": err.Error()})
 		}
 	}()
 
@@ -162,7 +162,7 @@ func (s *SearXNGBackend) Search(ctx context.Context, query string, maxResults in
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			utils.Log("web_search", fmt.Sprintf("searxng: response body close failed: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "tools.web_search", "searxng response body close failed", map[string]any{"error": err.Error()})
 		}
 	}()
 

@@ -101,9 +101,9 @@ func shellCommand(ctx context.Context, command string) (string, []string) {
 	sc := types.ShellConfigFrom(ctx)
 	shell, args, loginShell := sc.Resolve(command)
 	if loginShell {
-		utils.Debug("Bash", "shell=login resolved="+shell+" args=-lc")
+		utils.LogWithFields(utils.LevelDebug, "tools.bash", "shell resolved login", map[string]any{"path": shell})
 	} else {
-		utils.Debug("Bash", "shell=default resolved="+shell)
+		utils.LogWithFields(utils.LevelDebug, "tools.bash", "shell resolved default", map[string]any{"path": shell})
 	}
 	return shell, args
 }

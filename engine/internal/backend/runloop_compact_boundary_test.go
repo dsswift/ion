@@ -280,11 +280,7 @@ func TestCompactReactive_DuplicationFirewall(t *testing.T) {
 // proactive path was uncovered until this test landed — a regression
 // that broke proactive injection while leaving reactive untouched would
 // ship green.
-//
-// Setup mirrors the reactive test: a seeded conversation with content
-// the regex extractor will pick up, plus enough filler that
-// CompactToTokenBudget actually drops messages. The two key knobs that
-// differ are LastInputTokens (so usage.Tokens > tokenLimit triggers the
+// differ are the Usage on the last assistant message (so usage.Tokens > tokenLimit triggers the
 // proactive entry) and the explicit (contextWindow, tokenLimit) args
 // passed to compactIfNeeded (the reactive path infers these from
 // usageBefore on each retry).
@@ -301,11 +297,16 @@ func TestCompactIfNeeded_InjectsCompactBoundary(t *testing.T) {
 		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: "filler q"})
 		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: "filler a"})
 	}
-	// Prime LastInputTokens above tokenLimit so usage.Tokens > tokenLimit
-	// at the top of compactIfNeeded; without this priming the function
-	// short-circuits before reaching the boundary-injection branch.
-	conv.LastInputTokens = 180_000
-	conv.LastInputTokensMsgCount = len(conv.Messages)
+	// Prime Usage above tokenLimit so usage.Tokens > tokenLimit at the top of
+	// compactIfNeeded; without this priming the function short-circuits before
+	// reaching the boundary-injection branch.
+	for i := len(conv.Messages) - 1; i >= 0; i-- {
+		if conv.Messages[i].Role == "assistant" {
+			u := types.LlmUsage{InputTokens: 180_000}
+			conv.Messages[i].Usage = &u
+			break
+		}
+	}
 
 	run := &activeRun{requestID: "proactive-boundary", conv: conv}
 	cp := testCP()
@@ -377,8 +378,14 @@ func TestCompactIfNeeded_HookPathReceivesAutoStrategy(t *testing.T) {
 		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: "filler q"})
 		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: "filler a"})
 	}
-	conv.LastInputTokens = 180_000
-	conv.LastInputTokensMsgCount = len(conv.Messages)
+	// Prime Usage above tokenLimit so compactIfNeeded triggers.
+	for i := len(conv.Messages) - 1; i >= 0; i-- {
+		if conv.Messages[i].Role == "assistant" {
+			u := types.LlmUsage{InputTokens: 180_000}
+			conv.Messages[i].Usage = &u
+			break
+		}
+	}
 
 	gotStrategy := ""
 	hookCalls := 0

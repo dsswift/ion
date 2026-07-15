@@ -21,7 +21,7 @@ func ValidatePdf(path string) error {
 	}
 	defer func() {
 		if err := f.Close(); err != nil {
-			utils.Log("pdf", fmt.Sprintf("ValidatePdf: close %s failed: %v", path, err))
+			utils.LogWithFields(utils.LevelInfo, "pdf", "validate pdf close failed", map[string]any{"path": path, "error": err.Error()})
 		}
 	}()
 
@@ -89,7 +89,7 @@ func ExtractPdfPages(path string, pageRange string) ([]string, error) {
 	}
 	defer func() {
 		if err := os.RemoveAll(tmpDir); err != nil {
-			utils.Log("pdf", fmt.Sprintf("ExtractPdfPages: cleanup %s failed: %v", tmpDir, err))
+			utils.LogWithFields(utils.LevelInfo, "pdf", "extract pdf pages cleanup failed", map[string]any{"path": tmpDir, "error": err.Error()})
 		}
 	}()
 

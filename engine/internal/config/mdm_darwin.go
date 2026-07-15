@@ -24,13 +24,13 @@ func loadPlatformMDM() map[string]interface{} {
 
 	out, err := exec.CommandContext(ctx, "plutil", "-convert", "json", mdmPlistPath, "-o", "-").Output()
 	if err != nil {
-		utils.Log("MDM", "failed to read macOS plist: "+err.Error())
+		utils.LogWithFields(utils.LevelInfo, "config.mdm", "failed to read macos plist", map[string]any{"error": err.Error()})
 		return nil
 	}
 
 	var result map[string]interface{}
 	if err := json.Unmarshal(out, &result); err != nil {
-		utils.Log("MDM", "failed to parse macOS plist JSON: "+err.Error())
+		utils.LogWithFields(utils.LevelInfo, "config.mdm", "failed to parse macos plist json", map[string]any{"error": err.Error()})
 		return nil
 	}
 

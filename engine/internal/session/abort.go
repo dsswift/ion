@@ -1,7 +1,6 @@
 package session
 
 import (
-	"fmt"
 
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -10,12 +9,12 @@ import (
 // SendAbort cancels the active run for the given session and reaps any
 // dispatched child agents so they do not continue running standalone.
 func (m *Manager) SendAbort(key string) {
-	utils.Info("Session", fmt.Sprintf("SendAbort: key=%s", key))
+	utils.LogWithFields(utils.LevelInfo, "session", "sendabort", map[string]any{"key": key})
 	m.mu.Lock()
 	s, ok := m.sessions[key]
 	if !ok {
 		m.mu.Unlock()
-		utils.Warn("Session", fmt.Sprintf("SendAbort: session not found for key=%s", key))
+		utils.LogWithFields(utils.LevelWarn, "session", "sendabort: session not found for", map[string]any{"key": key})
 		return
 	}
 	rid := s.requestID
@@ -33,7 +32,7 @@ func (m *Manager) SendAbort(key string) {
 	// desync the backend's per-run watchdog / terminal-status contract and
 	// risk a double dispatch.
 	if dropped := len(s.promptQueue); dropped > 0 {
-		utils.Info("Session", fmt.Sprintf("SendAbort: dropping %d queued prompt(s) for key=%s", dropped, key))
+		utils.LogWithFields(utils.LevelInfo, "session", "sendabort: dropping queued prompt(s) for", map[string]any{"dropped": dropped, "key": key})
 		s.promptQueue = nil
 	}
 	m.mu.Unlock()
@@ -50,10 +49,10 @@ func (m *Manager) SendAbort(key string) {
 	s.cancelSessionRoot("user abort")
 
 	if rid != "" {
-		utils.Info("Session", fmt.Sprintf("SendAbort: cancelling requestID=%s for key=%s", rid, key))
+		utils.LogWithFields(utils.LevelInfo, "session", "sendabort: cancelling for", map[string]any{"run_id": rid, "key": key})
 		m.backend.Cancel(rid)
 	} else {
-		utils.Warn("Session", fmt.Sprintf("SendAbort: no active requestID for key=%s (reaping descendants only)", key))
+		utils.LogWithFields(utils.LevelWarn, "session", "sendabort: no active requestid for (reaping descendants only)", map[string]any{"key": key})
 	}
 	// Always reap descendants — they may outlive the parent run
 	m.abortAllDescendants(key, "user abort")
@@ -74,7 +73,7 @@ func (m *Manager) abortAllDescendants(key, reason string) {
 	s, ok := m.sessions[key]
 	if !ok {
 		m.mu.RUnlock()
-		utils.Warn("Session", fmt.Sprintf("abortAllDescendants: session not found key=%s reason=%s", key, reason))
+		utils.LogWithFields(utils.LevelWarn, "session", "abortalldescendants: session not found", map[string]any{"key": key, "reason": reason})
 		return
 	}
 	hasExt := s.extGroup != nil && !s.extGroup.IsEmpty()
@@ -82,11 +81,11 @@ func (m *Manager) abortAllDescendants(key, reason string) {
 
 	pids, names := s.agents.ClearHandles()
 	if len(pids) == 0 {
-		utils.Debug("Session", fmt.Sprintf("abortAllDescendants: no handles to clear key=%s reason=%s", key, reason))
+		utils.LogWithFields(utils.LevelDebug, "session", "abortalldescendants: no handles to clear", map[string]any{"key": key, "reason": reason})
 		return
 	}
 
-	utils.Warn("Session", fmt.Sprintf("aborting %d descendant agent(s) (%s): key=%s names=%v", len(pids), reason, key, names))
+	utils.LogWithFields(utils.LevelWarn, "session", "aborting descendant agent(s) ()", map[string]any{"count": len(pids), "reason": reason, "key": key, "model": names})
 	for _, pid := range pids {
 		killProcess(pid)
 	}
@@ -104,7 +103,7 @@ func (m *Manager) abortAllDescendants(key, reason string) {
 			}
 			state.Metadata["lastWork"] = "cancelled: " + reason
 		})
-		utils.Log("Session", fmt.Sprintf("agent_terminated name=%s status=cancelled reason=%s key=%s", name, reason, key))
+		utils.LogWithFields(utils.LevelInfo, "session", "agent_terminated status=cancelled", map[string]any{"model": name, "reason": reason, "key": key})
 	}
 
 	// Emit the authoritative snapshot. Skip only when the session has
@@ -113,12 +112,12 @@ func (m *Manager) abortAllDescendants(key, reason string) {
 	// corrective snapshot on extension death (see handleHostDeath).
 	if !hasExt {
 		snapshot := s.agents.MergedSnapshot()
-		utils.Log("Session", fmt.Sprintf("agent_snapshot_emitted key=%s count=%d reason=abort", key, len(snapshot)))
+		utils.LogWithFields(utils.LevelInfo, "session", "agent_snapshot_emitted reason=abort", map[string]any{"key": key, "count": len(snapshot)})
 		m.emit(key, types.EngineEvent{
 			Type:   "engine_agent_state",
 			Agents: snapshot,
 		})
 	} else {
-		utils.Debug("Session", fmt.Sprintf("abortAllDescendants: skipping engine snapshot — extension owns agent registry key=%s", key))
+		utils.LogWithFields(utils.LevelDebug, "session", "abortalldescendants: skipping engine snapshot — extension owns agent registry", map[string]any{"key": key})
 	}
 }

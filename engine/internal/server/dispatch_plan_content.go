@@ -59,10 +59,7 @@ func (s *Server) dispatchGetPlanContent(conn net.Conn, cmd *protocol.ClientComma
 		limit = defaultPlanWindowBytes
 	}
 
-	utils.Info("Server", fmt.Sprintf(
-		"get_plan_content: key=%s path=%s offset=%d limit=%d",
-		key, reqPath, offset, limit,
-	))
+	utils.LogWithFields(utils.LevelInfo, "server", "get plan content", map[string]any{"session_id": key, "path": reqPath, "count": offset, "max": limit})
 
 	// ---- Security: path containment check --------------------------------
 	// The plan file must live inside one of the valid plan directories for
@@ -80,15 +77,11 @@ func (s *Server) dispatchGetPlanContent(conn net.Conn, cmd *protocol.ClientComma
 	checkPath := reqPath
 	if resolved, err := filepath.EvalSymlinks(reqPath); err == nil {
 		if resolved != reqPath {
-			utils.Debug("Server", fmt.Sprintf(
-				"get_plan_content: resolved symlink path=%s -> %s", reqPath, resolved,
-			))
+			utils.LogWithFields(utils.LevelDebug, "server", "get plan content resolved symlink", map[string]any{"path": reqPath, "reason": resolved})
 		}
 		checkPath = resolved
 	} else {
-		utils.Debug("Server", fmt.Sprintf(
-			"get_plan_content: EvalSymlinks fell back to lexical path=%s err=%v", reqPath, err,
-		))
+		utils.LogWithFields(utils.LevelDebug, "server", "get plan content eval symlinks fell back to lexical", map[string]any{"path": reqPath, "error": err.Error()})
 	}
 
 	allowed := false
@@ -113,10 +106,7 @@ func (s *Server) dispatchGetPlanContent(conn net.Conn, cmd *protocol.ClientComma
 		}
 	}
 	if !allowed {
-		utils.Warn("Server", fmt.Sprintf(
-			"get_plan_content: rejected path outside plan dirs key=%s path=%s checkPath=%s planDirs=%v",
-			key, reqPath, checkPath, planDirs,
-		))
+		utils.LogWithFields(utils.LevelWarn, "server", "get plan content rejected path outside plan dirs", map[string]any{"session_id": key, "path": reqPath})
 		s.sendResult(conn, cmd, fmt.Errorf(
 			"path %q is outside the plan directory for this session", reqPath,
 		), nil)
@@ -126,15 +116,13 @@ func (s *Server) dispatchGetPlanContent(conn net.Conn, cmd *protocol.ClientComma
 	// ---- Read the byte window --------------------------------------------
 	f, err := os.Open(reqPath)
 	if err != nil {
-		utils.Warn("Server", fmt.Sprintf(
-			"get_plan_content: open failed key=%s path=%s err=%v", key, reqPath, err,
-		))
+		utils.LogWithFields(utils.LevelWarn, "server", "get plan content open failed", map[string]any{"session_id": key, "path": reqPath, "error": err.Error()})
 		s.sendResult(conn, cmd, fmt.Errorf("could not open plan file: %w", err), nil)
 		return
 	}
 	defer func() {
 		if cerr := f.Close(); cerr != nil {
-			utils.Log("Server", fmt.Sprintf("get_plan_content: close failed path=%s err=%v", reqPath, cerr))
+			utils.LogWithFields(utils.LevelInfo, "server", "get plan content close failed", map[string]any{"path": reqPath, "error": cerr.Error()})
 		}
 	}()
 
@@ -186,7 +174,7 @@ func (s *Server) emitPlanContent(conn net.Conn, cmd *protocol.ClientCommand, pla
 	}
 	raw, err := json.Marshal(evt)
 	if err != nil {
-		utils.Warn("Server", "get_plan_content: marshal failed: "+err.Error())
+		utils.LogWithFields(utils.LevelWarn, "server", "get plan content marshal failed", map[string]any{"error": err.Error()})
 		s.sendResult(conn, cmd, fmt.Errorf("internal marshal error: %w", err), nil)
 		return
 	}

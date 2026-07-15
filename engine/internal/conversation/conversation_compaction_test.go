@@ -48,11 +48,12 @@ func TestEstimateTokens(t *testing.T) {
 func TestGetContextUsage(t *testing.T) {
 	t.Run("reported tokens", func(t *testing.T) {
 		conv := CreateConversation("cu-1", "", "claude-3")
-		conv.LastInputTokens = 60000
+		AddUserMessage(conv, "hello")
+		AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "hi"}}, types.LlmUsage{InputTokens: 60000, OutputTokens: 100})
 
 		info := GetContextUsage(conv, 200000)
 		if info.Estimated {
-			t.Error("should not be estimated when tokens are reported")
+			t.Error("should not be estimated when assistant message has Usage")
 		}
 		if info.Tokens != 60000 {
 			t.Errorf("Tokens = %d, want 60000", info.Tokens)
@@ -70,7 +71,7 @@ func TestGetContextUsage(t *testing.T) {
 		AddUserMessage(conv, "hello world this is a test message")
 		info := GetContextUsage(conv, 0)
 		if !info.Estimated {
-			t.Error("should be estimated when no reported tokens")
+			t.Error("should be estimated when no assistant messages with Usage")
 		}
 		if info.Limit != DefaultContext {
 			t.Errorf("Limit = %d, want %d", info.Limit, DefaultContext)
@@ -405,7 +406,9 @@ func TestEstimateTokens_MessageArrayImageAware(t *testing.T) {
 
 func TestGetContextUsage_PercentCap(t *testing.T) {
 	conv := CreateConversation("cap-test", "", "claude-3")
-	conv.LastInputTokens = 30000
+	AddUserMessage(conv, "hello")
+	u := types.LlmUsage{InputTokens: 30000}
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "hi"}}, u)
 
 	info := GetContextUsage(conv, 10000)
 	if info.Percent != 100 {
@@ -579,7 +582,9 @@ func TestCompactWithSummary_InsertsSummaryAsFirstMessage(t *testing.T) {
 
 func TestGetContextUsage_ExactThreshold(t *testing.T) {
 	conv := CreateConversation("threshold", "", "claude-3")
-	conv.LastInputTokens = 200000
+	AddUserMessage(conv, "hello")
+	u := types.LlmUsage{InputTokens: 200000}
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "hi"}}, u)
 
 	info := GetContextUsage(conv, 200000)
 	if info.Percent != 100 {
@@ -781,136 +786,20 @@ func TestAutoCompactTokenLimit(t *testing.T) {
 }
 
 // --- Cache invalidation across compaction paths ---
-
-func TestCompactResetsLastInputTokens(t *testing.T) {
-	conv := CreateConversation("reset-compact", "", "claude-3")
-	for i := 0; i < 10; i++ {
-		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: "q"})
-		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: "a"})
-	}
-	conv.LastInputTokens = 165000
-	conv.LastInputTokensMsgCount = len(conv.Messages)
-
-	Compact(conv, 3)
-
-	if conv.LastInputTokens != 0 {
-		t.Errorf("LastInputTokens = %d after Compact, want 0", conv.LastInputTokens)
-	}
-	if conv.LastInputTokensMsgCount != 0 {
-		t.Errorf("LastInputTokensMsgCount = %d after Compact, want 0", conv.LastInputTokensMsgCount)
-	}
-}
-
-func TestMicroCompactResetsLastInputTokensWhenSomethingCleared(t *testing.T) {
-	conv := CreateConversation("reset-micro", "", "claude-3")
-	// 12 user/assistant pairs so MicroCompact can drop tool results from
-	// older messages while keeping the last 10 turns.
-	for i := 0; i < 12; i++ {
-		conv.Messages = append(conv.Messages, types.LlmMessage{
-			Role: "user",
-			Content: []types.LlmContentBlock{{
-				Type:    "tool_result",
-				Content: strings.Repeat("x", 500),
-			}},
-		})
-		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: "a"})
-	}
-	conv.LastInputTokens = 165000
-	conv.LastInputTokensMsgCount = len(conv.Messages)
-
-	cleared := MicroCompact(conv, 10)
-	if cleared == 0 {
-		t.Fatal("expected MicroCompact to clear something for this fixture")
-	}
-	if conv.LastInputTokens != 0 {
-		t.Errorf("LastInputTokens = %d after MicroCompact, want 0", conv.LastInputTokens)
-	}
-	if conv.LastInputTokensMsgCount != 0 {
-		t.Errorf("LastInputTokensMsgCount = %d after MicroCompact, want 0", conv.LastInputTokensMsgCount)
-	}
-}
-
-func TestMicroCompactNoClearKeepsTokenCache(t *testing.T) {
-	conv := CreateConversation("noclear-micro", "", "claude-3")
-	// Single short message — nothing to clear or truncate.
-	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: "hi"})
-	conv.LastInputTokens = 42
-	conv.LastInputTokensMsgCount = 1
-
-	cleared := MicroCompact(conv, 10)
-	if cleared != 0 {
-		t.Fatalf("expected no clears, got %d", cleared)
-	}
-	if conv.LastInputTokens != 42 {
-		t.Errorf("LastInputTokens = %d, want 42 (no mutation should not invalidate cache)", conv.LastInputTokens)
-	}
-}
-
-func TestCompactWithSummaryResetsLastInputTokens(t *testing.T) {
-	conv := CreateConversation("reset-summary", "", "claude-3")
-	for i := 0; i < 12; i++ {
-		conv.Messages = append(conv.Messages, types.LlmMessage{
-			Role:    "user",
-			Content: []types.LlmContentBlock{{Type: "text", Text: fmt.Sprintf("user message %d", i)}},
-		})
-		conv.Messages = append(conv.Messages, types.LlmMessage{
-			Role:    "assistant",
-			Content: []types.LlmContentBlock{{Type: "text", Text: fmt.Sprintf("assistant reply %d", i)}},
-		})
-	}
-	conv.LastInputTokens = 99999
-	conv.LastInputTokensMsgCount = len(conv.Messages)
-
-	summarize := func(text string) (string, error) { return "summary of older turns", nil }
-	if err := CompactWithSummary(conv, summarize, 3); err != nil {
-		t.Fatalf("CompactWithSummary returned error: %v", err)
-	}
-	if conv.LastInputTokens != 0 {
-		t.Errorf("LastInputTokens = %d after CompactWithSummary, want 0", conv.LastInputTokens)
-	}
-	if conv.LastInputTokensMsgCount != 0 {
-		t.Errorf("LastInputTokensMsgCount = %d after CompactWithSummary, want 0", conv.LastInputTokensMsgCount)
-	}
-}
-
-func TestGetContextUsageFallsBackToEstimateAfterCompactReset(t *testing.T) {
-	conv := CreateConversation("fallback", "", "claude-3")
-	for i := 0; i < 10; i++ {
-		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: "q"})
-		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: "a"})
-	}
-	conv.LastInputTokens = 165000
-	conv.LastInputTokensMsgCount = len(conv.Messages)
-
-	preInfo := GetContextUsage(conv, 200000)
-	if preInfo.Estimated {
-		t.Fatal("setup: expected reported (non-estimated) tokens before compaction")
-	}
-
-	Compact(conv, 3)
-
-	postInfo := GetContextUsage(conv, 200000)
-	if !postInfo.Estimated {
-		t.Errorf("expected estimated=true after Compact reset; got reported %d tokens", postInfo.Tokens)
-	}
-	if postInfo.Tokens >= 165000 {
-		t.Errorf("post-compact estimate should be far below the stale 165000, got %d", postInfo.Tokens)
-	}
-}
+// (The legacy LastInputTokens / LastInputTokensMsgCount scalar pair was removed.
+// The new tests below verify that GetContextUsage uses the backward scan correctly
+// after compaction — see TestGetContextUsage_UsesLastAssistantMessageUsage et al.)
 
 // --- Context usage edge cases ---
 
-func TestGetContextUsage_EstimatedBranch_WhenLastInputTokensZero(t *testing.T) {
+func TestGetContextUsage_FallsBackToEstimate_NoAssistantMessages(t *testing.T) {
 	conv := CreateConversation("est-zero", "", "claude-3")
 	AddUserMessage(conv, "hello world this is a message")
-	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "hi there, here is a response"}}, types.LlmUsage{InputTokens: 100, OutputTokens: 50})
-	// Simulate scenario where LastInputTokens is zero (e.g. after compaction reset)
-	conv.LastInputTokens = 0
-	conv.LastInputTokensMsgCount = 0
+	// No assistant messages with Usage — must fall back to heuristic estimate.
 
 	info := GetContextUsage(conv, 200000)
 	if !info.Estimated {
-		t.Error("expected estimated=true when LastInputTokens is zero")
+		t.Error("expected estimated=true when no assistant message has Usage")
 	}
 	if info.Tokens <= 0 {
 		t.Errorf("expected positive estimated tokens, got %d", info.Tokens)
@@ -919,21 +808,116 @@ func TestGetContextUsage_EstimatedBranch_WhenLastInputTokensZero(t *testing.T) {
 
 func TestGetContextUsage_AddsEstimateForNewMessages(t *testing.T) {
 	conv := CreateConversation("est-incr", "", "claude-3")
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 4; i++ {
 		AddUserMessage(conv, fmt.Sprintf("message %d with some content", i))
 		AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: fmt.Sprintf("response %d with some content", i)}}, types.LlmUsage{InputTokens: 50000, OutputTokens: 100})
 	}
-	// Simulate: API reported 50000 tokens at message count 8 (after 4 pairs).
-	// Then 2 more messages were added (pair 5).
-	conv.LastInputTokens = 50000
-	conv.LastInputTokensMsgCount = 8
+	// Now add a 5th user message without a corresponding assistant — simulating
+	// tool results added in the current turn that haven't been sent to the API yet.
+	AddUserMessage(conv, "fifth message added after last API response")
 
 	info := GetContextUsage(conv, 200000)
 	if info.Estimated {
-		t.Error("expected estimated=false when LastInputTokens > 0")
+		t.Error("expected estimated=false when last assistant message has Usage")
 	}
-	// Should be 50000 + estimate for messages at index 8 and 9
+	// Should be 50000 (from last assistant's Usage) + estimate for the 5th user message
 	if info.Tokens <= 50000 {
-		t.Errorf("expected tokens > 50000 (added estimates for new messages), got %d", info.Tokens)
+		t.Errorf("expected tokens > 50000 (added estimates for messages after last assistant), got %d", info.Tokens)
+	}
+}
+
+// --- New backward-scan GetContextUsage tests ---
+
+func TestGetContextUsage_UsesLastAssistantMessageUsage(t *testing.T) {
+	conv := CreateConversation("test", "sys", "model")
+	AddUserMessage(conv, "hello")
+	usage := types.LlmUsage{InputTokens: 60000, CacheReadInputTokens: 5000}
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "hi"}}, usage)
+
+	info := GetContextUsage(conv, 200000)
+	if info.Estimated {
+		t.Error("expected Estimated=false when assistant message has Usage")
+	}
+	want := 60000 + 5000 // input + cache_read (no output in the total)
+	if info.Tokens != want {
+		t.Errorf("Tokens = %d, want %d", info.Tokens, want)
+	}
+}
+
+func TestGetContextUsage_EstimatesNewMessagesSinceLastAssistant(t *testing.T) {
+	conv := CreateConversation("test", "sys", "model")
+	AddUserMessage(conv, "hello")
+	usage := types.LlmUsage{InputTokens: 50000}
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "hi"}}, usage)
+	// Simulate tool results added after the last assistant (not yet sent to API)
+	conv.Messages = append(conv.Messages, types.LlmMessage{
+		Role:    "user",
+		Content: []types.LlmContentBlock{{Type: "tool_result", Content: "some result content here"}},
+	})
+
+	info := GetContextUsage(conv, 200000)
+	if info.Estimated {
+		t.Error("expected Estimated=false (usage is from the last assistant)")
+	}
+	if info.Tokens <= 50000 {
+		t.Errorf("Tokens = %d, want > 50000 (should include estimate for tool result)", info.Tokens)
+	}
+}
+
+func TestGetContextUsage_FallbackIncludesSystemPrompt(t *testing.T) {
+	conv := CreateConversation("test", "system prompt content here", "model")
+	// No assistant messages with usage — forces heuristic path
+	AddUserMessage(conv, "hello")
+
+	info := GetContextUsage(conv, 200000)
+	if !info.Estimated {
+		t.Error("expected Estimated=true when no assistant message has Usage")
+	}
+	// Result should include system prompt estimate
+	systemEst := EstimateTokens(conv.System)
+	if info.Tokens <= 0 || systemEst == 0 {
+		t.Skip("nothing to assert without system prompt tokens")
+	}
+	msgEst := EstimateTokens(conv.Messages)
+	want := msgEst + systemEst
+	if info.Tokens != want {
+		t.Errorf("Tokens = %d, want %d (messages + system prompt)", info.Tokens, want)
+	}
+}
+
+func TestGetContextUsage_BackwardScanAfterBranch(t *testing.T) {
+	conv := CreateConversation("test", "sys", "model")
+	AddUserMessage(conv, "turn 1")
+	usage1 := types.LlmUsage{InputTokens: 10000}
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "reply 1"}}, usage1)
+
+	AddUserMessage(conv, "turn 2")
+	usage2 := types.LlmUsage{InputTokens: 20000}
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "reply 2"}}, usage2)
+
+	// Branch back to after turn 1 (leaf is the first assistant entry)
+	// Find the entry ID of the first assistant message
+	var firstAssistantEntryID string
+	for _, e := range conv.Entries {
+		md := asMessageData(e.Data)
+		if md != nil && md.Role == "assistant" {
+			firstAssistantEntryID = e.ID
+			break
+		}
+	}
+	if firstAssistantEntryID == "" {
+		t.Fatal("no assistant entry found")
+	}
+	_, err := Branch(conv, firstAssistantEntryID)
+	if err != nil {
+		t.Fatalf("Branch: %v", err)
+	}
+
+	info := GetContextUsage(conv, 200000)
+	if info.Estimated {
+		t.Error("expected Estimated=false after branch (surviving assistant has Usage)")
+	}
+	if info.Tokens != 10000 {
+		t.Errorf("Tokens = %d, want 10000 (usage from first assistant only)", info.Tokens)
 	}
 }

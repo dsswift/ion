@@ -1,7 +1,6 @@
 package backend
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/dsswift/ion/engine/internal/auth"
@@ -76,7 +75,9 @@ func NewHybridBackend() *HybridBackend {
 // CLI path is subscription-based and never touches the resolver, so it
 // receives no notification here.
 func (h *HybridBackend) SetAuthResolver(r *auth.Resolver) {
-	utils.Log("Hybrid", fmt.Sprintf("SetAuthResolver: forwarding to inner ApiBackend (nil=%t)", r == nil))
+	utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "SetAuthResolver: forwarding to inner ApiBackend", map[string]any{
+		"nil": r == nil,
+	})
 	h.api.SetAuthResolver(r)
 }
 
@@ -123,11 +124,16 @@ func (h *HybridBackend) StartRunWithConfig(requestID string, options types.RunOp
 	inner := h.chooseFor(options.Model)
 	h.recordRun(requestID, inner, options.Model)
 	if api, ok := inner.(*ApiBackend); ok {
-		utils.Log("Hybrid", fmt.Sprintf("StartRunWithConfig: requestID=%s forwarding to inner ApiBackend (cfg=%t)", requestID, cfg != nil))
+		utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "StartRunWithConfig: forwarding to inner ApiBackend", map[string]any{
+			"request_id": requestID,
+			"cfg":        cfg != nil,
+		})
 		api.StartRunWithConfig(requestID, options, cfg)
 		return
 	}
-	utils.Log("Hybrid", fmt.Sprintf("StartRunWithConfig: requestID=%s CLI-routed, falling back to StartRun (cfg ignored)", requestID))
+	utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "StartRunWithConfig: CLI-routed, falling back to StartRun (cfg ignored)", map[string]any{
+		"request_id": requestID,
+	})
 	inner.StartRun(requestID, options)
 }
 
@@ -147,9 +153,13 @@ func (h *HybridBackend) recordRun(requestID string, inner RunBackend, model stri
 	if info := providers.GetModelInfo(model); info != nil {
 		providerID = info.ProviderID
 	}
-	utils.Log("Hybrid", fmt.Sprintf(
-		"StartRun: requestID=%s model=%s providerID=%s → %s (table size=%d)",
-		requestID, model, providerID, kind, size))
+	utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "StartRun: → (table )", map[string]any{
+		"request_id":  requestID,
+		"model":       model,
+		"provider_id": providerID,
+		"kind":        kind,
+		"size":        size,
+	})
 }
 
 // lookup returns the inner backend recorded for a requestID, or nil if no
@@ -166,14 +176,19 @@ func (h *HybridBackend) lookup(requestID string) RunBackend {
 func (h *HybridBackend) Cancel(requestID string) bool {
 	inner := h.lookup(requestID)
 	if inner == nil {
-		utils.Log("Hybrid", fmt.Sprintf("Cancel: requestID=%s not in routing table", requestID))
+		utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "Cancel: not in routing table", map[string]any{
+			"request_id": requestID,
+		})
 		return false
 	}
 	kind := "api"
 	if inner == h.cli {
 		kind = "cli"
 	}
-	utils.Log("Hybrid", fmt.Sprintf("Cancel: requestID=%s → %s", requestID, kind))
+	utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "Cancel: →", map[string]any{
+		"request_id": requestID,
+		"kind":       kind,
+	})
 	return inner.Cancel(requestID)
 }
 
@@ -194,7 +209,9 @@ func (h *HybridBackend) IsRunning(requestID string) bool {
 func (h *HybridBackend) WriteToStdin(requestID string, msg interface{}) error {
 	inner := h.lookup(requestID)
 	if inner == nil {
-		utils.Log("Hybrid", fmt.Sprintf("WriteToStdin: requestID=%s not in routing table", requestID))
+		utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "WriteToStdin: not in routing table", map[string]any{
+			"request_id": requestID,
+		})
 		return nil
 	}
 	return inner.WriteToStdin(requestID, msg)
@@ -209,7 +226,10 @@ func (h *HybridBackend) Steer(requestID, message string) bool {
 	inner := h.lookup(requestID)
 	api, ok := inner.(*ApiBackend)
 	if !ok {
-		utils.Log("Hybrid", fmt.Sprintf("Steer: requestID=%s not API-routed (inner=%T), falling back", requestID, inner))
+		utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "Steer: not API-routed , falling back", map[string]any{
+			"request_id": requestID,
+			"inner":      inner,
+		})
 		return false
 	}
 	return api.Steer(requestID, message)
@@ -224,7 +244,10 @@ func (h *HybridBackend) SteerWithReason(requestID, message string) SteerResult {
 	inner := h.lookup(requestID)
 	api, ok := inner.(*ApiBackend)
 	if !ok {
-		utils.Log("Hybrid", fmt.Sprintf("SteerWithReason: requestID=%s not API-routed (inner=%T), falling back to stdin", requestID, inner))
+		utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "SteerWithReason: not API-routed , falling back to stdin", map[string]any{
+			"request_id": requestID,
+			"inner":      inner,
+		})
 		return SteerResultNoRun
 	}
 	return api.SteerWithReason(requestID, message)
@@ -294,7 +317,11 @@ func (h *HybridBackend) fanOutExit(runID string, code *int, signal *string, sess
 	delete(h.runs, runID)
 	size := len(h.runs)
 	h.mu.Unlock()
-	utils.Log("Hybrid", fmt.Sprintf("OnExit: requestID=%s removed=%t routing table size=%d", runID, existed, size))
+	utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "OnExit: routing table", map[string]any{
+		"request_id": runID,
+		"removed":    existed,
+		"size":       size,
+	})
 
 	h.hookMu.RLock()
 	fn := h.onExit
@@ -320,6 +347,8 @@ func (h *HybridBackend) NewChild() *HybridBackend {
 	if resolver != nil {
 		child.api.SetAuthResolver(resolver)
 	}
-	utils.Log("Hybrid", fmt.Sprintf("NewChild: created child hybrid backend authResolver=%t", resolver != nil))
+	utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "NewChild: created child hybrid backend", map[string]any{
+		"auth_resolver": resolver != nil,
+	})
 	return child
 }

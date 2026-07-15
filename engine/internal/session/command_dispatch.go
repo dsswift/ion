@@ -21,13 +21,21 @@ import (
 //
 // Contract reminders for anyone touching this file:
 //
-//   - Every dispatch path MUST emit exactly one engine_command_result event
-//     before returning. Consumers treat the event as the authoritative
-//     "engine handled this command" signal. A missing emit leaves the
-//     in-flight conversation hanging — the very defect that motivated the
-//     central emit in the first place. emitCommandResult is the only
-//     idiomatic way to produce this event; do not inline EngineEvent
-//     literals.
+//   - Every dispatch path MUST emit exactly one engine_command_result event.
+//     Consumers treat the event as the authoritative "engine handled this
+//     command" signal. A missing emit leaves the in-flight conversation
+//     hanging — the very defect that motivated the central emit in the
+//     first place. emitCommandResult is the only idiomatic way to produce
+//     this event; do not inline EngineEvent literals.
+//
+//     Timing note: most arms emit the result synchronously before returning.
+//     The exception is /compact Path A (API backend), which runs an LLM
+//     summarization that can take many seconds. To avoid blocking the
+//     server's per-connection read loop (SendCommand is called synchronously
+//     from server dispatch), that arm launches CompactNow on a goroutine and
+//     emits its single result from the goroutine at completion — including
+//     from the goroutine's panic-recovery backstop, so the exactly-one-result
+//     invariant holds even on panic. See dispatchCompact.
 //
 //   - Unknown commands (neither an extension command nor a built-in) emit
 //     CommandError="unknown_command" so consumers can route to whatever
@@ -50,7 +58,7 @@ func (m *Manager) dispatchCommand(s *engineSession, key, command, args string) {
 	if s.extGroup != nil && !s.extGroup.IsEmpty() {
 		cmds := s.extGroup.Commands()
 		if cmd, exists := cmds[command]; exists {
-			utils.Log("Session", fmt.Sprintf("SendCommand: dispatching extension command key=%s command=%s argsLen=%d", key, command, len(args)))
+			utils.LogWithFields(utils.LevelInfo, "session", "sendcommand: dispatching extension command", map[string]any{"key": key, "command": command, "count": len(args)})
 			// Stash the raw slash invocation so that if the handler calls
 			// ctx.sendPrompt(expandedBody), SendPrompt can attach the slash
 			// provenance to the persisted user turn. This is consumed (cleared)
@@ -72,9 +80,9 @@ func (m *Manager) dispatchCommand(s *engineSession, key, command, args string) {
 			m.emitCommandResult(key, command, err)
 			return
 		}
-		utils.Debug("Session", fmt.Sprintf("SendCommand: name not in extension registry, falling through to built-ins key=%s command=%s extCount=%d", key, command, len(cmds)))
+		utils.LogWithFields(utils.LevelDebug, "session", "sendcommand: name not in extension registry, falling through to built-ins", map[string]any{"key": key, "command": command, "count": len(cmds)})
 	} else {
-		utils.Debug("Session", fmt.Sprintf("SendCommand: no extension group on session key=%s command=%s", key, command))
+		utils.LogWithFields(utils.LevelDebug, "session", "sendcommand: no extension group on session", map[string]any{"key": key, "command": command})
 	}
 
 	switch command {
@@ -91,7 +99,7 @@ func (m *Manager) dispatchCommand(s *engineSession, key, command, args string) {
 		// replaces the silent log-only behavior the engine carried
 		// before commit b002a1cb, which left in-flight conversations
 		// hanging when a slash-command name didn't resolve.
-		utils.Log("Session", fmt.Sprintf("SendCommand: unknown command key=%s command=%s argsLen=%d", key, command, len(args)))
+		utils.LogWithFields(utils.LevelInfo, "session", "sendcommand: unknown command", map[string]any{"key": key, "command": command, "count": len(args)})
 		m.emit(key, types.EngineEvent{
 			Type:         "engine_command_result",
 			EventMessage: "unknown command: " + command,
@@ -122,7 +130,7 @@ func (m *Manager) emitCommandResult(key, command string, err error) {
 		})
 		return
 	}
-	utils.Log("Session", fmt.Sprintf("SendCommand: command failed key=%s command=%s err=%v", key, command, err))
+	utils.LogWithFields(utils.LevelInfo, "session", "sendcommand: command failed", map[string]any{"key": key, "command": command, "error": err})
 	m.emit(key, types.EngineEvent{
 		Type:         "engine_command_result",
 		EventMessage: fmt.Sprintf("command failed: %s: %v", command, err),
@@ -146,11 +154,11 @@ func (m *Manager) dispatchClear(s *engineSession, key string) {
 	// session_start re-fire is sequenced correctly relative to the signal.
 	res, err := m.clearConversationCore(s.conversationID, key)
 	if err != nil {
-		utils.Log("Session", fmt.Sprintf("clear: key=%s core failed convID=%s: %v", key, s.conversationID, err))
+		utils.LogWithFields(utils.LevelInfo, "session", "clear: core failed", map[string]any{"key": key, "run_id": s.conversationID, "error": err})
 		m.emitCommandResult(key, "clear", err)
 		return
 	}
-	utils.Log("Session", fmt.Sprintf("clear: key=%s core done convID=%s wiped=%t deniedCleared=%d", key, s.conversationID, res.wiped, res.deniedCleared))
+	utils.LogWithFields(utils.LevelInfo, "session", "clear: core done", map[string]any{"key": key, "run_id": s.conversationID, "wiped": res.wiped, "denied_cleared": res.deniedCleared})
 
 	// Re-fire session_start so the harness can re-prime the now-empty
 	// conversation. `/clear` is a checkpoint, not a session restart — the
@@ -161,12 +169,12 @@ func (m *Manager) dispatchClear(s *engineSession, key string) {
 	// path. Fired before the clear signal so any harness-injected state is in
 	// place when consumers observe the reset.
 	if s.extGroup != nil && !s.extGroup.IsEmpty() {
-		utils.Log("Session", fmt.Sprintf("firing session_start on clear for session %s", key))
+		utils.LogWithFields(utils.LevelInfo, "session", "firing session_start on clear for session", map[string]any{"key": key})
 		ctx := m.newExtContext(s, key)
 		_ = s.extGroup.FireSessionStart(ctx)
-		utils.Log("Session", fmt.Sprintf("session_start re-fired on clear for session %s", key))
+		utils.LogWithFields(utils.LevelInfo, "session", "session_start re-fired on clear for session", map[string]any{"key": key})
 	} else {
-		utils.Debug("Session", fmt.Sprintf("clear: no extensions loaded for %s, skipping session_start re-fire", key))
+		utils.LogWithFields(utils.LevelDebug, "session", "clear: no extensions loaded for , skipping session_start re-fire", map[string]any{"key": key})
 	}
 
 	// Emit the single shared clear signal: engine_status (empty denials,
@@ -220,7 +228,7 @@ type compactable interface {
 //	an error event.
 func (m *Manager) dispatchCompact(s *engineSession, key string) {
 	if s.conversationID == "" {
-		utils.Debug("Session", fmt.Sprintf("compact: no conversationID set on session %s", key))
+		utils.LogWithFields(utils.LevelDebug, "session", "compact: no conversationid set on session", map[string]any{"key": key})
 		// Empty-session compact is a no-op success — mirrors clear's behavior.
 		m.emitCommandResult(key, "compact", nil)
 		return
@@ -230,28 +238,104 @@ func (m *Manager) dispatchCompact(s *engineSession, key string) {
 	// (and HybridBackend when its run is API-routed) implements
 	// compactable; the assertion fails for CliBackend, which falls
 	// through to Path B.
+	//
+	// This path runs asynchronously: CompactNow performs an LLM
+	// summarization that can take many seconds, and SendCommand is invoked
+	// synchronously from the server's per-connection read loop. Running it
+	// inline would stall every other command on that connection for the
+	// whole compaction. Instead we validate the guards, mark the session
+	// compacting, bind the synthetic runID for event routing, and launch
+	// CompactNow on a goroutine that emits the single command_result at
+	// completion.
 	if cb, ok := m.backend.(compactable); ok {
-		req := backend.CompactRequest{
-			ConversationID: s.conversationID,
-			Model:          s.lastModel,
-			RequestID:      fmt.Sprintf("user-compact-%s", s.conversationID),
-		}
-		utils.Log("Session", fmt.Sprintf("compact: dispatching to backend.CompactNow key=%s convID=%s model=%s", key, req.ConversationID, req.Model))
-		if err := cb.CompactNow(context.Background(), req); err != nil {
-			// Distinguish "conversation not found" from generic errors so
-			// the consumer can render a friendlier message. ErrNotFound
-			// is wrapped inside CompactNow's load failure; unwrap to test.
-			if errors.Is(err, conversation.ErrNotFound) {
-				utils.Debug("Session", fmt.Sprintf("compact: conversation %s not found, treating as empty success", s.conversationID))
-				m.emitCommandResult(key, "compact", nil)
-				return
-			}
-			utils.Log("Session", fmt.Sprintf("compact: CompactNow failed key=%s err=%v", key, err))
-			m.emitCommandResult(key, "compact", err)
+		m.mu.Lock()
+		// Guard 1 (double-run): reject a second /compact while one is in
+		// flight rather than launching a concurrent CompactNow that would
+		// clobber the first's load-mutate-save cycle.
+		if s.compactInFlight {
+			m.mu.Unlock()
+			utils.LogWithFields(utils.LevelInfo, "session", "compact: rejected — already in flight", map[string]any{"key": key, "run_id": s.conversationID})
+			m.emit(key, types.EngineEvent{
+				Type:         "engine_command_result",
+				Command:      "compact",
+				CommandError: "compact_in_progress",
+				EventMessage: "A /compact is already running for this conversation. Wait for it to finish before running another.",
+			})
 			return
 		}
-		utils.Log("Session", fmt.Sprintf("compacted session %s via CompactNow", key))
-		m.emitCommandResult(key, "compact", nil)
+		// Guard 2 (compact-during-run): reject when a run is active. A run
+		// mutates the conversation in memory and saves it while CompactNow
+		// loads a separate copy from disk and saves that — last-writer-wins
+		// corruption. The symmetric direction (run-during-compact) is guarded
+		// in SendPrompt via s.compactInFlight.
+		if s.requestID != "" {
+			m.mu.Unlock()
+			utils.LogWithFields(utils.LevelInfo, "session", "compact: rejected — run active", map[string]any{"key": key, "run_id": s.requestID})
+			m.emit(key, types.EngineEvent{
+				Type:         "engine_command_result",
+				Command:      "compact",
+				CommandError: "compact_requires_idle",
+				EventMessage: "Cannot compact while a run is active. Stop the current turn, then run /compact.",
+			})
+			return
+		}
+		convID := s.conversationID
+		model := s.lastModel
+		runID := fmt.Sprintf("user-compact-%s", convID)
+		s.compactInFlight = true
+		// Bind the synthetic runID -> key so the CompactingEvent progress
+		// events CompactNow emits route to this session. Without this the
+		// events are dropped (keyForRun returns "" for an unbound runID while
+		// s.requestID is empty) and the consumer sees no "Compacting…" UI.
+		m.bindRunLocked(runID, key)
+		// Capture the session cancellation root under the lock. Running
+		// CompactNow under s.rootCtx (not context.Background) keeps the async
+		// compaction inside the engine's unified cancellation tree, so Stop
+		// (SendAbort) and StopSession teardown abort it. Fall back to
+		// Background only for test-constructed sessions that never called
+		// newSessionRootContext.
+		rootCtx := s.rootCtx
+		m.mu.Unlock()
+		if rootCtx == nil {
+			rootCtx = context.Background()
+		}
+
+		req := backend.CompactRequest{
+			ConversationID: convID,
+			Model:          model,
+			RequestID:      runID,
+		}
+		utils.LogWithFields(utils.LevelInfo, "session", "compact: launching async compactnow", map[string]any{"key": key, "run_id": convID, "model": model, "run_id_3": runID})
+		go func() {
+			// Cleanup + result invariant. The deferred func always runs: it
+			// emits a failure result on panic (preserving exactly-one-result
+			// so the consumer's awaiter never hangs), then clears the
+			// in-flight flag, unbinds the routing binding, and drains one
+			// queued prompt (mirroring handleRunExit).
+			defer func() {
+				if r := recover(); r != nil {
+					utils.LogWithFields(utils.LevelError, "session", "compact: panic in async compactnow", map[string]any{"key": key, "run_id": runID, "r": r})
+					m.emitCommandResult(key, "compact", fmt.Errorf("compact panicked: %v", r))
+				}
+				m.finishCompact(key, runID)
+			}()
+
+			if err := cb.CompactNow(rootCtx, req); err != nil {
+				// Distinguish "conversation not found" from generic errors so
+				// the consumer can render a friendlier message. ErrNotFound
+				// is wrapped inside CompactNow's load failure; unwrap to test.
+				if errors.Is(err, conversation.ErrNotFound) {
+					utils.LogWithFields(utils.LevelDebug, "session", "compact: conversation not found, treating as empty success", map[string]any{"run_id": convID})
+					m.emitCommandResult(key, "compact", nil)
+					return
+				}
+				utils.LogWithFields(utils.LevelInfo, "session", "compact: async compactnow failed", map[string]any{"key": key, "run_id": runID, "error": err})
+				m.emitCommandResult(key, "compact", err)
+				return
+			}
+			utils.LogWithFields(utils.LevelInfo, "session", "compact: async compactnow complete outcome=success", map[string]any{"key": key, "run_id": runID})
+			m.emitCommandResult(key, "compact", nil)
+		}()
 		return
 	}
 
@@ -261,7 +345,7 @@ func (m *Manager) dispatchCompact(s *engineSession, key string) {
 	// system message ("send /compact as a normal prompt instead").
 	rid := s.requestID
 	if rid == "" {
-		utils.Log("Session", fmt.Sprintf("compact: backend does not support engine-side compaction and no active run; key=%s", key))
+		utils.LogWithFields(utils.LevelInfo, "session", "compact: backend does not support engine-side compaction and no active run;", map[string]any{"key": key})
 		m.emit(key, types.EngineEvent{
 			Type:         "engine_command_result",
 			Command:      "compact",
@@ -287,12 +371,44 @@ func (m *Manager) dispatchCompact(s *engineSession, key string) {
 		},
 	}
 	if err := m.backend.WriteToStdin(rid, stdinMsg); err != nil {
-		utils.Log("Session", fmt.Sprintf("compact: WriteToStdin failed key=%s err=%s", key, err.Error()))
+		utils.LogWithFields(utils.LevelInfo, "session", "compact: writetostdin failed", map[string]any{"key": key, "error": err.Error()})
 		m.emitCommandResult(key, "compact", err)
 		return
 	}
-	utils.Log("Session", fmt.Sprintf("compact: forwarded /compact to CLI subprocess key=%s rid=%s", key, rid))
+	utils.LogWithFields(utils.LevelInfo, "session", "compact: forwarded /compact to cli subprocess", map[string]any{"key": key, "run_id": rid})
 	m.emitCommandResult(key, "compact", nil)
+}
+
+// finishCompact is the teardown for the async Path-A compaction goroutine.
+// It clears the in-flight flag, removes the synthetic runID -> key routing
+// binding, and drains one queued prompt if any accumulated while compaction
+// ran. Runs from the goroutine's deferred cleanup so it fires on both the
+// success/error and panic paths. Mirrors the terminal-point teardown +
+// queue drain that handleRunExit performs for a normal run.
+func (m *Manager) finishCompact(key, runID string) {
+	m.mu.Lock()
+	var nextPrompt *pendingPrompt
+	if s, ok := m.sessions[key]; ok {
+		s.compactInFlight = false
+		m.unbindRunLocked(runID)
+		if len(s.promptQueue) > 0 {
+			next := s.promptQueue[0]
+			s.promptQueue = s.promptQueue[1:]
+			nextPrompt = &next
+		}
+	} else {
+		// Session torn down mid-compaction (StopSession). Still clear the
+		// routing binding so it doesn't leak; no queue to drain.
+		m.unbindRunLocked(runID)
+	}
+	m.mu.Unlock()
+
+	utils.LogWithFields(utils.LevelInfo, "session", "compact: finished (compactinflight cleared, binding removed, )", map[string]any{"key": key, "run_id": runID, "next_prompt != nil": nextPrompt != nil})
+
+	if nextPrompt != nil {
+		utils.LogWithFields(utils.LevelDebug, "session", "compact: draining queued prompt after compaction", map[string]any{"key": key})
+		m.dispatchQueuedPrompt(key, nextPrompt)
+	}
 }
 
 // dispatchExport handles the built-in /export command. The optional args
@@ -305,7 +421,7 @@ func (m *Manager) dispatchCompact(s *engineSession, key string) {
 // empty-conversation and load-failure paths that previously returned silently.
 func (m *Manager) dispatchExport(s *engineSession, key, args string) {
 	if s.conversationID == "" {
-		utils.Debug("Session", fmt.Sprintf("export: no conversationID set on session %s, nothing to export", key))
+		utils.LogWithFields(utils.LevelDebug, "session", "export: no conversationid set on session , nothing to export", map[string]any{"key": key})
 		// Empty-session export is a no-op success — mirrors clear/compact behavior.
 		m.emitCommandResult(key, "export", nil)
 		return
@@ -313,11 +429,11 @@ func (m *Manager) dispatchExport(s *engineSession, key, args string) {
 	conv, err := conversation.Load(s.conversationID, "")
 	if err != nil {
 		if errors.Is(err, conversation.ErrNotFound) {
-			utils.Debug("Session", fmt.Sprintf("export: conversation %s not found, nothing to export", s.conversationID))
+			utils.LogWithFields(utils.LevelDebug, "session", "export: conversation not found, nothing to export", map[string]any{"run_id": s.conversationID})
 			m.emitCommandResult(key, "export", nil)
 			return
 		}
-		utils.Log("Session", fmt.Sprintf("export: failed to load conversation %s: %v", s.conversationID, err))
+		utils.LogWithFields(utils.LevelInfo, "session", "export: failed to load conversation", map[string]any{"run_id": s.conversationID, "error": err})
 		m.emitCommandResult(key, "export", err)
 		return
 	}
@@ -327,7 +443,7 @@ func (m *Manager) dispatchExport(s *engineSession, key, args string) {
 	}
 	output, err := export.ExportSession(conv, export.Options{Format: format})
 	if err != nil {
-		utils.Log("Session", fmt.Sprintf("export failed for %s: %s", key, err))
+		utils.LogWithFields(utils.LevelInfo, "session", "export failed for", map[string]any{"key": key, "error": err})
 		m.emitCommandResult(key, "export", err)
 		return
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/resource"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -22,6 +23,8 @@ type agentDiscoveryTestAccessor struct {
 }
 
 func (a *agentDiscoveryTestAccessor) SessionKey() string                       { return "test-session" }
+func (a *agentDiscoveryTestAccessor) ExtensionName() string    { return "" }
+func (a *agentDiscoveryTestAccessor) ExtensionVersion() string { return "" }
 func (a *agentDiscoveryTestAccessor) ConversationID() string                   { return "" }
 func (a *agentDiscoveryTestAccessor) WorkingDirectory() string                 { return "/tmp" }
 func (a *agentDiscoveryTestAccessor) Emit(ev types.EngineEvent)                {}
@@ -46,9 +49,12 @@ func (a *agentDiscoveryTestAccessor) ExtGroup() *extension.ExtensionGroup      {
 func (a *agentDiscoveryTestAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
 func (a *agentDiscoveryTestAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
 func (a *agentDiscoveryTestAccessor) NewChildBackend() backend.RunBackend      { return nil }
+func (a *agentDiscoveryTestAccessor) AllocatePlanFilePath() string             { return "/tmp/.ion/plans/plan.md" }
 func (a *agentDiscoveryTestAccessor) BumpParentProgress()                      {}
 func (a *agentDiscoveryTestAccessor) EmitDispatchCountStatus(_ string)         {}
 func (a *agentDiscoveryTestAccessor) EngineConfig() *types.EngineRuntimeConfig { return nil }
+func (a *agentDiscoveryTestAccessor) ClaudeCompat() bool { return false }
+func (a *agentDiscoveryTestAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
 func (a *agentDiscoveryTestAccessor) ResolveTier(_ string) string              { return "" }
 func (a *agentDiscoveryTestAccessor) PermissionCheck(_ string, _ map[string]interface{}) (string, string) {
 	return "", ""
@@ -80,6 +86,7 @@ func (a *agentDiscoveryTestAccessor) SendToSession(_, _, _ string, _ map[string]
 }
 func (a *agentDiscoveryTestAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
 func (a *agentDiscoveryTestAccessor) RunOnceComplete(_ string, _ bool)              {}
+func (a *agentDiscoveryTestAccessor) Telemetry() *telemetry.Collector { return nil }
 
 // writeAgentFile creates a minimal .md agent file in dir/agents/<name>.md
 // with valid frontmatter.

@@ -28,7 +28,11 @@ var blockedRanges = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)^fd`),
 }
 
-func isBlockedHost(hostname string) bool {
+// IsBlockedHost reports whether hostname falls in a private/reserved range
+// (SSRF guard). Exported so other engine subsystems performing outbound
+// HTTP on behalf of a caller (e.g. the extension SDK's pre-authenticated
+// HTTP surface) apply the identical policy instead of drifting copies.
+func IsBlockedHost(hostname string) bool {
 	for _, re := range blockedRanges {
 		if re.MatchString(hostname) {
 			return true
@@ -116,7 +120,7 @@ func executeWebFetch(ctx context.Context, input map[string]any, _ string) (*type
 	}
 
 	// SSRF guard.
-	if isBlockedHost(parsed.Hostname()) {
+	if IsBlockedHost(parsed.Hostname()) {
 		return &types.ToolResult{
 			Content: fmt.Sprintf("Blocked: cannot fetch private/reserved addresses (%s)", parsed.Hostname()),
 			IsError: true,
@@ -167,7 +171,7 @@ func executeWebFetch(ctx context.Context, input map[string]any, _ string) (*type
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			utils.Log("web_fetch", fmt.Sprintf("response body close failed: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "tools.web_fetch", "response body close failed", map[string]any{"error": err.Error()})
 		}
 	}()
 

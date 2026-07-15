@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -10,12 +11,14 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/session"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -46,6 +49,9 @@ type Server struct {
 	manager            *session.Manager
 	config             *types.EngineRuntimeConfig
 	authResolver       *auth.Resolver
+	// identity is the engine-owned operator OIDC identity manager (nil when
+	// no auth.identityProvider is configured). See dispatch_oidc.go.
+	identity           *auth.IdentityManager
 	broadcastListeners []*listenerHandle
 	done               chan struct{}
 	stopOnce           sync.Once
@@ -63,15 +69,39 @@ type Server struct {
 	// disconnected client's sessions previously lived forever, holding their
 	// pooled workspace-watcher descriptors). See session_ownership.go.
 	ownership *sessionOwnership
+
+	// telemetry is the process-level collector for server-owned telemetry —
+	// currently the client.backpressure event emitted when a client's outbound
+	// queue overflows (family 4e). Session-scoped events flow through each
+	// session's own collector; this one belongs to the server because
+	// backpressure is a transport concern with no session context. Nil when
+	// telemetry is disabled; every emit site guards on nil. Guarded by s.mu.
+	telemetry *telemetry.Collector
+}
+
+// SetTelemetry installs the process-level telemetry collector used for
+// server-owned events (client.backpressure). Nil disables server telemetry.
+func (s *Server) SetTelemetry(c *telemetry.Collector) {
+	s.mu.Lock()
+	s.telemetry = c
+	s.mu.Unlock()
 }
 
 // SetConfig stores the engine runtime config for use by sessions.
 func (s *Server) SetConfig(cfg *types.EngineRuntimeConfig) {
-	s.config = cfg
 	s.manager.SetConfig(cfg)
 	if cfg != nil && cfg.Timeouts != nil {
 		broadcastWriteDeadline = cfg.Timeouts.BroadcastWrite()
 	}
+	// Install the process-level telemetry collector for server-owned events
+	// (client.backpressure) when telemetry is enabled in config. Nil-safe: a
+	// disabled or absent telemetry block leaves server telemetry off.
+	if cfg != nil && cfg.Telemetry != nil && cfg.Telemetry.Enabled {
+		s.SetTelemetry(telemetry.NewCollector(*cfg.Telemetry))
+	}
+	// Store the config after the collector wiring so the field assignment
+	// below is not racing the SetTelemetry lock above.
+	s.config = cfg
 	// Apply the configurable orphaned-session reap grace window. Nil-safe:
 	// SessionReapGrace returns the compiled default for a nil Workspace block.
 	if s.ownership != nil {
@@ -100,7 +130,7 @@ func NewServer(socketPath string, b backend.RunBackend) *Server {
 	case *backend.CliBackend, *backend.HybridBackend:
 		cliCapable = true
 	}
-	utils.Log("Server", fmt.Sprintf("backend type=%T cliCapable=%v", b, cliCapable))
+	utils.LogWithFields(utils.LevelInfo, "server", "backend type", map[string]any{"reason": cliCapable})
 
 	s := &Server{
 		socketPath: socketPath,
@@ -115,7 +145,7 @@ func NewServer(socketPath string, b backend.RunBackend) *Server {
 	// (watcher release, extension close, MCP/telemetry cleanup) runs.
 	s.ownership = newSessionOwnership(func(key string) {
 		if err := s.manager.StopSession(key); err != nil {
-			utils.Debug("Server", fmt.Sprintf("reap: StopSession key=%s err=%v (already gone?)", key, err))
+			utils.LogWithFields(utils.LevelDebug, "server", "reap stop session", map[string]any{"session_id": key, "error": err.Error()})
 		}
 	})
 
@@ -123,7 +153,7 @@ func NewServer(socketPath string, b backend.RunBackend) *Server {
 	mgr.OnEvent(func(key string, event types.EngineEvent) {
 		raw, err := json.Marshal(event)
 		if err != nil {
-			utils.Log("Server", "failed to marshal event: "+err.Error())
+			utils.LogWithFields(utils.LevelInfo, "server", "start failed to marshal event", map[string]any{"error": err.Error()})
 			return
 		}
 		line := protocol.SerializeServerEvent(key, json.RawMessage(raw))
@@ -149,7 +179,7 @@ func (s *Server) Start() error {
 		conn, dialErr := net.Dial("tcp4", s.socketPath)
 		if dialErr == nil {
 			if err := conn.Close(); err != nil {
-				utils.Log("Server", fmt.Sprintf("Start: probe-conn close failed: %v", err))
+				utils.LogWithFields(utils.LevelInfo, "server", "start probe-conn close failed", map[string]any{"error": err.Error()})
 			}
 			return fmt.Errorf("engine already listening on %s", s.socketPath)
 		}
@@ -162,22 +192,54 @@ func (s *Server) Start() error {
 		// other engine process is alive. Any leftover socket file is stale
 		// and safe to remove without dialing.
 		if _, statErr := os.Stat(s.socketPath); statErr == nil {
-			utils.Log("Server", "removing stale socket: "+s.socketPath)
+			utils.LogWithFields(utils.LevelInfo, "server", "removing stale socket", map[string]any{"path": s.socketPath})
 			if err := os.Remove(s.socketPath); err != nil && !os.IsNotExist(err) {
-				utils.Log("Server", fmt.Sprintf("Start: remove stale socket %s failed: %v", s.socketPath, err))
+				utils.LogWithFields(utils.LevelInfo, "server", "start remove stale socket failed", map[string]any{"path": s.socketPath, "error": err.Error()})
 			}
 		}
 		ln, err = net.Listen("unix", s.socketPath)
 		if err != nil {
-			return fmt.Errorf("failed to listen on %s: %w", s.socketPath, err)
+			// The caller holds the PID lock, so no other engine is alive. If
+			// the bind still fails with "address already in use", the socket
+			// file is stale (a previous engine died without cleaning it up and
+			// the stat/remove above raced or the file reappeared). Remove it
+			// and retry once rather than exiting and forcing the desktop into
+			// a respawn storm. Any other error is genuinely fatal.
+			if isAddrInUse(err) {
+				utils.LogWithFields(utils.LevelInfo, "server", "listen failed address-in-use removing stale socket retrying", map[string]any{"path": s.socketPath})
+				if rmErr := os.Remove(s.socketPath); rmErr != nil && !os.IsNotExist(rmErr) {
+					utils.LogWithFields(utils.LevelInfo, "server", "start retry remove stale socket failed", map[string]any{"path": s.socketPath, "error": rmErr.Error()})
+				}
+				ln, err = net.Listen("unix", s.socketPath)
+			}
+			if err != nil {
+				return fmt.Errorf("failed to listen on %s: %w", s.socketPath, err)
+			}
 		}
 	}
 
 	s.listener = ln
-	utils.Log("Server", "listening on "+s.socketPath)
+	utils.LogWithFields(utils.LevelInfo, "server", "listening", map[string]any{"path": s.socketPath})
 
 	go s.acceptLoop()
 	return nil
+}
+
+// isAddrInUse reports whether err is (or wraps) an EADDRINUSE syscall error —
+// the "address already in use" condition net.Listen returns when a socket file
+// still exists and the kernel considers it bound. Used by Start to distinguish
+// a stale-socket bind failure (recoverable: remove and retry) from a genuinely
+// fatal listen error. Unwraps the *net.OpError → *os.SyscallError chain via
+// errors.As down to the concrete syscall.Errno.
+func isAddrInUse(err error) bool {
+	if err == nil {
+		return false
+	}
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		return errno == syscall.EADDRINUSE
+	}
+	return false
 }
 
 // Stop gracefully shuts down the server: stops all sessions, closes all
@@ -197,7 +259,7 @@ func (s *Server) Stop() error {
 		for conn, cw := range s.clients {
 			close(cw.done)
 			if err := conn.Close(); err != nil {
-				utils.Log("Server", fmt.Sprintf("Stop: client conn close failed: %v", err))
+				utils.LogWithFields(utils.LevelInfo, "server", "stop client conn close failed", map[string]any{"error": err.Error()})
 			}
 		}
 		s.clients = make(map[net.Conn]*clientWriter)
@@ -205,11 +267,19 @@ func (s *Server) Stop() error {
 			close(lh.done)
 		}
 		s.broadcastListeners = nil
+		// Close the server-level telemetry collector (client.backpressure events)
+		// so its periodic flush goroutine stops and any buffered events reach disk
+		// before the process exits. Guarded by the same lock as SetTelemetry.
+		serverTelem := s.telemetry
 		s.mu.Unlock()
+
+		if serverTelem != nil {
+			serverTelem.Close()
+		}
 
 		if s.listener != nil {
 			if err := s.listener.Close(); err != nil {
-				utils.Log("Server", fmt.Sprintf("Stop: listener close failed: %v", err))
+				utils.LogWithFields(utils.LevelInfo, "server", "stop listener close failed", map[string]any{"error": err.Error()})
 			}
 		}
 
@@ -217,7 +287,7 @@ func (s *Server) Stop() error {
 		// have no file to clean up.
 		if !looksLikeHostPort(s.socketPath) {
 			if err := os.Remove(s.socketPath); err != nil && !os.IsNotExist(err) {
-				utils.Log("Server", fmt.Sprintf("Stop: socket file %s remove failed: %v", s.socketPath, err))
+				utils.LogWithFields(utils.LevelInfo, "server", "stop socket file remove failed", map[string]any{"path": s.socketPath, "error": err.Error()})
 			}
 		}
 		utils.Log("Server", "stopped")
@@ -257,7 +327,7 @@ func (s *Server) acceptLoop() {
 			case <-s.done:
 				return
 			default:
-				utils.Log("Server", "accept error: "+err.Error())
+				utils.LogWithFields(utils.LevelInfo, "server", "accept error", map[string]any{"error": err.Error()})
 				continue
 			}
 		}
@@ -285,9 +355,8 @@ func (s *Server) handleClient(conn net.Conn) {
 	defer s.evictClient(conn)
 	defer func() {
 		if r := recover(); r != nil {
-			buf := make([]byte, 4096)
-			n := runtime.Stack(buf, false)
-			utils.Error("Server", fmt.Sprintf("panic in handleClient: %v\n%s", r, buf[:n]))
+			errStr := r
+			utils.LogWithFields(utils.LevelError, "server", "panic in handle client", map[string]any{"error": errStr})
 		}
 	}()
 
@@ -398,7 +467,7 @@ func (s *Server) writeToClient(conn net.Conn, line string) {
 		// with a deadline so a wedged peer cannot stall the caller.
 		_ = conn.SetWriteDeadline(time.Now().Add(broadcastWriteDeadline))
 		if _, err := conn.Write([]byte(line)); err != nil {
-			utils.Log("Server", "write error (untracked client): "+err.Error())
+			utils.LogWithFields(utils.LevelInfo, "server", "write error untracked client", map[string]any{"error": err.Error()})
 		}
 		return
 	}

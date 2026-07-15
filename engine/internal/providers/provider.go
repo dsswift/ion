@@ -2,7 +2,6 @@ package providers
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -59,9 +58,9 @@ func ResolveProvider(model string) LlmProvider {
 	if info, ok := modelRegistry[model]; ok {
 		p := providerRegistry[info.ProviderID]
 		if p != nil {
-			utils.Log("Providers", fmt.Sprintf("ResolveProvider: model=%s → registry hit → provider=%s", model, p.ID()))
+			utils.LogWithFields(utils.LevelInfo, "Providers", "resolve provider registry hit", map[string]any{"model": model, "provider": p.ID()})
 		} else {
-			utils.Log("Providers", fmt.Sprintf("ResolveProvider: model=%s → registry hit for providerID=%s but provider not registered", model, info.ProviderID))
+			utils.LogWithFields(utils.LevelInfo, "Providers", "resolve provider registry hit but provider not registered", map[string]any{"model": model, "provider": info.ProviderID})
 		}
 		return p
 	}
@@ -94,11 +93,11 @@ func ResolveProvider(model string) LlmProvider {
 	}
 
 	if matched != "" {
-		utils.Debug("Providers", fmt.Sprintf("ResolveProvider: model=%s → prefix match → provider=%s", model, matched))
+		utils.LogWithFields(utils.LevelDebug, "Providers", "resolve provider prefix match", map[string]any{"model": model, "provider": matched})
 		return providerRegistry[matched]
 	}
 
-	utils.Log("Providers", fmt.Sprintf("ResolveProvider: model=%s → no match (not in registry, no prefix match)", model))
+	utils.LogWithFields(utils.LevelInfo, "Providers", "resolve provider no match", map[string]any{"model": model})
 	return nil
 }
 
@@ -116,8 +115,16 @@ func GetModelInfo(model string) *types.ModelInfo {
 func RegisterModel(model string, info types.ModelInfo) {
 	mu.Lock()
 	defer mu.Unlock()
-	utils.Debug("Registry", fmt.Sprintf("RegisterModel: model=%s provider=%s", model, info.ProviderID))
+	utils.LogWithFields(utils.LevelDebug, "Registry", "register model", map[string]any{"model": model, "provider": info.ProviderID})
 	modelRegistry[model] = info
+}
+
+// UnregisterModel removes a model from the registry. Intended for test cleanup
+// so tests that register ephemeral models do not pollute the shared registry.
+func UnregisterModel(model string) {
+	mu.Lock()
+	defer mu.Unlock()
+	delete(modelRegistry, model)
 }
 
 // ProviderNameForModel returns the provider ID for a given model name.
@@ -128,7 +135,7 @@ func ProviderNameForModel(model string) string {
 	defer mu.RUnlock()
 
 	if info, ok := modelRegistry[model]; ok {
-		utils.Debug("Registry", fmt.Sprintf("ProviderNameForModel: model=%s → %s (registry)", model, info.ProviderID))
+		utils.LogWithFields(utils.LevelDebug, "Registry", "provider name for model from registry", map[string]any{"model": model, "provider": info.ProviderID})
 		return info.ProviderID
 	}
 
@@ -176,6 +183,7 @@ func ListModels() []types.ModelEntry {
 			SupportsCaching:  info.SupportsCaching,
 			SupportsThinking: info.SupportsThinking,
 			SupportsImages:   info.SupportsImages,
+			MaxOutputTokens:  info.MaxOutputTokens,
 			ThinkingMode:     info.ThinkingMode,
 			ThinkingEfforts:  info.ThinkingEfforts,
 			Tokenizer:        info.Tokenizer,
@@ -226,6 +234,9 @@ func ListModels() []types.ModelEntry {
 					}
 					if dm.CostPer1kOutput == 0 {
 						dm.CostPer1kOutput = catalog.CostPer1kOutput
+					}
+					if dm.MaxOutputTokens == 0 {
+						dm.MaxOutputTokens = catalog.MaxOutputTokens
 					}
 					dm.SupportsCaching = catalog.SupportsCaching
 					dm.SupportsThinking = catalog.SupportsThinking
@@ -281,7 +292,7 @@ func ListProviderIDs() []string {
 func SetProviderKey(providerID, key string) {
 	mu.Lock()
 	defer mu.Unlock()
-	utils.Debug("Providers", fmt.Sprintf("SetProviderKey: provider=%s keyLen=%d", providerID, len(key)))
+	utils.LogWithFields(utils.LevelDebug, "Providers", "set provider key", map[string]any{"provider": providerID, "count": len(key)})
 	if providerKeys == nil {
 		providerKeys = make(map[string]string)
 	}
@@ -293,11 +304,11 @@ func GetProviderKey(providerID string) string {
 	mu.RLock()
 	defer mu.RUnlock()
 	if providerKeys == nil {
-		utils.Debug("Registry", fmt.Sprintf("GetProviderKey: provider=%s → no keys map", providerID))
+		utils.LogWithFields(utils.LevelDebug, "Registry", "get provider key no keys map", map[string]any{"provider": providerID})
 		return ""
 	}
 	key := providerKeys[providerID]
-	utils.Debug("Registry", fmt.Sprintf("GetProviderKey: provider=%s found=%v keyLen=%d", providerID, key != "", len(key)))
+	utils.LogWithFields(utils.LevelDebug, "Registry", "get provider key", map[string]any{"provider": providerID, "status": key != "", "count": len(key)})
 	return key
 }
 
@@ -339,7 +350,7 @@ func ApplyConfig(configs map[string]types.ProviderConfig) {
 					BaseURL: cfg.BaseURL,
 				}))
 			} else {
-				utils.Log("Providers", fmt.Sprintf("ApplyConfig: skipping unknown provider %s (no baseURL)", name))
+				utils.LogWithFields(utils.LevelInfo, "Providers", "apply config skipping unknown provider", map[string]any{"provider": name, "reason": "no baseURL"})
 			}
 		}
 	}

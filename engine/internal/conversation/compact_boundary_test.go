@@ -98,22 +98,21 @@ func TestIsCompactBoundary_TypedAndUntypedBlocks(t *testing.T) {
 	}
 }
 
-// TestPostCompactReset_ClearsTokenCache verifies the seam centralises
-// invalidateTokenCache. Cache invariants are pinned by the surrounding
-// compaction tests in conversation_compaction_test.go; this case
-// targets the PostCompactReset entry point directly.
-func TestPostCompactReset_ClearsTokenCache(t *testing.T) {
+// TestPostCompactReset_IsNoOp verifies the seam compiles and is a genuine no-op.
+// The legacy scalar zeroing (LastInputTokens / LastInputTokensMsgCount) was
+// removed; GetContextUsage now uses the backward scan of LlmMessage.Usage which
+// is automatically coherent after compaction.
+func TestPostCompactReset_IsNoOp(t *testing.T) {
 	conv := CreateConversation("post-reset", "", "test")
-	conv.LastInputTokens = 12345
-	conv.LastInputTokensMsgCount = 9
+	AddUserMessage(conv, "hello")
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "hi"}}, types.LlmUsage{InputTokens: 12345})
 
 	PostCompactReset(conv)
 
-	if conv.LastInputTokens != 0 {
-		t.Errorf("LastInputTokens = %d after PostCompactReset, want 0", conv.LastInputTokens)
-	}
-	if conv.LastInputTokensMsgCount != 0 {
-		t.Errorf("LastInputTokensMsgCount = %d after PostCompactReset, want 0", conv.LastInputTokensMsgCount)
+	// PostCompactReset is a no-op: the assistant message's Usage is unchanged.
+	last := conv.Messages[len(conv.Messages)-1]
+	if last.Usage == nil || last.Usage.InputTokens != 12345 {
+		t.Errorf("PostCompactReset must not mutate message Usage; got %+v", last.Usage)
 	}
 }
 

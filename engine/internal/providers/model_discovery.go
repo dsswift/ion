@@ -66,10 +66,10 @@ func StartModelDiscovery(resolveKey keyResolver, providerConfigs map[string]type
 func DiscoverProvider(providerID, apiKey string, providerConfigs map[string]types.ProviderConfig) {
 	baseURL := resolveBaseURL(providerID, providerConfigs)
 	if baseURL == "" {
-		utils.Log("ModelDiscovery", fmt.Sprintf("%s: no base URL, skipping", providerID))
+		utils.LogWithFields(utils.LevelInfo, "ModelDiscovery", "no base url skipping", map[string]any{"provider": providerID})
 		return
 	}
-	utils.Log("ModelDiscovery", fmt.Sprintf("%s: on-demand discovery (url=%s, hasKey=%v)", providerID, baseURL, apiKey != ""))
+	utils.LogWithFields(utils.LevelInfo, "ModelDiscovery", "on-demand discovery", map[string]any{"provider": providerID, "path": baseURL, "status": apiKey != ""})
 	go discoverOne(providerID, baseURL, apiKey)
 }
 
@@ -78,20 +78,20 @@ func DiscoverProvider(providerID, apiKey string, providerConfigs map[string]type
 // can return the result. Skips providers that were fetched less than
 // 24h ago unless force is true.
 func RefreshModels(providerID string, force bool, resolveKey keyResolver, providerConfigs map[string]types.ProviderConfig) {
-	utils.Log("ModelDiscovery", fmt.Sprintf("refresh requested: provider=%q force=%v", providerID, force))
+	utils.LogWithFields(utils.LevelInfo, "ModelDiscovery", "refresh requested", map[string]any{"provider": providerID, "status": force})
 	if providerID != "" {
 		apiKey, err := resolveKey(providerID)
 		if apiKey == "" && providerID != "ollama" {
-			utils.Log("ModelDiscovery", fmt.Sprintf("%s: no API key (err=%v), skipping refresh", providerID, err))
+			utils.LogWithFields(utils.LevelInfo, "ModelDiscovery", "no api key skipping refresh", map[string]any{"provider": providerID, "error": err})
 			return
 		}
 		baseURL := resolveBaseURL(providerID, providerConfigs)
 		if baseURL == "" {
-			utils.Log("ModelDiscovery", fmt.Sprintf("%s: no base URL, skipping refresh", providerID))
+			utils.LogWithFields(utils.LevelInfo, "ModelDiscovery", "no base url skipping refresh", map[string]any{"provider": providerID})
 			return
 		}
 		if !force && !isStale(providerID) {
-			utils.Log("ModelDiscovery", fmt.Sprintf("%s: skipping refresh (last fetch < 24h)", providerID))
+			utils.LogWithFields(utils.LevelInfo, "ModelDiscovery", "skipping refresh last fetch under 24h", map[string]any{"provider": providerID})
 			return
 		}
 		discoverOne(providerID, baseURL, apiKey)
@@ -183,12 +183,12 @@ func storeResult(providerID string, models []types.ModelEntry, err error) {
 	d := &providerDiscovery{fetchedAt: time.Now()}
 	if err != nil {
 		d.err = err.Error()
-		utils.Log("ModelDiscovery", fmt.Sprintf("%s: failed (%v), using fallback catalog", providerID, err))
+		utils.LogWithFields(utils.LevelWarn, "ModelDiscovery", "discovery failed using fallback catalog", map[string]any{"provider": providerID, "error": err.Error()})
 	} else if len(models) > 0 {
 		d.models = models
-		utils.Log("ModelDiscovery", fmt.Sprintf("%s: discovered %d models", providerID, len(models)))
+		utils.LogWithFields(utils.LevelInfo, "ModelDiscovery", "models discovered", map[string]any{"provider": providerID, "count": len(models)})
 	} else {
-		utils.Log("ModelDiscovery", fmt.Sprintf("%s: API returned 0 models, using fallback catalog", providerID))
+		utils.LogWithFields(utils.LevelWarn, "ModelDiscovery", "api returned 0 models using fallback catalog", map[string]any{"provider": providerID})
 	}
 	discoveryCache[providerID] = d
 	discoveryMu.Unlock()
@@ -208,7 +208,7 @@ func storeResult(providerID string, models []types.ModelEntry, err error) {
 			}
 		}
 		mu.Unlock()
-		utils.Log("ModelDiscovery", fmt.Sprintf("%s: registered %d new models in provider registry", providerID, registered))
+		utils.LogWithFields(utils.LevelInfo, "ModelDiscovery", "registered new models in provider registry", map[string]any{"provider": providerID, "count": registered})
 	}
 }
 

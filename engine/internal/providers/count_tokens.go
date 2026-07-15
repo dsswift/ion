@@ -87,7 +87,7 @@ func (p *anthropicProvider) CountTokens(ctx context.Context, req CountTokensRequ
 	}
 	defer func() {
 		if cerr := resp.Body.Close(); cerr != nil {
-			utils.Log("anthropic", fmt.Sprintf("CountTokens: response body close failed: %v", cerr))
+			utils.LogWithFields(utils.LevelInfo, "anthropic", "count tokens response body close failed", map[string]any{"error": cerr.Error()})
 		}
 	}()
 
@@ -106,7 +106,7 @@ func (p *anthropicProvider) CountTokens(ctx context.Context, req CountTokensRequ
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
 		return 0, FromAnthropicError(fmt.Errorf("parse count_tokens response: %w", err), resp.StatusCode, string(respBody))
 	}
-	utils.Debug("anthropic", fmt.Sprintf("CountTokens: model=%s input_tokens=%d", req.Model, parsed.InputTokens))
+	utils.LogWithFields(utils.LevelDebug, "anthropic", "count tokens result", map[string]any{"model": req.Model, "count": parsed.InputTokens})
 	return parsed.InputTokens, nil
 }
 
@@ -173,7 +173,7 @@ func (p *googleProvider) CountTokens(ctx context.Context, req CountTokensRequest
 	}
 	defer func() {
 		if cerr := resp.Body.Close(); cerr != nil {
-			utils.Log("google", fmt.Sprintf("CountTokens: response body close failed: %v", cerr))
+			utils.LogWithFields(utils.LevelInfo, "google", "count tokens response body close failed", map[string]any{"error": cerr.Error()})
 		}
 	}()
 
@@ -191,7 +191,7 @@ func (p *googleProvider) CountTokens(ctx context.Context, req CountTokensRequest
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
 		return 0, NewProviderError(ErrUnknown, fmt.Sprintf("parse countTokens response: %v", err), resp.StatusCode, false)
 	}
-	utils.Debug("google", fmt.Sprintf("CountTokens: model=%s totalTokens=%d", req.Model, parsed.TotalTokens))
+	utils.LogWithFields(utils.LevelDebug, "google", "count tokens result", map[string]any{"model": req.Model, "count": parsed.TotalTokens})
 	return parsed.TotalTokens, nil
 }
 
@@ -252,7 +252,7 @@ func (p *bedrockProvider) CountTokens(ctx context.Context, req CountTokensReques
 	}
 	defer func() {
 		if cerr := resp.Body.Close(); cerr != nil {
-			utils.Log("bedrock", fmt.Sprintf("CountTokens: response body close failed: %v", cerr))
+			utils.LogWithFields(utils.LevelInfo, "bedrock", "count tokens response body close failed", map[string]any{"error": cerr.Error()})
 		}
 	}()
 
@@ -275,6 +275,6 @@ func (p *bedrockProvider) CountTokens(ctx context.Context, req CountTokensReques
 		// falls back rather than reporting an implausible zero-token prompt.
 		return 0, ErrCountUnsupported
 	}
-	utils.Debug("bedrock", fmt.Sprintf("CountTokens: model=%s inputTokens=%d", req.Model, parsed.InputTokens))
+	utils.LogWithFields(utils.LevelDebug, "bedrock", "count tokens result", map[string]any{"model": req.Model, "count": parsed.InputTokens})
 	return parsed.InputTokens, nil
 }

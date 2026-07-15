@@ -10,6 +10,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/resource"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -36,6 +37,7 @@ type snapshotSample struct {
 }
 
 func (a *convIDRecordingAccessor) NewChildBackend() backend.RunBackend { return a.child }
+func (a *convIDRecordingAccessor) AllocatePlanFilePath() string        { return "/tmp/.ion/plans/plan.md" }
 func (a *convIDRecordingAccessor) RootContext() context.Context        { return context.Background() }
 
 func (a *convIDRecordingAccessor) AppendOrUpdateAgentState(s types.AgentStateUpdate) string {
@@ -110,6 +112,8 @@ func (a *convIDRecordingAccessor) BumpParentProgress()              {}
 func (a *convIDRecordingAccessor) EmitDispatchCountStatus(_ string) {}
 
 func (a *convIDRecordingAccessor) SessionKey() string                       { return "convid-test-session" }
+func (a *convIDRecordingAccessor) ExtensionName() string    { return "" }
+func (a *convIDRecordingAccessor) ExtensionVersion() string { return "" }
 func (a *convIDRecordingAccessor) ConversationID() string                   { return "" }
 func (a *convIDRecordingAccessor) WorkingDirectory() string                 { return "/tmp" }
 func (a *convIDRecordingAccessor) Emit(_ types.EngineEvent)                 {}
@@ -133,6 +137,8 @@ func (a *convIDRecordingAccessor) ExtGroup() *extension.ExtensionGroup      { re
 func (a *convIDRecordingAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
 func (a *convIDRecordingAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
 func (a *convIDRecordingAccessor) EngineConfig() *types.EngineRuntimeConfig { return nil }
+func (a *convIDRecordingAccessor) ClaudeCompat() bool { return false }
+func (a *convIDRecordingAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
 func (a *convIDRecordingAccessor) ResolveTier(_ string) string              { return "" }
 func (a *convIDRecordingAccessor) PermissionCheck(_ string, _ map[string]interface{}) (string, string) {
 	return "", ""
@@ -156,6 +162,7 @@ func (a *convIDRecordingAccessor) SendToSession(_, _, _ string, _ map[string]int
 }
 func (a *convIDRecordingAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
 func (a *convIDRecordingAccessor) RunOnceComplete(_ string, _ bool)              {}
+func (a *convIDRecordingAccessor) Telemetry() *telemetry.Collector { return nil }
 
 // allConversationIDs returns every conversationIds slice across all agent
 // state entries (not just the first hit). Used by the re-dispatch test to

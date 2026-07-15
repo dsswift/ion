@@ -20,20 +20,28 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
+// bedrockDefaultMaxTokens is the conservative fallback for the REQUIRED
+// inferenceConfig.maxTokens field when the engine has no per-model
+// MaxOutputTokens value and the caller set no explicit override (an unknown
+// discovered/custom model). It is deliberately conservative: an unknown model's
+// true output cap cannot be known, and overshooting risks a provider 400. Known
+// catalog models carry their real cap in models.json and never hit this path.
+const bedrockDefaultMaxTokens = 16384
+
 // BedrockOptions configures the AWS Bedrock provider.
 type BedrockOptions struct {
 	Region          string
 	AccessKeyID     string
-	SecretAccessKey  string
+	SecretAccessKey string
 	SessionToken    string
 }
 
 type bedrockProvider struct {
-	region         string
-	accessKeyID    string
+	region          string
+	accessKeyID     string
 	secretAccessKey string
-	sessionToken   string
-	client         *http.Client
+	sessionToken    string
+	client          *http.Client
 }
 
 // NewBedrockProvider creates an AWS Bedrock provider that uses the ConverseStream
@@ -97,9 +105,15 @@ func (p *bedrockProvider) Stream(ctx context.Context, opts types.LlmStreamOption
 }
 
 func (p *bedrockProvider) doStream(ctx context.Context, opts types.LlmStreamOptions, events chan<- types.LlmStreamEvent) error {
-	maxTokens := opts.MaxTokens
-	if maxTokens == 0 {
-		maxTokens = 16384
+	// Bedrock's Converse API REQUIRES inferenceConfig.maxTokens, so the field is
+	// always present. Prefer the resolved per-model value (caller override →
+	// registry MaxOutputTokens); fall back to a conservative constant only when
+	// the engine has no value for this model (unknown discovered/custom model),
+	// where the true cap is genuinely unknowable and a conservative value avoids
+	// a 400.
+	maxTokens, ok := resolveMaxOutputTokens(opts)
+	if !ok {
+		maxTokens = bedrockDefaultMaxTokens
 	}
 
 	inferenceConfig := map[string]any{"maxTokens": maxTokens}
@@ -155,11 +169,17 @@ func (p *bedrockProvider) doStream(ctx context.Context, opts types.LlmStreamOpti
 
 	resp, err := p.client.Do(req)
 	if err != nil {
+		// Try transport classification first so "use of closed network
+		// connection" and similar are tagged stale_connection (matching the
+		// SSE-read path) instead of a generic network error.
+		if pe := ClassifyTransportError(err); pe != nil {
+			return pe
+		}
 		return NewProviderError(ErrNetwork, err.Error(), 0, true)
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			utils.Log("bedrock", fmt.Sprintf("Stream: response body close failed: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "bedrock", "stream response body close failed", map[string]any{"error": err.Error()})
 		}
 	}()
 
@@ -198,7 +218,7 @@ func (p *bedrockProvider) parseBedrockStream(ctx context.Context, reader io.Read
 	rawCh, rawErr := ParseSSEStream(reader)
 	// Per-event idle deadline + heartbeat (see sse_idle.go): a stream that
 	// returns headers then goes silent is caught fast and retried.
-	sseCh, sseErr := streamWithIdle(rawCh, rawErr, "bedrock", "", "", nil)
+	sseCh, sseErr := streamWithIdle(rawCh, rawErr, "bedrock", "", "", nil, telemetryCorrelationFromContext(ctx))
 	for sse := range sseCh {
 		if sse.Data == "" {
 			continue

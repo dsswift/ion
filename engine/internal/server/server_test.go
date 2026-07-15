@@ -37,7 +37,7 @@ func (m *mockBackend) StartRun(requestID string, options types.RunOptions) {
 		go func() {
 			time.Sleep(10 * time.Millisecond)
 			code := 0
-			m.onExit(requestID, &code, nil, options.SessionID)
+			m.onExit(requestID, &code, nil, options.SessionKey)
 		}()
 	}
 }

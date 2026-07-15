@@ -9,6 +9,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/resource"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -20,7 +21,11 @@ type eligibilityTestAccessor struct {
 }
 
 func (a *eligibilityTestAccessor) SessionKey() string                       { return "elig-test-session" }
+func (a *eligibilityTestAccessor) ExtensionName() string    { return "" }
+func (a *eligibilityTestAccessor) ExtensionVersion() string { return "" }
 func (a *eligibilityTestAccessor) EngineConfig() *types.EngineRuntimeConfig { return a.cfg }
+func (a *eligibilityTestAccessor) ClaudeCompat() bool { return false }
+func (a *eligibilityTestAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
 
 func (a *eligibilityTestAccessor) ConversationID() string                          { return "" }
 func (a *eligibilityTestAccessor) WorkingDirectory() string                        { return "/tmp" }
@@ -46,6 +51,7 @@ func (a *eligibilityTestAccessor) ExtGroup() *extension.ExtensionGroup      { re
 func (a *eligibilityTestAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
 func (a *eligibilityTestAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
 func (a *eligibilityTestAccessor) NewChildBackend() backend.RunBackend      { return nil }
+func (a *eligibilityTestAccessor) AllocatePlanFilePath() string             { return "/tmp/.ion/plans/plan.md" }
 func (a *eligibilityTestAccessor) BumpParentProgress()                      {}
 func (a *eligibilityTestAccessor) EmitDispatchCountStatus(_ string)         {}
 func (a *eligibilityTestAccessor) ResolveTier(_ string) string              { return "" }
@@ -75,6 +81,7 @@ func (a *eligibilityTestAccessor) SendToSession(_, _, _ string, _ map[string]int
 }
 func (a *eligibilityTestAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
 func (a *eligibilityTestAccessor) RunOnceComplete(_ string, _ bool)              {}
+func (a *eligibilityTestAccessor) Telemetry() *telemetry.Collector { return nil }
 
 // registerDispatcher records a depth-1 dispatch named name with id in the
 // registry so NameForID resolves the dispatcher's own name in the guard.

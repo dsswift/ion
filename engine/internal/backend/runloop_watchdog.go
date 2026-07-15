@@ -138,10 +138,11 @@ func (b *ApiBackend) runProgressWatchdog(run *activeRun) {
 		threshold = defaultRunStallThreshold
 	}
 
-	utils.Debug("ApiBackend", fmt.Sprintf(
-		"runProgressWatchdog: started runID=%s threshold=%s tick=%s",
-		run.requestID, threshold, runProgressWatchdogTick(),
-	))
+	utils.LogWithFields(utils.LevelDebug, "backend.runloop", "runProgressWatchdog: started", map[string]any{
+		"run_id":    run.requestID,
+		"threshold": threshold,
+		"tick":      runProgressWatchdogTick(),
+	})
 
 	ticker := time.NewTicker(runProgressWatchdogTick())
 	defer ticker.Stop()
@@ -159,10 +160,9 @@ func (b *ApiBackend) runProgressWatchdog(run *activeRun) {
 		// was never wired.
 		select {
 		case <-run.progressWatchdogStop:
-			utils.Debug("ApiBackend", fmt.Sprintf(
-				"runProgressWatchdog: stop signal received, exiting runID=%s",
-				run.requestID,
-			))
+			utils.LogWithFields(utils.LevelDebug, "backend.runloop", "runProgressWatchdog: stop signal received, exiting", map[string]any{
+				"run_id": run.requestID,
+			})
 			return
 		case <-ticker.C:
 		}
@@ -176,10 +176,9 @@ func (b *ApiBackend) runProgressWatchdog(run *activeRun) {
 		_, stillActive := b.activeRuns[run.requestID]
 		b.mu.Unlock()
 		if !stillActive {
-			utils.Debug("ApiBackend", fmt.Sprintf(
-				"runProgressWatchdog: run no longer active, stopping runID=%s",
-				run.requestID,
-			))
+			utils.LogWithFields(utils.LevelDebug, "backend.runloop", "runProgressWatchdog: run no longer active, stopping", map[string]any{
+				"run_id": run.requestID,
+			})
 			return
 		}
 
@@ -213,10 +212,11 @@ func (b *ApiBackend) runProgressWatchdog(run *activeRun) {
 		// runloop_watchdog_humanwait_test.go. Those tests go red if this branch
 		// is removed.
 		if run.humanWaitDepth.Load() > 0 {
-			utils.Debug("ApiBackend", fmt.Sprintf(
-				"runProgressWatchdog: idle %s but runID=%s is in a human-wait (depth=%d) — not cancelling",
-				idle.Round(time.Second), run.requestID, run.humanWaitDepth.Load(),
-			))
+			utils.LogWithFields(utils.LevelDebug, "backend.runloop", "runProgressWatchdog: idle but is in a human-wait — not cancelling", map[string]any{
+				"second": idle.Round(time.Second),
+				"run_id": run.requestID,
+				"depth":  run.humanWaitDepth.Load(),
+			})
 			continue
 		}
 
@@ -225,10 +225,11 @@ func (b *ApiBackend) runProgressWatchdog(run *activeRun) {
 		// the cancellation on its next iteration and calls emitExit,
 		// which fires OnExit and unwinds the dispatch goroutine in
 		// the background-dispatch case.
-		utils.Error("ApiBackend", fmt.Sprintf(
-			"run stalled: no progress for %s (threshold=%s) cancelling runID=%s",
-			idle.Round(time.Second), threshold, run.requestID,
-		))
+		utils.LogWithFields(utils.LevelError, "backend.runloop", "run stalled: no progress for cancelling", map[string]any{
+			"second":    idle.Round(time.Second),
+			"threshold": threshold,
+			"run_id":    run.requestID,
+		})
 		b.emit(run, types.NormalizedEvent{Data: &types.RunStalledEvent{
 			StalledDuration: idle.Seconds(),
 			LastActivity:    "no emit observed since last watchdog tick",

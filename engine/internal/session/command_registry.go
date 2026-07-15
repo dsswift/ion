@@ -29,7 +29,6 @@
 package session
 
 import (
-	"fmt"
 	"sort"
 
 	"github.com/dsswift/ion/engine/internal/extension"
@@ -65,12 +64,12 @@ func (m *Manager) emitCommandRegistry(key string) {
 	s, ok := m.sessions[key]
 	m.mu.RUnlock()
 	if !ok {
-		utils.Debug("Session", fmt.Sprintf("emitCommandRegistry: session %s not found, skipping", key))
+		utils.LogWithFields(utils.LevelDebug, "session", "emitcommandregistry: session not found, skipping", map[string]any{"key": key})
 		return
 	}
 
 	listings := buildCommandListings(s.extGroup)
-	utils.Log("Session", fmt.Sprintf("emitCommandRegistry: key=%s count=%d", key, len(listings)))
+	utils.LogWithFields(utils.LevelInfo, "session", "emitcommandregistry", map[string]any{"key": key, "count": len(listings)})
 	m.emit(key, types.EngineEvent{
 		Type:     EngineEventCommandRegistry,
 		Commands: listings,

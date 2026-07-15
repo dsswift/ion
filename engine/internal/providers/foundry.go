@@ -21,7 +21,7 @@ func NewFoundryProvider(cfg FoundryConfig) (LlmProvider, error) {
 	apiKey := firstNonEmpty(cfg.APIKey, os.Getenv("ANTHROPIC_FOUNDRY_API_KEY"), os.Getenv("ANTHROPIC_API_KEY"))
 
 	return NewAnthropicProvider(&ProviderOptions{
-		ID:     "foundry",
+		ID:      "foundry",
 		BaseURL: baseURL,
 		APIKey:  apiKey,
 	}), nil

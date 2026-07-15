@@ -53,8 +53,8 @@ func TestHandleRunExit_CapturesCliSessionIDNotConversationID(t *testing.T) {
 	if opts.CliResumeSessionID != claudeUUID {
 		t.Errorf("buildRunOptions CliResumeSessionID = %q, want %q", opts.CliResumeSessionID, claudeUUID)
 	}
-	if opts.SessionID != ionConvID {
-		t.Errorf("buildRunOptions SessionID = %q, want %q (Ion conversation-file id)", opts.SessionID, ionConvID)
+	if opts.ConversationID != ionConvID {
+		t.Errorf("buildRunOptions ConversationID = %q, want %q (Ion conversation-file id)", opts.ConversationID, ionConvID)
 	}
 }
 
@@ -78,8 +78,8 @@ func TestBuildRunOptions_FirstRunOmitsCliResume(t *testing.T) {
 	if opts.CliResumeSessionID != "" {
 		t.Errorf("first run CliResumeSessionID = %q, want empty (no --resume on first CLI run)", opts.CliResumeSessionID)
 	}
-	if opts.SessionID != ionConvID {
-		t.Errorf("first run SessionID = %q, want %q", opts.SessionID, ionConvID)
+	if opts.ConversationID != ionConvID {
+		t.Errorf("first run ConversationID = %q, want %q", opts.ConversationID, ionConvID)
 	}
 }
 

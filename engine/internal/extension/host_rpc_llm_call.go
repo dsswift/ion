@@ -3,7 +3,6 @@ package extension
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -38,7 +37,7 @@ func (h *Host) handleLLMCallRPC(ctx *Context, id int64, raw []byte) {
 		} `json:"params"`
 	}
 	if err := json.Unmarshal(raw, &req); err != nil {
-		utils.Log("extension", fmt.Sprintf("ext/llm_call: parse error: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/llm_call: parse error", map[string]any{"error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "parse error: " + err.Error()})
 		return
 	}
@@ -47,11 +46,7 @@ func (h *Host) handleLLMCallRPC(ctx *Context, id int64, raw []byte) {
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "llmCall not available outside an active session"})
 		return
 	}
-	utils.Debug("extension", fmt.Sprintf(
-		"ext/llm_call: dispatching id=%d model=%s sysLen=%d promptLen=%d jsonMode=%v maxTokens=%d temperatureSet=%v temperature=%v",
-		id, req.Params.Model, len(req.Params.System), len(req.Params.Prompt),
-		req.Params.JSONMode, req.Params.MaxTokens, req.Params.TemperatureSet, req.Params.Temperature,
-	))
+	utils.LogWithFields(utils.LevelDebug, "extension", "ext/llm_call: dispatching", map[string]any{"run_id": id, "model": req.Params.Model, "count": len(req.Params.System), "count_3": len(req.Params.Prompt), "j_s_o_n_mode": req.Params.JSONMode, "max_tokens": req.Params.MaxTokens, "temperature_set": req.Params.TemperatureSet, "temperature": req.Params.Temperature})
 
 	// Per-call cancellation context, registered under the RPC id.
 	callCtx, callCancel := context.WithCancel(context.Background())
@@ -70,20 +65,17 @@ func (h *Host) handleLLMCallRPC(ctx *Context, id int64, raw []byte) {
 			Ctx:            callCtx,
 		})
 		if err != nil {
-			utils.Log("extension", fmt.Sprintf("ext/llm_call: failed: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "extension", "ext/llm_call: failed", map[string]any{"error": err})
 			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 			return
 		}
 		data, marshalErr := json.Marshal(result)
 		if marshalErr != nil {
-			utils.Error("extension", fmt.Sprintf("ext/llm_call: marshal failed: %v", marshalErr))
+			utils.LogWithFields(utils.LevelError, "extension", "ext/llm_call: marshal failed", map[string]any{"error": marshalErr})
 			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: marshalErr.Error()})
 			return
 		}
-		utils.Debug("extension", fmt.Sprintf(
-			"ext/llm_call: success contentLen=%d in=%d out=%d cost=%.6f",
-			len(result.Content), result.InputTokens, result.OutputTokens, result.Cost,
-		))
+		utils.LogWithFields(utils.LevelDebug, "extension", "ext/llm_call: success", map[string]any{"count": len(result.Content), "input_tokens": result.InputTokens, "output_tokens": result.OutputTokens, "cost": result.Cost})
 		h.sendResponse(id, json.RawMessage(data), nil)
 	}()
 }

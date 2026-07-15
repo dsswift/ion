@@ -165,23 +165,23 @@ func NewWithMaxDirs(root string, ignores []string, maxDirs int) (*Watcher, error
 	}
 	abs, err := filepath.Abs(root)
 	if err != nil {
-		utils.Error("watcher", "New: filepath.Abs failed root="+root+" err="+err.Error())
+		utils.LogWithFields(utils.LevelError, "watcher", "new filepath abs failed", map[string]any{"path": root, "error": err.Error()})
 		return nil, err
 	}
 	st, err := os.Stat(abs)
 	if err != nil {
-		utils.Error("watcher", "New: stat root failed root="+abs+" err="+err.Error())
+		utils.LogWithFields(utils.LevelError, "watcher", "new stat root failed", map[string]any{"path": abs, "error": err.Error()})
 		return nil, err
 	}
 	if !st.IsDir() {
-		utils.Error("watcher", "New: root is not a directory root="+abs)
+		utils.LogWithFields(utils.LevelError, "watcher", "new root is not a directory", map[string]any{"path": abs})
 		return nil, errors.New("watcher: root is not a directory: " + abs)
 	}
 	// Validate every ignore pattern up front so a malformed glob surfaces at
 	// session start, not on the first event.
 	for _, pat := range ignores {
 		if _, err := doublestar.Match(pat, ""); err != nil {
-			utils.Error("watcher", "New: invalid ignore pattern pattern="+pat+" err="+err.Error())
+			utils.LogWithFields(utils.LevelError, "watcher", "new invalid ignore pattern", map[string]any{"reason": pat, "error": err.Error()})
 			return nil, errors.New("watcher: invalid ignore pattern " + pat + ": " + err.Error())
 		}
 	}
@@ -190,8 +190,8 @@ func NewWithMaxDirs(root string, ignores []string, maxDirs int) (*Watcher, error
 	if cap <= 0 {
 		cap = maxWatchedDirs
 	}
-	utils.Info("watcher", "New: constructed root="+abs+" ignores="+countStr(len(ignores))+" maxDirs="+countStr(cap))
-	utils.Info("watcher", "New: ignore patterns root="+abs+" patterns=["+strings.Join(ignores, ", ")+"]")
+	utils.LogWithFields(utils.LevelDebug, "watcher", "new constructed", map[string]any{"path": abs, "count": len(ignores), "max": cap})
+	utils.LogWithFields(utils.LevelDebug, "watcher", "new ignore patterns", map[string]any{"path": abs, "reason": strings.Join(ignores, ", ")})
 	return &Watcher{
 		root:    abs,
 		ignores: ignores,
@@ -225,7 +225,7 @@ func (w *Watcher) Start(ctx context.Context, onEvent func(Info)) error {
 	fsw, err := fsnotify.NewWatcher()
 	if err != nil {
 		w.mu.Unlock()
-		utils.Error("watcher", "Start: fsnotify.NewWatcher failed err="+err.Error())
+		utils.LogWithFields(utils.LevelError, "watcher", "start fsnotify watcher failed", map[string]any{"error": err.Error()})
 		return err
 	}
 	w.fsw = fsw
@@ -241,7 +241,7 @@ func (w *Watcher) Start(ctx context.Context, onEvent func(Info)) error {
 	attached := 0
 	walkErr := filepath.Walk(w.root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			utils.Debug("watcher", "Start: walk skip path="+path+" err="+err.Error())
+			utils.LogWithFields(utils.LevelDebug, "watcher", "start walk skip", map[string]any{"path": path, "error": err.Error()})
 			return nil
 		}
 		if !info.IsDir() {
@@ -249,7 +249,7 @@ func (w *Watcher) Start(ctx context.Context, onEvent func(Info)) error {
 		}
 		rel := w.rel(path)
 		if w.shouldIgnore(rel, true) {
-			utils.Debug("watcher", "Start: walk ignore dir rel="+rel)
+			utils.LogWithFields(utils.LevelDebug, "watcher", "start walk ignore dir", map[string]any{"path": rel})
 			return filepath.SkipDir
 		}
 		// Enforce the directory cap before attaching another descriptor so a
@@ -266,7 +266,7 @@ func (w *Watcher) Start(ctx context.Context, onEvent func(Info)) error {
 			// Release the reserved slot: we did not actually attach a
 			// descriptor, so it must not count against the cap.
 			w.releaseAttach()
-			utils.Debug("watcher", "Start: fsw.Add failed path="+path+" err="+err.Error())
+			utils.LogWithFields(utils.LevelDebug, "watcher", "start fsw add failed", map[string]any{"path": path, "error": err.Error()})
 			return nil
 		}
 		attached++
@@ -275,7 +275,7 @@ func (w *Watcher) Start(ctx context.Context, onEvent func(Info)) error {
 	if walkErr != nil {
 		// Walk itself only returns the root-stat error here; per-entry errors
 		// are swallowed above. If we got nothing usable, bail out cleanly.
-		utils.Error("watcher", "Start: walk failed err="+walkErr.Error())
+		utils.LogWithFields(utils.LevelError, "watcher", "start walk failed", map[string]any{"error": walkErr.Error()})
 		_ = fsw.Close()
 		cancel()
 		w.mu.Lock()
@@ -286,7 +286,7 @@ func (w *Watcher) Start(ctx context.Context, onEvent func(Info)) error {
 		return walkErr
 	}
 
-	utils.Info("watcher", "Start: attached root="+w.root+" dirs="+countStr(attached))
+	utils.LogWithFields(utils.LevelDebug, "watcher", "start attached", map[string]any{"path": w.root, "count": attached})
 	go w.pump(pumpCtx)
 	return nil
 }
@@ -307,7 +307,7 @@ func (w *Watcher) Close() error {
 	w.mu.Unlock()
 
 	if !started {
-		utils.Info("watcher", "Close: not started, nothing to do root="+w.root)
+		utils.LogWithFields(utils.LevelInfo, "watcher", "close not started nothing to do", map[string]any{"path": w.root})
 		return nil
 	}
 	if cancel != nil {
@@ -319,7 +319,7 @@ func (w *Watcher) Close() error {
 
 	if fsw != nil {
 		if err := fsw.Close(); err != nil {
-			utils.Error("watcher", "Close: fsnotify.Close failed err="+err.Error())
+			utils.LogWithFields(utils.LevelError, "watcher", "close fsnotify close failed", map[string]any{"error": err.Error()})
 		}
 	}
 
@@ -333,7 +333,7 @@ func (w *Watcher) Close() error {
 	}
 	w.pendMu.Unlock()
 
-	utils.Info("watcher", "Close: stopped root="+w.root)
+	utils.LogWithFields(utils.LevelInfo, "watcher", "close stopped", map[string]any{"path": w.root})
 	return nil
 }
 
@@ -341,24 +341,24 @@ func (w *Watcher) Close() error {
 // translates them to debounced Info callbacks.
 func (w *Watcher) pump(ctx context.Context) {
 	defer close(w.doneCh)
-	utils.Debug("watcher", "pump: started root="+w.root)
+	utils.LogWithFields(utils.LevelDebug, "watcher", "pump started", map[string]any{"path": w.root})
 	for {
 		select {
 		case <-ctx.Done():
-			utils.Debug("watcher", "pump: ctx done, exiting root="+w.root)
+			utils.LogWithFields(utils.LevelDebug, "watcher", "pump ctx done exiting", map[string]any{"path": w.root})
 			return
 		case ev, ok := <-w.fsw.Events:
 			if !ok {
-				utils.Debug("watcher", "pump: events channel closed, exiting root="+w.root)
+				utils.LogWithFields(utils.LevelDebug, "watcher", "pump events channel closed exiting", map[string]any{"path": w.root})
 				return
 			}
 			w.handleEvent(ev)
 		case err, ok := <-w.fsw.Errors:
 			if !ok {
-				utils.Debug("watcher", "pump: errors channel closed, exiting root="+w.root)
+				utils.LogWithFields(utils.LevelDebug, "watcher", "pump errors channel closed exiting", map[string]any{"path": w.root})
 				return
 			}
-			utils.Error("watcher", "pump: fsnotify error err="+err.Error())
+			utils.LogWithFields(utils.LevelError, "watcher", "pump fsnotify error", map[string]any{"error": err.Error()})
 		}
 	}
 }
@@ -382,7 +382,7 @@ func (w *Watcher) handleEvent(ev fsnotify.Event) {
 	}
 
 	if w.shouldIgnore(rel, isDir) {
-		utils.Debug("watcher", "handleEvent: ignored path="+path+" op="+ev.Op.String())
+		utils.LogWithFields(utils.LevelDebug, "watcher", "handle event ignored", map[string]any{"path": path, "status": ev.Op.String()})
 		return
 	}
 
@@ -408,14 +408,16 @@ func (w *Watcher) handleEvent(ev fsnotify.Event) {
 	case ev.Op&fsnotify.Chmod != 0:
 		// Chmod-only events are noisy and rarely interesting for hot-reload
 		// use cases. Drop them.
-		utils.Debug("watcher", "handleEvent: chmod-only, dropped path="+path)
+		utils.LogWithFields(utils.LevelDebug, "watcher", "handle event chmod-only dropped", map[string]any{"path": path})
 		return
 	default:
-		utils.Debug("watcher", "handleEvent: unknown op, dropped path="+path+" op="+ev.Op.String())
+		utils.LogWithFields(utils.LevelDebug, "watcher", "handle event unknown op dropped", map[string]any{"path": path, "status": ev.Op.String()})
 		return
 	}
 
-	utils.Debug("watcher", "handleEvent: queue path="+path+" rel="+rel+" action="+action+" op="+ev.Op.String())
+	utils.LogWithFields(utils.LevelDebug, "watcher", "handle event queue", map[string]any{
+		"path": path, "reason": rel, "status": action, "count": ev.Op.String(),
+	})
 	w.schedule(path, rel, action)
 }
 
@@ -458,7 +460,7 @@ func (w *Watcher) attachSubtree(root string, skipRoot bool) {
 			}
 			if err := fsw.Add(path); err != nil {
 				w.releaseAttach()
-				utils.Debug("watcher", "attachSubtree: fsw.Add failed path="+path+" err="+err.Error())
+				utils.LogWithFields(utils.LevelDebug, "watcher", "attach subtree fsw add failed", map[string]any{"path": path, "error": err.Error()})
 				return nil
 			}
 			attached++
@@ -479,7 +481,7 @@ func (w *Watcher) attachSubtree(root string, skipRoot bool) {
 		synthesized++
 		return nil
 	})
-	utils.Debug("watcher", "attachSubtree: done root="+root+" dirs="+countStr(attached)+" synth="+countStr(synthesized))
+	utils.LogWithFields(utils.LevelDebug, "watcher", "attach subtree done", map[string]any{"path": root, "count": attached, "max": synthesized})
 }
 
 // schedule queues a debounced delivery for path. If another event arrives on
@@ -528,10 +530,10 @@ func (w *Watcher) deliverFunc(path, rel string) func() {
 		closed := w.closed
 		w.mu.Unlock()
 		if closed || cb == nil {
-			utils.Debug("watcher", "deliverFunc: dropped post-close path="+path)
+			utils.LogWithFields(utils.LevelDebug, "watcher", "deliver func dropped post-close", map[string]any{"path": path})
 			return
 		}
-		utils.Info("watcher", "deliverFunc: fire path="+path+" rel="+rel+" action="+action)
+		utils.LogWithFields(utils.LevelInfo, "watcher", "deliver func fire", map[string]any{"path": path, "reason": rel, "status": action})
 		cb(Info{Path: path, RelPath: rel, Action: action})
 	}
 }

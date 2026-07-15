@@ -198,12 +198,12 @@ func (r *Registry) SetCap(cap int) {
 // engine_*_registered observability event after Register returns nil.
 func (r *Registry) Register(kind Kind, decl Declaration, origin Origin, veto VetoFunc) error {
 	if decl == nil {
-		utils.Debug("asyncreg", fmt.Sprintf("Register: kind=%s nil declaration rejected", kind))
+		utils.LogWithFields(utils.LevelDebug, "asyncreg", "register nil declaration rejected", map[string]any{"reason": kind})
 		return fmt.Errorf("asyncreg: declaration is nil")
 	}
 	id := decl.ID()
 	if id == "" {
-		utils.Debug("asyncreg", fmt.Sprintf("Register: kind=%s empty id rejected origin=%s", kind, origin))
+		utils.LogWithFields(utils.LevelDebug, "asyncreg", "register empty id rejected", map[string]any{"reason": kind, "model": origin})
 		return ErrEmptyID
 	}
 
@@ -212,14 +212,14 @@ func (r *Registry) Register(kind Kind, decl Declaration, origin Origin, veto Vet
 	bucket := r.entries[kind]
 	if _, exists := bucket[id]; exists {
 		r.mu.RUnlock()
-		utils.Debug("asyncreg", fmt.Sprintf("Register: kind=%s id=%q duplicate origin=%s", kind, id, origin))
+		utils.LogWithFields(utils.LevelDebug, "asyncreg", "register duplicate", map[string]any{"reason": kind, "run_id": id, "model": origin})
 		return ErrDuplicate
 	}
 	if len(bucket) >= r.cap {
 		size := len(bucket)
 		cap := r.cap
 		r.mu.RUnlock()
-		utils.Debug("asyncreg", fmt.Sprintf("Register: kind=%s id=%q cap_exceeded size=%d cap=%d origin=%s", kind, id, size, cap, origin))
+		utils.LogWithFields(utils.LevelDebug, "asyncreg", "register cap exceeded", map[string]any{"reason": kind, "run_id": id, "count": size, "max": cap, "model": origin})
 		return ErrCapExceeded
 	}
 	r.mu.RUnlock()
@@ -228,7 +228,7 @@ func (r *Registry) Register(kind Kind, decl Declaration, origin Origin, veto Vet
 	// register/deregister calls from inside the veto handler are safe.
 	if veto != nil {
 		if err := veto(kind, decl, origin); err != nil {
-			utils.Log("asyncreg", fmt.Sprintf("Register: kind=%s id=%q vetoed origin=%s reason=%v", kind, id, origin, err))
+			utils.LogWithFields(utils.LevelInfo, "asyncreg", "register vetoed", map[string]any{"reason": kind, "run_id": id, "model": origin, "error": err.Error()})
 			return err
 		}
 	}
@@ -241,14 +241,14 @@ func (r *Registry) Register(kind Kind, decl Declaration, origin Origin, veto Vet
 	}
 	if _, exists := r.entries[kind][id]; exists {
 		r.mu.Unlock()
-		utils.Debug("asyncreg", fmt.Sprintf("Register: kind=%s id=%q raced-duplicate origin=%s", kind, id, origin))
+		utils.LogWithFields(utils.LevelDebug, "asyncreg", "register raced duplicate", map[string]any{"reason": kind, "run_id": id, "model": origin})
 		return ErrDuplicate
 	}
 	if len(r.entries[kind]) >= r.cap {
 		size := len(r.entries[kind])
 		cap := r.cap
 		r.mu.Unlock()
-		utils.Debug("asyncreg", fmt.Sprintf("Register: kind=%s id=%q raced-cap size=%d cap=%d origin=%s", kind, id, size, cap, origin))
+		utils.LogWithFields(utils.LevelDebug, "asyncreg", "register raced cap exceeded", map[string]any{"reason": kind, "run_id": id, "count": size, "max": cap, "model": origin})
 		return ErrCapExceeded
 	}
 	r.entries[kind][id] = entry{decl: decl, origin: origin}
@@ -257,7 +257,7 @@ func (r *Registry) Register(kind Kind, decl Declaration, origin Origin, veto Vet
 	channels := append([]chan ChangeEvent(nil), r.subs[kind]...)
 	r.mu.Unlock()
 
-	utils.Log("asyncreg", fmt.Sprintf("Register: kind=%s id=%q origin=%s committed", kind, id, origin))
+	utils.LogWithFields(utils.LevelDebug, "asyncreg", "register committed", map[string]any{"reason": kind, "run_id": id, "model": origin})
 	publishChange(channels, ChangeEvent{Kind: kind, Op: ChangeAdded, ID: id, Origin: origin})
 	return nil
 }
@@ -272,7 +272,7 @@ func (r *Registry) Register(kind Kind, decl Declaration, origin Origin, veto Vet
 // silently — the design choice belongs to the wire layer).
 func (r *Registry) Deregister(kind Kind, id string, notify NotifyFunc) bool {
 	if id == "" {
-		utils.Debug("asyncreg", fmt.Sprintf("Deregister: kind=%s empty id", kind))
+		utils.LogWithFields(utils.LevelDebug, "asyncreg", "deregister empty id", map[string]any{"reason": kind})
 		return false
 	}
 	r.mu.Lock()
@@ -280,14 +280,14 @@ func (r *Registry) Deregister(kind Kind, id string, notify NotifyFunc) bool {
 	e, exists := bucket[id]
 	if !exists {
 		r.mu.Unlock()
-		utils.Debug("asyncreg", fmt.Sprintf("Deregister: kind=%s id=%q not_found", kind, id))
+		utils.LogWithFields(utils.LevelDebug, "asyncreg", "deregister not found", map[string]any{"reason": kind, "run_id": id})
 		return false
 	}
 	delete(bucket, id)
 	channels := append([]chan ChangeEvent(nil), r.subs[kind]...)
 	r.mu.Unlock()
 
-	utils.Log("asyncreg", fmt.Sprintf("Deregister: kind=%s id=%q removed origin=%s", kind, id, e.origin))
+	utils.LogWithFields(utils.LevelInfo, "asyncreg", "deregister removed", map[string]any{"reason": kind, "run_id": id, "model": e.origin})
 	if notify != nil {
 		notify(kind, e.decl, e.origin)
 	}
@@ -305,7 +305,7 @@ func publishChange(channels []chan ChangeEvent, ev ChangeEvent) {
 		select {
 		case ch <- ev:
 		default:
-			utils.Debug("asyncreg", fmt.Sprintf("publishChange: subscriber dropped event kind=%s op=%s id=%q", ev.Kind, ev.Op, ev.ID))
+			utils.LogWithFields(utils.LevelDebug, "asyncreg", "publish change subscriber dropped event", map[string]any{"reason": ev.Kind, "status": ev.Op, "run_id": ev.ID})
 		}
 	}
 }
@@ -364,7 +364,7 @@ func (r *Registry) Subscribe(kind Kind, buffer int) (<-chan ChangeEvent, func())
 	r.mu.Lock()
 	r.subs[kind] = append(r.subs[kind], ch)
 	r.mu.Unlock()
-	utils.Debug("asyncreg", fmt.Sprintf("Subscribe: kind=%s buffer=%d", kind, buffer))
+	utils.LogWithFields(utils.LevelDebug, "asyncreg", "subscribe", map[string]any{"reason": kind, "count": buffer})
 
 	cancel := func() {
 		r.mu.Lock()
@@ -377,7 +377,7 @@ func (r *Registry) Subscribe(kind Kind, buffer int) (<-chan ChangeEvent, func())
 		}
 		r.mu.Unlock()
 		close(ch)
-		utils.Debug("asyncreg", fmt.Sprintf("Subscribe: cancel kind=%s", kind))
+		utils.LogWithFields(utils.LevelDebug, "asyncreg", "subscribe cancel", map[string]any{"reason": kind})
 	}
 	return ch, cancel
 }
@@ -433,7 +433,7 @@ func (r *Registry) Reset(kind Kind, notify NotifyFunc) int {
 		})
 	}
 	if len(dropped) > 0 {
-		utils.Log("asyncreg", fmt.Sprintf("Reset: kind=%s removed=%d", kind, len(dropped)))
+		utils.LogWithFields(utils.LevelInfo, "asyncreg", "reset", map[string]any{"reason": kind, "count": len(dropped)})
 	}
 	return len(dropped)
 }

@@ -73,6 +73,14 @@ type CliBackend struct {
 	mu         sync.Mutex
 	activeRuns map[string]*cliRun
 
+	// lastCumulativeCost tracks the Claude CLI's cumulative total_cost_usd
+	// per conversation so TaskCompleteEvent.CostUsd can be delta-normalized
+	// to a per-run cost. Claude CLI reports a session-cumulative value; the
+	// engine contract (and all consumers including the dashboard) expect a
+	// per-run value matching ApiBackend's semantics.
+	// Key: conversationID (from the CLI's session ID or our own ID).
+	lastCumulativeCost map[string]float64
+
 	onNormalized func(string, types.NormalizedEvent)
 	onExit       func(string, *int, *string, string)
 	onError      func(string, error)
@@ -81,7 +89,8 @@ type CliBackend struct {
 // NewCliBackend creates a CliBackend ready for use.
 func NewCliBackend() *CliBackend {
 	return &CliBackend{
-		activeRuns: make(map[string]*cliRun),
+		activeRuns:         make(map[string]*cliRun),
+		lastCumulativeCost: make(map[string]float64),
 	}
 }
 
@@ -139,7 +148,9 @@ func (b *CliBackend) Cancel(requestID string) bool {
 	}
 
 	if err := proc.Signal(syscall.SIGINT); err != nil {
-		utils.Log("CliBackend", "SIGINT failed, killing: "+err.Error())
+		utils.LogWithFields(utils.LevelInfo, "backend.cli", "SIGINT failed, killing", map[string]any{
+			"error": utils.ErrStr(err),
+		})
 		_ = proc.Kill()
 		run.cancel()
 		return true
@@ -156,7 +167,9 @@ func (b *CliBackend) Cancel(requestID string) bool {
 		_, stillActive := b.activeRuns[requestID]
 		b.mu.Unlock()
 		if stillActive {
-			utils.Log("CliBackend", "process did not exit after SIGINT, sending SIGKILL: "+requestID)
+			utils.LogWithFields(utils.LevelInfo, "backend.cli", "process did not exit after SIGINT, sending SIGKILL", map[string]any{
+				"request_id": requestID,
+			})
 			_ = proc.Signal(syscall.SIGKILL)
 			run.cancel()
 		}
@@ -176,9 +189,13 @@ func (b *CliBackend) StartRun(requestID string, options types.RunOptions) {
 	parent := options.ParentCtx
 	if parent == nil {
 		parent = context.Background()
-		utils.Debug("CliBackend", "StartRun: no ParentCtx; using Background requestID="+requestID)
+		utils.LogWithFields(utils.LevelDebug, "backend.cli", "StartRun: no ParentCtx; using Background", map[string]any{
+			"request_id": requestID,
+		})
 	} else {
-		utils.Debug("CliBackend", "StartRun: deriving run ctx from session ParentCtx requestID="+requestID)
+		utils.LogWithFields(utils.LevelDebug, "backend.cli", "StartRun: deriving run ctx from session ParentCtx", map[string]any{
+			"request_id": requestID,
+		})
 	}
 	ctx, cancel := context.WithCancel(parent)
 
@@ -252,7 +269,9 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 
 	claudePath, err := findClaudeBinary()
 	if err != nil {
-		utils.Error("CliBackend", "claude binary not found: "+err.Error())
+		utils.LogWithFields(utils.LevelError, "backend.cli", "claude binary not found", map[string]any{
+			"error": utils.ErrStr(err),
+		})
 		b.emitError(run.requestID, err)
 		b.emitExit(run.requestID, intPtr(1), nil, "")
 		return
@@ -292,7 +311,7 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 		args = append(args, "--max-budget-usd", strconv.FormatFloat(opts.MaxBudgetUsd, 'f', -1, 64))
 	}
 	// Resume only with claude's own captured session UUID (CliResumeSessionID),
-	// never with Ion's conversation id (opts.SessionID). See cliResumeArgs.
+	// never with Ion's conversation id (opts.ConversationID). See cliResumeArgs.
 	args = append(args, cliResumeArgs(opts)...)
 	for _, dir := range opts.AddDirs {
 		args = append(args, "--add-dir", dir)
@@ -345,7 +364,9 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 	// the CLI offers all tools from the ion-extensions MCP server to the model.
 	if opts.McpConfig != "" {
 		allowedTools = append(allowedTools, "mcp__"+McpServerName+"__*")
-		utils.Log("CliBackend", fmt.Sprintf("added MCP wildcard to allowedTools: mcp__%s__*", McpServerName))
+		utils.LogWithFields(utils.LevelInfo, "backend.cli", "added MCP wildcard to allowedTools: mcp____*", map[string]any{
+			"mcp_server_name": McpServerName,
+		})
 	}
 	args = append(args, "--allowedTools", strings.Join(allowedTools, ","))
 
@@ -357,13 +378,19 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 		args = append(args, "--settings", opts.HookSettingsPath)
 	}
 
-	utils.Log("CliBackend", fmt.Sprintf("spawning: %s %s", claudePath, strings.Join(args, " ")))
+	utils.LogWithFields(utils.LevelInfo, "backend.cli", "spawning", map[string]any{
+		"claude_path": claudePath,
+		"args":        strings.Join(args, " "),
+	})
 
 	// Emit the state-transition event so consumers can mirror the active
 	// plan-mode flag for this run.
 	if run.planMode {
 		b.emit(run.requestID, types.NormalizedEvent{Data: &types.PlanModeChangedEvent{Enabled: true}})
-		utils.Info("PlanMode", fmt.Sprintf("cli run=%s plan_file=%s", run.requestID, run.planFilePath))
+		utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "cli", map[string]any{
+			"run_id":    run.requestID,
+			"plan_file": run.planFilePath,
+		})
 	}
 
 	cmd := exec.CommandContext(ctx, claudePath, args...)
@@ -387,7 +414,9 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 	// Pipe stdin for bidirectional stream-json communication
 	stdinPipe, err := cmd.StdinPipe()
 	if err != nil {
-		utils.Error("CliBackend", "stdin pipe failed: "+err.Error())
+		utils.LogWithFields(utils.LevelError, "backend.cli", "stdin pipe failed", map[string]any{
+			"error": utils.ErrStr(err),
+		})
 		b.emitError(run.requestID, fmt.Errorf("failed to create stdin pipe: %w", err))
 		b.emitExit(run.requestID, intPtr(1), nil, "")
 		return
@@ -397,7 +426,9 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 	// Pipe stdout for NDJSON parsing
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		utils.Error("CliBackend", "stdout pipe failed: "+err.Error())
+		utils.LogWithFields(utils.LevelError, "backend.cli", "stdout pipe failed", map[string]any{
+			"error": utils.ErrStr(err),
+		})
 		b.emitError(run.requestID, fmt.Errorf("failed to create stdout pipe: %w", err))
 		b.emitExit(run.requestID, intPtr(1), nil, "")
 		return
@@ -406,20 +437,27 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 	// Pipe stderr for diagnostics capture
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		utils.Error("CliBackend", "stderr pipe failed: "+err.Error())
+		utils.LogWithFields(utils.LevelError, "backend.cli", "stderr pipe failed", map[string]any{
+			"error": utils.ErrStr(err),
+		})
 		b.emitError(run.requestID, fmt.Errorf("failed to create stderr pipe: %w", err))
 		b.emitExit(run.requestID, intPtr(1), nil, "")
 		return
 	}
 
 	if err := cmd.Start(); err != nil {
-		utils.Error("CliBackend", "process start failed: "+err.Error())
+		utils.LogWithFields(utils.LevelError, "backend.cli", "process start failed", map[string]any{
+			"error": utils.ErrStr(err),
+		})
 		b.emitError(run.requestID, fmt.Errorf("failed to start claude CLI: %w", err))
 		b.emitExit(run.requestID, intPtr(1), nil, "")
 		return
 	}
 
-	utils.Log("CliBackend", fmt.Sprintf("process started: pid=%d requestID=%s", cmd.Process.Pid, run.requestID))
+	utils.LogWithFields(utils.LevelInfo, "backend.cli", "process started", map[string]any{
+		"pid":        cmd.Process.Pid,
+		"request_id": run.requestID,
+	})
 
 	// Write initial prompt as NDJSON user message over stdin. PDFs/images
 	// referenced by the prompt are inlined as native document/image content
@@ -480,6 +518,35 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 				if e.SessionID != "" {
 					sessionID = e.SessionID
 				}
+				// Delta-normalize the cost. Claude CLI reports a
+				// session-cumulative total_cost_usd; the engine wire
+				// contract (and ApiBackend) emit a per-run cost. Subtract
+				// the last known cumulative to produce a run-incremental
+				// value. Key by sessionID (the CLI's own session UUID) so
+				// each CLI session tracks independently.
+				costKey := sessionID
+				if costKey == "" {
+					costKey = opts.ConversationID
+				}
+				b.mu.Lock()
+				cumulativeCost := e.CostUsd
+				last := b.lastCumulativeCost[costKey]
+				runCost := cumulativeCost - last
+				if runCost < 0 {
+					// Should not happen; treat as full cost (new session).
+					runCost = cumulativeCost
+				}
+				b.lastCumulativeCost[costKey] = cumulativeCost
+				b.mu.Unlock()
+				e.CostUsd = runCost
+				utils.LogWithFields(utils.LevelDebug, "backend.cli", "cost delta", map[string]any{
+					"run_id":     run.requestID,
+					"key":        costKey,
+					"cumulative": cumulativeCost,
+					"last":       last,
+					"delta":      runCost,
+				})
+
 				// Plan mode enrichment: when the CLI's result contains an
 				// ExitPlanMode denial, inject our planFilePath (which the
 				// CLI's wire format doesn't carry) and emit a
@@ -509,7 +576,10 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 									PlanSlug:     types.PlanSlugFromPath(run.planFilePath),
 								},
 							})
-							utils.Info("CliBackend", fmt.Sprintf("run=%s exit_tool emit plan_proposal kind=exit planFile=%s (mode change deferred to user approval, per ADR-003)", run.requestID, run.planFilePath))
+							utils.LogWithFields(utils.LevelInfo, "backend.cli", "exit_tool emit plan_proposal kind=exit (mode change deferred to user approval, per ADR-003)", map[string]any{
+								"run_id":    run.requestID,
+								"plan_file": run.planFilePath,
+							})
 							break
 						}
 					}
@@ -535,7 +605,11 @@ func (b *CliBackend) runProcess(ctx context.Context, run *cliRun, opts types.Run
 		}
 	}
 
-	utils.Log("CliBackend", fmt.Sprintf("process exited: pid=%d code=%d requestID=%s", cmd.Process.Pid, exitCode, run.requestID))
+	utils.LogWithFields(utils.LevelInfo, "backend.cli", "process exited", map[string]any{
+		"pid":        cmd.Process.Pid,
+		"code":       exitCode,
+		"request_id": run.requestID,
+	})
 
 	if exitCode != 0 {
 		stderrLines := run.stderr.Lines()
@@ -613,7 +687,12 @@ func (b *CliBackend) emitExit(runID string, code *int, signal *string, sessionID
 	if signal != nil {
 		sigStr = *signal
 	}
-	utils.Info("CliBackend", fmt.Sprintf("emitExit: runID=%s code=%s signal=%s sessionID=%s", runID, codeStr, sigStr, sessionID))
+	utils.LogWithFields(utils.LevelInfo, "backend.cli", "emitExit", map[string]any{
+		"run_id":     runID,
+		"code":       codeStr,
+		"signal":     sigStr,
+		"session_id": sessionID,
+	})
 	b.mu.Lock()
 	fn := b.onExit
 	b.mu.Unlock()
@@ -623,7 +702,10 @@ func (b *CliBackend) emitExit(runID string, code *int, signal *string, sessionID
 }
 
 func (b *CliBackend) emitError(runID string, err error) {
-	utils.Error("CliBackend", fmt.Sprintf("emitError: runID=%s err=%s", runID, err.Error()))
+	utils.LogWithFields(utils.LevelError, "backend.cli", "emitError", map[string]any{
+		"run_id": runID,
+		"error":  utils.ErrStr(err),
+	})
 	b.mu.Lock()
 	fn := b.onError
 	b.mu.Unlock()

@@ -36,7 +36,7 @@ type credentialFile struct {
 func NewFileStore() *FileStore {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		utils.Log("auth", fmt.Sprintf("cannot determine home dir for filestore: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "auth.filestore", "cannot determine home dir", map[string]any{"error": err.Error()})
 		home = "."
 	}
 	return &FileStore{

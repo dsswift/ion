@@ -2,9 +2,8 @@ package backend
 
 import (
 	"context"
-	"fmt"
+	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/auth"
@@ -14,198 +13,6 @@ import (
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
-
-// activeRun tracks the state of a single in-flight agent loop.
-//
-// Per-run configuration (hooks, permission engine, external tools, agent
-// spawner, telemetry, etc.) lives here rather than on the parent ApiBackend
-// so concurrent runs cannot overwrite each other's closures. The cfg pointer
-// is set once at StartRun and read without locking from goroutines that the
-// run owns; it must not be mutated after StartRun returns.
-type activeRun struct {
-	mu        sync.Mutex
-	requestID string
-	conv      *conversation.Conversation
-	cancel    context.CancelFunc
-	// turnCount is read by Cancel (and other RPC paths) while runLoop is
-	// still mutating it. Atomic load/store gives the race detector the
-	// happens-before edge it needs without forcing every read site to
-	// take run.mu.
-	turnCount         atomic.Int64
-	totalCost         float64
-	startTime         time.Time
-	steerCh           chan string
-	exitPlanMode      bool                     // set when ExitPlanMode tool is called during plan mode
-	permissionDenials []types.PermissionDenial // tools intercepted/denied (e.g. ExitPlanMode sentinel)
-	planMode          bool                     // true when this run is in plan mode
-	planFilePath      string                   // only writable file during plan mode
-	// planModeSparseReminderOverride is the harness-supplied sparse reminder text
-	// resolved once at run setup from RunOptions.PlanModeSparseReminder (highest
-	// priority) or the plan_mode_prompt hook's SparseReminder return field.
-	// Empty means "use buildPlanModeSparseReminder at injection time" (the
-	// engine default). Set in runloop_setup.go alongside planFilePath.
-	planModeSparseReminderOverride string
-	// planModeReminderTurn is the turn number on which the sparse plan-mode
-	// reminder last fired. The reminder is throttled to once per
-	// planModeReminderInterval turns to avoid the ~per-tool-round churn that
-	// previously anchored AskUserQuestion-as-turn-ender behavior in the model.
-	// Reset to 0 whenever a run re-enters plan mode via the EnterPlanMode
-	// sentinel so the throttle does not silence the first post-entry reminder.
-	planModeReminderTurn int
-	// planModeAllowedBashCommands is the set of command prefixes that the
-	// Bash tool is allowed to execute during plan mode. When non-empty,
-	// Bash is included in the plan-mode tool list but gated at execution
-	// time — only commands whose leading token(s) match one of these
-	// prefixes are permitted. Set from RunOptions.PlanModeAllowedBashCommands
-	// in buildToolDefs.
-	planModeAllowedBashCommands []string
-
-	// planModeAutoExitEnabled records the effective auto-exit setting for
-	// this run, resolved at run setup from (in precedence order):
-	//   1. RunOptions.PlanModeAutoExit (per-run pointer)
-	//   2. LimitsConfig.PlanModeAutoExitOnEndTurn (engine.json)
-	//   3. Built-in default (true)
-	//
-	// When false, the end-of-turn synthesis safety net is disabled and a
-	// plan-mode run that ends without an ExitPlanMode / AskUserQuestion
-	// tool call completes as a normal end_turn with the conversation
-	// parked in plan mode (today's behaviour pre-#187).
-	//
-	// The before_plan_mode_auto_exit hook can still suppress synthesis
-	// even when this is true; the hook runs last in the precedence chain.
-	planModeAutoExitEnabled bool
-
-	// opts captures the RunOptions for this run so compaction (and other
-	// cross-turn logic) can read config-driven knobs without plumbing opts
-	// through every internal call. Set once in StartRunWithConfig.
-	opts *types.RunOptions
-
-	// compactionsWithoutProgress counts proactive compactions that have fired
-	// without an intervening successful API response. Bounds the cascade if
-	// the conversation cannot be shrunk below the trigger limit so the run
-	// surfaces an error instead of looping.
-	compactionsWithoutProgress int
-
-	// Early-stop continuation bookkeeping. See runloop_early_stop.go for
-	// the decision logic and runloop.go for the integration into the
-	// end_turn / stop branch of the agent loop.
-	//
-	// continuationCount is the number of times the engine has already
-	// nudged the model on this run. Reset on non-stop outcomes (tool_use,
-	// max_tokens) so multi-step tool work doesn't accidentally consume the
-	// cap. cumulativeOutputTokens is the total across every turn, including
-	// the one that just ended. lastContinuationDelta is the delta from the
-	// previous continuation; the diminishing-returns guard reads it.
-	continuationCount      int
-	cumulativeOutputTokens int
-	lastContinuationDelta  int
-
-	// contextBreakdown holds the per-category token breakdown built once at
-	// the first turn's prompt assembly. Reconciled (and re-emitted) after the
-	// first UsageEvent so consumers see the provider-reported total and the
-	// unaccounted delta. Nil until the first turn builds it; breakdownReconciled
-	// guards the one-shot reconcile so later turns don't append duplicate
-	// "unaccounted" rows.
-	contextBreakdown    *providers.ContextBreakdown
-	breakdownReconciled bool
-
-	// Cumulative token counters across all turns. Populated on the same
-	// path that accumulates run.totalCost (turnUsage in the runloop).
-	// Surfaced on every TaskCompleteEvent.Usage so dispatch consumers
-	// and any event reader gets real token counts.
-	cumulativeInputTokens        int
-	cumulativeCacheReadTokens    int
-	cumulativeCacheCreateTokens  int
-
-	// thinkingTokens accumulates the estimated reasoning-token count across
-	// every thinking block in this run (issue #158). Providers fold thinking
-	// into the final output-token usage, so this is an estimate derived from
-	// accumulated reasoning text length (see ThinkingBlockEndEvent.TotalTokens).
-	// Surfaced on DispatchAgentResult.ThinkingTokens / engine_dispatch_end so
-	// cost/audit consumers can separate reasoning spend from user-facing
-	// output. Atomic because processStream runs on the run goroutine while the
-	// dispatch result is assembled after the run completes — the value is read
-	// once the run goroutine has finished, but atomic keeps it race-free under
-	// the detector regardless of read/write ordering.
-	thinkingTokens atomic.Int64
-
-	// lastProgressAt is the unix-nanos timestamp of the last observed
-	// forward-progress event on this run. Bumped on every emit (so
-	// every provider stream chunk, tool result, status update, error
-	// event, etc.) and explicitly at every turn boundary. The
-	// run-progress watchdog goroutine launched in StartRunWithConfig
-	// reads this atomically every watchdog tick (default 30s) and
-	// cancels the run if (now - lastProgressAt) > RunStall().
-	//
-	// Atomic so the watchdog goroutine can read without taking
-	// run.mu — that mutex protects unrelated fields and is held for
-	// non-trivial durations during conversation save/load paths.
-	// Storing nanos as int64 keeps the value lock-free with the
-	// std/sync/atomic primitives.
-	lastProgressAt atomic.Int64
-
-	// humanWaitDepth counts how many human-wait spans this run is currently
-	// blocked inside. A human-wait is an *intentional* indefinite pause for a
-	// user decision. The only producer is Manager.elicit (ctx.elicit()); a
-	// permission decision on this (the watchdog-bearing ApiBackend) is
-	// synchronous (permEng.Check returns a policy decision and does not block
-	// on a human), and the blocking permission dialog (PermissionHookServer)
-	// runs only on the CLI backend, which has no watchdog — so neither needs
-	// this exemption. The exemption exists for elicitation, as opposed to a
-	// wedged tool or stalled provider stream. While depth > 0 the run-progress
-	// watchdog (runloop_watchdog.go) must NOT cancel the run for idleness,
-	// because zero forward-progress emits during a human-wait is the expected,
-	// contract-mandated state, not a stall.
-	//
-	// The default human-wait is indefinite (see TimeoutsConfig.HumanWait): if a
-	// user takes a month to approve a plan, the run waits a month. The watchdog
-	// is the only mechanism that previously violated that guarantee — it had no
-	// human-wait exemption and cancelled the parked run at RunStall() (10m). This
-	// counter is that exemption.
-	//
-	// A counter (not a bool) so genuinely overlapping or nested waits — e.g. an
-	// extension elicitation_request hook that itself elicits while the
-	// triggering tool's ctx.elicit() is still open — are reference-counted
-	// correctly: the watchdog resumes only when the LAST wait ends. Bumped via
-	// ApiBackend.BeginHumanWait / EndHumanWait. Atomic so the watchdog goroutine
-	// reads it without taking run.mu, matching lastProgressAt.
-	humanWaitDepth atomic.Int64
-
-	// progressWatchdogStop is closed by runLoop's deferred removeRun
-	// to signal the run-progress watchdog goroutine that it should
-	// exit immediately rather than wait up to one tick for its
-	// activeRuns-map poll to notice the run ended. Without this
-	// channel the watchdog goroutine lingers for up to
-	// runProgressWatchdogTick (default 30s) after every run
-	// completes — fine in production but a goroutine leak in tests
-	// and a real concern during FlushConversations / process
-	// shutdown which expects goroutines to drain promptly.
-	//
-	// Closed exactly once via sync.Once-equivalent semantics: the
-	// stopWatchdogOnce field guards the close so accidental
-	// double-close (from race-prone teardown paths) does not panic.
-	progressWatchdogStop chan struct{}
-	stopWatchdogOnce     sync.Once
-
-	// touchedSink accumulates filesystem paths that tools touched during the
-	// run, driving read-triggered nested context loading (progressive
-	// AGENTS.md/ION.md descent). Tools record into it via the ctx-threaded
-	// TouchedPathSink (installed in executeTools); the run loop drains it
-	// between turns in drainNestedContext. The sink has its own mutex, so the
-	// write path (concurrent errgroup tool goroutines) does not take run.mu.
-	// Created once at run start.
-	touchedSink *types.TouchedPathSink
-
-	// injectedNestedPaths is the conversation-lifetime set of context-file
-	// paths already injected into this conversation (eager root/home walk +
-	// any nested injections, this session or a prior one). Guarded by run.mu.
-	// Seeded at run start from the loaded conversation (system prompt + message
-	// history) via seedInjectedNestedPaths so a reload never re-injects a file
-	// that is already present. drainNestedContext consults and extends it.
-	injectedNestedPaths map[string]bool
-
-	cfg *RunConfig // captured per-run config; nil means "no hooks, no per-run state"
-}
 
 // ApiBackend is the direct-API backend that runs an agentic loop against
 // an LLM provider, executing tools and managing conversation state.
@@ -314,9 +121,13 @@ func (b *ApiBackend) StartRunWithConfig(requestID string, options types.RunOptio
 	parent := options.ParentCtx
 	if parent == nil {
 		parent = context.Background()
-		utils.Debug("ApiBackend", fmt.Sprintf("StartRunWithConfig: no ParentCtx; using Background runID=%s", requestID))
+		utils.LogWithFields(utils.LevelDebug, "backend.runloop", "StartRunWithConfig: no ParentCtx; using Background", map[string]any{
+			"run_id": requestID,
+		})
 	} else {
-		utils.Debug("ApiBackend", fmt.Sprintf("StartRunWithConfig: deriving run ctx from session ParentCtx runID=%s", requestID))
+		utils.LogWithFields(utils.LevelDebug, "backend.runloop", "StartRunWithConfig: deriving run ctx from session ParentCtx", map[string]any{
+			"run_id": requestID,
+		})
 	}
 	ctx, cancel := context.WithCancel(parent)
 
@@ -344,7 +155,13 @@ func (b *ApiBackend) StartRunWithConfig(requestID string, options types.RunOptio
 	// every turn boundary (see runLoop).
 	run.lastProgressAt.Store(run.startTime.UnixNano())
 
-	utils.Info("ApiBackend", fmt.Sprintf("StartRunWithConfig: runID=%s model=%s sessionID=%s planMode=%v planModeAutoExit=%v", requestID, options.Model, options.SessionID, options.PlanMode, run.planModeAutoExitEnabled))
+	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "StartRunWithConfig", map[string]any{
+		"run_id":              requestID,
+		"model":               options.Model,
+		"conversation_id":     options.ConversationID,
+		"plan_mode":           options.PlanMode,
+		"plan_mode_auto_exit": run.planModeAutoExitEnabled,
+	})
 
 	b.mu.Lock()
 	b.activeRuns[requestID] = run
@@ -377,7 +194,10 @@ func (b *ApiBackend) FlushConversations() {
 			continue
 		}
 		if err := conversation.Save(run.conv, ""); err != nil {
-			utils.Log("ApiBackend", fmt.Sprintf("FlushConversations: save failed runID=%s err=%s", run.requestID, err.Error()))
+			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "FlushConversations: save failed", map[string]any{
+				"run_id": run.requestID,
+				"error":  utils.ErrStr(err),
+			})
 		}
 	}
 }
@@ -401,10 +221,16 @@ func (b *ApiBackend) Cancel(requestID string) bool {
 	b.mu.Unlock()
 
 	if !ok {
-		utils.Warn("ApiBackend", fmt.Sprintf("Cancel: requestID=%s not found in activeRuns (have %d runs)", requestID, numRuns))
+		utils.LogWithFields(utils.LevelWarn, "backend.runloop", "Cancel: not found in activeRuns (have runs)", map[string]any{
+			"request_id": requestID,
+			"num_runs":   numRuns,
+		})
 		return false
 	}
-	utils.Info("ApiBackend", fmt.Sprintf("Cancel: cancelling requestID=%s (turn=%d)", requestID, run.turnCount.Load()))
+	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "Cancel: cancelling", map[string]any{
+		"request_id": requestID,
+		"turn":       run.turnCount.Load(),
+	})
 	run.cancel()
 	go b.cancelWatchdog(run, cancelWatchdogGrace)
 	return true
@@ -428,7 +254,10 @@ func (b *ApiBackend) cancelWatchdog(run *activeRun, grace time.Duration) {
 		return
 	}
 
-	utils.Warn("ApiBackend", fmt.Sprintf("Cancel watchdog: forcing exit for requestID=%s after %s (run goroutine wedged in non-cancellable call)", run.requestID, grace))
+	utils.LogWithFields(utils.LevelWarn, "backend.runloop", "Cancel watchdog: forcing exit for after (run goroutine wedged in non-cancellable call)", map[string]any{
+		"request_id": run.requestID,
+		"grace":      grace,
+	})
 	b.emitExit(run.requestID, intPtr(0), strPtr("cancelled-forced"), sessionID)
 	b.removeRun(run.requestID)
 }
@@ -445,6 +274,21 @@ func (b *ApiBackend) GetContextUsage(requestID string) *conversation.ContextUsag
 	contextWindow := resolveContextWindow(model)
 	usage := conversation.GetContextUsage(run.conv, contextWindow)
 	return &usage
+}
+
+// GetCurrentTurn returns the live turn number of an active run, or 0 when no
+// run matches the request ID. Mirrors GetContextUsage: it locks b.mu, looks up
+// the active run, and reads the atomic turn counter. Consumed by the session
+// layer to wire Context.GetTurn so hook_latency telemetry can attribute the
+// firing turn at hook-fire time.
+func (b *ApiBackend) GetCurrentTurn(requestID string) int64 {
+	b.mu.Lock()
+	run, ok := b.activeRuns[requestID]
+	b.mu.Unlock()
+	if !ok {
+		return 0
+	}
+	return run.turnCount.Load()
 }
 
 // GetConversation returns the active run's conversation for the given request
@@ -498,21 +342,24 @@ func (b *ApiBackend) SteerWithReason(requestID, message string) SteerResult {
 	run, ok := b.activeRuns[requestID]
 	b.mu.Unlock()
 	if !ok {
-		utils.Warn("ApiBackend", fmt.Sprintf(
-			"Steer rejected, no active run: runID=%s msgLen=%d", requestID, len(message),
-		))
+		utils.LogWithFields(utils.LevelWarn, "backend.runloop", "Steer rejected, no active run", map[string]any{
+			"run_id":  requestID,
+			"msg_len": len(message),
+		})
 		return SteerResultNoRun
 	}
 	select {
 	case run.steerCh <- message:
-		utils.Log("ApiBackend", fmt.Sprintf(
-			"Steer buffered on steer channel: runID=%s msgLen=%d", requestID, len(message),
-		))
+		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "Steer buffered on steer channel", map[string]any{
+			"run_id":  requestID,
+			"msg_len": len(message),
+		})
 		return SteerResultDelivered
 	default:
-		utils.Warn("ApiBackend", fmt.Sprintf(
-			"Steer rejected, channel full: runID=%s msgLen=%d", requestID, len(message),
-		))
+		utils.LogWithFields(utils.LevelWarn, "backend.runloop", "Steer rejected, channel full", map[string]any{
+			"run_id":  requestID,
+			"msg_len": len(message),
+		})
 		return SteerResultChannelFull
 	}
 }
@@ -532,7 +379,9 @@ func (b *ApiBackend) IsRunning(requestID string) bool {
 }
 
 func (b *ApiBackend) removeRun(requestID string) {
-	utils.Debug("ApiBackend", fmt.Sprintf("removeRun: runID=%s", requestID))
+	utils.LogWithFields(utils.LevelDebug, "backend.runloop", "removeRun", map[string]any{
+		"run_id": requestID,
+	})
 	b.mu.Lock()
 	run, ok := b.activeRuns[requestID]
 	delete(b.activeRuns, requestID)
@@ -606,8 +455,29 @@ func (b *ApiBackend) emitWithoutProgress(run *activeRun, event types.NormalizedE
 func (b *ApiBackend) dispatchEvent(run *activeRun, event types.NormalizedEvent) {
 	if run != nil && run.cfg != nil && run.cfg.SecurityCfg != nil && run.cfg.SecurityCfg.RedactSecrets {
 		if tr, ok := event.Data.(*types.ToolResultEvent); ok {
+			// Scan before redacting so the telemetry event can report the
+			// distinct secret types found and the match count. The redaction
+			// itself is unchanged (RedactSecrets then MaskSensitiveFields).
+			matches := insights.ScanForSecrets(tr.Content)
 			tr.Content = insights.RedactSecrets(tr.Content)
 			tr.Content = insights.MaskSensitiveFields(tr.Content)
+			if len(matches) > 0 && run.cfg.Telemetry != nil {
+				seen := map[string]bool{}
+				secretTypes := make([]string, 0, len(matches))
+				for _, m := range matches {
+					if !seen[m.Type] {
+						seen[m.Type] = true
+						secretTypes = append(secretTypes, m.Type)
+					}
+				}
+				// R11: event name is carried by Event.Name; payload.kind removed.
+				run.cfg.Telemetry.Event("secret.containment", map[string]any{
+					"tool_result_id": tr.ToolID,
+					"match_count":    len(matches),
+					"secret_types":   secretTypes,
+					"action":         "redacted",
+				}, buildTelemCtx(run))
+			}
 		}
 	}
 	b.mu.Lock()
@@ -663,14 +533,11 @@ func (b *ApiBackend) BeginHumanWait(requestID string) {
 	run, ok := b.activeRuns[requestID]
 	b.mu.Unlock()
 	if !ok || run == nil {
-		utils.Debug("ApiBackend", fmt.Sprintf(
-			"BeginHumanWait: no active run for requestID=%s (no-op)", requestID))
+		utils.LogWithFields(utils.LevelDebug, "backend.runloop", "begin human wait no active run", map[string]any{"run_id": requestID})
 		return
 	}
 	depth := run.humanWaitDepth.Add(1)
-	utils.Log("ApiBackend", fmt.Sprintf(
-		"BeginHumanWait: runID=%s humanWaitDepth=%d (watchdog idle-check paused)",
-		requestID, depth))
+	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "begin human wait watchdog paused", map[string]any{"run_id": requestID, "count": depth})
 }
 
 // EndHumanWait marks the named active run as leaving a human-wait span opened by
@@ -688,8 +555,7 @@ func (b *ApiBackend) EndHumanWait(requestID string) {
 	run, ok := b.activeRuns[requestID]
 	b.mu.Unlock()
 	if !ok || run == nil {
-		utils.Debug("ApiBackend", fmt.Sprintf(
-			"EndHumanWait: no active run for requestID=%s (no-op)", requestID))
+		utils.LogWithFields(utils.LevelDebug, "backend.runloop", "end human wait no active run", map[string]any{"run_id": requestID})
 		return
 	}
 	depth := run.humanWaitDepth.Add(-1)
@@ -697,33 +563,30 @@ func (b *ApiBackend) EndHumanWait(requestID string) {
 		// Unmatched End (should not happen). Floor at 0 so the watchdog is not
 		// left permanently disarmed by a negative depth, and log loudly.
 		run.humanWaitDepth.Store(0)
-		utils.Error("ApiBackend", fmt.Sprintf(
-			"EndHumanWait: unmatched call for runID=%s, depth floored to 0", requestID))
+		utils.LogWithFields(utils.LevelError, "backend.runloop", "end human wait unmatched call depth floored to zero", map[string]any{"run_id": requestID})
 		depth = 0
 	}
 	if depth == 0 {
 		// Resume the watchdog with a fresh window: do not charge the human's
 		// think-time against the post-wait machine work.
 		run.lastProgressAt.Store(time.Now().UnixNano())
-		utils.Log("ApiBackend", fmt.Sprintf(
-			"EndHumanWait: runID=%s humanWaitDepth=0 (watchdog idle-check resumed, clock reset)",
-			requestID))
+		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "end human wait watchdog resumed clock reset", map[string]any{"run_id": requestID})
 	} else {
-		utils.Log("ApiBackend", fmt.Sprintf(
-			"EndHumanWait: runID=%s humanWaitDepth=%d (still in a human-wait)",
-			requestID, depth))
+		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "end human wait still in human wait", map[string]any{"run_id": requestID, "count": depth})
 	}
 }
 
 func (b *ApiBackend) emitExit(runID string, code *int, signal *string, sessionID string) {
 	codeStr, sigStr := "nil", "nil"
 	if code != nil {
-		codeStr = fmt.Sprintf("%d", *code)
+		codeStr = strconv.Itoa(*code)
 	}
 	if signal != nil {
 		sigStr = *signal
 	}
-	utils.Info("ApiBackend", fmt.Sprintf("emitExit: runID=%s code=%s signal=%s sessionID=%s", runID, codeStr, sigStr, sessionID))
+	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "emit exit", map[string]any{
+		"run_id": runID, "status": codeStr, "reason": sigStr, "session_id": sessionID,
+	})
 	b.mu.Lock()
 	fn := b.onExit
 	b.mu.Unlock()
@@ -737,7 +600,7 @@ func (b *ApiBackend) emitError(run *activeRun, err error) {
 	if run != nil {
 		runID = run.requestID
 	}
-	utils.Error("ApiBackend", fmt.Sprintf("emitError: runID=%s err=%s", runID, err.Error()))
+	utils.LogWithFields(utils.LevelError, "backend.runloop", "emit error", map[string]any{"run_id": runID, "error": err.Error()})
 
 	// Emit structured error through the normalized event pipeline so it
 	// reaches all clients and extension hooks with full classification.

@@ -1,7 +1,6 @@
 package session
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -111,7 +110,7 @@ func (m *Manager) emitHeartbeatTick() {
 	if len(keys) == 0 {
 		return
 	}
-	utils.Debug("Session", fmt.Sprintf("status_heartbeat_tick: emitting for %d sessions", len(keys)))
+	utils.LogWithFields(utils.LevelDebug, "session", "status_heartbeat_tick: emitting for sessions", map[string]any{"count": len(keys)})
 
 	for _, key := range keys {
 		m.emitStatusSnapshot(key, "heartbeat")
@@ -169,6 +168,7 @@ func (m *Manager) emitStatusSnapshot(key, reason string) {
 	lastWindow := s.lastContextWindow
 	lastModel := s.lastModel
 	lastCost := s.lastTotalCost
+	lastConvCost := s.lastConvCost
 	sessionID := s.conversationID
 	bgCount := 0
 	if s.dispatchRegistry != nil {
@@ -176,19 +176,20 @@ func (m *Manager) emitStatusSnapshot(key, reason string) {
 	}
 	m.mu.Unlock()
 
-	utils.Log("Session", fmt.Sprintf("status_snapshot_emitted key=%s state=%s reason=%s pendingDenials=%d model=%s contextPct=%d backgroundAgents=%d", key, sessionState, reason, len(pendingDenials), lastModel, lastPct, bgCount))
+	utils.LogWithFields(utils.LevelDebug, "session", "status_snapshot_emitted", map[string]any{"key": key, "session_state": sessionState, "reason": reason, "count": len(pendingDenials), "model": lastModel, "last_pct": lastPct, "bg_count": bgCount})
 	m.emit(key, types.EngineEvent{
 		Type: "engine_status",
 		Fields: &types.StatusFields{
-			Label:             key,
-			State:             sessionState,
-			SessionID:         sessionID,
-			ContextPercent:    lastPct,
-			ContextWindow:     lastWindow,
-			Model:             lastModel,
-			TotalCostUsd:      lastCost,
-			PermissionDenials: pendingDenials,
-			BackgroundAgents:  bgCount,
+			Label:               key,
+			State:               sessionState,
+			SessionID:           sessionID,
+			ContextPercent:      lastPct,
+			ContextWindow:       lastWindow,
+			Model:               lastModel,
+			RunCostUsd:          lastCost,
+			ConversationCostUsd: lastConvCost,
+			PermissionDenials:   pendingDenials,
+			BackgroundAgents:    bgCount,
 		},
 	})
 }
@@ -218,7 +219,7 @@ func (m *Manager) QuerySessionStatus(key string) {
 	_, ok := m.sessions[key]
 	m.mu.RUnlock()
 	if !ok {
-		utils.Warn("Session", fmt.Sprintf("QuerySessionStatus: session not found key=%s", key))
+		utils.LogWithFields(utils.LevelWarn, "session", "querysessionstatus: session not found", map[string]any{"key": key})
 		return
 	}
 	m.emitStatusSnapshot(key, "query")

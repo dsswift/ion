@@ -84,3 +84,7 @@ func (a *telemetryAdapter) Event(name string, payload map[string]interface{}, ct
 func (a *telemetryAdapter) StartSpan(name string, attrs map[string]interface{}) backend.Span {
 	return a.c.StartSpan(name, attrs)
 }
+
+func (a *telemetryAdapter) StartSpanCtx(name string, attrs, ctx map[string]interface{}) backend.Span {
+	return a.c.StartSpanCtx(name, attrs, ctx)
+}

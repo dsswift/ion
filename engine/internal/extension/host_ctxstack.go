@@ -1,7 +1,6 @@
 package extension
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -54,10 +53,9 @@ func (cs *ctxStack) Push(ctx *Context) {
 	defer cs.mu.Unlock()
 	if n := len(cs.stack); n > 0 && cs.stack[n-1] != nil && ctx != nil {
 		if cs.stack[n-1].SessionKey != ctx.SessionKey && cs.stack[n-1].SessionKey != "" && ctx.SessionKey != "" {
-			utils.Error("extension", fmt.Sprintf(
-				"ctxStack invariant violated: pushing ctx for session %q over %q (stack depth %d). "+
-					"This indicates a bug — every ctx on a Host's stack must belong to the same session.",
-				ctx.SessionKey, cs.stack[n-1].SessionKey, n))
+		utils.LogWithFields(utils.LevelError, "extension", "ctx stack invariant violated pushing ctx for different session", map[string]any{
+				"session_id": ctx.SessionKey, "reason": cs.stack[n-1].SessionKey, "count": n,
+			})
 		}
 	}
 	cs.stack = append(cs.stack, ctx)

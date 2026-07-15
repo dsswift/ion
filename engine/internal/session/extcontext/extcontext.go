@@ -11,6 +11,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/resource"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -20,6 +21,14 @@ import (
 type SessionAccessor interface {
 	SessionKey() string
 	ConversationID() string
+	// ExtensionName returns the hosting extension's friendly name, or empty
+	// when the session is not extension-hosted. Used to attribute
+	// dispatch.agent telemetry spans with "extension" context.
+	ExtensionName() string
+	// ExtensionVersion returns the hosting extension's manifest version, or
+	// empty when the manifest carries no version or is absent. Used alongside
+	// ExtensionName to attribute dispatch.agent spans with "extension_version".
+	ExtensionVersion() string
 	WorkingDirectory() string
 	Emit(ev types.EngineEvent)
 	SendAbort()
@@ -74,6 +83,21 @@ type SessionAccessor interface {
 	// not available.
 	EmitDispatchCountStatus(reason string)
 	EngineConfig() *types.EngineRuntimeConfig
+
+	// ClaudeCompat reports the parent session's Claude-compatibility setting.
+	// It lives on the session-level config (EngineConfig.ClaudeCompat), not on
+	// the machine-wide EngineRuntimeConfig, so it needs its own accessor. The
+	// dispatch path threads it into the child RunOptions (nested descent gate)
+	// and into the dispatch context-policy cascade (default compat).
+	ClaudeCompat() bool
+
+	// GetDispatchContextDefaults returns the session-level default context
+	// policy (level 3 of the four-level dispatch context cascade), or nil when
+	// no extension has set one. The real accessor delegates to the extension
+	// Host's session-scoped state; the dispatch injection path uses it to seed
+	// the cascade below any per-dispatch override.
+	GetDispatchContextDefaults() *extension.ContextPolicy
+
 	ResolveTier(name string) string
 	PermissionCheck(toolName string, input map[string]interface{}) (decision string, reason string)
 	McpConnections() []*mcp.Connection
@@ -102,6 +126,17 @@ type SessionAccessor interface {
 
 	// GetPlanModeState returns (planModeEnabled, planFilePath) for the session.
 	GetPlanModeState() (bool, string)
+
+	// AllocatePlanFilePath allocates a fresh, non-colliding plan-file path for
+	// the session's backend kind and working directory, ensuring the plans
+	// directory exists, and returns it. It is the exported bridge to the
+	// session-package allocator (allocateNewPlanFilePath); package extcontext
+	// cannot import package session (session imports extcontext), so the
+	// dispatch path reaches the allocator through this interface method rather
+	// than duplicating the slug logic. Used by the plan-mode dispatch path to
+	// fill an empty PlanFilePath the same way the root paths
+	// (RequestPlanModeEnter, SendPrompt) do.
+	AllocatePlanFilePath() string
 
 	// AppendOrUpdateAgentState creates a new agent state entry or updates
 	// an existing one (matched by name). Returns the entry's ID.
@@ -149,6 +184,11 @@ type SessionAccessor interface {
 	// failed=true clears the running flag without updating lastRun so
 	// the next caller can retry immediately.
 	RunOnceComplete(operationID string, failed bool)
+
+	// Telemetry returns the session's telemetry collector, or nil when
+	// telemetry is disabled. Used by the dispatch path to emit dispatch.agent
+	// spans (family 4b). Nil-safe: callers guard on a nil return.
+	Telemetry() *telemetry.Collector
 }
 
 // ExtContextOpts holds optional configuration for NewExtContext. All fields
@@ -244,6 +284,12 @@ func NewExtContext(sa SessionAccessor, args ...interface{}) *extension.Context {
 				defer cancel()
 			}
 			return CallToolFromExtension(callCtx, sa, toolName, input)
+		},
+		// Pre-authenticated outbound HTTP: session-independent (token
+		// minting needs no session state), wired here so Go SDK consumers
+		// reach it through the same Context surface as everything else.
+		HTTPRequest: func(params extension.OperatorHTTPRequestParams) (*extension.OperatorHTTPResponse, error) {
+			return extension.DoOperatorHTTPRequest(context.Background(), params)
 		},
 		SendPrompt: func(text string, model string, bashAllowlistAdditions []string) error {
 			return sa.SendPrompt(text, model, bashAllowlistAdditions)

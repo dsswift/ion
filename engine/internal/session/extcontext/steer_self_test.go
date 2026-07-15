@@ -9,6 +9,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/resource"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -25,6 +26,8 @@ type steerSelfAccessor struct {
 }
 
 func (a *steerSelfAccessor) SessionKey() string          { return "steer-self-test" }
+func (a *steerSelfAccessor) ExtensionName() string    { return "" }
+func (a *steerSelfAccessor) ExtensionVersion() string { return "" }
 func (a *steerSelfAccessor) ConversationID() string      { return "conv-steer" }
 func (a *steerSelfAccessor) WorkingDirectory() string    { return "/tmp" }
 func (a *steerSelfAccessor) Emit(ev types.EngineEvent)   {}
@@ -63,9 +66,12 @@ func (a *steerSelfAccessor) ExtGroup() *extension.ExtensionGroup      { return n
 func (a *steerSelfAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
 func (a *steerSelfAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
 func (a *steerSelfAccessor) NewChildBackend() backend.RunBackend      { return backend.NewApiBackend() }
+func (a *steerSelfAccessor) AllocatePlanFilePath() string             { return "/tmp/.ion/plans/plan.md" }
 func (a *steerSelfAccessor) BumpParentProgress()                      {}
 func (a *steerSelfAccessor) EmitDispatchCountStatus(_ string)         {}
 func (a *steerSelfAccessor) EngineConfig() *types.EngineRuntimeConfig { return nil }
+func (a *steerSelfAccessor) ClaudeCompat() bool { return false }
+func (a *steerSelfAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
 func (a *steerSelfAccessor) ResolveTier(name string) string           { return name }
 func (a *steerSelfAccessor) PermissionCheck(toolName string, input map[string]interface{}) (string, string) {
 	return "", ""
@@ -98,6 +104,7 @@ func (a *steerSelfAccessor) RunOnceCheck(operationID string, debounceMs int64) (
 	return false, ""
 }
 func (a *steerSelfAccessor) RunOnceComplete(operationID string, failed bool) {}
+func (a *steerSelfAccessor) Telemetry() *telemetry.Collector { return nil }
 
 func (a *steerSelfAccessor) snapshot() (steerCalls, sendCalls []string) {
 	a.mu.Lock()

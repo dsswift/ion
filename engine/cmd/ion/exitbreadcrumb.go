@@ -45,7 +45,7 @@ func writeRunning(path string) {
 		Status:    "running",
 	}
 	if err := atomicWriteRecord(path, rec); err != nil {
-		utils.Log("breadcrumb", fmt.Sprintf("writeRunning: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "breadcrumb", "writerunning", map[string]any{"error": err})
 	}
 }
 
@@ -71,7 +71,7 @@ func beat(path string) {
 	rec.LastHeapBytes = ms.HeapAlloc
 	rec.LastSysBytes = ms.Sys
 	if err := atomicWriteRecord(path, rec); err != nil {
-		utils.Log("breadcrumb", fmt.Sprintf("beat: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "breadcrumb", "beat", map[string]any{"error": err})
 	}
 }
 
@@ -88,10 +88,10 @@ func writeClean(path, reason string) {
 	rec.ExitedAt = time.Now().UnixMilli()
 	rec.LastBeat = time.Now().UnixMilli()
 	if err := atomicWriteRecord(path, rec); err != nil {
-		utils.Log("breadcrumb", fmt.Sprintf("writeClean: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "breadcrumb", "writeclean", map[string]any{"error": err})
 		return
 	}
-	utils.Log("breadcrumb", fmt.Sprintf("writeClean: reason=%s pid=%d", reason, rec.Pid))
+	utils.LogWithFields(utils.LevelInfo, "breadcrumb", "writeclean", map[string]any{"reason": reason, "run_id": rec.Pid})
 }
 
 // writePanic atomically writes a "panic" breadcrumb. Called from the
@@ -111,10 +111,10 @@ func writePanic(path string, reason string, stack string) {
 	rec.Stack = stack
 	rec.ExitedAt = time.Now().UnixMilli()
 	if err := atomicWriteRecord(path, rec); err != nil {
-		utils.Log("breadcrumb", fmt.Sprintf("writePanic: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "breadcrumb", "writepanic", map[string]any{"error": err})
 		return
 	}
-	utils.Error("breadcrumb", fmt.Sprintf("writePanic: pid=%d reason=%s stack=%s", rec.Pid, reason, rec.Stack))
+	utils.LogWithFields(utils.LevelError, "breadcrumb", "writepanic", map[string]any{"run_id": rec.Pid, "reason": reason, "stack": rec.Stack})
 }
 
 // logPriorExit reads any pre-existing breadcrumb file at path, classifies the
@@ -135,7 +135,7 @@ func logPriorExit(path string) {
 	}
 	var rec exitRecord
 	if err := json.Unmarshal(data, &rec); err != nil {
-		utils.Log("breadcrumb", fmt.Sprintf("prior exit: unreadable breadcrumb err=%v", err))
+		utils.LogWithFields(utils.LevelInfo, "breadcrumb", "prior exit: unreadable breadcrumb", map[string]any{"error": err})
 		return
 	}
 
@@ -145,16 +145,10 @@ func logPriorExit(path string) {
 		if rec.StartedAt > 0 && rec.ExitedAt > 0 {
 			uptime = fmt.Sprintf("%dms", rec.ExitedAt-rec.StartedAt)
 		}
-		utils.Log("breadcrumb", fmt.Sprintf(
-			"prior exit: clean reason=%s prevPid=%d uptime=%s",
-			rec.Reason, rec.Pid, uptime,
-		))
+		utils.LogWithFields(utils.LevelInfo, "breadcrumb", "prior exit: clean", map[string]any{"reason": rec.Reason, "pid": rec.Pid, "uptime": uptime})
 
 	case "panic":
-		utils.Error("breadcrumb", fmt.Sprintf(
-			"prior exit: PANIC reason=%s prevPid=%d stack=%s",
-			rec.Reason, rec.Pid, rec.Stack,
-		))
+		utils.LogWithFields(utils.LevelError, "breadcrumb", "prior exit: panic", map[string]any{"reason": rec.Reason, "pid": rec.Pid, "stack": rec.Stack})
 
 	case "running":
 		// Process died without a clean or panic record. Classify staleness.
@@ -182,13 +176,10 @@ func logPriorExit(path string) {
 			memStr = fmt.Sprintf(" lastHeapMB=%d lastSysMB=%d",
 				rec.LastHeapBytes/bytesPerMiB, rec.LastSysBytes/bytesPerMiB)
 		}
-		utils.Error("breadcrumb", fmt.Sprintf(
-			"prior exit: UNCLEAN -- process died without shutdown (SIGKILL/panic/parent death/OOM likely) prevPid=%d lastBeat=%dms ago%s%s%s",
-			rec.Pid, ageMs, detail, deadStr, memStr,
-		))
+		utils.LogWithFields(utils.LevelError, "breadcrumb", "prior exit: UNCLEAN", map[string]any{"pid": rec.Pid, "age_ms": ageMs, "detail": detail, "dead_str": deadStr, "mem_str": memStr})
 
 	default:
-		utils.Log("breadcrumb", fmt.Sprintf("prior exit: unknown status=%q prevPid=%d", rec.Status, rec.Pid))
+		utils.LogWithFields(utils.LevelInfo, "breadcrumb", "prior exit: unknown", map[string]any{"status": rec.Status, "run_id": rec.Pid})
 	}
 }
 

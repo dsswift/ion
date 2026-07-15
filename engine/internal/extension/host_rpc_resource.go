@@ -23,7 +23,7 @@ func (h *Host) handleDeclareResource(id int64, raw []byte) {
 		Params DeclareResourceParams `json:"params"`
 	}
 	if err := json.Unmarshal(raw, &req); err != nil {
-		utils.Log("extension", fmt.Sprintf("ext/declare_resource: parse error: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/declare_resource: parse error", map[string]any{"error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "parse error: " + err.Error()})
 		return
 	}
@@ -37,12 +37,12 @@ func (h *Host) handleDeclareResource(id int64, raw []byte) {
 
 	decl := types.ResourceDeclaration{Kind: req.Params.Kind}
 	if err := ctx.DeclareResource(decl); err != nil {
-		utils.Log("extension", fmt.Sprintf("ext/declare_resource: ext=%s kind=%q rejected: %v", h.name, req.Params.Kind, err))
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/declare_resource: rejected", map[string]any{"model": h.name, "kind": req.Params.Kind, "error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 		return
 	}
 
-	utils.Log("extension", fmt.Sprintf("ext/declare_resource: ext=%s kind=%q registered", h.name, req.Params.Kind))
+	utils.LogWithFields(utils.LevelInfo, "extension", "ext/declare_resource: registered", map[string]any{"model": h.name, "kind": req.Params.Kind})
 	resp, _ := json.Marshal(struct {
 		OK   bool   `json:"ok"`
 		Kind string `json:"kind"`
@@ -55,7 +55,7 @@ func (h *Host) handlePublishResource(id int64, raw []byte) {
 		Params PublishResourceParams `json:"params"`
 	}
 	if err := json.Unmarshal(raw, &req); err != nil {
-		utils.Log("extension", fmt.Sprintf("ext/publish_resource: parse error: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/publish_resource: parse error", map[string]any{"error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "parse error: " + err.Error()})
 		return
 	}
@@ -83,12 +83,12 @@ func (h *Host) handlePublishResource(id int64, raw []byte) {
 		Item: req.Params.Item,
 	}
 	if err := publishFn(req.Params.Kind, delta); err != nil {
-		utils.Log("extension", fmt.Sprintf("ext/publish_resource: ext=%s kind=%q op=%q failed: %v", h.name, req.Params.Kind, req.Params.Op, err))
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/publish_resource: failed", map[string]any{"model": h.name, "kind": req.Params.Kind, "op": req.Params.Op, "error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 		return
 	}
 
-	utils.Debug("extension", fmt.Sprintf("ext/publish_resource: ext=%s kind=%q op=%q published", h.name, req.Params.Kind, req.Params.Op))
+	utils.LogWithFields(utils.LevelDebug, "extension", "ext/publish_resource: published", map[string]any{"model": h.name, "kind": req.Params.Kind, "op": req.Params.Op})
 	resp, _ := json.Marshal(struct {
 		OK bool `json:"ok"`
 	}{OK: true})
@@ -132,7 +132,7 @@ func (h *Host) CommitPendingResourceDecls(broker *resource.Broker) []error {
 	for _, decl := range decls {
 		fph := &resource.FuncProducerHost{}
 		if err := broker.RegisterProducer(decl.Kind, fph, decl); err != nil {
-			utils.Log("extension", fmt.Sprintf("CommitPendingResourceDecls: ext=%s kind=%q rejected: %v", h.name, decl.Kind, err))
+			utils.LogWithFields(utils.LevelInfo, "extension", "commitpendingresourcedecls: rejected", map[string]any{"model": h.name, "kind": decl.Kind, "error": err})
 			errs = append(errs, fmt.Errorf("resource %s: %w", decl.Kind, err))
 			continue
 		}
@@ -142,11 +142,10 @@ func (h *Host) CommitPendingResourceDecls(broker *resource.Broker) []error {
 		broker.SetQueryHandler(kind, func(filter types.ResourceFilter) ([]types.ResourceItem, error) {
 			return h.CallResourceQuery(kind, filter)
 		})
-		utils.Log("extension", fmt.Sprintf("CommitPendingResourceDecls: ext=%s kind=%q registered with query handler", h.name, decl.Kind))
+		utils.LogWithFields(utils.LevelInfo, "extension", "commitpendingresourcedecls: registered with query handler", map[string]any{"model": h.name, "kind": decl.Kind})
 	}
 	h.pendingInitResources = nil
-	utils.Log("extension", fmt.Sprintf("CommitPendingResourceDecls: ext=%s committed=%d errors=%d",
-		h.name, len(decls), len(errs)))
+	utils.LogWithFields(utils.LevelInfo, "extension", "commit pending resource decls", map[string]any{"model": h.name, "count": len(decls), "error": len(errs)})
 	return errs
 }
 
@@ -168,13 +167,13 @@ func (h *Host) RewireResourceDecls(broker *resource.Broker) {
 	}
 	for _, decl := range decls {
 		kind := decl.Kind // capture for closure
-		utils.Log("extension", fmt.Sprintf("RewireResourceDecls: ext=%s kind=%q rewiring after respawn", h.name, kind))
+		utils.LogWithFields(utils.LevelInfo, "extension", "rewireresourcedecls: rewiring after respawn", map[string]any{"model": h.name, "kind": kind})
 		broker.RewireQueryHandlerAndResnapshot(kind, func(filter types.ResourceFilter) ([]types.ResourceItem, error) {
 			return h.CallResourceQuery(kind, filter)
 		})
 	}
 	h.pendingInitResources = nil
-	utils.Log("extension", fmt.Sprintf("RewireResourceDecls: ext=%s rewired=%d kinds", h.name, len(decls)))
+	utils.LogWithFields(utils.LevelInfo, "extension", "rewireresourcedecls: kinds", map[string]any{"model": h.name, "count": len(decls)})
 }
 
 // handleNotify handles ext/notify: an extension calls ctx.notify() and the
@@ -184,7 +183,7 @@ func (h *Host) handleNotify(id int64, raw []byte) {
 		Params types.NotifyOpts `json:"params"`
 	}
 	if err := json.Unmarshal(raw, &req); err != nil {
-		utils.Log("extension", fmt.Sprintf("ext/notify: parse error: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/notify: parse error", map[string]any{"error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "parse error: " + err.Error()})
 		return
 	}
@@ -197,12 +196,12 @@ func (h *Host) handleNotify(id int64, raw []byte) {
 	}
 
 	if err := ctx.Notify(req.Params); err != nil {
-		utils.Log("extension", fmt.Sprintf("ext/notify: ext=%s err=%v", h.name, err))
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/notify", map[string]any{"model": h.name, "error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 		return
 	}
 
-	utils.Debug("extension", fmt.Sprintf("ext/notify: ext=%s kind=%s title=%q", h.name, req.Params.Kind, req.Params.Title))
+	utils.LogWithFields(utils.LevelDebug, "extension", "ext/notify", map[string]any{"model": h.name, "kind": req.Params.Kind, "title": req.Params.Title})
 	h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
 }
 
@@ -215,7 +214,7 @@ func (h *Host) handleIntercept(id int64, raw []byte) {
 		Params InterceptOpts `json:"params"`
 	}
 	if err := json.Unmarshal(raw, &req); err != nil {
-		utils.Log("extension", fmt.Sprintf("ext/intercept: parse error: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/intercept: parse error", map[string]any{"error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "parse error: " + err.Error()})
 		return
 	}
@@ -232,12 +231,12 @@ func (h *Host) handleIntercept(id int64, raw []byte) {
 	}
 
 	if err := ctx.Intercept(req.Params); err != nil {
-		utils.Log("extension", fmt.Sprintf("ext/intercept: ext=%s err=%v", h.name, err))
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/intercept", map[string]any{"model": h.name, "error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 		return
 	}
 
-	utils.Debug("extension", fmt.Sprintf("ext/intercept: ext=%s level=%s title=%q target=%s", h.name, req.Params.Level, req.Params.Title, req.Params.TargetSessionKey))
+	utils.LogWithFields(utils.LevelDebug, "extension", "ext/intercept", map[string]any{"model": h.name, "level": req.Params.Level, "title": req.Params.Title, "target_session_key": req.Params.TargetSessionKey})
 	h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
 }
 
@@ -252,19 +251,19 @@ func (h *Host) handleListSessions(id int64, raw []byte) {
 
 	entries, err := ctx.ListSessions()
 	if err != nil {
-		utils.Log("extension", fmt.Sprintf("ext/list_sessions: error: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/list_sessions: error", map[string]any{"error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 		return
 	}
 
 	data, err := json.Marshal(entries)
 	if err != nil {
-		utils.Error("extension", fmt.Sprintf("ext/list_sessions: marshal error: %v", err))
+		utils.LogWithFields(utils.LevelError, "extension", "ext/list_sessions: marshal error", map[string]any{"error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "marshal error"})
 		return
 	}
 
-	utils.Debug("extension", fmt.Sprintf("ext/list_sessions: ext=%s returning %d sessions", h.name, len(entries)))
+	utils.LogWithFields(utils.LevelDebug, "extension", "ext/list_sessions: returning sessions", map[string]any{"model": h.name, "count": len(entries)})
 	h.sendResponse(id, data, nil)
 }
 
@@ -278,7 +277,7 @@ func (h *Host) handleSendToSession(id int64, raw []byte) {
 		} `json:"params"`
 	}
 	if err := json.Unmarshal(raw, &req); err != nil {
-		utils.Error("extension", fmt.Sprintf("ext/send_to_session: parse error: %v", err))
+		utils.LogWithFields(utils.LevelError, "extension", "ext/send_to_session: parse error", map[string]any{"error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "invalid params"})
 		return
 	}
@@ -291,11 +290,11 @@ func (h *Host) handleSendToSession(id int64, raw []byte) {
 	}
 
 	if err := ctx.SendToSession(req.Params.TargetKey, req.Params.Kind, req.Params.Payload); err != nil {
-		utils.Log("extension", fmt.Sprintf("ext/send_to_session: target=%s kind=%s error: %v", req.Params.TargetKey, req.Params.Kind, err))
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/send_to_session: error", map[string]any{"target_key": req.Params.TargetKey, "kind": req.Params.Kind, "error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 		return
 	}
 
-	utils.Debug("extension", fmt.Sprintf("ext/send_to_session: ext=%s target=%s kind=%s", h.name, req.Params.TargetKey, req.Params.Kind))
+	utils.LogWithFields(utils.LevelDebug, "extension", "ext/send_to_session", map[string]any{"model": h.name, "target_key": req.Params.TargetKey, "kind": req.Params.Kind})
 	h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
 }

@@ -127,7 +127,7 @@ func scanSplitSessionFiles(llmPath, treePath string) (types.StoredSessionInfo, e
 	}
 	defer func() {
 		if closeErr := llmFile.Close(); closeErr != nil {
-			utils.Log("conv-list", fmt.Sprintf("scanSplitSessionFiles: close %s failed: %v", llmPath, closeErr))
+			utils.LogWithFields(utils.LevelInfo, "conversation.list", "scan split session files llm close failed", map[string]any{"path": llmPath, "error": closeErr.Error()})
 		}
 	}()
 
@@ -157,7 +157,7 @@ func scanSplitSessionFiles(llmPath, treePath string) (types.StoredSessionInfo, e
 	}
 	defer func() {
 		if closeErr := treeFile.Close(); closeErr != nil {
-			utils.Log("conv-list", fmt.Sprintf("scanSplitSessionFiles: close %s failed: %v", treePath, closeErr))
+			utils.LogWithFields(utils.LevelInfo, "conversation.list", "scan split session files tree close failed", map[string]any{"path": treePath, "error": closeErr.Error()})
 		}
 	}()
 
@@ -232,7 +232,7 @@ func scanSessionFile(path string) (types.StoredSessionInfo, error) {
 	}
 	defer func() {
 		if err := f.Close(); err != nil {
-			utils.Log("conv-list", fmt.Sprintf("scanSessionFile: close %s failed: %v", path, err))
+			utils.LogWithFields(utils.LevelInfo, "conversation.list", "scan session file close failed", map[string]any{"path": path, "error": err.Error()})
 		}
 	}()
 

@@ -1,6 +1,8 @@
 package config
 
 import (
+	"path"
+
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -94,6 +96,50 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 		}
 	}
 
+	// Plugin policy: merge enterprise force-installs, replace allowlist (sealed
+	// ceiling), append denylist (additive). Follows the same pattern as MCP
+	// restrictions above, extended to cover the downloadable-artifact dimension.
+	if len(enterprise.PluginForceInstalled) > 0 {
+		if result.Plugins == nil {
+			result.Plugins = &types.PluginsConfig{}
+		}
+		// Union: add enterprise force-installs not already in the user list.
+		existing := make(map[string]bool, len(result.Plugins.ForceInstalled))
+		for _, s := range result.Plugins.ForceInstalled {
+			existing[s] = true
+		}
+		for _, s := range enterprise.PluginForceInstalled {
+			if !existing[s] {
+				result.Plugins.ForceInstalled = append(result.Plugins.ForceInstalled, s)
+			}
+		}
+	}
+	if len(enterprise.PluginAllowlist) > 0 {
+		// Sealed ceiling: enterprise allowlist replaces user allowlist entirely.
+		if result.Plugins == nil {
+			result.Plugins = &types.PluginsConfig{}
+		}
+		result.Plugins.Allowlist = enterprise.PluginAllowlist
+		utils.LogWithFields(utils.LevelInfo, "config.merge", "enterprise sealed plugin allowlist", map[string]any{
+			"count": len(enterprise.PluginAllowlist),
+		})
+	}
+	if len(enterprise.PluginDenylist) > 0 {
+		// Additive: enterprise denylist is unioned with the user denylist.
+		if result.Plugins == nil {
+			result.Plugins = &types.PluginsConfig{}
+		}
+		existing := make(map[string]bool, len(result.Plugins.Denylist))
+		for _, s := range result.Plugins.Denylist {
+			existing[s] = true
+		}
+		for _, s := range enterprise.PluginDenylist {
+			if !existing[s] {
+				result.Plugins.Denylist = append(result.Plugins.Denylist, s)
+			}
+		}
+	}
+
 	// Telemetry: if enterprise requires enabled, it cannot be disabled below
 	if enterprise.Telemetry != nil && enterprise.Telemetry.Enabled {
 		if result.Telemetry == nil {
@@ -106,6 +152,56 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 		if enterprise.Telemetry.PrivacyLevel != "" {
 			result.Telemetry.PrivacyLevel = enterprise.Telemetry.PrivacyLevel
 		}
+	}
+
+	// Logging egress: if enterprise forces egress targets on, users cannot
+	// disable them. Only egress fields are enforced; local-file settings
+	// (Format, MaxSizeMB, OutputMode, LogDir) are not overridden here.
+	if enterprise.Logging != nil && len(enterprise.Logging.EgressTargets) > 0 {
+		if result.Logging == nil {
+			result.Logging = &types.LoggingConfig{}
+		}
+		result.Logging.EgressTargets = enterprise.Logging.EgressTargets
+		if enterprise.Logging.EgressEndpoint != "" {
+			result.Logging.EgressEndpoint = enterprise.Logging.EgressEndpoint
+		}
+		if len(enterprise.Logging.EgressHeaders) > 0 {
+			result.Logging.EgressHeaders = enterprise.Logging.EgressHeaders
+		}
+		if enterprise.Logging.EgressBatchSize > 0 {
+			result.Logging.EgressBatchSize = enterprise.Logging.EgressBatchSize
+		}
+		if enterprise.Logging.EgressFlushIntervalMs > 0 {
+			result.Logging.EgressFlushIntervalMs = enterprise.Logging.EgressFlushIntervalMs
+		}
+		if enterprise.Logging.EgressOtel != nil {
+			result.Logging.EgressOtel = enterprise.Logging.EgressOtel
+		}
+		// Preserve the user/lower-layer delegation flag. Enterprise sealing forces
+		// egress ON (targets, endpoint, auth) but does NOT decide WHO ships: on a
+		// managed workstation the desktop tails engine.jsonl and ships under its
+		// OIDC token, so the engine's own forwarder must stay suppressed to avoid
+		// double-shipping. The desktop sets egressManagedByClient on the engine.json
+		// it manages; enterprise enforcement here must not clobber it back to false.
+		if enterprise.Logging.EgressManagedByClient {
+			result.Logging.EgressManagedByClient = true
+		}
+		// Shipping-responsibility matrix: enterprise MAY seal it (deciding
+		// which sources the engine ships), but when the enterprise config is
+		// silent the lower layer's explicit assignment stands — the same
+		// don't-clobber principle as the delegation flag above.
+		if enterprise.Logging.EgressShipSources != nil {
+			result.Logging.EgressShipSources = enterprise.Logging.EgressShipSources
+		}
+		if enterprise.Logging.EgressClientShipSources != nil {
+			result.Logging.EgressClientShipSources = enterprise.Logging.EgressClientShipSources
+		}
+		// Authenticated egress: enterprise can force the operator-token scope
+		// used to authenticate each flush.
+		if enterprise.Logging.EgressTokenScope != "" {
+			result.Logging.EgressTokenScope = enterprise.Logging.EgressTokenScope
+		}
+		utils.LogWithFields(utils.LevelInfo, "config.merge", "enterprise forcing log egress", map[string]any{"status": enterprise.Logging.EgressTargets, "path": enterprise.Logging.EgressEndpoint})
 	}
 
 	// Network: enterprise proxy/CA enforcement
@@ -169,6 +265,46 @@ func IsMcpAllowed(serverName string, enterprise *types.EnterpriseConfig) bool {
 	return true
 }
 
+// IsPluginAllowed reports whether a plugin source is permitted by enterprise policy.
+// Glob patterns are supported (e.g. "JuliusBrussee/*" matches "JuliusBrussee/caveman").
+// When enterprise is nil, all sources are allowed.
+func IsPluginAllowed(source string, enterprise *types.EnterpriseConfig) bool {
+	if enterprise == nil {
+		return true
+	}
+	if IsPluginDenied(source, enterprise) {
+		return false
+	}
+	if len(enterprise.PluginAllowlist) > 0 && !matchesAny(enterprise.PluginAllowlist, source) {
+		return false
+	}
+	return true
+}
+
+// IsPluginDenied reports whether a plugin source is blocked by enterprise policy.
+// Glob patterns are supported. When enterprise is nil, nothing is denied.
+func IsPluginDenied(source string, enterprise *types.EnterpriseConfig) bool {
+	if enterprise == nil {
+		return false
+	}
+	return matchesAny(enterprise.PluginDenylist, source)
+}
+
+// matchesAny returns true when any pattern in patterns glob-matches target.
+// Uses path.Match semantics: "JuliusBrussee/*" matches "JuliusBrussee/caveman".
+func matchesAny(patterns []string, target string) bool {
+	for _, p := range patterns {
+		if ok, _ := path.Match(p, target); ok {
+			return true
+		}
+		// Also try exact match for plain strings without wildcards.
+		if p == target {
+			return true
+		}
+	}
+	return false
+}
+
 // mergeInto applies fields from src onto dst (dst is mutated).
 func mergeInto(dst, src *types.EngineRuntimeConfig) {
 	if src.Backend != "" {
@@ -216,6 +352,13 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 		for k, v := range src.McpServers {
 			dst.McpServers[k] = v
 		}
+	}
+
+	// Plugins: whole-block override (pointer). A later layer that sets the block
+	// replaces an earlier one; nil leaves the earlier value intact. Same convention
+	// as Permissions / Network / Telemetry.
+	if src.Plugins != nil {
+		dst.Plugins = src.Plugins
 	}
 
 	// Profiles: replace if provided
@@ -277,6 +420,12 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 	// LogLevel: project-level overrides global
 	if src.LogLevel != "" {
 		dst.LogLevel = src.LogLevel
+	}
+
+	// Logging: whole-block override (pointer). A later layer that sets the
+	// block replaces an earlier one; nil leaves the earlier value intact.
+	if src.Logging != nil {
+		dst.Logging = src.Logging
 	}
 
 	// EarlyStopContinue: merge field-by-field so engine.json can override a

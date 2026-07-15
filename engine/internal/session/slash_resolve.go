@@ -1,7 +1,6 @@
 package session
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -136,9 +135,7 @@ func resolveSlashCommand(name, args, workingDir string, claudeCompat bool) (*Res
 		fm, body := parseOpenFrontmatter(string(data))
 		expanded := substituteArguments(body, args)
 
-		utils.Log("SlashResolve", fmt.Sprintf(
-			"resolved name=/%s source=%s path=%s argsLen=%d bodyLen=%d expandedLen=%d",
-			name, c.source, c.path, len(args), len(body), len(expanded)))
+		utils.LogWithFields(utils.LevelInfo, "session.slash", "resolved", map[string]any{"model": name, "reason": c.source, "path": c.path, "count": len(args), "max": len(body)})
 
 		return &ResolvedSlash{
 			Command:             "/" + name,
@@ -153,7 +150,7 @@ func resolveSlashCommand(name, args, workingDir string, claudeCompat bool) (*Res
 		}, true
 	}
 
-	utils.Log("SlashResolve", fmt.Sprintf("no template found name=/%s workingDir=%s", name, workingDir))
+	utils.LogWithFields(utils.LevelInfo, "session.slash", "no template found name=/", map[string]any{"model": name, "working_dir": workingDir})
 	return nil, false
 }
 
@@ -176,13 +173,13 @@ func resolveSlashCommand(name, args, workingDir string, claudeCompat bool) (*Res
 func (m *Manager) resolveSlashIntoOpts(s *engineSession, key string, opts *types.RunOptions) (bool, string) {
 	name, args, ok := parseSlashInvocation(opts.Prompt)
 	if !ok {
-		utils.Log("SlashResolve", fmt.Sprintf("ResolveSlash set but prompt is not a slash invocation key=%s", key))
+		utils.LogWithFields(utils.LevelInfo, "session.slash", "resolveslash set but prompt is not a slash invocation", map[string]any{"key": key})
 		return false, opts.Prompt
 	}
 
 	res, found := resolveSlashCommand(name, args, s.config.WorkingDirectory, s.config.ClaudeCompat)
 	if !found {
-		utils.Log("SlashResolve", fmt.Sprintf("unknown command key=%s name=/%s", key, name))
+		utils.LogWithFields(utils.LevelInfo, "session.slash", "unknown command name=/", map[string]any{"key": key, "model": name})
 		return false, "/" + name
 	}
 
@@ -204,18 +201,16 @@ func (m *Manager) resolveSlashIntoOpts(s *engineSession, key string, opts *types
 	// Apply frontmatter model hint (no-stomp: explicit per-prompt override wins).
 	if res.Model != "" && opts.Model == "" {
 		opts.Model = res.Model
-		utils.Log("SlashResolve", fmt.Sprintf("applied frontmatter model=%s key=%s", res.Model, key))
+		utils.LogWithFields(utils.LevelInfo, "session.slash", "applied frontmatter", map[string]any{"model": res.Model, "key": key})
 	}
 	// Apply frontmatter allowed-bash additions for this run (union, transient).
 	if len(res.AllowedBashCommands) > 0 {
 		opts.BashAllowlistAdditionsForThisPrompt = unionStrings(
 			opts.BashAllowlistAdditionsForThisPrompt, res.AllowedBashCommands)
-		utils.Log("SlashResolve", fmt.Sprintf("applied %d frontmatter bash additions key=%s", len(res.AllowedBashCommands), key))
+		utils.LogWithFields(utils.LevelInfo, "session.slash", "applied frontmatter bash additions", map[string]any{"count": len(res.AllowedBashCommands), "key": key})
 	}
 
-	utils.Log("SlashResolve", fmt.Sprintf(
-		"resolved-into-opts key=%s command=%s source=%s expandedLen=%d",
-		key, res.Command, res.Source, len(res.ExpandedBody)))
+	utils.LogWithFields(utils.LevelInfo, "session.slash", "resolved into opts", map[string]any{"session_id": key, "reason": res.Command, "status": res.Source, "count": len(res.ExpandedBody)})
 	return true, ""
 }
 
@@ -239,7 +234,7 @@ func (m *Manager) fireSlashResolved(s *engineSession, key string, res *ResolvedS
 		ExpandedBody: res.ExpandedBody,
 	})
 	if ok {
-		utils.Log("SlashResolve", fmt.Sprintf("slash_command_resolved hook overrode body key=%s command=%s newLen=%d", key, res.Command, len(override)))
+		utils.LogWithFields(utils.LevelInfo, "session.slash", "slash_command_resolved hook overrode body", map[string]any{"key": key, "command": res.Command, "count": len(override)})
 	}
 	return override, ok
 }

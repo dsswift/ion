@@ -123,17 +123,13 @@ func MessagesAfterLastCompactBoundary(conv *Conversation) []types.LlmMessage {
 	return conv.Messages
 }
 
-// PostCompactReset performs the cache-invalidation housekeeping that
-// every compaction path must run after mutating conv.Messages. Today's
-// body is just invalidateTokenCache — the named helper exists so future
-// cache resets (file-state, embedding cache, etc.) land in one obvious
-// place rather than scattered across the runloop, mirroring Claude
-// Code's runPostCompactCleanup pattern.
-//
-// Safe on nil conv (no-op) so callers don't need a guard.
-func PostCompactReset(conv *Conversation) {
-	if conv == nil {
-		return
-	}
-	invalidateTokenCache(conv)
-}
+// PostCompactReset is a lifecycle marker called after any compaction operation.
+// Previously it zeroed the LastInputTokens / LastInputTokensMsgCount scalar
+// pair to force heuristic re-estimation on the next turn. The scalar was
+// removed in favour of the LlmMessage.Usage backward scan (GetContextUsage),
+// which is automatically coherent after compaction — the backward scan finds
+// the most recent surviving assistant message's Usage, which is already the
+// correct post-compaction baseline. This function is retained as a call-site
+// anchor so runloop_compaction.go callers compile without changes; it is a
+// genuine no-op.
+func PostCompactReset(conv *Conversation) {}

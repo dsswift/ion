@@ -130,6 +130,11 @@ type PlanModeAutoExitHookInfo struct {
 type TelemetryCollector interface {
 	Event(name string, payload map[string]interface{}, ctx map[string]interface{})
 	StartSpan(name string, attrs map[string]interface{}) Span
+	// StartSpanCtx begins a span with an explicit correlation context (session_id,
+	// conversation_id, run_id). The ctx map is forwarded to Collector.Event when
+	// End is called, giving span-based events the same correlation keys as every
+	// direct Event() call that passes buildTelemCtx(run).
+	StartSpanCtx(name string, attrs, ctx map[string]interface{}) Span
 }
 
 // Span tracks the lifetime of a telemetry span.
@@ -324,6 +329,13 @@ type RunConfig struct {
 	// RunOptions.PlanModeAutoExit overrides this; the
 	// before_plan_mode_auto_exit hook overrides both.
 	PlanModeAutoExitOnEndTurn *bool
+
+	// MaxTokenThinkingOnlyBreaker captures
+	// EngineRuntimeConfig.Limits.MaxTokenThinkingOnlyBreaker so the runloop can
+	// resolve the max_tokens thinking-only circuit-breaker cap without reaching
+	// back to the full engine config. Zero means "use the built-in default (3)";
+	// -1 disables the breaker entirely. See the max_tokens case in runloop.go.
+	MaxTokenThinkingOnlyBreaker int
 
 	// GetSessionMemory returns the current session memory content for use
 	// as a zero-cost compaction summary. Set by the session layer from
