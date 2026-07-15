@@ -58,7 +58,7 @@
         <false/>
     </dict>
 
-    <!-- Log stdout/stderr. The engine's structured log goes to engine.log
+    <!-- Log stdout/stderr. The engine's structured log goes to engine.jsonl
          via utils.Log; these files capture any raw output (startup banner,
          fatal errors before logging is initialised). -->
     <key>StandardOutPath</key>
