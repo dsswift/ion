@@ -153,6 +153,13 @@ type SessionAccessor interface {
 	// the updater function.
 	UpdateAgentStateByID(id string, updater func(*types.AgentStateUpdate))
 
+	// UpsertAgentStateByID finds an agent state entry by its ID and applies the
+	// updater, or appends seed (then applies the updater) when no slot matches.
+	// Used by the dispatch terminal transition so a slot swept during a
+	// lifecycle gap is re-materialized as a terminal row instead of the terminal
+	// update being lost.
+	UpsertAgentStateByID(id string, seed types.AgentStateUpdate, updater func(*types.AgentStateUpdate))
+
 	// EmitAgentSnapshot emits the current merged agent state snapshot as
 	// an engine_agent_state event.
 	EmitAgentSnapshot(reason string)
@@ -236,6 +243,11 @@ type ExtContextOpts struct {
 	// DispatchId is the dispatch ID of the agent that owns this context.
 	// Empty for the orchestrator at depth 0.
 	DispatchId string
+	// SuspendFn is the closure wired to ctx.Suspend for dispatched children.
+	// When non-nil, the ext/task_suspend RPC calls this to signal the child
+	// backend to park the current LLM run. Nil at depth 0 (the orchestrator
+	// cannot suspend its own run — it is not inside a dispatched context).
+	SuspendFn func(awaitingDispatchIDs []string) error
 }
 
 // NewExtContext builds a fully-populated extension.Context by delegating all
@@ -250,6 +262,7 @@ func NewExtContext(sa SessionAccessor, args ...interface{}) *extension.Context {
 	var registry *DispatchRegistry
 	var depth int
 	var dispatchId string
+	var suspendFn func(awaitingDispatchIDs []string) error
 
 	for _, arg := range args {
 		switch v := arg.(type) {
@@ -259,6 +272,7 @@ func NewExtContext(sa SessionAccessor, args ...interface{}) *extension.Context {
 			registry = v.Registry
 			depth = v.Depth
 			dispatchId = v.DispatchId
+			suspendFn = v.SuspendFn
 		}
 	}
 
@@ -336,6 +350,7 @@ func NewExtContext(sa SessionAccessor, args ...interface{}) *extension.Context {
 		SendPromptPayload: func(payload extension.SendPromptPayload) error {
 			return sa.SendPromptWithKind(payload.Text, payload.Model, payload.BashAllowlistAdditions, payload.Kind)
 		},
+		Suspend: suspendFn,
 		SearchHistory: func(query string, maxResults int) ([]extension.HistoryMatch, error) {
 			matches := sa.SearchHistory(query, maxResults)
 			return matches, nil

@@ -99,6 +99,8 @@ func (a *llmCallTestAccessor) SetPlanMode(_ bool, _ string)                     
 func (a *llmCallTestAccessor) GetPlanModeState() (bool, string)                               { return false, "" }
 func (a *llmCallTestAccessor) AppendOrUpdateAgentState(_ types.AgentStateUpdate) string       { return "" }
 func (a *llmCallTestAccessor) UpdateAgentStateByID(_ string, _ func(*types.AgentStateUpdate)) {}
+func (a *llmCallTestAccessor) UpsertAgentStateByID(_ string, _ types.AgentStateUpdate, _ func(*types.AgentStateUpdate)) {
+}
 func (a *llmCallTestAccessor) EmitAgentSnapshot(_ string)                                     {}
 func (a *llmCallTestAccessor) ResourceBroker() *resource.Broker                               { return nil }
 func (a *llmCallTestAccessor) GlobalResourceBroker() *resource.Broker                         { return nil }

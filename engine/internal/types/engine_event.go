@@ -142,6 +142,16 @@ type EngineEvent struct {
 	InjectedPromptOrigin string `json:"injectedPromptOrigin,omitempty"`
 	InjectedPromptKind   string `json:"injectedPromptKind,omitempty"`
 
+	// engine_task_suspended — a dispatched agent's LLM run ended without
+	// completing the dispatch (the agent called ctx.suspend() or
+	// ctx.suspendUntilAll()). The agent is parked, waiting for child
+	// completions or a revive message. TaskSuspendAwaitingCount is the number
+	// of child dispatches the agent is waiting on (0 for bare suspend).
+	// Clients may update the agent-state indicator to show "suspended" or
+	// "idle" while the dispatch is parked. TaskCompleteEvent (and idle
+	// engine_status) fires only when the agent truly finishes after revival.
+	TaskSuspendAwaitingCount int `json:"taskSuspendAwaitingCount,omitempty"`
+
 	// engine_model_fallback — workflow signal emitted when the engine
 	// fell back to its configured defaultModel because the requested
 	// model didn't resolve to a provider. Mirrors the underlying

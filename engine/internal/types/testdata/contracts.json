@@ -163,6 +163,9 @@
       "sessionId",
       "usage"
     ],
+    "task_suspend": [
+      "awaitingDispatchIds"
+    ],
     "task_update": [
       "message"
     ],
@@ -363,6 +366,7 @@
     "steerMessageLength",
     "strategy",
     "summary",
+    "taskSuspendAwaitingCount",
     "text",
     "thinkingElapsedSeconds",
     "thinkingRedacted",

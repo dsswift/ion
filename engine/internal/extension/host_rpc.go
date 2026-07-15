@@ -462,6 +462,36 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 	case "ext/answer_dispatch_question":
 		h.handleAnswerDispatchQuestion(id, raw)
 
+	case "ext/task_suspend":
+		// ext/task_suspend — end the LLM run without completing the dispatch.
+		// The agent's LLM exits cleanly (saving tokens, showing as idle/suspended
+		// in the UI). The parent's OnComplete does NOT fire. runChild loops and
+		// blocks on reviveCh until a sendPrompt to this session (or until all
+		// awaiting child dispatches complete). Only wired for dispatched children
+		// (ctx.Suspend is nil at depth 0 / the orchestrator).
+		var req struct {
+			Params struct {
+				AwaitingDispatchIDs []string `json:"awaitingDispatchIds,omitempty"`
+			} `json:"params"`
+		}
+		if err := json.Unmarshal(raw, &req); err != nil {
+			h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "parse error: " + err.Error()})
+			return
+		}
+		if ctx == nil || ctx.Suspend == nil {
+			utils.Debug("extension", "ext/task_suspend: not available at this context depth (depth 0 / no active dispatch)")
+			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "suspend not available: not inside a dispatched run"})
+			return
+		}
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/task_suspend: suspending run", map[string]any{"awaiting": len(req.Params.AwaitingDispatchIDs)})
+		go func() {
+			if err := ctx.Suspend(req.Params.AwaitingDispatchIDs); err != nil {
+				h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
+				return
+			}
+			h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
+		}()
+
 	case "ext/send_prompt":
 		var req struct {
 			Params struct {

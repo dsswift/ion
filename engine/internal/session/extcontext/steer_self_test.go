@@ -96,6 +96,8 @@ func (a *steerSelfAccessor) AppendOrUpdateAgentState(state types.AgentStateUpdat
 	return state.ID
 }
 func (a *steerSelfAccessor) UpdateAgentStateByID(id string, updater func(*types.AgentStateUpdate)) {}
+func (a *steerSelfAccessor) UpsertAgentStateByID(id string, seed types.AgentStateUpdate, updater func(*types.AgentStateUpdate)) {
+}
 func (a *steerSelfAccessor) EmitAgentSnapshot(reason string)                                       {}
 func (a *steerSelfAccessor) ResourceBroker() *resource.Broker                                      { return nil }
 func (a *steerSelfAccessor) GlobalResourceBroker() *resource.Broker                                { return nil }

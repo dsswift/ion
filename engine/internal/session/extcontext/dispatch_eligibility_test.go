@@ -72,6 +72,8 @@ func (a *eligibilityTestAccessor) GetPlanModeState() (bool, string)             
 func (a *eligibilityTestAccessor) AppendOrUpdateAgentState(_ types.AgentStateUpdate) string { return "" }
 func (a *eligibilityTestAccessor) UpdateAgentStateByID(_ string, _ func(*types.AgentStateUpdate)) {
 }
+func (a *eligibilityTestAccessor) UpsertAgentStateByID(_ string, _ types.AgentStateUpdate, _ func(*types.AgentStateUpdate)) {
+}
 func (a *eligibilityTestAccessor) EmitAgentSnapshot(_ string)                  {}
 func (a *eligibilityTestAccessor) ResourceBroker() *resource.Broker            { return nil }
 func (a *eligibilityTestAccessor) GlobalResourceBroker() *resource.Broker      { return nil }

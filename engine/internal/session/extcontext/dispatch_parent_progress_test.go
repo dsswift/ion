@@ -94,6 +94,8 @@ func (a *bumpCountingAccessor) AppendOrUpdateAgentState(_ types.AgentStateUpdate
 	return ""
 }
 func (a *bumpCountingAccessor) UpdateAgentStateByID(_ string, _ func(*types.AgentStateUpdate)) {}
+func (a *bumpCountingAccessor) UpsertAgentStateByID(_ string, _ types.AgentStateUpdate, _ func(*types.AgentStateUpdate)) {
+}
 func (a *bumpCountingAccessor) EmitAgentSnapshot(_ string)                                     {}
 func (a *bumpCountingAccessor) ResourceBroker() *resource.Broker                               { return nil }
 func (a *bumpCountingAccessor) GlobalResourceBroker() *resource.Broker                         { return nil }

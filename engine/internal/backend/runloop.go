@@ -193,6 +193,13 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		// Check for steer messages that arrived between turns.
 		b.drainSteer(run, conv)
 
+		// Check for a suspend signal. When the extension has called
+		// ctx.suspend() or ctx.suspendUntilAll(), exit the run loop now so
+		// the dispatch can park until a revive message arrives.
+		if suspended, _ := b.drainSuspend(run, conv); suspended {
+			return
+		}
+
 		// Increment turn counter before firing turn_start, so the first turn
 		// reports turn=1 (matching TS behavior).
 		turn++
@@ -697,6 +704,14 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		// the size cap. A true return means the run terminated (a
 		// TaskCompleteEvent + exit was already emitted, or a cancellation was
 		// handled) and runLoop should return; false means keep iterating.
+		//
+		// Check for a suspend signal before dispatching the stop reason:
+		// the extension may have called ctx.suspend() during tool execution
+		// or between turns. When a suspend is pending, honour it instead of
+		// emitting TaskCompleteEvent — the dispatch is parked, not done.
+		if suspended, _ := b.drainSuspend(run, conv); suspended {
+			return
+		}
 		if b.dispatchStopReason(ctx, run, conv, hooks, opts, earlyStop, assistantBlocks, stopReason, currentTurnOutputTokens, turn, maxTurns, convDir) {
 			return
 		}

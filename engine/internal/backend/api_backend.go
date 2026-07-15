@@ -136,6 +136,7 @@ func (b *ApiBackend) StartRunWithConfig(requestID string, options types.RunOptio
 		cancel:       cancel,
 		startTime:    time.Now(),
 		steerCh:      make(chan string, 4),
+		suspendCh:    make(chan suspendSignal, 1),
 		planMode:     options.PlanMode,
 		planFilePath: options.PlanFilePath,
 		// Cache the RunOptions sparse-reminder override (highest precedence).

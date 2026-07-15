@@ -287,14 +287,23 @@ function buildContext(ctxData: any): IonContext {
       // when present so the omitempty contract on the engine side holds (an
       // empty array would otherwise serialize as []). The engine unions these
       // with the session allowlist for this one run and never persists them.
-      const params: { text: string; model: string; bashAllowlistAdditions?: string[] } = {
+      const params: { text: string; model: string; bashAllowlistAdditions?: string[]; kind?: string } = {
         text,
         model: opts?.model || '',
       }
       if (opts?.bashAllowlistAdditions && opts.bashAllowlistAdditions.length > 0) {
         params.bashAllowlistAdditions = opts.bashAllowlistAdditions
       }
+      if (opts?.kind) {
+        params.kind = opts.kind
+      }
       await request('ext/send_prompt', params)
+    },
+    async suspend(): Promise<void> {
+      await request('ext/task_suspend', {})
+    },
+    async suspendUntilAll(dispatchIds: string[]): Promise<void> {
+      await request('ext/task_suspend', { awaitingDispatchIds: dispatchIds })
     },
     async dispatchAgent(opts: DispatchAgentOpts): Promise<DispatchAgentResult> {
       const {

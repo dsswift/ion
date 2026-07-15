@@ -44,6 +44,17 @@ const (
 	EventPromptInjected = "prompt_injected"
 	EventModelFallback   = "model_fallback"
 	EventRunStalled      = "run_stalled"
+	// EventTaskSuspend is the engine-internal signal that ends an LLM run
+	// without completing the dispatch. The agent's LLM run exits (saving
+	// tokens, showing as idle in the UI) but its parent's OnComplete callback
+	// does NOT fire. The dispatch remains alive in the registry; when a revive
+	// message arrives via sendPrompt, runChild restarts the LLM run with the
+	// new conversation context. This is the mechanism that lets a dispatched
+	// lead agent go idle while waiting for its specialist children to complete,
+	// without forcing a synchronous blocking dispatch on the orchestrator.
+	// Consumers (desktop, iOS) may update the agent-state pill to show a
+	// "suspended" or "idle" indicator while the dispatch is parked.
+	EventTaskSuspend = "task_suspend"
 	// EventPlanContent is emitted in response to a get_plan_content command.
 	// It carries a bounded byte-range window of a plan file so remote clients
 	// can page through large plans without filesystem access to the engine host.
@@ -228,6 +239,8 @@ func (e *NormalizedEvent) UnmarshalJSON(data []byte) error {
 		target = &ModelFallbackEvent{}
 	case EventRunStalled:
 		target = &RunStalledEvent{}
+	case EventTaskSuspend:
+		target = &TaskSuspendEvent{}
 	case EventPlanContent:
 		target = &PlanContentEvent{}
 	case EventThinkingBlockStart:

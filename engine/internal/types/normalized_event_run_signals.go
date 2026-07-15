@@ -79,3 +79,22 @@ type PromptInjectedEvent struct {
 }
 
 func (PromptInjectedEvent) eventType() string { return EventPromptInjected }
+
+// TaskSuspendEvent is the engine-internal signal that ends an LLM run without
+// completing the dispatch. When an extension calls ctx.suspend() (or
+// ctx.suspendUntilAll()), the backend emits this event and the run exits
+// cleanly — the agent shows as idle/suspended in the UI. The parent's
+// OnComplete callback does NOT fire. The dispatch remains alive; when a revive
+// message arrives via sendPrompt, runChild restarts the LLM run with the new
+// conversation context. Consumers may update the agent-state indicator to show
+// a "suspended" or "idle" state while the dispatch is parked.
+type TaskSuspendEvent struct {
+	// AwaitingDispatchIDs lists the dispatch IDs the suspending agent is
+	// waiting on (for N-child fan-out via dispatch_agents). The engine uses
+	// this set to track pending children; the reviveCh is signaled only when
+	// all listed children have completed. Empty for a bare suspend() call
+	// (revives on the next sendPrompt to this session, regardless of origin).
+	AwaitingDispatchIDs []string `json:"awaitingDispatchIds,omitempty"`
+}
+
+func (TaskSuspendEvent) eventType() string { return EventTaskSuspend }

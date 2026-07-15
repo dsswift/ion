@@ -839,6 +839,33 @@ export interface IonContext {
    * ```
    */
   sendPrompt(text: string, opts?: SendPromptOpts): Promise<void>
+
+  /**
+   * End the LLM run for this dispatch without completing it. The agent goes
+   * idle/suspended in the UI and the parent's OnComplete does NOT fire. The
+   * dispatch stays alive; when a revive message arrives via sendPrompt (from
+   * a child agent's completion callback or any other source), the LLM run
+   * restarts with the updated conversation context.
+   *
+   * Use `suspend()` when you have dispatched a single background child and
+   * have nothing more to do until it completes. Use `suspendUntilAll()` for
+   * N-child fan-out (or use the dispatch_agents tool which calls it for you).
+   *
+   * Only available inside a dispatched run (depth >= 1). Throws if called at
+   * depth 0 (the orchestrator cannot suspend its own root run).
+   */
+  suspend(): Promise<void>
+
+  /**
+   * Like `suspend()` but waits for ALL listed child dispatches to complete
+   * before reviving. Each completion decrements the pending set; the run
+   * revives only when the set empties.
+   *
+   * Used internally by the `dispatch_agents` fan-out tool; prefer that tool
+   * over calling `suspendUntilAll()` directly for parallel fan-out.
+   */
+  suspendUntilAll(dispatchIds: string[]): Promise<void>
+
   dispatchAgent(opts: DispatchAgentOpts): Promise<DispatchAgentResult>
 
   /**

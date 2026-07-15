@@ -90,6 +90,8 @@ func (a *dispatchContextTestAccessor) AppendOrUpdateAgentState(state types.Agent
 }
 func (a *dispatchContextTestAccessor) UpdateAgentStateByID(id string, updater func(*types.AgentStateUpdate)) {
 }
+func (a *dispatchContextTestAccessor) UpsertAgentStateByID(id string, seed types.AgentStateUpdate, updater func(*types.AgentStateUpdate)) {
+}
 func (a *dispatchContextTestAccessor) EmitAgentSnapshot(reason string)                 {}
 func (a *dispatchContextTestAccessor) ResourceBroker() *resource.Broker                { return nil }
 func (a *dispatchContextTestAccessor) GlobalResourceBroker() *resource.Broker          { return nil }

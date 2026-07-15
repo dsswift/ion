@@ -1,3 +1,4 @@
+// @file-size-exception: core dispatch lifecycle; suspend loop added inline to minimize cross-file coupling
 package extcontext
 
 import (
@@ -102,6 +103,18 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			"status":    "running",
 			"startTime": start.Unix(),
 		}
+		// Reserve the dispatch ID in the registry BEFORE the running slot is
+		// created and broadcast below. The slot becomes sweepable the moment it
+		// exists; the full registration (registerDispatch) does not run until the
+		// tail of dispatch setup (after loadChildExtension / tool wiring), which
+		// can take seconds. A concurrent run-exit sweep in that window would snap
+		// ActiveIDs without this dispatch and delete its live slot, orphaning
+		// every later UpdateStateByID. Reserving here makes ActiveIDs cover the
+		// slot for its entire running lifetime. registerDispatch upgrades this
+		// placeholder in place (no collision warning). No-op when registry is nil.
+		if registry != nil {
+			registry.Reserve(agentID, agentName, currentDispatchId, childDepth)
+		}
 		sa.AppendOrUpdateAgentState(types.AgentStateUpdate{
 			Name:   agentName,
 			ID:     agentID,
@@ -174,6 +187,13 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		child := sa.NewChildBackend()
 		var childCfg *backend.RunConfig
 
+		// childReqID is declared here (before childCfg is built) so the
+		// suspendFn closure inside childCfg.Hooks.OnToolCall can reference it
+		// by Go closure capture. The value is set later (line ~520) from the
+		// session key and agentID, both of which are known by the time any
+		// hook fires.
+		var childReqID string
+
 		// Inject context grounding (AGENTS.md/ION.md/CLAUDE.md) into the child
 		// system prompt BEFORE the extension loads. The four-level policy
 		// cascade (per-dispatch > session default > engine.json > built-in)
@@ -188,10 +208,24 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			childCfg = &backend.RunConfig{
 				Hooks: backend.RunHooks{
 					OnToolCall: func(info backend.ToolCallInfo) (*backend.ToolCallResult, error) {
+						// Build the suspend closure for tool-call contexts so the
+						// extension can call ctx.suspend() from inside a tool handler.
+						// childReqID is declared later in this function (line ~507) but
+						// the hook closure only fires after startChild() has bound the
+						// run, so childReqID is populated by the time this runs.
+						var suspendFn func(ids []string) error
+						if sb, ok := child.(suspendableBackend); ok {
+							capturedChild := sb
+							suspendFn = func(ids []string) error {
+								capturedChild.SignalSuspend(childReqID, ids)
+								return nil
+							}
+						}
 						tcCtx := NewExtContext(sa, ExtContextOpts{
 							Depth:      childDepth,
 							DispatchId: agentID,
 							Registry:   registry,
+							SuspendFn:  suspendFn,
 						})
 						result, _ := childExtHost.FireToolCall(tcCtx, extension.ToolCallInfo{
 							ToolName: info.ToolName,
@@ -265,6 +299,10 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		var childSessionID string
 		var resultText string
 		var childErr error
+		// suspendSig is set when the child run emits TaskSuspendEvent, meaning
+		// the extension called ctx.suspend() or ctx.suspendUntilAll(). runChild
+		// resets it before each LLM run so a previous suspend does not carry over.
+		var suspendSig *types.TaskSuspendEvent
 		var childDone sync.WaitGroup
 		childDone.Add(1)
 		// childDoneOnce guards childDone.Done() against double-invocation:
@@ -450,6 +488,16 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 					childSessionID = tc.SessionID
 				}
 			}
+
+			// Capture TaskSuspendEvent so runChild knows to park the dispatch.
+			if ts, ok := ev.Data.(*types.TaskSuspendEvent); ok {
+				suspendSig = ts
+				utils.LogWithFields(utils.LevelInfo, "server", "child run suspended", map[string]any{
+					"model":      opts.Name,
+					"session_id": key,
+					"awaiting":   len(ts.AwaitingDispatchIDs),
+				})
+			}
 		})
 		child.OnExit(func(_ string, _ *int, _ *string, _ string) {
 			childDoneOnce.Do(childDone.Done)
@@ -489,7 +537,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		// the child backend reuses one conversation for both, and one dispatch
 		// entry is left without its own conversationId. agentID's NewConvSuffix()
 		// guarantees distinctness even for same-millisecond concurrent dispatches.
-		childReqID := fmt.Sprintf("%s-%s", key, agentID)
+		childReqID = fmt.Sprintf("%s-%s", key, agentID)
 
 		// Phase 3: Emit dispatch_start telemetry on the parent session and open
 		// the dispatch.agent span (family 4b). Both are folded into beginDispatch
@@ -513,25 +561,96 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		// building logic. It is called directly for foreground dispatches
 		// and in a goroutine for background dispatches.
 		runChild := func() *extension.DispatchAgentResult {
-			startChild(child, childReqID, runOpts, childCfg)
+			for {
+				// Reset suspend signal before each LLM run so a previous
+				// suspend does not carry over into the revived run.
+				suspendSig = nil
 
-			// Wait for the child to finish, but also watch for context
-			// cancellation (recall).
-			doneCh := make(chan struct{})
-			go func() {
-				childDone.Wait()
-				close(doneCh)
-			}()
+				// Re-arm childDone for this run iteration. The first iteration
+				// was already Add(1)'d at declaration; subsequent iterations
+				// after a suspend revive must Add(1) again because Done() was
+				// already called by the previous run's OnExit.
+				// Note: we reset the WaitGroup by decrement-then-increment only
+				// after doneCh is consumed (the select below), so there is no
+				// race with the concurrent Done() call.
+				startChild(child, childReqID, runOpts, childCfg)
 
-			select {
-			case <-doneCh:
-				// Normal completion.
-			case <-ctx.Done():
-				// Recall: cancel the child backend and wait for it to drain.
-				utils.LogWithFields(utils.LevelInfo, "server", "recall context cancelled", map[string]any{"model": opts.Name, "recall_reason": recallReason, "session_id": key})
-				child.Cancel(childReqID)
-				<-doneCh
-				recalled = true
+				// Wait for the child to finish, but also watch for context
+				// cancellation (recall).
+				doneCh := make(chan struct{})
+				go func() {
+					childDone.Wait()
+					close(doneCh)
+				}()
+
+				select {
+				case <-doneCh:
+					// Normal completion (or suspend).
+				case <-ctx.Done():
+					// Recall: cancel the child backend and wait for it to drain.
+					utils.LogWithFields(utils.LevelInfo, "server", "recall context cancelled", map[string]any{"model": opts.Name, "recall_reason": recallReason, "session_id": key})
+					child.Cancel(childReqID)
+					<-doneCh
+					recalled = true
+				}
+
+				// If the run was suspended, park the dispatch and wait for
+				// revive before looping. Registry arms reviveCh and tracks
+				// pending children; sendPrompt signals reviveCh when all
+				// conditions are met.
+				if suspendSig != nil && !recalled {
+					utils.LogWithFields(utils.LevelInfo, "server", "dispatch suspended, parking until revive", map[string]any{
+						"model":   opts.Name,
+						"awaiting": len(suspendSig.AwaitingDispatchIDs),
+					})
+
+					// Update agent state to "suspended" so the UI reflects idle.
+					sa.UpdateAgentStateByID(agentID, func(state *types.AgentStateUpdate) {
+						state.Status = "suspended"
+						if state.Metadata == nil {
+							state.Metadata = map[string]interface{}{}
+						}
+						state.Metadata["lastWork"] = "suspended — waiting for children"
+					})
+					sa.EmitAgentSnapshot("dispatch_suspend")
+
+					// Arm the revive channel in the registry.
+					reviveCh := make(chan struct{}, 1)
+					if registry != nil {
+						registry.SetSuspendedState(agentID, reviveCh, suspendSig.AwaitingDispatchIDs)
+					}
+
+					// Block until revived (or recalled).
+					select {
+					case <-reviveCh:
+						// Revived — loop to restart the LLM run.
+						utils.LogWithFields(utils.LevelInfo, "server", "dispatch revived, restarting LLM run", map[string]any{"model": opts.Name, "session_id": key})
+						if registry != nil {
+							registry.ClearSuspendedState(agentID)
+						}
+						// Re-arm childDone for the next run.
+						childDone.Add(1)
+						// Update agent state back to "running".
+						sa.UpdateAgentStateByID(agentID, func(state *types.AgentStateUpdate) {
+							state.Status = "running"
+							if state.Metadata != nil {
+								state.Metadata["lastWork"] = "revived"
+							}
+						})
+						sa.EmitAgentSnapshot("dispatch_revive")
+						continue
+					case <-ctx.Done():
+						// Recalled while suspended.
+						utils.LogWithFields(utils.LevelInfo, "server", "dispatch recalled while suspended", map[string]any{"model": opts.Name, "recall_reason": recallReason})
+						recalled = true
+						if registry != nil {
+							registry.ClearSuspendedState(agentID)
+						}
+					}
+				}
+
+				// Normal exit (done, error, or recalled): break the loop.
+				break
 			}
 
 			elapsed := time.Since(start).Seconds()
@@ -545,16 +664,14 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				childExtHost.Dispose()
 			}
 
-			// Deregister from the dispatch registry (both foreground and background).
-			if registry != nil {
-				registry.Deregister(agentID)
-				// Re-emit engine_status with the updated BackgroundAgents count so
-				// the parent session clears its "waiting on background agent" state.
-				// handleRunExit sampled bgCount BEFORE Deregister ran; nothing
-				// re-emits after, leaving a stale BackgroundAgents:1 (or N) as the
-				// last value the client sees. This call is the correction.
-				sa.EmitDispatchCountStatus("dispatch_deregister")
-			}
+			// NOTE: deregistration is deliberately deferred until AFTER the
+			// terminal agent-state transition below. Deregister removes the
+			// dispatch from ActiveIDs; if it ran here (before the slot is marked
+			// terminal), a concurrent run-exit sweep in the gap would delete the
+			// still-"running" slot and the terminal UpdateStateByID would land
+			// nowhere. Marking the slot terminal first (a terminal slot is never
+			// swept) closes that window. See the Deregister block after
+			// EmitAgentSnapshot("dispatch_end").
 
 			// Build the result.
 			exitCode := 0
@@ -586,7 +703,27 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			}
 
 			// Update agent state with terminal status and conversation ID.
-			sa.UpdateAgentStateByID(agentID, func(state *types.AgentStateUpdate) {
+			// Upsert (not plain update): after the birth-gap and death-gap fixes
+			// the slot is always present here, but if some future lifecycle gap
+			// ever leaves it swept, the terminal transition re-materializes the
+			// slot as terminal rather than being silently dropped and stranding
+			// the agent as "running". The seed is a minimal coherent row; when the
+			// slot already exists it is ignored and the updater runs in place,
+			// preserving the accumulated dispatches[]/conversationIds metadata.
+			terminalSeed := types.AgentStateUpdate{
+				Name:   agentName,
+				ID:     agentID,
+				Status: "running",
+				Metadata: map[string]interface{}{
+					"displayName":      displayName,
+					"type":             "agent",
+					"task":             opts.Task,
+					"model":            model,
+					"dispatchDepth":    childDepth,
+					"dispatchParentId": currentDispatchId,
+				},
+			}
+			sa.UpsertAgentStateByID(agentID, terminalSeed, func(state *types.AgentStateUpdate) {
 				if state.Metadata == nil {
 					state.Metadata = map[string]interface{}{}
 				}
@@ -626,6 +763,22 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				agents.UpdateDispatchEntry(state.Metadata, agentID, state.Status, elapsed, childSessionID)
 			})
 			sa.EmitAgentSnapshot("dispatch_end")
+
+			// Deregister from the dispatch registry (both foreground and
+			// background), now that the slot carries a terminal status. Deferred
+			// to here (from before the terminal transition) so the dispatch stays
+			// in ActiveIDs until its slot is terminal — a terminal slot is never
+			// swept, so no run-exit clear can orphan it and the terminal update
+			// above always landed on a real slot.
+			if registry != nil {
+				registry.Deregister(agentID)
+				// Re-emit engine_status with the updated BackgroundAgents count so
+				// the parent session clears its "waiting on background agent" state.
+				// handleRunExit sampled bgCount BEFORE Deregister ran; nothing
+				// re-emits after, leaving a stale BackgroundAgents:1 (or N) as the
+				// last value the client sees. This call is the correction.
+				sa.EmitDispatchCountStatus("dispatch_deregister")
+			}
 
 			// Fire agent_end on the parent extension group.
 			if extGroup := sa.ExtGroup(); extGroup != nil && !extGroup.IsEmpty() {
@@ -733,6 +886,16 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				} else {
 					if opts.OnComplete != nil {
 						opts.OnComplete(*result)
+					}
+					// Notify the parent dispatch registry that this child
+					// completed. If the parent is suspended via suspendUntilAll
+					// and this was one of its awaited children, the registry
+					// decrements the pending set and signals reviveCh when
+					// the set empties. This is the engine-side complement to
+					// registry.SignalReviveForSession (which handles bare
+					// suspend() revives triggered by sendPrompt).
+					if registry != nil && currentDispatchId != "" {
+						registry.NotifyChildComplete(currentDispatchId, agentID)
 					}
 				}
 			}()

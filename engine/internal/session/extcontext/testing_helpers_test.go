@@ -68,6 +68,8 @@ func (noopSA) GetPlanModeState() (bool, string)                                 
 func (noopSA) AllocatePlanFilePath() string                                       { return "" }
 func (noopSA) AppendOrUpdateAgentState(_ types.AgentStateUpdate) string           { return "" }
 func (noopSA) UpdateAgentStateByID(_ string, _ func(*types.AgentStateUpdate))     {}
+func (noopSA) UpsertAgentStateByID(_ string, _ types.AgentStateUpdate, _ func(*types.AgentStateUpdate)) {
+}
 func (noopSA) EmitAgentSnapshot(_ string)                                         {}
 func (noopSA) ResourceBroker() *resource.Broker                                   { return nil }
 func (noopSA) GlobalResourceBroker() *resource.Broker                             { return nil }

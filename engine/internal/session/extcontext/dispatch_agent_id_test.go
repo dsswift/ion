@@ -57,6 +57,22 @@ func (a *idTestAccessor) UpdateAgentStateByID(id string, updater func(*types.Age
 	}
 }
 
+func (a *idTestAccessor) UpsertAgentStateByID(id string, seed types.AgentStateUpdate, updater func(*types.AgentStateUpdate)) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.stateByID == nil {
+		a.stateByID = map[string]*types.AgentStateUpdate{}
+	}
+	st, ok := a.stateByID[id]
+	if !ok {
+		cp := seed
+		cp.ID = id
+		a.stateByID[id] = &cp
+		st = a.stateByID[id]
+	}
+	updater(st)
+}
+
 func (a *idTestAccessor) EmitAgentSnapshot(_ string) {}
 func (a *idTestAccessor) BumpParentProgress()        {}
 func (a *idTestAccessor) EmitDispatchCountStatus(_ string) {}

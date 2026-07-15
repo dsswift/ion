@@ -97,6 +97,18 @@ func (p *panicTestAccessor) UpdateAgentStateByID(id string, updater func(*types.
 	updater(&state)
 	p.finalState = state
 }
+func (p *panicTestAccessor) UpsertAgentStateByID(id string, seed types.AgentStateUpdate, updater func(*types.AgentStateUpdate)) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.updatedAgentID = id
+	p.updaterCalled = true
+	// Mirror UpdateAgentStateByID: drive the closure against the seed so the
+	// test observes the terminal transition runChild's normal branch writes.
+	state := seed
+	state.ID = id
+	updater(&state)
+	p.finalState = state
+}
 func (p *panicTestAccessor) EmitAgentSnapshot(reason string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()

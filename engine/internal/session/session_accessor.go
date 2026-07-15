@@ -56,6 +56,9 @@ func (a *sessionAccessor) SendPrompt(text string, model string, bashAllowlistAdd
 // propagates into PromptInjectedEvent.Kind and the wire field
 // InjectedPromptKind so clients can classify injections and suppress
 // rendering of machine-to-machine signals (e.g. agent completion callbacks).
+// After queuing the prompt, it also signals any suspended dispatch on this
+// session that is waiting for a bare revive (no pending children) so the
+// dispatch's LLM run restarts with the new conversation context.
 func (a *sessionAccessor) SendPromptWithKind(text string, model string, bashAllowlistAdditions []string, kind string) error {
 	overrides := buildPromptOverrides(model, bashAllowlistAdditions)
 	if len(bashAllowlistAdditions) > 0 {
@@ -68,6 +71,21 @@ func (a *sessionAccessor) SendPromptWithKind(text string, model string, bashAllo
 	// surface the injected turn to live clients. Client wire prompts never
 	// route through this accessor. See emitPromptInjected.
 	a.m.emitPromptInjected(a.key, text, kind)
+
+	// Signal any suspended dispatch on this session so its LLM run revives
+	// with the new conversation context. The new user turn is already
+	// persisted (m.SendPrompt saved it); runChild loops and calls startChild
+	// which loads the updated conversation. Only bare-suspend dispatches
+	// (PendingChildren==nil) revive from a sendPrompt; fan-out suspends
+	// (PendingChildren non-nil) revive only when all children complete.
+	a.m.mu.RLock()
+	s, ok := a.m.sessions[a.key]
+	var registry = s.dispatchRegistry
+	a.m.mu.RUnlock()
+	if ok && registry != nil {
+		registry.SignalReviveForSession(a.key)
+	}
+
 	return nil
 }
 
@@ -296,6 +314,10 @@ func (a *sessionAccessor) AppendOrUpdateAgentState(state types.AgentStateUpdate)
 
 func (a *sessionAccessor) UpdateAgentStateByID(id string, updater func(*types.AgentStateUpdate)) {
 	a.s.agents.UpdateStateByID(id, updater)
+}
+
+func (a *sessionAccessor) UpsertAgentStateByID(id string, seed types.AgentStateUpdate, updater func(*types.AgentStateUpdate)) {
+	a.s.agents.UpsertStateByID(id, seed, updater)
 }
 
 func (a *sessionAccessor) EmitAgentSnapshot(reason string) {

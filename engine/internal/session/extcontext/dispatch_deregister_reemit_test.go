@@ -170,6 +170,21 @@ func (a *dispatchCountSpyAccessor) UpdateAgentStateByID(id string, updater func(
 		updater(st)
 	}
 }
+func (a *dispatchCountSpyAccessor) UpsertAgentStateByID(id string, seed types.AgentStateUpdate, updater func(*types.AgentStateUpdate)) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.agentStates == nil {
+		a.agentStates = map[string]*types.AgentStateUpdate{}
+	}
+	st, ok := a.agentStates[id]
+	if !ok {
+		cp := seed
+		cp.ID = id
+		a.agentStates[id] = &cp
+		st = a.agentStates[id]
+	}
+	updater(st)
+}
 func (a *dispatchCountSpyAccessor) EmitAgentSnapshot(_ string)                                     {}
 func (a *dispatchCountSpyAccessor) ResourceBroker() *resource.Broker                               { return nil }
 func (a *dispatchCountSpyAccessor) GlobalResourceBroker() *resource.Broker                         { return nil }

@@ -79,6 +79,8 @@ func (a *agentDiscoveryTestAccessor) AppendOrUpdateAgentState(_ types.AgentState
 }
 func (a *agentDiscoveryTestAccessor) UpdateAgentStateByID(_ string, _ func(*types.AgentStateUpdate)) {
 }
+func (a *agentDiscoveryTestAccessor) UpsertAgentStateByID(_ string, _ types.AgentStateUpdate, _ func(*types.AgentStateUpdate)) {
+}
 func (a *agentDiscoveryTestAccessor) EmitAgentSnapshot(_ string)                    {}
 func (a *agentDiscoveryTestAccessor) ResourceBroker() *resource.Broker              { return nil }
 func (a *agentDiscoveryTestAccessor) GlobalResourceBroker() *resource.Broker        { return nil }

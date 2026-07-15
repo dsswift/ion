@@ -72,6 +72,18 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 			},
 		}
 
+	case *types.TaskSuspendEvent:
+		// TaskSuspendEvent signals that a dispatched agent's LLM run ended
+		// without completing the dispatch (the agent is parked, waiting for
+		// child completions or a revive message). Emit a typed wire event so
+		// clients can update the agent-state indicator to show suspended/idle.
+		// The dispatch remains alive; TaskCompleteEvent (and the normal idle
+		// engine_status) fires only when the agent truly finishes after revival.
+		return types.EngineEvent{
+			Type:                     "engine_task_suspended",
+			TaskSuspendAwaitingCount: len(e.AwaitingDispatchIDs),
+		}
+
 	case *types.ErrorEvent:
 		return types.EngineEvent{
 			Type:          "engine_error",

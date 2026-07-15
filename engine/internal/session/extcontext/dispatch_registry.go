@@ -108,9 +108,34 @@ type activeDispatch struct {
 	// Empty until the child session initialises.
 	ChildConvID string
 
+	// ReviveCh is the channel that runChild blocks on when the dispatch is
+	// suspended (via ext/task_suspend). A send on ReviveCh causes runChild
+	// to loop and restart the LLM run with the new conversation context
+	// (the revive message is already in the conversation as a user turn
+	// delivered by sendPrompt). Non-nil only while the dispatch is parked.
+	// Protected by the registry mu when reading/writing the pointer itself;
+	// channel sends occur outside the lock after the pointer is captured.
+	ReviveCh chan struct{}
+
+	// PendingChildren is the set of child dispatch IDs the suspended agent
+	// is waiting on (for N-child fan-out via dispatch_agents). Each time a
+	// child whose ID is in this set completes, the engine removes that ID.
+	// When the set becomes empty, ReviveCh is signaled. Nil/empty means bare
+	// suspend() — any sendPrompt revives immediately. Protected by registry mu.
+	PendingChildren map[string]struct{}
+
 	// StartedAt is the wall-clock time when the dispatch was registered.
 	// Used by Snapshot to compute ElapsedMs without per-entry timers.
 	StartedAt time.Time
+
+	// reserved marks an entry that was created by Reserve before the full
+	// dispatch bookkeeping (cancel, child, childRunID) was known. A reserved
+	// entry is a real member of ActiveIDs/ActiveNames — its whole purpose is to
+	// cover the dispatch's agent-state slot from the instant that slot becomes
+	// sweepable — but it carries placeholder Cancel/Child until RegisterWithID
+	// upgrades it. RegisterWithID clears this flag and treats the upgrade as
+	// expected (no "overwriting existing dispatch" warning).
+	reserved bool
 }
 
 // NewDispatchRegistry returns an empty, ready-to-use registry.
@@ -128,6 +153,37 @@ func (r *DispatchRegistry) Register(name string, cancel func(), child backend.Ru
 	r.RegisterWithID(name, name, cancel, child, sessionID, "", 0)
 }
 
+// Reserve records the dispatch ID as active BEFORE the full bookkeeping
+// (cancel, child backend, childRunID) is known, so ActiveIDs/ActiveNames cover
+// the dispatch from the instant its agent-state slot is created. Without this,
+// the slot is exposed as "running" (and broadcast) well before RegisterWithID
+// runs at the tail of dispatch setup; a concurrent run-exit sweep in that
+// window snapshots ActiveIDs without the dispatch and deletes its still-live
+// slot, after which every later UpdateStateByID (progress and terminal) lands
+// nowhere and the agent renders as perpetually running.
+//
+// The reservation is a placeholder: Cancel is a no-op and Child is nil until
+// RegisterWithID upgrades the entry with the real values. No-op if an entry
+// (reserved or full) already exists for the id, so a later RegisterWithID is
+// still the single authority for the real bookkeeping.
+func (r *DispatchRegistry) Reserve(id, name, parentID string, depth int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, exists := r.dispatches[id]; exists {
+		return
+	}
+	r.dispatches[id] = &activeDispatch{
+		ID:        id,
+		Name:      name,
+		Cancel:    func() {},
+		ParentID:  parentID,
+		Depth:     depth,
+		StartedAt: time.Now(),
+		reserved:  true,
+	}
+	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "reserve", map[string]any{"run_id": id, "model": name, "count": depth, "max": len(r.dispatches)})
+}
+
 // RegisterWithID records an active background dispatch with an explicit
 // dispatch ID. This is the primary registration path for parallel-safe
 // dispatches where each instance has a collision-safe agentID.
@@ -138,7 +194,10 @@ func (r *DispatchRegistry) RegisterWithID(id, name string, cancel func(), child 
 
 	r.totalRegistrations++
 
-	if _, exists := r.dispatches[id]; exists {
+	if existing, exists := r.dispatches[id]; exists && !existing.reserved {
+		// A non-reserved entry with this id already exists: a genuine
+		// collision worth flagging. Upgrading a Reserve() placeholder is
+		// expected, not a collision, so it is not warned.
 		utils.LogWithFields(utils.LevelWarn, "session.extcontext.dispatch_registry", "register overwriting existing dispatch", map[string]any{"run_id": id, "model": name, "session_id": sessionID})
 	}
 

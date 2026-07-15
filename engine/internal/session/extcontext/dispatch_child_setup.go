@@ -164,6 +164,15 @@ func wireChildExtensionTools(
 	}
 }
 
+// suspendableBackend is satisfied by backends that can park an in-flight run
+// without cancelling it (the suspend primitive). Both *ApiBackend and any
+// backend that wraps it implement this. CliBackend does not; dispatch children
+// always use ApiBackend via HybridBackend, so this is always resolvable for
+// dispatched children.
+type suspendableBackend interface {
+	SignalSuspend(requestID string, awaitingDispatchIDs []string) bool
+}
+
 // configurableBackend is satisfied by any backend that can accept a per-run
 // RunConfig. Detection is by interface assertion (not a concrete type switch)
 // so that any backend implementing StartRunWithConfig — the production

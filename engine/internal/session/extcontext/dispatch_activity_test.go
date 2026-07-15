@@ -81,6 +81,19 @@ func (a *activityRecordingAccessor) UpdateAgentStateByID(id string, updater func
 	}
 }
 
+func (a *activityRecordingAccessor) UpsertAgentStateByID(id string, seed types.AgentStateUpdate, updater func(*types.AgentStateUpdate)) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	st, ok := a.state[id]
+	if !ok {
+		cp := seed
+		cp.ID = id
+		a.state[id] = &cp
+		st = a.state[id]
+	}
+	updater(st)
+}
+
 func (a *activityRecordingAccessor) EmitAgentSnapshot(_ string) {}
 
 func (a *activityRecordingAccessor) BumpParentProgress()              {}

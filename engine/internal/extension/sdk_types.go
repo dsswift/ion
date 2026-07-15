@@ -170,6 +170,15 @@ type Context struct {
 	// nil-check; callers fall back to SendPrompt when nil).
 	SendPromptPayload func(payload SendPromptPayload) error
 
+	// Suspend ends the LLM run for this dispatch without completing it, parking
+	// the dispatch until a revive message arrives via sendPrompt. The parent's
+	// OnComplete callback does NOT fire. When awaitingDispatchIDs is non-empty,
+	// the dispatch stays parked until ALL listed child dispatches have completed
+	// (suspendUntilAll semantics); when empty, the dispatch revives on the next
+	// sendPrompt to this session (bare suspend semantics). Nil when not wired
+	// (e.g. at depth 0 / the orchestrator — the orchestrator never suspends).
+	Suspend func(awaitingDispatchIDs []string) error
+
 	// Engine-native agent dispatch. Creates a child session within the engine
 	// with optional extension loading, system prompt injection, and event streaming.
 	DispatchAgent func(opts DispatchAgentOpts) (*DispatchAgentResult, error)

@@ -71,6 +71,7 @@ func normalizedEventVariants() map[string]NormalizedEventData {
 		EventPromptInjected:     &PromptInjectedEvent{},
 		EventModelFallback:      &ModelFallbackEvent{},
 		EventRunStalled:         &RunStalledEvent{},
+		EventTaskSuspend:        &TaskSuspendEvent{},
 		EventPlanContent:        &PlanContentEvent{},
 		EventThinkingBlockStart: &ThinkingBlockStartEvent{},
 		EventThinkingDelta:      &ThinkingDeltaEvent{},

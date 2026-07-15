@@ -94,6 +94,8 @@ func (a *depthTestAccessor) AppendOrUpdateAgentState(state types.AgentStateUpdat
 	return state.ID
 }
 func (a *depthTestAccessor) UpdateAgentStateByID(id string, updater func(*types.AgentStateUpdate)) {}
+func (a *depthTestAccessor) UpsertAgentStateByID(id string, seed types.AgentStateUpdate, updater func(*types.AgentStateUpdate)) {
+}
 func (a *depthTestAccessor) EmitAgentSnapshot(reason string)                                       {}
 func (a *depthTestAccessor) ResourceBroker() *resource.Broker                                      { return nil }
 func (a *depthTestAccessor) GlobalResourceBroker() *resource.Broker                                { return nil }

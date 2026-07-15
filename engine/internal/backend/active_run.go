@@ -31,6 +31,15 @@ type activeRun struct {
 	totalCost         float64
 	startTime         time.Time
 	steerCh           chan string
+	// suspendCh carries the suspend signal from ext/task_suspend. When the
+	// extension calls ctx.suspend() or ctx.suspendUntilAll(), the RPC handler
+	// sends a suspendSignal here. runLoop drains it at the next turn boundary
+	// (same pattern as drainSteer), emits TaskSuspendEvent, and exits cleanly
+	// without calling opts.OnComplete on the parent dispatch. The dispatch stays
+	// alive; when a revive message arrives via sendPrompt, runChild restarts the
+	// LLM run with the updated conversation context. Buffered with capacity 1 so
+	// the RPC handler never blocks.
+	suspendCh         chan suspendSignal
 	exitPlanMode      bool                     // set when ExitPlanMode tool is called during plan mode
 	permissionDenials []types.PermissionDenial // tools intercepted/denied (e.g. ExitPlanMode sentinel)
 	planMode          bool                     // true when this run is in plan mode

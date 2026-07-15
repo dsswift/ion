@@ -220,6 +220,28 @@ func (r *Registry) UpdateStateByID(id string, updater func(*types.AgentStateUpda
 	utils.LogWithFields(utils.LevelWarn, "session.agents", "updatestatebyid: no slot found for (terminal update landed nowhere, agent may appear stuck as running)", map[string]any{"run_id": id})
 }
 
+// UpsertStateByID finds a state by its unique ID and applies the updater, or
+// appends seed (then applies the updater to it) when no slot matches. It is the
+// upsert peer of UpdateStateByID: the dispatch terminal transition routes
+// through it so a slot swept during a lifecycle gap is re-materialized as a
+// terminal row rather than the terminal update being lost (which would strand
+// the agent as "running"). seed carries the identity/metadata a resurrected row
+// needs to be coherent; seed.ID is forced to id so the append is addressable.
+func (r *Registry) UpsertStateByID(id string, seed types.AgentStateUpdate, updater func(*types.AgentStateUpdate)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := range r.states {
+		if r.states[i].ID == id {
+			updater(&r.states[i])
+			return
+		}
+	}
+	seed.ID = id
+	r.states = append(r.states, seed)
+	updater(&r.states[len(r.states)-1])
+	utils.LogWithFields(utils.LevelWarn, "session.agents", "upsertstatebyid: slot absent, re-materialized terminal row (a lifecycle gap swept the running slot; terminal state preserved)", map[string]any{"run_id": id})
+}
+
 // FindStateIndex returns the index of the first state with the given name,
 // or -1 if not found. Used to check whether a specialist already has an
 // engine-managed state entry before appending a duplicate.
@@ -421,12 +443,17 @@ func statusPriority(status string) int {
 	switch status {
 	case "running":
 		return 4
-	case "error":
+	case "suspended":
+		// Suspended is higher priority than terminal states: the agent is
+		// still alive (dispatch not yet complete), just parked waiting for
+		// children. Show the suspended indicator rather than hiding the agent.
 		return 3
-	case "done":
+	case "error":
 		return 2
-	case "cancelled":
+	case "done":
 		return 1
+	case "cancelled":
+		return 0
 	default:
 		return 0
 	}
