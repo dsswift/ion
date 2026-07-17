@@ -166,10 +166,20 @@ extension SessionViewModel {
 
     @MainActor
     func handleMessageAdded(tabId: String, message: Message) {
-        // Always update tab preview for user/assistant messages (even if conversation isn't loaded)
+        // Always update tab preview for user/assistant messages (even if conversation isn't loaded).
+        // Strip attachment markers before storing — message.content may carry
+        // `[Attached image: PATH]` (pre-encode optimistic form) or
+        // `[Attachment: NAME (content attached)]` (post-encode desktop echo form).
+        // Without stripping, the tab row subtitle shows raw marker text rather than
+        // the user's actual message. parseAttachmentSegments handles both forms and
+        // returns the clean display text; fall back to the raw prefix for non-attachment
+        // messages whose segments.text may be empty (e.g. a bare slash command with
+        // no trailing text, where the entire content is consumed as a marker).
         if message.role == .user || message.role == .assistant {
             if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
-                tabs[idx].lastMessage = String(message.content.prefix(64))
+                let strippedText = parseAttachmentSegments(message.content).text
+                let preview = strippedText.isEmpty ? message.content : strippedText
+                tabs[idx].lastMessage = String(preview.prefix(64))
                     .replacingOccurrences(of: "\n", with: " ")
             }
         }
