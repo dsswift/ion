@@ -316,3 +316,84 @@ func TestStartSession_ForceNewConversationBypassesBinding(t *testing.T) {
 		t.Errorf("force-new should clear the stale binding (deferring the new one): got %q", bound)
 	}
 }
+
+// TestStartSession_RebindsExistingIdleSession pins the fix for issue #270:
+// when a session already exists with a pre-minted conversation ID and the
+// caller supplies an explicit SessionID pointing at a real conversation file,
+// the engine must rebind the session to the requested conversation instead of
+// returning the pre-minted ID unchanged. Without this, the desktop enters an
+// infinite diverge/resume loop after a restart.
+func TestStartSession_RebindsExistingIdleSession(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	bindPath := filepath.Join(t.TempDir(), "session-bindings.json")
+	t.Setenv("ION_SESSION_BINDINGS_PATH", bindPath)
+
+	m := NewManager(newMockBackend())
+	defer m.Shutdown()
+
+	const key = "tab-rebind"
+
+	// First call: engine pre-mints a fresh conversation ID.
+	result1, err := m.StartSession(key, types.EngineConfig{
+		WorkingDirectory: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("first StartSession: %v", err)
+	}
+	preMinted := result1.ConversationID
+
+	// Seed the REAL conversation the desktop wants to resume.
+	const realConvID = "1700000000000-realconv00001"
+	seedConversationFile(t, realConvID)
+
+	// Second call: desktop asserts the real conversation via SessionID.
+	result2, err := m.StartSession(key, types.EngineConfig{
+		WorkingDirectory: t.TempDir(),
+		SessionID:        realConvID,
+	})
+	if err != nil {
+		t.Fatalf("rebind StartSession: %v", err)
+	}
+	if result2.ConversationID != realConvID {
+		t.Errorf("rebind should adopt the real conversation: got %q want %q (pre-minted was %q)", result2.ConversationID, realConvID, preMinted)
+	}
+
+	// The binding on disk must now point to the real conversation.
+	if bound := lookupBinding(bindPath, key); bound != realConvID {
+		t.Errorf("binding should point to rebound conversation: got %q want %q", bound, realConvID)
+	}
+}
+
+// TestStartSession_NoRebindWithoutFile ensures that a rebind is NOT performed
+// when the requested conversation has no backing file (phantom).
+func TestStartSession_NoRebindWithoutFile(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	bindPath := filepath.Join(t.TempDir(), "session-bindings.json")
+	t.Setenv("ION_SESSION_BINDINGS_PATH", bindPath)
+
+	m := NewManager(newMockBackend())
+	defer m.Shutdown()
+
+	const key = "tab-no-rebind"
+
+	result1, err := m.StartSession(key, types.EngineConfig{
+		WorkingDirectory: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("first StartSession: %v", err)
+	}
+	preMinted := result1.ConversationID
+
+	// Second call with a SessionID that has NO file — must keep the pre-minted ID.
+	const phantomID = "1700000000000-phantom00002"
+	result2, err := m.StartSession(key, types.EngineConfig{
+		WorkingDirectory: t.TempDir(),
+		SessionID:        phantomID,
+	})
+	if err != nil {
+		t.Fatalf("phantom rebind StartSession: %v", err)
+	}
+	if result2.ConversationID != preMinted {
+		t.Errorf("should keep pre-minted when target has no file: got %q want %q", result2.ConversationID, preMinted)
+	}
+}

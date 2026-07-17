@@ -35,6 +35,7 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 	if s, exists := m.sessions[key]; exists {
 		convID := s.conversationID
 		needsExtensions := len(config.Extensions) > 0 && (s.extGroup == nil || s.extGroup.IsEmpty())
+		wantsRebind := config.SessionID != "" && config.SessionID != convID && s.requestID == ""
 		m.mu.Unlock()
 
 		// Re-register extensions when the session was restored without them
@@ -44,7 +45,22 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 			m.loadAndWireExtensions(s, key, config)
 		}
 
-		utils.LogWithFields(utils.LevelInfo, "session", "startsession: already exists (idempotent, )", map[string]any{"key": key, "run_id": convID})
+		// Rebind: the caller wants a specific conversation that differs from
+		// the session's current one. This is the post-restart resume path:
+		// the engine pre-minted a fresh id before the desktop asserted the
+		// real conversation. If the requested conversation file exists on
+		// disk and no run is in flight, rebind the session to the requested
+		// conversation so the desktop stops re-driving futile resumes.
+		if wantsRebind {
+			if conversation.Exists(config.SessionID, "") {
+				m.rebindSession(s, key, config.SessionID)
+				utils.LogWithFields(utils.LevelInfo, "session", "startsession: rebound to requested conversation", map[string]any{"key": key, "conversation_id": config.SessionID, "was": convID})
+				return &StartSessionResult{Existed: true, ConversationID: config.SessionID}, nil
+			}
+			utils.LogWithFields(utils.LevelInfo, "session", "startsession: caller requested conversation has no backing file, keeping current", map[string]any{"key": key, "requested": config.SessionID, "keeping": convID})
+		}
+
+		utils.LogWithFields(utils.LevelInfo, "session", "startsession: already exists (idempotent)", map[string]any{"key": key, "conversation_id": convID})
 		return &StartSessionResult{Existed: true, ConversationID: convID}, nil
 	}
 
@@ -305,6 +321,47 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 	m.emitStatusSnapshot(key, "start_session")
 
 	return &StartSessionResult{Existed: false, ConversationID: s.conversationID}, nil
+}
+
+// rebindSession changes an idle session's conversation identity to a different
+// (existing) conversation. Used when the desktop restarts and asserts the real
+// conversation ID on a session that was pre-minted before the client connected.
+// The caller must verify: (a) the target conversation file exists on disk,
+// (b) no run is in flight (s.requestID == ""). (#270)
+func (m *Manager) rebindSession(s *engineSession, key, newConvID string) {
+	m.mu.Lock()
+	oldConvID := s.conversationID
+	s.conversationID = newConvID
+	s.bindingPending = false
+	m.mu.Unlock()
+
+	saveBinding(bindingsPath(), key, newConvID)
+
+	// Re-seed model and context usage from the target conversation so the
+	// next status snapshot carries correct values.
+	if convModel, err := conversation.LoadLlmHeaderModel(newConvID, ""); err == nil && convModel != "" {
+		ctxWindow := conversation.DefaultContext
+		if info := providers.GetModelInfo(convModel); info != nil {
+			ctxWindow = info.ContextWindow
+		}
+		seededPct := 0
+		if conv, lerr := conversation.Load(newConvID, ""); lerr == nil {
+			usage := conversation.GetContextUsage(conv, ctxWindow)
+			if usage.Percent > 0 {
+				seededPct = usage.Percent
+			}
+		}
+		m.mu.Lock()
+		s.lastModel = convModel
+		s.lastContextWindow = ctxWindow
+		if seededPct > 0 {
+			s.lastContextPct = seededPct
+		}
+		m.mu.Unlock()
+		utils.LogWithFields(utils.LevelInfo, "session", "rebindsession: seeded model and context from target conversation", map[string]any{"key": key, "model": convModel, "context_window": ctxWindow, "context_pct": seededPct, "conversation_id": newConvID, "was": oldConvID})
+	}
+
+	m.emitStatusSnapshot(key, "rebind")
 }
 
 // loadAndWireExtensions loads extension subprocesses, wires their hooks and
