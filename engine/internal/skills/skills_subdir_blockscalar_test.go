@@ -111,6 +111,9 @@ func TestLoadSkillDirectory_SubdirWithoutSkillMdSkipped(t *testing.T) {
 }
 
 func TestLoadSkillDirectory_SubdirMalformedSkillMdSkipped(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("running as root: file permission restrictions do not apply, chmod-based test cannot exercise the unreadable-file path")
+	}
 	root := t.TempDir()
 
 	// Subdirectory with an unreadable SKILL.md.

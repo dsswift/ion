@@ -112,13 +112,25 @@ test-linux-engine:
 	@command -v docker >/dev/null 2>&1 || { echo "❌ docker not found — install Docker/Colima to run the Linux parity gate"; exit 1; }
 	@echo "▶ engine: go test -race ./... on linux/amd64 (golang:$(GO_VERSION))"
 	@docker run --rm --platform linux/amd64 -v "$(PWD)":/src -w /src/engine golang:$(GO_VERSION) \
-		bash -c "git config --global --add safe.directory /src && go test -race ./... && go test ./internal/types/ -run TestContractManifest"
+		bash -c "apt-get update -qq && apt-get install -y -qq nodejs && \
+		         useradd -m -s /bin/bash ionci && \
+		         chmod -R a+rX /src 2>/dev/null || true && \
+		         git config --global --add safe.directory /src && \
+		         su ionci -c 'mkdir -p /home/ionci/.ion /home/ionci/go /home/ionci/gocache && \
+		                      git config --global --add safe.directory /src && \
+		                      cd /src/engine && \
+		                      GOPATH=/home/ionci/go GOCACHE=/home/ionci/gocache \
+		                      go test -race ./... && \
+		                      GOPATH=/home/ionci/go GOCACHE=/home/ionci/gocache \
+		                      go test ./internal/types/ -run TestContractManifest'"
 
 test-linux-desktop:
 	@command -v docker >/dev/null 2>&1 || { echo "❌ docker not found — install Docker/Colima to run the Linux parity gate"; exit 1; }
 	@echo "▶ desktop: npm ci --ignore-scripts && npm run typecheck && npm test on linux (node:22)"
 	@docker run --rm --platform linux/amd64 -v "$(PWD)":/src -w /src/desktop node:22 \
-		bash -c "npm ci --ignore-scripts && npm run typecheck && npm test"
+		bash -c "useradd -m -s /bin/bash ionci && \
+		         chmod -R a+rX /src 2>/dev/null || true && \
+		         su ionci -c 'mkdir -p /home/ionci/.ion && cd /src/desktop && npm ci --ignore-scripts && npm run typecheck && npm test'"
 
 clean:
 	@cd engine && rm -rf bin/ dist/
