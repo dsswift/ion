@@ -53,9 +53,10 @@ vi.mock('../serialize-conversation-pane', async (importOriginal) => {
   }
 })
 
-// Mock tab-migration-split.
-vi.mock('../../../main/tab-migration-split', () => ({
-  SPLIT_SCHEMA_VERSION: 2,
+// Mock shared/types-persistence for the EXTERNALIZE_SCHEMA_VERSION constant
+// (session-store-persistence now stamps schemaVersion 4).
+vi.mock('../../../shared/types-persistence', () => ({
+  EXTERNALIZE_SCHEMA_VERSION: 4,
 }))
 
 import { setupPersistence } from '../session-store-persistence'

@@ -3,6 +3,7 @@ import type {
   PersistedTab,
   PersistedTabState,
 } from '../shared/types-persistence'
+import { EXTERNALIZE_SCHEMA_VERSION } from '../shared/types-persistence'
 
 /**
  * tab-migration-externalize — on-disk migration (v3 → v4) that fixes content
@@ -32,10 +33,12 @@ import type {
  *
  * Pure: no I/O. The runner (tab-migration-externalize-runner.ts) owns
  * backup → verify → write-or-rollback.
+ *
+ * EXTERNALIZE_SCHEMA_VERSION is the canonical definition; it lives in
+ * `shared/types-persistence.ts` and is imported + re-exported here so
+ * existing `main/` callers keep working without import changes.
  */
-
-/** Schema version after the externalize migration. */
-export const EXTERNALIZE_SCHEMA_VERSION = 4
+export { EXTERNALIZE_SCHEMA_VERSION }
 
 /** True when `state` is already externalized (no migration needed). */
 export function isExternalizedSchema(state: PersistedTabState): boolean {

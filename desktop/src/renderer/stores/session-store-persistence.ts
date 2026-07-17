@@ -4,7 +4,7 @@ import { serializeTerminalBuffer } from '../components/TerminalInstance'
 import { serializeConversationPane, collectExternalInstanceMessages, isExtensionErrorMessage, resolvePersistedLastKnownSessionId } from './serialize-conversation-pane'
 import { tabContentDirty, markTabContentWritten } from './tab-content-tracking'
 import { activeInstance } from './conversation-instance'
-import { SPLIT_SCHEMA_VERSION } from '../../main/tab-migration-split'
+import { EXTERNALIZE_SCHEMA_VERSION } from '../../shared/types-persistence'
 import type { useSessionStore as UseSessionStoreType } from './sessionStore'
 
 type Store = typeof UseSessionStoreType
@@ -157,7 +157,7 @@ function persistTabs(useSessionStore: Store): void {
   }
 
   const data: PersistedTabState = {
-    schemaVersion: SPLIT_SCHEMA_VERSION,
+    schemaVersion: EXTERNALIZE_SCHEMA_VERSION,
     activeSessionId: activeTab?.conversationId || null,
     activeTabIndex,
     tabs: persistedTabs,

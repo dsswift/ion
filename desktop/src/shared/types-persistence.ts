@@ -1,6 +1,24 @@
 import type { TerminalInstance, WorktreeInfo, Attachment } from './types-session'
 import type { ConversationRef } from './types-engine'
 
+// ─── Schema version constants ───
+
+/**
+ * Schema version after the split migration (single-instance tabs).
+ * Canonical definition — imported from here by both `main/tab-migration-split`
+ * (re-exported for backwards compat) and renderer code.
+ */
+export const SPLIT_SCHEMA_VERSION = 3
+
+/**
+ * Schema version after the externalize migration (thin manifest + per-tab
+ * content files). Canonical definition — imported from here by both
+ * `main/tab-migration-externalize` (re-exported for backwards compat) and
+ * renderer code. The renderer stamps this version on every save, so the
+ * migration's idempotency guard fires correctly on the next startup.
+ */
+export const EXTERNALIZE_SCHEMA_VERSION = 4
+
 // ─── Persisted Tab State ───
 
 /**
