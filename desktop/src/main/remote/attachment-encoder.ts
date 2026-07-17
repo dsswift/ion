@@ -1,8 +1,48 @@
 import { readFileSync, statSync } from 'fs'
 import { basename, extname } from 'path'
-import { nativeImage } from 'electron'
+import type { NativeImage } from 'electron'
 import { log as _log, warn as _warn } from '../logger'
 import type { ImageAttachmentPayload } from '../../shared/types'
+
+// ---------------------------------------------------------------------------
+// Lazy nativeImage resolution.
+//
+// electron's nativeImage is only available inside a real Electron runtime.
+// Importing it at module top level makes every module that transitively
+// imports this file (prompt-pipeline, session-meta, tab-backend-merge via the
+// pipeline barrel) unloadable under plain-Node vitest: with the electron
+// binary absent (npm ci --ignore-scripts, as CI and the Linux parity gate
+// run), require('electron') throws "Electron failed to install correctly" at
+// import time and takes ten unrelated test files down with it.
+//
+// The accessor defers resolution to the first actual image compression. In
+// the packaged app require('electron') returns the real module; under vitest
+// the accessor is injected via _setNativeImageForTest (a runtime require of
+// 'electron' outside Electron returns the npm stub's binary PATH STRING, so
+// vi.mock('electron') cannot serve require()-based access).
+// ---------------------------------------------------------------------------
+
+type NativeImageModule = typeof import('electron').nativeImage
+
+let _nativeImage: NativeImageModule | undefined
+
+function getNativeImage(): NativeImageModule {
+  if (_nativeImage) return _nativeImage
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const mod = require('electron') as { nativeImage?: NativeImageModule }
+  if (!mod || typeof mod !== 'object' || !mod.nativeImage) {
+    throw new Error(
+      'attachment-encoder: electron nativeImage unavailable (not running inside Electron; inject via _setNativeImageForTest in tests)',
+    )
+  }
+  _nativeImage = mod.nativeImage
+  return _nativeImage
+}
+
+/** TEST ONLY. Inject a nativeImage stub so compressImage runs without Electron. */
+export function _setNativeImageForTest(stub: NativeImageModule | undefined): void {
+  _nativeImage = stub
+}
 
 const TAG = 'attachments'
 function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
@@ -77,7 +117,8 @@ function compressImage(buf: Buffer, mediaType: string): { bytes: Buffer; mediaTy
   if (mediaType === 'image/gif') {
     return { bytes: buf, mediaType }
   }
-  let img = nativeImage.createFromBuffer(buf)
+  const nativeImage = getNativeImage()
+  let img: NativeImage = nativeImage.createFromBuffer(buf)
   if (img.isEmpty()) return null
 
   const size = img.getSize()

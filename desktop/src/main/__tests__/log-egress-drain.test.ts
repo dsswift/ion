@@ -492,9 +492,20 @@ describe('Live buffer flushes alongside partial spool drain (E12)', () => {
     // Two POSTs must have fired: one for the spool batch, one for the live buffer.
     expect(postBodies.length).toBe(2)
 
-    // One of the POST bodies must contain the live marker.
+    // One of the POST bodies must contain the live marker. The OTLP body is
+    // the full serialized JSONL line (log-egress-otel.ts body design — Alloy's
+    // ion_otlp_unwrap rewrites the Loki line from it), so match the record's
+    // msg field inside the JSON body rather than comparing the body wholesale.
     const allBodies = postBodies.flat()
-    expect(allBodies.some((b) => b === 'live-record-marker')).toBe(true)
+    expect(
+      allBodies.some((b) => {
+        try {
+          return (JSON.parse(b) as { msg?: string }).msg === 'live-record-marker'
+        } catch {
+          return false
+        }
+      }),
+    ).toBe(true)
 
     // The spool still has 100 records (drained 500 of 600 on this tick).
     expect(hasSpoolContent()).toBe(true)

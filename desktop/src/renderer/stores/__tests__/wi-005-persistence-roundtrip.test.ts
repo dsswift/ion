@@ -152,7 +152,13 @@ describe('serializeConversationPane + buildPopulatedInstance round-trip', () => 
     expect(restored.messages).toHaveLength(3)
     expect(restored.messageCount).toBe(3)
     expect(restored.conversationIds).toEqual(['conv-ext'])
-    expect(restored.externalContentStatus).toBeUndefined()
+    // Even on the eager path, buildPopulatedInstance marks the instance
+    // pending: the eager merge carries only the content FILE's rows, and a
+    // stale content file misses engine-chain rows. The eager-merged rows
+    // render instantly (view readiness); hydration then replaces them with
+    // the content+chain merge. See useTabRestoration-engine.ts.
+    expect(restored.externalContentStatus).toBe('pending')
+    expect(restored.historyHydrated).toBe(false)
 
     // LAZY path (non-active tab): thin instance restores pending; content
     // loads on first activation via loadSkeletonMessages.
