@@ -14,9 +14,19 @@ import (
 // workspace_file_changed watcher skips when EngineConfig.WorkspaceWatchIgnore
 // is empty. The list targets the directories most repos generate large
 // amounts of churn in (.git, node_modules, build outputs, virtualenvs) so
-// the watcher does not exhaust inotify descriptors on Linux or burn CPU on
-// macOS FSEvents storms during npm install / cargo build / etc. Editor swap
-// and tmp files round out the list because they are universally noisy.
+// the watcher does not exhaust inotify descriptors on Linux or file
+// descriptors on macOS (kqueue opens an fd per file in every watched
+// directory). Editor swap and tmp files round out the list because they are
+// universally noisy.
+//
+// Every pattern carries the `**/` prefix so it matches AT ANY DEPTH, not just
+// at the watcher root. doublestar's `**/` matches zero or more path segments,
+// so `**/node_modules/**` matches both a root-level `node_modules/x` and a
+// nested `desktop/node_modules/x`. The root-anchored form (`node_modules/**`)
+// was a production defect: in a monorepo, nested node_modules trees were
+// watched, and one npm ci storm (delete + recreate of ~60k files) exhausted
+// the engine's fd table on macOS — kqueue holds an fd per watched file — and
+// starved every session in the process of pipes and sockets.
 //
 // Harness engineers who need different behavior (e.g. watching node_modules
 // for a dependency-debugging extension, or excluding a custom build dir)
@@ -25,21 +35,21 @@ import (
 // gives full control. A future additive field could layer on top if
 // merge-style override turns out to be useful.
 var defaultWatchIgnores = []string{
-	".git/**",
-	"node_modules/**",
-	"dist/**",
-	"build/**",
-	"target/**",
-	".next/**",
-	".nuxt/**",
-	".venv/**",
-	"__pycache__/**",
-	".ion/**",
-	".DS_Store",
-	"*.swp",
-	"*.swo",
-	"*.tmp",
-	"*~",
+	"**/.git/**",
+	"**/node_modules/**",
+	"**/dist/**",
+	"**/build/**",
+	"**/target/**",
+	"**/.next/**",
+	"**/.nuxt/**",
+	"**/.venv/**",
+	"**/__pycache__/**",
+	"**/.ion/**",
+	"**/.DS_Store",
+	"**/*.swp",
+	"**/*.swo",
+	"**/*.tmp",
+	"**/*~",
 }
 
 // resolveWatchIgnores returns the effective ignore list for a given config:
