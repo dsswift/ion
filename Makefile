@@ -127,9 +127,10 @@ test-linux-engine:
 test-linux-desktop:
 	@command -v docker >/dev/null 2>&1 || { echo "❌ docker not found — install Docker/Colima to run the Linux parity gate"; exit 1; }
 	@echo "▶ desktop: npm ci --ignore-scripts && npm run typecheck && npm test on linux (node:22)"
-	@docker run --rm --platform linux/amd64 -v "$(PWD)":/src -w /src/desktop node:22 \
+	@docker run --rm --platform linux/amd64 -v "$(PWD)":/src -v /src/desktop/node_modules -w /src/desktop node:22 \
 		bash -c "useradd -m -s /bin/bash ionci && \
 		         chmod -R a+rX /src 2>/dev/null || true && \
+		         chown ionci:ionci /src/desktop/node_modules && \
 		         su ionci -c 'mkdir -p /home/ionci/.ion && cd /src/desktop && npm ci --ignore-scripts && npm run typecheck && npm test'"
 
 clean:

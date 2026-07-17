@@ -9,19 +9,31 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // ---------------------------------------------------------------------------
-// Mock Electron's app and safeStorage before importing the module
+// Inject an Electron app/safeStorage stub via the module's test seam.
+// secretStore resolves electron lazily with require() (so plain-Node vitest
+// can load it without the electron binary), which vi.mock('electron') does
+// not intercept — the seam is the supported injection point.
 // ---------------------------------------------------------------------------
 
 let mockIsPackaged = false
 let mockSafeStorageAvailable = false
 const mockEncryptedValues = new Map<string, Buffer>()
 
-vi.mock('electron', () => ({
+import {
+  isSafeStorageReady,
+  encryptForDisk,
+  decryptFromDisk,
+  encryptSensitiveSettings,
+  decryptSensitiveSettings,
+  _setElectronForTest,
+} from '../utils/secretStore'
+
+_setElectronForTest({
   app: {
     get isPackaged() {
       return mockIsPackaged
     },
-  },
+  } as unknown as typeof import('electron').app,
   safeStorage: {
     isEncryptionAvailable: () => mockSafeStorageAvailable,
     encryptString: (plaintext: string) => {
@@ -35,16 +47,8 @@ vi.mock('electron', () => ({
       if (!str.startsWith('safe:')) throw new Error('invalid safeStorage ciphertext')
       return str.slice(5)
     },
-  },
-}))
-
-import {
-  isSafeStorageReady,
-  encryptForDisk,
-  decryptFromDisk,
-  encryptSensitiveSettings,
-  decryptSensitiveSettings,
-} from '../utils/secretStore'
+  } as unknown as typeof import('electron').safeStorage,
+})
 
 // ---------------------------------------------------------------------------
 // Helpers

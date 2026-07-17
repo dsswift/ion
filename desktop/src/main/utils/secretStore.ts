@@ -1,6 +1,50 @@
-import { app, safeStorage } from 'electron'
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto'
 import { hostname, userInfo } from 'os'
+
+// ---------------------------------------------------------------------------
+// Lazy electron resolution.
+//
+// `app` and `safeStorage` exist only inside a real Electron runtime. A
+// top-level `import { app, safeStorage } from 'electron'` makes every module
+// that transitively imports this file (settings-store → tab-backend-merge →
+// the prompt-pipeline test constellation) unloadable under plain-Node vitest
+// with the electron binary absent (npm ci --ignore-scripts, as CI and the
+// Linux parity gate run): require('electron') throws "Electron failed to
+// install correctly" at import time. Resolution is deferred to first use;
+// when electron is unavailable the caller falls back to Tier 2
+// (machine-derived AES-GCM), which is the correct behavior outside a
+// packaged Electron app anyway.
+// ---------------------------------------------------------------------------
+
+type ElectronSecrets = {
+  app: typeof import('electron').app
+  safeStorage: typeof import('electron').safeStorage
+}
+
+let _electron: ElectronSecrets | null | undefined
+
+function getElectron(): ElectronSecrets | null {
+  if (_electron !== undefined) return _electron
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('electron') as Partial<ElectronSecrets>
+    _electron = mod && typeof mod === 'object' && mod.app && mod.safeStorage
+      ? { app: mod.app, safeStorage: mod.safeStorage }
+      : null
+  } catch {
+    _electron = null
+  }
+  return _electron
+}
+
+/**
+ * TEST ONLY. Inject an app/safeStorage stub so tier-1 paths run without a
+ * real Electron runtime (vi.mock('electron') does not intercept the lazy
+ * runtime require above). Pass undefined to reset to lazy resolution.
+ */
+export function _setElectronForTest(stub: ElectronSecrets | null | undefined): void {
+  _electron = stub
+}
 
 // ---------------------------------------------------------------------------
 // Encryption prefix tags
@@ -47,7 +91,9 @@ const ENC_V2_PREFIX = 'enc:v2:'
  *  - `safeStorage.isAvailable()` — the backend is actually functional.
  */
 export function isSafeStorageReady(): boolean {
-  return app.isPackaged && safeStorage.isEncryptionAvailable()
+  const e = getElectron()
+  if (!e) return false
+  return e.app.isPackaged && e.safeStorage.isEncryptionAvailable()
 }
 
 // ---------------------------------------------------------------------------
@@ -115,7 +161,7 @@ function machineDecrypt(value: string): string {
 export function encryptForDisk(plaintext: string): string {
   if (!plaintext) return plaintext
   if (isSafeStorageReady()) {
-    const buf = safeStorage.encryptString(plaintext)
+    const buf = getElectron()!.safeStorage.encryptString(plaintext)
     return ENC_V1_PREFIX + buf.toString('base64')
   }
   return machineEncrypt(plaintext)
@@ -141,7 +187,7 @@ export function decryptFromDisk(value: string): string {
     }
     try {
       const buf = Buffer.from(value.slice(ENC_V1_PREFIX.length), 'base64')
-      return safeStorage.decryptString(buf)
+      return getElectron()!.safeStorage.decryptString(buf)
     } catch {
       return value
     }
