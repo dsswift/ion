@@ -153,6 +153,20 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
       tabId: cmd.tabId,
       message: {
         id: engineReqId, role: 'user', content: fullText, timestamp: Date.now(), source: 'remote',
+        // Carry structured attachments on the echo so iOS id-reconciliation
+        // (handleMessageAdded) preserves them when it replaces the optimistic
+        // message. Without this the structured attachments on the optimistic
+        // bubble are cleared on reconciliation and the inline image disappears.
+        // Use a.path as the synthetic id — consumeUploadResults keys the
+        // AttachmentImageCache by path, so the cache lookup resolves correctly.
+        ...(attachments.length > 0 ? {
+          attachments: attachments.map((a) => ({
+            id: a.path,
+            type: a.type as 'image' | 'file' | 'plan',
+            name: a.name,
+            path: a.path,
+          })),
+        } : {}),
         ...(slashMatch ? { slashCommand: `/${slashMatch[1]}`, slashArgs: slashMatch[2] } : {}),
       },
     })

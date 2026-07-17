@@ -171,7 +171,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
      */
     submit: (tabId, text, opts = {}) => {
       const { tabs, staticInfo } = get()
-      const { projectPath, extraAttachments, appendSystemPrompt, implementationPhase, imageAttachments, source, resolveSlash } = opts
+      const { projectPath, extraAttachments, appendSystemPrompt, implementationPhase, imageAttachments, remoteAttachments, source, resolveSlash } = opts
       const tab = tabs.find((t) => t.id === tabId)
       if (!tab) return
       const resolvedPath = projectPath || (tab.hasChosenDirectory ? tab.workingDirectory : (staticInfo?.homePath || tab.workingDirectory || '~'))
@@ -223,11 +223,16 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       set((s) => {
         // Optimistic user message onto the active instance; pinned prompt for
         // every tab (the view renders it iff present — harmless for plain).
+        // remoteAttachments: iOS-forwarded metadata from REMOTE_ENGINE_PROMPT.
+        // Use a.path as synthetic id — AttachmentImageCache keys by path on iOS.
         const userMessage = {
           id: nextMsgId(),
           role: 'user' as const,
           content: text,
-          attachments: msgAttachments.length > 0 ? msgAttachments : undefined,
+          attachments: msgAttachments.length > 0 ? msgAttachments
+            : (remoteAttachments || []).length > 0
+              ? (remoteAttachments || []).map((a) => ({ id: a.path, type: a.type as Attachment['type'], name: a.name, path: a.path }))
+              : undefined,
           timestamp: Date.now(),
         }
         const conversationPanes = commitInstance(s.conversationPanes, tabId, (inst) => ({

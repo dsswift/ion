@@ -242,6 +242,11 @@ export interface State {
     appendSystemPrompt?: string
     implementationPhase?: boolean
     imageAttachments?: ImageAttachmentPayload[]
+    /** Raw attachment metadata forwarded from iOS via REMOTE_ENGINE_PROMPT.
+     *  When present, stored on the optimistic user message so InlineMessageImages
+     *  renders inline previews and parseAttachmentsFromMessages populates the
+     *  attachments panel on the desktop side. */
+    remoteAttachments?: Array<{ type: string; name: string; path: string }>
     source?: 'remote'
     resolveSlash?: boolean
   }) => void

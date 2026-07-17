@@ -202,8 +202,8 @@ export function useEngineEvents() {
     // IPC.PROMPT handler skips its redundant desktop_message_added echo — the
     // canonical echo was already sent by tabs-prompt.ts; a second echo with a
     // renderer-generated id would cause a duplicate user bubble on iOS.
-    const remoteEnginePromptHandler = (_e: any, data: { tabId: string; text: string; appendSystemPrompt?: string; imageAttachments?: ImageAttachmentPayload[]; resolveSlash?: boolean }) => {
-      useSessionStore.getState().submit(data.tabId, data.text, { appendSystemPrompt: data.appendSystemPrompt, imageAttachments: data.imageAttachments, source: 'remote', resolveSlash: data.resolveSlash })
+    const remoteEnginePromptHandler = (_e: any, data: { tabId: string; text: string; appendSystemPrompt?: string; imageAttachments?: ImageAttachmentPayload[]; attachments?: Array<{ type: string; name: string; path: string }>; resolveSlash?: boolean }) => {
+      useSessionStore.getState().submit(data.tabId, data.text, { appendSystemPrompt: data.appendSystemPrompt, imageAttachments: data.imageAttachments, remoteAttachments: data.attachments, source: 'remote', resolveSlash: data.resolveSlash })
     }
     window.ion.on(IPC.REMOTE_ENGINE_PROMPT, remoteEnginePromptHandler)
 

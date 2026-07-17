@@ -334,6 +334,11 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
         text: p.text,
         appendSystemPrompt: p.appendSystemPrompt,
         imageAttachments: p.imageAttachments,
+        // Forward raw attachments so the renderer's remoteEnginePromptHandler
+        // can pass them to submit() and populate the optimistic user message's
+        // attachments field. Without this, InlineMessageImages renders nothing
+        // and the attachments panel never shows iOS-sent images on the desktop.
+        attachments: p.attachments && p.attachments.length > 0 ? p.attachments : undefined,
         implementationPhase: p.implementationPhase,
         thinkingEffort: p.thinkingEffort,
         planFilePath: p.planFilePath,
