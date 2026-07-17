@@ -2,8 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { appendFileSync, writeFileSync, existsSync, statSync, renameSync, unlinkSync } from 'fs'
 
 // Tests persistLogChunk's behavior via handleDiagnosticLogsResponse: it parses
-// each incoming iOS line, injects desktop-side identity (device_id/device_name/
-// desktop_host) into fields, dedups on seq, and writes valid JSONL.
+// each incoming iOS line, injects desktop-side identity (pairing_id / desktop_host)
+// into fields, dedups on seq, and writes valid JSONL.
+// iOS already stamps device_id (identifierForVendor UUID), device_model, app_version,
+// os_version, and seq; the desktop no longer needs to inject these from the wire.
 
 vi.mock('fs', () => ({
   writeFileSync: vi.fn(),
@@ -39,7 +41,7 @@ function iosLine(seq: number, msg = 'x', extra: Record<string, unknown> = {}): s
     component: 'ios',
     tag: 'session',
     msg,
-    fields: { device_model: 'iPhone15,3', app_version: '1.2.0', seq: String(seq), ...extra },
+    fields: { device_model: 'iPhone15,3', device_id: 'vendorUUID-abc123', app_version: '1.2.0', seq: String(seq), ...extra },
   })
 }
 
@@ -49,12 +51,12 @@ describe('diagnostics persistLogChunk — identity injection', () => {
     ;(existsSync as ReturnType<typeof vi.fn>).mockReturnValue(false)
   })
 
-  it('injects device_id / device_name / desktop_host into every persisted line', async () => {
+  it('injects pairing_id / desktop_host into every persisted line', async () => {
     const { handleDiagnosticLogsResponse } = await import('../diagnostics')
     const rawLogs = `${iosLine(1, 'session started')}\n${iosLine(2, 'CMD: sync')}\n`
 
     handleDiagnosticLogsResponse(
-      { type: 'desktop_diagnostic_logs_response', logs: rawLogs, deviceId: 'device-001', deviceName: 'Josh iPhone', nextSeq: 3 },
+      { type: 'desktop_diagnostic_logs_response', logs: rawLogs, pairingId: 'device-001', nextSeq: 3 },
       'device-001',
     )
 
@@ -70,11 +72,11 @@ describe('diagnostics persistLogChunk — identity injection', () => {
       expect(obj.component).toBe('ios')
       const fields = obj.fields as Record<string, unknown>
       // Desktop-injected identity present on every line.
-      expect(fields.device_id).toBe('device-001')
-      expect(fields.device_name).toBe('Josh iPhone')
+      expect(fields.pairing_id).toBe('device-001')
       expect(typeof fields.desktop_host).toBe('string')
       expect((fields.desktop_host as string).length).toBeGreaterThan(0)
       // iOS-stamped identity preserved.
+      expect(fields.device_id).toBe('vendorUUID-abc123')
       expect(fields.device_model).toBe('iPhone15,3')
       expect(fields.app_version).toBe('1.2.0')
     }
@@ -83,7 +85,7 @@ describe('diagnostics persistLogChunk — identity injection', () => {
   it('writes valid JSONL with no header prefix', async () => {
     const { handleDiagnosticLogsResponse } = await import('../diagnostics')
     handleDiagnosticLogsResponse(
-      { type: 'desktop_diagnostic_logs_response', logs: iosLine(1) + '\n', deviceId: 'device-002', deviceName: 'iPhone', nextSeq: 2 },
+      { type: 'desktop_diagnostic_logs_response', logs: iosLine(1) + '\n', pairingId: 'device-002', nextSeq: 2 },
       'device-002',
     )
     const [, content] = (writeFileSync as ReturnType<typeof vi.fn>).mock.calls[0]
@@ -95,7 +97,7 @@ describe('diagnostics persistLogChunk — identity injection', () => {
     ;(existsSync as ReturnType<typeof vi.fn>).mockReturnValue(true)
     const { handleDiagnosticLogsResponse } = await import('../diagnostics')
     handleDiagnosticLogsResponse(
-      { type: 'desktop_diagnostic_logs_response', logs: iosLine(1, 'append test') + '\n', deviceId: 'device-003', deviceName: 'iPhone', nextSeq: 2 },
+      { type: 'desktop_diagnostic_logs_response', logs: iosLine(1, 'append test') + '\n', pairingId: 'device-003', nextSeq: 2 },
       'device-003',
     )
     expect(appendFileSync).toHaveBeenCalledOnce()
@@ -110,7 +112,7 @@ describe('diagnostics persistLogChunk — identity injection', () => {
     const malformed = 'this is not json'
     const good = iosLine(1)
     handleDiagnosticLogsResponse(
-      { type: 'desktop_diagnostic_logs_response', logs: `${malformed}\n${good}\n`, deviceId: 'device-004', deviceName: 'iPhone', nextSeq: 2 },
+      { type: 'desktop_diagnostic_logs_response', logs: `${malformed}\n${good}\n`, pairingId: 'device-004', nextSeq: 2 },
       'device-004',
     )
     const [, content] = (writeFileSync as ReturnType<typeof vi.fn>).mock.calls[0]
@@ -119,7 +121,7 @@ describe('diagnostics persistLogChunk — identity injection', () => {
     expect(lines).toHaveLength(2)
     expect(lines[0]).toBe(malformed)
     const goodObj = JSON.parse(lines[1]) as Record<string, unknown>
-    expect((goodObj.fields as Record<string, unknown>).device_id).toBe('device-004')
+    expect((goodObj.fields as Record<string, unknown>).pairing_id).toBe('device-004')
   })
 })
 
@@ -136,7 +138,7 @@ describe('diagnostics rotateIosLogIfNeeded', () => {
     ;(statSync as ReturnType<typeof vi.fn>).mockReturnValue({ size: IOS_LOG_MAX_BYTES - 1 })
     const { handleDiagnosticLogsResponse } = await import('../diagnostics')
     handleDiagnosticLogsResponse(
-      { type: 'desktop_diagnostic_logs_response', logs: iosLine(1, 'small') + '\n', deviceId: 'dev-small', deviceName: 'iPhone', nextSeq: 2 },
+      { type: 'desktop_diagnostic_logs_response', logs: iosLine(1, 'small') + '\n', pairingId: 'dev-small', nextSeq: 2 },
       'dev-small',
     )
     expect(vi.mocked(renameSync)).not.toHaveBeenCalled()
@@ -146,7 +148,7 @@ describe('diagnostics rotateIosLogIfNeeded', () => {
     ;(statSync as ReturnType<typeof vi.fn>).mockReturnValue({ size: IOS_LOG_MAX_BYTES + 1 })
     const { handleDiagnosticLogsResponse } = await import('../diagnostics')
     handleDiagnosticLogsResponse(
-      { type: 'desktop_diagnostic_logs_response', logs: iosLine(1, 'big') + '\n', deviceId: 'dev-big', deviceName: 'iPhone', nextSeq: 2 },
+      { type: 'desktop_diagnostic_logs_response', logs: iosLine(1, 'big') + '\n', pairingId: 'dev-big', nextSeq: 2 },
       'dev-big',
     )
     const renameCalls = vi.mocked(renameSync).mock.calls.map(([src, dst]) => [String(src), String(dst)])
@@ -159,7 +161,7 @@ describe('diagnostics rotateIosLogIfNeeded', () => {
     ;(statSync as ReturnType<typeof vi.fn>).mockReturnValue({ size: IOS_LOG_MAX_BYTES + 1 })
     const { handleDiagnosticLogsResponse } = await import('../diagnostics')
     handleDiagnosticLogsResponse(
-      { type: 'desktop_diagnostic_logs_response', logs: iosLine(1, 'shift') + '\n', deviceId: 'dev-shift', deviceName: 'iPhone', nextSeq: 2 },
+      { type: 'desktop_diagnostic_logs_response', logs: iosLine(1, 'shift') + '\n', pairingId: 'dev-shift', nextSeq: 2 },
       'dev-shift',
     )
     const renameCalls = vi.mocked(renameSync).mock.calls.map(([src, dst]) => [String(src), String(dst)])
@@ -173,7 +175,7 @@ describe('diagnostics rotateIosLogIfNeeded', () => {
     ;(statSync as ReturnType<typeof vi.fn>).mockReturnValue({ size: IOS_LOG_MAX_BYTES + 1 })
     const { handleDiagnosticLogsResponse } = await import('../diagnostics')
     handleDiagnosticLogsResponse(
-      { type: 'desktop_diagnostic_logs_response', logs: iosLine(1, 'prune') + '\n', deviceId: 'dev-prune', deviceName: 'iPhone', nextSeq: 2 },
+      { type: 'desktop_diagnostic_logs_response', logs: iosLine(1, 'prune') + '\n', pairingId: 'dev-prune', nextSeq: 2 },
       'dev-prune',
     )
     const unlinkPaths = vi.mocked(unlinkSync).mock.calls.map(([p]) => String(p))

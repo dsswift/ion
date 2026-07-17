@@ -157,7 +157,7 @@ export type RemoteCommand =
   | { type: 'desktop_discover_commands'; directory: string }
   | { type: 'desktop_upload_attachment'; dataUrl: string; name: string; correlationId?: string }
   | { type: 'desktop_voice_config'; enabled: boolean; mode: 'client' | 'desktop'; systemPrompt?: string }
-  | { type: 'desktop_diagnostic_logs_response'; logs: string; deviceId: string; deviceName: string; nextSeq: number }
+  | { type: 'desktop_diagnostic_logs_response'; logs: string; pairingId: string; nextSeq: number }
   | { type: 'desktop_set_remote_display'; customName: string | null; customIcon: string | null; updatedAt: number }
   // ─── Desktop settings projection (Part 7) ───────────────────────────
   // Write-back path for the per-desktop settings the iOS Settings tab

@@ -103,13 +103,13 @@ describe('deviceSeqMark — per-device seq cursor', () => {
   it('handleDiagnosticLogsResponse advances the cursor to nextSeq', () => {
     deviceSeqMark.set('dev-2', 100)
     const logs = `${iosLine(101)}\n${iosLine(102)}\n${iosLine(103)}\n`
-    handleDiagnosticLogsResponse({ type: 'desktop_diagnostic_logs_response', logs, deviceId: 'dev-2', deviceName: 'iPad', nextSeq: 104 } as any, 'dev-2')
+    handleDiagnosticLogsResponse({ type: 'desktop_diagnostic_logs_response', logs, pairingId: 'pairing-dev-2', nextSeq: 104 } as any, 'dev-2')
     expect(deviceSeqMark.get('dev-2')).toBe(104)
   })
 
   it('does not move the cursor backward on a stale nextSeq', () => {
     deviceSeqMark.set('dev-3', 200)
-    handleDiagnosticLogsResponse({ type: 'desktop_diagnostic_logs_response', logs: '', deviceId: 'dev-3', deviceName: 'iPhone', nextSeq: 5 } as any, 'dev-3')
+    handleDiagnosticLogsResponse({ type: 'desktop_diagnostic_logs_response', logs: '', pairingId: 'pairing-dev-3', nextSeq: 5 } as any, 'dev-3')
     expect(deviceSeqMark.get('dev-3')).toBe(200)
   })
 
@@ -127,14 +127,14 @@ describe('deviceSeqMark — per-device seq cursor', () => {
   it('a reconnect at the same cursor appends ZERO duplicate lines (exactly-once)', () => {
     // First pull: seqs 1..3, cursor advances to 4.
     const first = `${iosLine(1)}\n${iosLine(2)}\n${iosLine(3)}\n`
-    handleDiagnosticLogsResponse({ type: 'desktop_diagnostic_logs_response', logs: first, deviceId: 'dev-x', deviceName: 'iPhone', nextSeq: 4 } as any, 'dev-x')
+    handleDiagnosticLogsResponse({ type: 'desktop_diagnostic_logs_response', logs: first, pairingId: 'pairing-x', nextSeq: 4 } as any, 'dev-x')
     expect(deviceSeqMark.get('dev-x')).toBe(4)
     ;(appendFileSync as ReturnType<typeof vi.fn>).mockClear()
     ;(writeFileSync as ReturnType<typeof vi.fn>).mockClear()
 
     // Reconnect edge case: the device re-sends seqs 1..3 (already persisted). The
     // desktop must drop all three as duplicates and write nothing.
-    handleDiagnosticLogsResponse({ type: 'desktop_diagnostic_logs_response', logs: first, deviceId: 'dev-x', deviceName: 'iPhone', nextSeq: 4 } as any, 'dev-x')
+    handleDiagnosticLogsResponse({ type: 'desktop_diagnostic_logs_response', logs: first, pairingId: 'pairing-x', nextSeq: 4 } as any, 'dev-x')
     expect(appendFileSync).not.toHaveBeenCalled()
     expect(writeFileSync).not.toHaveBeenCalled()
   })
