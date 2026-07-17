@@ -81,6 +81,11 @@ type EgressForwarder struct {
 	shipOwn     bool
 	spoolPath   string
 	spoolMaxB   int64
+	// ambientFields are stable machine-identity fields (host, machine_id,
+	// mdm_device_id, mdm_serial) merged into every egress record. Populated
+	// once at construction from getMachineIdentity(); never mutated after that.
+	// Caller-supplied fields take precedence — ambient only fills absent keys.
+	ambientFields map[string]any
 
 	mu          sync.Mutex
 	buffer      []egressRecord
@@ -162,14 +167,15 @@ func newEgressForwarder(cfg types.LoggingConfig) *EgressForwarder {
 	spoolPath := filepath.Join(home, ".ion", ".engine-egress-spool.jsonl")
 
 	f := &EgressForwarder{
-		cfg:        cfg,
-		shipOwn:    shipSourcesContain(sources, "engine"),
-		spoolPath:  spoolPath,
-		spoolMaxB:  spoolMax,
-		buffer:     make([]egressRecord, 0, 64),
-		loggedErrs: make(map[string]bool),
-		stopCh:     make(chan struct{}),
-		flushDone:  make(chan struct{}),
+		cfg:           cfg,
+		shipOwn:       shipSourcesContain(sources, "engine"),
+		spoolPath:     spoolPath,
+		spoolMaxB:     spoolMax,
+		buffer:        make([]egressRecord, 0, 64),
+		loggedErrs:    make(map[string]bool),
+		stopCh:        make(chan struct{}),
+		flushDone:     make(chan struct{}),
+		ambientFields: ambientFieldsFromIdentity(getMachineIdentity()),
 	}
 	interval := time.Duration(cfg.EgressFlushIntervalMs) * time.Millisecond
 	f.flushTicker = time.NewTicker(interval)
@@ -198,8 +204,24 @@ func (f *EgressForwarder) shipTailed(rec egressRecord) {
 }
 
 // enqueue is the shared buffer-append + batch-flush trigger behind ship and
-// shipTailed.
+// shipTailed. Merges ambient machine-identity fields into the record before
+// buffering: ambient fills absent keys; caller-supplied fields take precedence.
 func (f *EgressForwarder) enqueue(rec egressRecord) {
+	if len(f.ambientFields) > 0 {
+		if rec.Fields == nil {
+			merged := make(map[string]any, len(f.ambientFields))
+			for k, v := range f.ambientFields {
+				merged[k] = v
+			}
+			rec.Fields = merged
+		} else {
+			for k, v := range f.ambientFields {
+				if _, exists := rec.Fields[k]; !exists {
+					rec.Fields[k] = v
+				}
+			}
+		}
+	}
 	f.mu.Lock()
 	f.buffer = append(f.buffer, rec)
 	batchSize := f.cfg.EgressBatchSize
