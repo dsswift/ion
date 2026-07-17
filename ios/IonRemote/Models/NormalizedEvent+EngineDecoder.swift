@@ -189,6 +189,12 @@ extension RemoteEvent {
             let usage = try container.decodeIfPresent(EngineMessageEndUsage.self, forKey: .usage)
             return .engineMessageEnd(tabId: tabId, instanceId: instanceId, inputTokens: usage?.inputTokens ?? 0, outputTokens: usage?.outputTokens ?? 0, contextPercent: usage?.contextPercent ?? 0, cost: usage?.cost ?? 0, entryId: usage?.entryId, userEntryId: usage?.userEntryId)
 
+        case .engineUserTurnPersisted:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            let entryId = try container.decodeIfPresent(String.self, forKey: .userTurnEntryId) ?? ""
+            return .engineUserTurnPersisted(tabId: tabId, instanceId: instanceId, entryId: entryId)
+
         case .engineDead:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)

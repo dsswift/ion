@@ -568,6 +568,25 @@ final class ContractSyncTests: XCTestCase {
         }
     }
 
+    /// desktop_user_turn_persisted — the run-opening user turn's canonical
+    /// persisted tree-entry id, announced before streaming so the optimistic
+    /// user row is re-keyed even when the run never reaches a message_end
+    /// (cancel, mid-stream failure). Mirrors Go EngineEvent.UserTurnEntryID
+    /// forwarded via the desktop's generic engine→wire mapper.
+    func testEngineUserTurnPersistedDecode() throws {
+        let json = """
+        {"type":"desktop_user_turn_persisted","tabId":"t1","userTurnEntryId":"entry-77"}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineUserTurnPersisted(let tabId, let instanceId, let entryId) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertNil(instanceId)
+            XCTAssertEqual(entryId, "entry-77")
+        } else {
+            XCTFail("Expected engineUserTurnPersisted")
+        }
+    }
+
     func testEngineDialogDecode() throws {
         let json = """
         {"type":"desktop_dialog","tabId":"t1","dialogId":"d1","method":"select","title":"Pick","options":["a","b"]}

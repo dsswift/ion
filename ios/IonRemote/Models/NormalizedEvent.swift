@@ -160,6 +160,14 @@ enum RemoteEvent: Sendable {
     /// ids — anchors on them instead of duplicating them. Optional: absent on
     /// older desktops.
     case engineMessageEnd(tabId: String, instanceId: String?, inputTokens: Int, outputTokens: Int, contextPercent: Double, cost: Double, entryId: String?, userEntryId: String?)
+    /// desktop_user_turn_persisted: the canonical persisted tree-entry id of
+    /// the run-opening user turn, announced by the engine immediately after
+    /// persisting it (before streaming). Re-key signal only — never carries
+    /// content. iOS re-keys its optimistic user row to this id so a run that
+    /// never reaches a message_end (cancel, mid-stream failure) still leaves
+    /// the row canonically keyed and history reloads dedup against it instead
+    /// of rendering the user turn twice.
+    case engineUserTurnPersisted(tabId: String, instanceId: String?, entryId: String)
     case engineDead(tabId: String, instanceId: String?, exitCode: Int?, signal: String?, stderrTail: [String])
     case engineInstanceAdded(tabId: String, instanceId: String, label: String)
     case engineInstanceRemoved(tabId: String, instanceId: String)
@@ -513,6 +521,7 @@ enum RemoteEvent: Sendable {
         case engineTextDelta = "desktop_text_delta"
         case engineStreamReset = "desktop_stream_reset"
         case engineMessageEnd = "desktop_message_end"
+        case engineUserTurnPersisted = "desktop_user_turn_persisted"
         case engineDead = "desktop_dead"
         case engineInstanceAdded = "desktop_instance_added"
         case engineInstanceRemoved = "desktop_instance_removed"
@@ -598,6 +607,9 @@ enum RemoteEvent: Sendable {
         // wire key (mirrors EngineEvent.SessionStatus in Go).
         case sessionStatus
         case signal, stderrTail, label, profiles, elapsed, usage, model
+        // desktop_user_turn_persisted — the run-opening user turn's canonical
+        // persisted tree-entry id (mirrors Go EngineEvent.UserTurnEntryID).
+        case userTurnEntryId
         case tabGroupMode, tabGroups, preferredModel, engineDefaultModel, availableModels
         case directory, files, branch, isGitRepo, ahead, behind, stagedCount, unstagedCount
         case commits, totalCount, diff, fileName, graphLayout, hash, stats
