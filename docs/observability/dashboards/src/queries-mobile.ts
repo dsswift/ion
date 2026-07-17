@@ -10,15 +10,16 @@
 // stored Loki line to that JSON, so `| json` parses the full record including
 // all nested keys. The per-device identity lives under the `fields` object:
 //
-//   device_model / app_version / app_build / os_version  — stamped by iOS
-//   device_id / device_name / desktop_host               — stamped by the desktop
+//   device_id / device_model / app_version / app_build / os_version   — stamped by iOS
+//   mdm_device_id / mdm_serial                                         — stamped by iOS (MDM-enrolled only)
+//   pairing_id / desktop_host                                           — stamped by the desktop
 //
 // Loki `| json` flattens nested objects with a `_` separator, so these become
-// `fields_device_name`, `fields_app_version`, etc. Named extraction pulls them
-// back to friendly label names (device_name, app_version, ...) via the
-// Loki json extraction syntax (`| json device_name="fields.device_name"`).
+// `fields_device_id`, `fields_app_version`, etc. Named extraction pulls them
+// back to friendly label names via the Loki json extraction syntax
+// (`| json device_id="fields.device_id"`).
 // component and level are promoted stream labels — no json parse needed for them.
-// The `$device` dashboard variable scopes by device_name (regex, default `.*`).
+// The `$device` dashboard variable scopes by device_model (regex, default `.*`).
 
 import type { Expr, Window } from './types.ts';
 import { accumulation, instant, registerQuery } from './queries.ts';
@@ -28,17 +29,20 @@ const IOS = '{component="ios"}';
 
 // Named json extraction for device identity fields. Pulls nested fields.*
 // values up to friendly top-level label names so the rest of every query can
-// reference device_name / device_id / app_version / os_version / desktop_host
-// directly without the fields_ prefix. The extraction is applied once in
-// DEVICE_PIPE so it composes cleanly into every expression.
+// reference device_id / device_model / pairing_id / app_version / os_version /
+// desktop_host / mdm_device_id / mdm_serial directly without the fields_ prefix.
+// The extraction is applied once in DEVICE_PIPE so it composes cleanly into
+// every expression.
 const JSON_EXTRACT =
-  '| json device_name="fields.device_name", device_id="fields.device_id",' +
+  '| json device_id="fields.device_id", device_model="fields.device_model",' +
+  ' pairing_id="fields.pairing_id", desktop_host="fields.desktop_host",' +
   ' app_version="fields.app_version", app_build="fields.app_build",' +
-  ' os_version="fields.os_version", desktop_host="fields.desktop_host"';
+  ' os_version="fields.os_version", mdm_device_id="fields.mdm_device_id",' +
+  ' mdm_serial="fields.mdm_serial"';
 
 // Stream pipe for the mobile pack: extract device identity fields, DROP any line
 // whose body is not parseable JSON, then scope by the $device variable (matched
-// against device_name).
+// against device_model, the hardware model identifier e.g. `iPhone15,3`).
 //
 // The `| __error__=""` stage is load-bearing, not defensive garnish. The
 // {component="ios"} stream is heterogeneous: newer lines store the full Ion
@@ -50,7 +54,7 @@ const JSON_EXTRACT =
 // totals (no `| json` stage) rendered. `| __error__=""` skips the unparseable
 // lines so the good lines aggregate normally. It must come AFTER the json stage
 // (it filters on the error that stage produces) and BEFORE the device filter.
-export const DEVICE_PIPE = ` ${JSON_EXTRACT} | __error__="" | device_name=~"$device"`;
+export const DEVICE_PIPE = ` ${JSON_EXTRACT} | __error__="" | device_model=~"$device"`;
 
 // ---------------------------------------------------------------------------
 // Distinct counts (headline stats)
@@ -86,6 +90,8 @@ export const iosErrorCount = (window: Window): Expr =>
   accumulation(`sum(count_over_time({component="ios", level="ERROR"}${DEVICE_PIPE} [${window}]))`, window);
 
 // Per-device log volume, grouped (bargauge / table / timeseries).
+// Default grouping uses device_id + device_model: stable hardware identity with
+// a human-readable model name for display.
 export const volumeByDevice = (by: readonly string[], window: Window): Expr => {
   const grouping = by.length > 0 ? `sum by (${by.join(', ')})` : 'sum';
   return accumulation(`${grouping} (count_over_time(${IOS}${DEVICE_PIPE} [${window}]))`, window);
@@ -106,15 +112,19 @@ export const errorsByDevice = (by: readonly string[], window: Window): Expr => {
 
 // Every device / app-version / os-version combination reporting in the window
 // with its line count. Two rows for one device_id means it upgraded mid-window.
+// Groups by stable device_id (survives re-pairings) plus human-readable model
+// name and MDM identity for cross-system correlation.
 // Instant snapshot (table).
 export const appVersionByDevice = (window: Window): Expr =>
   registerQuery(
     'iOS app-version drift by device',
-    'Every device_id / device_name / app_version / os_version combination reporting in the ' +
+    'Every device_id / device_model / app_version / os_version combination reporting in the ' +
       'iOS log stream over the window, with its line count. Two rows for one device_id means ' +
-      'it upgraded the app (or OS) mid-window. Answers "which device is on which build?".',
+      'it upgraded the app (or OS) mid-window. Answers "which device is on which build?". ' +
+      'mdm_device_id and mdm_serial appear when the device is enrolled in MDM, enabling ' +
+      'cross-reference to Intune or other MDM consoles.',
     instant(
-      `sum by (device_id, device_name, app_version, app_build, os_version) ` +
+      `sum by (device_id, device_model, pairing_id, mdm_device_id, mdm_serial, app_version, app_build, os_version) ` +
         `(count_over_time(${IOS}${DEVICE_PIPE} [${window}]))`,
       window,
     ),
@@ -123,17 +133,22 @@ export const appVersionByDevice = (window: Window): Expr =>
 // The device→desktop pairing matrix: every device_id × desktop_host pair that
 // produced lines in the window, with the count. A device paired to two desktops
 // yields two rows; this is the "which device connected to which desktop" view.
+// device_id is the stable hardware identity (identifierForVendor UUID) that
+// survives re-pairings; pairing_id is the ECDH channel ID that links to a
+// specific desktop pairing session.
 // Instant snapshot (table).
 export const devicePairingMatrix = (window: Window): Expr =>
   registerQuery(
     'iOS device↔desktop pairing matrix',
-    'Every device_id / device_name × desktop_host pair that produced iOS log lines over the ' +
+    'Every device_id / device_model × desktop_host pair that produced iOS log lines over the ' +
       'window, with the line count. A device paired to two desktops yields two rows — this is ' +
       'the "which iOS device connected to which desktop, and generated logs there" view. ' +
+      'pairing_id is the ECDH channel ID for the specific pairing session; device_id is the ' +
+      'stable per-device hardware identity (survives re-pairings). ' +
       'desktop_host mirrors the telemetry `host` value, so a row cross-references the Ion Fleet ' +
-      'board for the same machine.',
+      'board for the same machine. mdm_device_id / mdm_serial enable Intune correlation.',
     instant(
-      `sum by (device_id, device_name, desktop_host) (count_over_time(${IOS}${DEVICE_PIPE} [${window}]))`,
+      `sum by (device_id, device_model, pairing_id, mdm_device_id, mdm_serial, desktop_host) (count_over_time(${IOS}${DEVICE_PIPE} [${window}]))`,
       window,
     ),
   );
@@ -142,21 +157,23 @@ export const devicePairingMatrix = (window: Window): Expr =>
 // Device freshness (minutes since last iOS line per device)
 // ---------------------------------------------------------------------------
 
-// Same detector shape as fleet's hostLastSeenMinutes, grouped by device_name
-// instead of host. Fixed [24h] lookback, NOT $__range: a device that went quiet
-// hours ago must stay VISIBLE as a growing red value instead of dropping out of
-// a narrow range (ADR-022 detector class).
+// Same detector shape as fleet's hostLastSeenMinutes, grouped by device_id
+// (stable hardware identity) instead of host. Fixed [24h] lookback, NOT
+// $__range: a device that went quiet hours ago must stay VISIBLE as a growing
+// red value instead of dropping out of a narrow range (ADR-022 detector class).
 export const deviceLastSeenMinutes = (window: Window): Expr =>
   registerQuery(
     'iOS device last-seen (minutes since last log line)',
     'Minutes since the most recent iOS log line per device. The mobile liveness detector: ' +
       'a device whose logs stopped arriving climbs while the others stay near zero. ' +
+      'Grouped by device_id (stable hardware identity) and device_model for display. ' +
       'Fixed [24h] lookback so a long-quiet device stays visible as a growing value rather ' +
       'than dropping out of a narrow dashboard range.',
     instant(
       `(vector(\${__to:date:seconds}) - on() group_right() ` +
-        `max by (device_name) (max_over_time(${IOS}${DEVICE_PIPE} ` +
+        `max by (device_id, device_model) (max_over_time(${IOS}${DEVICE_PIPE} ` +
         `| label_format ts_unix="{{ __timestamp__ | unixEpoch }}" | unwrap ts_unix [${window}]))) / 60`,
       window,
     ),
   );
+

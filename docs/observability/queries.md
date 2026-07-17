@@ -173,7 +173,7 @@ count by (host) (sum by (host, install_id) (count_over_time({service_name="ion-t
 Number of distinct `device_id` values seen in the iOS log stream over the window. The inner sum collapses each value to one series; the outer count counts the series. Powers the mobile "Devices reporting" and "App versions" headline stats.
 
 ```logql
-count(sum by (device_id) (count_over_time({component="ios"} | json device_name="fields.device_name", device_id="fields.device_id", app_version="fields.app_version", app_build="fields.app_build", os_version="fields.os_version", desktop_host="fields.desktop_host" | __error__="" | device_name=~"$device" [$__range])))
+count(sum by (device_id) (count_over_time({component="ios"} | json device_id="fields.device_id", device_model="fields.device_model", pairing_id="fields.pairing_id", desktop_host="fields.desktop_host", app_version="fields.app_version", app_build="fields.app_build", os_version="fields.os_version", mdm_device_id="fields.mdm_device_id", mdm_serial="fields.mdm_serial" | __error__="" | device_model=~"$device" [$__range])))
 ```
 
 ### Distinct iOS app_version count
@@ -183,35 +183,35 @@ count(sum by (device_id) (count_over_time({component="ios"} | json device_name="
 Number of distinct `app_version` values seen in the iOS log stream over the window. The inner sum collapses each value to one series; the outer count counts the series. Powers the mobile "Devices reporting" and "App versions" headline stats.
 
 ```logql
-count(sum by (app_version) (count_over_time({component="ios"} | json device_name="fields.device_name", device_id="fields.device_id", app_version="fields.app_version", app_build="fields.app_build", os_version="fields.os_version", desktop_host="fields.desktop_host" | __error__="" | device_name=~"$device" [$__range])))
+count(sum by (app_version) (count_over_time({component="ios"} | json device_id="fields.device_id", device_model="fields.device_model", pairing_id="fields.pairing_id", desktop_host="fields.desktop_host", app_version="fields.app_version", app_build="fields.app_build", os_version="fields.os_version", mdm_device_id="fields.mdm_device_id", mdm_serial="fields.mdm_serial" | __error__="" | device_model=~"$device" [$__range])))
 ```
 
 ### iOS device last-seen (minutes since last log line)
 
 **Class:** `instant` &nbsp; **Window:** `24h`
 
-Minutes since the most recent iOS log line per device. The mobile liveness detector: a device whose logs stopped arriving climbs while the others stay near zero. Fixed [24h] lookback so a long-quiet device stays visible as a growing value rather than dropping out of a narrow dashboard range.
+Minutes since the most recent iOS log line per device. The mobile liveness detector: a device whose logs stopped arriving climbs while the others stay near zero. Grouped by device_id (stable hardware identity) and device_model for display. Fixed [24h] lookback so a long-quiet device stays visible as a growing value rather than dropping out of a narrow dashboard range.
 
 ```logql
-(vector(${__to:date:seconds}) - on() group_right() max by (device_name) (max_over_time({component="ios"} | json device_name="fields.device_name", device_id="fields.device_id", app_version="fields.app_version", app_build="fields.app_build", os_version="fields.os_version", desktop_host="fields.desktop_host" | __error__="" | device_name=~"$device" | label_format ts_unix="{{ __timestamp__ | unixEpoch }}" | unwrap ts_unix [24h]))) / 60
+(vector(${__to:date:seconds}) - on() group_right() max by (device_id, device_model) (max_over_time({component="ios"} | json device_id="fields.device_id", device_model="fields.device_model", pairing_id="fields.pairing_id", desktop_host="fields.desktop_host", app_version="fields.app_version", app_build="fields.app_build", os_version="fields.os_version", mdm_device_id="fields.mdm_device_id", mdm_serial="fields.mdm_serial" | __error__="" | device_model=~"$device" | label_format ts_unix="{{ __timestamp__ | unixEpoch }}" | unwrap ts_unix [24h]))) / 60
 ```
 
 ### iOS app-version drift by device
 
 **Class:** `instant` &nbsp; **Window:** `$__range`
 
-Every device_id / device_name / app_version / os_version combination reporting in the iOS log stream over the window, with its line count. Two rows for one device_id means it upgraded the app (or OS) mid-window. Answers "which device is on which build?".
+Every device_id / device_model / app_version / os_version combination reporting in the iOS log stream over the window, with its line count. Two rows for one device_id means it upgraded the app (or OS) mid-window. Answers "which device is on which build?". mdm_device_id and mdm_serial appear when the device is enrolled in MDM, enabling cross-reference to Intune or other MDM consoles.
 
 ```logql
-sum by (device_id, device_name, app_version, app_build, os_version) (count_over_time({component="ios"} | json device_name="fields.device_name", device_id="fields.device_id", app_version="fields.app_version", app_build="fields.app_build", os_version="fields.os_version", desktop_host="fields.desktop_host" | __error__="" | device_name=~"$device" [$__range]))
+sum by (device_id, device_model, pairing_id, mdm_device_id, mdm_serial, app_version, app_build, os_version) (count_over_time({component="ios"} | json device_id="fields.device_id", device_model="fields.device_model", pairing_id="fields.pairing_id", desktop_host="fields.desktop_host", app_version="fields.app_version", app_build="fields.app_build", os_version="fields.os_version", mdm_device_id="fields.mdm_device_id", mdm_serial="fields.mdm_serial" | __error__="" | device_model=~"$device" [$__range]))
 ```
 
 ### iOS device↔desktop pairing matrix
 
 **Class:** `instant` &nbsp; **Window:** `$__range`
 
-Every device_id / device_name × desktop_host pair that produced iOS log lines over the window, with the line count. A device paired to two desktops yields two rows — this is the "which iOS device connected to which desktop, and generated logs there" view. desktop_host mirrors the telemetry `host` value, so a row cross-references the Ion Fleet board for the same machine.
+Every device_id / device_model × desktop_host pair that produced iOS log lines over the window, with the line count. A device paired to two desktops yields two rows — this is the "which iOS device connected to which desktop, and generated logs there" view. pairing_id is the ECDH channel ID for the specific pairing session; device_id is the stable per-device hardware identity (survives re-pairings). desktop_host mirrors the telemetry `host` value, so a row cross-references the Ion Fleet board for the same machine. mdm_device_id / mdm_serial enable Intune correlation.
 
 ```logql
-sum by (device_id, device_name, desktop_host) (count_over_time({component="ios"} | json device_name="fields.device_name", device_id="fields.device_id", app_version="fields.app_version", app_build="fields.app_build", os_version="fields.os_version", desktop_host="fields.desktop_host" | __error__="" | device_name=~"$device" [$__range]))
+sum by (device_id, device_model, pairing_id, mdm_device_id, mdm_serial, desktop_host) (count_over_time({component="ios"} | json device_id="fields.device_id", device_model="fields.device_model", pairing_id="fields.pairing_id", desktop_host="fields.desktop_host", app_version="fields.app_version", app_build="fields.app_build", os_version="fields.os_version", mdm_device_id="fields.mdm_device_id", mdm_serial="fields.mdm_serial" | __error__="" | device_model=~"$device" [$__range]))
 ```
