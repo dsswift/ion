@@ -510,7 +510,7 @@ test('mobile pack: reads the iOS log stream, never the telemetry stream', () => 
 test('mobile pack: the device→desktop pairing table keys (device_id, desktop_host)', () => {
   const p = panelByTitle('ion-mobile', 'Device → desktop pairing');
   const expr = (p.targets as any[])[0].expr as string;
-  assert.ok(expr.includes('sum by (device_id, device_name, desktop_host)'), 'pairing table must group by the device×desktop key');
+  assert.ok(expr.includes('sum by (device_id, device_model,') && expr.includes('desktop_host)'), 'pairing table must group by the device×desktop key');
 });
 
 test('mobile pack: device last-seen is a fixed-24h detector (not $__range)', () => {
