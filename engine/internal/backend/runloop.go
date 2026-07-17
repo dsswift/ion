@@ -154,6 +154,20 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		})
 	}
 
+	// Announce the persisted user turn's canonical entry id NOW — before any
+	// streaming — so consumers can re-key their optimistic user row
+	// immediately. message_end carries the same id (UserEntryID), but a run
+	// that is cancelled or fails mid-stream never reaches a message_end, and
+	// the un-re-keyed optimistic row then duplicates against the persisted
+	// turn on the next history load. This emission covers every run outcome.
+	// Re-key signal only: id, never content (the engine does not echo user
+	// turns — see the comment above appendInboundUserMessage).
+	if runUserEntryID != "" {
+		b.emit(run, types.NormalizedEvent{Data: &types.UserTurnPersistedEvent{
+			EntryID: runUserEntryID,
+		}})
+	}
+
 	// Resolve limits. Engine ships unopinionated: maxTurns/maxBudget <= 0 means
 	// "no cap" -- the agent loop runs until the LLM emits a terminal stop or
 	// the caller cancels. Harness engineers cap via RunOptions, engine.json

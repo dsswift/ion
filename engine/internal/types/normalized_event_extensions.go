@@ -36,6 +36,26 @@ type MessageEndEvent struct {
 
 func (MessageEndEvent) eventType() string { return EventMessageEnd }
 
+// UserTurnPersistedEvent reports that the run-opening user turn has been
+// appended to the conversation and persisted, carrying its canonical
+// tree-entry id. Emitted once per run by the API backend, immediately after
+// the inbound user message is persisted and before streaming begins.
+//
+// This is a RE-KEY signal, not a user-turn echo: it carries only the id,
+// never the content (the engine does not echo user turns — see the
+// appendInboundUserMessage comment in runloop.go). Consumers that inserted
+// an optimistic user row re-key it to EntryID so later history loads
+// (SessionMessage.ID) dedup against it. message_end carries the same id as
+// UserEntryID, but only fires on runs that reach a message end — a run
+// cancelled or failed mid-stream never re-keys via that path, which is
+// exactly the gap this event closes.
+type UserTurnPersistedEvent struct {
+	// EntryID is the canonical persisted tree-entry id of the user turn.
+	EntryID string `json:"entryId"`
+}
+
+func (UserTurnPersistedEvent) eventType() string { return EventUserTurnPersisted }
+
 // AgentStateEvent is a complete snapshot of every dispatch agent the engine
 // considers live at this moment. Consumers replace their local view with the
 // payload — do not merge incrementally, do not invent retention rules. Every
