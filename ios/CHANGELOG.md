@@ -10,6 +10,13 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.46.0](https://github.com/dsswift/ion/compare/ios-v1.45.0...ios-v1.46.0) (2026-07-17)
+
+### Features
+
+* **ios:** add machine identity to log fields ([70c3b19](https://github.com/dsswift/ion/commit/70c3b19a8e9ad97c85cdcdd434617b4414145441))
+* **ios:** rekey user rows early, fix voice-vs-abort input bar ([7be6ebc](https://github.com/dsswift/ion/commit/7be6ebc79c21a183fa9a55e19739cdbbf72bac2e))
+
 ## [1.45.0](https://github.com/dsswift/ion/compare/ios-v1.44.0...ios-v1.45.0) (2026-07-17)
 
 ### Features

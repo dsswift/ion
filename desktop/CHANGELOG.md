@@ -10,6 +10,17 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.60.0](https://github.com/dsswift/ion/compare/desktop-v1.59.0...desktop-v1.60.0) (2026-07-17)
+
+### Features
+
+* **desktop:** add machine identity to log fields ([8e53d62](https://github.com/dsswift/ion/commit/8e53d62da549b927656f10fd61cb84c726389871))
+* **desktop:** forward persisted entry ids to renderer ([a68bd80](https://github.com/dsswift/ion/commit/a68bd8066712206407b822408c60aa884fb4eea5))
+
+### Bug Fixes
+
+* **desktop:** preserve attachments in remote prompt echoes ([01c730c](https://github.com/dsswift/ion/commit/01c730cabe171fd51c3ef4753806b2c606fd94d7))
+
 ## [1.59.0](https://github.com/dsswift/ion/compare/desktop-v1.58.0...desktop-v1.59.0) (2026-07-17)
 
 ### Features

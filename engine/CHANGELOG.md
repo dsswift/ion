@@ -13,6 +13,17 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.46.0](https://github.com/dsswift/ion/compare/engine-v1.45.1...engine-v1.46.0) (2026-07-17)
+
+### Features
+
+* **engine:** add machine identity to log fields ([6e9dabd](https://github.com/dsswift/ion/commit/6e9dabd26e469c19bed23c59acdf9584c679253a))
+* **engine:** add user turn persisted event ([7348cc6](https://github.com/dsswift/ion/commit/7348cc680402e5f9a4a463ac846a7c98573c20e4))
+
+### Bug Fixes
+
+* **engine:** replay user-prompt image blocks on the user row ([5d6ffca](https://github.com/dsswift/ion/commit/5d6ffca11a431da52aac4006be19a3e8e30c2af4))
+
 ## [1.45.1](https://github.com/dsswift/ion/compare/engine-v1.45.0...engine-v1.45.1) (2026-07-17)
 
 ### Bug Fixes
