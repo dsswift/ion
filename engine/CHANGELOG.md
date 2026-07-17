@@ -13,6 +13,12 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.45.1](https://github.com/dsswift/ion/compare/engine-v1.45.0...engine-v1.45.1) (2026-07-17)
+
+### Bug Fixes
+
+* **engine:** rebind idle session when caller asserts a different conversation ([1edace7](https://github.com/dsswift/ion/commit/1edace7570d74d8a0c455a2241791243a47efd07))
+
 ## [1.45.0](https://github.com/dsswift/ion/compare/engine-v1.44.0...engine-v1.45.0) (2026-07-17)
 
 ### Features
