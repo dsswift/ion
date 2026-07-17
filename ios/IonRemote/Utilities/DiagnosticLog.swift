@@ -136,12 +136,33 @@ final class DiagnosticLog: @unchecked Sendable {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
         let osVersion = UIDevice.current.systemVersion
-        return [
+
+        // Stable per-device hardware identity (survives re-pairings and app
+        // reinstalls on the same device). identifierForVendor resets only on a
+        // full device wipe, making it suitable as a durable device_id.
+        let vendorId = UIDevice.current.identifierForVendor?.uuidString ?? "unknown"
+
+        var fields: [String: String] = [
             "device_model": machine,
             "app_version": version,
             "app_build": build,
             "os_version": osVersion,
+            "device_id": vendorId,
         ]
+
+        // MDM-enrolled devices expose admin-assigned identity via the Managed
+        // App Config dictionary. When present, stamp it so Intune/MDM device IDs
+        // appear on every log line for cross-system correlation.
+        if let managed = UserDefaults(suiteName: "com.apple.configuration.managed") {
+            if let mdmId = managed.string(forKey: "MDMDeviceID"), !mdmId.isEmpty {
+                fields["mdm_device_id"] = mdmId
+            }
+            if let mdmSerial = managed.string(forKey: "MDMSerialNumber"), !mdmSerial.isEmpty {
+                fields["mdm_serial"] = mdmSerial
+            }
+        }
+
+        return fields
     }
 
     struct Entry: Sendable {

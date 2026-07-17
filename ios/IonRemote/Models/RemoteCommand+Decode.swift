@@ -325,14 +325,13 @@ extension RemoteCommand {
 
         case .diagnosticLogsResponse:
             let logs = try container.decode(String.self, forKey: .logs)
-            let deviceId = try container.decode(String.self, forKey: .deviceId)
-            let deviceName = try container.decode(String.self, forKey: .deviceName)
+            let pairingId = try container.decode(String.self, forKey: .pairingId)
             // `nextSeq` is the desktop's exactly-once pull cursor. Older desktops
             // that predate the seq contract omit it; decode nil → 0 so a
             // round-trip stays valid (the desktop that emitted it is the only
             // consumer of the field it sent).
             let nextSeq = try container.decodeIfPresent(Int.self, forKey: .nextSeq) ?? 0
-            self = .diagnosticLogsResponse(logs: logs, deviceId: deviceId, deviceName: deviceName, nextSeq: nextSeq)
+            self = .diagnosticLogsResponse(logs: logs, pairingId: pairingId, nextSeq: nextSeq)
 
         case .setRemoteDisplay:
             // Both fields are nullable on the wire; treat absent OR explicit

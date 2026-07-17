@@ -1,5 +1,4 @@
 import Foundation
-import UIKit
 
 // MARK: - Engine Event Handlers
 
@@ -562,13 +561,16 @@ extension SessionViewModel {
         // every line, so there is no special-case export branch. nextSeq is the
         // cursor the desktop persists and echoes on the next request.
         let (logs, nextSeq) = DiagnosticLog.exportIncrementalSince(sinceSeq: sinceSeq)
-        let deviceId = activeDeviceId ?? "unknown"
-        let deviceName = UIDevice.current.name
+        // pairingId is the ECDH channel ID — it identifies which desktop pairing
+        // collected these logs (the desktop → iOS wire identity). The stable
+        // per-device hardware identity (device_id) is stamped directly on every
+        // log line by iOS; it does not need to cross the wire separately.
+        let pairingId = activeDeviceId ?? "unknown"
         DiagnosticLog.log("diagnostic export", tag: "session", level: .debug, fields: [
             "since_seq": String(sinceSeq),
             "next_seq": String(nextSeq)
         ])
-        send(.diagnosticLogsResponse(logs: logs, deviceId: deviceId, deviceName: deviceName, nextSeq: nextSeq), intent: .automaticEssential)
+        send(.diagnosticLogsResponse(logs: logs, pairingId: pairingId, nextSeq: nextSeq), intent: .automaticEssential)
     }
 
     // MARK: - Dispatch terminal cleanup
