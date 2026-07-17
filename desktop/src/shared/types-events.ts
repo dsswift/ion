@@ -217,6 +217,10 @@ export type NormalizedEvent =
   // re-key their live rows to them so a later history load
   // (SessionLoadMessage.id) dedups against the live rows.
   | { type: 'message_end'; inputTokens?: number; outputTokens?: number; contextPercent?: number; cost?: number; entryId?: string; userEntryId?: string }
+  // user_turn_persisted — the run-opening user turn's canonical persisted
+  // tree-entry id, emitted before streaming so the optimistic user row can be
+  // re-keyed even when the run never reaches a message_end (cancel, error).
+  | { type: 'user_turn_persisted'; entryId: string }
   | { type: 'agent_state'; agents: import('./types-engine').AgentStateUpdate[] }
   // status — desktop-internal per-session status snapshot. Emitted by the
   // control plane (engine-control-plane-events.ts handleStatusEvent) from every

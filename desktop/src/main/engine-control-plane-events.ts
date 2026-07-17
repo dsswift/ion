@@ -126,12 +126,32 @@ export function handleEngineEvent(
         } as NormalizedEvent)
       }
       // Emit message_end to seal the current assistant row in the single reducer.
+      // entryId / userEntryId carry the canonical persisted tree-entry ids so
+      // the reducer re-keys the live rows (event-slice-extension-surface.ts) —
+      // previously dropped here, which left plain-tab desktop rows keyed by
+      // renderer-local ids and caused history reloads to duplicate them.
       ctx.emit('event', tabId, {
         type: 'message_end',
         inputTokens: event.usage?.inputTokens,
         outputTokens: event.usage?.outputTokens,
         contextPercent: event.usage?.contextPercent,
         cost: event.usage?.cost,
+        entryId: event.usage?.entryId,
+        userEntryId: event.usage?.userEntryId,
+      } as NormalizedEvent)
+      break
+
+    case 'engine_user_turn_persisted':
+      // The run-opening user turn's canonical persisted entry id, announced
+      // before streaming. Forward to the renderer reducer so the optimistic
+      // user row is re-keyed immediately — a run cancelled or failed
+      // mid-stream never reaches a message_end, and without this the
+      // un-re-keyed optimistic row duplicates against the persisted turn on
+      // the next history load.
+      log('user_turn_persisted', { tab_id: tabId, entry_id: event.userTurnEntryId })
+      ctx.emit('event', tabId, {
+        type: 'user_turn_persisted',
+        entryId: event.userTurnEntryId,
       } as NormalizedEvent)
       break
 

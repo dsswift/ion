@@ -455,6 +455,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
             case 'notify':
             case 'dialog':
             case 'message_end':
+            case 'user_turn_persisted':
             case 'extension_died':
             case 'extension_respawned':
             case 'extension_dead_permanent':

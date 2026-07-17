@@ -250,6 +250,32 @@ export function handleExtensionSurfaceEvent(ctx: ExtensionSurfaceCtx, event: Nor
       }
       return true
 
+    case 'user_turn_persisted':
+      // The engine persisted the run-opening user turn and announced its
+      // canonical tree-entry id BEFORE streaming. Re-key the most recent
+      // user row to it now, so a run that never reaches a message_end
+      // (cancel, mid-stream failure) still leaves the optimistic row
+      // canonically keyed — otherwise the next history load can't anchor on
+      // it and the user turn renders twice. Same walk as the message_end
+      // userEntryId re-key above; this event just fires unconditionally at
+      // run start instead of only on a completed message.
+      {
+        for (let i = ctx.messages.length - 1; i >= 0; i--) {
+          const m = ctx.messages[i]
+          if (m.role === 'user') {
+            if (m.id !== event.entryId) {
+              ctx.messages = [
+                ...ctx.messages.slice(0, i),
+                { ...m, id: event.entryId },
+                ...ctx.messages.slice(i + 1),
+              ]
+            }
+            break
+          }
+        }
+      }
+      return true
+
     case 'extension_died':
       // Extension subprocess crashed. Push an ephemeral notification.
       {
