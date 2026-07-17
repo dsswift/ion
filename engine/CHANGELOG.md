@@ -13,6 +13,40 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.45.0](https://github.com/dsswift/ion/compare/engine-v1.44.0...engine-v1.45.0) (2026-07-17)
+
+### Features
+
+* **engine:** logging and observability: structured JSONL, dashboards, egress, gates ([f0b55c3](https://github.com/dsswift/ion/commit/f0b55c32b511186a49b5e9af1c0d6b38e00b7d9a))
+* **engine:** per-model cost breakdown ([97618f3](https://github.com/dsswift/ion/commit/97618f3e82fec58db2063dc0e46e155d2da6b6c4))
+* **engine:** correctness and preflight fixes, UI/lifecycle cleanup, ADR-017 ([d5ce23a](https://github.com/dsswift/ion/commit/d5ce23acbae3211e22ea32dc2775bec11e0d4e2f))
+* **engine:** plan mode fixes and layered dispatch context ([773e541](https://github.com/dsswift/ion/commit/773e541b914ae5a7eb903447deef7561b6d93766))
+* **engine:** schedule: once kind and missed-slot detection ([e53ad7f](https://github.com/dsswift/ion/commit/e53ad7fd318599a7f9f0ab40fbf11795a201bd58))
+* **engine:** plugin management, skills, and initial messages ([c43aedb](https://github.com/dsswift/ion/commit/c43aedb69b262c47be5f641622cbfb9f4171eaef))
+* **engine:** expose turn count and max output tokens ([682576e](https://github.com/dsswift/ion/commit/682576e11fe65387a7c7fe3f53f570b7662e4425))
+* **engine:** native image support through tool and provider paths ([9a32cac](https://github.com/dsswift/ion/commit/9a32cac9cf88524bd4119bcb22426b399537e73f))
+* **engine:** extension prompt_injected rendered as user turns ([35f8f94](https://github.com/dsswift/ion/commit/35f8f948d0804b69d2ab90792801c322e22207ef))
+* **engine:** transcript identity convergence, stream reset, tree repair ([1bc0236](https://github.com/dsswift/ion/commit/1bc023677686d0340dc3c7b12d8efa8e4b35f9d9))
+* **engine:** harness dedup and relocate markers, drop collapse machinery ([394558f](https://github.com/dsswift/ion/commit/394558fdd0565de25f9a999e749792a8cbabec7c))
+* **engine:** task_suspend primitive, SDK ctx.suspend, dispatch revive ([892aaca](https://github.com/dsswift/ion/commit/892aacac6afc748bf329fdac2956b8f92e1e78ec))
+* **engine:** multi-backend: codex/grok/cursor ACP, provider login ([c7ea85e](https://github.com/dsswift/ion/commit/c7ea85e0d07f22653b6ba9975210100746c41840))
+* **engine:** tree-native conversation rewind ([bc0d194](https://github.com/dsswift/ion/commit/bc0d194e82d0d92684f55578a42e6788fc6d110f))
+* **engine:** credential-based backend routing and tab storage unify ([800005d](https://github.com/dsswift/ion/commit/800005d1eedb943dfe76d23fb5891cc796b14112))
+* **engine:** providers_updated refresh signal ([bdaf0ce](https://github.com/dsswift/ion/commit/bdaf0cee3f8b2bb4b4e6902b1f5b60442583a932))
+* **engine:** native plan-mode bridging across delegated CLIs ([d4416f3](https://github.com/dsswift/ion/commit/d4416f3788b2e03241e4ba5f806a328f464c255c))
+* **engine:** backend capability contract and native-session cursors ([5e452d1](https://github.com/dsswift/ion/commit/5e452d15b99d1eab21038d5b81be12000bc2b60b))
+* **engine:** ion_agent tool wiring to grok/cursor, mobile dashboard ([c95cbd0](https://github.com/dsswift/ion/commit/c95cbd09a41f0faf88658b29375be4bbc429ab91))
+
+### Bug Fixes
+
+* **engine:** engine-owned OIDC login orchestration ([ff8f110](https://github.com/dsswift/ion/commit/ff8f110191142b0bd7ef23b6cdcead77a2c792e0))
+* **engine:** relay transport: stall watchdog, wire seqs, APNs push-failed ([0257f93](https://github.com/dsswift/ion/commit/0257f935e3e1318ceea3288d3e5ba76a8bc0b6e9))
+* **engine:** warm lan auth verdict, namespace, and cooldown ([44f08bf](https://github.com/dsswift/ion/commit/44f08bfe9d0f430b145b4810e8e086cfdf573394))
+* **engine:** prompt_injected kind, suppress agent_completion user bubble ([231981f](https://github.com/dsswift/ion/commit/231981f244b660e94e6dd07bd3a3fff872fff86d))
+* **repo:** run linux tests as non-root with node, fix chmod test for root ([51ed77f](https://github.com/dsswift/ion/commit/51ed77f0e1f2ce8a36a8589427144fa67071c1e4))
+* **engine:** ignore nested node_modules/.git in workspace watcher ([8bcd184](https://github.com/dsswift/ion/commit/8bcd1848413cad2a8fe0a64439067b53f2a50426))
+* **engine:** repair integration/e2e test compile breaks, bump toolchain ([d749312](https://github.com/dsswift/ion/commit/d749312a1e646d080a7cd7f12412ca06b6fc7c84))
+
 ## [1.44.0](https://github.com/dsswift/ion/compare/engine-v1.43.0...engine-v1.44.0) (2026-07-05)
 
 ### Features

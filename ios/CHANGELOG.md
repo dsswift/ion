@@ -10,6 +10,32 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.45.0](https://github.com/dsswift/ion/compare/ios-v1.44.0...ios-v1.45.0) (2026-07-17)
+
+### Features
+
+* **ios:** logging and observability: structured JSONL, dashboards, egress, gates ([1bf1141](https://github.com/dsswift/ion/commit/1bf114185395f991c5b46f55d6d561239ff18f4f))
+* **ios:** per-model cost breakdown ([a947572](https://github.com/dsswift/ion/commit/a9475722927dc21902cf00bb8b0c65126d76b277))
+* **ios:** relay transport: stall watchdog, wire seqs, APNs push-failed ([bbf9487](https://github.com/dsswift/ion/commit/bbf94873d193bf8e03ffe5e21de6a755431fd451))
+* **ios:** correctness and preflight fixes, UI/lifecycle cleanup, ADR-017 ([e2bfcc3](https://github.com/dsswift/ion/commit/e2bfcc389e1cca5a5890d3961876ddbc551eab24))
+* **ios:** add ATV shell and canvas, workspace status rollup ([0ddb65b](https://github.com/dsswift/ion/commit/0ddb65be069f1cc7fa7f2058ccf7220c6399b1d0))
+* **ios:** plan mode fixes and layered dispatch context ([92bc291](https://github.com/dsswift/ion/commit/92bc291562890036e134c91421e00ac2a98de09b))
+* **ios:** expose turn count and max output tokens ([c0cfd31](https://github.com/dsswift/ion/commit/c0cfd31b2039f212c649a17d1badf7d4c5b1bb37))
+* **ios:** native image support through tool and provider paths ([37abee9](https://github.com/dsswift/ion/commit/37abee9a6b5a06b5c7d71057963c011c9ae651ac))
+* **ios:** jarvis-fusion app icons and codesign ([78c4f93](https://github.com/dsswift/ion/commit/78c4f9366e965c0294cc4f174a097e2a6d30f9ae))
+* **ios:** extension prompt_injected rendered as user turns ([e902f41](https://github.com/dsswift/ion/commit/e902f41dc5b3205ab9638015f8ff1db8fd671907))
+* **ios:** harness dedup and relocate markers, drop collapse machinery ([a3ada46](https://github.com/dsswift/ion/commit/a3ada46db0284384e5fd80d322404257af949865))
+* **ios:** multi-backend: codex/grok/cursor ACP, provider login ([c7ef0f3](https://github.com/dsswift/ion/commit/c7ef0f3e8a444eb539b66d3e4ad1c2d1116a8c91))
+* **ios:** device identity in logs, ios-parity agent panel ([09e2654](https://github.com/dsswift/ion/commit/09e265454ef012e6095895d382fa9b8d6231f9e1))
+* **ios:** backend capability contract and native-session cursors ([7a25341](https://github.com/dsswift/ion/commit/7a25341e235c7916e40bee59f245272d6686f955))
+
+### Bug Fixes
+
+* **ios:** warm lan auth verdict, namespace, and cooldown ([6b49cf4](https://github.com/dsswift/ion/commit/6b49cf491f1bd9c88aa038130618f70527153894))
+* **ios:** transcript identity convergence, stream reset, tree repair ([6f2a1f6](https://github.com/dsswift/ion/commit/6f2a1f6a72d98e9389281958f871612978d76582))
+* **desktop:** propagate iOS attachment metadata through prompt pipeline ([d2c35b9](https://github.com/dsswift/ion/commit/d2c35b9c1143e0a165788971ecd47fc74208a9df))
+* **ios:** strip attachment markers from tab row lastMessage preview ([c621333](https://github.com/dsswift/ion/commit/c621333da44195be80152dd4ae25c03cdbfa66a5))
+
 ## [1.44.0](https://github.com/dsswift/ion/compare/ios-v1.43.0...ios-v1.44.0) (2026-07-03)
 
 ### Features

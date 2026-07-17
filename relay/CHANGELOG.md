@@ -10,6 +10,14 @@ clients to Ion Engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.5.0](https://github.com/dsswift/ion/compare/relay-v1.4.2...relay-v1.5.0) (2026-07-17)
+
+### Features
+
+* **relay:** logging and observability: structured JSONL, dashboards, egress, gates ([8f745ca](https://github.com/dsswift/ion/commit/8f745cacee6e2f1d7307eb9c5e78885151bb89bb))
+* **relay:** relay transport: stall watchdog, wire seqs, APNs push-failed ([fbf313b](https://github.com/dsswift/ion/commit/fbf313b47a835f58bd85c72c9060dffe6f787b58))
+* **relay:** jarvis-fusion app icons and codesign ([46e95f5](https://github.com/dsswift/ion/commit/46e95f50172ac36cb16d7a97cf504e742fb8f350))
+
 ## [1.4.2](https://github.com/dsswift/ion/compare/relay-v1.4.1...relay-v1.4.2) (2026-06-15)
 
 ## [1.4.1](https://github.com/dsswift/ion/compare/relay-v1.4.0...relay-v1.4.1) (2026-06-15)

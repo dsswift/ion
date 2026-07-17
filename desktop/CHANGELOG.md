@@ -10,6 +10,44 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.59.0](https://github.com/dsswift/ion/compare/desktop-v1.58.0...desktop-v1.59.0) (2026-07-17)
+
+### Features
+
+* **desktop:** logging and observability: structured JSONL, dashboards, egress, gates ([6358692](https://github.com/dsswift/ion/commit/63586925abc301617ba2b934afee4833cbd62d94))
+* **desktop:** engine-owned OIDC login orchestration ([c48099c](https://github.com/dsswift/ion/commit/c48099cde5cdf4c8c46892b17922cecde170266f))
+* **desktop:** per-model cost breakdown ([70b6c7a](https://github.com/dsswift/ion/commit/70b6c7a80f49ce6c2c229f8ff7b53cc916b3448a))
+* **desktop:** relay transport: stall watchdog, wire seqs, APNs push-failed ([efeb6f9](https://github.com/dsswift/ion/commit/efeb6f903544b1968d009c4a4d53f0560dc8465f))
+* **desktop:** correctness and preflight fixes, UI/lifecycle cleanup, ADR-017 ([cc339c8](https://github.com/dsswift/ion/commit/cc339c8a8e9878ffb075352b31daad464dad9ad2))
+* **desktop:** add ATV shell and canvas, workspace status rollup ([9a82b46](https://github.com/dsswift/ion/commit/9a82b463a0ec27659d9c312db7f8eb3cc8dc1145))
+* **desktop:** plan mode fixes and layered dispatch context ([0e79e13](https://github.com/dsswift/ion/commit/0e79e133642c9dc094ea7de4673170f745c7a433))
+* **desktop:** expose turn count and max output tokens ([fb6aa14](https://github.com/dsswift/ion/commit/fb6aa14771d24f43fdafa683ad2080322e1910ca))
+* **desktop:** native image support through tool and provider paths ([0809ab4](https://github.com/dsswift/ion/commit/0809ab4bc6054033ac53774ce46f2a99381f3089))
+* **desktop:** jarvis-fusion app icons and codesign ([71a7c21](https://github.com/dsswift/ion/commit/71a7c21a78297bf9ce9e67e42475ce62d456c0e2))
+* **desktop:** eslint, error boundaries, and lint fixes ([8b3de0c](https://github.com/dsswift/ion/commit/8b3de0cf1e472c9e03a0745cad62d46e48ffa326))
+* **desktop:** extension prompt_injected rendered as user turns ([e1dfa79](https://github.com/dsswift/ion/commit/e1dfa79c91a2fcb237547b18e22caee9f54bd9a0))
+* **desktop:** transcript identity convergence, stream reset, tree repair ([12e7aa7](https://github.com/dsswift/ion/commit/12e7aa7a7bd2d751ec6590e298fd5908382d3cbc))
+* **desktop:** harness dedup and relocate markers, drop collapse machinery ([e504553](https://github.com/dsswift/ion/commit/e504553267067404a6990b54b4cf8f27a744baa6))
+* **desktop:** multi-backend: codex/grok/cursor ACP, provider login ([73eb20d](https://github.com/dsswift/ion/commit/73eb20def290aad188d915ee079fe17e34b41863))
+* **desktop:** credential-based backend routing and tab storage unify ([6fef234](https://github.com/dsswift/ion/commit/6fef234c90ad65d0eeca84400affbba9d2dd9bb0))
+* **desktop:** providers_updated refresh signal ([fd0e5ac](https://github.com/dsswift/ion/commit/fd0e5acd81aa8ac338015e7f15c2d29819ce6368))
+* **desktop:** device identity in logs, ios-parity agent panel ([cceb6ae](https://github.com/dsswift/ion/commit/cceb6ae3dd00f301b02007a28ae0990e74d8f1a5))
+* **desktop:** backend capability contract and native-session cursors ([2c06e04](https://github.com/dsswift/ion/commit/2c06e04f75a4c6022260d6b8698dcf4d51adaffe))
+
+### Bug Fixes
+
+* **desktop:** schedule: once kind and missed-slot detection ([b0cdd7f](https://github.com/dsswift/ion/commit/b0cdd7fb7a39b87a4247a09c0bbfcb7cc96acf28))
+* **desktop:** warm lan auth verdict, namespace, and cooldown ([1d12e88](https://github.com/dsswift/ion/commit/1d12e889b58871586fbf35232643ab40460d8f40))
+* **desktop:** prompt_injected kind, suppress agent_completion user bubble ([742172c](https://github.com/dsswift/ion/commit/742172cb9ed339af161a43c4790a8955b047f716))
+* **desktop:** task_suspend primitive, SDK ctx.suspend, dispatch revive ([7d1f887](https://github.com/dsswift/ion/commit/7d1f8870a516ab57715c330658bf464c2ad31383))
+* **desktop:** tree-native conversation rewind ([0b491d6](https://github.com/dsswift/ion/commit/0b491d69f68db85d33697241664bd4e695028f59))
+* **desktop:** propagate iOS attachment metadata through prompt pipeline ([d2c35b9](https://github.com/dsswift/ion/commit/d2c35b9c1143e0a165788971ecd47fc74208a9df))
+* **desktop:** stamp schemaVersion 4 on persist, stop pre-v4 backup accumulation ([6f95267](https://github.com/dsswift/ion/commit/6f9526709f9137f62da4aaf165783836e572d733))
+* **desktop:** lazy nativeImage, fix stale egress and roundtrip test pins ([2fa0d7f](https://github.com/dsswift/ion/commit/2fa0d7f55569909e276e0a4ecb139fceb628a9ae))
+* **desktop:** lazy electron in secretStore, isolate container node_modules ([5a16c5c](https://github.com/dsswift/ion/commit/5a16c5c61132480e553a1d47087eb1d6785f7c5f))
+* **desktop:** alias electron to load-safe stub in vitest ([3c2728d](https://github.com/dsswift/ion/commit/3c2728d5e8834ca7a41a09a23740dbe50f2609e3))
+* **desktop:** create ~/.ion before first log write ([17c4311](https://github.com/dsswift/ion/commit/17c4311c5ec1c4c74c35f72572b94041938eddd3))
+
 ## [1.58.0](https://github.com/dsswift/ion/compare/desktop-v1.57.0...desktop-v1.58.0) (2026-07-05)
 
 ### Features
