@@ -79,6 +79,79 @@ func TestMessageEndCarriesPersistedEntryIDs(t *testing.T) {
 	}
 }
 
+// TestUserTurnPersistedEmittedBeforeStreaming pins the re-key contract for
+// runs that never reach a message_end: the run emits a UserTurnPersistedEvent
+// carrying the persisted user turn's canonical entry id BEFORE the first
+// text chunk. A consumer re-keys its optimistic user row on this event, so a
+// cancel or mid-stream failure can no longer leave the row un-re-keyed (the
+// history-reload duplicate-user-bubble bug).
+func TestUserTurnPersistedEmittedBeforeStreaming(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	setupTestProvider([][]types.LlmStreamEvent{
+		textResponse("hello there", 10, 5),
+	})
+
+	b := NewApiBackend()
+	c := collectEvents(b, "req-utp")
+	b.StartRun("req-utp", types.RunOptions{
+		Prompt:           "hi",
+		ProjectPath:      tmp,
+		Model:            testModel,
+		ConversationID:   "conv-utp-test",
+		EarlyStopEnabled: testEarlyStopDisabled(),
+	})
+
+	if !waitForExit(c, 5*time.Second) {
+		t.Fatal("timed out waiting for exit")
+	}
+
+	c.mu.Lock()
+	utpIdx, firstTextIdx := -1, -1
+	var utp *types.UserTurnPersistedEvent
+	for i, ev := range c.normalized {
+		switch d := ev.Data.(type) {
+		case *types.UserTurnPersistedEvent:
+			if utpIdx == -1 {
+				utpIdx = i
+				utp = d
+			}
+		case *types.TextChunkEvent:
+			if firstTextIdx == -1 {
+				firstTextIdx = i
+			}
+		}
+	}
+	c.mu.Unlock()
+
+	if utp == nil {
+		t.Fatal("no UserTurnPersistedEvent emitted")
+	}
+	if utp.EntryID == "" {
+		t.Fatal("UserTurnPersistedEvent.EntryID is empty")
+	}
+	if firstTextIdx != -1 && utpIdx > firstTextIdx {
+		t.Errorf("UserTurnPersistedEvent emitted at index %d, after first text chunk at %d — must precede streaming", utpIdx, firstTextIdx)
+	}
+
+	// The id must match the persisted user turn's tree-entry id.
+	conv, err := conversation.Load("conv-utp-test", "")
+	if err != nil {
+		t.Fatalf("load persisted conversation: %v", err)
+	}
+	var userID string
+	for i := range conv.Entries {
+		if conv.Entries[i].Type == conversation.EntryMessage && entryRole(conv.Entries[i].Data) == "user" {
+			userID = conv.Entries[i].ID
+			break
+		}
+	}
+	if userID != utp.EntryID {
+		t.Errorf("persisted user entry id %q != emitted EntryID %q", userID, utp.EntryID)
+	}
+}
+
 // entryRole extracts the role from a message entry's data.
 func entryRole(data any) string {
 	switch d := data.(type) {

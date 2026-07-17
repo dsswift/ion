@@ -199,3 +199,163 @@ func TestFlattenEntries_LegacyOrphanImages(t *testing.T) {
 		}
 	}
 }
+
+// TestUserPromptImage_ReplayedOnUserRow asserts that an image the CLIENT sent
+// as a prompt attachment (RunOptions.Attachments → buildUserContentBlocks →
+// a user entry with [text, image] blocks and NO tool_result blocks) reloads
+// with the attachment on the USER row itself.
+//
+// This test is RED without the tool-result-carrier discriminator in
+// flattenEntries: the prompt image has an empty ToolUseID, so it fell into
+// the legacy last-tool-row heuristic and — with no tool row in the
+// conversation (first message) — was silently dropped. The user row carried
+// no Attachments and the image vanished from every history load.
+func TestUserPromptImage_ReplayedOnUserRow(t *testing.T) {
+	dir := t.TempDir()
+	b64 := base64.StdEncoding.EncodeToString(tinyPNG)
+
+	conv := CreateConversation("prompt-image-reload", "be helpful", "claude-3-5-sonnet")
+	// Exactly the shape buildUserContentBlocks writes for a prompt with one
+	// image attachment: text block first, image block after, no tool_result.
+	AddUserMessage(conv, []types.LlmContentBlock{
+		{Type: "text", Text: "[Attachment: photo.jpeg (content attached)]\n\nwhat is this image?"},
+		{Type: "image", Source: &types.ImageSource{Type: "base64", MediaType: "image/png", Data: b64}},
+	})
+
+	if err := Save(conv, dir); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	msgs, err := LoadMessages(conv.ID, dir)
+	if err != nil {
+		t.Fatalf("LoadMessages: %v", err)
+	}
+
+	var userRow *types.SessionMessage
+	for i := range msgs {
+		if msgs[i].Role == "user" {
+			userRow = &msgs[i]
+			break
+		}
+	}
+	if userRow == nil {
+		t.Fatal("expected a user row after reload, found none")
+	}
+	if len(userRow.Attachments) != 1 {
+		t.Fatalf("user row Attachments len = %d, want 1 (prompt image dropped on reload)", len(userRow.Attachments))
+	}
+	att := userRow.Attachments[0]
+	if att.Type != "image" {
+		t.Errorf("attachment Type = %q, want \"image\"", att.Type)
+	}
+	if att.MediaType != "image/png" {
+		t.Errorf("attachment MediaType = %q, want \"image/png\"", att.MediaType)
+	}
+	if att.Path == "" || att.Path == b64 {
+		t.Errorf("attachment Path = %q, want an on-disk file path (never base64)", att.Path)
+	}
+	if _, statErr := os.Stat(att.Path); statErr != nil {
+		t.Errorf("attachment Path does not exist on disk: %v", statErr)
+	}
+	// No tool row exists, and the image must NOT have been misattached
+	// anywhere else or dropped.
+	for i := range msgs {
+		if msgs[i].Role == "tool" && len(msgs[i].Attachments) > 0 {
+			t.Errorf("tool row %d carries %d attachments; prompt image misattached", i, len(msgs[i].Attachments))
+		}
+	}
+}
+
+// TestUserPromptImage_NotMisattachedToPriorToolRow pins the misattribution
+// half of the defect: a prompt image sent in a LATER turn of a conversation
+// that already has tool rows must attach to its own user row, not to the
+// most recent tool-call row via the legacy empty-ToolUseID heuristic.
+func TestUserPromptImage_NotMisattachedToPriorToolRow(t *testing.T) {
+	dir := t.TempDir()
+	b64 := base64.StdEncoding.EncodeToString(tinyPNG)
+
+	conv := CreateConversation("prompt-image-later-turn", "be helpful", "claude-3-5-sonnet")
+	AddUserMessage(conv, "run a tool")
+	AddAssistantMessage(conv, []types.LlmContentBlock{
+		{Type: "tool_use", ID: "tu_prior", Name: "Bash", Input: map[string]any{}},
+	}, types.LlmUsage{InputTokens: 5, OutputTokens: 5})
+	AddToolResults(conv, []ToolResultEntry{
+		{ToolUseID: "tu_prior", Content: "done"},
+	})
+	// Next turn: user sends an image prompt.
+	AddUserMessage(conv, []types.LlmContentBlock{
+		{Type: "text", Text: "now look at this"},
+		{Type: "image", Source: &types.ImageSource{Type: "base64", MediaType: "image/png", Data: b64}},
+	})
+
+	if err := Save(conv, dir); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	msgs, err := LoadMessages(conv.ID, dir)
+	if err != nil {
+		t.Fatalf("LoadMessages: %v", err)
+	}
+
+	var promptRow, toolRow *types.SessionMessage
+	for i := range msgs {
+		if msgs[i].Role == "user" && msgs[i].Content == "now look at this" {
+			promptRow = &msgs[i]
+		}
+		if msgs[i].Role == "tool" && msgs[i].ToolID == "tu_prior" {
+			toolRow = &msgs[i]
+		}
+	}
+	if promptRow == nil {
+		t.Fatal("expected the image-prompt user row after reload, found none")
+	}
+	if toolRow == nil {
+		t.Fatal("expected the prior tool row after reload, found none")
+	}
+	if len(promptRow.Attachments) != 1 {
+		t.Fatalf("prompt user row Attachments len = %d, want 1", len(promptRow.Attachments))
+	}
+	if len(toolRow.Attachments) != 0 {
+		t.Errorf("prior tool row Attachments len = %d, want 0 (prompt image misattached to tool row)", len(toolRow.Attachments))
+	}
+}
+
+// TestUserPromptDocument_TypedAsFile asserts a non-image prompt attachment
+// (e.g. a PDF document block) reloads as Type "file" so clients don't try to
+// render it as an image; name and path still flow for display.
+func TestUserPromptDocument_TypedAsFile(t *testing.T) {
+	dir := t.TempDir()
+	b64 := base64.StdEncoding.EncodeToString([]byte("%PDF-1.4 tiny"))
+
+	conv := CreateConversation("prompt-pdf-reload", "be helpful", "claude-3-5-sonnet")
+	AddUserMessage(conv, []types.LlmContentBlock{
+		{Type: "text", Text: "summarize this"},
+		{Type: "image", Source: &types.ImageSource{Type: "base64", MediaType: "application/pdf", Data: b64}},
+	})
+
+	if err := Save(conv, dir); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	msgs, err := LoadMessages(conv.ID, dir)
+	if err != nil {
+		t.Fatalf("LoadMessages: %v", err)
+	}
+
+	var userRow *types.SessionMessage
+	for i := range msgs {
+		if msgs[i].Role == "user" {
+			userRow = &msgs[i]
+			break
+		}
+	}
+	if userRow == nil {
+		t.Fatal("expected a user row after reload, found none")
+	}
+	if len(userRow.Attachments) != 1 {
+		t.Fatalf("user row Attachments len = %d, want 1", len(userRow.Attachments))
+	}
+	if userRow.Attachments[0].Type != "file" {
+		t.Errorf("attachment Type = %q, want \"file\" for non-image media", userRow.Attachments[0].Type)
+	}
+	if userRow.Attachments[0].Path == "" {
+		t.Error("attachment Path is empty, want an on-disk file path")
+	}
+}

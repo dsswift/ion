@@ -68,6 +68,14 @@ type EngineEvent struct {
 	// engine_message_end
 	EndUsage *MessageEndUsage `json:"usage,omitempty"`
 
+	// engine_user_turn_persisted — the canonical persisted tree-entry id of
+	// the run-opening user turn, announced immediately after the engine
+	// persists it (before streaming). Re-key signal only: consumers re-key
+	// their optimistic user row to this id so history loads dedup against it
+	// even when the run never reaches a message_end (cancel, mid-stream
+	// failure). Never carries content. See types.UserTurnPersistedEvent.
+	UserTurnEntryID string `json:"userTurnEntryId,omitempty"`
+
 	// engine_tool_start
 	ToolName string `json:"toolName,omitempty"`
 	ToolID   string `json:"toolId,omitempty"`

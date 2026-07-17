@@ -68,7 +68,14 @@ extension ConversationView {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
 
-                if canAbort {
+                // Abort is hidden while voice recording is active: the
+                // recording strip's own stop/cancel controls occupy this
+                // area, and the abort button materializing next to them
+                // mid-interaction shifted the layout so a tap aimed at the
+                // strip landed on abort and killed the running turn (the
+                // "response terminated after three characters" incident).
+                // Abort reappears as soon as recording ends.
+                if canAbort && !isRecordingVoice {
                     Button {
                         DiagnosticLog.log("inputbar abort tapped", tag: "view.inputbar", fields: [
                             "tab_id": tabId,
@@ -248,6 +255,15 @@ extension ConversationView {
         let trimmed = promptText.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty || !pendingAttachments.isEmpty else { return }
         guard !hasUploading else { return }
+        // Submitting while a voice recording is active: the transcript is
+        // already in the field (live transcription writes into the draft), so
+        // whatever was being transcribed is what is being sent. Stop the
+        // recording WITHOUT restoring the pre-recording draft snapshot
+        // (cancelVoiceRecording would clobber promptText before the send).
+        if isRecordingVoice {
+            viewModel.speechService.cancelRecording()
+            isRecordingVoice = false
+        }
         isNearBottom = true
         forceScrollCounter += 1
         Haptic.light()

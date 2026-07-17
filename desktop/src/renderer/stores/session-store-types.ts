@@ -250,7 +250,7 @@ export interface State {
     source?: 'remote'
     resolveSlash?: boolean
   }) => void
-  submitRemotePrompt: (tabId: string, prompt: string, imageAttachments?: ImageAttachmentPayload[], resolveSlash?: boolean) => void
+  submitRemotePrompt: (tabId: string, prompt: string, imageAttachments?: ImageAttachmentPayload[], resolveSlash?: boolean, remoteAttachments?: Array<{ type: string; name: string; path: string }>) => void
   /**
    * Move a tab to its planning/in-progress group on send, based on the tab's
    * AUTHORITATIVE permission mode (effectivePermissionMode — reads the active

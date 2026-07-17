@@ -157,7 +157,7 @@ export type RemoteCommand =
   | { type: 'desktop_discover_commands'; directory: string }
   | { type: 'desktop_upload_attachment'; dataUrl: string; name: string; correlationId?: string }
   | { type: 'desktop_voice_config'; enabled: boolean; mode: 'client' | 'desktop'; systemPrompt?: string }
-  | { type: 'desktop_diagnostic_logs_response'; logs: string; deviceId: string; deviceName: string; nextSeq: number }
+  | { type: 'desktop_diagnostic_logs_response'; logs: string; pairingId: string; nextSeq: number }
   | { type: 'desktop_set_remote_display'; customName: string | null; customIcon: string | null; updatedAt: number }
   // ─── Desktop settings projection (Part 7) ───────────────────────────
   // Write-back path for the per-desktop settings the iOS Settings tab
@@ -272,6 +272,12 @@ export type RemoteEvent =
   // so stale pre-reset deltas can never arrive after this event.
   | { type: 'desktop_stream_reset'; tabId: string; instanceId?: string | null }
   | { type: 'desktop_message_end'; tabId: string; instanceId?: string | null; usage: { inputTokens: number; outputTokens: number; contextPercent: number; cost: number } }
+  // Canonical persisted tree-entry id of the run-opening user turn, announced
+  // before streaming (engine_user_turn_persisted, forwarded via the generic
+  // engine→wire mapper). iOS re-keys its optimistic user row to this id so a
+  // run that never reaches a message_end (cancel, mid-stream failure) still
+  // leaves the row canonically keyed and history reloads dedup against it.
+  | { type: 'desktop_user_turn_persisted'; tabId: string; instanceId?: string | null; userTurnEntryId: string }
   // `metadata` is an opaque pass-through hint map forwarded from the engine.
   // Carried verbatim across the relay to iOS so future iOS-side handlers
   // (e.g. dedup, render-style hints) can adopt the same conventions the

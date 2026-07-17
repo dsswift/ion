@@ -178,11 +178,13 @@ const pendingRequests = new Map<string, PendingLogRequest>()
 /**
  * Inject desktop-side identity into one parsed iOS log line and dedup on seq.
  *
- * The desktop stamps what only IT knows — the paired device's id/name (from the
- * response command) and this desktop's hostname — into the line's `fields`. iOS
- * already stamped what only it knows (device_model, app_version, os_version,
- * seq). Together they make every iOS line individually attributable downstream:
- * which device, which app build, paired to which desktop.
+ * The desktop stamps what only IT knows — the pairing_id (the ECDH channel ID
+ * that links logs to a specific desktop pairing session) and this desktop's
+ * hostname — into the line's `fields`. iOS already stamped what only it knows
+ * (device_id from identifierForVendor, device_model, app_version, os_version,
+ * seq, and optionally mdm_device_id/mdm_serial). Together every iOS line is
+ * individually attributable downstream: which hardware device, which app build,
+ * paired to which desktop session.
  *
  * Returns the re-serialized line, or null when the line is a duplicate (its
  * `seq` is at or below `sinceSeq` — a reconnect/overlap re-send) and must be
@@ -192,8 +194,7 @@ const pendingRequests = new Map<string, PendingLogRequest>()
  */
 function injectIdentity(
   line: string,
-  deviceId: string,
-  deviceName: string,
+  pairingId: string,
   sinceSeq: number,
 ): { out: string | null; passthrough: boolean; seq: number | null } {
   let obj: Record<string, unknown>
@@ -207,8 +208,7 @@ function injectIdentity(
   const seq = typeof rawSeq === 'number' ? rawSeq : typeof rawSeq === 'string' ? Number(rawSeq) : NaN
   if (!Number.isFinite(seq)) {
     // Parseable JSON but no usable seq — inject identity but cannot dedup.
-    fields.device_id = deviceId
-    fields.device_name = deviceName
+    fields.pairing_id = pairingId
     fields.desktop_host = DESKTOP_HOST
     obj.fields = fields
     return { out: JSON.stringify(obj), passthrough: false, seq: null }
@@ -217,8 +217,7 @@ function injectIdentity(
     // Already persisted on a prior pull — drop the duplicate.
     return { out: null, passthrough: false, seq }
   }
-  fields.device_id = deviceId
-  fields.device_name = deviceName
+  fields.pairing_id = pairingId
   fields.desktop_host = DESKTOP_HOST
   obj.fields = fields
   return { out: JSON.stringify(obj), passthrough: false, seq }
@@ -228,19 +227,20 @@ function injectIdentity(
  * Persist a log chunk from iOS to ~/.ion/ios-diagnostic-logs.jsonl.
  *
  * Each incoming line is parsed, stamped with desktop-side identity
- * (device_id / device_name / desktop_host) inside its `fields`, and appended.
- * Lines whose `seq` is at or below the persisted cursor are dropped as
- * duplicates (exactly-once against reconnect/restart overlap). Malformed lines
- * pass through unchanged and bump a debug-logged tolerance counter — never a
- * silent drop. Returns nothing; the caller advances the seq mark from the
- * response's `nextSeq`.
+ * (pairing_id / desktop_host) inside its `fields`, and appended. iOS already
+ * stamped the stable per-device identity (device_id, device_model, app_version,
+ * os_version, mdm_device_id, mdm_serial). Lines whose `seq` is at or below the
+ * persisted cursor are dropped as duplicates (exactly-once against
+ * reconnect/restart overlap). Malformed lines pass through unchanged and bump a
+ * debug-logged tolerance counter — never a silent drop. Returns nothing; the
+ * caller advances the seq mark from the response's `nextSeq`.
  *
  * Every line must remain a valid JSON object so Alloy/LogQL parsers can
  * consume the JSONL file.
  */
-function persistLogChunk(logs: string, deviceId: string, deviceName: string, sinceSeq: number): void {
+function persistLogChunk(logs: string, pairingId: string, sinceSeq: number): void {
   if (!logs.trim()) {
-    log('log_pull: no new lines', { device_id: deviceId })
+    log('log_pull: no new lines', { pairing_id: pairingId })
     return
   }
   const incoming = logs.split('\n').filter((l) => l.trim())
@@ -248,7 +248,7 @@ function persistLogChunk(logs: string, deviceId: string, deviceName: string, sin
   let duplicates = 0
   let malformed = 0
   for (const line of incoming) {
-    const { out, passthrough } = injectIdentity(line, deviceId, deviceName, sinceSeq)
+    const { out, passthrough } = injectIdentity(line, pairingId, sinceSeq)
     if (passthrough) malformed++
     if (out === null) {
       duplicates++
@@ -257,10 +257,10 @@ function persistLogChunk(logs: string, deviceId: string, deviceName: string, sin
     kept.push(out)
   }
   if (malformed > 0) {
-    log('log_pull: malformed lines passed through', { device_id: deviceId, count: malformed })
+    log('log_pull: malformed lines passed through', { pairing_id: pairingId, count: malformed })
   }
   if (kept.length === 0) {
-    log('log_pull: all lines were duplicates', { device_id: deviceId, duplicates })
+    log('log_pull: all lines were duplicates', { pairing_id: pairingId, duplicates })
     return
   }
   const payload = kept.join('\n') + '\n'
@@ -271,11 +271,11 @@ function persistLogChunk(logs: string, deviceId: string, deviceName: string, sin
     } else {
       writeFileSync(LOG_FILE, payload, 'utf-8')
     }
-    log('log_pull: appended lines', { count: kept.length, duplicates, malformed, device_id: deviceId, path: LOG_FILE })
+    log('log_pull: appended lines', { count: kept.length, duplicates, malformed, pairing_id: pairingId, path: LOG_FILE })
     // Rotate the iOS log file if it has grown past the size cap.
     rotateIosLogIfNeeded()
   } catch (err) {
-    log('log_pull: persist failed', { device_id: deviceId, error: (err as Error).message })
+    log('log_pull: persist failed', { pairing_id: pairingId, error: (err as Error).message })
   }
 }
 
@@ -321,7 +321,7 @@ export function handleDiagnosticLogsResponse(
   log('log_pull: received', { device_id: deviceId, bytes: cmd.logs?.length ?? 0, lines: lineCount, next_seq: cmd.nextSeq })
 
   const sinceSeq = getSeqMark(deviceId)
-  persistLogChunk(cmd.logs ?? '', deviceId, cmd.deviceName ?? 'unknown', sinceSeq)
+  persistLogChunk(cmd.logs ?? '', cmd.pairingId, sinceSeq)
 
   // Advance the persisted seq mark so the next pull (and any post-restart pull)
   // requests only lines newer than what we have. Guard against a stale/absent

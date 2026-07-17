@@ -226,6 +226,17 @@ See `docs/observability/cost-model.md` for the full cost model reference.
 - `tag` = the logger tag string passed to `utils.Log(tag, msg)`.
 - Context IDs injected automatically when `utils.LogCtx(ctx, ...)` is called.
 
+#### Machine identity in `fields` (engine)
+
+When egress is configured, the engine forwarder (`engine/internal/utils/log_egress.go`) stamps the following stable machine-identity fields onto every egress record. They are absent from the local `engine.jsonl` line (local JSONL uses the slog handler); they appear in the record shipped to the HTTP/OTEL egress target. Absent keys mean the value is empty or the platform has no source for it.
+
+| Field | Source | Notes |
+|---|---|---|
+| `host` | `os.Hostname()` | Always present. Matches the `host` field on telemetry events for the same machine — the Fleet board join key. |
+| `machine_id` | `ioreg IOPlatformUUID` (macOS) / `/etc/machine-id` (Linux) | Stable hardware UUID independent of the username. Absent on platforms without a source. |
+| `mdm_device_id` | MDM config (`MDMDeviceID` key) | Present only on MDM-enrolled machines (e.g. Intune). Enables cross-reference to the MDM console. |
+| `mdm_serial` | MDM config (`MDMSerialNumber` key) | Present only on MDM-enrolled machines. |
+
 ### extension (`component: "extension"`)
 
 - Emitted via JSON-RPC `log` notification from the SDK subprocess.
@@ -239,6 +250,17 @@ See `docs/observability/cost-model.md` for the full cost model reference.
 - File: `~/.ion/desktop.jsonl`, rename-rotate at 20 MB, 3 generations (`.1`, `.2`, `.3`).
 - `tag` = subsystem label (`ipc`, `conversation`, `sync`, etc.).
 
+#### Machine identity in `fields` (desktop)
+
+After `loadMachineIdentity()` resolves at app startup, the desktop logger stamps the following fields onto every log line (via `initLoggerMachineIdentity`). Caller-supplied fields always take precedence over these ambient values — they fill absent keys only.
+
+| Field | Source | Notes |
+|---|---|---|
+| `host` | `os.hostname()` | Always present. `.local` suffix stripped (matches the engine and telemetry `host` value). |
+| `machine_id` | `ioreg IOPlatformUUID` (macOS) | Stable hardware UUID. Absent on non-macOS platforms. |
+| `mdm_device_id` | `/Library/Managed Preferences/com.ion.engine.plist` (`MDMDeviceID` key) | Present only on MDM-enrolled macOS machines. |
+| `mdm_serial` | `/Library/Managed Preferences/com.ion.engine.plist` (`MDMSerialNumber` key) | Present only on MDM-enrolled macOS machines. |
+
 ### ios (`component: "ios"`)
 
 - Written via `DiagnosticLog.log()` to `~/.ion/ios-diagnostic-logs.jsonl` on the paired desktop.
@@ -248,13 +270,15 @@ See `docs/observability/cost-model.md` for the full cost model reference.
 
   | Field | Stamped by | Meaning |
   |---|---|---|
+  | `device_id` | iOS | Stable per-device hardware identity from `UIDevice.identifierForVendor` (UUID string). Survives app reinstalls and re-pairings; resets only on a full device wipe. This is the authoritative durable device identifier for grouping and liveness queries. |
   | `device_model` | iOS | Hardware model identifier from `utsname.machine` (e.g. `iPhone15,3`). |
   | `app_version` | iOS | App marketing version (`CFBundleShortVersionString`). |
   | `app_build` | iOS | App build number (`CFBundleVersion`). |
   | `os_version` | iOS | iOS version (`UIDevice.systemVersion`). |
+  | `mdm_device_id` | iOS | MDM-assigned device ID from the Managed App Config key `MDMDeviceID`. Present only on MDM-enrolled devices (e.g. Intune-managed). Absent otherwise. |
+  | `mdm_serial` | iOS | MDM-reported hardware serial number from the Managed App Config key `MDMSerialNumber`. Present only on MDM-enrolled devices. Absent otherwise. |
   | `seq` | iOS | Monotonic per-line sequence (string-encoded int), persisted in `UserDefaults` and never reset across launches. The desktop's exactly-once pull cursor: it requests lines with `seq` greater than its persisted per-device mark and dedups on `seq` before appending, so a reconnect or desktop restart resumes instead of re-shipping history. Independent of on-device file rotation (unlike a line count). |
-  | `device_id` | Desktop | The paired device's opaque id (from the pull-response command), injected at persist time. |
-  | `device_name` | Desktop | The paired device's human name (e.g. `Josh's iPhone`), injected at persist time. |
+  | `pairing_id` | Desktop | The ECDH channel ID for the specific desktop pairing session that collected these logs. Links a log line to a pairing session — distinct from `device_id` (hardware) and stable across reconnects within the same pairing. Injected at persist time. |
   | `desktop_host` | Desktop | The collecting desktop's hostname, injected at persist time. **Mirrors the telemetry `host` value** for the same machine, so an iOS line cross-references the Ion Fleet board's host rows — the basis for the device↔desktop pairing view on the Ion Mobile dashboard. |
 
   These power the **Ion Mobile** dashboard (`docs/observability/dashboards/src/dashboards/mobile.ts`), which queries the `{component="ios"}` log stream. Like `host`/`user` on the Fleet/Users packs, none of these are Alloy-promoted stream labels — dashboards parse them with `| json`.

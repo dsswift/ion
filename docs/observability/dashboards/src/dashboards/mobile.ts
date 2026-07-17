@@ -7,14 +7,17 @@
 // (the OTLP body carries the complete record since log-egress-otel ships the
 // full JSON). Alloy's ion_otlp_unwrap rewrites the Loki line to that JSON body,
 // so `| json` extraction works. Device identity fields live under the `fields`
-// key: device_model / app_version / app_build / os_version (stamped by iOS)
-// and device_id / device_name / desktop_host (stamped by the paired desktop at
-// persist time). Named json extraction pulls them to top-level label names
-// (queries-mobile.ts DEVICE_PIPE) so `by (device_name, ...)` groupings resolve.
+// key:
+//   device_id / device_model / app_version / app_build / os_version  — stamped by iOS
+//   mdm_device_id / mdm_serial                                        — stamped by iOS (MDM-enrolled)
+//   pairing_id / desktop_host                                          — stamped by the desktop
 //
-// The device↔desktop pairing table is the headline capability: it separates
-// several devices paired to one desktop, and one device paired to several
-// desktops, by (device_id, desktop_host) pair.
+// device_id is the stable per-device hardware identity (UIDevice.identifierForVendor
+// UUID) that survives re-pairings. pairing_id is the ECDH channel ID for the
+// specific desktop pairing session. Named json extraction pulls them to top-level
+// label names (queries-mobile.ts DEVICE_PIPE) so `by (device_id, ...)` groupings
+// resolve. The $device variable scopes by device_model (hardware model, e.g.
+// iPhone15,3) rather than a user-assigned name that can change.
 
 import type { Dashboard } from '../dashboard.ts';
 import { row, text, stat, timeseries, bargauge, table, logs } from '../panels.ts';
@@ -49,7 +52,7 @@ const bars = (fillOpacity: number) => ({
 });
 
 const INTRO =
-  '## Which iOS devices are running Ion, on what version, paired to which desktop?\n\nThe per-device mobile view over the **iOS log stream** (`{component="ios"}`). iOS emits no telemetry, so this pack does not appear on [Ion Fleet](/d/ion-fleet) — it reads the operational logs the paired desktop collects. Every line carries device identity: model / OS / app version+build (stamped by iOS) and device id / name / desktop host (stamped by the desktop). The **device→desktop pairing** table below is the "which device connected where" matrix. `desktop_host` matches the telemetry `host`, so a pairing row cross-references the Fleet board for the same machine.\n\nAll panels honor the dashboard time picker except **Device last-seen**, a liveness detector with a fixed 24h lookback so a quiet device stays visible.\n\n| Related | Dashboard |\n|---|---|\n| Landing | [Ion Overview](/d/ion-overview) |\n| Desktop/host view | [Ion Fleet](/d/ion-fleet) |\n| Live logs | [Ion Live Logs](/d/ion-logs) |';
+  '## Which iOS devices are running Ion, on what version, paired to which desktop?\n\nThe per-device mobile view over the **iOS log stream** (`{component="ios"}`). iOS emits no telemetry, so this pack does not appear on [Ion Fleet](/d/ion-fleet) — it reads the operational logs the paired desktop collects.\n\nEvery line carries **device identity** stamped by iOS: `device_id` (stable per-device UUID from `identifierForVendor` — survives re-pairings), `device_model` (hardware model e.g. `iPhone15,3`), OS version, and app version+build. On MDM-enrolled devices, `mdm_device_id` and `mdm_serial` enable cross-reference to Intune. The desktop stamps `pairing_id` (the ECDH channel ID for the specific pairing session) and `desktop_host`.\n\nThe **device→desktop pairing** table below is the "which device connected where" matrix. `desktop_host` matches the telemetry `host`, so a pairing row cross-references the Fleet board for the same machine.\n\nAll panels honor the dashboard time picker except **Device last-seen**, a liveness detector with a fixed 24h lookback so a quiet device stays visible.\n\n| Related | Dashboard |\n|---|---|\n| Landing | [Ion Overview](/d/ion-overview) |\n| Desktop/host view | [Ion Fleet](/d/ion-fleet) |\n| Live logs | [Ion Live Logs](/d/ion-logs) |';
 
 export function mobileDashboard(): Dashboard {
   const panels = [
@@ -143,13 +146,13 @@ export function mobileDashboard(): Dashboard {
         textMode: 'value_and_name',
         reduceOptions: { calcs: ['lastNotNull'], fields: '', values: true },
       },
-      targets: [{ e: deviceLastSeenMinutes('24h'), legend: '{{device_name}}' }],
+      targets: [{ e: deviceLastSeenMinutes('24h'), legend: '{{device_model}} {{device_id}}' }],
     }),
     row(10, 'Devices, versions, and pairing', 8),
     table({
       id: 11,
       title: 'App version by device',
-      description: 'Every device / app-version / OS-version combination reporting in the window, with its line count. Two rows for one device means it upgraded mid-window.',
+      description: 'Every device / app-version / OS-version combination reporting in the window, with its line count. Two rows for one device means it upgraded mid-window. MDM columns appear for enrolled devices.',
       gridPos: { h: 8, w: 12, x: 0, y: 9 },
       mode: 'instant',
       fieldConfig: { defaults: { unit: 'short', custom: { align: 'auto', displayMode: 'auto' } }, overrides: [] },
@@ -160,7 +163,10 @@ export function mobileDashboard(): Dashboard {
           options: {
             renameByName: {
               device_id: 'Device ID',
-              device_name: 'Device',
+              device_model: 'Model',
+              pairing_id: 'Pairing ID',
+              mdm_device_id: 'MDM Device ID',
+              mdm_serial: 'Serial',
               app_version: 'App version',
               app_build: 'Build',
               os_version: 'iOS',
@@ -172,14 +178,14 @@ export function mobileDashboard(): Dashboard {
       targets: [
         {
           e: appVersionByDevice('$__range'),
-          legend: '{{device_name}} {{app_version}}({{app_build}}) iOS {{os_version}}',
+          legend: '{{device_model}} ({{device_id}}) {{app_version}}({{app_build}}) iOS {{os_version}}',
         },
       ],
     }),
     table({
       id: 12,
       title: 'Device → desktop pairing',
-      description: 'Every device × desktop_host pair that produced iOS logs in the window. A device paired to two desktops yields two rows; several devices on one desktop yield several rows for that host. desktop_host matches the telemetry host on the Ion Fleet board.',
+      description: 'Every device × desktop_host pair that produced iOS logs in the window. device_id is the stable hardware identity (survives re-pairings); pairing_id is the ECDH channel for the specific session. A device paired to two desktops yields two rows; several devices on one desktop yield several rows for that host. desktop_host matches the telemetry host on the Ion Fleet board.',
       gridPos: { h: 8, w: 12, x: 12, y: 9 },
       mode: 'instant',
       fieldConfig: { defaults: { unit: 'short', custom: { align: 'auto', displayMode: 'auto' } }, overrides: [] },
@@ -190,15 +196,18 @@ export function mobileDashboard(): Dashboard {
           options: {
             renameByName: {
               device_id: 'Device ID',
-              device_name: 'Device',
+              device_model: 'Model',
+              pairing_id: 'Pairing ID',
               desktop_host: 'Desktop host',
+              mdm_device_id: 'MDM Device ID',
+              mdm_serial: 'Serial',
               Value: 'Lines',
             },
           },
         },
       ],
       targets: [
-        { e: devicePairingMatrix('$__range'), legend: '{{device_name}} @ {{desktop_host}}' },
+        { e: devicePairingMatrix('$__range'), legend: '{{device_model}} ({{device_id}}) @ {{desktop_host}}' },
       ],
     }),
     bargauge({
@@ -207,7 +216,7 @@ export function mobileDashboard(): Dashboard {
       gridPos: { h: 8, w: 12, x: 0, y: 17 },
       fieldConfig: { defaults: { unit: 'short' }, overrides: [] },
       options: { orientation: 'horizontal', reduceOptions: { calcs: ['sum'] }, displayMode: 'gradient', showUnfilled: true },
-      targets: [{ e: volumeByDevice(['device_name'], '$__range'), legend: '{{device_name}}' }],
+      targets: [{ e: volumeByDevice(['device_id', 'device_model'], '$__range'), legend: '{{device_model}} {{device_id}}' }],
     }),
     bargauge({
       id: 14,
@@ -225,7 +234,7 @@ export function mobileDashboard(): Dashboard {
         overrides: [],
       },
       options: { orientation: 'horizontal', reduceOptions: { calcs: ['sum'] }, displayMode: 'gradient', showUnfilled: true },
-      targets: [{ e: errorsByDevice(['device_name'], '$__range'), legend: '{{device_name}}' }],
+      targets: [{ e: errorsByDevice(['device_id', 'device_model'], '$__range'), legend: '{{device_model}} {{device_id}}' }],
     }),
     row(20, 'Activity over time', 25),
     timeseries({
@@ -234,7 +243,7 @@ export function mobileDashboard(): Dashboard {
       gridPos: { h: 8, w: 12, x: 0, y: 26 },
       fieldConfig: bars(60),
       options: legendBottom(),
-      targets: [{ e: volumeByDevice(['device_name'], '$__interval'), legend: '{{device_name}}' }],
+      targets: [{ e: volumeByDevice(['device_id', 'device_model'], '$__interval'), legend: '{{device_model}} {{device_id}}' }],
     }),
     timeseries({
       id: 16,
@@ -242,7 +251,7 @@ export function mobileDashboard(): Dashboard {
       gridPos: { h: 8, w: 12, x: 12, y: 26 },
       fieldConfig: bars(70),
       options: legendBottom(),
-      targets: [{ e: errorsByDevice(['device_name'], '$__interval'), legend: '{{device_name}}' }],
+      targets: [{ e: errorsByDevice(['device_id', 'device_model'], '$__interval'), legend: '{{device_model}} {{device_id}}' }],
     }),
     logs({
       id: 17,
@@ -258,7 +267,7 @@ export function mobileDashboard(): Dashboard {
         dedupStrategy: 'none',
         sortOrder: 'Descending',
       },
-      target: { e: stream('{component="ios"} | json device_name="fields.device_name" | __error__="" | device_name=~"$device"') },
+      target: { e: stream('{component="ios"} | json device_model="fields.device_model" | __error__="" | device_model=~"$device"') },
     }),
   ];
 
@@ -275,13 +284,14 @@ export function mobileDashboard(): Dashboard {
     file: 'ion-mobile',
     panels,
     templating: [
-      // device_name is extracted via named json extraction from fields.device_name
-      // (not an indexed stream label). label_values() cannot populate a dropdown
-      // for extracted fields — textbox regex defaulting to `.*` matches every device.
+      // device_model is the hardware model identifier (e.g. iPhone15,3) extracted
+      // via named json extraction from fields.device_model. label_values() cannot
+      // populate a dropdown for extracted fields — textbox regex defaulting to `.*`
+      // matches all devices. Use a regex like `iPhone15.*` to scope to a model family.
       {
         name: 'device',
-        label: 'Device',
-        description: 'Device name to scope panels. Accepts regex. Default matches all devices.',
+        label: 'Device model',
+        description: 'Hardware model identifier regex to scope panels (e.g. `iPhone15,3`, `iPhone15.*`). Default `.*` matches all.',
         type: 'textbox',
         current: { value: '.*' },
         query: '.*',

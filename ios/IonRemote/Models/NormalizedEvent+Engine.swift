@@ -204,6 +204,13 @@ extension RemoteEvent {
             try container.encode(EngineMessageEndUsage(inputTokens: inputTokens, outputTokens: outputTokens, contextPercent: contextPercent, cost: cost, entryId: entryId, userEntryId: userEntryId), forKey: .usage)
             return true
 
+        case .engineUserTurnPersisted(let tabId, let instanceId, let entryId):
+            try container.encode(TypeKey.engineUserTurnPersisted, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            try container.encode(entryId, forKey: .userTurnEntryId)
+            return true
+
         case .engineDead(let tabId, let instanceId, let exitCode, let signal, let stderrTail):
             try container.encode(TypeKey.engineDead, forKey: .type)
             try container.encode(tabId, forKey: .tabId)

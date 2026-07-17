@@ -41,6 +41,13 @@ let disableRotation = false
 
 let sessionContext: { session_id?: string; conversation_id?: string } = {}
 
+/**
+ * Stable machine-identity fields stamped on every log line. Populated once via
+ * initLoggerMachineIdentity() at app startup; empty until then. Caller-supplied
+ * fields in each log call take precedence over these ambient values.
+ */
+let ambientMachineFields: Record<string, string> = {}
+
 /** All chunks handed to async appendFile not yet confirmed written */
 const inFlight = new Map<number, string>()
 let nextChunkId = 1
@@ -55,12 +62,16 @@ function nowRfc3339Nano(): string {
 }
 
 function serialize(level: LogLevel, tag: string, msg: string, fields?: Record<string, unknown>): string {
+  // Ambient machine-identity fields fill absent keys; caller fields win on collision.
+  const mergedFields = Object.keys(ambientMachineFields).length > 0
+    ? { ...ambientMachineFields, ...(fields ?? {}) }
+    : (fields ?? {})
   const line: LogLine = {
     ts: nowRfc3339Nano(),
     level,
     component: 'desktop',
     msg,
-    fields: fields ?? {},
+    fields: mergedFields,
   }
   if (tag) line.tag = tag
   if (sessionContext.session_id) line.session_id = sessionContext.session_id
@@ -180,6 +191,25 @@ export function setLogLevel(level: LogLevel): void {
   minLevel = level
 }
 
+/**
+ * Stamp stable machine-identity fields onto every subsequent log line.
+ * Called once at app startup after loadMachineIdentity() resolves. Non-empty
+ * values only: an empty string is never stamped (mirrors the Go rule).
+ */
+export function initLoggerMachineIdentity(identity: {
+  host: string
+  machineId: string
+  mdmDeviceId: string
+  mdmSerial: string
+}): void {
+  const fields: Record<string, string> = {}
+  if (identity.host) fields.host = identity.host
+  if (identity.machineId) fields.machine_id = identity.machineId
+  if (identity.mdmDeviceId) fields.mdm_device_id = identity.mdmDeviceId
+  if (identity.mdmSerial) fields.mdm_serial = identity.mdmSerial
+  ambientMachineFields = fields
+}
+
 /** Configure logger behavior. `disableRotation` skips rotation (test use). */
 export function configureLogger(opts: { disableRotation?: boolean; maxGenerations?: number }): void {
   if (typeof opts.disableRotation === 'boolean') disableRotation = opts.disableRotation
@@ -258,6 +288,7 @@ export function _resetForTest(): void {
   disableRotation = false
   maxLogGenerations = MAX_LOG_GENERATIONS
   sessionContext = {}
+  ambientMachineFields = {}
   inFlight.clear()
   nextChunkId = 1
 }

@@ -86,6 +86,7 @@
 		A1B2C3D4E5F600010002049A /* SessionViewModel+GitCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */; };
 		A1B2C3D4E5F60001000206AA /* SessionViewModel+EventHandlers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */; };
 		A1B2C3D4E5F60001000208AA /* SessionViewModel+EngineEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */; };
+		A1B2C3D4E5F600010AH10001 /* SessionViewModel+AgentHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010AH20001 /* SessionViewModel+AgentHistory.swift */; };
 		THINK00000000000000000001 /* NormalizedEvent+Thinking.swift in Sources */ = {isa = PBXBuildFile; fileRef = THINK00000000000000000002 /* NormalizedEvent+Thinking.swift */; };
 		MSGIDMAP0000000000000002 /* SessionViewModel+MessageIdMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = MSGIDMAP0000000000000001 /* SessionViewModel+MessageIdMapping.swift */; };
 		THINK00000000000000000003 /* SessionViewModel+ThinkingEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = THINK00000000000000000004 /* SessionViewModel+ThinkingEvents.swift */; };
@@ -426,6 +427,7 @@
 		A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+GitCommands.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EventHandlers.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EngineEvents.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010AH20001 /* SessionViewModel+AgentHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+AgentHistory.swift"; sourceTree = "<group>"; };
 		THINK00000000000000000002 /* NormalizedEvent+Thinking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Thinking.swift"; sourceTree = "<group>"; };
 		MSGIDMAP0000000000000001 /* SessionViewModel+MessageIdMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+MessageIdMapping.swift"; sourceTree = "<group>"; };
 		THINK00000000000000000004 /* SessionViewModel+ThinkingEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ThinkingEvents.swift"; sourceTree = "<group>"; };
@@ -926,6 +928,7 @@
 				A1B2C3D4E5F60001008101AA /* SessionViewModel+EngineKeys.swift */,
 				A1B2C3D4E5F60001008201AA /* SessionViewModel+Conversation.swift */,
 				A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */,
+				A1B2C3D4E5F600010AH20001 /* SessionViewModel+AgentHistory.swift */,
 				SSVMDT000000000000002 /* SessionViewModel+DispatchTranscript.swift */,
 				MSGIDMAP0000000000000001 /* SessionViewModel+MessageIdMapping.swift */,
 				THINK00000000000000000004 /* SessionViewModel+ThinkingEvents.swift */,
@@ -1329,6 +1332,7 @@
 				A1B2C3D4E5F60001008100AA /* SessionViewModel+EngineKeys.swift in Sources */,
 				A1B2C3D4E5F60001008200AA /* SessionViewModel+Conversation.swift in Sources */,
 				A1B2C3D4E5F60001000208AA /* SessionViewModel+EngineEvents.swift in Sources */,
+				A1B2C3D4E5F600010AH10001 /* SessionViewModel+AgentHistory.swift in Sources */,
 				SSVMDT000000000000001 /* SessionViewModel+DispatchTranscript.swift in Sources */,
 				THINK00000000000000000001 /* NormalizedEvent+Thinking.swift in Sources */,
 				MSGIDMAP0000000000000002 /* SessionViewModel+MessageIdMapping.swift in Sources */,

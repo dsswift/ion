@@ -56,6 +56,13 @@ export type EngineEvent =
   | { type: 'engine_harness_message'; message: string; source?: string; metadata?: Record<string, unknown> }
   | { type: 'engine_text_delta'; text: string }
   | { type: 'engine_message_end'; usage: { inputTokens: number; outputTokens: number; contextPercent: number; cost: number; entryId?: string; userEntryId?: string } }
+  // engine_user_turn_persisted — the canonical persisted tree-entry id of the
+  // run-opening user turn, announced immediately after the engine persists it
+  // (before streaming). Re-key signal only, never content: consumers re-key
+  // their optimistic user row to this id so history loads dedup against it
+  // even when the run never reaches a message_end (cancel, mid-stream
+  // failure). Mirror of Go EngineEvent.UserTurnEntryID.
+  | { type: 'engine_user_turn_persisted'; userTurnEntryId: string }
   | { type: 'engine_tool_start'; toolName: string; toolId: string }
   | { type: 'engine_tool_end'; toolId: string; result?: string; isError?: boolean }
   // engine_image_content — a single image produced during a run, either

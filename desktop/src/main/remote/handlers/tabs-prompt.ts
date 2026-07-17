@@ -235,12 +235,34 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
   // we echo at the entry point. Slash echoes inside the pipeline are extra
   // confirmations, not the only ones — but for the non-slash path this
   // echo is the only one.
+  //
+  // Attachment parity with the engine branch above: the echo carries the
+  // marker-prefixed content AND the structured attachments array. iOS
+  // reconciles its optimistic bubble by id and REPLACES it with this echo —
+  // an echo without the markers/attachments erases the inline image the
+  // optimistic insert rendered (the "image appears then disappears" bug the
+  // engine branch already fixed; the CLI branch had the same defect).
+  // `id: a.path` — iOS keys AttachmentImageCache by the desktop-side path.
+  const cliAttachments = cmd.attachments || []
+  let cliEchoContent = cmd.text
+  if (cliAttachments.length > 0) {
+    const ctx = cliAttachments.map((a) => `[Attached ${a.type}: ${a.path}]`).join('\n')
+    cliEchoContent = `${ctx}\n\n${cliEchoContent}`
+  }
   const cliSlashMatch = cmd.text.match(/^\/([a-zA-Z][a-zA-Z0-9_:-]*)\s*([\s\S]*)$/)
   state.remoteTransport?.send({
     type: 'desktop_message_added',
     tabId: cmd.tabId,
     message: {
-      id: reqId, role: 'user', content: cmd.text, timestamp: Date.now(), source: 'remote',
+      id: reqId, role: 'user', content: cliEchoContent, timestamp: Date.now(), source: 'remote',
+      ...(cliAttachments.length > 0 ? {
+        attachments: cliAttachments.map((a) => ({
+          id: a.path,
+          type: a.type as 'image' | 'file' | 'plan',
+          name: a.name,
+          path: a.path,
+        })),
+      } : {}),
       ...(cliSlashMatch ? { slashCommand: `/${cliSlashMatch[1]}`, slashArgs: cliSlashMatch[2] } : {}),
     },
   })

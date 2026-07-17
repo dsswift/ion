@@ -85,7 +85,10 @@ export class PairingManager extends EventEmitter {
    *
    * @param code The 6-digit code entered by the user on iOS.
    * @param peerPublicKey The iOS app's X25519 public key (base64).
-   * @param deviceName Human-readable device name (e.g., "Josh's iPhone").
+   * @param deviceName Human-readable device name (e.g., "Josh's iPhone"). Used for
+   *   the paired-devices UI list only — this value is NOT logged or stamped on any
+   *   log line. Per-device log attribution uses `device_id` (iOS-stamped hardware
+   *   UUID) and `pairing_id` (the ECDH channel ID derived below).
    * @param apnsToken Optional APNs device token for push notifications.
    * @param relayConfig Relay URL and API key to send to the iOS app.
    * @returns The pairing result with device info and our public key.

@@ -214,6 +214,9 @@
       "usage",
       "userEntryId"
     ],
+    "user_turn_persisted": [
+      "entryId"
+    ],
     "working_message": [
       "message"
     ]
@@ -388,7 +391,8 @@
     "totalBytes",
     "type",
     "url",
-    "usage"
+    "usage",
+    "userTurnEntryId"
   ],
   "sharedTypes": {
     "AgentStateUpdate": [

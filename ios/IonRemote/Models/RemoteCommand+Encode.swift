@@ -305,11 +305,10 @@ extension RemoteCommand {
             try container.encode(mode, forKey: .mode)
             try container.encodeIfPresent(systemPrompt, forKey: .systemPrompt)
 
-        case .diagnosticLogsResponse(let logs, let deviceId, let deviceName, let nextSeq):
+        case .diagnosticLogsResponse(let logs, let pairingId, let nextSeq):
             try container.encode(TypeKey.diagnosticLogsResponse, forKey: .type)
             try container.encode(logs, forKey: .logs)
-            try container.encode(deviceId, forKey: .deviceId)
-            try container.encode(deviceName, forKey: .deviceName)
+            try container.encode(pairingId, forKey: .pairingId)
             try container.encode(nextSeq, forKey: .nextSeq)
 
         case .setRemoteDisplay(let customName, let customIcon, let updatedAt):

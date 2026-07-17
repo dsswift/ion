@@ -143,10 +143,10 @@ final class DiagnosticLogSchemaTests: XCTestCase {
     // MARK: - Device identity + per-line seq
 
     /// Every emitted line must carry the device-identity fields the desktop
-    /// cannot know (model / OS / app version+build) inside `fields`, plus a
-    /// monotonic `seq`. Without these the central sink cannot attribute a line
-    /// to a specific device or app build.
-    func testEveryLineCarriesDeviceFieldsAndSeq() throws {
+    /// cannot know (model / OS / app version+build / device_id) inside `fields`,
+    /// plus a monotonic `seq`. Without these the central sink cannot attribute a
+    /// line to a specific device or app build.
+    func testAllLinesCarryRequiredFields() throws {
         DiagnosticLog.log("device fields probe", tag: "probe", level: .info)
         DiagnosticLog.flush()
 
@@ -168,6 +168,40 @@ final class DiagnosticLogSchemaTests: XCTestCase {
             XCTAssertNotNil(fields["app_build"], "app_build must be present on every line")
             XCTAssertNotNil(fields["os_version"], "os_version must be present on every line")
             XCTAssertNotNil(fields["seq"], "seq must be present on every line")
+            // device_id is the stable per-device hardware identity
+            // (UIDevice.identifierForVendor UUID). It must be present on every
+            // line so the central sink can group by device even when the pairing
+            // changes. In the simulator identifierForVendor is a fixed UUID that
+            // is non-nil; on real hardware it is the hardware-unique vendor UUID.
+            let deviceId = fields["device_id"] as? String
+            XCTAssertNotNil(deviceId, "device_id must be present on every line")
+            XCTAssertFalse(deviceId?.isEmpty ?? true, "device_id must not be empty")
+        }
+    }
+
+    /// MDM fields (mdm_device_id, mdm_serial) must be absent on the simulator
+    /// because no managed app config dictionary is available there. This guards
+    /// against silent empty-string injection (the rule: use `if let` on the
+    /// managed defaults value and only stamp when non-empty).
+    func testMDMFieldsAbsentOnSimulator() throws {
+        // In the simulator UserDefaults(suiteName: "com.apple.configuration.managed")
+        // returns either nil or a defaults with no MDMDeviceID / MDMSerialNumber keys,
+        // so these fields must be absent from every line.
+        DiagnosticLog.log("mdm probe", tag: "probe", level: .info)
+        DiagnosticLog.flush()
+
+        let raw = DiagnosticLog.exportCurrentSession()
+        let lines = raw.components(separatedBy: "\n").filter { !$0.isEmpty }
+        XCTAssertFalse(lines.isEmpty)
+
+        for line in lines {
+            guard let data = line.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let fields = obj["fields"] as? [String: Any] else { continue }
+            XCTAssertNil(fields["mdm_device_id"],
+                         "mdm_device_id must be absent on simulator (no managed config)")
+            XCTAssertNil(fields["mdm_serial"],
+                         "mdm_serial must be absent on simulator (no managed config)")
         }
     }
 

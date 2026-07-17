@@ -2,7 +2,8 @@ import { app, BrowserWindow, globalShortcut, Menu, screen } from 'electron'
 import { existsSync, rmSync, writeFileSync } from 'fs'
 import { readFileSync } from 'fs'
 import { join } from 'path'
-import { log as _log, flushLogs } from './logger'
+import { log as _log, flushLogs, initLoggerMachineIdentity } from './logger'
+import { loadMachineIdentity } from './machine-identity'
 import { state, SPACES_DEBUG, sessionPlane, engineBridge, fileWatchers, bashProcesses } from './state'
 import { terminalManager } from './terminal-manager-instance'
 import { stopTabSnapshotPolling } from './remote/snapshot-polling'
@@ -196,6 +197,12 @@ async function flushRendererTabs(): Promise<void> {
 }
 
 export function setupAppLifecycle(): void {
+  // Resolve stable machine identity early (before the first log line is written
+  // to egress). Non-fatal — errors are swallowed and identity fields are simply
+  // absent. loadMachineIdentity resolves quickly on all platforms; the host name
+  // is always available and ioreg/plutil are fast on modern macOS.
+  loadMachineIdentity().then(initLoggerMachineIdentity).catch(() => { /* non-fatal */ })
+
   app.whenReady().then(async () => {
     if (process.platform === 'darwin' && app.dock) {
       app.dock.hide()

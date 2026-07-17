@@ -511,7 +511,25 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 		blocks := contentToBlocks(md.Content)
 		switch md.Role {
 		case "user":
+			// Discriminate tool-result carriers from genuine user prompts.
+			// Tool results ride in user-role messages in the LLM transcript,
+			// and their image blocks belong to the owning tool-call row. A
+			// user-role entry with NO tool_result blocks is a real user
+			// prompt (client attachments via RunOptions.Attachments →
+			// buildUserContentBlocks), and its image blocks belong on the
+			// user row itself. Without this split, prompt images fell into
+			// the legacy last-tool-row heuristic below and were misattached
+			// to a prior turn's tool call — or silently dropped when no tool
+			// row existed (the first message of a conversation).
+			isToolResultCarrier := false
+			for _, b := range blocks {
+				if b.Type == "tool_result" {
+					isToolResultCarrier = true
+					break
+				}
+			}
 			var textParts []string
+			var promptAttachments []types.SessionMessageAttachment
 			for _, b := range blocks {
 				switch b.Type {
 				case "text":
@@ -538,17 +556,38 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 						})
 					}
 				case "image":
-					// A persisted tool-result image block. The live path emitted
-					// an ImageContentEvent per image and clients attached it to
-					// the owning tool message; that event is not persisted, so on
-					// reload we replay the reference here. The image block carries
-					// the owning tool call's id in ToolUseID (set by
-					// AddToolResults). Re-derive the on-disk path from the base64
-					// bytes (content-addressed, idempotent: this resolves to the
-					// same file the live save wrote, creating it only if it was
-					// pruned) and attach it to the matching tool-call row.
+					// A persisted image block. Two provenances share this
+					// block type, discriminated by the entry's tool_result
+					// blocks (isToolResultCarrier above):
+					//
+					//   - Tool-result carrier: the live path emitted an
+					//     ImageContentEvent per image and clients attached it
+					//     to the owning tool message; that event is not
+					//     persisted, so on reload we replay the reference
+					//     here. The image block carries the owning tool
+					//     call's id in ToolUseID (set by AddToolResults).
+					//   - Genuine user prompt: the client sent the image as a
+					//     prompt attachment (RunOptions.Attachments →
+					//     buildUserContentBlocks). It belongs on the user row
+					//     built at the end of this branch.
+					//
+					// Either way, re-derive the on-disk path from the base64
+					// bytes (content-addressed, idempotent: this resolves to
+					// the same file the live save wrote, creating it only if
+					// it was pruned).
 					att := imageAttachmentFromBlock(conv.ID, b)
 					if att == nil {
+						break
+					}
+					if !isToolResultCarrier {
+						// User-prompt attachment: attach to the user row.
+						// Non-image media (e.g. a PDF document block) is
+						// typed "file" so clients don't try to render it as
+						// an image; name/path still flow for display.
+						if !strings.HasPrefix(b.Source.MediaType, "image/") {
+							att.Type = "file"
+						}
+						promptAttachments = append(promptAttachments, *att)
 						break
 					}
 					if b.ToolUseID != "" {
@@ -577,7 +616,7 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 					}
 				}
 			}
-			if len(textParts) > 0 {
+			if len(textParts) > 0 || len(promptAttachments) > 0 {
 				content := strings.Join(textParts, "\n")
 				result = append(result, types.SessionMessage{
 					ID:        rowID(entry.ID, 0),
@@ -593,6 +632,12 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 					SlashCommand: md.SlashCommand,
 					SlashArgs:    md.SlashArgs,
 					SlashSource:  md.SlashSource,
+					// Prompt attachments (client-sent images/documents) replayed
+					// onto the user row so history loads carry the same
+					// structured references the live echo did. Empty for
+					// tool-result carriers — their images attach to the owning
+					// tool row above.
+					Attachments: promptAttachments,
 				})
 			}
 

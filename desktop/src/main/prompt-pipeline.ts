@@ -361,6 +361,13 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
       prompt: rewrittenText,
       timestamp: Date.now(),
       imageAttachments: encoded.length > 0 ? encoded : undefined,
+      // Forward raw attachments so the renderer's submitRemotePrompt can
+      // populate the optimistic user message's attachments field. Without
+      // this, InlineMessageImages renders nothing on the desktop for an
+      // iOS-sent image: the rewritten prompt carries only the pathless
+      // `[Attachment: NAME (content attached)]` form. Mirrors the
+      // REMOTE_ENGINE_PROMPT branch above.
+      attachments: attachments.length > 0 ? attachments : undefined,
       implementationPhase: p.implementationPhase,
       resolveSlash: p.resolveSlash,
     })

@@ -1,6 +1,6 @@
 ---
-description: Context-aware alignment. In plan mode: injects Ion quality standards into the current plan, then updates the plan with the alignment amendments. Outside plan mode: reviews all branch changes against Ion quality gates and principles, then enters planning mode and authors a fix plan for the findings — and after the operator approves the plan, may implement the fixes and commit them. Supports PR mode (in PR #N), branch mode (in branch <name>), and optional focus narrowing. Never squashes, rebases, pushes, or opens PRs.
-allowed_bash_commands: [ls, stat, git, gh pr view, gh pr diff, gh pr list, gh pr checks]
+description: Context-aware alignment. In plan mode: injects Ion quality standards into the current plan, then updates the plan with the alignment amendments. Outside plan mode: reviews all branch changes against Ion quality gates and principles, then enters planning mode and authors a fix plan for the findings — and after the operator approves the plan, may implement the fixes and commit them. Supports PR mode (`in PR #N`, or bare `287` / `#287` / `PR 287` / `PR #287` — reviews the pull request pending merge to main, ignores the local branch entirely, and lands fixes as commits on top of the PR's head branch in a dedicated worktree), branch mode (in branch <name>), and optional focus narrowing. Never squashes, rebases, pushes, or opens PRs.
+allowed_bash_commands: [ls, stat, git, gh pr view, gh pr diff, gh pr list, gh pr checks, gh pr checkout]
 ---
 
 You are running the `/align` command. This command operates in two modes depending on context. Detect the active mode first, then follow the instructions for that mode.
@@ -10,7 +10,7 @@ You are running the `/align` command. This command operates in two modes dependi
 - **Review the whole target; never ask the operator to narrow scope by size.** The review surface is fixed by the mode and arguments, not by how large it is: Mode A audits the attached plan in full; Mode B (Local) reviews the entire `main...HEAD` diff in full; Mode B (PR/branch) reviews the entire target diff in full. A large diff — any number of commits, files, or scopes — is reviewed completely; it is never a reason to stop and ask the operator which slice to review. The **only** scope narrowing that exists is explicit operator input parsed in B-Step 1 (a `<focus>` instruction, or `in PR` / `in branch` targets). Absent that input, there is no scope question. Do not emit an `AskUserQuestion` (or any prose prompt) asking the operator to pick a subset, confirm scope, or choose between "recent commits" and "whole branch" — proceed and review everything. A genuinely enormous diff yields a large report, not a smaller review.
 - You will not squash, rebase, amend, force-push, push, or open/modify a PR. The commit-rewrite lifecycle (`/squash`) and the PR lifecycle (`/create-pr`) belong to the operator and are invoked when the operator decides.
 - You will not run `gh pr create`, `gh pr merge`, `gh pr review`, `gh pr comment`, `git push`, `git rebase`, `git commit --amend`, `git push --force`, or any other commit-rewriting or remote-mutating command.
-- **Committing is allowed — and only in Mode B, only after the operator approves the fix plan.** When Mode B implements an approved fix plan (B-Step 6), it commits the completed work with conventional, correctly-scoped commits, exactly as any implementation session would (see root `AGENTS.md` § "Commits"). It never squashes those commits together, never rebases, and never pushes — the operator handles squashing and PRs. Mode A never commits (no code exists yet — there is nothing to commit). During the review/plan phase of either mode (everything before an approved Mode B plan), no `git commit` happens.
+- **Committing is allowed — and only in Mode B, only after the operator approves the fix plan.** When Mode B implements an approved fix plan (B-Step 6), it commits the completed work with conventional, correctly-scoped commits, exactly as any implementation session would (see root `AGENTS.md` § "Commits"). In PR mode those commits land on the PR's head branch in a dedicated worktree (see B-Step 6) — local commits on the PR branch are not "modifying the PR"; only pushing updates the PR, and pushing stays the operator's. It never squashes those commits together, never rebases, and never pushes — the operator handles squashing and PRs. Mode A never commits (no code exists yet — there is nothing to commit). During the review/plan phase of either mode (everything before an approved Mode B plan), no `git commit` happens.
 - **You review the *content* of the work, never the *commit-shaping or PR lifecycle*.** You will not author findings, amendments, recommendations, plan steps, or open items that direct the operator to squash, split/re-cut/rebase commits, choose a merge strategy, or open/sequence a pull request. Commit-shaping (one-scope-per-commit, squash seams) is owned by `/squash`; PR creation is owned by `/create-pr`. Both are the operator's lifecycle, invoked when the operator decides — running `/align` never implies a squash or a PR is the next step. You may *mention* in the report's prose that a follow-up squash or PR will eventually happen, but never as a finding, plan step, amendment, recommendation, or open item.
 - Your analysis output is a single markdown report in this chat response. After the report, Mode A writes only the plan file (folding in the amendments); Mode B writes the plan file and then — once the operator approves — implements the fix plan, which edits source and commits the result. No other lifecycle action (squash, rebase, push, PR) is permitted in either mode.
 - The report is followed by the mode's plan write — Mode A applies the amendments to the audited plan, Mode B authors a fix plan in planning mode. Mode A stops after the plan write and never implements. Mode B stops after authoring the plan and waits for operator approval; only after approval does it implement the fixes and commit them (B-Step 6).
@@ -32,7 +32,7 @@ You are running the `/align` command. This command operates in two modes dependi
 
 **Mode B (Post-Changes Alignment)** runs when **no** plan is attached and the branch has commits ahead of `main` (or uncommitted changes).
 
-Parse `$ARGUMENTS` for target and focus (see the argument grammar in Mode B). If `$ARGUMENTS` contains `in PR` or `in branch`, that forces Mode B regardless of any attached plan.
+Parse `$ARGUMENTS` for target and focus (see the argument grammar in Mode B). **PR-target arguments force Mode B (PR mode) regardless of any attached plan and regardless of local branch state.** A PR target is either the explicit `in PR` prefix or a bare PR reference: `287`, `#287`, `PR 287`, `PR #287`, or a comma/whitespace-separated list of these. When the operator passes a PR reference, they are asking for alignment of *that pull request* — not the local checkout. Do not review, diff, or even orient against the local branch; go straight to Mode B Step 1B. Likewise, `in branch` forces Mode B (Branch mode).
 
 Check: `git log main..HEAD --oneline`
 
@@ -438,7 +438,7 @@ Apply these rules in order against the trimmed `$ARGUMENTS` string:
 
 0. **Empty or whitespace-only** → Local mode (Step 1A), no focus. Done.
 
-1. **Backward-compat auto-detect:** Check if the *entire* string consists of nothing but PR-number-shaped tokens (positive integers with optional `#` or `PR #` prefixes, separated by commas and/or whitespace). If yes, treat as implicit PR mode — run Step 1B with no focus. Done.
+1. **Bare PR reference auto-detect:** Check if the *entire* string consists of nothing but PR-reference tokens (positive integers with optional `#` and/or `PR` prefixes, separated by commas and/or whitespace). All of these match: `287`, `#287`, `PR 287`, `PR #287`, `pr287`, `161, 162`, `PR #161, #162`. If yes, this is **implicit PR mode** — the operator is targeting pull requests, not the local checkout. Run Step 1B with no focus. Done. **Never treat a bare PR reference as a focus instruction, and never fall through to Local mode when one is present.** Misreading `/align 287` as "align my local branch, focused on something called 287" is the exact defect this rule exists to prevent.
 
 2. **Explicit `in PR` prefix** (case-insensitive): Extract PR numbers after `in PR`. Everything after the last PR-number token is the **focus instruction**. Run Step 1B. Done.
 
@@ -479,15 +479,17 @@ Print a one-paragraph orientation: branch name, number of commits ahead of `main
 
 ### Step 1B: PR mode
 
+**PR mode reviews the pull request as the merge candidate for `main`.** The review target is the PR's head branch as it exists on the remote — the thing that will merge — not the local checkout. The local branch, its commits, and its working tree are irrelevant to this run and must not influence any finding.
+
 For each parsed PR number:
 
 1. `gh pr view <N> --json number,title,author,state,baseRefName,headRefName,headRefOid,baseRefOid,additions,deletions,changedFiles,body,labels,isDraft,mergeable,mergeStateStatus,url` — if the PR does not exist or `gh` errors, capture the failure and continue to the next PR; surface it in the "What was not reviewed" section.
 2. `gh pr diff <N>` — the full diff. This is the primary review surface for that PR.
-3. `gh pr checks <N>` — CI state. Failed required checks are a CONCERN (or BLOCKER if they include contract-sync or file-size gates).
+3. `gh pr checks <N>` — CI state. **A PR is not aligned unless CI is passing.** Every failed check is a finding: BLOCKER if it is a required check or a contract-sync / file-size gate, CONCERN otherwise. Pending checks are noted in the header. A CI-failure finding is resolved like any other finding — the fix plan diagnoses the failure and fixes it on top of the PR (B-Step 6); "wait for CI" or "re-run the job" is not a resolution unless the failure is a proven infrastructure flake, which must be stated with evidence.
 
 Print a one-paragraph orientation: how many PRs are being reviewed, their numbers and titles, total files changed, scopes touched, focus instruction (if any).
 
-In PR mode, do not run `git status`, `git diff`, or `git log main..HEAD` against the local checkout — the PR's own diff is the source of truth.
+In PR mode, do not run `git status`, `git diff`, or `git log main..HEAD` against the local checkout — the PR's own diff is the source of truth. The local branch may be mid-flight on unrelated work; it is out of scope by definition.
 
 If `$ARGUMENTS` contained PR numbers but every one failed to resolve via `gh`, stop and report the failures. Do not fall back to local mode.
 
@@ -811,7 +813,7 @@ Entering planning mode creates the plan artifact automatically, and the user rev
 - A resolution for **every BLOCKER, CONCERN, and NIT** in the report. Each finding maps to one or more plan steps.
 - Steps that obey the "Plan resolution rules — no document-instead-of-fix moves" section above: every finding is resolved by a **code change, contract change, code deletion, a test that pins behavior, or an explicit do-nothing with stated rationale**. Never "add a TODO", "open a follow-up issue", "add a narrative comment", or "address in Phase N" as a resolution.
 - **The fix plan resolves only the *content* findings.** It never includes a squash, a commit split / re-cut / rebase, a merge-strategy decision, or a PR-creation / PR-sequencing step or open item. If the branch's commit shape is non-ideal, that is for `/squash` (operator-invoked) and `/create-pr` — the fix plan does not mention, sequence, or gate on them. A fix plan that ends with "then run `/squash`" or "decide split-vs-accept before the PR" is non-conforming; strip it.
-- In **PR mode**, the plan covers the findings across the reviewed PR(s) — the same way as the other sub-modes. The user's next step after reviewing a PR is to plan the changes (whether they land on this branch or are requested on the PR).
+- In **PR mode**, the plan covers the findings across the reviewed PR(s), and its implementation target is **the PR's head branch, not the local working branch**. The plan's fix steps land as commits on top of the PR so the pull request itself is brought into alignment before the operator approves and merges it. The plan names, per PR: the head branch (`headRefName`), the worktree path where it will be checked out (see B-Step 6), and the findings to be fixed there. The local checkout is never the implementation target in PR mode.
 
 **If there are zero findings** (verdict `READY` / `ALIGNED`), still enter planning mode and author a short stub plan that states no alignment issues were found and there is nothing to fix. The plan being empty is the correct, expected outcome of a clean review — not a reason to skip planning mode.
 
@@ -833,13 +835,24 @@ Branch mode:
 
 PR mode:
 
-> Review complete and a fix plan addressing the findings across the reviewed PR(s) has been authored in planning mode. I have not edited, commented on, approved, requested changes on, or merged any of these pull requests. Review and approve the plan through the normal flow; once you approve, I implement the fixes and commit them on the working branch (I will not squash, push, or touch the PRs — you own those). If there was nothing to fix, the plan is empty — close the tab and move on.
+> Review complete and a fix plan addressing the findings across the reviewed PR(s) has been authored in planning mode. I have not edited, commented on, approved, requested changes on, or merged any of these pull requests, and I have not touched your local branch. Review and approve the plan through the normal flow; once you approve, I check out each PR's head branch in a dedicated worktree, implement the fixes, and commit them on top of the PR (I will not squash, push, or merge — you push the branch and close the PR when you're satisfied). If there was nothing to fix, the plan is empty — close the tab and move on.
 
 After authoring the plan, stop and wait for operator approval. Do not implement, edit source, commit, or run further mutating commands before approval. Once the operator approves the plan, proceed to B-Step 6.
 
 ## B-Step 6: Implement the approved fix plan and commit (post-approval only)
 
 This step runs **only after the operator approves the fix plan** authored in B-Step 5. Before approval, do nothing here.
+
+**Implementation target by sub-mode:**
+
+- **Local mode:** fixes land on the current working branch, as always.
+- **Branch mode:** fixes land on the named branch (check it out in a worktree if it is not the current checkout, so the operator's working tree is untouched).
+- **PR mode:** fixes land **on top of the PR's head branch** — the point of the run is to bring the pull request into alignment so the operator can approve and merge it. Never implement PR-mode fixes on the local working branch. Mechanics, per PR:
+  1. Fetch and check out the PR head branch in a dedicated worktree so the operator's checkout is untouched: `git fetch origin <headRefName>` then `git worktree add ../ion-align-pr-<N> <headRefName>` (or `gh pr checkout <N>` inside a fresh worktree for cross-fork PRs).
+  2. Implement the fixes and commit them **on that branch, in that worktree**, as ordinary commits on top of the PR's existing history. Never amend, rebase, squash, or force-anything over the PR's existing commits.
+  3. If a finding was a CI failure, the fix must address the failure's root cause; verify with the scoped local equivalent of the failing check before committing.
+  4. Do **not** push. Report the worktree path and the branch name; the operator pushes (which updates the PR) and proceeds with PR closure when satisfied.
+  5. Leave the worktree in place for the operator to inspect; note its path in the final report.
 
 When the operator approves:
 
@@ -849,4 +862,4 @@ When the operator approves:
 4. **Commit the completed work** with conventional, correctly-scoped commits (root `AGENTS.md` § "Commits"): `type(scope): subject`, scope matching the primary path, subject ≤ 65 chars, body wrapped ≤ 100 chars (commitlint enforces this), and the issue trailer (`Fixes #N` / `Closes #N` + ` (#N)` subject suffix) when the work came from an issue. Split into separate commits at clean scope seams when the fixes span scopes (e.g. one `chore(engine)`, one `chore(desktop)`, one `docs(repo)`).
 5. **Never** squash, rebase, amend across the operator's prior commits, force-push, push, or open/modify a PR. Commit only. The operator runs `/squash` and `/create-pr` when ready.
 
-After committing, report what landed (the commits, the gates that passed) and stop. Tell the operator the work is committed and ready, and that you have not squashed, pushed, or opened a PR. Do not run `/squash` or `/create-pr` and do not suggest them as a next step you will take — they are the operator's to invoke.
+After committing, report what landed (the commits, the gates that passed) and stop. Tell the operator the work is committed and ready, and that you have not squashed, pushed, or opened a PR. In PR mode, additionally report the worktree path and head branch carrying the fix commits, and that pushing the branch (which updates the PR) and closing the PR are the operator's next moves. Do not run `/squash` or `/create-pr` and do not suggest them as a next step you will take — they are the operator's to invoke.
