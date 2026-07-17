@@ -218,3 +218,44 @@ describe('submit() forwards source to window.ion.prompt', () => {
     )
   })
 })
+
+describe('submitRemotePrompt optimistic attachments (iOS-sent images)', () => {
+  // Regression: the desktop bubble never showed an iOS-sent image live. The
+  // pipeline rewrites the prompt to the pathless "(content attached)" form
+  // before REMOTE_USER_MESSAGE, so the marker regex in deriveMessageImages
+  // finds nothing — the structured attachments field is the only render
+  // source. It must be populated from the forwarded raw attachments.
+  it('populates userMessage.attachments from remoteAttachments with id === path', () => {
+    const tab = makeTab({ hasChosenDirectory: true })
+    const { state } = buildHarness(tab)
+
+    state.submitRemotePrompt(
+      'tab-1',
+      '[Attachment: photo.jpeg (content attached)]\n\nwhat is this?',
+      undefined,
+      undefined,
+      [{ type: 'image', name: 'photo.jpeg', path: '/tmp/ion-remote-1.jpeg' }],
+    )
+
+    const pane = state.conversationPanes.get('tab-1')
+    const inst = pane.instances[0]
+    const userMsg = inst.messages[inst.messages.length - 1]
+    expect(userMsg.role).toBe('user')
+    expect(userMsg.attachments).toEqual([
+      { id: '/tmp/ion-remote-1.jpeg', type: 'image', name: 'photo.jpeg', path: '/tmp/ion-remote-1.jpeg' },
+    ])
+  })
+
+  it('leaves attachments undefined when no remoteAttachments are forwarded', () => {
+    const tab = makeTab({ hasChosenDirectory: true })
+    const { state } = buildHarness(tab)
+
+    state.submitRemotePrompt('tab-1', 'plain prompt')
+
+    const pane = state.conversationPanes.get('tab-1')
+    const inst = pane.instances[0]
+    const userMsg = inst.messages[inst.messages.length - 1]
+    expect(userMsg.role).toBe('user')
+    expect(userMsg.attachments).toBeUndefined()
+  })
+})
