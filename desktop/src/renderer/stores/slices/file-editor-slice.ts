@@ -1,6 +1,7 @@
 import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State, FileEditorTab } from '../session-store-types'
 import { editorDirForTab, isEditableByDefault, nextEditorFileId, nextUntitledName } from '../session-store-helpers'
+import { rDebug } from '../../rendererLogger'
 
 export function createFileEditorSlice(set: StoreSet, _get: StoreGet): Partial<State> {
   return {
@@ -8,18 +9,18 @@ export function createFileEditorSlice(set: StoreSet, _get: StoreGet): Partial<St
       set((s) => {
         const tab = s.tabs.find((t) => t.id === tabId)
         if (!tab) {
-          console.log('[FileEditor] toggleFileEditor: tab not found', { tabId })
+          rDebug('file-editor', 'toggleFileEditor: tab not found', { tab_id: tabId })
           return {}
         }
         const dir = editorDirForTab(tab)
         const next = new Set(s.fileEditorOpenDirs)
         if (next.has(dir)) {
-          console.log('[FileEditor] toggleFileEditor: closing', { dir, tabId })
+          rDebug('file-editor', 'toggleFileEditor: closing', { dir, tab_id: tabId })
           next.delete(dir)
           return { fileEditorOpenDirs: next }
         }
         next.add(dir)
-        console.log('[FileEditor] toggleFileEditor: opening', { dir, tabId })
+        rDebug('file-editor', 'toggleFileEditor: opening', { dir, tab_id: tabId })
         set({ fileEditorFocused: true })
         const current = s.fileEditorStates.get(dir)
         if (!current || current.files.length === 0) {
@@ -53,12 +54,12 @@ export function createFileEditorSlice(set: StoreSet, _get: StoreGet): Partial<St
         // Normalize to editorDirForTab so the key matches what App.tsx checks.
         const tab = s.tabs.find((t) => t.id === _tabId)
         const resolvedDir = tab ? editorDirForTab(tab) : dir
-        console.log('[FileEditor] openFileInEditor', { callerDir: dir, resolvedDir, filePath })
+        rDebug('file-editor', 'openFileInEditor', { caller_dir: dir, resolved_dir: resolvedDir, path: filePath })
         const states = new Map(s.fileEditorStates)
         const current = states.get(resolvedDir) || { activeFileId: null, files: [] }
         const existing = current.files.find((f) => f.filePath === filePath)
         if (existing) {
-          console.log('[FileEditor] file already open, activating', { fileId: existing.id })
+          rDebug('file-editor', 'file already open, activating', { file_id: existing.id })
           states.set(resolvedDir, { ...current, activeFileId: existing.id })
         } else {
           const fileName = filePath.split('/').pop() || filePath
@@ -75,7 +76,7 @@ export function createFileEditorSlice(set: StoreSet, _get: StoreGet): Partial<St
             isReadOnly: !isEditableByDefault(fileName),
             isPreview: isMd && openMarkdownInPreview,
           }
-          console.log('[FileEditor] creating new file tab', { id, fileName, isReadOnly: newFile.isReadOnly, isPreview: newFile.isPreview })
+          rDebug('file-editor', 'creating new file tab', { id, file_name: fileName, is_read_only: newFile.isReadOnly, is_preview: newFile.isPreview })
           if (opts?.insertAfterActive) {
             const activeIdx = current.files.findIndex(f => f.id === current.activeFileId)
             const files = [...current.files]
@@ -87,21 +88,21 @@ export function createFileEditorSlice(set: StoreSet, _get: StoreGet): Partial<St
         }
         const editorOpen = new Set(s.fileEditorOpenDirs)
         editorOpen.add(resolvedDir)
-        console.log('[FileEditor] fileEditorOpenDirs after add', [...editorOpen])
+        rDebug('file-editor', 'fileEditorOpenDirs updated', { count: editorOpen.size })
         const result: Record<string, any> = { fileEditorStates: states, fileEditorOpenDirs: editorOpen }
         if (closeExplorerOnFileOpen) {
           // Explorer uses workingDirectory as its key, so delete by caller's dir
           const explorerIds = new Set(s.fileExplorerOpenDirs)
           explorerIds.delete(dir)
           result.fileExplorerOpenDirs = explorerIds
-          console.log('[FileEditor] closing explorer for dir', dir)
+          rDebug('file-editor', 'closing explorer for dir', { dir })
         }
         return result
       })
     },
 
     closeFileEditorTab: (dir, fileId) => {
-      console.log('[FileEditor] closeFileEditorTab', { dir, fileId })
+      rDebug('file-editor', 'closeFileEditorTab', { dir, file_id: fileId })
       set((s) => {
         const states = new Map(s.fileEditorStates)
         const current = states.get(dir)

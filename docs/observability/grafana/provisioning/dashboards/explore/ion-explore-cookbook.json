@@ -1,0 +1,484 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "description": "Ready-to-use LogQL recipes for ad-hoc investigation in Explore. Each panel shows the query and its purpose. Open the panel's query in Explore to run it interactively.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "How to Use This Cookbook",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 4
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "## Ion Explore Cookbook\n\nThis dashboard contains ready-to-run LogQL recipes for ad-hoc investigation. **Use it as a launching pad into Explore**, not as a live monitoring dashboard.\n\n### How to use a recipe\n1. Set the dashboard variables above (Conversation ID, Session ID, Extension Name) to scope the queries.\n2. Click the **three-dot menu** (⋮) on any panel and select **Explore** to open that query in Grafana Explore.\n3. In Explore you can adjust the time range, modify the query, and use **split-view** to correlate logs with traces.\n\n### Key fields (structured metadata promoted by Alloy)\n| Field | Description |\n|---|---|\n| `context_conversation_id` | Durable conversation-file ID — join key across all event types |\n| `context_session_id` | Engine session key (tab UUID for desktop clients) |\n| `context_extension` | Hosting extension name (omit-when-absent for non-extension runs) |\n| `context_extension_version` | Extension manifest version (omit-when-absent) |\n| `trace_id` | 32-hex trace ID — click the Tempo correlation link to jump to the trace |\n| `model` | LLM model name (on llm.call, run.complete) |\n| `run_cost_usd` | Per-run cost in USD (on run.complete) |\n\n### Provisioned correlations\nThe Loki datasource has three provisioned correlations: **conversation_id → all logs**, **session_id → telemetry**, **trace_id → Tempo trace**. In any Explore result, click the link button on a log line's field value to follow the correlation.\n"
+      },
+      "datasource": null
+    },
+    {
+      "id": 2,
+      "type": "row",
+      "title": "Per-Conversation Recipes",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 3,
+      "type": "logs",
+      "title": "All logs for a conversation",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 8
+      },
+      "description": "Every log line across all components (engine, extensions, desktop, iOS) that carries this conversation_id. Set the 'Conversation ID' variable above. This is the primary first-look query for any reported bug.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Ascending"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{component=~\".+\"} | json | context_conversation_id = \"$conversation_id\"",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "instant"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "logs",
+      "title": "Telemetry events for a conversation",
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 24,
+        "h": 8
+      },
+      "description": "Only telemetry events (run.complete, llm.call, dispatch.agent, cache.savings) for the given conversation_id. Use this to audit cost and timing for a single conversation without log noise.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service_name=\"ion-telemetry\"} | json | context_conversation_id = \"$conversation_id\"",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "instant"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "row",
+      "title": "Per-Session Recipes",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 21
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 6,
+      "type": "logs",
+      "title": "All telemetry for a session",
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 24,
+        "h": 8
+      },
+      "description": "All telemetry events (run.complete, llm.call, dispatch.agent, cache.savings) for the given session_id (the engine session key / tab UUID). Useful for session-level cost forensics when you know the tab/session but not the conversation ID.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service_name=\"ion-telemetry\"} | json | context_session_id = \"$session_id\"",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "instant"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "row",
+      "title": "Extension Attribution Recipes",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 30
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 8,
+      "type": "logs",
+      "title": "All runs attributed to an extension",
+      "gridPos": {
+        "x": 0,
+        "y": 31,
+        "w": 24,
+        "h": 8
+      },
+      "description": "All run.complete events where context_extension matches the Extension Name variable. Useful for reviewing all runs (cost, model, turns) driven by a specific extension. Old runs without context_extension are excluded — they appear as 'unattributed' in the Extensions dashboard.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | context_extension =~ \"$extension\"",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "instant"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "logs",
+      "title": "Agent dispatches attributed to an extension",
+      "gridPos": {
+        "x": 0,
+        "y": 39,
+        "w": 24,
+        "h": 8
+      },
+      "description": "All dispatch.agent spans where context_extension matches. Shows which sub-agents the extension dispatched, at what depth, and with what model. Useful for understanding sub-agent cost within an extension.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service_name=\"ion-telemetry\", kind=\"dispatch.agent\"} | json | payload_extension =~ \"$extension\"",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "instant"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Trace Correlation Recipes",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 47
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 11,
+      "type": "logs",
+      "title": "LLM calls with trace IDs",
+      "gridPos": {
+        "x": 0,
+        "y": 48,
+        "w": 24,
+        "h": 8
+      },
+      "description": "All llm.call telemetry events that carry a trace_id. Click the 'View trace' correlation link on any result row (via the provisioned Loki→Tempo correlation) to jump directly to the Tempo trace for that call.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service_name=\"ion-telemetry\", kind=\"llm.call\"} | json | trace_id != \"\"",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "instant"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "row",
+      "title": "Error and Quality Recipes",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 56
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 13,
+      "type": "logs",
+      "title": "Engine errors",
+      "gridPos": {
+        "x": 0,
+        "y": 57,
+        "w": 24,
+        "h": 8
+      },
+      "description": "All ERROR-level log lines from the engine. Start here for bug triage — every engine error path logs at ERROR level with structured fields. Filter further by conversation_id or session_id after identifying the relevant event.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{component=\"engine\"} | json | level = \"ERROR\"",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "instant"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "logs",
+      "title": "Extension errors",
+      "gridPos": {
+        "x": 0,
+        "y": 65,
+        "w": 24,
+        "h": 8
+      },
+      "description": "All ERROR-level log lines from extensions (component=extension). Cross-reference with the extension name via the 'tag' field (e.g. tag=ion-dev). Useful for debugging extension panics and unhandled hook rejections.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{component=\"extension\"} | json | level = \"ERROR\"",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "instant"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "row",
+      "title": "Ingest Diagnostics Recipes",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 73
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 16,
+      "type": "stat",
+      "title": "Ingest freshness by component (min since last line)",
+      "gridPos": {
+        "x": 0,
+        "y": 74,
+        "w": 24,
+        "h": 6
+      },
+      "description": "Minutes since the most recent log line per component — the tailer-wedge detector. When one component's tile climbs while the others stay near zero, that file's Alloy cursor is wedged (frozen positions offset against a still-growing file — see README \"Tailer wedge\"). Diagnosis: compare the positions offset in the container against the host file size; fix with `docker compose -p ion-obs restart alloy`. The [24h] lookback keeps a long-wedged component visible as a growing red value instead of dropping it from a narrow window.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "m",
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 30
+              }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "(vector(${__to:date:seconds}) - on() group_right() max by (component) (max_over_time({component=~\".+\"} | label_format ts_unix=\"{{ __timestamp__ | unixEpoch }}\" | unwrap ts_unix [24h]))) / 60",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "instant",
+          "legendFormat": "{{component}}"
+        }
+      ]
+    }
+  ],
+  "refresh": false,
+  "schemaVersion": 36,
+  "tags": [
+    "ion",
+    "explore",
+    "recipes"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "conversation_id",
+        "label": "Conversation ID",
+        "type": "textbox",
+        "description": "Paste a conversation ID ({millis}-{hex12}) to filter panels to a single conversation.",
+        "current": {
+          "value": ""
+        },
+        "hide": 0
+      },
+      {
+        "name": "session_id",
+        "label": "Session ID",
+        "type": "textbox",
+        "description": "Paste an engine session key (tab UUID or equivalent) to filter panels to a single session.",
+        "current": {
+          "value": ""
+        },
+        "hide": 0
+      },
+      {
+        "name": "extension",
+        "label": "Extension Name",
+        "type": "textbox",
+        "description": "Extension name (e.g. 'ion-dev') to scope extension-attribution panels.",
+        "current": {
+          "value": ".*"
+        },
+        "hide": 0
+      }
+    ]
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Ion Explore Cookbook",
+  "uid": "ion-explore-cookbook",
+  "version": 2
+}

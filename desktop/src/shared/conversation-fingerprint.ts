@@ -16,15 +16,22 @@
  * the authoritative history.
  *
  * CRITICAL: the Swift implementation (conversationTailFingerprint in
- * SessionViewModel+Snapshot.swift) and the inline-JS copy in snapshot.ts's
- * executeJavaScript projection MUST produce byte-identical output for the same
- * input. The pinning rules:
+ * SessionViewModel+Snapshot.swift) MUST produce byte-identical output for the
+ * same input. The pinning rules:
  *
- *   - Window: the last TAIL_WINDOW messages, in order.
+ *   - Rows: PERSISTED roles only (user / assistant / tool), filtered before
+ *     the window. Client-local rows (thinking synthesis, live-inserted system
+ *     dividers, harness notices) carry ids only one side knows and would
+ *     diverge the fingerprints permanently.
+ *   - Window: the last TAIL_WINDOW remaining messages, in order.
  *   - Per message token:
- *       tool rows:        "<id>:t<statusToken>"   (status only — see below)
+ *       tool rows:        "<toolId>:t<statusToken>"   (status only — see below)
  *       non-tool rows:    "<id>:<utf8ByteLen>"
  *     statusToken ∈ { r, c, e, - } for running / completed / error / none.
+ *     Tool rows key on the engine toolId (row id as fallback); text rows on
+ *     the canonical engine row id (history rows carry it; live rows re-key at
+ *     message_end). Heals are suppressed while streaming, so provisional
+ *     mid-run ids never reach a comparison.
  *   - Tokens joined with ",". No total-message-count suffix.
  *   - Content length is UTF-8 BYTE length (Swift `content.utf8.count`,
  *     JS `new TextEncoder().encode(content).length`) — never UTF-16 .length,
@@ -36,9 +43,10 @@
  *     tool's status flip (running→completed) is the signal we need, and it is
  *     truncation-immune.
  *
- * Any change here must be mirrored in BOTH the inline JS (snapshot.ts) and the
- * Swift (SessionViewModel+Snapshot.swift), and the parity is pinned by tests:
- * desktop conversation-fingerprint.test.ts and iOS ConversationStalenessReconcileTests.
+ * Any change here must be mirrored in the Swift copy
+ * (SessionViewModel+Snapshot.swift), and the parity is pinned by tests:
+ * desktop conversation-fingerprint.test.ts / compute-conv-fingerprint.test.ts
+ * and iOS ConversationStalenessReconcileTests.
  */
 
 /** Number of trailing messages the fingerprint spans. Smaller than the history
@@ -47,12 +55,25 @@
  *  enough to span a stuck tool plus its surrounding turn. */
 export const FINGERPRINT_TAIL_WINDOW = 10
 
+/**
+ * Roles that participate in the fingerprint. Only PERSISTED roles — the rows
+ * both sides can hold with identical canonical ids (history rows carry
+ * SessionLoadMessage.id; live rows re-key at message_end; tool rows key on
+ * toolId). Client-local rows — thinking synthesis, system dividers inserted
+ * live with local ids, harness/intercept notices — exist on one side with an
+ * id the other side can never share, so including them makes the two
+ * fingerprints permanently diverge and the heal loop forever.
+ */
+const FINGERPRINT_ROLES = new Set(['user', 'assistant', 'tool'])
+
 /** Minimal message shape the fingerprint needs. */
 export interface FingerprintMessage {
   id: string
   role: string
   content: string
   toolStatus?: string
+  /** Engine tool id on tool rows — the cross-platform row key. */
+  toolId?: string
 }
 
 /** UTF-8 byte length, matching Swift's `content.utf8.count`. */
@@ -84,10 +105,17 @@ function statusToken(toolStatus: string | undefined): string {
  * tail is both pagination-safe and sufficient.
  */
 export function conversationTailFingerprint(messages: FingerprintMessage[]): string {
-  const tail = messages.slice(Math.max(0, messages.length - FINGERPRINT_TAIL_WINDOW))
+  // Persisted roles only (see FINGERPRINT_ROLES) — filter BEFORE windowing so
+  // both sides window over the same row population regardless of how many
+  // client-local rows each interleaves.
+  const persisted = messages.filter((m) => FINGERPRINT_ROLES.has(m.role))
+  const tail = persisted.slice(Math.max(0, persisted.length - FINGERPRINT_TAIL_WINDOW))
   const tokens = tail.map((m) => {
     if (m.role === 'tool') {
-      return `${m.id}:t${statusToken(m.toolStatus)}`
+      // Keyed by the engine tool id — identical on a live-streamed tool row
+      // and its history-reloaded counterpart. Row id is only the fallback
+      // for a tool row that somehow lacks one.
+      return `${m.toolId || m.id}:t${statusToken(m.toolStatus)}`
     }
     return `${m.id}:${utf8ByteLength(m.content || '')}`
   })

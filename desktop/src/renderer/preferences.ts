@@ -1,10 +1,11 @@
 import { create } from 'zustand'
 import type { TabGroup } from '../shared/types'
 import { applyTheme, syncTokensToCss, darkColors, lightColors, getTheme, type ColorPalette } from './theme-tokens'
-import type { PreferencesState, ThemeMode } from './preferences-types'
-import { saveSettings, getAllSettings, getEffectiveTabGroups, INITIAL_SAVED, loadPersistedSettings } from './preferences-persist'
+import type { PreferencesState } from './preferences-types'
+import { saveSettings, getAllSettings, INITIAL_SAVED, loadPersistedSettings } from './preferences-persist'
 import { parseChord } from './shortcuts/chord'
 import { SHORTCUT_CATALOG } from './shortcuts/shortcut-catalog'
+import { rWarn } from './rendererLogger'
 export type { ThemeMode, PreferencesState } from './preferences-types'
 export { getEffectiveTabGroups } from './preferences-persist'
 
@@ -21,7 +22,6 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   defaultBaseDirectory: saved.defaultBaseDirectory,
   recentBaseDirectories: saved.recentBaseDirectories,
   directoryUsageCounts: saved.directoryUsageCounts,
-  preferredOpenWith: saved.preferredOpenWith,
   defaultPermissionMode: saved.defaultPermissionMode,
   expandOnTabSwitch: saved.expandOnTabSwitch,
   bashCommandEntry: saved.bashCommandEntry,
@@ -166,10 +166,6 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     const counts = { ...get().directoryUsageCounts }
     counts[dir] = (counts[dir] || 0) + 1
     set({ directoryUsageCounts: counts })
-    saveSettings(getAllSettings(get))
-  },
-  setPreferredOpenWith: (app) => {
-    set({ preferredOpenWith: app })
     saveSettings(getAllSettings(get))
   },
   setDefaultPermissionMode: (mode) => {
@@ -506,12 +502,12 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   setKeyboardShortcut: (commandId, chord) => {
     if (!parseChord(chord)) {
-      console.warn(`[Preferences] setKeyboardShortcut: invalid chord '${chord}' for '${commandId}' — ignored`)
+      rWarn('preferences', 'setKeyboardShortcut: invalid chord', { chord, command_id: commandId })
       return
     }
     const entry = SHORTCUT_CATALOG.find((e) => e.id === commandId)
     if (!entry) {
-      console.warn(`[Preferences] setKeyboardShortcut: unknown command id '${commandId}' — ignored`)
+      rWarn('preferences', 'setKeyboardShortcut: unknown command id', { command_id: commandId })
       return
     }
     const current = { ...get().keyboardShortcuts }

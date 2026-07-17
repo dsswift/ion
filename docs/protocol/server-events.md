@@ -317,7 +317,8 @@ Reports session-level status changes.
 | `model`             | string             | Active model                  |
 | `contextPercent`    | number             | Context window utilization %  |
 | `contextWindow`     | number             | Context window size in tokens |
-| `totalCostUsd`      | number             | Cumulative cost               |
+| `runCostUsd`        | number             | Per-run cost in USD (cache-aware, descendants included). Replaces former `totalCostUsd`. |
+| `conversationCostUsd` | number           | Cumulative conversation cost (this session + all descendant dispatches) in USD. |
 | `permissionDenials` | PermissionDenial[] | Denied tool calls             |
 
 #### engine_working_message
@@ -861,7 +862,8 @@ Typed per-session status snapshot. Emitted alongside the legacy `engine_status` 
 | `model` | string | Model the most recent run resolved to |
 | `contextPercent` | number | Context-window usage percent |
 | `contextWindow` | number | Model's context window in tokens |
-| `totalCostUsd` | number | Cumulative conversation cost in USD |
+| `runCostUsd` | number | Per-run cost in USD (cache-aware). Replaces former `totalCostUsd`. |
+| `conversationCostUsd` | number | Cumulative conversation cost (this session + all descendant dispatches) in USD. |
 | `sessionId` | string | Conversation ID |
 | `extensionName` | string | Name of the loaded extension |
 
@@ -875,6 +877,27 @@ Advisory workflow signal emitted once per run when the engine's progress watchdo
 | `runStalledDuration` | number | Seconds since last progress event |
 | `runStalledLastActivity` | string | Description of the most recent progress event (optional) |
 
+#### engine_capability_unsupported
+
+Workflow signal emitted when a requested feature (e.g. plan mode) is not supported by the backend that would serve the run, and the engine declined the prompt cleanly instead of dispatching a run that would fail. No run starts and the session stays idle and immediately usable for the next prompt. The engine reports; the consumer decides — reroute the prompt to a capable model, surface the reason, or ignore the event. Not retained or replayed on reconnect.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_capability_unsupported"` | Event type |
+| `capability` | string | Machine-readable name of the unsupported feature (`"plan_mode"` today; the vocabulary grows with the backend capability contract) |
+| `capabilityBackend` | string | Routing kind of the backend that would have served the run (`"grok"`, `"cursor"`, `"codex"`, `"claude-code"`, `"api"`) |
+| `capabilityReason` | string | Human-readable explanation suitable for direct display |
+
+#### engine_prompt_injected
+
+Emitted when an extension injects a prompt via `ctx.sendPrompt` (dispatch-completion delivery, check-ins, orchestrator revives) and the engine accepts a run on it. No client submitted this user turn, so no client performed an optimistic transcript insert — consumers that maintain a live transcript should append the prompt as a user turn. The same text is persisted as the run's user turn in the conversation file, so a history reload shows the identical transcript. Client-submitted prompts (the wire `prompt` command) never emit this event. Not retained or replayed on reconnect.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_prompt_injected"` | Event type |
+| `injectedPrompt` | string | The injected prompt text, verbatim |
+| `injectedPromptOrigin` | string | Hosting extension's name (optional; empty when the session has no extension identity) |
+
 #### engine_intercept
 
 Fire-and-forget signal emitted when an extension calls `ctx.Intercept()`. The engine attaches no semantics beyond routing. Not retained or replayed on reconnect.
@@ -887,6 +910,56 @@ Fire-and-forget signal emitted when an extension calls `ctx.Intercept()`. The en
 | `interceptMessage` | string | Body content |
 | `interceptSource` | string | Extension name (set by engine, not caller) |
 | `interceptMetadata` | object | Opaque map forwarded to clients unchanged |
+
+#### engine_oidc_login_url
+
+Emitted by the OIDC login orchestration to the **requesting client only** (requester-scoped, not broadcast) after `oidc_begin_login` starts a flow. Carries the user-facing half of the flow that the consumer must surface. Which fields are populated depends on the flow: interactive PKCE carries `oidcAuthorizationUrl` (the consumer opens it in a browser); device-code carries `oidcUserCode` + `oidcVerificationUri` (the consumer displays the code and the verification URL). Not retained or replayed on reconnect.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_oidc_login_url"` | Event type |
+| `oidcAuthorizationUrl` | string | PKCE flow: authorization URL for the consumer to open (optional) |
+| `oidcUserCode` | string | Device-code flow: the user code to display (optional) |
+| `oidcVerificationUri` | string | Device-code flow: the verification URL to display (optional) |
+
+#### engine_oidc_identity
+
+Complete operator identity snapshot. **Snapshot-replace semantics:** consumers replace their local identity state with this payload. Emitted on every identity state transition — device-code login completion, PKCE login completion, and logout — and broadcast to all connected clients (an `oidc_identity` request also delivers it requester-scoped).
+
+`oidcSignedIn` is a `*bool` (pointer) precisely so the signed-out `false` survives `omitempty` and appears on the wire: a signed-out snapshot carries `"oidcSignedIn": false` explicitly rather than omitting the field, so consumers can distinguish "signed out" from "field absent". The remaining identity fields are populated only when signed in.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_oidc_identity"` | Event type |
+| `oidcSignedIn` | boolean | Whether an operator is signed in. Always present, including `false` when signed out. |
+| `oidcProvider` | string | Identity provider ID (present when signed in) |
+| `oidcSubject` | string | Subject claim (present when signed in) |
+| `oidcUsername` | string | Username / preferred-username claim (present when signed in) |
+| `oidcDisplayName` | string | Display name claim (present when signed in) |
+
+#### engine_provider_login
+
+Delegated-CLI login lifecycle for a provider (e.g. `openai` via the `codex` CLI). **Incremental:** each emission is one stage transition. Delivered to the requesting client during an interactive `provider_login`, and broadcast on completion so every client refreshes. Not a snapshot — consumers track the stage sequence, not a replaced state.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_provider_login"` | Event type |
+| `providerLogin.provider` | string | Provider whose CLI is authenticating (e.g. `openai`) |
+| `providerLogin.backend` | string | CLI backend kind driving the login (e.g. `codex`) |
+| `providerLogin.stage` | string | `started` \| `await_browser` \| `await_device_code` \| `completed` \| `failed` \| `cancelled` |
+| `providerLogin.authUrl` | string | Browser URL to open (`await_browser`, optional) |
+| `providerLogin.userCode` | string | Device code the user enters (`await_device_code`, optional) |
+| `providerLogin.verificationUrl` | string | Where the user enters the device code (`await_device_code`, optional) |
+| `providerLogin.loginError` | string | Failure reason (`failed`, optional) |
+| `providerLogin.loginId` | string | CLI login handle, usable to cancel the flow (optional) |
+
+#### engine_providers_updated
+
+Advisory nudge that provider auth state or the available-model listing may have changed. Fires whenever the delegated-CLI probes are refreshed: after a login or logout completes, on `refresh_models`, and at startup once the initial probe lands. Broadcast to all clients. **Payload-less and idempotent** — the engine holds the authoritative state; consumers that render provider/model state re-query `list_models` to pull it. Unlike `engine_provider_login` (bound to one interactive flow), this event is trigger- and consumer-agnostic, and is the *only* refresh signal a completed logout emits.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_providers_updated"` | Event type |
 
 ---
 

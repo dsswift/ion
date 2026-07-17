@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useCallback } from 'react'
 import {
   FileText, Image, FileCode, File, ListChecks,
 } from '@phosphor-icons/react'
@@ -6,6 +6,7 @@ import { useSessionStore } from '../../stores/sessionStore'
 import { useColors } from '../../theme'
 import { PlanViewer } from '../PlanViewer'
 import type { Attachment } from '../../../shared/types'
+import { rWarn } from '../../rendererLogger'
 
 const FILE_ICONS: Record<string, React.ReactNode> = {
   'image/png': <Image size={12} />,
@@ -26,6 +27,7 @@ const EDITABLE_EXTS = new Set(['.md', '.txt', '.ts', '.tsx', '.js', '.jsx', '.js
 export function MessageAttachments({ attachments }: { attachments: Attachment[] }) {
   const colors = useColors()
   const [planData, setPlanData] = useState<{ content: string; fileName: string; filePath: string } | null>(null)
+  const closePlan = useCallback(() => setPlanData(null), [])
   const { openFileInEditor } = useSessionStore.getState()
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const workingDir = useSessionStore((s) => {
@@ -48,7 +50,7 @@ export function MessageAttachments({ attachments }: { attachments: Attachment[] 
     } else {
       const result = await window.ion.fsOpenNative(a.path)
       if (!result.ok) {
-        console.warn('Failed to open file:', result.error)
+        rWarn('attachments', 'failed to open file', { error: result.error })
       }
     }
   }
@@ -88,7 +90,7 @@ export function MessageAttachments({ attachments }: { attachments: Attachment[] 
           content={planData.content}
           fileName={planData.fileName}
           filePath={planData.filePath}
-          onClose={() => setPlanData(null)}
+          onClose={closePlan}
         />
       )}
     </>

@@ -255,8 +255,9 @@ func TestUserModels(t *testing.T) {
 				"baseURL": "https://ai.example.com",
 				"models": map[string]interface{}{
 					"claude-haiku-4-5": map[string]interface{}{
-						"contextWindow":  float64(200000),
-						"costPer1kInput": 0.0008,
+						"contextWindow":   float64(200000),
+						"costPer1kInput":  0.0008,
+						"maxOutputTokens": float64(64000),
 						"supportsCaching": true,
 					},
 					"claude-sonnet-4-6": map[string]interface{}{
@@ -290,6 +291,9 @@ func TestUserModels(t *testing.T) {
 	}
 	if haiku.ContextWindow != 200000 {
 		t.Errorf("expected context window 200000, got %d", haiku.ContextWindow)
+	}
+	if haiku.MaxOutputTokens != 64000 {
+		t.Errorf("expected maxOutputTokens 64000, got %d", haiku.MaxOutputTokens)
 	}
 	if !haiku.SupportsCaching {
 		t.Error("expected supportsCaching=true")

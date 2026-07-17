@@ -48,6 +48,14 @@ run() {
 # whole file's whitespace).
 run "file-size cap" bash scripts/check-file-sizes.sh
 
+# Dashboards-as-code drift + overcount audit. Runs when the query module,
+# recipes, or the committed dashboard JSONs are touched. Cheap (Node native
+# type-stripping, zero install) and catches hand-edited JSON or un-regenerated
+# module changes before CI. See ADR-020.
+if touched "^docs/observability/(dashboards/|grafana/provisioning/dashboards/|queries\.md)"; then
+  run "dashboards drift + overcount audit" make check-dashboards
+fi
+
 # Engine: lint diff vs main. Mirrors CI's --new-from-merge-base flag.
 if touched "^engine/"; then
   run "engine lint (new vs origin/main)" bash -c \

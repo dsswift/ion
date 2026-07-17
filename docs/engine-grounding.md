@@ -123,7 +123,7 @@ The engine has no opinion on user preferences. It does not persist them. It does
 Logging is first-class. Every operation must be reconstructible from logs alone, without a debugger.
 
 - Use `utils.Log` / `utils.Debug` / `utils.Error` with a consistent tag and rich context (provider id, model id, session key, request id, status codes).
-- Never use `log.Printf` or `fmt.Printf` for operational logging — the desktop spawns the engine and stderr is invisible. All operational logs go to `~/.ion/engine.log` via `utils.Log`.
+- Never use `log.Printf` or `fmt.Printf` for operational logging — the engine runs as a headless launchd daemon and its stderr is not a reliable operational channel. All operational logs go to `~/.ion/engine.jsonl` via `utils.Log`.
 - Log both sides of conditionals. The happy path is as valuable as the failure path.
 - When entering an under-instrumented code path, **add comprehensive logging first**, then make your change. Logging is permanent, not scaffolding.
 

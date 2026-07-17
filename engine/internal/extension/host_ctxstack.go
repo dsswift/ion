@@ -1,7 +1,6 @@
 package extension
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -9,11 +8,11 @@ import (
 
 // ctxStack is a concurrency-safe stack of extension Contexts. It
 // replaces the former single-slot atomic.Pointer[Context] to handle
-// concurrent tool/hook/async-fire executions on CliBackend.
+// concurrent tool/hook/async-fire executions on ClaudeCodeBackend.
 //
 // On ApiBackend, at most one context is active at a time (serial
 // execution), so the stack has depth 0 or 1 (identical behavior to
-// the old atomic pointer). On CliBackend, the ToolServer may invoke
+// the old atomic pointer). On ClaudeCodeBackend, the ToolServer may invoke
 // multiple tool handlers concurrently while hooks fire on other
 // goroutines. Each pushes its own Context; Current() returns the most
 // recently pushed (top of stack). All contexts for the same session
@@ -54,10 +53,9 @@ func (cs *ctxStack) Push(ctx *Context) {
 	defer cs.mu.Unlock()
 	if n := len(cs.stack); n > 0 && cs.stack[n-1] != nil && ctx != nil {
 		if cs.stack[n-1].SessionKey != ctx.SessionKey && cs.stack[n-1].SessionKey != "" && ctx.SessionKey != "" {
-			utils.Error("extension", fmt.Sprintf(
-				"ctxStack invariant violated: pushing ctx for session %q over %q (stack depth %d). "+
-					"This indicates a bug — every ctx on a Host's stack must belong to the same session.",
-				ctx.SessionKey, cs.stack[n-1].SessionKey, n))
+		utils.LogWithFields(utils.LevelError, "extension", "ctx stack invariant violated pushing ctx for different session", map[string]any{
+				"session_id": ctx.SessionKey, "reason": cs.stack[n-1].SessionKey, "count": n,
+			})
 		}
 	}
 	cs.stack = append(cs.stack, ctx)

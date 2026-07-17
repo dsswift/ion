@@ -89,7 +89,23 @@ final class RelayClient {
         guard let task, task.state == .running else {
             throw RelayClientError.notConnected
         }
-        try await task.send(.data(data))
+        // A wedged TCP connection can keep `task.state == .running` while
+        // `send` never completes — commands then await indefinitely, pile up,
+        // and later fail en masse with "Operation canceled". Bound every send
+        // with a deadline; on timeout treat the transport as failed and tear
+        // it down so the reconnect/backoff path takes over.
+        do {
+            try await withSendDeadline(seconds: transportSendDeadlineSeconds) {
+                try await task.send(.data(data))
+            }
+        } catch is SendDeadlineError {
+            DiagnosticLog.log("relay send timed out, tearing down", tag: "relay.client", level: .error, fields: [
+                "timeout_s": String(transportSendDeadlineSeconds),
+                "bytes": String(data.count)
+            ])
+            handleDisconnect()
+            throw RelayClientError.sendTimeout
+        }
     }
 
     // MARK: - Connection
@@ -131,12 +147,17 @@ final class RelayClient {
         }
 
         guard let url = components.url else {
-            print("[Ion] RelayClient: failed to build URL from components")
+            DiagnosticLog.log("failed to build relay URL from components", tag: "relay.client", level: .error, fields: [
+                "scheme": components.scheme ?? "nil",
+                "host": components.host ?? "nil"
+            ])
             scheduleReconnect()
             return
         }
 
-        print("[Ion] RelayClient: connecting to \(url)")
+        DiagnosticLog.log("relay websocket connecting", tag: "relay.client", fields: [
+            "url": url.absoluteString
+        ])
 
         var request = URLRequest(url: url)
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
@@ -171,6 +192,7 @@ final class RelayClient {
                     self.isConnected = true
                     self.isConnecting = false
                     self.reconnectAttempt = 0
+                    DiagnosticLog.log("relay websocket connected (first receive)", tag: "relay.client")
                     // Cancel any pending reconnect timer from a previous
                     // failed attempt so it doesn't tear down this connection.
                     self.reconnectWork?.cancel()
@@ -191,7 +213,9 @@ final class RelayClient {
                 self.receiveLoop(wsTask)
 
             case .failure(let error):
-                print("[Ion] RelayClient: receive failed: \(error)")
+                DiagnosticLog.log("relay websocket receive failed", tag: "relay.client", level: .warn, fields: [
+                    "error": error.localizedDescription
+                ])
                 self.handleDisconnect()
             }
         }
@@ -218,12 +242,15 @@ final class RelayClient {
             Self.backoffMax
         ) + Double.random(in: 0...Self.jitterMax)
 
-        print("[Ion] RelayClient: scheduleReconnect in \(Int(delay))s (attempt \(reconnectAttempt + 1))")
+        DiagnosticLog.log("relay reconnect scheduled", tag: "relay.client", fields: [
+            "delay_s": String(Int(delay)),
+            "attempt": String(reconnectAttempt + 1)
+        ])
         reconnectAttempt += 1
 
         let work = DispatchWorkItem { [weak self] in
             guard let self, !self.intentionallyClosed else { return }
-            print("[Ion] RelayClient: reconnect timer fired")
+            DiagnosticLog.log("relay reconnect timer fired", tag: "relay.client")
             Task { @MainActor in
                 guard !self.intentionallyClosed else { return }
                 await self.doConnect()
@@ -256,11 +283,14 @@ final class RelayClient {
 
 enum RelayClientError: Error, LocalizedError {
     case notConnected
+    case sendTimeout
 
     var errorDescription: String? {
         switch self {
         case .notConnected:
             return "Relay client is not connected"
+        case .sendTimeout:
+            return "Relay send timed out (connection wedged); transport torn down"
         }
     }
 }

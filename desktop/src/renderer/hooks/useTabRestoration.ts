@@ -8,8 +8,9 @@ import { makeLocalTab } from '../stores/session-store-helpers'
 import { makeMainPane, commitInstance, activeInstance } from '../stores/conversation-instance'
 import { lastPendingCardTool } from '../../shared/pending-card'
 import { mapSessionHistory } from '../../shared/session-message-mapper'
-import { parseToolInput, isSkeletonTab, normalizeLegacyTabFields, readMainInstance, reassertRestoredPlanMode, orderSessionCandidates, startSessionsSequentially } from './useTabRestoration-helpers'
-import { tabHasExtensions, persistedTabHasExtensions } from '../../shared/tab-predicates'
+import { parseToolInput, isSkeletonTab, normalizeLegacyTabFields, readMainInstance, reassertRestoredPlanMode, orderSessionCandidates, startSessionsSequentially, resolveBootActiveTabId, hydrateBootActiveTab } from './useTabRestoration-helpers'
+import { persistedTabHasExtensions } from '../../shared/tab-predicates'
+import { rDebug, rInfo, rWarn } from '../rendererLogger'
 
 /**
  * Bootstrap effect run once at app start. Initializes static info, restores
@@ -131,7 +132,7 @@ export function useTabRestoration() {
                 }
               })
               reassertRestoredPlanMode(tabId, readMainInstance(st), (st as any).permissionMode)
-              if (st.draftInput) console.log(`[restore] draft for tab ${tabId.slice(0, 8)} len=${st.draftInput.length}`)
+              if (st.draftInput) rDebug('restore', 'draft for tab', { tab_id: tabId.slice(0, 8), count: st.draftInput.length })
             } else {
               // Non-active tab: create skeleton tab whose `main` instance has
               // empty messages + a persisted messageCount (lazy load)
@@ -185,6 +186,10 @@ export function useTabRestoration() {
               const skeletonMode: 'auto' | 'plan' = main?.permissionMode ?? (st as any).permissionMode ?? 'auto'
               const pane = makeMainPane({
                 messages: [],
+                // Skeleton restore: history loads lazily (loadSkeletonMessages).
+                // The explicit marker keeps hydration correct even if live
+                // events land on this pane before the user opens the tab.
+                historyHydrated: false,
                 messageCount: main?.messageCount ?? 0,
                 modelOverride: main?.modelOverride || null,
                 draftInput: main?.draftInput ?? '',
@@ -199,7 +204,7 @@ export function useTabRestoration() {
                 return { tabs: [...s.tabs, tab], conversationPanes }
               })
               reassertRestoredPlanMode(tabId, main, (st as any).permissionMode)
-              if (main?.draftInput) console.log(`[restore] skeleton tab ${tabId.slice(0, 8)} draft len=${main.draftInput.length}`)
+              if (main?.draftInput) rDebug('restore', 'skeleton tab draft', { tab_id: tabId.slice(0, 8), count: main.draftInput.length })
             }
           } else if (persistedTabHasExtensions(st)) {
             await restoreConversationTab(st, restoredTabIds, i)
@@ -230,7 +235,7 @@ export function useTabRestoration() {
                   : t
               ),
             }))
-            if (st.draftInput) console.log(`[restore] draft for terminal tab ${tabId.slice(0, 8)} len=${st.draftInput.length}`)
+            if (st.draftInput) rDebug('restore', 'draft for terminal tab', { tab_id: tabId.slice(0, 8), count: st.draftInput.length })
 
             // Restore terminal instances from persisted state
             if (st.terminalInstances && st.terminalInstances.length > 0) {
@@ -296,7 +301,7 @@ export function useTabRestoration() {
               }
             })
             reassertRestoredPlanMode(tabId, sessionlessMain, (st as any).permissionMode)
-            if (sessionlessMain?.draftInput) console.log(`[restore] draft for sessionless tab ${tabId.slice(0, 8)} len=${sessionlessMain.draftInput.length}`)
+            if (sessionlessMain?.draftInput) rDebug('restore', 'draft for sessionless tab', { tab_id: tabId.slice(0, 8), count: sessionlessMain.draftInput.length })
           }
         }
 
@@ -328,12 +333,12 @@ export function useTabRestoration() {
               permissionMode: sessionPermMode,
             })
             if (res?.ok) {
-              console.log(`[restore] eager session started for ${tabId.slice(0, 8)} conversationId=${st.conversationId?.slice(0, 24)}`)
+              rInfo('restore', 'eager session started', { tab_id: tabId.slice(0, 8), conversation_id: st.conversationId?.slice(0, 24) ?? '' })
             } else {
-              console.warn(`[restore] eager session start failed for ${tabId.slice(0, 8)}: ${res?.error ?? 'unknown'}`)
+              rWarn('restore', 'eager session start failed', { tab_id: tabId.slice(0, 8), error: res?.error ?? 'unknown' })
             }
           } catch (err: any) {
-            console.warn(`[restore] eager session start threw for ${tabId.slice(0, 8)}: ${err?.message ?? String(err)}`)
+            rWarn('restore', 'eager session start threw', { tab_id: tabId.slice(0, 8), error: err?.message ?? String(err) })
           }
         })
 
@@ -370,7 +375,7 @@ export function useTabRestoration() {
                 if (found) {
                   restoredDenied = { tools: [{ toolName: found.toolName, toolUseId: found.toolId || 'restored', toolInput: parseToolInput(found.toolInput) }] }
                 } else {
-                  console.log(`[restore] tab ${tabId.slice(0, 8)} no pending card restored (suppressed or none)`)
+                  rDebug('restore', 'no pending card restored', { tab_id: tabId.slice(0, 8) })
                 }
               }
 
@@ -431,18 +436,14 @@ export function useTabRestoration() {
           }
         }
 
-        // Set active tab by index (handles both session and sessionless tabs)
-        if (typeof saved.activeTabIndex === 'number') {
-          const activeEntry = restoredTabIds.find((r) => r.index === saved.activeTabIndex)
-          if (activeEntry) {
-            useSessionStore.setState({ activeTabId: activeEntry.tabId })
-          }
-        } else if (saved.activeSessionId) {
-          // Backwards compat: fall back to session ID matching
-          const activeEntry = restoredTabIds.find((r) => r.sessionId === saved.activeSessionId)
-          if (activeEntry) {
-            useSessionStore.setState({ activeTabId: activeEntry.tabId })
-          }
+        // Set active tab by index (handles both session and sessionless tabs),
+        // then hydrate it. The boot-active tab is set via raw setState —
+        // selectTab never runs for it, so selectTab's lazy-hydration trigger
+        // never fires; hydrateBootActiveTab applies the same gate explicitly.
+        const bootActiveTabId = resolveBootActiveTabId(saved, restoredTabIds)
+        if (bootActiveTabId) {
+          useSessionStore.setState({ activeTabId: bootActiveTabId })
+          hydrateBootActiveTab(useSessionStore.getState(), bootActiveTabId)
         }
 
         // Remove the initial blank tab created by store constructor

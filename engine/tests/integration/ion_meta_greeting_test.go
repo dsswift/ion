@@ -6,7 +6,7 @@ package integration
 //
 // The greeting is emitted as an `engine_harness_message` on
 // `session_start` only when the conversation is logically new (no
-// on-disk persistence file under ~/.ion/conversations/<sessionKey>.*).
+// on-disk persistence file under ~/.ion/conversations/<conversationId>.*).
 //
 // We exercise both branches by overriding $HOME for the test process.
 // Both the engine's persistence layer (Go: os.UserHomeDir() reads HOME
@@ -59,8 +59,9 @@ func TestIonMetaGreeting_FreshConversationEmitsWelcome(t *testing.T) {
 		emitEvents []types.EngineEvent
 	)
 	ctx := &extension.Context{
-		SessionKey: "ion-meta-greeting-fresh",
-		Cwd:        "/tmp",
+		SessionKey:     "ion-meta-greeting-fresh",
+		ConversationID: "ion-meta-greeting-fresh-convid",
+		Cwd:            "/tmp",
 		Emit: func(ev types.EngineEvent) {
 			emitMu.Lock()
 			emitEvents = append(emitEvents, ev)
@@ -159,15 +160,19 @@ func TestIonMetaGreeting_ContinuedConversationSuppressesWelcome(t *testing.T) {
 	// Set up a temp HOME with a pre-existing conversation file. The
 	// detector should observe the file via readdirSync and skip the
 	// welcome emission. We use the `.llm.jsonl` suffix (v2 split
-	// format) but any `<sessionKey>.*` file would match.
+	// format) and name the file by conversationId (as persistence.go
+	// does). SessionKey and ConversationID are intentionally different
+	// values so this test exercises the real production correlation and
+	// guards against regression to the old sessionKey-named lookup.
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 	convDir := filepath.Join(tmpHome, ".ion", "conversations")
 	if err := os.MkdirAll(convDir, 0o755); err != nil {
 		t.Fatalf("mkdir conversations dir: %v", err)
 	}
-	sessionKey := "ion-meta-greeting-continued"
-	stubPath := filepath.Join(convDir, sessionKey+".llm.jsonl")
+	sessionKey := "ion-meta-greeting-continued-sk"
+	conversationID := "ion-meta-greeting-continued-convid"
+	stubPath := filepath.Join(convDir, conversationID+".llm.jsonl")
 	if err := os.WriteFile(stubPath, []byte("{\"header\":\"stub\"}\n"), 0o644); err != nil {
 		t.Fatalf("write conversation stub: %v", err)
 	}
@@ -187,8 +192,9 @@ func TestIonMetaGreeting_ContinuedConversationSuppressesWelcome(t *testing.T) {
 		emitEvents []types.EngineEvent
 	)
 	ctx := &extension.Context{
-		SessionKey: sessionKey,
-		Cwd:        "/tmp",
+		SessionKey:     sessionKey,
+		ConversationID: conversationID,
+		Cwd:            "/tmp",
 		Emit: func(ev types.EngineEvent) {
 			emitMu.Lock()
 			emitEvents = append(emitEvents, ev)

@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -113,13 +114,14 @@ func (s *Server) broadcast(line string, eventType string) {
 		default:
 			n := atomic.AddInt64(dropped, 1)
 			total := atomic.LoadInt64(&cw.stateDropped) + atomic.LoadInt64(&cw.streamDropped)
-			if n == 1 || total%256 == 0 {
-				kind := "stream"
-				if isState {
-					kind = "state"
-				}
-				utils.Log("Server", fmt.Sprintf("broadcast %s queue full; dropped %d total events for slow client", kind, total))
+			kind := "stream"
+			if isState {
+				kind = "state"
 			}
+			if n == 1 || total%256 == 0 {
+				utils.LogWithFields(utils.LevelInfo, "server", "broadcast queue full dropped events for slow client", map[string]any{"reason": kind, "count": total})
+			}
+			s.emitBackpressure(kind, total, false)
 		}
 	}
 
@@ -144,15 +146,36 @@ func (s *Server) broadcast(line string, eventType string) {
 		default:
 			n := atomic.AddInt64(dropped, 1)
 			total := atomic.LoadInt64(&lh.stateDropped) + atomic.LoadInt64(&lh.streamDropped)
-			if n == 1 || total%256 == 0 {
-				kind := "stream"
-				if isState {
-					kind = "state"
-				}
-				utils.Log("Server", fmt.Sprintf("broadcast listener %s queue full; dropped %d total events", kind, total))
+			kind := "stream"
+			if isState {
+				kind = "state"
 			}
+			if n == 1 || total%256 == 0 {
+				utils.LogWithFields(utils.LevelInfo, "server", "broadcast listener queue full dropped events", map[string]any{"reason": kind, "count": total})
+			}
+			s.emitBackpressure(kind, total, true)
 		}
 	}
+}
+
+// emitBackpressure emits a client.backpressure telemetry event when a client's
+// or listener's outbound queue overflows (family 4e). Nil-safe: no-op when the
+// server has no telemetry collector installed. queue is "state" or "stream";
+// droppedTotal is the running total of dropped events for that peer; listener
+// distinguishes a broadcast listener (relay) from a socket client.
+func (s *Server) emitBackpressure(queue string, droppedTotal int64, listener bool) {
+	s.mu.RLock()
+	telem := s.telemetry
+	s.mu.RUnlock()
+	if telem == nil {
+		return
+	}
+	// R11: event name is carried by Event.Name; payload.kind removed.
+	telem.Event(telemetry.ClientBackpressure, map[string]any{
+		"queue":         queue,
+		"dropped_total": droppedTotal,
+		"listener":      listener,
+	}, nil)
 }
 
 // drainClient reads from both queues with priority on state, writes to
@@ -160,11 +183,11 @@ func (s *Server) broadcast(line string, eventType string) {
 func (s *Server) drainClient(cw *clientWriter) {
 	write := func(line []byte) bool {
 		if err := cw.conn.SetWriteDeadline(time.Now().Add(broadcastWriteDeadline)); err != nil {
-			utils.Log("Server", "set write deadline failed: "+err.Error())
+			utils.LogWithFields(utils.LevelInfo, "server", "set write deadline failed", map[string]any{"error": err.Error()})
 		}
 		if _, err := cw.conn.Write(line); err != nil {
 			total := atomic.LoadInt64(&cw.stateDropped) + atomic.LoadInt64(&cw.streamDropped)
-			utils.Log("Server", fmt.Sprintf("broadcast write error (evicting client, %d events dropped): %s", total, err.Error()))
+			utils.LogWithFields(utils.LevelInfo, "server", "broadcast write error evicting client", map[string]any{"count": total, "error": err.Error()})
 			s.evictClient(cw.conn)
 			return false
 		}

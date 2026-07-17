@@ -85,7 +85,6 @@ function makeInstance(overrides: Partial<PersistedConversationInstance> = {}): P
     draftInput: '',
     agentStates: [],
     planFilePath: null,
-    forkedFromConversationIds: null,
     ...overrides,
   }
 }

@@ -17,12 +17,10 @@ const REMARK_PLUGINS = [remarkGfm]
 interface HarnessMessageProps {
   message: Message
   skipMotion?: boolean
-  bootstrapCollapsedCount?: number
 }
 
-export function HarnessMessage({ message, skipMotion, bootstrapCollapsedCount }: HarnessMessageProps) {
+export function HarnessMessage({ message, skipMotion }: HarnessMessageProps) {
   const colors = useColors()
-  const showBadge = bootstrapCollapsedCount !== undefined && bootstrapCollapsedCount > 0
 
   // Components map mirrors AssistantMessage's setup so links open
   // externally (rather than navigating the renderer) and tables get the
@@ -55,18 +53,6 @@ export function HarnessMessage({ message, skipMotion, bootstrapCollapsedCount }:
         borderLeft: `2px solid ${colors.accent}`,
       }}
     >
-      {showBadge && (
-        <span
-          className="shrink-0 text-[10px] font-semibold px-1 py-0.5 rounded-full leading-none mr-1.5 align-baseline"
-          style={{
-            background: colors.surfaceHover,
-            color: colors.textSecondary,
-            outline: `1px solid ${colors.containerBorder}`,
-          }}
-        >
-          ×{bootstrapCollapsedCount! + 1}
-        </span>
-      )}
       <Markdown remarkPlugins={REMARK_PLUGINS} components={markdownComponents}>
         {content}
       </Markdown>
@@ -86,4 +72,3 @@ export function HarnessMessage({ message, skipMotion, bootstrapCollapsedCount }:
     </motion.div>
   )
 }
-

@@ -32,6 +32,13 @@ const (
 	// ScheduleInterval fires every IntervalMs milliseconds, starting
 	// IntervalMs after the registration time (no immediate fire).
 	ScheduleInterval ScheduleKind = "interval"
+	// ScheduleOnce fires exactly once after DelayMs milliseconds, then
+	// self-deregisters. The scheduler removes the job from the host
+	// registry after the handler returns (success or error), so no
+	// second fire can occur. A once job whose enabled predicate returns
+	// false is skipped for that tick but remains armed and retries on
+	// the next tick — the predicate skip does NOT consume the shot.
+	ScheduleOnce ScheduleKind = "once"
 )
 
 // ScheduleJob is the full registration declaration for one job.
@@ -48,10 +55,15 @@ type ScheduleJob struct {
 	// Required for weekly; ignored for daily / interval.
 	DayOfWeek string `json:"dayOfWeek,omitempty"`
 	// IntervalMs is the millisecond interval for interval jobs.
-	// Required for interval; ignored for daily / weekly. Must be at
-	// least 1000 ms (one second) — the scheduler ticks at 1s
+	// Required for interval; ignored for daily / weekly / once. Must be
+	// at least 1000 ms (one second) — the scheduler ticks at 1s
 	// granularity and any finer interval would alias unpredictably.
 	IntervalMs int64 `json:"intervalMs,omitempty"`
+	// DelayMs is the millisecond delay-to-first-fire for once jobs.
+	// Required for once; ignored for all other kinds. Must be at least
+	// 1000 ms (scheduler tick floor). After the handler fires, the
+	// engine removes the job from the registry; no second fire occurs.
+	DelayMs int64 `json:"delayMs,omitempty"`
 	// Tz is the IANA timezone for daily / weekly resolution. Empty
 	// inherits the engine config default tz (or the system local
 	// timezone if engine config is unset).
@@ -107,6 +119,10 @@ func (j ScheduleJob) Validate() error {
 	case ScheduleInterval:
 		if j.IntervalMs < 1000 {
 			return fmt.Errorf("schedule kind=interval requires intervalMs >= 1000 (got %d)", j.IntervalMs)
+		}
+	case ScheduleOnce:
+		if j.DelayMs < 1000 {
+			return fmt.Errorf("schedule kind=once requires delayMs >= 1000 (got %d)", j.DelayMs)
 		}
 	default:
 		return fmt.Errorf("unknown schedule kind %q", j.Kind)

@@ -10,17 +10,16 @@ import { DispatchPager } from './DispatchPager'
 import { DispatchMetaBar } from './DispatchMetaBar'
 import { meta, childrenOfDispatch, childAgentsOf, getDispatches } from './agent-panel-helpers'
 import { mapConversationMessages } from './agent-conversation-mapper'
-import type { DispatchInfo } from './agent-panel-helpers'
+import type { DispatchInfo, BreadcrumbFrame } from './agent-panel-helpers'
 import type { AgentStateUpdate } from '../../shared/types'
 import type { Message } from '../../shared/types'
 import type { DispatchTelemetryEntry } from '../../shared/types-engine'
+import { rError } from '../rendererLogger'
 
-/** A single frame in the breadcrumb navigation stack. */
-export interface BreadcrumbFrame {
-  dispatchId: string
-  conversationId: string
-  agentDisplayName: string
-}
+// BreadcrumbFrame now lives with the pure helpers in renderer/lib/agent-helpers
+// (buildBreadcrumbStack constructs it). Re-exported here so existing imports
+// of the type from this component keep working.
+export type { BreadcrumbFrame }
 
 interface AgentDetailPanelProps {
   agent: AgentStateUpdate
@@ -85,8 +84,25 @@ export function AgentDetailPanel({
     initialStack && initialStack.length > 0 ? initialStack : [rootFrame],
   )
 
-  // Reset stack when the root agent/dispatch changes. When a new initialStack
-  // arrives (user clicked a different dispatch in the drawer), adopt it.
+  // Stable identity of the deep-link target. `initialStack` is a fresh array on
+  // every render (StatusDrawer memoizes deepLinkData on agentStates, so a
+  // heartbeat rebuilds it), but its TARGET dispatch only changes when the user
+  // deep-links to a genuinely different dispatch. Keying the reset on this
+  // string instead of the array ref stops a rebuilt-but-identical initialStack
+  // from clobbering a manual drill-down.
+  const initialStackTargetId = initialStack && initialStack.length > 0
+    ? initialStack[initialStack.length - 1]?.dispatchId ?? ''
+    : ''
+
+  // Reset stack ONLY when the root subject identity genuinely changes. The deps
+  // are deliberately restricted to stable primitives: `agent` and `initialStack`
+  // are new object/array references on every engine_agent_state heartbeat (the
+  // popup passes popupAgent = visible.find(...), rebuilt each heartbeat), so
+  // depending on them would refire this reset mid-drill and snap the breadcrumb
+  // back to the root — the exact bug this guards against. `agent.name`,
+  // `rootDispatch?.id`, `rootDispatch?.conversationId`, and `initialStackTargetId`
+  // are stable across heartbeats and change on every genuine subject change
+  // (different agent, pager switch, or a different deep-link target).
   useEffect(() => {
     if (initialStack && initialStack.length > 0) {
       setStack(initialStack)
@@ -97,7 +113,8 @@ export function AgentDetailPanel({
         agentDisplayName: meta(agent, 'displayName', agent.name),
       }])
     }
-  }, [rootDispatch?.id, rootDispatch?.conversationId, agent.name, initialStack])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rootDispatch?.id, rootDispatch?.conversationId, agent.name, initialStackTargetId])
 
   const top = stack[stack.length - 1]
 
@@ -113,7 +130,7 @@ export function AgentDetailPanel({
       const msgs: Message[] = mapConversationMessages(data.messages || [])
       setSubMessages(prev => { const next = new Map(prev); next.set(convId, msgs); return next })
     } catch (err) {
-      console.error(`[AgentDetailPanel] loadConversation error:`, err)
+      rError('agent-detail-panel', 'loadConversation error', { error: String(err) })
     } finally {
       setSubLoading(prev => { const next = new Map(prev); next.set(convId, false); return next })
     }

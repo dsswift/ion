@@ -36,7 +36,7 @@ func TestStreamWithIdle_FiresOnSilence(t *testing.T) {
 	src := make(chan SSEEvent)
 	srcErr := func() error { return nil }
 
-	out, errFn := streamWithIdle(src, srcErr, "test", "model-x", "req-1", nil)
+	out, errFn := streamWithIdle(src, srcErr, "test", "model-x", "req-1", nil, nil)
 
 	// Emit one event, then go silent forever.
 	go func() {
@@ -86,7 +86,7 @@ func TestStreamWithIdle_ResetsOnEvent(t *testing.T) {
 	src := make(chan SSEEvent)
 	srcErr := func() error { return nil }
 
-	out, errFn := streamWithIdle(src, srcErr, "test", "model-x", "req-2", nil)
+	out, errFn := streamWithIdle(src, srcErr, "test", "model-x", "req-2", nil, nil)
 
 	go func() {
 		// 5 events, 30ms apart — each well inside the 80ms deadline.
@@ -118,7 +118,7 @@ func TestStreamWithIdle_Disabled(t *testing.T) {
 
 	src := make(chan SSEEvent)
 	srcErr := func() error { return nil }
-	out, errFn := streamWithIdle(src, srcErr, "test", "model-x", "req-3", nil)
+	out, errFn := streamWithIdle(src, srcErr, "test", "model-x", "req-3", nil, nil)
 
 	go func() {
 		src <- SSEEvent{Event: "only", Data: "{}"}
@@ -156,7 +156,7 @@ func TestStreamWithIdle_ProgressCallback(t *testing.T) {
 
 	src := make(chan SSEEvent)
 	srcErr := func() error { return nil }
-	out, errFn := streamWithIdle(src, srcErr, "test", "model-x", "req-4", onProgress)
+	out, errFn := streamWithIdle(src, srcErr, "test", "model-x", "req-4", onProgress, nil)
 
 	go func() {
 		for i := 0; i < 3; i++ {

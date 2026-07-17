@@ -216,7 +216,10 @@ struct AgentDetailFullScreenView: View {
         // the transcript fetches regardless of whether the signature subsequently changes.
         .task {
             guard let agent else { return }
-            DiagnosticLog.log("DISPATCH-POPUP: onAppear initial load agent=\(agent.name) convId=\(latestDispatchConvId)")
+            DiagnosticLog.log("dispatch popup on appear initial load", tag: "view.dispatchpopup", fields: [
+                "agent": agent.name,
+                "conversation_id": latestDispatchConvId
+            ])
             if !latestDispatchConvId.isEmpty {
                 viewModel.loadAgentDispatchConversation(agent: agent, conversationId: latestDispatchConvId)
             } else if !agent.conversationIds.isEmpty {
@@ -358,7 +361,10 @@ private struct BreadcrumbDestinationView: View {
         }
         .task {
             guard let agent = childAgent, !entry.conversationId.isEmpty else { return }
-            DiagnosticLog.log("DISPATCH-BREADCRUMB: onAppear initial load agent=\(agent.name) convId=\(entry.conversationId)")
+            DiagnosticLog.log("dispatch breadcrumb on appear initial load", tag: "view.dispatchpopup", fields: [
+                "agent": agent.name,
+                "conversation_id": entry.conversationId
+            ])
             viewModel.loadAgentDispatchConversation(agent: agent, conversationId: entry.conversationId)
         }
     }

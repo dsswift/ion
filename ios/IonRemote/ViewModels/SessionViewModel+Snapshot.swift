@@ -9,22 +9,50 @@ extension SessionViewModel {
 
     @MainActor
     func handleSnapshot(snapshotTabs: [RemoteTabState], recentDirs: [String], groupMode: String?, groups: [RemoteTabGroup]?, preferredModel: String? = nil, engineDefaultModel: String? = nil, availableModels: [RemoteModelEntry]? = nil) {
-        DiagnosticLog.log("SNAP: received tabs=\(snapshotTabs.count) dirs=\(recentDirs.count) groupMode=\(groupMode ?? "nil") models=\(availableModels?.count ?? 0)")
+        DiagnosticLog.log("snapshot received", tag: "session.snapshot", fields: [
+            "count": String(snapshotTabs.count),
+            "max": String(recentDirs.count),
+            "status": groupMode ?? "nil",
+            "reason": String(availableModels?.count ?? 0)
+        ])
         // Log any tabs that arrive with a non-empty permission queue so we can
         // confirm the blue dot has the data it needs at relaunch.
         for t in snapshotTabs where !t.permissionQueue.isEmpty {
             let tools = t.permissionQueue.map { "\($0.toolName)(id=\($0.questionId.prefix(12)))" }.joined(separator: ", ")
-            DiagnosticLog.log("SNAP: tab=\(t.id.prefix(8)) status=\(t.status.rawValue) queue=[\(tools)]")
+            DiagnosticLog.log("snapshot tab permission queue", tag: "session.snapshot", fields: [
+                "tab_id": String(t.id.prefix(8)),
+                "status": t.status.rawValue,
+                "tool": tools
+            ])
         }
         for t in snapshotTabs where t.hasEngineExtension == true && t.permissionQueue.isEmpty {
             if t.status == .completed || t.status == .idle {
-                DiagnosticLog.log("SNAP: engine tab=\(t.id.prefix(8)) status=\(t.status.rawValue) queue=EMPTY (no denials promoted)")
+                DiagnosticLog.log("snapshot engine tab empty queue", tag: "session.snapshot", fields: [
+                    "tab_id": String(t.id.prefix(8)),
+                    "status": t.status.rawValue
+                ])
             }
         }
         if connectionState != .connected {
-            DiagnosticLog.log("SNAP: connected (was \(connectionState))")
+            DiagnosticLog.log("snapshot connected", tag: "session.snapshot", fields: [
+                "reason": String(describing: connectionState)
+            ])
             connectionState = .connected
             cancelReconnectSafetyTimer()
+            // Mark this as the reconnect snapshot so maybeReconcileStaleConversation
+            // bypasses the running-status guard AND the per-tab debounce for the
+            // current tab-processing loop. Cleared at the end of the loop below.
+            //
+            // Flapping guard: a rapidly reconnecting transport would otherwise
+            // re-trigger a full reload of every diverged tab on EVERY reconnect,
+            // flooding the desktop with load_conversation requests (a relay-wedge
+            // trigger). The bypass is granted at most once per
+            // reconnectReloadDebounce; rapid subsequent reconnects fall back to
+            // the normal per-tab debounce.
+            isReconnectSnapshot = allowReconnectReconcileBypass()
+            if !isReconnectSnapshot {
+                DiagnosticLog.log("reconnect reconcile bypass suppressed (flapping)", tag: "session.snapshot", fields: [:])
+            }
             // The transport is now proven usable (we just got a real
             // snapshot back from the desktop), so release any commands
             // that were deferred via `runWhenConnected` during the
@@ -35,6 +63,10 @@ extension SessionViewModel {
             // runs inline rather than re-queueing.
             drainPendingOnConnected()
             drainPendingEssential()
+            // Resend any in-flight tab-create that was issued while the
+            // transport was wedged/reconnecting, so it lands now instead of
+            // waiting out its timeout. The desktop dedupes by clientCmdId.
+            resendPendingCreates()
         }
         connectionQuality.transportState = transport?.state ?? .disconnected
         if !recentDirs.isEmpty {
@@ -96,7 +128,12 @@ extension SessionViewModel {
                 }
                 // Stale promoted denial on a running/connecting tab — strip it.
                 if isRunningOrConnecting && entry.questionId.hasPrefix("denied-") {
-                    DiagnosticLog.log("SNAP: stripped stale denied-* entry tabId=\(tabIdPrefix) status=\(tabStatus) tool=\(entry.toolName) qid=\(entry.questionId.prefix(16))")
+                    DiagnosticLog.log("snapshot stripped stale denied entry", tag: "session.snapshot", fields: [
+                        "tab_id": tabIdPrefix,
+                        "status": tabStatus,
+                        "tool": entry.toolName,
+                        "question_id": String(entry.questionId.prefix(16))
+                    ])
                     return true
                 }
                 if dismissedLiveSpecialTabs.contains(tabId) { return true }
@@ -262,15 +299,21 @@ extension SessionViewModel {
                     // messages" as effectively loaded — mark it so and skip the
                     // destructive pre-load. A genuinely-empty tab still pre-loads.
                     if !conversationMessages(tab.id).isEmpty {
-                        DiagnosticLog.log("SNAP: conv has live messages tabId=\(tab.id.prefix(16)) — marking loaded, skipping pre-load")
+                        DiagnosticLog.log("snapshot conv has live messages", tag: "session.snapshot", fields: [
+                            "tab_id": String(tab.id.prefix(16))
+                        ])
                         conversationLoaded.insert(tab.id)
                         maybeReconcileStaleConversation(tab: tab)
                     } else {
-                        DiagnosticLog.log("SNAP: conv not loaded for tabId=\(tab.id.prefix(16)) — firing loadConversation")
+                        DiagnosticLog.log("snapshot conv not loaded firing load", tag: "session.snapshot", fields: [
+                            "tab_id": String(tab.id.prefix(16))
+                        ])
                         loadConversation(tabId: tab.id)
                     }
                 } else {
-                    DiagnosticLog.log("SNAP: conv already loaded tabId=\(tab.id.prefix(16)) — skipping")
+                    DiagnosticLog.log("snapshot conv already loaded", tag: "session.snapshot", fields: [
+                        "tab_id": String(tab.id.prefix(16))
+                    ])
                     // Staleness reconcile: the main conversation is filled only by
                     // live wire deltas after the initial load. If deltas were
                     // dropped (e.g. a LAN↔relay transport switch or a seq gap mid
@@ -286,6 +329,10 @@ extension SessionViewModel {
                 }
             }
         }
+        // Reconnect flag applies only to the tab-processing loop above.
+        // Clear it before the re-send block so the next snapshot tick uses
+        // normal (non-bypass) reconcile semantics.
+        isReconnectSnapshot = false
         // Re-send in-flight conversation loads that may have been dropped.
         for tabId in loadingConversation {
             send(.loadConversation(tabId: tabId, before: conversationCursor[tabId]), intent: .automaticEssential)
@@ -317,6 +364,26 @@ extension SessionViewModel {
     /// on a transient mid-stream lag.
     private static let reconcileDebounce: TimeInterval = 4
 
+    /// Minimum interval between reconnects that are allowed to bypass the per-tab
+    /// reconcile debounce. A flapping transport (rapid reconnect churn) would
+    /// otherwise re-fire loadConversation for every diverged tab on each
+    /// reconnect, flooding the desktop. Only the first reconnect in this window
+    /// gets the bypass; the rest fall back to normal per-tab debouncing.
+    static let reconnectReloadDebounce: TimeInterval = 5
+
+    /// Decide whether the current reconnect may bypass the per-tab reconcile
+    /// debounce (and streaming guard). Granted at most once per
+    /// reconnectReloadDebounce so a flapping transport cannot re-flood the
+    /// desktop with full-history reloads; records the grant time when it returns
+    /// true. `now` is injectable for tests.
+    func allowReconnectReconcileBypass(now: Date = Date()) -> Bool {
+        if let last = lastReconnectReconcileAt, now.timeIntervalSince(last) < Self.reconnectReloadDebounce {
+            return false
+        }
+        lastReconnectReconcileAt = now
+        return true
+    }
+
     /// Number of trailing messages the staleness fingerprint spans. MUST match
     /// the desktop's FINGERPRINT_TAIL_WINDOW (shared/conversation-fingerprint.ts
     /// and the snapshot.ts inline JS). Smaller than the history page size so
@@ -324,14 +391,20 @@ extension SessionViewModel {
     private static let fingerprintTailWindow = 10
 
     /// Compute the conversation tail fingerprint over `messages`. This MUST be
-    /// byte-identical with the desktop (shared/conversation-fingerprint.ts and
-    /// the snapshot.ts inline JS) for the same input, or every snapshot would
-    /// false-positive into a reload loop. Pinning rules:
-    ///   - window: the last `fingerprintTailWindow` messages, in order;
-    ///   - tool rows: "<id>:t<statusChar>" (status only — truncation-immune,
-    ///     because the history page truncates tool content >2KB while the
-    ///     snapshot sees the full content);
-    ///   - non-tool rows: "<id>:<utf8ByteLen>" (utf8.count, never UTF-16 count);
+    /// byte-identical with the desktop (shared/conversation-fingerprint.ts)
+    /// for the same input, or every snapshot would false-positive into a
+    /// reload loop. Pinning rules:
+    ///   - rows: PERSISTED roles only (user / assistant / tool), filtered
+    ///     BEFORE the window. Client-local rows — thinking synthesis, system
+    ///     dividers inserted live, harness notices — carry ids only one side
+    ///     knows and would diverge the fingerprints permanently;
+    ///   - window: the last `fingerprintTailWindow` remaining rows, in order;
+    ///   - tool rows: "<toolId>:t<statusChar>" (row id as fallback; status
+    ///     only — truncation-immune, because the history page truncates tool
+    ///     content >2KB while the snapshot sees the full content);
+    ///   - non-tool rows: "<id>:<utf8ByteLen>" (utf8.count, never UTF-16
+    ///     count) — ids are the engine's canonical row ids (history rows carry
+    ///     them; live rows re-key at message_end);
     ///   - tokens joined with ",". NO total-count term: iOS holds a paginated
     ///     PAGE (local count = page size) while the desktop holds the FULL list,
     ///     so any count term diverges on long conversations and reload-loops.
@@ -339,8 +412,9 @@ extension SessionViewModel {
     /// and conversation-fingerprint.test.ts (same input → same string).
     @MainActor
     func conversationTailFingerprint(_ messages: [Message]) -> String {
-        let start = max(0, messages.count - Self.fingerprintTailWindow)
-        let tail = messages[start...]
+        let persisted = messages.filter { $0.role == .user || $0.role == .assistant || $0.role == .tool }
+        let start = max(0, persisted.count - Self.fingerprintTailWindow)
+        let tail = persisted[start...]
         let tokens: [String] = tail.map { msg in
             if msg.role == .tool {
                 let statusChar: String
@@ -350,7 +424,8 @@ extension SessionViewModel {
                 case .error: statusChar = "e"
                 case .none: statusChar = "-"
                 }
-                return "\(msg.id):t\(statusChar)"
+                let key = (msg.toolId?.isEmpty == false) ? msg.toolId! : msg.id
+                return "\(key):t\(statusChar)"
             }
             return "\(msg.id):\(msg.content.utf8.count)"
         }
@@ -379,9 +454,25 @@ extension SessionViewModel {
         // stream and cause a 1-2s blank flicker on every snapshot tick. Suppress
         // entirely; the one-shot post-run heal in handleTabStatus covers the
         // genuine-drop case once the run settles.
-        guard tab.status != .running && tab.status != .connecting else {
-            DiagnosticLog.log("SNAP: reconcile suppressed — tab streaming tabId=\(tab.id.prefix(16)) status=\(tab.status.rawValue)")
-            return
+        //
+        // Exception: on the first snapshot after a reconnect (isReconnectSnapshot)
+        // iOS has no in-flight stream — it missed all events during the gap. A
+        // diverged fingerprint means genuinely stale content and must trigger an
+        // immediate reload. The post-run heal alone is insufficient because the
+        // session may run for a long time before going idle.
+        if !isReconnectSnapshot {
+            guard tab.status != .running && tab.status != .connecting else {
+                DiagnosticLog.log("snapshot reconcile suppressed streaming", tag: "session.snapshot", fields: [
+                    "tab_id": String(tab.id.prefix(16)),
+                    "status": tab.status.rawValue
+                ])
+                return
+            }
+        } else if tab.status == .running || tab.status == .connecting {
+            DiagnosticLog.log("snapshot reconcile reconnect bypassing streaming guard", tag: "session.snapshot", fields: [
+                "tab_id": String(tab.id.prefix(16)),
+                "status": tab.status.rawValue
+            ])
         }
 
         // A load already in flight will deliver fresh history; don't pile on.
@@ -395,14 +486,21 @@ extension SessionViewModel {
 
         // Debounce per tab so a divergence that resolves on its own (a delta in
         // flight) within the window does not thrash the re-fetch.
+        // Exception: on reconnect, bypass the debounce — iOS missed all events
+        // during the gap and needs to reload immediately on the first snapshot.
         let now = Date()
-        if let last = lastConversationReconcileAt[tab.id],
+        if !isReconnectSnapshot,
+           let last = lastConversationReconcileAt[tab.id],
            now.timeIntervalSince(last) < Self.reconcileDebounce {
             return
         }
         lastConversationReconcileAt[tab.id] = now
 
-        DiagnosticLog.log("SNAP: conv fingerprint diverged tabId=\(tab.id.prefix(16)) local=\(localFingerprint) desktop=\(desktopFingerprint) — healing via loadConversation")
+        DiagnosticLog.log("snapshot conv fingerprint diverged healing", tag: "session.snapshot", fields: [
+            "tab_id": String(tab.id.prefix(16)),
+            "reason": localFingerprint,
+            "status": desktopFingerprint
+        ])
         loadConversation(tabId: tab.id)
     }
 }

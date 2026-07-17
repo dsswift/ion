@@ -126,9 +126,11 @@ Signals the end of an engine run.
 |---------------------|--------------------|-------------------------------|
 | `type`              | `"task_complete"`  | Event type                    |
 | `result`            | string             | Final result text             |
+| `lastText`          | string             | Last non-empty assistant text across all turns of the run. Present (`omitempty`) when the final turn produced only thinking blocks: `result` is empty but `lastText` carries the last substantive text, letting consumers distinguish "silent final turn" from "silent run". Omitted when the run produced no text output at all. |
 | `costUsd`           | number             | Total run cost in USD         |
 | `durationMs`        | number             | Run duration in milliseconds  |
 | `numTurns`          | number             | Number of LLM turns           |
+| `conversationTurns` | number             | Conversation-lifetime prompt count: real user prompts across the whole conversation (not the per-run round-trip count `numTurns` carries). Additive (`omitempty`): omitted on backends/paths that do not populate it. |
 | `usage`             | UsageData          | Cumulative token usage        |
 | `sessionId`         | string             | Engine session ID             |
 | `permissionDenials` | PermissionDenial[] | Denied tool calls             |
@@ -261,7 +263,7 @@ and treat unknown kinds as forward-compatible no-ops.
 
 ### stream_reset
 
-Signals that a retry is about to occur. Clients should discard any partial assistant text from the previous attempt.
+Signals that a retry is about to occur. Clients should discard all partial output from the previous attempt — streamed assistant text, in-flight tool-call rows, and any active thinking block. Emitted both when the provider retry wrapper re-streams after a mid-stream failure and when the run loop retries a turn after reactive compaction.
 
 | Field  | Type             | Description |
 |--------|------------------|-------------|
@@ -302,6 +304,39 @@ which already carries the actionable hard-fail message.
 **Produced from:** `ModelFallbackEvent` in
 [`engine/internal/types/normalized_event.go`](https://github.com/dsswift/ion/blob/main/engine/internal/types/normalized_event.go),
 emitted at the model-fallback swap site in `runloop.go`.
+
+---
+
+### capability_unsupported
+
+Workflow event emitted when a requested feature is not supported by the
+backend that would serve the run, and the engine declined the request
+cleanly instead of dispatching a run that would fail — e.g. plan mode on a
+backend without a plan/architect mode. The primary emitter is the session
+layer's dispatch-time capability gate, which consults the serving backend's
+static `Capabilities()` descriptor after the model is final; no run starts,
+no crash-shaped exit fires, and the session stays idle and immediately
+usable for the next prompt.
+
+The engine reports; the consumer decides. A harness may reroute the prompt
+to a capable model, abort, notify the user, or ignore the event — the
+engine has no opinion and never auto-reroutes. The event is the engine's
+complete signaling surface for the declined request; no stream content is
+synthesized. See [CLAUDE.md § "The typed-event corollary"](https://github.com/dsswift/ion/blob/main/CLAUDE.md).
+
+Snapshot semantics: workflow signal, not state. The event fires once at
+the decline site and is not retained or replayed on reconnect.
+
+| Field        | Type                        | Description |
+|--------------|-----------------------------|-------------|
+| `type`       | `"capability_unsupported"`  | Event type |
+| `capability` | string                      | Machine-readable name of the unsupported feature (`"plan_mode"` today; the vocabulary grows with the backend capability contract). |
+| `backend`    | string                      | Routing kind of the backend that would have served the run (`"grok"`, `"cursor"`, `"codex"`, `"claude-code"`, `"api"`). |
+| `reason`     | string                      | Human-readable explanation suitable for direct display. |
+
+**Produced from:** `CapabilityUnsupportedEvent` in
+[`engine/internal/types/normalized_event_capability.go`](https://github.com/dsswift/ion/blob/main/engine/internal/types/normalized_event_capability.go),
+emitted by the capability gate in `session/prompt_dispatch.go`.
 
 ---
 

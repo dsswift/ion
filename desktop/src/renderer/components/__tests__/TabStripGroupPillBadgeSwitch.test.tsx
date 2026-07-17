@@ -81,18 +81,22 @@ vi.mock('../../preferences', async () => {
   return { usePreferencesStore }
 })
 
+const mockStore = {
+  renameTab: () => {},
+  setTabPillColor: () => {},
+  setTabPillIcon: () => {},
+  worktreeUncommittedMap: new Map(),
+  conversationPanes: new Map(),
+}
+
 vi.mock('../../stores/sessionStore', () => ({
-  useSessionStore: (selector: (s: unknown) => unknown) =>
-    selector({
-      renameTab: () => {},
-      setTabPillColor: () => {},
-      setTabPillIcon: () => {},
-      worktreeUncommittedMap: new Map(),
-      conversationPanes: new Map(),
-    }),
+  useSessionStore: Object.assign(
+    (selector: (s: unknown) => unknown) => selector(mockStore),
+    { getState: () => mockStore },
+  ),
 }))
 
-vi.mock('../TabStripStatusDot', () => ({ StackedStatusDots: () => null }))
+vi.mock('../TabStripStatusDot', () => ({ GroupStatusDot: () => null }))
 vi.mock('../TabStripInlineRenameInput', () => ({ InlineRenameInput: () => null }))
 vi.mock('../TabStripPillColorPicker', () => ({ PillColorPicker: () => null }))
 vi.mock('../TabStripTabContextMenu', () => ({ TabContextMenu: () => null }))

@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,6 +16,29 @@ import (
 
 	"github.com/coder/websocket"
 )
+
+// syncBuffer is a bytes.Buffer with a mutex so relay goroutines can write to it
+// concurrently with test goroutines reading from it (race detector safe).
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (n int, err error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+// Bytes returns a copy of the buffered data, safe to use after the relay
+// goroutines may still be writing.
+func (b *syncBuffer) Bytes() []byte {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	cp := make([]byte, b.buf.Len())
+	copy(cp, b.buf.Bytes())
+	return cp
+}
 
 func startTestRelay(t *testing.T, apiKey string) (*httptest.Server, *Hub) {
 	t.Helper()
@@ -495,5 +522,142 @@ func TestCompressionNegotiation(t *testing.T) {
 	data := readExpected(t, mobile, "mobile-compressed")
 	if string(data) != msg {
 		t.Errorf("compressed message mismatch: got %d bytes, want %d bytes", len(data), len(msg))
+	}
+}
+
+// --- Structured logging tests ---
+
+// captureLogger returns a slog logger writing JSON to the returned buffer,
+// configured with the same ReplaceAttr (time -> ts, RFC3339Nano UTC) and
+// component=relay attributes as the production root logger.
+func captureLogger() (*slog.Logger, *syncBuffer) {
+	var buf syncBuffer
+	opts := &slog.HandlerOptions{
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.TimeKey {
+				a.Key = "ts"
+				if tt, ok := a.Value.Any().(time.Time); ok {
+					a.Value = slog.StringValue(tt.UTC().Format(time.RFC3339Nano))
+				}
+			}
+			return a
+		},
+	}
+	var w io.Writer = &buf
+	return slog.New(slog.NewJSONHandler(w, opts)).With("component", "relay"), &buf
+}
+
+func TestLogLineIsValidJSON(t *testing.T) {
+	testLogger, buf := captureLogger()
+
+	testLogger.Info("client connected",
+		"tag", "relay.connect",
+		"channel_id", "test-chan",
+		"role", "ion",
+	)
+
+	line := buf.Bytes()
+	var m map[string]any
+	if err := json.Unmarshal(line, &m); err != nil {
+		t.Fatalf("log line is not valid JSON: %v\nline: %s", err, line)
+	}
+
+	for _, key := range []string{"ts", "level", "component", "msg"} {
+		if _, ok := m[key]; !ok {
+			t.Errorf("missing required field %q in log line: %s", key, line)
+		}
+	}
+	if m["component"] != "relay" {
+		t.Errorf("expected component=relay, got %v", m["component"])
+	}
+	if m["channel_id"] != "test-chan" {
+		t.Errorf("expected channel_id=test-chan, got %v", m["channel_id"])
+	}
+	// ts must be parseable as RFC3339Nano UTC.
+	ts, ok := m["ts"].(string)
+	if !ok {
+		t.Fatalf("ts field is not a string: %T", m["ts"])
+	}
+	if _, err := time.Parse(time.RFC3339Nano, ts); err != nil {
+		t.Errorf("ts field is not RFC3339Nano: %v", err)
+	}
+}
+
+func TestSessionIDHeaderLogging(t *testing.T) {
+	apiKey := "test-key-sessionid"
+
+	// Capture relay log output by swapping the package-level logger.
+	testLogger, buf := captureLogger()
+	origLogger := logger
+	logger = testLogger
+	t.Cleanup(func() { logger = origLogger })
+
+	server, _ := startTestRelay(t, apiKey)
+
+	// Connect WITH the session_id header on channel "sess-chan".
+	withURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/v1/channel/sess-chan?role=ion"
+	withCtx, cancelWith := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelWith()
+	conn1, _, err := websocket.Dial(withCtx, withURL, &websocket.DialOptions{
+		HTTPHeader: http.Header{
+			"Authorization":    []string{"Bearer " + apiKey},
+			"X-Ion-Session-Id": []string{"session-abc-123"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("dial with session id failed: %v", err)
+	}
+	t.Cleanup(func() { conn1.CloseNow() })
+	// Give the relay goroutine time to emit its connect log.
+	time.Sleep(100 * time.Millisecond)
+
+	// Connect WITHOUT the session_id header on channel "no-sess-chan".
+	noURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/v1/channel/no-sess-chan?role=ion"
+	noCtx, cancelNo := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelNo()
+	conn2, _, err := websocket.Dial(noCtx, noURL, &websocket.DialOptions{
+		HTTPHeader: http.Header{
+			"Authorization": []string{"Bearer " + apiKey},
+		},
+	})
+	if err != nil {
+		t.Fatalf("dial without session id failed: %v", err)
+	}
+	t.Cleanup(func() { conn2.CloseNow() })
+	time.Sleep(100 * time.Millisecond)
+
+	// Parse all relay.connect log lines.
+	var withSessionLine, withoutSessionLine map[string]any
+	for _, line := range bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n")) {
+		if len(line) == 0 {
+			continue
+		}
+		var m map[string]any
+		if err := json.Unmarshal(line, &m); err != nil {
+			continue
+		}
+		if m["tag"] != "relay.connect" {
+			continue
+		}
+		switch m["channel_id"] {
+		case "sess-chan":
+			withSessionLine = m
+		case "no-sess-chan":
+			withoutSessionLine = m
+		}
+	}
+
+	if withSessionLine == nil {
+		t.Fatal("no relay.connect log line found for sess-chan")
+	}
+	if sid, ok := withSessionLine["session_id"]; !ok || sid != "session-abc-123" {
+		t.Errorf("expected session_id=session-abc-123 in log line, got %v (ok=%v)", sid, ok)
+	}
+
+	if withoutSessionLine == nil {
+		t.Fatal("no relay.connect log line found for no-sess-chan")
+	}
+	if sid, ok := withoutSessionLine["session_id"]; ok {
+		t.Errorf("expected session_id absent in log line, but got %v", sid)
 	}
 }

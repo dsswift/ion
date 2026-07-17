@@ -1,12 +1,13 @@
-import type { TabStatus } from '../../../shared/types'
 import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId } from '../session-store-helpers'
 import { formatSessionStartDivider } from '../../../shared/clear-divider'
+import { setTabStatus } from './tab-status-transition'
 import { createEngineSubmitActions } from './engine-slice-submit'
 import { createEngineRewindActions } from './engine-slice-rewind'
 import { MAIN_INSTANCE_ID } from '../../../shared/session-key'
 import { createConversationTabAction, _captureMintedConversationId } from './engine-slice-create'
+import { rError } from '../../rendererLogger'
 
 /**
  * Engine slice: single-instance-per-tab lifecycle.
@@ -85,16 +86,14 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
           agentStates: [],
           statusFields: null,
           planFilePath: null,
-          forkedFromConversationIds: null, dispatchTelemetry: [],
+          dispatchTelemetry: [],
           contextBreakdown: null,
         }],
         activeInstanceId: id,
       })
       set((state) => ({
         conversationPanes: panes,
-        tabs: state.tabs.map((t) =>
-          t.id === tabId ? { ...t, status: 'connecting' as TabStatus } : t
-        ),
+        tabs: setTabStatus(state.tabs, tabId, 'connecting'),
       }))
 
       const key = tabId
@@ -115,7 +114,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       }
       window.ion.engineStart(key, startOpts).then((result) => {
         if (result && !result.ok) {
-          console.error(`[addEngineInstance] Failed to start session: ${result.error}`)
+          rError('engine.session', 'failed to start session', { error: result.error })
           set((state) => {
             const notifications = new Map(state.engineNotifications)
             const keyNotifs = [...(notifications.get(key) || [])]
@@ -132,7 +131,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
                 conversationPanes.set(tabId, { ...paneInner, instances })
               }
             }
-            const tabs = state.tabs.map((t) => t.id === tabId ? { ...t, status: 'idle' as const } : t)
+            const tabs = setTabStatus(state.tabs, tabId, 'idle')
             return { engineNotifications: notifications, conversationPanes, tabs }
           })
           return
@@ -144,7 +143,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
           _captureMintedConversationId(set, tabId, result.conversationId)
         }
       }).catch((err: any) => {
-        console.error(`[addEngineInstance] Start error: ${err.message}`)
+        rError('engine.session', 'start threw', { error: err.message })
         set((state) => {
           const conversationPanes = new Map(state.conversationPanes)
           const paneInner = conversationPanes.get(tabId)
@@ -157,7 +156,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
               conversationPanes.set(tabId, { ...paneInner, instances })
             }
           }
-          const tabs = state.tabs.map((t) => t.id === tabId ? { ...t, status: 'idle' as const } : t)
+          const tabs = setTabStatus(state.tabs, tabId, 'idle')
           return { conversationPanes, tabs }
         })
       })
@@ -200,7 +199,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
             agentStates: [],
             statusFields: null,
             planFilePath: null,
-            forkedFromConversationIds: null, dispatchTelemetry: [],
+            dispatchTelemetry: [],
             contextBreakdown: null,
           }
         }),

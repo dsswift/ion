@@ -6,7 +6,7 @@ import { useColors } from '../../theme'
 import { useNavigableText, NavigableText, NavigableCode } from '../../hooks/useNavigableLinks'
 import { CopyButton } from './CopyButton'
 import { InlineMessageImages, deriveMessageImages } from './InlineMessageImages'
-import type { Message, Attachment } from '../../../shared/types'
+import type { Message } from '../../../shared/types'
 
 const REMARK_PLUGINS = [remarkGfm]
 
@@ -22,7 +22,8 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
   const { onOpenFile, onOpenUrl } = useNavigableText()
 
   const displayContent = (message.content || '')
-    .replace(/^\[Attached (?:image|file): .+\]\n*/gm, '')
+    .replace(/^\[Attached (?:image|file): [^\]]+\]\n*/gm, '')
+    .replace(/^\[Attachment: [^\]]+ \(content attached\)\]\n*/gm, '')
     .trim()
 
   const inlineImages = deriveMessageImages(message.content || '', message.attachments)

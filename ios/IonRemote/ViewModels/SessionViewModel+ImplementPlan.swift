@@ -44,7 +44,12 @@ extension SessionViewModel {
             tabs[idx].status = .connecting
         }
 
-        DiagnosticLog.log("IMPL-PLAN: sendImplementPlanIntent tabId=\(tabId.prefix(8)) qId=\(questionId.prefix(12)) clearContext=\(clearContext) engine=\(hasEngineExtension)")
+        DiagnosticLog.log("implement plan intent", tag: "session.implplan", fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "question_id": String(questionId.prefix(12)),
+            "reason": String(clearContext),
+            "agent": String(hasEngineExtension)
+        ])
 
         guard let transport else {
             Task { @MainActor [weak self] in
@@ -99,7 +104,12 @@ extension SessionViewModel {
             tabs[idx].status = .connecting
         }
 
-        DiagnosticLog.log("IMPL-PLAN: sendUnpinThenImplementPlanIntent tabId=\(tabId.prefix(8)) qId=\(questionId.prefix(12)) clearContext=\(clearContext) engine=\(hasEngineExtension)")
+        DiagnosticLog.log("unpin then implement plan intent", tag: "session.implplan", fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "question_id": String(questionId.prefix(12)),
+            "reason": String(clearContext),
+            "agent": String(hasEngineExtension)
+        ])
         DiagnosticLog.logCommand(.toggleTabGroupPin(tabId: tabId))
         DiagnosticLog.logCommand(.implementPlan(tabId: tabId, questionId: questionId, instanceId: instanceId, clearContext: clearContext))
 
@@ -145,11 +155,17 @@ extension SessionViewModel {
     func startPlanContentFetch(tabId: String, questionId: String, planFilePath: String) {
         guard !planContentStore.isComplete(questionId: questionId),
               !planContentStore.isFetching(questionId: questionId) else {
-            DiagnosticLog.log("IMPL-PLAN: startPlanContentFetch skip — already fetching or complete questionId=\(questionId.prefix(12))")
+            DiagnosticLog.log("plan content fetch skipped", tag: "session.implplan", fields: [
+                "question_id": String(questionId.prefix(12)),
+                "reason": "already fetching or complete"
+            ])
             return
         }
         planContentStore.markFetching(questionId: questionId, tabId: tabId)
-        DiagnosticLog.log("IMPL-PLAN: startPlanContentFetch questionId=\(questionId.prefix(12)) planFilePath=\(planFilePath.suffix(40))")
+        DiagnosticLog.log("plan content fetch start", tag: "session.implplan", fields: [
+            "question_id": String(questionId.prefix(12)),
+            "path": String(planFilePath.suffix(40))
+        ])
         guard let transport else { return }
         Task { [weak self] in
             guard let self else { return }
@@ -162,7 +178,9 @@ extension SessionViewModel {
                     length: 0   // server default = 64 KB
                 ))
             } catch {
-                DiagnosticLog.log("IMPL-PLAN: startPlanContentFetch send failed: \(error.localizedDescription)")
+                DiagnosticLog.log("plan content fetch send failed", tag: "session.implplan", level: .error, fields: [
+                    "error": error.localizedDescription
+                ])
             }
         }
     }
@@ -172,10 +190,16 @@ extension SessionViewModel {
     func requestNextPlanPage(questionId: String, planFilePath: String, nextOffset: Int) {
         let tabId = planContentStore.tabId(for: questionId)
         guard !tabId.isEmpty, let transport else {
-            DiagnosticLog.log("IMPL-PLAN: requestNextPlanPage skip — no tabId or transport questionId=\(questionId.prefix(12))")
+            DiagnosticLog.log("plan next page skipped", tag: "session.implplan", fields: [
+                "question_id": String(questionId.prefix(12)),
+                "reason": "no tabId or transport"
+            ])
             return
         }
-        DiagnosticLog.log("IMPL-PLAN: requestNextPlanPage questionId=\(questionId.prefix(12)) nextOffset=\(nextOffset)")
+        DiagnosticLog.log("plan next page request", tag: "session.implplan", fields: [
+            "question_id": String(questionId.prefix(12)),
+            "count": String(nextOffset)
+        ])
         Task { [weak self] in
             guard let self else { return }
             do {
@@ -187,7 +211,9 @@ extension SessionViewModel {
                     length: 0   // server default = 64 KB
                 ))
             } catch {
-                DiagnosticLog.log("IMPL-PLAN: requestNextPlanPage send failed: \(error.localizedDescription)")
+                DiagnosticLog.log("plan next page send failed", tag: "session.implplan", level: .error, fields: [
+                    "error": error.localizedDescription
+                ])
             }
         }
     }

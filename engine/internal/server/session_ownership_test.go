@@ -282,4 +282,3 @@ func TestServer_SetConfigAppliesReapGraceWindow(t *testing.T) {
 	}
 	t.Fatal("session not reaped within the configured short grace window")
 }
-

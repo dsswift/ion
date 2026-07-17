@@ -17,7 +17,11 @@ extension SessionViewModel {
         //
         // Content format mirrors the desktop: bold title line prefixed with
         // "Conversation redirected: " for redirect level, then the body.
-        DiagnosticLog.log("ENGINE: intercept tabId=\(tabId.prefix(8)) level=\(level) title=\(title.prefix(60))")
+        DiagnosticLog.log("engine intercept", tag: "session.engine", fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "reason": level,
+            "status": String(title.prefix(60))
+        ])
         let levelPrefix = level == "redirect" ? "Conversation redirected: " : ""
         let content = "**\(levelPrefix)\(title)**\n\n\(message)"
         var msg = Message(
@@ -31,14 +35,39 @@ extension SessionViewModel {
     }
 
     @MainActor
-    func handleEngineHarnessMessage(tabId: String, instanceId: String?, message: String) {
-        // Divider messages (session-start, implement, etc.) may be relayed
-        // from the desktop as engine_harness_message. Detect the `──` sentinel
-        // prefix and create a system-role message so they render with the
-        // proper divider visual treatment instead of the harness gear icon.
+    func handleEngineHarnessMessage(tabId: String, instanceId: String?, message: String, dedupKey: String?, dedupMode: String?) {
+        // Divider messages (session-start, implement, etc.) use the `──` sentinel
+        // prefix and render as system-role messages for the divider visual treatment.
         let role: MessageRole = message.hasPrefix("──") ? .system : .harness
-        let msg = Message(id: UUID().uuidString, role: role, content: message, timestamp: Date().timeIntervalSince1970 * 1000)
-        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.messages.append(msg) }
+        var msg = Message(id: UUID().uuidString, role: role, content: message, timestamp: Date().timeIntervalSince1970 * 1000)
+        msg.dedupKey = dedupKey
+        msg.dedupMode = dedupMode
+
+        DiagnosticLog.log("engine harness message", tag: "session.engine", level: .debug, fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "dedup_key": dedupKey ?? "(none)",
+            "dedup_mode": dedupMode ?? "(none)"
+        ])
+
+        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { inst in
+            if dedupMode == "relocate", let dk = dedupKey, !dk.isEmpty {
+                // Relocate: remove any existing message with this key, append the
+                // new one at the end. The marker always stays current — never
+                // trails behind new conversation turns.
+                inst.messages = inst.messages.filter { $0.dedupKey != dk }
+                inst.messages.append(msg)
+            } else if let dk = dedupKey, !dk.isEmpty {
+                // Suppress-later: if a message with the same dedupKey already
+                // exists, drop this one. Default dedup behavior.
+                let alreadyPresent = inst.messages.contains { $0.dedupKey == dk }
+                if !alreadyPresent {
+                    inst.messages.append(msg)
+                }
+            } else {
+                // No dedupKey: append unconditionally.
+                inst.messages.append(msg)
+            }
+        }
     }
 
     @MainActor
@@ -99,8 +128,23 @@ extension SessionViewModel {
     }
 
     @MainActor
+    func handleEnginePromptInjected(tabId: String, instanceId: String?, prompt: String) {
+        // Extension-injected prompt (engine ctx.sendPrompt): no client
+        // submitted this turn, so no optimistic insert happened anywhere.
+        // Append it as the user turn it is — the same content persists in
+        // the conversation file, so a history reload shows the identical
+        // transcript. Mirrors the desktop's prompt_injected reducer arm.
+        let msg = Message(id: UUID().uuidString, role: .user, content: prompt, timestamp: Date().timeIntervalSince1970 * 1000)
+        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.messages.append(msg) }
+    }
+
+    @MainActor
     func handleEngineToolStart(tabId: String, instanceId: String?, toolName: String, toolId: String) {
-        DiagnosticLog.log("ENGINE: tool-start tabId=\(tabId.prefix(8)) tool=\(toolName) toolId=\(toolId.prefix(8))")
+        DiagnosticLog.log("engine tool start", tag: "session.engine", level: .debug, fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "tool": toolName,
+            "reason": String(toolId.prefix(8))
+        ])
         let info = ActiveToolInfo(id: toolId, toolName: toolName, startTime: Date())
         activeTools[tabId, default: [:]][toolId] = info
         // Add tool message to conversation
@@ -110,7 +154,11 @@ extension SessionViewModel {
 
     @MainActor
     func handleEngineToolEnd(tabId: String, instanceId: String?, toolId: String, result: String?, isError: Bool) {
-        DiagnosticLog.log("ENGINE: tool-end tabId=\(tabId.prefix(8)) toolId=\(toolId.prefix(8)) isError=\(isError)")
+        DiagnosticLog.log("engine tool end", tag: "session.engine", level: .debug, fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "reason": String(toolId.prefix(8)),
+            "status": String(isError)
+        ])
         activeTools[tabId]?[toolId] = nil
         if activeTools[tabId]?.isEmpty == true {
             activeTools.removeValue(forKey: tabId)
@@ -125,8 +173,57 @@ extension SessionViewModel {
     }
 
     @MainActor
+    func handleEngineImageContent(tabId: String, instanceId: String?, path: String, mediaType: String, source: String, toolId: String?) {
+        DiagnosticLog.log("engine image content", tag: "session.engine", level: .debug, fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "reason": source,
+            "status": (path as NSString).lastPathComponent
+        ])
+        // The engine forwards the FILE PATH (never base64). Attach it to the
+        // owning message so EngineMessageRow renders it via InlineAttachmentImage,
+        // which fetches bytes lazily through RemoteImageFetcher on a cache miss.
+        // Mirrors the desktop attachImageToMessages reducer (event-slice-images.ts):
+        //   - source "tool" (toolId set): attach to the matching tool message.
+        //   - source "provider" (or no toolId): attach to the last assistant
+        //     message, creating an empty one if the run produced none yet.
+        let attachment = MessageAttachment(
+            id: "img:\(path)",
+            type: .image,
+            name: (path as NSString).lastPathComponent,
+            path: path
+        )
+        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { inst in
+            func alreadyAttached(_ msg: Message) -> Bool {
+                msg.attachments?.contains(where: { $0.path == path }) ?? false
+            }
+            if source == "tool", let toolId {
+                guard let idx = inst.messages.lastIndex(where: { $0.toolId == toolId }) else { return }
+                if alreadyAttached(inst.messages[idx]) { return }
+                inst.messages[idx].attachments = (inst.messages[idx].attachments ?? []) + [attachment]
+                return
+            }
+            if let idx = inst.messages.lastIndex(where: { $0.role == .assistant }) {
+                if alreadyAttached(inst.messages[idx]) { return }
+                inst.messages[idx].attachments = (inst.messages[idx].attachments ?? []) + [attachment]
+                return
+            }
+            let msg = Message(
+                id: UUID().uuidString,
+                role: .assistant,
+                content: "",
+                attachments: [attachment],
+                timestamp: Date().timeIntervalSince1970 * 1000
+            )
+            inst.messages.append(msg)
+        }
+    }
+
+    @MainActor
     func handleEngineError(tabId: String, instanceId: String?, message: String) {
-        DiagnosticLog.log("ENGINE: error tabId=\(tabId.prefix(8)) msg=\(message.prefix(80))")
+        DiagnosticLog.log("engine error", tag: "session.engine", level: .error, fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "error": String(message.prefix(80))
+        ])
         // Add error as system message in conversation
         let msg = Message(id: UUID().uuidString, role: .system, content: "Error: \(message)", timestamp: Date().timeIntervalSince1970 * 1000)
         mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.messages.append(msg) }
@@ -139,7 +236,11 @@ extension SessionViewModel {
 
     @MainActor
     func handleEngineNotify(tabId: String, instanceId: String?, message: String, level: String?) {
-        DiagnosticLog.log("ENGINE: notify tabId=\(tabId.prefix(8)) level=\(level ?? "info") msg=\(message.prefix(60))")
+        DiagnosticLog.log("engine notify", tag: "session.engine", fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "reason": level ?? "info",
+            "status": String(message.prefix(60))
+        ])
         // Surface notifications as system messages in the conversation
         let prefix = level == "warning" ? "⚠️ " : level == "error" ? "❌ " : ""
         let msg = Message(id: UUID().uuidString, role: .system, content: "\(prefix)\(message)", timestamp: Date().timeIntervalSince1970 * 1000)
@@ -160,7 +261,10 @@ extension SessionViewModel {
                 inst.messages[inst.messages.count - 1].content += text
                 // Unseal so subsequent deltas for this run keep appending.
                 if inst.messages[inst.messages.count - 1].sealed {
-                    DiagnosticLog.log("ENGINE: text-delta after seal tabId=\(tabId.prefix(8)) len=\(text.count) — unsealing, appending to existing row")
+                    DiagnosticLog.log("engine text delta after seal", tag: "session.engine", level: .debug, fields: [
+                        "tab_id": String(tabId.prefix(8)),
+                        "count": String(text.count)
+                    ])
                     inst.messages[inst.messages.count - 1].sealed = false
                 }
             } else {
@@ -177,8 +281,38 @@ extension SessionViewModel {
         }
     }
 
+    /// desktop_stream_reset: the engine discarded the current attempt's
+    /// partial output (mid-stream provider retry or reactive compaction) and
+    /// is re-streaming the turn. Mirror the desktop renderer's stream_reset
+    /// handling: drop the trailing in-progress assistant text row and any
+    /// ACTIVE thinking row (a sealed thinking row from earlier in the turn
+    /// survives). The re-streamed attempt arrives as fresh text deltas.
     @MainActor
-    func handleEngineMessageEnd(tabId: String, instanceId: String?, inputTokens: Int?, contextPercent: Double?) {
+    func handleEngineStreamReset(tabId: String, instanceId: String?) {
+        DiagnosticLog.log("stream reset: discarding partial attempt output", tag: "session.engine", level: .info, fields: [
+            "tab_id": String(tabId.prefix(8))
+        ])
+        // Remove the active thinking row before touching the assistant text —
+        // the live row (if any) is the last thinking message by id.
+        if let msgId = thinkingMessageId(tabId) {
+            setThinkingMessageId(tabId: tabId, nil)
+            mutateEngineInstance(tabId: tabId, instanceId: instanceId) { inst in
+                if let idx = inst.messages.lastIndex(where: { $0.id == msgId }) {
+                    inst.messages.remove(at: idx)
+                }
+            }
+        }
+        // Discard the trailing in-progress assistant text row (never a tool row).
+        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { inst in
+            if let last = inst.messages.last, last.role == .assistant, last.toolName == nil {
+                inst.messages.removeLast()
+            }
+        }
+        engineTurnHasText.remove(tabId)
+    }
+
+    @MainActor
+    func handleEngineMessageEnd(tabId: String, instanceId: String?, inputTokens: Int?, contextPercent: Double?, entryId: String? = nil, userEntryId: String? = nil) {
         // Clear pinned prompt after message completes
         enginePinnedPrompt[tabId] = nil
         // Update context stats only — do NOT set status to .idle here.
@@ -191,8 +325,45 @@ extension SessionViewModel {
             tabs[idx].contextPercent = contextPercent
         }
 
-        // Seal the last assistant message so the next text delta starts fresh.
         mutateEngineInstance(tabId: tabId, instanceId: instanceId) { inst in
+            // RE-KEY the streamed rows to their canonical persisted tree-entry
+            // ids so a subsequent history page — which keys its rows by those
+            // ids — anchors on them instead of duplicating them.
+            //
+            // Assistant row: walk back from the end past tool/thinking/system
+            // rows (a user row is a turn boundary — stop) to the most recent
+            // assistant text row. Only an UNSEALED row is re-keyed and then
+            // sealed: a tool-only assistant message's end (no text row of its
+            // own) walks back to the PREVIOUS message's row, and re-keying
+            // that already-sealed row would steal its identity.
+            if let entryId {
+                var i = inst.messages.count - 1
+                while i >= 0 {
+                    let role = inst.messages[i].role
+                    if role == .assistant || role == .user { break }
+                    i -= 1
+                }
+                if i >= 0, inst.messages[i].role == .assistant,
+                   inst.messages[i].toolName == nil, !inst.messages[i].sealed {
+                    if inst.messages[i].id != entryId {
+                        inst.messages[i].id = entryId
+                    }
+                    // Seal at the re-key site (not only on the trailing row):
+                    // when tool rows follow the text, the trailing-row seal
+                    // below misses this row and the NEXT tool-only message_end
+                    // would re-key it. Sealing here makes the protection
+                    // self-sustaining.
+                    inst.messages[i].sealed = true
+                }
+            }
+            // User row: the run-opening user turn (optimistic clientMsgId or
+            // prompt-injected UUID) adopts its canonical persisted id.
+            if let userEntryId,
+               let uIdx = inst.messages.lastIndex(where: { $0.role == .user }),
+               inst.messages[uIdx].id != userEntryId {
+                inst.messages[uIdx].id = userEntryId
+            }
+            // Seal the last assistant message so the next text delta starts fresh.
             if let lastIdx = inst.messages.indices.last, inst.messages[lastIdx].role == .assistant {
                 inst.messages[lastIdx].sealed = true
             }
@@ -203,7 +374,11 @@ extension SessionViewModel {
 
     @MainActor
     func handleEngineDead(tabId: String, instanceId: String?, exitCode: Int?, signal: String?, stderrTail: [String]) {
-        DiagnosticLog.log("ENGINE: dead tabId=\(tabId.prefix(8)) exitCode=\(exitCode ?? -1) signal=\(signal ?? "nil")")
+        DiagnosticLog.log("engine dead", tag: "session.engine", level: .warn, fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "status": String(exitCode ?? -1),
+            "reason": signal ?? "nil"
+        ])
         // exitCode 0/nil = normal exit or idle cleanup, not a real death
         guard let exitCode, exitCode != 0 else { return }
         // Only mark tab dead if no other instances are running
@@ -245,7 +420,13 @@ extension SessionViewModel {
         // under that key so each dispatch is cached independently.
         if let convId = conversationId, !convId.isEmpty {
             let wasAlreadyCached = agentSnapshotByConvId[convId] != nil
-            DiagnosticLog.log("ENGINE: agent_conversation_history agent=\(agentName) convId=\(convId) count=\(messages.count) filtered=\(filtered.count) snapshotOp=\(wasAlreadyCached ? "replace" : "first-populate")")
+            DiagnosticLog.log("agent conversation history", tag: "session.engine", fields: [
+                "agent": agentName,
+                "conversation_id": convId,
+                "count": String(messages.count),
+                "max": String(filtered.count),
+                "reason": wasAlreadyCached ? "replace" : "first-populate"
+            ])
             // The file-backed load is the snapshot AUTHORITY — store it and
             // recompute the merged transcript so it replaces stale state while
             // any in-flight push entries newer than the snapshot survive.
@@ -259,7 +440,11 @@ extension SessionViewModel {
             agentConversationLoading.remove(convId)
         } else {
             // Legacy fallback: store under agent name for multi-convId loads
-            DiagnosticLog.log("ENGINE: agent_conversation_history agent=\(agentName) (legacy) count=\(messages.count) filtered=\(filtered.count)")
+            DiagnosticLog.log("agent conversation history legacy", tag: "session.engine", fields: [
+                "agent": agentName,
+                "count": String(messages.count),
+                "max": String(filtered.count)
+            ])
             agentConversationMessages[agentName] = filtered
             agentConversationLoading.remove(agentName)
         }
@@ -275,7 +460,10 @@ extension SessionViewModel {
     func loadAgentConversation(agent: AgentStateUpdate) {
         guard !agent.conversationIds.isEmpty else { return }
         guard !agentConversationLoading.contains(agent.name) else { return }
-        DiagnosticLog.log("ENGINE: loading agent conversation agent=\(agent.name) convIds=\(agent.conversationIds)")
+        DiagnosticLog.log("loading agent conversation", tag: "session.engine", fields: [
+            "agent": agent.name,
+            "conversation_id": agent.conversationIds.joined(separator: ",")
+        ])
         agentConversationLoading.insert(agent.name)
         send(.loadAgentConversation(conversationIds: agent.conversationIds), intent: .automaticEssential)
     }
@@ -311,7 +499,10 @@ extension SessionViewModel {
             // popup gets a fresh snapshot rather than stale push-only entries.
             DiagnosticLog.log("ENGINE: reload dispatch conv (running+cached) agent=\(agent.name) convId=\(conversationId) existingMsgCount=\(agentConversationMessages[conversationId]?.count ?? 0)")
         }
-        DiagnosticLog.log("ENGINE: loading dispatch conversation agent=\(agent.name) convId=\(conversationId)")
+        DiagnosticLog.log("loading dispatch conversation", tag: "session.engine", fields: [
+            "agent": agent.name,
+            "conversation_id": conversationId
+        ])
         agentConversationLoading.insert(conversationId)
         send(.loadAgentConversation(conversationIds: [conversationId]), intent: .automaticEssential)
     }
@@ -341,7 +532,10 @@ extension SessionViewModel {
     func refreshAgentDispatchConversation(agent: AgentStateUpdate, conversationId: String) {
         guard !conversationId.isEmpty else { return }
         guard !agentConversationLoading.contains(conversationId) else { return }
-        DiagnosticLog.log("ENGINE: refresh dispatch conversation agent=\(agent.name) convId=\(conversationId)")
+        DiagnosticLog.log("refresh dispatch conversation", tag: "session.engine", fields: [
+            "agent": agent.name,
+            "conversation_id": conversationId
+        ])
         agentConversationLoading.insert(conversationId)
         send(.loadAgentConversation(conversationIds: [conversationId]), intent: .automaticEssential)
     }
@@ -351,7 +545,10 @@ extension SessionViewModel {
     func refreshAgentConversation(agent: AgentStateUpdate) {
         guard !agent.conversationIds.isEmpty else { return }
         guard !agentConversationLoading.contains(agent.name) else { return }
-        DiagnosticLog.log("ENGINE: refresh agent conversation agent=\(agent.name) convIds=\(agent.conversationIds)")
+        DiagnosticLog.log("refresh agent conversation", tag: "session.engine", fields: [
+            "agent": agent.name,
+            "conversation_id": agent.conversationIds.joined(separator: ",")
+        ])
         agentConversationMessages.removeValue(forKey: agent.name)
         agentConversationLoading.insert(agent.name)
         send(.loadAgentConversation(conversationIds: agent.conversationIds), intent: .automaticEssential)
@@ -360,11 +557,18 @@ extension SessionViewModel {
     // MARK: - Diagnostic log request
 
     @MainActor
-    func handleRequestDiagnosticLogs() {
-        let logs = DiagnosticLog.exportAllSessions()
+    func handleRequestDiagnosticLogs(sinceSeq: Int = 0) {
+        // One uniform path: sinceSeq=0 (full pull) filters seq > 0, which is
+        // every line, so there is no special-case export branch. nextSeq is the
+        // cursor the desktop persists and echoes on the next request.
+        let (logs, nextSeq) = DiagnosticLog.exportIncrementalSince(sinceSeq: sinceSeq)
         let deviceId = activeDeviceId ?? "unknown"
         let deviceName = UIDevice.current.name
-        send(.diagnosticLogsResponse(logs: logs, deviceId: deviceId, deviceName: deviceName), intent: .automaticEssential)
+        DiagnosticLog.log("diagnostic export", tag: "session", level: .debug, fields: [
+            "since_seq": String(sinceSeq),
+            "next_seq": String(nextSeq)
+        ])
+        send(.diagnosticLogsResponse(logs: logs, deviceId: deviceId, deviceName: deviceName, nextSeq: nextSeq), intent: .automaticEssential)
     }
 
     // MARK: - Dispatch terminal cleanup

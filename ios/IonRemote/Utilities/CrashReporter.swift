@@ -17,7 +17,11 @@ enum CrashReporter {
             let name = exception.name.rawValue
             let reason = exception.reason ?? "(no reason)"
             let stack = exception.callStackSymbols.joined(separator: "\n")
-            DiagnosticLog.log("CRASH-EXCEPTION: \(name): \(reason)\n\(stack)")
+            DiagnosticLog.log("uncaught exception", tag: "crash.exception", level: .error, fields: [
+                "reason": name,
+                "error": reason,
+                "status": stack
+            ])
             DiagnosticLog.flush()
         }
 
@@ -40,7 +44,11 @@ private func crashSignalHandler(_ sigNum: Int32) {
     default:      name = "SIG\(sigNum)"
     }
     let stack = Thread.callStackSymbols.joined(separator: "\n")
-    DiagnosticLog.log("CRASH-SIGNAL: \(name) (\(sigNum))\n\(stack)")
+    DiagnosticLog.log("fatal signal", tag: "crash.signal", level: .error, fields: [
+        "reason": name,
+        "count": String(sigNum),
+        "status": stack
+    ])
     DiagnosticLog.flush()
     // Re-raise so the default handler runs (generates a crash report).
     signal(sigNum, SIG_DFL)

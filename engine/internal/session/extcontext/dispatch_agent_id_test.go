@@ -12,6 +12,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/resource"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -21,6 +22,7 @@ import (
 // agent state updates and emitted events so the test can assert dispatch id
 // population, collision safety, and conversationIds dedup.
 type idTestAccessor struct {
+	noopPluginMethods
 	child backend.RunBackend
 
 	mu      sync.Mutex
@@ -55,17 +57,37 @@ func (a *idTestAccessor) UpdateAgentStateByID(id string, updater func(*types.Age
 	}
 }
 
+func (a *idTestAccessor) UpsertAgentStateByID(id string, seed types.AgentStateUpdate, updater func(*types.AgentStateUpdate)) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.stateByID == nil {
+		a.stateByID = map[string]*types.AgentStateUpdate{}
+	}
+	st, ok := a.stateByID[id]
+	if !ok {
+		cp := seed
+		cp.ID = id
+		a.stateByID[id] = &cp
+		st = a.stateByID[id]
+	}
+	updater(st)
+}
+
 func (a *idTestAccessor) EmitAgentSnapshot(_ string) {}
 func (a *idTestAccessor) BumpParentProgress()        {}
 func (a *idTestAccessor) EmitDispatchCountStatus(_ string) {}
 
 func (a *idTestAccessor) NewChildBackend() backend.RunBackend { return a.child }
+func (a *idTestAccessor) AllocatePlanFilePath() string        { return "/tmp/.ion/plans/plan.md" }
 func (a *idTestAccessor) RootContext() context.Context        { return context.Background() }
 func (a *idTestAccessor) SessionKey() string                       { return "id-test-session" }
+func (a *idTestAccessor) ExtensionName() string    { return "" }
+func (a *idTestAccessor) ExtensionVersion() string { return "" }
 func (a *idTestAccessor) ConversationID() string                   { return "" }
 func (a *idTestAccessor) WorkingDirectory() string                 { return "/tmp" }
 func (a *idTestAccessor) SendAbort()                               {}
 func (a *idTestAccessor) SendPrompt(_, _ string, _ []string) error { return nil }
+func (a *idTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error { return nil }
 func (a *idTestAccessor) SteerSelfMainLoop(_ string) bool          { return false }
 func (a *idTestAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
@@ -84,6 +106,8 @@ func (a *idTestAccessor) ExtGroup() *extension.ExtensionGroup      { return nil 
 func (a *idTestAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
 func (a *idTestAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
 func (a *idTestAccessor) EngineConfig() *types.EngineRuntimeConfig { return nil }
+func (a *idTestAccessor) ClaudeCompat() bool { return false }
+func (a *idTestAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
 func (a *idTestAccessor) ResolveTier(_ string) string              { return "" }
 func (a *idTestAccessor) PermissionCheck(_ string, _ map[string]interface{}) (string, string) {
 	return "", ""
@@ -107,8 +131,14 @@ func (a *idTestAccessor) ListAllSessions() []extension.SessionListEntry { return
 func (a *idTestAccessor) SendToSession(_, _, _ string, _ map[string]interface{}) error {
 	return nil
 }
+
+func (a *idTestAccessor) FireSchedule(_, _ string) error { return nil }
+func (a *idTestAccessor) GetScheduleStatus(_, _ string) ([]extension.ScheduleStatusEntry, error) {
+	return nil, nil
+}
 func (a *idTestAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
 func (a *idTestAccessor) RunOnceComplete(_ string, _ bool)              {}
+func (a *idTestAccessor) Telemetry() *telemetry.Collector { return nil }
 
 // --- deterministic child backend ---
 
@@ -136,6 +166,14 @@ func (d *idChildBackend) Cancel(string) bool                     { return false 
 func (d *idChildBackend) IsRunning(string) bool                  { return false }
 func (d *idChildBackend) WriteToStdin(string, interface{}) error { return nil }
 func (d *idChildBackend) FlushConversations()                    {}
+func (d *idChildBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:         "mock",
+		ContextModel: backend.ContextModelEngineOwned,
+		PlanMode:     true,
+		Steering:     true,
+	}
+}
 
 func (d *idChildBackend) StartRun(requestID string, _ types.RunOptions) {
 	d.mu.Lock()
@@ -418,6 +456,14 @@ func (d *blockingChildBackend) Cancel(string) bool                     { return 
 func (d *blockingChildBackend) IsRunning(string) bool                  { return false }
 func (d *blockingChildBackend) WriteToStdin(string, interface{}) error { return nil }
 func (d *blockingChildBackend) FlushConversations()                    {}
+func (d *blockingChildBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:         "mock",
+		ContextModel: backend.ContextModelEngineOwned,
+		PlanMode:     true,
+		Steering:     true,
+	}
+}
 
 func (d *blockingChildBackend) StartRun(requestID string, _ types.RunOptions) {
 	d.mu.Lock()
@@ -484,6 +530,14 @@ func (d *errorChildBackend) Cancel(string) bool                     { return fal
 func (d *errorChildBackend) IsRunning(string) bool                  { return false }
 func (d *errorChildBackend) WriteToStdin(string, interface{}) error { return nil }
 func (d *errorChildBackend) FlushConversations()                    {}
+func (d *errorChildBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:         "mock",
+		ContextModel: backend.ContextModelEngineOwned,
+		PlanMode:     true,
+		Steering:     true,
+	}
+}
 
 func (d *errorChildBackend) StartRun(requestID string, _ types.RunOptions) {
 	d.mu.Lock()
@@ -627,6 +681,14 @@ func (d *lifecycleChildBackend) Cancel(string) bool                     { return
 func (d *lifecycleChildBackend) IsRunning(string) bool                  { return false }
 func (d *lifecycleChildBackend) WriteToStdin(string, interface{}) error { return nil }
 func (d *lifecycleChildBackend) FlushConversations()                    {}
+func (d *lifecycleChildBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:         "mock",
+		ContextModel: backend.ContextModelEngineOwned,
+		PlanMode:     true,
+		Steering:     true,
+	}
+}
 
 func (d *lifecycleChildBackend) StartRun(requestID string, _ types.RunOptions) {
 	d.mu.Lock()

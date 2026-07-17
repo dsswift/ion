@@ -14,12 +14,21 @@
 		A1B2C3D4E5F60001000009AA /* PairedDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100000AAA /* PairedDevice.swift */; };
 		A1B2C3D4E5F6000100000BAA /* RelayClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100000CAA /* RelayClient.swift */; };
 		A1B2C3D4E5F6000100000DAA /* LANClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100000EAA /* LANClient.swift */; };
+		LANAUTHOUT0000000000001 /* LANAuthOutcome.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANAUTHOUT0000000000002 /* LANAuthOutcome.swift */; };
+		LANBACKOFF0000000000001 /* LANReconnectBackoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANBACKOFF0000000000002 /* LANReconnectBackoff.swift */; };
+		TMBONJRC000000000000001 /* TransportManager+BonjourReconnect.swift in Sources */ = {isa = PBXBuildFile; fileRef = TMBONJRC000000000000002 /* TransportManager+BonjourReconnect.swift */; };
+		LANBACKTST0000000000001 /* LANReconnectBackoffTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANBACKTST0000000000002 /* LANReconnectBackoffTests.swift */; };
+		BONJREJTST0000000000001 /* BonjourLANAuthRejectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BONJREJTST0000000000002 /* BonjourLANAuthRejectionTests.swift */; };
+		LANREJVMT00000000000001 /* SessionViewModelLanAuthRejectedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANREJVMT00000000000002 /* SessionViewModelLanAuthRejectedTests.swift */; };
+		LANAUTHTST0000000000001 /* LANAuthOutcomeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANAUTHTST0000000000002 /* LANAuthOutcomeTests.swift */; };
+		LANTRANSVM0000000000001 /* SessionViewModelLanAuthTransientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANTRANSVM0000000000002 /* SessionViewModelLanAuthTransientTests.swift */; };
 		A1B2C3D4E5F6000100000FAA /* TransportManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000010AA /* TransportManager.swift */; };
 		A1B2C3D4E5F60001000011AA /* BonjourBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000012AA /* BonjourBrowser.swift */; };
 		A1B2C3D4E5F60001000013AA /* E2ECrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000014AA /* E2ECrypto.swift */; };
 		A1B2C3D4E5F60001000015AA /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000016AA /* KeychainStore.swift */; };
 		A1B2C3D4E5F60001000017AA /* TabListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000018AA /* TabListView.swift */; };
 		FE01AA02BC03DD04EE05FF02 /* TabListView+Helpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE01AA02BC03DD04EE05FF01 /* TabListView+Helpers.swift */; };
+		FE01AA02BC03DD04EE05FF04 /* TabListView+DetailViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE01AA02BC03DD04EE05FF03 /* TabListView+DetailViews.swift */; };
 		A1B2C3D4E5F6000100001BAA /* PermissionCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100001CAA /* PermissionCardView.swift */; };
 		E11C17CA0001000000000B01 /* ElicitationCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E11C17CA0001000000000C01 /* ElicitationCardView.swift */; };
 		A1B2C3D4E5F6000100001DAA /* PairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100001EAA /* PairingView.swift */; };
@@ -29,6 +38,7 @@
 		A1B2C3D4E5F60001000027AA /* E2ECryptoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000028AA /* E2ECryptoTests.swift */; };
 		A1B2C3D4E5F60001000029AA /* TransportManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */; };
 		A1B2C3D4E5F6000100002BAA /* RelayClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */; };
+		TMRTESTS00000000000001 /* TransportManagerReceiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TMRTESTS00000000000002 /* TransportManagerReceiveTests.swift */; };
 		A1B2C3D4E5F60001000090AA /* Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000091AA /* Message.swift */; };
 		PENDINGCARD0000000000001 /* PendingCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = PENDINGCARD0000000000002 /* PendingCard.swift */; };
 		PLANCARDGATE000000000001 /* PlanCardGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLANCARDGATE000000000002 /* PlanCardGate.swift */; };
@@ -73,6 +83,7 @@
 		A1B2C3D4E5F60001000200AA /* SessionViewModel+Lifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000201AA /* SessionViewModel+Lifecycle.swift */; };
 		A1B2C3D4E5F60001000202AA /* SessionViewModel+Pairing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */; };
 		A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */; };
+		A1B2C3D4E5F600010002049A /* SessionViewModel+GitCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */; };
 		A1B2C3D4E5F60001000206AA /* SessionViewModel+EventHandlers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */; };
 		A1B2C3D4E5F60001000208AA /* SessionViewModel+EngineEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */; };
 		THINK00000000000000000001 /* NormalizedEvent+Thinking.swift in Sources */ = {isa = PBXBuildFile; fileRef = THINK00000000000000000002 /* NormalizedEvent+Thinking.swift */; };
@@ -80,6 +91,10 @@
 		THINK00000000000000000003 /* SessionViewModel+ThinkingEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = THINK00000000000000000004 /* SessionViewModel+ThinkingEvents.swift */; };
 		THINK00000000000000000005 /* ThinkingRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = THINK00000000000000000006 /* ThinkingRowView.swift */; };
 		THINK00000000000000000007 /* ThinkingAccumulatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = THINK00000000000000000008 /* ThinkingAccumulatorTests.swift */; };
+		PAYCMPTEST00000000000007 /* PayloadCompressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PAYCMPTEST00000000000008 /* PayloadCompressionTests.swift */; };
+		DECODEREC00000000000007 /* TransportManagerDecodeRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DECODEREC00000000000008 /* TransportManagerDecodeRecoveryTests.swift */; };
+		LOADCONV000000000000007 /* SessionViewModelLoadConversationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LOADCONV000000000000008 /* SessionViewModelLoadConversationTests.swift */; };
+		WATCHDOG00000000000007 /* LANLivenessWatchdogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WATCHDOG00000000000008 /* LANLivenessWatchdogTests.swift */; };
 		THINKFORK00000000000007 /* ThinkingEffortStorageForkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = THINKFORK00000000000008 /* ThinkingEffortStorageForkTests.swift */; };
 		TGHOIST000000000000007 /* ToolGroupingHoistTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TGHOIST000000000000008 /* ToolGroupingHoistTests.swift */; };
 		AGTRNORD000000000000007 /* AgentTurnRenderOrderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGTRNORD000000000000008 /* AgentTurnRenderOrderTests.swift */; };
@@ -91,7 +106,15 @@
 		WIREMERGE000000000000007 /* RemoteCommandWireMergeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WIREMERGE000000000000008 /* RemoteCommandWireMergeTests.swift */; };
 		LOADST00000000000000007 /* ConversationLoadStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LOADST00000000000000008 /* ConversationLoadStateTests.swift */; };
 		TRESEND00000000000000007 /* TransportResendTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRESEND00000000000000008 /* TransportResendTests.swift */; };
+		SERIALQT000000000000001 /* SerialAsyncQueueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SERIALQT000000000000002 /* SerialAsyncQueueTests.swift */; };
+		SENDDLNT000000000000001 /* SendDeadlineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SENDDLNT000000000000002 /* SendDeadlineTests.swift */; };
+		TRLANPRF000000000000001 /* TransportRelayLanPreferredTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRLANPRF000000000000002 /* TransportRelayLanPreferredTests.swift */; };
+		LANWDOGT000000000000001 /* LANHeartbeatWatchdogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANWDOGT000000000000002 /* LANHeartbeatWatchdogTests.swift */; };
+		SYNCRTRY000000000000001 /* SyncRetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SYNCRTRY000000000000002 /* SyncRetryTests.swift */; };
+		SENDRQUE000000000000001 /* SendFailureRequeueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SENDRQUE000000000000002 /* SendFailureRequeueTests.swift */; };
 		CSRECON00000000000000007 /* ConversationStalenessReconcileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CSRECON00000000000000008 /* ConversationStalenessReconcileTests.swift */; };
+		CONVHISTR000000000000001 /* ConversationHistoryReplaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CONVHISTR000000000000002 /* ConversationHistoryReplaceTests.swift */; };
+		GRPPARITY000000000000001 /* GroupingParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = GRPPARITY000000000000002 /* GroupingParityTests.swift */; };
 		MSGIDMAP0000000000000004 /* DispatchSnapshotIdMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MSGIDMAP0000000000000003 /* DispatchSnapshotIdMappingTests.swift */; };
 		DISPINVAL000000000000007 /* SessionViewModel+DispatchCacheInvalidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = DISPINVAL000000000000008 /* SessionViewModel+DispatchCacheInvalidation.swift */; };
 		DISPINVALT00000000000007 /* DispatchCacheInvalidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DISPINVALT00000000000008 /* DispatchCacheInvalidationTests.swift */; };
@@ -106,12 +129,17 @@
 		UCSTORE0000000000000007 /* UnifiedConversationStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = UCSTORE0000000000000008 /* UnifiedConversationStoreTests.swift */; };
 		A1B2C3D4E5F60001000220AA /* TransportManager+Send.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000221AA /* TransportManager+Send.swift */; };
 		A1B2C3D4E5F60001000222AA /* TransportManager+Receive.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000223AA /* TransportManager+Receive.swift */; };
+		SERIALQ0000000000000001 /* SerialAsyncQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = SERIALQ0000000000000002 /* SerialAsyncQueue.swift */; };
+		SENDDLN0000000000000001 /* SendDeadline.swift in Sources */ = {isa = PBXBuildFile; fileRef = SENDDLN0000000000000002 /* SendDeadline.swift */; };
+		TMSYNC00000000000000001 /* TransportManager+Sync.swift in Sources */ = {isa = PBXBuildFile; fileRef = TMSYNC00000000000000002 /* TransportManager+Sync.swift */; };
+		TMWDOG00000000000000001 /* TransportManager+Watchdog.swift in Sources */ = {isa = PBXBuildFile; fileRef = TMWDOG00000000000000002 /* TransportManager+Watchdog.swift */; };
 		A1B2C3D4E5F60001000224AA /* PayloadCompression.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000225AA /* PayloadCompression.swift */; };
 		A1B2C3D4E5F60001000230AA /* NormalizedEvent+Lifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000231AA /* NormalizedEvent+Lifecycle.swift */; };
 		A1B2C3D4E5F60001000232AA /* NormalizedEvent+Stream.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000233AA /* NormalizedEvent+Stream.swift */; };
 		A1B2C3D4E5F60001000234AA /* NormalizedEvent+Permission.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000235AA /* NormalizedEvent+Permission.swift */; };
 		A1B2C3D4E5F60001000236AA /* NormalizedEvent+Terminal.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000237AA /* NormalizedEvent+Terminal.swift */; };
 		A1B2C3D4E5F60001000238AA /* NormalizedEvent+Engine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000239AA /* NormalizedEvent+Engine.swift */; };
+		TYPEKEY00000000000000001A /* NormalizedEvent+TypeKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = TYPEKEY00000000000000002A /* NormalizedEvent+TypeKey.swift */; };
 		A1B2C3D4E5F60001000240AA /* NormalizedEventStreamTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000241AA /* NormalizedEventStreamTests.swift */; };
 		A1B2C3D4E5F60001000242AA /* NormalizedEventPermissionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000243AA /* NormalizedEventPermissionTests.swift */; };
 		PLAN0IMPLEMENT00001 /* PlanImplementWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLAN0IMPLEMENT00002 /* PlanImplementWireTests.swift */; };
@@ -119,6 +147,7 @@
 		A1B2C3D4E5F60001000244AA /* NormalizedEventLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000245AA /* NormalizedEventLifecycleTests.swift */; };
 		A1B2C3D4E5F60001000246AA /* NormalizedEventTerminalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000247AA /* NormalizedEventTerminalTests.swift */; };
 		A1B2C3D4E5F60001000248AA /* ContractSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000249AA /* ContractSyncTests.swift */; };
+		TYPEKEY00000000000000003A /* NormalizedEventTypeKeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TYPEKEY00000000000000004A /* NormalizedEventTypeKeyTests.swift */; };
 		A1B2C3D4E5F60001000301AA /* GitTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000300AA /* GitTypes.swift */; };
 		A1B2C3D4E5F60001000303AA /* NormalizedEvent+Git.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000302AA /* NormalizedEvent+Git.swift */; };
 		A1B2C3D4E5F60001000305AA /* GitPaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000304AA /* GitPaneView.swift */; };
@@ -141,8 +170,11 @@
 		A1B2C3D4E5F60001000900AA /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000901AA /* AppDelegate.swift */; };
 		A1B2C3D4E5F60001000902AA /* SessionViewModel+Snapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000903AA /* SessionViewModel+Snapshot.swift */; };
 		A1B2C3D4E5F60001000950AA /* SessionViewModel+OnConnected.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000951AA /* SessionViewModel+OnConnected.swift */; };
+		A1B2C3D4E5F600010009F1AA /* SessionViewModel+PendingCreate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010009F2AA /* SessionViewModel+PendingCreate.swift */; };
+		A1B2C3D4E5F600010009F5AA /* SessionViewModel+Listening.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010009F6AA /* SessionViewModel+Listening.swift */; };
 		SENDINT00000000000000001 /* SendIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = SENDINT00000000000000002 /* SendIntent.swift */; };
 		ESSNKY00000000000000001 /* RemoteCommand+EssentialKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = ESSNKY00000000000000002 /* RemoteCommand+EssentialKey.swift */; };
+		RMDECERR000000000000001 /* RemoteEventDecodeError.swift in Sources */ = {isa = PBXBuildFile; fileRef = RMDECERR000000000000002 /* RemoteEventDecodeError.swift */; };
 		SNDITT00000000000000001 /* SendIntentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SNDITT00000000000000002 /* SendIntentTests.swift */; };
 		A1B2C3D4E5F60001000980AA /* SessionViewModel+SessionStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000981AA /* SessionViewModel+SessionStatus.swift */; };
 		A1B2C3D4E5F60001000990AA /* SessionViewModel+PermissionMessageEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000991AA /* SessionViewModel+PermissionMessageEvents.swift */; };
@@ -154,11 +186,16 @@
 		A1B2C3D4E5F60001001008AA /* DiagnosticLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001009AA /* DiagnosticLogView.swift */; };
 		A1B2C3D4E5F60001001010AA /* DiagnosticLog+Events.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001011AA /* DiagnosticLog+Events.swift */; };
 		A1B2C3D4E5F60001001012AA /* DiagnosticLog+Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001001013AA /* DiagnosticLog+Commands.swift */; };
+		DIAGLOG0000000000004 /* DiagnosticLog+Schema.swift in Sources */ = {isa = PBXBuildFile; fileRef = DIAGLOG0000000000003 /* DiagnosticLog+Schema.swift */; };
+		DIAGLOG0000000000001 /* DiagnosticLogSchemaTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DIAGLOG0000000000002 /* DiagnosticLogSchemaTests.swift */; };
 		HRNSBDG0000000000000001 /* EngineHarnessBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = HRNSBDG0000000000000002 /* EngineHarnessBadge.swift */; };
 		NEWCONVRT000000000000001 /* NewConversationRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = NEWCONVRT000000000000002 /* NewConversationRouting.swift */; };
 		NEWCONVRT000000000000003 /* NewConversationRoutingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NEWCONVRT000000000000004 /* NewConversationRoutingTests.swift */; };
+		3E8C1FD7961E454F81383867 /* EngineProfileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92ED3F076BA6484680389762 /* EngineProfileTests.swift */; };
 		HRNSBDG0000000000000003 /* EngineHarnessBadgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = HRNSBDG0000000000000004 /* EngineHarnessBadgeTests.swift */; };
+		HRNMSGRELO0000000000001 /* HarnessMessageRelocateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = HRNMSGRELO0000000000002 /* HarnessMessageRelocateTests.swift */; };
 		PLANCARD0000000000000001 /* PlanApprovalCardContentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLANCARD0000000000000002 /* PlanApprovalCardContentTests.swift */; };
+		PLNCNTSTR000000000000001 /* PlanContentStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLNCNTSTR000000000000002 /* PlanContentStoreTests.swift */; };
 		PLANCARD0000000000000003 /* PlanApprovalCardGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLANCARD0000000000000004 /* PlanApprovalCardGateTests.swift */; };
 		PLANCARD0000000000000005 /* PlanApprovalCardUnpinGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLANCARD0000000000000006 /* PlanApprovalCardUnpinGateTests.swift */; };
 		HRNSBDG0000000000000005 /* EngineInstanceCollapseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = HRNSBDG0000000000000006 /* EngineInstanceCollapseTests.swift */; };
@@ -217,6 +254,7 @@
 		A1B2C3D4E5F60001009A01AA /* SessionViewModel+TabGroupCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009A00AA /* SessionViewModel+TabGroupCommands.swift */; };
 		A1B2C3D4E5F60001009B01AA /* TabListNewTabSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009B00AA /* TabListNewTabSheet.swift */; };
 		A1B2C3D4E5F60001009C01AA /* TabListGroupHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009C00AA /* TabListGroupHeader.swift */; };
+		TABSTATUSROLLUP0000001 /* TabStatusRollup.swift in Sources */ = {isa = PBXBuildFile; fileRef = TABSTATUSROLLUP0000002 /* TabStatusRollup.swift */; };
 		A1B2C3D4E5F60001009D01AA /* SafeDecodable.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009D00AA /* SafeDecodable.swift */; };
 		A1B2C3D4E5F60001009E01AA /* TabRowContextMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009E00AA /* TabRowContextMenu.swift */; };
 		A1B2C3D4E5F60001009F01AA /* NormalizedEvent+Resource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001009F00AA /* NormalizedEvent+Resource.swift */; };
@@ -240,8 +278,10 @@
 		MSGADDFRESH00000000000001 /* MessageAddedFreshConversationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MSGADDFRESH00000000000002 /* MessageAddedFreshConversationTests.swift */; };
 		PLANDIVIDER0000000000001 /* PlanDividerCreatedUpdatedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLANDIVIDER0000000000002 /* PlanDividerCreatedUpdatedTests.swift */; };
 		MARKERRELOAD00000000000001 /* MarkerReloadDecodeGroupingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MARKERRELOAD00000000000002 /* MarkerReloadDecodeGroupingTests.swift */; };
+		ATTCHSEGPARSE000000001 /* AttachmentSegmentParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ATTCHSEGPARSE000000002 /* AttachmentSegmentParsingTests.swift */; };
 		OPTINSERT00000000000001 /* OptimisticInsertTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = OPTINSERT00000000000002 /* OptimisticInsertTests.swift */; };
 		SLSHPILL0000000000000001 /* SlashPillOptimisticTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SLSHPILL0000000000000002 /* SlashPillOptimisticTests.swift */; };
+		A1B2C3D4E5F600010009F3AA /* PendingCreateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010009F4AA /* PendingCreateTests.swift */; };
 		PLANCARDGATETEST00000001 /* PlanCardGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLANCARDGATETEST00000002 /* PlanCardGateTests.swift */; };
 		A1B2C3D4E5F60001F00014AA /* NormalizedEventNewEngineTypesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F00015AA /* NormalizedEventNewEngineTypesTests.swift */; };
 		B1B2C3D4E5F60001CC000015 /* EngineRewindCodecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B2C3D4E5F60001CC000016 /* EngineRewindCodecTests.swift */; };
@@ -269,6 +309,9 @@
 		A1B2C3D4E5F60001FF0023AA /* SessionViewModel+ConversationHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0022AA /* SessionViewModel+ConversationHelpers.swift */; };
 		A1B2C3D4E5F60001FF0025AA /* NormalizedEvent+EngineDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0024AA /* NormalizedEvent+EngineDecoder.swift */; };
 		A1B2C3D4E5F60003000201AA /* ModelFallbackSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60003000202AA /* ModelFallbackSnapshotTests.swift */; };
+		TABSTSRT000000000000001 /* TabRowStatusPriorityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TABSTSRT000000000000002 /* TabRowStatusPriorityTests.swift */; };
+		TABSUBST000000000000001 /* TabRowSubtitlePriorityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TABSUBST000000000000002 /* TabRowSubtitlePriorityTests.swift */; };
+		TABGRPHDR00000000000001 /* TabListGroupHeaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TABGRPHDR00000000000002 /* TabListGroupHeaderTests.swift */; };
 		A1B2C3D4E5F60003000203AA /* SnapshotStaleDenialStripTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60003000204AA /* SnapshotStaleDenialStripTests.swift */; };
 		A1B2C3D4E5F60003000301AA /* FileEditorReopenTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60003000302AA /* FileEditorReopenTests.swift */; };
 		B2C3D4E5F600BB991009B01AA /* SessionViewModel+ImplementPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F600BB991009B00AA /* SessionViewModel+ImplementPlan.swift */; };
@@ -308,12 +351,21 @@
 		A1B2C3D4E5F6000100000AAA /* PairedDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairedDevice.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100000CAA /* RelayClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayClient.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100000EAA /* LANClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANClient.swift; sourceTree = "<group>"; };
+		LANAUTHOUT0000000000002 /* LANAuthOutcome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANAuthOutcome.swift; sourceTree = "<group>"; };
+		LANBACKOFF0000000000002 /* LANReconnectBackoff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANReconnectBackoff.swift; sourceTree = "<group>"; };
+		TMBONJRC000000000000002 /* TransportManager+BonjourReconnect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TransportManager+BonjourReconnect.swift"; sourceTree = "<group>"; };
+		LANBACKTST0000000000002 /* LANReconnectBackoffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANReconnectBackoffTests.swift; sourceTree = "<group>"; };
+		BONJREJTST0000000000002 /* BonjourLANAuthRejectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BonjourLANAuthRejectionTests.swift; sourceTree = "<group>"; };
+		LANREJVMT00000000000002 /* SessionViewModelLanAuthRejectedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionViewModelLanAuthRejectedTests.swift; sourceTree = "<group>"; };
+		LANAUTHTST0000000000002 /* LANAuthOutcomeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANAuthOutcomeTests.swift; sourceTree = "<group>"; };
+		LANTRANSVM0000000000002 /* SessionViewModelLanAuthTransientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionViewModelLanAuthTransientTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000010AA /* TransportManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportManager.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000012AA /* BonjourBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BonjourBrowser.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000014AA /* E2ECrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E2ECrypto.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000016AA /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000018AA /* TabListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabListView.swift; sourceTree = "<group>"; };
 		FE01AA02BC03DD04EE05FF01 /* TabListView+Helpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TabListView+Helpers.swift"; sourceTree = "<group>"; };
+		FE01AA02BC03DD04EE05FF03 /* TabListView+DetailViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TabListView+DetailViews.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100001CAA /* PermissionCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionCardView.swift; sourceTree = "<group>"; };
 		E11C17CA0001000000000C01 /* ElicitationCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElicitationCardView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100001EAA /* PairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingView.swift; sourceTree = "<group>"; };
@@ -323,6 +375,7 @@
 		A1B2C3D4E5F60001000028AA /* E2ECryptoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E2ECryptoTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportManagerTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayClientTests.swift; sourceTree = "<group>"; };
+		TMRTESTS00000000000002 /* TransportManagerReceiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportManagerReceiveTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002EAA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002FAA /* IonRemote.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = IonRemote.entitlements; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000032AA /* IonRemote.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = IonRemote.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -370,6 +423,7 @@
 		A1B2C3D4E5F60001000201AA /* SessionViewModel+Lifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Lifecycle.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Pairing.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Commands.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+GitCommands.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EventHandlers.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EngineEvents.swift"; sourceTree = "<group>"; };
 		THINK00000000000000000002 /* NormalizedEvent+Thinking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Thinking.swift"; sourceTree = "<group>"; };
@@ -377,6 +431,10 @@
 		THINK00000000000000000004 /* SessionViewModel+ThinkingEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ThinkingEvents.swift"; sourceTree = "<group>"; };
 		THINK00000000000000000006 /* ThinkingRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingRowView.swift; sourceTree = "<group>"; };
 		THINK00000000000000000008 /* ThinkingAccumulatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingAccumulatorTests.swift; sourceTree = "<group>"; };
+		PAYCMPTEST00000000000008 /* PayloadCompressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PayloadCompressionTests.swift; sourceTree = "<group>"; };
+		DECODEREC00000000000008 /* TransportManagerDecodeRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportManagerDecodeRecoveryTests.swift; sourceTree = "<group>"; };
+		LOADCONV000000000000008 /* SessionViewModelLoadConversationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionViewModelLoadConversationTests.swift; sourceTree = "<group>"; };
+		WATCHDOG00000000000008 /* LANLivenessWatchdogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANLivenessWatchdogTests.swift; sourceTree = "<group>"; };
 		THINKFORK00000000000008 /* ThinkingEffortStorageForkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingEffortStorageForkTests.swift; sourceTree = "<group>"; };
 		TGHOIST000000000000008 /* ToolGroupingHoistTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolGroupingHoistTests.swift; sourceTree = "<group>"; };
 		AGTRNORD000000000000008 /* AgentTurnRenderOrderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentTurnRenderOrderTests.swift; sourceTree = "<group>"; };
@@ -388,7 +446,15 @@
 		WIREMERGE000000000000008 /* RemoteCommandWireMergeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteCommandWireMergeTests.swift; sourceTree = "<group>"; };
 		LOADST00000000000000008 /* ConversationLoadStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationLoadStateTests.swift; sourceTree = "<group>"; };
 		TRESEND00000000000000008 /* TransportResendTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportResendTests.swift; sourceTree = "<group>"; };
+		SERIALQT000000000000002 /* SerialAsyncQueueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SerialAsyncQueueTests.swift; sourceTree = "<group>"; };
+		SENDDLNT000000000000002 /* SendDeadlineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendDeadlineTests.swift; sourceTree = "<group>"; };
+		TRLANPRF000000000000002 /* TransportRelayLanPreferredTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportRelayLanPreferredTests.swift; sourceTree = "<group>"; };
+		LANWDOGT000000000000002 /* LANHeartbeatWatchdogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANHeartbeatWatchdogTests.swift; sourceTree = "<group>"; };
+		SYNCRTRY000000000000002 /* SyncRetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncRetryTests.swift; sourceTree = "<group>"; };
+		SENDRQUE000000000000002 /* SendFailureRequeueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendFailureRequeueTests.swift; sourceTree = "<group>"; };
 		CSRECON00000000000000008 /* ConversationStalenessReconcileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationStalenessReconcileTests.swift; sourceTree = "<group>"; };
+		CONVHISTR000000000000002 /* ConversationHistoryReplaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationHistoryReplaceTests.swift; sourceTree = "<group>"; };
+		GRPPARITY000000000000002 /* GroupingParityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupingParityTests.swift; sourceTree = "<group>"; };
 		MSGIDMAP0000000000000003 /* DispatchSnapshotIdMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchSnapshotIdMappingTests.swift; sourceTree = "<group>"; };
 		DISPINVAL000000000000008 /* SessionViewModel+DispatchCacheInvalidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+DispatchCacheInvalidation.swift"; sourceTree = "<group>"; };
 		DISPINVALT00000000000008 /* DispatchCacheInvalidationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchCacheInvalidationTests.swift; sourceTree = "<group>"; };
@@ -403,12 +469,17 @@
 		UCSTORE0000000000000008 /* UnifiedConversationStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedConversationStoreTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000221AA /* TransportManager+Send.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TransportManager+Send.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000223AA /* TransportManager+Receive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TransportManager+Receive.swift"; sourceTree = "<group>"; };
+		SERIALQ0000000000000002 /* SerialAsyncQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SerialAsyncQueue.swift; sourceTree = "<group>"; };
+		SENDDLN0000000000000002 /* SendDeadline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendDeadline.swift; sourceTree = "<group>"; };
+		TMSYNC00000000000000002 /* TransportManager+Sync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TransportManager+Sync.swift"; sourceTree = "<group>"; };
+		TMWDOG00000000000000002 /* TransportManager+Watchdog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TransportManager+Watchdog.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000225AA /* PayloadCompression.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PayloadCompression.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000231AA /* NormalizedEvent+Lifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Lifecycle.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000233AA /* NormalizedEvent+Stream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Stream.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000235AA /* NormalizedEvent+Permission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Permission.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000237AA /* NormalizedEvent+Terminal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Terminal.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000239AA /* NormalizedEvent+Engine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Engine.swift"; sourceTree = "<group>"; };
+		TYPEKEY00000000000000002A /* NormalizedEvent+TypeKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+TypeKey.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000241AA /* NormalizedEventStreamTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventStreamTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000243AA /* NormalizedEventPermissionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventPermissionTests.swift; sourceTree = "<group>"; };
 		PLAN0IMPLEMENT00002 /* PlanImplementWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanImplementWireTests.swift; sourceTree = "<group>"; };
@@ -416,6 +487,7 @@
 		A1B2C3D4E5F60001000245AA /* NormalizedEventLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventLifecycleTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000247AA /* NormalizedEventTerminalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventTerminalTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000249AA /* ContractSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractSyncTests.swift; sourceTree = "<group>"; };
+		TYPEKEY00000000000000004A /* NormalizedEventTypeKeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventTypeKeyTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000300AA /* GitTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitTypes.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000302AA /* NormalizedEvent+Git.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Git.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000304AA /* GitPaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitPaneView.swift; sourceTree = "<group>"; };
@@ -438,6 +510,8 @@
 		A1B2C3D4E5F60001000901AA /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000903AA /* SessionViewModel+Snapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Snapshot.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000951AA /* SessionViewModel+OnConnected.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+OnConnected.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010009F2AA /* SessionViewModel+PendingCreate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+PendingCreate.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010009F6AA /* SessionViewModel+Listening.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Listening.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000981AA /* SessionViewModel+SessionStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+SessionStatus.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000991AA /* SessionViewModel+PermissionMessageEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+PermissionMessageEvents.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000A01AA /* SessionStatusSynthesisTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStatusSynthesisTests.swift; sourceTree = "<group>"; };
@@ -448,11 +522,16 @@
 		A1B2C3D4E5F60001001009AA /* DiagnosticLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLogView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001001011AA /* DiagnosticLog+Events.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DiagnosticLog+Events.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001001013AA /* DiagnosticLog+Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DiagnosticLog+Commands.swift"; sourceTree = "<group>"; };
+		DIAGLOG0000000000003 /* DiagnosticLog+Schema.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DiagnosticLog+Schema.swift"; sourceTree = "<group>"; };
+		DIAGLOG0000000000002 /* DiagnosticLogSchemaTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLogSchemaTests.swift; sourceTree = "<group>"; };
 		HRNSBDG0000000000000002 /* EngineHarnessBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineHarnessBadge.swift; sourceTree = "<group>"; };
 		NEWCONVRT000000000000002 /* NewConversationRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewConversationRouting.swift; sourceTree = "<group>"; };
 		NEWCONVRT000000000000004 /* NewConversationRoutingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewConversationRoutingTests.swift; sourceTree = "<group>"; };
+		92ED3F076BA6484680389762 /* EngineProfileTests.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = EngineProfileTests.swift; sourceTree = "<group>"; };
 		HRNSBDG0000000000000004 /* EngineHarnessBadgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineHarnessBadgeTests.swift; sourceTree = "<group>"; };
+		HRNMSGRELO0000000000002 /* HarnessMessageRelocateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HarnessMessageRelocateTests.swift; sourceTree = "<group>"; };
 		PLANCARD0000000000000002 /* PlanApprovalCardContentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanApprovalCardContentTests.swift; sourceTree = "<group>"; };
+		PLNCNTSTR000000000000002 /* PlanContentStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanContentStoreTests.swift; sourceTree = "<group>"; };
 		PLANCARD0000000000000004 /* PlanApprovalCardGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanApprovalCardGateTests.swift; sourceTree = "<group>"; };
 		PLANCARD0000000000000006 /* PlanApprovalCardUnpinGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanApprovalCardUnpinGateTests.swift; sourceTree = "<group>"; };
 		HRNSBDG0000000000000006 /* EngineInstanceCollapseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineInstanceCollapseTests.swift; sourceTree = "<group>"; };
@@ -511,6 +590,7 @@
 		A1B2C3D4E5F60001009A00AA /* SessionViewModel+TabGroupCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+TabGroupCommands.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001009B00AA /* TabListNewTabSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabListNewTabSheet.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001009C00AA /* TabListGroupHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabListGroupHeader.swift; sourceTree = "<group>"; };
+		TABSTATUSROLLUP0000002 /* TabStatusRollup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabStatusRollup.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001009D00AA /* SafeDecodable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafeDecodable.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001009E00AA /* TabRowContextMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabRowContextMenu.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001009F00AA /* NormalizedEvent+Resource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Resource.swift"; sourceTree = "<group>"; };
@@ -534,8 +614,10 @@
 		MSGADDFRESH00000000000002 /* MessageAddedFreshConversationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageAddedFreshConversationTests.swift; sourceTree = "<group>"; };
 		PLANDIVIDER0000000000002 /* PlanDividerCreatedUpdatedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanDividerCreatedUpdatedTests.swift; sourceTree = "<group>"; };
 		MARKERRELOAD00000000000002 /* MarkerReloadDecodeGroupingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkerReloadDecodeGroupingTests.swift; sourceTree = "<group>"; };
+		ATTCHSEGPARSE000000002 /* AttachmentSegmentParsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentSegmentParsingTests.swift; sourceTree = "<group>"; };
 		OPTINSERT00000000000002 /* OptimisticInsertTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptimisticInsertTests.swift; sourceTree = "<group>"; };
 		SLSHPILL0000000000000002 /* SlashPillOptimisticTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlashPillOptimisticTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010009F4AA /* PendingCreateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingCreateTests.swift; sourceTree = "<group>"; };
 		PLANCARDGATETEST00000002 /* PlanCardGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanCardGateTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001F00015AA /* NormalizedEventNewEngineTypesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventNewEngineTypesTests.swift; sourceTree = "<group>"; };
 		B1B2C3D4E5F60001CC000016 /* EngineRewindCodecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineRewindCodecTests.swift; sourceTree = "<group>"; };
@@ -561,10 +643,14 @@
 		A1B2C3D4E5F60001FF0020AA /* RemoteCommand+Decode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RemoteCommand+Decode.swift"; sourceTree = "<group>"; };
 		SENDINT00000000000000002 /* SendIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendIntent.swift; sourceTree = "<group>"; };
 		ESSNKY00000000000000002 /* RemoteCommand+EssentialKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RemoteCommand+EssentialKey.swift"; sourceTree = "<group>"; };
+		RMDECERR000000000000002 /* RemoteEventDecodeError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteEventDecodeError.swift; sourceTree = "<group>"; };
 		SNDITT00000000000000002 /* SendIntentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendIntentTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001FF0022AA /* SessionViewModel+ConversationHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ConversationHelpers.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001FF0024AA /* NormalizedEvent+EngineDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+EngineDecoder.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60003000202AA /* ModelFallbackSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelFallbackSnapshotTests.swift; sourceTree = "<group>"; };
+		TABSTSRT000000000000002 /* TabRowStatusPriorityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabRowStatusPriorityTests.swift; sourceTree = "<group>"; };
+		TABSUBST000000000000002 /* TabRowSubtitlePriorityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabRowSubtitlePriorityTests.swift; sourceTree = "<group>"; };
+		TABGRPHDR00000000000002 /* TabListGroupHeaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabListGroupHeaderTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60003000204AA /* SnapshotStaleDenialStripTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotStaleDenialStripTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60003000302AA /* FileEditorReopenTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileEditorReopenTests.swift; sourceTree = "<group>"; };
 		B2C3D4E5F600BB991009B00AA /* SessionViewModel+ImplementPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ImplementPlan.swift"; sourceTree = "<group>"; };
@@ -652,6 +738,7 @@
 				A1B2C3D4E5F60001000235AA /* NormalizedEvent+Permission.swift */,
 				A1B2C3D4E5F60001000237AA /* NormalizedEvent+Terminal.swift */,
 				A1B2C3D4E5F60001000239AA /* NormalizedEvent+Engine.swift */,
+				TYPEKEY00000000000000002A /* NormalizedEvent+TypeKey.swift */,
 				B1B2C3D4E5F60001CC000012 /* RemoteTabGroup.swift */,
 				B1B2C3D4E5F60001CC000014 /* NormalizedEvent+Codable.swift */,
 				A1B2C3D4E5F60001FF0024AA /* NormalizedEvent+EngineDecoder.swift */,
@@ -669,6 +756,7 @@
 				A1B2C3D4E5F60001005307AA /* RemoteCommand+Encode.swift */,
 				A1B2C3D4E5F60001FF0020AA /* RemoteCommand+Decode.swift */,
 				ESSNKY00000000000000002 /* RemoteCommand+EssentialKey.swift */,
+				RMDECERR000000000000002 /* RemoteEventDecodeError.swift */,
 				A1B2C3D4E5F6000100000AAA /* PairedDevice.swift */,
 				A1B2C3D4E5F60001000091AA /* Message.swift */,
 				PENDINGCARD0000000000002 /* PendingCard.swift */,
@@ -690,9 +778,16 @@
 			children = (
 				A1B2C3D4E5F6000100000CAA /* RelayClient.swift */,
 				A1B2C3D4E5F6000100000EAA /* LANClient.swift */,
+				LANAUTHOUT0000000000002 /* LANAuthOutcome.swift */,
+				LANBACKOFF0000000000002 /* LANReconnectBackoff.swift */,
 				A1B2C3D4E5F60001000010AA /* TransportManager.swift */,
+				TMBONJRC000000000000002 /* TransportManager+BonjourReconnect.swift */,
 				A1B2C3D4E5F60001000221AA /* TransportManager+Send.swift */,
 				A1B2C3D4E5F60001000223AA /* TransportManager+Receive.swift */,
+				SERIALQ0000000000000002 /* SerialAsyncQueue.swift */,
+				SENDDLN0000000000000002 /* SendDeadline.swift */,
+				TMSYNC00000000000000002 /* TransportManager+Sync.swift */,
+				TMWDOG00000000000000002 /* TransportManager+Watchdog.swift */,
 				A1B2C3D4E5F60001000012AA /* BonjourBrowser.swift */,
 				A1B2C3D4E5F600010000A1AA /* TerminalOutputRouter.swift */,
 				A1B2C3D4E5F60001001003AA /* PeerStatusPoller.swift */,
@@ -716,8 +811,10 @@
 			children = (
 				A1B2C3D4E5F60001000018AA /* TabListView.swift */,
 				FE01AA02BC03DD04EE05FF01 /* TabListView+Helpers.swift */,
+				FE01AA02BC03DD04EE05FF03 /* TabListView+DetailViews.swift */,
 				A1B2C3D4E5F60001009B00AA /* TabListNewTabSheet.swift */,
 				A1B2C3D4E5F60001009C00AA /* TabListGroupHeader.swift */,
+				TABSTATUSROLLUP0000002 /* TabStatusRollup.swift */,
 				A1B2C3D4E5F60001009E00AA /* TabRowContextMenu.swift */,
 				A1B2C3D4E5F600010000FDAA /* TabRowView.swift */,
 				A1B2C3D4E5F60001004010AA /* ConversationTerminalView.swift */,
@@ -814,6 +911,7 @@
 				A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */,
 				A1B2C3D4E5F60001009200AA /* SessionViewModel+RemoteDisplay.swift */,
 				A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */,
+				A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */,
 				B2C3D4E5F600BB991010E000AA /* SessionViewModel+EngineCommands.swift */,
 				B2C3D4E5F600BB991010E0005B /* SessionViewModel+Submit.swift */,
 				B2C3D4E5F600BB991010F000AA /* SessionViewModel+KeyboardUtilityBar.swift */,
@@ -837,6 +935,8 @@
 				DTELACC000000000000A2 /* SessionViewModel+DispatchTelemetryAccessors.swift */,
 				A1B2C3D4E5F60001000991AA /* SessionViewModel+PermissionMessageEvents.swift */,
 				A1B2C3D4E5F60001000951AA /* SessionViewModel+OnConnected.swift */,
+				A1B2C3D4E5F600010009F2AA /* SessionViewModel+PendingCreate.swift */,
+				A1B2C3D4E5F600010009F6AA /* SessionViewModel+Listening.swift */,
 				SENDINT00000000000000002 /* SendIntent.swift */,
 				A1B2C3D4E5F600010010B0AA /* ResourceStore.swift */,
 				A1B2C3D4E5F600010010B2AA /* PlanContentStore.swift */,
@@ -847,6 +947,9 @@
 		A1B2C3D4E5F60001000059AA /* IonRemoteTests */ = {
 			isa = PBXGroup;
 			children = (
+				PAYCMPTESTGROUP0000001 /* Networking */,
+				LOADCONVTESTGROUP000001 /* ViewModels */,
+				DIAGLOG0000000000002 /* DiagnosticLogSchemaTests.swift */,
 				A1B2C3D4E5F60001000241AA /* NormalizedEventStreamTests.swift */,
 				A1B2C3D4E5F60001000243AA /* NormalizedEventPermissionTests.swift */,
 				PLAN0IMPLEMENT00002 /* PlanImplementWireTests.swift */,
@@ -854,8 +957,12 @@
 				A1B2C3D4E5F60001000245AA /* NormalizedEventLifecycleTests.swift */,
 				A1B2C3D4E5F60001000247AA /* NormalizedEventTerminalTests.swift */,
 				A1B2C3D4E5F60001000249AA /* ContractSyncTests.swift */,
+				TYPEKEY00000000000000004A /* NormalizedEventTypeKeyTests.swift */,
 				A1B2C3D4E5F60001000A01AA /* SessionStatusSynthesisTests.swift */,
 				A1B2C3D4E5F60003000202AA /* ModelFallbackSnapshotTests.swift */,
+				TABSTSRT000000000000002 /* TabRowStatusPriorityTests.swift */,
+				TABSUBST000000000000002 /* TabRowSubtitlePriorityTests.swift */,
+				TABGRPHDR00000000000002 /* TabListGroupHeaderTests.swift */,
 				A1B2C3D4E5F60003000204AA /* SnapshotStaleDenialStripTests.swift */,
 				A1B2C3D4E5F60003000302AA /* FileEditorReopenTests.swift */,
 				TGHOIST000000000000008 /* ToolGroupingHoistTests.swift */,
@@ -871,7 +978,15 @@
 				LOADST00000000000000008 /* ConversationLoadStateTests.swift */,
 				SNDITT00000000000000002 /* SendIntentTests.swift */,
 				TRESEND00000000000000008 /* TransportResendTests.swift */,
+				SERIALQT000000000000002 /* SerialAsyncQueueTests.swift */,
+				SENDDLNT000000000000002 /* SendDeadlineTests.swift */,
+				TRLANPRF000000000000002 /* TransportRelayLanPreferredTests.swift */,
+				LANWDOGT000000000000002 /* LANHeartbeatWatchdogTests.swift */,
+				SYNCRTRY000000000000002 /* SyncRetryTests.swift */,
+				SENDRQUE000000000000002 /* SendFailureRequeueTests.swift */,
 				CSRECON00000000000000008 /* ConversationStalenessReconcileTests.swift */,
+				CONVHISTR000000000000002 /* ConversationHistoryReplaceTests.swift */,
+				GRPPARITY000000000000002 /* GroupingParityTests.swift */,
 				MSGIDMAP0000000000000003 /* DispatchSnapshotIdMappingTests.swift */,
 				DISPACT0000000000000008 /* DispatchActivityFoldTests.swift */,
 				DISPINVALT00000000000008 /* DispatchCacheInvalidationTests.swift */,
@@ -901,8 +1016,10 @@
 				MSGADDFRESH00000000000002 /* MessageAddedFreshConversationTests.swift */,
 				PLANDIVIDER0000000000002 /* PlanDividerCreatedUpdatedTests.swift */,
 				MARKERRELOAD00000000000002 /* MarkerReloadDecodeGroupingTests.swift */,
+				ATTCHSEGPARSE000000002 /* AttachmentSegmentParsingTests.swift */,
 				OPTINSERT00000000000002 /* OptimisticInsertTests.swift */,
 				SLSHPILL0000000000000002 /* SlashPillOptimisticTests.swift */,
+				A1B2C3D4E5F600010009F4AA /* PendingCreateTests.swift */,
 				PLANCARDGATETEST00000002 /* PlanCardGateTests.swift */,
 				A1B2C3D4E5F60001000028AA /* E2ECryptoTests.swift */,
 				A1B2C3D4E5F60001FF0004AA /* MarkdownFormatterFixtures.swift */,
@@ -910,14 +1027,18 @@
 				A1B2C3D4E5F60001FF0012AA /* FrontmatterSplitterTests.swift */,
 				A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */,
 				A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */,
+				TMRTESTS00000000000002 /* TransportManagerReceiveTests.swift */,
 				HRNSBDG0000000000000004 /* EngineHarnessBadgeTests.swift */,
+				HRNMSGRELO0000000000002 /* HarnessMessageRelocateTests.swift */,
 				PLANCARD0000000000000002 /* PlanApprovalCardContentTests.swift */,
+				PLNCNTSTR000000000000002 /* PlanContentStoreTests.swift */,
 				PLANCARD0000000000000004 /* PlanApprovalCardGateTests.swift */,
 				PLANCARD0000000000000006 /* PlanApprovalCardUnpinGateTests.swift */,
 				HRNSBDG0000000000000006 /* EngineInstanceCollapseTests.swift */,
 				EDTDLTORD000000000000002 /* EngineTextDeltaOrderingTests.swift */,
 				HRNSBDG0000000000000008 /* EngineSessionKeyCollapseTests.swift */,
 				NEWCONVRT000000000000004 /* NewConversationRoutingTests.swift */,
+				92ED3F076BA6484680389762 /* EngineProfileTests.swift */,
 				AGDUR0000000000000004 /* AgentDurationTests.swift */,
 				DBSTATE00000000000000B2 /* DispatchBodyStateTests.swift */,
 				BCRUMBT0000000000002 /* BreadcrumbDispatchLoadTests.swift */,
@@ -929,6 +1050,29 @@
 				DSPPOPUP000000000002 /* DispatchPopupInitialLoadTests.swift */,
 			);
 			path = IonRemoteTests;
+			sourceTree = "<group>";
+		};
+		PAYCMPTESTGROUP0000001 /* Networking */ = {
+			isa = PBXGroup;
+			children = (
+				PAYCMPTEST00000000000008 /* PayloadCompressionTests.swift */,
+				DECODEREC00000000000008 /* TransportManagerDecodeRecoveryTests.swift */,
+				WATCHDOG00000000000008 /* LANLivenessWatchdogTests.swift */,
+				LANAUTHTST0000000000002 /* LANAuthOutcomeTests.swift */,
+				LANBACKTST0000000000002 /* LANReconnectBackoffTests.swift */,
+				BONJREJTST0000000000002 /* BonjourLANAuthRejectionTests.swift */,
+			);
+			path = Networking;
+			sourceTree = "<group>";
+		};
+		LOADCONVTESTGROUP000001 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				LOADCONV000000000000008 /* SessionViewModelLoadConversationTests.swift */,
+				LANTRANSVM0000000000002 /* SessionViewModelLanAuthTransientTests.swift */,
+				LANREJVMT00000000000002 /* SessionViewModelLanAuthRejectedTests.swift */,
+			);
+			path = ViewModels;
 			sourceTree = "<group>";
 		};
 		A1B2C3D4E5F60001000060AA /* Products */ = {
@@ -960,6 +1104,7 @@
 				A1B2C3D4E5F60001007002AA /* CrashReporter.swift */,
 				A1B2C3D4E5F60001001011AA /* DiagnosticLog+Events.swift */,
 				A1B2C3D4E5F60001001013AA /* DiagnosticLog+Commands.swift */,
+				DIAGLOG0000000000003 /* DiagnosticLog+Schema.swift */,
 				A1B2C3D4E5F60001005103AA /* KeychainHelper.swift */,
 				A1B2C3D4E5F60001F10001AA /* AppTheme.swift */,
 				A1B2C3D4E5F60001F10003AA /* IonDefaultTheme.swift */,
@@ -1127,14 +1272,19 @@
 				A1B2C3D4E5F60001000092AA /* MessageAttachment.swift in Sources */,
 				A1B2C3D4E5F6000100000BAA /* RelayClient.swift in Sources */,
 				A1B2C3D4E5F6000100000DAA /* LANClient.swift in Sources */,
+				LANAUTHOUT0000000000001 /* LANAuthOutcome.swift in Sources */,
+				LANBACKOFF0000000000001 /* LANReconnectBackoff.swift in Sources */,
 				A1B2C3D4E5F6000100000FAA /* TransportManager.swift in Sources */,
+				TMBONJRC000000000000001 /* TransportManager+BonjourReconnect.swift in Sources */,
 				A1B2C3D4E5F60001000011AA /* BonjourBrowser.swift in Sources */,
 				A1B2C3D4E5F60001000013AA /* E2ECrypto.swift in Sources */,
 				A1B2C3D4E5F60001000015AA /* KeychainStore.swift in Sources */,
 				A1B2C3D4E5F60001000017AA /* TabListView.swift in Sources */,
 				FE01AA02BC03DD04EE05FF02 /* TabListView+Helpers.swift in Sources */,
+				FE01AA02BC03DD04EE05FF04 /* TabListView+DetailViews.swift in Sources */,
 				A1B2C3D4E5F60001009B01AA /* TabListNewTabSheet.swift in Sources */,
 				A1B2C3D4E5F60001009C01AA /* TabListGroupHeader.swift in Sources */,
+				TABSTATUSROLLUP0000001 /* TabStatusRollup.swift in Sources */,
 				A1B2C3D4E5F60001009E01AA /* TabRowContextMenu.swift in Sources */,
 				A1B2C3D4E5F600010000FCAA /* TabRowView.swift in Sources */,
 				A1B2C3D4E5F60001004011AA /* ConversationTerminalView.swift in Sources */,
@@ -1164,6 +1314,7 @@
 				A1B2C3D4E5F60001000202AA /* SessionViewModel+Pairing.swift in Sources */,
 				A1B2C3D4E5F60001009201AA /* SessionViewModel+RemoteDisplay.swift in Sources */,
 				A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */,
+				A1B2C3D4E5F600010002049A /* SessionViewModel+GitCommands.swift in Sources */,
 				B2C3D4E5F600BB991010E001AA /* SessionViewModel+EngineCommands.swift in Sources */,
 				B2C3D4E5F600BB991010E0015B /* SessionViewModel+Submit.swift in Sources */,
 				B2C3D4E5F600BB991010F001AA /* SessionViewModel+KeyboardUtilityBar.swift in Sources */,
@@ -1188,16 +1339,24 @@
 				DISPINVAL000000000000007 /* SessionViewModel+DispatchCacheInvalidation.swift in Sources */,
 				A1B2C3D4E5F60001000990AA /* SessionViewModel+PermissionMessageEvents.swift in Sources */,
 				A1B2C3D4E5F60001000950AA /* SessionViewModel+OnConnected.swift in Sources */,
+				A1B2C3D4E5F600010009F1AA /* SessionViewModel+PendingCreate.swift in Sources */,
+				A1B2C3D4E5F600010009F5AA /* SessionViewModel+Listening.swift in Sources */,
 				SENDINT00000000000000001 /* SendIntent.swift in Sources */,
 				ESSNKY00000000000000001 /* RemoteCommand+EssentialKey.swift in Sources */,
+				RMDECERR000000000000001 /* RemoteEventDecodeError.swift in Sources */,
 				A1B2C3D4E5F60001000220AA /* TransportManager+Send.swift in Sources */,
 				A1B2C3D4E5F60001000222AA /* TransportManager+Receive.swift in Sources */,
+				SERIALQ0000000000000001 /* SerialAsyncQueue.swift in Sources */,
+				SENDDLN0000000000000001 /* SendDeadline.swift in Sources */,
+				TMSYNC00000000000000001 /* TransportManager+Sync.swift in Sources */,
+				TMWDOG00000000000000001 /* TransportManager+Watchdog.swift in Sources */,
 				A1B2C3D4E5F60001000224AA /* PayloadCompression.swift in Sources */,
 				A1B2C3D4E5F60001000230AA /* NormalizedEvent+Lifecycle.swift in Sources */,
 				A1B2C3D4E5F60001000232AA /* NormalizedEvent+Stream.swift in Sources */,
 				A1B2C3D4E5F60001000234AA /* NormalizedEvent+Permission.swift in Sources */,
 				A1B2C3D4E5F60001000236AA /* NormalizedEvent+Terminal.swift in Sources */,
 				A1B2C3D4E5F60001000238AA /* NormalizedEvent+Engine.swift in Sources */,
+				TYPEKEY00000000000000001A /* NormalizedEvent+TypeKey.swift in Sources */,
 				B1B2C3D4E5F60001CC000011 /* RemoteTabGroup.swift in Sources */,
 				B1B2C3D4E5F60001CC000013 /* NormalizedEvent+Codable.swift in Sources */,
 				A1B2C3D4E5F60001FF0025AA /* NormalizedEvent+EngineDecoder.swift in Sources */,
@@ -1272,6 +1431,7 @@
 				A1B2C3D4E5F60001007001AA /* CrashReporter.swift in Sources */,
 				A1B2C3D4E5F60001001010AA /* DiagnosticLog+Events.swift in Sources */,
 				A1B2C3D4E5F60001001012AA /* DiagnosticLog+Commands.swift in Sources */,
+				DIAGLOG0000000000004 /* DiagnosticLog+Schema.swift in Sources */,
 				HRNSBDG0000000000000001 /* EngineHarnessBadge.swift in Sources */,
 				NEWCONVRT000000000000001 /* NewConversationRouting.swift in Sources */,
 				AGDUR0000000000000001 /* AgentDuration.swift in Sources */,
@@ -1316,6 +1476,16 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DIAGLOG0000000000001 /* DiagnosticLogSchemaTests.swift in Sources */,
+				PAYCMPTEST00000000000007 /* PayloadCompressionTests.swift in Sources */,
+				DECODEREC00000000000007 /* TransportManagerDecodeRecoveryTests.swift in Sources */,
+				WATCHDOG00000000000007 /* LANLivenessWatchdogTests.swift in Sources */,
+				LANAUTHTST0000000000001 /* LANAuthOutcomeTests.swift in Sources */,
+				LANBACKTST0000000000001 /* LANReconnectBackoffTests.swift in Sources */,
+				BONJREJTST0000000000001 /* BonjourLANAuthRejectionTests.swift in Sources */,
+				LANTRANSVM0000000000001 /* SessionViewModelLanAuthTransientTests.swift in Sources */,
+				LANREJVMT00000000000001 /* SessionViewModelLanAuthRejectedTests.swift in Sources */,
+				LOADCONV000000000000007 /* SessionViewModelLoadConversationTests.swift in Sources */,
 				A1B2C3D4E5F60001000240AA /* NormalizedEventStreamTests.swift in Sources */,
 				A1B2C3D4E5F60001000242AA /* NormalizedEventPermissionTests.swift in Sources */,
 				PLAN0IMPLEMENT00001 /* PlanImplementWireTests.swift in Sources */,
@@ -1323,6 +1493,9 @@
 				A1B2C3D4E5F60001000244AA /* NormalizedEventLifecycleTests.swift in Sources */,
 				A1B2C3D4E5F60001000246AA /* NormalizedEventTerminalTests.swift in Sources */,
 				A1B2C3D4E5F60003000201AA /* ModelFallbackSnapshotTests.swift in Sources */,
+				TABSTSRT000000000000001 /* TabRowStatusPriorityTests.swift in Sources */,
+				TABSUBST000000000000001 /* TabRowSubtitlePriorityTests.swift in Sources */,
+				TABGRPHDR00000000000001 /* TabListGroupHeaderTests.swift in Sources */,
 				A1B2C3D4E5F60003000203AA /* SnapshotStaleDenialStripTests.swift in Sources */,
 				A1B2C3D4E5F60003000301AA /* FileEditorReopenTests.swift in Sources */,
 				TGHOIST000000000000007 /* ToolGroupingHoistTests.swift in Sources */,
@@ -1338,7 +1511,15 @@
 				LOADST00000000000000007 /* ConversationLoadStateTests.swift in Sources */,
 				SNDITT00000000000000001 /* SendIntentTests.swift in Sources */,
 				TRESEND00000000000000007 /* TransportResendTests.swift in Sources */,
+				SERIALQT000000000000001 /* SerialAsyncQueueTests.swift in Sources */,
+				SENDDLNT000000000000001 /* SendDeadlineTests.swift in Sources */,
+				TRLANPRF000000000000001 /* TransportRelayLanPreferredTests.swift in Sources */,
+				LANWDOGT000000000000001 /* LANHeartbeatWatchdogTests.swift in Sources */,
+				SYNCRTRY000000000000001 /* SyncRetryTests.swift in Sources */,
+				SENDRQUE000000000000001 /* SendFailureRequeueTests.swift in Sources */,
 				CSRECON00000000000000007 /* ConversationStalenessReconcileTests.swift in Sources */,
+				CONVHISTR000000000000001 /* ConversationHistoryReplaceTests.swift in Sources */,
+				GRPPARITY000000000000001 /* GroupingParityTests.swift in Sources */,
 				MSGIDMAP0000000000000004 /* DispatchSnapshotIdMappingTests.swift in Sources */,
 				DISPACT0000000000000007 /* DispatchActivityFoldTests.swift in Sources */,
 				DISPINVALT00000000000007 /* DispatchCacheInvalidationTests.swift in Sources */,
@@ -1351,6 +1532,7 @@
 				CSBTRIG0000000000000007 /* ConversationStatusBarTriggerTests.swift in Sources */,
 				UCSTORE0000000000000007 /* UnifiedConversationStoreTests.swift in Sources */,
 				A1B2C3D4E5F60001000248AA /* ContractSyncTests.swift in Sources */,
+				TYPEKEY00000000000000003A /* NormalizedEventTypeKeyTests.swift in Sources */,
 				A1B2C3D4E5F60001000A00AA /* SessionStatusSynthesisTests.swift in Sources */,
 				A1B2C3D4E5F60001E80006AA /* DesktopSettingsContractTests.swift in Sources */,
 				A1B2C3D4E5F60001F00006AA /* ContractSyncEngineEventsTests.swift in Sources */,
@@ -1370,8 +1552,10 @@
 				MSGADDFRESH00000000000001 /* MessageAddedFreshConversationTests.swift in Sources */,
 				PLANDIVIDER0000000000001 /* PlanDividerCreatedUpdatedTests.swift in Sources */,
 				MARKERRELOAD00000000000001 /* MarkerReloadDecodeGroupingTests.swift in Sources */,
+				ATTCHSEGPARSE000000001 /* AttachmentSegmentParsingTests.swift in Sources */,
 				OPTINSERT00000000000001 /* OptimisticInsertTests.swift in Sources */,
 				SLSHPILL0000000000000001 /* SlashPillOptimisticTests.swift in Sources */,
+				A1B2C3D4E5F600010009F3AA /* PendingCreateTests.swift in Sources */,
 				PLANCARDGATETEST00000001 /* PlanCardGateTests.swift in Sources */,
 				A1B2C3D4E5F60001000027AA /* E2ECryptoTests.swift in Sources */,
 				A1B2C3D4E5F60001FF0005AA /* MarkdownFormatterFixtures.swift in Sources */,
@@ -1379,14 +1563,18 @@
 				A1B2C3D4E5F60001FF0013AA /* FrontmatterSplitterTests.swift in Sources */,
 				A1B2C3D4E5F60001000029AA /* TransportManagerTests.swift in Sources */,
 				A1B2C3D4E5F6000100002BAA /* RelayClientTests.swift in Sources */,
+				TMRTESTS00000000000001 /* TransportManagerReceiveTests.swift in Sources */,
 				HRNSBDG0000000000000003 /* EngineHarnessBadgeTests.swift in Sources */,
+				HRNMSGRELO0000000000001 /* HarnessMessageRelocateTests.swift in Sources */,
 				PLANCARD0000000000000001 /* PlanApprovalCardContentTests.swift in Sources */,
+				PLNCNTSTR000000000000001 /* PlanContentStoreTests.swift in Sources */,
 				PLANCARD0000000000000003 /* PlanApprovalCardGateTests.swift in Sources */,
 				PLANCARD0000000000000005 /* PlanApprovalCardUnpinGateTests.swift in Sources */,
 				HRNSBDG0000000000000005 /* EngineInstanceCollapseTests.swift in Sources */,
 				EDTDLTORD000000000000001 /* EngineTextDeltaOrderingTests.swift in Sources */,
 				HRNSBDG0000000000000007 /* EngineSessionKeyCollapseTests.swift in Sources */,
 				NEWCONVRT000000000000003 /* NewConversationRoutingTests.swift in Sources */,
+				3E8C1FD7961E454F81383867 /* EngineProfileTests.swift in Sources */,
 				AGDUR0000000000000003 /* AgentDurationTests.swift in Sources */,
 				DBSTATE00000000000000B1 /* DispatchBodyStateTests.swift in Sources */,
 				BCRUMBT0000000000001 /* BreadcrumbDispatchLoadTests.swift in Sources */,

@@ -124,5 +124,3 @@ func mapToContentBlock(m map[string]any) types.LlmContentBlock {
 	}
 	return b
 }
-
-

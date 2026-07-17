@@ -55,7 +55,7 @@ func (m *Manager) ensureAsyncSubsystems() (*webhooks.Server, *scheduling.Schedul
 		resolver := m.buildAsyncContextResolver()
 		m.webhookServer.SetSessionResolver(webhooks.SessionResolver(resolver))
 		m.webhookServer.SetEmit(m.buildAsyncEventEmitter())
-		utils.Log("session", fmt.Sprintf("ensureAsyncSubsystems: webhook server constructed (port=%d bind=%s)", cfg.Port, cfg.BindInterface))
+		utils.LogWithFields(utils.LevelInfo, "session", "ensureasyncsubsystems: webhook server constructed ( )", map[string]any{"port": cfg.Port, "bind_interface": cfg.BindInterface})
 	}
 	if m.scheduler == nil {
 		cfg := scheduleConfigFrom(m.config)
@@ -63,7 +63,7 @@ func (m *Manager) ensureAsyncSubsystems() (*webhooks.Server, *scheduling.Schedul
 		resolver := m.buildAsyncContextResolver()
 		m.scheduler.SetSessionResolver(scheduling.SessionResolver(resolver))
 		m.scheduler.SetEmit(m.buildAsyncEventEmitter())
-		utils.Log("session", fmt.Sprintf("ensureAsyncSubsystems: scheduler constructed (default-tz=%s)", cfg.DefaultTz))
+		utils.LogWithFields(utils.LevelInfo, "session", "ensureasyncsubsystems: scheduler constructed (default-)", map[string]any{"default_tz": cfg.DefaultTz})
 	}
 	return m.webhookServer, m.scheduler
 }
@@ -184,7 +184,7 @@ func (m *Manager) wireHostAsync(key string, host *extension.Host) {
 	server, scheduler := m.ensureAsyncSubsystems()
 	server.AddHost(host)
 	scheduler.AddHost(host)
-	utils.Debug("session", fmt.Sprintf("wireHostAsync: ext=%s key=%s wired", host.Name(), key))
+	utils.LogWithFields(utils.LevelDebug, "session", "wirehostasync: wired", map[string]any{"model": host.Name(), "key": key})
 }
 
 // fireLifecycleHookSDK dispatches the named lifecycle hook through the
@@ -204,7 +204,7 @@ func (m *Manager) fireLifecycleHookSDK(event string, ctx *extension.Context, inf
 		sdk.FireScheduleDeregistered(ctx, info)
 		return nil
 	default:
-		utils.Warn("session", fmt.Sprintf("fireLifecycleHookSDK: unknown event %q", event))
+		utils.LogWithFields(utils.LevelWarn, "session", "firelifecyclehooksdk: unknown event", map[string]any{"event": event})
 		return nil
 	}
 }
@@ -241,8 +241,7 @@ func (m *Manager) commitHostInitAsyncDecls(key string, host *extension.Host) {
 	for _, j := range host.Schedules() {
 		m.emitAsyncLifecycle(key, "engine_schedule_registered", asyncreg.KindSchedule, j.JobID, asyncreg.OriginInit, j)
 	}
-	utils.Log("session", fmt.Sprintf("commitHostInitAsyncDecls: ext=%s key=%s webhooks=%d schedules=%d errs=%d",
-		host.Name(), key, hooksCount, schedCount, len(errs)))
+	utils.LogWithFields(utils.LevelInfo, "session", "commit host init async decls", map[string]any{"model": host.Name(), "session_id": key, "count": hooksCount, "max": schedCount, "error": len(errs)})
 }
 
 // emitAsyncLifecycle publishes a registered/deregistered event onto
@@ -274,7 +273,7 @@ func (m *Manager) startWebhookServerIfNeeded() {
 	}
 	m.asyncMu.Unlock()
 	if err := srv.Start(); err != nil {
-		utils.Error("session", fmt.Sprintf("startWebhookServerIfNeeded: Start failed: %v", err))
+		utils.LogWithFields(utils.LevelError, "session", "startwebhookserverifneeded: start failed", map[string]any{"error": err})
 	}
 }
 
@@ -306,6 +305,78 @@ func (m *Manager) unwireHostAsync(host *extension.Host) {
 	}
 }
 
+// fireScheduleForSession resolves the session, iterates its hosts to find the
+// job, and calls scheduler.FireScheduleNow. Returns an error when the scheduler
+// is not wired or the job is not found on any host.
+func (m *Manager) fireScheduleForSession(key, jobID string) error {
+	m.asyncMu.Lock()
+	sch := m.scheduler
+	m.asyncMu.Unlock()
+	if sch == nil {
+		return fmt.Errorf("scheduler not available")
+	}
+	m.mu.RLock()
+	s, ok := m.sessions[key]
+	m.mu.RUnlock()
+	if !ok || s == nil {
+		return fmt.Errorf("session %q not found", key)
+	}
+	if s.extGroup == nil {
+		return fmt.Errorf("session %q has no extension group", key)
+	}
+	for _, h := range s.extGroup.Hosts() {
+		if _, found := h.AsyncRegistry().ByID(asyncreg.KindSchedule, jobID); found {
+			return sch.FireScheduleNow(h, jobID)
+		}
+	}
+	return fmt.Errorf("schedule job %q not found on session %q", jobID, key)
+}
+
+// scheduleStatusForSession returns schedule status entries for the session's
+// registered jobs. When jobID is non-empty, only the matching job is returned.
+func (m *Manager) scheduleStatusForSession(key, jobID string) ([]extension.ScheduleStatusEntry, error) {
+	m.asyncMu.Lock()
+	sch := m.scheduler
+	m.asyncMu.Unlock()
+	if sch == nil {
+		return []extension.ScheduleStatusEntry{}, nil
+	}
+	m.mu.RLock()
+	s, ok := m.sessions[key]
+	m.mu.RUnlock()
+	if !ok || s == nil {
+		return []extension.ScheduleStatusEntry{}, nil
+	}
+	if s.extGroup == nil {
+		return []extension.ScheduleStatusEntry{}, nil
+	}
+	now := sch.Now()
+	seen := make(map[string]bool)
+	var entries []extension.ScheduleStatusEntry
+	for _, h := range s.extGroup.Hosts() {
+		decls := h.AsyncRegistry().List(asyncreg.KindSchedule)
+		for _, d := range decls {
+			job, ok := d.(extension.ScheduleJob)
+			if !ok {
+				continue
+			}
+			if jobID != "" && job.JobID != jobID {
+				continue
+			}
+			// Dedup by job ID (single-concurrency: same job on many hosts -> one status).
+			if seen[job.JobID] {
+				continue
+			}
+			seen[job.JobID] = true
+			entries = append(entries, sch.ScheduleStatusFor(h, job, now))
+		}
+	}
+	if entries == nil {
+		entries = []extension.ScheduleStatusEntry{}
+	}
+	return entries, nil
+}
+
 // webhookConfigFrom translates the EngineRuntimeConfig.Webhooks
 // block into a webhooks.Config. Zero-valued fields inherit the
 // package defaults.
@@ -329,7 +400,10 @@ func webhookConfigFrom(rc *types.EngineRuntimeConfig) webhooks.Config {
 // scheduleConfigFrom translates the EngineRuntimeConfig.Scheduling
 // block into a scheduling.Config.
 func scheduleConfigFrom(rc *types.EngineRuntimeConfig) scheduling.Config {
-	var cfg scheduling.Config
+	// PersistDir defaults to ~/.ion/scheduler and must be set unconditionally,
+	// including for a nil rc or a missing Scheduling block — an empty PersistDir
+	// disables run-marker persistence and catch-up entirely.
+	cfg := scheduling.Config{PersistDir: defaultSchedulerPersistDir()}
 	if rc == nil || rc.Scheduling == nil {
 		return cfg
 	}
@@ -339,7 +413,5 @@ func scheduleConfigFrom(rc *types.EngineRuntimeConfig) scheduling.Config {
 		cfg.FireTimeout = millisToDuration(s.FireTimeoutMs)
 	}
 	cfg.CatchUpEnabled = s.CatchUpEnabled
-	// PersistDir defaults to ~/.ion/scheduler when not overridden.
-	cfg.PersistDir = defaultSchedulerPersistDir()
 	return cfg
 }

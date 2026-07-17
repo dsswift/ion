@@ -15,6 +15,19 @@ final class LANClient {
 
     private(set) var isConnected = false
 
+    /// Raw WebSocket close code from the most recent disconnect of the
+    /// CURRENT connection, or `nil` when the socket failed without a close
+    /// frame (e.g. "Socket is not connected", connection refused).
+    /// Reset on every `connect()`. `TransportManager.startLANWithAuth` reads
+    /// this after a failed auth to classify the failure: application close
+    /// codes 4000–4999 are definitive identity rejections (4003 = unknown /
+    /// removed device); everything else (1008 auth cooldown, no close frame)
+    /// is transient. See `LANAuthOutcome.resolve`.
+    private(set) var lastCloseCode: Int?
+    /// UTF-8 close reason accompanying `lastCloseCode`, when the desktop
+    /// supplied one. Diagnostic only.
+    private(set) var lastCloseReason: String?
+
     // MARK: - Internals
 
     private var task: URLSessionWebSocketTask?
@@ -56,6 +69,10 @@ final class LANClient {
     /// Connect to an Ion instance at the given host and port.
     func connect(host: String, port: UInt16) async {
         intentionallyClosed = false
+        // Fresh connection — the previous close verdict must not leak into
+        // this attempt's auth-failure classification.
+        lastCloseCode = nil
+        lastCloseReason = nil
 
         // Finish old stream so any `for await` on the previous connection ends.
         messageContinuation?.finish()
@@ -69,7 +86,11 @@ final class LANClient {
         // callback from the old task sees a stale gen and bails out.
         connectionGen &+= 1
         let gen = connectionGen
-        DiagnosticLog.log("LAN-WS: connect gen=\(gen) \(host):\(port)")
+        DiagnosticLog.log("lan websocket connect", tag: "lan.client", fields: [
+            "gen": String(gen),
+            "host": host,
+            "port": String(port)
+        ])
 
         // Create a fresh stream for this connection.
         var continuation: AsyncStream<Data>.Continuation!
@@ -92,7 +113,9 @@ final class LANClient {
     }
 
     func disconnect() {
-        DiagnosticLog.log("LAN-WS: disconnect gen=\(connectionGen)")
+        DiagnosticLog.log("lan websocket disconnect", tag: "lan.client", fields: [
+            "gen": String(connectionGen)
+        ])
         intentionallyClosed = true
         messageContinuation?.finish()
         task?.cancel(with: .normalClosure, reason: nil)
@@ -106,7 +129,24 @@ final class LANClient {
         guard let task, task.state == .running else {
             throw LANClientError.notConnected
         }
-        try await task.send(.data(data))
+        // NWConnection/URLSession can report `.running` on a half-open socket
+        // whose peer is gone (desktop backgrounded/slept) — a send then awaits
+        // indefinitely. Bound every send with a deadline; on timeout treat the
+        // LAN transport as failed and tear it down so TransportManager's
+        // Bonjour observation reconnects (or relay takes over).
+        do {
+            try await withSendDeadline(seconds: transportSendDeadlineSeconds) {
+                try await task.send(.data(data))
+            }
+        } catch is SendDeadlineError {
+            DiagnosticLog.log("lan send timed out, tearing down", tag: "lan.client", level: .error, fields: [
+                "gen": String(connectionGen),
+                "timeout_s": String(transportSendDeadlineSeconds),
+                "bytes": String(data.count)
+            ])
+            handleDisconnect(gen: connectionGen)
+            throw LANClientError.sendTimeout
+        }
     }
 
     // MARK: - Receive loop
@@ -121,7 +161,10 @@ final class LANClient {
             // which finishes the NEW connection's continuation, killing the
             // listener stream ~100ms after auth.
             guard gen == self.connectionGen else {
-                DiagnosticLog.log("LAN-WS: stale recv gen=\(gen) cur=\(self.connectionGen)")
+                DiagnosticLog.trace("lan websocket stale recv", tag: "lan.client", fields: [
+                    "gen": String(gen),
+                    "current": String(self.connectionGen)
+                ])
                 return
             }
 
@@ -129,7 +172,9 @@ final class LANClient {
             case .success(let message):
                 if !self.isConnected {
                     self.isConnected = true
-                    DiagnosticLog.log("LAN-WS: first msg, isConnected=true gen=\(gen)")
+                    DiagnosticLog.log("lan websocket first message", tag: "lan.client", fields: [
+                        "gen": String(gen)
+                    ])
                 }
                 switch message {
                 case .data(let data):
@@ -144,7 +189,10 @@ final class LANClient {
                 self.receiveLoop(wsTask, gen: gen)
 
             case .failure(let error):
-                DiagnosticLog.log("LAN-WS: recv failure gen=\(gen) err=\(error.localizedDescription)")
+                DiagnosticLog.log("lan websocket recv failure", tag: "lan.client", level: .warn, fields: [
+                    "gen": String(gen),
+                    "error": error.localizedDescription
+                ])
                 self.handleDisconnect(gen: gen)
             }
         }
@@ -155,10 +203,23 @@ final class LANClient {
         // A stale receiveLoop from a previous connect() must not touch
         // the new connection's state or continuation.
         guard gen == connectionGen else {
-            DiagnosticLog.log("LAN-WS: stale disconnect gen=\(gen) cur=\(connectionGen)")
+            DiagnosticLog.trace("lan websocket stale disconnect", tag: "lan.client", fields: [
+                "gen": String(gen),
+                "current": String(connectionGen)
+            ])
             return
         }
-        DiagnosticLog.log("LAN-WS: handleDisconnect gen=\(gen)")
+        // Capture the close verdict BEFORE nilling the task. closeCode is
+        // `.invalid` (raw 0) when the socket died without a close frame —
+        // store nil in that case so classification treats it as "no verdict".
+        let rawCode = task?.closeCode.rawValue ?? 0
+        lastCloseCode = rawCode > 0 ? rawCode : nil
+        lastCloseReason = task?.closeReason.flatMap { String(data: $0, encoding: .utf8) }
+        DiagnosticLog.log("lan websocket handle disconnect", tag: "lan.client", fields: [
+            "gen": String(gen),
+            "close_code": lastCloseCode.map(String.init) ?? "none",
+            "close_reason": lastCloseReason ?? ""
+        ])
         isConnected = false
         task = nil
         session?.invalidateAndCancel()
@@ -174,11 +235,14 @@ final class LANClient {
 
 enum LANClientError: Error, LocalizedError {
     case notConnected
+    case sendTimeout
 
     var errorDescription: String? {
         switch self {
         case .notConnected:
             return "LAN client is not connected"
+        case .sendTimeout:
+            return "LAN send timed out (connection wedged); transport torn down"
         }
     }
 }

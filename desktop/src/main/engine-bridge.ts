@@ -8,13 +8,14 @@ import { sendReconcileState as sendReconcileStateImpl, sendQuerySessionStatus as
 import { stopAll as stopAllImpl, shutdownAndWait as shutdownAndWaitImpl } from './engine-bridge-lifecycle'
 import { buildSendPromptMessage, buildSendPromptLogLine } from './engine-bridge-prompts'
 import * as conv from './engine-bridge-conversations'
+import * as prov from './engine-bridge-providers'
 import type { EngineConfig, EngineEvent, ImageAttachmentPayload, DiscoveredCommand } from '../shared/types'
 
 const TAG = 'EngineBridge'
-function log(msg: string): void { _log(TAG, msg) }
-function debug(msg: string): void { _debug(TAG, msg) }
-function warn(msg: string): void { _warn(TAG, msg) }
-function error(msg: string): void { _error(TAG, msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
+function debug(msg: string, fields?: Record<string, unknown>): void { _debug(TAG, msg, fields) }
+function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, msg, fields) }
+function error(msg: string, fields?: Record<string, unknown>): void { _error(TAG, msg, fields) }
 
 const ION_HOME = join(homedir(), '.ion')
 const SOCKET_PATH = join(ION_HOME, 'engine.sock')
@@ -100,7 +101,7 @@ export class EngineBridge extends EventEmitter {
         return
       } catch {
         if (i < delays.length - 1) {
-          log(`Engine daemon not ready after ${delays[i]}ms, retrying...`)
+          log('engine_daemon: not ready, retrying', { delay_ms: delays[i] })
         }
       }
     }
@@ -150,17 +151,17 @@ export class EngineBridge extends EventEmitter {
 
       conn.on('error', (err: NodeJS.ErrnoException) => {
         if (!this.connected) {
-          warn(`connect err: ${err.code} (${REMOTE_SOCKET})`)
+          warn('connect_err', { code: err.code, socket: REMOTE_SOCKET })
           reject(err)
           return
         }
         // For remote connections, emit a toast-friendly event for transient
         // network errors instead of flooding each chat with error bubbles.
         if (IS_REMOTE && (err.code === 'EHOSTDOWN' || err.code === 'ECONNREFUSED' || err.code === 'ECONNRESET')) {
-          warn(`Remote engine unreachable (${err.code}) — will reconnect`)
+          warn('remote_engine_unreachable', { code: err.code })
           this._failPendingRequests('Remote engine unreachable')
         } else {
-          log(`Connection error: ${err.message}`)
+          log('connection_error', { error: err.message })
         }
         this.connected = false
         this.conn = null
@@ -172,7 +173,7 @@ export class EngineBridge extends EventEmitter {
   private _onRequestTimeout(): void {
     this.consecutiveTimeouts++
     if (this.consecutiveTimeouts >= 2 && this.conn) {
-      warn(`${this.consecutiveTimeouts} consecutive timeouts — connection likely dead, forcing reconnect`)
+      warn('consecutive_timeouts', { count: this.consecutiveTimeouts })
       this.conn.destroy()
     }
   }
@@ -183,7 +184,7 @@ export class EngineBridge extends EventEmitter {
     if (this.connected) return
     this.reconnectAttempts++
     const delay = Math.min(500 * Math.pow(2, this.reconnectAttempts - 1), IS_REMOTE ? 8000 : 30000)
-    log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`)
+    log('reconnecting', { delay_ms: delay, attempt: this.reconnectAttempts })
     this.reconnectTimer = setTimeout(async () => {
       this.reconnectTimer = null
       if (this.connected) return
@@ -197,7 +198,7 @@ export class EngineBridge extends EventEmitter {
 
   /** Reject all pending request callbacks with an error message. */
   private _failPendingRequests(reason: string): void {
-    for (const [id, cb] of this.requestCallbacks) {
+    for (const [_id, cb] of this.requestCallbacks) {
       cb({ ok: false, error: reason })
     }
     this.requestCallbacks.clear()
@@ -242,21 +243,21 @@ export class EngineBridge extends EventEmitter {
    * so incoming engine events keyed by oldKey are transparently rewritten.
    */
   remapSession(oldKey: string, newKey: string): void {
-    log(`remapSession: ${oldKey} -> ${newKey}`)
+    log('remap_session', { old_key: oldKey, new_key: newKey })
     const entry = this.activeSessions.get(oldKey)
     if (entry) {
       this.activeSessions.set(newKey, entry)
       this.activeSessions.delete(oldKey)
-      log(`remapSession: activeSessions entry moved: ${oldKey} -> ${newKey}`)
+      log('remap_session: active_sessions moved', { old_key: oldKey, new_key: newKey })
     } else {
-      log(`remapSession: no activeSessions entry for ${oldKey} (session may not have started yet)`)
+      log('remap_session: no active_sessions entry', { old_key: oldKey })
     }
     this.keyAliases.set(oldKey, newKey)
     // Remove any prior alias that pointed to oldKey to avoid stale chains
     for (const [k, v] of this.keyAliases) {
       if (v === oldKey && k !== oldKey) {
         this.keyAliases.set(k, newKey)
-        log(`remapSession: updated transitive alias ${k} -> ${newKey}`)
+        log('remap_session: transitive_alias updated', { alias: k, new_key: newKey })
       }
     }
   }
@@ -268,13 +269,13 @@ export class EngineBridge extends EventEmitter {
     try {
       msg = JSON.parse(line)
     } catch {
-      warn(`unparseable message: ${line.substring(0, 200)}`)
+      warn('unparseable_message', { preview: line.substring(0, 200) })
       return
     }
 
     // Command result with requestId -- resolve pending callback
     if (msg.cmd === 'result' && msg.requestId) {
-      debug(`result: requestId=${msg.requestId} ok=${msg.ok} err=${msg.error ?? 'none'}`)
+      debug('result', { request_id: msg.requestId, ok: msg.ok, error: msg.error ?? 'none' })
       const cb = this.requestCallbacks.get(msg.requestId)
       if (cb) {
         this.requestCallbacks.delete(msg.requestId)
@@ -299,10 +300,19 @@ export class EngineBridge extends EventEmitter {
       // problem the poller addresses is specifically "we never saw a
       // fresh status event" — text deltas, tool calls, agent state
       // updates do not refresh the running/idle determination.
-      if (msg.event.type === 'desktop_status') {
+      //
+      // This is an INBOUND engine event, so the type is `engine_status`
+      // (matched by the control plane's `case 'engine_status'`). It is
+      // NOT `desktop_status` — that is the OUTBOUND iOS wire type this
+      // desktop emits when rebroadcasting. The #240 `desktop_` wire-prefix
+      // rename mistakenly renamed this inbound check, which left
+      // lastEngineStatusAt permanently empty: every key read as stale, so
+      // the 5 s poll re-queried every session forever (a status-broadcast
+      // storm fanned to every paired device).
+      if (msg.event.type === 'engine_status') {
         this.lastEngineStatusAt.set(routedKey, Date.now())
       }
-      debug(`event: key=${msg.key}${routedKey !== msg.key ? ` (aliased->${routedKey})` : ''} type=${msg.event.type}`)
+      debug('event', { key: msg.key, routed_key: routedKey, type: msg.event.type })
       this.emit('event', routedKey, msg.event as EngineEvent)
     }
   }
@@ -315,13 +325,13 @@ export class EngineBridge extends EventEmitter {
   // cap-bound file. Same convention as _sendWithResult / _sendWithData.
   _send(msg: any): void {
     if (!this.conn || this.conn.destroyed) {
-      warn(`_send: dropped message (no connection): cmd=${msg?.cmd} key=${msg?.key}`)
+      warn('_send: dropped, no connection', { cmd: msg?.cmd, key: msg?.key })
       return
     }
     try {
       this.conn.write(JSON.stringify(msg) + '\n')
     } catch (err: any) {
-      error(`_send: write failed: cmd=${msg?.cmd} key=${msg?.key} err=${err.message}`)
+      error('_send: write failed', { cmd: msg?.cmd, key: msg?.key, error: err.message })
     }
   }
 
@@ -342,7 +352,7 @@ export class EngineBridge extends EventEmitter {
 
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
-        warn(`request timed out: requestId=${requestId} cmd=${msg.cmd}`)
+        warn('request_timeout', { request_id: requestId, cmd: msg.cmd })
         this.requestCallbacks.delete(requestId)
         this._onRequestTimeout()
         resolve({ ok: false, error: 'Request timed out' })
@@ -426,9 +436,9 @@ export class EngineBridge extends EventEmitter {
 
   sendAbort(key: string): void {
     const alive = !!(this.conn && !this.conn.destroyed)
-    log(`sendAbort: key=${key} connected=${this.connected} connAlive=${alive}`)
+    log('send_abort', { key, connected: this.connected, alive })
     if (!alive) {
-      warn(`sendAbort: socket dead — scheduling reconnect; renderer watchdog will recover tab=${key}`)
+      warn('send_abort: socket dead, scheduling reconnect', { key })
       this._scheduleReconnect()
       return
     }
@@ -436,33 +446,38 @@ export class EngineBridge extends EventEmitter {
   }
 
   sendSteer(key: string, message: string): void {
-    log(`sendSteer: key=${key} len=${message.length}`)
+    log('send_steer', { key, len: message.length })
     this._send({ cmd: 'steer_agent', key, agentName: '', message })
   }
 
   sendAbortAgent(key: string, agentName: string, subtree: boolean): void {
-    log(`sendAbortAgent: key=${key} agent=${agentName} subtree=${subtree} connected=${this.connected}`)
+    log('send_abort_agent', { key, agent: agentName, subtree, connected: this.connected })
     this._send({ cmd: 'abort_agent', key, agentName, subtree })
   }
 
   async sendDialogResponse(key: string, dialogId: string, value: any): Promise<void> {
-    debug(`sendDialogResponse: key=${key} dialogId=${dialogId}`)
+    debug('send_dialog_response', { key, dialog_id: dialogId })
     this._send({ cmd: 'dialog_response', key, dialogId, value })
   }
 
   async sendCommand(key: string, command: string, args: string): Promise<void> {
-    log(`sendCommand: key=${key} command=${command}`)
+    log('send_command', { key, command })
     this._send({ cmd: 'command', key, command, args })
   }
 
   async stopSession(key: string): Promise<void> {
-    log(`stopSession: key=${key}`)
+    log('stop_session', { key })
     this.activeSessions.delete(key)
     this._send({ cmd: 'stop_session', key })
   }
 
+  // Tree-native rewind RPCs. Bodies live in engine-bridge-conversations.ts
+  // (same delegation pattern as the conversation-data RPCs below).
+  async branchSessionBefore(key: string, entryId: string): Promise<void> { return conv.branchSessionBefore(this, key, entryId) }
+  async rewindSession(key: string, userTurnIndex: number): Promise<{ ok: boolean; error?: string }> { return conv.rewindSession(this, key, userTurnIndex) }
+
   sendPermissionResponse(key: string, questionId: string, optionId: string): void {
-    log(`sendPermissionResponse: key=${key} questionId=${questionId} optionId=${optionId}`)
+    log('send_permission_response', { key, question_id: questionId, option_id: optionId })
     this._send({ cmd: 'permission_response', key, questionId, optionId })
   }
 
@@ -472,7 +487,7 @@ export class EngineBridge extends EventEmitter {
     response: Record<string, unknown> | undefined,
     cancelled: boolean,
   ): void {
-    log(`sendElicitationResponse: key=${key} requestId=${requestId} cancelled=${cancelled}`)
+    log('send_elicitation_response', { key, request_id: requestId, cancelled })
     this._send({
       cmd: 'elicitation_response',
       key,
@@ -485,7 +500,7 @@ export class EngineBridge extends EventEmitter {
   sendRaw(payload: Record<string, unknown>): void { this._send(payload) }
 
   sendSetPlanMode(key: string, enabled: boolean, allowedTools?: string[], source?: string, allowedBashCommands?: string[], planFilePath?: string): void {
-    log(`sendSetPlanMode: key=${key} enabled=${enabled} source=${source ?? 'unknown'} bashCmds=${JSON.stringify(allowedBashCommands)} planFilePath=${planFilePath ?? '<none>'}`)
+    log('send_set_plan_mode', { key, enabled, source: source ?? 'unknown', bash_cmd_count: allowedBashCommands?.length ?? 0, plan_file_path: planFilePath ?? '' })
     // planFilePath restores plan-file continuity on a plan-mode toggle: when
     // the engine session was replaced (rebound) it lost its in-memory path,
     // and the engine's set_plan_mode handler re-adopts this path (if it exists
@@ -543,23 +558,14 @@ export class EngineBridge extends EventEmitter {
     return conv.migrateConversation(this, sessionId, targetFormat, targetDir, sourceDir)
   }
 
-  async listModels(): Promise<{ models: any[]; providers: any[] }> {
-    await this.connect()
-    const result = await this._sendWithData<{ models: any[]; providers: any[] }>({ cmd: 'list_models' })
-    return result.data || { models: [], providers: [] }
-  }
-
-  async storeCredential(provider: string, credential: string): Promise<{ ok: boolean; error?: string }> {
-    await this.connect()
-    return this._sendWithResult({ cmd: 'store_credential', provider, credential })
-  }
-
-  async refreshModels(provider?: string): Promise<{ ok: boolean; error?: string }> {
-    await this.connect()
-    const msg: Record<string, unknown> = { cmd: 'refresh_models' }
-    if (provider) msg.provider = provider
-    return this._sendWithResult(msg)
-  }
+  // Model / credential / delegated-CLI provider RPCs delegate to
+  // engine-bridge-providers.ts (file-size cap).
+  async listModels(): Promise<{ models: any[]; providers: any[] }> { return prov.listModels(this) }
+  async storeCredential(provider: string, credential: string): Promise<{ ok: boolean; error?: string }> { return prov.storeCredential(this, provider, credential) }
+  async refreshModels(provider?: string): Promise<{ ok: boolean; error?: string }> { return prov.refreshModels(this, provider) }
+  async providerLogin(provider: string): Promise<{ ok: boolean; error?: string }> { return prov.providerLogin(this, provider) }
+  async providerLoginCancel(provider: string): Promise<{ ok: boolean; error?: string }> { return prov.providerLoginCancel(this, provider) }
+  async providerLogout(provider: string): Promise<{ ok: boolean; error?: string }> { return prov.providerLogout(this, provider) }
 
   sendReconcileState(key: string): void { sendReconcileStateImpl(this, key) }
   sendQuerySessionStatus(key: string): void { sendQuerySessionStatusImpl(this, key) }
@@ -575,7 +581,7 @@ export class EngineBridge extends EventEmitter {
   shutdown(): void { this._send({ cmd: 'shutdown' }) }
   async shutdownAndWait(timeoutMs = 3000): Promise<void> { return shutdownAndWaitImpl(this, timeoutMs) }
 
-  isRunning(key: string): boolean {
+  isRunning(_key: string): boolean {
     // Can't synchronously check -- return true if connected
     return this.connected
   }

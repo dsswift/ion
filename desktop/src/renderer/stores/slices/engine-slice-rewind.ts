@@ -26,27 +26,27 @@
  * against interleaved tool/assistant rows to lock this.
  */
 
-import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { lastPendingCardTool } from '../../../shared/pending-card'
+import { rDebug, rInfo, rWarn, rError } from '../../rendererLogger'
 
 export function createEngineRewindActions(set: StoreSet, get: StoreGet): Partial<State> {
   return {
     rewindEngineInstance: (tabId, instanceId, messageId, userTurnIndex) => {
       const tab = get().tabs.find((t) => t.id === tabId)
       if (!tab) {
-        console.warn(`[engine] rewindEngineInstance: tab not found tabId=${tabId.slice(0, 8)}`)
+        rWarn('engine.rewind', 'rewind: tab not found', { tab_id: tabId.slice(0, 8) })
         return
       }
       const panes = new Map(get().conversationPanes)
       const pane = panes.get(tabId)
       if (!pane) {
-        console.warn(`[engine] rewindEngineInstance: pane not found tabId=${tabId.slice(0, 8)}`)
+        rWarn('engine.rewind', 'rewind: pane not found', { tab_id: tabId.slice(0, 8) })
         return
       }
       const inst = pane.instances.find((i) => i.id === instanceId)
       if (!inst) {
-        console.warn(`[engine] rewindEngineInstance: instance not found tabId=${tabId.slice(0, 8)} instanceId=${instanceId}`)
+        rWarn('engine.rewind', 'rewind: instance not found', { tab_id: tabId.slice(0, 8), instance_id: instanceId })
         return
       }
 
@@ -54,7 +54,7 @@ export function createEngineRewindActions(set: StoreSet, get: StoreGet): Partial
       // where messageId is a nextMsgId() value present in inst.messages).
       let idx = inst.messages.findIndex((m) => m.id === messageId)
       if (idx >= 0) {
-        console.log(`[engine] rewindEngineInstance: resolved by id messageId=${messageId} idx=${idx}`)
+        rDebug('engine.rewind', 'rewind: resolved by id', { message_id: messageId, idx })
       } else if (typeof userTurnIndex === 'number' && userTurnIndex >= 0) {
         // Path 2: user-turn ordinal fallback (iOS-initiated rewind, where the
         // target was rendered from an optimistic UUID the desktop never minted).
@@ -71,55 +71,63 @@ export function createEngineRewindActions(set: StoreSet, get: StoreGet): Partial
           }
         }
         if (idx >= 0) {
-          console.log(`[engine] rewindEngineInstance: resolved by userTurnIndex=${userTurnIndex} idx=${idx} (id ${messageId} not found)`)
+          rDebug('engine.rewind', 'rewind: resolved by user turn index', { user_turn_index: userTurnIndex, idx, message_id: messageId })
         } else {
-          console.warn(`[engine] rewindEngineInstance: userTurnIndex=${userTurnIndex} out of range (only ${userCount + 1} user messages) tabId=${tabId.slice(0, 8)} instanceId=${instanceId}`)
+          rWarn('engine.rewind', 'rewind: user turn index out of range', { user_turn_index: userTurnIndex, tab_id: tabId.slice(0, 8), instance_id: instanceId })
           return
         }
       } else {
-        console.warn(`[engine] rewindEngineInstance: message not found tabId=${tabId.slice(0, 8)} instanceId=${instanceId} messageId=${messageId} (no userTurnIndex fallback)`)
+        rWarn('engine.rewind', 'rewind: message not found', { tab_id: tabId.slice(0, 8), instance_id: instanceId, message_id: messageId })
         return
       }
 
       const targetMessage = inst.messages[idx]
       const key = tabId
-      const priorConvIds = inst.conversationIds.length > 0 ? [...inst.conversationIds] : null
-      console.log(`[engine] rewindEngineInstance: key=${key} msgIdx=${idx} totalMsgs=${inst.messages.length} keepMsgs=${idx} priorConvIds=${JSON.stringify(priorConvIds)} targetMsgLen=${targetMessage.content.length}`)
 
-      // Stop the engine session completely (not just abort the current run).
-      // A rewind must start a fresh conversation — aborting would leave the
-      // old conversation file intact and the next send_prompt would append to
-      // it, creating a confusing state where the engine has full pre-rewind
-      // history but the desktop shows truncated messages.
-      window.ion.engineStop(key).then(() => {
-        console.log(`[engine] rewindEngineInstance: session stopped key=${key}, starting fresh session`)
-        // Start a fresh session with the same key. No sessionId is passed,
-        // so the engine allocates a new conversation file. The prior context
-        // is injected as appendSystemPrompt on the next prompt (see
-        // engine-slice-submit.ts fork context injection).
-        const { engineProfiles } = usePreferencesStore.getState()
-        const profile = tab.engineProfileId ? engineProfiles.find((p) => p.id === tab.engineProfileId) : null
-        window.ion.engineStart(key, {
-          profileId: profile?.id || '',
-          extensions: profile?.extensions || [],
-          workingDirectory: tab.workingDirectory,
-        }).then(() => {
-          console.log(`[engine] rewindEngineInstance: fresh session started key=${key} profile=${profile?.id || 'none'}`)
-          // Broadcast the truncated history to all connected remote devices so
-          // iOS replaces its now-stale message list immediately, instead of
-          // waiting for a sub-tab switch to re-issue load_engine_conversation.
-          // The renderer store already holds the truncated inst.messages at
-          // this point (the set() below runs synchronously before this resolves).
-          window.ion.engineBroadcastHistory(tabId, instanceId).then(() => {
-            console.log(`[engine] rewindEngineInstance: broadcast truncated history key=${key}`)
-          }).catch((err: any) => {
-            console.error(`[engine] rewindEngineInstance: broadcast failed key=${key} err=${err.message}`)
-          })
+      // The engine rewind is addressed by user-turn ordinal (0-based). The
+      // engine resolves it against its own tree, so it holds no dependency on
+      // the renderer's message ids — a freshly-sent (optimistic-id) turn rewinds
+      // as reliably as a history-loaded one. Count the user rows before the
+      // target: this is the same Nth-user-turn the engine's flattenEntries
+      // produces from the same entries, so both sides agree (the invariant the
+      // store test pins against interleaved tool/assistant rows).
+      let userTurnOrdinal = 0
+      for (let i = 0; i < idx; i++) {
+        if (inst.messages[i].role === 'user') userTurnOrdinal++
+      }
+      rInfo('engine.rewind', 'rewind: executing', { tab_id: key, msg_idx: idx, user_turn_ordinal: userTurnOrdinal, total_msgs: inst.messages.length, keep_msgs: idx, target_msg_len: targetMessage.content.length })
+
+      // Move the engine's conversation leaf to before the target turn — a
+      // tree-native branch on the SAME conversation. BuildContextPath rebuilds
+      // the LLM context to drop the rewound-past turns, and the engine restores
+      // plan-file continuity for the branch point. The next prompt appends as a
+      // fresh sibling of the old turn, so it is never duplicated.
+      //
+      // No session stop/start: the previous client-side stop/start was defeated
+      // by the engine binding store — engineStart rebound to the SAME
+      // conversation ("resuming bound from binding store"), leaving pre-rewind
+      // history intact so the resend appended a duplicate. The entry-id
+      // branch_before that was bolted on top only fired for canonical 8-hex row
+      // ids, so a freshly-sent turn (optimistic id) still duplicated. Ordinal
+      // addressing removes that gap. Rewind is offered only when idle, so no
+      // in-flight run races the branch.
+      window.ion.engineRewind(key, userTurnOrdinal).then((res) => {
+        if (!res.ok) {
+          rError('engine.rewind', 'rewind: engine rewind failed', { tab_id: key, user_turn_ordinal: userTurnOrdinal, error: res.error ?? 'unknown' })
+          return
+        }
+        rInfo('engine.rewind', 'rewind: engine branched to before turn', { tab_id: key, user_turn_ordinal: userTurnOrdinal })
+        // Broadcast the truncated history so iOS replaces its now-stale message
+        // list immediately, instead of waiting for a sub-tab switch to re-issue
+        // load_engine_conversation. The renderer store already holds the
+        // truncated inst.messages (the set() below runs synchronously first).
+        window.ion.engineBroadcastHistory(tabId, instanceId).then(() => {
+          rDebug('engine.rewind', 'rewind: broadcast truncated history', { tab_id: key })
         }).catch((err: any) => {
-          console.error(`[engine] rewindEngineInstance: restart failed key=${key} err=${err.message}`)
+          rError('engine.rewind', 'rewind: broadcast failed', { tab_id: key, error: err.message })
         })
       }).catch((err: any) => {
-        console.error(`[engine] rewindEngineInstance: stop failed key=${key} err=${(err as Error).message}`)
+        rError('engine.rewind', 'rewind: engine rewind invoke failed', { tab_id: key, error: (err as Error).message })
       })
 
       const rewoundMessages = inst.messages.slice(0, idx)
@@ -138,6 +146,16 @@ export function createEngineRewindActions(set: StoreSet, get: StoreGet): Partial
         ? { tools: [{ toolName: foundCard.toolName, toolUseId: foundCard.toolId || 'restored', toolInput: parseInput(foundCard.toolInput) }] }
         : null
 
+      // Restore planFilePath from an ExitPlanMode card's toolInput when present.
+      // The ExitPlanMode toolInput carries { planFilePath } so after rewinding
+      // to before the implement step the instance still knows which plan file
+      // was assigned. Without this the field was unconditionally null, causing
+      // the engine to allocate a new slug when the user re-entered plan mode.
+      const restoredPlanFilePath: string | null =
+        foundCard?.toolName === 'ExitPlanMode'
+          ? (parseInput(foundCard.toolInput)?.planFilePath as string | undefined) ?? null
+          : null
+
       panes.set(tabId, {
         ...pane,
         instances: pane.instances.map((i) => {
@@ -147,17 +165,16 @@ export function createEngineRewindActions(set: StoreSet, get: StoreGet): Partial
             messages: rewoundMessages,
             messageCount: rewoundMessages.length,  // keep count in lockstep with truncated history
             modelOverride: i.modelOverride,  // preserve model selection across rewind
-            sessionModel: null,  // fresh session reports its model on the next status event
+            sessionModel: i.sessionModel,  // same session — model is unchanged by the branch
             permissionMode: i.permissionMode, // preserve permission mode across rewind
             permissionDenied: restoredDenied,
             permissionQueue: [],
             elicitationQueue: [],
-            conversationIds: [],
+            conversationIds: i.conversationIds,  // branch stays on the SAME conversation — do not clear
             draftInput: targetMessage.content,
             agentStates: [],
             statusFields: null,
-            planFilePath: null,
-            forkedFromConversationIds: i.conversationIds.length > 0 ? [...i.conversationIds] : null,
+            planFilePath: restoredPlanFilePath,
           }
         }),
       })

@@ -9,6 +9,7 @@ import type {
   PermissionEvent,
   ContentDelta,
 } from '../../shared/types'
+import { log } from '../logger'
 
 /**
  * Maps raw CLI backend stream-json events to canonical Ion events.
@@ -43,7 +44,7 @@ export function normalize(raw: ClaudeEvent): NormalizedEvent[] {
     default:
       // Unknown event type — log for diagnostics
       if (process.env.Ion_DEBUG === '1') {
-        console.log(`[event-normalizer] unknown event type: ${raw.type}`, JSON.stringify(raw).substring(0, 300))
+        log('event-normalizer', 'unknown event type', { type: raw.type, preview: JSON.stringify(raw).substring(0, 300) })
       }
       return []
   }

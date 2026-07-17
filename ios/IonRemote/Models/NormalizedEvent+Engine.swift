@@ -82,6 +82,15 @@ extension RemoteEvent {
             try container.encode(messageLength, forKey: .steerMessageLength)
             return true
 
+        case .enginePromptInjected(let tabId, let instanceId, let prompt, let origin, let kind):
+            try container.encode(TypeKey.enginePromptInjected, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            try container.encode(prompt, forKey: .injectedPrompt)
+            try container.encodeIfPresent(origin, forKey: .injectedPromptOrigin)
+            try container.encodeIfPresent(kind, forKey: .injectedPromptKind)
+            return true
+
         case .engineToolUpdate(let tabId, let instanceId):
             try container.encode(TypeKey.engineToolUpdate, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
@@ -182,11 +191,17 @@ extension RemoteEvent {
             try container.encode(text, forKey: .text)
             return true
 
-        case .engineMessageEnd(let tabId, let instanceId, let inputTokens, let outputTokens, let contextPercent, let cost):
+        case .engineStreamReset(let tabId, let instanceId):
+            try container.encode(TypeKey.engineStreamReset, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            return true
+
+        case .engineMessageEnd(let tabId, let instanceId, let inputTokens, let outputTokens, let contextPercent, let cost, let entryId, let userEntryId):
             try container.encode(TypeKey.engineMessageEnd, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
-            try container.encode(EngineMessageEndUsage(inputTokens: inputTokens, outputTokens: outputTokens, contextPercent: contextPercent, cost: cost), forKey: .usage)
+            try container.encode(EngineMessageEndUsage(inputTokens: inputTokens, outputTokens: outputTokens, contextPercent: contextPercent, cost: cost, entryId: entryId, userEntryId: userEntryId), forKey: .usage)
             return true
 
         case .engineDead(let tabId, let instanceId, let exitCode, let signal, let stderrTail):
@@ -217,13 +232,15 @@ extension RemoteEvent {
             try container.encode(targetTabId, forKey: .targetTabId)
             return true
 
-        case .engineHarnessMessage(let tabId, let instanceId, let message, let source, let metadata):
+        case .engineHarnessMessage(let tabId, let instanceId, let message, let source, let metadata, let dedupKey, let dedupMode):
             try container.encode(TypeKey.engineHarnessMessage, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
             try container.encode(message, forKey: .message)
             try container.encodeIfPresent(source, forKey: .source)
             try container.encodeIfPresent(metadata, forKey: .metadata)
+            try container.encodeIfPresent(dedupKey, forKey: .dedupKey)
+            try container.encodeIfPresent(dedupMode, forKey: .dedupMode)
             return true
 
         // engineConversationHistory encode arm removed (WI-004 / #259).
@@ -398,6 +415,18 @@ extension RemoteEvent {
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
             try container.encode(breakdown, forKey: .contextBreakdown)
+            return true
+
+        case .engineImageContent(let tabId, let instanceId, let path, let mediaType, let source, let toolId):
+            // Encoder mirror for engine_image_content. iOS never originates
+            // this event; the encoder enables round-trip tests.
+            try container.encode(TypeKey.engineImageContent, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            try container.encode(path, forKey: .path)
+            try container.encode(mediaType, forKey: .mediaType)
+            try container.encode(source, forKey: .source)
+            try container.encodeIfPresent(toolId, forKey: .toolId)
             return true
 
         default:

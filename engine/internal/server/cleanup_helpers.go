@@ -2,7 +2,6 @@ package server
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -10,9 +9,9 @@ import (
 )
 
 // loadDesktopProtectedIDs reads the desktop's persisted session-chains and
-// session-labels files for both backends (api + cli) and returns the union of
-// every conversation ID that appears as a chain root, a chain continuation,
-// or a labeled session.
+// session-labels files — the unified names plus the legacy per-backend twins
+// — and returns the union of every conversation ID that appears as a chain
+// root, a chain continuation, or a labeled session.
 //
 // This is the engine's load-bearing safety guard for the cleanup job (Layer 1
 // of docs/plans/grassy-chirping-crest.md): even when the desktop's excludeIDs
@@ -22,8 +21,8 @@ import (
 // resumed or labeled" by reading these files directly.
 //
 // homeDir is the path to ~/.ion (the same directory that contains
-// session-chains-{api,cli}.json and session-labels-{api,cli}.json). When
-// empty, it falls back to os.UserHomeDir() + "/.ion".
+// session-chains.json / session-labels.json and their legacy per-backend
+// twins). When empty, it falls back to os.UserHomeDir() + "/.ion".
 //
 // Missing files contribute zero IDs (never an error). Malformed JSON is
 // logged at Error level and the file is skipped, but the cleanup must
@@ -33,7 +32,7 @@ func loadDesktopProtectedIDs(homeDir string) []string {
 	if homeDir == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			utils.Error("Cleanup", fmt.Sprintf("loadDesktopProtectedIDs: cannot resolve home dir: %v", err))
+			utils.LogWithFields(utils.LevelError, "server", "load desktop protected ids cannot resolve home dir", map[string]any{"error": err.Error()})
 			return nil
 		}
 		homeDir = filepath.Join(home, ".ion")
@@ -41,38 +40,45 @@ func loadDesktopProtectedIDs(homeDir string) []string {
 
 	ids := make(map[string]bool)
 
-	// session-chains-{backend}.json shape: {"chains": {rootId: [contIds...]}, "reverse": {contId: rootId}}
+	// session-chains shape: {"chains": {rootId: [contIds...]}, "reverse": {contId: rootId}}
 	// Every key and every value in both maps is a conversation ID that some tab
 	// references — they all need protection.
-	for _, backend := range []string{"api", "cli"} {
-		path := filepath.Join(homeDir, "session-chains-"+backend+".json")
+	//
+	// The desktop writes the unified session-chains.json since tab-storage
+	// unification; the per-backend session-chains-{api,cli}.json twins are the
+	// legacy names, retained (not rewritten) through the desktop's one-time
+	// merge-migration window. The engine reads ALL of them: a conversation
+	// referenced only by a not-yet-merged legacy file still needs protection.
+	for _, name := range []string{"session-chains.json", "session-chains-api.json", "session-chains-cli.json"} {
+		path := filepath.Join(homeDir, name)
 		fromChains := loadChainIDs(path)
 		for _, id := range fromChains {
 			if id != "" {
 				ids[id] = true
 			}
 		}
-		utils.Debug("Cleanup", fmt.Sprintf("loadDesktopProtectedIDs: chains backend=%s path=%s ids=%d", backend, path, len(fromChains)))
+		utils.LogWithFields(utils.LevelDebug, "server", "load desktop protected ids chains", map[string]any{"path": path, "count": len(fromChains)})
 	}
 
-	// session-labels-{backend}.json shape: {conversationId: "user-given title"}
-	// Every key is a labeled conversation that must be preserved.
-	for _, backend := range []string{"api", "cli"} {
-		path := filepath.Join(homeDir, "session-labels-"+backend+".json")
+	// session-labels shape: {conversationId: "user-given title"}
+	// Every key is a labeled conversation that must be preserved. Same
+	// unified-plus-legacy read set as the chains above.
+	for _, name := range []string{"session-labels.json", "session-labels-api.json", "session-labels-cli.json"} {
+		path := filepath.Join(homeDir, name)
 		fromLabels := loadLabelIDs(path)
 		for _, id := range fromLabels {
 			if id != "" {
 				ids[id] = true
 			}
 		}
-		utils.Debug("Cleanup", fmt.Sprintf("loadDesktopProtectedIDs: labels backend=%s path=%s ids=%d", backend, path, len(fromLabels)))
+		utils.LogWithFields(utils.LevelDebug, "server", "load desktop protected ids labels", map[string]any{"path": path, "count": len(fromLabels)})
 	}
 
 	out := make([]string, 0, len(ids))
 	for id := range ids {
 		out = append(out, id)
 	}
-	utils.Log("Cleanup", fmt.Sprintf("loadDesktopProtectedIDs: home=%s total=%d", homeDir, len(out)))
+	utils.LogWithFields(utils.LevelInfo, "server", "load desktop protected ids", map[string]any{"path": homeDir, "count": len(out)})
 	return out
 }
 
@@ -85,7 +91,7 @@ func loadChainIDs(path string) []string {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			utils.Error("Cleanup", fmt.Sprintf("loadChainIDs: read failed path=%s err=%v", path, err))
+			utils.LogWithFields(utils.LevelError, "server", "load chain ids read failed", map[string]any{"path": path, "error": err.Error()})
 		}
 		return nil
 	}
@@ -94,7 +100,7 @@ func loadChainIDs(path string) []string {
 		Reverse map[string]string   `json:"reverse"`
 	}
 	if err := json.Unmarshal(data, &parsed); err != nil {
-		utils.Error("Cleanup", fmt.Sprintf("loadChainIDs: malformed JSON path=%s err=%v", path, err))
+		utils.LogWithFields(utils.LevelError, "server", "load chain ids malformed json", map[string]any{"path": path, "error": err.Error()})
 		return nil
 	}
 	seen := make(map[string]bool)
@@ -126,13 +132,13 @@ func loadLabelIDs(path string) []string {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			utils.Error("Cleanup", fmt.Sprintf("loadLabelIDs: read failed path=%s err=%v", path, err))
+			utils.LogWithFields(utils.LevelError, "server", "load label ids read failed", map[string]any{"path": path, "error": err.Error()})
 		}
 		return nil
 	}
 	var parsed map[string]string
 	if err := json.Unmarshal(data, &parsed); err != nil {
-		utils.Error("Cleanup", fmt.Sprintf("loadLabelIDs: malformed JSON path=%s err=%v", path, err))
+		utils.LogWithFields(utils.LevelError, "server", "load label ids malformed json", map[string]any{"path": path, "error": err.Error()})
 		return nil
 	}
 	out := make([]string, 0, len(parsed))

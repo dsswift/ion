@@ -16,8 +16,11 @@ extension RemoteCommand {
     /// Commands without a natural scope id use the bare command kind as the key.
     ///
     /// Returns `nil` for commands that should never enter the essential queue
-    /// (user-initiated and fire-and-forget commands), so callers can assert on
-    /// the intent classification at the call site.
+    /// (fire-and-forget commands and non-queueable user actions), so callers
+    /// can assert on the intent classification at the call site. Note that
+    /// `.prompt` — although user-initiated — IS queueable: a user message must
+    /// never be silently lost, so a failed send re-enqueues it for delivery on
+    /// the reconnect flush (see `send(_:intent:)`).
     var essentialKey: String? {
         switch self {
         case .loadConversation(let tabId, _):
@@ -35,6 +38,20 @@ extension RemoteCommand {
         case .reportFocus(let tabId, _):
             // Keyed by tabId (nil = backgrounded). Each focus state is distinct.
             return "reportFocus:\(tabId ?? "nil")"
+        case .prompt(let tabId, _, _, let clientMsgId, _, _, _):
+            // User prompts are eligible for the essential queue so a message
+            // sent over a wedged/reconnecting transport is re-enqueued and
+            // delivered on the reconnect flush instead of being silently lost
+            // (the optimistic bubble stays; the queued command delivers).
+            //
+            // Keyed by clientMsgId — unique per submit — so two DISTINCT
+            // prompts to the same tab never dedupe each other. The queue's
+            // last-write-wins collapse is for idempotent reloads; a user
+            // message is never idempotent with a different user message.
+            // Every live submit path sets clientMsgId (see
+            // SessionViewModel+Submit.swift); the nil fallback exists only so
+            // a hypothetical id-less prompt still gets a stable key.
+            return "prompt:\(tabId):\(clientMsgId ?? "-")"
         default:
             // All other commands are either user-initiated or fire-and-forget;
             // they do not enter the essential queue.

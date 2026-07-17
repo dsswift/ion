@@ -97,7 +97,7 @@ func TestLiveCliToolAlias(t *testing.T) {
 	group.Add(host)
 
 	// ── Manager + session ─────────────────────────────────────────────────
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := session.NewManager(cb)
 
 	cfg := types.EngineConfig{
@@ -114,10 +114,10 @@ func TestLiveCliToolAlias(t *testing.T) {
 
 	// ── Event collection ──────────────────────────────────────────────────
 	var (
-		eventMu          sync.Mutex
-		toolCallNames    []string
-		toolResultConts  []string
-		engineErrors     []types.EngineEvent
+		eventMu         sync.Mutex
+		toolCallNames   []string
+		toolResultConts []string
+		engineErrors    []types.EngineEvent
 	)
 	done := make(chan struct{})
 	var doneOnce sync.Once
@@ -148,8 +148,8 @@ func TestLiveCliToolAlias(t *testing.T) {
 	// subprocess and ToolResultEvent carries the content returned by the
 	// ToolServer.  Both paths are exercised here.
 	var (
-		normalMu        sync.Mutex
-		normalToolCalls []string
+		normalMu          sync.Mutex
+		normalToolCalls   []string
 		normalToolResults []string
 	)
 	cb.OnNormalized(func(_ string, ev types.NormalizedEvent) {

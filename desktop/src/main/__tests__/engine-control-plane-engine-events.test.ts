@@ -75,6 +75,7 @@ vi.mock('../engine-bridge-fs', () => ({
 
 vi.mock('../logger', () => ({
   log: vi.fn(),
+  trace: vi.fn(),
   debug: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -170,7 +171,7 @@ describe('EngineControlPlane — engine event handling', () => {
 
       capturedEventHandler!(tabId, {
         type: 'engine_status',
-        fields: { state: 'idle', totalCostUsd: 0.01 },
+        fields: { state: 'idle', runCostUsd: 0.01 },
       })
 
       const taskComplete = events.find((e) => e.ev.type === 'task_complete')
@@ -199,7 +200,7 @@ describe('EngineControlPlane — engine event handling', () => {
         state: 'running',
         model: 'claude-opus-4-7',
         backend: 'cli',
-        totalCostUsd: 0.5,
+        runCostUsd: 0.5,
         extensionName: 'Chief of Staff',
         team: 'Platform',
       }
@@ -231,7 +232,7 @@ describe('EngineControlPlane — engine event handling', () => {
         type: 'engine_status',
         fields: {
           state: 'idle',
-          totalCostUsd: 0.02,
+          runCostUsd: 0.02,
           permissionDenials: [
             { toolName: 'AskUserQuestion', toolUseId: 'ask-1', toolInput: { question: 'Pick one' } },
           ],
@@ -273,10 +274,10 @@ describe('EngineControlPlane — engine event handling', () => {
       expect(cp.getTabStatus(tabId)?.status).toBe('completed')
 
       // Second idle (cost-only update) should be skipped by the completed guard
-      const eventsBefore = events.length
+      const _eventsBefore = events.length
       capturedEventHandler!(tabId, {
         type: 'engine_status',
-        fields: { state: 'idle', totalCostUsd: 0.05 },
+        fields: { state: 'idle', runCostUsd: 0.05 },
       })
 
       // No additional task_complete should have been emitted
@@ -338,7 +339,7 @@ describe('EngineControlPlane — engine event handling', () => {
         type: 'engine_status',
         fields: {
           state: 'idle',
-          totalCostUsd: 0.01,
+          runCostUsd: 0.01,
           permissionDenials: [
             { toolName: 'ExitPlanMode', toolUseId: 'exit-1', toolInput: {} },
           ],
@@ -357,7 +358,7 @@ describe('EngineControlPlane — engine event handling', () => {
       expect(cp.getTabStatus(tabId)?.status).toBe('running')
 
       // Step 5: Stale engine_status idle from the OLD dying session arrives
-      const eventsBefore = events.length
+      const _eventsBefore = events.length
       capturedEventHandler!(tabId, {
         type: 'engine_status',
         fields: { state: 'idle' },

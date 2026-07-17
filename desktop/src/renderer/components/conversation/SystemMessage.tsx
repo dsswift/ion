@@ -5,6 +5,7 @@ import { CopyButton } from './CopyButton'
 import { isPlanCreatedDivider, isPlanUpdatedDivider, isImplementDivider } from '../../../shared/clear-divider'
 import { PlanViewer } from '../PlanViewer'
 import type { Message } from '../../../shared/types'
+import { rWarn } from '../../rendererLogger'
 
 interface SystemMessageProps {
   message: Message
@@ -28,6 +29,7 @@ export function SystemMessage({ message, skipMotion }: SystemMessageProps) {
     (isPlanCreatedDivider(content) || isPlanUpdatedDivider(content) || isImplementDivider(content)) &&
     !!message.planFilePath
   const [planData, setPlanData] = useState<{ content: string; fileName: string; filePath: string } | null>(null)
+  const closePlan = useCallback(() => setPlanData(null), [])
 
   const handlePlanClick = useCallback(async () => {
     if (!message.planFilePath) return
@@ -37,7 +39,7 @@ export function SystemMessage({ message, skipMotion }: SystemMessageProps) {
         setPlanData({ content: result.content, fileName: result.fileName, filePath: message.planFilePath! })
       }
     } catch (err) {
-      console.warn('[SystemMessage] Failed to read plan file:', err)
+      rWarn('system-message', 'failed to read plan file', { path: message.planFilePath, error: String(err) })
     }
   }, [message.planFilePath])
 
@@ -107,7 +109,7 @@ export function SystemMessage({ message, skipMotion }: SystemMessageProps) {
             content={planData.content}
             fileName={planData.fileName}
             filePath={planData.filePath}
-            onClose={() => setPlanData(null)}
+            onClose={closePlan}
           />
         )}
       </>

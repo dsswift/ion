@@ -61,7 +61,7 @@ func TestCanary_TypedPayloadCompiles(t *testing.T) {
 	// errored. Confirm the expected tools registered.
 	for _, want := range []string{
 		"canary_classify_tier", "canary_promote", "canary_elicit",
-		"canary_sandbox", "canary_typed_check",
+		"canary_sandbox", "canary_typed_check", "canary_ctx_identity",
 	} {
 		findTool(t, host, want)
 	}

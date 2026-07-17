@@ -48,9 +48,9 @@ func TestOnBeforeProviderRequestFiresEachTurn(t *testing.T) {
 
 	c := collectEvents(b, "req-bpr-1")
 	b.StartRunWithConfig("req-bpr-1", types.RunOptions{
-		Prompt:      "say hi",
-		ProjectPath: "/tmp",
-		Model:       testModel,
+		Prompt:           "say hi",
+		ProjectPath:      "/tmp",
+		Model:            testModel,
 		EarlyStopEnabled: testEarlyStopDisabled(),
 	}, cfg)
 
@@ -107,9 +107,9 @@ func TestOnBeforeProviderRequestNilCallbackIsNoOp(t *testing.T) {
 
 	c := collectEvents(b, "req-bpr-nil")
 	b.StartRunWithConfig("req-bpr-nil", types.RunOptions{
-		Prompt:      "ok",
-		ProjectPath: "/tmp",
-		Model:       testModel,
+		Prompt:           "ok",
+		ProjectPath:      "/tmp",
+		Model:            testModel,
 		EarlyStopEnabled: testEarlyStopDisabled(),
 	}, cfg)
 
@@ -140,9 +140,9 @@ func TestOnBeforeProviderRequestSurvivesPanickingHandler(t *testing.T) {
 
 	c := collectEvents(b, "req-bpr-panic")
 	b.StartRunWithConfig("req-bpr-panic", types.RunOptions{
-		Prompt:      "survive",
-		ProjectPath: "/tmp",
-		Model:       testModel,
+		Prompt:           "survive",
+		ProjectPath:      "/tmp",
+		Model:            testModel,
 		EarlyStopEnabled: testEarlyStopDisabled(),
 	}, cfg)
 

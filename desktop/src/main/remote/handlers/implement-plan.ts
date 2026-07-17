@@ -6,16 +6,16 @@ import { handleSetPermissionMode } from './tabs'
 import { planSlugFromPath } from '../../../shared/clear-divider'
 import type { RemoteCommand } from '../protocol'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 /**
  * Handles implement_plan from iOS.
  *
  * iOS sends this command instead of building a prompt string. The desktop
- * runs the same implement pipeline that the renderer's runHandleImplement
- * (ConversationView-implement.ts) runs — no plan body crosses the wire.
+ * runs the same implement pipeline that the renderer's implementPlan
+ * (implement-slice.ts) runs — no plan body crosses the wire.
  *
  * Pipeline steps (mirrors onImplement exactly):
  *   1. Resolve planFilePath from the renderer store (instance.planFilePath
@@ -40,9 +40,9 @@ export async function handleImplementPlan(
   cmd: Extract<RemoteCommand, { type: 'desktop_implement_plan' }>,
 ): Promise<void> {
   const { tabId, questionId, instanceId, clearContext = false } = cmd
-  log(`handleImplementPlan: tabId=${tabId.slice(0, 8)} questionId=${questionId.slice(0, 12)} clearContext=${clearContext}`)
+  log('handle_implement_plan', { tab_id: tabId.slice(0, 8), question_id: questionId.slice(0, 12), clear_context: clearContext })
 
-  // Step 1: Resolve planFilePath — same two-source lookup as runHandleImplement.
+  // Step 1: Resolve planFilePath — same two-source lookup as implementPlan.
   let planFilePath: string | null = null
   try {
     const escapedTab = tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
@@ -75,24 +75,24 @@ export async function handleImplementPlan(
       })()
     `) || null
   } catch (err) {
-    log(`handleImplementPlan: planFilePath lookup failed: ${(err as Error).message}`)
+    log('handle_implement_plan: plan file lookup failed', { error: (err as Error).message })
   }
-  log(`handleImplementPlan: planFilePath=${planFilePath ?? '<none>'}`)
+  log('handle_implement_plan: plan file path', { path: planFilePath ?? '' })
 
-  // Step 2: Read plan content from disk (mirrors runHandleImplement).
+  // Step 2: Read plan content from disk (mirrors implementPlan).
   let planContent: string | null = null
   if (planFilePath && existsSync(planFilePath)) {
     try {
       planContent = readFileSync(planFilePath, 'utf-8')
     } catch (err) {
-      log(`handleImplementPlan: plan read failed: ${(err as Error).message}`)
+      log('handle_implement_plan: plan read failed', { error: (err as Error).message })
     }
   }
 
-  // Step 3: Set permission mode → auto (same as runHandleImplement).
+  // Step 3: Set permission mode → auto (same as implementPlan).
   await handleSetPermissionMode({ type: 'desktop_set_permission_mode', tabId, mode: 'auto' })
 
-  // Step 4: Renderer-side model switch + group auto-move (mirrors runHandleImplement).
+  // Step 4: Renderer-side model switch + group auto-move (mirrors implementPlan).
   // These are prefs-driven so we read them from the renderer stores.
   try {
     const escapedTab = tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
@@ -120,11 +120,11 @@ export async function handleImplementPlan(
       })()
     `)
   } catch (err) {
-    log(`handleImplementPlan: renderer model/group step failed: ${(err as Error).message}`)
+    log('handle_implement_plan: renderer model/group step failed', { error: (err as Error).message })
   }
 
   // Step 5: clearContext branch — reset engine session before implementing.
-  // Matches the runHandleImplement clearContext branch. The main-process resetTabSession call
+  // Matches the implementPlan clearContext branch. The main-process resetTabSession call
   // must happen before the renderer state mutation so the engine session is
   // already gone when the store clears conversationId.
   if (clearContext) {
@@ -132,7 +132,7 @@ export async function handleImplementPlan(
   }
 
   // Step 6: Renderer store mutations — insert divider, clear plan state.
-  // Mirrors runHandleImplement. Both clearContext branches handled here.
+  // Mirrors implementPlan. Both clearContext branches handled here.
   try {
     const escapedTab = tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
     const clearCtxJs = clearContext ? 'true' : 'false'
@@ -217,7 +217,7 @@ export async function handleImplementPlan(
       })()
     `)
   } catch (err) {
-    log(`handleImplementPlan: renderer state mutation failed: ${(err as Error).message}`)
+    log('handle_implement_plan: renderer state mutation failed', { error: (err as Error).message })
   }
 
   // Step 7: Determine tab type for processIncomingPrompt routing.
@@ -247,7 +247,7 @@ export async function handleImplementPlan(
     }
   } catch {}
 
-  // Step 8: Build prompt + attachment — same as runHandleImplement.
+  // Step 8: Build prompt + attachment — same as implementPlan.
   // The plan body is resolved desktop-side; no plan text was in the command.
   const implementPrompt = planContent
     ? `Implement the following plan:\n\n${planContent}`
@@ -276,6 +276,6 @@ export async function handleImplementPlan(
     implementationPhase: true,
     planFilePath: planFilePath || undefined,
   }).catch((err: unknown) => {
-    log(`handleImplementPlan: pipeline error: ${(err as Error).message}`)
+    log('handle_implement_plan: pipeline error', { error: (err as Error).message })
   })
 }

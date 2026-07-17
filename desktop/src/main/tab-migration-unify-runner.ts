@@ -8,8 +8,8 @@ import {
 } from './tab-migration-unify'
 import type { PersistedTabState, PersistedTab } from '../shared/types'
 
-function log(msg: string): void { _log('TabMigrate', msg) }
-function error(msg: string): void { _error('TabMigrate', msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log('TabMigrate', msg, fields) }
+function error(msg: string, fields?: Record<string, unknown>): void { _error('TabMigrate', msg, fields) }
 
 export interface UnifyMigrationOutcome {
   migrated: boolean
@@ -154,12 +154,12 @@ export function runTabUnifyMigration(tabsPath: string): UnifyMigrationOutcome {
   try {
     legacy = JSON.parse(readFileSync(tabsPath, 'utf-8'))
   } catch (err) {
-    error(`migration: unreadable tabs file ${tabsPath}: ${(err as Error).message}`)
+    error('migration: unreadable tabs file', { path: tabsPath, error: (err as Error).message })
     return { migrated: false, reason: 'error', errorMessage: (err as Error).message }
   }
 
   if (isUnifiedSchema(legacy)) {
-    log(`migration: ${tabsPath} already at schemaVersion ${UNIFIED_SCHEMA_VERSION} — skipping`)
+    log('migration: already at target version', { path: tabsPath, version: UNIFIED_SCHEMA_VERSION })
     return { migrated: false, reason: 'already-unified', tabCount: legacy.tabs?.length ?? 0 }
   }
 
@@ -167,9 +167,9 @@ export function runTabUnifyMigration(tabsPath: string): UnifyMigrationOutcome {
   const backupPath = `${tabsPath}.pre-migration.${ts}`
   try {
     copyFileSync(tabsPath, backupPath)
-    log(`migration: backed up ${tabsPath} → ${backupPath} (${legacy.tabs?.length ?? 0} tabs)`)
+    log('migration: backed up', { path: tabsPath, backup: backupPath, tabs: legacy.tabs?.length ?? 0 })
   } catch (err) {
-    error(`migration: backup failed for ${tabsPath}: ${(err as Error).message} — aborting (original untouched)`)
+    error('migration: backup failed', { path: tabsPath, error: (err as Error).message })
     return { migrated: false, reason: 'error', errorMessage: `backup failed: ${(err as Error).message}` }
   }
 
@@ -177,13 +177,13 @@ export function runTabUnifyMigration(tabsPath: string): UnifyMigrationOutcome {
   try {
     migrated = migrateTabStateToUnified(legacy)
   } catch (err) {
-    error(`migration: transform threw for ${tabsPath}: ${(err as Error).message} — original untouched, backup kept`)
+    error('migration: transform failed', { path: tabsPath, error: (err as Error).message })
     return { migrated: false, reason: 'error', backupPath, errorMessage: (err as Error).message }
   }
 
   const problem = verifyUnifyMigration(legacy, migrated)
   if (problem) {
-    error(`migration: VERIFY FAILED for ${tabsPath}: ${problem} — restoring original from backup, NOT writing migrated`)
+    error('migration: verify failed', { path: tabsPath, problem })
     // Original file is still the legacy content (we have not written yet), so
     // "restore" is a no-op on the file; we keep the backup for diagnosis and
     // leave the legacy file in place. The read-side back-compat path loads it.
@@ -192,16 +192,16 @@ export function runTabUnifyMigration(tabsPath: string): UnifyMigrationOutcome {
 
   try {
     atomicWriteFileSync(tabsPath, JSON.stringify(migrated, null, 2), 0o644)
-    log(`migration: wrote unified ${tabsPath} (schemaVersion ${UNIFIED_SCHEMA_VERSION}, ${migrated.tabs?.length ?? 0} tabs) — backup retained at ${backupPath}`)
+    log('migration: wrote unified', { path: tabsPath, version: UNIFIED_SCHEMA_VERSION, tabs: migrated.tabs?.length ?? 0, backup: backupPath })
     return { migrated: true, reason: 'success', backupPath, tabCount: migrated.tabs?.length ?? 0 }
   } catch (err) {
     // Write failed mid-flight — restore from backup so the file is intact.
-    error(`migration: write failed for ${tabsPath}: ${(err as Error).message} — restoring from backup`)
+    error('migration: write failed', { path: tabsPath, error: (err as Error).message })
     try {
       copyFileSync(backupPath, tabsPath)
-      log(`migration: restored ${tabsPath} from ${backupPath} after write failure`)
+      log('migration: restored from backup after write failure', { path: tabsPath, backup: backupPath })
     } catch (restoreErr) {
-      error(`migration: RESTORE FAILED for ${tabsPath}: ${(restoreErr as Error).message} — backup remains at ${backupPath}`)
+      error('migration: restore failed', { path: tabsPath, error: (restoreErr as Error).message, backup: backupPath })
     }
     return { migrated: false, reason: 'error', backupPath, errorMessage: (err as Error).message }
   }
@@ -212,9 +212,9 @@ export function removeMigrationBackup(backupPath: string): void {
   try {
     if (existsSync(backupPath)) {
       unlinkSync(backupPath)
-      log(`migration: removed retained backup ${backupPath}`)
+      log('migration: removed backup', { backup: backupPath })
     }
   } catch (err) {
-    error(`migration: failed to remove backup ${backupPath}: ${(err as Error).message}`)
+    error('migration: failed to remove backup', { backup: backupPath, error: (err as Error).message })
   }
 }

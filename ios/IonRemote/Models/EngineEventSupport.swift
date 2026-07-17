@@ -265,6 +265,27 @@ struct AgentStateUpdate: Codable, Identifiable, Sendable {
     }
 }
 
+// MARK: - Agent-panel header breakdown
+
+extension Array where Element == AgentStateUpdate {
+    /// The (total, active, done) breakdown rendered in the agent-panel header,
+    /// derived over the VISIBLE agent set (the same set the panel list renders).
+    /// Mirrors the desktop AgentPanel header memo: `active` counts running
+    /// agents, `done` counts completed agents, and `error`/`idle` fold into
+    /// neither count — those states are surfaced by the row's own status dot,
+    /// not a header segment. Deriving over the visible set (not the raw agent
+    /// array) keeps the header honest against the rows shown below it.
+    var agentHeaderBreakdown: (total: Int, active: Int, done: Int) {
+        var active = 0
+        var done = 0
+        for agent in self {
+            if agent.status == "running" { active += 1 }
+            else if agent.status == "done" { done += 1 }
+        }
+        return (total: count, active: active, done: done)
+    }
+}
+
 // MARK: - StatusFields
 
 /// Structured status bar fields from the desktop engine runtime.
@@ -277,7 +298,12 @@ struct StatusFields: Codable, Sendable {
     let model: String
     let contextPercent: Double
     let contextWindow: Int
-    let totalCostUsd: Double?
+    /// Cost of the most recent run in USD (cache-aware, descendants included).
+    /// Replaces the former totalCostUsd; the rename makes the scope unambiguous.
+    let runCostUsd: Double?
+    /// Cumulative cost of the entire conversation (this session + all descendant
+    /// dispatches) in USD. Absent when never-run.
+    let conversationCostUsd: Double?
     let permissionDenials: [PermissionDenialEntry]?
     /// Friendly display name broadcast by the extension (e.g. "Chief of Staff").
     let extensionName: String?
@@ -286,6 +312,16 @@ struct StatusFields: Codable, Sendable {
     /// progress. Clients use this to keep the tab status active and the
     /// interrupt button visible.
     let backgroundAgents: Int?
+    /// Number of LLM turns completed in the most recent run. Stamped from
+    /// TaskCompleteEvent.NumTurns; nil/absent on idle and heartbeat status
+    /// events that have no associated run.
+    let numTurns: Int?
+    /// Conversation-lifetime prompt count: the number of real user prompts
+    /// across the whole conversation, not just the most recent run. Stamped
+    /// from TaskCompleteEvent.ConversationTurns; nil/absent on idle and
+    /// heartbeat status events. The drawer "Turns" row renders this (lifetime),
+    /// whereas numTurns is the per-run round-trip count.
+    let conversationTurns: Int?
 
     /// Returns a copy with the label replaced.
     func withLabel(_ newLabel: String) -> StatusFields {
@@ -335,7 +371,10 @@ struct SessionStatus: Codable, Sendable {
     let model: String?
     let contextPercent: Int?
     let contextWindow: Int?
-    let totalCostUsd: Double?
+    /// Cost of the most recent run in USD. Renamed from totalCostUsd per Commit 2.
+    let runCostUsd: Double?
+    /// Cumulative conversation cost (this session + all descendant dispatches).
+    let conversationCostUsd: Double?
     let sessionId: String?
     let extensionName: String?
 }
@@ -351,11 +390,21 @@ struct ConversationInstancePayload: Codable, Sendable {
 // MARK: - EngineMessageEndUsage
 
 /// Nested usage stats within an engine_message_end event.
+/// Mirrors Go `types.MessageEndUsage` (engine/internal/types) — the manifest
+/// entry `sharedTypes.MessageEndUsage` in contracts.json is the contract.
 struct EngineMessageEndUsage: Codable, Sendable {
     let inputTokens: Int
     let outputTokens: Int
     let contextPercent: Double
     let cost: Double
+    /// Canonical persisted tree-entry id of the assistant message this end
+    /// closes. iOS re-keys the streamed assistant row to it so history pages
+    /// (which carry the same id) anchor on it. Optional: absent on older
+    /// engines/desktops.
+    let entryId: String?
+    /// Canonical persisted tree-entry id of the run-opening user turn. iOS
+    /// re-keys the optimistic user row (clientMsgId) to it. Optional.
+    let userEntryId: String?
 }
 
 // MARK: - EngineCommandListing

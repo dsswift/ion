@@ -57,7 +57,7 @@ vi.mock('../../preferences', () => ({
   usePreferencesStore: { getState: () => ({ uiZoom: 1, gitOpsMode: 'standard' }) },
 }))
 
-import { anyEngineInstanceHasRunningChildren, effectiveRunningChildrenCount, isAnyEngineInstanceRunning } from '../TabStripShared'
+import { anyEngineInstanceHasRunningChildren, effectiveRunningChildrenCount, isAnyEngineInstanceRunning, getTabStatusColor } from '../TabStripShared'
 
 function resetState() {
   state.conversationPanes = new Map()
@@ -241,5 +241,107 @@ describe('anyEngineInstanceHasRunningChildren — backgroundAgents branch', () =
     setPane('tab1', ['inst1'])
     setBackgroundAgents('tab1', 'inst1', 0)
     expect(anyEngineInstanceHasRunningChildren('tab1')).toBe(false)
+  })
+})
+
+// ─── getTabStatusColor — priority cascade ─────────────────────────────────────
+//
+// Verifies that anyEngineInstanceHasRunningChildren (yellow) outranks plan-ready
+// (green) in the getTabStatusColor priority cascade.
+//
+// The key invariant: when a tab has plan-ready waitingState AND running children,
+// the result must be statusWaitingChildren (yellow), not statusComplete (green).
+//
+// These tests MUST go RED if the reorder in getTabStatusColor is undone
+// (i.e. if plan-ready is moved back above anyEngineInstanceHasRunningChildren).
+
+// Minimal colors stub — only the keys getTabStatusColor writes to.
+const COLORS = {
+  statusIdle: 'idle',
+  statusError: 'error',
+  statusPermission: 'permission',
+  statusPermissionGlow: 'permissionGlow',
+  statusRunning: 'running',
+  statusWaitingChildren: 'waitingChildren',
+  statusWaitingChildrenGlow: 'waitingChildrenGlow',
+  statusComplete: 'complete',
+  tabGlowPlanReady: 'glowPlanReady',
+  infoText: 'info',
+  tabGlowQuestion: 'glowQuestion',
+  statusBash: 'bash',
+  statusBashGlow: 'bashGlow',
+} as any
+
+/** Build a minimal TabState that getTabStatusColor accepts. */
+function makeTab(tabId: string, overrides: Record<string, any> = {}): any {
+  return {
+    id: tabId,
+    status: 'idle',
+    hasUnread: false,
+    bashExecuting: false,
+    ...overrides,
+  }
+}
+
+/** Stamp a pane with one instance that has plan-ready permissionDenied + running agentStates. */
+function setPlanReadyWithRunningChildren(tabId: string, instanceId = 'inst1') {
+  state.conversationPanes.set(tabId, {
+    instances: [
+      {
+        id: instanceId,
+        label: instanceId,
+        // permissionDenied with ExitPlanMode triggers plan-ready waitingState
+        permissionDenied: { tools: [{ toolName: 'ExitPlanMode' }] },
+        // running agentStates triggers anyEngineInstanceHasRunningChildren
+        agentStates: [{ name: 'child', status: 'running', metadata: {} }],
+        statusFields: null,
+        // permissionQueue must be present and empty so the permission branch is skipped
+        permissionQueue: [],
+      },
+    ],
+    activeInstanceId: instanceId,
+  })
+}
+
+describe('getTabStatusColor — children outrank plan-ready', () => {
+  beforeEach(resetState)
+
+  it('returns statusWaitingChildren when plan-ready AND running children coexist', () => {
+    // This is the core priority test. If anyEngineInstanceHasRunningChildren is
+    // moved below plan-ready in the cascade, this test goes RED.
+    setPlanReadyWithRunningChildren('tab1')
+    const tab = makeTab('tab1')
+    const result = getTabStatusColor(tab, COLORS)
+    expect(result.bg).toBe(COLORS.statusWaitingChildren)
+    expect(result.pulse).toBe(true)
+    expect(result.glow).toBe(true)
+  })
+
+  it('does NOT return statusComplete (plan-ready green) when children are running', () => {
+    // Explicit negative: green must not win when yellow is active.
+    setPlanReadyWithRunningChildren('tab1')
+    const tab = makeTab('tab1')
+    const result = getTabStatusColor(tab, COLORS)
+    expect(result.bg).not.toBe(COLORS.statusComplete)
+  })
+
+  it('returns statusComplete for plan-ready with no running children (baseline)', () => {
+    // Baseline: plan-ready with no children → green, as expected.
+    state.conversationPanes.set('tab2', {
+      instances: [
+        {
+          id: 'inst1',
+          label: 'inst1',
+          permissionDenied: { tools: [{ toolName: 'ExitPlanMode' }] },
+          agentStates: [],
+          statusFields: null,
+          permissionQueue: [],
+        },
+      ],
+      activeInstanceId: 'inst1',
+    })
+    const tab = makeTab('tab2')
+    const result = getTabStatusColor(tab, COLORS)
+    expect(result.bg).toBe(COLORS.statusComplete)
   })
 })

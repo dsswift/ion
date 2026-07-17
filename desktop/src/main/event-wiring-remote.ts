@@ -3,11 +3,10 @@ import type { NormalizedEvent } from '../shared/types'
 import { log as _log } from './logger'
 import { state, sessionPlane, activeAssistantMessages, lastMessagePreview } from './state'
 import { normalizedToRemote } from './remote/protocol'
-import { formatClearDivider } from '../shared/clear-divider'
-import { buildCompactionMarkerContent } from '../shared/compaction-marker'
+import { buildCompactionMarkerContent, buildManualCompactionNoOpNotice } from '../shared/compaction-marker'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 export function wireRemoteSessionPlaneForwarding(): void {
@@ -157,7 +156,7 @@ export function wireRemoteSessionPlaneForwarding(): void {
               const content = readFileSync(planPath, 'utf-8')
               toolInput = { ...toolInput, planFilePath: planPath, planContent: content }
             } catch (err) {
-              log(`Failed to read plan file for remote (task_complete): ${(err as Error).message}`)
+              log('failed to read plan file for remote task_complete', { error: (err as Error).message })
             }
           }
 
@@ -179,7 +178,7 @@ export function wireRemoteSessionPlaneForwarding(): void {
           (d) => d.toolName === 'AskUserQuestion',
         )
         if (askDenial && state.remoteTransport) {
-          log(`task_complete: forwarding AskUserQuestion denial to remote questionId=denied-${askDenial.toolUseId}`)
+          log('task_complete: forwarding denial to remote', { question_id: 'denied-' + askDenial.toolUseId })
           state.remoteTransport.send({
             type: 'desktop_permission_request',
             tabId,
@@ -198,7 +197,7 @@ export function wireRemoteSessionPlaneForwarding(): void {
         // (event-slice.ts) — including omitting "N → N" on a micro-only pass
         // and suppressing the marker entirely on a pure no-op.
         if (!event.active) {
-          const content = buildCompactionMarkerContent(event)
+          const content = buildCompactionMarkerContent(event) ?? buildManualCompactionNoOpNotice(event)
           if (content !== null) {
             state.remoteTransport.send({
               type: 'desktop_message_added',
@@ -222,7 +221,7 @@ export function wireRemoteSessionPlaneForwarding(): void {
     toolInput?: Record<string, unknown>;
     options: Array<{ id: string; label: string; kind?: string }>
   }) => {
-    log(`remote-permission received: tool=${data.toolName}, questionId=${data.questionId}, hasTransport=${!!state.remoteTransport}, hasToolInput=${!!data.toolInput}`)
+    log('remote_permission_received', { tool: data.toolName, question_id: data.questionId, has_transport: !!state.remoteTransport, has_tool_input: !!data.toolInput })
     if (!state.remoteTransport) return
     let toolInput = data.toolInput
     if (data.toolName === 'ExitPlanMode') {
@@ -272,7 +271,7 @@ export function wireRemoteSessionPlaneForwarding(): void {
           const content = readFileSync(planPath, 'utf-8')
           toolInput = { ...(toolInput || {}), planFilePath: planPath, planContent: content }
         } catch (err) {
-          log(`Failed to read plan file for remote: ${(err as Error).message}`)
+          log('failed to read plan file for remote', { error: (err as Error).message })
         }
       }
     }
@@ -317,5 +316,22 @@ export function wireRemoteSessionPlaneForwarding(): void {
       ? { title: 'Task completed', body: lastMessagePreview.get(tabId) || 'Tab is now idle' }
       : undefined
     state.remoteTransport.send({ type: 'desktop_tab_status', tabId, status: newStatus as any }, pushOnIdle, pushMeta)
+  })
+
+  // Push a desktop_tab_meta delta whenever the tab title changes. Tab titles
+  // are set by the engine on first assistant message and whenever a new
+  // conversation is started. Without this delta, iOS must wait up to 5 s for
+  // the next snapshot poll to see the updated title.
+  sessionPlane.on('tab-title-change', (tabId: string, newTitle: string) => {
+    if (!state.remoteTransport) return
+    log('tab_title_change', { tab_id: tabId, title: newTitle.slice(0, 40) })
+    state.remoteTransport.send({ type: 'desktop_tab_meta', tabId, title: newTitle })
+  })
+
+  // Push a desktop_tab_meta delta when a tab is moved to a different group.
+  sessionPlane.on('tab-group-change', (tabId: string, groupId: string | null) => {
+    if (!state.remoteTransport) return
+    log('tab_group_change', { tab_id: tabId, group_id: groupId ?? '' })
+    state.remoteTransport.send({ type: 'desktop_tab_meta', tabId, groupId })
   })
 }

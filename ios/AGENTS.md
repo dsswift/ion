@@ -65,7 +65,6 @@ When adding a test, ensure it's a member of the `IonRemoteTests` target, not `Io
 ## Tests (`IonRemoteTests/`)
 
 - XCTest. Mirror the source folder structure inside `IonRemoteTests/`.
-- See `IonRemoteTests/` for the full XCTest suite (mirrors the source folder structure).
 - Wire-format changes (`NormalizedEvent`, `RemoteCommand`, `RemoteTabState`) must update the corresponding test fixtures.
 - Crypto changes must keep `E2ECryptoTests.swift` passing — it round-trips real pairing handshakes.
 - Network changes must keep `RelayClientTests.swift` and `TransportManagerTests.swift` green.
@@ -77,6 +76,14 @@ When adding a test, ensure it's a member of the `IonRemoteTests` target, not `Io
 - Models are plain data. `Codable` for wire types. No business logic.
 - Networking: async/await throughout. Cancellation via `Task` cancellation, not custom flags.
 - Crypto isolated under `Crypto/`. Don't inline crypto operations elsewhere.
+
+## Logging
+
+iOS logs write to `~/.ion/ios-diagnostic-logs.jsonl` on the paired desktop in the canonical Ion JSONL schema (`component=ios`). The file arrives via the `DiagnosticLog` transport — **always use `DiagnosticLog.log()`, never `print()`**. The iOS device runs without an attached Xcode console in normal use; `print()` output is invisible. `DiagnosticLog.log()` is the only path that reaches the desktop log file.
+
+`tag` = Swift subsystem label (e.g. `ipc`, `session`, `transport`). Structured context goes in the `fields` map; do not concatenate it into `msg`.
+
+See root [`AGENTS.md`](../AGENTS.md) § "Logging policy" for file locations, `jq` recipes, and LogQL cheat-sheet.
 
 ## Pairing/transport
 
@@ -121,7 +128,7 @@ The iOS app is a thin client for the resource subsystem. It subscribes to resour
 
 - ResourceStore accumulates snapshot/delta events from the engine WebSocket
 - NotificationsView shows workspace-level briefings with read/unread state
-- Push notifications carry `ionKind` and `ionResourceId` in userInfo for deep-linking
+- The relay includes `ionKind` and `ionResourceId` in the APNs payload. `AppDelegate.swift` currently deep-links to a tab via `tabId` only; resource-level deep-linking using `ionResourceId` is not yet implemented.
 - When the user reads a resource, iOS sends `mark_read` through the transport so the desktop reflects the change
 
 ## Done criteria

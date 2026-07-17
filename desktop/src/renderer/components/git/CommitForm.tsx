@@ -79,7 +79,11 @@ export function CommitForm({ directory, branch, stagedCount, onCommit, onQuickCo
   // Save draft
   useEffect(() => {
     const k = draftKey(directory, branch)
-    message.trim() ? localStorage.setItem(k, message) : localStorage.removeItem(k)
+    if (message.trim()) {
+      localStorage.setItem(k, message)
+    } else {
+      localStorage.removeItem(k)
+    }
   }, [message, directory, branch])
 
   // Auto-resize textarea
@@ -151,7 +155,7 @@ export function CommitForm({ directory, branch, stagedCount, onCommit, onQuickCo
 
   // Commit button label
   const primaryLabel = primary === 'commit-push' ? 'Commit & Push' : 'Commit'
-  const buttonLabel = amend ? `${primaryLabel} (amend)` : primaryLabel
+  const _buttonLabel = amend ? `${primaryLabel} (amend)` : primaryLabel
 
   // Active toggle indicators
   const hasToggles = amend || signOff || gpg

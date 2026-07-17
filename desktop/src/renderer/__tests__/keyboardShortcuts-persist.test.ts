@@ -12,7 +12,7 @@
  *   - getAllSettings includes keyboardShortcuts.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 
 describe('keyboardShortcuts store behavior (setKeyboardShortcut logic)', () => {
   it('setKeyboardShortcut stores the override when chord differs from default', async () => {

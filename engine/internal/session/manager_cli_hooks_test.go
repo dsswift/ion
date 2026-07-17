@@ -28,7 +28,7 @@ func newCliSession(key string) *engineSession {
 // ---------------------------------------------------------------------------
 
 func TestFireBeforePromptCli_ModifiesPromptAndSystem(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("cli1")
 
@@ -54,7 +54,7 @@ func TestFireBeforePromptCli_ModifiesPromptAndSystem(t *testing.T) {
 }
 
 func TestFireBeforePromptCli_AppendsToExistingSystem(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("cli2")
 
@@ -95,7 +95,7 @@ func TestFireBeforePromptCli_AppendsToExistingSystem(t *testing.T) {
 // the handler receives (not merely that the hook fired) is what makes this a
 // real regression guard rather than false coverage.
 func TestFireBeforeAgentStart_RootCallSiteSetsIsRoot(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("agentstart1")
 
@@ -152,7 +152,7 @@ func TestFireBeforePromptCli_NoopForNonCliBackend(t *testing.T) {
 }
 
 func TestFireBeforePromptCli_SkippedWhenSkipExtensions(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("cli3")
 
@@ -172,7 +172,7 @@ func TestFireBeforePromptCli_SkippedWhenSkipExtensions(t *testing.T) {
 }
 
 func TestFireBeforePromptCli_NoopWhenNoExtGroup(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("cli4")
 
@@ -318,7 +318,7 @@ func newTurnGroup(rec *turnRecorder) *extension.ExtensionGroup {
 }
 
 func TestFireCliTurnHooks_TextChunkStartsTurn(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("turn1")
 
@@ -351,7 +351,7 @@ func TestFireCliTurnHooks_TextChunkStartsTurn(t *testing.T) {
 }
 
 func TestFireCliTurnHooks_ToolCallStartsTurn(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("turn2")
 
@@ -373,7 +373,7 @@ func TestFireCliTurnHooks_ToolCallStartsTurn(t *testing.T) {
 }
 
 func TestFireCliTurnHooks_TaskUpdateEndsTurn(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("turn3")
 
@@ -401,7 +401,7 @@ func TestFireCliTurnHooks_TaskUpdateEndsTurn(t *testing.T) {
 }
 
 func TestFireCliTurnHooks_MultiTurnSequence(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("turn4")
 
@@ -459,7 +459,7 @@ func TestFireCliTurnHooks_MultiTurnSequence(t *testing.T) {
 }
 
 func TestFireCliTurnHooks_TaskCompleteClosesActiveTurn(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("turn5")
 
@@ -511,7 +511,7 @@ func TestFireCliTurnHooks_NoopForNonCliBackend(t *testing.T) {
 }
 
 func TestFireCliTurnHooks_NoopWithoutExtGroup(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("turn6")
 	// No extGroup set
@@ -539,7 +539,7 @@ func TestFireCliTurnHooks_NoopWithoutExtGroup(t *testing.T) {
 // through the full handleNormalizedEvent path. This is the regression test for
 // the bug where fireCliTurnHooks was placed after the ee.Type == "" early return.
 func TestHandleNormalizedEvent_TaskUpdateFiresTurnEnd(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 
 	s := newCliSession("hn1")
@@ -576,7 +576,7 @@ func TestHandleNormalizedEvent_TaskUpdateFiresTurnEnd(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestWireAgentToolServer_RegistersToolForCliBackend(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("agent-ts1")
 
@@ -623,7 +623,7 @@ func TestWireAgentToolServer_NoopForNonCliBackend(t *testing.T) {
 }
 
 func TestWireAgentToolServer_ReusesExistingToolServer(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("agent-ts3")
 
@@ -658,8 +658,58 @@ func TestWireAgentToolServer_ReusesExistingToolServer(t *testing.T) {
 	existingTS.Stop()
 }
 
+// TestBuildAgentToolHandler_RoutesThroughDispatch pins the root-model-called
+// ion_agent fix: when a CLI parent's model invokes the ion_agent MCP tool, the
+// handler routes through the shared depth-0 dispatch (buildRootAgentSpawner),
+// so the dispatched agent registers and emits engine_agent_state (it appears in
+// the agent panel) — instead of the old bare synchronous child run that
+// surfaced no agent. Reverting buildAgentToolHandler to the bare child.StartRun
+// path turns this red (no engine_agent_state with a live agent).
+func TestBuildAgentToolHandler_RoutesThroughDispatch(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	stub := &childStubBackend{resultText: "child output"}
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	mgr.childBackendOverride = func() backend.RunBackend { return stub }
+
+	if _, err := mgr.StartSession("cli-ion-agent", defaultConfig()); err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	mgr.mu.Lock()
+	s := mgr.sessions["cli-ion-agent"]
+	mgr.mu.Unlock()
+
+	var mu sync.Mutex
+	var sawLiveAgent bool
+	mgr.OnEvent(func(_ string, ev types.EngineEvent) {
+		if ev.Type == "engine_agent_state" && len(ev.Agents) > 0 {
+			mu.Lock()
+			sawLiveAgent = true
+			mu.Unlock()
+		}
+	})
+
+	handler := mgr.buildAgentToolHandler(s, "cli-ion-agent", "claude-opus-4-8")
+	res, err := handler(map[string]interface{}{"prompt": "do the thing", "name": "worker"})
+	if err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("unexpected error result: %s", res.Content)
+	}
+	if res.Content != "child output" {
+		t.Errorf("result = %q, want %q (child dispatch output)", res.Content, "child output")
+	}
+	mu.Lock()
+	got := sawLiveAgent
+	mu.Unlock()
+	if !got {
+		t.Error("CLI ion_agent dispatch emitted no engine_agent_state with a live agent — the dispatched agent would be invisible in the panel (did it route through the dispatch path?)")
+	}
+}
+
 func TestWireAgentToolServer_SpecResolution(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("agent-ts4")
 
@@ -676,7 +726,7 @@ func TestWireAgentToolServer_SpecResolution(t *testing.T) {
 	mgr.mu.Unlock()
 
 	// Build the handler directly and test spec resolution
-	handler := mgr.buildAgentToolHandler(s, "agent-ts4")
+	handler := mgr.buildAgentToolHandler(s, "agent-ts4", "claude-opus-4-8")
 
 	// Unknown agent names now fall through as unnamed agents (no error).
 	// We only verify the missing-prompt guard here since spawning a real
@@ -733,7 +783,7 @@ func newMsgUpdateGroup(rec *msgRecorder) *extension.ExtensionGroup {
 }
 
 func TestFireCliTurnHooks_MessageUpdateAccumulation(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("mu1")
 
@@ -771,7 +821,7 @@ func TestFireCliTurnHooks_MessageUpdateAccumulation(t *testing.T) {
 }
 
 func TestFireCliTurnHooks_MessageUpdateOnTaskComplete(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("mu2")
 
@@ -800,7 +850,7 @@ func TestFireCliTurnHooks_MessageUpdateOnTaskComplete(t *testing.T) {
 }
 
 func TestFireCliTurnHooks_NoMessageUpdateWithoutText(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("mu3")
 
@@ -826,7 +876,7 @@ func TestFireCliTurnHooks_NoMessageUpdateWithoutText(t *testing.T) {
 }
 
 func TestFireCliTurnHooks_MultiTurnMessageUpdate(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("mu4")
 
@@ -894,7 +944,7 @@ func newToolExtGroup(toolNames []string) *extension.ExtensionGroup {
 // wireToolServer runs on a CLI backend with non-empty extension tools, each
 // bare name and its mcp__<server>__<name> form appear in AppendSystemPrompt.
 func TestWireToolServer_AppendSystemPromptContainsAliases(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("wts1")
 
@@ -927,7 +977,7 @@ func TestWireToolServer_AppendSystemPromptContainsAliases(t *testing.T) {
 // pre-existing AppendSystemPrompt content is preserved when the directive is
 // appended.  Mirrors the accumulation assertions near lines 70-80.
 func TestWireToolServer_PreservesExistingAppendSystemPrompt(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("wts2")
 
@@ -973,7 +1023,7 @@ func TestWireToolServer_NoopForAPIBackend(t *testing.T) {
 // after wireAgentToolServer, the ion_agent bare and prefixed forms appear in
 // AppendSystemPrompt.
 func TestWireAgentToolServer_AppendSystemPromptContainsIonAgent(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("wats1")
 

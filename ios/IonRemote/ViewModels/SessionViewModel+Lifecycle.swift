@@ -30,7 +30,11 @@ extension SessionViewModel {
            let host = url.host(percentEncoded: false),
            let port = url.port {
             ionLog.info("connect: device=\(device.name) via LAN-only (\(host):\(port))")
-            DiagnosticLog.log("CONNECT: LAN-direct \(device.name) \(host):\(port) id=\(device.id.prefix(8))")
+            DiagnosticLog.log("connect lan-direct", tag: "session.lifecycle", fields: [
+                "reason": device.name,
+                "path": "\(host):\(port)",
+                "device": String(device.id.prefix(8))
+            ])
             restoreCachedLayout(for: device.id)
             connectLAN(host: host, port: UInt16(port))
             return
@@ -40,7 +44,11 @@ extension SessionViewModel {
         let channelId = E2ECrypto.deriveChannelId(sharedSecret: sharedKey)
 
         ionLog.info("connect: device=\(device.name) relayURL=\(effectiveRelayURL) channelId=\(channelId.prefix(8))...")
-        DiagnosticLog.log("CONNECT: relay \(device.name) url=\(effectiveRelayURL) ch=\(channelId.prefix(8))")
+        DiagnosticLog.log("connect relay", tag: "session.lifecycle", fields: [
+            "reason": device.name,
+            "path": effectiveRelayURL,
+            "count": String(channelId.prefix(8))
+        ])
 
         guard !effectiveRelayURL.isEmpty,
               let url = URL(string: effectiveRelayURL) else {
@@ -75,7 +83,11 @@ extension SessionViewModel {
         guard let device = activeDevice else { return }
 
         ionLog.info("connectLAN: device=\(device.name) host=\(host):\(port)")
-        DiagnosticLog.log("LAN-CONNECT: \(device.name) \(host):\(port) id=\(device.id.prefix(8))")
+        DiagnosticLog.log("lan connect", tag: "session.lifecycle", fields: [
+            "reason": device.name,
+            "path": "\(host):\(port)",
+            "device": String(device.id.prefix(8))
+        ])
 
         let sharedKey = SymmetricKey(data: device.sharedSecret)
         let tm = TransportManager(sharedKey: sharedKey, deviceId: device.id)
@@ -84,21 +96,67 @@ extension SessionViewModel {
         connectionState = .connecting
 
         Task {
-            let authed = await tm.startLANWithAuth(host: host, port: port)
-            if authed {
+            var outcome = await tm.startLANWithAuth(host: host, port: port)
+
+            // Transient failures (socket error, auth-cooldown close 1008,
+            // timeout, stream ended without a verdict) get bounded in-place
+            // retries before handing off to the reconnect machinery. A
+            // definitive rejection (auth_result success=false, close 4000-4999)
+            // never retries — the desktop refused this identity.
+            var attempt = 0
+            while outcome == .transient, attempt < self.lanAuthRetryDelays.count {
+                let delay = self.lanAuthRetryDelays[attempt]
+                attempt += 1
+                DiagnosticLog.log("lan connect transient failure, retrying", tag: "session.lifecycle", level: .warn, fields: [
+                    "reason": device.name,
+                    "count": String(attempt),
+                    "max": String(self.lanAuthRetryDelays.count)
+                ])
+                try? await Task.sleep(for: delay)
+                // Bail if this connect attempt was superseded (user switched
+                // desktop, softReconnect built a new transport, teardown).
+                let stillCurrent = await MainActor.run { self.transport === tm }
+                guard !Task.isCancelled, stillCurrent else { return }
+                outcome = await tm.startLANWithAuth(host: host, port: port)
+            }
+
+            switch outcome {
+            case .success:
                 ionLog.info("connectLAN: auth succeeded for \(device.name)")
-                DiagnosticLog.log("LAN-CONNECT: auth OK \(device.name)")
+                DiagnosticLog.log("lan connect auth ok", tag: "session.lifecycle", fields: [
+                    "reason": device.name
+                ])
                 await MainActor.run {
                     self.connectionState = .connected
                     self.send(.sync, intent: .automaticEssential)
                 }
-            } else {
-                ionLog.error("connectLAN: auth FAILED for \(device.name)")
-                DiagnosticLog.log("LAN-CONNECT: auth FAILED \(device.name)")
+            case .rejected:
+                ionLog.error("connectLAN: auth REJECTED for \(device.name)")
+                DiagnosticLog.log("lan connect auth rejected", tag: "session.lifecycle", level: .warn, fields: [
+                    "reason": device.name
+                ])
                 await MainActor.run {
                     self.connectionState = .authFailed
                     self.transport?.stop()
                     self.transport = nil
+                }
+            case .transient:
+                // NOT .authFailed: the desktop never rejected this identity —
+                // the socket dropped without a verdict (auth cooldown, network
+                // blip, desktop restarting). Surfacing .authFailed here would
+                // bounce the user to the pairing screen over a valid pairing.
+                // Tear down and let the reconnect machinery (safety timer +
+                // disconnected-view auto-retry) keep trying.
+                ionLog.warning("connectLAN: transient auth failure for \(device.name), deferring to reconnect")
+                DiagnosticLog.log("lan connect transient, deferring to reconnect", tag: "session.lifecycle", level: .warn, fields: [
+                    "reason": device.name,
+                    "count": String(attempt)
+                ])
+                await MainActor.run {
+                    self.transport?.stop()
+                    self.transport = nil
+                    self.connectionState = .disconnected
+                    self.startReconnectSafetyTimer()
                 }
             }
         }
@@ -117,7 +175,11 @@ extension SessionViewModel {
         let effectiveAPIKey = device.relayAPIKey ?? relayAPIKey
 
         ionLog.info("softReconnect: device=\(device.name) apiKey=\(effectiveAPIKey) relayURL=\(effectiveRelayURL)")
-        DiagnosticLog.log("SOFT-RECONN: \(device.name) key=\(effectiveAPIKey.prefix(8)) url=\(effectiveRelayURL)")
+        DiagnosticLog.log("soft reconnect", tag: "session.lifecycle", fields: [
+            "reason": device.name,
+            "count": String(effectiveAPIKey.prefix(8)),
+            "path": effectiveRelayURL
+        ])
 
         // LAN-only device: reconnect directly without a relay.
         if effectiveAPIKey == "lan-direct",
@@ -137,7 +199,9 @@ extension SessionViewModel {
               let url = URL(string: effectiveRelayURL) else { return }
 
         connectionState = .reconnecting
-        DiagnosticLog.log("SOFT-RECONN: relay path \(effectiveRelayURL)")
+        DiagnosticLog.log("soft reconnect relay path", tag: "session.lifecycle", fields: [
+            "path": effectiveRelayURL
+        ])
 
         let tm = TransportManager(
             relayURL: url,
@@ -174,9 +238,20 @@ extension SessionViewModel {
     /// Rebuild the transport after suspend. Called when the app foregrounds.
     func resumeTransport() {
         guard !pairedDevices.isEmpty else { return }
-        DiagnosticLog.log("RESUME: transport=\(transport == nil ? "nil" : "exists")")
+        DiagnosticLog.log("resume transport", tag: "session.lifecycle", fields: [
+            "status": transport == nil ? "nil" : "exists"
+        ])
         if transport == nil {
             softReconnect()
+        } else {
+            // Transport survived backgrounding. Two things can be stale:
+            // (1) the LAN socket may be a zombie (wedged during suspension while
+            //     still reading connected) — revalidate it so sends don't vanish
+            //     into a dead socket; and (2) a delta may have been missed, so
+            //     proactively resync to reconcile state.
+            DiagnosticLog.log("RESUME: transport alive, revalidating LAN + proactive sync")
+            transport?.revalidateLANAfterResume()
+            send(.sync, intent: .automaticEssential)
         }
     }
 
@@ -188,7 +263,11 @@ extension SessionViewModel {
         let fromName = activeDevice?.name ?? "nil"
         let toName = pairedDevices.first(where: { $0.id == id })?.name ?? "unknown"
         ionLog.info("switchToDevice: \(id)")
-        DiagnosticLog.log("USER: switch-device from=\(fromName) to=\(toName) id=\(id.prefix(8))")
+        DiagnosticLog.log("switch device", tag: "session.lifecycle", fields: [
+            "reason": fromName,
+            "status": toName,
+            "device": String(id.prefix(8))
+        ])
         disconnect()
         activeDeviceId = id
         restoreCachedLayout(for: id)
@@ -218,7 +297,11 @@ extension SessionViewModel {
 
     /// Disconnect from the current transport and wipe all transient state.
     func disconnect() {
-        DiagnosticLog.log("DISCONNECT: tearing down")
+        DiagnosticLog.log("tearing down", tag: "session", level: .info)
+        // Clear correlation IDs — we are leaving the current pairing's
+        // session/conversation context. Omitted-when-nil per schema.
+        DiagnosticLog.setSessionId(nil)
+        DiagnosticLog.setConversationId(nil)
         reconnectSafetyTask?.cancel()
         reconnectSafetyTask = nil
         // Clear any commands deferred via `runWhenConnected` — a hard
@@ -245,13 +328,17 @@ extension SessionViewModel {
     // MARK: - Reconnect Safety Timer
 
     /// Start a safety timer that forces a soft reconnect if the app stays
-    /// in `.reconnecting` for too long (e.g. the relay can't reach the peer).
+    /// in `.reconnecting` (relay can't reach the peer) or `.disconnected`
+    /// (a transient LAN auth failure exhausted its in-place retries and
+    /// handed off here) for too long. Cancelled on `.connected` and by
+    /// `disconnect()`, so it never fires against a healthy or intentionally
+    /// torn-down session.
     func startReconnectSafetyTimer() {
         reconnectSafetyTask?.cancel()
         reconnectSafetyTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(30))
             guard !Task.isCancelled, let self else { return }
-            if self.connectionState == .reconnecting {
+            if self.connectionState == .reconnecting || self.connectionState == .disconnected {
                 self.softReconnect()
             }
         }
@@ -293,7 +380,10 @@ extension SessionViewModel {
         enterpriseNewConversationPolicy = nil
         pendingCloseTabIds = []
         pendingInputByTab = [:]
-        awaitingLocalTabCreation = false
+        // Hard reset only (switch desktop / unpair): drop in-flight creates so a
+        // stale create never spawns a tab against a different pairing. Survives
+        // soft reconnect because that path never calls wipeTransientState.
+        clearPendingCreates()
         activeTools = [:]
         tabGroupMode = "auto"
         tabGroups = []
@@ -314,11 +404,19 @@ extension SessionViewModel {
             return
         }
         guard let cached = LayoutCache.load(deviceId: deviceId) else {
-            DiagnosticLog.log("CACHE: restoreCachedLayout miss — no cache for deviceId=\(deviceId.prefix(8))")
+            DiagnosticLog.log("restore cached layout miss", tag: "session.cache", fields: [
+                "device": String(deviceId.prefix(8))
+            ])
             return
         }
         let ageSeconds = Int(Date().timeIntervalSince(cached.cachedAt))
-        DiagnosticLog.log("CACHE: restoreCachedLayout hit deviceId=\(deviceId.prefix(8)) tabs=\(cached.tabs.count) groups=\(cached.tabGroups.count) groupMode=\(cached.tabGroupMode) age=\(ageSeconds)s")
+        DiagnosticLog.log("restore cached layout hit", tag: "session.cache", fields: [
+            "device": String(deviceId.prefix(8)),
+            "count": String(cached.tabs.count),
+            "max": String(cached.tabGroups.count),
+            "status": cached.tabGroupMode,
+            "duration_ms": String(ageSeconds)
+        ])
         tabs = cached.tabs
         tabIds = Set(cached.tabs.map(\.id))
         tabGroupMode = cached.tabGroupMode
@@ -370,7 +468,12 @@ extension SessionViewModel {
         let updatedAt = Date()
         let updatedAtMs = Int(updatedAt.timeIntervalSince1970 * 1000)
         let isActive = device.id == activeDevice?.id
-        DiagnosticLog.log("DISPLAY-SEND: device=\(device.id.prefix(8)) active=\(isActive) name=\(customName == nil ? "cleared" : "set") icon=\(customIcon ?? "cleared") ts=\(updatedAtMs)")
+        DiagnosticLog.log("display send", tag: "session.display", fields: [
+            "device": String(device.id.prefix(8)),
+            "status": String(isActive),
+            "reason": customName == nil ? "cleared" : "set",
+            "count": String(updatedAtMs)
+        ])
 
         // Optimistic local write — gives the UI an instant response while
         // the round-trip is in flight. Reconciliation overrides this on ack
@@ -390,7 +493,10 @@ extension SessionViewModel {
             prevName = nil
             prevIcon = nil
             prevTs = nil
-            DiagnosticLog.log("DISPLAY-SEND: device=\(device.id.prefix(8)) not in pairedDevices — skipping optimistic write")
+            DiagnosticLog.log("display send skipping optimistic write", tag: "session.display", fields: [
+                "device": String(device.id.prefix(8)),
+                "reason": "not in pairedDevices"
+            ])
         }
 
         do {
@@ -422,7 +528,10 @@ extension SessionViewModel {
             }
         } catch {
             // Rollback optimistic write on failure.
-            DiagnosticLog.log("DISPLAY-SEND: failed device=\(device.id.prefix(8)) err=\(error.localizedDescription) — rolling back")
+            DiagnosticLog.log("display send failed rolling back", tag: "session.display", level: .error, fields: [
+                "device": String(device.id.prefix(8)),
+                "error": error.localizedDescription
+            ])
             if let idx = pairedDevices.firstIndex(where: { $0.id == device.id }) {
                 pairedDevices[idx].customName = prevName
                 pairedDevices[idx].customIcon = prevIcon

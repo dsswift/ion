@@ -86,7 +86,7 @@ type EngineConfig struct {
 
 // ThinkingConfig controls extended thinking for API-backend runs.
 type ThinkingConfig struct {
-	Enabled      bool `json:"enabled"`
+	Enabled bool `json:"enabled"`
 	// Effort is the cross-provider reasoning level: "low" | "medium" | "high".
 	// It is the forward-compatible control that the whole provider landscape
 	// has converged on (Anthropic adaptive `effort`, OpenAI `reasoning_effort`,
@@ -180,15 +180,23 @@ type SlashCommandListing struct {
 
 // StatusFields are the fields emitted by engine_status events.
 type StatusFields struct {
-	Label             string             `json:"label"`
-	State             string             `json:"state"`
-	SessionID         string             `json:"sessionId,omitempty"`
-	Team              string             `json:"team,omitempty"`
-	Model             string             `json:"model"`
-	ContextPercent    int                `json:"contextPercent"`
-	ContextWindow     int                `json:"contextWindow"`
-	TotalCostUsd      float64            `json:"totalCostUsd,omitempty"`
-	PermissionDenials []PermissionDenial `json:"permissionDenials,omitempty"`
+	Label          string `json:"label"`
+	State          string `json:"state"`
+	SessionID      string `json:"sessionId,omitempty"`
+	Team           string `json:"team,omitempty"`
+	Model          string `json:"model"`
+	ContextPercent int    `json:"contextPercent"`
+	ContextWindow  int    `json:"contextWindow"`
+	// RunCostUsd is the cumulative cost of the most recent run in USD. It
+	// represents the sum of all turns in the run (cache-aware, descendants
+	// included). Replaces the former totalCostUsd field; the rename makes
+	// the scope unambiguous — "run" not "conversation".
+	RunCostUsd float64 `json:"runCostUsd,omitempty"`
+	// ConversationCostUsd is the cumulative cost of the entire conversation
+	// (this session + all descendant dispatches) in USD. Computed on demand
+	// via the cost.ConversationCost dispatch-tree walk.
+	ConversationCostUsd float64            `json:"conversationCostUsd,omitempty"`
+	PermissionDenials   []PermissionDenial `json:"permissionDenials,omitempty"`
 	// ExtensionName is a friendly display name broadcast by the extension via
 	// ext/emit engine_status. The engine preserves it across its own status
 	// transitions so clients can show "Chief of Staff [idle]" instead of a
@@ -199,6 +207,17 @@ type StatusFields struct {
 	// isn't running) but background work is in progress. Clients use this to keep
 	// the tab status active and the interrupt button visible.
 	BackgroundAgents int `json:"backgroundAgents,omitempty"`
+	// NumTurns is the number of LLM turns completed in the most recent run.
+	// Stamped from TaskCompleteEvent.NumTurns in translateToEngineEvent; zero
+	// on idle and heartbeat status events that have no associated run.
+	NumTurns int `json:"numTurns,omitempty"`
+	// ConversationTurns is the conversation-lifetime prompt count: the number
+	// of real user prompts across the whole conversation, not just the most
+	// recent run. Stamped from TaskCompleteEvent.ConversationTurns in
+	// translateToEngineEvent; zero on idle and heartbeat status events that
+	// have no associated run. Consumers render this as the drawer "Turns"
+	// (lifetime), whereas NumTurns is the per-run round-trip count.
+	ConversationTurns int `json:"conversationTurns,omitempty"`
 }
 
 // SessionStatus is the Phase 3 typed status payload that consolidates
@@ -233,7 +252,8 @@ type StatusFields struct {
 // type — new fields are zero-default and additive, no field is removed
 // or renamed without a major version. See CLAUDE.md "Contract stability".
 type SessionStatus struct {
-	// Key is the session key (tabId or tabId:instanceId). Always set.
+	// Key is the opaque, harness-chosen session key. The engine treats
+	// it as an opaque identifier and never parses its structure. Always set.
 	Key string `json:"key"`
 	// State is the authoritative running/idle/etc state computed by
 	// Manager.currentSessionStatus. Mirrors StatusFields.State values
@@ -269,8 +289,13 @@ type SessionStatus struct {
 	ContextPercent int `json:"contextPercent,omitempty"`
 	// ContextWindow is the model's context window in tokens.
 	ContextWindow int `json:"contextWindow,omitempty"`
-	// TotalCostUsd is the cumulative cost of the conversation in USD.
-	TotalCostUsd float64 `json:"totalCostUsd,omitempty"`
+	// RunCostUsd is the cumulative cost of the most recent run in USD.
+	// Matches StatusFields.RunCostUsd semantics — run-scoped, cache-aware,
+	// descendants included.
+	RunCostUsd float64 `json:"runCostUsd,omitempty"`
+	// ConversationCostUsd is the cumulative cost of the entire conversation
+	// (this session + all descendant dispatches) in USD.
+	ConversationCostUsd float64 `json:"conversationCostUsd,omitempty"`
 	// SessionID is the conversation id (matches the file basename in
 	// ~/.ion/conversations/<id>.tree.jsonl).
 	SessionID string `json:"sessionId,omitempty"`
@@ -284,6 +309,12 @@ type MessageEndUsage struct {
 	OutputTokens   int     `json:"outputTokens"`
 	ContextPercent int     `json:"contextPercent"`
 	Cost           float64 `json:"cost"`
+	// EntryID / UserEntryID mirror UsageEvent: the canonical persisted entry
+	// ids of the assistant message this end closes and of the run-opening
+	// user turn. Consumers re-key live rows to these ids so history reloads
+	// (SessionMessage.ID) dedup against them. Both optional and additive.
+	EntryID     string `json:"entryId,omitempty"`
+	UserEntryID string `json:"userEntryId,omitempty"`
 }
 
 // EarlyStopContinueConfig holds the engine-wide defaults for the early-stop
@@ -351,6 +382,14 @@ type StoredSessionInfo struct {
 
 // SessionMessage is a flattened message for client display.
 type SessionMessage struct {
+	// ID is the canonical row id, stable across reloads: the persisted tree
+	// entry id for the first row an entry produces, "<entryId>:<n>" (n = row
+	// ordinal within the entry, starting at 1) for subsequent rows. All
+	// consumers share this id-space — a history reload dedups against live
+	// rows re-keyed via the message_end entryId — so no client needs to
+	// invent local identities for persisted rows. Additive (omitempty):
+	// absent from rows produced by engines predating the field.
+	ID        string `json:"id,omitempty"`
 	Role      string `json:"role"`
 	Content   string `json:"content"`
 	ToolName  string `json:"toolName,omitempty"`
@@ -358,6 +397,10 @@ type SessionMessage struct {
 	ToolInput string `json:"toolInput,omitempty"`
 	Timestamp int64  `json:"timestamp"`
 	Internal  bool   `json:"internal,omitempty"`
+	// IsError carries the persisted tool_result error flag on tool-role rows
+	// so reloaded history keeps failed tool state instead of coercing every
+	// result to success. Additive (omitempty).
+	IsError bool `json:"isError,omitempty"`
 	// SlashCommand / SlashArgs / SlashSource carry the raw slash-command
 	// invocation when this user turn originated from a slash command the engine
 	// resolved and expanded. Content holds the raw invocation for display; the
@@ -389,6 +432,33 @@ type SessionMessage struct {
 
 	// Steer marker fields (MarkerKind=="steer"): mirror SteerMarkerData.
 	MarkerMessageLength int `json:"markerMessageLength,omitempty"`
+
+	// Attachments carries engine-produced image references replayed on
+	// historical reload. Set (on a tool-role row) when flattenEntries encounters
+	// image blocks persisted alongside a tool result, or (on an assistant-role
+	// row) for a provider-generated image. Each entry references an on-disk file
+	// under the conversation's images/ directory — never base64 on the wire,
+	// matching the live ImageContentEvent contract. Empty for ordinary rows.
+	//
+	// This is the reload counterpart to the live image path: during a run the
+	// engine emits an ImageContentEvent per image and clients attach it to the
+	// owning message; on reload that event is gone (it is not persisted), so the
+	// engine replays the same reference here from the persisted image block.
+	Attachments []SessionMessageAttachment `json:"attachments,omitempty"`
+}
+
+// SessionMessageAttachment is a single image reference carried on a
+// SessionMessage during historical reload. The JSON field names match the
+// client attachment shape (desktop Attachment, iOS MessageAttachment) so the
+// existing history-load mappers surface it without a translation layer. Path is
+// the on-disk location under the conversation's images/ directory; the engine
+// never puts base64 on the wire.
+type SessionMessageAttachment struct {
+	ID        string `json:"id"`
+	Type      string `json:"type"` // "image"
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	MediaType string `json:"mimeType,omitempty"`
 }
 
 // PermissionDenialEntry is the wire format for permission denials in ResultEvent.

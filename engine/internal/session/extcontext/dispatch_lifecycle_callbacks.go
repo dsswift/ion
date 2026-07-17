@@ -1,7 +1,6 @@
 package extcontext
 
 import (
-	"fmt"
 
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -105,10 +104,7 @@ func fireLifecycleCallbacks(
 				PlanRequested: opts.PlanMode,
 			}
 			opts.OnPlanProposal(info)
-			utils.Log("Dispatch", fmt.Sprintf(
-				"plan proposal callback fired agent=%q planSlug=%q requested=%v",
-				opts.Name, e.PlanSlug, opts.PlanMode,
-			))
+			utils.LogWithFields(utils.LevelInfo, "server", "plan proposal callback fired", map[string]any{"model": opts.Name, "plan_slug": e.PlanSlug, "plan_mode": opts.PlanMode})
 		}
 	}
 }

@@ -2,7 +2,6 @@ package extension
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -40,7 +39,7 @@ func (h *Host) handleRunOnceCheck(id int64, raw []byte) {
 
 	ctx := h.ctxStack.Current()
 	if ctx == nil || ctx.RunOnceCheck == nil {
-		utils.Debug("extension", fmt.Sprintf("ext/run_once_check: no ctx or RunOnceCheck not wired (id=%s)", req.Params.ID))
+		utils.LogWithFields(utils.LevelDebug, "extension", "ext/run_once_check: no ctx or runoncecheck not wired ()", map[string]any{"run_id": req.Params.ID})
 		// Outside an active session context: allow execution so the call
 		// degrades gracefully rather than hanging. Not the normal path.
 		data, _ := json.Marshal(map[string]interface{}{"execute": true})
@@ -54,7 +53,7 @@ func (h *Host) handleRunOnceCheck(id int64, raw []byte) {
 	debounceMs := req.Params.DebounceMs
 
 	execute, reason := ctx.RunOnceCheck(req.Params.ID, debounceMs)
-	utils.Debug("extension", fmt.Sprintf("ext/run_once_check: id=%s debounceMs=%d execute=%v reason=%s", req.Params.ID, debounceMs, execute, reason))
+	utils.LogWithFields(utils.LevelDebug, "extension", "ext/run_once_check", map[string]any{"run_id": req.Params.ID, "debounce_ms": debounceMs, "execute": execute, "reason": reason})
 
 	var data []byte
 	if execute {
@@ -83,12 +82,12 @@ func (h *Host) handleRunOnceComplete(id int64, raw []byte) {
 
 	ctx := h.ctxStack.Current()
 	if ctx == nil || ctx.RunOnceComplete == nil {
-		utils.Debug("extension", fmt.Sprintf("ext/run_once_complete: no ctx or RunOnceComplete not wired (id=%s)", req.Params.ID))
+		utils.LogWithFields(utils.LevelDebug, "extension", "ext/run_once_complete: no ctx or runoncecomplete not wired ()", map[string]any{"run_id": req.Params.ID})
 		h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
 		return
 	}
 
 	ctx.RunOnceComplete(req.Params.ID, req.Params.Failed)
-	utils.Debug("extension", fmt.Sprintf("ext/run_once_complete: id=%s failed=%v", req.Params.ID, req.Params.Failed))
+	utils.LogWithFields(utils.LevelDebug, "extension", "ext/run_once_complete", map[string]any{"run_id": req.Params.ID, "failed": req.Params.Failed})
 	h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
 }

@@ -59,7 +59,6 @@ function makeInstance(
     conversationIds: [`session-${id}`],
     draftInput: '',
     agentStates: [],
-    forkedFromConversationIds: null,
     ...overrides,
   }
 }
@@ -187,7 +186,6 @@ function buildRealisticFixture(): PersistedTabState {
           messageCount: 4,
           draftInput: 'Cover edge cases too',
           conversationIds: ['session-m4-b-1', 'session-m4-b-2'],
-          forkedFromConversationIds: ['session-m4-b-0'],
         }),
         makeInstance('m4-c', 'Deploy', {
           messages: [
@@ -331,7 +329,6 @@ describe('tab split migration - full on-disk pipeline', () => {
     )!
     expect(m4b.conversationPane!.instances[0].messages).toHaveLength(4)
     expect(m4b.conversationPane!.instances[0].draftInput).toBe('Cover edge cases too')
-    expect(m4b.conversationPane!.instances[0].forkedFromConversationIds).toEqual(['session-m4-b-0'])
     expect(m4b.conversationPane!.instances[0].conversationIds).toEqual(['session-m4-b-1', 'session-m4-b-2'])
 
     const m4c = written.tabs.find(

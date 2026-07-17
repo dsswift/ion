@@ -20,7 +20,10 @@ struct IonRemoteApp: App {
                 .tint(themeManager.accent)
                 .onAppear {
                     appDelegate.sessionViewModel = viewModel
-                    DiagnosticLog.log("[IonRemoteApp] theme injected — id: \(themeManager.selectedThemeId), accent: \(themeManager.accent)")
+                    DiagnosticLog.log("theme injected", tag: "app", fields: [
+                        "reason": themeManager.selectedThemeId,
+                        "status": String(describing: themeManager.accent)
+                    ])
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     switch newPhase {
@@ -81,6 +84,12 @@ struct ContentView: View {
 
     var body: some View {
         Group {
+            // .authFailed routes to the pairing screen but NEVER auto-wipes:
+            // paired devices, keychain, and cached layout must survive an
+            // auth failure. resetAll() is reserved for the explicit
+            // user-initiated "unpair / start over" actions — an automatic
+            // resetAll() here once let a transient desktop-side auth cooldown
+            // destroy every pairing on the device.
             if viewModel.pairedDevices.isEmpty || viewModel.connectionState == .authFailed {
                 PairingView()
             } else if !viewModel.hasConnectedBefore && viewModel.tabs.isEmpty
@@ -98,11 +107,6 @@ struct ContentView: View {
                 messages: viewModel.toastMessages,
                 onDismiss: { viewModel.dismissToast(id: $0) }
             )
-        }
-        .onChange(of: viewModel.connectionState) { _, newState in
-            if newState == .authFailed {
-                viewModel.resetAll()
-            }
         }
     }
 

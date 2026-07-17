@@ -2,7 +2,6 @@ package extension
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -32,7 +31,7 @@ func (h *Host) registerInflightLLMCall(id int64, cancel context.CancelFunc) {
 	h.inflightLLMCalls[id] = cancel
 	n := len(h.inflightLLMCalls)
 	h.inflightLLMMu.Unlock()
-	utils.Debug("extension", fmt.Sprintf("registerInflightLLMCall: id=%d inflight=%d", id, n))
+	utils.LogWithFields(utils.LevelDebug, "extension", "registerinflightllmcall", map[string]any{"run_id": id, "n": n})
 }
 
 // completeInflightLLMCall removes the CancelFunc for a finished ext/llm_call.
@@ -45,7 +44,7 @@ func (h *Host) completeInflightLLMCall(id int64) {
 	delete(h.inflightLLMCalls, id)
 	n := len(h.inflightLLMCalls)
 	h.inflightLLMMu.Unlock()
-	utils.Debug("extension", fmt.Sprintf("completeInflightLLMCall: id=%d existed=%t inflight=%d", id, existed, n))
+	utils.LogWithFields(utils.LevelDebug, "extension", "completeinflightllmcall", map[string]any{"run_id": id, "existed": existed, "n": n})
 }
 
 // cancelInflightLLMCall cancels a specific in-flight ext/llm_call by RPC id.
@@ -59,10 +58,10 @@ func (h *Host) cancelInflightLLMCall(id int64) bool {
 	cancel, ok := h.inflightLLMCalls[id]
 	h.inflightLLMMu.Unlock()
 	if !ok {
-		utils.Debug("extension", fmt.Sprintf("cancelInflightLLMCall: id=%d not found (already completed?)", id))
+		utils.LogWithFields(utils.LevelDebug, "extension", "cancelinflightllmcall: not found (already completed?)", map[string]any{"run_id": id})
 		return false
 	}
-	utils.Info("extension", fmt.Sprintf("cancelInflightLLMCall: cancelling in-flight llm_call id=%d", id))
+	utils.LogWithFields(utils.LevelInfo, "extension", "cancelinflightllmcall: cancelling in-flight llm_call", map[string]any{"run_id": id})
 	cancel()
 	return true
 }

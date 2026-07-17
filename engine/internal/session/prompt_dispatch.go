@@ -126,7 +126,18 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		})
 		return fmt.Errorf("session %q not found", key)
 	}
-	if s.requestID != "" {
+	// Busy check: a run is in flight (s.requestID != "") OR an async
+	// user-initiated compaction is running (s.compactInFlight). The latter
+	// does not set s.requestID — its synthetic runID is unregistered in the
+	// backend — so without this second condition a prompt submitted during
+	// compaction would start a real run whose load-mutate-save clobbers the
+	// compaction's own save. Enqueue instead; the compaction goroutine drains
+	// one queued prompt when it finishes (mirroring handleRunExit). See
+	// dispatchCompact and engineSession.compactInFlight.
+	if s.requestID != "" || s.compactInFlight {
+		if s.requestID == "" && s.compactInFlight {
+			utils.LogWithFields(utils.LevelInfo, "session", "sendprompt: enqueued behind in-flight compaction (compactinflight=true, no active run)", map[string]any{"key": key})
+		}
 		queueFull, err := m.enqueueIfBusy(s, key, text, overrides)
 		m.mu.Unlock()
 		if queueFull {
@@ -168,15 +179,11 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		if overrides != nil && overrides.PlanFilePath != "" {
 			if _, err := os.Stat(overrides.PlanFilePath); err == nil {
 				s.planFilePath = overrides.PlanFilePath
-				utils.Info("PlanMode", fmt.Sprintf(
-					"SendPrompt: key=%s restored planFile=%s from client",
-					key, s.planFilePath))
+				utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sendprompt: restored from client", map[string]any{"session_id": key, "plan_file_path": s.planFilePath})
 			} else {
-				utils.Info("PlanMode", fmt.Sprintf(
-					"SendPrompt: key=%s client planFilePath=%s not on disk, allocating new",
-					key, overrides.PlanFilePath))
+				utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sendprompt: client not on disk, allocating new", map[string]any{"session_id": key, "plan_file_path": overrides.PlanFilePath})
 				s.planFilePath = allocateNewPlanFilePath(m.backend, s.config.WorkingDirectory)
-				utils.Info("PlanMode", fmt.Sprintf("SendPrompt: key=%s allocated new planFile=%s", key, s.planFilePath))
+				utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sendprompt: allocated new", map[string]any{"key": key, "plan_file_path": s.planFilePath})
 			}
 		} else {
 			// Plan file allocation is centralised in allocateNewPlanFilePath
@@ -184,7 +191,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 			// directory choice and produces a fresh non-colliding word slug.
 			// See its doc comment for the directory selection rules.
 			s.planFilePath = allocateNewPlanFilePath(m.backend, s.config.WorkingDirectory)
-			utils.Info("PlanMode", fmt.Sprintf("SendPrompt: key=%s allocated new planFile=%s", key, s.planFilePath))
+			utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sendprompt: allocated new", map[string]any{"key": key, "plan_file_path": s.planFilePath})
 		}
 	}
 
@@ -196,7 +203,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	opts := buildRunOptions(s, text, overrides)
 	if planModeReentry {
 		opts.PlanModeReentry = true
-		utils.Info("PlanMode", fmt.Sprintf("key=%s reentry detected, planFile=%s", key, s.planFilePath))
+		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "reentry detected", map[string]any{"key": key, "plan_file_path": s.planFilePath})
 	}
 
 	// Slash-command resolution + expansion. When the client flagged this prompt
@@ -229,8 +236,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		opts.ResolvedSlashCommand = s.pendingSlashInvocation.Command
 		opts.ResolvedSlashArgs = s.pendingSlashInvocation.Args
 		opts.ResolvedSlashSource = s.pendingSlashInvocation.Source
-		utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: applied pending slash invocation command=%s argsLen=%d",
-			key, opts.ResolvedSlashCommand, len(opts.ResolvedSlashArgs)))
+		utils.LogWithFields(utils.LevelInfo, "session", "send prompt applied pending slash invocation", map[string]any{"session_id": key, "reason": opts.ResolvedSlashCommand, "count": len(opts.ResolvedSlashArgs)})
 		s.pendingSlashInvocation = nil
 	} else if s.pendingSlashInvocation != nil {
 		// resolveSlashIntoOpts already set the fields; discard the pending.
@@ -245,13 +251,57 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// and the desktop loses its engineModelOverrides. The user can still
 	// explicitly override by selecting a different model in the picker.
 	if s.lastModel != "" && m.config != nil && opts.Model == m.config.DefaultModel && opts.Model != s.lastModel {
-		utils.Log("Session", fmt.Sprintf("prompt_dispatch: key=%s overriding default model %s with conversation model %s", key, opts.Model, s.lastModel))
+		utils.LogWithFields(utils.LevelInfo, "session", "prompt_dispatch: overriding default model with conversation model", map[string]any{"key": key, "model": opts.Model, "model_2": s.lastModel})
 		opts.Model = s.lastModel
+	}
+
+	// Capability gate: the model is final here, so resolve the serving
+	// backend's static descriptor and decline unsupported feature requests
+	// BEFORE any dispatch work — a typed engine_capability_unsupported event,
+	// no run, no crash-shaped exit. This is the single choke point for
+	// feature gating (it replaced the per-backend static reject that lived in
+	// acp_backend.StartRun); the engine reports and the harness decides
+	// (reroute / abort / notify) — no engine-side auto-reroute. The session
+	// stays idle and immediately usable for the next prompt.
+	caps := m.resolvedBackend(opts.Model).Capabilities()
+	if opts.PlanMode && !caps.PlanMode {
+		s.requestID = ""
+		m.unbindRunLocked(requestID)
+		m.mu.Unlock()
+		reason := fmt.Sprintf("plan mode is not supported on the %s backend", caps.Kind)
+		utils.LogWithFields(utils.LevelWarn, "session", "prompt_dispatch: capability gate declined prompt", map[string]any{
+			"key": key, "model": opts.Model, "backend": caps.Kind, "capability": "plan_mode",
+		})
+		m.emit(key, types.EngineEvent{
+			Type:              "engine_capability_unsupported",
+			Capability:        "plan_mode",
+			CapabilityBackend: caps.Kind,
+			CapabilityReason:  reason,
+		})
+		return nil
+	}
+	// Record the serving backend's descriptor for this run so handleRunExit
+	// can decide whether (and under which kind) to capture the reported
+	// session id as a native-session cursor (see native_session.go).
+	// Written under m.mu alongside requestID.
+	s.runCaps = caps
+	// For a native-session (delegated-CLI) backend, stash the ORIGINAL user
+	// prompt (before resolveCliContinuity bridges prior history into
+	// opts.Prompt) so handleRunExit can persist this turn into Ion's
+	// conversation store. Engine-owned backends persist their own turns via
+	// the runloop, so they leave this empty. Reset both halves at dispatch so
+	// a prior turn's text can never leak into this one.
+	s.pendingCliAssistantText = ""
+	if caps.ContextModel == backend.ContextModelNativeSession {
+		s.pendingCliUserTurn = text
+	} else {
+		s.pendingCliUserTurn = ""
 	}
 
 	injectContextFiles(s, &opts)
 	m.injectExtensionContext(s, key, &opts)
 	injectGitContext(s, &opts)
+	injectPluginContext(s, &opts)
 
 	// Inject session memory into the system prompt so the model has context
 	// from previously compacted conversation history. Only fires when memory
@@ -260,7 +310,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		s.sessionMemory.InjectMemoryIntoSystemPrompt(&opts)
 	}
 
-	utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: releasing lock, model=%s", key, opts.Model))
+	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: releasing lock", map[string]any{"key": key, "model": opts.Model})
 
 	// G07: Enterprise model enforcement
 	if m.config != nil && m.config.Enterprise != nil {
@@ -276,6 +326,18 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 
 	m.lateLoadExtensions(s, key, overrides)
 
+	// lateLoadExtensions may have just populated s.extensionName /
+	// s.extensionVersion (first prompt on a session whose extensions arrive
+	// per-prompt). buildRunOptions above ran before the late load, so re-stamp
+	// the identity onto opts here — otherwise the very first extension-hosted
+	// run's llm.call telemetry would miss ctx.extension.
+	if opts.ExtensionName == "" {
+		opts.ExtensionName = s.extensionName
+	}
+	if opts.ExtensionVersion == "" {
+		opts.ExtensionVersion = s.extensionVersion
+	}
+
 	skipExtensions := overrides != nil && overrides.NoExtensions
 
 	extGroup := s.extGroup
@@ -283,7 +345,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	telemCollector := s.telemetry
 	mcpConns := s.mcpConns
 	m.mu.Unlock()
-	utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: lock released", key))
+	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: lock released", map[string]any{"key": key})
 
 	// context: fork — run the resolved command's expanded body as a forked
 	// sub-agent instead of inlining it into this conversation. The parent
@@ -307,7 +369,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 
 	m.fireModelSelect(s, key, extGroup, skipExtensions, &opts)
 
-	utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: building backend run config", key))
+	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: building backend run config", map[string]any{"key": key})
 
 	// Build the per-run RunConfig that travels with this run on the backend.
 	// Storing hooks/perm engine/external tools/agent spawner on each run --
@@ -317,7 +379,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// extension context, MCP tools, and agent spawn rules.
 	//
 	// resolvedBackend(opts.Model) collapses the hybrid case: for plain
-	// CliBackend/ApiBackend it returns m.backend as-is; for HybridBackend
+	// ClaudeCodeBackend/ApiBackend it returns m.backend as-is; for HybridBackend
 	// it returns the inner backend that will actually handle this model.
 	var runCfg *backend.RunConfig
 	if apiBackend, ok := m.resolvedBackend(opts.Model).(*backend.ApiBackend); ok {
@@ -325,10 +387,11 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	}
 
 	m.wirePermissionHookServer(s, key, &opts, permEng)
+	m.wireDelegatedPermissions(key, &opts)
 	m.wireToolServer(s, key, &opts, extGroup)
 	m.wireAgentToolServer(s, key, &opts)
 
-	// Fire before_prompt for CliBackend (ApiBackend wires this inside buildRunConfig).
+	// Fire before_prompt for ClaudeCodeBackend (ApiBackend wires this inside buildRunConfig).
 	m.fireBeforePromptCli(s, key, extGroup, skipExtensions, &opts)
 
 	m.mu.RLock()
@@ -337,7 +400,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	}
 	m.mu.RUnlock()
 
-	utils.Info("Session", fmt.Sprintf("dispatching prompt: key=%s requestID=%s model=%s", key, requestID, opts.Model))
+	utils.LogWithFields(utils.LevelInfo, "session", "dispatching prompt", map[string]any{"key": key, "run_id": requestID, "model": opts.Model})
 	promptCtxWindow := conversation.DefaultContext
 	if info := providers.GetModelInfo(opts.Model); info != nil {
 		promptCtxWindow = info.ContextWindow
@@ -353,7 +416,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// denial on top of an in-flight prompt, contradicting the session's
 	// current state.
 	if len(s.lastPermissionDenials) > 0 {
-		utils.Log("Session", fmt.Sprintf("prompt_dispatch: key=%s clearing %d retained permission_denials (new prompt supersedes)", key, len(s.lastPermissionDenials)))
+		utils.LogWithFields(utils.LevelInfo, "session", "prompt_dispatch: clearing retained permission_denials (new prompt supersedes)", map[string]any{"key": key, "count": len(s.lastPermissionDenials)})
 		s.lastPermissionDenials = nil
 	}
 	lastPct := s.lastContextPct
@@ -376,13 +439,23 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// See session_root_context.go and backend ParentCtx handling.
 	opts.ParentCtx = s.rootContext()
 
+	// Resume-vs-bridge decision for delegated-CLI backends: resume the
+	// backend's native session when this session holds a still-valid cursor
+	// for it (HeadEntryID == the conversation's LeafID), otherwise bridge by
+	// seeding the prior conversation transcript into the prompt — otherwise
+	// the CLI subprocess receives only the current prompt and the model
+	// loses all context (e.g. a conversation built on the ApiBackend then
+	// continued on claude-code). See native_session.go and
+	// cli_history_seed.go. Runs after opts.Prompt is finalized.
+	m.resolveCliContinuity(s, &opts)
+
 	// Dispatch to backend. ApiBackend uses the per-run config built above so
 	// every closure on this run sees this session's hooks/tools/perms.
-	// CliBackend ignores runCfg and follows its own subprocess wiring.
+	// ClaudeCodeBackend ignores runCfg and follows its own subprocess wiring.
 	//
 	// HybridBackend implements both StartRun and StartRunWithConfig: it
 	// records the routing decision for opts.Model and forwards to the
-	// inner *ApiBackend (with runCfg) or inner *CliBackend (without).
+	// inner *ApiBackend (with runCfg) or inner *ClaudeCodeBackend (without).
 	// We dispatch through m.backend here (not resolvedBackend) so the
 	// hybrid layer sees the call and can record its routing table entry
 	// before forwarding.
@@ -406,16 +479,15 @@ func (m *Manager) enqueueIfBusy(s *engineSession, key, text string, overrides *P
 	}
 	pp := pendingPrompt{text: text}
 	if overrides != nil {
-		pp.model = overrides.Model
-		pp.maxTurns = overrides.MaxTurns
-		pp.maxBudgetUsd = overrides.MaxBudgetUsd
-		pp.extensions = overrides.Extensions
-		pp.noExtensions = overrides.NoExtensions
-		pp.attachments = overrides.Attachments
-		pp.implementationPhase = overrides.ImplementationPhase
-		pp.thinkingEffort = overrides.ThinkingEffort
+		// Value-copy all 19 PromptOverrides fields so every per-prompt flag
+		// (ResolveSlash, BashAllowlistAdditionsForThisPrompt, PlanFilePath,
+		// CompactEnabled, harness prose, etc.) survives the queue round-trip
+		// intact. The caller may free or reuse its pointer after this returns;
+		// the copy in the queue is independent.
+		ovCopy := *overrides
+		pp.overrides = &ovCopy
 	}
 	s.promptQueue = append(s.promptQueue, pp)
-	utils.Log("Session", fmt.Sprintf("prompt queued for %s (%d in queue)", key, len(s.promptQueue)))
+	utils.LogWithFields(utils.LevelInfo, "session", "prompt queued for ( in queue)", map[string]any{"key": key, "count": len(s.promptQueue)})
 	return false, nil
 }

@@ -29,6 +29,11 @@ type ContextBreakdownEvent struct {
 	// dispatch session's cost, walked on demand from the conversation tree.
 	// Zero for fresh sessions and sessions with no dispatches.
 	AggregateCostUsd float64 `json:"aggregateCostUsd,omitempty"`
+	// ModelBreakdown is the per-model cost breakdown for this conversation's
+	// dispatch tree. Populated by the on-demand breakdown (ComputeAndEmitContextBreakdown).
+	// Empty for runloop-emitted breakdowns, which fire before attribution is
+	// complete. Sorted by CostUsd descending (highest spend first).
+	ModelBreakdown []ModelBreakdown `json:"modelBreakdown,omitempty"`
 }
 
 func (ContextBreakdownEvent) eventType() string { return EventContextBreakdown }

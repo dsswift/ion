@@ -14,13 +14,13 @@ import { log as _log } from '../logger'
 import { collectExportConversations, type ConversationFiles } from './collect-conversations'
 import { buildManifest, type ExportScope } from './manifest'
 
-function log(msg: string): void { _log('backup-export', msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log('backup-export', msg, fields) }
 
 export interface ExportSources {
   conversationsDir: string
-  tabsFiles: string[]      // [tabs-api.json, tabs-cli.json]
-  chainsFiles: string[]    // [session-chains-api.json, session-chains-cli.json]
-  labelsFiles: string[]    // [session-labels-api.json, session-labels-cli.json]
+  tabsFiles: string[]      // [tabs.json, plus legacy tabs-{api,cli}.json while present]
+  chainsFiles: string[]    // [session-chains.json, plus legacy per-backend twins while present]
+  labelsFiles: string[]    // [session-labels.json, plus legacy per-backend twins while present]
 }
 
 export interface ExportPreview {
@@ -95,7 +95,6 @@ export async function runExport(args: {
   destinationPath: string
   sources: ExportSources
   ionVersion: string
-  backendSnapshot: 'api' | 'cli'
   onProgress?: ProgressCallback
 }): Promise<ExportResult> {
   const { files: conversationFiles } = collectExportConversations({
@@ -105,7 +104,7 @@ export async function runExport(args: {
     chainsFiles: args.sources.chainsFiles,
   })
 
-  log(`runExport: scope=${args.scope} destination=${args.destinationPath} conversations=${conversationFiles.length}`)
+  log('backup_export: start', { scope: args.scope, destination: args.destinationPath, conversations: conversationFiles.length })
 
   if (conversationFiles.length === 0 && args.scope === 'currently-open') {
     return { ok: false, error: 'No conversations found for the selected scope. Open at least one tab before exporting.' }
@@ -114,7 +113,6 @@ export async function runExport(args: {
   const manifest = buildManifest({
     scope: args.scope,
     conversationCount: conversationFiles.length,
-    backendSnapshot: args.backendSnapshot,
     ionVersion: args.ionVersion,
     hostname: hostname(),
   })
@@ -132,7 +130,7 @@ export async function runExport(args: {
     }
 
     output.on('close', () => {
-      log(`runExport: closed bytesWritten=${bytesWritten} destination=${args.destinationPath}`)
+      log('backup_export: closed', { bytes_written: bytesWritten, destination: args.destinationPath })
       settle({
         ok: true,
         destinationPath: args.destinationPath,
@@ -141,17 +139,17 @@ export async function runExport(args: {
       })
     })
     output.on('error', (err: Error) => {
-      log(`runExport: write stream error err=${err.message}`)
+      log('backup_export: write stream error', { error: err.message })
       settle({ ok: false, error: `write stream: ${err.message}` })
     })
     archive.on('error', (err: Error) => {
-      log(`runExport: archive error err=${err.message}`)
+      log('backup_export: archive error', { error: err.message })
       settle({ ok: false, error: `archive: ${err.message}` })
     })
     archive.on('warning', (err: Error) => {
       // ENOENT warnings are non-fatal (a metadata file disappeared mid-export);
       // log them so the user sees what was skipped.
-      log(`runExport: archive warning err=${err.message}`)
+      log('backup_export: archive warning', { error: err.message })
     })
     archive.on('progress', (data: archiver.ProgressData) => {
       bytesWritten = data.fs.processedBytes
@@ -179,7 +177,7 @@ export async function runExport(args: {
     // archive.finalize() flushes the zip central directory and ends the
     // stream. The 'close' handler on `output` will fire after that.
     archive.finalize().catch((err: Error) => {
-      log(`runExport: finalize error err=${err.message}`)
+      log('backup_export: finalize error', { error: err.message })
       settle({ ok: false, error: `finalize: ${err.message}` })
     })
   })
@@ -207,9 +205,9 @@ function appendMetadataFiles(
       const content = readFileSync(path)
       archive.append(content, { name: basename(path) })
       const size = statSync(path).size
-      log(`appendMetadataFiles: included ${basename(path)} (${size} bytes)`)
+      log('backup_export: appendMetadataFiles included', { file: basename(path), bytes: size })
     } catch (err: any) {
-      log(`appendMetadataFiles: skipped ${path} due to read error: ${err.message}`)
+      log('backup_export: appendMetadataFiles skipped', { path, error: err.message })
     }
   }
 }

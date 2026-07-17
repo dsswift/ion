@@ -22,7 +22,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
 /** Icon used for extension-registered commands in the slash menu. */
 export const ExtensionCommandIcon = () => <PuzzlePiece size={13} />
 
-const GROUP_ORDER: Record<string, number> = { builtin: 0, project: 1, extension: 2, user: 3 }
+
 const GROUP_LABELS: Record<string, string> = { project: 'Project', extension: 'Extension', user: 'User' }
 
 interface Props {

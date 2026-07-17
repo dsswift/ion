@@ -24,8 +24,9 @@ import { parseSessionKey } from '../../../shared/session-key'
  * engine_command_registry snapshots emitted from the Go engine. Used by
  * the slash-autocomplete UI in InputBar so extension commands appear in
  * the menu alongside filesystem `.md` discoveries. Keyed by engine session
- * key (tabId or `${tabId}:${instanceId}`) — autocomplete reads under the
- * active tab/instance combination.
+ * key — the bare tabId after session-key unification (#256); parseSessionKey
+ * tolerates the legacy `${tabId}:${instanceId}` form. Autocomplete reads under
+ * the active tab.
  *
  * Snapshot semantics: every event REPLACES the prior set. An empty
  * `commands: []` is the authoritative "no extension commands" signal and
@@ -62,7 +63,9 @@ export const dispatchActivityFoldByDispatchId = new Map<
 // ─── Instance-write helpers ───────────────────────────────────────────────────
 //
 // Each helper returns a new conversationPanes Map with the specified ConversationInstance
-// field updated on the instance identified by `key` (`${tabId}:${instanceId}`).
+// field updated on the instance identified by `key` (the bare tabId after
+// session-key unification (#256); parseSessionKey tolerates the legacy
+// `${tabId}:${instanceId}` form).
 // Returns the original Map unchanged when the pane or instance is not found,
 // so callers can do `if (updated !== original) returnPatch.conversationPanes = updated`
 // without allocating on the hot path.

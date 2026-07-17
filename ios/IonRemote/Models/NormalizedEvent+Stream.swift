@@ -40,7 +40,11 @@ extension RemoteEvent {
             let messages = try container.decode([Message].self, forKey: .messages)
             let hasMore = try container.decode(Bool.self, forKey: .hasMore)
             let cursor = try container.decodeIfPresent(String.self, forKey: .cursor)
-            return .conversationHistory(tabId: tabId, messages: messages, hasMore: hasMore, cursor: cursor)
+            // Echo of the REQUEST cursor (nil = first page / heal, non-nil =
+            // older-page pagination). decodeIfPresent tolerates both an
+            // absent key and an explicit JSON null from the desktop.
+            let before = try container.decodeIfPresent(String.self, forKey: .before)
+            return .conversationHistory(tabId: tabId, messages: messages, hasMore: hasMore, cursor: cursor, before: before)
 
         case .messageAdded:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -103,12 +107,13 @@ extension RemoteEvent {
             try container.encode(costUsd, forKey: .costUsd)
             return true
 
-        case .conversationHistory(let tabId, let messages, let hasMore, let cursor):
+        case .conversationHistory(let tabId, let messages, let hasMore, let cursor, let before):
             try container.encode(TypeKey.conversationHistory, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encode(messages, forKey: .messages)
             try container.encode(hasMore, forKey: .hasMore)
             try container.encodeIfPresent(cursor, forKey: .cursor)
+            try container.encodeIfPresent(before, forKey: .before)
             return true
 
         case .messageAdded(let tabId, let message):

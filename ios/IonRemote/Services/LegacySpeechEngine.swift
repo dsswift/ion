@@ -35,7 +35,10 @@ final class LegacySpeechEngine: SpeechEngine {
 
     init() {
         recognizer = SFSpeechRecognizer(locale: .current)
-        DiagnosticLog.log("SPEECH-LEGACY: init locale=\(Locale.current.identifier) available=\(recognizer?.isAvailable == true)")
+        DiagnosticLog.log("speech legacy init", tag: "speech.legacy", fields: [
+            "locale": Locale.current.identifier,
+            "available": String(recognizer?.isAvailable == true)
+        ])
     }
 
     // MARK: - SpeechEngine
@@ -49,7 +52,9 @@ final class LegacySpeechEngine: SpeechEngine {
 
         guard let recognizer, recognizer.isAvailable else {
             let msg = "Speech recognizer unavailable for locale \(Locale.current.identifier)"
-            DiagnosticLog.log("SPEECH-LEGACY: error — \(msg)")
+            DiagnosticLog.log("speech recognizer unavailable", tag: "speech.legacy", level: .warn, fields: [
+                "error": msg
+            ])
             errorMessage = msg
             throw SpeechEngineError.recognizerUnavailable
         }
@@ -59,9 +64,11 @@ final class LegacySpeechEngine: SpeechEngine {
         do {
             try session.setCategory(.record, mode: .measurement, options: .duckOthers)
             try session.setActive(true, options: .notifyOthersOnDeactivation)
-            DiagnosticLog.log("SPEECH-LEGACY: audio session configured for recording")
+            DiagnosticLog.log("audio session configured", tag: "speech.legacy")
         } catch {
-            DiagnosticLog.log("SPEECH-LEGACY: audio session error: \(error.localizedDescription)")
+            DiagnosticLog.log("audio session error", tag: "speech.legacy", level: .error, fields: [
+                "error": error.localizedDescription
+            ])
             throw error
         }
 
@@ -109,7 +116,10 @@ final class LegacySpeechEngine: SpeechEngine {
                 let isFinal = result.isFinal
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    DiagnosticLog.log("SPEECH-LEGACY: result isFinal=\(isFinal) segment=\(rawSegment.prefix(60))")
+                    DiagnosticLog.trace("recognition result", tag: "speech.legacy", fields: [
+                        "is_final": String(isFinal),
+                        "segment": String(rawSegment.prefix(60))
+                    ])
                     self.applyResult(rawSegment)
                 }
             }
@@ -121,7 +131,9 @@ final class LegacySpeechEngine: SpeechEngine {
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     if !isSilence && !isCancelled {
-                        DiagnosticLog.log("SPEECH-LEGACY: recognition error: \(error.localizedDescription)")
+                        DiagnosticLog.log("recognition error", tag: "speech.legacy", level: .error, fields: [
+                            "error": error.localizedDescription
+                        ])
                         self.errorMessage = error.localizedDescription
                     }
                     if self.isRecording {
@@ -141,14 +153,18 @@ final class LegacySpeechEngine: SpeechEngine {
     }
 
     func stopRecording() -> String {
-        DiagnosticLog.log("SPEECH-LEGACY: stopRecording — final transcript=\(transcript.prefix(80))")
+        DiagnosticLog.log("stop recording", tag: "speech.legacy", fields: [
+            "transcript": String(transcript.prefix(80))
+        ])
         let final = transcript
         teardown(deactivateSession: true)
         return final
     }
 
     func cancelRecording() {
-        DiagnosticLog.log("SPEECH-LEGACY: cancelRecording — discarding transcript=\(transcript.prefix(40))")
+        DiagnosticLog.log("cancel recording", tag: "speech.legacy", fields: [
+            "transcript": String(transcript.prefix(40))
+        ])
         teardown(deactivateSession: true)
         transcript = ""
     }
@@ -166,7 +182,9 @@ final class LegacySpeechEngine: SpeechEngine {
     // MARK: - Teardown
 
     private func teardown(deactivateSession: Bool) {
-        DiagnosticLog.log("SPEECH-LEGACY: teardown deactivate=\(deactivateSession)")
+        DiagnosticLog.log("teardown", tag: "speech.legacy", fields: [
+            "deactivate": String(deactivateSession)
+        ])
 
         recognitionTask?.cancel()
         recognitionTask = nil
@@ -197,7 +215,9 @@ final class LegacySpeechEngine: SpeechEngine {
         guard let info = notification.userInfo,
               let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
               let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
-        DiagnosticLog.log("SPEECH-LEGACY: audio interruption type=\(typeValue)")
+        DiagnosticLog.log("audio interruption", tag: "speech.legacy", fields: [
+            "type": String(typeValue)
+        ])
         guard type == .began else { return }
         Task { @MainActor [weak self] in
             guard let self, self.isRecording else { return }

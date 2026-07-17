@@ -17,7 +17,7 @@ import (
 // nested ext/* RPCs race against concurrent hook firings. Those
 // concurrency claims need their own coverage; otherwise the fix is
 // pinned by behavior on ApiBackend (stack depth ≤ 1, same as the old
-// atomic pointer) and the CliBackend regression has no guard rail.
+// atomic pointer) and the ClaudeCodeBackend regression has no guard rail.
 
 // TestCtxStack_PushPopLIFO verifies last-in-first-out semantics. The
 // gate's documented contract is "Current() returns the top of the

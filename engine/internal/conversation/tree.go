@@ -4,27 +4,21 @@ import (
 	"fmt"
 
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // AppendEntry adds an entry to the tree, chained from the current leaf.
+// Safe for concurrent use; see lock.go for the package locking discipline.
 func AppendEntry(conv *Conversation, entryType SessionEntryType, data any) *SessionEntry {
-	if conv.Entries == nil {
-		conv.Entries = []SessionEntry{}
-	}
-	entry := SessionEntry{
-		ID:        GenEntryID(),
-		ParentID:  conv.LeafID,
-		Type:      entryType,
-		Timestamp: nowMillis(),
-		Data:      data,
-	}
-	conv.Entries = append(conv.Entries, entry)
-	conv.LeafID = &conv.Entries[len(conv.Entries)-1].ID
-	return &conv.Entries[len(conv.Entries)-1]
+	conv.lock()
+	defer conv.unlock()
+	return appendEntryLocked(conv, entryType, data, "")
 }
 
 // Branch moves the leaf pointer to an existing entry and rebuilds the message list.
 func Branch(conv *Conversation, entryID string) ([]types.LlmMessage, error) {
+	conv.lock()
+	defer conv.unlock()
 	if conv.Entries == nil {
 		return conv.Messages, nil
 	}
@@ -38,33 +32,26 @@ func Branch(conv *Conversation, entryID string) ([]types.LlmMessage, error) {
 	if !found {
 		return nil, fmt.Errorf("entry not found: %s", entryID)
 	}
-	conv.LeafID = &entryID
-	conv.Messages = BuildContextPath(conv)
+	setLeafLocked(conv, entryID)
+	conv.Messages = buildContextPathLocked(conv)
 	return conv.Messages, nil
 }
 
 // BuildContextPath walks from the current leaf to the root and extracts messages.
+// Safe for concurrent use.
 func BuildContextPath(conv *Conversation) []types.LlmMessage {
+	conv.lock()
+	defer conv.unlock()
+	return buildContextPathLocked(conv)
+}
+
+// buildContextPathLocked is BuildContextPath's body; callers must hold conv.mu.
+func buildContextPathLocked(conv *Conversation) []types.LlmMessage {
 	if conv.Entries == nil || conv.LeafID == nil {
 		return conv.Messages
 	}
 
-	entryMap := buildEntryMap(conv.Entries)
-
-	var path []SessionEntry
-	current, ok := entryMap[*conv.LeafID]
-	for ok {
-		path = append(path, current)
-		if current.ParentID != nil {
-			current, ok = entryMap[*current.ParentID]
-		} else {
-			ok = false
-		}
-	}
-
-	for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
-		path[i], path[j] = path[j], path[i]
-	}
+	path := getContextPathEntriesLocked(conv)
 
 	var messages []types.LlmMessage
 	for _, entry := range path {
@@ -79,7 +66,11 @@ func BuildContextPath(conv *Conversation) []types.LlmMessage {
 				if md.DisplayOnly {
 					continue
 				}
-				messages = append(messages, types.LlmMessage{Role: md.Role, Content: md.Content})
+				msg := types.LlmMessage{Role: md.Role, Content: md.Content}
+				if md.Role == "assistant" && md.Usage != nil {
+					msg.Usage = md.Usage
+				}
+				messages = append(messages, msg)
 			}
 		case EntryCompaction:
 			// A compaction entry marks a boundary: everything before it
@@ -117,8 +108,45 @@ func NavigateTree(conv *Conversation, targetID string) ([]types.LlmMessage, erro
 	return Branch(conv, targetID)
 }
 
+// BranchBefore moves the leaf pointer to the PARENT of the given entry and
+// rebuilds the message list. This is the tree-native rewind primitive: a
+// consumer rewinding "to before user turn X" branches at X's parent so the
+// next appended turn becomes X's sibling — replacing it on the active path —
+// instead of chaining after the old leaf and duplicating it. When the entry
+// is a root (no parent), the leaf clears and the context path empties: the
+// next turn starts a fresh branch from the top.
+func BranchBefore(conv *Conversation, entryID string) ([]types.LlmMessage, error) {
+	conv.lock()
+	defer conv.unlock()
+	if conv.Entries == nil {
+		return conv.Messages, nil
+	}
+	var parent *string
+	found := false
+	for i := range conv.Entries {
+		if conv.Entries[i].ID == entryID {
+			parent = conv.Entries[i].ParentID
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, fmt.Errorf("entry not found: %s", entryID)
+	}
+	if parent == nil {
+		conv.LeafID = nil
+		conv.Messages = nil
+		return conv.Messages, nil
+	}
+	setLeafLocked(conv, *parent)
+	conv.Messages = buildContextPathLocked(conv)
+	return conv.Messages, nil
+}
+
 // GetTree builds the full tree structure for visualization.
 func GetTree(conv *Conversation) []TreeNode {
+	conv.lock()
+	defer conv.unlock()
 	if len(conv.Entries) == 0 {
 		return nil
 	}
@@ -152,6 +180,8 @@ func GetTree(conv *Conversation) []TreeNode {
 
 // GetBranchPoints returns entries that have more than one child.
 func GetBranchPoints(conv *Conversation) []SessionEntry {
+	conv.lock()
+	defer conv.unlock()
 	if len(conv.Entries) == 0 {
 		return nil
 	}
@@ -177,6 +207,8 @@ func GetBranchPoints(conv *Conversation) []SessionEntry {
 
 // GetLeaves returns entries with no children.
 func GetLeaves(conv *Conversation) []SessionEntry {
+	conv.lock()
+	defer conv.unlock()
 	if len(conv.Entries) == 0 {
 		return nil
 	}
@@ -248,6 +280,20 @@ func ForkConversation(conv *Conversation, atMessageIndex int) *Conversation {
 }
 
 func getContextPathEntries(conv *Conversation) []SessionEntry {
+	conv.lock()
+	defer conv.unlock()
+	return getContextPathEntriesLocked(conv)
+}
+
+// getContextPathEntriesLocked walks leaf → root and returns the path in
+// root-first order. Callers must hold conv.mu.
+//
+// A walk that stops on a missing parent is silent data loss unless the stop
+// is the designed partial-compaction boundary (the truncated first file-order
+// entry legitimately references a dropped parent). Every other miss — a
+// missing leaf, or a mid-chain dangling parent — is logged at ERROR so a
+// truncated history can never again pass as a successful load.
+func getContextPathEntriesLocked(conv *Conversation) []SessionEntry {
 	if conv.Entries == nil || conv.LeafID == nil {
 		return nil
 	}
@@ -255,13 +301,35 @@ func getContextPathEntries(conv *Conversation) []SessionEntry {
 
 	var path []SessionEntry
 	current, ok := entryMap[*conv.LeafID]
+	if !ok {
+		utils.LogWithFields(utils.LevelError, "conversation", "context path: leaf id not found in entries", map[string]any{
+			"conversation_id": conv.ID,
+			"leaf_id":         *conv.LeafID,
+			"total_entries":   len(conv.Entries),
+		})
+	}
 	for ok {
 		path = append(path, current)
-		if current.ParentID != nil {
-			current, ok = entryMap[*current.ParentID]
-		} else {
-			ok = false
+		if current.ParentID == nil {
+			break
 		}
+		next, found := entryMap[*current.ParentID]
+		if !found {
+			// The truncated first file-order entry keeping a reference to its
+			// dropped parent is partial-compaction working as designed; any
+			// other dangling parent is a broken chain.
+			if len(conv.Entries) == 0 || current.ID != conv.Entries[0].ID {
+				utils.LogWithFields(utils.LevelError, "conversation", "context path: dangling parent truncated walk", map[string]any{
+					"conversation_id": conv.ID,
+					"stopped_at":      current.ID,
+					"missing_parent":  *current.ParentID,
+					"path_len":        len(path),
+					"total_entries":   len(conv.Entries),
+				})
+			}
+			break
+		}
+		current = next
 	}
 
 	for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {

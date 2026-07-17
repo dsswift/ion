@@ -1,8 +1,6 @@
 package backend
 
 import (
-	"fmt"
-
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -67,15 +65,15 @@ func (b *ApiBackend) drainSteer(run *activeRun, conv *conversation.Conversation)
 			})
 		}
 		if err := conversation.Save(conv, ""); err != nil {
-			utils.Log("ApiBackend", fmt.Sprintf(
-				"failed to save conversation after steer injection: runID=%s err=%s",
-				run.requestID, err.Error(),
-			))
+			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation after steer injection", map[string]any{
+				"run_id": run.requestID,
+				"error":  utils.ErrStr(err),
+			})
 		}
-		utils.Log("ApiBackend", fmt.Sprintf(
-			"steer message injected into conversation: runID=%s msgLen=%d",
-			run.requestID, len(steerMsg),
-		))
+		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "steer message injected into conversation", map[string]any{
+			"run_id":  run.requestID,
+			"msg_len": len(steerMsg),
+		})
 		b.emit(run, types.NormalizedEvent{Data: &types.SteerInjectedEvent{
 			MessageLength: len(steerMsg),
 		}})

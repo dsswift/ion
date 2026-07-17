@@ -518,3 +518,6 @@ describe('createConversationTab — reuseTabId (restore)', () => {
     expect(mockIon.adoptTab).not.toHaveBeenCalled()
   })
 })
+
+// defaultMode per engine profile tests live in engine-slice-create-defaultmode.test.ts
+// (extracted to keep both files under the 600-line cap)

@@ -24,26 +24,12 @@ type toolMeta struct {
 }
 
 // pendingPrompt holds a queued prompt waiting for the active run to finish.
+// overrides is a value-copied snapshot of the caller's *PromptOverrides so
+// all 19 fields survive the enqueue → dequeue round-trip intact. A nil
+// overrides is stored as-is and forwarded as nil to SendPrompt.
 type pendingPrompt struct {
-	text         string
-	model        string
-	maxTurns     int
-	maxBudgetUsd float64
-	extensions   []string
-	noExtensions bool
-	attachments  []types.ImageAttachment
-	// implementationPhase carries the client's
-	// ClientCommand.ImplementationPhase flag through the queue so the
-	// suppression of EnterPlanMode injection survives queueing on a busy
-	// session. Without this, a queued "implement" prompt would lose the
-	// flag and the engine would inject EnterPlanMode against the user's
-	// already-approved intent.
-	implementationPhase bool
-	// thinkingEffort carries the client's ClientCommand.ThinkingEffort
-	// through the queue so a queued prompt's live thinking level survives
-	// queueing on a busy session. Without it, a prompt queued behind a
-	// running turn would lose its selected effort.
-	thinkingEffort string
+	text      string
+	overrides *PromptOverrides
 }
 
 // engineSession holds the state for a single session managed by the Manager.
@@ -91,19 +77,52 @@ type engineSession struct {
 	// genuine resume (file already present at StartSession) this is false and
 	// the binding is written immediately. (#230/#231 phantom-binding fix)
 	bindingPending bool
-	// cliSessionID is the claude-native session UUID captured from CLI run
-	// exits (the backend reports it via SessionInitEvent/TaskCompleteEvent →
-	// emitExit → handleRunExit). It is the ONLY value fed to `claude
-	// --resume` (via RunOptions.CliResumeSessionID). It is deliberately kept
-	// distinct from conversationID: conversationID is Ion's durable
-	// conversation-file identity (`{millis}-{12hex}`, the basename of the
-	// `~/.ion/conversations/<id>.*` files) and must never be overwritten with
-	// a claude UUID — doing so would break compaction, export, /clear, tree
-	// navigation, and the client-facing session id, all of which key on the
-	// Ion id. Empty until the first successful CLI run reports a UUID.
-	cliSessionID                string
+	// nativeSessions maps a delegated-CLI backend kind ("claude-code",
+	// "codex", "grok", "cursor") to the native-session cursor captured from
+	// that backend's last run exit (the backend reports its native id via
+	// emitExit → handleRunExit). A cursor is the ONLY value ever fed to a
+	// native resume (`claude --resume` / ThreadResume / session/load, via
+	// RunOptions.CliResumeSessionID), and only while its HeadEntryID still
+	// equals the conversation's LeafID — see resolveCliContinuity in
+	// native_session.go. Cursors are deliberately kept distinct from
+	// conversationID: conversationID is Ion's durable conversation-file
+	// identity (`{millis}-{12hex}`) and must never be overwritten with a
+	// backend-native id — doing so would break compaction, export, /clear,
+	// tree navigation, and the client-facing session id, all of which key on
+	// the Ion id. Mirrored to conversation.NativeSessions (the .tree.jsonl
+	// header) on capture and rehydrated from it in StartSession, so
+	// continuity survives an engine restart. Guarded by m.mu.
+	nativeSessions map[string]conversation.NativeSessionCursor
+	// runCaps is the capability descriptor of the backend serving the
+	// session's active run, recorded at dispatch (prompt_dispatch.go) after
+	// the model is final. handleRunExit reads it to decide whether (and
+	// under which kind) to capture the backend-reported session id as a
+	// native-session cursor. Guarded by m.mu; overwritten on every dispatch.
+	runCaps                     backend.BackendCapabilities
+	// pendingCliUserTurn holds the current run's original user prompt (the
+	// display text, before any transcript bridging mutated opts.Prompt) when
+	// the run is served by a native-session (delegated-CLI) backend. Together
+	// with pendingCliAssistantText it is persisted into Ion's conversation
+	// store at run exit so the delegated-CLI turn lands in Ion's transcript —
+	// the single source of truth. Without this, CLI turns are invisible to
+	// Ion and a later cross-provider turn's transcript bridge misses them (the
+	// continuity-loss bug). Empty for engine-owned backends, which persist
+	// their own turns via the runloop. Guarded by m.mu.
+	pendingCliUserTurn          string
+	// pendingCliAssistantText holds the current run's final assistant text
+	// (TaskCompleteEvent.LastText, else Result), captured as the event flows
+	// through handleNormalizedEvent, for the same CLI-turn persistence.
+	// Guarded by m.mu.
+	pendingCliAssistantText     string
+	// traceID is a stable per-session OpenTelemetry-compatible 32-hex trace ID.
+	// Generated once in newSessionRootContext and threaded into rootCtx via
+	// utils.WithTraceID so every log line and telemetry span emitted for this
+	// session shares one trace ID. Not a wire-contract surface; internal
+	// observability correlation only.
+	traceID                     string
 	agents                      *agents.Registry
 	extensionName               string // friendly name broadcast by the extension
+	extensionVersion            string // version from extension.json manifest (empty when absent)
 	suppressedTools             []string
 	childPIDs                   map[int]struct{}
 	planMode                    bool
@@ -111,6 +130,19 @@ type engineSession struct {
 	planModeAllowedBashCommands []string
 	planFilePath                string
 	planModePromptSent          bool
+	// compactInFlight is true while an async user-initiated /compact goroutine
+	// is running for this session (dispatchCompact Path A). It serves two
+	// guards, both read/written under m.mu:
+	//   1. Double-run: a second /compact while one is in flight is rejected
+	//      (compact_in_progress) rather than launching a concurrent CompactNow
+	//      that would clobber the first's load-mutate-save cycle.
+	//   2. Busy visibility: the async compaction does NOT set s.requestID (its
+	//      synthetic user-compact-<convID> runID is deliberately unregistered
+	//      in the backend's activeRuns), so SendPrompt's busy check must also
+	//      consult this flag — otherwise a prompt submitted mid-compaction
+	//      would start a real run that clobbers the compaction's save. See
+	//      dispatchCompact and SendPrompt.
+	compactInFlight             bool
 	hasExitedPlanMode           bool // set when ExitPlanMode fires; enables reentry detection
 	promptQueue                 []pendingPrompt
 	maxQueueDepth               int // default 32
@@ -133,10 +165,11 @@ type engineSession struct {
 
 	// Last-known context usage state, carried forward across status
 	// emissions so the footer always reflects the most recent data.
-	lastContextPct    int
-	lastContextWindow int
-	lastModel         string
-	lastTotalCost     float64
+	lastContextPct     int
+	lastContextWindow  int
+	lastModel          string
+	lastTotalCost      float64  // run-scoped cost (alias: RunCostUsd)
+	lastConvCost       float64  // conversation-scoped cost (alias: ConversationCostUsd)
 
 	// lastPermissionDenials retains the PermissionDenials slice from the
 	// most recent TaskCompleteEvent. The slice typically contains
@@ -202,6 +235,20 @@ type engineSession struct {
 	// zero-cost compaction recovery. Created in StartSession, nil when the
 	// feature is not enabled or the session has no conversation ID.
 	sessionMemory *SessionMemory
+
+	// pluginSessionMessages holds LlmMessage values (role=user, wrapped in
+	// <system-reminder>) from each installed plugin's SessionStart hook output.
+	// These are prepended to the provider message slice on every run turn via
+	// opts.InitialMessages, giving the plugin instructions full conversational
+	// attention weight — matching Claude Code's hook_additional_context injection.
+	// Populated in loadAndWirePlugins (plugin_session.go) at session start.
+	pluginSessionMessages []types.LlmMessage
+
+	// pluginUserPromptHooks holds the hook commands from all installed plugins'
+	// UserPromptSubmit hooks paired with their plugin root path. Fired on each
+	// turn via hooks.OnInitialMessages; output is wrapped in <system-reminder>
+	// and prepended to the provider message slice (not the system prompt).
+	pluginUserPromptHooks []pluginUserPromptCmd
 
 	// pendingSlashInvocation carries the raw command/args for a slash command
 	// dispatched via the extension command registry (dispatchCommand). When an

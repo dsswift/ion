@@ -5,7 +5,7 @@
  * renderer executeJavaScript path is skipped. This lets us test the file
  * I/O logic in isolation without an Electron environment.
  */
-import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'

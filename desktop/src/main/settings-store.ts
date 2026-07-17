@@ -6,8 +6,8 @@ import { atomicWriteFileSync } from './utils/atomicWrite'
 import { encryptSensitiveSettings, decryptSensitiveSettings } from './utils/secretStore'
 import { expandHome } from './git/ignore-paths'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 export const SETTINGS_DIR = join(homedir(), '.ion')
@@ -42,7 +42,7 @@ export const SETTINGS_DEFAULTS = {
   // clear-context action is opt-in per-plan (per-click), not a global
   // forced behavior. Users can also `/clear` manually at any time. See
   // desktop/src/renderer/components/PermissionDeniedCard.tsx for the
-  // button reveal and runHandleImplement (ConversationView-implement.ts) for
+  // button reveal and implementPlan (implement-slice.ts) for
   // the branching behavior.
   showImplementClearContext: false,
   // Whether the desktop acts on "redirect" level engine_intercept events —
@@ -64,6 +64,50 @@ export const SETTINGS_DEFAULTS = {
   // selected effort rides on each prompt. See StatusBarThinkingPicker.tsx and
   // the engine's resolveThinking helper.
   thinkingEnabled: false,
+  // Agent Team Visualizer (desktop-only window; none of these keys are iOS
+  // projectable). atvSeeds maps an extension scope (engineProfileId, or
+  // 'local' for plain tabs) to a user-chosen office seed string.
+  atvTheme: 'ion-works',
+  atvPinned: false,
+  // 0 = fit-to-window (default); 1..6 = manual integer zoom.
+  atvZoom: 0,
+  // One office seed for the whole desktop ('' = built-in default). The
+  // office layout is the user's office — identical across conversations.
+  atvSeed: '',
+  // While the ATV window is open, flip the app's activation policy to
+  // 'regular' so Ion appears in the Dock and Cmd-Tab (immersive-app
+  // behavior); reverts to accessory when the window closes.
+  atvDockPresence: true,
+  // Which surface(s) appear at startup: 'overlay' | 'atv' | 'both'. The
+  // overlay RENDERER always runs (it owns session state); this only governs
+  // what the user sees first.
+  launchSurface: 'overlay',
+  // Global shortcut toggling the ATV shell (Electron accelerator; '' = none).
+  atvShortcut: 'Alt+Shift+Space',
+  // Footstep-heat overlay on the ATV canvas (traffic visualization).
+  atvHeat: false,
+  // ATV shell layout (dock open/width/tab) — one global state persisted
+  // across opens and restarts, never per-session.
+  atvLayout: { dockOpen: false, dockWidth: 420, dockTab: 'conversation' },
+  // Ambient soundscape in the ATV (procedurally synthesized; mute toggle
+  // in the control bar — office users need one-click silence).
+  atvSound: true,
+  // Dock bounce + title prefix when a permission arrives while the ATV is
+  // open but unfocused.
+  atvBeacon: true,
+  // Beta gate for the Agent Team Visualizer. Default false — the ATV is
+  // shipping as a beta feature that is intentionally not advertised. Set
+  // to true in ~/.ion/settings.json to enable the launcher button, tray
+  // item, global shortcut, and window. The ATV window itself cannot write
+  // this key (it is not in ATV_SETTING_KEYS in ipc/atv.ts).
+  atvBeta: false,
+  // Auto-open the ATV side dock when the conversation awaits user input
+  // (plan ready / question / permission).
+  atvAutoDrawer: true,
+  // Enterprise/operator surface gate: 'both' | 'overlay-only' | 'atv-only'.
+  // Deployable via managed settings.json; clamps launchSurface and disables
+  // the gated surface's launchers (tray item, button, shortcut, atv:open).
+  surfacePolicy: 'both',
 }
 
 export function readSettings(): Record<string, any> {
@@ -72,7 +116,7 @@ export function readSettings(): Record<string, any> {
     const raw = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'))
     return decryptSensitiveSettings(raw)
   } catch (err) {
-    log(`Failed to read settings: ${err}`)
+    log('settings_store: failed to read settings', { error: String(err) })
     return {}
   }
 }
@@ -164,28 +208,48 @@ export function writeEngineConfig(config: Record<string, any>): void {
   atomicWriteFileSync(ENGINE_CONFIG_FILE, JSON.stringify(config, null, 2), 0o644)
 }
 
-export function getCurrentBackend(): 'api' | 'cli' {
+/**
+ * Ensure engine.json selects the hybrid backend. The desktop's opinion is
+ * credential-based per-provider routing (api-key-wins → authed CLI → api),
+ * which the engine only applies under `backend: "hybrid"` — the engine's own
+ * default stays `api` for external/headless consumers, so the desktop opts in
+ * explicitly here (settings live with their owner, engine-grounding §6).
+ * Returns true when the value changed (caller restarts the daemon so the
+ * running engine re-reads the config).
+ */
+export function ensureHybridBackendConfig(): boolean {
   const cfg = readEngineConfig()
-  return cfg.backend === 'api' ? 'api' : 'cli'
+  if (cfg.backend === 'hybrid') return false
+  const previous = cfg.backend ?? '(unset)'
+  cfg.backend = 'hybrid'
+  writeEngineConfig(cfg)
+  log('settings_store: engine backend set to hybrid', { previous })
+  return true
 }
 
-export const currentBackend = getCurrentBackend()
+/**
+ * Unified tab/label/chain storage. One file each, independent of which
+ * backend serves any given conversation — a credential or routing change can
+ * never make tabs "disappear" by pointing the loader at a different file.
+ * The legacy per-backend files below are read-only inputs to the one-time
+ * merge migration (tab-backend-merge.ts) and to the cleanup guards during
+ * the migration window; nothing writes them anymore.
+ */
+export const TABS_FILE = join(SETTINGS_DIR, 'tabs.json')
+export const SESSION_LABELS_FILE = join(SETTINGS_DIR, 'session-labels.json')
+export const SESSION_CHAINS_FILE = join(SETTINGS_DIR, 'session-chains.json')
 
-export function tabsFileForBackend(backend: 'api' | 'cli'): string {
+export function legacyTabsFileForBackend(backend: 'api' | 'cli'): string {
   return join(SETTINGS_DIR, `tabs-${backend}.json`)
 }
 
-export function sessionLabelsFileForBackend(backend: 'api' | 'cli'): string {
+export function legacySessionLabelsFileForBackend(backend: 'api' | 'cli'): string {
   return join(SETTINGS_DIR, `session-labels-${backend}.json`)
 }
 
-export function sessionChainsFileForBackend(backend: 'api' | 'cli'): string {
+export function legacySessionChainsFileForBackend(backend: 'api' | 'cli'): string {
   return join(SETTINGS_DIR, `session-chains-${backend}.json`)
 }
-
-export const TABS_FILE = tabsFileForBackend(currentBackend)
-export const SESSION_LABELS_FILE = sessionLabelsFileForBackend(currentBackend)
-export const SESSION_CHAINS_FILE = sessionChainsFileForBackend(currentBackend)
 
 export function loadSessionLabels(): Record<string, string> {
   try {
@@ -193,7 +257,7 @@ export function loadSessionLabels(): Record<string, string> {
       return JSON.parse(readFileSync(SESSION_LABELS_FILE, 'utf-8'))
     }
   } catch (err) {
-    log(`Failed to load session labels: ${err}`)
+    log('settings_store: failed to load session labels', { error: String(err) })
   }
   return {}
 }
@@ -203,7 +267,7 @@ export function saveSessionLabels(labels: Record<string, string>): void {
     if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true })
     atomicWriteFileSync(SESSION_LABELS_FILE, JSON.stringify(labels, null, 2), 0o644)
   } catch (err) {
-    log(`Failed to save session labels: ${err}`)
+    log('settings_store: failed to save session labels', { error: String(err) })
   }
 }
 
@@ -213,7 +277,7 @@ export function loadSessionChains(): { chains: Record<string, string[]>; reverse
       return JSON.parse(readFileSync(SESSION_CHAINS_FILE, 'utf-8'))
     }
   } catch (err) {
-    log(`Failed to load session chains: ${err}`)
+    log('settings_store: failed to load session chains', { error: String(err) })
   }
   return { chains: {}, reverse: {} }
 }
@@ -223,7 +287,7 @@ export function saveSessionChains(data: { chains: Record<string, string[]>; reve
     if (!existsSync(SETTINGS_DIR)) mkdirSync(SETTINGS_DIR, { recursive: true })
     atomicWriteFileSync(SESSION_CHAINS_FILE, JSON.stringify(data, null, 2), 0o644)
   } catch (err) {
-    log(`Failed to save session chains: ${err}`)
+    log('settings_store: failed to save session chains', { error: String(err) })
   }
 }
 

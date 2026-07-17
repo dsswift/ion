@@ -39,7 +39,7 @@ func Acquire(path string) (*Lock, error) {
 		// Stale lock, remove it. Best-effort; if the remove fails the
 		// O_EXCL open below will catch the conflict.
 		if err := os.Remove(lockPath); err != nil && !os.IsNotExist(err) {
-			utils.Log("filelock", fmt.Sprintf("Acquire %s: stale lock remove failed: %v", lockPath, err))
+			utils.LogWithFields(utils.LevelInfo, "filelock", "acquire stale lock remove failed", map[string]any{"path": lockPath, "error": err.Error()})
 		}
 	}
 
@@ -53,10 +53,10 @@ func Acquire(path string) (*Lock, error) {
 		return nil, fmt.Errorf("filelock: create: %w", err)
 	}
 	if _, err := fmt.Fprintf(f, "%d", pid); err != nil {
-		utils.Log("filelock", fmt.Sprintf("Acquire %s: write pid %d failed: %v", lockPath, pid, err))
+		utils.LogWithFields(utils.LevelInfo, "filelock", "acquire write pid failed", map[string]any{"path": lockPath, "error": err.Error()})
 	}
 	if err := f.Close(); err != nil {
-		utils.Log("filelock", fmt.Sprintf("Acquire %s: close failed: %v", lockPath, err))
+		utils.LogWithFields(utils.LevelInfo, "filelock", "acquire close failed", map[string]any{"path": lockPath, "error": err.Error()})
 	}
 
 	return &Lock{
@@ -94,7 +94,7 @@ func WithLock(path string, fn func() error) error {
 	}
 	defer func() {
 		if err := lock.Release(); err != nil {
-			utils.Log("filelock", fmt.Sprintf("WithLock %s: release failed: %v", path, err))
+			utils.LogWithFields(utils.LevelInfo, "filelock", "with lock release failed", map[string]any{"path": path, "error": err.Error()})
 		}
 	}()
 	return fn()

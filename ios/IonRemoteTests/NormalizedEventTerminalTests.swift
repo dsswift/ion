@@ -209,7 +209,7 @@ final class NormalizedEventTerminalTests: XCTestCase {
         let original = RemoteCommand.createTerminalTab(workingDirectory: "/var")
         let data = try encoder.encode(original)
         let decoded = try decoder.decode(RemoteCommand.self, from: data)
-        if case .createTerminalTab(let wd) = decoded {
+        if case .createTerminalTab(let wd, _) = decoded {
             XCTAssertEqual(wd, "/var")
         } else {
             XCTFail("Round-trip createTerminalTab failed")

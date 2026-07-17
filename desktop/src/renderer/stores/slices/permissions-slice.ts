@@ -2,6 +2,7 @@ import type { TabStatus } from '../../../shared/types'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId } from '../session-store-helpers'
 import { activeInstance, commitInstance } from '../conversation-instance'
+import { rDebug, rInfo, rWarn } from '../../rendererLogger'
 
 // Auto-recovery bounds for the stuck-tab watchdog. A genuinely dead provider
 // must not drive an infinite stall→resume loop, so automatic resumes are
@@ -62,7 +63,7 @@ export function createPermissionsSlice(set: StoreSet, get: StoreGet): Partial<St
     },
 
     forceRecoverTab: (tabId, reason) => {
-      console.warn(`[Ion] forceRecoverTab: tab=${tabId} reason="${reason}"`)
+      rWarn('session.recover', 'force recovering tab', { tab_id: tabId, reason })
       try { window.ion.stopTab(tabId) } catch {}
       // permissionQueue / permissionDenied / messages all live on the active
       // conversation instance now. Clear the queue + denial and append the
@@ -116,7 +117,7 @@ export function createPermissionsSlice(set: StoreSet, get: StoreGet): Partial<St
       if (attempts >= AUTO_RECOVERY_MAX_ATTEMPTS) {
         // Cap reached — stop auto-resuming and surface an honest message. Only
         // now does the user need to know anything happened.
-        console.warn(`[Ion] autoRecoverStuckTab: tab=${tabId} attempt cap (${AUTO_RECOVERY_MAX_ATTEMPTS}) reached in window — falling back to manual recovery`)
+        rWarn('session.recover', 'attempt cap reached, falling back to manual recovery', { tab_id: tabId, attempt: attempts, max: AUTO_RECOVERY_MAX_ATTEMPTS })
         get().forceRecoverTab(
           tabId,
           `The connection stalled repeatedly and automatic recovery did not succeed after ${AUTO_RECOVERY_MAX_ATTEMPTS} attempts. The tab has been reset; send a message to continue.`,
@@ -135,7 +136,7 @@ export function createPermissionsSlice(set: StoreSet, get: StoreGet): Partial<St
       // back to a plain reset so the tab is at least usable.
       const lastPrompt = get().enginePinnedPrompt.get(tabId)
       if (!lastPrompt || !lastPrompt.trim()) {
-        console.warn(`[Ion] autoRecoverStuckTab: tab=${tabId} no last prompt to resume — plain reset`)
+        rWarn('session.recover', 'no last prompt to resume, plain reset', { tab_id: tabId })
         get().forceRecoverTab(
           tabId,
           'The connection stalled with no engine activity. The tab has been reset; send a message to continue.',
@@ -144,7 +145,7 @@ export function createPermissionsSlice(set: StoreSet, get: StoreGet): Partial<St
       }
 
       const attemptNo = attempts + 1
-      console.warn(`[Ion] autoRecoverStuckTab: tab=${tabId} auto-resuming (attempt ${attemptNo}/${AUTO_RECOVERY_MAX_ATTEMPTS}) — recreating session + resubmitting last prompt`)
+      rWarn('session.recover', 'auto-resuming', { tab_id: tabId, attempt: attemptNo, max: AUTO_RECOVERY_MAX_ATTEMPTS })
 
       // Record the attempt and a quiet, non-alarming system line. The user's
       // stated ideal is "nothing would have happened"; a single easy-to-ignore
@@ -207,14 +208,14 @@ export function createPermissionsSlice(set: StoreSet, get: StoreGet): Partial<St
       // session is always stopped before the new one starts. No sequencing fix is
       // needed; this comment is the ordering proof.
       try {
-        console.log(`[autoRecover] restartTabSession: tabId=${tabId} — queueing stop_session to engine socket`)
+        rDebug('session.recover', 'queueing stop_session', { tab_id: tabId })
         window.ion.restartTabSession(tabId)
-        console.log(`[autoRecover] restartTabSession dispatched: tabId=${tabId} — stop_session is enqueued ahead of resubmit's start_session (FIFO IPC guarantee)`)
+        rDebug('session.recover', 'stop_session dispatched', { tab_id: tabId })
       } catch (err) {
-        console.warn(`auto-recover: restartTabSession failed for ${tabId}, not resubmitting:`, err)
+        rWarn('session.recover', 'restartTabSession failed', { tab_id: tabId, error: String(err) })
         return false
       }
-      console.log(`[autoRecover] resubmitting prompt: tabId=${tabId} prompt="${lastPrompt.substring(0, 80)}"`)
+      rInfo('session.recover', 'resubmitting prompt', { tab_id: tabId, prompt_len: lastPrompt.length })
       get().submit(tabId, lastPrompt)
       return true
     },

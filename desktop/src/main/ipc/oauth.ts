@@ -2,30 +2,28 @@ import { ipcMain } from 'electron'
 import { IPC } from '../../shared/types'
 import { log as _log } from '../logger'
 import {
-  loginOpenAI, refreshOpenAI,
   loginGoogle, refreshGoogle,
   startGitHubDeviceFlow, pollGitHubAccessToken, exchangeGitHubForCopilotToken, refreshGitHubCopilot,
   storeTokens, clearTokens, hasTokens, registerRefreshFn,
 } from '../oauth'
+import { signIn as entraSignIn, signOut as entraSignOut, getSignedInIdentity } from '../oauth/entra-auth'
 
-function log(msg: string): void { _log('oauth', msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log('oauth', msg, fields) }
 
 const activeFlows = new Map<string, AbortController>()
 
 export function registerOAuthIpc(): void {
-  registerRefreshFn('openai', async (rt) => refreshOpenAI(rt))
   registerRefreshFn('google', async (rt) => refreshGoogle(rt))
   registerRefreshFn('github-copilot', async (rt) => refreshGitHubCopilot(rt))
 
   ipcMain.handle(IPC.OAUTH_START, async (_event, { provider }: { provider: string }) => {
-    log(`OAuth start: provider=${provider}`)
+    log('oauth_start', { provider })
     activeFlows.get(provider)?.abort()
     const controller = new AbortController()
     activeFlows.set(provider, controller)
     try {
       let tokens: { accessToken: string; refreshToken: string; expiresAt: number }
       switch (provider) {
-        case 'openai': tokens = await loginOpenAI(); break
         case 'google': tokens = await loginGoogle(); break
         case 'github-copilot': {
           const device = await startGitHubDeviceFlow()
@@ -38,15 +36,46 @@ export function registerOAuthIpc(): void {
       await storeTokens(provider, tokens.accessToken, tokens.refreshToken, tokens.expiresAt)
       return { ok: true }
     } catch (err) {
-      log(`OAuth failed for ${provider}: ${(err as Error).message}`)
+      log('oauth: failed', { provider, error: (err as Error).message })
       return { ok: false, error: (err as Error).message }
     } finally {
       activeFlows.delete(provider)
     }
   })
 
+  // ─── Entra OIDC ──────────────────────────────────────────────────────────
+
+  ipcMain.handle(IPC.ENTRA_SIGN_IN, async () => {
+    log('entra: sign-in requested')
+    try {
+      const identity = await entraSignIn()
+      log('entra: sign-in succeeded', { user: identity.user })
+      return { ok: true, identity }
+    } catch (err) {
+      log('entra: sign-in failed', { error: (err as Error).message })
+      return { ok: false, error: (err as Error).message }
+    }
+  })
+
+  ipcMain.handle(IPC.ENTRA_SIGN_OUT, async () => {
+    log('entra: sign-out requested')
+    try {
+      await entraSignOut()
+      log('entra: sign-out succeeded')
+      return { ok: true }
+    } catch (err) {
+      log('entra: sign-out failed', { error: (err as Error).message })
+      return { ok: false, error: (err as Error).message }
+    }
+  })
+
+  ipcMain.handle(IPC.ENTRA_IDENTITY, async () => {
+    const identity = await getSignedInIdentity()
+    return { identity }
+  })
+
   ipcMain.handle(IPC.OAUTH_LOGOUT, async (_event, { provider }: { provider: string }) => {
-    log(`OAuth logout: provider=${provider}`)
+    log('oauth_logout', { provider })
     await clearTokens(provider)
     return { ok: true }
   })

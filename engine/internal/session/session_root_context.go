@@ -32,7 +32,25 @@ import (
 // just the current run.
 func (s *engineSession) newSessionRootContext() {
 	s.rootCtx, s.rootCancel = context.WithCancel(context.Background())
-	utils.Debug("Session", "newSessionRootContext: root cancellation context created key="+s.key)
+
+	// Mint one stable trace ID per session (idempotent across re-arms: keep
+	// the existing ID if this root is being re-created after an abort, so the
+	// whole session shares a single trace).
+	if s.traceID == "" {
+		s.traceID = utils.NewTraceID()
+	}
+
+	// Thread the correlation IDs into the root so every descendant operation
+	// that logs via utils.LogCtx(ctx, ...) automatically stamps session_id,
+	// conversation_id, and trace_id. Omitted IDs (empty conversationID before
+	// binding) are simply not carried; LogCtx omits absent IDs per the schema.
+	s.rootCtx = utils.WithSessionID(s.rootCtx, s.key)
+	if s.conversationID != "" {
+		s.rootCtx = utils.WithConversationID(s.rootCtx, s.conversationID)
+	}
+	s.rootCtx = utils.WithTraceID(s.rootCtx, s.traceID)
+
+	utils.LogWithFields(utils.LevelDebug, "session", "newsessionrootcontext: root cancellation context created key= trace_id=", map[string]any{"key": s.key, "run_id": s.traceID})
 }
 
 // rootContext returns the session's cancellation root. Never returns nil:
@@ -45,7 +63,7 @@ func (s *engineSession) rootContext() context.Context {
 		// StartSession) has no root. Returning Background keeps derive
 		// sites simple — they get an un-cancellable-by-abort context,
 		// which matches the pre-tree behavior those tests already assume.
-		utils.Debug("Session", "rootContext: no root context (test-constructed session?); returning Background key="+s.key)
+		utils.LogWithFields(utils.LevelDebug, "session", "rootcontext: no root context (test-constructed session?); returning background key=", map[string]any{"key": s.key})
 		return context.Background()
 	}
 	return s.rootCtx
@@ -75,14 +93,14 @@ func (s *engineSession) rearmRootContextIfCancelled() {
 	if s.rootCtx != nil && s.rootCtx.Err() == nil {
 		// Still live — keep the existing root so in-flight descendants
 		// (background dispatches, llmCalls) stay parented to it.
-		utils.Debug("Session", "rearmRootContextIfCancelled: root still live, no-op key="+s.key)
+		utils.LogWithFields(utils.LevelDebug, "session", "rearmrootcontextifcancelled: root still live, no-op key=", map[string]any{"key": s.key})
 		return
 	}
 	reason := "nil"
 	if s.rootCtx != nil {
 		reason = "cancelled"
 	}
-	utils.Info("Session", "rearmRootContextIfCancelled: re-creating session root (was "+reason+") key="+s.key)
+	utils.LogWithFields(utils.LevelInfo, "session", "rearmrootcontextifcancelled: re-creating session root (was ) key=", map[string]any{"reason": reason, "key": s.key})
 	s.newSessionRootContext()
 }
 
@@ -96,9 +114,9 @@ func (s *engineSession) rearmRootContextIfCancelled() {
 // root cancellation.
 func (s *engineSession) cancelSessionRoot(reason string) {
 	if s.rootCancel == nil {
-		utils.Debug("Session", "cancelSessionRoot: no root cancel (test-constructed session?); skipping key="+s.key+" reason="+reason)
+		utils.LogWithFields(utils.LevelDebug, "session", "cancelsessionroot: no root cancel (test-constructed session?); skipping key= reason=", map[string]any{"key": s.key, "reason": reason})
 		return
 	}
-	utils.Info("Session", "cancelSessionRoot: cancelling session root context key="+s.key+" reason="+reason)
+	utils.LogWithFields(utils.LevelInfo, "session", "cancelsessionroot: cancelling session root context key= reason=", map[string]any{"key": s.key, "reason": reason})
 	s.rootCancel()
 }

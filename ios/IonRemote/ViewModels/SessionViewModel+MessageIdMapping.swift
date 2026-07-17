@@ -2,12 +2,15 @@ import Foundation
 
 // MARK: - Snapshot message ID mapping
 //
-// The engine's SessionMessage has no `id` field. The relay wire therefore
-// sends `id: ""` for every user and assistant message in a
+// Historically the engine's SessionMessage had no `id` field, so the relay
+// wire sent `id: ""` for every user and assistant message in a
 // desktop_agent_conversation_history snapshot. When those messages reach
 // groupDispatchItems -> ForEach, all user/assistant DispatchItems share
 // the same identity (""), which causes SwiftUI to render duplicated or
-// misplaced bubbles.
+// misplaced bubbles. SessionMessage now carries the canonical tree-entry id,
+// but this mapper keeps its always-assign semantics for desktop-mapper
+// parity (see below) and to stay robust against empty ids from older
+// engines.
 //
 // This mirrors what the desktop does in agent-conversation-mapper.ts
 // (mapConversationMessages) BEFORE storing messages in convMessages.
@@ -51,23 +54,12 @@ func assignStableIds(_ messages: [Message]) -> [Message] {
             newId = count == 0 ? base : "\(base)#\(count)"
         }
 
-        // Message.id is a `let`, so construct a new value with the id replaced.
-        // All other fields are preserved exactly.
-        return Message(
-            id: newId,
-            role: m.role,
-            content: m.content,
-            toolName: m.toolName,
-            toolInput: m.toolInput,
-            toolId: m.toolId,
-            toolStatus: m.toolStatus,
-            attachments: m.attachments,
-            timestamp: m.timestamp,
-            source: m.source,
-            isInternal: m.isInternal,
-            slashCommand: m.slashCommand,
-            slashArgs: m.slashArgs,
-            slashSource: m.slashSource
-        )
+        // Copy-mutate so EVERY field is preserved exactly. The previous
+        // field-by-field reconstruction silently dropped fields the memberwise
+        // init defaulted (planFilePath, markerKind, sealed) — a reloaded
+        // agent-history plan marker lost its tappable plan path.
+        var copy = m
+        copy.id = newId
+        return copy
     }
 }

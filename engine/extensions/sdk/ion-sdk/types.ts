@@ -21,6 +21,16 @@ export interface DispatchAgentOpts {
   name: string
   task: string
   model?: string
+  /**
+   * Extension to load into the child session so the child receives the
+   * extension's hooks, persona composition, AND its registered tools
+   * (including this extension's own dispatch tool, enabling n-tier
+   * delegation). Accepts a directory (resolved to the conventional entry
+   * point: extension.ts, index.ts, extension.js, index.js, extension.mjs,
+   * index.mjs — first match wins) or a direct entry-point file path.
+   * Pass `ctx.config.extensionDir` to give the child the same extension
+   * as the dispatcher.
+   */
   extensionDir?: string
   systemPrompt?: string
   projectPath?: string
@@ -140,6 +150,26 @@ export interface DispatchAgentOpts {
   allowedSubAgents?: string[]
 
   /**
+   * Marks this dispatch as the "implement" half of a plan-then-implement
+   * flow: the plan is already approved and the child must execute it
+   * directly. When true, the engine skips injecting the EnterPlanMode
+   * sentinel tool into the child run, so the child can never stall by
+   * proposing plan mode mid-implementation. Set this on every dispatch that
+   * hands over an approved plan or a pre-investigated execute-mode brief.
+   */
+  implementationPhase?: boolean
+
+  /**
+   * Removes the named tools from the child session's tool set. Unlike
+   * allowedTools (a whitelist replacing the default set), this is a targeted
+   * blacklist layered on top of whatever set the child would otherwise get.
+   * Canonical use: suppress the engine's built-in Agent tool in children
+   * whose delegation must route through the harness's own dispatch tool, so
+   * the child cannot bypass the harness's tier resolution and allowlists.
+   */
+  suppressTools?: string[]
+
+  /**
    * Ordered list of alternative model IDs the child run's retry loop walks
    * when the primary model is overloaded (typically the tail of a resolved
    * tier chain). When empty, the child relies only on the engine's default
@@ -169,6 +199,44 @@ export interface DispatchAgentOpts {
    * to let the child terminate; omit for default termination behavior.
    */
   onChildQuestion?: (info: DispatchChildQuestionInfo) => Promise<DispatchChildQuestionAnswer>
+
+  /**
+   * Per-dispatch context-layer override (level 4 of the four-level context
+   * cascade). Overrides the session default (set via
+   * {@link IonContext.setDispatchContextDefaults}), the engine.json
+   * dispatchContext config, and the built-in default (all layers on). Tri-state
+   * fields: omit a field to inherit from the level below.
+   */
+  contextPolicy?: ContextPolicy
+}
+
+/**
+ * Controls which context layers a dispatched agent receives. All fields are
+ * tri-state (undefined = inherit from the level above).
+ */
+export interface ContextPolicy {
+  /** Include home roots (~/.ion, ~/.claude under compat). Default: true. */
+  includeGlobalContext?: boolean
+  /** Include the child's cwd + ancestor walk. Default: true. */
+  includeProjectContext?: boolean
+  /** Override ClaudeCompat for this walk. Default: inherit from engine. */
+  claudeCompat?: boolean
+}
+
+/** A single context file discovered during a walk. */
+export interface DiscoveredContext {
+  path: string
+  content: string
+  source: 'global' | 'project' | 'parent' | 'include'
+  level: number
+}
+
+/** Options for {@link IonContext.walkContextFiles}. */
+export interface WalkContextFilesOpts {
+  cwd?: string
+  includeGlobal?: boolean
+  includeProject?: boolean
+  claudeCompat?: boolean
 }
 
 export interface DispatchAgentResult {
@@ -319,6 +387,13 @@ export interface DispatchChildQuestionInfo {
   name: string
   /** Engine-assigned dispatch ID for this dispatch instance. */
   dispatchId: string
+  /**
+   * Engine-assigned request ID unique within this dispatch. Keyed together
+   * with dispatchId on the engine's pending reply channel so a single dispatch
+   * can ask multiple sequential questions without collisions. The SDK runtime
+   * sends this back via ext/answer_dispatch_question to unblock the child.
+   */
+  requestId: string
   /** The text from the child's AskUserQuestion call. */
   question: string
   /** Dispatch nesting depth of the child (1 = direct child of orchestrator). */
@@ -421,6 +496,34 @@ export interface HistoryMatch {
   snippet: string
   toolName?: string
   toolUseId?: string
+}
+
+/**
+ * A single active dispatch entry returned by {@link IonContext.listDispatchState}.
+ *
+ * - `dispatchId`: collision-safe unique ID for this dispatch instance. Use this
+ *   to address {@link IonContext.recallAgent} / {@link IonContext.steerDispatch}
+ *   when multiple dispatches of the same agent name may be running.
+ * - `name`: the agent name (e.g. `"code-reviewer"`).
+ * - `status`: always `"running"` — the registry only tracks in-flight dispatches.
+ *   Terminal entries are deregistered on completion and absent from the snapshot.
+ * - `parentDispatchId`: the dispatch ID of the parent that spawned this dispatch.
+ *   Empty for top-level dispatches (depth 1) whose parent is the depth-0
+ *   orchestrator (which has no dispatch ID).
+ * - `depth`: nesting depth. `1` = direct child of the orchestrator, `2` =
+ *   grandchild, etc.
+ * - `startedAt`: UTC ISO-8601 timestamp (RFC3339Nano) when the dispatch was
+ *   registered in the engine registry.
+ * - `elapsedMs`: milliseconds elapsed since `startedAt` at snapshot time.
+ */
+export interface DispatchEntry {
+  dispatchId: string
+  name: string
+  status: 'running'
+  parentDispatchId?: string
+  depth: number
+  startedAt: string
+  elapsedMs: number
 }
 
 /**
@@ -529,6 +632,49 @@ export interface AgentSpec {
   systemPrompt?: string
 }
 
+/**
+ * Options for a pre-authenticated HTTP request (see {@link IonContext.http}).
+ */
+export interface IonHttpRequestOptions {
+  /** Downstream resource scope for the minted token (e.g.
+   *  `api://<app-id>/Billing.Read`). Omit for the base grant's scope. */
+  scope?: string
+  /** Explicit audience/resource for the minted token, for identity
+   *  providers that bind grants to one (Auth0, RFC 8707) instead of
+   *  encoding the resource in the scope string. Omit to use the
+   *  provider's configured default audience. */
+  audience?: string
+  /** Request headers. `Authorization` is reserved and overwritten by the
+   *  engine-minted operator token. */
+  headers?: Record<string, string>
+  /** Request body, sent verbatim. */
+  body?: string
+  /** Request deadline in milliseconds (default 30 000). */
+  timeoutMs?: number
+  /** Response size cap in bytes (default 5 MB). */
+  maxBytes?: number
+  /** Opt this request out of the private/reserved-address guard to reach
+   *  intranet APIs. Default false. */
+  allowPrivateNetwork?: boolean
+}
+
+/** Response from a pre-authenticated HTTP request. Carries no token. */
+export interface IonHttpResponse {
+  status: number
+  headers: Record<string, string>
+  body: string
+}
+
+/** Pre-authenticated HTTP surface (see {@link IonContext.http}). */
+export interface IonHttp {
+  request(method: string, url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>
+  get(url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>
+  post(url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>
+  put(url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>
+  patch(url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>
+  delete(url: string, opts?: IonHttpRequestOptions): Promise<IonHttpResponse>
+}
+
 export interface IonContext {
   /**
    * Identifier of the engine session that fired this hook (the same key
@@ -559,6 +705,33 @@ export interface IonContext {
    *  engine restarts. Use this for resource scoping, audit trails, and
    *  persistent identity. Empty when no conversation is active. */
   conversationId: string
+  /**
+   * Dispatch depth of the session that fired the hook: `0` for the root
+   * (orchestrator) session, `1` for a directly dispatched child agent,
+   * `2` for a grandchild, and so on.
+   *
+   * This is the explicit root-vs-child discriminator for hooks whose
+   * payload carries no agent identity — `session_start`, `session_end`,
+   * `turn_start` and friends. A handler that should only act for the root
+   * session (a greeting toast, a startup git sync, a one-time bootstrap)
+   * branches on `ctx.depth === 0`. Mirrors `AgentInfo.isRoot` on
+   * `before_agent_start`, which discriminates per-firing rather than
+   * per-session.
+   *
+   * @example
+   * ```ts
+   * ion.on('session_start', (ctx) => {
+   *   if (ctx.depth > 0) return // dispatched child — skip root-only bootstrap
+   *   ctx.emit({ type: 'engine_notify', message: 'harness online', level: 'info' })
+   * })
+   * ```
+   */
+  depth: number
+  /** Dispatch ID owning this context. Empty for the root session
+   *  (`depth === 0`); populated for child sessions with the ID minted when
+   *  the agent was spawned, so per-dispatch state can be keyed without
+   *  inventing a session-local identity. */
+  dispatchId: string
   cwd: string
   model: { id: string; contextWindow: number } | null
   config: ExtensionConfig
@@ -608,6 +781,39 @@ export interface IonContext {
   ): Promise<{ content: string; isError?: boolean }>
 
   /**
+   * Pre-authenticated outbound HTTP as the signed-in operator.
+   *
+   * The engine performs the request and injects an `Authorization: Bearer`
+   * header carrying an access token minted for the `scope` you declare
+   * (from the operator's OIDC grant — one refresh token mints per-resource
+   * tokens). The raw token is NEVER exposed to extension code: you hand
+   * the engine a request, you get back status/headers/body. Any
+   * `Authorization` header you supply is overwritten — carrying the
+   * credential is the wrapper's job. Extensions that need unauthenticated
+   * HTTP should use plain fetch or the WebFetch tool; this surface always
+   * authenticates.
+   *
+   * `scope` names the downstream resource (e.g.
+   * `api://<app-id>/Billing.Read`); omit it to use the base grant's scope.
+   * Requests to private/reserved addresses are blocked by default; set
+   * `allowPrivateNetwork: true` per request to reach intranet APIs.
+   *
+   * Fails when no operator identity is configured
+   * (`auth.identityProvider` in engine.json) or no operator is signed in.
+   *
+   * @example
+   * ```ts
+   * const res = await ctx.http.post('https://api.example.com/v1/items', {
+   *   scope: 'api://my-api/Items.Write',
+   *   headers: { 'Content-Type': 'application/json' },
+   *   body: JSON.stringify({ name: 'widget' }),
+   * })
+   * if (res.status === 201) ctx.sendMessage('created')
+   * ```
+   */
+  http: IonHttp
+
+  /**
    * Queue a fresh prompt on this session's agent loop. Returns once the
    * engine has accepted the prompt; does NOT wait for the LLM to finish.
    * Pass `opts.model` to override the model for this single prompt.
@@ -633,7 +839,49 @@ export interface IonContext {
    * ```
    */
   sendPrompt(text: string, opts?: SendPromptOpts): Promise<void>
+
+  /**
+   * End the LLM run for this dispatch without completing it. The agent goes
+   * idle/suspended in the UI and the parent's OnComplete does NOT fire. The
+   * dispatch stays alive; when a revive message arrives via sendPrompt (from
+   * a child agent's completion callback or any other source), the LLM run
+   * restarts with the updated conversation context.
+   *
+   * Use `suspend()` when you have dispatched a single background child and
+   * have nothing more to do until it completes. Use `suspendUntilAll()` for
+   * N-child fan-out (or use the dispatch_agents tool which calls it for you).
+   *
+   * Only available inside a dispatched run (depth >= 1). Throws if called at
+   * depth 0 (the orchestrator cannot suspend its own root run).
+   */
+  suspend(): Promise<void>
+
+  /**
+   * Like `suspend()` but waits for ALL listed child dispatches to complete
+   * before reviving. Each completion decrements the pending set; the run
+   * revives only when the set empties.
+   *
+   * Used internally by the `dispatch_agents` fan-out tool; prefer that tool
+   * over calling `suspendUntilAll()` directly for parallel fan-out.
+   */
+  suspendUntilAll(dispatchIds: string[]): Promise<void>
+
   dispatchAgent(opts: DispatchAgentOpts): Promise<DispatchAgentResult>
+
+  /**
+   * Walk context files (read-only). Returns discovered AGENTS.md/ION.md/
+   * CLAUDE.md files for the given cwd. Does not inject — use it in
+   * before_agent_start to compose custom context. Part of the four-level
+   * context cascade seam (see docs/context-loading.md).
+   */
+  walkContextFiles(opts?: WalkContextFilesOpts): Promise<DiscoveredContext[]>
+
+  /**
+   * Set the session-level default context policy for all subsequent dispatches
+   * (level 3 of the four-level cascade). A per-dispatch
+   * {@link DispatchAgentOpts.contextPolicy} overrides it.
+   */
+  setDispatchContextDefaults(policy: ContextPolicy): Promise<void>
 
   /**
    * Terminate a running background dispatch by agent name. Returns `true` if
@@ -668,6 +916,22 @@ export interface IonContext {
    * @returns A result describing the delivery outcome.
    */
   steerDispatch(dispatchId: string, message: string): Promise<SteerDispatchResult>
+  /**
+   * Deliver a steering message to a running background dispatch identified by
+   * its agent **name**. This is the name-based peer of {@link steerDispatch}:
+   * where `steerDispatch` requires the full collision-safe dispatch ID returned
+   * by {@link dispatchAgent}, `steerDispatchByName` resolves by the
+   * human-readable agent name (e.g. `'code-reviewer'`). When multiple
+   * dispatches share a name, the first one found is steered (non-deterministic
+   * order, matching {@link recallAgent}'s name-based semantics). Use
+   * {@link steerDispatch} when the exact dispatch ID is available for precise
+   * targeting.
+   *
+   * @param name    - The agent name as registered (e.g. `'code-reviewer'`).
+   * @param message - The steering message to inject.
+   * @returns A result describing the delivery outcome.
+   */
+  steerDispatchByName(name: string, message: string): Promise<SteerDispatchResult>
   /**
    * Answer a pending child dispatch question raised via AskUserQuestion.
    * Normally called by the SDK runtime on the dispatcher's behalf after the
@@ -811,6 +1075,24 @@ export interface IonContext {
   searchHistory(query: string, maxResults?: number): Promise<HistoryMatch[]>
 
   /**
+   * Returns a point-in-time snapshot of every dispatch currently active in
+   * this session's engine registry. All returned entries carry
+   * `status: "running"` because the registry only tracks in-flight dispatches
+   * — terminal entries are deregistered on completion and absent from the
+   * snapshot.
+   *
+   * Use this to enumerate running background agents and their nesting
+   * relationships without subscribing to `engine_agent_state` events.
+   * Complements {@link IonContext.recallAgent} and
+   * {@link IonContext.steerDispatch}: get the `dispatchId` from here, then
+   * target the specific dispatch precisely.
+   *
+   * Returns an empty array when no dispatches are active or when the engine
+   * does not support this RPC (older engine builds).
+   */
+  listDispatchState(): Promise<DispatchEntry[]>
+
+  /**
    * One-shot lightweight inference call. Fires a single round-trip to
    * the provider — no tools, no agent loop, no fallback chain. The
    * lightweight counterpart to {@link IonContext.dispatchAgent}.
@@ -892,6 +1174,23 @@ export interface IonContext {
      *  Same extension type only — the engine enforces this. */
     send(targetKey: string, kind: string, payload: Record<string, unknown>): Promise<void>
   }
+
+  /**
+   * Trigger an immediate fire of the named schedule job. Reuses the engine's
+   * existing fireJob machinery (in-flight guard, single-concurrency
+   * arbitration, last-run recording). The handler receives a
+   * {@link ScheduleFireMeta} with `backfill: true` so it can distinguish
+   * a backfill from a live tick fire. Returns when the fire is queued (the
+   * handler runs asynchronously).
+   */
+  fireSchedule(id: string): Promise<void>
+
+  /**
+   * Query the status of registered schedule jobs. When `id` is provided,
+   * returns only the matching job (or an empty array when not found). When
+   * `id` is omitted, returns all schedule jobs on this session.
+   */
+  getScheduleStatus(id?: string): Promise<ScheduleStatus[]>
 
   /**
    * Run an operation on exactly one instance when multiple sessions load the
@@ -1239,6 +1538,14 @@ export interface MessageUpdateInfo {
 export interface ModelSelectInfo {
   requestedModel: string
   availableModels?: string[]
+  /**
+   * The RAW user prompt for this turn, captured BEFORE any `before_prompt`
+   * rewrite. `model_select` routes on this raw text (content/length routing:
+   * pick the model that fits the request); `before_prompt` then adapts the
+   * chosen model's prompt, readable via `ctx.model`. Absent when the firing
+   * site has no prompt in hand.
+   */
+  prompt?: string
 }
 
 /** Payload for `context_discover`. */
@@ -1759,6 +2066,10 @@ export interface HookPayloadMap {
   // Cross-session messaging (1) -- fires when another session of the same
   // extension type sends a message via ctx.sessions.send().
   session_message: SessionMessageInfo
+
+  // Schedule missed (1) -- fires when the scheduler detects a daily/weekly
+  // slot was missed while the engine was down. Observation-only: no veto.
+  schedule_missed: ScheduleMissedInfo
 }
 
 /** Payload for the `session_message` hook. */
@@ -1871,7 +2182,7 @@ export interface IonSDK {
   }
 
   /**
-   * Scheduled job registration. Three kinds: daily, weekly, interval.
+   * Scheduled job registration. Four kinds: daily, weekly, interval, once.
    * Each returns a `ScheduleHandle` with `.unregister()`. Static and
    * dynamic registration share the same shape.
    *
@@ -1893,12 +2204,25 @@ export interface IonSDK {
    *     // ...
    *   },
    * })
+   *
+   * // One-shot: fires once after 5s then self-deregisters.
+   * ion.schedule.once({
+   *   id: 'startup-check',
+   *   delayMs: 5_000,
+   *   handler: async (ctx) => {
+   *     await ctx.dispatchAgent({ name: 'checker', task: 'startup' })
+   *   },
+   * })
    * ```
    */
   schedule: {
     daily(opts: ScheduleDaily): Promise<ScheduleHandle>
     weekly(opts: ScheduleWeekly): Promise<ScheduleHandle>
     interval(opts: ScheduleInterval): Promise<ScheduleHandle>
+    /** Register a one-shot schedule that fires once after delayMs and self-deregisters. */
+    once(opts: ScheduleOnce): Promise<ScheduleHandle>
+    /** Imperatively cancel a registered schedule by its id. */
+    cancel(id: string): Promise<void>
   }
 
   /**
@@ -2012,7 +2336,7 @@ export interface ScheduleDaily {
   /** Concurrency mode: "single" (default) fires on one instance, "all" fires on every instance. */
   concurrency?: 'single' | 'all'
   enabled?: () => boolean | Promise<boolean>
-  handler: (ctx: IonContext) => Promise<void> | void
+  handler: ScheduleHandler
 }
 
 /** Weekly schedule: fires once per week on dayOfWeek at time. */
@@ -2025,7 +2349,7 @@ export interface ScheduleWeekly {
   /** Concurrency mode: "single" (default) fires on one instance, "all" fires on every instance. */
   concurrency?: 'single' | 'all'
   enabled?: () => boolean | Promise<boolean>
-  handler: (ctx: IonContext) => Promise<void> | void
+  handler: ScheduleHandler
 }
 
 /** Interval schedule: fires every intervalMs (>=1000ms required). */
@@ -2036,20 +2360,120 @@ export interface ScheduleInterval {
   /** Concurrency mode: "single" (default) fires on one instance, "all" fires on every instance. */
   concurrency?: 'single' | 'all'
   enabled?: () => boolean | Promise<boolean>
-  handler: (ctx: IonContext) => Promise<void> | void
+  handler: ScheduleHandler
+}
+
+/**
+ * One-shot schedule: fires exactly once after delayMs (>=1000ms required),
+ * then self-deregisters. The engine removes the job from the registry after
+ * the handler returns — no second fire is possible.
+ *
+ * A once job whose enabled predicate returns false is skipped for that tick
+ * but remains armed; the predicate skip does NOT consume the shot.
+ */
+export interface ScheduleOnce {
+  id: string
+  /** Milliseconds after registration to fire. Minimum 1000ms. */
+  delayMs: number
+  tz?: string
+  timeoutMs?: number
+  /** Concurrency mode: "single" (default) fires on one instance, "all" fires on every instance. */
+  concurrency?: 'single' | 'all'
+  enabled?: () => boolean | Promise<boolean>
+  handler: ScheduleHandler
+}
+
+/**
+ * Handler function for any schedule kind. The second parameter carries a
+ * {@link ScheduleControl} object that lets the handler inspect its own
+ * job ID and imperatively unregister itself before the engine's natural
+ * lifecycle removes it. The third parameter carries fire metadata so the
+ * handler can distinguish a live tick fire from a backfill fire triggered
+ * by {@link IonContext.fireSchedule}. Both optional parameters are
+ * backward-compatible — existing handlers that only accept
+ * `(ctx: IonContext)` continue to work unchanged.
+ */
+export type ScheduleHandler = (ctx: IonContext, control?: ScheduleControl, meta?: ScheduleFireMeta) => Promise<void> | void
+
+/**
+ * Control object passed to every schedule handler at invocation time.
+ * Lets a handler inspect its own job ID or imperatively cancel future
+ * fires without waiting for the engine's self-deregister lifecycle.
+ */
+export interface ScheduleControl {
+  /** The stable job ID this handler was registered under. */
+  jobId: string
+  /**
+   * Unregisters this job so no further fires occur. For once jobs the engine
+   * auto-deregisters after the handler returns; calling this inside the
+   * handler is a no-op for once (the result is the same). For interval /
+   * daily / weekly jobs it lets the handler decide mid-execution that the
+   * job should stop.
+   */
+  unregister(): Promise<void>
+}
+
+/**
+ * Metadata passed as the third argument to a schedule handler. Lets the
+ * handler distinguish a live tick fire from a backfill fire triggered by
+ * {@link IonContext.fireSchedule}.
+ */
+export interface ScheduleFireMeta {
+  /** RFC3339 UTC timestamp when the engine fired the job. */
+  firedAt: string
+  /** True when the fire was triggered by ctx.fireSchedule (a backfill). */
+  backfill: boolean
+  /** RFC3339 UTC of the missed slot that triggered the backfill (when backfill=true). */
+  missedSlotUtc?: string
+}
+
+/**
+ * Payload for the `schedule_missed` hook. Fired when the scheduler detects
+ * a daily/weekly slot was missed while the engine was down.
+ */
+export interface ScheduleMissedInfo {
+  /** The schedule job's stable identifier. */
+  id: string
+  /** "daily" or "weekly". */
+  kind: 'daily' | 'weekly' | 'interval' | 'once'
+  /** RFC3339 UTC of the missed slot. */
+  missedSlotUtc: string
+  /** True when a last-run marker existed on disk at detection time. */
+  hadMarker: boolean
+  /** True when the job ran inside its current interval-scope window. */
+  ranWithinScope: boolean
+}
+
+/**
+ * Status of a registered schedule job, returned by
+ * {@link IonContext.getScheduleStatus}.
+ */
+export interface ScheduleStatus {
+  /** The job's stable identifier. */
+  id: string
+  /** "daily", "weekly", "interval", or "once". */
+  kind: string
+  /** RFC3339 UTC of the last successful fire. Empty when never run. */
+  lastRunUtc?: string
+  /** True when the job ran inside its current interval-scope window. */
+  ranWithinScope: boolean
+  /** RFC3339 UTC of the next scheduled fire. */
+  nextRunUtc?: string
 }
 
 /** Wire-format job (handler stripped — kept locally). Used internally
  *  by the SDK runtime to ship init-time and runtime declarations to
  *  the engine. Extension authors normally don't construct this shape
- *  directly; use the ScheduleDaily/Weekly/Interval inputs above.
+ *  directly; use the ScheduleDaily/Weekly/Interval/Once inputs above.
  */
 export interface ScheduleJob {
   id: string
-  kind: 'daily' | 'weekly' | 'interval'
+  kind: 'daily' | 'weekly' | 'interval' | 'once'
   time?: string
   dayOfWeek?: string
   intervalMs?: number
+  /** Milliseconds-to-first-fire for once jobs. Ignored for other kinds. */
+  delayMs?: number
   tz?: string
   timeoutMs?: number
   enabledRefName?: string
@@ -2057,7 +2481,7 @@ export interface ScheduleJob {
   concurrency?: 'single' | 'all'
 }
 
-/** Handle returned by ion.schedule.daily/weekly/interval. */
+/** Handle returned by ion.schedule.daily/weekly/interval/once. */
 export interface ScheduleHandle {
   id: string
   unregister(): Promise<void>

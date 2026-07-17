@@ -1,15 +1,17 @@
 import { ipcMain } from 'electron'
 import { IPC } from '../../shared/types'
 import type { RunOptions } from '../../shared/types'
-import { log as _log } from '../logger'
-import { state, sessionPlane, engineBridge, activeAssistantMessages, lastMessagePreview, lastForwardedTabStatus, extensionCommandRegistry, DEBUG_MODE } from '../state'
+import { log as _log, setSessionContext } from '../logger'
+import { state, sessionPlane, engineBridge, activeAssistantMessages, lastMessagePreview, lastForwardedTabStatus, lastForwardedTabMeta, extensionCommandRegistry, DEBUG_MODE } from '../state'
 import { terminalManager } from '../terminal-manager-instance'
+import { evictAtvTab } from '../atv-state-cache'
+import { notifyAtvUserMessageEcho } from '../atv-window-manager'
 import { getRemoteTabStates } from '../remote/snapshot'
 import { processIncomingPrompt } from '../prompt-pipeline'
 import { parseSlash } from '../slash-parse'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 /**
@@ -31,17 +33,17 @@ function log(msg: string): void {
 function markSlashForRetry(tabId: string, options: RunOptions): void {
   const slash = parseSlash(options.prompt)
   if (slash) {
-    log(`retrySlash: tab=${tabId} prompt is slash /${slash.command} → setting resolveSlash=true (engine resolves + expands)`)
+    log('retry_slash: slash command, setting resolve', { tab_id: tabId, command: slash.command })
     options.resolveSlash = true
   } else {
-    log(`retrySlash: tab=${tabId} prompt is not a slash → no resolveSlash`)
+    log('retry_slash: not a slash command', { tab_id: tabId })
   }
 }
 
 export function registerSessionIpc(): void {
   ipcMain.handle(IPC.CREATE_TAB, () => {
     const tabId = sessionPlane.createTab()
-    log(`IPC CREATE_TAB → ${tabId}`)
+    log('create_tab', { tab_id: tabId })
 
     if (state.remoteTransport) {
       getRemoteTabStates().then(({ tabs: tabStates }) => {
@@ -61,7 +63,7 @@ export function registerSessionIpc(): void {
   // Idempotent in the control plane (adoptTab preserves an existing entry).
   ipcMain.handle(IPC.ADOPT_TAB, (_event, tabId: string) => {
     const adopted = sessionPlane.adoptTab(tabId)
-    log(`IPC ADOPT_TAB → ${adopted}`)
+    log('adopt_tab', { tab_id: adopted })
 
     if (state.remoteTransport) {
       getRemoteTabStates().then(({ tabs: tabStates }) => {
@@ -76,7 +78,7 @@ export function registerSessionIpc(): void {
   })
 
   ipcMain.on(IPC.INIT_SESSION, (_event, tabId: string) => {
-    log(`IPC INIT_SESSION: ${tabId}`)
+    log('init_session', { tab_id: tabId })
     sessionPlane.initSession(tabId)
   })
 
@@ -87,13 +89,20 @@ export function registerSessionIpc(): void {
   ipcMain.handle(
     IPC.ENSURE_ENGINE_SESSION,
     async (_event, { tabId, workingDirectory, conversationId, permissionMode }: { tabId: string; workingDirectory: string; conversationId?: string | null; permissionMode?: 'auto' | 'plan' }) => {
-      log(`IPC ENSURE_ENGINE_SESSION: tab=${tabId} conversationId=${conversationId ?? 'none'} dir=${workingDirectory}`)
-      return sessionPlane.ensureSession(tabId, { workingDirectory, conversationId, permissionMode })
+      log('ensure_engine_session', { tab_id: tabId, conversation_id: conversationId ?? 'none', dir: workingDirectory })
+      const result = await sessionPlane.ensureSession(tabId, { workingDirectory, conversationId, permissionMode })
+      // Stamp the logger context once the session is confirmed. tabId is the
+      // desktop session_id (stable tab/session identifier); conversationId maps
+      // to conversation_id when known.
+      if (conversationId) {
+        setSessionContext(tabId, conversationId)
+      }
+      return result
     },
   )
 
   ipcMain.on(IPC.RESET_TAB_SESSION, (_event, tabId: string) => {
-    log(`IPC RESET_TAB_SESSION: ${tabId}`)
+    log('reset_tab_session', { tab_id: tabId })
     sessionPlane.resetTabSession(tabId)
   })
 
@@ -103,23 +112,28 @@ export function registerSessionIpc(): void {
   // not amputated. RESET_TAB_SESSION (above) is the destructive cut, reserved
   // for the Implement-plan clear-context flow.
   ipcMain.on(IPC.RESTART_TAB_SESSION, (_event, tabId: string) => {
-    log(`IPC RESTART_TAB_SESSION: ${tabId} — queuing stop_session to engine socket (FIFO; will arrive before resubmit's start_session)`)
+    log('restart_tab_session: queuing stop', { tab_id: tabId })
     sessionPlane.restartTabSession(tabId)
-    log(`IPC RESTART_TAB_SESSION: ${tabId} — stop_session enqueued; handler complete`)
+    log('restart_tab_session: stop enqueued', { tab_id: tabId })
   })
 
   ipcMain.handle(IPC.PROMPT, async (_event, { tabId, requestId, options }: { tabId: string; requestId: string; options: RunOptions }) => {
+    // Mirror echo: the OWNER renderer does the optimistic transcript insert
+    // in its own store; user turns never ride normalized events, so the ATV
+    // mirror needs this push to show the message (whether it was typed in
+    // the overlay, the ATV, or iOS — every prompt funnels through here).
+    notifyAtvUserMessageEcho(tabId, options.prompt)
     if (DEBUG_MODE) {
-      log(`IPC PROMPT: tab=${tabId} req=${requestId} prompt="${options.prompt.substring(0, 100)}"`)
+      log('prompt', { tab_id: tabId, request_id: requestId, prompt: options.prompt.substring(0, 100) })
     } else {
-      log(`IPC PROMPT: tab=${tabId} req=${requestId}`)
+      log('prompt', { tab_id: tabId, request_id: requestId })
     }
 
     if (!tabId) throw new Error('No tabId provided — prompt rejected')
     if (!requestId) throw new Error('No requestId provided — prompt rejected')
 
     if (!sessionPlane.hasTab(tabId)) {
-      log(`PROMPT: tab ${tabId} not found — auto-registering`)
+      log('prompt: tab not found, auto-registering', { tab_id: tabId })
       sessionPlane.ensureTab(tabId)
     }
 
@@ -182,13 +196,13 @@ export function registerSessionIpc(): void {
       })
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
-      log(`PROMPT error: ${msg}`)
+      log('prompt: error', { error: msg })
       throw err
     }
   })
 
   ipcMain.handle(IPC.CANCEL, (_event, requestId: string) => {
-    log(`IPC CANCEL: ${requestId}`)
+    log('cancel', { request_id: requestId })
     return sessionPlane.cancel(requestId)
   })
 
@@ -206,20 +220,20 @@ export function registerSessionIpc(): void {
     // steer is a bug in the caller; log and drop instead of silently dispatching
     // a steer_agent command against an engine key with no backing session.
     if (!sessionPlane.hasTab(tabId)) {
-      log(`IPC STEER: tab=${tabId} NOT registered in control plane — dropping steer (len=${message.length})`)
+      log('steer: not registered, dropping', { tab_id: tabId, len: message.length })
       return
     }
-    log(`IPC STEER: tab=${tabId} len=${message.length}`)
+    log('steer', { tab_id: tabId, len: message.length })
     engineBridge.sendSteer(tabId, message)
   })
 
   ipcMain.handle(IPC.STOP_TAB, (_event, tabId: string) => {
-    log(`IPC STOP_TAB: ${tabId}`)
+    log('stop_tab', { tab_id: tabId })
     return sessionPlane.cancelTab(tabId)
   })
 
   ipcMain.handle(IPC.RETRY, async (_event, { tabId, requestId, options }: { tabId: string; requestId: string; options: RunOptions }) => {
-    log(`IPC RETRY: tab=${tabId} req=${requestId}`)
+    log('retry', { tab_id: tabId, request_id: requestId })
     markSlashForRetry(tabId, options)
     return sessionPlane.retry(tabId, requestId, options)
   })
@@ -228,7 +242,7 @@ export function registerSessionIpc(): void {
   ipcMain.handle(IPC.TAB_HEALTH, () => sessionPlane.getHealth())
 
   ipcMain.handle(IPC.CLOSE_TAB, (_event, tabId: string) => {
-    log(`IPC CLOSE_TAB: ${tabId}`)
+    log('close_tab', { tab_id: tabId })
     sessionPlane.closeTab(tabId)
     terminalManager.destroyByPrefix(`${tabId}:`)
     // Conversations key their engine session by the bare tabId (ADR-010),
@@ -246,8 +260,37 @@ export function registerSessionIpc(): void {
     activeAssistantMessages.delete(tabId)
     lastMessagePreview.delete(tabId)
     lastForwardedTabStatus.delete(tabId)
+    lastForwardedTabMeta.delete(tabId)
+    evictAtvTab(tabId)
     for (const key of extensionCommandRegistry.keys()) {
       if (key === tabId || key.startsWith(`${tabId}:`)) extensionCommandRegistry.delete(key)
     }
+  })
+
+  // Renderer fires TAB_META_CHANGED whenever a tab field (title, customTitle,
+  // groupId) changes. The main process pushes a lightweight desktop_tab_meta
+  // delta to iOS immediately instead of waiting for the next 5 s snapshot poll.
+  // Payload: { tabId, title?, runCostUsd?, totalCostUsd?, groupId? }
+  ipcMain.on(IPC.TAB_META_CHANGED, (_event, payload: {
+    tabId: string
+    title?: string
+    runCostUsd?: number
+    totalCostUsd?: number
+    groupId?: string | null
+  }) => {
+    if (!state.remoteTransport) return
+    const { tabId, title, runCostUsd, totalCostUsd, groupId } = payload
+    const delta: Record<string, unknown> = { type: 'desktop_tab_meta', tabId }
+    if (title !== undefined) delta.title = title
+    if (runCostUsd !== undefined) {
+      delta.runCostUsd = runCostUsd
+      // Keep totalCostUsd for lockstep iOS compatibility until iOS migrates.
+      delta.totalCostUsd = runCostUsd
+    } else if (totalCostUsd !== undefined) {
+      delta.totalCostUsd = totalCostUsd
+    }
+    if (groupId !== undefined) delta.groupId = groupId
+    log('tab_meta_changed: pushing desktop_tab_meta', { tab_id: tabId, title: title ?? '-', cost: runCostUsd ?? totalCostUsd ?? '-', group: groupId ?? '-' })
+    state.remoteTransport.send(delta as any)
   })
 }

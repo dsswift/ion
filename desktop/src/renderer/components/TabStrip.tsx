@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import {
-  Terminal, CaretLeft, CaretRight, ArrowsInSimple, ArrowsOutSimple, ChatCircle,
+  Terminal, CaretLeft, CaretRight, ChatCircle,
 } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
-import { HistoryPicker } from './HistoryPicker'
+
 import { SettingsPopover } from './SettingsPopover'
 import { NotificationsBell } from './NotificationsPanel'
+import { AtvLauncherButton } from './AtvLauncherButton'
 import { BranchPickerDialog } from './BranchPickerDialog'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
@@ -22,6 +23,7 @@ import { TabContextMenu } from './TabStripTabContextMenu'
 import { DirectoryPicker } from './TabStripDirectoryPicker'
 import { GroupPill } from './TabStripGroupPill'
 import { TabPill } from './TabStripTabPill'
+import { WorkspaceStatusIndicator } from './WorkspaceStatusIndicator'
 
 export function TabStrip() {
   const tabs = useSessionStore((s) => s.tabs)
@@ -45,8 +47,6 @@ export function TabStrip() {
   const createTerminalTab = useSessionStore((s) => s.createTerminalTab)
   const terminalOpenTabIds = useSessionStore((s) => s.terminalOpenTabIds)
   const colors = useColors()
-  const isExpanded = useSessionStore((s) => s.isExpanded)
-  const toggleExpanded = useSessionStore((s) => s.toggleExpanded)
   const tabsReady = useSessionStore((s) => s.tabsReady)
   const enterpriseNewConversationDefaults = usePreferencesStore((s) => s.enterpriseNewConversationDefaults)
   const worktreeUncommittedMap = useSessionStore((s) => s.worktreeUncommittedMap)
@@ -94,7 +94,7 @@ export function TabStrip() {
   useEffect(() => {
     const id = dirMenuTabId || tabMenuId
     if (id) checkWorktreeUncommitted(tabs.find((t) => t.id === id))
-  }, [dirMenuTabId, tabMenuId])
+  }, [dirMenuTabId, tabMenuId, tabs])
 
   // Keyboard shortcut bridge: Cmd+T / Cmd+Shift+T fire this event when the
   // resolved action is 'show-picker' so the picker opens anchored to the +
@@ -158,10 +158,15 @@ export function TabStrip() {
     if (!el) return
     updateScrollIndicators()
     el.addEventListener('scroll', updateScrollIndicators, { passive: true })
-    const ro = new ResizeObserver(updateScrollIndicators)
+    let rafId = 0
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(updateScrollIndicators)
+    })
     ro.observe(el)
     return () => {
       el.removeEventListener('scroll', updateScrollIndicators)
+      cancelAnimationFrame(rafId)
       ro.disconnect()
     }
   }, [updateScrollIndicators])
@@ -175,17 +180,28 @@ export function TabStrip() {
     scrollRef.current?.scrollBy({ left: amount, behavior: 'smooth' })
   }, [])
 
-  // Convert vertical wheel to horizontal scroll (also allow native horizontal scroll)
-  const onWheel = useCallback((e: React.WheelEvent) => {
-    if (!scrollRef.current) return
-    // Wheel events from portaled popovers (e.g. the group picker dropdown) bubble
-    // through React's component tree even though their DOM target is elsewhere.
-    // Only act on events whose real DOM target lives inside this scroll container.
-    if (!scrollRef.current.contains(e.nativeEvent.target as Node)) return
-    const delta = e.deltaX || e.deltaY
-    if (delta === 0) return
-    e.preventDefault()
-    scrollRef.current.scrollLeft += delta
+  // Convert vertical wheel to horizontal scroll via a NATIVE non-passive listener.
+  // React's synthetic onWheel is registered as a passive listener in React 17+,
+  // so calling e.preventDefault() inside it logs "Unable to preventDefault inside
+  // passive event listener invocation" and the default scroll behavior is not
+  // suppressed. Registering via addEventListener with { passive: false } gives us
+  // a real cancelable wheel event.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const handler = (e: WheelEvent) => {
+      // Wheel events from portaled popovers (e.g. the group picker dropdown) bubble
+      // through the DOM even though their target lives in the PopoverLayer, not
+      // inside this scroll container. Only act on events whose real DOM target
+      // lives inside the scroll container.
+      if (!el.contains(e.target as Node)) return
+      const delta = e.deltaX || e.deltaY
+      if (delta === 0) return
+      e.preventDefault()
+      el.scrollLeft += delta
+    }
+    el.addEventListener('wheel', handler, { passive: false })
+    return () => { el.removeEventListener('wheel', handler) }
   }, [])
 
   if (!tabsReady) {
@@ -228,17 +244,11 @@ export function TabStrip() {
       className="flex items-center"
       style={{ padding: '8px 0' }}
     >
-      {/* Minimize / maximize toggle */}
-      <button
-        onClick={toggleExpanded}
-        className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full transition-colors ml-1"
-        style={{ color: isExpanded ? colors.textTertiary : colors.accent }}
-        title={isExpanded ? 'Minimize (Cmd+J)' : 'Maximize (Cmd+K)'}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = colors.textPrimary }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = isExpanded ? colors.textTertiary : colors.accent }}
-      >
-        {isExpanded ? <ArrowsInSimple size={13} /> : <ArrowsOutSimple size={13} />}
-      </button>
+      {/* Global workspace status indicator — two-tier ambient dot (orange=running,
+          yellow=background-agents, gray=idle). Placed LEFT of the tab strip so
+          it's always visible even when the strip is full. Click opens a popover
+          with per-status tab counts. See WorkspaceStatusIndicator.tsx. */}
+      <WorkspaceStatusIndicator />
 
       {/* Scrollable tabs area — clipped by master card edge */}
       <div className="relative min-w-0 flex-1">
@@ -267,7 +277,6 @@ export function TabStrip() {
         <div
           ref={scrollRef}
           className="overflow-x-auto min-w-0"
-          onWheel={onWheel}
           style={{
             scrollbarWidth: 'none',
             paddingLeft: 8,
@@ -489,6 +498,7 @@ export function TabStrip() {
         </button>
 
         {/* <HistoryPicker /> */}
+        <AtvLauncherButton />
         <NotificationsBell />
 
         <SettingsPopover />

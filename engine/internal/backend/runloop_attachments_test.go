@@ -69,7 +69,7 @@ func TestBuildUserContentBlocks_MultipleImagesPreserveOrder(t *testing.T) {
 func TestBuildUserContentBlocks_DropsEmptyAttachments(t *testing.T) {
 	atts := []types.ImageAttachment{
 		{MediaType: "image/png", Data: ""},      // missing data
-		{MediaType: "", Data: "AAA="},            // missing media type
+		{MediaType: "", Data: "AAA="},           // missing media type
 		{MediaType: "image/jpeg", Data: "GOOD"}, // valid
 	}
 	blocks := buildUserContentBlocks("hi", atts)

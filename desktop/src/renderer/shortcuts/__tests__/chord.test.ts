@@ -6,7 +6,7 @@
  * and the Mod=Cmd/Ctrl platform mapping.
  */
 
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import { describe, it, expect, afterAll, vi } from 'vitest'
 
 // Set navigator.platform BEFORE chord.ts is imported so the module-scope
 // IS_MAC const evaluates to true. vi.hoisted runs after the jsdom env is
@@ -18,7 +18,6 @@ const _saved = vi.hoisted(() => {
 })
 
 import { parseChord, matchesChord, formatChord } from '../../shortcuts/chord'
-import type { Chord } from '../../shortcuts/chord'
 
 afterAll(() => {
   if (_saved) Object.defineProperty(navigator, 'platform', _saved)

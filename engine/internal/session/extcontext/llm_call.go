@@ -34,6 +34,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/cost"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -57,17 +58,11 @@ func BuildLLMCallFunc(sa SessionAccessor) func(extension.LLMCallOpts) (*extensio
 		// reconstructing a failed call from logs alone can see exactly
 		// which precondition tripped.
 		if opts.Model == "" {
-			utils.Log("LLMCall", fmt.Sprintf(
-				"reject: model empty (sessionKey=%s promptLen=%d)",
-				sa.SessionKey(), len(opts.Prompt),
-			))
+			utils.LogWithFields(utils.LevelInfo, "session.llm_call", "reject: model empty ( )", map[string]any{"session_key": sa.SessionKey(), "count": len(opts.Prompt)})
 			return nil, errors.New("LLMCall: model is required")
 		}
 		if opts.Prompt == "" {
-			utils.Log("LLMCall", fmt.Sprintf(
-				"reject: prompt empty (sessionKey=%s model=%s)",
-				sa.SessionKey(), opts.Model,
-			))
+			utils.LogWithFields(utils.LevelInfo, "session.llm_call", "reject: prompt empty ( )", map[string]any{"session_key": sa.SessionKey(), "model": opts.Model})
 			return nil, errors.New("LLMCall: prompt is required")
 		}
 
@@ -78,17 +73,10 @@ func BuildLLMCallFunc(sa SessionAccessor) func(extension.LLMCallOpts) (*extensio
 			providerID = provider.ID()
 		}
 		if provider == nil {
-			utils.Log("LLMCall", fmt.Sprintf(
-				"reject: no provider for model (sessionKey=%s model=%s)",
-				sa.SessionKey(), opts.Model,
-			))
+			utils.LogWithFields(utils.LevelInfo, "session.llm_call", "reject: no provider for model ( )", map[string]any{"session_key": sa.SessionKey(), "model": opts.Model})
 			return nil, fmt.Errorf("LLMCall: no provider registered for model %q", opts.Model)
 		}
-		utils.Log("LLMCall", fmt.Sprintf(
-			"resolved provider (sessionKey=%s model=%s provider=%s jsonMode=%v maxTokens=%d sysLen=%d promptLen=%d)",
-			sa.SessionKey(), opts.Model, providerID, opts.JSONMode, opts.MaxTokens,
-			len(opts.System), len(opts.Prompt),
-		))
+		utils.LogWithFields(utils.LevelInfo, "session.llm_call", "resolved provider ( )", map[string]any{"session_key": sa.SessionKey(), "model": opts.Model, "provider_i_d": providerID, "j_s_o_n_mode": opts.JSONMode, "max_tokens": opts.MaxTokens, "count": len(opts.System), "count_6": len(opts.Prompt)})
 
 		// --- Build provider stream options ---
 		messages := []types.LlmMessage{
@@ -138,20 +126,13 @@ func BuildLLMCallFunc(sa SessionAccessor) func(extension.LLMCallOpts) (*extensio
 				HasSystemPrompt: streamOpts.System != "",
 				MaxTokens:       streamOpts.MaxTokens,
 			}
-			utils.Debug("LLMCall", fmt.Sprintf(
-				"firing before_provider_request (sessionKey=%s provider=%s model=%s msgs=%d sysPrompt=%v maxTokens=%d)",
-				sa.SessionKey(), info.Provider, info.Model, info.MessageCount,
-				info.HasSystemPrompt, info.MaxTokens,
-			))
+			utils.LogWithFields(utils.LevelDebug, "session.llm_call", "firing before_provider_request ( )", map[string]any{"session_key": sa.SessionKey(), "provider": info.Provider, "model": info.Model, "message_count": info.MessageCount, "has_system_prompt": info.HasSystemPrompt, "max_tokens": info.MaxTokens})
 			// Defensive: a panicking handler must not break the call.
 			// Mirrors the agent loop's recovery shape in runloop.go.
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						utils.Error("LLMCall", fmt.Sprintf(
-							"before_provider_request handler panicked (sessionKey=%s panic=%v)",
-							sa.SessionKey(), r,
-						))
+						utils.LogWithFields(utils.LevelError, "session.llm_call", "before_provider_request handler panicked ( )", map[string]any{"session_key": sa.SessionKey(), "r": r})
 					}
 				}()
 				// FireBeforeProviderRequest builds its own ctx per host;
@@ -160,10 +141,7 @@ func BuildLLMCallFunc(sa SessionAccessor) func(extension.LLMCallOpts) (*extensio
 				eg.FireBeforeProviderRequest(NewExtContext(sa), info)
 			}()
 		} else {
-			utils.Debug("LLMCall", fmt.Sprintf(
-				"no extension group / empty group; skipping before_provider_request (sessionKey=%s)",
-				sa.SessionKey(),
-			))
+			utils.LogWithFields(utils.LevelDebug, "session.llm_call", "no extension group / empty group; skipping before_provider_request ()", map[string]any{"session_key": sa.SessionKey()})
 		}
 
 		// --- Drain the provider stream ---
@@ -197,10 +175,7 @@ func BuildLLMCallFunc(sa SessionAccessor) func(extension.LLMCallOpts) (*extensio
 			go func(perCall context.Context) {
 				select {
 				case <-perCall.Done():
-					utils.Debug("LLMCall", fmt.Sprintf(
-						"per-call context cancelled; cancelling llm_call (sessionKey=%s model=%s)",
-						sa.SessionKey(), opts.Model,
-					))
+					utils.LogWithFields(utils.LevelDebug, "session.llm_call", "per-call context cancelled; cancelling llm_call ( )", map[string]any{"session_key": sa.SessionKey(), "model": opts.Model})
 					cancel()
 				case <-ctx.Done():
 					// Call finished or session root cancelled; nothing to do.
@@ -230,10 +205,7 @@ func BuildLLMCallFunc(sa SessionAccessor) func(extension.LLMCallOpts) (*extensio
 		}
 		if errc != nil {
 			if err := <-errc; err != nil {
-				utils.Log("LLMCall", fmt.Sprintf(
-					"provider error (sessionKey=%s model=%s provider=%s err=%v)",
-					sa.SessionKey(), opts.Model, providerID, err,
-				))
+				utils.LogWithFields(utils.LevelInfo, "session.llm_call", "provider error ( )", map[string]any{"session_key": sa.SessionKey(), "model": opts.Model, "provider_i_d": providerID, "error": err})
 				return nil, fmt.Errorf("LLMCall: provider error: %w", err)
 			}
 		}
@@ -250,21 +222,14 @@ func BuildLLMCallFunc(sa SessionAccessor) func(extension.LLMCallOpts) (*extensio
 		// below this guard), matching the documented contract that no
 		// observability event fires on failure.
 		if cerr := ctx.Err(); cerr != nil {
-			utils.Log("LLMCall", fmt.Sprintf(
-				"cancelled (sessionKey=%s model=%s provider=%s reason=%v contentLen=%d)",
-				sa.SessionKey(), opts.Model, providerID, cerr, len(content),
-			))
+			utils.LogWithFields(utils.LevelInfo, "session.llm_call", "cancelled ( )", map[string]any{"session_key": sa.SessionKey(), "model": opts.Model, "provider_i_d": providerID, "cerr": cerr, "count": len(content)})
 			return nil, fmt.Errorf("LLMCall: cancelled: %w", cerr)
 		}
 
 		elapsed := time.Since(start)
 		cost := computeLLMCallCost(opts.Model, usage)
 
-		utils.Log("LLMCall", fmt.Sprintf(
-			"completed (sessionKey=%s model=%s provider=%s latencyMs=%d contentLen=%d in=%d out=%d cost=%.6f)",
-			sa.SessionKey(), opts.Model, providerID, elapsed.Milliseconds(),
-			len(content), usage.InputTokens, usage.OutputTokens, cost,
-		))
+		utils.LogWithFields(utils.LevelInfo, "session.llm_call", "completed ( )", map[string]any{"session_key": sa.SessionKey(), "model": opts.Model, "provider_i_d": providerID, "elapsed": elapsed.Milliseconds(), "count": len(content), "input_tokens": usage.InputTokens, "output_tokens": usage.OutputTokens, "cost": cost})
 
 		// --- Emit engine_llm_call (observability) ---
 		//
@@ -291,21 +256,9 @@ func BuildLLMCallFunc(sa SessionAccessor) func(extension.LLMCallOpts) (*extensio
 	}
 }
 
-// computeLLMCallCost mirrors backend.computeCost for the LLMCall path. The
-// backend's computeCost is unexported (and lives in a package we cannot
-// import from here without creating a cycle), so we recompute via the
-// same providers.GetModelInfo lookup. Both functions must move in lockstep
-// if the cost formula ever changes.
-//
-// Returns 0 when the model is not in the registry (e.g. custom models
-// without cost metadata) — the consumer treats 0 as "unknown" rather than
-// "free", which is the same behaviour the agent-loop path exhibits.
+// computeLLMCallCost delegates to cost.TurnCost, which provides cache-aware
+// pricing. The historical local reimplementation is removed; all callers in
+// this package share the same formula as backend.computeCost.
 func computeLLMCallCost(model string, usage types.LlmUsage) float64 {
-	info := providers.GetModelInfo(model)
-	if info == nil {
-		return 0
-	}
-	inputCost := float64(usage.InputTokens) / 1000.0 * info.CostPer1kInput
-	outputCost := float64(usage.OutputTokens) / 1000.0 * info.CostPer1kOutput
-	return inputCost + outputCost
+	return cost.TurnCost(model, usage)
 }

@@ -65,7 +65,7 @@ type TimeoutsConfig struct {
 	// this so a wedged background dispatch doesn't sit invisibly for
 	// the full default. Zero (the default) means "use the compiled
 	// default 600000 (10min)" via the standard nil-safe accessor below.
-	RunStallMs        int64 `json:"runStallMs,omitempty"`        // default: 600000 (10min)
+	RunStallMs int64 `json:"runStallMs,omitempty"` // default: 600000 (10min)
 	// StreamIdleMs is the maximum gap allowed between two Server-Sent Events
 	// while reading a provider's streaming LLM response. The shared HTTP
 	// transport already caps the wait for the FIRST byte (ResponseHeaderTimeout

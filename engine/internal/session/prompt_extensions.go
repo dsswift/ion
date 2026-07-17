@@ -1,7 +1,6 @@
 package session
 
 import (
-	"fmt"
 	"path/filepath"
 
 	"github.com/dsswift/ion/engine/internal/backend"
@@ -38,7 +37,7 @@ func (m *Manager) lateLoadExtensions(s *engineSession, key string, overrides *Pr
 			WorkingDirectory: s.config.WorkingDirectory,
 		}
 		if err := host.Load(extPath, extCfg); err != nil {
-			utils.Log("Session", "per-prompt extension load failed for "+extPath+": "+err.Error())
+			utils.LogWithFields(utils.LevelInfo, "session", "per-prompt extension load failed for", map[string]any{"ext_path": extPath, "error": err.Error()})
 			continue
 		}
 		capturedKey := key
@@ -53,20 +52,57 @@ func (m *Manager) lateLoadExtensions(s *engineSession, key string, overrides *Pr
 
 	for _, host := range group.Hosts() {
 		capturedKey := key
+		// Bind session/conversation IDs so extension log notifications are
+		// stamped with the correlating IDs (unified log schema).
+		host.BindSession(s.key, s.conversationID)
 		host.SetOnSendMessage(func(payload extension.SendPromptPayload) {
 			// Shared dispatch body (prompt_options.go) so this late-loaded-
 			// extension path produces identical run configuration to the
 			// primary wiring in start_session.go. The two sites must not diverge.
 			go m.dispatchSendPromptPayload(capturedKey, "prompt_extensions", payload)
 		})
+		// Wire the per-handler hook_latency telemetry sink (mirrors the primary
+		// wiring in start_session.go — the two sites must not diverge). Nil sink
+		// when the session has no collector; callHook then emits nothing.
+		if s.telemetry != nil {
+			host.SetTelemetrySink(s.telemetry.Event)
+		}
 		host.SetPersistentEmit(func(ev types.EngineEvent) {
 			if ev.Type == "engine_agent_state" {
+				// Cache the extension's roster, then re-emit a merged snapshot
+				// that includes engine-managed entries (dispatch state with
+				// task, conversationId, progress). Forwarding the extension's
+				// raw event would overwrite engine-managed entries on the
+				// desktop due to the complete-snapshot contract.
 				s.agents.CacheExtStates(ev.Agents)
+				merged := s.agents.MergedSnapshot()
+				utils.LogWithFields(utils.LevelInfo, "session", "agent_snapshot_emitted reason=ext_emit_merged", map[string]any{"captured_key": capturedKey, "count": len(merged)})
+				m.emit(capturedKey, types.EngineEvent{Type: "engine_agent_state", Agents: merged})
+				return
+			}
+			if ev.Type == "engine_status" && ev.Fields != nil && ev.Fields.ExtensionName != "" {
+				m.mu.Lock()
+				s.extensionName = ev.Fields.ExtensionName
+				m.mu.Unlock()
 			}
 			m.emit(capturedKey, ev)
 		})
 	}
 	s.extGroup = group
+	// Capture extension identity for telemetry attribution (run.complete /
+	// llm.call ctx.extension). Same capture as loadAndWireExtensions — the
+	// two wiring sites must not diverge. Caller holds m.mu, so no extra
+	// locking here. Name resolves manifest → init-handshake → directory
+	// basename (host_lifecycle.go / parseInitResult); Version is
+	// manifest-only.
+	for _, h := range group.Hosts() {
+		if s.extensionName == "" && h.Name() != "" {
+			s.extensionName = h.Name()
+		}
+		if s.extensionVersion == "" && h.Version() != "" {
+			s.extensionVersion = h.Version()
+		}
+	}
 	ctx := m.newExtContext(s, key)
 	_ = group.FireSessionStart(ctx)
 }
@@ -77,36 +113,41 @@ func (m *Manager) fireBeforeAgentStart(s *engineSession, key string, extGroup *e
 	if extGroup == nil || extGroup.IsEmpty() || skipExtensions {
 		return
 	}
-	utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: firing before_agent_start", key))
+	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: firing before_agent_start", map[string]any{"key": key})
 	basCtx := m.newExtContext(s, key)
 	agentSysPrompt, _, _ := extGroup.FireBeforeAgentStart(basCtx, extension.AgentInfo{IsRoot: true})
 	if agentSysPrompt != "" {
 		opts.AppendSystemPrompt += "\n\n" + agentSysPrompt
-		utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: before_agent_start injected %d chars", key, len(agentSysPrompt)))
+		utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: before_agent_start injected chars", map[string]any{"key": key, "count": len(agentSysPrompt)})
 	}
 }
 
-// fireBeforePromptCli fires the before_prompt hook for CliBackend runs.
-// ApiBackend wires this hook inside buildRunConfig; CliBackend skips that path,
+// fireBeforePromptCli fires the before_prompt hook for ClaudeCodeBackend runs.
+// ApiBackend wires this hook inside buildRunConfig; ClaudeCodeBackend skips that path,
 // so we fire the hook here and materialise the result into RunOptions before
-// the subprocess is launched. No-op when the backend is not CliBackend.
+// the subprocess is launched. No-op when the backend is not ClaudeCodeBackend.
 //
 // Under HybridBackend, this only fires when the model resolves to the
-// inner *CliBackend (Anthropic models). API-routed hybrid runs use the
+// inner *ClaudeCodeBackend (Anthropic models). API-routed hybrid runs use the
 // ApiBackend's buildRunConfig path for before_prompt, identical to plain
 // "backend": "api".
 func (m *Manager) fireBeforePromptCli(s *engineSession, key string, extGroup *extension.ExtensionGroup, skipExtensions bool, opts *types.RunOptions) {
-	if _, isCli := m.resolvedBackend(opts.Model).(*backend.CliBackend); !isCli {
+	if _, isCli := m.resolvedBackend(opts.Model).(*backend.ClaudeCodeBackend); !isCli {
 		return
 	}
 	if extGroup == nil || extGroup.IsEmpty() || skipExtensions {
 		return
 	}
-	utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: firing before_prompt (cli)", key))
+	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: firing before_prompt (cli)", map[string]any{"key": key})
 	ctx := m.newExtContext(s, key)
+	// Populate ctx.Model with the SELECTED model (opts.Model is already the
+	// routed model at this point, post model_select) so a before_prompt handler
+	// can adapt the prompt to the chosen model — the payload half of the
+	// model_select→before_prompt handoff.
+	ctx.Model = modelRefFor(opts.Model)
 	rewritten, extraSystem, err := extGroup.FireBeforePrompt(ctx, opts.Prompt)
 	if err != nil {
-		utils.Log("Session", fmt.Sprintf("before_prompt hook error (cli): %v", err))
+		utils.LogWithFields(utils.LevelInfo, "session", "before_prompt hook error (cli)", map[string]any{"error": err})
 		return
 	}
 	if rewritten != "" {
@@ -126,13 +167,14 @@ func (m *Manager) fireModelSelect(s *engineSession, key string, extGroup *extens
 	if extGroup == nil || extGroup.IsEmpty() || skipExtensions {
 		return
 	}
-	utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: firing model_select (requested=%s)", key, opts.Model))
+	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: firing model_select ()", map[string]any{"key": key, "model": opts.Model})
 	msCtx := m.newExtContext(s, key)
 	if overridden, _ := extGroup.FireModelSelect(msCtx, extension.ModelSelectInfo{
 		RequestedModel: opts.Model,
+		Prompt:         opts.Prompt,
 	}); overridden != "" {
-		utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: model_select override: %s -> %s", key, opts.Model, overridden))
+		utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: model_select override: ->", map[string]any{"key": key, "model": opts.Model, "run_id": overridden})
 		opts.Model = overridden
 	}
-	utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: model_select complete", key))
+	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: model_select complete", map[string]any{"key": key})
 }

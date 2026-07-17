@@ -1,0 +1,406 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "green",
+        "name": "Desktop send frames",
+        "titleFormat": "send: {{fields_event_type}} seq={{fields_seq}} dwell={{fields_queue_dwell_ms}}ms",
+        "expr": "{component=\"desktop\"} | json | tag=\"transport-frame\"",
+        "step": "60s"
+      },
+      {
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "blue",
+        "name": "iOS receive frames",
+        "titleFormat": "recv: {{fields_event_type}} adj={{fields_adj_latency_ms}}ms",
+        "expr": "{component=\"ios\"} | json | tag=\"transport.receive\" | msg=\"frame received\"",
+        "step": "60s"
+      }
+    ]
+  },
+  "description": "Wire latency between desktop and iOS — per-event_type send latency and iOS receive latency with clock-skew correction.\n\n**Freshness caveat:** iOS diagnostic logs are pulled periodically (~30 s per the commit-10 pull interval). Data on the iOS-receive panels may be up to ~30 s stale relative to actual receipt time. The desktop-send panels are real-time (logs land in desktop.jsonl immediately).",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "## Ion Wire Latency\n\nPer-event_type send and receive latency between the desktop and iOS companion. **Desktop-send panels** show real-time data from `desktop.jsonl`. **iOS-receive panels** are bounded by the ~30 s diagnostic-log pull interval (see commit 10) — data may be up to 30 s stale.\n\nClock-skew correction is applied to iOS receive latency via a heartbeat-seeded exponential moving average (`adj_latency_ms = raw_latency_ms − skew_est_ms`)."
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Desktop → iOS: send queue dwell by event_type (p50 / p95)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 3
+      },
+      "description": "Time from event entering the send queue to frame build, per event_type. High dwell indicates a blocked send queue (transport backpressure or slow encryption). Source: desktop.jsonl tag=transport-frame fields.queue_dwell_ms.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "quantile_over_time(0.5, {component=\"desktop\"} | json | tag=\"transport-frame\" | fields_queue_dwell_ms != \"\" | unwrap fields_queue_dwell_ms [1m]) by (fields_event_type)",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "p50 {{fields_event_type}}"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "quantile_over_time(0.95, {component=\"desktop\"} | json | tag=\"transport-frame\" | fields_queue_dwell_ms != \"\" | unwrap fields_queue_dwell_ms [1m]) by (fields_event_type)",
+          "queryType": "range",
+          "refId": "B",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "p95 {{fields_event_type}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Desktop → iOS: payload bytes by event_type (p50 / p95)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 3
+      },
+      "description": "Compressed payload size per outbound frame. Large payloads (snapshot, conversation_history) drive bandwidth usage. Source: desktop.jsonl tag=transport-frame fields.payload_bytes.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "quantile_over_time(0.5, {component=\"desktop\"} | json | tag=\"transport-frame\" | fields_payload_bytes != \"\" | unwrap fields_payload_bytes [1m]) by (fields_event_type)",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "p50 {{fields_event_type}}"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "quantile_over_time(0.95, {component=\"desktop\"} | json | tag=\"transport-frame\" | fields_payload_bytes != \"\" | unwrap fields_payload_bytes [1m]) by (fields_event_type)",
+          "queryType": "range",
+          "refId": "B",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "p95 {{fields_event_type}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "iOS receive: adjusted latency by event_type (p50 / p95)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 11
+      },
+      "description": "Clock-skew-corrected one-way latency from desktop frame-build to iOS decode, per event_type. adj_latency_ms = raw_latency_ms − skew_est_ms. Source: ios-diagnostic-logs.jsonl tag=transport.receive msg=\"frame received\", bounded by ~30 s pull interval (freshness caveat).",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "quantile_over_time(0.5, {component=\"ios\"} | json | tag=\"transport.receive\" | fields_adj_latency_ms != \"\" | unwrap fields_adj_latency_ms [5m]) by (fields_event_type)",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "p50 {{fields_event_type}}"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "quantile_over_time(0.95, {component=\"ios\"} | json | tag=\"transport.receive\" | fields_adj_latency_ms != \"\" | unwrap fields_adj_latency_ms [5m]) by (fields_event_type)",
+          "queryType": "range",
+          "refId": "B",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "p95 {{fields_event_type}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "iOS receive: heartbeat clock-skew estimate over time",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 11
+      },
+      "description": "The rolling clock-skew estimate (α=0.25 EMA) from heartbeat round-trips. A stable non-zero value is expected and normal — iOS and desktop clocks rarely agree perfectly. Rapid drift may indicate NTP problems on either device. Source: ios-diagnostic-logs.jsonl tag=transport.receive msg=\"heartbeat received\".",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg_over_time({component=\"ios\"} | json | tag=\"transport.receive\" | msg=\"heartbeat received\" | fields_skew_est_ms != \"\" | unwrap fields_skew_est_ms [5m])",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "skew_est_ms (avg)"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "DECODE-ERR drop rate (frames/min)",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 19
+      },
+      "description": "Number of incoming frames that failed JSON decode or schema validation per minute. A non-zero rate indicates a wire mismatch (possible version skew between desktop and iOS builds). Source: desktop.jsonl and ios-diagnostic-logs.jsonl. The desktop emits decode errors at ERROR level with tag=transport; iOS emits them at ERROR level with tag=transport.receive in TransportManager+Receive.swift.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 20
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "decode errors (desktop)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "decode errors (ios)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({component=\"desktop\"} | json | level=\"ERROR\" | tag=\"transport\" | msg=~\".*(decode|decompress|JSON parse|failed to parse).*\" [1m]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "decode errors (desktop)"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({component=\"ios\"} | json | level=\"ERROR\" | tag=\"transport.receive\" | msg=~\".*(decode|decompression|JSON|failed to parse).*\" [1m]))",
+          "queryType": "range",
+          "refId": "B",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "decode errors (ios)"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "tags": [
+    "ion",
+    "wire",
+    "latency",
+    "ios",
+    "transport"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Ion Wire Latency",
+  "uid": "ion-wire-latency-001",
+  "version": 1
+}

@@ -1,4 +1,4 @@
-.PHONY: default desktop engine relay relay-local ios ios-check ios-test desktop-test engine-test test test-all test-linux test-linux-engine test-linux-desktop clean check-file-sizes check-contracts check-status-writers claude-symlinks hooks
+.PHONY: default desktop engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test test test-all test-linux test-linux-engine test-linux-desktop clean check-file-sizes check-contracts check-status-writers check-atv-parity check-logging check-dashboards claude-symlinks hooks lint-desktop
 
 # Homebrew installs node/npm under /opt/homebrew/bin on Apple Silicon.
 # Make runs recipes with /bin/sh which only has /usr/bin:/bin in PATH,
@@ -8,8 +8,30 @@ export PATH := /opt/homebrew/bin:$(PATH)
 
 default: engine
 
-engine:
+engine: generate-dashboards
 	@cd engine && bash commands/install.command --standalone || { echo "❌ Engine build failed"; exit 1; }
+
+# Regenerate the provisioned Grafana dashboard JSON (+ queries.md) into the
+# working tree from the canonical dashboards-as-code source. Runs on every
+# `make engine` (and therefore every `make desktop`, which calls make engine).
+#
+# Why regenerate on build: the local docker-compose Grafana bind-mounts
+# ./grafana/provisioning directly and its dashboards provider reloads every
+# 30s (updateIntervalSeconds: 30 in dashboards.yaml). Emitting the JSON into
+# the tree on build means a local `docker compose up -d` Grafana auto-picks-up
+# dashboard changes with no manual `npm run generate` step, and any resulting
+# drift is immediately visible/committable in `git status`.
+#
+# SOFT STEP — never blocks the engine build. If Node is missing or generation
+# errors, we print a skip notice and continue. `make check-dashboards` remains
+# the HARD drift gate (CI + pre-push): this target only writes, it does not
+# verify. The `|| true` cannot mask a real drift regression because the gate,
+# not this step, is what fails the build on drift.
+generate-dashboards:
+	@command -v node >/dev/null 2>&1 || { echo "⚠️  dashboards: node not found — skipping dashboard generation (make check-dashboards still gates drift in CI)"; exit 0; }
+	@node docs/observability/dashboards/src/generate.ts >/dev/null 2>&1 \
+		&& echo "✅ dashboards: regenerated provisioned JSON into docs/observability/grafana/provisioning/dashboards/" \
+		|| echo "⚠️  dashboards: generation failed — continuing engine build (make check-dashboards still gates drift in CI)"
 
 desktop:
 	@$(MAKE) engine
@@ -43,6 +65,9 @@ engine-test:
 desktop-test:
 	@cd desktop && npm test
 
+lint-desktop:
+	@cd desktop && npm run lint
+
 test:
 	@cd engine && go test ./...
 	@cd desktop && npm test 2>/dev/null || true
@@ -50,7 +75,7 @@ test:
 # Run every test surface end-to-end before merging. Stops at the first
 # failure so you don't waste minutes on a downstream failure that's really
 # caused by an earlier component.
-test-all: check-file-sizes check-contracts check-status-writers engine-test desktop-test ios-test
+test-all: check-file-sizes check-contracts check-status-writers check-atv-parity check-logging check-dashboards engine-test desktop-test ios-test
 	@echo "✅ test-all: all surfaces green"
 
 # ---------------------------------------------------------------------------
@@ -87,13 +112,26 @@ test-linux-engine:
 	@command -v docker >/dev/null 2>&1 || { echo "❌ docker not found — install Docker/Colima to run the Linux parity gate"; exit 1; }
 	@echo "▶ engine: go test -race ./... on linux/amd64 (golang:$(GO_VERSION))"
 	@docker run --rm --platform linux/amd64 -v "$(PWD)":/src -w /src/engine golang:$(GO_VERSION) \
-		bash -c "git config --global --add safe.directory /src && go test -race ./... && go test ./internal/types/ -run TestContractManifest"
+		bash -c "apt-get update -qq && apt-get install -y -qq nodejs && \
+		         useradd -m -s /bin/bash ionci && \
+		         chmod -R a+rX /src 2>/dev/null || true && \
+		         git config --global --add safe.directory /src && \
+		         su ionci -c 'mkdir -p /home/ionci/.ion /home/ionci/go /home/ionci/gocache && \
+		                      git config --global --add safe.directory /src && \
+		                      cd /src/engine && \
+		                      GOPATH=/home/ionci/go GOCACHE=/home/ionci/gocache \
+		                      go test -race ./... && \
+		                      GOPATH=/home/ionci/go GOCACHE=/home/ionci/gocache \
+		                      go test ./internal/types/ -run TestContractManifest'"
 
 test-linux-desktop:
 	@command -v docker >/dev/null 2>&1 || { echo "❌ docker not found — install Docker/Colima to run the Linux parity gate"; exit 1; }
 	@echo "▶ desktop: npm ci --ignore-scripts && npm run typecheck && npm test on linux (node:22)"
-	@docker run --rm --platform linux/amd64 -v "$(PWD)":/src -w /src/desktop node:22 \
-		bash -c "npm ci --ignore-scripts && npm run typecheck && npm test"
+	@docker run --rm --platform linux/amd64 -v "$(PWD)":/src -v /src/desktop/node_modules -w /src/desktop node:22 \
+		bash -c "useradd -m -s /bin/bash ionci && \
+		         chmod -R a+rX /src 2>/dev/null || true && \
+		         chown ionci:ionci /src/desktop/node_modules && \
+		         su ionci -c 'cd /src/desktop && npm ci --ignore-scripts && npm run typecheck && npm test'"
 
 clean:
 	@cd engine && rm -rf bin/ dist/
@@ -103,17 +141,39 @@ clean:
 check-file-sizes:
 	@bash scripts/check-file-sizes.sh
 
+# Dashboards-as-code drift + structural-overcount gate. Regenerates every
+# provisioned Grafana dashboard JSON and queries.md from the canonical query
+# module and byte-diffs against the committed files; also re-runs the
+# range-accumulation-fixed-window audit on emitted JSON. See
+# docs/observability/dashboards and ADR-020. Zero runtime deps (Node native
+# TypeScript type-stripping) — no npm install needed.
+check-dashboards:
+	@node docs/observability/dashboards/src/check.ts
+
 # Phase 4 of the state-management overhaul. Prohibits new direct writes
 # to tab.status / inst.statusFields outside the dispatcher chokepoints
 # whitelisted in scripts/check-status-writers.sh.
 check-status-writers:
 	@bash scripts/check-status-writers.sh
 
+# Overlay↔ATV broadcast parity: event pushes to the overlay renderer must
+# route through broadcast() (which fans out to the ATV mirror) unless the
+# file is on the owner-only allowlist in scripts/check-atv-parity.sh.
+check-atv-parity:
+	@bash scripts/check-atv-parity.sh
+
 # Cross-language contract drift detection.
 # Asserts the Go-generated contracts.json is up to date; TS and Swift tests
 # validate against it via their own test suites (npm test / xcodebuild test).
 check-contracts:
 	@cd engine && go test ./internal/types/ -run TestContractManifest
+
+# ADR-019 logging-standards enforcement gate.
+# Scans emitter call sites for interpolated messages, console.* in the renderer,
+# relay slog package-level calls that bypass relayHandler, and non-canonical
+# field keys. See scripts/check-logging.sh for the full check catalog.
+check-logging:
+	@bash scripts/check-logging.sh
 
 # Create CLAUDE.md symlinks pointing at sibling AGENTS.md files. Idempotent.
 # CLAUDE.md is gitignored; AGENTS.md is committed as the canonical context file.

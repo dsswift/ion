@@ -118,6 +118,18 @@ export function parseAttachmentsFromMessages(
       }
     }
 
+    // 1b. Engine-generated image attachments on tool / assistant messages.
+    //     Tool-returned and provider-generated images are attached to the
+    //     producing `role: 'tool'` message (by toolId) or the assistant turn
+    //     (provider images) by event-slice-images.ts. Surface them in the
+    //     attachments panel alongside user uploads.
+    if ((msg.role === 'tool' || msg.role === 'assistant') && msg.attachments) {
+      for (const a of msg.attachments) {
+        if (a.type !== 'image') continue
+        add({ kind: 'image', name: a.name, path: a.path })
+      }
+    }
+
     // 2. Content markers on user messages. Available for historical /
     //    reloaded conversation-tab messages from JSONL. Engine tabs
     //    don't use markers (the engine submit path passes structured

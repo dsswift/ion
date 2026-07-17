@@ -94,6 +94,32 @@ func (s *SDK) FireScheduleDeregistered(ctx *Context, info AsyncRegistrationInfo)
 	s.fire(HookScheduleDeregistered, ctx, info)
 }
 
+// ScheduleMissedInfo is the payload for the schedule_missed hook. Fired when
+// the scheduler detects a daily/weekly slot was missed while the engine was
+// down. Observation-only — no veto. The extension decides whether to backfill
+// the missed work via ctx.fireSchedule.
+type ScheduleMissedInfo struct {
+	// ID is the schedule job's stable identifier.
+	ID string `json:"id"`
+	// Kind is "daily" or "weekly".
+	Kind string `json:"kind"`
+	// MissedSlotUtc is the RFC3339 UTC timestamp of the slot that was missed.
+	MissedSlotUtc string `json:"missedSlotUtc"`
+	// HadMarker is true when a last-run marker existed on disk at detection
+	// time. False means the job was known (registered before) but had never
+	// run successfully.
+	HadMarker bool `json:"hadMarker"`
+	// RanWithinScope is true when the job ran at least once inside the
+	// current interval-scope window (today for daily, this week for weekly).
+	RanWithinScope bool `json:"ranWithinScope"`
+}
+
+// FireScheduleMissed fires the schedule_missed hook. Observation-only — no
+// veto; handler return values are ignored.
+func (s *SDK) FireScheduleMissed(ctx *Context, info ScheduleMissedInfo) {
+	s.fire(HookScheduleMissed, ctx, info)
+}
+
 // fireAsyncRegistrationVeto is the shared veto-resolution helper for
 // both *_registered hooks. Last explicit Block wins, matching
 // FireBeforePlanModeEnter. JSON-RPC subprocess extensions return

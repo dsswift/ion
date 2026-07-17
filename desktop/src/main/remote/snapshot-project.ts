@@ -50,11 +50,17 @@ export interface RendererTabInput {
   pillColor?: string | null
   pillIcon?: string | null
   /**
-   * Cumulative cost in USD. Projected to iOS so the cost indicator is
-   * accurate on cold open without waiting for a live engine_status event.
-   * Undefined when the tab has never had a run.
+   * Cost of the most recent run in USD (cache-aware, descendants included).
+   * Projected to iOS so the cost indicator is accurate on cold open without
+   * waiting for a live engine_status event. Undefined when the tab has never
+   * had a run.
    */
-  totalCostUsd?: number
+  runCostUsd?: number
+  /**
+   * Cumulative cost of the entire conversation (this session + all descendant
+   * dispatches) in USD. Undefined when the tab has never had a run.
+   */
+  conversationCostUsd?: number
   /** Cumulative provider-reported input tokens. Undefined on never-run tabs. */
   inputTokens?: number
   /** Cumulative output tokens. Undefined on never-run tabs. */
@@ -122,7 +128,9 @@ export function projectRendererTab(
     convFingerprint: t.convFingerprint || '',
     pillColor: t.pillColor || null,
     pillIcon: t.pillIcon || null,
-    totalCostUsd: t.totalCostUsd,
+    totalCostUsd: t.runCostUsd,
+    runCostUsd: t.runCostUsd,
+    conversationCostUsd: t.conversationCostUsd,
     inputTokens: t.inputTokens,
     outputTokens: t.outputTokens,
     cacheReadTokens: t.cacheReadTokens,

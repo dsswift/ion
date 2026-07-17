@@ -5,13 +5,21 @@
 package scheduling
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
+
+// scheduleMissedDecision is returned by computeBootstrapNextRun when a
+// missed slot is detected and a schedule_missed hook is registered. The
+// caller is responsible for emitting the engine_schedule_missed event
+// and firing the hook.
+type scheduleMissedDecision struct {
+	Slot      time.Time
+	HadMarker bool
+}
 
 // now returns the current time. Honors the test-injectable clock when
 // set via SetNowFn.
@@ -23,6 +31,12 @@ func (s *Scheduler) now() time.Time {
 		return fn()
 	}
 	return time.Now()
+}
+
+// Now is the exported wrapper for the test-injectable clock. Used by
+// the session manager for time.Now() at the scheduler's resolution.
+func (s *Scheduler) Now() time.Time {
+	return s.now()
 }
 
 // SetNowFn injects a clock for deterministic tests. nil restores the
@@ -70,7 +84,7 @@ func (s *Scheduler) loadTz(tz string) *time.Location {
 	}
 	loc, err := time.LoadLocation(tz)
 	if err != nil {
-		utils.Warn("scheduler", fmt.Sprintf("loadTz: unknown tz %q, falling back to Local (%v)", tz, err))
+		utils.LogWithFields(utils.LevelWarn, "scheduling", "load tz unknown falling back to local", map[string]any{"reason": tz, "error": err.Error()})
 		return time.Local
 	}
 	return loc
@@ -87,6 +101,8 @@ func (s *Scheduler) loadTz(tz string) *time.Location {
 // For interval: return `from + IntervalMs` exactly.
 func nextRunFor(job extension.ScheduleJob, from time.Time, loc *time.Location) time.Time {
 	switch job.Kind {
+	case extension.ScheduleOnce:
+		return from.Add(time.Duration(job.DelayMs) * time.Millisecond)
 	case extension.ScheduleInterval:
 		return from.Add(time.Duration(job.IntervalMs) * time.Millisecond)
 	case extension.ScheduleDaily:
@@ -165,44 +181,111 @@ func weekdayFromName(s string) time.Weekday {
 // bootstrapNextRun computes the first next-run for a freshly-observed
 // job. For daily/weekly with persistence enabled and CatchUpEnabled,
 // reads the last-run marker and decides whether to schedule a catch-up
-// fire (next-run = now + stagger) when the job's last scheduled slot
-// has been missed.
+// fire or emit a schedule_missed decision for extension-decided catch-up.
 func (s *Scheduler) bootstrapNextRun(h *extension.Host, job extension.ScheduleJob, now time.Time) {
 	name := hostName(h)
 	loc := s.loadTz(jobTz(job))
-	next := s.computeBootstrapNextRun(name, job, now, loc)
+	hasMissedHook := h != nil && h.HasScheduleMissedHandler()
+	next, decision := s.computeBootstrapNextRun(name, job, now, loc, hasMissedHook)
 	key := hostJobKey{host: h, id: job.JobID}
 
 	s.mu.Lock()
 	s.nextRun[key] = next
 	s.mu.Unlock()
-	utils.Debug("scheduler", fmt.Sprintf("bootstrapNextRun: ext=%s id=%q next=%s", name, job.JobID, next))
+	utils.LogWithFields(utils.LevelDebug, "scheduling", "bootstrap next run", map[string]any{"model": name, "run_id": job.JobID, "reason": next.String()})
+
+	if decision != nil {
+		// Emit the engine_schedule_missed event.
+		s.emitScheduleMissed(job, decision.Slot, decision.HadMarker)
+		// Fire the schedule_missed hook with a resolved ctx.
+		s.mu.RLock()
+		resolve := s.resolve
+		s.mu.RUnlock()
+		if resolve != nil && h != nil {
+			go func() {
+				ctx, err := resolve(h)
+				if err != nil || ctx == nil {
+					utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap schedule missed hook resolve failed", map[string]any{"model": name, "run_id": job.JobID, "error": err})
+					return
+				}
+				info := extension.ScheduleMissedInfo{
+					ID:             job.JobID,
+					Kind:           string(job.Kind),
+					MissedSlotUtc:  decision.Slot.UTC().Format(time.RFC3339),
+					HadMarker:      decision.HadMarker,
+					RanWithinScope: s.lastRunWithinScopeByName(name, job, now, loc),
+				}
+				h.FireScheduleMissed(ctx, info)
+				utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap schedule missed hook fired", map[string]any{"model": name, "run_id": job.JobID, "slot": info.MissedSlotUtc})
+			}()
+		}
+	}
 }
 
 // computeBootstrapNextRun is the pure computation half of
 // bootstrapNextRun, factored out so catchup_test.go can exercise the
-// decision tree without needing a real *extension.Host. Same body
-// as the inline logic — kept as a method on Scheduler so it has
-// access to s.shouldCatchUp() and s.readLastRunByName.
-func (s *Scheduler) computeBootstrapNextRun(name string, job extension.ScheduleJob, now time.Time, loc *time.Location) time.Time {
+// decision tree without needing a real *extension.Host.
+//
+// When hasMissedHook is true and a missed slot is detected, the method
+// returns (normal next slot, non-nil decision) so the caller can emit
+// the event and fire the hook. When hasMissedHook is false and a missed
+// slot is detected, auto-catch-up fires (next = now + stagger).
+//
+// First-sighting flood guard: when no marker exists at all, the method
+// records FirstSeenUtc and does NOT catch up on this pass. A job first
+// seen at noon will not catch up this morning's slot.
+func (s *Scheduler) computeBootstrapNextRun(name string, job extension.ScheduleJob, now time.Time, loc *time.Location, hasMissedHook bool) (time.Time, *scheduleMissedDecision) {
 	next := nextRunFor(job, now, loc)
 
-	// Catch-up only applies to daily/weekly (interval jobs catch up
-	// implicitly by firing at now+interval). Disabled when persistence
-	// is off or CatchUpEnabled is explicitly false.
-	if job.Kind != extension.ScheduleInterval && s.shouldCatchUp() {
-		if lastRun, ok := s.readLastRunByName(name, job); ok {
-			// What was the most recent scheduled slot BEFORE now?
-			lastSlot := lastScheduledSlotBefore(job, now, loc)
-			// If lastSlot is after lastRun, the slot was missed.
-			if lastSlot.After(lastRun) {
-				// Schedule the catch-up fire ~now + stagger.
-				next = now.Add(CatchUpStagger)
-				utils.Log("scheduler", fmt.Sprintf("bootstrapNextRun: ext=%s id=%q catch-up scheduled (missed slot %s)", name, job.JobID, lastSlot))
+	// Catch-up only applies to daily/weekly (interval and once jobs catch up
+	// implicitly by firing at now+interval/now+delay). Disabled when
+	// persistence is off or CatchUpEnabled is explicitly false.
+	if job.Kind != extension.ScheduleInterval && job.Kind != extension.ScheduleOnce && s.shouldCatchUp() {
+		marker, hadFile := s.readMarker(name, job)
+
+		if !hadFile {
+			// First sighting: record FirstSeenUtc and do NOT catch up.
+			// The next restart with an elapsed slot will see the marker
+			// and know the job predates the slot.
+			s.recordFirstSeenByName(name, job, now)
+			utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap first sighting recorded", map[string]any{"model": name, "run_id": job.JobID})
+			return next, nil
+		}
+
+		// Determine the anchor time: LastRunUtc if set, else FirstSeenUtc.
+		var anchor time.Time
+		if marker.LastRunUtc != "" {
+			if t, err := time.Parse(time.RFC3339, marker.LastRunUtc); err == nil {
+				anchor = t
 			}
 		}
+		if anchor.IsZero() && marker.FirstSeenUtc != "" {
+			if t, err := time.Parse(time.RFC3339, marker.FirstSeenUtc); err == nil {
+				anchor = t
+			}
+		}
+		if anchor.IsZero() {
+			// Marker file exists but both timestamps are unparseable.
+			// Treat as first sighting.
+			return next, nil
+		}
+
+		lastSlot := lastScheduledSlotBefore(job, now, loc)
+		if lastSlot.After(anchor) {
+			// The most recent slot is after the anchor: missed.
+			hadMarker := marker.LastRunUtc != ""
+			if hasMissedHook {
+				// Extension decides: schedule normal next, emit decision.
+				utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap missed slot deferred to hook", map[string]any{"model": name, "run_id": job.JobID, "reason": lastSlot.String()})
+				return next, &scheduleMissedDecision{Slot: lastSlot, HadMarker: hadMarker}
+			}
+			// No hook: auto-catch-up (same opinion as before).
+			next = now.Add(CatchUpStagger)
+			utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap next run catch-up scheduled", map[string]any{"model": name, "run_id": job.JobID, "reason": lastSlot.String()})
+			return next, nil
+		}
 	}
-	return next
+	return next, nil
 }
 
 // jobTz returns the job's configured timezone or empty for default.
@@ -223,7 +306,7 @@ func (s *Scheduler) advanceNextRun(key hostJobKey, job extension.ScheduleJob, no
 	s.mu.Lock()
 	s.nextRun[key] = next
 	s.mu.Unlock()
-	utils.Debug("scheduler", fmt.Sprintf("advanceNextRun: ext=%s id=%q next=%s", key.host.Name(), key.id, next))
+	utils.LogWithFields(utils.LevelDebug, "scheduling", "advance next run", map[string]any{"model": key.host.Name(), "run_id": key.id, "reason": next.String()})
 }
 
 // lastScheduledSlotBefore returns the most recent scheduled slot

@@ -50,11 +50,13 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
   tool_call: ['index', 'toolId', 'toolName'],
   tool_call_update: ['partialInput', 'toolId'],
   tool_call_complete: ['index'],
-  tool_result: ['content', 'isError', 'toolId'],
+  tool_result: ['content', 'images', 'isError', 'toolId'],
   task_update: ['message'],
   task_complete: [
+    'conversationTurns',
     'costUsd',
     'durationMs',
+    'lastText',
     'numTurns',
     'permissionDenials',
     'result',
@@ -72,7 +74,7 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
   ],
   session_dead: ['exitCode', 'signal', 'stderrTail'],
   rate_limit: ['rateLimitType', 'resetsAt', 'status'],
-  usage: ['usage'],
+  usage: ['entryId', 'usage', 'userEntryId'],
   permission_request: [
     'options',
     'questionId',
@@ -95,16 +97,19 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
   compacting: ['active', 'clearedBlocks', 'messagesAfter', 'messagesBefore', 'microOnly', 'strategy', 'summary'],
   tool_stalled: ['elapsed', 'toolId', 'toolName'],
   steer_injected: ['messageLength'],
+  prompt_injected: ['kind', 'origin', 'prompt'],
   model_fallback: ['fallbackModel', 'reason', 'requestedModel'],
+  capability_unsupported: ['backend', 'capability', 'reason'],
   run_stalled: ['lastActivity', 'stalledDuration'],
+  task_suspend: ['awaitingDispatchIds'],
   engine_plan_content: ['content', 'hasMore', 'offset', 'planFilePath', 'totalBytes'],
   thinking_block_start: [],
   thinking_delta: ['text'],
   thinking_block_end: ['elapsedSeconds', 'redacted', 'totalTokens'],
   // Extension-surface events (WI-001: single-path collapse)
-  message_end: ['contextPercent', 'cost', 'inputTokens', 'outputTokens'],
+  message_end: ['contextPercent', 'cost', 'entryId', 'inputTokens', 'outputTokens', 'userEntryId'],
   agent_state: ['agents'],
-  harness_message: ['dedupKey', 'message', 'source'],
+  harness_message: ['dedupKey', 'dedupMode', 'message', 'source'],
   working_message: ['message'],
   notify: ['level', 'message'],
   dialog: ['defaultValue', 'dialogId', 'method', 'options', 'title'],
@@ -112,6 +117,7 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
   extension_respawned: ['attemptNumber', 'extensionName'],
   extension_dead_permanent: ['attemptNumber', 'extensionName'],
   events_dropped: ['count'],
+  image_content: ['mediaType', 'path', 'source', 'toolId'],
   // Per-category token breakdown. Emitted after prompt assembly and again
   // after first usage-event reconciliation. Tier encodes the resolution path.
   context_breakdown: [
@@ -122,6 +128,7 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
     'categories',
     'contextWindow',
     'model',
+    'modelBreakdown',
     'totalTokens',
     'unaccounted',
   ],
@@ -131,34 +138,36 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
 
 const TS_SHARED_TYPES: Record<string, string[]> = {
   StatusFields: [
-    // Note: TS also has `backend` which is a desktop-only concept not in Go.
-    // It is intentionally excluded from the contract.
     'backgroundAgents',
     'contextPercent',
     'contextWindow',
+    'conversationCostUsd',
+    'conversationTurns',
     'extensionName',
     'label',
     'model',
+    'numTurns',
     'permissionDenials',
+    'runCostUsd',
     'sessionId',
     'state',
     'team',
-    'totalCostUsd',
   ],
   SessionStatus: [
     'backgroundAgentCount',
     'contextPercent',
     'contextWindow',
+    'conversationCostUsd',
     'extensionName',
     'hasInflightRun',
     'key',
     'lastEmittedAt',
     'model',
     'permissionDenialsPending',
+    'runCostUsd',
     'sessionId',
     'state',
     'stateSince',
-    'totalCostUsd',
   ],
   EngineConfig: [
     'claudeCompat',
@@ -174,7 +183,7 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
     'workingDirectory',
     'workspaceWatchIgnore',
   ],
-  MessageEndUsage: ['contextPercent', 'cost', 'inputTokens', 'outputTokens'],
+  MessageEndUsage: ['contextPercent', 'cost', 'entryId', 'inputTokens', 'outputTokens', 'userEntryId'],
   PermissionOpt: ['id', 'kind', 'label'],
   McpServerInfo: ['name', 'status'],
   UsageData: [
@@ -191,6 +200,7 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
     'costPer1kOutput',
     'id',
     'isCustom',
+    'maxOutputTokens',
     'providerId',
     'supportsCaching',
     'supportsImages',
@@ -202,9 +212,37 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
   ProviderEntry: [
     'apiKeyRef',
     'authSource',
+    'backend',
     'baseURL',
+    'cli',
     'hasAuth',
     'id',
+  ],
+  // Delegated-CLI install/auth status carried on ProviderEntry.cli. Mirrors
+  // Go's ProviderCliStatus.
+  ProviderCliStatus: [
+    'authMethod',
+    'authenticated',
+    'backend',
+    'binaryPath',
+    'email',
+    'installed',
+    'label',
+    'planType',
+    'probedAt',
+    'version',
+  ],
+  // Payload of engine_provider_login (EngineEvent.providerLogin). Mirrors Go's
+  // ProviderLoginUpdate.
+  ProviderLoginUpdate: [
+    'authUrl',
+    'backend',
+    'loginError',
+    'loginId',
+    'provider',
+    'stage',
+    'userCode',
+    'verificationUrl',
   ],
   // Slash-command listing carried inside engine_command_registry snapshots.
   // The desktop's prompt pipeline reads this off the wire to populate a
@@ -222,9 +260,42 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
     'categories',
     'contextWindow',
     'model',
+    'modelBreakdown',
     'totalTokens',
     'unaccounted',
   ],
+  // Per-model cost breakdown row. Mirrors Go's ModelBreakdown in types/model_breakdown.go.
+  ModelBreakdown: ['conversations', 'costUsd', 'inputTokens', 'isSelf', 'model', 'outputTokens'],
+  // Go SessionMessage ↔ TS SessionLoadMessage (types-session.ts). The TS type
+  // also carries `userExecuted`, a desktop-only concept intentionally
+  // excluded from the contract.
+  SessionMessage: [
+    'attachments',
+    'content',
+    'id',
+    'internal',
+    'isError',
+    'markerClearedBlocks',
+    'markerKind',
+    'markerMessageLength',
+    'markerMessagesAfter',
+    'markerMessagesBefore',
+    'markerMicroOnly',
+    'markerPlanFilePath',
+    'markerPlanOperation',
+    'markerPlanSlug',
+    'markerStrategy',
+    'markerSummary',
+    'role',
+    'slashArgs',
+    'slashCommand',
+    'slashSource',
+    'timestamp',
+    'toolId',
+    'toolInput',
+    'toolName',
+  ],
+  SessionMessageAttachment: ['id', 'mimeType', 'name', 'path', 'type'],
   // Wire shape for content blocks carried inside LlmMessage payloads.
   // The compact_boundary variant (gentle-knitting-cup plan) added the
   // optional summary / trigger / messages* / clearedBlocks / tokensBefore
@@ -386,6 +457,9 @@ describe('Contract sync: EngineEvent dispatch fields', () => {
     'dispatchElapsed',
     'dispatchExitCode',
     'dispatchId',
+    'dispatchInputTokens',
+    'dispatchOutputTokens',
+    'dispatchToolCount',
     'dispatchModel',
     'dispatchParentId',
     'dispatchSessionId',

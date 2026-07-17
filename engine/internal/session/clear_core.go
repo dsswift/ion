@@ -77,7 +77,7 @@ func (m *Manager) clearConversationCore(conversationID, preferKey string) (clear
 		if preferKey != "" {
 			res.sessionKey, res.deniedCleared = m.clearSessionDenials(preferKey)
 		}
-		utils.Debug("Session", fmt.Sprintf("clearCore: empty conversationID preferKey=%s deniedCleared=%d (nothing to wipe on disk)", preferKey, res.deniedCleared))
+		utils.LogWithFields(utils.LevelDebug, "session", "clearcore: empty conversationid (nothing to wipe on disk)", map[string]any{"prefer_key": preferKey, "denied_cleared": res.deniedCleared})
 		return res, nil
 	}
 
@@ -91,9 +91,9 @@ func (m *Manager) clearConversationCore(conversationID, preferKey string) (clear
 	}
 	if ownerKey != "" {
 		res.sessionKey, res.deniedCleared = m.clearSessionDenials(ownerKey)
-		utils.Log("Session", fmt.Sprintf("clearCore: convID=%s owned by live session key=%s deniedCleared=%d", conversationID, res.sessionKey, res.deniedCleared))
+		utils.LogWithFields(utils.LevelInfo, "session", "clearcore: owned by live session", map[string]any{"run_id": conversationID, "session_key": res.sessionKey, "denied_cleared": res.deniedCleared})
 	} else {
-		utils.Log("Session", fmt.Sprintf("clearCore: convID=%s has no live session (file-only wipe)", conversationID))
+		utils.LogWithFields(utils.LevelInfo, "session", "clearcore: has no live session (file-only wipe)", map[string]any{"run_id": conversationID})
 	}
 
 	conv, err := conversation.Load(conversationID, "")
@@ -102,22 +102,20 @@ func (m *Manager) clearConversationCore(conversationID, preferKey string) (clear
 			// Pre-minted id with no prompt sent yet — file doesn't exist.
 			// Treat as already-empty: a semantic success with nothing to
 			// wipe. The denial clear above (if any) still applied.
-			utils.Debug("Session", fmt.Sprintf("clearCore: convID=%s file not found, treating as already-empty", conversationID))
+			utils.LogWithFields(utils.LevelDebug, "session", "clearcore: file not found, treating as already-empty", map[string]any{"run_id": conversationID})
 			return res, nil
 		}
-		utils.Log("Session", fmt.Sprintf("clearCore: convID=%s load failed: %v", conversationID, err))
+		utils.LogWithFields(utils.LevelInfo, "session", "clearcore: load failed", map[string]any{"run_id": conversationID, "error": err})
 		return res, fmt.Errorf("load conversation %q: %w", conversationID, err)
 	}
 
 	conv.Messages = nil
-	conv.LastInputTokens = 0
-	conv.LastInputTokensMsgCount = 0
 	if err := conversation.Save(conv, ""); err != nil {
-		utils.Log("Session", fmt.Sprintf("clearCore: convID=%s save failed: %v", conversationID, err))
+		utils.LogWithFields(utils.LevelInfo, "session", "clearcore: save failed", map[string]any{"run_id": conversationID, "error": err})
 		return res, fmt.Errorf("save conversation %q: %w", conversationID, err)
 	}
 	res.wiped = true
-	utils.Log("Session", fmt.Sprintf("clearCore: convID=%s wiped Messages (%d entries preserved in tree) ownerKey=%s deniedCleared=%d", conversationID, len(conv.Entries), res.sessionKey, res.deniedCleared))
+	utils.LogWithFields(utils.LevelInfo, "session", "clearcore: wiped messages ( entries preserved in tree)", map[string]any{"run_id": conversationID, "count": len(conv.Entries), "session_key": res.sessionKey, "denied_cleared": res.deniedCleared})
 	return res, nil
 }
 
@@ -131,12 +129,12 @@ func (m *Manager) clearSessionDenials(key string) (string, int) {
 	defer m.mu.Unlock()
 	s, ok := m.sessions[key]
 	if !ok {
-		utils.Debug("Session", fmt.Sprintf("clearSessionDenials: key=%s not found", key))
+		utils.LogWithFields(utils.LevelDebug, "session", "clearsessiondenials: not found", map[string]any{"key": key})
 		return "", 0
 	}
 	n := len(s.lastPermissionDenials)
 	if n > 0 {
-		utils.Log("Session", fmt.Sprintf("clearSessionDenials: key=%s clearing %d retained permission_denials (/clear dismisses pending question/plan card)", key, n))
+		utils.LogWithFields(utils.LevelInfo, "session", "clearsessiondenials: clearing retained permission_denials (/clear dismisses pending question/plan card)", map[string]any{"key": key, "n": n})
 		s.lastPermissionDenials = nil
 	}
 	s.lastContextPct = 0
@@ -186,11 +184,11 @@ func (m *Manager) emitClearSignal(key string) {
 	}
 	m.mu.RUnlock()
 	if !ok {
-		utils.Debug("Session", fmt.Sprintf("emitClearSignal: key=%s not found, emitting command_result only", key))
+		utils.LogWithFields(utils.LevelDebug, "session", "emitclearsignal: not found, emitting command_result only", map[string]any{"key": key})
 		m.emitCommandResult(key, "clear", nil)
 		return
 	}
-	utils.Log("Session", fmt.Sprintf("emitClearSignal: key=%s emitting engine_status(empty denials) + command_result", key))
+	utils.LogWithFields(utils.LevelInfo, "session", "emitclearsignal: emitting engine_status(empty denials) + command_result", map[string]any{"key": key})
 	m.emit(key, types.EngineEvent{
 		Type: "engine_status",
 		Fields: &types.StatusFields{
@@ -198,7 +196,7 @@ func (m *Manager) emitClearSignal(key string) {
 			ContextPercent: 0,
 			ContextWindow:  window,
 			Model:          model,
-			TotalCostUsd:   cost,
+			RunCostUsd:     cost,
 			// Explicitly nil — engine_status is a full snapshot, and /clear
 			// just dismissed any retained AskUserQuestion / ExitPlanMode
 			// denial. Stating nil documents the dismissal and guards against

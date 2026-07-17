@@ -31,20 +31,33 @@ extension SessionViewModel {
     ) {
         let incomingMs = Int(updatedAt.timeIntervalSince1970 * 1000)
         guard let idx = pairedDevices.firstIndex(where: { $0.id == deviceId }) else {
-            DiagnosticLog.log("DISPLAY-RECV: device=\(deviceId.prefix(8)) not found in pairedDevices (n=\(pairedDevices.count)) — ignoring")
+            DiagnosticLog.log("remote display recv device not found", tag: "session.display", level: .warn, fields: [
+                "device": String(deviceId.prefix(8)),
+                "count": String(pairedDevices.count)
+            ])
             return
         }
 
         let cachedTs = pairedDevices[idx].remoteDisplayUpdatedAt
         let existingMs = cachedTs.map { Int($0.timeIntervalSince1970 * 1000) } ?? 0
         if cachedTs != nil && incomingMs <= existingMs {
-            DiagnosticLog.log("DISPLAY-RECV: device=\(deviceId.prefix(8)) stale incoming=\(incomingMs) cached=\(existingMs) — ignoring")
+            DiagnosticLog.log("remote display recv stale", tag: "session.display", level: .debug, fields: [
+                "device": String(deviceId.prefix(8)),
+                "count": String(incomingMs),
+                "max": String(existingMs)
+            ])
             return
         }
 
         let nameDescr = customName == nil ? "cleared" : "set"
         let iconDescr = customIcon ?? "cleared"
-        DiagnosticLog.log("DISPLAY-RECV: device=\(deviceId.prefix(8)) name=\(nameDescr) icon=\(iconDescr) ts=\(incomingMs) prevTs=\(existingMs) applied=true")
+        DiagnosticLog.log("remote display recv applied", tag: "session.display", level: .debug, fields: [
+            "device": String(deviceId.prefix(8)),
+            "reason": nameDescr,
+            "status": iconDescr,
+            "count": String(incomingMs),
+            "max": String(existingMs)
+        ])
 
         pairedDevices[idx].customName = customName
         pairedDevices[idx].customIcon = customIcon
@@ -70,7 +83,11 @@ extension SessionViewModel {
             DiagnosticLog.log("SNAP: remote_display field present but no activeDevice — skipping")
             return
         }
-        DiagnosticLog.log("SNAP: applying remote_display name=\(customName == nil ? "nil" : "set") icon=\(customIcon ?? "nil") ts=\(Int(updatedAt.timeIntervalSince1970 * 1000))")
+        DiagnosticLog.log("snapshot applying remote display", tag: "session.display", level: .debug, fields: [
+            "reason": customName == nil ? "nil" : "set",
+            "status": customIcon ?? "nil",
+            "count": String(Int(updatedAt.timeIntervalSince1970 * 1000))
+        ])
         handleRemoteDisplay(
             deviceId: device.id,
             customName: customName,

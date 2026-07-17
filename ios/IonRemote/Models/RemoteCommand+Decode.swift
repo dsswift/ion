@@ -27,7 +27,8 @@ extension RemoteCommand {
             let pinToGroupId = try container.decodeIfPresent(String.self, forKey: .pinToGroupId)
             let profileId = try container.decodeIfPresent(String.self, forKey: .profileId)
             let extensions = try container.decodeIfPresent([String].self, forKey: .extensions)
-            self = .createTab(workingDirectory: workingDirectory, pinToGroupId: pinToGroupId, profileId: profileId, extensions: extensions)
+            let clientCmdId = try container.decodeIfPresent(String.self, forKey: .clientCmdId)
+            self = .createTab(workingDirectory: workingDirectory, pinToGroupId: pinToGroupId, profileId: profileId, extensions: extensions, clientCmdId: clientCmdId)
 
         case .closeTab:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -97,7 +98,8 @@ extension RemoteCommand {
 
         case .createTerminalTab:
             let workingDirectory = try container.decodeIfPresent(String.self, forKey: .workingDirectory)
-            self = .createTerminalTab(workingDirectory: workingDirectory)
+            let clientCmdId = try container.decodeIfPresent(String.self, forKey: .clientCmdId)
+            self = .createTerminalTab(workingDirectory: workingDirectory, clientCmdId: clientCmdId)
 
         case .terminalInput:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -325,7 +327,12 @@ extension RemoteCommand {
             let logs = try container.decode(String.self, forKey: .logs)
             let deviceId = try container.decode(String.self, forKey: .deviceId)
             let deviceName = try container.decode(String.self, forKey: .deviceName)
-            self = .diagnosticLogsResponse(logs: logs, deviceId: deviceId, deviceName: deviceName)
+            // `nextSeq` is the desktop's exactly-once pull cursor. Older desktops
+            // that predate the seq contract omit it; decode nil → 0 so a
+            // round-trip stays valid (the desktop that emitted it is the only
+            // consumer of the field it sent).
+            let nextSeq = try container.decodeIfPresent(Int.self, forKey: .nextSeq) ?? 0
+            self = .diagnosticLogsResponse(logs: logs, deviceId: deviceId, deviceName: deviceName, nextSeq: nextSeq)
 
         case .setRemoteDisplay:
             // Both fields are nullable on the wire; treat absent OR explicit

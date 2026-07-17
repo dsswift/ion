@@ -106,7 +106,7 @@ func SelectStrategy(messages []types.LlmMessage, opts *CompactionOptions) Compac
 	mu.RLock()
 	defer mu.RUnlock()
 
-	utils.Debug("Compaction", fmt.Sprintf("SelectStrategy: %d messages, %d strategies registered", len(messages), len(strategies)))
+	utils.LogWithFields(utils.LevelDebug, "compaction", "select strategy", map[string]any{"count": len(messages), "max": len(strategies)})
 
 	order := preferredOrder
 	if len(order) == 0 {
@@ -119,7 +119,7 @@ func SelectStrategy(messages []types.LlmMessage, opts *CompactionOptions) Compac
 	for _, name := range order {
 		s, ok := strategies[name]
 		if ok && s.CanHandle(messages, opts) {
-			utils.Debug("Compaction", fmt.Sprintf("SelectStrategy: selected %s", name))
+			utils.LogWithFields(utils.LevelDebug, "compaction", "select strategy selected", map[string]any{"reason": name})
 			return s
 		}
 	}
@@ -131,7 +131,7 @@ func SelectStrategy(messages []types.LlmMessage, opts *CompactionOptions) Compac
 // is empty, SelectStrategy picks the first eligible one. Returns an error if
 // no suitable strategy is found.
 func ExecuteCompaction(messages []types.LlmMessage, opts *CompactionOptions, strategyName string) ([]types.LlmMessage, *CompactionResult, error) {
-	utils.Debug("Compaction", fmt.Sprintf("ExecuteCompaction: strategy=%q messages=%d", strategyName, len(messages)))
+	utils.LogWithFields(utils.LevelDebug, "compaction", "execute compaction", map[string]any{"reason": strategyName, "count": len(messages)})
 	var s CompactionStrategy
 	if strategyName != "" {
 		s = GetStrategy(strategyName)

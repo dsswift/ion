@@ -1,7 +1,6 @@
 package extcontext
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
@@ -120,10 +119,7 @@ func (e *DispatchActivityEmitter) HandleToolStart(toolName, toolID string) {
 		ToolName:             toolName,
 		ToolID:               toolID,
 	})
-	utils.Debug("Dispatch", fmt.Sprintf(
-		"activity emit kind=%s agent=%q toolId=%s seq=%d convId=%s",
-		dispatchActivityToolStart, e.agentName, toolID, seq, e.convID,
-	))
+	utils.LogWithFields(utils.LevelDebug, "server", "activity emit", map[string]any{"dispatch_activity_tool_start": dispatchActivityToolStart, "agent_name": e.agentName, "tool_i_d": toolID, "seq": seq, "conversation_id": e.convID})
 }
 
 // HandleToolEnd flushes pending text, then emits a tool_end delta (status-only:
@@ -139,10 +135,7 @@ func (e *DispatchActivityEmitter) HandleToolEnd(toolID string, isError bool) {
 		ToolID:               toolID,
 		DispatchToolIsError:  isError,
 	})
-	utils.Debug("Dispatch", fmt.Sprintf(
-		"activity emit kind=%s agent=%q toolId=%s isError=%v seq=%d convId=%s",
-		dispatchActivityToolEnd, e.agentName, toolID, isError, seq, e.convID,
-	))
+	utils.LogWithFields(utils.LevelDebug, "server", "activity emit", map[string]any{"dispatch_activity_tool_end": dispatchActivityToolEnd, "agent_name": e.agentName, "tool_i_d": toolID, "is_error": isError, "seq": seq, "conversation_id": e.convID})
 }
 
 // AccumulateText appends a streamed text chunk to the coalesce buffer and
@@ -165,15 +158,9 @@ func (e *DispatchActivityEmitter) AccumulateText(text string) {
 	e.textBuf += text
 	if e.flushTimer == nil {
 		e.flushTimer = time.AfterFunc(textCoalesceInterval, e.flushTextTimer)
-		utils.Debug("Dispatch", fmt.Sprintf(
-			"activity text buffered agent=%q seq=%d bufLen=%d convId=%s (flush armed)",
-			e.agentName, e.textSeq, len(e.textBuf), e.convID,
-		))
+		utils.LogWithFields(utils.LevelDebug, "server", "activity text buffered (flush armed)", map[string]any{"agent_name": e.agentName, "text_seq": e.textSeq, "count": len(e.textBuf), "conversation_id": e.convID})
 	} else {
-		utils.Debug("Dispatch", fmt.Sprintf(
-			"activity text buffered agent=%q seq=%d bufLen=%d convId=%s (flush pending)",
-			e.agentName, e.textSeq, len(e.textBuf), e.convID,
-		))
+		utils.LogWithFields(utils.LevelDebug, "server", "activity text buffered (flush pending)", map[string]any{"agent_name": e.agentName, "text_seq": e.textSeq, "count": len(e.textBuf), "conversation_id": e.convID})
 	}
 }
 
@@ -204,10 +191,7 @@ func (e *DispatchActivityEmitter) flushTextLocked() {
 		DispatchSeq:          seq,
 		DispatchTextDelta:    text,
 	})
-	utils.Debug("Dispatch", fmt.Sprintf(
-		"activity emit kind=%s agent=%q seq=%d textLen=%d convId=%s (flushed)",
-		dispatchActivityText, e.agentName, seq, len(text), e.convID,
-	))
+	utils.LogWithFields(utils.LevelDebug, "server", "activity emit (flushed)", map[string]any{"dispatch_activity_text": dispatchActivityText, "agent_name": e.agentName, "seq": seq, "count": len(text), "conversation_id": e.convID})
 }
 
 // Close flushes any pending text and disables further buffering. Called when

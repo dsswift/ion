@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
-	"runtime"
+	"sort"
 
+	ionconfig "github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/providers"
@@ -47,9 +48,7 @@ func (s *Server) dispatchGenerateTitle(conn net.Conn, cmd *protocol.ClientComman
 	go func(c net.Conn, command *protocol.ClientCommand) {
 		defer func() {
 			if r := recover(); r != nil {
-				buf := make([]byte, 4096)
-				n := runtime.Stack(buf, false)
-				utils.Error("Server", fmt.Sprintf("panic in generate_title: %v\n%s", r, buf[:n]))
+				utils.LogWithFields(utils.LevelError, "server", "panic in generate title", map[string]any{"error": r})
 				s.sendResult(c, command, fmt.Errorf("internal error"), nil)
 			}
 		}()
@@ -74,9 +73,7 @@ func (s *Server) dispatchMigrateConversation(conn net.Conn, cmd *protocol.Client
 	go func(c net.Conn, command *protocol.ClientCommand) {
 		defer func() {
 			if r := recover(); r != nil {
-				buf := make([]byte, 4096)
-				n := runtime.Stack(buf, false)
-				utils.Error("Server", fmt.Sprintf("panic in migrate_conversation: %v\n%s", r, buf[:n]))
+				utils.LogWithFields(utils.LevelError, "server", "panic in migrate conversation", map[string]any{"error": r})
 				s.sendResult(c, command, fmt.Errorf("internal error"), nil)
 			}
 		}()
@@ -138,19 +135,19 @@ func (s *Server) dispatchMigrateConversation(conn net.Conn, cmd *protocol.Client
 // render in their model pickers. Three responsibilities packed into the
 // arm:
 //
-//   1. Build a ProviderEntry per provider with auth status filled in
-//      from the resolver (env, keychain, or none). Ollama is special-
-//      cased to "no auth needed" since it's a local server.
+//  1. Build a ProviderEntry per provider with auth status filled in
+//     from the resolver (env, keychain, or none). Ollama is special-
+//     cased to "no auth needed" since it's a local server.
 //
-//   2. Surface configured baseURL / APIKeyRef on each provider so
-//      consumers can attribute model entries to the gateway they
-//      reach (e.g. "via example.com").
+//  2. Surface configured baseURL / APIKeyRef on each provider so
+//     consumers can attribute model entries to the gateway they
+//     reach (e.g. "via example.com").
 //
-//   3. For providers with a custom gateway, filter the hardcoded model
-//      catalog down to only user-configured or live-discovered models.
-//      The hardcoded catalog reflects the public Anthropic/OpenAI/etc
-//      offerings and is meaningless when the user has pointed the
-//      provider at a private LLM gateway.
+//  3. For providers with a custom gateway, filter the hardcoded model
+//     catalog down to only user-configured or live-discovered models.
+//     The hardcoded catalog reflects the public Anthropic/OpenAI/etc
+//     offerings and is meaningless when the user has pointed the
+//     provider at a private LLM gateway.
 func (s *Server) dispatchListModels(conn net.Conn, cmd *protocol.ClientCommand) {
 	models := providers.ListModels()
 	providerEntries := s.buildProviderEntries()
@@ -193,9 +190,8 @@ func (s *Server) dispatchListModels(conn net.Conn, cmd *protocol.ClientCommand) 
 // for ollama (no auth needed) and CLI-capable anthropic fallback. Extracted
 // from dispatchListModels to allow direct testing of auth-resolution logic.
 func (s *Server) buildProviderEntries() []types.ProviderEntry {
-	providerIDs := providers.ListProviderIDs()
-	providerEntries := make([]types.ProviderEntry, len(providerIDs))
-	for i, pid := range providerIDs {
+	providerEntries := make([]types.ProviderEntry, 0)
+	for _, pid := range providerEntryIDs() {
 		entry := types.ProviderEntry{ID: pid}
 		if s.authResolver != nil {
 			entry.HasAuth, entry.AuthSource = s.authResolver.HasKey(pid)
@@ -205,14 +201,42 @@ func (s *Server) buildProviderEntries() []types.ProviderEntry {
 			entry.HasAuth = true
 			entry.AuthSource = "none"
 		}
-		// CLI-capable backend (cli or hybrid) handles Anthropic auth via the
-		// Claude CLI itself. Surface that to clients so the model picker
-		// doesn't hide Anthropic models when no separate API key is configured.
-		if s.cliCapable && pid == "anthropic" && !entry.HasAuth {
-			entry.HasAuth = true
-			entry.AuthSource = "cli"
-			utils.Debug("Models", fmt.Sprintf("provider=%s: CLI-auth fallback applied", pid))
+
+		// Project the delegated-CLI status (install/auth) and the
+		// credential-derived effective backend for providers that have a CLI
+		// option. The effective backend comes from the same shared helper
+		// routing uses (backend.EffectiveBackendForProvider), so what the UI
+		// shows is what the next run will actually pick.
+		cliStatus, effectiveBackend := s.providerCliStatus(pid)
+		if effectiveBackend != "" {
+			entry.Backend = effectiveBackend
 		}
+		entry.Cli = cliStatus
+
+		// When the effective backend is a delegated CLI and the CLI reports a
+		// usable credential, the provider is authed via that CLI (generalizing
+		// the former anthropic-only "cli" fallback across codex/grok/cursor).
+		if isCliKind(effectiveBackend) && cliStatus != nil && cliStatus.Authenticated && !entry.HasAuth {
+			entry.HasAuth = true
+			entry.AuthSource = effectiveBackend
+			utils.LogWithFields(utils.LevelDebug, "server", "provider cli-auth applied", map[string]any{"provider": pid, "backend": effectiveBackend})
+		}
+
+		// Startup fallback for the explicit top-level "claude-code" backend
+		// only: every run goes to the Claude CLI there regardless of API keys,
+		// so anthropic is reported authed via claude-code before the async
+		// probe populates. Hybrid mode is deliberately excluded — its entries
+		// are credential-derived above, and claiming claude-code auth pre-probe
+		// would contradict the router (which picks api until the probe lands).
+		if s.cliCapable && s.hybrid == nil && pid == "anthropic" && !entry.HasAuth {
+			entry.HasAuth = true
+			entry.AuthSource = "claude-code"
+			if entry.Backend == "" {
+				entry.Backend = "claude-code"
+			}
+			utils.LogWithFields(utils.LevelDebug, "server", "provider claude-code-auth fallback applied", map[string]any{"provider": pid})
+		}
+
 		// Populate config details (gateway URL, API key reference)
 		if s.config != nil {
 			if pc, ok := s.config.Providers[pid]; ok {
@@ -228,7 +252,29 @@ func (s *Server) buildProviderEntries() []types.ProviderEntry {
 				}
 			}
 		}
-		providerEntries[i] = entry
+		providerEntries = append(providerEntries, entry)
 	}
 	return providerEntries
+}
+
+// providerEntryIDs returns the sorted union of registered providers and the
+// CLI-backed providers (e.g. cursor) that have no HTTP registration. The union
+// ensures a CLI-only provider still gets a provider entry.
+func providerEntryIDs() []string {
+	seen := make(map[string]bool)
+	var ids []string
+	for _, pid := range providers.ListProviderIDs() {
+		if !seen[pid] {
+			seen[pid] = true
+			ids = append(ids, pid)
+		}
+	}
+	for _, pid := range ionconfig.CliBackedProviderIDs() {
+		if !seen[pid] {
+			seen[pid] = true
+			ids = append(ids, pid)
+		}
+	}
+	sort.Strings(ids)
+	return ids
 }

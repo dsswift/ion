@@ -8,8 +8,8 @@ import { validateExternalUrl } from '../ipc-validation'
 import { engineIsRemote, getEngineHostInfo, listEngineDirectory, getEnterprisePolicyNewConversationDefaults } from '../engine-bridge-fs'
 import { log as _log } from '../logger'
 
-function log(msg: string): void {
-  _log('file-dialog', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('file-dialog', msg, fields)
 }
 
 export function registerFileDialogIpc(): void {
@@ -44,7 +44,7 @@ export function registerFileDialogIpc(): void {
       log('extension file picker cancelled')
       return null
     }
-    log(`extension file picker: user selected ${result.filePaths.length} file(s): ${result.filePaths.join(', ')}`)
+    log('extension_file_picker: selected', { count: result.filePaths.length, paths: result.filePaths.join(', ') })
     return result.filePaths
   })
 

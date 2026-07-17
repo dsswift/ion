@@ -6,8 +6,8 @@ import { state } from '../../state'
 import { isValidProjectPath } from '../../ipc-validation'
 import type { RemoteCommand } from '../protocol'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 export async function handleFsListDir(cmd: Extract<RemoteCommand, { type: 'desktop_fs_list_dir' }>, deviceId: string): Promise<void> {
@@ -34,7 +34,7 @@ export async function handleFsListDir(cmd: Extract<RemoteCommand, { type: 'deskt
     })
     state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_fs_dir_listing', directory, entries })
   } catch (err) {
-    log(`fs_list_dir error: ${(err as Error).message}`)
+    log('fs_list_dir error', { error: (err as Error).message })
     state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_fs_dir_listing', directory, entries: [], error: (err as Error).message })
   }
 }
@@ -69,7 +69,7 @@ export async function handleFsReadImage(cmd: Extract<RemoteCommand, { type: 'des
     const buf = readFileSync(filePath)
     state.remoteTransport?.send({ type: 'desktop_fs_image_content', filePath, dataUrl: `data:${mime};base64,${buf.toString('base64')}` })
   } catch (err) {
-    log(`fs_read_image error: ${(err as Error).message}`)
+    log('fs_read_image error', { error: (err as Error).message })
     state.remoteTransport?.send({ type: 'desktop_fs_image_content', filePath, dataUrl: null, error: (err as Error).message })
   }
 }
@@ -94,7 +94,7 @@ export async function handleFsReadFile(cmd: Extract<RemoteCommand, { type: 'desk
     }
     state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_fs_file_content', filePath, content: buf.toString('utf-8') })
   } catch (err) {
-    log(`fs_read_file error: ${(err as Error).message}`)
+    log('fs_read_file error', { error: (err as Error).message })
     state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_fs_file_content', filePath, content: null, error: (err as Error).message })
   }
 }
@@ -109,7 +109,7 @@ export async function handleFsWriteFile(cmd: Extract<RemoteCommand, { type: 'des
     writeFileSync(filePath, content, 'utf-8')
     state.remoteTransport?.send({ type: 'desktop_fs_write_result', filePath, ok: true })
   } catch (err) {
-    log(`fs_write_file error: ${(err as Error).message}`)
+    log('fs_write_file error', { error: (err as Error).message })
     state.remoteTransport?.send({ type: 'desktop_fs_write_result', filePath, ok: false, error: (err as Error).message })
   }
 }
@@ -132,19 +132,19 @@ export async function handleFsWriteFile(cmd: Extract<RemoteCommand, { type: 'des
  */
 export async function handleFsRename(cmd: Extract<RemoteCommand, { type: 'desktop_fs_rename' }>): Promise<void> {
   const { oldPath, newPath } = cmd
-  log(`fs_rename: start oldPath=${oldPath} newPath=${newPath}`)
+  log('fs_rename', { old_path: oldPath, new_path: newPath })
   try {
     if (!isValidProjectPath(oldPath) || !isValidProjectPath(newPath)) {
-      log(`fs_rename: rejected oldPath=${oldPath} newPath=${newPath} reason=invalid_path`)
+      log('fs_rename: rejected invalid path', { old_path: oldPath, new_path: newPath })
       state.remoteTransport?.send({ type: 'desktop_fs_rename_result', oldPath, newPath, ok: false, error: 'Invalid path' })
       return
     }
     renameSync(oldPath, newPath)
-    log(`fs_rename: success oldPath=${oldPath} newPath=${newPath}`)
+    log('fs_rename: success', { old_path: oldPath, new_path: newPath })
     state.remoteTransport?.send({ type: 'desktop_fs_rename_result', oldPath, newPath, ok: true })
   } catch (err) {
     const message = (err as Error).message
-    log(`fs_rename: failed oldPath=${oldPath} newPath=${newPath} error=${message}`)
+    log('fs_rename: failed', { old_path: oldPath, new_path: newPath, error: message })
     state.remoteTransport?.send({ type: 'desktop_fs_rename_result', oldPath, newPath, ok: false, error: message })
   }
 }
@@ -164,10 +164,10 @@ export async function handleUploadAttachment(cmd: Extract<RemoteCommand, { type:
     const filePath = join(tmpdir(), `ion-remote-${timestamp}${nameExt}`)
     writeFileSync(filePath, buf)
     const id = crypto.randomUUID()
-    log(`upload_attachment: saved ${buf.length} bytes to ${filePath}`)
+    log('upload_attachment: saved', { bytes: buf.length, path: filePath })
     state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_upload_attachment_result', id, name: cmd.name, path: filePath, correlationId: cmd.correlationId })
   } catch (err) {
-    log(`upload_attachment error: ${(err as Error).message}`)
+    log('upload_attachment error', { error: (err as Error).message })
     state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_upload_attachment_result', id: '', name: cmd.name, path: '', correlationId: cmd.correlationId, error: (err as Error).message })
   }
 }

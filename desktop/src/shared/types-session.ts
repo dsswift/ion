@@ -326,9 +326,16 @@ export interface Message {
 }
 
 export interface RunResult {
+  /** Cost of this run in USD. Populated from TaskCompleteEvent.costUsd which
+   *  the engine sets to a per-run value (cache-aware, CliBackend delta-normalized). */
   totalCostUsd: number
   durationMs: number
   numTurns: number
+  /** Conversation-lifetime prompt count (real user prompts across the whole
+   *  conversation), from TaskCompleteEvent.conversationTurns. Distinct from
+   *  numTurns (per-run round-trips). The StatusDrawer "Turns" row renders this
+   *  lifetime value. Absent on paths that do not report it (e.g. CLI backend). */
+  conversationTurns?: number
   usage: UsageData
   sessionId: string
 }
@@ -528,6 +535,15 @@ export interface SessionChainIndex {
 }
 
 export interface SessionLoadMessage {
+  /**
+   * Canonical row id (mirror of `types.SessionMessage.ID`): the persisted
+   * tree entry id for the first row an entry produces, `<entryId>:<n>` for
+   * subsequent rows. Stable across reloads — clients key history rows on it,
+   * and live rows re-key to it at `message_end` (entryId / userEntryId), so
+   * reloads dedup against live rows instead of duplicating them. Absent only
+   * when the engine predates the field.
+   */
+  id?: string
   role: string
   content: string
   toolName?: string
@@ -537,6 +553,12 @@ export interface SessionLoadMessage {
   attachments?: Attachment[]
   timestamp: number
   internal?: boolean
+  /**
+   * Persisted tool_result error flag on tool rows (mirror of
+   * `types.SessionMessage.IsError`) so reloaded history keeps failed tool
+   * state instead of coercing every result to success.
+   */
+  isError?: boolean
   /** Engine-provided slash-command metadata (see Message.slashCommand). */
   slashCommand?: string
   slashArgs?: string

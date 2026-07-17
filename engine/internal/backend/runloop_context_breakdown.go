@@ -9,7 +9,6 @@ package backend
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -38,7 +37,10 @@ func (b *ApiBackend) maybeEmitContextBreakdown(
 	// are captured under the "system" category rather than itemized here.
 	bd, err := providers.BuildContextBreakdown(ctx, model, provider, streamOpts, nil, nil, "")
 	if err != nil {
-		utils.Warn("ApiBackend", fmt.Sprintf("BuildContextBreakdown failed: runID=%s err=%v", run.requestID, err))
+		utils.LogWithFields(utils.LevelWarn, "backend.runloop", "BuildContextBreakdown failed", map[string]any{
+			"run_id": run.requestID,
+			"error":  utils.ErrStr(err),
+		})
 		return
 	}
 	if bd == nil {

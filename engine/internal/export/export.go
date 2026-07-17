@@ -12,6 +12,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // Options configures the export behavior.
@@ -268,11 +269,23 @@ func filterActiveBranch(entries []conversation.SessionEntry, leafID string) []co
 	current := entryMap[leafID]
 	for current != nil {
 		pathIDs[current.ID] = true
-		if current.ParentID != nil {
-			current = entryMap[*current.ParentID]
-		} else {
-			current = nil
+		if current.ParentID == nil {
+			break
 		}
+		next := entryMap[*current.ParentID]
+		if next == nil && len(entries) > 0 && entries[0].ID != current.ID {
+			// A mid-chain dangling parent means the export is silently
+			// truncating history (the first-entry miss is the designed
+			// partial-compaction boundary). Load-time repair should make
+			// this unreachable; say so if it ever fires.
+			utils.LogWithFields(utils.LevelError, "export", "filter active branch: dangling parent truncated walk", map[string]any{
+				"stopped_at":     current.ID,
+				"missing_parent": *current.ParentID,
+				"path_len":       len(pathIDs),
+				"total_entries":  len(entries),
+			})
+		}
+		current = next
 	}
 
 	var result []conversation.SessionEntry

@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/permissions"
+	"github.com/dsswift/ion/engine/internal/plugins"
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -69,6 +71,15 @@ func (m *Manager) buildRunConfig(
 		runCfg.PlanModeAutoExitOnEndTurn = m.config.Limits.PlanModeAutoExitOnEndTurn
 	}
 
+	// Thread the max_tokens thinking-only circuit-breaker cap from engine.json
+	// (LimitsConfig.MaxTokenThinkingOnlyBreaker) so the runloop can resolve it
+	// without reaching back to the full engine config. Zero means "use the
+	// built-in default (3)"; -1 disables the breaker. See the max_tokens case in
+	// engine/internal/backend/runloop.go.
+	if m.config != nil && m.config.Limits.MaxTokenThinkingOnlyBreaker != 0 {
+		runCfg.MaxTokenThinkingOnlyBreaker = m.config.Limits.MaxTokenThinkingOnlyBreaker
+	}
+
 	// Thread tool-result size cap from engine.json compaction config so the
 	// runloop can persist oversized tool results to disk.
 	if m.config != nil && m.config.Compaction != nil && m.config.Compaction.MaxToolResultChars > 0 {
@@ -83,7 +94,38 @@ func (m *Manager) buildRunConfig(
 	}
 
 	if extGroup != nil && !extGroup.IsEmpty() && !skipExtensions {
-		m.wireExtensionHooks(s, key, requestID, apiBackend, extGroup, runCfg)
+		m.wireExtensionHooks(s, key, requestID, apiBackend, extGroup, runCfg, currentModel)
+	}
+
+	// Wire plugin UserPromptSubmit hooks via OnInitialMessages so their output
+	// is injected as <system-reminder> user messages in the conversation history
+	// rather than appended to the system prompt. This matches Claude Code's
+	// hook_additional_context mechanism: per-turn hook output lands at the top
+	// of the message history before each LLM call, giving it full attention
+	// weight regardless of system prompt length.
+	//
+	// OnBeforePrompt is left solely for extension hooks (TS/Go SDK) — plugin
+	// hooks use the parallel OnInitialMessages path to keep the two surfaces
+	// cleanly separated.
+	if len(s.pluginUserPromptHooks) > 0 {
+		capturedPluginHooks := s.pluginUserPromptHooks
+		runCfg.Hooks.OnInitialMessages = func(runID string, prompt string) []types.LlmMessage {
+			// Build the Claude Code UserPromptSubmit stdin payload.
+			stdinPayload := buildPromptStdinPayload(prompt)
+			var msgs []types.LlmMessage
+			for _, cmd := range capturedPluginHooks {
+				out, hookErr := plugins.RunHookCommandWithStdin(cmd.Entry, cmd.PluginRoot, nil, stdinPayload)
+				if hookErr == nil {
+					if ctx := plugins.ParseHookOutput(out); ctx != "" {
+						msgs = append(msgs, types.LlmMessage{
+							Role:    "user",
+							Content: wrapInSystemReminder("UserPromptSubmit hook additional context: " + ctx),
+						})
+					}
+				}
+			}
+			return msgs
+		}
 	}
 
 	if telemCollector != nil {
@@ -161,9 +203,14 @@ func (m *Manager) buildRunConfig(
 }
 
 // wireExtensionHooks wires per-run extension hook callbacks into runCfg.Hooks.
-func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID string, apiBackend *backend.ApiBackend, extGroup *extension.ExtensionGroup, runCfg *backend.RunConfig) {
+func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID string, apiBackend *backend.ApiBackend, extGroup *extension.ExtensionGroup, runCfg *backend.RunConfig, currentModel string) {
 	capturedRequestID := requestID
 	ctx := m.newExtContext(s, key)
+	// Populate ctx.Model with the SELECTED model so model-aware hooks on the
+	// ApiBackend path (notably before_prompt via OnBeforePrompt below) can read
+	// ctx.model. currentModel is the routed model threaded from buildRunConfig
+	// (opts.Model at the dispatch site, post model_select).
+	ctx.Model = modelRefFor(currentModel)
 	ctx.GetContextUsage = func() *extension.ContextUsage {
 		usage := apiBackend.GetContextUsage(capturedRequestID)
 		if usage == nil {
@@ -173,6 +220,12 @@ func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID str
 			Percent: usage.Percent,
 			Tokens:  usage.Tokens,
 		}
+	}
+	// Reads the live run turn at hook-fire time, so callHook can attribute the
+	// firing turn on each extension.hook_latency event. Mirrors GetContextUsage:
+	// a closure over the backend accessor keyed by the captured request ID.
+	ctx.GetTurn = func() int64 {
+		return apiBackend.GetCurrentTurn(capturedRequestID)
 	}
 
 	capturedEnterprise := func() *types.EnterpriseConfig {
@@ -216,7 +269,7 @@ func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID str
 		// (<session-key>-t<turn-number>) so external consumers observe
 		// identical TaskIDs regardless of which backend serviced the run.
 		taskID := fmt.Sprintf("%s-t%d", key, turnNum)
-		utils.Debug("Session", fmt.Sprintf("ApiBackend OnTurnStart: task_created taskID=%s turn=%d", taskID, turnNum))
+		utils.LogWithFields(utils.LevelDebug, "session", "apibackend onturnstart: task_created", map[string]any{"run_id": taskID, "turn": turnNum})
 		_ = extGroup.FireTaskCreated(ctx, extension.TaskLifecycleInfo{
 			TaskID: taskID,
 			Name:   fmt.Sprintf("turn-%d", turnNum),
@@ -228,7 +281,7 @@ func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID str
 		// Fire task_completed at turn end. Same TaskID format as the
 		// matching task_created above.
 		taskID := fmt.Sprintf("%s-t%d", key, turnNum)
-		utils.Debug("Session", fmt.Sprintf("ApiBackend OnTurnEnd: task_completed taskID=%s turn=%d", taskID, turnNum))
+		utils.LogWithFields(utils.LevelDebug, "session", "apibackend onturnend: task_completed", map[string]any{"run_id": taskID, "turn": turnNum})
 		_ = extGroup.FireTaskCompleted(ctx, extension.TaskLifecycleInfo{
 			TaskID: taskID,
 			Name:   fmt.Sprintf("turn-%d", turnNum),
@@ -251,11 +304,7 @@ func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID str
 	// extension package; if a field is added on one side and not the other,
 	// the build breaks here, which is the desired loud-failure mode.
 	runCfg.Hooks.OnBeforeProviderRequest = func(_ string, info backend.BeforeProviderRequestInfo) {
-		utils.Log("Session", fmt.Sprintf(
-			"OnBeforeProviderRequest: provider=%s model=%s turn=%d messages=%d tools=%d sysPrompt=%v maxTokens=%d",
-			info.Provider, info.Model, info.TurnNumber, info.MessageCount,
-			info.ToolCount, info.HasSystemPrompt, info.MaxTokens,
-		))
+		utils.LogWithFields(utils.LevelInfo, "session", "onbeforeproviderrequest", map[string]any{"provider": info.Provider, "model": info.Model, "turn_number": info.TurnNumber, "message_count": info.MessageCount, "tool_count": info.ToolCount, "has_system_prompt": info.HasSystemPrompt, "max_tokens": info.MaxTokens})
 		extGroup.FireBeforeProviderRequest(ctx, extension.BeforeProviderRequestInfo{
 			Provider:        info.Provider,
 			Model:           info.Model,
@@ -361,7 +410,7 @@ func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID str
 			MessageCount: len(messages),
 			Messages:     messages,
 		})
-		utils.Debug("Session", fmt.Sprintf("compact_summary_request bridge: strategy=%s msgCount=%d hookProvided=%v summaryLen=%d", strategy, len(messages), ok, len(summary)))
+		utils.LogWithFields(utils.LevelDebug, "session", "compact_summary_request bridge", map[string]any{"strategy": strategy, "count": len(messages), "ok": ok, "count_3": len(summary)})
 		return summary, ok
 	}
 	runCfg.Hooks.OnSessionCompact = func(_ string, info interface{}) {
@@ -396,7 +445,7 @@ func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID str
 						Content: f.Content,
 					})
 				}
-				utils.Debug("Session", fmt.Sprintf("session_compact bridge: forwarding %d facts to extensions", len(payload.Facts)))
+				utils.LogWithFields(utils.LevelDebug, "session", "session_compact bridge: forwarding facts to extensions", map[string]any{"count": len(payload.Facts)})
 			} else {
 				utils.Debug("Session", "session_compact bridge: no facts in payload")
 			}
@@ -479,9 +528,9 @@ func (m *Manager) wireExternalTools(s *engineSession, key string, extGroup *exte
 
 	if extGroup != nil && !extGroup.IsEmpty() {
 		extTools := extGroup.Tools()
-		utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: wiring %d extension tools", key, len(extTools)))
+		utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: wiring extension tools", map[string]any{"key": key, "count": len(extTools)})
 		for _, tool := range extTools {
-			utils.Log("Session", fmt.Sprintf("SendPrompt[%s]:   tool: %s", key, tool.Name))
+			utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: tool", map[string]any{"key": key, "model": tool.Name})
 			combinedToolDefs = append(combinedToolDefs, types.LlmToolDef{
 				Name:         tool.Name,
 				Description:  tool.Description,
@@ -490,18 +539,25 @@ func (m *Manager) wireExternalTools(s *engineSession, key string, extGroup *exte
 			})
 		}
 	} else {
-		utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: no extension tools (extGroup=%v)", key, extGroup != nil))
+		utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: no extension tools ()", map[string]any{"key": key, "ext_group != nil": extGroup != nil})
 	}
 
-	utils.Log("Session", fmt.Sprintf("SendPrompt[%s]: total external tools: %d", key, len(combinedToolDefs)))
+	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: total external tools", map[string]any{"key": key, "count": len(combinedToolDefs)})
 	if len(combinedToolDefs) == 0 {
 		return
 	}
 	capturedExtGroup := extGroup
 	runCfg.ExternalTools = combinedToolDefs
-	runCfg.McpToolRouter = func(ctx context.Context, name string, input map[string]interface{}) (string, bool, error) {
+	runCfg.McpToolRouter = func(ctx context.Context, name string, input map[string]interface{}) (*types.ToolResult, error) {
 		if mcpRouter != nil && strings.HasPrefix(name, "mcp__") {
-			return mcpRouter(name, input)
+			content, isErr, err := mcpRouter(name, input)
+			if err != nil {
+				return nil, err
+			}
+			// MCP connections return text content only today; wrap it in a
+			// ToolResult so the router surface is uniform. Images arrive via
+			// the extension path below.
+			return &types.ToolResult{Content: content, IsError: isErr}, nil
 		}
 		if capturedExtGroup != nil {
 			for _, tool := range capturedExtGroup.Tools() {
@@ -513,16 +569,18 @@ func (m *Manager) wireExternalTools(s *engineSession, key string, extGroup *exte
 					extCtx := m.newExtContextWithSuspender(s, key, types.DeadlineSuspenderFrom(ctx))
 					result, err := tool.Execute(input, extCtx)
 					if err != nil {
-						return err.Error(), true, nil
+						return &types.ToolResult{Content: err.Error(), IsError: true}, nil
 					}
 					if result == nil {
-						return "", false, nil
+						return nil, nil
 					}
-					return result.Content, result.IsError, nil
+					// Return the whole result so Images (vision output) survive
+					// the routing hop into the agent loop.
+					return result, nil
 				}
 			}
 		}
-		return "", true, fmt.Errorf("external tool %q not found", name)
+		return nil, fmt.Errorf("external tool %q not found", name)
 	}
 }
 
@@ -532,4 +590,23 @@ func (m *Manager) mcpCallTimeout() time.Duration {
 		return m.config.Timeouts.McpCall()
 	}
 	return 60 * time.Second
+}
+
+// buildPromptStdinPayload serializes the prompt into the JSON payload that
+// Claude Code pipes to UserPromptSubmit hook stdin. The format is:
+//
+//	{"prompt": "<prompt text>"}
+//
+// transcript_path is omitted — the engine has no equivalent concept and the
+// caveman hook (the primary consumer) only reads data.prompt. Falls back to
+// the raw prompt string on marshal error (hooks that read stdin as plain text
+// will still see the right content; hooks that parse JSON will fail gracefully
+// via their own try/catch).
+func buildPromptStdinPayload(prompt string) string {
+	payload := map[string]string{"prompt": prompt}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return prompt
+	}
+	return string(data)
 }

@@ -12,13 +12,23 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+
+// rWarn from rendererLogger is the conflict logging path. Mock the module so
+// we can spy on it without needing a real contextBridge / window.ion setup.
+const { rWarnMock } = vi.hoisted(() => ({ rWarnMock: vi.fn() }))
+vi.mock('../../rendererLogger', () => ({
+  rTrace: vi.fn(),
+  rDebug: vi.fn(),
+  rInfo: vi.fn(),
+  rWarn: rWarnMock,
+  rError: vi.fn(),
+}))
+
 import { resolveBindings, SHORTCUT_CATALOG } from '../../shortcuts/shortcut-catalog'
 import { parseChord } from '../../shortcuts/chord'
 
-let warnSpy: ReturnType<typeof vi.spyOn>
-
 beforeEach(() => {
-  warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  rWarnMock.mockClear()
 })
 
 afterEach(() => {
@@ -101,7 +111,11 @@ describe('resolveBindings — conflict handling', () => {
     // Override tab.prev to use Mod+l — same as tab.next default.
     // Catalog order: tab.prev comes before tab.next, so tab.prev wins.
     resolveBindings({ 'tab.prev': 'Mod+l' })
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Conflict'))
+    expect(rWarnMock).toHaveBeenCalledWith(
+      'shortcuts',
+      expect.stringContaining('conflict'),
+      expect.any(Object),
+    )
   })
 
   it('first-in-catalog-order wins when two commands share a chord', () => {

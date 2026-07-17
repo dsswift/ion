@@ -162,6 +162,7 @@ const (
 	HookWebhookDeregistered  = "webhook_deregistered"
 	HookScheduleRegistered   = "schedule_registered"
 	HookScheduleDeregistered = "schedule_deregistered"
+	HookScheduleMissed       = "schedule_missed"
 
 	// Cross-session messaging hook. Fires when another session of the
 	// same extension type sends a message via ctx.sessions.send().
@@ -239,14 +240,14 @@ func (s *SDK) RegisterCommand(name string, def CommandDefinition) {
 	cb := s.onCommandsChange
 	s.mu.Unlock()
 	if replaced {
-		utils.Log("extension", fmt.Sprintf("RegisterCommand: replaced existing entry name=%s", name))
+		utils.LogWithFields(utils.LevelInfo, "extension", "registercommand: replaced existing entry", map[string]any{"model": name})
 	} else {
-		utils.Log("extension", fmt.Sprintf("RegisterCommand: added name=%s desc=%q", name, def.Description))
+		utils.LogWithFields(utils.LevelInfo, "extension", "registercommand: added", map[string]any{"model": name, "description": def.Description})
 	}
 	if cb != nil {
 		cb()
 	} else {
-		utils.Debug("extension", fmt.Sprintf("RegisterCommand: no onCommandsChange observer wired for name=%s", name))
+		utils.LogWithFields(utils.LevelDebug, "extension", "registercommand: no oncommandschange observer wired for", map[string]any{"model": name})
 	}
 }
 
@@ -260,7 +261,7 @@ func (s *SDK) SetOnCommandsChange(fn func()) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.onCommandsChange = fn
-	utils.Debug("extension", fmt.Sprintf("SetOnCommandsChange: observer %s", boolStr(fn != nil, "wired", "cleared")))
+	utils.LogWithFields(utils.LevelDebug, "extension", "setoncommandschange: observer", map[string]any{"bool_str": boolStr(fn != nil, "wired", "cleared")})
 }
 
 // boolStr is a tiny helper used by logging to render a boolean as one of two
@@ -306,6 +307,12 @@ func (s *SDK) AppendEntry(entryType string, data interface{}) error {
 
 // SetAppendEntryFn sets the function used by AppendEntry.
 // Called by the session manager when a session is active.
+//
+// The provided fn runs on extension-host goroutines, concurrent with the
+// runloop's own tree appends. Any implementation MUST mutate the tree only
+// through the conversation package's exported (locked) functions —
+// conversation.AppendEntry / AppendDetachedEntry — never by touching
+// conv.Entries or conv.LeafID directly. See conversation/lock.go.
 func (s *SDK) SetAppendEntryFn(fn func(entryType string, data interface{}) error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -320,6 +327,14 @@ func (s *SDK) Handlers(event string) []HookHandler {
 	out := make([]HookHandler, len(handlers))
 	copy(out, handlers)
 	return out
+}
+
+// HasHandlers returns true when at least one handler is registered for the
+// given event. Cheaper than Handlers when the caller only needs the boolean.
+func (s *SDK) HasHandlers(event string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.hooks[event]) > 0
 }
 
 // FireIntercept emits an engine_intercept event through the active session
@@ -343,7 +358,7 @@ func (s *SDK) fire(event string, ctx *Context, payload interface{}) []interface{
 	for i, h := range handlers {
 		result, err := h(ctx, payload)
 		if err != nil {
-			utils.Log("extension", fmt.Sprintf("hook %s handler[%d] error: %v", event, i, err))
+			utils.LogWithFields(utils.LevelInfo, "extension", "hook handler[] error", map[string]any{"event": event, "i": i, "error": err})
 			continue
 		}
 		if result != nil {

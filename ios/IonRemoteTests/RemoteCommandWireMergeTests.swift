@@ -106,7 +106,7 @@ final class RemoteCommandWireMergeTests: XCTestCase {
         let data = try encoder.encode(original)
         let decoded = try decoder.decode(RemoteCommand.self, from: data)
 
-        guard case .createTab(let wd, let pin, let profile, let exts) = decoded else {
+        guard case .createTab(let wd, let pin, let profile, let exts, _) = decoded else {
             XCTFail("Expected .createTab, got \(decoded)")
             return
         }

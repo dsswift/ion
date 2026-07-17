@@ -37,10 +37,17 @@ var providerEnvVars = map[string][]string{
 
 // oauthToken holds an OAuth access token along with its refresh token and expiry.
 // Stored in the file store under the key "oauth:<provider>" as JSON.
+// For OIDC identity providers the entry also carries the id_token (identity
+// claims for user attribution) and the scope/token_type of the stored grant.
+// All added fields are omitempty, so pre-existing stored entries decode
+// unchanged.
 type oauthToken struct {
 	AccessToken  string    `json:"access_token"`
 	RefreshToken string    `json:"refresh_token,omitempty"`
 	ExpiresAt    time.Time `json:"expires_at,omitempty"`
+	IDToken      string    `json:"id_token,omitempty"`
+	TokenType    string    `json:"token_type,omitempty"`
+	Scope        string    `json:"scope,omitempty"`
 }
 
 // StoredCredential describes a credential entry visible through ListStored.
@@ -77,21 +84,21 @@ func (r *Resolver) SetProgrammatic(providerID, apiKey string) {
 // (e.g. "env", "filestore").
 func (r *Resolver) HasKey(provider string) (bool, string) {
 	provider = strings.ToLower(provider)
-	utils.Debug("AuthResolver", fmt.Sprintf("HasKey: checking provider=%s", provider))
+	utils.LogWithFields(utils.LevelDebug, "auth", "has key checking", map[string]any{"provider": provider})
 
 	// Level 1: Programmatic
 	if key, ok := r.programmatic[provider]; ok && key != "" {
-		utils.Log("AuthResolver", fmt.Sprintf("HasKey: provider=%s found at level=programmatic", provider))
+		utils.LogWithFields(utils.LevelInfo, "auth", "has key found", map[string]any{"provider": provider, "reason": "programmatic"})
 		return true, "programmatic"
 	}
-	utils.Debug("AuthResolver", fmt.Sprintf("HasKey: provider=%s level=programmatic miss", provider))
+	utils.LogWithFields(utils.LevelDebug, "auth", "has key miss", map[string]any{"provider": provider, "reason": "programmatic"})
 
 	// Level 2: Environment variables
 	if resolveFromEnv(provider) != "" {
-		utils.Log("AuthResolver", fmt.Sprintf("HasKey: provider=%s found at level=env", provider))
+		utils.LogWithFields(utils.LevelInfo, "auth", "has key found", map[string]any{"provider": provider, "reason": "env"})
 		return true, "env"
 	}
-	utils.Debug("AuthResolver", fmt.Sprintf("HasKey: provider=%s level=env miss", provider))
+	utils.LogWithFields(utils.LevelDebug, "auth", "has key miss", map[string]any{"provider": provider, "reason": "env"})
 
 	// Level 3: Keychain
 	serviceName := "ion-engine"
@@ -99,34 +106,34 @@ func (r *Resolver) HasKey(provider string) (bool, string) {
 		serviceName = r.config.SecureStore.ServiceName
 	}
 	if key, err := GetKeychainPassword(serviceName, provider); err == nil && key != "" {
-		utils.Log("AuthResolver", fmt.Sprintf("HasKey: provider=%s found at level=keychain (service=%s)", provider, serviceName))
+		utils.LogWithFields(utils.LevelInfo, "auth", "has key found", map[string]any{"provider": provider, "reason": "keychain"})
 		return true, "keychain"
 	}
-	utils.Debug("AuthResolver", fmt.Sprintf("HasKey: provider=%s level=keychain miss", provider))
+	utils.LogWithFields(utils.LevelDebug, "auth", "has key miss", map[string]any{"provider": provider, "reason": "keychain"})
 
 	// Level 4a: Encrypted file store
 	fs := NewFileStore()
 	if key, err := fs.GetKey(provider); err == nil && key != "" {
-		utils.Log("AuthResolver", fmt.Sprintf("HasKey: provider=%s found at level=filestore", provider))
+		utils.LogWithFields(utils.LevelInfo, "auth", "has key found", map[string]any{"provider": provider, "reason": "filestore"})
 		return true, "filestore"
 	}
-	utils.Debug("AuthResolver", fmt.Sprintf("HasKey: provider=%s level=filestore miss", provider))
+	utils.LogWithFields(utils.LevelDebug, "auth", "has key miss", map[string]any{"provider": provider, "reason": "filestore"})
 
 	// Level 4b: OAuth token in file store
 	if oauthRaw, err := fs.GetKey("oauth:" + provider); err == nil && oauthRaw != "" {
-		utils.Log("AuthResolver", fmt.Sprintf("HasKey: provider=%s found at level=oauth", provider))
+		utils.LogWithFields(utils.LevelInfo, "auth", "has key found", map[string]any{"provider": provider, "reason": "oauth"})
 		return true, "oauth"
 	}
-	utils.Debug("AuthResolver", fmt.Sprintf("HasKey: provider=%s level=oauth miss", provider))
+	utils.LogWithFields(utils.LevelDebug, "auth", "has key miss", map[string]any{"provider": provider, "reason": "oauth"})
 
 	// Level 4c: Legacy credentials.json
 	if resolveFromCredentialsFile(provider) != "" {
-		utils.Log("AuthResolver", fmt.Sprintf("HasKey: provider=%s found at level=credentials.json", provider))
+		utils.LogWithFields(utils.LevelInfo, "auth", "has key found", map[string]any{"provider": provider, "reason": "credentials.json"})
 		return true, "credentials.json"
 	}
-	utils.Debug("AuthResolver", fmt.Sprintf("HasKey: provider=%s level=credentials.json miss", provider))
+	utils.LogWithFields(utils.LevelDebug, "auth", "has key miss", map[string]any{"provider": provider, "reason": "credentials.json"})
 
-	utils.Log("AuthResolver", fmt.Sprintf("HasKey: provider=%s no credentials found at any level", provider))
+	utils.LogWithFields(utils.LevelInfo, "auth", "has key no credentials found", map[string]any{"provider": provider})
 	return false, ""
 }
 
@@ -138,19 +145,19 @@ func (r *Resolver) HasKey(provider string) (bool, string) {
 //  5. OAuth token refresh (if a stored refresh_token exists for the provider)
 func (r *Resolver) ResolveKey(provider string) (string, error) {
 	provider = strings.ToLower(provider)
-	utils.Debug("AuthResolver", fmt.Sprintf("ResolveKey: resolving provider=%s", provider))
+	utils.LogWithFields(utils.LevelDebug, "auth", "resolve key", map[string]any{"provider": provider})
 
 	// Level 1: Programmatic (in-process override, highest priority)
-	utils.Debug("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s trying level=1 (programmatic)", provider))
+	utils.LogWithFields(utils.LevelDebug, "auth", "resolve key trying programmatic", map[string]any{"provider": provider})
 	if key, ok := r.programmatic[provider]; ok && key != "" {
-		utils.Log("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s resolved via programmatic (keyLen=%d)", provider, len(key)))
+		utils.LogWithFields(utils.LevelInfo, "auth", "resolve key resolved via programmatic", map[string]any{"provider": provider, "count": len(key)})
 		return key, nil
 	}
 
 	// Level 2: Environment variables
-	utils.Debug("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s trying level=2 (env)", provider))
+	utils.LogWithFields(utils.LevelDebug, "auth", "resolve key trying env", map[string]any{"provider": provider})
 	if key := resolveFromEnv(provider); key != "" {
-		utils.Log("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s resolved via env (keyLen=%d)", provider, len(key)))
+		utils.LogWithFields(utils.LevelInfo, "auth", "resolve key resolved via env", map[string]any{"provider": provider, "count": len(key)})
 		return key, nil
 	}
 
@@ -159,24 +166,24 @@ func (r *Resolver) ResolveKey(provider string) (string, error) {
 	if r.config != nil && r.config.SecureStore != nil && r.config.SecureStore.ServiceName != "" {
 		serviceName = r.config.SecureStore.ServiceName
 	}
-	utils.Debug("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s trying level=3 (keychain, service=%s)", provider, serviceName))
+	utils.LogWithFields(utils.LevelDebug, "auth", "resolve key trying keychain", map[string]any{"provider": provider})
 	if key, err := GetKeychainPassword(serviceName, provider); err == nil && key != "" {
-		utils.Log("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s resolved via keychain (keyLen=%d)", provider, len(key)))
+		utils.LogWithFields(utils.LevelInfo, "auth", "resolve key resolved via keychain", map[string]any{"provider": provider, "count": len(key)})
 		return key, nil
 	}
 
 	// Level 4a: Encrypted file store (~/.ion/credentials.enc)
 	fs := NewFileStore()
-	utils.Debug("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s trying level=4a (filestore)", provider))
+	utils.LogWithFields(utils.LevelDebug, "auth", "resolve key trying filestore", map[string]any{"provider": provider})
 	if key, err := fs.GetKey(provider); err == nil && key != "" {
-		utils.Log("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s resolved via filestore (keyLen=%d)", provider, len(key)))
+		utils.LogWithFields(utils.LevelInfo, "auth", "resolve key resolved via filestore", map[string]any{"provider": provider, "count": len(key)})
 		return key, nil
 	}
 
 	// Level 4b: Plaintext config file (~/.ion/credentials.json) -- legacy fallback
-	utils.Debug("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s trying level=4b (credentials.json)", provider))
+	utils.LogWithFields(utils.LevelDebug, "auth", "resolve key trying credentials.json", map[string]any{"provider": provider})
 	if key := resolveFromCredentialsFile(provider); key != "" {
-		utils.Log("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s resolved via credentials.json (keyLen=%d)", provider, len(key)))
+		utils.LogWithFields(utils.LevelInfo, "auth", "resolve key resolved via credentials.json", map[string]any{"provider": provider, "count": len(key)})
 		return key, nil
 	}
 
@@ -184,19 +191,19 @@ func (r *Resolver) ResolveKey(provider string) (string, error) {
 	// Look for a previously stored OAuth token with a refresh_token. If found and
 	// the access token is expired (or absent), use the refresh_token to obtain a
 	// new access token via the standard grant_type=refresh_token flow.
-	utils.Debug("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s trying level=5 (oauth)", provider))
+	utils.LogWithFields(utils.LevelDebug, "auth", "resolve key trying oauth", map[string]any{"provider": provider})
 	if r.config != nil && r.config.OAuth != nil {
 		if oauthCfg, ok := r.config.OAuth[provider]; ok {
 			token, err := r.refreshOAuthToken(provider, oauthCfg, fs)
 			if err == nil && token != "" {
-				utils.Log("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s resolved via oauth (keyLen=%d)", provider, len(token)))
+				utils.LogWithFields(utils.LevelInfo, "auth", "resolve key resolved via oauth", map[string]any{"provider": provider, "count": len(token)})
 				return token, nil
 			}
-			utils.Log("auth", fmt.Sprintf("OAuth refresh failed for %s: %v", provider, err))
+			utils.LogWithFields(utils.LevelInfo, "auth", "oauth refresh failed", map[string]any{"provider": provider, "error": err.Error()})
 		}
 	}
 
-	utils.Error("AuthResolver", fmt.Sprintf("ResolveKey: provider=%s failed - no key found at any level", provider))
+	utils.LogWithFields(utils.LevelDebug, "auth", "resolve key failed no key found", map[string]any{"provider": provider})
 	return "", fmt.Errorf("no API key found for provider %q", provider)
 }
 
@@ -233,7 +240,10 @@ func (r *Resolver) refreshOAuthToken(provider string, cfg types.OAuthConfig, fs 
 		return "", fmt.Errorf("no token URL configured for provider %q", provider)
 	}
 
-	newTok, err := doRefreshTokenGrant(cfg.ClientID, tok.RefreshToken, cfg.TokenURL)
+	// Empty scope preserves the original grant's scope (RFC 6749 §6: omitted
+	// scope means "same as the original request"). Per-scope minting for
+	// downstream resources goes through IdentityManager.GetToken instead.
+	newTok, err := doRefreshTokenGrant(cfg.ClientID, tok.RefreshToken, cfg.TokenURL, "", "", "")
 	if err != nil {
 		return "", err
 	}
@@ -248,21 +258,35 @@ func (r *Resolver) refreshOAuthToken(provider string, cfg types.OAuthConfig, fs 
 	encoded, err := json.Marshal(newTok)
 	if err == nil {
 		if storeErr := fs.SetKey(storeKey, string(encoded)); storeErr != nil {
-			utils.Log("auth", fmt.Sprintf("failed to persist refreshed token for %s: %v", provider, storeErr))
+			utils.LogWithFields(utils.LevelInfo, "auth", "failed to persist refreshed token", map[string]any{"provider": provider, "error": storeErr.Error()})
 		}
 	}
 
-	utils.Log("AuthResolver", fmt.Sprintf("refreshOAuthToken: provider=%s refresh succeeded (newTokenLen=%d)", provider, len(newTok.AccessToken)))
+	utils.LogWithFields(utils.LevelInfo, "auth", "refresh oauth token succeeded", map[string]any{"provider": provider, "count": len(newTok.AccessToken)})
 	return newTok.AccessToken, nil
 }
 
 // doRefreshTokenGrant performs a standard OAuth2 refresh_token grant POST and
 // returns the new token. It reuses the same http.Client pattern used in oauth.go.
-func doRefreshTokenGrant(clientID, refreshToken, tokenURL string) (*oauthToken, error) {
+// scope, when non-empty, is sent with the grant (RFC 6749 §6) to mint an
+// access token for a different resource than the original grant -- the
+// mechanism behind per-scope tokens for downstream APIs (one refresh token,
+// many audiences). When empty, the provider returns a token with the
+// original grant's scope. audience, when non-empty, is sent under
+// audienceParam's dialect ("audience" default, "resource" for RFC 8707)
+// for IdPs that bind tokens to an explicit audience rather than encoding
+// it in the scope string.
+func doRefreshTokenGrant(clientID, refreshToken, tokenURL, scope, audience, audienceParam string) (*oauthToken, error) {
 	form := url.Values{
 		"client_id":     {clientID},
 		"grant_type":    {"refresh_token"},
 		"refresh_token": {refreshToken},
+	}
+	if scope != "" {
+		form.Set("scope", scope)
+	}
+	if audience != "" {
+		form.Set(audienceParamName(audienceParam), audience)
 	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -272,7 +296,7 @@ func doRefreshTokenGrant(clientID, refreshToken, tokenURL string) (*oauthToken, 
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			utils.Log("AuthResolver", fmt.Sprintf("refreshOAuthToken: response body close failed: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "auth", "refresh oauth token response body close failed", map[string]any{"error": err.Error()})
 		}
 	}()
 
@@ -281,13 +305,7 @@ func doRefreshTokenGrant(clientID, refreshToken, tokenURL string) (*oauthToken, 
 		return nil, fmt.Errorf("refresh token read error: %w", err)
 	}
 
-	var tokenResp struct {
-		AccessToken  string `json:"access_token"`
-		RefreshToken string `json:"refresh_token"`
-		ExpiresIn    int    `json:"expires_in"`
-		Error        string `json:"error"`
-		ErrorDesc    string `json:"error_description"`
-	}
+	var tokenResp wireTokenResponse
 	if err := json.Unmarshal(body, &tokenResp); err != nil {
 		return nil, fmt.Errorf("refresh token parse error: %w", err)
 	}
@@ -303,6 +321,9 @@ func doRefreshTokenGrant(clientID, refreshToken, tokenURL string) (*oauthToken, 
 	tok := &oauthToken{
 		AccessToken:  tokenResp.AccessToken,
 		RefreshToken: tokenResp.RefreshToken,
+		IDToken:      tokenResp.IDToken,
+		TokenType:    tokenResp.TokenType,
+		Scope:        tokenResp.Scope,
 	}
 	if tokenResp.ExpiresIn > 0 {
 		tok.ExpiresAt = time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)

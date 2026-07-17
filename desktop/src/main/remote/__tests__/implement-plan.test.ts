@@ -79,7 +79,7 @@ afterEach(() => {
 describe('handleImplementPlan', () => {
   it('calls processIncomingPrompt exactly once with implementationPhase=true', async () => {
     const planContent = '# My Plan\n\nStep 1: do things\nStep 2: do more things'
-    const planFilePath = makePlanFile(planContent)
+    const _planFilePath = makePlanFile(planContent)
 
     await handleImplementPlan({
       type: 'desktop_implement_plan',
@@ -100,7 +100,7 @@ describe('handleImplementPlan', () => {
     // processIncomingPrompt would then be called with text NOT containing
     // the plan body (since we have no planContent in the command).
     const planContent = '# Plan\n\nImplement feature X.'
-    const planFilePath = makePlanFile(planContent)
+    const _planFilePath = makePlanFile(planContent)
 
     await handleImplementPlan({
       type: 'desktop_implement_plan',

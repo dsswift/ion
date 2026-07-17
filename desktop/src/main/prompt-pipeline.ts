@@ -93,7 +93,7 @@ import { IPC } from '../shared/types'
  */
 type PipelineAttachment = { type: 'image' | 'file'; name: string; path: string }
 import { log as _log } from './logger'
-import { state, sessionPlane, engineBridge } from './state'
+import { sessionPlane } from './state'
 import { broadcast } from './broadcast'
 import { parseSlash, type ParsedSlash } from './slash-parse'
 import { handleSlash as handleSlashBranch } from './prompt-pipeline-slash'
@@ -101,13 +101,13 @@ import { encodeAttachments } from './remote/attachment-encoder'
 import { IS_REMOTE } from './engine-bridge'
 import type { ImageAttachmentPayload } from '../shared/types'
 import { ENTER_PLAN_MODE_DESCRIPTION, PLAN_MODE_SPARSE_REMINDER } from './prompt-pipeline-prose'
-import { emitRemoteMessageAdded, insertRendererSystemMessage, clearConnectingStatus } from './prompt-pipeline-renderer'
+import { emitRemoteMessageAdded } from './prompt-pipeline-renderer'
 import { TURN_GROUPING_GUIDANCE } from './turn-grouping-guidance'
 
 export { ENTER_PLAN_MODE_DESCRIPTION, PLAN_MODE_SPARSE_REMINDER } from './prompt-pipeline-prose'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 /**
@@ -225,7 +225,7 @@ function handleBashShortcut(p: IncomingPrompt): boolean {
   if (!p.text.startsWith('!') || p.text.length <= 1) return false
   const bashCmd = p.text.substring(1).trim()
   if (!bashCmd) return false
-  log(`pipeline: bash-shortcut tab=${p.tabId} cmd="${bashCmd.substring(0, 40)}"`)
+  log('pipeline: bash shortcut', { tab_id: p.tabId, cmd: bashCmd.substring(0, 40) })
   // Echo the user's typed text back to iOS as a confirmed message so the
   // optimistic entry gets a real timestamp; renderer already has its own
   // entry from send-slice.
@@ -307,9 +307,11 @@ function applyHarnessSystemPromptAddenda(p: IncomingPrompt): void {
     }
   }
 
-  log(`pipeline: applyHarnessSystemPromptAddenda tab=${p.tabId} ` +
-      `engineField=${didAppendPrimary ? `appended (${before}→${p.appendSystemPrompt?.length ?? 0})` : 'already-present (no-op)'} ` +
-      `runOptionsField=${p.runOptions ? (didAppendRun ? `appended (${beforeRun}→${p.runOptions.appendSystemPrompt?.length ?? 0})` : 'already-present (no-op)') : 'absent'}`)
+  log('pipeline: applyHarnessSystemPromptAddenda', {
+    tab_id: p.tabId,
+    engine_field: didAppendPrimary ? `appended (${before}→${p.appendSystemPrompt?.length ?? 0})` : 'already-present (no-op)',
+    run_options_field: p.runOptions ? (didAppendRun ? `appended (${beforeRun}→${p.runOptions.appendSystemPrompt?.length ?? 0})` : 'already-present (no-op)') : 'absent',
+  })
 }
 
 async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
@@ -332,6 +334,11 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
         text: p.text,
         appendSystemPrompt: p.appendSystemPrompt,
         imageAttachments: p.imageAttachments,
+        // Forward raw attachments so the renderer's remoteEnginePromptHandler
+        // can pass them to submit() and populate the optimistic user message's
+        // attachments field. Without this, InlineMessageImages renders nothing
+        // and the attachments panel never shows iOS-sent images on the desktop.
+        attachments: p.attachments && p.attachments.length > 0 ? p.attachments : undefined,
         implementationPhase: p.implementationPhase,
         thinkingEffort: p.thinkingEffort,
         planFilePath: p.planFilePath,
@@ -347,7 +354,7 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
       fullPrompt = `${ctx}\n\n${fullPrompt}`
     }
     const { encoded, rewrittenText } = encodeAttachments(fullPrompt, attachments, { isRemote: IS_REMOTE })
-    log(`pipeline: submit prompt via REMOTE_USER_MESSAGE tab=${p.tabId} textLen=${rewrittenText.length} encodedImages=${encoded.length}`)
+    log('pipeline: submit prompt via remote_user_message', { tab_id: p.tabId, text_len: rewrittenText.length, encoded_images: encoded.length })
     broadcast(IPC.REMOTE_USER_MESSAGE, {
       tabId: p.tabId,
       requestId: p.reqId,
@@ -371,7 +378,7 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
   // direct) skipped all of that and is gone. submitPrompt → bridge.sendPrompt →
   // the single `send_prompt` wire command for every tab.
   if (!p.runOptions) {
-    log(`pipeline: WARNING desktop-source prompt missing runOptions — cannot submit tab=${p.tabId}`)
+    log('pipeline: WARNING desktop-source prompt missing runOptions', { tab_id: p.tabId })
     return
   }
   // Desktop composer attachments: the renderer prepended [Attached ...]
@@ -386,7 +393,7 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
     if (encoded.length > 0) {
       p.runOptions.imageAttachments = [...(p.runOptions.imageAttachments || []), ...encoded]
     }
-    log(`pipeline: desktop attachments encoded tab=${p.tabId} raw=${desktopAttachments.length} encoded=${encoded.length}`)
+    log('pipeline: desktop attachments encoded', { tab_id: p.tabId, raw: desktopAttachments.length, encoded: encoded.length })
   }
   if (!p.runOptions.enterPlanModeDescription) {
     p.runOptions.enterPlanModeDescription = ENTER_PLAN_MODE_DESCRIPTION
@@ -397,7 +404,7 @@ async function submitAsPrompt(p: IncomingPrompt): Promise<void> {
   if (p.resolveSlash) {
     p.runOptions.resolveSlash = true
   }
-  log(`pipeline: submit prompt via submitPrompt tab=${p.tabId} req=${p.reqId} engine=${p.hasExtensions} promptLen=${p.runOptions.prompt.length} resolveSlash=${p.resolveSlash ?? false}`)
+  log('pipeline: submit prompt', { tab_id: p.tabId, req_id: p.reqId, engine: p.hasExtensions, prompt_len: p.runOptions.prompt.length, resolve_slash: p.resolveSlash ?? false })
   await sessionPlane.submitPrompt(p.tabId, p.reqId, p.runOptions)
 }
 
@@ -452,11 +459,11 @@ export async function processIncomingPrompt(p: IncomingPrompt): Promise<void> {
   }
   p.text = text
 
-  log(`pipeline: processIncomingPrompt source=${p.source} tab=${p.tabId} engine=${p.hasExtensions} reqId=${p.reqId} textLen=${text.length} text="${text.substring(0, 60)}"`)
+  log('pipeline: processIncomingPrompt', { source: p.source, tab_id: p.tabId, engine: p.hasExtensions, req_id: p.reqId, text_len: text.length })
 
   // Bash shortcut.
   if (handleBashShortcut(p)) {
-    log(`pipeline: handled by bash shortcut, returning`)
+    log('pipeline: handled by bash shortcut')
     return
   }
 
@@ -467,7 +474,7 @@ export async function processIncomingPrompt(p: IncomingPrompt): Promise<void> {
   // re-dispatching it as an extension command would loop. Submit it straight
   // to the engine with resolveSlash=true instead.
   if (p.resolveSlash) {
-    log(`pipeline: resolveSlash already set (re-submit/retry) → submitting raw invocation directly, skipping slash dispatch`)
+    log('pipeline: resolveSlash already set, submitting raw')
     await submitAsPrompt(p)
     return
   }
@@ -475,12 +482,12 @@ export async function processIncomingPrompt(p: IncomingPrompt): Promise<void> {
   // Slash branch.
   const slash = parseSlash(text)
   if (slash) {
-    log(`pipeline: parsed slash command=/${slash.command} hasArgs=${!!slash.args}`)
+    log('pipeline: parsed slash command', { command: slash.command, has_args: !!slash.args })
     await handleSlash(p, slash)
     return
   }
 
   // Normal prompt.
-  log(`pipeline: not a slash, submitting as normal prompt`)
+  log('pipeline: not a slash, submitting as normal prompt')
   await submitAsPrompt(p)
 }

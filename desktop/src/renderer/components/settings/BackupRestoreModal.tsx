@@ -57,7 +57,7 @@ export function RestoreModalContent({
           <div style={{ fontSize: 11, color: colors.textTertiary, lineHeight: 1.5 }}>
             Created {new Date(preview.manifest.createdAt).toLocaleString()}<br />
             On host <strong style={{ color: colors.textSecondary }}>{preview.manifest.hostname}</strong>{' '}
-            (Ion {preview.manifest.ionVersion}, backend {preview.manifest.backendSnapshot})<br />
+            (Ion {preview.manifest.ionVersion}{preview.manifest.backendSnapshot ? `, backend ${preview.manifest.backendSnapshot}` : ''})<br />
             Contains <strong style={{ color: colors.textSecondary }}>{preview.manifest.conversationCount}</strong> conversations
             ({preview.manifest.scope === 'all' ? 'full archive' : 'currently-open subset'})
           </div>

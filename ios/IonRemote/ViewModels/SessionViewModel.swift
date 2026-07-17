@@ -111,6 +111,12 @@ final class SessionViewModel {
     /// snapshots during a legitimately-streaming run does not thrash the
     /// re-fetch. See SessionViewModel+Snapshot.swift.
     var lastConversationReconcileAt: [String: Date] = [:]
+    /// Timestamp of the last reconnect allowed to bypass the per-tab reconcile
+    /// debounce. A flapping transport would otherwise re-trigger a full reload of
+    /// every diverged tab on every reconnect, flooding the desktop with
+    /// load_conversation requests; the bypass is granted at most once per
+    /// reconnectReloadDebounce window. See SessionViewModel+Snapshot.swift.
+    var lastReconnectReconcileAt: Date?
     var suppressScrollToBottom = false
     var conversationLoadRetryCount: [String: Int] = [:]
     var conversationLoadTimers: [String: Task<Void, Never>] = [:]
@@ -277,6 +283,17 @@ final class SessionViewModel {
     /// `IonRemoteApp.swift`'s `.active` handler for the call sites.
     var pendingOnConnected: [() -> Void] = []
 
+    /// True for the duration of the single snapshot handler invocation that
+    /// corresponds to the first snapshot received after a (re)connect transition.
+    /// Set to `true` inside `handleSnapshot` when `connectionState` flips from
+    /// non-connected to `.connected`, and reset to `false` at the end of the
+    /// same tab-processing loop. Read by `maybeReconcileStaleConversation` to
+    /// bypass the running-status suppression guard: on a reconnect iOS has no
+    /// in-flight stream — it missed all events during the gap — so a diverged
+    /// fingerprint means genuinely stale content and must trigger an immediate
+    /// reload rather than waiting for the post-run heal.
+    var isReconnectSnapshot = false
+
     /// Keyed deferred queue for `.automaticEssential` sends that arrive
     /// while the transport is not yet `.connected`.
     ///
@@ -338,9 +355,20 @@ final class SessionViewModel {
     /// cleared when the app backgrounds. The desktop reads this via `report_focus`
     /// commands to route engine_intercept events to the correct device+tab.
     var focusedTabId: String? = nil
-    /// Set `true` before sending a create-tab command so the `tabCreated`
-    /// handler knows the creation was locally initiated and should navigate.
-    var awaitingLocalTabCreation = false
+    /// In-flight tab-create commands awaiting a `desktop_tab_created` echo,
+    /// keyed by the `clientCmdId` attached to each create command.
+    ///
+    /// A create can be silently lost: after a background/resume cycle the LAN
+    /// socket can report connected while actually being dead, so `lan.send`
+    /// succeeds locally and the frame never reaches the desktop — nothing
+    /// throws, so the essential-queue/requeue paths never fire. This tracker
+    /// closes that hole: each create is recorded here, resent on a timeout and
+    /// on the next `.connected` transition, and cleared when the desktop echoes
+    /// the id back (`confirmCreate`). The matching echo also drives navigation
+    /// to the new tab (it replaces the former `awaitingLocalTabCreation` flag).
+    /// Cleared on hard disconnect so a stale create never spawns a tab against a
+    /// different pairing. See `SessionViewModel+PendingCreate.swift`.
+    var pendingCreates: [String: PendingCreate] = [:]
     /// Text to prefill into the input bar (set by rewind/fork responses).
     var pendingInputByTab: [String: String] = [:]
     /// Per-tab unsent input text. Persisted to UserDefaults across launches.
@@ -399,6 +427,11 @@ final class SessionViewModel {
     var flushTask: Task<Void, Never>?
     /// Safety timer: if `.reconnecting` lingers too long, force a full reconnect.
     var reconnectSafetyTask: Task<Void, Never>?
+    /// Delays between in-place retries of a *transient* LAN auth failure in
+    /// `connectLAN` (socket dropped / cooldown close / timeout — the desktop
+    /// delivered no verdict). Instance-configurable so tests can shrink the
+    /// waits; production keeps 2s then 5s. Definitive rejections never retry.
+    var lanAuthRetryDelays: [Duration] = [.seconds(2), .seconds(5)]
     let eventBatcher = EventBatcher()
     /// Standalone browser for pairing discovery (before a transport exists).
     private(set) var pairingBrowser = BonjourBrowser()

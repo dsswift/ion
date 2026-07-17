@@ -1,4 +1,3 @@
-import { existsSync, readFileSync } from 'fs'
 import { log as _log } from '../../logger'
 import { state, sessionPlane, engineBridge } from '../../state'
 import { processIncomingPrompt } from '../../prompt-pipeline'
@@ -8,8 +7,8 @@ import { getVoiceSystemPrompt } from './engine'
 import { performUnifiedInterrupt } from '../../engine-control-plane-interrupt'
 import type { RemoteCommand } from '../protocol'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 /**
@@ -35,7 +34,7 @@ export async function resolveTabProjectPath(tabId: string): Promise<string | und
     `)
     return cwd || undefined
   } catch (err) {
-    log(`resolveTabProjectPath: error tab=${tabId}: ${(err as Error).message}`)
+    log('resolve_tab_project_path error', { tab_id: tabId, error: (err as Error).message })
     return undefined
   }
 }
@@ -99,7 +98,7 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
         })
       }
       // Send the initial model override so iOS knows the configured model
-      const escapedInstId = instanceId!.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const _escapedInstId = instanceId!.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
       const modelOverride = await state.mainWindow.webContents.executeJavaScript(
         `window.__Ion_resolveEngineModel('${escapedTab}')`
       )
@@ -154,6 +153,20 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
       tabId: cmd.tabId,
       message: {
         id: engineReqId, role: 'user', content: fullText, timestamp: Date.now(), source: 'remote',
+        // Carry structured attachments on the echo so iOS id-reconciliation
+        // (handleMessageAdded) preserves them when it replaces the optimistic
+        // message. Without this the structured attachments on the optimistic
+        // bubble are cleared on reconciliation and the inline image disappears.
+        // Use a.path as the synthetic id — consumeUploadResults keys the
+        // AttachmentImageCache by path, so the cache lookup resolves correctly.
+        ...(attachments.length > 0 ? {
+          attachments: attachments.map((a) => ({
+            id: a.path,
+            type: a.type as 'image' | 'file' | 'plan',
+            name: a.name,
+            path: a.path,
+          })),
+        } : {}),
         ...(slashMatch ? { slashCommand: `/${slashMatch[1]}`, slashArgs: slashMatch[2] } : {}),
       },
     })
@@ -171,7 +184,7 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
       `)
       projectPath = cwd || undefined
     } catch (err) {
-      log(`handlePrompt (engine): project-path query failed for tab=${cmd.tabId}: ${(err as Error).message}`)
+      log('handle_prompt: project-path query failed', { tab_id: cmd.tabId, error: (err as Error).message })
     }
 
     // Resolve planFilePath from renderer store.
@@ -187,7 +200,7 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
       `)
       planFilePath = pfp || undefined
     } catch (err) {
-      log(`handlePrompt (engine): planFilePath query failed for tab=${cmd.tabId}: ${(err as Error).message}`)
+      log('handle_prompt: plan file path query failed', { tab_id: cmd.tabId, error: (err as Error).message })
     }
 
     await processIncomingPrompt({
@@ -251,13 +264,13 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
     projectPath,
     implementationPhase: cmd.implementationPhase,
   }).catch((err: unknown) => {
-    log(`handlePrompt: pipeline error: ${(err as Error).message}`)
+    log('handle_prompt: pipeline error', { error: (err as Error).message })
   })
 }
 
 export function handleCancel(cmd: Extract<RemoteCommand, { type: 'desktop_cancel' }>): void {
   if (!sessionPlane.cancelTab(cmd.tabId)) {
-    log(`remote cancel: tab ${cmd.tabId} not in sessionPlane, performing unified interrupt directly`)
+    log('remote_cancel: not in session plane, direct interrupt', { tab_id: cmd.tabId })
     // Mirror cancelTab's unified interrupt on the not-in-plane fallback path:
     // abort the parent run AND reap the dispatched-agent subtree. Otherwise a
     // cancel that misses the session plane (e.g. a tab the control plane doesn't

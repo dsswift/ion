@@ -1,0 +1,39 @@
+# Ion observability — bind-mount attribute-cache refresher.
+#
+# WHY THIS EXISTS
+# ---------------
+# On macOS, Docker Desktop serves the ${HOME}/.ion bind mount through a
+# virtualized filesystem whose attribute cache goes STALE under sustained
+# host-side writes to a high-write-rate file (engine.jsonl). When stale, an
+# in-container stat() returns a frozen, smaller size than the host file, so
+# Alloy's file tailer parks its cursor and never advances — the "tailer wedge"
+# (see README.md § Tailer wedge). The staleness re-forms within minutes of any
+# one-shot invalidation (an Alloy restart is only a palliative).
+#
+# WHAT REFRESHES THE CACHE (proven live against the wedged stack)
+# ---------------------------------------------------------------
+# The refresh is triggered by a directory READDIR on the mount, NOT by a file
+# read. Measured on the live wedged stack:
+#   tail -c1 / cat / head -c / stat <file>  → DID NOT refresh (cache stayed frozen)
+#   ls -1 /ion-logs   (readdir of the parent) → refreshed every cycle (gap → 0)
+# The stale cache is shared at the Docker Desktop VM mount layer (not
+# per-container): a readdir from THIS separate sidecar collapses Alloy's stale
+# gap just as an in-Alloy readdir would. This is why Alloy never self-heals —
+# its local.file_match uses an explicit path_targets list (not a glob), so it
+# only ever stat()s the target files and never readdirs the directory.
+#
+# WHY A BAKED CMD (not a compose command: override)
+# --------------------------------------------------
+# The dev.yaml v4 executor silently drops any command:/entrypoint: field, so
+# the refresh loop cannot be expressed as a compose command override in the
+# dev path. Baking the loop into the image CMD makes dev.yaml and
+# docker-compose.yml reference one identical artifact (same pattern as
+# Dockerfile.tempo). The 2s interval keeps Alloy's view within a couple seconds
+# of the host under active writes — far inside the 5-minute freshness-panel
+# green threshold — at negligible cost (a readdir of a 4-entry directory).
+FROM busybox:1.37.0
+
+# Unbuffered readdir loop. ls -1 (readdir only, no per-file stat) is the
+# operation proven to bust the stale attribute cache. Output is discarded;
+# the syscall side effect (directory revalidation) is the whole point.
+CMD ["sh", "-c", "while true; do ls -1 /ion-logs >/dev/null 2>&1; sleep 2; done"]

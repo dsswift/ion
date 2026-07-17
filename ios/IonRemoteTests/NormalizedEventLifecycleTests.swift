@@ -43,7 +43,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         {"type":"desktop_tab_created","tab":\(sampleTabJSON)}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .tabCreated(let tab) = event {
+        if case .tabCreated(let tab, _) = event {
             XCTAssertEqual(tab.id, "t1")
             XCTAssertEqual(tab.status, .idle)
         } else {
@@ -300,7 +300,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         let original = RemoteCommand.createTab(workingDirectory: "/var/log")
         let data = try encoder.encode(original)
         let decoded = try decoder.decode(RemoteCommand.self, from: data)
-        if case .createTab(let wd, let pinToGroupId, _, _) = decoded {
+        if case .createTab(let wd, let pinToGroupId, _, _, _) = decoded {
             XCTAssertEqual(wd, "/var/log")
             // pinToGroupId defaults to nil when omitted from the constructor;
             // the round-trip must preserve that.
@@ -318,7 +318,7 @@ final class NormalizedEventLifecycleTests: XCTestCase {
         let original = RemoteCommand.createTab(workingDirectory: "/Users/me/code", pinToGroupId: "group-abc")
         let data = try encoder.encode(original)
         let decoded = try decoder.decode(RemoteCommand.self, from: data)
-        if case .createTab(let wd, let pinToGroupId, _, _) = decoded {
+        if case .createTab(let wd, let pinToGroupId, _, _, _) = decoded {
             XCTAssertEqual(wd, "/Users/me/code")
             XCTAssertEqual(pinToGroupId, "group-abc")
         } else {
@@ -506,6 +506,31 @@ final class NormalizedEventLifecycleTests: XCTestCase {
             XCTAssertEqual(messageLength, 5)
         } else {
             XCTFail("Expected engineSteerInjected, got \(event)")
+        }
+    }
+
+    // MARK: - lanAuthRejected (synthesized by TransportManager)
+
+    /// Pins the codec for the transport-synthesized definitive-rejection
+    /// event. Payload-free like peerDisconnected/transportReconnecting; the
+    /// typeKey assertion also protects the receive-latency logger, which
+    /// derives the wire string by re-encoding.
+    func testRoundTripLanAuthRejected() throws {
+        let data = try encoder.encode(RemoteEvent.lanAuthRejected)
+        XCTAssertEqual(RemoteEvent.lanAuthRejected.typeKey, "lan_auth_rejected")
+        let decoded = try decoder.decode(RemoteEvent.self, from: data)
+        guard case .lanAuthRejected = decoded else {
+            return XCTFail("Round-trip lanAuthRejected failed, got \(decoded)")
+        }
+    }
+
+    func testDecodeLanAuthRejected() throws {
+        let json = """
+        {"type":"lan_auth_rejected"}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        guard case .lanAuthRejected = event else {
+            return XCTFail("Expected lanAuthRejected, got \(event)")
         }
     }
 }

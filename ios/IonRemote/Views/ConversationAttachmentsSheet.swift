@@ -188,7 +188,10 @@ struct ConversationAttachmentsSheet: View {
             }
             .task {
                 let preCacheCount = viewModel.tabAttachmentCache[tabId]?.count ?? -1
-                DiagnosticLog.log("ATTACH: AttachmentsSheet.task tabId=\(tabId.prefix(8)) cacheBeforeRequest=\(preCacheCount)")
+                DiagnosticLog.log("attachments sheet task", tag: "view.attachments", fields: [
+                    "tab_id": String(tabId.prefix(8)),
+                    "count": String(preCacheCount)
+                ])
                 viewModel.requestLoadAttachments(tabId: tabId)
             }
         }
@@ -320,7 +323,9 @@ struct ConversationAttachmentsSheet: View {
             }
         }
 
-        DiagnosticLog.log("ATTACHMENTS: resource not found in store id=\(resourceId.prefix(12))")
+        DiagnosticLog.log("attachments resource not found", tag: "view.attachments", level: .warn, fields: [
+            "resource_id": String(resourceId.prefix(12))
+        ])
     }
 
     // MARK: - Image Preview

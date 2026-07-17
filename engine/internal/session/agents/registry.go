@@ -3,7 +3,6 @@
 package agents
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -218,9 +217,29 @@ func (r *Registry) UpdateStateByID(id string, updater func(*types.AgentStateUpda
 			return
 		}
 	}
-	utils.Warn("AgentRegistry", fmt.Sprintf(
-		"UpdateStateByID: no slot found for id=%q (terminal update landed nowhere, agent may appear stuck as running)", id,
-	))
+	utils.LogWithFields(utils.LevelWarn, "session.agents", "updatestatebyid: no slot found for (terminal update landed nowhere, agent may appear stuck as running)", map[string]any{"run_id": id})
+}
+
+// UpsertStateByID finds a state by its unique ID and applies the updater, or
+// appends seed (then applies the updater to it) when no slot matches. It is the
+// upsert peer of UpdateStateByID: the dispatch terminal transition routes
+// through it so a slot swept during a lifecycle gap is re-materialized as a
+// terminal row rather than the terminal update being lost (which would strand
+// the agent as "running"). seed carries the identity/metadata a resurrected row
+// needs to be coherent; seed.ID is forced to id so the append is addressable.
+func (r *Registry) UpsertStateByID(id string, seed types.AgentStateUpdate, updater func(*types.AgentStateUpdate)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := range r.states {
+		if r.states[i].ID == id {
+			updater(&r.states[i])
+			return
+		}
+	}
+	seed.ID = id
+	r.states = append(r.states, seed)
+	updater(&r.states[len(r.states)-1])
+	utils.LogWithFields(utils.LevelWarn, "session.agents", "upsertstatebyid: slot absent, re-materialized terminal row (a lifecycle gap swept the running slot; terminal state preserved)", map[string]any{"run_id": id})
 }
 
 // FindStateIndex returns the index of the first state with the given name,
@@ -388,10 +407,7 @@ func (r *Registry) MergedSnapshot() []types.AgentStateUpdate {
 	// representative row (representative chosen with empty dispatches[]),
 	// consumers receive a row with no per-dispatch detail.
 	// Log the merge shape so that failure is a one-line log read, not a trace.
-	utils.Debug("AgentRegistry", fmt.Sprintf(
-		"MergedSnapshot: extStates=%d engineStates=%d superseded=%d keptExt=%d grouped=%d merged=%d",
-		len(r.lastExtStates), len(r.states), len(superseded), keptExt, len(grouped), len(merged),
-	))
+	utils.LogWithFields(utils.LevelDebug, "session.agents", "mergedsnapshot", map[string]any{"count": len(r.lastExtStates), "count_1": len(r.states), "count_2": len(superseded), "kept_ext": keptExt, "count_4": len(grouped), "count_5": len(merged)})
 	return merged
 }
 
@@ -427,12 +443,17 @@ func statusPriority(status string) int {
 	switch status {
 	case "running":
 		return 4
-	case "error":
+	case "suspended":
+		// Suspended is higher priority than terminal states: the agent is
+		// still alive (dispatch not yet complete), just parked waiting for
+		// children. Show the suspended indicator rather than hiding the agent.
 		return 3
-	case "done":
+	case "error":
 		return 2
-	case "cancelled":
+	case "done":
 		return 1
+	case "cancelled":
+		return 0
 	default:
 		return 0
 	}
@@ -481,10 +502,7 @@ func groupByName(states []types.AgentStateUpdate) []types.AgentStateUpdate {
 			// Surface it so
 			// the symptom has a greppable signature.
 			if isDispatchBearing(single.Metadata) && dispatchesLen(single.Metadata) == 0 {
-				utils.Debug("AgentRegistry", fmt.Sprintf(
-					"groupByName: name=%q status=%q single entry has dispatch task but empty dispatches[] (consumers cannot expand per-dispatch detail)",
-					name, single.Status,
-				))
+				utils.LogWithFields(utils.LevelDebug, "session.agents", "groupbyname: single entry has dispatch task but empty dispatches[] (consumers cannot expand per-dispatch detail)", map[string]any{"model": name, "status": single.Status})
 			}
 			out = append(out, single)
 			continue
@@ -554,15 +572,9 @@ func groupByName(states []types.AgentStateUpdate) []types.AgentStateUpdate {
 		// case where a dispatch-bearing group still projects to an empty
 		// dispatches[] (the empty-detail symptom).
 		if isDispatchBearing(representative.Metadata) && len(mergedDispatches) == 0 {
-			utils.Debug("AgentRegistry", fmt.Sprintf(
-				"groupByName: name=%q entries=%d repStatus=%q merged dispatches[] is EMPTY despite dispatch task (consumers cannot expand per-dispatch detail)",
-				name, len(indices), representative.Status,
-			))
+			utils.LogWithFields(utils.LevelDebug, "session.agents", "groupbyname: merged dispatches[] is empty despite dispatch task (consumers cannot expand per-dispatch detail)", map[string]any{"model": name, "count": len(indices), "status": representative.Status})
 		} else {
-			utils.Debug("AgentRegistry", fmt.Sprintf(
-				"groupByName: name=%q entries=%d repStatus=%q mergedDispatches=%d",
-				name, len(indices), representative.Status, len(mergedDispatches),
-			))
+			utils.LogWithFields(utils.LevelDebug, "session.agents", "groupbyname", map[string]any{"model": name, "count": len(indices), "status": representative.Status, "count_3": len(mergedDispatches)})
 		}
 
 		out = append(out, representative)

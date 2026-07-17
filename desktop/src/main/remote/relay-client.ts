@@ -4,7 +4,9 @@
  * Connects to: wss://relay.example.com/v1/channel/{channelId}?role=ion
  * Auth: Authorization: Bearer {apiKey}
  *
- * Handles reconnection with exponential backoff and sequence numbering.
+ * Handles reconnection with exponential backoff. Wire sequence numbering is
+ * owned by RemoteTransport (per-device counters); this client only ships
+ * pre-built frames.
  */
 
 import { EventEmitter } from 'events'
@@ -12,8 +14,8 @@ import WebSocket from 'ws'
 import { log as _log } from '../logger'
 import type { WireMessage, RelayControlMessage } from './protocol'
 
-function log(msg: string): void {
-  _log('RelayClient', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('RelayClient', msg, fields)
 }
 
 const BACKOFF_BASE = 1000
@@ -36,7 +38,6 @@ export interface RelayClientOptions {
 export class RelayClient extends EventEmitter {
   private ws: WebSocket | null = null
   private options: RelayClientOptions
-  private seq = 0
   private reconnectAttempt = 0
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private intentionallyClosed = false
@@ -72,7 +73,7 @@ export class RelayClient extends EventEmitter {
     }
     const url = `${base}/v1/channel/${channelId}?role=ion`
 
-    log(`connecting to ${url.replace(/\/v1\/channel\/.*/, '/v1/channel/***')}`)
+    log('relay_client: connecting', { url: url.replace(/\/v1\/channel\/.*/, '/v1/channel/***') })
 
     this.ws = new WebSocket(url, {
       headers: {
@@ -99,12 +100,12 @@ export class RelayClient extends EventEmitter {
 
         this.emit('message', data as WireMessage)
       } catch (err) {
-        log(`parse error: ${(err as Error).message}`)
+        log('relay_client: parse error', { error: (err as Error).message })
       }
     })
 
     this.ws.on('close', (code, reason) => {
-      log(`disconnected: code=${code} reason=${reason?.toString() || 'none'}`)
+      log('relay_client: disconnected', { code, reason: reason?.toString() || '' })
       this._connected = false
       this.ws = null
       this.emit('disconnected')
@@ -115,7 +116,7 @@ export class RelayClient extends EventEmitter {
     })
 
     this.ws.on('error', (err) => {
-      log(`error: ${err.message}`)
+      log('relay_client: error', { error: err.message })
       // 'close' event will follow, triggering reconnect.
     })
   }
@@ -129,12 +130,8 @@ export class RelayClient extends EventEmitter {
     try {
       this.ws.send(JSON.stringify(message))
     } catch (err) {
-      log(`send error: ${(err as Error).message}`)
+      log('relay_client: send error', { error: (err as Error).message })
     }
-  }
-
-  nextSeq(): number {
-    return ++this.seq
   }
 
   disconnect(): void {
@@ -160,7 +157,7 @@ export class RelayClient extends EventEmitter {
       BACKOFF_MAX
     ) + Math.random() * JITTER_MAX
 
-    log(`reconnecting in ${Math.round(delay)}ms (attempt ${this.reconnectAttempt + 1})`)
+    log('relay_client: reconnecting', { delay_ms: Math.round(delay), attempt: this.reconnectAttempt + 1 })
     this.reconnectAttempt++
 
     this.reconnectTimer = setTimeout(() => {

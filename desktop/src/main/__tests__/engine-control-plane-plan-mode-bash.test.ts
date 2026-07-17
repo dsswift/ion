@@ -49,7 +49,10 @@ vi.mock('electron', () => ({
   },
 }))
 
-const mockBridge = {
+// vi.hoisted for the same reason as `mocks` above: state.ts constructs an
+// EngineBridge at module load, so the engine-bridge mock factory runs during
+// the hoisted import phase — a plain `const` here is still in its TDZ then.
+const mockBridge = vi.hoisted(() => ({
   startSession: vi.fn().mockResolvedValue({ ok: true }),
   sendPrompt: vi.fn().mockResolvedValue({ ok: true }),
   sendAbort: vi.fn(),
@@ -65,7 +68,7 @@ const mockBridge = {
   emit: vi.fn(),
   removeListener: vi.fn(),
   removeAllListeners: vi.fn(),
-}
+}))
 
 vi.mock('../engine-bridge', () => {
   return {
@@ -85,6 +88,7 @@ vi.mock('../engine-bridge-fs', () => ({
 
 vi.mock('../logger', () => ({
   log: mocks.log,
+  trace: vi.fn(),
   debug: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -219,9 +223,19 @@ describe('EngineControlPlane — setPermissionMode plan-mode bash allowlist proj
     // The helper logs via the logger's `log` export. We don't assert the
     // exact prefix (avoids brittleness against tag-rename refactors) —
     // only that the failure surfaced through the logger and named the
-    // cause string.
+    // cause. Per ADR-019 the cause is carried in the structured fields
+    // object ({ error: String(err) }), never interpolated into the msg
+    // string, so the filter inspects both string args and field values.
     const failureLogs = mocks.log.mock.calls.filter((args: any[]) =>
-      args.some((a) => typeof a === 'string' && a.includes('settings.json corrupted')),
+      args.some((a) => {
+        if (typeof a === 'string' && a.includes('settings.json corrupted')) return true
+        if (a && typeof a === 'object') {
+          return Object.values(a).some(
+            (v) => typeof v === 'string' && v.includes('settings.json corrupted'),
+          )
+        }
+        return false
+      }),
     )
     expect(failureLogs.length).toBeGreaterThan(0)
   })

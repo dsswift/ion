@@ -4,9 +4,10 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { log as _log } from './logger'
 import { loadSessionChains } from './settings-store'
+import { imageAttachmentFromBlock } from './conversation-image-store'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 const PLAN_SLUG_RE = /^\[Attached plan: .*\/([^/]+)\.md\]/
@@ -294,11 +295,52 @@ export function conversationExists(sessionId: string): boolean {
   return false
 }
 
+/**
+ * Attach a persisted "image" content block to its owning tool-call row in
+ * `result`. Mirrors the engine's flattenEntries image handling (list.go):
+ *
+ *  - When the block carries a non-empty `tool_use_id`, attach to the matching
+ *    tool-call row (by the toolCallIndex map). An image with a non-empty
+ *    tool_use_id but no matching tool call (orphan) is dropped.
+ *  - Legacy pre-tool_use_id images (persisted before the stamping existed) have
+ *    an empty tool_use_id, so the map lookup can never match. The persisted
+ *    block order is [tool_result, tool_result, image, image], so these images
+ *    belong to the most recent tool-call row — attach to the last tool-role row.
+ *
+ * The image bytes are re-derived to an on-disk path via imageAttachmentFromBlock
+ * (content-addressed; never base64 on the row).
+ */
+function attachImageToToolRow(
+  result: any[],
+  toolCallIndex: Record<string, number>,
+  convId: string,
+  block: any,
+): void {
+  const att = imageAttachmentFromBlock(convId, block)
+  if (!att) return
+  const toolUseId: string = block.tool_use_id || ''
+  if (toolUseId) {
+    const idx = toolCallIndex[toolUseId]
+    if (idx !== undefined) {
+      ;(result[idx].attachments ||= []).push(att)
+    }
+    // Orphan (non-empty id, no matching tool call): dropped, mirroring the engine.
+    return
+  }
+  // Legacy empty-id image: attach to the most recent tool-role row.
+  for (let i = result.length - 1; i >= 0; i--) {
+    if (result[i].role === 'tool') {
+      ;(result[i].attachments ||= []).push(att)
+      return
+    }
+  }
+}
+
 export function loadEngineConversationMessages(sessionId: string): any[] {
   const convDir = join(homedir(), '.ion', 'conversations')
   const filePath = join(convDir, `${sessionId}.jsonl`)
   if (!existsSync(filePath)) {
-    log(`loadEngineConversation: file not found: ${filePath}`)
+    log('session_meta: loadEngineConversation file not found', { path: filePath })
     return []
   }
 
@@ -344,6 +386,15 @@ export function loadEngineConversationMessages(sessionId: string): any[] {
               }
               result[idx].content = resultContent
             }
+          } else if (block.type === 'image') {
+            // A persisted tool-result image block. The live path emitted an
+            // image_content event per image and clients attached it to the
+            // owning tool message; that event is not persisted, so on reload we
+            // replay the reference here. Mirrors the engine's flattenEntries
+            // (list.go): re-derive the on-disk path from the inline base64
+            // (content-addressed, idempotent — resolves to the same file the
+            // engine wrote) and attach it to the owning tool-call row.
+            attachImageToToolRow(result, toolCallIndex, sessionId, block)
           }
         }
         if (textParts.length > 0) {
@@ -377,7 +428,7 @@ export function loadEngineConversationMessages(sessionId: string): any[] {
     }
   }
 
-  log(`loadEngineConversation: loaded ${result.length} messages from ${filePath}`)
+  log('session_meta: loadEngineConversation loaded', { count: result.length, path: filePath })
   return result
 }
 
@@ -396,7 +447,7 @@ export function loadClaudeSessionMessages(sessionId: string, projectPath?: strin
 
   const filePath = join(dir, `${sessionId}.jsonl`)
   if (!existsSync(filePath)) {
-    log(`loadClaudeSessionMessages: file not found: ${filePath}`)
+    log('session_meta: loadClaudeSessionMessages file not found', { path: filePath })
     return []
   }
 

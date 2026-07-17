@@ -86,7 +86,11 @@ type CompactRequest struct {
 // compaction returns nil even if every summary tier produced an empty
 // result — the boundary block injection and event emission still happen.
 func (b *ApiBackend) CompactNow(ctx context.Context, req CompactRequest) error {
-	utils.Log("ApiBackend", fmt.Sprintf("CompactNow: convID=%s model=%s requestID=%s", req.ConversationID, req.Model, req.RequestID))
+	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "CompactNow", map[string]any{
+		"conversation_id": req.ConversationID,
+		"model":           req.Model,
+		"request_id":      req.RequestID,
+	})
 
 	if req.ConversationID == "" {
 		return fmt.Errorf("CompactNow: ConversationID is required")
@@ -100,7 +104,10 @@ func (b *ApiBackend) CompactNow(ctx context.Context, req CompactRequest) error {
 	// also surface (load corruption, disk failure).
 	conv, err := conversation.Load(req.ConversationID, "")
 	if err != nil {
-		utils.Log("ApiBackend", fmt.Sprintf("CompactNow: load failed convID=%s err=%v", req.ConversationID, err))
+		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "CompactNow: load failed", map[string]any{
+			"conversation_id": req.ConversationID,
+			"error":           utils.ErrStr(err),
+		})
 		return fmt.Errorf("CompactNow: load conversation %s: %w", req.ConversationID, err)
 	}
 
@@ -166,7 +173,9 @@ func (b *ApiBackend) CompactNow(ctx context.Context, req CompactRequest) error {
 	// proactive path — a harness can veto user-initiated compaction the
 	// same way it can veto auto compaction.
 	if hooks.OnSessionBeforeCompact != nil && hooks.OnSessionBeforeCompact(run.requestID) {
-		utils.Log("ApiBackend", fmt.Sprintf("CompactNow: cancelled by OnSessionBeforeCompact hook requestID=%s", run.requestID))
+		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "CompactNow: cancelled by OnSessionBeforeCompact hook", map[string]any{
+			"request_id": run.requestID,
+		})
 		return fmt.Errorf("CompactNow: cancelled by session_before_compact hook")
 	}
 
@@ -186,6 +195,9 @@ func (b *ApiBackend) CompactNow(ctx context.Context, req CompactRequest) error {
 		trigger:       "user",
 	})
 
-	utils.Log("ApiBackend", fmt.Sprintf("CompactNow COMPLETE: convID=%s requestID=%s", req.ConversationID, req.RequestID))
+	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "CompactNow COMPLETE", map[string]any{
+		"conversation_id": req.ConversationID,
+		"request_id":      req.RequestID,
+	})
 	return nil
 }

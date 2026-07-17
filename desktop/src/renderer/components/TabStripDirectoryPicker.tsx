@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react'
+import { useViewportClamp } from '../hooks/useViewportClamp'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { FolderPlus, FolderOpen, Trash } from '@phosphor-icons/react'
@@ -23,6 +24,8 @@ export function DirectoryPicker({
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const ref = useRef<HTMLDivElement>(null)
+  // Keep the portaled popover inside the window (ATV top-anchored strip).
+  useViewportClamp(ref, true)
   const recentDirs = usePreferencesStore((s) => s.recentBaseDirectories)
   const usageCounts = usePreferencesStore((s) => s.directoryUsageCounts)
   const [flipDown, setFlipDown] = useState(false)

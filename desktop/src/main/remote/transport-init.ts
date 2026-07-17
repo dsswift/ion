@@ -11,12 +11,12 @@ import { startTabSnapshotPolling, stopTabSnapshotPolling } from './snapshot-poll
 import { getRemoteTabStates } from './snapshot'
 import { startGitWatcherBridge, stopGitWatcherBridge } from './git-watcher-bridge'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 export function initRemoteTransport(settings: Record<string, unknown>): void {
-  log(`[Remote] initRemoteTransport called: remoteEnabled=${settings.remoteEnabled} relayUrl=${settings.relayUrl}`)
+  log('remote_transport: init', { remote_enabled: settings.remoteEnabled, relay_url: settings.relayUrl })
 
   if (state.remoteTransport) {
     stopTabSnapshotPolling()
@@ -35,7 +35,7 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
   const relayApiKey = (settings.relayApiKey as string) || ''
 
   const pairedDevices = settings.pairedDevices as any[] | undefined
-  log(`[Remote] pairedDevices=${pairedDevices?.length || 0} relay=${!!relayUrl}`)
+  log('remote_transport: paired devices', { count: pairedDevices?.length || 0, has_relay: !!relayUrl })
 
   state.remoteTransport = new RemoteTransport({
     relayUrl,
@@ -110,7 +110,7 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
   })
 
   state.remoteTransport.on('device-unpaired', (deviceId: string) => {
-    log(`[Remote] device ${deviceId} unpaired via close code`)
+    log('remote_transport: device unpaired via close code', { device_id: deviceId })
     deviceFocusMap.delete(deviceId)
     revokeDeviceLocally(deviceId)
   })
@@ -118,7 +118,7 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
   state.remoteTransport.on('pair-request', handlePairRequest)
 
   state.remoteTransport.start().catch((err) => {
-    log(`Remote transport failed to start: ${(err as Error).message}`)
+    log('remote_transport: failed to start', { error: (err as Error).message })
   })
 
   startTerminalOutputFlushing()

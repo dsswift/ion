@@ -4,15 +4,17 @@ import { CaretRight, ArrowsOutSimple, ArrowsInSimple } from '@phosphor-icons/rea
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import { useSessionStore } from '../stores/sessionStore'
-import { meta, isAgentVisible, isRootLevelAgent, sortAgents, getLabelBg, getStatusSuffix, getDispatches, selectAgentDepths, dispatchKey } from './agent-panel-helpers'
+import { meta, isAgentVisible, isRootLevelAgent, sortAgents, getDispatches, selectAgentDepths, dispatchKey } from './agent-panel-helpers'
 import { reconcileActivity } from './agent-dispatch-activity'
 import { mapConversationMessages } from './agent-conversation-mapper'
-import { AgentExpandedView } from './AgentExpandedView'
+import { AgentRow } from './AgentRow'
 import { AgentDetailPanel } from './AgentDetailPanel'
+import { useAgentDetailOpener } from '../hooks/useAgentDetailOpener'
 import { useAgentPanelResize, DEFAULT_PANEL_HEIGHT } from './agent-panel-resize'
 import type { AgentStateUpdate } from '../../shared/types'
 import type { Message } from '../../shared/types'
 import type { DispatchInfo, DispatchTelemetryEntry } from '../../shared/types-engine'
+import { rDebug, rError } from '../rendererLogger'
 
 interface Props {
   agents: AgentStateUpdate[]
@@ -82,31 +84,45 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
   const userToggled = useRef(false)
   const panelRef = useRef<HTMLDivElement>(null)
 
-  // Visibility scoping:
-  //  - subDispatch tiers (inside the popup): visibility metadata does not apply
-  //    to sub-dispatched agents, so every agent shows (skip isAgentVisible).
-  //  - main conversation: apply the always/sticky/ephemeral visibility filter.
-  const visibilityFiltered = subDispatch ? agents : agents.filter(isAgentVisible)
-  // Root scoping (main conversation only): when rootOnly, drop any agent that
-  // is a nested dispatch (a specialist dispatched by another dispatched agent).
-  // Each agent-state pill carries its own dispatch attribution
-  // (dispatchDepth / dispatchParentId, stamped in dispatch_agent.go), so the
-  // filter is per-instance: it correctly hides a depth-2 dispatch of an agent
-  // name even when the SAME name is also dispatched at root level by the
-  // orchestrator. (The earlier name-based telemetry heuristic could not
-  // distinguish those and leaked the nested instance into the main panel.)
-  // Agents with no attribution (extension-roster rows, pre-fix persisted state)
-  // are treated as root-level and stay visible — see isRootLevelAgent.
-  const scoped = rootOnly
-    ? visibilityFiltered.filter(isRootLevelAgent)
-    : visibilityFiltered
-  const visible = sortAgents(scoped)
+  // Visibility + root scoping. Memoized so `visible` is a stable reference:
+  // `filter` and `sortAgents` always produce new arrays, and effects that
+  // depend on `visible` would re-fire on every render (once per streaming text
+  // chunk) without memoization — causing sustained re-render thrashing.
+  //  - subDispatch tiers: skip the always/sticky/ephemeral visibility filter.
+  //  - rootOnly (main conversation): drop depth-2+ nested dispatches. Each
+  //    agent carries dispatchDepth / dispatchParentId from dispatch_agent.go,
+  //    so the filter is per-instance — the same agent name dispatched at both
+  //    root and nested levels is handled correctly. Agents with no attribution
+  //    (extension-roster rows, pre-fix state) are treated as root-level.
+  const visible = React.useMemo(() => {
+    const visibilityFiltered = subDispatch ? agents : agents.filter(isAgentVisible)
+    const scoped = rootOnly
+      ? visibilityFiltered.filter(isRootLevelAgent)
+      : visibilityFiltered
+    return sortAgents(scoped)
+  }, [agents, subDispatch, rootOnly])
 
   // Derive per-agent nesting depth from flat dispatch telemetry.
   const agentDepths = React.useMemo(
     () => selectAgentDepths(dispatchTelemetry || []),
     [dispatchTelemetry],
   )
+
+  // Header breakdown — total / active / done, derived over the SAME filtered
+  // `visible` set the list renders (not the raw `agents` array) so the header
+  // stays honest against the rows below it. Ephemeral agents drop out of
+  // `visible` when they finish, so `done` counts only the always/sticky agents
+  // that completed and remain clickable in the list. `error` folds into neither
+  // active nor done — it is surfaced by its own red row dot.
+  const headerCounts = React.useMemo(() => {
+    let active = 0
+    let done = 0
+    for (const a of visible) {
+      if (a.status === 'running') active++
+      else if (a.status === 'done') done++
+    }
+    return { total: visible.length, active, done }
+  }, [visible])
 
   // When agents transition from none→some, apply the user's default
   // preference (open or collapsed). When they go back to none, reset
@@ -136,13 +152,13 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
     if (!convId) return
     setConvLoading(prev => { const next = new Map(prev); next.set(convId, true); return next })
     try {
-      console.log(`[AgentPanel] fetching conversation: convId=${convId}`)
+      rDebug('agent-panel', 'fetching conversation', { conversation_id: convId })
       const data = await window.ion.getConversation(convId, 0, 200)
       const msgs: Message[] = mapConversationMessages(data.messages || [])
-      console.log(`[AgentPanel] loaded ${msgs.length} messages for convId=${convId}`)
+      rDebug('agent-panel', 'loaded conversation messages', { conversation_id: convId, count: msgs.length })
       setConvMessages(prev => { const next = new Map(prev); next.set(convId, msgs); return next })
     } catch (err) {
-      console.error(`[AgentPanel] loadConversation error:`, err)
+      rError('agent-panel', 'loadConversation error', { error: String(err) })
     } finally {
       setConvLoading(prev => { const next = new Map(prev); next.set(convId, false); return next })
     }
@@ -281,12 +297,21 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
     return { dispatches, dispIdx, slicedMsgs: mergedMsgs, isLoading }
   }, [selectedDispatch, convMessages, convLoading, dispatchActivity])
 
+  // Click-to-inspect from the Agent Team Visualizer (see the hook).
+  useAgentDetailOpener(agents, (name, agent) => toggleAgent(name, agent))
+
   const toggleAgent = (name: string, agent: AgentStateUpdate) => {
     // Per-agent UI state (expand/select/popup) is keyed by the agent's most
     // recent dispatch id, not its name, so two dispatches of the same agent
     // name maintain independent state. Falls back to the name for agents with
     // no dispatch.
     const key = dispatchKey(agent)
+    // Whether this row has anything to show: at least one dispatch, buffered
+    // full output, or a live running state. Shared by the popup and inline
+    // paths. A data-less row (roster pill, completed ephemeral with no
+    // transcript) is a no-op click — matching iOS (ConversationView+Agents:91)
+    // and avoiding the empty "No conversation data available" expansion.
+    const hasContent = getDispatches(agent).length > 0 || meta(agent, 'fullOutput', '') || agent.status === 'running'
     // Escalation mode: when an onOpenDispatch handler is provided (the embedded
     // sub-dispatch panel inside the dispatch-preview popup), clicking a row
     // drills one tier down via the parent popup's breadcrumb stack instead of
@@ -307,7 +332,6 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
 
     // Popup mode: open floating panel instead of inline expand
     if (agentDetailPopup) {
-      const hasContent = getDispatches(agent).length > 0 || meta(agent, 'fullOutput', '') || agent.status === 'running'
       if (hasContent) {
         // Default to the most recent dispatch if not already selected
         const dispatches = getDispatches(agent)
@@ -317,11 +341,14 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
         }
         setPopupDispatchId(mostRecentDispatch?.id ?? name)
         loadAgentDispatch(agent)
-        return
       }
+      // Popup mode never falls through to inline expansion — a data-less click
+      // is a no-op here too.
+      return
     }
 
-    // Inline expand mode (original behavior)
+    // Inline expand mode (original behavior). A data-less row does not expand.
+    if (!hasContent) return
     const isCurrentlyExpanded = agentExpanded.get(key) || false
     // If already expanded and a conversation is loading, ignore the click.
     // This prevents the user from accidentally collapsing the panel and
@@ -354,7 +381,6 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
   // specialists spawn (the user requires the preview to always carry the panel).
   if (agents.length === 0 && !alwaysRender) return null
 
-  const running = visible.filter(a => a.status === 'running').length
   const effectiveHeight = panelHeight ?? DEFAULT_PANEL_HEIGHT
 
   // Resolve popup data (outside the render loop, using the same logic)
@@ -415,18 +441,20 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
             transition: 'transform 0.15s ease',
           }}
         />
-        <span>Agents ({visible.length})</span>
         {/*
-          "N active" count, rendered immediately after the total count
-          so the user reads both numbers from the same place. Mirrors
-          the iOS layout in EngineView.swift (lines 316-323) where the
-          active count sits right next to the total. Was previously
-          rendered after the fullscreen toggle on the right, forcing
-          the user to scan two different spots. Color uses the same
-          orange accent the iOS counterpart uses for "active".
+          Segmented breakdown: total · active · done. Each count segment uses
+          the same status token as its corresponding row dot (active → orange
+          statusRunning, done → green statusComplete) so the header's color
+          vocabulary matches the rows. Zero segments are dropped, so a running
+          batch reads "Agents · 5 · 5 active" and a finished one "Agents · 5 ·
+          5 done". Counts are derived over `visible` (see headerCounts memo).
         */}
-        {running > 0 && (
-          <span style={{ color: colors.accent, fontWeight: 600 }}>· {running} active</span>
+        <span>Agents · {headerCounts.total}</span>
+        {headerCounts.active > 0 && (
+          <span style={{ color: colors.statusRunning, fontWeight: 600 }}>· {headerCounts.active} active</span>
+        )}
+        {headerCounts.done > 0 && (
+          <span style={{ color: colors.statusComplete, fontWeight: 600 }}>· {headerCounts.done} done</span>
         )}
         {onToggleFullscreen && (
           <button
@@ -468,103 +496,30 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
             {visible.map((agent) => {
               const key = dispatchKey(agent)
               const isExpanded = agentExpanded.get(key) || false
-              const suffix = getStatusSuffix(agent)
               const { dispatches, dispIdx, slicedMsgs: loadedMsgs, isLoading } = resolveDispatchData(agent)
               const nestDepth = agentDepths.get(getDispatches(agent).at(-1)?.id ?? '') ?? 0
               const nestIndent = nestDepth > 1 ? (nestDepth - 1) * 16 : 0
 
               return (
-                <div key={key}>
-                  <div
-                    data-ion-ui
-                    onClick={() => toggleAgent(agent.name, agent)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      height: 22,
-                      cursor: 'pointer',
-                      userSelect: 'none',
-                      paddingLeft: nestIndent || undefined,
-                    }}
-                  >
-                    {/* Colored label */}
-                    <div
-                      style={{
-                        minWidth: 140,
-                        height: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        padding: '0 8px',
-                        background: getLabelBg(agent),
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: '#fff',
-                        gap: 6,
-                        flexShrink: 0,
-                      }}
-                    >
-                      <span>{meta(agent, 'displayName', agent.name)}</span>
-                      {suffix && (
-                        <span style={{ fontWeight: 400, opacity: 0.7, fontSize: 10 }}>{suffix}</span>
-                      )}
-                    </div>
-
-                    {/* Last work text */}
-                    <div
-                      style={{
-                        flex: 1,
-                        minWidth: 0,
-                        padding: '0 8px',
-                        fontSize: 11,
-                        color: colors.textTertiary,
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}
-                    >
-                      {meta(agent, 'lastWork', '')}
-                    </div>
-
-                    {/* Expand caret */}
-                    <div style={{ padding: '0 6px', display: 'flex', alignItems: 'center', color: colors.textTertiary }}>
-                      <CaretRight
-                        size={10}
-                        style={{
-                          transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-                          transition: 'transform 0.15s ease',
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Expanded output (inline mode only) */}
-                  <AnimatePresence>
-                    {isExpanded && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.15 }}
-                        style={{ overflow: 'hidden' }}
-                      >
-                        <AgentExpandedView
-                          agent={agent}
-                          colors={colors}
-                          loadedMessages={loadedMsgs}
-                          loading={isLoading}
-                          isFullscreen={isFullscreen}
-                          dispatches={dispatches}
-                          selectedDispatch={dispIdx}
-                          onSelectDispatch={(idx) => {
-                            setSelectedDispatch(prev => { const next = new Map(prev); next.set(key, idx); return next })
-                            const convId = dispatches[idx]?.conversationId
-                            if (convId) loadSingleConversation(convId)
-                          }}
-                        />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
+                <AgentRow
+                  key={key}
+                  agent={agent}
+                  allAgents={agents}
+                  colors={colors}
+                  isFullscreen={isFullscreen}
+                  isExpanded={isExpanded}
+                  dispatches={dispatches}
+                  dispIdx={dispIdx}
+                  loadedMessages={loadedMsgs}
+                  loading={isLoading}
+                  nestIndent={nestIndent}
+                  onToggle={() => toggleAgent(agent.name, agent)}
+                  onSelectDispatch={(idx) => {
+                    setSelectedDispatch(prev => { const next = new Map(prev); next.set(key, idx); return next })
+                    const convId = dispatches[idx]?.conversationId
+                    if (convId) loadSingleConversation(convId)
+                  }}
+                />
               )
             })}
           </motion.div>

@@ -81,6 +81,24 @@ type EngineEvent struct {
 	// engine_tool_end
 	ToolResult  string `json:"result,omitempty"`
 	ToolIsError bool   `json:"isError,omitempty"`
+	// ToolResultImages carries images a tool returned alongside its text
+	// output on engine_tool_end. Each entry references an on-disk FILE PATH
+	// (never base64) so consumers can render tool-produced images inline.
+	// Additive (omitempty): absent for the overwhelming majority of tool
+	// results. Mirrors ToolResultEvent.Images.
+	ToolResultImages []ToolResultImage `json:"images,omitempty"`
+
+	// engine_image_content — a single image produced during a run, emitted
+	// once per image. Source is "tool" (ImageToolID set to the producing tool
+	// call) or "provider" (ImageToolID empty). ImagePath is the on-disk
+	// location of the saved image; the engine never puts base64 on the wire.
+	// Mirrors the ImageContentEvent NormalizedEvent variant. Surfaced with
+	// image-prefixed field names so they don't collide with other variants'
+	// primitives (ToolID is already used by engine_tool_start/tool_end).
+	ImagePath      string `json:"imagePath,omitempty"`
+	ImageMediaType string `json:"imageMediaType,omitempty"`
+	ImageSource    string `json:"imageSource,omitempty"`
+	ImageToolID    string `json:"imageToolId,omitempty"`
 
 	// engine_tool_stalled
 	ToolElapsed float64 `json:"toolElapsed,omitempty"`
@@ -109,6 +127,31 @@ type EngineEvent struct {
 	// SteerInjectedEvent for the underlying normalized variant.
 	SteerMessageLength int `json:"steerMessageLength,omitempty"`
 
+	// engine_prompt_injected — an extension injected a prompt via
+	// ctx.sendPrompt and a run started on it; no client submitted this
+	// turn, so live clients must render it from this event (the text is
+	// also persisted as the run's user turn — a conversation reload shows
+	// the same content). InjectedPromptOrigin names the hosting extension
+	// when known. InjectedPromptKind classifies the injection: the value
+	// "agent_completion" means this is an internal agent dispatch callback
+	// (a completed child agent's result routed back to a parent) — clients
+	// must NOT render these as user-visible bubbles. Empty means a genuine
+	// extension-initiated user turn. See PromptInjectedEvent for the
+	// normalized variant.
+	InjectedPrompt       string `json:"injectedPrompt,omitempty"`
+	InjectedPromptOrigin string `json:"injectedPromptOrigin,omitempty"`
+	InjectedPromptKind   string `json:"injectedPromptKind,omitempty"`
+
+	// engine_task_suspended — a dispatched agent's LLM run ended without
+	// completing the dispatch (the agent called ctx.suspend() or
+	// ctx.suspendUntilAll()). The agent is parked, waiting for child
+	// completions or a revive message. TaskSuspendAwaitingCount is the number
+	// of child dispatches the agent is waiting on (0 for bare suspend).
+	// Clients may update the agent-state indicator to show "suspended" or
+	// "idle" while the dispatch is parked. TaskCompleteEvent (and idle
+	// engine_status) fires only when the agent truly finishes after revival.
+	TaskSuspendAwaitingCount int `json:"taskSuspendAwaitingCount,omitempty"`
+
 	// engine_model_fallback — workflow signal emitted when the engine
 	// fell back to its configured defaultModel because the requested
 	// model didn't resolve to a provider. Mirrors the underlying
@@ -121,6 +164,18 @@ type EngineEvent struct {
 	FallbackRequestedModel string `json:"fallbackRequestedModel,omitempty"`
 	FallbackModel          string `json:"fallbackModel,omitempty"`
 	FallbackReason         string `json:"fallbackReason,omitempty"`
+
+	// engine_capability_unsupported — workflow signal emitted when a
+	// requested feature (e.g. plan mode) is not supported by the backend
+	// that would serve the run, and the engine declined the prompt cleanly
+	// instead of dispatching a run that would fail. Mirrors the underlying
+	// CapabilityUnsupportedEvent NormalizedEvent variant. No run starts;
+	// the session stays idle and immediately usable. Consumers may reroute
+	// to a capable model, surface the reason, or ignore the event — see
+	// CLAUDE.md § "The typed-event corollary".
+	Capability        string `json:"capability,omitempty"`
+	CapabilityBackend string `json:"capabilityBackend,omitempty"`
+	CapabilityReason  string `json:"capabilityReason,omitempty"`
 
 	// engine_dead
 	ExitCode   *int     `json:"exitCode,omitempty"`
@@ -203,6 +258,32 @@ type EngineEvent struct {
 	ElicitResponse  map[string]interface{} `json:"response,omitempty"`
 	ElicitCancelled bool                   `json:"cancelled,omitempty"`
 
+	// engine_oidc_login_url — delivered to the client that issued
+	// oidc_begin_login. Exactly one of the two shapes is populated:
+	// interactive PKCE carries OidcAuthorizationURL (the consumer opens it
+	// in a browser; the engine's loopback callback completes the exchange),
+	// device-code carries OidcUserCode + OidcVerificationURI (the consumer
+	// displays them; the engine polls to completion).
+	OidcAuthorizationURL string `json:"oidcAuthorizationUrl,omitempty"`
+	OidcUserCode         string `json:"oidcUserCode,omitempty"`
+	OidcVerificationURI  string `json:"oidcVerificationUri,omitempty"`
+
+	// engine_provider_login — one stage transition of a delegated-CLI login
+	// (codex/grok/cursor). Incremental: consumers render the current stage; a
+	// terminal completed/failed/cancelled stage ends the flow. Nil on every
+	// other event.
+	ProviderLogin *ProviderLoginUpdate `json:"providerLogin,omitempty"`
+
+	// engine_oidc_identity — complete snapshot of the operator's OIDC
+	// identity state. OidcSignedIn is a pointer so the false (signed-out)
+	// snapshot survives omitempty; consumers replace their local identity
+	// view with the payload. Claim fields are empty when signed out.
+	OidcSignedIn    *bool  `json:"oidcSignedIn,omitempty"`
+	OidcProvider    string `json:"oidcProvider,omitempty"`
+	OidcSubject     string `json:"oidcSubject,omitempty"`
+	OidcUsername    string `json:"oidcUsername,omitempty"`
+	OidcDisplayName string `json:"oidcDisplayName,omitempty"`
+
 	// engine_command_registry — complete snapshot of slash commands exposed by
 	// the session's currently-loaded extensions. Emitted at session_start (after
 	// extensions wire up) and on every subsequent change to the command map
@@ -262,7 +343,7 @@ type EngineEvent struct {
 	// engine_webhook_handler_error, engine_webhook_responded.
 	// Webhook lifecycle events: engine_webhook_registered, engine_webhook_deregistered.
 	// Schedule fire events: engine_schedule_fired, engine_schedule_skipped,
-	// engine_schedule_failed.
+	// engine_schedule_failed, engine_schedule_missed.
 	// Schedule lifecycle events: engine_schedule_registered, engine_schedule_deregistered.
 	// Shared error: engine_async_fire_dropped.
 	//
@@ -312,6 +393,12 @@ type EngineEvent struct {
 	// AsyncDurationMs is the elapsed time of a fire from receipt to
 	// response (webhook) or fire to handler-return (schedule).
 	AsyncDurationMs int64 `json:"asyncDurationMs,omitempty"`
+	// AsyncMissedSlot is the RFC3339 UTC timestamp of the scheduled slot
+	// that was missed. Set only on engine_schedule_missed events.
+	AsyncMissedSlot string `json:"asyncMissedSlot,omitempty"`
+	// AsyncHadMarker is true when a last-run marker existed on disk at the
+	// time the missed slot was detected. Set only on engine_schedule_missed.
+	AsyncHadMarker bool `json:"asyncHadMarker,omitempty"`
 
 	// --- engine_llm_call ---
 	//
@@ -558,4 +645,8 @@ type ContextBreakdownPayload struct {
 	// dispatch session's cost, computed on demand. Zero for sessions with no
 	// dispatches or no cost yet.
 	AggregateCostUsd float64 `json:"aggregateCostUsd,omitempty"`
+	// ModelBreakdown is the per-model cost breakdown for the conversation dispatch
+	// tree. Populated by the on-demand breakdown. Sorted by CostUsd descending.
+	// Empty for runloop-emitted breakdowns.
+	ModelBreakdown []ModelBreakdown `json:"modelBreakdown,omitempty"`
 }

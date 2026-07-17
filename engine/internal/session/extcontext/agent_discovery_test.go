@@ -10,6 +10,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/resource"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -18,16 +19,22 @@ import (
 // BuildDiscoverAgentsFunc actually exercises is wired; the rest of the
 // methods are zero-value stubs.
 type agentDiscoveryTestAccessor struct {
+	noopPluginMethods
 	extGroup *extension.ExtensionGroup
 }
 
 func (a *agentDiscoveryTestAccessor) SessionKey() string                       { return "test-session" }
+func (a *agentDiscoveryTestAccessor) ExtensionName() string    { return "" }
+func (a *agentDiscoveryTestAccessor) ExtensionVersion() string { return "" }
 func (a *agentDiscoveryTestAccessor) ConversationID() string                   { return "" }
 func (a *agentDiscoveryTestAccessor) WorkingDirectory() string                 { return "/tmp" }
 func (a *agentDiscoveryTestAccessor) Emit(ev types.EngineEvent)                {}
 func (a *agentDiscoveryTestAccessor) SendAbort()                               {}
 func (a *agentDiscoveryTestAccessor) RootContext() context.Context             { return context.Background() }
 func (a *agentDiscoveryTestAccessor) SendPrompt(_, _ string, _ []string) error { return nil }
+func (a *agentDiscoveryTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error {
+	return nil
+}
 func (a *agentDiscoveryTestAccessor) SteerSelfMainLoop(_ string) bool          { return false }
 func (a *agentDiscoveryTestAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
@@ -46,9 +53,12 @@ func (a *agentDiscoveryTestAccessor) ExtGroup() *extension.ExtensionGroup      {
 func (a *agentDiscoveryTestAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
 func (a *agentDiscoveryTestAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
 func (a *agentDiscoveryTestAccessor) NewChildBackend() backend.RunBackend      { return nil }
+func (a *agentDiscoveryTestAccessor) AllocatePlanFilePath() string             { return "/tmp/.ion/plans/plan.md" }
 func (a *agentDiscoveryTestAccessor) BumpParentProgress()                      {}
 func (a *agentDiscoveryTestAccessor) EmitDispatchCountStatus(_ string)         {}
 func (a *agentDiscoveryTestAccessor) EngineConfig() *types.EngineRuntimeConfig { return nil }
+func (a *agentDiscoveryTestAccessor) ClaudeCompat() bool { return false }
+func (a *agentDiscoveryTestAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
 func (a *agentDiscoveryTestAccessor) ResolveTier(_ string) string              { return "" }
 func (a *agentDiscoveryTestAccessor) PermissionCheck(_ string, _ map[string]interface{}) (string, string) {
 	return "", ""
@@ -69,6 +79,8 @@ func (a *agentDiscoveryTestAccessor) AppendOrUpdateAgentState(_ types.AgentState
 }
 func (a *agentDiscoveryTestAccessor) UpdateAgentStateByID(_ string, _ func(*types.AgentStateUpdate)) {
 }
+func (a *agentDiscoveryTestAccessor) UpsertAgentStateByID(_ string, _ types.AgentStateUpdate, _ func(*types.AgentStateUpdate)) {
+}
 func (a *agentDiscoveryTestAccessor) EmitAgentSnapshot(_ string)                    {}
 func (a *agentDiscoveryTestAccessor) ResourceBroker() *resource.Broker              { return nil }
 func (a *agentDiscoveryTestAccessor) GlobalResourceBroker() *resource.Broker        { return nil }
@@ -78,8 +90,14 @@ func (a *agentDiscoveryTestAccessor) ListAllSessions() []extension.SessionListEn
 func (a *agentDiscoveryTestAccessor) SendToSession(_, _, _ string, _ map[string]interface{}) error {
 	return nil
 }
+
+func (a *agentDiscoveryTestAccessor) FireSchedule(_, _ string) error { return nil }
+func (a *agentDiscoveryTestAccessor) GetScheduleStatus(_, _ string) ([]extension.ScheduleStatusEntry, error) {
+	return nil, nil
+}
 func (a *agentDiscoveryTestAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
 func (a *agentDiscoveryTestAccessor) RunOnceComplete(_ string, _ bool)              {}
+func (a *agentDiscoveryTestAccessor) Telemetry() *telemetry.Collector { return nil }
 
 // writeAgentFile creates a minimal .md agent file in dir/agents/<name>.md
 // with valid frontmatter.

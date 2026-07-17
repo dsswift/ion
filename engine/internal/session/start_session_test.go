@@ -2,27 +2,29 @@ package session
 
 // start_session_test.go — tests for StartSession context-% seeding (B1) and
 // the truthful initial idle engine_status (B2). A resumed conversation with a
-// non-zero LastInputTokens must report a non-zero contextPercent in its first
-// idle status, and lastContextPct must survive a run exit.
+// non-zero Usage on an assistant message must report a non-zero contextPercent
+// in its first idle status, and lastContextPct must survive a run exit.
 
 import (
 	"testing"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
+	"github.com/dsswift/ion/engine/internal/types"
 )
 
-// seedResumableConversation writes a conversation with a non-zero
-// LastInputTokens under a temp HOME so StartSession resumes it. Returns the
+// seedResumableConversation writes a conversation with an assistant message
+// carrying Usage under a temp HOME so StartSession resumes it. Returns the
 // conversation ID. contextWindow defaults to conversation.DefaultContext for
-// models with no registered info, so LastInputTokens is chosen to yield a
+// models with no registered info, so lastInputTokens is chosen to yield a
 // predictable non-zero percentage against that denominator.
 func seedResumableConversation(t *testing.T, id string, lastInputTokens int) {
 	t.Helper()
 	conv := conversation.CreateConversation(id, "you are a bot", "claude-sonnet-4-6")
 	conversation.AddUserMessage(conv, "hello there")
-	conv.LastInputTokens = lastInputTokens
-	conv.LastInputTokensMsgCount = len(conv.Messages)
+	// Add an assistant message with Usage so GetContextUsage uses the API path
+	// after rehydration on load.
+	conversation.AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "hello"}}, types.LlmUsage{InputTokens: lastInputTokens, OutputTokens: 10})
 	if err := conversation.Save(conv, ""); err != nil {
 		t.Fatalf("Save conversation: %v", err)
 	}

@@ -119,7 +119,9 @@ struct SettingsView: View {
                     || (viewModel.activeDeviceId == nil && device.id == viewModel.pairedDevices.first?.id)
                 Button {
                     if !isActive {
-                        DiagnosticLog.log("[SettingsView] Active picker → switching to \(device.id)")
+                        DiagnosticLog.log("settings active picker switching", tag: "view.settings", fields: [
+                            "device": device.id
+                        ])
                         viewModel.switchToDevice(id: device.id)
                         Haptic.success()
                     }

@@ -86,7 +86,7 @@ func (u *UnixTransport) Close() error {
 	u.mu.Lock()
 	for c := range u.conns {
 		if err := c.Close(); err != nil {
-			utils.Log("transport", fmt.Sprintf("Close: client conn close failed: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "transport", "client conn close failed", map[string]any{"error": err.Error()})
 		}
 	}
 	u.conns = make(map[net.Conn]struct{})
@@ -122,7 +122,7 @@ func (u *UnixTransport) removeConn(c net.Conn) {
 	delete(u.conns, c)
 	u.mu.Unlock()
 	if err := c.Close(); err != nil {
-		utils.Log("transport", fmt.Sprintf("removeConn: close failed: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "transport", "remove conn close failed", map[string]any{"error": err.Error()})
 	}
 }
 

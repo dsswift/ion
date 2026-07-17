@@ -365,9 +365,9 @@ func TestSynthesizeExitPlanMode_HookReceivesAssistantContext(t *testing.T) {
 }
 
 // Test 13: resolvePlanModeAutoExit precedence chain.
-//   1. RunOptions.PlanModeAutoExit takes precedence over everything.
-//   2. RunConfig.PlanModeAutoExitOnEndTurn wins when RunOptions is nil.
-//   3. Built-in default (true) wins when both are nil.
+//  1. RunOptions.PlanModeAutoExit takes precedence over everything.
+//  2. RunConfig.PlanModeAutoExitOnEndTurn wins when RunOptions is nil.
+//  3. Built-in default (true) wins when both are nil.
 //
 // This pins the configuration plumbing so future refactors of the
 // precedence chain cannot silently invert the default.

@@ -1,0 +1,672 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "blue",
+        "name": "Compaction",
+        "titleFormat": "compaction: {{payload_trigger}} reclaimed {{payload_tokens_reclaimed}} tokens",
+        "type": "logs",
+        "rawQuery": "{service_name=\"ion-telemetry\", kind=\"compaction\"} | json | context_conversation_id=~\"$session\""
+      },
+      {
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "orange",
+        "name": "Model fallback",
+        "titleFormat": "fallback: {{payload_requested_model}} -> {{payload_fallback_model}} ({{payload_reason}})",
+        "type": "logs",
+        "rawQuery": "{service_name=\"ion-telemetry\", kind=\"provider.fallback\"} | json"
+      },
+      {
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "red",
+        "name": "Extension respawn",
+        "titleFormat": "respawn: {{payload_extension}} attempt {{payload_attempt}}/{{payload_budget_max}}",
+        "type": "logs",
+        "rawQuery": "{service_name=\"ion-telemetry\", kind=\"extension.respawn\"} | json | context_conversation_id=~\"$session\""
+      }
+    ]
+  },
+  "description": "Ion forensics — what happened in this conversation?",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "## One conversation, end to end\n\nPick a session from the leaderboard (it ranks recent conversations by failures, denials, provider trouble, context pressure, and cost) or arrive here from any other dashboard's session link. Everything below is filtered to that one conversation: how full its context window got and when compaction stepped in, which tools failed and why, what every turn cost in time, and the full sub-agent dispatch tree. Read it top to bottom and you can reconstruct the session without opening a debugger.\n\n> Set `$session` by clicking a row in the leaderboard, or enter a session ID in the variable box above. Panels that require the `$session` variable will be empty until a session is selected."
+      },
+      "datasource": null
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Session leaderboard (anomaly score)",
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "description": "Recent conversations ranked by a weighted anomaly score: tool failures (3x), denials (2x), provider retries+stalls (2x), compactions (1x), context pressure (0.05x per point), cost (10x per USD). The spine is run.complete, so every conversation in the window appears — clean conversations (zero anomaly events) show score 0 via the outer join. Click a conversation ID to filter all panels below to that conversation.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "context_conversation_id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Filter to this session",
+                    "url": "/d/ion-forensics/ion-conversation-forensics?var-session=${__value.raw}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "score",
+            "desc": true
+          }
+        ],
+        "footer": {
+          "show": false
+        }
+      },
+      "transformations": [
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "context_conversation_id",
+            "mode": "outerTabular"
+          }
+        },
+        {
+          "id": "calculateField",
+          "options": {
+            "alias": "score",
+            "mode": "reduceRow",
+            "reduce": {
+              "reducer": "sum"
+            },
+            "binary": {
+              "left": "Value #A",
+              "right": "Value #B",
+              "reducer": "sum"
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Time 1": true,
+              "Time 2": true,
+              "Time 3": true,
+              "Time 4": true,
+              "Time 5": true,
+              "Time 6": true,
+              "Time 7": true,
+              "Value #A": true
+            },
+            "renameByName": {
+              "Value #A": "conversations",
+              "Value #B": "tool failures ×3",
+              "Value #C": "denials ×2",
+              "Value #D": "provider trouble ×2",
+              "Value #E": "compactions",
+              "Value #F": "context pressure ×0.05",
+              "Value #G": "cost USD ×10"
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (context_conversation_id) (count_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "instant",
+          "legendFormat": "runs {{context_conversation_id}}"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (context_conversation_id) (count_over_time({service_name=\"ion-telemetry\", kind=\"tool.failure\"} | json [$__range])) * 3",
+          "queryType": "instant",
+          "refId": "B",
+          "__ionClass": "instant",
+          "legendFormat": "tool_failures_x3 {{context_conversation_id}}"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (context_conversation_id) (count_over_time({service_name=\"ion-telemetry\", kind=\"permission.decision\"} | json | context_conversation_id != \"\" | payload_decision=\"deny\" [$__range])) * 2",
+          "queryType": "instant",
+          "refId": "C",
+          "__ionClass": "instant",
+          "legendFormat": "denials_x2 {{context_conversation_id}}"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (context_conversation_id) (count_over_time({service_name=\"ion-telemetry\", kind=~\"provider.retry|provider.stall\"} | json [$__range])) * 2",
+          "queryType": "instant",
+          "refId": "D",
+          "__ionClass": "instant",
+          "legendFormat": "provider_trouble_x2 {{context_conversation_id}}"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (context_conversation_id) (count_over_time({service_name=\"ion-telemetry\", kind=\"compaction\"} | json [$__range]))",
+          "queryType": "instant",
+          "refId": "E",
+          "__ionClass": "instant",
+          "legendFormat": "compactions {{context_conversation_id}}"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "max by (context_conversation_id) (max_over_time({service_name=\"ion-telemetry\", kind=\"context.pressure\"} | json | unwrap payload_percent [$__range])) * 0.05",
+          "queryType": "instant",
+          "refId": "F",
+          "__ionClass": "instant",
+          "legendFormat": "context_pressure_x0.05 {{context_conversation_id}}"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (context_conversation_id) (sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | unwrap payload_run_cost_usd [$__range])) * 10",
+          "queryType": "instant",
+          "refId": "G",
+          "__ionClass": "instant",
+          "legendFormat": "cost_usd_x10 {{context_conversation_id}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Context pressure over turns",
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 0,
+        "y": 16
+      },
+      "description": "How full the context window was at each pressure sample. Compaction events are annotated on the timeline. The threshold marker is derived from payload_compact_limit when available.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "lineWidth": 2,
+            "stacking": {
+              "mode": "none"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.6
+              },
+              {
+                "color": "red",
+                "value": 0.8
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "max(last_over_time({service_name=\"ion-telemetry\", kind=\"context.pressure\"} | json | context_conversation_id=\"$session\" | unwrap payload_percent [$__interval]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "context pressure %"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "Session summary",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 16
+      },
+      "description": "Cost, turns, and tokens for the selected conversation. run.complete carries context.conversation_id in its telemetry context block — the durable conversation-file ID, consistent across all event types — so these totals are correctly filtered to $session.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": []
+          },
+          "mappings": []
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cost"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "currencyUSD"
+              },
+              {
+                "id": "decimals",
+                "value": 4
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "vertical",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | context_conversation_id=\"$session\" | unwrap payload_run_cost_usd [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "instant",
+          "legendFormat": "cost"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | context_conversation_id=\"$session\" | unwrap payload_num_turns [$__range]))",
+          "queryType": "instant",
+          "refId": "B",
+          "__ionClass": "instant",
+          "legendFormat": "turns"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | context_conversation_id=\"$session\" | unwrap payload_input_tokens [$__range])) + sum(sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | context_conversation_id=\"$session\" | unwrap payload_output_tokens [$__range]))",
+          "queryType": "instant",
+          "refId": "C",
+          "__ionClass": "instant",
+          "legendFormat": "tokens total"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Turn latency (llm.call durations)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "description": "LLM call durations for the selected conversation. llm.call events carry context_conversation_id — the durable conversation-file ID — so this panel is filtered to $session (a conversation_id value) consistently with all other panels in the dashboard.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 2,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "quantile_over_time(0.5, {service_name=\"ion-telemetry\", kind=\"llm.call\"} | json | context_conversation_id=\"$session\" | unwrap payload_duration_ms [$__interval]) by ()",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "llm.call p50"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "traces",
+      "title": "Dispatch tree",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "description": "Sub-agent dispatch spans for this session. The parent/child tree shows the full dispatch hierarchy. Uses Tempo TraceQL filtered to dispatch.agent spans with the session's trace ID.",
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {},
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "queryType": "traceql",
+          "query": "{ .session_id = \"$session\" && name = \"dispatch.agent\" }",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Tool failures in this session",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "description": "All tool failures that occurred in the selected session, with category and error preview.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "labels",
+            "replace": false
+          }
+        }
+      ],
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service_name=\"ion-telemetry\", kind=\"tool.failure\"} | json | context_conversation_id=\"$session\"",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "instant"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Permission decisions in this session",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "description": "All permission checks in the selected session: allowed and denied, with the deciding layer and the engine's stated reason.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "labels",
+            "replace": false
+          }
+        }
+      ],
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service_name=\"ion-telemetry\", kind=\"permission.decision\"} | json | context_conversation_id=\"$session\"",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "instant"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "logs",
+      "title": "Engine log for this session",
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 42
+      },
+      "description": "All engine/extension/desktop log lines in the time window that carry conversation_id. Engine log lines emit session_id = the client session key (UUID format for desktop clients) and conversation_id = the engine conversation-file ID ({millis}-{hex}). This panel filters on conversation_id to correlate engine log output with telemetry events for the selected session.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Ascending"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{component=~\".+\"} | json | conversation_id=\"$session\"",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "instant"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": [
+    "ion",
+    "forensics"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "session",
+        "label": "Session ID",
+        "type": "textbox",
+        "description": "The conversation session ID to inspect. Set by clicking a row in the leaderboard or by inbound data links from other dashboards. Textbox because session IDs live in log line bodies, not index labels — a label_values dropdown is impossible here without cardinality violations.",
+        "query": "",
+        "current": {
+          "value": ""
+        },
+        "hide": 0
+      }
+    ]
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Ion Conversation Forensics",
+  "uid": "ion-forensics",
+  "version": 5
+}

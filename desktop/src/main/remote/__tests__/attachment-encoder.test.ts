@@ -1,28 +1,25 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
-// electron is not loadable from a node-environment vitest run. Mock
-// nativeImage so the encoder's compress step works against a controllable
-// stub: the stub returns the input bytes verbatim as a JPEG, keeping the
-// test focused on encoder behavior (path rewriting, mime sniffing, error
-// handling) rather than real image codec output.
-vi.mock('electron', () => {
-  const makeImage = (buf: Buffer, w = 100, h = 100): any => ({
-    isEmpty: () => buf.length === 0,
-    getSize: () => ({ width: w, height: h }),
-    resize: (_opts: any) => makeImage(buf, _opts.width ?? w, _opts.height ?? h),
-    toJPEG: (_q: number) => buf,
-  })
-  return {
-    nativeImage: {
-      createFromBuffer: (buf: Buffer) => makeImage(buf),
-    },
-  }
+// electron is not loadable from a node-environment vitest run. Inject a
+// nativeImage stub via the encoder's test seam so the compress step works
+// against a controllable stub: the stub returns the input bytes verbatim as
+// a JPEG, keeping the test focused on encoder behavior (path rewriting, mime
+// sniffing, error handling) rather than real image codec output.
+const makeImage = (buf: Buffer, w = 100, h = 100): any => ({
+  isEmpty: () => buf.length === 0,
+  getSize: () => ({ width: w, height: h }),
+  resize: (_opts: any) => makeImage(buf, _opts.width ?? w, _opts.height ?? h),
+  toJPEG: (_q: number) => buf,
 })
 
-import { encodeAttachments, type RawAttachment } from '../attachment-encoder'
+import { encodeAttachments, _setNativeImageForTest, type RawAttachment } from '../attachment-encoder'
+
+_setNativeImageForTest({
+  createFromBuffer: (buf: Buffer) => makeImage(buf),
+} as any)
 
 let workDir: string
 

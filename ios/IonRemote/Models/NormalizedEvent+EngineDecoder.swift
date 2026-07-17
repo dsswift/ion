@@ -78,6 +78,14 @@ extension RemoteEvent {
             let messageLength = try container.decode(Int.self, forKey: .steerMessageLength)
             return .engineSteerInjected(tabId: tabId, instanceId: instanceId, messageLength: messageLength)
 
+        case .enginePromptInjected:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            let prompt = try container.decodeIfPresent(String.self, forKey: .injectedPrompt) ?? ""
+            let origin = try container.decodeIfPresent(String.self, forKey: .injectedPromptOrigin)
+            let kind = try container.decodeIfPresent(String.self, forKey: .injectedPromptKind)
+            return .enginePromptInjected(tabId: tabId, instanceId: instanceId, prompt: prompt, origin: origin, kind: kind)
+
         case .engineToolUpdate, .engineToolComplete, .engineScheduleFired, .engineLlmCall:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
@@ -166,12 +174,20 @@ extension RemoteEvent {
             let text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
             return .engineTextDelta(tabId: tabId, instanceId: instanceId, text: text)
 
+        case .engineStreamReset:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            return .engineStreamReset(tabId: tabId, instanceId: instanceId)
+
         case .engineMessageEnd:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
-            // Usage is a nested object: { inputTokens, outputTokens, contextPercent, cost }
+            // Usage is a nested object: { inputTokens, outputTokens,
+            // contextPercent, cost, entryId?, userEntryId? }. The canonical
+            // entry ids ride inside usage on the wire (Go MessageEndUsage);
+            // they surface as top-level associated values on the Swift case.
             let usage = try container.decodeIfPresent(EngineMessageEndUsage.self, forKey: .usage)
-            return .engineMessageEnd(tabId: tabId, instanceId: instanceId, inputTokens: usage?.inputTokens ?? 0, outputTokens: usage?.outputTokens ?? 0, contextPercent: usage?.contextPercent ?? 0, cost: usage?.cost ?? 0)
+            return .engineMessageEnd(tabId: tabId, instanceId: instanceId, inputTokens: usage?.inputTokens ?? 0, outputTokens: usage?.outputTokens ?? 0, contextPercent: usage?.contextPercent ?? 0, cost: usage?.cost ?? 0, entryId: usage?.entryId, userEntryId: usage?.userEntryId)
 
         case .engineDead:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -202,13 +218,16 @@ extension RemoteEvent {
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
             let message = try container.decodeIfPresent(String.self, forKey: .message) ?? ""
             let source = try container.decodeIfPresent(String.self, forKey: .source)
-            // `metadata` is an opaque hint map (e.g. dedupKey) the harness
-            // sets via ctx.emit and the engine forwards verbatim. Decoded
-            // as [String: AnyCodable] so future iOS-side handlers can read
-            // typed values without a contract change. iOS does not yet
-            // honor any specific key — desktop is the only consumer today.
+            // `metadata` is an opaque hint map the harness sets via ctx.emit and
+            // the engine forwards verbatim. Decoded as [String: AnyCodable] for
+            // completeness so future iOS-side handlers can read typed values.
             let metadata = try container.decodeIfPresent([String: AnyCodable].self, forKey: .metadata)
-            return .engineHarnessMessage(tabId: tabId, instanceId: instanceId, message: message, source: source, metadata: metadata)
+            // `dedupKey` / `dedupMode` are promoted to top-level wire fields by the
+            // desktop relay (engine_harness_message event spread) and on history
+            // replay. Mirrors Go's HarnessMessageEvent json tags.
+            let dedupKey = try container.decodeIfPresent(String.self, forKey: .dedupKey)
+            let dedupMode = try container.decodeIfPresent(String.self, forKey: .dedupMode)
+            return .engineHarnessMessage(tabId: tabId, instanceId: instanceId, message: message, source: source, metadata: metadata, dedupKey: dedupKey, dedupMode: dedupMode)
 
         // engineConversationHistory decode arm removed (WI-004 / #259).
         // History for every tab arrives via desktop_conversation_history
@@ -434,6 +453,23 @@ extension RemoteEvent {
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
             let payload = try container.decode(ContextBreakdownPayload.self, forKey: .contextBreakdown)
             return .desktopContextBreakdown(tabId: tabId, instanceId: instanceId, contextBreakdown: payload)
+
+        case .engineImageContent:
+            // engine_image_content — a run-produced image (tool-returned or
+            // provider-generated). The engine saves bytes to disk and emits
+            // the FILE PATH, never base64 (its never-base64-on-the-wire
+            // contract). iOS attaches the path to the owning message and
+            // fetches bytes lazily via RemoteImageFetcher. tabId/instanceId
+            // follow the standard engine event shape; path/mediaType/source/
+            // toolId mirror the Go ImageContentEvent json tags. source is
+            // "tool" (with toolId) or "provider" (no toolId).
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            let path = try container.decode(String.self, forKey: .path)
+            let mediaType = try container.decodeIfPresent(String.self, forKey: .mediaType) ?? "image/png"
+            let source = try container.decodeIfPresent(String.self, forKey: .source) ?? "tool"
+            let toolId = try container.decodeIfPresent(String.self, forKey: .toolId)
+            return .engineImageContent(tabId: tabId, instanceId: instanceId, path: path, mediaType: mediaType, source: source, toolId: toolId)
 
         default:
             return nil

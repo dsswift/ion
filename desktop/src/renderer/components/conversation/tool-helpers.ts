@@ -1,4 +1,5 @@
 import type { Message } from '../../../shared/types'
+import { mergeThinkingMessages } from './thinking-block-helpers'
 
 // ─── Types ───
 
@@ -6,7 +7,7 @@ export type GroupedItem =
   | { kind: 'user'; message: Message }
   | { kind: 'assistant'; message: Message }
   | { kind: 'system'; message: Message }
-  | { kind: 'harness'; message: Message; bootstrapCollapsedCount?: number }
+  | { kind: 'harness'; message: Message }
   | { kind: 'intercept'; message: Message }
   | { kind: 'tool-group'; messages: Message[] }
   | { kind: 'agent-turn'; tools: Message[]; assistantMessages: Message[]; isActive: boolean; thinking?: Message }
@@ -18,8 +19,6 @@ export type GroupedItem =
 const HIDDEN_MESSAGES = [
   'Plan mode is not active. Do not create plans or call ExitPlanMode. Implement the requested changes directly using Edit, Write, and Bash tools.',
 ]
-
-const BOOTSTRAP_PREFIX = 'Session bootstrapped'
 
 // ─── groupMessages ───
 
@@ -39,9 +38,6 @@ export function groupMessages(messages: Message[], opts?: GroupOptions): Grouped
 
   const result: GroupedItem[] = []
   let toolBuf: Message[] = []
-  let bootstrapBuf: Message[] = []
-  let totalRunsFlushed = 0
-  let totalSuppressed = 0
 
   const flushTools = () => {
     if (toolBuf.length > 0) {
@@ -50,25 +46,9 @@ export function groupMessages(messages: Message[], opts?: GroupOptions): Grouped
     }
   }
 
-  const flushBootstrap = () => {
-    if (bootstrapBuf.length === 0) return
-    const suppressed = bootstrapBuf.length - 1
-    const representative = bootstrapBuf[bootstrapBuf.length - 1]
-    const item: GroupedItem = {
-      kind: 'harness',
-      message: representative,
-      bootstrapCollapsedCount: suppressed > 0 ? suppressed : undefined,
-    }
-    result.push(item)
-    totalRunsFlushed++
-    totalSuppressed += suppressed
-    bootstrapBuf = []
-  }
-
   for (const msg of messages) {
     if (msg.role === 'assistant' && hidden.includes((msg.content || '').trim())) continue
     if (msg.role === 'tool') {
-      flushBootstrap()
       toolBuf.push(msg)
     } else if (msg.role === 'thinking') {
       // Extended-thinking row (issue #158). In the non-unified view there
@@ -76,38 +56,28 @@ export function groupMessages(messages: Message[], opts?: GroupOptions): Grouped
       // collapsed block in stream order. It naturally precedes the tool
       // group that follows because thinking_block_start fires before the
       // first tool_use of the turn.
-      flushBootstrap()
       flushTools()
       result.push({ kind: 'thinking', message: msg })
     } else {
       flushTools()
       if (msg.role === 'user') {
-        flushBootstrap()
         if (includeUser) result.push({ kind: 'user', message: msg })
       } else if (msg.role === 'assistant') {
-        flushBootstrap()
         result.push({ kind: 'assistant', message: msg })
       } else if (msg.role === 'harness') {
         if (msg.interceptLevel) {
-          flushBootstrap()
           result.push({ kind: 'intercept', message: msg })
-        } else if ((msg.content || '').startsWith(BOOTSTRAP_PREFIX)) {
-          bootstrapBuf.push(msg)
         } else {
-          flushBootstrap()
           result.push({ kind: 'harness', message: msg })
         }
       } else if (msg.role === 'system' && (msg.content || '').startsWith('[Compaction]')) {
-        flushBootstrap()
         result.push({ kind: 'compaction', message: msg })
       } else {
-        flushBootstrap()
         result.push({ kind: 'system', message: msg })
       }
     }
   }
   flushTools()
-  flushBootstrap()
 
   return result
 }
@@ -122,32 +92,18 @@ function groupMessagesUnified(
   const result: GroupedItem[] = []
   let turnTools: Message[] = []
   let turnAssistant: Message[] = []
-  // The thinking row for the current turn, if the model reasoned this turn.
-  // Hoisted to the top of the turn (above the tool row) by attaching it to
-  // the emitted agent-turn item. A turn carries at most one thinking row in
-  // practice; if a second arrives we keep the latest (the prior is flushed
-  // standalone defensively, see below) so the active/streaming block always
-  // wins the turn header.
-  let turnThinking: Message | null = null
-  let bootstrapBuf: Message[] = []
-  let totalRunsFlushed = 0
-  let totalSuppressed = 0
-
-  const flushBootstrap = () => {
-    if (bootstrapBuf.length === 0) return
-    const suppressed = bootstrapBuf.length - 1
-    const representative = bootstrapBuf[bootstrapBuf.length - 1]
-    result.push({
-      kind: 'harness',
-      message: representative,
-      bootstrapCollapsedCount: suppressed > 0 ? suppressed : undefined,
-    })
-    totalRunsFlushed++
-    totalSuppressed += suppressed
-    bootstrapBuf = []
-  }
+  // All thinking rows for the current turn, in stream order. A single run
+  // makes many API rounds and each opens its own thinking block, so a turn
+  // routinely accumulates many `role: 'thinking'` rows. They are merged into
+  // ONE display row per turn at flush time (mergeThinkingMessages) — one
+  // continuous thought stream pinned at the top of the turn, mirroring how
+  // the unified view merges the rest of the turn.
+  let turnThinking: Message[] = []
 
   const flushTurn = () => {
+    // Merge the turn's thinking rows (if any) into one display message —
+    // exactly one thought bubble per turn.
+    const merged = turnThinking.length > 0 ? mergeThinkingMessages(turnThinking) : null
     if (turnTools.length > 0) {
       const isActive = turnTools.some((t) => t.toolStatus === 'running')
       result.push({
@@ -155,18 +111,18 @@ function groupMessagesUnified(
         tools: [...turnTools],
         assistantMessages: [...turnAssistant],
         isActive,
-        // Hoist the turn's thinking row into the turn header (rendered
+        // Hoist the merged thinking row into the turn header (rendered
         // above the tool row by AgentTurnGroup). undefined when the model
         // did not reason this turn.
-        ...(turnThinking ? { thinking: turnThinking } : {}),
+        ...(merged ? { thinking: merged } : {}),
       })
     } else {
-      // No tools — there is no turn container, so emit the thinking row
-      // (if any) as a standalone collapsed block first, then each assistant
-      // message. Thinking precedes assistant output, matching the engine's
-      // block_start → text ordering within a turn.
-      if (turnThinking) {
-        result.push({ kind: 'thinking', message: turnThinking })
+      // No tools — there is no turn container, so emit the merged thinking
+      // row (if any) as a standalone collapsed block first, then each
+      // assistant message. Thinking precedes assistant output, matching the
+      // engine's block_start → text ordering within a turn.
+      if (merged) {
+        result.push({ kind: 'thinking', message: merged })
       }
       for (const m of turnAssistant) {
         result.push({ kind: 'assistant', message: m })
@@ -174,7 +130,7 @@ function groupMessagesUnified(
     }
     turnTools = []
     turnAssistant = []
-    turnThinking = null
+    turnThinking = []
   }
 
   for (const msg of messages) {
@@ -182,49 +138,35 @@ function groupMessagesUnified(
 
     if (msg.role === 'user') {
       flushTurn()
-      flushBootstrap()
       if (includeUser) result.push({ kind: 'user', message: msg })
     } else if (msg.role === 'thinking') {
-      // Capture the turn's thinking row to hoist into the turn header.
-      // If a turn somehow produced a second thinking row before flushing,
-      // flush the prior one standalone so neither is lost, then keep the
-      // newest as the turn's header block.
-      flushBootstrap()
-      if (turnThinking) {
-        result.push({ kind: 'thinking', message: turnThinking })
-      }
-      turnThinking = msg
+      // Accumulate the turn's thinking rows; they merge into one display
+      // row per turn at flush time (see flushTurn). Never emitted standalone
+      // mid-turn — that is what fragmented a turn into dozens of independent
+      // "Thought" rows.
+      turnThinking.push(msg)
     } else if (msg.role === 'tool') {
-      flushBootstrap()
       turnTools.push(msg)
     } else if (msg.role === 'assistant') {
-      flushBootstrap()
       turnAssistant.push(msg)
     } else if (msg.role === 'harness') {
       if (msg.interceptLevel) {
         flushTurn()
-        flushBootstrap()
         result.push({ kind: 'intercept', message: msg })
-      } else if ((msg.content || '').startsWith(BOOTSTRAP_PREFIX)) {
-        bootstrapBuf.push(msg)
       } else {
         flushTurn()
-        flushBootstrap()
         result.push({ kind: 'harness', message: msg })
       }
     } else if (msg.role === 'system' && (msg.content || '').startsWith('[Compaction]')) {
       flushTurn()
-      flushBootstrap()
       result.push({ kind: 'compaction', message: msg })
     } else {
       flushTurn()
-      flushBootstrap()
       result.push({ kind: 'system', message: msg })
     }
   }
 
   flushTurn()
-  flushBootstrap()
 
   return result
 }
@@ -293,6 +235,31 @@ export function getToolDescription(name: string, input?: string): string {
       default: return name
     }
   }
+}
+
+// ─── toolFailureSummary ───
+
+/**
+ * Returns failure counts for the collapsed tool-group three-state status
+ * display.
+ *
+ * - failed: number of tools with toolStatus === 'error'
+ * - total: tools.length (all tools in the group)
+ * - running: true when any tool has toolStatus === 'running'
+ *
+ * The pass/fail denominator for mixed/all-failed classification is
+ * settled = total - runningCount, so callers must not include running tools
+ * in the failure ratio while a run is still in flight. The running flag is
+ * returned here so the caller can suppress failure UI while work continues.
+ */
+export function toolFailureSummary(tools: Message[]): { failed: number; total: number; running: boolean } {
+  let failed = 0
+  let running = false
+  for (const t of tools) {
+    if (t.toolStatus === 'error') failed++
+    if (t.toolStatus === 'running') running = true
+  }
+  return { failed, total: tools.length, running }
 }
 
 // ─── toolSummary ───

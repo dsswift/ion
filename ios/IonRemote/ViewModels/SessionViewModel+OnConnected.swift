@@ -74,7 +74,10 @@ extension SessionViewModel {
             block()
             return
         }
-        DiagnosticLog.log("RUN-WHEN-CONNECTED: enqueued (state=\(connectionState.rawValue), queue size=\(pendingOnConnected.count + 1))")
+        DiagnosticLog.log("run-when-connected enqueued", tag: "session.onconnected", fields: [
+            "status": connectionState.rawValue,
+            "count": String(pendingOnConnected.count + 1)
+        ])
         pendingOnConnected.append(block)
     }
 
@@ -91,7 +94,9 @@ extension SessionViewModel {
         guard !pendingOnConnected.isEmpty else { return }
         let pending = pendingOnConnected
         pendingOnConnected.removeAll(keepingCapacity: true)
-        DiagnosticLog.log("RUN-WHEN-CONNECTED: draining \(pending.count) pending")
+        DiagnosticLog.log("run-when-connected draining", tag: "session.onconnected", fields: [
+            "count": String(pending.count)
+        ])
         for block in pending {
             block()
         }
@@ -103,7 +108,9 @@ extension SessionViewModel {
     /// pairing's transport.
     func clearPendingOnConnected() {
         guard !pendingOnConnected.isEmpty else { return }
-        DiagnosticLog.log("RUN-WHEN-CONNECTED: cleared \(pendingOnConnected.count) pending on disconnect")
+        DiagnosticLog.log("run-when-connected cleared on disconnect", tag: "session.onconnected", fields: [
+            "count": String(pendingOnConnected.count)
+        ])
         pendingOnConnected.removeAll(keepingCapacity: false)
     }
 
@@ -134,12 +141,15 @@ extension SessionViewModel {
     /// distinct keys). Called by `handleSnapshot` immediately after
     /// `drainPendingOnConnected()`, once `connectionState` is already `.connected`.
     ///
-    /// Sends directly via the transport (if available). In the unlikely event
-    /// that the transport is nil at drain time (e.g. a race where the transport
-    /// tore down between the snapshot arriving and the drain running), the
-    /// command is logged and dropped -- not re-enqueued, to avoid an infinite
-    /// defer cycle. The next snapshot will re-trigger the call site that
-    /// originally enqueued the command.
+    /// Sends directly via the transport (if available). If the transport is
+    /// nil at drain time (a race where it tore down between the snapshot
+    /// arriving and the drain running), the batch is put BACK in the queue —
+    /// not dropped. The queue can carry user prompts, which have no
+    /// re-triggering call site (unlike loads, which re-fire on appear), so a
+    /// drop here would silently lose a user message. There is no infinite
+    /// defer cycle: the drain only runs again on the next snapshot, which
+    /// itself requires a live transport. A flush send that throws is likewise
+    /// re-enqueued for the next snapshot's drain.
     func drainPendingEssential() {
         guard !pendingEssentialQueue.isEmpty else { return }
         let pending = pendingEssentialQueue
@@ -148,19 +158,32 @@ extension SessionViewModel {
             "ESSENTIAL-QUEUE: flush \(pending.count) deferred commands on connect"
         )
         guard let transport else {
-            DiagnosticLog.log("ESSENTIAL-QUEUE: drain skipped -- no transport (dropped \(pending.count) commands)")
+            DiagnosticLog.log("essential queue drain requeued, no transport", tag: "session.essential", level: .warn, fields: [
+                "count": String(pending.count)
+            ])
+            for entry in pending {
+                enqueueEssential(key: entry.key, command: entry.command)
+            }
             return
         }
         for entry in pending {
-            DiagnosticLog.log("ESSENTIAL-QUEUE: flush key=\(entry.key)")
+            DiagnosticLog.log("essential queue flush", tag: "session.essential", fields: [
+                "reason": entry.key
+            ])
             DiagnosticLog.logCommand(entry.command)
             Task { [weak self] in
                 do {
                     try await transport.send(entry.command)
                 } catch {
-                    DiagnosticLog.log("ESSENTIAL-QUEUE: flush send error key=\(entry.key): \(error.localizedDescription)")
+                    DiagnosticLog.log("essential queue flush send error, requeued", tag: "session.essential", level: .error, fields: [
+                        "reason": entry.key,
+                        "error": error.localizedDescription
+                    ])
+                    guard let self else { return }
+                    await MainActor.run {
+                        self.enqueueEssential(key: entry.key, command: entry.command)
+                    }
                 }
-                _ = self
             }
         }
     }

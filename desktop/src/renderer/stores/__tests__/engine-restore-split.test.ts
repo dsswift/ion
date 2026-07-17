@@ -51,7 +51,6 @@ function makePersistedInstance(
     draftInput: '',
     agentStates: [],
     planFilePath: null,
-    forkedFromConversationIds: null,
     ...overrides,
   }
 }

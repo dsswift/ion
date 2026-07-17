@@ -116,11 +116,17 @@ func (p *googleProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 
 	resp, err := p.client.Do(req)
 	if err != nil {
+		// Try transport classification first so "use of closed network
+		// connection" and similar are tagged stale_connection (matching the
+		// SSE-read path) instead of a generic network error.
+		if pe := ClassifyTransportError(err); pe != nil {
+			return pe
+		}
 		return NewProviderError(ErrNetwork, err.Error(), 0, true)
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			utils.Log("google", fmt.Sprintf("Stream: response body close failed: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "google", "stream response body close failed", map[string]any{"error": err.Error()})
 		}
 	}()
 
@@ -152,7 +158,7 @@ func (p *googleProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 	rawCh, rawErr := ParseSSEStream(resp.Body)
 	// Per-event idle deadline + heartbeat (see sse_idle.go): a stream that
 	// returns headers then goes silent is caught fast and retried.
-	sseCh, sseErr := streamWithIdle(rawCh, rawErr, "google", opts.Model, "", nil)
+	sseCh, sseErr := streamWithIdle(rawCh, rawErr, "google", opts.Model, "", nil, telemetryCorrelationFromContext(ctx))
 	for sse := range sseCh {
 		if sse.Data == "" {
 			continue
@@ -233,6 +239,37 @@ func (p *googleProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 					return err
 				}
 			}
+
+			// Provider-generated image (Gemini image output). Close any open
+			// block, then emit a self-contained image content block (start +
+			// stop) carrying base64 bytes + MIME type. The backend runloop saves
+			// the bytes and emits the path-bearing ImageContentEvent — the
+			// provider never touches disk. Empty payloads are skipped.
+			if part.InlineData != nil && part.InlineData.Data != "" {
+				if inTextBlock || currentToolID != "" {
+					if err := sendEvent(ctx, events, types.LlmStreamEvent{Type: "content_block_stop", BlockIndex: contentIndex}); err != nil {
+						return err
+					}
+					contentIndex++
+					inTextBlock = false
+					currentToolID = ""
+				}
+				if err := sendEvent(ctx, events, types.LlmStreamEvent{
+					Type:       "content_block_start",
+					BlockIndex: contentIndex,
+					ContentBlock: &types.LlmStreamContentBlock{
+						Type:           "image",
+						ImageData:      part.InlineData.Data,
+						ImageMediaType: part.InlineData.MimeType,
+					},
+				}); err != nil {
+					return err
+				}
+				if err := sendEvent(ctx, events, types.LlmStreamEvent{Type: "content_block_stop", BlockIndex: contentIndex}); err != nil {
+					return err
+				}
+				contentIndex++
+			}
 		}
 
 		// Check finish reason
@@ -270,14 +307,18 @@ func (p *googleProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 }
 
 func (p *googleProvider) buildRequestBody(opts types.LlmStreamOptions) map[string]any {
-	maxTokens := opts.MaxTokens
-	if maxTokens == 0 {
-		maxTokens = 16384
+	// generationConfig is always present (it also carries thinkingConfig below),
+	// but maxOutputTokens is optional on the Gemini API: when the engine has no
+	// per-model value (and the caller set no override), omit the key so the
+	// provider applies the model's own maximum rather than an engine-imposed cap.
+	generationConfig := map[string]any{}
+	if maxTokens, ok := resolveMaxOutputTokens(opts); ok {
+		generationConfig["maxOutputTokens"] = maxTokens
 	}
 
 	body := map[string]any{
 		"contents":         formatGeminiMessages(opts.Messages),
-		"generationConfig": map[string]any{"maxOutputTokens": maxTokens},
+		"generationConfig": generationConfig,
 	}
 
 	// Gemini thinking — resolve the per-model mechanism via the shared
@@ -423,6 +464,16 @@ type geminiContent struct {
 type geminiPart struct {
 	Text         string              `json:"text,omitempty"`
 	FunctionCall *geminiFunctionCall `json:"functionCall,omitempty"`
+	// InlineData carries a provider-generated image (Gemini image output).
+	// MimeType is the MIME type (e.g. "image/png"); Data is base64 bytes.
+	// Absent for text/function-call parts.
+	InlineData *geminiInlineData `json:"inlineData,omitempty"`
+}
+
+// geminiInlineData is Gemini's inline binary payload (image output).
+type geminiInlineData struct {
+	MimeType string `json:"mimeType"`
+	Data     string `json:"data"`
 }
 
 type geminiFunctionCall struct {

@@ -1,0 +1,799 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "description": "Ion product intelligence — what are users doing that I didn't anticipate?",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "## What the usage says about the product\n\nThirty days of runs, aggregated. Which models earn their cost, whether the provider market is treating the engine well, which tools the agent actually reaches for, how autonomy trends as trust rules mature, and whether caching and compaction are pulling their economic weight. This is the dashboard you read before deciding what to build next, not the one you stare at during an incident.\n\n> **Default time range is 30 days.** Panels use the dashboard time range. Adjust the picker for shorter trend windows.\n> **No data on Tier-4 panels?** Panels marked with a Phase-B note bind to events not yet emitted. The model-market and tool-usage panels bind to shipped Tier-1 events and populate now."
+      },
+      "datasource": null
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Model market",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "piechart",
+      "title": "Run share by model",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 5
+      },
+      "description": "Which models are handling the most runs. Shipped structured metadata label; no parser required.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "pieType": "pie",
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (payload_model) (count_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "instant",
+          "legendFormat": "{{payload_model}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Cost per run by model (weekly)",
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 8,
+        "y": 5
+      },
+      "description": "Average cost per run, broken down by model, in weekly buckets. Rising cost-per-run for a model means sessions are getting longer or the model is being used for more expensive tasks.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 4,
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 2,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (payload_model) (sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | unwrap payload_run_cost_usd [$__interval])) / sum by (payload_model) (count_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json [$__interval]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "{{payload_model}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Provider league table",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 13
+      },
+      "description": "One row per model: TTFT p50, stall count, retry count, fallback-out count. The 'should we reroute traffic' view. Phase-B events required for all columns except run count.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "TTFT p50"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      },
+      "transformations": [
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "payload_model",
+            "mode": "outerTabular"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "payload_model": "Model",
+              "Value #A": "TTFT p50",
+              "Value #B": "Stalls",
+              "Value #C": "Retries",
+              "Value #D": "Fallbacks out"
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "quantile_over_time(0.5, {service_name=\"ion-telemetry\", kind=\"provider.ttft\"} | json | unwrap payload_ttft_ms [$__range]) by (payload_model)",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "windowed-stat",
+          "legendFormat": "TTFT p50 {{payload_model}}"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (payload_model) (count_over_time({service_name=\"ion-telemetry\", kind=\"provider.stall\"} | json [$__range]))",
+          "queryType": "instant",
+          "refId": "B",
+          "__ionClass": "instant",
+          "legendFormat": "stalls {{payload_model}}"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (payload_model) (count_over_time({service_name=\"ion-telemetry\", kind=\"provider.retry\"} | json [$__range]))",
+          "queryType": "instant",
+          "refId": "C",
+          "__ionClass": "instant",
+          "legendFormat": "retries {{payload_model}}"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "label_replace(sum by (payload_requested_model) (count_over_time({service_name=\"ion-telemetry\", kind=\"provider.fallback\"} | json [$__range])), \"payload_model\", \"$1\", \"payload_requested_model\", \"(.+)\")",
+          "queryType": "instant",
+          "refId": "D",
+          "__ionClass": "instant",
+          "legendFormat": "fallbacks_out {{payload_model}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Fallback pressure (weekly)",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 13
+      },
+      "description": "Fallback events grouped by reason. A rising fallback rate means provider reliability is degrading or capacity is saturated.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 2,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (payload_reason) (count_over_time({service_name=\"ion-telemetry\", kind=\"provider.fallback\"} | json [$__interval]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "{{payload_reason}}"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Behavior mix",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 23
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 6,
+      "type": "barchart",
+      "title": "Tool usage mix",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "description": "Top 15 most-called tools over the dashboard time range. What the agent actually reaches for. Shipped Tier-1 structured metadata; no parser required.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 80
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "auto",
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single"
+        },
+        "xTickLabelRotation": -45
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "topk(15, sum by (tool) (count_over_time({service_name=\"ion-telemetry\", kind=\"tool.execute\"} [$__range])))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "instant",
+          "legendFormat": "{{tool}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Autonomy ratio trend (daily)",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "description": "The fraction of permission checks that resolve to allow, sampled per interval. Rising means the rule set is absorbing what used to need asking. A healthy trend is flat or rising. Phase-B event required.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "lineWidth": 2,
+            "stacking": {
+              "mode": "none"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.5
+              },
+              {
+                "color": "green",
+                "value": 0.8
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({service_name=\"ion-telemetry\", kind=\"permission.decision\"} | json | payload_decision=\"allow\" [$__interval])) / sum(count_over_time({service_name=\"ion-telemetry\", kind=\"permission.decision\"} | json [$__interval]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "autonomy ratio"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Sub-agent adoption (weekly)",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 34
+      },
+      "description": "Which sub-agents are being dispatched and how often. Rising dispatch counts signal that users are leaning into multi-agent workflows. Phase-B event required.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 2,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (payload_agent) (count_over_time({service_name=\"ion-telemetry\", kind=\"dispatch.agent\"} | json [$__interval]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "{{payload_agent}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Dispatch depth distribution (weekly)",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 34
+      },
+      "description": "How deep the sub-agent dispatch trees go. Depth 1 is a direct dispatch; higher values are nested. A growing tail at depth 3+ may signal runaway recursion or unexpected orchestration patterns.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 2,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (payload_dispatch_depth) (count_over_time({service_name=\"ion-telemetry\", kind=\"dispatch.agent\"} | json [$__interval]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "depth {{payload_dispatch_depth}}"
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "type": "row",
+      "title": "Economics",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 44
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Cache savings trend (weekly)",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 45
+      },
+      "description": "Total dollars saved by prompt caching per week. A flat or declining line means caching is not being leveraged — look at session length and repeat-prefix patterns. Phase-B event required.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 4,
+          "fillOpacity": 20,
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "lineWidth": 2,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(sum_over_time({service_name=\"ion-telemetry\", kind=\"cache.savings\"} | json | unwrap payload_savings_usd [$__interval]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "cache savings (USD)"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Tokens reclaimed by compaction (weekly)",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 45
+      },
+      "description": "Tokens freed by context compaction per week, split by trigger type (automatic vs manual). This is the efficiency dividend of the compaction subsystem. Phase-B event required.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 2,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (payload_trigger) (sum_over_time({service_name=\"ion-telemetry\", kind=\"compaction\"} | json | unwrap payload_tokens_reclaimed [$__interval]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "{{payload_trigger}}"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Thrash trend (daily)",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 45
+      },
+      "description": "Tool failure rate: failures divided by total tool executions, per interval. The long-run quality health line. A rising trend means tooling reliability is degrading relative to usage.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 2,
+            "stacking": {
+              "mode": "none"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.05
+              },
+              {
+                "color": "red",
+                "value": 0.15
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "transformations": [
+        {
+          "id": "calculateField",
+          "options": {
+            "alias": "failure rate",
+            "mode": "binaryOperation",
+            "binary": {
+              "left": "failures",
+              "right": "executions",
+              "operator": "/"
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({service_name=\"ion-telemetry\", kind=\"tool.failure\"} | json [$__interval]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "failures"
+        },
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({service_name=\"ion-telemetry\", kind=\"tool.execute\"} [$__interval]))",
+          "queryType": "range",
+          "refId": "B",
+          "__ionClass": "accumulation",
+          "legendFormat": "executions"
+        }
+      ]
+    }
+  ],
+  "refresh": "5m",
+  "schemaVersion": 39,
+  "tags": [
+    "ion",
+    "intelligence"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "model",
+        "label": "Model",
+        "type": "textbox",
+        "description": "Filter by model name. Accepts regex. Default matches all.",
+        "query": ".+",
+        "current": {
+          "value": ".+"
+        },
+        "hide": 0
+      }
+    ]
+  },
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Ion Product Intelligence",
+  "uid": "ion-intel",
+  "version": 3
+}

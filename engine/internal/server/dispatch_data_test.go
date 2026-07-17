@@ -19,14 +19,17 @@ func findAnthropicEntry(entries []types.ProviderEntry) *types.ProviderEntry {
 }
 
 func TestBuildProviderEntries_CliCapable_NoApiKey(t *testing.T) {
-	// Server is CLI-capable and the resolver has no key for anthropic.
-	// The CLI-auth fallback should mark anthropic as authed via "cli".
+	// Server is CLI-capable and the resolver has no key for anthropic, so the
+	// claude-code auth fallback marks anthropic as authed via "claude-code"
+	// (the canonical wire value; it was "cli" before the backend rename, so
+	// this assertion is red on unfixed code).
 	//
-	// Note: if the test host has ANTHROPIC_API_KEY or a keychain entry,
-	// HasAuth will be true before the CLI fallback fires — which means the
-	// fallback is unreachable. Guard against that by temporarily unsetting
-	// the env var and accepting that keychain entries on the CI/dev machine
-	// will cause a different (but still correct) code path.
+	// Isolate HOME (filestore / credentials.json / oauth all resolve under
+	// ~/.ion) and unset the env keys so the fallback is actually reachable.
+	// On a dev machine with a real keychain anthropic entry the resolver
+	// would return "keychain" first; CI runs clean, so equality holds there.
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("ANTHROPIC_API_KEY", "")
 	r := auth.NewResolver(nil)
 	s := &Server{
 		cliCapable:   true,
@@ -41,17 +44,20 @@ func TestBuildProviderEntries_CliCapable_NoApiKey(t *testing.T) {
 	if !entry.HasAuth {
 		t.Errorf("expected HasAuth=true for CLI-capable anthropic, got false")
 	}
-	// If the host already has an anthropic key (env, keychain, etc), the
-	// resolver finds it first and AuthSource won't be "cli". That's
-	// expected — the CLI fallback only fires when no key is found.
-	if entry.AuthSource == "" {
-		t.Errorf("expected non-empty AuthSource for CLI-capable anthropic")
+	// The fallback source must be the canonical "claude-code", never the
+	// legacy "cli". Only assert exact equality when no host credential
+	// short-circuited the resolver (keychain on a dev laptop).
+	if entry.AuthSource == "cli" {
+		t.Errorf("fallback emitted legacy %q; expected canonical %q", "cli", "claude-code")
+	}
+	if entry.AuthSource != "keychain" && entry.AuthSource != "claude-code" {
+		t.Errorf("expected AuthSource=claude-code (or keychain on a dev host), got %q", entry.AuthSource)
 	}
 }
 
 func TestBuildProviderEntries_NotCliCapable(t *testing.T) {
-	// Server is NOT CLI-capable. Anthropic should NOT have "cli" as its
-	// auth source, regardless of whether the host has credentials.
+	// Server is NOT CLI-capable. Anthropic should NOT have "claude-code" as
+	// its auth source, regardless of whether the host has credentials.
 	r := auth.NewResolver(nil)
 	s := &Server{
 		cliCapable:   false,
@@ -63,9 +69,9 @@ func TestBuildProviderEntries_NotCliCapable(t *testing.T) {
 	if entry == nil {
 		t.Fatal("expected anthropic provider entry in result")
 	}
-	// The CLI fallback must not fire when cliCapable=false.
-	if entry.AuthSource == "cli" {
-		t.Errorf("expected AuthSource != %q when cliCapable=false, got %q", "cli", entry.AuthSource)
+	// The claude-code fallback must not fire when cliCapable=false.
+	if entry.AuthSource == "claude-code" {
+		t.Errorf("expected AuthSource != %q when cliCapable=false, got %q", "claude-code", entry.AuthSource)
 	}
 }
 
@@ -88,8 +94,8 @@ func TestBuildProviderEntries_CliCapable_WithApiKey(t *testing.T) {
 	if !entry.HasAuth {
 		t.Errorf("expected HasAuth=true when programmatic key is set, got false")
 	}
-	if entry.AuthSource == "cli" {
-		t.Errorf("expected AuthSource != %q when API key is already present, got %q", "cli", entry.AuthSource)
+	if entry.AuthSource == "claude-code" {
+		t.Errorf("expected AuthSource != %q when API key is already present, got %q", "claude-code", entry.AuthSource)
 	}
 	if entry.AuthSource != "programmatic" {
 		t.Errorf("expected AuthSource=%q, got %q", "programmatic", entry.AuthSource)

@@ -31,7 +31,7 @@ vi.mock('../session-store-helpers', () => ({
   nextMsgId: vi.fn(() => 'mock-msg-id'),
   playNotificationIfHidden: vi.fn(async () => {}),
   totalInputTokens: vi.fn(() => 0),
-  scheduleDoneGroupMove: vi.fn((_tabId: string, _delay: number, cb: () => void) => {}),
+  scheduleDoneGroupMove: vi.fn((_tabId: string, _delay: number, _cb: () => void) => {}),
   cancelDoneGroupMove: vi.fn(() => false),
 }))
 

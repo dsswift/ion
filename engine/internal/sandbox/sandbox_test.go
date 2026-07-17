@@ -64,12 +64,15 @@ func TestValidateWithConfig_CustomPattern(t *testing.T) {
 		},
 	}
 
-	safe, reason := ValidateWithConfig("sudo rm file", cfg)
+	safe, reason, source := ValidateWithConfig("sudo rm file", cfg)
 	if safe {
 		t.Error("expected blocked by custom pattern")
 	}
 	if reason != "sudo not allowed" {
 		t.Errorf("expected 'sudo not allowed', got %q", reason)
+	}
+	if source != "custom" {
+		t.Errorf("expected source 'custom', got %q", source)
 	}
 }
 
@@ -256,27 +259,36 @@ func TestValidateWithConfig_MultipleCustomPatterns(t *testing.T) {
 	}
 
 	// First pattern match.
-	safe, reason := ValidateWithConfig("sudo apt install", cfg)
+	safe, reason, source := ValidateWithConfig("sudo apt install", cfg)
 	if safe {
 		t.Error("expected blocked by sudo pattern")
 	}
 	if reason != "sudo not allowed" {
 		t.Errorf("expected 'sudo not allowed', got %q", reason)
 	}
+	if source != "custom" {
+		t.Errorf("expected source 'custom', got %q", source)
+	}
 
 	// Second pattern match.
-	safe, reason = ValidateWithConfig("kubectl delete pod foo", cfg)
+	safe, reason, source = ValidateWithConfig("kubectl delete pod foo", cfg)
 	if safe {
 		t.Error("expected blocked by kubectl delete pattern")
 	}
 	if reason != "kubectl delete blocked" {
 		t.Errorf("expected 'kubectl delete blocked', got %q", reason)
 	}
+	if source != "custom" {
+		t.Errorf("expected source 'custom', got %q", source)
+	}
 
 	// Neither pattern matches.
-	safe, _ = ValidateWithConfig("kubectl get pods", cfg)
+	safe, _, source = ValidateWithConfig("kubectl get pods", cfg)
 	if !safe {
 		t.Error("expected safe command to pass custom patterns")
+	}
+	if source != "" {
+		t.Errorf("expected empty source for safe command, got %q", source)
 	}
 }
 
@@ -289,12 +301,15 @@ func TestValidateWithConfig_InvalidRegexIgnored(t *testing.T) {
 	}
 
 	// Invalid regex should be silently skipped; valid one still works.
-	safe, reason := ValidateWithConfig("foo bar", cfg)
+	safe, reason, source := ValidateWithConfig("foo bar", cfg)
 	if safe {
 		t.Error("expected blocked by foo pattern")
 	}
 	if reason != "foo blocked" {
 		t.Errorf("expected 'foo blocked', got %q", reason)
+	}
+	if source != "custom" {
+		t.Errorf("expected source 'custom', got %q", source)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -168,8 +169,6 @@ type Conversation struct {
 	Messages                []types.LlmMessage `json:"messages"`
 	TotalInputTokens        int                `json:"totalInputTokens"`
 	TotalOutputTokens       int                `json:"totalOutputTokens"`
-	LastInputTokens         int                `json:"lastInputTokens"`
-	LastInputTokensMsgCount int                `json:"lastInputTokensMsgCount,omitempty"`
 	TotalCost               float64            `json:"totalCost"`
 	CreatedAt               int64              `json:"createdAt"`
 	Version                 int                `json:"version,omitempty"`
@@ -178,10 +177,49 @@ type Conversation struct {
 	LeafID                  *string            `json:"leafId"`
 	WorkingDirectory        string             `json:"workingDirectory,omitempty"`
 
+	// Backend records which run backend produced this conversation ("api"
+	// today; CLI kinds if delegated backends ever write the Ion store).
+	// Additive: legacy files decode with "" and consumers treat "" as api,
+	// since only the API backend has ever written Ion conversation files.
+	// Lets a consumer assert the history format per conversation instead of
+	// inferring it from a global mode.
+	Backend string `json:"backend,omitempty"`
+
+	// NativeSessions maps a delegated-CLI backend kind ("claude-code",
+	// "codex", "grok", "cursor") to the native-session cursor captured at
+	// the exit of the last run this conversation completed on that backend.
+	// A cursor is a disposable per-provider CACHE over Ion's transcript: it
+	// is valid for native resume only while HeadEntryID still equals the
+	// conversation's LeafID (no other writer advanced the transcript since
+	// capture). Stale or absent cursors are discarded and the next run on
+	// that backend re-bridges from the transcript instead. Persisted in the
+	// .tree.jsonl header (additive, omitempty) so continuity survives an
+	// engine restart. See session/native_session.go for capture/decide.
+	NativeSessions map[string]NativeSessionCursor `json:"nativeSessions,omitempty"`
+
 	// _isLegacy is set by Load when reading a legacy .jsonl or .json file.
 	// Save reads this flag to decide whether to unlink the legacy file after
 	// writing the new split format. Not JSON-tagged — never persisted.
 	_isLegacy bool
+
+	// mu serializes access to Entries, LeafID, and Messages. A live
+	// conversation is mutated from multiple goroutines (runloop appends,
+	// plan/steer markers inside parallel tool goroutines, Save from the
+	// signal-handler flush). Unexported — encoding/json ignores it, so the
+	// persisted shape is unchanged. See lock.go for the locking discipline.
+	mu sync.Mutex
+}
+
+// NativeSessionCursor is one delegated-CLI backend's resumable native-session
+// handle, position-tagged against Ion's conversation tree. Cursor is the
+// backend-native resume id (claude session UUID / codex thread id / ACP
+// session id). HeadEntryID is the conversation's LeafID at capture time — the
+// validity tag: the cursor may feed a native resume only while it still
+// equals the live LeafID, proving no other provider (or /clear, rewind, tree
+// navigation) advanced the transcript since this backend last saw it.
+type NativeSessionCursor struct {
+	Cursor      string `json:"cursor"`
+	HeadEntryID string `json:"headEntryId"`
 }
 
 // ContextUsageInfo describes current context window consumption.
@@ -250,10 +288,12 @@ func CreateConversation(id, system, model string) *Conversation {
 func AddUserMessage(conv *Conversation, content any) *SessionEntry {
 	blocks := toContentBlocks(content)
 
+	conv.lock()
+	defer conv.unlock()
 	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: blocks})
 
 	if conv.Entries != nil {
-		return AppendEntry(conv, EntryMessage, MessageData{Role: "user", Content: blocks})
+		return appendEntryLocked(conv, EntryMessage, MessageData{Role: "user", Content: blocks}, "")
 	}
 	return nil
 }
@@ -298,6 +338,9 @@ type SlashInvocation struct {
 func AddUserMessageWithInvocation(conv *Conversation, expandedContent any, inv SlashInvocation) *SessionEntry {
 	expandedBlocks := toContentBlocks(expandedContent)
 
+	conv.lock()
+	defer conv.unlock()
+
 	// LLM sees the expanded template body.
 	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: expandedBlocks})
 
@@ -307,13 +350,13 @@ func AddUserMessageWithInvocation(conv *Conversation, expandedContent any, inv S
 		if inv.Args != "" {
 			display = inv.Command + " " + inv.Args
 		}
-		return AppendEntry(conv, EntryMessage, MessageData{
+		return appendEntryLocked(conv, EntryMessage, MessageData{
 			Role:         "user",
 			Content:      []types.LlmContentBlock{textBlock(display)},
 			SlashCommand: inv.Command,
 			SlashArgs:    inv.Args,
 			SlashSource:  inv.Source,
-		})
+		}, "")
 	}
 	return nil
 }
@@ -338,6 +381,8 @@ func toContentBlocks(content any) []types.LlmContentBlock {
 // it won't appear in session history on reload.
 func AddTransientUserMessage(conv *Conversation, content string) {
 	blocks := []types.LlmContentBlock{textBlock(content)}
+	conv.lock()
+	defer conv.unlock()
 	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: blocks})
 }
 
@@ -354,18 +399,31 @@ func AddTransientUserMessage(conv *Conversation, content string) {
 // seeder recovers it on the next session.
 func AddContextInjectionMessage(conv *Conversation, paths []string, renderedText string, transient bool) {
 	msg := BuildContextInjectionMessage(paths, renderedText)
+	conv.lock()
+	defer conv.unlock()
 	conv.Messages = append(conv.Messages, msg)
 	if transient {
 		return
 	}
 	blocks, _ := msg.Content.([]types.LlmContentBlock)
 	if conv.Entries != nil {
-		AppendEntry(conv, EntryMessage, MessageData{Role: "user", Content: blocks})
+		appendEntryLocked(conv, EntryMessage, MessageData{Role: "user", Content: blocks}, "")
 	}
 }
 
 // AddAssistantMessage appends an assistant message with usage tracking.
 func AddAssistantMessage(conv *Conversation, blocks []types.LlmContentBlock, usage types.LlmUsage) {
+	AddAssistantMessageWithEntryID(conv, blocks, usage, "")
+}
+
+// AddAssistantMessageWithEntryID is AddAssistantMessage with a pre-minted
+// entry id. The runloop mints the id before emitting message_end so consumers
+// can re-key their live-streamed assistant rows to the canonical persisted
+// identity; passing the same id here guarantees the persisted entry matches
+// what already went out on the wire. An empty entryID generates a fresh one.
+func AddAssistantMessageWithEntryID(conv *Conversation, blocks []types.LlmContentBlock, usage types.LlmUsage, entryID string) {
+	conv.lock()
+	defer conv.unlock()
 	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: blocks})
 	// Track total context size including cached tokens. The API's input_tokens
 	// field only counts non-cached tokens; cache_read and cache_creation must
@@ -373,11 +431,10 @@ func AddAssistantMessage(conv *Conversation, blocks []types.LlmContentBlock, usa
 	totalInput := usage.InputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens
 	conv.TotalInputTokens += totalInput
 	conv.TotalOutputTokens += usage.OutputTokens
-	conv.LastInputTokens = totalInput
-	conv.LastInputTokensMsgCount = len(conv.Messages)
+	conv.Messages[len(conv.Messages)-1].Usage = &usage
 
 	if conv.Entries != nil {
-		AppendEntry(conv, EntryMessage, MessageData{Role: "assistant", Content: blocks, Usage: &usage})
+		appendEntryLocked(conv, EntryMessage, MessageData{Role: "assistant", Content: blocks, Usage: &usage}, entryID)
 	}
 }
 
@@ -405,12 +462,21 @@ func AddToolResults(conv *Conversation, results []ToolResultEntry) {
 		})
 		for _, img := range r.Images {
 			imageBlocks = append(imageBlocks, types.LlmContentBlock{
-				Type:   "image",
-				Source: img,
+				Type: "image",
+				// Carry the owning tool call's id on the persisted image block.
+				// Providers ignore ToolUseID on an image block (every provider
+				// serialiser reads only Source for type=="image"), so this never
+				// reaches the wire — but it is what lets flattenEntries associate
+				// a reloaded image back to its tool message on historical reload.
+				// Without it, images loaded from disk have no home and are dropped.
+				ToolUseID: r.ToolUseID,
+				Source:    img,
 			})
 		}
 	}
 	blocks = append(blocks, imageBlocks...)
+	conv.lock()
+	defer conv.unlock()
 	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: blocks})
 
 	if conv.Entries != nil {
@@ -418,7 +484,7 @@ func AddToolResults(conv *Conversation, results []ToolResultEntry) {
 		// cannot corrupt the persisted entry history.
 		entryCopy := make([]types.LlmContentBlock, len(blocks))
 		copy(entryCopy, blocks)
-		AppendEntry(conv, EntryMessage, MessageData{Role: "user", Content: entryCopy})
+		appendEntryLocked(conv, EntryMessage, MessageData{Role: "user", Content: entryCopy}, "")
 	}
 }
 
@@ -438,6 +504,8 @@ func AddToolResultsWithSizeCheck(conv *Conversation, results []ToolResultEntry, 
 
 // UpdateCost adds to the running cost total.
 func UpdateCost(conv *Conversation, costUsd float64) {
+	conv.lock()
+	defer conv.unlock()
 	conv.TotalCost += costUsd
 }
 
@@ -445,6 +513,8 @@ func UpdateCost(conv *Conversation, costUsd float64) {
 // stop reason metadata. This is called after AddAssistantMessage so callers
 // that don't need metadata don't have to change.
 func SetAssistantMeta(conv *Conversation, model, stopReason string) {
+	conv.lock()
+	defer conv.unlock()
 	if conv.Entries == nil {
 		return
 	}

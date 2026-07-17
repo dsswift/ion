@@ -45,9 +45,15 @@ enum LayoutCache {
         do {
             let data = try JSONEncoder().encode(layout)
             try data.write(to: fileURL(for: deviceId), options: .atomic)
-            DiagnosticLog.log("CACHE: save ok deviceId=\(deviceId.prefix(8)) tabs=\(tabs.count)")
+            DiagnosticLog.log("layout cache save ok", tag: "cache.layout", fields: [
+                "device": String(deviceId.prefix(8)),
+                "count": String(tabs.count)
+            ])
         } catch {
-            DiagnosticLog.log("CACHE: save FAILED deviceId=\(deviceId.prefix(8)) err=\(error.localizedDescription)")
+            DiagnosticLog.log("layout cache save failed", tag: "cache.layout", level: .error, fields: [
+                "device": String(deviceId.prefix(8)),
+                "error": error.localizedDescription
+            ])
         }
     }
 

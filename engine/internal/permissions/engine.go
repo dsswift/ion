@@ -59,6 +59,12 @@ type CheckResult struct {
 	// Tier echoes the classifier label that influenced the decision (empty
 	// when no tier was supplied or no TierRule matched).
 	Tier string
+	// Layer names the evaluation stage that produced this decision, e.g.
+	// "allow_mode", "dangerous_pattern", "sensitive_path", "read_only_path",
+	// "tier_rule", "explicit_rule", "safe_command", "llm_classifier", or
+	// "mode_default". Surfaced on the AuditEntry so observers can see which
+	// rail decided a call. Empty only for results constructed outside Check.
+	Layer string
 }
 
 // Check evaluates a tool invocation against the policy.
@@ -70,10 +76,14 @@ type CheckResult struct {
 //  5. Per-rule matching (first match wins -- rules can punch holes in deny mode).
 //  6. Mode-based default: deny blocks, ask prompts user.
 func (e *Engine) Check(info CheckInfo) *CheckResult {
+	// Capture the check start so audit() can record decision latency. Every
+	// return path below routes through e.audit(info, result, checkStart).
+	checkStart := time.Now()
+
 	// In allow mode, skip all checks -- harness engineer opted out of engine-level enforcement
 	if e.policy.Mode == "allow" {
-		result := &CheckResult{Decision: "allow", Reason: "default allow"}
-		e.audit(info, result)
+		result := &CheckResult{Decision: "allow", Reason: "default allow", Layer: "allow_mode"}
+		e.audit(info, result, checkStart)
 		return result
 	}
 
@@ -84,8 +94,9 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 				result := &CheckResult{
 					Decision: "deny",
 					Reason:   reason,
+					Layer:    "dangerous_pattern",
 				}
-				e.audit(info, result)
+				e.audit(info, result, checkStart)
 				return result
 			}
 		}
@@ -97,8 +108,9 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 			result := &CheckResult{
 				Decision: "deny",
 				Reason:   "access to sensitive path: " + path,
+				Layer:    "sensitive_path",
 			}
-			e.audit(info, result)
+			e.audit(info, result, checkStart)
 			return result
 		}
 	}
@@ -111,8 +123,9 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 					result := &CheckResult{
 						Decision: "deny",
 						Reason:   "path is read-only: " + path,
+						Layer:    "read_only_path",
 					}
-					e.audit(info, result)
+					e.audit(info, result, checkStart)
 					return result
 				}
 			}
@@ -128,8 +141,9 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 				Decision: decision,
 				Reason:   "tier rule: " + info.Tier,
 				Tier:     info.Tier,
+				Layer:    "tier_rule",
 			}
-			e.audit(info, result)
+			e.audit(info, result, checkStart)
 			return result
 		}
 	}
@@ -145,8 +159,9 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 				Decision: rule.Decision,
 				Reason:   "matched rule for " + rule.Tool,
 				Rule:     rule,
+				Layer:    "explicit_rule",
 			}
-			e.audit(info, result)
+			e.audit(info, result, checkStart)
 			return result
 		}
 	}
@@ -158,6 +173,7 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 		result = &CheckResult{
 			Decision: "allow",
 			Reason:   "default allow",
+			Layer:    "mode_default",
 		}
 	case "ask":
 		// Auto-approve safe commands in ask mode
@@ -167,8 +183,9 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 					result = &CheckResult{
 						Decision: "allow",
 						Reason:   "safe command auto-approved",
+						Layer:    "safe_command",
 					}
-					e.audit(info, result)
+					e.audit(info, result, checkStart)
 					return result
 				}
 				// G01: Use LLM classifier for ambiguous bash commands
@@ -178,8 +195,9 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 						result = &CheckResult{
 							Decision: "allow",
 							Reason:   "LLM classifier: " + cr.Reason,
+							Layer:    "llm_classifier",
 						}
-						e.audit(info, result)
+						e.audit(info, result, checkStart)
 						return result
 					}
 				}
@@ -188,19 +206,22 @@ func (e *Engine) Check(info CheckInfo) *CheckResult {
 		result = &CheckResult{
 			Decision: "ask",
 			Reason:   "requires user approval",
+			Layer:    "mode_default",
 		}
 	case "deny":
 		result = &CheckResult{
 			Decision: "deny",
 			Reason:   "denied by default policy",
+			Layer:    "mode_default",
 		}
 	default:
 		result = &CheckResult{
 			Decision: "deny",
 			Reason:   "unknown policy mode: " + e.policy.Mode,
+			Layer:    "mode_default",
 		}
 	}
-	e.audit(info, result)
+	e.audit(info, result, checkStart)
 	return result
 }
 
@@ -213,6 +234,30 @@ type AuditEntry struct {
 	Input     string
 	Rule      string
 	SessionID string
+	// Tier echoes the classifier label that influenced the decision (empty
+	// when no tier was supplied or no TierRule matched). Mirrors
+	// CheckResult.Tier.
+	Tier string
+	// Layer names the evaluation stage that produced the decision (mirrors
+	// CheckResult.Layer). Lets audit observers attribute a decision to the
+	// rail that made it (allow_mode, dangerous_pattern, tier_rule, ...).
+	Layer string
+	// LatencyMs is the wall-clock time the Check evaluation took, in
+	// milliseconds. Includes any LLM classifier round-trip on the
+	// llm_classifier layer, which is the one stage that can block on I/O.
+	//
+	// This is integer-millisecond and floors any sub-millisecond decision to 0.
+	// The fast rail decisions (allow_mode, dangerous_pattern, tier_rule) resolve
+	// in microseconds, so the emitted decision_latency_ms panel was blank for
+	// them. Latency (below) carries the full-resolution duration; audit
+	// observers that need sub-ms precision (the telemetry emission site) read
+	// Latency and emit float milliseconds. LatencyMs is retained unchanged for
+	// existing integer-millisecond consumers.
+	LatencyMs int64
+	// Latency is the wall-clock Check duration at full monotonic-clock
+	// resolution. Emit float64(Latency.Microseconds())/1000.0 for sub-ms
+	// precision. Mirrors LatencyMs but without the integer-flooring loss.
+	Latency time.Duration
 }
 
 // OnAudit registers a callback for permission audit logging (G48).
@@ -220,7 +265,7 @@ func (e *Engine) OnAudit(fn func(AuditEntry)) {
 	e.auditFn = fn
 }
 
-func (e *Engine) audit(info CheckInfo, result *CheckResult) {
+func (e *Engine) audit(info CheckInfo, result *CheckResult, checkStart time.Time) {
 	if e.auditFn == nil {
 		return
 	}
@@ -230,6 +275,10 @@ func (e *Engine) audit(info CheckInfo, result *CheckResult) {
 		Reason:    result.Reason,
 		Timestamp: time.Now(),
 		SessionID: info.SessionID,
+		Tier:      result.Tier,
+		Layer:     result.Layer,
+		LatencyMs: time.Since(checkStart).Milliseconds(),
+		Latency:   time.Since(checkStart),
 	}
 	// Capture the raw input as the command string when available, otherwise
 	// fall back to the first path-like field so the audit log is actionable.

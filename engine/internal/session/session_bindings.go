@@ -2,7 +2,6 @@ package session
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -35,13 +34,13 @@ func loadBindings(path string) map[string]string {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			utils.Log("session-bindings", fmt.Sprintf("load: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "session-bindings", "load", map[string]any{"error": err})
 		}
 		return make(map[string]string)
 	}
 	var sb sessionBindings
 	if err := json.Unmarshal(data, &sb); err != nil {
-		utils.Log("session-bindings", fmt.Sprintf("unmarshal: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "session-bindings", "unmarshal", map[string]any{"error": err})
 		return make(map[string]string)
 	}
 	if sb.Bindings == nil {
@@ -59,26 +58,26 @@ func saveBinding(path, key, conversationID string) {
 	sb := sessionBindings{Bindings: bindings}
 	data, err := json.Marshal(sb)
 	if err != nil {
-		utils.Log("session-bindings", fmt.Sprintf("marshal: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "session-bindings", "marshal", map[string]any{"error": err})
 		return
 	}
 
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		utils.Log("session-bindings", fmt.Sprintf("mkdir: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "session-bindings", "mkdir", map[string]any{"error": err})
 		return
 	}
 
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		utils.Log("session-bindings", fmt.Sprintf("write tmp: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "session-bindings", "write tmp", map[string]any{"error": err})
 		return
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
-		utils.Log("session-bindings", fmt.Sprintf("rename: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "session-bindings", "rename", map[string]any{"error": err})
 		return
 	}
-	utils.Log("session-bindings", fmt.Sprintf("saved: key=%s conversationId=%s", key, conversationID))
+	utils.LogWithFields(utils.LevelInfo, "session-bindings", "saved", map[string]any{"key": key, "run_id": conversationID})
 }
 
 // lookupBinding returns the previously persisted conversationId for the given
@@ -102,24 +101,24 @@ func deleteBinding(path, key string) {
 	sb := sessionBindings{Bindings: bindings}
 	data, err := json.Marshal(sb)
 	if err != nil {
-		utils.Log("session-bindings", fmt.Sprintf("delete marshal: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "session-bindings", "delete marshal", map[string]any{"error": err})
 		return
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		utils.Log("session-bindings", fmt.Sprintf("delete mkdir: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "session-bindings", "delete mkdir", map[string]any{"error": err})
 		return
 	}
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		utils.Log("session-bindings", fmt.Sprintf("delete write tmp: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "session-bindings", "delete write tmp", map[string]any{"error": err})
 		return
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
-		utils.Log("session-bindings", fmt.Sprintf("delete rename: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "session-bindings", "delete rename", map[string]any{"error": err})
 		return
 	}
-	utils.Log("session-bindings", fmt.Sprintf("deleted: key=%s", key))
+	utils.LogWithFields(utils.LevelInfo, "session-bindings", "deleted", map[string]any{"key": key})
 }
 
 // flushPendingBinding writes a deferred key->conversationId binding to the
@@ -146,7 +145,7 @@ func (m *Manager) flushPendingBinding(key, convID string) {
 	}
 
 	if !conversation.Exists(convID, "") {
-		utils.Debug("Session", fmt.Sprintf("flushPendingBinding: key=%s conversationID=%s not yet saved — leaving binding deferred", key, convID))
+		utils.LogWithFields(utils.LevelDebug, "session", "flushpendingbinding: not yet saved — leaving binding deferred", map[string]any{"key": key, "run_id": convID})
 		return
 	}
 
@@ -157,7 +156,7 @@ func (m *Manager) flushPendingBinding(key, convID string) {
 		s.bindingPending = false
 	}
 	m.mu.Unlock()
-	utils.Log("Session", fmt.Sprintf("flushPendingBinding: key=%s wrote deferred binding for conversationID=%s (file now present)", key, convID))
+	utils.LogWithFields(utils.LevelInfo, "session", "flushpendingbinding: wrote deferred binding for (file now present)", map[string]any{"key": key, "run_id": convID})
 }
 
 // resolveConversationID decides which conversation a StartSession should use,
@@ -199,7 +198,7 @@ func resolveConversationID(path, key string, config types.EngineConfig) string {
 		// Requiring conversation.Exists here broke TestStartSessionWithSessionID
 		// (regression from #256) by falling through to a fresh mint whenever
 		// the named ID had no backing file. (#256 fix)
-		utils.Log("Session", fmt.Sprintf("StartSession: key=%s using explicit conversationID=%s (caller-supplied, unconditional)", key, config.SessionID))
+		utils.LogWithFields(utils.LevelInfo, "session", "startsession: using explicit (caller-supplied, unconditional)", map[string]any{"key": key, "run_id": config.SessionID})
 		return config.SessionID
 	}
 	if config.ForceNewConversation {
@@ -211,19 +210,19 @@ func resolveConversationID(path, key string, config types.EngineConfig) string {
 		// conversation. (#231)
 		deleteBinding(path, key)
 		convID := conversation.NewConversationID()
-		utils.Log("Session", fmt.Sprintf("StartSession: key=%s forced new conversation, cleared stale binding old=%s new=%s (new binding deferred until save)", key, old, convID))
+		utils.LogWithFields(utils.LevelInfo, "session", "startsession: forced new conversation, cleared stale binding (new binding deferred until save)", map[string]any{"key": key, "old": old, "run_id": convID})
 		return convID
 	}
 	if bound := lookupBinding(path, key); bound != "" {
 		if conversation.Exists(bound, "") {
-			utils.Log("Session", fmt.Sprintf("StartSession: key=%s resuming bound conversationID=%s from binding store (file present)", key, bound))
+			utils.LogWithFields(utils.LevelInfo, "session", "startsession: resuming bound from binding store (file present)", map[string]any{"key": key, "bound": bound})
 			return bound
 		}
 		// Stored binding points at a fileless phantom (a prior pre-mint that was
 		// never saved). Ignore it rather than resuming empty.
-		utils.Log("Session", fmt.Sprintf("StartSession: key=%s bound conversationID=%s has NO backing file — ignoring phantom binding, minting fresh", key, bound))
+		utils.LogWithFields(utils.LevelInfo, "session", "startsession: bound has no backing file — ignoring phantom binding, minting fresh", map[string]any{"key": key, "bound": bound})
 	}
 	convID := conversation.NewConversationID()
-	utils.Log("Session", fmt.Sprintf("StartSession: key=%s pre-minted conversationID=%s (no usable binding)", key, convID))
+	utils.LogWithFields(utils.LevelInfo, "session", "startsession: pre-minted (no usable binding)", map[string]any{"key": key, "run_id": convID})
 	return convID
 }

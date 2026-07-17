@@ -55,9 +55,9 @@ func NewOpenAIProvider(opts *ProviderOptions) LlmProvider {
 		apiKey:     apiKey,
 		baseURL:    baseURL,
 		authHeader: authHeader,
-		client:  &http.Client{Transport: network.GetHTTPTransport()},
+		client:     &http.Client{Transport: network.GetHTTPTransport()},
 	}
-	utils.Log("OpenAI", fmt.Sprintf("NewOpenAIProvider: id=%s baseURL=%s apiKeyLen=%d authHeader=%s", id, baseURL, len(apiKey), authHeader))
+	utils.LogWithFields(utils.LevelInfo, "OpenAI", "new openai provider", map[string]any{"provider": id, "path": baseURL, "count": len(apiKey), "reason": authHeader})
 	return result
 }
 
@@ -80,12 +80,12 @@ func (p *openaiProvider) Stream(ctx context.Context, opts types.LlmStreamOptions
 }
 
 func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptions, events chan<- types.LlmStreamEvent) error {
-	utils.Log("OpenAI", fmt.Sprintf("doStream: id=%s model=%s baseURL=%s", p.id, opts.Model, p.baseURL))
+	utils.LogWithFields(utils.LevelInfo, "OpenAI", "do stream start", map[string]any{"provider": p.id, "model": opts.Model, "path": p.baseURL})
 	body := p.buildRequestBody(opts)
 
 	raw, err := json.Marshal(body)
 	if err != nil {
-		utils.Error("OpenAI", fmt.Sprintf("doStream: marshal error: %v", err))
+		utils.LogWithFields(utils.LevelError, "OpenAI", "do stream marshal error", map[string]any{"error": err.Error()})
 		return FromOpenAIError(fmt.Errorf("marshal request: %w", err), 0, "")
 	}
 
@@ -94,11 +94,11 @@ func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 	if strings.HasSuffix(p.baseURL, "/v1") || strings.Contains(p.baseURL, "/v1/") {
 		endpoint = strings.TrimRight(p.baseURL, "/") + "/chat/completions"
 	}
-	utils.Log("OpenAI", fmt.Sprintf("doStream: endpoint=%s", endpoint))
+	utils.LogWithFields(utils.LevelInfo, "OpenAI", "do stream endpoint resolved", map[string]any{"path": endpoint})
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(raw))
 	if err != nil {
-		utils.Error("OpenAI", fmt.Sprintf("doStream: create request error: %v", err))
+		utils.LogWithFields(utils.LevelError, "OpenAI", "do stream create request error", map[string]any{"error": err.Error()})
 		return FromOpenAIError(fmt.Errorf("create request: %w", err), 0, "")
 	}
 
@@ -109,24 +109,31 @@ func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 		apiKey = GetProviderKey(p.id)
 		keySource = "registry:" + p.id
 	}
-	utils.Log("OpenAI", fmt.Sprintf("doStream: auth id=%s keySource=%s keyLen=%d authStyle=%s", p.id, keySource, len(apiKey), p.authHeader))
+	utils.LogWithFields(utils.LevelInfo, "OpenAI", "do stream auth resolved", map[string]any{"provider": p.id, "reason": keySource, "count": len(apiKey), "status": p.authHeader})
 	setAuthHeader(req, p.authHeader, apiKey)
 	req.Header.Set("Accept", "text/event-stream")
 
 	resp, err := p.client.Do(req)
 	if err != nil {
+		// Try transport classification first (covers "use of closed network
+		// connection", connection resets, etc. that FromOpenAIError's narrower
+		// checks miss and would otherwise collapse into a non-retryable
+		// ErrUnknown).
+		if pe := ClassifyTransportError(err); pe != nil {
+			return pe
+		}
 		return FromOpenAIError(err, 0, "")
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			utils.Log("OpenAI", fmt.Sprintf("doStream: response body close failed: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "OpenAI", "do stream response body close failed", map[string]any{"error": err.Error()})
 		}
 	}()
-	utils.Debug("OpenAI", fmt.Sprintf("doStream: HTTP response status=%d", resp.StatusCode))
+	utils.LogWithFields(utils.LevelDebug, "OpenAI", "do stream http response", map[string]any{"status": resp.StatusCode})
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		utils.Error("OpenAI", fmt.Sprintf("doStream: HTTP %d error for %s: %s", resp.StatusCode, endpoint, string(respBody)))
+		utils.LogWithFields(utils.LevelError, "OpenAI", "do stream http error", map[string]any{"status": resp.StatusCode, "path": endpoint, "error": string(respBody)})
 		return FromOpenAIError(
 			fmt.Errorf("openai API error: %s", string(respBody)),
 			resp.StatusCode,
@@ -160,7 +167,7 @@ func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 	rawCh, rawErr := ParseSSEStream(resp.Body)
 	// Per-event idle deadline + heartbeat (see sse_idle.go): a stream that
 	// returns headers then goes silent is caught fast and retried.
-	sseCh, sseErr := streamWithIdle(rawCh, rawErr, "openai", opts.Model, "", nil)
+	sseCh, sseErr := streamWithIdle(rawCh, rawErr, "openai", opts.Model, "", nil, telemetryCorrelationFromContext(ctx))
 	for sse := range sseCh {
 		if sse.Data == "" {
 			continue
@@ -181,7 +188,7 @@ func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 		// it as a real error (see Defect 2 in the #229 fix plan).
 		if chunk.Error != nil {
 			pe := p.providerErrorFromStream(chunk.Error)
-			utils.Error("OpenAI", fmt.Sprintf("doStream: in-stream error chunk: id=%s model=%s code=%s retryable=%v msg=%s", p.id, opts.Model, pe.Code, pe.Retryable, pe.Message))
+			utils.LogWithFields(utils.LevelError, "OpenAI", "do stream in-stream error chunk", map[string]any{"provider": p.id, "model": opts.Model, "reason": pe.Code, "status": pe.Retryable, "error": pe.Message})
 			return pe
 		}
 
@@ -230,6 +237,41 @@ func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 			}); err != nil {
 				return err
 			}
+		}
+
+		// Provider-generated images (GPT-4o image output). Close any open text
+		// block first, then emit a self-contained image content block (start +
+		// stop) carrying base64 bytes + MIME type. The backend runloop saves the
+		// bytes and emits the path-bearing ImageContentEvent — the provider
+		// never touches disk. Malformed entries are skipped.
+		for _, im := range delta.Images {
+			mediaType, b64 := parseOpenAIImageOut(im)
+			if b64 == "" {
+				continue
+			}
+			if inTextBlock || currentToolID != "" {
+				if err := sendEvent(ctx, events, types.LlmStreamEvent{Type: "content_block_stop", BlockIndex: contentIndex}); err != nil {
+					return err
+				}
+				contentIndex++
+				inTextBlock = false
+				currentToolID = ""
+			}
+			if err := sendEvent(ctx, events, types.LlmStreamEvent{
+				Type:       "content_block_start",
+				BlockIndex: contentIndex,
+				ContentBlock: &types.LlmStreamContentBlock{
+					Type:           "image",
+					ImageData:      b64,
+					ImageMediaType: mediaType,
+				},
+			}); err != nil {
+				return err
+			}
+			if err := sendEvent(ctx, events, types.LlmStreamEvent{Type: "content_block_stop", BlockIndex: contentIndex}); err != nil {
+				return err
+			}
+			contentIndex++
 		}
 
 		// Tool calls
@@ -284,7 +326,7 @@ func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 			// loop would treat as a successful empty turn.
 			if choice.FinishReason == "error" {
 				pe := p.providerErrorFromStream(chunk.Error)
-				utils.Error("OpenAI", fmt.Sprintf("doStream: finish_reason=error: id=%s model=%s code=%s retryable=%v msg=%s", p.id, opts.Model, pe.Code, pe.Retryable, pe.Message))
+				utils.LogWithFields(utils.LevelError, "OpenAI", "do stream finish reason error", map[string]any{"provider": p.id, "model": opts.Model, "reason": pe.Code, "status": pe.Retryable, "error": pe.Message})
 				return pe
 			}
 			// Close any open block
@@ -330,16 +372,18 @@ func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 }
 
 func (p *openaiProvider) buildRequestBody(opts types.LlmStreamOptions) map[string]any {
-	maxTokens := opts.MaxTokens
-	if maxTokens == 0 {
-		maxTokens = 16384
+	body := map[string]any{
+		"model":    opts.Model,
+		"stream":   true,
+		"messages": formatOpenAIMessages(opts.System, opts.Messages),
 	}
 
-	body := map[string]any{
-		"model":                  opts.Model,
-		"max_completion_tokens":  maxTokens,
-		"stream":                 true,
-		"messages":               formatOpenAIMessages(opts.System, opts.Messages),
+	// max_completion_tokens is optional on the OpenAI API: when the engine has
+	// no per-model value (and the caller set no override), omit it entirely so
+	// the provider applies the model's own maximum rather than an engine-imposed
+	// cap. Only set it when resolveMaxOutputTokens returns a concrete value.
+	if maxTokens, ok := resolveMaxOutputTokens(opts); ok {
+		body["max_completion_tokens"] = maxTokens
 	}
 
 	if len(opts.Tools) > 0 {
@@ -635,12 +679,54 @@ type openaiChoice struct {
 type openaiDelta struct {
 	Content   string           `json:"content"`
 	ToolCalls []openaiToolCall `json:"tool_calls"`
+	// Images carries provider-generated image output (e.g. GPT-4o image
+	// generation). Each entry is a data URL or base64 payload with a MIME type.
+	// Absent for text/tool-only deltas (the overwhelming majority).
+	Images []openaiImageOut `json:"images,omitempty"`
+}
+
+// openaiImageOut is a single provider-generated image in a streaming delta.
+// Providers vary: some send a data URL under image_url.url ("data:image/png;
+// base64,...."), some send raw base64 under b64_json with a separate MIME type.
+// parseImageOut normalizes both to (mediaType, base64Data).
+type openaiImageOut struct {
+	Type     string `json:"type"`
+	ImageURL *struct {
+		URL string `json:"url"`
+	} `json:"image_url,omitempty"`
+	B64JSON   string `json:"b64_json,omitempty"`
+	MediaType string `json:"media_type,omitempty"`
 }
 
 type openaiToolCall struct {
 	ID       string          `json:"id"`
 	Type     string          `json:"type"`
 	Function *openaiFunction `json:"function,omitempty"`
+}
+
+// parseOpenAIImageOut normalizes a provider-generated image entry to
+// (mediaType, base64Data). It handles two shapes: a data URL under
+// image_url.url ("data:image/png;base64,AAAA...") and a raw base64 payload
+// under b64_json with an explicit media_type. Returns ("", "") when the entry
+// carries no usable image bytes.
+func parseOpenAIImageOut(im openaiImageOut) (mediaType, base64Data string) {
+	if im.B64JSON != "" {
+		mt := im.MediaType
+		if mt == "" {
+			mt = "image/png"
+		}
+		return mt, im.B64JSON
+	}
+	if im.ImageURL != nil && strings.HasPrefix(im.ImageURL.URL, "data:") {
+		// data:<mediaType>;base64,<data>
+		rest := strings.TrimPrefix(im.ImageURL.URL, "data:")
+		semi := strings.IndexByte(rest, ';')
+		comma := strings.IndexByte(rest, ',')
+		if semi > 0 && comma > semi {
+			return rest[:semi], rest[comma+1:]
+		}
+	}
+	return "", ""
 }
 
 type openaiFunction struct {

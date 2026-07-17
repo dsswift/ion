@@ -14,13 +14,13 @@ import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 // ─── Shared mock state (hoisted so factory closures can capture it) ───────────
 
-const { mockSetAlwaysOnTop, mockSetVisibleOnAllWorkspaces, mockWindowInstance } = vi.hoisted(() => {
+const { mockSetAlwaysOnTop, _mockSetVisibleOnAllWorkspaces, mockWindowInstance } = vi.hoisted(() => {
   const mockSetAlwaysOnTop = vi.fn()
-  const mockSetVisibleOnAllWorkspaces = vi.fn()
+  const _mockSetVisibleOnAllWorkspaces = vi.fn()
 
   const mockWindowInstance = {
     setAlwaysOnTop: mockSetAlwaysOnTop,
-    setVisibleOnAllWorkspaces: mockSetVisibleOnAllWorkspaces,
+    setVisibleOnAllWorkspaces: _mockSetVisibleOnAllWorkspaces,
     webContents: {
       on: vi.fn(),
       setWindowOpenHandler: vi.fn(),
@@ -32,11 +32,12 @@ const { mockSetAlwaysOnTop, mockSetVisibleOnAllWorkspaces, mockWindowInstance } 
     loadFile: vi.fn(),
     show: vi.fn(),
     hide: vi.fn(),
+    setBounds: vi.fn(),
     isVisible: vi.fn().mockReturnValue(false),
     isDestroyed: vi.fn().mockReturnValue(false),
   }
 
-  return { mockSetAlwaysOnTop, mockSetVisibleOnAllWorkspaces, mockWindowInstance }
+  return { mockSetAlwaysOnTop, _mockSetVisibleOnAllWorkspaces, mockWindowInstance }
 })
 
 vi.mock('electron', () => {
@@ -67,7 +68,7 @@ vi.mock('electron', () => {
       },
     },
     globalShortcut: { unregisterAll: vi.fn() },
-    Menu: { buildFromTemplate: vi.fn() },
+    Menu: { buildFromTemplate: vi.fn((template: any) => template) },
     nativeImage: { createFromPath: vi.fn().mockReturnValue({ setTemplateImage: vi.fn() }) },
     Tray: vi.fn().mockImplementation(function () {
       return { setToolTip: vi.fn(), setContextMenu: vi.fn(), isDestroyed: vi.fn().mockReturnValue(false), destroy: vi.fn() }
@@ -93,6 +94,17 @@ vi.mock('../broadcast', () => ({ broadcast: vi.fn() }))
 
 vi.mock('../terminal-manager-instance', () => ({
   terminalManager: { destroyAll: vi.fn() },
+}))
+
+const mockRestartEngineDaemon = vi.fn().mockReturnValue(true)
+vi.mock('../engine-bootstrap', () => ({
+  restartEngineDaemon: mockRestartEngineDaemon,
+}))
+
+const mockReassertPolicy = vi.hoisted(() => vi.fn())
+vi.mock('../atv-window-manager', () => ({
+  openAtvWindow: vi.fn(),
+  reassertAtvActivationPolicy: mockReassertPolicy,
 }))
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -127,5 +139,52 @@ describe('window-manager createWindow()', () => {
 
     const enabledArg = mockSetAlwaysOnTop.mock.calls[0][0]
     expect(enabledArg).toBe(true)
+  })
+
+  it('re-asserts the activation policy after setVisibleOnAllWorkspaces (accessory side-effect regression)', async () => {
+    // visibleOnFullScreen flips the app to 'accessory' as a macOS/Electron
+    // side effect. With the ATV open ('regular' policy) that removed Ion
+    // from Cmd-Tab and backgrounded the ATV window on every overlay show.
+    const { createWindow, showWindow } = await import('../window-manager')
+    createWindow()
+    expect(_mockSetVisibleOnAllWorkspaces).toHaveBeenCalled()
+    expect(mockReassertPolicy).toHaveBeenCalled()
+    expect(
+      mockReassertPolicy.mock.invocationCallOrder[mockReassertPolicy.mock.invocationCallOrder.length - 1],
+    ).toBeGreaterThan(_mockSetVisibleOnAllWorkspaces.mock.invocationCallOrder[0])
+
+    mockReassertPolicy.mockClear()
+    _mockSetVisibleOnAllWorkspaces.mockClear()
+    showWindow('test')
+    expect(_mockSetVisibleOnAllWorkspaces).toHaveBeenCalled()
+    expect(mockReassertPolicy).toHaveBeenCalled()
+    expect(
+      mockReassertPolicy.mock.invocationCallOrder[0],
+    ).toBeGreaterThan(_mockSetVisibleOnAllWorkspaces.mock.invocationCallOrder[0])
+  })
+})
+
+describe('window-manager createTray()', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('exposes a "Restart Engine" item that recycles the daemon (kickstart -k) without quitting', async () => {
+    const electron = await import('electron')
+    const { createTray } = await import('../window-manager')
+    createTray()
+
+    // The tray context menu was built from a template; find the Restart item.
+    const buildCalls = (electron.Menu.buildFromTemplate as any).mock.calls
+    const template = buildCalls[buildCalls.length - 1][0] as Array<{ label?: string; click?: () => void }>
+    const restartItem = template.find((i) => i.label === 'Restart Engine')
+
+    expect(restartItem).toBeDefined()
+    expect(typeof restartItem!.click).toBe('function')
+
+    // Invoking it force-restarts the persistent daemon so it re-reads config,
+    // without booting it out or quitting the desktop.
+    restartItem!.click!()
+    expect(mockRestartEngineDaemon).toHaveBeenCalledTimes(1)
   })
 })

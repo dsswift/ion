@@ -73,7 +73,11 @@ extension SessionViewModel {
             // once per reconcileDebounce window.
             if (previousStatus == .running || previousStatus == .connecting)
                 && (status == .idle || status == .completed || status == .failed || status == .dead) {
-                DiagnosticLog.log("SNAP: post-run heal check tabId=\(tabId.prefix(16)) \(previousStatus.rawValue)->\(status.rawValue)")
+                DiagnosticLog.log("post-run heal check", tag: "session.tabevents", fields: [
+                    "tab_id": String(tabId.prefix(16)),
+                    "status": status.rawValue,
+                    "reason": previousStatus.rawValue
+                ])
                 maybeReconcileStaleConversation(tab: tabs[idx])
             }
         }
@@ -119,7 +123,12 @@ extension SessionViewModel {
         // text_chunk (relay) fallback.
         let convLoaded = conversationLoaded.contains(tabId)
         let msgs = conversationMessages(tabId)
-        DiagnosticLog.log("VOICE-TTS: taskComplete tabId=\(tabId.prefix(8)) convLoaded=\(convLoaded) liveText=\(capturedLiveText.count) msgs=\(msgs.count)")
+        DiagnosticLog.log("voice tts task complete", tag: "session.voice", fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "status": String(convLoaded),
+            "count": String(capturedLiveText.count),
+            "max": String(msgs.count)
+        ])
         let spokenInfo: (text: String, messageId: String?)? = {
             // 1. unified instance messages (engine_text_delta + message_added)
             if let last = msgs.last(where: { $0.role == .assistant }),
@@ -135,10 +144,55 @@ extension SessionViewModel {
 
         if let info = spokenInfo,
            info.text.trimmingCharacters(in: .whitespacesAndNewlines).count > 20 {
-            DiagnosticLog.log("VOICE-TTS: speaking \(info.text.count) chars")
+            DiagnosticLog.log("voice tts speaking", tag: "session.voice", fields: [
+                "count": String(info.text.count)
+            ])
             voiceService.speak(text: info.text, messageId: info.messageId, tabId: tabId)
         } else {
-            DiagnosticLog.log("VOICE-TTS: not speaking — text=\(spokenInfo == nil ? "nil" : "\(spokenInfo!.text.count) chars")")
+            DiagnosticLog.log("voice tts not speaking", tag: "session.voice", fields: [
+                "count": spokenInfo == nil ? "nil" : String(spokenInfo!.text.count)
+            ])
+        }
+    }
+
+    /// Apply a lightweight tab-row metadata delta from `desktop_tab_meta`.
+    /// All fields are optional — only non-nil values are applied. Called on
+    /// event-driven pushes (title change, cost update, group change) so the
+    /// tab list stays current without waiting for the 5 s snapshot poll tick.
+    ///
+    /// totalCostUsd is the legacy parameter name preserved so call sites don't
+    /// need a coordinated rename. Internally it is stored as runCostUsd (the
+    /// canonical field after the Commit 2 engine wire rename).
+    @MainActor
+    func handleTabMeta(tabId: String, title: String?, totalCostUsd: Double?, groupId: String?) {
+        guard let idx = tabs.firstIndex(where: { $0.id == tabId }) else {
+            DiagnosticLog.log("tab meta tab not found", tag: "session", level: .debug, fields: [
+                "tab_id": String(tabId.prefix(8))
+            ])
+            return
+        }
+        var changed = false
+        if let title, title != tabs[idx].title {
+            tabs[idx].title = title
+            changed = true
+        }
+        if let totalCostUsd {
+            // Store as runCostUsd (canonical) and keep totalCostUsd in sync.
+            tabs[idx].runCostUsd = totalCostUsd
+            tabs[idx].totalCostUsd = totalCostUsd
+            changed = true
+        }
+        if let groupId, groupId != tabs[idx].groupId {
+            tabs[idx].groupId = groupId
+            changed = true
+        }
+        if changed {
+            DiagnosticLog.log("tab meta applied delta", tag: "session", level: .debug, fields: [
+                "tab_id": String(tabId.prefix(8)),
+                "reason": title ?? "-",
+                "cost_usd": totalCostUsd.map { String(format: "%.4f", $0) } ?? "-",
+                "status": groupId ?? "-"
+            ])
         }
     }
 }

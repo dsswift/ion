@@ -16,7 +16,7 @@
  *      statusDrawerDispatchId to the target id.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { buildBreadcrumbStack, getDispatches } from '../../renderer/components/agent-panel-helpers'
 import type { AgentStateUpdate } from '../../shared/types'
 

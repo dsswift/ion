@@ -7,6 +7,7 @@ import { makeEmptyTab, registerNewTab, registerAdoptedTab, resetTabEntry, restar
 import { performUnifiedInterrupt } from './engine-control-plane-interrupt'
 import * as historyReads from './engine-control-plane-history'
 import { readSettings, SETTINGS_DEFAULTS } from './settings-store'
+import { resolveAtvPermission } from './atv-state-cache'
 import { resolveBashAllowlistFromSettings } from './plan-mode-bash-allowlist'
 import type {
   EngineConfig,
@@ -18,9 +19,9 @@ import type {
 } from '../shared/types'
 
 const TAG = 'SessionPlane'
-function log(msg: string): void { _log(TAG, msg) }
-function warn(msg: string): void { _warn(TAG, msg) }
-function error(msg: string): void { _error(TAG, msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
+function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, msg, fields) }
+function error(msg: string, fields?: Record<string, unknown>): void { _error(TAG, msg, fields) }
 
 /**
  * EngineControlPlane wraps EngineBridge to present the same public API
@@ -61,7 +62,7 @@ export class EngineControlPlane extends EventEmitter {
     this.bridge.on('reconnected', () => {
       for (const tab of this.tabs.values()) {
         if (tab.engineSessionStarted) {
-          log(`resetSessionFlag after reconnect: tabId=${tab.tabId} conversationId=${tab.conversationId ?? 'none'} (preserved)`)
+          log('reset_session_flag after reconnect', { tab_id: tab.tabId, conversation_id: tab.conversationId ?? '' })
           tab.engineSessionStarted = false
           // conversationId is intentionally preserved here. The bridge's
           // _reRegisterSessions will re-send start_session with this id so
@@ -92,7 +93,7 @@ export class EngineControlPlane extends EventEmitter {
 
   ensureTab(tabId: string): void {
     if (!this.tabs.has(tabId)) {
-      log(`ensureTab: creating missing tab ${tabId}`)
+      log('ensure_tab: creating missing tab', { tab_id: tabId })
       this.tabs.set(tabId, makeEmptyTab(tabId))
     }
   }
@@ -117,7 +118,7 @@ export class EngineControlPlane extends EventEmitter {
   closeTab(tabId: string): void {
     const tab = this.tabs.get(tabId)
     if (!tab) return
-    log(`closeTab: tabId=${tabId}`)
+    log('close_tab', { tab_id: tabId })
     this.bridge.stopSession(tabId)
     this.tabs.delete(tabId)
   }
@@ -142,10 +143,10 @@ export class EngineControlPlane extends EventEmitter {
   notifyConversationCleared(tabId: string): void {
     const tab = this.tabs.get(tabId)
     if (!tab) {
-      log(`notifyConversationCleared: tabId=${tabId} (no such tab — ignoring)`)
+      log('notify_conversation_cleared: no such tab', { tab_id: tabId })
       return
     }
-    log(`notifyConversationCleared: tabId=${tabId} promptCount=${tab.promptCount} promptCountSinceCheckpoint=${tab.promptCountSinceCheckpoint}→0 clearedSinceLastPrompt→true conversationId=${tab.conversationId ?? 'null'} (preserved)`)
+    log('notify_conversation_cleared', { tab_id: tabId, prompt_count: tab.promptCount, prompt_count_since_checkpoint: tab.promptCountSinceCheckpoint, conversation_id: tab.conversationId ?? '' })
     tab.promptCountSinceCheckpoint = 0
     tab.clearedSinceLastPrompt = true
   }
@@ -171,7 +172,7 @@ export class EngineControlPlane extends EventEmitter {
     this.ensureTab(tabId)
     const tab = this.tabs.get(tabId)!
     if (tab.conversationId) {
-      log(`seedConversationId: tabId=${tabId} already tracks conversationId=${tab.conversationId} — ignoring seed=${conversationId}`)
+      log('seed_conversation_id: already tracks, ignoring', { tab_id: tabId, tracked: tab.conversationId, seed: conversationId })
       return
     }
     tab.conversationId = conversationId
@@ -180,7 +181,7 @@ export class EngineControlPlane extends EventEmitter {
     // next prompt as resumed (scenario B), not fresh (scenario C). See the
     // resumedSavedConversation doc in engine-control-plane-events.ts.
     tab.resumedSavedConversation = true
-    log(`seedConversationId: tabId=${tabId} seeded conversationId=${conversationId} (arms divergence guard, resumedSavedConversation=true)`)
+    log('seed_conversation_id: seeded', { tab_id: tabId, conversation_id: conversationId })
   }
 
   setPermissionMode(tabId: string, mode: 'auto' | 'plan', source?: string, planFilePath?: string): void {
@@ -259,12 +260,12 @@ export class EngineControlPlane extends EventEmitter {
       // not as a fresh mint. See resumedSavedConversation in
       // engine-control-plane-events.ts.
       tab.resumedSavedConversation = true
-      log(`ensureSession: tabId=${tabId} seeded tracked conversationId=${opts.conversationId} from caller (resumedSavedConversation=true)`)
+      log('ensure_session: seeded tracked conversationId from caller', { tab_id: tabId, conversation_id: opts.conversationId })
     }
     if (opts.permissionMode) tab.permissionMode = opts.permissionMode
 
     if (tab.engineSessionStarted) {
-      log(`ensureSession: tabId=${tabId} already started (conversationId=${tab.conversationId ?? 'none'}) — no-op`)
+      log('ensure_session: already started, no-op', { tab_id: tabId, conversation_id: tab.conversationId ?? '' })
       return { ok: true }
     }
 
@@ -281,10 +282,10 @@ export class EngineControlPlane extends EventEmitter {
         catch { return SETTINGS_DEFAULTS.enableClaudeCompat }
       })(),
     }
-    log(`ensureSession: tabId=${tabId} starting engine session sessionId=${config.sessionId ?? 'new'} dir=${config.workingDirectory}`)
+    log('ensure_session: starting', { tab_id: tabId, session_id: config.sessionId ?? 'new', dir: config.workingDirectory })
     const result = await this.bridge.startSession(tabId, config)
     if (!result.ok) {
-      error(`ensureSession: tabId=${tabId} startSession failed err=${result.error}`)
+      error('ensure_session: startSession failed', { tab_id: tabId, error: result.error })
       return result
     }
     tab.engineSessionStarted = true
@@ -302,9 +303,9 @@ export class EngineControlPlane extends EventEmitter {
       // Leaving the flag false keeps a first-prompt slash command fresh so it
       // flips plan→auto. See resumedSavedConversation in
       // engine-control-plane-events.ts.
-      log(`ensureSession: tabId=${tabId} captured minted conversationId=${result.conversationId} at start (resumedSavedConversation stays false — fresh mint)`)
+      log('ensure_session: captured minted conversationId', { tab_id: tabId, conversation_id: result.conversationId })
     }
-    log(`ensureSession: tabId=${tabId} engine session live (conversationId=${tab.conversationId ?? 'none'})`)
+    log('ensure_session: live', { tab_id: tabId, conversation_id: tab.conversationId ?? '' })
     if (tab.permissionMode === 'plan') {
       this.bridge.sendSetPlanMode(tabId, true, undefined, 'session_start')
     }
@@ -314,11 +315,11 @@ export class EngineControlPlane extends EventEmitter {
   async submitPrompt(tabId: string, requestId: string, options: RunOptions): Promise<void> {
     const tab = this.tabs.get(tabId)
     if (!tab) {
-      warn(`submitPrompt: unknown tab ${tabId}`)
+      warn('submit_prompt: unknown tab', { tab_id: tabId })
       return
     }
 
-    log(`submitPrompt: tabId=${tabId} requestId=${requestId} model=${options.model ?? 'default'} sessionId=${options.sessionId ?? 'new'} promptCount=${tab.promptCount + 1} promptCountSinceCheckpoint=${tab.promptCountSinceCheckpoint + 1}`)
+    log('submit_prompt', { tab_id: tabId, request_id: requestId, model: options.model ?? 'default', session_id: options.sessionId ?? 'new', prompt_count: tab.promptCount + 1 })
     tab.activeRequestId = requestId
     tab.lastActivityAt = Date.now()
     tab.startedAt = Date.now()
@@ -362,7 +363,7 @@ export class EngineControlPlane extends EventEmitter {
       }
       const probe = await listEngineDirectory(wd, false)
       if (!probe.ok) {
-        warn(`workingDirectory unreachable on engine: tabId=${tabId} dir=${wd} err=${probe.error}`)
+        warn('working_directory: unreachable on engine', { tab_id: tabId, dir: wd, error: probe.error })
         this._setStatus(tabId, 'failed')
         this.emit('error', tabId, {
           message:
@@ -375,7 +376,7 @@ export class EngineControlPlane extends EventEmitter {
         } as EnrichedError)
         return
       }
-      log(`workingDirectory confirmed on engine: tabId=${tabId} dir=${wd}`)
+      log('working_directory: confirmed', { tab_id: tabId, dir: wd })
     }
 
     // Single start site: delegate to ensureSession (idempotent). It is a
@@ -393,7 +394,7 @@ export class EngineControlPlane extends EventEmitter {
         thinking: config.thinking,
       })
       if (!result.ok) {
-        error(`submitPrompt: tabId=${tabId} ensureSession failed err=${result.error}`)
+        error('submit_prompt: ensureSession failed', { tab_id: tabId, error: result.error })
         this._setStatus(tabId, 'failed')
         this.emit('error', tabId, {
           message: result.error || 'Failed to start engine session',
@@ -411,7 +412,7 @@ export class EngineControlPlane extends EventEmitter {
     let result = await this.bridge.sendPrompt(tabId, options.prompt, options.model, options.appendSystemPrompt, options.imageAttachments, options.implementationPhase, options.enterPlanModeDescription, options.planModeSparseReminder, options.planFilePath, undefined, options.thinkingEffort, options.resolveSlash)
 
     if (!result.ok && result.error?.includes('not found')) {
-      warn(`sendPrompt session lost, re-creating: tabId=${tabId}`)
+      warn('send_prompt: session lost, re-creating', { tab_id: tabId })
       // Reset the started flag so ensureSession actually re-starts (it no-ops
       // when the flag is set). Route the recovery through the same single
       // start site rather than re-issuing startSession inline.
@@ -429,13 +430,13 @@ export class EngineControlPlane extends EventEmitter {
       if (startResult.ok) {
         result = await this.bridge.sendPrompt(tabId, options.prompt, options.model, options.appendSystemPrompt, undefined, options.implementationPhase, options.enterPlanModeDescription, options.planModeSparseReminder, options.planFilePath, undefined, options.thinkingEffort, options.resolveSlash)
       } else {
-        error(`session re-create failed: tabId=${tabId} err=${startResult.error}`)
+        error('session re-create failed', { tab_id: tabId, error: startResult.error })
         result = startResult
       }
     }
 
     if (!result.ok) {
-      error(`sendPrompt failed: tabId=${tabId} err=${result.error}`)
+      error('send_prompt: failed', { tab_id: tabId, error: result.error })
       this._setStatus(tabId, 'failed')
       this.emit('error', tabId, {
         message: result.error || 'Failed to send prompt',
@@ -450,21 +451,21 @@ export class EngineControlPlane extends EventEmitter {
   cancel(requestId: string): boolean {
     for (const [tabId, tab] of this.tabs) {
       if (tab.activeRequestId === requestId) {
-        log(`cancel: found tab=${tabId} for requestId=${requestId}, sending abort`)
+        log('cancel: found tab, sending abort', { tab_id: tabId, request_id: requestId })
         this.bridge.sendAbort(tabId)
         return true
       }
     }
-    warn(`cancel: no tab found for requestId=${requestId}`)
+    warn('cancel: no tab found', { request_id: requestId })
     return false
   }
 
   cancelTab(tabId: string): boolean {
     if (!this.tabs.has(tabId)) {
-      warn(`cancelTab: tab=${tabId} not found in control plane`)
+      warn('cancel_tab: not found', { tab_id: tabId })
       return false
     }
-    log(`cancelTab: tab=${tabId}, unified interrupt (abort + reap subtree)`)
+    log('cancel_tab: unified interrupt', { tab_id: tabId })
     performUnifiedInterrupt(this.bridge, tabId)
     return true
   }
@@ -474,13 +475,25 @@ export class EngineControlPlane extends EventEmitter {
   }
 
   respondToPermission(tabId: string, questionId: string, optionId: string): boolean {
-    if (!this.tabs.has(tabId)) { log(`respondToPermission: dropped — unknown/dead tab tabId=${tabId} questionId=${questionId}`); return false }
+    if (!this.tabs.has(tabId)) { log('respond_to_permission: dropped, unknown tab', { tab_id: tabId, question_id: questionId }); return false }
     this.bridge.sendPermissionResponse(tabId, questionId, optionId)
+    // Cross-surface reconcile (mirror-store architecture): this is the ONE
+    // spot every surface's answer funnels through — overlay card, iOS
+    // remote, ATV approval. Resolving the ATV pending queue and pushing the
+    // resolution here means an answer from ANY surface clears the others
+    // instantly, instead of waiting for the next status transition.
+    resolveAtvPermission(tabId, questionId)
+    // Emitted (not called directly): importing atv-window-manager here forms
+    // the module cycle engine-control-plane → atv-window-manager → state →
+    // engine-control-plane, which only loads by import-order luck. The
+    // listener lives in event-wiring.ts (wireSessionPlaneEvents), the same
+    // seam as every other control-plane push.
+    this.emit('permission-resolved', tabId, questionId)
     return true
   }
 
   respondToElicitation(tabId: string, requestId: string, response: Record<string, unknown> | undefined, cancelled: boolean): boolean {
-    if (!this.tabs.has(tabId)) { log(`respondToElicitation: dropped — unknown/dead tab tabId=${tabId} requestId=${requestId} cancelled=${cancelled}`); return false }
+    if (!this.tabs.has(tabId)) { log('respond_to_elicitation: dropped, unknown tab', { tab_id: tabId, request_id: requestId, cancelled }); return false }
     this.bridge.sendElicitationResponse(tabId, requestId, response, cancelled)
     return true
   }
@@ -560,7 +573,7 @@ export class EngineControlPlane extends EventEmitter {
     if (!tab) return
     const oldStatus = tab.status
     if (oldStatus === newStatus) return
-    log(`status: tabId=${tabId} ${oldStatus} -> ${newStatus}`)
+    log('status_transition', { tab_id: tabId, from: oldStatus, to: newStatus })
     tab.status = newStatus
     this.emit('tab-status-change', tabId, newStatus, oldStatus)
   }

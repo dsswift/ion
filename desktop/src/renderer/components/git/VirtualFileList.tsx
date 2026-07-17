@@ -33,8 +33,18 @@ export function VirtualFlatFileList({
   files, ...rest
 }: { files: GitChangedFile[] } & BaseProps) {
   const parentRef = useRef<HTMLDivElement>(null)
+  const useVirt = files.length >= VIRT_THRESHOLD
 
-  if (files.length < VIRT_THRESHOLD) {
+  // Always call the hook — conditional hook calls violate the rules of hooks.
+  // Disable virtualization by passing count=0 for short lists.
+  const virtualizer = useVirtualizer({
+    count: useVirt ? files.length : 0,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 6,
+  })
+
+  if (!useVirt) {
     return (
       <>
         {files.map((file) => (
@@ -53,13 +63,6 @@ export function VirtualFlatFileList({
       </>
     )
   }
-
-  const virtualizer = useVirtualizer({
-    count: files.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => ROW_HEIGHT,
-    overscan: 6,
-  })
 
   return (
     <div ref={parentRef} style={{ height: Math.min(files.length * ROW_HEIGHT, 600), overflowY: 'auto' }}>

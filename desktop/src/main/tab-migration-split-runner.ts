@@ -13,8 +13,8 @@ import type {
   PersistedConversationInstance,
 } from '../shared/types-persistence'
 
-function log(msg: string): void { _log('TabSplitMigrate', msg) }
-function error(msg: string): void { _error('TabSplitMigrate', msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log('TabSplitMigrate', msg, fields) }
+function error(msg: string, fields?: Record<string, unknown>): void { _error('TabSplitMigrate', msg, fields) }
 
 export interface SplitMigrationOutcome {
   migrated: boolean
@@ -82,7 +82,6 @@ function buildInputInstanceMap(state: PersistedTabState): Map<string, InstanceRe
  *        - draftInput
  *        - permissionMode
  *        - permissionDenied
- *        - forkedFromConversationIds
  *        - agentStates
  *   5. Parent metadata preserved on each output tab: workingDirectory,
  *      engineProfileId, hasEngineExtension.
@@ -167,9 +166,6 @@ export function verifySplitMigration(
       if (JSON.stringify(a.permissionDenied ?? null) !== JSON.stringify(b.permissionDenied ?? null)) {
         return `instance ${key}: permissionDenied differs`
       }
-      if (JSON.stringify(a.forkedFromConversationIds ?? null) !== JSON.stringify(b.forkedFromConversationIds ?? null)) {
-        return `instance ${key}: forkedFromConversationIds differs`
-      }
       if (JSON.stringify(a.agentStates ?? []) !== JSON.stringify(b.agentStates ?? [])) {
         return `instance ${key}: agentStates differ`
       }
@@ -250,19 +246,19 @@ export function runTabSplitMigration(tabsPath: string): SplitMigrationOutcome {
   try {
     input = JSON.parse(readFileSync(tabsPath, 'utf-8'))
   } catch (err) {
-    error(`split migration: unreadable tabs file ${tabsPath}: ${(err as Error).message}`)
+    error('split_migration: unreadable tabs file', { path: tabsPath, error: (err as Error).message })
     return { migrated: false, reason: 'error', errorMessage: (err as Error).message }
   }
 
   // Already split: no-op.
   if (isSplitSchema(input)) {
-    log(`split migration: ${tabsPath} already at schemaVersion >= ${SPLIT_SCHEMA_VERSION} - skipping`)
+    log('split_migration: already at target version', { path: tabsPath, version: SPLIT_SCHEMA_VERSION })
     return { migrated: false, reason: 'already-split', tabsBefore: input.tabs?.length ?? 0 }
   }
 
   // Must be unified first. If it's not, we can't split safely.
   if (!isUnifiedSchema(input)) {
-    log(`split migration: ${tabsPath} not yet unified (schemaVersion ${input.schemaVersion ?? 'none'}) - skipping`)
+    log('split_migration: not yet unified, skipping', { path: tabsPath, schema_version: input.schemaVersion ?? 'none' })
     return { migrated: false, reason: 'not-unified' }
   }
 
@@ -276,10 +272,10 @@ export function runTabSplitMigration(tabsPath: string): SplitMigrationOutcome {
     try {
       const stamped: PersistedTabState = { ...input, schemaVersion: SPLIT_SCHEMA_VERSION }
       atomicWriteFileSync(tabsPath, JSON.stringify(stamped, null, 2), 0o644)
-      log(`split migration: ${tabsPath} has no multi-instance tabs - stamped schemaVersion ${SPLIT_SCHEMA_VERSION}`)
+      log('split_migration: no multi-instance tabs, stamped', { path: tabsPath, version: SPLIT_SCHEMA_VERSION })
       return { migrated: true, reason: 'no-multi', tabsBefore: input.tabs?.length ?? 0, tabsAfter: input.tabs?.length ?? 0 }
     } catch (err) {
-      error(`split migration: version stamp failed for ${tabsPath}: ${(err as Error).message}`)
+      error('split_migration: version stamp failed', { path: tabsPath, error: (err as Error).message })
       return { migrated: false, reason: 'error', errorMessage: (err as Error).message }
     }
   }
@@ -289,9 +285,9 @@ export function runTabSplitMigration(tabsPath: string): SplitMigrationOutcome {
   const backupPath = `${tabsPath}.pre-split.${ts}`
   try {
     copyFileSync(tabsPath, backupPath)
-    log(`split migration: backed up ${tabsPath} -> ${backupPath} (${input.tabs?.length ?? 0} tabs)`)
+    log('split_migration: backed up', { path: tabsPath, backup: backupPath, tabs: input.tabs?.length ?? 0 })
   } catch (err) {
-    error(`split migration: backup failed for ${tabsPath}: ${(err as Error).message} - aborting (original untouched)`)
+    error('split_migration: backup failed', { path: tabsPath, error: (err as Error).message })
     return { migrated: false, reason: 'error', errorMessage: `backup failed: ${(err as Error).message}` }
   }
 
@@ -299,19 +295,19 @@ export function runTabSplitMigration(tabsPath: string): SplitMigrationOutcome {
   try {
     migrated = migrateTabStateToSplit(input)
   } catch (err) {
-    error(`split migration: transform threw for ${tabsPath}: ${(err as Error).message} - original untouched, backup kept`)
+    error('split_migration: transform failed', { path: tabsPath, error: (err as Error).message })
     return { migrated: false, reason: 'error', backupPath, errorMessage: (err as Error).message }
   }
 
   const problem = verifySplitMigration(input, migrated)
   if (problem) {
-    error(`split migration: VERIFY FAILED for ${tabsPath}: ${problem} - NOT writing migrated content`)
+    error('split_migration: verify failed', { path: tabsPath, problem })
     return { migrated: false, reason: 'verify-failed', backupPath, errorMessage: problem }
   }
 
   try {
     atomicWriteFileSync(tabsPath, JSON.stringify(migrated, null, 2), 0o644)
-    log(`split migration: wrote split ${tabsPath} (schemaVersion ${SPLIT_SCHEMA_VERSION}, ${input.tabs?.length ?? 0} -> ${migrated.tabs?.length ?? 0} tabs) - backup retained at ${backupPath}`)
+    log('split_migration: wrote split', { path: tabsPath, version: SPLIT_SCHEMA_VERSION, tabs_before: input.tabs?.length ?? 0, tabs_after: migrated.tabs?.length ?? 0, backup: backupPath })
     return {
       migrated: true,
       reason: 'success',
@@ -321,12 +317,12 @@ export function runTabSplitMigration(tabsPath: string): SplitMigrationOutcome {
     }
   } catch (err) {
     // Write failed mid-flight: restore from backup.
-    error(`split migration: write failed for ${tabsPath}: ${(err as Error).message} - restoring from backup`)
+    error('split_migration: write failed', { path: tabsPath, error: (err as Error).message })
     try {
       copyFileSync(backupPath, tabsPath)
-      log(`split migration: restored ${tabsPath} from ${backupPath} after write failure`)
+      log('split_migration: restored', { path: tabsPath, backup: backupPath })
     } catch (restoreErr) {
-      error(`split migration: RESTORE FAILED for ${tabsPath}: ${(restoreErr as Error).message} - backup remains at ${backupPath}`)
+      error('split_migration: restore failed', { path: tabsPath, error: (restoreErr as Error).message, backup: backupPath })
     }
     return { migrated: false, reason: 'error', backupPath, errorMessage: (err as Error).message }
   }

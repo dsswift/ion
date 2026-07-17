@@ -1,0 +1,258 @@
+version: 4
+
+# =============================================================================
+# VARIABLES
+# =============================================================================
+# ion_logs_dir: absolute path to ~/.ion on this machine.
+# The v4 compose: volumes list is passed verbatim into the generated compose file;
+# docker compose expands $HOME but dev's named-volume detector does not — it
+# only recognises bind mounts by a leading / or . prefix. Using an absolute path
+# (via a var) satisfies the detector and is portable across dev users who set
+# this var to their own home directory path.
+vars:
+  ion_logs_dir: /Users/josh/.ion
+
+# =============================================================================
+# SERVICES
+# =============================================================================
+# Ion local observability stack — 4 containers.
+#
+# Default config-path mounts (empirically verified via docker inspect):
+#   alloy  CMD: run /etc/alloy/config.alloy  → mount there, default CMD works
+#   loki   CMD: -config.file=/etc/loki/local-config.yaml → mount there
+#   grafana: no CMD, /run.sh entrypoint, env-driven — no command override needed
+#   tempo  CMD: None → build/Dockerfile.tempo COPYs config and sets CMD
+#
+# NOTE: The v4 compose: block has no command/entrypoint field (silently dropped
+# by the executor). All config delivery is via volume mounts or image builds.
+
+services:
+  alloy:
+    tier: docker
+    compose:
+      image: grafana/alloy:v1.17.1
+      ports:
+        - "12345:12345"
+      volumes:
+        # Config at the image's default CMD path — no command override needed.
+        - ./docs/observability/alloy-config.alloy:/etc/alloy/config.alloy:ro
+        # Ion log files tailed by Alloy — ro so Alloy cannot corrupt them.
+        # Uses ${var.ion_logs_dir} (absolute path) so dev's named-volume detector
+        # correctly treats this as a bind mount (leading / required).
+        - ${var.ion_logs_dir}:/ion-logs:ro
+        # Named volume at /var/lib/alloy/data — the path the image's built-in CMD
+        # already passes as --storage.path (confirmed via docker inspect on
+        # grafana/alloy:v1.17.1: CMD=[run, /etc/alloy/config.alloy,
+        # --storage.path=/var/lib/alloy/data]). Because the v4 compose: block
+        # silently drops any command: field, we CANNOT add --storage.path as a
+        # flag override here. We don't need to: the image CMD already specifies it.
+        # Mounting a named volume at that exact path is sufficient to persist
+        # Alloy tail read-positions across container restarts.
+        # (docker-compose.yml uses an explicit command: block to re-specify the
+        # flag because docker compose replaces the image CMD in full when any
+        # command: is present. Both files land at the same /var/lib/alloy/data path
+        # via different but functionally equivalent mechanisms.)
+        - alloy-data:/var/lib/alloy/data
+      depends_on:
+        - loki
+
+  # Bind-mount attribute-cache refresher — durable fix for the macOS tailer wedge.
+  # Docker Desktop's virtualized bind mount serves Alloy a stale, size-frozen view
+  # of the high-write-rate engine.jsonl; the staleness re-forms within minutes of
+  # any one-shot bust (an Alloy restart is only palliative). A directory readdir
+  # (ls -1 /ion-logs) — NOT a file read — busts the cache, and the cache is shared
+  # at the VM mount layer, so this separate sidecar readdir-ing the same mount keeps
+  # Alloy's view fresh without touching Alloy. Loop is baked into the image CMD
+  # because the v4 executor drops any command: field. See README.md § Tailer wedge
+  # and docs/observability/Dockerfile.mount-refresher for the full root cause + proof.
+  mount-refresher:
+    tier: docker
+    compose:
+      build:
+        context: ./docs/observability
+        dockerfile: Dockerfile.mount-refresher
+      # Same bind mount Alloy tails, read-only. The readdir side effect refreshes
+      # the shared VM-layer attribute cache that Alloy's stat() reads from.
+      volumes:
+        - ${var.ion_logs_dir}:/ion-logs:ro
+      depends_on:
+        - loki
+
+  loki:
+    tier: docker
+    compose:
+      image: grafana/loki:3.7.3
+      ports:
+        - "3100:3100"
+      volumes:
+        # loki CMD is: -config.file=/etc/loki/local-config.yaml
+        # Mount our config at that exact path so the default CMD picks it up.
+        - ./docs/observability/loki-config.yaml:/etc/loki/local-config.yaml:ro
+        - loki-data:/loki
+
+  grafana:
+    tier: docker
+    compose:
+      image: grafana/grafana:13.1.0
+      ports:
+        - "3000:3000"
+      environment:
+        - GF_AUTH_ANONYMOUS_ENABLED=true
+        - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+        - GF_AUTH_DISABLE_LOGIN_FORM=true
+      volumes:
+        - ./docs/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+        - grafana-data:/var/lib/grafana
+      depends_on:
+        - loki
+
+  tempo:
+    tier: docker
+    compose:
+      # tempo has no default CMD — we build a thin image that COPYs the config
+      # and sets CMD explicitly. Context is docs/observability/ so COPY finds
+      # tempo-config.yaml and Dockerfile.tempo in that directory.
+      build:
+        context: ./docs/observability
+        dockerfile: Dockerfile.tempo
+      ports:
+        - "4317:4317"
+        - "4318:4318"
+      volumes:
+        - tempo-data:/var/tempo
+
+# =============================================================================
+# GRAPH
+# =============================================================================
+# Log-flow: engine/desktop/ios JSONL -> alloy -> loki -> grafana
+#           tempo <- otlp (from alloy)
+
+graph:
+  host:
+    - name: engine-logs
+      label: "engine.jsonl"
+    - name: desktop-logs
+      label: "desktop.jsonl"
+    - name: ios-logs
+      label: "ios-diagnostic-logs.jsonl"
+  edges:
+    - from: engine-logs
+      to: alloy
+      label: "tail (ro)"
+    - from: desktop-logs
+      to: alloy
+      label: "tail (ro)"
+    - from: ios-logs
+      to: alloy
+      label: "tail (ro)"
+    - from: alloy
+      to: mount-refresher
+      label: "shares mount cache"
+    - from: alloy
+      to: loki
+      label: "push"
+    - from: alloy
+      to: tempo
+      label: "OTLP traces"
+    - from: loki
+      to: grafana
+      label: "query"
+    - from: tempo
+      to: grafana
+      label: "query"
+  groups:
+    collectors:
+      label: "Collectors"
+      services: [alloy, mount-refresher]
+    storage:
+      label: "Storage"
+      services: [loki, tempo]
+    visualization:
+      label: "Visualization"
+      services: [grafana]
+
+# =============================================================================
+# GLOBAL CONFIGURATION
+# =============================================================================
+
+config:
+  default_profile: observability
+  compose_project: ion-obs
+
+# =============================================================================
+# PROFILES
+# =============================================================================
+
+profiles:
+  observability:
+    description: "Local observability stack: Alloy, Loki, Grafana, Tempo"
+    services:
+      alloy:
+        tier: docker
+      mount-refresher:
+        tier: docker
+      loki:
+        tier: docker
+      grafana:
+        tier: docker
+      tempo:
+        tier: docker
+
+# =============================================================================
+# UTILITIES
+# =============================================================================
+
+utilities:
+  observability-status:
+    command: |
+      SIDECAR=~/.ion/telemetry.schema.json
+      # Read highestSchemaSeen (new key); fall back to schemaVersion (legacy key from rotate-on-mismatch era).
+      SIDECAR_VER=$([ -f "$SIDECAR" ] && python3 -c "import json,sys; d=json.load(open('$SIDECAR')); print(d.get('highestSchemaSeen') or d.get('schemaVersion', 1))" 2>/dev/null || echo "absent (-> 1)")
+      echo "telemetry sidecar highestSchemaSeen: ${SIDECAR_VER}"
+      echo "(schema gate removed: files are append-only; Loki reindex is never auto-triggered)"
+    description: "Show the telemetry schema high-water mark from the sidecar"
+
+  clear-logs:
+    command: |
+      : > ~/.ion/engine.jsonl && \
+      : > ~/.ion/desktop.jsonl && \
+      : > ~/.ion/telemetry.jsonl && \
+      : > ~/.ion/ios-diagnostic-logs.jsonl && \
+      rm -f ~/.ion/engine.jsonl.1 \
+             ~/.ion/engine.jsonl.old \
+             ~/.ion/engine.log.old \
+             ~/.ion/telemetry.jsonl.*.bak && \
+      echo "Log files cleared:" && \
+      echo "  Truncated (in-place):  engine.jsonl, desktop.jsonl, telemetry.jsonl, ios-diagnostic-logs.jsonl" && \
+      echo "  Removed (rotated):     engine.jsonl.1, engine.jsonl.old, engine.log.old" && \
+      echo "  Removed (archives):    telemetry.jsonl.*.bak"
+    description: "Truncate all live log files in-place, remove rotated backups, and prune telemetry archives"
+
+  clear-observability-data:
+    command: |
+      echo "Clearing Loki and Alloy state (docker compose -p ion-obs down -v)."
+      echo ""
+      echo "Will re-ingest on next observability-profile deploy:"
+      echo "  ~/.ion/engine.jsonl              (engine + extension logs)"
+      echo "  ~/.ion/desktop.jsonl             (desktop logs)"
+      echo "  ~/.ion/ios-diagnostic-logs.jsonl (iOS client logs)"
+      echo "  ~/.ion/telemetry.jsonl           (telemetry events, if present)"
+      echo ""
+      echo "Will NOT re-ingest (outside Alloy's targets):"
+      echo "  *.bak archives  (telemetry schema rotation backups)"
+      echo "  anything already truncated by clear-logs (content is gone)"
+      echo ""
+      docker compose -p ion-obs down -v
+      echo ""
+      echo "Observability state cleared. Data will re-ingest from the live ~/.ion JSONL files the next time the observability profile is deployed."
+    description: "Wipe Loki and Alloy named volumes so data re-ingests from scratch on next observability-profile deploy"
+
+# =============================================================================
+# DEPENDENCIES
+# =============================================================================
+
+dependencies:
+  global:
+    - name: "Docker"
+      check: "docker info"
+      setup: "Install Docker Desktop from docker.com"

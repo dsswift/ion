@@ -13,11 +13,33 @@ import "context"
 type RunOptions struct {
 	Prompt      string `json:"prompt"`
 	ProjectPath string `json:"projectPath"`
-	SessionID   string `json:"sessionId,omitempty"`
+	// ConversationID is the engine-minted conversation-file identity,
+	// format `{unix-millis}-{12-hex-chars}` (e.g. `1780093348767-c1c03e998388`).
+	// The API backend uses it to load/create `~/.ion/conversations/<id>.*` and
+	// to resume an existing conversation. Previously named SessionID; renamed
+	// to reflect the actual identity space (conversation-file, not session key).
+	ConversationID string `json:"conversationId,omitempty"`
+	// SessionKey is the opaque client-supplied key that identifies the engine
+	// session. For desktop clients this is the tab UUID (`ClientCommand.Key`).
+	// For API backends or external consumers it may be any string. This is what
+	// the session layer stamps as session_id in telemetry (see
+	// session/telemetry_ctx.go). It is distinct from ConversationID (the
+	// engine conversation-file identity).
+	SessionKey string `json:"sessionKey,omitempty"`
+	// ExtensionName is the hosting extension's friendly name, threaded from
+	// engineSession.extensionName (captured from the engine_status broadcast)
+	// into the backend so buildTelemCtx can stamp "extension" on llm.call and
+	// dispatch.agent spans. Empty for non-extension runs; omit-when-empty.
+	ExtensionName string `json:"extensionName,omitempty"`
+	// ExtensionVersion is the hosting extension's version from extension.json,
+	// threaded from engineSession.extensionVersion into the backend so
+	// buildTelemCtx can stamp "extension_version" on cost-bearing spans.
+	// Empty when the manifest is absent or carries no version; omit-when-empty.
+	ExtensionVersion string `json:"extensionVersion,omitempty"`
 	// CliResumeSessionID is the claude-native session UUID passed to
 	// `claude --resume`. It belongs to a *different identity space* than
-	// SessionID: the CLI backend (Claude Code subprocess) issues and owns
-	// its own session UUIDs, whereas SessionID is Ion's conversation-file
+	// ConversationID: the CLI backend (Claude Code subprocess) issues and owns
+	// its own session UUIDs, whereas ConversationID is Ion's conversation-file
 	// identity (`{unix-millis}-{12hex}`) used by the API backend to
 	// load/create `~/.ion/conversations/<id>.*`.
 	//
@@ -28,11 +50,11 @@ type RunOptions struct {
 	//     on run exit).
 	//   - Subsequent runs: the captured claude UUID → `--resume <uuid>`.
 	//
-	// The API backend ignores this field; it resumes via SessionID. Passing
-	// Ion's SessionID (the `{millis}-{hex}` id) to `claude --resume` is the
+	// The API backend ignores this field; it resumes via ConversationID. Passing
+	// Ion's ConversationID (the `{millis}-{hex}` id) to `claude --resume` is the
 	// defect this field fixes — claude rejects non-UUID resume ids with exit
 	// code 1, killing every fresh manager-driven CLI run.
-	CliResumeSessionID string          `json:"cliResumeSessionId,omitempty"`
+	CliResumeSessionID string `json:"cliResumeSessionId,omitempty"`
 	// ParentConversationID, when set, is written as the new conversation's
 	// `parentId` IF this run creates a fresh conversation file (SessionID names
 	// an id with no backing file yet). It records that the new session descends
@@ -40,28 +62,37 @@ type RunOptions struct {
 	// (e.g. a desktop "clear context" that starts a new conversation for an
 	// existing tab). Ignored when resuming an existing conversation. Additive
 	// and non-breaking: an absent value leaves parentId empty as before.
-	ParentConversationID string         `json:"parentConversationId,omitempty"`
-	AllowedTools       []string        `json:"allowedTools,omitempty"`
-	SuppressTools      []string        `json:"suppressTools,omitempty"`
-	MaxTurns           int             `json:"maxTurns,omitempty"`
-	MaxBudgetUsd       float64         `json:"maxBudgetUsd,omitempty"`
-	SystemPrompt       string          `json:"systemPrompt,omitempty"`
-	Model              string          `json:"model,omitempty"`
-	HookSettingsPath   string          `json:"hookSettingsPath,omitempty"`
-	AddDirs            []string        `json:"addDirs,omitempty"`
-	PermissionModeCli  string          `json:"permissionModeCli,omitempty"`
-	AppendSystemPrompt string          `json:"appendSystemPrompt,omitempty"`
-	Source             string          `json:"source,omitempty"`
-	McpConfig          string          `json:"mcpConfig,omitempty"`
-	MaxTokens          int             `json:"maxTokens,omitempty"`
-	Thinking           *ThinkingConfig `json:"thinking,omitempty"`
-	MaxRetries         int             `json:"maxRetries,omitempty"`
-	FallbackChain      []string        `json:"fallbackChain,omitempty"`
-	Persistent         bool            `json:"persistent,omitempty"`
-	PlanMode           bool            `json:"planMode,omitempty"`
-	PlanModeTools      []string        `json:"planModeTools,omitempty"`
-	PlanFilePath       string          `json:"planFilePath,omitempty"`
-	PlanModePrompt     string          `json:"planModePrompt,omitempty"`
+	ParentConversationID string   `json:"parentConversationId,omitempty"`
+	AllowedTools         []string `json:"allowedTools,omitempty"`
+	SuppressTools        []string `json:"suppressTools,omitempty"`
+	MaxTurns             int      `json:"maxTurns,omitempty"`
+	MaxBudgetUsd         float64  `json:"maxBudgetUsd,omitempty"`
+	SystemPrompt         string   `json:"systemPrompt,omitempty"`
+	Model                string   `json:"model,omitempty"`
+	HookSettingsPath     string   `json:"hookSettingsPath,omitempty"`
+	AddDirs              []string `json:"addDirs,omitempty"`
+	PermissionModeCli    string   `json:"permissionModeCli,omitempty"`
+	AppendSystemPrompt   string   `json:"appendSystemPrompt,omitempty"`
+	Source               string   `json:"source,omitempty"`
+	McpConfig            string   `json:"mcpConfig,omitempty"`
+	// CliMcpServers carries structured per-session MCP-server specs to inject
+	// into a delegated-CLI backend that accepts inline MCP servers on session
+	// creation — the ACP backends (grok, cursor) pass these on `session/new`.
+	// claude-code uses McpConfig (a file path) instead; codex's shared
+	// app-server takes MCP only at process-spawn time and is not wired via
+	// this field. Each entry is a structured server spec (see
+	// backend.ToolServer.McpServerSpec). Additive/omitempty; not part of the
+	// cross-language contract manifest (engine-internal RunOptions field).
+	CliMcpServers  []map[string]interface{} `json:"cliMcpServers,omitempty"`
+	MaxTokens      int                      `json:"maxTokens,omitempty"`
+	Thinking       *ThinkingConfig          `json:"thinking,omitempty"`
+	MaxRetries     int                      `json:"maxRetries,omitempty"`
+	FallbackChain  []string                 `json:"fallbackChain,omitempty"`
+	Persistent     bool                     `json:"persistent,omitempty"`
+	PlanMode       bool                     `json:"planMode,omitempty"`
+	PlanModeTools  []string                 `json:"planModeTools,omitempty"`
+	PlanFilePath   string                   `json:"planFilePath,omitempty"`
+	PlanModePrompt string                   `json:"planModePrompt,omitempty"`
 	// PlanModeSparseReminder is the harness-supplied text for the sparse
 	// plan-mode reminder injected periodically during plan-mode runs.
 	// Empty (the default) means the engine builds the reminder via
@@ -100,6 +131,14 @@ type RunOptions struct {
 	// session-side entries' positions. Mirrors
 	// ClientCommand.BashAllowlistAdditionsForThisPrompt one-for-one.
 	BashAllowlistAdditionsForThisPrompt []string `json:"bashAllowlistAdditionsForThisPrompt,omitempty"`
+	// InitialMessages are ephemeral messages prepended to the conversation
+	// just before each LLM provider call. They are NOT persisted to disk and
+	// are rebuilt fresh on every run. Used by the plugin system to inject
+	// SessionStart hook output as <system-reminder> user messages — matching
+	// Claude Code's hook_additional_context attachment mechanism — so the model
+	// receives plugin instructions at full conversational attention weight
+	// rather than buried at the end of the system prompt.
+	InitialMessages []LlmMessage `json:"initialMessages,omitempty"`
 	// ImplementationPhase tells the engine that this run is the "implement"
 	// half of a plan-then-implement flow — the user has already approved a
 	// plan and the model should execute it directly without proposing
@@ -164,11 +203,11 @@ type RunOptions struct {
 	// for this run. Results exceeding this limit are persisted to disk and
 	// replaced with a preview. Zero means "inherit from engine.json or
 	// built-in default". Negative disables the cap entirely for this run.
-	MaxToolResultChars      int          `json:"maxToolResultChars,omitempty"`
-	SuppressSystemMessages  bool         `json:"suppressSystemMessages,omitempty"`
-	DisablePlanModeReminder bool         `json:"disablePlanModeReminder,omitempty"`
-	DisableTurnLimitWarning bool         `json:"disableTurnLimitWarning,omitempty"`
-	DisableMaxTokenContinue bool         `json:"disableMaxTokenContinue,omitempty"`
+	MaxToolResultChars      int  `json:"maxToolResultChars,omitempty"`
+	SuppressSystemMessages  bool `json:"suppressSystemMessages,omitempty"`
+	DisablePlanModeReminder bool `json:"disablePlanModeReminder,omitempty"`
+	DisableTurnLimitWarning bool `json:"disableTurnLimitWarning,omitempty"`
+	DisableMaxTokenContinue bool `json:"disableMaxTokenContinue,omitempty"`
 	// ClaudeCompat mirrors EngineConfig.ClaudeCompat onto the run so the
 	// backend's read-triggered nested context loader applies the same Ion-vs-
 	// Claude gate as the eager context walk: Ion-native instruction files
@@ -181,10 +220,19 @@ type RunOptions struct {
 	// means the feature is ON by default; set true to suppress nested
 	// injections (the per-run analogue of SuppressSystemMessages but scoped to
 	// the nested-context mechanism specifically).
-	DisableNestedContext    bool         `json:"disableNestedContext,omitempty"`
-	CapabilityTools         []LlmToolDef `json:"-"` // capability tools injected by session manager
-	CapabilityPrompt        string       `json:"-"` // capability prompt content injected by session manager
-	WebSearchMode           string       `json:"-"` // "auto", "client", or "server", propagated from config
+	DisableNestedContext bool `json:"disableNestedContext,omitempty"`
+	// DisableSkillSystemPrompt turns off the engine's skill-listing +
+	// proactive-invocation system-prompt section for this run (see
+	// tools.BuildSkillSystemPromptSection). Zero value (false) means the
+	// section is ON by default (injected whenever skills are registered);
+	// set true to suppress the engine's injection for this run. This is the
+	// per-run analogue of LimitsConfig.DisableSkillSystemPrompt and takes
+	// precedence over it. The system_inject hook (kind "skill_listing") can
+	// still observe, replace, or suppress the section even when this is false.
+	DisableSkillSystemPrompt bool         `json:"disableSkillSystemPrompt,omitempty"`
+	CapabilityTools          []LlmToolDef `json:"-"` // capability tools injected by session manager
+	CapabilityPrompt         string       `json:"-"` // capability prompt content injected by session manager
+	WebSearchMode            string       `json:"-"` // "auto", "client", or "server", propagated from config
 
 	// --- Early-stop continuation (Claude-Code-style "keep working" nudge) ---
 	//

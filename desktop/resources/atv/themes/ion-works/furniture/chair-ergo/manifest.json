@@ -1,0 +1,22 @@
+{
+  "id": "chair-ergo",
+  "name": "Ergonomic Chair",
+  "category": "work",
+  "footprintW": 1,
+  "footprintH": 1,
+  "width": 16,
+  "height": 16,
+  "rotationScheme": "3-way-mirror",
+  "images": {
+    "down": "down.png",
+    "up": "up.png",
+    "right": "right.png"
+  },
+  "seatTiles": [
+    {
+      "x": 0,
+      "y": 0,
+      "dir": "down"
+    }
+  ]
+}

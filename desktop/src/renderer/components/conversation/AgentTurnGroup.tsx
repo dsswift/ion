@@ -1,12 +1,14 @@
 import React, { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { CaretRight, CaretDown, SpinnerGap } from '@phosphor-icons/react'
+import { CaretRight, CaretDown, SpinnerGap, CheckCircle, Warning, XCircle } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { usePreferencesStore } from '../../preferences'
 import { ToolGroup } from './ToolGroup'
+import { ToolImagesStrip } from './ToolImagesStrip'
 import { AssistantMessage } from './AssistantMessage'
 import { ThinkingBlock } from './ThinkingBlock'
 import { CopyButton } from './CopyButton'
+import { toolFailureSummary } from './tool-helpers'
 import type { Message } from '../../../shared/types'
 
 const TASK_NOTIFICATION_RE = /<task-notification>[\s\S]*?<\/task-notification>\s*(?:Read the output file to retrieve the result:[^\n]*)?\n?/g
@@ -32,10 +34,30 @@ export const AgentTurnGroup = React.memo(function AgentTurnGroup({
   skipMotion,
 }: AgentTurnGroupProps) {
   const colors = useColors()
-  const expandToolResults = usePreferencesStore((s) => s.expandToolResults)
+  const _expandToolResults = usePreferencesStore((s) => s.expandToolResults)
   const [expanded, setExpanded] = useState(false)
 
   const toolCount = tools.length
+
+  // Failure summary for the activity header three-state icon (only when !isActive).
+  const { failed, total, running: hasRunningTool } = toolFailureSummary(tools)
+  const settled = total - tools.filter((t) => t.toolStatus === 'running').length
+  const isMixed = !isActive && !hasRunningTool && failed > 0 && failed < settled
+  const isAllFailed = !isActive && !hasRunningTool && failed > 0 && failed === settled
+
+  const headerFailureSuffix = isMixed
+    ? ` (${failed} failed)`
+    : isAllFailed
+      ? ' (all failed)'
+      : ''
+
+  const headerStatusIcon = isActive
+    ? null
+    : isAllFailed
+      ? <XCircle size={12} className="flex-shrink-0" style={{ color: colors.statusError }} />
+      : isMixed
+        ? <Warning size={12} className="flex-shrink-0" style={{ color: colors.statusWarning }} />
+        : <CheckCircle size={12} className="flex-shrink-0" style={{ color: colors.statusComplete }} />
 
   // Concatenated assistant text for the copy button
   const concatenatedText = useMemo(() => {
@@ -62,13 +84,14 @@ export const AgentTurnGroup = React.memo(function AgentTurnGroup({
       ) : (
         <CaretRight size={12} className="flex-shrink-0" style={{ color: colors.textTertiary }} />
       )}
+      {headerStatusIcon}
       <span
         className="text-[11px] leading-[1.4]"
         style={{ color: isActive ? colors.textSecondary : colors.textTertiary }}
       >
         {isActive
           ? `Running tools…`
-          : `Used ${toolCount} tool${toolCount !== 1 ? 's' : ''}`}
+          : `Used ${toolCount} tool${toolCount !== 1 ? 's' : ''}${headerFailureSuffix}`}
       </span>
     </div>
   )
@@ -100,6 +123,14 @@ export const AgentTurnGroup = React.memo(function AgentTurnGroup({
 
       {/* Collapsible activity panel — rendered below assistant text */}
       {activityHeader}
+
+      {/* Tool images: always visible, hoisted OUT of the collapsible tool
+          panel below. A tool-generated image (icon, logo, screenshot, diagram)
+          is a visual deliverable, not collapsible tool text, so it must paint
+          whether or not the user expands "Used N tools". Without this the
+          #224 conversation's 20 images stayed buried behind the collapsed
+          panel and never rendered. See ToolImagesStrip. */}
+      <ToolImagesStrip tools={tools} />
 
       <AnimatePresence initial={false}>
         {expanded && (

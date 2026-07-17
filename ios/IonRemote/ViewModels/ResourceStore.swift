@@ -83,7 +83,10 @@ final class ResourceStore {
     init() {
         readIds = Self.loadReadIds()
         items = Self.loadItems()
-        DiagnosticLog.log("RESOURCE-STORE: restored readIds=\(readIds.count) kinds=\(items.keys.joined(separator: ","))")
+        DiagnosticLog.log("resource store restored", tag: "resource.store", fields: [
+            "count": String(readIds.count),
+            "reason": items.keys.joined(separator: ",")
+        ])
     }
 
     // MARK: - Mutations
@@ -98,7 +101,12 @@ final class ResourceStore {
         let parsed = rawItems.map { ResourceItem(from: $0) }
         let globalCount = parsed.filter { $0.conversationId == nil || $0.conversationId?.isEmpty == true }.count
         let scopedCount = parsed.filter { $0.conversationId != nil && $0.conversationId?.isEmpty == false }.count
-        DiagnosticLog.log("RESOURCE-STORE: applySnapshot kind=\(kind) total=\(parsed.count) global=\(globalCount) scoped=\(scopedCount)")
+        DiagnosticLog.log("resource store apply snapshot", tag: "resource.store", fields: [
+            "reason": kind,
+            "count": String(parsed.count),
+            "global": String(globalCount),
+            "scoped": String(scopedCount)
+        ])
 
         // The desktop snapshot is authoritative. Always replace.
         // iOS is a thin client — it shows exactly what the desktop sends.
@@ -172,7 +180,9 @@ final class ResourceStore {
         guard !ids.isEmpty else { return }
         readIds.formUnion(ids)
         saveReadIds()
-        DiagnosticLog.log("RESOURCE-STORE: markAllRead count=\(ids.count)")
+        DiagnosticLog.log("resource store mark all read", tag: "resource.store", fields: [
+            "count": String(ids.count)
+        ])
     }
 
     /// Permanently remove a single resource item from the local store.
@@ -186,7 +196,10 @@ final class ResourceStore {
         readIds.remove(resourceId)
         saveItems()
         saveReadIds()
-        DiagnosticLog.log("RESOURCE-STORE: deleteItem kind=\(kind) id=\(resourceId.prefix(12))")
+        DiagnosticLog.log("resource store delete item", tag: "resource.store", fields: [
+            "reason": kind,
+            "resource_id": String(resourceId.prefix(12))
+        ])
     }
 
     /// Populate the full content for a resource item fetched on demand.
@@ -236,7 +249,9 @@ final class ResourceStore {
             let data = try JSONEncoder().encode(items)
             try data.write(to: Self.itemsFileURL, options: .atomic)
         } catch {
-            DiagnosticLog.log("RESOURCE-STORE: saveItems failed: \(error.localizedDescription)")
+            DiagnosticLog.log("resource store save items failed", tag: "resource.store", level: .error, fields: [
+                "error": error.localizedDescription
+            ])
         }
     }
 

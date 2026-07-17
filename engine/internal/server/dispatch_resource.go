@@ -58,12 +58,12 @@ func (s *Server) dispatchResourceSubscribe(conn net.Conn, cmd *protocol.ClientCo
 			sub = broker.SubscribeDirectWildcard(filter, func(msg resource.ResourceMessage) {
 				s.deliverResourceEvent(conn, cmd.Key, msg)
 			})
-			utils.Log("Server", fmt.Sprintf("resource_subscribe: global wildcard subId=%s", sub.ID))
+			utils.LogWithFields(utils.LevelInfo, "server", "resource subscribe global wildcard", map[string]any{"run_id": sub.ID})
 		} else {
 			sub = broker.SubscribeDirect(cmd.ResourceKind, filter, func(msg resource.ResourceMessage) {
 				s.deliverResourceEvent(conn, cmd.Key, msg)
 			})
-			utils.Log("Server", fmt.Sprintf("resource_subscribe: global kind=%s subId=%s", cmd.ResourceKind, sub.ID))
+			utils.LogWithFields(utils.LevelInfo, "server", "resource subscribe global kind", map[string]any{"reason": cmd.ResourceKind, "run_id": sub.ID})
 		}
 		s.sendResult(conn, cmd, nil, map[string]string{"subscriptionId": sub.ID})
 		return
@@ -82,7 +82,7 @@ func (s *Server) dispatchResourceSubscribe(conn net.Conn, cmd *protocol.ClientCo
 		sub := broker.SubscribeWildcard(filter, func(msg resource.ResourceMessage) {
 			s.deliverResourceEvent(conn, cmd.Key, msg)
 		})
-		utils.Log("Server", fmt.Sprintf("resource_subscribe: session wildcard key=%s subId=%s", cmd.Key, sub.ID))
+		utils.LogWithFields(utils.LevelInfo, "server", "resource subscribe session wildcard", map[string]any{"session_id": cmd.Key, "run_id": sub.ID})
 		s.sendResult(conn, cmd, nil, map[string]string{"subscriptionId": sub.ID})
 		return
 	}
@@ -142,7 +142,7 @@ func (s *Server) dispatchResourcePublish(conn net.Conn, cmd *protocol.ClientComm
 			return
 		}
 		broker.PublishDirect(cmd.ResourceKind, delta)
-		utils.Debug("Server", fmt.Sprintf("resource_publish: global kind=%s op=%s id=%s", cmd.ResourceKind, cmd.ResourceOp, cmd.ResourceItem.ID))
+		utils.LogWithFields(utils.LevelDebug, "server", "resource publish global", map[string]any{"reason": cmd.ResourceKind, "status": cmd.ResourceOp, "run_id": cmd.ResourceItem.ID})
 		s.sendResult(conn, cmd, nil, nil)
 		return
 	}
@@ -153,7 +153,7 @@ func (s *Server) dispatchResourcePublish(conn net.Conn, cmd *protocol.ClientComm
 		return
 	}
 	broker.PublishDirect(cmd.ResourceKind, delta)
-	utils.Debug("Server", fmt.Sprintf("resource_publish: session kind=%s op=%s id=%s key=%s", cmd.ResourceKind, cmd.ResourceOp, cmd.ResourceItem.ID, cmd.Key))
+	utils.LogWithFields(utils.LevelDebug, "server", "resource publish session", map[string]any{"reason": cmd.ResourceKind, "status": cmd.ResourceOp, "run_id": cmd.ResourceItem.ID, "session_id": cmd.Key})
 	s.sendResult(conn, cmd, nil, nil)
 }
 
@@ -179,7 +179,7 @@ func (s *Server) deliverResourceEvent(conn net.Conn, key string, msg resource.Re
 	}
 	raw, err := json.Marshal(ev)
 	if err != nil {
-		utils.Error("Server", "resource event marshal error: "+err.Error())
+		utils.LogWithFields(utils.LevelError, "server", "resource event marshal error", map[string]any{"error": err.Error()})
 		return
 	}
 	line := protocol.SerializeServerEvent(key, json.RawMessage(raw))

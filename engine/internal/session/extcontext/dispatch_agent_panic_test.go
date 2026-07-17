@@ -9,6 +9,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/resource"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -18,6 +19,7 @@ import (
 // UpdateAgentStateByID closures and EmitAgentSnapshot reasons so the
 // test can assert the synthesized terminal transition happens.
 type panicTestAccessor struct {
+	noopPluginMethods
 	mu              sync.Mutex
 	extGroup        *extension.ExtensionGroup
 	updatedAgentID  string
@@ -25,9 +27,14 @@ type panicTestAccessor struct {
 	finalState      types.AgentStateUpdate
 	snapshotReasons []string
 	emittedEvents   []types.EngineEvent
+	// telem, when set, is returned by Telemetry() so span-emitting tests can
+	// assert dispatch.agent telemetry. Nil by default (telemetry disabled).
+	telem *telemetry.Collector
 }
 
 func (p *panicTestAccessor) SessionKey() string       { return "panic-test-session" }
+func (p *panicTestAccessor) ExtensionName() string    { return "" }
+func (p *panicTestAccessor) ExtensionVersion() string { return "" }
 func (p *panicTestAccessor) ConversationID() string   { return "" }
 func (p *panicTestAccessor) WorkingDirectory() string { return "/tmp" }
 func (p *panicTestAccessor) Emit(ev types.EngineEvent) {
@@ -37,7 +44,8 @@ func (p *panicTestAccessor) Emit(ev types.EngineEvent) {
 }
 func (p *panicTestAccessor) SendAbort()                               {}
 func (p *panicTestAccessor) RootContext() context.Context             { return context.Background() }
-func (p *panicTestAccessor) SendPrompt(_, _ string, _ []string) error { return nil }
+func (p *panicTestAccessor) SendPrompt(_, _ string, _ []string) error                 { return nil }
+func (p *panicTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error { return nil }
 func (p *panicTestAccessor) SteerSelfMainLoop(_ string) bool          { return false }
 func (p *panicTestAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
@@ -56,9 +64,12 @@ func (p *panicTestAccessor) ExtGroup() *extension.ExtensionGroup      { return p
 func (p *panicTestAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
 func (p *panicTestAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
 func (p *panicTestAccessor) NewChildBackend() backend.RunBackend      { return nil }
+func (p *panicTestAccessor) AllocatePlanFilePath() string             { return "/tmp/.ion/plans/plan.md" }
 func (p *panicTestAccessor) BumpParentProgress()                      {}
 func (p *panicTestAccessor) EmitDispatchCountStatus(_ string)         {}
 func (p *panicTestAccessor) EngineConfig() *types.EngineRuntimeConfig { return nil }
+func (p *panicTestAccessor) ClaudeCompat() bool { return false }
+func (p *panicTestAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
 func (p *panicTestAccessor) ResolveTier(_ string) string              { return "" }
 func (p *panicTestAccessor) PermissionCheck(_ string, _ map[string]interface{}) (string, string) {
 	return "", ""
@@ -86,6 +97,18 @@ func (p *panicTestAccessor) UpdateAgentStateByID(id string, updater func(*types.
 	updater(&state)
 	p.finalState = state
 }
+func (p *panicTestAccessor) UpsertAgentStateByID(id string, seed types.AgentStateUpdate, updater func(*types.AgentStateUpdate)) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.updatedAgentID = id
+	p.updaterCalled = true
+	// Mirror UpdateAgentStateByID: drive the closure against the seed so the
+	// test observes the terminal transition runChild's normal branch writes.
+	state := seed
+	state.ID = id
+	updater(&state)
+	p.finalState = state
+}
 func (p *panicTestAccessor) EmitAgentSnapshot(reason string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -99,8 +122,14 @@ func (p *panicTestAccessor) ListAllSessions() []extension.SessionListEntry { ret
 func (p *panicTestAccessor) SendToSession(_, _, _ string, _ map[string]interface{}) error {
 	return nil
 }
+
+func (p *panicTestAccessor) FireSchedule(_, _ string) error { return nil }
+func (p *panicTestAccessor) GetScheduleStatus(_, _ string) ([]extension.ScheduleStatusEntry, error) {
+	return nil, nil
+}
 func (p *panicTestAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
 func (p *panicTestAccessor) RunOnceComplete(_ string, _ bool)              {}
+func (p *panicTestAccessor) Telemetry() *telemetry.Collector               { return p.telem }
 
 // TestRecoverBackgroundDispatchPanic_SynthesizesTerminalState is the
 // invariant test for the silent-wedge defect. A background dispatch

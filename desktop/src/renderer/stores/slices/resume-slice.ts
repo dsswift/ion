@@ -1,10 +1,12 @@
 import type { TabState, Message } from '../../../shared/types'
 import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
-import { makeLocalTab, nextMsgId, initialPermissionMode } from '../session-store-helpers'
-import { makeMainPane, commitInstance, activeInstance, effectivePermissionMode } from '../conversation-instance'
+import { makeLocalTab, nextMsgId } from '../session-store-helpers'
+import { makeMainPane, commitInstance, activeInstance, effectivePermissionMode, needsHistoryHydration } from '../conversation-instance'
 import { lastPendingCardTool, type PendingCardMessage } from '../../../shared/pending-card'
 import { mapSessionHistory, mapSessionMessage } from '../../../shared/session-message-mapper'
+import { mapPersistedMessages, filterRestorablePersistedMessages } from '../persisted-message-map'
+import { rInfo, rWarn } from '../../rendererLogger'
 
 /** Parse a JSON toolInput string into a Record, or undefined on failure. */
 function parseToolInput(raw?: string): Record<string, unknown> | undefined {
@@ -70,7 +72,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
         const forkMode = effectivePermissionMode(source, get().conversationPanes)
         // Seed the forked tab's `main` pane with the carried-over scrollback +
         // restored denial. modelOverride carries from the source instance.
-        console.log(`[store] forkTab: source=${sourceTabId.slice(0, 8)} new=${tab.id.slice(0, 8)}:main msgs=${messages.length} restoredDenied=${restoredDenied ? 'yes' : 'no'}`)
+        rInfo('session.fork', 'fork tab', { source_tab: sourceTabId.slice(0, 8), new_tab: tab.id.slice(0, 8), count: messages.length, restored_denied: restoredDenied })
         set((s) => ({
           tabs: [...s.tabs, tab],
           conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane({
@@ -105,7 +107,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
         ? [...tab.historicalSessionIds, oldSessionId]
         : [...tab.historicalSessionIds]
 
-      console.log(`[store] rewindToMessage: tabId=${tabId.slice(0, 8)}:main msgIdx=${idx} totalMsgs=${inst.messages.length} keepMsgs=${idx} oldSessionId=${oldSessionId?.slice(0, 16) ?? 'none'} historicalChainLen=${historicalSessionIds.length}`)
+      rInfo('session.rewind', 'rewind to message', { tab_id: tabId.slice(0, 8), msg_idx: idx, total_msgs: inst.messages.length, keep_msgs: idx, old_session_id: oldSessionId?.slice(0, 16) ?? '', historical_chain_len: historicalSessionIds.length })
 
       const rewoundMessages = inst.messages.slice(0, idx)
       const restoredDenied = buildRestoredDenied(rewoundMessages)
@@ -186,7 +188,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
         }
         // Carry the source instance's permission mode onto the new pane instance.
         const forkMode = effectivePermissionMode(source, get().conversationPanes)
-        console.log(`[store] forkFromMessage: source=${tabId.slice(0, 8)} new=${tab.id.slice(0, 8)}:main msgs=${messages.length} restoredDenied=${restoredDenied ? 'yes' : 'no'}`)
+        rInfo('session.fork', 'fork from message', { source_tab: tabId.slice(0, 8), new_tab: tab.id.slice(0, 8), count: messages.length, restored_denied: restoredDenied })
         set((s) => ({
           tabs: [...s.tabs, tab],
           conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane({
@@ -218,7 +220,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
             history = await window.ion.loadSession(sessionId, defaultDir, encodedDir || undefined)
             if (history.length > 0) break
           } catch (err) {
-            console.warn(`[resumeSession] loadSession attempt ${attempt + 1} failed:`, err)
+            rWarn('session.resume', 'loadSession attempt failed', { attempt: attempt + 1, error: String(err) })
           }
           if (attempt < 2) {
             await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)))
@@ -248,7 +250,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
           groupId,
         }
         // Seed the resumed tab's `main` pane with the loaded scrollback + denial.
-        console.log(`[store] resumeSession: tab=${tab.id.slice(0, 8)}:main msgs=${messages.length} restoredDenied=${restoredDenied ? 'yes' : 'no'}`)
+        rInfo('session.resume', 'resume session', { tab_id: tab.id.slice(0, 8), count: messages.length, restored_denied: restoredDenied })
         set((s) => ({
           tabs: [...s.tabs, tab],
           conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane({
@@ -286,13 +288,108 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
     },
 
     loadSkeletonMessages: async (tabId) => {
+      // Externalized scrollback (schema v4): the instance's history lives in
+      // a per-tab content file, not the engine store (renderer-only harness/
+      // system rows never reach the engine). Load it once on first
+      // activation; the engine-chain path below stays for count-only
+      // instances whose rows ARE engine-reloadable.
+      const pendingInst = activeInstance(get().conversationPanes, tabId)
+      if (pendingInst?.externalContentStatus === 'pending') {
+        const baseline = pendingInst.messages.length
+        try {
+          // Load the content file and the engine chain in parallel. The content
+          // file holds renderer-only rows (harness/system) that are not in the
+          // engine store. The engine chain is the authoritative source for
+          // user/assistant/tool rows. Both are needed: a stale content file
+          // (written after a session recycle that cleared the pane) misses the
+          // real conversation rows, which the engine still has on disk.
+          const tab = get().tabs.find((t) => t.id === tabId)
+          const [content, chainHistory] = await Promise.all([
+            window.ion.loadTabContent(tabId),
+            tab?.conversationId
+              ? window.ion.loadChainHistory([...(tab.historicalSessionIds ?? []), tab.conversationId])
+                  .catch((err: unknown) => {
+                    rWarn('session.restore', 'external content: engine chain load failed, using content file only', { tab_id: tabId.slice(0, 8), error: String(err) })
+                    return [] as unknown[]
+                  })
+              : Promise.resolve([] as unknown[]),
+          ])
+
+          const restoredFromFile = content
+            ? mapPersistedMessages(filterRestorablePersistedMessages(content.messages))
+            : []
+
+          // Engine chain is authoritative for user/assistant/tool rows.
+          const engineRows = mapSessionHistory(chainHistory as Parameters<typeof mapSessionHistory>[0], nextMsgId)
+
+          // Renderer-only rows (harness/system) exist only in the content file
+          // and cannot be reloaded from the engine store. Supplement the engine
+          // rows with these rather than using the full content file, so a stale
+          // content file (missing real conversation rows) does not hide history.
+          const rendererOnlyRows = restoredFromFile.filter(
+            (m) => m.role === 'harness' || m.role === 'system',
+          )
+
+          // Merge and sort by timestamp so harness banners slot in
+          // chronologically alongside the real conversation rows.
+          const allRows = engineRows.length > 0
+            ? [...engineRows, ...rendererOnlyRows].sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
+            : restoredFromFile
+
+          rInfo('session.restore', 'external content hydrated', {
+            tab_id: tabId.slice(0, 8),
+            content_rows: restoredFromFile.length,
+            engine_rows: engineRows.length,
+            renderer_only_rows: rendererOnlyRows.length,
+            merged_rows: allRows.length,
+            baseline,
+            missing: !content,
+          })
+
+          set((s) => ({
+            conversationPanes: commitInstance(s.conversationPanes, tabId, (i) => {
+              // Keep live rows that streamed in during the async load (past
+              // the baseline); everything before it is covered by the merged set.
+              const liveTail = i.messages.slice(baseline)
+              return {
+                ...i,
+                messages: [...allRows, ...liveTail],
+                messageCount: allRows.length + liveTail.length,
+                historyHydrated: true,
+                externalContentStatus: content ? ('loaded' as const) : ('error' as const),
+              }
+            }),
+          }))
+        } catch (err) {
+          rWarn('session.restore', 'external content load failed', { tab_id: tabId.slice(0, 8), error: String(err) })
+          // Mark errored-but-hydrated so the tab is usable (count-only
+          // rendering) and selectTab doesn't retry on every switch.
+          set((s) => ({
+            conversationPanes: commitInstance(s.conversationPanes, tabId, (i) => ({
+              ...i,
+              historyHydrated: true,
+              externalContentStatus: 'error' as const,
+            })),
+          }))
+        }
+        return
+      }
+
       const tab = get().tabs.find((t) => t.id === tabId)
       if (!tab || !tab.conversationId) return
-      // Skeleton state lives on the active instance now: a persisted
-      // messageCount > 0 with an empty messages array means not-yet-hydrated.
-      // Already-loaded (messages present) tabs short-circuit.
+      // Precise hydration gate (needsHistoryHydration): the historyHydrated
+      // marker, not message emptiness — live events append to skeleton panes
+      // before the user opens them, and an emptiness check would skip the
+      // history load, leaving only the live tail in the transcript.
       const inst = activeInstance(get().conversationPanes, tabId)
-      if (!inst || inst.messages.length > 0) return
+      if (!needsHistoryHydration(inst)) return
+      // Messages already present are live-streamed arrivals on the skeleton.
+      // Everything before this baseline is REPLACED by the history load (a
+      // completed turn is persisted, so the history covers it); anything
+      // appended during the async load is kept as the live tail. Known edge:
+      // a turn still streaming at this instant loses its not-yet-persisted
+      // partial text — the pre-hydration window is one IPC roundtrip.
+      const baseline = inst!.messages.length
 
       try {
         // Load all historical + current session messages in a single
@@ -316,23 +413,36 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
           restoredDenied = buildRestoredDenied(allMessages)
         }
 
-        console.log(`[loadSkeletonMessages] hydrated tab=${tabId.slice(0, 8)}:main msgs=${allMessages.length} restoredDenied=${restoredDenied ? 'yes' : 'no'}`)
+        rInfo('session.restore', 'skeleton messages hydrated', { tab_id: tabId.slice(0, 8), count: allMessages.length, baseline, restored_denied: !!restoredDenied })
+        // Canonical ids make the live tail dedupable: a turn that completed
+        // DURING the async load appears both in the history (entry-row id)
+        // and in the tail (re-keyed at message_end / keyed by toolId), so
+        // drop tail rows the history already contains.
+        const historyIds = new Set(allMessages.map((m) => m.id))
         set((s) => ({
-          conversationPanes: commitInstance(s.conversationPanes, tabId, (i) => ({
-            ...i,
-            messages: allMessages,
-            messageCount: allMessages.length,
-            ...(restoredDenied ? { permissionDenied: restoredDenied } : {}),
-          })),
+          conversationPanes: commitInstance(s.conversationPanes, tabId, (i) => {
+            const liveTail = i.messages.slice(baseline).filter((m) => !historyIds.has(m.id))
+            return {
+              ...i,
+              // History first, then live messages that streamed in DURING the
+              // load (past the baseline) — the pre-baseline live messages are
+              // persisted turns the history already contains.
+              messages: [...allMessages, ...liveTail],
+              messageCount: allMessages.length + liveTail.length,
+              historyHydrated: true,
+              ...(restoredDenied ? { permissionDenied: restoredDenied } : {}),
+            }
+          }),
         }))
       } catch (err) {
-        console.warn(`[loadSkeletonMessages] failed for tab ${tabId.slice(0, 8)}:main:`, err)
-        // Hydrate with empty messages so the tab is usable
+        rWarn('session.restore', 'skeleton load failed', { tab_id: tabId.slice(0, 8), error: String(err) })
+        // Mark hydrated with whatever live messages exist so the tab is
+        // usable and selectTab doesn't retry the failing load on every switch.
         set((s) => ({
           conversationPanes: commitInstance(s.conversationPanes, tabId, (i) => ({
             ...i,
-            messages: [],
-            messageCount: 0,
+            messageCount: i.messages.length,
+            historyHydrated: true,
           })),
         }))
       }
@@ -380,7 +490,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
           groupId,
         }
         // Seed the resumed tab's `main` pane with the loaded chain scrollback.
-        console.log(`[store] resumeSessionWithChain: tab=${tab.id.slice(0, 8)}:main msgs=${allMessages.length} restoredDenied=${restoredDenied ? 'yes' : 'no'}`)
+        rInfo('session.resume', 'resume session with chain', { tab_id: tab.id.slice(0, 8), count: allMessages.length, restored_denied: !!restoredDenied })
         set((s) => ({
           tabs: [...s.tabs, tab],
           conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane({

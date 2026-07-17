@@ -161,8 +161,10 @@ func TestLoadConfig_WithBackendAndModel(t *testing.T) {
 	}
 
 	cfg := LoadConfig(projectDir)
-	if cfg.Backend != "cli" {
-		t.Fatalf("expected backend=cli, got %q", cfg.Backend)
+	// "cli" is the legacy input alias and must normalize to the canonical
+	// "claude-code" at load time (red on unfixed code, which returned "cli").
+	if cfg.Backend != "claude-code" {
+		t.Fatalf("expected legacy backend alias cli to normalize to claude-code, got %q", cfg.Backend)
 	}
 	if cfg.DefaultModel != "claude-opus-4-6" {
 		t.Fatalf("expected defaultModel=claude-opus-4-6, got %q", cfg.DefaultModel)

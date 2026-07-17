@@ -6,8 +6,8 @@ import { join, basename } from 'path'
 import { IPC } from '../../shared/types'
 import { log as _log } from '../logger'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 const HALLUCINATIONS = /^\s*(\[BLANK_AUDIO\]|you\.?|thank you\.?|thanks\.?)\s*$/i
@@ -72,7 +72,7 @@ export function registerTranscribeIpc(): void {
       const isWhisperKit = whisperBin.includes('whisperkit-cli')
       const isWhisperCpp = !isWhisperKit && whisperBin.includes('whisper-cli')
 
-      log(`Transcribing with: ${whisperBin} (backend: ${isWhisperKit ? 'WhisperKit' : isWhisperCpp ? 'whisper-cpp' : 'Python whisper'})`)
+      log('transcribe: starting', { bin: whisperBin, backend: isWhisperKit ? 'WhisperKit' : isWhisperCpp ? 'whisper-cpp' : 'Python whisper' })
 
       let output: string
       if (isWhisperKit) {
@@ -89,7 +89,7 @@ export function registerTranscribeIpc(): void {
             try { unlinkSync(srtPath) } catch {}
             return { error: null, transcript }
           } catch (parseErr: any) {
-            log(`WhisperKit JSON parse failed: ${parseErr.message}, falling back to stdout`)
+            log('transcribe: WhisperKit JSON parse failed, falling back to stdout', { error: parseErr.message })
             try { unlinkSync(reportPath) } catch {}
           }
         }
@@ -146,7 +146,7 @@ export function registerTranscribeIpc(): void {
 
       return { error: null, transcript: transcript || '' }
     } catch (err: any) {
-      log(`Transcription error: ${err.message}`)
+      log('transcribe: error', { error: err.message })
       return {
         error: `Transcription failed: ${err.message}`,
         transcript: null,

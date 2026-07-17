@@ -74,6 +74,7 @@ vi.mock('../agent-conversation-mapper', () => ({
 }))
 
 import { AgentDetailPanel } from '../AgentDetailPanel'
+import type { BreadcrumbFrame } from '../agent-panel-helpers'
 
 function makeAgent(name: string): AgentStateUpdate {
   return { name, status: 'done', metadata: { displayName: name } }
@@ -103,6 +104,12 @@ function renderPanel(props: Parameters<typeof AgentDetailPanel>[0]) {
   act(() => { root.render(React.createElement(AgentDetailPanel, props)) })
   return {
     container,
+    // Re-render with fresh props to simulate an engine_agent_state heartbeat,
+    // where the popup passes a new `agent` object (and new telemetry/allAgents
+    // arrays) of the same identity every render.
+    rerender(next: Parameters<typeof AgentDetailPanel>[0]) {
+      act(() => { root.render(React.createElement(AgentDetailPanel, next)) })
+    },
     unmount() {
       act(() => { root.unmount() })
       document.body.removeChild(container)
@@ -439,6 +446,97 @@ describe('AgentDetailPanel', () => {
 
     const childButtons = container.querySelectorAll('[data-testid="open-child-engine-dev"]')
     expect(childButtons.length).toBe(1)
+    unmount()
+  })
+
+  it('keeps the drilled-in child across a heartbeat re-render (snap-back regression)', () => {
+    // Repro of the "snaps back to parent" bug: after drilling from dev-lead into
+    // its engine-dev child, an engine_agent_state heartbeat re-renders the popup
+    // with a NEW `agent` object and NEW telemetry/allAgents arrays of the same
+    // identity. The breadcrumb reset effect must NOT refire on that ref churn —
+    // the drilled-in child must remain the active frame. Reverting the effect
+    // deps (adding `agent` / `initialStack` back) resets the stack to root here
+    // and this test goes red.
+    const telemetry: DispatchTelemetryEntry[] = [
+      entry({ dispatchId: 'd1', dispatchParentId: '', dispatchAgent: 'dev-lead', conversationId: 'conv-1' }),
+      entry({ dispatchId: 'd2', dispatchParentId: 'd1', dispatchAgent: 'engine-dev', conversationId: 'conv-2' }),
+    ]
+
+    const baseProps: Parameters<typeof AgentDetailPanel>[0] = {
+      agent: makeAgent('dev-lead'),
+      loadedMessages: [{ id: 'u1', role: 'user', content: 'Root msg', timestamp: 0 }],
+      loading: false,
+      dispatches: [makeDispatch('d1', 'conv-1')],
+      selectedDispatch: 0,
+      onSelectDispatch: () => {},
+      onClose: () => {},
+      dispatchTelemetry: telemetry,
+    }
+
+    const { container, rerender, unmount } = renderPanel(baseProps)
+
+    // Drill into the engine-dev child.
+    const childBtn = container.querySelector('[data-testid="open-child-engine-dev"]') as HTMLButtonElement
+    expect(childBtn).toBeTruthy()
+    act(() => { childBtn.click() })
+
+    const breadcrumbBefore = container.querySelector('[style*="flex-wrap"]')
+    expect(breadcrumbBefore?.textContent).toContain('engine-dev')
+
+    // Simulate a heartbeat: fresh `agent` object + fresh telemetry array, same
+    // identity (same name, same dispatch ids).
+    rerender({
+      ...baseProps,
+      agent: makeAgent('dev-lead'),
+      dispatchTelemetry: [
+        entry({ dispatchId: 'd1', dispatchParentId: '', dispatchAgent: 'dev-lead', conversationId: 'conv-1' }),
+        entry({ dispatchId: 'd2', dispatchParentId: 'd1', dispatchAgent: 'engine-dev', conversationId: 'conv-2' }),
+      ],
+    })
+
+    // The breadcrumb must still show engine-dev as the drilled-in frame.
+    const breadcrumbAfter = container.querySelector('[style*="flex-wrap"]')
+    expect(breadcrumbAfter?.textContent).toContain('engine-dev')
+    unmount()
+  })
+
+  it('re-adopts a NEW deep-link target stack across a heartbeat (initialStack target change still resets)', () => {
+    // The fix keys the reset on the deep-link TARGET dispatch id, not the array
+    // ref. A genuinely different deep-link target must still re-seed the stack,
+    // while a rebuilt-but-identical initialStack (heartbeat) must not clobber it.
+    const stackA: BreadcrumbFrame[] = [
+      { dispatchId: 'd1', conversationId: 'conv-1', agentDisplayName: 'dev-lead' },
+      { dispatchId: 'd2', conversationId: 'conv-2', agentDisplayName: 'engine-dev' },
+    ]
+    const stackB: BreadcrumbFrame[] = [
+      { dispatchId: 'd1', conversationId: 'conv-1', agentDisplayName: 'dev-lead' },
+      { dispatchId: 'd3', conversationId: 'conv-3', agentDisplayName: 'security-officer' },
+    ]
+
+    const baseProps: Parameters<typeof AgentDetailPanel>[0] = {
+      agent: makeAgent('dev-lead'),
+      loadedMessages: [{ id: 'u1', role: 'user', content: 'Root msg', timestamp: 0 }],
+      loading: false,
+      dispatches: [makeDispatch('d1', 'conv-1')],
+      selectedDispatch: 0,
+      onSelectDispatch: () => {},
+      onClose: () => {},
+      initialStack: stackA,
+    }
+
+    const { container, rerender, unmount } = renderPanel(baseProps)
+    expect(container.querySelector('[style*="flex-wrap"]')?.textContent).toContain('engine-dev')
+
+    // Heartbeat with a rebuilt-but-identical stack (new array, same target): no
+    // clobber — engine-dev stays.
+    rerender({ ...baseProps, agent: makeAgent('dev-lead'), initialStack: [...stackA] })
+    expect(container.querySelector('[style*="flex-wrap"]')?.textContent).toContain('engine-dev')
+
+    // New deep-link target (different last dispatchId): re-seed to the new stack.
+    rerender({ ...baseProps, agent: makeAgent('dev-lead'), initialStack: stackB })
+    const breadcrumb = container.querySelector('[style*="flex-wrap"]')
+    expect(breadcrumb?.textContent).toContain('security-officer')
+    expect(breadcrumb?.textContent).not.toContain('engine-dev')
     unmount()
   })
 })

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/types"
 )
@@ -37,7 +38,7 @@ func (m *mockBackend) StartRun(requestID string, options types.RunOptions) {
 		go func() {
 			time.Sleep(10 * time.Millisecond)
 			code := 0
-			m.onExit(requestID, &code, nil, options.SessionID)
+			m.onExit(requestID, &code, nil, options.SessionKey)
 		}()
 	}
 }
@@ -56,11 +57,22 @@ func (m *mockBackend) IsRunning(requestID string) bool {
 	return ok
 }
 
-func (m *mockBackend) WriteToStdin(_ string, _ interface{}) error            { return nil }
-func (m *mockBackend) FlushConversations()                                    {}
+func (m *mockBackend) WriteToStdin(_ string, _ interface{}) error          { return nil }
+func (m *mockBackend) FlushConversations()                                 {}
+
+// Capabilities reports an engine-owned, fully-capable descriptor so no
+// dispatch-time capability gate engages against this mock.
+func (m *mockBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:         "mock",
+		ContextModel: backend.ContextModelEngineOwned,
+		PlanMode:     true,
+		Steering:     true,
+	}
+}
 func (m *mockBackend) OnNormalized(fn func(string, types.NormalizedEvent)) { m.onNorm = fn }
-func (m *mockBackend) OnExit(fn func(string, *int, *string, string))      { m.onExit = fn }
-func (m *mockBackend) OnError(fn func(string, error))                     { m.onErr = fn }
+func (m *mockBackend) OnExit(fn func(string, *int, *string, string))       { m.onExit = fn }
+func (m *mockBackend) OnError(fn func(string, error))                      { m.onErr = fn }
 
 // helpers
 
@@ -1055,9 +1067,9 @@ func TestResourcePublishRouting(t *testing.T) {
 	// Case 2: resource_publish with all required fields but a key that has no
 	// session. The dispatch layer should return a "no session or broker" error.
 	sendJSON(t, conn, map[string]interface{}{
-		"cmd":        "resource_publish",
-		"key":        "nonexistent-session",
-		"resourceOp": "upsert",
+		"cmd":          "resource_publish",
+		"key":          "nonexistent-session",
+		"resourceOp":   "upsert",
 		"resourceKind": "notes",
 		"resourceItem": map[string]interface{}{
 			"id":             "item-2",

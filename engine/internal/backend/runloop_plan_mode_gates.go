@@ -134,7 +134,11 @@ func applyPlanModeWriteGate(
 		// case (e.g. on a revision turn). Otherwise fall through to the
 		// hard block.
 		if run.planFilePath != "" && isPlanShapedPath(targetPath, cwd) {
-			utils.Info("PlanMode", fmt.Sprintf("run=%s redirected_plan_write target=%s canonical=%s", run.requestID, targetPath, run.planFilePath))
+			utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "redirected_plan_write", map[string]any{
+				"run_id":    run.requestID,
+				"target":    targetPath,
+				"canonical": run.planFilePath,
+			})
 			// Capture prior state BEFORE the redirected write executes.
 			hadContent := planFileHadContent()
 			// Rewrite the executor-visible input in place.
@@ -155,8 +159,17 @@ func applyPlanModeWriteGate(
 				planFileHadContentBefore: hadContent,
 			}
 		}
-		utils.Info("PlanMode", fmt.Sprintf("run=%s blocked=%s target=%s plan_file=%s", run.requestID, block.Name, targetPath, run.planFilePath))
-		msg := fmt.Sprintf("Plan mode: cannot write to %s. Only the plan file (%s) is writable.", targetPath, run.planFilePath)
+		utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "event", map[string]any{
+			"run_id":    run.requestID,
+			"blocked":   block.Name,
+			"target":    targetPath,
+			"plan_file": run.planFilePath,
+		})
+		msg := fmt.Sprintf(
+			"Plan mode: %s targeted %q — that path is not the plan file for this session. "+
+				"Do not retry with that path. Your only valid write target is %s. "+
+				"Resubmit your %s call targeting that exact path.",
+			block.Name, targetPath, run.planFilePath, block.Name)
 		results[i] = conversation.ToolResultEntry{
 			ToolUseID: block.ID,
 			Content:   msg,
@@ -229,7 +242,11 @@ func applyPlanModeBashGate(
 		}
 	}
 	if !cmdAllowed {
-		utils.Info("PlanMode", fmt.Sprintf("run=%s blocked_bash=%q allowed_prefixes=%v", run.requestID, cmdTrimmed, run.planModeAllowedBashCommands))
+		utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "event", map[string]any{
+			"run_id":           run.requestID,
+			"blocked_bash":     cmdTrimmed,
+			"allowed_prefixes": run.planModeAllowedBashCommands,
+		})
 		msg := fmt.Sprintf("Plan mode: Bash command %q is not in the allowed list. Allowed command prefixes: %v", cmdTrimmed, run.planModeAllowedBashCommands)
 		results[i] = conversation.ToolResultEntry{
 			ToolUseID: block.ID,
@@ -243,7 +260,10 @@ func applyPlanModeBashGate(
 		}})
 		return true
 	}
-	utils.Debug("PlanMode", fmt.Sprintf("run=%s allowed_bash=%q matched_prefix", run.requestID, cmdTrimmed))
+	utils.LogWithFields(utils.LevelDebug, "backend.plan_mode", "matched_prefix", map[string]any{
+		"run_id":       run.requestID,
+		"allowed_bash": cmdTrimmed,
+	})
 	return false
 }
 
@@ -278,14 +298,23 @@ func interceptExitPlanMode(
 	if resolvedPlanFilePath == "" && hooks.GetSessionPlanFilePath != nil {
 		resolvedPlanFilePath = hooks.GetSessionPlanFilePath()
 		if resolvedPlanFilePath != "" {
-			utils.Info("PlanMode", fmt.Sprintf("run=%s exit_tool resolved planFilePath from session: %s", run.requestID, resolvedPlanFilePath))
+			utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "exit_tool resolved planFilePath from session", map[string]any{
+				"run_id":                  run.requestID,
+				"resolved_plan_file_path": resolvedPlanFilePath,
+			})
 		}
 	}
 
 	if !run.planMode {
-		utils.Warn("PlanMode", fmt.Sprintf("run=%s exit_tool called outside engine plan mode (prompt-level plan mode detected) plan_file=%s", run.requestID, resolvedPlanFilePath))
+		utils.LogWithFields(utils.LevelWarn, "backend.plan_mode", "exit_tool called outside engine plan mode (prompt-level plan mode detected)", map[string]any{
+			"run_id":    run.requestID,
+			"plan_file": resolvedPlanFilePath,
+		})
 	} else {
-		utils.Info("PlanMode", fmt.Sprintf("run=%s exit_tool plan_file=%s", run.requestID, resolvedPlanFilePath))
+		utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "exit_tool", map[string]any{
+			"run_id":    run.requestID,
+			"plan_file": resolvedPlanFilePath,
+		})
 	}
 
 	// If planFilePath is still empty after session fallback, return an
@@ -293,7 +322,9 @@ func interceptExitPlanMode(
 	// plan_proposal with no path. This prevents consumers from receiving
 	// an unactionable approval card.
 	if resolvedPlanFilePath == "" {
-		utils.Error("PlanMode", fmt.Sprintf("run=%s exit_tool has no planFilePath (run or session) — returning error to model", run.requestID))
+		utils.LogWithFields(utils.LevelError, "backend.plan_mode", "exit_tool has no planFilePath (run or session) — returning error to model", map[string]any{
+			"run_id": run.requestID,
+		})
 		errMsg := "Plan mode is not active and no plan file is associated with this session. If you are in plan mode, write your plan to the plan file first."
 		results[i] = conversation.ToolResultEntry{
 			ToolUseID: block.ID,
@@ -318,7 +349,10 @@ func interceptExitPlanMode(
 		if exitReason == "" {
 			exitReason = "Plan mode exit was declined. Continue planning."
 		}
-		utils.Info("PlanMode", fmt.Sprintf("run=%s exit_tool denied by hook reason=%q", run.requestID, exitReason))
+		utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "exit_tool denied by hook", map[string]any{
+			"run_id": run.requestID,
+			"reason": exitReason,
+		})
 		results[i] = conversation.ToolResultEntry{
 			ToolUseID: block.ID,
 			Content:   exitReason,
@@ -361,7 +395,10 @@ func interceptExitPlanMode(
 		PlanFilePath: resolvedPlanFilePath,
 		PlanSlug:     types.PlanSlugFromPath(resolvedPlanFilePath),
 	}})
-	utils.Info("PlanMode", fmt.Sprintf("run=%s exit_tool emit plan_proposal kind=exit planFile=%s (mode change deferred to user approval)", run.requestID, resolvedPlanFilePath))
+	utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "exit_tool emit plan_proposal kind=exit (mode change deferred to user approval)", map[string]any{
+		"run_id":    run.requestID,
+		"plan_file": resolvedPlanFilePath,
+	})
 	results[i] = conversation.ToolResultEntry{
 		ToolUseID: block.ID,
 		Content:   "Plan mode exited.",
@@ -396,7 +433,9 @@ func interceptEnterPlanMode(
 	if run.planMode || block.Name != tools.EnterPlanModeName {
 		return false
 	}
-	utils.Info("PlanMode", fmt.Sprintf("run=%s enter_tool requested", run.requestID))
+	utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "enter_tool requested", map[string]any{
+		"run_id": run.requestID,
+	})
 	var allowed bool
 	var reason string
 	var planFilePath string
@@ -410,7 +449,10 @@ func interceptEnterPlanMode(
 		if reason == "" {
 			reason = "Plan mode entry was declined."
 		}
-		utils.Info("PlanMode", fmt.Sprintf("run=%s enter_tool denied reason=%q", run.requestID, reason))
+		utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "enter_tool denied", map[string]any{
+			"run_id": run.requestID,
+			"reason": reason,
+		})
 		results[i] = conversation.ToolResultEntry{
 			ToolUseID: block.ID,
 			Content:   reason,
@@ -458,7 +500,10 @@ func interceptEnterPlanMode(
 	_, err := os.Stat(planFilePath)
 	planPrompt := buildPlanModePrompt(planFilePath, err == nil, run.planModeAllowedBashCommands)
 	resultContent := fmt.Sprintf("Plan mode entered. Plan file: %s\n\n%s", planFilePath, planPrompt)
-	utils.Info("PlanMode", fmt.Sprintf("run=%s enter_tool allowed planFile=%s", run.requestID, planFilePath))
+	utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "enter_tool allowed", map[string]any{
+		"run_id":    run.requestID,
+		"plan_file": planFilePath,
+	})
 	results[i] = conversation.ToolResultEntry{
 		ToolUseID: block.ID,
 		Content:   resultContent,

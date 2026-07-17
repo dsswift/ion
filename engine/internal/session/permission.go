@@ -1,7 +1,6 @@
 package session
 
 import (
-	"fmt"
 
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -12,7 +11,7 @@ func (m *Manager) SendPermissionResponse(key, questionID, optionID string) {
 	s, ok := m.sessions[key]
 	m.mu.RUnlock()
 	if !ok {
-		utils.Log("Session", fmt.Sprintf("permission response for unknown session %s", key))
+		utils.LogWithFields(utils.LevelInfo, "session", "permission response for unknown session", map[string]any{"key": key})
 		return
 	}
 	s.pending.ResolvePermission(questionID, optionID)

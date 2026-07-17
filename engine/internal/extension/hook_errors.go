@@ -47,7 +47,7 @@ func logHookErr(hook string, err error) {
 	if errors.Is(err, errExtensionDeadSilent) {
 		return
 	}
-	utils.Warn("extension", fmt.Sprintf("hook %s error: %v", hook, err))
+	utils.LogWithFields(utils.LevelWarn, "extension", "hook error", map[string]any{"hook": hook, "error": err})
 }
 
 // emitHookEvents checks a hook response for an "events" array and emits
@@ -64,11 +64,11 @@ func emitHookEvents(ctx *Context, raw json.RawMessage) {
 		return
 	}
 	if len(wrapper.Events) > 0 {
-		utils.Log("extension", fmt.Sprintf("emitHookEvents: %d events to emit", len(wrapper.Events)))
+		utils.LogWithFields(utils.LevelInfo, "extension", "emithookevents: events to emit", map[string]any{"count": len(wrapper.Events)})
 	}
 	for _, ev := range wrapper.Events {
 		if ev.Type != "" {
-			utils.Log("extension", fmt.Sprintf("emitHookEvents: emitting %s", ev.Type))
+			utils.LogWithFields(utils.LevelInfo, "extension", "emithookevents: emitting", map[string]any{"type": ev.Type})
 			ctx.Emit(ev)
 		}
 	}

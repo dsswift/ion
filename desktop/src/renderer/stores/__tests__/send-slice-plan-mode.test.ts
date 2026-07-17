@@ -351,3 +351,31 @@ describe('planFilePath forwarding from tab state', () => {
     expect(args[2].planFilePath).toBe('/plans/test.md')
   })
 })
+
+describe('Fix A — auto-exit does not corrupt prompt_sync assertion', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPrompt.mockResolvedValue(undefined)
+  })
+
+  it('instance stays plan after auto-exit so follow-up prompt_sync asserts plan not auto', () => {
+    // Instance permissionMode:'plan' + planFilePath set (Fix A: auto-exit does
+    // NOT flip this to 'auto', so the instance stays 'plan' when the user sends
+    // a follow-up prompt without approving).
+    const { state } = buildHarness(makeTab(), {
+      permissionMode: 'plan',
+      planFilePath: '/plans/active-plan.md',
+    })
+
+    // Simulate: event reducer received plan_mode_auto_exit but did NOT
+    // flip permissionMode (Fix A). Instance is still 'plan'.
+    expect(mainInstance(state.conversationPanes, 'tab-1')!.permissionMode).toBe('plan')
+
+    // User sends a follow-up comment without approving
+    state.submit('tab-1', 'can you also check edge cases')
+
+    // prompt_sync must re-assert 'plan', never 'auto'
+    expect(mockSetPermissionMode).toHaveBeenCalledWith('tab-1', 'plan', 'prompt_sync', '/plans/active-plan.md')
+    expect(mockSetPermissionMode).not.toHaveBeenCalledWith('tab-1', 'auto', expect.anything(), expect.anything())
+  })
+})

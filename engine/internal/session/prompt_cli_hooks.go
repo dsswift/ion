@@ -1,11 +1,11 @@
 package session
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
@@ -21,10 +21,10 @@ import (
 // events to consumers and block the subprocess until the user responds.
 //
 // Under HybridBackend, this only wires when the model resolves to the
-// inner *CliBackend. API-routed hybrid runs use the in-process permission
+// inner *ClaudeCodeBackend. API-routed hybrid runs use the in-process permission
 // engine path (identical to plain "backend": "api").
 func (m *Manager) wirePermissionHookServer(s *engineSession, key string, opts *types.RunOptions, permEng *permissions.Engine) {
-	if _, isCli := m.resolvedBackend(opts.Model).(*backend.CliBackend); !isCli {
+	if _, isCli := m.resolvedBackend(opts.Model).(*backend.ClaudeCodeBackend); !isCli {
 		return
 	}
 	if permEng == nil {
@@ -33,7 +33,7 @@ func (m *Manager) wirePermissionHookServer(s *engineSession, key string, opts *t
 
 	hookServer, err := backend.NewPermissionHookServer(permEng)
 	if err != nil {
-		utils.Log("Session", "PermissionHookServer start failed: "+err.Error())
+		utils.LogWithFields(utils.LevelInfo, "session", "permissionhookserver start failed", map[string]any{"error": err.Error()})
 		return
 	}
 	token := fmt.Sprintf("run-%d", time.Now().UnixMilli())
@@ -49,39 +49,20 @@ func (m *Manager) wirePermissionHookServer(s *engineSession, key string, opts *t
 
 	// When the hook server gets an "ask" decision, emit
 	// engine_permission_request and block until the user responds with an
-	// option ID.
-	hookServer.SetOnAsk(func(reqToken string, questionID string, toolName string, toolDesc string, toolInput map[string]any, options []types.PermissionOpt) chan string {
-		ch := m.RegisterPendingPermission(key, questionID)
-		if ch == nil {
-			return nil
-		}
-		m.emit(key, types.EngineEvent{
-			Type:          "engine_permission_request",
-			QuestionID:    questionID,
-			PermToolName:  toolName,
-			PermToolDesc:  toolDesc,
-			PermToolInput: toolInput,
-			PermOptions:   options,
-		})
-		result := make(chan string, 1)
-		go func() {
-			optionID := <-ch
-			m.UnregisterPendingPermission(key, questionID)
-			result <- optionID
-		}()
-		return result
-	})
+	// option ID. The same closure serves the codex backend's approvals
+	// (see wireCodexPermissions).
+	hookServer.SetOnAsk(m.permissionAskClosure(key))
 
 	settingsJSON := hookServer.GenerateSettingsJSON(token)
 
 	tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("ion-settings-%s.json", token))
 	if err := os.WriteFile(tmpFile, settingsJSON, 0600); err != nil {
-		utils.Log("Session", "failed to write hook settings: "+err.Error())
+		utils.LogWithFields(utils.LevelInfo, "session", "failed to write hook settings", map[string]any{"error": err.Error()})
 		hookServer.Close()
 		return
 	}
 	opts.HookSettingsPath = tmpFile
-	utils.Log("Session", fmt.Sprintf("hook settings written to %s", tmpFile))
+	utils.LogWithFields(utils.LevelInfo, "session", "hook settings written to", map[string]any{"tmp_file": tmpFile})
 }
 
 // buildToolAliasDirective renders a system-prompt directive that maps bare
@@ -118,17 +99,29 @@ func appendDirective(opts *types.RunOptions, directive string, names []string) {
 		opts.AppendSystemPrompt += "\n\n"
 	}
 	opts.AppendSystemPrompt += directive
-	utils.Log("Session", fmt.Sprintf("tool alias directive built (%d tools: %s)", len(names), strings.Join(names, ", ")))
+	utils.LogWithFields(utils.LevelInfo, "session", "tool alias directive built ( tools: )", map[string]any{"count": len(names), "join": strings.Join(names, ", ")})
 }
 
-// wireToolServer starts a ToolServer for CLI backend when extensions provide
-// tools, exposing them via an MCP config that Claude Code subprocess loads.
+// mcpCapableCli / attachToolServerMcp are thin session-package aliases over the
+// backend-package helpers of the same behavior, so the parent-run wiring here
+// and the dispatched-child wiring in backend.BuildDelegatedChildToolServer stay
+// in lockstep (one definition of "which CLI backend takes MCP how").
+func mcpCapableCli(b backend.RunBackend) (kind string, ok bool) { return backend.McpCapableCli(b) }
+
+func (m *Manager) attachToolServerMcp(opts *types.RunOptions, ts *backend.ToolServer, key, kind string) error {
+	return backend.AttachToolServerToRunOptions(opts, ts, key, kind)
+}
+
+// wireToolServer starts a ToolServer for a delegated-CLI backend when
+// extensions provide tools, exposing them to the subprocess over MCP.
 //
-// Under HybridBackend, this only fires when the model resolves to the
-// inner *CliBackend. API-routed hybrid runs expose extension tools via
-// the in-process tool registry instead.
+// Under HybridBackend, this fires when the model resolves to an MCP-capable CLI
+// backend — claude-code (via `--mcp-config`) or grok/cursor (via ACP
+// `session/new` mcpServers). codex and API-routed runs are excluded (see
+// mcpCapableCli); API runs expose extension tools via the in-process registry.
 func (m *Manager) wireToolServer(s *engineSession, key string, opts *types.RunOptions, extGroup *extension.ExtensionGroup) {
-	if _, isCli := m.resolvedBackend(opts.Model).(*backend.CliBackend); !isCli {
+	kind, ok := mcpCapableCli(m.resolvedBackend(opts.Model))
+	if !ok {
 		return
 	}
 	if extGroup == nil || extGroup.IsEmpty() {
@@ -148,16 +141,14 @@ func (m *Manager) wireToolServer(s *engineSession, key string, opts *types.RunOp
 		ts.RegisterTool(capturedTool.Name, handler, capturedTool.Description, capturedTool.Parameters)
 	}
 	if err := ts.Start(); err != nil {
-		utils.Log("Session", "ToolServer start failed: "+err.Error())
+		utils.LogWithFields(utils.LevelInfo, "session", "toolserver start failed", map[string]any{"error": err.Error()})
 		return
 	}
-	mcpPath, err := ts.McpConfigPath(key)
-	if err != nil {
-		utils.Log("Session", "ToolServer MCP config failed: "+err.Error())
+	if err := m.attachToolServerMcp(opts, ts, key, kind); err != nil {
+		utils.LogWithFields(utils.LevelInfo, "session", "toolserver mcp attach failed", map[string]any{"error": err.Error(), "kind": kind})
 		ts.Stop()
 		return
 	}
-	opts.McpConfig = mcpPath
 	m.mu.Lock()
 	s.toolServer = ts
 	m.mu.Unlock()
@@ -169,17 +160,19 @@ func (m *Manager) wireToolServer(s *engineSession, key string, opts *types.RunOp
 	directive := buildToolAliasDirective(bareNames, backend.McpServerName)
 	appendDirective(opts, directive, bareNames)
 
-	utils.Log("Session", fmt.Sprintf("ToolServer started for CLI backend (%d tools)", len(extTools)))
+	utils.LogWithFields(utils.LevelInfo, "session", "toolserver started for cli backend", map[string]any{"count": len(extTools), "kind": kind})
 }
 
-// wireAgentToolServer registers an ion_agent tool on the ToolServer for CLI
-// backend sessions.
+// wireAgentToolServer registers an ion_agent tool on the ToolServer for a
+// delegated-CLI backend, so the model can dispatch subagents.
 //
-// Under HybridBackend, this only fires when the model resolves to the
-// inner *CliBackend. API-routed hybrid runs expose ion_agent via the
-// in-process agent spawner path (wired in buildRunConfig).
+// Under HybridBackend, this fires when the model resolves to an MCP-capable CLI
+// backend — claude-code or grok/cursor (ACP). codex and API-routed runs are
+// excluded (see mcpCapableCli); API runs expose ion_agent via the in-process
+// agent spawner path (wired in buildRunConfig).
 func (m *Manager) wireAgentToolServer(s *engineSession, key string, opts *types.RunOptions) {
-	if _, isCli := m.resolvedBackend(opts.Model).(*backend.CliBackend); !isCli {
+	kind, ok := mcpCapableCli(m.resolvedBackend(opts.Model))
+	if !ok {
 		return
 	}
 
@@ -204,23 +197,21 @@ func (m *Manager) wireAgentToolServer(s *engineSession, key string, opts *types.
 	// pin test prompt_cli_hooks_agent_schema_test.go guards against
 	// the canonical schema accidentally dropping a property.
 	agentDef := tools.AgentTool()
-	ts.RegisterTool("ion_agent", m.buildAgentToolHandler(s, key),
+	ts.RegisterTool("ion_agent", m.buildAgentToolHandler(s, key, opts.Model),
 		agentDef.Description,
 		agentDef.InputSchema,
 	)
 
 	if needsStart {
 		if err := ts.Start(); err != nil {
-			utils.Log("Session", "ToolServer start failed (agent tool): "+err.Error())
+			utils.LogWithFields(utils.LevelInfo, "session", "toolserver start failed (agent tool)", map[string]any{"error": err.Error()})
 			return
 		}
-		mcpPath, err := ts.McpConfigPath(key)
-		if err != nil {
-			utils.Log("Session", "ToolServer MCP config failed (agent tool): "+err.Error())
+		if err := m.attachToolServerMcp(opts, ts, key, kind); err != nil {
+			utils.LogWithFields(utils.LevelInfo, "session", "toolserver mcp attach failed (agent tool)", map[string]any{"error": err.Error(), "kind": kind})
 			ts.Stop()
 			return
 		}
-		opts.McpConfig = mcpPath
 		m.mu.Lock()
 		s.toolServer = ts
 		m.mu.Unlock()
@@ -230,96 +221,62 @@ func (m *Manager) wireAgentToolServer(s *engineSession, key string, opts *types.
 	directive := buildToolAliasDirective(aliasNames, backend.McpServerName)
 	appendDirective(opts, directive, aliasNames)
 
-	utils.Log("Session", "ion_agent tool registered on ToolServer for CLI backend")
+	utils.LogWithFields(utils.LevelInfo, "session", "ion_agent tool registered on ToolServer for CLI backend", map[string]any{"kind": kind, "key": key})
 }
 
-// buildAgentToolHandler returns a ToolHandler closure that resolves ion agent
-// specs and runs child agents synchronously.
-func (m *Manager) buildAgentToolHandler(s *engineSession, key string) backend.ToolHandler {
+// buildAgentToolHandler returns the ToolHandler for the delegated-CLI
+// ion_agent MCP tool. When the CLI parent's model calls ion_agent, this routes
+// through the SAME depth-0 dispatch as the ApiBackend Agent tool
+// (buildRootAgentSpawner → extcontext.BuildDispatchAgentFunc), so the
+// dispatched agent gets full parity: DispatchRegistry registration,
+// engine_agent_state (it appears in the agent panel), dispatch telemetry, its
+// own tool server (extension tools + a grandchild-capable ion_agent via
+// BuildDelegatedChildToolServer), and spec/persona resolution. Previously this
+// path ran a bare synchronous child that surfaced no agent and was
+// tool-orphaned — the root-model-called gap this closes.
+//
+// parentModel is the CLI run's model, used as the child model fallback (matches
+// the API spawner's capturedModel). The dispatch is foreground/synchronous: the
+// spawner blocks until the child completes, matching the ion_agent tool's
+// synchronous result contract.
+func (m *Manager) buildAgentToolHandler(s *engineSession, key, parentModel string) backend.ToolHandler {
+	spawner := m.buildRootAgentSpawner(s, key, parentModel, s.extGroup)
 	return func(input map[string]interface{}) (*types.ToolResult, error) {
 		prompt, _ := input["prompt"].(string)
 		name, _ := input["name"].(string)
 		description, _ := input["description"].(string)
 		model, _ := input["model"].(string)
 
+		// Trace entry: the model (inside a delegated-CLI subprocess) invoked the
+		// ion_agent MCP tool. If this line is absent for a CLI run, the model
+		// never called the tool; the dispatch path (dispatch_agent.go) logs the
+		// rest of the lifecycle.
+		utils.LogWithFields(utils.LevelInfo, "session.cli_dispatch", "ion_agent tool invoked by CLI model, routing through dispatch", map[string]any{
+			"key": key, "agent": name, "has_prompt": prompt != "", "model": model,
+		})
+
 		if prompt == "" {
+			utils.LogWithFields(utils.LevelWarn, "session.cli_dispatch", "ion_agent invoked with empty prompt, rejecting", map[string]any{"key": key, "agent": name})
 			return &types.ToolResult{Content: "error: prompt is required", IsError: true}, nil
 		}
 
-		// Resolve agent spec by name if provided.
-		var spec types.AgentSpec
-		var specMatched bool
-		if name != "" {
-			if matched, ok := m.resolveAgentSpec(s, key, name); ok {
-				spec = matched
-				specMatched = true
-			}
-			// When resolution fails, continue with an unnamed agent rather
-			// than hard-failing. The model's intent was to parallelize work;
-			// the name was aspirational, not required.
-		}
-
-		// Determine model: explicit > spec > parent config default.
-		childModel := model
-		if childModel == "" && specMatched {
-			childModel = spec.Model
-		}
-		if childModel == "" && m.config != nil {
-			childModel = m.config.DefaultModel
-		}
-
-		cwd := s.config.WorkingDirectory
-
-		runOpts := types.RunOptions{
-			Prompt:      prompt,
-			Model:       childModel,
-			ProjectPath: cwd,
-		}
-		if specMatched {
-			if spec.SystemPrompt != "" {
-				runOpts.AppendSystemPrompt = spec.SystemPrompt
-			}
-			if len(spec.Tools) > 0 {
-				runOpts.AllowedTools = spec.Tools
-			}
-		}
-		if description != "" && !specMatched {
-			runOpts.AppendSystemPrompt = description
-		}
-
-		child := m.newChildBackend()
-		var result string
-		var childErr error
-		var childDone sync.WaitGroup
-		childDone.Add(1)
-
-		child.OnNormalized(func(_ string, ev types.NormalizedEvent) {
-			if tc, ok := ev.Data.(*types.TaskCompleteEvent); ok {
-				result = tc.Result
-			}
-		})
-		child.OnExit(func(_ string, _ *int, _ *string, _ string) {
-			childDone.Done()
-		})
-		child.OnError(func(_ string, err error) {
-			childErr = err
-		})
-
-		childRequestID := fmt.Sprintf("%s-ion-agent-%s-%d", key, name, time.Now().UnixMilli())
-		child.StartRun(childRequestID, runOpts)
-		childDone.Wait()
-
-		if childErr != nil {
-			errParts := []string{"agent"}
+		// The ToolHandler signature carries no context; the dispatch is
+		// cancellable via the DispatchRegistry (session abort / recall), so a
+		// background context here is correct.
+		out, err := spawner(context.Background(), name, prompt, description, s.config.WorkingDirectory, model)
+		if err != nil {
+			utils.LogWithFields(utils.LevelWarn, "session.cli_dispatch", "ion_agent dispatch failed", map[string]any{
+				"key": key, "agent": name, "error": err.Error(),
+			})
+			label := "agent"
 			if name != "" {
-				errParts = append(errParts, name)
+				label = "agent " + name
 			}
-			return &types.ToolResult{
-				Content: fmt.Sprintf("%s failed: %s", strings.Join(errParts, " "), childErr.Error()),
-				IsError: true,
-			}, nil
+			return &types.ToolResult{Content: fmt.Sprintf("%s failed: %s", label, err.Error()), IsError: true}, nil
 		}
-
-		return &types.ToolResult{Content: result, IsError: false}, nil
+		utils.LogWithFields(utils.LevelInfo, "session.cli_dispatch", "ion_agent dispatch completed", map[string]any{
+			"key": key, "agent": name, "result_bytes": len(out),
+		})
+		return &types.ToolResult{Content: out, IsError: false}, nil
 	}
 }

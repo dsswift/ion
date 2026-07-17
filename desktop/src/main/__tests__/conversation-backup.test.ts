@@ -59,7 +59,6 @@ describe('export / restore round-trip', () => {
         labelsFiles: [join(ionHome, 'session-labels-api.json'), join(ionHome, 'session-labels-cli.json')],
       },
       ionVersion: '1.0.0-test',
-      backendSnapshot: 'api',
     })
     expect(exportResult.ok).toBe(true)
     expect(exportResult.conversationCount).toBe(2)
@@ -108,7 +107,6 @@ describe('export / restore round-trip', () => {
         labelsFiles: [],
       },
       ionVersion: '1.0.0-test',
-      backendSnapshot: 'api',
     })
 
     // Replace local files with different content.
@@ -141,7 +139,6 @@ describe('export / restore round-trip', () => {
       destinationPath: zipPath,
       sources: { conversationsDir, tabsFiles: [], chainsFiles: [], labelsFiles: [] },
       ionVersion: '1.0.0-test',
-      backendSnapshot: 'api',
     })
 
     writeConversationFiles('conv-A', { llm: '{"local-changed":true}\n', tree: '{"local-tree-changed":true}\n' })
@@ -167,7 +164,6 @@ describe('export / restore round-trip', () => {
       destinationPath: zipPath,
       sources: { conversationsDir, tabsFiles: [], chainsFiles: [], labelsFiles: [] },
       ionVersion: '1.0.0-test',
-      backendSnapshot: 'api',
     })
 
     writeConversationFiles('conv-A', { llm: '{"local-llm":true}\n', tree: '{"local-tree":true}\n' })
@@ -212,14 +208,14 @@ describe('export / restore round-trip', () => {
         labelsFiles: [],
       },
       ionVersion: '1.2.3-test',
-      backendSnapshot: 'api',
     })
 
     const preview = await previewRestore(zipPath)
     expect(preview.ok).toBe(true)
     expect(preview.manifest?.ionVersion).toBe('1.2.3-test')
     expect(preview.manifest?.scope).toBe('currently-open')
-    expect(preview.manifest?.backendSnapshot).toBe('api')
+    // backendSnapshot is a legacy field; current archives omit it.
+    expect(preview.manifest?.backendSnapshot).toBeUndefined()
   })
 
   it('restoreTabs=false leaves the local tabs file alone', async () => {
@@ -237,7 +233,6 @@ describe('export / restore round-trip', () => {
         labelsFiles: [],
       },
       ionVersion: '1.0.0',
-      backendSnapshot: 'api',
     })
 
     // Change the local tabs file before restoring.
@@ -251,8 +246,9 @@ describe('export / restore round-trip', () => {
     })
 
     const localTabs = JSON.parse(readFileSync(join(ionHome, 'tabs-api.json'), 'utf-8'))
-    // Tabs file was not touched.
+    // Tabs file was not touched, and no unified tabs.json was created either.
     expect(localTabs.tabs).toEqual([{ conversationId: 'conv-Z', title: 'local-only' }])
+    expect(existsSync(join(ionHome, 'tabs.json'))).toBe(false)
   })
 
   it('restoreTabs=true merges backup tabs into local without overwriting existing tab IDs', async () => {
@@ -275,10 +271,13 @@ describe('export / restore round-trip', () => {
         labelsFiles: [],
       },
       ionVersion: '1.0.0',
-      backendSnapshot: 'api',
     })
 
-    writeMetadataFile('tabs-api.json', {
+    // Local state lives in the UNIFIED tabs.json now. The archive above
+    // carries the legacy name (tabs-api.json); restore must merge that entry
+    // into tabs.json — never resurrect a legacy file the loader stopped
+    // reading.
+    writeMetadataFile('tabs.json', {
       tabs: [{ conversationId: 'conv-A', title: 'updated-locally-after-export' }],
     })
 
@@ -289,7 +288,7 @@ describe('export / restore round-trip', () => {
       sources: { conversationsDir, ionHomeDir: ionHome },
     })
 
-    const merged = JSON.parse(readFileSync(join(ionHome, 'tabs-api.json'), 'utf-8'))
+    const merged = JSON.parse(readFileSync(join(ionHome, 'tabs.json'), 'utf-8'))
     // Local conv-A is preserved (not overwritten by backup version).
     const convA = merged.tabs.find((t: any) => t.conversationId === 'conv-A')
     expect(convA.title).toBe('updated-locally-after-export')
@@ -305,18 +304,47 @@ describe('manifest', () => {
     const m = buildManifest({
       scope: 'all',
       conversationCount: 42,
-      backendSnapshot: 'api',
       ionVersion: '1.0.0',
       hostname: 'test-host',
     })
     expect(m.version).toBe(1)
     expect(m.scope).toBe('all')
     expect(m.conversationCount).toBe(42)
-    expect(m.backendSnapshot).toBe('api')
+    // No backendSnapshot: there is no global backend mode to snapshot.
+    expect(m.backendSnapshot).toBeUndefined()
     expect(m.ionVersion).toBe('1.0.0')
     expect(m.hostname).toBe('test-host')
     expect(m.createdBy).toBe('ion-desktop')
     expect(typeof m.createdAt).toBe('string')
+  })
+
+  it('accepts a legacy manifest carrying backendSnapshot and preserves it', () => {
+    const result = validateManifest({
+      version: 1,
+      createdAt: '2026-06-08T00:00:00Z',
+      createdBy: 'ion-desktop',
+      ionVersion: '1.0',
+      scope: 'all',
+      conversationCount: 1,
+      backendSnapshot: 'cli',
+      hostname: 'host',
+    })
+    expect(typeof result).not.toBe('string')
+    if (typeof result !== 'string') expect(result.backendSnapshot).toBe('cli')
+  })
+
+  it('rejects a malformed backendSnapshot value', () => {
+    const result = validateManifest({
+      version: 1,
+      createdAt: '2026-06-08T00:00:00Z',
+      createdBy: 'ion-desktop',
+      ionVersion: '1.0',
+      scope: 'all',
+      conversationCount: 1,
+      backendSnapshot: 'hybrid',
+      hostname: 'host',
+    })
+    expect(typeof result).toBe('string')
   })
 
   it('rejects manifest with unsupported version', () => {
@@ -327,7 +355,6 @@ describe('manifest', () => {
       ionVersion: '1.0',
       scope: 'all',
       conversationCount: 1,
-      backendSnapshot: 'api',
       hostname: 'host',
     })
     expect(typeof result).toBe('string')
@@ -350,7 +377,6 @@ describe('manifest', () => {
       ionVersion: '1.0.0',
       scope: 'all',
       conversationCount: 7,
-      backendSnapshot: 'cli',
       hostname: 'mac-mini',
     })
     expect(typeof result).toBe('object')

@@ -6,7 +6,7 @@ import type { useColors } from '../theme'
 import type { TabState } from '../../shared/types'
 import type { ConversationPane, StatusFields } from '../../shared/types-engine'
 import { activeInstance } from '../stores/conversation-instance'
-import { tabHasExtensions } from '../../shared/tab-predicates'
+import { tabHasExtensions as _tabHasExtensions } from '../../shared/tab-predicates'
 import { computeAnchoredPosition } from './tabstrip-anchored-position'
 export { computeAnchoredPosition } from './tabstrip-anchored-position'
 export { tabHasExtensions } from '../../shared/tab-predicates'
@@ -217,7 +217,9 @@ export function useAnchoredPopoverPosition(
     // We intentionally include `anchor.x` / `anchor.y` rather than the
     // object identity so a parent that reconstructs `anchor` each
     // render doesn't cause a measurement storm. `parentRect` is
-    // similarly destructured.
+    // similarly destructured. The spread `...deps` is intentional —
+    // callers pass additional dependencies that are statically unknown
+    // here; the spread is the correct mechanism for that pattern.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     anchor.x,
@@ -230,6 +232,7 @@ export function useAnchoredPopoverPosition(
     parentRect?.right,
     parentRect?.top,
     parentRect?.bottom,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     ...deps,
   ])
 
@@ -470,11 +473,25 @@ export function abbreviateProfileName(name: string | null | undefined): string {
   return trimmed.slice(0, 8).toUpperCase()
 }
 
-/** Status-dot color/pulse/glow derived from a tab's runtime state. Used by both single dots and stacked group dots. */
+// ─── Status-color priority table ───────────────────────────────────────────
+//
+// A single numeric `priority` is attached to each `getTabStatusColor` return
+// value so `getGroupStatusColor` (TabStripGroupStatus.ts) can fold across all
+// tabs in a group without reimplementing the same cascade. Higher number wins.
+// Inlined as numeric literals to keep TabStripGroupStatus.ts as a one-way
+// consumer (avoids a circular import). Named constants are in TabStripGroupStatus.ts.
+//
+//   8=error 7=permission 6=running 5=children 4=plan-ready 3=question 2=bash 1=unread 0=idle
+
+/** Status-dot color/pulse/glow derived from a tab's runtime state.
+ *
+ *  The returned `priority` field lets `getGroupStatusColor` fold across
+ *  all tabs in a group using the same single ranking, eliminating a
+ *  parallel inline cascade. Higher priority wins. */
 export function getTabStatusColor(
   tab: TabState,
   colors: ReturnType<typeof useColors>,
-): { bg: string; pulse: boolean; glow: boolean; glowColor: string } {
+): { bg: string; pulse: boolean; glow: boolean; glowColor: string; priority: number } {
   let bg = colors.statusIdle
   let pulse = false
   let glow = false
@@ -483,24 +500,23 @@ export function getTabStatusColor(
   // Both waiting-state and the permission queue now live on the tab's
   // active ConversationInstance in conversationPanes (the `tab.permissionDenied`
   // / `tab.permissionQueue` fields are gone). Read the store directly here:
-  // this is a non-reactive helper, but its only React caller
-  // (StackedStatusDots inside GroupPill) re-renders on conversationPanes identity
-  // changes via GroupPill's `s.conversationPanes` subscription, so the read is
-  // consistent at render time.
+  // this is a non-reactive helper; its callers re-render on conversationPanes
+  // identity changes via their `s.conversationPanes` subscriptions, so the
+  // read is consistent at render time.
   const conversationPanes = useSessionStore.getState().conversationPanes
   const inst = activeInstance(conversationPanes, tab.id)
   const permissionQueueLength = inst?.permissionQueue.length ?? 0
 
   const waitingState = getWaitingState(tab, conversationPanes)
 
+  let priority: number
+
   if (tab.status === 'dead' || tab.status === 'failed') {
     bg = colors.statusError
+    priority = 8 // STATUS_PRIORITY_ERROR
   } else if (permissionQueueLength > 0) {
     bg = colors.statusPermission; glow = true
-  } else if (waitingState === 'plan-ready') {
-    bg = colors.statusComplete; glow = true; glowColor = colors.tabGlowPlanReady
-  } else if (waitingState === 'question') {
-    bg = colors.infoText; glow = true; glowColor = colors.tabGlowQuestion
+    priority = 7 // STATUS_PRIORITY_PERMISSION
   } else if (tab.status === 'connecting' || tab.status === 'running' || isAnyEngineInstanceRunning(tab.id)) {
     // Orange "foreground running" wins over yellow "background only" —
     // the orchestrator's own activity is the strongest signal. Yellow
@@ -509,21 +525,43 @@ export function getTabStatusColor(
     // instance fold runs for every tab (a plain conversation with background
     // agents qualifies too), so no tab-type guard.
     bg = colors.statusRunning; pulse = true
+    priority = 6 // STATUS_PRIORITY_RUNNING
   } else if (anyEngineInstanceHasRunningChildren(tab.id)) {
     // Yellow "awaiting children" — orchestrator idle, dispatched
     // background agents still running. Visually distinct from the
     // orange running state so users can tell at a glance whether
     // foreground or background work is in flight. Glow uses the
     // matching amber tint so the rim around the pill stays in palette.
+    // Outranks plan-ready: active background work is a stronger signal
+    // than a passive "waiting on you" state.
     bg = colors.statusWaitingChildren; pulse = true; glow = true; glowColor = colors.statusWaitingChildrenGlow
+    priority = 5 // STATUS_PRIORITY_CHILDREN
+  } else if (waitingState === 'plan-ready') {
+    bg = colors.statusComplete; glow = true; glowColor = colors.tabGlowPlanReady
+    priority = 4 // STATUS_PRIORITY_PLAN_READY
+  } else if (waitingState === 'question') {
+    bg = colors.infoText; glow = true; glowColor = colors.tabGlowQuestion
+    priority = 3 // STATUS_PRIORITY_QUESTION
   } else if (tab.bashExecuting) {
     bg = colors.statusBash; pulse = true; glow = true; glowColor = colors.statusBashGlow
+    priority = 2 // STATUS_PRIORITY_BASH
   } else if (tab.hasUnread) {
     bg = colors.statusComplete
+    priority = 1 // STATUS_PRIORITY_UNREAD
+  } else {
+    priority = 0 // STATUS_PRIORITY_IDLE
   }
 
-  return { bg, pulse, glow, glowColor }
+  return { bg, pulse, glow, glowColor, priority }
 }
+
+/**
+ * Derive the highest-priority status dot for a group of tabs.
+ *
+ * Re-exported from TabStripGroupStatus.ts (extracted to keep TabStripShared.ts
+ * under the 600-line cap). Consumers import from here as usual.
+ */
+export { getGroupStatusColor } from './TabStripGroupStatus'
 
 /** Model-fallback fact stored per engine instance. */
 export interface TabModelFallback {

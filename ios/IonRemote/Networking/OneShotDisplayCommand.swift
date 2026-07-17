@@ -63,7 +63,10 @@ enum OneShotDisplayCommand {
     ) async throws -> RemoteDisplayAck {
         let updatedAtMs = Int(updatedAt.timeIntervalSince1970 * 1000)
         let deviceIdShort = device.id.prefix(8)
-        DiagnosticLog.log("ONESHOT-DISPLAY: start device=\(deviceIdShort) ts=\(updatedAtMs)")
+        DiagnosticLog.log("oneshot display start", tag: "oneshot.display", fields: [
+            "device_id": String(deviceIdShort),
+            "ts": String(updatedAtMs)
+        ])
 
         // ── Build the transient transport ────────────────────────────────
         let sharedKey = SymmetricKey(data: device.sharedSecret)
@@ -80,10 +83,17 @@ enum OneShotDisplayCommand {
             guard let url = URL(string: effectiveRelayURL),
                   let host = url.host(percentEncoded: false),
                   let port = url.port else {
-                DiagnosticLog.log("ONESHOT-DISPLAY: invalid LAN URL device=\(deviceIdShort) url=\(effectiveRelayURL)")
+                DiagnosticLog.log("oneshot display invalid lan url", tag: "oneshot.display", level: .warn, fields: [
+                    "device_id": String(deviceIdShort),
+                    "url": effectiveRelayURL
+                ])
                 throw OneShotDisplayError.invalidRelayURL
             }
-            DiagnosticLog.log("ONESHOT-DISPLAY: LAN-direct device=\(deviceIdShort) host=\(host):\(port)")
+            DiagnosticLog.log("oneshot display lan-direct", tag: "oneshot.display", fields: [
+                "device_id": String(deviceIdShort),
+                "host": host,
+                "port": String(port)
+            ])
             tm = TransportManager(sharedKey: sharedKey, deviceId: device.id)
             tm.deviceName = device.name
             isLANOnly = true
@@ -91,11 +101,18 @@ enum OneShotDisplayCommand {
             lanPort = UInt16(port)
         } else {
             guard !effectiveRelayURL.isEmpty, let url = URL(string: effectiveRelayURL) else {
-                DiagnosticLog.log("ONESHOT-DISPLAY: invalid relay URL device=\(deviceIdShort) url=\(effectiveRelayURL)")
+                DiagnosticLog.log("oneshot display invalid relay url", tag: "oneshot.display", level: .warn, fields: [
+                    "device_id": String(deviceIdShort),
+                    "url": effectiveRelayURL
+                ])
                 throw OneShotDisplayError.invalidRelayURL
             }
             let channelId = E2ECrypto.deriveChannelId(sharedSecret: sharedKey)
-            DiagnosticLog.log("ONESHOT-DISPLAY: relay device=\(deviceIdShort) url=\(effectiveRelayURL) ch=\(channelId.prefix(8))")
+            DiagnosticLog.log("oneshot display relay", tag: "oneshot.display", fields: [
+                "device_id": String(deviceIdShort),
+                "url": effectiveRelayURL,
+                "channel_id": String(channelId.prefix(8))
+            ])
             tm = TransportManager(
                 relayURL: url,
                 apiKey: effectiveAPIKey,
@@ -110,15 +127,23 @@ enum OneShotDisplayCommand {
 
         // Guarantee teardown regardless of which branch we exit on.
         defer {
-            DiagnosticLog.log("ONESHOT-DISPLAY: stop device=\(deviceIdShort)")
+            DiagnosticLog.log("oneshot display stop", tag: "oneshot.display", fields: [
+                "device_id": String(deviceIdShort)
+            ])
             tm.stop()
         }
 
         // ── Bring the transport up ───────────────────────────────────────
         if isLANOnly, let host = lanHost, let port = lanPort {
-            let authed = await tm.startLANWithAuth(host: host, port: port)
-            if !authed {
-                DiagnosticLog.log("ONESHOT-DISPLAY: LAN auth failed device=\(deviceIdShort)")
+            // One-shot semantics: any non-success outcome (rejected or
+            // transient) means this write can't be delivered right now — the
+            // caller reverts the optimistic update either way, so no retry
+            // or outcome-specific handling is needed here.
+            let outcome = await tm.startLANWithAuth(host: host, port: port)
+            if outcome != .success {
+                DiagnosticLog.log("oneshot display lan auth failed", tag: "oneshot.display", level: .warn, fields: [
+                    "device_id": String(deviceIdShort)
+                ])
                 throw OneShotDisplayError.unreachable
             }
         } else {
@@ -131,10 +156,16 @@ enum OneShotDisplayCommand {
                 try? await Task.sleep(for: .milliseconds(100))
             }
             if tm.state == .disconnected {
-                DiagnosticLog.log("ONESHOT-DISPLAY: connect timeout device=\(deviceIdShort) state=disconnected")
+                DiagnosticLog.log("oneshot display connect timeout", tag: "oneshot.display", level: .warn, fields: [
+                    "device_id": String(deviceIdShort),
+                    "state": "disconnected"
+                ])
                 throw OneShotDisplayError.unreachable
             }
-            DiagnosticLog.log("ONESHOT-DISPLAY: connected device=\(deviceIdShort) state=\(tm.state.rawValue)")
+            DiagnosticLog.log("oneshot display connected", tag: "oneshot.display", fields: [
+                "device_id": String(deviceIdShort),
+                "state": tm.state.rawValue
+            ])
         }
 
         // ── Send the command and listen for the ack ──────────────────────
@@ -155,14 +186,21 @@ enum OneShotDisplayCommand {
                 for await event in tm.events {
                     if case .remoteDisplay(let cn, let ci, let serverTs) = event {
                         let serverMs = Int(serverTs.timeIntervalSince1970 * 1000)
-                        DiagnosticLog.log("ONESHOT-DISPLAY: ack device=\(deviceIdShort) name=\(cn == nil ? "cleared" : "set") icon=\(ci ?? "cleared") serverTs=\(serverMs)")
+                        DiagnosticLog.log("oneshot display ack", tag: "oneshot.display", fields: [
+                            "device_id": String(deviceIdShort),
+                            "name": cn == nil ? "cleared" : "set",
+                            "icon": ci ?? "cleared",
+                            "server_ts": String(serverMs)
+                        ])
                         return RemoteDisplayAck(customName: cn, customIcon: ci, updatedAt: serverTs)
                     }
                     // Other events on this transient transport are ignored;
                     // the desktop typically also sends a heartbeat. We just
                     // wait for the one event we care about.
                 }
-                DiagnosticLog.log("ONESHOT-DISPLAY: event stream ended without ack device=\(deviceIdShort)")
+                DiagnosticLog.log("oneshot display stream ended without ack", tag: "oneshot.display", level: .warn, fields: [
+                    "device_id": String(deviceIdShort)
+                ])
                 throw OneShotDisplayError.ackMissing
             }
 
@@ -170,7 +208,10 @@ enum OneShotDisplayCommand {
             group.addTask {
                 try? await Task.sleep(for: ackTimeout)
                 if Task.isCancelled { throw OneShotDisplayError.timeout }
-                DiagnosticLog.log("ONESHOT-DISPLAY: timeout device=\(deviceIdShort) after=\(ackTimeout)")
+                DiagnosticLog.log("oneshot display timeout", tag: "oneshot.display", level: .warn, fields: [
+                    "device_id": String(deviceIdShort),
+                    "after": String(describing: ackTimeout)
+                ])
                 throw OneShotDisplayError.timeout
             }
 
@@ -179,9 +220,14 @@ enum OneShotDisplayCommand {
             // both the listener and the timeout.
             do {
                 try await tm.send(command)
-                DiagnosticLog.log("ONESHOT-DISPLAY: command sent device=\(deviceIdShort)")
+                DiagnosticLog.log("oneshot display command sent", tag: "oneshot.display", fields: [
+                    "device_id": String(deviceIdShort)
+                ])
             } catch {
-                DiagnosticLog.log("ONESHOT-DISPLAY: send error device=\(deviceIdShort) err=\(error.localizedDescription)")
+                DiagnosticLog.log("oneshot display send error", tag: "oneshot.display", level: .error, fields: [
+                    "device_id": String(deviceIdShort),
+                    "error": error.localizedDescription
+                ])
                 group.cancelAll()
                 throw OneShotDisplayError.underlying(error)
             }

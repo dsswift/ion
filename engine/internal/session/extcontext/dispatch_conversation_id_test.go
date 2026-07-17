@@ -10,6 +10,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/resource"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -18,6 +19,7 @@ import (
 // reason. It lets the test observe what conversationId the agent metadata holds
 // at the instant each snapshot fires — proving the id is populated mid-run.
 type convIDRecordingAccessor struct {
+	noopPluginMethods
 	child backend.RunBackend
 
 	mu sync.Mutex
@@ -36,6 +38,7 @@ type snapshotSample struct {
 }
 
 func (a *convIDRecordingAccessor) NewChildBackend() backend.RunBackend { return a.child }
+func (a *convIDRecordingAccessor) AllocatePlanFilePath() string        { return "/tmp/.ion/plans/plan.md" }
 func (a *convIDRecordingAccessor) RootContext() context.Context        { return context.Background() }
 
 func (a *convIDRecordingAccessor) AppendOrUpdateAgentState(s types.AgentStateUpdate) string {
@@ -55,6 +58,22 @@ func (a *convIDRecordingAccessor) UpdateAgentStateByID(id string, updater func(*
 	st, ok := a.state[id]
 	if !ok {
 		return
+	}
+	updater(st)
+}
+
+func (a *convIDRecordingAccessor) UpsertAgentStateByID(id string, seed types.AgentStateUpdate, updater func(*types.AgentStateUpdate)) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.state == nil {
+		a.state = map[string]*types.AgentStateUpdate{}
+	}
+	st, ok := a.state[id]
+	if !ok {
+		cp := seed
+		cp.ID = id
+		a.state[id] = &cp
+		st = a.state[id]
 	}
 	updater(st)
 }
@@ -110,11 +129,14 @@ func (a *convIDRecordingAccessor) BumpParentProgress()              {}
 func (a *convIDRecordingAccessor) EmitDispatchCountStatus(_ string) {}
 
 func (a *convIDRecordingAccessor) SessionKey() string                       { return "convid-test-session" }
+func (a *convIDRecordingAccessor) ExtensionName() string    { return "" }
+func (a *convIDRecordingAccessor) ExtensionVersion() string { return "" }
 func (a *convIDRecordingAccessor) ConversationID() string                   { return "" }
 func (a *convIDRecordingAccessor) WorkingDirectory() string                 { return "/tmp" }
 func (a *convIDRecordingAccessor) Emit(_ types.EngineEvent)                 {}
 func (a *convIDRecordingAccessor) SendAbort()                               {}
-func (a *convIDRecordingAccessor) SendPrompt(_, _ string, _ []string) error { return nil }
+func (a *convIDRecordingAccessor) SendPrompt(_, _ string, _ []string) error                 { return nil }
+func (a *convIDRecordingAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error { return nil }
 func (a *convIDRecordingAccessor) SteerSelfMainLoop(_ string) bool          { return false }
 func (a *convIDRecordingAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
@@ -133,6 +155,8 @@ func (a *convIDRecordingAccessor) ExtGroup() *extension.ExtensionGroup      { re
 func (a *convIDRecordingAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
 func (a *convIDRecordingAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
 func (a *convIDRecordingAccessor) EngineConfig() *types.EngineRuntimeConfig { return nil }
+func (a *convIDRecordingAccessor) ClaudeCompat() bool { return false }
+func (a *convIDRecordingAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
 func (a *convIDRecordingAccessor) ResolveTier(_ string) string              { return "" }
 func (a *convIDRecordingAccessor) PermissionCheck(_ string, _ map[string]interface{}) (string, string) {
 	return "", ""
@@ -154,8 +178,14 @@ func (a *convIDRecordingAccessor) ListAllSessions() []extension.SessionListEntry
 func (a *convIDRecordingAccessor) SendToSession(_, _, _ string, _ map[string]interface{}) error {
 	return nil
 }
+
+func (a *convIDRecordingAccessor) FireSchedule(_, _ string) error { return nil }
+func (a *convIDRecordingAccessor) GetScheduleStatus(_, _ string) ([]extension.ScheduleStatusEntry, error) {
+	return nil, nil
+}
 func (a *convIDRecordingAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
 func (a *convIDRecordingAccessor) RunOnceComplete(_ string, _ bool)              {}
+func (a *convIDRecordingAccessor) Telemetry() *telemetry.Collector { return nil }
 
 // allConversationIDs returns every conversationIds slice across all agent
 // state entries (not just the first hit). Used by the re-dispatch test to
@@ -208,6 +238,14 @@ func (d *initThenWorkChildBackend) Cancel(string) bool                     { ret
 func (d *initThenWorkChildBackend) IsRunning(string) bool                  { return false }
 func (d *initThenWorkChildBackend) WriteToStdin(string, interface{}) error { return nil }
 func (d *initThenWorkChildBackend) FlushConversations()                    {}
+func (d *initThenWorkChildBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:         "mock",
+		ContextModel: backend.ContextModelEngineOwned,
+		PlanMode:     true,
+		Steering:     true,
+	}
+}
 
 func (d *initThenWorkChildBackend) StartRun(requestID string, _ types.RunOptions) {
 	d.mu.Lock()
@@ -360,6 +398,14 @@ func (d *requestIDEchoChildBackend) Cancel(string) bool                     { re
 func (d *requestIDEchoChildBackend) IsRunning(string) bool                  { return false }
 func (d *requestIDEchoChildBackend) WriteToStdin(string, interface{}) error { return nil }
 func (d *requestIDEchoChildBackend) FlushConversations()                    {}
+func (d *requestIDEchoChildBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:         "mock",
+		ContextModel: backend.ContextModelEngineOwned,
+		PlanMode:     true,
+		Steering:     true,
+	}
+}
 
 func (d *requestIDEchoChildBackend) StartRun(requestID string, _ types.RunOptions) {
 	d.mu.Lock()

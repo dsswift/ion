@@ -8,13 +8,13 @@
  *     loadPersistedSettings (hydrate) round-trip.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 
 // Mock window.ion before importing preferences.
-let savedSettings: Record<string, unknown> | null = null
+let _savedSettings: Record<string, unknown> | null = null
 
 const mockIon = {
-  saveSettings: vi.fn((s: Record<string, unknown>) => { savedSettings = s }),
+  saveSettings: vi.fn((s: Record<string, unknown>) => { _savedSettings = s }),
   loadSettings: vi.fn(() => Promise.resolve(null)),
   listFonts: vi.fn(() => Promise.resolve([])),
 }

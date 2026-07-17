@@ -1,7 +1,6 @@
 package session
 
 import (
-	"fmt"
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
@@ -28,7 +27,7 @@ const (
 	// next drainSteer checkpoint in the run loop.
 	SteerDelivered
 	// SteerDeliveredViaStdin: the steer was written to the backend's stdin
-	// pipe (CliBackend / hybrid CLI-routed runs).
+	// pipe (ClaudeCodeBackend / hybrid CLI-routed runs).
 	SteerDeliveredViaStdin
 	// SteerDeliveredToAgent: a named (non-main-loop) agent received the steer
 	// over its stdin-write handle.
@@ -116,7 +115,7 @@ func (m *Manager) AbortAgent(key, agentName string, subtree bool) {
 // steerable is a local interface satisfied by any backend that can steer
 // a running agent loop via an in-process message rather than the stdin
 // pipe. Both *backend.ApiBackend and *backend.HybridBackend implement it.
-// CliBackend does not — its runs are steered via WriteToStdin (the
+// ClaudeCodeBackend does not — its runs are steered via WriteToStdin (the
 // stream-json stdin pipe of the Claude Code subprocess).
 //
 // SteerWithReason returns a typed backend.SteerResult so the session layer can
@@ -140,18 +139,13 @@ type steerable interface {
 // delivered vanished without a trace. Every branch logs the attempt and its
 // outcome (engine-grounding §7).
 func (m *Manager) SteerAgent(key, agentName, message string) SteerOutcome {
-	utils.Info("Session", fmt.Sprintf(
-		"SteerAgent: attempt key=%s agent=%q msgLen=%d", key, agentName, len(message),
-	))
+	utils.LogWithFields(utils.LevelInfo, "session", "steeragent: attempt", map[string]any{"session_id": key, "agent_name": agentName, "count": len(message)})
 
 	m.mu.RLock()
 	s, ok := m.sessions[key]
 	if !ok {
 		m.mu.RUnlock()
-		utils.Warn("Session", fmt.Sprintf(
-			"SteerAgent: rejected, no such session key=%s agent=%q msgLen=%d outcome=%s",
-			key, agentName, len(message), SteerRejectedNoRun,
-		))
+		utils.LogWithFields(utils.LevelWarn, "session", "steeragent: rejected, no such session", map[string]any{"session_id": key, "agent_name": agentName, "count": len(message), "steer_rejected_no_run": SteerRejectedNoRun})
 		return SteerRejectedNoRun
 	}
 
@@ -160,10 +154,7 @@ func (m *Manager) SteerAgent(key, agentName, message string) SteerOutcome {
 		rid := s.requestID
 		m.mu.RUnlock()
 		if rid == "" {
-			utils.Warn("Session", fmt.Sprintf(
-				"SteerAgent: rejected, no active run for main loop key=%s msgLen=%d outcome=%s",
-				key, len(message), SteerRejectedNoRun,
-			))
+			utils.LogWithFields(utils.LevelWarn, "session", "steeragent: rejected, no active run for main loop", map[string]any{"session_id": key, "count": len(message), "steer_rejected_no_run": SteerRejectedNoRun})
 			return SteerRejectedNoRun
 		}
 		// Try the in-process steer path first (ApiBackend / HybridBackend's
@@ -174,35 +165,24 @@ func (m *Manager) SteerAgent(key, agentName, message string) SteerOutcome {
 		if steer, ok := m.backend.(steerable); ok {
 			switch res := steer.SteerWithReason(rid, message); res {
 			case backend.SteerResultDelivered:
-				utils.Info("Session", fmt.Sprintf(
-					"SteerAgent: delivered to main loop via channel key=%s runID=%s msgLen=%d outcome=%s",
-					key, rid, len(message), SteerDelivered,
-				))
+				utils.LogWithFields(utils.LevelInfo, "session", "steeragent: delivered to main loop via channel", map[string]any{"session_id": key, "rid": rid, "count": len(message), "steer_delivered": SteerDelivered})
 				return SteerDelivered
 			case backend.SteerResultChannelFull:
 				// A live API-backed run whose steer buffer is full after a
 				// reasonable buffer. This is a genuine, loud rejection — do
 				// NOT fall through to stdin (a no-op for ApiBackend) and
 				// silently drop it.
-				utils.Warn("Session", fmt.Sprintf(
-					"SteerAgent: rejected, steer channel full key=%s runID=%s msgLen=%d outcome=%s",
-					key, rid, len(message), SteerRejectedChannelFull,
-				))
+				utils.LogWithFields(utils.LevelWarn, "session", "steeragent: rejected, steer channel full", map[string]any{"session_id": key, "rid": rid, "count": len(message), "steer_rejected_channel_full": SteerRejectedChannelFull})
 				return SteerRejectedChannelFull
 			default:
 				// SteerResultNoRun: not API-routed (CLI/hybrid-CLI) or the
 				// backend's run map disclaims the id. Fall through to stdin.
-				utils.Info("Session", fmt.Sprintf(
-					"SteerAgent: backend not API-steerable (result=%s), falling back to stdin key=%s runID=%s",
-					res, key, rid,
-				))
+				utils.LogWithFields(utils.LevelInfo, "session", "steeragent: backend not api-steerable (), falling back to stdin", map[string]any{"res": res, "session_id": key, "rid": rid})
 			}
 		} else {
-			utils.Info("Session", fmt.Sprintf(
-				"SteerAgent: backend does not implement steerable, using stdin path key=%s runID=%s", key, rid,
-			))
+			utils.LogWithFields(utils.LevelInfo, "session", "steeragent: backend does not implement steerable, using stdin path", map[string]any{"session_id": key, "rid": rid})
 		}
-		// CliBackend (or hybrid CLI-routed): write follow-up message over
+		// ClaudeCodeBackend (or hybrid CLI-routed): write follow-up message over
 		// stdin pipe of the Claude Code subprocess.
 		stdinMsg := map[string]interface{}{
 			"type": "user",
@@ -214,40 +194,25 @@ func (m *Manager) SteerAgent(key, agentName, message string) SteerOutcome {
 			},
 		}
 		if err := m.backend.WriteToStdin(rid, stdinMsg); err != nil {
-			utils.Warn("Session", fmt.Sprintf(
-				"SteerAgent: stdin write failed key=%s runID=%s msgLen=%d err=%s outcome=%s",
-				key, rid, len(message), err.Error(), SteerRejectedNoRun,
-			))
+			utils.LogWithFields(utils.LevelWarn, "session", "steeragent: stdin write failed", map[string]any{"session_id": key, "rid": rid, "count": len(message), "error": err.Error(), "steer_rejected_no_run": SteerRejectedNoRun})
 			return SteerRejectedNoRun
 		}
-		utils.Info("Session", fmt.Sprintf(
-			"SteerAgent: delivered to main loop via stdin key=%s runID=%s msgLen=%d outcome=%s",
-			key, rid, len(message), SteerDeliveredViaStdin,
-		))
+		utils.LogWithFields(utils.LevelInfo, "session", "steeragent: delivered to main loop via stdin", map[string]any{"session_id": key, "rid": rid, "count": len(message), "steer_delivered_via_stdin": SteerDeliveredViaStdin})
 		return SteerDeliveredViaStdin
 	}
 	m.mu.RUnlock()
 
 	handle, exists := s.agents.LookupHandle(agentName)
 	if !exists {
-		utils.Warn("Session", fmt.Sprintf(
-			"SteerAgent: rejected, no such agent key=%s agent=%q msgLen=%d outcome=%s",
-			key, agentName, len(message), SteerRejectedNoRun,
-		))
+		utils.LogWithFields(utils.LevelWarn, "session", "steeragent: rejected, no such agent", map[string]any{"session_id": key, "agent_name": agentName, "count": len(message), "steer_rejected_no_run": SteerRejectedNoRun})
 		return SteerRejectedNoRun
 	}
 	if handle.StdinWrite == nil {
-		utils.Warn("Session", fmt.Sprintf(
-			"SteerAgent: rejected, agent has no stdin-write handle key=%s agent=%q msgLen=%d outcome=%s",
-			key, agentName, len(message), SteerRejectedNoRun,
-		))
+		utils.LogWithFields(utils.LevelWarn, "session", "steeragent: rejected, agent has no stdin-write handle", map[string]any{"session_id": key, "agent_name": agentName, "count": len(message), "steer_rejected_no_run": SteerRejectedNoRun})
 		return SteerRejectedNoRun
 	}
 	handle.StdinWrite(message)
-	utils.Info("Session", fmt.Sprintf(
-		"SteerAgent: delivered to agent stdin key=%s agent=%q msgLen=%d outcome=%s",
-		key, agentName, len(message), SteerDeliveredToAgent,
-	))
+	utils.LogWithFields(utils.LevelInfo, "session", "steeragent: delivered to agent stdin", map[string]any{"session_id": key, "agent_name": agentName, "count": len(message), "steer_delivered_to_agent": SteerDeliveredToAgent})
 	return SteerDeliveredToAgent
 }
 

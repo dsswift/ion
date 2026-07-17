@@ -5,10 +5,11 @@ import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId, totalInputTokens } from '../session-store-helpers'
 import { formatSteerAppliedDivider } from '../../../shared/clear-divider'
-import { buildCompactionMarkerContent } from '../../../shared/compaction-marker'
+import { buildCompactionMarkerContent, buildManualCompactionNoOpNotice } from '../../../shared/compaction-marker'
 import { captureSessionInitId } from './session-init-capture'
 import { activeInstance, commitInstance } from '../conversation-instance'
 import { handleThinkingEvent, discardActiveThinking } from './event-slice-thinking'
+import { attachImageToMessages } from './event-slice-images'
 import { handleCrossNormalizedEvent } from './engine-event-slice-messages'
 import { maybeScheduleDoneMove } from './event-slice-done-move'
 import { maybeScheduleRunningMove } from './event-slice-running-move'
@@ -18,6 +19,7 @@ import { buildDispatchStartEntry, applyDispatchEnd } from './engine-event-slice-
 import { maybeApplyPlanModeGroupMove } from './event-slice-plan-mode-move'
 import { handleTaskEvent } from './event-slice-task'
 import { handleErrorAction } from './event-slice-error'
+import { rTrace, rWarn } from '../../rendererLogger'
 
 /** Compact a multi-line message into a single ~80-char preview for the tab strip. */
 function formatMessagePreview(content: string): string {
@@ -178,8 +180,11 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                 // Insert a compaction marker message so the user can see when
                 // compaction happened. The shared builder returns null for a
                 // pure no-op and omits the misleading "N → N messages" segment
-                // on a micro-only pass.
-                const markerContent = buildCompactionMarkerContent(event)
+                // on a micro-only pass. For a MANUAL (/compact) no-op, fall
+                // back to an explicit "nothing to compact" notice so the user
+                // gets feedback instead of silence (which reads as a crash).
+                const markerContent =
+                  buildCompactionMarkerContent(event) ?? buildManualCompactionNoOpNotice(event)
                 if (markerContent !== null) {
                   messages = [
                     ...messages,
@@ -213,11 +218,38 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               ]
               break
 
+            case 'prompt_injected':
+              // Extension-injected prompt (engine ctx.sendPrompt — dispatch
+              // completion delivery, check-ins, revives): no client submitted
+              // this turn, so no optimistic insert happened anywhere. Append
+              // it as the user turn it is — the same content is persisted in
+              // the conversation file, so a rehydrate shows the identical
+              // transcript (this closes the "ATV shows [Agent X completed]
+              // turns the overlay never displayed" divergence).
+              //
+              // Exception: kind="agent_completion" means this is a machine-to-
+              // machine dispatch callback (a child agent's result being routed
+              // back to its parent agent). These are internal signals, not user-
+              // authored turns. Do NOT render them as user bubbles — they
+              // should never appear in the visible conversation stream.
+              if (event.kind !== 'agent_completion') {
+                messages = [
+                  ...messages,
+                  { id: nextMsgId(), role: 'user' as const, content: event.prompt, timestamp: Date.now() },
+                ]
+              }
+              break
+
             case 'text_chunk': {
-              console.debug(`[DIAG] text_chunk: tab=${tabId} instance=main len=${(event as any).text?.length} prev_msg_len=${messages[messages.length - 1]?.content?.length ?? 'N/A'}`)
+              rTrace('event.stream', 'text_chunk', { tab_id: tabId, len: (event as any).text?.length })
               updated.currentActivity = 'Writing...'
               const lastMsg = messages[messages.length - 1]
-              if (lastMsg?.role === 'assistant' && !lastMsg.toolName) {
+              // A `sealed` row was closed by message_end — the next chunk is
+              // a NEW assistant message, not a continuation. Appending across
+              // the seal merged separate persisted assistant entries into one
+              // paragraph live, so a later history hydration (one row per
+              // entry text block) rendered a different transcript shape.
+              if (lastMsg?.role === 'assistant' && !lastMsg.toolName && !lastMsg.sealed) {
                 messages = [
                   ...messages.slice(0, -1),
                   { ...lastMsg, content: lastMsg.content + event.text },
@@ -236,7 +268,11 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               messages = [
                 ...messages,
                 {
-                  id: nextMsgId(),
+                  // Tool rows are keyed by the engine tool id — the identity
+                  // history reloads (SessionLoadMessage.toolId) and every
+                  // other client share. Unique per conversation; the local
+                  // counter is only a guard against an empty id.
+                  id: event.toolId || nextMsgId(),
                   role: 'tool',
                   content: '',
                   toolName: event.toolName,
@@ -287,6 +323,15 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                 }
               }
               messages = msgs3
+              break
+            }
+
+            case 'image_content': {
+              // Engine-generated image (tool-returned or provider-generated).
+              // The engine saved the bytes to disk and gave us a file path;
+              // attach it to the right message so it renders inline and appears
+              // in the attachments panel. Dedup is handled inside the helper.
+              messages = attachImageToMessages(messages, event)
               break
             }
 
@@ -402,6 +447,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
             case 'plan_mode_auto_exit':
             case 'model_fallback':
+            case 'capability_unsupported':
             case 'agent_state':
             case 'status':
             case 'harness_message':
@@ -479,6 +525,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                   cacheCreationTokens: event.cacheCreationTokens,
                   model: event.model ?? '',
                   aggregateCostUsd: event.aggregateCostUsd,
+                  modelBreakdown: event.modelBreakdown,
                 },
               }
               // Mirror the authoritative contextWindow from the breakdown onto the
@@ -536,7 +583,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
     handleStatusChange: (tabId, newStatus) => {
       if (newStatus === 'dead') {
-        console.warn(`[Ion] handleStatusChange: tab=${tabId} status=dead`)
+        rWarn('event.session', 'tab status dead', { tab_id: tabId })
       }
       set((s) => {
         // Capture the PRE-transition status: the auto-move-to-done decision

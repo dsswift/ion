@@ -41,6 +41,8 @@ func SearchMessages(conv *Conversation, query string, maxResults int) []HistoryM
 	if maxResults <= 0 {
 		maxResults = 20
 	}
+	conv.lock()
+	defer conv.unlock()
 
 	lowerQuery := strings.ToLower(query)
 	var matches []HistoryMatch

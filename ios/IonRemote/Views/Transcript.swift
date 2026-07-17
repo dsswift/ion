@@ -42,35 +42,10 @@ struct Transcript: View {
     // MARK: - Grouping
 
     private var groupedMessages: [ConversationView.GroupedItem] {
-        // Bootstrap-collapse pre-pass: collapse consecutive harness
-        // messages that start with the bootstrap prefix.
-        let bootstrapPrefix = ConversationView.bootstrapPrefix
-        var preprocessed: [Message] = []
-        var bootstrapBuf: [Message] = []
-
-        let flushBootstrap = {
-            guard !bootstrapBuf.isEmpty else { return }
-            var representative = bootstrapBuf.last!
-            let suppressed = bootstrapBuf.count - 1
-            if suppressed > 0 {
-                representative.bootstrapCollapsedCount = suppressed
-            }
-            preprocessed.append(representative)
-            bootstrapBuf = []
-        }
-
-        for msg in messages {
-            if msg.role == .harness && msg.content.hasPrefix(bootstrapPrefix) {
-                bootstrapBuf.append(msg)
-            } else {
-                flushBootstrap()
-                preprocessed.append(msg)
-            }
-        }
-        flushBootstrap()
-
-        // Run through the shared grouping algorithm.
-        let items = groupConversationItems(preprocessed, unifiedTurnView: unifiedTurnView)
+        // Run through the shared grouping algorithm directly. Harness messages
+        // with dedupMode "relocate" are already positioned correctly in the
+        // message list by handleEngineHarnessMessage; no pre-pass needed.
+        let items = groupConversationItems(messages, unifiedTurnView: unifiedTurnView)
         return items.map { item -> ConversationView.GroupedItem in
             switch item {
             case .user(let m), .assistant(let m), .system(let m):

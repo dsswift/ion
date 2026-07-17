@@ -21,7 +21,7 @@
 
 import { IPC } from '../shared/types'
 import { log as _log } from './logger'
-import { sessionPlane } from './state'
+import { sessionPlane, engineBridge } from './state'
 import { broadcast } from './broadcast'
 import { type ParsedSlash } from './slash-parse'
 import { dispatchExtensionCommand, isFirstPromptForTab } from './slash-classify'
@@ -33,8 +33,8 @@ import { emitRemoteMessageAdded, insertRendererSystemMessage, clearConnectingSta
 // (orchestrator → this file → engine bridge / renderer helpers).
 import type { IncomingPrompt } from './prompt-pipeline'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 /** Orchestrator-supplied helpers the slash branch needs. Injected to keep the
@@ -56,16 +56,16 @@ async function surfaceEngineUnknownCommand(p: IncomingPrompt, slash: ParsedSlash
   try {
     const result = await awaitCommandResult(deps.engineKey(p), slash.command)
     if (result.commandError === 'unknown_command') {
-      log(`pipeline: engine resolveSlash disclaimed /${slash.command} → emitting unknown-command system message`)
+      log('pipeline_slash: disclaimed, emitting unknown-command', { command: slash.command })
       const msg = `Unknown command: /${slash.command}`
       await insertRendererSystemMessage(p, msg)
       if (p.source === 'remote') emitRemoteMessageAdded(p, msg, 'system')
       await clearConnectingStatus(p)
     } else {
-      log(`pipeline: engine resolveSlash result /${slash.command} err=${result.commandError || '(none/timeout-or-success)'} → no system message`)
+      log('pipeline_slash: resolveSlash result', { command: slash.command, error: result.commandError || '(none/timeout-or-success)' })
     }
   } catch (err) {
-    log(`pipeline: surfaceEngineUnknownCommand error /${slash.command}: ${(err as Error).message}`)
+    log('pipeline_slash: surfaceEngineUnknownCommand error', { command: slash.command, error: (err as Error).message })
   }
 }
 
@@ -102,13 +102,86 @@ async function surfaceEngineUnknownCommand(p: IncomingPrompt, slash: ParsedSlash
  */
 function maybeFlipPlanToAutoForSlash(p: IncomingPrompt): void {
   if (isFirstPromptForTab(p.tabId)) {
-    log(`pipeline: first-prompt slash command on tab=${p.tabId} → flipping plan→auto before submit`)
+    log('pipeline_slash: first-prompt slash, flipping plan to auto', { tab_id: p.tabId })
     sessionPlane.setPermissionMode(p.tabId, 'auto', 'slash_command')
     broadcast(IPC.REMOTE_SET_PERMISSION_MODE, { tabId: p.tabId, mode: 'auto' })
   } else {
-    const tab = sessionPlane.getTabStatus(p.tabId)
-    log(`pipeline: slash command not first-of-checkpoint on tab=${p.tabId} (promptCount=${tab?.promptCountSinceCheckpoint ?? '?'}, resumedSavedConversation=${tab?.resumedSavedConversation ?? '?'}, engineTab=${p.hasExtensions}) → preserving permission mode`)
+    const _tab = sessionPlane.getTabStatus(p.tabId)
+    log('pipeline_slash: not first-of-checkpoint, preserving permission mode', { tab_id: p.tabId })
   }
+}
+
+/**
+ * Handle `/plugin install <source>`, `/plugin list`, `/plugin remove <name>`.
+ * These are engine wire commands dispatched directly — not extension slash commands.
+ * Results are surfaced as system messages in the renderer.
+ */
+async function handlePluginSlash(p: IncomingPrompt, args: string): Promise<void> {
+  const parts = args.trim().split(/\s+/)
+  const sub = parts[0] || ''
+  log('pipeline_slash: plugin command', { sub, args })
+
+  if (sub === 'install') {
+    const source = parts[1] || ''
+    if (!source) {
+      await insertRendererSystemMessage(p, 'Usage: /plugin install <owner/repo>')
+      return
+    }
+    await insertRendererSystemMessage(p, `Installing plugin ${source}...`)
+    try {
+      const result = await engineBridge.request('plugin_install', { source })
+      if (result?.ok) {
+        const d = result.data as { name?: string; version?: string } | undefined
+        await insertRendererSystemMessage(p, `Installed plugin: ${d?.name ?? source} (${d?.version ?? ''})`)
+      } else {
+        await insertRendererSystemMessage(p, `Plugin install failed: ${result?.error ?? 'unknown error'}`)
+      }
+    } catch (err) {
+      await insertRendererSystemMessage(p, `Plugin install error: ${(err as Error).message}`)
+    }
+    return
+  }
+
+  if (sub === 'list') {
+    try {
+      const result = await engineBridge.request('plugin_list', {})
+      if (result?.ok) {
+        const plugins = (result.data ?? []) as Array<{ name: string; source: string; version: string }>
+        if (plugins.length === 0) {
+          await insertRendererSystemMessage(p, 'No plugins installed.')
+        } else {
+          const lines = plugins.map((pl) => `  ${pl.name}  (${pl.source}@${pl.version})`).join('\n')
+          await insertRendererSystemMessage(p, `Installed plugins:\n${lines}`)
+        }
+      } else {
+        await insertRendererSystemMessage(p, `Plugin list failed: ${result?.error ?? 'unknown error'}`)
+      }
+    } catch (err) {
+      await insertRendererSystemMessage(p, `Plugin list error: ${(err as Error).message}`)
+    }
+    return
+  }
+
+  if (sub === 'remove') {
+    const name = parts[1] || ''
+    if (!name) {
+      await insertRendererSystemMessage(p, 'Usage: /plugin remove <name>')
+      return
+    }
+    try {
+      const result = await engineBridge.request('plugin_remove', { label: name })
+      if (result?.ok) {
+        await insertRendererSystemMessage(p, `Removed plugin: ${name}`)
+      } else {
+        await insertRendererSystemMessage(p, `Plugin remove failed: ${result?.error ?? 'unknown error'}`)
+      }
+    } catch (err) {
+      await insertRendererSystemMessage(p, `Plugin remove error: ${(err as Error).message}`)
+    }
+    return
+  }
+
+  await insertRendererSystemMessage(p, 'Usage: /plugin install <owner/repo> | /plugin list | /plugin remove <name>')
 }
 
 export async function handleSlash(p: IncomingPrompt, slash: ParsedSlash, deps: SlashDeps): Promise<void> {
@@ -117,8 +190,18 @@ export async function handleSlash(p: IncomingPrompt, slash: ParsedSlash, deps: S
     emitRemoteMessageAdded(p, p.text, 'user')
   }
 
-  const result = await dispatchExtensionCommand(deps.engineKey(p), slash)
+  // ── Plugin management short-circuit ─────────────────────────────────────
+  // `/plugin install <owner/repo>`, `/plugin list`, `/plugin remove <name>`
+  // are engine wire commands, not extension slash commands. Intercept them
+  // here and dispatch through the plugin IPC handlers directly so they work
+  // without a session and return results as system messages.
+  if (slash.command === 'plugin') {
+    await handlePluginSlash(p, slash.args ?? '')
+    await clearConnectingStatus(p)
+    return
+  }
 
+  const result = await dispatchExtensionCommand(deps.engineKey(p), slash)
   if (result.commandError === '') {
     // The engine resolved the command directly. It MAY start a run (the comment
     // on clearConnectingStatus below) — so a first-prompt slash command must
@@ -147,7 +230,7 @@ export async function handleSlash(p: IncomingPrompt, slash: ParsedSlash, deps: S
     // pure command. (Extensions that DO start a run will set status='running'
     // via run_start before this clear executes, and the clear is a no-op when
     // status isn't 'connecting'.)
-    log(`pipeline: ext cmd success key=${deps.engineKey(p)} cmd=/${slash.command}`)
+    log('pipeline_slash: ext cmd success', { key: deps.engineKey(p), command: slash.command })
     await clearConnectingStatus(p)
     return
   }
@@ -177,7 +260,7 @@ export async function handleSlash(p: IncomingPrompt, slash: ParsedSlash, deps: S
     // Rebuild the raw `/command args` from the parse (p.text already holds it,
     // but rebuilding makes the contract explicit and normalisation-robust).
     const rawInvocation = '/' + slash.command + (slash.args ? ' ' + slash.args : '')
-    log(`pipeline: engine disclaimed /${slash.command} → re-submitting raw invocation to engine with resolveSlash=true (text="${rawInvocation.substring(0, 60)}")`)
+    log('pipeline_slash: disclaimed, re-submitting with resolveSlash', { command: slash.command, preview: rawInvocation.substring(0, 60) })
     p.text = rawInvocation
     if (p.runOptions) {
       p.runOptions.prompt = rawInvocation
@@ -203,7 +286,7 @@ export async function handleSlash(p: IncomingPrompt, slash: ParsedSlash, deps: S
   }
 
   // Extension error, timeout, or other failure shape.
-  log(`pipeline: ext cmd failed key=${deps.engineKey(p)} cmd=/${slash.command} err=${result.commandError}`)
+  log('pipeline_slash: ext cmd failed', { key: deps.engineKey(p), command: slash.command, error: result.commandError })
   const errMsg = result.message || `Command failed: /${slash.command}: ${result.commandError}`
   await insertRendererSystemMessage(p, errMsg)
   if (p.source === 'remote') emitRemoteMessageAdded(p, errMsg, 'system')

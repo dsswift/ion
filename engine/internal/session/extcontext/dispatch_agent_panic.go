@@ -60,10 +60,7 @@ func recoverBackgroundDispatchPanic(
 	// Capture the stack as soon as possible so it reflects the panic
 	// site rather than the recovery site.
 	stack := debug.Stack()
-	utils.Error("Dispatch", fmt.Sprintf(
-		"background dispatch panic agent=%q session=%s panic=%v\n%s",
-		opts.Name, key, r, stack,
-	))
+	utils.LogWithFields(utils.LevelError, "server", "background dispatch panic \n", map[string]any{"model": opts.Name, "session_id": key, "r": r, "stack": stack})
 
 	// 1. Synthesize a terminal agent-state transition so consumers
 	//    see "error" rather than a stuck "running" entry. The closure
@@ -90,10 +87,7 @@ func recoverBackgroundDispatchPanic(
 	//    extension listening for the terminal signal sees it. Matches
 	//    runChild's normal-completion FireAgentEnd call exactly.
 	if extGroup := sa.ExtGroup(); extGroup != nil && !extGroup.IsEmpty() {
-		utils.Log("Dispatch", fmt.Sprintf(
-			"firing agent_end (panic) key=%s name=%s id=%s status=1",
-			key, agentName, agentID,
-		))
+		utils.LogWithFields(utils.LevelInfo, "server", "firing agent_end (panic) status=1", map[string]any{"session_id": key, "agent_name": agentName, "run_id": agentID})
 		endCtx := NewExtContext(sa)
 		extGroup.FireAgentEnd(endCtx, extension.AgentInfo{
 			Name: agentName,
@@ -123,8 +117,5 @@ func recoverBackgroundDispatchPanic(
 
 	// 5. Final "dispatch complete" log line so log analysis sees a
 	//    terminal record for this dispatch even on the panic path.
-	utils.Log("Dispatch", fmt.Sprintf(
-		"dispatch complete agent=%q exitCode=1 elapsed=0.00s cost=0.000000 tools=0 session=%s (panic recovered)",
-		opts.Name, key,
-	))
+	utils.LogWithFields(utils.LevelInfo, "server", "dispatch complete exitcode=1 elapsed=0.00s cost=0.000000 tools=0 (panic recovered)", map[string]any{"model": opts.Name, "session_id": key})
 }

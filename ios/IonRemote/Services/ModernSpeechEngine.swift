@@ -59,16 +59,20 @@ final class ModernSpeechEngine: SpeechEngine {
         do {
             try session.setCategory(.record, mode: .measurement, options: .duckOthers)
             try session.setActive(true, options: .notifyOthersOnDeactivation)
-            DiagnosticLog.log("SPEECH-MODERN: audio session configured")
+            DiagnosticLog.log("audio session configured", tag: "speech.modern")
         } catch {
-            DiagnosticLog.log("SPEECH-MODERN: audio session error: \(error.localizedDescription)")
+            DiagnosticLog.log("audio session error", tag: "speech.modern", level: .error, fields: [
+                "error": error.localizedDescription
+            ])
             throw error
         }
 
         // Build the transcriber using the progressiveTranscription preset for live partials
         let t = SpeechTranscriber(locale: .current, preset: .progressiveTranscription)
         transcriber = t
-        DiagnosticLog.log("SPEECH-MODERN: SpeechTranscriber created locale=\(Locale.current.identifier)")
+        DiagnosticLog.log("speech transcriber created", tag: "speech.modern", fields: [
+            "locale": Locale.current.identifier
+        ])
 
         // The input node's natural format is what we tap at (e.g. Float32, 48 kHz).
         // bestAvailableAudioFormat returns the format the transcriber wants (e.g. Int16, 16 kHz).
@@ -76,19 +80,29 @@ final class ModernSpeechEngine: SpeechEngine {
         // Instead: tap at natural format, convert buffers before feeding the analyzer.
         let inputNode = audioEngine.inputNode
         let hardwareFormat = inputNode.outputFormat(forBus: 0)
-        DiagnosticLog.log("SPEECH-MODERN: hardware format sampleRate=\(hardwareFormat.sampleRate) channels=\(hardwareFormat.channelCount) commonFormat=\(hardwareFormat.commonFormat.rawValue)")
+        DiagnosticLog.log("hardware audio format", tag: "speech.modern", fields: [
+            "sample_rate": String(hardwareFormat.sampleRate),
+            "channels": String(hardwareFormat.channelCount),
+            "common_format": String(hardwareFormat.commonFormat.rawValue)
+        ])
 
         let transcriberFormat = await SpeechAnalyzer.bestAvailableAudioFormat(
             compatibleWith: [t],
             considering: hardwareFormat
         ) ?? hardwareFormat
-        DiagnosticLog.log("SPEECH-MODERN: transcriber format sampleRate=\(transcriberFormat.sampleRate) channels=\(transcriberFormat.channelCount) commonFormat=\(transcriberFormat.commonFormat.rawValue)")
+        DiagnosticLog.log("transcriber audio format", tag: "speech.modern", fields: [
+            "sample_rate": String(transcriberFormat.sampleRate),
+            "channels": String(transcriberFormat.channelCount),
+            "common_format": String(transcriberFormat.commonFormat.rawValue)
+        ])
 
         // Set up converter only when the formats differ
         if hardwareFormat != transcriberFormat {
             guard let conv = AVAudioConverter(from: hardwareFormat, to: transcriberFormat) else {
                 let msg = "Failed to create AVAudioConverter from \(hardwareFormat) to \(transcriberFormat)"
-                DiagnosticLog.log("SPEECH-MODERN: error — \(msg)")
+                DiagnosticLog.log("audio converter creation failed", tag: "speech.modern", level: .error, fields: [
+                    "error": msg
+                ])
                 try? session.setActive(false, options: .notifyOthersOnDeactivation)
                 throw SpeechEngineError.audioSessionFailed(msg)
             }
@@ -159,9 +173,11 @@ final class ModernSpeechEngine: SpeechEngine {
         audioEngine.prepare()
         do {
             try audioEngine.start()
-            DiagnosticLog.log("SPEECH-MODERN: audio engine started, transcription task launched")
+            DiagnosticLog.log("audio engine started", tag: "speech.modern")
         } catch {
-            DiagnosticLog.log("SPEECH-MODERN: audioEngine.start() threw: \(error.localizedDescription)")
+            DiagnosticLog.log("audio engine start failed", tag: "speech.modern", level: .error, fields: [
+                "error": error.localizedDescription
+            ])
             finishInputAndTeardown()
             throw error
         }
@@ -171,13 +187,18 @@ final class ModernSpeechEngine: SpeechEngine {
         // Trim only on extraction — the running transcript may carry leading whitespace
         // from the finalized chunks, which is fine internally but ugly when surfaced.
         let final = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        DiagnosticLog.log("SPEECH-MODERN: stopRecording — final transcript=\(final.prefix(80))")
+        DiagnosticLog.log("stop recording", tag: "speech.modern", fields: [
+            "transcript": String(final.prefix(80))
+        ])
         finishInputAndTeardown()
         return final
     }
 
     func cancelRecording() {
-        DiagnosticLog.log("SPEECH-MODERN: cancelRecording — discarding finalized=\(finalizedTranscript.prefix(40)) volatile=\(volatileTranscript.prefix(40))")
+        DiagnosticLog.log("cancel recording", tag: "speech.modern", fields: [
+            "finalized": String(finalizedTranscript.prefix(40)),
+            "volatile": String(volatileTranscript.prefix(40))
+        ])
         finishInputAndTeardown()
         finalizedTranscript = ""
         volatileTranscript = ""
@@ -196,9 +217,11 @@ final class ModernSpeechEngine: SpeechEngine {
                 group.addTask {
                     do {
                         _ = try await analyzer.analyzeSequence(inputStream)
-                        DiagnosticLog.log("SPEECH-MODERN: analyzeSequence complete")
+                        DiagnosticLog.log("analyze sequence complete", tag: "speech.modern")
                     } catch {
-                        DiagnosticLog.log("SPEECH-MODERN: analyzeSequence error: \(error.localizedDescription)")
+                        DiagnosticLog.log("analyze sequence error", tag: "speech.modern", level: .error, fields: [
+                            "error": error.localizedDescription
+                        ])
                     }
                 }
 
@@ -208,18 +231,25 @@ final class ModernSpeechEngine: SpeechEngine {
                         for try await result in transcriber.results {
                             let segmentText = String(result.text.characters)
                             let isFinal = result.isFinal
-                            DiagnosticLog.log("SPEECH-MODERN: result isFinal=\(isFinal) segment=\(segmentText.prefix(60))")
+                            DiagnosticLog.trace("transcriber result", tag: "speech.modern", fields: [
+                                "is_final": String(isFinal),
+                                "segment": String(segmentText.prefix(60))
+                            ])
                             await MainActor.run { self.applyResult(segmentText, isFinal: isFinal) }
                         }
                     } catch {
-                        DiagnosticLog.log("SPEECH-MODERN: transcriber.results error: \(error.localizedDescription)")
+                        DiagnosticLog.log("transcriber results error", tag: "speech.modern", level: .error, fields: [
+                            "error": error.localizedDescription
+                        ])
                         await MainActor.run { self.errorMessage = error.localizedDescription }
                     }
-                    DiagnosticLog.log("SPEECH-MODERN: results loop ended")
+                    DiagnosticLog.log("results loop ended", tag: "speech.modern")
                 }
             }
         } catch {
-            DiagnosticLog.log("SPEECH-MODERN: SpeechAnalyzer init error: \(error.localizedDescription)")
+            DiagnosticLog.log("speech analyzer init error", tag: "speech.modern", level: .error, fields: [
+                "error": error.localizedDescription
+            ])
             await MainActor.run {
                 self.errorMessage = error.localizedDescription
                 self.isRecording = false
@@ -258,11 +288,15 @@ final class ModernSpeechEngine: SpeechEngine {
             // so we concatenate directly without adding our own separator.
             finalizedTranscript += segmentText
             volatileTranscript = ""
-            DiagnosticLog.log("SPEECH-MODERN: committed final chunk, finalized=\(finalizedTranscript.prefix(80))")
+            DiagnosticLog.trace("committed final chunk", tag: "speech.modern", fields: [
+                "finalized": String(finalizedTranscript.prefix(80))
+            ])
         } else {
             // Replace the in-flight volatile guess.
             volatileTranscript = segmentText
-            DiagnosticLog.log("SPEECH-MODERN: replaced volatile, volatile=\(segmentText.prefix(60))")
+            DiagnosticLog.trace("replaced volatile", tag: "speech.modern", fields: [
+                "volatile": String(segmentText.prefix(60))
+            ])
         }
         transcript = finalizedTranscript + volatileTranscript
     }
@@ -297,7 +331,9 @@ final class ModernSpeechEngine: SpeechEngine {
         guard let info = notification.userInfo,
               let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
               let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
-        DiagnosticLog.log("SPEECH-MODERN: audio interruption type=\(typeValue)")
+        DiagnosticLog.log("audio interruption", tag: "speech.modern", fields: [
+            "type": String(typeValue)
+        ])
         guard type == .began else { return }
         Task { @MainActor [weak self] in
             guard let self, self.isRecording else { return }

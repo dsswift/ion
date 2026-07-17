@@ -1,6 +1,7 @@
-import React, { useState, useCallback, useSyncExternalStore } from 'react'
+import React, { useState, useMemo, useCallback, useSyncExternalStore } from 'react'
 import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
+import { rDebug } from '../rendererLogger'
 
 // ─── CMD key tracking (singleton — one listener pair for all components) ───
 
@@ -37,7 +38,9 @@ type TextSegment = { type: 'plain' | 'file' | 'url'; value: string }
 // Relative paths require a file extension to avoid false positives on plain text with slashes
 export const LINK_RE = /(https?:\/\/[^\s<>"')\]]+|~\/(?:[a-zA-Z0-9._~-]+\/)*[a-zA-Z0-9._~-]+|\/(?:[a-zA-Z0-9._~-]+\/)+[a-zA-Z0-9._~-]+|[a-zA-Z0-9._~-]+(?:\/[a-zA-Z0-9._~-]+)+\.[a-zA-Z0-9]+)/g
 
-function segmentText(text: string): TextSegment[] {
+// Exported for the memoization regression test in useNavigableLinks.test.tsx,
+// which spies on this to prove it is not re-run for unchanged text.
+export function segmentText(text: string): TextSegment[] {
   const segments: TextSegment[] = []
   let last = 0
   for (const match of text.matchAll(LINK_RE)) {
@@ -62,7 +65,7 @@ function segmentText(text: string): TextSegment[] {
 
 export const EDITABLE_EXTS = new Set(['.md', '.txt', '.ts', '.tsx', '.js', '.jsx', '.json', '.yaml', '.yml', '.toml', '.py', '.rs', '.go', '.css', '.html'])
 
-export function LinkSegment({
+export const LinkSegment = React.memo(function LinkSegment({
   segment,
   onOpenFile,
   onOpenUrl,
@@ -125,7 +128,7 @@ export function LinkSegment({
       )}
     </span>
   )
-}
+})
 
 // ─── Hook: returns navigable text markdown component + file/url openers ───
 
@@ -142,10 +145,10 @@ export function useNavigableText() {
     const resolved = expanded.startsWith('/') ? expanded : workingDir + '/' + expanded
     const { exists } = await window.ion.fsExists(resolved)
     if (!exists) {
-      console.log('[NavigableLinks] file does not exist, ignoring cmd-click', { rawPath: path, resolved })
+      rDebug('navigable-links', 'file does not exist, ignoring cmd-click', { raw_path: path, resolved })
       return
     }
-    console.log('[NavigableLinks] opening file', { resolved })
+    rDebug('navigable-links', 'opening file', { resolved })
     const ext = resolved.includes('.') ? '.' + resolved.split('.').pop()!.toLowerCase() : ''
     if (EDITABLE_EXTS.has(ext) && activeTabId) {
       useSessionStore.getState().openFileInEditor(workingDir, activeTabId, resolved)
@@ -161,32 +164,43 @@ export function useNavigableText() {
   return { onOpenFile, onOpenUrl }
 }
 
-/** Markdown `text` component factory — use inside useMemo for markdown components */
-export function NavigableText({ children, onOpenFile, onOpenUrl }: {
+/**
+ * Markdown `text` component. Wrapped in React.memo so unrelated re-renders of
+ * the markdown subtree don't re-render it, and the link-regex segmentation is
+ * memoized on the input string so it never re-runs for unchanged text. Both
+ * matter for large plans, where re-segmenting every text node on every render
+ * caused scroll stutter.
+ */
+export const NavigableText = React.memo(function NavigableText({ children, onOpenFile, onOpenUrl }: {
   children: any
   onOpenFile: (path: string) => void
   onOpenUrl: (url: string) => void
 }) {
-  if (typeof children !== 'string') return <>{children}</>
-  const segments = segmentText(children)
+  const text = typeof children === 'string' ? children : null
+  // Hook order stays unconditional; segmentText only runs when the string changes.
+  const segments = useMemo(() => (text === null ? null : segmentText(text)), [text])
+  if (segments === null) return <>{children}</>
   if (segments.length === 1 && segments[0].type === 'plain') return <>{children}</>
   return <>{segments.map((seg, i) => <LinkSegment key={i} segment={seg} onOpenFile={onOpenFile} onOpenUrl={onOpenUrl} />)}</>
-}
+})
 
 /** Markdown `code` component — applies navigable links to inline code spans */
-export function NavigableCode({ children, className, onOpenFile, onOpenUrl, ...props }: {
+export const NavigableCode = React.memo(function NavigableCode({ children, className, onOpenFile, onOpenUrl, ...props }: {
   children: any
   className?: string
   onOpenFile: (path: string) => void
   onOpenUrl: (url: string) => void
   [key: string]: any
 }) {
-  // Don't touch code blocks (they have a language-* className)
+  // For inline code (no language-* className), apply link detection to the text
+  // content. Code blocks (className present) are left untouched. Compute the
+  // segmentable text unconditionally so the useMemo below keeps a stable hook order.
+  const text = className
+    ? null
+    : typeof children === 'string' ? children : Array.isArray(children) ? children.join('') : null
+  const segments = useMemo(() => (text === null ? null : segmentText(text)), [text])
   if (className) return <code className={className} {...props}>{children}</code>
-  // For inline code, apply link detection to the text content
-  const text = typeof children === 'string' ? children : Array.isArray(children) ? children.join('') : null
-  if (!text) return <code {...props}>{children}</code>
-  const segments = segmentText(text)
+  if (segments === null) return <code {...props}>{children}</code>
   if (segments.length === 1 && segments[0].type === 'plain') return <code {...props}>{children}</code>
   return <code {...props}>{segments.map((seg, i) => <LinkSegment key={i} segment={seg} onOpenFile={onOpenFile} onOpenUrl={onOpenUrl} />)}</code>
-}
+})

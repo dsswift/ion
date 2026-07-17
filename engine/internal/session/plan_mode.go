@@ -1,7 +1,6 @@
 package session
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/dsswift/ion/engine/internal/extension"
@@ -28,7 +27,7 @@ func (m *Manager) SetPlanMode(key string, enabled bool, allowedTools []string, s
 
 	s, ok := m.sessions[key]
 	if !ok {
-		utils.Debug("Session", fmt.Sprintf("SetPlanMode: session %q not found (not yet started?)", key))
+		utils.LogWithFields(utils.LevelDebug, "session", "setplanmode: session not found (not yet started?)", map[string]any{"key": key})
 		return
 	}
 	was := s.planMode
@@ -41,9 +40,9 @@ func (m *Manager) SetPlanMode(key string, enabled bool, allowedTools []string, s
 		// allocating a fresh slug and orphaning the conversation's real plan.
 		if _, err := os.Stat(planFilePath); err == nil {
 			s.planFilePath = planFilePath
-			utils.Info("PlanMode", fmt.Sprintf("SetPlanMode: key=%s restored planFile=%s from client (source=%s)", key, planFilePath, source))
+			utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "setplanmode: restored from client ()", map[string]any{"key": key, "plan_file_path": planFilePath, "source": source})
 		} else {
-			utils.Info("PlanMode", fmt.Sprintf("SetPlanMode: key=%s client planFilePath=%s not on disk, leaving empty (source=%s)", key, planFilePath, source))
+			utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "setplanmode: client not on disk, leaving empty ()", map[string]any{"key": key, "plan_file_path": planFilePath, "source": source})
 		}
 	}
 	if !enabled {
@@ -65,8 +64,7 @@ func (m *Manager) SetPlanMode(key string, enabled bool, allowedTools []string, s
 		}
 		s.planModePromptSent = false
 	}
-	utils.Info("PlanMode", fmt.Sprintf("key=%s enabled=%v was=%v source=%s tools=%v hasExited=%v planFile=%s",
-		key, enabled, was, source, allowedTools, s.hasExitedPlanMode, s.planFilePath))
+	utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "log", map[string]any{"session_id": key, "enabled": enabled, "was": was, "source": source, "allowed_tools": allowedTools, "has_exited_plan_mode": s.hasExitedPlanMode, "plan_file_path": s.planFilePath})
 }
 
 // MarkPlanModeExited records that the session has exited plan mode via
@@ -80,11 +78,11 @@ func (m *Manager) MarkPlanModeExited(key string) {
 
 	s, ok := m.sessions[key]
 	if !ok {
-		utils.Debug("Session", fmt.Sprintf("MarkPlanModeExited: session %q not found", key))
+		utils.LogWithFields(utils.LevelDebug, "session", "markplanmodeexited: session not found", map[string]any{"key": key})
 		return
 	}
 	s.hasExitedPlanMode = true
-	utils.Info("PlanMode", fmt.Sprintf("key=%s marked plan mode exited, planFile=%s", key, s.planFilePath))
+	utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "marked plan mode exited", map[string]any{"key": key, "plan_file_path": s.planFilePath})
 }
 
 // RequestPlanModeEnter is called by the runloop when the model invokes the
@@ -101,13 +99,13 @@ func (m *Manager) RequestPlanModeEnter(key string) (allowed bool, reason string,
 	s, ok := m.sessions[key]
 	if !ok {
 		m.mu.Unlock()
-		utils.Debug("Session", fmt.Sprintf("RequestPlanModeEnter: session %q not found", key))
+		utils.LogWithFields(utils.LevelDebug, "session", "requestplanmodeenter: session not found", map[string]any{"key": key})
 		return false, "session not found", ""
 	}
 	if s.planMode {
 		existingPath := s.planFilePath
 		m.mu.Unlock()
-		utils.Debug("Session", fmt.Sprintf("RequestPlanModeEnter: session %q already in plan mode, path=%s", key, existingPath))
+		utils.LogWithFields(utils.LevelDebug, "session", "requestplanmodeenter: session already in plan mode", map[string]any{"key": key, "existing_path": existingPath})
 		return false, "already in plan mode", existingPath
 	}
 
@@ -122,7 +120,7 @@ func (m *Manager) RequestPlanModeEnter(key string) (allowed bool, reason string,
 		ctx := m.newExtContextForKey(key)
 		a, r := extGroup.FireBeforePlanModeEnter(ctx, extension.PlanModeEnterInfo{Source: "model_tool"})
 		if !a {
-			utils.Info("PlanMode", fmt.Sprintf("RequestPlanModeEnter: key=%s denied by hook reason=%q", key, r))
+			utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "requestplanmodeenter: denied by hook", map[string]any{"key": key, "r": r})
 			return false, r, ""
 		}
 	}
@@ -149,14 +147,14 @@ func (m *Manager) RequestPlanModeEnter(key string) (allowed bool, reason string,
 	// same plan rather than starting a fresh one.
 	if s.planFilePath == "" {
 		s.planFilePath = allocateNewPlanFilePath(m.backend, workDir)
-		utils.Info("PlanMode", fmt.Sprintf("RequestPlanModeEnter: key=%s allocated new planFile=%s", key, s.planFilePath))
+		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "requestplanmodeenter: allocated new", map[string]any{"key": key, "plan_file_path": s.planFilePath})
 	} else {
-		utils.Info("PlanMode", fmt.Sprintf("RequestPlanModeEnter: key=%s reusing planFile=%s", key, s.planFilePath))
+		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "requestplanmodeenter: reusing", map[string]any{"key": key, "plan_file_path": s.planFilePath})
 	}
 	path := s.planFilePath
 	m.mu.Unlock()
 
-	utils.Info("PlanMode", fmt.Sprintf("RequestPlanModeEnter: key=%s allowed=true planFile=%s", key, path))
+	utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "requestplanmodeenter: allowed=true", map[string]any{"key": key, "path": path})
 	return true, "", path
 }
 
@@ -183,14 +181,14 @@ func (m *Manager) RequestPlanModeExit(key string, planFilePath string) (allowed 
 	s, ok := m.sessions[key]
 	if !ok {
 		m.mu.RUnlock()
-		utils.Debug("Session", fmt.Sprintf("RequestPlanModeExit: session %q not found", key))
+		utils.LogWithFields(utils.LevelDebug, "session", "requestplanmodeexit: session not found", map[string]any{"key": key})
 		return true, "" // unknown session: let the exit proceed to avoid blocking
 	}
 	extGroup := s.extGroup
 	m.mu.RUnlock()
 
 	if extGroup == nil || extGroup.IsEmpty() {
-		utils.Debug("Session", fmt.Sprintf("RequestPlanModeExit: key=%s no extensions, auto-allow", key))
+		utils.LogWithFields(utils.LevelDebug, "session", "requestplanmodeexit: no extensions, auto-allow", map[string]any{"key": key})
 		return true, ""
 	}
 
@@ -200,9 +198,9 @@ func (m *Manager) RequestPlanModeExit(key string, planFilePath string) (allowed 
 		Source:       "model_tool",
 	})
 	if !a {
-		utils.Info("PlanMode", fmt.Sprintf("RequestPlanModeExit: key=%s denied by hook reason=%q", key, r))
+		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "requestplanmodeexit: denied by hook", map[string]any{"key": key, "r": r})
 	} else {
-		utils.Debug("Session", fmt.Sprintf("RequestPlanModeExit: key=%s allowed", key))
+		utils.LogWithFields(utils.LevelDebug, "session", "requestplanmodeexit: allowed", map[string]any{"key": key})
 	}
 	return a, r
 }
@@ -226,28 +224,25 @@ func (m *Manager) RequestPlanModeAutoExit(
 	s, ok := m.sessions[key]
 	if !ok {
 		m.mu.RUnlock()
-		utils.Debug("Session", fmt.Sprintf("RequestPlanModeAutoExit: session %q not found — proceeding with defaults", key))
+		utils.LogWithFields(utils.LevelDebug, "session", "requestplanmodeautoexit: session not found — proceeding with defaults", map[string]any{"key": key})
 		return false, "", ""
 	}
 	extGroup := s.extGroup
 	m.mu.RUnlock()
 
 	if extGroup == nil || extGroup.IsEmpty() {
-		utils.Debug("Session", fmt.Sprintf("RequestPlanModeAutoExit: key=%s no extensions — proceeding with defaults", key))
+		utils.LogWithFields(utils.LevelDebug, "session", "requestplanmodeautoexit: no extensions — proceeding with defaults", map[string]any{"key": key})
 		return false, "", ""
 	}
 
 	ctx := m.newExtContextForKey(key)
 	sp, pf, rs := extGroup.FireBeforePlanModeAutoExit(ctx, info)
 	if sp {
-		utils.Info("PlanMode", fmt.Sprintf("RequestPlanModeAutoExit: key=%s synthesis suppressed by hook", key))
+		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "requestplanmodeautoexit: synthesis suppressed by hook", map[string]any{"key": key})
 	} else if pf != "" || rs != "" {
-		utils.Info("PlanMode", fmt.Sprintf(
-			"RequestPlanModeAutoExit: key=%s hook overrides path=%q reason=%q",
-			key, pf, rs,
-		))
+		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "requestplanmodeautoexit: hook overrides", map[string]any{"session_id": key, "pf": pf, "rs": rs})
 	} else {
-		utils.Debug("Session", fmt.Sprintf("RequestPlanModeAutoExit: key=%s no hook opinion", key))
+		utils.LogWithFields(utils.LevelDebug, "session", "requestplanmodeautoexit: no hook opinion", map[string]any{"key": key})
 	}
 	return sp, pf, rs
 }
@@ -268,11 +263,11 @@ func (m *Manager) SetPlanModeBashAllowlist(key string, cmds []string) {
 		// the logging-policy taxonomy ("unexpected failures, caught
 		// panics, invariant violations") so it always reaches the
 		// engine log and is searchable when investigating client bugs.
-		utils.Error("Session", fmt.Sprintf("SetPlanModeBashAllowlist: session %q not found (invariant violation — wire command targeted unknown session)", key))
+		utils.LogWithFields(utils.LevelDebug, "session", "setplanmodebashallowlist: session not found (not yet started? no-op)", map[string]any{"key": key})
 		return
 	}
 	s.planModeAllowedBashCommands = cmds
-	utils.Info("PlanMode", fmt.Sprintf("key=%s bash_allowlist=%v", key, cmds))
+	utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "log", map[string]any{"key": key, "cmds": cmds})
 }
 
 // GetPlanModeState returns the current plan mode state for a session.

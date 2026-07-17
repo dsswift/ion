@@ -1,6 +1,7 @@
 import type { Message } from '../../../shared/types'
 import { usePreferencesStore } from '../../preferences'
 import { parseSlash } from '../../../main/slash-parse'
+import { rDebug } from '../../rendererLogger'
 
 /**
  * Tab-title resolution on task_complete.
@@ -47,11 +48,11 @@ export function maybeGenerateTabTitle(
 
   const slash = parseSlash(firstUserMsg.content.trim())
   if (slash) {
-    console.log(`[task_complete] tab=${tabId.slice(0, 8)} branch=slashTitle command=/${slash.command} skipping LLM titling; preserving literal title=${JSON.stringify(currentTitle)}`)
+    rDebug('event.title', 'slash command tab, skipping LLM titling', { tab_id: tabId.slice(0, 8), command: slash.command })
     return
   }
 
-  console.log(`[task_complete] tab=${tabId.slice(0, 8)} branch=llmTitle generating AI title from firstUserMsg`)
+  rDebug('event.title', 'generating AI title', { tab_id: tabId.slice(0, 8) })
   window.ion.generateTitle(firstUserMsg.content).then((title) => {
     if (title) {
       renameTab(tabId, title)

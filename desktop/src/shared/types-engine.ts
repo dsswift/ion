@@ -81,6 +81,7 @@ export interface EngineProfile {
   id: string
   name: string
   extensions: string[]
+  defaultMode?: 'auto' | 'plan'
 }
 
 export interface EngineConfig {
@@ -227,9 +228,6 @@ export interface ConversationInstance {
    * via selectors (selectDispatchTree) from this flat data.
    */
   dispatchTelemetry: DispatchTelemetryEntry[]
-  /** Set after rewind — the conversation ID chain before rewind. Used to inject
-   *  prior-conversation context on the next prompt. Cleared after first send. */
-  forkedFromConversationIds: string[] | null
   /**
    * Most recent context breakdown from the engine_context_breakdown event.
    * Replaced wholesale on each emission (snapshot semantics — the engine
@@ -237,6 +235,29 @@ export interface ConversationInstance {
    * The Status Drawer reads this synchronously on open; no fetch required.
    */
   contextBreakdown: ContextBreakdownPayload | null
+  /**
+   * Whether the on-disk scrollback for this conversation has been loaded into
+   * `messages`. Skeleton (lazy-load) panes are created with `false`; the
+   * hydration path (`loadSkeletonMessages`) sets `true` on completion. This is
+   * the PRECISE hydration marker — "messages is empty" is NOT a reliable
+   * proxy, because live streamed events (and cross-window user-message echoes)
+   * append to a never-hydrated skeleton pane, after which an emptiness check
+   * silently skips loading the history (the ATV-mirror last-turn-only bug).
+   * `undefined` (legacy panes created by paths that don't set it) falls back
+   * to the empty-messages+messageCount heuristic in `needsHistoryHydration`.
+   * Client-only and transient: never persisted, not part of the Go contract.
+   */
+  historyHydrated?: boolean
+  /**
+   * Lazy-load state for externalized scrollback (schema v4). 'pending' is set
+   * on restore when the persisted instance carries `hasExternalContent` and
+   * its content file was not eager-merged (only the active tab merges at
+   * startup); `loadSkeletonMessages` resolves it to 'loaded' (content file
+   * read) or 'error' (unreadable — the pane renders count-only, still
+   * usable). Undefined means the instance never had external content.
+   * Client-only and transient: never persisted, not part of the Go contract.
+   */
+  externalContentStatus?: 'pending' | 'loaded' | 'error'
 }
 
 export interface ConversationPane {
@@ -266,9 +287,14 @@ export interface StatusFields {
   model: string
   contextPercent: number
   contextWindow: number
-  totalCostUsd?: number
-  /** Backend mode: 'api' (direct) or 'cli' (CC CLI proxy) */
-  backend?: 'api' | 'cli'
+  /** Cost of the most recent run in USD (cache-aware, descendants included).
+   *  Replaces the former totalCostUsd field; the rename makes the scope
+   *  unambiguous — "run" not "conversation". */
+  runCostUsd?: number
+  /** Cumulative cost of the entire conversation (this session + all descendant
+   *  dispatches) in USD. Computed via the cost.ConversationCost dispatch-tree
+   *  walk on every TaskComplete. */
+  conversationCostUsd?: number
   permissionDenials?: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }>
   /** Friendly display name broadcast by the extension (e.g. "Chief of Staff"). */
   extensionName?: string
@@ -277,6 +303,15 @@ export interface StatusFields {
    *  progress. Clients use this to keep the tab status active and the
    *  interrupt button visible. */
   backgroundAgents?: number
+  /** Number of LLM turns completed in the most recent run. Stamped from
+   *  TaskCompleteEvent.NumTurns; absent on idle and heartbeat status events. */
+  numTurns?: number
+  /** Conversation-lifetime prompt count: the number of real user prompts
+   *  across the whole conversation, not just the most recent run. Stamped from
+   *  TaskCompleteEvent.ConversationTurns; absent on idle and heartbeat status
+   *  events. The drawer "Turns" row renders this (lifetime), whereas numTurns
+   *  is the per-run round-trip count. */
+  conversationTurns?: number
 }
 
 /**
@@ -316,7 +351,10 @@ export interface SessionStatus {
   model?: string
   contextPercent?: number
   contextWindow?: number
-  totalCostUsd?: number
+  /** Cost of the most recent run in USD. Matches StatusFields.runCostUsd semantics. */
+  runCostUsd?: number
+  /** Cumulative cost of the entire conversation (this session + all descendant dispatches) in USD. */
+  conversationCostUsd?: number
   sessionId?: string
   extensionName?: string
 }
@@ -439,4 +477,27 @@ export interface ContextBreakdownPayload {
    * sessions with no dispatches or no cost yet.
    */
   aggregateCostUsd?: number
+  /**
+   * Per-model cost breakdown for the conversation dispatch tree. Populated by
+   * the on-demand breakdown (ComputeAndEmitContextBreakdown). Empty for
+   * runloop-emitted breakdowns. Sorted by costUsd descending.
+   */
+  modelBreakdown?: ModelBreakdown[]
+}
+
+/** One row in the per-model cost breakdown. Mirrors Go's ModelBreakdown in types/model_breakdown.go. */
+export interface ModelBreakdown {
+  model: string
+  conversations: number
+  inputTokens: number
+  outputTokens: number
+  costUsd: number
+  /**
+   * True when this row is the root/viewing conversation's OWN spend rather than
+   * a dispatch. A model used by both the root and its dispatches yields two rows
+   * (one isSelf=true count 1, one isSelf=false count n). Absent (omitted on the
+   * wire) for dispatch rows. Lets consumers separate "this conversation cost $X"
+   * from "the dispatches cost $Y".
+   */
+  isSelf?: boolean
 }

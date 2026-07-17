@@ -7,6 +7,7 @@ import {
 import { useColors } from '../../theme'
 import { usePreferencesStore } from '../../preferences'
 import { SettingHeading } from './SettingHeading'
+import { rDebug, rInfo, rError } from '../../rendererLogger'
 
 /**
  * Curated icon set — identifiers must match the iOS-side mapping in
@@ -60,7 +61,7 @@ export function RemoteDisplayPanel() {
       _e: unknown,
       value: { customName: string | null; customIcon: string | null; updatedAt: number },
     ) => {
-      console.log('[RemoteDisplay] received broadcast:', value)
+      rDebug('remote.display', 'received broadcast', { custom_name: value.customName, custom_icon: value.customIcon })
       // Update store with authoritative value so other components stay in sync.
       usePreferencesStore.setState({ remoteDisplay: value })
     }
@@ -76,7 +77,7 @@ export function RemoteDisplayPanel() {
       const trimmed = draftName.trim()
       const nameOut = trimmed.length > 0 ? trimmed : null
       const iconOut = draftIcon
-      console.log(`[RemoteDisplay] save: name=${nameOut === null ? 'null' : 'set'} icon=${iconOut ?? 'null'}`)
+      rInfo('remote.display', 'saving display settings', { has_name: nameOut !== null, has_icon: iconOut !== null })
       const result = await window.ion?.remoteSetDisplay?.(nameOut, iconOut)
       if (result) {
         usePreferencesStore.setState({ remoteDisplay: result })
@@ -88,7 +89,7 @@ export function RemoteDisplayPanel() {
       setSavedToast(true)
       setTimeout(() => setSavedToast(false), 1500)
     } catch (err) {
-      console.error('[RemoteDisplay] save failed:', err)
+      rError('remote.display', 'save failed', { error: String(err) })
     } finally {
       setSaving(false)
     }
@@ -97,7 +98,7 @@ export function RemoteDisplayPanel() {
   const handleReset = useCallback(async () => {
     setSaving(true)
     try {
-      console.log('[RemoteDisplay] reset to default')
+      rInfo('remote.display', 'resetting to default')
       const result = await window.ion?.remoteSetDisplay?.(null, null)
       if (result) {
         usePreferencesStore.setState({ remoteDisplay: result })
@@ -108,7 +109,7 @@ export function RemoteDisplayPanel() {
       setSavedToast(true)
       setTimeout(() => setSavedToast(false), 1500)
     } catch (err) {
-      console.error('[RemoteDisplay] reset failed:', err)
+      rError('remote.display', 'reset failed', { error: String(err) })
     } finally {
       setSaving(false)
     }

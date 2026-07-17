@@ -30,8 +30,8 @@ import { EventEmitter } from 'events'
 import { log as _log } from './logger'
 import { engineBridge } from './state'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 /** Result of awaiting an engine_command_result event. */
@@ -83,7 +83,7 @@ function ensureListener(): void {
       // but don't treat as an error. Built-ins that the renderer dispatched
       // directly (legacy engineCommand IPC path) also produce results we
       // don't await.
-      log(`awaitCommandResult: orphan engine_command_result key=${key} command=${event.command ?? ''} err=${event.commandError ?? ''}`)
+      log('await_command_result: orphan', { key, command: event.command ?? '', error: event.commandError ?? '' })
       return
     }
     // FIFO: the oldest waiter is paired with this result. We do not match
@@ -101,7 +101,7 @@ function ensureListener(): void {
       message: event.message ?? '',
       commandError: event.commandError ?? '',
     }
-    log(`awaitCommandResult: resolved key=${key} dispatchedCmd=${w.command} echoedCmd=${result.command} err=${result.commandError}`)
+    log('await_command_result: resolved', { key, dispatched: w.command, echoed: result.command, error: result.commandError })
     w.resolve(result)
   })
   log('awaitCommandResult: global listener attached to engineBridge')
@@ -133,13 +133,13 @@ export function awaitCommandResult(key: string, command: string, timeoutMs = DEF
         if (idx >= 0) q.splice(idx, 1)
         if (q.length === 0) waiters.delete(key)
       }
-      log(`awaitCommandResult: TIMEOUT key=${key} command=${command} after=${timeoutMs}ms`)
+      log('await_command_result: timeout', { key, command, timeout_ms: timeoutMs })
       resolve({ command, message: 'timeout waiting for engine_command_result', commandError: 'timeout' })
     }, timeoutMs)
     const entry: Waiter = { command, resolve, timer }
     queue.push(entry)
     waiters.set(key, queue)
-    log(`awaitCommandResult: registered key=${key} command=${command} queueDepth=${queue.length}`)
+    log('await_command_result: registered', { key, command, queue_depth: queue.length })
   })
 }
 

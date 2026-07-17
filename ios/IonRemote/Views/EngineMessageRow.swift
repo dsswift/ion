@@ -103,6 +103,7 @@ struct EngineMessageRow: View {
                 let img = AttachmentImageCache.shared.image(forKey: att.id)
                     ?? AttachmentImageCache.shared.image(forKey: att.path)
                 if att.type == .image, let img {
+                    // Cache hit — render inline thumbnail directly.
                     Image(uiImage: img)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
@@ -112,9 +113,19 @@ struct EngineMessageRow: View {
                             previewName = att.name
                             previewImage = img
                         }
+                } else if att.type == .image {
+                    // Cache miss — ask the desktop for the image bytes via
+                    // RemoteImageFetcher. InlineAttachmentImage handles the
+                    // in-flight placeholder and error state. This restores
+                    // full image preview for history-reloaded messages whose
+                    // bytes are not yet in the local cache.
+                    InlineAttachmentImage(path: att.path) { fetched in
+                        previewName = att.name
+                        previewImage = fetched
+                    }
                 } else {
                     HStack(spacing: 3) {
-                        Image(systemName: att.type == .image ? "photo" : "doc")
+                        Image(systemName: "doc")
                             .font(.caption2)
                         Text(att.name)
                             .font(.caption2)
@@ -517,15 +528,6 @@ struct EngineMessageRow: View {
 
     private var defaultHarnessMessage: some View {
         HStack(spacing: 6) {
-            if let collapsed = message.bootstrapCollapsedCount, collapsed > 0 {
-                Text("×\(collapsed + 1)")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(Color(.tertiarySystemFill))
-                    .clipShape(Capsule())
-            }
             Image(systemName: "gearshape.fill")
                 .font(.caption2)
                 .foregroundStyle(.orange.opacity(0.7))

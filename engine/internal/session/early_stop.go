@@ -40,7 +40,7 @@ func (m *Manager) HandleEarlyStopDecisionResponse(
 	s, ok := m.sessions[key]
 	m.mu.RUnlock()
 	if !ok {
-		utils.Log("Session", fmt.Sprintf("early_stop_decision_response for unknown session %s", key))
+		utils.LogWithFields(utils.LevelInfo, "session", "early_stop_decision_response for unknown session", map[string]any{"key": key})
 		return
 	}
 	reply := pending.EarlyStopReply{
@@ -50,7 +50,7 @@ func (m *Manager) HandleEarlyStopDecisionResponse(
 		ContinueMessage:      continueMessage,
 	}
 	if !s.pending.ResolveEarlyStop(requestID, reply) {
-		utils.Debug("Session", fmt.Sprintf("no pending early-stop %s for session %s (likely timed out)", requestID, key))
+		utils.LogWithFields(utils.LevelDebug, "session", "no pending early-stop for session (likely timed out)", map[string]any{"run_id": requestID, "key": key})
 	}
 }
 
@@ -79,7 +79,7 @@ func (m *Manager) requestEarlyStopDecisionViaWire(
 	s, ok := m.sessions[key]
 	m.mu.RUnlock()
 	if !ok {
-		utils.Debug("Session", fmt.Sprintf("requestEarlyStopDecisionViaWire: session %s not found", key))
+		utils.LogWithFields(utils.LevelDebug, "session", "requestearlystopdecisionviawire: session not found", map[string]any{"key": key})
 		return nil
 	}
 
@@ -104,10 +104,7 @@ func (m *Manager) requestEarlyStopDecisionViaWire(
 		EarlyStopIsSubagent:            info.IsSubagent,
 	})
 
-	utils.Debug("Session", fmt.Sprintf(
-		"requestEarlyStopDecisionViaWire: emitted requestID=%s run=%s turn=%d wouldContinue=%v — awaiting consumer",
-		requestID, info.RunID, info.TurnNumber, info.WouldContinue,
-	))
+	utils.LogWithFields(utils.LevelDebug, "session", "requestearlystopdecisionviawire: emitted — awaiting consumer", map[string]any{"run_id": requestID, "run_id_1": info.RunID, "turn_number": info.TurnNumber, "would_continue": info.WouldContinue})
 
 	select {
 	case reply := <-ch:
@@ -118,10 +115,7 @@ func (m *Manager) requestEarlyStopDecisionViaWire(
 		// logic treats all-zero exactly the same as nil, so this is
 		// observationally equivalent. Returning non-nil records the
 		// participation for log/audit purposes.
-		utils.Debug("Session", fmt.Sprintf(
-			"requestEarlyStopDecisionViaWire: consumer responded requestID=%s forceContinue=%v overrideBudget=%d msg_len=%d",
-			requestID, reply.ForceContinue, reply.OverrideBudget, len(reply.ContinueMessage),
-		))
+		utils.LogWithFields(utils.LevelDebug, "session", "requestearlystopdecisionviawire: consumer responded", map[string]any{"run_id": requestID, "force_continue": reply.ForceContinue, "override_budget": reply.OverrideBudget, "count": len(reply.ContinueMessage)})
 		return &backend.EarlyStopDecisionResult{
 			ForceContinue:        reply.ForceContinue,
 			OverrideBudget:       reply.OverrideBudget,
@@ -129,10 +123,7 @@ func (m *Manager) requestEarlyStopDecisionViaWire(
 			ContinueMessage:      reply.ContinueMessage,
 		}
 	case <-time.After(earlyStopWireTimeout):
-		utils.Log("Session", fmt.Sprintf(
-			"requestEarlyStopDecisionViaWire: timeout after %s requestID=%s run=%s — proceeding with no opinion",
-			earlyStopWireTimeout, requestID, info.RunID,
-		))
+		utils.LogWithFields(utils.LevelInfo, "session", "requestearlystopdecisionviawire: timeout after — proceeding with no opinion", map[string]any{"early_stop_wire_timeout": earlyStopWireTimeout, "run_id": requestID, "run_id_2": info.RunID})
 		return nil
 	}
 }

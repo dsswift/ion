@@ -17,7 +17,7 @@ func Discover(opts WalkOptions) (*AgentGraph, error) {
 	for _, p := range paths {
 		def, err := LoadAgent(p)
 		if err != nil {
-			utils.Log("AgentDiscovery", "skip "+p+": "+err.Error())
+			utils.LogWithFields(utils.LevelDebug, "agentdiscovery", "skip path failed", map[string]any{"path": p, "error": err.Error()})
 			continue
 		}
 		agents = append(agents, def)

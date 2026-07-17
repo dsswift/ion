@@ -211,4 +211,58 @@ describe('parseAttachmentsFromMessages — engine plan detection', () => {
       name: 'current.md',
     })
   })
+
+  it('surfaces engine-generated image attachments on tool messages', () => {
+    // Tool-returned images are attached to the producing `role: 'tool'`
+    // message by event-slice-images.ts. The panel must surface them
+    // alongside user uploads. Without the tool/assistant branch this is
+    // dropped (the old parser only read user-message attachments).
+    const messages = [
+      {
+        role: 'tool',
+        content: 'rendered chart',
+        toolName: 'render_chart',
+        attachments: [
+          { type: 'image', name: 'a1b2.png', path: '/Users/josh/.ion/conversations/c1/images/a1b2.png' },
+        ],
+      },
+    ]
+    const out = parseAttachmentsFromMessages(messages, null)
+    expect(out).toHaveLength(1)
+    expect(out[0]).toMatchObject({
+      kind: 'image',
+      name: 'a1b2.png',
+      path: '/Users/josh/.ion/conversations/c1/images/a1b2.png',
+    })
+  })
+
+  it('surfaces provider-generated image attachments on assistant messages', () => {
+    const messages = [
+      {
+        role: 'assistant',
+        content: 'here is the image',
+        attachments: [
+          { type: 'image', name: 'gen.png', path: '/Users/josh/.ion/conversations/c1/images/gen.png' },
+        ],
+      },
+    ]
+    const out = parseAttachmentsFromMessages(messages, null)
+    expect(out).toHaveLength(1)
+    expect(out[0].kind).toBe('image')
+  })
+
+  it('ignores non-image attachments on tool/assistant messages', () => {
+    // Only images are surfaced from tool/assistant turns; a stray
+    // non-image attachment must not leak into the panel via this branch.
+    const messages = [
+      {
+        role: 'tool',
+        content: '',
+        toolName: 'x',
+        attachments: [{ type: 'file', name: 'data.bin', path: '/tmp/data.bin' }],
+      },
+    ]
+    const out = parseAttachmentsFromMessages(messages, null)
+    expect(out).toEqual([])
+  })
 })

@@ -1,6 +1,7 @@
 package backend
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -13,7 +14,7 @@ import (
 )
 
 // McpServerName is the MCP server name used in config and --allowedTools.
-// Shared between ToolServer (config generation) and CliBackend (allowlist).
+// Shared between ToolServer (config generation) and ClaudeCodeBackend (allowlist).
 const McpServerName = "ion-extensions"
 
 // ToolServer exposes extension-registered tools as an MCP server
@@ -23,6 +24,7 @@ type ToolServer struct {
 	listener net.Listener
 	tools    map[string]toolEntry
 	sockPath string
+	key      string
 	running  bool
 }
 
@@ -37,6 +39,22 @@ type toolEntry struct {
 // ToolHandler executes a tool call and returns the result.
 type ToolHandler func(input map[string]interface{}) (*types.ToolResult, error)
 
+// socketToken derives a filesystem- and socat-safe token from a session
+// key. The engine treats session keys as opaque (per the engine
+// contract, cmd.Key is accepted verbatim from any harness), so a raw key
+// can contain characters that are illegal or dangerous in a socket path:
+// most importantly a colon, which socat parses as an address-option
+// delimiter in UNIX-CONNECT:<path> — a colon-bearing key silently kills
+// every MCP/extension tool. It can also be arbitrarily long, blowing the
+// platform sun_path limit. A SHA-256 hex digest is collision-resistant
+// and length-bounded (fixed 64 chars, immune to sun_path overflow) where
+// a raw key is neither, and character-safe ([0-9a-f] only) for both socat
+// and the filesystem. So the socket and MCP-config filenames must be
+// derived from this token, never from the raw key.
+func socketToken(sessionID string) string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(sessionID)))
+}
+
 // NewToolServer creates a tool server for the given session.
 func NewToolServer(sessionID string) *ToolServer {
 	home, _ := os.UserHomeDir()
@@ -45,7 +63,8 @@ func NewToolServer(sessionID string) *ToolServer {
 
 	return &ToolServer{
 		tools:    make(map[string]toolEntry),
-		sockPath: filepath.Join(sockDir, fmt.Sprintf("sock-%s", sessionID)),
+		key:      sessionID,
+		sockPath: filepath.Join(sockDir, fmt.Sprintf("sock-%s", socketToken(sessionID))),
 	}
 }
 
@@ -58,7 +77,11 @@ func (ts *ToolServer) RegisterTool(name string, handler ToolHandler, description
 		description: description,
 		inputSchema: inputSchema,
 	}
-	utils.Debug("ToolServer", fmt.Sprintf("registered tool %q (desc=%d chars, schema=%v)", name, len(description), inputSchema != nil))
+	utils.LogWithFields(utils.LevelDebug, "backend.tool_server", "registered tool ( chars, )", map[string]any{
+		"name":   name,
+		"desc":   len(description),
+		"schema": inputSchema != nil,
+	})
 }
 
 // Start begins listening for MCP tool call requests.
@@ -78,7 +101,10 @@ func (ts *ToolServer) Start() error {
 	ts.running = true
 
 	go ts.acceptLoop()
-	utils.Log("ToolServer", "started at "+ts.sockPath)
+	utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "started for at", map[string]any{
+		"key":       ts.key,
+		"sock_path": ts.sockPath,
+	})
 	return nil
 }
 
@@ -97,6 +123,15 @@ func (ts *ToolServer) Stop() {
 // SocketPath returns the path to the Unix socket.
 func (ts *ToolServer) SocketPath() string {
 	return ts.sockPath
+}
+
+// HasTool reports whether a tool of the given name is registered. Exposed for
+// tests that assert which tools a delegated-CLI child's tool server carries.
+func (ts *ToolServer) HasTool(name string) bool {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	_, ok := ts.tools[name]
+	return ok
 }
 
 // McpConfigPath writes MCP config JSON for the Claude CLI --mcp-config flag.
@@ -122,11 +157,29 @@ func (ts *ToolServer) McpConfigPath(sessionID string) (string, error) {
 		return "", err
 	}
 
-	configPath := filepath.Join(configDir, fmt.Sprintf("config-%s.json", sessionID))
+	configPath := filepath.Join(configDir, fmt.Sprintf("config-%s.json", socketToken(sessionID)))
 	if err := os.WriteFile(configPath, data, 0o600); err != nil {
 		return "", err
 	}
 	return configPath, nil
+}
+
+// McpServerSpec returns the tool server as a single structured MCP-server
+// entry, for delegated CLIs that take per-session MCP servers as inline params
+// rather than a config-file path. The ACP backends (grok, cursor) pass this on
+// `session/new`. The shape is the ACP stdio `McpServer` variant — the grok
+// agent's serde requires `env` to be present (an empty array is accepted), so
+// it is always included. Same socat→Unix-socket bridge as McpConfigPath.
+func (ts *ToolServer) McpServerSpec() map[string]interface{} {
+	return map[string]interface{}{
+		"name":    McpServerName,
+		"command": "socat",
+		"args": []string{
+			fmt.Sprintf("UNIX-CONNECT:%s", ts.sockPath),
+			"STDIO",
+		},
+		"env": []interface{}{},
+	}
 }
 
 func (ts *ToolServer) acceptLoop() {
@@ -163,7 +216,10 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 			return
 		}
 
-		utils.Debug("ToolServer", fmt.Sprintf("received method=%s id=%v", req.Method, req.ID))
+		utils.LogWithFields(utils.LevelDebug, "backend.tool_server", "received", map[string]any{
+			"method": req.Method,
+			"id":     req.ID,
+		})
 
 		switch req.Method {
 		case "initialize":
@@ -172,7 +228,9 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 				ProtocolVersion string `json:"protocolVersion"`
 			}
 			_ = json.Unmarshal(req.Params, &params)
-			utils.Log("ToolServer", fmt.Sprintf("MCP initialize: protocolVersion=%s", params.ProtocolVersion))
+			utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "MCP initialize", map[string]any{
+				"protocol_version": params.ProtocolVersion,
+			})
 			_ = encoder.Encode(map[string]interface{}{
 				"jsonrpc": "2.0",
 				"id":      req.ID,
@@ -203,9 +261,9 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 			// payload carried a concrete value (number/string), which
 			// signals the violation.
 			if req.ID != nil {
-				utils.Log("ToolServer", fmt.Sprintf(
-					"protocol violation: notifications/initialized carried id=%v (JSON-RPC notifications must omit id). Ignoring id; no response sent.",
-					req.ID))
+				utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "protocol violation: notifications/initialized carried (JSON-RPC notifications must omit id). Ignoring id; no response sent.", map[string]any{
+					"id": req.ID,
+				})
 			} else {
 				utils.Debug("ToolServer", "received notifications/initialized (no-op)")
 			}
@@ -238,7 +296,9 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 			}
 			ts.mu.Unlock()
 
-			utils.Debug("ToolServer", fmt.Sprintf("tools/list: returning %d tools", len(toolList)))
+			utils.LogWithFields(utils.LevelDebug, "backend.tool_server", "tools/list: returning tools", map[string]any{
+				"count": len(toolList),
+			})
 			_ = encoder.Encode(map[string]interface{}{
 				"jsonrpc": "2.0",
 				"id":      req.ID,
@@ -257,7 +317,9 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 			ts.mu.Unlock()
 
 			if !exists {
-				utils.Log("ToolServer", fmt.Sprintf("tool not found: %s", params.Name))
+				utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "tool not found", map[string]any{
+					"name": params.Name,
+				})
 				_ = encoder.Encode(map[string]interface{}{
 					"jsonrpc": "2.0",
 					"id":      req.ID,
@@ -266,10 +328,15 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 				continue
 			}
 
-			utils.Debug("ToolServer", fmt.Sprintf("tools/call: invoking %s", params.Name))
+			utils.LogWithFields(utils.LevelDebug, "backend.tool_server", "tools/call: invoking", map[string]any{
+				"name": params.Name,
+			})
 			result, err := entry.handler(params.Arguments)
 			if err != nil {
-				utils.Log("ToolServer", fmt.Sprintf("tool %s error: %v", params.Name, err))
+				utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "tool error", map[string]any{
+					"name":  params.Name,
+					"error": utils.ErrStr(err),
+				})
 				_ = encoder.Encode(map[string]interface{}{
 					"jsonrpc": "2.0",
 					"id":      req.ID,
@@ -281,7 +348,10 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 					},
 				})
 			} else {
-				utils.Debug("ToolServer", fmt.Sprintf("tool %s completed (isError=%v)", params.Name, result.IsError))
+				utils.LogWithFields(utils.LevelDebug, "backend.tool_server", "tool completed", map[string]any{
+					"name":     params.Name,
+					"is_error": result.IsError,
+				})
 				_ = encoder.Encode(map[string]interface{}{
 					"jsonrpc": "2.0",
 					"id":      req.ID,
@@ -295,7 +365,9 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 			}
 
 		default:
-			utils.Log("ToolServer", fmt.Sprintf("unknown method: %s", req.Method))
+			utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "unknown method", map[string]any{
+				"method": req.Method,
+			})
 			_ = encoder.Encode(map[string]interface{}{
 				"jsonrpc": "2.0",
 				"id":      req.ID,

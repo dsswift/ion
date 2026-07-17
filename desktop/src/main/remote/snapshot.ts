@@ -1,11 +1,10 @@
 import { existsSync, readFileSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
-import { resolvePlanPreview } from './plan-content-cache'
 import { state, sessionPlane, lastMessagePreview } from '../state'
 import { TABS_FILE } from '../settings-store'
 import { isResourceRead } from '../event-wiring-resources'
-import { log } from '../logger'
+import { log, debug } from '../logger'
 import type { RemoteTabState } from './protocol'
 import type { TabStatus } from '../../shared/types'
 import { projectRendererTab } from './snapshot-project'
@@ -68,37 +67,15 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
             // Conversation tail fingerprint — the staleness signal for the iOS
             // main-conversation heal. iOS computes the SAME fingerprint over its
             // local tail and reloads when it diverges (dropped live deltas).
-            // MUST stay byte-identical with conversationTailFingerprint in
-            // ../../shared/conversation-fingerprint.ts (the unit-tested mirror)
-            // and the Swift copy in SessionViewModel+Snapshot.swift. Pinning:
-            // tail = last 10 messages; tool rows = "<id>:t<statusChar>" (status
-            // only, truncation-immune); non-tool rows = "<id>:<utf8ByteLen>";
-            // join with ",". NO total-count term — iOS holds a paginated page,
-            // so any count would diverge on long conversations and reload-loop.
-            // UTF-8 byte length, never UTF-16 .length. This IIFE runs in the
-            // renderer, so TextEncoder is available; main-process imports are
-            // NOT (see header comment above).
-            var FP_TAIL = 10;
-            var convFingerprint = (function() {
-              function utf8Len(str) { return new TextEncoder().encode(str || '').length; }
-              function statusTok(st) {
-                if (st === 'running') return 'r';
-                if (st === 'completed') return 'c';
-                if (st === 'error') return 'e';
-                return '-';
-              }
-              var start = Math.max(0, msgs.length - FP_TAIL);
-              var toks = [];
-              for (var k = start; k < msgs.length; k++) {
-                var m = msgs[k];
-                if (m.role === 'tool') {
-                  toks.push(m.id + ':t' + statusTok(m.toolStatus));
-                } else {
-                  toks.push(m.id + ':' + utf8Len(m.content || ''));
-                }
-              }
-              return toks.join(',');
-            })();
+            // Computed via store.getState().computeConvFingerprint(tabId) which
+            // calls the canonical conversationTailFingerprint() from
+            // shared/conversation-fingerprint.ts — that function is the single
+            // TS source of truth and is unit-tested separately. The Swift copy
+            // (SessionViewModel+Snapshot.swift conversationTailFingerprint) must
+            // remain byte-identical; any algorithm change starts there.
+            var convFingerprint = (typeof s.computeConvFingerprint === 'function')
+              ? (s.computeConvFingerprint(t.id) || '')
+              : '';
             // Live interactive permission requests live on the active instance.
             var queue = (activeInst && activeInst.permissionQueue ? activeInst.permissionQueue : []).slice();
             // Live extension elicitations (ctx.elicit) also live on the active
@@ -321,13 +298,23 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
               // waiting for a live engine_status event. These match the fields
               // RemoteTabState added in the snapshot-parity fix.
               //
-              // totalCostUsd: prefer the live cumulative from statusFields;
+              // runCostUsd: prefer the live run-scoped cost from statusFields;
               //   fall back to the final task_complete cost from lastResult.
               //   Omitted when neither is present (never-run tabs).
-              totalCostUsd: (function() {
-                var liveCost = activeInst && activeInst.statusFields && typeof activeInst.statusFields.totalCostUsd === 'number' ? activeInst.statusFields.totalCostUsd : undefined;
+              runCostUsd: (function() {
+                var liveCost = activeInst && activeInst.statusFields && typeof activeInst.statusFields.runCostUsd === 'number' ? activeInst.statusFields.runCostUsd : undefined;
                 if (liveCost !== undefined) return liveCost;
                 return t.lastResult && typeof t.lastResult.totalCostUsd === 'number' ? t.lastResult.totalCostUsd : undefined;
+              })(),
+              conversationCostUsd: (activeInst && activeInst.statusFields && typeof activeInst.statusFields.conversationCostUsd === 'number') ? activeInst.statusFields.conversationCostUsd : undefined,
+              // conversationTurns: lifetime prompt count from the final
+              // task_complete (lastResult). Prefer the live status field when
+              // present; fall back to lastResult so historical/idle tabs still
+              // carry it. Omitted when neither is present (never-run tabs).
+              conversationTurns: (function() {
+                var live = activeInst && activeInst.statusFields && typeof activeInst.statusFields.conversationTurns === 'number' ? activeInst.statusFields.conversationTurns : undefined;
+                if (live !== undefined) return live;
+                return t.lastResult && typeof t.lastResult.conversationTurns === 'number' ? t.lastResult.conversationTurns : undefined;
               })(),
               inputTokens: (t.lastResult && t.lastResult.usage && typeof t.lastResult.usage.input_tokens === 'number') ? t.lastResult.usage.input_tokens : undefined,
               outputTokens: (t.lastResult && t.lastResult.usage && typeof t.lastResult.usage.output_tokens === 'number') ? t.lastResult.usage.output_tokens : undefined,
@@ -381,7 +368,7 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
               byKind[item.kind].push(item)
             }
             resourceManifest = byKind
-            log('desktop_snapshot', `resource manifest cold-loaded from disk: ${items.length} items`)
+            log('desktop_snapshot', 'resource manifest cold-loaded from disk', { items: items.length })
           }
         }
       }
@@ -405,7 +392,7 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
     for (const t of rendererTabs) {
       if (t.permissionQueue?.length > 0) {
         const qIds = (t.permissionQueue || []).map((p: any) => `${p.toolTitle || p.toolName}(${p.questionId?.slice(-8)})`).join(', ')
-        log('desktop_snapshot', `tab=${t.id?.slice(0, 8)} status=${t.status} permQueue=[${qIds}]`)
+        debug('desktop_snapshot', 'tab state', { tab_id: t.id?.slice(0, 8), status: t.status, perm_queue: qIds })
       }
     }
     const mapped = rendererTabs
@@ -427,28 +414,16 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
             // tabs and for renderer queue entries that predate the field.
             instanceId: p.instanceId || undefined,
           }
-          // Enrich ExitPlanMode entries with a bounded preview + metadata.
-          // The full plan body is not embedded in the snapshot — iOS fetches it
-          // on demand via request_plan_content. The preview comes from the plan
-          // file on disk when readable, else from the inline planContent the
-          // entry carries (backfilled / restored-synthesis cards have no readable
-          // file). Without the inline fallback the preview was silently omitted
-          // and the iOS card rendered blank. See plan gentle-perching-lemon.md
-          // and solid-running-river.md (Regression 1).
+          // Enrich ExitPlanMode entries with metadata for the iOS plan card.
+          // The plan file body is NOT embedded in the snapshot (too expensive —
+          // sync disk I/O on every 5 s poll tick for every ExitPlanMode entry).
+          // iOS fetches plan content on demand via desktop_request_plan_content
+          // when the user expands the card. planFilePath is preserved on the entry
+          // so iOS knows how to request it. See commit 7 and plan-content-cache.ts.
           if (entry.toolName === 'ExitPlanMode') {
-            const PREVIEW_BYTES = 4 * 1024  // 4 KB inline preview for instant card render
-            const resolved = resolvePlanPreview(entry.toolInput, PREVIEW_BYTES)
-            if (resolved) {
-              entry.toolInput = {
-                ...entry.toolInput,
-                planContentPreview: resolved.preview,
-                planSizeBytes: resolved.totalBytes,
-                planTruncated: resolved.truncated,
-              }
-            } else if (entry.toolInput?.planFilePath || entry.toolInput?.planContent) {
-              // We had something to read but produced no preview — observable, not silent.
-              log('desktop_snapshot', `plan preview unavailable for ExitPlanMode entry: planFilePath=${entry.toolInput?.planFilePath ?? '<none>'} hasInline=${!!entry.toolInput?.planContent}`)
-            }
+            // No preview embedding — omit the sync readPlanPreviewCached call.
+            // iOS gracefully handles a missing planContentPreview by showing a
+            // "tap to load" placeholder and fetching on expand.
           }
           return entry
         })

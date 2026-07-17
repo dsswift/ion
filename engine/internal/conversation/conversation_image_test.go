@@ -146,4 +146,101 @@ func TestEncodeImage_GIF(t *testing.T) {
 	}
 }
 
+// --- Content-sniff overrides extension (regression for JPEG-as-PNG crash) ---
+
+// TestEncodeImage_MismatchedExtension_JPEGasPNG is the direct regression test
+// for the crash in conversation 1783802415913-98e41ec70915. A file with a .png
+// extension that contains JPEG bytes must produce media_type "image/jpeg", not
+// "image/png". Anthropic's API independently inspects the bytes and rejects a
+// mismatch with invalid_request_error, killing the session.
+func TestEncodeImage_MismatchedExtension_JPEGasPNG(t *testing.T) {
+	dir := t.TempDir()
+	// Real JPEG magic bytes saved under a .png extension — exactly the scenario
+	// that crashed the live conversation.
+	jpegBytes := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01}
+	path := filepath.Join(dir, "icon.png") // .png extension, JPEG content
+	os.WriteFile(path, jpegBytes, 0o644)
+
+	block, err := EncodeImage(path)
+	if err != nil {
+		t.Fatalf("EncodeImage failed: %v", err)
+	}
+	if block.Source == nil {
+		t.Fatal("expected source to be set")
+	}
+	// Sniff must win: bytes are JPEG regardless of the .png extension.
+	if block.Source.MediaType != "image/jpeg" {
+		t.Errorf("media_type = %q, want image/jpeg (sniff must override extension)", block.Source.MediaType)
+	}
+}
+
+// TestEncodeImage_MismatchedExtension_WebPasJPG verifies that WebP bytes saved
+// under a .jpg extension produce media_type "image/webp", not "image/jpeg".
+func TestEncodeImage_MismatchedExtension_WebPasJPG(t *testing.T) {
+	dir := t.TempDir()
+	// Go's net/http.DetectContentType requires at least 16 bytes to identify
+	// WebP: RIFF (4) + file-size (4) + WEBP (4) + VP8 chunk type (4).
+	// Using VP8L (lossless) marker here.
+	webpBytes := []byte{'R', 'I', 'F', 'F', 0x10, 0x00, 0x00, 0x00, 'W', 'E', 'B', 'P', 'V', 'P', '8', 'L'}
+	path := filepath.Join(dir, "image.jpg") // .jpg extension, WebP content
+	os.WriteFile(path, webpBytes, 0o644)
+
+	block, err := EncodeImage(path)
+	if err != nil {
+		t.Fatalf("EncodeImage failed: %v", err)
+	}
+	if block.Source == nil {
+		t.Fatal("expected source to be set")
+	}
+	if block.Source.MediaType != "image/webp" {
+		t.Errorf("media_type = %q, want image/webp (sniff must override extension)", block.Source.MediaType)
+	}
+}
+
+// TestEncodeImage_MismatchedExtension_PNGasJPG verifies that PNG bytes saved
+// under a .jpg extension produce media_type "image/png", not "image/jpeg".
+func TestEncodeImage_MismatchedExtension_PNGasJPG(t *testing.T) {
+	dir := t.TempDir()
+	// Minimal PNG header (8-byte PNG signature).
+	pngBytes := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+	path := filepath.Join(dir, "image.jpg") // .jpg extension, PNG content
+	os.WriteFile(path, pngBytes, 0o644)
+
+	block, err := EncodeImage(path)
+	if err != nil {
+		t.Fatalf("EncodeImage failed: %v", err)
+	}
+	if block.Source == nil {
+		t.Fatal("expected source to be set")
+	}
+	if block.Source.MediaType != "image/png" {
+		t.Errorf("media_type = %q, want image/png (sniff must override extension)", block.Source.MediaType)
+	}
+}
+
+// TestEncodeImage_SniffFallsBackToExtension verifies that when
+// DetectContentType cannot identify the format (returns
+// "application/octet-stream"), EncodeImage falls back to the extension-derived
+// MIME type rather than erroring. This keeps small/synthetic test fixtures
+// working correctly.
+func TestEncodeImage_SniffFallsBackToExtension(t *testing.T) {
+	dir := t.TempDir()
+	// Bytes that DetectContentType cannot identify — not a known magic number.
+	unknownBytes := []byte{0x00, 0x01, 0x02, 0x03}
+	path := filepath.Join(dir, "mystery.png") // extension says PNG
+	os.WriteFile(path, unknownBytes, 0o644)
+
+	block, err := EncodeImage(path)
+	if err != nil {
+		t.Fatalf("EncodeImage failed: %v", err)
+	}
+	if block.Source == nil {
+		t.Fatal("expected source to be set")
+	}
+	// Sniff fails → extension fallback → image/png.
+	if block.Source.MediaType != "image/png" {
+		t.Errorf("media_type = %q, want image/png (extension fallback)", block.Source.MediaType)
+	}
+}
+
 // --- NavigateTree sets leafID and rebuilds ---

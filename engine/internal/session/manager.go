@@ -50,7 +50,7 @@ type Manager struct {
 	// childBackendOverride is a test-only seam: when non-nil, newChildBackend
 	// returns this factory's output instead of constructing a real backend.
 	// Lets unit tests substitute an in-process stub for the child-agent
-	// spawner closure (which otherwise hardcodes an ApiBackend or CliBackend).
+	// spawner closure (which otherwise hardcodes an ApiBackend or ClaudeCodeBackend).
 	// Production callers must never set this -- it has no setter on the
 	// public API.
 	childBackendOverride func() backend.RunBackend
@@ -243,7 +243,8 @@ func buildSessionStatusMirror(key string, f *types.StatusFields, s *engineSessio
 			Model:                    f.Model,
 			ContextPercent:           f.ContextPercent,
 			ContextWindow:            f.ContextWindow,
-			TotalCostUsd:             f.TotalCostUsd,
+			RunCostUsd:               f.RunCostUsd,
+			ConversationCostUsd:      f.ConversationCostUsd,
 			PermissionDenialsPending: f.PermissionDenials,
 			SessionID:                convID,
 			ExtensionName:            f.ExtensionName,
@@ -308,7 +309,7 @@ func (m *Manager) SendCommand(key, command, args string) {
 		// command, try the next routing option". Contract-wise this is
 		// identical to the default-arm signal in dispatchCommand; consumers
 		// do not need to distinguish the two.
-		utils.Log("Session", fmt.Sprintf("SendCommand: session %s not found, emitting unknown_command for cmd=%s", key, command))
+		utils.LogWithFields(utils.LevelInfo, "session", "sendcommand: session not found, emitting unknown_command for", map[string]any{"key": key, "command": command})
 		m.emit(key, types.EngineEvent{
 			Type:         "engine_command_result",
 			EventMessage: "unknown command: " + command,
@@ -325,7 +326,7 @@ func (m *Manager) SendCommand(key, command, args string) {
 
 // StopSession cancels the active run and cleans up the session.
 func (m *Manager) StopSession(key string) error {
-	utils.Info("Session", fmt.Sprintf("StopSession: key=%s", key))
+	utils.LogWithFields(utils.LevelInfo, "session", "stopsession", map[string]any{"key": key})
 	m.mu.Lock()
 	s, ok := m.sessions[key]
 	if !ok {
@@ -405,7 +406,7 @@ func (m *Manager) StopSession(key string) error {
 	// still-live group, and no late callback races with extGroup.Close().
 	if fsWatcherRelease != nil {
 		fsWatcherRelease()
-		utils.Info("session", fmt.Sprintf("stopSession: released watcher key=%s", key))
+		utils.LogWithFields(utils.LevelInfo, "session", "stopsession: released watcher", map[string]any{"key": key})
 	}
 	if extGroup != nil && !extGroup.IsEmpty() {
 		ctx := m.newExtContext(s, key)
@@ -422,7 +423,13 @@ func (m *Manager) StopSession(key string) error {
 		_ = conn.Close()
 	}
 	if telemCollector != nil {
-		_ = telemCollector.Flush()
+		// Close the collector: stops the periodic flush goroutine, performs a
+		// final drain, and waits for the goroutine to exit cleanly. This
+		// supersedes the earlier bare Flush() call — Close() includes the final
+		// flush and is safe to call even when no goroutine was started (the
+		// no-target path returns immediately). A failing target is logged at
+		// ERROR, rate-limited to once per distinct cause.
+		telemCollector.Close()
 	}
 	if sessionRecorder != nil {
 		_ = sessionRecorder.Close()
@@ -567,10 +574,7 @@ func (m *Manager) currentSessionStatus(s *engineSession) string {
 	if m.backend != nil && !m.backend.IsRunning(s.requestID) {
 		stale := s.requestID
 		s.requestID = ""
-		utils.Warn("Session", fmt.Sprintf(
-			"currentSessionStatus: clearing stale requestID key=%s runID=%s (backend disclaims run); reporting state=idle",
-			s.key, stale,
-		))
+		utils.LogWithFields(utils.LevelWarn, "session", "currentsessionstatus: clearing stale requestid (backend disclaims run); reporting state=idle", map[string]any{"session_id": s.key, "stale": stale})
 		return "idle"
 	}
 	return "running"
@@ -584,8 +588,8 @@ func (m *Manager) currentSessionStatus(s *engineSession) string {
 //
 // Fields wiped (matches dispatchClear exactly):
 //   - Messages           — the flat LLM-visible message list
-//   - LastInputTokens    — context-percent numerator
-//   - LastInputTokensMsgCount — companion message-count counter
+//   - (token counters are not persisted as scalars — GetContextUsage reads
+//     them from LlmMessage.Usage via the backward scan)
 //
 // Fields preserved: Entries, LeafID, TotalInputTokens, TotalOutputTokens,
 // TotalCost, ID, System, Model, CreatedAt, Version, ParentID,
@@ -596,7 +600,7 @@ func (m *Manager) currentSessionStatus(s *engineSession) string {
 // loaded or saved; in that case no partial write occurs (Load/Save are atomic
 // operations at the file level).
 func (m *Manager) ClearConversationFile(sessionID string) error {
-	utils.Log("Session", fmt.Sprintf("ClearConversationFile: clearing conversation sessionId=%s", sessionID))
+	utils.LogWithFields(utils.LevelInfo, "session", "clearconversationfile: clearing conversation", map[string]any{"run_id": sessionID})
 	// Route through the shared clear core (preferKey empty → the core does a
 	// reverse lookup over live sessions by conversationID). This guarantees
 	// the file-only clear path carries identical semantics to the
@@ -608,14 +612,14 @@ func (m *Manager) ClearConversationFile(sessionID string) error {
 	// a later reopen).
 	res, err := m.clearConversationCore(sessionID, "")
 	if err != nil {
-		utils.Log("Session", fmt.Sprintf("ClearConversationFile: sessionId=%s core failed: %v", sessionID, err))
+		utils.LogWithFields(utils.LevelInfo, "session", "clearconversationfile: core failed", map[string]any{"run_id": sessionID, "error": err})
 		return err
 	}
 	if res.sessionKey != "" {
-		utils.Log("Session", fmt.Sprintf("ClearConversationFile: sessionId=%s owned by live session key=%s deniedCleared=%d — emitting shared clear signal", sessionID, res.sessionKey, res.deniedCleared))
+		utils.LogWithFields(utils.LevelInfo, "session", "clearconversationfile: owned by live session — emitting shared clear signal", map[string]any{"run_id": sessionID, "session_key": res.sessionKey, "denied_cleared": res.deniedCleared})
 		m.emitClearSignal(res.sessionKey)
 	} else {
-		utils.Log("Session", fmt.Sprintf("ClearConversationFile: sessionId=%s wiped=%t (no live session owner, no signal to emit)", sessionID, res.wiped))
+		utils.LogWithFields(utils.LevelInfo, "session", "clearconversationfile: (no live session owner, no signal to emit)", map[string]any{"run_id": sessionID, "wiped": res.wiped})
 	}
 	return nil
 }
@@ -677,7 +681,7 @@ func (m *Manager) ReconcileState(key string) {
 	s, ok := m.sessions[key]
 	m.mu.RUnlock()
 	if !ok {
-		utils.Warn("Session", fmt.Sprintf("ReconcileState: session not found key=%s", key))
+		utils.LogWithFields(utils.LevelWarn, "session", "reconcilestate: session not found", map[string]any{"key": key})
 		return
 	}
 
@@ -685,7 +689,7 @@ func (m *Manager) ReconcileState(key string) {
 	// reconnecting clients need the authoritative "no agents" signal as
 	// much as they need the "here are the agents" signal.
 	snapshot := s.agents.MergedSnapshot()
-	utils.Log("Session", fmt.Sprintf("agent_snapshot_emitted key=%s count=%d reason=reconcile", key, len(snapshot)))
+	utils.LogWithFields(utils.LevelInfo, "session", "agent_snapshot_emitted reason=reconcile", map[string]any{"key": key, "count": len(snapshot)})
 	m.emit(key, types.EngineEvent{Type: "engine_agent_state", Agents: snapshot})
 
 	// Re-emit status via the shared snapshot helper so the legacy

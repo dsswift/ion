@@ -432,6 +432,96 @@ func TestDispatchRegistry_BackwardCompat_RegisterUsesNameAsID(t *testing.T) {
 	}
 }
 
+// --- Deregister invariant-log tests ---
+
+// mockLiveBackend is a fake RunBackend whose IsRunning returns a fixed value,
+// used to exercise the Deregister invariant check that logs when a registry
+// entry is removed while its child run is still active. Embedding the
+// interface satisfies the unused methods; only IsRunning is overridden.
+type mockLiveBackend struct {
+	backend.RunBackend
+	running          bool
+	isRunningCalls   int
+	lastIsRunningArg string
+}
+
+func (m *mockLiveBackend) IsRunning(requestID string) bool {
+	m.isRunningCalls++
+	m.lastIsRunningArg = requestID
+	return m.running
+}
+
+// TestDeregisterInvariantLogWhenChildLive verifies that Deregister still
+// removes the registry entry when the child run reports as active. The
+// invariant ERROR log is emitted as a side effect (verified by code review;
+// no log-capture hook exists in this package), and the entry must be gone
+// regardless — Deregister never leaves a live-child entry behind. The test
+// also confirms IsRunning is consulted with the dispatch's ChildRunID.
+func TestDeregisterInvariantLogWhenChildLive(t *testing.T) {
+	r := NewDispatchRegistry()
+	child := &mockLiveBackend{running: true}
+
+	r.RegisterWithID("dispatch-live-aaa", "graphics-lead", func() {}, child, "sess-1", "", 0)
+	r.SetChildRunID("dispatch-live-aaa", "sess-1-dispatch-live-aaa")
+
+	if got := r.Count(); got != 1 {
+		t.Fatalf("Count after register = %d, want 1", got)
+	}
+
+	// Deregister while the child reports running: must not panic, must remove
+	// the entry, and must consult IsRunning with the stored ChildRunID.
+	r.Deregister("dispatch-live-aaa")
+
+	if got := r.Count(); got != 0 {
+		t.Fatalf("Count after Deregister = %d, want 0 (entry must be removed even with live child)", got)
+	}
+	if _, ok := r.Get("dispatch-live-aaa"); ok {
+		t.Error("Get after Deregister returned true, want false (entry not removed)")
+	}
+	if child.isRunningCalls != 1 {
+		t.Errorf("IsRunning called %d times, want 1", child.isRunningCalls)
+	}
+	if child.lastIsRunningArg != "sess-1-dispatch-live-aaa" {
+		t.Errorf("IsRunning called with %q, want %q", child.lastIsRunningArg, "sess-1-dispatch-live-aaa")
+	}
+}
+
+// TestDeregisterNoInvariantLogWhenChildIdle verifies the complement: when the
+// child run is NOT active, Deregister removes the entry via the normal path
+// and still consults IsRunning (no false invariant trigger). This pins that
+// the invariant check does not misfire on the common, healthy deregister path.
+func TestDeregisterNoInvariantLogWhenChildIdle(t *testing.T) {
+	r := NewDispatchRegistry()
+	child := &mockLiveBackend{running: false}
+
+	r.RegisterWithID("dispatch-idle-bbb", "graphics-lead", func() {}, child, "sess-1", "", 0)
+	r.SetChildRunID("dispatch-idle-bbb", "sess-1-dispatch-idle-bbb")
+
+	r.Deregister("dispatch-idle-bbb")
+
+	if got := r.Count(); got != 0 {
+		t.Fatalf("Count after Deregister = %d, want 0", got)
+	}
+	if child.isRunningCalls != 1 {
+		t.Errorf("IsRunning called %d times, want 1", child.isRunningCalls)
+	}
+}
+
+// TestDeregisterNilChildSkipsInvariantCheck verifies that a dispatch with a
+// nil Child (the legacy Register path passes nil) deregisters cleanly without
+// dereferencing the nil backend — the invariant check is guarded by d.Child
+// != nil.
+func TestDeregisterNilChildSkipsInvariantCheck(t *testing.T) {
+	r := NewDispatchRegistry()
+
+	r.Register("agent-nil-child", func() {}, nil, "sess-1")
+	r.Deregister("agent-nil-child")
+
+	if got := r.Count(); got != 0 {
+		t.Fatalf("Count after Deregister with nil child = %d, want 0", got)
+	}
+}
+
 // --- SteerByID tests ---
 
 // mockSteerableBackend is a fake backend that implements Steerable for

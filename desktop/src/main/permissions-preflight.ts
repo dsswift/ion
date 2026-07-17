@@ -4,8 +4,8 @@ import { homedir } from 'os'
 import { join, basename } from 'path'
 import { log as _log } from './logger'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 export async function requestPermissions(): Promise<void> {
@@ -17,7 +17,7 @@ export async function requestPermissions(): Promise<void> {
       await systemPreferences.askForMediaAccess('microphone')
     }
   } catch (err: any) {
-    log(`Permission preflight: microphone check failed — ${err.message}`)
+    log('permissions_preflight: microphone check failed', { error: err.message })
   }
 
   const home = homedir()
@@ -29,9 +29,9 @@ export async function requestPermissions(): Promise<void> {
   for (const dir of tccProtectedDirs) {
     try {
       readdirSync(dir, { withFileTypes: false })
-      log(`Permission preflight: ${basename(dir)} access OK`)
+      log('permissions_preflight: access ok', { dir: basename(dir) })
     } catch (err: any) {
-      log(`Permission preflight: ${basename(dir)} access failed — ${err.message}`)
+      log('permissions_preflight: access failed', { dir: basename(dir), error: err.message })
     }
   }
 }

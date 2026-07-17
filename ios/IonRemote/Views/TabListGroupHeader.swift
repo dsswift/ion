@@ -44,6 +44,11 @@ struct TabListGroupHeader: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
             Spacer()
+            // Group status rollup dot: highest-priority status across every tab
+            // in the group. iOS parity surface for the desktop group-pill
+            // GroupStatusDot (getGroupStatusColor). Sits on the trailing edge,
+            // before the per-group `+` button.
+            GroupStatusDot(status: TabStatusRollup.groupStatus(tabs: group.tabs))
             if let dir = group.directory {
                 Button {
                     // Per-group `+`: capture the group id so the sheet's
@@ -78,6 +83,58 @@ struct TabListGroupHeader: View {
         .onTapGesture {
             withAnimation(IonTheme.snappySpring) {
                 onToggleCollapsed()
+            }
+        }
+    }
+}
+
+// MARK: - GroupStatusDot
+//
+// Renders the group's rolled-up status as a 6pt dot (matching the desktop's
+// 6px group-pill dot). Pulses for the running / running-children states and
+// applies a colored glow for the states that carry one on desktop. The idle
+// state renders a dimmed gray dot (0.4 opacity) with no pulse and no glow so
+// an all-idle group shows a quiet marker rather than clutter.
+
+struct GroupStatusDot: View {
+    let status: GroupTabStatus
+
+    @State private var pulseOpacity: Double = 1.0
+
+    /// Idle is the only non-glowing, non-pulsing state — render it dimmed.
+    private var isIdle: Bool {
+        status.priority == TabStatusRollup.priorityIdle
+    }
+
+    var body: some View {
+        Circle()
+            .fill(status.color)
+            .frame(width: 6, height: 6)
+            .opacity(dotOpacity)
+            .shadow(color: status.glow ? status.glowColor.opacity(0.7) : .clear, radius: status.glow ? 3 : 0)
+            .onChange(of: status.shouldPulse) { _, shouldPulse in
+                applyPulse(shouldPulse)
+            }
+            .onAppear {
+                applyPulse(status.shouldPulse)
+            }
+    }
+
+    /// Idle dims to 0.4; a pulsing dot animates its opacity between full and
+    /// 0.3; everything else renders at full opacity.
+    private var dotOpacity: Double {
+        if isIdle { return 0.4 }
+        return status.shouldPulse ? pulseOpacity : 1.0
+    }
+
+    private func applyPulse(_ shouldPulse: Bool) {
+        if shouldPulse {
+            withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
+                pulseOpacity = 0.3
+            }
+        } else {
+            withAnimation(.default) {
+                pulseOpacity = 1.0
             }
         }
     }

@@ -21,7 +21,7 @@ type mockLlmProvider struct {
 	mu        sync.Mutex
 	callCount int
 	responses [][]types.LlmStreamEvent // one response per call
-	failAfter int                       // if > 0, fail after this many events on first call
+	failAfter int                      // if > 0, fail after this many events on first call
 	failErr   error
 }
 
@@ -267,7 +267,7 @@ func (s *slowMockProvider) Stream(ctx context.Context, opts types.LlmStreamOptio
 			// If we get here without cancel, emit end_turn
 			stopReason := "end_turn"
 			events <- types.LlmStreamEvent{
-				Type: "message_delta",
+				Type:  "message_delta",
 				Delta: &types.LlmStreamDelta{StopReason: &stopReason},
 			}
 			events <- types.LlmStreamEvent{Type: "message_stop"}
@@ -289,9 +289,9 @@ func setupTestProvider(responses [][]types.LlmStreamEvent) *mockLlmProvider {
 	}
 	providers.RegisterProvider(mock)
 	providers.RegisterModel(testModel, types.ModelInfo{
-		ProviderID:     testProviderID,
-		ContextWindow:  200000,
-		CostPer1kInput: 0.003,
+		ProviderID:      testProviderID,
+		ContextWindow:   200000,
+		CostPer1kInput:  0.003,
 		CostPer1kOutput: 0.015,
 	})
 	return mock
@@ -414,9 +414,9 @@ func TestStartRunSpawnsAndTracksRun(t *testing.T) {
 	b := NewApiBackend()
 	c := collectEvents(b, "req-1")
 	b.StartRun("req-1", types.RunOptions{
-		Prompt:      "hello",
-		ProjectPath: "/tmp",
-		Model:       testModel,
+		Prompt:           "hello",
+		ProjectPath:      "/tmp",
+		Model:            testModel,
 		EarlyStopEnabled: testEarlyStopDisabled(),
 	})
 
@@ -499,18 +499,18 @@ func TestCancelReturnsTrueAndStopsRun(t *testing.T) {
 	}
 	providers.RegisterProvider(blockingProvider)
 	providers.RegisterModel(testModel, types.ModelInfo{
-		ProviderID:     testProviderID,
-		ContextWindow:  200000,
-		CostPer1kInput: 0.003,
+		ProviderID:      testProviderID,
+		ContextWindow:   200000,
+		CostPer1kInput:  0.003,
 		CostPer1kOutput: 0.015,
 	})
 
 	b := NewApiBackend()
 	c := collectEvents(b, "req-cancel")
 	b.StartRun("req-cancel", types.RunOptions{
-		Prompt:      "slow run",
-		ProjectPath: "/tmp",
-		Model:       testModel,
+		Prompt:           "slow run",
+		ProjectPath:      "/tmp",
+		Model:            testModel,
 		EarlyStopEnabled: testEarlyStopDisabled(),
 	})
 
@@ -533,9 +533,9 @@ func TestIsRunningDuringAndAfter(t *testing.T) {
 	b := NewApiBackend()
 	c := collectEvents(b, "req-running")
 	b.StartRun("req-running", types.RunOptions{
-		Prompt:      "test",
-		ProjectPath: "/tmp",
-		Model:       testModel,
+		Prompt:           "test",
+		ProjectPath:      "/tmp",
+		Model:            testModel,
 		EarlyStopEnabled: testEarlyStopDisabled(),
 	})
 
@@ -557,9 +557,9 @@ func TestOnNormalizedReceivesEvents(t *testing.T) {
 	b := NewApiBackend()
 	c := collectEvents(b, "req-norm")
 	b.StartRun("req-norm", types.RunOptions{
-		Prompt:      "test",
-		ProjectPath: "/tmp",
-		Model:       testModel,
+		Prompt:           "test",
+		ProjectPath:      "/tmp",
+		Model:            testModel,
 		EarlyStopEnabled: testEarlyStopDisabled(),
 	})
 
@@ -598,9 +598,9 @@ func TestOnExitCalledWithSessionID(t *testing.T) {
 	b := NewApiBackend()
 	c := collectEvents(b, "req-exit")
 	b.StartRun("req-exit", types.RunOptions{
-		Prompt:      "test",
-		ProjectPath: "/tmp",
-		Model:       testModel,
+		Prompt:           "test",
+		ProjectPath:      "/tmp",
+		Model:            testModel,
 		EarlyStopEnabled: testEarlyStopDisabled(),
 	})
 
@@ -627,18 +627,18 @@ func TestOnErrorCalledOnProviderFailure(t *testing.T) {
 	}
 	providers.RegisterProvider(errProvider)
 	providers.RegisterModel(testModel, types.ModelInfo{
-		ProviderID:     testProviderID,
-		ContextWindow:  200000,
-		CostPer1kInput: 0.003,
+		ProviderID:      testProviderID,
+		ContextWindow:   200000,
+		CostPer1kInput:  0.003,
 		CostPer1kOutput: 0.015,
 	})
 
 	b := NewApiBackend()
 	c := collectEvents(b, "req-err")
 	b.StartRun("req-err", types.RunOptions{
-		Prompt:      "fail",
-		ProjectPath: "/tmp",
-		Model:       testModel,
+		Prompt:           "fail",
+		ProjectPath:      "/tmp",
+		Model:            testModel,
 		EarlyStopEnabled: testEarlyStopDisabled(),
 	})
 
@@ -688,9 +688,9 @@ func TestSetOnToolCallBlocksPreventsExecution(t *testing.T) {
 
 	c := collectEvents(b, "req-block")
 	b.StartRunWithConfig("req-block", types.RunOptions{
-		Prompt:      "block test",
-		ProjectPath: "/tmp",
-		Model:       testModel,
+		Prompt:           "block test",
+		ProjectPath:      "/tmp",
+		Model:            testModel,
 		EarlyStopEnabled: testEarlyStopDisabled(),
 	}, cfg)
 
@@ -749,9 +749,9 @@ func TestSetOnPerToolHookFiresBeforeAndAfter(t *testing.T) {
 
 	c := collectEvents(b, "req-hook")
 	b.StartRunWithConfig("req-hook", types.RunOptions{
-		Prompt:      "hook test",
-		ProjectPath: "/tmp",
-		Model:       testModel,
+		Prompt:           "hook test",
+		ProjectPath:      "/tmp",
+		Model:            testModel,
 		EarlyStopEnabled: testEarlyStopDisabled(),
 	}, cfg)
 
@@ -797,9 +797,9 @@ func TestRunConfigTelemetryAttachesToRun(t *testing.T) {
 	})
 	c := collectEvents(b, "req-telem")
 	b.StartRunWithConfig("req-telem", types.RunOptions{
-		Prompt:      "telemetry test",
-		ProjectPath: "/tmp",
-		Model:       testModel,
+		Prompt:           "telemetry test",
+		ProjectPath:      "/tmp",
+		Model:            testModel,
 		EarlyStopEnabled: testEarlyStopDisabled(),
 	}, cfg)
 
@@ -813,19 +813,71 @@ func TestRunConfigTelemetryAttachesToRun(t *testing.T) {
 }
 
 type mockTelemetry struct {
+	mu     sync.Mutex
 	events []string
+	// captured retains the full event payload/context for tests that assert on
+	// specific field values (tier-4 telemetry). events (names only) is kept for
+	// the existing span-wiring smoke tests.
+	captured []capturedTelemEvent
+}
+
+type capturedTelemEvent struct {
+	Name    string
+	Payload map[string]interface{}
+	Ctx     map[string]interface{}
 }
 
 func (m *mockTelemetry) Event(name string, payload map[string]interface{}, ctx map[string]interface{}) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.events = append(m.events, name)
+	m.captured = append(m.captured, capturedTelemEvent{Name: name, Payload: payload, Ctx: ctx})
 }
 
-type mockSpan struct{}
+// eventsByName returns every captured event with the given name.
+func (m *mockTelemetry) eventsByName(name string) []capturedTelemEvent {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []capturedTelemEvent
+	for _, e := range m.captured {
+		if e.Name == name {
+			out = append(out, e)
+		}
+	}
+	return out
+}
 
-func (s *mockSpan) End(attrs map[string]interface{}, errMsg ...string) {}
+type mockSpan struct {
+	name  string
+	attrs map[string]interface{}
+	ctx   map[string]interface{}
+	telem *mockTelemetry
+}
+
+func (s *mockSpan) End(attrs map[string]interface{}, errMsg ...string) {
+	if s.telem == nil {
+		return
+	}
+	payload := make(map[string]interface{}, len(s.attrs)+len(attrs)+1)
+	for k, v := range s.attrs {
+		payload[k] = v
+	}
+	for k, v := range attrs {
+		payload[k] = v
+	}
+	payload["durationMs"] = int64(0) // mock: zero duration
+	if len(errMsg) > 0 && errMsg[0] != "" {
+		payload["error"] = errMsg[0]
+	}
+	s.telem.Event(s.name, payload, s.ctx)
+}
 
 func (m *mockTelemetry) StartSpan(name string, attrs map[string]interface{}) Span {
-	return &mockSpan{}
+	return m.StartSpanCtx(name, attrs, nil)
+}
+
+func (m *mockTelemetry) StartSpanCtx(name string, attrs, ctx map[string]interface{}) Span {
+	return &mockSpan{name: name, attrs: attrs, ctx: ctx, telem: m}
 }
 
 func TestConcurrentMultipleRuns(t *testing.T) {
@@ -883,15 +935,15 @@ func TestConcurrentMultipleRuns(t *testing.T) {
 	providers.RegisterProvider(multiProvider)
 
 	bMulti.StartRun("req-ma", types.RunOptions{
-		Prompt:      "run a",
-		ProjectPath: "/tmp",
-		Model:       testModel,
+		Prompt:           "run a",
+		ProjectPath:      "/tmp",
+		Model:            testModel,
 		EarlyStopEnabled: testEarlyStopDisabled(),
 	})
 	bMulti.StartRun("req-mb", types.RunOptions{
-		Prompt:      "run b",
-		ProjectPath: "/tmp",
-		Model:       testModel,
+		Prompt:           "run b",
+		ProjectPath:      "/tmp",
+		Model:            testModel,
 		EarlyStopEnabled: testEarlyStopDisabled(),
 	})
 
@@ -943,18 +995,18 @@ func TestCancelDuringRun(t *testing.T) {
 	}
 	providers.RegisterProvider(blockingProvider)
 	providers.RegisterModel(testModel, types.ModelInfo{
-		ProviderID:     testProviderID,
-		ContextWindow:  200000,
-		CostPer1kInput: 0.003,
+		ProviderID:      testProviderID,
+		ContextWindow:   200000,
+		CostPer1kInput:  0.003,
 		CostPer1kOutput: 0.015,
 	})
 
 	b := NewApiBackend()
 	c := collectEvents(b, "req-cancel-during")
 	b.StartRun("req-cancel-during", types.RunOptions{
-		Prompt:      "block",
-		ProjectPath: "/tmp",
-		Model:       testModel,
+		Prompt:           "block",
+		ProjectPath:      "/tmp",
+		Model:            testModel,
 		EarlyStopEnabled: testEarlyStopDisabled(),
 	})
 
@@ -986,9 +1038,9 @@ func TestToolExecutionErrorHandling(t *testing.T) {
 	b := NewApiBackend()
 	c := collectEvents(b, "req-tool-err")
 	b.StartRun("req-tool-err", types.RunOptions{
-		Prompt:      "error tool",
-		ProjectPath: "/tmp",
-		Model:       testModel,
+		Prompt:           "error tool",
+		ProjectPath:      "/tmp",
+		Model:            testModel,
 		EarlyStopEnabled: testEarlyStopDisabled(),
 	})
 
@@ -1033,9 +1085,9 @@ func TestCostTracking(t *testing.T) {
 	b := NewApiBackend()
 	c := collectEvents(b, "req-cost")
 	b.StartRun("req-cost", types.RunOptions{
-		Prompt:      "cost",
-		ProjectPath: "/tmp",
-		Model:       testModel,
+		Prompt:           "cost",
+		ProjectPath:      "/tmp",
+		Model:            testModel,
 		EarlyStopEnabled: testEarlyStopDisabled(),
 	})
 
@@ -1075,10 +1127,10 @@ func TestBudgetEnforcementStopsAtMaxCost(t *testing.T) {
 	b := NewApiBackend()
 	c := collectEvents(b, "req-budget")
 	b.StartRun("req-budget", types.RunOptions{
-		Prompt:      "budget test",
-		ProjectPath: "/tmp",
-		Model:       testModel,
-		MaxBudgetUsd: 0.0001, // very low budget
+		Prompt:           "budget test",
+		ProjectPath:      "/tmp",
+		Model:            testModel,
+		MaxBudgetUsd:     0.0001, // very low budget
 		EarlyStopEnabled: testEarlyStopDisabled(),
 	})
 
@@ -1118,10 +1170,10 @@ func TestBudgetEnforcementStopsAtMaxTurns(t *testing.T) {
 	b := NewApiBackend()
 	c := collectEvents(b, "req-turns")
 	b.StartRun("req-turns", types.RunOptions{
-		Prompt:      "turn limit",
-		ProjectPath: "/tmp",
-		Model:       testModel,
-		MaxTurns:    3,
+		Prompt:           "turn limit",
+		ProjectPath:      "/tmp",
+		Model:            testModel,
+		MaxTurns:         3,
 		EarlyStopEnabled: testEarlyStopDisabled(),
 	})
 
@@ -1153,9 +1205,9 @@ func TestMaxTokensContinuation(t *testing.T) {
 	b := NewApiBackend()
 	c := collectEvents(b, "req-max-tok")
 	b.StartRun("req-max-tok", types.RunOptions{
-		Prompt:      "continue test",
-		ProjectPath: "/tmp",
-		Model:       testModel,
+		Prompt:           "continue test",
+		ProjectPath:      "/tmp",
+		Model:            testModel,
 		EarlyStopEnabled: testEarlyStopDisabled(),
 	})
 
@@ -1187,9 +1239,9 @@ func TestTaskCompleteContainsExpectedFields(t *testing.T) {
 	b := NewApiBackend()
 	c := collectEvents(b, "req-fields")
 	b.StartRun("req-fields", types.RunOptions{
-		Prompt:      "fields test",
-		ProjectPath: "/tmp",
-		Model:       testModel,
+		Prompt:           "fields test",
+		ProjectPath:      "/tmp",
+		Model:            testModel,
 		EarlyStopEnabled: testEarlyStopDisabled(),
 	})
 
@@ -1224,9 +1276,9 @@ func TestErrorOnUnknownModel(t *testing.T) {
 	b := NewApiBackend()
 	c := collectEvents(b, "req-unknown-model")
 	b.StartRun("req-unknown-model", types.RunOptions{
-		Prompt:      "test",
-		ProjectPath: "/tmp",
-		Model:       "nonexistent-model-xyz",
+		Prompt:           "test",
+		ProjectPath:      "/tmp",
+		Model:            "nonexistent-model-xyz",
 		EarlyStopEnabled: testEarlyStopDisabled(),
 	})
 
@@ -1297,8 +1349,8 @@ func TestTextChunksAccumulated(t *testing.T) {
 			},
 		},
 		{
-			Type:       "content_block_start",
-			BlockIndex: 0,
+			Type:         "content_block_start",
+			BlockIndex:   0,
 			ContentBlock: &types.LlmStreamContentBlock{Type: "text", Text: ""},
 		},
 		{
@@ -1333,9 +1385,9 @@ func TestTextChunksAccumulated(t *testing.T) {
 	b := NewApiBackend()
 	c := collectEvents(b, "req-multi-delta")
 	b.StartRun("req-multi-delta", types.RunOptions{
-		Prompt:      "multi",
-		ProjectPath: "/tmp",
-		Model:       testModel,
+		Prompt:           "multi",
+		ProjectPath:      "/tmp",
+		Model:            testModel,
 		EarlyStopEnabled: testEarlyStopDisabled(),
 	})
 

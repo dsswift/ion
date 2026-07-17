@@ -1,7 +1,6 @@
 package conversation
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -60,8 +59,7 @@ func SanitizeMessages(messages []types.LlmMessage) []types.LlmMessage {
 			// blocks"). Remove them at load time so already-stuck
 			// conversations become sendable again.
 			if b.Type == "text" && b.Text == "" {
-				utils.Debug("Conversation", fmt.Sprintf(
-					"sanitize: removed empty text block from message (role=%s)", msg.Role))
+				utils.LogWithFields(utils.LevelDebug, "conversation.sanitize", "removed empty text block from message", map[string]any{"reason": msg.Role})
 				removed++
 				continue
 			}
@@ -231,7 +229,7 @@ func SanitizeMessages(messages []types.LlmMessage) []types.LlmMessage {
 	}
 
 	if removed > 0 {
-		utils.Log("Conversation", fmt.Sprintf("sanitized: removed %d orphaned blocks/messages", removed))
+		utils.LogWithFields(utils.LevelInfo, "conversation.sanitize", "removed orphaned blocks messages", map[string]any{"count": removed})
 	}
 	return result
 }
@@ -368,7 +366,7 @@ func ReplacePlanFilePlaceholder(conv *Conversation, planFilePath string) {
 	}
 
 	if replaced > 0 {
-		utils.Log("Conversation", fmt.Sprintf("replaced [plan-file] placeholder with %q in %d messages/entries", planFilePath, replaced))
+		utils.LogWithFields(utils.LevelInfo, "conversation.sanitize", "replaced plan file placeholder", map[string]any{"path": planFilePath, "count": replaced})
 	}
 }
 

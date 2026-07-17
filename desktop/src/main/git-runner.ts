@@ -5,8 +5,8 @@ import { join } from 'path'
 import { promisify } from 'util'
 import { log as _log } from './logger'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 export const gitExec = promisify(execFileCb)
@@ -31,11 +31,11 @@ export async function cleanOrphanedWorktrees(): Promise<void> {
       try {
         await gitExec('git', ['rev-parse', '--git-dir'], { cwd: wtPath })
       } catch {
-        log(`Cleaning orphaned worktree: ${wtPath}`)
+        log('git_runner: cleaning orphaned worktree', { path: wtPath })
         try { rmSync(wtPath, { recursive: true, force: true }) } catch {}
       }
     }
   } catch (err: any) {
-    log(`Worktree cleanup error: ${err.message}`)
+    log('git_runner: worktree cleanup error', { error: err.message })
   }
 }

@@ -3,6 +3,7 @@
 // under the 600-line cap). These are the `engine_extension_died`,
 // `engine_extension_respawned`, `engine_extension_dead_permanent`,
 // `engine_harness_message`, `engine_events_dropped`, `engine_model_fallback`,
+// `engine_capability_unsupported`,
 // and `engine_intercept` arms of the EngineEvent→NormalizedEvent translation
 // switch, lifted out verbatim. No logic change. The main file delegates to
 // handleExtensionEvent from its switch.
@@ -11,7 +12,7 @@ import { log as _log } from './logger'
 import type { EventEmitterContext, TabEntry } from './engine-control-plane-events-types'
 
 const TAG = 'SessionPlane'
-function log(msg: string): void { _log(TAG, msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
 
 /**
  * Handle the extension-lifecycle / harness event arms. Returns true when the
@@ -33,6 +34,7 @@ export function handleExtensionEvent(
         type: 'harness_message',
         message: event.message || '',
         dedupKey: (event.metadata as any)?.dedupKey || undefined,
+        dedupMode: (event.metadata as any)?.dedupMode || undefined,
         source: event.source,
       } as NormalizedEvent)
       return true
@@ -78,12 +80,30 @@ export function handleExtensionEvent(
       } as NormalizedEvent)
       return true
 
+    case 'engine_capability_unsupported':
+      // Declined feature request (e.g. plan mode on a backend without one).
+      // The engine never started a run and the session stays idle; emit as
+      // normalized capability_unsupported so event-slice can render the
+      // recoverable message and settle the tab back to idle.
+      log('capability_unsupported', {
+        tab_id: tabId,
+        capability: event.capability,
+        backend: event.capabilityBackend,
+      })
+      ctx.emit('event', tabId, {
+        type: 'capability_unsupported',
+        capability: event.capability || '',
+        backend: event.capabilityBackend || '',
+        reason: event.capabilityReason || '',
+      } as NormalizedEvent)
+      return true
+
     case 'engine_intercept':
       // Fire-and-forget signal: bubble up via ctx.emit so event-wiring.ts's
       // wireSessionPlaneEvents can call handleInterceptEvent without creating
       // a circular import through state.ts. The event carries the raw payload
       // and tabId; the wiring layer in event-wiring.ts does the routing.
-      log(`intercept: tabId=${tabId} level=${event.interceptLevel} title=${event.interceptTitle}`)
+      log('intercept', { tab_id: tabId, level: event.interceptLevel, title: event.interceptTitle })
       ctx.emit('engine_intercept', tabId, event)
       return true
   }

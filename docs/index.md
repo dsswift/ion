@@ -29,6 +29,7 @@ Build agent behavior on top of the engine using hooks, tools, and extensions. Th
 - [Core concepts](getting-started/concepts.md)
 - [Extension hooks](hooks/)
 - [Extension SDK](extensions/)
+- [Context loading cascade](context-loading.md)
 
 ### Contributors
 

@@ -31,7 +31,7 @@ export function GitPanel() {
   const graphOpen = usePreferencesStore((s) => s.gitPanelGraphOpen)
   const setGraphOpen = usePreferencesStore((s) => s.setGitPanelGraphOpen)
   const repoState = useRepoState(directory)
-  const files = repoState?.files ?? []
+  const files = useMemo(() => repoState?.files ?? [], [repoState?.files])
   const refreshKey = repoState?.revision ?? 0
   const splitRatio = usePreferencesStore((s) => s.gitPanelSplitRatio)
   const setSplitRatio = usePreferencesStore((s) => s.setGitPanelSplitRatio)

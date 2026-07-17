@@ -9,15 +9,34 @@ import (
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
+// PermissionAskable is implemented by backends whose subprocess asks the engine
+// to approve tool calls (the codex/ACP backends). The session installs the same
+// ask closure it builds for the claude-code hook server, so approvals from any
+// delegated CLI surface as engine_permission_request events. Backends that do
+// not delegate approvals (ApiBackend, ClaudeCodeBackend) do not implement it.
+type PermissionAskable interface {
+	SetPermissionAskCallback(cb PermissionAskCallback)
+}
+
 // RunBackend abstracts the LLM execution backend.
-// Both ApiBackend (direct API) and CliBackend (Claude CLI wrapper) implement this.
+// Both ApiBackend (direct API) and ClaudeCodeBackend (Claude CLI wrapper) implement this.
 type RunBackend interface {
 	StartRun(requestID string, options types.RunOptions)
 	Cancel(requestID string) bool
 	IsRunning(requestID string) bool
 
+	// Capabilities returns the backend's static feature descriptor: how it
+	// sources conversation context, whether it supports plan mode and
+	// mid-turn steering, and whether it maintains a resumable native
+	// session. The session layer consults it at dispatch to gate
+	// unsupported feature requests cleanly and to decide between native
+	// resume and transcript bridging. See capabilities.go for the
+	// per-backend descriptors. Additive: HybridBackend answers for its
+	// default-routed inner; per-model callers resolve the inner first.
+	Capabilities() BackendCapabilities
+
 	// WriteToStdin sends a follow-up message to a running process over stdin.
-	// Used by CliBackend for bidirectional stream-json communication.
+	// Used by ClaudeCodeBackend for bidirectional stream-json communication.
 	// ApiBackend returns nil (no stdin pipe -- uses conversation injection).
 	WriteToStdin(requestID string, msg interface{}) error
 
@@ -130,6 +149,11 @@ type PlanModeAutoExitHookInfo struct {
 type TelemetryCollector interface {
 	Event(name string, payload map[string]interface{}, ctx map[string]interface{})
 	StartSpan(name string, attrs map[string]interface{}) Span
+	// StartSpanCtx begins a span with an explicit correlation context (session_id,
+	// conversation_id, run_id). The ctx map is forwarded to Collector.Event when
+	// End is called, giving span-based events the same correlation keys as every
+	// direct Event() call that passes buildTelemCtx(run).
+	StartSpanCtx(name string, attrs, ctx map[string]interface{}) Span
 }
 
 // Span tracks the lifetime of a telemetry span.
@@ -162,6 +186,14 @@ type RunHooks struct {
 	// OnBeforePrompt receives the run ID and current user prompt; may return a
 	// rewritten prompt and additional system-prompt content.
 	OnBeforePrompt func(runID string, prompt string) (rewrittenPrompt, extraSystemPrompt string)
+
+	// OnInitialMessages returns messages to prepend to the conversation before
+	// each LLM provider call. Used by the plugin system to inject per-turn
+	// UserPromptSubmit hook output as <system-reminder> user messages, matching
+	// Claude Code's hook_additional_context injection mechanism. The messages
+	// are ephemeral — never persisted to disk — and are prepended fresh on
+	// every turn. Nil return means no injection.
+	OnInitialMessages func(runID string, prompt string) []types.LlmMessage
 
 	// OnPlanModePrompt provides plan-mode prompt customization.
 	// Returns (customPrompt, customTools, customSparseReminder). Empty values
@@ -294,7 +326,16 @@ type RunConfig struct {
 	// the wait. (Permission prompts block elsewhere and do not use the
 	// suspender — see DeadlineSuspender's doc.) ctx is also the cancellation
 	// signal for the routed call.
-	McpToolRouter func(ctx context.Context, name string, input map[string]interface{}) (content string, isErr bool, err error)
+	//
+	// Returns the full *types.ToolResult so vision images an extension or MCP
+	// tool returns (ToolResult.Images) survive the routing hop into the agent
+	// loop. A nil result with a nil error is the "empty successful result"
+	// case; the caller substitutes an empty ToolResult. Widened from the prior
+	// (content string, isErr bool, err error) tuple, which dropped the Images
+	// field on the floor — this router lives behind the compiler-enforced
+	// internal/ boundary and is not a published contract, so the signature
+	// change is an internal refactor.
+	McpToolRouter func(ctx context.Context, name string, input map[string]interface{}) (*types.ToolResult, error)
 	AgentSpawner  tools.AgentSpawner
 	Telemetry     TelemetryCollector
 	Timeouts      *types.TimeoutsConfig
@@ -324,6 +365,13 @@ type RunConfig struct {
 	// RunOptions.PlanModeAutoExit overrides this; the
 	// before_plan_mode_auto_exit hook overrides both.
 	PlanModeAutoExitOnEndTurn *bool
+
+	// MaxTokenThinkingOnlyBreaker captures
+	// EngineRuntimeConfig.Limits.MaxTokenThinkingOnlyBreaker so the runloop can
+	// resolve the max_tokens thinking-only circuit-breaker cap without reaching
+	// back to the full engine config. Zero means "use the built-in default (3)";
+	// -1 disables the breaker entirely. See the max_tokens case in runloop.go.
+	MaxTokenThinkingOnlyBreaker int
 
 	// GetSessionMemory returns the current session memory content for use
 	// as a zero-cost compaction summary. Set by the session layer from

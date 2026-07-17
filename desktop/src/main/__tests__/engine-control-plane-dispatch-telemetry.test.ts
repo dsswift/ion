@@ -29,7 +29,7 @@
  * they assert the non-empty value explicitly.
  */
 
-import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { vi, describe, it, expect } from 'vitest'
 
 vi.mock('electron', () => ({
   app: { get isPackaged() { return false } },

@@ -7,7 +7,6 @@ package extension
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -43,7 +42,7 @@ func (h *Host) registerAsyncRegistrationVetoForwarder(hook string) {
 			Reason string `json:"reason"`
 		}
 		if err := json.Unmarshal(raw, &result); err != nil {
-			utils.Log("extension", fmt.Sprintf("hook/%s: bad result: %v", hook, err))
+			utils.LogWithFields(utils.LevelInfo, "extension", "hook/: bad result", map[string]any{"hook": hook, "error": err})
 			return nil, nil
 		}
 		if !result.Block {

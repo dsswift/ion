@@ -91,10 +91,9 @@ func (b *ApiBackend) maybeSynthesizeExitPlanMode(
 	}
 	// Precondition 2: auto-exit enabled by config + RunOptions.
 	if !run.planModeAutoExitEnabled {
-		utils.Debug("PlanModeAutoExit", fmt.Sprintf(
-			"run=%s skip: auto-exit disabled by config/RunOptions",
-			run.requestID,
-		))
+		utils.LogWithFields(utils.LevelDebug, "backend.plan_mode", "skip: auto-exit disabled by config/RunOptions", map[string]any{
+			"run_id": run.requestID,
+		})
 		return false
 	}
 	// Preconditions 3+4: the assistant didn't call ExitPlanMode or
@@ -106,17 +105,15 @@ func (b *ApiBackend) maybeSynthesizeExitPlanMode(
 		switch block.Type {
 		case "tool_use":
 			if block.Name == tools.ExitPlanModeName {
-				utils.Debug("PlanModeAutoExit", fmt.Sprintf(
-					"run=%s skip: assistant emitted ExitPlanMode (normal exit path)",
-					run.requestID,
-				))
+				utils.LogWithFields(utils.LevelDebug, "backend.plan_mode", "skip: assistant emitted ExitPlanMode (normal exit path)", map[string]any{
+					"run_id": run.requestID,
+				})
 				return false
 			}
 			if block.Name == tools.AskUserQuestionName {
-				utils.Debug("PlanModeAutoExit", fmt.Sprintf(
-					"run=%s skip: assistant emitted AskUserQuestion (user-question path)",
-					run.requestID,
-				))
+				utils.LogWithFields(utils.LevelDebug, "backend.plan_mode", "skip: assistant emitted AskUserQuestion (user-question path)", map[string]any{
+					"run_id": run.requestID,
+				})
 				return false
 			}
 			emittedTools = append(emittedTools, block.Name)
@@ -133,10 +130,9 @@ func (b *ApiBackend) maybeSynthesizeExitPlanMode(
 		resolvedPlanFilePath = hooks.GetSessionPlanFilePath()
 	}
 	if resolvedPlanFilePath == "" {
-		utils.Warn("PlanModeAutoExit", fmt.Sprintf(
-			"run=%s skip: no plan file path resolvable (would emit unactionable approval card)",
-			run.requestID,
-		))
+		utils.LogWithFields(utils.LevelWarn, "backend.plan_mode", "skip: no plan file path resolvable (would emit unactionable approval card)", map[string]any{
+			"run_id": run.requestID,
+		})
 		return false
 	}
 
@@ -173,26 +169,27 @@ func (b *ApiBackend) maybeSynthesizeExitPlanMode(
 		})
 	}
 	if suppress {
-		utils.Info("PlanModeAutoExit", fmt.Sprintf(
-			"run=%s skip: hook suppressed synthesis (conversation parked in plan mode)",
-			run.requestID,
-		))
+		utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "skip: hook suppressed synthesis (conversation parked in plan mode)", map[string]any{
+			"run_id": run.requestID,
+		})
 		return false
 	}
 	finalPath := resolvedPlanFilePath
 	if pathOverride != "" {
-		utils.Info("PlanModeAutoExit", fmt.Sprintf(
-			"run=%s hook override: planFilePath %q → %q",
-			run.requestID, resolvedPlanFilePath, pathOverride,
-		))
+		utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "hook override: planFilePath →", map[string]any{
+			"run_id":                  run.requestID,
+			"resolved_plan_file_path": resolvedPlanFilePath,
+			"path_override":           pathOverride,
+		})
 		finalPath = pathOverride
 	}
 	finalReason := defaultReason
 	if reasonOverride != "" {
-		utils.Info("PlanModeAutoExit", fmt.Sprintf(
-			"run=%s hook override: reason %q → %q",
-			run.requestID, defaultReason, reasonOverride,
-		))
+		utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "hook override: reason →", map[string]any{
+			"run_id":          run.requestID,
+			"default_reason":  defaultReason,
+			"reason_override": reasonOverride,
+		})
 		finalReason = reasonOverride
 	}
 
@@ -200,10 +197,13 @@ func (b *ApiBackend) maybeSynthesizeExitPlanMode(
 	// pattern (runloop_plan_mode_gates.go:238-245) so the existing
 	// ExitPlanMode wrap-up branch in the runloop sees the same state
 	// it would have seen if the model had called the tool itself.
-	utils.Warn("PlanModeAutoExit", fmt.Sprintf(
-		"run=%s synthesized ExitPlanMode: stopReason=%s turn=%d planFile=%s emittedTools=%v",
-		run.requestID, stopReason, turn, finalPath, emittedTools,
-	))
+	utils.LogWithFields(utils.LevelWarn, "backend.plan_mode", "synthesized ExitPlanMode", map[string]any{
+		"run_id":        run.requestID,
+		"stop_reason":   stopReason,
+		"turn":          turn,
+		"plan_file":     finalPath,
+		"emitted_tools": emittedTools,
+	})
 	run.mu.Lock()
 	run.exitPlanMode = true
 	run.permissionDenials = append(run.permissionDenials, types.PermissionDenial{

@@ -10,20 +10,20 @@ import (
 
 // Error codes matching providers/errors.ts ProviderErrorCode.
 const (
-	ErrRateLimit     = "rate_limit"
-	ErrOverloaded    = "overloaded"
-	ErrPromptTooLong = "prompt_too_long"
-	ErrAuth          = "auth"
-	ErrNetwork       = "network"
-	ErrStaleConn     = "stale_connection"
-	ErrTimeout       = "timeout"
-	ErrContentFilter = "content_filter"
-	ErrInvalidModel  = "invalid_model"
-	ErrInvalidReq    = "invalid_request"
-	ErrMediaError    = "media_error"
-	ErrPDFError         = "pdf_error"
-	ErrStreamTruncated  = "stream_truncated"
-	ErrUnknown          = "unknown"
+	ErrRateLimit       = "rate_limit"
+	ErrOverloaded      = "overloaded"
+	ErrPromptTooLong   = "prompt_too_long"
+	ErrAuth            = "auth"
+	ErrNetwork         = "network"
+	ErrStaleConn       = "stale_connection"
+	ErrTimeout         = "timeout"
+	ErrContentFilter   = "content_filter"
+	ErrInvalidModel    = "invalid_model"
+	ErrInvalidReq      = "invalid_request"
+	ErrMediaError      = "media_error"
+	ErrPDFError        = "pdf_error"
+	ErrStreamTruncated = "stream_truncated"
+	ErrUnknown         = "unknown"
 )
 
 // ProviderError is the canonical error type for all provider failures.
@@ -104,6 +104,18 @@ func NewProviderError(code, message string, httpStatus int, retryable bool) *Pro
 
 // FromAnthropicError classifies an HTTP error from the Anthropic API.
 func FromAnthropicError(err error, status int, body string) *ProviderError {
+	// When there is no HTTP status the failure happened at the transport
+	// level (before any response was received). Defer to the shared
+	// transport classifier first so "use of closed network connection" and
+	// similar are tagged retryable instead of collapsing into ErrUnknown.
+	// Guarded on status == 0 so it never runs against a synthetic
+	// body-wrapping error when a real HTTP response exists.
+	if status == 0 {
+		if pe := ClassifyTransportError(err); pe != nil {
+			return pe
+		}
+	}
+
 	msg := err.Error()
 	bodyLower := strings.ToLower(body)
 
@@ -167,6 +179,18 @@ func FromAnthropicError(err error, status int, body string) *ProviderError {
 
 // FromOpenAIError classifies an HTTP error from the OpenAI API.
 func FromOpenAIError(err error, status int, body string) *ProviderError {
+	// When there is no HTTP status the failure happened at the transport
+	// level (before any response was received). Defer to the shared
+	// transport classifier first so "use of closed network connection" and
+	// similar are tagged retryable instead of collapsing into ErrUnknown.
+	// Guarded on status == 0 so it never runs against a synthetic
+	// body-wrapping error when a real HTTP response exists.
+	if status == 0 {
+		if pe := ClassifyTransportError(err); pe != nil {
+			return pe
+		}
+	}
+
 	msg := err.Error()
 	bodyLower := strings.ToLower(body)
 

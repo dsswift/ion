@@ -17,6 +17,10 @@ export function createExpandSlice(set: StoreSet, get: StoreGet): Partial<State> 
     toggleTallView: (tabId) => {
       set((s) => ({
         tallViewTabId: s.tallViewTabId === tabId ? null : tabId,
+        // A manual tall toggle always clears the auto-suspend marker — never
+        // restore on the next terminal-close after the user has explicitly
+        // re-entered or exited tall mode themselves.
+        suspendedTallTabId: null,
         ...(s.tallViewTabId !== tabId ? { terminalTallTabId: null } : {}),
       }))
     },

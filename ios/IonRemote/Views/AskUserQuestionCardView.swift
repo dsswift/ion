@@ -13,21 +13,31 @@ struct AskUserQuestionCardView: View {
     /// Parse engine format: { question: "...", options?: ["A","B"] }
     private var questionData: (question: String, options: [String])? {
         guard let toolInput = request.toolInput else {
-            DiagnosticLog.log("ASK-CARD: toolInput is nil for questionId=\(request.questionId) toolName=\(request.toolName)")
+            DiagnosticLog.log("ask card tool input nil", tag: "view.askcard", level: .warn, fields: [
+                "question_id": request.questionId,
+                "tool": request.toolName
+            ])
             return nil
         }
 
         // Log the raw keys and types for diagnostics
         let keysSummary = toolInput.map { "\($0.key): \(type(of: $0.value.value))=\($0.value)" }.joined(separator: ", ")
-        DiagnosticLog.log("ASK-CARD: toolInput keys=[\(keysSummary)]")
+        DiagnosticLog.log("ask card tool input keys", tag: "view.askcard", fields: [
+            "reason": keysSummary
+        ])
 
         guard let questionEntry = toolInput["question"] else {
-            DiagnosticLog.log("ASK-CARD: no 'question' key in toolInput. Available keys=\(Array(toolInput.keys))")
+            DiagnosticLog.log("ask card no question key", tag: "view.askcard", level: .warn, fields: [
+                "reason": Array(toolInput.keys).joined(separator: ",")
+            ])
             return nil
         }
 
         guard let question = questionEntry.value as? String else {
-            DiagnosticLog.log("ASK-CARD: 'question' value is not String. Type=\(type(of: questionEntry.value)), value=\(String(describing: questionEntry.value))")
+            DiagnosticLog.log("ask card question not string", tag: "view.askcard", level: .warn, fields: [
+                "reason": String(describing: type(of: questionEntry.value)),
+                "status": String(describing: questionEntry.value)
+            ])
             return nil
         }
 
@@ -45,7 +55,10 @@ struct AskUserQuestionCardView: View {
         } else {
             options = []
         }
-        DiagnosticLog.log("ASK-CARD: parsed OK question=\(question.prefix(80)), options=\(options)")
+        DiagnosticLog.log("ask card parsed ok", tag: "view.askcard", fields: [
+            "reason": String(question.prefix(80)),
+            "count": String(options.count)
+        ])
         return (question, options)
     }
 

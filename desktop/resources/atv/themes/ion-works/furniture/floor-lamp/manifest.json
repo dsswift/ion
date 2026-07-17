@@ -1,0 +1,14 @@
+{
+  "id": "floor-lamp",
+  "name": "Floor Lamp",
+  "category": "decor",
+  "footprintW": 1,
+  "footprintH": 1,
+  "width": 16,
+  "height": 32,
+  "rotationScheme": "none",
+  "states": {
+    "on": "on.png",
+    "off": "off.png"
+  }
+}

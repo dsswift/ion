@@ -11,14 +11,14 @@
 // from the backup are appended. We never overwrite the local tabs file
 // outright — that would lose any new tabs created since the export.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import yauzl from 'yauzl'
 import { log as _log } from '../logger'
 import { atomicWriteFileSync } from '../utils/atomicWrite'
 import { validateManifest, type BackupManifest } from './manifest'
 
-function log(msg: string): void { _log('backup-restore', msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log('backup-restore', msg, fields) }
 
 export type ConflictPolicy = 'skip' | 'overwrite' | 'rename'
 
@@ -107,11 +107,13 @@ export async function previewRestore(zipPath: string): Promise<RestorePreview> {
  * Run the restore. Walks every zip entry, dispatching to the appropriate
  * destination based on entry path:
  *   - "manifest.json" — re-validated, never written to disk.
- *   - "tabs-api.json", "tabs-cli.json" — merged into local files
- *     (only if restoreTabs=true), see mergeTabsFile.
- *   - "session-chains-*.json", "session-labels-*.json" — merged into
- *     local files (always — these are pure additive bookkeeping that
- *     drives the engine's safety guards).
+ *   - "tabs.json" (and the legacy "tabs-{api,cli}.json" from older
+ *     archives) — merged into the unified local tabs.json (only if
+ *     restoreTabs=true), see mergeTabs.
+ *   - "session-chains*.json", "session-labels*.json" (unified or legacy
+ *     per-backend names) — merged into the unified local files (always —
+ *     these are pure additive bookkeeping that drives the engine's
+ *     safety guards).
  *   - "conversations/*.{tree,llm,memory,jsonl,json}" — written to
  *     ~/.ion/conversations/ with the chosen conflict policy.
  */
@@ -125,20 +127,20 @@ export async function runRestore(args: {
     ok: false, restored: 0, skipped: 0, overwritten: 0, renamed: 0, errors: [],
   }
 
-  log(`runRestore: zip=${args.zipPath} conflictPolicy=${args.conflictPolicy} restoreTabs=${args.restoreTabs}`)
+  log('backup_restore: start', { zip: args.zipPath, conflict_policy: args.conflictPolicy, restore_tabs: args.restoreTabs })
 
   // Make sure the destination directory exists before we extract.
   try {
     mkdirSync(args.sources.conversationsDir, { recursive: true })
   } catch (err: any) {
-    log(`runRestore: failed to create conversations dir: ${err.message}`)
+    log('backup_restore: failed to create conversations dir', { error: err.message })
     return { ...result, error: `create conversations dir: ${err.message}` }
   }
 
   return new Promise((resolve) => {
     yauzl.open(args.zipPath, { lazyEntries: true }, (err, zipfile) => {
       if (err) {
-        log(`runRestore: open zip failed: ${err.message}`)
+        log('backup_restore: open zip failed', { error: err.message })
         resolve({ ...result, error: `open zip: ${err.message}` })
         return
       }
@@ -147,11 +149,11 @@ export async function runRestore(args: {
       })
       zipfile.on('end', () => {
         result.ok = true
-        log(`runRestore: done restored=${result.restored} skipped=${result.skipped} overwritten=${result.overwritten} renamed=${result.renamed} errors=${result.errors.length}`)
+        log('backup_restore: done', { restored: result.restored, skipped: result.skipped, overwritten: result.overwritten, renamed: result.renamed, errors: result.errors.length })
         resolve(result)
       })
       zipfile.on('error', (zipErr) => {
-        log(`runRestore: zip walk error: ${zipErr.message}`)
+        log('backup_restore: zip walk error', { error: zipErr.message })
         resolve({ ...result, error: `zip walk: ${zipErr.message}` })
       })
       zipfile.readEntry()
@@ -173,14 +175,12 @@ async function handleEntry(
   // Manifest is validated by previewRestore; it never gets written to disk.
   if (name === 'manifest.json') return
 
-  // Bookkeeping JSON files — merged into the local equivalents.
-  if (
-    name === 'tabs-api.json' || name === 'tabs-cli.json' ||
-    name === 'session-chains-api.json' || name === 'session-chains-cli.json' ||
-    name === 'session-labels-api.json' || name === 'session-labels-cli.json'
-  ) {
-    if ((name === 'tabs-api.json' || name === 'tabs-cli.json') && !args.restoreTabs) {
-      log(`handleEntry: skipping ${name} (restoreTabs=false)`)
+  // Bookkeeping JSON files — merged into the local equivalents. Legacy
+  // per-backend entries (from archives exported before the unified tab
+  // storage) map onto the unified local files via unifiedNameFor.
+  if (unifiedNameFor(name) !== null) {
+    if (unifiedNameFor(name) === 'tabs.json' && !args.restoreTabs) {
+      log('backup_restore: skipping entry', { name, reason: 'restoreTabs=false' })
       return
     }
     await mergeMetadataFile(zipfile, entry, args.sources.ionHomeDir, result)
@@ -188,7 +188,7 @@ async function handleEntry(
   }
 
   if (!name.startsWith('conversations/')) {
-    log(`handleEntry: unknown entry ignored: ${name}`)
+    log('backup_restore: unknown entry ignored', { name })
     return
   }
 
@@ -224,7 +224,7 @@ async function extractConversationFile(
     zipfile.openReadStream(entry, (err, readStream) => {
       if (err || !readStream) {
         const msg = `read stream ${fileName}: ${err?.message ?? 'no stream'}`
-        log(`extractConversationFile: ${msg}`)
+        log('backup_restore: extractConversationFile', { msg })
         result.errors.push(msg)
         resolve()
         return
@@ -261,14 +261,14 @@ async function extractConversationFile(
           resolve()
         } catch (writeErr: any) {
           const msg = `write ${fileName}: ${writeErr.message}`
-          log(`extractConversationFile: ${msg}`)
+          log('backup_restore: extractConversationFile', { msg })
           result.errors.push(msg)
           resolve()
         }
       })
       readStream.on('error', (readErr) => {
         const msg = `stream ${fileName}: ${readErr.message}`
-        log(`extractConversationFile: ${msg}`)
+        log('backup_restore: extractConversationFile', { msg })
         result.errors.push(msg)
         resolve()
       })
@@ -335,7 +335,7 @@ async function mergeMetadataFile(
     zipfile.openReadStream(entry, (err, readStream) => {
       if (err || !readStream) {
         const msg = `read metadata ${entry.fileName}: ${err?.message ?? 'no stream'}`
-        log(`mergeMetadataFile: ${msg}`)
+        log('backup_restore: mergeMetadataFile', { msg })
         result.errors.push(msg)
         resolve()
         return
@@ -346,23 +346,28 @@ async function mergeMetadataFile(
         try {
           const backupContent = Buffer.concat(chunks).toString('utf-8')
           const backupParsed = JSON.parse(backupContent)
-          const localPath = join(ionHomeDir, entry.fileName)
+          // Merge into the UNIFIED local file, whatever name the archive
+          // carried — a legacy tabs-api.json entry lands in tabs.json, so
+          // restores of old archives never strand data in a file the
+          // post-unification loader no longer reads.
+          const targetName = unifiedNameFor(entry.fileName) ?? entry.fileName
+          const localPath = join(ionHomeDir, targetName)
           const merged = existsSync(localPath)
-            ? mergeOne(entry.fileName, JSON.parse(readFileSync(localPath, 'utf-8')), backupParsed)
+            ? mergeOne(targetName, JSON.parse(readFileSync(localPath, 'utf-8')), backupParsed)
             : backupParsed
           atomicWriteFileSync(localPath, JSON.stringify(merged, null, 2), 0o644)
-          log(`mergeMetadataFile: wrote ${entry.fileName}`)
+          log('backup_restore: mergeMetadataFile wrote', { file: entry.fileName, target: targetName })
           resolve()
         } catch (writeErr: any) {
           const msg = `merge metadata ${entry.fileName}: ${writeErr.message}`
-          log(`mergeMetadataFile: ${msg}`)
+          log('backup_restore: mergeMetadataFile', { msg })
           result.errors.push(msg)
           resolve()
         }
       })
       readStream.on('error', (readErr) => {
         const msg = `metadata stream ${entry.fileName}: ${readErr.message}`
-        log(`mergeMetadataFile: ${msg}`)
+        log('backup_restore: mergeMetadataFile', { msg })
         result.errors.push(msg)
         resolve()
       })
@@ -370,14 +375,39 @@ async function mergeMetadataFile(
   })
 }
 
+/**
+ * Map an archive entry name onto the unified local file it merges into.
+ * Accepts both the unified names (current exports) and the legacy
+ * per-backend names (archives exported before tab-storage unification).
+ * Returns null for entries that are not bookkeeping files.
+ */
+function unifiedNameFor(entryName: string): string | null {
+  switch (entryName) {
+    case 'tabs.json':
+    case 'tabs-api.json':
+    case 'tabs-cli.json':
+      return 'tabs.json'
+    case 'session-chains.json':
+    case 'session-chains-api.json':
+    case 'session-chains-cli.json':
+      return 'session-chains.json'
+    case 'session-labels.json':
+    case 'session-labels-api.json':
+    case 'session-labels-cli.json':
+      return 'session-labels.json'
+    default:
+      return null
+  }
+}
+
 function mergeOne(name: string, local: any, backup: any): any {
-  if (name === 'tabs-api.json' || name === 'tabs-cli.json') {
+  if (name === 'tabs.json') {
     return mergeTabs(local, backup)
   }
-  if (name === 'session-chains-api.json' || name === 'session-chains-cli.json') {
+  if (name === 'session-chains.json') {
     return mergeChains(local, backup)
   }
-  if (name === 'session-labels-api.json' || name === 'session-labels-cli.json') {
+  if (name === 'session-labels.json') {
     return mergeLabels(local, backup)
   }
   // Unknown file: prefer local (do not destroy current state).

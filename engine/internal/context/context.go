@@ -30,6 +30,14 @@ type WalkerConfig struct {
 	MaxDepth         int      // max upward levels (0 = unlimited)
 	IncludeDirective string   // prefix for inline includes (e.g., "@")
 	Deduplication    bool     // skip files already seen by absolute path
+	// SuppressProjectRoots, when true, skips the project (cwd-derived) walk
+	// entirely — including the implicit cwd fallback that WalkContextFiles
+	// applies when Roots is empty. Home roots (when IncludeHomeRoots is set)
+	// are still probed. This is how a dispatch context policy of
+	// includeProjectContext=false is honored without also dropping the global
+	// layer: setting Roots to empty alone would NOT suppress the walk because
+	// WalkContextFiles defaults an empty Roots to [cwd].
+	SuppressProjectRoots bool
 }
 
 // resolvePatterns returns the effective file-name patterns for discovery,
@@ -90,7 +98,11 @@ type DiscoveredContext struct {
 // the same way ~/.ion/commands and ~/.claude/commands are in slash_resolve.go.
 func WalkContextFiles(cwd string, config WalkerConfig) []DiscoveredContext {
 	roots := config.Roots
-	if len(roots) == 0 {
+	if config.SuppressProjectRoots {
+		// Explicitly drop the project walk (and its implicit cwd fallback);
+		// only the home roots below are probed.
+		roots = nil
+	} else if len(roots) == 0 {
 		roots = []string{cwd}
 	}
 

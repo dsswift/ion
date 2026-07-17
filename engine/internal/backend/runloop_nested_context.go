@@ -1,7 +1,6 @@
 package backend
 
 import (
-	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -43,7 +42,9 @@ func (b *ApiBackend) drainNestedContext(
 		// Sink may still have entries; drain to keep it from growing unbounded,
 		// but inject nothing.
 		_ = run.touchedSink.DrainAndClear()
-		utils.Debug("ApiBackend", fmt.Sprintf("nestedContext: disabled for run=%s, drained-and-discarded", run.requestID))
+		utils.LogWithFields(utils.LevelDebug, "backend.runloop", "nestedContext: disabled for , drained-and-discarded", map[string]any{
+			"run_id": run.requestID,
+		})
 		return
 	}
 	if cwd == "" {
@@ -94,9 +95,13 @@ func (b *ApiBackend) drainNestedContext(
 	run.mu.Unlock()
 
 	if len(newFiles) == 0 {
-		utils.Debug("ApiBackend", fmt.Sprintf(
-			"nestedContext: run=%s turn=%d drained=%d walked=%d new=0 deduped=%d (nothing to inject)",
-			run.requestID, turn, len(touched), dirsWalked, dedupedCount))
+		utils.LogWithFields(utils.LevelDebug, "backend.runloop", "nestedContext: new=0 (nothing to inject)", map[string]any{
+			"run_id":  run.requestID,
+			"turn":    turn,
+			"drained": len(touched),
+			"walked":  dirsWalked,
+			"deduped": dedupedCount,
+		})
 		return
 	}
 
@@ -116,9 +121,14 @@ func (b *ApiBackend) drainNestedContext(
 		injectedPaths = append(injectedPaths, dc.Path)
 	}
 
-	utils.Info("ApiBackend", fmt.Sprintf(
-		"nestedContext: run=%s turn=%d drained=%d walked=%d new=%d deduped=%d injecting",
-		run.requestID, turn, len(touched), dirsWalked, len(newFiles), dedupedCount))
+	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "nestedContext: injecting", map[string]any{
+		"run_id":  run.requestID,
+		"turn":    turn,
+		"drained": len(touched),
+		"walked":  dirsWalked,
+		"new":     len(newFiles),
+		"deduped": dedupedCount,
+	})
 
 	b.injectNestedContext(run, conv, hooks, opts, injectedPaths, sb.String(), turn, maxTurns)
 }
@@ -160,7 +170,9 @@ func (b *ApiBackend) injectNestedContext(
 	conversation.AddContextInjectionMessage(conv, paths, text, opts.SuppressSystemMessages)
 	if !opts.SuppressSystemMessages {
 		if err := conversation.Save(conv, ""); err != nil {
-			utils.Log("ApiBackend", "failed to save conversation after nested context inject: "+err.Error())
+			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation after nested context inject", map[string]any{
+				"error": utils.ErrStr(err),
+			})
 		}
 	}
 }

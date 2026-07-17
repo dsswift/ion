@@ -5,8 +5,8 @@ import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import type { TabGroupView } from '../hooks/useTabGroups'
-import { abbreviateProfileName, checkWorktreeUncommitted, getWaitingState, shouldUseWorktree, zoomRect } from './TabStripShared'
-import { StackedStatusDots } from './TabStripStatusDot'
+import { abbreviateProfileName, checkWorktreeUncommitted, getGroupStatusColor, getWaitingState, shouldUseWorktree, zoomRect } from './TabStripShared'
+import { GroupStatusDot } from './TabStripStatusDot'
 import { InlineRenameInput } from './TabStripInlineRenameInput'
 import { PillColorPicker } from './TabStripPillColorPicker'
 import { TabContextMenu } from './TabStripTabContextMenu'
@@ -64,7 +64,7 @@ export function GroupPill({
 
   useEffect(() => {
     if (tabMenu) checkWorktreeUncommitted(selectedTab)
-  }, [tabMenu])
+  }, [tabMenu, selectedTab])
 
   // Close picker when any new tab is created (from +button, keyboard shortcut, or another picker)
   useEffect(() => {
@@ -167,7 +167,10 @@ export function GroupPill({
             setColorPickerOpen(true)
           } : undefined}
         >
-          <StackedStatusDots tabs={group.tabs} />
+          {(() => {
+            const { bg, pulse, glow, glowColor } = getGroupStatusColor(group.tabs, colors)
+            return <GroupStatusDot bg={bg} pulse={pulse} glow={glow} glowColor={glowColor} />
+          })()}
         </span>
         <span className="flex-shrink-0 text-[10px] font-medium" style={{ color: colors.textSecondary, opacity: 0.5 }}>
           {group.label}

@@ -13,6 +13,7 @@ import (
 // attribution (dispatchDepth / dispatchParentId) stamped at dispatch time.
 type attributionAccessor struct {
 	*depthTestAccessor
+	noopPluginMethods
 	mu       sync.Mutex
 	appended []types.AgentStateUpdate
 }

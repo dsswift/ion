@@ -214,4 +214,32 @@ func TestAddToolResults_AppendsEntry(t *testing.T) {
 	}
 }
 
+func TestAddAssistantMessage_SetsUsageOnMessage(t *testing.T) {
+	conv := CreateConversation("test-id", "sys", "model")
+	usage := types.LlmUsage{
+		InputTokens:              50000,
+		CacheReadInputTokens:     10000,
+		CacheCreationInputTokens: 5000,
+		OutputTokens:             1000,
+	}
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "hello"}}, usage)
+
+	if len(conv.Messages) == 0 {
+		t.Fatal("expected a message to be appended")
+	}
+	last := conv.Messages[len(conv.Messages)-1]
+	if last.Role != "assistant" {
+		t.Fatalf("expected role=assistant, got %q", last.Role)
+	}
+	if last.Usage == nil {
+		t.Fatal("expected Usage to be set on the assistant message")
+	}
+	if last.Usage.InputTokens != 50000 {
+		t.Errorf("Usage.InputTokens = %d, want 50000", last.Usage.InputTokens)
+	}
+	if last.Usage.CacheReadInputTokens != 10000 {
+		t.Errorf("Usage.CacheReadInputTokens = %d, want 10000", last.Usage.CacheReadInputTokens)
+	}
+}
+
 // --- Backward compatibility: v1 JSON load ---

@@ -1,19 +1,23 @@
 import { app, BrowserWindow, dialog, globalShortcut, Menu, nativeImage, screen, session, Tray } from 'electron'
 import { join } from 'path'
 import { IPC } from '../shared/types'
-import { log as _log, flushLogs } from './logger'
+import { log as _log, debug as _debug, info as _info, warn as _warn, error as _error, trace as _trace, flushLogs } from './logger'
 import { state, SPACES_DEBUG, sessionPlane, engineBridge } from './state'
 import { broadcast } from './broadcast'
 import { terminalManager } from './terminal-manager-instance'
+import { openAtvWindow, reassertAtvActivationPolicy } from './atv-window-manager'
+import { restartEngineDaemon } from './engine-bootstrap'
+import { resolveSurfacePlan } from './surface-launch'
+import { readSettings } from './settings-store'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 export function snapshotWindowState(reason: string): void {
   if (!SPACES_DEBUG) return
   if (!state.mainWindow || state.mainWindow.isDestroyed()) {
-    log(`[spaces] ${reason} window=none`)
+    log('[spaces] no window', { reason })
     return
   }
 
@@ -84,7 +88,13 @@ export function installContentSecurityPolicy(): void {
   })
 }
 
-export function createWindow(): void {
+/**
+ * Create the overlay window (the session-store OWNER renderer — it always
+ * exists, even when its glass surface never shows). `showOnReady` is false
+ * when the launch surface is the ATV: the renderer boots hidden and the
+ * glass appears only when summoned (Alt+Space / tray).
+ */
+export function createWindow(showOnReady = true): void {
   const cursor = screen.getCursorScreenPoint()
   const display = screen.getDisplayNearestPoint(cursor)
   const { x: dx, y: dy, width: sw, height: sh } = display.workArea
@@ -119,6 +129,11 @@ export function createWindow(): void {
   state.mainWindow = mainWindow
 
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  // visibleOnFullScreen flips the app to the 'accessory' activation policy
+  // as a side effect. Harmless while no ATV window exists (accessory is the
+  // overlay's resting policy), but with the ATV open it silently removes
+  // Ion from the Dock/Cmd-Tab — so every call re-asserts the correct policy.
+  reassertAtvActivationPolicy()
   // Use 'modal-panel' rather than 'screen-saver' here. 'modal-panel' sits
   // above normal apps (browsers, VSCode — CGWindowLevel 0) so the overlay
   // covers them in tall mode, but it stays BELOW macOS TCC/permission dialogs
@@ -132,19 +147,38 @@ export function createWindow(): void {
   mainWindow.setAlwaysOnTop(true, 'modal-panel')
 
   mainWindow.webContents.on('console-message', (_e, level, message) => {
-    if (level >= 3) log(`[renderer:error] ${message}`)
-    else if (level === 2) log(`[renderer:warn] ${message}`)
-    else log(`[renderer] ${message}`)
+    // Electron console-message levels: 0=verbose, 1=info/log, 2=warning, 3=error
+    // Post-migration mapping (safety net for renderer console.* calls that bypass
+    // the rendererLogger bridge):
+    //   level 0 (verbose/console.debug) → DEBUG
+    //   level 1 (info/console.log)      → TRACE  (high-frequency; below default INFO gate)
+    //   level 2 (warning/console.warn)  → WARN
+    //   level 3 (error/console.error)   → ERROR
+    if (level >= 3) {
+      _error('renderer', message)
+    } else if (level === 2) {
+      _warn('renderer', message)
+    } else if (level === 0) {
+      _debug('renderer', message)
+    } else {
+      // level 1 — console.log / console.info: route to TRACE so they are
+      // suppressed at the default INFO min-level and only visible when the
+      // operator lowers the desktop log level to TRACE.
+      _trace('renderer', message)
+    }
   })
   mainWindow.webContents.on('render-process-gone', (_e, details) => {
-    log(`[renderer:gone] reason=${details.reason} exitCode=${details.exitCode}`)
+    log('[renderer:gone]', { reason: details.reason, exit_code: details.exitCode })
   })
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   mainWindow.webContents.on('will-navigate', (event) => event.preventDefault())
 
   mainWindow.once('ready-to-show', () => {
-    state.mainWindow?.show()
+    // The click-through arm applies even when the glass stays hidden: a
+    // later showWindow() must find the overlay already in its safe
+    // pass-through state.
+    if (showOnReady) state.mainWindow?.show()
     state.mainWindow?.setIgnoreMouseEvents(true, { forward: true })
     if (process.env.ELECTRON_RENDERER_URL) {
       state.mainWindow?.webContents.openDevTools({ mode: 'detach' })
@@ -189,7 +223,7 @@ export function createWindow(): void {
         if (shutdownEngine) {
           log('Quit All: shutting down engine process')
           await engineBridge.shutdownAndWait().catch((err: Error) => {
-            log(`Engine shutdown error (proceeding with quit): ${err.message}`)
+            log('window_manager: engine shutdown error, proceeding with quit', { error: err.message })
           })
         }
         state.forceQuit = true
@@ -228,15 +262,35 @@ export function createTray(): void {
   trayIcon.setTemplateImage(true)
   state.tray = new Tray(trayIcon)
   state.tray.setToolTip('Ion')
+  // Both surfaces get a tray launcher — the tray is the one entry point that
+  // works in every window state. Disabled surfaces (surfacePolicy) lose
+  // their item entirely.
+  const plan = resolveSurfacePlan(readSettings())
   state.tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: 'Toggle Interface', accelerator: 'Alt+Space', click: () => toggleWindow('tray menu') },
+      ...(plan.overlayEnabled
+        ? [{ label: 'Show Overlay', accelerator: 'Alt+Space', click: () => toggleWindow('tray menu') }]
+        : []),
+      ...(plan.atvEnabled
+        ? [{ label: 'Show Visualizer', ...(plan.atvShortcut ? { accelerator: plan.atvShortcut } : {}), click: () => openAtvWindow('tray menu') }]
+        : []),
       { type: 'separator' },
       { label: 'Settings...', click: () => {
         showWindow('tray settings')
         if (state.mainWindow && !state.mainWindow.isDestroyed()) {
           state.mainWindow.webContents.send(IPC.SHOW_SETTINGS)
         }
+      } },
+      { type: 'separator' },
+      // Force-restart the persistent engine daemon so it re-reads engine.json.
+      // The engine reads its config once at process start; a config change needs
+      // an explicit restart. This recycles the daemon in place (kickstart -k)
+      // without quitting the desktop or booting the daemon out — launchd
+      // respawns it immediately with fresh config. Distinct from Quit All (which
+      // boots the daemon out) and Quit Desktop (which leaves it running).
+      { label: 'Restart Engine', click: () => {
+        const ok = restartEngineDaemon()
+        log('tray: restart engine requested', { issued: ok })
       } },
       { type: 'separator' },
       { label: 'Quit', click: () => { app.quit() } },
@@ -264,9 +318,13 @@ export function showWindow(source = 'unknown'): void {
   state.mainWindow.setBounds({ x: dx, y: dy, width: sw, height: sh })
 
   state.mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  // Re-assert the activation policy: visibleOnFullScreen silently flips the
+  // app to 'accessory', which (while the ATV is open) removed Ion from
+  // Cmd-Tab and sent the ATV window behind other apps on EVERY overlay show.
+  reassertAtvActivationPolicy()
 
   if (SPACES_DEBUG) {
-    log(`[spaces] showWindow#${toggleId} source=${source} move-to-display id=${display.id}`)
+    log('[spaces] showWindow move to display', { toggle_id: toggleId, source, display_id: display.id })
     snapshotWindowState(`showWindow#${toggleId} pre-show`)
   }
   state.mainWindow.show()
@@ -279,7 +337,7 @@ export function toggleWindow(source = 'unknown'): void {
   if (!state.mainWindow || state.mainWindow.isDestroyed()) return
   const toggleId = ++state.toggleSequence
   if (SPACES_DEBUG) {
-    log(`[spaces] toggle#${toggleId} source=${source} start`)
+    log('[spaces] toggle start', { toggle_id: toggleId, source })
     snapshotWindowState(`toggle#${toggleId} pre`)
   }
 

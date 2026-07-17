@@ -63,6 +63,11 @@ final class ConnectionQuality {
     /// Current transport connectivity state, kept in sync by the session.
     var transportState: TransportState = .disconnected
 
+    /// Wall-clock time the last heartbeat was received, or nil if none yet.
+    /// Tracked for liveness/diagnostics; the wire-level watchdog lives in
+    /// `TransportManager`, but the ViewModel records the receive time here too.
+    var lastHeartbeatAt: Date?
+
     // MARK: - Computed
 
     var signalLevel: SignalLevel {
@@ -108,6 +113,7 @@ final class ConnectionQuality {
             senderTs: senderTs,
             buffered: buffered
         )
+        lastHeartbeatAt = sample.receivedAt
         samples.append(sample)
         if samples.count > 5 {
             samples.removeFirst(samples.count - 5)
@@ -116,6 +122,7 @@ final class ConnectionQuality {
 
     func reset() {
         samples.removeAll()
+        lastHeartbeatAt = nil
     }
 
     // MARK: - Private

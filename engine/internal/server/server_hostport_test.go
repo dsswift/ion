@@ -22,8 +22,8 @@ func TestLooksLikeHostPort(t *testing.T) {
 
 		// Edge cases
 		{"", false},
-		{"/colon:path", false},   // absolute path with colon
-		{"./colon:path", false},  // relative path with colon
+		{"/colon:path", false},  // absolute path with colon
+		{"./colon:path", false}, // relative path with colon
 
 		// Windows named pipe path (no colon, starts with \\)
 		// Not applicable here since we only test the function logic

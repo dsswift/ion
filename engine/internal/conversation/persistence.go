@@ -84,6 +84,9 @@ func MigrateConversation(raw map[string]any) (*Conversation, error) {
 		return nil, err
 	}
 
+	// Migrated trees get the same linkage validation as directly-loaded ones.
+	validateAndRepairTree(&conv)
+
 	return &conv, nil
 }
 
@@ -158,7 +161,10 @@ func Save(conv *Conversation, dir string) error {
 	// Branch: v2 conversations with entries use the split format.
 	// Conversations that have never had any turns yet (brand-new, no entries)
 	// fall back to the legacy JSON path so we don't write stub files.
-	if conv.Version >= 2 && len(conv.Entries) > 0 {
+	conv.lock()
+	split := conv.Version >= 2 && len(conv.Entries) > 0
+	conv.unlock()
+	if split {
 		return saveSplit(conv, dir)
 	}
 	return saveJSON(conv, dir)
@@ -188,34 +194,30 @@ func Save(conv *Conversation, dir string) error {
 // unlink is non-fatal: the next Load will find the new pair and the next Save
 // will retry the unlink.
 func saveSplit(conv *Conversation, dir string) error {
-	llmPath := filepath.Join(dir, conv.ID+".llm.jsonl")
-	treePath := filepath.Join(dir, conv.ID+".tree.jsonl")
-	legacyPath := filepath.Join(dir, conv.ID+".jsonl")
-
-	// --- Build .llm.jsonl content: header + message body ---
+	// Snapshot all tree/message state under the lock, then marshal and write
+	// outside it — persistence must never serialize a half-applied append and
+	// must never hold the tree lock across disk I/O. The entry snapshot is a
+	// shallow copy: entry Data values are replaced wholesale by mutators
+	// (never mutated in place), so the copied headers are stable.
+	conv.lock()
+	convID := conv.ID
 	llmHeader := map[string]any{
-		"meta":                    true,
-		"id":                      conv.ID,
-		"version":                 conv.Version,
-		"model":                   conv.Model,
-		"system":                  conv.System,
-		"totalInputTokens":        conv.TotalInputTokens,
-		"totalOutputTokens":       conv.TotalOutputTokens,
-		"lastInputTokens":         conv.LastInputTokens,
-		"lastInputTokensMsgCount": conv.LastInputTokensMsgCount,
-		"totalCost":               conv.TotalCost,
-		"createdAt":               conv.CreatedAt,
+		"meta":              true,
+		"id":                conv.ID,
+		"version":           conv.Version,
+		"model":             conv.Model,
+		"system":            conv.System,
+		"totalInputTokens":  conv.TotalInputTokens,
+		"totalOutputTokens": conv.TotalOutputTokens,
+		"totalCost":         conv.TotalCost,
+		"createdAt":         conv.CreatedAt,
 	}
 	if conv.ParentID != "" {
 		llmHeader["parentId"] = conv.ParentID
 	}
-
-	var llmLines []string
-	llmHeaderBytes, err := json.Marshal(llmHeader)
-	if err != nil {
-		return fmt.Errorf("marshal llm header: %w", err)
+	if conv.Backend != "" {
+		llmHeader["backend"] = conv.Backend
 	}
-	llmLines = append(llmLines, string(llmHeaderBytes))
 
 	// Determine which messages to write:
 	//   - nil Messages means explicitly cleared — write nothing (header only).
@@ -225,25 +227,62 @@ func saveSplit(conv *Conversation, dir string) error {
 	var messagesToWrite []types.LlmMessage
 	if conv.Messages != nil {
 		if len(conv.Entries) > 0 {
-			messagesToWrite = BuildContextPath(conv)
+			messagesToWrite = buildContextPathLocked(conv)
 		} else {
 			messagesToWrite = conv.Messages
 		}
 	}
 
-	// When BuildContextPath reduces the message count below the cached
-	// token count's message baseline, the cache is stale (covers messages
-	// that are no longer in the LLM file). Zero it so the next load uses
-	// heuristic estimation instead of the inflated cached value.
-	if messagesToWrite != nil && conv.LastInputTokensMsgCount > 0 && len(messagesToWrite) < conv.LastInputTokensMsgCount {
-		utils.Log("Conversation", fmt.Sprintf("saveSplit: id=%s invalidating stale token cache: lastInputTokens=%d lastInputTokensMsgCount=%d but only %d messages after BuildContextPath",
-			conv.ID, conv.LastInputTokens, conv.LastInputTokensMsgCount, len(messagesToWrite)))
-		conv.LastInputTokens = 0
-		conv.LastInputTokensMsgCount = 0
-		llmHeader["lastInputTokens"] = 0
-		llmHeader["lastInputTokensMsgCount"] = 0
-	}
+	entriesSnap := make([]SessionEntry, len(conv.Entries))
+	copy(entriesSnap, conv.Entries)
 
+	var leafSnap any
+	if conv.LeafID != nil {
+		leafSnap = *conv.LeafID
+	}
+	treeHeader := map[string]any{
+		"meta":             true,
+		"id":               conv.ID,
+		"version":          conv.Version,
+		"leafId":           leafSnap,
+		"workingDirectory": conv.WorkingDirectory,
+	}
+	// Mirror the backend discriminator onto the tree header too: consumers
+	// that only read the tree file (rendering/branching) can still assert the
+	// history format without opening the llm file.
+	if conv.Backend != "" {
+		treeHeader["backend"] = conv.Backend
+	}
+	// Persist the per-provider native-session cursors (additive, omitted when
+	// empty). The tree header is the natural home: cursors are position-tagged
+	// against the tree's LeafID, and both live in the same file so a cursor
+	// can never be persisted against a leaf it has not seen.
+	if len(conv.NativeSessions) > 0 {
+		nsSnap := make(map[string]NativeSessionCursor, len(conv.NativeSessions))
+		for k, v := range conv.NativeSessions {
+			nsSnap[k] = v
+		}
+		treeHeader["nativeSessions"] = nsSnap
+	}
+	isLegacy := conv._isLegacy
+	conv.unlock()
+
+	llmPath := filepath.Join(dir, convID+".llm.jsonl")
+	treePath := filepath.Join(dir, convID+".tree.jsonl")
+	legacyPath := filepath.Join(dir, convID+".jsonl")
+
+	// --- Build .llm.jsonl content: header + message body ---
+	var llmLines []string
+	llmHeaderBytes, err := json.Marshal(llmHeader)
+	if err != nil {
+		return fmt.Errorf("marshal llm header: %w", err)
+	}
+	llmLines = append(llmLines, string(llmHeaderBytes))
+
+	// Write the selected messages as the .llm.jsonl body. Each assistant
+	// message carries its API-reported Usage (set by AddAssistantMessage),
+	// which GetContextUsage rehydrates and backward-scans on the next load —
+	// no separate token-count scalar is persisted.
 	for _, msg := range messagesToWrite {
 		msgBytes, err := json.Marshal(msg)
 		if err != nil {
@@ -254,19 +293,11 @@ func saveSplit(conv *Conversation, dir string) error {
 
 	llmData := []byte(strings.Join(llmLines, "\n") + "\n")
 	if err := writeFileSynced(llmPath, llmData); err != nil {
-		utils.Log("Conversation", fmt.Sprintf("Save: id=%s .llm.jsonl write failed err=%v", conv.ID, err))
+		utils.LogWithFields(utils.LevelInfo, "conversation", "save llm jsonl write failed", map[string]any{"conversation_id": convID, "error": err.Error()})
 		return fmt.Errorf("save llm file: %w", err)
 	}
 
 	// --- Build .tree.jsonl content: header + Entries ---
-	treeHeader := map[string]any{
-		"meta":             true,
-		"id":               conv.ID,
-		"version":          conv.Version,
-		"leafId":           conv.LeafID,
-		"workingDirectory": conv.WorkingDirectory,
-	}
-
 	var treeLines []string
 	treeHeaderBytes, err := json.Marshal(treeHeader)
 	if err != nil {
@@ -274,7 +305,7 @@ func saveSplit(conv *Conversation, dir string) error {
 	}
 	treeLines = append(treeLines, string(treeHeaderBytes))
 
-	for _, entry := range conv.Entries {
+	for _, entry := range entriesSnap {
 		entryBytes, err := json.Marshal(entry)
 		if err != nil {
 			return fmt.Errorf("marshal tree entry: %w", err)
@@ -284,31 +315,34 @@ func saveSplit(conv *Conversation, dir string) error {
 
 	treeData := []byte(strings.Join(treeLines, "\n") + "\n")
 	if err := writeFileSynced(treePath, treeData); err != nil {
-		utils.Log("Conversation", fmt.Sprintf("Save: id=%s .tree.jsonl write failed err=%v llmAlreadyWritten=true", conv.ID, err))
+		utils.LogWithFields(utils.LevelInfo, "conversation", "save tree jsonl write failed", map[string]any{"conversation_id": convID, "error": err.Error()})
 		return fmt.Errorf("save tree file: %w", err)
 	}
 
 	// Determine log mode for observability.
 	mode := "new"
-	if conv._isLegacy {
+	if isLegacy {
 		mode = "migrate"
 	}
-	utils.Log("Conversation", fmt.Sprintf("Save: id=%s mode=%s llmBytes=%d treeBytes=%d",
-		conv.ID, mode, len(llmData), len(treeData)))
+	utils.LogWithFields(utils.LevelInfo, "conversation", "save", map[string]any{
+		"conversation_id": convID, "reason": mode, "count": len(llmData), "max": len(treeData),
+	})
 
 	// Unlink legacy .jsonl after both new files are written. Non-fatal on
 	// failure: both new files exist, so the next Load finds the new pair.
 	// The next Save will retry the unlink because _isLegacy is set from the
 	// on-disk probe, not from this field (which is in-memory only).
-	if conv._isLegacy {
+	if isLegacy {
 		if unlinkErr := os.Remove(legacyPath); unlinkErr != nil && !os.IsNotExist(unlinkErr) {
-			utils.Log("Conversation", fmt.Sprintf("Save: id=%s mode=migrate legacy unlink failed err=%v (non-fatal — new files written)", conv.ID, unlinkErr))
+			utils.LogWithFields(utils.LevelInfo, "conversation", "save migrate legacy unlink failed", map[string]any{"conversation_id": convID, "error": unlinkErr.Error()})
 		} else if unlinkErr == nil {
-			utils.Log("Conversation", fmt.Sprintf("Save: id=%s mode=migrate legacy=%s removed=true", conv.ID, conv.ID+".jsonl"))
+			utils.LogWithFields(utils.LevelInfo, "conversation", "save migrate legacy removed", map[string]any{"conversation_id": convID, "path": convID + ".jsonl"})
 		}
 		// Clear the flag so repeated saves in the same process don't re-attempt
 		// on an already-removed file.
+		conv.lock()
 		conv._isLegacy = false
+		conv.unlock()
 	}
 
 	return nil
@@ -405,64 +439,8 @@ func LoadLlmHeaderModel(id, dir string) (string, error) {
 	}
 
 	model := jsonString(header, "model")
-	utils.Debug("Conversation", fmt.Sprintf("LoadLlmHeaderModel: id=%s model=%s", id, model))
+	utils.LogWithFields(utils.LevelDebug, "conversation", "load llm header model", map[string]any{"conversation_id": id, "model": model})
 	return model, nil
-}
-
-// LoadLlmHeaderCost reads only the totalCost field from a conversation's
-// .llm.jsonl header without parsing any messages. This is a lightweight
-// alternative to Load when only the session cost is needed (e.g. aggregate
-// cost walk across a dispatch tree).
-//
-// Returns (0, nil) when the totalCost key is missing or zero — a fresh
-// conversation has no persisted cost, which is not an error. An error is
-// returned only for a missing file or a parse failure.
-func LoadLlmHeaderCost(id, dir string) (float64, error) {
-	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return 0, err
-		}
-		dir = filepath.Join(home, ".ion", "conversations")
-	}
-
-	llmPath := filepath.Join(dir, id+".llm.jsonl")
-	f, err := os.Open(llmPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return 0, fmt.Errorf("%w: %s", ErrNotFound, id)
-		}
-		return 0, fmt.Errorf("open llm file %s: %w", llmPath, err)
-	}
-	defer func() { _ = f.Close() }()
-
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 64*1024), maxScanTokenSize)
-
-	// Read only the first non-empty line (the header).
-	var headerLine string
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line != "" {
-			headerLine = line
-			break
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return 0, fmt.Errorf("scan llm header %s: %w", llmPath, err)
-	}
-	if headerLine == "" {
-		return 0, fmt.Errorf("empty llm file: %s", llmPath)
-	}
-
-	var header map[string]any
-	if err := json.Unmarshal([]byte(headerLine), &header); err != nil {
-		return 0, fmt.Errorf("invalid llm header in %s: %w", llmPath, err)
-	}
-
-	cost := jsonFloat(header, "totalCost", 0)
-	utils.Debug("Conversation", fmt.Sprintf("LoadLlmHeaderCost: id=%s cost=%f", id, cost))
-	return cost, nil
 }
 
 // Load reads a conversation from disk. Probe order:
@@ -503,16 +481,16 @@ func Load(id, dir string) (*Conversation, error) {
 			return nil, err
 		}
 		conv._isLegacy = true
-		utils.Log("Conversation", fmt.Sprintf("Load: id=%s path=legacy entries=%d messages=%d lastInputTokens=%d — will migrate on next save",
-			conv.ID, len(conv.Entries), len(conv.Messages), conv.LastInputTokens))
+		utils.LogWithFields(utils.LevelInfo, "conversation", "load legacy will migrate on next save", map[string]any{
+			"conversation_id": conv.ID, "count": len(conv.Entries), "max": len(conv.Messages),
+		})
 		return conv, nil
 	}
 
 	// Probe 3: v1 JSON migration
 	data, err := os.ReadFile(jsonPath)
 	if err != nil {
-		utils.Log("Conversation", fmt.Sprintf("Load: id=%s not found (probed %s, %s, %s)",
-			id, llmPath, jsonlPath, jsonPath))
+		utils.LogWithFields(utils.LevelInfo, "conversation", "load not found", map[string]any{"conversation_id": id})
 		return nil, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
 
@@ -525,8 +503,9 @@ func Load(id, dir string) (*Conversation, error) {
 		return nil, err
 	}
 	conv._isLegacy = true
-	utils.Log("Conversation", fmt.Sprintf("Load: id=%s path=v1json entries=%d messages=%d lastInputTokens=%d — will migrate on next save",
-		conv.ID, len(conv.Entries), len(conv.Messages), conv.LastInputTokens))
+	utils.LogWithFields(utils.LevelInfo, "conversation", "load v1json will migrate on next save", map[string]any{
+		"conversation_id": conv.ID, "count": len(conv.Entries), "max": len(conv.Messages),
+	})
 	return conv, nil
 }
 
@@ -659,12 +638,13 @@ func loadSplit(id, llmPath, treePath string) (*Conversation, error) {
 		Model:                   jsonString(llmHeader, "model"),
 		TotalInputTokens:        int(jsonFloat(llmHeader, "totalInputTokens", 0)),
 		TotalOutputTokens:       int(jsonFloat(llmHeader, "totalOutputTokens", 0)),
-		LastInputTokens:         int(jsonFloat(llmHeader, "lastInputTokens", 0)),
-		LastInputTokensMsgCount: int(jsonFloat(llmHeader, "lastInputTokensMsgCount", 0)),
 		TotalCost:               jsonFloat(llmHeader, "totalCost", 0),
 		CreatedAt:               int64(jsonFloat(llmHeader, "createdAt", float64(nowMillis()))),
 		Version:                 int(jsonFloat(llmHeader, "version", 2)),
 		ParentID:                jsonString(llmHeader, "parentId"),
+		// Backend discriminator (additive). Legacy headers without the field
+		// decode "" — treated as api by consumers.
+		Backend: jsonString(llmHeader, "backend"),
 		// LLM context from .llm.jsonl body — verbatim, NOT rebuilt from Entries
 		Messages: messages,
 		// Tree fields from .tree.jsonl
@@ -676,12 +656,39 @@ func loadSplit(id, llmPath, treePath string) (*Conversation, error) {
 		conv.LeafID = &leafID
 	}
 
+	// Rehydrate the per-provider native-session cursors (additive header
+	// field; absent on legacy files). Round-trip through JSON so the untyped
+	// header map decodes into the typed cursor struct; a malformed field is
+	// logged and dropped rather than failing the whole load — cursors are a
+	// disposable cache, and the safe fallback is "no cursor → re-bridge".
+	if rawNS, ok := treeHeader["nativeSessions"]; ok && rawNS != nil {
+		nsBytes, err := json.Marshal(rawNS)
+		if err == nil {
+			var ns map[string]NativeSessionCursor
+			if err = json.Unmarshal(nsBytes, &ns); err == nil && len(ns) > 0 {
+				conv.NativeSessions = ns
+			}
+		}
+		if err != nil {
+			utils.LogWithFields(utils.LevelWarn, "conversation", "load: dropping malformed nativeSessions header", map[string]any{
+				"conversation_id": conv.ID, "error": err.Error(),
+			})
+		}
+	}
+
 	if err := rehydrateEntries(conv); err != nil {
 		return nil, err
 	}
 
-	utils.Log("Conversation", fmt.Sprintf("Load: id=%s path=new entries=%d messages=%d lastInputTokens=%d lastInputTokensMsgCount=%d",
-		conv.ID, len(conv.Entries), len(conv.Messages), conv.LastInputTokens, conv.LastInputTokensMsgCount))
+	// Validate and repair the tree linkage before anything walks it — a
+	// dangling parent otherwise silently truncates history at the gap. The
+	// repaired shape persists on the next Save, healing the file in place.
+	validateAndRepairTree(conv)
+
+	utils.LogWithFields(utils.LevelInfo, "conversation", "load new", map[string]any{
+		"conversation_id": conv.ID, "count": len(conv.Entries), "max": len(conv.Messages),
+	})
+	rehydrateMessageUsage(conv)
 	return conv, nil
 }
 
@@ -722,8 +729,6 @@ func loadFromJSONL(data []byte) (*Conversation, error) {
 		Messages:                []types.LlmMessage{},
 		TotalInputTokens:        int(jsonFloat(header, "totalInputTokens", 0)),
 		TotalOutputTokens:       int(jsonFloat(header, "totalOutputTokens", 0)),
-		LastInputTokens:         int(jsonFloat(header, "lastInputTokens", 0)),
-		LastInputTokensMsgCount: int(jsonFloat(header, "lastInputTokensMsgCount", 0)),
 		TotalCost:               jsonFloat(header, "totalCost", 0),
 		CreatedAt:               int64(jsonFloat(header, "createdAt", float64(nowMillis()))),
 		Version:                 int(jsonFloat(header, "version", 2)),
@@ -739,10 +744,15 @@ func loadFromJSONL(data []byte) (*Conversation, error) {
 		return nil, err
 	}
 
+	// Validate and repair linkage before the context-path rebuild below walks
+	// the tree (see validateAndRepairTree).
+	validateAndRepairTree(conv)
+
 	// Legacy path only: rebuild Messages from the entry tree. The new-format
 	// path (loadSplit) trusts .llm.jsonl verbatim to avoid re-leaking cleared
 	// history — this is the root cause of issue #146.
 	conv.Messages = BuildContextPath(conv)
+	rehydrateMessageUsage(conv)
 	return conv, nil
 }
 

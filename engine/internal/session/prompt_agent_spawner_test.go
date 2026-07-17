@@ -27,7 +27,7 @@ import (
 // ---------------------------------------------------------------------------
 
 // childStubBackend is an in-process RunBackend used to drive the agent
-// spawner closure without spinning up a real ApiBackend or CliBackend.
+// spawner closure without spinning up a real ApiBackend or ClaudeCodeBackend.
 // Callers configure the events it should emit on StartRun and whether
 // completion is immediate or gated on an explicit Release() call (for
 // cancellation testing).
@@ -167,6 +167,14 @@ func (c *childStubBackend) Cancel(_ string) bool {
 func (c *childStubBackend) IsRunning(_ string) bool                             { return false }
 func (c *childStubBackend) WriteToStdin(_ string, _ interface{}) error          { return nil }
 func (c *childStubBackend) FlushConversations()                                 {}
+func (c *childStubBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:         "mock",
+		ContextModel: backend.ContextModelEngineOwned,
+		PlanMode:     true,
+		Steering:     true,
+	}
+}
 func (c *childStubBackend) OnNormalized(fn func(string, types.NormalizedEvent)) { c.onNorm = fn }
 func (c *childStubBackend) OnExit(fn func(string, *int, *string, string))       { c.onExit = fn }
 func (c *childStubBackend) OnError(fn func(string, error))                      { c.onError = fn }
@@ -920,6 +928,14 @@ func (c *nestingStubBackend) Cancel(_ string) bool                              
 func (c *nestingStubBackend) IsRunning(_ string) bool                             { return false }
 func (c *nestingStubBackend) WriteToStdin(_ string, _ interface{}) error          { return nil }
 func (c *nestingStubBackend) FlushConversations()                                 {}
+func (c *nestingStubBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:         "mock",
+		ContextModel: backend.ContextModelEngineOwned,
+		PlanMode:     true,
+		Steering:     true,
+	}
+}
 func (c *nestingStubBackend) OnNormalized(fn func(string, types.NormalizedEvent)) { c.onNorm = fn }
 func (c *nestingStubBackend) OnExit(fn func(string, *int, *string, string))       { c.onExit = fn }
 func (c *nestingStubBackend) OnError(_ func(string, error))                       {}

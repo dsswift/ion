@@ -127,7 +127,7 @@ func scanSplitSessionFiles(llmPath, treePath string) (types.StoredSessionInfo, e
 	}
 	defer func() {
 		if closeErr := llmFile.Close(); closeErr != nil {
-			utils.Log("conv-list", fmt.Sprintf("scanSplitSessionFiles: close %s failed: %v", llmPath, closeErr))
+			utils.LogWithFields(utils.LevelInfo, "conversation.list", "scan split session files llm close failed", map[string]any{"path": llmPath, "error": closeErr.Error()})
 		}
 	}()
 
@@ -157,7 +157,7 @@ func scanSplitSessionFiles(llmPath, treePath string) (types.StoredSessionInfo, e
 	}
 	defer func() {
 		if closeErr := treeFile.Close(); closeErr != nil {
-			utils.Log("conv-list", fmt.Sprintf("scanSplitSessionFiles: close %s failed: %v", treePath, closeErr))
+			utils.LogWithFields(utils.LevelInfo, "conversation.list", "scan split session files tree close failed", map[string]any{"path": treePath, "error": closeErr.Error()})
 		}
 	}()
 
@@ -232,7 +232,7 @@ func scanSessionFile(path string) (types.StoredSessionInfo, error) {
 	}
 	defer func() {
 		if err := f.Close(); err != nil {
-			utils.Log("conv-list", fmt.Sprintf("scanSessionFile: close %s failed: %v", path, err))
+			utils.LogWithFields(utils.LevelInfo, "conversation.list", "scan session file close failed", map[string]any{"path": path, "error": err.Error()})
 		}
 	}()
 
@@ -420,6 +420,19 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 	var result []types.SessionMessage
 	toolCallIndex := map[string]int{} // toolID → index in result
 
+	// rowID assigns the canonical row id: the entry id for the first row an
+	// entry produces, "<entryId>:<n>" for subsequent rows. Stable across
+	// reloads (entry ids are persisted), so every consumer shares one
+	// id-space and history reloads dedup against live rows re-keyed at
+	// message_end. The scheme is part of the wire contract — see
+	// types.SessionMessage.ID.
+	rowID := func(entryID string, rowIdx int) string {
+		if rowIdx == 0 {
+			return entryID
+		}
+		return fmt.Sprintf("%s:%d", entryID, rowIdx)
+	}
+
 	for _, entry := range path {
 		switch entry.Type {
 		case EntryCompaction:
@@ -434,6 +447,7 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 				continue
 			}
 			result = append(result, types.SessionMessage{
+				ID:                   rowID(entry.ID, 0),
 				Role:                 "system",
 				Content:              "[Compaction]",
 				Timestamp:            entry.Timestamp,
@@ -456,6 +470,7 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 				continue
 			}
 			result = append(result, types.SessionMessage{
+				ID:                  rowID(entry.ID, 0),
 				Role:                "system",
 				Content:             "──",
 				Timestamp:           entry.Timestamp,
@@ -475,6 +490,7 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 				continue
 			}
 			result = append(result, types.SessionMessage{
+				ID:                  rowID(entry.ID, 0),
 				Role:                "system",
 				Content:             "──",
 				Timestamp:           entry.Timestamp,
@@ -506,13 +522,65 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 					// Merge result content into the matching tool-call message.
 					if idx, ok := toolCallIndex[b.ToolUseID]; ok {
 						result[idx].Content = b.Content
+						// Carry the persisted error flag so reloaded tool rows
+						// keep their failed state (live path sets it via the
+						// tool_result event; history must not coerce to
+						// success).
+						result[idx].IsError = b.IsError != nil && *b.IsError
+					} else {
+						// No matching tool call: the orphan result is dropped
+						// from the flattened view. Post-repair this should
+						// never fire; if it does, the chain is losing data
+						// again — say so instead of silently thinning history.
+						utils.LogWithFields(utils.LevelWarn, "conversation", "flatten: orphan tool_result dropped", map[string]any{
+							"conversation_id": conv.ID,
+							"tool_use_id":     b.ToolUseID,
+						})
 					}
-					// If no matching tool call found, drop the orphan result.
+				case "image":
+					// A persisted tool-result image block. The live path emitted
+					// an ImageContentEvent per image and clients attached it to
+					// the owning tool message; that event is not persisted, so on
+					// reload we replay the reference here. The image block carries
+					// the owning tool call's id in ToolUseID (set by
+					// AddToolResults). Re-derive the on-disk path from the base64
+					// bytes (content-addressed, idempotent: this resolves to the
+					// same file the live save wrote, creating it only if it was
+					// pruned) and attach it to the matching tool-call row.
+					att := imageAttachmentFromBlock(conv.ID, b)
+					if att == nil {
+						break
+					}
+					if b.ToolUseID != "" {
+						if idx, ok := toolCallIndex[b.ToolUseID]; ok {
+							result[idx].Attachments = append(result[idx].Attachments, *att)
+						}
+						// An image with a non-empty ToolUseID but no matching
+						// tool call (orphan) is dropped, mirroring the
+						// orphan-tool_result handling above.
+					} else {
+						// Legacy pre-ToolUseID images: persisted before the
+						// ToolUseID stamping was added (commit b9f399e2), so
+						// b.ToolUseID is empty and the toolCallIndex lookup
+						// above can never match. The persisted block order is
+						// [tool_result, tool_result, image, image], so the
+						// images belong to the most recent tool-call message.
+						// Attach to the last tool-role row in result. This is a
+						// positional heuristic for pre-fix data only; new data
+						// carries the precise ToolUseID association above.
+						for i := len(result) - 1; i >= 0; i-- {
+							if result[i].Role == "tool" {
+								result[i].Attachments = append(result[i].Attachments, *att)
+								break
+							}
+						}
+					}
 				}
 			}
 			if len(textParts) > 0 {
 				content := strings.Join(textParts, "\n")
 				result = append(result, types.SessionMessage{
+					ID:        rowID(entry.ID, 0),
 					Role:      "user",
 					Content:   content,
 					Timestamp: entry.Timestamp,
@@ -529,15 +597,18 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 			}
 
 		case "assistant":
+			entryRowIdx := 0
 			for _, b := range blocks {
 				switch b.Type {
 				case "text":
 					if b.Text != "" {
 						result = append(result, types.SessionMessage{
+							ID:        rowID(entry.ID, entryRowIdx),
 							Role:      "assistant",
 							Content:   b.Text,
 							Timestamp: entry.Timestamp,
 						})
+						entryRowIdx++
 					}
 				case "tool_use":
 					inputJSON := ""
@@ -549,18 +620,56 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 					}
 					toolCallIndex[b.ID] = len(result)
 					result = append(result, types.SessionMessage{
+						ID:        rowID(entry.ID, entryRowIdx),
 						Role:      "tool",
 						ToolName:  b.Name,
 						ToolID:    b.ID,
 						ToolInput: inputJSON,
 						Timestamp: entry.Timestamp,
 					})
+					entryRowIdx++
 				}
 			}
 		}
 	}
 
 	return result
+}
+
+// imageAttachmentFromBlock turns a persisted "image" content block into a
+// SessionMessageAttachment for historical reload. The persisted block stores
+// the image inline as base64 (types.ImageSource); the engine never puts base64
+// on the wire, so this re-derives the on-disk file path by saving the bytes
+// through the shared content-addressed saver. Because SaveImageToConversation
+// is content-addressed and idempotent, this resolves to the exact file the
+// live emit-time save already wrote — no duplicate — and only writes when the
+// file is missing (e.g. pruned). Returns nil when the block has no image source
+// or the save fails (the image is dropped rather than emitting a dangling path).
+func imageAttachmentFromBlock(convID string, b types.LlmContentBlock) *types.SessionMessageAttachment {
+	if b.Source == nil || b.Source.Data == "" || convID == "" {
+		return nil
+	}
+	path, err := SaveImageToConversation("", convID, b.Source.MediaType, b.Source.Data)
+	if err != nil {
+		utils.LogWithFields(utils.LevelError, "conversation", "reload image attachment save failed; dropping", map[string]any{
+			"conversation_id": convID,
+			"mediaType":       b.Source.MediaType,
+			"tool_use_id":     b.ToolUseID,
+			"error":           utils.ErrStr(err),
+		})
+		return nil
+	}
+	name := path
+	if i := strings.LastIndex(name, string(filepath.Separator)); i >= 0 {
+		name = name[i+1:]
+	}
+	return &types.SessionMessageAttachment{
+		ID:        "img:" + path,
+		Type:      "image",
+		Name:      name,
+		Path:      path,
+		MediaType: b.Source.MediaType,
+	}
 }
 
 // contentToBlocks converts a MessageData.Content (which may be string,

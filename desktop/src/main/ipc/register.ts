@@ -15,10 +15,12 @@ import { registerGitExtrasIpc } from './git-extras'
 import { registerWorktreeIpc } from './worktree'
 import { registerSettingsIpc } from './settings'
 import { registerRemoteControlIpc } from './remote-control'
-import { registerMigrationIpc } from './migration'
 import { registerModelsIpc } from './models'
 import { registerOAuthIpc } from './oauth'
+import { registerProvidersIpc } from './providers'
 import { registerConversationBackupIpc } from './conversation-backup'
+import { registerLogIpc } from './log'
+import { registerAtvIpc } from './atv'
 
 export function registerAllIpc(): void {
   registerWindowIpc()
@@ -38,8 +40,10 @@ export function registerAllIpc(): void {
   registerWorktreeIpc()
   registerSettingsIpc()
   registerRemoteControlIpc()
-  registerMigrationIpc()
   registerModelsIpc()
   registerOAuthIpc()
+  registerProvidersIpc()
   registerConversationBackupIpc()
+  registerLogIpc()
+  registerAtvIpc()
 }

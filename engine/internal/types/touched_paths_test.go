@@ -28,7 +28,7 @@ func TestTouchedPathSink_AddDrainClear(t *testing.T) {
 
 func TestTouchedPathSink_NilSafe(t *testing.T) {
 	var s *TouchedPathSink
-	s.Add("/x")                  // must not panic
+	s.Add("/x")                   // must not panic
 	if s.DrainAndClear() != nil { // must not panic
 		t.Error("nil sink should drain to nil")
 	}

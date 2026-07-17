@@ -1,3 +1,4 @@
+// @file-size-exception: large RPC dispatch switch; each case is a self-contained handler
 package extension
 
 import (
@@ -23,7 +24,7 @@ func (h *Host) handleExtNotification(method string, raw []byte) {
 			Params types.EngineEvent `json:"params"`
 		}
 		if err := json.Unmarshal(raw, &notif); err != nil {
-			utils.Log("extension", fmt.Sprintf("ext/emit parse error: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "extension", "ext/emit parse error", map[string]any{"error": err})
 			return
 		}
 		// Resolve emit function: prefer active context, fall back to persistent emit
@@ -69,7 +70,7 @@ func (h *Host) handleExtNotification(method string, raw []byte) {
 			} `json:"params"`
 		}
 		if err := json.Unmarshal(raw, &notif); err != nil {
-			utils.Log("extension", fmt.Sprintf("ext/send_message parse error: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "extension", "ext/send_message parse error", map[string]any{"error": err})
 			return
 		}
 		h.notifMu.RLock()
@@ -85,7 +86,9 @@ func (h *Host) handleExtNotification(method string, raw []byte) {
 	case "log":
 		// Native SDK logging channel. Routes structured log calls (and
 		// redirected console.* output) through the JSON-RPC frame so
-		// nothing ever lands on the subprocess's raw stdout.
+		// nothing ever lands on the subprocess's raw stdout. Structured
+		// fields are preserved as the canonical `fields` object — never
+		// concatenated into the message string.
 		var notif struct {
 			Params struct {
 				Level   string         `json:"level"`
@@ -94,29 +97,30 @@ func (h *Host) handleExtNotification(method string, raw []byte) {
 			} `json:"params"`
 		}
 		if err := json.Unmarshal(raw, &notif); err != nil {
-			utils.Log("extension", fmt.Sprintf("log notif parse error: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "extension", "log notif parse error", map[string]any{"error": err})
 			return
 		}
-		tag := "ext"
-		if h.name != "" {
-			tag = "ext:" + h.name
+
+		// Per the log schema, extension-component logs carry the extension
+		// name as their tag.
+		tag := h.name
+		if tag == "" {
+			tag = "ext"
 		}
-		body := notif.Params.Message
-		if len(notif.Params.Fields) > 0 {
-			if extra, err := json.Marshal(notif.Params.Fields); err == nil {
-				body = body + " " + string(extra)
-			}
+
+		// Resolve session/conversation IDs from the host's bound session
+		// context so extension logs correlate with the engine session.
+		sessionID, conversationID := h.getBoundIDs()
+
+		fields := notif.Params.Fields
+		if fields == nil {
+			fields = map[string]any{}
 		}
-		switch notif.Params.Level {
-		case "error":
-			utils.Error(tag, body)
-		case "warn":
-			utils.Warn(tag, body)
-		case "debug":
-			utils.Debug(tag, body)
-		default:
-			utils.Info(tag, body)
-		}
+
+		lvl := utils.ParseLevel(notif.Params.Level)
+		// LogExtension stamps component="extension" and the bound IDs, and
+		// preserves fields verbatim.
+		utils.LogExtension(lvl, tag, notif.Params.Message, fields, sessionID, conversationID)
 	case "ext/llm_call_cancel":
 		// Per-call cancellation for ctx.llmCall({ signal }). The TS runtime
 		// fires this fire-and-forget notification (no response) when the
@@ -129,13 +133,13 @@ func (h *Host) handleExtNotification(method string, raw []byte) {
 			} `json:"params"`
 		}
 		if err := json.Unmarshal(raw, &notif); err != nil {
-			utils.Log("extension", fmt.Sprintf("ext/llm_call_cancel parse error: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "extension", "ext/llm_call_cancel parse error", map[string]any{"error": err})
 			return
 		}
 		cancelled := h.cancelInflightLLMCall(notif.Params.RequestID)
-		utils.Debug("extension", fmt.Sprintf("ext/llm_call_cancel: requestId=%d cancelled=%t", notif.Params.RequestID, cancelled))
+		utils.LogWithFields(utils.LevelDebug, "extension", "ext/llm_call_cancel", map[string]any{"run_id": notif.Params.RequestID, "cancelled": cancelled})
 	default:
-		utils.Log("extension", fmt.Sprintf("unknown notification method: %s", method))
+		utils.LogWithFields(utils.LevelInfo, "extension", "unknown notification method", map[string]any{"method": method})
 	}
 }
 
@@ -156,6 +160,16 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 	// Steer RPCs (ext/steer_dispatch, ext/steer_self) live in
 	// host_rpc_steer.go to keep this file under the 800-line cap.
 	if h.handleSteerRPC(ctx, method, id, raw) {
+		return
+	}
+	// Schedule RPCs (ext/fire_schedule, ext/get_schedule_status) live in
+	// host_rpc_schedule.go.
+	if h.handleScheduleRPC(method, id, raw) {
+		return
+	}
+	// Pre-authenticated outbound HTTP (ext/http_request) lives in
+	// host_rpc_http.go. Session-independent: works outside active sessions.
+	if h.handleHTTPRPC(method, id, raw) {
 		return
 	}
 	switch method {
@@ -266,6 +280,12 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 		}
 		h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
 
+	case "ext/set_dispatch_context_defaults":
+		h.handleSetDispatchContextDefaults(id, raw)
+
+	case "ext/walk_context_files":
+		h.handleWalkContextFiles(id, raw)
+
 	case "ext/dispatch_agent":
 		var req struct {
 			Params DispatchAgentOpts `json:"params"`
@@ -368,31 +388,7 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 		}
 
 	case "ext/recall_agent":
-		var req struct {
-			Params struct {
-				Name   string `json:"name"`
-				Reason string `json:"reason,omitempty"`
-			} `json:"params"`
-		}
-		if err := json.Unmarshal(raw, &req); err != nil {
-			h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "parse error: " + err.Error()})
-			return
-		}
-		if ctx != nil && ctx.RecallAgent != nil {
-			found, err := ctx.RecallAgent(req.Params.Name, RecallAgentOpts{
-				Reason: req.Params.Reason,
-			})
-			if err != nil {
-				h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
-				return
-			}
-			data, _ := json.Marshal(struct {
-				Found bool `json:"found"`
-			}{Found: found})
-			h.sendResponse(id, json.RawMessage(data), nil)
-		} else {
-			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "recall not available"})
-		}
+		h.handleRecallRPC(ctx, id, raw)
 
 	case "ext/register_agent_spec":
 		var req struct {
@@ -466,12 +462,43 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 	case "ext/answer_dispatch_question":
 		h.handleAnswerDispatchQuestion(id, raw)
 
+	case "ext/task_suspend":
+		// ext/task_suspend — end the LLM run without completing the dispatch.
+		// The agent's LLM exits cleanly (saving tokens, showing as idle/suspended
+		// in the UI). The parent's OnComplete does NOT fire. runChild loops and
+		// blocks on reviveCh until a sendPrompt to this session (or until all
+		// awaiting child dispatches complete). Only wired for dispatched children
+		// (ctx.Suspend is nil at depth 0 / the orchestrator).
+		var req struct {
+			Params struct {
+				AwaitingDispatchIDs []string `json:"awaitingDispatchIds,omitempty"`
+			} `json:"params"`
+		}
+		if err := json.Unmarshal(raw, &req); err != nil {
+			h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "parse error: " + err.Error()})
+			return
+		}
+		if ctx == nil || ctx.Suspend == nil {
+			utils.Debug("extension", "ext/task_suspend: not available at this context depth (depth 0 / no active dispatch)")
+			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "suspend not available: not inside a dispatched run"})
+			return
+		}
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/task_suspend: suspending run", map[string]any{"awaiting": len(req.Params.AwaitingDispatchIDs)})
+		go func() {
+			if err := ctx.Suspend(req.Params.AwaitingDispatchIDs); err != nil {
+				h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
+				return
+			}
+			h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
+		}()
+
 	case "ext/send_prompt":
 		var req struct {
 			Params struct {
 				Text                   string   `json:"text"`
 				Model                  string   `json:"model,omitempty"`
 				BashAllowlistAdditions []string `json:"bashAllowlistAdditions,omitempty"`
+				Kind                   string   `json:"kind,omitempty"`
 			} `json:"params"`
 		}
 		if err := json.Unmarshal(raw, &req); err != nil {
@@ -484,10 +511,23 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 		}
 		if ctx != nil && ctx.SendPrompt != nil {
 			// Active hook context: use hook-aware path (supports model override,
-			// per-prompt bash-allowlist additions, recursion guard).
-			utils.Debug("extension", fmt.Sprintf("ext/send_prompt: hook ctx path model=%q bashAllowlistAdditions=%d", req.Params.Model, len(req.Params.BashAllowlistAdditions)))
+			// per-prompt bash-allowlist additions, recursion guard). When Kind is
+			// set, use SendPromptPayload (if wired) so Kind reaches emitPromptInjected;
+			// fall back to SendPrompt for callers that have not wired the payload variant.
+			utils.LogWithFields(utils.LevelDebug, "extension", "ext/send_prompt: hook ctx path", map[string]any{"model": req.Params.Model, "count": len(req.Params.BashAllowlistAdditions), "kind": req.Params.Kind})
 			go func() {
-				if err := ctx.SendPrompt(req.Params.Text, req.Params.Model, req.Params.BashAllowlistAdditions); err != nil {
+				var err error
+				if req.Params.Kind != "" && ctx.SendPromptPayload != nil {
+					err = ctx.SendPromptPayload(SendPromptPayload{
+						Text:                   req.Params.Text,
+						Model:                  req.Params.Model,
+						BashAllowlistAdditions: req.Params.BashAllowlistAdditions,
+						Kind:                   req.Params.Kind,
+					})
+				} else {
+					err = ctx.SendPrompt(req.Params.Text, req.Params.Model, req.Params.BashAllowlistAdditions)
+				}
+				if err != nil {
 					h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 					return
 				}
@@ -498,7 +538,7 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 		// No active hook context (e.g. called from a timer/scheduler): fall back to
 		// the session-level SendPrompt wired by the session manager via onSendMessage.
 		// The fallback path now carries the FULL payload (model override +
-		// bash-allowlist additions), identical to the active-hook path above —
+		// bash-allowlist additions + kind), identical to the active-hook path above —
 		// onSendMessage takes a SendPromptPayload, and both session wiring sites
 		// build PromptOverrides from it via the shared buildPromptOverrides helper.
 		// There is no per-feature divergence between the two dispatch paths.
@@ -510,12 +550,13 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "sendPrompt not available: no active session"})
 			return
 		}
-		utils.Info("extension", fmt.Sprintf("ext/send_prompt: fallback path via onSendMessage forwarding full payload model=%q bashAllowlistAdditions=%d", req.Params.Model, len(req.Params.BashAllowlistAdditions)))
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/send_prompt: fallback path via onsendmessage forwarding full payload", map[string]any{"model": req.Params.Model, "count": len(req.Params.BashAllowlistAdditions), "kind": req.Params.Kind})
 		go func() {
 			fn(SendPromptPayload{
 				Text:                   req.Params.Text,
 				Model:                  req.Params.Model,
 				BashAllowlistAdditions: req.Params.BashAllowlistAdditions,
+				Kind:                   req.Params.Kind,
 			})
 			h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
 		}()
@@ -592,11 +633,42 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 			Cost    float64 `json:"cost"`
 		}{Percent: usage.Percent, Tokens: usage.Tokens, Cost: usage.Cost})
 		if err != nil {
-			utils.Error("extension", fmt.Sprintf("ext/get_context_usage: marshal failed: %v", err))
+			utils.LogWithFields(utils.LevelError, "extension", "ext/get_context_usage: marshal failed", map[string]any{"error": err})
 			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 			return
 		}
-		utils.Debug("extension", fmt.Sprintf("ext/get_context_usage: returning percent=%d tokens=%d cost=%f", usage.Percent, usage.Tokens, usage.Cost))
+		utils.LogWithFields(utils.LevelDebug, "extension", "ext/get_context_usage: returning", map[string]any{"percent": usage.Percent, "tokens": usage.Tokens, "cost": usage.Cost})
+		h.sendResponse(id, json.RawMessage(data), nil)
+
+	case "ext/list_dispatch_state":
+		// Read-only query: return every active dispatch in the session's
+		// DispatchRegistry as a { dispatches: [...] } envelope. Returns an
+		// empty array (not null) when no dispatches are active or when the
+		// getter is not wired (extensions loaded outside a dispatch-capable
+		// session see an empty result and can branch on it safely).
+		if ctx == nil || ctx.ListDispatchState == nil {
+			utils.Debug("extension", "ext/list_dispatch_state: no ctx or no getter, returning empty array")
+			h.sendResponse(id, json.RawMessage(`{"dispatches":[]}`), nil)
+			return
+		}
+		entries, err := ctx.ListDispatchState()
+		if err != nil {
+			utils.LogWithFields(utils.LevelError, "extension", "ext/list_dispatch_state: getter returned error", map[string]any{"error": err})
+			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
+			return
+		}
+		if entries == nil {
+			entries = []DispatchStateEntry{}
+		}
+		data, err := json.Marshal(struct {
+			Dispatches []DispatchStateEntry `json:"dispatches"`
+		}{Dispatches: entries})
+		if err != nil {
+			utils.LogWithFields(utils.LevelError, "extension", "ext/list_dispatch_state: marshal failed", map[string]any{"error": err})
+			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
+			return
+		}
+		utils.LogWithFields(utils.LevelDebug, "extension", "ext/list_dispatch_state: returning", map[string]any{"count": len(entries)})
 		h.sendResponse(id, json.RawMessage(data), nil)
 
 	case "ext/search_history":
@@ -607,20 +679,20 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 			} `json:"params"`
 		}
 		if err := json.Unmarshal(raw, &req); err != nil {
-			utils.Error("extension", fmt.Sprintf("ext/search_history: parse error: %v", err))
+			utils.LogWithFields(utils.LevelError, "extension", "ext/search_history: parse error", map[string]any{"error": err})
 			h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "parse error: " + err.Error()})
 			return
 		}
 		// Empty array (not null) when no active conversation / unwired -- TS
 		// callers can iterate safely without null-guarding.
 		if ctx == nil || ctx.SearchHistory == nil {
-			utils.Debug("extension", fmt.Sprintf("ext/search_history: no ctx or no searcher (query=%q max=%d), returning []", req.Params.Query, req.Params.MaxResults))
+			utils.LogWithFields(utils.LevelDebug, "extension", "ext/search_history: no ctx or no searcher ( ), returning []", map[string]any{"query": req.Params.Query, "max_results": req.Params.MaxResults})
 			h.sendResponse(id, json.RawMessage(`[]`), nil)
 			return
 		}
 		matches, err := ctx.SearchHistory(req.Params.Query, req.Params.MaxResults)
 		if err != nil {
-			utils.Error("extension", fmt.Sprintf("ext/search_history: searcher returned error: %v", err))
+			utils.LogWithFields(utils.LevelError, "extension", "ext/search_history: searcher returned error", map[string]any{"error": err})
 			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 			return
 		}
@@ -629,11 +701,11 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 		}
 		data, err := json.Marshal(matches)
 		if err != nil {
-			utils.Error("extension", fmt.Sprintf("ext/search_history: marshal failed: %v", err))
+			utils.LogWithFields(utils.LevelError, "extension", "ext/search_history: marshal failed", map[string]any{"error": err})
 			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 			return
 		}
-		utils.Debug("extension", fmt.Sprintf("ext/search_history: returning %d matches (query=%q max=%d)", len(matches), req.Params.Query, req.Params.MaxResults))
+		utils.LogWithFields(utils.LevelDebug, "extension", "ext/search_history: returning matches ( )", map[string]any{"count": len(matches), "query": req.Params.Query, "max_results": req.Params.MaxResults})
 		h.sendResponse(id, json.RawMessage(data), nil)
 
 	case "ext/get_session_memory":
@@ -731,7 +803,7 @@ func (h *Host) sendResponse(id int64, result json.RawMessage, rpcErr *jsonrpcErr
 	}
 	data, err := json.Marshal(resp)
 	if err != nil {
-		utils.Log("extension", fmt.Sprintf("failed to marshal response: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "extension", "failed to marshal response", map[string]any{"error": err})
 		return
 	}
 	data = append(data, '\n')
@@ -758,7 +830,7 @@ func (h *Host) sendNotification(method string, params json.RawMessage) {
 	}
 	data, err := json.Marshal(notif)
 	if err != nil {
-		utils.Log("extension", fmt.Sprintf("failed to marshal notification: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "extension", "failed to marshal notification", map[string]any{"error": err})
 		return
 	}
 	data = append(data, '\n')

@@ -1,14 +1,13 @@
 /**
- * Regression: plan_mode_auto_exit must clear the active INSTANCE permissionMode
- * to 'auto' without touching the parent tab.permissionMode (sticky-parent invariant).
+ * Regression: plan_mode_auto_exit must NOT flip the active instance's
+ * permissionMode to 'auto'. A synthesized auto-exit is a proposal awaiting
+ * user approval — identical in meaning to a model-driven ExitPlanMode, which
+ * also does not flip mode (ADR-003). The instance stays 'plan' until the user
+ * approves at the implement-slice.ts chokepoint.
  *
- * After WI-001 (single-path collapse), this event flows through handleNormalizedEvent
- * (event-slice.ts) instead of handleEngineEvent. The sticky-parent invariant is
- * preserved by writing only instPatch.permissionMode, never updated.permissionMode.
- *
- * Revert-test contract: removing the `plan_mode_auto_exit` case from event-slice.ts
- * causes the "parent stays unwritten" tests to fail because permissionMode would
- * remain 'plan' on the instance or be written to the parent.
+ * Revert-test contract: adding `ctx.instPatch.permissionMode = 'auto'` back
+ * into the plan_mode_auto_exit arm causes the first test to fail (instance
+ * would change to 'auto' instead of staying 'plan').
  */
 
 import { describe, it, expect, vi } from 'vitest'
@@ -92,10 +91,10 @@ function buildHarness(instanceOverrides: Record<string, unknown> = {}) {
   return { state, slice }
 }
 
-// ─── Defect 1: plan_mode_auto_exit clears instance permissionMode ──────────
+// ─── Fix A: plan_mode_auto_exit is a proposal, NOT a mode flip ──────────────
 
-describe('Defect 1 — plan_mode_auto_exit clears instance permissionMode to auto', () => {
-  it('sets instance permissionMode to auto when auto_exit fires', () => {
+describe('Fix A — plan_mode_auto_exit keeps the instance at plan', () => {
+  it('leaves instance permissionMode at plan when auto_exit fires', () => {
     const { state, slice } = buildHarness({ permissionMode: 'plan' })
 
     const instBefore = activeInstance(state.conversationPanes, 'tab1')
@@ -108,8 +107,10 @@ describe('Defect 1 — plan_mode_auto_exit clears instance permissionMode to aut
       planSlug: 'my-plan',
     } as any)
 
+    // A synthesized auto-exit is a proposal awaiting approval — the instance
+    // must stay 'plan' until the user approves at the implement chokepoint.
     const instAfter = activeInstance(state.conversationPanes, 'tab1')
-    expect(instAfter?.permissionMode).toBe('auto')
+    expect(instAfter?.permissionMode).toBe('plan')
   })
 
   it('is a no-op when tab does not exist (no crash)', () => {
@@ -122,54 +123,53 @@ describe('Defect 1 — plan_mode_auto_exit clears instance permissionMode to aut
     }).not.toThrow()
   })
 
-  it('permissionMode stays auto after auto_exit fires twice (idempotent)', () => {
-    const { state, slice } = buildHarness({ permissionMode: 'plan' })
-
-    slice.handleNormalizedEvent('tab1', { type: 'plan_mode_auto_exit', stopReason: 'end_turn' } as any)
-    slice.handleNormalizedEvent('tab1', { type: 'plan_mode_auto_exit', stopReason: 'end_turn' } as any)
-
-    const inst = activeInstance(state.conversationPanes, 'tab1')
-    expect(inst?.permissionMode).toBe('auto')
-  })
-
-  // Sticky-parent invariant: plan_mode_auto_exit writes ONLY the active instance's
-  // permissionMode. The parent tab.permissionMode must NEVER be written — doing so
-  // would leave it permanently 'plan' across instance switches and break the
-  // done-group move for auto-mode runs.
+  // Sticky-parent invariant: plan_mode_auto_exit must NEVER write the parent
+  // tab.permissionMode — doing so would leave it permanently 'plan' across
+  // instance switches and break the done-group move for auto-mode runs.
   it('does NOT touch the parent tab.permissionMode (sticky-parent invariant)', () => {
     const { state, slice } = buildHarness({ permissionMode: 'plan' })
     const parentPermModeBefore = state.tabs[0].permissionMode
 
     slice.handleNormalizedEvent('tab1', { type: 'plan_mode_auto_exit', stopReason: 'end_turn' } as any)
 
-    // Instance permissionMode must be cleared.
+    // Instance stays 'plan'.
     const inst = activeInstance(state.conversationPanes, 'tab1')
-    expect(inst?.permissionMode).toBe('auto')
+    expect(inst?.permissionMode).toBe('plan')
     // Parent tab.permissionMode must be UNCHANGED (the ghost field invariant).
     expect(state.tabs[0].permissionMode).toBe(parentPermModeBefore)
   })
 
-  // Revert-test: if we remove `instPatch.permissionMode = 'auto'` from event-slice.ts,
-  // this test turns red (instance still has 'plan'). The test name documents the
-  // deliberate fragility so future refactors know this is a load-bearing assertion.
-  it('REVERT-TEST: if the auto_exit case is removed from event-slice.ts, this fails', () => {
-    // This test is structurally identical to the first — it exists only to document
-    // the regression contract and surface clearly in test output when reverted.
+  it('permissionMode stays plan after auto_exit fires twice (idempotent)', () => {
+    const { state, slice } = buildHarness({ permissionMode: 'plan' })
+
+    slice.handleNormalizedEvent('tab1', { type: 'plan_mode_auto_exit', stopReason: 'end_turn' } as any)
+    slice.handleNormalizedEvent('tab1', { type: 'plan_mode_auto_exit', stopReason: 'end_turn' } as any)
+
+    const inst = activeInstance(state.conversationPanes, 'tab1')
+    expect(inst?.permissionMode).toBe('plan')
+  })
+
+  // Revert-test: if the arm re-adds `instPatch.permissionMode = 'auto'`, this
+  // turns red (instance flips to 'auto' instead of staying 'plan'). The test
+  // name documents the deliberate fragility so future refactors know this is a
+  // load-bearing assertion — the CORRECT behavior is that the instance stays
+  // 'plan' because the auto-exit is only a proposal, not an approved flip.
+  it('REVERT-TEST: if the auto_exit arm writes permissionMode=auto, this fails', () => {
     const { state, slice } = buildHarness({ permissionMode: 'plan' })
 
     slice.handleNormalizedEvent('tab1', { type: 'plan_mode_auto_exit', stopReason: 'end_turn' } as any)
 
     const inst = activeInstance(state.conversationPanes, 'tab1')
-    // If the case is removed, permissionMode remains 'plan' and this fails.
-    expect(inst?.permissionMode).toBe('auto')
+    // If the write is re-added, permissionMode becomes 'auto' and this fails.
+    expect(inst?.permissionMode).toBe('plan')
     // And the parent must still be unwritten.
     expect(state.tabs[0].permissionMode).toBeUndefined()
   })
 })
 
-// ─── Defect 2: engine_plan_mode_changed writes instance.planFilePath ────────
+// ─── engine_plan_mode_changed writes instance.planFilePath ──────────────────
 
-describe('Defect 2 — engine_plan_mode_changed (normalized path)', () => {
+describe('engine_plan_mode_changed (normalized path)', () => {
   it('writes planFilePath to the instance on plan_mode_changed', () => {
     const { state, slice } = buildHarness({ permissionMode: 'auto', planFilePath: null })
 

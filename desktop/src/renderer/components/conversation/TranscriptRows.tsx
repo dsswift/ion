@@ -53,7 +53,6 @@ export function TranscriptRows({ grouped, actions }: TranscriptRowsProps) {
                 key={item.message.id}
                 message={item.message}
                 skipMotion
-                bootstrapCollapsedCount={item.bootstrapCollapsedCount}
               />
             )
           case 'intercept':

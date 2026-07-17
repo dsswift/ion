@@ -1,32 +1,48 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { ipcMain } from 'electron'
 import { existsSync, mkdirSync, readFileSync, renameSync } from 'fs'
 import { IPC } from '../../shared/types'
-import { log as _log } from '../logger'
+import { log as _log, debug as _debug } from '../logger'
 import { state, engineBridge } from '../state'
 import { atomicWriteFileSync } from '../utils/atomicWrite'
 import { runTabUnifyMigration } from '../tab-migration-unify-runner'
 import { runTabSplitMigration } from '../tab-migration-split-runner'
+import { runTabBackendMerge } from '../tab-backend-merge'
+import { runTabExternalizeMigration } from '../tab-migration-externalize-runner'
+import {
+  loadInstanceContent,
+  saveInstanceContent,
+  deleteInstanceContent,
+  mergeExternalContent,
+} from '../tab-content-store'
 import {
   SETTINGS_DEFAULTS,
   SETTINGS_DIR,
   SETTINGS_FILE,
   SESSION_CHAINS_FILE,
   TABS_FILE,
-  currentBackend,
   loadSessionChains,
   loadSessionLabels,
-  readEngineConfig,
   readSettings,
   saveSessionChains,
   saveSessionLabels,
-  writeEngineConfig,
 } from '../settings-store'
 import { initRemoteTransport } from '../remote/transport-init'
 import { persistAndBroadcastSettings } from '../settings-broadcast'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
+function debug(msg: string, fields?: Record<string, unknown>): void {
+  _debug('main', msg, fields)
+}
+
+/**
+ * Settings keys owned exclusively by the main process. Written by dedicated
+ * main-side paths (pairing handler, revoke) — never legitimately changed by a
+ * renderer SAVE_SETTINGS payload, whose full-object saves would otherwise
+ * clobber them with a stale store snapshot. Exported for the regression test.
+ */
+export const MAIN_OWNED_SETTINGS_KEYS = ['pairedDevices'] as const
 
 // ─── Tab persistence safety ───
 //
@@ -55,14 +71,14 @@ export function registerSettingsIpc(): void {
     try {
       if (existsSync(SETTINGS_FILE)) {
         const settings: Record<string, any> = { ...SETTINGS_DEFAULTS, ...readSettings() }
-        log(`[Settings] loaded: remoteEnabled=${settings.remoteEnabled} remoteTransport=${!!state.remoteTransport}`)
+        log('settings: loaded', { remote_enabled: settings.remoteEnabled, has_remote_transport: !!state.remoteTransport })
         if (settings.remoteEnabled && !state.remoteTransport) {
           initRemoteTransport(settings)
         }
         return settings
       }
     } catch (err) {
-      log(`Failed to load settings: ${err}`)
+      log('settings: load failed', { error: String(err) })
     }
     return SETTINGS_DEFAULTS
   })
@@ -71,6 +87,26 @@ export function registerSettingsIpc(): void {
     try {
       let prev: Record<string, unknown> = {}
       try { prev = readSettings() } catch {}
+
+      // Main-owned keys: the disk value ALWAYS wins over the renderer's
+      // payload. The renderer saves its whole settings object on every
+      // preference change, and that object is a snapshot from whenever its
+      // store last loaded/synced — a full-object save can silently revert a
+      // key the main process wrote in the meantime. pairedDevices is written
+      // by the pairing handler and revoke path (main process only); a stale
+      // renderer save once reverted a fresh pairing on disk, orphaning the
+      // just-paired iPhone ("unknown device" on every reconnect after the
+      // next restart). Renderer mutations of these keys go through their own
+      // dedicated IPC (e.g. revoke), never through SAVE_SETTINGS.
+      for (const key of MAIN_OWNED_SETTINGS_KEYS) {
+        const rendererValue = JSON.stringify(data[key] ?? null)
+        const diskValue = JSON.stringify(prev[key] ?? null)
+        if (rendererValue !== diskValue) {
+          log('settings: ignoring stale renderer value for main-owned key', { key })
+        }
+        if (key in prev) data[key] = prev[key]
+        else delete data[key]
+      }
 
       // Single write+broadcast path shared with the iOS set_desktop_setting
       // wire command. The helper handles persistence atomically and emits a
@@ -98,36 +134,27 @@ export function registerSettingsIpc(): void {
         }
       }
     } catch (err) {
-      log(`Failed to save settings: ${err}`)
+      log('settings: save failed', { error: String(err) })
     }
-  })
-
-  ipcMain.handle(IPC.GET_BACKEND, () => currentBackend)
-
-  ipcMain.handle(IPC.SWITCH_BACKEND, async (_event, newBackend: 'api' | 'cli') => {
-    if (newBackend === currentBackend) return { ok: true }
-
-    for (const win of BrowserWindow.getAllWindows()) {
-      try {
-        await win.webContents.executeJavaScript(
-          'window.__ionForceFlushTabs && window.__ionForceFlushTabs()',
-        )
-      } catch {}
-    }
-
-    const cfg = readEngineConfig()
-    cfg.backend = newBackend
-    writeEngineConfig(cfg)
-
-    await engineBridge.shutdownAndWait()
-
-    state.forceQuit = true
-    app.relaunch()
-    app.quit()
   })
 
   ipcMain.handle(IPC.LOAD_TABS, () => {
     const PREV_FILE = TABS_FILE + '.prev'
+    // One-time backend merge: union the legacy per-backend tab files
+    // (tabs-{api,cli}.json + labels/chains twins) into the unified files.
+    // Runs FIRST so the unify/split migrations below (and every read after
+    // them) operate on the merged tabs.json. Idempotent — a unified file on
+    // disk short-circuits. Legacy sources are retained, never deleted.
+    try {
+      const mergeOutcome = runTabBackendMerge()
+      if (mergeOutcome.reason === 'success') {
+        log('tabs: backend merge applied', { ...mergeOutcome.tabCounts, path: TABS_FILE })
+      } else if (mergeOutcome.reason === 'error') {
+        log('tabs: backend merge not applied', { reason: mergeOutcome.reason, error: mergeOutcome.errorMessage })
+      }
+    } catch (err) {
+      log('tabs: backend merge error', { error: (err as Error).message })
+    }
     // One-time unify migration (backup → migrate → verify → restore-on-failure).
     // Idempotent: skips files already at the unified schemaVersion. Runs here —
     // the single load chokepoint — so migration always precedes the first read,
@@ -137,13 +164,13 @@ export function registerSettingsIpc(): void {
     try {
       const primaryOutcome = runTabUnifyMigration(TABS_FILE)
       if (primaryOutcome.reason === 'success') {
-        log(`[tabs] unify migration applied to ${TABS_FILE} (${primaryOutcome.tabCount} tabs, backup ${primaryOutcome.backupPath})`)
+        log('tabs: unify migration applied', { path: TABS_FILE, tab_count: primaryOutcome.tabCount, backup: primaryOutcome.backupPath })
       } else if (primaryOutcome.reason === 'verify-failed' || primaryOutcome.reason === 'error') {
-        log(`[tabs] unify migration NOT applied to ${TABS_FILE} (${primaryOutcome.reason}: ${primaryOutcome.errorMessage}) — loading legacy via back-compat`)
+        log('tabs: unify migration not applied', { path: TABS_FILE, reason: primaryOutcome.reason, error: primaryOutcome.errorMessage })
       }
       if (existsSync(PREV_FILE)) runTabUnifyMigration(PREV_FILE)
     } catch (err) {
-      log(`[tabs] unify migration unexpected error: ${(err as Error).message} — loading legacy`)
+      log('tabs: unify migration error', { error: (err as Error).message })
     }
     // Split migration: flatten multi-instance tabs into single-instance tabs.
     // Runs AFTER unify (requires schemaVersion >= 2). Idempotent at >= 3.
@@ -152,13 +179,29 @@ export function registerSettingsIpc(): void {
     try {
       const splitOutcome = runTabSplitMigration(TABS_FILE)
       if (splitOutcome.reason === 'success') {
-        log(`[tabs] split migration applied to ${TABS_FILE} (${splitOutcome.tabsBefore} -> ${splitOutcome.tabsAfter} tabs, backup ${splitOutcome.backupPath})`)
+        log('tabs: split migration applied', { path: TABS_FILE, tabs_before: splitOutcome.tabsBefore, tabs_after: splitOutcome.tabsAfter, backup: splitOutcome.backupPath })
       } else if (splitOutcome.reason === 'verify-failed' || splitOutcome.reason === 'error') {
-        log(`[tabs] split migration NOT applied to ${TABS_FILE} (${splitOutcome.reason}: ${splitOutcome.errorMessage})`)
+        log('tabs: split migration not applied', { path: TABS_FILE, reason: splitOutcome.reason, error: splitOutcome.errorMessage })
       }
       if (existsSync(PREV_FILE)) runTabSplitMigration(PREV_FILE)
     } catch (err) {
-      log(`[tabs] split migration unexpected error: ${(err as Error).message}`)
+      log('tabs: split migration error', { error: (err as Error).message })
+    }
+    // Externalize migration (v3→v4): strip inline instance messages into
+    // per-tab content files + drop reloadable editor buffers. PRIMARY FILE
+    // ONLY — running it on .prev would write content files keyed by the same
+    // tab ids and overwrite the primary's newer content. A .prev recovered
+    // below simply loads as v3 (inline messages, handled by every reader);
+    // the next save writes it back as v4.
+    try {
+      const extOutcome = runTabExternalizeMigration(TABS_FILE)
+      if (extOutcome.reason === 'success') {
+        log('tabs: externalize migration applied', { path: TABS_FILE, content_files: extOutcome.contentFiles, backup: extOutcome.backupPath })
+      } else if (extOutcome.reason === 'verify-failed' || extOutcome.reason === 'error') {
+        log('tabs: externalize migration not applied', { path: TABS_FILE, reason: extOutcome.reason, error: extOutcome.errorMessage })
+      }
+    } catch (err) {
+      log('tabs: externalize migration error', { error: (err as Error).message })
     }
     try {
       let primary: any = null
@@ -177,20 +220,34 @@ export function registerSettingsIpc(): void {
           const prev = JSON.parse(readFileSync(PREV_FILE, 'utf-8'))
           const prevCount = Array.isArray(prev?.tabs) ? prev.tabs.length : 0
           if (prevCount > primaryCount && primaryCount < TAB_GUARD_MIN_COUNT) {
-            log(`[tabs] Startup recovery: primary has ${primaryCount} tabs but .prev has ${prevCount} — using .prev`)
+            log('tabs: startup recovery, using .prev', { primary_count: primaryCount, prev_count: prevCount })
             return prev
           }
         } catch (err) {
-          log(`[tabs] Failed to read .prev file during startup recovery: ${err}`)
+          log('tabs: failed to read .prev during startup recovery', { error: String(err) })
         }
       }
 
       if (primary) {
-        log(`[tabs] Loaded ${primaryCount} tabs from ${TABS_FILE}`)
+        // Eager-merge the ACTIVE tab's externalized content so the tab the
+        // user sees renders complete the moment the window paints (view
+        // readiness). All other tabs stay thin; loadSkeletonMessages pulls
+        // their content on first activation via LOAD_TAB_CONTENT.
+        try {
+          const tabs = Array.isArray(primary.tabs) ? primary.tabs : []
+          const activeIdx = typeof primary.activeTabIndex === 'number' ? primary.activeTabIndex : -1
+          const activeTabId: string | undefined = tabs[activeIdx]?.id
+          if (activeTabId) {
+            primary = mergeExternalContent(primary, loadInstanceContent, (id) => id === activeTabId)
+          }
+        } catch (err) {
+          log('tabs: active-tab content merge failed', { error: (err as Error).message })
+        }
+        log('tabs: loaded', { count: primaryCount, path: TABS_FILE })
         return primary
       }
     } catch (err) {
-      log(`Failed to load tabs: ${err}`)
+      log('tabs: load failed', { error: String(err) })
     }
     return null
   })
@@ -209,7 +266,7 @@ export function registerSettingsIpc(): void {
       const onDiskCount = readOnDiskTabCount()
       if (onDiskCount >= TAB_GUARD_MIN_COUNT && incomingCount < onDiskCount * 0.5) {
         const rejectedPath = TABS_FILE + '.rejected'
-        log(`[tabs] GUARD: refusing save — on-disk has ${onDiskCount} tabs but incoming has ${incomingCount}. Writing to ${rejectedPath} instead.`)
+        log('tabs: guard refused save', { on_disk_count: onDiskCount, incoming_count: incomingCount, rejected_path: rejectedPath })
         atomicWriteFileSync(rejectedPath, JSON.stringify(data, null, 2), 0o644)
         return
       }
@@ -228,10 +285,35 @@ export function registerSettingsIpc(): void {
       atomicWriteFileSync(TABS_FILE, JSON.stringify(data, null, 2), 0o644)
 
       // Layer 4: log every save with tab count for forensic tracing.
-      log(`[tabs] Saved ${incomingCount} tabs to ${TABS_FILE}`)
+      debug('tabs: saved', { count: incomingCount, path: TABS_FILE })
     } catch (err) {
-      log(`Failed to save tabs: ${err}`)
+      log('tabs: save failed', { error: String(err) })
     }
+  })
+
+  // ─── Externalized tab content (schema v4) ───
+  // One content file per tab under ~/.ion/tab-content/. The thin manifest
+  // carries only messageCount + the hasExternalContent marker; these channels
+  // move the message payload lazily (load on first activation) and on the
+  // same debounced tick as SAVE_TABS (save), keyed by the durable tab id.
+
+  ipcMain.handle(IPC.LOAD_TAB_CONTENT, (_event, tabId: string) => {
+    if (typeof tabId !== 'string' || !tabId) return null
+    return loadInstanceContent(tabId)
+  })
+
+  ipcMain.handle(IPC.SAVE_TAB_CONTENT, (_event, { tabId, instanceId, messages }: { tabId: string; instanceId: string; messages: unknown[] }) => {
+    if (typeof tabId !== 'string' || !tabId || !Array.isArray(messages)) return
+    try {
+      saveInstanceContent(tabId, typeof instanceId === 'string' ? instanceId : 'main', messages as never)
+    } catch (err) {
+      log('tab content: save failed', { tab_id: tabId, error: String(err) })
+    }
+  })
+
+  ipcMain.handle(IPC.DELETE_TAB_CONTENT, (_event, tabId: string) => {
+    if (typeof tabId !== 'string' || !tabId) return
+    deleteInstanceContent(tabId)
   })
 
   ipcMain.handle(IPC.SAVE_SESSION_LABEL, (_event, { sessionId, customTitle }: { sessionId: string; customTitle: string | null }) => {
@@ -248,7 +330,7 @@ export function registerSettingsIpc(): void {
     try {
       return await engineBridge.generateTitle(text)
     } catch (err: any) {
-      log(`Failed to generate title: ${err.message}`)
+      log('generate_title: failed', { error: err.message })
       return ''
     }
   })

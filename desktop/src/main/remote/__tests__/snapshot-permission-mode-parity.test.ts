@@ -41,4 +41,16 @@ describe('Bug #1 iOS parity: projectRendererTab projects resolved permissionMode
     )
     expect(result.permissionMode).toBe('auto')
   })
+
+  it("projects 'plan' after auto-exit sequence (Fix A: auto-exit keeps instance at plan)", () => {
+    // Before Fix A: auto-exit would flip instance to 'auto', snapshot would
+    // project 'auto' to iOS, iOS would show wrong mode.
+    // After Fix A: instance stays 'plan'; snapshot projects 'plan' to iOS.
+    const result = projectRendererTab(
+      { id: 't1', title: 'T', status: 'running', engineProfileId: null, permissionMode: 'plan' },
+      BASE,
+    )
+    // The auto-exit sequence left the instance at 'plan'; iOS sees 'plan'.
+    expect(result.permissionMode).toBe('plan')
+  })
 })

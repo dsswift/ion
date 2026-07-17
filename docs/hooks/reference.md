@@ -14,7 +14,7 @@ All hooks grouped by category. For each hook: when it fires, what payload it rec
 |------|------|---------|--------|--------|
 | `session_start` | Session initialized | `nil` | ignored | Observe only |
 | `session_end` | Session teardown | `nil` | ignored | Observe only |
-| `before_prompt` | Before prompt sent to LLM | `string` (prompt) | `BeforePromptResult{Prompt, SystemPrompt}` or `string` | Last non-nil wins. String = prompt rewrite. Struct can set both prompt and system prompt addition. |
+| `before_prompt` | Before prompt sent to LLM | `string` (prompt) | `BeforePromptResult{Prompt, SystemPrompt}` or `string` | Last non-nil wins. String = prompt rewrite. Struct can set both prompt and system prompt addition. `ctx.model` carries the selected model (ID + context window) for model-aware rewriting. |
 | `turn_start` | Start of each LLM turn | `TurnInfo{TurnNumber}` | ignored | Observe only |
 | `turn_end` | End of each LLM turn | `TurnInfo{TurnNumber}` | ignored | Observe only |
 | `message_start` | Before LLM streaming begins | `nil` | ignored | Observe only |
@@ -25,6 +25,20 @@ All hooks grouped by category. For each hook: when it fires, what payload it rec
 | `on_error` | Error occurs (provider, tool, budget, session, hook) | `ErrorInfo{Message, ErrorCode, Category, Retryable, RetryAfterMs, HttpStatus}` | ignored | Observe only. Fires for all error categories including `hook_failed` (with stack traces) and provider HTTP errors with full status and retry timing. |
 | `agent_start` | Sub-agent starts | `AgentInfo{Name, Task}` | ignored | Observe only |
 | `agent_end` | Sub-agent ends | `AgentInfo{Name, Task}` | ignored | Observe only |
+
+> **`session_start` fires once per extension host — including dispatched
+> child sessions.** When a dispatch specifies an `extensionDir`, the engine
+> loads a fresh extension host for the child and fires `session_start` on it
+> before the child run begins. Because the payload is `nil`, the context
+> carries the discriminator: `ctx.depth` is `0` for the root (orchestrator)
+> session and `> 0` for dispatched children (`ctx.dispatchId` names the
+> owning dispatch). Handlers that perform root-only work — greeting toasts,
+> startup syncs, one-time bootstraps — must branch on `ctx.depth === 0` or
+> they will repeat that work for every dispatched agent. `ctx.depth` and
+> `ctx.dispatchId` are populated on **every** hook's context, not just
+> `session_start`; they are the session-level counterpart of
+> `AgentInfo.IsRoot` on `before_agent_start` (which discriminates
+> per-firing rather than per-session).
 
 ### Payload Types
 
@@ -202,7 +216,7 @@ type BeforeProviderRequestInfo struct {
 | `message_update` | Message content updated | `MessageUpdateInfo{Role, Content}` | ignored | Observe only |
 | `tool_result` | Tool returns a result | tool result data | ignored | Observe only |
 | `input` | User input received | `string` (prompt) | `string` | Last non-nil string wins. Rewrites the user prompt. |
-| `model_select` | Model selection occurs | `ModelSelectInfo{RequestedModel, AvailableModels}` | `string` (model ID) | Last non-nil string wins. Overrides model selection. Wired in session manager -- fires on every model resolution. |
+| `model_select` | Model selection occurs | `ModelSelectInfo{RequestedModel, AvailableModels, Prompt}` | `string` (model ID) | Last non-nil string wins. Overrides model selection. Wired in session manager -- fires on every model resolution. Routes on the RAW prompt (`Prompt`); see the routing-vs-payload note below. |
 | `user_bash` | User runs bash command | `string` (command) | ignored | Observe only |
 
 ### Payload Types
@@ -220,8 +234,11 @@ type MessageUpdateInfo struct {
 type ModelSelectInfo struct {
     RequestedModel  string
     AvailableModels []string
+    Prompt          string // RAW user prompt, before before_prompt rewrite
 }
 ```
+
+**Routing vs. payload — `model_select` then `before_prompt`.** The two hooks split one concern into two stages. `model_select` *routes*: it reads the RAW user prompt (`ModelSelectInfo.Prompt`, captured before any rewrite) and picks the model that fits the request (content and length routing). `before_prompt` then *adapts the payload*: it rewrites the prompt text for the model that was chosen, and can read that chosen model via `ctx.model` (populated with the selected model's ID and context window). Route on the raw prompt first; shape the text to the winning model second.
 
 ## Per-Tool Call
 
@@ -759,3 +776,23 @@ type PeerExtensionInfo struct {
 | `payload` | `map[string]interface{}` | Arbitrary structured data |
 
 Same extension type only. The engine enforces this by comparing extension names; cross-type messaging returns an error to the sender.
+
+## Schedule Missed
+
+| Hook | When | Payload | Return | Effect |
+|------|------|---------|--------|--------|
+| `schedule_missed` | Scheduler detects a daily/weekly slot was missed while the engine was down | `ScheduleMissedInfo{ID, Kind, MissedSlotUtc, HadMarker, RanWithinScope}` | ignored | Observation-only. The extension decides whether to backfill via `ctx.fireSchedule(id)`. When no handler is registered, the scheduler auto-catches-up (existing behavior). |
+
+### Payload Types
+
+**ScheduleMissedInfo**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `string` | Schedule job's stable identifier |
+| `kind` | `string` | `"daily"` or `"weekly"` |
+| `missedSlotUtc` | `string` | RFC3339 UTC of the missed slot |
+| `hadMarker` | `bool` | True when a last-run marker existed on disk |
+| `ranWithinScope` | `bool` | True when the job ran inside its current window (today for daily, this week for weekly) |
+
+When a `schedule_missed` handler is registered, the scheduler does NOT auto-fire the missed slot. Instead it emits `engine_schedule_missed` and fires this hook. The handler can call `ctx.fireSchedule(id)` to backfill, or choose to skip. When no handler is registered, auto-catch-up fires as before (backward-compatible).

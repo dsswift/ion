@@ -32,7 +32,9 @@ struct SettingsAppearanceView: View {
                     get: { theme.selectedThemeId },
                     set: { newValue in
                         theme.selectedThemeId = newValue
-                        DiagnosticLog.log("[SettingsView] theme picker set to: \(newValue)")
+                        DiagnosticLog.log("theme picker set", tag: "view.settings", fields: [
+                            "status": newValue
+                        ])
                     }
                 )) {
                     ForEach(ThemeRegistry.themes, id: \.id) { t in
@@ -40,8 +42,13 @@ struct SettingsAppearanceView: View {
                     }
                 }
                 .onChange(of: theme.selectedThemeId) { oldVal, newVal in
-                    DiagnosticLog.log("[SettingsView] theme picker changed: \(oldVal) -> \(newVal)")
-                    DiagnosticLog.log("[SettingsView] theme.accent is now: \(theme.accent)")
+                    DiagnosticLog.log("theme picker changed", tag: "view.settings", fields: [
+                        "reason": oldVal,
+                        "status": newVal
+                    ])
+                    DiagnosticLog.log("theme accent updated", tag: "view.settings", fields: [
+                        "status": String(describing: theme.accent)
+                    ])
                 }
             } header: {
                 Text("Theme")

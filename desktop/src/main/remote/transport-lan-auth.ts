@@ -3,8 +3,8 @@ import { createAuthNonce, verifyAuthProof } from './crypto'
 import { log as _log } from '../logger'
 import type { WireMessage, AuthChallenge, AuthResponse, AuthResult, PairedDevice } from './protocol'
 
-function log(msg: string): void {
-  _log('RemoteTransport', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('RemoteTransport', msg, fields)
 }
 
 export interface LanAuthCtx {
@@ -12,7 +12,10 @@ export interface LanAuthCtx {
   lanAuthPending: Map<string, { nonce: string; timeout: ReturnType<typeof setTimeout> }>
   lanDeviceMap: Map<string, string>
   deviceSecrets: Map<string, Buffer>
-  lastReceivedSeq: Map<string, number>
+  /** Start a new inbound-seq epoch for the device (iOS resets its outbound
+   *  seq to 0 on every LAN auth; the dedup high-water mark AND seen-set must
+   *  reset with it or the new epoch's low seqs are dropped as duplicates). */
+  resetInboundSeq: (deviceId: string) => void
   getPairedDevice: (deviceId: string) => PairedDevice | null
   recomputeState: () => void
   emit: (event: string, ...args: unknown[]) => void
@@ -29,7 +32,7 @@ export function startLanAuth(ctx: LanAuthCtx, connectionId: string): void {
 
   const timeout = setTimeout(() => {
     if (ctx.lanAuthPending.has(connectionId)) {
-      log(`LAN auth timed out for ${connectionId}`)
+      log('lan_auth: timed out', { connection_id: connectionId })
       ctx.lanAuthPending.delete(connectionId)
       const ip = ctx.lan?.getClientIp(connectionId)
       if (ip) ctx.lan?.recordAuthFailure(ip)
@@ -58,7 +61,7 @@ export function handleLanAuthResponse(ctx: LanAuthCtx, msg: WireMessage, connect
 
   const pending = ctx.lanAuthPending.get(connectionId)
   if (!pending) {
-    log(`LAN auth: no active nonce for ${connectionId}`)
+    log('lan_auth: no active nonce', { connection_id: connectionId })
     sendAuthResult(ctx, connectionId, false, 'no active challenge')
     return
   }
@@ -67,7 +70,7 @@ export function handleLanAuthResponse(ctx: LanAuthCtx, msg: WireMessage, connect
 
   const device = ctx.getPairedDevice(authResp.deviceId)
   if (!device) {
-    log(`LAN auth: unknown device ${authResp.deviceId}`)
+    log('lan_auth: unknown device', { device_id: authResp.deviceId })
     sendAuthResult(ctx, connectionId, false, 'unknown device')
     if (ip) ctx.lan?.recordAuthFailure(ip)
     ctx.lan?.disconnectClient(connectionId, 4003, 'unknown device')
@@ -77,7 +80,7 @@ export function handleLanAuthResponse(ctx: LanAuthCtx, msg: WireMessage, connect
   const secret = Buffer.from(device.sharedSecret, 'base64')
   const valid = verifyAuthProof(pending.nonce, authResp.proof, secret)
   if (!valid) {
-    log(`LAN auth: invalid proof from ${authResp.deviceId}`)
+    log('lan_auth: invalid proof', { device_id: authResp.deviceId })
     sendAuthResult(ctx, connectionId, false, 'invalid proof')
     if (ip) ctx.lan?.recordAuthFailure(ip)
     ctx.lan?.disconnectClient(connectionId, 4003, 'invalid proof')
@@ -96,10 +99,10 @@ export function handleLanAuthResponse(ctx: LanAuthCtx, msg: WireMessage, connect
 
   ctx.deviceSecrets.set(device.id, secret)
 
-  ctx.lastReceivedSeq.set(device.id, 0)
+  ctx.resetInboundSeq(device.id)
 
   if (ip) ctx.lan?.recordAuthSuccess(ip)
-  log(`LAN auth: device ${authResp.deviceId} (${device.name}) authenticated`)
+  log('lan_auth: authenticated', { device_id: authResp.deviceId, device_name: device.name })
   sendAuthResult(ctx, device.id, true)
 
   ctx.recomputeState()

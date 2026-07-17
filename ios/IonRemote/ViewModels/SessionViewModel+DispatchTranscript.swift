@@ -27,7 +27,11 @@ extension SessionViewModel {
     @MainActor
     func handleDispatchActivity(dispatchAgentId: String, conversationId: String, kind: String, seq: Int, ts: Int64?, toolName: String?, toolId: String?, textDelta: String?, isError: Bool) {
         guard !dispatchAgentId.isEmpty else {
-            DiagnosticLog.log("ENGINE: dispatch_activity missing dispatchAgentId convId=\(conversationId) kind=\(kind) seq=\(seq) — dropping")
+            DiagnosticLog.log("dispatch activity missing dispatch id", tag: "session.dispatch", level: .warn, fields: [
+                "conversation_id": conversationId,
+                "reason": kind,
+                "count": String(seq)
+            ])
             return
         }
         // Track convId -> dispatchAgentId so the snapshot reconcile path can
@@ -48,12 +52,26 @@ extension SessionViewModel {
                 msg.toolStatus = status
                 entries[idx] = msg
                 // seq array stays in sync; no positional change on update.
-                DiagnosticLog.log("ENGINE: dispatch_activity fold dispatchId=\(dispatchAgentId) convId=\(conversationId) kind=\(kind) toolId=\(tid) seq=\(seq) branch=tool-updated")
+                DiagnosticLog.log("dispatch activity fold", tag: "session.dispatch", fields: [
+                    "run_id": dispatchAgentId,
+                    "conversation_id": conversationId,
+                    "reason": kind,
+                    "tool": tid,
+                    "count": String(seq),
+                    "status": "tool-updated"
+                ])
             } else {
                 let msg = Message(id: tid, role: .tool, content: "", toolName: toolName ?? "", toolId: tid, toolStatus: status, timestamp: entryTs)
                 entries.append(msg)
                 seqs.append(seq)
-                DiagnosticLog.log("ENGINE: dispatch_activity fold dispatchId=\(dispatchAgentId) convId=\(conversationId) kind=\(kind) toolId=\(tid) seq=\(seq) branch=tool-added")
+                DiagnosticLog.log("dispatch activity fold", tag: "session.dispatch", fields: [
+                    "run_id": dispatchAgentId,
+                    "conversation_id": conversationId,
+                    "reason": kind,
+                    "tool": tid,
+                    "count": String(seq),
+                    "status": "tool-added"
+                ])
             }
         } else {
             // text: keyed by seq so a coalesced run updates in place.
@@ -63,12 +81,24 @@ extension SessionViewModel {
                 msg.content = textDelta ?? ""
                 entries[idx] = msg
                 // seq array stays in sync; no positional change on update.
-                DiagnosticLog.log("ENGINE: dispatch_activity fold dispatchId=\(dispatchAgentId) convId=\(conversationId) kind=text seq=\(seq) branch=text-updated")
+                DiagnosticLog.log("dispatch activity fold", tag: "session.dispatch", fields: [
+                    "run_id": dispatchAgentId,
+                    "conversation_id": conversationId,
+                    "reason": "text",
+                    "count": String(seq),
+                    "status": "text-updated"
+                ])
             } else {
                 let msg = Message(id: textId, role: .assistant, content: textDelta ?? "", timestamp: entryTs)
                 entries.append(msg)
                 seqs.append(seq)
-                DiagnosticLog.log("ENGINE: dispatch_activity fold dispatchId=\(dispatchAgentId) convId=\(conversationId) kind=text seq=\(seq) branch=text-added")
+                DiagnosticLog.log("dispatch activity fold", tag: "session.dispatch", fields: [
+                    "run_id": dispatchAgentId,
+                    "conversation_id": conversationId,
+                    "reason": "text",
+                    "count": String(seq),
+                    "status": "text-added"
+                ])
             }
         }
 
@@ -137,10 +167,21 @@ extension SessionViewModel {
         let push = dispatchAgentId.isEmpty ? [] : (agentDispatchActivity[dispatchAgentId] ?? [])
         let snapshotTextCount = snapshot.filter { $0.role == .assistant && !$0.content.isEmpty }.count
         let snapshotToolCount = snapshot.compactMap { $0.toolId }.count
-        DiagnosticLog.log("DISPATCH-MERGE: enter dispatchId=\(dispatchAgentId) convId=\(convId) snapshot=\(snapshot.count)(text:\(snapshotTextCount) tools:\(snapshotToolCount)) push=\(push.count)")
+        DiagnosticLog.log("dispatch merge enter", tag: "session.dispatch", fields: [
+            "run_id": dispatchAgentId,
+            "conversation_id": convId,
+            "count": String(snapshot.count),
+            "attempt": String(snapshotTextCount),
+            "max": String(snapshotToolCount),
+            "status": String(push.count)
+        ])
         if push.isEmpty {
             agentConversationMessages[convId] = snapshot
-            DiagnosticLog.log("DISPATCH-MERGE: exit dispatchId=\(dispatchAgentId) convId=\(convId) merged=\(snapshot.count) (push empty — snapshot only)")
+            DiagnosticLog.log("dispatch merge exit snapshot only", tag: "session.dispatch", fields: [
+                "run_id": dispatchAgentId,
+                "conversation_id": convId,
+                "count": String(snapshot.count)
+            ])
             return
         }
         let snapshotToolIds = Set(snapshot.compactMap { $0.toolId })
@@ -187,6 +228,13 @@ extension SessionViewModel {
                 return "\(m.role)"
             }
         }.joined(separator: " | ")
-        DiagnosticLog.log("DISPATCH-MERGE: exit dispatchId=\(dispatchAgentId) convId=\(convId) merged=\(merged.count) surviving=\(surviving.count) dropped=\(push.count - surviving.count)(tool:\(droppedTool) text:\(droppedText)) rows=[\(rowDump)]")
+        DiagnosticLog.log("dispatch merge exit", tag: "session.dispatch", fields: [
+            "run_id": dispatchAgentId,
+            "conversation_id": convId,
+            "count": String(merged.count),
+            "max": String(surviving.count),
+            "attempt": String(push.count - surviving.count),
+            "reason": rowDump
+        ])
     }
 }

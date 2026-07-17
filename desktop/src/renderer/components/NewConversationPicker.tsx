@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useViewportClamp } from '../hooks/useViewportClamp'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { Gear } from '@phosphor-icons/react'
@@ -37,6 +38,8 @@ export function NewConversationPicker({
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const ref = useRef<HTMLDivElement>(null)
+  // Keep the portaled popover inside the window (ATV top-anchored strip).
+  useViewportClamp(ref, true)
   const profiles = usePreferencesStore((s) => s.engineProfiles)
   const defaultId = usePreferencesStore((s) => s.defaultEngineProfileId)
   const [flipDown, setFlipDown] = useState(false)

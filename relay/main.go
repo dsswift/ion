@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,7 +20,7 @@ type Config struct {
 	APNsTeamID string
 }
 
-func loadConfig() Config {
+func loadConfig() (Config, error) {
 	port := os.Getenv("RELAY_PORT")
 	if port == "" {
 		port = "8443"
@@ -28,7 +28,7 @@ func loadConfig() Config {
 
 	apiKey := os.Getenv("RELAY_API_KEY")
 	if apiKey == "" {
-		log.Fatal("RELAY_API_KEY environment variable is required")
+		return Config{}, fmt.Errorf("RELAY_API_KEY environment variable is required")
 	}
 
 	return Config{
@@ -37,11 +37,17 @@ func loadConfig() Config {
 		APNsKey:    os.Getenv("APNS_KEY_PATH"),
 		APNsKeyID:  os.Getenv("APNS_KEY_ID"),
 		APNsTeamID: os.Getenv("APNS_TEAM_ID"),
-	}
+	}, nil
 }
 
 func main() {
-	cfg := loadConfig()
+	logger = initLogger()
+
+	cfg, err := loadConfig()
+	if err != nil {
+		logger.Error("config load failed", "tag", "relay.startup", "err", err)
+		os.Exit(1)
+	}
 
 	hub := NewHub()
 
@@ -74,10 +80,10 @@ func main() {
 		var err error
 		pusher, err = NewAPNsPusher(cfg.APNsKey, cfg.APNsKeyID, cfg.APNsTeamID)
 		if err != nil {
-			log.Printf("APNs disabled: %v", err)
+			logger.Warn("APNs init failed", "tag", "relay.startup", "err", err)
 		} else {
 			pusher.Start()
-			log.Println("APNs push notifications enabled")
+			logger.Info("APNs push notifications enabled", "tag", "relay.startup")
 		}
 	}
 
@@ -114,7 +120,7 @@ func main() {
 		ion, mobile := hub.ChannelStatus(channelID)
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(map[string]bool{"ion": ion, "mobile": mobile}); err != nil {
-			log.Printf("channel status: encode error: %v", err)
+			logger.Warn("channel status encode error", "tag", "relay.status_error", "err", err)
 		}
 	})
 
@@ -132,19 +138,20 @@ func main() {
 	mdnsCtx, mdnsCancel := context.WithCancel(context.Background())
 	mdnsHandle, err := StartMDNS(mdnsCtx, portFromString(cfg.Port, 8443))
 	if err != nil {
-		log.Printf("mDNS disabled: %v", err)
+		logger.Warn("mDNS init failed", "tag", "relay.startup", "err", err)
 	}
 	_ = mdnsHandle
 
 	go func() {
-		log.Printf("relay listening on :%s", cfg.Port)
+		logger.Info("relay listening", "tag", "relay.startup", "port", cfg.Port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server error: %v", err)
+			logger.Error("server error", "tag", "relay.startup", "err", err)
+			os.Exit(1)
 		}
 	}()
 
 	<-quit
-	log.Println("shutting down...")
+	logger.Info("shutting down", "tag", "relay.shutdown")
 
 	mdnsCancel()
 
@@ -153,8 +160,9 @@ func main() {
 
 	hub.CloseAll()
 	if err := server.Shutdown(ctx); err != nil {
-		log.Fatalf("shutdown error: %v", err)
+		logger.Error("shutdown error", "tag", "relay.shutdown", "err", err)
+		os.Exit(1)
 	}
 
-	log.Println("relay stopped")
+	logger.Info("relay stopped", "tag", "relay.shutdown")
 }

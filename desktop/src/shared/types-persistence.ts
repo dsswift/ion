@@ -1,5 +1,23 @@
-import type { TerminalInstance, WorktreeInfo } from './types-session'
+import type { TerminalInstance, WorktreeInfo, Attachment } from './types-session'
 import type { ConversationRef } from './types-engine'
+
+// ─── Schema version constants ───
+
+/**
+ * Schema version after the split migration (single-instance tabs).
+ * Canonical definition — imported from here by both `main/tab-migration-split`
+ * (re-exported for backwards compat) and renderer code.
+ */
+export const SPLIT_SCHEMA_VERSION = 3
+
+/**
+ * Schema version after the externalize migration (thin manifest + per-tab
+ * content files). Canonical definition — imported from here by both
+ * `main/tab-migration-externalize` (re-exported for backwards compat) and
+ * renderer code. The renderer stamps this version on every save, so the
+ * migration's idempotency guard fires correctly on the next startup.
+ */
+export const EXTERNALIZE_SCHEMA_VERSION = 4
 
 // ─── Persisted Tab State ───
 
@@ -56,10 +74,20 @@ export interface SessionLedgerEntry {
 export interface PersistedConversationInstance {
   id: string
   label: string
+  /**
+   * Schema v4: true when this instance's scrollback lives in an external
+   * content file (`~/.ion/tab-content/<tabId>.json`) instead of inline
+   * `messages`. Set by the serializer whenever it externalizes and by the
+   * v3→v4 migration when it strips inline messages. The restore path uses
+   * this explicit marker — never file-presence guessing — to decide whether
+   * to lazy-load the content file. Absent/false means the instance is
+   * count-only (every row reloads from the engine conversation store).
+   */
+  hasExternalContent?: boolean
   /** Scrollback. Plain tabs persist message content here too (the old shape
    *  persisted only a count for plain tabs and full messages for engine tabs;
    *  the unified shape persists messages uniformly, gated by size as before). */
-  messages?: Array<{ role: string; content: string; toolName?: string; toolId?: string; toolInput?: string; toolStatus?: string; timestamp: number; dedupKey?: string; planFilePath?: string; slashCommand?: string; slashArgs?: string; slashSource?: string }>
+  messages?: Array<{ role: string; content: string; toolName?: string; toolId?: string; toolInput?: string; toolStatus?: string; timestamp: number; dedupKey?: string; planFilePath?: string; slashCommand?: string; slashArgs?: string; slashSource?: string; attachments?: Attachment[] }>
   /** Blank-tab / lazy-load proxy when messages are omitted. */
   messageCount?: number
   modelOverride?: string | null
@@ -90,7 +118,6 @@ export interface PersistedConversationInstance {
   agentStates?: Array<{ name: string; id?: string; status: string; metadata?: Record<string, any> }>
   dispatchTelemetry?: Array<{ dispatchId: string; dispatchAgent: string; dispatchSessionId: string; dispatchModel: string; dispatchTask: string; dispatchDepth: number; dispatchParentId: string }>
   planFilePath?: string | null
-  forkedFromConversationIds?: string[] | null
 }
 
 /** Unified persisted pane: the instances for a tab + which is active. */
@@ -241,8 +268,12 @@ export interface PersistedEditorState {
 export interface PersistedTabState {
   /**
    * Schema version. Absent or < 2 means the legacy split shape (flat plain-tab
-   * fields + `engine*` maps); 2 means the unified `conversationPane` shape. The
-   * loader runs `tab-migration-unify.ts` when it sees a pre-2 file.
+   * fields + `engine*` maps); 2 means the unified `conversationPane` shape
+   * (`tab-migration-unify.ts`); 3 means single-instance tabs
+   * (`tab-migration-split.ts`); 4 means externalized content — instance
+   * scrollback lives in per-tab content files and non-dirty editor buffers
+   * reload from disk (`tab-migration-externalize.ts`). The loader runs the
+   * migrations in order at the LOAD_TABS chokepoint.
    */
   schemaVersion?: number
   activeSessionId: string | null
@@ -263,4 +294,19 @@ export interface PersistedTabState {
   planGeometry?: { x: number; y: number; w: number; h: number }
   /** Global agent detail popup position and size */
   agentDetailGeometry?: { x: number; y: number; w: number; h: number }
+}
+
+/**
+ * One instance's externalized scrollback: the payload of
+ * `~/.ion/tab-content/<tabId>.json` (schema v4). One file per tab — the
+ * single-instance-per-tab model makes the durable tab id the natural,
+ * collision-free content key (runtime instance ids all normalize to 'main').
+ */
+export interface ExternalInstanceContent {
+  /** The durable tab id this content belongs to (also the file name). */
+  tabId: string
+  /** The persisted instance id the messages were stripped from. */
+  instanceId: string
+  schemaVersion: number
+  messages: NonNullable<PersistedConversationInstance['messages']>
 }

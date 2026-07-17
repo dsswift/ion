@@ -11,33 +11,34 @@ import (
 // ClientCommand represents any command sent from a client to the engine server.
 // The Cmd field discriminates which fields are relevant.
 type ClientCommand struct {
-	Cmd          string              `json:"cmd"`
-	Key          string              `json:"key,omitempty"`
-	Config       *types.EngineConfig `json:"config,omitempty"`
-	RequestID    string              `json:"requestId,omitempty"`
-	Text         string              `json:"text,omitempty"`
-	Model        string              `json:"model,omitempty"`
-	MaxTurns     int                 `json:"maxTurns,omitempty"`
-	MaxBudgetUsd float64             `json:"maxBudgetUsd,omitempty"`
-	AgentName    string              `json:"agentName,omitempty"`
-	Subtree      *bool               `json:"subtree,omitempty"`
-	Message      string              `json:"message,omitempty"`
-	DialogID     string              `json:"dialogId,omitempty"`
-	Value        any                 `json:"value,omitempty"`
-	Command      string              `json:"command,omitempty"`
-	Args         string              `json:"args,omitempty"`
-	Prefix       string              `json:"prefix,omitempty"`
-	MessageIndex *int                `json:"messageIndex,omitempty"`
-	Enabled      *bool               `json:"enabled,omitempty"`
-	AllowedTools []string            `json:"allowedTools,omitempty"`
-	EntryID      string              `json:"entryId,omitempty"`
-	TargetID     string              `json:"targetId,omitempty"`
-	ExtensionDir string              `json:"extensionDir,omitempty"`
-	Extensions   []string            `json:"extensions,omitempty"`
-	NoExtensions bool                `json:"noExtensions,omitempty"`
-	QuestionID   string              `json:"questionId,omitempty"`
-	OptionID     string              `json:"optionId,omitempty"`
-	SessionIDs   []string            `json:"sessionIds,omitempty"`
+	Cmd                string              `json:"cmd"`
+	Key                string              `json:"key,omitempty"`
+	Config             *types.EngineConfig `json:"config,omitempty"`
+	RequestID          string              `json:"requestId,omitempty"`
+	Text               string              `json:"text,omitempty"`
+	Model              string              `json:"model,omitempty"`
+	MaxTurns           int                 `json:"maxTurns,omitempty"`
+	MaxBudgetUsd       float64             `json:"maxBudgetUsd,omitempty"`
+	AgentName          string              `json:"agentName,omitempty"`
+	Subtree            *bool               `json:"subtree,omitempty"`
+	Message            string              `json:"message,omitempty"`
+	DialogID           string              `json:"dialogId,omitempty"`
+	Value              any                 `json:"value,omitempty"`
+	Command            string              `json:"command,omitempty"`
+	Args               string              `json:"args,omitempty"`
+	Prefix             string              `json:"prefix,omitempty"`
+	MessageIndex       *int                `json:"messageIndex,omitempty"`
+	UserTurnIndex      *int                `json:"userTurnIndex,omitempty"`
+	Enabled            *bool               `json:"enabled,omitempty"`
+	AllowedTools       []string            `json:"allowedTools,omitempty"`
+	EntryID            string              `json:"entryId,omitempty"`
+	TargetID           string              `json:"targetId,omitempty"`
+	ExtensionDir       string              `json:"extensionDir,omitempty"`
+	Extensions         []string            `json:"extensions,omitempty"`
+	NoExtensions       bool                `json:"noExtensions,omitempty"`
+	QuestionID         string              `json:"questionId,omitempty"`
+	OptionID           string              `json:"optionId,omitempty"`
+	SessionIDs         []string            `json:"sessionIds,omitempty"`
 	Label              string              `json:"label,omitempty"`
 	Limit              int                 `json:"limit,omitempty"`
 	Offset             int                 `json:"offset,omitempty"`
@@ -62,6 +63,25 @@ type ClientCommand struct {
 	EarlyStopOverrideBudget       int    `json:"earlyStopOverrideBudget,omitempty"`
 	EarlyStopOverrideThresholdPct int    `json:"earlyStopOverrideThresholdPct,omitempty"`
 	EarlyStopContinueMessage      string `json:"earlyStopContinueMessage,omitempty"`
+
+	// oidc_begin_login: which grant flow to start. "pkce" (default when
+	// empty) runs the interactive authorization-code + PKCE flow — the
+	// engine returns an authorization URL for the consumer to open and its
+	// loopback callback server completes the exchange. "device" runs the
+	// device-code flow for headless hosts — the engine returns a user code
+	// + verification URI and polls the token endpoint to completion.
+	OidcFlow string `json:"oidcFlow,omitempty"`
+
+	// oidc_token: downstream resource scope for the minted access token
+	// (e.g. "api://<app-id>/Telemetry.Write"). Empty uses the operator
+	// grant's base scope.
+	OidcScope string `json:"oidcScope,omitempty"`
+
+	// oidc_token: explicit audience/resource for the minted token, for
+	// identity providers that bind grants to one (Auth0, RFC 8707) instead
+	// of encoding the resource in the scope string. Empty uses the
+	// provider's configured default audience.
+	OidcAudience string `json:"oidcAudience,omitempty"`
 
 	// list_directory: absolute path to enumerate on the engine's host.
 	// Empty or "~" resolves to the engine user's home directory. ShowHidden
@@ -215,47 +235,74 @@ type ClientCommand struct {
 }
 
 var validCommands = map[string]bool{
-	"start_session":   true,
-	"send_prompt":     true,
-	"abort":           true,
-	"abort_agent":     true,
-	"steer_agent":     true,
-	"dialog_response": true,
-	"command":         true,
-	"stop_session":    true,
-	"stop_by_prefix":  true,
-	"list_sessions":   true,
-	"fork_session":    true,
-	"set_plan_mode":   true,
-	"branch":          true,
-	"navigate_tree":   true,
-	"get_tree":        true,
-	"shutdown":               true,
-	"permission_response":   true,
-	"list_stored_sessions":  true,
-	"load_session_history":  true,
-	"save_session_label":    true,
-	"get_conversation":      true,
-	"generate_title":        true,
-	"elicitation_response":  true,
+	"start_session":                true,
+	"send_prompt":                  true,
+	"abort":                        true,
+	"abort_agent":                  true,
+	"steer_agent":                  true,
+	"dialog_response":              true,
+	"command":                      true,
+	"stop_session":                 true,
+	"stop_by_prefix":               true,
+	"list_sessions":                true,
+	"fork_session":                 true,
+	"set_plan_mode":                true,
+	"branch":                       true,
+	"branch_before":                true,
+	"rewind_session":               true,
+	"navigate_tree":                true,
+	"get_tree":                     true,
+	"shutdown":                     true,
+	"permission_response":          true,
+	"list_stored_sessions":         true,
+	"load_session_history":         true,
+	"save_session_label":           true,
+	"get_conversation":             true,
+	"generate_title":               true,
+	"elicitation_response":         true,
 	"early_stop_decision_response": true,
-	"health":                true,
-	"reconcile_state":       true,
+	"health":                       true,
+	"reconcile_state":              true,
 	// query_session_status: on-demand counterpart to reconcile_state that
 	// emits ONLY the engine_status snapshot (no agent state). Used by
 	// freshly-reconnected clients to learn current status for a key
 	// without waiting for the next heartbeat tick or paying the cost of
 	// a full reconcile. Phase 2 of the state-management overhaul.
-	"query_session_status":   true,
-	"migrate_conversation":  true,
-	"list_models":           true,
-	"store_credential":      true,
-	"refresh_models":        true,
-	"get_host_info":         true,
-	"list_directory":        true,
-	// clear_conversation_file: wipes the LLM-visible Messages (and resets
-	// LastInputTokens / LastInputTokensMsgCount) on a stored conversation
-	// file by sessionId, without requiring a live engine session. Used by
+	"query_session_status": true,
+	"migrate_conversation": true,
+	"list_models":          true,
+	"store_credential":     true,
+	"refresh_models":       true,
+	// provider_login / provider_login_cancel / provider_logout: delegated-CLI
+	// (codex/grok/cursor) interactive auth lifecycle. The engine drives the
+	// CLI login/logout and broadcasts engine_provider_login stage events plus
+	// engine_providers_updated so clients refresh. Dispatched in
+	// server/dispatch_provider_login.go.
+	"provider_login":        true,
+	"provider_login_cancel": true,
+	"provider_logout":       true,
+	// oidc_begin_login / oidc_logout / oidc_identity: operator OIDC
+	// identity lifecycle. The engine owns the token (storage, refresh,
+	// per-scope minting); these commands let a consumer start a login
+	// (the engine returns what to surface — an authorization URL or a
+	// device code — and completes the exchange itself), sign out, and
+	// query the current identity snapshot. Identity state transitions
+	// broadcast engine_oidc_identity to all clients.
+	"oidc_begin_login": true,
+	"oidc_logout":      true,
+	"oidc_identity":    true,
+	// oidc_token: mint a short-lived access token for the signed-in
+	// operator, scoped to cmd.oidcScope (empty = base grant scope).
+	// Delivered ONLY to the requester via the result payload -- never
+	// broadcast. This is how a trusted local client (e.g. the desktop
+	// shipping its own logs) authenticates without owning the grant:
+	// the engine keeps the refresh token; clients pull ephemeral access
+	// tokens on demand.
+	"oidc_token":     true,
+	"get_host_info":  true,
+	"list_directory": true,
+	// clear_conversation_file: wipes the LLM-visible Messages on a stored
+	// conversation file by sessionId, without requiring a live engine session. Used by
 	// consumers that need to reset a conversation file when no in-memory
 	// session is running against it (so dispatchClear cannot be used).
 	// Non-breaking additive command. Requires key (sessionId).
@@ -301,6 +348,15 @@ var validCommands = map[string]bool{
 	// system prompt + tools with zero conversation tokens; for a historical
 	// session it reflects all on-disk messages. Requires only key.
 	"get_context_breakdown": true,
+	// plugin_install: download and install a Claude Code-compatible plugin from
+	// a GitHub source ("owner/repo"). The source field carries the repo path.
+	// Returns the installed plugin record in the result data.
+	"plugin_install": true,
+	// plugin_list: list all installed plugins. Returns a slice of plugin records.
+	"plugin_list": true,
+	// plugin_remove: uninstall a plugin by name. The label field carries the
+	// plugin name to remove.
+	"plugin_remove": true,
 }
 
 // ParseClientCommand parses a single NDJSON line into a ClientCommand.
@@ -443,6 +499,10 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasNonEmptyString(raw, "key") && hasBool(raw, "enabled")
 	case "branch":
 		return hasNonEmptyString(raw, "key") && hasString(raw, "entryId")
+	case "branch_before":
+		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "entryId")
+	case "rewind_session":
+		return hasNonEmptyString(raw, "key") && hasNumber(raw, "userTurnIndex")
 	case "navigate_tree":
 		return hasNonEmptyString(raw, "key") && hasString(raw, "targetId")
 	case "permission_response":
@@ -473,6 +533,18 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return true
 	case "store_credential":
 		return hasNonEmptyString(raw, "provider") && hasString(raw, "credential")
+	case "provider_login", "provider_login_cancel", "provider_logout":
+		return hasNonEmptyString(raw, "provider")
+	case "oidc_begin_login":
+		// oidcFlow is optional ("pkce" default; "device" for headless).
+		return true
+	case "oidc_logout":
+		return true
+	case "oidc_identity":
+		return true
+	case "oidc_token":
+		// oidcScope is optional (empty = base grant scope).
+		return true
 	case "refresh_models":
 		return true // optional: provider field to refresh a single provider
 	case "get_host_info":
@@ -511,6 +583,12 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 	case "get_context_breakdown":
 		// On-demand breakdown for the given session key. Only key is required.
 		return hasNonEmptyString(raw, "key")
+	case "plugin_install":
+		return hasNonEmptyString(raw, "source")
+	case "plugin_list":
+		return true
+	case "plugin_remove":
+		return hasNonEmptyString(raw, "label")
 	}
 	return false
 }
@@ -519,7 +597,7 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 
 // ServerEvent carries a session event broadcast to all clients.
 type ServerEvent struct {
-	Key   string             `json:"key"`
+	Key   string               `json:"key"`
 	Event types.RawEngineEvent `json:"event"`
 }
 

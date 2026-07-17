@@ -15,6 +15,7 @@ import { FileExplorer } from './components/FileExplorer'
 import { FileEditor } from './components/FileEditor'
 import { QuickToolsTray } from './components/QuickToolsTray'
 import { PopoverLayerProvider } from './components/PopoverLayer'
+import { CommandPalette } from './components/CommandPalette'
 import { CloseTabConfirmDialog } from './components/CloseTabConfirmDialog'
 import { UpdateDialog } from './components/UpdateDialog'
 import { RemoteDirectoryPicker } from './components/RemoteDirectoryPicker'
@@ -33,6 +34,7 @@ import { useColors, spacing } from './theme'
 import { usePreferencesStore } from './preferences'
 import { useUpdateStore } from './stores/update-store'
 import { setupModelSync } from './stores/model-store'
+import { initActiveTabNotifier } from './lib/active-tab-notifier'
 
 
 const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] as const }
@@ -45,6 +47,35 @@ export default function App() {
   useTabRestoration()
   useEnginePermissionDenialBackfill()
   useClickThrough()
+
+  // Publish the active tab to the main process (desktop.focus resource +
+  // Agent Team Visualizer targeting) on startup and on every change.
+  useEffect(() => {
+    return initActiveTabNotifier()
+  }, [])
+
+  // Conversation-picker selections from the ATV window: switch the desktop
+  // tab so both surfaces stay on the same conversation.
+  useEffect(() => {
+    return window.ion.onAtvFocusTab((tabId) => {
+      useSessionStore.getState().selectTab(tabId)
+    })
+  }, [])
+
+  // Click-to-inspect from the ATV window: switch to the tab, then ask the
+  // agent panel to open that agent's dispatch detail (same as clicking the
+  // agent's row).
+  useEffect(() => {
+    return window.ion.onAtvFocusAgent((tabId, agentName) => {
+      useSessionStore.getState().selectTab(tabId)
+      // The orchestrator has no dispatch panel — it IS the main conversation,
+      // so switching the tab (with the overlay shown by main) is the whole
+      // action. Named agents additionally open their dispatch detail.
+      if (agentName !== '__orchestrator__') {
+        window.dispatchEvent(new CustomEvent('ion:open-agent-detail', { detail: { agentName } }))
+      }
+    })
+  }, [])
 
   // Listen for auto-update download notifications from the main process
   useEffect(() => {
@@ -142,22 +173,20 @@ export default function App() {
     const tab = s.tabs.find((t) => t.id === s.activeTabId)
     if (!tab) return false
     const dir = editorDirForTab(tab)
-    const isOpen = s.fileEditorOpenDirs.has(dir)
-    console.log('[App] editorOpen selector', { dir, isOpen, workingDir: tab.workingDirectory, worktreeRepo: tab.worktree?.repoPath, openDirs: [...s.fileEditorOpenDirs] })
-    return isOpen
+    return s.fileEditorOpenDirs.has(dir)
   })
   const editorDirState = useSessionStore((s) => {
     const tab = s.tabs.find((t) => t.id === s.activeTabId)
     if (!tab) return undefined
     const dir = editorDirForTab(tab)
-    const state = s.fileEditorStates.get(dir)
-    console.log('[App] editorDirState selector', { dir, hasState: !!state, fileCount: state?.files.length, activeFileId: state?.activeFileId })
-    return state
+    return s.fileEditorStates.get(dir)
   })
   const isRunning = activeTabStatus === 'running' || activeTabStatus === 'connecting'
 
   // When editor is open for this tab but the current dir has no files
   // (e.g. base directory changed), auto-create a scratch file so the editor stays visible
+  const activeTabDir = activeTab ? editorDirForTab(activeTab) : undefined
+
   useEffect(() => {
     if (!editorOpen || !activeTab) return
     const dir = editorDirForTab(activeTab)
@@ -165,7 +194,7 @@ export default function App() {
     if (!dirState || dirState.files.length === 0) {
       useSessionStore.getState().createScratchFile(dir)
     }
-  }, [editorOpen, activeTab ? editorDirForTab(activeTab) : undefined])
+  }, [editorOpen, activeTab, activeTabDir])
 
   // Fire get_context_breakdown when the status drawer opens so the breakdown
   // panel always shows current data — even for idle or freshly-loaded historical
@@ -221,6 +250,13 @@ export default function App() {
 
   return (
     <PopoverLayerProvider>
+      {/* Shared ⌘K palette (also mounted in the ATV shell — parity by
+          construction); this surface contributes the cross-link action. */}
+      <CommandPalette
+        actions={[
+          { id: 'act:atv', label: 'Open Visualizer', keywords: 'atv office agents', section: 'Actions', run: () => window.ion.atvOpen() },
+        ]}
+      />
       <div className="flex flex-col justify-end h-full" style={{ background: 'transparent' }}>
 
         {/* ─── 460px content column, centered. Circles overflow left. ─── */}

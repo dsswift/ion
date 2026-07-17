@@ -135,8 +135,8 @@ func TestAgentSpawnerConcurrentChildRuns(t *testing.T) {
 		},
 		{Type: "content_block_stop", BlockIndex: 1},
 		{
-			Type: "message_delta",
-			Delta: &types.LlmStreamDelta{Type: "message_delta", StopReason: &stopReason},
+			Type:       "message_delta",
+			Delta:      &types.LlmStreamDelta{Type: "message_delta", StopReason: &stopReason},
 			DeltaUsage: &types.LlmUsage{OutputTokens: 10},
 		},
 		{Type: "message_stop"},

@@ -19,7 +19,7 @@ Sessions move through a predictable sequence: create, run, stop. The engine mana
 5. Load the extension host if `extensionDir` is set in config.
 6. Fire `session_start` hook on the extension.
 7. Discover capabilities from extensions.
-8. Load skills from `~/.ion/skills/` and `.ion/skills/`.
+8. Load skills from `~/.ion/skills/` and `.ion/skills/`. Both flat markdown files (`<name>.md`) and the subdirectory layout (`<name>/SKILL.md`) are supported and may coexist in the same directory.
 9. Connect MCP servers from engine config.
 10. Emit `engine_status` with state `idle`.
 
@@ -32,7 +32,7 @@ If a session with the same key already exists, `StartSession` returns an error.
 1. If a run is active, queue the prompt (up to 32 pending prompts).
 2. Generate a unique request ID.
 3. Build `RunOptions` from session config, per-prompt overrides, and engine defaults.
-4. Discover context files (ION.md, CLAUDE.md) from the working directory.
+4. Discover context files (AGENTS.md, ION.md, CLAUDE.md) from the working directory. Dispatched sub-agents receive the same grounding via the [context loading cascade](../context-loading.md).
 5. Fire `context_inject` hook for extension-provided context.
 6. Inject git context from the working directory.
 7. Fire `before_agent_start` for system prompt injection.
@@ -131,6 +131,21 @@ The desktop ships its reference prose as `ENTER_PLAN_MODE_DESCRIPTION` (full pro
 Power users can customize the desktop's defaults via `~/.ion/settings.json` `desktop.*` keys — see the [desktop power-user overrides](../configuration/settings-json.md) section.
 
 Per [ADR-004](../architecture/adr/004-enter-plan-mode-prose-in-harness.md): the engine provides the mechanism (prompt builder, sparse-reminder injection, hook firing), the harness provides the policy (what the prose says). The three-layer precedence is symmetric between `PlanModePrompt` and `PlanModeSparseReminder` by design.
+
+### Plan mode on delegated-CLI backends
+
+The ApiBackend implements plan mode itself (tool gating, write gates, `ExitPlanMode` interception). The delegated-CLI backends instead enter each CLI's **native** plan mechanism and normalize its native plan output back into the same event contract — `engine_plan_mode_changed` on entry, `engine_plan_file_written` when the plan lands, `engine_plan_proposal` at the proposal boundary — so consumers see one identical surface regardless of backend.
+
+| Backend | Native entry | Native plan capture |
+|---------|--------------|---------------------|
+| claude-code | `--permission-mode plan` | The `ExitPlanMode` tool argument (`plan`) streamed in the assistant message |
+| codex | `turn/start` `collaborationMode{mode:"plan"}` | The completed `plan` thread item (authoritative over `item/plan/delta`) |
+| cursor (ACP) | `session/set_mode` to the advertised plan/architect mode | The `plan` session update's entries, snapshotted at prompt return |
+| grok (ACP) | none — the dispatch-time capability gate declines the prompt with a typed `engine_capability_unsupported` event before any run starts (grok's `Capabilities()` reports `PlanMode: false`). A direct backend consumer that dispatches anyway gets the runtime backstop: a clean `engine_error` with `errorCode: plan_mode_unsupported` and a deliberate exit 0 | n/a |
+
+The captured native plan markdown is written atomically to the run's `planFilePath`, so file-centric consumers work unchanged. On codex, `RunOptions.PlanModePrompt` doubles as the `developer_instructions` sent with the plan collaboration mode (engine default when empty); the `plan_mode_prompt` hook layer does not reach delegated-CLI backends (it rides `RunConfig`, which only the ApiBackend receives). Each CLI backend also carries the end-of-turn safety net: a plan-mode turn that ends without a native plan/exit synthesizes `engine_plan_mode_auto_exit` + `engine_plan_proposal`, gated on `planModeAutoExit`.
+
+Native modes can be sticky on the CLI side. Non-plan codex turns on a resumed thread send an explicit `collaborationMode{mode:"default"}`; non-plan cursor runs against a session left in a plan mode reset it via `session/set_mode` before prompting.
 
 ### Model-initiated plan-mode entry
 

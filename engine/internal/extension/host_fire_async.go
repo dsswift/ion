@@ -74,13 +74,13 @@ func (h *Host) FireAsync(kind asyncreg.Kind, id string, ctx *Context, payload in
 	h.ctxStack.Push(ctx)
 	defer h.ctxStack.Pop()
 
-	utils.Debug("extension", fmt.Sprintf("FireAsync: ext=%s kind=%s id=%q timeout=%s", h.name, kind, id, timeout))
+	utils.LogWithFields(utils.LevelDebug, "extension", "fireasync", map[string]any{"model": h.name, "kind": kind, "run_id": id, "timeout": timeout})
 	resp, err := h.callWithTimeout("engine/fire_async", envelope, timeout)
 	if err != nil {
-		utils.Log("extension", fmt.Sprintf("FireAsync: ext=%s kind=%s id=%q failed: %v", h.name, kind, id, err))
+		utils.LogWithFields(utils.LevelInfo, "extension", "fireasync: failed", map[string]any{"model": h.name, "kind": kind, "run_id": id, "error": err})
 		return nil, err
 	}
-	utils.Debug("extension", fmt.Sprintf("FireAsync: ext=%s kind=%s id=%q returned %d bytes", h.name, kind, id, len(resp)))
+	utils.LogWithFields(utils.LevelDebug, "extension", "fireasync: returned bytes", map[string]any{"model": h.name, "kind": kind, "run_id": id, "count": len(resp)})
 	return resp, nil
 }
 

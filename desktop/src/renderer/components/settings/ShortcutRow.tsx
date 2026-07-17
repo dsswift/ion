@@ -48,7 +48,7 @@ export function ShortcutRow({ entry, resolvedChord, isCustom, conflictsWith, onS
     setCapturing(true)
   }, [])
 
-  const cancelCapture = useCallback(() => {
+  const _cancelCapture = useCallback(() => {
     setCapturing(false)
   }, [])
 
@@ -80,7 +80,7 @@ export function ShortcutRow({ entry, resolvedChord, isCustom, conflictsWith, onS
   // Click outside cancels capture.
   useEffect(() => {
     if (!capturing) return
-    const handleMouseDown = (e: MouseEvent) => {
+    const handleMouseDown = (_e: MouseEvent) => {
       setCapturing(false)
     }
     document.addEventListener('mousedown', handleMouseDown)

@@ -29,7 +29,7 @@ type StartSessionResult struct {
 
 // StartSession creates a new session with the given config.
 func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSessionResult, error) {
-	utils.Info("Session", fmt.Sprintf("StartSession: key=%s dir=%s extensions=%d", key, config.WorkingDirectory, len(config.Extensions)))
+	utils.LogWithFields(utils.LevelInfo, "session", "startsession", map[string]any{"key": key, "working_directory": config.WorkingDirectory, "count": len(config.Extensions)})
 	m.mu.Lock()
 
 	if s, exists := m.sessions[key]; exists {
@@ -40,11 +40,11 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 		// Re-register extensions when the session was restored without them
 		// (e.g. daemon restart where the extension subprocess was not persisted).
 		if needsExtensions {
-			utils.Log("Session", fmt.Sprintf("StartSession: key=%s re-registering %d extensions on existing session", key, len(config.Extensions)))
+			utils.LogWithFields(utils.LevelInfo, "session", "startsession: re-registering extensions on existing session", map[string]any{"key": key, "count": len(config.Extensions)})
 			m.loadAndWireExtensions(s, key, config)
 		}
 
-		utils.Log("Session", fmt.Sprintf("StartSession: key=%s already exists (idempotent, conversationID=%s)", key, convID))
+		utils.LogWithFields(utils.LevelInfo, "session", "startsession: already exists (idempotent, )", map[string]any{"key": key, "run_id": convID})
 		return &StartSessionResult{Existed: true, ConversationID: convID}, nil
 	}
 
@@ -92,7 +92,7 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 	home, _ := os.UserHomeDir()
 	pidsDir := filepath.Join(home, ".ion", "agent-pids")
 	if reg, err := extension.NewProcessRegistry(pidsDir); err != nil {
-		utils.Log("session", fmt.Sprintf("StartSession key=%s: process registry unavailable: %v", key, err))
+		utils.LogWithFields(utils.LevelInfo, "session", "startsession : process registry unavailable", map[string]any{"key": key, "error": err})
 		s.procRegistry = nil
 	} else {
 		s.procRegistry = reg
@@ -114,6 +114,12 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 		s.telemetry = telemetry.NewCollector(*m.config.Telemetry)
 	}
 
+	// Wire the permission-decision telemetry seam. The audit callback fires on
+	// every permission Check and emits a permission.decision telemetry event
+	// (nil-safe: no-op when telemetry is disabled). Wired after both the
+	// permission engine and telemetry collector are constructed above.
+	m.wirePermissionDecisionTelemetry(s)
+
 	m.sessions[key] = s
 
 	m.mu.Unlock()
@@ -129,7 +135,7 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 	if !s.bindingPending {
 		saveBinding(bindingsPath(), key, convID)
 	} else {
-		utils.Log("Session", fmt.Sprintf("StartSession: key=%s deferring binding for pre-minted conversationID=%s until first save", key, convID))
+		utils.LogWithFields(utils.LevelInfo, "session", "startsession: deferring binding for pre-minted until first save", map[string]any{"key": key, "run_id": convID})
 	}
 
 	// Rehydrate agent dispatch state from the conversation file if the
@@ -139,15 +145,27 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 	// roster, MergedSnapshot deduplicates: engine-managed entries (with
 	// task, conversationId, elapsed) win over the extension's idle entries.
 	if s.conversationID != "" {
-		m.rehydrateDispatchState(s, key)
+		// rehydrateDispatchState loads and parses the conversation file once and
+		// returns it, so the model/context-usage seeding below reuses the same
+		// *Conversation instead of re-reading and re-parsing from disk. A resumed
+		// startup restores many tabs at once; a redundant second full load per
+		// tab (plus a partial header read) dominated startup parse time.
+		conv := m.rehydrateDispatchState(s, key)
 
-		// Seed lastModel from the conversation file so ReconcileState emits
-		// the correct model before any prompt dispatches. Without this, a
-		// resumed session emits model="" on reconcile, causing the desktop to
-		// fall back to its preference default (which may differ from the
-		// conversation's actual model). This also seeds lastContextWindow so
-		// the context-percent denominator is correct from the first status.
-		if convModel, err := conversation.LoadLlmHeaderModel(s.conversationID, ""); err == nil && convModel != "" {
+		// Restore the persisted per-provider native-session cursors so a
+		// resumed conversation keeps its delegated-CLI continuity across the
+		// restart: a still-valid cursor lets the next same-provider turn
+		// resume natively instead of re-bridging the whole transcript.
+		m.rehydrateNativeSessions(s, conv)
+
+		// Seed lastModel from the conversation so ReconcileState emits the
+		// correct model before any prompt dispatches. Without this, a resumed
+		// session emits model="" on reconcile, causing the desktop to fall back
+		// to its preference default (which may differ from the conversation's
+		// actual model). This also seeds lastContextWindow so the context-percent
+		// denominator is correct from the first status.
+		if conv != nil && conv.Model != "" {
+			convModel := conv.Model
 			ctxWindow := conversation.DefaultContext
 			if info := providers.GetModelInfo(convModel); info != nil {
 				ctxWindow = info.ContextWindow
@@ -155,14 +173,12 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 			// Seed lastContextPct from the persisted conversation so the initial
 			// idle engine_status reports the true usage instead of 0%. Without
 			// this a resumed conversation shows an empty context bar until the
-			// first prompt's usage event lands. Load the full conversation to
-			// compute usage against the resolved context window.
+			// first prompt's usage event lands. Computed against the already-loaded
+			// conv and the resolved context window.
 			seededPct := 0
-			if conv, lerr := conversation.Load(s.conversationID, ""); lerr == nil {
-				usage := conversation.GetContextUsage(conv, ctxWindow)
-				if usage.Percent > 0 {
-					seededPct = usage.Percent
-				}
+			usage := conversation.GetContextUsage(conv, ctxWindow)
+			if usage.Percent > 0 {
+				seededPct = usage.Percent
 			}
 			m.mu.Lock()
 			s.lastModel = convModel
@@ -171,9 +187,9 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 				s.lastContextPct = seededPct
 			}
 			m.mu.Unlock()
-			utils.Log("Session", fmt.Sprintf("StartSession: key=%s seeded lastModel=%s contextWindow=%d contextPct=%d from conversation=%s", key, convModel, ctxWindow, seededPct, s.conversationID))
-		} else if err != nil {
-			utils.Debug("Session", fmt.Sprintf("StartSession: key=%s could not load conversation model conv=%s err=%v", key, s.conversationID, err))
+			utils.LogWithFields(utils.LevelInfo, "session", "startsession: seeded from", map[string]any{"key": key, "model": convModel, "ctx_window": ctxWindow, "seeded_pct": seededPct, "run_id": s.conversationID})
+		} else {
+			utils.LogWithFields(utils.LevelDebug, "session", "startsession: no conversation model to seed", map[string]any{"key": key, "run_id": s.conversationID})
 		}
 
 		// Initialize session memory for resumed conversations. The memory
@@ -188,14 +204,14 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 			convDir := filepath.Join(home, ".ion", "conversations")
 			sm := NewSessionMemory(s.conversationID, convDir, nil)
 			if sm.LoadMemory() {
-				utils.Log("Session", fmt.Sprintf("StartSession: key=%s loaded session memory for conv=%s", key, s.conversationID))
+				utils.LogWithFields(utils.LevelInfo, "session", "startsession: loaded session memory for", map[string]any{"key": key, "run_id": s.conversationID})
 			}
 			sm.Start()
 			m.mu.Lock()
 			s.sessionMemory = sm
 			m.mu.Unlock()
 		} else {
-			utils.Log("Session", fmt.Sprintf("StartSession: key=%s session memory disabled by config", key))
+			utils.LogWithFields(utils.LevelInfo, "session", "startsession: session memory disabled by config", map[string]any{"key": key})
 		}
 	}
 
@@ -237,13 +253,16 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 		utils.Debug("Session", "skipping ~/.claude/skills/ (claudeCompat not set)")
 	}
 	if names := skills.ListSkillNames(); len(names) > 0 {
-		utils.Log("Session", fmt.Sprintf("loaded %d skills: %v", len(names), names))
+		utils.LogWithFields(utils.LevelInfo, "session", "loaded skills", map[string]any{"count": len(names), "model": names})
 		// Refresh the Skill tool's description so the model's tool manifest
 		// lists the available skills (with their when_to_use hints). This
 		// must run after all skills are registered; RefreshSkillToolDescription
 		// re-registers the Skill tool with a freshly-built manifest.
 		tools.RefreshSkillToolDescription()
 	}
+
+	// Load and wire Claude Code-compatible plugins (SessionStart hooks + UserPromptSubmit hooks).
+	m.loadAndWirePlugins(s, key)
 
 	// Connect MCP servers from config (outside lock)
 	if m.config != nil && len(m.config.McpServers) > 0 {
@@ -254,7 +273,7 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 		for name, mcpCfg := range m.config.McpServers {
 			conn, err := mcp.Connect(name, mcpCfg)
 			if err != nil {
-				utils.Log("Session", fmt.Sprintf("MCP connect %s failed: %s", name, err))
+				utils.LogWithFields(utils.LevelInfo, "session", "mcp connect failed", map[string]any{"model": name, "error": err})
 				continue
 			}
 			m.mu.Lock()
@@ -265,12 +284,12 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 			if cur, ok := m.sessions[key]; !ok || cur != s {
 				m.mu.Unlock()
 				_ = conn.Close()
-				utils.Log("Session", fmt.Sprintf("MCP %s: session %s disposed during connect — closing leaked conn", name, key))
+				utils.LogWithFields(utils.LevelInfo, "session", "mcp : session disposed during connect — closing leaked conn", map[string]any{"model": name, "key": key})
 				continue
 			}
 			s.mcpConns = append(s.mcpConns, conn)
 			m.mu.Unlock()
-			utils.Log("Session", fmt.Sprintf("MCP server %s connected (%d tools)", name, len(conn.Tools())))
+			utils.LogWithFields(utils.LevelInfo, "session", "mcp server connected ( tools)", map[string]any{"model": name, "count": len(conn.Tools())})
 		}
 	}
 
@@ -319,7 +338,7 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 			WorkingDirectory: config.WorkingDirectory,
 		}
 		if err := host.Load(extPath, extCfg); err != nil {
-			utils.Log("Session", "extension load failed for "+extPath+": "+err.Error())
+			utils.LogWithFields(utils.LevelInfo, "session", "extension load failed for", map[string]any{"ext_path": extPath, "error": err.Error()})
 			m.emit(key, types.EngineEvent{
 				Type:         "engine_error",
 				EventMessage: fmt.Sprintf("extension load failed: %s", err.Error()),
@@ -327,6 +346,9 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 			})
 			continue
 		}
+		// extension.coldstart telemetry (family 4e): the host is up and its init
+		// handshake completed. Nil-safe on the session collector.
+		m.emitExtensionColdstartTelemetry(s, key, host, extPath)
 		capturedKey := key
 		host.SetOnDeath(func(h *extension.Host) {
 			m.handleHostDeath(capturedKey, h)
@@ -353,15 +375,48 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 		return
 	}
 
+	// Capture extension identity from the loaded hosts. Both fields are final
+	// by the time Load() returns: Version comes from extension.json (build-time
+	// constant), and Name resolves manifest → init-handshake → directory
+	// basename (host_lifecycle.go / parseInitResult). Populating the name here
+	// is what makes telemetry attribution (run.complete / llm.call
+	// ctx.extension) work in a real session: the engine_status broadcast path
+	// below (SetPersistentEmit handler) only fires for emissions made OUTSIDE
+	// a hook context — ext/emit prefers the active hook ctx.Emit
+	// (host_rpc.go), which bypasses that handler — so extensions that
+	// broadcast their name from inside session_start/before_prompt hooks
+	// (the normal case) would otherwise never populate s.extensionName.
+	// The broadcast handler remains as a friendly-name override for
+	// persistent-context emissions.
+	m.mu.Lock()
+	for _, h := range group.Hosts() {
+		if s.extensionName == "" && h.Name() != "" {
+			s.extensionName = h.Name()
+		}
+		if s.extensionVersion == "" && h.Version() != "" {
+			s.extensionVersion = h.Version()
+		}
+	}
+	m.mu.Unlock()
+
 	// Wire send_message and persistent emit on each host
 	for _, host := range group.Hosts() {
 		capturedKey := key
+		// Bind session/conversation IDs so extension log notifications are
+		// stamped with the correlating IDs (unified log schema).
+		host.BindSession(s.key, s.conversationID)
 		host.SetOnSendMessage(func(payload extension.SendPromptPayload) {
 			// Shared dispatch body (prompt_options.go) so the active-hook path
 			// and this fallback path produce identical run configuration.
 			// Model + bash-allowlist additions flow through; nothing is dropped.
 			go m.dispatchSendPromptPayload(capturedKey, "start_session", payload)
 		})
+		// Wire the per-handler hook_latency telemetry sink. The collector's
+		// Event signature matches SetTelemetrySink exactly; when the session has
+		// no collector the sink stays nil and callHook emits nothing.
+		if s.telemetry != nil {
+			host.SetTelemetrySink(s.telemetry.Event)
+		}
 		host.SetPersistentEmit(func(ev types.EngineEvent) {
 			if ev.Type == "engine_agent_state" {
 				// Cache the extension's roster, then re-emit a merged snapshot
@@ -371,7 +426,7 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 				// desktop due to the complete-snapshot contract.
 				s.agents.CacheExtStates(ev.Agents)
 				merged := s.agents.MergedSnapshot()
-				utils.Log("Session", fmt.Sprintf("agent_snapshot_emitted key=%s count=%d reason=ext_emit_merged", capturedKey, len(merged)))
+				utils.LogWithFields(utils.LevelInfo, "session", "agent_snapshot_emitted reason=ext_emit_merged", map[string]any{"captured_key": capturedKey, "count": len(merged)})
 				m.emit(capturedKey, types.EngineEvent{Type: "engine_agent_state", Agents: merged})
 				return
 			}
@@ -400,6 +455,45 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 				m.globalBroker.PublishDirect(kind, delta)
 			}
 			return nil
+		})
+
+		// Persistent recall for ext/recall_agent when the parent run is idle.
+		// The dispatch registry outlives runs; wiring it here lets a watchdog
+		// timeout (fired by the extension after dispatch-and-go-idle) still
+		// cancel the background agent even when no run is active on this session.
+		host.SetPersistentRecall(func(name, reason string) (bool, error) {
+			reg := s.dispatchRegistry
+			if reg == nil {
+				return false, fmt.Errorf("dispatch registry not available")
+			}
+			found := reg.Recall(name, reason)
+			return found, nil
+		})
+
+		// Persistent steer for ext/steer_dispatch when the parent run is idle.
+		host.SetPersistentSteer(func(dispatchID, message string) (extension.SteerDispatchResult, error) {
+			reg := s.dispatchRegistry
+			if reg == nil {
+				return extension.SteerDispatchResult{Outcome: "not_found"}, fmt.Errorf("dispatch registry not available")
+			}
+			outcome := reg.SteerByID(dispatchID, message)
+			return extension.SteerDispatchResult{
+				Delivered: outcome == extcontext.SteerOutcomeDelivered,
+				Outcome:   string(outcome),
+			}, nil
+		})
+
+		// Persistent name-based steer for ext/steer_dispatch_by_name when the parent run is idle.
+		host.SetPersistentSteerByName(func(name, message string) (extension.SteerDispatchResult, error) {
+			reg := s.dispatchRegistry
+			if reg == nil {
+				return extension.SteerDispatchResult{Outcome: "not_found"}, fmt.Errorf("dispatch registry not available")
+			}
+			outcome := reg.SteerByName(name, message)
+			return extension.SteerDispatchResult{
+				Delivered: outcome == extcontext.SteerOutcomeDelivered,
+				Outcome:   string(outcome),
+			}, nil
 		})
 	}
 
@@ -453,5 +547,5 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 			m.emitCommandRegistry(capturedKey)
 		})
 	}
-	utils.Log("Session", fmt.Sprintf("loadAndWireExtensions: wired %d onCommandsChange observers for key=%s", len(group.Hosts()), key))
+	utils.LogWithFields(utils.LevelInfo, "session", "loadandwireextensions: wired oncommandschange observers for", map[string]any{"count": len(group.Hosts()), "key": key})
 }

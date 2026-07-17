@@ -58,6 +58,7 @@ vi.mock('../engine-bridge-fs', () => ({
 
 vi.mock('../logger', () => ({
   log: vi.fn(),
+  trace: vi.fn(),
   debug: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),

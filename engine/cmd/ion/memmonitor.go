@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"runtime"
 	"time"
 
@@ -41,10 +40,7 @@ func startMemoryMonitor(limitBytes int64, sessionCount func() int) {
 			sampleAndLogMemory(limitBytes, sessionCount)
 		}
 	}()
-	utils.Log("memmonitor", fmt.Sprintf(
-		"started: interval=%s warnAt=%.0f%% limit=%dMB",
-		memMonitorInterval, memMonitorWarnFraction*100, limitBytes/int64(memMonitorBytesPerMiB),
-	))
+	utils.LogWithFields(utils.LevelInfo, "memmonitor", "started: %b", map[string]any{"mem_monitor_interval": memMonitorInterval, "mem_monitor_warn_fraction_100": memMonitorWarnFraction*100, "limit_bytes_int64": limitBytes/int64(memMonitorBytesPerMiB)})
 }
 
 // sampleAndLogMemory reads a MemStats sample and logs it. Extracted from the
@@ -67,17 +63,15 @@ func sampleAndLogMemory(limitBytes int64, sessionCount func() int) {
 		limitMB = uint64(limitBytes) / memMonitorBytesPerMiB
 	}
 
-	msg := fmt.Sprintf(
-		"heap=%dMB sys=%dMB limit=%dMB sessions=%d numGC=%d",
-		heapMB, sysMB, limitMB, sessions, ms.NumGC,
-	)
-
 	if limitBytes > 0 && float64(ms.HeapAlloc) >= float64(limitBytes)*memMonitorWarnFraction {
-		utils.Error("memmonitor", fmt.Sprintf(
-			"HIGH MEMORY: %s (>=%.0f%% of soft limit; GC is throttling, OS kill risk rising)",
-			msg, memMonitorWarnFraction*100,
-		))
+		utils.LogWithFields(utils.LevelError, "memmonitor", "HIGH MEMORY", map[string]any{
+			"heap_mb": heapMB, "sys_mb": sysMB, "limit_mb": limitMB,
+			"sessions": sessions, "num_gc": ms.NumGC,
+		})
 		return
 	}
-	utils.Log("memmonitor", msg)
+	utils.LogWithFields(utils.LevelInfo, "memmonitor", "memory sample", map[string]any{
+		"heap_mb": heapMB, "sys_mb": sysMB, "limit_mb": limitMB,
+		"sessions": sessions, "num_gc": ms.NumGC,
+	})
 }

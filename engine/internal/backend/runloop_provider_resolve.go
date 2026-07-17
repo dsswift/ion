@@ -46,7 +46,7 @@ func (b *ApiBackend) resolveProviderForRun(run *activeRun, opts *types.RunOption
 			ErrorCode:    "no_model_configured",
 		}})
 		b.emitError(run, fmt.Errorf("%s", msg))
-		b.emitExit(run.requestID, intPtr(1), nil, opts.SessionID)
+		b.emitExit(run.requestID, intPtr(1), nil, opts.ConversationID)
 		return nil, ""
 	}
 
@@ -64,7 +64,10 @@ func (b *ApiBackend) resolveProviderForRun(run *activeRun, opts *types.RunOption
 		// TextChunkEvent) to communicate this — typed event is the entire
 		// signaling surface. See CLAUDE.md § "The typed-event corollary".
 		original := model
-		utils.Warn("ApiBackend", fmt.Sprintf("model %q not found, falling back to default %q", model, run.cfg.DefaultModel))
+		utils.LogWithFields(utils.LevelWarn, "backend.runloop", "model not found, falling back to default", map[string]any{
+			"model":         model,
+			"default_model": run.cfg.DefaultModel,
+		})
 		model = run.cfg.DefaultModel
 		opts.Model = model
 		provider = b.resolveProvider(model)
@@ -73,7 +76,26 @@ func (b *ApiBackend) resolveProviderForRun(run *activeRun, opts *types.RunOption
 			FallbackModel:  run.cfg.DefaultModel,
 			Reason:         "no_provider_found",
 		}})
-		utils.Log("ApiBackend", fmt.Sprintf("model_fallback_emitted: requested=%q fallback=%q reason=%s sessionID=%s", original, run.cfg.DefaultModel, "no_provider_found", opts.SessionID))
+		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "model_fallback_emitted", map[string]any{
+			"requested":       original,
+			"fallback":        run.cfg.DefaultModel,
+			"reason":          "no_provider_found",
+			"conversation_id": opts.ConversationID,
+		})
+
+		// provider.fallback telemetry (family 4d), no-provider-found path. The
+		// overload-driven fallback path is emitted from runloop.go's OnFallback
+		// closure; this covers the graceful-degradation swap at resolve time.
+		if run.cfg.Telemetry != nil {
+			// R11: event name is carried by Event.Name; payload.kind removed.
+			run.cfg.Telemetry.Event("provider.fallback", map[string]any{
+				"requested_model": original,
+				"fallback_model":  run.cfg.DefaultModel,
+				"reason":          "no_provider_found",
+				"hop":             0,
+				"turn":            0,
+			}, buildTelemCtx(run))
+		}
 	}
 	if provider == nil {
 		// No fallback was attempted (or attempted but the default model
@@ -82,15 +104,21 @@ func (b *ApiBackend) resolveProviderForRun(run *activeRun, opts *types.RunOption
 		// configured" branch is distinguishable in engine.log from the
 		// "default model is unknown" branch.
 		if run.cfg == nil || run.cfg.DefaultModel == "" {
-			utils.Log("ApiBackend", fmt.Sprintf("model_fallback_skipped: requested=%q reason=no_default_configured runCfgNil=%v sessionID=%s", model, run.cfg == nil, opts.SessionID))
+			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "model_fallback_skipped: reason=no_default_configured", map[string]any{
+				"requested":       model,
+				"run_cfg_nil":     run.cfg == nil,
+				"conversation_id": opts.ConversationID,
+			})
 		}
-		utils.Error("ApiBackend", fmt.Sprintf("no provider for model %q", model))
+		utils.LogWithFields(utils.LevelError, "backend.runloop", "no provider for model", map[string]any{
+			"model": model,
+		})
 		b.emit(run, types.NormalizedEvent{Data: &types.ErrorEvent{
 			ErrorMessage: fmt.Sprintf("no provider found for model %q", model),
 			ErrorCode:    "invalid_model",
 		}})
 		b.emitError(run, fmt.Errorf("no provider found for model %q", model))
-		b.emitExit(run.requestID, intPtr(1), nil, opts.SessionID)
+		b.emitExit(run.requestID, intPtr(1), nil, opts.ConversationID)
 		return nil, ""
 	}
 

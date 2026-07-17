@@ -254,4 +254,43 @@ describe('prose constants convergence', () => {
     expect(typeof opts.planModeSparseReminder).toBe('string')
     expect(opts.planModeSparseReminder.length).toBeGreaterThan(0)
   })
+
+  it('prose constants carry the AskUserQuestion visible-lead-up channel rule', () => {
+    // The user sees only visible assistant text alongside a question card —
+    // private reasoning never reaches them. Both harness prose surfaces must
+    // state this so a bare question with no visible lead-up is recognized as
+    // a defect (the regression: conversations where every AskUserQuestion
+    // arrived with all analysis locked in private thinking blocks).
+    expect(PLAN_MODE_SPARSE_REMINDER).toContain(
+      'must be preceded by visible assistant text',
+    )
+    expect(PLAN_MODE_SPARSE_REMINDER).toContain(
+      'a bare question with no visible lead-up (reasoning only) is a defect',
+    )
+    expect(ENTER_PLAN_MODE_DESCRIPTION).toContain(
+      'preceded by visible assistant text',
+    )
+    expect(ENTER_PLAN_MODE_DESCRIPTION).toContain(
+      'private reasoning is never shown to the user',
+    )
+  })
+
+  it('ENTER_PLAN_MODE_DESCRIPTION carries the stale-reminder disambiguation clause (Fix C)', () => {
+    // Belt-and-braces defense: Fix B makes plan_mode_reminder transient so it
+    // can no longer accumulate stale copies. Fix C adds an explicit statement
+    // in the EnterPlanMode description that its presence means plan mode is NOT
+    // currently active, so any earlier "plan mode still active" text is stale.
+    // This guards against any future stale-claim source (not just the reminder).
+    //
+    // EnterPlanMode is only injected on auto-mode dispatches; when the model
+    // sees this tool, plan mode is by definition off. Stating that explicitly
+    // short-circuits the "refuse to enter because I think I'm already in plan
+    // mode" failure mode (symptom C from the triggering conversation).
+    expect(ENTER_PLAN_MODE_DESCRIPTION).toContain(
+      'plan mode is NOT currently active',
+    )
+    expect(ENTER_PLAN_MODE_DESCRIPTION).toContain(
+      'stale and must be ignored',
+    )
+  })
 })

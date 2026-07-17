@@ -10,6 +10,7 @@ You are running the `/create-pr` command. Your job is to push the current featur
 - Only run `git push` as part of this command. No other `git push` outside this flow.
 - Never merge to `main`. The PR is opened — the user merges.
 - Do not create a PR with failing CI. If CI is already known to be failing, stop and report. **Run the Linux parity gate (Step 3) before pushing** so a Linux-only failure is caught locally — not after burning paid Actions minutes on a red PR.
+- **Zero tolerance for identifiable failures — pre-existing included.** Every test failure, lint error, or build break that the parity gate (or any other check run during this command) surfaces MUST be fixed before the PR is opened. "Pre-existing on main", "not caused by this branch", and "unrelated to these changes" are **forbidden dispositions** — if the failure is visible before the PR exists, it blocks the PR. The full CI suite (`quality.yml`: engine race + integration, desktop typecheck + tests, relay, iOS, lints) must be expected green, and any locally reproducible failure in that set is in scope to fix now, regardless of age or origin.
 
 ---
 
@@ -80,7 +81,7 @@ make test-linux-desktop
 ### 3d. Act on the result
 
 - **Gate passes** → proceed to Step 4.
-- **Gate fails** → **abort PR creation. Do not push. Do not open the PR.** Report the failing tests to the user so they can fix them first. This is the "do not create a PR with failing CI" hard rule, enforced locally instead of after the fact.
+- **Gate fails** → **do not push. Do not open the PR.** Fix every failure the gate surfaced — including failures that reproduce on `main` (pre-existing) — then re-run the gate until green. A failure that is visible now blocks the PR now; its age and origin are irrelevant. Only abort back to the user when a failure genuinely cannot be fixed without a product decision the user must make.
 - **User opted to skip** (Docker down, proceed anyway) → proceed to Step 4; note in the final report that the Linux gate was skipped.
 
 ---

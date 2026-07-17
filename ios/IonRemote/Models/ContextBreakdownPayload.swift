@@ -30,6 +30,31 @@ struct ContextBreakdownCategory: Codable, Sendable {
     let path: String?
 }
 
+// MARK: - ModelBreakdown
+
+/// One row in the per-model cost breakdown for the conversation dispatch tree.
+/// Mirrors Go's ModelBreakdown in engine/internal/types/model_breakdown.go and
+/// TypeScript's ModelBreakdown in types-engine.ts.
+///
+/// Attribution: token counts come from each conversation's .llm.jsonl header.
+/// A conversation that switched models mid-run attributes entirely to its final
+/// header model. inputTokens is cache-inclusive (matches the persisted
+/// totalInputTokens semantic).
+struct ModelBreakdown: Codable, Sendable, Identifiable {
+    var id: String { isSelf == true ? "\(model)#self" : model }
+    let model: String
+    let conversations: Int
+    let inputTokens: Int
+    let outputTokens: Int
+    let costUsd: Double
+    /// True when this row is the root/viewing conversation's OWN spend rather
+    /// than a dispatch. A model used by both the root and its dispatches yields
+    /// two rows (one isSelf=true count 1, one isSelf=false count n). Absent
+    /// (omitted on the wire) for dispatch rows. Lets the drawer separate "this
+    /// conversation cost $X" from "the dispatches cost $Y".
+    let isSelf: Bool?
+}
+
 // MARK: - ContextBreakdownPayload
 
 /// Wire payload for desktop_context_breakdown (forwarded from engine_context_breakdown).
@@ -66,4 +91,8 @@ struct ContextBreakdownPayload: Codable, Sendable {
     /// cost, computed on demand from the conversation tree. Nil / zero for
     /// sessions with no dispatches or no cost yet.
     let aggregateCostUsd: Double?
+    /// Per-model cost breakdown for the conversation dispatch tree. Populated by
+    /// the on-demand breakdown. Sorted by costUsd descending (highest spend first).
+    /// Nil / empty for runloop-emitted breakdowns.
+    let modelBreakdown: [ModelBreakdown]?
 }

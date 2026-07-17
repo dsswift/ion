@@ -60,14 +60,11 @@ func (h *Host) makeOnChildQuestion(agentName string) func(DispatchChildQuestionI
 		}
 		data, err := json.Marshal(payload)
 		if err != nil {
-			utils.Log("extension", fmt.Sprintf("makeOnChildQuestion: marshal failed dispatchId=%s: %v", info.DispatchID, err))
+			utils.LogWithFields(utils.LevelInfo, "extension", "makeonchildquestion: marshal failed", map[string]any{"run_id": info.DispatchID, "error": err})
 			return "", true, err
 		}
 
-		utils.Info("extension", fmt.Sprintf(
-			"dispatch_child_question agent=%q dispatchId=%s depth=%d requestId=%s blocking for answer question=%q",
-			agentName, info.DispatchID, info.Depth, requestID, truncateStr(info.Question, 80),
-		))
+		utils.LogWithFields(utils.LevelInfo, "extension", "dispatch_child_question blocking for answer", map[string]any{"agent_name": agentName, "run_id": info.DispatchID, "count": info.Depth, "run_id_3": requestID, "truncate_str": truncateStr(info.Question, 80)})
 		h.sendNotification("dispatch_child_question", data)
 
 		// Block until the dispatcher answers or the subprocess dies. h.deadCh
@@ -76,19 +73,13 @@ func (h *Host) makeOnChildQuestion(agentName string) func(DispatchChildQuestionI
 		// cancelled reply terminate the child run.
 		select {
 		case reply := <-replyCh:
-			utils.Info("extension", fmt.Sprintf(
-				"dispatch_child_question answered agent=%q dispatchId=%s requestId=%s cancelled=%v answerLen=%d",
-				agentName, info.DispatchID, requestID, reply.Cancelled, len(reply.Answer),
-			))
+			utils.LogWithFields(utils.LevelInfo, "extension", "dispatch_child_question answered", map[string]any{"agent_name": agentName, "run_id": info.DispatchID, "run_id_2": requestID, "cancelled": reply.Cancelled, "count": len(reply.Answer)})
 			if reply.Cancelled {
 				return "", true, nil
 			}
 			return reply.Answer, false, nil
 		case <-h.deadCh:
-			utils.Log("extension", fmt.Sprintf(
-				"dispatch_child_question: subprocess died before answering agent=%q dispatchId=%s requestId=%s; cancelling",
-				agentName, info.DispatchID, requestID,
-			))
+			utils.LogWithFields(utils.LevelInfo, "extension", "dispatch_child_question: subprocess died before answering ; cancelling", map[string]any{"agent_name": agentName, "run_id": info.DispatchID, "run_id_2": requestID})
 			return "", true, nil
 		}
 	}
@@ -120,9 +111,9 @@ func (h *Host) handleAnswerDispatchQuestion(id int64, raw []byte) {
 			Answer:    req.Params.Answer,
 			Cancelled: req.Params.Cancelled,
 		}
-		utils.Info("extension", fmt.Sprintf("ext/answer_dispatch_question delivered key=%s cancelled=%v", key, req.Params.Cancelled))
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/answer_dispatch_question delivered", map[string]any{"key": key, "cancelled": req.Params.Cancelled})
 	} else {
-		utils.Log("extension", fmt.Sprintf("ext/answer_dispatch_question: no pending question for key=%s (already answered or torn down)", key))
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/answer_dispatch_question: no pending question for (already answered or torn down)", map[string]any{"key": key})
 	}
 	h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
 }

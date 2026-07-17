@@ -69,7 +69,7 @@ func (b *Broker) RegisterProducer(kind string, host ProducerHost, decl types.Res
 		return fmt.Errorf("resource broker: producer for kind %q already registered", kind)
 	}
 	b.producers[kind] = &producerEntry{kind: kind, host: host, decl: decl}
-	utils.Log("resource", fmt.Sprintf("producer registered kind=%s", kind))
+	utils.LogWithFields(utils.LevelInfo, "resource", "producer registered", map[string]any{"reason": kind})
 	return nil
 }
 
@@ -88,7 +88,7 @@ func (b *Broker) DeregisterProducer(kind string) {
 		delete(b.subsByID, s.ID)
 	}
 	delete(b.subscribers, kind)
-	utils.Log("resource", fmt.Sprintf("producer deregistered kind=%s dropped=%d subscriptions", kind, len(subs)))
+	utils.LogWithFields(utils.LevelInfo, "resource", "producer deregistered", map[string]any{"reason": kind, "count": len(subs)})
 }
 
 // Subscribe registers a new subscription for the given kind. It calls the
@@ -119,7 +119,7 @@ func (b *Broker) Subscribe(kind string, filter types.ResourceFilter, deliver fun
 	items, err := host.HandleQuery(filter)
 	if err != nil {
 		// Subscription is registered; snapshot failed. Log and deliver empty snapshot.
-		utils.Log("resource", fmt.Sprintf("HandleQuery failed kind=%s sub=%s err=%v", kind, subID, err))
+		utils.LogWithFields(utils.LevelInfo, "resource", "handle query failed", map[string]any{"reason": kind, "run_id": subID, "error": err.Error()})
 		items = nil
 	}
 
@@ -129,7 +129,7 @@ func (b *Broker) Subscribe(kind string, filter types.ResourceFilter, deliver fun
 		SubID: subID,
 		Items: items,
 	})
-	utils.Debug("resource", fmt.Sprintf("subscribed kind=%s sub=%s items=%d", kind, subID, len(items)))
+	utils.LogWithFields(utils.LevelDebug, "resource", "subscribed", map[string]any{"reason": kind, "run_id": subID, "count": len(items)})
 	return sub, nil
 }
 
@@ -150,7 +150,7 @@ func (b *Broker) Unsubscribe(subID string) {
 		}
 	}
 	b.subscribers[sub.Kind] = updated
-	utils.Debug("resource", fmt.Sprintf("unsubscribed sub=%s kind=%s", subID, sub.Kind))
+	utils.LogWithFields(utils.LevelDebug, "resource", "unsubscribed", map[string]any{"run_id": subID, "reason": sub.Kind})
 }
 
 // Publish fans a delta out to all subscribers of the given kind. Returns an
@@ -170,7 +170,7 @@ func (b *Broker) Publish(kind string, delta types.ResourceDelta) error {
 	subs = append(subs, b.wildcardSubscribersLocked()...)
 	b.mu.RUnlock()
 
-	utils.Debug("resource", fmt.Sprintf("publish kind=%s op=%s recipients=%d", kind, delta.Op, len(subs)))
+	utils.LogWithFields(utils.LevelDebug, "resource", "publish", map[string]any{"reason": kind, "status": delta.Op, "count": len(subs)})
 	for _, s := range subs {
 		// Filter by conversationId when the subscription has one set.
 		// Workspace subscribers (empty filter) receive everything.
@@ -200,7 +200,7 @@ func (b *Broker) PublishDirect(kind string, delta types.ResourceDelta) {
 	subs = append(subs, b.wildcardSubscribersLocked()...)
 	b.mu.RUnlock()
 
-	utils.Debug("resource", fmt.Sprintf("publishDirect kind=%s op=%s recipients=%d", kind, delta.Op, len(subs)))
+	utils.LogWithFields(utils.LevelDebug, "resource", "publish direct", map[string]any{"reason": kind, "status": delta.Op, "count": len(subs)})
 	for _, s := range subs {
 		// Filter by conversationId when the subscription has one set.
 		// Workspace subscribers (empty filter) receive everything.
@@ -246,7 +246,7 @@ func (b *Broker) SubscribeDirect(kind string, filter types.ResourceFilter, deliv
 		SubID: subID,
 		Items: nil,
 	})
-	utils.Debug("resource", fmt.Sprintf("subscribeDirect kind=%s sub=%s", kind, subID))
+	utils.LogWithFields(utils.LevelDebug, "resource", "subscribe direct", map[string]any{"reason": kind, "run_id": subID})
 	return sub
 }
 
@@ -277,14 +277,14 @@ func (b *Broker) SetQueryHandler(kind string, handler func(types.ResourceFilter)
 	entry, ok := b.producers[kind]
 	b.mu.RUnlock()
 	if !ok {
-		utils.Log("resource", fmt.Sprintf("SetQueryHandler: no producer for kind=%s", kind))
+		utils.LogWithFields(utils.LevelInfo, "resource", "set query handler no producer for kind", map[string]any{"reason": kind})
 		return
 	}
 	if fph, ok := entry.host.(*FuncProducerHost); ok {
 		fph.mu.Lock()
 		fph.handler = handler
 		fph.mu.Unlock()
-		utils.Debug("resource", fmt.Sprintf("query handler set kind=%s", kind))
+		utils.LogWithFields(utils.LevelDebug, "resource", "query handler set", map[string]any{"reason": kind})
 	}
 }
 
@@ -310,16 +310,16 @@ func (b *Broker) RewireQueryHandlerAndResnapshot(kind string, handler func(types
 	b.mu.RUnlock()
 
 	if len(subs) == 0 {
-		utils.Debug("resource", fmt.Sprintf("RewireQueryHandlerAndResnapshot: kind=%s no subscribers to resnapshot", kind))
+		utils.LogWithFields(utils.LevelDebug, "resource", "rewire query handler and resnapshot no subscribers", map[string]any{"reason": kind})
 		return
 	}
 
-	utils.Log("resource", fmt.Sprintf("RewireQueryHandlerAndResnapshot: kind=%s rewiring handler and resnapshot for %d subscribers", kind, len(subs)))
+	utils.LogWithFields(utils.LevelInfo, "resource", "rewire query handler and resnapshot", map[string]any{"reason": kind, "count": len(subs)})
 
 	for _, sub := range subs {
 		items, err := handler(sub.Filter)
 		if err != nil {
-			utils.Log("resource", fmt.Sprintf("RewireQueryHandlerAndResnapshot: HandleQuery failed kind=%s sub=%s err=%v", kind, sub.ID, err))
+			utils.LogWithFields(utils.LevelInfo, "resource", "rewire handle query failed", map[string]any{"reason": kind, "run_id": sub.ID, "error": err.Error()})
 			items = nil
 		}
 		sub.deliver(ResourceMessage{
@@ -328,6 +328,6 @@ func (b *Broker) RewireQueryHandlerAndResnapshot(kind string, handler func(types
 			SubID: sub.ID,
 			Items: items,
 		})
-		utils.Log("resource", fmt.Sprintf("RewireQueryHandlerAndResnapshot: delivered snapshot kind=%s sub=%s items=%d", kind, sub.ID, len(items)))
+		utils.LogWithFields(utils.LevelInfo, "resource", "rewire delivered snapshot", map[string]any{"reason": kind, "run_id": sub.ID, "count": len(items)})
 	}
 }

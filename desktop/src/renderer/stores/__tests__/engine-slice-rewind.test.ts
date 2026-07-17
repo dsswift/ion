@@ -12,9 +12,10 @@
  * tool/assistant rows to lock the invariant that user-turn ordinal is stable
  * regardless of interleaving (the whole reason ordinal beats raw index).
  *
- * It also verifies the post-restart broadcast: rewindEngineInstance must call
- * window.ion.engineBroadcastHistory after the fresh session starts so remote
- * devices receive the truncated history.
+ * It also verifies the engine call: rewindEngineInstance drives the engine's
+ * tree-native rewind via window.ion.engineRewind(key, userTurnOrdinal) — NOT
+ * the old engineStop/engineStart hack — then broadcasts the truncated history
+ * so remote devices update immediately.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
@@ -23,19 +24,6 @@ vi.mock('../session-store-helpers', () => ({
   makeLocalTab: vi.fn(() => ({})),
   nextMsgId: vi.fn(() => 'mock-msg-id'),
   playNotificationIfHidden: vi.fn(async () => {}),
-}))
-
-vi.mock('../../preferences', () => ({
-  usePreferencesStore: {
-    getState: () => ({
-      defaultBaseDirectory: '',
-      tabGroupMode: 'auto',
-      tabGroups: [],
-      engineProfiles: [],
-      engineDefaultModel: '',
-      preferredModel: '',
-    }),
-  },
 }))
 
 import { createEngineRewindActions } from '../slices/engine-slice-rewind'
@@ -78,7 +66,7 @@ function makeInstance(
     agentStates: [],
     statusFields: null,
     planFilePath: null,
-    forkedFromConversationIds: null, dispatchTelemetry: [],
+    dispatchTelemetry: [],
     contextBreakdown: null,
   }
 }
@@ -117,14 +105,21 @@ const INTERLEAVED = [
 ]
 
 let broadcastSpy: ReturnType<typeof vi.fn>
+let rewindSpy: ReturnType<typeof vi.fn>
+let stopSpy: ReturnType<typeof vi.fn>
+let startSpy: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
   broadcastSpy = vi.fn(async () => {})
+  rewindSpy = vi.fn(async () => ({ ok: true }))
+  stopSpy = vi.fn(async () => {})
+  startSpy = vi.fn(async () => ({ ok: true }))
   ;(globalThis as any).window = {
     ion: {
-      engineStop: vi.fn(async () => {}),
-      engineStart: vi.fn(async () => ({ ok: true })),
+      engineStop: stopSpy,
+      engineStart: startSpy,
       engineBroadcastHistory: broadcastSpy,
+      engineRewind: rewindSpy,
     },
   }
 })
@@ -174,13 +169,50 @@ describe('rewindEngineInstance — target resolution', () => {
   })
 })
 
-describe('rewindEngineInstance — broadcast after restart', () => {
-  it('broadcasts truncated history to remote devices after the fresh session starts', async () => {
+describe('rewindEngineInstance — engine-native branch by user-turn ordinal', () => {
+  it('calls engineRewind with the user-turn ordinal, not engineStop/engineStart', async () => {
+    const { slice } = buildHarness(INTERLEAVED)
+    // Rewind to the second user turn (id resolves to index 3). Its user-turn
+    // ordinal is 1 (u-real-0 is ordinal 0, u-real-1 is ordinal 1), counted from
+    // the user rows before it — the same Nth-user the engine resolves.
+    slice.rewindEngineInstance('tab1', 'inst1', 'u-real-1')
+    await new Promise((r) => setTimeout(r, 0))
+    expect(rewindSpy).toHaveBeenCalledWith('tab1', 1)
+    // The stop/start hack must be gone — it rebound to the same conversation
+    // and duplicated the turn.
+    expect(stopSpy).not.toHaveBeenCalled()
+    expect(startSpy).not.toHaveBeenCalled()
+  })
+
+  it('passes ordinal 0 when rewinding to the first user turn', async () => {
+    const { slice } = buildHarness(INTERLEAVED)
+    slice.rewindEngineInstance('tab1', 'inst1', 'u-real-0')
+    await new Promise((r) => setTimeout(r, 0))
+    expect(rewindSpy).toHaveBeenCalledWith('tab1', 0)
+  })
+
+  it('computes the ordinal from the iOS userTurnIndex path too', async () => {
+    const { slice } = buildHarness(INTERLEAVED)
+    // iOS sends an unknown id + userTurnIndex=1; resolves to u-real-1 at index 3,
+    // whose ordinal is 1.
+    slice.rewindEngineInstance('tab1', 'inst1', 'UUID-NOT-IN-STORE', 1)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(rewindSpy).toHaveBeenCalledWith('tab1', 1)
+  })
+
+  it('broadcasts the truncated history after the engine branch succeeds', async () => {
     const { slice } = buildHarness(INTERLEAVED)
     slice.rewindEngineInstance('tab1', 'inst1', 'u-real-1')
-    // engineStop → engineStart → engineBroadcastHistory chain is async; flush.
     await new Promise((r) => setTimeout(r, 0))
     expect(broadcastSpy).toHaveBeenCalledWith('tab1', 'inst1')
+  })
+
+  it('does not broadcast when the engine rewind fails', async () => {
+    rewindSpy.mockResolvedValueOnce({ ok: false, error: 'out of range' })
+    const { slice } = buildHarness(INTERLEAVED)
+    slice.rewindEngineInstance('tab1', 'inst1', 'u-real-1')
+    await new Promise((r) => setTimeout(r, 0))
+    expect(broadcastSpy).not.toHaveBeenCalled()
   })
 })
 
@@ -219,5 +251,59 @@ describe('rewindEngineInstance — pending-card restoration after rewind', () =>
     slice.rewindEngineInstance('tab1', 'inst1', 'u-1')
     const inst = state.conversationPanes.get('tab1')!.instances[0]
     expect(inst.permissionDenied).toBeNull()
+  })
+})
+
+describe('rewindEngineInstance — planFilePath restoration after rewind', () => {
+  // History whose kept slice ends with a pending ExitPlanMode card whose
+  // toolInput carries a planFilePath. After rewind the instance must have
+  // planFilePath restored to that value so re-entering plan mode reuses the
+  // same file instead of allocating a fresh slug.
+  const EXIT_PLAN_PATH = '/home/user/.ion/plans/fancy-wishing-cookie.md'
+  const EXIT_PLAN_THEN_TARGET = [
+    { id: 'u-0', role: 'user', content: 'write a plan', timestamp: 1 },
+    { id: 'a-1', role: 'assistant', content: 'planning...', timestamp: 2 },
+    { id: 'e-1', role: 'assistant', content: '', timestamp: 3, toolName: 'ExitPlanMode', toolId: 'tu-e', toolInput: `{"planFilePath":"${EXIT_PLAN_PATH}"}` } as any,
+    { id: 'u-1', role: 'user', content: 'implement it', timestamp: 4 },
+  ]
+
+  it('restores planFilePath from ExitPlanMode toolInput when the kept history ends with it', () => {
+    const { state, slice } = buildHarness(EXIT_PLAN_THEN_TARGET)
+    // Rewind to u-1 → keep [u-0, a-1, e-1]; the kept slice ends with ExitPlanMode.
+    slice.rewindEngineInstance('tab1', 'inst1', 'u-1')
+    const inst = state.conversationPanes.get('tab1')!.instances[0]
+    expect(inst.planFilePath).toBe(EXIT_PLAN_PATH)
+    // The ExitPlanMode card must also be restored.
+    expect(inst.permissionDenied).not.toBeNull()
+    expect(inst.permissionDenied!.tools[0].toolName).toBe('ExitPlanMode')
+  })
+
+  // When the pending card is NOT ExitPlanMode (e.g. AskUserQuestion),
+  // planFilePath must remain null — the old behavior is preserved.
+  const ASK_THEN_TARGET_FOR_PLAN = [
+    { id: 'u-0', role: 'user', content: 'do a thing', timestamp: 1 },
+    { id: 'q-1', role: 'assistant', content: '', timestamp: 2, toolName: 'AskUserQuestion', toolId: 'tu-q', toolInput: '{"question":"which approach?"}' } as any,
+    { id: 'u-1', role: 'user', content: 'rewind here', timestamp: 3 },
+  ]
+
+  it('leaves planFilePath null when the pending card is AskUserQuestion (non-plan-mode rewind)', () => {
+    const { state, slice } = buildHarness(ASK_THEN_TARGET_FOR_PLAN)
+    slice.rewindEngineInstance('tab1', 'inst1', 'u-1')
+    const inst = state.conversationPanes.get('tab1')!.instances[0]
+    expect(inst.planFilePath).toBeNull()
+  })
+
+  // When there is no pending card at all, planFilePath must also be null.
+  const NO_CARD_THEN_TARGET = [
+    { id: 'u-0', role: 'user', content: 'first turn', timestamp: 1 },
+    { id: 'a-1', role: 'assistant', content: 'done', timestamp: 2 },
+    { id: 'u-1', role: 'user', content: 'rewind here', timestamp: 3 },
+  ]
+
+  it('leaves planFilePath null when there is no pending card in the kept history', () => {
+    const { state, slice } = buildHarness(NO_CARD_THEN_TARGET)
+    slice.rewindEngineInstance('tab1', 'inst1', 'u-1')
+    const inst = state.conversationPanes.get('tab1')!.instances[0]
+    expect(inst.planFilePath).toBeNull()
   })
 })

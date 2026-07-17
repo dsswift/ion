@@ -34,7 +34,21 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 		return types.EngineEvent{Type: "engine_tool_complete", ToolIndex: &idx}
 
 	case *types.ToolResultEvent:
-		return types.EngineEvent{Type: "engine_tool_end", ToolName: "", ToolID: e.ToolID, ToolResult: e.Content, ToolIsError: e.IsError}
+		return types.EngineEvent{Type: "engine_tool_end", ToolName: "", ToolID: e.ToolID, ToolResult: e.Content, ToolIsError: e.IsError, ToolResultImages: e.Images}
+
+	case *types.ImageContentEvent:
+		// A single image produced during the run — tool-returned or
+		// provider-generated. The engine is a pass-through for images: it
+		// emits the on-disk file path, never base64 bytes. Consumers render
+		// or ignore it; the engine has no opinion (see CLAUDE.md § "The
+		// typed-event corollary").
+		return types.EngineEvent{
+			Type:           "engine_image_content",
+			ImagePath:      e.Path,
+			ImageMediaType: e.MediaType,
+			ImageSource:    e.Source,
+			ImageToolID:    e.ToolID,
+		}
 
 	case *types.TaskCompleteEvent:
 		var pct int
@@ -49,11 +63,25 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 			Fields: &types.StatusFields{
 				State:             "idle",
 				SessionID:         e.SessionID,
-				TotalCostUsd:      e.CostUsd,
+				RunCostUsd:        e.CostUsd,
 				ContextWindow:     contextWindow,
 				ContextPercent:    pct,
 				PermissionDenials: e.PermissionDenials,
+				NumTurns:          e.NumTurns,
+				ConversationTurns: e.ConversationTurns,
 			},
+		}
+
+	case *types.TaskSuspendEvent:
+		// TaskSuspendEvent signals that a dispatched agent's LLM run ended
+		// without completing the dispatch (the agent is parked, waiting for
+		// child completions or a revive message). Emit a typed wire event so
+		// clients can update the agent-state indicator to show suspended/idle.
+		// The dispatch remains alive; TaskCompleteEvent (and the normal idle
+		// engine_status) fires only when the agent truly finishes after revival.
+		return types.EngineEvent{
+			Type:                     "engine_task_suspended",
+			TaskSuspendAwaitingCount: len(e.AwaitingDispatchIDs),
 		}
 
 	case *types.ErrorEvent:
@@ -85,6 +113,8 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 				InputTokens:    derefInt(e.Usage.InputTokens),
 				OutputTokens:   derefInt(e.Usage.OutputTokens),
 				ContextPercent: pct,
+				EntryID:        e.EntryID,
+				UserEntryID:    e.UserEntryID,
 			},
 		}
 
@@ -224,6 +254,17 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 		// to be echoed back over the wire.
 		return types.EngineEvent{Type: "engine_steer_injected", SteerMessageLength: e.MessageLength}
 
+	case *types.PromptInjectedEvent:
+		// Engine-initiated prompt (extension ctx.sendPrompt): live clients
+		// must render the turn from this event — no client submitted it, so
+		// no client did an optimistic insert. The full text crosses the wire
+		// deliberately (unlike the steer confirmation): it IS the turn.
+		// Exception: Kind=="agent_completion" means this is an internal
+		// machine-to-machine signal (a child agent's result routed back to its
+		// parent). Clients must NOT render agent_completion injections as user
+		// bubbles — they are dispatch callbacks, not user-authored turns.
+		return types.EngineEvent{Type: "engine_prompt_injected", InjectedPrompt: e.Prompt, InjectedPromptOrigin: e.Origin, InjectedPromptKind: e.Kind}
+
 	case *types.ModelFallbackEvent:
 		// Surface the model-fallback workflow signal as a typed engine
 		// event so clients can render an indicator. The desktop and iOS
@@ -238,6 +279,18 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 			FallbackRequestedModel: e.RequestedModel,
 			FallbackModel:          e.FallbackModel,
 			FallbackReason:         e.Reason,
+		}
+
+	case *types.CapabilityUnsupportedEvent:
+		// Surface a declined feature request as a typed engine event so
+		// clients can render a recoverable message (not a dead engine).
+		// The engine reports; the harness decides (reroute / abort /
+		// notify). See CLAUDE.md § "The typed-event corollary".
+		return types.EngineEvent{
+			Type:              "engine_capability_unsupported",
+			Capability:        e.Capability,
+			CapabilityBackend: e.Backend,
+			CapabilityReason:  e.Reason,
 		}
 
 	case *types.ThinkingBlockStartEvent:
@@ -276,6 +329,7 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 				CacheCreationTokens: e.CacheCreationTokens,
 				Model:               e.Model,
 				AggregateCostUsd:    e.AggregateCostUsd,
+				ModelBreakdown:      e.ModelBreakdown,
 			},
 		}
 

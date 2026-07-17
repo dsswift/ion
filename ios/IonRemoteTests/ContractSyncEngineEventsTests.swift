@@ -313,6 +313,35 @@ final class ContractSyncEngineEventsTests: XCTestCase {
         )
     }
 
+    // MARK: - CapabilityUnsupportedEvent field-set
+
+    /// The engine emits engine_capability_unsupported when a requested
+    /// feature (e.g. plan mode) is not supported by the backend that would
+    /// serve the run and the prompt was declined cleanly. iOS does NOT
+    /// decode this as a live RemoteEvent — the desktop renders the
+    /// recoverable message and the tab state converges via the snapshot
+    /// path, mirroring the ModelFallbackEvent precedent above. This test
+    /// validates only that the Swift-tracked field set stays in sync with
+    /// the Go manifest so a future decoder or snapshot consumer picks up
+    /// new fields without a silent contract drift.
+    func testCapabilityUnsupportedFieldSetMatchesManifest() throws {
+        let manifest = try loadManifest()
+        guard let goFields = manifest.normalizedEvents["capability_unsupported"] else {
+            XCTFail("capability_unsupported not found in Go manifest")
+            return
+        }
+
+        let swiftTracked: Set<String> = [
+            "backend", "capability", "reason",
+        ]
+        let goSet = Set(goFields ?? [])
+        let untracked = goSet.subtracting(swiftTracked)
+        XCTAssert(
+            untracked.isEmpty,
+            "Go capability_unsupported has fields not tracked in Swift test: \(untracked.sorted())"
+        )
+    }
+
     func testEngineEarlyStopDecisionRequestDecode() throws {
         let json = """
         {

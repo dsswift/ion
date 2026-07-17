@@ -16,7 +16,22 @@ import type {
   EngineCommandListing,
   ContextBreakdownPayload,
 } from './types-engine'
-import type { Message } from './types-session'
+
+/**
+ * One stage transition of a delegated-CLI login (codex/grok/cursor). Payload of
+ * the engine_provider_login event; mirrors Go ProviderLoginUpdate.
+ */
+export interface ProviderLoginUpdate {
+  provider: string
+  backend: string
+  /** started | await_browser | await_device_code | completed | failed | cancelled */
+  stage: string
+  authUrl?: string
+  userCode?: string
+  verificationUrl?: string
+  loginError?: string
+  loginId?: string
+}
 
 export type EngineEvent =
   | { type: 'engine_agent_state'; agents: AgentStateUpdate[] }
@@ -40,15 +55,40 @@ export type EngineEvent =
   // may pick their own keys (namespace as `<extensionName>:<messageKey>`).
   | { type: 'engine_harness_message'; message: string; source?: string; metadata?: Record<string, unknown> }
   | { type: 'engine_text_delta'; text: string }
-  | { type: 'engine_message_end'; usage: { inputTokens: number; outputTokens: number; contextPercent: number; cost: number } }
+  | { type: 'engine_message_end'; usage: { inputTokens: number; outputTokens: number; contextPercent: number; cost: number; entryId?: string; userEntryId?: string } }
   | { type: 'engine_tool_start'; toolName: string; toolId: string }
   | { type: 'engine_tool_end'; toolId: string; result?: string; isError?: boolean }
+  // engine_image_content — a single image produced during a run, either
+  // tool-returned (imageSource 'tool', imageToolId set to the producing tool
+  // call) or provider-generated (imageSource 'provider', imageToolId empty).
+  // imagePath is the on-disk FILE PATH under the conversation's images/
+  // directory; the engine never puts base64 on the wire. The main-process
+  // control plane translates this to the `image_content` NormalizedEvent the
+  // renderer's event-slice-images materializer consumes. Mirror of the Go
+  // EngineEvent Image* fields (engine/internal/types/engine_event.go).
+  | { type: 'engine_image_content'; imagePath: string; imageMediaType: string; imageSource: string; imageToolId?: string }
   | { type: 'engine_tool_update'; toolId: string; partialInput: string }
   | { type: 'engine_tool_complete'; index?: number }
   | { type: 'engine_dead'; exitCode: number | null; signal: string | null; stderrTail: string[] }
   | { type: 'engine_error'; message: string; errorCode?: string; errorCategory?: string; retryable?: boolean; retryAfterMs?: number; httpStatus?: number }
   | { type: 'engine_permission_request'; questionId: string; permToolName: string; permToolDescription?: string; permToolInput?: Record<string, unknown>; permOptions: Array<{ id: string; label: string; kind?: string }> }
   | { type: 'engine_plan_mode_changed'; planModeEnabled: boolean; planFilePath?: string; planSlug?: string }
+  // engine_oidc_login_url — delivered to the client that issued
+  // oidc_begin_login. Interactive PKCE carries oidcAuthorizationUrl (open
+  // it in a browser; the engine's loopback callback completes the
+  // exchange); device-code carries oidcUserCode + oidcVerificationUri
+  // (display them; the engine polls to completion).
+  | { type: 'engine_oidc_login_url'; oidcAuthorizationUrl?: string; oidcUserCode?: string; oidcVerificationUri?: string }
+  // engine_provider_login — one stage transition of a delegated-CLI login
+  // (codex/grok/cursor). Incremental: consumers render the current stage; a
+  // terminal completed/failed/cancelled stage ends the flow.
+  | { type: 'engine_provider_login'; providerLogin?: ProviderLoginUpdate }
+  // engine_oidc_identity — complete SNAPSHOT of the operator's OIDC
+  // identity state, broadcast on every login/logout transition and
+  // answered to oidc_identity queries. Consumers REPLACE their local
+  // identity view with the payload; claim fields are absent when signed
+  // out.
+  | { type: 'engine_oidc_identity'; oidcSignedIn: boolean; oidcProvider?: string; oidcSubject?: string; oidcUsername?: string; oidcDisplayName?: string }
   // engine_plan_file_written fires when a Write/Edit lands on the canonical
   // plan file during plan mode — the accurate trigger for the "plan created /
   // updated" conversation marker (the file now exists with content, so the
@@ -96,11 +136,18 @@ export type EngineEvent =
   // already part of the conversation. See
   // engine/internal/types/normalized_event.go (SteerInjectedEvent).
   | { type: 'engine_steer_injected'; steerMessageLength: number }
+  | { type: 'engine_prompt_injected'; injectedPrompt: string; injectedPromptOrigin?: string; injectedPromptKind?: string }
   // engine_run_stalled — advisory event emitted by the run-progress watchdog
   // when a run records no forward progress for longer than the configured
   // RunStall threshold. The authoritative completion signal is the follow-up
   // task_complete; this event is for observability only.
   | { type: 'engine_run_stalled'; runStalledDuration: number; runStalledLastActivity?: string }
+  // engine_task_suspended — a dispatched agent's LLM run ended without completing
+  // the dispatch (ctx.suspend() or ctx.suspendUntilAll() was called). The agent is
+  // parked waiting for child completions or a revive message. taskSuspendAwaitingCount
+  // is the number of pending children (0 for bare suspend). Clients may update the
+  // agent-state indicator to show suspended/idle. Task completion fires later on revival.
+  | { type: 'engine_task_suspended'; taskSuspendAwaitingCount?: number }
   // engine_model_fallback — workflow signal emitted by the engine when
   // it fell back to its configured defaultModel because the requested
   // model didn't resolve to a provider. Mirrors the underlying
@@ -111,6 +158,14 @@ export type EngineEvent =
   // rather than as a live RemoteEvent. See CLAUDE.md §
   // "The typed-event corollary" for the broader rule.
   | { type: 'engine_model_fallback'; fallbackRequestedModel: string; fallbackModel: string; fallbackReason: string }
+  // engine_capability_unsupported — workflow signal emitted when a requested
+  // feature (e.g. plan mode) is not supported by the backend that would serve
+  // the run; the engine declined the prompt cleanly instead of dispatching a
+  // run that would fail. No run starts and the session stays idle, so clients
+  // render a recoverable message (not a dead engine). Mirrors the underlying
+  // CapabilityUnsupportedEvent NormalizedEvent variant. See CLAUDE.md §
+  // "The typed-event corollary".
+  | { type: 'engine_capability_unsupported'; capability: string; capabilityBackend: string; capabilityReason: string }
   // Extended-thinking events (issue #158). Surface the model's reasoning
   // activity so consumers can distinguish active reasoning from a stall and
   // render a "thinking" view. Emitted only when the provider streams reasoning

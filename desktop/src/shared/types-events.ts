@@ -169,9 +169,9 @@ export type NormalizedEvent =
   | { type: 'tool_call'; toolName: string; toolId: string; index: number }
   | { type: 'tool_call_update'; toolId: string; partialInput: string }
   | { type: 'tool_call_complete'; index: number }
-  | { type: 'tool_result'; toolId: string; content: string; isError: boolean }
+  | { type: 'tool_result'; toolId: string; content: string; isError: boolean; images?: Array<{ path: string; mediaType: string; source?: string }> }
   | { type: 'task_update'; message: AssistantMessagePayload }
-  | { type: 'task_complete'; result: string; costUsd: number; durationMs: number; numTurns: number; usage: UsageData; sessionId: string; permissionDenials?: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> }
+  | { type: 'task_complete'; result: string; lastText?: string; costUsd: number; durationMs: number; numTurns: number; conversationTurns?: number; usage: UsageData; sessionId: string; permissionDenials?: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> }
   | { type: 'error'; message: string; isError: boolean; sessionId?: string; errorCode?: string; retryable?: boolean; retryAfterMs?: number; httpStatus?: number }
   | { type: 'session_dead'; exitCode: number | null; signal: string | null; stderrTail: string[] }
   | { type: 'rate_limit'; status: string; resetsAt: number; rateLimitType: string }
@@ -183,7 +183,18 @@ export type NormalizedEvent =
   | { type: 'compacting'; active: boolean; summary?: string; messagesBefore?: number; messagesAfter?: number; clearedBlocks?: number; strategy?: string; microOnly?: boolean }
   | { type: 'tool_stalled'; toolId: string; toolName: string; elapsed: number }
   | { type: 'steer_injected'; messageLength: number }
+  // Extension-injected prompt (engine ctx.sendPrompt): no client submitted
+  // this turn, so no client did an optimistic insert — the renderer appends
+  // it as a user message. The text is also persisted as the run's user turn,
+  // so a conversation reload shows the same content.
+  | { type: 'task_suspend'; awaitingDispatchIds?: string[] }
+  | { type: 'prompt_injected'; prompt: string; origin?: string; kind?: string }
   | { type: 'model_fallback'; requestedModel: string; fallbackModel: string; reason: string }
+  // capability_unsupported — a requested feature (e.g. plan mode) is not
+  // supported by the backend that would serve the run; the engine declined
+  // the prompt cleanly (no run started, session stays idle). Mirrors
+  // CapabilityUnsupportedEvent (engine/internal/types/normalized_event_capability.go).
+  | { type: 'capability_unsupported'; capability: string; backend: string; reason: string }
   | { type: 'run_stalled'; stalledDuration: number; lastActivity?: string }
   // Extended-thinking events (issue #158), normalized-stream layer. These are
   // the bare-name desktop-internal events the renderer consumes for PLAIN
@@ -201,7 +212,11 @@ export type NormalizedEvent =
   // Previously handled only by the raw engine_* stream; now first-class
   // NormalizedEvent variants so every conversation flows through the
   // single normalized reducer (handleNormalizedEvent in event-slice.ts).
-  | { type: 'message_end'; inputTokens?: number; outputTokens?: number; contextPercent?: number; cost?: number }
+  // entryId / userEntryId: canonical persisted entry ids of the assistant
+  // message this end closes and of the run-opening user turn. Consumers
+  // re-key their live rows to them so a later history load
+  // (SessionLoadMessage.id) dedups against the live rows.
+  | { type: 'message_end'; inputTokens?: number; outputTokens?: number; contextPercent?: number; cost?: number; entryId?: string; userEntryId?: string }
   | { type: 'agent_state'; agents: import('./types-engine').AgentStateUpdate[] }
   // status — desktop-internal per-session status snapshot. Emitted by the
   // control plane (engine-control-plane-events.ts handleStatusEvent) from every
@@ -213,7 +228,7 @@ export type NormalizedEvent =
   // renders nothing. Desktop-internal: no Go struct backing (StatusFields itself
   // is the synced shared type), so no contract-sync manifest entry.
   | { type: 'status'; fields: import('./types-engine').StatusFields }
-  | { type: 'harness_message'; message: string; dedupKey?: string; source?: string }
+  | { type: 'harness_message'; message: string; dedupKey?: string; dedupMode?: 'relocate'; source?: string }
   | { type: 'working_message'; message: string }
   | { type: 'notify'; message: string; level: string }
   | { type: 'dialog'; dialogId: string; method: string; title: string; options?: string[]; defaultValue?: string }
@@ -226,11 +241,17 @@ export type NormalizedEvent =
   | { type: 'extension_respawned'; extensionName: string; attemptNumber: number }
   | { type: 'extension_dead_permanent'; extensionName: string; attemptNumber: number }
   | { type: 'events_dropped'; count: number }
+  // image_content — a single image produced during a run, either returned by a
+  // tool (source 'tool', toolId set) or generated by the provider (source
+  // 'provider', toolId empty). Path is the on-disk file the engine saved under
+  // the conversation's images/ directory; the engine never sends base64 on the
+  // wire. Rendered inline and surfaced in the attachments panel.
+  | { type: 'image_content'; path: string; mediaType: string; source: string; toolId?: string }
   // Dispatch telemetry (n-tier nested dispatch). Emitted by the control plane
   // from engine_dispatch_start/end so the renderer can record dispatch depth
   // and parent linkage for tree rendering in the AgentPanel.
   | { type: 'dispatch_start'; dispatchAgent: string; dispatchTask: string; dispatchModel: string; dispatchSessionId: string; dispatchDepth: number; dispatchParentId: string; dispatchId: string }
-  | { type: 'dispatch_end'; dispatchAgent: string; dispatchExitCode: number; dispatchElapsed: number; dispatchCost: number; dispatchDepth: number; dispatchParentId: string; dispatchId: string; dispatchConversationId?: string }
+  | { type: 'dispatch_end'; dispatchAgent: string; dispatchExitCode: number; dispatchElapsed: number; dispatchCost: number; dispatchInputTokens?: number; dispatchOutputTokens?: number; dispatchToolCount?: number; dispatchDepth: number; dispatchParentId: string; dispatchId: string; dispatchConversationId?: string }
   // Cross-cutting events (WI-001): previously handled via raw IPC.ENGINE_EVENT,
   // now routed through the normalized stream so the renderer has a single
   // subscription. These are desktop-internal variants with no Go struct backing;
@@ -255,4 +276,4 @@ export type NormalizedEvent =
   // the first usage event. Desktop-internal: translated from the engine wire in
   // event-wiring.ts and stored on the active instance (event-slice.ts case
   // 'context_breakdown') so the Status Drawer can render it synchronously.
-  | { type: 'context_breakdown'; categories: import('./types-engine').ContextBreakdownCategory[]; contextWindow: number; totalTokens: number; apiReportedTotal?: number; unaccounted?: number; cacheReadTokens?: number; cacheCreationTokens?: number; model: string; aggregateCostUsd?: number }
+  | { type: 'context_breakdown'; categories: import('./types-engine').ContextBreakdownCategory[]; contextWindow: number; totalTokens: number; apiReportedTotal?: number; unaccounted?: number; cacheReadTokens?: number; cacheCreationTokens?: number; model: string; aggregateCostUsd?: number; modelBreakdown?: import('./types-engine').ModelBreakdown[] }

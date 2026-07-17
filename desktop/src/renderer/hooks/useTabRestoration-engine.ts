@@ -1,20 +1,26 @@
+// @file-size-exception: useTabRestoration-engine.ts owns buildPopulatedInstance,
+// hasPlanBeenImplemented, and the full engine-tab restore flow. Splitting would
+// require passing the legacy-marker filter across file boundaries; the file is
+// modestly over cap and will be refactored when the restore hook is next revised.
 import type { Message, AgentStateUpdate, ConversationInstance, ConversationRef } from '../../shared/types'
 import type { PersistedTab, PersistedConversationInstance } from '../../shared/types-persistence'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
-import { isExtensionErrorMessage } from '../stores/session-store-persistence'
 import { pendingCardOutcome } from '../../shared/pending-card'
 import { MAIN_INSTANCE_ID } from '../../shared/session-key'
 import { deriveLedger, ledgerIds } from '../../shared/session-ledger'
 import { resolveResumeSessionId } from './useTabRestoration-resume'
+import { mapPersistedMessages, filterRestorablePersistedMessages } from '../stores/persisted-message-map'
 import { restoredConversationStatus } from './useTabRestoration-status'
+import { reconcileRestoredImages } from './useTabRestoration-images'
+import { rDebug, rWarn, rError } from '../rendererLogger'
 
 /**
  * Return true if the persisted message list contains a completed-plan marker.
  *
  * A plan is considered completed when the scrollback includes an
- * "── Implementing plan at …" divider (written by runHandleImplement
- * in ConversationView-implement.ts when the user clicks Implement) OR the last
+ * "── Implementing plan at …" divider (written by implementPlan
+ * in implement-slice.ts when the user clicks Implement) OR the last
  * "── Plan created" divider is followed only by system messages, indicating
  * the model auto-exited and the approval card has not yet been actioned.
  *
@@ -256,11 +262,7 @@ export async function restoreConversationTab(
   const instances = st.conversationPane?.instances ?? []
 
   if (instances.length > 1) {
-    console.warn(
-      `[restore] WARNING: multi-instance tab reached renderer with ${instances.length} instances. ` +
-      `On-disk split migration may have been skipped. Splitting into ${instances.length} standalone ` +
-      `tabs in the renderer so no conversation history is dropped.`
-    )
+    rWarn('restore', 'multi-instance tab reached renderer, splitting', { tab_id: st.id?.slice(0, 8) ?? '', count: instances.length })
 
     // Split via the same helper the on-disk migration uses (preserves each
     // instance's title, conversationId, history, and per-instance state).
@@ -392,14 +394,7 @@ async function restoreSingleInstanceTab(
         // lazy-resolves on the first prompt instead. Logged as an error so the
         // condition is observable rather than silent (the underlying
         // persistence gap is fixed in serialize-conversation-pane.ts).
-        console.error(
-          `[restore] REFUSING sessionless engine start for ${key}: instance has ` +
-          `${inst.messageCount ?? inst.messages?.length ?? 0} persisted messages but no resolvable ` +
-          `conversationId (conversationIds=${inst.conversationIds?.length ?? 0} ` +
-          `st.conversationId=${st.conversationId ?? 'none'} ` +
-          `st.lastKnownSessionId=${st.lastKnownSessionId ?? 'none'}). ` +
-          `Skipping start to avoid orphaning history.`,
-        )
+        rError('restore', 'refusing sessionless engine start: instance has messages but no resolvable conversationId', { key, message_count: inst.messageCount ?? inst.messages?.length ?? 0, conversation_ids: inst.conversationIds?.length ?? 0, conversation_id: st.conversationId ?? '', last_known_session_id: st.lastKnownSessionId ?? '' })
         return tabId
       }
       // Seed the renderer tab's conversationId from the resolved id BEFORE the
@@ -425,12 +420,23 @@ async function restoreSingleInstanceTab(
           // existing plan instead of allocating a fresh slug on the next
           // prompt. Resolved via the same normalized-id seam as the gate.
           const restoredPlanPath = restoredPlanFilePath(pane)
-          console.log(`[restore] syncing plan mode to engine for ${key} planFilePath=${restoredPlanPath ?? '<none>'}`)
+          rDebug('restore', 'syncing plan mode to engine', { key, plan_file_path: restoredPlanPath ?? '' })
           window.ion.engineSetPlanMode(key, true, restoredPlanPath)
         }
       } catch (err: any) {
-        console.error(`[restore] engine start failed for ${key}: ${err?.message}`)
+        rError('restore', 'engine start failed', { key, error: err?.message })
       }
+
+      // Reconcile image attachments from the engine's authoritative history
+      // onto the restored scrollback. Extension-hosted tabs restore from the
+      // persisted desktop cache and never call load_session_history, so a
+      // cache written without attachments (anything predating the desktop's
+      // live image path) restores its tool rows with the inline images
+      // stripped. reconcileRestoredImages loads flattenEntries — the only
+      // reload path that re-derives image attachments from persisted image
+      // blocks — and merges them onto the matching tool rows. See
+      // useTabRestoration-images.ts.
+      await reconcileRestoredImages(tabId, key, inst.conversationIds ?? [], st.conversationId, instSessionId)
     }
   }
 
@@ -449,38 +455,14 @@ async function restoreSingleInstanceTab(
 export function buildPopulatedInstance(
   inst: PersistedConversationInstance,
   tabId: string,
-  st: PersistedTab,
+  _st: PersistedTab,
 ): ConversationRef & ConversationInstance {
-  // Filter extension error messages from persisted scrollback.
-  const saved = (inst.messages ?? []).filter(
-    (m) => !isExtensionErrorMessage({ role: m.role || '', content: m.content || '' }),
-  )
-  const restoredMessages: Message[] = saved.map((m) => ({
-    id: crypto.randomUUID(),
-    role: m.role as Message['role'],
-    content: m.content || '',
-    toolName: m.toolName,
-    toolId: m.toolId,
-    toolInput: m.toolInput,
-    toolStatus: m.toolStatus as Message['toolStatus'],
-    timestamp: m.timestamp,
-    dedupKey: m.dedupKey,
-    // Restore planFilePath on plan-lifecycle divider rows (Plan created /
-    // Plan updated / Implementing plan) so the slug stays clickable after a
-    // restart. The serializer persists it (serialize-conversation-pane.ts);
-    // dropping it here would leave the divider text intact but break the link.
-    planFilePath: m.planFilePath,
-    slashCommand: m.slashCommand,
-    slashArgs: m.slashArgs,
-    slashSource: m.slashSource,
-    // Seal all restored assistant messages so incoming engine_text_delta
-    // events do not append to historical content (Defect 3). Historical
-    // messages are definitionally complete; the engine writes to a new
-    // message bubble for the next turn. Without sealed=true the last
-    // assistant message absorbs the next turn's text, doubling both
-    // the historical content and the new response in the same bubble.
-    ...(m.role === 'assistant' ? { sealed: true } : {}),
-  }))
+  // Shared restore filter + mapper (also used by the lazy external-content
+  // load in loadSkeletonMessages): drops extension-error notices and legacy
+  // un-keyed bootstrap markers, seals assistant rows, preserves planFilePath /
+  // attachments / slash metadata. See persisted-message-map.ts.
+  const saved = filterRestorablePersistedMessages(inst.messages ?? [])
+  const restoredMessages: Message[] = mapPersistedMessages(saved)
 
   const agents = inst.agentStates
   const restoredAgents: AgentStateUpdate[] = (agents && agents.length > 0)
@@ -493,10 +475,10 @@ export function buildPopulatedInstance(
     : []
 
   if (inst.draftInput && inst.draftInput.length > 0) {
-    console.log(`[restore] engine draft for ${tabId.slice(0, 8)}:${inst.id.slice(0, 8)} len=${inst.draftInput.length}`)
+    rDebug('restore', 'engine draft', { tab_id: tabId.slice(0, 8), inst_id: inst.id.slice(0, 8), count: inst.draftInput.length })
   }
   if (inst.modelOverride) {
-    console.log(`[restore] engine model override for ${tabId.slice(0, 8)}:${inst.id.slice(0, 8)} model=${inst.modelOverride}`)
+    rDebug('restore', 'engine model override', { tab_id: tabId.slice(0, 8), inst_id: inst.id.slice(0, 8), model: inst.modelOverride })
   }
 
   // Resolve permission mode: use the instance-level value.
@@ -508,7 +490,7 @@ export function buildPopulatedInstance(
   let permMode: 'auto' | 'plan' = inst.permissionMode ?? 'auto'
 
   if (permMode === 'plan' && hasPlanBeenImplemented(inst.messages)) {
-    console.log(`[restore] plan mode cleared: tab=${tabId.slice(0, 8)} inst=${inst.id.slice(0, 8)} messages contain Implementing divider — plan already completed`)
+    rDebug('restore', 'plan mode cleared: already implemented', { tab_id: tabId.slice(0, 8), inst_id: inst.id.slice(0, 8) })
     permMode = 'auto'
   }
 
@@ -516,7 +498,7 @@ export function buildPopulatedInstance(
   let denied: { tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> } | null = null
   if (inst.permissionDenied?.tools && inst.permissionDenied.tools.length > 0) {
     denied = { tools: inst.permissionDenied.tools }
-    console.log(`[restore] engine denial for ${tabId.slice(0, 8)}:${inst.id.slice(0, 8)} tools=${inst.permissionDenied.tools.map((t) => t.toolName).join(',')}`)
+    rDebug('restore', 'engine denial', { tab_id: tabId.slice(0, 8), inst_id: inst.id.slice(0, 8), tools: inst.permissionDenied.tools.map((t) => t.toolName).join(',') })
   } else {
     // Synthesize from message history (the engine reconcile only re-emits
     // from in-memory state; on restart that's empty).
@@ -525,9 +507,9 @@ export function buildPopulatedInstance(
       const outcome = pendingCardOutcome(msgs)
       if (outcome.kind === 'found') {
         denied = { tools: [{ toolName: outcome.toolName, toolUseId: outcome.toolId || 'restored', toolInput: parseToolInput(outcome.toolInput) }] }
-        console.log(`[restore] engine denial synthesized for ${tabId.slice(0, 8)}:${inst.id.slice(0, 8)} tool=${outcome.toolName}`)
+        rDebug('restore', 'engine denial synthesized', { tab_id: tabId.slice(0, 8), inst_id: inst.id.slice(0, 8), tool: outcome.toolName })
       } else if (outcome.kind === 'suppressed-by-clear' || outcome.kind === 'suppressed-by-user') {
-        console.log(`[restore] engine denial suppressed for ${tabId.slice(0, 8)}:${inst.id.slice(0, 8)} reason=${outcome.kind}`)
+        rDebug('restore', 'engine denial suppressed', { tab_id: tabId.slice(0, 8), inst_id: inst.id.slice(0, 8), reason: outcome.kind })
       }
     }
   }
@@ -580,9 +562,32 @@ export function buildPopulatedInstance(
     // Restore persisted dispatch telemetry so telemetry-only children (and the
     // nesting depth derived from them) survive reload. Absent on pre-fix files.
     dispatchTelemetry: inst.dispatchTelemetry ? [...inst.dispatchTelemetry] : [],
-    forkedFromConversationIds: inst.forkedFromConversationIds ? [...inst.forkedFromConversationIds] : null,
     // Context breakdown is runtime-only: not persisted, populated from the first
     // engine_context_breakdown event after session resume. Initialize to null.
     contextBreakdown: null,
+    // Schema v4: an instance whose scrollback was externalized restores thin
+    // (messages absent) unless the main process eager-merged it (active tab).
+    // Mark it pending so loadSkeletonMessages pulls the content file AND the
+    // engine chain on first activation, merging both sources.
+    //
+    // The marker is set whenever hasExternalContent is true — INCLUDING when the
+    // main process eager-merged the content file into inst.messages (the
+    // boot-active tab). The eager merge only carries the content FILE's rows; a
+    // stale content file (written after a session recycle cleared the pane)
+    // misses the real conversation rows that only the engine chain has. The
+    // eager-merged rows still render instantly (view readiness); hydration then
+    // replaces them with the content+chain merge.
+    //
+    // historyHydrated MUST be set to false alongside externalContentStatus:'pending'.
+    // Without it, the legacy heuristic in needsHistoryHydration fires instead
+    // (historyHydrated===undefined → messages.length===0 && messageCount>0). A live
+    // bootstrap harness message arriving before the user opens the tab makes
+    // messages.length===1, so the legacy heuristic returns false and loadSkeletonMessages
+    // is never called — the real conversation rows are never loaded. The explicit
+    // false marker bypasses the heuristic: needsHistoryHydration(false) →
+    // instanceMessageCount(inst) > 0, which stays true regardless of live messages.
+    ...(inst.hasExternalContent
+      ? { externalContentStatus: 'pending' as const, historyHydrated: false as const }
+      : {}),
   }
 }

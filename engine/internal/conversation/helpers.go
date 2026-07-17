@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,21 +55,30 @@ func DiscoverContextFiles(cwd string, names []string) []ContextFile {
 	return results
 }
 
-// EncodeImage reads an image file and returns it as a base64 content block.
-func EncodeImage(filePath string) (*types.LlmContentBlock, error) {
-	supportedMime := map[string]string{
-		".jpg":  "image/jpeg",
-		".jpeg": "image/jpeg",
-		".png":  "image/png",
-		".webp": "image/webp",
-		".gif":  "image/gif",
-	}
+// supportedImageMime maps file extensions to MIME types for images the engine
+// supports as inline content blocks. Used both as a format-gate (reject unknown
+// extensions early) and as an allowlist for the content-sniff result.
+var supportedImageMime = map[string]string{
+	".jpg":  "image/jpeg",
+	".jpeg": "image/jpeg",
+	".png":  "image/png",
+	".webp": "image/webp",
+	".gif":  "image/gif",
+}
 
+// EncodeImage reads an image file and returns it as a base64 content block.
+//
+// The media_type is determined by sniffing the actual file bytes first (via
+// net/http.DetectContentType), falling back to the file extension only when
+// sniffing cannot identify the format. This prevents mismatches when a file's
+// extension disagrees with its true content type (e.g. a JPEG saved as .png),
+// which Anthropic's API detects and rejects with an invalid_request_error.
+func EncodeImage(filePath string) (*types.LlmContentBlock, error) {
 	ext := strings.ToLower(filepath.Ext(filePath))
-	mimeType, ok := supportedMime[ext]
+	extMime, ok := supportedImageMime[ext]
 	if !ok {
-		supported := make([]string, 0, len(supportedMime))
-		for k := range supportedMime {
+		supported := make([]string, 0, len(supportedImageMime))
+		for k := range supportedImageMime {
 			supported = append(supported, k)
 		}
 		return nil, fmt.Errorf("unsupported image format: %s. Supported: %s", ext, strings.Join(supported, ", "))
@@ -84,6 +94,27 @@ func EncodeImage(filePath string) (*types.LlmContentBlock, error) {
 		return nil, fmt.Errorf("image too large: %.1fMB (max 20MB)", float64(len(data))/(1024*1024))
 	}
 
+	// Sniff the actual content type from the first 512 bytes. This is the
+	// authoritative detection: Anthropic's API independently inspects the bytes
+	// and rejects a mismatched media_type declaration. Using the extension alone
+	// fails whenever a file is misnamed (JPEG saved as .png, WebP saved as
+	// .jpg, etc.). DetectContentType always returns a valid MIME type string —
+	// "application/octet-stream" when it cannot identify the format.
+	sniffLen := 512
+	if len(data) < sniffLen {
+		sniffLen = len(data)
+	}
+	sniffed := http.DetectContentType(data[:sniffLen])
+
+	// Use the sniffed type only if it is a format we actually support. An
+	// "application/octet-stream" result means the bytes were unrecognizable —
+	// fall back to the extension-derived type so tiny/truncated test fixtures
+	// (which DetectContentType cannot identify) still work.
+	mimeType := extMime
+	if _, supported := supportedImageMime[mimeTypeToExt(sniffed)]; supported {
+		mimeType = sniffed
+	}
+
 	block := types.LlmContentBlock{
 		Type: "image",
 		Source: &types.ImageSource{
@@ -93,6 +124,24 @@ func EncodeImage(filePath string) (*types.LlmContentBlock, error) {
 		},
 	}
 	return &block, nil
+}
+
+// mimeTypeToExt returns an extension (with leading dot) for a MIME type, used
+// to check whether a sniffed content type is in our supported set. Returns an
+// empty string for unknown types so the caller's map lookup fails gracefully.
+func mimeTypeToExt(mime string) string {
+	switch mime {
+	case "image/jpeg":
+		return ".jpg"
+	case "image/png":
+		return ".png"
+	case "image/webp":
+		return ".webp"
+	case "image/gif":
+		return ".gif"
+	default:
+		return ""
+	}
 }
 
 func asMessageData(data any) *MessageData {

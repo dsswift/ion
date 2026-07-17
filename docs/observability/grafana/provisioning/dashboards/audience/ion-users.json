@@ -1,0 +1,1018 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "description": "Ion users — who is using Ion and what is their footprint?",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "## Who is using Ion and what is their footprint?\n\nPer-user utilization over the telemetry stream: spend, runs, tool failures, permission denials, sandbox blocks, and secret containment — the product-intelligence and risk view of a single user. All panels honor the dashboard time picker.\n\n**Identity caveat.** The `user` field is populated when the engine has an identity to report (enterprise OIDC installs, or a configured operator identity). Telemetry without it groups under **unassigned** — type `unassigned` into the User variable to select exactly that population, and use the Install variable to split individual installs within it.\n\n| Related | Dashboard |\n|---|---|\n| Landing | [Ion Overview](/d/ion-overview) |\n| Hosts & installs | [Ion Fleet](/d/ion-fleet) |\n| Cost detail | [Ion Cost](/d/ion-cost) |\n| Trust detail | [Ion Trust](/d/ion-trust) |\n| Quality detail | [Ion Quality](/d/ion-quality) |"
+      },
+      "datasource": null
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Active users",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 5
+      },
+      "description": "Distinct user values seen in telemetry over the dashboard time range. Default installs without identity all count as the single \"unassigned\" bucket.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": []
+          },
+          "mappings": [],
+          "noValue": "telemetry off"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "count(sum by (user) (count_over_time({service_name=\"ion-telemetry\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" [$__range])))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "accumulation"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Spend",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 5
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 4,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": []
+          },
+          "mappings": [],
+          "links": [
+            {
+              "title": "Ion Cost",
+              "url": "/d/ion-cost"
+            }
+          ],
+          "noValue": "telemetry off"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" | unwrap payload_run_cost_usd [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "accumulation"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Runs",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 5
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": []
+          },
+          "mappings": [],
+          "links": [
+            {
+              "title": "Ion Cost",
+              "url": "/d/ion-cost"
+            }
+          ],
+          "noValue": "telemetry off"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum (count_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "accumulation"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Tool failures",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 5
+      },
+      "description": "tool.execute events carrying a non-empty payload_error for the selected user(s).",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "mappings": [],
+          "links": [
+            {
+              "title": "Ion Quality",
+              "url": "/d/ion-quality"
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum (count_over_time({service_name=\"ion-telemetry\", kind=\"tool.execute\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" | payload_error!=\"\" [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "accumulation"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Denials",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 5
+      },
+      "description": "Denied permission checks for the selected user(s). Denials are the safety mechanism working; watch the trend, not the count.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "orange"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": []
+          },
+          "mappings": [],
+          "links": [
+            {
+              "title": "Ion Trust",
+              "url": "/d/ion-trust"
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum (count_over_time({service_name=\"ion-telemetry\", kind=\"permission.decision\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" | payload_decision=\"deny\" [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "accumulation"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Sandbox blocks",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 5
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "mappings": [],
+          "links": [
+            {
+              "title": "Ion Trust",
+              "url": "/d/ion-trust"
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum (count_over_time({service_name=\"ion-telemetry\", kind=\"sandbox.block\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "accumulation"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Footprint by user",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 8,
+      "type": "bargauge",
+      "title": "Spend by user",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 10
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 4
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ]
+        },
+        "displayMode": "gradient",
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (user) (sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" | unwrap payload_run_cost_usd [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "{{user}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "bargauge",
+      "title": "Autonomy ratio by user",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 12,
+        "y": 10
+      },
+      "description": "Fraction of permission checks resolving to allow, per user. A user with a falling ratio is asking for more than the rule set absorbs.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.5
+              },
+              {
+                "color": "green",
+                "value": 0.8
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "displayMode": "gradient",
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (user) (count_over_time({service_name=\"ion-telemetry\", kind=\"permission.decision\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" | payload_decision=\"allow\" [$__range])) / sum by (user) (count_over_time({service_name=\"ion-telemetry\", kind=\"permission.decision\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "{{user}}"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Secrets contained",
+      "gridPos": {
+        "h": 8,
+        "w": 4,
+        "x": 20,
+        "y": 10
+      },
+      "description": "Secret matches redacted before leaving the engine, for the selected user(s). Each is one near-miss.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "mappings": [],
+          "links": [
+            {
+              "title": "Ion Trust",
+              "url": "/d/ion-trust"
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum (sum_over_time({service_name=\"ion-telemetry\", kind=\"secret.containment\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" | unwrap payload_match_count [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "accumulation"
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "type": "row",
+      "title": "What they use",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "Model mix by user (spend)",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 19
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "footer": {
+          "show": false
+        },
+        "sortBy": [
+          {
+            "displayName": "Spend",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "user": "User",
+              "payload_model": "Model",
+              "Value": "Spend"
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (user, payload_model) (sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" | unwrap payload_run_cost_usd [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "{{user}} / {{payload_model}}"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Extensions used",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 19
+      },
+      "description": "run.complete counts grouped by user and hosting extension. Runs without an extension group as 'unattributed'.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "footer": {
+          "show": false
+        },
+        "sortBy": [
+          {
+            "displayName": "Runs",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "user": "User",
+              "context_extension": "Extension",
+              "Value": "Runs"
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (user, context_extension) (count_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" | label_format context_extension=`{{if .context_extension}}{{.context_extension}}{{else}}unattributed{{end}}` [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "{{user}} / {{context_extension}}"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "Tool failure leaderboard",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 19
+      },
+      "description": "tool.execute failures grouped by user and tool. The user/tool pair with the highest count is the one most likely stuck in a loop.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "footer": {
+          "show": false
+        },
+        "sortBy": [
+          {
+            "displayName": "Failures",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "user": "User",
+              "payload_tool": "Tool",
+              "Value": "Failures"
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (user, payload_tool) (count_over_time({service_name=\"ion-telemetry\", kind=\"tool.execute\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" | payload_error!=\"\" [$__range]))",
+          "queryType": "instant",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "{{user}} / {{payload_tool}}"
+        }
+      ]
+    },
+    {
+      "id": 40,
+      "type": "row",
+      "title": "Over time",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 27
+      },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Activity over time by user",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 28
+      },
+      "description": "All telemetry events per interval, grouped by user — the utilization pulse.",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (user) (count_over_time({service_name=\"ion-telemetry\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" [$__interval]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "{{user}}"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Spend over time by user",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 28
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "maxDataPoints": 2000,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (user) (sum_over_time({service_name=\"ion-telemetry\", kind=\"run.complete\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" | unwrap payload_run_cost_usd [$__interval]))",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "accumulation",
+          "legendFormat": "{{user}}"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "logs",
+      "title": "Recent denials",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 36
+      },
+      "description": "The engine's verbatim record of denied tool calls for the selected user(s).",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service_name=\"ion-telemetry\", kind=\"permission.decision\"} | json | label_format user=`{{if .user}}{{.user}}{{else}}unassigned{{end}}` | user=~\"$user\" | install_id=~\"$install\" | payload_decision=\"deny\"",
+          "queryType": "range",
+          "refId": "A",
+          "__ionClass": "instant"
+        }
+      ]
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "tags": [
+    "ion",
+    "users",
+    "audience"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "user",
+        "label": "User",
+        "type": "textbox",
+        "description": "User identity to scope panels. Accepts regex. `unassigned` selects default installs without an identity. Default matches all.",
+        "query": ".*",
+        "current": {
+          "value": ".*"
+        },
+        "hide": 0
+      },
+      {
+        "name": "install",
+        "label": "Install",
+        "type": "textbox",
+        "description": "install_id to scope panels — the secondary identity that splits individuals within the unassigned bucket. Accepts regex. Default matches all.",
+        "query": ".*",
+        "current": {
+          "value": ".*"
+        },
+        "hide": 0
+      }
+    ]
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Ion Users",
+  "uid": "ion-users",
+  "version": 1
+}

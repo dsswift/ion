@@ -1,0 +1,42 @@
+{
+  "id": "spec-glasses",
+  "name": "Spec Glasses",
+  "roles": [
+    "specialist"
+  ],
+  "tintable": true,
+  "animations": {
+    "idle": {
+      "file": "idle.png",
+      "frames": 1
+    },
+    "walk-down": {
+      "file": "walk-down.png",
+      "frames": 4
+    },
+    "walk-up": {
+      "file": "walk-up.png",
+      "frames": 4
+    },
+    "walk-right": {
+      "file": "walk-right.png",
+      "frames": 4
+    },
+    "typing": {
+      "file": "typing.png",
+      "frames": 2
+    },
+    "reading": {
+      "file": "reading.png",
+      "frames": 2
+    },
+    "stretch": {
+      "file": "stretch.png",
+      "frames": 2
+    },
+    "slump": {
+      "file": "slump.png",
+      "frames": 1
+    }
+  }
+}

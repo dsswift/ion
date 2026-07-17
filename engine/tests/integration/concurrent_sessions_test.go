@@ -69,9 +69,9 @@ func TestApiBackend_ConcurrentSessionsNoInterlace(t *testing.T) {
 			Description: "session-specific external tool",
 			InputSchema: map[string]any{"type": "object"},
 		}
-		mcpRouter := func(_ context.Context, name string, _ map[string]interface{}) (string, bool, error) {
+		mcpRouter := func(_ context.Context, name string, _ map[string]interface{}) (*types.ToolResult, error) {
 			addRecord("router-call", "router-"+name, tag)
-			return "router-" + tag, false, nil
+			return &types.ToolResult{Content: "router-" + tag}, nil
 		}
 		return &backend.RunConfig{
 			PermEngine:    permEng,
@@ -249,4 +249,3 @@ func waitWithTimeout(wg *sync.WaitGroup, d time.Duration) bool {
 		return false
 	}
 }
-

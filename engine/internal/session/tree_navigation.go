@@ -80,7 +80,7 @@ func (m *Manager) ForkSession(key string, messageIndex int) (string, error) {
 	m.mu.Unlock()
 
 	if err := conversation.Save(forked, ""); err != nil {
-		utils.Log("Session", "failed to save forked conversation: "+err.Error())
+		utils.LogWithFields(utils.LevelInfo, "session", "failed to save forked conversation", map[string]any{"error": err.Error()})
 	}
 
 	// Fire session_fork hook after the fork succeeds.
@@ -120,9 +120,46 @@ func (m *Manager) BranchSession(key, entryID string) error {
 	}
 
 	if _, err := conversation.Branch(conv, entryID); err != nil {
-		utils.Log("Session", "branch failed: "+err.Error())
-		return nil
+		utils.LogWithFields(utils.LevelInfo, "session", "branch failed", map[string]any{"run_id": sessionID, "entry_id": entryID, "error": err.Error()})
+		return fmt.Errorf("branch failed: %w", err)
 	}
+	return conversation.Save(conv, "")
+}
+
+// BranchSessionBefore moves the conversation leaf to the PARENT of the given
+// entry — the tree-native rewind. A consumer rewinding "to before user turn
+// X" calls this so the next prompt becomes X's sibling on a fresh branch
+// (replacing it on the active path) instead of chaining after the old leaf
+// and duplicating the turn. Errors are returned to the caller — unlike
+// BranchSession's historical swallow — because a rewind that silently fails
+// leaves the duplicate-append behavior in place.
+func (m *Manager) BranchSessionBefore(key, entryID string) error {
+	m.mu.RLock()
+	s, ok := m.sessions[key]
+	if !ok {
+		m.mu.RUnlock()
+		return fmt.Errorf("session %q not found", key)
+	}
+	sessionID := s.conversationID
+	m.mu.RUnlock()
+
+	if sessionID == "" {
+		return fmt.Errorf("session %q has no conversation", key)
+	}
+
+	conv, err := conversation.Load(sessionID, "")
+	if err != nil {
+		if errors.Is(err, conversation.ErrNotFound) {
+			return fmt.Errorf("session %q has no conversation", key)
+		}
+		return fmt.Errorf("failed to load conversation: %w", err)
+	}
+
+	if _, err := conversation.BranchBefore(conv, entryID); err != nil {
+		utils.LogWithFields(utils.LevelInfo, "session", "branch before failed", map[string]any{"run_id": sessionID, "error": err.Error()})
+		return err
+	}
+	utils.LogWithFields(utils.LevelInfo, "session", "branch before: leaf moved to parent", map[string]any{"run_id": sessionID, "count": len(conv.Messages)})
 	return conversation.Save(conv, "")
 }
 

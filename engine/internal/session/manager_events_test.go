@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/session/agents"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -169,7 +170,7 @@ func TestHandleNormalizedEvent_TaskComplete(t *testing.T) {
 	statusEvents := ec.byType("engine_status")
 	found := false
 	for _, e := range statusEvents {
-		if e.event.Fields != nil && e.event.Fields.TotalCostUsd == 0.05 {
+		if e.event.Fields != nil && e.event.Fields.RunCostUsd == 0.05 {
 			found = true
 			break
 		}
@@ -349,16 +350,35 @@ func TestHandleRunExit_ClearsRequestID(t *testing.T) {
 	}
 }
 
-// TestHandleRunExit_CapturesBackendSessionIDIntoCliSessionID verifies the
-// corrected two-identity-space contract: the backend-reported sessionID
-// (claude's UUID for the CLI backend) is captured into cliSessionID and fed
-// to --resume via CliResumeSessionID on the next run, while Ion's
-// conversationID (the durable conversation-file identity) is NEVER
-// overwritten. Previously this test asserted the (defective) behavior of
-// overwriting conversationID with the backend value; that conflated the two
-// identity spaces and corrupted Ion-side file lookups for CLI sessions.
-func TestHandleRunExit_CapturesBackendSessionIDIntoCliSessionID(t *testing.T) {
-	mb := newMockBackend()
+// cliCapsMockBackend is a mockBackend whose descriptor reports a
+// native-session, resume-capable CLI backend, so the full dispatch → exit →
+// capture → resume pipeline runs against the mock exactly as it would
+// against claude-code.
+type cliCapsMockBackend struct{ *mockBackend }
+
+func (m *cliCapsMockBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:             "claude-code",
+		ContextModel:     backend.ContextModelNativeSession,
+		PlanMode:         true,
+		Steering:         true,
+		Resume:           true,
+		ResumeHandleKind: backend.ResumeHandleClaudeSessionUUID,
+	}
+}
+
+// TestHandleRunExit_CapturesBackendSessionIDIntoCursor verifies the
+// corrected two-identity-space contract end to end through SendPrompt: the
+// backend-reported sessionID (claude's UUID for the CLI backend) is captured
+// as the per-kind native-session cursor and fed to --resume via
+// CliResumeSessionID on the next run, while Ion's conversationID (the
+// durable conversation-file identity) is NEVER overwritten. Previously this
+// test asserted the (defective) behavior of overwriting conversationID with
+// the backend value; that conflated the two identity spaces and corrupted
+// Ion-side file lookups for CLI sessions.
+func TestHandleRunExit_CapturesBackendSessionIDIntoCursor(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	mb := &cliCapsMockBackend{newMockBackend()}
 	mgr := NewManager(mb)
 
 	_, _ = mgr.StartSession("sessid", defaultConfig())
@@ -377,16 +397,16 @@ func TestHandleRunExit_CapturesBackendSessionIDIntoCliSessionID(t *testing.T) {
 	code := 0
 	mb.emitExit(keys[0], &code, nil, "session-abc")
 
-	// After exit, cliSessionID holds the backend value and conversationID is
-	// unchanged (still the Ion id).
+	// After exit, the cursor holds the backend value (keyed by the serving
+	// backend kind) and conversationID is unchanged (still the Ion id).
 	mgr.mu.RLock()
 	s := mgr.sessions["sessid"]
-	gotCli := s.cliSessionID
+	cursor, hasCursor := s.nativeSessions["claude-code"]
 	gotConv := s.conversationID
 	mgr.mu.RUnlock()
 
-	if gotCli != "session-abc" {
-		t.Errorf("expected cliSessionID='session-abc', got %q", gotCli)
+	if !hasCursor || cursor.Cursor != "session-abc" {
+		t.Errorf("expected nativeSessions[claude-code].Cursor='session-abc', got %q (present=%v)", cursor.Cursor, hasCursor)
 	}
 	if gotConv != ionConvID {
 		t.Errorf("conversationID must be unchanged: got %q, want %q", gotConv, ionConvID)
@@ -405,8 +425,8 @@ func TestHandleRunExit_CapturesBackendSessionIDIntoCliSessionID(t *testing.T) {
 			if opts.CliResumeSessionID != "session-abc" {
 				t.Errorf("expected CliResumeSessionID 'session-abc', got %q", opts.CliResumeSessionID)
 			}
-			if opts.SessionID != ionConvID {
-				t.Errorf("expected SessionID %q (Ion id), got %q", ionConvID, opts.SessionID)
+			if opts.ConversationID != ionConvID {
+				t.Errorf("expected ConversationID %q (Ion id), got %q", ionConvID, opts.ConversationID)
 			}
 			return
 		}
@@ -715,6 +735,29 @@ func TestTranslateToEngineEvent_AllTypes(t *testing.T) {
 				t.Errorf("expected type %q, got %q", tt.wantType, result.Type)
 			}
 		})
+	}
+}
+
+func TestTranslateToEngineEvent_UsageEntryIDs(t *testing.T) {
+	// The pre-minted assistant entry id and the run-opening user entry id
+	// must survive translation into engine_message_end — consumers re-key
+	// live rows to them (see UsageEvent.EntryID / UserEntryID).
+	result := translateToEngineEvent(types.NormalizedEvent{Data: &types.UsageEvent{
+		Usage:       types.UsageData{InputTokens: intPtr(100), OutputTokens: intPtr(50)},
+		EntryID:     "aabbccdd",
+		UserEntryID: "11223344",
+	}}, 200000)
+	if result.Type != "engine_message_end" {
+		t.Fatalf("expected engine_message_end, got %q", result.Type)
+	}
+	if result.EndUsage == nil {
+		t.Fatal("EndUsage is nil")
+	}
+	if result.EndUsage.EntryID != "aabbccdd" {
+		t.Errorf("EntryID = %q, want aabbccdd", result.EndUsage.EntryID)
+	}
+	if result.EndUsage.UserEntryID != "11223344" {
+		t.Errorf("UserEntryID = %q, want 11223344", result.EndUsage.UserEntryID)
 	}
 }
 

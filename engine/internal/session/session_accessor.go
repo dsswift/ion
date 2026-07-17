@@ -8,8 +8,10 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/modelconfig"
+	"github.com/dsswift/ion/engine/internal/plugins"
 	"github.com/dsswift/ion/engine/internal/permissions"
 	"github.com/dsswift/ion/engine/internal/resource"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -31,6 +33,8 @@ type sessionAccessor struct {
 
 func (a *sessionAccessor) SessionKey() string       { return a.key }
 func (a *sessionAccessor) ConversationID() string   { return a.s.conversationID }
+func (a *sessionAccessor) ExtensionName() string    { return a.s.extensionName }
+func (a *sessionAccessor) ExtensionVersion() string { return a.s.extensionVersion }
 func (a *sessionAccessor) WorkingDirectory() string { return a.s.config.WorkingDirectory }
 
 func (a *sessionAccessor) Emit(ev types.EngineEvent) { a.m.emit(a.key, ev) }
@@ -45,11 +49,44 @@ func (a *sessionAccessor) SendAbort() { a.m.SendAbort(a.key) }
 func (a *sessionAccessor) RootContext() context.Context { return a.s.rootContext() }
 
 func (a *sessionAccessor) SendPrompt(text string, model string, bashAllowlistAdditions []string) error {
+	return a.SendPromptWithKind(text, model, bashAllowlistAdditions, "")
+}
+
+// SendPromptWithKind is the Kind-aware variant of SendPrompt. The Kind field
+// propagates into PromptInjectedEvent.Kind and the wire field
+// InjectedPromptKind so clients can classify injections and suppress
+// rendering of machine-to-machine signals (e.g. agent completion callbacks).
+// After queuing the prompt, it also signals any suspended dispatch on this
+// session that is waiting for a bare revive (no pending children) so the
+// dispatch's LLM run restarts with the new conversation context.
+func (a *sessionAccessor) SendPromptWithKind(text string, model string, bashAllowlistAdditions []string, kind string) error {
 	overrides := buildPromptOverrides(model, bashAllowlistAdditions)
 	if len(bashAllowlistAdditions) > 0 {
-		utils.Info("PlanMode", fmt.Sprintf("sessionAccessor.SendPrompt: key=%s threading %d bash-allowlist additions for this prompt: %v", a.key, len(bashAllowlistAdditions), bashAllowlistAdditions))
+		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sessionaccessor.sendprompt: threading bash-allowlist additions for this prompt", map[string]any{"key": a.key, "count": len(bashAllowlistAdditions), "bash_allowlist_additions": bashAllowlistAdditions})
 	}
-	return a.m.SendPrompt(a.key, text, overrides)
+	if err := a.m.SendPrompt(a.key, text, overrides); err != nil {
+		return err
+	}
+	// Extension-initiated prompt (ctx.sendPrompt / steerSelf fallback):
+	// surface the injected turn to live clients. Client wire prompts never
+	// route through this accessor. See emitPromptInjected.
+	a.m.emitPromptInjected(a.key, text, kind)
+
+	// Signal any suspended dispatch on this session so its LLM run revives
+	// with the new conversation context. The new user turn is already
+	// persisted (m.SendPrompt saved it); runChild loops and calls startChild
+	// which loads the updated conversation. Only bare-suspend dispatches
+	// (PendingChildren==nil) revive from a sendPrompt; fan-out suspends
+	// (PendingChildren non-nil) revive only when all children complete.
+	a.m.mu.RLock()
+	s, ok := a.m.sessions[a.key]
+	var registry = s.dispatchRegistry
+	a.m.mu.RUnlock()
+	if ok && registry != nil {
+		registry.SignalReviveForSession(a.key)
+	}
+
+	return nil
 }
 
 // SteerSelfMainLoop steers this session's own main run loop (depth-0 /
@@ -60,10 +97,7 @@ func (a *sessionAccessor) SendPrompt(text string, model string, bashAllowlistAdd
 // delivered as a fresh prompt on the idle session.
 func (a *sessionAccessor) SteerSelfMainLoop(message string) bool {
 	outcome := a.m.SteerAgent(a.key, "", message)
-	utils.Info("Session", fmt.Sprintf(
-		"sessionAccessor.SteerSelfMainLoop: key=%s msgLen=%d outcome=%s delivered=%t",
-		a.key, len(message), outcome, outcome.Delivered(),
-	))
+	utils.LogWithFields(utils.LevelInfo, "session", "sessionaccessor.steerselfmainloop", map[string]any{"session_id": a.key, "count": len(message), "outcome": outcome, "delivered": outcome.Delivered()})
 	return outcome.Delivered()
 }
 
@@ -116,6 +150,22 @@ func (a *sessionAccessor) ProcRegistry() *extension.ProcessRegistry { return a.s
 
 func (a *sessionAccessor) NewChildBackend() backend.RunBackend { return a.m.newChildBackend() }
 
+// AllocatePlanFilePath mints a fresh, non-colliding plan-file path for a
+// dispatched child run whose plan mode was requested without an explicit path.
+// It mirrors the root-path allocation in RequestPlanModeEnter (plan_mode.go)
+// and SendPrompt (prompt_dispatch.go): both call allocateNewPlanFilePath with
+// the manager's backend and the session working directory so the plans
+// directory (project-relative for CLI/Hybrid, ~/.ion/plans for API) and the
+// slug are chosen identically. The dispatch path (extcontext) cannot call the
+// package-session allocator directly — session imports extcontext, not the
+// reverse — so this accessor method is the sanctioned bridge across the
+// package boundary. Using a.m.backend (not the child backend) is correct: the
+// child backend from newChildBackend is always the same kind as the parent,
+// so the directory choice is identical either way.
+func (a *sessionAccessor) AllocatePlanFilePath() string {
+	return allocateNewPlanFilePath(a.m.backend, a.s.config.WorkingDirectory)
+}
+
 // BumpParentProgress refreshes the parent run's run-progress watchdog clock
 // for this session's active run. Delegates to the Manager, which resolves the
 // parent backend and the session's current requestID. No-op when the session
@@ -131,6 +181,28 @@ func (a *sessionAccessor) EmitDispatchCountStatus(reason string) {
 }
 
 func (a *sessionAccessor) EngineConfig() *types.EngineRuntimeConfig { return a.m.config }
+
+// ClaudeCompat reports the session's Claude-compatibility setting, sourced from
+// the session-level EngineConfig (a.s.config.ClaudeCompat) rather than the
+// machine-wide EngineRuntimeConfig. The dispatch path threads it into the child
+// RunOptions and the context-policy cascade.
+func (a *sessionAccessor) ClaudeCompat() bool { return a.s.config.ClaudeCompat }
+
+// GetDispatchContextDefaults returns the session-level default context policy
+// (level 3 of the dispatch context cascade). It delegates to the first
+// extension Host that has one set via ctx.setDispatchContextDefaults; returns
+// nil when no extension configured a default.
+func (a *sessionAccessor) GetDispatchContextDefaults() *extension.ContextPolicy {
+	if a.s.extGroup == nil {
+		return nil
+	}
+	for _, h := range a.s.extGroup.Hosts() {
+		if p := h.GetDispatchContextDefaults(); p != nil {
+			return p
+		}
+	}
+	return nil
+}
 
 func (a *sessionAccessor) ResolveTier(name string) string { return modelconfig.ResolveTier(name) }
 
@@ -163,7 +235,7 @@ func (a *sessionAccessor) SearchHistory(query string, maxResults int) []extensio
 	}
 	// resolvedBackend resolves to the inner *ApiBackend for hybrid (when the
 	// last dispatched model was non-Anthropic) or returns m.backend as-is
-	// for plain ApiBackend. CLI-routed hybrid runs and plain CliBackend
+	// for plain ApiBackend. CLI-routed hybrid runs and plain ClaudeCodeBackend
 	// return nil here — SearchHistory only operates on the API backend's
 	// in-process conversation buffer.
 	apiBackend, ok := a.m.resolvedBackend(lastModel).(*backend.ApiBackend)
@@ -244,9 +316,13 @@ func (a *sessionAccessor) UpdateAgentStateByID(id string, updater func(*types.Ag
 	a.s.agents.UpdateStateByID(id, updater)
 }
 
+func (a *sessionAccessor) UpsertAgentStateByID(id string, seed types.AgentStateUpdate, updater func(*types.AgentStateUpdate)) {
+	a.s.agents.UpsertStateByID(id, seed, updater)
+}
+
 func (a *sessionAccessor) EmitAgentSnapshot(reason string) {
 	snapshot := a.s.agents.MergedSnapshot()
-	utils.Log("Session", fmt.Sprintf("agent_snapshot_emitted key=%s count=%d reason=%s", a.key, len(snapshot), reason))
+	utils.LogWithFields(utils.LevelInfo, "session", "agent_snapshot_emitted", map[string]any{"key": a.key, "count": len(snapshot), "reason": reason})
 	a.m.emit(a.key, types.EngineEvent{Type: "engine_agent_state", Agents: snapshot})
 }
 
@@ -280,11 +356,11 @@ func (a *sessionAccessor) BroadcastNotification(opts types.NotifyOpts) {
 		_, exists := a.m.sessions[targetKey]
 		a.m.mu.RUnlock()
 		if exists {
-			utils.Log("session", fmt.Sprintf("BroadcastNotification: routing to target session key=%s (from %s)", targetKey, a.key))
+			utils.LogWithFields(utils.LevelInfo, "session", "broadcastnotification: routing to target session (from )", map[string]any{"target_key": targetKey, "key": a.key})
 			a.m.emit(targetKey, ev)
 			return
 		}
-		utils.Warn("session", fmt.Sprintf("BroadcastNotification: target session %q not found, falling back to caller %s", targetKey, a.key))
+		utils.LogWithFields(utils.LevelWarn, "session", "broadcastnotification: target session not found, falling back to caller", map[string]any{"target_key": targetKey, "key": a.key})
 	}
 
 	a.m.emit(a.key, ev)
@@ -311,11 +387,11 @@ func (a *sessionAccessor) BroadcastIntercept(opts extension.InterceptOpts) {
 		_, exists := a.m.sessions[targetKey]
 		a.m.mu.RUnlock()
 		if exists {
-			utils.Log("session", fmt.Sprintf("BroadcastIntercept: routing to target session key=%s (from %s)", targetKey, a.key))
+			utils.LogWithFields(utils.LevelInfo, "session", "broadcastintercept: routing to target session (from )", map[string]any{"target_key": targetKey, "key": a.key})
 			a.m.emit(targetKey, ev)
 			return
 		}
-		utils.Warn("session", fmt.Sprintf("BroadcastIntercept: target session %q not found, falling back to caller %s", targetKey, a.key))
+		utils.LogWithFields(utils.LevelWarn, "session", "broadcastintercept: target session not found, falling back to caller", map[string]any{"target_key": targetKey, "key": a.key})
 	}
 
 	a.m.emit(a.key, ev)
@@ -370,12 +446,22 @@ func (a *sessionAccessor) SendToSession(senderKey, targetKey, kind string, paylo
 	ctx := a.m.newExtContext(targetSession, targetKey)
 	for _, h := range targetSession.extGroup.Hosts() {
 		if err := h.SDK().FireSessionMessage(ctx, info); err != nil {
-			utils.Log("session", fmt.Sprintf("SendToSession: hook fire failed sender=%s target=%s kind=%s err=%v", senderKey, targetKey, kind, err))
+			utils.LogWithFields(utils.LevelInfo, "session", "sendtosession: hook fire failed", map[string]any{"sender_key": senderKey, "target_key": targetKey, "kind": kind, "error": err})
 		}
 	}
 
-	utils.Log("session", fmt.Sprintf("SendToSession: delivered sender=%s target=%s kind=%s", senderKey, targetKey, kind))
+	utils.LogWithFields(utils.LevelInfo, "session", "sendtosession: delivered", map[string]any{"sender_key": senderKey, "target_key": targetKey, "kind": kind})
 	return nil
+}
+
+// FireSchedule triggers an immediate fire of the named schedule job.
+func (a *sessionAccessor) FireSchedule(sessionKey, jobID string) error {
+	return a.m.fireScheduleForSession(sessionKey, jobID)
+}
+
+// GetScheduleStatus returns status entries for registered schedule jobs.
+func (a *sessionAccessor) GetScheduleStatus(sessionKey, jobID string) ([]extension.ScheduleStatusEntry, error) {
+	return a.m.scheduleStatusForSession(sessionKey, jobID)
 }
 
 // RunOnceCheck delegates to the Manager's runOnce registry, scoped to this
@@ -388,4 +474,43 @@ func (a *sessionAccessor) RunOnceCheck(operationID string, debounceMs int64) (bo
 // RunOnceComplete delegates to the Manager's runOnce registry.
 func (a *sessionAccessor) RunOnceComplete(operationID string, failed bool) {
 	a.m.RunOnceComplete(a.key, operationID, failed)
+}
+
+// Telemetry returns the session's telemetry collector (nil when telemetry is
+// disabled). Used by the dispatch path to emit dispatch.agent spans (family 4b).
+func (a *sessionAccessor) Telemetry() *telemetry.Collector {
+	return a.s.telemetry
+}
+
+// PluginSessionMessages returns the pre-built <system-reminder> user messages
+// from installed plugins' SessionStart hooks. These are set once at session
+// start and prepended to the provider message slice on every turn (including
+// dispatched child runs) so plugin instructions have full conversational
+// attention weight regardless of system prompt length.
+func (a *sessionAccessor) PluginSessionMessages() []types.LlmMessage {
+	return a.s.pluginSessionMessages
+}
+
+// PluginTurnMessages fires all installed plugins' UserPromptSubmit hooks with
+// the given prompt (passed via stdin as Claude Code JSON protocol) and returns
+// the resulting <system-reminder>-wrapped user messages. Called per turn by the
+// dispatch path to produce per-turn plugin reinforcement for dispatched agents.
+func (a *sessionAccessor) PluginTurnMessages(prompt string) []types.LlmMessage {
+	if len(a.s.pluginUserPromptHooks) == 0 {
+		return nil
+	}
+	stdinPayload := buildPromptStdinPayload(prompt)
+	var msgs []types.LlmMessage
+	for _, cmd := range a.s.pluginUserPromptHooks {
+		out, err := plugins.RunHookCommandWithStdin(cmd.Entry, cmd.PluginRoot, nil, stdinPayload)
+		if err == nil {
+			if ctx := plugins.ParseHookOutput(out); ctx != "" {
+				msgs = append(msgs, types.LlmMessage{
+					Role:    "user",
+					Content: wrapInSystemReminder("UserPromptSubmit hook additional context: " + ctx),
+				})
+			}
+		}
+	}
+	return msgs
 }

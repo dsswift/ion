@@ -1,7 +1,6 @@
 package session
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -15,9 +14,19 @@ import (
 // workspace_file_changed watcher skips when EngineConfig.WorkspaceWatchIgnore
 // is empty. The list targets the directories most repos generate large
 // amounts of churn in (.git, node_modules, build outputs, virtualenvs) so
-// the watcher does not exhaust inotify descriptors on Linux or burn CPU on
-// macOS FSEvents storms during npm install / cargo build / etc. Editor swap
-// and tmp files round out the list because they are universally noisy.
+// the watcher does not exhaust inotify descriptors on Linux or file
+// descriptors on macOS (kqueue opens an fd per file in every watched
+// directory). Editor swap and tmp files round out the list because they are
+// universally noisy.
+//
+// Every pattern carries the `**/` prefix so it matches AT ANY DEPTH, not just
+// at the watcher root. doublestar's `**/` matches zero or more path segments,
+// so `**/node_modules/**` matches both a root-level `node_modules/x` and a
+// nested `desktop/node_modules/x`. The root-anchored form (`node_modules/**`)
+// was a production defect: in a monorepo, nested node_modules trees were
+// watched, and one npm ci storm (delete + recreate of ~60k files) exhausted
+// the engine's fd table on macOS — kqueue holds an fd per watched file — and
+// starved every session in the process of pipes and sockets.
 //
 // Harness engineers who need different behavior (e.g. watching node_modules
 // for a dependency-debugging extension, or excluding a custom build dir)
@@ -26,21 +35,21 @@ import (
 // gives full control. A future additive field could layer on top if
 // merge-style override turns out to be useful.
 var defaultWatchIgnores = []string{
-	".git/**",
-	"node_modules/**",
-	"dist/**",
-	"build/**",
-	"target/**",
-	".next/**",
-	".nuxt/**",
-	".venv/**",
-	"__pycache__/**",
-	".ion/**",
-	".DS_Store",
-	"*.swp",
-	"*.swo",
-	"*.tmp",
-	"*~",
+	"**/.git/**",
+	"**/node_modules/**",
+	"**/dist/**",
+	"**/build/**",
+	"**/target/**",
+	"**/.next/**",
+	"**/.nuxt/**",
+	"**/.venv/**",
+	"**/__pycache__/**",
+	"**/.ion/**",
+	"**/.DS_Store",
+	"**/*.swp",
+	"**/*.swo",
+	"**/*.tmp",
+	"**/*~",
 }
 
 // resolveWatchIgnores returns the effective ignore list for a given config:
@@ -59,11 +68,11 @@ func resolveWatchIgnores(cfg types.EngineConfig) []string {
 // exhaustion on macOS where kqueue requires one FD per watched directory.
 func (m *Manager) startWorkspaceWatcher(s *engineSession, key string, group *extension.ExtensionGroup) func() {
 	if group == nil || group.IsEmpty() {
-		utils.Debug("session", fmt.Sprintf("startWorkspaceWatcher: skip key=%s reason=no_extensions", key))
+		utils.LogWithFields(utils.LevelDebug, "session", "startworkspacewatcher: skip reason=no_extensions", map[string]any{"key": key})
 		return nil
 	}
 	if s.config.WorkingDirectory == "" {
-		utils.Debug("session", fmt.Sprintf("startWorkspaceWatcher: skip key=%s reason=empty_working_directory", key))
+		utils.LogWithFields(utils.LevelDebug, "session", "startworkspacewatcher: skip reason=empty_working_directory", map[string]any{"key": key})
 		return nil
 	}
 
@@ -78,7 +87,7 @@ func (m *Manager) startWorkspaceWatcher(s *engineSession, key string, group *ext
 		ionHome := filepath.Clean(filepath.Join(home, ".ion"))
 		cwdClean := filepath.Clean(s.config.WorkingDirectory)
 		if cwdClean == ionHome {
-			utils.Info("session", fmt.Sprintf("startWorkspaceWatcher: skip key=%s reason=working_directory_is_ion_home cwd=%s", key, cwdClean))
+			utils.LogWithFields(utils.LevelInfo, "session", "startworkspacewatcher: skip reason=working_directory_is_ion_home", map[string]any{"key": key, "cwd_clean": cwdClean})
 			return nil
 		}
 	}
@@ -89,7 +98,7 @@ func (m *Manager) startWorkspaceWatcher(s *engineSession, key string, group *ext
 		source = "harness_override"
 	}
 	if source == "harness_override" {
-		utils.Debug("session", fmt.Sprintf("startWorkspaceWatcher: harness override patterns key=%s patterns=%v", key, ignores))
+		utils.LogWithFields(utils.LevelDebug, "session", "startworkspacewatcher: harness override patterns", map[string]any{"key": key, "ignores": ignores})
 	}
 
 	onEvent := func(info watcher.Info) {
@@ -112,10 +121,10 @@ func (m *Manager) startWorkspaceWatcher(s *engineSession, key string, group *ext
 
 	release, err := m.watchers.acquire(s.config.WorkingDirectory, ignores, key, maxDirs, onEvent)
 	if err != nil {
-		utils.Error("session", fmt.Sprintf("startWorkspaceWatcher: acquire failed key=%s cwd=%s err=%v", key, s.config.WorkingDirectory, err))
+		utils.LogWithFields(utils.LevelError, "session", "startworkspacewatcher: acquire failed", map[string]any{"key": key, "working_directory": s.config.WorkingDirectory, "error": err})
 		return nil
 	}
 
-	utils.Info("session", fmt.Sprintf("startWorkspaceWatcher: acquired key=%s cwd=%s ignore_count=%d ignore_source=%s", key, s.config.WorkingDirectory, len(ignores), source))
+	utils.LogWithFields(utils.LevelInfo, "session", "startworkspacewatcher: acquired", map[string]any{"key": key, "working_directory": s.config.WorkingDirectory, "count": len(ignores), "source": source})
 	return release
 }

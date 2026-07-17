@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { TerminalPaneState, ConversationPane, Message } from '../../shared/types'
+import type { TerminalPaneState, ConversationPane } from '../../shared/types'
 import { serializeTerminalBuffer } from '../components/TerminalInstance'
 import type { State, StoreSet, StoreGet } from './session-store-types'
 import type { ResourceItem } from '../../shared/types-engine'
@@ -20,8 +20,10 @@ import { createPermissionsSlice } from './slices/permissions-slice'
 import { createSendSlice } from './slices/send-slice'
 import { createEventSlice } from './slices/event-slice'
 import { createEngineSlice } from './slices/engine-slice'
+import { createImplementSlice } from './slices/implement-slice'
 import { setupPersistence } from './session-store-persistence'
 import { usePreferencesStore } from '../preferences'
+import { isMirrorWindow } from '../lib/window-role'
 
 export { isTextFile, editorDirForTab } from './session-store-helpers'
 export { AVAILABLE_MODELS, getModelDisplayLabel } from './model-labels'
@@ -61,7 +63,6 @@ const initialState = {
   tabsReady: false,
   rehydrating: false,
   initProgress: null,
-  backend: 'api' as const,
   worktreeUncommittedMap: new Map(),
   engineWorkingMessages: new Map(),
   engineNotifications: new Map(),
@@ -75,6 +76,7 @@ const initialState = {
   readResourceIds: new Set<string>(),
   dispatchActivity: {} as Record<string, import('../../shared/types').Message[]>,
   tallViewTabId: null,
+  suspendedTallTabId: null,
   scrollToBottomCounter: 0,
   settingsOpen: false,
   settingsInitialTab: null,
@@ -99,6 +101,7 @@ export const useSessionStore = create<State>((set, get) => {
     ...createSendSlice(_set, _get),
     ...createEventSlice(_set, _get),
     ...createEngineSlice(_set, _get),
+    ...createImplementSlice(_set, _get),
     markResourceRead: (resourceId: string) => {
       set((state) => {
         const updated = new Set(state.readResourceIds)
@@ -140,4 +143,11 @@ export const useSessionStore = create<State>((set, get) => {
 }
 ;(window as any).__serializeTerminalBuffer = serializeTerminalBuffer
 
-setupPersistence(useSessionStore)
+// The ATV mirror window never persists: the overlay renderer is the single
+// writer for tabs/settings (single-writer rule of the mirror-store
+// architecture). The mirror also skips the stuck-tab watchdog and the
+// __ionForceFlushTabs global (both live inside setupPersistence) — healing
+// and flushing are owner duties.
+if (!isMirrorWindow()) {
+  setupPersistence(useSessionStore)
+}

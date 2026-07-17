@@ -10,6 +10,60 @@ LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
 
 cd "$SCRIPT_DIR"
 
+# ── Preflight ──
+#
+# Checks Go version and Xcode CLT before attempting the build. Catches the
+# most common first-run failure modes with actionable messages.
+preflight_check() {
+  local fail=0
+  local required_go
+  required_go=$(awk '/^go / {print $2}' go.mod 2>/dev/null || echo "")
+
+  echo "==> Checking build dependencies..."
+
+  # Go — version must meet or exceed go.mod's `go` directive.
+  if command -v go >/dev/null 2>&1; then
+    local installed_go
+    installed_go=$(go version | awk '{print $3}' | sed 's/^go//')
+    if [[ -n "$required_go" ]]; then
+      # Simple lexicographic comparison works for semver with equal depth.
+      if [[ "$(printf '%s\n%s' "$installed_go" "$required_go" | sort -V | head -1)" == "$required_go" ]]; then
+        echo "  ✓ Go $installed_go (≥ $required_go required)"
+      else
+        echo "  ✗ Go $installed_go is too old. go.mod requires ≥ $required_go."
+        echo "    Update: brew install go  or  https://go.dev/dl/"
+        fail=1
+      fi
+    else
+      echo "  ✓ Go $installed_go"
+    fi
+  else
+    local req="${required_go:-1.21}"
+    echo "  ✗ Go is not installed (go.mod requires ≥ $req)."
+    echo "    Install: brew install go  or  https://go.dev/dl/"
+    fail=1
+  fi
+
+  # Xcode CLT — needed for CGO (cgo calls into macOS system libraries).
+  if xcode-select -p >/dev/null 2>&1; then
+    echo "  ✓ Xcode toolchain at $(xcode-select -p)"
+  else
+    echo "  ✗ Xcode Command Line Tools not installed."
+    echo "    Install: xcode-select --install"
+    fail=1
+  fi
+
+  if [[ $fail -ne 0 ]]; then
+    echo
+    echo "✗ Preflight failed. Fix the issues above and retry."
+    exit 1
+  fi
+
+  echo
+}
+
+preflight_check
+
 echo "==> Building Ion Engine..."
 go build -o bin/ion ./cmd/ion
 
@@ -33,7 +87,36 @@ rm -f "$ION_HOME/engine.sock"
 rm -f "$BIN_DIR/ion"
 cp bin/ion "$BIN_DIR/ion"
 chmod +x "$BIN_DIR/ion"
-codesign --force --sign - "$BIN_DIR/ion" 2>/dev/null || true
+
+# Sign with a stable identity so macOS treats every rebuild as the same app.
+# Ad-hoc signing derives the identifier from the binary's CDHash ("ion-<hash>"),
+# which changes on every build — macOS Local Network privacy keys its grant to
+# that identity, so each ad-hoc rebuild silently resets the grant and the
+# headless LaunchAgent gets EHOSTUNREACH ("no route to host") on LAN targets
+# with no prompt. A certificate-backed signature with an explicit identifier
+# keeps a stable designated requirement, so the grant survives rebuilds.
+#
+# The identifier is deliberately namespaced ("house.sprague.ion.engine", not
+# "ion"): Local Network grant creation is silently suppressed for an identity
+# that already has records in the (SIP-locked, uneditable) NetworkExtension
+# policy store, and the bare "ion" identifier accumulated dozens of stale
+# ad-hoc records before this script signed stably. A namespaced identifier
+# with no prior records gets a real grant from the engine's startup warmup
+# probe (internal/network/lanwarmup_darwin.go). Keep it in sync with
+# desktop/scripts/afterPack.js and the release workflow.
+#
+# Identity precedence mirrors desktop/scripts/afterPack.js:
+# APPLE_SIGNING_IDENTITY env, then the "Ion Local Dev" self-signed cert, then
+# ad-hoc as a last resort.
+SIGN_IDENTITY="${APPLE_SIGNING_IDENTITY:-Ion Local Dev}"
+if security find-identity -v -p codesigning 2>/dev/null | grep -qF "$SIGN_IDENTITY"; then
+    echo "==> Signing engine binary (identity: $SIGN_IDENTITY)..."
+    codesign --force --sign "$SIGN_IDENTITY" --identifier house.sprague.ion.engine --options runtime "$BIN_DIR/ion" \
+        || codesign --force --sign - "$BIN_DIR/ion" 2>/dev/null || true
+else
+    echo "==> Signing engine binary (ad-hoc — identity \"$SIGN_IDENTITY\" not in keychain)..."
+    codesign --force --sign - "$BIN_DIR/ion" 2>/dev/null || true
+fi
 xattr -cr "$BIN_DIR/ion" 2>/dev/null || true
 
 if [[ "${1:-}" == "--standalone" ]]; then

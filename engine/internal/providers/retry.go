@@ -77,6 +77,12 @@ func (c *RetryConfig) isPersistent() bool {
 // WithRetry wraps a provider stream call with retry logic including exponential
 // backoff, jitter, model fallback on repeated overloaded errors, and persistent
 // mode for CI/headless use.
+//
+// Events are forwarded to the caller live, as the provider emits them. When a
+// retryable failure interrupts a stream that has already forwarded events, a
+// stream_reset marker (types.LlmStreamEventStreamReset) is sent before the
+// next attempt's events — the caller must discard all state accumulated for
+// the interrupted attempt on receipt.
 func WithRetry(ctx context.Context, provider LlmProvider, opts types.LlmStreamOptions, config *RetryConfig) (<-chan types.LlmStreamEvent, <-chan error) {
 	events := make(chan types.LlmStreamEvent, 32)
 	errc := make(chan error, 1)
@@ -92,23 +98,48 @@ func WithRetry(ctx context.Context, provider LlmProvider, opts types.LlmStreamOp
 		fallbackIdx := -1 // -1 = primary; 0..len(chain)-1 = chain hop
 		startTime := time.Now()
 
+		// Events are forwarded to the caller as they arrive so consumers
+		// stream live — time-to-first-token is a user-visible property of
+		// every client. The cost of live forwarding is that a failed attempt
+		// may have already delivered partial events; forwardedSinceReset
+		// tracks that, and sendReset injects the in-band stream_reset marker
+		// (types.LlmStreamEventStreamReset) before the next attempt's events
+		// so the caller discards the partial state. sendReset returns false
+		// only when the context died mid-send.
+		forwardedSinceReset := false
+		sendReset := func() bool {
+			if !forwardedSinceReset {
+				return true
+			}
+			select {
+			case events <- types.LlmStreamEvent{Type: types.LlmStreamEventStreamReset}:
+				forwardedSinceReset = false
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		}
+
 		for {
 			streamOpts := opts
 			streamOpts.Model = currentModel
 
 			evCh, errCh := currentProvider.Stream(ctx, streamOpts)
 
-			// Buffer events per attempt. Only forward to caller after the
-			// stream completes without error. On retry, discard the buffer
-			// so the caller never sees partial results from failed attempts.
-			var buf []types.LlmStreamEvent
+			// Forward each event to the caller immediately.
 			var streamErr error
 			for ev := range evCh {
 				if ctx.Err() != nil {
 					errc <- ctx.Err()
 					return
 				}
-				buf = append(buf, ev)
+				select {
+				case events <- ev:
+					forwardedSinceReset = true
+				case <-ctx.Done():
+					errc <- ctx.Err()
+					return
+				}
 			}
 
 			// Check for stream error
@@ -116,16 +147,8 @@ func WithRetry(ctx context.Context, provider LlmProvider, opts types.LlmStreamOp
 				streamErr = <-errCh
 			}
 
-			// Stream completed without error — flush buffer to caller
+			// Stream completed without error — done.
 			if streamErr == nil {
-				for _, ev := range buf {
-					select {
-					case events <- ev:
-					case <-ctx.Done():
-						errc <- ctx.Err()
-						return
-					}
-				}
 				return
 			}
 
@@ -165,6 +188,12 @@ func WithRetry(ctx context.Context, provider LlmProvider, opts types.LlmStreamOp
 				next := config.FallbackChain[fallbackIdx+1]
 				if next != "" && next != currentModel {
 					if fallback := ResolveProvider(next); fallback != nil {
+						// Discard any partial output the failed attempt
+						// already forwarded before the fallback re-streams.
+						if !sendReset() {
+							errc <- ctx.Err()
+							return
+						}
 						if config.OnFallback != nil {
 							config.OnFallback(currentModel, next, fallbackIdx+1)
 						}
@@ -188,6 +217,14 @@ func WithRetry(ctx context.Context, provider LlmProvider, opts types.LlmStreamOp
 			// Persistent mode: check total wall time
 			if config.isPersistent() && time.Since(startTime).Milliseconds() > config.persistentMaxWait() {
 				errc <- pe
+				return
+			}
+
+			// This attempt will be retried. Discard any partial output it
+			// already forwarded — before the backoff wait, so consumers drop
+			// the stale partial state immediately rather than after the delay.
+			if !sendReset() {
+				errc <- ctx.Err()
 				return
 			}
 

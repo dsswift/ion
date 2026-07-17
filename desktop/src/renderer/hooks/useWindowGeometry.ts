@@ -26,13 +26,17 @@ export function useInputRowHeight(inputRowRef: RefObject<HTMLDivElement | null>)
   useEffect(() => {
     const el = inputRowRef.current
     if (!el) return
+    let rafId = 0
     const ro = new ResizeObserver(() => {
-      // offsetHeight excludes margin; add marginBottom (60px normal, 20px terminal-only)
-      const margin = el.style.marginBottom ? parseInt(el.style.marginBottom, 10) : 60
-      setInputRowHeight(el.offsetHeight + margin)
+      cancelAnimationFrame(rafId)
+      rafId = requestAnimationFrame(() => {
+        // offsetHeight excludes margin; add marginBottom (60px normal, 20px terminal-only)
+        const margin = el.style.marginBottom ? parseInt(el.style.marginBottom, 10) : 60
+        setInputRowHeight(el.offsetHeight + margin)
+      })
     })
     ro.observe(el)
-    return () => ro.disconnect()
+    return () => { cancelAnimationFrame(rafId); ro.disconnect() }
   }, [inputRowRef])
   return inputRowHeight
 }

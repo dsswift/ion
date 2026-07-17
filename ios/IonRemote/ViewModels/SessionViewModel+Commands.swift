@@ -63,7 +63,12 @@ extension SessionViewModel {
                 }
             }
         }
-        DiagnosticLog.log("CMD: engineRewindInstance tabId=\(tabId.prefix(8)) instanceId=\(instanceId.prefix(8)) messageId=\(messageId.prefix(16)) userTurnIndex=\(userTurnIndex.map(String.init) ?? "nil")")
+        DiagnosticLog.log("engine rewind instance", tag: "session.commands", fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "reason": String(instanceId.prefix(8)),
+            "status": String(messageId.prefix(16)),
+            "turn": userTurnIndex.map(String.init) ?? "nil"
+        ])
         send(.engineRewind(tabId: tabId, instanceId: instanceId, messageId: messageId, userTurnIndex: userTurnIndex), intent: .userInitiated)
     }
 
@@ -105,11 +110,15 @@ extension SessionViewModel {
             // Post-#256: engine session key is bare tabId; instanceId is vestigial.
             // Insert bare tabId so snapshot sweep reads the same key.
             _ = instanceId // unused for keying post-#256
-            DiagnosticLog.log("PERM: dismissSpecialPermission: tabId=\(tabId.prefix(8)) engine-instance dismissal (keyed bare tabId post-#256)")
+            DiagnosticLog.log("dismiss special permission engine-instance", tag: "session.commands", fields: [
+                "tab_id": String(tabId.prefix(8))
+            ])
             dismissedLiveSpecialTabs.insert(tabId)
         } else {
             // Live card dismissed -- block restoredSpecialCard from re-triggering
-            DiagnosticLog.log("PERM: dismissSpecialPermission: tabId=\(tabId.prefix(8)) tab-scoped dismissal (no instanceId)")
+            DiagnosticLog.log("dismiss special permission tab-scoped", tag: "session.commands", fields: [
+                "tab_id": String(tabId.prefix(8))
+            ])
             dismissedLiveSpecialTabs.insert(tabId)
         }
     }
@@ -117,7 +126,12 @@ extension SessionViewModel {
     @MainActor
     func loadConversation(tabId: String) {
         guard !loadingConversation.contains(tabId) else { return }
-        setConversationMessages(tabId: tabId, [])
+        // Do NOT clear the transcript here. Clearing before the fetch left the
+        // conversation blank for the whole round-trip (and indefinitely if the
+        // response was dropped). The existing messages stay visible until the
+        // replacement page arrives; handleConversationHistory replaces them
+        // wholesale on the first page (the response echoes this request's
+        // nil cursor as `before == nil`).
         clearLiveText(tabId: tabId)
         conversationLoaded.remove(tabId)
         conversationHasMore.removeValue(forKey: tabId)
@@ -151,7 +165,12 @@ extension SessionViewModel {
     func startLoadTimer(tabId: String) {
         conversationLoadTimers[tabId]?.cancel()
         conversationLoadTimers[tabId] = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(15))
+            // First load attempt retries faster (5s); the post-retry wait stays
+            // at 15s. With commit 1's truncation fix, a 5s first retry makes
+            // recovery from any transient failure noticeably quicker.
+            let retriesSoFar = self?.conversationLoadRetryCount[tabId] ?? 0
+            let waitSeconds = retriesSoFar < 1 ? 5 : 15
+            try? await Task.sleep(for: .seconds(waitSeconds))
             guard !Task.isCancelled, let self else { return }
             guard self.loadingConversation.contains(tabId) else { return }
             let retries = self.conversationLoadRetryCount[tabId] ?? 0
@@ -179,7 +198,12 @@ extension SessionViewModel {
 
     func createTab(workingDirectory: String? = nil, pinToGroupId: String? = nil, profileId: String? = nil) {
         let dir = workingDirectory ?? defaultBaseDirectory
-        awaitingLocalTabCreation = true
+        // Route through the confirm-or-resend tracker rather than a fire-once
+        // `send(_:intent: .userInitiated)`: a create dropped into a wedged
+        // transport succeeds locally without throwing and is otherwise lost.
+        // The `clientCmdId` correlates the desktop_tab_created echo back to this
+        // pending create (also driving navigation). See SessionViewModel+PendingCreate.
+        let clientCmdId = UUID().uuidString
         // When `pinToGroupId` is supplied (e.g. via the per-group `+` button
         // in TabListView's group header), include it on the wire so the
         // desktop can create the tab inside that manual group with
@@ -191,7 +215,10 @@ extension SessionViewModel {
         // that profile; nil creates a plain conversation tab. This is the
         // unified post-#256 wire path — both plain and engine tabs go through
         // the same `desktop_create_tab` command shape.
-        send(.createTab(workingDirectory: dir, pinToGroupId: pinToGroupId, profileId: profileId), intent: .userInitiated)
+        sendTrackedCreate(
+            .createTab(workingDirectory: dir, pinToGroupId: pinToGroupId, profileId: profileId, clientCmdId: clientCmdId),
+            clientCmdId: clientCmdId
+        )
     }
 
     func closeTab(_ tabId: String) {
@@ -251,8 +278,12 @@ extension SessionViewModel {
 
     func createTerminalTab(workingDirectory: String? = nil) {
         let dir = workingDirectory ?? defaultBaseDirectory
-        awaitingLocalTabCreation = true
-        send(.createTerminalTab(workingDirectory: dir), intent: .userInitiated)
+        // Confirm-or-resend tracked, same rationale as createTab.
+        let clientCmdId = UUID().uuidString
+        sendTrackedCreate(
+            .createTerminalTab(workingDirectory: dir, clientCmdId: clientCmdId),
+            clientCmdId: clientCmdId
+        )
     }
 
     // Engine Commands live in SessionViewModel+EngineCommands.swift to keep
@@ -332,80 +363,6 @@ extension SessionViewModel {
         terminalInstanceLabels["\(tabId):\(instanceId)"] ?? fallback
     }
 
-    // MARK: - Git Commands
-
-    func requestGitChanges(directory: String) {
-        send(.gitChanges(directory: directory), intent: .automaticEssential)
-    }
-
-    /// Request git changes for every unique tab working directory that doesn't
-    /// already have cached data. Called when the "Show Git Info" toggle is
-    /// enabled so rows populate without waiting for the next watcher event.
-    func requestMissingGitChanges() {
-        let dirs = Set(tabs.map(\.workingDirectory).filter { !$0.isEmpty })
-        for dir in dirs where gitChanges[dir] == nil {
-            requestGitChanges(directory: dir)
-        }
-    }
-
-    /// Request git changes for every unique tab working directory — including
-    /// ones that already have cached (potentially stale) data. Called when the
-    /// app foregrounds and when the tab list appears, so the user sees fresh
-    /// branch + ahead/behind info on every appear. The desktop's git watcher
-    /// is best-effort and can silently stop delivering events; this guarantees
-    /// the iOS tab list reflects current state.
-    func requestAllGitChanges() {
-        let dirs = Set(tabs.map(\.workingDirectory).filter { !$0.isEmpty })
-        for dir in dirs {
-            requestGitChanges(directory: dir)
-        }
-    }
-
-    func requestGitGraph(directory: String, skip: Int? = nil, limit: Int? = nil) {
-        send(.gitGraph(directory: directory, skip: skip, limit: limit), intent: .userInitiated)
-    }
-
-    func requestGitDiff(directory: String, path: String, staged: Bool) {
-        gitDiffLoading = true
-        send(.gitDiff(directory: directory, path: path, staged: staged), intent: .userInitiated)
-    }
-
-    func gitStage(directory: String, paths: [String]) {
-        send(.gitStage(directory: directory, paths: paths), intent: .userInitiated)
-    }
-
-    func gitUnstage(directory: String, paths: [String]) {
-        send(.gitUnstage(directory: directory, paths: paths), intent: .userInitiated)
-    }
-
-    func gitCommit(directory: String, message: String) {
-        send(.gitCommit(directory: directory, message: message), intent: .userInitiated)
-    }
-
-    func gitDiscard(directory: String, paths: [String]) {
-        send(.gitDiscard(directory: directory, paths: paths), intent: .userInitiated)
-    }
-
-    func gitFetch(directory: String) {
-        send(.gitFetch(directory: directory), intent: .userInitiated)
-    }
-
-    func gitPull(directory: String) {
-        send(.gitPull(directory: directory), intent: .userInitiated)
-    }
-
-    func gitPush(directory: String) {
-        send(.gitPush(directory: directory), intent: .userInitiated)
-    }
-
-    func requestGitCommitFiles(directory: String, hash: String) {
-        send(.gitCommitFiles(directory: directory, hash: hash), intent: .userInitiated)
-    }
-
-    func requestGitCommitFileDiff(directory: String, hash: String, path: String) {
-        send(.gitCommitFileDiff(directory: directory, hash: hash, path: path), intent: .userInitiated)
-    }
-
     // MARK: - File Explorer Commands
 
     /// Upload an image from the iOS device to the desktop as a temp file.
@@ -437,7 +394,10 @@ extension SessionViewModel {
 
     func requestLoadAttachments(tabId: String) {
         let oldCount = tabAttachmentCache[tabId]?.count ?? -1
-        DiagnosticLog.log("ATTACH: requestLoadAttachments tabId=\(tabId.prefix(8)) oldCacheCount=\(oldCount) clearing")
+        DiagnosticLog.log("request load attachments", tag: "session.commands", fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "count": String(oldCount)
+        ])
         tabAttachmentCache.removeValue(forKey: tabId)
         send(.loadAttachments(tabId: tabId), intent: .automaticEssential)
     }
@@ -493,7 +453,10 @@ extension SessionViewModel {
     /// without any configuration step.
     func sendReportFocus(tabId: String?) {
         let interceptEnabled = UserDefaults.standard.object(forKey: "interceptEnabled") as? Bool ?? true
-        DiagnosticLog.log("CMD: report_focus tabId=\(tabId?.prefix(8) ?? "nil") interceptEnabled=\(interceptEnabled)")
+        DiagnosticLog.log("report focus", tag: "session.commands", fields: [
+            "tab_id": tabId?.prefix(8).description ?? "nil",
+            "status": String(interceptEnabled)
+        ])
         Task { @MainActor [weak self] in
             self?.focusedTabId = tabId
         }
@@ -506,13 +469,18 @@ extension SessionViewModel {
     ///
     /// Intent drives queueing and error visibility:
     ///
-    ///   `.userInitiated`         User tapped or typed. Transport absent -> "Not
-    ///                            connected" toast; send error -> "Send failed" toast.
+    ///   `.userInitiated`         User tapped or typed. Transport absent or send
+    ///                            error/timeout -> if the command has an
+    ///                            `essentialKey` (e.g. a prompt) it is re-enqueued
+    ///                            for the reconnect flush and a "queued" toast is
+    ///                            shown; otherwise an error toast. A user message
+    ///                            is never silently dropped.
     ///
     ///   `.automaticEssential`    Background send the screen requires. Not connected
     ///                            -> enqueue deduped by command-identity key
     ///                            (last-write-wins); drains once on first snapshot.
-    ///                            Connected but throws -> log only, no toast.
+    ///                            Connected but throws -> re-enqueue for the next
+    ///                            flush (no toast).
     ///
     ///   `.automaticFireAndForget` Background send that self-heals. Not connected
     ///                            -> drop silently (log only). Connected but throws
@@ -527,9 +495,25 @@ extension SessionViewModel {
         switch intent {
         case .userInitiated:
             guard let transport else {
-                DiagnosticLog.log("CMD: dropped (no transport) intent=userInitiated")
-                Task { @MainActor [weak self] in
-                    self?.showToast(ToastMessage(style: .error, title: "Not connected", detail: "Command could not be sent"))
+                // No transport object at all (mid soft-reconnect teardown, or
+                // unpaired). Queueable commands — critically, user prompts —
+                // are deferred to the reconnect flush instead of dropped: the
+                // optimistic UI stays and the command delivers on reconnect.
+                // The queue is cleared on hard disconnect/unpair, so a truly
+                // undeliverable command doesn't fire against a new pairing.
+                if let key = command.essentialKey {
+                    DiagnosticLog.log("user command deferred (no transport)", tag: "session.commands", level: .warn, fields: [
+                        "reason": key
+                    ])
+                    enqueueEssential(key: key, command: command)
+                    Task { @MainActor [weak self] in
+                        self?.showToast(ToastMessage(style: .warning, title: "Not connected", detail: "Queued — will send when reconnected"))
+                    }
+                } else {
+                    DiagnosticLog.log("user command dropped, no transport and not queueable", tag: "session.commands", level: .error, fields: [:])
+                    Task { @MainActor [weak self] in
+                        self?.showToast(ToastMessage(style: .error, title: "Not connected", detail: "Command could not be sent"))
+                    }
                 }
                 return
             }
@@ -537,9 +521,28 @@ extension SessionViewModel {
                 do {
                     try await transport.send(command)
                 } catch {
+                    // Send failed or timed out (wedged socket, mid-reconnect).
+                    // Re-enqueue queueable commands for the reconnect flush so
+                    // the user's action still lands; surface a visible error
+                    // for commands that cannot be retried safely.
+                    guard let self else { return }
                     let detail = error.localizedDescription
-                    await MainActor.run {
-                        self?.showToast(ToastMessage(style: .error, title: "Send failed", detail: detail))
+                    if let key = command.essentialKey {
+                        DiagnosticLog.log("user command send failed, requeued for reconnect flush", tag: "session.commands", level: .warn, fields: [
+                            "reason": key,
+                            "error": detail
+                        ])
+                        await MainActor.run {
+                            self.enqueueEssential(key: key, command: command)
+                            self.showToast(ToastMessage(style: .warning, title: "Connection interrupted", detail: "Queued — will send when reconnected"))
+                        }
+                    } else {
+                        DiagnosticLog.log("user command send failed, not queueable", tag: "session.commands", level: .error, fields: [
+                            "error": detail
+                        ])
+                        await MainActor.run {
+                            self.showToast(ToastMessage(style: .error, title: "Send failed", detail: detail))
+                        }
                     }
                 }
             }
@@ -547,7 +550,10 @@ extension SessionViewModel {
         case .automaticEssential:
             guard connectionState == .connected, let transport else {
                 let key = command.essentialKey ?? "unknown:\(command)"
-                DiagnosticLog.log("CMD: essential not connected, deferring key=\(key) state=\(connectionState.rawValue)")
+                DiagnosticLog.log("essential not connected deferring", tag: "session.commands", fields: [
+                    "reason": key,
+                    "status": connectionState.rawValue
+                ])
                 enqueueEssential(key: key, command: command)
                 return
             }
@@ -555,9 +561,21 @@ extension SessionViewModel {
                 do {
                     try await transport.send(command)
                 } catch {
-                    DiagnosticLog.log("CMD: essential send error (no toast): \(error.localizedDescription)")
+                    // Connected-but-threw means the transport wedged between
+                    // the state check and the write. Re-enqueue so the command
+                    // delivers on the reconnect flush (the failed send tears
+                    // the transport down, which drives reconnect -> sync ->
+                    // snapshot -> drain) instead of being lost.
+                    guard let self else { return }
+                    let key = command.essentialKey ?? "unknown:\(command)"
+                    DiagnosticLog.log("essential send failed, requeued for reconnect flush", tag: "session.commands", level: .warn, fields: [
+                        "reason": key,
+                        "error": error.localizedDescription
+                    ])
+                    await MainActor.run {
+                        self.enqueueEssential(key: key, command: command)
+                    }
                 }
-                _ = self
             }
 
         case .automaticFireAndForget:

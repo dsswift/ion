@@ -1,0 +1,15 @@
+{
+  "name": "ion-dashboards",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Dashboards-as-code: canonical LogQL query module + class-enforcing panel builders that generate the provisioned Grafana dashboard JSONs. Zero runtime dependencies — runs on Node's native TypeScript type-stripping (node >= 22.6 with --experimental-strip-types, native in node >= 23).",
+  "scripts": {
+    "generate": "node src/generate.ts",
+    "check": "node src/check.ts",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22.6"
+  }
+}

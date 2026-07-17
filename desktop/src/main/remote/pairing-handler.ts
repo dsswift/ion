@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'fs'
+import { existsSync } from 'fs'
 import { IPC } from '../../shared/types'
 import { log as _log } from '../logger'
 import { state, pairingManager } from '../state'
@@ -8,8 +8,8 @@ import { deriveChannelId, generateKeyPair, deriveSharedSecret } from './crypto'
 import { getRemoteTabStates } from './snapshot'
 import type { PairedDevice } from './protocol'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 export interface PairRequest {
@@ -44,7 +44,7 @@ export function handlePairRequest(request: PairRequest): void {
   }
 
   if (isRecovery) {
-    log(`[Remote] recovery re-pair for known device: ${request.deviceName}`)
+    log('pairing: recovery re-pair for known device', { device_name: request.deviceName })
     const keyPair = generateKeyPair()
     const peerPubBuf = Buffer.from(request.publicKey, 'base64')
     const sharedSecret = deriveSharedSecret(keyPair.secretKey, peerPubBuf)
@@ -69,7 +69,7 @@ export function handlePairRequest(request: PairRequest): void {
     )
 
     if (!result) {
-      log(`Pairing rejected for ${request.deviceName}`)
+      log('pairing: rejected', { device_name: request.deviceName })
       request.reject('Invalid pairing code')
       return
     }
@@ -85,7 +85,7 @@ export function handlePairRequest(request: PairRequest): void {
     }
   }
 
-  log(`Pairing succeeded with ${request.deviceName}${isRecovery ? ' (recovery)' : ''}`)
+  log('pairing: succeeded', { device_name: request.deviceName, is_recovery: isRecovery })
   request.respond({
     type: 'pair_response',
     publicKey: ourPublicKey,
@@ -102,7 +102,7 @@ export function handlePairRequest(request: PairRequest): void {
     settings.pairedDevices = devices
     writeSettings(settings)
   } catch (err) {
-    log(`Failed to save paired device: ${(err as Error).message}`)
+    log('pairing: failed to save paired device', { error: (err as Error).message })
   }
 
   broadcast(IPC.REMOTE_DEVICE_PAIRED, pairedDevice)

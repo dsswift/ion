@@ -1,0 +1,120 @@
+services:
+  alloy:
+    image: grafana/alloy:v1.17.1
+    # command: is required here because docker-compose replaces the image CMD
+    # entirely. We re-specify --storage.path=/var/lib/alloy/data so Alloy writes
+    # read-position state to the alloy-data named volume instead of the binary's
+    # relative default (data-alloy/ inside the ephemeral container root).
+    # NOTE: grafana/alloy:v1.17.1 image CMD already includes this flag, so this
+    # override is consistent with the image default and is not redundant — it is
+    # required because any command: block replaces the image CMD in full.
+    # dev.yaml uses a different mechanism: it omits command: (dropped by the v4
+    # executor) and relies on the image CMD directly; see dev.yaml alloy notes.
+    command:
+      - run
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    ports:
+      - "12345:12345" # Alloy HTTP UI
+    volumes:
+      - ${HOME}/.ion:/ion-logs:ro
+      - ./alloy-config.alloy:/etc/alloy/config.alloy
+      # Named volume at the path the image CMD passes as --storage.path.
+      # Persists Alloy tail read-positions across container restarts so logs
+      # are not re-ingested from the beginning on every stack restart.
+      - alloy-data:/var/lib/alloy/data
+    networks:
+      - ion-obs
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    depends_on:
+      - loki
+
+  # Bind-mount attribute-cache refresher — durable fix for the macOS tailer wedge.
+  # Docker Desktop's virtualized bind mount serves Alloy a stale, size-frozen view
+  # of the high-write-rate engine.jsonl; the staleness re-forms within minutes of
+  # any one-shot bust (an Alloy restart is only palliative). A directory readdir
+  # (ls -1 /ion-logs) — NOT a file read — busts the cache, and the cache is shared
+  # at the VM mount layer, so this separate sidecar readdir-ing the same mount keeps
+  # Alloy's view fresh without touching Alloy. See README.md § Tailer wedge and
+  # Dockerfile.mount-refresher for the full root cause + live proof.
+  mount-refresher:
+    build:
+      context: .
+      dockerfile: Dockerfile.mount-refresher
+    volumes:
+      # Same bind mount Alloy tails, read-only. The readdir side effect refreshes
+      # the shared VM-layer attribute cache that Alloy's stat() reads from.
+      - ${HOME}/.ion:/ion-logs:ro
+    networks:
+      - ion-obs
+    deploy:
+      resources:
+        limits:
+          memory: 32m
+
+  loki:
+    image: grafana/loki:3.7.3
+    command:
+      - -config.file=/etc/loki/loki.yaml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki-config.yaml:/etc/loki/loki.yaml
+      - loki-data:/loki
+    networks:
+      - ion-obs
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  grafana:
+    image: grafana/grafana:13.1.0
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - grafana-data:/var/lib/grafana
+    networks:
+      - ion-obs
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    depends_on:
+      - loki
+
+  # Tempo is optional — comment out if you don't need trace correlation
+  tempo:
+    image: grafana/tempo:2.10.7
+    command:
+      - -config.file=/etc/tempo/tempo.yaml
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+    volumes:
+      - ./tempo-config.yaml:/etc/tempo/tempo.yaml
+      - tempo-data:/var/tempo
+    networks:
+      - ion-obs
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+networks:
+  ion-obs:
+    driver: bridge
+
+volumes:
+  alloy-data:
+  loki-data:
+  grafana-data:
+  tempo-data:

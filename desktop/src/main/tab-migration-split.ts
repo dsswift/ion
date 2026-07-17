@@ -4,6 +4,7 @@ import type {
   PersistedConversationInstance,
   PersistedConversationPane,
 } from '../shared/types-persistence'
+import { SPLIT_SCHEMA_VERSION } from '../shared/types-persistence'
 
 /**
  * tab-migration-split — on-disk migration that splits multiplexed engine tabs
@@ -25,10 +26,12 @@ import type {
  *
  * Idempotency: files at schemaVersion >= 3 are already split; the migration
  * is a no-op.
+ *
+ * SPLIT_SCHEMA_VERSION is the canonical definition; it lives in
+ * `shared/types-persistence.ts` and is imported + re-exported here so
+ * existing `main/` callers keep working without import changes.
  */
-
-/** Schema version after the split migration. */
-export const SPLIT_SCHEMA_VERSION = 3
+export { SPLIT_SCHEMA_VERSION }
 
 /** True when `state` is already split (no migration needed). */
 export function isSplitSchema(state: PersistedTabState): boolean {

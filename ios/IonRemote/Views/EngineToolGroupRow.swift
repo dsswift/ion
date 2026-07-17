@@ -52,20 +52,31 @@ struct EngineToolGroupRow: View {
 
     private var compositeIcon: String {
         if tools.contains(where: { $0.toolStatus == .running }) { return "arrow.triangle.2.circlepath" }
-        if tools.contains(where: { $0.toolStatus == .error }) { return "xmark.circle.fill" }
-        return "checkmark.circle.fill"
+        // No running tools — settled == total.
+        let summary = toolGroupFailureSummary(tools)
+        if summary.failed == 0 { return "checkmark.circle.fill" }
+        if summary.failed == summary.total { return "xmark.circle.fill" }
+        return "exclamationmark.triangle.fill"
     }
 
     private var compositeColor: Color {
         if tools.contains(where: { $0.toolStatus == .running }) { return theme.statusRunning }
-        if tools.contains(where: { $0.toolStatus == .error }) { return theme.statusError }
-        return theme.statusDone
+        // No running tools — settled == total.
+        let summary = toolGroupFailureSummary(tools)
+        if summary.failed == 0 { return theme.statusDone }
+        if summary.failed == summary.total { return theme.statusError }
+        return theme.statusWarning
     }
 
     private var summaryText: String {
         let names = Set(tools.compactMap(\.toolName))
-        if names.count <= 2 { return names.sorted().joined(separator: ", ") }
-        return "\(tools.count) tools"
+        let base = names.count <= 2 ? names.sorted().joined(separator: ", ") : "\(tools.count) tools"
+        let summary = toolGroupFailureSummary(tools)
+        // Suppress failure suffix while any tool is still running.
+        guard !summary.running, summary.failed > 0 else { return base }
+        // No running tools — settled == total.
+        if summary.failed == summary.total { return "\(base), all failed" }
+        return "\(base), \(summary.failed) failed"
     }
 
     @ViewBuilder

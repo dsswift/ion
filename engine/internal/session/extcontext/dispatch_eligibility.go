@@ -73,15 +73,9 @@ func checkDispatchEligibility(
 	if !allowSelf {
 		dispatcherName, ok := registry.NameForID(currentDispatchId)
 		if !ok {
-			utils.Warn("Dispatch", fmt.Sprintf(
-				"eligibility guard: dispatcher id=%q not found in registry; skipping self-dispatch check session=%s",
-				currentDispatchId, sa.SessionKey(),
-			))
+			utils.LogWithFields(utils.LevelWarn, "server", "eligibility guard: dispatcher not found in registry; skipping self-dispatch check", map[string]any{"current_dispatch_id": currentDispatchId, "session_key": sa.SessionKey()})
 		} else if namesEqual(dispatcherName, requestedName) {
-			utils.Warn("Dispatch", fmt.Sprintf(
-				"eligibility guard: blocked self-dispatch agent=%q dispatcherId=%q session=%s",
-				requestedName, currentDispatchId, sa.SessionKey(),
-			))
+			utils.LogWithFields(utils.LevelWarn, "server", "eligibility guard: blocked self-dispatch", map[string]any{"requested_name": requestedName, "current_dispatch_id": currentDispatchId, "session_key": sa.SessionKey()})
 			return fmt.Errorf("%w: agent %q may not dispatch itself", ErrSelfDispatch, requestedName)
 		}
 	}
@@ -90,24 +84,15 @@ func checkDispatchEligibility(
 	allowedSubAgents, found := registry.AllowedSubAgentsForID(currentDispatchId)
 	if !found {
 		// Dispatcher not registered (the same race as above) -- fail open.
-		utils.Warn("Dispatch", fmt.Sprintf(
-			"eligibility guard: dispatcher id=%q not found for allowlist; skipping allowlist check session=%s",
-			currentDispatchId, sa.SessionKey(),
-		))
+		utils.LogWithFields(utils.LevelWarn, "server", "eligibility guard: dispatcher not found for allowlist; skipping allowlist check", map[string]any{"current_dispatch_id": currentDispatchId, "session_key": sa.SessionKey()})
 		return nil
 	}
 	if len(allowedSubAgents) > 0 {
 		if !nameInList(requestedName, allowedSubAgents) {
-			utils.Warn("Dispatch", fmt.Sprintf(
-				"eligibility guard: blocked dispatch agent=%q not in dispatcher's allowedSubAgents=%v dispatcherId=%q session=%s",
-				requestedName, allowedSubAgents, currentDispatchId, sa.SessionKey(),
-			))
+			utils.LogWithFields(utils.LevelWarn, "server", "eligibility guard: blocked dispatch not in dispatcher's", map[string]any{"requested_name": requestedName, "allowed_sub_agents": allowedSubAgents, "current_dispatch_id": currentDispatchId, "session_key": sa.SessionKey()})
 			return fmt.Errorf("%w: agent %q is not in the dispatcher's allowed sub-agents %v", ErrSubAgentNotAllowed, requestedName, allowedSubAgents)
 		}
-		utils.Log("Dispatch", fmt.Sprintf(
-			"eligibility guard: allowed dispatch agent=%q (in allowedSubAgents) dispatcherId=%q session=%s",
-			requestedName, currentDispatchId, sa.SessionKey(),
-		))
+		utils.LogWithFields(utils.LevelInfo, "server", "eligibility guard: allowed dispatch (in allowedsubagents)", map[string]any{"requested_name": requestedName, "current_dispatch_id": currentDispatchId, "session_key": sa.SessionKey()})
 	}
 
 	return nil

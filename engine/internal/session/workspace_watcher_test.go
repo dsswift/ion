@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/types"
 )
@@ -236,5 +237,74 @@ func TestResolveWatchIgnores(t *testing.T) {
 	got = resolveWatchIgnores(types.EngineConfig{WorkspaceWatchIgnore: custom})
 	if len(got) != 2 || got[0] != "a/**" || got[1] != "b/**" {
 		t.Errorf("override path: got %v, want %v", got, custom)
+	}
+}
+
+// TestDefaultWatchIgnores_MatchNestedPaths pins the any-depth form of the
+// default ignore patterns. The root-anchored form ("node_modules/**") was a
+// production defect: in a monorepo working directory, nested trees like
+// desktop/node_modules were NOT ignored, the watcher attached kqueue
+// descriptors to tens of thousands of files, and one npm ci storm exhausted
+// the engine process's fd table — starving every session of pipes and
+// sockets until the daemon was force-restarted.
+//
+// On the unfixed (root-anchored) patterns this test fails: doublestar
+// "node_modules/**" does not match "desktop/node_modules/x.js".
+func TestDefaultWatchIgnores_MatchNestedPaths(t *testing.T) {
+	// Each case: a repo-relative path that MUST be ignored by the defaults.
+	mustIgnore := []struct {
+		rel   string
+		isDir bool
+	}{
+		// Root-level (the form the old patterns already covered).
+		{"node_modules/x.js", false},
+		{"node_modules", true},
+		{".git/objects/ab", true},
+		// Nested — the production-defect cases.
+		{"desktop/node_modules/electron/index.js", false},
+		{"desktop/node_modules", true},
+		{"packages/app/node_modules", true},
+		{"sub/.git/objects/ab", true},
+		{"engine/dist/bin", true},
+		{"a/b/__pycache__/mod.pyc", false},
+		{"nested/.venv/lib", true},
+		{"deep/path/.DS_Store", false},
+		{"deep/path/file.swp", false},
+	}
+	// And paths that must NOT be ignored (guard against over-matching).
+	mustWatch := []struct {
+		rel   string
+		isDir bool
+	}{
+		{"src/main.go", false},
+		{"desktop/src/index.ts", false},
+		{"docs/dist-overview.md", false}, // "dist" as a name fragment, not a dir
+	}
+
+	ignoreMatch := func(rel string, isDir bool) bool {
+		for _, pat := range defaultWatchIgnores {
+			if match, _ := doublestar.Match(pat, rel); match {
+				return true
+			}
+			if isDir {
+				// Same directory-prune form the watcher uses (shouldIgnore):
+				// "**/node_modules/**" must match the bare dir entry too.
+				if match, _ := doublestar.Match(pat, rel+"/x"); match {
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	for _, tc := range mustIgnore {
+		if !ignoreMatch(tc.rel, tc.isDir) {
+			t.Errorf("default ignores must match %q (isDir=%v) — nested trees must be pruned at any depth", tc.rel, tc.isDir)
+		}
+	}
+	for _, tc := range mustWatch {
+		if ignoreMatch(tc.rel, tc.isDir) {
+			t.Errorf("default ignores must NOT match %q — over-broad pattern", tc.rel)
+		}
 	}
 }

@@ -150,7 +150,7 @@ func (h *Host) RegisterRequiredHooks(hooks []struct{ Event, Handler string }) {
 			cmd.Stdin = bytes.NewReader(payloadBytes)
 			out, err := cmd.Output()
 			if err != nil {
-				utils.Log("RequiredHook", fmt.Sprintf("hook %q failed: %v", handler, err))
+				utils.LogWithFields(utils.LevelInfo, "required.hook", "hook failed", map[string]any{"handler": handler, "error": err})
 				return nil, fmt.Errorf("required hook failed: %w", err)
 			}
 			if len(bytes.TrimSpace(out)) == 0 {

@@ -1,6 +1,6 @@
 # Engine (Go)
 
-Single static binary. Communicates over `~/.ion/engine.sock` (NDJSON).
+Single self-contained binary. Communicates over `~/.ion/engine.sock` (NDJSON). Linux builds are fully static (`CGO_ENABLED=0`, FROM-scratch container); darwin builds use cgo for the Local Network warmup probe (`internal/network/lanwarmup_darwin.go`).
 
 > **Read [`../docs/engine-grounding.md`](../docs/engine-grounding.md) before touching engine code.** It is the canonical framing: engine is a headless library, contracts are additive only, event semantics count, modifying the engine is a restricted operation. This file covers mechanics; the grounding doc covers principles. Both apply.
 
@@ -65,10 +65,15 @@ Client --[Unix socket, NDJSON]--> Server
 | `internal/protocol` | NDJSON wire format |
 | `internal/server` | Unix socket server, multi-client broadcast |
 | `internal/session` | SessionManager: lifecycle, event routing (decomposing) |
-| `internal/backend` | RunBackend interface, ApiBackend (agent loop), CliBackend (Claude Code subprocess), HybridBackend (routes per-run by model) |
+| `internal/backend` | RunBackend interface, ApiBackend (agent loop), ClaudeCodeBackend / CodexBackend / AcpBackend (grok, cursor) delegated-CLI subprocesses, HybridBackend (routes per-run by provider + operator preference) |
+| `internal/rpcstdio` | Symmetric JSON-RPC 2.0 over stdio (shared transport for the delegated-CLI backends) |
+| `internal/codexrpc` | Typed client for the `codex app-server` protocol |
+| `internal/acp` | Typed client for the Agent Client Protocol (grok/cursor CLIs) |
+| `internal/cliprobe` | Delegated-CLI discovery, install/auth probes + cache, interactive login/logout |
 | `internal/providers` | LlmProvider interface + implementations + retry |
 | `internal/tools` | Registry, core tools, BashOperations |
 | `internal/extension` | SDK, Host (subprocess JSON-RPC), agent discovery (decomposing) |
+| `internal/agentdiscovery` | Agent discovery — splitting from `extension` (decomposing) |
 | `internal/conversation` | Tree sessions, JSONL persistence, migration |
 | `internal/config` | 4-layer config, enterprise MDM, merge |
 | `internal/compaction` | Fact extraction, partial, restore |
@@ -90,6 +95,15 @@ Client --[Unix socket, NDJSON]--> Server
 | `internal/modelconfig` | models.json, provider init, tiers |
 | `internal/stream` | NDJSON line parser |
 | `internal/utils` | Logger, git context |
+| `internal/asyncreg` | Async trigger registration (schedules, webhooks) |
+| `internal/cost` | Cost centralization — aggregates per-run token costs (ADR-018) |
+| `internal/gitcontext` | Git context utilities (branch, commit, diff for prompt injection) |
+| `internal/pdf` | PDF-to-text extraction for file attachments |
+| `internal/resource` | Resource subsystem — publish, query, delta fan-out |
+| `internal/scheduling` | Schedule execution engine (cron, once, interval) |
+| `internal/titling` | Conversation auto-titling |
+| `internal/watcher` | File/directory watcher for context includes |
+| `internal/webhooks` | Inbound webhook route registration and dispatch |
 
 `internal/` boundary is compiler-enforced. Outside consumers (desktop, ios, relay) can only reach the wire protocol.
 
@@ -159,9 +173,15 @@ Key behavioral patterns for agents working with hooks:
 - The `before_*` hooks use last-writer-wins merge semantics across multiple handlers. A handler that returns nil abstains.
 - The TypeScript SDK runtime automatically unwraps `_payload` wrappers before invoking hook handlers. The engine wraps bare strings (and other non-object values) as `{_payload: value}` for JSON-RPC transport. The SDK detects this shape and passes the unwrapped value to the handler. This is transparent to extension authors but matters when debugging raw RPC frames or writing a custom SDK.
 
+## Async triggers (schedules and webhooks)
+
+Extensions register async triggers — scheduled jobs and inbound webhook routes — via `ion.schedule.*` and `ion.webhooks.register`. These are not hooks; they are delivered through `engine/fire_async` RPCs. The canonical SDK reference is [`docs/extensions/scheduling.md`](../docs/extensions/scheduling.md) and [`docs/extensions/webhooks.md`](../docs/extensions/webhooks.md).
+
+Additive schedule surface (no wire/contract break): `ion.schedule.once({ id, delayMs })` fires a one-shot job `delayMs` ms after registration then auto-deregisters; `ion.schedule.cancel(id)` is the id-addressable complement to `ScheduleHandle.unregister()`; every schedule handler receives an optional `control: ScheduleControl` second argument (`{ jobId, unregister() }`) for in-handler self-unregister. Both auto-deregister paths (`once_complete`) and explicit cancels reuse `engine_schedule_deregistered` — no new event type.
+
 ## Conventions
 
-- Logger: `utils.Log("Tag", "message")` → `~/.ion/engine.log`.
+- Logger: `utils.Log("Tag", "message")` → `~/.ion/engine.jsonl` (structured JSONL, `component=engine`). Extensions emit via JSON-RPC `log` notification; the host stamps `component=extension`, `tag=<extension-name>` and writes to the same file.
 - Types: import from `internal/types`.
 - Cancellation: `context.Context`.
 - Parallel tools: `errgroup.Group`.

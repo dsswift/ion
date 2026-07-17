@@ -204,7 +204,7 @@ func (m *ExternalHookManager) runAwaited(ctx context.Context, cfg ExternalHookCo
 
 	cmd, err := m.spawnHook(cfg, envPayload)
 	if err != nil {
-		utils.Log("hooks", fmt.Sprintf("awaited hook %s spawn error: %v", event, err))
+		utils.LogWithFields(utils.LevelInfo, "hooks", "awaited hook spawn error", map[string]any{"event": event, "error": err})
 		return err
 	}
 
@@ -216,17 +216,17 @@ func (m *ExternalHookManager) runAwaited(ctx context.Context, cfg ExternalHookCo
 	select {
 	case err := <-done:
 		if err != nil {
-			utils.Log("hooks", fmt.Sprintf("awaited hook %s exited with error: %v", event, err))
+			utils.LogWithFields(utils.LevelInfo, "hooks", "awaited hook exited with error", map[string]any{"event": event, "error": err})
 			return err
 		}
 		return nil
 	case <-ctx.Done():
 		if cmd.Process != nil {
 			if err := cmd.Process.Kill(); err != nil {
-				utils.Log("hooks", fmt.Sprintf("awaited hook %s kill on timeout failed: %v", event, err))
+				utils.LogWithFields(utils.LevelInfo, "hooks", "awaited hook kill on timeout failed", map[string]any{"event": event, "error": err})
 			}
 		}
-		utils.Log("hooks", fmt.Sprintf("awaited hook %s timed out after %v", event, cfg.Timeout))
+		utils.LogWithFields(utils.LevelInfo, "hooks", "awaited hook timed out after", map[string]any{"event": event, "timeout": cfg.Timeout})
 		return fmt.Errorf("hook %s timed out after %v", event, cfg.Timeout)
 	}
 }
@@ -235,7 +235,7 @@ func (m *ExternalHookManager) runAwaited(ctx context.Context, cfg ExternalHookCo
 func (m *ExternalHookManager) runFireAndForget(cfg ExternalHookConfig, event string, envPayload string) {
 	cmd, err := m.spawnHook(cfg, envPayload)
 	if err != nil {
-		utils.Log("hooks", fmt.Sprintf("fire-and-forget hook %s spawn error: %v", event, err))
+		utils.LogWithFields(utils.LevelInfo, "hooks", "fire-and-forget hook spawn error", map[string]any{"event": event, "error": err})
 		return
 	}
 
@@ -243,9 +243,9 @@ func (m *ExternalHookManager) runFireAndForget(cfg ExternalHookConfig, event str
 	timer := time.AfterFunc(cfg.Timeout, func() {
 		if cmd.Process != nil {
 			if err := cmd.Process.Kill(); err != nil {
-				utils.Log("hooks", fmt.Sprintf("fire-and-forget hook %s kill on timeout failed: %v", event, err))
+				utils.LogWithFields(utils.LevelInfo, "hooks", "fire-and-forget hook kill on timeout failed", map[string]any{"event": event, "error": err})
 			}
-			utils.Log("hooks", fmt.Sprintf("fire-and-forget hook %s killed after timeout %v", event, cfg.Timeout))
+			utils.LogWithFields(utils.LevelInfo, "hooks", "fire-and-forget hook killed after timeout", map[string]any{"event": event, "timeout": cfg.Timeout})
 		}
 	})
 
@@ -253,7 +253,7 @@ func (m *ExternalHookManager) runFireAndForget(cfg ExternalHookConfig, event str
 	timer.Stop()
 
 	if err != nil {
-		utils.Log("hooks", fmt.Sprintf("fire-and-forget hook %s exited with error: %v", event, err))
+		utils.LogWithFields(utils.LevelInfo, "hooks", "fire-and-forget hook exited with error", map[string]any{"event": event, "error": err})
 	}
 }
 
@@ -282,7 +282,7 @@ func (m *ExternalHookManager) serializePayload(payload map[string]interface{}) s
 
 	data, err := json.Marshal(payload)
 	if err != nil {
-		utils.Log("hooks", fmt.Sprintf("payload marshal error: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "hooks", "payload marshal error", map[string]any{"error": err})
 		return "{}"
 	}
 

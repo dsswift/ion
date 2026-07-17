@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react'
+import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { create } from 'zustand'
 import { useSessionStore } from '../stores/sessionStore'
@@ -105,26 +105,30 @@ export function InputBar() {
   // conversation post-#256), so there is no tab-type fork: a plain tab simply
   // has no registered extension commands and getRendererExtensionCommands
   // returns an empty list.
-  const extensionKey = activeTabId
-  const extensionExtra: SlashCommand[] = extensionKey
-    ? getRendererExtensionCommands(extensionKey).map((ec) => ({
-      command: `/${ec.name}`,
-      description: ec.description || ec.name,
-      icon: <ExtensionCommandIcon />,
-      group: 'extension' as const,
-    }))
-    : []
-
-  const extraCommands: SlashCommand[] = [...discoveredExtra, ...extensionExtra]
+  const extraCommands: SlashCommand[] = useMemo(() => {
+    const extensionExtra: SlashCommand[] = activeTabId
+      ? getRendererExtensionCommands(activeTabId).map((ec) => ({
+        command: `/${ec.name}`,
+        description: ec.description || ec.name,
+        icon: <ExtensionCommandIcon />,
+        group: 'extension' as const,
+      }))
+      : []
+    return [...discoveredExtra, ...extensionExtra]
+  }, [activeTabId, discoveredExtra])
 
   // ─── Per-tab draft input sync ───
-  // Save current input to departing tab, restore arriving tab's draft
+  // Save current input to departing tab, restore arriving tab's draft.
+  // inputRef tracks the latest input value so the effect only depends on
+  // activeTabId (not input itself, which would re-run on every keystroke).
   const prevTabIdRef = useRef(activeTabId)
+  const inputRef = useRef(input)
+  inputRef.current = input
   useEffect(() => {
     const prevId = prevTabIdRef.current
     if (prevId && prevId !== activeTabId) {
       // Save what was typed to the tab we're leaving
-      setDraftInput(prevId, input)
+      setDraftInput(prevId, inputRef.current)
       // Load the arriving tab's draft (now stored on its `main` instance)
       const arrivingDraft = activeInstance(useSessionStore.getState().conversationPanes, activeTabId)?.draftInput ?? ''
       setInput(arrivingDraft)
@@ -133,7 +137,7 @@ export function InputBar() {
     prevTabIdRef.current = activeTabId
     textareaRef.current?.focus()
     setBashMode(false)
-  }, [activeTabId])
+  }, [activeTabId, setDraftInput, setBashMode])
 
   // ─── Rewind: restore user message to input bar ───
   const pendingInput = tab?.pendingInput
@@ -143,7 +147,7 @@ export function InputBar() {
       clearPendingInput(activeTabId)
       textareaRef.current?.focus()
     }
-  }, [pendingInput, activeTabId])
+  }, [pendingInput, activeTabId, clearPendingInput])
 
   // Focus textarea when window is shown (shortcut toggle, screenshot return)
   // Skip if focus is inside the terminal panel (xterm manages its own focus)
@@ -326,7 +330,7 @@ export function InputBar() {
     submit(currentTab.id, prompt || (attachments.length > 0 ? 'See attached files' : ''))
     // Refocus after React re-renders from the state update
     requestAnimationFrame(() => textareaRef.current?.focus())
-  }, [input, isBusy, submit, attachments.length, showSlashMenu, slashFilter, slashIndex, handleSlashSelect, bashMode, bashExecuting, tab?.workingDirectory, startBashCommand, completeBashCommand, extraCommands, isConnecting, activeTabId, setDraftInput, setBashMode])
+  }, [input, submit, attachments.length, showSlashMenu, slashFilter, slashIndex, handleSlashSelect, bashMode, bashExecuting, tab?.workingDirectory, startBashCommand, completeBashCommand, extraCommands, isConnecting, activeTabId, setDraftInput, setBashMode])
 
   // ─── Keyboard ───
   const handleKeyDown = (e: React.KeyboardEvent) => {

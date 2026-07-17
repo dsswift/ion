@@ -23,10 +23,10 @@ import (
 // caller arms the gate immediately before SendPrompt so a pre-prompt idle does
 // not falsely trigger.
 type idleWaiter struct {
-	mu        sync.Mutex
-	armed     bool
-	done      chan string
-	fired     bool
+	mu    sync.Mutex
+	armed bool
+	done  chan string
+	fired bool
 }
 
 func newIdleWaiter(mgr *session.Manager) *idleWaiter {

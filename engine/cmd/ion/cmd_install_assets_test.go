@@ -228,3 +228,53 @@ func TestFindAssetRoot_NotFound(t *testing.T) {
 		t.Error("expected error when extensions/ not found, got nil")
 	}
 }
+
+// TestReplaceDirContents_RemovesOrphans pins the replace (not merge)
+// semantics of SDK / ion-meta installation. Regression for the stale-SDK
+// defect: a merge-copy left orphaned files (including a nested sdk/sdk
+// directory created by an earlier `cp -r` staging bug) in
+// ~/.ion/extensions/sdk across every upgrade, so extensions loaded an SDK
+// runtime frozen at the first-ever install. This test fails on the old
+// copyDirContents-based install: the orphan survives a merge.
+func TestReplaceDirContents_RemovesOrphans(t *testing.T) {
+	src := t.TempDir()
+	dst := t.TempDir()
+
+	// Fresh source ships one file.
+	if err := os.WriteFile(filepath.Join(src, "runtime.ts"), []byte("fresh"), 0o644); err != nil {
+		t.Fatalf("seed src: %v", err)
+	}
+
+	// Destination carries a stale file, plus a nested stale dir (the exact
+	// shape the cp -r bug produced).
+	if err := os.WriteFile(filepath.Join(dst, "runtime.ts"), []byte("stale"), 0o644); err != nil {
+		t.Fatalf("seed dst: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dst, "sdk", "ion-sdk"), 0o755); err != nil {
+		t.Fatalf("seed nested: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dst, "sdk", "ion-sdk", "runtime.ts"), []byte("nested-stale"), 0o644); err != nil {
+		t.Fatalf("seed nested file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dst, "orphan.ts"), []byte("deleted upstream"), 0o644); err != nil {
+		t.Fatalf("seed orphan: %v", err)
+	}
+
+	if err := replaceDirContents(src, dst); err != nil {
+		t.Fatalf("replaceDirContents: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(dst, "runtime.ts"))
+	if err != nil {
+		t.Fatalf("read replaced file: %v", err)
+	}
+	if string(got) != "fresh" {
+		t.Errorf("runtime.ts = %q, want the fresh source copy", got)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "sdk")); !os.IsNotExist(err) {
+		t.Error("nested stale sdk/ directory survived the replace")
+	}
+	if _, err := os.Stat(filepath.Join(dst, "orphan.ts")); !os.IsNotExist(err) {
+		t.Error("orphaned file survived the replace")
+	}
+}

@@ -16,9 +16,10 @@
 import type { IncomingPrompt } from './prompt-pipeline'
 import { log as _log } from './logger'
 import { state } from './state'
+import { notifyAtvUserMessageEcho } from './atv-window-manager'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 /**
@@ -112,7 +113,7 @@ export async function insertRendererSystemMessage(p: IncomingPrompt, content: st
       })()
     `)
   } catch (err) {
-    log(`insertRendererSystemMessage error: ${(err as Error).message}`)
+    log('prompt_pipeline: insertRendererSystemMessage error', { error: (err as Error).message })
   }
 }
 
@@ -130,6 +131,21 @@ export async function insertRendererSystemMessage(p: IncomingPrompt, content: st
  * Routes through insertRemoteUserMessage(tabId, content, slashCommand?,
  * slashArgs?) on the store, which appends a user message to the active
  * instance without triggering a new prompt to the engine.
+ *
+ * Also echoes the content to the ATV mirror window via
+ * notifyAtvUserMessageEcho so the ATV transcript includes the user turn.
+ * Without this echo the ATV shows assistant text with no preceding user
+ * bubble for iOS-originated slash commands that resolve as extension
+ * commands (commandError === ''). The IPC.PROMPT path fires
+ * notifyAtvUserMessageEcho automatically; this path reaches the renderer
+ * via executeJavaScript on mainWindow only and therefore needs an explicit
+ * echo. notifyAtvUserMessageEcho guards against the ATV window being absent
+ * or destroyed, so the call is unconditional here.
+ *
+ * Note: clearConnectingStatus in this file uses executeJavaScript with an
+ * inline store mutation and cannot import the renderer-side setTabStatus
+ * helper — that is an intentional cross-process boundary; the inline map
+ * is the correct approach there.
  */
 export async function insertRendererRemoteUserMessage(
   p: IncomingPrompt,
@@ -155,6 +171,11 @@ export async function insertRendererRemoteUserMessage(
   } catch (err) {
     log('insertRendererRemoteUserMessage error: ' + (err as Error).message)
   }
+  // Echo to ATV mirror. The IPC.PROMPT path fires notifyAtvUserMessageEcho
+  // automatically; this executeJavaScript path bypasses that channel and
+  // needs its own echo so the ATV transcript is complete.
+  log('insertRendererRemoteUserMessage: echoing to atv', { tab_id: p.tabId, content_len: content.length })
+  notifyAtvUserMessageEcho(p.tabId, content)
 }
 
 /**
@@ -208,7 +229,7 @@ export async function clearConnectingStatus(p: IncomingPrompt): Promise<void> {
       `)
     }
   } catch (err) {
-    log(`clearConnectingStatus error: ${(err as Error).message}`)
+    log('prompt_pipeline: clearConnectingStatus error', { error: (err as Error).message })
   }
   // Mirror to iOS so its tab status indicator flips too.
   state.remoteTransport?.send({ type: 'desktop_tab_status', tabId: p.tabId, status: 'idle' })

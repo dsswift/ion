@@ -28,7 +28,7 @@ type cliExitInfo struct {
 	sessionID string
 }
 
-func newCliEventCollector(b *backend.CliBackend) *cliEventCollector {
+func newCliEventCollector(b *backend.ClaudeCodeBackend) *cliEventCollector {
 	ec := &cliEventCollector{}
 	b.OnNormalized(func(runID string, event types.NormalizedEvent) {
 		ec.mu.Lock()
@@ -93,7 +93,7 @@ func (ec *cliEventCollector) getExits() []cliExitInfo {
 // using OAuth (no API key), receives text events, and exits with code 0.
 // This confirms the Claude CLI is available and authenticated.
 func TestLiveCliBackendSimplePrompt(t *testing.T) {
-	b := backend.NewCliBackend()
+	b := backend.NewClaudeCodeBackend()
 	ec := newCliEventCollector(b)
 
 	b.StartRun("cli-simple", types.RunOptions{
@@ -155,12 +155,12 @@ func TestLiveCliBackendSimplePrompt(t *testing.T) {
 // via newChildBackend(), and the child actually runs a real prompt via the
 // Claude CLI, produces text output, and exits cleanly.
 func TestLiveCliBackendChildFactory(t *testing.T) {
-	parentBackend := backend.NewCliBackend()
+	parentBackend := backend.NewClaudeCodeBackend()
 	mgr := session.NewManager(parentBackend)
 
 	// The factory should return a CliBackend
 	child := mgr.TestNewChildBackend()
-	cliChild, ok := child.(*backend.CliBackend)
+	cliChild, ok := child.(*backend.ClaudeCodeBackend)
 	if !ok {
 		t.Fatalf("expected *CliBackend child, got %T", child)
 	}
@@ -209,7 +209,7 @@ func TestLiveCliBackendChildFactory(t *testing.T) {
 // Before the fix, this would fail with "no API key found for provider
 // anthropic" because DispatchAgent hardcoded NewApiBackend().
 func TestLiveCliBackendDispatchAgent(t *testing.T) {
-	parentBackend := backend.NewCliBackend()
+	parentBackend := backend.NewClaudeCodeBackend()
 	mgr := session.NewManager(parentBackend)
 
 	cfg := types.EngineConfig{
@@ -321,7 +321,7 @@ func TestLiveCliBackendDispatchAgent(t *testing.T) {
 // This verifies Part D of the fix: the engine's agent-spec system is
 // reachable for CliBackend sessions via the MCP ToolServer.
 func TestLiveCliBackendIonAgentTool(t *testing.T) {
-	parentBackend := backend.NewCliBackend()
+	parentBackend := backend.NewClaudeCodeBackend()
 	mgr := session.NewManager(parentBackend)
 
 	cfg := types.EngineConfig{
@@ -381,7 +381,7 @@ func TestLiveCliBackendIonAgentTool(t *testing.T) {
 // This exercises the full dispatch pipeline: buildRunOptions, wireToolServer,
 // wireAgentToolServer, fireBeforePromptCli, and the CliBackend.StartRun.
 func TestLiveCliBackendSendPrompt(t *testing.T) {
-	parentBackend := backend.NewCliBackend()
+	parentBackend := backend.NewClaudeCodeBackend()
 	mgr := session.NewManager(parentBackend)
 
 	cfg := types.EngineConfig{

@@ -115,8 +115,7 @@ const bootstrapDir = path.join(__dirname, '..')
 const plistTemplatePath = path.resolve(bootstrapDir, '..', '..', '..', 'packaging', 'launchd', 'com.ion.engine.plist')
 const bundledBinaryPath = path.resolve(bootstrapDir, '..', '..', '..', 'engine', 'bin', 'ion')
 
-import { ensureEngineDaemon } from '../engine-bootstrap'
-
+import { ensureEngineDaemon, restartEngineDaemon, PLIST_LABEL } from '../engine-bootstrap'
 describe('engine-bootstrap', () => {
   it('substitutes $HOME in the plist template', async () => {
     // Seed the template at the path findPlistTemplate will check.
@@ -159,6 +158,12 @@ describe('engine-bootstrap', () => {
     expect(copiedFiles.length).toBe(1)
     expect(copiedFiles[0].src).toBe(bundledBinaryPath)
     expect(copiedFiles[0].dst).toBe(destBinary)
+
+    // install-assets must run from the BUNDLED binary, not the installed copy.
+    const installAssetsCall = execFileSyncCalls.find((c) => c.args[0] === 'install-assets')
+    expect(installAssetsCall).toBeDefined()
+    expect(installAssetsCall!.file).toBe(bundledBinaryPath)
+    expect(installAssetsCall!.file).not.toBe(destBinary)
   })
 
   it('skips binary copy when versions match', async () => {
@@ -178,6 +183,43 @@ describe('engine-bootstrap', () => {
     await ensureEngineDaemon()
 
     expect(copiedFiles.length).toBe(0)
+
+    // install-assets must still run from the BUNDLED binary even when the
+    // installed copy is version-matched (it installs SDK/ion-meta, not just binary).
+    const installAssetsCall = execFileSyncCalls.find((c) => c.args[0] === 'install-assets')
+    expect(installAssetsCall).toBeDefined()
+    expect(installAssetsCall!.file).toBe(bundledBinaryPath)
+  })
+
+  it('runs install-assets from the bundled binary, not the installed binary', async () => {
+    // This pins the root-cause fix: install-assets resolves its asset root (extensions/
+    // SDK and ion-meta) by walking up from the executable directory. The extensions/
+    // tree ships at Contents/Resources/engine/extensions/ — adjacent to srcBinary —
+    // but NOT next to destBinary (~/.ion/bin/ion). Running from destBinary would cause
+    // install-assets to fail to find any assets to install.
+    fakeFs[plistTemplatePath] = '<string>$HOME/.ion/bin/ion</string>'
+    fakeFs[bundledBinaryPath] = 'bundled-binary'
+
+    const destBinary = '/Users/testuser/.ion/bin/ion'
+    fakeFs[destBinary] = 'old-binary'
+
+    vi.mocked(execFileSync).mockImplementation((file: any, args: any) => {
+      execFileSyncCalls.push({ file, args })
+      if (args[0] === 'version') {
+        if (file === bundledBinaryPath) return 'ion-engine 2.0.0'
+        if (file === destBinary) return 'ion-engine 1.0.0'
+      }
+      if (args[0] === 'install-assets') return '==> install-assets complete'
+      return '' as any
+    })
+
+    await ensureEngineDaemon()
+
+    const installAssetsCall = execFileSyncCalls.find((c) => c.args[0] === 'install-assets')
+    expect(installAssetsCall).toBeDefined()
+    // Must use the bundled path (Contents/Resources/engine/ion), not ~/.ion/bin/ion.
+    expect(installAssetsCall!.file).toBe(bundledBinaryPath)
+    expect(installAssetsCall!.file).not.toBe(destBinary)
   })
 
   it('force-restarts with kickstart -k when the plist was (re)written', async () => {
@@ -277,5 +319,32 @@ describe('engine-bootstrap', () => {
     expect(Object.keys(writtenFiles).length).toBe(0)
     expect(execSyncCalls.length).toBe(0)
     expect(copiedFiles.length).toBe(0)
+  })
+})
+
+describe('restartEngineDaemon', () => {
+  it('force-restarts the daemon with kickstart -k so it re-reads engine.json', () => {
+    // darwin is pinned in beforeEach.
+    const ok = restartEngineDaemon()
+
+    expect(ok).toBe(true)
+    const kickstartCall = execSyncCalls.find((c) => c.includes('launchctl kickstart'))
+    expect(kickstartCall).toBeDefined()
+    // Force-restart (-k) is REQUIRED: a plain kickstart is a no-op on a running
+    // daemon and would not recycle the process to re-read config.
+    expect(kickstartCall).toContain('-k')
+    expect(kickstartCall).toContain(PLIST_LABEL)
+    // It must NOT bootout — the daemon is recycled in place, not stopped.
+    expect(execSyncCalls.some((c) => c.includes('bootout'))).toBe(false)
+  })
+
+  it('is a no-op on non-darwin platforms', () => {
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
+    platformOverride = 'linux'
+
+    const ok = restartEngineDaemon()
+
+    expect(ok).toBe(false)
+    expect(execSyncCalls.length).toBe(0)
   })
 })

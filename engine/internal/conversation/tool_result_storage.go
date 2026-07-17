@@ -43,16 +43,14 @@ func PersistAndPreview(content, toolUseID, convDir, convID string, maxChars int)
 	// Build the storage directory: {convDir}/tool-results/{convID}/
 	storageDir := filepath.Join(convDir, "tool-results", convID)
 	if err := os.MkdirAll(storageDir, 0o755); err != nil {
-		utils.Warn("ToolResultStorage", fmt.Sprintf(
-			"failed to create tool-results dir %s: %v, returning full content", storageDir, err))
+		utils.LogWithFields(utils.LevelWarn, "conversation.tool_result_storage", "failed to create tool results dir returning full content", map[string]any{"path": storageDir, "error": err.Error()})
 		return content, false
 	}
 
 	// Write full content to disk
 	filePath := filepath.Join(storageDir, toolUseID+".txt")
 	if err := os.WriteFile(filePath, []byte(content), 0o644); err != nil {
-		utils.Warn("ToolResultStorage", fmt.Sprintf(
-			"failed to write tool result to %s: %v, returning full content", filePath, err))
+		utils.LogWithFields(utils.LevelWarn, "conversation.tool_result_storage", "failed to write tool result returning full content", map[string]any{"path": filePath, "error": err.Error()})
 		return content, false
 	}
 
@@ -69,9 +67,9 @@ func PersistAndPreview(content, toolUseID, convDir, convID string, maxChars int)
 		"[Tool result truncated: %d total characters, showing first %d. Full output saved to: %s — use the Read tool to access the complete content if needed.]",
 		len(content), len(preview), filePath)
 
-	utils.Log("ToolResultStorage", fmt.Sprintf(
-		"persisted oversized tool result: toolUseID=%s chars=%d maxChars=%d path=%s",
-		toolUseID, len(content), maxChars, filePath))
+	utils.LogWithFields(utils.LevelInfo, "conversation.tool_result_storage", "persisted oversized tool result", map[string]any{
+		"run_id": toolUseID, "count": len(content), "max": maxChars, "path": filePath,
+	})
 
 	return sb.String(), true
 }

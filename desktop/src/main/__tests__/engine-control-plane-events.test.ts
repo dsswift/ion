@@ -26,6 +26,7 @@ vi.mock('electron', () => ({
 
 vi.mock('../logger', () => ({
   log: vi.fn(),
+  trace: vi.fn(),
   debug: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
@@ -76,7 +77,7 @@ function makeIdleEvent(sessionId: string): EngineEvent {
       state: 'idle',
       sessionId,
       label: 'tab-001',
-      totalCostUsd: 0,
+      runCostUsd: 0,
     },
   } as EngineEvent
 }

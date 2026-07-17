@@ -6,7 +6,7 @@ import { generatePKCE, generateState } from './pkce'
 import { startCallbackServer } from './callback-server'
 import { log as _log } from '../logger'
 
-function log(msg: string): void { _log('oauth', msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log('oauth', msg, fields) }
 
 /**
  * Resolve a public OAuth credential from (in priority order):
@@ -29,7 +29,7 @@ function resolveOAuthVar(envKey: string, provider: string, field: string): strin
     // File missing or malformed — fall through
   }
 
-  log(`WARNING: OAuth credential ${envKey} not found in env or ~/.ion/oauth.json`)
+  log('oauth: credential not found', { key: envKey })
   return ''
 }
 
@@ -39,62 +39,11 @@ export interface OAuthTokens {
   expiresAt: number
 }
 
-// ─── OpenAI Codex (ChatGPT subscription) ─────────────────────────
-
-const OPENAI_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
-const OPENAI_AUTH_URL = 'https://auth.openai.com/oauth/authorize'
-const OPENAI_TOKEN_URL = 'https://auth.openai.com/oauth/token'
-const OPENAI_REDIRECT_URI = 'http://localhost:1455/auth/callback'
-const OPENAI_SCOPE = 'openid profile email offline_access'
-
-export async function loginOpenAI(): Promise<OAuthTokens> {
-  const { verifier, challenge } = generatePKCE()
-  const state = generateState()
-  const url = new URL(OPENAI_AUTH_URL)
-  url.searchParams.set('response_type', 'code')
-  url.searchParams.set('client_id', OPENAI_CLIENT_ID)
-  url.searchParams.set('redirect_uri', OPENAI_REDIRECT_URI)
-  url.searchParams.set('scope', OPENAI_SCOPE)
-  url.searchParams.set('code_challenge', challenge)
-  url.searchParams.set('code_challenge_method', 'S256')
-  url.searchParams.set('state', state)
-  const server = await startCallbackServer(1455, state)
-  try {
-    await shell.openExternal(url.toString())
-    const result = await server.waitForCode()
-    if (!result) throw new Error('OAuth flow cancelled or timed out')
-    return exchangeOpenAICode(result.code, verifier)
-  } finally {
-    server.close()
-  }
-}
-
-async function exchangeOpenAICode(code: string, verifier: string): Promise<OAuthTokens> {
-  const resp = await fetch(OPENAI_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code', client_id: OPENAI_CLIENT_ID,
-      code, code_verifier: verifier, redirect_uri: OPENAI_REDIRECT_URI,
-    }),
-  })
-  if (!resp.ok) throw new Error(`OpenAI token exchange failed: ${resp.status}`)
-  const json = (await resp.json()) as { access_token?: string; refresh_token?: string; expires_in?: number }
-  if (!json.access_token || !json.refresh_token) throw new Error('OpenAI token response missing fields')
-  return { accessToken: json.access_token, refreshToken: json.refresh_token, expiresAt: Date.now() + (json.expires_in || 3600) * 1000 }
-}
-
-export async function refreshOpenAI(refreshToken: string): Promise<OAuthTokens> {
-  const resp = await fetch(OPENAI_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ grant_type: 'refresh_token', client_id: OPENAI_CLIENT_ID, refresh_token: refreshToken }),
-  })
-  if (!resp.ok) throw new Error(`OpenAI token refresh failed: ${resp.status}`)
-  const json = (await resp.json()) as { access_token?: string; refresh_token?: string; expires_in?: number }
-  if (!json.access_token) throw new Error('OpenAI refresh response missing access_token')
-  return { accessToken: json.access_token, refreshToken: json.refresh_token || refreshToken, expiresAt: Date.now() + (json.expires_in || 3600) * 1000 }
-}
+// OpenAI sign-in is NOT an OAuth flow here. The former loginOpenAI ran the
+// ChatGPT Codex PKCE flow and stored the resulting ChatGPT token as an OpenAI
+// API key, which lacks platform-API scopes (api.openai.com 403s). OpenAI
+// sign-in is now engine-driven `codex login` (see main/ipc/providers.ts);
+// that flow lives in the engine, which owns the codex CLI delegation.
 
 // ─── Google Gemini CLI (Cloud Code Assist) ────────────────────────
 // These are well-known public OAuth credentials from the Gemini CLI project.

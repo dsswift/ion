@@ -4,6 +4,8 @@ import type { ConversationPane } from '../../../shared/types-engine'
 import { usePreferencesStore } from '../../preferences'
 import { cancelDoneGroupMove } from '../session-store-helpers'
 import { effectivePermissionMode } from '../conversation-instance'
+import { isMirrorWindow } from '../../lib/window-role'
+import { rDebug, rInfo } from '../../rendererLogger'
 
 /**
  * Resolve the auto-group a tab belongs in for its CURRENT permission mode, and
@@ -51,35 +53,44 @@ export function applyActiveGroupMove(
   get: () => State,
   source: string,
 ): boolean {
+  // MIRROR GUARD: auto-group movement is an OWNER decision. The ATV mirror
+  // ingests the same event stream, so without this guard both windows
+  // evaluated every trigger — and the mirror's copy read its own (possibly
+  // stale) permission mode, then FORWARDED moveTabToGroup to the owner,
+  // overwriting the owner's correct move. (Observed: implement-and-unpin
+  // moved the tab to in-progress in the owner, then the mirror's
+  // status_change re-evaluation — still seeing mode 'plan' pre-sync — moved
+  // it to planning.) The owner's own reducer makes the move; the mirror
+  // receives the result via tabs-sync.
+  if (isMirrorWindow()) {
+    rDebug('auto-move.active', 'skipped: mirror window', { source, tab_id: tabId.slice(0, 8) })
+    return false
+  }
   const mode = effectivePermissionMode(tab, panes)
   const { autoGroupMovement, tabGroupMode, planningGroupId, inProgressGroupId } = usePreferencesStore.getState()
-  console.log(
-    `[auto-move:active] source=${source} tab=${tabId.slice(0, 8)} mode=${mode} autoGroup=${autoGroupMovement} tabGroupMode=${tabGroupMode} pinned=${tab.groupPinned} currentGroup=${tab.groupId ?? 'none'} inProgressGroup=${inProgressGroupId ?? 'none'} planningGroup=${planningGroupId ?? 'none'}`,
-  )
+  rDebug('auto-move.active', 'evaluating', { source, tab_id: tabId.slice(0, 8), mode, auto_group: autoGroupMovement, tab_group_mode: tabGroupMode, pinned: tab.groupPinned, current_group: tab.groupId ?? '', in_progress_group: inProgressGroupId ?? '', planning_group: planningGroupId ?? '' })
 
   if (!(autoGroupMovement && tabGroupMode === 'manual')) {
     return false
   }
   if (tab.groupPinned) {
     const wouldMoveTo = mode === 'plan' ? planningGroupId : inProgressGroupId
-    console.log(
-      `[auto-move:active] suppressed: source=${source} tab=${tabId.slice(0, 8)} pinned=true currentGroup=${tab.groupId ?? 'none'} wouldMoveTo=${wouldMoveTo ?? 'none'}`,
-    )
+    rDebug('auto-move.active', 'suppressed: tab pinned', { source, tab_id: tabId.slice(0, 8), current_group: tab.groupId ?? '', would_move_to: wouldMoveTo ?? '' })
     return false
   }
 
   if (mode === 'plan' && planningGroupId && tab.groupId !== planningGroupId) {
-    console.log(`[auto-move:active] moving source=${source} tab=${tabId.slice(0, 8)} to planning group=${planningGroupId}`)
+    rInfo('auto-move.active', 'moving to planning group', { source, tab_id: tabId.slice(0, 8), planning_group: planningGroupId })
     get().moveTabToGroup(tabId, planningGroupId)
     return true
   }
   if (mode === 'auto' && inProgressGroupId && tab.groupId !== inProgressGroupId) {
-    console.log(`[auto-move:active] moving source=${source} tab=${tabId.slice(0, 8)} to in-progress group=${inProgressGroupId}`)
+    rInfo('auto-move.active', 'moving to in-progress group', { source, tab_id: tabId.slice(0, 8), in_progress_group: inProgressGroupId })
     get().moveTabToGroup(tabId, inProgressGroupId)
     return true
   }
 
-  console.log(`[auto-move:active] no-op: source=${source} tab=${tabId.slice(0, 8)} already in correct group=${tab.groupId ?? 'none'}`)
+  rDebug('auto-move.active', 'no-op: already in correct group', { source, tab_id: tabId.slice(0, 8), current_group: tab.groupId ?? '' })
   return false
 }
 
@@ -126,8 +137,8 @@ export function maybeScheduleRunningMove(
   // A genuine entry into running supersedes any pending done-move from a prior
   // completion. Cancel it so the tab is not yanked to done mid-run.
   if (cancelDoneGroupMove(tabId)) {
-    console.log(`[auto-move:active] cancelled pending done-move for tab=${tabId.slice(0, 8)} on running transition source=${source}`)
+    rDebug('auto-move.active', 'cancelled pending done-move on running transition', { tab_id: tabId.slice(0, 8), source })
   }
-  console.log(`[auto-move:active] running transition source=${source} tab=${tabId.slice(0, 8)} prevStatus=${prevStatus} newStatus=${newStatus}`)
+  rInfo('auto-move.active', 'running transition', { source, tab_id: tabId.slice(0, 8), prev_status: prevStatus, status: newStatus })
   applyActiveGroupMove(tabId, updatedTab, panes, get, source)
 }

@@ -47,33 +47,36 @@ func jsonFieldNames(t reflect.Type) []string {
 // that implements it, covering every variant registered in UnmarshalJSON.
 func normalizedEventVariants() map[string]NormalizedEventData {
 	return map[string]NormalizedEventData{
-		EventSessionInit:        &SessionInitEvent{},
-		EventTextChunk:          &TextChunkEvent{},
-		EventToolCall:           &ToolCallEvent{},
-		EventToolCallUpdate:     &ToolCallUpdateEvent{},
-		EventToolCallComplete:   &ToolCallCompleteEvent{},
-		EventToolResult:         &ToolResultEvent{},
-		EventTaskUpdate:         &TaskUpdateEvent{},
-		EventTaskComplete:       &TaskCompleteEvent{},
-		EventError:              &ErrorEvent{},
-		EventSessionDead:        &SessionDeadEvent{},
-		EventRateLimit:          &RateLimitNormalizedEvent{},
-		EventUsage:              &UsageEvent{},
-		EventPermissionRequest:  &PermissionRequestEvent{},
-		EventPlanModeChanged:    &PlanModeChangedEvent{},
-		EventPlanFileWritten:    &PlanFileWrittenEvent{},
-		EventPlanProposal:       &PlanProposalEvent{},
-		EventPlanModeAutoExit:   &PlanModeAutoExitEvent{},
-		EventStreamReset:        &StreamResetEvent{},
-		EventCompacting:         &CompactingEvent{},
-		EventToolStalled:        &ToolStalledEvent{},
-		EventSteerInjected:      &SteerInjectedEvent{},
-		EventModelFallback:      &ModelFallbackEvent{},
-		EventRunStalled:         &RunStalledEvent{},
-		EventPlanContent:        &PlanContentEvent{},
-		EventThinkingBlockStart: &ThinkingBlockStartEvent{},
-		EventThinkingDelta:      &ThinkingDeltaEvent{},
-		EventThinkingBlockEnd:   &ThinkingBlockEndEvent{},
+		EventSessionInit:           &SessionInitEvent{},
+		EventTextChunk:             &TextChunkEvent{},
+		EventToolCall:              &ToolCallEvent{},
+		EventToolCallUpdate:        &ToolCallUpdateEvent{},
+		EventToolCallComplete:      &ToolCallCompleteEvent{},
+		EventToolResult:            &ToolResultEvent{},
+		EventTaskUpdate:            &TaskUpdateEvent{},
+		EventTaskComplete:          &TaskCompleteEvent{},
+		EventError:                 &ErrorEvent{},
+		EventSessionDead:           &SessionDeadEvent{},
+		EventRateLimit:             &RateLimitNormalizedEvent{},
+		EventUsage:                 &UsageEvent{},
+		EventPermissionRequest:     &PermissionRequestEvent{},
+		EventPlanModeChanged:       &PlanModeChangedEvent{},
+		EventPlanFileWritten:       &PlanFileWrittenEvent{},
+		EventPlanProposal:          &PlanProposalEvent{},
+		EventPlanModeAutoExit:      &PlanModeAutoExitEvent{},
+		EventStreamReset:           &StreamResetEvent{},
+		EventCompacting:            &CompactingEvent{},
+		EventToolStalled:           &ToolStalledEvent{},
+		EventSteerInjected:         &SteerInjectedEvent{},
+		EventPromptInjected:        &PromptInjectedEvent{},
+		EventModelFallback:         &ModelFallbackEvent{},
+		EventCapabilityUnsupported: &CapabilityUnsupportedEvent{},
+		EventRunStalled:            &RunStalledEvent{},
+		EventTaskSuspend:           &TaskSuspendEvent{},
+		EventPlanContent:           &PlanContentEvent{},
+		EventThinkingBlockStart:    &ThinkingBlockStartEvent{},
+		EventThinkingDelta:         &ThinkingDeltaEvent{},
+		EventThinkingBlockEnd:      &ThinkingBlockEndEvent{},
 		// Extension-surface events (WI-001: single-path collapse)
 		EventMessageEnd:             &MessageEndEvent{},
 		EventAgentState:             &AgentStateEvent{},
@@ -86,6 +89,7 @@ func normalizedEventVariants() map[string]NormalizedEventData {
 		EventExtensionDeadPermanent: &ExtensionDeadPermanentEvent{},
 		EventEventsDropped:          &EventsDroppedEvent{},
 		EventContextBreakdown:       &ContextBreakdownEvent{},
+		EventImageContent:           &ImageContentEvent{},
 	}
 }
 
@@ -105,16 +109,18 @@ func buildManifest() contractManifest {
 
 	// Shared types used across language boundaries
 	shared := map[string]reflect.Type{
-		"StatusFields":     reflect.TypeOf(StatusFields{}),
-		"SessionStatus":    reflect.TypeOf(SessionStatus{}),
-		"EngineConfig":     reflect.TypeOf(EngineConfig{}),
-		"MessageEndUsage":  reflect.TypeOf(MessageEndUsage{}),
-		"PermissionOpt":    reflect.TypeOf(PermissionOpt{}),
-		"McpServerInfo":    reflect.TypeOf(McpServerInfo{}),
-		"UsageData":        reflect.TypeOf(UsageData{}),
-		"AgentStateUpdate": reflect.TypeOf(AgentStateUpdate{}),
-		"ModelEntry":       reflect.TypeOf(ModelEntry{}),
-		"ProviderEntry":    reflect.TypeOf(ProviderEntry{}),
+		"StatusFields":        reflect.TypeOf(StatusFields{}),
+		"SessionStatus":       reflect.TypeOf(SessionStatus{}),
+		"EngineConfig":        reflect.TypeOf(EngineConfig{}),
+		"MessageEndUsage":     reflect.TypeOf(MessageEndUsage{}),
+		"PermissionOpt":       reflect.TypeOf(PermissionOpt{}),
+		"McpServerInfo":       reflect.TypeOf(McpServerInfo{}),
+		"UsageData":           reflect.TypeOf(UsageData{}),
+		"AgentStateUpdate":    reflect.TypeOf(AgentStateUpdate{}),
+		"ModelEntry":          reflect.TypeOf(ModelEntry{}),
+		"ProviderEntry":       reflect.TypeOf(ProviderEntry{}),
+		"ProviderCliStatus":   reflect.TypeOf(ProviderCliStatus{}),
+		"ProviderLoginUpdate": reflect.TypeOf(ProviderLoginUpdate{}),
 		// Slash-command registry. Emitted inside engine_command_registry events
 		// so consumers can populate a routing-hint cache without parsing
 		// engine internals. Snapshot semantics — see types.go comment.
@@ -129,6 +135,15 @@ func buildManifest() contractManifest {
 		// Tracked so cross-language mirrors carry the per-category context readout.
 		"ContextBreakdownPayload":  reflect.TypeOf(ContextBreakdownPayload{}),
 		"ContextBreakdownCategory": reflect.TypeOf(ContextBreakdownCategory{}),
+		// ModelBreakdown is a per-model cost-breakdown row carried inside
+		// ContextBreakdownPayload.ModelBreakdown. Tracked so cross-language
+		// mirrors stay in sync.
+		"ModelBreakdown": reflect.TypeOf(ModelBreakdown{}),
+		// SessionMessage is the history-load row (load_session_history /
+		// get_conversation responses). Tracked so its canonical row id and
+		// error-flag fields stay mirrored in the desktop mapper and iOS model.
+		"SessionMessage":           reflect.TypeOf(SessionMessage{}),
+		"SessionMessageAttachment": reflect.TypeOf(SessionMessageAttachment{}),
 	}
 	for name, typ := range shared {
 		m.SharedTypes[name] = jsonFieldNames(typ)

@@ -1,7 +1,6 @@
 package session
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
@@ -66,7 +65,7 @@ func (r *runOnceRegistry) check(extensionPath, operationID string, debounceMs in
 	}
 
 	entry.running = true
-	utils.Log("runOnce", fmt.Sprintf("acquired ext=%s op=%s debounce=%dms", extensionPath, operationID, debounceMs))
+	utils.LogWithFields(utils.LevelInfo, "runonce", "acquired", map[string]any{"extension_path": extensionPath, "run_id": operationID, "debounce_ms": debounceMs})
 	return RunOnceCheckResult{Execute: true}
 }
 
@@ -90,7 +89,7 @@ func (r *runOnceRegistry) complete(extensionPath, operationID string, failed boo
 	if !failed {
 		entry.lastRun = time.Now()
 	}
-	utils.Debug("runOnce", fmt.Sprintf("completed ext=%s op=%s failed=%v", extensionPath, operationID, failed))
+	utils.LogWithFields(utils.LevelDebug, "runonce", "completed", map[string]any{"extension_path": extensionPath, "run_id": operationID, "failed": failed})
 }
 
 // runningIDs returns the operation IDs that are currently marked as running
@@ -130,7 +129,7 @@ func (r *runOnceRegistry) releaseRunning(extensionPath, operationID string) {
 	}
 	if entry.running {
 		entry.running = false
-		utils.Debug("runOnce", fmt.Sprintf("released running ext=%s op=%s (host death)", extensionPath, operationID))
+		utils.LogWithFields(utils.LevelDebug, "runonce", "released running (host death)", map[string]any{"extension_path": extensionPath, "run_id": operationID})
 	}
 }
 
@@ -141,7 +140,7 @@ func (r *runOnceRegistry) purgeExtension(extensionPath string) {
 	defer r.mu.Unlock()
 	if _, ok := r.ops[extensionPath]; ok {
 		delete(r.ops, extensionPath)
-		utils.Log("runOnce", fmt.Sprintf("cleared all entries for ext=%s (last session stopped)", extensionPath))
+		utils.LogWithFields(utils.LevelInfo, "runonce", "cleared all entries for (last session stopped)", map[string]any{"extension_path": extensionPath})
 	}
 }
 

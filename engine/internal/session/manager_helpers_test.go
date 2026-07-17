@@ -3,6 +3,7 @@ package session
 import (
 	"sync"
 
+	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -62,6 +63,18 @@ func (m *mockBackend) IsRunning(requestID string) bool {
 func (m *mockBackend) WriteToStdin(_ string, _ interface{}) error { return nil }
 
 func (m *mockBackend) FlushConversations() {}
+
+// Capabilities reports an engine-owned, fully-capable descriptor so the
+// dispatch-time capability gate and the resume-vs-bridge decision treat the
+// mock like the ApiBackend (no gating, no history seeding).
+func (m *mockBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:         "mock",
+		ContextModel: backend.ContextModelEngineOwned,
+		PlanMode:     true,
+		Steering:     true,
+	}
+}
 
 // BeginHumanWait / EndHumanWait satisfy humanWaitSuspendable so a Manager wired
 // to this mock can be asserted to bracket its human-waits onto the right

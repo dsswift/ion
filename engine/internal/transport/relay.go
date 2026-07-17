@@ -80,7 +80,7 @@ func (r *RelayTransport) connectLoop(handler func(conn Conn)) {
 
 		err := r.dial()
 		if err != nil {
-			utils.Log("Relay", fmt.Sprintf("dial failed (attempt %d): %v", r.attempt, err))
+			utils.LogWithFields(utils.LevelInfo, "transport.relay", "dial failed", map[string]any{"attempt": r.attempt, "error": err.Error()})
 
 			delay := r.backoffDelay()
 			select {
@@ -92,7 +92,7 @@ func (r *RelayTransport) connectLoop(handler func(conn Conn)) {
 			r.mu.Lock()
 			r.attempt++
 			if r.attempt > 0 && r.attempt%50 == 0 {
-				utils.Warn("Relay", fmt.Sprintf("still trying to reconnect (attempt %d)", r.attempt))
+				utils.LogWithFields(utils.LevelWarn, "transport.relay", "still trying to reconnect", map[string]any{"attempt": r.attempt})
 			}
 			r.mu.Unlock()
 			continue
@@ -174,7 +174,7 @@ func (r *RelayTransport) readLoop() {
 			select {
 			case <-r.done:
 			default:
-				utils.Log("Relay", fmt.Sprintf("read error: %v", err))
+				utils.LogWithFields(utils.LevelInfo, "transport.relay", "read error", map[string]any{"error": err.Error()})
 			}
 			return
 		}
@@ -221,7 +221,7 @@ func (r *RelayTransport) Broadcast(data []byte) {
 	defer writeCancel()
 	err := conn.Write(writeCtx, websocket.MessageText, data)
 	if err != nil {
-		utils.Log("Relay", fmt.Sprintf("broadcast write error: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "transport.relay", "broadcast write error", map[string]any{"error": err.Error()})
 	}
 }
 
@@ -234,7 +234,7 @@ func (r *RelayTransport) Close() error {
 		close(r.done)
 		if r.conn != nil {
 			if err := r.conn.Close(websocket.StatusNormalClosure, "engine shutdown"); err != nil {
-				utils.Log("RelayTransport", fmt.Sprintf("Close: websocket close failed: %v", err))
+				utils.LogWithFields(utils.LevelInfo, "transport.relay", "close websocket close failed", map[string]any{"error": err.Error()})
 			}
 		}
 	}

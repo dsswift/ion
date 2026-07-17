@@ -28,8 +28,9 @@ func CleanupStored(dir string, maxAgeDays int, excludeIDs []string, activeSessio
 	}
 
 	cutoff := time.Now().AddDate(0, 0, -maxAgeDays)
-	utils.Log("Cleanup", fmt.Sprintf("start dir=%s maxAgeDays=%d cutoff=%s excludeCount=%d activeCount=%d dryRun=%v",
-		dir, maxAgeDays, cutoff.Format(time.RFC3339), len(excludeIDs), len(activeSessionIDs), dryRun))
+	utils.LogWithFields(utils.LevelInfo, "conversation.cleanup", "start", map[string]any{
+		"path": dir, "max": maxAgeDays, "count": len(excludeIDs), "attempt": len(activeSessionIDs),
+	})
 
 	// Build exclude set from both client and server sources.
 	exclude := make(map[string]bool, len(excludeIDs)+len(activeSessionIDs))
@@ -93,27 +94,27 @@ func CleanupStored(dir string, maxAgeDays int, excludeIDs []string, activeSessio
 	var toDelete []string
 	for _, c := range candidates {
 		if hasCustomLabel(dir, c.id) {
-			utils.Debug("Cleanup", fmt.Sprintf("skip labeled: id=%s", c.id))
+			utils.LogWithFields(utils.LevelDebug, "conversation.cleanup", "skip labeled", map[string]any{"conversation_id": c.id})
 			continue
 		}
 		toDelete = append(toDelete, c.id)
 	}
 
 	if dryRun {
-		utils.Log("Cleanup", fmt.Sprintf("dry-run: would delete %d conversations", len(toDelete)))
+		utils.LogWithFields(utils.LevelInfo, "conversation.cleanup", "dry-run would delete", map[string]any{"count": len(toDelete)})
 		return len(toDelete), nil
 	}
 
 	deleted := 0
 	for _, id := range toDelete {
 		if err := deleteConversationFiles(dir, id); err != nil {
-			utils.Error("Cleanup", fmt.Sprintf("delete failed: id=%s err=%v", id, err))
+			utils.LogWithFields(utils.LevelError, "conversation.cleanup", "delete failed", map[string]any{"conversation_id": id, "error": err.Error()})
 			continue
 		}
 		deleted++
 	}
 
-	utils.Log("Cleanup", fmt.Sprintf("done: deleted=%d", deleted))
+	utils.LogWithFields(utils.LevelInfo, "conversation.cleanup", "done", map[string]any{"count": deleted})
 	return deleted, nil
 }
 
@@ -141,15 +142,15 @@ func deleteConversationFiles(dir, id string) error {
 		if err := os.Remove(path); err != nil {
 			if !os.IsNotExist(err) {
 				lastErr = err
-				utils.Error("Cleanup", fmt.Sprintf("remove failed: path=%s err=%v", path, err))
+				utils.LogWithFields(utils.LevelError, "conversation.cleanup", "remove failed", map[string]any{"path": path, "error": err.Error()})
 			}
 		} else {
 			removed++
-			utils.Debug("Cleanup", fmt.Sprintf("removed: path=%s", path))
+			utils.LogWithFields(utils.LevelDebug, "conversation.cleanup", "removed", map[string]any{"path": path})
 		}
 	}
 	if removed > 0 {
-		utils.Log("Cleanup", fmt.Sprintf("deleted: id=%s files=%d", id, removed))
+		utils.LogWithFields(utils.LevelInfo, "conversation.cleanup", "deleted", map[string]any{"conversation_id": id, "count": removed})
 	}
 	return lastErr
 }

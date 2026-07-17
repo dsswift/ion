@@ -14,7 +14,7 @@ import XCTest
 /// - Test 1 fails unless the `if conversationLoaded.contains(tabId)` gate is
 ///   removed from SessionViewModel+Submit.swift.
 /// - Tests 2 and 3 fail unless the pending-optimistic merge is applied in
-///   the `cursor == nil` branch of `handleConversationHistory`.
+///   the `before == nil` (wholesale-replace) branch of `handleConversationHistory`.
 @MainActor
 final class OptimisticInsertTests: XCTestCase {
 

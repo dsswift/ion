@@ -24,8 +24,12 @@
 import type {
   IonContext,
   ScheduleDaily,
+  ScheduleFireMeta,
+  ScheduleHandler,
   ScheduleInterval,
   ScheduleJob,
+  ScheduleOnce,
+  ScheduleControl,
   ScheduleWeekly,
   ScheduleHandle,
   WebhookHandle,
@@ -39,7 +43,13 @@ import type {
 // flushed via the init response) and dynamic (post-init register
 // RPC) entries land here; lookup is uniform.
 const webhookHandlers = new Map<string, (ctx: IonContext, req: WebhookRequest) => Promise<WebhookResponse> | WebhookResponse>()
-const scheduleHandlers = new Map<string, (ctx: IonContext) => Promise<void> | void>()
+const scheduleHandlers = new Map<string, ScheduleHandler>()
+
+// onceJobIds tracks schedule IDs registered via once() so the fire
+// dispatcher can clean up the local handler entry after invocation.
+// The engine self-deregisters on its side; this mirrors that on the
+// SDK side so a re-fire attempt from a lingering tick finds no handler.
+const onceJobIds = new Set<string>()
 
 // TokenRefs and PredicateRefs name the lazy callbacks the engine
 // resolves on demand. Keyed by the symbolic name the extension
@@ -171,6 +181,10 @@ export interface ScheduleApi {
   daily(opts: ScheduleDaily): Promise<ScheduleHandle>
   weekly(opts: ScheduleWeekly): Promise<ScheduleHandle>
   interval(opts: ScheduleInterval): Promise<ScheduleHandle>
+  /** Register a one-shot schedule that fires once after delayMs then self-deregisters. */
+  once(opts: ScheduleOnce): Promise<ScheduleHandle>
+  /** Imperatively cancel a registered schedule by its id. */
+  cancel(id: string): Promise<void>
 }
 
 export const scheduleApi: ScheduleApi = {
@@ -207,6 +221,23 @@ export const scheduleApi: ScheduleApi = {
       ...(opts.concurrency !== undefined ? { concurrency: opts.concurrency } : {}),
     }, opts.handler)
   },
+  once(opts) {
+    // Track as a once job so dispatchFireAsync can clean up the local
+    // handler entry after the single invocation completes.
+    onceJobIds.add(opts.id)
+    return registerSchedule({
+      id: opts.id,
+      kind: 'once',
+      delayMs: opts.delayMs,
+      tz: opts.tz,
+      timeoutMs: opts.timeoutMs,
+      enabledRefName: stashEnabled(opts.id, opts.enabled),
+      ...(opts.concurrency !== undefined ? { concurrency: opts.concurrency } : {}),
+    }, opts.handler)
+  },
+  cancel(id: string): Promise<void> {
+    return unregisterSchedule(id)
+  },
 }
 
 function stashEnabled(id: string, enabled: (() => boolean | Promise<boolean>) | undefined): string {
@@ -218,7 +249,7 @@ function stashEnabled(id: string, enabled: (() => boolean | Promise<boolean>) | 
 
 async function registerSchedule(
   job: ScheduleJob,
-  handler: (ctx: IonContext) => Promise<void> | void,
+  handler: (ctx: IonContext, control?: ScheduleControl) => Promise<void> | void,
 ): Promise<ScheduleHandle> {
   if (!job || !job.id) throw new Error('ion.schedule.*: id is required')
   if (typeof handler !== 'function') {
@@ -271,7 +302,31 @@ export async function dispatchFireAsync(params: any, buildContext: (raw: any) =>
   if (kind === 'schedule') {
     const handler = scheduleHandlers.get(id)
     if (!handler) throw new Error(`fire_async schedule: no handler for ${id}`)
-    await handler(ctx)
+    // Build a ScheduleControl for the handler so it can inspect its own
+    // job ID and imperatively unregister itself before the engine's
+    // natural deregister lifecycle fires.
+    const control: ScheduleControl = {
+      jobId: id,
+      unregister: () => unregisterSchedule(id),
+    }
+    // Build ScheduleFireMeta from the engine payload so the handler can
+    // distinguish a live tick fire from a backfill fire triggered by
+    // ctx.fireSchedule.
+    const meta: ScheduleFireMeta = {
+      firedAt: String(payload?.firedAt ?? ''),
+      backfill: Boolean(payload?.backfill),
+      missedSlotUtc: payload?.missedSlotUtc ? String(payload.missedSlotUtc) : undefined,
+    }
+    await handler(ctx, control, meta)
+    // For once jobs, clean up the local handler entry after the single
+    // invocation. The engine removes the job from its registry on its
+    // side; this mirrors that on the SDK side so a stale tick arriving
+    // after deregister finds no handler and throws (expected).
+    if (onceJobIds.has(id)) {
+      scheduleHandlers.delete(id)
+      predicateRefs.delete(`schedule:${id}:enabled`)
+      onceJobIds.delete(id)
+    }
     return { ok: true }
   }
   throw new Error(`fire_async: unknown kind ${kind}`)

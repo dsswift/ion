@@ -3,14 +3,20 @@ import { usePreferencesStore } from '../../preferences'
 import { destroyTerminalInstance } from '../../components/TerminalPanel'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { makeLocalTab, isReusableBlankConversationTab, initialModelOverride, initialPermissionMode } from '../session-store-helpers'
-import { makeMainPane, commitInstance, activeInstance, instanceMessageCount } from '../conversation-instance'
+import { makeMainPane, commitInstance, activeInstance, instanceMessageCount, needsHistoryHydration } from '../conversation-instance'
 import { cleanupTabDeltas } from './engine-event-slice'
 import { applySetThinkingEffort } from './tab-slice-thinking'
+import { applyPermissionModeForTab } from './tab-slice-permission-mode'
 import { createConversationTabAction } from './engine-slice-create'
 import { evaluateCloseGuard, formatCloseGuardRefusal } from './tab-close-guard'
+import { forgetTabContentTracking } from '../tab-content-tracking'
 import { pickNextActiveTab } from './tab-slice-next-active'
-import { applyActiveGroupMove } from './event-slice-running-move'
 import { getEffectiveTabGroups } from '../../preferences'
+import { rDebug, rWarn } from '../../rendererLogger'
+import {
+  moveTabToGroupAction, moveTabToGroupAndPinAction, setTabGroupIdAction,
+  toggleTabGroupPinAction, setWorktreeUncommittedAction, addSystemMessageAction,
+} from './tab-slice-misc-actions'
 
 export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
   // Unified creation entry point (Phase 2, #256). Both plain and engine tabs
@@ -23,7 +29,6 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
     initStaticInfo: async () => {
       try {
         const result = await window.ion.start()
-        const backend = await window.ion.getBackend()
         set({
           staticInfo: {
             version: result.version || 'unknown',
@@ -32,66 +37,15 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
             projectPath: result.projectPath || '~',
             homePath: result.homePath || '~',
           },
-          backend,
         })
       } catch {}
     },
 
     setPermissionMode: (mode, source) => {
-      const { activeTabId } = get()
-      const activeTab = get().tabs.find((t) => t.id === activeTabId)
-      if (!activeTab) return
-      const pane = get().conversationPanes.get(activeTabId)
-      const instanceId = pane?.activeInstanceId
-      if (instanceId) {
-        // All tab types: write permissionMode onto the active conversation instance.
-        // Extension-hosted tabs call engineSetPlanMode to notify the extension host;
-        // plain tabs call setPermissionMode so the engine CLI can react.
-        set((s) => {
-          const conversationPanes = new Map(s.conversationPanes)
-          const paneInner = conversationPanes.get(activeTabId)
-          if (!paneInner) return {}
-          const idx = paneInner.instances.findIndex((i) => i.id === instanceId)
-          if (idx === -1) return {}
-          const instances = paneInner.instances.slice()
-          instances[idx] = { ...instances[idx], permissionMode: mode }
-          conversationPanes.set(activeTabId, { ...paneInner, instances })
-          return { conversationPanes }
-        })
-        if (activeTab.engineProfileId) {
-          window.ion.engineSetPlanMode(`${activeTabId}:${instanceId}`, mode === 'plan')
-        } else {
-          // When entering plan mode, forward the instance's persisted
-          // planFilePath so the engine restores plan-file continuity if its
-          // session was replaced (rebound) and lost the in-memory path.
-          // Only meaningful on enter; on 'auto' the engine ignores it.
-          const planFilePath = mode === 'plan'
-            ? (pane?.instances.find((i) => i.id === instanceId)?.planFilePath ?? undefined)
-            : undefined
-          window.ion.setPermissionMode(activeTabId, mode, source, planFilePath || undefined)
-        }
-      }
-      // Auto-switch to the plan model when entering plan mode
-      const { planModelSplitEnabled, planModeModel } = usePreferencesStore.getState()
-      if (planModelSplitEnabled && mode === 'plan' && planModeModel) {
-        get().setTabModel(activeTabId, planModeModel)
-      }
-
-      // Re-evaluate the auto-group for a tab that is actively running/connecting:
-      // flipping plan↔auto mid-run changes which group the tab belongs in
-      // (planning vs in-progress), so move it there immediately rather than
-      // waiting for the next send/running transition. The instance permissionMode
-      // was just committed above, so `applyActiveGroupMove`'s authoritative
-      // effectivePermissionMode read reflects the new mode. Its own guards
-      // (autoGroupMovement, manual mode, not pinned, not already in target) decide
-      // whether anything moves; an idle tab is left alone since the user has not
-      // re-engaged it.
-      if (activeTab.status === 'running' || activeTab.status === 'connecting') {
-        const movedTab = get().tabs.find((t) => t.id === activeTabId)
-        if (movedTab) {
-          applyActiveGroupMove(activeTabId, movedTab, get().conversationPanes, get, 'permission_mode_change')
-        }
-      }
+      // Active-tab UI entry point; the per-tab core lives in
+      // tab-slice-permission-mode.ts so pipelines with an explicit tabId
+      // (implement-slice) share the exact same flip.
+      applyPermissionModeForTab(set, get, get().activeTabId, mode, source)
     },
 
     setThinkingEffort: (effort) => {
@@ -197,10 +151,10 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // desktop "Move to group and pin"). Override the group placement that
       // createConversationTab wrote (it used the default group) with the
       // caller's requested group + pinned=true.
-      const { tabGroupMode: tgm2, tabGroups: tgs2 } = usePreferencesStore.getState()
+      const { tabGroupMode: tgm2, tabGroups: _tgs2 } = usePreferencesStore.getState()
       const useExplicitPin = !!pinToGroupId && tgm2 === 'manual'
       if (useExplicitPin) {
-        console.log(`[tab-pin] createTabInDirectory pinToGroupId=${pinToGroupId} for tab=${tabId.slice(0, 8)}`)
+        rDebug('tab.pin', 'createTabInDirectory: pinning to group', { pin_to_group: pinToGroupId, tab_id: tabId.slice(0, 8) })
         set((s) => ({
           tabs: s.tabs.map((t) =>
             t.id === tabId ? { ...t, groupId: pinToGroupId!, groupPinned: true } : t
@@ -269,18 +223,17 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
           ),
         }
       })
-      // Publish focused session key as a workspace resource so extensions
-      // can route notifications to the active tab. Fire-and-forget.
-      window.ion.notifyTabFocus(tabId)
+      // Focused-session publishing now lives in lib/active-tab-notifier.ts —
+      // a store subscription on activeTabId that also covers the tab-create
+      // paths, which set activeTabId without going through selectTab.
 
-      // If skeleton tab (messages not yet loaded), load them asynchronously.
-      // Skeleton state now lives on the active instance: a persisted
-      // messageCount > 0 with an empty messages array means the scrollback
-      // hasn't been hydrated from disk yet.
+      // If skeleton tab (history not yet loaded), load it asynchronously.
+      // needsHistoryHydration is the precise gate — it fires even when live
+      // streamed messages have already landed on the unopened skeleton pane
+      // (message emptiness is NOT a reliable hydration proxy).
       const targetTabAfter = get().tabs.find(t => t.id === tabId)
       if (targetTabAfter?.conversationId) {
-        const inst = activeInstance(get().conversationPanes, tabId)
-        if (inst && inst.messages.length === 0 && (inst.messageCount ?? 0) > 0) {
+        if (needsHistoryHydration(activeInstance(get().conversationPanes, tabId))) {
           get().loadSkeletonMessages(tabId)
         }
       }
@@ -296,7 +249,7 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
         const pane = get().conversationPanes.get(tabId)
         const guard = evaluateCloseGuard(pane)
         if (guard.blocked) {
-          console.warn(formatCloseGuardRefusal(tabId, guard))
+          rWarn('tab.close', 'close blocked by guard', { tab_id: tabId, reason: formatCloseGuardRefusal(tabId, guard) })
           return
         }
       }
@@ -309,6 +262,11 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
         ).catch(() => {})
       }
       window.ion.closeTab(tabId).catch(() => {})
+      // Delete the tab's externalized content file (schema v4) and drop its
+      // change-tracking entry. The main-process orphan sweep is the backstop
+      // for paths that never reach here (crash mid-close).
+      window.ion.deleteTabContent?.(tabId)?.catch?.(() => {})
+      forgetTabContentTracking(tabId)
       const pane = get().terminalPanes.get(tabId)
       if (pane) {
         for (const inst of pane.instances) {
@@ -320,12 +278,13 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       const termIds = get().terminalOpenTabIds
       const panes = new Map(get().terminalPanes)
       panes.delete(tabId)
+      const suspendedTallClear = get().suspendedTallTabId === tabId ? { suspendedTallTabId: null } : {}
       if (termIds.has(tabId)) {
         const next = new Set(termIds)
         next.delete(tabId)
-        set({ terminalOpenTabIds: next, terminalPanes: panes })
+        set({ terminalOpenTabIds: next, terminalPanes: panes, ...suspendedTallClear })
       } else {
-        set({ terminalPanes: panes })
+        set({ terminalPanes: panes, ...suspendedTallClear })
       }
       // Tear down per-conversation state on close. TAB-TYPE-AGNOSTIC: every
       // conversation tab (plain or extension-hosted) is seeded a
@@ -443,6 +402,12 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       if (tab?.conversationId) {
         void window.ion.saveSessionLabel(tab.conversationId, customTitle)
       }
+      // Push a lightweight desktop_tab_meta delta so iOS sees the renamed tab
+      // immediately without waiting for the 5 s snapshot poll tick.
+      const display = customTitle ?? get().tabs.find((t) => t.id === tabId)?.title
+      if (display !== undefined) {
+        window.ion.tabMetaChanged({ tabId, title: display })
+      }
     },
 
     setTabModel: (tabId, model) => {
@@ -490,25 +455,7 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       })
     },
 
-    moveTabToGroup: (tabId, groupId) => {
-      set((s) => {
-        const tab = s.tabs.find((t) => t.id === tabId)
-        if (!tab) return s
-        const updated = { ...tab, groupId }
-        const without = s.tabs.filter((t) => t.id !== tabId)
-        let insertIdx = -1
-        for (let i = without.length - 1; i >= 0; i--) {
-          if (without[i].groupId === groupId) { insertIdx = i; break }
-        }
-        const newTabs = [...without]
-        if (insertIdx >= 0) {
-          newTabs.splice(insertIdx + 1, 0, updated)
-        } else {
-          newTabs.push(updated)
-        }
-        return { tabs: newTabs }
-      })
-    },
+    moveTabToGroup: moveTabToGroupAction(set),
 
     // Combined "move and pin": same reordering as moveTabToGroup but also
     // sets groupPinned=true in the same set() call. Used by the desktop
@@ -518,80 +465,15 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
     // and — more importantly — guarantees that any send-slice auto-movement
     // observing the store sees groupPinned=true atomically with the group
     // change, so it can never race in the half-pinned state.
-    moveTabToGroupAndPin: (tabId, groupId) => {
-      set((s) => {
-        const tab = s.tabs.find((t) => t.id === tabId)
-        if (!tab) return s
-        console.log(`[tab-pin] move+pin tab=${tabId.slice(0, 8)} → group=${groupId} (was group=${tab.groupId ?? 'none'}, pinned=${tab.groupPinned ?? false})`)
-        const updated = { ...tab, groupId, groupPinned: true }
-        const without = s.tabs.filter((t) => t.id !== tabId)
-        let insertIdx = -1
-        for (let i = without.length - 1; i >= 0; i--) {
-          if (without[i].groupId === groupId) { insertIdx = i; break }
-        }
-        const newTabs = [...without]
-        if (insertIdx >= 0) {
-          newTabs.splice(insertIdx + 1, 0, updated)
-        } else {
-          newTabs.push(updated)
-        }
-        return { tabs: newTabs }
-      })
-    },
+    moveTabToGroupAndPin: moveTabToGroupAndPinAction(set),
 
-    setTabGroupId: (tabId, groupId) => {
-      set((s) => {
-        const tab = s.tabs.find((t) => t.id === tabId)
-        if (!tab) return s
-        const updated = { ...tab, groupId }
-        const without = s.tabs.filter((t) => t.id !== tabId)
-        let insertIdx = -1
-        for (let i = without.length - 1; i >= 0; i--) {
-          if (without[i].groupId === groupId) { insertIdx = i; break }
-        }
-        const newTabs = [...without]
-        if (insertIdx >= 0) {
-          newTabs.splice(insertIdx + 1, 0, updated)
-        } else {
-          newTabs.push(updated)
-        }
-        return { tabs: newTabs }
-      })
-    },
+    setTabGroupId: setTabGroupIdAction(set),
 
-    toggleTabGroupPin: (tabId) => {
-      set((s) => {
-        const tab = s.tabs.find((t) => t.id === tabId)
-        if (!tab) return s
-        const newPinned = !tab.groupPinned
-        console.log(`[tab-pin] tab=${tabId.slice(0, 8)} groupPinned: ${tab.groupPinned} → ${newPinned} currentGroup=${tab.groupId ?? 'none'}`)
-        return {
-          tabs: s.tabs.map((t) =>
-            t.id === tabId ? { ...t, groupPinned: newPinned } : t
-          ),
-        }
-      })
-    },
+    toggleTabGroupPin: toggleTabGroupPinAction(set),
 
-    setWorktreeUncommitted: (tabId, hasChanges) => {
-      const map = new Map(get().worktreeUncommittedMap)
-      map.set(tabId, hasChanges)
-      set({ worktreeUncommittedMap: map })
-    },
+    setWorktreeUncommitted: setWorktreeUncommittedAction(set, get),
 
-    addSystemMessage: (content) => {
-      const { activeTabId } = get()
-      // System messages append onto the active conversation instance now.
-      set((s) => ({
-        conversationPanes: commitInstance(s.conversationPanes, activeTabId, (inst) => ({
-          ...inst,
-          messages: [
-            ...inst.messages,
-            { id: `msg-${Date.now()}-${Math.random()}`, role: 'system' as const, content, timestamp: Date.now() },
-          ],
-        })),
-      }))
-    },
+    addSystemMessage: addSystemMessageAction(set, get),
   }
 }
 

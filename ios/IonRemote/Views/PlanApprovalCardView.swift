@@ -58,7 +58,14 @@ struct PlanApprovalCardView: View {
     /// snapshot did not enrich a preview (restored / synthesized cards, or an
     /// unreadable plan file). Nil only when neither is present.
     private var displayContent: String? {
+        // Prefer the snapshot-carried preview or inline body (tested via
+        // resolveDisplayContent). Fall back to any partial content already
+        // fetched from the desktop so a normal snapshot entry (which carries
+        // neither preview nor inline body) shows content as soon as the first
+        // paged fetch completes. The store lookup requires the @Environment
+        // SessionViewModel and therefore cannot live in the pure static resolver.
         Self.resolveDisplayContent(toolInput: request.toolInput)
+            ?? viewModel.planContentStore.currentContent(for: request.questionId)
     }
 
     /// Pure precedence resolver for the inline card body, extracted so the
@@ -158,7 +165,7 @@ struct PlanApprovalCardView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                if displayContent != nil || planSizeBytes > 0 {
+                if displayContent != nil || planSizeBytes > 0 || planFilePath != nil {
                     Button {
                         ensurePlanFetched()
                         showFullPlan = true
@@ -173,7 +180,11 @@ struct PlanApprovalCardView: View {
             }
 
             if isExpanded {
-                // Plan content — render preview immediately; no blocking on fetch
+                // Plan content — render immediately when available. For normal
+                // snapshot entries (no inline preview), auto-fetch starts on
+                // appear and this block shows the loading indicator until the
+                // first page arrives, then switches to the scroll view once
+                // currentContent is non-nil.
                 if let content = displayContent, !content.isEmpty {
                     ScrollView {
                         planTextView(content)
@@ -205,6 +216,15 @@ struct PlanApprovalCardView: View {
                             }
                         }
                     }
+                } else if viewModel.planContentStore.isFetching(questionId: request.questionId) {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .scaleEffect(0.75)
+                        Text("Loading plan…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 8)
                 }
 
                 // Action buttons — split row when pinned, single button otherwise
@@ -271,6 +291,13 @@ struct PlanApprovalCardView: View {
                 }
             }
         }
+        .onAppear {
+            // Auto-start the paged fetch so normal snapshot entries (which carry
+            // planFilePath but no inline preview) render content without the user
+            // needing to tap expand first. No-op when planFilePath is absent,
+            // already fetching, or already complete.
+            ensurePlanFetched()
+        }
         .padding()
         .cardStyle()
         .fullScreenCover(isPresented: $showFullPlan, onDismiss: {
@@ -284,7 +311,11 @@ struct PlanApprovalCardView: View {
         }) {
             // Use the full assembled body when available; fall back to the
             // bounded preview, then to the inline body the card carries.
-            let content = fullPlanContent ?? planContentPreview ?? planContentInline ?? ""
+            let content = fullPlanContent
+                ?? planContentPreview
+                ?? planContentInline
+                ?? viewModel.planContentStore.currentContent(for: request.questionId)
+                ?? ""
             let isFetching = viewModel.planContentStore.isFetching(questionId: request.questionId)
             PlanFullScreenView(content: content, isFetching: isFetching) {
                 implementOnDismiss = true

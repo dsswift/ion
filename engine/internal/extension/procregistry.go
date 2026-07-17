@@ -30,10 +30,10 @@ type ProcessRegistry struct {
 // fail.
 func NewProcessRegistry(dir string) (*ProcessRegistry, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		utils.Log("procregistry", fmt.Sprintf("NewProcessRegistry: mkdir %s failed: %v", dir, err))
+		utils.LogWithFields(utils.LevelInfo, "procregistry", "newprocessregistry: mkdir failed", map[string]any{"dir": dir, "error": err})
 		return nil, fmt.Errorf("procregistry: mkdir %s: %w", dir, err)
 	}
-	utils.Log("procregistry", fmt.Sprintf("NewProcessRegistry: ready dir=%s", dir))
+	utils.LogWithFields(utils.LevelInfo, "procregistry", "newprocessregistry: ready", map[string]any{"dir": dir})
 	return &ProcessRegistry{dir: dir}, nil
 }
 
@@ -57,7 +57,7 @@ func (r *ProcessRegistry) Register(name string, pid int, task string) error {
 func (r *ProcessRegistry) Deregister(name string) {
 	path := filepath.Join(r.dir, name+".pid")
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		utils.Log("procregistry", fmt.Sprintf("Deregister %s: remove %s failed: %v", name, path, err))
+		utils.LogWithFields(utils.LevelInfo, "procregistry", "deregister : remove failed", map[string]any{"model": name, "path": path, "error": err})
 	}
 }
 
@@ -120,16 +120,16 @@ func (r *ProcessRegistry) Terminate(name string) error {
 	}
 	// SIGTERM
 	if err := proc.Signal(syscall.SIGTERM); err != nil {
-		utils.Log("procregistry", fmt.Sprintf("Terminate %s: SIGTERM to pid %d failed: %v", name, info.PID, err))
+		utils.LogWithFields(utils.LevelInfo, "procregistry", "terminate : sigterm to pid failed", map[string]any{"model": name, "run_id": info.PID, "error": err})
 	}
 	// Wait up to 5s, then SIGKILL
 	go func() {
 		time.Sleep(5 * time.Second)
 		if isProcessAlive(info.PID) {
 			if err := proc.Signal(syscall.SIGKILL); err != nil {
-				utils.Log("procregistry", fmt.Sprintf("Terminate %s: SIGKILL to pid %d failed: %v", name, info.PID, err))
+				utils.LogWithFields(utils.LevelInfo, "procregistry", "terminate : sigkill to pid failed", map[string]any{"model": name, "run_id": info.PID, "error": err})
 			}
-			utils.Log("procregistry", fmt.Sprintf("killed %s (pid %d) after SIGTERM timeout", name, info.PID))
+			utils.LogWithFields(utils.LevelInfo, "procregistry", "killed (pid ) after sigterm timeout", map[string]any{"model": name, "run_id": info.PID})
 		}
 		r.Deregister(name)
 	}()
@@ -158,7 +158,7 @@ func (r *ProcessRegistry) CleanStale() int {
 		if !isProcessAlive(info.PID) {
 			pidPath := filepath.Join(r.dir, entry.Name())
 			if err := os.Remove(pidPath); err != nil && !os.IsNotExist(err) {
-				utils.Log("procregistry", fmt.Sprintf("CleanStale: remove %s failed: %v", pidPath, err))
+				utils.LogWithFields(utils.LevelInfo, "procregistry", "cleanstale: remove failed", map[string]any{"run_id": pidPath, "error": err})
 				continue
 			}
 			cleaned++

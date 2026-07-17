@@ -13,6 +13,7 @@ import type { ConversationInstance } from '../../../shared/types-engine'
 import type { State } from '../session-store-types'
 import type { NormalizedEvent } from '../../../shared/types-events'
 import { nextMsgId } from '../session-store-helpers'
+import { rTrace, rWarn } from '../../rendererLogger'
 
 /**
  * Mutable context shared with the parent reducer for one event. The parent
@@ -66,21 +67,25 @@ export function handleExtensionSurfaceEvent(ctx: ExtensionSurfaceCtx, event: Nor
       // the StatusBar engine slots (identity, cost, backend badge) and the
       // model-picker actual-model parenthetical; before this arm existed the
       // field was null forever.
-      console.debug(`[status] statusFields updated tab=${tabId} state=${event.fields.state}`)
+      rTrace('event.status', 'statusFields updated', { tab_id: tabId, state: event.fields.state })
       ctx.instPatch.statusFields = event.fields
       ctx.instTouched = true
       return true
 
     case 'plan_mode_auto_exit':
-      // Engine synthesized an ExitPlanMode at end-of-turn. Clear
-      // permissionMode to 'auto' on the ACTIVE INSTANCE only — do not
-      // write the parent tab.permissionMode. The sticky-parent invariant
-      // requires this: writing the parent would leave it permanently
-      // 'plan' across instance switches and break the done-group move
-      // for auto-mode runs. The regression test in
-      // engine-event-slice-plan-auto-exit.test.ts enforces this.
-      ctx.instPatch.permissionMode = 'auto'
-      ctx.instTouched = true
+      // Engine synthesized an auto-exit at end-of-turn. This is a
+      // *proposal awaiting user approval*, identical in meaning to a
+      // model-driven ExitPlanMode — which does NOT flip permissionMode
+      // (see event-slice-plan-mode.ts). Per ADR-003, the instance stays
+      // 'plan' until the user approves at the implement-slice.ts
+      // chokepoint (onImplement → setPermissionMode('auto','plan_approved'))
+      // or changes mode via the manual dropdown. Keeping the instance 'plan'
+      // is also correct for tab auto-move: the tab belongs in the planning
+      // group until the user decides.
+      //
+      // Sticky-parent invariant: never write tab.permissionMode here.
+      // The regression test in engine-event-slice-plan-auto-exit.test.ts
+      // enforces both invariants.
       return true
 
     case 'model_fallback':
@@ -97,25 +102,63 @@ export function handleExtensionSurfaceEvent(ctx: ExtensionSurfaceCtx, event: Nor
       }
       return true
 
+    case 'capability_unsupported':
+      // The engine declined the prompt cleanly: the requested feature (e.g.
+      // plan mode) is unsupported by the backend that would serve the run.
+      // No run ever started engine-side, so settle the tab back to idle
+      // (the send path set it running optimistically) and surface the
+      // reason as a recoverable system message — not a failed/dead state.
+      rWarn('event.capability', 'capability unsupported', {
+        tab_id: tabId,
+        capability: event.capability,
+        backend: event.backend,
+      })
+      ctx.updated.status = 'idle'
+      ctx.updated.activeRequestId = null
+      ctx.updated.currentActivity = ''
+      ctx.messages = [
+        ...ctx.messages,
+        {
+          id: nextMsgId(),
+          role: 'system',
+          content: event.reason || `${event.capability} is not supported on the ${event.backend} backend`,
+          timestamp: Date.now(),
+        },
+      ]
+      return true
+
     case 'harness_message': {
-      // Extension harness display message. Apply dedup: if a message with
-      // the same dedupKey already exists in scrollback, suppress this push.
+      // Extension harness display message. Three dedup paths:
+      //
+      // 1. dedupMode === 'relocate' + dedupKey present: remove any existing
+      //    message with that dedupKey from scrollback, then append the new
+      //    marker at the end. The marker always stays current — never trails
+      //    behind new conversation turns.
+      // 2. dedupKey present (no dedupMode / dedupMode absent): suppress-later
+      //    — if a message with the same key already exists, drop this one.
+      // 3. No dedupKey: append unconditionally.
       const dk = event.dedupKey
-      const alreadyPresent = dk
-        ? ctx.messages.some((m) => (m as any).harnessDedup === dk)
-        : false
-      if (!alreadyPresent) {
+      const newMsg = {
+        id: nextMsgId(),
+        role: 'harness' as any,
+        content: event.message,
+        timestamp: Date.now(),
+        ...(dk ? { dedupKey: dk } : {}),
+        ...(event.source ? { harnessSource: event.source } : {}),
+      }
+      if (event.dedupMode === 'relocate' && dk) {
+        // Remove the existing keyed marker (if any), then append the fresh one.
         ctx.messages = [
-          ...ctx.messages,
-          {
-            id: nextMsgId(),
-            role: 'harness' as any,
-            content: event.message,
-            timestamp: Date.now(),
-            ...(dk ? { harnessDedup: dk } : {}),
-            ...(event.source ? { harnessSource: event.source } : {}),
-          },
+          ...ctx.messages.filter((m) => (m as any).dedupKey !== dk),
+          newMsg,
         ]
+      } else {
+        const alreadyPresent = dk
+          ? ctx.messages.some((m) => (m as any).dedupKey === dk)
+          : false
+        if (!alreadyPresent) {
+          ctx.messages = [...ctx.messages, newMsg]
+        }
       }
       return true
     }
@@ -159,14 +202,50 @@ export function handleExtensionSurfaceEvent(ctx: ExtensionSurfaceCtx, event: Nor
     case 'message_end':
       // End of one LLM message within a multi-turn run. Seal the last
       // assistant text row so the next text_chunk starts a fresh row
-      // instead of appending to this one.
+      // instead of appending to this one. When the event carries the
+      // canonical persisted entry ids, re-key the rows to them: the sealed
+      // assistant row takes entryId and the turn's user row takes
+      // userEntryId, so a later history load (SessionLoadMessage.id) dedups
+      // against these rows instead of duplicating them.
       {
-        const lastAssistant = ctx.messages[ctx.messages.length - 1]
-        if (lastAssistant?.role === 'assistant' && !lastAssistant.toolName) {
-          ctx.messages = [
-            ...ctx.messages.slice(0, -1),
-            { ...lastAssistant, sealed: true },
-          ]
+        // The message being closed is the most recent assistant TEXT row —
+        // walk back past the turn's tool rows (message_end fires after the
+        // stream ends but before tool results arrive, so tool rows can sit
+        // above the text row). Stop at a user row: nothing to seal.
+        for (let i = ctx.messages.length - 1; i >= 0; i--) {
+          const m = ctx.messages[i]
+          if (m.role === 'user') break
+          if (m.role === 'assistant' && !m.toolName) {
+            // An already-sealed row belongs to an earlier message_end (this
+            // one closed a tool-only assistant message) — its identity is
+            // final; never re-key it to a later entry id.
+            if (!m.sealed) {
+              ctx.messages = [
+                ...ctx.messages.slice(0, i),
+                { ...m, sealed: true, ...(event.entryId ? { id: event.entryId } : {}) },
+                ...ctx.messages.slice(i + 1),
+              ]
+            }
+            break
+          }
+        }
+        if (event.userEntryId) {
+          // Re-key the most recent user row (the run-opening turn). A row
+          // that already carries the canonical id — a prior message_end of
+          // the same run, or a hydrated history row — is left untouched.
+          for (let i = ctx.messages.length - 1; i >= 0; i--) {
+            const m = ctx.messages[i]
+            if (m.role === 'user') {
+              if (m.id !== event.userEntryId) {
+                ctx.messages = [
+                  ...ctx.messages.slice(0, i),
+                  { ...m, id: event.userEntryId },
+                  ...ctx.messages.slice(i + 1),
+                ]
+              }
+              break
+            }
+          }
         }
       }
       return true
@@ -212,7 +291,7 @@ export function handleExtensionSurfaceEvent(ctx: ExtensionSurfaceCtx, event: Nor
     case 'events_dropped':
       // Buffer overflow. Log only; no UI action (state may be stale but
       // there's nothing useful the user can do except wait).
-      console.warn(`[Ion] events_dropped: tab=${tabId} count=${event.count}`)
+      rWarn('event.buffer', 'events dropped', { tab_id: tabId, count: event.count })
       return true
   }
   return false

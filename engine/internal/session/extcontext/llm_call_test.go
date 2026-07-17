@@ -13,6 +13,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/resource"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/tests/helpers"
 )
@@ -23,6 +24,7 @@ import (
 // the methods are zero-value stubs so the test stays focused on the
 // LLMCall code path.
 type llmCallTestAccessor struct {
+	noopPluginMethods
 	mu       sync.Mutex
 	emitted  []types.EngineEvent
 	extGroup *extension.ExtensionGroup
@@ -33,6 +35,8 @@ type llmCallTestAccessor struct {
 }
 
 func (a *llmCallTestAccessor) SessionKey() string       { return "test-session" }
+func (a *llmCallTestAccessor) ExtensionName() string    { return "" }
+func (a *llmCallTestAccessor) ExtensionVersion() string { return "" }
 func (a *llmCallTestAccessor) ConversationID() string   { return "" }
 func (a *llmCallTestAccessor) WorkingDirectory() string { return "/tmp" }
 func (a *llmCallTestAccessor) Emit(ev types.EngineEvent) {
@@ -54,7 +58,8 @@ func (a *llmCallTestAccessor) RootContext() context.Context {
 	}
 	return a.rootCtx
 }
-func (a *llmCallTestAccessor) SendPrompt(_, _ string, _ []string) error { return nil }
+func (a *llmCallTestAccessor) SendPrompt(_, _ string, _ []string) error                 { return nil }
+func (a *llmCallTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error { return nil }
 func (a *llmCallTestAccessor) SteerSelfMainLoop(_ string) bool          { return false }
 func (a *llmCallTestAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
@@ -73,9 +78,12 @@ func (a *llmCallTestAccessor) ExtGroup() *extension.ExtensionGroup      { return
 func (a *llmCallTestAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
 func (a *llmCallTestAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
 func (a *llmCallTestAccessor) NewChildBackend() backend.RunBackend      { return nil }
+func (a *llmCallTestAccessor) AllocatePlanFilePath() string             { return "/tmp/.ion/plans/plan.md" }
 func (a *llmCallTestAccessor) BumpParentProgress()                      {}
 func (a *llmCallTestAccessor) EmitDispatchCountStatus(_ string)         {}
 func (a *llmCallTestAccessor) EngineConfig() *types.EngineRuntimeConfig { return nil }
+func (a *llmCallTestAccessor) ClaudeCompat() bool { return false }
+func (a *llmCallTestAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
 func (a *llmCallTestAccessor) ResolveTier(_ string) string              { return "" }
 func (a *llmCallTestAccessor) PermissionCheck(_ string, _ map[string]interface{}) (string, string) {
 	return "", ""
@@ -91,6 +99,8 @@ func (a *llmCallTestAccessor) SetPlanMode(_ bool, _ string)                     
 func (a *llmCallTestAccessor) GetPlanModeState() (bool, string)                               { return false, "" }
 func (a *llmCallTestAccessor) AppendOrUpdateAgentState(_ types.AgentStateUpdate) string       { return "" }
 func (a *llmCallTestAccessor) UpdateAgentStateByID(_ string, _ func(*types.AgentStateUpdate)) {}
+func (a *llmCallTestAccessor) UpsertAgentStateByID(_ string, _ types.AgentStateUpdate, _ func(*types.AgentStateUpdate)) {
+}
 func (a *llmCallTestAccessor) EmitAgentSnapshot(_ string)                                     {}
 func (a *llmCallTestAccessor) ResourceBroker() *resource.Broker                               { return nil }
 func (a *llmCallTestAccessor) GlobalResourceBroker() *resource.Broker                         { return nil }
@@ -100,8 +110,14 @@ func (a *llmCallTestAccessor) ListAllSessions() []extension.SessionListEntry    
 func (a *llmCallTestAccessor) SendToSession(_, _, _ string, _ map[string]interface{}) error {
 	return nil
 }
+
+func (a *llmCallTestAccessor) FireSchedule(_, _ string) error { return nil }
+func (a *llmCallTestAccessor) GetScheduleStatus(_, _ string) ([]extension.ScheduleStatusEntry, error) {
+	return nil, nil
+}
 func (a *llmCallTestAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
 func (a *llmCallTestAccessor) RunOnceComplete(_ string, _ bool)              {}
+func (a *llmCallTestAccessor) Telemetry() *telemetry.Collector { return nil }
 
 // registerMockProvider registers a MockProvider for the given model under
 // a fixed provider id. Returns the mock so the test can inspect recorded

@@ -1,8 +1,8 @@
 import type { WireMessage } from './protocol'
 import { warn as _warn } from '../logger'
 
-function warn(msg: string): void {
-  _warn('RetransmitBuffer', msg)
+function warn(msg: string, fields?: Record<string, unknown>): void {
+  _warn('RetransmitBuffer', msg, fields)
 }
 
 /**
@@ -24,7 +24,8 @@ function warn(msg: string): void {
  */
 export class RetransmitBuffer {
   /** Per-device ordered map of seq -> stored frame. Insertion order = seq order
-   *  (seq is monotonic per device), so the first key is the oldest. */
+   *  (outbound seq counters are per device, so each device's seqs are both
+   *  monotonic AND contiguous: 1,2,3,...), so the first key is the oldest. */
   private byDevice = new Map<string, Map<number, { msg: WireMessage; bytes: number }>>()
   private bytesByDevice = new Map<string, number>()
 
@@ -68,20 +69,40 @@ export class RetransmitBuffer {
    * or never sent), so the caller can tell iOS to fall back to the reconcile.
    */
   range(deviceId: string, fromSeq: number, toSeq: number): { frames: WireMessage[]; complete: boolean } {
-    const buf = this.byDevice.get(deviceId)
-    if (!buf || fromSeq > toSeq) {
-      if (fromSeq > toSeq) {
-        warn(`range called with inverted bounds deviceId=${deviceId} fromSeq=${fromSeq} toSeq=${toSeq} — returning empty/incomplete`)
-      }
+    // Validate bounds before any iteration. A non-integer, negative, or inverted
+    // range is never satisfiable and — critically — must never drive a loop: a
+    // large or bogus toSeq from a peer (iOS seq mismatch after a desktop restart,
+    // seq wraparound, or a stale client) would otherwise spin the main thread
+    // across billions of empty lookups and freeze the whole app.
+    if (
+      !Number.isSafeInteger(fromSeq) ||
+      !Number.isSafeInteger(toSeq) ||
+      fromSeq < 0 ||
+      fromSeq > toSeq
+    ) {
+      warn('retransmit_buffer: invalid resend range', { device_id: deviceId, from_seq: fromSeq, to_seq: toSeq })
       return { frames: [], complete: false }
     }
+    const buf = this.byDevice.get(deviceId)
+    if (!buf) return { frames: [], complete: false }
+
+    // Iterate the buffered frames (bounded by maxMessages), NOT the integer span
+    // [fromSeq, toSeq]. Insertion order is seq-ascending (per-device counters
+    // make each device's seqs monotonic and contiguous), so the collected
+    // frames come out ordered without a sort.
     const frames: WireMessage[] = []
-    let complete = true
-    for (let s = fromSeq; s <= toSeq; s++) {
-      const entry = buf.get(s)
-      if (entry) frames.push(entry.msg)
-      else complete = false
+    for (const [seq, entry] of buf) {
+      if (seq >= fromSeq && seq <= toSeq) frames.push(entry.msg)
     }
+    // The range is complete only if every seq in [fromSeq, toSeq] was present.
+    // This count-vs-span comparison is valid because per-device seqs are
+    // contiguous: every seq in the span was once buffered for this device.
+    // The span may be astronomically large, but it is a plain subtraction (no
+    // loop) and frames.length is bounded by the buffer, so the comparison is O(1)
+    // in the span — a huge span simply compares unequal and reports incomplete,
+    // letting the caller fall back to the snapshot reconcile.
+    const span = toSeq - fromSeq + 1
+    const complete = frames.length === span
     return { frames, complete }
   }
 

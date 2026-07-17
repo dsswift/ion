@@ -14,6 +14,10 @@ import (
 //
 //   - ext/steer_dispatch: steer a running background CHILD dispatch by its
 //     dispatchId (ctx.SteerDispatch → DispatchRegistry.SteerByID).
+//   - ext/steer_dispatch_by_name: steer a running background CHILD dispatch
+//     by its agent name (ctx.SteerDispatchByName → DispatchRegistry.SteerByName).
+//     Name-based peer of ext/steer_dispatch for callers that know the agent
+//     name but not the full collision-safe dispatch ID.
 //   - ext/steer_self: deliver a message to the run that OWNS the calling
 //     context, with the engine choosing steer-vs-send by that run's live
 //     state (ctx.SteerSelf). This is the mechanism a harness uses to bubble a
@@ -33,17 +37,67 @@ func (h *Host) handleSteerRPC(ctx *Context, method string, id int64, raw []byte)
 			h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "parse error: " + err.Error()})
 			return true
 		}
-		if ctx != nil && ctx.SteerDispatch != nil {
-			result, err := ctx.SteerDispatch(req.Params.DispatchID, req.Params.Message)
-			if err != nil {
-				h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
-				return true
+		// Run async: the steer fallback path calls SendPrompt which
+		// acquires a write lock on the session manager. Running that
+		// synchronously in the readLoop would block all RPC response
+		// processing for this host, deadlocking any concurrent
+		// callWithTimeout callers.
+		go func() {
+			var steerFn func(dispatchID, message string) (SteerDispatchResult, error)
+			if ctx != nil && ctx.SteerDispatch != nil {
+				steerFn = ctx.SteerDispatch
+			} else {
+				h.notifMu.RLock()
+				steerFn = h.persistentSteer
+				h.notifMu.RUnlock()
 			}
-			data, _ := json.Marshal(result)
-			h.sendResponse(id, json.RawMessage(data), nil)
-		} else {
-			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "steer dispatch not available"})
+			if steerFn != nil {
+				result, err := steerFn(req.Params.DispatchID, req.Params.Message)
+				if err != nil {
+					h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
+					return
+				}
+				data, _ := json.Marshal(result)
+				h.sendResponse(id, json.RawMessage(data), nil)
+			} else {
+				h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "steer dispatch not available"})
+			}
+		}()
+		return true
+
+	case "ext/steer_dispatch_by_name":
+		var req struct {
+			Params struct {
+				Name    string `json:"name"`
+				Message string `json:"message"`
+			} `json:"params"`
 		}
+		if err := json.Unmarshal(raw, &req); err != nil {
+			h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "parse error: " + err.Error()})
+			return true
+		}
+		// Run async: same rationale as ext/steer_dispatch above.
+		go func() {
+			var steerFn func(name, message string) (SteerDispatchResult, error)
+			if ctx != nil && ctx.SteerDispatchByName != nil {
+				steerFn = ctx.SteerDispatchByName
+			} else {
+				h.notifMu.RLock()
+				steerFn = h.persistentSteerByName
+				h.notifMu.RUnlock()
+			}
+			if steerFn != nil {
+				result, err := steerFn(req.Params.Name, req.Params.Message)
+				if err != nil {
+					h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
+					return
+				}
+				data, _ := json.Marshal(result)
+				h.sendResponse(id, json.RawMessage(data), nil)
+			} else {
+				h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "steer dispatch by name not available"})
+			}
+		}()
 		return true
 
 	case "ext/steer_self":
@@ -56,17 +110,20 @@ func (h *Host) handleSteerRPC(ctx *Context, method string, id int64, raw []byte)
 			h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "parse error: " + err.Error()})
 			return true
 		}
-		if ctx != nil && ctx.SteerSelf != nil {
-			result, err := ctx.SteerSelf(req.Params.Message)
-			if err != nil {
-				h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
-				return true
+		// Run async: same rationale as ext/steer_dispatch above.
+		go func() {
+			if ctx != nil && ctx.SteerSelf != nil {
+				result, err := ctx.SteerSelf(req.Params.Message)
+				if err != nil {
+					h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
+					return
+				}
+				data, _ := json.Marshal(result)
+				h.sendResponse(id, json.RawMessage(data), nil)
+			} else {
+				h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "steer self not available"})
 			}
-			data, _ := json.Marshal(result)
-			h.sendResponse(id, json.RawMessage(data), nil)
-		} else {
-			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "steer self not available"})
-		}
+		}()
 		return true
 
 	default:

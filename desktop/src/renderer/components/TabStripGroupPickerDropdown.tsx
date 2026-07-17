@@ -48,7 +48,7 @@ export function GroupPickerDropdown({
 
   useEffect(() => {
     if (dirMenuTabId) checkWorktreeUncommitted(group.tabs.find((t) => t.id === dirMenuTabId))
-  }, [dirMenuTabId])
+  }, [dirMenuTabId, group.tabs])
 
   useEffect(() => {
     setLocalTabs(group.tabs)

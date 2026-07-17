@@ -2,7 +2,6 @@ package featureflags
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -131,13 +130,13 @@ func (f *FeatureFlags) loadSync() {
 		}
 		data, err := os.ReadFile(f.cfg.Path)
 		if err != nil {
-			utils.Log("FeatureFlags", "failed to read flag file: "+err.Error())
+			utils.LogWithFields(utils.LevelInfo, "featureflags", "failed to read flag file", map[string]any{"error": err.Error()})
 			f.loadCache()
 			return
 		}
 		var flags map[string]interface{}
 		if err := json.Unmarshal(data, &flags); err != nil {
-			utils.Log("FeatureFlags", "failed to parse flag file: "+err.Error())
+			utils.LogWithFields(utils.LevelInfo, "featureflags", "failed to parse flag file", map[string]any{"error": err.Error()})
 			f.loadCache()
 			return
 		}
@@ -159,24 +158,24 @@ func (f *FeatureFlags) fetchHTTP() error {
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get(f.cfg.URL)
 	if err != nil {
-		utils.Log("FeatureFlags", "failed to fetch flags: "+err.Error())
+		utils.LogWithFields(utils.LevelInfo, "featureflags", "failed to fetch flags", map[string]any{"error": err.Error()})
 		return err
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			utils.Log("featureflags", fmt.Sprintf("fetchHTTP: response body close failed: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "featureflags", "fetch http response body close failed", map[string]any{"error": err.Error()})
 		}
 	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		utils.Log("FeatureFlags", "failed to read response: "+err.Error())
+		utils.LogWithFields(utils.LevelInfo, "featureflags", "failed to read response", map[string]any{"error": err.Error()})
 		return err
 	}
 
 	var flags map[string]interface{}
 	if err := json.Unmarshal(body, &flags); err != nil {
-		utils.Log("FeatureFlags", "failed to parse flags: "+err.Error())
+		utils.LogWithFields(utils.LevelInfo, "featureflags", "failed to parse flags", map[string]any{"error": err.Error()})
 		return err
 	}
 
@@ -185,7 +184,7 @@ func (f *FeatureFlags) fetchHTTP() error {
 	f.mu.Unlock()
 
 	f.saveCache()
-	utils.Log("FeatureFlags", "refreshed flags from "+f.cfg.URL)
+	utils.LogWithFields(utils.LevelInfo, "featureflags", "refreshed flags from url", map[string]any{"path": f.cfg.URL})
 	return nil
 }
 
@@ -199,7 +198,7 @@ func (f *FeatureFlags) pollLoop(interval time.Duration) {
 			return
 		case <-ticker.C:
 			if err := f.fetchHTTP(); err != nil {
-				utils.Log("featureflags", fmt.Sprintf("periodic fetchHTTP failed: %v", err))
+				utils.LogWithFields(utils.LevelInfo, "featureflags", "periodic fetch http failed", map[string]any{"error": err.Error()})
 			}
 		}
 	}
@@ -235,11 +234,11 @@ func (f *FeatureFlags) saveCache() {
 	}
 	dir := filepath.Dir(f.cfg.CachePath)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		utils.Log("featureflags", fmt.Sprintf("saveCache: mkdir %s failed: %v", dir, err))
+		utils.LogWithFields(utils.LevelInfo, "featureflags", "save cache mkdir failed", map[string]any{"path": dir, "error": err.Error()})
 		return
 	}
 	if err := os.WriteFile(f.cfg.CachePath, data, 0o644); err != nil {
-		utils.Log("featureflags", fmt.Sprintf("saveCache: write %s failed: %v", f.cfg.CachePath, err))
+		utils.LogWithFields(utils.LevelInfo, "featureflags", "save cache write failed", map[string]any{"path": f.cfg.CachePath, "error": err.Error()})
 	}
 }
 

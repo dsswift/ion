@@ -139,6 +139,31 @@ codesign --force --sign - "${ENGINE_OUT}" 2>/dev/null || true
 xattr -cr "${ENGINE_OUT}" 2>/dev/null || true
 echo "Engine built: ${ENGINE_OUT}"
 
+# Bundle extensions and plist so the packaged .app replicates the full
+# install.command bootstrap (SDK, ion-meta with canonical docs, plist template).
+echo "Bundling engine extensions and plist into resources..."
+mkdir -p resources/engine/extensions
+# Delete-first so rebuilds replace rather than nest: `cp -r src dst` with an
+# existing dst copies src INTO it (dst/sdk/sdk), permanently freezing the
+# top-level copy at whatever the first build shipped. Same rationale as the
+# canonical-docs delete below.
+rm -rf resources/engine/extensions/sdk resources/engine/extensions/ion-meta
+cp -r ../engine/extensions/sdk resources/engine/extensions/sdk
+cp -r ../engine/extensions/ion-meta resources/engine/extensions/ion-meta
+
+# Pre-bundle canonical docs — delete first so renames/deletions propagate.
+CANON_DST="resources/engine/extensions/ion-meta/docs/canonical"
+rm -rf "$CANON_DST"
+mkdir -p "$CANON_DST"
+for ns in extensions hooks agents architecture; do
+  if [ -d "../docs/$ns" ]; then
+    cp -r "../docs/$ns" "$CANON_DST/$ns"
+  fi
+done
+
+cp ../packaging/launchd/com.ion.engine.plist resources/engine/com.ion.engine.plist
+echo "Extensions and plist bundled."
+
 step "Step 3/6 — Building ${APP_NAME}.app"
 
 if ! npm run dist; then

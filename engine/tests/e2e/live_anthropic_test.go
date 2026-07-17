@@ -102,8 +102,8 @@ func setupAnthropicProvider(t *testing.T) (model string) {
 
 	// Register model info so cost tracking works
 	providers.RegisterModel(model, types.ModelInfo{
-		ProviderID:    "anthropic",
-		ContextWindow: 200000,
+		ProviderID:      "anthropic",
+		ContextWindow:   200000,
 		CostPer1kInput:  0.0008,
 		CostPer1kOutput: 0.004,
 	})

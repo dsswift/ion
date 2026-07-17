@@ -39,24 +39,42 @@ type NewConversationDefaultsPolicy struct {
 
 // EnterpriseConfig represents MDM/system-level sealed configuration.
 type EnterpriseConfig struct {
-	AllowedModels    []string                 `json:"allowedModels,omitempty"`
-	BlockedModels    []string                 `json:"blockedModels,omitempty"`
-	AllowedProviders []string                 `json:"allowedProviders,omitempty"`
-	RequiredHooks    []HookDef                `json:"requiredHooks,omitempty"`
-	McpAllowlist     []string                 `json:"mcpAllowlist,omitempty"`
-	McpDenylist      []string                 `json:"mcpDenylist,omitempty"`
-	ToolRestrictions *ToolRestrictions        `json:"toolRestrictions,omitempty"`
-	Permissions      *PermissionPolicy        `json:"permissions,omitempty"`
-	Telemetry        *TelemetryConfig         `json:"telemetry,omitempty"`
-	Network          *NetworkConfig           `json:"network,omitempty"`
-	Sandbox          *SandboxEnterpriseConfig `json:"sandbox,omitempty"`
+	AllowedModels    []string  `json:"allowedModels,omitempty"`
+	BlockedModels    []string  `json:"blockedModels,omitempty"`
+	AllowedProviders []string  `json:"allowedProviders,omitempty"`
+	RequiredHooks    []HookDef `json:"requiredHooks,omitempty"`
+	McpAllowlist     []string  `json:"mcpAllowlist,omitempty"`
+	McpDenylist      []string  `json:"mcpDenylist,omitempty"`
+	// PluginAllowlist, when non-empty, restricts plugins to only matching sources.
+	// Glob patterns supported (e.g. "JuliusBrussee/*"). Sealed ceiling: overrides
+	// any per-user allowlist. Empty means no restriction (all sources permitted).
+	PluginAllowlist []string `json:"pluginAllowlist,omitempty"`
+	// PluginDenylist blocks matching plugin sources. Additive with the user-layer
+	// denylist — enterprise can only expand what's blocked, never narrow it.
+	PluginDenylist []string `json:"pluginDenylist,omitempty"`
+	// PluginForceInstalled lists plugin sources the engine must install on boot.
+	// Merged with the user-layer forceInstalled list. Enterprise-declared plugins
+	// bypass user allowlist checks — the enterprise controls what it mandates.
+	PluginForceInstalled []string                 `json:"pluginForceInstalled,omitempty"`
+	ToolRestrictions     *ToolRestrictions        `json:"toolRestrictions,omitempty"`
+	Permissions          *PermissionPolicy        `json:"permissions,omitempty"`
+	Telemetry            *TelemetryConfig         `json:"telemetry,omitempty"`
+	Network              *NetworkConfig           `json:"network,omitempty"`
+	Sandbox              *SandboxEnterpriseConfig `json:"sandbox,omitempty"`
 	// NewConversationDefaults sets organisation-wide defaults for new-conversation
 	// working directory and engine profile. When nil, clients use the per-user
 	// defaultBaseDirectory and defaultEngineProfileId preferences. Overlay
 	// (drop-in) merges follow the additive pattern: a non-nil overlay pointer
 	// replaces the base pointer entirely.
 	NewConversationDefaults *NewConversationDefaultsPolicy `json:"newConversationDefaults,omitempty"`
-	CustomFields            map[string]any                 `json:"customFields,omitempty"`
+	// Logging controls enterprise-sealed operational log egress. When set and
+	// EgressTargets is non-empty, the egress targets (and associated endpoint /
+	// headers / otel config) are forced onto the merged config and cannot be
+	// disabled by the user. Non-egress fields (Format, MaxSizeMB, OutputMode,
+	// LogDir) in this block are NOT enforced by EnforceEnterprise — those remain
+	// user-configurable. Mirrors the Telemetry enforcement pattern.
+	Logging      *LoggingConfig `json:"logging,omitempty"`
+	CustomFields map[string]any `json:"customFields,omitempty"`
 }
 
 // ToolRestrictions defines tool allow/deny lists.
@@ -79,27 +97,52 @@ type DangerousPattern struct {
 	Reason  string `json:"reason"`
 }
 
+// PluginsConfig holds the user-layer plugin policy. Merged with enterprise
+// PluginAllowlist / PluginDenylist / PluginForceInstalled at EnforceEnterprise
+// time following the same sealed-ceiling pattern as McpServers vs. McpAllowlist.
+type PluginsConfig struct {
+	// ForceInstalled lists plugin sources (owner/repo) the engine installs
+	// automatically on boot if not already present in the registry. Additive
+	// with the enterprise PluginForceInstalled list — both are reconciled.
+	ForceInstalled []string `json:"forceInstalled,omitempty"`
+	// Allowlist, when non-empty, permits only matching plugin sources. Glob
+	// patterns are supported (e.g. "JuliusBrussee/*"). The enterprise
+	// PluginAllowlist seals this — when the enterprise list is set it
+	// replaces this value entirely.
+	Allowlist []string `json:"allowlist,omitempty"`
+	// Denylist blocks matching plugin sources. The enterprise PluginDenylist
+	// is additive — enterprise can only expand what's blocked, not narrow it.
+	Denylist []string `json:"denylist,omitempty"`
+}
+
 // --- Full Engine Runtime Config ---
 
 // EngineRuntimeConfig is the fully merged engine configuration.
 type EngineRuntimeConfig struct {
+	// Backend selects the top-level run backend. Canonical values:
+	// "api" | "claude-code" | "hybrid". "cli" is a permanently accepted
+	// legacy input alias for "claude-code" and is normalized to it at load.
 	Backend      string                     `json:"backend"`
 	DefaultModel string                     `json:"defaultModel"`
 	Providers    map[string]ProviderConfig  `json:"providers,omitempty"`
 	Limits       LimitsConfig               `json:"limits"`
 	McpServers   map[string]McpServerConfig `json:"mcpServers,omitempty"`
-	Profiles     []EngineProfileConfig      `json:"profiles,omitempty"`
-	Permissions  *PermissionPolicy          `json:"permissions,omitempty"`
-	Auth         *AuthConfig                `json:"auth,omitempty"`
-	Network      *NetworkConfig             `json:"network,omitempty"`
-	Telemetry    *TelemetryConfig           `json:"telemetry,omitempty"`
-	Compaction   *CompactionConfig          `json:"compaction,omitempty"`
-	Security     *SecurityConfig            `json:"security,omitempty"`
-	Enterprise   *EnterpriseConfig          `json:"enterprise,omitempty"`
-	FeatureFlags *FeatureFlagsConfig        `json:"featureFlags,omitempty"`
-	Relay        *RelayConfig               `json:"relay,omitempty"`
-	Timeouts     *TimeoutsConfig            `json:"timeouts,omitempty"`
-	WebSearch    *WebSearchConfig           `json:"webSearch,omitempty"`
+	// Plugins holds the user-layer plugin policy (force-installs, allow/deny
+	// lists). Enterprise policy layers on top via PluginAllowlist /
+	// PluginDenylist / PluginForceInstalled on EnterpriseConfig.
+	Plugins      *PluginsConfig        `json:"plugins,omitempty"`
+	Profiles     []EngineProfileConfig `json:"profiles,omitempty"`
+	Permissions  *PermissionPolicy     `json:"permissions,omitempty"`
+	Auth         *AuthConfig           `json:"auth,omitempty"`
+	Network      *NetworkConfig        `json:"network,omitempty"`
+	Telemetry    *TelemetryConfig      `json:"telemetry,omitempty"`
+	Compaction   *CompactionConfig     `json:"compaction,omitempty"`
+	Security     *SecurityConfig       `json:"security,omitempty"`
+	Enterprise   *EnterpriseConfig     `json:"enterprise,omitempty"`
+	FeatureFlags *FeatureFlagsConfig   `json:"featureFlags,omitempty"`
+	Relay        *RelayConfig          `json:"relay,omitempty"`
+	Timeouts     *TimeoutsConfig       `json:"timeouts,omitempty"`
+	WebSearch    *WebSearchConfig      `json:"webSearch,omitempty"`
 	// Shell controls how the Bash tool selects the shell used to execute
 	// commands. Pointer so engine.json can fully omit the block and inherit
 	// the default (non-login bash -c). When Shell.UseLoginShell is true, the
@@ -126,7 +169,11 @@ type EngineRuntimeConfig struct {
 	// omit the block; the scheduler is OFF by default and auto-starts
 	// when any extension declares a job.
 	Scheduling *SchedulingConfig `json:"scheduling,omitempty"`
-	LogLevel   string            `json:"logLevel,omitempty"` // "debug", "info", "warn", "error"
+	LogLevel   string            `json:"logLevel,omitempty"` // "trace", "debug", "info", "warn", "error"
+	// Logging controls structured log output format, destination, and
+	// rotation. Pointer so engine.json can omit the block and inherit the
+	// compiled defaults. See types.LoggingConfig.
+	Logging *LoggingConfig `json:"logging,omitempty"`
 
 	// MaxDispatchDepth caps how many nested dispatch levels are allowed.
 	// The orchestrator runs at depth 0; a specialist it dispatches runs at
@@ -166,6 +213,165 @@ type EngineRuntimeConfig struct {
 	// Zero/absent ⇒ the engine derives the default. This is per-daemon config read
 	// once from engine.json at serve startup, alongside Limits/Timeouts/Webhooks.
 	MemoryLimitMB int `json:"memoryLimitMb,omitempty"`
+
+	// DispatchContext is the engine.json-level context policy applied to every
+	// dispatched agent (level 2 of the four-level cascade). When nil, built-in
+	// defaults apply (all context layers on). Extensions override per-session via
+	// ctx.setDispatchContextDefaults() (level 3) or per-dispatch via
+	// DispatchAgentOpts.ContextPolicy (level 4).
+	DispatchContext *DispatchContextConfig `json:"dispatchContext,omitempty"`
+}
+
+// DispatchContextConfig is the engine.json-level context policy for dispatched
+// agents (level 2 of the four-level context cascade). All fields are pointer
+// bools: nil = use built-in default (all on). See docs/context-loading.md.
+type DispatchContextConfig struct {
+	// IncludeGlobalContext controls whether home roots (~/.ion, ~/.claude under
+	// compat) are included in every dispatch. Nil = default on.
+	IncludeGlobalContext *bool `json:"includeGlobalContext,omitempty"`
+	// IncludeProjectContext controls whether the child's cwd + ancestor walk is
+	// performed. Nil = default on.
+	IncludeProjectContext *bool `json:"includeProjectContext,omitempty"`
+	// ClaudeCompat overrides the engine's ClaudeCompat setting for dispatch walks.
+	// Nil = inherit from the engine's session-level ClaudeCompat flag.
+	ClaudeCompat *bool `json:"claudeCompat,omitempty"`
+}
+
+// LoggingConfig controls structured log output format, destination, and rotation.
+// All fields are optional; zero values inherit engine defaults.
+type LoggingConfig struct {
+	// Format selects output encoding. "json" (default) emits NDJSON per
+	// the canonical log schema. "text" emits a human-readable format for
+	// local debugging; NOT supported in production (prefer ION_LOG_TEXT=1 env).
+	Format string `json:"format,omitempty"` // "json" | "text"
+
+	// OutputMode controls where log lines go.
+	// "file" (default): write to LogDir/engine.jsonl only.
+	// "stdout": write to stdout only.
+	// "both": write to file AND stdout.
+	OutputMode string `json:"outputMode,omitempty"` // "file" | "stdout" | "both"
+
+	// MaxSizeMB is the per-file size cap before rename-rotate rotation.
+	// Zero means use the compiled default (20 MB).
+	MaxSizeMB int `json:"maxSizeMB,omitempty"`
+
+	// MaxFiles is the number of rotated archive files retained alongside the
+	// live log file. When the live file reaches MaxSizeMB, it is renamed to
+	// engine.jsonl.1 (shifting older generations to .2, .3, … up to MaxFiles),
+	// and a fresh log file is opened. Files beyond MaxFiles are deleted.
+	// Zero means use the compiled default (3).
+	MaxFiles int `json:"maxFiles,omitempty"`
+
+	// LogDir overrides the directory for log files.
+	// Empty means use ~/.ion.
+	LogDir string `json:"logDir,omitempty"`
+
+	// DisableRotation disables size-based rotation entirely.
+	DisableRotation bool `json:"disableRotation,omitempty"`
+
+	// EgressTargets lists downstream shipping targets for operational log lines
+	// in addition to the local JSONL file. Supported values:
+	//   "http"  — POST batches of NDJSON log records to EgressEndpoint.
+	//   "otel"  — Export as OTLP log records to EgressOtel.Endpoint+"/v1/logs".
+	// Empty (the default) means no egress; logs write to the local file only.
+	// Omit-when-unset so default installs are completely unchanged.
+	EgressTargets []string `json:"egressTargets,omitempty"`
+
+	// EgressEndpoint is the HTTP POST URL for the "http" egress target.
+	// Required when "http" is in EgressTargets; ignored otherwise.
+	EgressEndpoint string `json:"egressEndpoint,omitempty"`
+
+	// EgressHeaders are additional HTTP request headers for the "http" egress
+	// target (e.g. Authorization). Ignored when "http" is not in EgressTargets.
+	EgressHeaders map[string]string `json:"egressHeaders,omitempty"`
+
+	// EgressBatchSize controls how many log records accumulate before an
+	// automatic flush to egress targets. Zero (the default) means the periodic
+	// ticker is the only flush trigger.
+	EgressBatchSize int `json:"egressBatchSize,omitempty"`
+
+	// EgressFlushIntervalMs controls how often the egress forwarder flushes
+	// buffered records. Zero defaults to 5000 ms.
+	EgressFlushIntervalMs int64 `json:"egressFlushIntervalMs,omitempty"`
+
+	// EgressOtel configures the OTLP HTTP logs endpoint for the "otel" egress
+	// target. Required when "otel" is in EgressTargets; ignored otherwise.
+	// Reuses OtelConfig (endpoint, headers, serviceName) from the telemetry
+	// block so operators use a consistent shape across both subsystems.
+	EgressOtel *OtelConfig `json:"egressOtel,omitempty"`
+
+	// EgressSpoolMaxBytes caps the on-disk spool file (~/.ion/.engine-egress-spool.jsonl)
+	// used to buffer batches when the egress sink is unreachable. When the spool
+	// exceeds this size, the oldest lines are dropped and an ERROR is logged.
+	// Zero means use the compiled default (50 MB).
+	EgressSpoolMaxBytes int64 `json:"egressSpoolMaxBytes,omitempty"`
+
+	// EgressManagedByClient suppresses the engine's OWN egress forwarder while
+	// leaving every other egress field (EgressTargets, EgressEndpoint,
+	// EgressOtel, ...) intact for a managing client to read.
+	//
+	// The single-collection-point model (docs/enterprise/central-log-collection.md):
+	// a managed workstation runs the desktop, which is the sole authenticated
+	// shipper — it ships its own desktop.jsonl directly AND tails engine.jsonl
+	// into its own forwarder (carrying the client's OIDC token). If the engine
+	// ALSO ran its own forwarder off the same EgressTargets flag, every engine
+	// log line would ship twice: once unauthenticated by the engine (→ 401 →
+	// spool) and once authenticated by the desktop tailer. Setting this true is
+	// how the desktop tells the engine "I am shipping on your behalf; do not run
+	// your own forwarder."
+	//
+	// Zero value (false) is the headless/CI/Docker default: no managing client
+	// exists, so the engine ships its own logs via EgressTargets as before. Only
+	// a client that genuinely tails and ships engine.jsonl sets this true.
+	//
+	// Superseded by EgressShipSources for new deployments: the boolean can
+	// only express "desktop ships everything" vs "engine ships its own".
+	// When EgressShipSources is non-empty it takes precedence and this flag
+	// is ignored. Retained for existing engine.json files (removing or
+	// repurposing it would break deployed configs).
+	EgressManagedByClient bool `json:"egressManagedByClient,omitempty"`
+
+	// EgressShipSources is the shipping-responsibility matrix entry for THIS
+	// surface: which log sources its forwarder ships. Recognized sources:
+	//   "engine"    — the engine's own operational records (in-process).
+	//   "desktop"   — ~/.ion/desktop.jsonl (tailed).
+	//   "ios"       — ~/.ion/ios-diagnostic-logs.jsonl (tailed).
+	//   "telemetry" — ~/.ion/telemetry.jsonl (tailed).
+	// The enterprise deployer decides the split: the engine may ship only
+	// its own logs, everything (headless collection point), or nothing
+	// (a client ships on its behalf — the empty-but-set state is expressed
+	// by assigning the sources to the other surface's config).
+	//
+	// Unset (nil) preserves legacy behavior: the engine ships ["engine"]
+	// unless EgressManagedByClient is true (then nothing). The desktop's
+	// counterpart lives in its own settings and defaults to everything —
+	// see desktop/src/main/log-egress.ts.
+	EgressShipSources []string `json:"egressShipSources,omitempty"`
+
+	// EgressClientShipSources is the managing client's share of the
+	// shipping-responsibility matrix: which log sources the client's own
+	// forwarder ships (same source names as EgressShipSources). The engine
+	// never acts on this field -- it lives here because engine.json is the
+	// single sealed document an enterprise controls, and the client reads
+	// its assignment from the same logging block it already consumes.
+	// Unset preserves the client's legacy behavior (claim-and-ship-all
+	// when the desktop runs). The client authenticates its shipments by
+	// pulling ephemeral access tokens from the engine (oidc_token).
+	EgressClientShipSources []string `json:"egressClientShipSources,omitempty"`
+
+	// EgressTokenScope, when set, makes the egress forwarder authenticate
+	// each flush with the signed-in operator's OIDC bearer token minted for
+	// this scope (e.g. "api://<app-id>/Telemetry.Write"), refreshed
+	// silently by the engine's identity manager. Merged over EgressHeaders
+	// (the fresh token wins over a static Authorization). Empty keeps the
+	// static-headers-only behavior.
+	EgressTokenScope string `json:"egressTokenScope,omitempty"`
+
+	// EgressTokenAudience is the explicit audience/resource for the egress
+	// token, for identity providers that bind grants to one (Auth0,
+	// RFC 8707) instead of encoding the resource in the scope string.
+	// Empty uses the identity provider's configured default audience.
+	EgressTokenAudience string `json:"egressTokenAudience,omitempty"`
 }
 
 // GetWorkspace returns the Workspace config block, or nil for a nil receiver
@@ -200,6 +406,17 @@ type ProviderConfig struct {
 	APIKey     string `json:"apiKey,omitempty"`
 	BaseURL    string `json:"baseURL,omitempty"`
 	AuthHeader string `json:"authHeader,omitempty"`
+	// Backend selects which run backend serves this provider's models when
+	// the top-level backend is "hybrid". Empty means "use the default rule"
+	// (anthropic → claude-code, every other provider → api). Allowed values
+	// are provider-specific and validated at config load:
+	//   anthropic → "api" | "claude-code"
+	//   openai    → "api" | "codex"
+	//   xai       → "api" | "grok"
+	//   cursor    → "cursor"
+	//   all others→ "api"
+	// An invalid value is reset to "" (default rule) with an ERROR log.
+	Backend string `json:"backend,omitempty"`
 }
 
 // LimitsConfig defines resource limits for a run.
@@ -212,6 +429,17 @@ type LimitsConfig struct {
 	PlanModeAllowedBashCommands []string `json:"planModeAllowedBashCommands,omitempty"`
 	DisableTurnLimitWarning     *bool    `json:"disableTurnLimitWarning,omitempty"`
 	DisableMaxTokenContinue     *bool    `json:"disableMaxTokenContinue,omitempty"`
+	// MaxTokenThinkingOnlyBreaker is the number of consecutive max_tokens turns
+	// that produce zero non-thinking output (pure thinking blocks) before the
+	// engine terminates the run with an error. Zero uses the built-in default (3).
+	// Set -1 to disable the breaker entirely (not recommended).
+	//
+	// This defends against the thinking-budget-exceeds-MaxTokens pathology: when
+	// the resolved thinking budget is >= the run's MaxTokens, every turn produces
+	// only thinking output, the stop reason is always max_tokens, and the engine
+	// would otherwise inject "Continue from where you left off." forever, burning
+	// tokens with zero forward progress. See runloop.go's max_tokens case.
+	MaxTokenThinkingOnlyBreaker int `json:"maxTokenThinkingOnlyBreaker,omitempty"`
 	// PlanModeAutoExitOnEndTurn controls the engine's "deterministic
 	// plan-mode exit" safety net. When a plan-mode run terminates with
 	// stop reason end_turn / stop and the assistant did not invoke
@@ -233,6 +461,26 @@ type LimitsConfig struct {
 	// strictly worse than the (extremely cheap, idempotent) synthesis
 	// path, so the engine ships with the safety net enabled.
 	PlanModeAutoExitOnEndTurn *bool `json:"planModeAutoExitOnEndTurn,omitempty"`
+	// DisableSkillSystemPrompt controls whether the engine appends the
+	// skill-listing + proactive-invocation section to the run's system
+	// prompt (see tools.BuildSkillSystemPromptSection). That section carries
+	// an opinionated directive ("you MUST invoke the Skill tool BEFORE
+	// generating any other response ... a blocking requirement"); a consumer
+	// that wants a different skill-discovery policy — softer phrasing, no
+	// injection at all, or a fully custom block — needs a way to suppress or
+	// replace it.
+	//
+	// Nil (the default) means "inject" (built-in behaviour: the section is
+	// appended whenever skills are registered). &false is equivalent. &true
+	// disables the engine's injection entirely; the run's system prompt
+	// carries no skill section from the engine.
+	//
+	// This is the coarse (engine.json) opinion gate. The system_inject hook
+	// (kind "skill_listing") is the fine-grained seam: a harness can observe,
+	// replace, or suppress the exact section text per run even when injection
+	// is enabled. Per-run RunOptions.DisableSkillSystemPrompt overrides this
+	// field; the hook overrides both.
+	DisableSkillSystemPrompt *bool `json:"disableSkillSystemPrompt,omitempty"`
 }
 
 // McpServerConfig defines an MCP server connection.
@@ -245,6 +493,22 @@ type McpServerConfig struct {
 	Headers        map[string]string `json:"headers,omitempty"`
 	OAuth          *McpOAuthConfig   `json:"oauth,omitempty"`
 	TimeoutSeconds int               `json:"timeoutSeconds,omitempty"`
+	// ForwardUserToken makes the engine stamp the signed-in operator's
+	// OIDC bearer token on every outbound request to this server
+	// (Authorization header, refreshed per request on HTTP/SSE, at dial
+	// time on WebSocket). Opt-in per server -- not every downstream MCP
+	// server should receive the operator's identity.
+	ForwardUserToken bool `json:"forwardUserToken,omitempty"`
+	// UserTokenScope is the downstream resource scope the forwarded token
+	// is minted for (e.g. "api://<app-id>/Erm.Access"). Empty uses the
+	// operator grant's base scope. Only meaningful with ForwardUserToken.
+	UserTokenScope string `json:"userTokenScope,omitempty"`
+	// UserTokenAudience is the explicit audience/resource for the forwarded
+	// token, for identity providers that bind grants to one (Auth0,
+	// RFC 8707) instead of encoding the resource in the scope string.
+	// Empty uses the identity provider's configured default audience.
+	// Only meaningful with ForwardUserToken.
+	UserTokenAudience string `json:"userTokenAudience,omitempty"`
 }
 
 // McpOAuthConfig holds OAuth 2.0 settings for an MCP server.
@@ -366,6 +630,29 @@ type OAuthConfig struct {
 	Scopes           []string `json:"scopes"`
 	UsePkce          bool     `json:"usePkce,omitempty"`
 	RedirectURI      string   `json:"redirectUri,omitempty"`
+	// DeviceAuthorizationURL is the OAuth device-authorization endpoint,
+	// enabling headless (no-browser) sign-in via the device-code flow.
+	DeviceAuthorizationURL string `json:"deviceAuthorizationUrl,omitempty"`
+	// IssuerURL enables OIDC discovery (the industry-standard config
+	// method): endpoints resolve from
+	// <issuerUrl>/.well-known/openid-configuration at first use.
+	// Explicitly-configured endpoint URLs above take precedence over
+	// discovered values.
+	IssuerURL string `json:"issuerUrl,omitempty"`
+	// Audience is the default audience/resource requested with grants when
+	// a consumer declares none. IdPs like Microsoft Entra encode the
+	// resource inside the scope string (api://<app>/Scope) and need no
+	// audience; IdPs like Auth0 and Keycloak-style deployments require an
+	// explicit audience or RFC 8707 resource indicator.
+	Audience string `json:"audience,omitempty"`
+	// AudienceParameter is the request-parameter name used to convey the
+	// audience: "audience" (the prevailing de-facto dialect, default) or
+	// "resource" (RFC 8707 Resource Indicators).
+	AudienceParameter string `json:"audienceParameter,omitempty"`
+	// AttributionClaim names the id_token claim used as the operator's
+	// attribution identity (telemetry/egress "user" field). Empty uses the
+	// standard fallback chain: preferred_username → oid → sub.
+	AttributionClaim string `json:"attributionClaim,omitempty"`
 }
 
 // SecureStoreConfig configures the credential storage backend.
@@ -381,6 +668,12 @@ type AuthConfig struct {
 	SecureStore        *SecureStoreConfig     `json:"secureStore,omitempty"`
 	CacheTtlMs         int64                  `json:"cacheTtlMs,omitempty"`
 	RefreshThresholdMs int64                  `json:"refreshThresholdMs,omitempty"`
+	// IdentityProvider names the entry in OAuth that carries the signed-in
+	// operator's OIDC identity (e.g. "entra"). This is the identity whose
+	// tokens back the SDK's pre-authenticated HTTP surface, per-server MCP
+	// token forwarding, and authenticated log egress. Empty means no
+	// operator identity is configured.
+	IdentityProvider string `json:"identityProvider,omitempty"`
 }
 
 // --- Network Types (from engine/src/network.ts) ---
@@ -397,30 +690,43 @@ type NetworkConfig struct {
 	Proxy              *ProxyConfig `json:"proxy,omitempty"`
 	CustomCaCerts      []string     `json:"customCaCerts,omitempty"`
 	RejectUnauthorized *bool        `json:"rejectUnauthorized,omitempty"`
+	// DisableLanWarmup skips the macOS local-network warmup probe the engine
+	// runs at startup (one UDP datagram to the default gateway via
+	// Network.framework, which materializes the Local Network privacy verdict
+	// so LAN connections work for the engine and its subprocesses). Set only
+	// when Local Network policy is managed externally (e.g. MDM). No effect
+	// on non-darwin platforms.
+	DisableLanWarmup bool `json:"disableLanWarmup,omitempty"`
 }
 
 // --- Telemetry Types (from engine/src/telemetry/types.ts) ---
 
 // TelemetryConfig controls telemetry collection and export.
 type TelemetryConfig struct {
-	Enabled         bool              `json:"enabled"`
-	Targets         []string          `json:"targets,omitempty"`
-	HttpEndpoint    string            `json:"httpEndpoint,omitempty"`
-	HttpHeaders     map[string]string `json:"httpHeaders,omitempty"`
-	FilePath        string            `json:"filePath,omitempty"`
-	PrivacyLevel    string            `json:"privacyLevel,omitempty"`
-	BatchSize       int               `json:"batchSize,omitempty"`
-	FlushIntervalMs int64             `json:"flushIntervalMs,omitempty"`
-	Otel            *OtelConfig       `json:"otel,omitempty"`
+	Enabled      bool              `json:"enabled"`
+	Targets      []string          `json:"targets,omitempty"`
+	HttpEndpoint string            `json:"httpEndpoint,omitempty"`
+	HttpHeaders  map[string]string `json:"httpHeaders,omitempty"`
+	FilePath     string            `json:"filePath,omitempty"`
+	PrivacyLevel string            `json:"privacyLevel,omitempty"`
+	BatchSize    int               `json:"batchSize,omitempty"`
+	// FlushIntervalMs controls how often the file/stdout/http Collector
+	// automatically flushes its in-memory event buffer to disk. When zero
+	// (the default, and the common case where the operator omits the field),
+	// normalizeTelemetryConfig applies the 5 000 ms default. Set explicitly
+	// to override. This is distinct from OtelBridge's own flush interval
+	// (which remains a separate config on OtelConfig).
+	FlushIntervalMs int64       `json:"flushIntervalMs,omitempty"`
+	Otel            *OtelConfig `json:"otel,omitempty"`
 }
 
 // TelemetryEvent is a structured telemetry span or point event.
 type TelemetryEvent struct {
 	Name         string         `json:"name"`
-	TraceID      string         `json:"traceId"`
-	SpanID       string         `json:"spanId"`
-	ParentSpanID string         `json:"parentSpanId,omitempty"`
-	SessionID    string         `json:"sessionId,omitempty"`
+	TraceID      string         `json:"trace_id"`
+	SpanID       string         `json:"span_id"`
+	ParentSpanID string         `json:"parent_span_id,omitempty"`
+	SessionID    string         `json:"session_id,omitempty"`
 	Timestamp    int64          `json:"timestamp"`
 	DurationMs   *int64         `json:"durationMs,omitempty"`
 	Attributes   map[string]any `json:"attributes"`

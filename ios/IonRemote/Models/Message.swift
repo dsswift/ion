@@ -3,7 +3,12 @@ import Foundation
 /// A single message in a conversation. Matches `RemoteMessage` in protocol.ts.
 /// Also used for engine conversations (formerly EngineMessage).
 struct Message: Codable, Identifiable, Sendable {
-    let id: String
+    /// Mutable so `handleEngineMessageEnd` can RE-KEY a locally-streamed row
+    /// (UUID / clientMsgId) to its canonical persisted tree-entry id carried
+    /// on desktop_message_end (`entryId` / `userEntryId`). History pages key
+    /// rows by those canonical ids, so the re-key is what lets a subsequent
+    /// wholesale-replace anchor on the live rows instead of duplicating them.
+    var id: String
     let role: MessageRole
     var content: String
     var toolName: String?
@@ -24,9 +29,17 @@ struct Message: Codable, Identifiable, Sendable {
     var slashCommand: String?
     var slashArgs: String?
     var slashSource: String?
-    /// View-only hint: number of consecutive bootstrap messages collapsed into
-    /// this one. NOT encoded/decoded (excluded from CodingKeys).
-    var bootstrapCollapsedCount: Int?
+    /// Dedup key carried on harness messages with relocate semantics. When
+    /// present, a second harness message with the same key relocates (removes
+    /// the old entry and appends the new one at the end). Decoded from the
+    /// desktop history-replay wire so dedup state survives reconnect.
+    /// NOT persisted beyond the in-memory message store.
+    var dedupKey: String? = nil
+    /// Dedup mode paired with `dedupKey`. "relocate" means move-forward;
+    /// absent/empty means suppress-later (default). Decoded from the desktop
+    /// history-replay wire alongside `dedupKey`. NOT persisted beyond the
+    /// in-memory message store.
+    var dedupMode: String? = nil
     /// Local UI state only -- NOT a wire protocol field, NOT persisted.
     /// Set to true by engine_message_end so the next engine_text_delta
     /// opens a fresh assistant message instead of appending to this one.
@@ -98,8 +111,13 @@ struct Message: Codable, Identifiable, Sendable {
         case isInternal = "internal"
         case slashCommand, slashArgs, slashSource
         case planFilePath, markerKind
-        // bootstrapCollapsedCount, interceptLevel, and the thinking* summary
-        // fields are deliberately excluded — all are client-only render hints.
+        // dedupKey / dedupMode: decoded from the desktop history-replay wire
+        // (desktop_conversation_history) so relocate semantics survive reconnect.
+        // Client-only render state — NOT persisted beyond the in-memory store.
+        case dedupKey, dedupMode
+        // interceptLevel and the thinking* summary fields are deliberately
+        // excluded — they are transient client-only render hints that are
+        // never serialized to or from the wire.
     }
 }
 
@@ -180,11 +198,18 @@ extension Message {
             planFilePath = try container.decodeIfPresent(String.self, forKey: .markerPlanFilePath)
         }
 
+        // Engine SessionMessage carries image references on historical reload
+        // in `attachments` (engine flattenEntries replays a persisted tool-result
+        // image as a SessionMessageAttachment on the owning tool row). Decode it
+        // so engine-generated images survive reload on the direct engine-wire
+        // path (agent conversation history), matching the desktop→iOS
+        // conversationHistory path which decodes attachments via the standard
+        // Codable init. Without this the images are dropped on reload.
+        attachments = try container.decodeIfPresent([MessageAttachment].self, forKey: .attachments)
+
         // Engine messages don't carry these fields
         toolInput = nil
-        attachments = nil
         source = nil
-        bootstrapCollapsedCount = nil
     }
 
     private enum EngineCodingKeys: String, CodingKey {
@@ -193,6 +218,7 @@ extension Message {
         case slashCommand, slashArgs, slashSource
         case planFilePath
         case markerKind, markerPlanFilePath
+        case attachments
     }
 
     /// Decode an array of Message from engine wire-format JSON.

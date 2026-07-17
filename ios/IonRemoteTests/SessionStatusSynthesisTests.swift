@@ -20,7 +20,8 @@ final class SessionStatusSynthesisTests: XCTestCase {
         model: String? = nil,
         contextPercent: Int? = nil,
         contextWindow: Int? = nil,
-        totalCostUsd: Double? = nil,
+        runCostUsd: Double? = nil,
+        conversationCostUsd: Double? = nil,
         permissionDenialsPending: [PermissionDenialEntry]? = nil,
         extensionName: String? = nil,
         backgroundAgentCount: Int? = nil,
@@ -38,7 +39,8 @@ final class SessionStatusSynthesisTests: XCTestCase {
             model: model,
             contextPercent: contextPercent,
             contextWindow: contextWindow,
-            totalCostUsd: totalCostUsd,
+            runCostUsd: runCostUsd,
+            conversationCostUsd: conversationCostUsd,
             sessionId: sessionId,
             extensionName: extensionName
         )
@@ -110,12 +112,16 @@ final class SessionStatusSynthesisTests: XCTestCase {
         XCTAssertEqual(f.contextWindow, 200_000)
     }
 
-    func testTotalCostUsdPreservedIncludingNil() {
-        let s1 = makeStatus(totalCostUsd: 1.23)
-        XCTAssertEqual(SessionStatusSynthesis.toStatusFields(tabId: "t", status: s1).totalCostUsd, 1.23)
+    func testCostsPreservedIncludingNil() {
+        let s1 = makeStatus(runCostUsd: 1.23, conversationCostUsd: 7.89)
+        let f1 = SessionStatusSynthesis.toStatusFields(tabId: "t", status: s1)
+        XCTAssertEqual(f1.runCostUsd, 1.23)
+        XCTAssertEqual(f1.conversationCostUsd, 7.89)
 
-        let s2 = makeStatus(totalCostUsd: nil)
-        XCTAssertNil(SessionStatusSynthesis.toStatusFields(tabId: "t", status: s2).totalCostUsd)
+        let s2 = makeStatus(runCostUsd: nil, conversationCostUsd: nil)
+        let f2 = SessionStatusSynthesis.toStatusFields(tabId: "t", status: s2)
+        XCTAssertNil(f2.runCostUsd)
+        XCTAssertNil(f2.conversationCostUsd)
     }
 
     func testPermissionDenialsMappedFromPending() {
@@ -149,7 +155,8 @@ final class SessionStatusSynthesisTests: XCTestCase {
             model: "claude-4",
             contextPercent: 78,
             contextWindow: 200_000,
-            totalCostUsd: 4.56,
+            runCostUsd: 4.56,
+            conversationCostUsd: 12.34,
             permissionDenialsPending: [denial],
             extensionName: "Ion Operations",
             backgroundAgentCount: 1
@@ -162,7 +169,8 @@ final class SessionStatusSynthesisTests: XCTestCase {
         XCTAssertEqual(f.model, "claude-4")
         XCTAssertEqual(f.contextPercent, 78.0)
         XCTAssertEqual(f.contextWindow, 200_000)
-        XCTAssertEqual(f.totalCostUsd, 4.56)
+        XCTAssertEqual(f.runCostUsd, 4.56)
+        XCTAssertEqual(f.conversationCostUsd, 12.34)
         XCTAssertEqual(f.permissionDenials?.count, 1)
         XCTAssertEqual(f.permissionDenials?.first?.toolName, "ExitPlanMode")
         XCTAssertEqual(f.extensionName, "Ion Operations")

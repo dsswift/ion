@@ -68,7 +68,7 @@ func newTaskGroup(rec *taskRecorder) *extension.ExtensionGroup {
 }
 
 func TestFireCliTurnHooks_TaskCreatedOnTextStart(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("task1")
 
@@ -113,7 +113,7 @@ func TestFireCliTurnHooks_TaskCreatedOnTextStart(t *testing.T) {
 }
 
 func TestFireCliTurnHooks_TaskCreatedOnToolCallStart(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("task2")
 
@@ -155,7 +155,7 @@ func TestFireCliTurnHooks_TaskCreatedOnToolCallStart(t *testing.T) {
 }
 
 func TestFireCliTurnHooks_NoTaskCompletedWithoutTurn(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("task3")
 
@@ -184,7 +184,7 @@ func TestFireCliTurnHooks_NoTaskCompletedWithoutTurn(t *testing.T) {
 }
 
 func TestFireCliTurnHooks_MultiTurnTaskPairing(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := NewManager(cb)
 	s := newCliSession("task4")
 

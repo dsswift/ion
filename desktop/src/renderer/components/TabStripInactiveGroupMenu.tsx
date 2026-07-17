@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
+import { useViewportClamp } from '../hooks/useViewportClamp'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { Plus, CaretDown, Rows, ArrowRight } from '@phosphor-icons/react'
@@ -10,6 +11,7 @@ import type { TabGroupView } from '../hooks/useTabGroups'
 import type { TabGroupMode } from '../../shared/types-session'
 import { zoomRect, zoomViewport, useAnchoredPopoverPosition } from './TabStripShared'
 import { ConfirmDialog } from './git/ConfirmDialog'
+import { rDebug, rInfo } from '../rendererLogger'
 
 interface InactiveGroupMenuProps {
   anchor: { x: number; y: number }
@@ -26,6 +28,8 @@ export function InactiveGroupMenu({
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const ref = useRef<HTMLDivElement>(null)
+  // Keep the portaled popover inside the window (ATV top-anchored strip).
+  useViewportClamp(ref, true)
   const tabGroupMode = usePreferencesStore((s) => s.tabGroupMode)
   const tabGroups = usePreferencesStore((s) => s.tabGroups)
   const moveTabToGroup = useSessionStore((s) => s.moveTabToGroup)
@@ -86,7 +90,7 @@ export function InactiveGroupMenu({
   const menuItemStyle = { fontSize: 12, color: colors.textPrimary, background: 'transparent' as string, border: 'none' as const, cursor: 'pointer' as const }
 
   const requestMoveAll = (targetGroupId: string, targetLabel: string) => {
-    console.log('[InactiveGroupMenu] move-all confirmation requested', { tabCount: group.tabs.length, targetGroupId, targetLabel })
+    rDebug('inactive-group-menu', 'move-all confirmation requested', { tab_count: group.tabs.length, target_group: targetGroupId, target_label: targetLabel })
     setMoveSubmenu(null)
     setMoveParentRect(null)
     setPendingMoveAll({ groupId: targetGroupId, label: targetLabel })
@@ -169,13 +173,13 @@ export function InactiveGroupMenu({
           cancelLabel="Cancel"
           danger={false}
           onConfirm={() => {
-            console.log('[InactiveGroupMenu] move-all confirmed', { tabCount: group.tabs.length, targetGroupId: pendingMoveAll.groupId, targetLabel: pendingMoveAll.label })
+            rInfo('inactive-group-menu', 'move-all confirmed', { tab_count: group.tabs.length, target_group: pendingMoveAll.groupId, target_label: pendingMoveAll.label })
             for (const tab of group.tabs) moveTabToGroup(tab.id, pendingMoveAll.groupId)
             setPendingMoveAll(null)
             onClose()
           }}
           onCancel={() => {
-            console.log('[InactiveGroupMenu] move-all cancelled', { tabCount: group.tabs.length, targetGroupId: pendingMoveAll.groupId, targetLabel: pendingMoveAll.label })
+            rDebug('inactive-group-menu', 'move-all cancelled', { tab_count: group.tabs.length, target_group: pendingMoveAll.groupId, target_label: pendingMoveAll.label })
             setPendingMoveAll(null)
             onClose()
           }}

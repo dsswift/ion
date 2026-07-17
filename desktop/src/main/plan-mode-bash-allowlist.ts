@@ -2,7 +2,7 @@ import { readSettings } from './settings-store'
 import { log as _log } from './logger'
 
 const TAG = 'PlanModeBashAllowlist'
-function log(msg: string): void { _log(TAG, msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
 
 /**
  * Resolves the plan-mode bash command allowlist from the desktop's
@@ -40,7 +40,7 @@ export function resolveBashAllowlistFromSettings(): string[] | undefined {
   try {
     settings = readSettings()
   } catch (err) {
-    log(`resolveBashAllowlistFromSettings: readSettings threw; returning undefined (engine keeps prior allowlist): ${err}`)
+    log('plan_mode_bash_allowlist: readSettings threw, returning undefined', { error: String(err) })
     return undefined
   }
   const cmds = settings.planModeAllowedBashCommands

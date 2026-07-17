@@ -20,8 +20,20 @@ import type { Message } from '../../../shared/types'
  *      expand.
  */
 
-/** Number of trailing lines shown in the collapsed/streaming preview. */
+/**
+ * Number of VISUAL lines shown in the collapsed/streaming preview. Used as
+ * the multiplier in the CSS height clamp (`maxHeight` calc) — not a
+ * logical-line count. Correctness of "3 lines shown" comes from the CSS
+ * clamp, not from text truncation.
+ */
 export const PREVIEW_LINES = 3
+
+/**
+ * Character budget passed to `tailForPreview`. Bounds the DOM/layout work
+ * during streaming by keeping the preview slice small; the CSS clamp
+ * enforces the visible line count independently.
+ */
+export const PREVIEW_CHAR_BUDGET = 600
 
 /**
  * The three render states ThinkingBlock can be in. Exported so tests (and
@@ -30,11 +42,24 @@ export const PREVIEW_LINES = 3
  */
 export type ThinkingRenderState = 'live' | 'historical-text' | 'summary-only'
 
-/** Return the last `n` non-empty lines of `text`, joined for the preview. */
-export function tailLines(text: string, n: number): string {
-  const lines = text.split('\n').filter((l) => l.trim().length > 0)
-  if (lines.length <= n) return lines.join('\n')
-  return lines.slice(lines.length - n).join('\n')
+/**
+ * Return the trailing slice of `text` bounded to `maxChars` characters, cut
+ * at a clean line boundary. If the slice starts mid-line (i.e. the cut lands
+ * in the middle of a line), the partial leading line is dropped by trimming
+ * to the first `\n`. Short input (≤ maxChars) is returned unchanged.
+ *
+ * This function only bounds DOM/layout work during streaming. The visible
+ * line count is enforced by the CSS height clamp in ThinkingBlock, not by
+ * this function.
+ */
+export function tailForPreview(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text
+  const slice = text.slice(text.length - maxChars)
+  const newlineIdx = slice.indexOf('\n')
+  // If there is no newline in the slice the entire slice is one paragraph;
+  // return it as-is (the CSS clamp will hide the overflow).
+  if (newlineIdx === -1) return slice
+  return slice.slice(newlineIdx + 1)
 }
 
 /**
@@ -81,4 +106,50 @@ export function resolveRenderState(message: Message): ThinkingRenderState {
  */
 export function isExpandable(message: Message): boolean {
   return (message.content || '').trim().length > 0
+}
+
+/**
+ * Merge all of a turn's thinking rows into ONE display message (unified
+ * turn view). A single run makes many API rounds and each round opens its
+ * own thinking block, so a turn can accumulate dozens of `role: 'thinking'`
+ * rows. The unified view shows exactly one thought stream per turn; this
+ * helper synthesizes it. Display-level only — the underlying messages are
+ * never mutated, so history, persistence, and the classic view see the
+ * original rows.
+ *
+ * Field rules:
+ *   - id: the FIRST row's id. Stable identity across re-groups, so the
+ *     merged row does not remount (no scroll jump) as later blocks arrive.
+ *   - content: non-empty contents joined with a blank line, preserving
+ *     block order — one continuous reasoning stream.
+ *   - thinkingActive: true if ANY row is still active. The live pulse
+ *     survives the boundaries between blocks within the same run.
+ *   - thinkingElapsedSeconds / thinkingTotalTokens: summed across rows
+ *     (undefined when no row carried the field, so the summary renders
+ *     exactly like a single block with no data).
+ *   - thinkingRedacted: true only when EVERY row is redacted. A mix of
+ *     redacted and readable blocks shows the readable text.
+ *
+ * Single-row input returns the row unchanged (no synthesis needed).
+ */
+export function mergeThinkingMessages(msgs: Message[]): Message {
+  if (msgs.length === 1) return msgs[0]
+
+  const contents = msgs.map((m) => m.content || '').filter((c) => c.trim().length > 0)
+
+  let elapsed: number | undefined
+  let tokens: number | undefined
+  for (const m of msgs) {
+    if (m.thinkingElapsedSeconds != null) elapsed = (elapsed ?? 0) + m.thinkingElapsedSeconds
+    if (m.thinkingTotalTokens != null) tokens = (tokens ?? 0) + m.thinkingTotalTokens
+  }
+
+  return {
+    ...msgs[0],
+    content: contents.join('\n\n'),
+    thinkingActive: msgs.some((m) => !!m.thinkingActive),
+    thinkingElapsedSeconds: elapsed,
+    thinkingTotalTokens: tokens,
+    thinkingRedacted: msgs.every((m) => !!m.thinkingRedacted),
+  }
 }

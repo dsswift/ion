@@ -123,25 +123,23 @@ func (sm *SessionMemory) LoadMemory() bool {
 				switch key {
 				case "lastUpdateTokens":
 					if n, err := fmt.Sscanf(val, "%d", &sm.lastUpdateTokens); n != 1 || err != nil {
-						utils.Warn("SessionMemory", fmt.Sprintf("LoadMemory: failed to parse lastUpdateTokens=%q", val))
+						utils.LogWithFields(utils.LevelWarn, "session.memory", "loadmemory: failed to parse", map[string]any{"val": val})
 					}
 				case "lastUpdateTurn":
 					if n, err := fmt.Sscanf(val, "%d", &sm.lastUpdateTurn); n != 1 || err != nil {
-						utils.Warn("SessionMemory", fmt.Sprintf("LoadMemory: failed to parse lastUpdateTurn=%q", val))
+						utils.LogWithFields(utils.LevelWarn, "session.memory", "loadmemory: failed to parse", map[string]any{"val": val})
 					}
 				case "lastSummarizedEntryID":
 					sm.lastSummarizedEntryID = val
 				}
 			}
-			utils.Log("SessionMemory", fmt.Sprintf(
-				"loaded front-matter: lastUpdateTokens=%d lastUpdateTurn=%d lastSummarizedEntryID=%s",
-				sm.lastUpdateTokens, sm.lastUpdateTurn, sm.lastSummarizedEntryID))
+			utils.LogWithFields(utils.LevelInfo, "session.memory", "loaded front-matter", map[string]any{"last_update_tokens": sm.lastUpdateTokens, "last_update_turn": sm.lastUpdateTurn, "last_summarized_entry_i_d": sm.lastSummarizedEntryID})
 		}
 	}
 
 	sm.memory = content
 	sm.mu.Unlock()
-	utils.Log("SessionMemory", fmt.Sprintf("loaded memory file: %s (%d bytes, %d content bytes)", path, len(data), len(content)))
+	utils.LogWithFields(utils.LevelInfo, "session.memory", "loaded memory file: ( bytes, content bytes)", map[string]any{"path": path, "count": len(data), "count_2": len(content)})
 	return true
 }
 
@@ -171,7 +169,7 @@ func (sm *SessionMemory) SetMemory(content string) {
 func (sm *SessionMemory) persistMemory(content string) {
 	path := sm.memoryFilePath()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		utils.Warn("SessionMemory", "failed to create memory dir: "+err.Error())
+		utils.LogWithFields(utils.LevelWarn, "session.memory", "failed to create memory dir", map[string]any{"error": err.Error()})
 		return
 	}
 
@@ -184,7 +182,7 @@ func (sm *SessionMemory) persistMemory(content string) {
 	sm.mu.RUnlock()
 
 	if err := os.WriteFile(path, []byte(frontMatter+content), 0o644); err != nil {
-		utils.Warn("SessionMemory", "failed to write memory file: "+err.Error())
+		utils.LogWithFields(utils.LevelWarn, "session.memory", "failed to write memory file", map[string]any{"error": err.Error()})
 	}
 }
 
@@ -213,9 +211,7 @@ func (sm *SessionMemory) GetLastSummarizedEntryID() string {
 func (sm *SessionMemory) ResetUpdateTracking(currentTokens int, currentTurn int) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
-	utils.Log("SessionMemory", fmt.Sprintf(
-		"ResetUpdateTracking: lastUpdateTokens %d→%d lastUpdateTurn %d→%d",
-		sm.lastUpdateTokens, currentTokens, sm.lastUpdateTurn, currentTurn))
+	utils.LogWithFields(utils.LevelInfo, "session.memory", "resetupdatetracking: lastupdatetokens → lastupdateturn", map[string]any{"last_update_tokens": sm.lastUpdateTokens, "current_tokens": currentTokens, "last_update_turn": sm.lastUpdateTurn, "current_turn": currentTurn})
 	sm.lastUpdateTokens = currentTokens
 	sm.lastUpdateTurn = currentTurn
 }
@@ -226,7 +222,7 @@ func (sm *SessionMemory) Start() {
 	ctx, cancel := context.WithCancel(context.Background())
 	sm.ctx = ctx
 	sm.cancel = cancel
-	utils.Log("SessionMemory", fmt.Sprintf("started for conversation %s", sm.convID))
+	utils.LogWithFields(utils.LevelDebug, "session.memory", "started for conversation", map[string]any{"run_id": sm.convID})
 }
 
 // Stop cancels any in-flight background summarization and waits for it
@@ -236,7 +232,7 @@ func (sm *SessionMemory) Stop() {
 		sm.cancel()
 	}
 	sm.wg.Wait()
-	utils.Log("SessionMemory", fmt.Sprintf("stopped for conversation %s", sm.convID))
+	utils.LogWithFields(utils.LevelInfo, "session.memory", "stopped for conversation", map[string]any{"run_id": sm.convID})
 }
 
 // OnTurnEnd is called after each model response. It checks whether an
@@ -250,32 +246,24 @@ func (sm *SessionMemory) OnTurnEnd(conv *conversation.Conversation, turnNumber i
 
 	// Check debounce: enough turns elapsed?
 	if turnNumber-lastTurn < sm.updateMinTurns {
-		utils.Debug("SessionMemory", fmt.Sprintf(
-			"OnTurnEnd: skipping update, insufficient turns (turn=%d lastUpdate=%d minTurns=%d)",
-			turnNumber, lastTurn, sm.updateMinTurns))
+		utils.LogWithFields(utils.LevelDebug, "session.memory", "onturnend: skipping update, insufficient turns ( )", map[string]any{"turn_number": turnNumber, "last_turn": lastTurn, "update_min_turns": sm.updateMinTurns})
 		return
 	}
 
 	// Check debounce: enough token growth?
 	currentTokens := conversation.EstimateTokens(conv.Messages)
 	if currentTokens-lastTokens < sm.updateThreshold {
-		utils.Debug("SessionMemory", fmt.Sprintf(
-			"OnTurnEnd: skipping update, insufficient token growth (tokens=%d lastUpdate=%d threshold=%d)",
-			currentTokens, lastTokens, sm.updateThreshold))
+		utils.LogWithFields(utils.LevelDebug, "session.memory", "onturnend: skipping update, insufficient token growth ( )", map[string]any{"current_tokens": currentTokens, "last_tokens": lastTokens, "update_threshold": sm.updateThreshold})
 		return
 	}
 
-	utils.Log("SessionMemory", fmt.Sprintf(
-		"OnTurnEnd: triggering background summary (turn=%d tokens=%d growth=%d)",
-		turnNumber, currentTokens, currentTokens-lastTokens))
+	utils.LogWithFields(utils.LevelInfo, "session.memory", "onturnend: triggering background summary ( )", map[string]any{"turn_number": turnNumber, "current_tokens": currentTokens, "current_tokens_last_tokens": currentTokens-lastTokens})
 
 	// Capture the entry boundary BEFORE spawning the goroutine. This is
-	// the newest entry that the summary will cover. LeafID is a *string
-	// so we dereference to a value copy for goroutine safety.
-	var boundaryEntryID string
-	if conv.LeafID != nil {
-		boundaryEntryID = *conv.LeafID
-	}
+	// the newest entry that the summary will cover. CurrentLeafID reads the
+	// leaf under the conversation's tree lock, so this snapshot can never
+	// observe a half-applied append from a parallel tool goroutine.
+	boundaryEntryID := conversation.CurrentLeafID(conv)
 
 	// Spawn background summarization. The goroutine captures the current
 	// message state so the runloop is not blocked.
@@ -364,9 +352,7 @@ CONVERSATION:
 
 		// Persist to disk.
 		sm.persistMemory(summary)
-		utils.Log("SessionMemory", fmt.Sprintf(
-			"updated memory at turn %d (tokens=%d, summary=%d chars, boundary=%s)",
-			turnNumber, currentTokens, len(summary), boundaryEntryID))
+		utils.LogWithFields(utils.LevelInfo, "session.memory", "updated memory at turn (, chars, )", map[string]any{"turn_number": turnNumber, "current_tokens": currentTokens, "count": len(summary), "boundary_entry_i_d": boundaryEntryID})
 	}()
 }
 
@@ -388,6 +374,5 @@ func (sm *SessionMemory) InjectMemoryIntoSystemPrompt(opts *types.RunOptions) {
 	} else {
 		opts.AppendSystemPrompt = strings.TrimPrefix(section, "\n\n")
 	}
-	utils.Log("SessionMemory", fmt.Sprintf(
-		"injected %d chars of session memory into system prompt", len(memory)))
+	utils.LogWithFields(utils.LevelInfo, "session.memory", "injected session memory into system prompt", map[string]any{"count": len(memory)})
 }

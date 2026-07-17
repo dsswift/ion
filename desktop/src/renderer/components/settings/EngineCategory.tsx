@@ -4,27 +4,12 @@ import { useColors } from '../../theme'
 import { usePreferencesStore } from '../../preferences'
 import { SettingHeading } from './SettingHeading'
 import type { EngineProfile } from '../../../shared/types'
-
-interface EditState {
-  name: string
-  extensions: string[]
-}
-
-const emptyEdit: EditState = {
-  name: '',
-  extensions: [],
-}
-
-function profileToEdit(p: EngineProfile): EditState {
-  return {
-    name: p.name,
-    extensions: [...(p.extensions || [])],
-  }
-}
-
-function editToProfile(id: string, e: EditState): EngineProfile {
-  return { id, name: e.name.trim(), extensions: e.extensions.filter(x => x.trim()) }
-}
+import {
+  profileToEdit,
+  editToProfile,
+  emptyProfileEdit as emptyEdit,
+  type ProfileEditState as EditState,
+} from './engine-profile-edit-helpers'
 
 export function EngineCategory() {
   const colors = useColors()
@@ -178,6 +163,30 @@ export function EngineCategory() {
           <FilePlus size={14} />
           Add Extension
         </button>
+      </div>
+
+      <div style={fieldRow}>
+        <label style={labelStyle}>Default mode</label>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {(['auto', 'plan'] as const).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => setEdit((prev) => ({ ...prev, defaultMode: mode }))}
+              style={{
+                padding: '4px 14px',
+                background: edit.defaultMode === mode ? colors.accent : 'transparent',
+                border: `1px solid ${edit.defaultMode === mode ? colors.accent : colors.containerBorder}`,
+                borderRadius: 6,
+                color: edit.defaultMode === mode ? '#fff' : colors.textSecondary,
+                cursor: 'pointer',
+                fontSize: 12,
+                fontWeight: edit.defaultMode === mode ? 600 : 400,
+              }}
+            >
+              {mode === 'auto' ? 'Auto' : 'Plan'}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>

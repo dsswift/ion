@@ -1,7 +1,7 @@
 import { createServer, Server, IncomingMessage, ServerResponse } from 'http'
 import { log as _log } from '../logger'
 
-function log(msg: string): void { _log('oauth', msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log('oauth', msg, fields) }
 
 export interface CallbackResult {
   code: string
@@ -63,7 +63,7 @@ export function startCallbackServer(port: number, expectedState: string): Promis
 
   return new Promise((resolve) => {
     server.listen(port, '127.0.0.1', () => {
-      log(`Callback server listening on port ${port}`)
+      log('oauth: callback server listening', { port })
       resolve({
         close: () => { server.close(); log('Callback server closed') },
         cancelWait: () => resolveWait?.(null),
@@ -71,7 +71,7 @@ export function startCallbackServer(port: number, expectedState: string): Promis
       })
     })
     server.on('error', (err: NodeJS.ErrnoException) => {
-      log(`Callback server error on port ${port}: ${err.code}`)
+      log('oauth: callback server error', { port, code: err.code })
       resolveWait?.(null)
       resolve({
         close: () => { try { server.close() } catch { /* ignore */ } },

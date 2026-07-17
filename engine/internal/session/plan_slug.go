@@ -213,7 +213,7 @@ func generatePlanSlugUnique(plansDir string) string {
 // their own context with better surrounding state.
 func allocateNewPlanFilePath(b backend.RunBackend, workingDir string) string {
 	var plansDir string
-	_, isCli := b.(*backend.CliBackend)
+	_, isCli := b.(*backend.ClaudeCodeBackend)
 	_, isHybrid := b.(*backend.HybridBackend)
 	if (isCli || isHybrid) && workingDir != "" {
 		plansDir = filepath.Join(workingDir, ".ion", "plans")

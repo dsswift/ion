@@ -46,19 +46,26 @@ func cmdInstallAssets() {
 	}
 	ionHome := filepath.Join(home, ".ion")
 
-	// 1. Install SDK
+	// 1. Install SDK — replace, don't merge. The installed copy is
+	// "overwritten at build time" by contract (root CLAUDE.md § Extension
+	// SDK source location); a merge-copy leaves orphaned files (deleted or
+	// renamed SDK modules, stray nested directories from older staging
+	// bugs) that shadow the real surface forever.
 	sdkSrc := filepath.Join(assetRoot, "extensions", "sdk")
 	sdkDst := filepath.Join(ionHome, "extensions", "sdk")
-	if err := copyDirContents(sdkSrc, sdkDst); err != nil {
+	if err := replaceDirContents(sdkSrc, sdkDst); err != nil {
 		fmt.Fprintf(os.Stderr, "install-assets: install SDK: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Printf("==> Installed extension SDK to %s\n", sdkDst)
 
-	// 2. Install ion-meta
+	// 2. Install ion-meta — same replace semantics: it ships with the
+	// engine and holds no user state (runtime state lives outside the
+	// extension dir), so renames/deletions must propagate like the
+	// canonical docs below.
 	metaSrc := filepath.Join(assetRoot, "extensions", "ion-meta")
 	metaDst := filepath.Join(ionHome, "extensions", "ion-meta")
-	if err := copyDirContents(metaSrc, metaDst); err != nil {
+	if err := replaceDirContents(metaSrc, metaDst); err != nil {
 		fmt.Fprintf(os.Stderr, "install-assets: install ion-meta: %v\n", err)
 		os.Exit(1)
 	}
@@ -150,6 +157,20 @@ func findDocsRoot(assetRoot string) string {
 // Returns a non-nil error if src does not exist (the install.command uses an
 // `if [[ -d "$SRC" ]]` guard; we treat a missing source as an error so
 // callers know the asset was not bundled).
+// replaceDirContents deletes dst then copies src into place, so the
+// destination is an exact mirror of the source. Used for engine-shipped
+// assets (SDK, ion-meta) where merge-copy semantics would leave orphaned
+// files behind across upgrades.
+func replaceDirContents(src, dst string) error {
+	if _, err := os.Stat(src); err != nil {
+		return fmt.Errorf("source %q not found: %w", src, err)
+	}
+	if err := os.RemoveAll(dst); err != nil {
+		return fmt.Errorf("remove stale %q: %w", dst, err)
+	}
+	return copyDirContents(src, dst)
+}
+
 func copyDirContents(src, dst string) error {
 	info, err := os.Stat(src)
 	if err != nil {

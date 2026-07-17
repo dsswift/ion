@@ -51,6 +51,20 @@ func LoadConfig(projectDir string) *types.EngineRuntimeConfig {
 	// Merge: defaults < global < project
 	merged := MergeConfigs(nil, defaults, fromMap(globalConfig), fromMap(projectConfig))
 
+	// Normalize the legacy backend alias. "cli" is the historical name for
+	// the Claude Code backend; "claude-code" is canonical. "cli" remains a
+	// permanently accepted input alias so existing engine.json files keep
+	// working. Normalizing here means every downstream consumer (serve
+	// switch, provider auth-source labeling) sees the canonical value.
+	if merged.Backend == "cli" {
+		utils.LogWithFields(utils.LevelInfo, "config", "normalized legacy backend alias", map[string]any{"from": "cli", "to": "claude-code"})
+		merged.Backend = "claude-code"
+	}
+
+	// Validate per-provider backend preferences (providers.<id>.backend),
+	// resetting any invalid value to the default rule with an ERROR log.
+	validateProviderBackends(merged)
+
 	// Load and enforce enterprise config
 	enterprise := LoadEnterpriseConfig()
 	if enterprise != nil {
@@ -60,6 +74,12 @@ func LoadConfig(projectDir string) *types.EngineRuntimeConfig {
 	// Apply log level from config
 	if merged.LogLevel != "" {
 		utils.SetLevelFromString(merged.LogLevel)
+	}
+
+	// Wire structured-logging config (format, output destination, size cap,
+	// rotation toggle). Nil block leaves the compiled defaults in place.
+	if merged.Logging != nil {
+		utils.ConfigureLogging(merged.Logging)
 	}
 
 	return merged
@@ -78,16 +98,11 @@ func FindProfile(name string, config *types.EngineRuntimeConfig) *types.EnginePr
 	return nil
 }
 
-// ExpandTilde replaces a leading ~ with the user's home directory.
+// ExpandTilde replaces a leading ~ with the user's home directory. It delegates
+// to utils.ExpandHomePath, the single engine-wide home-path expansion helper, so
+// every config field that accepts a filesystem path expands identically.
 func ExpandTilde(path string) string {
-	if len(path) == 0 || path[0] != '~' {
-		return path
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return path
-	}
-	return home + path[1:]
+	return utils.ExpandHomePath(path)
 }
 
 func globalConfigPath() string {
@@ -125,7 +140,7 @@ func loadJSONConfig(path string) map[string]any {
 	}
 	var m map[string]any
 	if err := json.Unmarshal(data, &m); err != nil {
-		utils.Log("Config", "failed to parse "+path+": "+err.Error())
+		utils.LogWithFields(utils.LevelInfo, "config", "failed to parse config file", map[string]any{"path": path, "error": err.Error()})
 		return nil
 	}
 	return m

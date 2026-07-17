@@ -30,7 +30,7 @@ func (b *ApiBackend) executeTools(
 	var hooks RunHooks
 	var permEng *permissions.Engine
 	var sbCfg *sandbox.Config
-	var mcpRouter func(context.Context, string, map[string]interface{}) (string, bool, error)
+	var mcpRouter func(context.Context, string, map[string]interface{}) (*types.ToolResult, error)
 	var telem TelemetryCollector
 	var spawnerFn tools.AgentSpawner
 	if run.cfg != nil {
@@ -58,11 +58,9 @@ func (b *ApiBackend) executeTools(
 	if spawnerFn != nil {
 		gCtx = tools.WithAgentSpawner(gCtx, spawnerFn)
 	} else {
-		utils.Warn("ApiBackend", fmt.Sprintf(
-			"run=%s has nil AgentSpawner: Agent tool will be unavailable. "+
-				"This indicates a wiring gap in the RunConfig assembly path.",
-			run.requestID,
-		))
+		utils.LogWithFields(utils.LevelWarn, "backend.runloop", "has nil AgentSpawner: Agent tool will be unavailable. \"+ \"This indicates a wiring gap in the RunConfig assembly path.", map[string]any{
+			"run_id": run.requestID,
+		})
 	}
 
 	// Inject history searcher scoped to this run's conversation so the
@@ -77,6 +75,16 @@ func (b *ApiBackend) executeTools(
 	for i, block := range toolUseBlocks {
 		i, block := i, block
 		g.Go(func() error {
+			// Install ambient logging for this child goroutine so every
+			// utils.Log/Debug/Info/Warn/Error call inside the tool-execution
+			// closure (and inside the tools it dispatches to) auto-stamps
+			// session_id/conversation_id. gCtx descends from the run's ctx,
+			// which carries the correlation IDs (errgroup.WithContext
+			// propagates context values). Without this, child goroutines have
+			// distinct goroutine IDs and no ambient entry, so their log lines
+			// emit without correlation.
+			defer installAmbientLogging(gCtx)()
+
 			// Permission check (Step 3)
 			if permEng != nil {
 				// Classify first so the tier flows into the permission engine
@@ -134,6 +142,7 @@ func (b *ApiBackend) executeTools(
 						Content:   "Permission denied: " + checkResult.Reason,
 						IsError:   true,
 					}
+					emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "permission_denied", checkResult.Reason)
 					b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
 						ToolID:  block.ID,
 						Content: results[i].Content,
@@ -146,8 +155,18 @@ func (b *ApiBackend) executeTools(
 			// Sandbox validation for Bash tool (Step 3)
 			if (block.Name == "Bash" || block.Name == "bash") && sbCfg != nil {
 				if cmd, ok := block.Input["command"].(string); ok {
-					safe, reason := sandbox.ValidateWithConfig(cmd, *sbCfg)
+					safe, reason, patternSource := sandbox.ValidateWithConfig(cmd, *sbCfg)
 					if !safe {
+						if telem != nil {
+							// R11: event name is carried by Event.Name; payload.kind removed.
+							telem.Event("sandbox.block", map[string]any{
+								"tool":            block.Name,
+								"reason":          reason,
+								"pattern_source":  patternSource,
+								"command_preview": truncatePreview(cmd, telemPreviewLimit),
+							}, buildTelemCtx(run))
+						}
+						emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "sandbox_blocked", reason)
 						results[i] = conversation.ToolResultEntry{
 							ToolUseID: block.ID,
 							Content:   "Sandbox blocked: " + reason,
@@ -199,6 +218,7 @@ func (b *ApiBackend) executeTools(
 						Content:   "Hook error: " + err.Error(),
 						IsError:   true,
 					}
+					emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "hook_error", err.Error())
 					return nil
 				}
 				if result != nil && result.Block {
@@ -207,6 +227,7 @@ func (b *ApiBackend) executeTools(
 						Content:   "Blocked: " + result.Reason,
 						IsError:   true,
 					}
+					emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "hook_blocked", result.Reason)
 					b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
 						ToolID:  block.ID,
 						Content: "Blocked: " + result.Reason,
@@ -229,9 +250,9 @@ func (b *ApiBackend) executeTools(
 			// Telemetry span for tool execution
 			var toolSpan Span
 			if telem != nil {
-				toolSpan = telem.StartSpan("tool.execute", map[string]interface{}{
+				toolSpan = telem.StartSpanCtx("tool.execute", map[string]interface{}{
 					"tool": block.Name,
-				})
+				}, buildTelemCtx(run))
 			}
 
 			// Plan-mode gates (extracted to runloop_plan_mode_gates.go to
@@ -270,7 +291,10 @@ func (b *ApiBackend) executeTools(
 			// the question, then terminate the run. The user's answer arrives
 			// as the next prompt in the same session.
 			if block.Name == tools.AskUserQuestionName {
-				utils.Info("ApiBackend", fmt.Sprintf("run=%s ask_user question=%v", run.requestID, block.Input["question"]))
+				utils.LogWithFields(utils.LevelInfo, "backend.runloop", "ask_user", map[string]any{
+					"run_id":   run.requestID,
+					"question": block.Input["question"],
+				})
 
 				// If this run has a ChildElicitFn, it is a dispatched child.
 				// Route the question to the dispatcher via elicitation (blocks
@@ -279,14 +303,20 @@ func (b *ApiBackend) executeTools(
 				// of terminating the run.
 				if run.cfg != nil && run.cfg.ChildElicitFn != nil {
 					question, _ := block.Input["question"].(string)
-					utils.Info("ApiBackend", fmt.Sprintf("run=%s ask_user routing to dispatcher via ChildElicitFn", run.requestID))
+					utils.LogWithFields(utils.LevelInfo, "backend.runloop", "ask_user routing to dispatcher via ChildElicitFn", map[string]any{
+						"run_id": run.requestID,
+					})
 					answer, cancelled, err := run.cfg.ChildElicitFn(question)
 					if err != nil || cancelled {
 						// Dispatcher couldn't answer (session torn down or
 						// cancelled). Terminate the child run via the standard
 						// PermissionDenial path so consumers see a uniform
 						// outcome.
-						utils.Info("ApiBackend", fmt.Sprintf("run=%s ask_user dispatcher unavailable cancelled=%v err=%v; terminating", run.requestID, cancelled, err))
+						utils.LogWithFields(utils.LevelInfo, "backend.runloop", "ask_user dispatcher unavailable ; terminating", map[string]any{
+							"run_id":    run.requestID,
+							"cancelled": cancelled,
+							"error":     utils.ErrStr(err),
+						})
 						run.mu.Lock()
 						run.exitPlanMode = true
 						run.permissionDenials = append(run.permissionDenials, types.PermissionDenial{
@@ -313,7 +343,9 @@ func (b *ApiBackend) executeTools(
 					if content == "" {
 						content = "(no answer provided — proceed with best judgment)"
 					}
-					utils.Info("ApiBackend", fmt.Sprintf("run=%s ask_user dispatcher answered; injecting result and continuing", run.requestID))
+					utils.LogWithFields(utils.LevelInfo, "backend.runloop", "ask_user dispatcher answered; injecting result and continuing", map[string]any{
+						"run_id": run.requestID,
+					})
 					results[i] = conversation.ToolResultEntry{
 						ToolUseID: block.ID,
 						Content:   content,
@@ -455,27 +487,45 @@ func (b *ApiBackend) executeTools(
 			var toolResult *types.ToolResult
 			var err error
 
+			// Tracks whether a tool.failure telemetry event has already fired for
+			// this block on a fall-through path (unknown_tool, deadline_exceeded).
+			// Those branches set IsError=true and emit, then fall through to the
+			// shared result-assembly block below — the guard stops that block from
+			// double-emitting for the same failure.
+			failureEmitted := false
+
 			if tools.GetTool(block.Name) != nil {
 				toolResult, err = tools.ExecuteTool(toolCtx, block.Name, block.Input, cwd)
 			} else if mcpRouter != nil {
 				// mcpRouter does not yet take ctx; race its return against
 				// toolCtx so a hung MCP server cannot wedge the run.
 				type mcpRet struct {
-					content string
-					isErr   bool
-					err     error
+					result *types.ToolResult
+					err    error
 				}
 				resCh := make(chan mcpRet, 1)
 				go func() {
-					content, isErr, routeErr := mcpRouter(toolCtx, block.Name, block.Input)
-					resCh <- mcpRet{content, isErr, routeErr}
+					// This inner goroutine has its own goroutine ID, so it
+					// needs its own ambient install to keep MCP router log
+					// lines correlated. gCtx is captured in the closure.
+					defer installAmbientLogging(gCtx)()
+					routed, routeErr := mcpRouter(toolCtx, block.Name, block.Input)
+					resCh <- mcpRet{routed, routeErr}
 				}()
 				select {
 				case r := <-resCh:
 					if r.err != nil {
 						err = r.err
+					} else if r.result != nil {
+						// Consume the full ToolResult directly so Images
+						// (vision output from an extension/MCP tool) survive
+						// into the ToolResultEntry rather than being flattened
+						// to (content, isErr).
+						toolResult = r.result
 					} else {
-						toolResult = &types.ToolResult{Content: r.content, IsError: r.isErr}
+						// Nil result with nil error is the empty-successful
+						// case: substitute an empty result.
+						toolResult = &types.ToolResult{}
 					}
 				case <-toolCtx.Done():
 					err = toolCtx.Err()
@@ -485,6 +535,8 @@ func (b *ApiBackend) executeTools(
 					Content: fmt.Sprintf("Unknown tool: %s", block.Name),
 					IsError: true,
 				}
+				emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "unknown_tool", toolResult.Content)
+				failureEmitted = true
 			}
 
 			// Surface per-tool deadline as a tool-result error rather than
@@ -503,6 +555,8 @@ func (b *ApiBackend) executeTools(
 					Content: fmt.Sprintf("Error: tool %q exceeded %s deadline. Narrow the request or split it into smaller calls.", block.Name, toolTimeout),
 					IsError: true,
 				}
+				emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "deadline_exceeded", toolResult.Content)
+				failureEmitted = true
 			}
 
 			// Signal stall timer that the tool has completed.
@@ -523,12 +577,27 @@ func (b *ApiBackend) executeTools(
 					Content:   "Error: " + err.Error(),
 					IsError:   true,
 				}
+				emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "tool_error", err.Error())
 			} else {
 				results[i] = conversation.ToolResultEntry{
 					ToolUseID: block.ID,
 					Content:   toolResult.Content,
 					IsError:   toolResult.IsError,
 					Images:    toolResult.Images,
+				}
+				// A tool that returns IsError=true with no Go-level error is the
+				// dominant real-failure path: Bash non-zero exit, Edit
+				// old_string-not-found, missing required args, etc. all return
+				// {IsError: true}, nil. Without this emission those failures land in
+				// tool.execute but never in tool.failure, so the failure signal is
+				// silently lost for every tool that reports failure by result flag
+				// rather than by returning an error. Guard against double-emitting
+				// for the unknown_tool / deadline_exceeded fall-through paths, which
+				// already emitted above. toolResult is non-nil here: this else
+				// branch runs only when err == nil, and every path that leaves err
+				// nil assigns a non-nil toolResult (the block above dereferences it).
+				if toolResult.IsError && !failureEmitted {
+					emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "execution_error", toolResult.Content)
 				}
 			}
 
@@ -539,33 +608,71 @@ func (b *ApiBackend) executeTools(
 					"Previous plan content was overwritten. If you intended to modify specific sections, " +
 					"use the Edit tool next time. If you unintentionally removed existing deliverables, " +
 					"re-read the conversation history to recover them."
-				utils.Info("PlanMode", fmt.Sprintf("run=%s plan_file_overwritten plan_file=%s", run.requestID, run.planFilePath))
+				utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "plan_file_overwritten", map[string]any{
+					"run_id":    run.requestID,
+					"plan_file": run.planFilePath,
+				})
 			}
 
-			// Append the redirect notice when applyPlanModeWriteGate rewrote
-			// a stray plan-shaped target to the canonical plan file. The
-			// notice is block-scoped (returned from the gate, not run state)
-			// so it cannot leak onto another concurrent tool block's result.
+			// When applyPlanModeWriteGate rewrote a stray plan-shaped target to
+			// the canonical plan file, the physical write already succeeded
+			// (block.Input["file_path"] was rewritten in-place so the tool ran
+			// against the canonical path). But returning success would leave
+			// the model believing its wrong path is valid, causing repeated
+			// stray writes on every subsequent turn. Return an error instead:
+			// the model treats errors as mistakes requiring correction, reads
+			// the canonical path from the message, and retries with it. The
+			// content IS on disk; the error is purely a behavioral correction
+			// signal, not a data-loss report.
 			if planWriteRedirectNotice != "" && !results[i].IsError {
-				results[i].Content += "\n\n" + planWriteRedirectNotice
+				wrongPath, _ := block.Input["file_path"].(string)
+				msg := fmt.Sprintf(
+					"Plan mode: %s targeted %q — that path is not the plan file for this session "+
+						"and the engine redirected the write to the canonical plan file (%s). "+
+						"Do NOT use that path again. Always target %s directly. "+
+						"The content was written to the canonical file. Resubmit targeting %s.",
+					block.Name, wrongPath, run.planFilePath, run.planFilePath, run.planFilePath)
+				results[i].Content = msg
+				results[i].IsError = true
+				utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "redirect_as_error", map[string]any{
+					"run_id":    run.requestID,
+					"wrong":     wrongPath,
+					"canonical": run.planFilePath,
+				})
 			}
 
-			// Emit the plan-file-written marker AFTER a successful Write/Edit
-			// to the canonical plan file. This is the accurate trigger for the
+			// Emit the plan-file-written marker AFTER a Write/Edit to the
+			// canonical plan file. This is the accurate trigger for the
 			// "plan created / updated" conversation marker: the file now exists
 			// on disk with content, so the marker lands at the true point in
 			// the transcript and any link to the plan resolves. The
 			// created-vs-updated discriminator comes from the file's prior
 			// state captured pre-execution by the gate (planFileHadContentBefore).
 			// Plan-mode entry no longer drives this marker — entry happens
-			// before any file exists. Skipped on error (the write failed, so
-			// nothing changed on disk).
-			if planWriteToCanonical && !results[i].IsError {
+			// before any file exists.
+			//
+			// For redirected writes: the physical file WAS written successfully
+			// (the redirect executed the tool against the canonical path), so
+			// the marker should still fire — the plan file genuinely changed.
+			// The error result above is a behavioral correction signal, not a
+			// data-loss indicator. We fire the marker when planWriteToCanonical
+			// is set and the underlying tool execution succeeded (no Go-level
+			// error), regardless of the IsError flag on the result.
+			//
+			// For non-redirect errors (the tool itself reported failure — e.g.
+			// Edit's old_string-not-found): results[i].IsError is true AND
+			// planWriteRedirectNotice is empty, so the marker is correctly skipped.
+			markerEligible := planWriteToCanonical && (!results[i].IsError || planWriteRedirectNotice != "")
+			if markerEligible {
 				op := "created"
 				if planFileHadContentBefore {
 					op = "updated"
 				}
-				utils.Info("PlanMode", fmt.Sprintf("run=%s plan_file_written op=%s plan_file=%s", run.requestID, op, run.planFilePath))
+				utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "plan_file_written", map[string]any{
+					"run_id":    run.requestID,
+					"op":        op,
+					"plan_file": run.planFilePath,
+				})
 				b.emit(run, types.NormalizedEvent{Data: &types.PlanFileWrittenEvent{
 					Operation:    op,
 					PlanFilePath: run.planFilePath,
@@ -580,7 +687,9 @@ func (b *ApiBackend) executeTools(
 						PlanSlug:     types.PlanSlugFromPath(run.planFilePath),
 					})
 					if err := conversation.Save(run.conv, ""); err != nil {
-						utils.Log("ApiBackend", fmt.Sprintf("plan_marker: failed to save: %s", err.Error()))
+						utils.LogWithFields(utils.LevelInfo, "backend.runloop", "plan_marker: failed to save", map[string]any{
+							"error": utils.ErrStr(err),
+						})
 					}
 				}
 			}
@@ -619,12 +728,30 @@ func (b *ApiBackend) executeTools(
 				}
 			}
 
-			// Emit tool_result event
+			// Emit tool_result event. When the tool returned vision images,
+			// save each image's bytes to the conversation's images/ directory
+			// and carry the FILE PATH (never base64) on both the
+			// ToolResultEvent.Images field and a per-image ImageContentEvent.
+			// The engine is a pass-through for images — it saves and forwards,
+			// never generates.
+			var resultImages []types.ToolResultImage
+			if len(results[i].Images) > 0 {
+				resultImages = b.saveToolResultImages(run, block.ID, results[i].Images)
+			}
 			b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
 				ToolID:  block.ID,
 				Content: results[i].Content,
 				IsError: results[i].IsError,
+				Images:  resultImages,
 			}})
+			for _, img := range resultImages {
+				b.emit(run, types.NormalizedEvent{Data: &types.ImageContentEvent{
+					Path:      img.Path,
+					MediaType: img.MediaType,
+					Source:    "tool",
+					ToolID:    block.ID,
+				}})
+			}
 
 			return nil
 		})

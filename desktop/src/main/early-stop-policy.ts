@@ -50,8 +50,8 @@ import { readSettings } from './settings-store'
 import { log as _log, debug as _debug } from './logger'
 
 const TAG = 'EarlyStopPolicy'
-function log(msg: string): void { _log(TAG, msg) }
-function debug(msg: string): void { _debug(TAG, msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
+function debug(msg: string, fields?: Record<string, unknown>): void { _debug(TAG, msg, fields) }
 
 // Default Claude-Code-style continuation prompt. The {pct}, {output}, and
 // {budget} placeholders are filled at decision time so the model sees its

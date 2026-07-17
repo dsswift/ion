@@ -12,19 +12,22 @@
 // elicitation/export/compaction/stall/steer arms plus handleStatusEvent and
 // handleDeadEvent.
 import type { EngineEvent, NormalizedEvent, EnrichedError, EngineConfig } from '../shared/types'
-import { log as _log, debug as _debug, warn as _warn, error as _error } from './logger'
+import { log as _log, debug as _debug, warn as _warn, error as _error, trace as _trace } from './logger'
 import { handleExportEvent } from './engine-export-handler'
 import { handleThinkingEvent } from './engine-control-plane-thinking'
 import { handlePlanEvent } from './engine-control-plane-plan'
 import { handleDispatchEvent } from './engine-control-plane-dispatch'
 import { handleExtensionEvent } from './engine-control-plane-extension'
+import { handleStreamSignalEvent } from './engine-control-plane-stream'
 import { conversationExists } from './session-meta'
+import { mark, Activity } from './watchdog'
 
 const TAG = 'SessionPlane'
-function log(msg: string): void { _log(TAG, msg) }
-function debug(msg: string): void { _debug(TAG, msg) }
-function warn(msg: string): void { _warn(TAG, msg) }
-function error(msg: string): void { _error(TAG, msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
+function debug(msg: string, fields?: Record<string, unknown>): void { _debug(TAG, msg, fields) }
+function trace(msg: string, fields?: Record<string, unknown>): void { _trace(TAG, msg, fields) }
+function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, msg, fields) }
+function error(msg: string, fields?: Record<string, unknown>): void { _error(TAG, msg, fields) }
 
 // TabEntry and EventEmitterContext are defined in the sibling types module
 // (extracted to keep this file and its domain-split siblings under the
@@ -39,8 +42,12 @@ export function handleEngineEvent(
   tab: TabEntry,
   event: EngineEvent,
 ): void {
+  // Watchdog breadcrumb: this is the per-event entry point for every engine
+  // event forwarded through the main process. If the main thread wedges while
+  // spinning here, the watchdog worker sees this code with a climbing counter.
+  mark(Activity.EngineEvent)
   tab.lastActivityAt = Date.now()
-  debug(`event: tabId=${tabId} type=${event.type}`)
+  debug('event', { tab_id: tabId, type: event.type })
 
   switch (event.type) {
     case 'engine_text_delta':
@@ -49,7 +56,7 @@ export function handleEngineEvent(
 
     case 'engine_tool_start':
       tab.toolCallCount++
-      log(`tool_start: tabId=${tabId} tool=${event.toolName} toolId=${event.toolId} count=${tab.toolCallCount}`)
+      log('tool_start', { tab_id: tabId, tool: event.toolName, tool_id: event.toolId, count: tab.toolCallCount })
       ctx.emit('event', tabId, {
         type: 'tool_call',
         toolName: event.toolName,
@@ -74,7 +81,7 @@ export function handleEngineEvent(
       break
 
     case 'engine_tool_end':
-      debug(`tool_end: tabId=${tabId} toolId=${event.toolId} isError=${event.isError}`)
+      debug('tool_end', { tab_id: tabId, tool_id: event.toolId, is_error: event.isError })
       ctx.emit('event', tabId, {
         type: 'tool_result',
         toolId: event.toolId,
@@ -83,12 +90,32 @@ export function handleEngineEvent(
       } as NormalizedEvent)
       break
 
+    case 'engine_image_content':
+      // A single run-produced image (tool-returned or provider-generated). The
+      // engine saved the bytes to disk and emitted the FILE PATH (never base64).
+      // Translate to the `image_content` NormalizedEvent the renderer's
+      // event-slice-images materializer consumes so it attaches to the right
+      // message (tool image → producing tool row by toolId; provider image →
+      // latest assistant row). Without this arm the event was dropped before
+      // ever reaching the renderer, so desktop-side inline images never
+      // rendered live and never persisted — the root cause of the #224 gap on
+      // the desktop (iOS received it via the generic wire forwarder).
+      debug('image_content', { tab_id: tabId, source: event.imageSource, tool_id: event.imageToolId ?? '', path: event.imagePath })
+      ctx.emit('event', tabId, {
+        type: 'image_content',
+        path: event.imagePath,
+        mediaType: event.imageMediaType,
+        source: event.imageSource,
+        ...(event.imageToolId ? { toolId: event.imageToolId } : {}),
+      } as NormalizedEvent)
+      break
+
     case 'engine_message_end':
       // End of one LLM message within a multi-turn run. Carries per-message
       // token usage (for the context bar) and seals the current assistant row
       // (prevents the next text_chunk from appending to it).
       if (event.usage) {
-        log(`message_end: tabId=${tabId} in=${event.usage.inputTokens} out=${event.usage.outputTokens} cost=$${event.usage.cost ?? 0}`)
+        log('message_end', { tab_id: tabId, input_tokens: event.usage.inputTokens, output_tokens: event.usage.outputTokens, cost_usd: event.usage.cost ?? 0 })
         // Keep the legacy usage event for the context bar (contextTokens on tab).
         ctx.emit('event', tabId, {
           type: 'usage',
@@ -113,7 +140,7 @@ export function handleEngineEvent(
       break
 
     case 'engine_error':
-      error(`engine_error: tabId=${tabId} msg=${event.message}`)
+      error('engine_error', { tab_id: tabId, error: event.message })
       ctx.emit('event', tabId, {
         type: 'error',
         message: event.message,
@@ -126,7 +153,7 @@ export function handleEngineEvent(
       break
 
     case 'engine_permission_request':
-      log(`permission_request: tabId=${tabId} tool=${event.permToolName}`)
+      log('permission_request', { tab_id: tabId, tool: event.permToolName })
       tab.sawPermissionRequest = true
       ctx.emit('event', tabId, {
         type: 'permission_request',
@@ -213,61 +240,12 @@ export function handleEngineEvent(
       break
 
     case 'engine_stream_reset':
-      log(`stream_reset: tabId=${tabId} (retry in progress, discarding partial text)`)
-      ctx.emit('event', tabId, { type: 'stream_reset' } as NormalizedEvent)
-      break
-
     case 'engine_compacting':
-      log(`compacting: tabId=${tabId} active=${event.active} microOnly=${event.microOnly ?? false} msgsBefore=${event.messagesBefore ?? 0} msgsAfter=${event.messagesAfter ?? 0}`)
-      // Forward the full detail field set, not just `active`. The renderer
-      // marker (event-slice.ts) and the iOS-bound marker (event-wiring-remote.ts)
-      // both read messagesBefore/messagesAfter/clearedBlocks/summary/strategy/
-      // microOnly to build the "[Compaction]" checkpoint line. Dropping them
-      // here (the prior behavior) left both markers as dead code — the fields
-      // never arrived, so the marker was never inserted.
-      ctx.emit('event', tabId, {
-        type: 'compacting',
-        active: event.active,
-        summary: event.summary,
-        messagesBefore: event.messagesBefore,
-        messagesAfter: event.messagesAfter,
-        clearedBlocks: event.clearedBlocks,
-        strategy: event.strategy,
-        microOnly: event.microOnly,
-      } as NormalizedEvent)
-      break
-
     case 'engine_tool_stalled':
-      debug(`tool_stalled: tabId=${tabId} tool=${event.toolName} elapsed=${event.toolElapsed}s`)
-      ctx.emit('event', tabId, {
-        type: 'tool_stalled',
-        toolId: event.toolId,
-        toolName: event.toolName,
-        elapsed: event.toolElapsed,
-      } as NormalizedEvent)
-      break
-
     case 'engine_run_stalled':
-      // Advisory watchdog signal. The legacy path only logged this; emit as
-      // normalized run_stalled so the renderer can surface a distinct indicator.
-      debug(`run_stalled: tabId=${tabId} duration=${event.runStalledDuration} lastActivity=${event.runStalledLastActivity ?? 'unknown'}`)
-      ctx.emit('event', tabId, {
-        type: 'run_stalled',
-        stalledDuration: event.runStalledDuration,
-        lastActivity: event.runStalledLastActivity,
-      } as NormalizedEvent)
-      break
-
     case 'engine_steer_injected':
-      // Mid-turn steer-drain confirmation. The runloop captures a steer
-      // message between turns, inside the end_turn checkpoint, or after
-      // tool execution; this event tells consumers the steer landed in
-      // the conversation as a user turn before the next LLM call.
-      log(`steer_injected: tabId=${tabId} messageLength=${event.steerMessageLength}`)
-      ctx.emit('event', tabId, {
-        type: 'steer_injected',
-        messageLength: event.steerMessageLength,
-      } as NormalizedEvent)
+    case 'engine_prompt_injected':
+      handleStreamSignalEvent(ctx, tabId, tab, event)
       break
 
     case 'engine_thinking_block_start':
@@ -288,6 +266,7 @@ export function handleEngineEvent(
     case 'engine_extension_dead_permanent':
     case 'engine_events_dropped':
     case 'engine_model_fallback':
+    case 'engine_capability_unsupported':
       handleExtensionEvent(ctx, tabId, tab, event)
       break
 
@@ -314,7 +293,7 @@ export function handleEngineEvent(
       // arrives next and is handled by the existing result-routing path.
       // exportFormat is the engine-resolved format (markdown/json/html/jsonl);
       // the handler maps it to a file extension without sniffing the payload.
-      log(`export: tabId=${tabId} format=${event.exportFormat ?? 'absent'} payloadBytes=${event.message?.length ?? 0}`)
+      log('export', { tab_id: tabId, format: event.exportFormat ?? 'absent', payload_bytes: event.message?.length ?? 0 })
       // Fire-and-forget: the dialog is async but the engine event stream
       // continues without waiting. Errors are logged inside the handler.
       void handleExportEvent(event.message || '', event.exportFormat)
@@ -329,7 +308,10 @@ function handleStatusEvent(
   event: Extract<EngineEvent, { type: 'engine_status' }>,
 ): void {
   if (!event.fields) return
-  log(`engine_status: tabId=${tabId} state=${event.fields.state} sessionId=${event.fields.sessionId ?? 'none'} cost=$${event.fields.totalCostUsd ?? 0}`)
+  // Per-status (fires on every heartbeat tick across every session): logged at
+  // DEBUG so the default INFO level filters it before serialization. State
+  // transitions of note (first-bind, divergence resume) stay at INFO/WARN below.
+  debug('engine_status', { tab_id: tabId, state: event.fields.state, session_id: event.fields.sessionId ?? 'none', cost_usd: event.fields.runCostUsd ?? 0 })
   // Forward the full StatusFields snapshot to the renderer BEFORE the
   // state-binding branches below. The renderer's `status` arm replaces
   // inst.statusFields wholesale (snapshot semantics). This is unconditional —
@@ -337,7 +319,7 @@ function handleStatusEvent(
   // model/backend/cost/extensionName on running, idle, and cost-only heartbeat
   // ticks alike, not just on idle (the binding/task_complete path below drops
   // those fields). The emit is additive; the existing binding logic is unchanged.
-  log(`status: forwarding StatusFields snapshot to renderer tabId=${tabId} state=${event.fields.state} model=${event.fields.model ?? 'none'} backend=${event.fields.backend ?? 'api'}`)
+  debug('engine_status: forwarding to renderer', { tab_id: tabId, state: event.fields.state, model: event.fields.model ?? 'none' })
   ctx.emit('event', tabId, { type: 'status', fields: event.fields } as NormalizedEvent)
   if (event.fields.state === 'idle') {
     if (event.fields.sessionId) {
@@ -354,7 +336,7 @@ function handleStatusEvent(
         // adopts a pre-minted empty id. Reaching this branch means a true
         // first-start (new tab, no persisted conversation), where adopting the
         // engine's freshly-minted id is correct.
-        log(`engine_status: tabId=${tabId} first-bind adopting engine sessionId=${event.fields.sessionId} (tab had no tracked id)`)
+        log('engine_status: first-bind adopting engine sessionId', { tab_id: tabId, session_id: event.fields.sessionId })
         tab.conversationId = event.fields.sessionId
         // True first-start (new tab, no persisted conversation) — a fresh mint,
         // not a resume. Leave resumedSavedConversation false (scenario C) so a
@@ -429,7 +411,7 @@ function handleStatusEvent(
       (tab.status === 'idle' || tab.status === 'connecting') &&
       isReadyIdle
     ) {
-      log(`engine_status: session-ready idle for ${tab.status} tab ${tabId} — forwarding idle (no task_complete)`)
+      debug('engine_status: session-ready idle, forwarding', { tab_id: tabId, status: tab.status })
       ctx.emit('tab-status-change', tabId, 'idle', tab.status)
       ctx.checkDrain()
       return
@@ -460,7 +442,7 @@ function handleStatusEvent(
     // new prompt dispatch (prompt_dispatch.go), so a denial echoed on a
     // 'connecting' idle is stale and must not resurrect a just-dismissed card.
     if (tab.status === 'connecting') {
-      log(`engine_status: skipping idle for connecting tab ${tabId} (new run in flight — denials stale)`)
+      trace('engine_status: skipping idle, new run in flight', { tab_id: tabId })
       return
     }
 
@@ -473,7 +455,7 @@ function handleStatusEvent(
       // cost-only heartbeat ticks. The engine re-publishes retained denials
       // on every heartbeat (manager_heartbeat.go), so without this skip a
       // cost-only tick would synthesize a redundant task_complete.
-      log(`engine_status: skipping idle for ${tab.status} tab ${tabId} (no proposal denials)`)
+      trace('engine_status: skipping idle, no denials', { tab_id: tabId, status: tab.status })
       return
     }
 
@@ -494,7 +476,7 @@ function handleStatusEvent(
         .sort()
         .join('|')
       if (tab.lastSurfacedProposalSig === proposalSig) {
-        log(`engine_status: skipping proposal idle for ${tab.status} tab ${tabId} (already surfaced sig=${proposalSig} — heartbeat echo, not resurrecting dismissed card)`)
+        log('engine_status: skipping proposal idle, already surfaced', { tab_id: tabId, status: tab.status, proposal_sig: proposalSig })
         return
       }
       tab.lastSurfacedProposalSig = proposalSig
@@ -503,16 +485,17 @@ function handleStatusEvent(
       const toolNames = (event.fields.permissionDenials || [])
         .map((d: any) => d.toolName)
         .join(',')
-      log(`engine_status: forwarding proposal idle for ${tab.status} tab ${tabId} denials=[${toolNames}] sig=${proposalSig} (card trigger, first delivery)`)
+      log('engine_status: forwarding proposal idle', { tab_id: tabId, status: tab.status, tool_names: toolNames, proposal_sig: proposalSig })
     }
 
     const durationMs = tab.startedAt ? Date.now() - tab.startedAt : 0
     ctx.emit('event', tabId, {
       type: 'task_complete',
       result: '',
-      costUsd: event.fields.totalCostUsd || 0,
+      costUsd: event.fields.runCostUsd || 0,
       durationMs,
-      numTurns: 1,
+      numTurns: event.fields.numTurns ?? 1,
+      conversationTurns: event.fields.conversationTurns,
       usage: { input_tokens: 0, output_tokens: 0 },
       sessionId: tab.conversationId || '',
       permissionDenials: event.fields.permissionDenials,
@@ -530,7 +513,7 @@ function handleStatusEvent(
     const needsUserResponse = event.fields.permissionDenials?.some(
       (d: any) => d.toolName === 'ExitPlanMode' || d.toolName === 'AskUserQuestion',
     )
-    log(`engine_status: tabId=${tabId} task_complete synthesized denials=${event.fields.permissionDenials?.length ?? 0} needsUserResponse=${needsUserResponse}`)
+    log('engine_status: task_complete synthesized', { tab_id: tabId, denials: event.fields.permissionDenials?.length ?? 0, needs_user_response: needsUserResponse })
     ctx.setStatus(tabId, needsUserResponse ? 'completed' : 'idle')
     ctx.checkDrain()
   } else if (event.fields.state === 'running') {
@@ -561,7 +544,7 @@ function handleDeadEvent(
   tab: TabEntry,
   event: Extract<EngineEvent, { type: 'engine_dead' }>,
 ): void {
-  log(`engine_dead: tabId=${tabId} exitCode=${event.exitCode} signal=${event.signal} type=${typeof event.exitCode}`)
+  log('engine_dead', { tab_id: tabId, exit_code: event.exitCode, signal: event.signal })
   if (event.exitCode === 0 || event.exitCode === null || event.exitCode === undefined) {
     tab.activeRequestId = null
     if (!event.signal) {

@@ -11,6 +11,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/resource"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -20,6 +21,14 @@ import (
 type SessionAccessor interface {
 	SessionKey() string
 	ConversationID() string
+	// ExtensionName returns the hosting extension's friendly name, or empty
+	// when the session is not extension-hosted. Used to attribute
+	// dispatch.agent telemetry spans with "extension" context.
+	ExtensionName() string
+	// ExtensionVersion returns the hosting extension's manifest version, or
+	// empty when the manifest carries no version or is absent. Used alongside
+	// ExtensionName to attribute dispatch.agent spans with "extension_version".
+	ExtensionVersion() string
 	WorkingDirectory() string
 	Emit(ev types.EngineEvent)
 	SendAbort()
@@ -33,6 +42,13 @@ type SessionAccessor interface {
 	// unconditionally.
 	RootContext() context.Context
 	SendPrompt(text string, model string, bashAllowlistAdditions []string) error
+	// SendPromptWithKind is the Kind-aware variant of SendPrompt. It threads
+	// the Kind classification into PromptInjectedEvent.Kind so clients can
+	// suppress rendering of machine-to-machine injections (e.g. agent
+	// completion callbacks with kind="agent_completion"). Callers that do not
+	// need Kind should use SendPrompt; this method exists so the ext/send_prompt
+	// active-hook path can pass Kind without changing SendPrompt's signature.
+	SendPromptWithKind(text string, model string, bashAllowlistAdditions []string, kind string) error
 
 	// SteerSelfMainLoop attempts to steer the session's OWN main run loop
 	// (the depth-0 / orchestrator run) by injecting message onto its steer
@@ -74,6 +90,21 @@ type SessionAccessor interface {
 	// not available.
 	EmitDispatchCountStatus(reason string)
 	EngineConfig() *types.EngineRuntimeConfig
+
+	// ClaudeCompat reports the parent session's Claude-compatibility setting.
+	// It lives on the session-level config (EngineConfig.ClaudeCompat), not on
+	// the machine-wide EngineRuntimeConfig, so it needs its own accessor. The
+	// dispatch path threads it into the child RunOptions (nested descent gate)
+	// and into the dispatch context-policy cascade (default compat).
+	ClaudeCompat() bool
+
+	// GetDispatchContextDefaults returns the session-level default context
+	// policy (level 3 of the four-level dispatch context cascade), or nil when
+	// no extension has set one. The real accessor delegates to the extension
+	// Host's session-scoped state; the dispatch injection path uses it to seed
+	// the cascade below any per-dispatch override.
+	GetDispatchContextDefaults() *extension.ContextPolicy
+
 	ResolveTier(name string) string
 	PermissionCheck(toolName string, input map[string]interface{}) (decision string, reason string)
 	McpConnections() []*mcp.Connection
@@ -103,6 +134,17 @@ type SessionAccessor interface {
 	// GetPlanModeState returns (planModeEnabled, planFilePath) for the session.
 	GetPlanModeState() (bool, string)
 
+	// AllocatePlanFilePath allocates a fresh, non-colliding plan-file path for
+	// the session's backend kind and working directory, ensuring the plans
+	// directory exists, and returns it. It is the exported bridge to the
+	// session-package allocator (allocateNewPlanFilePath); package extcontext
+	// cannot import package session (session imports extcontext), so the
+	// dispatch path reaches the allocator through this interface method rather
+	// than duplicating the slug logic. Used by the plan-mode dispatch path to
+	// fill an empty PlanFilePath the same way the root paths
+	// (RequestPlanModeEnter, SendPrompt) do.
+	AllocatePlanFilePath() string
+
 	// AppendOrUpdateAgentState creates a new agent state entry or updates
 	// an existing one (matched by name). Returns the entry's ID.
 	AppendOrUpdateAgentState(state types.AgentStateUpdate) string
@@ -110,6 +152,13 @@ type SessionAccessor interface {
 	// UpdateAgentStateByID finds an agent state entry by its ID and applies
 	// the updater function.
 	UpdateAgentStateByID(id string, updater func(*types.AgentStateUpdate))
+
+	// UpsertAgentStateByID finds an agent state entry by its ID and applies the
+	// updater, or appends seed (then applies the updater) when no slot matches.
+	// Used by the dispatch terminal transition so a slot swept during a
+	// lifecycle gap is re-materialized as a terminal row instead of the terminal
+	// update being lost.
+	UpsertAgentStateByID(id string, seed types.AgentStateUpdate, updater func(*types.AgentStateUpdate))
 
 	// EmitAgentSnapshot emits the current merged agent state snapshot as
 	// an engine_agent_state event.
@@ -138,6 +187,17 @@ type SessionAccessor interface {
 	// has a different extension type, or has no session_message hook.
 	SendToSession(senderKey, targetKey, kind string, payload map[string]interface{}) error
 
+	// FireSchedule triggers an immediate fire of the named schedule job
+	// on this session. Returns an error if the job is not found or the
+	// scheduler is not wired.
+	FireSchedule(sessionKey, jobID string) error
+
+	// GetScheduleStatus returns status entries for registered schedule jobs
+	// on this session. When jobID is non-empty, only the matching job is
+	// returned. When jobID is empty, all jobs on the session's hosts are
+	// returned.
+	GetScheduleStatus(sessionKey, jobID string) ([]extension.ScheduleStatusEntry, error)
+
 	// RunOnceCheck is the dedup coordinator for ctx.runOnce. It returns
 	// Execute=true when this instance should run the operation (and the
 	// engine has marked it as running). Returns Execute=false with a
@@ -149,6 +209,27 @@ type SessionAccessor interface {
 	// failed=true clears the running flag without updating lastRun so
 	// the next caller can retry immediately.
 	RunOnceComplete(operationID string, failed bool)
+
+	// Telemetry returns the session's telemetry collector, or nil when
+	// telemetry is disabled. Used by the dispatch path to emit dispatch.agent
+	// spans (family 4b). Nil-safe: callers guard on a nil return.
+	Telemetry() *telemetry.Collector
+
+	// PluginSessionMessages returns the ephemeral LlmMessage values built from
+	// all installed plugins' SessionStart hook output for this session. These
+	// are <system-reminder>-wrapped user messages to be prepended to the
+	// provider message slice on every turn, giving plugin instructions full
+	// conversational attention weight. The slice is nil when no plugins are
+	// installed or no SessionStart hooks produced output. Callers must not
+	// mutate the returned slice.
+	PluginSessionMessages() []types.LlmMessage
+
+	// PluginTurnMessages fires all installed plugins' UserPromptSubmit hooks
+	// with the given prompt (passed via stdin as Claude Code JSON protocol)
+	// and returns the resulting <system-reminder>-wrapped user messages. Called
+	// on each turn by the dispatch path to produce per-turn plugin reinforcement
+	// messages. Returns nil when no plugins have UserPromptSubmit hooks.
+	PluginTurnMessages(prompt string) []types.LlmMessage
 }
 
 // ExtContextOpts holds optional configuration for NewExtContext. All fields
@@ -162,6 +243,11 @@ type ExtContextOpts struct {
 	// DispatchId is the dispatch ID of the agent that owns this context.
 	// Empty for the orchestrator at depth 0.
 	DispatchId string
+	// SuspendFn is the closure wired to ctx.Suspend for dispatched children.
+	// When non-nil, the ext/task_suspend RPC calls this to signal the child
+	// backend to park the current LLM run. Nil at depth 0 (the orchestrator
+	// cannot suspend its own run — it is not inside a dispatched context).
+	SuspendFn func(awaitingDispatchIDs []string) error
 }
 
 // NewExtContext builds a fully-populated extension.Context by delegating all
@@ -176,6 +262,7 @@ func NewExtContext(sa SessionAccessor, args ...interface{}) *extension.Context {
 	var registry *DispatchRegistry
 	var depth int
 	var dispatchId string
+	var suspendFn func(awaitingDispatchIDs []string) error
 
 	for _, arg := range args {
 		switch v := arg.(type) {
@@ -185,13 +272,19 @@ func NewExtContext(sa SessionAccessor, args ...interface{}) *extension.Context {
 			registry = v.Registry
 			depth = v.Depth
 			dispatchId = v.DispatchId
+			suspendFn = v.SuspendFn
 		}
 	}
 
 	ctx := &extension.Context{
 		SessionKey:     sa.SessionKey(),
 		ConversationID: sa.ConversationID(),
-		Cwd:            sa.WorkingDirectory(),
+		// Dispatch identity travels on the context so every hook fired in a
+		// child session (session_start included, whose payload is nil) can
+		// discriminate root (Depth 0) from dispatched children (Depth > 0).
+		Depth:      depth,
+		DispatchId: dispatchId,
+		Cwd:        sa.WorkingDirectory(),
 		Emit: func(ev types.EngineEvent) {
 			if ev.Type == "engine_agent_state" {
 				// Cache extension-emitted agent states, then re-emit a merged
@@ -245,9 +338,19 @@ func NewExtContext(sa SessionAccessor, args ...interface{}) *extension.Context {
 			}
 			return CallToolFromExtension(callCtx, sa, toolName, input)
 		},
+		// Pre-authenticated outbound HTTP: session-independent (token
+		// minting needs no session state), wired here so Go SDK consumers
+		// reach it through the same Context surface as everything else.
+		HTTPRequest: func(params extension.OperatorHTTPRequestParams) (*extension.OperatorHTTPResponse, error) {
+			return extension.DoOperatorHTTPRequest(context.Background(), params)
+		},
 		SendPrompt: func(text string, model string, bashAllowlistAdditions []string) error {
 			return sa.SendPrompt(text, model, bashAllowlistAdditions)
 		},
+		SendPromptPayload: func(payload extension.SendPromptPayload) error {
+			return sa.SendPromptWithKind(payload.Text, payload.Model, payload.BashAllowlistAdditions, payload.Kind)
+		},
+		Suspend: suspendFn,
 		SearchHistory: func(query string, maxResults int) ([]extension.HistoryMatch, error) {
 			matches := sa.SearchHistory(query, maxResults)
 			return matches, nil
@@ -309,6 +412,34 @@ func NewExtContext(sa SessionAccessor, args ...interface{}) *extension.Context {
 				Delivered: outcome == SteerOutcomeDelivered,
 				Outcome:   string(outcome),
 			}, nil
+		}
+		ctx.SteerDispatchByName = func(name, message string) (extension.SteerDispatchResult, error) {
+			outcome := registry.SteerByName(name, message)
+			return extension.SteerDispatchResult{
+				Delivered: outcome == SteerOutcomeDelivered,
+				Outcome:   string(outcome),
+			}, nil
+		}
+
+		// Wire dispatch-state listing: exposes the live registry snapshot to
+		// extensions so they can inspect running dispatches without polling
+		// engine_agent_state events. Always available when a registry is wired;
+		// returns an empty slice (not nil) when no dispatches are active.
+		ctx.ListDispatchState = func() ([]extension.DispatchStateEntry, error) {
+			snap := registry.Snapshot()
+			entries := make([]extension.DispatchStateEntry, len(snap))
+			for i, s := range snap {
+				entries[i] = extension.DispatchStateEntry{
+					DispatchID:       s.DispatchID,
+					Name:             s.Name,
+					Status:           s.Status,
+					ParentDispatchID: s.ParentDispatchID,
+					Depth:            s.Depth,
+					StartedAt:        s.StartedAt.UTC().Format(time.RFC3339Nano),
+					ElapsedMs:        s.ElapsedMs,
+				}
+			}
+			return entries, nil
 		}
 	}
 
@@ -426,6 +557,14 @@ func NewExtContext(sa SessionAccessor, args ...interface{}) *extension.Context {
 
 	ctx.SendToSession = func(targetKey string, kind string, payload map[string]interface{}) error {
 		return sa.SendToSession(sa.SessionKey(), targetKey, kind, payload)
+	}
+
+	ctx.FireSchedule = func(jobID string) error {
+		return sa.FireSchedule(sa.SessionKey(), jobID)
+	}
+
+	ctx.GetScheduleStatus = func(jobID string) ([]extension.ScheduleStatusEntry, error) {
+		return sa.GetScheduleStatus(sa.SessionKey(), jobID)
 	}
 
 	ctx.RunOnceCheck = func(operationID string, debounceMs int64) (bool, string) {

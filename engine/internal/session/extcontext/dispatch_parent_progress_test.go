@@ -11,6 +11,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/resource"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -19,15 +20,27 @@ import (
 // from NewChildBackend so a foreground dispatch can run end to end. All other
 // methods are inert.
 type bumpCountingAccessor struct {
+	noopPluginMethods
 	child     backend.RunBackend
 	bumpCount atomic.Int64
 	rootCtx   context.Context
+	// allocPlanPath is returned by AllocatePlanFilePath. When empty the method
+	// returns a default plan-shaped path so plan-mode dispatch tests observe a
+	// realistic allocated value.
+	allocPlanPath string
 }
 
 func (a *bumpCountingAccessor) BumpParentProgress() { a.bumpCount.Add(1) }
 func (a *bumpCountingAccessor) EmitDispatchCountStatus(_ string) {}
 
 func (a *bumpCountingAccessor) NewChildBackend() backend.RunBackend { return a.child }
+
+func (a *bumpCountingAccessor) AllocatePlanFilePath() string {
+	if a.allocPlanPath != "" {
+		return a.allocPlanPath
+	}
+	return "/tmp/.ion/plans/happy-jumping-rabbit.md"
+}
 func (a *bumpCountingAccessor) RootContext() context.Context {
 	if a.rootCtx != nil {
 		return a.rootCtx
@@ -36,11 +49,14 @@ func (a *bumpCountingAccessor) RootContext() context.Context {
 }
 
 func (a *bumpCountingAccessor) SessionKey() string                       { return "bump-test-session" }
+func (a *bumpCountingAccessor) ExtensionName() string    { return "" }
+func (a *bumpCountingAccessor) ExtensionVersion() string { return "" }
 func (a *bumpCountingAccessor) ConversationID() string                   { return "" }
 func (a *bumpCountingAccessor) WorkingDirectory() string                 { return "/tmp" }
 func (a *bumpCountingAccessor) Emit(_ types.EngineEvent)                 {}
 func (a *bumpCountingAccessor) SendAbort()                               {}
-func (a *bumpCountingAccessor) SendPrompt(_, _ string, _ []string) error { return nil }
+func (a *bumpCountingAccessor) SendPrompt(_, _ string, _ []string) error                 { return nil }
+func (a *bumpCountingAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error { return nil }
 func (a *bumpCountingAccessor) SteerSelfMainLoop(_ string) bool          { return false }
 func (a *bumpCountingAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
@@ -59,6 +75,8 @@ func (a *bumpCountingAccessor) ExtGroup() *extension.ExtensionGroup      { retur
 func (a *bumpCountingAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
 func (a *bumpCountingAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
 func (a *bumpCountingAccessor) EngineConfig() *types.EngineRuntimeConfig { return nil }
+func (a *bumpCountingAccessor) ClaudeCompat() bool { return false }
+func (a *bumpCountingAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
 func (a *bumpCountingAccessor) ResolveTier(_ string) string              { return "" }
 func (a *bumpCountingAccessor) PermissionCheck(_ string, _ map[string]interface{}) (string, string) {
 	return "", ""
@@ -76,6 +94,8 @@ func (a *bumpCountingAccessor) AppendOrUpdateAgentState(_ types.AgentStateUpdate
 	return ""
 }
 func (a *bumpCountingAccessor) UpdateAgentStateByID(_ string, _ func(*types.AgentStateUpdate)) {}
+func (a *bumpCountingAccessor) UpsertAgentStateByID(_ string, _ types.AgentStateUpdate, _ func(*types.AgentStateUpdate)) {
+}
 func (a *bumpCountingAccessor) EmitAgentSnapshot(_ string)                                     {}
 func (a *bumpCountingAccessor) ResourceBroker() *resource.Broker                               { return nil }
 func (a *bumpCountingAccessor) GlobalResourceBroker() *resource.Broker                         { return nil }
@@ -85,8 +105,14 @@ func (a *bumpCountingAccessor) ListAllSessions() []extension.SessionListEntry   
 func (a *bumpCountingAccessor) SendToSession(_, _, _ string, _ map[string]interface{}) error {
 	return nil
 }
+
+func (a *bumpCountingAccessor) FireSchedule(_, _ string) error { return nil }
+func (a *bumpCountingAccessor) GetScheduleStatus(_, _ string) ([]extension.ScheduleStatusEntry, error) {
+	return nil, nil
+}
 func (a *bumpCountingAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
 func (a *bumpCountingAccessor) RunOnceComplete(_ string, _ bool)              {}
+func (a *bumpCountingAccessor) Telemetry() *telemetry.Collector { return nil }
 
 // drippingChildBackend emits a configurable number of normalized events then
 // exits, simulating a healthy child agent producing activity. It implements the
@@ -118,6 +144,14 @@ func (d *drippingChildBackend) Cancel(string) bool                     { return 
 func (d *drippingChildBackend) IsRunning(string) bool                  { return false }
 func (d *drippingChildBackend) WriteToStdin(string, interface{}) error { return nil }
 func (d *drippingChildBackend) FlushConversations()                    {}
+func (d *drippingChildBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:         "mock",
+		ContextModel: backend.ContextModelEngineOwned,
+		PlanMode:     true,
+		Steering:     true,
+	}
+}
 
 func (d *drippingChildBackend) StartRun(requestID string, _ types.RunOptions) {
 	d.mu.Lock()

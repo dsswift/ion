@@ -2,7 +2,6 @@ package extension
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -16,7 +15,7 @@ func (h *Host) handleGetSessionMemory(id int64, ctx *Context) {
 	}
 	content, err := ctx.GetSessionMemory()
 	if err != nil {
-		utils.Error("extension", fmt.Sprintf("ext/get_session_memory: error: %v", err))
+		utils.LogWithFields(utils.LevelError, "extension", "ext/get_session_memory: error", map[string]any{"error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 		return
 	}
@@ -24,7 +23,7 @@ func (h *Host) handleGetSessionMemory(id int64, ctx *Context) {
 		Content string `json:"content"`
 	}
 	data, _ := json.Marshal(result{Content: content})
-	utils.Debug("extension", fmt.Sprintf("ext/get_session_memory: returning %d chars", len(content)))
+	utils.LogWithFields(utils.LevelDebug, "extension", "ext/get_session_memory: returning chars", map[string]any{"count": len(content)})
 	h.sendResponse(id, json.RawMessage(data), nil)
 }
 
@@ -37,7 +36,7 @@ func (h *Host) handleSetSessionMemory(id int64, raw []byte, ctx *Context) {
 	}
 	var req request
 	if err := json.Unmarshal(raw, &req); err != nil {
-		utils.Error("extension", fmt.Sprintf("ext/set_session_memory: parse error: %v", err))
+		utils.LogWithFields(utils.LevelError, "extension", "ext/set_session_memory: parse error", map[string]any{"error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "parse error: " + err.Error()})
 		return
 	}
@@ -47,10 +46,10 @@ func (h *Host) handleSetSessionMemory(id int64, raw []byte, ctx *Context) {
 		return
 	}
 	if err := ctx.SetSessionMemory(req.Params.Content); err != nil {
-		utils.Error("extension", fmt.Sprintf("ext/set_session_memory: error: %v", err))
+		utils.LogWithFields(utils.LevelError, "extension", "ext/set_session_memory: error", map[string]any{"error": err})
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 		return
 	}
-	utils.Log("extension", fmt.Sprintf("ext/set_session_memory: set %d chars", len(req.Params.Content)))
+	utils.LogWithFields(utils.LevelInfo, "extension", "ext/set_session_memory: set chars", map[string]any{"count": len(req.Params.Content)})
 	h.sendResponse(id, json.RawMessage(`{}`), nil)
 }

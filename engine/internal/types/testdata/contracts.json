@@ -3,6 +3,11 @@
     "agent_state": [
       "agents"
     ],
+    "capability_unsupported": [
+      "backend",
+      "capability",
+      "reason"
+    ],
     "compacting": [
       "active",
       "clearedBlocks",
@@ -20,6 +25,7 @@
       "categories",
       "contextWindow",
       "model",
+      "modelBreakdown",
       "totalTokens",
       "unaccounted"
     ],
@@ -62,14 +68,23 @@
     ],
     "harness_message": [
       "dedupKey",
+      "dedupMode",
       "message",
       "source"
+    ],
+    "image_content": [
+      "mediaType",
+      "path",
+      "source",
+      "toolId"
     ],
     "message_end": [
       "contextPercent",
       "cost",
+      "entryId",
       "inputTokens",
-      "outputTokens"
+      "outputTokens",
+      "userEntryId"
     ],
     "model_fallback": [
       "fallbackModel",
@@ -110,6 +125,11 @@
       "planFilePath",
       "planSlug"
     ],
+    "prompt_injected": [
+      "kind",
+      "origin",
+      "prompt"
+    ],
     "rate_limit": [
       "rateLimitType",
       "resetsAt",
@@ -138,13 +158,18 @@
     ],
     "stream_reset": null,
     "task_complete": [
+      "conversationTurns",
       "costUsd",
       "durationMs",
+      "lastText",
       "numTurns",
       "permissionDenials",
       "result",
       "sessionId",
       "usage"
+    ],
+    "task_suspend": [
+      "awaitingDispatchIds"
     ],
     "task_update": [
       "message"
@@ -175,6 +200,7 @@
     ],
     "tool_result": [
       "content",
+      "images",
       "isError",
       "toolId"
     ],
@@ -184,7 +210,9 @@
       "toolName"
     ],
     "usage": [
-      "usage"
+      "entryId",
+      "usage",
+      "userEntryId"
     ],
     "working_message": [
       "message"
@@ -195,9 +223,11 @@
     "agents",
     "asyncDecl",
     "asyncDurationMs",
+    "asyncHadMarker",
     "asyncId",
     "asyncKind",
     "asyncMethod",
+    "asyncMissedSlot",
     "asyncOrigin",
     "asyncPath",
     "asyncReason",
@@ -205,6 +235,9 @@
     "asyncStatus",
     "attemptNumber",
     "cancelled",
+    "capability",
+    "capabilityBackend",
+    "capabilityReason",
     "clearedBlocks",
     "command",
     "commandError",
@@ -259,7 +292,15 @@
     "fields",
     "hasMore",
     "httpStatus",
+    "imageMediaType",
+    "imagePath",
+    "imageSource",
+    "imageToolId",
+    "images",
     "index",
+    "injectedPrompt",
+    "injectedPromptKind",
+    "injectedPromptOrigin",
     "interceptLevel",
     "interceptMessage",
     "interceptMetadata",
@@ -287,6 +328,14 @@
     "notifySound",
     "notifyTitle",
     "offset",
+    "oidcAuthorizationUrl",
+    "oidcDisplayName",
+    "oidcProvider",
+    "oidcSignedIn",
+    "oidcSubject",
+    "oidcUserCode",
+    "oidcUsername",
+    "oidcVerificationUri",
     "options",
     "partialInput",
     "permOptions",
@@ -302,6 +351,7 @@
     "planProposalKind",
     "planSlug",
     "planWriteOperation",
+    "providerLogin",
     "push",
     "pushBody",
     "pushTitle",
@@ -325,6 +375,7 @@
     "steerMessageLength",
     "strategy",
     "summary",
+    "taskSuspendAwaitingCount",
     "text",
     "thinkingElapsedSeconds",
     "thinkingRedacted",
@@ -361,6 +412,7 @@
       "categories",
       "contextWindow",
       "model",
+      "modelBreakdown",
       "totalTokens",
       "unaccounted"
     ],
@@ -411,7 +463,17 @@
     "MessageEndUsage": [
       "contextPercent",
       "cost",
+      "entryId",
       "inputTokens",
+      "outputTokens",
+      "userEntryId"
+    ],
+    "ModelBreakdown": [
+      "conversations",
+      "costUsd",
+      "inputTokens",
+      "isSelf",
+      "model",
       "outputTokens"
     ],
     "ModelEntry": [
@@ -420,6 +482,7 @@
       "costPer1kOutput",
       "id",
       "isCustom",
+      "maxOutputTokens",
       "providerId",
       "supportsCaching",
       "supportsImages",
@@ -433,40 +496,101 @@
       "kind",
       "label"
     ],
+    "ProviderCliStatus": [
+      "authMethod",
+      "authenticated",
+      "backend",
+      "binaryPath",
+      "email",
+      "installed",
+      "label",
+      "planType",
+      "probedAt",
+      "version"
+    ],
     "ProviderEntry": [
       "apiKeyRef",
       "authSource",
+      "backend",
       "baseURL",
+      "cli",
       "hasAuth",
       "id"
+    ],
+    "ProviderLoginUpdate": [
+      "authUrl",
+      "backend",
+      "loginError",
+      "loginId",
+      "provider",
+      "stage",
+      "userCode",
+      "verificationUrl"
+    ],
+    "SessionMessage": [
+      "attachments",
+      "content",
+      "id",
+      "internal",
+      "isError",
+      "markerClearedBlocks",
+      "markerKind",
+      "markerMessageLength",
+      "markerMessagesAfter",
+      "markerMessagesBefore",
+      "markerMicroOnly",
+      "markerPlanFilePath",
+      "markerPlanOperation",
+      "markerPlanSlug",
+      "markerStrategy",
+      "markerSummary",
+      "role",
+      "slashArgs",
+      "slashCommand",
+      "slashSource",
+      "timestamp",
+      "toolId",
+      "toolInput",
+      "toolName"
+    ],
+    "SessionMessageAttachment": [
+      "id",
+      "mimeType",
+      "name",
+      "path",
+      "type"
     ],
     "SessionStatus": [
       "backgroundAgentCount",
       "contextPercent",
       "contextWindow",
+      "conversationCostUsd",
       "extensionName",
       "hasInflightRun",
       "key",
       "lastEmittedAt",
       "model",
       "permissionDenialsPending",
+      "runCostUsd",
       "sessionId",
       "state",
-      "stateSince",
-      "totalCostUsd"
+      "stateSince"
     ],
     "StatusFields": [
       "backgroundAgents",
       "contextPercent",
       "contextWindow",
+      "conversationCostUsd",
+      "conversationTurns",
       "extensionName",
       "label",
       "model",
+      "numTurns",
       "permissionDenials",
+      "runCostUsd",
       "sessionId",
       "state",
-      "team",
-      "totalCostUsd"
+      "team"
     ],
     "UsageData": [
       "cache_creation_input_tokens",

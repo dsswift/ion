@@ -30,3 +30,19 @@ func RandomID() string {
 	}
 	return hex.EncodeToString(b[:])
 }
+
+// NewTraceID returns a 32-character hex string (16 random bytes), the format of
+// an OpenTelemetry-compatible trace ID. Used to mint one stable trace ID per
+// session so every log line and telemetry span for that session correlates.
+//
+// On the (extremely unlikely) failure to read from crypto/rand, returns a
+// 32-zero string so callers can still thread a value without short-circuiting;
+// the fallback is logged at Warn.
+func NewTraceID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		Warn("utils", "NewTraceID: crypto/rand read failed: "+err.Error())
+		return "00000000000000000000000000000000"
+	}
+	return hex.EncodeToString(b[:])
+}

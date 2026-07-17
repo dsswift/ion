@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { X, GearSix, GitBranch, Columns, PaintBrush, WifiHigh, Lightning, Brain, Faders, MagnifyingGlass, Bell, Keyboard } from '@phosphor-icons/react'
+import { X, GearSix, GitBranch, Columns, PaintBrush, WifiHigh, Lightning, Brain, Faders, MagnifyingGlass, Bell, Keyboard, Buildings } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
 import { GeneralCategory } from './settings/GeneralCategory'
@@ -14,6 +14,7 @@ import { NotificationsCategory } from './settings/NotificationsCategory'
 import { RemoteCategory } from './settings/RemoteCategory'
 import { AdvancedCategory } from './settings/AdvancedCategory'
 import { KeyboardShortcutsCategory } from './settings/KeyboardShortcutsCategory'
+import { EntraCategory } from './settings/EntraCategory'
 import { searchSettings } from './settings/settings-search-index'
 import type { Icon } from '@phosphor-icons/react'
 
@@ -35,6 +36,7 @@ const CATEGORIES: Category[] = [
   { id: 'notifications', label: 'Notifications', icon: Bell, component: NotificationsCategory },
   { id: 'remote', label: 'Remote', icon: WifiHigh, component: RemoteCategory },
   { id: 'advanced', label: 'Advanced', icon: Faders, component: AdvancedCategory },
+  { id: 'entra', label: 'Enterprise Auth', icon: Buildings, component: EntraCategory },
 ]
 
 const LEGACY_TAB_MAP: Record<string, string> = {

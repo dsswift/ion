@@ -49,7 +49,7 @@ vi.mock('../state', () => ({
 }))
 
 vi.mock('../broadcast', () => ({ broadcast: vi.fn() }))
-vi.mock('../settings-store', () => ({ currentBackend: 'test', shouldStreamThinkingToRemote: vi.fn(() => false) }))
+vi.mock('../settings-store', () => ({ shouldStreamThinkingToRemote: vi.fn(() => false) }))
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 vi.mock('../../shared/clear-divider', () => ({ formatClearDivider: vi.fn(() => '[clear]') }))
 vi.mock('../event-wiring-resources', () => ({
@@ -142,6 +142,46 @@ describe('wireEngineBridgeEvents — desktop_text_delta ordering vs. seal events
     // tab2 delta NOT yet sent (no flush trigger for tab2 in this tick)
     expect(tab2DeltaSent).toBe(false)
     void types // suppress unused warning
+  })
+
+  it('DROPS pending batched text on engine_stream_reset instead of flushing it', () => {
+    // The batched text belongs to the attempt the engine just discarded.
+    // Flushing it would deliver stale pre-reset text to iOS AFTER the reset
+    // event; the fix drops the batch for the key before forwarding the reset.
+    emit('tab1', { type: 'engine_text_delta', text: 'partial from failed attempt' })
+    emit('tab1', { type: 'engine_stream_reset' })
+    // A later boundary event must not resurrect the dropped batch either.
+    emit('tab1', { type: 'engine_message_end', usage: {} })
+
+    const types = sentTypes()
+    expect(types).toContain('desktop_stream_reset')
+    expect(types).toContain('desktop_message_end')
+    expect(types).not.toContain('desktop_text_delta')
+  })
+
+  it('forwards engine_stream_reset to iOS as desktop_stream_reset', () => {
+    emit('tab1', { type: 'engine_stream_reset' })
+
+    const resetCall = mockSend.mock.calls.find((c) => c[0]?.type === 'desktop_stream_reset')
+    expect(resetCall).toBeTruthy()
+    expect(resetCall![0].tabId).toBe('tab1')
+  })
+
+  it('drops the batch only for the resetting key; other tabs keep their pending text', () => {
+    emit('tab1', { type: 'engine_text_delta', text: 'tab1 partial' })
+    emit('tab2', { type: 'engine_text_delta', text: 'tab2 healthy stream' })
+    emit('tab1', { type: 'engine_stream_reset' })
+    // tab2's boundary event flushes tab2's still-valid batch.
+    emit('tab2', { type: 'engine_message_end', usage: {} })
+
+    const tab1DeltaSent = mockSend.mock.calls.some(
+      (c) => c[0]?.type === 'desktop_text_delta' && c[0]?.tabId === 'tab1',
+    )
+    const tab2DeltaSent = mockSend.mock.calls.some(
+      (c) => c[0]?.type === 'desktop_text_delta' && c[0]?.tabId === 'tab2',
+    )
+    expect(tab1DeltaSent).toBe(false)
+    expect(tab2DeltaSent).toBe(true)
   })
 
   it('no-ops gracefully when message_end arrives with no buffered text', () => {

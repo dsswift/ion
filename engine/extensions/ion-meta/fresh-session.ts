@@ -4,11 +4,14 @@
 // (no prior turns saved) or a continued one (engine has persisted at
 // least one turn to disk under ~/.ion/conversations/).
 //
-// Why a filesystem check rather than tracking sessionKeys in harness
+// Why a filesystem check rather than tracking conversationIds in harness
 // state:
-//   - `ctx.sessionKey` is client-supplied. The desktop / iOS / CLI may
-//     reuse a key across logically distinct conversations; we cannot
-//     trust the key itself as a "have I seen this before" signal.
+//   - `ctx.conversationId` is the engine's canonical identifier for a
+//     conversation. Conversation files on disk are named by this ID
+//     (engine/internal/conversation/persistence.go:
+//     `conv.ID + ".llm.jsonl"`). The conversationId is durable and
+//     stable across engine restarts, app relaunches, and daemon cycles,
+//     making it the correct freshness key.
 //   - Other plausible signals fail: `searchHistory()` returns nil on
 //     session_start (requestID is empty), `turn_start.turnNumber` is a
 //     per-prompt counter (restarts every invocation, not every
@@ -20,12 +23,12 @@
 //     freshness detection to it via a filesystem stat.
 //
 // File naming (engine/internal/conversation/persistence.go):
-//   <sessionKey>.json        (legacy / brand-new fallback)
-//   <sessionKey>.jsonl       (legacy multi-line)
-//   <sessionKey>.llm.jsonl   (v2 split: authoritative LLM transcript)
-//   <sessionKey>.tree.jsonl  (v2 split: rendering tree)
+//   <conversationId>.json        (legacy / brand-new fallback)
+//   <conversationId>.jsonl       (legacy multi-line)
+//   <conversationId>.llm.jsonl   (v2 split: authoritative LLM transcript)
+//   <conversationId>.tree.jsonl  (v2 split: rendering tree)
 // We treat the existence of *any* file whose name begins with
-// `<sessionKey>.` as evidence of a prior turn.
+// `<conversationId>.` as evidence of a prior turn.
 //
 // Failure mode: if the readdir fails (permission denied, missing
 // directory, etc.), we return `false` (fail closed). Better to skip a
@@ -49,31 +52,31 @@ function conversationsDir(): string {
 
 /**
  * Returns true if no on-disk conversation file exists for the given
- * sessionKey, indicating this is the first session_start for a logically
- * new conversation. Returns false if any matching file exists, or if the
- * filesystem check itself fails (fail-closed: do not greet when
- * uncertain).
+ * conversationId, indicating this is the first session_start for a
+ * logically new conversation. Returns false if any matching file exists,
+ * or if the filesystem check itself fails (fail-closed: do not greet
+ * when uncertain).
  *
- * The match is a `startsWith(sessionKey + '.')` test rather than a glob,
- * to avoid bringing in a glob dependency and to keep the check O(N) in
- * directory size with no shell-quoting concerns.
+ * The match is a `startsWith(conversationId + '.')` test rather than a
+ * glob, to avoid bringing in a glob dependency and to keep the check
+ * O(N) in directory size with no shell-quoting concerns.
  */
-export function isFreshConversation(sessionKey: string): boolean {
-  if (!sessionKey) {
-    // No key → cannot disambiguate; treat as not-fresh so we do not
+export function isFreshConversation(conversationId: string): boolean {
+  if (!conversationId) {
+    // No id → cannot disambiguate; treat as not-fresh so we do not
     // greet on every anonymous session.
-    log.info('ion-meta: fresh-session check skipped (empty sessionKey)', {})
+    log.info('ion-meta: fresh-session check skipped (empty conversationId)', {})
     return false
   }
   const dir = conversationsDir()
-  const prefix = `${sessionKey}.`
-  log.info('ion-meta: fresh-session check starting', { sessionKey, dir, prefix })
+  const prefix = `${conversationId}.`
+  log.info('ion-meta: fresh-session check starting', { conversationId, dir, prefix })
   try {
     const entries = readdirSync(dir)
     for (const name of entries) {
       if (name.startsWith(prefix)) {
         log.info('ion-meta: fresh-session check → CONTINUED (prior file found)', {
-          sessionKey,
+          conversationId,
           file: name,
           dir,
         })
@@ -81,7 +84,7 @@ export function isFreshConversation(sessionKey: string): boolean {
       }
     }
     log.info('ion-meta: fresh-session check → FRESH (no prior file)', {
-      sessionKey,
+      conversationId,
       dir,
       directoryEntryCount: entries.length,
     })
@@ -93,13 +96,13 @@ export function isFreshConversation(sessionKey: string): boolean {
       // evidence the engine has never persisted a conversation under
       // this HOME — so the current one is fresh.
       log.info('ion-meta: fresh-session check → FRESH (conversations dir does not exist)', {
-        sessionKey,
+        conversationId,
         dir,
       })
       return true
     }
     log.warn('ion-meta: fresh-session check failed; suppressing greeting', {
-      sessionKey,
+      conversationId,
       dir,
       err: (err as Error).message,
       code,

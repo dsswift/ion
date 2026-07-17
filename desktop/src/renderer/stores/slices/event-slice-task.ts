@@ -10,6 +10,7 @@ import type { State, StoreGet } from '../session-store-types'
 import { nextMsgId, playNotificationIfHidden } from '../session-store-helpers'
 import { maybeScheduleDoneMove } from './event-slice-done-move'
 import { maybeGenerateTabTitle } from './event-slice-titling'
+import { rDebug, rInfo, rWarn } from '../../rendererLogger'
 
 /**
  * Mutable context shared with the parent reducer for one task-lifecycle event.
@@ -109,7 +110,7 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
     }
 
     case 'task_complete':
-      console.log(`[task_complete] tab=${tabId.slice(0, 8)} instance=main prevStatus=${ctx.tab.status} prevPermMode=${ctx.inst0?.permissionMode ?? 'auto'} prevPermDenied=${ctx.inst0?.permissionDenied ? JSON.stringify(ctx.inst0.permissionDenied.tools.map((t) => t.toolName)) : 'null'} denials=${event.permissionDenials ? JSON.stringify(event.permissionDenials.map((d: any) => ({ name: d.toolName, hasInput: !!d.toolInput, inputKeys: d.toolInput ? Object.keys(d.toolInput) : [] }))) : 'none'}`)
+      rInfo('event.task', 'task complete', { tab_id: tabId.slice(0, 8), prev_status: ctx.tab.status, prev_perm_mode: ctx.inst0?.permissionMode ?? 'auto', has_denials: !!(event.permissionDenials?.length) })
       ctx.updated.status = 'completed'
       ctx.updated.activeRequestId = null
       ctx.updated.currentActivity = ''
@@ -123,6 +124,7 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
         totalCostUsd: event.costUsd,
         durationMs: event.durationMs,
         numTurns: event.numTurns,
+        conversationTurns: event.conversationTurns,
         usage: event.usage,
         sessionId: event.sessionId,
       }
@@ -156,11 +158,32 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
         // card renders cleanly from the unfiltered denials.
         ctx.instPatch.permissionDenied = { tools: event.permissionDenials }
         ctx.instTouched = true
-        console.log(`[task_complete] tab=${tabId.slice(0, 8)} instance=main branch=denials permDenied set to ${JSON.stringify(event.permissionDenials.map((t: any) => t.toolName))} permMode=${ctx.instPatch.permissionMode ?? ctx.inst0?.permissionMode ?? 'auto'}`)
+        rDebug('event.task', 'permission denied set', { tab_id: tabId.slice(0, 8), tools: event.permissionDenials.map((t: any) => t.toolName), perm_mode: ctx.instPatch.permissionMode ?? ctx.inst0?.permissionMode ?? 'auto' })
       } else {
-        console.log(`[task_complete] tab=${tabId.slice(0, 8)} instance=main branch=noDenials permDenied=null`)
-        ctx.instPatch.permissionDenied = null
-        ctx.instTouched = true
+        // task_complete carries no denials. Normally that means "clear the
+        // approval card." But a pending ExitPlanMode plan proposal is a
+        // workflow signal task_complete does NOT own: some backends (codex,
+        // grok's ACP) capture the plan via a native plan item and emit
+        // engine_plan_proposal, which the plan-mode reducer already
+        // synthesized into permissionDenied — WITHOUT ever putting an
+        // ExitPlanMode denial on task_complete (only claude-code does that).
+        // Nulling here would wipe the just-synthesized card, so the user gets
+        // a clickable plan marker but no approve/implement card. Preserve a
+        // permissionDenied whose sole entry is a pending ExitPlanMode proposal;
+        // it is cleared instead on the next prompt (send-slice) or on approval.
+        const existingDenied =
+          'permissionDenied' in ctx.instPatch ? ctx.instPatch.permissionDenied : ctx.inst0?.permissionDenied
+        const isPendingPlanProposal =
+          !!existingDenied &&
+          existingDenied.tools?.length === 1 &&
+          existingDenied.tools[0]?.toolName === 'ExitPlanMode'
+        if (isPendingPlanProposal) {
+          rDebug('event.task', 'no denials but preserving pending ExitPlanMode plan proposal', { tab_id: tabId.slice(0, 8) })
+        } else {
+          rDebug('event.task', 'no denials', { tab_id: tabId.slice(0, 8) })
+          ctx.instPatch.permissionDenied = null
+          ctx.instTouched = true
+        }
       }
       playNotificationIfHidden()
       // WI-001: clear any model-fallback indicator for the active instance on run exit.
@@ -182,7 +205,15 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
       // lives in maybeScheduleDoneMove so the SAME logic fires from the
       // handleStatusChange path too (engine_dead clean-exit / reconnect
       // idle never emit task_complete — see event-slice-done-move.ts).
-      maybeScheduleDoneMove(tabId, ctx.tab.status, 'completed', ctx.updated, s.conversationPanes, ctx.get, 'task_complete', ctx.instPatch.permissionDenied != null)
+      // deniedOverride must reflect the RESOLVED permissionDenied: when the
+      // else-branch above preserved a pending plan proposal via inst0 (without
+      // writing instPatch), reading only instPatch would report "not denied"
+      // and could schedule a done-move out from under the pending card. Fall
+      // back to inst0 so the flag is accurate. (The plan-mode guard also blocks
+      // the move, but the flag must not lie.)
+      const resolvedDenied =
+        'permissionDenied' in ctx.instPatch ? ctx.instPatch.permissionDenied : ctx.inst0?.permissionDenied
+      maybeScheduleDoneMove(tabId, ctx.tab.status, 'completed', ctx.updated, s.conversationPanes, ctx.get, 'task_complete', resolvedDenied != null)
       // Title resolution (slash short-circuit vs. LLM generation)
       // lives in event-slice-titling.ts to keep this file under the
       // file-size cap. The helper owns the full decision: it no-ops
@@ -211,7 +242,7 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
       return true
 
     case 'session_dead':
-      console.warn(`[Ion] session_dead: tab=${tabId} exitCode=${event.exitCode}`)
+      rWarn('event.session', 'session dead', { tab_id: tabId, exit_code: event.exitCode })
       ctx.updated.status = 'dead'
       ctx.updated.activeRequestId = null
       ctx.updated.currentActivity = ''

@@ -98,44 +98,65 @@ func resolveThinking(model string, cfg *types.ThinkingConfig) ThinkingResolution
 	// ("openai discovered model without thinkingMode → no directive") and
 	// thinking_body_test.go (test-nothink → no reasoning_effort).
 	if info == nil || mode == "" || mode == "none" {
-		utils.Log("Thinking", fmt.Sprintf(
-			"resolveThinking: model=%s does not support thinking (mode=%q) — emitting no directive",
-			model, mode))
+		utils.LogWithFields(utils.LevelInfo, "Thinking", "resolve thinking model does not support thinking no directive", map[string]any{"model": model, "reason": mode})
 		return ThinkingResolution{Mode: "none"}
 	}
 
 	// Effort-based path: validate against the model's allowed efforts.
 	effort := cfg.Effort
 	if effort != "" && !modelSupportsEffort(info, effort) {
-		utils.Log("Thinking", fmt.Sprintf(
-			"resolveThinking: model=%s rejects effort=%q (allowed=%v) — emitting no directive",
-			model, effort, info.ThinkingEfforts))
+		utils.LogWithFields(utils.LevelInfo, "Thinking", "resolve thinking model rejects effort no directive", map[string]any{"model": model, "reason": effort, "count": len(info.ThinkingEfforts)})
 		return ThinkingResolution{Mode: "none"}
 	}
 
 	switch mode {
 	case "adaptive":
-		utils.Log("Thinking", fmt.Sprintf("resolveThinking: model=%s mode=adaptive effort=%q", model, effort))
+		utils.LogWithFields(utils.LevelInfo, "Thinking", "resolve thinking adaptive", map[string]any{"model": model, "reason": effort})
 		return ThinkingResolution{Mode: "adaptive", Effort: effort}
 	case "reasoning_effort":
-		utils.Log("Thinking", fmt.Sprintf("resolveThinking: model=%s mode=reasoning_effort effort=%q", model, effort))
+		utils.LogWithFields(utils.LevelInfo, "Thinking", "resolve thinking reasoning effort", map[string]any{"model": model, "reason": effort})
 		return ThinkingResolution{Mode: "reasoning_effort", Effort: effort}
 	case "budget":
 		budget := cfg.BudgetTokens
 		if budget <= 0 {
 			budget = effortBudgetTokens(effort)
 		}
-		utils.Log("Thinking", fmt.Sprintf("resolveThinking: model=%s mode=budget budget=%d (effort=%q)", model, budget, effort))
+		utils.LogWithFields(utils.LevelInfo, "Thinking", "resolve thinking budget", map[string]any{"model": model, "count": budget, "reason": effort})
 		return ThinkingResolution{Mode: "budget", Budget: budget}
 	case "gemini":
 		budget := cfg.BudgetTokens
 		if budget <= 0 {
 			budget = effortBudgetTokens(effort)
 		}
-		utils.Log("Thinking", fmt.Sprintf("resolveThinking: model=%s mode=gemini budget=%d (effort=%q)", model, budget, effort))
+		utils.LogWithFields(utils.LevelInfo, "Thinking", "resolve thinking gemini", map[string]any{"model": model, "count": budget, "reason": effort})
 		return ThinkingResolution{Mode: "gemini", Budget: budget}
 	default:
-		utils.Log("Thinking", fmt.Sprintf("resolveThinking: model=%s unknown mode=%q — emitting no directive", model, mode))
+		utils.LogWithFields(utils.LevelInfo, "Thinking", "resolve thinking unknown mode no directive", map[string]any{"model": model, "reason": mode})
 		return ThinkingResolution{Mode: "none"}
 	}
+}
+
+// ValidateThinkingBudget reports whether a resolved thinking budget would
+// consume the entire output window. It returns a non-nil error when
+// budget >= maxTokens and maxTokens > 0 — the pathological configuration in
+// which the model can only ever emit thinking tokens (no room left for text
+// or tool calls), producing a max_tokens stop every turn with zero usable
+// output.
+//
+// maxTokens <= 0 means "no explicit output cap for this run" (the provider
+// applies its own default); in that case the function returns nil because
+// there is no window to overflow. Callers (the provider body-builders) log
+// the error at ERROR level and clamp the budget to maxTokens-1 so the model
+// retains at least one token of output headroom.
+func ValidateThinkingBudget(budget, maxTokens int) error {
+	if maxTokens <= 0 {
+		return nil
+	}
+	if budget >= maxTokens {
+		return fmt.Errorf(
+			"thinking budget %d >= max_tokens %d: the model has no output-token headroom, every turn will stop at max_tokens with only thinking output",
+			budget, maxTokens,
+		)
+	}
+	return nil
 }

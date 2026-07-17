@@ -29,6 +29,7 @@
 
 import { log as _log } from './logger'
 import { state } from './state'
+import { broadcast } from './broadcast'
 import { writeSettings } from './settings-store'
 import {
   isProjectableKey,
@@ -37,8 +38,8 @@ import {
   projectableGroups,
 } from './projectable-settings'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 /**
@@ -58,10 +59,10 @@ function log(msg: string): void {
  */
 export function broadcastDesktopSettingsSnapshot(reason: string): void {
   if (!state.remoteTransport) {
-    log(`[SETTINGS] broadcastDesktopSettingsSnapshot: skip reason=${reason} (no transport attached)`)
+    log('settings_broadcast: skip, no transport', { reason })
     return
   }
-  log(`[SETTINGS] broadcastDesktopSettingsSnapshot: sending reason=${reason}`)
+  log('settings_broadcast: sending', { reason })
   state.remoteTransport.send({
     type: 'desktop_settings_snapshot',
     settings: projectCurrentSettings(),
@@ -110,6 +111,19 @@ export function persistAndBroadcastSettings(
 ): void {
   writeSettings(next as Record<string, any>)
 
+  // Cross-window prefs sync (mirror-store architecture): every changed key
+  // is pushed as ion:settings-changed so BOTH renderer preference stores
+  // (overlay owner + ATV mirror) converge, whichever window wrote. The
+  // writer's own echo is a no-op — the renderer listener patches only when
+  // the in-memory value differs.
+  if (prev !== null) {
+    for (const key of Object.keys(next)) {
+      if (next[key] !== prev[key]) {
+        broadcast('ion:settings-changed', key, next[key])
+      }
+    }
+  }
+
   const forceBroadcast = prev === null
   let changedProjectableKeys: string[] = []
   if (!forceBroadcast) {
@@ -130,6 +144,6 @@ export function persistAndBroadcastSettings(
     return
   }
 
-  log(`[SETTINGS] persistAndBroadcast: projectable_changed=true keys=[${changedProjectableKeys.join(',')}]`)
+  log('settings_broadcast: projectable changed', { keys: changedProjectableKeys.join(',') })
   broadcastDesktopSettingsSnapshot('persistAndBroadcast:projectable_changed')
 }

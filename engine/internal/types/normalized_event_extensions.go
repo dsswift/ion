@@ -24,6 +24,14 @@ type MessageEndEvent struct {
 	ContextPercent float64 `json:"contextPercent,omitempty"`
 	// Cost is the estimated USD cost of this LLM message.
 	Cost float64 `json:"cost,omitempty"`
+	// EntryID is the canonical persisted entry id of the assistant message
+	// this end closes (mirrors MessageEndUsage.EntryID). Consumers re-key the
+	// just-sealed assistant row to it so a later history load
+	// (SessionMessage.ID) dedups against the live row.
+	EntryID string `json:"entryId,omitempty"`
+	// UserEntryID is the canonical persisted entry id of the run-opening user
+	// turn (mirrors MessageEndUsage.UserEntryID).
+	UserEntryID string `json:"userEntryId,omitempty"`
 }
 
 func (MessageEndEvent) eventType() string { return EventMessageEnd }
@@ -54,6 +62,11 @@ type HarnessMessageEvent struct {
 	// Source is an optional string identifying the origin of the message
 	// (e.g. "clear" for /clear dividers). Informational only.
 	Source string `json:"source,omitempty"`
+	// DedupMode is a client-honored retention hint. Absent/"" = suppress-later
+	// (default: ignore a later message with the same DedupKey). "relocate" =
+	// move-forward (remove any existing message with this DedupKey, append the
+	// new one at the end).
+	DedupMode string `json:"dedupMode,omitempty"`
 }
 
 func (HarnessMessageEvent) eventType() string { return EventHarnessMessage }

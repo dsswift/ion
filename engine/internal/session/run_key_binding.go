@@ -1,7 +1,6 @@
 package session
 
 import (
-	"fmt"
 
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -48,7 +47,7 @@ func (m *Manager) bindRunLocked(runID, key string) {
 		return
 	}
 	m.runKeyBindings[runID] = key
-	utils.Info("Session", fmt.Sprintf("bindRun: runID=%s -> key=%s (event-routing binding set)", runID, key))
+	utils.LogWithFields(utils.LevelInfo, "session", "bindrun: -> (event-routing binding set)", map[string]any{"run_id": runID, "key": key})
 }
 
 // unbindRun removes the runID -> key association. Called at the authoritative
@@ -64,9 +63,9 @@ func (m *Manager) unbindRun(runID string) {
 	delete(m.runKeyBindings, runID)
 	m.mu.Unlock()
 	if existed {
-		utils.Info("Session", fmt.Sprintf("unbindRun: runID=%s (event-routing binding cleared)", runID))
+		utils.LogWithFields(utils.LevelInfo, "session", "unbindrun: (event-routing binding cleared)", map[string]any{"run_id": runID})
 	} else {
-		utils.Debug("Session", fmt.Sprintf("unbindRun: runID=%s (no binding present — already cleared)", runID))
+		utils.LogWithFields(utils.LevelDebug, "session", "unbindrun: (no binding present — already cleared)", map[string]any{"run_id": runID})
 	}
 }
 
@@ -86,6 +85,6 @@ func (m *Manager) unbindRunLocked(runID string) {
 	}
 	if _, existed := m.runKeyBindings[runID]; existed {
 		delete(m.runKeyBindings, runID)
-		utils.Info("Session", fmt.Sprintf("unbindRun: runID=%s (event-routing binding cleared, under lock)", runID))
+		utils.LogWithFields(utils.LevelInfo, "session", "unbindrun: (event-routing binding cleared, under lock)", map[string]any{"run_id": runID})
 	}
 }

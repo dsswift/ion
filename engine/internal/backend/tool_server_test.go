@@ -15,8 +15,17 @@ func TestNewToolServer_CreatesWithSessionID(t *testing.T) {
 	if ts == nil {
 		t.Fatal("NewToolServer returned nil")
 	}
-	if !strings.Contains(ts.SocketPath(), "sock-test-session-123") {
-		t.Errorf("socket path should contain session ID, got: %s", ts.SocketPath())
+	// The socket filename is derived from a SHA-256 digest of the session
+	// key, not the raw key — session keys are opaque and may contain
+	// characters (colon, slash, space) that are illegal or dangerous in a
+	// socket path. The raw key must therefore NOT appear in the path, and
+	// the derived filename must carry the digest-based prefix.
+	if strings.Contains(ts.SocketPath(), "test-session-123") {
+		t.Errorf("socket path must not contain the raw session ID, got: %s", ts.SocketPath())
+	}
+	want := "sock-" + socketToken("test-session-123")
+	if !strings.Contains(ts.SocketPath(), want) {
+		t.Errorf("socket path should contain derived token %q, got: %s", want, ts.SocketPath())
 	}
 }
 
@@ -92,6 +101,32 @@ func TestMcpConfigPath_ReturnsValidJSON(t *testing.T) {
 func TestMcpServerName_Constant(t *testing.T) {
 	if McpServerName != "ion-extensions" {
 		t.Errorf("McpServerName should be 'ion-extensions', got: %s", McpServerName)
+	}
+}
+
+// TestMcpServerSpec_AcpStdioShape pins the inline MCP-server spec the ACP
+// backends (grok, cursor) pass on session/new: name + command + args + env,
+// bridging to the tool server's Unix socket via socat. env must be present —
+// grok's stdio McpServer serde rejects the entry without it.
+func TestMcpServerSpec_AcpStdioShape(t *testing.T) {
+	ts := NewToolServer("spec-test")
+	spec := ts.McpServerSpec()
+
+	if spec["name"] != McpServerName {
+		t.Errorf("name = %v, want %q", spec["name"], McpServerName)
+	}
+	if spec["command"] != "socat" {
+		t.Errorf("command = %v, want socat", spec["command"])
+	}
+	args, ok := spec["args"].([]string)
+	if !ok || len(args) != 2 || args[1] != "STDIO" {
+		t.Errorf("args = %v, want [UNIX-CONNECT:<sock> STDIO]", spec["args"])
+	}
+	if !strings.HasPrefix(args[0], "UNIX-CONNECT:") || !strings.Contains(args[0], ts.SocketPath()) {
+		t.Errorf("args[0] = %q, want UNIX-CONNECT to the tool-server socket %q", args[0], ts.SocketPath())
+	}
+	if _, hasEnv := spec["env"]; !hasEnv {
+		t.Error("spec missing env (grok's stdio McpServer serde requires it)")
 	}
 }
 

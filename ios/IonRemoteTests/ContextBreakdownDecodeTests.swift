@@ -144,7 +144,8 @@ final class ContextBreakdownDecodeTests: XCTestCase {
                 model: "claude-opus-4",
                 cacheReadTokens: nil,
                 cacheCreationTokens: nil,
-                aggregateCostUsd: nil
+                aggregateCostUsd: nil,
+                modelBreakdown: nil
             )
         )
 
@@ -453,7 +454,8 @@ final class ContextBreakdownDecodeTests: XCTestCase {
             model: "claude-sonnet-4-6",
             cacheReadTokens: nil,
             cacheCreationTokens: nil,
-            aggregateCostUsd: nil
+            aggregateCostUsd: nil,
+            modelBreakdown: nil
         )
 
         // Replicate the grouping algorithm.

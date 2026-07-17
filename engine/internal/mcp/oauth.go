@@ -112,7 +112,7 @@ func (s *OAuthStore) RefreshToken(serverName string, config *OAuthConfig) (*OAut
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			utils.Log("mcp-oauth", fmt.Sprintf("refresh: response body close failed: %v", err))
+			utils.LogWithFields(utils.LevelInfo, "mcp.oauth", "refresh response body close failed", map[string]any{"error": err.Error()})
 		}
 	}()
 
@@ -176,11 +176,11 @@ func (s *OAuthStore) save() {
 	}
 	dir := filepath.Dir(s.path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
-		utils.Log("mcp-oauth", fmt.Sprintf("save: mkdir %s failed: %v", dir, err))
+		utils.LogWithFields(utils.LevelInfo, "mcp.oauth", "save mkdir failed", map[string]any{"path": dir, "error": err.Error()})
 		return
 	}
 	if err := os.WriteFile(s.path, data, 0600); err != nil {
-		utils.Log("mcp-oauth", fmt.Sprintf("save: write %s failed: %v", s.path, err))
+		utils.LogWithFields(utils.LevelInfo, "mcp.oauth", "save write failed", map[string]any{"path": s.path, "error": err.Error()})
 	}
 }
 

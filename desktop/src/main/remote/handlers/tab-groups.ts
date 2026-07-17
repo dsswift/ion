@@ -16,17 +16,17 @@ import { readSettings, writeSettings } from '../../settings-store'
 import { broadcastSync } from './tabs-sync'
 import type { RemoteCommand } from '../protocol'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 export async function handleSetTabGroupMode(cmd: Extract<RemoteCommand, { type: 'desktop_set_tab_group_mode' }>): Promise<void> {
   const mode = cmd.mode
   if (mode !== 'auto' && mode !== 'manual' && mode !== 'off') {
-    log(`Remote set_tab_group_mode: invalid mode "${mode}"`)
+    log('set_tab_group_mode: invalid mode', { mode })
     return
   }
-  log(`Remote set_tab_group_mode: mode=${mode}`)
+  log('set_tab_group_mode', { mode })
   const escaped = mode.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
   // Drive mode change through renderer to trigger stash/restore logic
   try {

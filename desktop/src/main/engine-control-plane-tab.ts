@@ -9,7 +9,7 @@ import { log as _log } from './logger'
 import type { TabEntry } from './engine-control-plane-events'
 
 const TAG = 'SessionPlane'
-function log(msg: string): void { _log(TAG, msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
 
 /**
  * Build a control-plane TabEntry in its initial, never-run state. Every field
@@ -47,7 +47,7 @@ export function makeEmptyTab(tabId: string): TabEntry {
  */
 export function registerNewTab(tabs: Map<string, TabEntry>): string {
   const tabId = randomUUID()
-  log(`createTab: tabId=${tabId}`)
+  log('create_tab', { tab_id: tabId })
   tabs.set(tabId, makeEmptyTab(tabId))
   return tabId
 }
@@ -65,10 +65,10 @@ export function registerNewTab(tabs: Map<string, TabEntry>): string {
  */
 export function registerAdoptedTab(tabs: Map<string, TabEntry>, tabId: string): string {
   if (tabs.has(tabId)) {
-    log(`adoptTab: tabId=${tabId} already registered (idempotent, preserving entry)`)
+    log('adopt_tab: already registered', { tab_id: tabId })
     return tabId
   }
-  log(`adoptTab: tabId=${tabId} (reusing persisted id)`)
+  log('adopt_tab', { tab_id: tabId })
   tabs.set(tabId, makeEmptyTab(tabId))
   return tabId
 }
@@ -88,7 +88,7 @@ export function resetTabEntry(
 ): void {
   const tab = tabs.get(tabId)
   if (!tab) return
-  log(`resetTabSession: tabId=${tabId}`)
+  log('reset_tab_session', { tab_id: tabId })
   stopSession(tabId)
   tab.conversationId = null
   tab.engineSessionStarted = false
@@ -131,7 +131,7 @@ export function restartTabEntry(
 ): void {
   const tab = tabs.get(tabId)
   if (!tab) return
-  log(`restartTabSession: tabId=${tabId} conversationId=${tab.conversationId ?? 'null'} (preserved)`)
+  log('restart_tab_session', { tab_id: tabId, conversation_id: tab.conversationId ?? '' })
   stopSession(tabId)
   // Clear ONLY the run/inflight state so the next prompt re-StartSessions.
   tab.engineSessionStarted = false

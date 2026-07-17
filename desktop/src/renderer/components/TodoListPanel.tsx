@@ -71,7 +71,7 @@ interface TodoListPanelProps {
   isRunning: boolean
 }
 
-export function TodoListPanel({ messages, isRunning }: TodoListPanelProps) {
+export function TodoListPanel({ messages, isRunning: _isRunning }: TodoListPanelProps) {
   const colors = useColors()
   const showTodoList = usePreferencesStore((s) => s.showTodoList)
 

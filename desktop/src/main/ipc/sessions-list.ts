@@ -19,27 +19,26 @@ import {
   parseSessionMeta,
 } from '../session-meta'
 import {
-  currentBackend,
   loadSessionLabels,
   readClaudeCompat,
 } from '../settings-store'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export function registerSessionsListIpc(): void {
   ipcMain.handle(IPC.DISCOVER_COMMANDS, async (_e, projectPath: string) => {
-    log(`IPC DISCOVER_COMMANDS (path=${projectPath})`)
+    log('discover_commands', { path: projectPath })
     try {
       // '~' / empty → user-only discovery (walk ~/.ion, ~/.claude); a present,
       // non-'~' value must be an absolute project root. resolveDiscoveryWorkingDir
       // returns null for a malformed present path.
       const workingDir = resolveDiscoveryWorkingDir(projectPath)
       if (workingDir === null) {
-        log(`DISCOVER_COMMANDS: rejected invalid projectPath: ${projectPath}`)
+        log('discover_commands: rejected invalid projectPath', { path: projectPath })
         return []
       }
       // The engine OWNS slash resolution + expansion, so it is the authority
@@ -53,26 +52,26 @@ export function registerSessionsListIpc(): void {
       // not here.
       const claudeCompat = readClaudeCompat()
       const commands = await engineBridge.discoverSlashCommands(workingDir, claudeCompat)
-      log(`DISCOVER_COMMANDS: engine returned ${commands.length} entries (workingDir=${workingDir || '(user-only)'}, claudeCompat=${claudeCompat})`)
+      log('discover_commands: done', { count: commands.length, working_dir: workingDir || '(user-only)', claude_compat: claudeCompat })
       return commands
     } catch (err) {
-      log(`DISCOVER_COMMANDS error: ${err}`)
+      log('discover_commands: error', { error: String(err) })
       return []
     }
   })
 
   ipcMain.handle(IPC.LIST_SESSIONS, async (_e, projectPath?: string) => {
-    log(`IPC LIST_SESSIONS ${projectPath ? `(path=${projectPath})` : ''}`)
+    log('list_sessions', { path: projectPath || '' })
     try {
       const cwd = projectPath || process.cwd()
       if (!isValidProjectPath(cwd)) {
-        log(`LIST_SESSIONS: rejected invalid projectPath: ${cwd}`)
+        log('list_sessions: rejected invalid projectPath', { path: cwd })
         return []
       }
       const encodedPath = cwd.replace(/[/.]/g, '-')
       const sessionsDir = join(homedir(), '.claude', 'projects', encodedPath)
       if (!existsSync(sessionsDir)) {
-        log(`LIST_SESSIONS: directory not found: ${sessionsDir}`)
+        log('list_sessions: directory not found', { path: sessionsDir })
         return []
       }
       const files = readdirSync(sessionsDir).filter((f: string) => f.endsWith('.jsonl'))
@@ -171,7 +170,7 @@ export function registerSessionsListIpc(): void {
 
       return collapseSessionChains(top as any)
     } catch (err) {
-      log(`LIST_SESSIONS error: ${err}`)
+      log('list_sessions: error', { error: String(err) })
       return []
     }
   })
@@ -237,10 +236,10 @@ export function registerSessionsListIpc(): void {
       }
 
       const collapsed = collapseSessionChains(sessions)
-      log(`LIST_ALL_SESSIONS: found ${sessions.length} sessions (${collapsed.length} after chain grouping) across ${pathCache.size} directories`)
+      log('list_all_sessions', { session_count: sessions.length, collapsed_count: collapsed.length, dir_count: pathCache.size })
       return collapsed
     } catch (err) {
-      log(`LIST_ALL_SESSIONS error: ${err}`)
+      log('list_all_sessions: error', { error: String(err) })
       return []
     }
   })
@@ -249,25 +248,34 @@ export function registerSessionsListIpc(): void {
     const sessionId = typeof arg === 'string' ? arg : arg.sessionId
     const projectPath = typeof arg === 'object' ? arg.projectPath : undefined
     const encodedDir = typeof arg === 'object' ? arg.encodedDir : undefined
-    log(`IPC LOAD_SESSION ${sessionId}`)
+    log('load_session', { session_id: sessionId })
     try {
       if (!isValidSessionId(sessionId)) {
-        log(`LOAD_SESSION: rejected invalid sessionId: ${sessionId}`)
+        log('load_session: rejected invalid sessionId', { session_id: sessionId })
         return []
       }
 
-      if (currentBackend === 'cli') {
-        const msgs = loadClaudeSessionMessages(sessionId, projectPath, encodedDir)
-        if (msgs.length > 0) return msgs
+      // Per-conversation store selection — no global backend mode. An Ion
+      // conversation file exists iff the API backend served the conversation
+      // (delegated-CLI runs persist only to the CLI's own store, and the
+      // engine stamps `backend` on the Ion header). Ion-file-first; fall back
+      // to the Claude CLI store only when no Ion file exists.
+      if (conversationExists(sessionId)) {
+        const msgs = await sessionPlane.loadSessionHistory(sessionId)
+        if (msgs && msgs.length > 0) return msgs
+        return loadEngineConversationMessages(sessionId)
       }
 
+      const cliMsgs = loadClaudeSessionMessages(sessionId, projectPath, encodedDir)
+      if (cliMsgs.length > 0) return cliMsgs
+
+      // Neither store has a file (e.g. a live session before its first save):
+      // ask the engine anyway, then the direct file reader as a last resort.
       const msgs = await sessionPlane.loadSessionHistory(sessionId)
       if (msgs && msgs.length > 0) return msgs
-
-      const directMsgs = loadEngineConversationMessages(sessionId)
-      return directMsgs
+      return loadEngineConversationMessages(sessionId)
     } catch (err) {
-      log(`LOAD_SESSION error: ${err}`)
+      log('load_session: error', { error: String(err) })
       try {
         return loadEngineConversationMessages(sessionId)
       } catch {
@@ -286,14 +294,14 @@ export function registerSessionsListIpc(): void {
 
   ipcMain.handle(IPC.READ_PLAN, async (_e, filePath: string) => {
     try {
-      log(`READ_PLAN: path=${filePath} exists=${filePath ? existsSync(filePath) : false}`)
+      log('read_plan', { path: filePath, exists: filePath ? existsSync(filePath) : false })
       if (!filePath || !existsSync(filePath)) return { content: null, fileName: null }
       const content = readFileSync(filePath, 'utf-8')
       const fileName = filePath.split('/').pop() || filePath
-      log(`READ_PLAN: success, ${content.length} chars`)
+      log('read_plan: success', { len: content.length })
       return { content, fileName }
     } catch (err) {
-      log(`READ_PLAN error: ${err}`)
+      log('read_plan: error', { error: String(err) })
       return { content: null, fileName: null }
     }
   })
@@ -315,7 +323,7 @@ export function registerSessionsListIpc(): void {
       if (buf.length > 30 * 1024 * 1024) return { dataUrl: null }
       return { dataUrl: `data:${mime};base64,${buf.toString('base64')}` }
     } catch (err) {
-      log(`READ_IMAGE_DATA_URL error: ${err}`)
+      log('read_image_data_url: error', { error: String(err) })
       return { dataUrl: null }
     }
   })
@@ -324,23 +332,23 @@ export function registerSessionsListIpc(): void {
     try {
       return await sessionPlane.getConversation(conversationId, offset, limit)
     } catch (err) {
-      log(`GET_CONVERSATION error: ${err}`)
+      log('get_conversation: error', { error: String(err) })
       return { messages: [], total: 0, hasMore: false }
     }
   })
 
   ipcMain.handle(IPC.LOAD_CHAIN_HISTORY, async (_e, sessionIds: string[]) => {
-    log(`IPC LOAD_CHAIN_HISTORY count=${Array.isArray(sessionIds) ? sessionIds.length : 'invalid'}`)
+    log('load_chain_history', { count: Array.isArray(sessionIds) ? sessionIds.length : 'invalid' })
     try {
       if (!Array.isArray(sessionIds) || sessionIds.some((id) => !isValidSessionId(id))) {
         log('LOAD_CHAIN_HISTORY: rejected invalid sessionIds')
         return []
       }
       const result = await sessionPlane.loadChainHistory(sessionIds)
-      log(`LOAD_CHAIN_HISTORY: returned ${result.length} messages for ${sessionIds.length} sessions`)
+      log('load_chain_history: done', { messages: result.length, sessions: sessionIds.length })
       return result
     } catch (err) {
-      log(`LOAD_CHAIN_HISTORY error: ${err}`)
+      log('load_chain_history: error', { error: String(err) })
       return []
     }
   })

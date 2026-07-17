@@ -1,4 +1,4 @@
-import type { TabState, NormalizedEvent, EnrichedError, Attachment, FileAttachment, TerminalPaneState, ConversationPane, ConversationInstance, AgentStateUpdate, StatusFields, Message, ImageAttachmentPayload } from '../../shared/types'
+import type { TabState, NormalizedEvent, EnrichedError, Attachment, FileAttachment, TerminalPaneState, ConversationPane, ImageAttachmentPayload } from '../../shared/types'
 import type { ResourceItem } from '../../shared/types-engine'
 
 export interface StaticInfo {
@@ -18,6 +18,14 @@ export interface FileEditorTab {
   isDirty: boolean
   isReadOnly: boolean
   isPreview: boolean
+  /**
+   * Set when the file's on-disk content could not be read (deleted or
+   * unreadable path). Restored non-dirty files reload from disk (schema v4
+   * drops their buffers from the tab file); a failed reload must surface as
+   * an explicit error, never a silent blank buffer the user might save over
+   * the real file. Runtime-only — never persisted.
+   */
+  readError?: string
 }
 
 export interface FileEditorDirState {
@@ -66,7 +74,6 @@ export interface State {
    * Cleared after tabsReady=true. */
   rehydrating: boolean
   initProgress: string | null
-  backend: 'api' | 'cli'
   worktreeUncommittedMap: Map<string, boolean>
 
   engineWorkingMessages: Map<string, string>
@@ -76,16 +83,16 @@ export interface State {
   engineUsage: Map<string, { percent: number; tokens: number; cost: number }>
   conversationPanes: Map<string, ConversationPane>
   /**
-   * Pending model-fallback notice per engine instance, keyed by the
-   * compound `${tabId}:${instanceId}` key. Populated when the engine
-   * emits a `model_fallback` NormalizedEvent — typically because a
-   * dispatched agent requested an unconfigured tier alias and the
-   * runloop swapped to the engine's configured `defaultModel`.
+   * Pending model-fallback notice per engine tab, keyed by the bare tabId
+   * (after session-key unification, #256 — one fallback slot per tab).
+   * Populated when the engine emits a `model_fallback` NormalizedEvent —
+   * typically because a dispatched agent requested an unconfigured tier alias
+   * and the runloop swapped to the engine's configured `defaultModel`.
    *
    * This client's policy: display a small ⚠ glyph on the affected
    * tab pill (TabStripTabPill) with a tooltip naming the requested and
    * fallback models. Clear on the next `task_complete` for that
-   * instance (no wall-clock timer — clients don't invent retention
+   * tab (no wall-clock timer — clients don't invent retention
    * rules per `docs/architecture/agent-state.md`).
    *
    * The engine event is workflow, not state — it fires once at the
@@ -120,6 +127,13 @@ export interface State {
   dispatchActivity: Record<string, import('../../shared/types').Message[]>
 
   tallViewTabId: string | null
+  /**
+   * When the terminal opens on a tab that was in conversation-tall mode, we
+   * auto-suspend tall so the terminal panel mounts. This marker records which
+   * tab triggered the suspend so we can restore tall when the terminal closes.
+   * Cleared on manual toggleTallView, toggleTerminalTall, or tab close.
+   */
+  suspendedTallTabId: string | null
   scrollToBottomCounter: number
   settingsOpen: boolean
   settingsInitialTab: string | null
@@ -128,6 +142,13 @@ export interface State {
 
   initStaticInfo: () => Promise<void>
   setPermissionMode: (mode: 'auto' | 'plan', source?: string) => void
+  /**
+   * The single plan-approval → implementation pipeline (implement-slice.ts):
+   * optional unpin, denial-card dismissal, implement divider, per-tab mode
+   * flip to 'auto', model split switch, in-progress auto-move, plan read,
+   * prompt submit. Owner-executed everywhere — the ATV mirror forwards it.
+   */
+  implementPlan: (tabId: string, opts?: { clearContext?: boolean; unpin?: boolean }) => Promise<void>
   /**
    * Set the per-conversation extended-thinking effort for the active
    * conversation. Isolated per-tab (bare) and per-instance (engine subtab),
@@ -221,6 +242,11 @@ export interface State {
     appendSystemPrompt?: string
     implementationPhase?: boolean
     imageAttachments?: ImageAttachmentPayload[]
+    /** Raw attachment metadata forwarded from iOS via REMOTE_ENGINE_PROMPT.
+     *  When present, stored on the optimistic user message so InlineMessageImages
+     *  renders inline previews and parseAttachmentsFromMessages populates the
+     *  attachments panel on the desktop side. */
+    remoteAttachments?: Array<{ type: string; name: string; path: string }>
     source?: 'remote'
     resolveSlash?: boolean
   }) => void
@@ -322,6 +348,16 @@ export interface State {
    *  from the renderer store) also miss it. */
   insertRemoteUserMessage: (tabId: string, content: string, slashCommand?: string, slashArgs?: string) => void
   setEngineDraftInput: (tabId: string, text: string) => void
+  /**
+   * Compute the conversation tail fingerprint for a tab using the canonical
+   * TS implementation in `shared/conversation-fingerprint.ts`. Exposed on the
+   * store so snapshot.ts's `executeJavaScript` can call it via
+   * `store.getState().computeConvFingerprint(tabId)` instead of inlining the
+   * algorithm as a string-interpolated IIFE. Eliminates the inline-JS copy in
+   * snapshot.ts; the canonical function in shared/ remains the single TS
+   * source of truth. Returns '' when the tab has no messages.
+   */
+  computeConvFingerprint: (tabId: string) => string
   markResourceRead: (resourceId: string) => void
   markAllResourcesRead: (items: ResourceItem[]) => void
   deleteResource: (kind: string, resourceId: string) => void

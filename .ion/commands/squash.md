@@ -15,6 +15,7 @@ Any point where the protocol needs a human decision MUST be a single `AskUserQue
 - Preserve the full unsquashed history in the backup branch before squashing.
 - Never fabricate commit messages. Every squashed commit message must be grounded in the actual commits being squashed.
 - The squashed commits must follow conventional commit format exactly.
+- **Subject-only commit messages. No bodies.** Every result commit is a single conventional-commit subject line with no body and no trailers of any kind: no `Squashed from:` provenance list, no summary paragraph, no `Co-authored-by`, no generator footer. The only exception is an issue trailer (`Fixes #N` / `Closes #N`) when the group is associated with a GitHub issue; that is the sole content permitted below the subject.
 - **Code scope isolation is mandatory; documentation may ride anywhere.** The scope-isolation rule applies to **code** files under a versioned component directory (`engine/`, `desktop/`, `relay/`, `ios/`): a commit scoped `engine` must not contain `desktop/` *code*, a commit scoped `desktop` must not contain `engine/` *code*, and so on. **Documentation files (`*.md`, anything under `docs/`) are exempt** — they do not trigger releases and may ride in any commit. Feature documentation bundles into its feature's commit (a `docs/` file under a `feat(engine)` commit is correct); only documentation *not* associated with a feature (e.g. cross-cutting `AGENTS.md` behavior changes) becomes a standalone `docs(repo)` commit, which may span directories.
 
   **Why the distinction exists.** Scopes exist *only* to drive independent component builds and version bumps. A `feat(engine)` + `feat(desktop)` pair triggers both the engine build and the desktop build to produce new releases. A `docs`-type (or `repo`-type) commit triggers no build and no version bump — it does not touch the release pipeline at all. So documentation cannot build or version anything, which means its placement relative to commit scope is irrelevant to the only thing scopes are for. The single failure mode the rule guards against is a *code* file under a versioned component directory riding in a commit whose scope doesn't match that directory — that is what makes a component's build fail to trigger (the CI/CD release pipeline, Release Damnit, uses commit scopes to detect which components changed). A bundled `docs/` file never causes that.
@@ -153,9 +154,9 @@ Flag any commit where a **code** directory doesn't match the scope — that is t
 The plan must list every result commit with its scope and the directories it will contain. No result commit may mix **code** directories across scopes; documentation directories riding alongside a feature (or spanning a `docs(repo)` commit) are fine.
 
 For each logical group, propose a clean conventional commit:
-- `type(scope): description (#N)` — the conventional commit subject
-- Body: a concise description of what this group of changes does and why
-- Trailer: `Fixes #N` or `Closes #N` if the group is associated with a GitHub issue
+- `type(scope): description (#N)` — the conventional commit subject. This is the **entire** message.
+- No body. Do not write a "concise description of what this group does", a `Squashed from:` list, or any other prose below the subject.
+- Trailer: `Fixes #N` or `Closes #N` if the group is associated with a GitHub issue. This issue trailer is the only content permitted below the subject line.
 
 ### Cross-feature shared files
 

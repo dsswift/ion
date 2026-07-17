@@ -17,7 +17,10 @@ extension RemoteEvent {
             let rawTabs = try container.decode([SafeDecodable<RemoteTabState>].self, forKey: .tabs)
             let tabs = rawTabs.compactMap(\.value)
             if rawTabs.count != tabs.count {
-                DiagnosticLog.log("SNAP-DECODE: \(rawTabs.count - tabs.count) tabs failed to decode, \(tabs.count) ok")
+                DiagnosticLog.log("snapshot decode tabs failed", tag: "model.snapshot", level: .warn, fields: [
+                    "count": String(rawTabs.count - tabs.count),
+                    "max": String(tabs.count)
+                ])
             }
             let recentDirs = try container.decodeIfPresent([String].self, forKey: .recentDirectories) ?? []
             let tabGroupMode = try container.decodeIfPresent(String.self, forKey: .tabGroupMode)
@@ -36,7 +39,8 @@ extension RemoteEvent {
 
         case .tabCreated:
             let tab = try container.decode(RemoteTabState.self, forKey: .tab)
-            return .tabCreated(tab: tab)
+            let clientCmdId = try container.decodeIfPresent(String.self, forKey: .clientCmdId)
+            return .tabCreated(tab: tab, clientCmdId: clientCmdId)
 
         case .tabClosed:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -46,6 +50,17 @@ extension RemoteEvent {
             let tabId = try container.decode(String.self, forKey: .tabId)
             let status = try container.decode(TabStatus.self, forKey: .status)
             return .tabStatus(tabId: tabId, status: status)
+
+        case .tabMeta:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let title = try container.decodeIfPresent(String.self, forKey: .title)
+            // runCostUsd is the canonical field; fall back to totalCostUsd
+            // (deprecated) for snapshots sent by older desktops before this rename.
+            let runCostUsd = try container.decodeIfPresent(Double.self, forKey: .runCostUsd)
+            let totalCostUsd = try container.decodeIfPresent(Double.self, forKey: .totalCostUsd)
+            let resolvedCost = runCostUsd ?? totalCostUsd
+            let groupId = try container.decodeIfPresent(String.self, forKey: .groupId)
+            return .tabMeta(tabId: tabId, title: title, totalCostUsd: resolvedCost, groupId: groupId)
 
         case .unpair:
             return .unpair
@@ -73,6 +88,9 @@ extension RemoteEvent {
         case .transportReconnecting:
             return .transportReconnecting
 
+        case .lanAuthRejected:
+            return .lanAuthRejected
+
         case .heartbeat:
             let senderTs = try container.decodeIfPresent(Double.self, forKey: .ts) ?? 0
             let buffered = try container.decodeIfPresent(Int.self, forKey: .buffered) ?? 0
@@ -88,7 +106,8 @@ extension RemoteEvent {
             return .error(tabId: tabId, message: message)
 
         case .requestDiagnosticLogs:
-            return .requestDiagnosticLogs
+            let sinceSeq = try container.decodeIfPresent(Int.self, forKey: .sinceSeq) ?? 0
+            return .requestDiagnosticLogs(sinceSeq: sinceSeq)
 
         default:
             return nil
@@ -117,9 +136,10 @@ extension RemoteEvent {
             try container.encodeIfPresent(resources, forKey: .resources)
             return true
 
-        case .tabCreated(let tab):
+        case .tabCreated(let tab, let clientCmdId):
             try container.encode(TypeKey.tabCreated, forKey: .type)
             try container.encode(tab, forKey: .tab)
+            try container.encodeIfPresent(clientCmdId, forKey: .clientCmdId)
             return true
 
         case .tabClosed(let tabId):
@@ -131,6 +151,17 @@ extension RemoteEvent {
             try container.encode(TypeKey.tabStatus, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encode(status, forKey: .status)
+            return true
+
+        case .tabMeta(let tabId, let title, let totalCostUsd, let groupId):
+            try container.encode(TypeKey.tabMeta, forKey: .type)
+            try container.encode(tabId, forKey: .tabId)
+            try container.encodeIfPresent(title, forKey: .title)
+            // Encode both runCostUsd (canonical) and totalCostUsd (deprecated compat)
+            // so a downstream decoder that only reads one or the other still works.
+            try container.encodeIfPresent(totalCostUsd, forKey: .runCostUsd)
+            try container.encodeIfPresent(totalCostUsd, forKey: .totalCostUsd)
+            try container.encodeIfPresent(groupId, forKey: .groupId)
             return true
 
         case .error(let tabId, let message):
@@ -172,6 +203,10 @@ extension RemoteEvent {
             try container.encode(TypeKey.transportReconnecting, forKey: .type)
             return true
 
+        case .lanAuthRejected:
+            try container.encode(TypeKey.lanAuthRejected, forKey: .type)
+            return true
+
         case .heartbeat(let senderTs, let buffered):
             try container.encode(TypeKey.heartbeat, forKey: .type)
             try container.encode(senderTs, forKey: .ts)
@@ -183,8 +218,11 @@ extension RemoteEvent {
             try container.encode(fromSeq, forKey: .fromSeq)
             return true
 
-        case .requestDiagnosticLogs:
+        case .requestDiagnosticLogs(let sinceSeq):
             try container.encode(TypeKey.requestDiagnosticLogs, forKey: .type)
+            if sinceSeq > 0 {
+                try container.encode(sinceSeq, forKey: .sinceSeq)
+            }
             return true
 
         default:

@@ -6,8 +6,8 @@ import { state } from '../../state'
 import { markReadPersisted, publishResourceMarkRead, publishResourceDelete } from '../../event-wiring-resources'
 import type { RemoteCommand } from '../protocol'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 /**
@@ -24,7 +24,7 @@ export async function handleRequestResourceContent(
   deviceId: string,
 ): Promise<void> {
   const { kind, resourceId } = cmd
-  log(`request_resource_content: kind=${kind} resourceId=${resourceId.slice(0, 12)}`)
+  log('request_resource_content', { kind, resource_id: resourceId.slice(0, 12) })
 
   let content = ''
   try {
@@ -50,24 +50,24 @@ export async function handleRequestResourceContent(
   }
 
   if (content.length > 0) {
-    log(`request_resource_content: renderer hit kind=${kind} resourceId=${resourceId.slice(0, 12)} contentLen=${content.length}`)
+    log('request_resource_content: renderer hit', { kind, resource_id: resourceId.slice(0, 12), content_len: content.length })
   } else {
     // Renderer store is empty — desktop just restarted and the resource
     // subscription hasn't resolved yet. Fall back to reading the JSON file
     // from disk. The extension persists resources to
     // ~/.ion/resources/global/{resourceId}.json with a `content` field.
-    log(`request_resource_content: renderer miss kind=${kind} resourceId=${resourceId.slice(0, 12)} — falling back to disk`)
+    log('request_resource_content: renderer miss, falling back to disk', { kind, resource_id: resourceId.slice(0, 12) })
     try {
       const filePath = join(homedir(), '.ion', 'resources', 'global', `${resourceId}.json`)
       if (existsSync(filePath)) {
         const data = JSON.parse(readFileSync(filePath, 'utf-8'))
         content = typeof data.content === 'string' ? data.content : ''
-        log(`request_resource_content: disk fallback kind=${kind} resourceId=${resourceId.slice(0, 12)} contentLen=${content.length}`)
+        log('request_resource_content: disk fallback hit', { kind, resource_id: resourceId.slice(0, 12), content_len: content.length })
       } else {
-        log(`request_resource_content: disk miss kind=${kind} resourceId=${resourceId.slice(0, 12)} — file not found`)
+        log('request_resource_content: disk miss, file not found', { kind, resource_id: resourceId.slice(0, 12) })
       }
     } catch {
-      log(`request_resource_content: disk fallback failed kind=${kind} resourceId=${resourceId.slice(0, 12)}`)
+      log('request_resource_content: disk fallback failed', { kind, resource_id: resourceId.slice(0, 12) })
     }
   }
   state.remoteTransport?.sendToDevice(deviceId, {
@@ -90,7 +90,7 @@ export async function handleMarkResourceRead(
   cmd: Extract<RemoteCommand, { type: 'desktop_mark_resource_read' }>,
 ): Promise<void> {
   const { kind, resourceId } = cmd
-  log(`mark_resource_read: kind=${kind} resourceId=${resourceId.slice(0, 12)}`)
+  log('mark_resource_read', { kind, resource_id: resourceId.slice(0, 12) })
   markReadPersisted(resourceId)
   await publishResourceMarkRead(kind, resourceId)
 
@@ -132,7 +132,7 @@ export async function handleDeleteResource(
   cmd: Extract<RemoteCommand, { type: 'desktop_delete_resource' }>,
 ): Promise<void> {
   const { kind, resourceId } = cmd
-  log(`delete_resource: kind=${kind} resourceId=${resourceId.slice(0, 12)}`)
+  log('delete_resource', { kind, resource_id: resourceId.slice(0, 12) })
   await publishResourceDelete(kind, resourceId)
 
   // Remove from the renderer's in-memory store directly so the desktop

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, type ComponentType } from 'react'
+import { useViewportClamp } from '../hooks/useViewportClamp'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { IconProps } from '@phosphor-icons/react'
@@ -66,6 +67,8 @@ export function QuickToolsTray({ anchorRef, onClose }: QuickToolsTrayProps) {
     (s) => s.tabs.find((t) => t.id === s.activeTabId)?.workingDirectory || ''
   )
   const trayRef = useRef<HTMLDivElement>(null)
+  // Keep the portaled popover inside the window (ATV top-anchored strip).
+  useViewportClamp(trayRef, true)
 
   // Filter tools by directory scope
   const visibleTools = quickTools.filter((tool) => {

@@ -27,17 +27,22 @@ import { emitLog as sharedEmitLog, type LogLevel as SharedLogLevel } from './run
 import type {
   AgentSpec,
   CommandDef,
+  ContextPolicy,
   ContextUsage,
   DiscoverAgentsOpts,
   DiscoveredAgent,
+  DiscoveredContext,
   DispatchAgentOpts,
   DispatchAgentResult,
+  DispatchEntry,
   ElicitOptions,
   ElicitResult,
   EngineEvent,
   ExtensionConfig,
   HistoryMatch,
   IonContext,
+  IonHttpRequestOptions,
+  IonHttpResponse,
   IonSDK,
   LLMCallOpts,
   LLMCallResult,
@@ -52,6 +57,7 @@ import type {
   SendPromptOpts,
   SteerDispatchResult,
   ToolDef,
+  WalkContextFilesOpts,
 } from './types'
 
 // ---------------------------------------------------------------------------
@@ -184,6 +190,10 @@ function buildContext(ctxData: any): IonContext {
   return {
     sessionKey: typeof ctxData?.sessionKey === 'string' ? ctxData.sessionKey : '',
     conversationId: typeof ctxData?.conversationId === 'string' ? ctxData.conversationId : '',
+    // Dispatch identity: the engine omits both keys for root sessions, so
+    // the defaults (0 / '') ARE the root-session shape.
+    depth: typeof ctxData?.depth === 'number' ? ctxData.depth : 0,
+    dispatchId: typeof ctxData?.dispatchId === 'string' ? ctxData.dispatchId : '',
     cwd: ctxData?.cwd || initConfig?.workingDirectory || '',
     model: ctxData?.model || null,
     config: ctxData?.config || initConfig || emptyConfig,
@@ -217,6 +227,18 @@ function buildContext(ctxData: any): IonContext {
     async suppressTool(name: string): Promise<void> {
       await request('ext/suppress_tool', { name })
     },
+    async walkContextFiles(opts?: WalkContextFilesOpts): Promise<DiscoveredContext[]> {
+      const result = await request('ext/walk_context_files', {
+        cwd: opts?.cwd || '',
+        includeGlobal: opts?.includeGlobal,
+        includeProject: opts?.includeProject,
+        claudeCompat: opts?.claudeCompat,
+      })
+      return Array.isArray(result) ? (result as DiscoveredContext[]) : []
+    },
+    async setDispatchContextDefaults(policy: ContextPolicy): Promise<void> {
+      await request('ext/set_dispatch_context_defaults', policy)
+    },
     async callTool(name: string, input: Record<string, unknown>) {
       const result = await request('ext/call_tool', { name, input: input || {} })
       return {
@@ -224,19 +246,64 @@ function buildContext(ctxData: any): IonContext {
         isError: !!result?.isError,
       }
     },
+    // Pre-authenticated outbound HTTP. Each verb funnels into the single
+    // ext/http_request RPC; the engine mints the operator token for the
+    // declared scope and injects the Authorization header. The token never
+    // reaches this process.
+    http: (() => {
+      const doRequest = async (
+        method: string,
+        url: string,
+        opts?: IonHttpRequestOptions,
+      ): Promise<IonHttpResponse> => {
+        const result = await request('ext/http_request', {
+          method,
+          url,
+          scope: opts?.scope || '',
+          audience: opts?.audience || '',
+          headers: opts?.headers || undefined,
+          body: opts?.body || '',
+          timeoutMs: opts?.timeoutMs || 0,
+          maxBytes: opts?.maxBytes || 0,
+          allowPrivateNetwork: !!opts?.allowPrivateNetwork,
+        })
+        return {
+          status: typeof result?.status === 'number' ? result.status : 0,
+          headers: (result?.headers as Record<string, string>) || {},
+          body: typeof result?.body === 'string' ? result.body : '',
+        }
+      }
+      return {
+        request: doRequest,
+        get: (url: string, opts?: IonHttpRequestOptions) => doRequest('GET', url, opts),
+        post: (url: string, opts?: IonHttpRequestOptions) => doRequest('POST', url, opts),
+        put: (url: string, opts?: IonHttpRequestOptions) => doRequest('PUT', url, opts),
+        patch: (url: string, opts?: IonHttpRequestOptions) => doRequest('PATCH', url, opts),
+        delete: (url: string, opts?: IonHttpRequestOptions) => doRequest('DELETE', url, opts),
+      }
+    })(),
     async sendPrompt(text: string, opts?: SendPromptOpts): Promise<void> {
       // Forward per-prompt, run-scoped plan-mode bash-allowlist additions only
       // when present so the omitempty contract on the engine side holds (an
       // empty array would otherwise serialize as []). The engine unions these
       // with the session allowlist for this one run and never persists them.
-      const params: { text: string; model: string; bashAllowlistAdditions?: string[] } = {
+      const params: { text: string; model: string; bashAllowlistAdditions?: string[]; kind?: string } = {
         text,
         model: opts?.model || '',
       }
       if (opts?.bashAllowlistAdditions && opts.bashAllowlistAdditions.length > 0) {
         params.bashAllowlistAdditions = opts.bashAllowlistAdditions
       }
+      if (opts?.kind) {
+        params.kind = opts.kind
+      }
       await request('ext/send_prompt', params)
+    },
+    async suspend(): Promise<void> {
+      await request('ext/task_suspend', {})
+    },
+    async suspendUntilAll(dispatchIds: string[]): Promise<void> {
+      await request('ext/task_suspend', { awaitingDispatchIds: dispatchIds })
     },
     async dispatchAgent(opts: DispatchAgentOpts): Promise<DispatchAgentResult> {
       const {
@@ -330,6 +397,10 @@ function buildContext(ctxData: any): IonContext {
       const result = await request('ext/steer_dispatch', { dispatchId, message })
       return { delivered: !!result?.delivered, outcome: result?.outcome ?? 'not_found' }
     },
+    async steerDispatchByName(name: string, message: string): Promise<SteerDispatchResult> {
+      const result = await request('ext/steer_dispatch_by_name', { name, message })
+      return { delivered: !!result?.delivered, outcome: result?.outcome ?? 'not_found' }
+    },
     async answerDispatchQuestion(dispatchId: string, requestId: string, answer: string | undefined, cancelled: boolean): Promise<void> {
       await request('ext/answer_dispatch_question', { dispatchId, requestId, answer, cancelled })
     },
@@ -342,6 +413,20 @@ function buildContext(ctxData: any): IonContext {
       // completion queueing behind the live run until it happens to go idle.
       const result = await request('ext/steer_self', { message })
       return { delivered: !!result?.delivered, outcome: result?.outcome ?? 'not_found' }
+    },
+    async listDispatchState(): Promise<DispatchEntry[]> {
+      // Returns a point-in-time snapshot of every active dispatch in the
+      // engine's DispatchRegistry for this session. All entries carry
+      // status:"running" — the registry only holds in-flight dispatches.
+      // Returns [] when no dispatches are active or the engine does not yet
+      // support this RPC (older builds without ext/list_dispatch_state return
+      // an error; the catch returns the empty default gracefully).
+      try {
+        const result = await request('ext/list_dispatch_state', {})
+        return result?.dispatches ?? []
+      } catch {
+        return []
+      }
     },
     async discoverAgents(opts?: DiscoverAgentsOpts): Promise<DiscoveredAgent[]> {
       const result = await request('ext/discover_agents', opts || {})
@@ -455,6 +540,13 @@ function buildContext(ctxData: any): IonContext {
       async send(targetKey: string, kind: string, payload: Record<string, unknown>): Promise<void> {
         await request('ext/send_to_session', { targetKey, kind, payload })
       },
+    },
+    async fireSchedule(id: string): Promise<void> {
+      await request('ext/fire_schedule', { id })
+    },
+    async getScheduleStatus(id?: string): Promise<import('./types').ScheduleStatus[]> {
+      const r = await request('ext/get_schedule_status', { id: id ?? '' })
+      return Array.isArray(r) ? r as import('./types').ScheduleStatus[] : []
     },
     async runOnce<T = void>(
       id: string,

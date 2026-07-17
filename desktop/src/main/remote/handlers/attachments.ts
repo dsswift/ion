@@ -2,8 +2,8 @@ import { log as _log } from '../../logger'
 import { state } from '../../state'
 import type { RemoteCommand } from '../protocol'
 
-function log(msg: string): void {
-  _log('main', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('main', msg, fields)
 }
 
 /**
@@ -17,7 +17,7 @@ export async function handleLoadAttachments(
   deviceId: string,
 ): Promise<void> {
   const tabId = cmd.tabId
-  log(`load_attachments: tab=${tabId}`)
+  log('load_attachments', { tab_id: tabId })
 
   if (!state.mainWindow) {
     log('load_attachments: mainWindow not available')
@@ -167,12 +167,12 @@ export async function handleLoadAttachments(
       })()
     `) || []
 
-    log(`load_attachments: tab=${tabId} found=${attachments.length}`)
+    log('load_attachments: found', { tab_id: tabId, count: attachments.length })
     state.remoteTransport?.sendToDevice(deviceId, {
       type: 'desktop_tab_attachments', tabId, attachments,
     })
   } catch (err) {
-    log(`load_attachments error: ${(err as Error).message}`)
+    log('load_attachments error', { error: (err as Error).message })
     state.remoteTransport?.sendToDevice(deviceId, {
       type: 'desktop_tab_attachments', tabId, attachments: [],
     })

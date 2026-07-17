@@ -17,18 +17,18 @@ import type { DispatchInfo } from '../../../shared/types-engine'
 // ── Engine fixture IDs (verbatim from engine JSON) ──
 
 // sess-a round 1
-const A_R1_ALPHA_SESSION = 'sess-a-dispatch-alpha-1782668321080'
-const A_R1_BETA_SESSION  = 'sess-a-dispatch-beta-1782668321081'
+const _A_R1_ALPHA_SESSION = 'sess-a-dispatch-alpha-1782668321080'
+const _A_R1_BETA_SESSION  = 'sess-a-dispatch-beta-1782668321081'
 // sess-a round 2
-const A_R2_ALPHA_SESSION = 'sess-a-dispatch-alpha-1782668321254'  // continuation of R1 alpha
-const A_R2_BETA_SESSION  = 'sess-a-dispatch-beta-1782668321260'
+const _A_R2_ALPHA_SESSION = 'sess-a-dispatch-alpha-1782668321254'  // continuation of R1 alpha
+const _A_R2_BETA_SESSION  = 'sess-a-dispatch-beta-1782668321260'
 
 // sess-b round 1
-const B_R1_ALPHA_SESSION = 'sess-b-dispatch-alpha-1782668321081'
-const B_R1_BETA_SESSION  = 'sess-b-dispatch-beta-1782668321081'
+const _B_R1_ALPHA_SESSION = 'sess-b-dispatch-alpha-1782668321081'
+const _B_R1_BETA_SESSION  = 'sess-b-dispatch-beta-1782668321081'
 // sess-b round 2
-const B_R2_ALPHA_SESSION = 'sess-b-dispatch-alpha-1782668321261'
-const B_R2_BETA_SESSION  = 'sess-b-dispatch-beta-1782668321265'
+const _B_R2_ALPHA_SESSION = 'sess-b-dispatch-alpha-1782668321261'
+const _B_R2_BETA_SESSION  = 'sess-b-dispatch-beta-1782668321265'
 
 // Conversation IDs. Fresh dispatches get auto-generated conv IDs.
 // The continuation (A_R2 alpha) reuses A_R1 alpha's conv ID.

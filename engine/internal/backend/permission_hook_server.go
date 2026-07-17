@@ -17,7 +17,7 @@ import (
 )
 
 // PermissionHookServer handles Claude CLI PreToolUse hook requests.
-// When the CliBackend spawns Claude CLI, Claude CLI can call PreToolUse hooks
+// When the ClaudeCodeBackend spawns Claude CLI, Claude CLI can call PreToolUse hooks
 // via HTTP. This server handles those requests and routes them through the
 // Go permission engine.
 // PermissionAskCallback is called when the permission engine returns "ask".
@@ -68,7 +68,9 @@ func NewPermissionHookServer(permEng *permissions.Engine) (*PermissionHookServer
 	s.server = &http.Server{Handler: mux}
 	go func() { _ = s.server.Serve(listener) }()
 
-	utils.Log("PermissionHookServer", fmt.Sprintf("listening on port %d", s.Port()))
+	utils.LogWithFields(utils.LevelInfo, "backend.permission_hook", "listening on port", map[string]any{
+		"port": s.Port(),
+	})
 
 	return s, nil
 }
@@ -241,9 +243,15 @@ func (s *PermissionHookServer) handlePreToolUse(w http.ResponseWriter, r *http.R
 		timer := time.NewTimer(d)
 		defer timer.Stop()
 		timerCh = timer.C
-		utils.Log("PermissionHookServer", fmt.Sprintf("finite human-wait %s for %s (fail-action=%s)", d, questionID, timeouts.PermissionTimeoutAction()))
+		utils.LogWithFields(utils.LevelInfo, "backend.permission_hook", "finite human-wait for (fail-)", map[string]any{
+			"d":           d,
+			"question_id": questionID,
+			"action":      timeouts.PermissionTimeoutAction(),
+		})
 	} else {
-		utils.Log("PermissionHookServer", fmt.Sprintf("indefinite human-wait for %s (waiting for user decision)", questionID))
+		utils.LogWithFields(utils.LevelInfo, "backend.permission_hook", "indefinite human-wait for (waiting for user decision)", map[string]any{
+			"question_id": questionID,
+		})
 	}
 
 	// Block until response, request-context cancellation, or (only when a
@@ -265,10 +273,15 @@ func (s *PermissionHookServer) handlePreToolUse(w http.ResponseWriter, r *http.R
 	case <-r.Context().Done():
 		// Subprocess/connection gone — the run is being torn down. Do not
 		// write a decision; there is no longer anyone to receive it.
-		utils.Log("PermissionHookServer", "permission request abandoned (request context cancelled): "+questionID)
+		utils.LogWithFields(utils.LevelInfo, "backend.permission_hook", "permission request abandoned (request context cancelled)", map[string]any{
+			"question_id": questionID,
+		})
 	case <-timerCh:
 		decision := timeouts.PermissionTimeoutAction()
-		utils.Log("PermissionHookServer", fmt.Sprintf("permission request timed out, applying fail-action=%s: %s", decision, questionID))
+		utils.LogWithFields(utils.LevelInfo, "backend.permission_hook", "permission request timed out, applying fail", map[string]any{
+			"action":      decision,
+			"question_id": questionID,
+		})
 		writePermissionResponse(w, decision)
 	}
 }

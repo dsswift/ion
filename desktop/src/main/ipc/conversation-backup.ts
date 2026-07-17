@@ -18,24 +18,28 @@ import { log as _log } from '../logger'
 import { state } from '../state'
 import { showWindow } from '../window-manager'
 import {
-  tabsFileForBackend,
-  sessionChainsFileForBackend,
-  sessionLabelsFileForBackend,
-  getCurrentBackend,
+  TABS_FILE,
+  SESSION_CHAINS_FILE,
+  SESSION_LABELS_FILE,
+  legacyTabsFileForBackend,
+  legacySessionChainsFileForBackend,
+  legacySessionLabelsFileForBackend,
 } from '../settings-store'
 import { previewExport, runExport, type ExportSources } from '../conversation-backup/export'
 import { previewRestore, runRestore, type ConflictPolicy } from '../conversation-backup/restore'
 import type { ExportScope } from '../conversation-backup/manifest'
 
-function log(msg: string): void { _log('backup-ipc', msg) }
+function log(msg: string, fields?: Record<string, unknown>): void { _log('backup-ipc', msg, fields) }
 
 function buildExportSources(): ExportSources {
   const home = join(homedir(), '.ion')
   return {
     conversationsDir: join(home, 'conversations'),
-    tabsFiles: [tabsFileForBackend('api'), tabsFileForBackend('cli')],
-    chainsFiles: [sessionChainsFileForBackend('api'), sessionChainsFileForBackend('cli')],
-    labelsFiles: [sessionLabelsFileForBackend('api'), sessionLabelsFileForBackend('cli')],
+    // Unified files first (live sources); legacy per-backend files stay in
+    // the export set through the merge-migration window.
+    tabsFiles: [TABS_FILE, legacyTabsFileForBackend('api'), legacyTabsFileForBackend('cli')],
+    chainsFiles: [SESSION_CHAINS_FILE, legacySessionChainsFileForBackend('api'), legacySessionChainsFileForBackend('cli')],
+    labelsFiles: [SESSION_LABELS_FILE, legacySessionLabelsFileForBackend('api'), legacySessionLabelsFileForBackend('cli')],
   }
 }
 
@@ -51,7 +55,7 @@ function emitProgress(current: number, total: number, label: string): void {
     try {
       win.webContents.send(IPC.CONVERSATION_BACKUP_PROGRESS, { current, total, label })
     } catch (err: any) {
-      log(`emitProgress: send failed err=${err.message}`)
+      log('emit_progress: send failed', { error: err.message })
     }
   }
 }
@@ -61,10 +65,10 @@ export function registerConversationBackupIpc(): void {
     try {
       const sources = buildExportSources()
       const preview = previewExport({ scope, sources })
-      log(`export preview: scope=${scope} tabs=${preview.tabCount ?? 'n/a'} conversations=${preview.conversationCount} uncompressed=${preview.totalUncompressedBytes}`)
+      log('export_preview', { scope, tab_count: preview.tabCount ?? 'n/a', conversation_count: preview.conversationCount, total_bytes: preview.totalUncompressedBytes })
       return { ok: true, ...preview }
     } catch (err: any) {
-      log(`export preview failed: ${err.message}`)
+      log('export_preview: failed', { error: err.message })
       return { ok: false, error: err.message }
     }
   })
@@ -94,7 +98,6 @@ export function registerConversationBackupIpc(): void {
       }
 
       const sources = buildExportSources()
-      const backendSnapshot = getCurrentBackend()
       const ionVersion = app.getVersion()
 
       const result = await runExport({
@@ -102,12 +105,11 @@ export function registerConversationBackupIpc(): void {
         destinationPath,
         sources,
         ionVersion,
-        backendSnapshot,
         onProgress: emitProgress,
       })
       return result
     } catch (err: any) {
-      log(`export failed: ${err.message}`)
+      log('export: failed', { error: err.message })
       return { ok: false, error: err.message }
     }
   })
@@ -135,7 +137,7 @@ export function registerConversationBackupIpc(): void {
       const preview = await previewRestore(sourcePath)
       return { ...preview, sourcePath }
     } catch (err: any) {
-      log(`restore preview failed: ${err.message}`)
+      log('restore_preview: failed', { error: err.message })
       return { ok: false, error: err.message }
     }
   })
@@ -164,7 +166,7 @@ export function registerConversationBackupIpc(): void {
       })
       return result
     } catch (err: any) {
-      log(`restore failed: ${err.message}`)
+      log('restore: failed', { error: err.message })
       return { ok: false, error: err.message }
     }
   })

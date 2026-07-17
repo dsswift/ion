@@ -30,24 +30,53 @@ private let attachedImagePattern: NSRegularExpression = {
     return try! NSRegularExpression(pattern: #"\[Attached image: ([^\]]+)\]"#)
 }()
 
+/// Matches the encoder-rewritten marker produced by attachment-encoder.ts
+/// after a successful encode: `[Attachment: NAME (content attached)]`.
+/// No path is embedded in this form — the image data rode the wire as a
+/// base64 payload to the engine. Strip the marker so it never renders as
+/// literal text in the user bubble; structured message.attachments handles
+/// display.
+private let contentAttachedPattern: NSRegularExpression = {
+    return try! NSRegularExpression(pattern: #"\[Attachment: [^\]]+ \(content attached\)\]"#)
+}()
+
 func parseAttachmentSegments(_ raw: String) -> AttachmentSegments {
     let ns = raw as NSString
     let range = NSRange(location: 0, length: ns.length)
     let matches = attachedImagePattern.matches(in: raw, range: range)
-    if matches.isEmpty {
+
+    // When neither marker form is present, return early without allocation.
+    let contentAttachedRange = NSRange(location: 0, length: ns.length)
+    let hasContentAttached = !contentAttachedPattern.matches(in: raw, range: contentAttachedRange).isEmpty
+    if matches.isEmpty && !hasContentAttached {
         return AttachmentSegments(images: [], text: raw)
     }
+
     var images: [String] = []
     var cleaned = NSMutableString(string: raw)
+
+    // Pass 1: extract image paths from [Attached image: PATH] markers and
+    // remove them from the text.
     for match in matches.reversed() {
         if match.numberOfRanges < 2 { continue }
         let path = ns.substring(with: match.range(at: 1))
         images.insert(path, at: 0)
         cleaned.replaceCharacters(in: match.range, with: "")
     }
+
     var text = cleaned as String
-    // Collapse runs of blank lines that would otherwise be left behind by
-    // marker removal (e.g. "[marker]\n\nactual text" → "actual text").
+
+    // Pass 2: strip [Attachment: NAME (content attached)] markers — the
+    // encoder-rewritten form produced by attachment-encoder.ts after the
+    // image data was base64-encoded and sent inline to the engine. No path
+    // is recoverable from this form; strip it so it never renders as literal
+    // text in the user bubble. Structured message.attachments carries display.
+    let textRange = NSRange(location: 0, length: (text as NSString).length)
+    text = contentAttachedPattern.stringByReplacingMatches(
+        in: text, range: textRange, withTemplate: ""
+    )
+
+    // Collapse blank lines left behind by marker removal.
     while text.contains("\n\n\n") { text = text.replacingOccurrences(of: "\n\n\n", with: "\n\n") }
     text = text.trimmingCharacters(in: .whitespacesAndNewlines)
     return AttachmentSegments(images: images, text: text)

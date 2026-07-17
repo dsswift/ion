@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -110,12 +110,34 @@ type controlMessage struct {
 	Type string `json:"type"`
 }
 
-func sendControl(conn *websocket.Conn, msgType string, timeout time.Duration) {
+// pushFailedControl is the wire shape for a relay:push-failed control frame.
+// It is emitted back to the ion peer when an APNs push fails at any stage.
+type pushFailedControl struct {
+	Type       string `json:"type"`                 // "relay:push-failed"
+	Reason     string `json:"reason"`               // queue_full | invalid_token | transient | token | marshal | request | transport
+	ResourceId string `json:"resourceId,omitempty"` // resource ID from the originating push message
+}
+
+func sendControl(conn *websocket.Conn, msgType string, timeout time.Duration, log *slog.Logger) {
 	msg, _ := json.Marshal(controlMessage{Type: msgType})
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	if err := conn.Write(ctx, websocket.MessageText, msg); err != nil {
-		log.Printf("sendControl(%s) error: %v", msgType, err)
+		log.Warn("sendControl error", "tag", "relay.control_error", "msg_type", msgType, "err", err)
+	}
+}
+
+// sendControlPayload writes an arbitrary JSON-marshallable control frame to conn.
+func sendControlPayload(conn *websocket.Conn, payload any, timeout time.Duration, log *slog.Logger) {
+	msg, err := json.Marshal(payload)
+	if err != nil {
+		log.Error("sendControlPayload marshal error", "tag", "relay.control_error", "err", err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	if err := conn.Write(ctx, websocket.MessageText, msg); err != nil {
+		log.Warn("sendControlPayload write error", "tag", "relay.control_error", "err", err)
 	}
 }
 
@@ -137,6 +159,13 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 		return
 	}
 
+	sessionID := r.Header.Get("X-Ion-Session-Id")
+
+	connLog := logger.With("channel_id", channelID, "role", role)
+	if sessionID != "" {
+		connLog = connLog.With("session_id", sessionID)
+	}
+
 	// Enable compression only for the desktop ("ion") role.  Apple's
 	// URLSessionWebSocketTask offers permessage-deflate in the handshake
 	// but its inflate implementation is broken for context-takeover mode,
@@ -152,7 +181,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 		CompressionMode:    compressionMode,
 	})
 	if err != nil {
-		log.Printf("accept error: %v", err)
+		connLog.Warn("accept error", "tag", "relay.forward_error", "err", err)
 		return
 	}
 
@@ -187,12 +216,12 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 	// Notify peer that the other side connected.
 	peer := ch.getPeerLocked(role)
 	if peer != nil {
-		sendControl(peer, "relay:peer-reconnected", h.WriteTimeout)
+		sendControl(peer, "relay:peer-reconnected", h.WriteTimeout, connLog)
 	}
 
 	ch.mu.Unlock()
 
-	log.Printf("channel=%s role=%s connected", channelID, role)
+	connLog.Info("client connected", "tag", "relay.connect")
 
 	// Start keepalive pings. Essential for public internet deployments where
 	// NAT timeouts, load balancer idle limits, and mobile network switches
@@ -215,7 +244,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 		if peer != nil {
 			writeCtx, writeCancel := context.WithTimeout(context.Background(), h.WriteTimeout)
 			if err := peer.Write(writeCtx, msgType, data); err != nil {
-				log.Printf("channel=%s forward error: %v", channelID, err)
+				connLog.Warn("forward error", "tag", "relay.forward_error", "err", err)
 			}
 			writeCancel()
 		} else if role == "ion" && pusher != nil && apnsToken != "" {
@@ -230,7 +259,35 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 				if body == "" {
 					body = "Approval required"
 				}
-				pusher.Send(apnsToken, title, body, msg.NotifyKind, msg.NotifyResourceId)
+
+				resourceId := msg.NotifyResourceId
+
+				// Build the failure callback before enqueuing so both the
+				// queue-full path (Send return value) and the async worker path
+				// (onFailure callback) funnel through the same closure.
+				onFailure := func(reason string) {
+					ch.mu.Lock()
+					ionConn := ch.ion
+					ch.mu.Unlock()
+					if ionConn == nil {
+						return
+					}
+					frame := pushFailedControl{
+						Type:       "relay:push-failed",
+						Reason:     reason,
+						ResourceId: resourceId,
+					}
+					connLog.Info("emitting push-failed to ion peer",
+						"tag", "relay.apns.push_failed",
+						"reason", reason,
+						"resource_id", resourceId)
+					sendControlPayload(ionConn, frame, h.WriteTimeout, connLog)
+				}
+
+				if err := pusher.SendWithNotify(apnsToken, title, body, msg.NotifyKind, resourceId, onFailure); err != nil {
+					// Queue was full — report back to the ion peer immediately.
+					onFailure("queue_full")
+				}
 			}
 		}
 	}
@@ -251,10 +308,10 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 	ch.mu.Unlock()
 
 	if peer != nil {
-		sendControl(peer, "relay:peer-disconnected", h.WriteTimeout)
+		sendControl(peer, "relay:peer-disconnected", h.WriteTimeout, connLog)
 	}
 
-	log.Printf("channel=%s role=%s disconnected", channelID, role)
+	connLog.Info("client disconnected", "tag", "relay.disconnect")
 	h.removeIfEmpty(channelID)
 	close(done)
 	_ = conn.CloseNow()

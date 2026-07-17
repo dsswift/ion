@@ -8,6 +8,7 @@ import type { State } from '../session-store-types'
 import type { ConversationPane } from '../../../shared/types-engine'
 import type { TabState } from '../../../shared/types'
 import { applyActiveGroupMove } from './event-slice-running-move'
+import { rDebug, rInfo } from '../../rendererLogger'
 
 /**
  * After an `engine_plan_mode_changed` or `engine_plan_proposal` event commits,
@@ -49,16 +50,16 @@ export function maybeApplyPlanModeGroupMove(
   const freshPanes: Map<string, ConversationPane> = freshState.conversationPanes
 
   if (!freshTab) {
-    console.log(`[auto-move:plan-mode] tab=${tabId.slice(0, 8)} not found post-commit, skipping`)
+    rDebug('auto-move.plan-mode', 'tab not found post-commit, skipping', { tab_id: tabId.slice(0, 8) })
     return
   }
 
   const status = freshTab.status
   if (status !== 'running' && status !== 'connecting') {
-    console.log(`[auto-move:plan-mode] tab=${tabId.slice(0, 8)} status=${status} is not active, skipping`)
+    rDebug('auto-move.plan-mode', 'tab not active, skipping', { tab_id: tabId.slice(0, 8), status })
     return
   }
 
-  console.log(`[auto-move:plan-mode] post-commit check tab=${tabId.slice(0, 8)} status=${status}`)
+  rInfo('auto-move.plan-mode', 'post-commit check', { tab_id: tabId.slice(0, 8), status })
   applyActiveGroupMove(tabId, freshTab, freshPanes, get, 'plan_mode_event')
 }

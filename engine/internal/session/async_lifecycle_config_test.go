@@ -97,16 +97,26 @@ func TestScheduleConfigFrom_CarriesEngineJSONBlock(t *testing.T) {
 	}
 }
 
-// TestScheduleConfigFrom_NilBlockReturnsZero pins that a nil Scheduling
-// block (and a nil rc) yields the zero scheduling.Config so the package
-// defaults apply.
-func TestScheduleConfigFrom_NilBlockReturnsZero(t *testing.T) {
-	zero := scheduleConfigFrom(&types.EngineRuntimeConfig{}) // Scheduling == nil
-	if zero.DefaultTz != "" || zero.FireTimeout != 0 || zero.CatchUpEnabled != nil || zero.PersistDir != "" {
-		t.Errorf("nil Scheduling block: expected zero Config, got %+v", zero)
+// TestScheduleConfigFrom_NilBlockStillSetsPersistDir pins that a nil Scheduling
+// block (and a nil rc) yields a Config that is zero for every field EXCEPT
+// PersistDir, which must always default to ~/.ion/scheduler so run-marker
+// persistence and catch-up keep working when engine.json has no Scheduling block.
+func TestScheduleConfigFrom_NilBlockStillSetsPersistDir(t *testing.T) {
+	want := defaultSchedulerPersistDir()
+
+	block := scheduleConfigFrom(&types.EngineRuntimeConfig{}) // Scheduling == nil
+	if block.DefaultTz != "" || block.FireTimeout != 0 || block.CatchUpEnabled != nil {
+		t.Errorf("nil Scheduling block: expected zero DefaultTz/FireTimeout/CatchUpEnabled, got %+v", block)
+	}
+	if block.PersistDir != want {
+		t.Errorf("nil Scheduling block: PersistDir = %q, want %q", block.PersistDir, want)
 	}
 
-	if nilRC := scheduleConfigFrom(nil); nilRC.DefaultTz != "" || nilRC.PersistDir != "" {
-		t.Errorf("nil rc: expected zero Config, got %+v", nilRC)
+	nilRC := scheduleConfigFrom(nil)
+	if nilRC.DefaultTz != "" || nilRC.FireTimeout != 0 || nilRC.CatchUpEnabled != nil {
+		t.Errorf("nil rc: expected zero DefaultTz/FireTimeout/CatchUpEnabled, got %+v", nilRC)
+	}
+	if nilRC.PersistDir != want {
+		t.Errorf("nil rc: PersistDir = %q, want %q", nilRC.PersistDir, want)
 	}
 }

@@ -152,11 +152,11 @@ func TestEarlyStop_TriggersContinuationBelowThreshold(t *testing.T) {
 		Hooks: RunHooks{OnBeforeEarlyStopDecision: earlyStopTestHook()},
 	}
 	b.StartRunWithConfig("req-es-trigger", types.RunOptions{
-		Prompt:            "go",
-		ProjectPath:       "/tmp",
-		Model:             testModel,
-		EarlyStopBudget:   budget,
-		EarlyStopEnabled:  earlyStopTrue,
+		Prompt:           "go",
+		ProjectPath:      "/tmp",
+		Model:            testModel,
+		EarlyStopBudget:  budget,
+		EarlyStopEnabled: earlyStopTrue,
 	}, cfg)
 
 	if !waitForExit(c, 5*time.Second) {
@@ -731,11 +731,11 @@ func TestEarlyStop_DisableEarlyStopContinueFlagSuppressesInjection(t *testing.T)
 		},
 	}
 	b.StartRunWithConfig("req-es-disable-flag", types.RunOptions{
-		Prompt:                    "go",
-		ProjectPath:               "/tmp",
-		Model:                     testModel,
-		EarlyStopBudget:           earlyStopBudget,
-		DisableEarlyStopContinue:  true,
+		Prompt:                   "go",
+		ProjectPath:              "/tmp",
+		Model:                    testModel,
+		EarlyStopBudget:          earlyStopBudget,
+		DisableEarlyStopContinue: true,
 	}, cfg)
 
 	if !waitForExit(c, 5*time.Second) {

@@ -22,8 +22,8 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { log as _log } from './logger'
 
-function log(msg: string): void {
-  _log('bootstrap', msg)
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('bootstrap', msg, fields)
 }
 
 const PLIST_LABEL = 'com.ion.engine'
@@ -69,7 +69,7 @@ function getVersion(binaryPath: string): string | null {
   try {
     return execFileSync(binaryPath, ['version'], { encoding: 'utf-8', timeout: 5000 }).trim()
   } catch (err) {
-    log(`getVersion: 'ion version' failed for ${binaryPath}: ${err instanceof Error ? err.message : String(err)}`)
+    log('engine_bootstrap: getVersion failed', { path: binaryPath, error: err instanceof Error ? err.message : String(err) })
     return null
   }
 }
@@ -123,7 +123,7 @@ export async function ensureEngineDaemon(): Promise<void> {
     if (needsWrite) {
       writeFileSync(plistDest, rendered, { mode: 0o644 })
       plistChanged = true
-      log(`Plist written to ${plistDest}`)
+      log('engine_bootstrap: plist written', { path: plistDest })
     }
   }
 
@@ -143,7 +143,7 @@ export async function ensureEngineDaemon(): Promise<void> {
     const destVersion = existsSync(destBinary) ? getVersion(destBinary) : null
 
     if (destVersion && destVersion === srcVersion) {
-      log(`Engine binary version match (${destVersion}), skipping copy`)
+      log('engine_bootstrap: binary version match, skipping copy', { version: destVersion })
     } else {
       log(
         `Engine binary ${destVersion ? `version mismatch (${destVersion} -> ${srcVersion})` : 'missing'}` +
@@ -153,21 +153,29 @@ export async function ensureEngineDaemon(): Promise<void> {
       copyFileSync(srcBinary, destBinary)
       chmodSync(destBinary, 0o755)
       binaryUpdated = true
-      log(`Engine binary installed to ${destBinary}`)
+      log('engine_bootstrap: binary installed', { path: destBinary })
     }
   }
 
   // ── Step 3: Run install-assets ─────────────────────────────────────────────
+  //
+  // Must run from srcBinary (the bundled binary), not destBinary (the installed
+  // copy). The install-assets command resolves its asset root by walking up from
+  // the executable directory looking for an adjacent extensions/ tree. That tree
+  // exists at Contents/Resources/engine/extensions/ — next to srcBinary — but
+  // NOT next to destBinary (~/.ion/bin/ion), which has no sibling extensions/.
 
-  if (existsSync(destBinary)) {
+  if (!srcBinary) {
+    log('WARNING: bundled engine binary not found, skipping install-assets')
+  } else {
     try {
-      const output = execFileSync(destBinary, ['install-assets'], {
+      const output = execFileSync(srcBinary, ['install-assets'], {
         encoding: 'utf-8',
         timeout: 30000,
       })
-      log(`install-assets: ${output.trim().split('\n').pop() || 'done'}`)
+      log('engine_bootstrap: install-assets done', { msg: output.trim().split('\n').pop() || 'done' })
     } catch (err: any) {
-      log(`WARNING: install-assets failed (non-fatal): ${err.message}`)
+      log('engine_bootstrap: install-assets failed (non-fatal)', { error: err.message })
     }
   }
 
@@ -191,7 +199,7 @@ export async function ensureEngineDaemon(): Promise<void> {
     if (msg.includes('already loaded') || msg.includes('service already loaded') || err.status === 5) {
       log('LaunchAgent already loaded (expected on subsequent launches)')
     } else {
-      log(`launchctl bootstrap note: ${msg}`)
+      log('engine_bootstrap: launchctl bootstrap note', { msg })
     }
   }
 
@@ -214,14 +222,49 @@ export async function ensureEngineDaemon(): Promise<void> {
   try {
     execSync(kickstartCmd, { timeout: 5000 })
     if (forceRestart) {
-      log(`launchctl kickstart -k succeeded (force-restart: binaryUpdated=${binaryUpdated} plistChanged=${plistChanged})`)
+      log('engine_bootstrap: launchctl kickstart succeeded', { binary_updated: binaryUpdated, plist_changed: plistChanged })
     } else {
       log('launchctl kickstart succeeded (no change — daemon left running if already up)')
     }
   } catch (err: any) {
-    log(`WARNING: launchctl kickstart failed (forceRestart=${forceRestart}): ${err.message}`)
+    log('engine_bootstrap: launchctl kickstart failed', { force_restart: forceRestart, error: err.message })
   }
 }
 
 // Exported for testing
 export { findPlistTemplate, findBundledBinary, getVersion, PLIST_LABEL, PLIST_FILENAME }
+
+/**
+ * Force-restart the running engine daemon so it re-reads engine.json.
+ *
+ * The engine is a persistent launchd daemon that outlives the desktop and reads
+ * engine.json exactly ONCE at process start. A config change (backend, model,
+ * logging, egress, ...) therefore does not take effect until the daemon
+ * restarts. This is the on-demand restart affordance: it force-restarts the
+ * daemon in place (`launchctl kickstart -k`) WITHOUT quitting the desktop or
+ * killing background work beyond the engine process itself — the daemon comes
+ * straight back up (RunAtLoad + KeepAlive) with fresh config.
+ *
+ * This is distinct from Quit All (which boots the daemon OUT so it stays down
+ * until the next desktop launch) and from Quit Desktop (which leaves the daemon
+ * untouched). Here the daemon is intentionally recycled and immediately
+ * respawned by launchd.
+ *
+ * No-op on non-macOS (the daemon is macOS-only). Returns true when the kickstart
+ * command was issued successfully.
+ */
+export function restartEngineDaemon(): boolean {
+  if (process.platform !== 'darwin') {
+    log('restartEngineDaemon: not macOS, skipping')
+    return false
+  }
+  const uid = process.getuid?.() ?? 501
+  try {
+    execSync(`launchctl kickstart -k gui/${uid}/${PLIST_LABEL}`, { timeout: 5000 })
+    log('restartEngineDaemon: launchctl kickstart -k succeeded (daemon recycled, re-reading engine.json)')
+    return true
+  } catch (err: any) {
+    log('restartEngineDaemon: launchctl kickstart -k failed', { error: err.message })
+    return false
+  }
+}

@@ -13,16 +13,29 @@ import Foundation
 /// (RemoteTabGroup, used by the snapshot event, lives in RemoteTabGroup.swift.)
 enum RemoteEvent: Sendable {
     case snapshot(tabs: [RemoteTabState], recentDirectories: [String], tabGroupMode: String?, tabGroups: [RemoteTabGroup]?, preferredModel: String?, engineDefaultModel: String?, availableModels: [RemoteModelEntry]?, customName: String?, customIcon: String?, remoteDisplayUpdatedAt: Date?, resources: [String: [[String: AnyCodable]]]?)
-    case tabCreated(tab: RemoteTabState)
+    case tabCreated(tab: RemoteTabState, clientCmdId: String?)
     case tabClosed(tabId: String)
     case tabStatus(tabId: String, status: TabStatus)
+    /// Lightweight tab-row metadata delta. Emitted event-driven on title, cost,
+    /// conversationInstances, or groupId change so the tab list stays current
+    /// without waiting for the next 5 s snapshot poll. All fields are optional;
+    /// iOS applies only the non-nil fields.
+    case tabMeta(tabId: String, title: String?, totalCostUsd: Double?, groupId: String?)
     case textChunk(tabId: String, text: String)
     case toolCall(tabId: String, toolName: String, toolId: String)
     case toolResult(tabId: String, toolId: String, content: String, isError: Bool)
     case taskComplete(tabId: String, result: String, costUsd: Double)
     case permissionRequest(tabId: String, instanceId: String?, questionId: String, toolName: String, toolInput: [String: AnyCodable]?, options: [PermissionOption])
     case permissionResolved(tabId: String, questionId: String)
-    case conversationHistory(tabId: String, messages: [Message], hasMore: Bool, cursor: String?)
+    /// `cursor` is the RESPONSE cursor: set on every page that has more
+    /// history, it is the token iOS sends back to fetch the next-older page.
+    /// `before` is an ECHO of the REQUEST cursor from the
+    /// `desktop_load_conversation` this page answers: nil for a first-page or
+    /// fingerprint-heal load, non-nil for an older-page pagination request.
+    /// Replace-vs-prepend is discriminated by `before`, NEVER by `cursor` —
+    /// branching on the response cursor made every heal response take the
+    /// prepend branch and append a duplicate page (interlaced transcripts).
+    case conversationHistory(tabId: String, messages: [Message], hasMore: Bool, cursor: String?, before: String?)
     case messageAdded(tabId: String, message: Message)
     case messageUpdated(tabId: String, messageId: String, content: String?, toolStatus: ToolStatus?, toolInput: String?)
     case queueUpdate(tabId: String, prompts: [String])
@@ -41,6 +54,13 @@ enum RemoteEvent: Sendable {
     /// Synthesized by TransportManager during the disconnect grace period
     /// (transports dropped but may recover within 4s).
     case transportReconnecting
+    /// Synthesized by TransportManager when the Bonjour auto-reconnect loop's
+    /// LAN auth attempt is definitively rejected by the desktop (explicit
+    /// auth_result success=false, or application close 4000–4999 such as
+    /// 4003 "unknown device"). The pairing identity is dead on every
+    /// transport — the ViewModel routes to the pairing screen (.authFailed)
+    /// without wiping pairedDevices, and the transport stops retrying.
+    case lanAuthRejected
     /// Heartbeat from the desktop with sender timestamp and queue depth.
     case heartbeat(senderTs: Double, buffered: Int)
     /// Answer to a requestResend whose frame range was evicted from the
@@ -90,8 +110,26 @@ enum RemoteEvent: Sendable {
     /// message is already part of the conversation. See the Go-side
     /// SteerInjectedEvent and the TS engine_steer_injected variant.
     case engineSteerInjected(tabId: String, instanceId: String?, messageLength: Int)
+    /// An extension injected a prompt via ctx.sendPrompt (dispatch-completion
+    /// delivery, check-ins, revives): the engine started a run on a user turn
+    /// no client submitted, so no client did an optimistic insert. Clients
+    /// append the prompt as a user message; the same content persists in the
+    /// conversation file, so a history reload shows the identical transcript.
+    /// Mirrors the Go PromptInjectedEvent / TS engine_prompt_injected.
+    /// kind="agent_completion" means this is a machine-to-machine dispatch
+    /// callback — iOS must NOT inject it as a user message.
+    case enginePromptInjected(tabId: String, instanceId: String?, prompt: String, origin: String?, kind: String?)
     case engineScheduleFired(tabId: String, instanceId: String?)
     case engineLlmCall(tabId: String, instanceId: String?)
+    /// A single image produced during a run, forwarded from the engine's
+    /// `engine_image_content` event. `path` is a desktop-local filesystem
+    /// path under the conversation's images/ directory (never base64 on the
+    /// wire — the engine's never-base64 contract). iOS fetches the bytes
+    /// lazily via RemoteImageFetcher (fs_read_image → desktop_fs_image_content)
+    /// when the path misses the local cache. `source` is "tool" (with a
+    /// `toolId`) or "provider" (no toolId); the handler attaches the image to
+    /// the matching tool message or the last assistant message respectively.
+    case engineImageContent(tabId: String, instanceId: String?, path: String, mediaType: String, source: String, toolId: String?)
     case engineDispatchStart(tabId: String, instanceId: String?, dispatchAgent: String, dispatchSessionId: String, dispatchModel: String, dispatchTask: String, dispatchDepth: Int, dispatchParentId: String, dispatchId: String)
     /// engine_dispatch_end -- emitted when an extension-initiated dispatch completes.
     /// Carries telemetry (exit code, elapsed, cost) and nesting identity
@@ -109,17 +147,32 @@ enum RemoteEvent: Sendable {
     case engineDialog(tabId: String, instanceId: String?, dialogId: String, method: String, title: String, options: [String]?, defaultValue: String?)
     case engineDialogResolved(tabId: String, instanceId: String?, dialogId: String)
     case engineTextDelta(tabId: String, instanceId: String?, text: String)
-    case engineMessageEnd(tabId: String, instanceId: String?, inputTokens: Int, outputTokens: Int, contextPercent: Double, cost: Double)
+    /// desktop_stream_reset: the engine is retrying the turn after a
+    /// mid-stream provider failure or reactive compaction. All partial output
+    /// from the interrupted attempt — the trailing streamed assistant text
+    /// and any active thinking row — must be discarded. Mirrors the desktop
+    /// renderer's stream_reset handling (event-slice.ts).
+    case engineStreamReset(tabId: String, instanceId: String?)
+    /// `entryId` / `userEntryId` are the canonical persisted tree-entry ids of
+    /// the assistant message this end closes and of the run-opening user turn.
+    /// iOS re-keys the locally-streamed rows (UUID / clientMsgId ids) to these
+    /// canonical ids so a subsequent history page — whose rows carry the same
+    /// ids — anchors on them instead of duplicating them. Optional: absent on
+    /// older desktops.
+    case engineMessageEnd(tabId: String, instanceId: String?, inputTokens: Int, outputTokens: Int, contextPercent: Double, cost: Double, entryId: String?, userEntryId: String?)
     case engineDead(tabId: String, instanceId: String?, exitCode: Int?, signal: String?, stderrTail: [String])
     case engineInstanceAdded(tabId: String, instanceId: String, label: String)
     case engineInstanceRemoved(tabId: String, instanceId: String)
     case engineInstanceMoved(sourceTabId: String, instanceId: String, targetTabId: String)
     /// `metadata` is an opaque harness-defined hints map the engine forwards
-    /// verbatim. iOS does not yet act on the field, but decoding it cleanly
-    /// here means future iOS handlers (e.g. dedupKey-based rendering) can
-    /// adopt the convention without a wire-protocol change. `AnyCodable`
-    /// is the same pass-through JSON helper used by `desktopSettingsSnapshot`.
-    case engineHarnessMessage(tabId: String, instanceId: String?, message: String, source: String?, metadata: [String: AnyCodable]?)
+    /// verbatim. iOS decodes it cleanly so future handlers can adopt
+    /// hint-map conventions without a wire change. `dedupKey` and `dedupMode`
+    /// are the relocation-dedup fields promoted to top-level for direct access
+    /// (mirrors Go's `HarnessMessageEvent` json tags and the desktop relay
+    /// spread). `dedupMode` values: "relocate" (move-forward) | absent
+    /// (suppress-later). Both are forwarded as top-level wire fields by the
+    /// desktop relay (engine_harness_message spread) and on history-replay.
+    case engineHarnessMessage(tabId: String, instanceId: String?, message: String, source: String?, metadata: [String: AnyCodable]?, dedupKey: String?, dedupMode: String?)
     // engineConversationHistory removed (WI-004 / #259). iOS now handles
     // conversationHistory for every tab — the unified desktop_conversation_history
     // response maps to conversationHistory which carries hasMore and cursor.
@@ -365,8 +418,9 @@ enum RemoteEvent: Sendable {
     case uploadAttachmentResult(id: String, name: String, path: String, correlationId: String?, error: String?)
     // Tab attachments response
     case tabAttachments(tabId: String, attachments: [TabAttachmentEntry])
-    // Diagnostic log request from desktop
-    case requestDiagnosticLogs
+    // Diagnostic log request from desktop. sinceSeq = 0 → full export;
+    // sinceSeq > 0 → incremental export of lines whose fields.seq exceeds it.
+    case requestDiagnosticLogs(sinceSeq: Int)
 
     /// Full content for a single resource item, fetched on demand.
     /// Sent by the desktop in response to a `request_resource_content`
@@ -402,6 +456,7 @@ enum RemoteEvent: Sendable {
         case tabCreated = "desktop_tab_created"
         case tabClosed = "desktop_tab_closed"
         case tabStatus = "desktop_tab_status"
+        case tabMeta = "desktop_tab_meta"
         case textChunk = "desktop_text_chunk"
         case toolCall = "desktop_tool_call"
         case toolResult = "desktop_tool_result"
@@ -417,6 +472,7 @@ enum RemoteEvent: Sendable {
         case remoteDisplay = "desktop_remote_display"
         case peerDisconnected = "peer_disconnected"
         case transportReconnecting = "transport_reconnecting"
+        case lanAuthRejected = "lan_auth_rejected"
         case heartbeat = "desktop_heartbeat"
         case resendUnavailable = "desktop_resend_unavailable"
         case error = "desktop_error"
@@ -437,6 +493,7 @@ enum RemoteEvent: Sendable {
         case engineToolStalled = "desktop_tool_stalled"
         case engineRunStalled = "desktop_run_stalled"
         case engineSteerInjected = "desktop_steer_injected"
+        case enginePromptInjected = "desktop_prompt_injected"
         // Extended-thinking events (issue #158). The desktop forwards the
         // engine's thinking_block_start / thinking_delta / thinking_block_end
         // events uniformly, stripping the engine_ prefix and adding desktop_.
@@ -445,6 +502,7 @@ enum RemoteEvent: Sendable {
         case engineThinkingBlockEnd = "desktop_thinking_block_end"
         case engineScheduleFired = "desktop_schedule_fired"
         case engineLlmCall = "desktop_llm_call"
+        case engineImageContent = "desktop_image_content"
         case engineDispatchStart = "desktop_dispatch_start"
         case engineDispatchEnd = "desktop_dispatch_end"
         case engineDispatchActivity = "desktop_dispatch_activity"
@@ -453,6 +511,7 @@ enum RemoteEvent: Sendable {
         case engineDialog = "desktop_dialog"
         case engineDialogResolved = "desktop_dialog_resolved"
         case engineTextDelta = "desktop_text_delta"
+        case engineStreamReset = "desktop_stream_reset"
         case engineMessageEnd = "desktop_message_end"
         case engineDead = "desktop_dead"
         case engineInstanceAdded = "desktop_instance_added"
@@ -517,9 +576,18 @@ enum RemoteEvent: Sendable {
     enum CodingKeys: String, CodingKey {
         case type
         case tabs, tab, tabId, status, text, toolName, toolId
+        // desktop_tab_created echo of the iOS create command's correlation id,
+        // consumed by the confirm-or-resend delivery loop (create-tab reliability).
+        case clientCmdId
+        case runCostUsd, totalCostUsd, groupId  // desktop_tab_meta delta fields (title is already below); runCostUsd is canonical, totalCostUsd is deprecated compat alias
         case content, isError, result, costUsd
+        case sinceSeq  // desktop_request_diagnostic_logs incremental seq cursor
         case questionId, toolInput, options, message
         case messages, hasMore, cursor, messageId, prompts, relayUrl, relayApiKey
+        // desktop_conversation_history — echo of the REQUEST cursor from the
+        // desktop_load_conversation this page answers. Discriminates
+        // wholesale-replace (nil) from older-page prepend (non-nil).
+        case before
         case toolStatus, source, recentDirectories
         case switchTo
         case instanceId, data, exitCode, instance, instances, activeInstanceId, buffers
@@ -542,6 +610,10 @@ enum RemoteEvent: Sendable {
         case commands
         case ts, buffered
         case id, name, path
+        // engine_image_content — a run-produced image. `path`, `source`,
+        // `toolId` are shared above; `mediaType` is the image MIME type
+        // (e.g. "image/png") mirroring the Go ImageContentEvent json tag.
+        case mediaType
         case correlationId
         case dataUrl
         case attachments
@@ -555,6 +627,12 @@ enum RemoteEvent: Sendable {
         // engine_steer_injected — mid-turn steer drain confirmation.
         // Mirrors EngineEvent.SteerMessageLength's JSON tag.
         case steerMessageLength
+        // engine_prompt_injected — extension-injected prompt (the run's user
+        // turn no client submitted). Mirror EngineEvent.InjectedPrompt /
+        // InjectedPromptOrigin JSON tags.
+        case injectedPrompt
+        case injectedPromptOrigin
+        case injectedPromptKind
         // Extended-thinking events (issue #158). The desktop projects the
         // engine's bare thinking field names (text / totalTokens /
         // elapsedSeconds / redacted) onto these prefixed wire keys when it
@@ -634,9 +712,16 @@ enum RemoteEvent: Sendable {
         // user-visible engine events (status, working_message, notify,
         // harness_message). iOS does not act on the field yet but
         // decodes it cleanly so future handlers can adopt conventions
-        // like `metadata.dedupKey` without a wire change. See
-        // docs/protocol/server-events.md for well-known keys.
+        // without a wire change. See docs/protocol/server-events.md for
+        // well-known keys.
         case metadata
+        // harness_message dedup fields. `dedupKey` is the idempotency token;
+        // `dedupMode` is the retention hint ("relocate" = move-forward,
+        // absent = suppress-later). Both are forwarded as top-level wire
+        // fields by the desktop relay (engine_harness_message spread) and
+        // on history-replay messages. Mirror Go's `HarnessMessageEvent`
+        // json tags exactly.
+        case dedupKey, dedupMode
         case agentName
         case conversationId
         // resource_content — lazy-loaded full body for a single resource item.

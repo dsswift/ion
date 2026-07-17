@@ -7,7 +7,6 @@ import (
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
 )
-
 // TestResolveContextWindow pins Defect 3: a registry entry with
 // ContextWindow == 0 must NOT overwrite the engine default with 0 (which would
 // collapse compaction to a 0-token budget every turn). The > 0 guard lives at
@@ -41,6 +40,30 @@ func TestResolveContextWindow(t *testing.T) {
 			got := resolveContextWindow(tt.model)
 			if got != tt.want {
 				t.Errorf("resolveContextWindow(%q) = %d, want %d", tt.model, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestResolveContextWindow_SonnetAndOpus48 pins the catalog values updated by
+// the models.json fix so a future accidental regression is caught immediately.
+func TestResolveContextWindow_SonnetAndOpus48(t *testing.T) {
+	// claude-sonnet-4-6 was updated from 200k to 1M in the catalog fix.
+	// claude-opus-4-8 was added with 1M window.
+	cases := []struct {
+		model string
+		want  int
+	}{
+		{"claude-sonnet-4-6", 1_000_000},
+		{"claude-opus-4-8", 1_000_000},
+		{"claude-opus-4-6", 1_000_000}, // already correct; guard against accidental revert
+		{"claude-opus-4-7", 1_000_000}, // same
+	}
+	for _, tc := range cases {
+		t.Run(tc.model, func(t *testing.T) {
+			got := resolveContextWindow(tc.model)
+			if got != tc.want {
+				t.Errorf("resolveContextWindow(%q) = %d, want %d", tc.model, got, tc.want)
 			}
 		})
 	}

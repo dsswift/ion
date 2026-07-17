@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react'
+import { useViewportClamp } from '../hooks/useViewportClamp'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { Check } from '@phosphor-icons/react'
@@ -17,6 +18,8 @@ export function FinishWorkContextMenu({ anchor, worktree, onClose }: {
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const ref = useRef<HTMLDivElement>(null)
+  // Keep the portaled popover inside the window (ATV top-anchored strip).
+  useViewportClamp(ref, true)
   const strategy = usePreferencesStore((s) => s.worktreeCompletionStrategy)
   const activeTabId = useSessionStore((s) => s.activeTabId)
 

@@ -90,7 +90,7 @@ func (h *Host) transpileTS(tsPath string, manifest *Manifest) (string, error) {
 		return "", fmt.Errorf("esbuild failed: %w\n%s\n(install with: npm i -g esbuild)", err, stderr.String())
 	}
 
-	utils.Log("extension", fmt.Sprintf("transpiled %s -> %s", tsPath, outPath))
+	utils.LogWithFields(utils.LevelInfo, "extension", "transpiled ->", map[string]any{"ts_path": tsPath, "out_path": outPath})
 	return outPath, nil
 }
 
@@ -129,7 +129,7 @@ func ensureNodeModules(extDir string) error {
 			}
 		}
 		if !newest.IsZero() && !pkgInfo.ModTime().After(newest) {
-			utils.Log("extension", fmt.Sprintf("node_modules up to date in %s", extDir))
+			utils.LogWithFields(utils.LevelInfo, "extension", "node_modules up to date in", map[string]any{"ext_dir": extDir})
 			return nil
 		}
 	}
@@ -147,7 +147,7 @@ func ensureNodeModules(extDir string) error {
 		}
 	}
 
-	utils.Log("extension", fmt.Sprintf("running npm install in %s", extDir))
+	utils.LogWithFields(utils.LevelInfo, "extension", "running npm install in", map[string]any{"ext_dir": extDir})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
@@ -165,7 +165,7 @@ func ensureNodeModules(extDir string) error {
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("npm install in %s: %w\n%s", extDir, err, stderr.String())
 	}
-	utils.Log("extension", fmt.Sprintf("npm install completed in %s", extDir))
+	utils.LogWithFields(utils.LevelInfo, "extension", "npm install completed in", map[string]any{"ext_dir": extDir})
 	return nil
 }
 
@@ -200,7 +200,7 @@ func (h *Host) parseInitResult(raw json.RawMessage) {
 		Resources []types.ResourceDeclaration `json:"resources,omitempty"`
 	}
 	if err := json.Unmarshal(raw, &result); err != nil {
-		utils.Log("extension", fmt.Sprintf("init result parse error: %v", err))
+		utils.LogWithFields(utils.LevelInfo, "extension", "init result parse error", map[string]any{"error": err})
 		return
 	}
 
@@ -222,6 +222,18 @@ func (h *Host) parseInitResult(raw json.RawMessage) {
 				}
 				if len(raw) == 0 || string(raw) == "null" {
 					return &types.ToolResult{Content: ""}, nil
+				}
+				// Structured image return: { content, images:[{path, mediaType}] }.
+				// When present, read + base64-encode each image into
+				// ToolResult.Images. Falls through to the text path below when the
+				// response carries no images array.
+				if result, ok := parseToolResultWithImages(raw, h.name); ok {
+					utils.LogWithFields(utils.LevelInfo, "extension", "tool returned structured image result", map[string]any{
+						"tag":    h.name,
+						"tool":   toolName,
+						"images": len(result.Images),
+					})
+					return result, nil
 				}
 				var content interface{}
 				if err := json.Unmarshal(raw, &content); err != nil {
@@ -247,8 +259,7 @@ func (h *Host) parseInitResult(raw json.RawMessage) {
 	}
 
 	if len(result.Tools) > 0 || len(result.Commands) > 0 {
-		utils.Log("extension", fmt.Sprintf("registered %d tools, %d commands from init",
-			len(result.Tools), len(result.Commands)))
+		utils.LogWithFields(utils.LevelInfo, "extension", "registered tools and commands from init", map[string]any{"count": len(result.Tools), "max": len(result.Commands)})
 	}
 
 	// Stash async-trigger declarations on the host. The session manager
@@ -262,14 +273,12 @@ func (h *Host) parseInitResult(raw json.RawMessage) {
 		h.pendingInitWebhooks = append([]WebhookRoute(nil), result.Webhooks...)
 		h.pendingInitSchedules = append([]ScheduleJob(nil), result.Schedules...)
 		h.async.mu.Unlock()
-		utils.Log("extension", fmt.Sprintf("queued init async decls: ext=%s webhooks=%d schedules=%d",
-			h.name, len(result.Webhooks), len(result.Schedules)))
+		utils.LogWithFields(utils.LevelInfo, "extension", "queued init async decls", map[string]any{"model": h.name, "count": len(result.Webhooks), "max": len(result.Schedules)})
 	}
 
 	// Stash resource declarations for session wiring.
 	if len(result.Resources) > 0 {
 		h.pendingInitResources = append([]types.ResourceDeclaration(nil), result.Resources...)
-		utils.Log("extension", fmt.Sprintf("queued init resource decls: ext=%s resources=%d",
-			h.name, len(result.Resources)))
+		utils.LogWithFields(utils.LevelInfo, "extension", "queued init resource decls", map[string]any{"model": h.name, "count": len(result.Resources)})
 	}
 }
