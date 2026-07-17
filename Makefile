@@ -131,7 +131,7 @@ test-linux-desktop:
 		bash -c "useradd -m -s /bin/bash ionci && \
 		         chmod -R a+rX /src 2>/dev/null || true && \
 		         chown ionci:ionci /src/desktop/node_modules && \
-		         su ionci -c 'mkdir -p /home/ionci/.ion && cd /src/desktop && npm ci --ignore-scripts && npm run typecheck && npm test'"
+		         su ionci -c 'cd /src/desktop && npm ci --ignore-scripts && npm run typecheck && npm test'"
 
 clean:
 	@cd engine && rm -rf bin/ dist/

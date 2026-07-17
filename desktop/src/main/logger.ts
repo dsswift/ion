@@ -1,9 +1,10 @@
-import { appendFile, appendFileSync, statSync, renameSync, unlinkSync } from 'fs'
+import { appendFile, appendFileSync, statSync, renameSync, unlinkSync, mkdirSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { shipToEgress } from './log-egress'
 
-const LOG_FILE = join(homedir(), '.ion', 'desktop.jsonl')
+const LOG_DIR = join(homedir(), '.ion')
+const LOG_FILE = join(LOG_DIR, 'desktop.jsonl')
 const FLUSH_INTERVAL_MS = 500
 const MAX_BUFFER_SIZE = 64
 const MAX_FILE_SIZE = 20 * 1024 * 1024 // 20MB
@@ -70,6 +71,19 @@ function serialize(level: LogLevel, tag: string, msg: string, fields?: Record<st
 function initBytes(): void {
   if (bytesInitialized) return
   bytesInitialized = true
+  // Ensure the log directory exists before the first write. In production the
+  // engine daemon creates ~/.ion long before the desktop starts, but nothing
+  // guarantees it in every environment (fresh machine, CI runner, plain-Node
+  // vitest): appendFile[Sync] creates missing FILES, never missing
+  // DIRECTORIES, so a missing ~/.ion turned every ERROR-level log into an
+  // ENOENT throw from the logger itself.
+  try {
+    mkdirSync(LOG_DIR, { recursive: true })
+  } catch {
+    // Directory creation failure (permissions, read-only fs) surfaces on the
+    // next appendFile call; nothing useful to do here — the logger cannot
+    // log its own bootstrap failure.
+  }
   try {
     bytesWritten = statSync(LOG_FILE).size
   } catch {
