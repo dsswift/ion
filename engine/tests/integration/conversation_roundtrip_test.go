@@ -139,9 +139,9 @@ func TestConversationMigrationV1ToV2(t *testing.T) {
 
 	// Write a v1 JSON conversation (no entries, no version)
 	v1Conv := map[string]interface{}{
-		"id":      "migrate-test",
-		"system":  "You are helpful.",
-		"model":   "test-model",
+		"id":     "migrate-test",
+		"system": "You are helpful.",
+		"model":  "test-model",
 		"messages": []interface{}{
 			map[string]interface{}{"role": "user", "content": "Hello"},
 			map[string]interface{}{"role": "assistant", "content": "Hi!"},

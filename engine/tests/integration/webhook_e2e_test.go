@@ -43,11 +43,11 @@ import (
 // Cleanup is registered with t.Cleanup so a leaked listener or
 // subprocess can't bleed into the next test.
 type e2eEnv struct {
-	host     *extension.Host
-	server   *webhooks.Server
-	addr     string
-	events   *eventBus
-	emitFn   func(types.EngineEvent)
+	host   *extension.Host
+	server *webhooks.Server
+	addr   string
+	events *eventBus
+	emitFn func(types.EngineEvent)
 }
 
 // eventBus is the minimal "captures every event" sink the server

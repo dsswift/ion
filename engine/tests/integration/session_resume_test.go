@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/session"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/tests/helpers"
@@ -94,17 +95,35 @@ func TestStartSessionWithSessionID(t *testing.T) {
 // overwriting ConversationID with the backend value.)
 func TestSessionIDPersistsAcrossPrompts(t *testing.T) {
 	mb := helpers.NewMockBackend()
+	// The resume-vs-bridge contract under test is native-session behavior:
+	// cursor capture on exit and CliResumeSessionID threading at dispatch
+	// only engage when the serving backend reports a native-session,
+	// resume-capable descriptor (see resolveCliContinuity / handleRunExit).
+	mb.Caps = &backend.BackendCapabilities{
+		Kind:         "mock-cli",
+		ContextModel: backend.ContextModelNativeSession,
+		PlanMode:     true,
+		Steering:     true,
+		Resume:       true,
+	}
 	mgr := session.NewManager(mb)
 
 	ec := newResumeEventCollector(mgr)
 
-	if _, err := mgr.StartSession("resume-2", defaultConfig()); err != nil {
+	// Unique session key per run: this test captures a native-session cursor
+	// which persistence writes into the real conversation store (keyed by the
+	// session-key binding). A static key would rehydrate the previous run's
+	// cursor at StartSession and the first prompt would resume instead of
+	// starting fresh — making the test fail on every second local run.
+	key := "resume-2-" + time.Now().Format("20060102150405.000000000")
+
+	if _, err := mgr.StartSession(key, defaultConfig()); err != nil {
 		t.Fatalf("StartSession: %v", err)
 	}
-	t.Cleanup(func() { mgr.StopSession("resume-2") })
+	t.Cleanup(func() { mgr.StopSession(key) })
 
 	// First prompt.
-	if err := mgr.SendPrompt("resume-2", "first message", nil); err != nil {
+	if err := mgr.SendPrompt(key, "first message", nil); err != nil {
 		t.Fatalf("SendPrompt: %v", err)
 	}
 	time.Sleep(50 * time.Millisecond)
@@ -150,7 +169,7 @@ func TestSessionIDPersistsAcrossPrompts(t *testing.T) {
 
 	// Second prompt: ConversationID stays the Ion id; the backend-provided value
 	// flows through CliResumeSessionID for --resume.
-	if err := mgr.SendPrompt("resume-2", "second message", nil); err != nil {
+	if err := mgr.SendPrompt(key, "second message", nil); err != nil {
 		t.Fatalf("SendPrompt (second): %v", err)
 	}
 	time.Sleep(50 * time.Millisecond)

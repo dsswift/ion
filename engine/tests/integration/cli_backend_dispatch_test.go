@@ -25,7 +25,7 @@ import (
 // message proves it attempted to use the CLI path ("claude CLI not found")
 // rather than the API path ("no API key found").
 func TestDispatchAgent_CliBackendParent_SpawnsCliChild(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := session.NewManager(cb)
 
 	cfg := types.EngineConfig{
@@ -150,7 +150,7 @@ func TestDispatchAgent_CliBackendParent_SpawnsCliChild(t *testing.T) {
 // 2. tools/call with missing prompt returns an error
 // 3. tools/call with unknown agent name returns spec resolution error
 func TestWireAgentToolServer_McpRoundTrip(t *testing.T) {
-	cb := backend.NewCliBackend()
+	cb := backend.NewClaudeCodeBackend()
 	mgr := session.NewManager(cb)
 
 	cfg := types.EngineConfig{
@@ -264,9 +264,9 @@ func TestWireAgentToolServer_McpRoundTrip(t *testing.T) {
 // CliBackend and ApiBackend parents at the integration level.
 func TestNewChildBackend_TypeCorrectness(t *testing.T) {
 	// CliBackend parent → CliBackend child
-	cliMgr := session.NewManager(backend.NewCliBackend())
+	cliMgr := session.NewManager(backend.NewClaudeCodeBackend())
 	cliChild := cliMgr.TestNewChildBackend()
-	if _, ok := cliChild.(*backend.CliBackend); !ok {
+	if _, ok := cliChild.(*backend.ClaudeCodeBackend); !ok {
 		t.Errorf("CliBackend parent: expected *CliBackend child, got %T", cliChild)
 	}
 

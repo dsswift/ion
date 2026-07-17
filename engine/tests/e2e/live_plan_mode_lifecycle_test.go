@@ -36,7 +36,7 @@ func findSessionID(events []types.EngineEvent) string {
 // one. The desktop clears tab.planFilePath on implement (Fix 1), and the
 // engine allocates a new slug when planFilePath is empty.
 func TestLivePlanModeReplanAfterImplementGetsNewSlug(t *testing.T) {
-	parentBackend := backend.NewCliBackend()
+	parentBackend := backend.NewClaudeCodeBackend()
 	mgr := session.NewManager(parentBackend)
 
 	workDir := t.TempDir()
@@ -173,7 +173,7 @@ func TestLivePlanModeReplanAfterImplementGetsNewSlug(t *testing.T) {
 // When the desktop passes the old planFilePath (toggle without implementing),
 // the engine should reuse it rather than allocating a fresh slug.
 func TestLivePlanModeReplanWithStalePlanFilePathReusesIt(t *testing.T) {
-	parentBackend := backend.NewCliBackend()
+	parentBackend := backend.NewClaudeCodeBackend()
 	mgr := session.NewManager(parentBackend)
 
 	cfg := types.EngineConfig{
@@ -254,7 +254,7 @@ func TestLivePlanModeReplanWithStalePlanFilePathReusesIt(t *testing.T) {
 // (Issue 2). The model should remember content from the prior run when
 // the conversation is loaded for the plan-mode run.
 func TestLivePlanModeConversationContinuity(t *testing.T) {
-	parentBackend := backend.NewCliBackend()
+	parentBackend := backend.NewClaudeCodeBackend()
 	mgr := session.NewManager(parentBackend)
 
 	cfg := types.EngineConfig{

@@ -132,7 +132,7 @@ func hasErrors(events []types.EngineEvent) bool {
 // model calls ExitPlanMode → PlanModeChangedEvent{Enabled:false} with
 // planFilePath → TaskComplete with ExitPlanMode in permissionDenials.
 func TestLiveCliPlanModeEnterAndExit(t *testing.T) {
-	parentBackend := backend.NewCliBackend()
+	parentBackend := backend.NewClaudeCodeBackend()
 	mgr := session.NewManager(parentBackend)
 
 	cfg := types.EngineConfig{
@@ -243,7 +243,7 @@ func TestLiveCliPlanModeEnterAndExit(t *testing.T) {
 // Verifies that the model actually writes a plan to the managed file path
 // at ~/.ion/plans/*.md with real content.
 func TestLiveCliPlanModeGeneratesPlanFile(t *testing.T) {
-	parentBackend := backend.NewCliBackend()
+	parentBackend := backend.NewClaudeCodeBackend()
 	mgr := session.NewManager(parentBackend)
 
 	cfg := types.EngineConfig{
@@ -324,7 +324,7 @@ func TestLiveCliPlanModeGeneratesPlanFile(t *testing.T) {
 // Mirrors the desktop "Implement" button flow: plan mode produces a plan file,
 // then auto mode implements it by sending the plan content as a new prompt.
 func TestLiveCliPlanModeImplementFlow(t *testing.T) {
-	parentBackend := backend.NewCliBackend()
+	parentBackend := backend.NewClaudeCodeBackend()
 	mgr := session.NewManager(parentBackend)
 
 	workDir := t.TempDir()
@@ -430,7 +430,7 @@ func TestLiveCliPlanModeImplementFlow(t *testing.T) {
 // Verifies that the CLI's native plan mode prevents the model from modifying
 // arbitrary files — only the plan file should be writable.
 func TestLiveCliPlanModeToolRestriction(t *testing.T) {
-	parentBackend := backend.NewCliBackend()
+	parentBackend := backend.NewClaudeCodeBackend()
 	mgr := session.NewManager(parentBackend)
 
 	workDir := t.TempDir()
@@ -492,7 +492,7 @@ func TestLiveCliPlanModeToolRestriction(t *testing.T) {
 // buildRunOptions → CliBackend.StartRun, and that the resulting event
 // stream contains all expected event types in the correct order.
 func TestLiveCliPlanModeViaManagerSendPrompt(t *testing.T) {
-	parentBackend := backend.NewCliBackend()
+	parentBackend := backend.NewClaudeCodeBackend()
 	mgr := session.NewManager(parentBackend)
 
 	cfg := types.EngineConfig{

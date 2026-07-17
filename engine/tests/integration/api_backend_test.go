@@ -26,8 +26,8 @@ func setupMockProvider(t *testing.T) *helpers.MockProvider {
 	mp := helpers.NewMockProvider("mock")
 	providers.RegisterProvider(mp)
 	providers.RegisterModel("mock-model", types.ModelInfo{
-		ProviderID:    "mock",
-		ContextWindow: 200000,
+		ProviderID:      "mock",
+		ContextWindow:   200000,
 		CostPer1kInput:  0.003,
 		CostPer1kOutput: 0.015,
 	})
@@ -588,7 +588,7 @@ func TestApiBackendPlanModeWriteGate(t *testing.T) {
 	foundGateError := false
 	for _, ev := range events {
 		if tr, ok := ev.Data.(*types.ToolResultEvent); ok {
-			if tr.IsError && strings.Contains(tr.Content, "Plan mode: cannot write to") {
+			if tr.IsError && strings.Contains(tr.Content, "that path is not the plan file for this session") {
 				foundGateError = true
 				break
 			}

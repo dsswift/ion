@@ -1158,4 +1158,3 @@ func indexOf(haystack, needle string) int {
 	}
 	return -1
 }
-

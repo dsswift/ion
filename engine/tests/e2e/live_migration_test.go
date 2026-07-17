@@ -99,13 +99,13 @@ func TestLiveMigrationAPIToCLIContinuation(t *testing.T) {
 	ec := newEventCollector(apiBackend)
 
 	apiBackend.StartRun("mig-a2c-1", types.RunOptions{
-		Prompt:       "Remember this code word: FALCON73. Just confirm you have it, nothing else.",
-		Model:        model,
-		MaxTurns:     1,
-		MaxBudgetUsd: 0.10,
-		AllowedTools: []string{},
-		SessionID:    apiSessionID,
-		ProjectPath:  tmpDir,
+		Prompt:         "Remember this code word: FALCON73. Just confirm you have it, nothing else.",
+		Model:          model,
+		MaxTurns:       1,
+		MaxBudgetUsd:   0.10,
+		AllowedTools:   []string{},
+		ConversationID: apiSessionID,
+		ProjectPath:    tmpDir,
 	})
 
 	ec.waitForExit(t, 30*time.Second)
@@ -143,14 +143,14 @@ func TestLiveMigrationAPIToCLIContinuation(t *testing.T) {
 
 	// ── Step 3: Resume on CLI and ask for the code word ──
 	t.Log("Step 3: Resuming on Claude CLI (--resume)...")
-	cliBackend := backend.NewCliBackend()
+	cliBackend := backend.NewClaudeCodeBackend()
 	cliEc := newCliEventCollector(cliBackend)
 
 	cliBackend.StartRun("mig-a2c-cli", types.RunOptions{
-		Prompt:      "What was the code word I told you earlier? Reply with just the code word.",
-		MaxTurns:    1,
-		SessionID:   cliSessionID,
-		ProjectPath: tmpDir,
+		Prompt:             "What was the code word I told you earlier? Reply with just the code word.",
+		MaxTurns:           1,
+		CliResumeSessionID: cliSessionID,
+		ProjectPath:        tmpDir,
 	})
 
 	cliEc.waitForExit(t, 90*time.Second)
@@ -178,7 +178,7 @@ func TestLiveMigrationCLIToAPIContinuation(t *testing.T) {
 
 	// ── Step 1: Create CLI conversation with a code word ──
 	t.Log("Step 1: Running CLI conversation with code word...")
-	cliBackend := backend.NewCliBackend()
+	cliBackend := backend.NewClaudeCodeBackend()
 	cliEc := newCliEventCollector(cliBackend)
 
 	cliBackend.StartRun("mig-c2a-cli", types.RunOptions{
@@ -225,12 +225,12 @@ func TestLiveMigrationCLIToAPIContinuation(t *testing.T) {
 	ec := newEventCollector(apiBackend)
 
 	apiBackend.StartRun("mig-c2a-api", types.RunOptions{
-		Prompt:       "What was the code word I told you? Reply with just the code word.",
-		Model:        model,
-		MaxTurns:     1,
-		MaxBudgetUsd: 0.10,
-		AllowedTools: []string{},
-		SessionID:    apiSessionID,
+		Prompt:         "What was the code word I told you? Reply with just the code word.",
+		Model:          model,
+		MaxTurns:       1,
+		MaxBudgetUsd:   0.10,
+		AllowedTools:   []string{},
+		ConversationID: apiSessionID,
 	})
 
 	ec.waitForExit(t, 30*time.Second)
@@ -265,13 +265,13 @@ func TestLiveMigrationFullRoundTripContinuation(t *testing.T) {
 	ec1 := newEventCollector(api1)
 
 	api1.StartRun("mig-rt-1", types.RunOptions{
-		Prompt:       "Remember the code word: ALPHA1. Confirm you have it, nothing else.",
-		Model:        model,
-		MaxTurns:     1,
-		MaxBudgetUsd: 0.10,
-		AllowedTools: []string{},
-		SessionID:    apiSessionID1,
-		ProjectPath:  tmpDir,
+		Prompt:         "Remember the code word: ALPHA1. Confirm you have it, nothing else.",
+		Model:          model,
+		MaxTurns:       1,
+		MaxBudgetUsd:   0.10,
+		AllowedTools:   []string{},
+		ConversationID: apiSessionID1,
+		ProjectPath:    tmpDir,
 	})
 	ec1.waitForExit(t, 30*time.Second)
 	t.Cleanup(func() { os.Remove(filepath.Join(convDir, apiSessionID1+".jsonl")) })
@@ -295,14 +295,14 @@ func TestLiveMigrationFullRoundTripContinuation(t *testing.T) {
 
 	// ── Step 3: CLI — add second code word BETA2 ──
 	t.Log("Step 3: CLI continuation — add BETA2...")
-	cli := backend.NewCliBackend()
+	cli := backend.NewClaudeCodeBackend()
 	cliEc := newCliEventCollector(cli)
 
 	cli.StartRun("mig-rt-cli", types.RunOptions{
-		Prompt:      "Also remember a second code word: BETA2. Confirm you have both code words.",
-		MaxTurns:    1,
-		SessionID:   cliSessID,
-		ProjectPath: tmpDir,
+		Prompt:             "Also remember a second code word: BETA2. Confirm you have both code words.",
+		MaxTurns:           1,
+		CliResumeSessionID: cliSessID,
+		ProjectPath:        tmpDir,
 	})
 	cliEc.waitForExit(t, 90*time.Second)
 
@@ -347,12 +347,12 @@ func TestLiveMigrationFullRoundTripContinuation(t *testing.T) {
 	ec2 := newEventCollector(api2)
 
 	api2.StartRun("mig-rt-final", types.RunOptions{
-		Prompt:       "What were the two code words I told you? Reply with just the two code words.",
-		Model:        model,
-		MaxTurns:     1,
-		MaxBudgetUsd: 0.10,
-		AllowedTools: []string{},
-		SessionID:    apiSessionID2,
+		Prompt:         "What were the two code words I told you? Reply with just the two code words.",
+		Model:          model,
+		MaxTurns:       1,
+		MaxBudgetUsd:   0.10,
+		AllowedTools:   []string{},
+		ConversationID: apiSessionID2,
 	})
 	ec2.waitForExit(t, 30*time.Second)
 
@@ -372,12 +372,12 @@ func TestLiveMigrationFullRoundTripContinuation(t *testing.T) {
 
 // ─── Test 4: Plan mode survives migration ────────────────────────────────────
 //
-// 1. API in plan mode: create a plan file with specific content
-// 2. Convert API → CLI
-// 3. CLI resumes, asked to read the plan and add to it
-// 4. Convert CLI → API
-// 5. API resumes in plan mode with the same plan file — verifies it can
-//    continue planning with the full conversation history + plan file
+//  1. API in plan mode: create a plan file with specific content
+//  2. Convert API → CLI
+//  3. CLI resumes, asked to read the plan and add to it
+//  4. Convert CLI → API
+//  5. API resumes in plan mode with the same plan file — verifies it can
+//     continue planning with the full conversation history + plan file
 func TestLiveMigrationPlanModeSurvival(t *testing.T) {
 	model := setupAnthropicProvider(t)
 	tmpDir := t.TempDir()
@@ -398,14 +398,14 @@ func TestLiveMigrationPlanModeSurvival(t *testing.T) {
 	ec1 := newEventCollector(api1)
 
 	api1.StartRun("mig-plan-1", types.RunOptions{
-		Prompt:       "Read the plan at " + planPath + " and confirm you see the Calculator Plan with Phase 1 Basic Operations. Just confirm what you see, briefly.",
-		Model:        model,
-		MaxTurns:     3,
-		MaxBudgetUsd: 0.30,
-		SessionID:    apiSessionID1,
-		ProjectPath:  tmpDir,
-		PlanMode:     true,
-		PlanFilePath: planPath,
+		Prompt:         "Read the plan at " + planPath + " and confirm you see the Calculator Plan with Phase 1 Basic Operations. Just confirm what you see, briefly.",
+		Model:          model,
+		MaxTurns:       3,
+		MaxBudgetUsd:   0.30,
+		ConversationID: apiSessionID1,
+		ProjectPath:    tmpDir,
+		PlanMode:       true,
+		PlanFilePath:   planPath,
 	})
 	ec1.waitForExit(t, 45*time.Second)
 	t.Cleanup(func() { os.Remove(filepath.Join(convDir, apiSessionID1+".jsonl")) })
@@ -435,14 +435,14 @@ func TestLiveMigrationPlanModeSurvival(t *testing.T) {
 
 	// ── Step 3: CLI continues — reads and updates the plan ──
 	t.Log("Step 3: CLI continuation — update the plan file...")
-	cli := backend.NewCliBackend()
+	cli := backend.NewClaudeCodeBackend()
 	cliEc := newCliEventCollector(cli)
 
 	cli.StartRun("mig-plan-cli", types.RunOptions{
-		Prompt:      "Read the plan file at " + planPath + " and add a Phase 2 for 'Advanced Operations' including square root and power. Write the updated plan back to the same file.",
-		MaxTurns:    5,
-		SessionID:   cliSessID,
-		ProjectPath: tmpDir,
+		Prompt:             "Read the plan file at " + planPath + " and add a Phase 2 for 'Advanced Operations' including square root and power. Write the updated plan back to the same file.",
+		MaxTurns:           5,
+		CliResumeSessionID: cliSessID,
+		ProjectPath:        tmpDir,
 	})
 	cliEc.waitForExit(t, 90*time.Second)
 
@@ -488,14 +488,14 @@ func TestLiveMigrationPlanModeSurvival(t *testing.T) {
 	ec2 := newEventCollector(api2)
 
 	api2.StartRun("mig-plan-final", types.RunOptions{
-		Prompt:       "Read the plan at " + planPath + " and add a Phase 3 for 'Testing Strategy' including unit tests and integration tests. Write the updated plan back to the same file. Then call ExitPlanMode.",
-		Model:        model,
-		MaxTurns:     5,
-		MaxBudgetUsd: 0.50,
-		SessionID:    apiSessionID2,
-		ProjectPath:  tmpDir,
-		PlanMode:     true,
-		PlanFilePath: planPath,
+		Prompt:         "Read the plan at " + planPath + " and add a Phase 3 for 'Testing Strategy' including unit tests and integration tests. Write the updated plan back to the same file. Then call ExitPlanMode.",
+		Model:          model,
+		MaxTurns:       5,
+		MaxBudgetUsd:   0.50,
+		ConversationID: apiSessionID2,
+		ProjectPath:    tmpDir,
+		PlanMode:       true,
+		PlanFilePath:   planPath,
 	})
 	ec2.waitForExit(t, 60*time.Second)
 

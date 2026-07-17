@@ -658,13 +658,13 @@ func flattenContent(msgs []types.SessionMessage) string {
 }
 
 type fixtureEvent struct {
-	Type    string  `json:"type"`
-	Agent   string  `json:"agent,omitempty"`
-	Task    string  `json:"task,omitempty"`
-	Model   string  `json:"model,omitempty"`
-	ExitCode int    `json:"exitCode,omitempty"`
-	Cost    float64 `json:"cost,omitempty"`
-	Session string  `json:"session"`
+	Type     string  `json:"type"`
+	Agent    string  `json:"agent,omitempty"`
+	Task     string  `json:"task,omitempty"`
+	Model    string  `json:"model,omitempty"`
+	ExitCode int     `json:"exitCode,omitempty"`
+	Cost     float64 `json:"cost,omitempty"`
+	Session  string  `json:"session"`
 }
 
 // writeEventFixture serialises a normalised, deterministic snapshot of

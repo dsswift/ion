@@ -101,31 +101,31 @@ func TestIonMetaV2_PersonaIncludesV2Sections(t *testing.T) {
 	// these is missing it indicates the persona builder dropped a
 	// section -- which is a regression worth catching loudly.
 	mustContain := []string{
-		"Ion Meta orchestrator",               // orchestrator body
-		"createIon",                           // SDK shape section
-		"Canonical hook catalog",              // hook catalog section
-		"IonContext methods",                  // SDK methods section
-		"dispatchAgent",                       // a specific method from the SDK
-		"engine_agent_state",                  // snapshot-contract reference
-		"Engine CLI verbs",                    // CLI section
+		"Ion Meta orchestrator",  // orchestrator body
+		"createIon",              // SDK shape section
+		"Canonical hook catalog", // hook catalog section
+		"IonContext methods",     // SDK methods section
+		"dispatchAgent",          // a specific method from the SDK
+		"engine_agent_state",     // snapshot-contract reference
+		"Engine CLI verbs",       // CLI section
 		// Consumer-perspective boundary (replaces the old
 		// "Engine-vs-harness boundary" framing which was internal
 		// engine-team discipline, not consumer-facing).
 		"What you own vs. what the engine handles", // sectionEngineBoundary()
-		"ion_list_hooks",                      // tool list
-		"ion_read_doc",                        // v2 tool
-		"ion_list_sdk_methods",                // v2 tool
+		"ion_list_hooks",       // tool list
+		"ion_read_doc",         // v2 tool
+		"ion_list_sdk_methods", // v2 tool
 		// Three-mode rework markers. If the persona drops the
 		// intent-routing section the orchestrator can't classify;
 		// if it drops the seams section the harness loses its
 		// canonical statement of Ion's defining property.
-		"Intent routing",                      // sectionIntentRouting()
-		"deterministic code",                  // sectionDeterministicSeams()
-		"probabilistic",                       // sectionDeterministicSeams()
-		"ion-tutor",                           // tutor mode agent named
-		"extension-improver",                  // improver mode agent named
-		"extension-builder",                   // builder mode agent named
-		"ADR-006",                             // seams ADR cited
+		"Intent routing",     // sectionIntentRouting()
+		"deterministic code", // sectionDeterministicSeams()
+		"probabilistic",      // sectionDeterministicSeams()
+		"ion-tutor",          // tutor mode agent named
+		"extension-improver", // improver mode agent named
+		"extension-builder",  // builder mode agent named
+		"ADR-006",            // seams ADR cited
 	}
 	// Anti-markers: phrases that should NOT appear in the persona
 	// because they leak engine-contributor framing into a consumer-

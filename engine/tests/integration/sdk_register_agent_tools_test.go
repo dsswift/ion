@@ -140,9 +140,9 @@ func TestSDKRegisterAgentTools_DispatchCarriesPersonaAndModel(t *testing.T) {
 	// ctx.DispatchAgent with the deserialized opts — by wiring our own
 	// closure we get the exact wire payload (post-JSON-roundtrip).
 	var (
-		captureMu      sync.Mutex
-		capturedOpts   extension.DispatchAgentOpts
-		dispatchFired  = make(chan struct{}, 1)
+		captureMu     sync.Mutex
+		capturedOpts  extension.DispatchAgentOpts
+		dispatchFired = make(chan struct{}, 1)
 	)
 	ctx := &extension.Context{
 		SessionKey: "sdk-register-agent-tools-test",
@@ -192,7 +192,7 @@ func TestSDKRegisterAgentTools_DispatchCarriesPersonaAndModel(t *testing.T) {
 	select {
 	case <-dispatchFired:
 	case <-time.After(2 * time.Second):
-		t.Fatal("ctx.DispatchAgent was never called — the SDK helper's "+
+		t.Fatal("ctx.DispatchAgent was never called — the SDK helper's " +
 			"execute() did not route through ext/dispatch_agent")
 	}
 

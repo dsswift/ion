@@ -103,10 +103,10 @@ func TestDispatchChildSpawner_RunloopPath(t *testing.T) {
 	done := make(chan struct{})
 
 	_, err := rootCtx.DispatchAgent(extension.DispatchAgentOpts{
-		Name:     "depth1-agent",
-		Task:     "Dispatch a grandchild and return its result.",
-		Model:    "mock-model",
-		MaxTurns: 5,
+		Name:       "depth1-agent",
+		Task:       "Dispatch a grandchild and return its result.",
+		Model:      "mock-model",
+		MaxTurns:   5,
 		Background: true,
 		OnComplete: func(r extension.DispatchAgentResult) {
 			mu.Lock()
@@ -234,10 +234,10 @@ func TestDispatchChildSpawner_DepthCapStillHolds(t *testing.T) {
 	done := make(chan struct{})
 
 	_, err := rootCtx.DispatchAgent(extension.DispatchAgentOpts{
-		Name:     "depth-cap-d1",
-		Task:     "Try to nest three tiers; cap must block the third.",
-		Model:    "mock-model",
-		MaxTurns: 10,
+		Name:       "depth-cap-d1",
+		Task:       "Try to nest three tiers; cap must block the third.",
+		Model:      "mock-model",
+		MaxTurns:   10,
 		Background: true,
 		OnComplete: func(r extension.DispatchAgentResult) {
 			mu.Lock()

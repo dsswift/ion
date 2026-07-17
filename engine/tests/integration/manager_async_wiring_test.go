@@ -24,14 +24,25 @@ import (
 // extensions; no real LLM runs happen.
 type nullBackend struct{}
 
-func (n *nullBackend) StartRun(_ string, _ types.RunOptions)                              {}
-func (n *nullBackend) Cancel(_ string) bool                                               { return true }
-func (n *nullBackend) IsRunning(_ string) bool                                            { return false }
-func (n *nullBackend) WriteToStdin(_ string, _ interface{}) error                         { return nil }
-func (n *nullBackend) FlushConversations()                                                {}
-func (n *nullBackend) OnNormalized(_ func(string, types.NormalizedEvent))                 {}
-func (n *nullBackend) OnExit(_ func(string, *int, *string, string))                       {}
-func (n *nullBackend) OnError(_ func(string, error))                                      {}
+func (n *nullBackend) StartRun(_ string, _ types.RunOptions)              {}
+func (n *nullBackend) Cancel(_ string) bool                               { return true }
+func (n *nullBackend) IsRunning(_ string) bool                            { return false }
+func (n *nullBackend) WriteToStdin(_ string, _ interface{}) error         { return nil }
+func (n *nullBackend) FlushConversations()                                {}
+func (n *nullBackend) OnNormalized(_ func(string, types.NormalizedEvent)) {}
+func (n *nullBackend) OnExit(_ func(string, *int, *string, string))       {}
+
+// Capabilities reports an engine-owned, fully-capable descriptor so no
+// dispatch-time capability gate engages against this null backend.
+func (n *nullBackend) Capabilities() backend.BackendCapabilities {
+	return backend.BackendCapabilities{
+		Kind:         "null",
+		ContextModel: backend.ContextModelEngineOwned,
+		PlanMode:     true,
+		Steering:     true,
+	}
+}
+func (n *nullBackend) OnError(_ func(string, error)) {}
 
 var _ backend.RunBackend = (*nullBackend)(nil)
 

@@ -350,6 +350,13 @@ type MockBackend struct {
 	OnErrF  func(string, error)
 	Started map[string]types.RunOptions
 	mu      sync.Mutex
+
+	// Caps, when non-nil, overrides the descriptor Capabilities() returns.
+	// Tests that exercise native-session semantics (cursor capture on exit,
+	// resume-vs-bridge at dispatch) set a ContextModelNativeSession + Resume
+	// descriptor here; the nil default reports the engine-owned descriptor so
+	// no dispatch-time capability gate engages.
+	Caps *backend.BackendCapabilities
 }
 
 // NewMockBackend creates a MockBackend ready for use.
@@ -387,9 +394,13 @@ func (m *MockBackend) WriteToStdin(_ string, _ interface{}) error {
 // FlushConversations is a no-op stub satisfying the RunBackend interface.
 func (m *MockBackend) FlushConversations() {}
 
-// Capabilities reports an engine-owned, fully-capable descriptor so no
-// dispatch-time capability gate engages against this mock.
+// Capabilities reports the Caps override when set, else an engine-owned,
+// fully-capable descriptor so no dispatch-time capability gate engages
+// against this mock.
 func (m *MockBackend) Capabilities() backend.BackendCapabilities {
+	if m.Caps != nil {
+		return *m.Caps
+	}
 	return backend.BackendCapabilities{
 		Kind:         "mock",
 		ContextModel: backend.ContextModelEngineOwned,
