@@ -12,11 +12,57 @@ function error(msg: string, fields?: Record<string, unknown>): void { _error('sn
 let lastSnapshotHash: string | null = null
 
 /**
+ * Per-tab fields excluded from the change-detection hash. These tick
+ * continuously during an active run (live cost/token accrual), so including
+ * them made the snapshot hash change on EVERY 5s poll while any tab ran, forcing
+ * a full multi-tab snapshot to re-serialize / compress / encrypt / ship each
+ * tick. The snapshot does not need to carry live cost for freshness — the
+ * per-instance cost delta already rides desktop_tab_meta (event-wiring.ts). We
+ * still PROJECT these fields in the payload (iOS reads them from the snapshot on
+ * a structural change); we just do not let them alone trigger a full resend.
+ * The full snapshot re-ships on any STRUCTURAL change (a new/closed tab, status,
+ * fingerprint, queue, etc.), which is what the hash should track. (RC-7)
+ */
+const HASH_EXCLUDED_TAB_FIELDS = new Set([
+  'runCostUsd',
+  'totalCostUsd',
+  'conversationCostUsd',
+  'inputTokens',
+  'outputTokens',
+  'cacheReadTokens',
+  'cacheCreationTokens',
+  'contextTokens',
+])
+
+/**
+ * Build the value hashed for change detection: the snapshot event with the
+ * high-frequency per-tab cost/token fields stripped from every tab. Structural
+ * fields (id, status, fingerprint, queues, instances, …) are preserved, so a
+ * real change still re-ships; a cost-only tick does not. Pure — returns a new
+ * object and never mutates the event that will actually be sent.
+ */
+export function hashInputForSnapshot(event: Record<string, unknown>): Record<string, unknown> {
+  const tabs = Array.isArray(event.tabs) ? event.tabs : []
+  const strippedTabs = tabs.map((t: any) => {
+    if (!t || typeof t !== 'object') return t
+    const copy: Record<string, unknown> = {}
+    for (const k of Object.keys(t)) {
+      if (!HASH_EXCLUDED_TAB_FIELDS.has(k)) copy[k] = t[k]
+    }
+    return copy
+  })
+  return { ...event, tabs: strippedTabs }
+}
+
+/**
  * Pure helper: compute a SHA-256 hex digest of the JSON-serialized
  * snapshot event object.  Exported for unit testability.
+ *
+ * Hashes the cost-stripped projection (hashInputForSnapshot) so a live cost tick
+ * does not force a full-snapshot resend every poll; structural changes still do.
  */
 export function hashSnapshot(event: Record<string, unknown>): string {
-  return createHash('sha256').update(JSON.stringify(event)).digest('hex')
+  return createHash('sha256').update(JSON.stringify(hashInputForSnapshot(event))).digest('hex')
 }
 
 /**

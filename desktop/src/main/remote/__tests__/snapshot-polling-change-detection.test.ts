@@ -73,6 +73,55 @@ describe('hashSnapshot', () => {
     expect(changed).not.toBe(base)
   })
 
+  it('does NOT change the hash when only per-tab cost/token fields tick (RC-7)', () => {
+    // Live cost accrues every poll during a run; hashing it forced a full
+    // multi-tab snapshot resend every 5s. The hash must ignore the volatile
+    // cost/token fields (they still ship in the payload and ride tab_meta).
+    const base = hashSnapshot(
+      makeSnapshotEvent({
+        tabs: [{ id: 'tab-1', title: 'T', workingDirectory: '/p', status: 'running', runCostUsd: 0.01, totalCostUsd: 0.01, inputTokens: 100, outputTokens: 50 }],
+      }),
+    )
+    const costTicked = hashSnapshot(
+      makeSnapshotEvent({
+        tabs: [{ id: 'tab-1', title: 'T', workingDirectory: '/p', status: 'running', runCostUsd: 0.02, totalCostUsd: 0.02, inputTokens: 200, outputTokens: 90 }],
+      }),
+    )
+    expect(costTicked).toBe(base)
+  })
+
+  it('DOES change the hash when a structural field changes even if cost also ticks (RC-7)', () => {
+    // The cost exclusion must not swallow a real structural change riding the
+    // same tick — status flipping running→idle must still re-ship.
+    const base = hashSnapshot(
+      makeSnapshotEvent({
+        tabs: [{ id: 'tab-1', title: 'T', workingDirectory: '/p', status: 'running', runCostUsd: 0.01 }],
+      }),
+    )
+    const structural = hashSnapshot(
+      makeSnapshotEvent({
+        tabs: [{ id: 'tab-1', title: 'T', workingDirectory: '/p', status: 'idle', runCostUsd: 0.02 }],
+      }),
+    )
+    expect(structural).not.toBe(base)
+  })
+
+  it('DOES change the hash when the conversation fingerprint changes (RC-7 boundary)', () => {
+    // convFingerprint is the staleness signal — it must remain hash-tracked so a
+    // new turn re-ships the snapshot. (It is not a cost field.)
+    const base = hashSnapshot(
+      makeSnapshotEvent({
+        tabs: [{ id: 'tab-1', title: 'T', workingDirectory: '/p', status: 'idle', convFingerprint: 'a1:5' }],
+      }),
+    )
+    const fpChanged = hashSnapshot(
+      makeSnapshotEvent({
+        tabs: [{ id: 'tab-1', title: 'T', workingDirectory: '/p', status: 'idle', convFingerprint: 'a1:5,a2:8' }],
+      }),
+    )
+    expect(fpChanged).not.toBe(base)
+  })
+
   it('returns a different hash when recentDirectories change', () => {
     const base = hashSnapshot(makeSnapshotEvent())
     const changed = hashSnapshot(

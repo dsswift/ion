@@ -57,12 +57,26 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
             var msgs = activeInst ? (activeInst.messages || []) : [];
             var lastMsg = null;
             var lastTs = 0;
+            // lastMsg (the tab-list preview text) comes from the last user/
+            // assistant row — a tool row has no useful preview string.
             for (var i = msgs.length - 1; i >= 0; i--) {
               if (msgs[i].role === 'assistant' || msgs[i].role === 'user') {
                 lastMsg = (msgs[i].content || '').substring(0, 100);
-                lastTs = msgs[i].timestamp || 0;
                 break;
               }
+            }
+            // lastActivityAt (the tab SORT key) must reflect the newest activity
+            // of ANY role, including a trailing tool run. Scanning only
+            // user/assistant rows let a tab whose tail is a long tool sequence
+            // report a stale timestamp and sink below idle tabs on iOS (and in
+            // the desktop-side sort below). Take the max timestamp across all
+            // rows so an actively-tool-working tab sorts as recently active.
+            for (var ti = msgs.length - 1; ti >= 0; ti--) {
+              var rowTs = msgs[ti].timestamp || 0;
+              if (rowTs > lastTs) lastTs = rowTs;
+              // Rows are appended in time order, so the last row generally holds
+              // the max; but a re-keyed/edited row can carry an older stamp, so
+              // we scan rather than trust position. Cheap: bounded by page size.
             }
             // Conversation tail fingerprint — the staleness signal for the iOS
             // main-conversation heal. iOS computes the SAME fingerprint over its
@@ -497,7 +511,13 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
         queuedPrompts: t.queuedPrompts || [],
         modelOverride: coldMain?.modelOverride ?? null,
         lastActivityAt: h?.lastActivityAt || undefined,
-        convFingerprint: '',
+        // Omit convFingerprint on the cold path — do NOT send ''. iOS compares
+        // the snapshot fingerprint against its real local tail; an empty string
+        // never matches a non-empty local fingerprint, so sending '' forces an
+        // authoritative history reload on every cold snapshot (and can thrash if
+        // cold snapshots recur during a slow renderer start). Absent means
+        // "nothing to compare" on iOS, which is the correct cold-start behavior:
+        // the next store-backed snapshot carries the real fingerprint. (RC-4)
       })
     }
   } else {
@@ -516,7 +536,8 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
         messageCount: 0,
         queuedPrompts: [],
         lastActivityAt: t.lastActivityAt || undefined,
-        convFingerprint: '',
+        // Omit on the cold path — see the RC-4 note above; '' forces an iOS
+        // reload loop, absent is the correct "nothing to compare" signal.
       })
     }
   }
