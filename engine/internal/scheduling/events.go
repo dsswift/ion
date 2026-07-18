@@ -67,3 +67,14 @@ func (s *Scheduler) emitScheduleMissed(job extension.ScheduleJob, missedSlotUtc 
 		AsyncHadMarker:  hadMarker,
 	})
 }
+
+// emitScheduleUnhosted signals that the last alive host for a (extension,
+// jobID) group was removed and the job will not fire until a new host
+// re-registers it. Consumers can use this to alert on unexpected schedule gaps.
+func (s *Scheduler) emitScheduleUnhosted(job extension.ScheduleJob) {
+	s.publish(types.EngineEvent{
+		Type:      "engine_schedule_unhosted",
+		AsyncKind: string(asyncreg.KindSchedule),
+		AsyncID:   job.JobID,
+	})
+}

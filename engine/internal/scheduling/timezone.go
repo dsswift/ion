@@ -182,15 +182,49 @@ func weekdayFromName(s string) time.Weekday {
 // job. For daily/weekly with persistence enabled and CatchUpEnabled,
 // reads the last-run marker and decides whether to schedule a catch-up
 // fire or emit a schedule_missed decision for extension-decided catch-up.
+//
+// Sibling-cadence inheritance (#285): when a host is replaced (session
+// teardown + recreation), the new host is a "first sighting" despite the
+// job having been firing on cadence via a sibling host. To avoid silently
+// resetting the interval, bootstrapNextRun checks whether any surviving
+// sibling host (same extensionJobKey) already has a nextRun entry, and
+// if so adopts that value instead of computing a fresh now+interval. The
+// inherit is only applied for interval jobs — daily/weekly jobs have
+// wall-clock slots that don't depend on accumulated elapsed time, so they
+// are handled correctly by the existing persistence-based catch-up path.
 func (s *Scheduler) bootstrapNextRun(h *extension.Host, job extension.ScheduleJob, now time.Time) {
 	name := hostName(h)
 	loc := s.loadTz(jobTz(job))
 	hasMissedHook := h != nil && h.HasScheduleMissedHandler()
+
+	// Sibling-cadence inheritance for interval jobs: if a sibling host for the
+	// same (extensionName, jobID) already has a nextRun entry, inherit it. This
+	// preserves the firing cadence across session teardown+recreation (host
+	// pointer replacement) without resetting the interval clock to now+interval.
+	// Only applies to ScheduleInterval — daily/weekly schedule wall-clock slots
+	// correctly and don't need this.
+	if job.Kind == extension.ScheduleInterval {
+		extKey := extensionJobKey{name: h.Name(), id: job.JobID}
+		if sibling := s.siblingNextRun(extKey); !sibling.IsZero() {
+			key := hostJobKey{host: h, id: job.JobID}
+			s.mu.Lock()
+			s.nextRun[key] = sibling
+			s.extNextRun[extKey] = sibling
+			s.mu.Unlock()
+			utils.LogWithFields(utils.LevelDebug, "scheduling", "bootstrap next run inherited from sibling", map[string]any{
+				"model": name, "run_id": job.JobID, "inherited": sibling.String(),
+			})
+			return
+		}
+	}
+
 	next, decision := s.computeBootstrapNextRun(name, job, now, loc, hasMissedHook)
 	key := hostJobKey{host: h, id: job.JobID}
+	extKey := extensionJobKey{name: h.Name(), id: job.JobID}
 
 	s.mu.Lock()
 	s.nextRun[key] = next
+	s.extNextRun[extKey] = next
 	s.mu.Unlock()
 	utils.LogWithFields(utils.LevelDebug, "scheduling", "bootstrap next run", map[string]any{"model": name, "run_id": job.JobID, "reason": next.String()})
 
@@ -334,8 +368,10 @@ func (s *Scheduler) shouldCatchUp() bool {
 func (s *Scheduler) advanceNextRun(key hostJobKey, job extension.ScheduleJob, now time.Time) {
 	loc := s.loadTz(jobTz(job))
 	next := nextRunFor(job, now, loc)
+	extKey := extensionJobKey{name: key.host.Name(), id: key.id}
 	s.mu.Lock()
 	s.nextRun[key] = next
+	s.extNextRun[extKey] = next
 	s.mu.Unlock()
 	utils.LogWithFields(utils.LevelDebug, "scheduling", "advance next run", map[string]any{"model": key.host.Name(), "run_id": key.id, "reason": next.String()})
 }
