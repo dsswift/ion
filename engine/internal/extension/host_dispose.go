@@ -2,6 +2,9 @@ package extension
 
 import (
 	"os"
+	"time"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // Dispose shuts down the subprocess extension gracefully.
@@ -50,12 +53,45 @@ func (h *Host) disposeInternal() {
 	cmd := h.cmd
 	h.cmd = nil
 	h.stdout = nil
+	exitDone := h.exitDone
 	tempFiles := h.tempFiles
 	h.tempFiles = nil
 	h.mu.Unlock()
 
 	if cmd != nil {
-		_ = cmd.Wait()
+		// os/exec documents cmd.Wait as single-call: concurrent Wait calls on
+		// the same Cmd are a data race. captureExitStatus owns the Wait call
+		// when it is running (launched by readLoop on subprocess EOF). To avoid
+		// racing with it, gate on exitDone when it is available (set during
+		// spawnAndInit). exitDone is closed by captureExitStatus when Wait
+		// returns, so waiting on it is equivalent to waiting for Wait — without
+		// calling it a second time.
+		//
+		// Three cases:
+		//   - exitDone non-nil, captureExitStatus running: it owns Wait; we wait
+		//     for exitDone and then skip our own Wait. No race.
+		//   - exitDone non-nil, captureExitStatus not running yet (process still
+		//     alive; we just killed it): the kill causes EOF on stdout, readLoop
+		//     will launch captureExitStatus shortly, which will reap the process
+		//     and close exitDone. We wait for that.
+		//   - exitDone nil (spawnAndInit never reached the exitDone init, e.g.
+		//     process failed before the reader goroutine started): no
+		//     captureExitStatus will ever run; call Wait directly.
+		if exitDone != nil {
+			select {
+			case <-exitDone:
+			case <-time.After(2 * time.Second):
+				// Safety net: never block dispose indefinitely. If the process
+				// has not been reaped in 2 s something is deeply wrong; proceed
+				// so callers are not stuck. Log at ERROR so this anomalous path
+				// is observable without a debugger.
+				utils.LogWithFields(utils.LevelError, "extension", "disposeInternal: process reap timed out", map[string]any{
+					"extension": h.name,
+				})
+			}
+		} else {
+			_ = cmd.Wait()
+		}
 	}
 	for _, f := range tempFiles {
 		_ = os.Remove(f)

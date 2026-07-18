@@ -5,9 +5,17 @@ allowed_bash_commands: [ls, stat, git, gh pr view, gh pr diff, gh pr list, gh pr
 
 You are running the `/align` command. This command operates in two modes depending on context. Detect the active mode first, then follow the instructions for that mode.
 
+**Invocation arguments.** The raw arguments passed to this invocation (referred to as **ARGS** throughout this document) are:
+
+```
+$ARGUMENTS
+```
+
+If the block above is empty, the command was invoked with no arguments. Everywhere this document says "ARGS", it means the exact raw string above — the engine substitutes it here once, at this single point, and nowhere else.
+
 **Hard rules. These apply in both modes.**
 
-- **Review the whole target; never ask the operator to narrow scope by size.** The review surface is fixed by the mode and arguments, not by how large it is: Mode A audits the attached plan in full; Mode B (Local) reviews the entire `main...HEAD` diff in full; Mode B (PR/branch) reviews the entire target diff in full. A large diff — any number of commits, files, or scopes — is reviewed completely; it is never a reason to stop and ask the operator which slice to review. The **only** scope narrowing that exists is explicit operator input parsed in B-Step 1 (a `<focus>` instruction, or `in PR` / `in branch` targets). Absent that input, there is no scope question. Do not emit an `AskUserQuestion` (or any prose prompt) asking the operator to pick a subset, confirm scope, or choose between "recent commits" and "whole branch" — proceed and review everything. A genuinely enormous diff yields a large report, not a smaller review.
+- **Review the whole target; never ask the operator to narrow scope by size.** The review surface is fixed by the mode and arguments, not by how large it is: Mode A audits the attached plan in full; Mode B (Local) reviews the entire `main...HEAD` diff in full; Mode B (PR/branch) reviews the entire target diff in full. A large diff — any number of commits, files, or scopes — is reviewed completely; it is never a reason to stop and ask the operator which slice to review. The **only** scope narrowing that exists is explicit operator input parsed in B-Step 1 (a `<focus>` instruction, or a PR / branch target — explicit `in PR` / `in branch`, or a bare PR reference like `287` / `#287` / `PR 287`). Absent that input, there is no scope question. Do not emit an `AskUserQuestion` (or any prose prompt) asking the operator to pick a subset, confirm scope, or choose between "recent commits" and "whole branch" — proceed and review everything. A genuinely enormous diff yields a large report, not a smaller review.
 - You will not squash, rebase, amend, force-push, push, or open/modify a PR. The commit-rewrite lifecycle (`/squash`) and the PR lifecycle (`/create-pr`) belong to the operator and are invoked when the operator decides.
 - You will not run `gh pr create`, `gh pr merge`, `gh pr review`, `gh pr comment`, `git push`, `git rebase`, `git commit --amend`, `git push --force`, or any other commit-rewriting or remote-mutating command.
 - **Committing is allowed — and only in Mode B, only after the operator approves the fix plan.** When Mode B implements an approved fix plan (B-Step 6), it commits the completed work with conventional, correctly-scoped commits, exactly as any implementation session would (see root `AGENTS.md` § "Commits"). In PR mode those commits land on the PR's head branch in a dedicated worktree (see B-Step 6) — local commits on the PR branch are not "modifying the PR"; only pushing updates the PR, and pushing stays the operator's. It never squashes those commits together, never rebases, and never pushes — the operator handles squashing and PRs. Mode A never commits (no code exists yet — there is nothing to commit). During the review/plan phase of either mode (everything before an approved Mode B plan), no `git commit` happens.
@@ -24,21 +32,21 @@ You are running the `/align` command. This command operates in two modes dependi
 - **Plan attached → Mode A (Plan Alignment).** Audit that plan before any code is written.
 - **No plan attached → Mode B (Post-Changes Alignment).** Review the branch's changes.
 
-"Attached plan" means exactly what A-Step 1 defines: a `$ARGUMENTS`-supplied plan path, or a `[Attached plan: <path>]` / `Implement the following plan:` block in this conversation's context (see "A-Step 1: Resolve and read the plan" for the full resolution order). Do not restate that definition here — that section is the single source of truth.
+"Attached plan" means exactly what A-Step 1 defines: an ARGS-supplied plan path, or a `[Attached plan: <path>]` / `Implement the following plan:` block in this conversation's context (see "A-Step 1: Resolve and read the plan" for the full resolution order). Do not restate that definition here — that section is the single source of truth.
 
 > **Ignore the harness "plan mode active" flag for mode detection.** `/align` *always* runs inside harness plan mode, because it authors its fix plan in planning mode in **every** sub-mode (see B-Step 5: "enter planning mode and author a fix plan … applies in all three sub-modes"). So "plan mode is active" is true on every invocation and carries **zero** signal about which mode to run. A conversation that is in harness plan mode with **no attached plan** is the normal Mode B starting state, not a Mode A signal. Never key mode detection off the harness flag.
 
-**Mode A (Plan Alignment)** runs when a plan is attached (via `$ARGUMENTS` or a conversation attachment). Resolve and read it per A-Step 1, then audit it.
+**Mode A (Plan Alignment)** runs when a plan is attached (via ARGS or a conversation attachment). Resolve and read it per A-Step 1, then audit it.
 
 **Mode B (Post-Changes Alignment)** runs when **no** plan is attached and the branch has commits ahead of `main` (or uncommitted changes).
 
-Parse `$ARGUMENTS` for target and focus (see the argument grammar in Mode B). **PR-target arguments force Mode B (PR mode) regardless of any attached plan and regardless of local branch state.** A PR target is either the explicit `in PR` prefix or a bare PR reference: `287`, `#287`, `PR 287`, `PR #287`, or a comma/whitespace-separated list of these. When the operator passes a PR reference, they are asking for alignment of *that pull request* — not the local checkout. Do not review, diff, or even orient against the local branch; go straight to Mode B Step 1B. Likewise, `in branch` forces Mode B (Branch mode).
+**Step zero — parse ARGS for a target BEFORE any local git check.** Parse ARGS for target and focus (see the argument grammar in Mode B). **PR-target arguments force Mode B (PR mode) regardless of any attached plan and regardless of local branch state.** A PR target is either the explicit `in PR` prefix or a bare PR reference: `287`, `#287`, `PR 287`, `PR #287`, or a comma/whitespace-separated list of these. When the operator passes a PR reference, they are asking for alignment of *that pull request* — not the local checkout. Do not review, diff, or even orient against the local branch; go straight to Mode B Step 1B. Likewise, `in branch` forces Mode B (Branch mode). **When ARGS carries a PR or branch target, every check below this paragraph is skipped** — the local branch being even with `main`, dirty, or clean carries zero signal about the target, and the "Nothing to align" stop-rule below never applies to a targeted run.
 
-Check: `git log main..HEAD --oneline`
+Only when ARGS carries **no** PR or branch target, check the local branch: `git log main..HEAD --oneline`
 
 **No attached plan + a branch ahead of `main` (or a dirty tree) is NOT ambiguous — it is the standard Mode B case. Run Mode B over the branch without asking.** This is the common steady state: the user runs `/align` to review the work on their branch, and there is no pre-implementation plan to audit. Do not treat the absence of an attached plan as a conflict, and do not ask the user which mode to run for it.
 
-If neither condition applies (branch is even with `main`, no attached plan, no uncommitted work), report: "Nothing to align — no plan attached and branch is even with `main`." and stop.
+If neither condition applies (no PR/branch target in ARGS, branch is even with `main`, no attached plan, no uncommitted work), report: "Nothing to align — no plan attached and branch is even with `main`." and stop. This stop-rule exists for the *untargeted* invocation only; it is unreachable when ARGS names a PR or branch.
 
 **The only time to ask the user which mode to run** is the genuinely-ambiguous residue: a plan **is** attached **and** the branch also carries implementation commits made *after* that plan was created — so it is unclear whether the user wants the attached plan audited (Mode A) or the already-implemented changes reviewed (Mode B). Only then, ask. The bare "no attached plan, branch has changes" case never reaches this ask — it is unconditionally Mode B above.
 
@@ -116,14 +124,14 @@ You are reviewing the current plan before any code is written. The goal is to ca
 >
 > **Resolution order — use the first one that applies:**
 
-1. **`$ARGUMENTS` provided.** Resolve as the user passed it:
+1. **ARGS provided.** Resolve as the user passed it:
    - Absolute path: use it directly.
    - Bare filename or hash (with or without `.md`): resolve from `~/.ion/plans/`.
    - Unique hash prefix: glob `~/.ion/plans/{prefix}*.md`. If zero or more than one match, stop and report ambiguity — do not fall back to context-derived or mtime-derived defaults silently.
 
-2. **No `$ARGUMENTS`, but the conversation has an attached plan in context.** This is the standard plan-mode default. The agent must look back through the conversation context and find the most recent message that introduced the plan — typically a user message containing `[Attached plan: <path>]` or `Implement the following plan:` followed by the plan markdown. The path from that attachment **is** the canonical plan for this session. Use it without further lookup.
+2. **ARGS empty, but the conversation has an attached plan in context.** This is the standard plan-mode default. The agent must look back through the conversation context and find the most recent message that introduced the plan — typically a user message containing `[Attached plan: <path>]` or `Implement the following plan:` followed by the plan markdown. The path from that attachment **is** the canonical plan for this session. Use it without further lookup.
 
-3. **No `$ARGUMENTS` and no plan attachment in the conversation context.** This is the fallback path, and even here the agent must verify before proceeding:
+3. **ARGS empty and no plan attachment in the conversation context.** This is the fallback path, and even here the agent must verify before proceeding:
    - List the three most-recently-modified plan files: `ls -1t ~/.ion/plans/*.md 2>/dev/null | head -3`.
    - Read the first heading (`#`) of each candidate.
    - Compare against any topic signals the conversation provides (recent prompts, the working branch name, recent commit messages, recent tool calls).
@@ -419,7 +427,7 @@ You are running the alignment gate. Your job is to analyze the branch changes ag
 ### Argument grammar
 
 ```
-$ARGUMENTS ::= [<target>] [<focus>]
+ARGS ::= [<target>] [<focus>]
 
 <target> ::=
   | "in PR" <pr-list>         → PR mode   (Step 1B)
@@ -434,7 +442,7 @@ $ARGUMENTS ::= [<target>] [<focus>]
 
 ### Parsing algorithm
 
-Apply these rules in order against the trimmed `$ARGUMENTS` string:
+Apply these rules in order against the trimmed ARGS string (the raw invocation arguments quoted at the top of this document):
 
 0. **Empty or whitespace-only** → Local mode (Step 1A), no focus. Done.
 
@@ -474,7 +482,7 @@ If `git log main..HEAD --oneline` is empty AND there are no uncommitted changes,
 
 Print a one-paragraph orientation: branch name, number of commits ahead of `main`, number of files changed, scopes touched (engine/desktop/relay/ios/docs/repo), focus instruction (if any).
 
-> **Review the WHOLE branch. Never ask the operator to narrow scope by size.** The review surface in Local mode is the entire `main...HEAD` diff — every commit, every file, every scope — no matter how large. A branch that is 5 commits or 50 commits, 10 files or 500 files, is reviewed in full at this depth. A large diff is **not** a reason to stop and ask "this is too big, which slice should I review?" — that question is **forbidden**. The operator invoked `/align` with no focus argument precisely because they want the whole branch reviewed; second-guessing that with a scope-narrowing prompt contradicts the command's contract (see the description: "reviews all branch changes"). The **only** ways scope is ever narrowed are explicit operator inputs already parsed in B-Step 1: a `<focus>` instruction in `$ARGUMENTS`, or `in PR` / `in branch` targets. Absent those, there is no narrowing and no scope question — proceed to grounding (Step 2) and review everything. If the diff is genuinely enormous, that is a large report, not a smaller review; produce the large report.
+> **Review the WHOLE branch. Never ask the operator to narrow scope by size.** The review surface in Local mode is the entire `main...HEAD` diff — every commit, every file, every scope — no matter how large. A branch that is 5 commits or 50 commits, 10 files or 500 files, is reviewed in full at this depth. A large diff is **not** a reason to stop and ask "this is too big, which slice should I review?" — that question is **forbidden**. The operator invoked `/align` with no focus argument precisely because they want the whole branch reviewed; second-guessing that with a scope-narrowing prompt contradicts the command's contract (see the description: "reviews all branch changes"). The **only** ways scope is ever narrowed are explicit operator inputs already parsed in B-Step 1: a `<focus>` instruction in ARGS, or `in PR` / `in branch` targets. Absent those, there is no narrowing and no scope question — proceed to grounding (Step 2) and review everything. If the diff is genuinely enormous, that is a large report, not a smaller review; produce the large report.
 
 
 ### Step 1B: PR mode
@@ -491,7 +499,7 @@ Print a one-paragraph orientation: how many PRs are being reviewed, their number
 
 In PR mode, do not run `git status`, `git diff`, or `git log main..HEAD` against the local checkout — the PR's own diff is the source of truth. The local branch may be mid-flight on unrelated work; it is out of scope by definition.
 
-If `$ARGUMENTS` contained PR numbers but every one failed to resolve via `gh`, stop and report the failures. Do not fall back to local mode.
+If ARGS contained PR numbers but every one failed to resolve via `gh`, stop and report the failures. Do not fall back to local mode.
 
 ### Step 1C: Branch mode
 

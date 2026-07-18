@@ -396,7 +396,7 @@ func (s *Scheduler) fireJob(h *extension.Host, job extension.ScheduleJob, key ho
 	if job.EnabledRefName != "" {
 		enabled, err := s.resolveEnabledPredicate(h, job)
 		if err != nil {
-			utils.LogWithFields(utils.LevelInfo, "scheduling", "fire job enabled predicate failed", map[string]any{"model": h.Name(), "run_id": job.JobID, "error": err.Error()})
+			utils.LogWithFields(utils.LevelError, "scheduling", "fire job enabled predicate failed", map[string]any{"model": h.Name(), "run_id": job.JobID, "error": err.Error()})
 			// Treat predicate failure as "skipped, reason=predicate_error".
 			s.emitScheduleSkipped(job, "predicate_error")
 			return
@@ -418,7 +418,7 @@ func (s *Scheduler) fireJob(h *extension.Host, job extension.ScheduleJob, key ho
 	elapsed := s.now().Sub(startTs)
 	if err != nil {
 		s.emitScheduleFailed(job, err.Error(), elapsed)
-		utils.LogWithFields(utils.LevelInfo, "scheduling", "fire job handler error", map[string]any{"model": h.Name(), "run_id": job.JobID, "error": err.Error(), "duration_ms": elapsed.Milliseconds()})
+		utils.LogWithFields(utils.LevelError, "scheduling", "fire job handler error", map[string]any{"model": h.Name(), "run_id": job.JobID, "error": err.Error(), "duration_ms": elapsed.Milliseconds()})
 		// Handler failed — for once jobs, still deregister: the shot was
 		// spent (handler was invoked, even though it errored). Fall through
 		// to the once-deregister block below.
@@ -568,7 +568,7 @@ func (s *Scheduler) fireJobWithMeta(h *extension.Host, job extension.ScheduleJob
 		enabled, err := s.resolveEnabledPredicate(h, job)
 		if err != nil {
 			s.emitScheduleSkipped(job, "predicate_error")
-			utils.LogWithFields(utils.LevelInfo, "scheduling", "fire job with meta predicate failed", map[string]any{"model": h.Name(), "run_id": job.JobID, "error": err.Error()})
+			utils.LogWithFields(utils.LevelError, "scheduling", "fire job with meta predicate failed", map[string]any{"model": h.Name(), "run_id": job.JobID, "error": err.Error()})
 			return
 		}
 		if !enabled {
@@ -593,7 +593,7 @@ func (s *Scheduler) fireJobWithMeta(h *extension.Host, job extension.ScheduleJob
 	elapsed := s.now().Sub(startTs)
 	if err != nil {
 		s.emitScheduleFailed(job, err.Error(), elapsed)
-		utils.LogWithFields(utils.LevelInfo, "scheduling", "fire job with meta handler error", map[string]any{"model": h.Name(), "run_id": job.JobID, "error": err.Error(), "duration_ms": elapsed.Milliseconds()})
+		utils.LogWithFields(utils.LevelError, "scheduling", "fire job with meta handler error", map[string]any{"model": h.Name(), "run_id": job.JobID, "error": err.Error(), "duration_ms": elapsed.Milliseconds()})
 	} else {
 		s.recordLastRun(h, job, startTs)
 		s.emitScheduleFired(job, elapsed)

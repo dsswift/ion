@@ -25,12 +25,19 @@ import (
 
 // claudeCodeRun tracks an active Claude CLI process.
 type claudeCodeRun struct {
-	requestID    string
-	cmd          *exec.Cmd
-	cancel       context.CancelFunc
-	stderr       *rpcstdio.RingBuffer
-	stdinPipe    io.WriteCloser
-	stdinMu      sync.Mutex
+	requestID  string
+	cmd        *exec.Cmd
+	cancel     context.CancelFunc
+	stderr     *rpcstdio.RingBuffer
+	stdinPipe  io.WriteCloser
+	stdinMu    sync.Mutex
+	// spawnedAt is set immediately after cmd.Start() succeeds and is used to
+	// compute elapsed time in diagnostic messages.
+	spawnedAt time.Time
+	// binaryPath is the resolved absolute path of the claude CLI binary, set
+	// alongside spawnedAt. Included in empty-stderr exit diagnostics so the
+	// operator can verify the binary that ran.
+	binaryPath string
 	planMode     bool
 	planFilePath string
 	// planCaptured latches once the native plan has been written to the plan
@@ -398,6 +405,10 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 		"request_id": run.requestID,
 	})
 
+	// Record spawn metadata for diagnostic use in the empty-stderr exit path.
+	run.spawnedAt = time.Now()
+	run.binaryPath = claudePath
+
 	// Write initial prompt as NDJSON user message over stdin. PDFs/images
 	// referenced by the prompt are inlined as native document/image content
 	// blocks rather than left for the Read tool to expand (#789).
@@ -534,7 +545,7 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 			errMsg := fmt.Sprintf("claude CLI exited with code %d: %s", exitCode, strings.Join(stderrLines, "\n"))
 			b.emitError(run.requestID, fmt.Errorf("%s", errMsg))
 		} else {
-			b.emitError(run.requestID, fmt.Errorf("claude CLI exited with code %d", exitCode))
+			b.emitError(run.requestID, fmt.Errorf("%s", bareExitDiagnostic(run, opts, exitCode, cmd)))
 		}
 	}
 
