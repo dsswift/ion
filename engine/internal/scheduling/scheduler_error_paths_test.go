@@ -116,25 +116,15 @@ func TestScheduler_HandlerError_EmitsFailedEvent(t *testing.T) {
 	}
 }
 
-// TestScheduler_WithMeta_PredicateError_EmitsSkippedEvent exercises the
-// fireJobWithMeta code path (used when the session resolver returns a context).
-// Ensures predicate_error skips emit the correct event from that path too.
-func TestScheduler_WithMeta_PredicateError_EmitsSkippedEvent(t *testing.T) {
-	job := extension.ScheduleJob{
-		JobID:          "with-meta-pred-error",
-		Kind:           extension.ScheduleInterval,
-		IntervalMs:     1000,
-		EnabledRefName: "schedule:with-meta-pred-error:enabled",
-	}
-
-	// Use the asyncreg metadata path: register a handler ref so fireJobWithMeta
-	// is invoked. The meta path fires when the asyncreg entry has a non-empty
-	// handler registered — in tests without a subprocess the direct FireAsync
-	// call will fail, but we only need the predicate branch.
+// setupWithMetaTest creates a scheduler and host wired for FireScheduleNow-based
+// tests of the fireJobWithMeta code path. The host is added to the scheduler so
+// the concurrency-target resolution inside FireScheduleNow finds it in s.hosts.
+// Returns the scheduler, host, and event channel.
+func setupWithMetaTest(t *testing.T, job extension.ScheduleJob) (*Scheduler, *extension.Host, chan types.EngineEvent) {
+	t.Helper()
 	h := extension.NewHost()
 	h.SetNameForTest("ion-dev")
-	err := h.AsyncRegistry().Register(asyncreg.KindSchedule, job, asyncreg.OriginInit, nil)
-	if err != nil {
+	if err := h.AsyncRegistry().Register(asyncreg.KindSchedule, job, asyncreg.OriginInit, nil); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 
@@ -144,19 +134,35 @@ func TestScheduler_WithMeta_PredicateError_EmitsSkippedEvent(t *testing.T) {
 	s.SetSessionResolver(func(host *extension.Host) (*extension.Context, error) {
 		return &extension.Context{SessionKey: "test"}, nil
 	})
+
+	s.nowFn = func() time.Time { return time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC) }
+	s.AddHost(h)
+	return s, h, events
+}
+
+// TestScheduler_WithMeta_PredicateError_EmitsSkippedEvent exercises the
+// fireJobWithMeta code path via FireScheduleNow. fireJobWithMeta is only
+// reachable through FireScheduleNow — the tick loop always routes through
+// maybeFire → fireJob. Ensures the predicate-error branch of fireJobWithMeta
+// emits engine_schedule_skipped/predicate_error.
+func TestScheduler_WithMeta_PredicateError_EmitsSkippedEvent(t *testing.T) {
+	job := extension.ScheduleJob{
+		JobID:          "with-meta-pred-error",
+		Kind:           extension.ScheduleInterval,
+		IntervalMs:     1000,
+		EnabledRefName: "schedule:with-meta-pred-error:enabled",
+	}
+
+	s, h, events := setupWithMetaTest(t, job)
+
 	predicateErr := errors.New("predicate RPC failed")
 	s.SetResolveEnabledFnForTest(func(_ *extension.Host, _ extension.ScheduleJob) (bool, error) {
 		return false, predicateErr
 	})
 
-	baseTime := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
-	s.nowFn = func() time.Time { return baseTime }
-	s.AddHost(h)
-	s.tickOnce()
-
-	due := baseTime.Add(2 * time.Second)
-	s.nowFn = func() time.Time { return due }
-	s.tickOnce()
+	if err := s.FireScheduleNow(h, job.JobID); err != nil {
+		t.Fatalf("FireScheduleNow: %v", err)
+	}
 	time.Sleep(300 * time.Millisecond)
 
 	collected := drainEvents(events)
@@ -168,8 +174,46 @@ func TestScheduler_WithMeta_PredicateError_EmitsSkippedEvent(t *testing.T) {
 			ev.AsyncReason == "predicate_error" {
 			sawSkipped = true
 		}
+		// Must NOT emit engine_schedule_failed — predicate errors are skips.
+		if ev.Type == "engine_schedule_failed" && ev.AsyncID == "with-meta-pred-error" {
+			t.Errorf("predicate error must emit skipped, not failed: %+v", ev)
+		}
 	}
 	if !sawSkipped {
 		t.Fatalf("fireJobWithMeta predicate error: expected engine_schedule_skipped/predicate_error, got: %v", eventTypes(collected))
+	}
+}
+
+// TestScheduler_WithMeta_HandlerError_EmitsFailedEvent exercises the handler-error
+// branch of fireJobWithMeta via FireScheduleNow. When FireAsync returns an error
+// (no subprocess wired — expected in unit tests), fireJobWithMeta must emit
+// engine_schedule_failed. This is the second LevelError line in fireJobWithMeta
+// (line 596 of scheduler.go) that had no test coverage through the actual code path.
+func TestScheduler_WithMeta_HandlerError_EmitsFailedEvent(t *testing.T) {
+	job := extension.ScheduleJob{
+		JobID:      "with-meta-handler-error",
+		Kind:       extension.ScheduleInterval,
+		IntervalMs: 1000,
+		// No EnabledRefName — execution proceeds directly to FireAsync, which
+		// fails because the host has no subprocess wired.
+	}
+
+	s, h, events := setupWithMetaTest(t, job)
+
+	if err := s.FireScheduleNow(h, job.JobID); err != nil {
+		t.Fatalf("FireScheduleNow: %v", err)
+	}
+	time.Sleep(300 * time.Millisecond)
+
+	collected := drainEvents(events)
+
+	var sawFailed bool
+	for _, ev := range collected {
+		if ev.Type == "engine_schedule_failed" && ev.AsyncID == "with-meta-handler-error" {
+			sawFailed = true
+		}
+	}
+	if !sawFailed {
+		t.Fatalf("fireJobWithMeta handler error: expected engine_schedule_failed, got: %v", eventTypes(collected))
 	}
 }
