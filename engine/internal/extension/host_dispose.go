@@ -3,6 +3,8 @@ package extension
 import (
 	"os"
 	"time"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // Dispose shuts down the subprocess extension gracefully.
@@ -81,7 +83,11 @@ func (h *Host) disposeInternal() {
 			case <-time.After(2 * time.Second):
 				// Safety net: never block dispose indefinitely. If the process
 				// has not been reaped in 2 s something is deeply wrong; proceed
-				// so callers are not stuck.
+				// so callers are not stuck. Log at ERROR so this anomalous path
+				// is observable without a debugger.
+				utils.LogWithFields(utils.LevelError, "extension", "disposeInternal: process reap timed out", map[string]any{
+					"extension": h.name,
+				})
 			}
 		} else {
 			_ = cmd.Wait()
