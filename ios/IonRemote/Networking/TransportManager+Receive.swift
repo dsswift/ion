@@ -151,6 +151,29 @@ extension TransportManager {
             return
         }
 
+        // Outbound-seq epoch check — BEFORE the seq dedup. A changed epoch means
+        // the desktop's outbound seq space restarted (desktop process restart, or
+        // an in-process stop()+recreate): its seqs are back at 1 and its
+        // retransmit buffer is empty. If we kept our old high-water, every fresh
+        // seq=1..N frame would be dropped as "already seen" (seq <= lastReceivedSeq)
+        // and a resend request could never be satisfied — the phone would
+        // blackhole all post-restart frames until the 5s snapshot reconcile. Reset
+        // the dedup state so the new stream is accepted from seq 1. Only acts on a
+        // real change: the first epoch-bearing frame seeds the tracker without a
+        // reset, and a desktop predating the field (epoch nil) never triggers it.
+        if let incomingEpoch = wire.epoch {
+            if let known = lastReceivedEpoch, known != incomingEpoch {
+                ionLog.info("wire epoch changed \(known) -> \(incomingEpoch): desktop seq space restarted; resetting receive dedup")
+                DiagnosticLog.log("wire epoch changed, resetting dedup", tag: "transport.receive", fields: [
+                    "old_epoch": String(Int64(known)),
+                    "new_epoch": String(Int64(incomingEpoch))
+                ])
+                lastReceivedSeq = 0
+                pendingResendSeqs.removeAll()
+            }
+            lastReceivedEpoch = incomingEpoch
+        }
+
         // Dedup vs. gap-recovery. A frame at/below lastReceivedSeq is normally a
         // duplicate and dropped — EXCEPT a replayed frame filling a gap we asked
         // the desktop to resend: its original (lower) seq is in pendingResendSeqs,

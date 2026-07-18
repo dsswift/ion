@@ -65,6 +65,16 @@ final class TransportManager {
     private(set) var isStopped = false
     let _seqLock = OSAllocatedUnfairLock(initialState: UInt64(0))
     var lastReceivedSeq: UInt64 = 0
+    /// The outbound-seq epoch of the last frame we processed. When an inbound
+    /// frame carries a DIFFERENT epoch, the desktop's seq space restarted (a
+    /// desktop process restart or stop()+recreate), so `lastReceivedSeq` and the
+    /// pending-resend set are stale and must be reset before the seq comparison —
+    /// otherwise the fresh seq=1 stream is deduped as "already seen" and the phone
+    /// blackholes every post-restart frame (the retransmit buffer is also empty
+    /// post-restart, so a resend request can't heal it). Nil until the first
+    /// epoch-bearing frame; a desktop predating the field leaves this nil and the
+    /// reset never triggers (legacy behavior preserved).
+    var lastReceivedEpoch: Double?
     /// Outstanding gap-recovery range awaiting replayed frames from the desktop.
     /// While set, an inbound frame whose seq falls in this (still-missing) set is
     /// APPLIED even though it is below `lastReceivedSeq` (the normal dedup would
@@ -419,6 +429,12 @@ struct WireMessage: Codable {
     let seq: UInt64
     /// Unix ms timestamp.
     let ts: Double?
+    /// Outbound-seq epoch (generation id). Changes when the desktop's outbound
+    /// seq space resets to 1 — a desktop process restart (new RemoteTransport) or
+    /// an in-process stop()+recreate. iOS resets its receive dedup high-water on
+    /// an epoch change so a fresh seq=1 stream is not deduped as stale. Optional:
+    /// a desktop predating the field omits it, and iOS treats absent as unchanged.
+    let epoch: Double?
     /// JSON-encoded payload (nil when encrypted).
     let payload: String?
     /// Base64-encoded nonce (present when encrypted).
@@ -428,9 +444,10 @@ struct WireMessage: Codable {
     /// Identifies the sending device.
     let deviceId: String?
 
-    init(seq: UInt64, ts: Double?, payload: String?, nonce: String? = nil, ciphertext: String? = nil, deviceId: String? = nil) {
+    init(seq: UInt64, ts: Double?, payload: String?, nonce: String? = nil, ciphertext: String? = nil, deviceId: String? = nil, epoch: Double? = nil) {
         self.seq = seq
         self.ts = ts
+        self.epoch = epoch
         self.payload = payload
         self.nonce = nonce
         self.ciphertext = ciphertext
