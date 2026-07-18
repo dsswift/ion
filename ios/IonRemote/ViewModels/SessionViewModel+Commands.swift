@@ -363,44 +363,10 @@ extension SessionViewModel {
         terminalInstanceLabels["\(tabId):\(instanceId)"] ?? fallback
     }
 
-    // MARK: - File Explorer Commands
-
-    /// Upload an image from the iOS device to the desktop as a temp file.
-    func uploadAttachment(dataUrl: String, name: String, correlationId: String) {
-        send(.uploadAttachment(dataUrl: dataUrl, name: name, correlationId: correlationId), intent: .userInitiated)
-    }
-
-    func requestFsListDir(directory: String, includeHidden: Bool = false) {
-        fileListingLoading.insert(directory)
-        send(.fsListDir(directory: directory, includeHidden: includeHidden), intent: .userInitiated)
-    }
-
-    func requestFsReadFile(filePath: String) {
-        fileContentLoading.insert(filePath)
-        send(.fsReadFile(filePath: filePath), intent: .userInitiated)
-    }
-
-    func requestFsWriteFile(filePath: String, content: String) {
-        send(.fsWriteFile(filePath: filePath, content: content), intent: .userInitiated)
-    }
-
-    /// Rename a file or directory on the paired desktop. Fire-and-forget;
-    /// the result arrives as `.fsRenameResult` which the event handler
-    /// turns into a refreshed `fsListDir` on the parent directory of
-    /// `newPath` (and surfaces errors via `fileRenameResult`).
-    func requestFsRename(oldPath: String, newPath: String) {
-        send(.fsRename(oldPath: oldPath, newPath: newPath), intent: .userInitiated)
-    }
-
-    func requestLoadAttachments(tabId: String) {
-        let oldCount = tabAttachmentCache[tabId]?.count ?? -1
-        DiagnosticLog.log("request load attachments", tag: "session.commands", fields: [
-            "tab_id": String(tabId.prefix(8)),
-            "count": String(oldCount)
-        ])
-        tabAttachmentCache.removeValue(forKey: tabId)
-        send(.loadAttachments(tabId: tabId), intent: .automaticEssential)
-    }
+    // File-explorer commands (uploadAttachment, requestFsListDir,
+    // requestFsReadFile, requestFsWriteFile, requestFsRename,
+    // requestLoadAttachments) live in SessionViewModel+FsCommands.swift,
+    // extracted to keep this file under the 600-line Swift cap.
 
     // MARK: - Command Discovery
 
@@ -548,11 +514,22 @@ extension SessionViewModel {
             }
 
         case .automaticEssential:
+            // Defer to the essential queue when EITHER the connection state
+            // is not `.connected` OR the transport object is nil. The two can
+            // disagree: during a soft-reconnect teardown the transport is torn
+            // down (nil) while `connectionState` still reads `.connected`
+            // until the next state flip. Both conditions mean "cannot send
+            // right now" and both take the same deferral path — nothing is
+            // dropped. The log carries both facts so the deferral reason is
+            // unambiguous (previously it logged "not connected" even when the
+            // status field said "connected" and the real cause was a nil
+            // transport).
             guard connectionState == .connected, let transport else {
                 let key = command.essentialKey ?? "unknown:\(command)"
-                DiagnosticLog.log("essential not connected deferring", tag: "session.commands", fields: [
+                DiagnosticLog.log("essential deferred (transport unavailable)", tag: "session.commands", fields: [
                     "reason": key,
-                    "status": connectionState.rawValue
+                    "status": connectionState.rawValue,
+                    "transport": transport == nil ? "nil" : "present"
                 ])
                 enqueueEssential(key: key, command: command)
                 return

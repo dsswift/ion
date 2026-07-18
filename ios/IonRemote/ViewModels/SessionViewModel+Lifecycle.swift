@@ -385,6 +385,10 @@ extension SessionViewModel {
         // soft reconnect because that path never calls wipeTransientState.
         clearPendingCreates()
         activeTools = [:]
+        // RC-19/RC-28: special-card dismissal sets are per-pairing; a switch/unpair
+        // must not carry a prior desktop's dismissals into the new pairing.
+        dismissedLiveSpecialTabs = []
+        dismissedRestoredCards = []
         tabGroupMode = "auto"
         tabGroups = []
         connectionQuality.reset()

@@ -32,6 +32,11 @@ struct ChatCollectionView<Payload, RowContent: View>: UIViewControllerRepresenta
     var forceScrollCounter: Int = 0
     let spacing: CGFloat
     let horizontalInset: CGFloat
+    /// RC-15: fired when the user scrolls within a threshold of the TOP, so the
+    /// host can page in older history (loadMoreMessages). Debounced in the VC to
+    /// one fire per top-approach; the ViewModel additionally guards on hasMore +
+    /// an in-flight load, so a burst of scroll events coalesces to one request.
+    var onReachedTop: (() -> Void)?
     let rowContent: (Payload) -> RowContent
 
     func makeUIViewController(context: Context) -> ChatCollectionVC<Payload, RowContent> {
@@ -45,6 +50,7 @@ struct ChatCollectionView<Payload, RowContent: View>: UIViewControllerRepresenta
                 DispatchQueue.main.async { isNearBottom = near }
             }
         }
+        vc.onReachedTop = onReachedTop
         context.coordinator.lastForceScroll = forceScrollCounter
         return vc
     }
@@ -54,6 +60,8 @@ struct ChatCollectionView<Payload, RowContent: View>: UIViewControllerRepresenta
         context: Context
     ) {
         vc.rowContent = rowContent
+        // Keep the callback fresh (it captures the current host closure).
+        vc.onReachedTop = onReachedTop
 
         let forceScroll = forceScrollCounter != context.coordinator.lastForceScroll
         context.coordinator.lastForceScroll = forceScrollCounter
@@ -87,6 +95,12 @@ final class ChatCollectionVC<Payload, RowContent: View>:
     private var dataSource: UICollectionViewDiffableDataSource<ChatSection, ChatItem<Payload>>!
     private var nearBottom = true
     var onNearBottomChanged: ((Bool) -> Void)?
+    /// RC-15: fired when the user scrolls near the top (older-history prefetch).
+    var onReachedTop: (() -> Void)?
+    /// Debounce so one top-approach fires once: set true when we cross into the
+    /// top zone, reset when we leave it. Prevents a scroll burst near the top
+    /// from firing loadMoreMessages on every delegate callback.
+    private var topZoneLatched = false
 
     private var pendingSnapshot: (items: [ChatItem<Payload>], isNearBottom: Bool, forceScroll: Bool)?
     private var hasAppliedInitialSnapshot = false
@@ -299,6 +313,23 @@ final class ChatCollectionVC<Payload, RowContent: View>:
         if nearBottom != near {
             nearBottom = near
             onNearBottomChanged?(near)
+        }
+
+        // RC-15: older-history prefetch. When the user scrolls within a threshold
+        // of the TOP, fire onReachedTop once per approach (latched until they
+        // leave the top zone). The host's loadMoreMessages guards on hasMore + an
+        // in-flight load, so repeated fires during a load are safe no-ops; the
+        // latch just avoids spamming the guard. Only fires under active user
+        // interaction so a programmatic scroll (snapshot apply) can't trigger it.
+        let topDistance = scrollView.contentOffset.y + scrollView.adjustedContentInset.top
+        let inTopZone = topDistance < 200
+        if inTopZone {
+            if !topZoneLatched && isUserInteracting {
+                topZoneLatched = true
+                onReachedTop?()
+            }
+        } else {
+            topZoneLatched = false
         }
     }
 }

@@ -53,7 +53,7 @@ export function buildDeviceFrame(
   const seq = nextSeq(deviceId)
   const msg: WireMessage = { seq, ts: sendTs, deviceId } as WireMessage
   if (epoch !== undefined) {
-    ;(msg as any).epoch = epoch
+    msg.epoch = epoch
   }
   if (secret.length === 32) {
     try {

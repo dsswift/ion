@@ -1,13 +1,21 @@
 import { appendFileSync, writeFileSync, existsSync, mkdirSync, statSync, renameSync, unlinkSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { homedir, hostname } from 'os'
-import { log as _log } from '../../logger'
+import { log as _log, warn as _warn, debug as _debug } from '../../logger'
 import { atomicWriteFileSync } from '../../utils/atomicWrite'
 import { state } from '../../state'
 import type { RemoteCommand } from '../protocol'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
+}
+
+function warnLog(msg: string, fields?: Record<string, unknown>): void {
+  _warn('main', msg, fields)
+}
+
+function debugLog(msg: string, fields?: Record<string, unknown>): void {
+  _debug('main', msg, fields)
 }
 
 /** Persisted log file path — readable by the engine's Read tool. */
@@ -126,6 +134,86 @@ function setSeqMark(deviceId: string, nextSeq: number): void {
   }
 }
 
+// ─── Per-device pull backoff (unresponsive devices) ──────────────────────────
+
+/**
+ * Number of consecutive unanswered periodic pulls before backoff engages.
+ * Below this threshold the device is pulled at the base interval; at and above
+ * it, the delay doubles per unanswered pull up to LOG_PULL_BACKOFF_MAX_MS.
+ * Exported for test access.
+ */
+export const LOG_PULL_NO_RESPONSE_THRESHOLD = 3
+
+/** Ceiling for the exponential pull backoff (ms). Exported for test access. */
+export const LOG_PULL_BACKOFF_MAX_MS = 60_000
+
+interface PullBackoffState {
+  /** Consecutive periodic pulls sent with no response since the last response. */
+  noResponseCount: number
+  /** Current backoff delay (ms). Base interval until the threshold is crossed. */
+  delayMs: number
+  /** Epoch ms before which the periodic tick skips this device. */
+  nextEligibleAt: number
+}
+
+/**
+ * Per-device backoff state for the periodic pull. A device that never answers
+ * would otherwise be pulled every 5s forever; after
+ * LOG_PULL_NO_RESPONSE_THRESHOLD consecutive unanswered pulls the delay doubles
+ * per unanswered pull (10s → 20s → 40s → capped at 60s). Any response resets
+ * the device to the base interval. The shared interval keeps ticking at the
+ * base rate; backed-off devices are skipped until their nextEligibleAt passes.
+ *
+ * Exported for test access.
+ */
+export const devicePullBackoff = new Map<string, PullBackoffState>()
+
+/**
+ * Record that a periodic pull was sent with no response yet. Once the
+ * consecutive-no-response count reaches the threshold, compute the exponential
+ * delay and push the device's next eligibility out by it.
+ */
+function recordPullSent(deviceId: string): void {
+  const st = devicePullBackoff.get(deviceId) ?? {
+    noResponseCount: 0,
+    delayMs: PERIODIC_LOG_PULL_INTERVAL_MS,
+    nextEligibleAt: 0,
+  }
+  st.noResponseCount++
+  if (st.noResponseCount >= LOG_PULL_NO_RESPONSE_THRESHOLD) {
+    const exponent = st.noResponseCount - LOG_PULL_NO_RESPONSE_THRESHOLD + 1
+    const newDelay = Math.min(PERIODIC_LOG_PULL_INTERVAL_MS * 2 ** exponent, LOG_PULL_BACKOFF_MAX_MS)
+    if (newDelay !== st.delayMs) {
+      debugLog('log_pull: backoff increased', {
+        device_id: deviceId,
+        no_response_count: st.noResponseCount,
+        from_ms: st.delayMs,
+        to_ms: newDelay,
+      })
+    }
+    st.delayMs = newDelay
+    st.nextEligibleAt = Date.now() + newDelay
+  }
+  devicePullBackoff.set(deviceId, st)
+}
+
+/**
+ * Clear a device's backoff state on any response — the device is alive, so
+ * periodic pulls resume at the base interval immediately.
+ */
+function resetPullBackoff(deviceId: string): void {
+  const st = devicePullBackoff.get(deviceId)
+  if (!st) return
+  if (st.noResponseCount >= LOG_PULL_NO_RESPONSE_THRESHOLD) {
+    debugLog('log_pull: backoff reset on response', {
+      device_id: deviceId,
+      no_response_count: st.noResponseCount,
+      delay_ms: st.delayMs,
+    })
+  }
+  devicePullBackoff.delete(deviceId)
+}
+
 // ─── Periodic pull interval ───────────────────────────────────────────────────
 
 let periodicInterval: ReturnType<typeof setInterval> | null = null
@@ -133,7 +221,8 @@ let periodicInterval: ReturnType<typeof setInterval> | null = null
 /**
  * Start the periodic log-pull interval. Fires every PERIODIC_LOG_PULL_INTERVAL_MS
  * while at least one device is connected. Safe to call multiple times — only one
- * interval is active at any time.
+ * interval is active at any time. Devices in no-response backoff are skipped
+ * until their backoff window elapses (see devicePullBackoff).
  */
 export function startPeriodicLogPull(): void {
   if (periodicInterval) return
@@ -145,10 +234,23 @@ export function startPeriodicLogPull(): void {
       stopPeriodicLogPull()
       return
     }
+    const now = Date.now()
     for (const deviceId of deviceIds) {
+      const backoff = devicePullBackoff.get(deviceId)
+      if (backoff && now < backoff.nextEligibleAt) {
+        // Device is unresponsive and inside its backoff window — skip this tick.
+        debugLog('log_pull: skipped, device in backoff', {
+          device_id: deviceId,
+          no_response_count: backoff.noResponseCount,
+          delay_ms: backoff.delayMs,
+          next_eligible_at: backoff.nextEligibleAt,
+        })
+        continue
+      }
       const sinceSeq = getSeqMark(deviceId)
       log('log_pull: periodic pull', { device_id: deviceId, since_seq: sinceSeq })
       state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_request_diagnostic_logs', sinceSeq })
+      recordPullSent(deviceId)
     }
   }, PERIODIC_LOG_PULL_INTERVAL_MS)
 }
@@ -312,6 +414,14 @@ export function requestDiagnosticLogs(deviceId: string): Promise<string> {
  * Resolves any pending promise AND appends new, identity-stamped lines to the
  * log file (dropping any whose seq is at or below the persisted cursor).
  * Advances and persists the per-device seq mark to the response's `nextSeq`.
+ *
+ * Seq-space regression: when the device reports a `nextSeq` BELOW the persisted
+ * mark, the device's seq space has reset (app reinstall / device reset) and the
+ * mark points beyond anything the device will ever send — every future pull
+ * would return nothing (or the same overlap) forever. The mark is reset to the
+ * reported `nextSeq` so pulls resume from the device's actual position. This
+ * check runs on EVERY response, which also covers the first response after a
+ * device connect. Any response also clears the device's no-response backoff.
  */
 export function handleDiagnosticLogsResponse(
   cmd: Extract<RemoteCommand, { type: 'desktop_diagnostic_logs_response' }>,
@@ -320,13 +430,38 @@ export function handleDiagnosticLogsResponse(
   const lineCount = cmd.logs ? cmd.logs.split('\n').filter((l) => l.trim()).length : 0
   log('log_pull: received', { device_id: deviceId, bytes: cmd.logs?.length ?? 0, lines: lineCount, next_seq: cmd.nextSeq })
 
+  // The device answered — clear any no-response backoff so periodic pulls
+  // resume at the base interval.
+  resetPullBackoff(deviceId)
+
   const sinceSeq = getSeqMark(deviceId)
-  persistLogChunk(cmd.logs ?? '', cmd.pairingId, sinceSeq)
+  let dedupSince = sinceSeq
+  let regressed = false
+
+  // Seq-space regression check — MUST run before persistLogChunk, otherwise
+  // the stale (too-high) mark would dedup-drop every line the reset device sends.
+  if (typeof cmd.nextSeq === 'number' && cmd.nextSeq < sinceSeq) {
+    warnLog('log_pull: device seq space regressed, resetting mark', {
+      device_id: deviceId,
+      old_mark: sinceSeq,
+      reported_next_seq: cmd.nextSeq,
+    })
+    setSeqMark(deviceId, cmd.nextSeq)
+    regressed = true
+    // Dedup cursor for THIS chunk is 0: the device's new seq space has nothing
+    // persisted yet, so nothing in the chunk can be a duplicate. Both the old
+    // mark and the reset mark would wrongly drop every line (all seqs in the
+    // chunk are below cmd.nextSeq by definition).
+    dedupSince = 0
+  }
+
+  persistLogChunk(cmd.logs ?? '', cmd.pairingId, dedupSince)
 
   // Advance the persisted seq mark so the next pull (and any post-restart pull)
   // requests only lines newer than what we have. Guard against a stale/absent
-  // nextSeq: never move the cursor backward.
-  if (typeof cmd.nextSeq === 'number' && cmd.nextSeq > sinceSeq) {
+  // nextSeq: never move the cursor backward here (regression handling above is
+  // the sole sanctioned backward move, and it already persisted the new mark).
+  if (!regressed && typeof cmd.nextSeq === 'number' && cmd.nextSeq > sinceSeq) {
     setSeqMark(deviceId, cmd.nextSeq)
     log('log_pull: seq mark updated', { device_id: deviceId, from: sinceSeq, to: cmd.nextSeq })
   }
@@ -361,6 +496,9 @@ export async function requestLogsFromFirstDevice(): Promise<string> {
 export function autoPullDiagnosticLogs(deviceId: string): void {
   // Resume from the persisted cursor — do NOT reset to 0 (that re-ships history).
   loadSeqMarks()
+  // A fresh connect supersedes any stale backoff from a previous transport
+  // session — the device is (re)announcing itself, so pull immediately.
+  resetPullBackoff(deviceId)
   log('log_pull: auto-pulling on connect', { device_id: deviceId, since_seq: getSeqMark(deviceId) })
   requestDiagnosticLogs(deviceId).catch((err) => {
     log('log_pull: auto-pull failed', { error: (err as Error).message })

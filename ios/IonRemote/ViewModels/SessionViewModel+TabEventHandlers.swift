@@ -18,12 +18,11 @@ extension SessionViewModel {
         for key in engineDialogs.keys where key == tabId || key.hasPrefix("\(tabId):") {
             engineDialogs.removeValue(forKey: key)
         }
-        for key in enginePinnedPrompt.keys where key == tabId || key.hasPrefix("\(tabId):") {
-            enginePinnedPrompt.removeValue(forKey: key)
-        }
-        for key in activeTools.keys where key.hasPrefix("\(tabId):") || key == tabId {
-            activeTools.removeValue(forKey: key)
-        }
+        // enginePinnedPrompt and activeTools are keyed by the bare tabId
+        // (post-#256); the former compound-key sweeps iterated the whole map for
+        // keys that can no longer exist. Direct removal is sufficient.
+        enginePinnedPrompt.removeValue(forKey: tabId)
+        activeTools.removeValue(forKey: tabId)
         conversationLoaded.remove(tabId)
         loadingConversation.remove(tabId)
         // Drafts are local-only state — clean them up when the tab is closed
@@ -43,6 +42,15 @@ extension SessionViewModel {
                 tabs[idx].permissionQueue.removeAll {
                     $0.toolName == "ExitPlanMode" || $0.toolName == "AskUserQuestion"
                 }
+                // RC-19: a new run means the tab may raise a genuinely NEW plan/
+                // question card. dismissedLiveSpecialTabs records that a SPECIFIC
+                // card was dismissed, not "never show a special card on this tab
+                // again" — clear it so the next card (delivered via snapshot/
+                // restore, not the live push) is not wrongly stripped.
+                dismissedLiveSpecialTabs.remove(tabId)
+                for key in dismissedLiveSpecialTabs where key.hasPrefix("\(tabId):") {
+                    dismissedLiveSpecialTabs.remove(key)
+                }
             }
             if status == .idle || status == .completed || status == .failed || status == .dead {
                 // Capture preview from liveText before clearing — if tabStatus
@@ -58,11 +66,17 @@ extension SessionViewModel {
                 tabs[idx].permissionQueue.removeAll {
                     $0.toolName != "ExitPlanMode" && $0.toolName != "AskUserQuestion"
                 }
-                // Clear active tools for this tab (both bare tabId and compound keys)
+                // Clear active tools for this tab. activeTools is keyed by the
+                // bare tabId (post-#256), so no compound-key sweep is needed.
                 activeTools.removeValue(forKey: tabId)
-                for key in activeTools.keys where key.hasPrefix("\(tabId):") {
-                    activeTools.removeValue(forKey: key)
-                }
+                // RC-21: the activeTools MAP is cleared above, but the transcript
+                // tool ROWS still read .running if their tool_end was dropped
+                // (transport gap / cancel). Grouping then shows an eternal spinner
+                // / "Running tools…" that never resolves. Mirror the map clear onto
+                // the rows: demote any still-running tool row to completed on a
+                // terminal transition. A genuine failure surfaces via a later
+                // tool_end (isError) or history reload.
+                finalizeRunningToolRows(tabId: tabId)
             }
             // One-shot post-run heal: when a tab transitions out of .running or
             // .connecting into a terminal/idle state, the local transcript may
@@ -91,14 +105,17 @@ extension SessionViewModel {
 
     @MainActor
     func handleTaskComplete(tabId: String) {
-        // Capture liveText before it's cleared — the relay sends assistant
-        // output as text_chunk (which populates liveText) rather than
-        // engine_text_delta (which populates the instance messages), so
-        // liveText is the only reliable source for voice readback in that
-        // path.
+        // Capture liveText before it's cleared. liveText is the accumulator for
+        // the legacy desktop_text_chunk path (only an OLDER desktop build emits
+        // it; the current desktop forwards assistant text as desktop_text_delta,
+        // which lands in the instance messages). It is kept here as a TTS
+        // fallback for that legacy path — the transcript itself renders from the
+        // instance messages, which the desktop_text_delta path already populated.
         let capturedLiveText = liveText(tabId)
 
+        var previousStatus: TabStatus? = nil
         if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
+            previousStatus = tabs[idx].status
             tabs[idx].status = .completed
             // Preserve ExitPlanMode/AskUserQuestion entries for plan card UI
             tabs[idx].permissionQueue.removeAll {
@@ -111,10 +128,12 @@ extension SessionViewModel {
             }
         }
         clearLiveText(tabId: tabId)
+        // activeTools is keyed by the bare tabId (post-#256); no compound sweep.
         activeTools.removeValue(forKey: tabId)
-        for key in activeTools.keys where key.hasPrefix("\(tabId):") {
-            activeTools.removeValue(forKey: key)
-        }
+        // RC-21: demote any tool row still stuck .running (dropped tool_end) so a
+        // completed turn doesn't show an eternal spinner. Mirrors the activeTools
+        // clear above onto the transcript rows.
+        finalizeRunningToolRows(tabId: tabId)
         tabIdleSince[tabId] = Date()
 
         // TTS: try the unified conversation messages → liveText. Both the
@@ -152,6 +171,17 @@ extension SessionViewModel {
             DiagnosticLog.log("voice tts not speaking", tag: "session.voice", fields: [
                 "count": spokenInfo == nil ? "nil" : String(spokenInfo!.text.count)
             ])
+        }
+
+        // RC-24: fire the one-shot post-run heal on the taskComplete settle path
+        // too. handleTabStatus heals on a running→idle transition, but a run that
+        // settles via taskComplete without a paired running→idle tabStatus event
+        // otherwise skipped the immediate heal and waited for the next 5s snapshot.
+        // The fingerprint + debounce guards in maybeReconcileStaleConversation
+        // make this a no-op unless there is a real divergence.
+        if previousStatus == .running || previousStatus == .connecting,
+           let tab = tabs.first(where: { $0.id == tabId }) {
+            maybeReconcileStaleConversation(tab: tab)
         }
     }
 
@@ -193,6 +223,21 @@ extension SessionViewModel {
                 "cost_usd": totalCostUsd.map { String(format: "%.4f", $0) } ?? "-",
                 "status": groupId ?? "-"
             ])
+        }
+    }
+
+    /// RC-21: demote any tool row still marked `.running` to `.completed` when the
+    /// tab reaches a terminal state. A dropped tool_end (transport gap / cancel)
+    /// otherwise leaves the row spinning forever and grouping renders an eternal
+    /// "Running tools…". Called from every terminal transition (handleTabStatus
+    /// idle/completed/failed/dead and handleTaskComplete). A row whose real
+    /// outcome was an error is corrected by a later tool_end or history reload.
+    @MainActor
+    func finalizeRunningToolRows(tabId: String) {
+        mutateConversationMessages(tabId: tabId) { msgs in
+            for i in msgs.indices where msgs[i].role == .tool && msgs[i].toolStatus == .running {
+                msgs[i].toolStatus = .completed
+            }
         }
     }
 }

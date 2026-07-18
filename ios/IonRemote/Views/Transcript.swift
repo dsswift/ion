@@ -23,6 +23,9 @@ struct Transcript: View {
     /// Optional plan-tap handler. When non-nil, plan-lifecycle divider
     /// slug links become tappable.
     var onTapPlan: ((String) -> Void)?
+    /// RC-15: fired when the user scrolls near the top, so the host can page in
+    /// older history. Nil at call sites that don't paginate (dispatch popup).
+    var onReachedTop: (() -> Void)?
     /// Controls whether the agent panel is expanded. Optional: when omitted
     /// the section defaults to expanded=true (suitable for popup call sites
     /// where agents is always nil anyway).
@@ -92,7 +95,8 @@ struct Transcript: View {
                     isNearBottom: $isNearBottom,
                     forceScrollCounter: forceScrollCounter,
                     spacing: 8,
-                    horizontalInset: 12
+                    horizontalInset: 12,
+                    onReachedTop: onReachedTop
                 ) { item in
                     Group {
                         switch item {

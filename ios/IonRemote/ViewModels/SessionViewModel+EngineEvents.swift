@@ -30,7 +30,9 @@ extension SessionViewModel {
             timestamp: Date().timeIntervalSince1970 * 1000
         )
         msg.interceptLevel = level
-        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.messages.append(msg) }
+        // RC-11: live event — stamp isLive so a first-page history replace
+        // preserves this row in the live tail rather than dropping it.
+        appendLiveMessage(tabId: tabId, instanceId: instanceId, msg)
     }
 
     @MainActor
@@ -41,6 +43,9 @@ extension SessionViewModel {
         var msg = Message(id: UUID().uuidString, role: role, content: message, timestamp: Date().timeIntervalSince1970 * 1000)
         msg.dedupKey = dedupKey
         msg.dedupMode = dedupMode
+        // RC-11: harness messages arrive during a live run; stamp isLive before
+        // the closure so all three append paths inside inherit the flag.
+        msg.isLive = true
 
         DiagnosticLog.log("engine harness message", tag: "session.engine", level: .debug, fields: [
             "tab_id": String(tabId.prefix(8)),
@@ -105,7 +110,8 @@ extension SessionViewModel {
         // link that opens the plan preview. Empty path stays nil (no link).
         let path = planFilePath ?? ""
         msg.planFilePath = path.isEmpty ? nil : path
-        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.messages.append(msg) }
+        // RC-11: plan-file divider is emitted during a live run; preserve in tail.
+        appendLiveMessage(tabId: tabId, instanceId: instanceId, msg)
     }
 
     @MainActor
@@ -122,8 +128,9 @@ extension SessionViewModel {
         formatter.dateFormat = "h:mm a"
         let timeStr = formatter.string(from: time)
         let content = "── Steer applied at \(timeStr) · \(messageLength) chars ──"
-        let msg = Message(id: UUID().uuidString, role: .system, content: content, timestamp: time.timeIntervalSince1970 * 1000)
-        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.messages.append(msg) }
+        var msg = Message(id: UUID().uuidString, role: .system, content: content, timestamp: time.timeIntervalSince1970 * 1000)
+        // RC-11: steer dividers appear mid-run; preserve in the live tail.
+        appendLiveMessage(tabId: tabId, instanceId: instanceId, msg)
     }
 
     @MainActor
@@ -133,8 +140,9 @@ extension SessionViewModel {
         // Append it as the user turn it is — the same content persists in
         // the conversation file, so a history reload shows the identical
         // transcript. Mirrors the desktop's prompt_injected reducer arm.
-        let msg = Message(id: UUID().uuidString, role: .user, content: prompt, timestamp: Date().timeIntervalSince1970 * 1000)
-        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.messages.append(msg) }
+        var msg = Message(id: UUID().uuidString, role: .user, content: prompt, timestamp: Date().timeIntervalSince1970 * 1000)
+        // RC-11: extension-injected prompts start a live run; preserve in tail.
+        appendLiveMessage(tabId: tabId, instanceId: instanceId, msg)
     }
 
     @MainActor
@@ -146,9 +154,22 @@ extension SessionViewModel {
         ])
         let info = ActiveToolInfo(id: toolId, toolName: toolName, startTime: Date())
         activeTools[tabId, default: [:]][toolId] = info
-        // Add tool message to conversation
-        let msg = Message(id: toolId, role: .tool, content: "", toolName: toolName, toolId: toolId, toolStatus: .running, timestamp: Date().timeIntervalSince1970 * 1000)
-        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.messages.append(msg) }
+        // Add tool message to conversation — RC-22: guard against a duplicate
+        // tool_start (reconnect replay, engine re-emit). The row id IS the toolId,
+        // so a second append creates a duplicate SwiftUI Identifiable id, breaking
+        // ForEach identity (dropped/flickering rows) and leaving tool_end's
+        // lastIndex update to touch only one. If a row for this toolId already
+        // exists, refresh it in place instead of appending.
+        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { inst in
+            if let idx = inst.messages.lastIndex(where: { $0.toolId == toolId }) {
+                inst.messages[idx].toolName = toolName
+                inst.messages[idx].toolStatus = .running
+                return
+            }
+            var msg = Message(id: toolId, role: .tool, content: "", toolName: toolName, toolId: toolId, toolStatus: .running, timestamp: Date().timeIntervalSince1970 * 1000)
+            msg.isLive = true // RC-11: tool rows are part of the live tail
+            inst.messages.append(msg)
+        }
     }
 
     @MainActor
@@ -192,17 +213,21 @@ extension SessionViewModel {
             path: path
         )
         mutateEngineInstance(tabId: tabId, instanceId: instanceId) { inst in
-            func alreadyAttached(_ msg: Message) -> Bool {
-                msg.attachments?.contains(where: { $0.path == path }) ?? false
+            // RC-25: dedup by scanning ALL messages for the path, not just the
+            // target row. Between two image events for the same path the "last
+            // assistant" row can shift (a message_end re-key, or a new assistant
+            // row opening), so a per-row check let the same image attach to a
+            // second bubble. A whole-instance scan makes the attach idempotent.
+            func attachedAnywhere() -> Bool {
+                inst.messages.contains { $0.attachments?.contains(where: { $0.path == path }) ?? false }
             }
+            if attachedAnywhere() { return }
             if source == "tool", let toolId {
                 guard let idx = inst.messages.lastIndex(where: { $0.toolId == toolId }) else { return }
-                if alreadyAttached(inst.messages[idx]) { return }
                 inst.messages[idx].attachments = (inst.messages[idx].attachments ?? []) + [attachment]
                 return
             }
             if let idx = inst.messages.lastIndex(where: { $0.role == .assistant }) {
-                if alreadyAttached(inst.messages[idx]) { return }
                 inst.messages[idx].attachments = (inst.messages[idx].attachments ?? []) + [attachment]
                 return
             }
@@ -213,7 +238,12 @@ extension SessionViewModel {
                 attachments: [attachment],
                 timestamp: Date().timeIntervalSince1970 * 1000
             )
-            inst.messages.append(msg)
+            // RC-11: this fallback assistant row is created during a live run;
+            // stamp isLive directly (inside the closure, appendLiveMessage
+            // can't be called here).
+            var liveMsg = msg
+            liveMsg.isLive = true
+            inst.messages.append(liveMsg)
         }
     }
 
@@ -224,8 +254,9 @@ extension SessionViewModel {
             "error": String(message.prefix(80))
         ])
         // Add error as system message in conversation
-        let msg = Message(id: UUID().uuidString, role: .system, content: "Error: \(message)", timestamp: Date().timeIntervalSince1970 * 1000)
-        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.messages.append(msg) }
+        var msg = Message(id: UUID().uuidString, role: .system, content: "Error: \(message)", timestamp: Date().timeIntervalSince1970 * 1000)
+        // RC-11: engine errors surface during a live run; preserve in tail.
+        appendLiveMessage(tabId: tabId, instanceId: instanceId, msg)
         // Reset tab to idle so user can retry
         let isActive = activeEngineInstance[tabId] == instanceId || (instanceId == nil)
         if isActive, let idx = tabs.firstIndex(where: { $0.id == tabId }) {
@@ -242,34 +273,34 @@ extension SessionViewModel {
         ])
         // Surface notifications as system messages in the conversation
         let prefix = level == "warning" ? "⚠️ " : level == "error" ? "❌ " : ""
-        let msg = Message(id: UUID().uuidString, role: .system, content: "\(prefix)\(message)", timestamp: Date().timeIntervalSince1970 * 1000)
-        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.messages.append(msg) }
+        var msg = Message(id: UUID().uuidString, role: .system, content: "\(prefix)\(message)", timestamp: Date().timeIntervalSince1970 * 1000)
+        // RC-11: notify events arrive during a live run; preserve in tail.
+        appendLiveMessage(tabId: tabId, instanceId: instanceId, msg)
     }
 
     @MainActor
     func handleEngineTextDelta(tabId: String, instanceId: String?, text: String) {
         mutateEngineInstance(tabId: tabId, instanceId: instanceId) { inst in
-            if let last = inst.messages.last, last.role == .assistant {
-                // Append to the existing assistant row whether it is sealed or not.
-                // A sealed last-assistant row means a late text delta arrived after
-                // engine_message_end (the FIFO race fixed in event-wiring.ts), OR
-                // the timer flush fired marginally after the seal event despite the
-                // pre-send flush. Either way the text belongs to the same turn.
-                // Only a NON-assistant trailing message (e.g. a tool row) signals
-                // a genuine new turn where a fresh assistant row is appropriate.
+            if let last = inst.messages.last, last.role == .assistant, !last.sealed {
+                // Append to the LIVE assistant row (last row, assistant, NOT
+                // sealed). This is the in-progress row of the current run.
                 inst.messages[inst.messages.count - 1].content += text
-                // Unseal so subsequent deltas for this run keep appending.
-                if inst.messages[inst.messages.count - 1].sealed {
-                    DiagnosticLog.log("engine text delta after seal", tag: "session.engine", level: .debug, fields: [
-                        "tab_id": String(tabId.prefix(8)),
-                        "count": String(text.count)
-                    ])
-                    inst.messages[inst.messages.count - 1].sealed = false
-                }
             } else {
-                // Last message is a tool row, system row, or messages is empty —
-                // this is a genuine new assistant turn. Open a fresh row.
-                inst.messages.append(Message(id: UUID().uuidString, role: .assistant, content: text, timestamp: Date().timeIntervalSince1970 * 1000))
+                // The last row is a non-assistant row (tool/system), the list is
+                // empty, OR the last assistant row is SEALED. A sealed assistant
+                // row was finalized by engine_message_end and (when entryId was
+                // present) re-keyed to its canonical persisted id. RC-12: a late
+                // delta must NOT reopen it — appending would mutate a canonical
+                // row's content/byte-length so the staleness fingerprint diverges
+                // from the desktop permanently, driving maybeReconcileStaleConversation
+                // into a 4s reload loop (flicker + corrupted text), and could let
+                // the message_end re-key walk-back land on the wrong unsealed row
+                // (identity steal). Open a FRESH live row instead — the late delta
+                // belongs to the next message of the run, or is a stray the fresh
+                // row harmlessly isolates.
+                var fresh = Message(id: UUID().uuidString, role: .assistant, content: text, timestamp: Date().timeIntervalSince1970 * 1000)
+                fresh.isLive = true // RC-11: live tail boundary
+                inst.messages.append(fresh)
             }
         }
         engineTurnHasText.insert(tabId)

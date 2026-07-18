@@ -35,13 +35,21 @@ extension SessionViewModel {
         }
     }
 
+    // The one-shot view requests below (gitGraph, gitDiff, gitCommitFiles —
+    // and fsListDir in SessionViewModel+Commands.swift) send with
+    // `.automaticEssential`, not `.userInitiated`: they are screen-required
+    // background loads the view fires once (refresh/appear/load-more) with no
+    // re-triggering call site, so a send failure during a transport gap must
+    // defer to the essential queue instead of dropping the request permanently
+    // (log-confirmed loss: "user command send failed, not queueable").
+
     func requestGitGraph(directory: String, skip: Int? = nil, limit: Int? = nil) {
-        send(.gitGraph(directory: directory, skip: skip, limit: limit), intent: .userInitiated)
+        send(.gitGraph(directory: directory, skip: skip, limit: limit), intent: .automaticEssential)
     }
 
     func requestGitDiff(directory: String, path: String, staged: Bool) {
         gitDiffLoading = true
-        send(.gitDiff(directory: directory, path: path, staged: staged), intent: .userInitiated)
+        send(.gitDiff(directory: directory, path: path, staged: staged), intent: .automaticEssential)
     }
 
     func gitStage(directory: String, paths: [String]) {
@@ -73,7 +81,7 @@ extension SessionViewModel {
     }
 
     func requestGitCommitFiles(directory: String, hash: String) {
-        send(.gitCommitFiles(directory: directory, hash: hash), intent: .userInitiated)
+        send(.gitCommitFiles(directory: directory, hash: hash), intent: .automaticEssential)
     }
 
     func requestGitCommitFileDiff(directory: String, hash: String, path: String) {

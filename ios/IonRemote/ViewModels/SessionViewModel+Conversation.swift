@@ -75,6 +75,23 @@ extension SessionViewModel {
         mutateConversationMessages(tabId: tabId) { $0 = messages }
     }
 
+    /// Append a row produced by a LIVE event (RC-11), stamping `isLive = true` so
+    /// the next first-page history replace can preserve exactly the live tail
+    /// instead of estimating it from timestamps. Every live-append site (engine
+    /// text/tool/image/harness/notify/error/thinking handlers and the optimistic
+    /// submit) funnels through here so the boundary is a stored fact, not a guess.
+    /// History rows are set via setConversationMessages and are never live.
+    @MainActor
+    func appendLiveMessage(tabId: String, instanceId: String? = nil, _ message: Message) {
+        var m = message
+        m.isLive = true
+        if instanceId != nil {
+            mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.messages.append(m) }
+        } else {
+            mutateConversationMessages(tabId: tabId) { $0.append(m) }
+        }
+    }
+
     // MARK: - Live streaming text
 
     /// The tab's live streaming-text accumulator (relay text-chunk path).

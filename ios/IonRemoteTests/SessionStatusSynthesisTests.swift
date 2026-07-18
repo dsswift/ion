@@ -176,4 +176,63 @@ final class SessionStatusSynthesisTests: XCTestCase {
         XCTAssertEqual(f.extensionName, "Ion Operations")
         XCTAssertEqual(f.backgroundAgents, 1)
     }
+
+    // MARK: - RC-23: turn counts preserved across the merge
+
+    func testTurnCountsPreservedFromPrior() {
+        // engine_status set the counts; a later engine_session_status has no
+        // source for them and must carry them through, not nil-clobber.
+        let s = makeStatus(state: "idle")
+        let f = SessionStatusSynthesis.toStatusFields(
+            tabId: "t", status: s,
+            priorNumTurns: 7, priorConversationTurns: 42
+        )
+        XCTAssertEqual(f.numTurns, 7, "numTurns must survive an engine_session_status merge")
+        XCTAssertEqual(f.conversationTurns, 42, "conversationTurns must survive the merge")
+    }
+
+    func testTurnCountsDefaultNilWithoutPrior() {
+        // With no prior counts (first status of a session), they are nil — the
+        // legacy engine_status path stamps them later.
+        let s = makeStatus(state: "running")
+        let f = SessionStatusSynthesis.toStatusFields(tabId: "t", status: s)
+        XCTAssertNil(f.numTurns)
+        XCTAssertNil(f.conversationTurns)
+    }
+}
+
+/// RC-23 dispatcher-level: applying engine_session_status after engine_status
+/// (which stamped the turn counts) must keep the counts, not blank them.
+@MainActor
+final class SessionStatusMergeTests: XCTestCase {
+    func testSessionStatusDoesNotClobberTurnCounts() {
+        let vm = SessionViewModel()
+        vm.tabs = [RemoteTabState(
+            id: "t", title: "t", customTitle: nil, status: .running,
+            workingDirectory: "/tmp", permissionMode: .auto, thinkingEffort: nil,
+            permissionQueue: [], hasEngineExtension: false
+        )]
+        vm.ensureMainInstance(tabId: "t")
+        // Simulate engine_status having stamped the counts onto the instance.
+        vm.mutateEngineInstance(tabId: "t", instanceId: nil) {
+            $0.statusFields = StatusFields(
+                label: "t", state: "running", sessionId: "s", team: nil, model: "m",
+                contextPercent: 10, contextWindow: 200_000, runCostUsd: nil,
+                conversationCostUsd: nil, permissionDenials: nil, extensionName: nil,
+                backgroundAgents: nil, numTurns: 3, conversationTurns: 9
+            )
+        }
+
+        let ss = SessionStatus(
+            key: "t", state: "idle", stateSince: nil, lastEmittedAt: 1,
+            hasInflightRun: false, backgroundAgentCount: nil, permissionDenialsPending: nil,
+            model: "m", contextPercent: 10, contextWindow: 200_000, runCostUsd: nil,
+            conversationCostUsd: nil, sessionId: "s", extensionName: nil
+        )
+        vm.applyEngineSessionStatus(tabId: "t", instanceId: nil, status: ss)
+
+        let sf = vm.engineInstance(tabId: "t", instanceId: nil)?.statusFields
+        XCTAssertEqual(sf?.numTurns, 3, "engine_session_status must not nil-clobber numTurns")
+        XCTAssertEqual(sf?.conversationTurns, 9, "engine_session_status must not nil-clobber conversationTurns")
+    }
 }

@@ -33,6 +33,17 @@ extension RemoteCommand {
             return "requestTerminalSnapshot:\(tabId)"
         case .gitChanges(let dir):
             return "gitChanges:\(dir)"
+        case .gitGraph(let dir, let skip, let limit):
+            // One-shot view request (GitPaneView refresh / GitGraphListView
+            // load-more). Keyed on the pagination window too: a "load more"
+            // for page 2 must never dedupe against the page-1 request.
+            return "gitGraph:\(dir):\(skip ?? 0):\(limit ?? 0)"
+        case .gitDiff(let dir, let path, let staged):
+            return "gitDiff:\(dir):\(path):\(staged)"
+        case .gitCommitFiles(let dir, let hash):
+            return "gitCommitFiles:\(dir):\(hash)"
+        case .fsListDir(let dir, let includeHidden):
+            return "fsListDir:\(dir):\(includeHidden)"
         case .sync:
             return "sync"
         case .reportFocus(let tabId, _):

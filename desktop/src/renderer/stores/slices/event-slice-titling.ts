@@ -1,21 +1,20 @@
-import type { Message } from '../../../shared/types'
 import { usePreferencesStore } from '../../preferences'
 import { parseSlash } from '../../../main/slash-parse'
 import { rDebug } from '../../rendererLogger'
 
 /**
- * Tab-title resolution on task_complete.
+ * Tab-title generation at send time.
  *
- * Extracted from event-slice.ts (the task_complete case) to keep that file
- * under the 600-line cap. The logic is a cohesive unit: decide whether a tab
- * earns an LLM-generated title and, if so, kick off the async generation.
+ * Fired immediately when the user submits a prompt, in parallel with the
+ * engine run. The title is derived entirely from the user's first message,
+ * so there is no reason to wait for task_complete — long-running plan-mode
+ * sessions would otherwise show no title for their full duration.
  *
  * Title policy:
- *   - If the tab already has a user-set `customTitle`, or the
- *     `aiGeneratedTitles` preference is off, do nothing — the send-time
- *     truncated title (set by send-slice) stands.
- *   - If the first user prompt is a slash command, SKIP LLM titling entirely.
- *     The tab title was already set to the literal slash command at send time
+ *   - If the `aiGeneratedTitles` preference is off, do nothing — the
+ *     send-time truncated title (set by send-slice) stands.
+ *   - If the prompt is a slash command, SKIP LLM titling entirely. The tab
+ *     title was already set to the literal slash command at send time
  *     (truncated to the 40-char standard by send-slice). Preserving it means
  *     the user sees exactly which command was invoked rather than an LLM
  *     interpretation of it. parseSlash is the canonical slash parser; we trim
@@ -23,37 +22,38 @@ import { rDebug } from '../../rendererLogger'
  *     not trim, and "the first part of the prompt is a slash command" should
  *     tolerate stray leading whitespace.
  *   - Otherwise, fire the LLM titling round-trip and apply the result via
- *     `renameTab` (which persists it as a session label, exactly as before).
+ *     `renameTab` (which persists it as a session label).
+ *
+ * Call site guard: send-slice only calls this when `needsTitle && !isBusy`
+ * (first send on a fresh tab). Idempotency is guaranteed by `needsTitle`
+ * being false on any subsequent send (tab.title is set to the truncated
+ * prompt text by the same set() call that precedes this helper).
  *
  * This is fire-and-forget: the async generateTitle promise is intentionally
- * not awaited (the reducer is synchronous). On any failure we keep the
- * truncated fallback title already on the tab.
+ * not awaited. On any failure we keep the truncated fallback title already
+ * on the tab.
  *
- * Logging policy: both branches log at INFO so the title decision is
- * reconstructable from the renderer console — slash short-circuit (with the
- * preserved literal title) vs. LLM generation.
+ * Logging policy: both branches log at DEBUG so the title decision is
+ * reconstructable from the renderer log — slash short-circuit vs. LLM
+ * generation.
  */
-export function maybeGenerateTabTitle(
+export function maybeSendTimeTitle(
   tabId: string,
-  customTitle: string | null,
-  currentTitle: string,
-  messages: Message[],
+  text: string,
   renameTab: (tabId: string, title: string) => void,
 ): void {
-  if (customTitle || !usePreferencesStore.getState().aiGeneratedTitles) {
+  if (!usePreferencesStore.getState().aiGeneratedTitles) {
     return
   }
-  const firstUserMsg = messages.find((m) => m.role === 'user')
-  if (!firstUserMsg) return
 
-  const slash = parseSlash(firstUserMsg.content.trim())
+  const slash = parseSlash(text.trim())
   if (slash) {
     rDebug('event.title', 'slash command tab, skipping LLM titling', { tab_id: tabId.slice(0, 8), command: slash.command })
     return
   }
 
-  rDebug('event.title', 'generating AI title', { tab_id: tabId.slice(0, 8) })
-  window.ion.generateTitle(firstUserMsg.content).then((title) => {
+  rDebug('event.title', 'generating AI title at send time', { tab_id: tabId.slice(0, 8) })
+  window.ion.generateTitle(text).then((title) => {
     if (title) {
       renameTab(tabId, title)
     }

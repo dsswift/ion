@@ -39,6 +39,11 @@ extension SessionViewModel {
             ])
             connectionState = .connected
             cancelReconnectSafetyTimer()
+            // RC-20: a reconnect gives the desktop a fresh chance to answer image
+            // fetches, so clear any transient failed/orphaned-pending state that
+            // accrued while disconnected — otherwise an image that failed to fetch
+            // during the outage stays blank forever.
+            RemoteImageFetcher.shared.resetTransientState()
             // Mark this as the reconnect snapshot so maybeReconcileStaleConversation
             // bypasses the running-status guard AND the per-tab debounce for the
             // current tab-processing loop. Cleared at the end of the loop below.
@@ -204,7 +209,14 @@ extension SessionViewModel {
         }
         // Populate terminal state from snapshot tab data
         for tab in merged {
-            if tab.isTerminalOnly == true, let instances = tab.terminalInstances {
+            // DATA-driven, not tab-type-gated (same rationale as the
+            // conversationInstances handling below): the desktop snapshot
+            // projects `terminalInstances` for ANY tab with a terminal pane —
+            // conversation tabs included — so we populate terminal state
+            // whenever the snapshot carries instances. The former
+            // `tab.isTerminalOnly == true` guard discarded a conversation
+            // tab's terminal instances, leaving its terminal pane empty.
+            if let instances = tab.terminalInstances {
                 terminalInstances[tab.id] = instances
                 activeTerminalInstance[tab.id] = tab.activeTerminalInstanceId ?? instances.first?.id
             }

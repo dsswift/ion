@@ -372,15 +372,35 @@ export function wireEngineBridgeEvents(): void {
         if (event.type === 'engine_stream_reset') {
           dropKeyDeltas(key)
         }
-        // Spread order matters (same hazard documented above for the thinking
-        // path): `...event` carries the engine's own `type: 'engine_*'`, so it
-        // MUST come BEFORE the computed wire type or it clobbers it back to the
-        // raw `engine_*` name. iOS decoders key off `desktop_*` (see
-        // NormalizedEvent.swift TypeKey), so a clobbered `engine_*` type fails
-        // to decode and the event is silently dropped on the phone. tabId /
-        // instanceId likewise come last so an engine-supplied tabId on the
-        // payload can't override the wire-key-derived split.
-        state.remoteTransport.send({ ...event, tabId, instanceId, type: engineToWireType(event.type) })
+        // engine_tool_stalled needs an explicit projection: the raw engine
+        // event carries `toolElapsed`, but the wire contract (protocol.ts
+        // desktop_tool_stalled) declares `elapsed`. A blind spread would ship
+        // `toolElapsed` and omit `elapsed`, and iOS's decoder requires
+        // `elapsed` — the decode throws ("Key 'elapsed' not found") and
+        // triggers a full resync on every stalled-tool tick. Constructed with
+        // exactly the protocol's declared fields (toolId / toolName already
+        // line up), mirroring the renderer mapping in
+        // engine-control-plane-stream.ts (elapsed: event.toolElapsed).
+        if (event.type === 'engine_tool_stalled') {
+          state.remoteTransport.send({
+            type: 'desktop_tool_stalled',
+            tabId,
+            instanceId,
+            toolId: event.toolId,
+            toolName: event.toolName,
+            elapsed: event.toolElapsed,
+          })
+        } else {
+          // Spread order matters (same hazard documented above for the thinking
+          // path): `...event` carries the engine's own `type: 'engine_*'`, so it
+          // MUST come BEFORE the computed wire type or it clobbers it back to the
+          // raw `engine_*` name. iOS decoders key off `desktop_*` (see
+          // NormalizedEvent.swift TypeKey), so a clobbered `engine_*` type fails
+          // to decode and the event is silently dropped on the phone. tabId /
+          // instanceId likewise come last so an engine-supplied tabId on the
+          // payload can't override the wire-key-derived split.
+          state.remoteTransport.send({ ...event, tabId, instanceId, type: engineToWireType(event.type) })
+        }
       }
 
       // Synthesize a `permission_request` envelope for iOS when an

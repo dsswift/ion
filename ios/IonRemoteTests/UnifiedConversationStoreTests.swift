@@ -131,8 +131,8 @@ final class UnifiedConversationStoreTests: XCTestCase {
         let vm = SessionViewModel()
         vm.conversationLoaded.insert("engine")
 
-        // Simulate the OLD double-path delivery: sessionPlane message_added(tool)
-        // first, then the structured engine_tool_start.
+        // Simulate double-path delivery: sessionPlane message_added(tool) first,
+        // then the structured engine_tool_start for the same toolId.
         vm.handleMessageAdded(tabId: "engine", message: {
             var m = Message(id: "toolu_1", role: .tool, content: "", timestamp: 1)
             m.toolName = "Bash"
@@ -143,8 +143,12 @@ final class UnifiedConversationStoreTests: XCTestCase {
         vm.handleEngineToolStart(tabId: "engine", instanceId: nil, toolName: "Bash", toolId: "toolu_1")
 
         let toolRows = vm.conversationMessages("engine").filter { $0.role == .tool }
-        XCTAssertEqual(toolRows.count, 2,
-            "Both paths delivering the tool row doubles it — this is exactly why the desktop sessionPlane envelope is suppressed (Fix B). The structured path alone yields one row.")
+        // RC-22: handleEngineToolStart now guards against a duplicate toolId and
+        // refreshes the existing row in place instead of appending a second. So
+        // even if both paths deliver the tool row, iOS yields exactly ONE — the
+        // desktop suppression is still correct, but iOS is now resilient to it.
+        XCTAssertEqual(toolRows.count, 1,
+            "RC-22: a duplicate tool envelope for the same toolId must not double the row")
     }
 
     func testHistoryLoadReplacesMessagesForBothTabTypes() {

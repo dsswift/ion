@@ -25,6 +25,13 @@ extension SessionViewModel {
         ])
 
         if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
+            // RC-19: a fresh permission request means a NEW special card for this
+            // tab — clear any prior dismissal so the snapshot sweep / restored-card
+            // path does not strip it as "already dismissed".
+            dismissedLiveSpecialTabs.remove(tabId)
+            if let instanceId {
+                dismissedLiveSpecialTabs.remove("\(tabId):\(instanceId)")
+            }
             // Normalize AnyCodable toolInput to Foundation types so the
             // card views can parse with simple `as?` casts. The Codable
             // decoder wraps nested values as [AnyCodable]/[String: AnyCodable],
@@ -82,7 +89,19 @@ extension SessionViewModel {
         conversationLoadFailed.remove(tabId)
         loadingConversation.remove(tabId)
         conversationLoaded.insert(tabId)
-        clearLiveText(tabId: tabId)
+        // RC-13: do NOT wipe the text_chunk accumulator (liveText) when this
+        // apply is a reconnect/heal reload racing an active run. liveText backs
+        // the legacy desktop_text_chunk path (older desktop builds) and the
+        // tab-list preview; a reconnect snapshot bypasses the streaming guard and
+        // can fire loadConversation mid-stream, and an unconditional clear here
+        // blanked any in-flight accumulator until the next event. Clear it only on
+        // a settled load (not reconnect, or tab not running) — a genuine first
+        // load has no live stream to protect.
+        let tabRunning = tabs.first(where: { $0.id == tabId })?.status == .running
+            || tabs.first(where: { $0.id == tabId })?.status == .connecting
+        if !(isReconnectSnapshot && tabRunning) {
+            clearLiveText(tabId: tabId)
+        }
         conversationHasMore[tabId] = hasMore
         conversationCursor[tabId] = cursor
 
@@ -158,9 +177,25 @@ extension SessionViewModel {
             }
             var tailCandidates: [Message] = []
             if let anchorIdx = current.lastIndex(where: { incomingIds.contains($0.id) }) {
+                // Anchor found: everything after the last row the page also holds
+                // is newer than the page (the precise, preferred path).
                 tailCandidates = Array(current[(anchorIdx + 1)...])
-            } else if let lastTs = incoming.compactMap({ $0.timestamp }).max() {
-                tailCandidates = current.filter { ($0.timestamp ?? 0) > lastTs }
+            } else {
+                // RC-11: no id anchors (a fully pre-canonical local list). Prefer
+                // the STORED live boundary — rows appended by live events since the
+                // last history load carry isLive == true — over a timestamp
+                // estimate. The old `timestamp > max(incoming)` guess dropped the
+                // whole live tail when incoming had no timestamps (.max() nil) and
+                // dropped rows with nil/equal stamps (strict >, ?? 0): the "only
+                // the most recent turn" symptom. isLive is a fact, not a guess.
+                let liveRows = current.filter { $0.isLive }
+                if !liveRows.isEmpty {
+                    tailCandidates = liveRows
+                } else if let lastTs = incoming.compactMap({ $0.timestamp }).max() {
+                    // Legacy fallback only when nothing is marked live (e.g. rows
+                    // restored from a cache that predates the isLive flag).
+                    tailCandidates = current.filter { ($0.timestamp ?? 0) > lastTs }
+                }
             }
             let pending = current.filter(isPendingOptimistic)
             // RC-10: an assistant row whose id was never re-keyed to canonical

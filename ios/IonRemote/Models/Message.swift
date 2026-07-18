@@ -53,6 +53,16 @@ struct Message: Codable, Identifiable, Sendable {
     /// Set to true by engine_message_end so the next engine_text_delta
     /// opens a fresh assistant message instead of appending to this one.
     var sealed: Bool = false
+    /// Local boundary marker (RC-11) — NOT a wire field, NOT persisted. True for
+    /// a row appended by a LIVE event (streamed after the last history load):
+    /// optimistic submit, text-delta/tool/image/harness/etc. handlers. A
+    /// first-page history replace preserves exactly the rows still marked live
+    /// (minus any the page now contains), instead of estimating the live tail
+    /// from timestamps — the estimate dropped rows with nil/equal timestamps
+    /// (the "only the most recent turn" symptom). Rows decoded from the history
+    /// wire default to false (the key is excluded from CodingKeys), so a
+    /// persisted row is never mistaken for a live one.
+    var isLive: Bool = false
     /// Intercept level carried from `engine_intercept.interceptLevel`.
     /// Populated only on `role: .harness` messages pushed by the
     /// `engineIntercept` handler in SessionViewModel+EngineEvents.swift.

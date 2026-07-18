@@ -91,4 +91,63 @@ final class ConversationMergeReconcileTests: XCTestCase {
         let msgs = vm.conversationMessages("t")
         XCTAssertEqual(msgs.last?.id, clientId, "pending optimistic goes below the persisted history")
     }
+
+    /// RC-11: a live tail with nil/equal timestamps survives a first-page replace
+    /// when no id anchors. The old timestamp heuristic dropped it; the isLive
+    /// boundary preserves it.
+    func testLiveTailSurvivesReplaceWithNilTimestamps() {
+        let vm = SessionViewModel()
+        vm.tabs = [makeTab(id: "t")]
+
+        // A live streaming assistant row appended with NO timestamp and a
+        // non-canonical id (message_end re-key not yet arrived). Mark it live the
+        // way the live handlers do.
+        var liveRow = Message(id: "live-1", role: .assistant, content: "streaming reply", timestamp: nil)
+        liveRow.isLive = true
+        vm.mutateConversationMessages(tabId: "t") { $0.append(liveRow) }
+
+        // First-page history whose rows ALSO have no timestamps, none matching the
+        // live row's id — the exact case the timestamp fallback mishandled.
+        let hist = Message(id: "hist-1", role: .user, content: "earlier question", timestamp: nil)
+        vm.handleConversationHistory(tabId: "t", newMessages: [hist], hasMore: false, cursor: nil)
+
+        let msgs = vm.conversationMessages("t")
+        XCTAssertTrue(msgs.contains { $0.id == "live-1" },
+            "the live tail row must survive a first-page replace via the isLive boundary, not be dropped by a timestamp estimate")
+        // And it stays below the persisted history.
+        XCTAssertEqual(msgs.last?.id, "live-1")
+    }
+
+    /// RC-13: a reconnect/heal reload during an active run must NOT wipe the relay
+    /// text_chunk accumulator (liveText) — that blanked the in-flight streaming
+    /// bubble on resume. A settled (non-reconnect) load still clears it.
+    func testReconnectHealDuringRunDoesNotBlankLiveText() {
+        let vm = SessionViewModel()
+        var tab = makeTab(id: "t")
+        tab.status = .running
+        vm.tabs = [tab]
+
+        // Relay stream in progress: text accrued in liveText.
+        vm.appendLiveText(tabId: "t", "partial streaming answer")
+        XCTAssertEqual(vm.liveText("t"), "partial streaming answer")
+
+        // A reconnect snapshot fires loadConversation mid-run.
+        vm.isReconnectSnapshot = true
+        vm.handleConversationHistory(tabId: "t", newMessages: [], hasMore: false, cursor: nil)
+        vm.isReconnectSnapshot = false
+
+        XCTAssertEqual(vm.liveText("t"), "partial streaming answer",
+            "a reconnect heal during an active run must not blank the in-flight relay text")
+    }
+
+    /// A normal (non-reconnect) load still clears liveText — no regression.
+    func testNormalLoadClearsLiveText() {
+        let vm = SessionViewModel()
+        vm.tabs = [makeTab(id: "t")]
+        vm.appendLiveText(tabId: "t", "stale live text")
+
+        vm.handleConversationHistory(tabId: "t", newMessages: [], hasMore: false, cursor: nil)
+
+        XCTAssertEqual(vm.liveText("t"), "", "a settled first load clears the live accumulator")
+    }
 }
