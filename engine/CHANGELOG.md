@@ -13,6 +13,17 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.46.2](https://github.com/dsswift/ion/compare/engine-v1.46.1...engine-v1.46.2) (2026-07-18)
+
+### Bug Fixes
+
+* **engine:** raise scheduler predicate/handler error logs to ERROR level (#276) ([ee562ce](https://github.com/dsswift/ion/commit/ee562cece4d608ea484dea89b45e6d9d63de1a61))
+* **engine:** enrich CliBackend empty-stderr exit error with diagnostic context (#277) ([aa869a8](https://github.com/dsswift/ion/commit/aa869a8991ff7077754829785088d0181dfd4434))
+* **engine:** prevent cmd.Wait() data race in disposeInternal vs captureExitStatus (#278) ([6d6c373](https://github.com/dsswift/ion/commit/6d6c373257fba15ec79f5c5dab1a3f2cd3abec03))
+* **engine:** cover fireJobWithMeta error paths via FireScheduleNow in tests (#276) ([ac0f90d](https://github.com/dsswift/ion/commit/ac0f90dbaa487b2470a461280043125c30787d05))
+* **engine:** log ERROR when disposeInternal process-reap timeout fires (#278) ([99c5d09](https://github.com/dsswift/ion/commit/99c5d09c8a46caab93224f8e7272aef85baa0020))
+* **engine:** add dispose-first race-order test for host_wait_race (#278) ([ffed44b](https://github.com/dsswift/ion/commit/ffed44b527d15b2981301e57a77f89d4a2bdceac))
+
 ## [1.46.1](https://github.com/dsswift/ion/compare/engine-v1.46.0...engine-v1.46.1) (2026-07-18)
 
 ### Bug Fixes
