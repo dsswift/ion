@@ -124,8 +124,37 @@ extension SessionViewModel {
             //     code wrongly prepended them above it.
             //
             // Final shape: incoming + pendingOptimistic + liveTail.
-            let isPendingOptimistic: (Message) -> Bool = {
-                $0.role == .user && $0.source == .remote && !incomingIds.contains($0.id)
+            //
+            // RC-9: an optimistic user row is "pending" (keep it) ONLY if the
+            // page does not already contain it. The page contains it under the
+            // CANONICAL entry id, which differs from the optimistic row's id (=
+            // the clientMsgId this device sent) whenever the live re-key events
+            // (user_turn_persisted / message_end) were dropped. So id-equality
+            // alone (`!incomingIds.contains(id)`) wrongly kept the stale
+            // optimistic row and appended it BELOW the assistant reply — the
+            // duplicate-user bug. The desktop now annotates each history user row
+            // with the clientMsgId it was submitted under (client-msg-id-map.ts);
+            // match on that so an already-persisted optimistic row is recognized
+            // and dropped regardless of id re-keying.
+            let incomingClientMsgIds = Set(incoming.compactMap { $0.clientMsgId })
+            // A local row is "already in the page" when the page holds it by
+            // canonical id OR by the clientMsgId the desktop annotated onto the
+            // persisted user row. This single predicate governs BOTH the pending
+            // classification and the live-tail filter — a row already persisted
+            // must be dropped from whichever path would otherwise re-add it.
+            // (Checking only `pending` let a row whose real-time optimistic
+            // timestamp exceeded the page's timestamps survive via the tail.)
+            let isAlreadyInPage: (Message) -> Bool = { msg in
+                if incomingIds.contains(msg.id) { return true }
+                if let cid = msg.clientMsgId, incomingClientMsgIds.contains(cid) { return true }
+                // The optimistic row's id IS the clientMsgId it sent, so match
+                // the annotation against the row id too.
+                if incomingClientMsgIds.contains(msg.id) { return true }
+                return false
+            }
+            let isPendingOptimistic: (Message) -> Bool = { msg in
+                guard msg.role == .user && msg.source == .remote else { return false }
+                return !isAlreadyInPage(msg)
             }
             var tailCandidates: [Message] = []
             if let anchorIdx = current.lastIndex(where: { incomingIds.contains($0.id) }) {
@@ -134,8 +163,25 @@ extension SessionViewModel {
                 tailCandidates = current.filter { ($0.timestamp ?? 0) > lastTs }
             }
             let pending = current.filter(isPendingOptimistic)
-            let tail = tailCandidates.filter {
-                !incomingIds.contains($0.id) && !isPendingOptimistic($0)
+            // RC-10: an assistant row whose id was never re-keyed to canonical
+            // (dropped message_end) is not in incomingIds and is not pending, so
+            // it survived in the tail and duplicated the canonical assistant row
+            // already in the page. Drop a trailing tail assistant row whose
+            // content matches a trailing incoming assistant row — content-match is
+            // the correct desktop-independent dedup here (assistant rows carry no
+            // client-minted id). Only compares against the page's last assistant
+            // row to stay cheap and avoid collapsing legitimately repeated text.
+            let incomingLastAssistantContent = incoming.last(where: { $0.role == .assistant })?.content
+            let tail = tailCandidates.filter { msg in
+                // Already persisted (by id or clientMsgId) → never re-add.
+                if isAlreadyInPage(msg) { return false }
+                if isPendingOptimistic(msg) { return false }
+                if msg.role == .assistant,
+                   let ic = incomingLastAssistantContent,
+                   !ic.isEmpty, msg.content == ic {
+                    return false
+                }
+                return true
             }
             let merged = incoming + pending + tail
             setConversationMessages(tabId: tabId, merged)

@@ -40,6 +40,7 @@
 		A1B2C3D4E5F6000100002BAA /* RelayClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */; };
 		TMRTESTS00000000000001 /* TransportManagerReceiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TMRTESTS00000000000002 /* TransportManagerReceiveTests.swift */; };
 		EPOCHRST00000000000001 /* TransportManagerEpochResetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EPOCHRST00000000000002 /* TransportManagerEpochResetTests.swift */; };
+		MRGRECON00000000000001 /* ConversationMergeReconcileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MRGRECON00000000000002 /* ConversationMergeReconcileTests.swift */; };
 		A1B2C3D4E5F60001000090AA /* Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000091AA /* Message.swift */; };
 		PENDINGCARD0000000000001 /* PendingCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = PENDINGCARD0000000000002 /* PendingCard.swift */; };
 		PLANCARDGATE000000000001 /* PlanCardGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLANCARDGATE000000000002 /* PlanCardGate.swift */; };
@@ -379,6 +380,7 @@
 		A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayClientTests.swift; sourceTree = "<group>"; };
 		TMRTESTS00000000000002 /* TransportManagerReceiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportManagerReceiveTests.swift; sourceTree = "<group>"; };
 		EPOCHRST00000000000002 /* TransportManagerEpochResetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportManagerEpochResetTests.swift; sourceTree = "<group>"; };
+		MRGRECON00000000000002 /* ConversationMergeReconcileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationMergeReconcileTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002EAA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002FAA /* IonRemote.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = IonRemote.entitlements; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000032AA /* IonRemote.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = IonRemote.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -1034,6 +1036,7 @@
 				A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */,
 				TMRTESTS00000000000002 /* TransportManagerReceiveTests.swift */,
 				EPOCHRST00000000000002 /* TransportManagerEpochResetTests.swift */,
+				MRGRECON00000000000002 /* ConversationMergeReconcileTests.swift */,
 				HRNSBDG0000000000000004 /* EngineHarnessBadgeTests.swift */,
 				HRNMSGRELO0000000000002 /* HarnessMessageRelocateTests.swift */,
 				PLANCARD0000000000000002 /* PlanApprovalCardContentTests.swift */,
@@ -1572,6 +1575,7 @@
 				A1B2C3D4E5F6000100002BAA /* RelayClientTests.swift in Sources */,
 				TMRTESTS00000000000001 /* TransportManagerReceiveTests.swift in Sources */,
 				EPOCHRST00000000000001 /* TransportManagerEpochResetTests.swift in Sources */,
+				MRGRECON00000000000001 /* ConversationMergeReconcileTests.swift in Sources */,
 				HRNSBDG0000000000000003 /* EngineHarnessBadgeTests.swift in Sources */,
 				HRNMSGRELO0000000000001 /* HarnessMessageRelocateTests.swift in Sources */,
 				PLANCARD0000000000000001 /* PlanApprovalCardContentTests.swift in Sources */,

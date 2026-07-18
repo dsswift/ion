@@ -29,6 +29,15 @@ struct Message: Codable, Identifiable, Sendable {
     var slashCommand: String?
     var slashArgs: String?
     var slashSource: String?
+    /// Desktop-local reconciliation key (RC-9). On a `desktop_conversation_history`
+    /// user row, the clientMsgId this device originally sent for that turn,
+    /// annotated by the desktop from its clientMsgId↔entryId map. `submit` stamps
+    /// the optimistic bubble's `id` with the same clientMsgId, so the first-page
+    /// merge can collapse the optimistic row against the canonical history row by
+    /// this key even when the live re-key events (user_turn_persisted /
+    /// message_end) were dropped — the fix for the duplicate user bubble rendered
+    /// under the agent reply. Desktop↔iOS wire only (the engine has no client id).
+    var clientMsgId: String? = nil
     /// Dedup key carried on harness messages with relocate semantics. When
     /// present, a second harness message with the same key relocates (removes
     /// the old entry and appends the new one at the end). Decoded from the
@@ -111,6 +120,8 @@ struct Message: Codable, Identifiable, Sendable {
         case isInternal = "internal"
         case slashCommand, slashArgs, slashSource
         case planFilePath, markerKind
+        // clientMsgId: desktop-local reconciliation key on history user rows (RC-9).
+        case clientMsgId
         // dedupKey / dedupMode: decoded from the desktop history-replay wire
         // (desktop_conversation_history) so relocate semantics survive reconnect.
         // Client-only render state — NOT persisted beyond the in-memory store.
