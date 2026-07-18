@@ -66,6 +66,7 @@ vi.mock('../event-wiring-intercept', () => ({ handleInterceptEvent: vi.fn(() => 
 vi.mock('../event-wiring-disk-seed', () => ({ injectDiskResourcesIfEmpty: vi.fn() }))
 
 import { wireEngineBridgeEvents } from '../event-wiring'
+import { __resetTextDeltaBatcherForTest } from '../event-wiring-text-delta-batcher'
 
 function emit(key: string, event: any): void {
   capturedHandler.fn!(key, event)
@@ -79,6 +80,7 @@ function sentTypes(): string[] {
 describe('wireEngineBridgeEvents — desktop_text_delta ordering vs. seal events', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    __resetTextDeltaBatcherForTest()
     capturedHandler.fn = null
     mockState.remoteTransport = { send: mockSend } as any
     wireEngineBridgeEvents()
@@ -193,5 +195,25 @@ describe('wireEngineBridgeEvents — desktop_text_delta ordering vs. seal events
     const types = sentTypes()
     expect(types).toContain('desktop_message_end')
     expect(types).not.toContain('desktop_text_delta')
+  })
+
+  it('sends desktop_text_delta BEFORE the /clear divider desktop_message_added (RC-5)', () => {
+    // A /clear that lands while text is still buffered must flush the text
+    // FIRST so the clear divider carries a higher seq and iOS (insertion order)
+    // renders it BELOW the text it followed. Bare key (no instanceId) so the
+    // handler takes the desktop_message_added divider branch. Goes RED if the
+    // flushKeyDeltas call before the divider is removed.
+    emit('tab1', { type: 'engine_text_delta', text: 'tail before clear' })
+    emit('tab1', { type: 'engine_command_result', command: 'clear' })
+
+    const deltaIdx = mockSend.mock.calls.findIndex(
+      (c) => c[0]?.type === 'desktop_text_delta' && c[0]?.tabId === 'tab1',
+    )
+    const dividerIdx = mockSend.mock.calls.findIndex(
+      (c) => c[0]?.type === 'desktop_message_added' && c[0]?.tabId === 'tab1',
+    )
+    expect(deltaIdx).toBeGreaterThanOrEqual(0)
+    expect(dividerIdx).toBeGreaterThanOrEqual(0)
+    expect(deltaIdx).toBeLessThan(dividerIdx)
   })
 })

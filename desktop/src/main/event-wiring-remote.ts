@@ -4,6 +4,7 @@ import { log as _log } from './logger'
 import { state, sessionPlane, activeAssistantMessages, lastMessagePreview } from './state'
 import { normalizedToRemote } from './remote/protocol'
 import { buildCompactionMarkerContent, buildManualCompactionNoOpNotice } from '../shared/compaction-marker'
+import { flushTabDeltas } from './event-wiring-text-delta-batcher'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -199,6 +200,13 @@ export function wireRemoteSessionPlaneForwarding(): void {
         if (!event.active) {
           const content = buildCompactionMarkerContent(event) ?? buildManualCompactionNoOpNotice(event)
           if (content !== null) {
+            // Flush pending batched text for this tab BEFORE the compaction
+            // marker so the marker cannot carry a lower seq than text that
+            // preceded it (iOS renders in pure insertion order). Same FIFO
+            // discipline the /clear divider and turn-boundary sends use; the
+            // shared batcher makes it reachable from this sessionPlane listener.
+            // See RC-5 and event-wiring-text-delta-batcher.ts.
+            flushTabDeltas(tabId)
             state.remoteTransport.send({
               type: 'desktop_message_added',
               tabId,

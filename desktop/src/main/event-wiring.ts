@@ -9,6 +9,7 @@ import { tabIdFromKey } from '../shared/session-key'
 import { subscribeToResourceKinds, subscribeToGlobalResourceKinds, clearResourceSubscriptions, markReadPersisted, resubscribeSessionResourceKinds } from './event-wiring-resources'
 import { handleInterceptEvent } from './event-wiring-intercept'
 import { injectDiskResourcesIfEmpty } from './event-wiring-disk-seed'
+import { accumulateTextDelta, flushKeyDeltas, dropKeyDeltas } from './event-wiring-text-delta-batcher'
 import { notifyAtvPermissionResolved } from './atv-window-manager'
 export { wireTabFocusHandler, wireMarkResourceReadHandler, wireDeleteResourceHandler } from './event-wiring-resources'
 export { wireRemoteSessionPlaneForwarding } from './event-wiring-remote'
@@ -61,69 +62,14 @@ export function wireSessionPlaneEvents(): void {
 
 export function wireEngineBridgeEvents(): void {
   // ---------------------------------------------------------------------------
-  // Text-delta batching: accumulate engine_text_delta events per key and
-  // flush at ~60fps (16ms interval) to reduce Electron IPC crossings from
-  // 50-200/sec per key to ~60/sec. Each IPC call involves structured-clone
-  // serialization across the process boundary; coalescing small deltas into
-  // larger chunks significantly reduces serialization + deserialization CPU.
+  // Text-delta batching lives in event-wiring-text-delta-batcher.ts (module
+  // scope), so the compaction-marker emitter in event-wiring-remote.ts shares
+  // the SAME buffer and flush. accumulateTextDelta() buffers + arms the 16ms
+  // timer; flushKeyDeltas() drains one key immediately ahead of a same-key
+  // envelope (the FIFO ordering guarantee, RC-5); dropKeyDeltas() discards a
+  // key's pending text on stream reset. See that module's header for the
+  // ordering invariant these three enforce.
   // ---------------------------------------------------------------------------
-  const pendingTextDeltas = new Map<string, string>()
-  let deltaFlushTimer: ReturnType<typeof setInterval> | null = null
-
-  function flushTextDeltas(): void {
-    // Self-stop when idle: an empty buffer means streaming has ended, so the
-    // 16ms (~62.5Hz) timer has no work. Clear it rather than letting it wake the
-    // event loop forever; the next engine_text_delta re-arms via
-    // ensureDeltaFlushTimer(). Without this the timer ran for the process
-    // lifetime after the first stream, burning idle CPU on empty ticks.
-    if (pendingTextDeltas.size === 0) {
-      if (deltaFlushTimer) {
-        clearInterval(deltaFlushTimer)
-        deltaFlushTimer = null
-      }
-      return
-    }
-    for (const [deltaKey, text] of pendingTextDeltas) {
-      // WI-001: no longer broadcast to renderer via IPC.ENGINE_EVENT — text
-      // deltas reach the renderer through the normalized stream (text_chunk
-      // NormalizedEvent emitted by the engine control plane). The batch buffer
-      // is kept for iOS remote-transport forwarding only.
-      if (state.remoteTransport) {
-        // Wire-key (Key A) parsing for iOS forwarding — NOT renderer pane
-        // addressing. The `|| null` is load-bearing: a plain conversation's
-        // wire key is bare (→ instanceId null), an extension-hosted instance's
-        // is compound (→ its instanceId). iOS depends on this null vs id
-        // distinction, so do NOT convert this to parseSessionKey (which would
-        // map bare → 'main' and change the forwarded wire shape).
-        const dtabId = deltaKey.split(':')[0]
-        const dinstanceId = deltaKey.split(':')[1] || null
-        state.remoteTransport.send({ type: 'desktop_text_delta', tabId: dtabId, instanceId: dinstanceId, text })
-      }
-    }
-    pendingTextDeltas.clear()
-  }
-
-  function ensureDeltaFlushTimer(): void {
-    if (!deltaFlushTimer) {
-      deltaFlushTimer = setInterval(flushTextDeltas, 16)
-    }
-  }
-
-  // Flush any buffered text for `key` immediately and send it to the remote
-  // transport. Called synchronously before forwarding engine_message_end and
-  // engine_tool_start so the desktop_text_delta enters the FIFO transport
-  // queue BEFORE the seal/boundary event. Both are CRITICAL_TYPES and FIFO,
-  // so flushing first guarantees iOS applies text before it seals the row —
-  // the root cause of the post-#256 "streaming stalls after first turn" bug.
-  function flushKeyDeltas(key: string): void {
-    const text = pendingTextDeltas.get(key)
-    if (!text || !state.remoteTransport) return
-    pendingTextDeltas.delete(key)
-    const dtabId = key.split(':')[0]
-    const dinstanceId = key.split(':')[1] || null
-    state.remoteTransport.send({ type: 'desktop_text_delta', tabId: dtabId, instanceId: dinstanceId, text })
-  }
-
   // Subscribe to global resources on every (re)connect. The engine_command_registry
   // event only fires once during initial session creation; reconnects to a running
   // engine see "already exists" and skip the registry emission. Without this,
@@ -212,8 +158,7 @@ export function wireEngineBridgeEvents(): void {
     // small deltas (50-200/sec) into ~60 larger chunks/sec, cutting IPC
     // serialization overhead by 3-4x. iOS forwarding is also deferred.
     if (event.type === 'engine_text_delta') {
-      pendingTextDeltas.set(key, (pendingTextDeltas.get(key) || '') + (event.text || ''))
-      ensureDeltaFlushTimer()
+      accumulateTextDelta(key, event.text || '')
       return
     }
 
@@ -425,7 +370,7 @@ export function wireEngineBridgeEvents(): void {
         // that discarded attempt — DROP it (do not flush) so the 16ms timer
         // can't deliver stale pre-reset text to iOS after the reset event.
         if (event.type === 'engine_stream_reset') {
-          pendingTextDeltas.delete(key)
+          dropKeyDeltas(key)
         }
         // Spread order matters (same hazard documented above for the thinking
         // path): `...event` carries the engine's own `type: 'engine_*'`, so it
@@ -566,6 +511,15 @@ export function wireEngineBridgeEvents(): void {
         // and incorrectly preserve plan mode.
         log('engine_command_result: clear, notifying conversationCleared', { tab_id: tabId })
         sessionPlane.notifyConversationCleared(tabId)
+
+        // Flush any pending batched text for this key BEFORE emitting the clear
+        // divider. The divider is a same-tab envelope; if the 16ms delta timer
+        // flushed the tail text AFTER the divider frame, the divider would carry
+        // a lower seq and iOS (pure insertion order) would render it ABOVE text
+        // that chronologically preceded it. This is the same FIFO discipline the
+        // engine_message_end / engine_tool_start path uses above — every same-key
+        // immediate send must drain pending text first. See RC-5.
+        flushKeyDeltas(key)
 
         const divider = formatClearDivider(new Date())
         if (instanceId) {

@@ -40,7 +40,17 @@ export async function resolveTabProjectPath(tabId: string): Promise<string | und
 }
 
 export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_prompt' }>, deviceId: string): Promise<void> {
-  const reqId = cmd.clientMsgId || `remote-${Date.now()}`
+  // Capture the user-echo timestamp ONCE, before any await. handlePrompt awaits
+  // several executeJavaScript round-trips (instance resolution, model override,
+  // project-path/plan-file queries) before it builds the echo. Stamping the echo
+  // with Date.now() at the send site let the user turn's server timestamp land
+  // AFTER the first assistant delta of the same turn — any consumer that orders
+  // by the desktop-supplied timestamp then sank the user bubble below the reply
+  // ("my message appears under the agent response"). Capturing here, before the
+  // first await, makes the echo timestamp monotonically precede every event this
+  // turn will produce. Both the engine and CLI branches use `echoTs`.
+  const echoTs = Date.now()
+  const reqId = cmd.clientMsgId || `remote-${echoTs}`
 
   // When instanceId is present the iOS client is targeting an engine-hosted
   // conversation (merged from the former desktop_engine_prompt path). Detect
@@ -110,8 +120,16 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
           model: modelOverride,
         })
       }
-      // Wait for the engine session to initialise before sending the prompt
-      await new Promise((resolve) => setTimeout(resolve, 500))
+      // Session readiness is guaranteed downstream, not by a timer here. The
+      // prompt re-enters processIncomingPrompt → REMOTE_ENGINE_PROMPT → the
+      // renderer's unified submit → sessionPlane.submitPrompt, which awaits the
+      // idempotent `ensureSession` (engine-control-plane.ts) before dispatching
+      // send_prompt. ensureSession resolves only when startSession has returned a
+      // live session, so the prompt can never outrun session init. The former
+      // `await sleep(500)` was a redundant fixed-delay GUESS at that readiness: it
+      // both delayed the user echo (worsening the timestamp-ordering bug fixed via
+      // echoTs above) and could still under-wait on a slow start. Removed — the
+      // real readiness barrier is the awaited ensureSession downstream.
     }
 
     // Image-attachment encoding for engine tabs (engine bridge takes
@@ -131,7 +149,7 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
     // render (duplicate). Mirrors the CLI branch's `reqId = cmd.clientMsgId || …`
     // below. Falls back to a fresh id for desktop-originated prompts that carry
     // no clientMsgId.
-    const engineReqId = cmd.clientMsgId || `remote-engine-${Date.now()}`
+    const engineReqId = cmd.clientMsgId || `remote-engine-${echoTs}`
 
     // Echo the user's message back to iOS under engineReqId so the optimistic
     // bubble reconciles by id immediately, matching the CLI branch. The engine
@@ -152,7 +170,7 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
       type: 'desktop_message_added',
       tabId: cmd.tabId,
       message: {
-        id: engineReqId, role: 'user', content: fullText, timestamp: Date.now(), source: 'remote',
+        id: engineReqId, role: 'user', content: fullText, timestamp: echoTs, source: 'remote',
         // Carry structured attachments on the echo so iOS id-reconciliation
         // (handleMessageAdded) preserves them when it replaces the optimistic
         // message. Without this the structured attachments on the optimistic
@@ -221,9 +239,11 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
   }
 
   // ── CLI tab path (original handlePrompt) ──────────────────────────────
-  // Echo the user's typed text back to iOS with a canonical ms timestamp so
-  // iOS replaces its optimistic entry by id (fixing the "56 years ago"
-  // symptom that motivated the pipeline refactor). For non-slash text the
+  // Echo the user's typed text back to iOS with the pre-await `echoTs` (captured
+  // at the top of handlePrompt) so iOS replaces its optimistic entry by id and
+  // the user turn's timestamp precedes the turn's assistant deltas. Stamping
+  // Date.now() here (after the awaits above) is what let the user bubble sort
+  // below the reply on iOS.
   // pipeline still goes through this echo before broadcasting to the
   // renderer; for slash text the pipeline handles the echo itself in
   // handleSlash().
@@ -254,7 +274,7 @@ export async function handlePrompt(cmd: Extract<RemoteCommand, { type: 'desktop_
     type: 'desktop_message_added',
     tabId: cmd.tabId,
     message: {
-      id: reqId, role: 'user', content: cliEchoContent, timestamp: Date.now(), source: 'remote',
+      id: reqId, role: 'user', content: cliEchoContent, timestamp: echoTs, source: 'remote',
       ...(cliAttachments.length > 0 ? {
         attachments: cliAttachments.map((a) => ({
           id: a.path,
