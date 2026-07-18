@@ -237,53 +237,84 @@ func (s *Scheduler) bootstrapNextRun(h *extension.Host, job extension.ScheduleJo
 func (s *Scheduler) computeBootstrapNextRun(name string, job extension.ScheduleJob, now time.Time, loc *time.Location, hasMissedHook bool) (time.Time, *scheduleMissedDecision) {
 	next := nextRunFor(job, now, loc)
 
-	// Catch-up only applies to daily/weekly (interval and once jobs catch up
-	// implicitly by firing at now+interval/now+delay). Disabled when
-	// persistence is off or CatchUpEnabled is explicitly false.
-	if job.Kind != extension.ScheduleInterval && job.Kind != extension.ScheduleOnce && s.shouldCatchUp() {
-		marker, hadFile := s.readMarker(name, job)
+	// Catch-up is disabled when persistence is off or CatchUpEnabled is
+	// explicitly false. In that case every kind uses the naive next-run.
+	if !s.shouldCatchUp() {
+		return next, nil
+	}
 
-		if !hadFile {
-			// First sighting: record FirstSeenUtc and do NOT catch up.
-			// The next restart with an elapsed slot will see the marker
-			// and know the job predates the slot.
-			s.recordFirstSeenByName(name, job, now)
-			utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap first sighting recorded", map[string]any{"model": name, "run_id": job.JobID})
+	// Interval catch-up: resume the persisted cadence across restarts.
+	// Without a marker the in-memory next-run reset to now+interval on
+	// every start, so a job whose interval exceeds mean uptime never
+	// fired. With a marker we compute the next fire from the last run;
+	// if that moment already passed (job missed one or more intervals
+	// across the restart) fire ~now, staggered. No marker (first run
+	// ever) keeps the original now+interval semantics — no thundering
+	// herd on a fresh install.
+	if job.Kind == extension.ScheduleInterval {
+		lastRun, ok := s.readLastRunByName(name, job)
+		if !ok || job.IntervalMs <= 0 {
 			return next, nil
 		}
+		nextFromLast := lastRun.Add(time.Duration(job.IntervalMs) * time.Millisecond)
+		if nextFromLast.After(now) {
+			// Not yet due — resume the original cadence.
+			return nextFromLast, nil
+		}
+		// Overdue across the restart — catch up soon.
+		utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap interval catch-up scheduled", map[string]any{"model": name, "run_id": job.JobID, "lastRun": lastRun.Format(time.RFC3339)})
+		return now.Add(CatchUpStagger), nil
+	}
 
-		// Determine the anchor time: LastRunUtc if set, else FirstSeenUtc.
-		var anchor time.Time
-		if marker.LastRunUtc != "" {
-			if t, err := time.Parse(time.RFC3339, marker.LastRunUtc); err == nil {
-				anchor = t
-			}
-		}
-		if anchor.IsZero() && marker.FirstSeenUtc != "" {
-			if t, err := time.Parse(time.RFC3339, marker.FirstSeenUtc); err == nil {
-				anchor = t
-			}
-		}
-		if anchor.IsZero() {
-			// Marker file exists but both timestamps are unparseable.
-			// Treat as first sighting.
-			return next, nil
-		}
+	// Once jobs auto-deregister after firing; no catch-up needed.
+	if job.Kind == extension.ScheduleOnce {
+		return next, nil
+	}
 
-		lastSlot := lastScheduledSlotBefore(job, now, loc)
-		if lastSlot.After(anchor) {
-			// The most recent slot is after the anchor: missed.
-			hadMarker := marker.LastRunUtc != ""
-			if hasMissedHook {
-				// Extension decides: schedule normal next, emit decision.
-				utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap missed slot deferred to hook", map[string]any{"model": name, "run_id": job.JobID, "reason": lastSlot.String()})
-				return next, &scheduleMissedDecision{Slot: lastSlot, HadMarker: hadMarker}
-			}
-			// No hook: auto-catch-up (same opinion as before).
-			next = now.Add(CatchUpStagger)
-			utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap next run catch-up scheduled", map[string]any{"model": name, "run_id": job.JobID, "reason": lastSlot.String()})
-			return next, nil
+	// Daily/weekly catch-up: uses FirstSeen flood guard and hasMissedHook
+	// delegation. Disabled when persistence is off (handled above).
+	marker, hadFile := s.readMarker(name, job)
+
+	if !hadFile {
+		// First sighting: record FirstSeenUtc and do NOT catch up.
+		// The next restart with an elapsed slot will see the marker
+		// and know the job predates the slot.
+		s.recordFirstSeenByName(name, job, now)
+		utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap first sighting recorded", map[string]any{"model": name, "run_id": job.JobID})
+		return next, nil
+	}
+
+	// Determine the anchor time: LastRunUtc if set, else FirstSeenUtc.
+	var anchor time.Time
+	if marker.LastRunUtc != "" {
+		if t, err := time.Parse(time.RFC3339, marker.LastRunUtc); err == nil {
+			anchor = t
 		}
+	}
+	if anchor.IsZero() && marker.FirstSeenUtc != "" {
+		if t, err := time.Parse(time.RFC3339, marker.FirstSeenUtc); err == nil {
+			anchor = t
+		}
+	}
+	if anchor.IsZero() {
+		// Marker file exists but both timestamps are unparseable.
+		// Treat as first sighting.
+		return next, nil
+	}
+
+	lastSlot := lastScheduledSlotBefore(job, now, loc)
+	if lastSlot.After(anchor) {
+		// The most recent slot is after the anchor: missed.
+		hadMarker := marker.LastRunUtc != ""
+		if hasMissedHook {
+			// Extension decides: schedule normal next, emit decision.
+			utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap missed slot deferred to hook", map[string]any{"model": name, "run_id": job.JobID, "reason": lastSlot.String()})
+			return next, &scheduleMissedDecision{Slot: lastSlot, HadMarker: hadMarker}
+		}
+		// No hook: auto-catch-up (same opinion as before).
+		next = now.Add(CatchUpStagger)
+		utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap next run catch-up scheduled", map[string]any{"model": name, "run_id": job.JobID, "reason": lastSlot.String()})
+		return next, nil
 	}
 	return next, nil
 }
