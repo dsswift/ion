@@ -13,6 +13,12 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.46.1](https://github.com/dsswift/ion/compare/engine-v1.46.0...engine-v1.46.1) (2026-07-18)
+
+### Bug Fixes
+
+* **engine:** catch up interval jobs across restarts ([027b0cd](https://github.com/dsswift/ion/commit/027b0cddf8f9121c7414d078414c939b9da4739d))
+
 ## [1.46.0](https://github.com/dsswift/ion/compare/engine-v1.45.1...engine-v1.46.0) (2026-07-17)
 
 ### Features
