@@ -179,6 +179,14 @@ export interface RemoteMessage {
    * clickable link to the plan preview after a history reload. Omitted on
    * non-divider messages. */
   planFilePath?: string
+  /** Desktop-local reconciliation key (RC-9): the clientMsgId a client sent for
+   * this user turn, annotated onto the persisted history row by the load handler
+   * from the desktop's clientMsgId↔entryId map. Lets iOS collapse its optimistic
+   * user bubble against the canonical row by the id it originally sent, even when
+   * the live re-key events were dropped. Desktop↔iOS wire only — NOT an engine
+   * field (optimistic-bubble reconciliation is a UI concern). Present only on
+   * user rows the desktop echoed; omitted otherwise. */
+  clientMsgId?: string
 }
 
 export interface RemoteAttachment {

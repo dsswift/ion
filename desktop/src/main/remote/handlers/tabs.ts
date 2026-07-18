@@ -14,6 +14,7 @@ import { resolveTabSessionChain, paginateHistory, planPathFromHistory, toRemoteM
 import { mapSessionHistory } from '../../../shared/session-message-mapper'
 import { shouldServeLoad } from './load-conversation-gate'
 import { resolveDiscoveryWorkingDir } from '../../ipc-validation'
+import { lookupClientMsgId, clearClientMsgIdsForTab } from '../client-msg-id-map'
 import type { RemoteCommand } from '../protocol'
 
 export { handlePrompt, handleCancel } from './tabs-prompt'
@@ -306,6 +307,8 @@ export function handleCloseTab(cmd: Extract<RemoteCommand, { type: 'desktop_clos
   for (const key of extensionCommandRegistry.keys()) {
     if (key === tabId || key.startsWith(`${tabId}:`)) extensionCommandRegistry.delete(key)
   }
+  // Drop the desktop-local clientMsgId↔entryId map for this tab (RC-9).
+  clearClientMsgIdsForTab(tabId)
 }
 
 export async function handleSetPermissionMode(cmd: Extract<RemoteCommand, { type: 'desktop_set_permission_mode' }>): Promise<void> {
@@ -449,6 +452,18 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
       }
       return m
     }))
+
+    // Annotate user rows with the desktop-local clientMsgId so iOS can collapse
+    // its optimistic bubble against the canonical row by the id it sent, even if
+    // the live re-key events were dropped. The engine holds no client id (UI
+    // concern); the desktop recorded entryId→clientMsgId when it observed the
+    // turn persist. Only user rows carry it; the rest pass through. (RC-9)
+    for (const m of msgs) {
+      if (m.role === 'user') {
+        const cmid = lookupClientMsgId(cmd.tabId, m.id)
+        if (cmid) m.clientMsgId = cmid
+      }
+    }
 
     state.remoteTransport?.sendToDevice(deviceId, {
       type: 'desktop_conversation_history',
