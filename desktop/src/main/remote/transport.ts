@@ -75,6 +75,15 @@ export class RemoteTransport extends EventEmitter {
   // never be satisfied (the retransmit buffer is per-device and never held the
   // other devices' seqs) — a permanent resend/resend_unavailable storm.
   private seqs = new Map<string, number>()
+  // Outbound-seq epoch (generation id) stamped on every frame. Generated once
+  // per RemoteTransport instance, so a desktop process restart (new instance) or
+  // an in-process stop()+recreate produces a NEW epoch while the per-device seqs
+  // reset to 1. iOS keys its receive dedup high-water to this: an epoch change
+  // means "the seq space restarted, drop your high-water" — the deterministic
+  // fix for stale/backward-seq frames after a desktop restart (the retransmit
+  // buffer is empty post-restart, so a resend request can't heal that gap). A
+  // timestamp seed is monotonic across restarts and collision-free in practice.
+  private readonly epoch: number = Date.now()
   private static readonly HEARTBEAT_INTERVAL_MS = 15_000
   // Backpressure cap, critical-type set, and the send-queue path itself live in
   // transport-send.ts (extracted for the file-size cap and to make the drain
@@ -97,6 +106,7 @@ export class RemoteTransport extends EventEmitter {
     retransmit: this.retransmit,
     nextSeq: (deviceId) => this._nextSeqFor(deviceId),
     deliverFrame: (deviceId, frame) => this._deliverFrame(deviceId, frame),
+    epoch: this.epoch,
   }
 
   /** Allocate the next outbound seq for one device (per-device counters). */
@@ -393,7 +403,7 @@ export class RemoteTransport extends EventEmitter {
     }
     mark(Activity.RelayCompress)
     const wire = compressPayload(plaintext)
-    const msg = buildDeviceFrame(deviceId, secret, plaintext, wire, event.type, (d) => this._nextSeqFor(d), push, undefined, undefined, Date.now())
+    const msg = buildDeviceFrame(deviceId, secret, plaintext, wire, event.type, (d) => this._nextSeqFor(d), push, undefined, undefined, Date.now(), this.epoch)
     if (!msg) return
     this.retransmit.record(deviceId, msg)
     this._deliverFrame(deviceId, msg)

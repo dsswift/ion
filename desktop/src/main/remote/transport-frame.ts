@@ -46,10 +46,15 @@ export function buildDeviceFrame(
   pushBody?: string,
   /** Optional: epoch ms when the event entered the send queue. Used for queue_dwell_ms. */
   enqueuedAt?: number,
+  /** Outbound-seq epoch (generation id) stamped on the frame; see WireMessage.epoch. */
+  epoch?: number,
 ): WireMessage | null {
   const sendTs = Date.now()
   const seq = nextSeq(deviceId)
   const msg: WireMessage = { seq, ts: sendTs, deviceId } as WireMessage
+  if (epoch !== undefined) {
+    ;(msg as any).epoch = epoch
+  }
   if (secret.length === 32) {
     try {
       // Breadcrumb: AES-256-GCM over the compressed buffer.

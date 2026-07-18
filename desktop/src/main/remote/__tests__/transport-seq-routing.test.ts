@@ -275,4 +275,45 @@ describe('RemoteTransport — per-device seq, dedup, relay routing', () => {
     expect(commands).toHaveLength(2)
     await transport.stop()
   })
+
+  it('stamps a stable outbound epoch on every frame (RC-3, receive-seq epoch)', async () => {
+    const { transport, relays } = await startTransport()
+
+    transport.send({ type: 'desktop_status', tabId: 't', fields: {} } as any)
+    transport.send({ type: 'desktop_status', tabId: 't', fields: {} } as any)
+
+    for (const relay of relays) {
+      const epochs = relay.sent.map((f) => f.epoch)
+      // Every frame carries an epoch...
+      expect(epochs.every((e) => typeof e === 'number')).toBe(true)
+      // ...and it is stable within one transport instance (its seq space).
+      expect(new Set(epochs).size).toBe(1)
+    }
+    await transport.stop()
+  })
+
+  it('a fresh transport instance carries a DIFFERENT epoch (desktop restart signal)', async () => {
+    const { transport: t1, relays: r1 } = await startTransport()
+    t1.send({ type: 'desktop_status', tabId: 't', fields: {} } as any)
+    const epoch1 = r1[0].sent.find((f) => f.epoch !== undefined)?.epoch
+    await t1.stop()
+
+    // A new RemoteTransport models a desktop restart: its seqs reset to 1 but
+    // the epoch differs, which is exactly what tells iOS to drop its high-water.
+    relayInstances = []
+    lanInstances = []
+    // Guarantee a clock tick so the timestamp-seeded epoch differs.
+    await new Promise((r) => setTimeout(r, 2))
+    const { transport: t2, relays: r2 } = await startTransport()
+    t2.send({ type: 'desktop_status', tabId: 't', fields: {} } as any)
+    const firstSeq = r2[0].sent[0]?.seq
+    const epoch2 = r2[0].sent.find((f) => f.epoch !== undefined)?.epoch
+
+    expect(typeof epoch1).toBe('number')
+    expect(typeof epoch2).toBe('number')
+    expect(epoch2).not.toBe(epoch1)
+    // Seq space restarted at 1 despite the new epoch.
+    expect(firstSeq).toBe(1)
+    await t2.stop()
+  })
 })

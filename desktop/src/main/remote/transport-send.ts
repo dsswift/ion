@@ -85,6 +85,8 @@ export interface SendCtx {
   retransmit: RetransmitBuffer
   nextSeq: (deviceId: string) => number
   deliverFrame: (deviceId: string, frame: WireMessage) => boolean
+  /** Outbound-seq epoch (generation id) stamped on every built frame. */
+  epoch?: number
 }
 
 /** Enqueue an event for delivery, applying backpressure, then drain. */
@@ -175,7 +177,7 @@ export function sendToAll(
   // Send to each device via its preferred transport.
   for (const [deviceId, secret] of ctx.deviceSecrets) {
     // buildDeviceFrame marks its own relay_encrypt sub-stage.
-    const msg = buildDeviceFrame(deviceId, secret, plaintext, wire, eventType, ctx.nextSeq, push, pushTitle, pushBody, enqueuedAt)
+    const msg = buildDeviceFrame(deviceId, secret, plaintext, wire, eventType, ctx.nextSeq, push, pushTitle, pushBody, enqueuedAt, ctx.epoch)
     if (!msg) continue // encrypt failed — skip this device
 
     // Buffer the built frame for retransmission BEFORE sending, so a frame

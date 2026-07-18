@@ -452,6 +452,16 @@ export interface RelayControlMessage {
 export interface WireMessage {
   seq: number
   ts: number               // Unix ms timestamp
+  // Outbound-seq epoch (generation id). Stable for the life of one desktop
+  // outbound-seq space; regenerated whenever that space resets to seq=1 (desktop
+  // process restart → new RemoteTransport, or an in-process stop()). iOS keys its
+  // receive-side dedup high-water to this: when the epoch changes it resets
+  // lastReceivedSeq/pendingResendSeqs BEFORE the seq comparison, so a fresh seq=1
+  // stream after a desktop restart is not mistaken for stale/duplicate frames
+  // (the retransmit buffer is also empty post-restart, so resend can't heal it —
+  // the epoch is the deterministic signal). Omitted only by a desktop predating
+  // the field; iOS treats absent epoch as "unchanged" (legacy behavior).
+  epoch?: number
   payload?: string         // JSON-encoded RemoteEvent or RemoteCommand (absent when encrypted)
   push?: boolean           // hint to relay: send APNs push if peer is disconnected
   pushTitle?: string       // notification title (used by relay when push=true)
