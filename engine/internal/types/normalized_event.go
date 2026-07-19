@@ -269,13 +269,14 @@ func (TaskCompleteEvent) eventType() string { return EventTaskComplete }
 
 // ErrorEvent signals an error during a run.
 type ErrorEvent struct {
-	ErrorMessage string `json:"message"`
-	IsError      bool   `json:"isError"`
-	SessionID    string `json:"sessionId,omitempty"`
-	ErrorCode    string `json:"errorCode,omitempty"`
-	Retryable    bool   `json:"retryable,omitempty"`
-	RetryAfterMs int64  `json:"retryAfterMs,omitempty"`
-	HttpStatus   int    `json:"httpStatus,omitempty"`
+	ErrorMessage string   `json:"message"`
+	IsError      bool     `json:"isError"`
+	SessionID    string   `json:"sessionId,omitempty"`
+	ErrorCode    string   `json:"errorCode,omitempty"`
+	Retryable    bool     `json:"retryable,omitempty"`
+	RetryAfterMs int64    `json:"retryAfterMs,omitempty"`
+	HttpStatus   int      `json:"httpStatus,omitempty"`
+	StderrTail   []string `json:"stderrTail,omitempty"`
 }
 
 func (ErrorEvent) eventType() string { return EventError }

@@ -77,7 +77,7 @@ export type EngineEvent =
   | { type: 'engine_tool_update'; toolId: string; partialInput: string }
   | { type: 'engine_tool_complete'; index?: number }
   | { type: 'engine_dead'; exitCode: number | null; signal: string | null; stderrTail: string[] }
-  | { type: 'engine_error'; message: string; errorCode?: string; errorCategory?: string; retryable?: boolean; retryAfterMs?: number; httpStatus?: number }
+  | { type: 'engine_error'; message: string; errorCode?: string; errorCategory?: string; retryable?: boolean; retryAfterMs?: number; httpStatus?: number; stderrTail?: string[] }
   | { type: 'engine_permission_request'; questionId: string; permToolName: string; permToolDescription?: string; permToolInput?: Record<string, unknown>; permOptions: Array<{ id: string; label: string; kind?: string }> }
   | { type: 'engine_plan_mode_changed'; planModeEnabled: boolean; planFilePath?: string; planSlug?: string }
   // engine_oidc_login_url — delivered to the client that issued

@@ -150,11 +150,14 @@ extension RemoteEvent {
             try container.encodeIfPresent(ts, forKey: .dispatchActivityTs)
             return true
 
-        case .engineError(let tabId, let instanceId, let message):
+        case .engineError(let tabId, let instanceId, let message, let stderrTail):
             try container.encode(TypeKey.engineError, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
             try container.encode(message, forKey: .message)
+            if !stderrTail.isEmpty {
+                try container.encode(stderrTail, forKey: .stderrTail)
+            }
             return true
 
         case .engineNotify(let tabId, let instanceId, let message, let level, let metadata):

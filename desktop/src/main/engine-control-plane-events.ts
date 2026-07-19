@@ -171,6 +171,7 @@ export function handleEngineEvent(
         type: 'error',
         message: event.message,
         isError: true,
+        stderrTail: event.stderrTail ?? [],
       } as NormalizedEvent)
       break
 

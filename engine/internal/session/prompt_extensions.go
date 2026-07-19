@@ -1,6 +1,7 @@
 package session
 
 import (
+	"fmt"
 	"path/filepath"
 
 	"github.com/dsswift/ion/engine/internal/backend"
@@ -37,7 +38,14 @@ func (m *Manager) lateLoadExtensions(s *engineSession, key string, overrides *Pr
 			WorkingDirectory: s.config.WorkingDirectory,
 		}
 		if err := host.Load(extPath, extCfg); err != nil {
-			utils.LogWithFields(utils.LevelInfo, "session", "per-prompt extension load failed for", map[string]any{"ext_path": extPath, "error": err.Error()})
+			stderrTail := host.StderrTail()
+			utils.LogWithFields(utils.LevelError, "session", "per-prompt extension load failed", map[string]any{"ext_path": extPath, "error": err.Error()})
+			m.emit(key, types.EngineEvent{
+				Type:         "engine_error",
+				EventMessage: fmt.Sprintf("extension load failed: %s", err.Error()),
+				ErrorCode:    "extension_load_failed",
+				StderrTail:   stderrTail,
+			})
 			continue
 		}
 		capturedKey := key

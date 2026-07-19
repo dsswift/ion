@@ -3,9 +3,13 @@ package tools
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -73,6 +77,13 @@ func (l *LocalBashOperations) Exec(ctx context.Context, command, cwd string, opt
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
+	// Log fd pressure before spawning so operators can observe accumulation
+	// before the process reaches EMFILE (the engine process is long-lived and
+	// accumulates open fds across all resources — extension pipes, sockets,
+	// subprocess stdio; orphaned grandchildren from cancelled Bash calls
+	// contribute to a gradual climb until os.Pipe fails with EMFILE).
+	logFdPressure()
+
 	err := cmd.Run()
 
 	result := &ExecResult{
@@ -84,11 +95,39 @@ func (l *LocalBashOperations) Exec(ctx context.Context, command, cwd string, opt
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			result.ExitCode = exitErr.ExitCode()
 		} else {
+			// Detect fd exhaustion (EMFILE/ENFILE) and return a structured,
+			// actionable error instead of the raw "pipe: too many open files"
+			// string that gives operators nothing to act on.
+			if isFileDescriptorExhaustion(err) {
+				count := countOpenFds()
+				utils.LogWithFields(utils.LevelError, "tools.bash", "fd exhaustion: subprocess spawn failed", map[string]any{
+					"open_fds": count,
+					"error":    err.Error(),
+					"command":  command,
+				})
+				return result, fmt.Errorf(
+					"engine process has exhausted its file descriptor limit (EMFILE/ENFILE) — "+
+						"open fds: %d. This is caused by accumulated subprocesses or orphaned "+
+						"grandchildren from previous tool calls. Restarting the engine process "+
+						"will clear the leaked descriptors. Raw error: %w", count, err)
+			}
 			return result, err
 		}
 	}
 
 	return result, nil
+}
+
+// isFileDescriptorExhaustion reports whether err is an fd-exhaustion error
+// (EMFILE — too many open files in process, or ENFILE — system file table full).
+// exec.CommandContext wraps the os.Pipe error from Start as a plain error;
+// check both the syscall errno and the error string to handle both forms.
+func isFileDescriptorExhaustion(err error) bool {
+	if errors.Is(err, syscall.EMFILE) || errors.Is(err, syscall.ENFILE) {
+		return true
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "too many open files") || strings.Contains(msg, "file table overflow")
 }
 
 // shellCommand returns the platform-appropriate shell and arguments for executing

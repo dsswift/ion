@@ -50,7 +50,8 @@
       "message",
       "retryAfterMs",
       "retryable",
-      "sessionId"
+      "sessionId",
+      "stderrTail"
     ],
     "events_dropped": [
       "count"

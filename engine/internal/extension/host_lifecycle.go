@@ -46,6 +46,19 @@ func (h *Host) Load(extensionPath string, config *ExtensionConfig) error {
 		// so it must run after we've released the lock. Calling it from
 		// inside spawnAndInit would deadlock against this Lock().
 		h.disposeInternal()
+		// After disposeInternal kills the subprocess, the stderr pipe's write-end
+		// closes, allowing the drain goroutine to exit. Wait for it so callers
+		// that immediately read StderrTail after Load returns see a fully
+		// populated ring buffer. This MUST run after disposeInternal — not before
+		// (which is why WaitStderrDrain is not called inside spawnAndInit).
+		h.WaitStderrDrain()
+		tail := h.StderrTail()
+		if len(tail) > 0 {
+			utils.LogWithFields(utils.LevelError, "extension", "extension init stderr", map[string]any{
+				"extension_path": extensionPath,
+				"stderr":         tail,
+			})
+		}
 		return err
 	}
 	return nil
@@ -242,6 +255,14 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 	// Send init and wait for response. On error, return without disposing —
 	// the caller (Load/Respawn) holds h.mu and will run disposeInternal after
 	// releasing the lock. Disposing here would deadlock on h.mu.
+	//
+	// Do NOT call WaitStderrDrain here: spawnAndInit is called under h.mu, and
+	// disposeInternal (which kills the process and closes the stderr pipe, allowing
+	// the drain goroutine to exit) only runs after h.mu.Unlock(). If the subprocess
+	// is still alive when the init call errors (e.g. it returned a JSON-RPC error
+	// response), WaitStderrDrain would block indefinitely — disposeInternal can't
+	// run because the caller holds h.mu. Call WaitStderrDrain in Load/Respawn after
+	// disposeInternal has killed the process and released h.mu.
 	initResult, err := h.call("init", config)
 	if err != nil {
 		return fmt.Errorf("init handshake: %w", err)
@@ -279,7 +300,9 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 // ordering is pinned by a regression test (host_stderr_race_test.go).
 func (h *Host) launchStderrDrain(stderr io.Reader) {
 	stderrTag := "ext:" + h.name
+	h.stderrDrainWg.Add(1)
 	go func() {
+		defer h.stderrDrainWg.Done()
 		sc := bufio.NewScanner(stderr)
 		for sc.Scan() {
 			line := sc.Text()
@@ -342,6 +365,18 @@ func (h *Host) Respawn() (attemptNumber int, err error) {
 		// Release the partially-initialized subprocess outside h.mu so
 		// disposeInternal can re-acquire and the reader goroutine can exit.
 		h.disposeInternal()
+		// After disposeInternal kills the subprocess, the stderr pipe closes
+		// and the drain goroutine exits. Wait for it so StderrTail is fully
+		// populated before we log and return.
+		h.WaitStderrDrain()
+		tail := h.StderrTail()
+		if len(tail) > 0 {
+			utils.LogWithFields(utils.LevelError, "extension", "extension respawn init stderr", map[string]any{
+				"extension_path": h.loadedPath,
+				"stderr":         tail,
+				"attempt":        attempt,
+			})
+		}
 		return int(attempt), fmt.Errorf("respawn spawn: %w", spawnErr)
 	}
 	return int(attempt), nil
