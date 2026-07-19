@@ -112,6 +112,7 @@ func (m *Manager) RequestPlanModeEnter(key string) (allowed bool, reason string,
 	// Snapshot what we need for the hook call before releasing the lock.
 	extGroup := s.extGroup
 	workDir := s.config.WorkingDirectory
+	lastModel := s.lastModel
 	m.mu.Unlock()
 
 	// Fire before_plan_mode_enter hook (outside the lock — hook handlers must
@@ -145,8 +146,16 @@ func (m *Manager) RequestPlanModeEnter(key string) (allowed bool, reason string,
 	// planning session). Reuse the existing path when Part 1 preserved it
 	// from a previous exit — this is what ensures the model continues the
 	// same plan rather than starting a fresh one.
+	//
+	// Resolve the serving backend for the session's current model so the
+	// directory choice is correct: api-served runs use ~/.ion/plans/;
+	// claude-code runs use <workDir>/.ion/plans/ (the CLI dictates the
+	// write location). lastModel is "" on the very first EnterPlanMode of
+	// a session (no run has completed yet), which resolves to hybrid's
+	// default inner — api — a safe home-dir default.
 	if s.planFilePath == "" {
-		s.planFilePath = allocateNewPlanFilePath(m.backend, workDir)
+		caps := m.resolvedBackend(lastModel).Capabilities()
+		s.planFilePath = allocateNewPlanFilePath(caps, workDir)
 		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "requestplanmodeenter: allocated new", map[string]any{"key": key, "plan_file_path": s.planFilePath})
 	} else {
 		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "requestplanmodeenter: reusing", map[string]any{"key": key, "plan_file_path": s.planFilePath})

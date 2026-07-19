@@ -37,6 +37,17 @@ vi.mock('electron', () => ({
   },
 }))
 
+// The plan-mode Bash allowlist is engine-config-backed: projectCurrentSettings
+// reads it via plan-bash-allowlist-store (engine.json), not settings.json.
+// Mock the store so the projection is hermetic — returns [] by default,
+// matching the projectable entry's opinionless default. Individual tests
+// override readPlanBashAllowlist when they assert on the value.
+const planBashMock = vi.hoisted(() => ({ readPlanBashAllowlist: vi.fn(() => [] as string[]) }))
+vi.mock('../plan-bash-allowlist-store', () => ({
+  readPlanBashAllowlist: () => planBashMock.readPlanBashAllowlist(),
+  writePlanBashAllowlist: vi.fn(),
+}))
+
 import {
   PROJECTABLE_SETTINGS,
   PROJECTABLE_GROUP_ORDER,
@@ -257,16 +268,17 @@ describe('projectableSchema / projectableGroups', () => {
 
   it('primitive-list entries carry their itemType (not itemSchema)', () => {
     // planModeAllowedBashCommands is the first primitive-list setting:
-    // type: 'list', itemType: 'string', defaultValue: ['gh']. The wire
-    // schema must carry itemType so iOS dispatches to the flat
-    // primitive editor instead of the record-list editor.
+    // type: 'list', itemType: 'string', defaultValue: [] (opinionless — the
+    // engine ships no built-in allowlist; unset means Bash blocked in plan
+    // mode). The wire schema must carry itemType so iOS dispatches to the
+    // flat primitive editor instead of the record-list editor.
     const schema = projectableSchema()
     const cmds = schema.find((e) => e.key === 'planModeAllowedBashCommands')
     expect(cmds, 'planModeAllowedBashCommands entry').toBeTruthy()
     expect(cmds?.type).toBe('list')
     expect(cmds?.itemType).toBe('string')
     expect(cmds?.itemSchema).toBeUndefined()
-    expect(cmds?.defaultValue).toEqual(['gh'])
+    expect(cmds?.defaultValue).toEqual([])
   })
 
   it('range is carried through for number entries that declare one', () => {

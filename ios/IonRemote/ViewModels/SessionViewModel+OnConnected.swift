@@ -124,16 +124,26 @@ extension SessionViewModel {
     /// the supersession. This prevents a reconnect from replaying a
     /// `loadConversation` for a tab the user navigated away from.
     func enqueueEssential(key: String, command: RemoteCommand) {
+        // The key is bounded via `fields` and truncated to 128 chars — never
+        // interpolated into `msg`. Before the `kindName` fallback fix, an
+        // unmatched command's key embedded its whole payload (observed 2 MB
+        // from a diagnosticLogsResponse); interpolating that into the message
+        // amplified one oversized key into every queue log line's storage.
+        let boundedKey = String(key.prefix(128))
         if let existing = pendingEssentialQueue.firstIndex(where: { $0.key == key }) {
-            DiagnosticLog.log(
-                "ESSENTIAL-QUEUE: supersede key=\(key) depth=\(pendingEssentialQueue.count) conn=\(connectionState.rawValue)"
-            )
+            DiagnosticLog.log("essential queue supersede", tag: "session.essential", fields: [
+                "reason": boundedKey,
+                "count": String(pendingEssentialQueue.count),
+                "status": connectionState.rawValue
+            ])
             pendingEssentialQueue[existing] = (key: key, command: command)
         } else {
             pendingEssentialQueue.append((key: key, command: command))
-            DiagnosticLog.log(
-                "ESSENTIAL-QUEUE: enqueue key=\(key) depth=\(pendingEssentialQueue.count) conn=\(connectionState.rawValue)"
-            )
+            DiagnosticLog.log("essential queue enqueue", tag: "session.essential", fields: [
+                "reason": boundedKey,
+                "count": String(pendingEssentialQueue.count),
+                "status": connectionState.rawValue
+            ])
         }
     }
 
@@ -168,7 +178,7 @@ extension SessionViewModel {
         }
         for entry in pending {
             DiagnosticLog.log("essential queue flush", tag: "session.essential", fields: [
-                "reason": entry.key
+                "reason": String(entry.key.prefix(128))
             ])
             DiagnosticLog.logCommand(entry.command)
             Task { [weak self] in
@@ -176,7 +186,7 @@ extension SessionViewModel {
                     try await transport.send(entry.command)
                 } catch {
                     DiagnosticLog.log("essential queue flush send error, requeued", tag: "session.essential", level: .error, fields: [
-                        "reason": entry.key,
+                        "reason": String(entry.key.prefix(128)),
                         "error": error.localizedDescription
                     ])
                     guard let self else { return }

@@ -357,6 +357,7 @@ caller via the registration RPC error.
 | `engine_schedule_missed` | Missed daily/weekly slot detected on restart (extension-decided catch-up) |
 | `engine_schedule_registered` | Registration committed |
 | `engine_schedule_deregistered` | Deregistration committed |
+| `engine_schedule_unhosted` | Last alive host for the job's (extension, jobID) group removed; the job will not fire until a new host re-registers it |
 | `engine_async_fire_dropped` | Fire dropped before reaching the handler |
 
 Every event carries `asyncKind: "schedule"`, the `asyncId` (job id),

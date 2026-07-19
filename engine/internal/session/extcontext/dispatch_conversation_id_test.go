@@ -38,7 +38,7 @@ type snapshotSample struct {
 }
 
 func (a *convIDRecordingAccessor) NewChildBackend() backend.RunBackend { return a.child }
-func (a *convIDRecordingAccessor) AllocatePlanFilePath() string        { return "/tmp/.ion/plans/plan.md" }
+func (a *convIDRecordingAccessor) AllocatePlanFilePath(_ string) string        { return "/tmp/.ion/plans/plan.md" }
 func (a *convIDRecordingAccessor) RootContext() context.Context        { return context.Background() }
 
 func (a *convIDRecordingAccessor) AppendOrUpdateAgentState(s types.AgentStateUpdate) string {

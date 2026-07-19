@@ -5,6 +5,8 @@ import { log as _log } from '../logger'
 import { isValidProjectPath } from '../ipc-validation'
 import { engineBridge, sessionPlane, state } from '../state'
 import { broadcastEngineHistory } from '../remote/handlers/engine-history'
+import { readPlanBashAllowlist, writePlanBashAllowlist } from '../plan-bash-allowlist-store'
+import { broadcastDesktopSettingsSnapshot } from '../settings-broadcast'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -47,6 +49,26 @@ export function registerEngineIpc(): void {
   ipcMain.handle(IPC.ENGINE_ABORT, (_event, { key }: { key: string }) => {
     log('engine_abort', { key })
     engineBridge.sendAbort(key)
+  })
+
+  // Plan-mode Bash allowlist: read from / write to engine.json. This is
+  // engine policy edited through the desktop's Settings UI. On write we also
+  // re-broadcast the desktop_settings_snapshot so any paired iOS device that
+  // renders this key updates immediately (iOS reads the projected value, which
+  // is sourced from engine.json — it never learns the storage location).
+  ipcMain.handle(IPC.GET_PLAN_BASH_ALLOWLIST, () => {
+    const cmds = readPlanBashAllowlist()
+    log('get_plan_bash_allowlist', { count: cmds.length })
+    return cmds
+  })
+
+  ipcMain.handle(IPC.SET_PLAN_BASH_ALLOWLIST, (_event, cmds: unknown) => {
+    if (!Array.isArray(cmds) || !cmds.every((c) => typeof c === 'string')) {
+      log('set_plan_bash_allowlist: rejecting non-string-array payload')
+      return
+    }
+    writePlanBashAllowlist(cmds as string[])
+    broadcastDesktopSettingsSnapshot('set_plan_bash_allowlist')
   })
 
   ipcMain.handle(

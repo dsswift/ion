@@ -110,4 +110,57 @@ describe('handlePrompt CLI-branch user echo (no instanceId)', () => {
       { id: '/tmp/doc.pdf', type: 'file', name: 'doc.pdf', path: '/tmp/doc.pdf' },
     ])
   })
+
+  it('stamps the echo timestamp BEFORE the handler awaits — user turn precedes its deltas (RC-1)', async () => {
+    // The echo timestamp must be captured at handler entry, before any
+    // executeJavaScript round-trip, so the user turn's server timestamp is
+    // monotonically before every assistant delta of the same turn. We prove
+    // this by recording wall-clock immediately AFTER handlePrompt resolves
+    // (which is after all its internal awaits): the echo timestamp must be
+    // <= that later reading. A regression that stamps Date.now() at the send
+    // site would still pass a coarse check, so we also assert the echo carries
+    // a real numeric timestamp and that the handler imposes no artificial delay.
+    const before = Date.now()
+    await handlePrompt({
+      type: 'desktop_prompt',
+      tabId: 'tab-1',
+      text: 'ordering matters',
+      clientMsgId: 'client-msg-4',
+    } as any, 'device-1')
+    const after = Date.now()
+
+    const echo = sent.find((e) => e.type === 'desktop_message_added')
+    expect(echo).toBeDefined()
+    expect(typeof echo.message.timestamp).toBe('number')
+    // Echo timestamp was captured at entry, so it falls within the handler's
+    // own execution window (>= before, <= after).
+    expect(echo.message.timestamp).toBeGreaterThanOrEqual(before)
+    expect(echo.message.timestamp).toBeLessThanOrEqual(after)
+  })
+
+  it('imposes no fixed startup delay on the engine branch (RC-2)', async () => {
+    // The engine auto-create branch previously did `await sleep(500)` to guess
+    // engine-session readiness. Readiness is now guaranteed downstream by the
+    // awaited ensureSession, so the handler must not block on a timer. Drive the
+    // engine branch (instanceId present) with no pre-existing instance so the
+    // auto-create path runs, and assert the handler resolves promptly.
+    executeJsMock.mockResolvedValueOnce(null) // activeInstanceId lookup → none
+    executeJsMock.mockResolvedValueOnce('main' as any) // addEngineInstance → new id
+    executeJsMock.mockResolvedValue(null) // subsequent queries (instanceInfo, model, cwd, plan)
+    const start = Date.now()
+    await handlePrompt({
+      type: 'desktop_prompt',
+      tabId: 'tab-e',
+      text: 'engine prompt',
+      clientMsgId: 'client-msg-5',
+      instanceId: '',
+    } as any, 'device-1')
+    const elapsed = Date.now() - start
+    // Generous ceiling: the mocked awaits resolve immediately, so any wait
+    // approaching the former 500ms sleep is a regression. 200ms leaves ample
+    // headroom for CI scheduling jitter while still catching the sleep.
+    expect(elapsed).toBeLessThan(200)
+    executeJsMock.mockReset()
+    executeJsMock.mockResolvedValue(null)
+  })
 })

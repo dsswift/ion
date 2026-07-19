@@ -53,7 +53,7 @@ func (a *eligibilityTestAccessor) ExtGroup() *extension.ExtensionGroup      { re
 func (a *eligibilityTestAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
 func (a *eligibilityTestAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
 func (a *eligibilityTestAccessor) NewChildBackend() backend.RunBackend      { return nil }
-func (a *eligibilityTestAccessor) AllocatePlanFilePath() string             { return "/tmp/.ion/plans/plan.md" }
+func (a *eligibilityTestAccessor) AllocatePlanFilePath(_ string) string             { return "/tmp/.ion/plans/plan.md" }
 func (a *eligibilityTestAccessor) BumpParentProgress()                      {}
 func (a *eligibilityTestAccessor) EmitDispatchCountStatus(_ string)         {}
 func (a *eligibilityTestAccessor) ResolveTier(_ string) string              { return "" }

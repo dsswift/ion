@@ -791,6 +791,7 @@ Observation-only advisory events emitted by the webhook server, scheduler, and a
 | `engine_schedule_fired`           | Schedule fire        | `asyncKind`, `asyncId`, `asyncDurationMs`                     | Handler completed successfully. |
 | `engine_schedule_skipped`         | Schedule fire (skip) | `asyncKind`, `asyncId`, `asyncReason`                         | `asyncReason`: `"disabled"`, `"no_resolver"`, `"no_session"`, `"predicate_error"`. |
 | `engine_schedule_failed`          | Schedule fire (error)| `asyncKind`, `asyncId`, `asyncReason`, `asyncDurationMs`      | Handler threw; `asyncReason` carries the error message. |
+| `engine_schedule_unhosted`        | Schedule host state  | `asyncKind`, `asyncId`                                        | Last alive host for a (extension, jobID) group removed; the job will not fire until a new host re-registers it. Consumers may use this to alert on unexpected schedule gaps. |
 | `engine_async_fire_dropped`       | Shared error         | `asyncKind`, `asyncId`, `asyncReason`                         | Fire could not proceed. `asyncReason`: `"no_session"`, `"cap_exceeded"`, `"subprocess_dead"`, `"unregistered"`, `"no_resolver"`. |
 
 #### engine_resource_snapshot

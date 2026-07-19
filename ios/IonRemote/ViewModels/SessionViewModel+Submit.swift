@@ -132,6 +132,10 @@ extension SessionViewModel {
             source: .remote
         )
         optimistic.attachments = optimisticAttachments
+        // RC-11: mark the optimistic row as live so a first-page history replace
+        // that races the desktop echo preserves it via the isLive boundary
+        // rather than a timestamp estimate.
+        optimistic.isLive = true
         // Slash-command provenance on the optimistic insert. When the raw
         // text starts with a `/command`, populate the metadata fields so the
         // pill renders immediately. The desktop echo and eventual history

@@ -9,7 +9,6 @@ import type { ConversationInstance } from '../../../shared/types-engine'
 import type { State, StoreGet } from '../session-store-types'
 import { nextMsgId, playNotificationIfHidden } from '../session-store-helpers'
 import { maybeScheduleDoneMove } from './event-slice-done-move'
-import { maybeGenerateTabTitle } from './event-slice-titling'
 import { rDebug, rInfo, rWarn } from '../../rendererLogger'
 
 /**
@@ -214,13 +213,6 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
       const resolvedDenied =
         'permissionDenied' in ctx.instPatch ? ctx.instPatch.permissionDenied : ctx.inst0?.permissionDenied
       maybeScheduleDoneMove(tabId, ctx.tab.status, 'completed', ctx.updated, s.conversationPanes, ctx.get, 'task_complete', resolvedDenied != null)
-      // Title resolution (slash short-circuit vs. LLM generation)
-      // lives in event-slice-titling.ts to keep this file under the
-      // file-size cap. The helper owns the full decision: it no-ops
-      // when a customTitle exists or the aiGeneratedTitles preference
-      // is off, skips LLM titling for slash commands, and otherwise
-      // fires the async generation. renameTab is read at call time.
-      maybeGenerateTabTitle(tabId, ctx.updated.customTitle, ctx.updated.title, ctx.messages, ctx.get().renameTab)
       return true
 
     case 'error':

@@ -3,6 +3,7 @@ package session
 import (
 	"strings"
 
+	ionconfig "github.com/dsswift/ion/engine/internal/config"
 	ioncontext "github.com/dsswift/ion/engine/internal/context"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/gitcontext"
@@ -280,8 +281,34 @@ func (m *Manager) applyConfigDefaults(opts *types.RunOptions) {
 	if m.config.Limits.DisablePlanModeReminder != nil && *m.config.Limits.DisablePlanModeReminder {
 		opts.DisablePlanModeReminder = true
 	}
-	if len(opts.PlanModeAllowedBashCommands) == 0 && len(m.config.Limits.PlanModeAllowedBashCommands) > 0 {
-		opts.PlanModeAllowedBashCommands = m.config.Limits.PlanModeAllowedBashCommands
+	// Plan-mode Bash allowlist is ENGINE POLICY, resolved FRESH from
+	// engine.json at each dispatch (not the boot-cached m.config), so an
+	// operator editing limits.planModeAllowedBashCommands mid-conversation
+	// sees it honored on the next prompt with no daemon restart. Only fills
+	// when the client sent no session-scoped override (opts already empty):
+	// a set_plan_mode override still wins, preserving the published contract.
+	//
+	// Tri-valued: ResolvePlanModeBashAllowlist returns found=true when a
+	// config layer set the field (value used verbatim, INCLUDING an explicit
+	// empty slice = "block Bash in plan mode"); found=false when no layer set
+	// it, in which case we fall back to the boot-cached value (itself
+	// typically nil = block). Both branches are logged per logging policy.
+	if len(opts.PlanModeAllowedBashCommands) == 0 {
+		if cmds, found := ionconfig.ResolvePlanModeBashAllowlist(opts.ProjectPath); found {
+			opts.PlanModeAllowedBashCommands = cmds
+			utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "bash allowlist resolved fresh from engine.json", map[string]any{
+				"count":     len(cmds),
+				"allowlist": cmds,
+			})
+		} else if len(m.config.Limits.PlanModeAllowedBashCommands) > 0 {
+			opts.PlanModeAllowedBashCommands = m.config.Limits.PlanModeAllowedBashCommands
+			utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "bash allowlist fell back to boot-cached config", map[string]any{
+				"count":     len(m.config.Limits.PlanModeAllowedBashCommands),
+				"allowlist": m.config.Limits.PlanModeAllowedBashCommands,
+			})
+		} else {
+			utils.LogWithFields(utils.LevelDebug, "session.plan_mode", "no bash allowlist in engine config (Bash blocked in plan mode)", nil)
+		}
 	}
 	if m.config.Limits.DisableTurnLimitWarning != nil && *m.config.Limits.DisableTurnLimitWarning {
 		opts.DisableTurnLimitWarning = true

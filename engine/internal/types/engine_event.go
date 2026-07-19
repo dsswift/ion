@@ -353,6 +353,8 @@ type EngineEvent struct {
 	// Schedule fire events: engine_schedule_fired, engine_schedule_skipped,
 	// engine_schedule_failed, engine_schedule_missed.
 	// Schedule lifecycle events: engine_schedule_registered, engine_schedule_deregistered.
+	// Schedule host state: engine_schedule_unhosted (last alive host for a job group removed;
+	//   job will not fire until a new host re-registers it).
 	// Shared error: engine_async_fire_dropped.
 	//
 	// All of these are observation-only — the engine emits them so the

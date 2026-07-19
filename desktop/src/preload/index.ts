@@ -23,6 +23,7 @@ const api: IonAPI = {
   closeTab: (tabId) => ipcRenderer.invoke(IPC.CLOSE_TAB, tabId),
   tabMetaChanged: (payload: { tabId: string; title?: string; runCostUsd?: number; totalCostUsd?: number; groupId?: string | null }) =>
     ipcRenderer.send(IPC.TAB_META_CHANGED, payload),
+  pushRemoteTabStates: (payload) => ipcRenderer.send(IPC.REMOTE_TAB_STATES_PUSH, payload),
   selectDirectory: () => ipcRenderer.invoke(IPC.SELECT_DIRECTORY),
   selectExtensionFiles: () => ipcRenderer.invoke(IPC.SELECT_EXTENSION_FILES),
   getEngineHostInfo: () => ipcRenderer.invoke(IPC.GET_ENGINE_HOST_INFO),
@@ -203,6 +204,8 @@ const api: IonAPI = {
   engineBranchBefore: (key, entryId) => ipcRenderer.invoke(IPC.ENGINE_BRANCH_BEFORE, { key, entryId }),
   engineRewind: (key, userTurnIndex) => ipcRenderer.invoke(IPC.ENGINE_REWIND, { key, userTurnIndex }),
   engineGetContextBreakdown: (key) => ipcRenderer.invoke(IPC.ENGINE_GET_CONTEXT_BREAKDOWN, { key }),
+  getPlanBashAllowlist: () => ipcRenderer.invoke(IPC.GET_PLAN_BASH_ALLOWLIST),
+  setPlanBashAllowlist: (cmds) => ipcRenderer.invoke(IPC.SET_PLAN_BASH_ALLOWLIST, cmds),
   engineRemapSession: (oldKey, newKey) => ipcRenderer.invoke(IPC.ENGINE_REMAP_SESSION, { oldKey, newKey }),
   engineBroadcastHistory: (tabId, instanceId) => ipcRenderer.invoke(IPC.ENGINE_BROADCAST_HISTORY, { tabId, instanceId }),
   notifyTabFocus: (tabId, engineProfileId) =>

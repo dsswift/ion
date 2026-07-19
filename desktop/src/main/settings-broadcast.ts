@@ -31,6 +31,8 @@ import { log as _log } from './logger'
 import { state } from './state'
 import { broadcast } from './broadcast'
 import { writeSettings } from './settings-store'
+import { writePlanBashAllowlist } from './plan-bash-allowlist-store'
+import { ENGINE_CONFIG_BACKED_KEYS } from './projectable-settings-data'
 import {
   isProjectableKey,
   projectCurrentSettings,
@@ -109,6 +111,27 @@ export function persistAndBroadcastSettings(
   next: Record<string, unknown>,
   prev: Record<string, unknown> | null,
 ): void {
+  // Engine-config-backed keys (e.g. the plan-mode Bash allowlist) are ENGINE
+  // POLICY: their canonical store is engine.json, not settings.json. Route
+  // each such key to engine.json and strip it from the settings.json write so
+  // it never lands in two places. Both edit surfaces (renderer SAVE_SETTINGS,
+  // iOS set_desktop_setting) funnel here, so this one seam covers iOS too.
+  // The key stays visible to the projection layer (projectCurrentSettings
+  // reads it back from engine.json), so the projectable-change diff below and
+  // the desktop_settings_snapshot still reflect it for paired devices.
+  let engineBackedChanged = false
+  for (const key of Object.keys(next)) {
+    if (!ENGINE_CONFIG_BACKED_KEYS.has(key)) continue
+    const value = next[key]
+    if (Array.isArray(value) && value.every((v) => typeof v === 'string')) {
+      writePlanBashAllowlist(value as string[])
+      engineBackedChanged = true
+    } else {
+      log('settings_broadcast: engine-backed key has non-string-array value, skipping', { key })
+    }
+    delete next[key]
+  }
+
   writeSettings(next as Record<string, any>)
 
   // Cross-window prefs sync (mirror-store architecture): every changed key
@@ -139,11 +162,11 @@ export function persistAndBroadcastSettings(
     return
   }
 
-  if (changedProjectableKeys.length === 0) {
+  if (changedProjectableKeys.length === 0 && !engineBackedChanged) {
     log(`[SETTINGS] persistAndBroadcast: no projectable keys changed, skipping broadcast`)
     return
   }
 
-  log('settings_broadcast: projectable changed', { keys: changedProjectableKeys.join(',') })
+  log('settings_broadcast: projectable changed', { keys: changedProjectableKeys.join(','), engine_backed: engineBackedChanged })
   broadcastDesktopSettingsSnapshot('persistAndBroadcast:projectable_changed')
 }

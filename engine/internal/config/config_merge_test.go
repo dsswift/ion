@@ -155,6 +155,70 @@ func TestMergeConfigs_WorkspaceDeepMerge(t *testing.T) {
 	}
 }
 
+// TestMergeConfigs_CarriesLimitsBashAllowlistAndSiblings pins that mergeInto
+// carries the Limits fields that were historically dropped: the plan-mode Bash
+// allowlist (a slice), MaxTokenThinkingOnlyBreaker (a non-pointer int),
+// PlanModeAutoExitOnEndTurn, and DisableSkillSystemPrompt (pointers). Before
+// the fix, an operator setting any of these in engine.json had it silently
+// dropped by the merge. This is the regression guard for that bug.
+func TestMergeConfigs_CarriesLimitsBashAllowlistAndSiblings(t *testing.T) {
+	base := DefaultConfig()
+	breaker := 5
+	autoExit := false
+	disableSkill := true
+	layer := &types.EngineRuntimeConfig{
+		Limits: types.LimitsConfig{
+			PlanModeAllowedBashCommands: []string{"gh", "git log"},
+			MaxTokenThinkingOnlyBreaker: breaker,
+			PlanModeAutoExitOnEndTurn:   &autoExit,
+			DisableSkillSystemPrompt:    &disableSkill,
+		},
+	}
+	result := MergeConfigs(nil, base, layer)
+	got := result.Limits.PlanModeAllowedBashCommands
+	if len(got) != 2 || got[0] != "gh" || got[1] != "git log" {
+		t.Fatalf("expected bash allowlist [gh, git log], got %v", got)
+	}
+	if result.Limits.MaxTokenThinkingOnlyBreaker != 5 {
+		t.Fatalf("expected MaxTokenThinkingOnlyBreaker=5, got %d", result.Limits.MaxTokenThinkingOnlyBreaker)
+	}
+	if result.Limits.PlanModeAutoExitOnEndTurn == nil || *result.Limits.PlanModeAutoExitOnEndTurn {
+		t.Fatalf("expected PlanModeAutoExitOnEndTurn=&false, got %v", result.Limits.PlanModeAutoExitOnEndTurn)
+	}
+	if result.Limits.DisableSkillSystemPrompt == nil || !*result.Limits.DisableSkillSystemPrompt {
+		t.Fatalf("expected DisableSkillSystemPrompt=&true, got %v", result.Limits.DisableSkillSystemPrompt)
+	}
+}
+
+// TestMergeConfigs_EmptyBashAllowlistOverrides pins the tri-valued contract: an
+// explicit empty [] in a later layer clears a non-empty earlier list (the
+// "block Bash entirely in plan mode" signal must win). A nil (absent) later
+// layer leaves the earlier value intact.
+func TestMergeConfigs_EmptyBashAllowlistOverrides(t *testing.T) {
+	base := DefaultConfig()
+	global := &types.EngineRuntimeConfig{
+		Limits: types.LimitsConfig{PlanModeAllowedBashCommands: []string{"gh"}},
+	}
+	// Explicit empty (non-nil) slice clears.
+	project := &types.EngineRuntimeConfig{
+		Limits: types.LimitsConfig{PlanModeAllowedBashCommands: []string{}},
+	}
+	result := MergeConfigs(nil, base, global, project)
+	if result.Limits.PlanModeAllowedBashCommands == nil {
+		t.Fatal("expected non-nil empty slice (explicit clear), got nil")
+	}
+	if len(result.Limits.PlanModeAllowedBashCommands) != 0 {
+		t.Fatalf("expected empty allowlist after explicit clear, got %v", result.Limits.PlanModeAllowedBashCommands)
+	}
+
+	// nil later layer leaves earlier intact.
+	nilProject := &types.EngineRuntimeConfig{}
+	result2 := MergeConfigs(nil, base, global, nilProject)
+	if len(result2.Limits.PlanModeAllowedBashCommands) != 1 || result2.Limits.PlanModeAllowedBashCommands[0] != "gh" {
+		t.Fatalf("expected [gh] preserved when later layer omits the field, got %v", result2.Limits.PlanModeAllowedBashCommands)
+	}
+}
+
 func TestMergeConfigs_ProfilesReplace(t *testing.T) {
 	base := DefaultConfig()
 	base.Profiles = []types.EngineProfileConfig{

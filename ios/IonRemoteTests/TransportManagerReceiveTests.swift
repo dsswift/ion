@@ -72,12 +72,15 @@ final class TransportManagerReceiveTests: XCTestCase {
     }
 
     /// A peer-reconnected frame (the existing relay: handling path) should
-    /// still work correctly alongside the new push-failed branch, confirming
-    /// the else-if chain is additive and non-regressive.
+    /// still be consumed as a control frame alongside the push-failed branch,
+    /// confirming the else-if chain is additive and non-regressive. It must
+    /// NOT reset the dedup: the desktop's outbound seq is continuous across
+    /// relay reconnects of the same process, and only a NEWER WireMessage
+    /// epoch signals a real restart (the epoch is the only reset trigger).
     func testPeerReconnectedStillWorksAlongsidePushFailed() throws {
         let m = makeManager()
 
-        // Seed a non-zero lastReceivedSeq so we can observe the reset.
+        // Seed a non-zero lastReceivedSeq so a (wrong) reset would be visible.
         m.lastReceivedSeq = 42
 
         let json = #"{"type":"relay:peer-reconnected"}"#
@@ -85,8 +88,9 @@ final class TransportManagerReceiveTests: XCTestCase {
 
         m.handleIncomingData(data, isRelay: true)
 
-        // peer-reconnected resets lastReceivedSeq to 0.
-        XCTAssertEqual(m.lastReceivedSeq, 0,
-            "relay:peer-reconnected must still reset lastReceivedSeq after push-failed branch was added")
+        // Consumed as a control frame (no WireMessage decode side effects) and
+        // the dedup state is untouched.
+        XCTAssertEqual(m.lastReceivedSeq, 42,
+            "relay:peer-reconnected must not reset lastReceivedSeq — the epoch is the only reset trigger")
     }
 }

@@ -206,6 +206,8 @@ export type EngineEvent =
   //   asyncPath:        HTTP path (mirrors asyncId for webhooks)
   //   asyncStatus:      HTTP response status (webhook)
   //   asyncDurationMs:  elapsed time of the fire
+  //   asyncMissedSlot:  RFC3339 UTC timestamp of the missed schedule slot (schedule)
+  //   asyncHadMarker:   whether a last-run marker existed when the miss was detected (schedule)
   | { type: 'engine_webhook_received'; asyncKind: 'webhook'; asyncId: string; asyncRequestId: string; asyncMethod: string; asyncPath: string }
   | { type: 'engine_webhook_authenticated'; asyncKind: 'webhook'; asyncId: string; asyncRequestId: string; asyncMethod: string; asyncPath: string }
   | { type: 'engine_webhook_handler_error'; asyncKind: 'webhook'; asyncId: string; asyncRequestId: string; asyncMethod: string; asyncPath: string; asyncStatus: number; asyncReason: string; asyncDurationMs: number }
@@ -215,8 +217,13 @@ export type EngineEvent =
   | { type: 'engine_schedule_fired'; asyncKind: 'schedule'; asyncId: string; asyncDurationMs: number }
   | { type: 'engine_schedule_skipped'; asyncKind: 'schedule'; asyncId: string; asyncReason: string }
   | { type: 'engine_schedule_failed'; asyncKind: 'schedule'; asyncId: string; asyncReason: string; asyncDurationMs: number }
+  | { type: 'engine_schedule_missed'; asyncKind: 'schedule'; asyncId: string; asyncMissedSlot: string; asyncHadMarker: boolean }
   | { type: 'engine_schedule_registered'; asyncKind: 'schedule'; asyncId: string; asyncOrigin: 'init' | 'runtime'; asyncDecl?: unknown }
   | { type: 'engine_schedule_deregistered'; asyncKind: 'schedule'; asyncId: string; asyncOrigin: 'init' | 'runtime'; asyncDecl?: unknown }
+  // engine_schedule_unhosted: the last alive host for a (extension, jobID)
+  // group was removed; the job will not fire until a new host re-registers
+  // it. Consumers can alert on unexpected schedule gaps.
+  | { type: 'engine_schedule_unhosted'; asyncKind: 'schedule'; asyncId: string }
   | { type: 'engine_async_fire_dropped'; asyncKind: 'webhook' | 'schedule'; asyncId: string; asyncReason: string }
   // engine_command_result is emitted at the end of every Manager.SendCommand
   // dispatch — success (CommandError empty), extension-command failure

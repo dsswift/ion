@@ -14,6 +14,12 @@
  *  3. Inbound relay frames must reach the command handler even when a stale
  *     (half-open zombie) LAN map entry exists for the device — the old drop
  *     blackholed all relay commands until 'client-disconnected' fired.
+ *  4. Inbound-epoch dedup reset (monotonic). iOS stamps its TransportManager
+ *     generation id (epoch) on every outbound frame; a NEWER epoch is the
+ *     desktop's ONLY dedup reset trigger, a STALE epoch is dropped, and
+ *     LAN auth no longer resets anything (the old auth-time reset was the
+ *     re-poisoning vector: one late high-seq frame post-reset set the mark
+ *     and every new-generation command dropped as "beyond window").
  *
  * Crypto and compression are mocked to reversible transforms so the tests can
  * decode delivered frames and build inbound ones.
@@ -40,6 +46,11 @@ vi.mock('../crypto', () => ({
   decrypt: (_nonce: string, ciphertext: string) => Buffer.from(ciphertext, 'base64'),
   createAuthNonce: () => 'test-nonce',
   verifyAuthProof: () => true,
+}))
+// The frame-build pipeline (transport-frame-pipeline.ts) imports the pure
+// encrypt primitive from crypto-core, not from crypto — mock it identically.
+vi.mock('../crypto-core', () => ({
+  encrypt: (wire: Buffer) => ({ nonce: 'n', ciphertext: Buffer.from(wire).toString('base64') }),
 }))
 
 // Instance capture. The mock classes are defined INSIDE the factories (the
@@ -137,13 +148,14 @@ function decodeFrame(frame: any): any {
 }
 
 /** Build a mock-encrypted inbound frame carrying a RemoteCommand. */
-function inboundFrame(seq: number, cmd: object): any {
+function inboundFrame(seq: number, cmd: object, epoch?: number): any {
   return {
     seq,
     ts: Date.now(),
     deviceId: 'ios',
     nonce: 'n',
     ciphertext: Buffer.from(JSON.stringify(cmd), 'utf-8').toString('base64'),
+    ...(epoch !== undefined ? { epoch } : {}),
   }
 }
 
@@ -196,7 +208,7 @@ describe('RemoteTransport — per-device seq, dedup, relay routing', () => {
     await transport.stop()
   })
 
-  it('sends per-device heartbeats whose payload seq is that device\'s own counter', async () => {
+  it('sends per-device heartbeats whose payload seq is the heartbeat frame\'s own seq', async () => {
     vi.useFakeTimers()
     const { transport, relays } = await startTransport()
     transport.send({ type: 'desktop_status', tabId: 't', fields: {} } as any)
@@ -205,12 +217,16 @@ describe('RemoteTransport — per-device seq, dedup, relay routing', () => {
     vi.advanceTimersByTime(15_000)
 
     for (const relay of relays) {
-      const heartbeats = relay.sent.map(decodeFrame).filter((e) => e.type === 'desktop_heartbeat')
-      expect(heartbeats).toHaveLength(1)
-      // Each device has sent 2 frames, so its counter reads 2 at heartbeat
-      // build time. The old broadcast stamped the GLOBAL counter (4 with two
-      // devices) into every device's heartbeat.
-      expect(heartbeats[0].seq).toBe(2)
+      const heartbeatFrames = relay.sent.filter((f) => decodeFrame(f).type === 'desktop_heartbeat')
+      expect(heartbeatFrames).toHaveLength(1)
+      // Truthful payload seq: the heartbeat is the device's 3rd frame (after
+      // 2 status frames), so both the envelope seq and the payload seq read 3.
+      // The old code stamped the pre-allocation counter (2), a permanent
+      // off-by-one against the envelope; older still was the GLOBAL counter.
+      const frame = heartbeatFrames[0]
+      expect(frame.seq).toBe(3)
+      expect(decodeFrame(frame).seq).toBe(3)
+      expect(decodeFrame(frame).seq).toBe(frame.seq)
     }
     await transport.stop()
   })
@@ -258,21 +274,136 @@ describe('RemoteTransport — per-device seq, dedup, relay routing', () => {
     await transport.stop()
   })
 
-  it('LAN auth starts a new inbound epoch: seq 1 after a poisoned high mark is accepted', async () => {
+  it('LAN auth does NOT reset the inbound dedup; a newer inbound epoch does', async () => {
+    // The old behavior — reset on every LAN auth — was the re-poisoning
+    // vector: one stale high-seq frame arriving after the reset re-established
+    // the old high-water and every new-generation command dropped as "beyond
+    // window". The epoch is now the ONLY reset trigger.
     const { transport, relays, lan } = await startTransport()
     const commands: any[] = []
     transport.on('command', (cmd) => commands.push(cmd))
 
-    // Previous epoch left a high mark beyond the dedup window.
-    relays[0].emit('message', inboundFrame(1000, { type: 'desktop_get_snapshot' }))
+    // Current iOS generation established a high mark beyond the dedup window.
+    relays[0].emit('message', inboundFrame(1000, { type: 'desktop_get_snapshot' }, 5000))
     expect(commands).toHaveLength(1)
 
-    // iOS re-auths over LAN and restarts its outbound seq at 1.
+    // iOS re-auths over LAN (same TransportManager instance, same epoch,
+    // CONTINUOUS outbound seq).
     lan.emit('raw-client-connected', {}, 'lan-1')
     lan.emit('message', { payload: JSON.stringify({ type: 'auth_response', deviceId: DEVICES[0].id, proof: 'p' }) }, 'lan-1')
 
-    lan.emit('message', inboundFrame(1, { type: 'desktop_get_snapshot' }), 'lan-1')
+    // Auth must NOT have reset the dedup: a replay of seq 1000 from the same
+    // generation is still a duplicate. (On the old code, the auth reset wiped
+    // the mark and this replay was re-applied.)
+    lan.emit('message', inboundFrame(1000, { type: 'desktop_get_snapshot' }, 5000), 'lan-1')
+    expect(commands).toHaveLength(1)
+    // And the same generation's next seq still flows (seq continuity intact).
+    lan.emit('message', inboundFrame(1001, { type: 'desktop_get_snapshot' }, 5000), 'lan-1')
+    expect(commands).toHaveLength(2)
+
+    // A NEW iOS generation (app restart → new TransportManager → larger
+    // epoch) restarts its seq space at 1; the newer epoch resets the dedup.
+    lan.emit('message', inboundFrame(1, { type: 'desktop_get_snapshot' }, 6000), 'lan-1')
+    expect(commands).toHaveLength(3)
+    await transport.stop()
+  })
+
+  it('a newer inbound epoch resets the dedup so the new generation seq 1 is accepted', async () => {
+    const { transport, relays } = await startTransport()
+    const commands: any[] = []
+    transport.on('command', (cmd) => commands.push(cmd))
+
+    // Epoch E1 establishes a high-water beyond the dedup window.
+    relays[0].emit('message', inboundFrame(1000, { type: 'desktop_get_snapshot' }, 100))
+    expect(commands).toHaveLength(1)
+
+    // New iOS generation: epoch E2 > E1, seq restarts at 1. Without the
+    // inbound-epoch handling this frame is dropped as "beyond window".
+    relays[0].emit('message', inboundFrame(1, { type: 'desktop_get_snapshot' }, 200))
     expect(commands).toHaveLength(2)
     await transport.stop()
+  })
+
+  it('a stale frame from a dead generation is dropped and does not poison the high-water', async () => {
+    const { transport, relays } = await startTransport()
+    const commands: any[] = []
+    transport.on('command', (cmd) => commands.push(cmd))
+
+    // Generation E1 ran up to a high seq; generation E2 begins.
+    relays[0].emit('message', inboundFrame(1000, { type: 'desktop_get_snapshot' }, 100))
+    relays[0].emit('message', inboundFrame(1, { type: 'desktop_get_snapshot' }, 200))
+    expect(commands).toHaveLength(2)
+
+    // Late frame from the dead E1 socket with a high seq. On the unfixed code
+    // (no epoch logic) it re-poisons the high-water to 1000 and every
+    // subsequent E2 low seq drops as "beyond window". It must be dropped.
+    relays[0].emit('message', inboundFrame(1001, { type: 'desktop_get_snapshot' }, 100))
+    expect(commands).toHaveLength(2)
+
+    // E2's next seqs still flow — the stale frame did not poison the mark.
+    relays[0].emit('message', inboundFrame(2, { type: 'desktop_get_snapshot' }, 200))
+    relays[0].emit('message', inboundFrame(3, { type: 'desktop_get_snapshot' }, 200))
+    expect(commands).toHaveLength(4)
+    await transport.stop()
+  })
+
+  it('frames with no epoch (legacy iOS) process with plain dedup, no reset, no drop', async () => {
+    const { transport, relays } = await startTransport()
+    const commands: any[] = []
+    transport.on('command', (cmd) => commands.push(cmd))
+
+    relays[0].emit('message', inboundFrame(1, { type: 'desktop_get_snapshot' }))
+    relays[0].emit('message', inboundFrame(2, { type: 'desktop_get_snapshot' }))
+    // Duplicate still deduped on the legacy path.
+    relays[0].emit('message', inboundFrame(2, { type: 'desktop_get_snapshot' }))
+    expect(commands).toHaveLength(2)
+
+    // A legacy frame arriving after epoch-bearing ones must not be dropped or
+    // trigger a reset (mid-upgrade window must not wedge).
+    relays[0].emit('message', inboundFrame(3, { type: 'desktop_get_snapshot' }, 100))
+    relays[0].emit('message', inboundFrame(4, { type: 'desktop_get_snapshot' }))
+    expect(commands).toHaveLength(4)
+    await transport.stop()
+  })
+
+  it('stamps a stable outbound epoch on every frame (RC-3, receive-seq epoch)', async () => {
+    const { transport, relays } = await startTransport()
+
+    transport.send({ type: 'desktop_status', tabId: 't', fields: {} } as any)
+    transport.send({ type: 'desktop_status', tabId: 't', fields: {} } as any)
+
+    for (const relay of relays) {
+      const epochs = relay.sent.map((f) => f.epoch)
+      // Every frame carries an epoch...
+      expect(epochs.every((e) => typeof e === 'number')).toBe(true)
+      // ...and it is stable within one transport instance (its seq space).
+      expect(new Set(epochs).size).toBe(1)
+    }
+    await transport.stop()
+  })
+
+  it('a fresh transport instance carries a DIFFERENT epoch (desktop restart signal)', async () => {
+    const { transport: t1, relays: r1 } = await startTransport()
+    t1.send({ type: 'desktop_status', tabId: 't', fields: {} } as any)
+    const epoch1 = r1[0].sent.find((f) => f.epoch !== undefined)?.epoch
+    await t1.stop()
+
+    // A new RemoteTransport models a desktop restart: its seqs reset to 1 but
+    // the epoch differs, which is exactly what tells iOS to drop its high-water.
+    relayInstances = []
+    lanInstances = []
+    // Guarantee a clock tick so the timestamp-seeded epoch differs.
+    await new Promise((r) => setTimeout(r, 2))
+    const { transport: t2, relays: r2 } = await startTransport()
+    t2.send({ type: 'desktop_status', tabId: 't', fields: {} } as any)
+    const firstSeq = r2[0].sent[0]?.seq
+    const epoch2 = r2[0].sent.find((f) => f.epoch !== undefined)?.epoch
+
+    expect(typeof epoch1).toBe('number')
+    expect(typeof epoch2).toBe('number')
+    expect(epoch2).not.toBe(epoch1)
+    // Seq space restarted at 1 despite the new epoch.
+    expect(firstSeq).toBe(1)
+    await t2.stop()
   })
 })

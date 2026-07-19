@@ -145,7 +145,10 @@ func (r *recorder) exitCount() int {
 
 func waitFor(t *testing.T, cond func() bool, msg string) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	// 5s gives the race-detector-slowed Linux runner enough headroom for
+	// multi-round-trip sequences (e.g. thread/resume → fallback → thread/start)
+	// without masking real hangs. 2s was consistently flaking under CI load.
+	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if cond() {
 			return
@@ -188,7 +191,7 @@ func startAndPeer(t *testing.T, b *CodexBackend, peerCh chan *fakeCodexPeer, req
 	select {
 	case p := <-peerCh:
 		return p
-	case <-time.After(2 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("launcher never fired")
 		return nil
 	}

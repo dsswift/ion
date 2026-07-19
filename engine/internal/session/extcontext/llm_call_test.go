@@ -78,7 +78,7 @@ func (a *llmCallTestAccessor) ExtGroup() *extension.ExtensionGroup      { return
 func (a *llmCallTestAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
 func (a *llmCallTestAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
 func (a *llmCallTestAccessor) NewChildBackend() backend.RunBackend      { return nil }
-func (a *llmCallTestAccessor) AllocatePlanFilePath() string             { return "/tmp/.ion/plans/plan.md" }
+func (a *llmCallTestAccessor) AllocatePlanFilePath(_ string) string             { return "/tmp/.ion/plans/plan.md" }
 func (a *llmCallTestAccessor) BumpParentProgress()                      {}
 func (a *llmCallTestAccessor) EmitDispatchCountStatus(_ string)         {}
 func (a *llmCallTestAccessor) EngineConfig() *types.EngineRuntimeConfig { return nil }

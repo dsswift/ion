@@ -171,40 +171,15 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// descendant. No-op when the root is still live. See session_root_context.go.
 	s.rearmRootContextIfCancelled()
 
-	if s.planMode && s.planFilePath == "" {
-		// Try to restore a persisted plan file path from the client
-		// (desktop sends this from tab state after restarts). Only used
-		// when the file still exists on disk; otherwise fall through to
-		// fresh allocation.
-		if overrides != nil && overrides.PlanFilePath != "" {
-			if _, err := os.Stat(overrides.PlanFilePath); err == nil {
-				s.planFilePath = overrides.PlanFilePath
-				utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sendprompt: restored from client", map[string]any{"session_id": key, "plan_file_path": s.planFilePath})
-			} else {
-				utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sendprompt: client not on disk, allocating new", map[string]any{"session_id": key, "plan_file_path": overrides.PlanFilePath})
-				s.planFilePath = allocateNewPlanFilePath(m.backend, s.config.WorkingDirectory)
-				utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sendprompt: allocated new", map[string]any{"key": key, "plan_file_path": s.planFilePath})
-			}
-		} else {
-			// Plan file allocation is centralised in allocateNewPlanFilePath
-			// (plan_slug.go). That helper handles the CLI/Hybrid-vs-API
-			// directory choice and produces a fresh non-colliding word slug.
-			// See its doc comment for the directory selection rules.
-			s.planFilePath = allocateNewPlanFilePath(m.backend, s.config.WorkingDirectory)
-			utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sendprompt: allocated new", map[string]any{"key": key, "plan_file_path": s.planFilePath})
-		}
-	}
-
-	// Detect plan mode reentry: plan mode is active, we already have a plan
-	// file path (preserved from a previous exit), and the session previously
-	// exited plan mode via ExitPlanMode.
-	planModeReentry := s.planMode && s.planFilePath != "" && s.hasExitedPlanMode
-
+	// Build run options and finalise the model BEFORE allocating the plan file
+	// path. The allocation must know the resolved serving backend (api vs
+	// claude-code) to choose the correct plans directory; that requires the
+	// model to be final so m.resolvedBackend(opts.Model) returns the right
+	// inner backend. Previously this block ran first with m.backend (the static
+	// HybridBackend wrapper), which caused every hybrid run — regardless of
+	// which inner backend actually served it — to be treated as CLI-scoped and
+	// write plans to <project>/.ion/plans/.
 	opts := buildRunOptions(s, text, overrides)
-	if planModeReentry {
-		opts.PlanModeReentry = true
-		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "reentry detected", map[string]any{"key": key, "plan_file_path": s.planFilePath})
-	}
 
 	// Slash-command resolution + expansion. When the client flagged this prompt
 	// as a slash invocation, resolve the template across the conventional roots
@@ -253,6 +228,46 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	if s.lastModel != "" && m.config != nil && opts.Model == m.config.DefaultModel && opts.Model != s.lastModel {
 		utils.LogWithFields(utils.LevelInfo, "session", "prompt_dispatch: overriding default model with conversation model", map[string]any{"key": key, "model": opts.Model, "model_2": s.lastModel})
 		opts.Model = s.lastModel
+	}
+
+	// Plan-file allocation: now that opts.Model is final, resolve the serving
+	// backend for this model so the directory choice is correct. For the api
+	// inner backend (and all backends using Ion's plan-mode system) the plan
+	// file lives in ~/.ion/plans/; for claude-code (which owns the plan-file
+	// write location) it lives under the project working directory.
+	if s.planMode && s.planFilePath == "" {
+		// Try to restore a persisted plan file path from the client
+		// (desktop sends this from tab state after restarts). Only used
+		// when the file still exists on disk; otherwise fall through to
+		// fresh allocation.
+		if overrides != nil && overrides.PlanFilePath != "" {
+			if _, err := os.Stat(overrides.PlanFilePath); err == nil {
+				s.planFilePath = overrides.PlanFilePath
+				utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sendprompt: restored from client", map[string]any{"session_id": key, "plan_file_path": s.planFilePath})
+			} else {
+				utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sendprompt: client not on disk, allocating new", map[string]any{"session_id": key, "plan_file_path": overrides.PlanFilePath})
+				s.planFilePath = allocateNewPlanFilePath(m.resolvedBackend(opts.Model).Capabilities(), s.config.WorkingDirectory)
+				utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sendprompt: allocated new", map[string]any{"key": key, "plan_file_path": s.planFilePath})
+			}
+		} else {
+			// Plan file allocation is centralised in allocateNewPlanFilePath
+			// (plan_slug.go). That helper keys the directory on
+			// caps.PlanFileProjectScoped, which is true only for claude-code.
+			// See its doc comment for the directory selection rules.
+			s.planFilePath = allocateNewPlanFilePath(m.resolvedBackend(opts.Model).Capabilities(), s.config.WorkingDirectory)
+			utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sendprompt: allocated new", map[string]any{"key": key, "plan_file_path": s.planFilePath})
+		}
+		// buildRunOptions snapshotted planFilePath before allocation; backfill.
+		opts.PlanFilePath = s.planFilePath
+	}
+
+	// Detect plan mode reentry: plan mode is active, we already have a plan
+	// file path (preserved from a previous exit), and the session previously
+	// exited plan mode via ExitPlanMode.
+	planModeReentry := s.planMode && s.planFilePath != "" && s.hasExitedPlanMode
+	if planModeReentry {
+		opts.PlanModeReentry = true
+		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "reentry detected", map[string]any{"key": key, "plan_file_path": s.planFilePath})
 	}
 
 	// Capability gate: the model is final here, so resolve the serving

@@ -65,7 +65,7 @@ func (noopSA) SetSessionMemory(_ string)                                        
 func (noopSA) TranslateEvent(_ types.NormalizedEvent, _ int) types.EngineEvent   { return types.EngineEvent{} }
 func (noopSA) SetPlanMode(_ bool, _ string)                                       {}
 func (noopSA) GetPlanModeState() (bool, string)                                   { return false, "" }
-func (noopSA) AllocatePlanFilePath() string                                       { return "" }
+func (noopSA) AllocatePlanFilePath(_ string) string                                       { return "" }
 func (noopSA) AppendOrUpdateAgentState(_ types.AgentStateUpdate) string           { return "" }
 func (noopSA) UpdateAgentStateByID(_ string, _ func(*types.AgentStateUpdate))     {}
 func (noopSA) UpsertAgentStateByID(_ string, _ types.AgentStateUpdate, _ func(*types.AgentStateUpdate)) {

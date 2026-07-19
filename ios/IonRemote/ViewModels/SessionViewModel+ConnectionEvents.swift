@@ -18,6 +18,9 @@ extension SessionViewModel {
             LayoutCache.delete(deviceId: device.id)
         }
         AttachmentImageCache.shared.clearAll()
+        // RC-20: also clear the fetcher's transient failed/pending sets so a
+        // re-pair starts clean (the byte cache alone doesn't reset those).
+        RemoteImageFetcher.shared.resetTransientState()
         savePairedDevices()
         if pairedDevices.isEmpty {
             try? KeychainStore.deleteAll()
@@ -74,7 +77,6 @@ extension SessionViewModel {
                 DiagnosticLog.log("relay config rejected empty for lan-direct", tag: "session.relay", level: .warn, fields: [
                     "reason": device.name
                 ])
-                print("[Ion] handleRelayConfig: ignoring incomplete relay config for LAN-direct device \(device.name)")
                 return
             }
             // Legitimate upgrade from LAN-direct to relay — fall through.

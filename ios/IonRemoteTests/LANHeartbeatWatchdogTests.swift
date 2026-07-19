@@ -74,10 +74,10 @@ final class LANHeartbeatWatchdogTests: XCTestCase {
 
     func testArmingBaselinesHeartbeatClock() {
         let m = makeManager()
-        XCTAssertEqual(m.lastHeartbeatAt, .distantPast, "precondition")
+        XCTAssertEqual(m.lastLANFrameAt, .distantPast, "precondition")
         let before = Date()
         m.startLANHeartbeatWatchdog(intervalSeconds: 30.0)
-        XCTAssertGreaterThanOrEqual(m.lastHeartbeatAt, before,
+        XCTAssertGreaterThanOrEqual(m.lastLANFrameAt, before,
             "Arming must baseline the liveness clock so a stale timestamp from a previous LAN session cannot fire the watchdog instantly")
         m.stopLANHeartbeatWatchdog()
     }

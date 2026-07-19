@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react'
+import React, { useEffect, useMemo, useState, useCallback } from 'react'
 import { useColors } from '../../theme'
 import { usePreferencesStore } from '../../preferences'
 import { SettingSection } from './SettingSection'
@@ -27,8 +27,26 @@ export function AIModelsCategory() {
   const setShowImplementClearContext = usePreferencesStore((s) => s.setShowImplementClearContext)
   const thinkingEnabled = usePreferencesStore((s) => s.thinkingEnabled)
   const setThinkingEnabled = usePreferencesStore((s) => s.setThinkingEnabled)
-  const planModeAllowedBashCommands = usePreferencesStore((s) => s.planModeAllowedBashCommands)
-  const setPlanModeAllowedBashCommands = usePreferencesStore((s) => s.setPlanModeAllowedBashCommands)
+  // The plan-mode Bash allowlist is ENGINE POLICY, stored in engine.json
+  // (limits.planModeAllowedBashCommands) — not a desktop preference. We read
+  // it from / write it to engine.json via IPC rather than the preferences
+  // store, so the editor shows the operator's real engine.json contents and a
+  // save lands where the engine reads it. The engine re-reads fresh at each
+  // dispatch, so no restart is needed.
+  const [planModeAllowedBashCommands, setPlanModeAllowedBashCommandsState] = useState<string[]>([])
+  useEffect(() => {
+    window.ion.getPlanBashAllowlist().then(setPlanModeAllowedBashCommandsState).catch(() => {
+      // Read failure degrades to an empty editor; the next successful save
+      // still writes engine.json. Nothing user-facing to surface here.
+    })
+  }, [])
+  const setPlanModeAllowedBashCommands = useCallback((cmds: string[]) => {
+    setPlanModeAllowedBashCommandsState(cmds)
+    window.ion.setPlanBashAllowlist(cmds).catch(() => {
+      // Write failure leaves the on-disk value unchanged; the editor state is
+      // optimistic. A subsequent successful save reconciles.
+    })
+  }, [])
 
   const fetchModels = useModelStore((s) => s.fetchModels)
   const dynamicModels = useModelStore((s) => s.models)

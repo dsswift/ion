@@ -391,6 +391,28 @@ struct ConversationView: View {
         )
     }
 
+    /// RC-18: failed-load banner with an explicit retry. Shown by mainContent
+    /// when the transcript is empty and the load failed (both timer retries
+    /// expired). Replaces the previously-silent blank transcript.
+    private var conversationLoadFailedBanner: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
+                .font(.system(size: 28))
+                .foregroundStyle(.secondary)
+            Text("Couldn't load this conversation")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Button {
+                viewModel.loadConversation(tabId: tabId)
+            } label: {
+                Label("Reload", systemImage: "arrow.clockwise")
+            }
+            .buttonStyle(.bordered)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
+    }
+
     private var mainContent: some View {
         VStack(spacing: 0) {
             headerSection
@@ -415,6 +437,13 @@ struct ConversationView: View {
                 onTapPlan: { path in
                     selectedPlanPath = IdentifiablePath(path: path)
                 },
+                onReachedTop: {
+                    // RC-15: page in older history when the user scrolls to the
+                    // top. loadMoreMessages guards on hasMore + a stored cursor +
+                    // no in-flight load, so this is a safe no-op when there is
+                    // nothing older to fetch or a load is already running.
+                    viewModel.loadMoreMessages(tabId: tabId)
+                },
                 agentPanelExpanded: agentsPanelExpandedBinding,
                 agentPanelFullscreen: $agentPanelFullscreen
             )
@@ -423,6 +452,27 @@ struct ConversationView: View {
             } else {
                 transcriptView
                     .frame(height: 100)
+            }
+
+            // RC-18: a failed history load must be user-visible with a retry, not
+            // a silently-blank transcript. conversationLoadFailed was written but
+            // never read; surface it here when the transcript is empty (a failed
+            // load with existing messages keeps showing them). loadingConversation
+            // shows a spinner distinct from the empty state so "loading" never
+            // looks like "zero messages".
+            if engineMsgs.isEmpty {
+                if viewModel.conversationLoadFailed.contains(tabId) {
+                    conversationLoadFailedBanner
+                } else if viewModel.loadingConversation.contains(tabId) {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Loading conversation…")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 24)
+                }
             }
 
             if let request = pendingPermission {

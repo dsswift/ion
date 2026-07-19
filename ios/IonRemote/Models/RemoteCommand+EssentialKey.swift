@@ -33,11 +33,41 @@ extension RemoteCommand {
             return "requestTerminalSnapshot:\(tabId)"
         case .gitChanges(let dir):
             return "gitChanges:\(dir)"
+        case .gitGraph(let dir, let skip, let limit):
+            // One-shot view request (GitPaneView refresh / GitGraphListView
+            // load-more). Keyed on the pagination window too: a "load more"
+            // for page 2 must never dedupe against the page-1 request.
+            return "gitGraph:\(dir):\(skip ?? 0):\(limit ?? 0)"
+        case .gitDiff(let dir, let path, let staged):
+            return "gitDiff:\(dir):\(path):\(staged)"
+        case .gitCommitFiles(let dir, let hash):
+            return "gitCommitFiles:\(dir):\(hash)"
+        case .fsListDir(let dir, let includeHidden):
+            return "fsListDir:\(dir):\(includeHidden)"
         case .sync:
             return "sync"
         case .reportFocus(let tabId, _):
             // Keyed by tabId (nil = backgrounded). Each focus state is distinct.
             return "reportFocus:\(tabId ?? "nil")"
+        case .diagnosticLogsResponse:
+            // Bare kind — last-write-wins is correct here: a newer export
+            // supersedes a queued older one (each response carries all lines
+            // past the desktop's cursor, so the newest is a superset and the
+            // desktop re-pulls from its persisted cursor regardless).
+            //
+            // CRITICAL: without this case the fallback key in
+            // send(_:intent:) was "unknown:\(command)", which string-
+            // interpolates the ENTIRE payload — observed 2 MB keys from a
+            // single diagnosticLogsResponse — and every queue/supersede log
+            // line then embedded that key, amplifying memory until jetsam.
+            return "diagnosticLogsResponse"
+        case .setPermissionMode(let tabId, _):
+            // Plan/auto mode toggle is user intent that must survive reconnects.
+            // Last-write-wins by tabId: if the user flips A→B→A while disconnected,
+            // the final state is correctly replayed on the reconnect flush. Without
+            // this key, a toggle sent while the transport is down is dropped with
+            // an error toast and never delivered — the mode switch is permanently lost.
+            return "setPermissionMode:\(tabId)"
         case .prompt(let tabId, _, _, let clientMsgId, _, _, _):
             // User prompts are eligible for the essential queue so a message
             // sent over a wedged/reconnecting transport is re-enqueued and

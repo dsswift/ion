@@ -60,7 +60,7 @@ func (a *dispatchContextTestAccessor) ExtGroup() *extension.ExtensionGroup      
 func (a *dispatchContextTestAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
 func (a *dispatchContextTestAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
 func (a *dispatchContextTestAccessor) NewChildBackend() backend.RunBackend      { return nil }
-func (a *dispatchContextTestAccessor) AllocatePlanFilePath() string             { return "/tmp/.ion/plans/plan.md" }
+func (a *dispatchContextTestAccessor) AllocatePlanFilePath(_ string) string             { return "/tmp/.ion/plans/plan.md" }
 func (a *dispatchContextTestAccessor) BumpParentProgress()                      {}
 func (a *dispatchContextTestAccessor) EmitDispatchCountStatus(_ string)         {}
 func (a *dispatchContextTestAccessor) EngineConfig() *types.EngineRuntimeConfig {

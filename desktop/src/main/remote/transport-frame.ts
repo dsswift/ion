@@ -1,6 +1,6 @@
-import { encrypt } from './crypto'
 import { debug as _debug, error as _error } from '../logger'
 import { mark, Activity } from '../watchdog'
+import { buildFrameCore } from './transport-frame-pipeline'
 import type { WireMessage } from './protocol'
 
 /**
@@ -46,27 +46,23 @@ export function buildDeviceFrame(
   pushBody?: string,
   /** Optional: epoch ms when the event entered the send queue. Used for queue_dwell_ms. */
   enqueuedAt?: number,
+  /** Outbound-seq epoch (generation id) stamped on the frame; see WireMessage.epoch. */
+  epoch?: number,
 ): WireMessage | null {
   const sendTs = Date.now()
   const seq = nextSeq(deviceId)
-  const msg: WireMessage = { seq, ts: sendTs, deviceId } as WireMessage
-  if (secret.length === 32) {
-    try {
-      // Breadcrumb: AES-256-GCM over the compressed buffer.
-      mark(Activity.RelayEncrypt)
-      const { nonce, ciphertext } = encrypt(wire, secret)
-      ;(msg as any).nonce = nonce
-      ;(msg as any).ciphertext = ciphertext
-    } catch (err) {
-      _error('transport-frame', `encrypt failed for device ${deviceId}: ${(err as Error).message}`)
-      return null
-    }
-  } else {
-    ;(msg as any).payload = plaintext
+  // Breadcrumb: AES-256-GCM over the compressed buffer — only when a real key
+  // encrypts (the plaintext fallback does no crypto work). The pure build core
+  // (shared with the crypto worker) carries no watchdog/logger imports, so the
+  // main-thread breadcrumb and the error log live here in the wrapper.
+  if (secret.length === 32) mark(Activity.RelayEncrypt)
+  const { frame: msg, error } = buildFrameCore(deviceId, secret, plaintext, wire, seq, sendTs, {
+    push, pushTitle, pushBody, epoch,
+  })
+  if (!msg) {
+    _error('transport-frame', `encrypt failed for device ${deviceId}: ${error}`)
+    return null
   }
-  ;(msg as any).push = push || undefined
-  ;(msg as any).pushTitle = push ? pushTitle : undefined
-  ;(msg as any).pushBody = push ? pushBody : undefined
 
   // Per-frame structured send telemetry. The `fields` map is additive — it
   // carries only diagnostics metadata and does not affect wire framing or iOS

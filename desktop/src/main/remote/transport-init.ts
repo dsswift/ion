@@ -10,6 +10,7 @@ import { revokeDeviceLocally } from './revoke'
 import { startTabSnapshotPolling, stopTabSnapshotPolling } from './snapshot-polling'
 import { getRemoteTabStates } from './snapshot'
 import { startGitWatcherBridge, stopGitWatcherBridge } from './git-watcher-bridge'
+import { focusState } from '../git/focus-state'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -23,6 +24,8 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
     stopGitWatcherBridge()
     state.remoteTransport.stop()
     state.remoteTransport = null
+    // No transport = no remote clients; let the git focus gate suspend again.
+    focusState.setRemoteClientCount(0)
   }
 
   if (!settings.remoteEnabled) {
@@ -107,6 +110,11 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
 
   state.remoteTransport.on('state-change', (transportState: string) => {
     broadcast(IPC.REMOTE_STATE_CHANGED, { transportState })
+    // Keep the git focus gate aware of remote attention: a connected iOS
+    // device depends on proactive watcher pushes, so the watcher must not
+    // suspend just because the desktop window is backgrounded. See
+    // git/focus-state.ts for the full rationale.
+    focusState.setRemoteClientCount(state.remoteTransport?.getConnectedDeviceIds().length ?? 0)
   })
 
   state.remoteTransport.on('device-unpaired', (deviceId: string) => {

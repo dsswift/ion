@@ -153,17 +153,22 @@ func (a *sessionAccessor) NewChildBackend() backend.RunBackend { return a.m.newC
 // AllocatePlanFilePath mints a fresh, non-colliding plan-file path for a
 // dispatched child run whose plan mode was requested without an explicit path.
 // It mirrors the root-path allocation in RequestPlanModeEnter (plan_mode.go)
-// and SendPrompt (prompt_dispatch.go): both call allocateNewPlanFilePath with
-// the manager's backend and the session working directory so the plans
-// directory (project-relative for CLI/Hybrid, ~/.ion/plans for API) and the
-// slug are chosen identically. The dispatch path (extcontext) cannot call the
-// package-session allocator directly — session imports extcontext, not the
-// reverse — so this accessor method is the sanctioned bridge across the
-// package boundary. Using a.m.backend (not the child backend) is correct: the
-// child backend from newChildBackend is always the same kind as the parent,
-// so the directory choice is identical either way.
-func (a *sessionAccessor) AllocatePlanFilePath() string {
-	return allocateNewPlanFilePath(a.m.backend, a.s.config.WorkingDirectory)
+// and SendPrompt (prompt_dispatch.go): all three resolve the serving backend
+// for the given model and pass its capabilities to allocateNewPlanFilePath so
+// the plans directory (project-relative for claude-code, ~/.ion/plans for all
+// other backends) is chosen correctly. The dispatch path (extcontext) cannot
+// call the package-session allocator directly — session imports extcontext, not
+// the reverse — so this accessor method is the sanctioned bridge across the
+// package boundary.
+//
+// model is the child agent's requested model name. The directory choice depends
+// on which inner backend would serve that model: api-served children write to
+// ~/.ion/plans/; claude-code children write under the project root. Passing the
+// child model (not the parent's) is correct — a codex or grok child dispatched
+// from a claude-code parent should still use ~/.ion/plans/.
+func (a *sessionAccessor) AllocatePlanFilePath(model string) string {
+	caps := a.m.resolvedBackend(model).Capabilities()
+	return allocateNewPlanFilePath(caps, a.s.config.WorkingDirectory)
 }
 
 // BumpParentProgress refreshes the parent run's run-progress watchdog clock

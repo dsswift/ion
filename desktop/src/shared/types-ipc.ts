@@ -244,6 +244,14 @@ export const IPC = {
   ENGINE_BROADCAST_HISTORY: 'ion:engine-broadcast-history',
   ENGINE_GET_CONTEXT_BREAKDOWN: 'ion:engine-get-context-breakdown',
 
+  // Plan-mode Bash allowlist (engine policy, stored in engine.json).
+  // Read/write the operator-editable list of Bash command prefixes the model
+  // may run during plan mode. Backed by ~/.ion/engine.json's
+  // limits.planModeAllowedBashCommands; the engine re-reads it fresh at each
+  // dispatch, so a write takes effect on the next prompt with no restart.
+  GET_PLAN_BASH_ALLOWLIST: 'ion:get-plan-bash-allowlist',
+  SET_PLAN_BASH_ALLOWLIST: 'ion:set-plan-bash-allowlist',
+
   // Resource focus tracking
   NOTIFY_TAB_FOCUS: 'ion:notify-tab-focus',
   MARK_RESOURCE_READ: 'ion:mark-resource-read',
@@ -288,6 +296,14 @@ export const IPC = {
   // so the main process can push a lightweight desktop_tab_meta delta over the
   // remote transport without waiting for the next 5 s snapshot poll tick.
   TAB_META_CHANGED: 'ion:tab-meta-changed',
+
+  // Renderer-push snapshot projection (renderer → main). The OWNER (overlay)
+  // renderer projects RemoteTabStatesPayload from its session store on change
+  // (debounced) and pushes it here; the main process caches it in
+  // state.rendererSnapshotCache and getRemoteTabStates() serves the cache
+  // instead of polling the renderer via executeJavaScript. See
+  // renderer/stores/remote-projection-push.ts and main/remote/snapshot.ts.
+  REMOTE_TAB_STATES_PUSH: 'ion:remote-tab-states-push',
 
   // Structured renderer-side logging (renderer → main). The main process
   // stamps component=desktop and forwards to the desktop logger.

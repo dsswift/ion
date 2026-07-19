@@ -524,7 +524,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		// flows into the child's PlanModeChangedEvent (runloop_setup.go) so the
 		// client learns the real path.
 		if opts.PlanMode && opts.PlanFilePath == "" {
-			opts.PlanFilePath = sa.AllocatePlanFilePath()
+			opts.PlanFilePath = sa.AllocatePlanFilePath(opts.Name)
 			utils.LogWithFields(utils.LevelInfo, "server", "dispatch plan mode: allocated plan file path", map[string]any{"model": opts.Name, "plan_file_path": opts.PlanFilePath, "child_depth": childDepth, "session_key": sa.SessionKey()})
 		}
 

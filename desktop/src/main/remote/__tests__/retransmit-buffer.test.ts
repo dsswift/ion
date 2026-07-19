@@ -54,6 +54,22 @@ describe('RetransmitBuffer', () => {
     expect(buf.range('dev', 1, 1).complete).toBe(false)
   })
 
+  it('does not double-count bytes when a seq is re-recorded (RC-8)', () => {
+    // 30-byte budget, 10 bytes per frame → 3 frames fit. Record seq 1 three
+    // times: a correct byte ledger keeps it as ONE 10-byte entry, so seqs 1,2,3
+    // all fit. The old code added 10 bytes on each overwrite (ledger = 50 for
+    // one live frame + two more), evicting still-valid frames prematurely.
+    const buf = new RetransmitBuffer(1000, 30)
+    buf.record('dev', frame(1, 10))
+    buf.record('dev', frame(1, 10)) // re-record same seq
+    buf.record('dev', frame(1, 10)) // and again
+    buf.record('dev', frame(2, 10))
+    buf.record('dev', frame(3, 10))
+    // All three distinct seqs must still be present: the re-records of seq 1 did
+    // not inflate the ledger and evict 2/3.
+    expect(buf.range('dev', 1, 3).complete).toBe(true)
+  })
+
   it('keeps per-device buffers isolated', () => {
     const buf = new RetransmitBuffer()
     buf.record('a', frame(1))
@@ -123,5 +139,29 @@ describe('replayRange', () => {
     const complete = replayRange(buf, 'dev', 1, 4, (f) => delivered.push(f.seq))
     expect(complete).toBe(false)
     expect(delivered).toEqual([3, 4]) // only the surviving frames replayed
+  })
+})
+
+describe('cleanup (unpair / transport stop)', () => {
+  it('clearDevice drops that device\'s frames; others untouched', () => {
+    const buf = new RetransmitBuffer()
+    buf.record('devA', { seq: 1, ts: 0, deviceId: 'devA', ciphertext: 'aaaa' } as any)
+    buf.record('devB', { seq: 1, ts: 0, deviceId: 'devB', ciphertext: 'bbbb' } as any)
+
+    buf.clearDevice('devA')
+
+    expect(buf.range('devA', 1, 1).frames).toHaveLength(0)
+    expect(buf.range('devB', 1, 1).frames).toHaveLength(1)
+  })
+
+  it('clear drops every device\'s frames', () => {
+    const buf = new RetransmitBuffer()
+    buf.record('devA', { seq: 1, ts: 0, deviceId: 'devA', ciphertext: 'aaaa' } as any)
+    buf.record('devB', { seq: 1, ts: 0, deviceId: 'devB', ciphertext: 'bbbb' } as any)
+
+    buf.clear()
+
+    expect(buf.range('devA', 1, 1).frames).toHaveLength(0)
+    expect(buf.range('devB', 1, 1).frames).toHaveLength(0)
   })
 })

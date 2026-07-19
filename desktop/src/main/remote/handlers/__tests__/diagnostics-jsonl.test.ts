@@ -27,6 +27,9 @@ vi.mock('../../../utils/atomicWrite', () => ({
 
 vi.mock('../../../logger', () => ({
   log: vi.fn(),
+  debug: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
 }))
 
 vi.mock('../../../state', () => ({

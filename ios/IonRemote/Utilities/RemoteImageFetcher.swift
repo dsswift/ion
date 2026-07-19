@@ -31,7 +31,16 @@ final class RemoteImageFetcher {
             return
         }
         if pending[path] != nil {
+            // RC-20: an existing pending list means a request is in flight. But a
+            // request whose fs_image_content response never arrived (transport
+            // switch / disconnect mid-flight) would ORPHAN this list forever, and
+            // every later request appended to it and never re-sent — the image
+            // stuck on the placeholder for the process lifetime. Re-send the fetch
+            // so an orphaned pending path self-heals; the desktop dedupes and
+            // deliver() fans out to all queued observers. Duplicate in-flight
+            // sends are harmless (fire-and-forget, idempotent read).
             pending[path]?.append(completion)
+            viewModel.send(.fsReadImage(filePath: path), intent: .automaticFireAndForget)
             return
         }
         pending[path] = [completion]
@@ -42,13 +51,28 @@ final class RemoteImageFetcher {
     func deliver(path: String, dataUrl: String?) {
         let observers = pending.removeValue(forKey: path) ?? []
         guard let dataUrl, let bytes = decodeDataUrl(dataUrl) else {
-            failed.insert(path)
+            // RC-20: do NOT permanently blacklist. A nil deliver is frequently
+            // transient (the desktop dropped the response on a transport switch),
+            // not a genuine "path does not exist". Notify current observers with
+            // nil (they render the placeholder for now) but leave `failed` clear
+            // so the next render's request retries. A genuinely missing path
+            // simply retries cheaply on re-render rather than sticking forever.
             for cb in observers { cb(nil) }
             return
         }
+        failed.remove(path)
         AttachmentImageCache.shared.store(data: bytes, forKey: path)
         let image = UIImage(data: bytes)
         for cb in observers { cb(image) }
+    }
+
+    /// Clear transient fetch state on a transport reconnect or unpair. A
+    /// reconnect gives the desktop a fresh chance to answer, so any prior
+    /// failure/orphaned-pending must not suppress a retry. Called from the
+    /// reconnect path and alongside AttachmentImageCache.clearAll() on unpair.
+    func resetTransientState() {
+        failed.removeAll()
+        pending.removeAll()
     }
 
     private func decodeDataUrl(_ s: String) -> Data? {

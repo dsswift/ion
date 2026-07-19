@@ -90,6 +90,7 @@ export async function handleRequestTerminalSnapshot(cmd: Extract<RemoteCommand, 
       })()
     `)
     if (tabState) {
+      log('request_terminal_snapshot pane found', { tabId: cmd.tabId, instanceCount: tabState.instances.length })
       // Fall back to main-process scrollback for instances where the renderer
       // doesn't have an xterm instance (e.g. terminal tabs created from iOS
       // that the desktop user has never navigated to).
@@ -107,6 +108,43 @@ export async function handleRequestTerminalSnapshot(cmd: Extract<RemoteCommand, 
         activeInstanceId: tabState.activeInstanceId,
         buffers: Object.keys(buffers).length > 0 ? buffers : undefined,
       })
+      return
+    }
+    // No pane exists for this tab — the desktop user has never opened the
+    // terminal panel locally, so the renderer store has no terminalPanes
+    // entry. Mirror what TerminalPanel.tsx does on first mount: auto-create
+    // the default "Shell" instance (kind 'user'). The renderer's
+    // addTerminalInstance resolves cwd from the tab's workingDirectory
+    // (falling back to '~'), exactly as handleTerminalAddInstance relies on.
+    const created = await state.mainWindow?.webContents.executeJavaScript(`
+      (function() {
+        var store = window.__Ion_SESSION_STORE__;
+        if (!store) return null;
+        var id = store.getState().addTerminalInstance('${escapedTabId}', 'user');
+        var pane = store.getState().terminalPanes.get('${escapedTabId}');
+        if (!pane) return null;
+        var inst = pane.instances.find(function(i) { return i.id === id; });
+        if (!inst) return null;
+        return { id: inst.id, label: inst.label, kind: inst.kind, cwd: inst.cwd || '' };
+      })()
+    `)
+    if (created) {
+      const key = `${cmd.tabId}:${created.id}`
+      terminalManager.create(key, created.cwd || '~')
+      log('request_terminal_snapshot pane missing, auto-created default instance', {
+        tabId: cmd.tabId,
+        instanceId: created.id,
+        cwd: created.cwd || '~',
+      })
+      state.remoteTransport?.sendToDevice(deviceId, {
+        type: 'desktop_terminal_snapshot',
+        tabId: cmd.tabId,
+        instances: [{ id: created.id, label: created.label || 'Shell', kind: created.kind || 'user', readOnly: false, cwd: created.cwd || '' }],
+        activeInstanceId: created.id,
+        buffers: undefined,
+      })
+    } else {
+      log('request_terminal_snapshot pane missing and auto-create failed (renderer store unavailable)', { tabId: cmd.tabId })
     }
   } catch (err) {
     log('request_terminal_snapshot error', { error: (err as Error).message })

@@ -39,6 +39,15 @@
 		A1B2C3D4E5F60001000029AA /* TransportManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */; };
 		A1B2C3D4E5F6000100002BAA /* RelayClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */; };
 		TMRTESTS00000000000001 /* TransportManagerReceiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TMRTESTS00000000000002 /* TransportManagerReceiveTests.swift */; };
+		EPOCHRST00000000000001 /* TransportManagerEpochResetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EPOCHRST00000000000002 /* TransportManagerEpochResetTests.swift */; };
+		MRGRECON00000000000001 /* ConversationMergeReconcileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MRGRECON00000000000002 /* ConversationMergeReconcileTests.swift */; };
+		LDMOREGT00000000000001 /* LoadMoreMessagesGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LDMOREGT00000000000002 /* LoadMoreMessagesGateTests.swift */; };
+		LDFAILST00000000000001 /* ConversationLoadFailedStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LDFAILST00000000000002 /* ConversationLoadFailedStateTests.swift */; };
+		SPCARDRS00000000000001 /* SpecialCardDismissalResetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SPCARDRS00000000000002 /* SpecialCardDismissalResetTests.swift */; };
+		IMGFETRT00000000000001 /* RemoteImageFetcherRetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = IMGFETRT00000000000002 /* RemoteImageFetcherRetryTests.swift */; };
+		TOOLLIFE00000000000001 /* ToolRowLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TOOLLIFE00000000000002 /* ToolRowLifecycleTests.swift */; };
+		DEDUPIMG00000000000001 /* DedupAndImageAttachTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEDUPIMG00000000000002 /* DedupAndImageAttachTests.swift */; };
+		LIVEBND00000000000001 /* LiveBoundaryMarkingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LIVEBND00000000000002 /* LiveBoundaryMarkingTests.swift */; };
 		A1B2C3D4E5F60001000090AA /* Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000091AA /* Message.swift */; };
 		PENDINGCARD0000000000001 /* PendingCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = PENDINGCARD0000000000002 /* PendingCard.swift */; };
 		PLANCARDGATE000000000001 /* PlanCardGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLANCARDGATE000000000002 /* PlanCardGate.swift */; };
@@ -84,6 +93,7 @@
 		A1B2C3D4E5F60001000202AA /* SessionViewModel+Pairing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */; };
 		A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */; };
 		A1B2C3D4E5F600010002049A /* SessionViewModel+GitCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */; };
+		A1B2C3D4E5F600010002069A /* SessionViewModel+FsCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010002079A /* SessionViewModel+FsCommands.swift */; };
 		A1B2C3D4E5F60001000206AA /* SessionViewModel+EventHandlers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */; };
 		A1B2C3D4E5F60001000208AA /* SessionViewModel+EngineEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */; };
 		A1B2C3D4E5F600010AH10001 /* SessionViewModel+AgentHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010AH20001 /* SessionViewModel+AgentHistory.swift */; };
@@ -94,6 +104,9 @@
 		THINK00000000000000000007 /* ThinkingAccumulatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = THINK00000000000000000008 /* ThinkingAccumulatorTests.swift */; };
 		PAYCMPTEST00000000000007 /* PayloadCompressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PAYCMPTEST00000000000008 /* PayloadCompressionTests.swift */; };
 		DECODEREC00000000000007 /* TransportManagerDecodeRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DECODEREC00000000000008 /* TransportManagerDecodeRecoveryTests.swift */; };
+		INBSERTST0000000000001 /* TransportInboundSerializationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = INBSERTST0000000000002 /* TransportInboundSerializationTests.swift */; };
+		RSNDCOTST0000000000001 /* TransportResendCoalesceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RSNDCOTST0000000000002 /* TransportResendCoalesceTests.swift */; };
+		PLNAUTTST0000000000001 /* TransportPlaintextAuthResultTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLNAUTTST0000000000002 /* TransportPlaintextAuthResultTests.swift */; };
 		LOADCONV000000000000007 /* SessionViewModelLoadConversationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LOADCONV000000000000008 /* SessionViewModelLoadConversationTests.swift */; };
 		WATCHDOG00000000000007 /* LANLivenessWatchdogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WATCHDOG00000000000008 /* LANLivenessWatchdogTests.swift */; };
 		THINKFORK00000000000007 /* ThinkingEffortStorageForkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = THINKFORK00000000000008 /* ThinkingEffortStorageForkTests.swift */; };
@@ -113,7 +126,9 @@
 		LANWDOGT000000000000001 /* LANHeartbeatWatchdogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANWDOGT000000000000002 /* LANHeartbeatWatchdogTests.swift */; };
 		SYNCRTRY000000000000001 /* SyncRetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SYNCRTRY000000000000002 /* SyncRetryTests.swift */; };
 		SENDRQUE000000000000001 /* SendFailureRequeueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SENDRQUE000000000000002 /* SendFailureRequeueTests.swift */; };
+		ESPMTST000000000000001 /* EssentialKeySetPermissionModeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ESPMTST000000000000002 /* EssentialKeySetPermissionModeTests.swift */; };
 		CSRECON00000000000000007 /* ConversationStalenessReconcileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CSRECON00000000000000008 /* ConversationStalenessReconcileTests.swift */; };
+		TABMETAVOL0000000000001 /* TabMetaVolatileFieldsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TABMETAVOL0000000000002 /* TabMetaVolatileFieldsTests.swift */; };
 		CONVHISTR000000000000001 /* ConversationHistoryReplaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CONVHISTR000000000000002 /* ConversationHistoryReplaceTests.swift */; };
 		GRPPARITY000000000000001 /* GroupingParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = GRPPARITY000000000000002 /* GroupingParityTests.swift */; };
 		MSGIDMAP0000000000000004 /* DispatchSnapshotIdMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MSGIDMAP0000000000000003 /* DispatchSnapshotIdMappingTests.swift */; };
@@ -175,6 +190,11 @@
 		A1B2C3D4E5F600010009F5AA /* SessionViewModel+Listening.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010009F6AA /* SessionViewModel+Listening.swift */; };
 		SENDINT00000000000000001 /* SendIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = SENDINT00000000000000002 /* SendIntent.swift */; };
 		ESSNKY00000000000000001 /* RemoteCommand+EssentialKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = ESSNKY00000000000000002 /* RemoteCommand+EssentialKey.swift */; };
+		KINDNM00000000000000001 /* RemoteCommand+KindName.swift in Sources */ = {isa = PBXBuildFile; fileRef = KINDNM00000000000000002 /* RemoteCommand+KindName.swift */; };
+		MTRKIT00000000000000001 /* MetricKitCrashObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = MTRKIT00000000000000002 /* MetricKitCrashObserver.swift */; };
+		KINDNMTST00000000000001 /* RemoteCommandKindNameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = KINDNMTST00000000000002 /* RemoteCommandKindNameTests.swift */; };
+		DIAGBNDTST0000000000001 /* DiagnosticLogBoundsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DIAGBNDTST0000000000002 /* DiagnosticLogBoundsTests.swift */; };
+		CRASHBCTST0000000000001 /* CrashReporterBreadcrumbTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRASHBCTST0000000000002 /* CrashReporterBreadcrumbTests.swift */; };
 		RMDECERR000000000000001 /* RemoteEventDecodeError.swift in Sources */ = {isa = PBXBuildFile; fileRef = RMDECERR000000000000002 /* RemoteEventDecodeError.swift */; };
 		SNDITT00000000000000001 /* SendIntentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SNDITT00000000000000002 /* SendIntentTests.swift */; };
 		A1B2C3D4E5F60001000980AA /* SessionViewModel+SessionStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000981AA /* SessionViewModel+SessionStatus.swift */; };
@@ -314,6 +334,7 @@
 		TABSUBST000000000000001 /* TabRowSubtitlePriorityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TABSUBST000000000000002 /* TabRowSubtitlePriorityTests.swift */; };
 		TABGRPHDR00000000000001 /* TabListGroupHeaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TABGRPHDR00000000000002 /* TabListGroupHeaderTests.swift */; };
 		A1B2C3D4E5F60003000203AA /* SnapshotStaleDenialStripTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60003000204AA /* SnapshotStaleDenialStripTests.swift */; };
+		A1B2C3D4E5F60003000401AA /* SnapshotTerminalInstanceGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60003000402AA /* SnapshotTerminalInstanceGateTests.swift */; };
 		A1B2C3D4E5F60003000301AA /* FileEditorReopenTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60003000302AA /* FileEditorReopenTests.swift */; };
 		B2C3D4E5F600BB991009B01AA /* SessionViewModel+ImplementPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F600BB991009B00AA /* SessionViewModel+ImplementPlan.swift */; };
 		B2C3D4E5F600BB991009BA1AA /* SessionViewModel+EngineRunStalled.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F600BB991009BA0AA /* SessionViewModel+EngineRunStalled.swift */; };
@@ -377,6 +398,15 @@
 		A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportManagerTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayClientTests.swift; sourceTree = "<group>"; };
 		TMRTESTS00000000000002 /* TransportManagerReceiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportManagerReceiveTests.swift; sourceTree = "<group>"; };
+		EPOCHRST00000000000002 /* TransportManagerEpochResetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportManagerEpochResetTests.swift; sourceTree = "<group>"; };
+		MRGRECON00000000000002 /* ConversationMergeReconcileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationMergeReconcileTests.swift; sourceTree = "<group>"; };
+		LDMOREGT00000000000002 /* LoadMoreMessagesGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadMoreMessagesGateTests.swift; sourceTree = "<group>"; };
+		LDFAILST00000000000002 /* ConversationLoadFailedStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationLoadFailedStateTests.swift; sourceTree = "<group>"; };
+		SPCARDRS00000000000002 /* SpecialCardDismissalResetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpecialCardDismissalResetTests.swift; sourceTree = "<group>"; };
+		IMGFETRT00000000000002 /* RemoteImageFetcherRetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteImageFetcherRetryTests.swift; sourceTree = "<group>"; };
+		TOOLLIFE00000000000002 /* ToolRowLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolRowLifecycleTests.swift; sourceTree = "<group>"; };
+		DEDUPIMG00000000000002 /* DedupAndImageAttachTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DedupAndImageAttachTests.swift; sourceTree = "<group>"; };
+		LIVEBND00000000000002 /* LiveBoundaryMarkingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveBoundaryMarkingTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002EAA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002FAA /* IonRemote.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = IonRemote.entitlements; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000032AA /* IonRemote.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = IonRemote.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -425,6 +455,7 @@
 		A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Pairing.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Commands.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+GitCommands.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010002079A /* SessionViewModel+FsCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+FsCommands.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EventHandlers.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000209AA /* SessionViewModel+EngineEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EngineEvents.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010AH20001 /* SessionViewModel+AgentHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+AgentHistory.swift"; sourceTree = "<group>"; };
@@ -435,6 +466,9 @@
 		THINK00000000000000000008 /* ThinkingAccumulatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingAccumulatorTests.swift; sourceTree = "<group>"; };
 		PAYCMPTEST00000000000008 /* PayloadCompressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PayloadCompressionTests.swift; sourceTree = "<group>"; };
 		DECODEREC00000000000008 /* TransportManagerDecodeRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportManagerDecodeRecoveryTests.swift; sourceTree = "<group>"; };
+		INBSERTST0000000000002 /* TransportInboundSerializationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportInboundSerializationTests.swift; sourceTree = "<group>"; };
+		RSNDCOTST0000000000002 /* TransportResendCoalesceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportResendCoalesceTests.swift; sourceTree = "<group>"; };
+		PLNAUTTST0000000000002 /* TransportPlaintextAuthResultTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportPlaintextAuthResultTests.swift; sourceTree = "<group>"; };
 		LOADCONV000000000000008 /* SessionViewModelLoadConversationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionViewModelLoadConversationTests.swift; sourceTree = "<group>"; };
 		WATCHDOG00000000000008 /* LANLivenessWatchdogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANLivenessWatchdogTests.swift; sourceTree = "<group>"; };
 		THINKFORK00000000000008 /* ThinkingEffortStorageForkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingEffortStorageForkTests.swift; sourceTree = "<group>"; };
@@ -454,7 +488,9 @@
 		LANWDOGT000000000000002 /* LANHeartbeatWatchdogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANHeartbeatWatchdogTests.swift; sourceTree = "<group>"; };
 		SYNCRTRY000000000000002 /* SyncRetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncRetryTests.swift; sourceTree = "<group>"; };
 		SENDRQUE000000000000002 /* SendFailureRequeueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendFailureRequeueTests.swift; sourceTree = "<group>"; };
+		ESPMTST000000000000002 /* EssentialKeySetPermissionModeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EssentialKeySetPermissionModeTests.swift; sourceTree = "<group>"; };
 		CSRECON00000000000000008 /* ConversationStalenessReconcileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationStalenessReconcileTests.swift; sourceTree = "<group>"; };
+		TABMETAVOL0000000000002 /* TabMetaVolatileFieldsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabMetaVolatileFieldsTests.swift; sourceTree = "<group>"; };
 		CONVHISTR000000000000002 /* ConversationHistoryReplaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationHistoryReplaceTests.swift; sourceTree = "<group>"; };
 		GRPPARITY000000000000002 /* GroupingParityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupingParityTests.swift; sourceTree = "<group>"; };
 		MSGIDMAP0000000000000003 /* DispatchSnapshotIdMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchSnapshotIdMappingTests.swift; sourceTree = "<group>"; };
@@ -645,6 +681,11 @@
 		A1B2C3D4E5F60001FF0020AA /* RemoteCommand+Decode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RemoteCommand+Decode.swift"; sourceTree = "<group>"; };
 		SENDINT00000000000000002 /* SendIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendIntent.swift; sourceTree = "<group>"; };
 		ESSNKY00000000000000002 /* RemoteCommand+EssentialKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RemoteCommand+EssentialKey.swift"; sourceTree = "<group>"; };
+		KINDNM00000000000000002 /* RemoteCommand+KindName.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RemoteCommand+KindName.swift"; sourceTree = "<group>"; };
+		MTRKIT00000000000000002 /* MetricKitCrashObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricKitCrashObserver.swift; sourceTree = "<group>"; };
+		KINDNMTST00000000000002 /* RemoteCommandKindNameTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteCommandKindNameTests.swift; sourceTree = "<group>"; };
+		DIAGBNDTST0000000000002 /* DiagnosticLogBoundsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLogBoundsTests.swift; sourceTree = "<group>"; };
+		CRASHBCTST0000000000002 /* CrashReporterBreadcrumbTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReporterBreadcrumbTests.swift; sourceTree = "<group>"; };
 		RMDECERR000000000000002 /* RemoteEventDecodeError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteEventDecodeError.swift; sourceTree = "<group>"; };
 		SNDITT00000000000000002 /* SendIntentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendIntentTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001FF0022AA /* SessionViewModel+ConversationHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ConversationHelpers.swift"; sourceTree = "<group>"; };
@@ -654,6 +695,7 @@
 		TABSUBST000000000000002 /* TabRowSubtitlePriorityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabRowSubtitlePriorityTests.swift; sourceTree = "<group>"; };
 		TABGRPHDR00000000000002 /* TabListGroupHeaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabListGroupHeaderTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60003000204AA /* SnapshotStaleDenialStripTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotStaleDenialStripTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60003000402AA /* SnapshotTerminalInstanceGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotTerminalInstanceGateTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60003000302AA /* FileEditorReopenTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileEditorReopenTests.swift; sourceTree = "<group>"; };
 		B2C3D4E5F600BB991009B00AA /* SessionViewModel+ImplementPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ImplementPlan.swift"; sourceTree = "<group>"; };
 		B2C3D4E5F600BB991009BA0AA /* SessionViewModel+EngineRunStalled.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EngineRunStalled.swift"; sourceTree = "<group>"; };
@@ -758,6 +800,7 @@
 				A1B2C3D4E5F60001005307AA /* RemoteCommand+Encode.swift */,
 				A1B2C3D4E5F60001FF0020AA /* RemoteCommand+Decode.swift */,
 				ESSNKY00000000000000002 /* RemoteCommand+EssentialKey.swift */,
+				KINDNM00000000000000002 /* RemoteCommand+KindName.swift */,
 				RMDECERR000000000000002 /* RemoteEventDecodeError.swift */,
 				A1B2C3D4E5F6000100000AAA /* PairedDevice.swift */,
 				A1B2C3D4E5F60001000091AA /* Message.swift */,
@@ -914,6 +957,7 @@
 				A1B2C3D4E5F60001009200AA /* SessionViewModel+RemoteDisplay.swift */,
 				A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */,
 				A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */,
+				A1B2C3D4E5F600010002079A /* SessionViewModel+FsCommands.swift */,
 				B2C3D4E5F600BB991010E000AA /* SessionViewModel+EngineCommands.swift */,
 				B2C3D4E5F600BB991010E0005B /* SessionViewModel+Submit.swift */,
 				B2C3D4E5F600BB991010F000AA /* SessionViewModel+KeyboardUtilityBar.swift */,
@@ -953,6 +997,9 @@
 				PAYCMPTESTGROUP0000001 /* Networking */,
 				LOADCONVTESTGROUP000001 /* ViewModels */,
 				DIAGLOG0000000000002 /* DiagnosticLogSchemaTests.swift */,
+				KINDNMTST00000000000002 /* RemoteCommandKindNameTests.swift */,
+				DIAGBNDTST0000000000002 /* DiagnosticLogBoundsTests.swift */,
+				CRASHBCTST0000000000002 /* CrashReporterBreadcrumbTests.swift */,
 				A1B2C3D4E5F60001000241AA /* NormalizedEventStreamTests.swift */,
 				A1B2C3D4E5F60001000243AA /* NormalizedEventPermissionTests.swift */,
 				PLAN0IMPLEMENT00002 /* PlanImplementWireTests.swift */,
@@ -967,6 +1014,7 @@
 				TABSUBST000000000000002 /* TabRowSubtitlePriorityTests.swift */,
 				TABGRPHDR00000000000002 /* TabListGroupHeaderTests.swift */,
 				A1B2C3D4E5F60003000204AA /* SnapshotStaleDenialStripTests.swift */,
+				A1B2C3D4E5F60003000402AA /* SnapshotTerminalInstanceGateTests.swift */,
 				A1B2C3D4E5F60003000302AA /* FileEditorReopenTests.swift */,
 				TGHOIST000000000000008 /* ToolGroupingHoistTests.swift */,
 				AGTRNORD000000000000008 /* AgentTurnRenderOrderTests.swift */,
@@ -987,7 +1035,9 @@
 				LANWDOGT000000000000002 /* LANHeartbeatWatchdogTests.swift */,
 				SYNCRTRY000000000000002 /* SyncRetryTests.swift */,
 				SENDRQUE000000000000002 /* SendFailureRequeueTests.swift */,
+				ESPMTST000000000000002 /* EssentialKeySetPermissionModeTests.swift */,
 				CSRECON00000000000000008 /* ConversationStalenessReconcileTests.swift */,
+				TABMETAVOL0000000000002 /* TabMetaVolatileFieldsTests.swift */,
 				CONVHISTR000000000000002 /* ConversationHistoryReplaceTests.swift */,
 				GRPPARITY000000000000002 /* GroupingParityTests.swift */,
 				MSGIDMAP0000000000000003 /* DispatchSnapshotIdMappingTests.swift */,
@@ -1031,6 +1081,15 @@
 				A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */,
 				A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */,
 				TMRTESTS00000000000002 /* TransportManagerReceiveTests.swift */,
+				EPOCHRST00000000000002 /* TransportManagerEpochResetTests.swift */,
+				MRGRECON00000000000002 /* ConversationMergeReconcileTests.swift */,
+				LDMOREGT00000000000002 /* LoadMoreMessagesGateTests.swift */,
+				LDFAILST00000000000002 /* ConversationLoadFailedStateTests.swift */,
+				SPCARDRS00000000000002 /* SpecialCardDismissalResetTests.swift */,
+				IMGFETRT00000000000002 /* RemoteImageFetcherRetryTests.swift */,
+				TOOLLIFE00000000000002 /* ToolRowLifecycleTests.swift */,
+				DEDUPIMG00000000000002 /* DedupAndImageAttachTests.swift */,
+				LIVEBND00000000000002 /* LiveBoundaryMarkingTests.swift */,
 				HRNSBDG0000000000000004 /* EngineHarnessBadgeTests.swift */,
 				HRNMSGRELO0000000000002 /* HarnessMessageRelocateTests.swift */,
 				PLANCARD0000000000000002 /* PlanApprovalCardContentTests.swift */,
@@ -1060,6 +1119,9 @@
 			children = (
 				PAYCMPTEST00000000000008 /* PayloadCompressionTests.swift */,
 				DECODEREC00000000000008 /* TransportManagerDecodeRecoveryTests.swift */,
+				INBSERTST0000000000002 /* TransportInboundSerializationTests.swift */,
+				RSNDCOTST0000000000002 /* TransportResendCoalesceTests.swift */,
+				PLNAUTTST0000000000002 /* TransportPlaintextAuthResultTests.swift */,
 				WATCHDOG00000000000008 /* LANLivenessWatchdogTests.swift */,
 				LANAUTHTST0000000000002 /* LANAuthOutcomeTests.swift */,
 				LANBACKTST0000000000002 /* LANReconnectBackoffTests.swift */,
@@ -1105,6 +1167,7 @@
 				A1B2C3D4E5F60001001001AA /* LayoutCache.swift */,
 				A1B2C3D4E5F60001001007AA /* DiagnosticLog.swift */,
 				A1B2C3D4E5F60001007002AA /* CrashReporter.swift */,
+				MTRKIT00000000000000002 /* MetricKitCrashObserver.swift */,
 				A1B2C3D4E5F60001001011AA /* DiagnosticLog+Events.swift */,
 				A1B2C3D4E5F60001001013AA /* DiagnosticLog+Commands.swift */,
 				DIAGLOG0000000000003 /* DiagnosticLog+Schema.swift */,
@@ -1318,6 +1381,7 @@
 				A1B2C3D4E5F60001009201AA /* SessionViewModel+RemoteDisplay.swift in Sources */,
 				A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */,
 				A1B2C3D4E5F600010002049A /* SessionViewModel+GitCommands.swift in Sources */,
+				A1B2C3D4E5F600010002069A /* SessionViewModel+FsCommands.swift in Sources */,
 				B2C3D4E5F600BB991010E001AA /* SessionViewModel+EngineCommands.swift in Sources */,
 				B2C3D4E5F600BB991010E0015B /* SessionViewModel+Submit.swift in Sources */,
 				B2C3D4E5F600BB991010F001AA /* SessionViewModel+KeyboardUtilityBar.swift in Sources */,
@@ -1347,6 +1411,7 @@
 				A1B2C3D4E5F600010009F5AA /* SessionViewModel+Listening.swift in Sources */,
 				SENDINT00000000000000001 /* SendIntent.swift in Sources */,
 				ESSNKY00000000000000001 /* RemoteCommand+EssentialKey.swift in Sources */,
+				KINDNM00000000000000001 /* RemoteCommand+KindName.swift in Sources */,
 				RMDECERR000000000000001 /* RemoteEventDecodeError.swift in Sources */,
 				A1B2C3D4E5F60001000220AA /* TransportManager+Send.swift in Sources */,
 				A1B2C3D4E5F60001000222AA /* TransportManager+Receive.swift in Sources */,
@@ -1433,6 +1498,7 @@
 				A1B2C3D4E5F60001001004AA /* DesktopPickerMenu.swift in Sources */,
 				A1B2C3D4E5F60001001006AA /* DiagnosticLog.swift in Sources */,
 				A1B2C3D4E5F60001007001AA /* CrashReporter.swift in Sources */,
+				MTRKIT00000000000000001 /* MetricKitCrashObserver.swift in Sources */,
 				A1B2C3D4E5F60001001010AA /* DiagnosticLog+Events.swift in Sources */,
 				A1B2C3D4E5F60001001012AA /* DiagnosticLog+Commands.swift in Sources */,
 				DIAGLOG0000000000004 /* DiagnosticLog+Schema.swift in Sources */,
@@ -1481,8 +1547,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				DIAGLOG0000000000001 /* DiagnosticLogSchemaTests.swift in Sources */,
+				KINDNMTST00000000000001 /* RemoteCommandKindNameTests.swift in Sources */,
+				DIAGBNDTST0000000000001 /* DiagnosticLogBoundsTests.swift in Sources */,
+				CRASHBCTST0000000000001 /* CrashReporterBreadcrumbTests.swift in Sources */,
 				PAYCMPTEST00000000000007 /* PayloadCompressionTests.swift in Sources */,
 				DECODEREC00000000000007 /* TransportManagerDecodeRecoveryTests.swift in Sources */,
+				INBSERTST0000000000001 /* TransportInboundSerializationTests.swift in Sources */,
+				RSNDCOTST0000000000001 /* TransportResendCoalesceTests.swift in Sources */,
+				PLNAUTTST0000000000001 /* TransportPlaintextAuthResultTests.swift in Sources */,
 				WATCHDOG00000000000007 /* LANLivenessWatchdogTests.swift in Sources */,
 				LANAUTHTST0000000000001 /* LANAuthOutcomeTests.swift in Sources */,
 				LANBACKTST0000000000001 /* LANReconnectBackoffTests.swift in Sources */,
@@ -1501,6 +1573,7 @@
 				TABSUBST000000000000001 /* TabRowSubtitlePriorityTests.swift in Sources */,
 				TABGRPHDR00000000000001 /* TabListGroupHeaderTests.swift in Sources */,
 				A1B2C3D4E5F60003000203AA /* SnapshotStaleDenialStripTests.swift in Sources */,
+				A1B2C3D4E5F60003000401AA /* SnapshotTerminalInstanceGateTests.swift in Sources */,
 				A1B2C3D4E5F60003000301AA /* FileEditorReopenTests.swift in Sources */,
 				TGHOIST000000000000007 /* ToolGroupingHoistTests.swift in Sources */,
 				AGTRNORD000000000000007 /* AgentTurnRenderOrderTests.swift in Sources */,
@@ -1521,7 +1594,9 @@
 				LANWDOGT000000000000001 /* LANHeartbeatWatchdogTests.swift in Sources */,
 				SYNCRTRY000000000000001 /* SyncRetryTests.swift in Sources */,
 				SENDRQUE000000000000001 /* SendFailureRequeueTests.swift in Sources */,
+				ESPMTST000000000000001 /* EssentialKeySetPermissionModeTests.swift in Sources */,
 				CSRECON00000000000000007 /* ConversationStalenessReconcileTests.swift in Sources */,
+				TABMETAVOL0000000000001 /* TabMetaVolatileFieldsTests.swift in Sources */,
 				CONVHISTR000000000000001 /* ConversationHistoryReplaceTests.swift in Sources */,
 				GRPPARITY000000000000001 /* GroupingParityTests.swift in Sources */,
 				MSGIDMAP0000000000000004 /* DispatchSnapshotIdMappingTests.swift in Sources */,
@@ -1568,6 +1643,15 @@
 				A1B2C3D4E5F60001000029AA /* TransportManagerTests.swift in Sources */,
 				A1B2C3D4E5F6000100002BAA /* RelayClientTests.swift in Sources */,
 				TMRTESTS00000000000001 /* TransportManagerReceiveTests.swift in Sources */,
+				EPOCHRST00000000000001 /* TransportManagerEpochResetTests.swift in Sources */,
+				MRGRECON00000000000001 /* ConversationMergeReconcileTests.swift in Sources */,
+				LDMOREGT00000000000001 /* LoadMoreMessagesGateTests.swift in Sources */,
+				LDFAILST00000000000001 /* ConversationLoadFailedStateTests.swift in Sources */,
+				SPCARDRS00000000000001 /* SpecialCardDismissalResetTests.swift in Sources */,
+				IMGFETRT00000000000001 /* RemoteImageFetcherRetryTests.swift in Sources */,
+				TOOLLIFE00000000000001 /* ToolRowLifecycleTests.swift in Sources */,
+				DEDUPIMG00000000000001 /* DedupAndImageAttachTests.swift in Sources */,
+				LIVEBND00000000000001 /* LiveBoundaryMarkingTests.swift in Sources */,
 				HRNSBDG0000000000000003 /* EngineHarnessBadgeTests.swift in Sources */,
 				HRNMSGRELO0000000000001 /* HarnessMessageRelocateTests.swift in Sources */,
 				PLANCARD0000000000000001 /* PlanApprovalCardContentTests.swift in Sources */,

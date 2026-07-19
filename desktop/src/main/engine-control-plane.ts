@@ -8,7 +8,6 @@ import { performUnifiedInterrupt } from './engine-control-plane-interrupt'
 import * as historyReads from './engine-control-plane-history'
 import { readSettings, SETTINGS_DEFAULTS } from './settings-store'
 import { resolveAtvPermission } from './atv-state-cache'
-import { resolveBashAllowlistFromSettings } from './plan-mode-bash-allowlist'
 import type {
   EngineConfig,
   EngineEvent,
@@ -188,21 +187,19 @@ export class EngineControlPlane extends EventEmitter {
     this.ensureTab(tabId)
     const tab = this.tabs.get(tabId)!
     tab.permissionMode = mode
-    // Tri-valued bash-allowlist projection per docs/protocol/client-commands.md
-    // § set_plan_mode:
-    //   - undefined        → "no change" to engine's existing allowlist
-    //   - []               → "clear" allowlist; Bash blocked entirely
-    //   - ["gh", ...]      → "replace" allowlist with this set
-    // The helper preserves the empty-array case end-to-end. The previous
-    // inline guard collapsed [] to undefined, which silently demoted an
-    // explicit user clear to a no-op on the engine side.
-    const bashCmds = mode === 'plan' ? resolveBashAllowlistFromSettings() : undefined
+    // The plan-mode Bash allowlist is ENGINE POLICY: the engine resolves it
+    // fresh from engine.json (limits.planModeAllowedBashCommands) at each
+    // prompt dispatch. The desktop no longer pushes a session-scoped override
+    // here — doing so would clobber the operator's engine.json and defeat the
+    // headless-consumer contract. We always pass undefined ("no change") for
+    // the allowlist; the wire field on set_plan_mode is kept for external
+    // consumers that still choose to push one.
     // planFilePath restores plan-file continuity when ENTERING plan mode: the
     // engine re-adopts this path (if it exists on disk) so the next prompt
     // reuses the conversation's existing plan instead of allocating a fresh
     // slug. Only forwarded on 'plan'; the engine ignores it on disable.
     const restorePath = mode === 'plan' ? planFilePath : undefined
-    this.bridge.sendSetPlanMode(tabId, mode === 'plan', undefined, source, bashCmds, restorePath)
+    this.bridge.sendSetPlanMode(tabId, mode === 'plan', undefined, source, undefined, restorePath)
   }
 
   approveToolsForTab(tabId: string, toolNames: string[]): void {

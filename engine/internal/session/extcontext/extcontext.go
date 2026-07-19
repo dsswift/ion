@@ -135,15 +135,17 @@ type SessionAccessor interface {
 	GetPlanModeState() (bool, string)
 
 	// AllocatePlanFilePath allocates a fresh, non-colliding plan-file path for
-	// the session's backend kind and working directory, ensuring the plans
-	// directory exists, and returns it. It is the exported bridge to the
-	// session-package allocator (allocateNewPlanFilePath); package extcontext
-	// cannot import package session (session imports extcontext), so the
-	// dispatch path reaches the allocator through this interface method rather
-	// than duplicating the slug logic. Used by the plan-mode dispatch path to
-	// fill an empty PlanFilePath the same way the root paths
-	// (RequestPlanModeEnter, SendPrompt) do.
-	AllocatePlanFilePath() string
+	// the given child model, ensuring the plans directory exists, and returns
+	// it. It is the exported bridge to the session-package allocator
+	// (allocateNewPlanFilePath); package extcontext cannot import package
+	// session (session imports extcontext), so the dispatch path reaches the
+	// allocator through this interface method rather than duplicating the slug
+	// logic. The directory choice depends on which serving backend the model
+	// resolves to: api-served models use ~/.ion/plans/; claude-code uses the
+	// project working directory. Used by the plan-mode dispatch path to fill an
+	// empty PlanFilePath the same way the root paths (RequestPlanModeEnter,
+	// SendPrompt) do.
+	AllocatePlanFilePath(model string) string
 
 	// AppendOrUpdateAgentState creates a new agent state entry or updates
 	// an existing one (matched by name). Returns the entry's ID.

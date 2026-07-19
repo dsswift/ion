@@ -24,6 +24,14 @@ export interface IonAPI extends AtvApi {
    * Main pushes a desktop_tab_meta delta to iOS immediately (no poll wait).
    */
   tabMetaChanged(payload: { tabId: string; title?: string; runCostUsd?: number; totalCostUsd?: number; groupId?: string | null }): void
+  /**
+   * Fire-and-forget push of the renderer's remote tab-state projection
+   * (renderer-push snapshot architecture). The OWNER renderer calls this on
+   * store change (debounced ~250 ms); the main process caches the payload and
+   * getRemoteTabStates() serves the cache. See
+   * renderer/stores/remote-projection-push.ts.
+   */
+  pushRemoteTabStates(payload: import('../shared/remote-projection-types').RemoteTabStatesPayload): void
   selectDirectory(): Promise<string | null>
   selectExtensionFiles(): Promise<string[] | null>
   getEngineHostInfo(): Promise<{ ok: boolean; error?: string; data?: EngineHostInfo }>
@@ -180,6 +188,14 @@ export interface IonAPI extends AtvApi {
    *  the engine emits engine_context_breakdown on its event bus; the renderer
    *  observes the result via the existing context_breakdown normalized event. */
   engineGetContextBreakdown(key: string): Promise<void>
+  /** Read the plan-mode Bash allowlist (engine policy) from engine.json's
+   *  limits.planModeAllowedBashCommands. Returns the command-prefix list;
+   *  empty when unset (Bash blocked in plan mode). */
+  getPlanBashAllowlist(): Promise<string[]>
+  /** Write the plan-mode Bash allowlist to engine.json. The engine re-reads
+   *  it fresh at the next dispatch, so the change takes effect on the next
+   *  prompt with no daemon restart. */
+  setPlanBashAllowlist(cmds: string[]): Promise<void>
   engineRemapSession(oldKey: string, newKey: string): Promise<void>
   /** Broadcast a fresh engine_conversation_history for tabId/instanceId to all
    *  connected remote devices. Called by the renderer after a rewind restart so

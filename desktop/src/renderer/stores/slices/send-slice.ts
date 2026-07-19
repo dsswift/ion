@@ -1,9 +1,11 @@
+// @file-size-exception: send-slice.ts at cap; maybeSendTimeTitle call at send time adds ~5 lines over cap
 import type { TabStatus, Attachment } from '../../../shared/types'
 import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId, cancelDoneGroupMove } from '../session-store-helpers'
 import { activeInstance, commitInstance, effectivePermissionMode, effectiveThinkingEffort } from '../conversation-instance'
 import { applyActiveGroupMove } from './event-slice-running-move'
+import { maybeSendTimeTitle } from './event-slice-titling'
 import { parseSlash } from '../../../main/slash-parse'
 import { rDebug, rInfo } from '../../rendererLogger'
 import { createSendBashSlice } from './send-slice-bash'
@@ -221,6 +223,14 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         }
       })
 
+      // Fire title generation in parallel with the run. The title is derived
+      // entirely from the user's first message, so there is no need to wait
+      // for task_complete. Guard: only on the first send of a fresh tab
+      // (needsTitle) and not on a mid-turn steer (isBusy).
+      if (needsTitle && !isBusy) {
+        maybeSendTimeTitle(tabId, text, get().renameTab)
+      }
+
       if (isBusy && !implementationPhase) {
         window.ion.steer(tabId, fullPrompt)
         return
@@ -403,6 +413,11 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
           conversationPanes,
         }
       })
+
+      // Same send-time title logic as submit() — fire in parallel, first send only.
+      if (needsTitle && !isBusy) {
+        maybeSendTimeTitle(tabId, prompt, get().renameTab)
+      }
 
       if (isBusy) {
         window.ion.steer(tabId, prompt)

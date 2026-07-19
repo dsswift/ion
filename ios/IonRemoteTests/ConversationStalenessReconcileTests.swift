@@ -34,6 +34,51 @@ final class ConversationStalenessReconcileTests: XCTestCase {
 
     // MARK: - Cross-platform parity anchor
 
+    /// RC-12: a text delta arriving AFTER engine_message_end sealed the assistant
+    /// row must NOT mutate that sealed (canonical) row. Mutating it changes its
+    /// content byte-length, permanently diverging the local fingerprint from the
+    /// desktop's and driving the reconcile into a reload loop. The late delta must
+    /// open a fresh row instead. A genuine same-run delta (row not yet sealed)
+    /// must still append.
+    func testLateDeltaAfterSealDoesNotMutateSealedRow() {
+        let vm = SessionViewModel()
+        vm.tabs = [makeTab(id: "t", convFingerprint: nil, status: .running)]
+
+        // Stream an assistant row, then seal it via message_end (re-key to canonical).
+        vm.handleEngineTextDelta(tabId: "t", instanceId: nil, text: "final answer")
+        vm.handleEngineMessageEnd(tabId: "t", instanceId: nil, inputTokens: 10, contextPercent: 5, entryId: "entry-canonical", userEntryId: nil)
+
+        let sealedRow = vm.conversationMessages("t").last { $0.role == .assistant }
+        XCTAssertEqual(sealedRow?.id, "entry-canonical", "message_end must re-key + seal the row")
+        XCTAssertTrue(sealedRow?.sealed == true)
+        let sealedContentBefore = sealedRow?.content
+
+        // A late/stray delta arrives after the seal.
+        vm.handleEngineTextDelta(tabId: "t", instanceId: nil, text: "STRAY")
+
+        let rows = vm.conversationMessages("t")
+        let canonical = rows.first { $0.id == "entry-canonical" }
+        XCTAssertEqual(canonical?.content, sealedContentBefore,
+            "a late delta must NOT append to the sealed canonical row (fingerprint would diverge)")
+        // The stray text landed on a fresh row, not the canonical one.
+        let assistants = rows.filter { $0.role == .assistant }
+        XCTAssertEqual(assistants.count, 2, "the late delta opens a fresh assistant row")
+        XCTAssertEqual(assistants.last?.content, "STRAY")
+    }
+
+    /// A genuine same-run delta (row not sealed) still appends in place.
+    func testSameRunDeltaStillAppends() {
+        let vm = SessionViewModel()
+        vm.tabs = [makeTab(id: "t", convFingerprint: nil, status: .running)]
+
+        vm.handleEngineTextDelta(tabId: "t", instanceId: nil, text: "Hello ")
+        vm.handleEngineTextDelta(tabId: "t", instanceId: nil, text: "world")
+
+        let assistants = vm.conversationMessages("t").filter { $0.role == .assistant }
+        XCTAssertEqual(assistants.count, 1, "consecutive deltas of the same unsealed run append to one row")
+        XCTAssertEqual(assistants.first?.content, "Hello world")
+    }
+
     /// The golden string MUST match the desktop's
     /// conversation-fingerprint.test.ts "produces the pinned golden string"
     /// case byte-for-byte. If either side's algorithm changes, one of the two
@@ -392,5 +437,27 @@ final class ConversationStalenessReconcileTests: XCTestCase {
         // is now .idle, not .running): no second heal within the debounce window.
         vm.handleTabStatus(tabId: tabId, status: .idle)
         XCTAssertFalse(vm.loadingConversation.contains(tabId), "second idle transition must not fire a second load")
+    }
+
+    /// RC-24: handleTaskComplete must also fire the one-shot post-run heal when
+    /// the run settles via taskComplete (running → completed) with a diverged
+    /// fingerprint. Previously only handleTabStatus healed, so a taskComplete-only
+    /// settle skipped the immediate heal.
+    func testTaskCompleteFiresPostRunHealOnDivergence() {
+        let vm = SessionViewModel()
+        let tab = "t"
+        var running = makeTab(id: tab, convFingerprint: nil, status: .running)
+
+        // Local tail differs from the desktop fingerprint the snapshot will carry.
+        vm.mutateConversationMessages(tabId: tab) { $0 = [self.msg(id: "a1", role: .assistant, content: "partial")] }
+        vm.conversationLoaded.insert(tab)
+        // Desktop fingerprint (what maybeReconcile compares against) diverges.
+        running.convFingerprint = vm.conversationTailFingerprint([msg(id: "a1", role: .assistant, content: "partial complete")])
+        vm.tabs = [running]
+
+        vm.handleTaskComplete(tabId: tab)
+
+        XCTAssertTrue(vm.loadingConversation.contains(tab),
+            "taskComplete on a running tab with a diverged fingerprint must fire the post-run heal")
     }
 }

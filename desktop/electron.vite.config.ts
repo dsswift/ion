@@ -9,7 +9,17 @@ export default defineConfig({
       outDir: 'dist/main',
       rollupOptions: {
         input: {
-          index: resolve(__dirname, 'src/main/index.ts')
+          index: resolve(__dirname, 'src/main/index.ts'),
+          // Transport crypto worker: a worker_threads entry spawned by
+          // transport-send-worker-host.ts via join(__dirname, ...). Emitted as
+          // its own chunk next to the main bundle so the path resolves in both
+          // dev and packaged builds.
+          'transport-crypto-worker': resolve(__dirname, 'src/main/remote/transport-crypto-worker.ts')
+        },
+        output: {
+          // Keep entry names stable (no hash) — the host resolves the worker
+          // artifact by filename at runtime.
+          entryFileNames: '[name].js'
         }
       }
     }

@@ -64,7 +64,33 @@ final class TransportManager {
     /// resurrecting a transport that was already torn down.
     private(set) var isStopped = false
     let _seqLock = OSAllocatedUnfairLock(initialState: UInt64(0))
+    /// Outbound-seq epoch (generation id) stamped on every outbound
+    /// WireMessage. Seeded once per TransportManager instance from wall-clock
+    /// ms (same unit as the desktop's `RemoteTransport.epoch`, which seeds from
+    /// `Date.now()`), so it is monotonic across app restarts / re-pairs: a new
+    /// instance always carries a LARGER epoch than the one it replaced. The
+    /// desktop keys its inbound dedup to this — a newer inbound epoch is its
+    /// ONE reset trigger, and a stale epoch marks a late frame from this
+    /// instance's dead predecessor. The outbound seq counter (`_seqLock`) is
+    /// continuous for the life of this instance; the epoch, not any seq reset,
+    /// identifies the generation.
+    let outboundEpoch: Double = (Date().timeIntervalSince1970 * 1000).rounded()
     var lastReceivedSeq: UInt64 = 0
+    /// The outbound-seq epoch of the desktop generation we are tracking.
+    /// Epochs are time-seeded ms, monotonic per desktop process generation, so
+    /// the compare is ordered, not equality: an inbound frame with a NEWER
+    /// epoch means the desktop's seq space restarted (process restart or
+    /// stop()+recreate) — `lastReceivedSeq` and the pending-resend set are
+    /// stale and reset before the seq comparison, otherwise the fresh seq=1
+    /// stream is deduped as "already seen" and the phone blackholes every
+    /// post-restart frame (the retransmit buffer is also empty post-restart,
+    /// so a resend request can't heal it). An inbound frame with an OLDER
+    /// epoch is a late frame from a dead desktop generation and is dropped
+    /// entirely — adopting it would flap the tracker and re-poison the dedup.
+    /// Nil until the first epoch-bearing frame; a desktop predating the field
+    /// leaves this nil and the epoch logic never runs (legacy behavior
+    /// preserved).
+    var lastReceivedEpoch: Double?
     /// Outstanding gap-recovery range awaiting replayed frames from the desktop.
     /// While set, an inbound frame whose seq falls in this (still-missing) set is
     /// APPLIED even though it is below `lastReceivedSeq` (the normal dedup would
@@ -75,6 +101,24 @@ final class TransportManager {
     /// Debounce: the last time a resend request was sent, so a burst of gaps
     /// coalesces into one request.
     var lastResendRequestAt: Date = .distantPast
+    /// Width of the resend-request debounce window in seconds. A gap arriving
+    /// inside the window does not send immediately; it schedules ONE trailing
+    /// coalesced request (`resendCoalesceTask`) covering every seq still in
+    /// `pendingResendSeqs`. Injectable so tests can drive the window fast.
+    var resendDebounceInterval: TimeInterval = 0.15
+    /// Trailing coalesced resend request scheduled by `requestResendForGap`
+    /// when a gap lands inside the debounce window. At most one is pending at
+    /// a time; it sleeps out the remaining window, then re-enters the inbound
+    /// serial queue to read `pendingResendSeqs` and send one merged request.
+    /// Without it, a gap inside the window was silently dropped (leading-edge
+    /// debounce with no trailing retry) and stayed unhealed until the snapshot
+    /// reconcile. Cancelled on stop().
+    var resendCoalesceTask: Task<Void, Never>?
+    /// The seq range of the most recent resend request actually sent (either
+    /// the immediate leading-edge send or a trailing coalesced send).
+    /// Diagnostic/test seam: pins that every gap yields a request and that a
+    /// coalesced request covers the merged range.
+    var lastResendRequestedRange: ClosedRange<UInt64>?
     let eventContinuation: AsyncStream<RemoteEvent>.Continuation
     var relayListenTask: Task<Void, Never>?
     var lanListenTask: Task<Void, Never>?
@@ -105,17 +149,22 @@ final class TransportManager {
     /// ViewModel routes the user to the pairing screen.
     var lanAuthRejectedDefinitively = false
 
-    /// Watchdog that monitors LAN heartbeat liveness. The desktop sends a
-    /// heartbeat every `HEARTBEAT_INTERVAL_MS` (15s). If two intervals (30s)
-    /// pass with no heartbeat while LAN is the active transport, the socket is
-    /// silently dead (TCP can wedge without a FIN); the watchdog forces a
-    /// reconnect+sync via `peerDisconnected` so the ViewModel re-establishes.
+    /// Watchdog that monitors LAN liveness. The desktop sends a heartbeat
+    /// every `HEARTBEAT_INTERVAL_MS` (15s), so a healthy LAN socket delivers
+    /// at least one authenticated frame per interval even when idle. If two
+    /// intervals (30s) pass with no LAN-delivered frame while LAN is the
+    /// active transport, the socket is silently dead (TCP can wedge without a
+    /// FIN); the watchdog forces a reconnect+sync via `peerDisconnected` so
+    /// the ViewModel re-establishes.
     var lanHeartbeatWatchdogTask: Task<Void, Never>?
-    /// Wall-clock time of the most recent heartbeat received over the LAN
-    /// transport specifically (relay-delivered heartbeats do not update this —
-    /// they prove the relay works, not the LAN socket). Baselined to now when
-    /// the watchdog arms; each LAN heartbeat effectively resets the timer.
-    var lastHeartbeatAt: Date = .distantPast
+    /// Wall-clock time of the most recent successfully decrypted frame
+    /// received over the LAN transport specifically — heartbeats, snapshots,
+    /// deltas, resend replays all count (decryption authenticates the
+    /// desktop, so any decrypted frame proves the socket end-to-end).
+    /// Relay-delivered frames do not update this — they prove the relay
+    /// works, not the LAN socket. Baselined to now when the watchdog arms;
+    /// each LAN frame effectively resets the timer.
+    var lastLANFrameAt: Date = .distantPast
 
     /// Wall-clock time the most recent `.snapshot` event was decoded from the
     /// wire. The retryable sync handshake (TransportManager+Sync.swift) polls
@@ -125,6 +174,20 @@ final class TransportManager {
     /// Strict-FIFO queue serializing outbound seq allocation + socket write so
     /// wire order always equals seq order. See TransportManager+Send.swift.
     let outboundQueue = SerialAsyncQueue()
+
+    /// Strict-FIFO queue serializing INBOUND frame processing. The relay and
+    /// LAN listen tasks both used to call `handleIncomingData` directly from
+    /// their own task context, mutating `lastReceivedSeq`, `pendingResendSeqs`
+    /// (a Set — memory-unsafe under concurrent mutation), `lastReceivedEpoch`,
+    /// and the clock-skew/heartbeat state with zero synchronization
+    /// (`_seqLock` guards only the outbound counter; this class is
+    /// `@Observable`, not an actor). Both listeners now enqueue raw data via
+    /// `enqueueIncomingData`, and the queue runs `handleIncomingData` one
+    /// frame at a time. Per-transport ordering is preserved: each listener
+    /// enqueues in its own receive order and the queue is FIFO.
+    /// The WI-6 trailing coalesced-resend task also enters this queue so its
+    /// `pendingResendSeqs` reads/writes are serialized with frame processing.
+    let inboundQueue = SerialAsyncQueue()
 
     /// One-way clock-skew estimate in milliseconds (positive = iOS clock is ahead
     /// of the desktop). Updated from `desktop_heartbeat` frames by comparing iOS
@@ -172,6 +235,7 @@ final class TransportManager {
         pathMonitor?.cancel()
         disconnectGraceTask?.cancel()
         lanHeartbeatWatchdogTask?.cancel()
+        resendCoalesceTask?.cancel()
     }
 
     // MARK: - Public API
@@ -231,30 +295,46 @@ final class TransportManager {
             "port": String(port)
         ])
         if outcome == .success {
-            // Record as current LAN host so Bonjour observation doesn't re-discover and clobber us.
-            currentLANHost = DiscoveredHost(
-                id: "lan-direct:\(host):\(port)",
-                kind: .ionDirect,
-                name: host,
-                host: host,
-                port: port
-            )
-            // Reset dedup for fresh connection
-            lastReceivedSeq = 0
-            _seqLock.withLock { state in state = 0 }
-            startLANListener()
-            startLANStateObservation()
-            startNetworkMonitor()
-            // Start Bonjour browsing so the observation loop can auto-reconnect
-            // if this connection drops. In LAN-only mode (no relay), the browser
-            // wouldn't be started otherwise since start() is never called.
-            await MainActor.run { self.bonjour.startBrowsing() }
-            startBonjourObservation()
-            setState(.lanPreferred)
+            await activateLANConnection(host: host, port: port)
         } else {
             lan.disconnect()
         }
         return outcome
+    }
+
+    /// Post-auth activation of a LAN connection: record the host, start the
+    /// listener/observation/monitor tasks, and flip state to `.lanPreferred`.
+    ///
+    /// Deliberately does NOT touch `lastReceivedSeq` or the outbound seq
+    /// counter (`_seqLock`). The desktop's outbound seq is per-device and
+    /// CONTINUOUS across transport switches, so zeroing `lastReceivedSeq` on a
+    /// LAN (re)connect (a) disabled gap detection exactly during the switch
+    /// (the gap check is gated on `lastReceivedSeq > 0`) and (b) let late
+    /// duplicates from the dying socket re-apply as fresh frames. If the
+    /// desktop actually restarted, its frames carry a NEWER epoch and the
+    /// epoch check in TransportManager+Receive resets the dedup — the epoch is
+    /// the only reset trigger. Our own outbound seq likewise stays continuous
+    /// for the life of this instance; `outboundEpoch` identifies the
+    /// generation to the desktop. Extracted from `startLANWithAuth` so tests
+    /// can pin this no-reset contract without a real socket handshake.
+    func activateLANConnection(host: String, port: UInt16) async {
+        // Record as current LAN host so Bonjour observation doesn't re-discover and clobber us.
+        currentLANHost = DiscoveredHost(
+            id: "lan-direct:\(host):\(port)",
+            kind: .ionDirect,
+            name: host,
+            host: host,
+            port: port
+        )
+        startLANListener()
+        startLANStateObservation()
+        startNetworkMonitor()
+        // Start Bonjour browsing so the observation loop can auto-reconnect
+        // if this connection drops. In LAN-only mode (no relay), the browser
+        // wouldn't be started otherwise since start() is never called.
+        await MainActor.run { self.bonjour.startBrowsing() }
+        startBonjourObservation()
+        setState(.lanPreferred)
     }
 
     /// Disconnect all transports and stop discovery.
@@ -276,6 +356,8 @@ final class TransportManager {
         pathMonitor = nil
         disconnectGraceTask?.cancel()
         disconnectGraceTask = nil
+        resendCoalesceTask?.cancel()
+        resendCoalesceTask = nil
         stopLANHeartbeatWatchdog()
 
         relay?.disconnect()
@@ -419,6 +501,15 @@ struct WireMessage: Codable {
     let seq: UInt64
     /// Unix ms timestamp.
     let ts: Double?
+    /// Outbound-seq epoch (generation id), carried in BOTH directions.
+    /// Inbound (desktop→iOS): changes when the desktop's outbound seq space
+    /// restarts (process restart / stop()+recreate); iOS resets its receive
+    /// dedup on a NEWER epoch and drops frames carrying an OLDER one.
+    /// Outbound (iOS→desktop): every frame carries this TransportManager
+    /// instance's `outboundEpoch` so the desktop can apply the same monotonic
+    /// logic to its inbound dedup. Optional: a peer predating the field omits
+    /// it, and the receiver skips the epoch logic (legacy behavior).
+    let epoch: Double?
     /// JSON-encoded payload (nil when encrypted).
     let payload: String?
     /// Base64-encoded nonce (present when encrypted).
@@ -428,9 +519,10 @@ struct WireMessage: Codable {
     /// Identifies the sending device.
     let deviceId: String?
 
-    init(seq: UInt64, ts: Double?, payload: String?, nonce: String? = nil, ciphertext: String? = nil, deviceId: String? = nil) {
+    init(seq: UInt64, ts: Double?, payload: String?, nonce: String? = nil, ciphertext: String? = nil, deviceId: String? = nil, epoch: Double? = nil) {
         self.seq = seq
         self.ts = ts
+        self.epoch = epoch
         self.payload = payload
         self.nonce = nonce
         self.ciphertext = ciphertext

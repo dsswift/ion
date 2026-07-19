@@ -248,24 +248,24 @@ final class DiagnosticLogSchemaTests: XCTestCase {
     /// `exportIncrementalSince(sinceSeq:)` returns only lines whose seq exceeds
     /// the cursor, and reports a `nextSeq` past the max returned. This is the
     /// exactly-once pull contract the desktop relies on.
-    func testExportIncrementalSinceReturnsOnlyNewerSeqs() throws {
+    func testExportIncrementalSinceReturnsOnlyNewerSeqs() async throws {
         DiagnosticLog.log("incr one", tag: "incr", level: .info)
         DiagnosticLog.flush()
         // Full pull from 0 returns everything and a nextSeq past the end.
-        let full = DiagnosticLog.exportIncrementalSince(sinceSeq: 0)
+        let full = await DiagnosticLog.exportIncrementalSince(sinceSeq: 0)
         XCTAssertFalse(full.logs.isEmpty, "full pull must return lines")
         XCTAssertGreaterThan(full.nextSeq, 0, "nextSeq must advance past 0 on a non-empty pull")
 
         // A second pull from the returned cursor, with no new lines written,
         // returns nothing and holds the cursor (no re-ship).
-        let empty = DiagnosticLog.exportIncrementalSince(sinceSeq: full.nextSeq)
+        let empty = await DiagnosticLog.exportIncrementalSince(sinceSeq: full.nextSeq)
         XCTAssertTrue(empty.logs.isEmpty, "a pull at the cursor must return zero lines")
         XCTAssertEqual(empty.nextSeq, full.nextSeq, "cursor must not move when nothing is newer")
 
         // Write one more line; a pull from the prior cursor returns exactly it.
         DiagnosticLog.log("incr two", tag: "incr", level: .info)
         DiagnosticLog.flush()
-        let delta = DiagnosticLog.exportIncrementalSince(sinceSeq: full.nextSeq)
+        let delta = await DiagnosticLog.exportIncrementalSince(sinceSeq: full.nextSeq)
         let deltaLines = delta.logs.components(separatedBy: "\n").filter { !$0.isEmpty }
         for line in deltaLines {
             let data = line.data(using: .utf8)!

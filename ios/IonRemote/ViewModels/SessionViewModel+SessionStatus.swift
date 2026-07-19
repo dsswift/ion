@@ -43,9 +43,20 @@ extension SessionViewModel {
         instanceId: String?,
         status: SessionStatus
     ) {
-        let synthesized = SessionStatusSynthesis.toStatusFields(tabId: tabId, status: status)
-        mutateEngineInstance(tabId: tabId, instanceId: instanceId) {
-            $0.statusFields = synthesized
+        mutateEngineInstance(tabId: tabId, instanceId: instanceId) { inst in
+            // RC-23: MERGE, do not wholesale-replace. numTurns / conversationTurns
+            // have no SessionStatus source (they are stamped from TaskCompleteEvent
+            // via the legacy engine_status path). A full replace with nils clobbered
+            // them whenever engine_session_status landed after engine_status, so the
+            // status-bar turn count flickered to nil until the next engine_status
+            // restamped it. Carry the existing counts through the synthesis.
+            let synthesized = SessionStatusSynthesis.toStatusFields(
+                tabId: tabId,
+                status: status,
+                priorNumTurns: inst.statusFields?.numTurns,
+                priorConversationTurns: inst.statusFields?.conversationTurns
+            )
+            inst.statusFields = synthesized
         }
     }
 }
@@ -84,9 +95,16 @@ enum SessionStatusSynthesis {
     ///
     /// Conversely, StatusFields.numTurns and StatusFields.conversationTurns
     /// have no SessionStatus source (both counts are stamped from
-    /// TaskCompleteEvent, not carried on SessionStatus), so they map to nil
-    /// here.
-    static func toStatusFields(tabId: String, status: SessionStatus) -> StatusFields {
+    /// TaskCompleteEvent, not carried on SessionStatus). RC-23: they are
+    /// PRESERVED from the prior StatusFields (passed in by the dispatcher)
+    /// rather than nil-clobbered, so an engine_session_status landing after an
+    /// engine_status does not blank the turn count.
+    static func toStatusFields(
+        tabId: String,
+        status: SessionStatus,
+        priorNumTurns: Int? = nil,
+        priorConversationTurns: Int? = nil
+    ) -> StatusFields {
         return StatusFields(
             label: tabId,
             state: status.state,
@@ -100,8 +118,8 @@ enum SessionStatusSynthesis {
             permissionDenials: status.permissionDenialsPending,
             extensionName: status.extensionName,
             backgroundAgents: status.backgroundAgentCount,
-            numTurns: nil,
-            conversationTurns: nil
+            numTurns: priorNumTurns,
+            conversationTurns: priorConversationTurns
         )
     }
 }

@@ -1,9 +1,13 @@
 package session
 
 import (
+	"os"
+	"strings"
 	"testing"
 
+	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/extension"
+	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -366,5 +370,65 @@ func TestPlanProposalEvent_TranslationEmptyPath(t *testing.T) {
 	}
 	if ee.PlanModeSlug != "" {
 		t.Errorf("expected empty PlanModeSlug, got %q", ee.PlanModeSlug)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Hybrid plan-file directory regression test
+//
+// Pins the bug reported in conversation 1784411116509-07b16188baa6: a hybrid
+// session whose run is served by the api inner backend (api-key-wins routing)
+// must allocate the plan file in ~/.ion/plans/, NOT in <project>/.ion/plans/.
+// Before the fix allocateNewPlanFilePath dispatched on the static
+// *HybridBackend type and always picked the project dir.
+// ---------------------------------------------------------------------------
+
+// TestRequestPlanModeEnter_HybridApiServed_UsesHomeDir is the end-to-end
+// regression test for the hybrid plan-file allocation bug. It constructs a
+// HybridBackend with no credentials (no API key, no CLI auth probe), so
+// routing falls through to the api inner backend (the safe default). It then
+// calls RequestPlanModeEnter and asserts the resulting plan file path is
+// under ~/.ion/plans/ — not under the session working directory. Reverting
+// the plan_slug.go change (restore the isHybrid branch) causes this to fail.
+func TestRequestPlanModeEnter_HybridApiServed_UsesHomeDir(t *testing.T) {
+	// Register an anthropic model so resolvedBackend can resolve the provider.
+	// With no API key and no cli auth probe the hybrid routes it to the api
+	// inner backend (the safe missing-key default).
+	providers.RegisterModel("claude-hybrid-test", types.ModelInfo{
+		ProviderID:    "anthropic",
+		ContextWindow: 200000,
+	})
+
+	hybrid := backend.NewHybridBackend()
+	// No auth resolver, no CLI probe: every model degrades to api inner.
+	mgr := NewManager(hybrid)
+
+	cfg := defaultConfig()
+	cfg.WorkingDirectory = t.TempDir() // non-empty so the old bug would trigger
+	_, _ = mgr.StartSession("hybrid-plan-dir", cfg)
+
+	// Simulate one completed run so s.lastModel is set (mirrors what
+	// SendPrompt does before plan allocation).
+	mgr.mu.Lock()
+	mgr.sessions["hybrid-plan-dir"].lastModel = "claude-hybrid-test"
+	mgr.mu.Unlock()
+
+	allowed, _, planFilePath := mgr.RequestPlanModeEnter("hybrid-plan-dir")
+	if !allowed {
+		t.Fatal("RequestPlanModeEnter unexpectedly denied")
+	}
+	if planFilePath == "" {
+		t.Fatal("expected a non-empty planFilePath")
+	}
+
+	home, _ := os.UserHomeDir()
+	wantPrefix := home + "/.ion/plans/"
+
+	// Before the fix: planFilePath was under cfg.WorkingDirectory (project dir).
+	// After the fix: planFilePath must be under ~/.ion/plans/.
+	if !strings.HasPrefix(planFilePath, wantPrefix) {
+		t.Errorf("hybrid api-served plan file = %q; want prefix %q\n"+
+			"(This failure means the project-dir branch is still being taken for api-served hybrid runs.)",
+			planFilePath, wantPrefix)
 	}
 }

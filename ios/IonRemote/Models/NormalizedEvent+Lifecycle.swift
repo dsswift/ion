@@ -60,7 +60,13 @@ extension RemoteEvent {
             let totalCostUsd = try container.decodeIfPresent(Double.self, forKey: .totalCostUsd)
             let resolvedCost = runCostUsd ?? totalCostUsd
             let groupId = try container.decodeIfPresent(String.self, forKey: .groupId)
-            return .tabMeta(tabId: tabId, title: title, totalCostUsd: resolvedCost, groupId: groupId)
+            // Volatile conversation fields (B6-1) — additive; a desktop that
+            // predates them simply omits the keys and decode yields nil.
+            let convFingerprint = try container.decodeIfPresent(String.self, forKey: .convFingerprint)
+            let lastActivityAt = try container.decodeIfPresent(Double.self, forKey: .lastActivityAt)
+            let lastMessage = try container.decodeIfPresent(String.self, forKey: .lastMessage)
+            let messageCount = try container.decodeIfPresent(Int.self, forKey: .messageCount)
+            return .tabMeta(tabId: tabId, title: title, totalCostUsd: resolvedCost, groupId: groupId, convFingerprint: convFingerprint, lastActivityAt: lastActivityAt, lastMessage: lastMessage, messageCount: messageCount)
 
         case .unpair:
             return .unpair
@@ -153,7 +159,7 @@ extension RemoteEvent {
             try container.encode(status, forKey: .status)
             return true
 
-        case .tabMeta(let tabId, let title, let totalCostUsd, let groupId):
+        case .tabMeta(let tabId, let title, let totalCostUsd, let groupId, let convFingerprint, let lastActivityAt, let lastMessage, let messageCount):
             try container.encode(TypeKey.tabMeta, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(title, forKey: .title)
@@ -162,6 +168,10 @@ extension RemoteEvent {
             try container.encodeIfPresent(totalCostUsd, forKey: .runCostUsd)
             try container.encodeIfPresent(totalCostUsd, forKey: .totalCostUsd)
             try container.encodeIfPresent(groupId, forKey: .groupId)
+            try container.encodeIfPresent(convFingerprint, forKey: .convFingerprint)
+            try container.encodeIfPresent(lastActivityAt, forKey: .lastActivityAt)
+            try container.encodeIfPresent(lastMessage, forKey: .lastMessage)
+            try container.encodeIfPresent(messageCount, forKey: .messageCount)
             return true
 
         case .error(let tabId, let message):

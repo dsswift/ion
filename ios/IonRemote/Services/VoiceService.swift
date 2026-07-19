@@ -273,9 +273,9 @@ final class VoiceService {
                 try? await Task.sleep(nanoseconds: 100_000_000)
             }
         } catch {
-            #if DEBUG
-            print("[VoiceService] playback error: \(error)")
-            #endif
+            DiagnosticLog.log("playback error", tag: "voice", level: .error, fields: [
+                "error": error.localizedDescription
+            ])
         }
 
         audioPlayer = nil

@@ -72,7 +72,14 @@ type Scheduler struct {
 	stopCh   chan struct{}
 	doneCh   chan struct{}
 	nextRun  map[hostJobKey]time.Time
-	inFlight sync.Map // hostJobKey -> struct{}
+	// extNextRun tracks the most recent nextRun value by logical job identity
+	// (extensionName + jobID) independent of host pointer. Updated whenever a
+	// host-keyed nextRun entry is set, and consulted by bootstrapNextRun when
+	// a new host is bootstrapped for a job that was previously tracked by a
+	// now-removed host. This preserves interval cadence across host-pointer
+	// replacements (session teardown + recreation).
+	extNextRun map[extensionJobKey]time.Time
+	inFlight   sync.Map // hostJobKey -> struct{}
 
 	// persistDir is the directory under which last-run markers are
 	// persisted. Empty means no persistence (tests / catch-up
@@ -133,6 +140,7 @@ func New(cfg Config) *Scheduler {
 	return &Scheduler{
 		cfg:        cfg,
 		nextRun:    make(map[hostJobKey]time.Time),
+		extNextRun: make(map[extensionJobKey]time.Time),
 		persistDir: cfg.PersistDir,
 	}
 }
@@ -160,6 +168,17 @@ func (s *Scheduler) SetResolveEnabledFnForTest(fn func(h *extension.Host, job ex
 	s.mu.Unlock()
 }
 
+// siblingNextRun returns the most-recently-recorded nextRun value for a given
+// (extensionName, jobID) pair regardless of which host pointer set it. Returns
+// zero if no value has ever been recorded for this logical job identity.
+// Used by bootstrapNextRun to inherit interval cadence across host-pointer
+// replacements (session teardown + recreation).
+func (s *Scheduler) siblingNextRun(extKey extensionJobKey) time.Time {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.extNextRun[extKey]
+}
+
 // AddHost adds a host whose schedule registry will be polled by the
 // tick loop. Idempotent.
 func (s *Scheduler) AddHost(h *extension.Host) {
@@ -179,24 +198,67 @@ func (s *Scheduler) AddHost(h *extension.Host) {
 
 // RemoveHost removes a host from the schedule pool. In-flight fires
 // for that host continue to completion; new fires won't dispatch.
+// When removing the last alive host for a registered (extension, jobID)
+// group, emits engine_schedule_unhosted so consumers can observe the
+// transition to host-less and alert on silent gaps.
 func (s *Scheduler) RemoveHost(h *extension.Host) {
 	if h == nil {
 		return
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
+
+	var unhostingJobs []extension.ScheduleJob
 	for i, existing := range s.hosts {
-		if existing == h {
-			s.hosts = append(s.hosts[:i], s.hosts[i+1:]...)
-			// Drop next-run entries for jobs we're no longer tracking.
-			for k := range s.nextRun {
-				if k.host == h {
-					delete(s.nextRun, k)
+		if existing != h {
+			continue
+		}
+		s.hosts = append(s.hosts[:i], s.hosts[i+1:]...)
+
+		// Drop next-run entries for jobs we're no longer tracking.
+		for k := range s.nextRun {
+			if k.host == h {
+				delete(s.nextRun, k)
+			}
+		}
+
+		// Detect job groups that now have zero alive hosts remaining.
+		// For each job the departing host registered, check whether any
+		// surviving host in s.hosts still carries the same (name, jobID).
+		decls := h.AsyncRegistry().List(asyncreg.KindSchedule)
+		for _, d := range decls {
+			job, ok := d.(extension.ScheduleJob)
+			if !ok {
+				continue
+			}
+			extKey := extensionJobKey{name: h.Name(), id: job.JobID}
+			hasAlive := false
+			for _, peer := range s.hosts {
+				if peer.Dead() {
+					continue
+				}
+				if _, found := peer.AsyncRegistry().ByID(asyncreg.KindSchedule, job.JobID); found {
+					if peer.Name() == extKey.name {
+						hasAlive = true
+						break
+					}
 				}
 			}
-			utils.LogWithFields(utils.LevelDebug, "scheduling", "remove host", map[string]any{"model": h.Name(), "count": len(s.hosts)})
-			return
+			if !hasAlive {
+				unhostingJobs = append(unhostingJobs, job)
+			}
 		}
+
+		utils.LogWithFields(utils.LevelDebug, "scheduling", "remove host", map[string]any{"model": h.Name(), "count": len(s.hosts)})
+		break
+	}
+	s.mu.Unlock()
+
+	// Emit unhosted events outside the lock (publish acquires s.mu.RLock).
+	for _, job := range unhostingJobs {
+		utils.LogWithFields(utils.LevelWarn, "scheduling", "schedule group unhosted — no alive hosts remain", map[string]any{
+			"model": h.Name(), "run_id": job.JobID, "kind": string(job.Kind),
+		})
+		s.emitScheduleUnhosted(job)
 	}
 }
 
@@ -272,11 +334,19 @@ func (s *Scheduler) tickOnce() {
 
 	// Group jobs by (extensionName, jobID) for concurrency coordination.
 	// Also collect active hostJobKeys so we can prune orphaned nextRun
-	// entries left behind by deregistered jobs (e.g. schedule.cancel).
+	// entries left behind by deregistered jobs (e.g. schedule.cancel),
+	// plus the alive-host view (extension names + logical job keys) that
+	// gates the extNextRun prune below.
 	groups := make(map[extensionJobKey][]hostJobEntry)
 	activeKeys := make(map[hostJobKey]struct{})
+	aliveExtNames := make(map[string]struct{})
+	aliveExtKeys := make(map[extensionJobKey]struct{})
 	for _, h := range hosts {
 		decls := h.AsyncRegistry().List(asyncreg.KindSchedule)
+		alive := !h.Dead()
+		if alive {
+			aliveExtNames[h.Name()] = struct{}{}
+		}
 		for _, d := range decls {
 			job, ok := d.(extension.ScheduleJob)
 			if !ok {
@@ -285,6 +355,9 @@ func (s *Scheduler) tickOnce() {
 			key := extensionJobKey{name: h.Name(), id: job.JobID}
 			groups[key] = append(groups[key], hostJobEntry{host: h, job: job})
 			activeKeys[hostJobKey{host: h, id: job.JobID}] = struct{}{}
+			if alive {
+				aliveExtKeys[key] = struct{}{}
+			}
 		}
 	}
 
@@ -319,6 +392,30 @@ func (s *Scheduler) tickOnce() {
 		if _, active := activeKeys[key]; !active {
 			delete(s.nextRun, key)
 		}
+	}
+	// Prune orphaned extNextRun entries — the same cancel→re-register
+	// staleness, one layer up. extNextRun is keyed by logical job identity
+	// so bootstrapNextRun can inherit interval cadence across host-pointer
+	// replacement (#285); without a prune, a job cancelled and later
+	// re-registered under the same ID inherits the stale — possibly past —
+	// next-run and fires immediately, and the map grows for the life of
+	// the daemon. The gate distinguishes the two states:
+	//   - Cancelled: at least one ALIVE host of that extension exists but
+	//     none of them carries the job → the entry is stale, prune it.
+	//   - Host-replacement window: NO alive host of that extension exists
+	//     → the entry is load-bearing (it is exactly what the successor
+	//     host inherits on bootstrap) — keep it.
+	for extKey := range s.extNextRun {
+		if _, jobAlive := aliveExtKeys[extKey]; jobAlive {
+			continue // job still registered on an alive host — keep.
+		}
+		if _, extAlive := aliveExtNames[extKey.name]; !extAlive {
+			continue // replacement window: no alive host yet — keep for inherit.
+		}
+		delete(s.extNextRun, extKey)
+		utils.LogWithFields(utils.LevelDebug, "scheduling", "prune orphaned extNextRun entry", map[string]any{
+			"model": extKey.name, "run_id": extKey.id,
+		})
 	}
 	s.mu.Unlock()
 }
@@ -437,6 +534,10 @@ func (s *Scheduler) fireJob(h *extension.Host, job extension.ScheduleJob, key ho
 			// Drop the next-run entry so the tick loop doesn't revisit.
 			s.mu.Lock()
 			delete(s.nextRun, key)
+			// Also drop the logical-identity cadence entry: a once job is
+			// spent, so a future job registered under the same ID must
+			// bootstrap fresh, not inherit this shot's next-run.
+			delete(s.extNextRun, extensionJobKey{name: h.Name(), id: job.JobID})
 			s.mu.Unlock()
 			s.emitScheduleDeregistered(job, "once_complete")
 			utils.LogWithFields(utils.LevelInfo, "scheduling", "fire job once deregistered", map[string]any{"model": h.Name(), "run_id": job.JobID})
@@ -605,6 +706,9 @@ func (s *Scheduler) fireJobWithMeta(h *extension.Host, job extension.ScheduleJob
 		if ok {
 			s.mu.Lock()
 			delete(s.nextRun, key)
+			// Spent shot: drop the logical-identity cadence entry too (see
+			// the mirror comment in fireJob's once-deregister block).
+			delete(s.extNextRun, extensionJobKey{name: h.Name(), id: job.JobID})
 			s.mu.Unlock()
 			s.emitScheduleDeregistered(job, "once_complete")
 		}

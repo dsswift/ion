@@ -35,6 +35,7 @@ import { usePreferencesStore } from './preferences'
 import { useUpdateStore } from './stores/update-store'
 import { setupModelSync } from './stores/model-store'
 import { initActiveTabNotifier } from './lib/active-tab-notifier'
+import { initRemoteProjectionPush } from './stores/remote-projection-push'
 
 
 const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] as const }
@@ -52,6 +53,13 @@ export default function App() {
   // Agent Team Visualizer targeting) on startup and on every change.
   useEffect(() => {
     return initActiveTabNotifier()
+  }, [])
+
+  // Push the remote tab-state projection to the main process on store change
+  // (renderer-push snapshot architecture; replaces the 5 s executeJavaScript
+  // poll). No-ops in the ATV mirror window — owner-only push.
+  useEffect(() => {
+    return initRemoteProjectionPush()
   }, [])
 
   // Conversation-picker selections from the ATV window: switch the desktop

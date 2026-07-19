@@ -45,6 +45,16 @@ export class RetransmitBuffer {
     // Approximate wire size from the encrypted payload (ciphertext) or the
     // plaintext payload fallback. Cheap and good enough for budgeting.
     const bytes = (msg.ciphertext?.length ?? msg.payload?.length ?? 0)
+    // RC-8: if this seq is already buffered (a re-record — per-device seqs are
+    // monotonic so this is rare, but sendToDevice / heartbeat paths also call
+    // record and nothing enforces uniqueness), subtract the prior entry's bytes
+    // before adding the new ones. Without this, an overwrite double-counted the
+    // old bytes into bytesByDevice, inflating the running total and triggering
+    // premature eviction of still-valid frames.
+    const prior = buf.get(msg.seq)
+    if (prior) {
+      this.bytesByDevice.set(deviceId, (this.bytesByDevice.get(deviceId) ?? 0) - prior.bytes)
+    }
     buf.set(msg.seq, { msg, bytes })
     this.bytesByDevice.set(deviceId, (this.bytesByDevice.get(deviceId) ?? 0) + bytes)
     this.evict(deviceId, buf)
@@ -110,6 +120,12 @@ export class RetransmitBuffer {
   clearDevice(deviceId: string): void {
     this.byDevice.delete(deviceId)
     this.bytesByDevice.delete(deviceId)
+  }
+
+  /** Drop every device's buffered frames (transport stop). */
+  clear(): void {
+    this.byDevice.clear()
+    this.bytesByDevice.clear()
   }
 }
 

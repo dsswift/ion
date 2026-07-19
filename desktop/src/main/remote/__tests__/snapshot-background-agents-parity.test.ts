@@ -30,7 +30,12 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { projectRendererTab } from '../snapshot-project'
 
-const SNAPSHOT_SRC = readFileSync(join(__dirname, '..', 'snapshot.ts'), 'utf-8')
+// The legacy IIFE now lives in snapshot-renderer-poll.ts (the cold-start /
+// stall fallback of the renderer-push architecture). The CANONICAL projection
+// is renderer/stores/remote-projection.ts, behaviorally pinned in
+// renderer/stores/__tests__/remote-projection.test.ts; this source guard pins
+// the fallback string, which cannot import helpers (renderer scope).
+const SNAPSHOT_SRC = readFileSync(join(__dirname, '..', 'snapshot-renderer-poll.ts'), 'utf-8')
 
 // Extract just the IIFE body from the executeJavaScript template literal.
 // The template literal is delimited by the backtick immediately after
@@ -39,7 +44,7 @@ const SNAPSHOT_SRC = readFileSync(join(__dirname, '..', 'snapshot.ts'), 'utf-8')
 function extractIife(): string {
   const marker = 'executeJavaScript(`'
   const start = SNAPSHOT_SRC.indexOf(marker)
-  if (start === -1) throw new Error('executeJavaScript template literal not found in snapshot.ts')
+  if (start === -1) throw new Error('executeJavaScript template literal not found in snapshot-renderer-poll.ts')
   const open = SNAPSHOT_SRC.indexOf('`', start + marker.length - 1)
   // Walk forward to find the closing backtick of the template literal
   // (skip escaped backticks — none expected in this IIFE, but be safe).

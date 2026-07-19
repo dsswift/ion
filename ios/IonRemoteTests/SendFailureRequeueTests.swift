@@ -44,6 +44,85 @@ final class SendFailureRequeueTests: XCTestCase {
             "Two distinct prompts to the same tab must never dedupe each other in the essential queue")
     }
 
+    // MARK: - One-shot view request keys (WI-2)
+    //
+    // FileExplorerView / GitPaneView / GitGraphListView / GitChangesListView
+    // fire these once per appear/refresh/load-more with no re-triggering call
+    // site. Pre-fix they had no essentialKey, so a send failure during a
+    // transport gap dropped them permanently ("user command send failed, not
+    // queueable" in the live logs). These tests pin their queue identity.
+
+    func testOneShotViewCommandsHaveEssentialKeys() {
+        XCTAssertEqual(
+            RemoteCommand.fsListDir(directory: "/repo", includeHidden: false).essentialKey,
+            "fsListDir:/repo:false")
+        XCTAssertEqual(
+            RemoteCommand.fsListDir(directory: "/repo", includeHidden: true).essentialKey,
+            "fsListDir:/repo:true")
+        XCTAssertEqual(
+            RemoteCommand.gitGraph(directory: "/repo", skip: nil, limit: nil).essentialKey,
+            "gitGraph:/repo:0:0")
+        XCTAssertEqual(
+            RemoteCommand.gitDiff(directory: "/repo", path: "src/a.txt", staged: true).essentialKey,
+            "gitDiff:/repo:src/a.txt:true")
+        XCTAssertEqual(
+            RemoteCommand.gitDiff(directory: "/repo", path: "src/a.txt", staged: false).essentialKey,
+            "gitDiff:/repo:src/a.txt:false")
+        XCTAssertEqual(
+            RemoteCommand.gitCommitFiles(directory: "/repo", hash: "abc1234").essentialKey,
+            "gitCommitFiles:/repo:abc1234")
+    }
+
+    func testGitGraphPaginationPagesProduceDistinctKeys() {
+        let page1 = RemoteCommand.gitGraph(directory: "/repo", skip: 0, limit: 100)
+        let page2 = RemoteCommand.gitGraph(directory: "/repo", skip: 100, limit: 100)
+        XCTAssertNotEqual(page1.essentialKey, page2.essentialKey,
+            "A load-more gitGraph for a later page must never dedupe against page 1 in the essential queue")
+    }
+
+    /// The request* wrappers send with `.automaticEssential`: while
+    /// disconnected the command defers to the essential queue (no toast, no
+    /// drop). Pre-fix they sent `.userInitiated` with no essentialKey, so a
+    /// nil transport dropped them with an error toast — this test fails there.
+    func testOneShotViewRequestsDeferToEssentialQueueWhileDisconnected() {
+        let vm = SessionViewModel()
+        XCTAssertNil(vm.transport)
+        XCTAssertNotEqual(vm.connectionState, .connected)
+
+        vm.requestFsListDir(directory: "/repo")
+        vm.requestGitGraph(directory: "/repo")
+        vm.requestGitDiff(directory: "/repo", path: "f.txt", staged: false)
+        vm.requestGitCommitFiles(directory: "/repo", hash: "deadbee")
+
+        let keys = Set(vm.pendingEssentialQueue.map(\.key))
+        XCTAssertTrue(keys.contains("fsListDir:/repo:false"),
+            "fsListDir must defer to the essential queue while disconnected")
+        XCTAssertTrue(keys.contains("gitGraph:/repo:0:0"),
+            "gitGraph must defer to the essential queue while disconnected")
+        XCTAssertTrue(keys.contains("gitDiff:/repo:f.txt:false"),
+            "gitDiff must defer to the essential queue while disconnected")
+        XCTAssertTrue(keys.contains("gitCommitFiles:/repo:deadbee"),
+            "gitCommitFiles must defer to the essential queue while disconnected")
+        XCTAssertTrue(vm.toastMessages.isEmpty,
+            "Automatic essential deferral must never toast")
+    }
+
+    /// Transport nil while connectionState still reads .connected (soft
+    /// reconnect teardown window — the exact live-log
+    /// "essential not connected deferring" with status=connected case): the
+    /// essential send must defer to the queue, never drop.
+    func testEssentialWithNilTransportWhileConnectedDefers() {
+        let vm = SessionViewModel()
+        vm.connectionState = .connected
+        XCTAssertNil(vm.transport)
+
+        vm.requestGitGraph(directory: "/repo", skip: 100, limit: 100)
+
+        XCTAssertEqual(vm.pendingEssentialQueue.first?.key, "gitGraph:/repo:100:100",
+            "connectionState == .connected with a nil transport must defer the essential command to the queue")
+        XCTAssertTrue(vm.toastMessages.isEmpty, "Automatic sends never toast")
+    }
+
     // MARK: - userInitiated failure paths
 
     /// Transport object absent entirely (mid soft-reconnect teardown): a user

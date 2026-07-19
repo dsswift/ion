@@ -33,6 +33,50 @@ func DefaultConfig() *types.EngineRuntimeConfig {
 //  3. User global config (~/.ion/engine.json)
 //  4. Defaults
 func LoadConfig(projectDir string) *types.EngineRuntimeConfig {
+	// Resolve the fully-merged, enterprise-enforced config via the pure
+	// helper, then layer on the process-global side effects LoadConfig owns.
+	merged := mergeConfigLayers(projectDir)
+
+	// Normalize the legacy backend alias. "cli" is the historical name for
+	// the Claude Code backend; "claude-code" is canonical. "cli" remains a
+	// permanently accepted input alias so existing engine.json files keep
+	// working. Normalizing here means every downstream consumer (serve
+	// switch, provider auth-source labeling) sees the canonical value.
+	if merged.Backend == "cli" {
+		utils.LogWithFields(utils.LevelInfo, "config", "normalized legacy backend alias", map[string]any{"from": "cli", "to": "claude-code"})
+		merged.Backend = "claude-code"
+	}
+
+	// Validate per-provider backend preferences (providers.<id>.backend),
+	// resetting any invalid value to the default rule with an ERROR log.
+	validateProviderBackends(merged)
+
+	// Apply log level from config
+	if merged.LogLevel != "" {
+		utils.SetLevelFromString(merged.LogLevel)
+	}
+
+	// Wire structured-logging config (format, output destination, size cap,
+	// rotation toggle). Nil block leaves the compiled defaults in place.
+	if merged.Logging != nil {
+		utils.ConfigureLogging(merged.Logging)
+	}
+
+	return merged
+}
+
+// mergeConfigLayers performs the pure layered merge (defaults < global <
+// project) and enterprise enforcement, with NO process-global side effects
+// (no log-level mutation, no ConfigureLogging, no backend-alias log line, no
+// provider-backend validation). It is the shared core of both LoadConfig
+// (which layers its side effects on top) and the fresh dispatch-time resolvers
+// in config_resolve.go, which must be safe to call on every prompt without
+// perturbing global logging state.
+//
+// resolveEnvProviders IS applied here: it mutates only the in-memory global
+// config map (injecting provider keys from the environment), which is part of
+// producing a correct merged config, not a process-global side effect.
+func mergeConfigLayers(projectDir string) *types.EngineRuntimeConfig {
 	defaults := DefaultConfig()
 	defaults.Profiles = loadProfiles()
 
@@ -51,35 +95,10 @@ func LoadConfig(projectDir string) *types.EngineRuntimeConfig {
 	// Merge: defaults < global < project
 	merged := MergeConfigs(nil, defaults, fromMap(globalConfig), fromMap(projectConfig))
 
-	// Normalize the legacy backend alias. "cli" is the historical name for
-	// the Claude Code backend; "claude-code" is canonical. "cli" remains a
-	// permanently accepted input alias so existing engine.json files keep
-	// working. Normalizing here means every downstream consumer (serve
-	// switch, provider auth-source labeling) sees the canonical value.
-	if merged.Backend == "cli" {
-		utils.LogWithFields(utils.LevelInfo, "config", "normalized legacy backend alias", map[string]any{"from": "cli", "to": "claude-code"})
-		merged.Backend = "claude-code"
-	}
-
-	// Validate per-provider backend preferences (providers.<id>.backend),
-	// resetting any invalid value to the default rule with an ERROR log.
-	validateProviderBackends(merged)
-
 	// Load and enforce enterprise config
 	enterprise := LoadEnterpriseConfig()
 	if enterprise != nil {
 		merged = EnforceEnterprise(merged, enterprise)
-	}
-
-	// Apply log level from config
-	if merged.LogLevel != "" {
-		utils.SetLevelFromString(merged.LogLevel)
-	}
-
-	// Wire structured-logging config (format, output destination, size cap,
-	// rotation toggle). Nil block leaves the compiled defaults in place.
-	if merged.Logging != nil {
-		utils.ConfigureLogging(merged.Logging)
 	}
 
 	return merged

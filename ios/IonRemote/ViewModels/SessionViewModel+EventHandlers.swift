@@ -82,11 +82,21 @@ extension SessionViewModel {
         case .tabStatus(let tabId, let status):
             handleTabStatus(tabId: tabId, status: status)
 
-        case .tabMeta(let tabId, let title, let totalCostUsd, let groupId):
-            handleTabMeta(tabId: tabId, title: title, totalCostUsd: totalCostUsd, groupId: groupId)
+        case .tabMeta(let tabId, let title, let totalCostUsd, let groupId, let convFingerprint, let lastActivityAt, let lastMessage, let messageCount):
+            handleTabMeta(tabId: tabId, title: title, totalCostUsd: totalCostUsd, groupId: groupId, convFingerprint: convFingerprint, lastActivityAt: lastActivityAt, lastMessage: lastMessage, messageCount: messageCount)
 
         case .textChunk(let tabId, let text):
-            // Update tab preview for the tab list (shows most recent text)
+            // desktop_text_chunk is NOT sent by the current desktop: the desktop
+            // suppresses it (event-wiring-remote.ts isCoveredByEngineBridge) and
+            // forwards assistant text as engine_text_delta → desktop_text_delta
+            // for EVERY conversation, which iOS applies via handleEngineTextDelta
+            // (appends to the transcript, no conversationLoaded guard). This case
+            // is retained only so a frame from an older desktop build still
+            // decodes without throwing; for a loaded conversation it updates the
+            // tab-list preview and is otherwise a no-op. Do NOT append this to the
+            // transcript for a loaded conversation — the desktop_text_delta path
+            // already renders the reply, and doing both duplicates the row (the
+            // duplication the desktop comment at event-wiring-remote.ts documents).
             if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
                 let preview = liveText(tabId) + text
                 tabs[idx].lastMessage = String(preview.suffix(64))

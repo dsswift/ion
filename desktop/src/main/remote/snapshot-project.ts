@@ -125,7 +125,12 @@ export function projectRendererTab(
     hasRunningChildren: t.hasRunningChildren || undefined,
     conversationId: t.conversationId || undefined,
     lastActivityAt: t.lastActivityTs || undefined,
-    convFingerprint: t.convFingerprint || '',
+    // Omit an empty fingerprint (undefined) rather than sending ''. A tab with
+    // no persisted tail (freshly created, no messages) has no fingerprint to
+    // compare; '' would never match iOS's local tail and force a needless
+    // reload. iOS treats absent as "nothing to compare". A real non-empty
+    // fingerprint always passes through. (RC-4)
+    convFingerprint: t.convFingerprint || undefined,
     pillColor: t.pillColor || null,
     pillIcon: t.pillIcon || null,
     totalCostUsd: t.runCostUsd,

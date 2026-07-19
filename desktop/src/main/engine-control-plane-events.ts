@@ -21,6 +21,7 @@ import { handleExtensionEvent } from './engine-control-plane-extension'
 import { handleStreamSignalEvent } from './engine-control-plane-stream'
 import { conversationExists } from './session-meta'
 import { mark, Activity } from './watchdog'
+import { recordClientMsgId } from './remote/client-msg-id-map'
 
 const TAG = 'SessionPlane'
 function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
@@ -139,6 +140,9 @@ export function handleEngineEvent(
         entryId: event.usage?.entryId,
         userEntryId: event.usage?.userEntryId,
       } as NormalizedEvent)
+      // RC-9: record clientMsgId→entryId for history-row annotation (see
+      // client-msg-id-map.ts). activeRequestId is the remote prompt's clientMsgId.
+      recordClientMsgId(tabId, event.usage?.userEntryId, tab.activeRequestId)
       break
 
     case 'engine_user_turn_persisted':
@@ -153,6 +157,8 @@ export function handleEngineEvent(
         type: 'user_turn_persisted',
         entryId: event.userTurnEntryId,
       } as NormalizedEvent)
+      // RC-9: also record here — a cancelled/failed run never reaches message_end.
+      recordClientMsgId(tabId, event.userTurnEntryId, tab.activeRequestId)
       break
 
     case 'engine_status':

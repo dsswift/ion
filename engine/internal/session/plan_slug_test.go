@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/dsswift/ion/engine/internal/backend"
 )
 
 // ---------------------------------------------------------------------------
@@ -290,4 +292,65 @@ func setOf(list []string) map[string]struct{} {
 		m[w] = struct{}{}
 	}
 	return m
+}
+
+// ---------------------------------------------------------------------------
+// allocateNewPlanFilePath directory-choice tests
+//
+// These tests pin the core bug fix: the plans directory must be determined by
+// caps.PlanFileProjectScoped, not by a static backend type switch. Previously
+// HybridBackend was treated the same as ClaudeCodeBackend regardless of which
+// inner backend served the run — so api-served hybrid runs wrote plans under
+// the project directory instead of ~/.ion/plans/.
+// ---------------------------------------------------------------------------
+
+// TestAllocateNewPlanFilePath_HomeDir asserts that a non-project-scoped backend
+// (api, codex, grok, cursor — any backend that uses Ion's own plan-mode system)
+// always places the plan file under ~/.ion/plans/, even when a workingDir is
+// provided. This is the regression case: before the fix, a HybridBackend wrapper
+// would have hit the project-dir branch and written to <workingDir>/.ion/plans/.
+func TestAllocateNewPlanFilePath_HomeDir(t *testing.T) {
+	workDir := t.TempDir()
+	caps := backend.BackendCapabilities{
+		Kind:                  "api",
+		PlanFileProjectScoped: false,
+	}
+	path := allocateNewPlanFilePath(caps, workDir)
+	home, _ := os.UserHomeDir()
+	wantPrefix := filepath.Join(home, ".ion", "plans")
+	if !strings.HasPrefix(path, wantPrefix) {
+		t.Errorf("allocateNewPlanFilePath(api, workDir) = %q, want prefix %q", path, wantPrefix)
+	}
+}
+
+// TestAllocateNewPlanFilePath_ProjectDir asserts that a project-scoped backend
+// (claude-code) places the plan file under <workingDir>/.ion/plans/ when a
+// workingDir is provided.
+func TestAllocateNewPlanFilePath_ProjectDir(t *testing.T) {
+	workDir := t.TempDir()
+	caps := backend.BackendCapabilities{
+		Kind:                  "claude-code",
+		PlanFileProjectScoped: true,
+	}
+	path := allocateNewPlanFilePath(caps, workDir)
+	wantPrefix := filepath.Join(workDir, ".ion", "plans")
+	if !strings.HasPrefix(path, wantPrefix) {
+		t.Errorf("allocateNewPlanFilePath(claude-code, workDir) = %q, want prefix %q", path, wantPrefix)
+	}
+}
+
+// TestAllocateNewPlanFilePath_ProjectScopedEmptyWorkDir asserts that a
+// project-scoped backend falls back to ~/.ion/plans/ when no workingDir is set.
+// This matches the pre-existing "empty workingDir → home" invariant.
+func TestAllocateNewPlanFilePath_ProjectScopedEmptyWorkDir(t *testing.T) {
+	caps := backend.BackendCapabilities{
+		Kind:                  "claude-code",
+		PlanFileProjectScoped: true,
+	}
+	path := allocateNewPlanFilePath(caps, "")
+	home, _ := os.UserHomeDir()
+	wantPrefix := filepath.Join(home, ".ion", "plans")
+	if !strings.HasPrefix(path, wantPrefix) {
+		t.Errorf("allocateNewPlanFilePath(claude-code, empty) = %q, want home prefix %q", path, wantPrefix)
+	}
 }
