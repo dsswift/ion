@@ -64,16 +64,32 @@ final class TransportManager {
     /// resurrecting a transport that was already torn down.
     private(set) var isStopped = false
     let _seqLock = OSAllocatedUnfairLock(initialState: UInt64(0))
+    /// Outbound-seq epoch (generation id) stamped on every outbound
+    /// WireMessage. Seeded once per TransportManager instance from wall-clock
+    /// ms (same unit as the desktop's `RemoteTransport.epoch`, which seeds from
+    /// `Date.now()`), so it is monotonic across app restarts / re-pairs: a new
+    /// instance always carries a LARGER epoch than the one it replaced. The
+    /// desktop keys its inbound dedup to this — a newer inbound epoch is its
+    /// ONE reset trigger, and a stale epoch marks a late frame from this
+    /// instance's dead predecessor. The outbound seq counter (`_seqLock`) is
+    /// continuous for the life of this instance; the epoch, not any seq reset,
+    /// identifies the generation.
+    let outboundEpoch: Double = (Date().timeIntervalSince1970 * 1000).rounded()
     var lastReceivedSeq: UInt64 = 0
-    /// The outbound-seq epoch of the last frame we processed. When an inbound
-    /// frame carries a DIFFERENT epoch, the desktop's seq space restarted (a
-    /// desktop process restart or stop()+recreate), so `lastReceivedSeq` and the
-    /// pending-resend set are stale and must be reset before the seq comparison —
-    /// otherwise the fresh seq=1 stream is deduped as "already seen" and the phone
-    /// blackholes every post-restart frame (the retransmit buffer is also empty
-    /// post-restart, so a resend request can't heal it). Nil until the first
-    /// epoch-bearing frame; a desktop predating the field leaves this nil and the
-    /// reset never triggers (legacy behavior preserved).
+    /// The outbound-seq epoch of the desktop generation we are tracking.
+    /// Epochs are time-seeded ms, monotonic per desktop process generation, so
+    /// the compare is ordered, not equality: an inbound frame with a NEWER
+    /// epoch means the desktop's seq space restarted (process restart or
+    /// stop()+recreate) — `lastReceivedSeq` and the pending-resend set are
+    /// stale and reset before the seq comparison, otherwise the fresh seq=1
+    /// stream is deduped as "already seen" and the phone blackholes every
+    /// post-restart frame (the retransmit buffer is also empty post-restart,
+    /// so a resend request can't heal it). An inbound frame with an OLDER
+    /// epoch is a late frame from a dead desktop generation and is dropped
+    /// entirely — adopting it would flap the tracker and re-poison the dedup.
+    /// Nil until the first epoch-bearing frame; a desktop predating the field
+    /// leaves this nil and the epoch logic never runs (legacy behavior
+    /// preserved).
     var lastReceivedEpoch: Double?
     /// Outstanding gap-recovery range awaiting replayed frames from the desktop.
     /// While set, an inbound frame whose seq falls in this (still-missing) set is
@@ -279,30 +295,46 @@ final class TransportManager {
             "port": String(port)
         ])
         if outcome == .success {
-            // Record as current LAN host so Bonjour observation doesn't re-discover and clobber us.
-            currentLANHost = DiscoveredHost(
-                id: "lan-direct:\(host):\(port)",
-                kind: .ionDirect,
-                name: host,
-                host: host,
-                port: port
-            )
-            // Reset dedup for fresh connection
-            lastReceivedSeq = 0
-            _seqLock.withLock { state in state = 0 }
-            startLANListener()
-            startLANStateObservation()
-            startNetworkMonitor()
-            // Start Bonjour browsing so the observation loop can auto-reconnect
-            // if this connection drops. In LAN-only mode (no relay), the browser
-            // wouldn't be started otherwise since start() is never called.
-            await MainActor.run { self.bonjour.startBrowsing() }
-            startBonjourObservation()
-            setState(.lanPreferred)
+            await activateLANConnection(host: host, port: port)
         } else {
             lan.disconnect()
         }
         return outcome
+    }
+
+    /// Post-auth activation of a LAN connection: record the host, start the
+    /// listener/observation/monitor tasks, and flip state to `.lanPreferred`.
+    ///
+    /// Deliberately does NOT touch `lastReceivedSeq` or the outbound seq
+    /// counter (`_seqLock`). The desktop's outbound seq is per-device and
+    /// CONTINUOUS across transport switches, so zeroing `lastReceivedSeq` on a
+    /// LAN (re)connect (a) disabled gap detection exactly during the switch
+    /// (the gap check is gated on `lastReceivedSeq > 0`) and (b) let late
+    /// duplicates from the dying socket re-apply as fresh frames. If the
+    /// desktop actually restarted, its frames carry a NEWER epoch and the
+    /// epoch check in TransportManager+Receive resets the dedup — the epoch is
+    /// the only reset trigger. Our own outbound seq likewise stays continuous
+    /// for the life of this instance; `outboundEpoch` identifies the
+    /// generation to the desktop. Extracted from `startLANWithAuth` so tests
+    /// can pin this no-reset contract without a real socket handshake.
+    func activateLANConnection(host: String, port: UInt16) async {
+        // Record as current LAN host so Bonjour observation doesn't re-discover and clobber us.
+        currentLANHost = DiscoveredHost(
+            id: "lan-direct:\(host):\(port)",
+            kind: .ionDirect,
+            name: host,
+            host: host,
+            port: port
+        )
+        startLANListener()
+        startLANStateObservation()
+        startNetworkMonitor()
+        // Start Bonjour browsing so the observation loop can auto-reconnect
+        // if this connection drops. In LAN-only mode (no relay), the browser
+        // wouldn't be started otherwise since start() is never called.
+        await MainActor.run { self.bonjour.startBrowsing() }
+        startBonjourObservation()
+        setState(.lanPreferred)
     }
 
     /// Disconnect all transports and stop discovery.
@@ -469,11 +501,14 @@ struct WireMessage: Codable {
     let seq: UInt64
     /// Unix ms timestamp.
     let ts: Double?
-    /// Outbound-seq epoch (generation id). Changes when the desktop's outbound
-    /// seq space resets to 1 — a desktop process restart (new RemoteTransport) or
-    /// an in-process stop()+recreate. iOS resets its receive dedup high-water on
-    /// an epoch change so a fresh seq=1 stream is not deduped as stale. Optional:
-    /// a desktop predating the field omits it, and iOS treats absent as unchanged.
+    /// Outbound-seq epoch (generation id), carried in BOTH directions.
+    /// Inbound (desktop→iOS): changes when the desktop's outbound seq space
+    /// restarts (process restart / stop()+recreate); iOS resets its receive
+    /// dedup on a NEWER epoch and drops frames carrying an OLDER one.
+    /// Outbound (iOS→desktop): every frame carries this TransportManager
+    /// instance's `outboundEpoch` so the desktop can apply the same monotonic
+    /// logic to its inbound dedup. Optional: a peer predating the field omits
+    /// it, and the receiver skips the epoch logic (legacy behavior).
     let epoch: Double?
     /// JSON-encoded payload (nil when encrypted).
     let payload: String?

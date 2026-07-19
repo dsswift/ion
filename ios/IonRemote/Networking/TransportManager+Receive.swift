@@ -147,8 +147,12 @@ extension TransportManager {
             } else if type == "relay:peer-reconnected" {
                 DiagnosticLog.log("RELAY-CTRL: peer-reconnected")
                 cancelDisconnectGracePeriod()
-                // Peer is back — reset dedup so fresh seq=1 messages aren't dropped.
-                lastReceivedSeq = 0
+                // No dedup reset here. The desktop's outbound seq is continuous
+                // across relay reconnects of the SAME process; zeroing
+                // lastReceivedSeq let late frames from the dying socket
+                // re-apply as fresh. If the desktop actually restarted, its
+                // frames carry a NEWER epoch and the epoch check below resets
+                // the dedup — the epoch is the only reset trigger.
                 updateState()
             } else if type == "relay:push-failed" {
                 let reason = json["reason"] as? String ?? "unknown"
@@ -190,27 +194,46 @@ extension TransportManager {
             return
         }
 
-        // Outbound-seq epoch check — BEFORE the seq dedup. A changed epoch means
-        // the desktop's outbound seq space restarted (desktop process restart, or
-        // an in-process stop()+recreate): its seqs are back at 1 and its
-        // retransmit buffer is empty. If we kept our old high-water, every fresh
-        // seq=1..N frame would be dropped as "already seen" (seq <= lastReceivedSeq)
-        // and a resend request could never be satisfied — the phone would
-        // blackhole all post-restart frames until the 5s snapshot reconcile. Reset
-        // the dedup state so the new stream is accepted from seq 1. Only acts on a
-        // real change: the first epoch-bearing frame seeds the tracker without a
-        // reset, and a desktop predating the field (epoch nil) never triggers it.
+        // Outbound-seq epoch check — BEFORE the seq dedup. Epochs are
+        // time-seeded ms and monotonic per desktop process generation, so the
+        // compare is ordered, not equality:
+        //  - NEWER epoch: the desktop's outbound seq space restarted (process
+        //    restart, or an in-process stop()+recreate) — its seqs are back at
+        //    1 and its retransmit buffer is empty. Reset the dedup state so
+        //    the fresh seq=1..N stream is accepted instead of being dropped as
+        //    "already seen" (which would blackhole every post-restart frame
+        //    until the snapshot reconcile), then adopt the epoch.
+        //  - OLDER epoch: a late frame from a dead desktop generation (old
+        //    socket draining during a restart). DROP it entirely — do not
+        //    adopt, do not process. Adopting on any difference (the old `!=`
+        //    logic) let alternating old/new frames flap the tracker and reset
+        //    the dedup repeatedly, re-poisoning the mark each time.
+        //  - EQUAL epoch: normal path, plain seq dedup below.
+        // First epoch-bearing frame seeds the tracker without a reset; a
+        // desktop predating the field (epoch nil) skips the logic entirely.
         if let incomingEpoch = wire.epoch {
-            if let known = lastReceivedEpoch, known != incomingEpoch {
-                ionLog.info("wire epoch changed \(known) -> \(incomingEpoch): desktop seq space restarted; resetting receive dedup")
-                DiagnosticLog.log("wire epoch changed, resetting dedup", tag: "transport.receive", fields: [
-                    "old_epoch": String(Int64(known)),
-                    "new_epoch": String(Int64(incomingEpoch))
-                ])
-                lastReceivedSeq = 0
-                pendingResendSeqs.removeAll()
+            if let known = lastReceivedEpoch {
+                if incomingEpoch > known {
+                    ionLog.info("wire epoch advanced \(known) -> \(incomingEpoch): desktop seq space restarted; resetting receive dedup")
+                    DiagnosticLog.log("wire epoch advanced, resetting dedup", tag: "transport.receive", fields: [
+                        "old_epoch": String(Int64(known)),
+                        "new_epoch": String(Int64(incomingEpoch))
+                    ])
+                    lastReceivedSeq = 0
+                    pendingResendSeqs.removeAll()
+                    lastReceivedEpoch = incomingEpoch
+                } else if incomingEpoch < known {
+                    DiagnosticLog.trace("dropping frame from stale desktop epoch", tag: "transport.receive", fields: [
+                        "stale_epoch": String(Int64(incomingEpoch)),
+                        "known_epoch": String(Int64(known)),
+                        "seq": String(wire.seq)
+                    ])
+                    return
+                }
+            } else {
+                // First-ever epoch: adopt without a reset.
+                lastReceivedEpoch = incomingEpoch
             }
-            lastReceivedEpoch = incomingEpoch
         }
 
         // Dedup vs. gap-recovery. A frame at/below lastReceivedSeq is normally a

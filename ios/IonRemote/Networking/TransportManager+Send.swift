@@ -135,13 +135,19 @@ extension TransportManager {
         }
 
         let (nonce, ciphertext) = try E2ECrypto.encrypt(plaintext: payload, key: sharedKey)
+        // Every outbound frame carries this instance's generation id. The
+        // desktop keys its inbound dedup to it: a newer epoch (new
+        // TransportManager after app restart / re-pair) resets its dedup; a
+        // stale epoch marks a late frame from a dead instance. The seq counter
+        // itself is never reset — the epoch identifies the generation.
         return WireMessage(
             seq: currentSeq,
             ts: Date().timeIntervalSince1970 * 1000,
             payload: nil,
             nonce: nonce.base64EncodedString(),
             ciphertext: ciphertext.base64EncodedString(),
-            deviceId: deviceId
+            deviceId: deviceId,
+            epoch: outboundEpoch
         )
     }
 }

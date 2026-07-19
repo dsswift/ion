@@ -61,6 +61,13 @@ extension RemoteCommand {
             // single diagnosticLogsResponse — and every queue/supersede log
             // line then embedded that key, amplifying memory until jetsam.
             return "diagnosticLogsResponse"
+        case .setPermissionMode(let tabId, _):
+            // Plan/auto mode toggle is user intent that must survive reconnects.
+            // Last-write-wins by tabId: if the user flips A→B→A while disconnected,
+            // the final state is correctly replayed on the reconnect flush. Without
+            // this key, a toggle sent while the transport is down is dropped with
+            // an error toast and never delivered — the mode switch is permanently lost.
+            return "setPermissionMode:\(tabId)"
         case .prompt(let tabId, _, _, let clientMsgId, _, _, _):
             // User prompts are eligible for the essential queue so a message
             // sent over a wedged/reconnecting transport is re-enqueued and
