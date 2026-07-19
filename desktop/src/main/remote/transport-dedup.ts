@@ -39,10 +39,14 @@ export const DEDUP_WINDOW = 512
  *    (late/out-of-order arrival within the window).
  *  - already seen, or at/beyond the window edge: drop.
  *
- * `reset` starts a new epoch for a device (iOS resets its outbound seq to 0 on
- * every LAN auth and on relay peer reconnect); it must clear the seen-set too,
- * or one stale high-seq frame from the previous epoch poisons the mark and the
- * new epoch's low seqs are all dropped.
+ * `reset` starts a new inbound-seq generation for a device. The ONLY caller is
+ * the inbound-epoch check in RemoteTransport._handleIncoming: iOS keeps its
+ * outbound seq continuous for the life of one TransportManager instance and
+ * stamps that instance's epoch on every frame, so a NEWER epoch — not a LAN
+ * auth, not a relay peer reconnect — is the signal that the seq space
+ * restarted. `reset` must clear the seen-set too, or one stale high-seq frame
+ * from the previous generation poisons the mark and the new generation's low
+ * seqs are all dropped.
  */
 export class InboundDedup {
   private highWater = new Map<string, number>() // deviceId -> highest accepted seq
@@ -91,7 +95,8 @@ export class InboundDedup {
     return true
   }
 
-  /** Start a new inbound-seq epoch for a device (LAN auth, relay peer reconnect). */
+  /** Start a new inbound-seq generation for a device. Sole trigger: a NEWER
+   *  inbound WireMessage.epoch (see RemoteTransport._handleIncoming). */
   reset(deviceId: string): void {
     this.highWater.set(deviceId, 0)
     this.seen.get(deviceId)?.clear()

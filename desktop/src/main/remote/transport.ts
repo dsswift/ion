@@ -12,13 +12,14 @@
 import { EventEmitter } from 'events'
 import { RelayClient } from './relay-client'
 import { LANServer } from './lan-server'
-import { decrypt } from './crypto'
-import { compressPayload, decompressPayload } from './transport-compression'
+import { compressPayload } from './transport-compression'
 import { mark, Activity } from '../watchdog'
 import { startLanAuth, handleLanAuthResponse, type LanAuthCtx } from './transport-lan-auth'
 import { log as _log } from '../logger'
 import { RetransmitBuffer, replayRange } from './retransmit-buffer'
 import { InboundDedup } from './transport-dedup'
+import { InboundEpochTracker } from './transport-inbound-epoch'
+import { decodeInboundPayload } from './transport-inbound-payload'
 import { buildDeviceFrame } from './transport-frame'
 import { enqueueSend, drainSendQueue, MAX_PLAINTEXT_BYTES, type SendCtx, type SendQueueItem } from './transport-send'
 import type {
@@ -75,6 +76,11 @@ export class RemoteTransport extends EventEmitter {
   // never be satisfied (the retransmit buffer is per-device and never held the
   // other devices' seqs) — a permanent resend/resend_unavailable storm.
   private seqs = new Map<string, number>()
+  // Inbound-epoch tracker (per device). iOS's outbound generation id is the
+  // ONLY inbound-dedup reset trigger: a newer epoch resets, a stale epoch's
+  // frame is dropped, an absent epoch is the legacy no-op path. Rationale and
+  // protocol details live in transport-inbound-epoch.ts.
+  private inboundEpoch = new InboundEpochTracker()
   // Outbound-seq epoch (generation id) stamped on every frame. Generated once
   // per RemoteTransport instance, so a desktop process restart (new instance) or
   // an in-process stop()+recreate produces a NEW epoch while the per-device seqs
@@ -256,10 +262,13 @@ export class RemoteTransport extends EventEmitter {
 
     relay.on('control', (ctrl) => {
       if (ctrl.type === 'relay:peer-reconnected') {
-        // New inbound-seq epoch: reset the high-water mark AND the seen-set so
-        // the reconnected peer's seq=1 isn't dropped against the previous
-        // session's state.
-        this.dedup.reset(device.id)
+        // No dedup reset here. iOS's outbound seq is continuous for the life
+        // of its TransportManager instance, so a relay-level peer reconnect
+        // does NOT imply a new seq space — resetting here let one late
+        // high-seq frame from the old socket re-poison the mark. If iOS
+        // actually rebuilt its transport, its next frame carries a NEWER
+        // epoch and _handleIncoming resets the dedup on that signal — the
+        // epoch is the only reset trigger.
         this.emit('peer-connected')
       } else if (ctrl.type === 'relay:peer-disconnected') {
         // Only emit if this device has no LAN connection either.
@@ -297,6 +306,7 @@ export class RemoteTransport extends EventEmitter {
     this.deviceSecrets.clear()
     this.dedup.clear()
     this.seqs.clear()
+    this.inboundEpoch.clear()
 
     if (this.lan) {
       await this.lan.stop()
@@ -362,6 +372,7 @@ export class RemoteTransport extends EventEmitter {
     this.deviceSecrets.delete(deviceId)
     this.dedup.remove(deviceId)
     this.seqs.delete(deviceId)
+    this.inboundEpoch.remove(deviceId)
 
     // Disconnect any LAN client for this device.
     const lanConnectionId = this._getLanConnectionForDevice(deviceId)
@@ -443,41 +454,23 @@ export class RemoteTransport extends EventEmitter {
   }
 
   private _handleIncoming(msg: WireMessage, deviceId: string): void {
+    // Inbound-epoch check — BEFORE the seq dedup. A NEWER epoch is the one
+    // and only dedup reset trigger; a STALE epoch's frame is dropped before
+    // it can poison the fresh dedup state; legacy (no-epoch) frames pass
+    // through untouched. See transport-inbound-epoch.ts.
+    const verdict = this.inboundEpoch.check(deviceId, msg.epoch, msg.seq)
+    if (verdict === 'stale') return
+    if (verdict === 'reset') this.dedup.reset(deviceId)
+
     // Windowed reorder-tolerant dedup (per device): drops genuine duplicates
     // and window-expired stale frames, accepts distinct out-of-order seqs.
     // Gap detection and drop logging live in transport-dedup.ts.
     if (!this.dedup.shouldAccept(deviceId, msg.seq)) return
 
-    // Centralized decryption using per-device secret.
-    const secret = this.deviceSecrets.get(deviceId)
-    let payload: string | undefined
-    if (secret && msg.nonce && msg.ciphertext) {
-      const decrypted = decrypt(msg.nonce, msg.ciphertext, secret)
-      if (decrypted === null) {
-        log('transport: decryption failed', { seq: msg.seq, device_id: deviceId })
-        return
-      }
-      // Check version prefix: 0x01 = deflate-compressed payload.
-      // iOS does not currently send compressed payloads, but this
-      // handles the case symmetrically for forward compatibility.
-      try {
-        payload = decompressPayload(decrypted)
-      } catch (err) {
-        log('transport: decompression failed', { seq: msg.seq, device_id: deviceId, error: (err as Error).message })
-        return
-      }
-    } else if (secret && msg.payload) {
-      // Shared secret is set but message is plaintext -- reject it.
-      log('transport: rejecting plaintext', { seq: msg.seq, device_id: deviceId })
-      return
-    } else {
-      payload = msg.payload
-    }
-
-    if (!payload) {
-      log('transport: no payload in message', { seq: msg.seq, device_id: deviceId })
-      return
-    }
+    // Centralized decrypt/decompress using the per-device secret; failures
+    // are logged inside and drop the frame. See transport-inbound-payload.ts.
+    const payload = decodeInboundPayload(msg, this.deviceSecrets.get(deviceId), deviceId)
+    if (payload === null) return
 
     try {
       const cmd = JSON.parse(payload) as RemoteCommand
@@ -569,7 +562,6 @@ export class RemoteTransport extends EventEmitter {
       lanAuthPending: this.lanAuthPending,
       lanDeviceMap: this.lanDeviceMap,
       deviceSecrets: this.deviceSecrets,
-      resetInboundSeq: (deviceId) => this.dedup.reset(deviceId),
       getPairedDevice: (id) => this.config.getPairedDevice?.(id) || null,
       recomputeState: () => this._recomputeState(),
       emit: (event, ...args) => { this.emit(event, ...args) },

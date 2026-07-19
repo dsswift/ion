@@ -12,10 +12,6 @@ export interface LanAuthCtx {
   lanAuthPending: Map<string, { nonce: string; timeout: ReturnType<typeof setTimeout> }>
   lanDeviceMap: Map<string, string>
   deviceSecrets: Map<string, Buffer>
-  /** Start a new inbound-seq epoch for the device (iOS resets its outbound
-   *  seq to 0 on every LAN auth; the dedup high-water mark AND seen-set must
-   *  reset with it or the new epoch's low seqs are dropped as duplicates). */
-  resetInboundSeq: (deviceId: string) => void
   getPairedDevice: (deviceId: string) => PairedDevice | null
   recomputeState: () => void
   emit: (event: string, ...args: unknown[]) => void
@@ -99,7 +95,13 @@ export function handleLanAuthResponse(ctx: LanAuthCtx, msg: WireMessage, connect
 
   ctx.deviceSecrets.set(device.id, secret)
 
-  ctx.resetInboundSeq(device.id)
+  // No inbound-dedup reset here. iOS's outbound seq is continuous for the
+  // life of its TransportManager instance — a LAN re-auth does NOT restart
+  // its seq space. Resetting on auth was the re-poisoning vector: one stale
+  // high-seq frame arriving after the reset re-established the old high-water
+  // and the dedup then ate every subsequent command as "beyond window". The
+  // reset trigger is a NEWER WireMessage.epoch on an inbound frame (a new iOS
+  // transport generation), handled in RemoteTransport._handleIncoming.
 
   if (ip) ctx.lan?.recordAuthSuccess(ip)
   log('lan_auth: authenticated', { device_id: authResp.deviceId, device_name: device.name })

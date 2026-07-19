@@ -22,6 +22,7 @@ vi.mock('../../logger', () => ({
 }))
 
 import { InboundDedup, DEDUP_WINDOW } from '../transport-dedup'
+import { InboundEpochTracker } from '../transport-inbound-epoch'
 
 const DEV = 'device-1'
 
@@ -99,5 +100,59 @@ describe('InboundDedup — windowed reorder-tolerant dedup', () => {
     expect(dedup.shouldAccept(DEV, DEDUP_WINDOW)).toBe(false)
     // In-window replays are still detected as duplicates.
     expect(dedup.shouldAccept(DEV, DEDUP_WINDOW * 3 - 1)).toBe(false)
+  })
+})
+
+describe('InboundEpochTracker — monotonic epoch verdicts', () => {
+  let tracker: InboundEpochTracker
+
+  beforeEach(() => {
+    tracker = new InboundEpochTracker()
+  })
+
+  it('first-ever epoch adopts without a reset', () => {
+    expect(tracker.check(DEV, 100, 1)).toBe('ok')
+    expect(tracker.check(DEV, 100, 2)).toBe('ok')
+  })
+
+  it('a newer epoch yields exactly one reset, then equal epochs are ok', () => {
+    tracker.check(DEV, 100, 1)
+    expect(tracker.check(DEV, 200, 1)).toBe('reset')
+    expect(tracker.check(DEV, 200, 2)).toBe('ok')
+  })
+
+  it('a stale epoch is dropped and never adopted (no flap on alternation)', () => {
+    tracker.check(DEV, 100, 50)
+    expect(tracker.check(DEV, 200, 1)).toBe('reset')
+    // Straggler from the dead generation: stale, not adopted.
+    expect(tracker.check(DEV, 100, 51)).toBe('stale')
+    // The next new-generation frame must NOT reset again — the old
+    // `!=`-style logic adopted the straggler and re-reset here.
+    expect(tracker.check(DEV, 200, 2)).toBe('ok')
+  })
+
+  it('absent epoch is the legacy no-op path: never resets, never drops', () => {
+    expect(tracker.check(DEV, undefined, 1)).toBe('ok')
+    tracker.check(DEV, 100, 2)
+    // Legacy frame after epoch-bearing ones (mid-upgrade window): still ok.
+    expect(tracker.check(DEV, undefined, 3)).toBe('ok')
+    // And it did not disturb the tracked epoch.
+    expect(tracker.check(DEV, 100, 4)).toBe('ok')
+    expect(tracker.check(DEV, 50, 5)).toBe('stale')
+  })
+
+  it('tracks devices independently and forgets on remove', () => {
+    tracker.check('dev-a', 200, 1)
+    tracker.check('dev-b', 100, 1)
+    expect(tracker.check('dev-b', 150, 2)).toBe('reset') // b's own history
+    tracker.remove('dev-a')
+    // Forgotten: an "older" epoch is now first-seen for dev-a.
+    expect(tracker.check('dev-a', 50, 1)).toBe('ok')
+  })
+
+  it('clear drops all state (transport stop)', () => {
+    tracker.check(DEV, 200, 1)
+    tracker.clear()
+    expect(tracker.check(DEV, 100, 1)).toBe('ok')
   })
 })

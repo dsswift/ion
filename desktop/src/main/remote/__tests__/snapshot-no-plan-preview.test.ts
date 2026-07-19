@@ -72,11 +72,13 @@ describe('relay send — single authoritative compression', () => {
     expect(src.match(/\bcompressPayload\(/g) || []).toHaveLength(1)
   })
 
-  it('sendToDevice compresses once; transport.ts still decompresses inbound frames', () => {
+  it('sendToDevice compresses once; inbound path still decompresses frames', () => {
     const src = readFileSync(join(__dirname, '../transport.ts'), 'utf-8')
     // One outbound compress in the direct single-device path...
     expect(src.match(/\bcompressPayload\(/g) || []).toHaveLength(1)
-    // ...and the inbound decompress is still present.
-    expect(src).toContain('decompressPayload')
+    // ...and the inbound decompress is still present (extracted to
+    // transport-inbound-payload.ts when transport.ts hit the file-size cap).
+    const inbound = readFileSync(join(__dirname, '../transport-inbound-payload.ts'), 'utf-8')
+    expect(inbound).toContain('decompressPayload')
   })
 })
