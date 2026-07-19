@@ -343,6 +343,28 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 	if src.Limits.DisableMaxTokenContinue != nil {
 		dst.Limits.DisableMaxTokenContinue = src.Limits.DisableMaxTokenContinue
 	}
+	// PlanModeAllowedBashCommands is a slice, not a pointer: nil means "not
+	// set by this layer" (leave the earlier layer intact), while a non-nil
+	// slice — INCLUDING an explicit empty [] — is an intentional set that
+	// overrides. The empty-slice case is the "block Bash entirely in plan
+	// mode" signal, so it must win over an earlier non-empty list. This is
+	// the tri-valued contract the dispatch-time resolver relies on
+	// (config_resolve.go / prompt_options.go).
+	if src.Limits.PlanModeAllowedBashCommands != nil {
+		dst.Limits.PlanModeAllowedBashCommands = src.Limits.PlanModeAllowedBashCommands
+	}
+	// MaxTokenThinkingOnlyBreaker is a non-pointer int: zero means "not set /
+	// use the built-in default", so only a non-zero value from a later layer
+	// overrides. -1 (disable the breaker) is a legitimate non-zero override.
+	if src.Limits.MaxTokenThinkingOnlyBreaker != 0 {
+		dst.Limits.MaxTokenThinkingOnlyBreaker = src.Limits.MaxTokenThinkingOnlyBreaker
+	}
+	if src.Limits.PlanModeAutoExitOnEndTurn != nil {
+		dst.Limits.PlanModeAutoExitOnEndTurn = src.Limits.PlanModeAutoExitOnEndTurn
+	}
+	if src.Limits.DisableSkillSystemPrompt != nil {
+		dst.Limits.DisableSkillSystemPrompt = src.Limits.DisableSkillSystemPrompt
+	}
 
 	// MCP servers: merge maps
 	if len(src.McpServers) > 0 {
