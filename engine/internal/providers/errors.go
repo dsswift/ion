@@ -57,9 +57,22 @@ func (e *ProviderError) Unwrap() error {
 // Use this from any code path that consumes a response body (SSE readers,
 // streaming JSON parsers) so the underlying cause is preserved instead of
 // being collapsed into a generic stream_truncated.
+//
+// Idempotency: an error that already is (or wraps) a *ProviderError is
+// returned as-is — it was classified at the source and re-classification can
+// only lose information. This is load-bearing for the stream-idle path:
+// streamWithIdle's errFn returns a retryable stream_truncated/stream_idle
+// *ProviderError, and before this guard the provider sseErr() handlers fell
+// through to From*Error, which rewrapped it as ErrUnknown/Retryable:false —
+// silently disabling WithRetry for every mid-stream stall (the
+// 1784411116509-07b16188baa6 incident).
 func ClassifyTransportError(err error) *ProviderError {
 	if err == nil {
 		return nil
+	}
+	var pe *ProviderError
+	if errors.As(err, &pe) {
+		return pe
 	}
 	if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
 		return &ProviderError{Code: ErrStaleConn, Message: err.Error(), Retryable: true, Cause: err}
