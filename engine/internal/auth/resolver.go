@@ -88,14 +88,14 @@ func (r *Resolver) HasKey(provider string) (bool, string) {
 
 	// Level 1: Programmatic
 	if key, ok := r.programmatic[provider]; ok && key != "" {
-		utils.LogWithFields(utils.LevelInfo, "auth", "has key found", map[string]any{"provider": provider, "reason": "programmatic"})
+		utils.LogWithFields(utils.LevelDebug, "auth", "has key found", map[string]any{"provider": provider, "reason": "programmatic"})
 		return true, "programmatic"
 	}
 	utils.LogWithFields(utils.LevelDebug, "auth", "has key miss", map[string]any{"provider": provider, "reason": "programmatic"})
 
 	// Level 2: Environment variables
 	if resolveFromEnv(provider) != "" {
-		utils.LogWithFields(utils.LevelInfo, "auth", "has key found", map[string]any{"provider": provider, "reason": "env"})
+		utils.LogWithFields(utils.LevelDebug, "auth", "has key found", map[string]any{"provider": provider, "reason": "env"})
 		return true, "env"
 	}
 	utils.LogWithFields(utils.LevelDebug, "auth", "has key miss", map[string]any{"provider": provider, "reason": "env"})
@@ -106,7 +106,7 @@ func (r *Resolver) HasKey(provider string) (bool, string) {
 		serviceName = r.config.SecureStore.ServiceName
 	}
 	if key, err := GetKeychainPassword(serviceName, provider); err == nil && key != "" {
-		utils.LogWithFields(utils.LevelInfo, "auth", "has key found", map[string]any{"provider": provider, "reason": "keychain"})
+		utils.LogWithFields(utils.LevelDebug, "auth", "has key found", map[string]any{"provider": provider, "reason": "keychain"})
 		return true, "keychain"
 	}
 	utils.LogWithFields(utils.LevelDebug, "auth", "has key miss", map[string]any{"provider": provider, "reason": "keychain"})
@@ -114,21 +114,21 @@ func (r *Resolver) HasKey(provider string) (bool, string) {
 	// Level 4a: Encrypted file store
 	fs := NewFileStore()
 	if key, err := fs.GetKey(provider); err == nil && key != "" {
-		utils.LogWithFields(utils.LevelInfo, "auth", "has key found", map[string]any{"provider": provider, "reason": "filestore"})
+		utils.LogWithFields(utils.LevelDebug, "auth", "has key found", map[string]any{"provider": provider, "reason": "filestore"})
 		return true, "filestore"
 	}
 	utils.LogWithFields(utils.LevelDebug, "auth", "has key miss", map[string]any{"provider": provider, "reason": "filestore"})
 
 	// Level 4b: OAuth token in file store
 	if oauthRaw, err := fs.GetKey("oauth:" + provider); err == nil && oauthRaw != "" {
-		utils.LogWithFields(utils.LevelInfo, "auth", "has key found", map[string]any{"provider": provider, "reason": "oauth"})
+		utils.LogWithFields(utils.LevelDebug, "auth", "has key found", map[string]any{"provider": provider, "reason": "oauth"})
 		return true, "oauth"
 	}
 	utils.LogWithFields(utils.LevelDebug, "auth", "has key miss", map[string]any{"provider": provider, "reason": "oauth"})
 
 	// Level 4c: Legacy credentials.json
 	if resolveFromCredentialsFile(provider) != "" {
-		utils.LogWithFields(utils.LevelInfo, "auth", "has key found", map[string]any{"provider": provider, "reason": "credentials.json"})
+		utils.LogWithFields(utils.LevelDebug, "auth", "has key found", map[string]any{"provider": provider, "reason": "credentials.json"})
 		return true, "credentials.json"
 	}
 	utils.LogWithFields(utils.LevelDebug, "auth", "has key miss", map[string]any{"provider": provider, "reason": "credentials.json"})
