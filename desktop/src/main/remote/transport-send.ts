@@ -8,10 +8,11 @@
 // transport). The functions operate on an explicit SendCtx rather than `this`,
 // mirroring the transport-lan-auth.ts helper pattern already used here.
 
-import { log as _log } from '../logger'
+import { log as _log, error as _error } from '../logger'
 import { buildDeviceFrame } from './transport-frame'
 import { compressPayload } from './transport-compression'
 import { mark, Activity } from '../watchdog'
+import { MAX_WIRE_FRAME_BYTES } from './protocol'
 import type { RemoteEvent, WireMessage } from './protocol'
 import type { RetransmitBuffer } from './retransmit-buffer'
 
@@ -23,16 +24,26 @@ function log(msg: string, fields?: Record<string, unknown>): void {
 export const MAX_QUEUE_SIZE = 500
 
 /**
- * Safety valve on the serialized size of a single event, checked before the
- * synchronous stringify→compress→encrypt pipeline. This is deliberately high
- * (32 MB): no legitimate event — snapshot, capped history page, delta — comes
- * close, so it only ever trips on a pathological payload that would otherwise
- * DEFLATE-and-encrypt for many seconds on the main thread (a relay wedge). When
- * it trips, the event is dropped with an error log; iOS recovers state via its
- * periodic snapshot resync. Measured on `String.length` (UTF-16 code units),
- * which is O(1) and close enough to bytes for a ceiling this coarse.
+ * Early gate on the serialized size of a single event's PLAINTEXT, checked
+ * before the synchronous stringify→compress→encrypt pipeline. It serves two
+ * purposes:
+ *
+ *  1. Wedge guard (the original rationale): a pathological payload would
+ *     otherwise DEFLATE-and-encrypt for many seconds on the main thread (a
+ *     relay wedge). Dropping it here keeps the hot path bounded.
+ *  2. Frame-cap pre-filter: the wire frame is capped at MAX_WIRE_FRAME_BYTES
+ *     (8 MiB — see protocol.ts, sized under the relay's 12 MB read limit and
+ *     iOS's 16 MiB maximumMessageSize). A worst-case incompressible 6 MB
+ *     plaintext inflates to ≈8 MB after DEFLATE (no gain) + base64 (×4/3),
+ *     i.e. right at the frame cap — so anything that passes this gate cannot
+ *     meaningfully exceed the frame gate in sendToAll, and anything larger is
+ *     dropped before burning compress/encrypt time on an undeliverable frame.
+ *
+ * When it trips, the event is dropped with an error log; iOS recovers state
+ * via its periodic snapshot resync. Measured on `String.length` (UTF-16 code
+ * units), which is O(1) and close enough to bytes for a ceiling this coarse.
  */
-export const MAX_PLAINTEXT_BYTES = 32 * 1024 * 1024
+export const MAX_PLAINTEXT_BYTES = 6 * 1024 * 1024
 
 /**
  * Event types that must never be silently dropped by backpressure. Delivery is
@@ -141,6 +152,23 @@ export function drainSendQueue(ctx: SendCtx): void {
 }
 
 /** Encrypt and send an event to all paired devices. Returns true if it reached at least one. */
+/**
+ * Authoritative wire-frame size gate, shared by every path that builds a
+ * frame (broadcast sendToAll here and the direct sendToDevice path in
+ * transport.ts). Returns false — after logging an ERROR — when the serialized
+ * frame exceeds MAX_WIRE_FRAME_BYTES and must be dropped before it is
+ * recorded for retransmit or delivered. See the call-site comment in
+ * sendToAll for the full rationale (receiver read limits, reconnect loop).
+ */
+export function frameWithinWireCap(msg: WireMessage, eventType: string, deviceId: string): boolean {
+  const frameChars = JSON.stringify(msg).length
+  if (frameChars > MAX_WIRE_FRAME_BYTES) {
+    _error('RemoteTransport', 'transport: dropping oversized wire frame', { event_type: eventType, device_id: deviceId, frame_chars: frameChars, cap: MAX_WIRE_FRAME_BYTES, note: 'iOS heals via snapshot resync' })
+    return false
+  }
+  return true
+}
+
 export function sendToAll(
   ctx: SendCtx,
   event: RemoteEvent,
@@ -153,9 +181,10 @@ export function sendToAll(
   mark(Activity.RelayStringify)
   const plaintext = JSON.stringify(event)
   const eventType = event.type
-  // Safety valve: never feed a pathologically large payload into the synchronous
-  // compress/encrypt pipeline — that is the relay-wedge failure mode. Drop it
-  // with a loud error; iOS heals via the next snapshot resync.
+  // Early gate: never feed a pathologically large payload into the synchronous
+  // compress/encrypt pipeline (the relay-wedge failure mode), and pre-filter
+  // for the wire-frame cap below (see MAX_PLAINTEXT_BYTES doc). Drop it with a
+  // loud log; iOS heals via the next snapshot resync.
   if (plaintext.length > MAX_PLAINTEXT_BYTES) {
     log('transport: dropping oversized event before send', { event_type: eventType, chars: plaintext.length, cap: MAX_PLAINTEXT_BYTES })
     return false
@@ -179,6 +208,27 @@ export function sendToAll(
     // buildDeviceFrame marks its own relay_encrypt sub-stage.
     const msg = buildDeviceFrame(deviceId, secret, plaintext, wire, eventType, ctx.nextSeq, push, pushTitle, pushBody, enqueuedAt, ctx.epoch)
     if (!msg) continue // encrypt failed — skip this device
+
+    // Authoritative frame-size backstop, on the SERIALIZED frame — the JSON
+    // that actually crosses the WebSocket (envelope + base64 ciphertext).
+    // The plaintext gate above is only a pre-filter: DEFLATE + base64 can
+    // inflate a poorly-compressible payload past what the receivers accept
+    // (relay SetReadLimit 12 MB, iOS maximumMessageSize 16 MiB — see
+    // MAX_WIRE_FRAME_BYTES in protocol.ts). An oversized frame is
+    // undeliverable: the receiver fails the read, disconnects, resyncs, and
+    // the desktop rebuilds the same frame — a reconnect loop.
+    //
+    // Measured with one exact JSON.stringify. The delivery path (lan-server /
+    // relay-client) stringifies again internally, but that seam is per
+    // transport behind _deliverFrame and cannot reuse this string without
+    // widening transport.ts; one extra stringify of an already-built frame is
+    // cheap and exact, and this check replaces the old 32 MB cap's
+    // wedge-guard role with a real deliverability guarantee.
+    //
+    // The frame is dropped BEFORE retransmit.record: a frame that can never
+    // be delivered must not be replayable — a resend would fail the receiver
+    // read identically. iOS heals via the next snapshot resync.
+    if (!frameWithinWireCap(msg, eventType, deviceId)) continue
 
     // Buffer the built frame for retransmission BEFORE sending, so a frame
     // lost in transit can be replayed on an iOS resend request. We buffer

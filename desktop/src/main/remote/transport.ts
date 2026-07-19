@@ -21,7 +21,7 @@ import { InboundDedup } from './transport-dedup'
 import { InboundEpochTracker } from './transport-inbound-epoch'
 import { decodeInboundPayload } from './transport-inbound-payload'
 import { buildDeviceFrame } from './transport-frame'
-import { enqueueSend, drainSendQueue, MAX_PLAINTEXT_BYTES, type SendCtx, type SendQueueItem } from './transport-send'
+import { enqueueSend, drainSendQueue, frameWithinWireCap, MAX_PLAINTEXT_BYTES, type SendCtx, type SendQueueItem } from './transport-send'
 import type {
   TransportState,
   WireMessage,
@@ -416,6 +416,10 @@ export class RemoteTransport extends EventEmitter {
     const wire = compressPayload(plaintext)
     const msg = buildDeviceFrame(deviceId, secret, plaintext, wire, event.type, (d) => this._nextSeqFor(d), push, undefined, undefined, Date.now(), this.epoch)
     if (!msg) return
+    // Same authoritative wire-frame cap as the broadcast path — the direct
+    // path must not slip an undeliverable frame past the receivers' read
+    // limits (and into the retransmit buffer) just because it skips the queue.
+    if (!frameWithinWireCap(msg, event.type, deviceId)) return
     this.retransmit.record(deviceId, msg)
     this._deliverFrame(deviceId, msg)
   }

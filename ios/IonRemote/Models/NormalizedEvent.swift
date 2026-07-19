@@ -17,10 +17,12 @@ enum RemoteEvent: Sendable {
     case tabClosed(tabId: String)
     case tabStatus(tabId: String, status: TabStatus)
     /// Lightweight tab-row metadata delta. Emitted event-driven on title, cost,
-    /// conversationInstances, or groupId change so the tab list stays current
-    /// without waiting for the next 5 s snapshot poll. All fields are optional;
-    /// iOS applies only the non-nil fields.
-    case tabMeta(tabId: String, title: String?, totalCostUsd: Double?, groupId: String?)
+    /// conversationInstances, or groupId change, AND by the desktop's 5 s
+    /// snapshot poll tick for the hash-excluded volatile conversation fields
+    /// (convFingerprint / lastActivityAt / lastMessage / messageCount) so the
+    /// heal logic sees a fresh fingerprint without a full snapshot reship.
+    /// All fields are optional; iOS applies only the non-nil fields.
+    case tabMeta(tabId: String, title: String?, totalCostUsd: Double?, groupId: String?, convFingerprint: String?, lastActivityAt: Double?, lastMessage: String?, messageCount: Int?)
     case textChunk(tabId: String, text: String)
     case toolCall(tabId: String, toolName: String, toolId: String)
     case toolResult(tabId: String, toolId: String, content: String, isError: Bool)
@@ -589,6 +591,10 @@ enum RemoteEvent: Sendable {
         // consumed by the confirm-or-resend delivery loop (create-tab reliability).
         case clientCmdId
         case runCostUsd, totalCostUsd, groupId  // desktop_tab_meta delta fields (title is already below); runCostUsd is canonical, totalCostUsd is deprecated compat alias
+        // desktop_tab_meta volatile conversation fields (B6-1): pushed by the
+        // desktop's poll tick when they change so the full snapshot need not
+        // re-ship per streamed delta. Names mirror RemoteTabState.
+        case convFingerprint, lastActivityAt, lastMessage, messageCount
         case content, isError, result, costUsd
         case sinceSeq  // desktop_request_diagnostic_logs incremental seq cursor
         case questionId, toolInput, options, message
