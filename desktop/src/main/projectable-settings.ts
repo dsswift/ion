@@ -61,7 +61,8 @@
 
 import { readSettings, SETTINGS_DEFAULTS } from './settings-store'
 import { SETTINGS_DEFAULTS as RENDERER_SETTINGS_DEFAULTS } from '../renderer/preferences-types'
-import { PROJECTABLE_SETTINGS_DATA } from './projectable-settings-data'
+import { PROJECTABLE_SETTINGS_DATA, ENGINE_CONFIG_BACKED_KEYS } from './projectable-settings-data'
+import { readPlanBashAllowlist } from './plan-bash-allowlist-store'
 import type {
   ProjectableChoice,
   ProjectableGroup,
@@ -231,7 +232,11 @@ export function projectCurrentSettings(): Record<string, unknown> {
   const saved = readSettings()
   const out: Record<string, unknown> = {}
   for (const entry of PROJECTABLE_SETTINGS) {
-    if (Object.prototype.hasOwnProperty.call(saved, entry.key)) {
+    // Engine-config-backed keys live in engine.json, not settings.json — read
+    // them from their canonical store so iOS sees the real engine policy.
+    if (ENGINE_CONFIG_BACKED_KEYS.has(entry.key)) {
+      out[entry.key] = readPlanBashAllowlist()
+    } else if (Object.prototype.hasOwnProperty.call(saved, entry.key)) {
       out[entry.key] = saved[entry.key]
     } else {
       out[entry.key] = entry.defaultValue
@@ -265,6 +270,10 @@ export function projectableKeysWithoutDefault(): string[] {
   const renderer = RENDERER_SETTINGS_DEFAULTS as Record<string, unknown>
   const orphans: string[] = []
   for (const entry of PROJECTABLE_SETTINGS) {
+    // Engine-config-backed keys have their default in the projectable entry +
+    // engine.json, not in either SETTINGS_DEFAULTS map — exclude them from
+    // the structural orphan check.
+    if (ENGINE_CONFIG_BACKED_KEYS.has(entry.key)) continue
     const inMain = Object.prototype.hasOwnProperty.call(main, entry.key)
     const inRenderer = Object.prototype.hasOwnProperty.call(renderer, entry.key)
     if (!inMain && !inRenderer) orphans.push(entry.key)

@@ -87,7 +87,6 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   planModelSplitEnabled: saved.planModelSplitEnabled,
   planModeModel: saved.planModeModel,
   implementModeModel: saved.implementModeModel,
-  planModeAllowedBashCommands: saved.planModeAllowedBashCommands,
   showImplementClearContext: saved.showImplementClearContext,
   gitWatcherIgnoredDirectories: saved.gitWatcherIgnoredDirectories,
   excludedResourceKinds: saved.excludedResourceKinds,
@@ -482,10 +481,6 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   setImplementModeModel: (model) => {
     set({ implementModeModel: model })
-    saveSettings(getAllSettings(get))
-  },
-  setPlanModeAllowedBashCommands: (cmds) => {
-    set({ planModeAllowedBashCommands: cmds })
     saveSettings(getAllSettings(get))
   },
   setGitWatcherIgnoredDirectories: (dirs) => {

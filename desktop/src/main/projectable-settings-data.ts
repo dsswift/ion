@@ -195,8 +195,11 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
     itemType: 'string',
     group: 'ai',
     label: 'Plan mode allowed Bash commands',
-    description: 'Command prefixes allowed in plan mode (e.g. "gh", "git log", "git diff"). Token-based prefix matching: "gh" matches "gh pr view" but not "ghost". Empty disables Bash entirely in plan mode.',
-    defaultValue: ['gh'],
+    description: 'Command prefixes allowed in plan mode (e.g. "gh", "git log", "git diff"). Token-based prefix matching: "gh" matches "gh pr view" but not "ghost". Empty disables Bash entirely in plan mode. Stored in engine.json (engine policy), not settings.json.',
+    // Opinionless default: the engine ships no built-in allowlist, so an
+    // unset value means Bash is blocked in plan mode. This key is stored in
+    // engine.json (see ENGINE_CONFIG_BACKED_KEYS), not settings.json.
+    defaultValue: [],
   },
   {
     // Default engine profile selection (Phase 3 foundation, #256).
@@ -534,3 +537,18 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
     defaultValue: [],
   },
 ]
+
+/**
+ * Projectable keys whose canonical storage is engine.json (engine policy),
+ * NOT settings.json. Both desktop edit surfaces route these through
+ * plan-bash-allowlist-store rather than writeSettings, and the projection
+ * layer reads them back from engine.json — so iOS edits and reads them like
+ * any other projectable setting without ever learning the storage location.
+ *
+ * Today this is only the plan-mode Bash allowlist. Membership here is what
+ * makes settings-broadcast strip the key from the settings.json write and
+ * projectCurrentSettings source it from engine.json.
+ */
+export const ENGINE_CONFIG_BACKED_KEYS: ReadonlySet<string> = new Set([
+  'planModeAllowedBashCommands',
+])

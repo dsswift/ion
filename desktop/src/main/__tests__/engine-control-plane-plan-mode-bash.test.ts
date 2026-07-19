@@ -1,39 +1,27 @@
 /**
  * EngineControlPlane plan-mode bash-allowlist projection tests.
  *
- * Split out of `engine-control-plane.test.ts` to keep the parent file
- * under the 600-line TypeScript cap. These tests pin the desktop's
- * side of the tri-valued `set_plan_mode.planModeAllowedBashCommands`
- * contract documented in `docs/protocol/client-commands.md`:
+ * The plan-mode Bash allowlist is ENGINE POLICY: the engine resolves it
+ * fresh from engine.json (limits.planModeAllowedBashCommands) at each prompt
+ * dispatch. The desktop therefore does NOT push a session-scoped override on
+ * plan-mode entry — doing so would clobber the operator's engine.json and
+ * break the headless-consumer contract.
  *
- *   - omitted (undefined) → engine treats as "no change"
- *   - []                  → engine treats as "clear"
- *   - ["gh", ...]         → engine treats as "replace"
+ * These tests pin that contract: setPermissionMode always calls
+ * sendSetPlanMode with `undefined` for the allowlist argument (the wire
+ * field's "no change" value), in both plan and auto transitions, regardless
+ * of any settings state. The published set_plan_mode.planModeAllowedBashCommands
+ * wire field is kept for external consumers, but the reference desktop never
+ * populates it.
  *
- * Before the Fix 1 BLOCKER fix, `setPermissionMode` collapsed `[]`
- * into `undefined` at the `if (cmds && cmds.length > 0)` guard,
- * silently demoting an explicit user clear to a no-op on the engine
- * side. The "ExplicitEmptyClears" test below catches that regression
- * — it asserts `mockBridge.sendSetPlanMode` is called with `[]` as
- * the fifth argument, which fails against the un-fixed guard with
- * "Expected [], got undefined".
- *
- * The fourth test pins the read-failure fallback: when `readSettings`
- * throws, the helper returns `undefined` and the bridge call sends
- * `undefined`, preserving the engine's prior allowlist (the
- * "no change" branch of the tri-valued contract).
+ * Revert proof: if setPermissionMode is ever changed back to read a
+ * desktop-stored allowlist and push it, the fifth argument stops being
+ * undefined and these assertions fail.
  */
 
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
-// Vitest hoists `vi.mock` factories above all variable declarations, so
-// any shared spy referenced from inside a factory must be declared via
-// `vi.hoisted` (which is hoisted alongside the mocks themselves). The
-// `mocks` namespace below owns the read-settings spy and the logger spy
-// so the factories can route through them without "Cannot access X
-// before initialization" errors.
 const mocks = vi.hoisted(() => ({
-  readSettings: vi.fn<() => Record<string, any>>(),
   log: vi.fn<(...args: any[]) => void>(),
 }))
 
@@ -94,16 +82,6 @@ vi.mock('../logger', () => ({
   error: vi.fn(),
 }))
 
-// Mock the disk-read at the settings-store boundary so each test can
-// dictate exactly what `resolveBashAllowlistFromSettings` sees. Routing
-// through the real settings-store + a mocked plan-mode-bash-allowlist
-// would skip the helper's own behavior; routing through the real helper
-// + a mocked settings-store exercises the helper end-to-end.
-vi.mock('../settings-store', () => ({
-  readSettings: () => mocks.readSettings(),
-  SETTINGS_DEFAULTS: {},
-}))
-
 let uuidCounter = 0
 vi.mock('crypto', async () => {
   const actual = await vi.importActual<typeof import('crypto')>('crypto')
@@ -116,23 +94,18 @@ vi.mock('crypto', async () => {
 import { EngineControlPlane } from '../engine-control-plane'
 import { EngineBridge } from '../engine-bridge'
 
-describe('EngineControlPlane — setPermissionMode plan-mode bash allowlist projection', () => {
+describe('EngineControlPlane — setPermissionMode never pushes a bash allowlist', () => {
   let cp: EngineControlPlane
 
   beforeEach(() => {
     vi.clearAllMocks()
     uuidCounter = 0
-    mocks.readSettings.mockReset()
     mocks.log.mockReset()
     mockBridge.startSession.mockResolvedValue({ ok: true })
     cp = new EngineControlPlane(new (EngineBridge as any)())
   })
 
-  it('happy path: non-empty allowlist preference is projected verbatim to sendSetPlanMode', () => {
-    // Pre-condition: user has saved ["gh"] in settings.json. The helper
-    // returns ["gh"]. setPermissionMode forwards it untouched.
-    mocks.readSettings.mockReturnValue({ planModeAllowedBashCommands: ['gh'] })
-
+  it('plan transition sends undefined for the allowlist (engine resolves from engine.json)', () => {
     const tabId = cp.createTab()
     cp.setPermissionMode(tabId, 'plan', 'test-source')
 
@@ -141,188 +114,32 @@ describe('EngineControlPlane — setPermissionMode plan-mode bash allowlist proj
       true,
       undefined,
       'test-source',
-      ['gh'],
+      undefined, // allowlist: never pushed by the desktop
       undefined,
     )
   })
 
-  it('explicit-empty allowlist preference is projected as [] (the BLOCKER pin)', () => {
-    // Pre-condition: user has explicitly cleared the allowlist (saved []
-    // via the BashAllowlistEditor). The helper returns []. setPermissionMode
-    // MUST forward the empty array — not collapse it to undefined — so the
-    // engine receives the documented "clear" signal per the tri-valued
-    // contract in docs/protocol/client-commands.md § set_plan_mode.
-    //
-    // Against the un-fixed `if (cmds && cmds.length > 0) bashCmds = cmds`
-    // guard this assertion fails with "Expected [], got undefined" — that's
-    // the regression this test pins.
-    mocks.readSettings.mockReturnValue({ planModeAllowedBashCommands: [] })
-
+  it('plan transition with a planFilePath still sends undefined for the allowlist', () => {
     const tabId = cp.createTab()
-    cp.setPermissionMode(tabId, 'plan', 'test-source')
+    cp.setPermissionMode(tabId, 'plan', 'test-source', '/tmp/plan.md')
 
-    expect(mockBridge.sendSetPlanMode).toHaveBeenLastCalledWith(
-      tabId,
-      true,
-      undefined,
-      'test-source',
-      [],
-      undefined,
-    )
+    const call = mockBridge.sendSetPlanMode.mock.calls.at(-1)!
+    expect(call[1]).toBe(true) // enabled
+    expect(call[4]).toBeUndefined() // allowlist
+    expect(call[5]).toBe('/tmp/plan.md') // planFilePath restored on 'plan'
   })
 
-  it('missing allowlist field is projected as undefined (engine keeps prior allowlist)', () => {
-    // Pre-condition: the preference key is absent from settings.json (older
-    // desktop installs, fresh installs, or schema-drift cases). The helper
-    // returns undefined. setPermissionMode forwards undefined so the engine
-    // receives the documented "no change" signal — the engine retains
-    // whatever allowlist was previously installed via engine.json defaults
-    // or a prior set_plan_mode call.
-    mocks.readSettings.mockReturnValue({})
-
+  it('auto transition sends undefined for the allowlist and no planFilePath', () => {
     const tabId = cp.createTab()
-    cp.setPermissionMode(tabId, 'plan', 'test-source')
-
-    expect(mockBridge.sendSetPlanMode).toHaveBeenLastCalledWith(
-      tabId,
-      true,
-      undefined,
-      'test-source',
-      undefined,
-      undefined,
-    )
-  })
-
-  it('readSettings throws → projected as undefined and the failure is logged', () => {
-    // Pre-condition: settings.json is corrupted, locked, or otherwise
-    // unreadable. The helper catches the throw, logs it via
-    // `~/.ion/desktop.log`, and returns undefined. setPermissionMode
-    // forwards undefined (engine keeps prior allowlist) — the safe
-    // fallback per the tri-valued contract.
-    //
-    // The log line is asserted because the helper's docstring promises
-    // a logged fallback per `desktop/AGENTS.md` "no silent catch", and
-    // operators investigating "my allowlist isn't being honored" need
-    // the log entry to distinguish a thrown read from a missing-key read.
-    mocks.readSettings.mockImplementation(() => {
-      throw new Error('settings.json corrupted (synthetic)')
-    })
-
-    const tabId = cp.createTab()
-    cp.setPermissionMode(tabId, 'plan', 'test-source')
-
-    expect(mockBridge.sendSetPlanMode).toHaveBeenLastCalledWith(
-      tabId,
-      true,
-      undefined,
-      'test-source',
-      undefined,
-      undefined,
-    )
-
-    // The helper logs via the logger's `log` export. We don't assert the
-    // exact prefix (avoids brittleness against tag-rename refactors) —
-    // only that the failure surfaced through the logger and named the
-    // cause. Per ADR-019 the cause is carried in the structured fields
-    // object ({ error: String(err) }), never interpolated into the msg
-    // string, so the filter inspects both string args and field values.
-    const failureLogs = mocks.log.mock.calls.filter((args: any[]) =>
-      args.some((a) => {
-        if (typeof a === 'string' && a.includes('settings.json corrupted')) return true
-        if (a && typeof a === 'object') {
-          return Object.values(a).some(
-            (v) => typeof v === 'string' && v.includes('settings.json corrupted'),
-          )
-        }
-        return false
-      }),
-    )
-    expect(failureLogs.length).toBeGreaterThan(0)
-  })
-
-  it('mode=auto never reads settings or sends an allowlist (no-op for non-plan transitions)', () => {
-    // Symmetric sanity check: switching to 'auto' must not invoke the
-    // helper or send an allowlist, since the engine's allowlist applies
-    // only to plan-mode runs. This guards against a future refactor that
-    // accidentally calls resolveBashAllowlistFromSettings unconditionally.
-    mocks.readSettings.mockReturnValue({ planModeAllowedBashCommands: ['gh'] })
-
-    const tabId = cp.createTab()
-    cp.setPermissionMode(tabId, 'auto', 'test-source')
+    cp.setPermissionMode(tabId, 'auto', 'test-source', '/tmp/plan.md')
 
     expect(mockBridge.sendSetPlanMode).toHaveBeenLastCalledWith(
       tabId,
       false,
       undefined,
       'test-source',
-      undefined,
-      undefined,
-    )
-    expect(mocks.readSettings).not.toHaveBeenCalled()
-  })
-})
-
-// ---------------------------------------------------------------------------
-// planFilePath restore-on-toggle (plan-file continuity)
-// ---------------------------------------------------------------------------
-//
-// When entering plan mode, setPermissionMode must forward the supplied
-// planFilePath as the SIXTH sendSetPlanMode argument so the engine restores
-// plan-file continuity (re-adopting an existing on-disk plan after a session
-// replacement) instead of allocating a fresh slug. On 'auto' the path is
-// dropped — the engine ignores it on disable, and forwarding it would be
-// misleading. These tests would go red if setPermissionMode dropped the arg.
-
-describe('EngineControlPlane — setPermissionMode forwards planFilePath on plan-enter', () => {
-  let cp: EngineControlPlane
-
-  beforeEach(() => {
-    vi.clearAllMocks()
-    uuidCounter = 0
-    mocks.readSettings.mockReset().mockReturnValue({})
-    mockBridge.startSession.mockResolvedValue({ ok: true })
-    cp = new EngineControlPlane(new (EngineBridge as any)())
-  })
-
-  it('forwards planFilePath as the 6th arg when entering plan mode', () => {
-    const tabId = cp.createTab()
-    cp.setPermissionMode(tabId, 'plan', 'ui_dropdown', '/Users/x/.ion/plans/simple-sailing-pine.md')
-
-    expect(mockBridge.sendSetPlanMode).toHaveBeenLastCalledWith(
-      tabId,
-      true,
-      undefined,
-      'ui_dropdown',
-      undefined,
-      '/Users/x/.ion/plans/simple-sailing-pine.md',
-    )
-  })
-
-  it('drops planFilePath when switching to auto (engine ignores it on disable)', () => {
-    const tabId = cp.createTab()
-    cp.setPermissionMode(tabId, 'auto', 'ui_dropdown', '/Users/x/.ion/plans/simple-sailing-pine.md')
-
-    expect(mockBridge.sendSetPlanMode).toHaveBeenLastCalledWith(
-      tabId,
-      false,
-      undefined,
-      'ui_dropdown',
-      undefined,
-      undefined,
-    )
-  })
-
-  it('forwards undefined planFilePath when none is supplied (the common case)', () => {
-    const tabId = cp.createTab()
-    cp.setPermissionMode(tabId, 'plan', 'ui_dropdown')
-
-    expect(mockBridge.sendSetPlanMode).toHaveBeenLastCalledWith(
-      tabId,
-      true,
-      undefined,
-      'ui_dropdown',
-      undefined,
-      undefined,
+      undefined, // allowlist
+      undefined, // planFilePath: only forwarded on 'plan'
     )
   })
 })

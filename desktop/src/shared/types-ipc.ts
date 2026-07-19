@@ -244,6 +244,14 @@ export const IPC = {
   ENGINE_BROADCAST_HISTORY: 'ion:engine-broadcast-history',
   ENGINE_GET_CONTEXT_BREAKDOWN: 'ion:engine-get-context-breakdown',
 
+  // Plan-mode Bash allowlist (engine policy, stored in engine.json).
+  // Read/write the operator-editable list of Bash command prefixes the model
+  // may run during plan mode. Backed by ~/.ion/engine.json's
+  // limits.planModeAllowedBashCommands; the engine re-reads it fresh at each
+  // dispatch, so a write takes effect on the next prompt with no restart.
+  GET_PLAN_BASH_ALLOWLIST: 'ion:get-plan-bash-allowlist',
+  SET_PLAN_BASH_ALLOWLIST: 'ion:set-plan-bash-allowlist',
+
   // Resource focus tracking
   NOTIFY_TAB_FOCUS: 'ion:notify-tab-focus',
   MARK_RESOURCE_READ: 'ion:mark-resource-read',
