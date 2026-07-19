@@ -29,13 +29,14 @@ func TestSessionAccessor_AllocatePlanFilePath(t *testing.T) {
 
 	acc := &sessionAccessor{m: mgr, s: s, key: "alloc-plan"}
 
-	path := acc.AllocatePlanFilePath()
+	// Pass an empty model: mockBackend is neither CLI nor Hybrid, so
+	// resolvedBackend returns the mock itself, whose Capabilities() returns
+	// PlanFileProjectScoped:false — the API-backend default → ~/.ion/plans/<slug>.md.
+	path := acc.AllocatePlanFilePath("")
 
 	if path == "" {
 		t.Fatal("AllocatePlanFilePath returned empty path")
 	}
-	// mockBackend is neither CLI nor Hybrid, so the allocator uses the
-	// API-backend default branch: ~/.ion/plans/<slug>.md.
 	if !strings.HasSuffix(path, ".md") {
 		t.Errorf("allocated path %q does not end in .md", path)
 	}
@@ -45,7 +46,7 @@ func TestSessionAccessor_AllocatePlanFilePath(t *testing.T) {
 
 	// A second allocation must not collide with the first (fresh slug each
 	// call), matching the root-path allocator's uniqueness guarantee.
-	path2 := acc.AllocatePlanFilePath()
+	path2 := acc.AllocatePlanFilePath("")
 	if path2 == path {
 		t.Errorf("two allocations returned the same path %q; expected distinct slugs", path)
 	}

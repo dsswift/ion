@@ -78,7 +78,7 @@ func (a *idTestAccessor) BumpParentProgress()        {}
 func (a *idTestAccessor) EmitDispatchCountStatus(_ string) {}
 
 func (a *idTestAccessor) NewChildBackend() backend.RunBackend { return a.child }
-func (a *idTestAccessor) AllocatePlanFilePath() string        { return "/tmp/.ion/plans/plan.md" }
+func (a *idTestAccessor) AllocatePlanFilePath(_ string) string        { return "/tmp/.ion/plans/plan.md" }
 func (a *idTestAccessor) RootContext() context.Context        { return context.Background() }
 func (a *idTestAccessor) SessionKey() string                       { return "id-test-session" }
 func (a *idTestAccessor) ExtensionName() string    { return "" }

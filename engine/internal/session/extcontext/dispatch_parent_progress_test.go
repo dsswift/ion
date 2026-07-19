@@ -35,7 +35,7 @@ func (a *bumpCountingAccessor) EmitDispatchCountStatus(_ string) {}
 
 func (a *bumpCountingAccessor) NewChildBackend() backend.RunBackend { return a.child }
 
-func (a *bumpCountingAccessor) AllocatePlanFilePath() string {
+func (a *bumpCountingAccessor) AllocatePlanFilePath(_ string) string {
 	if a.allocPlanPath != "" {
 		return a.allocPlanPath
 	}

@@ -59,7 +59,7 @@ func (a *activityRecordingAccessor) terminalEmitted() bool {
 }
 
 func (a *activityRecordingAccessor) NewChildBackend() backend.RunBackend { return a.child }
-func (a *activityRecordingAccessor) AllocatePlanFilePath() string        { return "/tmp/.ion/plans/plan.md" }
+func (a *activityRecordingAccessor) AllocatePlanFilePath(_ string) string        { return "/tmp/.ion/plans/plan.md" }
 func (a *activityRecordingAccessor) RootContext() context.Context        { return context.Background() }
 
 func (a *activityRecordingAccessor) AppendOrUpdateAgentState(s types.AgentStateUpdate) string {

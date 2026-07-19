@@ -53,7 +53,7 @@ func (a *agentDiscoveryTestAccessor) ExtGroup() *extension.ExtensionGroup      {
 func (a *agentDiscoveryTestAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
 func (a *agentDiscoveryTestAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
 func (a *agentDiscoveryTestAccessor) NewChildBackend() backend.RunBackend      { return nil }
-func (a *agentDiscoveryTestAccessor) AllocatePlanFilePath() string             { return "/tmp/.ion/plans/plan.md" }
+func (a *agentDiscoveryTestAccessor) AllocatePlanFilePath(_ string) string             { return "/tmp/.ion/plans/plan.md" }
 func (a *agentDiscoveryTestAccessor) BumpParentProgress()                      {}
 func (a *agentDiscoveryTestAccessor) EmitDispatchCountStatus(_ string)         {}
 func (a *agentDiscoveryTestAccessor) EngineConfig() *types.EngineRuntimeConfig { return nil }

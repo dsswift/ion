@@ -99,7 +99,7 @@ func (a *dispatchCountSpyAccessor) dispatchCountCallCount() int {
 func (a *dispatchCountSpyAccessor) BumpParentProgress() {}
 
 func (a *dispatchCountSpyAccessor) NewChildBackend() backend.RunBackend { return a.child }
-func (a *dispatchCountSpyAccessor) AllocatePlanFilePath() string        { return "/tmp/.ion/plans/plan.md" }
+func (a *dispatchCountSpyAccessor) AllocatePlanFilePath(_ string) string        { return "/tmp/.ion/plans/plan.md" }
 func (a *dispatchCountSpyAccessor) RootContext() context.Context {
 	if a.rootCtx != nil {
 		return a.rootCtx

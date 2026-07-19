@@ -184,38 +184,32 @@ func generatePlanSlugUnique(plansDir string) string {
 }
 
 // allocateNewPlanFilePath picks the right plans directory for the given
-// backend + working directory, ensures the directory exists on disk, and
-// returns a fresh non-colliding plan file path inside it.
+// backend capabilities + working directory, ensures the directory exists on
+// disk, and returns a fresh non-colliding plan file path inside it.
 //
-// Backend-dependent directory choice:
+// Directory choice is determined by caps.PlanFileProjectScoped:
 //
-//   - CLI and Hybrid backends place the plan file inside the project
-//     working directory (".ion/plans/" beneath cwd). This is because the
-//     native Claude CLI's plan mode restricts writes to paths within or
-//     under the project root.
-//   - API backend (and the fallback when no working directory is set)
-//     places the plan file under "~/.ion/plans/" since it controls its
-//     own tool execution and can write anywhere.
-//   - Hybrid is treated like CLI here: at the point this is called the
-//     model is not yet finalised, so we cannot dispatch by inner backend.
-//     The common case for plan mode under hybrid is Claude (which
-//     requires the project-relative path), so the CLI default is right.
-//     See specs/feat-hybrid-backend-routing.md §"Edge Cases".
+//   - When true (claude-code): the plan file lives inside the project working
+//     directory (".ion/plans/" beneath workingDir). The Claude CLI's native
+//     --permission-mode plan sandboxes writes to the project root, so the
+//     engine must place the file where the CLI can observe it.
+//   - When false (api, codex, grok, cursor — all backends using Ion's own
+//     plan-mode system): the plan file lives under "~/.ion/plans/" because the
+//     engine writes it itself and is free to choose any location.
+//   - When workingDir is empty, always falls back to "~/.ion/plans/" regardless
+//     of PlanFileProjectScoped.
 //
-// This helper exists to keep the plan-file allocation logic in one
-// place. Previously it was duplicated between RequestPlanModeEnter
-// (plan_mode.go) and SendPrompt (prompt_dispatch.go); they cannot drift
-// now that both call this function.
+// Callers resolve the serving backend for the run's model first (via
+// m.resolvedBackend(model).Capabilities()), then pass the descriptor here.
+// This ensures HybridBackend runs that are served by the api inner backend
+// correctly use ~/.ion/plans/ rather than the project directory.
 //
-// mkdirAll failures are logged via the returned error but do NOT block
-// path generation — the caller can still record the chosen path on the
-// session; subsequent file writes will surface the directory error in
-// their own context with better surrounding state.
-func allocateNewPlanFilePath(b backend.RunBackend, workingDir string) string {
+// MkdirAll failures do NOT block path generation — the caller can still record
+// the chosen path on the session; subsequent file writes will surface the
+// directory error in their own context with better surrounding state.
+func allocateNewPlanFilePath(caps backend.BackendCapabilities, workingDir string) string {
 	var plansDir string
-	_, isCli := b.(*backend.ClaudeCodeBackend)
-	_, isHybrid := b.(*backend.HybridBackend)
-	if (isCli || isHybrid) && workingDir != "" {
+	if caps.PlanFileProjectScoped && workingDir != "" {
 		plansDir = filepath.Join(workingDir, ".ion", "plans")
 	} else {
 		home, _ := os.UserHomeDir()

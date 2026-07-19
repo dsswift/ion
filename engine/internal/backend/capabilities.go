@@ -58,6 +58,23 @@ type BackendCapabilities struct {
 	// PlanMode reports whether the backend can run a plan-mode turn.
 	PlanMode bool
 
+	// PlanFileProjectScoped reports whether the CLI itself dictates the
+	// plan-file write location and requires it to live under the project root.
+	// When true, the engine places the plan file at
+	// "<workingDir>/.ion/plans/<slug>.md" instead of "~/.ion/plans/<slug>.md".
+	//
+	// This is true only for the claude-code backend, where the native
+	// --permission-mode plan sandboxes the model's writes to the project root
+	// and (on newer claude-code releases) the CLI authors the plan file itself.
+	// The engine must observe the file at a project-relative path because the
+	// CLI controls where it writes.
+	//
+	// All other backends — api, codex, grok, cursor — use Ion's plan-mode
+	// system: the engine captures plan text from the native protocol and writes
+	// the plan file itself via capturePlanMarkdown (plan_capture.go), so it
+	// controls the write location and always uses ~/.ion/plans.
+	PlanFileProjectScoped bool
+
 	// Steering reports whether a mid-turn follow-up message can be routed
 	// into a running turn (WriteToStdin for the CLI backends, conversation
 	// injection for the ApiBackend).
@@ -93,15 +110,19 @@ func (b *ApiBackend) Capabilities() BackendCapabilities {
 
 // Capabilities describes the ClaudeCodeBackend: native-session context via
 // `claude --resume <uuid>`, plan mode, and mid-turn steering over the
-// bidirectional stream-json stdin pipe.
+// bidirectional stream-json stdin pipe. PlanFileProjectScoped is true because
+// the Claude CLI's --permission-mode plan sandboxes writes to the project root
+// and (on newer releases) authors the plan file itself — the engine cannot
+// place the plan file in ~/.ion/plans.
 func (b *ClaudeCodeBackend) Capabilities() BackendCapabilities {
 	return BackendCapabilities{
-		Kind:             "claude-code",
-		ContextModel:     ContextModelNativeSession,
-		PlanMode:         true,
-		Steering:         true,
-		Resume:           true,
-		ResumeHandleKind: ResumeHandleClaudeSessionUUID,
+		Kind:                  "claude-code",
+		ContextModel:          ContextModelNativeSession,
+		PlanMode:              true,
+		PlanFileProjectScoped: true,
+		Steering:              true,
+		Resume:                true,
+		ResumeHandleKind:      ResumeHandleClaudeSessionUUID,
 	}
 }
 

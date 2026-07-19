@@ -64,7 +64,7 @@ func (p *panicTestAccessor) ExtGroup() *extension.ExtensionGroup      { return p
 func (p *panicTestAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
 func (p *panicTestAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
 func (p *panicTestAccessor) NewChildBackend() backend.RunBackend      { return nil }
-func (p *panicTestAccessor) AllocatePlanFilePath() string             { return "/tmp/.ion/plans/plan.md" }
+func (p *panicTestAccessor) AllocatePlanFilePath(_ string) string             { return "/tmp/.ion/plans/plan.md" }
 func (p *panicTestAccessor) BumpParentProgress()                      {}
 func (p *panicTestAccessor) EmitDispatchCountStatus(_ string)         {}
 func (p *panicTestAccessor) EngineConfig() *types.EngineRuntimeConfig { return nil }

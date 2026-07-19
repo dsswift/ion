@@ -70,7 +70,7 @@ func (a *depthTestAccessor) NewChildBackend() backend.RunBackend {
 	return b
 }
 func (a *depthTestAccessor) BumpParentProgress()                         {}
-func (a *depthTestAccessor) AllocatePlanFilePath() string                { return "/tmp/.ion/plans/plan.md" }
+func (a *depthTestAccessor) AllocatePlanFilePath(_ string) string                { return "/tmp/.ion/plans/plan.md" }
 func (a *depthTestAccessor) EmitDispatchCountStatus(_ string)            {}
 func (a *depthTestAccessor) EngineConfig() *types.EngineRuntimeConfig    { return a.config }
 func (a *depthTestAccessor) ClaudeCompat() bool { return false }

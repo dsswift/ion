@@ -71,7 +71,7 @@ func (a *steerSelfAccessor) ExtGroup() *extension.ExtensionGroup      { return n
 func (a *steerSelfAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
 func (a *steerSelfAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
 func (a *steerSelfAccessor) NewChildBackend() backend.RunBackend      { return backend.NewApiBackend() }
-func (a *steerSelfAccessor) AllocatePlanFilePath() string             { return "/tmp/.ion/plans/plan.md" }
+func (a *steerSelfAccessor) AllocatePlanFilePath(_ string) string             { return "/tmp/.ion/plans/plan.md" }
 func (a *steerSelfAccessor) BumpParentProgress()                      {}
 func (a *steerSelfAccessor) EmitDispatchCountStatus(_ string)         {}
 func (a *steerSelfAccessor) EngineConfig() *types.EngineRuntimeConfig { return nil }
