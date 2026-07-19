@@ -85,6 +85,24 @@ final class TransportManager {
     /// Debounce: the last time a resend request was sent, so a burst of gaps
     /// coalesces into one request.
     var lastResendRequestAt: Date = .distantPast
+    /// Width of the resend-request debounce window in seconds. A gap arriving
+    /// inside the window does not send immediately; it schedules ONE trailing
+    /// coalesced request (`resendCoalesceTask`) covering every seq still in
+    /// `pendingResendSeqs`. Injectable so tests can drive the window fast.
+    var resendDebounceInterval: TimeInterval = 0.15
+    /// Trailing coalesced resend request scheduled by `requestResendForGap`
+    /// when a gap lands inside the debounce window. At most one is pending at
+    /// a time; it sleeps out the remaining window, then re-enters the inbound
+    /// serial queue to read `pendingResendSeqs` and send one merged request.
+    /// Without it, a gap inside the window was silently dropped (leading-edge
+    /// debounce with no trailing retry) and stayed unhealed until the snapshot
+    /// reconcile. Cancelled on stop().
+    var resendCoalesceTask: Task<Void, Never>?
+    /// The seq range of the most recent resend request actually sent (either
+    /// the immediate leading-edge send or a trailing coalesced send).
+    /// Diagnostic/test seam: pins that every gap yields a request and that a
+    /// coalesced request covers the merged range.
+    var lastResendRequestedRange: ClosedRange<UInt64>?
     let eventContinuation: AsyncStream<RemoteEvent>.Continuation
     var relayListenTask: Task<Void, Never>?
     var lanListenTask: Task<Void, Never>?
@@ -115,17 +133,22 @@ final class TransportManager {
     /// ViewModel routes the user to the pairing screen.
     var lanAuthRejectedDefinitively = false
 
-    /// Watchdog that monitors LAN heartbeat liveness. The desktop sends a
-    /// heartbeat every `HEARTBEAT_INTERVAL_MS` (15s). If two intervals (30s)
-    /// pass with no heartbeat while LAN is the active transport, the socket is
-    /// silently dead (TCP can wedge without a FIN); the watchdog forces a
-    /// reconnect+sync via `peerDisconnected` so the ViewModel re-establishes.
+    /// Watchdog that monitors LAN liveness. The desktop sends a heartbeat
+    /// every `HEARTBEAT_INTERVAL_MS` (15s), so a healthy LAN socket delivers
+    /// at least one authenticated frame per interval even when idle. If two
+    /// intervals (30s) pass with no LAN-delivered frame while LAN is the
+    /// active transport, the socket is silently dead (TCP can wedge without a
+    /// FIN); the watchdog forces a reconnect+sync via `peerDisconnected` so
+    /// the ViewModel re-establishes.
     var lanHeartbeatWatchdogTask: Task<Void, Never>?
-    /// Wall-clock time of the most recent heartbeat received over the LAN
-    /// transport specifically (relay-delivered heartbeats do not update this —
-    /// they prove the relay works, not the LAN socket). Baselined to now when
-    /// the watchdog arms; each LAN heartbeat effectively resets the timer.
-    var lastHeartbeatAt: Date = .distantPast
+    /// Wall-clock time of the most recent successfully decrypted frame
+    /// received over the LAN transport specifically — heartbeats, snapshots,
+    /// deltas, resend replays all count (decryption authenticates the
+    /// desktop, so any decrypted frame proves the socket end-to-end).
+    /// Relay-delivered frames do not update this — they prove the relay
+    /// works, not the LAN socket. Baselined to now when the watchdog arms;
+    /// each LAN frame effectively resets the timer.
+    var lastLANFrameAt: Date = .distantPast
 
     /// Wall-clock time the most recent `.snapshot` event was decoded from the
     /// wire. The retryable sync handshake (TransportManager+Sync.swift) polls
@@ -135,6 +158,20 @@ final class TransportManager {
     /// Strict-FIFO queue serializing outbound seq allocation + socket write so
     /// wire order always equals seq order. See TransportManager+Send.swift.
     let outboundQueue = SerialAsyncQueue()
+
+    /// Strict-FIFO queue serializing INBOUND frame processing. The relay and
+    /// LAN listen tasks both used to call `handleIncomingData` directly from
+    /// their own task context, mutating `lastReceivedSeq`, `pendingResendSeqs`
+    /// (a Set — memory-unsafe under concurrent mutation), `lastReceivedEpoch`,
+    /// and the clock-skew/heartbeat state with zero synchronization
+    /// (`_seqLock` guards only the outbound counter; this class is
+    /// `@Observable`, not an actor). Both listeners now enqueue raw data via
+    /// `enqueueIncomingData`, and the queue runs `handleIncomingData` one
+    /// frame at a time. Per-transport ordering is preserved: each listener
+    /// enqueues in its own receive order and the queue is FIFO.
+    /// The WI-6 trailing coalesced-resend task also enters this queue so its
+    /// `pendingResendSeqs` reads/writes are serialized with frame processing.
+    let inboundQueue = SerialAsyncQueue()
 
     /// One-way clock-skew estimate in milliseconds (positive = iOS clock is ahead
     /// of the desktop). Updated from `desktop_heartbeat` frames by comparing iOS
@@ -182,6 +219,7 @@ final class TransportManager {
         pathMonitor?.cancel()
         disconnectGraceTask?.cancel()
         lanHeartbeatWatchdogTask?.cancel()
+        resendCoalesceTask?.cancel()
     }
 
     // MARK: - Public API
@@ -286,6 +324,8 @@ final class TransportManager {
         pathMonitor = nil
         disconnectGraceTask?.cancel()
         disconnectGraceTask = nil
+        resendCoalesceTask?.cancel()
+        resendCoalesceTask = nil
         stopLANHeartbeatWatchdog()
 
         relay?.disconnect()

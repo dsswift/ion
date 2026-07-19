@@ -16,7 +16,7 @@ extension TransportManager {
             guard let relay = self?.relay else { return }
             for await data in relay.messages {
                 guard !Task.isCancelled, let self else { break }
-                self.handleIncomingData(data, isRelay: true)
+                self.enqueueIncomingData(data, isRelay: true)
             }
         }
     }
@@ -62,7 +62,7 @@ extension TransportManager {
             ])
             for await data in lan.messages {
                 guard !Task.isCancelled, let self else { break }
-                self.handleIncomingData(data, isRelay: false)
+                self.enqueueIncomingData(data, isRelay: false)
             }
             // LAN stream ended naturally -- emit peerDisconnected if no relay fallback.
             // Skip if cancelled (transport.stop() was called): yielding peerDisconnected
@@ -108,6 +108,30 @@ extension TransportManager {
 
     // MARK: - Wire message dispatch
 
+    /// Single-consumer ingress for inbound frames. Both listener tasks (relay
+    /// and LAN) call this instead of `handleIncomingData` directly: the raw
+    /// data (+ origin) is enqueued onto the strict-FIFO `inboundQueue`, whose
+    /// consumer runs `handleIncomingData` one frame at a time. This serializes
+    /// every mutation of the receive-side state (`lastReceivedSeq`,
+    /// `pendingResendSeqs`, `lastReceivedEpoch`, clock-skew/heartbeat fields)
+    /// that the two listener tasks previously raced on. No decode happens on
+    /// the listener task — it only hands the bytes off. Per-transport ordering
+    /// is preserved because each listener enqueues in its receive order and
+    /// the queue is FIFO.
+    func enqueueIncomingData(_ data: Data, isRelay: Bool) {
+        _ = inboundQueue.submit { [weak self] in
+            guard let self else { return }
+            self.handleIncomingData(data, isRelay: isRelay)
+        }
+    }
+
+    /// Decode, dedup, decrypt, and apply one inbound frame.
+    ///
+    /// SERIALIZATION CONTRACT: this method mutates unsynchronized receive-side
+    /// state and must only run on the `inboundQueue` (via
+    /// `enqueueIncomingData`) — never concurrently from two tasks. Tests may
+    /// call it directly because a single-threaded test context satisfies the
+    /// same "one frame at a time" contract.
     func handleIncomingData(_ data: Data, isRelay: Bool) {
         // Check for relay control frames FIRST — they're bare JSON without a
         // WireMessage envelope (no seq field), so WireMessage decode would fail.
@@ -141,13 +165,28 @@ extension TransportManager {
             return
         }
 
-        // Check for auth_result (late revocation during session).
+        // Plaintext auth_result on the DATA path is ignored (Hygiene: DoS
+        // surface). A TransportManager always holds a shared secret (both
+        // inits require `sharedKey`), and once a secret exists the desktop
+        // never sends plaintext data frames — it rejects inbound plaintext
+        // for the same reason (desktop transport-inbound-payload.ts:
+        // "Shared secret is set but message is plaintext -- reject it").
+        // Honoring an unencrypted `auth_result success=false` here let ANY
+        // LAN peer inject one WireMessage-wrapped plaintext frame and force
+        // `peerDisconnected`, tearing down a healthy session. The legitimate
+        // auth-phase path is untouched: `performLANAuthCore` consumes
+        // `lan.messages` during the handshake BEFORE `startLANListener`
+        // exists, so pre-secret auth verdicts never flow through here. A
+        // genuine late revocation arrives as an application close code
+        // (4000–4999) on the socket, not as a plaintext data frame.
         if let payloadStr = wire.payload,
            let json = try? JSONSerialization.jsonObject(with: Data(payloadStr.utf8)) as? [String: Any],
            let type = json["type"] as? String, type == "auth_result" {
-            if json["success"] as? Bool == false {
-                eventContinuation.yield(.peerDisconnected)
-            }
+            DiagnosticLog.log("ignoring plaintext auth_result on data path", tag: "transport.receive", level: .warn, fields: [
+                "origin": isRelay ? "relay" : "lan",
+                "success": String(json["success"] as? Bool ?? false),
+                "seq": String(wire.seq)
+            ])
             return
         }
 
@@ -228,6 +267,29 @@ extension TransportManager {
             return
         }
 
+        // LAN liveness: ANY successfully decrypted LAN-delivered frame proves
+        // the LAN socket is alive — decryption authenticates the desktop, so a
+        // forged frame cannot spoof liveness. Marking here (not only on
+        // heartbeats) is what lets the 3s post-resume probe and the 30s
+        // starvation watchdog judge the socket by real traffic: the resume
+        // sync's snapshot response, a delta, or a resend replay all count.
+        // Previously only `desktop_heartbeat` advanced the mark, so a healthy
+        // socket whose 15s heartbeat cadence didn't happen to land inside the
+        // probe window was torn down as a zombie (the create-tab "not
+        // connected" flap). Relay-delivered frames never update this: they
+        // prove the relay works, NOT the LAN socket — counting them would mask
+        // a wedged LAN forever (the half-open-socket failure the watchdog
+        // exists to detect).
+        if !isRelay {
+            lastLANFrameAt = Date()
+            // Backstop arm: setState arms the watchdog when LAN becomes the
+            // active transport; this covers any path that reaches
+            // `.lanPreferred` traffic with the watchdog disarmed.
+            if state == .lanPreferred {
+                startLANHeartbeatWatchdog()
+            }
+        }
+
         // Decompress if the payload has the 0x01 version prefix (raw DEFLATE).
         // The desktop compresses with zlib.deflateRawSync() and prepends 0x01.
         // Uncompressed (legacy) payloads start with '{' (0x7B) and pass through.
@@ -243,7 +305,9 @@ extension TransportManager {
             jsonData = payloadData
         }
 
-        // Heartbeat: update clock-skew estimate and liveness watchdog.
+        // Heartbeat: update the clock-skew estimate. (LAN liveness is marked
+        // at decrypt time above for EVERY LAN frame — heartbeats included —
+        // so this branch no longer touches the watchdog state.)
         if let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
            let type = json["type"] as? String, type == "desktop_heartbeat" {
             let senderTs = json["ts"] as? Double ?? 0
@@ -261,21 +325,6 @@ extension TransportManager {
                 clockSkewEstimateMs = clockSkewEstimateMs == 0.0
                     ? rawLatencyMs
                     : clockSkewEstimateMs * (1.0 - alpha) + rawLatencyMs * alpha
-            }
-            // Record receive time so the LAN liveness watchdog can detect
-            // starvation (a silently-dead socket that never delivers a FIN).
-            // Only LAN-delivered heartbeats feed the watchdog: a heartbeat the
-            // desktop routed via relay proves the relay works, NOT the LAN
-            // socket — counting it would mask a wedged LAN forever (the exact
-            // half-open-socket failure the watchdog exists to detect).
-            if !isRelay {
-                lastHeartbeatAt = Date()
-                // Backstop arm: setState arms the watchdog when LAN becomes
-                // the active transport; this covers any path that reaches
-                // `.lanPreferred` heartbeats with the watchdog disarmed.
-                if state == .lanPreferred {
-                    startLANHeartbeatWatchdog()
-                }
             }
             markFrameProcessed(wire.seq)
             // Log the heartbeat with latency fields so it is visible in
@@ -390,6 +439,18 @@ extension TransportManager {
     /// coalescing a burst of gaps within a short window into one request. Caps
     /// the tracked range so a huge gap (e.g. a long offline period) does not
     /// balloon the pending set — beyond the cap we rely on the snapshot reconcile.
+    ///
+    /// Debounce shape: leading edge sends immediately; a gap arriving INSIDE
+    /// the window schedules exactly one trailing task (if none is pending)
+    /// that sleeps out the remainder of the window and then sends ONE merged
+    /// request covering `pendingResendSeqs.min()...max()`. The old
+    /// leading-edge-only debounce silently dropped in-window gaps: their seqs
+    /// sat in `pendingResendSeqs` with no request ever sent, unhealed until
+    /// the snapshot reconcile. The trailing task re-enters the inbound serial
+    /// queue so its `pendingResendSeqs` access is serialized with frame
+    /// processing (WI-7 contract).
+    ///
+    /// Runs on the inboundQueue (called from `handleIncomingData`).
     func requestResendForGap(fromSeq: UInt64, toSeq: UInt64) {
         guard toSeq >= fromSeq else { return }
         // Cap the range we track/ask for; a very large gap is better healed by
@@ -400,12 +461,58 @@ extension TransportManager {
 
         // Debounce: coalesce bursts into one request.
         let now = Date()
-        guard now.timeIntervalSince(lastResendRequestAt) >= 0.15 else { return }
+        let sinceLast = now.timeIntervalSince(lastResendRequestAt)
+        guard sinceLast >= resendDebounceInterval else {
+            // Inside the window. Schedule ONE trailing coalesced request if
+            // none is already pending; a pending one will pick this gap's
+            // seqs up from pendingResendSeqs when it fires.
+            scheduleTrailingResend(afterDelay: resendDebounceInterval - sinceLast)
+            return
+        }
         lastResendRequestAt = now
+        lastResendRequestedRange = fromSeq...cappedTo
 
         ionLog.info("requesting resend [\(fromSeq),\(cappedTo)]")
         Task { [weak self] in
             try? await self?.send(.requestResend(fromSeq: fromSeq, toSeq: cappedTo))
+        }
+    }
+
+    /// Schedule the trailing coalesced resend request. At most one is pending
+    /// at a time. Sleeps out the remaining debounce window on a detached task,
+    /// then re-enters the inbound serial queue (so `pendingResendSeqs` is read
+    /// under the same serialization as frame processing) and sends one merged
+    /// request covering the full still-missing span.
+    private func scheduleTrailingResend(afterDelay delay: TimeInterval) {
+        guard resendCoalesceTask == nil else { return }
+        resendCoalesceTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard let self, !Task.isCancelled else { return }
+            _ = self.inboundQueue.submit { [weak self] in
+                guard let self else { return }
+                self.resendCoalesceTask = nil
+                self.sendCoalescedResendRequest()
+            }
+        }
+    }
+
+    /// Send one merged resend request for everything still missing. Runs on
+    /// the inboundQueue only.
+    private func sendCoalescedResendRequest() {
+        // Frames replayed (or a resendUnavailable) during the wait may have
+        // drained the set — nothing left to ask for.
+        guard let mergedFrom = pendingResendSeqs.min(),
+              let mergedTo = pendingResendSeqs.max() else { return }
+        lastResendRequestAt = Date()
+        lastResendRequestedRange = mergedFrom...mergedTo
+        ionLog.info("requesting coalesced resend [\(mergedFrom),\(mergedTo)]")
+        DiagnosticLog.log("coalesced resend request", tag: "transport.receive", fields: [
+            "from_seq": String(mergedFrom),
+            "to_seq": String(mergedTo),
+            "pending_count": String(pendingResendSeqs.count)
+        ])
+        Task { [weak self] in
+            try? await self?.send(.requestResend(fromSeq: mergedFrom, toSeq: mergedTo))
         }
     }
 }
