@@ -86,8 +86,8 @@ final class TransportRelayLanPreferredTests: XCTestCase {
     func testRelayHeartbeatHandledButDoesNotFeedLanWatchdog() async throws {
         let m = makeManager()
         let events = startCollector(m)
-        m.setState(.lanPreferred) // arms the watchdog, baselining lastHeartbeatAt
-        let baseline = m.lastHeartbeatAt
+        m.setState(.lanPreferred) // arms the watchdog, baselining lastLANFrameAt
+        let baseline = m.lastLANFrameAt
 
         let frame = try encryptedFrame(seq: 1, json: #"{"type":"desktop_heartbeat","ts":1000,"buffered":0}"#)
         m.handleIncomingData(frame, isRelay: true)
@@ -97,7 +97,7 @@ final class TransportRelayLanPreferredTests: XCTestCase {
             return XCTFail("Relay heartbeat in .lanPreferred must be handled, got \(received)")
         }
         XCTAssertEqual(m.lastReceivedSeq, 1, "Heartbeat frame must advance the dedup mark")
-        XCTAssertEqual(m.lastHeartbeatAt, baseline,
+        XCTAssertEqual(m.lastLANFrameAt, baseline,
             "A relay-delivered heartbeat must not refresh the LAN watchdog clock")
     }
 
@@ -106,15 +106,85 @@ final class TransportRelayLanPreferredTests: XCTestCase {
         let m = makeManager()
         _ = startCollector(m)
         m.setState(.lanPreferred)
-        let baseline = m.lastHeartbeatAt
+        let baseline = m.lastLANFrameAt
 
         try? await Task.sleep(for: .milliseconds(20))
         let frame = try encryptedFrame(seq: 1, json: #"{"type":"desktop_heartbeat","ts":1000,"buffered":0}"#)
         m.handleIncomingData(frame, isRelay: false)
 
-        XCTAssertGreaterThan(m.lastHeartbeatAt, baseline,
+        XCTAssertGreaterThan(m.lastLANFrameAt, baseline,
             "A LAN-delivered heartbeat must refresh the LAN watchdog clock")
     }
+
+    /// ANY successfully decrypted LAN-delivered frame feeds the watchdog
+    /// clock — not just heartbeats. This is the fix for the resume-probe flap:
+    /// the probe used to wait for a `desktop_heartbeat` specifically, so a
+    /// healthy socket delivering a snapshot (the resume sync's response)
+    /// still read as dead unless a heartbeat happened to land inside the
+    /// probe window. Red on the unfixed code: only the heartbeat branch
+    /// updated the clock, so a data frame leaves it at the baseline.
+    func testAnyLanDataFrameFeedsWatchdogClock() async throws {
+        let m = makeManager()
+        let events = startCollector(m)
+        m.setState(.lanPreferred)
+        let baseline = m.lastLANFrameAt
+
+        try? await Task.sleep(for: .milliseconds(20))
+        let frame = try encryptedFrame(seq: 1, json: #"{"type":"desktop_tab_closed","tabId":"tab-1"}"#)
+        m.handleIncomingData(frame, isRelay: false)
+
+        _ = await waitForEvents(events, count: 1)
+        XCTAssertGreaterThan(m.lastLANFrameAt, baseline,
+            "Any decrypted LAN data frame must refresh the LAN watchdog clock — liveness is proven by real traffic, not only heartbeats")
+    }
+
+    /// A relay-delivered DATA frame must NOT feed the LAN watchdog clock,
+    /// exactly like relay heartbeats: it proves the relay works, not the LAN
+    /// socket. Guards the decrypt-time liveness mark against isRelay leakage.
+    func testRelayDataFrameDoesNotFeedLanWatchdogClock() async throws {
+        let m = makeManager()
+        let events = startCollector(m)
+        m.setState(.lanPreferred)
+        let baseline = m.lastLANFrameAt
+
+        try? await Task.sleep(for: .milliseconds(20))
+        let frame = try encryptedFrame(seq: 1, json: #"{"type":"desktop_tab_closed","tabId":"tab-1"}"#)
+        m.handleIncomingData(frame, isRelay: true)
+
+        _ = await waitForEvents(events, count: 1)
+        XCTAssertEqual(m.lastLANFrameAt, baseline,
+            "A relay-delivered data frame must not refresh the LAN watchdog clock")
+    }
+
+    /// A frame that fails to decrypt must NOT feed the LAN watchdog clock —
+    /// the liveness mark sits AFTER decryption, so an unauthenticated LAN
+    /// peer cannot spoof liveness with garbage frames.
+    func testUndecryptableLanFrameDoesNotFeedWatchdogClock() async throws {
+        let m = makeManager()
+        _ = startCollector(m)
+        m.setState(.lanPreferred)
+        let baseline = m.lastLANFrameAt
+
+        try? await Task.sleep(for: .milliseconds(20))
+        // Well-formed WireMessage whose ciphertext was produced with a
+        // DIFFERENT key — decryption fails.
+        let otherKey = SymmetricKey(size: .bits256)
+        let (nonce, ciphertext) = try E2ECrypto.encrypt(
+            plaintext: Data(#"{"type":"desktop_tab_closed","tabId":"tab-1"}"#.utf8), key: otherKey)
+        let wire = WireMessage(
+            seq: 1,
+            ts: Date().timeIntervalSince1970 * 1000,
+            payload: nil,
+            nonce: nonce.base64EncodedString(),
+            ciphertext: ciphertext.base64EncodedString()
+        )
+        m.handleIncomingData(try JSONEncoder().encode(wire), isRelay: false)
+
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(m.lastLANFrameAt, baseline,
+            "An undecryptable frame must not refresh the LAN watchdog clock (spoofed liveness)")
+    }
+
 
     // MARK: - Dedup mark advances only for processed frames
 

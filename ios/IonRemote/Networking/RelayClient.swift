@@ -32,7 +32,17 @@ final class RelayClient {
     private var reconnectAttempt = 0
     private var reconnectWork: DispatchWorkItem?
     private var intentionallyClosed = false
-    private var pingTimer: Timer?
+    /// Keepalive ping loop. A `Task.sleep` loop, NOT a `Timer`: `startPing()`
+    /// is called from `receiveLoop`'s URLSession completion handler, which
+    /// runs on a URLSession delegate thread with no running RunLoop —
+    /// `Timer.scheduledTimer` there registers on a RunLoop that never spins,
+    /// so the timer never fires, no pings go out, NAT idles the socket, and
+    /// death is detected only on a later receive failure. The task-based loop
+    /// is scheduler-driven and fires regardless of the calling thread.
+    /// Cancelled by `stopPing()` (disconnect/handleDisconnect/deinit) and
+    /// self-terminates if a newer WebSocket task supersedes the one it was
+    /// started for.
+    private var pingTask: Task<Void, Never>?
 
     private let messageContinuation: AsyncStream<Data>.Continuation
     let messages: AsyncStream<Data>
@@ -59,7 +69,7 @@ final class RelayClient {
         messageContinuation.finish()
         intentionallyClosed = true
         reconnectWork?.cancel()
-        pingTimer?.invalidate()
+        pingTask?.cancel()
         task?.cancel(with: .goingAway, reason: nil)
         session?.invalidateAndCancel()
     }
@@ -262,20 +272,44 @@ final class RelayClient {
 
     // MARK: - Ping/Pong keepalive
 
-    private func startPing() {
+    /// True while the keepalive ping loop is running. Test seam: pins the
+    /// lifecycle (started on first receive, cancelled on stop/disconnect)
+    /// without a live socket.
+    var isPingKeepaliveActive: Bool {
+        pingTask != nil
+    }
+
+    /// Start the keepalive ping loop for the current WebSocket task.
+    /// Internal (not private) so tests can pin the lifecycle contract.
+    func startPing() {
         stopPing()
-        pingTimer = Timer.scheduledTimer(withTimeInterval: Self.pingInterval, repeats: true) { [weak self] _ in
-            self?.task?.sendPing { error in
-                if error != nil {
-                    self?.handleDisconnect()
+        // Capture the task this loop keeps alive; if doConnect supersedes it,
+        // the loop exits on its own (stopPing/startPing also runs on the new
+        // connection's first receive, but this guard closes the window where
+        // an orphaned loop pings a dead task).
+        let owner = task
+        pingTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(Self.pingInterval))
+                guard !Task.isCancelled, let self else { return }
+                guard let current = self.task, current === owner else { return }
+                current.sendPing { [weak self] error in
+                    if error != nil {
+                        DiagnosticLog.log("relay keepalive ping failed", tag: "relay.client", level: .warn, fields: [
+                            "error": error.map { $0.localizedDescription } ?? "unknown"
+                        ])
+                        self?.handleDisconnect()
+                    }
                 }
             }
         }
     }
 
-    private func stopPing() {
-        pingTimer?.invalidate()
-        pingTimer = nil
+    /// Cancel the keepalive ping loop. Internal (not private) so tests can
+    /// pin the lifecycle contract.
+    func stopPing() {
+        pingTask?.cancel()
+        pingTask = nil
     }
 }
 

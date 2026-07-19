@@ -86,4 +86,51 @@ final class RelayClientTests: XCTestCase {
         client1.disconnect()
         XCTAssertFalse(client2.isConnected)
     }
+
+    // MARK: - Keepalive ping lifecycle (Task.sleep loop, not Timer)
+
+    /// The keepalive is a Task.sleep loop because `startPing()` is invoked
+    /// from a URLSession callback thread with no running RunLoop — a
+    /// `Timer.scheduledTimer` there never fired, so no pings went out and NAT
+    /// idled the socket. These tests pin the reachable lifecycle seam:
+    /// started -> active; stop/disconnect -> cancelled. (The "fires on a
+    /// RunLoop-less thread" property itself needs a live socket and is
+    /// verified by code structure: Task loops are scheduler-driven.)
+    func testStartPingActivatesKeepalive() {
+        let url = URL(string: "wss://relay.example.com")!
+        let client = RelayClient(relayURL: url, apiKey: "test-key", channelId: "ch123")
+        XCTAssertFalse(client.isPingKeepaliveActive)
+        client.startPing()
+        XCTAssertTrue(client.isPingKeepaliveActive,
+            "startPing must install the keepalive task")
+    }
+
+    func testStopPingCancelsKeepalive() {
+        let url = URL(string: "wss://relay.example.com")!
+        let client = RelayClient(relayURL: url, apiKey: "test-key", channelId: "ch123")
+        client.startPing()
+        client.stopPing()
+        XCTAssertFalse(client.isPingKeepaliveActive,
+            "stopPing must cancel and clear the keepalive task")
+    }
+
+    func testDisconnectCancelsKeepalive() {
+        let url = URL(string: "wss://relay.example.com")!
+        let client = RelayClient(relayURL: url, apiKey: "test-key", channelId: "ch123")
+        client.startPing()
+        client.disconnect()
+        XCTAssertFalse(client.isPingKeepaliveActive,
+            "disconnect must tear the keepalive down with the socket")
+    }
+
+    func testStartPingIsIdempotentReplacement() {
+        let url = URL(string: "wss://relay.example.com")!
+        let client = RelayClient(relayURL: url, apiKey: "test-key", channelId: "ch123")
+        client.startPing()
+        client.startPing() // replaces, never stacks
+        XCTAssertTrue(client.isPingKeepaliveActive)
+        client.stopPing()
+        XCTAssertFalse(client.isPingKeepaliveActive,
+            "one stop clears the keepalive — startPing must not stack loops")
+    }
 }

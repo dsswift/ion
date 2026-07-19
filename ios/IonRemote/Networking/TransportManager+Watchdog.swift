@@ -1,26 +1,28 @@
 import Foundation
 
-// MARK: - LAN heartbeat watchdog
+// MARK: - LAN liveness watchdog
 
 // Extracted from TransportManager.swift (allowlisted "don't extend; extract")
 // when the watchdog gained re-arm + teardown behavior.
 
 extension TransportManager {
 
-    /// Start the LAN heartbeat liveness watchdog.
+    /// Start the LAN liveness watchdog.
     ///
-    /// The desktop emits a heartbeat every `HEARTBEAT_INTERVAL_MS` (15s). A
-    /// healthy LAN connection therefore refreshes `lastHeartbeatAt` at least
-    /// that often (the receive path updates it only for LAN-delivered
-    /// heartbeats — a relay-delivered heartbeat proves the relay works, not
-    /// the LAN socket). If two full intervals (`intervalSeconds`, default 30s)
-    /// elapse with no LAN heartbeat while LAN is the active transport, the
+    /// The desktop emits a heartbeat every `HEARTBEAT_INTERVAL_MS` (15s), so a
+    /// healthy LAN connection refreshes `lastLANFrameAt` at least that often —
+    /// and usually much more often, because EVERY successfully decrypted
+    /// LAN-delivered frame (snapshot, delta, resend replay) advances the mark,
+    /// not just heartbeats (the receive path updates it only for LAN-delivered
+    /// frames — relay-delivered traffic proves the relay works, not the LAN
+    /// socket). If two full heartbeat intervals (`intervalSeconds`, default
+    /// 30s) elapse with no LAN frame while LAN is the active transport, the
     /// socket is silently dead — TCP can wedge without delivering a FIN, so
     /// the receive loop never ends and no disconnect is ever observed.
     ///
     /// Armed by `setState` the moment LAN becomes the active transport (so a
-    /// LAN death before the first heartbeat is still detected) and re-armed by
-    /// each LAN heartbeat as a backstop. Arming baselines `lastHeartbeatAt` to
+    /// LAN death before the first frame is still detected) and re-armed by
+    /// each LAN frame as a backstop. Arming baselines `lastLANFrameAt` to
     /// now so a stale timestamp from a previous LAN session cannot fire the
     /// watchdog instantly.
     ///
@@ -30,22 +32,22 @@ extension TransportManager {
     /// `handleLANWatchdogFire()` so relay takes over immediately.
     ///
     /// Idempotent: an already-running watchdog is left in place (its loop
-    /// re-reads `lastHeartbeatAt`, so a fresh heartbeat effectively resets the
+    /// re-reads `lastLANFrameAt`, so a fresh frame effectively resets the
     /// timer without needing a restart). `intervalSeconds` is injectable so
     /// unit tests can drive the loop on a short cadence.
     func startLANHeartbeatWatchdog(intervalSeconds: Double = 30.0) {
         guard lanHeartbeatWatchdogTask == nil else { return }
-        lastHeartbeatAt = Date()
-        DiagnosticLog.log("lan heartbeat watchdog starting", tag: "transport", fields: [
+        lastLANFrameAt = Date()
+        DiagnosticLog.log("lan liveness watchdog starting", tag: "transport", fields: [
             "interval_s": String(intervalSeconds)
         ])
         lanHeartbeatWatchdogTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(intervalSeconds))
                 guard !Task.isCancelled, let self else { return }
-                let elapsed = Date().timeIntervalSince(self.lastHeartbeatAt)
+                let elapsed = Date().timeIntervalSince(self.lastLANFrameAt)
                 if elapsed > intervalSeconds {
-                    DiagnosticLog.log("lan heartbeat starved, tearing down lan", tag: "transport", level: .warn, fields: [
+                    DiagnosticLog.log("lan liveness starved, tearing down lan", tag: "transport", level: .warn, fields: [
                         "elapsed_s": String(Int(elapsed)),
                         "interval_s": String(intervalSeconds)
                     ])
@@ -60,12 +62,26 @@ extension TransportManager {
         }
     }
 
-    /// Stop the LAN heartbeat watchdog (called on stop(), on leaving
+    /// Stop the LAN liveness watchdog (called on stop(), on leaving
     /// `.lanPreferred`, and on teardown).
     func stopLANHeartbeatWatchdog() {
         lanHeartbeatWatchdogTask?.cancel()
         lanHeartbeatWatchdogTask = nil
     }
+
+    /// How long the post-resume probe waits for proof of LAN life before
+    /// tearing the socket down. Must comfortably cover one full desktop
+    /// heartbeat interval (15s): the desktop's heartbeat timer phase is
+    /// arbitrary relative to our resume moment, so the worst-case wait for a
+    /// heartbeat on an otherwise-idle-inbound connection is a full interval.
+    /// The old 3s window could only see a heartbeat that happened to land in
+    /// a 3s slice of a 15s cadence — it condemned healthy sockets on an ~80%
+    /// coin flip and caused the repeating resume→teardown→re-auth flap that
+    /// surfaced as "not connected" on tab create. 18s = one interval + 3s
+    /// jitter/delivery margin. In practice the probe usually resolves in
+    /// well under a second: the resume path fires a sync, and the snapshot
+    /// response (any decrypted LAN frame) advances `lastLANFrameAt`.
+    static let resumeProbeWindowSeconds: Double = 18.0
 
     /// Re-prove the LAN socket right after an app resume.
     ///
@@ -77,25 +93,32 @@ extension TransportManager {
     /// interval (30s). That is the exact window where user actions (e.g. a tab
     /// create) get silently lost after a background/resume cycle.
     ///
-    /// This fires a short one-shot probe: baseline `lastHeartbeatAt` to now, and
-    /// 3s later, if no LAN heartbeat has arrived (which would advance
-    /// `lastHeartbeatAt` past the baseline), tear the LAN down so relay takes
-    /// over immediately. The steady-state watchdog is left untouched — this only
-    /// tightens detection for the resume moment. Confirm-or-resend on the client
-    /// still guarantees create delivery; this reduces how often the hole opens
-    /// for every other command too.
-    func revalidateLANAfterResume() {
+    /// This fires a one-shot probe: baseline `lastLANFrameAt` to now, and
+    /// `resumeProbeWindowSeconds` later, if no LAN frame has arrived (which
+    /// would advance `lastLANFrameAt` past the baseline), tear the LAN down so
+    /// relay takes over. Because the resume path also sends a sync, a healthy
+    /// socket almost always proves itself within a second via the snapshot
+    /// response — the window length only bounds how long a genuine zombie can
+    /// linger, it does not delay recovery of a healthy socket. The steady-state
+    /// watchdog is left untouched. Confirm-or-resend on the client still
+    /// guarantees create delivery; this reduces how often the hole opens for
+    /// every other command too. `windowSeconds` is injectable for tests.
+    func revalidateLANAfterResume(windowSeconds: Double = TransportManager.resumeProbeWindowSeconds) {
         guard state == .lanPreferred else { return }
         let baseline = Date()
-        lastHeartbeatAt = baseline
-        DiagnosticLog.log("lan revalidate after resume: 3s probe armed", tag: "transport", fields: [:])
+        lastLANFrameAt = baseline
+        DiagnosticLog.log("lan revalidate after resume: probe armed", tag: "transport", fields: [
+            "window_s": String(windowSeconds)
+        ])
         Task { [weak self] in
-            try? await Task.sleep(for: .seconds(3))
+            try? await Task.sleep(for: .seconds(windowSeconds))
             guard let self, !Task.isCancelled else { return }
-            // A genuine LAN heartbeat since resume advances lastHeartbeatAt past
+            // A genuine LAN frame since resume advances lastLANFrameAt past
             // the baseline; if it hasn't moved, the LAN socket is not delivering.
-            guard self.state == .lanPreferred, self.lastHeartbeatAt <= baseline else { return }
-            DiagnosticLog.log("lan revalidate: no heartbeat 3s after resume, tearing down lan", tag: "transport", level: .warn, fields: [:])
+            guard self.state == .lanPreferred, self.lastLANFrameAt <= baseline else { return }
+            DiagnosticLog.log("lan revalidate: no frame after resume, tearing down lan", tag: "transport", level: .warn, fields: [
+                "window_s": String(windowSeconds)
+            ])
             self.stopLANHeartbeatWatchdog()
             self.handleLANWatchdogFire()
         }
