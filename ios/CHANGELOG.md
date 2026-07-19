@@ -10,6 +10,20 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.46.1](https://github.com/dsswift/ion/compare/ios-v1.46.0...ios-v1.46.1) (2026-07-19)
+
+### Bug Fixes
+
+* **ios:** reset transport seq dedup on epoch change after desktop restart ([14ce7cb](https://github.com/dsswift/ion/commit/14ce7cbccaeac1413dbcf1bd0b7be743107dc559))
+* **ios:** reconcile optimistic bubbles by clientMsgId in history merge ([063872a](https://github.com/dsswift/ion/commit/063872abacd16e04ed8b01aa92c381b73306fc55))
+* **ios:** preserve live tail by stored isLive boundary, not timestamps ([deca649](https://github.com/dsswift/ion/commit/deca6492d13813b9d87334c36fb00016672dee11))
+* **ios:** epoch-driven seq/dedup reset on inbound receive ([125f531](https://github.com/dsswift/ion/commit/125f531fa6c9bd8dad436fcda3fb0839912f95a5))
+* **desktop:** stop snapshot floods; per-device hash; single sync send ([2b1dc82](https://github.com/dsswift/ion/commit/2b1dc82b8cf1ca5f33e419c42d1298fd920e612e))
+* **ios:** decode tab_meta volatile fields for fingerprint heal ([d6cad3c](https://github.com/dsswift/ion/commit/d6cad3cb070455f487989417e23932709eebd89b))
+* **ios:** stop diagnostics pipeline from crashing the app ([c4759ee](https://github.com/dsswift/ion/commit/c4759ee1276520401e84e262d71c9ea6c4e2d03c))
+* **ios:** serialize inbound frames; coalesce resend; harden keepalive ([2fd0257](https://github.com/dsswift/ion/commit/2fd0257039f360dc76d61cb81cfc796cef7709ee))
+* **ios:** queue setPermissionMode in essential queue ([807e4e3](https://github.com/dsswift/ion/commit/807e4e31c4317d61ab2a6538cfc8fb4ea808c9b7))
+
 ## [1.46.0](https://github.com/dsswift/ion/compare/ios-v1.45.0...ios-v1.46.0) (2026-07-17)
 
 ### Features

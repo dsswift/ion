@@ -13,6 +13,20 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.47.0](https://github.com/dsswift/ion/compare/engine-v1.46.2...engine-v1.47.0) (2026-07-19)
+
+### Features
+
+* **engine:** add PlanFileProjectScoped capability to BackendCapabilities ([9275b9a](https://github.com/dsswift/ion/commit/9275b9a9521db5ce6ba6a5a473f0db9e6ad25e63))
+
+### Bug Fixes
+
+* **engine:** preserve interval cadence on host replacement; emit unhosted (#285, #280) ([36f8b4b](https://github.com/dsswift/ion/commit/36f8b4be01a31612fd2d1acc75914dc2727bd300))
+* **engine:** resolve plan-mode bash allowlist fresh at dispatch ([8f32626](https://github.com/dsswift/ion/commit/8f3262662b0c761368ad38cf49f61355eec5d8e5))
+* **engine:** downgrade HasKey success log from INFO to DEBUG ([e52ae08](https://github.com/dsswift/ion/commit/e52ae08679cee95364eef8cd23f1abbf4fe14c30))
+* **engine:** preserve retryable classification for stream-idle errors ([c0cb342](https://github.com/dsswift/ion/commit/c0cb3422345b691ac1ad86ee145234fb819a75cb))
+* **engine:** raise codex backend test timeouts for CI race detector ([7979a2f](https://github.com/dsswift/ion/commit/7979a2ff244b1b56316734d6e8dfed9b235edd8d))
+
 ## [1.46.2](https://github.com/dsswift/ion/compare/engine-v1.46.1...engine-v1.46.2) (2026-07-18)
 
 ### Bug Fixes

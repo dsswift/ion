@@ -10,6 +10,27 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.61.0](https://github.com/dsswift/ion/compare/desktop-v1.60.0...desktop-v1.61.0) (2026-07-19)
+
+### Features
+
+* **desktop:** renderer-push snapshot projection replaces IIFE poll ([39c2d75](https://github.com/dsswift/ion/commit/39c2d75f30d898402764b641041bc77bf9b08bca))
+* **desktop:** two-lane send queue removes head-of-line blocking ([38d0c2d](https://github.com/dsswift/ion/commit/38d0c2d184463bd935f6f942aea2f1592ac2e66a))
+* **desktop:** offload transport compress+encrypt to a worker thread ([6263e9e](https://github.com/dsswift/ion/commit/6263e9ee936687c99e2e89490a8feb1c9ec103b7))
+
+### Bug Fixes
+
+* **desktop:** mirror schedule missed/unhosted in EngineEvent union ([3826bdc](https://github.com/dsswift/ion/commit/3826bdc3bde767ca446ea5ff9771a6510d568c4d))
+* **desktop:** edit plan-mode bash allowlist in engine.json, not settings.json ([5523db8](https://github.com/dsswift/ion/commit/5523db8200491c87633d46d2e64a6910c058fe22))
+* **desktop:** flush pending text before /clear + compaction sends ([be15c48](https://github.com/dsswift/ion/commit/be15c486e6d42d5d90bdf817b8d8cf848e853c4d))
+* **desktop:** add outbound-seq epoch to stamp per-transport generation ([35c5061](https://github.com/dsswift/ion/commit/35c50615fddda265bf9adbee1e1a0d1bb2659e2b))
+* **desktop:** omit cold fingerprint, sort by tool activity, dehash cost ([400711c](https://github.com/dsswift/ion/commit/400711cabb89d4deac3d66affea61fd4a1562103))
+* **desktop:** annotate history entries with clientMsgId for iOS reconcile ([b7081f4](https://github.com/dsswift/ion/commit/b7081f4d776356d92080fe47339b91802ccd4999))
+* **ios:** preserve live tail by stored isLive boundary, not timestamps ([deca649](https://github.com/dsswift/ion/commit/deca6492d13813b9d87334c36fb00016672dee11))
+* **desktop:** epoch-driven seq/dedup reset on both wire directions ([7f87d04](https://github.com/dsswift/ion/commit/7f87d04ce836a321929a3b7e8ffb9cb60b28fbed))
+* **desktop:** stop snapshot floods; per-device hash; single sync send ([2b1dc82](https://github.com/dsswift/ion/commit/2b1dc82b8cf1ca5f33e419c42d1298fd920e612e))
+* **ios:** decode tab_meta volatile fields for fingerprint heal ([d6cad3c](https://github.com/dsswift/ion/commit/d6cad3cb070455f487989417e23932709eebd89b))
+
 ## [1.60.0](https://github.com/dsswift/ion/compare/desktop-v1.59.0...desktop-v1.60.0) (2026-07-17)
 
 ### Features
