@@ -302,7 +302,7 @@ extension SessionViewModel {
         case .engineDispatchActivity(_, _, let agentId, let conversationId, let kind, let seq, let toolName, let toolId, let textDelta, let isError, let ts):
             handleDispatchActivity(dispatchAgentId: agentId, conversationId: conversationId, kind: kind, seq: seq, ts: ts, toolName: toolName, toolId: toolId, textDelta: textDelta, isError: isError)
 
-        case .engineError(let tabId, let instanceId, let message):
+        case .engineError(let tabId, let instanceId, let message, _):
             handleEngineError(tabId: tabId, instanceId: instanceId, message: message)
 
         case .engineNotify(let tabId, let instanceId, let message, let level, _):

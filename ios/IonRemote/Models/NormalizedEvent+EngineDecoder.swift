@@ -142,7 +142,8 @@ extension RemoteEvent {
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
             let message = try container.decodeIfPresent(String.self, forKey: .message) ?? ""
-            return .engineError(tabId: tabId, instanceId: instanceId, message: message)
+            let stderrTail = try container.decodeIfPresent([String].self, forKey: .stderrTail) ?? []
+            return .engineError(tabId: tabId, instanceId: instanceId, message: message, stderrTail: stderrTail)
 
         case .engineNotify:
             let tabId = try container.decode(String.self, forKey: .tabId)

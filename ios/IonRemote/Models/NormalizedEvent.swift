@@ -144,7 +144,7 @@ enum RemoteEvent: Sendable {
     /// conversation. INCREMENTAL/append-by-key — the file-backed reconcile is
     /// the snapshot authority. Mirrors desktop_dispatch_activity.
     case engineDispatchActivity(tabId: String, instanceId: String?, agentId: String, conversationId: String, kind: String, seq: Int, toolName: String?, toolId: String?, textDelta: String?, isError: Bool, ts: Int64?)
-    case engineError(tabId: String, instanceId: String?, message: String)
+    case engineError(tabId: String, instanceId: String?, message: String, stderrTail: [String])
     case engineNotify(tabId: String, instanceId: String?, message: String, level: String, metadata: [String: AnyCodable]?)
     case engineDialog(tabId: String, instanceId: String?, dialogId: String, method: String, title: String, options: [String]?, defaultValue: String?)
     case engineDialogResolved(tabId: String, instanceId: String?, dialogId: String)

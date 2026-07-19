@@ -161,7 +161,7 @@ extension DiagnosticLog {
         case .engineDispatchActivity(let tabId, _, let agentId, let convId, let kind, let seq, _, let toolId, _, _, _):
             log("EVENT: engineDispatchActivity tab=\(tabId.prefix(8)) agent=\(agentId.prefix(16)) conv=\(convId.prefix(8)) kind=\(kind) seq=\(seq) toolId=\(toolId ?? "")", tag: "session", level: .info)
 
-        case .engineError(let tabId, let instId, let msg):
+        case .engineError(let tabId, let instId, let msg, _):
             log("ERR: engine tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") msg=\(msg.prefix(80))", tag: "session", level: .warn)
 
         case .engineNotify(let tabId, let instId, let msg, let level, _):
