@@ -39,7 +39,13 @@ func loadChildExtension(sa SessionAccessor, registry *DispatchRegistry, opts *ex
 	// alongside the dispatch id and depth for the child.
 	utils.LogWithFields(utils.LevelDebug, "server", "dispatch child setup", map[string]any{"model": opts.Name, "project_path": projectPath, "child_dispatch_id": childDispatchId, "child_depth": childDepth, "session_key": sa.SessionKey()})
 	if err := childExtHost.Load(opts.ExtensionDir, extCfg); err != nil {
-		utils.LogWithFields(utils.LevelInfo, "session", "child extension load failed", map[string]any{"error": err.Error()})
+		stderrTail := childExtHost.StderrTail()
+		utils.LogWithFields(utils.LevelError, "session", "child extension load failed", map[string]any{
+			"error":      err.Error(),
+			"stderr":     stderrTail,
+			"ext_dir":    opts.ExtensionDir,
+			"session_key": sa.SessionKey(),
+		})
 		return nil
 	}
 

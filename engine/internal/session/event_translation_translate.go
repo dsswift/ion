@@ -93,6 +93,7 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 			Retryable:     e.Retryable,
 			RetryAfterMs:  e.RetryAfterMs,
 			HttpStatus:    e.HttpStatus,
+			StderrTail:    e.StderrTail,
 		}
 
 	case *types.UsageEvent:

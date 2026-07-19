@@ -162,10 +162,15 @@ type Host struct {
 	exitDone chan struct{}
 
 	// stderrBuf captures the last N lines of subprocess stderr so they
-	// can be surfaced in engine_extension_died events. Written by the
-	// stderr reader goroutine, read by StderrTail.
-	stderrMu  sync.Mutex
-	stderrBuf []string
+	// can be surfaced in engine_extension_died and engine_error events.
+	// Written by the stderr reader goroutine, read by StderrTail.
+	stderrMu      sync.Mutex
+	stderrBuf     []string
+	// stderrDrainWg tracks the stderr-drain goroutine launched in
+	// launchStderrDrain. WaitStderrDrain blocks until the goroutine has
+	// finished draining, ensuring the ring buffer is fully populated
+	// before init-failure handlers read StderrTail.
+	stderrDrainWg sync.WaitGroup
 
 	// Async-trigger plumbing: per-host asyncreg.Registry plus captured
 	// session key for resolving "which session does this fire belong
@@ -467,6 +472,16 @@ func (h *Host) StderrTail() []string {
 	out := make([]string, len(h.stderrBuf))
 	copy(out, h.stderrBuf)
 	return out
+}
+
+// WaitStderrDrain blocks until the stderr-drain goroutine launched by
+// launchStderrDrain has finished. On an init failure the subprocess exits
+// immediately, so this completes quickly. Callers on the init-failure path
+// must call this before reading StderrTail so the ring buffer is fully
+// populated (the drain goroutine may still be in-flight when disposeInternal
+// returns, because disposeInternal waits for the stdout reader — not stderr).
+func (h *Host) WaitStderrDrain() {
+	h.stderrDrainWg.Wait()
 }
 
 // appendStderr adds a line to the stderr ring buffer, evicting the oldest

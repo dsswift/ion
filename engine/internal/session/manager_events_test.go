@@ -202,6 +202,45 @@ func TestHandleNormalizedEvent_ErrorEvent(t *testing.T) {
 	}
 }
 
+// TestHandleNormalizedEvent_ErrorEvent_StderrTail pins that StderrTail on an
+// ErrorEvent is forwarded through translateToEngineEvent to the wire event.
+// This ensures the normalized path produces the same wire shape as the
+// direct-emit sites (start_session.go, prompt_extensions.go).
+func TestHandleNormalizedEvent_ErrorEvent_StderrTail(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	ec := newEventCollector(mgr)
+
+	_, _ = mgr.StartSession("err-stderr", defaultConfig())
+	_ = mgr.SendPrompt("err-stderr", "go", nil)
+
+	keys := mb.startedKeys()
+	mb.emitNormalized(keys[0], types.NormalizedEvent{
+		Data: &types.ErrorEvent{
+			ErrorMessage: "extension crashed",
+			StderrTail:   []string{"panic: nil pointer", "goroutine 1 [running]"},
+		},
+	})
+
+	errEvents := ec.byType("engine_error")
+	if len(errEvents) == 0 {
+		t.Fatal("expected engine_error event")
+	}
+	ev := errEvents[0].event
+	if ev.EventMessage != "extension crashed" {
+		t.Errorf("EventMessage = %q, want %q", ev.EventMessage, "extension crashed")
+	}
+	if len(ev.StderrTail) != 2 {
+		t.Fatalf("StderrTail len = %d, want 2; got %v", len(ev.StderrTail), ev.StderrTail)
+	}
+	if ev.StderrTail[0] != "panic: nil pointer" {
+		t.Errorf("StderrTail[0] = %q, want %q", ev.StderrTail[0], "panic: nil pointer")
+	}
+	if ev.StderrTail[1] != "goroutine 1 [running]" {
+		t.Errorf("StderrTail[1] = %q, want %q", ev.StderrTail[1], "goroutine 1 [running]")
+	}
+}
+
 func TestHandleNormalizedEvent_UsageEvent(t *testing.T) {
 	mb := newMockBackend()
 	mgr := NewManager(mb)
