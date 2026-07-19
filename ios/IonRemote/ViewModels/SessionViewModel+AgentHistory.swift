@@ -166,17 +166,26 @@ extension SessionViewModel {
         // One uniform path: sinceSeq=0 (full pull) filters seq > 0, which is
         // every line, so there is no special-case export branch. nextSeq is the
         // cursor the desktop persists and echoes on the next request.
-        let (logs, nextSeq) = DiagnosticLog.exportIncrementalSince(sinceSeq: sinceSeq)
-        // pairingId is the ECDH channel ID — it identifies which desktop pairing
-        // collected these logs (the desktop → iOS wire identity). The stable
-        // per-device hardware identity (device_id) is stamped directly on every
-        // log line by iOS; it does not need to cross the wire separately.
-        let pairingId = activeDeviceId ?? "unknown"
-        DiagnosticLog.log("diagnostic export", tag: "session", level: .debug, fields: [
-            "since_seq": String(sinceSeq),
-            "next_seq": String(nextSeq)
-        ])
-        send(.diagnosticLogsResponse(logs: logs, pairingId: pairingId, nextSeq: nextSeq), intent: .automaticEssential)
+        //
+        // The export runs on DiagnosticLog's writeQueue — NOT the main actor.
+        // The desktop pulls every 5 s; the old synchronous full-history rescan
+        // (read all retained files, split, JSONSerialization per line — 4.4 MB
+        // observed) on the main thread was watchdog-kill territory. We await
+        // the background export and hop back to the main actor only to send.
+        Task { @MainActor [weak self] in
+            let (logs, nextSeq) = await DiagnosticLog.exportIncrementalSince(sinceSeq: sinceSeq)
+            guard let self else { return }
+            // pairingId is the ECDH channel ID — it identifies which desktop pairing
+            // collected these logs (the desktop → iOS wire identity). The stable
+            // per-device hardware identity (device_id) is stamped directly on every
+            // log line by iOS; it does not need to cross the wire separately.
+            let pairingId = self.activeDeviceId ?? "unknown"
+            DiagnosticLog.log("diagnostic export", tag: "session", level: .debug, fields: [
+                "since_seq": String(sinceSeq),
+                "next_seq": String(nextSeq)
+            ])
+            self.send(.diagnosticLogsResponse(logs: logs, pairingId: pairingId, nextSeq: nextSeq), intent: .automaticEssential)
+        }
     }
 
     // MARK: - Dispatch terminal cleanup

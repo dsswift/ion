@@ -525,7 +525,7 @@ extension SessionViewModel {
             // status field said "connected" and the real cause was a nil
             // transport).
             guard connectionState == .connected, let transport else {
-                let key = command.essentialKey ?? "unknown:\(command)"
+                let key = command.essentialKey ?? "unknown:\(command.kindName)"
                 DiagnosticLog.log("essential deferred (transport unavailable)", tag: "session.commands", fields: [
                     "reason": key,
                     "status": connectionState.rawValue,
@@ -544,7 +544,7 @@ extension SessionViewModel {
                     // the transport down, which drives reconnect -> sync ->
                     // snapshot -> drain) instead of being lost.
                     guard let self else { return }
-                    let key = command.essentialKey ?? "unknown:\(command)"
+                    let key = command.essentialKey ?? "unknown:\(command.kindName)"
                     DiagnosticLog.log("essential send failed, requeued for reconnect flush", tag: "session.commands", level: .warn, fields: [
                         "reason": key,
                         "error": error.localizedDescription

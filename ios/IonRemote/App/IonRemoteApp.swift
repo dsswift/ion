@@ -9,6 +9,10 @@ struct IonRemoteApp: App {
 
     init() {
         CrashReporter.install()
+        // MetricKit catches what the in-process breadcrumb cannot: jetsam
+        // memory kills, watchdog terminations, and hangs — delivered by the
+        // OS on the next launch. Device-only (no simulator payloads).
+        MetricKitCrashObserver.start()
     }
 
     var body: some Scene {

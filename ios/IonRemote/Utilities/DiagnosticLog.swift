@@ -48,6 +48,29 @@ final class DiagnosticLog: @unchecked Sendable {
     /// Maximum entries in the in-memory ring buffer (for live view).
     private static let maxEntries = 500
 
+    /// Maximum stored bytes for a single entry's message. A runaway caller
+    /// (e.g. a queue key that accidentally interpolated a multi-megabyte
+    /// command payload) must never occupy megabytes in the in-memory ring
+    /// buffer AND again in every exported line. Applied at entry creation so
+    /// both the ring buffer and the on-disk/exported JSONL are bounded.
+    static let maxMessageBytes = 4_096
+
+    /// Marker appended to a message that was truncated at `maxMessageBytes`.
+    static let truncationMarker = "…[truncated]"
+
+    /// Truncate `msg` to at most `maxMessageBytes` UTF-8 bytes (on a character
+    /// boundary), appending `truncationMarker` when truncation occurred.
+    static func boundedMessage(_ msg: String) -> String {
+        guard msg.utf8.count > maxMessageBytes else { return msg }
+        var out = String(msg.prefix(maxMessageBytes))
+        // prefix(n) counts Characters, not bytes — shrink until the byte
+        // budget holds (multi-byte characters make chars < bytes).
+        while out.utf8.count > maxMessageBytes {
+            out = String(out.prefix(out.count - out.utf8.count + maxMessageBytes))
+        }
+        return out + truncationMarker
+    }
+
     /// Maximum number of rotated session files to keep (plus current).
     /// 4 rotated + 1 current = 5 sessions total.
     private static let maxSessionFiles = 4
@@ -57,10 +80,28 @@ final class DiagnosticLog: @unchecked Sendable {
 
     private let lock = OSAllocatedUnfairLock(initialState: [Entry]())
     private let logger = Logger(subsystem: "com.sprague.ion.mobile", category: "diag")
-    private let logDirectory: URL
-    private let currentLogURL: URL
+    /// Internal (not private) so tests can inject rotated session files to
+    /// exercise the export-cursor rotation path.
+    let logDirectory: URL
+    let currentLogURL: URL
     private var fileHandle: FileHandle?
     let writeQueue = DispatchQueue(label: "com.ion.diag-writer")
+
+    // MARK: - Export cursor (writeQueue-confined)
+
+    /// Per-file byte offset already scanned by the incremental export. Keyed by
+    /// file name ("current.log" / "session-…​.log"). Bytes before the offset
+    /// were parsed on a previous pull; a pull re-reads only the tail past the
+    /// offset. A file with no entry (e.g. a rotation the cursor has not seen)
+    /// is read from 0. Access confined to `writeQueue`.
+    private var exportFileOffsets: [String: UInt64] = [:]
+
+    /// The maximum `fields.seq` observed across all bytes the cursor has
+    /// skipped past. The cursor is only valid for a request whose `sinceSeq`
+    /// is ≥ this value — otherwise a skipped line could qualify for the pull,
+    /// so the export resets the cursor and rescans from 0. Access confined to
+    /// `writeQueue`.
+    private var exportScannedMaxSeq: Int = 0
 
     /// RFC3339Nano UTC formatter for the `ts` field.
     let tsFormatter: ISO8601DateFormatter = {
@@ -238,13 +279,19 @@ final class DiagnosticLog: @unchecked Sendable {
         shared.readAllSessions()
     }
 
-    /// Return all retained log lines whose `fields.seq` is strictly greater than
-    /// `sinceSeq`. Used by the desktop's incremental log pull so repeated pulls
-    /// transfer only new lines and never re-ship history already persisted.
+    /// Return all retained log lines whose `fields.seq` is strictly greater
+    /// than `sinceSeq`. Used by the desktop's incremental log pull so repeated
+    /// pulls transfer only new lines and never re-ship history already
+    /// persisted.
     ///
-    /// Returns `(logs: "<new JSONL lines>", nextSeq: <max seq seen + 1, or the
-    /// input floor when nothing is newer>)`. The desktop advances its persisted
-    /// per-device cursor to `nextSeq`.
+    /// Returns `(logs: "<new JSONL lines>", nextSeq: <the resume cursor —
+    /// the highest seq shipped, or the input floor when nothing is newer>)`.
+    /// The desktop persists `nextSeq` and echoes it back as the next pull's
+    /// `sinceSeq`; its dedup also drops any line with `seq <= mark`. The
+    /// cursor must therefore be the highest seq ALREADY SHIPPED — reporting
+    /// `maxSeq + 1` (the previous behavior) made both the iOS strict-greater
+    /// filter and the desktop dedup skip the line later stamped exactly
+    /// `maxSeq + 1`, silently losing one line per non-empty pull cycle.
     ///
     /// Seq-based rather than line-count-based: a line count is invalidated the
     /// moment an on-device session file rotates out (the Nth line no longer
@@ -252,19 +299,85 @@ final class DiagnosticLog: @unchecked Sendable {
     /// identity independent of file layout. Lines with no parseable `seq` (only
     /// possible from a pre-upgrade retained session) are treated as already-seen
     /// and skipped, so a mixed-schema history never re-ships.
-    static func exportIncrementalSince(sinceSeq: Int) -> (logs: String, nextSeq: Int) {
-        let all = shared.readAllSessions()
-        let lines = all.isEmpty ? [] : all.components(separatedBy: "\n").filter { !$0.isEmpty }
-        var newLines: [String] = []
-        var maxSeq = sinceSeq
-        for line in lines {
-            guard let seq = Self.parseSeq(line) else { continue }
-            if seq > sinceSeq {
-                newLines.append(line)
-                if seq > maxSeq { maxSeq = seq }
+    ///
+    /// **Async + cursor-based.** The read/split/parse work runs on `writeQueue`
+    /// (never the main actor — the previous main-thread full-history rescan of
+    /// up to 10 MB every 5 s was watchdog-kill territory), and a per-file byte
+    /// cursor means each pull reads only the tail written since the last pull.
+    /// A rotated-in file with no cursor entry is read from 0. A request whose
+    /// `sinceSeq` precedes what the cursor already skipped (desktop reset /
+    /// seq regression) resets the cursor and rescans everything, so
+    /// correctness never depends on the cursor. Output format is byte-identical
+    /// to the pre-cursor implementation (the desktop parses it).
+    static func exportIncrementalSince(sinceSeq: Int) async -> (logs: String, nextSeq: Int) {
+        await withCheckedContinuation { continuation in
+            shared.writeQueue.async {
+                continuation.resume(returning: shared._exportIncrementalOnQueue(sinceSeq: sinceSeq))
             }
         }
-        let nextSeq = maxSeq + (newLines.isEmpty ? 0 : 1)
+    }
+
+    /// writeQueue-confined incremental export. See `exportIncrementalSince`.
+    private func _exportIncrementalOnQueue(sinceSeq: Int) -> (logs: String, nextSeq: Int) {
+        // Cursor validity: the cursor skips bytes whose lines were already
+        // scanned; every skipped line has seq ≤ exportScannedMaxSeq. A skipped
+        // line qualifies for this pull only when its seq > sinceSeq, so the
+        // cursor is sound iff sinceSeq ≥ exportScannedMaxSeq. When the desktop
+        // asks from an older position (fresh desktop, cursor file loss, seq
+        // regression), reset and rescan from 0 — correctness never depends on
+        // the cursor.
+        if sinceSeq < exportScannedMaxSeq {
+            exportFileOffsets.removeAll()
+            exportScannedMaxSeq = 0
+        }
+
+        let fm = FileManager.default
+        var liveNames = allLogFiles()
+        liveNames.append("current.log")
+
+        // Drop cursor entries for files pruned/rotated away so the map never
+        // grows unbounded across long-running sessions.
+        let liveSet = Set(liveNames)
+        exportFileOffsets = exportFileOffsets.filter { liveSet.contains($0.key) }
+
+        var newLines: [String] = []
+        var maxSeq = sinceSeq
+
+        for name in liveNames {
+            let url = logDirectory.appendingPathComponent(name)
+            guard fm.fileExists(atPath: url.path),
+                  let handle = try? FileHandle(forReadingFrom: url) else { continue }
+            defer { try? handle.close() }
+
+            let start = exportFileOffsets[name] ?? 0
+            let end = (try? handle.seekToEnd()) ?? 0
+            guard end > start else { continue } // nothing new in this file
+            try? handle.seek(toOffset: start)
+            guard let data = try? handle.read(upToCount: Int(end - start)), !data.isEmpty else {
+                continue
+            }
+            // Writes are whole-line and serialized on this same queue, so the
+            // tail always ends on a line boundary — no partial-line handling
+            // is needed and the cursor can advance to `end`.
+            let tail = String(decoding: data, as: UTF8.self)
+            for line in tail.components(separatedBy: "\n") where !line.isEmpty {
+                guard let seq = Self.parseSeq(line) else { continue }
+                if seq > exportScannedMaxSeq { exportScannedMaxSeq = seq }
+                if seq > sinceSeq {
+                    newLines.append(line)
+                    if seq > maxSeq { maxSeq = seq }
+                }
+            }
+            exportFileOffsets[name] = end
+        }
+
+        // Resume cursor = highest seq shipped (see doc comment). The old
+        // `maxSeq + 1` inflated the cursor past the next unwritten line,
+        // and the strict-greater filter above (plus the desktop's
+        // `seq <= mark` dedup) then dropped the line stamped exactly
+        // maxSeq+1 — one line silently lost per non-empty pull cycle
+        // (pre-existing off-by-one, fixed here).
+        let nextSeq = maxSeq
         let newContent = newLines.isEmpty ? "" : newLines.joined(separator: "\n") + "\n"
         return (newContent, nextSeq)
     }
@@ -305,8 +418,12 @@ final class DiagnosticLog: @unchecked Sendable {
     // MARK: - Internal
 
     private func append(_ msg: String, tag: String, level: Level, fields: [String: String]) {
-        logger.info("\(msg, privacy: .public)")
-        let entry = Entry(timestamp: Date(), message: msg, level: level, tag: tag)
+        // Bound the message BEFORE it is stored anywhere: the in-memory ring
+        // buffer, the os_log echo, and the encoded JSONL line all see the
+        // capped form, so no path can retain an unbounded payload.
+        let bounded = Self.boundedMessage(msg)
+        logger.info("\(bounded, privacy: .public)")
+        let entry = Entry(timestamp: Date(), message: bounded, level: level, tag: tag)
         lock.withLock { state in
             state.append(entry)
             if state.count > Self.maxEntries {

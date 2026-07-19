@@ -49,6 +49,18 @@ extension RemoteCommand {
         case .reportFocus(let tabId, _):
             // Keyed by tabId (nil = backgrounded). Each focus state is distinct.
             return "reportFocus:\(tabId ?? "nil")"
+        case .diagnosticLogsResponse:
+            // Bare kind — last-write-wins is correct here: a newer export
+            // supersedes a queued older one (each response carries all lines
+            // past the desktop's cursor, so the newest is a superset and the
+            // desktop re-pulls from its persisted cursor regardless).
+            //
+            // CRITICAL: without this case the fallback key in
+            // send(_:intent:) was "unknown:\(command)", which string-
+            // interpolates the ENTIRE payload — observed 2 MB keys from a
+            // single diagnosticLogsResponse — and every queue/supersede log
+            // line then embedded that key, amplifying memory until jetsam.
+            return "diagnosticLogsResponse"
         case .prompt(let tabId, _, _, let clientMsgId, _, _, _):
             // User prompts are eligible for the essential queue so a message
             // sent over a wedged/reconnecting transport is re-enqueued and
