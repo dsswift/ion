@@ -65,6 +65,34 @@ export function validateExternalUrl(url: string): string | null {
 }
 
 /**
+ * Validate a renderer-pushed remote tab-states payload
+ * (IPC.REMOTE_TAB_STATES_PUSH) before it is cached in
+ * `state.rendererSnapshotCache` and served to remote clients.
+ *
+ * Untrusted-input gate, not a full schema check: the payload is produced by
+ * our own renderer (remote-projection.ts) and mapped field-by-field by
+ * `projectRendererTab` downstream, so per-field coercion happens there. This
+ * validator rejects structurally malformed payloads (wrong container types,
+ * tabs without a string id) so a compromised or buggy renderer cannot poison
+ * the snapshot cache with shapes the mapping layer would choke on.
+ */
+export function isValidRemoteTabStatesPayload(payload: unknown): payload is {
+  tabs: Array<{ id: string } & Record<string, unknown>>
+  resourceManifest: Record<string, unknown>
+} {
+  if (typeof payload !== 'object' || payload === null) return false
+  const p = payload as Record<string, unknown>
+  if (!Array.isArray(p.tabs)) return false
+  for (const t of p.tabs) {
+    if (typeof t !== 'object' || t === null) return false
+    const id = (t as Record<string, unknown>).id
+    if (typeof id !== 'string' || id.length === 0 || id.length > 128) return false
+  }
+  if (typeof p.resourceManifest !== 'object' || p.resourceManifest === null || Array.isArray(p.resourceManifest)) return false
+  return true
+}
+
+/**
  * Escape a string for safe embedding inside single quotes in a shell command.
  *
  * Single-quoted strings in POSIX shells do not expand variables ($), backticks,

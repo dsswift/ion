@@ -37,36 +37,53 @@ import { join } from 'path'
 import { projectRendererTab } from '../snapshot-project'
 
 const SNAPSHOT_SRC = readFileSync(join(__dirname, '..', 'snapshot.ts'), 'utf-8')
+// The legacy IIFE moved to snapshot-renderer-poll.ts (cold-start / stall
+// fallback of the renderer-push architecture); the canonical projection is
+// renderer/stores/remote-projection.ts (behaviorally pinned in
+// remote-projection.test.ts). The IIFE guards below scan the fallback file;
+// the import/call guards scan all three read-path sources.
+const POLL_SRC = readFileSync(join(__dirname, '..', 'snapshot-renderer-poll.ts'), 'utf-8')
+const PROJECTION_SRC = readFileSync(
+  join(__dirname, '..', '..', '..', 'renderer', 'stores', 'remote-projection.ts'),
+  'utf-8',
+)
 
 // ─── GUARD ────────────────────────────────────────────────────────────────────
 
 describe('WI-003 guard: deriveEngineParentStatus removed', () => {
-  it('snapshot.ts does not import snapshot-derive', () => {
+  it('no snapshot source imports snapshot-derive', () => {
     expect(SNAPSHOT_SRC).not.toContain('snapshot-derive')
+    expect(POLL_SRC).not.toContain('snapshot-derive')
+    expect(PROJECTION_SRC).not.toContain('snapshot-derive')
   })
 
-  it('snapshot.ts does not call deriveEngineParentStatus', () => {
+  it('no snapshot source calls deriveEngineParentStatus', () => {
     expect(SNAPSHOT_SRC).not.toContain('deriveEngineParentStatus')
+    expect(POLL_SRC).not.toContain('deriveEngineParentStatus')
+    expect(PROJECTION_SRC).not.toContain('deriveEngineParentStatus')
   })
 
-  it('snapshot IIFE has no derivedStatus variable (status is uniform)', () => {
+  it('fallback IIFE and canonical projection have no derivedStatus variable (status is uniform)', () => {
     // If derivedStatus appears, someone reintroduced the compensation.
-    // The IIFE must project t.status directly — no intermediate variable.
-    const start = SNAPSHOT_SRC.indexOf('executeJavaScript(`')
-    const open = SNAPSHOT_SRC.indexOf('`', start)
-    const close = SNAPSHOT_SRC.indexOf('`', open + 1)
-    const iife = SNAPSHOT_SRC.slice(open + 1, close)
+    // Status must project t.status directly — no intermediate variable.
+    const start = POLL_SRC.indexOf('executeJavaScript(`')
+    expect(start).toBeGreaterThan(-1)
+    const open = POLL_SRC.indexOf('`', start)
+    const close = POLL_SRC.indexOf('`', open + 1)
+    const iife = POLL_SRC.slice(open + 1, close)
     expect(iife).not.toContain('derivedStatus')
+    expect(PROJECTION_SRC).not.toContain('derivedStatus')
   })
 
-  it('snapshot IIFE has no anyInstanceRunning aggregate (retired with derivation)', () => {
+  it('fallback IIFE has no anyInstanceRunning aggregate (retired with derivation)', () => {
     // anyInstanceRunning was only used by the derivation loop.
     // After WI-003 it is gone; only anyInstanceHasRunningChildren survives
     // (drives the hasRunningChildren yellow-dot field).
-    const start = SNAPSHOT_SRC.indexOf('executeJavaScript(`')
-    const open = SNAPSHOT_SRC.indexOf('`', start)
-    const close = SNAPSHOT_SRC.indexOf('`', open + 1)
-    const iife = SNAPSHOT_SRC.slice(open + 1, close)
+    const start = POLL_SRC.indexOf('executeJavaScript(`')
+    expect(start).toBeGreaterThan(-1)
+    const open = POLL_SRC.indexOf('`', start)
+    const close = POLL_SRC.indexOf('`', open + 1)
+    const iife = POLL_SRC.slice(open + 1, close)
     expect(iife).not.toContain('anyInstanceRunning')
   })
 })

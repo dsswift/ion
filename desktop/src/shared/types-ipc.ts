@@ -297,6 +297,14 @@ export const IPC = {
   // remote transport without waiting for the next 5 s snapshot poll tick.
   TAB_META_CHANGED: 'ion:tab-meta-changed',
 
+  // Renderer-push snapshot projection (renderer → main). The OWNER (overlay)
+  // renderer projects RemoteTabStatesPayload from its session store on change
+  // (debounced) and pushes it here; the main process caches it in
+  // state.rendererSnapshotCache and getRemoteTabStates() serves the cache
+  // instead of polling the renderer via executeJavaScript. See
+  // renderer/stores/remote-projection-push.ts and main/remote/snapshot.ts.
+  REMOTE_TAB_STATES_PUSH: 'ion:remote-tab-states-push',
+
   // Structured renderer-side logging (renderer → main). The main process
   // stamps component=desktop and forwards to the desktop logger.
   LOG_WRITE: 'log:write',

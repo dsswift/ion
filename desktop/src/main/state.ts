@@ -2,6 +2,7 @@ import type { BrowserWindow, Tray } from 'electron'
 import type { ChildProcess } from 'child_process'
 import type { watch } from 'fs'
 import type { RemoteTransport } from './remote/transport'
+import type { RendererSnapshotCache } from '../shared/remote-projection-types'
 import { EngineBridge } from './engine-bridge'
 import { EngineControlPlane } from './engine-control-plane'
 import { wireEarlyStopPolicy } from './early-stop-policy'
@@ -67,6 +68,15 @@ interface MutableState {
   atvActiveTabId: string | null
   /** The active tab's engineProfileId (extension scope for the ATV seed). */
   atvActiveProfileId: string | null
+  /**
+   * Last renderer-pushed remote tab-state projection (renderer-push snapshot
+   * architecture). The OWNER renderer pushes RemoteTabStatesPayload over
+   * IPC.REMOTE_TAB_STATES_PUSH on store change (debounced);
+   * getRemoteTabStates() serves this cache when fresh and falls back to the
+   * legacy executeJavaScript poll when the cache is empty or stale
+   * (renderer not ready / hung). Null until the first push.
+   */
+  rendererSnapshotCache: RendererSnapshotCache | null
 }
 
 export const state: MutableState = {
@@ -83,6 +93,7 @@ export const state: MutableState = {
   atvWindow: null,
   atvActiveTabId: null,
   atvActiveProfileId: null,
+  rendererSnapshotCache: null,
 }
 
 /** Cached model list from engine, populated by LIST_MODELS IPC and included in remote snapshots. */

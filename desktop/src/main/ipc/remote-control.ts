@@ -1,19 +1,51 @@
 import { ipcMain } from 'electron'
 import { IPC } from '../../shared/types'
-import { log as _log } from '../logger'
+import { log as _log, debug as _debug } from '../logger'
 import { state, pairingManager, relayDiscovery } from '../state'
 import { readSettings } from '../settings-store'
 import { initRemoteTransport } from '../remote/transport-init'
 import { revokeDeviceLocally } from '../remote/revoke'
 import { requestLogsFromFirstDevice } from '../remote/handlers/diagnostics'
 import { setRemoteDisplay, readRemoteDisplay } from '../remote/handlers/display'
+import { isValidRemoteTabStatesPayload } from '../ipc-validation'
+import type { RemoteTabStatesPayload } from '../../shared/remote-projection-types'
 import type { DiscoveredRelay } from '../remote/discovery'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
 }
 
+function debug(msg: string, fields?: Record<string, unknown>): void {
+  _debug('main', msg, fields)
+}
+
 export function registerRemoteControlIpc(): void {
+  // Renderer-push snapshot projection: the OWNER renderer pushes its
+  // projected RemoteTabStatesPayload on store change (debounced). Cache it
+  // with an arrival timestamp; getRemoteTabStates() (remote/snapshot.ts)
+  // serves the cache when fresh and falls back to the legacy renderer poll
+  // when empty/stale. Validated before caching — a malformed payload is
+  // dropped (logged), never cached.
+  ipcMain.on(IPC.REMOTE_TAB_STATES_PUSH, (_event, payload: unknown) => {
+    if (!isValidRemoteTabStatesPayload(payload)) {
+      log('remote_tab_states_push: rejected malformed payload', {
+        payload_type: typeof payload,
+        has_tabs: !!(payload as { tabs?: unknown })?.tabs,
+      })
+      return
+    }
+    const p = payload as unknown as RemoteTabStatesPayload
+    state.rendererSnapshotCache = {
+      tabs: p.tabs,
+      resourceManifest: p.resourceManifest,
+      receivedAt: Date.now(),
+    }
+    debug('remote_tab_states_push: cache updated', {
+      tab_count: p.tabs.length,
+      resource_kinds: Object.keys(p.resourceManifest).length,
+    })
+  })
+
   ipcMain.handle(IPC.REMOTE_GET_STATE, () => {
     return { transportState: state.remoteTransport?.state || 'disconnected' }
   })

@@ -15,6 +15,7 @@ import {
   shellSingleQuote,
   escapeAppleScript,
   resolveDiscoveryWorkingDir,
+  isValidRemoteTabStatesPayload,
 } from '../ipc-validation'
 
 // ─── Fixtures ───
@@ -214,5 +215,44 @@ describe('resolveDiscoveryWorkingDir', () => {
   it('rejects a present but non-absolute (malformed) path with null', () => {
     expect(resolveDiscoveryWorkingDir('relative/path')).toBeNull()
     expect(resolveDiscoveryWorkingDir('/bad\npath')).toBeNull()
+  })
+})
+
+describe('isValidRemoteTabStatesPayload', () => {
+  it('accepts a well-formed payload (tabs with string ids + object manifest)', () => {
+    expect(isValidRemoteTabStatesPayload({
+      tabs: [{ id: 'tab-1', title: 'T' }, { id: 'tab-2' }],
+      resourceManifest: { briefing: [] },
+    })).toBe(true)
+  })
+
+  it('accepts an empty payload (no tabs, empty manifest)', () => {
+    expect(isValidRemoteTabStatesPayload({ tabs: [], resourceManifest: {} })).toBe(true)
+  })
+
+  it('rejects non-object payloads', () => {
+    expect(isValidRemoteTabStatesPayload(null)).toBe(false)
+    expect(isValidRemoteTabStatesPayload(undefined)).toBe(false)
+    expect(isValidRemoteTabStatesPayload('str')).toBe(false)
+    expect(isValidRemoteTabStatesPayload(42)).toBe(false)
+  })
+
+  it('rejects a payload whose tabs is not an array', () => {
+    expect(isValidRemoteTabStatesPayload({ tabs: {}, resourceManifest: {} })).toBe(false)
+    expect(isValidRemoteTabStatesPayload({ resourceManifest: {} })).toBe(false)
+  })
+
+  it('rejects tabs entries without a valid string id', () => {
+    expect(isValidRemoteTabStatesPayload({ tabs: [{}], resourceManifest: {} })).toBe(false)
+    expect(isValidRemoteTabStatesPayload({ tabs: [{ id: 7 }], resourceManifest: {} })).toBe(false)
+    expect(isValidRemoteTabStatesPayload({ tabs: [{ id: '' }], resourceManifest: {} })).toBe(false)
+    expect(isValidRemoteTabStatesPayload({ tabs: [null], resourceManifest: {} })).toBe(false)
+    expect(isValidRemoteTabStatesPayload({ tabs: [{ id: 'x'.repeat(129) }], resourceManifest: {} })).toBe(false)
+  })
+
+  it('rejects a payload whose resourceManifest is not a plain object', () => {
+    expect(isValidRemoteTabStatesPayload({ tabs: [], resourceManifest: null })).toBe(false)
+    expect(isValidRemoteTabStatesPayload({ tabs: [], resourceManifest: [] })).toBe(false)
+    expect(isValidRemoteTabStatesPayload({ tabs: [] })).toBe(false)
   })
 })

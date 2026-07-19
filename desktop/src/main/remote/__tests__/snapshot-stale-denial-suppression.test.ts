@@ -39,7 +39,11 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { projectRendererTab } from '../snapshot-project'
 
-const SNAPSHOT_SRC = readFileSync(join(__dirname, '..', 'snapshot.ts'), 'utf-8')
+// The legacy IIFE now lives in snapshot-renderer-poll.ts (cold-start / stall
+// fallback). The canonical extracted projection (remote-projection.ts) pins
+// the same suppression behaviorally in remote-projection.test.ts; this file
+// keeps the source-pins on the fallback string, which must stay in sync.
+const SNAPSHOT_SRC = readFileSync(join(__dirname, '..', 'snapshot-renderer-poll.ts'), 'utf-8')
 
 /** Extract the body of the `executeJavaScript(`...`)` template literal. */
 function extractIife(src: string): string {
@@ -84,10 +88,11 @@ describe('stale-denial suppression on running tab: IIFE guard', () => {
   })
 
   it('IIFE logs (does not silently drop) the suppressed promotion', () => {
-    // A running tab whose denial is suppressed must emit a console.log
-    // so it is observable in desktop.log. Verify the suppression log block
-    // exists in the IIFE after the promotion guard.
+    // A running tab whose denial is suppressed must emit an observable log
+    // line in desktop.jsonl. The IIFE routes through the preload logWrite
+    // bridge (fallbackLog) — console.* is forbidden (ADR-019).
     expect(iife).toContain('suppressed stale denial promotion')
+    expect(iife).toContain('fallbackLog(')
   })
 })
 

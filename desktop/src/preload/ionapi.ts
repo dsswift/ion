@@ -24,6 +24,14 @@ export interface IonAPI extends AtvApi {
    * Main pushes a desktop_tab_meta delta to iOS immediately (no poll wait).
    */
   tabMetaChanged(payload: { tabId: string; title?: string; runCostUsd?: number; totalCostUsd?: number; groupId?: string | null }): void
+  /**
+   * Fire-and-forget push of the renderer's remote tab-state projection
+   * (renderer-push snapshot architecture). The OWNER renderer calls this on
+   * store change (debounced ~250 ms); the main process caches the payload and
+   * getRemoteTabStates() serves the cache. See
+   * renderer/stores/remote-projection-push.ts.
+   */
+  pushRemoteTabStates(payload: import('../shared/remote-projection-types').RemoteTabStatesPayload): void
   selectDirectory(): Promise<string | null>
   selectExtensionFiles(): Promise<string[] | null>
   getEngineHostInfo(): Promise<{ ok: boolean; error?: string; data?: EngineHostInfo }>

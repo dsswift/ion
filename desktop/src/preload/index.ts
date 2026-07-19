@@ -23,6 +23,7 @@ const api: IonAPI = {
   closeTab: (tabId) => ipcRenderer.invoke(IPC.CLOSE_TAB, tabId),
   tabMetaChanged: (payload: { tabId: string; title?: string; runCostUsd?: number; totalCostUsd?: number; groupId?: string | null }) =>
     ipcRenderer.send(IPC.TAB_META_CHANGED, payload),
+  pushRemoteTabStates: (payload) => ipcRenderer.send(IPC.REMOTE_TAB_STATES_PUSH, payload),
   selectDirectory: () => ipcRenderer.invoke(IPC.SELECT_DIRECTORY),
   selectExtensionFiles: () => ipcRenderer.invoke(IPC.SELECT_EXTENSION_FILES),
   getEngineHostInfo: () => ipcRenderer.invoke(IPC.GET_ENGINE_HOST_INFO),

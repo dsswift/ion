@@ -105,8 +105,11 @@ describe('projectRendererTab — engineProfileId wire projection', () => {
 //
 // The main-process path (above) carries the behavioral parity assertion.
 
+// The legacy IIFE now lives in snapshot-renderer-poll.ts (cold-start / stall
+// fallback). The canonical extracted projection is behaviorally pinned in
+// renderer/stores/__tests__/remote-projection.test.ts.
 const SNAPSHOT_SRC = readFileSync(
-  join(__dirname, '..', 'snapshot.ts'),
+  join(__dirname, '..', 'snapshot-renderer-poll.ts'),
   'utf-8',
 )
 

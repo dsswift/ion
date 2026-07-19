@@ -24,8 +24,14 @@ import { join } from 'path'
  * projects t.status uniformly — no per-tab-type derivation.
  */
 
+// The legacy IIFE now lives in snapshot-renderer-poll.ts — the cold-start /
+// stall fallback of the renderer-push snapshot architecture. The canonical
+// projection is renderer/stores/remote-projection.ts (a real module that CAN
+// import helpers), behaviorally pinned in remote-projection.test.ts. These
+// scope guards still matter for the fallback string, which runs in the
+// renderer global scope via executeJavaScript and cannot import anything.
 const SNAPSHOT_SRC = readFileSync(
-  join(__dirname, '..', 'snapshot.ts'),
+  join(__dirname, '..', 'snapshot-renderer-poll.ts'),
   'utf-8',
 )
 
@@ -81,9 +87,18 @@ describe('snapshot IIFE scope guard (#256 Defect 2)', () => {
 
   it('logs (does not silently swallow) an IIFE failure in the catch', () => {
     // The original ReferenceError went undetected because the catch returned
-    // an empty result with no log. The catch must surface the failure.
-    expect(iife).toContain('console.error')
-    expect(iife).toMatch(/catch\s*\(\s*e\s*\)\s*\{[\s\S]*console\.error/)
+    // an empty result with no log. The catch must surface the failure via the
+    // preload logWrite bridge — console.* is forbidden in renderer-evaluated
+    // code (ADR-019), so the assertion targets the bridge, not console.error.
+    expect(iife).toMatch(/catch\s*\(\s*e\s*\)\s*\{[\s\S]*logWrite/)
+  })
+
+  it('contains no console.* calls anywhere (ADR-019 zero tolerance)', () => {
+    // The pre-extraction IIFE carried console.log / console.error — the exact
+    // ADR-019 violations the renderer-push re-architecture removed. Pin that
+    // they never come back in the fallback string. Matches CALL sites
+    // (console.<method>(), so a prose mention in a comment doesn't trip it.
+    expect(iife).not.toMatch(/console\.\w+\(/)
   })
 
   // --- WI-002 guard: no tabHasExtensions fork in permissionMode/thinkingEffort ---
