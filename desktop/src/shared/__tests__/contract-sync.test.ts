@@ -71,6 +71,7 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
     'retryAfterMs',
     'retryable',
     'sessionId',
+    'stderrTail',
   ],
   session_dead: ['exitCode', 'signal', 'stderrTail'],
   rate_limit: ['rateLimitType', 'resetsAt', 'status'],

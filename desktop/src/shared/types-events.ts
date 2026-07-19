@@ -172,7 +172,7 @@ export type NormalizedEvent =
   | { type: 'tool_result'; toolId: string; content: string; isError: boolean; images?: Array<{ path: string; mediaType: string; source?: string }> }
   | { type: 'task_update'; message: AssistantMessagePayload }
   | { type: 'task_complete'; result: string; lastText?: string; costUsd: number; durationMs: number; numTurns: number; conversationTurns?: number; usage: UsageData; sessionId: string; permissionDenials?: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> }
-  | { type: 'error'; message: string; isError: boolean; sessionId?: string; errorCode?: string; retryable?: boolean; retryAfterMs?: number; httpStatus?: number }
+  | { type: 'error'; message: string; isError: boolean; sessionId?: string; errorCode?: string; retryable?: boolean; retryAfterMs?: number; httpStatus?: number; stderrTail?: string[] }
   | { type: 'session_dead'; exitCode: number | null; signal: string | null; stderrTail: string[] }
   | { type: 'rate_limit'; status: string; resetsAt: number; rateLimitType: string }
   | { type: 'usage'; usage: UsageData }
