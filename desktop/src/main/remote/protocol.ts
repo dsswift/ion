@@ -436,6 +436,26 @@ export type RemoteEvent =
    * (graceful fallback).
    */
   | { type: 'desktop_request_diagnostic_logs'; sinceSeq?: number }
+  // ─── desktop_notification (forwarded from engine_notification to iOS) ──
+  // Forwarded by event-wiring.ts when the engine emits engine_notification.
+  // push=true variant is sent with remoteTransport push=true so the relay
+  // triggers APNs when the mobile peer is offline. push=false variant is sent
+  // when the phone is connected so it can update its notification badge live.
+  // notifyTitle/Body/Kind are the engine's display-layer fields; pushTitle/Body
+  // are the relay-level APNs alert strings (fall back to notifyTitle/Body when
+  // absent). iOS decodes this as engineNotification in NormalizedEvent.swift.
+  | {
+      type: 'desktop_notification'
+      tabId: string
+      instanceId?: string | null
+      notifyTitle: string
+      notifyBody: string
+      notifyKind: string
+      notifyResourceId?: string
+      push: boolean
+      pushTitle?: string
+      pushBody?: string
+    }
   // ─── desktop_intercept (forwarded from engine to iOS) ────────────────
   // The desktop forwards this to iOS devices that have the target session's
   // tab focused and have interceptEnabled. Carries the full intercept payload
