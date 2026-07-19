@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.61.1](https://github.com/dsswift/ion/compare/desktop-v1.61.0...desktop-v1.61.1) (2026-07-19)
+
+### Bug Fixes
+
+* **desktop:** surface stderrTail from engine_error through to renderer (#201) ([5b2ae94](https://github.com/dsswift/ion/commit/5b2ae946a4c94cdbf45ea671e82b909fe18215b1))
+
 ## [1.61.0](https://github.com/dsswift/ion/compare/desktop-v1.60.0...desktop-v1.61.0) (2026-07-19)
 
 ### Features

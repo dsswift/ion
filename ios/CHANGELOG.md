@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.46.2](https://github.com/dsswift/ion/compare/ios-v1.46.1...ios-v1.46.2) (2026-07-19)
+
+### Bug Fixes
+
+* **ios:** add stderrTail to engineError enum case (#201) ([4eca7ce](https://github.com/dsswift/ion/commit/4eca7ce0fab5934fe965cb51a5a22b3bef72b60e))
+
 ## [1.46.1](https://github.com/dsswift/ion/compare/ios-v1.46.0...ios-v1.46.1) (2026-07-19)
 
 ### Bug Fixes

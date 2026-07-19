@@ -13,6 +13,13 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.47.1](https://github.com/dsswift/ion/compare/engine-v1.47.0...engine-v1.47.1) (2026-07-19)
+
+### Bug Fixes
+
+* **engine:** surface extension init-failure stderr in error events (#201) ([a7c1bbd](https://github.com/dsswift/ion/commit/a7c1bbd805b9c032ca3b87e910b9e8e5e9a7f8a1))
+* **engine:** structured EMFILE error + fd pressure logging in Bash tool (#241) ([77da33c](https://github.com/dsswift/ion/commit/77da33cf8f439f1ba04da347f66ac5465534e6a2))
+
 ## [1.47.0](https://github.com/dsswift/ion/compare/engine-v1.46.2...engine-v1.47.0) (2026-07-19)
 
 ### Features
