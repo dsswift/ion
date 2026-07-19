@@ -141,3 +141,27 @@ describe('replayRange', () => {
     expect(delivered).toEqual([3, 4]) // only the surviving frames replayed
   })
 })
+
+describe('cleanup (unpair / transport stop)', () => {
+  it('clearDevice drops that device\'s frames; others untouched', () => {
+    const buf = new RetransmitBuffer()
+    buf.record('devA', { seq: 1, ts: 0, deviceId: 'devA', ciphertext: 'aaaa' } as any)
+    buf.record('devB', { seq: 1, ts: 0, deviceId: 'devB', ciphertext: 'bbbb' } as any)
+
+    buf.clearDevice('devA')
+
+    expect(buf.range('devA', 1, 1).frames).toHaveLength(0)
+    expect(buf.range('devB', 1, 1).frames).toHaveLength(1)
+  })
+
+  it('clear drops every device\'s frames', () => {
+    const buf = new RetransmitBuffer()
+    buf.record('devA', { seq: 1, ts: 0, deviceId: 'devA', ciphertext: 'aaaa' } as any)
+    buf.record('devB', { seq: 1, ts: 0, deviceId: 'devB', ciphertext: 'bbbb' } as any)
+
+    buf.clear()
+
+    expect(buf.range('devA', 1, 1).frames).toHaveLength(0)
+    expect(buf.range('devB', 1, 1).frames).toHaveLength(0)
+  })
+})

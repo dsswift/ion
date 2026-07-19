@@ -121,6 +121,12 @@ export class RetransmitBuffer {
     this.byDevice.delete(deviceId)
     this.bytesByDevice.delete(deviceId)
   }
+
+  /** Drop every device's buffered frames (transport stop). */
+  clear(): void {
+    this.byDevice.clear()
+    this.bytesByDevice.clear()
+  }
 }
 
 /**

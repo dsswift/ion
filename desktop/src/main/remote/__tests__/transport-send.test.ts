@@ -192,11 +192,16 @@ describe('frameWithinWireCap — shared gate for the direct sendToDevice path', 
     expect(errorSpy).not.toHaveBeenCalled()
   })
 
-  it('transport.ts sendToDevice routes through the shared gate (source pin)', () => {
+  it('sendDirect (transport.ts sendToDevice body) routes through the shared gate (source pin)', () => {
     // The direct path bypasses sendToAll; without this gate an oversized
     // frame from sendToDevice would slip past the receivers' read limits.
-    const src = readFileSync(join(__dirname, '../transport.ts'), 'utf-8')
-    const sendToDeviceBody = src.slice(src.indexOf('sendToDevice(deviceId: string'), src.indexOf('resend(deviceId: string'))
-    expect(sendToDeviceBody).toContain('frameWithinWireCap')
+    // The body was extracted from transport.ts into sendDirect here.
+    const src = readFileSync(join(__dirname, '../transport-send.ts'), 'utf-8')
+    const sendDirectBody = src.slice(src.indexOf('export function sendDirect('))
+    expect(sendDirectBody).toContain('frameWithinWireCap')
+    // And transport.ts sendToDevice actually delegates to it.
+    const transportSrc = readFileSync(join(__dirname, '../transport.ts'), 'utf-8')
+    const sendToDeviceBody = transportSrc.slice(transportSrc.indexOf('sendToDevice(deviceId: string'), transportSrc.indexOf('resend(deviceId: string'))
+    expect(sendToDeviceBody).toContain('sendDirect(')
   })
 })

@@ -12,26 +12,24 @@
  * derived via HKDF-SHA256.
  */
 
-import { randomBytes, createCipheriv, createDecipheriv, createHmac, createHash, generateKeyPairSync, diffieHellman, createPublicKey, createPrivateKey, timingSafeEqual } from 'crypto'
+import { randomBytes, createDecipheriv, createHmac, createHash, generateKeyPairSync, diffieHellman, createPublicKey, createPrivateKey, timingSafeEqual } from 'crypto'
 import { log as _log } from '../logger'
+import { KEY_LENGTH, NONCE_LENGTH, TAG_LENGTH, CIPHER_ALG, generateNonce, encrypt } from './crypto-core'
+
+// The pure AES-GCM encrypt primitive lives in crypto-core.ts so the transport
+// crypto worker (a worker_threads context where the main-process logger is
+// unsafe) can share it. Re-exported here so all existing callers keep their
+// import site.
+export { generateNonce, encrypt }
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('Crypto', msg, fields)
 }
 
-const KEY_LENGTH = 32
-const NONCE_LENGTH = 12 // AES-256-GCM uses 12-byte nonce (recommended)
-const TAG_LENGTH = 16   // GCM auth tag
-const CIPHER_ALG = 'aes-256-gcm' as const
 
 /** Generate a random 256-bit key. */
 export function generateKey(): Buffer {
   return randomBytes(KEY_LENGTH)
-}
-
-/** Generate a random 12-byte nonce for ChaCha20-Poly1305. */
-export function generateNonce(): Buffer {
-  return randomBytes(NONCE_LENGTH)
 }
 
 /** Generate a 256-bit device token. */
@@ -47,31 +45,6 @@ export function generateDeviceToken(): Buffer {
 export function deriveChannelId(sharedSecret: Buffer): string {
   const hash = createHash('sha256').update(sharedSecret).digest()
   return hash.subarray(0, 16).toString('hex')
-}
-
-/**
- * Encrypt a plaintext payload with AES-256-GCM.
- *
- * Accepts a UTF-8 string or a raw Buffer (for pre-compressed payloads).
- * Returns { nonce, ciphertext } both as base64 strings.
- * The ciphertext includes the 16-byte GCM auth tag appended.
- * This matches iOS CryptoKit AES.GCM.seal() output format.
- */
-export function encrypt(plaintext: string | Buffer, key: Buffer): { nonce: string; ciphertext: string } {
-  const nonce = generateNonce()
-  const plaintextBuf = Buffer.isBuffer(plaintext) ? plaintext : Buffer.from(plaintext, 'utf-8')
-
-  const cipher = createCipheriv(CIPHER_ALG, key, nonce, { authTagLength: TAG_LENGTH })
-  const encrypted = Buffer.concat([cipher.update(plaintextBuf), cipher.final()])
-  const tag = cipher.getAuthTag()
-
-  // iOS AES.GCM.SealedBox stores: ciphertext + tag
-  const combined = Buffer.concat([encrypted, tag])
-
-  return {
-    nonce: nonce.toString('base64'),
-    ciphertext: combined.toString('base64'),
-  }
 }
 
 /**

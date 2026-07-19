@@ -15,6 +15,11 @@ export interface LanAuthCtx {
   getPairedDevice: (deviceId: string) => PairedDevice | null
   recomputeState: () => void
   emit: (event: string, ...args: unknown[]) => void
+  /** Called after a device completes LAN auth (state recomputed, socket
+   *  rekeyed). The transport sends an immediate heartbeat here so the new
+   *  LAN socket carries proof of life right away — iOS's resume probe waits
+   *  only 3s for a LAN-delivered frame before tearing the socket down. */
+  onAuthenticated?: (deviceId: string) => void
 }
 
 export function startLanAuth(ctx: LanAuthCtx, connectionId: string): void {
@@ -109,6 +114,9 @@ export function handleLanAuthResponse(ctx: LanAuthCtx, msg: WireMessage, connect
 
   ctx.recomputeState()
   ctx.emit('peer-connected')
+  // Immediate proof-of-life AFTER recomputeState so _deliverFrame routes the
+  // heartbeat over the just-authenticated LAN socket.
+  ctx.onAuthenticated?.(device.id)
 }
 
 export function sendAuthResult(ctx: LanAuthCtx, connectionId: string, success: boolean, reason?: string): void {

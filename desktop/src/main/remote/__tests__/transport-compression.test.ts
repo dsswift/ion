@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { deflateRawSync, inflateRawSync } from 'zlib'
 import { encrypt, decrypt, generateKey } from '../crypto'
+import { compressPayload, decompressPayload, COMPRESSION_FLOOR_BYTES } from '../transport-compression'
 
 /**
  * Tests for the compression-before-encryption pipeline.
@@ -112,5 +113,34 @@ describe('transport compression round-trip', () => {
     // The raw DEFLATE data never starts with 0x01 naturally — DEFLATE blocks
     // start with bits that don't produce 0x01 as a first byte in practice.
     // But our version prefix makes it unambiguous.
+  })
+})
+
+describe('compression floor (small payloads ship uncompressed)', () => {
+  const key = generateKey()
+  it('a payload below COMPRESSION_FLOOR_BYTES passes through raw (no 0x01 prefix)', () => {
+    const small = JSON.stringify({ type: 'desktop_text_delta', tabId: 't1', text: 'hi' })
+    expect(small.length).toBeLessThan(COMPRESSION_FLOOR_BYTES)
+    const wire = compressPayload(small)
+    // Raw UTF-8, no prefix: first byte is printable ASCII ('{'), never 0x01.
+    expect(wire[0]).toBe('{'.charCodeAt(0))
+    // decompressPayload's non-0x01 branch returns it verbatim.
+    expect(decompressPayload(wire)).toBe(small)
+  })
+
+  it('a payload at/above the floor still compresses with the 0x01 prefix', () => {
+    const big = JSON.stringify({ type: 'desktop_snapshot', pad: 'x'.repeat(COMPRESSION_FLOOR_BYTES) })
+    const wire = compressPayload(big)
+    expect(wire[0]).toBe(0x01)
+    expect(decompressPayload(wire)).toBe(big)
+  })
+
+  it('floor payloads survive the full encrypt/decrypt round-trip', () => {
+    const small = JSON.stringify({ type: 'desktop_heartbeat', seq: 7, ts: 1, buffered: 0 })
+    const wire = compressPayload(small)
+    const { nonce, ciphertext } = encrypt(wire, key)
+    const decrypted = decrypt(nonce, ciphertext, key)
+    expect(decrypted).not.toBeNull()
+    expect(decompressPayload(decrypted!)).toBe(small)
   })
 })

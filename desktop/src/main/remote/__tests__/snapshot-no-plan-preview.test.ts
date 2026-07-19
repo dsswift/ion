@@ -65,17 +65,27 @@ describe('relay send — single authoritative compression', () => {
     expect(src).not.toContain('compressPayload')
   })
 
-  it('sendToAll compresses exactly once per broadcast (outside the per-device loop)', () => {
+  it('compresses exactly once per send path (broadcast, direct, pipeline)', () => {
+    // transport-send.ts owns both main-thread paths: the broadcast sync
+    // fallback in sendToAll and the direct sendToDevice body (sendDirect,
+    // extracted from transport.ts for the file-size cap). One compress call
+    // each — compressing inside a per-device loop multiplied the top wedge
+    // candidate by the device count.
     const src = readFileSync(join(__dirname, '../transport-send.ts'), 'utf-8')
-    // Exactly one compressPayload CALL in the file — the shared per-broadcast
-    // compress. (The import line is `compressPayload }`, not `compressPayload(`.)
-    expect(src.match(/\bcompressPayload\(/g) || []).toHaveLength(1)
+    expect(src.match(/\bcompressPayload\(/g) || []).toHaveLength(2)
+    // The worker pipeline compresses once per event, before its per-device
+    // encrypt loop (the map over devices).
+    const pipeline = readFileSync(join(__dirname, '../transport-frame-pipeline.ts'), 'utf-8')
+    expect(pipeline.match(/\bcompressPayload\(/g) || []).toHaveLength(1)
+    expect(pipeline.indexOf('compressPayload(')).toBeLessThan(pipeline.indexOf('devices.map'))
   })
 
-  it('sendToDevice compresses once; inbound path still decompresses frames', () => {
+  it('transport.ts no longer compresses; inbound path still decompresses frames', () => {
+    // The outbound compress moved with sendDirect into transport-send.ts;
+    // transport.ts must not call compressPayload (a call here would mean a
+    // second, duplicated compress path).
     const src = readFileSync(join(__dirname, '../transport.ts'), 'utf-8')
-    // One outbound compress in the direct single-device path...
-    expect(src.match(/\bcompressPayload\(/g) || []).toHaveLength(1)
+    expect(src.match(/\bcompressPayload\(/g) || []).toHaveLength(0)
     // ...and the inbound decompress is still present (extracted to
     // transport-inbound-payload.ts when transport.ts hit the file-size cap).
     const inbound = readFileSync(join(__dirname, '../transport-inbound-payload.ts'), 'utf-8')

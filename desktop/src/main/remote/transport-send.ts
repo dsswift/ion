@@ -10,6 +10,7 @@
 
 import { log as _log, error as _error } from '../logger'
 import { buildDeviceFrame } from './transport-frame'
+import { buildFramesForEvent } from './transport-frame-pipeline'
 import { compressPayload } from './transport-compression'
 import { mark, Activity } from '../watchdog'
 import { MAX_WIRE_FRAME_BYTES } from './protocol'
@@ -152,6 +153,17 @@ export interface SendCtx {
   deliverFrame: (deviceId: string, frame: WireMessage) => boolean
   /** Outbound-seq epoch (generation id) stamped on every built frame. */
   epoch?: number
+  /**
+   * Optional crypto-worker host (transport-send-worker-host.ts). When present
+   * and live, sendToAll offloads DEFLATE + AES-GCM to the worker thread; seqs
+   * are still allocated here in drain order (the ordering anchor), and the
+   * host applies cap gate → retransmit.record → deliverFrame on reply. When
+   * absent or dead, the synchronous pipeline below runs unchanged.
+   */
+  cryptoHost?: {
+    usingWorker: boolean
+    submit: (plaintext: string, eventType: string, devices: { deviceId: string; seq: number }[], opts: { push: boolean; pushTitle?: string; pushBody?: string; epoch?: number }, enqueuedAt?: number) => boolean
+  }
 }
 
 /** Enqueue an event for delivery, applying backpressure, then drain. */
@@ -245,19 +257,57 @@ export function drainSendQueue(ctx: SendCtx): void {
 /** Encrypt and send an event to all paired devices. Returns true if it reached at least one. */
 /**
  * Authoritative wire-frame size gate, shared by every path that builds a
- * frame (broadcast sendToAll here and the direct sendToDevice path in
- * transport.ts). Returns false — after logging an ERROR — when the serialized
- * frame exceeds MAX_WIRE_FRAME_BYTES and must be dropped before it is
- * recorded for retransmit or delivered. See the call-site comment in
+ * frame (broadcast sendToAll here, the direct sendToDevice path in
+ * transport.ts, and the crypto-worker host, which measures the serialized
+ * length on the worker). Returns false — after logging an ERROR — when the
+ * serialized frame exceeds MAX_WIRE_FRAME_BYTES and must be dropped before it
+ * is recorded for retransmit or delivered. See the call-site comment in
  * sendToAll for the full rationale (receiver read limits, reconnect loop).
  */
-export function frameWithinWireCap(msg: WireMessage, eventType: string, deviceId: string): boolean {
-  const frameChars = JSON.stringify(msg).length
+export function frameLengthWithinWireCap(frameChars: number, eventType: string, deviceId: string): boolean {
   if (frameChars > MAX_WIRE_FRAME_BYTES) {
     _error('RemoteTransport', 'transport: dropping oversized wire frame', { event_type: eventType, device_id: deviceId, frame_chars: frameChars, cap: MAX_WIRE_FRAME_BYTES, note: 'iOS heals via snapshot resync' })
     return false
   }
   return true
+}
+
+/** Convenience wrapper measuring the frame itself (direct sendToDevice path). */
+export function frameWithinWireCap(msg: WireMessage, eventType: string, deviceId: string): boolean {
+  return frameLengthWithinWireCap(JSON.stringify(msg).length, eventType, deviceId)
+}
+
+/**
+ * Direct single-device send (transport.ts sendToDevice body). No queue, no
+ * worker: this path carries only small frames (heartbeats, unpair notices,
+ * resend_unavailable) where a thread hop buys nothing — see the WI-10 design
+ * note in transport-send-worker-host.ts. Applies the same two gates as the
+ * broadcast path: plaintext early gate, then the authoritative wire-frame cap
+ * BEFORE retransmit.record (an undeliverable frame must never be replayable).
+ * enqueuedAt = sendTs, so queue dwell reads 0 for direct sends.
+ */
+export function sendDirect(
+  deviceId: string,
+  secret: Buffer,
+  event: RemoteEvent,
+  push: boolean,
+  nextSeq: (deviceId: string) => number,
+  epoch: number | undefined,
+  retransmit: RetransmitBuffer,
+  deliverFrame: (deviceId: string, frame: WireMessage) => boolean,
+): void {
+  const plaintext = JSON.stringify(event)
+  if (plaintext.length > MAX_PLAINTEXT_BYTES) {
+    log('transport: dropping oversized event before sendToDevice', { event_type: event.type, chars: plaintext.length, cap: MAX_PLAINTEXT_BYTES })
+    return
+  }
+  mark(Activity.RelayCompress)
+  const wire = compressPayload(plaintext)
+  const msg = buildDeviceFrame(deviceId, secret, plaintext, wire, event.type, nextSeq, push, undefined, undefined, Date.now(), epoch)
+  if (!msg) return
+  if (!frameWithinWireCap(msg, event.type, deviceId)) return
+  retransmit.record(deviceId, msg)
+  deliverFrame(deviceId, msg)
 }
 
 export function sendToAll(
@@ -289,6 +339,37 @@ export function sendToAll(
   // bytes are identical for every device — only encryption (per secret) is
   // per-device. Compressing inside the per-device loop multiplied the top wedge
   // candidate by the connected-device count.
+
+  // Worker offload: when a live crypto worker is attached, allocate every
+  // device's seq NOW (in drain order — the seq-ordering anchor) and hand the
+  // compress+encrypt to the worker thread. The host finishes each frame on
+  // reply (cap gate → retransmit.record → deliverFrame) in FIFO reply order,
+  // so the wire stream is identical to the synchronous path. Returns true
+  // optimistically: delivery outcome is not knowable synchronously here, and
+  // the caller (drainSendQueue) does not use the return value — durability is
+  // the retransmit buffer either way.
+  if (ctx.cryptoHost?.usingWorker) {
+    const devices = [...ctx.deviceSecrets.keys()].map((deviceId) => ({ deviceId, seq: ctx.nextSeq(deviceId) }))
+    if (devices.length === 0) return false
+    const submitted = ctx.cryptoHost.submit(plaintext, eventType, devices, { push, pushTitle, pushBody, epoch: ctx.epoch }, enqueuedAt)
+    if (submitted) return true
+    // Worker died between the check and the post: fall through to the sync
+    // path — but the seqs above are already allocated. Build with THOSE seqs
+    // via the pure pipeline so the wire stream stays contiguous.
+    mark(Activity.RelayCompress)
+    const { results } = buildFramesForEvent(plaintext, devices, ctx.deviceSecrets, { push, pushTitle, pushBody, epoch: ctx.epoch })
+    let sent = false
+    for (const r of results) {
+      if (!r.frame) continue
+      if (!frameLengthWithinWireCap(r.serializedLength, eventType, r.deviceId)) continue
+      mark(Activity.RelayRecord)
+      ctx.retransmit.record(r.deviceId, r.frame)
+      mark(Activity.RelayDeliver)
+      if (ctx.deliverFrame(r.deviceId, r.frame)) sent = true
+    }
+    return sent
+  }
+
   mark(Activity.RelayCompress)
   const wire = compressPayload(plaintext)
 

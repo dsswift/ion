@@ -13,14 +13,29 @@ import { deflateRawSync, inflateRawSync } from 'zlib'
 const COMPRESSED_PREFIX = 0x01
 
 /**
+ * Compression floor: payloads below this size ship uncompressed. DEFLATE on a
+ * 40-byte text delta produces output LARGER than the input (dictionary + block
+ * overhead) while burning CPU at the delta flush rate — the exact hot path.
+ * The 0x01-prefix protocol already supports the passthrough: receivers treat a
+ * non-0x01 first byte as raw UTF-8 (see decompressPayload here and the iOS
+ * branch in TransportManager+Receive.swift), and a JSON payload's first byte
+ * is always printable ASCII, never 0x01. Zero wire change.
+ */
+export const COMPRESSION_FLOOR_BYTES = 512
+
+/**
  * Compress a plaintext JSON string for encrypted transport.
  *
- * Returns a Buffer with a 0x01 version byte followed by raw DEFLATE data.
- * The receiver checks the first byte after decryption: if 0x01, inflate
- * the remaining bytes; otherwise treat as raw UTF-8.
+ * Returns a Buffer with a 0x01 version byte followed by raw DEFLATE data —
+ * or, below COMPRESSION_FLOOR_BYTES, the raw UTF-8 bytes unprefixed (the
+ * legacy-compatible uncompressed form). The receiver checks the first byte
+ * after decryption: if 0x01, inflate the remaining bytes; otherwise treat as
+ * raw UTF-8.
  */
 export function compressPayload(plaintext: string): Buffer {
-  const compressed = deflateRawSync(Buffer.from(plaintext, 'utf-8'))
+  const raw = Buffer.from(plaintext, 'utf-8')
+  if (raw.length < COMPRESSION_FLOOR_BYTES) return raw
+  const compressed = deflateRawSync(raw)
   return Buffer.concat([Buffer.from([COMPRESSED_PREFIX]), compressed])
 }
 

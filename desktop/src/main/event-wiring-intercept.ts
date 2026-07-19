@@ -72,7 +72,10 @@ export async function handleInterceptEvent(tabId: string, event: Extract<EngineE
     }
   }
 
-  const desktopWindowFocused = focusState.focused
+  // Raw LOCAL window focus, deliberately not the mixed attention signal
+  // (focusState.focused is true when a remote client is connected, which says
+  // nothing about whether a person is looking at the desktop window).
+  const desktopWindowFocused = focusState.windowFocused
   const desktopHasTabFocused = desktopWindowFocused && desktopActiveTabId === tabId
 
   log('intercept_event: desktop_state', { window_focused: desktopWindowFocused, active_tab: desktopActiveTabId ?? '', tab_focused: desktopHasTabFocused, intercept_enabled: desktopInterceptEnabled })

@@ -47,6 +47,11 @@ vi.mock('../crypto', () => ({
   createAuthNonce: () => 'test-nonce',
   verifyAuthProof: () => true,
 }))
+// The frame-build pipeline (transport-frame-pipeline.ts) imports the pure
+// encrypt primitive from crypto-core, not from crypto — mock it identically.
+vi.mock('../crypto-core', () => ({
+  encrypt: (wire: Buffer) => ({ nonce: 'n', ciphertext: Buffer.from(wire).toString('base64') }),
+}))
 
 // Instance capture. The mock classes are defined INSIDE the factories (the
 // factories are hoisted; a module-level class would be in its temporal dead
@@ -203,7 +208,7 @@ describe('RemoteTransport — per-device seq, dedup, relay routing', () => {
     await transport.stop()
   })
 
-  it('sends per-device heartbeats whose payload seq is that device\'s own counter', async () => {
+  it('sends per-device heartbeats whose payload seq is the heartbeat frame\'s own seq', async () => {
     vi.useFakeTimers()
     const { transport, relays } = await startTransport()
     transport.send({ type: 'desktop_status', tabId: 't', fields: {} } as any)
@@ -212,12 +217,16 @@ describe('RemoteTransport — per-device seq, dedup, relay routing', () => {
     vi.advanceTimersByTime(15_000)
 
     for (const relay of relays) {
-      const heartbeats = relay.sent.map(decodeFrame).filter((e) => e.type === 'desktop_heartbeat')
-      expect(heartbeats).toHaveLength(1)
-      // Each device has sent 2 frames, so its counter reads 2 at heartbeat
-      // build time. The old broadcast stamped the GLOBAL counter (4 with two
-      // devices) into every device's heartbeat.
-      expect(heartbeats[0].seq).toBe(2)
+      const heartbeatFrames = relay.sent.filter((f) => decodeFrame(f).type === 'desktop_heartbeat')
+      expect(heartbeatFrames).toHaveLength(1)
+      // Truthful payload seq: the heartbeat is the device's 3rd frame (after
+      // 2 status frames), so both the envelope seq and the payload seq read 3.
+      // The old code stamped the pre-allocation counter (2), a permanent
+      // off-by-one against the envelope; older still was the GLOBAL counter.
+      const frame = heartbeatFrames[0]
+      expect(frame.seq).toBe(3)
+      expect(decodeFrame(frame).seq).toBe(3)
+      expect(decodeFrame(frame).seq).toBe(frame.seq)
     }
     await transport.stop()
   })

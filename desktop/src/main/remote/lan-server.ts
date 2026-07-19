@@ -254,6 +254,10 @@ export class LANServer extends EventEmitter {
     if (ws) {
       try { ws.close(code, reason) } catch { /* ignore */ }
       this.clients.delete(connectionId)
+      // Removing from `clients` first means the ws 'close' handler's rekey
+      // scan won't find this socket, so its clientIps entry would leak for
+      // the life of the process — delete it here.
+      this.clientIps.delete(connectionId)
       this.emit('client-disconnected', connectionId, code, reason)
     }
   }
