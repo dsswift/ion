@@ -82,9 +82,9 @@ describe('drainSendQueue — unreachable peer', () => {
   it('drainSendQueue empties a pre-filled queue regardless of delivery outcome', () => {
     const ctx = makeCtx(() => false)
     ctx.sendQueue.push(
-      { event: { type: CRITICAL, text: '1' } as any, push: false, enqueuedAt: 0 },
-      { event: { type: CRITICAL, text: '2' } as any, push: false, enqueuedAt: 0 },
-      { event: { type: CRITICAL, text: '3' } as any, push: false, enqueuedAt: 0 },
+      { event: { type: CRITICAL, text: '1' } as any, push: false, enqueuedAt: 0, lane: 'interactive' },
+      { event: { type: CRITICAL, text: '2' } as any, push: false, enqueuedAt: 0, lane: 'interactive' },
+      { event: { type: CRITICAL, text: '3' } as any, push: false, enqueuedAt: 0, lane: 'interactive' },
     )
     drainSendQueue(ctx)
     expect(ctx.sendQueue.length).toBe(0)

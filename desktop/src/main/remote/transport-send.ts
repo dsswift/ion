@@ -64,20 +64,74 @@ export const CRITICAL_TYPES = new Set([
   'desktop_text_delta', 'desktop_stream_reset', 'desktop_tool_start', 'desktop_tool_end',
 ])
 
-/** One queued outbound event plus its push metadata and enqueue timestamp. */
+// ─── Two-lane send prioritization ────────────────────────────────────────────
+//
+// The send queue is split into two logical lanes to prevent head-of-line
+// blocking: a 60 KB desktop_snapshot must not delay a 40-byte
+// desktop_text_delta enqueued behind it. FIFO order IS load-bearing *within*
+// interactive traffic (desktop_stream_reset must ride FIFO with
+// desktop_text_delta — see CRITICAL_TYPES), so ordering is preserved within
+// each lane; only the interleave *between* lanes is reprioritized.
+//
+// Cross-lane reorder safety: delivering a delta ahead of the snapshot that was
+// enqueued before it is safe because snapshot-vs-delta consistency is
+// reconciled by the iOS fingerprint heal (periodic snapshot resync), not by
+// seq adjacency. A snapshot is a wholesale state replace; a delta applied
+// "early" relative to it is absorbed by the next reconcile.
+//
+// Seq monotonicity invariant: the wire seq is allocated inside sendToAll at
+// frame-build time (ctx.nextSeq, called by buildDeviceFrame) DURING the drain,
+// not at enqueue time. So build order == delivery order == monotonic seq per
+// device, regardless of how the lanes interleave. Lane selection can never
+// produce an out-of-order seq on the wire.
+
+/** Send lane: bulk (large reconcile payloads) vs interactive (everything else). */
+export type Lane = 'bulk' | 'interactive'
+
+/** Starvation guard: a bulk item older than this is picked ahead of interactive. */
+export const BULK_STARVATION_MS = 2000
+
+/**
+ * Event types routed to the bulk lane: large, snapshot/reconcile-semantics
+ * payloads whose delivery can safely trail live interactive traffic. Everything
+ * else (text deltas, status, tool events, permission requests, ...) is
+ * interactive. Several of these currently ship via the direct sendToDevice
+ * path (no queue), but the classifier keys on payload nature so any future
+ * queued send lands in the right lane.
+ */
+const BULK_TYPES = new Set([
+  'desktop_snapshot',
+  'desktop_terminal_snapshot',
+  'desktop_conversation_history',
+  'desktop_agent_conversation_history',
+  'desktop_settings_snapshot',
+  'desktop_plan_content',
+  'desktop_resource_content',
+  'desktop_fs_file_content',
+  'desktop_fs_image_content',
+])
+
+/** Classify an outbound event type into its send lane. */
+export function laneForEventType(type: string): Lane {
+  return BULK_TYPES.has(type) ? 'bulk' : 'interactive'
+}
+
+/** One queued outbound event plus its push metadata, lane, and enqueue timestamp. */
 export interface SendQueueItem {
   event: RemoteEvent
   push: boolean
   pushTitle?: string
   pushBody?: string
   enqueuedAt: number
+  lane: Lane
 }
 
 /**
  * The transport state the send path touches. Passed explicitly so the functions
  * are pure with respect to the transport instance and can be unit tested with a
  * hand-built context.
- *   - sendQueue: mutated in place (push / shift / splice); never reassigned.
+ *   - sendQueue: mutated in place (push / splice); never reassigned. Holds both
+ *     lanes in one push-ordered array (see nextSendIndex).
  *   - deviceSecrets: deviceId → shared secret for every PAIRED device (a paired
  *     but disconnected device is still present here).
  *   - retransmit: durable replay buffer; every built frame is recorded here
@@ -107,7 +161,10 @@ export function enqueueSend(
   push: boolean,
   pushMeta?: { title?: string; body?: string },
 ): void {
-  // If the queue is full, apply backpressure.
+  // If the queue is full, apply backpressure. The cap and the eviction scan
+  // both span the single array, i.e. BOTH lanes combined: MAX_QUEUE_SIZE
+  // counts bulk + interactive together, and the oldest non-critical item is
+  // evicted regardless of its lane (push order == age order across lanes).
   if (ctx.sendQueue.length >= MAX_QUEUE_SIZE) {
     if (!CRITICAL_TYPES.has(event.type)) {
       log('transport: backpressure, dropping', { event_type: event.type })
@@ -118,8 +175,36 @@ export function enqueueSend(
     if (dropIdx >= 0) ctx.sendQueue.splice(dropIdx, 1)
   }
 
-  ctx.sendQueue.push({ event, push, pushTitle: pushMeta?.title, pushBody: pushMeta?.body, enqueuedAt: Date.now() })
+  ctx.sendQueue.push({ event, push, pushTitle: pushMeta?.title, pushBody: pushMeta?.body, enqueuedAt: Date.now(), lane: laneForEventType(event.type) })
   drainSendQueue(ctx)
+}
+
+/**
+ * Pick the index of the next item to send under the two-lane policy:
+ *
+ *  1. Starvation guard first: the oldest bulk item that has waited longer than
+ *     BULK_STARVATION_MS goes ahead of interactive traffic, so a sustained
+ *     interactive stream (e.g. a long text-delta burst) cannot starve a
+ *     snapshot indefinitely.
+ *  2. Otherwise the first interactive item (FIFO within the lane — the array
+ *     is push-ordered, so the first match is the oldest).
+ *  3. Otherwise the first bulk item (interactive lane is empty).
+ *
+ * Single-array structure: both lanes live in the one push-ordered sendQueue
+ * (transport.ts holds a stable reference to it and it must never be
+ * reassigned), so lane FIFO falls out of scan order and cross-lane backpressure
+ * (MAX_QUEUE_SIZE, oldest-non-critical eviction) needs no lane bookkeeping.
+ * Exported for direct unit testing of the selection policy.
+ */
+export function nextSendIndex(queue: SendQueueItem[], now: number): number {
+  if (queue.length === 0) return -1
+  // Push order is time order, so the first item of a lane is its oldest.
+  const bulkIdx = queue.findIndex((q) => q.lane === 'bulk')
+  const interactiveIdx = queue.findIndex((q) => q.lane === 'interactive')
+  // Starvation guard: an over-age bulk item beats interactive traffic.
+  if (bulkIdx >= 0 && now - queue[bulkIdx].enqueuedAt >= BULK_STARVATION_MS) return bulkIdx
+  if (interactiveIdx >= 0) return interactiveIdx
+  return bulkIdx
 }
 
 /**
@@ -139,15 +224,21 @@ export function enqueueSend(
  * bound while enqueueSend ran an O(n) findIndex over it per event, an O(n^2)
  * main-thread spin. Draining unconditionally keeps the queue bounded (≈one item)
  * and delegates durability to the retransmit buffer where it belongs.
+ *
+ * Items are picked lane-aware (see nextSendIndex): interactive first, bulk when
+ * interactive is empty, over-age bulk (BULK_STARVATION_MS) ahead of everything.
+ * FIFO holds within each lane. Seq is allocated at frame-build time here in the
+ * drain, so the pick order IS the wire seq order (see the lane comment above).
  */
 export function drainSendQueue(ctx: SendCtx): void {
   while (ctx.sendQueue.length > 0) {
     // Watchdog breadcrumb: a climbing counter under relay_send while the main
     // thread is stalled points the stall diagnostic straight at this loop.
     mark(Activity.RelaySend)
-    const item = ctx.sendQueue[0]
+    const idx = nextSendIndex(ctx.sendQueue, Date.now())
+    const item = ctx.sendQueue[idx]
     sendToAll(ctx, item.event, item.push, item.pushTitle, item.pushBody, item.enqueuedAt)
-    ctx.sendQueue.shift()
+    ctx.sendQueue.splice(idx, 1)
   }
 }
 
