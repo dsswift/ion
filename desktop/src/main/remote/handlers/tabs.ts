@@ -9,7 +9,6 @@ import { readSettings, readClaudeCompat } from '../../settings-store'
 import { getRemoteTabStates } from '../snapshot'
 import { autoPullDiagnosticLogs } from './diagnostics'
 import { sendSync } from './tabs-sync'
-import { forceSyncSnapshot } from '../snapshot-polling'
 import { resolveTabSessionChain, paginateHistory, planPathFromHistory, toRemoteMessage } from './tabs-session-chain'
 import { mapSessionHistory } from '../../../shared/session-message-mapper'
 import { shouldServeLoad } from './load-conversation-gate'
@@ -94,15 +93,18 @@ async function sendCurrentEngineState(tabId: string, deviceId: string): Promise<
 }
 
 export async function handleSync(deviceId: string): Promise<void> {
-  // Force a full snapshot to this device regardless of the SHA-256 hash gate.
-  // An explicit sync/resync from iOS means it may have missed deltas and is
-  // requesting a full state refresh — suppressing it because the hash is
-  // unchanged is the very bug that causes the "missed a delta, never re-sent"
-  // freeze. sendSync still runs for the remaining envelope (engine profiles,
-  // settings snapshot, terminal buffers) which forceSyncSnapshot does not emit.
-  log('handle_sync: bypassing hash gate', { device_id: deviceId })
-  await forceSyncSnapshot((event) => state.remoteTransport?.sendToDevice(deviceId, event as any))
-  await sendSync((event) => state.remoteTransport?.sendToDevice(deviceId, event))
+  // Send exactly ONE full snapshot to this device, regardless of the poll
+  // gate's hash state. An explicit sync/resync from iOS means it may have
+  // missed deltas and is requesting a full state refresh — suppressing it
+  // because a hash is unchanged is the very bug that causes the "missed a
+  // delta, never re-sent" freeze. sendSync is the single snapshot sender
+  // (force semantics) plus the rest of the envelope (engine profiles,
+  // settings snapshot, terminal buffers); it updates this device's per-device
+  // poll-gate hash so the next tick doesn't immediately re-send. The former
+  // second forceSyncSnapshot call here (two full snapshot builds + sends per
+  // sync, multiplied by the iOS retry loop) is retired.
+  log('handle_sync: forcing single snapshot', { device_id: deviceId })
+  await sendSync((event) => state.remoteTransport?.sendToDevice(deviceId, event), [deviceId])
   autoPullDiagnosticLogs(deviceId)
 }
 

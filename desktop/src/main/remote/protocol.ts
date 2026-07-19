@@ -218,9 +218,12 @@ export type RemoteEvent =
   | { type: 'desktop_tab_status'; tabId: string; status: TabStatus }
   /**
    * Lightweight tab-row metadata delta. Emitted event-driven (on title, cost,
-   * instances, or group change) so iOS tab-row data updates without waiting for
-   * the 5 s snapshot poll. All fields are optional — the sender includes only
-   * the field(s) that changed. Additive: old iOS builds ignore it gracefully.
+   * instances, or group change) AND by the 5 s snapshot poll tick for the
+   * hash-excluded volatile conversation fields (convFingerprint /
+   * lastActivityAt / lastMessage / messageCount) so iOS heal logic sees fresh
+   * values without a full snapshot reship. All fields are optional — the
+   * sender includes only the field(s) that changed. Additive: old iOS builds
+   * ignore unknown fields gracefully.
    * Fields mirror the corresponding RemoteTabState fields.
    */
   | {
@@ -230,6 +233,14 @@ export type RemoteEvent =
       totalCostUsd?: number
       conversationInstances?: RemoteTabState['conversationInstances']
       groupId?: string | null
+      /** Conversation tail fingerprint (staleness signal for the iOS heal). */
+      convFingerprint?: string
+      /** Unix ms timestamp of the newest message activity (tab sort key). */
+      lastActivityAt?: number
+      /** Tab-list preview text (last user/assistant message, truncated). */
+      lastMessage?: string | null
+      /** Message count of the active conversation instance. */
+      messageCount?: number
     }
   | { type: 'desktop_text_chunk'; tabId: string; text: string }
   | { type: 'desktop_tool_call'; tabId: string; toolName: string; toolId: string }
@@ -448,6 +459,29 @@ export interface RelayControlMessage {
 }
 
 // ─── Wire envelope (wraps RemoteEvent for relay transport) ───
+
+/**
+ * Hard cap on the serialized size of one WireMessage — the JSON frame that
+ * actually crosses the WebSocket (envelope + base64 ciphertext). Every wire
+ * consumer enforces a receive limit, and a frame larger than the tightest one
+ * is undeliverable: the receiver fails the read, disconnects, resyncs, and the
+ * desktop rebuilds the same oversized frame — a reconnect loop.
+ *
+ * Receive limits this cap must stay under:
+ *   - relay read limit: 12 MB — `relay/relay.go:42` (`MaxMessageSize: 12 *
+ *     1024 * 1024`, field documented at relay.go:33), applied via
+ *     `conn.SetReadLimit(h.MaxMessageSize)` at relay.go:189.
+ *   - iOS `URLSessionWebSocketTask.maximumMessageSize`: 16 MiB —
+ *     `ios/IonRemote/Networking/LANClient.swift:108` and
+ *     `RelayClient.swift:170`.
+ *
+ * 8 MiB leaves comfortable headroom under the tightest limit (relay, 12 MB).
+ * The desktop's pre-send plaintext gate (MAX_PLAINTEXT_BYTES in
+ * transport-send.ts) is sized so a worst-case incompressible payload lands at
+ * roughly this cap after DEFLATE + base64; this constant is the authoritative
+ * backstop on the frame the wire actually carries.
+ */
+export const MAX_WIRE_FRAME_BYTES = 8 * 1024 * 1024
 
 export interface WireMessage {
   seq: number

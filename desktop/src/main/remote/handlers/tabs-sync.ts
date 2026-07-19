@@ -9,13 +9,23 @@
  * `broadcastSync` sends a `snapshot` event to every connected device.
  * `sendSync` targets a single device by id (used by `handleSync` on
  * device pairing / reconnect).
+ *
+ * sendSync is the SINGLE snapshot sender for the explicit-sync path, with
+ * force semantics: it always sends regardless of the poll gate's hash state
+ * (an explicit sync means the client may have missed deltas and is asking
+ * for a full refresh — suppressing it is the "missed a delta, never re-sent"
+ * freeze). After sending it updates the per-device snapshot hash via
+ * noteSnapshotSentToDevices so the next poll tick does not immediately
+ * re-send the same snapshot to the devices that just received it. The former
+ * forceSyncSnapshot in snapshot-polling.ts (which built a SECOND full
+ * snapshot alongside this one — two full builds + sends per sync) is retired.
  */
 
 import { log as _log } from '../../logger'
-import { state, terminalScrollback, modelCache } from '../../state'
+import { state, terminalScrollback } from '../../state'
 import { readSettings } from '../../settings-store'
 import { projectCurrentSettings, projectableSchema, projectableGroups } from '../../projectable-settings'
-import { getRemoteTabStates } from '../snapshot'
+import { buildSnapshotEvent, noteSnapshotSentToDevices } from '../snapshot-polling'
 import { readRemoteDisplay } from './display'
 import { getEnterprisePolicyNewConversationDefaults } from '../../engine-bridge-fs'
 
@@ -25,37 +35,42 @@ function log(msg: string, fields?: Record<string, unknown>): void {
 
 /** Broadcast sync to all connected devices (used after state-changing operations). */
 export async function broadcastSync(): Promise<void> {
-  await sendSync((event) => state.remoteTransport?.send(event))
+  const deviceIds = state.remoteTransport?.getConnectedDeviceIds() ?? []
+  await sendSync((event) => state.remoteTransport?.send(event), deviceIds)
 }
 
 /**
  * Build a snapshot envelope and hand it to the supplied sender. The sender
  * decides whether to broadcast to all devices or send to one — that policy
- * is kept on the caller side. The body of this function is the verbatim
- * extraction of the previously-private `_sendSync` from tabs.ts.
+ * is kept on the caller side.
+ *
+ * `recipientDeviceIds` names the devices the sender delivers to, so the
+ * per-device poll-gate hash can be updated for exactly those devices (B7):
+ * a forced sync to device A must not suppress the next poll send to device
+ * B. Callers that cannot enumerate recipients pass [] and the poll simply
+ * re-sends on its next tick (correct, just not optimal).
+ *
+ * The snapshot base comes from the shared buildSnapshotEvent (identical to
+ * the poll tick's build — the precondition for the hash update to match);
+ * the remote-display fields are layered on top and are hash-excluded.
  */
-export async function sendSync(send: (event: any) => void): Promise<void> {
-  const { tabs, resourceManifest } = await getRemoteTabStates()
+export async function sendSync(send: (event: any) => void, recipientDeviceIds: string[] = []): Promise<void> {
+  const { event: snapshotBase, tabs } = await buildSnapshotEvent()
   const syncSettings = readSettings()
-  const recentDirectories: string[] = Array.isArray(syncSettings.recentBaseDirectories) ? syncSettings.recentBaseDirectories : []
-  const tabGroupMode = syncSettings.tabGroupMode || 'off'
-  const tabGroups = Array.isArray(syncSettings.tabGroups) ? syncSettings.tabGroups.map((g: any) => ({ id: g.id, label: g.label, isDefault: g.isDefault, order: g.order })) : []
   const remoteDisplay = readRemoteDisplay()
-  log('snap_send', { tab_count: tabs.length, dir_count: recentDirectories.length, has_remote_display: !!remoteDisplay })
-  send({
-    type: 'desktop_snapshot',
-    tabs,
-    recentDirectories,
-    tabGroupMode,
-    tabGroups,
-    preferredModel: syncSettings.preferredModel || undefined,
-    engineDefaultModel: syncSettings.engineDefaultModel || undefined,
-    availableModels: modelCache.models.length > 0 ? modelCache.models : undefined,
+  log('snap_send', { tab_count: tabs.length, dir_count: Array.isArray(snapshotBase.recentDirectories) ? (snapshotBase.recentDirectories as string[]).length : 0, has_remote_display: !!remoteDisplay })
+  const snapshotEvent: Record<string, unknown> = {
+    ...snapshotBase,
     customName: remoteDisplay?.customName ?? undefined,
     customIcon: remoteDisplay?.customIcon ?? undefined,
     remoteDisplayUpdatedAt: remoteDisplay?.updatedAt ?? undefined,
-    resources: Object.keys(resourceManifest).length > 0 ? resourceManifest : undefined,
-  })
+  }
+  send(snapshotEvent)
+  // Update the per-device poll-gate hash for the devices that just received
+  // this snapshot so the next poll tick does not double-send. The layered
+  // remote-display fields are hash-excluded, so this hash equals the hash
+  // the next poll tick computes for unchanged state.
+  noteSnapshotSentToDevices(snapshotEvent, recipientDeviceIds)
   const engineProfiles = Array.isArray(syncSettings.engineProfiles) ? syncSettings.engineProfiles : []
   send({ type: 'desktop_engine_profiles', profiles: engineProfiles })
   // Desktop projectable settings snapshot. Carried alongside the main

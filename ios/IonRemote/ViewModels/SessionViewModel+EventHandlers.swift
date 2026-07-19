@@ -82,8 +82,8 @@ extension SessionViewModel {
         case .tabStatus(let tabId, let status):
             handleTabStatus(tabId: tabId, status: status)
 
-        case .tabMeta(let tabId, let title, let totalCostUsd, let groupId):
-            handleTabMeta(tabId: tabId, title: title, totalCostUsd: totalCostUsd, groupId: groupId)
+        case .tabMeta(let tabId, let title, let totalCostUsd, let groupId, let convFingerprint, let lastActivityAt, let lastMessage, let messageCount):
+            handleTabMeta(tabId: tabId, title: title, totalCostUsd: totalCostUsd, groupId: groupId, convFingerprint: convFingerprint, lastActivityAt: lastActivityAt, lastMessage: lastMessage, messageCount: messageCount)
 
         case .textChunk(let tabId, let text):
             // desktop_text_chunk is NOT sent by the current desktop: the desktop

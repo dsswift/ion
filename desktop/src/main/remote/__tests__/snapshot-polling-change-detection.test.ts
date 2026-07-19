@@ -1,15 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { hashSnapshot, resetSnapshotHash } from '../snapshot-polling'
+import { hashSnapshot, resetSnapshotHash, computeVolatileTabMetaDeltas } from '../snapshot-polling'
 
 /**
- * Snapshot change-detection tests (Fix 1).
+ * Snapshot change-detection tests.
  *
- * Three groups:
- *   1. hashSnapshot() determinism & sensitivity — pure function tests
- *   2. resetSnapshotHash() — verifies the reset helper works
- *   3. Integration: the polling interval skips send when the hash
- *      is unchanged, but still runs reconcileGitWatchedDirectories
- *      and sweepStaleEngineStatuses
+ * Four groups:
+ *   1. hashSnapshot() determinism & sensitivity — pure function tests,
+ *      including the volatile-field exclusions (B6-1): cost/token accrual
+ *      AND per-delta conversation churn (convFingerprint, lastActivityAt,
+ *      lastMessage, messageCount) must not trigger a full reship.
+ *   2. computeVolatileTabMetaDeltas() — the poll tick's desktop_tab_meta
+ *      delta derivation for the excluded volatile fields.
+ *   3. resetSnapshotHash() — verifies the reset helper works
+ *   4. Integration: the polling interval skips the snapshot send when the
+ *      hash is unchanged, emits volatile tab_meta deltas instead, and still
+ *      runs reconcileGitWatchedDirectories / sweepStaleEngineStatuses.
  */
 
 // ---------------------------------------------------------------------------
@@ -106,20 +111,49 @@ describe('hashSnapshot', () => {
     expect(structural).not.toBe(base)
   })
 
-  it('DOES change the hash when the conversation fingerprint changes (RC-7 boundary)', () => {
-    // convFingerprint is the staleness signal — it must remain hash-tracked so a
-    // new turn re-ships the snapshot. (It is not a cost field.)
+  it('does NOT change the hash when only the per-delta conversation fields tick (B6-1)', () => {
+    // convFingerprint / lastActivityAt / lastMessage / messageCount mutate on
+    // EVERY streamed delta. Hashing them made the full snapshot re-serialize/
+    // compress/encrypt/ship every 5 s during any active run — redundant with
+    // the live delta stream. The fresh values ride the poll tick's own
+    // desktop_tab_meta delta instead (computeVolatileTabMetaDeltas).
     const base = hashSnapshot(
       makeSnapshotEvent({
-        tabs: [{ id: 'tab-1', title: 'T', workingDirectory: '/p', status: 'idle', convFingerprint: 'a1:5' }],
+        tabs: [{ id: 'tab-1', title: 'T', workingDirectory: '/p', status: 'running', convFingerprint: 'a1:5', lastActivityAt: 1000, lastMessage: 'hi', messageCount: 3 }],
       }),
     )
-    const fpChanged = hashSnapshot(
+    const churned = hashSnapshot(
+      makeSnapshotEvent({
+        tabs: [{ id: 'tab-1', title: 'T', workingDirectory: '/p', status: 'running', convFingerprint: 'a1:5,a2:8', lastActivityAt: 2000, lastMessage: 'hello there', messageCount: 4 }],
+      }),
+    )
+    expect(churned).toBe(base)
+  })
+
+  it('DOES change the hash when a structural field changes even if the conversation fields also tick (B6-1)', () => {
+    const base = hashSnapshot(
+      makeSnapshotEvent({
+        tabs: [{ id: 'tab-1', title: 'T', workingDirectory: '/p', status: 'running', convFingerprint: 'a1:5' }],
+      }),
+    )
+    const structural = hashSnapshot(
       makeSnapshotEvent({
         tabs: [{ id: 'tab-1', title: 'T', workingDirectory: '/p', status: 'idle', convFingerprint: 'a1:5,a2:8' }],
       }),
     )
-    expect(fpChanged).not.toBe(base)
+    expect(structural).not.toBe(base)
+  })
+
+  it('does NOT change the hash when only the sendSync remote-display fields differ', () => {
+    // sendSync layers customName/customIcon/remoteDisplayUpdatedAt on top of
+    // the shared snapshot base; the poll tick does not build them. They must
+    // be hash-excluded or a forced sync's hash never matches the next poll's
+    // and the gate double-sends after every explicit sync.
+    const base = hashSnapshot(makeSnapshotEvent())
+    const layered = hashSnapshot(
+      makeSnapshotEvent({ customName: 'Studio', customIcon: 'macmini', remoteDisplayUpdatedAt: 1234 }),
+    )
+    expect(layered).toBe(base)
   })
 
   it('returns a different hash when recentDirectories change', () => {
@@ -172,7 +206,74 @@ describe('hashSnapshot', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 2. resetSnapshotHash
+// 2. computeVolatileTabMetaDeltas — poll-tick tab_meta derivation (B6-1)
+// ---------------------------------------------------------------------------
+
+describe('computeVolatileTabMetaDeltas', () => {
+  function tab(id: string, volatile: Record<string, unknown> = {}): any {
+    return { id, title: 'T', status: 'idle', workingDirectory: '/p', ...volatile }
+  }
+
+  it('seeds the cache silently on first sight (values ride the full snapshot)', () => {
+    const cache = new Map()
+    const deltas = computeVolatileTabMetaDeltas([tab('t1', { convFingerprint: 'a1:5', lastActivityAt: 100, lastMessage: 'hi', messageCount: 2 })], cache)
+    expect(deltas).toEqual([])
+    expect(cache.get('t1')).toEqual({ convFingerprint: 'a1:5', lastActivityAt: 100, lastMessage: 'hi', messageCount: 2 })
+  })
+
+  it('emits a delta only for the tab whose volatile fields changed, carrying only the changed fields', () => {
+    const cache = new Map()
+    const tick1 = [
+      tab('t1', { convFingerprint: 'a1:5', lastActivityAt: 100, lastMessage: 'hi', messageCount: 2 }),
+      tab('t2', { convFingerprint: 'b1:3', lastActivityAt: 50, lastMessage: 'yo', messageCount: 1 }),
+    ]
+    computeVolatileTabMetaDeltas(tick1, cache)
+    const tick2 = [
+      tab('t1', { convFingerprint: 'a1:5,a2:8', lastActivityAt: 200, lastMessage: 'hi', messageCount: 3 }),
+      tab('t2', { convFingerprint: 'b1:3', lastActivityAt: 50, lastMessage: 'yo', messageCount: 1 }),
+    ]
+    const deltas = computeVolatileTabMetaDeltas(tick2, cache)
+    expect(deltas).toHaveLength(1)
+    expect(deltas[0]).toEqual({
+      type: 'desktop_tab_meta',
+      tabId: 't1',
+      convFingerprint: 'a1:5,a2:8',
+      lastActivityAt: 200,
+      messageCount: 3,
+      // lastMessage unchanged — NOT carried
+    })
+    expect('lastMessage' in deltas[0]).toBe(false)
+  })
+
+  it('emits nothing when no volatile fields changed', () => {
+    const cache = new Map()
+    const tabs = [tab('t1', { convFingerprint: 'a1:5', lastActivityAt: 100, lastMessage: 'hi', messageCount: 2 })]
+    computeVolatileTabMetaDeltas(tabs, cache)
+    const deltas = computeVolatileTabMetaDeltas(tabs, cache)
+    expect(deltas).toEqual([])
+  })
+
+  it('never carries cost fields (event-wiring owns the cost tab_meta path)', () => {
+    const cache = new Map()
+    computeVolatileTabMetaDeltas([tab('t1', { convFingerprint: 'a1:5', runCostUsd: 0.01 })], cache)
+    const deltas = computeVolatileTabMetaDeltas([tab('t1', { convFingerprint: 'a2:9', runCostUsd: 0.99 })], cache)
+    expect(deltas).toHaveLength(1)
+    expect('totalCostUsd' in deltas[0]).toBe(false)
+    expect('runCostUsd' in deltas[0]).toBe(false)
+  })
+
+  it('sweeps cache entries for closed tabs', () => {
+    const cache = new Map()
+    computeVolatileTabMetaDeltas([tab('t1', { convFingerprint: 'a' }), tab('t2', { convFingerprint: 'b' })], cache)
+    expect(cache.size).toBe(2)
+    computeVolatileTabMetaDeltas([tab('t1', { convFingerprint: 'a' })], cache)
+    expect(cache.size).toBe(1)
+    expect(cache.has('t2')).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 3. resetSnapshotHash
 // ---------------------------------------------------------------------------
 
 describe('resetSnapshotHash', () => {
@@ -182,7 +283,8 @@ describe('resetSnapshotHash', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 3. Integration: polling skips send when snapshot is unchanged
+// 4. Integration: polling skips snapshot send when unchanged, emits volatile
+//    tab_meta deltas, per-device gate (B7)
 // ---------------------------------------------------------------------------
 
 // We need to mock the heavy dependencies so we can drive the
@@ -190,8 +292,10 @@ describe('resetSnapshotHash', () => {
 
 // vi.hoisted ensures the variables exist before vi.mock factories run
 // (vi.mock calls are hoisted to the top of the file by vitest).
-const { mockSend, mockReconcile, mockGetRemoteTabStates, mockReadSettings } = vi.hoisted(() => ({
+const { mockSend, mockSendToDevice, mockGetConnectedDeviceIds, mockReconcile, mockGetRemoteTabStates, mockReadSettings } = vi.hoisted(() => ({
   mockSend: vi.fn(),
+  mockSendToDevice: vi.fn(),
+  mockGetConnectedDeviceIds: vi.fn(),
   mockReconcile: vi.fn(),
   mockGetRemoteTabStates: vi.fn(),
   mockReadSettings: vi.fn(),
@@ -199,7 +303,12 @@ const { mockSend, mockReconcile, mockGetRemoteTabStates, mockReadSettings } = vi
 
 vi.mock('../../state', () => ({
   state: {
-    remoteTransport: { state: 'connected', send: mockSend },
+    remoteTransport: {
+      state: 'connected',
+      send: mockSend,
+      sendToDevice: mockSendToDevice,
+      getConnectedDeviceIds: mockGetConnectedDeviceIds,
+    },
     tabSnapshotInterval: null,
     mainWindow: null,
   },
@@ -237,15 +346,28 @@ describe('startTabSnapshotPolling — change detection integration', () => {
 
   let pollCallback: () => Promise<void>
 
+  function snapshotSendsToDevice(deviceId?: string) {
+    return mockSendToDevice.mock.calls.filter(
+      (c) => c[1]?.type === 'desktop_snapshot' && (!deviceId || c[0] === deviceId),
+    )
+  }
+
+  function tabMetaBroadcasts() {
+    return mockSend.mock.calls.filter((c) => c[0]?.type === 'desktop_tab_meta')
+  }
+
   beforeEach(async () => {
     vi.useFakeTimers()
     resetSnapshotHash()
     mockSend.mockClear()
+    mockSendToDevice.mockClear()
+    mockGetConnectedDeviceIds.mockClear()
     mockReconcile.mockClear()
     mockGetRemoteTabStates.mockClear()
     mockReadSettings.mockClear()
 
     // Default return values
+    mockGetConnectedDeviceIds.mockReturnValue(['device-A'])
     mockGetRemoteTabStates.mockResolvedValue({
       tabs: [{ id: 't1', title: 'Tab', workingDirectory: '/tmp', status: 'idle' }],
       resourceManifest: {},
@@ -271,7 +393,12 @@ describe('startTabSnapshotPolling — change detection integration', () => {
     // Need a fresh import so the mock wiring applies to the module
     // scope references captured at import time.
     const { state } = await import('../../state')
-    state.remoteTransport = { state: 'connected', send: mockSend } as any
+    state.remoteTransport = {
+      state: 'connected',
+      send: mockSend,
+      sendToDevice: mockSendToDevice,
+      getConnectedDeviceIds: mockGetConnectedDeviceIds,
+    } as any
     state.tabSnapshotInterval = null
 
     const { startTabSnapshotPolling } = await import('../snapshot-polling')
@@ -285,25 +412,23 @@ describe('startTabSnapshotPolling — change detection integration', () => {
     vi.restoreAllMocks()
   })
 
-  it('sends the snapshot on the first tick (hash is new)', async () => {
+  it('sends the snapshot per device on the first tick (hash is new)', async () => {
     await pollCallback()
-    expect(mockSend).toHaveBeenCalledTimes(1)
-    const sentEvent = mockSend.mock.calls[0][0]
-    expect(sentEvent.type).toBe('desktop_snapshot')
+    expect(snapshotSendsToDevice('device-A')).toHaveLength(1)
   })
 
   it('skips send on a second identical tick', async () => {
     await pollCallback()
-    expect(mockSend).toHaveBeenCalledTimes(1)
+    expect(snapshotSendsToDevice()).toHaveLength(1)
 
-    mockSend.mockClear()
+    mockSendToDevice.mockClear()
     await pollCallback()
-    expect(mockSend).toHaveBeenCalledTimes(0)
+    expect(snapshotSendsToDevice()).toHaveLength(0)
   })
 
   it('sends again when data changes between ticks', async () => {
     await pollCallback()
-    expect(mockSend).toHaveBeenCalledTimes(1)
+    expect(snapshotSendsToDevice()).toHaveLength(1)
 
     // Simulate a change: a new tab appeared
     mockGetRemoteTabStates.mockResolvedValue({
@@ -314,9 +439,62 @@ describe('startTabSnapshotPolling — change detection integration', () => {
       resourceManifest: {},
     })
 
+    mockSendToDevice.mockClear()
+    await pollCallback()
+    expect(snapshotSendsToDevice()).toHaveLength(1)
+  })
+
+  it('fingerprint-only change: NO snapshot re-send, but a tab_meta with the new fingerprint is emitted for that tab only (B6-1)', async () => {
+    mockGetRemoteTabStates.mockResolvedValue({
+      tabs: [
+        { id: 't1', title: 'Tab', workingDirectory: '/tmp', status: 'running', convFingerprint: 'a1:5' },
+        { id: 't2', title: 'Other', workingDirectory: '/home', status: 'idle', convFingerprint: 'b1:3' },
+      ],
+      resourceManifest: {},
+    })
+    await pollCallback()
+    expect(snapshotSendsToDevice()).toHaveLength(1)
+
+    // Only t1's fingerprint ticks (a streamed delta landed).
+    mockGetRemoteTabStates.mockResolvedValue({
+      tabs: [
+        { id: 't1', title: 'Tab', workingDirectory: '/tmp', status: 'running', convFingerprint: 'a1:5,a2:8' },
+        { id: 't2', title: 'Other', workingDirectory: '/home', status: 'idle', convFingerprint: 'b1:3' },
+      ],
+      resourceManifest: {},
+    })
+    mockSendToDevice.mockClear()
     mockSend.mockClear()
     await pollCallback()
-    expect(mockSend).toHaveBeenCalledTimes(1)
+
+    // No full snapshot reship…
+    expect(snapshotSendsToDevice()).toHaveLength(0)
+    // …but exactly one tab_meta, for t1 only, carrying the new fingerprint.
+    const metas = tabMetaBroadcasts()
+    expect(metas).toHaveLength(1)
+    expect(metas[0][0]).toMatchObject({ type: 'desktop_tab_meta', tabId: 't1', convFingerprint: 'a1:5,a2:8' })
+  })
+
+  it('no volatile changes → no tab_meta emission', async () => {
+    await pollCallback()
+    mockSend.mockClear()
+    await pollCallback()
+    expect(tabMetaBroadcasts()).toHaveLength(0)
+  })
+
+  it('per-device gate (B7): a device with a stale hash entry receives the snapshot while an up-to-date device does not', async () => {
+    // Tick 1: only device-A connected — A receives and its entry is updated.
+    mockGetConnectedDeviceIds.mockReturnValue(['device-A'])
+    await pollCallback()
+    expect(snapshotSendsToDevice('device-A')).toHaveLength(1)
+
+    // Tick 2: device-B joins, state unchanged. B has no entry → must receive;
+    // A already has the current hash → must NOT receive again.
+    mockGetConnectedDeviceIds.mockReturnValue(['device-A', 'device-B'])
+    mockSendToDevice.mockClear()
+    await pollCallback()
+    expect(snapshotSendsToDevice('device-B')).toHaveLength(1)
+    expect(snapshotSendsToDevice('device-A')).toHaveLength(0)
   })
 
   it('always calls reconcileGitWatchedDirectories even when skipping send', async () => {
@@ -332,16 +510,16 @@ describe('startTabSnapshotPolling — change detection integration', () => {
 
   it('sends again after resetSnapshotHash is called', async () => {
     await pollCallback()
-    expect(mockSend).toHaveBeenCalledTimes(1)
+    expect(snapshotSendsToDevice()).toHaveLength(1)
 
-    mockSend.mockClear()
+    mockSendToDevice.mockClear()
     await pollCallback()
-    expect(mockSend).toHaveBeenCalledTimes(0)
+    expect(snapshotSendsToDevice()).toHaveLength(0)
 
     // Reset and poll again — should send
     resetSnapshotHash()
-    mockSend.mockClear()
+    mockSendToDevice.mockClear()
     await pollCallback()
-    expect(mockSend).toHaveBeenCalledTimes(1)
+    expect(snapshotSendsToDevice()).toHaveLength(1)
   })
 })
