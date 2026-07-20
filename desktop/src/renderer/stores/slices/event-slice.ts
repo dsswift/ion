@@ -11,7 +11,7 @@ import { activeInstance, commitInstance } from '../conversation-instance'
 import { handleThinkingEvent, discardActiveThinking } from './event-slice-thinking'
 import { attachImageToMessages } from './event-slice-images'
 import { handleCrossNormalizedEvent } from './engine-event-slice-messages'
-import { maybeScheduleDoneMove } from './event-slice-done-move'
+import { maybeScheduleDoneMove, maybeApplyAgentStateGroupMove } from './event-slice-done-move'
 import { maybeScheduleRunningMove } from './event-slice-running-move'
 import { handleExtensionSurfaceEvent } from './event-slice-extension-surface'
 import { handlePlanModeEvent } from './event-slice-plan-mode'
@@ -580,6 +580,13 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
         }
       })
       maybeApplyPlanModeGroupMove(tabId, event.type, get) // post-commit: re-evaluate group after plan-mode event
+      // Post-commit: re-evaluate auto-group placement when an agent_state
+      // snapshot arrives. Closes two symmetric gaps — see event-slice-done-move.ts:
+      //   Bug A: running children discovered in the done group → move back.
+      //   Bug B: all children terminal while tab is idle → schedule done-move.
+      if (event.type === 'agent_state') {
+        maybeApplyAgentStateGroupMove(tabId, (event as { agents: import('../../../shared/types').AgentStateUpdate[] }).agents ?? [], get)
+      }
     },
 
     handleStatusChange: (tabId, newStatus) => {
