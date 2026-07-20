@@ -26,11 +26,12 @@ import type {
   GitEvent, HeadInfo, UpstreamInfo, MergeState, RefDelta, RepoSnapshot,
 } from '../../shared/types-git-events'
 import type { GitChangedFile } from '../../shared/types-session'
-import { log as _log } from '../logger'
+import { log as _log, debug as _debug } from '../logger'
 import { isPathIgnoredByGitWatcher } from './ignore-paths'
 import { readGitWatcherIgnoredDirectories } from '../settings-store'
 
 function log(msg: string, fields?: Record<string, unknown>): void { _log('main', msg, fields) }
+function debug(msg: string, fields?: Record<string, unknown>): void { _debug('main', msg, fields) }
 
 function keyOf(f: GitChangedFile): string {
   return `${f.staged ? 's' : 'u'}:${f.status}:${f.conflictKind ?? ''}:${f.path}`
@@ -82,7 +83,7 @@ export class GitRepository extends EventEmitter {
     this._watcher.setSuspended(!focused)
     if (focused) {
       log('Focus returned, refreshing snapshot for ' + this.path)
-      this.refreshSnapshot().catch(() => {})
+      this.refreshSnapshot().catch((err: Error) => debug("git: background refreshSnapshot failed", { directory: this.path, error: String(err) }))
     }
   }
   private _snapshot: RepoSnapshot | null = null
@@ -155,23 +156,23 @@ export class GitRepository extends EventEmitter {
     switch (event.kind) {
       case 'head:changed':
         this.bumpRevision()
-        this.refreshSnapshot().catch(() => {})
+        this.refreshSnapshot().catch((err: Error) => debug("git: background refreshSnapshot failed", { directory: this.path, error: String(err) }))
         break
       case 'status:dirty':
         this.diffCache.clear()
         this._revision++
-        this.refreshSnapshot().catch(() => {})
+        this.refreshSnapshot().catch((err: Error) => debug("git: background refreshSnapshot failed", { directory: this.path, error: String(err) }))
         break
       case 'refs:dirty':
         this.branchCache.clear()
         this.graphCache.clear()
         this._revision++
-        this.emitRefsChanged().catch(() => {})
+        this.emitRefsChanged().catch((err: Error) => debug("git: background emitRefsChanged failed", { directory: this.path, error: String(err) }))
         break
       case 'config:dirty':
         this.branchCache.clear()
         this._revision++
-        this.refreshSnapshot().catch(() => {})
+        this.refreshSnapshot().catch((err: Error) => debug("git: background refreshSnapshot failed", { directory: this.path, error: String(err) }))
         break
     }
     this.emit('watch', event)
@@ -250,25 +251,25 @@ export class GitRepository extends EventEmitter {
       branch = (await runGit(this.path, ['branch', '--show-current'])).trim() || null
       sha = (await runGit(this.path, ['rev-parse', 'HEAD'])).trim() || null
       if (!branch && sha) detached = true
-    } catch {}
+    } catch (err) { debug('git: branch/sha read failed', { directory: this.path, error: String(err) }) }
 
     let ahead = 0, behind = 0
     let upstreamName: string | null = null
     try {
       upstreamName = (await runGit(this.path, ['rev-parse', '--abbrev-ref', '@{upstream}'])).trim() || null
-    } catch {}
+    } catch (err) { debug('git: upstream read failed (no upstream?)', { directory: this.path, error: String(err) }) }
     if (upstreamName) {
       try {
         ahead = parseInt((await runGit(this.path, ['rev-list', '--count', '@{upstream}..HEAD'])).trim(), 10) || 0
         behind = parseInt((await runGit(this.path, ['rev-list', '--count', 'HEAD..@{upstream}'])).trim(), 10) || 0
-      } catch {}
+      } catch (err) { debug('git: ahead/behind read failed', { directory: this.path, error: String(err) }) }
     }
 
     let groups: PartitionedStatus = { flat: [], index: [], workingTree: [], untracked: [], merge: [] }
     try {
       const output = await runGit(this.path, ['status', '--porcelain=v1', '-uall'])
       groups = partitionStatus(output)
-    } catch {}
+    } catch (err) { debug('git: status read failed', { directory: this.path, error: String(err) }) }
 
     return {
       repoPath: this.path,
@@ -354,7 +355,7 @@ export class GitRepository extends EventEmitter {
       let totalCount = 0
       try {
         totalCount = parseInt((await runGit(this.path, ['rev-list', '--all', '--count'])).trim(), 10) || 0
-      } catch {}
+      } catch (err) { debug('git: graph total-count read failed', { directory: this.path, error: String(err) }) }
 
       this.graphCache.set(cacheKey, { commits, totalCount })
       return { commits, isGitRepo: true, totalCount }

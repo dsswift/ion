@@ -2,7 +2,7 @@ import type { TabStatus } from '../../../shared/types'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId } from '../session-store-helpers'
 import { activeInstance, commitInstance } from '../conversation-instance'
-import { rDebug, rInfo, rWarn } from '../../rendererLogger'
+import { rDebug, rInfo, rWarn, rError } from '../../rendererLogger'
 
 // Auto-recovery bounds for the stuck-tab watchdog. A genuinely dead provider
 // must not drive an infinite stall→resume loop, so automatic resumes are
@@ -14,7 +14,11 @@ const AUTO_RECOVERY_WINDOW_MS = 10 * 60 * 1000 // 10 minutes
 export function createPermissionsSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
     respondPermission: (tabId, questionId, optionId) => {
-      window.ion.respondPermission(tabId, questionId, optionId).catch(() => {})
+      window.ion.respondPermission(tabId, questionId, optionId).catch((err) => {
+        // If the response IPC fails, the user's approve/deny never reaches the
+        // engine while the UI clears the queue below — a silent lost decision.
+        rError('permissions', 'respondPermission failed', { tab_id: tabId, error: String(err) })
+      })
 
       // permissionQueue lives on the active conversation instance now; filter it
       // there and derive currentActivity (a tab field) from the remaining queue.
@@ -39,7 +43,9 @@ export function createPermissionsSlice(set: StoreSet, get: StoreGet): Partial<St
     },
 
     respondElicitation: (tabId, requestId, response, cancelled) => {
-      window.ion.respondElicitation(tabId, requestId, response, cancelled).catch(() => {})
+      window.ion.respondElicitation(tabId, requestId, response, cancelled).catch((err) => {
+        rError('permissions', 'respondElicitation failed', { tab_id: tabId, error: String(err) })
+      })
 
       // elicitationQueue lives on the active conversation instance. Remove the
       // answered request and derive currentActivity from what remains so the
@@ -64,7 +70,9 @@ export function createPermissionsSlice(set: StoreSet, get: StoreGet): Partial<St
 
     forceRecoverTab: (tabId, reason) => {
       rWarn('session.recover', 'force recovering tab', { tab_id: tabId, reason })
-      try { window.ion.stopTab(tabId) } catch {}
+      try { window.ion.stopTab(tabId) } catch (err) {
+        rWarn('session.recover', 'stopTab during force-recover failed', { tab_id: tabId, error: String(err) })
+      }
       // permissionQueue / permissionDenied / messages all live on the active
       // conversation instance now. Clear the queue + denial and append the
       // recovery system message onto the instance; keep status/activity on the tab.

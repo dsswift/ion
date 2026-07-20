@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import { existsSync, mkdirSync, readFileSync, renameSync } from 'fs'
 import { IPC } from '../../shared/types'
-import { log as _log, debug as _debug } from '../logger'
+import { log as _log, debug as _debug, warn as _warn } from '../logger'
 import { state, engineBridge } from '../state'
 import { atomicWriteFileSync } from '../utils/atomicWrite'
 import { runTabUnifyMigration } from '../tab-migration-unify-runner'
@@ -35,6 +35,9 @@ function log(msg: string, fields?: Record<string, unknown>): void {
 function debug(msg: string, fields?: Record<string, unknown>): void {
   _debug('main', msg, fields)
 }
+function warn(msg: string, fields?: Record<string, unknown>): void {
+  _warn('main', msg, fields)
+}
 
 /**
  * Settings keys owned exclusively by the main process. Written by dedicated
@@ -62,7 +65,10 @@ function readOnDiskTabCount(): number {
       const tabs = data?.tabs
       return Array.isArray(tabs) ? tabs.length : 0
     }
-  } catch {}
+  } catch (err) {
+    // Caller can't distinguish 0 ("no tabs") from a read failure; log at debug.
+    debug('settings: on-disk tab count read failed', { error: String(err) })
+  }
   return 0
 }
 
@@ -86,7 +92,10 @@ export function registerSettingsIpc(): void {
   ipcMain.handle(IPC.SAVE_SETTINGS, (_event, data: Record<string, unknown>) => {
     try {
       let prev: Record<string, unknown> = {}
-      try { prev = readSettings() } catch {}
+      try { prev = readSettings() } catch (err) {
+        // A failed prior-settings read changes the merge/diff below; log it.
+        warn('settings: prior settings read failed before save', { error: String(err) })
+      }
 
       // Main-owned keys: the disk value ALWAYS wins over the renderer's
       // payload. The renderer saves its whole settings object on every

@@ -7,7 +7,7 @@ import { activeInstance, commitInstance, effectivePermissionMode, effectiveThink
 import { applyActiveGroupMove } from './event-slice-running-move'
 import { maybeSendTimeTitle } from './event-slice-titling'
 import { parseSlash } from '../../../main/slash-parse'
-import { rDebug, rInfo } from '../../rendererLogger'
+import { rDebug, rInfo, rWarn } from '../../rendererLogger'
 import { createSendBashSlice } from './send-slice-bash'
 
 export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
@@ -77,14 +77,19 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       //    warns and returns), covering the case where the desktop's status is
       //    stale while the engine still has a live run.
       rDebug('interrupt', 'aborting run', { tab_id: tabId })
-      window.ion.engineAbort(tabId).catch(() => {})
+      window.ion.engineAbort(tabId).catch((err) => {
+        // A failed abort means the interrupt button silently did nothing.
+        rWarn('interrupt', 'engineAbort IPC failed', { tab_id: tabId, error: String(err) })
+      })
 
       // 3. Reap descendant agents (external processes) that might outlive the
       //    parent run's cancellation cascade — only when there are running
       //    children to reap.
       if (hasRunningChildren) {
         rDebug('interrupt', 'reaping agent subtree', { tab_id: tabId })
-        window.ion.engineAbortAgent(tabId, '', true).catch(() => {})
+        window.ion.engineAbortAgent(tabId, '', true).catch((err) => {
+          rWarn('interrupt', 'engineAbortAgent IPC failed', { tab_id: tabId, error: String(err) })
+        })
       }
 
       // 4. 5s fallback: if the engine never confirms idle, force-recover the tab

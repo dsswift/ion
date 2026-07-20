@@ -1,9 +1,16 @@
 import { app, ipcMain } from 'electron'
 import { existsSync, readFileSync } from 'fs'
 import { IPC } from '../../shared/types'
-import { LOG_FILE } from '../logger'
+import { LOG_FILE, warn as _warn, debug as _debug } from '../logger'
 import { state, sessionPlane } from '../state'
 import { gitExec } from '../git-runner'
+
+function warn(msg: string, fields?: Record<string, unknown>): void {
+  _warn('main', msg, fields)
+}
+function debug(msg: string, fields?: Record<string, unknown>): void {
+  _debug('main', msg, fields)
+}
 
 export function registerSystemIpc(): void {
   ipcMain.handle(IPC.LIST_FONTS, async () => {
@@ -32,7 +39,10 @@ return output`
       const { stdout } = await gitExec('/usr/bin/osascript', ['-e', script])
       state.cachedFonts = stdout.split('\n').map((s: string) => s.trim()).filter(Boolean).sort((a: string, b: string) => a.localeCompare(b))
       return state.cachedFonts
-    } catch {
+    } catch (err) {
+      // Font enumeration failed; fall back to a safe default set, but log so
+      // the fallback (and any AppleScript failure) is visible.
+      debug('system: font enumeration failed; using defaults', { error: String(err) })
       return ['Menlo', 'Monaco', 'Courier New']
     }
   })
@@ -46,7 +56,11 @@ return output`
         const content = readFileSync(LOG_FILE, 'utf-8')
         const lines = content.split('\n')
         recentLogs = lines.slice(-100).join('\n')
-      } catch {}
+      } catch (err) {
+        // The diagnostics endpoint silently omitting logs when it can't read
+        // them is especially bad; log the read failure.
+        warn('system: diagnostics recent-log read failed', { error: String(err) })
+      }
     }
 
     return {

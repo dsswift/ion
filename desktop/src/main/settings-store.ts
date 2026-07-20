@@ -1,13 +1,17 @@
 import { existsSync, mkdirSync, readFileSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
-import { log as _log } from './logger'
+import { log as _log, warn as _warn } from './logger'
 import { atomicWriteFileSync } from './utils/atomicWrite'
 import { encryptSensitiveSettings, decryptSensitiveSettings } from './utils/secretStore'
 import { expandHome } from './git/ignore-paths'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
+}
+
+function warn(msg: string, fields?: Record<string, unknown>): void {
+  _warn('main', msg, fields)
 }
 
 export const SETTINGS_DIR = join(homedir(), '.ion')
@@ -199,7 +203,11 @@ export function readEngineConfig(): Record<string, any> {
     if (existsSync(ENGINE_CONFIG_FILE)) {
       return JSON.parse(readFileSync(ENGINE_CONFIG_FILE, 'utf-8'))
     }
-  } catch {}
+  } catch (err) {
+    // A corrupt engine.json silently yields empty config and downstream reads
+    // defaults with no trace — log the failure.
+    warn('settings: engine config read failed', { error: String(err) })
+  }
   return {}
 }
 

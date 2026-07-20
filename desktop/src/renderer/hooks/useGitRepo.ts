@@ -20,6 +20,7 @@
 import { useEffect, useRef } from 'react'
 import { useGitStore } from '../stores/git'
 import { useSessionStore } from '../stores/sessionStore'
+import { rDebug } from '../rendererLogger'
 
 let listenerInstalled = false
 const lastRevisionByRepo: Record<string, number> = {}
@@ -38,7 +39,7 @@ function installGlobalListener(): void {
             useGitStore.getState().applySnapshot(snapshot)
             lastRevisionByRepo[repoPath] = snapshot.revision
           }
-        }).catch(() => {})
+        }).catch((err) => rDebug("git", "gitSubscribe snapshot apply failed", { repoPath, error: String(err) }))
         return
       }
       lastRevisionByRepo[repoPath] = next
@@ -70,15 +71,15 @@ export function useGitRepo(directory: string | undefined, isGitRepo: boolean): v
         lastRevisionByRepo[directory] = snapshot.revision
       }
       // Force a fresh read; deltas flow back through the onGitEvent listener.
-      window.ion.gitRefresh(directory).catch(() => {})
-    }).catch(() => {})
+      window.ion.gitRefresh(directory).catch((err) => rDebug("git", "gitRefresh failed", { directory, error: String(err) }))
+    }).catch((err) => rDebug('git', 'gitSubscribe on mount failed', { directory, error: String(err) }))
 
     // Refresh on window focus return — the watcher may have dropped events
     // while blurred, and even when it didn't, FSEvents itself can silently
     // stop delivering. Belt-and-braces: always re-read on focus.
     const onWindowFocus = (): void => {
       if (cancelled) return
-      window.ion.gitRefresh(directory).catch(() => {})
+      window.ion.gitRefresh(directory).catch((err) => rDebug("git", "gitRefresh failed", { directory, error: String(err) }))
     }
     window.addEventListener('focus', onWindowFocus)
 
@@ -86,7 +87,7 @@ export function useGitRepo(directory: string | undefined, isGitRepo: boolean): v
     return () => {
       cancelled = true
       window.removeEventListener('focus', onWindowFocus)
-      window.ion.gitUnsubscribe(directory).catch(() => {})
+      window.ion.gitUnsubscribe(directory).catch((err) => rDebug("git", "gitUnsubscribe failed", { directory, error: String(err) }))
     }
   }, [directory, isGitRepo])
 
@@ -100,6 +101,6 @@ export function useGitRepo(directory: string | undefined, isGitRepo: boolean): v
       return
     }
     if (!directory || !isGitRepo || directory === '~') return
-    window.ion.gitRefresh(directory).catch(() => {})
+    window.ion.gitRefresh(directory).catch((err) => rDebug("git", "gitRefresh failed", { directory, error: String(err) }))
   }, [activeTabId, directory, isGitRepo])
 }

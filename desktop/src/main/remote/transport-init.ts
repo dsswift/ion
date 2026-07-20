@@ -1,5 +1,5 @@
 import { IPC } from '../../shared/types'
-import { log as _log } from '../logger'
+import { log as _log, warn as _warn, error as _error } from '../logger'
 import { state, modelCache, deviceFocusMap } from '../state'
 import { broadcast, startTerminalOutputFlushing, stopTerminalOutputFlushing } from '../broadcast'
 import { readSettings } from '../settings-store'
@@ -14,6 +14,14 @@ import { focusState } from '../git/focus-state'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
+}
+
+function warn(msg: string, fields?: Record<string, unknown>): void {
+  _warn('main', msg, fields)
+}
+
+function error(msg: string, fields?: Record<string, unknown>): void {
+  _error('main', msg, fields)
 }
 
 export function initRemoteTransport(settings: Record<string, unknown>): void {
@@ -69,9 +77,11 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
         log('[Remote] peer connected but no paired device with shared secret -- skipping snapshot')
         return
       }
-    } catch {}
-
-    log('[Remote] peer connected, sending auto-snapshot')
+    } catch (err) {
+      // A settings read failure here would silently skip the no-paired-device
+      // guard and fall through to send a snapshot anyway. Log it.
+      warn('[Remote] peer-connected settings read failed', { error: String(err) })
+    }
     setTimeout(async () => {
       const { tabs, resourceManifest } = await getRemoteTabStates()
 
@@ -98,7 +108,11 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
         }
         const profiles = Array.isArray(peerSettings.engineProfiles) ? peerSettings.engineProfiles : []
         state.remoteTransport?.send({ type: 'desktop_engine_profiles', profiles })
-      } catch {}
+      } catch (err) {
+        // A throw here means iOS silently never receives its snapshot on peer
+        // connect — a view-readiness failure with no trace. Escalate to error.
+        error('[Remote] auto-snapshot send failed', { error: String(err) })
+      }
 
       // Start the git watcher bridge so tab directories get push-driven freshness
       const directories = new Set(tabs.map(t => t.workingDirectory).filter(Boolean))

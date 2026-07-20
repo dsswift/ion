@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { rDebug } from '../rendererLogger'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { CaretDown, Plus, GitBranch, Trash, Check, MagnifyingGlass, Clock } from '@phosphor-icons/react'
@@ -59,7 +60,7 @@ export function BranchPicker({
   useEffect(() => {
     if (open) {
       loadBranches()
-      window.ion.gitRecentRefs(directory, 20).then((r) => { if (r.ok) setRecent(r.refs.slice(0, 5)) }).catch(() => {})
+      window.ion.gitRecentRefs(directory, 20).then((r) => { if (r.ok) setRecent(r.refs.slice(0, 5)) }).catch((err) => rDebug("git", "gitRecentRefs failed", { directory, error: String(err) }))
     }
   }, [open, directory, loadBranches])
 

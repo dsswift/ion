@@ -222,7 +222,7 @@ export function SettingsPopover() {
     const { staticInfo } = useSessionStore.getState()
     const homeDir = staticInfo?.homePath
     if (!homeDir) return
-    window.ion.fsOpenNative(`${homeDir}/.ion/conversations`).catch(() => {})
+    window.ion.fsOpenNative(`${homeDir}/.ion/conversations`).catch((err) => rDebug("settings-popover", "fsOpenNative failed", { error: String(err) }))
     setOpen(false)
   }
 

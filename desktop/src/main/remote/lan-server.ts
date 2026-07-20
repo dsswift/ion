@@ -332,7 +332,10 @@ export class LANServer extends EventEmitter {
             reject: (message: string) => {
               try {
                 ws.send(JSON.stringify({ type: 'pair_error', message }))
-              } catch {}
+              } catch (err) {
+                // The success path logs its send error; the reject path must too.
+                log('lan_server: pair reject send error', { error: (err as Error).message })
+              }
               ws.close()
             },
           })

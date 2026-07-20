@@ -16,10 +16,14 @@
  */
 
 import { join } from 'path'
-import { log as _log } from '../logger'
+import { log as _log, debug as _debug } from '../logger'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
+}
+
+function debug(msg: string, fields?: Record<string, unknown>): void {
+  _debug('main', msg, fields)
 }
 
 export type GitWatchEvent =
@@ -144,7 +148,7 @@ function createParcelWatcher(pw: ParcelModule): GitWatcher {
       }).then((sub) => {
         if (gen !== startGeneration) {
           log('Git watcher: unsubscribing stale .git subscription')
-          sub.unsubscribe().catch(() => {})
+          sub.unsubscribe().catch((err: Error) => debug("git_watcher: unsubscribe failed", { error: String(err) }))
           return
         }
         subscriptions.push(sub)
@@ -164,7 +168,7 @@ function createParcelWatcher(pw: ParcelModule): GitWatcher {
         .then((sub) => {
           if (gen !== startGeneration) {
             log('Git watcher: unsubscribing stale tree subscription')
-            sub.unsubscribe().catch(() => {})
+            sub.unsubscribe().catch((err: Error) => debug("git_watcher: unsubscribe failed", { error: String(err) }))
             return
           }
           subscriptions.push(sub)
@@ -196,7 +200,7 @@ function createParcelWatcher(pw: ParcelModule): GitWatcher {
       }
       pendingEvents.clear()
       log('git_watcher: stopping', { path: currentRepoPath, subs: subscriptions.length, events_seen: totalEventsSeen })
-      for (const sub of subscriptions) sub.unsubscribe().catch(() => {})
+      for (const sub of subscriptions) sub.unsubscribe().catch((err: Error) => debug("git_watcher: unsubscribe failed", { error: String(err) }))
       subscriptions = []
       isActive = false
       startGeneration++  // invalidate any in-flight subscribe callbacks

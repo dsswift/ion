@@ -84,7 +84,7 @@ export function FileExplorer() {
   const fetchIgnored = useCallback((dir: string) => {
     window.ion.gitIgnoredFiles(dir).then(result => {
       setIgnoredPaths(new Set(result.paths))
-    }).catch(() => {})
+    }).catch((err) => rDebug("file-explorer", "gitIgnoredFiles failed", { dir, error: String(err) }))
   }, [])
 
   // Initial load + auto-refresh every 5 seconds

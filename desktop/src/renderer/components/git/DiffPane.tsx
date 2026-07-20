@@ -8,6 +8,7 @@
  */
 
 import React, { useMemo, useCallback, useState, useEffect } from 'react'
+import { rDebug } from '../../rendererLogger'
 import { X, Rows, Columns } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { parseDiffWithHunks, buildHunkPatch, buildPartialLinePatch } from './diffParse'
@@ -191,7 +192,7 @@ function ImageDiff({ directory, filePath }: { directory: string; filePath: strin
     window.ion.gitShowFile(directory, 'HEAD', filePath).then((r) => {
       if (cancelled) return
       if (r.ok && r.content) setBefore(`data:image/*;base64,${btoa(r.content)}`)
-    }).catch(() => {})
+    }).catch((err) => rDebug("git", "gitShowFile (before) failed", { filePath, error: String(err) }))
     return () => { cancelled = true }
   }, [directory, filePath])
 
@@ -200,7 +201,7 @@ function ImageDiff({ directory, filePath }: { directory: string; filePath: strin
     window.ion.fsReadFile(`${directory}/${filePath}`).then((r) => {
       if (cancelled) return
       if (r.content) setAfter(`data:image/*;base64,${btoa(r.content)}`)
-    }).catch(() => {})
+    }).catch((err) => rDebug("git", "fsReadFile (after) failed", { filePath, error: String(err) }))
     return () => { cancelled = true }
   }, [directory, filePath])
 

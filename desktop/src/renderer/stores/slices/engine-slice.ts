@@ -7,7 +7,7 @@ import { createEngineSubmitActions } from './engine-slice-submit'
 import { createEngineRewindActions } from './engine-slice-rewind'
 import { MAIN_INSTANCE_ID } from '../../../shared/session-key'
 import { createConversationTabAction, _captureMintedConversationId } from './engine-slice-create'
-import { rError } from '../../rendererLogger'
+import { rError, rWarn } from '../../rendererLogger'
 
 /**
  * Engine slice: single-instance-per-tab lifecycle.
@@ -171,7 +171,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       const instanceExists = pane.instances.some((i) => i.id === instanceId)
       if (!instanceExists) return
       const key = tabId
-      window.ion.engineAbort(key).catch(() => {})
+      window.ion.engineAbort(key).catch((err) => rWarn('engine.session', 'engineAbort IPC failed', { tab_id: key, error: String(err) }))
 
       const divider = {
         id: nextMsgId(),

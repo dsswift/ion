@@ -36,6 +36,7 @@ import { useUpdateStore } from './stores/update-store'
 import { setupModelSync } from './stores/model-store'
 import { initActiveTabNotifier } from './lib/active-tab-notifier'
 import { initRemoteProjectionPush } from './stores/remote-projection-push'
+import { rWarn } from './rendererLogger'
 
 
 const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] as const }
@@ -104,7 +105,7 @@ export default function App() {
       if (ids.length > 0) {
         useSessionStore.setState({ readResourceIds: new Set(ids) })
       }
-    }).catch(() => {})
+    }).catch((err) => rWarn('resources', 'getReadResourceIds failed', { error: String(err) }))
   }, [])
 
   // Cold-load persisted resources from disk so the notifications panel
@@ -133,7 +134,7 @@ export default function App() {
           return { resources: merged, readResourceIds: mergedReadIds }
         })
       }
-    }).catch(() => {})
+    }).catch((err) => rWarn('resources', 'getPersistedResources failed', { error: String(err) }))
   }, [])
 
   // Initialize remote-fs store (queries main for isRemote)

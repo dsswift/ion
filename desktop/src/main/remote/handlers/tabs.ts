@@ -1,7 +1,7 @@
 import { readFile } from 'fs/promises'
 import { homedir } from 'os'
 import { IPC } from '../../../shared/types'
-import { log as _log } from '../../logger'
+import { log as _log, warn as _warn } from '../../logger'
 import { state, sessionPlane, engineBridge, activeAssistantMessages, lastMessagePreview, lastForwardedTabStatus, extensionCommandRegistry } from '../../state'
 import { broadcast } from '../../broadcast'
 import { terminalManager } from '../../terminal-manager-instance'
@@ -20,6 +20,10 @@ export { handlePrompt, handleCancel } from './tabs-prompt'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
+}
+
+function warn(msg: string, fields?: Record<string, unknown>): void {
+  _warn('main', msg, fields)
 }
 
 /**
@@ -149,7 +153,11 @@ function notifyTabCreated(tabId: string, clientCmdId?: string): void {
       const { tabs } = await getRemoteTabStates()
       const newTab = tabs.find((t: any) => t.id === tabId)
       if (newTab) state.remoteTransport?.send({ type: 'desktop_tab_created', tab: newTab, clientCmdId })
-    } catch {}
+    } catch (err) {
+      // If this echo never sends, iOS's confirm-or-resend loop resends the
+      // create command indefinitely with no desktop-side explanation. Log it.
+      warn('remote: tab_created notify failed', { tab_id: tabId, error: String(err) })
+    }
   }, 500)
 }
 
@@ -438,7 +446,10 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
             if (planPath) {
               try {
                 planContent = await readFile(planPath, 'utf-8')
-              } catch {
+              } catch (err) {
+                // ENOENT (plan file absent) is the common case; log at debug so
+                // the fallback is observable without noise at higher levels.
+                log('remote: plan file read failed; treating as no plan', { path: planPath, error: String(err) })
                 planContent = null
               }
             }

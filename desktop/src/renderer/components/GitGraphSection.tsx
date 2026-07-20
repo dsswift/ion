@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { rDebug } from '../rendererLogger'
 import { createPortal } from 'react-dom'
 import { AnimatePresence } from 'framer-motion'
 import {
@@ -173,7 +174,7 @@ export function GitGraphSection({
       activeHashRef.current = commit.hash
       window.ion.gitCommitDetail(directory, commit.hash).then((detail) => {
         if (activeHashRef.current === commit.hash) setHoverDetail(detail)
-      }).catch(() => {})
+      }).catch((err) => rDebug("git", "gitCommitDetail failed", { error: String(err) }))
     }, 300)
   }, [directory, dismissPopup])
 

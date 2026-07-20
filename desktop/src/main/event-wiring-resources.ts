@@ -236,7 +236,9 @@ export async function publishResourceMarkRead(kind: string, resourceId: string):
 export function wireMarkResourceReadHandler(): void {
   ipcMain.on(IPC.MARK_RESOURCE_READ, (_event: Electron.IpcMainEvent, { kind, resourceId }: { kind: string; resourceId: string }) => {
     markReadPersisted(resourceId)
-    publishResourceMarkRead(kind, resourceId).catch(() => {})
+    publishResourceMarkRead(kind, resourceId).catch((err) => {
+      log('resource_mark_read: publish failed', { kind, resource_id: resourceId, error: String(err) })
+    })
   })
   ipcMain.handle(IPC.GET_READ_RESOURCE_IDS, () => {
     return [...persistedReadIds]
@@ -308,7 +310,9 @@ export async function publishResourceDelete(kind: string, resourceId: string): P
 
 export function wireDeleteResourceHandler(): void {
   ipcMain.on(IPC.DELETE_RESOURCE, (_event: Electron.IpcMainEvent, { kind, resourceId }: { kind: string; resourceId: string }) => {
-    publishResourceDelete(kind, resourceId).catch(() => {})
+    publishResourceDelete(kind, resourceId).catch((err) => {
+      log('resource_delete: publish failed', { kind, resource_id: resourceId, error: String(err) })
+    })
   })
 }
 

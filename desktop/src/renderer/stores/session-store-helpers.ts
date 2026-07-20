@@ -3,6 +3,7 @@ import { usePreferencesStore } from '../preferences'
 import notificationSrc from '../../../resources/notification.mp3'
 import type { FileEditorDirState } from './session-store-types'
 import { tabHasExtensions } from '../../shared/tab-predicates'
+import { rTrace } from '../rendererLogger'
 
 const EDITABLE_EXTS = new Set(['.md', '.txt'])
 
@@ -57,9 +58,11 @@ export async function playNotificationIfHidden(): Promise<void> {
     const visible = await window.ion.isVisible()
     if (!visible) {
       notificationAudio.currentTime = 0
-      notificationAudio.play().catch(() => {})
+      notificationAudio.play().catch((err) => rTrace('notify', 'notification audio play rejected', { error: String(err) }))
     }
-  } catch {}
+  } catch (err) {
+    rTrace('notify', 'notification audio gate failed', { error: String(err) })
+  }
 }
 
 /**

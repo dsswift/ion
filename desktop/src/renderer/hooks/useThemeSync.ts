@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { rDebug } from '../rendererLogger'
 import { usePreferencesStore } from '../preferences'
 
 /**
@@ -12,7 +13,7 @@ export function useThemeSync() {
   useEffect(() => {
     window.ion.getTheme().then(({ isDark }) => {
       setSystemTheme(isDark)
-    }).catch(() => {})
+    }).catch((err) => rDebug("theme", "getTheme failed", { error: String(err) }))
 
     const unsub = window.ion.onThemeChange((isDark) => {
       setSystemTheme(isDark)
