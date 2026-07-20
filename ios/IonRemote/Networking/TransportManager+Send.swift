@@ -99,8 +99,20 @@ extension TransportManager {
                    let payloadStr = String(data: responseData, encoding: .utf8) {
                     let wireMsg = WireMessage(seq: 0, ts: Date().timeIntervalSince1970 * 1000, payload: payloadStr)
                     if let wireData = try? JSONEncoder().encode(wireMsg) {
-                        try? await lan.send(data: wireData)
+                        do {
+                            try await lan.send(data: wireData)
+                        } catch {
+                            // Auth-response send failure silently stalls the LAN
+                            // handshake until the 8s timeout; log so it's visible.
+                            DiagnosticLog.log("AUTH-CORE: auth response send failed", tag: "transport.send", level: .error, fields: [
+                                "error": String(describing: error),
+                            ])
+                        }
+                    } else {
+                        DiagnosticLog.log("AUTH-CORE: wire encode failed for auth response", tag: "transport.send", level: .error)
                     }
+                } else {
+                    DiagnosticLog.log("AUTH-CORE: auth response serialization failed", tag: "transport.send", level: .error)
                 }
                 awaitingResult = true
                 DiagnosticLog.log("AUTH-CORE: sent response, awaiting result")

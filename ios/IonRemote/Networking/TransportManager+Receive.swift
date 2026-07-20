@@ -267,6 +267,9 @@ extension TransportManager {
                 let expected = lastReceivedSeq + 1
                 let got = wire.seq
                 ionLog.warning("wire seq forward gap: expected \(expected), got \(got) — \(got - expected) frame(s) lost; requesting resend")
+                DiagnosticLog.log("wire seq forward gap; requesting resend", tag: "transport.receive", level: .warn, fields: [
+                    "expected": String(expected), "got": String(got), "lost": String(got - expected),
+                ])
                 requestResendForGap(fromSeq: expected, toSeq: got - 1)
             }
             // NOTE: lastReceivedSeq is NOT advanced here. It advances via
@@ -282,11 +285,17 @@ extension TransportManager {
               let ciphertext = Data(base64Encoded: ciphertextB64),
               let nonce = Data(base64Encoded: nonceB64) else {
             ionLog.warning("wire message seq=\(wire.seq) missing ciphertext/nonce fields")
+            DiagnosticLog.log("wire message missing ciphertext/nonce fields; frame dropped", tag: "transport.receive", level: .warn, fields: [
+                "seq": String(wire.seq),
+            ])
             return
         }
 
         guard let payloadData = try? E2ECrypto.decrypt(ciphertext: ciphertext, nonce: nonce, key: sharedKey) else {
             ionLog.warning("decrypt failed for seq=\(wire.seq) — possible key mismatch")
+            DiagnosticLog.log("decrypt failed; frame dropped (possible key mismatch)", tag: "transport.receive", level: .warn, fields: [
+                "seq": String(wire.seq),
+            ])
             return
         }
 
@@ -322,6 +331,9 @@ extension TransportManager {
                 jsonData = try PayloadCompression.inflateRaw(payloadData.dropFirst())
             } catch {
                 ionLog.error("decompression failed for seq=\(wire.seq): \(error)")
+                DiagnosticLog.log("decompression failed; frame dropped", tag: "transport.receive", level: .error, fields: [
+                    "seq": String(wire.seq), "error": String(describing: error),
+                ])
                 return
             }
         } else {
@@ -401,7 +413,13 @@ extension TransportManager {
             // Defense-in-depth: request a full resync so a malformed/truncated
             // frame self-heals rather than leaving iOS in stale state.
             Task { [weak self] in
-                try? await self?.send(.sync)
+                do {
+                    try await self?.send(.sync)
+                } catch {
+                    DiagnosticLog.log("self-heal resync send failed", tag: "transport.receive", level: .warn, fields: [
+                        "error": String(describing: error),
+                    ])
+                }
             }
             return
         }
@@ -413,6 +431,9 @@ extension TransportManager {
         // still yielded so the ViewModel can log/observe it.
         if case .resendUnavailable(let fromSeq) = event {
             ionLog.warning("resend unavailable fromSeq=\(fromSeq) — clearing pending range; snapshot reconcile will heal")
+            DiagnosticLog.log("resend unavailable; clearing pending range (snapshot reconcile will heal)", tag: "transport.receive", level: .warn, fields: [
+                "fromSeq": String(fromSeq),
+            ])
             pendingResendSeqs.removeAll()
         }
 
@@ -497,7 +518,13 @@ extension TransportManager {
 
         ionLog.info("requesting resend [\(fromSeq),\(cappedTo)]")
         Task { [weak self] in
-            try? await self?.send(.requestResend(fromSeq: fromSeq, toSeq: cappedTo))
+            do {
+                try await self?.send(.requestResend(fromSeq: fromSeq, toSeq: cappedTo))
+            } catch {
+                DiagnosticLog.log("resend request send failed; frames stay missing", tag: "transport.receive", level: .warn, fields: [
+                    "fromSeq": String(fromSeq), "toSeq": String(cappedTo), "error": String(describing: error),
+                ])
+            }
         }
     }
 
@@ -535,7 +562,13 @@ extension TransportManager {
             "pending_count": String(pendingResendSeqs.count)
         ])
         Task { [weak self] in
-            try? await self?.send(.requestResend(fromSeq: mergedFrom, toSeq: mergedTo))
+            do {
+                try await self?.send(.requestResend(fromSeq: mergedFrom, toSeq: mergedTo))
+            } catch {
+                DiagnosticLog.log("coalesced resend request send failed", tag: "transport.receive", level: .warn, fields: [
+                    "from_seq": String(mergedFrom), "to_seq": String(mergedTo), "error": String(describing: error),
+                ])
+            }
         }
     }
 }

@@ -557,14 +557,18 @@ extension SessionViewModel {
 
         case .automaticFireAndForget:
             guard connectionState == .connected, let transport else {
-                DiagnosticLog.log("CMD: fire-and-forget dropped (not connected) state=\(connectionState.rawValue)")
+                DiagnosticLog.log("CMD: fire-and-forget dropped (not connected)", tag: "session.commands", level: .warn, fields: [
+                    "state": connectionState.rawValue,
+                ])
                 return
             }
             Task { [weak self] in
                 do {
                     try await transport.send(command)
                 } catch {
-                    DiagnosticLog.log("CMD: fire-and-forget send error (no toast): \(error.localizedDescription)")
+                    DiagnosticLog.log("CMD: fire-and-forget send error (no toast)", tag: "session.commands", level: .warn, fields: [
+                        "error": error.localizedDescription,
+                    ])
                 }
                 _ = self
             }

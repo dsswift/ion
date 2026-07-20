@@ -53,6 +53,9 @@ extension SessionViewModel {
         guard !effectiveRelayURL.isEmpty,
               let url = URL(string: effectiveRelayURL) else {
             ionLog.error("connect: invalid or empty relay URL for device=\(device.name) apiKey=\(effectiveAPIKey), aborting")
+            DiagnosticLog.log("connect aborted: invalid or empty relay URL", tag: "lifecycle", level: .error, fields: [
+                "device": device.name,
+            ])
             return
         }
 

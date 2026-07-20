@@ -300,6 +300,7 @@
 		PLANDIVIDER0000000000001 /* PlanDividerCreatedUpdatedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLANDIVIDER0000000000002 /* PlanDividerCreatedUpdatedTests.swift */; };
 		MARKERRELOAD00000000000001 /* MarkerReloadDecodeGroupingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MARKERRELOAD00000000000002 /* MarkerReloadDecodeGroupingTests.swift */; };
 		ATTCHSEGPARSE000000001 /* AttachmentSegmentParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ATTCHSEGPARSE000000002 /* AttachmentSegmentParsingTests.swift */; };
+		PEERSTATLOG000000001 /* PeerStatusPollerLoggingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PEERSTATLOG000000002 /* PeerStatusPollerLoggingTests.swift */; };
 		OPTINSERT00000000000001 /* OptimisticInsertTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = OPTINSERT00000000000002 /* OptimisticInsertTests.swift */; };
 		SLSHPILL0000000000000001 /* SlashPillOptimisticTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SLSHPILL0000000000000002 /* SlashPillOptimisticTests.swift */; };
 		A1B2C3D4E5F600010009F3AA /* PendingCreateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010009F4AA /* PendingCreateTests.swift */; };
@@ -653,6 +654,7 @@
 		PLANDIVIDER0000000000002 /* PlanDividerCreatedUpdatedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanDividerCreatedUpdatedTests.swift; sourceTree = "<group>"; };
 		MARKERRELOAD00000000000002 /* MarkerReloadDecodeGroupingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkerReloadDecodeGroupingTests.swift; sourceTree = "<group>"; };
 		ATTCHSEGPARSE000000002 /* AttachmentSegmentParsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentSegmentParsingTests.swift; sourceTree = "<group>"; };
+		PEERSTATLOG000000002 /* PeerStatusPollerLoggingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeerStatusPollerLoggingTests.swift; sourceTree = "<group>"; };
 		OPTINSERT00000000000002 /* OptimisticInsertTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptimisticInsertTests.swift; sourceTree = "<group>"; };
 		SLSHPILL0000000000000002 /* SlashPillOptimisticTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlashPillOptimisticTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010009F4AA /* PendingCreateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingCreateTests.swift; sourceTree = "<group>"; };
@@ -1070,6 +1072,7 @@
 				PLANDIVIDER0000000000002 /* PlanDividerCreatedUpdatedTests.swift */,
 				MARKERRELOAD00000000000002 /* MarkerReloadDecodeGroupingTests.swift */,
 				ATTCHSEGPARSE000000002 /* AttachmentSegmentParsingTests.swift */,
+				PEERSTATLOG000000002 /* PeerStatusPollerLoggingTests.swift */,
 				OPTINSERT00000000000002 /* OptimisticInsertTests.swift */,
 				SLSHPILL0000000000000002 /* SlashPillOptimisticTests.swift */,
 				A1B2C3D4E5F600010009F4AA /* PendingCreateTests.swift */,
@@ -1632,6 +1635,7 @@
 				PLANDIVIDER0000000000001 /* PlanDividerCreatedUpdatedTests.swift in Sources */,
 				MARKERRELOAD00000000000001 /* MarkerReloadDecodeGroupingTests.swift in Sources */,
 				ATTCHSEGPARSE000000001 /* AttachmentSegmentParsingTests.swift in Sources */,
+				PEERSTATLOG000000001 /* PeerStatusPollerLoggingTests.swift in Sources */,
 				OPTINSERT00000000000001 /* OptimisticInsertTests.swift in Sources */,
 				SLSHPILL0000000000000001 /* SlashPillOptimisticTests.swift in Sources */,
 				A1B2C3D4E5F600010009F3AA /* PendingCreateTests.swift in Sources */,

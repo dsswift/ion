@@ -38,8 +38,17 @@ final class SerialAsyncQueue: @unchecked Sendable {
                 return try await operation()
             }
             // The chain tail ignores the result/error so one failed send does
-            // not poison every send queued behind it.
-            tail = Task { _ = try? await next.value }
+            // not poison every send queued behind it — but log the drop so a
+            // failed send in the chain is countable rather than fully silent.
+            tail = Task {
+                do {
+                    _ = try await next.value
+                } catch {
+                    DiagnosticLog.log("serial queue operation failed (chain continues)", tag: "transport.queue", level: .warn, fields: [
+                        "error": String(describing: error),
+                    ])
+                }
+            }
             return next
         }
     }
