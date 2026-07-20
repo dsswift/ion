@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
@@ -159,11 +160,21 @@ func cumulativeUsage(run *activeRun) types.UsageData {
 }
 func strPtr(v string) *string { return &v }
 
-// buildUserContentBlocks turns a text prompt plus pre-encoded image
-// attachments into a structured content-block slice for the user message.
-// The text block is emitted first when non-empty; one image block per
-// attachment follows, in order. Empty-data attachments are dropped (they
-// would otherwise produce a malformed provider request).
+// buildUserContentBlocks turns a text prompt plus pre-encoded image and
+// document attachments into a structured content-block slice for the user
+// message. The text block is emitted first when non-empty; one content block
+// per attachment follows, in order.
+//
+// Media type dispatch:
+//   - "image/*"         — native image block (base64 source)
+//   - "application/pdf" — native document block (base64 source); matches
+//     the document-block path in buildCliUserContent so API-key and CLI-key
+//     consumers see the same behavior when a remote client sends a PDF over
+//     the wire (#271)
+//
+// Empty-data or empty-mediatype attachments are dropped (they would produce a
+// malformed provider request). Any unrecognised media type is silently skipped
+// (the corresponding marker, if any, stays for the Read-tool fallback).
 func buildUserContentBlocks(prompt string, attachments []types.ImageAttachment) []types.LlmContentBlock {
 	blocks := make([]types.LlmContentBlock, 0, len(attachments)+1)
 	if prompt != "" {
@@ -173,14 +184,33 @@ func buildUserContentBlocks(prompt string, attachments []types.ImageAttachment) 
 		if a.Data == "" || a.MediaType == "" {
 			continue
 		}
-		blocks = append(blocks, types.LlmContentBlock{
-			Type: "image",
-			Source: &types.ImageSource{
-				Type:      "base64",
-				MediaType: a.MediaType,
-				Data:      a.Data,
-			},
-		})
+		switch {
+		case a.MediaType == "application/pdf":
+			blocks = append(blocks, types.LlmContentBlock{
+				Type: "document",
+				Source: &types.ImageSource{
+					Type:      "base64",
+					MediaType: "application/pdf",
+					Data:      a.Data,
+				},
+			})
+		case strings.HasPrefix(a.MediaType, "image/"):
+			blocks = append(blocks, types.LlmContentBlock{
+				Type: "image",
+				Source: &types.ImageSource{
+					Type:      "base64",
+					MediaType: a.MediaType,
+					Data:      a.Data,
+				},
+			})
+		default:
+			// Unknown media type: skip; the marker (if any) remains in the
+			// prompt for the Read-tool fallback to handle.
+			utils.LogWithFields(utils.LevelDebug, "ApiBackend", "buildUserContentBlocks: skipping unknown media type", map[string]any{
+				"media_type": a.MediaType,
+				"path":       a.Path,
+			})
+		}
 	}
 	if len(blocks) == 0 {
 		// All attachments invalid AND prompt empty: emit a placeholder text

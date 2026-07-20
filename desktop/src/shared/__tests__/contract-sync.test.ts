@@ -178,6 +178,7 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
     'maxTokens',
     'model',
     'parentConversationId',
+    'pinned',
     'profileId',
     'sessionId',
     'systemHint',

@@ -432,6 +432,7 @@
       "maxTokens",
       "model",
       "parentConversationId",
+      "pinned",
       "profileId",
       "sessionId",
       "systemHint",

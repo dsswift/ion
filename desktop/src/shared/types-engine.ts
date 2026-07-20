@@ -126,6 +126,14 @@ export interface EngineConfig {
    * starting a new conversation for an existing tab). Ignored when resuming.
    */
   parentConversationId?: string
+  /**
+   * Marks this session as exempt from the engine's orphaned-session reaper. When
+   * true, the engine will not automatically stop the session when all owning
+   * client connections disconnect. Intended for headless daemon sessions that host
+   * long-lived extensions with schedules and hooks but have no persistent UI owner.
+   * An explicit stop_session or engine shutdown still terminates pinned sessions.
+   */
+  pinned?: boolean
 }
 
 export interface ConversationRef {
