@@ -13,6 +13,12 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.50.0](https://github.com/dsswift/ion/compare/engine-v1.49.0...engine-v1.50.0) (2026-07-20)
+
+### Features
+
+* **engine:** resource_get command for lazy item content fetch (#211) ([38e440a](https://github.com/dsswift/ion/commit/38e440aaa30ec95fbdf7e47c7385aa31f429f115))
+
 ## [1.49.0](https://github.com/dsswift/ion/compare/engine-v1.48.0...engine-v1.49.0) (2026-07-20)
 
 ### Features

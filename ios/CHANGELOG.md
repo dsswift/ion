@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.47.0](https://github.com/dsswift/ion/compare/ios-v1.46.2...ios-v1.47.0) (2026-07-20)
+
+### Features
+
+* **ios:** resource_get command for lazy item content fetch (#211) ([b2a4846](https://github.com/dsswift/ion/commit/b2a4846af14fbf26877a5def4875a1feb2f8b542))
+
 ## [1.46.2](https://github.com/dsswift/ion/compare/ios-v1.46.1...ios-v1.46.2) (2026-07-19)
 
 ### Bug Fixes

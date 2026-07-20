@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.63.0](https://github.com/dsswift/ion/compare/desktop-v1.62.0...desktop-v1.63.0) (2026-07-20)
+
+### Features
+
+* **desktop:** resource_get command for lazy item content fetch (#211) ([4a1084b](https://github.com/dsswift/ion/commit/4a1084bf8db54b5057d9047c42bab51e609b6d1a))
+
 ## [1.62.0](https://github.com/dsswift/ion/compare/desktop-v1.61.1...desktop-v1.62.0) (2026-07-20)
 
 ### Features
