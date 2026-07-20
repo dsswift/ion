@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react'
 import { Trash, Plus, MagnifyingGlass, ArrowClockwise, PencilSimple, FloppyDisk, X, CircleNotch } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
+import { rError } from '../../rendererLogger'
 
 export interface DiscoveredRelay {
   id: string
@@ -258,7 +259,7 @@ export function RemoteCategoryRelay({
         {/* Action buttons */}
         <div style={{ display: 'flex', gap: 6 }}>
           <button
-            onClick={handleTestAndSave}
+            onClick={() => { void handleTestAndSave().catch((err) => rError('settings', 'relay test and save failed', { error: String(err) })) }}
             disabled={isTesting}
             style={{
               ...smallBtnStyle,

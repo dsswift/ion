@@ -67,7 +67,7 @@ export function registerModelsIpc(): void {
     if (result.ok) {
       // Auth status changed — engine runs discovery for this provider,
       // then we refresh our cache after a delay to pick up new models.
-      setTimeout(() => refreshModelCache(), 2000)
+      setTimeout(() => { void refreshModelCache() }, 2000)
     }
     return result
   })
@@ -77,7 +77,7 @@ export function registerModelsIpc(): void {
     const result = await engineBridge.refreshModels(provider)
     if (result.ok) {
       // Re-fetch the model list to pick up discovery results
-      setTimeout(() => refreshModelCache(), 1000)
+      setTimeout(() => { void refreshModelCache() }, 1000)
     }
     return result
   })
@@ -85,9 +85,9 @@ export function registerModelsIpc(): void {
   // Auto-fetch models when engine reconnects
   engineBridge.on('reconnected', () => {
     log('Engine reconnected — refreshing model cache')
-    refreshModelCache()
+    void refreshModelCache()
   })
 
   // Initial fetch after a short delay to give the engine bridge time to connect
-  setTimeout(() => refreshModelCache(), 2000)
+  setTimeout(() => { void refreshModelCache() }, 2000)
 }

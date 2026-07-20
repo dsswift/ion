@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from 'react'
 import { useSessionStore, FileEditorTab } from '../stores/sessionStore'
-import { rDebug, rWarn } from '../rendererLogger'
+import { rDebug, rWarn, rError } from '../rendererLogger'
 
 interface UseFileEditorContentParams {
   dir: string
@@ -70,7 +70,7 @@ export function useFileEditorContent({
             return { fileEditorStates: states }
           })
         }
-      })
+      }).catch((err) => rError('file-editor', 'initial file load failed', { path: activeFile.filePath, error: String(err) }))
     } else if (activeFile.filePath && !activeFile.isDirty && activeFile.content !== '') {
       // Background tab refresh: re-read from disk when switching to a non-dirty file
       window.ion.fsReadFile(activeFile.filePath).then((result) => {
@@ -90,7 +90,7 @@ export function useFileEditorContent({
             return { fileEditorStates: states }
           })
         }
-      })
+      }).catch((err) => rDebug('file-editor', 'background refresh read failed', { path: activeFile.filePath, error: String(err) }))
     }
   }, [activeFile, activeFile?.id, activeFile?.filePath, dir])
 
@@ -99,7 +99,7 @@ export function useFileEditorContent({
     if (!activeFile?.filePath) return
     const filePath = activeFile.filePath
 
-    window.ion.fsWatchFile(filePath)
+    window.ion.fsWatchFile(filePath).catch((err) => rWarn('file-editor', 'fsWatchFile failed; external changes will not auto-reload', { path: filePath, error: String(err) }))
 
     const unsub = window.ion.onFileChanged((changedPath) => {
       if (changedPath !== filePath) return
@@ -131,12 +131,12 @@ export function useFileEditorContent({
           })
           return { fileEditorStates: states }
         })
-      })
+      }).catch((err) => rWarn('file-editor', 'watcher re-read failed', { path: filePath, error: String(err) }))
     })
 
     return () => {
       unsub()
-      window.ion.fsUnwatchFile(filePath)
+      window.ion.fsUnwatchFile(filePath).catch((err) => rDebug('file-editor', 'fsUnwatchFile failed', { path: filePath, error: String(err) }))
     }
   }, [activeFile?.filePath, activeFile?.id, dir])
 

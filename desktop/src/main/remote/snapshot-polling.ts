@@ -192,7 +192,10 @@ export const STALE_STATUS_THRESHOLD_MS = 60_000
 
 export function startTabSnapshotPolling(): void {
   stopTabSnapshotPolling()
-  state.tabSnapshotInterval = setInterval(async () => {
+  // The tick body is a named async function so it stays awaitable (tests drive
+  // it directly) while the interval callback stays synchronous — setInterval
+  // must not be handed an async function (no-misused-promises).
+  const tick = async (): Promise<void> => {
     if (!state.remoteTransport || state.remoteTransport.state === 'disconnected') return
     try {
       await pollSnapshotOnce()
@@ -201,7 +204,8 @@ export function startTabSnapshotPolling(): void {
       // previous silent catch here masked a fully broken tick.
       error('snapshot_polling: poll tick failed', { error: (err as Error).message })
     }
-  }, 5_000)
+  }
+  state.tabSnapshotInterval = setInterval(() => { void tick() }, 5_000)
 }
 
 export function stopTabSnapshotPolling(): void {

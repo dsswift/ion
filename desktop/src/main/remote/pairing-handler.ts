@@ -120,15 +120,17 @@ export function handlePairRequest(request: PairRequest): void {
     state.remoteTransport.addDevice(pairedDevice as PairedDevice)
   }
 
-  setTimeout(async () => {
-    const { tabs, resourceManifest } = await getRemoteTabStates()
-    const pairSettings = readSettings()
-    const pairRecentDirs: string[] = Array.isArray(pairSettings.recentBaseDirectories) ? pairSettings.recentBaseDirectories : []
-    state.remoteTransport?.send({
-      type: 'desktop_snapshot',
-      tabs,
-      recentDirectories: pairRecentDirs,
-      resources: Object.keys(resourceManifest).length > 0 ? resourceManifest : undefined,
-    })
+  setTimeout(() => {
+    void (async () => {
+      const { tabs, resourceManifest } = await getRemoteTabStates()
+      const pairSettings = readSettings()
+      const pairRecentDirs: string[] = Array.isArray(pairSettings.recentBaseDirectories) ? pairSettings.recentBaseDirectories : []
+      state.remoteTransport?.send({
+        type: 'desktop_snapshot',
+        tabs,
+        recentDirectories: pairRecentDirs,
+        resources: Object.keys(resourceManifest).length > 0 ? resourceManifest : undefined,
+      })
+    })().catch((err) => warn('pairing: post-pair snapshot send failed', { error: String(err) }))
   }, 500)
 }

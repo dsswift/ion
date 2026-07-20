@@ -1,8 +1,9 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useCallback } from 'react'
 import { useColors } from '../../theme'
 import { SettingHeading } from './SettingHeading'
 import { useModelStore } from '../../stores/model-store'
 import { ProviderRow } from './ProviderRow'
+import { rWarn } from '../../rendererLogger'
 
 export function ProvidersCategory() {
   const colors = useColors()
@@ -10,7 +11,9 @@ export function ProvidersCategory() {
   const providers = useModelStore((s) => s.providers)
   const loading = useModelStore((s) => s.loading)
 
-  useEffect(() => { fetchModels() }, [fetchModels])
+  const refetchModels = useCallback(() => { void fetchModels().catch((err) => rWarn('settings', 'fetch models failed', { error: String(err) })) }, [fetchModels])
+
+  useEffect(() => { refetchModels() }, [refetchModels])
 
   return (
     <>
@@ -19,7 +22,7 @@ export function ProvidersCategory() {
         <div style={{ padding: '12px 0', fontSize: 12, color: colors.textTertiary }}>Loading providers…</div>
       )}
       {providers.map((p) => (
-        <ProviderRow key={p.id} provider={p} colors={colors} onCredentialSaved={fetchModels} />
+        <ProviderRow key={p.id} provider={p} colors={colors} onCredentialSaved={refetchModels} />
       ))}
       {providers.length === 0 && !loading && (
         <div style={{ padding: '12px 0', fontSize: 12, color: colors.textTertiary }}>

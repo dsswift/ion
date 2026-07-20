@@ -3,6 +3,7 @@ import { EditorView } from '@codemirror/view'
 import { toggleComment } from '@codemirror/commands'
 import { gotoLine } from '@codemirror/search'
 import { useColors } from '../theme'
+import { rWarn, rError } from '../rendererLogger'
 
 interface FileEditorContextMenuProps {
   x: number
@@ -54,7 +55,7 @@ export function FileEditorContextMenu({ x, y, isReadOnly, viewRef, onClose }: Fi
         const view = viewRef.current
         if (!view) return
         const sel = view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to)
-        if (sel) navigator.clipboard.writeText(sel)
+        if (sel) navigator.clipboard.writeText(sel).catch((err) => rError('file-editor.contextmenu', 'cut clipboard write failed', { error: String(err) }))
         view.dispatch(view.state.replaceSelection(''))
         view.focus()
       }),
@@ -66,7 +67,7 @@ export function FileEditorContextMenu({ x, y, isReadOnly, viewRef, onClose }: Fi
         const view = viewRef.current
         if (!view) return
         const sel = view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to)
-        if (sel) navigator.clipboard.writeText(sel)
+        if (sel) navigator.clipboard.writeText(sel).catch((err) => rWarn('file-editor.contextmenu', 'copy clipboard write failed', { error: String(err) }))
         view.focus()
       }),
     },
@@ -74,12 +75,14 @@ export function FileEditorContextMenu({ x, y, isReadOnly, viewRef, onClose }: Fi
       label: 'Paste',
       shortcut: '⌘V',
       hidden: isReadOnly,
-      action: () => exec(async () => {
+      action: () => exec(() => {
         const view = viewRef.current
         if (!view) return
-        const text = await navigator.clipboard.readText()
-        view.dispatch(view.state.replaceSelection(text))
-        view.focus()
+        void (async () => {
+          const text = await navigator.clipboard.readText()
+          view.dispatch(view.state.replaceSelection(text))
+          view.focus()
+        })().catch((err) => rError('file-editor.contextmenu', 'paste failed', { error: String(err) }))
       }),
     },
     {

@@ -26,7 +26,7 @@ export async function handleFsListDir(cmd: Extract<RemoteCommand, { type: 'deskt
       try {
         const st = statSync(fullPath)
         entries.push({ name: d.name, path: fullPath, isDirectory: d.isDirectory(), size: st.size, modifiedMs: st.mtimeMs })
-      } catch {}
+      } catch { /* silent-ok: skip entries that vanish or are unreadable mid-listing */ }
     }
     entries.sort((a, b) => {
       if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1

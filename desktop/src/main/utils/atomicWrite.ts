@@ -31,15 +31,15 @@ export function atomicWriteFileSync(
     writeSync(fd, buf, 0, buf.length, 0)
     fsyncSync(fd)
   } catch (err) {
-    try { closeSync(fd) } catch {}
-    try { unlinkSync(tmp) } catch {}
+    try { closeSync(fd) } catch { /* silent-ok: best-effort fd close on the write-failure path */ }
+    try { unlinkSync(tmp) } catch { /* silent-ok: best-effort temp-file cleanup on the write-failure path */ }
     throw err
   }
   closeSync(fd)
   try {
     renameSync(tmp, path)
   } catch (err) {
-    try { unlinkSync(tmp) } catch {}
+    try { unlinkSync(tmp) } catch { /* silent-ok: best-effort temp-file cleanup on the rename-failure path */ }
     throw err
   }
   // Best-effort fsync the directory so the rename survives a crash. Some
@@ -47,7 +47,7 @@ export function atomicWriteFileSync(
   // non-fatal since the rename itself is already on disk.
   try {
     const dirFd = openSync(dirname(path), 'r')
-    try { fsyncSync(dirFd) } catch {}
+    try { fsyncSync(dirFd) } catch { /* silent-ok: some filesystems reject directory fsync; rename already durable */ }
     closeSync(dirFd)
-  } catch {}
+  } catch { /* silent-ok: directory fsync is best-effort; the rename itself is already on disk */ }
 }

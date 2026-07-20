@@ -11,6 +11,7 @@ import { PillColorPicker } from './TabStripPillColorPicker'
 import { TabContextMenu } from './TabStripTabContextMenu'
 import { DropdownTabRow } from './TabStripDropdownTabRow'
 import { newTabInDirectory } from './new-conversation-routing'
+import { rError } from '../rendererLogger'
 
 interface GroupPickerDropdownProps {
   group: TabGroupView
@@ -198,7 +199,7 @@ export function GroupPickerDropdown({
               tab={menuTab}
               onRename={() => { setDirMenuTabId(null); setEditingTabId(menuTab.id) }}
               onForkTab={menuTab.conversationId ? () => {
-                useSessionStore.getState().forkTab(menuTab.id)
+                void useSessionStore.getState().forkTab(menuTab.id).catch((err) => rError('tabs', 'fork tab failed', { error: String(err) }))
                 setDirMenuTabId(null)
               } : undefined}
               onNewTabInDir={() => {
@@ -209,13 +210,13 @@ export function GroupPickerDropdown({
                   profiles: engineProfiles,
                   defaultProfileId: defaultEngineProfileId,
                   enterprisePolicy: policy,
-                  createTabInDir: (d, wt) => useSessionStore.getState().createTabInDirectory(d, wt),
-                  createConvTab: (d, opts) => useSessionStore.getState().createConversationTab(d, opts),
+                  createTabInDir: (d, wt) => { void useSessionStore.getState().createTabInDirectory(d, wt).catch((err) => rError('tabs', 'create tab failed', { error: String(err) })) },
+                  createConvTab: (d, opts) => { void useSessionStore.getState().createConversationTab(d, opts).catch((err) => rError('tabs', 'create conversation failed', { error: String(err) })) },
                   shouldUseWorktree: shouldUseWorktree(false),
                 })
               }}
               onFinishWork={() => {
-                useSessionStore.getState().finishWorktreeTab(menuTab.id)
+                void useSessionStore.getState().finishWorktreeTab(menuTab.id).catch((err) => rError('tabs', 'finish worktree failed', { error: String(err) }))
                 setDirMenuTabId(null)
               }}
               finishWorkDisabled={menuTab.worktree ? (worktreeUncommittedMap.has(menuTab.id) ? worktreeUncommittedMap.get(menuTab.id)! : 'checking') : undefined}

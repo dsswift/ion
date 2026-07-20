@@ -5,6 +5,7 @@ import { useSessionStore } from '../../stores/sessionStore'
 import { useColors } from '../../theme'
 import { CopyButton } from './CopyButton'
 import type { Message } from '../../../shared/types'
+import { rError } from '../../rendererLogger'
 
 interface Props {
   message: Message
@@ -75,7 +76,7 @@ export function MessageActions({ message, variant, engineContext }: Props) {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.12 }}
-              onClick={() => tab && forkFromMessage(tab.id, message.id)}
+              onClick={() => { if (tab) void forkFromMessage(tab.id, message.id).catch((err) => rError('conversation', 'fork from message failed', { error: String(err) })) }}
               disabled={!tab}
               className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] cursor-pointer flex-shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
               style={{

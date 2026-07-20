@@ -70,7 +70,7 @@ export function createPermissionsSlice(set: StoreSet, get: StoreGet): Partial<St
 
     forceRecoverTab: (tabId, reason) => {
       rWarn('session.recover', 'force recovering tab', { tab_id: tabId, reason })
-      try { window.ion.stopTab(tabId) } catch (err) {
+      try { void window.ion.stopTab(tabId).catch((err) => rWarn('session.recover', 'stopTab during force-recover rejected', { tab_id: tabId, error: String(err) })) } catch (err) {
         rWarn('session.recover', 'stopTab during force-recover failed', { tab_id: tabId, error: String(err) })
       }
       // permissionQueue / permissionDenied / messages all live on the active

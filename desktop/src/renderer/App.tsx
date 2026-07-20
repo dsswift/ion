@@ -36,7 +36,7 @@ import { useUpdateStore } from './stores/update-store'
 import { setupModelSync } from './stores/model-store'
 import { initActiveTabNotifier } from './lib/active-tab-notifier'
 import { initRemoteProjectionPush } from './stores/remote-projection-push'
-import { rWarn } from './rendererLogger'
+import { rWarn, rError } from './rendererLogger'
 
 
 const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] as const }
@@ -402,7 +402,7 @@ export default function App() {
                 <button
                   className="stack-btn stack-btn-1 glass-surface"
                   title="Attach file"
-                  onClick={handleAttachFile}
+                  onClick={() => { void handleAttachFile().catch((err) => rError('app', 'handleAttachFile failed', { error: String(err) })) }}
                   disabled={isRunning}
                 >
                   <Paperclip size={17} />
@@ -411,7 +411,7 @@ export default function App() {
                 <button
                   className="stack-btn stack-btn-2 glass-surface"
                   title="Take screenshot"
-                  onClick={handleScreenshot}
+                  onClick={() => { void handleScreenshot().catch((err) => rError('app', 'handleScreenshot failed', { error: String(err) })) }}
                   disabled={isRunning}
                 >
                   <Camera size={17} />

@@ -44,6 +44,7 @@
 
 import type { TabState } from '../../shared/types'
 import { formatClearDivider } from '../../shared/clear-divider'
+import { rError } from '../rendererLogger'
 
 export { formatClearDivider }
 
@@ -71,7 +72,7 @@ export function executeBuiltinCommand(commandName: string, deps: ExecuteCommandD
   switch (commandName) {
     case '/clear':
       if (tab) {
-        window.ion.engineCommand(tab.id, 'clear', '')
+        window.ion.engineCommand(tab.id, 'clear', '').catch((err) => rError('InputBarCommandHandlers', 'clear engineCommand failed', { tabId: tab.id, error: String(err) }))
       }
       addSystemMessage(formatClearDivider(new Date()))
       return

@@ -26,6 +26,7 @@ import { meta, getDispatches, buildBreadcrumbStack } from './agent-panel-helpers
 import { AgentDetailPanel } from './AgentDetailPanel'
 import type { AgentStateUpdate } from '../../shared/types'
 import type { ContextBreakdownCategory, DispatchInfo, ModelBreakdown } from '../../shared/types-engine'
+import { rError } from '../rendererLogger'
 
 // ─── Tier badge ──────────────────────────────────────────────────────────────
 
@@ -214,8 +215,8 @@ function CopyButton({ value, label, colors }: { value: string; label: string; co
     navigator.clipboard.writeText(value).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
-    })
-  }, [value])
+    }).catch((err) => rError('status-drawer', 'copy failed', { label, error: String(err) }))
+  }, [value, label])
   return (
     <button onClick={handleCopy} title={`Copy ${label}`}
       style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'transparent', border: 'none', cursor: 'pointer', color: copied ? colors.accent : colors.textTertiary, padding: '1px 4px', borderRadius: 3 }}>

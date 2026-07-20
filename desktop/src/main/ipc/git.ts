@@ -552,7 +552,7 @@ export function registerGitIpc(): void {
       const env = { ...process.env, GIT_SEQUENCE_EDITOR: `cat "${todoFile}" >` }
       await gitExec('git', ['rebase', '-i', onto], { cwd: directory, maxBuffer: 10 * 1024 * 1024, env })
 
-      try { unlinkSync(todoFile) } catch {}
+      try { unlinkSync(todoFile) } catch { /* silent-ok: best-effort rebase-todo temp-file cleanup */ }
       return { ok: true }
     } catch (err: any) {
       return { ok: false, error: err.stderr?.trim() || err.message }

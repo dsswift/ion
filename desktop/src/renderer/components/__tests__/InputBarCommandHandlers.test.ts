@@ -41,7 +41,7 @@ describe('executeBuiltinCommand', () => {
   beforeEach(() => {
     vi.stubGlobal('window', {
       ion: {
-        engineCommand: vi.fn(),
+        engineCommand: vi.fn().mockResolvedValue(undefined),
       },
     })
   })

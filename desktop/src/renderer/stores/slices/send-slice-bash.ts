@@ -74,7 +74,7 @@ export function createSendBashSlice(set: StoreSet, get: StoreGet): Partial<State
         })
         return { tabs, conversationPanes }
       })
-      playNotificationIfHidden()
+      void playNotificationIfHidden()
     },
 
     submitRemoteBash: (tabId, command) => {

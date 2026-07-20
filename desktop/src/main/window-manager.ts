@@ -14,6 +14,10 @@ function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
 }
 
+function error(msg: string, fields?: Record<string, unknown>): void {
+  _error('main', msg, fields)
+}
+
 export function snapshotWindowState(reason: string): void {
   if (!SPACES_DEBUG) return
   if (!state.mainWindow || state.mainWindow.isDestroyed()) {
@@ -250,9 +254,9 @@ export function createWindow(showOnReady = true): void {
   })
 
   if (process.env.ELECTRON_RENDERER_URL) {
-    mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
+    mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL).catch((err) => error('window_manager: overlay loadURL failed', { error: String(err) }))
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    mainWindow.loadFile(join(__dirname, '../renderer/index.html')).catch((err) => error('window_manager: overlay loadFile failed', { error: String(err) }))
   }
 }
 

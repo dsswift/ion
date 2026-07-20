@@ -173,7 +173,7 @@ export function useEngineEvents() {
       const pane = store.terminalPanes.get(tabId)
       if (pane) {
         for (const inst of pane.instances) {
-          window.ion.terminalDestroy?.(`${tabId}:${inst.id}`)
+          void window.ion.terminalDestroy?.(`${tabId}:${inst.id}`)?.catch((err) => rWarn('remote.close-tab', 'terminalDestroy failed during remote close', { error: String(err) }))
         }
       }
       const tabs = store.tabs.filter((t) => t.id !== tabId)

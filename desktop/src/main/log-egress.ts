@@ -378,7 +378,7 @@ export class EgressForwarder {
   private flushAsync(): void {
     if (this.flushInProgress) return
     this.flushInProgress = true
-    this.flush().finally(() => {
+    void this.flush().finally(() => {
       this.flushInProgress = false
       if (this.stopped && this.shutdownResolve) {
         this.shutdownResolve()
@@ -556,7 +556,7 @@ export async function flushEgress(): Promise<void> {
  */
 export function _resetEgressForTest(): void {
   if (activeForwarder) {
-    activeForwarder.close().catch(() => {})
+    activeForwarder.close().catch(() => {}) // silent-ok: test-only reset helper (_resetEgressForTest)
     activeForwarder = null
   }
   _egressUser = undefined

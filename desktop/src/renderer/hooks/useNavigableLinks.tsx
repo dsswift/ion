@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useSyncExternalStore } from 'react'
 import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
-import { rDebug } from '../rendererLogger'
+import { rDebug, rWarn } from '../rendererLogger'
 
 // ─── CMD key tracking (singleton — one listener pair for all components) ───
 
@@ -153,12 +153,12 @@ export function useNavigableText() {
     if (EDITABLE_EXTS.has(ext) && activeTabId) {
       useSessionStore.getState().openFileInEditor(workingDir, activeTabId, resolved)
     } else {
-      window.ion.fsOpenNative(resolved)
+      window.ion.fsOpenNative(resolved).catch((err) => rWarn('navigable-links', 'fsOpenNative failed', { resolved, error: String(err) }))
     }
   }, [activeTabId, workingDir])
 
   const onOpenUrl = useCallback((url: string) => {
-    window.ion.openExternal(url)
+    window.ion.openExternal(url).catch((err) => rWarn('navigable-links', 'openExternal failed', { url, error: String(err) }))
   }, [])
 
   return { onOpenFile, onOpenUrl }

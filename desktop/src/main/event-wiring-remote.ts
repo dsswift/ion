@@ -70,7 +70,8 @@ async function probePlanPathFromRenderer(tabId: string): Promise<string | undefi
 }
 
 export function wireRemoteSessionPlaneForwarding(): void {
-  sessionPlane.on('event', async (tabId: string, event: NormalizedEvent) => {
+  sessionPlane.on('event', (tabId: string, event: NormalizedEvent) => {
+    void (async () => {
     if (!state.remoteTransport) return
 
     if (
@@ -246,13 +247,15 @@ export function wireRemoteSessionPlaneForwarding(): void {
         break
       }
     }
+    })().catch((err) => warn('remote: session-plane event forwarding failed', { tab_id: tabId, error: String(err) }))
   })
 
-  sessionPlane.on('remote-permission', async (tabId: string, data: {
+  sessionPlane.on('remote-permission', (tabId: string, data: {
     questionId: string; toolName: string;
     toolInput?: Record<string, unknown>;
     options: Array<{ id: string; label: string; kind?: string }>
   }) => {
+    void (async () => {
     log('remote_permission_received', { tool: data.toolName, question_id: data.questionId, has_transport: !!state.remoteTransport, has_tool_input: !!data.toolInput })
     if (!state.remoteTransport) return
     let toolInput = data.toolInput
@@ -296,6 +299,7 @@ export function wireRemoteSessionPlaneForwarding(): void {
       }
       sessionPlane.on('tab-status-change', resolveOnIdle)
     }
+    })().catch((err) => warn('remote: remote-permission forwarding failed', { tab_id: tabId, error: String(err) }))
   })
 
   sessionPlane.on('tab-status-change', (tabId: string, newStatus: string, oldStatus?: string) => {

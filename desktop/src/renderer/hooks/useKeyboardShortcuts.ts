@@ -77,11 +77,11 @@ export function handleNewConversationShortcut(
       action,
       (d) => {
         rDebug('shortcuts', 'createTabInDirectory', { label, dir: d })
-        return s.createTabInDirectory(d)
+        void s.createTabInDirectory(d).catch((err) => rError('shortcuts', 'createTabInDirectory failed', { label, dir: d, error: String(err) }))
       },
       (d, opts) => {
         rDebug('shortcuts', 'createConversationTab', { label, dir: d, profile_id: opts?.profileId ?? '' })
-        return s.createConversationTab(d, opts)
+        void s.createConversationTab(d, opts).catch((err) => rError('shortcuts', 'createConversationTab failed', { label, dir: d, error: String(err) }))
       },
     )
     if (result === 'show-picker') {

@@ -11,7 +11,7 @@ import { useGitDragSplit } from '../hooks/useGitDragSplit'
 import { GitChangesSection } from './GitChangesSection'
 import { GitGraphSection } from './GitGraphSection'
 import { CommitForm } from './git/CommitForm'
-import { rDebug } from '../rendererLogger'
+import { rDebug, rError } from '../rendererLogger'
 
 // ─── Main GitPanel ───
 
@@ -224,9 +224,11 @@ export function GitPanel() {
                 return false
               }}
               onQuickCommit={handleQuickCommit}
-              onPush={async () => {
-                await window.ion.gitPush(directory)
-                refresh()
+              onPush={() => {
+                void (async () => {
+                  await window.ion.gitPush(directory)
+                  refresh()
+                })().catch((err) => rError('git-panel', 'push failed', { error: String(err) }))
               }}
             />
             <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>

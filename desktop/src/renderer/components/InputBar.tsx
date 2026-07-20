@@ -12,7 +12,7 @@ import { getRendererExtensionCommands } from '../stores/slices/engine-event-slic
 import { useVoiceRecording, VoiceButtons } from './InputBarVoiceButton'
 import { SendButton } from './InputBarSendButton'
 import { UpdateButton } from './UpdateButton'
-import { rDebug } from '../rendererLogger'
+import { rDebug, rError } from '../rendererLogger'
 
 /** Shared transient state for bash command mode (consumed by App.tsx for pill styling) */
 export const useBashModeStore = create<{ active: boolean; set: (v: boolean) => void }>((set) => ({
@@ -452,7 +452,7 @@ export function InputBar() {
               value={input}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              onPaste={handlePaste}
+              onPaste={(e) => { void handlePaste(e).catch((err) => rError('InputBar', 'paste handler failed', { error: String(err) })) }}
               placeholder={placeholder}
               rows={1}
               className="w-full bg-transparent resize-none"
@@ -487,7 +487,7 @@ export function InputBar() {
               value={input}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              onPaste={handlePaste}
+              onPaste={(e) => { void handlePaste(e).catch((err) => rError('InputBar', 'paste handler failed', { error: String(err) })) }}
               placeholder={placeholder}
               rows={1}
               className="flex-1 bg-transparent resize-none"

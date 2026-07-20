@@ -92,7 +92,7 @@ export function createDirectorySlice(set: StoreSet, get: StoreGet): Partial<Stat
                   ),
                 }))
               }
-            })
+            }).catch((err) => rWarn('directory', 'gitWorktreeAdd failed', { dir, branch: defaultBranch, error: String(err) }))
           } else {
             set((s) => ({
               tabs: s.tabs.map((t) =>
@@ -100,7 +100,7 @@ export function createDirectorySlice(set: StoreSet, get: StoreGet): Partial<Stat
               ),
             }))
           }
-        })
+        }).catch((err) => rWarn('directory', 'gitIsRepo probe failed', { dir, error: String(err) }))
       }
     },
   }

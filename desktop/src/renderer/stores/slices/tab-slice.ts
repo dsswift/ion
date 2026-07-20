@@ -236,7 +236,7 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       const targetTabAfter = get().tabs.find(t => t.id === tabId)
       if (targetTabAfter?.conversationId) {
         if (needsHistoryHydration(activeInstance(get().conversationPanes, tabId))) {
-          get().loadSkeletonMessages(tabId)
+          get().loadSkeletonMessages(tabId).catch((err) => rWarn('tab.select', 'loadSkeletonMessages failed', { tab_id: tabId.slice(0, 8), error: String(err) }))
         }
       }
     },

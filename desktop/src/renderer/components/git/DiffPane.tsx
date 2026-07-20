@@ -8,7 +8,7 @@
  */
 
 import React, { useMemo, useCallback, useState, useEffect } from 'react'
-import { rDebug } from '../../rendererLogger'
+import { rDebug, rError } from '../../rendererLogger'
 import { X, Rows, Columns } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
 import { parseDiffWithHunks, buildHunkPatch, buildPartialLinePatch } from './diffParse'
@@ -106,7 +106,7 @@ export function DiffPane({ diff, fileName, filePath, staged, directory, onClose,
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 's') {
       const hunk = parsed.lines.find((l) => selected.has(l.rawIndex))?.hunkIndex
-      if (typeof hunk === 'number') stageOrUnstageHunk(hunk)
+      if (typeof hunk === 'number') void stageOrUnstageHunk(hunk).catch((err) => rError('git', 'stage hunk failed', { error: String(err) }))
     }
   }, [parsed.lines, selected, stageOrUnstageHunk])
 
@@ -167,8 +167,8 @@ export function DiffPane({ diff, fileName, filePath, staged, directory, onClose,
             selected={selected}
             staged={staged}
             onLineClick={handleLineClick}
-            onHunkAction={stageOrUnstageHunk}
-            onHunkDiscard={discardHunk}
+            onHunkAction={(hunkIdx) => { void stageOrUnstageHunk(hunkIdx).catch((err) => rError('git', 'stage hunk failed', { error: String(err) })) }}
+            onHunkDiscard={(hunkIdx) => { void discardHunk(hunkIdx).catch((err) => rError('git', 'discard hunk failed', { error: String(err) })) }}
           />
         )}
       </div>

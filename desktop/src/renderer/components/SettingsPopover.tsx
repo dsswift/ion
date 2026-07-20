@@ -9,7 +9,7 @@ import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { activeInstance } from '../stores/conversation-instance'
 import { tabHasExtensions, computeSessionIdCopyPayload } from '../../shared/tab-predicates'
-import { rDebug } from '../rendererLogger'
+import { rDebug, rError } from '../rendererLogger'
 
 function RowToggle({
   checked,
@@ -151,7 +151,7 @@ export function SettingsPopover() {
     const transcript = formatTranscript(messages)
     if (!transcript) return
 
-    navigator.clipboard.writeText(transcript)
+    navigator.clipboard.writeText(transcript).catch((err) => rError('settings-popover', 'copy transcript failed', { error: String(err) }))
     setOpen(false)
   }
 
@@ -195,7 +195,7 @@ export function SettingsPopover() {
       }
     }
 
-    navigator.clipboard.writeText(payload)
+    navigator.clipboard.writeText(payload).catch((err) => rError('settings-popover', 'copy debug info failed', { error: String(err) }))
     setOpen(false)
   }
 
@@ -214,7 +214,7 @@ export function SettingsPopover() {
     if (payload === null) return
     rDebug('settings-popover', 'copying session id(s)', { count: payload.split('\n').length })
 
-    navigator.clipboard.writeText(payload)
+    navigator.clipboard.writeText(payload).catch((err) => rError('settings-popover', 'copy session id failed', { error: String(err) }))
     setOpen(false)
   }
 
@@ -325,7 +325,7 @@ export function SettingsPopover() {
 
             {/* Copy log path */}
             <button
-              onClick={handleCopyDebugInfo}
+              onClick={() => { void handleCopyDebugInfo().catch((err) => rError('settings-popover', 'copy debug info failed', { error: String(err) })) }}
               disabled={!hasDebugInfo}
               className="flex items-center gap-2 w-full"
               style={{

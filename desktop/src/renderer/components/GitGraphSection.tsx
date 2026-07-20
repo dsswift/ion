@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { rDebug } from '../rendererLogger'
+import { rDebug, rError } from '../rendererLogger'
 import { createPortal } from 'react-dom'
 import { AnimatePresence } from 'framer-motion'
 import {
@@ -77,7 +77,9 @@ export function GitGraphSection({
         setCommits(newCommits)
         setTotalCount(result.totalCount)
       }
-    } catch {}
+    } catch (err) {
+      rError('git', 'gitGraph load failed', { error: String(err) })
+    }
     setLoading(false)
   }, [directory, graphFilters])
 
@@ -88,14 +90,14 @@ export function GitGraphSection({
     setExpandedHash(null)
     setCommitFiles([])
     setCommitFileDiff(null)
-    loadGraph()
+    loadGraph().catch((err) => rError('git', 'graph reload on directory/filter change failed', { error: String(err) }))
   }, [directory, loadGraph])
 
   // Reload graph when parent triggers a refresh (e.g. after commit)
   const initialRef = useRef(true)
   useEffect(() => {
     if (initialRef.current) { initialRef.current = false; return }
-    loadGraph()
+    loadGraph().catch((err) => rError('git', 'graph reload on refreshKey failed', { error: String(err) }))
   }, [refreshKey, loadGraph])
 
   // Infinite scroll
@@ -104,7 +106,7 @@ export function GitGraphSection({
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && commits.length < totalCount && !loading) {
-          loadGraph(true)
+          loadGraph(true).catch((err) => rError('git', 'infinite-scroll graph load failed', { error: String(err) }))
         }
       },
       { threshold: 0.1 }
@@ -282,7 +284,7 @@ export function GitGraphSection({
     setFetchingAction('fetch')
     await window.ion.gitFetch(directory)
     setFetchingAction(null)
-    loadGraph()
+    loadGraph().catch((err) => rError('git', 'graph reload after fetch failed', { error: String(err) }))
     onRefresh()
   }
 
@@ -301,7 +303,7 @@ export function GitGraphSection({
       await window.ion.gitPull(directory)
     }
     setFetchingAction(null)
-    loadGraph()
+    loadGraph().catch((err) => rError('git', 'graph reload after pull failed', { error: String(err) }))
     onRefresh()
   }
 
@@ -315,11 +317,11 @@ export function GitGraphSection({
     setFetchingAction('push')
     await window.ion.gitPush(directory)
     setFetchingAction(null)
-    loadGraph()
+    loadGraph().catch((err) => rError('git', 'graph reload after push failed', { error: String(err) }))
   }
 
   const handleBranchRefresh = () => {
-    loadGraph()
+    loadGraph().catch((err) => rError('git', 'graph reload on branch refresh failed', { error: String(err) }))
     onRefresh()
   }
 
@@ -336,7 +338,7 @@ export function GitGraphSection({
             <div className="flex items-center gap-0.5 text-[9px]">
               <span style={{ color: colors.textTertiary }}>Push?</span>
               <button
-                onClick={handlePush}
+                onClick={() => { void handlePush().catch((err) => rError('git', 'push failed', { error: String(err) })) }}
                 className="px-1 rounded"
                 style={{ color: colors.accent }}
               >
@@ -354,7 +356,7 @@ export function GitGraphSection({
             <>
               <Tooltip text="Fetch">
                 <button
-                  onClick={handleFetch}
+                  onClick={() => { void handleFetch().catch((err) => rError('git', 'fetch failed', { error: String(err) })) }}
                   disabled={!!fetchingAction}
                   className="p-0.5 rounded transition-colors"
                   style={{ color: colors.textTertiary }}
@@ -364,7 +366,7 @@ export function GitGraphSection({
               </Tooltip>
               <Tooltip text={worktree ? `Rebase from ${worktree.sourceBranch}` : 'Pull'}>
                 <button
-                  onClick={handlePull}
+                  onClick={() => { void handlePull().catch((err) => rError('git', 'pull failed', { error: String(err) })) }}
                   disabled={!!fetchingAction}
                   className="p-0.5 rounded transition-colors"
                   style={{ color: colors.textTertiary }}
@@ -384,6 +386,7 @@ export function GitGraphSection({
                     onClick={() => {
                       if (!hasUncommittedChanges) {
                         useSessionStore.getState().finishWorktreeTab(activeTabId)
+                          .catch((err) => rError('git', 'finishWorktreeTab failed', { error: String(err) }))
                       }
                     }}
                     onContextMenu={(e) => {
@@ -406,7 +409,7 @@ export function GitGraphSection({
               ) : (
                 <Tooltip text="Push">
                   <button
-                    onClick={handlePush}
+                    onClick={() => { void handlePush().catch((err) => rError('git', 'push failed', { error: String(err) })) }}
                     disabled={!!fetchingAction}
                     className="p-0.5 rounded transition-colors"
                     style={{ color: colors.textTertiary }}
@@ -450,8 +453,8 @@ export function GitGraphSection({
           onHover={handleRowHover}
           onLeave={handleRowLeave}
           onContextMenu={handleContextMenu}
-          onClick={handleCommitClick}
-          onFileClick={handleCommitFileClick}
+          onClick={(commit) => { void handleCommitClick(commit).catch((err) => rError('git', 'commit expand failed', { error: String(err) })) }}
+          onFileClick={(file) => { void handleCommitFileClick(file).catch((err) => rError('git', 'commit file diff load failed', { error: String(err) })) }}
         />
         {commits.length < totalCount && (
           <div ref={sentinelRef} className="py-2 text-center text-[10px]" style={{ color: colors.textTertiary }}>
@@ -473,7 +476,7 @@ export function GitGraphSection({
 
       {/* Commit context menu */}
       {popoverLayer && contextMenu && createPortal(
-        <CommitContextMenu anchor={contextMenu} commit={contextMenu.commit} directory={directory} onRefresh={() => loadGraph()} onClose={() => setContextMenu(null)} onRebase={handleRebase} />,
+        <CommitContextMenu anchor={contextMenu} commit={contextMenu.commit} directory={directory} onRefresh={() => { void loadGraph().catch((err) => rError('git', 'graph reload from context menu failed', { error: String(err) })) }} onClose={() => setContextMenu(null)} onRebase={(commit) => { void handleRebase(commit).catch((err) => rError('git', 'rebase todo load failed', { error: String(err) })) }} />,
         popoverLayer,
       )}
 
@@ -512,7 +515,7 @@ export function GitGraphSection({
           onClose={() => setRebaseTarget(null)}
           onComplete={() => {
             setRebaseTarget(null)
-            loadGraph()
+            loadGraph().catch((err) => rError('git', 'graph reload after rebase failed', { error: String(err) }))
             onRefresh()
           }}
         />

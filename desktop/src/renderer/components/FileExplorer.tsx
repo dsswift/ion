@@ -10,7 +10,7 @@ import { FileExplorerContextMenu, type ContextMenuState } from './FileExplorerCo
 import { FileExplorerTreeRow, FileExplorerInlineInput } from './FileExplorerTreeRow'
 import { ImageViewer } from './ImageViewer'
 import type { FsEntry } from '../../shared/types'
-import { rDebug, rInfo } from '../rendererLogger'
+import { rDebug, rInfo, rWarn, rError } from '../rendererLogger'
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp', '.tiff'])
 
@@ -74,9 +74,9 @@ export function FileExplorer() {
   // Refresh all expanded directories + root
   const refreshAll = useCallback(() => {
     if (!workingDir) return
-    fetchDir(workingDir)
+    fetchDir(workingDir).catch((err) => rWarn('file-explorer', 'refreshAll root fetch failed', { dir: workingDir, error: String(err) }))
     for (const p of explorerState.expandedPaths) {
-      fetchDir(p)
+      fetchDir(p).catch((err) => rWarn('file-explorer', 'refreshAll expanded fetch failed', { dir: p, error: String(err) }))
     }
   }, [workingDir, explorerState.expandedPaths, fetchDir])
 
@@ -107,7 +107,7 @@ export function FileExplorer() {
     setFileExplorerExpanded(workingDir, entry.path, !isExpanded)
     setFileExplorerSelected(workingDir, entry.path)
     if (!isExpanded && !dirCache.has(entry.path)) {
-      fetchDir(entry.path)
+      fetchDir(entry.path).catch((err) => rWarn('file-explorer', 'expand dir fetch failed', { dir: entry.path, error: String(err) }))
     }
   }, [workingDir, explorerState.expandedPaths, dirCache, fetchDir, setFileExplorerExpanded, setFileExplorerSelected])
 
@@ -178,7 +178,7 @@ export function FileExplorer() {
     }
     setInlineInput(null)
     // Refresh the parent directory
-    fetchDir(inlineInput.parentDir)
+    fetchDir(inlineInput.parentDir).catch((err) => rWarn('file-explorer', 'inline submit refresh failed', { dir: inlineInput.parentDir, error: String(err) }))
   }, [inlineInput, fetchDir])
 
   /**
@@ -222,7 +222,7 @@ export function FileExplorer() {
       rDebug('file-explorer', 'rename threw', { old_path: renaming.path, new_path: newPath, error: (err as Error).message })
     }
     setRenaming(null)
-    fetchDir(parentDir)
+    fetchDir(parentDir).catch((err) => rWarn('file-explorer', 'rename submit refresh failed', { dir: parentDir, error: String(err) }))
   }, [renaming, fetchDir])
 
   const handleRenameCancel = useCallback(() => {
@@ -253,7 +253,7 @@ export function FileExplorer() {
         <FileExplorerInlineInput
           key="__inline__"
           depth={depth}
-          onSubmit={handleInlineSubmit}
+          onSubmit={(name) => { void handleInlineSubmit(name).catch((err) => rError('file-explorer', 'inline submit failed', { error: String(err) })) }}
           onCancel={() => setInlineInput(null)}
           placeholder={inlineInput.type === 'file' ? 'filename' : 'folder name'}
           colors={colors}
@@ -274,7 +274,7 @@ export function FileExplorer() {
           <FileExplorerInlineInput
             key={`__rename__${entry.path}`}
             depth={depth}
-            onSubmit={handleRenameSubmit}
+            onSubmit={(name) => { void handleRenameSubmit(name).catch((err) => rError('file-explorer', 'rename submit failed', { error: String(err) })) }}
             onCancel={handleRenameCancel}
             placeholder={entry.isDirectory ? 'folder name' : 'filename'}
             initialValue={renaming.initialName}

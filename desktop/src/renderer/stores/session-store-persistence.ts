@@ -6,6 +6,7 @@ import { tabContentDirty, markTabContentWritten } from './tab-content-tracking'
 import { activeInstance } from './conversation-instance'
 import { EXTERNALIZE_SCHEMA_VERSION } from '../../shared/types-persistence'
 import type { useSessionStore as UseSessionStoreType } from './sessionStore'
+import { rError } from '../rendererLogger'
 
 type Store = typeof UseSessionStoreType
 
@@ -168,7 +169,7 @@ function persistTabs(useSessionStore: Store): void {
     planGeometry,
     agentDetailGeometry,
   }
-  window.ion.saveTabs(data)
+  window.ion.saveTabs(data).catch((err) => rError('session.persist', 'saveTabs failed; restored session may be lost', { error: String(err) }))
 
   // External content files ride the same tick (change-tracked per tab), so
   // the thin manifest's hasExternalContent markers and the content files can

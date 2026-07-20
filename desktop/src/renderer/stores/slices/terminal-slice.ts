@@ -290,7 +290,7 @@ export function createTerminalSlice(set: StoreSet, get: StoreGet): Partial<State
           }
         })
       }
-      resolveAndRun()
+      void resolveAndRun().catch((err) => rWarn('terminal', 'quick-tool resolveAndRun failed', { tab_id: tabId, tool_id: toolId, error: String(err) }))
     },
 
     consumeTerminalPendingCommand: (key) => {

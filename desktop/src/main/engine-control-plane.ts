@@ -102,7 +102,7 @@ export class EngineControlPlane extends EventEmitter {
   }
 
   resetTabSession(tabId: string): void {
-    resetTabEntry(this.tabs, tabId, (id) => this.bridge.stopSession(id))
+    resetTabEntry(this.tabs, tabId, (id) => { void this.bridge.stopSession(id).catch((err) => warn('reset_tab: stop session failed', { tab_id: id, error: String(err) })) })
   }
 
   /**
@@ -111,14 +111,14 @@ export class EngineControlPlane extends EventEmitter {
    * See restartTabEntry in engine-control-plane-tab.ts.
    */
   restartTabSession(tabId: string): void {
-    restartTabEntry(this.tabs, tabId, (id) => this.bridge.stopSession(id))
+    restartTabEntry(this.tabs, tabId, (id) => { void this.bridge.stopSession(id).catch((err) => warn('restart_tab: stop session failed', { tab_id: id, error: String(err) })) })
   }
 
   closeTab(tabId: string): void {
     const tab = this.tabs.get(tabId)
     if (!tab) return
     log('close_tab', { tab_id: tabId })
-    this.bridge.stopSession(tabId)
+    this.bridge.stopSession(tabId).catch((err) => warn('close_tab: stop session failed', { tab_id: tabId, error: String(err) }))
     this.tabs.delete(tabId)
   }
 
@@ -555,9 +555,9 @@ export class EngineControlPlane extends EventEmitter {
 
   shutdown(): void {
     for (const tabId of this.tabs.keys()) {
-      this.bridge.stopSession(tabId)
+      this.bridge.stopSession(tabId).catch((err) => warn('shutdown: stop session failed', { tab_id: tabId, error: String(err) }))
     }
-    this.bridge.stopAll()
+    this.bridge.stopAll().catch((err) => warn('shutdown: stop all sessions failed', { error: String(err) }))
     this.tabs.clear()
     if (this.drainResolve) {
       this.drainResolve()

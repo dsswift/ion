@@ -13,6 +13,7 @@ import {
 } from './BackupRestoreCategory.types'
 import { BackupRestoreOptionRadio } from './BackupRestoreOptionRadio'
 import { RestoreModalContent } from './BackupRestoreModal'
+import { rError } from '../../rendererLogger'
 
 export function BackupRestoreCategory() {
   const colors = useColors()
@@ -143,11 +144,11 @@ export function BackupRestoreCategory() {
 
       {!exportOpen && !restoreOpen && (
         <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-          <button onClick={openExportModal} style={primaryButtonStyle(colors)}>
+          <button onClick={() => { void openExportModal().catch((err) => rError('settings', 'open export failed', { error: String(err) })) }} style={primaryButtonStyle(colors)}>
             <Archive size={16} />
             Export conversations…
           </button>
-          <button onClick={openRestoreModal} style={secondaryButtonStyle(colors)}>
+          <button onClick={() => { void openRestoreModal().catch((err) => rError('settings', 'open restore failed', { error: String(err) })) }} style={secondaryButtonStyle(colors)}>
             <ArrowCounterClockwise size={16} />
             Restore from backup…
           </button>
@@ -161,8 +162,8 @@ export function BackupRestoreCategory() {
           exporting={exporting}
           progress={exportProgress}
           result={exportResult}
-          onScopeChange={handleScopeChange}
-          onExport={handleExport}
+          onScopeChange={(scope) => { void handleScopeChange(scope).catch((err) => rError('settings', 'scope change failed', { error: String(err) })) }}
+          onExport={() => { void handleExport().catch((err) => rError('settings', 'export failed', { error: String(err) })) }}
           onClose={() => { setExportOpen(false); setExportResult(null); setExportPreview(null) }}
           cardStyle={cardStyle}
           colors={colors}
@@ -178,7 +179,7 @@ export function BackupRestoreCategory() {
           result={restoreResult}
           onConflictPolicyChange={setConflictPolicy}
           onRestoreTabsChange={setRestoreTabs}
-          onRestore={handleRestore}
+          onRestore={() => { void handleRestore().catch((err) => rError('settings', 'restore failed', { error: String(err) })) }}
           onClose={() => { setRestoreOpen(false); setRestoreResult(null); setRestorePreview(null) }}
           cardStyle={cardStyle}
           colors={colors}

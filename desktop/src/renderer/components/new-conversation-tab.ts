@@ -11,6 +11,7 @@ import { usePreferencesStore } from '../preferences'
 import { useSessionStore } from '../stores/sessionStore'
 import { newTabInDirectory } from './new-conversation-routing'
 import { shouldUseWorktree } from './TabStripShared'
+import { rError } from '../rendererLogger'
 
 export function createNewConversationTab(dir: string): ReturnType<typeof newTabInDirectory> {
   const { engineProfiles, defaultEngineProfileId, enterpriseNewConversationDefaults: policy } = usePreferencesStore.getState()
@@ -19,8 +20,8 @@ export function createNewConversationTab(dir: string): ReturnType<typeof newTabI
     profiles: engineProfiles,
     defaultProfileId: defaultEngineProfileId,
     enterprisePolicy: policy,
-    createTabInDir: (d, wt) => s.createTabInDirectory(d, wt),
-    createConvTab: (d, opts) => s.createConversationTab(d, opts),
+    createTabInDir: (d, wt) => { void s.createTabInDirectory(d, wt).catch((err) => rError('tabs', 'create tab failed', { error: String(err) })) },
+    createConvTab: (d, opts) => { void s.createConversationTab(d, opts).catch((err) => rError('tabs', 'create conversation failed', { error: String(err) })) },
     shouldUseWorktree: shouldUseWorktree(false),
   })
 }

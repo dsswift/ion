@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'fs'
-import { log as _log } from '../../logger'
+import { log as _log, debug as _debug } from '../../logger'
 import { state, sessionPlane } from '../../state'
 import { processIncomingPrompt } from '../../prompt-pipeline'
 import { handleSetPermissionMode } from './tabs'
@@ -8,6 +8,10 @@ import type { RemoteCommand } from '../protocol'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
+}
+
+function debug(msg: string, fields?: Record<string, unknown>): void {
+  _debug('main', msg, fields)
 }
 
 /**
@@ -245,7 +249,11 @@ export async function handleImplementPlan(
       hasExtensions = !!tabInfo.hasExtensions
       if (!resolvedInstanceId) resolvedInstanceId = tabInfo.activeInstanceId || null
     }
-  } catch {}
+  } catch (err) {
+    // Probe failure degrades to defaults (no extensions, caller-supplied
+    // instanceId); log so the degraded routing is diagnosable.
+    debug('implement_plan: tab-info renderer probe failed', { tab_id: tabId, error: String(err) })
+  }
 
   // Step 8: Build prompt + attachment — same as implementPlan.
   // The plan body is resolved desktop-side; no plan text was in the command.

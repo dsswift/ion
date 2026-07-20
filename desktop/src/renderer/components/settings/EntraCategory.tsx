@@ -13,6 +13,7 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { useColors } from '../../theme'
 import { SettingSection } from './SettingSection'
 import { SettingHeading } from './SettingHeading'
+import { rError } from '../../rendererLogger'
 
 interface EntraIdentity {
   user: string
@@ -115,7 +116,7 @@ export function EntraCategory() {
             </div>
             <div>
               <button
-                onClick={handleSignOut}
+                onClick={() => { void handleSignOut().catch((err) => rError('settings', 'entra sign-out failed', { error: String(err) })) }}
                 style={{
                   ...buttonBase,
                   background: colors.surfacePrimary,
@@ -138,7 +139,7 @@ export function EntraCategory() {
             )}
             <div>
               <button
-                onClick={handleSignIn}
+                onClick={() => { void handleSignIn().catch((err) => rError('settings', 'entra sign-in failed', { error: String(err) })) }}
                 style={{
                   ...buttonBase,
                   background: colors.accent,

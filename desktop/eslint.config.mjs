@@ -9,6 +9,17 @@ export default tseslint.config(
   // ── TypeScript base (all src/) ──────────────────────────────────────────────
   ...tseslint.configs.recommended,
   {
+    // Type-aware linting is enabled here (projectService) so the three
+    // silent-failure rules below — no-floating-promises, no-misused-promises,
+    // no-empty — can fire. These require type information; without a parser
+    // project they cannot run. Scoped to src/ TypeScript only.
+    files: ['src/**/*.{ts,tsx}'],
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
     // Baseline rules for all source. Conservative by design — the main process
     // is a mature codebase being brought under lint for the first time, so we
     // start at warn for noisy patterns and tighten over time.
@@ -26,6 +37,27 @@ export default tseslint.config(
       '@typescript-eslint/no-this-alias': 'warn',
       '@typescript-eslint/no-unused-expressions': 'warn',
       'prefer-const': 'warn',
+      // ── Silent-failure gates (ADR observability pass) ──────────────────────
+      // A floating promise swallows its rejection; a misused promise (async fn
+      // passed where a void callback is expected) drops errors on the floor; an
+      // empty catch hides the failure entirely. All three are the "no silent
+      // failures" rule enforced structurally. Genuinely-intentional empties
+      // carry `// eslint-disable-next-line no-empty -- <reason>`.
+      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/no-misused-promises': 'error',
+      'no-empty': 'error',
+    },
+  },
+
+  // Test files: the silent-failure gates are relaxed. Tests routinely fire
+  // floating promises (fixture setup) and use empty catches to probe error
+  // paths; enforcing there is noise, not safety.
+  {
+    files: ['src/**/*.test.{ts,tsx}', 'src/**/__tests__/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-floating-promises': 'off',
+      '@typescript-eslint/no-misused-promises': 'off',
+      'no-empty': 'off',
     },
   },
 

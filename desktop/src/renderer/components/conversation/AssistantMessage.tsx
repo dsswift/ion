@@ -8,6 +8,7 @@ import { useNavigableText, NavigableText, NavigableCode } from '../../hooks/useN
 import { CopyButton } from './CopyButton'
 import { InlineMessageImages, deriveMessageImages } from './InlineMessageImages'
 import type { Message } from '../../../shared/types'
+import { rWarn } from '../../rendererLogger'
 
 const REMARK_PLUGINS = [remarkGfm]
 const TASK_NOTIFICATION_RE = /<task-notification>[\s\S]*?<\/task-notification>\s*(?:Read the output file to retrieve the result:[^\n]*)?\n?/g
@@ -80,7 +81,7 @@ export function ImageCard({ src, alt, colors }: { src?: string; alt?: string; co
   const [failed, setFailed] = useState(false)
   useEffect(() => { setFailed(false) }, [src])
   const label = alt || 'Image'
-  const open = () => { if (src) window.ion.openExternal(String(src)) }
+  const open = () => { if (src) void window.ion.openExternal(String(src)).catch((err) => rWarn('conversation', 'open image failed', { error: String(err) })) }
 
   if (failed || !src) {
     return (
@@ -136,6 +137,7 @@ export const AssistantMessage = React.memo(function AssistantMessage({
 }: AssistantMessageProps) {
   const colors = useColors()
   const { onOpenFile, onOpenUrl } = useNavigableText()
+  const onOpenFileVoid = useCallback((path: string) => { void onOpenFile(path).catch((err) => rWarn('conversation', 'open file failed', { error: String(err) })) }, [onOpenFile])
 
   const markdownComponents = useMemo(() => ({
     table: ({ children }: any) => <TableScrollWrapper>{children}</TableScrollWrapper>,
@@ -144,15 +146,15 @@ export const AssistantMessage = React.memo(function AssistantMessage({
         type="button"
         className="underline decoration-dotted underline-offset-2 cursor-pointer"
         style={{ color: colors.accent }}
-        onClick={() => { if (href) window.ion.openExternal(String(href)) }}
+        onClick={() => { if (href) void window.ion.openExternal(String(href)).catch((err) => rWarn('conversation', 'open link failed', { error: String(err) })) }}
       >
         {children}
       </button>
     ),
     img: ({ src, alt }: any) => <ImageCard src={src} alt={alt} colors={colors} />,
-    text: ({ children }: any) => <NavigableText onOpenFile={onOpenFile} onOpenUrl={onOpenUrl}>{children}</NavigableText>,
-    code: ({ children, className, ...props }: any) => <NavigableCode className={className} onOpenFile={onOpenFile} onOpenUrl={onOpenUrl} {...props}>{children}</NavigableCode>,
-  }), [colors, onOpenFile, onOpenUrl])
+    text: ({ children }: any) => <NavigableText onOpenFile={onOpenFileVoid} onOpenUrl={onOpenUrl}>{children}</NavigableText>,
+    code: ({ children, className, ...props }: any) => <NavigableCode className={className} onOpenFile={onOpenFileVoid} onOpenUrl={onOpenUrl} {...props}>{children}</NavigableCode>,
+  }), [colors, onOpenFileVoid, onOpenUrl])
 
   const displayContent = useMemo(() => (message.content || '').replace(TASK_NOTIFICATION_RE, '').trim(), [message.content])
 

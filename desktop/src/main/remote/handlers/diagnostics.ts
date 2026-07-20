@@ -68,11 +68,11 @@ function rotateIosLogIfNeeded(): void {
   if (size < IOS_LOG_MAX_BYTES) return
 
   // Delete oldest generation, shift remaining ones up, rename live to .1.
-  try { unlinkSync(LOG_FILE + '.' + IOS_LOG_MAX_GENERATIONS) } catch {}
+  try { unlinkSync(LOG_FILE + '.' + IOS_LOG_MAX_GENERATIONS) } catch { /* silent-ok: oldest generation may not exist yet */ }
   for (let i = IOS_LOG_MAX_GENERATIONS - 1; i >= 1; i--) {
-    try { renameSync(LOG_FILE + '.' + i, LOG_FILE + '.' + (i + 1)) } catch {}
+    try { renameSync(LOG_FILE + '.' + i, LOG_FILE + '.' + (i + 1)) } catch { /* silent-ok: generation i may not exist yet */ }
   }
-  try { renameSync(LOG_FILE, LOG_FILE + '.1') } catch {}
+  try { renameSync(LOG_FILE, LOG_FILE + '.1') } catch { /* silent-ok: best-effort rotate; next write recreates the live file */ }
   log('log_pull: ios log rotated', { path: LOG_FILE, size_bytes: size })
 }
 

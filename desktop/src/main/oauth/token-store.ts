@@ -61,19 +61,21 @@ function scheduleRefresh(): void {
   if (earliest === Infinity) return
   const delay = Math.max(0, earliest - Date.now())
   log('oauth: scheduling token refresh', { provider: earliestProvider, delay_s: Math.round(delay / 1000) })
-  refreshTimer = setTimeout(async () => {
-    refreshTimer = null
-    const token = tokens.get(earliestProvider)
-    if (!token) return
-    const refreshFn = refreshFns.get(earliestProvider)
-    if (!refreshFn) { log('oauth: no refresh function', { provider: earliestProvider }); return }
-    try {
-      log('oauth: refreshing token', { provider: earliestProvider })
-      const t = await refreshFn(token.refreshToken)
-      await storeTokens(earliestProvider, t.accessToken, t.refreshToken, t.expiresAt)
-    } catch (err) {
-      log('oauth: failed to refresh token', { provider: earliestProvider, error: (err as Error).message })
-      refreshTimer = setTimeout(() => scheduleRefresh(), 60_000)
-    }
+  refreshTimer = setTimeout(() => {
+    void (async () => {
+      refreshTimer = null
+      const token = tokens.get(earliestProvider)
+      if (!token) return
+      const refreshFn = refreshFns.get(earliestProvider)
+      if (!refreshFn) { log('oauth: no refresh function', { provider: earliestProvider }); return }
+      try {
+        log('oauth: refreshing token', { provider: earliestProvider })
+        const t = await refreshFn(token.refreshToken)
+        await storeTokens(earliestProvider, t.accessToken, t.refreshToken, t.expiresAt)
+      } catch (err) {
+        log('oauth: failed to refresh token', { provider: earliestProvider, error: (err as Error).message })
+        refreshTimer = setTimeout(() => scheduleRefresh(), 60_000)
+      }
+    })()
   }, delay)
 }

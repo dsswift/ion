@@ -1,9 +1,13 @@
-import { log as _log } from '../../logger'
+import { log as _log, warn as _warn } from '../../logger'
 import { state, engineBridge } from '../../state'
 import type { RemoteCommand } from '../protocol'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
+}
+
+function warn(msg: string, fields?: Record<string, unknown>): void {
+  _warn('main', msg, fields)
 }
 
 /** Per-device voice configuration (sent by iOS). */
@@ -67,7 +71,7 @@ export async function handleResetEngineSession(cmd: Extract<RemoteCommand, { typ
 
 export function handleEngineDialogResponse(cmd: Extract<RemoteCommand, { type: 'desktop_engine_dialog_response' }>): void {
   const hKey = cmd.tabId
-  engineBridge.sendDialogResponse(hKey, cmd.dialogId, cmd.value)
+  engineBridge.sendDialogResponse(hKey, cmd.dialogId, cmd.value).catch((err) => warn('remote_engine_dialog_response: send failed', { key: hKey, dialog_id: cmd.dialogId, error: String(err) }))
 }
 
 export async function handleEngineSetModel(cmd: Extract<RemoteCommand, { type: 'desktop_engine_set_model' }>): Promise<void> {

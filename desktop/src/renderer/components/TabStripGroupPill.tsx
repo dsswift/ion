@@ -13,6 +13,7 @@ import { TabContextMenu } from './TabStripTabContextMenu'
 import { InactiveGroupMenu } from './TabStripInactiveGroupMenu'
 import { GroupPickerDropdown } from './TabStripGroupPickerDropdown'
 import { newTabInDirectory } from './new-conversation-routing'
+import { rError } from '../rendererLogger'
 
 interface GroupPillProps {
   group: TabGroupView
@@ -331,7 +332,7 @@ export function GroupPill({
               anchor={tabMenu}
               tab={tab}
               onRename={() => { setTabMenu(null); setRenamingTitle(true) }}
-              onForkTab={tab.conversationId ? () => { useSessionStore.getState().forkTab(tab.id) } : undefined}
+              onForkTab={tab.conversationId ? () => { void useSessionStore.getState().forkTab(tab.id).catch((err) => rError('tabs', 'fork tab failed', { error: String(err) })) } : undefined}
               onNewTabInDir={() => {
                 // Lock-safe single path: cannot bypass the enterprise lock.
                 const { engineProfiles, defaultEngineProfileId, enterpriseNewConversationDefaults: policy } = usePreferencesStore.getState()
@@ -339,12 +340,12 @@ export function GroupPill({
                   profiles: engineProfiles,
                   defaultProfileId: defaultEngineProfileId,
                   enterprisePolicy: policy,
-                  createTabInDir: (d, wt) => useSessionStore.getState().createTabInDirectory(d, wt),
-                  createConvTab: (d, opts) => useSessionStore.getState().createConversationTab(d, opts),
+                  createTabInDir: (d, wt) => { void useSessionStore.getState().createTabInDirectory(d, wt).catch((err) => rError('tabs', 'create tab failed', { error: String(err) })) },
+                  createConvTab: (d, opts) => { void useSessionStore.getState().createConversationTab(d, opts).catch((err) => rError('tabs', 'create conversation failed', { error: String(err) })) },
                   shouldUseWorktree: shouldUseWorktree(false),
                 })
               }}
-              onFinishWork={() => { if (tab.worktree) useSessionStore.getState().finishWorktreeTab(tab.id) }}
+              onFinishWork={() => { if (tab.worktree) void useSessionStore.getState().finishWorktreeTab(tab.id).catch((err) => rError('tabs', 'finish worktree failed', { error: String(err) })) }}
               finishWorkDisabled={tab.worktree ? (worktreeUncommittedMap.has(tab.id) ? worktreeUncommittedMap.get(tab.id)! : 'checking') : undefined}
               onClose={() => setTabMenu(null)}
               groupTabs={group.tabs}

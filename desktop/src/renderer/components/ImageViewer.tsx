@@ -3,6 +3,7 @@ import { DownloadSimple, FolderOpen } from '@phosphor-icons/react'
 import { FloatingPanel } from './FloatingPanel'
 import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
+import { rError } from '../rendererLogger'
 
 /** Module-level cache so the same image isn't re-read from disk per render. */
 const dataUrlCache = new Map<string, string>()
@@ -39,7 +40,7 @@ function useImageDataUrl(path: string, initialDataUrl?: string): string | null {
         dataUrlCache.set(path, res.dataUrl)
         setDataUrl(res.dataUrl)
       }
-    })
+    }).catch((err) => rError('ImageViewer', 'readImageDataUrl failed', { path, error: String(err) }))
     return () => { cancelled = true }
   }, [path])
 
@@ -79,7 +80,7 @@ export function ImageViewer({ filePath, fileName, onClose }: ImageViewerProps) {
   }, [dataUrl, fileName])
 
   const handleReveal = useCallback(() => {
-    window.ion.fsRevealInFinder(filePath)
+    void window.ion.fsRevealInFinder(filePath)
   }, [filePath])
 
   return (
@@ -107,7 +108,7 @@ export function ImageViewer({ filePath, fileName, onClose }: ImageViewerProps) {
         }}
       >
         <button
-          onClick={handleSaveAs}
+          onClick={() => { void handleSaveAs() }}
           className="flex items-center gap-1 px-2 py-0.5 rounded transition-colors text-[10px]"
           style={{ color: colors.textTertiary, cursor: 'pointer' }}
           onMouseEnter={(e) => { e.currentTarget.style.color = colors.accent }}

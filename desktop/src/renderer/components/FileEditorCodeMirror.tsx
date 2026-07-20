@@ -15,7 +15,7 @@ import { useSessionStore, FileEditorTab } from '../stores/sessionStore'
 import { getLanguageExtension, getLanguageExtensionById } from './FileEditorShared'
 import { blameExtension, dispatchBlame, clearBlame } from './git/blameGutter'
 import { FileEditorContextMenu } from './FileEditorContextMenu'
-import { rTrace } from '../rendererLogger'
+import { rTrace, rError } from '../rendererLogger'
 
 export interface CursorPosition {
   line: number
@@ -293,7 +293,7 @@ export function FileEditorCodeMirror({ dir, activeFile, onSave, onCursorChange, 
         </div>
       )}
       <button
-        onClick={handleToggleBlame}
+        onClick={() => { void handleToggleBlame().catch((err) => rError('file-editor.codemirror', 'toggle blame failed', { error: String(err) })) }}
         style={{
           position: 'absolute',
           top: 6,

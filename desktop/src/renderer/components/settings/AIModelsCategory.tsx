@@ -10,6 +10,7 @@ import { BashAllowlistEditor } from './BashAllowlistEditor'
 import { AVAILABLE_MODELS, getModelDisplayLabel } from '../../stores/model-labels'
 import { useModelStore } from '../../stores/model-store'
 import { getProviderDisplayName } from '../../../shared/types-models'
+import { rWarn } from '../../rendererLogger'
 
 export function AIModelsCategory() {
   const colors = useColors()
@@ -54,7 +55,7 @@ export function AIModelsCategory() {
   const hasModels = dynamicModels.length > 0
 
   useEffect(() => {
-    if (!hasModels) fetchModels()
+    if (!hasModels) void fetchModels().catch((err) => rWarn('settings', 'fetch models failed', { error: String(err) }))
   }, [hasModels, fetchModels])
 
   const authedProviderIds = useMemo(() => {

@@ -148,7 +148,8 @@ async function createTabFromCommand(
 }
 
 function notifyTabCreated(tabId: string, clientCmdId?: string): void {
-  setTimeout(async () => {
+  setTimeout(() => {
+    void (async () => {
     try {
       const { tabs } = await getRemoteTabStates()
       const newTab = tabs.find((t: any) => t.id === tabId)
@@ -158,6 +159,7 @@ function notifyTabCreated(tabId: string, clientCmdId?: string): void {
       // create command indefinitely with no desktop-side explanation. Log it.
       warn('remote: tab_created notify failed', { tab_id: tabId, error: String(err) })
     }
+    })()
   }, 500)
 }
 

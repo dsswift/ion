@@ -32,7 +32,7 @@ export async function cleanOrphanedWorktrees(): Promise<void> {
         await gitExec('git', ['rev-parse', '--git-dir'], { cwd: wtPath })
       } catch {
         log('git_runner: cleaning orphaned worktree', { path: wtPath })
-        try { rmSync(wtPath, { recursive: true, force: true }) } catch {}
+        try { rmSync(wtPath, { recursive: true, force: true }) } catch { /* silent-ok: best-effort orphaned-worktree removal */ }
       }
     }
   } catch (err: any) {

@@ -325,7 +325,7 @@ export function buildOtlpPayload(records: EgressRecord[], serviceName: string): 
       let tsNano = ''
       try {
         tsNano = String(new Date(r.ts).getTime() * 1_000_000)
-      } catch {}
+      } catch { /* silent-ok: unparseable record timestamp; leave tsNano empty */ }
 
       if (isTelemetryEventRecord(r)) {
         // TELEMETRY EVENT record. Its data lives in name/payload/context, NOT in

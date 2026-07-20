@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useColors } from '../theme'
 import { ConfirmDialog } from './git/ConfirmDialog'
+import { rError } from '../rendererLogger'
 import type { GitCommit } from '../../shared/types'
 
 // ─── Commit context menu ───
@@ -114,12 +115,14 @@ export function CommitContextMenu({ anchor, commit, directory, onRefresh, onClos
           message={`This will discard all changes and reset to ${commit.hash}. This cannot be undone.`}
           confirmLabel="Reset Hard"
           danger
-          onConfirm={async () => {
-            const result = await window.ion.gitReset(directory, commit.hash, 'hard')
-            if (!result.ok) alert(result.error || 'Reset failed')
-            setConfirmReset(null)
-            onRefresh()
-            onClose()
+          onConfirm={() => {
+            void (async () => {
+              const result = await window.ion.gitReset(directory, commit.hash, 'hard')
+              if (!result.ok) alert(result.error || 'Reset failed')
+              setConfirmReset(null)
+              onRefresh()
+              onClose()
+            })().catch((err) => rError('git-commit-menu', 'hard reset failed', { error: String(err) }))
           }}
           onCancel={() => { setConfirmReset(null); onClose() }}
         />

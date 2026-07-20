@@ -10,6 +10,7 @@ import { useColors } from '../theme'
 import { compactPath } from './StatusBarShared'
 import { pickDirectoryForSession } from '../stores/remote-fs-store'
 import { activeInstance, instanceMessageCount } from '../stores/conversation-instance'
+import { rError } from '../rendererLogger'
 
 /* ─── Directory Picker (button + popover for base/additional dirs) ─── */
 
@@ -158,7 +159,7 @@ export function DirectoryPicker() {
           <div className="py-1.5 px-1">
             {/* Base directory */}
             <button
-              onClick={handleChangeBaseDir}
+              onClick={() => { void handleChangeBaseDir().catch((err) => rError('directory-picker', 'change base dir failed', { error: String(err) })) }}
               disabled={isRunning || baseLocked}
               className="w-full text-left px-2 py-1 rounded-lg transition-colors hover:bg-white/5"
               style={{ cursor: isRunning || baseLocked ? 'default' : 'pointer', opacity: baseLocked ? 0.7 : 1 }}
@@ -204,7 +205,7 @@ export function DirectoryPicker() {
 
             {/* Add directory button */}
             <button
-              onClick={handleAddDir}
+              onClick={() => { void handleAddDir().catch((err) => rError('directory-picker', 'add dir failed', { error: String(err) })) }}
               className="w-full flex items-center gap-1.5 px-2 py-1.5 text-[11px] transition-colors rounded-lg"
               style={{ color: colors.accent }}
             >

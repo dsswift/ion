@@ -97,7 +97,7 @@ export function FileEditorPreview({ dir, tabId, activeFile }: FileEditorPreviewP
           if (!href) return
           const h = String(href)
           if (h.startsWith('http://') || h.startsWith('https://')) {
-            window.ion.openExternal(h)
+            void window.ion.openExternal(h)
             return
           }
           const fullPath = resolveRelativePath(baseDir, h)
@@ -105,7 +105,7 @@ export function FileEditorPreview({ dir, tabId, activeFile }: FileEditorPreviewP
           if (EDITABLE_EXTS.has(ext)) {
             useSessionStore.getState().openFileInEditor(dir, tabId, fullPath, { insertAfterActive: true })
           } else {
-            window.ion.openExternal(h)
+            void window.ion.openExternal(h)
           }
         }}
       >

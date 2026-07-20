@@ -4,6 +4,7 @@ import { Paperclip, Copy, FolderOpen as FolderOpenIcon, ArrowSquareOut, PencilSi
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { maybeCloseExplorerBeforeExternal } from '../utils/externalLaunch'
+import { rError } from '../rendererLogger'
 import type { FsEntry } from '../../shared/types'
 
 export interface ContextMenuState {
@@ -53,14 +54,16 @@ export function FileExplorerContextMenu({
       ? menu.entry.path.slice(workingDir.length + 1)
       : menu.entry.path
     return [
-      { label: 'Attach to Conversation', icon: Paperclip, action: async () => {
-        const attachment = await window.ion.attachFileByPath(menu.entry.path)
-        if (attachment) addAttachments([attachment])
-        maybeCloseExplorerBeforeExternal()
+      { label: 'Attach to Conversation', icon: Paperclip, action: () => {
+        void (async () => {
+          const attachment = await window.ion.attachFileByPath(menu.entry.path)
+          if (attachment) addAttachments([attachment])
+          maybeCloseExplorerBeforeExternal()
+        })().catch((err) => rError('file-explorer', 'attach file by path failed', { error: String(err) }))
       }},
       { separator: true as const },
-      { label: 'Copy Path', icon: Copy, action: () => navigator.clipboard.writeText(menu.entry.path) },
-      { label: 'Copy Relative Path', icon: Copy, action: () => navigator.clipboard.writeText(relativePath) },
+      { label: 'Copy Path', icon: Copy, action: () => { void navigator.clipboard.writeText(menu.entry.path) } },
+      { label: 'Copy Relative Path', icon: Copy, action: () => { void navigator.clipboard.writeText(relativePath) } },
       { separator: true as const },
       // Rename routes through the parent FileExplorer which renders the
       // inline-input row in place of the entry (reuses the same component
@@ -69,8 +72,8 @@ export function FileExplorerContextMenu({
       // rename UX consistent with creation.
       { label: 'Rename', icon: PencilSimple, action: () => onRename(menu.entry) },
       { separator: true as const },
-      { label: 'Reveal in Finder', icon: FolderOpenIcon, action: () => { maybeCloseExplorerBeforeExternal(); window.ion.fsRevealInFinder(menu.entry.path) } },
-      { label: 'Open in Native App', icon: ArrowSquareOut, action: () => { maybeCloseExplorerBeforeExternal(); window.ion.fsOpenNative(menu.entry.path) } },
+      { label: 'Reveal in Finder', icon: FolderOpenIcon, action: () => { maybeCloseExplorerBeforeExternal(); void window.ion.fsRevealInFinder(menu.entry.path) } },
+      { label: 'Open in Native App', icon: ArrowSquareOut, action: () => { maybeCloseExplorerBeforeExternal(); void window.ion.fsOpenNative(menu.entry.path) } },
     ]
   }, [menu.entry, workingDir, onRename, addAttachments])
 

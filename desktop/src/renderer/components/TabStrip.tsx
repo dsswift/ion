@@ -24,6 +24,7 @@ import { DirectoryPicker } from './TabStripDirectoryPicker'
 import { GroupPill } from './TabStripGroupPill'
 import { TabPill } from './TabStripTabPill'
 import { WorkspaceStatusIndicator } from './WorkspaceStatusIndicator'
+import { rError } from '../rendererLogger'
 
 export function TabStrip() {
   const tabs = useSessionStore((s) => s.tabs)
@@ -351,8 +352,8 @@ export function TabStrip() {
               onCreateTab={() => {
                 createNewConversationTab(menuTab.workingDirectory)
               }}
-              onForkTab={menuTab.conversationId ? () => { useSessionStore.getState().forkTab(menuTab.id) } : undefined}
-              onFinishWork={menuTab.worktree ? () => { useSessionStore.getState().finishWorktreeTab(menuTab.id) } : undefined}
+              onForkTab={menuTab.conversationId ? () => { void useSessionStore.getState().forkTab(menuTab.id).catch((err) => rError('tabs', 'fork tab failed', { error: String(err) })) } : undefined}
+              onFinishWork={menuTab.worktree ? () => { void useSessionStore.getState().finishWorktreeTab(menuTab.id).catch((err) => rError('tabs', 'finish worktree failed', { error: String(err) })) } : undefined}
               finishWorkDisabled={menuTab.worktree ? (worktreeUncommittedMap.has(menuTab.id) ? worktreeUncommittedMap.get(menuTab.id)! : 'checking') : undefined}
               onClose={() => setDirMenuTabId(null)}
             />
@@ -376,7 +377,7 @@ export function TabStrip() {
                   }
                   break
                 }
-                case 'terminal': createTerminalTab(dir); break
+                case 'terminal': void createTerminalTab(dir).catch((err) => rError('tabs', 'create terminal failed', { error: String(err) })); break
               }
             }}
             onClose={() => setDirPickerState(null)}
@@ -390,11 +391,11 @@ export function TabStrip() {
             key="new-conversation-picker"
             anchor={convPickerState.anchor}
             onPlain={() => {
-              createTabInDirectory(convPickerState.dir, shouldUseWorktree(false))
+              void createTabInDirectory(convPickerState.dir, shouldUseWorktree(false)).catch((err) => rError('tabs', 'create tab failed', { error: String(err) }))
               setConvPickerState(null)
             }}
             onProfile={(profileId) => {
-              useSessionStore.getState().createConversationTab(convPickerState.dir, { profileId })
+              void useSessionStore.getState().createConversationTab(convPickerState.dir, { profileId }).catch((err) => rError('tabs', 'create conversation failed', { error: String(err) }))
               setConvPickerState(null)
             }}
             onOpenSettings={() => {
@@ -416,14 +417,14 @@ export function TabStrip() {
               anchor={tabMenuAnchor}
               tab={menuTab}
               onRename={() => { setTabMenuId(null); setEditingTabId(menuTab.id) }}
-              onForkTab={menuTab.conversationId ? () => { useSessionStore.getState().forkTab(menuTab.id) } : undefined}
+              onForkTab={menuTab.conversationId ? () => { void useSessionStore.getState().forkTab(menuTab.id).catch((err) => rError('tabs', 'fork tab failed', { error: String(err) })) } : undefined}
               onNewTabInDir={() => {
                 if (menuTab.workingDirectory) {
                   createNewConversationTab(menuTab.workingDirectory)
                 }
               }}
               onFinishWork={() => {
-                useSessionStore.getState().finishWorktreeTab(menuTab.id)
+                void useSessionStore.getState().finishWorktreeTab(menuTab.id).catch((err) => rError('tabs', 'finish worktree failed', { error: String(err) }))
               }}
               finishWorkDisabled={menuTab.worktree ? (worktreeUncommittedMap.has(menuTab.id) ? worktreeUncommittedMap.get(menuTab.id)! : 'checking') : undefined}
               onClose={() => setTabMenuId(null)}
@@ -439,7 +440,7 @@ export function TabStrip() {
           <BranchPickerDialog
             repoPath={pendingTab.workingDirectory}
             onSelect={(branch, setAsDefault) => {
-              useSessionStore.getState().setupWorktree(pendingTab.id, branch, setAsDefault)
+              void useSessionStore.getState().setupWorktree(pendingTab.id, branch, setAsDefault).catch((err) => rError('tabs', 'setup worktree failed', { error: String(err) }))
             }}
             onCancel={() => {
               useSessionStore.getState().cancelWorktreeSetup(pendingTab.id)
@@ -465,8 +466,8 @@ export function TabStrip() {
               executeNewConversationAction(
                 dir,
                 action,
-                (d, wt) => createTabInDirectory(d, wt),
-                (d, opts) => useSessionStore.getState().createConversationTab(d, opts),
+                (d, wt) => { void createTabInDirectory(d, wt).catch((err) => rError('tabs', 'create tab failed', { error: String(err) })) },
+                (d, opts) => { void useSessionStore.getState().createConversationTab(d, opts).catch((err) => rError('tabs', 'create conversation failed', { error: String(err) })) },
                 shouldUseWorktree(false),
               )
               return

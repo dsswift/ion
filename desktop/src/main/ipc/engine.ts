@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import { IPC } from '../../shared/types'
 import { buildClearDividerRemoteEvent } from '../../shared/clear-divider'
-import { log as _log } from '../logger'
+import { log as _log, warn as _warn } from '../logger'
 import { isValidProjectPath } from '../ipc-validation'
 import { engineBridge, sessionPlane, state } from '../state'
 import { broadcastEngineHistory } from '../remote/handlers/engine-history'
@@ -10,6 +10,10 @@ import { broadcastDesktopSettingsSnapshot } from '../settings-broadcast'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
+}
+
+function warn(msg: string, fields?: Record<string, unknown>): void {
+  _warn('main', msg, fields)
 }
 
 /**
@@ -81,12 +85,12 @@ export function registerEngineIpc(): void {
 
   ipcMain.handle(IPC.ENGINE_DIALOG_RESPONSE, (_event, { key, dialogId, value }: { key: string; dialogId: string; value: any }) => {
     log('engine_dialog_response', { key, dialog_id: dialogId })
-    engineBridge.sendDialogResponse(key, dialogId, value)
+    engineBridge.sendDialogResponse(key, dialogId, value).catch((err) => warn('engine_dialog_response: send failed', { key, dialog_id: dialogId, error: String(err) }))
   })
 
   ipcMain.handle(IPC.ENGINE_COMMAND, (_event, { key, command, args }: { key: string; command: string; args: string }) => {
     log('engine_command', { key, command })
-    engineBridge.sendCommand(key, command, args)
+    engineBridge.sendCommand(key, command, args).catch((err) => warn('engine_command: send failed', { key, command, error: String(err) }))
     // Mirror /clear divider to iOS so the remote client sees the checkpoint
     // immediately, without waiting for a conversation reload. The renderer
     // has already inserted the divider into its local message store via
@@ -100,7 +104,7 @@ export function registerEngineIpc(): void {
 
   ipcMain.handle(IPC.ENGINE_STOP, (_event, { key }: { key: string }) => {
     log('engine_stop', { key })
-    engineBridge.stopSession(key)
+    engineBridge.stopSession(key).catch((err) => warn('engine_stop: stop session failed', { key, error: String(err) }))
   })
 
   ipcMain.handle(IPC.ENGINE_BRANCH_BEFORE, async (_event, { key, entryId }: { key: string; entryId: string }) => {

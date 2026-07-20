@@ -10,6 +10,7 @@ import { ModelPickerPopover } from './ModelPickerPopover'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
+import { rError } from '../rendererLogger'
 import { useActiveEngineStatusFields } from './StatusBarEngineHelpers'
 import { activeInstance } from '../stores/conversation-instance'
 import { tabHasExtensions } from '../../shared/tab-predicates'
@@ -81,11 +82,11 @@ export function ModelPicker() {
   const harnessGoverned = !!tab?.harnessGoverned
 
   useEffect(() => {
-    if (!hasModels) fetchModels()
+    if (!hasModels) fetchModels().catch((err) => rError('model-picker', 'fetch models failed', { error: String(err) }))
   }, [hasModels, fetchModels])
 
   useEffect(() => {
-    if (open && Date.now() - lastFetched > 60_000) fetchModels()
+    if (open && Date.now() - lastFetched > 60_000) fetchModels().catch((err) => rError('model-picker', 'fetch models failed', { error: String(err) }))
   }, [open, lastFetched, fetchModels])
 
   useEffect(() => { setOpen(false) }, [activeTabId])

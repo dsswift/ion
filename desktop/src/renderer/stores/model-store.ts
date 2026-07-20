@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { ModelEntry, ProviderEntry } from '../../shared/types-models'
+import { rDebug } from '../rendererLogger'
 
 /** Live state of an in-flight delegated-CLI login, keyed by provider id. */
 export interface ProviderLoginState {
@@ -86,16 +87,16 @@ const MODEL_REFRESH_INTERVAL = 5 * 60 * 1000 // 5 minutes
  */
 export function setupModelSync(): void {
   // Initial fetch
-  useModelStore.getState().fetchModels()
+  void useModelStore.getState().fetchModels().catch((err) => rDebug('model-store', 'initial fetchModels failed', { error: String(err) }))
 
   // Periodic refresh
   setInterval(() => {
-    useModelStore.getState().fetchModels()
+    void useModelStore.getState().fetchModels().catch((err) => rDebug('model-store', 'periodic fetchModels failed', { error: String(err) }))
   }, MODEL_REFRESH_INTERVAL)
 
   // Listen for main process model cache updates
   window.ion.on('ion:models-updated', () => {
-    useModelStore.getState().fetchModels()
+    void useModelStore.getState().fetchModels().catch((err) => rDebug('model-store', 'fetchModels on cache-update failed', { error: String(err) }))
   })
 
   // Delegated-CLI (codex/grok/cursor) login lifecycle. Each stage updates the
@@ -127,7 +128,7 @@ export function setupModelSync(): void {
       case 'completed':
         clearTimer(u.provider)
         store.setLoginState(u.provider, null)
-        store.fetchModels()
+        void store.fetchModels().catch((err) => rDebug('model-store', 'fetchModels after login-complete failed', { provider: u.provider, error: String(err) }))
         break
       case 'failed':
         clearTimer(u.provider)

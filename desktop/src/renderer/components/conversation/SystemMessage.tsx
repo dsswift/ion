@@ -64,10 +64,10 @@ export function SystemMessage({ message, skipMotion }: SystemMessageProps) {
           {prefix}{' · '}
           <span
             style={{ textDecoration: 'underline', cursor: 'pointer' }}
-            onClick={handlePlanClick}
+            onClick={() => { void handlePlanClick().catch((err) => rWarn('conversation', 'open plan failed', { error: String(err) })) }}
             role="button"
             tabIndex={0}
-            onKeyDown={(e) => { if (e.key === 'Enter') handlePlanClick() }}
+            onKeyDown={(e) => { if (e.key === 'Enter') void handlePlanClick().catch((err) => rWarn('conversation', 'open plan failed', { error: String(err) })) }}
           >
             {slug}
           </span>

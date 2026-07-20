@@ -50,7 +50,7 @@ export function AppearanceCategory() {
   const [availableFonts, setAvailableFonts] = useState<string[]>(fontCache || [])
   useEffect(() => {
     if (fontCache) return
-    fontPromise.then(() => { if (fontCache) setAvailableFonts(fontCache) })
+    fontPromise.then(() => { if (fontCache) setAvailableFonts(fontCache) }).catch((err) => rDebug('settings', 'load fonts failed', { error: String(err) }))
   }, [])
 
   // Shared +/- font-size stepper (8–24px). Used by the Editor, Conversation,

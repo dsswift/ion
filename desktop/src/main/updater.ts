@@ -65,11 +65,11 @@ export function initAutoUpdater(): void {
   });
 
   // First check shortly after launch
-  setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 10_000);
+  setTimeout(() => { void autoUpdater.checkForUpdates().catch((err) => logError(tag, 'initial update check failed', { error: String(err) })); }, 10_000);
 
   // Periodic checks
   intervalId = setInterval(
-    () => autoUpdater.checkForUpdates().catch(() => {}),
+    () => { void autoUpdater.checkForUpdates().catch((err) => logError(tag, 'periodic update check failed', { error: String(err) })); },
     CHECK_INTERVAL_MS,
   );
 }

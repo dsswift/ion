@@ -226,7 +226,7 @@ export function RemoteDisplayPanel() {
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <button
           type="button"
-          onClick={handleSave}
+          onClick={() => { void handleSave().catch((err) => rError('settings', 'save display failed', { error: String(err) })) }}
           disabled={saving}
           style={{
             background: colors.accent,
@@ -244,7 +244,7 @@ export function RemoteDisplayPanel() {
         </button>
         <button
           type="button"
-          onClick={handleReset}
+          onClick={() => { void handleReset().catch((err) => rError('settings', 'reset display failed', { error: String(err) })) }}
           disabled={saving}
           style={{
             background: 'none',

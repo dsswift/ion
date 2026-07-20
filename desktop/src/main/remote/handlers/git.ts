@@ -306,7 +306,7 @@ export async function handleGitDiscard(cmd: Extract<RemoteCommand, { type: 'desk
       const { unlink } = require('fs/promises')
       const { join } = require('path')
       for (const p of untrackedPaths) {
-        try { await unlink(join(directory, p)) } catch {}
+        try { await unlink(join(directory, p)) } catch { /* silent-ok: best-effort discard of an untracked file; already gone or unreadable */ }
       }
     }
   } catch (err) {

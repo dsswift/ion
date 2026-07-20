@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm'
 import { useColors } from '../../theme'
 import { TableScrollWrapper } from './AssistantMessage'
 import type { Message } from '../../../shared/types'
+import { rWarn } from '../../rendererLogger'
 
 // Harness messages are markdown-formatted by convention. Extensions like
 // ion-meta emit multi-paragraph welcome/help content with headers,
@@ -35,7 +36,7 @@ export function HarnessMessage({ message, skipMotion }: HarnessMessageProps) {
         type="button"
         className="underline decoration-dotted underline-offset-2 cursor-pointer"
         style={{ color: colors.accent }}
-        onClick={() => { if (href) window.ion.openExternal(String(href)) }}
+        onClick={() => { if (href) void window.ion.openExternal(String(href)).catch((err) => rWarn('conversation', 'open link failed', { error: String(err) })) }}
       >
         {children}
       </button>

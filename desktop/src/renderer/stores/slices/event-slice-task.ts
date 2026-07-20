@@ -184,7 +184,7 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
           ctx.instTouched = true
         }
       }
-      playNotificationIfHidden()
+      void playNotificationIfHidden()
       // WI-001: clear any model-fallback indicator for the active instance on run exit.
       // The indicator was set when the engine reported a model fallback mid-run.
       if (ctx.inst0 && s.engineModelFallbacks) {

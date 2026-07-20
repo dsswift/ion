@@ -5,6 +5,7 @@ import { FloatingPanel } from './FloatingPanel'
 import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
 import { useNavigableText, NavigableText, NavigableCode } from '../hooks/useNavigableLinks'
+import { rError } from '../rendererLogger'
 
 const REMARK_PLUGINS = [remarkGfm]
 
@@ -23,6 +24,9 @@ interface PlanViewerProps {
 export const PlanViewer = React.memo(function PlanViewer({ content, fileName, filePath, onClose }: PlanViewerProps) {
   const colors = useColors()
   const { onOpenFile, onOpenUrl } = useNavigableText()
+  const handleOpenFile = useCallback((path: string) => {
+    void onOpenFile(path).catch((err) => rError('plan-viewer', 'open file failed', { error: String(err) }))
+  }, [onOpenFile])
   const planGeometry = useSessionStore((s) => s.planGeometry)
   const setPlanGeometry = useSessionStore((s) => s.setPlanGeometry)
   const workingDir = useSessionStore((s) => { const tab = s.tabs.find(t => t.id === s.activeTabId); return tab?.workingDirectory || '' })
@@ -38,15 +42,15 @@ export const PlanViewer = React.memo(function PlanViewer({ content, fileName, fi
         className="underline decoration-dotted underline-offset-2 cursor-pointer"
         style={{ color: colors.accent }}
         onClick={() => {
-          if (href) window.ion.openExternal(String(href))
+          if (href) void window.ion.openExternal(String(href))
         }}
       >
         {children}
       </button>
     ),
-    text: ({ children }: any) => <NavigableText onOpenFile={onOpenFile} onOpenUrl={onOpenUrl}>{children}</NavigableText>,
-    code: ({ children, className, ...props }: any) => <NavigableCode className={className} onOpenFile={onOpenFile} onOpenUrl={onOpenUrl} {...props}>{children}</NavigableCode>,
-  }), [colors, onOpenFile, onOpenUrl])
+    text: ({ children }: any) => <NavigableText onOpenFile={handleOpenFile} onOpenUrl={onOpenUrl}>{children}</NavigableText>,
+    code: ({ children, className, ...props }: any) => <NavigableCode className={className} onOpenFile={handleOpenFile} onOpenUrl={onOpenUrl} {...props}>{children}</NavigableCode>,
+  }), [colors, handleOpenFile, onOpenUrl])
 
   return (
     <FloatingPanel

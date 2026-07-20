@@ -64,7 +64,7 @@ export const useRemoteFsStore = create<RemoteFsState>((set, get) => ({
       // even on a fresh tab.
       let info = get().hostInfo
       if (!info) {
-        const res = await window.ion.getEngineHostInfo().catch(() => null)
+        const res = await window.ion.getEngineHostInfo().catch(() => null) // silent-ok: null is a data-bearing fallback; caller checks res?.ok next line
         if (res?.ok && res.data) {
           info = res.data
           set({ hostInfo: info })
@@ -84,7 +84,7 @@ export const useRemoteFsStore = create<RemoteFsState>((set, get) => ({
   },
 
   async listDirectory(path: string, showHidden: boolean): Promise<EngineDirListing | null> {
-    const res = await window.ion.listEngineDirectory(path, showHidden).catch(() => null)
+    const res = await window.ion.listEngineDirectory(path, showHidden).catch(() => null) // silent-ok: null is a data-bearing fallback; caller returns null on !res?.ok next line
     if (!res?.ok || !res.data) return null
     return res.data
   },

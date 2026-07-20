@@ -30,7 +30,7 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
   if (state.remoteTransport) {
     stopTabSnapshotPolling()
     stopGitWatcherBridge()
-    state.remoteTransport.stop()
+    state.remoteTransport.stop().catch((err) => warn('remote_transport: stop failed during re-init', { error: String(err) }))
     state.remoteTransport = null
     // No transport = no remote clients; let the git focus gate suspend again.
     focusState.setRemoteClientCount(0)
@@ -82,7 +82,8 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
       // guard and fall through to send a snapshot anyway. Log it.
       warn('[Remote] peer-connected settings read failed', { error: String(err) })
     }
-    setTimeout(async () => {
+    setTimeout(() => {
+      void (async () => {
       const { tabs, resourceManifest } = await getRemoteTabStates()
 
       try {
@@ -117,10 +118,13 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
       // Start the git watcher bridge so tab directories get push-driven freshness
       const directories = new Set(tabs.map(t => t.workingDirectory).filter(Boolean))
       startGitWatcherBridge(directories)
+      })().catch((err) => error('[Remote] peer-connected snapshot task failed', { error: String(err) }))
     }, 300)
   })
 
-  state.remoteTransport.on('command', handleRemoteCommand)
+  state.remoteTransport.on('command', (cmd: any, deviceId: string) => {
+    void handleRemoteCommand(cmd, deviceId).catch((err) => error('remote_transport: command handler failed', { error: String(err) }))
+  })
 
   state.remoteTransport.on('state-change', (transportState: string) => {
     broadcast(IPC.REMOTE_STATE_CHANGED, { transportState })
