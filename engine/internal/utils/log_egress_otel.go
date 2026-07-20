@@ -12,9 +12,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -276,11 +278,20 @@ func flushEgressToOtel(records []egressRecord, cfg *types.OtelConfig) error {
 	if err != nil {
 		return fmt.Errorf("log egress otel: POST: %w", err)
 	}
+	if resp.StatusCode >= 400 {
+		// Read up to 512 bytes of the error body so the rejection reason
+		// appears in engine.jsonl instead of a bare status code.
+		errBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 512))
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			Log("log_egress", fmt.Sprintf("otel: response body close (error path) failed: %v", closeErr))
+		}
+		if readErr != nil || len(errBody) == 0 {
+			return fmt.Errorf("log egress otel: POST returned status %d", resp.StatusCode)
+		}
+		return fmt.Errorf("log egress otel: POST returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(errBody)))
+	}
 	if err := resp.Body.Close(); err != nil {
 		Log("log_egress", fmt.Sprintf("otel: response body close failed: %v", err))
-	}
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("log egress otel: POST returned status %d", resp.StatusCode)
 	}
 	return nil
 }

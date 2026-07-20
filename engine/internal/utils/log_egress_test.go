@@ -8,10 +8,14 @@ package utils
 //   S3  Spool cap trims oldest lines when exceeded, logs ERROR.
 //   S4  Spool survives restart (persists across forwarder recreations).
 //   S5  Backoff suppresses flush calls during the backoff window.
+//   S6  Chunked drain: 9 records + chunk-size 3 → 3 separate POSTs.
+//   S7  Partial failure: spool rewritten to unshipped tail; recovery ships remainder.
+//   S8  Error body included in returned error message.
 
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -400,5 +404,217 @@ func TestEgressForwarder_NilWhenNoTargets(t *testing.T) {
 	if f := newEgressForwarder(types.LoggingConfig{}); f != nil {
 		f.Close()
 		t.Fatal("expected nil forwarder when no egress targets configured")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// S6: chunked spool drain — all chunks succeed
+// ---------------------------------------------------------------------------
+
+// TestEgressSpool_ChunkedDrain verifies that drainSpool sends records in
+// multiple chunk-sized POSTs rather than one monolithic request, and that the
+// spool is removed on full success. Chunk size 3, 9 records → 3 POSTs.
+// RED on old code: all 9 records land in one POST (no chunking).
+func TestEgressSpool_ChunkedDrain(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(dir, ".ion"), 0o755)
+
+	var mu sync.Mutex
+	var posts [][]string // per-POST message lists
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var records []egressRecord
+		if err := json.NewDecoder(r.Body).Decode(&records); err != nil {
+			t.Errorf("decode: %v", err)
+		}
+		msgs := make([]string, len(records))
+		for i, r := range records {
+			msgs[i] = r.Msg
+		}
+		mu.Lock()
+		posts = append(posts, msgs)
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	// Build a forwarder with chunk size 3.
+	f := newTestForwarder(t, srv, dir, types.LoggingConfig{EgressChunkSize: 3})
+
+	// Seed 9 records directly into the spool (bypasses the live buffer).
+	for i := range 9 {
+		f.ship(rec(fmt.Sprintf("chunk-rec-%d", i)))
+	}
+	fail := &atomic.Bool{}
+	fail.Store(true)
+	// First Flush fails so records land in spool.
+	brokenSrv := makeSink(t, fail)
+	f.cfg.EgressEndpoint = brokenSrv.URL
+	_ = f.Flush()
+	// Reset backoff and swap back to the capturing sink.
+	f.mu.Lock()
+	f.backoffUntil = time.Time{}
+	f.backoffDelay = 0
+	f.mu.Unlock()
+	f.cfg.EgressEndpoint = srv.URL
+
+	// Now drain: should produce exactly 3 POSTs of 3 records each.
+	if err := f.drainSpool(); err != nil {
+		t.Fatalf("drainSpool: %v", err)
+	}
+
+	mu.Lock()
+	got := make([][]string, len(posts))
+	copy(got, posts)
+	mu.Unlock()
+
+	if len(got) != 3 {
+		t.Fatalf("expected 3 chunk POSTs, got %d: %v", len(got), got)
+	}
+	for i, chunk := range got {
+		if len(chunk) != 3 {
+			t.Errorf("chunk %d: expected 3 records, got %d: %v", i, len(chunk), chunk)
+		}
+	}
+	// Spool must be gone.
+	if info, err := os.Stat(f.spoolPath); err == nil && info.Size() > 0 {
+		t.Error("spool not removed after full drain")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// S7: chunked spool drain — partial failure rewrites spool
+// ---------------------------------------------------------------------------
+
+// TestEgressSpool_ChunkedDrain_PartialFailure verifies that when a chunk fails
+// mid-drain, only the unshipped tail is left in the spool, and a subsequent
+// flush (sink back up) ships exactly those remaining records.
+// Chunk size 2, 6 records: first chunk (0-1) succeeds, second chunk (2-3)
+// fails, third chunk never attempted. Spool must contain records 2-5.
+func TestEgressSpool_ChunkedDrain_PartialFailure(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(dir, ".ion"), 0o755)
+
+	callCount := &atomic.Int64{}
+	failAfter := int64(1) // fail starting from the 2nd POST
+	var mu sync.Mutex
+	var received []string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := callCount.Add(1)
+		if n > failAfter {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		var records []egressRecord
+		if err := json.NewDecoder(r.Body).Decode(&records); err != nil {
+			t.Errorf("decode: %v", err)
+		}
+		mu.Lock()
+		for _, r := range records {
+			received = append(received, r.Msg)
+		}
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	f := newTestForwarder(t, srv, dir, types.LoggingConfig{EgressChunkSize: 2})
+
+	// Seed 6 records into the spool via a broken sink.
+	brokenFail := &atomic.Bool{}
+	brokenFail.Store(true)
+	brokenSrv := makeSink(t, brokenFail)
+	f.cfg.EgressEndpoint = brokenSrv.URL
+	for i := range 6 {
+		f.ship(rec(fmt.Sprintf("partial-%d", i)))
+	}
+	_ = f.Flush()
+	f.mu.Lock()
+	f.backoffUntil = time.Time{}
+	f.backoffDelay = 0
+	f.mu.Unlock()
+	f.cfg.EgressEndpoint = srv.URL
+
+	// Drain: chunk 0 (records 0-1) lands; chunk 1 (records 2-3) fails.
+	err := f.drainSpool()
+	if err == nil {
+		t.Fatal("expected error from partial drain, got nil")
+	}
+
+	// Spool must contain only the unshipped records (2-5).
+	spoolData, readErr := os.ReadFile(f.spoolPath)
+	if readErr != nil {
+		t.Fatalf("spool missing after partial drain: %v", readErr)
+	}
+	var spooled []string
+	sc := bufio.NewScanner(strings.NewReader(string(spoolData)))
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		var r egressRecord
+		if json.Unmarshal([]byte(line), &r) == nil {
+			spooled = append(spooled, r.Msg)
+		}
+	}
+	if len(spooled) != 4 {
+		t.Errorf("expected 4 records left in spool (records 2-5), got %d: %v", len(spooled), spooled)
+	}
+	for _, m := range spooled {
+		if m == "partial-0" || m == "partial-1" {
+			t.Errorf("already-shipped record %q still in spool", m)
+		}
+	}
+
+	// Now bring sink up fully and drain again: must ship exactly those 4.
+	callCount.Store(0)
+	failAfter = 99 // let all POSTs through
+	f.mu.Lock()
+	f.backoffUntil = time.Time{}
+	f.backoffDelay = 0
+	f.mu.Unlock()
+
+	if err := f.drainSpool(); err != nil {
+		t.Fatalf("second drainSpool: %v", err)
+	}
+
+	mu.Lock()
+	got := make([]string, len(received))
+	copy(got, received)
+	mu.Unlock()
+
+	// received so far = 2 from first successful chunk + 4 from recovery.
+	if len(got) != 2+4 {
+		t.Fatalf("expected 6 total delivered records, got %d: %v", len(got), got)
+	}
+	if info, err := os.Stat(f.spoolPath); err == nil && info.Size() > 0 {
+		t.Error("spool not removed after full recovery drain")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// S8: error body included in returned error
+// ---------------------------------------------------------------------------
+
+// TestEgressHTTP_ErrorBodyInMessage verifies that when the sink returns a 4xx
+// with a body, the body text is included in the error returned by
+// flushEgressToHTTP so it appears in engine.jsonl rather than a bare status.
+func TestEgressHTTP_ErrorBodyInMessage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte("bad content-type"))
+	}))
+	defer srv.Close()
+
+	err := flushEgressToHTTP([]egressRecord{rec("x")}, srv.URL, nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "bad content-type") {
+		t.Errorf("error %q does not contain error body text", err.Error())
+	}
+	if !strings.Contains(err.Error(), "400") {
+		t.Errorf("error %q does not contain status code", err.Error())
 	}
 }

@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -279,6 +280,29 @@ func TestEgressUserSeam(t *testing.T) {
 	SetEgressUser("")
 	if got := resolvedEgressUser(); got != "" {
 		t.Errorf("resolvedEgressUser = %q after clear, want empty", got)
+	}
+}
+
+// TestEgressOtel_ErrorBodyInMessage verifies that when the OTLP sink returns a
+// 4xx with a body, the body text is included in the error returned by
+// flushEgressToOtel so the rejection reason appears in engine.jsonl.
+func TestEgressOtel_ErrorBodyInMessage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte("unsupported media type"))
+	}))
+	defer srv.Close()
+
+	cfg := &types.OtelConfig{Endpoint: srv.URL, ServiceName: "ion-engine"}
+	err := flushEgressToOtel([]egressRecord{canonicalRecord()}, cfg)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "unsupported media type") {
+		t.Errorf("error %q does not contain error body text", err.Error())
+	}
+	if !strings.Contains(err.Error(), "400") {
+		t.Errorf("error %q does not contain status code", err.Error())
 	}
 }
 
