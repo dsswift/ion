@@ -5,6 +5,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/codexrpc"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // codexExit signals that a notification terminated the run.
@@ -28,7 +29,9 @@ func translateCodexNotification(run *codexRun, method string, params json.RawMes
 	switch method {
 	case codexrpc.NotifAgentMessageDelta:
 		var d codexrpc.DeltaNotification
-		_ = json.Unmarshal(params, &d)
+		if err := json.Unmarshal(params, &d); err != nil {
+			utils.LogWithFields(utils.LevelDebug, "backend.codex", "notification decode failed", map[string]any{"method": method, "error": err.Error()})
+		}
 		var events []types.NormalizedEvent
 		events = append(events, closeThinking(run)...)
 		if d.Delta != "" {
@@ -39,7 +42,9 @@ func translateCodexNotification(run *codexRun, method string, params json.RawMes
 
 	case codexrpc.NotifReasoningTextDelta:
 		var d codexrpc.DeltaNotification
-		_ = json.Unmarshal(params, &d)
+		if err := json.Unmarshal(params, &d); err != nil {
+			utils.LogWithFields(utils.LevelDebug, "backend.codex", "notification decode failed", map[string]any{"method": method, "error": err.Error()})
+		}
 		var events []types.NormalizedEvent
 		events = append(events, openThinking(run)...)
 		if d.Delta != "" {
@@ -49,7 +54,9 @@ func translateCodexNotification(run *codexRun, method string, params json.RawMes
 
 	case codexrpc.NotifItemStarted:
 		var n codexrpc.ItemNotification
-		_ = json.Unmarshal(params, &n)
+		if err := json.Unmarshal(params, &n); err != nil {
+			utils.LogWithFields(utils.LevelDebug, "backend.codex", "notification decode failed", map[string]any{"method": method, "error": err.Error()})
+		}
 		if toolName, ok := codexToolName(n.Item.Type); ok {
 			idx := run.nextToolIndex
 			run.nextToolIndex++
@@ -64,7 +71,9 @@ func translateCodexNotification(run *codexRun, method string, params json.RawMes
 
 	case codexrpc.NotifItemCompleted:
 		var n codexrpc.ItemNotification
-		_ = json.Unmarshal(params, &n)
+		if err := json.Unmarshal(params, &n); err != nil {
+			utils.LogWithFields(utils.LevelDebug, "backend.codex", "notification decode failed", map[string]any{"method": method, "error": err.Error()})
+		}
 		if _, ok := codexToolName(n.Item.Type); ok {
 			isErr := n.Item.ExitCode != nil && *n.Item.ExitCode != 0
 			return []types.NormalizedEvent{{Data: &types.ToolResultEvent{
@@ -91,7 +100,9 @@ func translateCodexNotification(run *codexRun, method string, params json.RawMes
 
 	case codexrpc.NotifTokenUsageUpdated:
 		var n codexrpc.TokenUsageNotification
-		_ = json.Unmarshal(params, &n)
+		if err := json.Unmarshal(params, &n); err != nil {
+			utils.LogWithFields(utils.LevelDebug, "backend.codex", "notification decode failed", map[string]any{"method": method, "error": err.Error()})
+		}
 		return []types.NormalizedEvent{{Data: &types.UsageEvent{Usage: codexUsage(n.TokenUsage.Last)}}}, nil
 
 	case codexrpc.NotifPlanDelta:
@@ -133,7 +144,9 @@ func translateCodexNotification(run *codexRun, method string, params json.RawMes
 
 	case codexrpc.NotifError:
 		var n codexrpc.ErrorNotification
-		_ = json.Unmarshal(params, &n)
+		if err := json.Unmarshal(params, &n); err != nil {
+			utils.LogWithFields(utils.LevelDebug, "backend.codex", "notification decode failed", map[string]any{"method": method, "error": err.Error()})
+		}
 		events := []types.NormalizedEvent{{Data: &types.ErrorEvent{
 			ErrorMessage: n.Error.Message,
 			IsError:      true,

@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -66,7 +67,14 @@ func NewPermissionHookServer(permEng *permissions.Engine) (*PermissionHookServer
 	mux.HandleFunc("/hook/pre-tool-use/", s.handlePreToolUse)
 
 	s.server = &http.Server{Handler: mux}
-	go func() { _ = s.server.Serve(listener) }()
+	go func() {
+		// A Serve error other than the clean-shutdown sentinel means the
+		// permission endpoint is dead and every permission check silently
+		// fails; log so this is distinguishable from a normal Close.
+		if err := s.server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			utils.LogWithFields(utils.LevelError, "backend.permission_hook", "serve exited unexpectedly", map[string]any{"port": s.Port(), "error": err.Error()})
+		}
+	}()
 
 	utils.LogWithFields(utils.LevelInfo, "backend.permission_hook", "listening on port", map[string]any{
 		"port": s.Port(),
@@ -155,6 +163,7 @@ func (s *PermissionHookServer) handlePreToolUse(w http.ResponseWriter, r *http.R
 
 	// Validate secret
 	if reqSecret != s.secret {
+		utils.LogWithFields(utils.LevelInfo, "backend.permission_hook", "rejected: secret mismatch", map[string]any{"path": r.URL.Path})
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -165,6 +174,7 @@ func (s *PermissionHookServer) handlePreToolUse(w http.ResponseWriter, r *http.R
 	s.mu.Unlock()
 
 	if !validToken {
+		utils.LogWithFields(utils.LevelInfo, "backend.permission_hook", "rejected: unknown token", map[string]any{})
 		http.Error(w, "unknown token", http.StatusForbidden)
 		return
 	}
@@ -174,6 +184,7 @@ func (s *PermissionHookServer) handlePreToolUse(w http.ResponseWriter, r *http.R
 		Input    map[string]any `json:"tool_input"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		utils.LogWithFields(utils.LevelInfo, "backend.permission_hook", "rejected: body decode failed", map[string]any{"error": err.Error()})
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
@@ -293,5 +304,9 @@ func writePermissionResponse(w http.ResponseWriter, decision string) {
 		},
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		// This is the sole channel carrying the allow/deny decision back to the
+		// CLI. A failed write stalls the CLI on the tool with no explanation.
+		utils.LogWithFields(utils.LevelInfo, "backend.permission_hook", "permission response write failed", map[string]any{"decision": decision, "error": err.Error()})
+	}
 }

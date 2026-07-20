@@ -10,6 +10,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/pdf"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // ReadTool returns a ToolDef that reads file content with line numbers (cat -n format).
@@ -68,6 +69,11 @@ func executeRead(ctx context.Context, input map[string]any, cwd string) (*types.
 			Content: fmt.Sprintf("[Image: %s, %d bytes]", filepath.Base(filePath), info.Size()),
 			Images:  []*types.ImageSource{block.Source},
 		}, nil
+	} else if conversation.IsSupportedImageExt(filePath) {
+		// A real image (by extension) that failed to encode — oversize,
+		// unreadable, or unsupported by the sniffer — would otherwise fall
+		// through and be read as text (garbage). Log so the fallback is visible.
+		utils.LogWithFields(utils.LevelWarn, "tools.read", "image encode failed; falling back to text read", map[string]any{"path": filePath, "error": err.Error()})
 	}
 
 	if err := ctx.Err(); err != nil {

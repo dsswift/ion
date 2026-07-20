@@ -329,16 +329,22 @@ func (s *Scheduler) computeBootstrapNextRun(name string, job extension.ScheduleJ
 	if marker.LastRunUtc != "" {
 		if t, err := time.Parse(time.RFC3339, marker.LastRunUtc); err == nil {
 			anchor = t
+		} else {
+			utils.LogWithFields(utils.LevelWarn, "scheduling", "bootstrap marker LastRunUtc unparseable", map[string]any{"model": name, "run_id": job.JobID, "last_run_utc": marker.LastRunUtc, "error": err.Error()})
 		}
 	}
 	if anchor.IsZero() && marker.FirstSeenUtc != "" {
 		if t, err := time.Parse(time.RFC3339, marker.FirstSeenUtc); err == nil {
 			anchor = t
+		} else {
+			utils.LogWithFields(utils.LevelWarn, "scheduling", "bootstrap marker FirstSeenUtc unparseable", map[string]any{"model": name, "run_id": job.JobID, "first_seen_utc": marker.FirstSeenUtc, "error": err.Error()})
 		}
 	}
 	if anchor.IsZero() {
-		// Marker file exists but both timestamps are unparseable.
-		// Treat as first sighting.
+		// Marker file exists but both timestamps are unparseable (or empty).
+		// Treat as first sighting — log so a corrupt marker abandoning
+		// catch-up is visible rather than silently missing the slot.
+		utils.LogWithFields(utils.LevelWarn, "scheduling", "bootstrap marker has no usable anchor; treating as first sighting", map[string]any{"model": name, "run_id": job.JobID, "last_run_utc": marker.LastRunUtc, "first_seen_utc": marker.FirstSeenUtc})
 		return next, nil
 	}
 

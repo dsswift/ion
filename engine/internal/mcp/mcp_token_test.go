@@ -127,6 +127,7 @@ func TestSSETransport_AppliesHeadersToStreamAndSend(t *testing.T) {
 	defer server.Close()
 
 	tr, err := newSSETransport(
+		"test-server",
 		types.McpServerConfig{Type: "sse", URL: server.URL},
 		map[string]string{"X-Static": "s"},
 		func() (string, error) { return "op-token", nil },

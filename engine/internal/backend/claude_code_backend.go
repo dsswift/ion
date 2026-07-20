@@ -416,11 +416,17 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 		"type": "user",
 		"message": map[string]interface{}{
 			"role":    "user",
-			"content": buildCliUserContent(opts.Prompt, opts.Attachments),
+			"content": buildCliUserContent(opts.ConversationID, opts.Prompt, opts.Attachments),
 		},
 	}
-	if data, err := json.Marshal(initMsg); err == nil {
-		_, _ = stdinPipe.Write(append(data, '\n'))
+	if data, err := json.Marshal(initMsg); err != nil {
+		// Marshal failure means the CLI never receives the prompt and the run
+		// hangs forever with no event — this must not be silent.
+		utils.LogWithFields(utils.LevelError, "backend.claude_code", "initial prompt marshal failed", map[string]any{"request_id": run.requestID, "error": err.Error()})
+	} else if _, err := stdinPipe.Write(append(data, '\n')); err != nil {
+		// Write failure (broken pipe, subprocess died at spawn) also hangs the
+		// run silently. Log so the dead-on-arrival case is diagnosable.
+		utils.LogWithFields(utils.LevelError, "backend.claude_code", "initial prompt stdin write failed", map[string]any{"request_id": run.requestID, "error": err.Error()})
 	}
 
 	// Capture stderr in ring buffer

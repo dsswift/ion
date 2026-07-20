@@ -205,9 +205,9 @@ func Connect(name string, config types.McpServerConfig) (*Connection, error) {
 
 	switch config.Type {
 	case "stdio", "":
-		transport, err = newStdioTransport(config)
+		transport, err = newStdioTransport(name, config)
 	case "sse":
-		transport, err = newSSETransport(config, headers, userToken)
+		transport, err = newSSETransport(name, config, headers, userToken)
 	case "http":
 		transport, err = newHTTPTransport(config.URL, headers, userToken)
 	case "ws", "websocket":
@@ -354,7 +354,11 @@ func (c *Connection) call(ctx context.Context, method string, params any) (json.
 
 			var resp jsonRPCResponse
 			if err := json.Unmarshal(respData, &resp); err != nil {
-				continue // Skip non-response messages (notifications).
+				// Skip non-response messages (notifications). Log at debug so a
+				// server emitting only unparseable frames (which loops until
+				// timeout) is diagnosable.
+				utils.LogWithFields(utils.LevelDebug, "mcp", "skipping unparseable rpc frame", map[string]any{"serverName": c.name, "error": err.Error()})
+				continue
 			}
 
 			if resp.ID != id {
@@ -488,12 +492,13 @@ func (c *Connection) Name() string {
 // --- stdio transport ---
 
 type stdioTransport struct {
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
-	reader *bufio.Reader
+	cmd        *exec.Cmd
+	stdin      io.WriteCloser
+	reader     *bufio.Reader
+	serverName string
 }
 
-func newStdioTransport(config types.McpServerConfig) (*stdioTransport, error) {
+func newStdioTransport(serverName string, config types.McpServerConfig) (*stdioTransport, error) {
 	if config.Command == "" {
 		return nil, fmt.Errorf("stdio transport requires command")
 	}
@@ -516,15 +521,40 @@ func newStdioTransport(config types.McpServerConfig) (*stdioTransport, error) {
 		return nil, fmt.Errorf("stdout pipe: %w", err)
 	}
 
+	// Capture stderr so a subprocess crash reason (missing dependency, bad
+	// env, panic, auth message) is observable instead of vanishing. Without
+	// this, a downstream listTools failure shows only a generic error and the
+	// root cause is invisible.
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, fmt.Errorf("stderr pipe: %w", err)
+	}
+
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start command: %w", err)
 	}
 
+	go drainStdioStderr(serverName, stderr)
+
 	return &stdioTransport{
-		cmd:    cmd,
-		stdin:  stdin,
-		reader: bufio.NewReader(stdout),
+		cmd:        cmd,
+		stdin:      stdin,
+		reader:     bufio.NewReader(stdout),
+		serverName: serverName,
 	}, nil
+}
+
+// drainStdioStderr logs every line the MCP subprocess writes to stderr so a
+// crash or auth rejection is visible in the engine log, correlated by server.
+func drainStdioStderr(serverName string, stderr io.ReadCloser) {
+	scanner := bufio.NewScanner(stderr)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		utils.LogWithFields(utils.LevelDebug, "mcp.stdio", "server stderr", map[string]any{"serverName": serverName, "line": line})
+	}
 }
 
 func (t *stdioTransport) Send(msg json.RawMessage) error {
@@ -543,6 +573,10 @@ func (t *stdioTransport) Receive() (json.RawMessage, error) {
 			continue
 		}
 		if !json.Valid(line) {
+			// Non-JSON stdout line (server logging to the wrong stream, or a
+			// malformed frame). Skip it, but log so a server that never
+			// produces a valid frame is diagnosable instead of timing out.
+			utils.LogWithFields(utils.LevelDebug, "mcp.stdio", "skipping non-JSON stdout line", map[string]any{"serverName": t.serverName})
 			continue
 		}
 		return json.RawMessage(line), nil
@@ -574,20 +608,23 @@ type sseTransport struct {
 	// token on the send path; the stream GET carries the token minted at
 	// stream open.
 	userToken func() (string, error)
+	// serverName is carried for log correlation on the stream goroutine.
+	serverName string
 }
 
-func newSSETransport(config types.McpServerConfig, headers map[string]string, userToken func() (string, error)) (*sseTransport, error) {
+func newSSETransport(serverName string, config types.McpServerConfig, headers map[string]string, userToken func() (string, error)) (*sseTransport, error) {
 	if config.URL == "" {
 		return nil, fmt.Errorf("SSE transport requires URL")
 	}
 
 	t := &sseTransport{
-		baseURL:   strings.TrimRight(config.URL, "/"),
-		headers:   headers,
-		msgCh:     make(chan json.RawMessage, 64),
-		client:    &http.Client{},
-		done:      make(chan struct{}),
-		userToken: userToken,
+		baseURL:    strings.TrimRight(config.URL, "/"),
+		headers:    headers,
+		msgCh:      make(chan json.RawMessage, 64),
+		client:     &http.Client{},
+		done:       make(chan struct{}),
+		userToken:  userToken,
+		serverName: serverName,
 	}
 
 	// Start SSE event stream reader goroutine.
@@ -624,15 +661,26 @@ func (t *sseTransport) readEventStream() {
 	}
 	req.Header.Set("Accept", "text/event-stream")
 	if err := t.applyHeaders(req); err != nil {
-		utils.LogWithFields(utils.LevelError, "mcp.sse", "event stream header resolution failed", map[string]any{"error": err.Error()})
+		utils.LogWithFields(utils.LevelError, "mcp.sse", "event stream header resolution failed", map[string]any{"serverName": t.serverName, "error": err.Error()})
 		return
 	}
 
 	resp, err := t.client.Do(req)
 	if err != nil {
+		// Connect failure: the goroutine exits, msgCh is never fed, and every
+		// tool on this server becomes unresolvable. Log so this is not silent.
+		utils.LogWithFields(utils.LevelError, "mcp.sse", "event stream connect failed", map[string]any{"serverName": t.serverName, "url": t.baseURL, "error": err.Error()})
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		// A non-2xx status (401/403/500) returns a body with no `data:` lines;
+		// without this check an auth rejection looks like a healthy empty
+		// stream and downstream sees only a timeout.
+		utils.LogWithFields(utils.LevelError, "mcp.sse", "event stream non-2xx status", map[string]any{"serverName": t.serverName, "url": t.baseURL, "status": resp.StatusCode})
+		return
+	}
 
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {

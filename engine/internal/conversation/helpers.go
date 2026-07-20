@@ -86,6 +86,14 @@ var supportedImageMime = map[string]string{
 	".gif":  "image/gif",
 }
 
+// IsSupportedImageExt reports whether the file extension is one EncodeImage
+// accepts. Callers use this to distinguish "not an image" (fall through to
+// text) from "an image that failed to encode" (worth logging).
+func IsSupportedImageExt(filePath string) bool {
+	_, ok := supportedImageMime[strings.ToLower(filepath.Ext(filePath))]
+	return ok
+}
+
 // EncodeImage reads an image file and returns it as a base64 content block.
 //
 // The media_type is determined by sniffing the actual file bytes first (via

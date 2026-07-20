@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -30,8 +31,11 @@ func runHookCtx[T any](ctx context.Context, fn func() T) (T, error) {
 	go func() {
 		defer func() {
 			// Hook callbacks are extension-supplied; recover panics so they
-			// can't take down the run. Drop the result on panic.
-			_ = recover()
+			// can't take down the run. Log the panic + stack so a hook that
+			// silently stops firing is diagnosable instead of vanishing.
+			if r := recover(); r != nil {
+				utils.LogWithFields(utils.LevelError, "backend.runloop", "extension hook panic recovered", map[string]any{"panic": r, "stack": string(debug.Stack())})
+			}
 		}()
 		ch <- fn()
 	}()
@@ -182,6 +186,7 @@ func buildUserContentBlocks(prompt string, attachments []types.ImageAttachment) 
 	}
 	for _, a := range attachments {
 		if a.Data == "" || a.MediaType == "" {
+			utils.LogWithFields(utils.LevelWarn, "ApiBackend", "buildUserContentBlocks: dropping attachment with empty data or media type", map[string]any{"mimeType": a.MediaType})
 			continue
 		}
 		switch {

@@ -5,10 +5,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
+
+// attachLogMu serializes tests that install the process-global logger sink.
+var attachLogMu sync.Mutex
 
 // writeTempPDF writes n bytes to a .pdf file in the test's temp dir and returns
 // its absolute path.
@@ -29,7 +34,7 @@ func blockType(b map[string]interface{}) string {
 // Regression guard: no markers and no attachments returns exactly one text
 // block holding the original prompt -- identical to the pre-#789 behavior.
 func TestBuildCliUserContent_PlainPrompt(t *testing.T) {
-	blocks := buildCliUserContent("hello world", nil)
+	blocks := buildCliUserContent("test-conv", "hello world", nil)
 	if len(blocks) != 1 {
 		t.Fatalf("want 1 block, got %d", len(blocks))
 	}
@@ -42,7 +47,7 @@ func TestBuildCliUserContent_PDFMarkerBecomesDocumentBlock(t *testing.T) {
 	pdf := writeTempPDF(t, "manual.pdf", 1024)
 	prompt := "summarize this [Attached file: " + pdf + "] please"
 
-	blocks := buildCliUserContent(prompt, nil)
+	blocks := buildCliUserContent("test-conv", prompt, nil)
 	if len(blocks) != 2 {
 		t.Fatalf("want text + document, got %d blocks: %#v", len(blocks), blocks)
 	}
@@ -68,7 +73,7 @@ func TestBuildCliUserContent_ImageAttachmentBecomesImageBlock(t *testing.T) {
 	prompt := "look [Attached image: /tmp/shot.png]"
 	atts := []types.ImageAttachment{{MediaType: "image/png", Data: "Zm9v", Path: "/tmp/shot.png"}}
 
-	blocks := buildCliUserContent(prompt, atts)
+	blocks := buildCliUserContent("test-conv", prompt, atts)
 	if len(blocks) != 2 {
 		t.Fatalf("want text + image, got %d blocks: %#v", len(blocks), blocks)
 	}
@@ -84,7 +89,7 @@ func TestBuildCliUserContent_OversizedPDFKeepsMarker(t *testing.T) {
 	pdf := writeTempPDF(t, "huge.pdf", maxInlineAttachmentBytes+1)
 	prompt := "read [Attached file: " + pdf + "]"
 
-	blocks := buildCliUserContent(prompt, nil)
+	blocks := buildCliUserContent("test-conv", prompt, nil)
 	if len(blocks) != 1 {
 		t.Fatalf("oversized file should not be inlined; got %d blocks", len(blocks))
 	}
@@ -93,9 +98,48 @@ func TestBuildCliUserContent_OversizedPDFKeepsMarker(t *testing.T) {
 	}
 }
 
+// TestBuildCliUserContent_OversizedPDFLogsReason pins that an oversized PDF —
+// which the model never receives — produces a visible "not inlined" log with
+// the reason, rather than silently dropping the attachment.
+func TestBuildCliUserContent_OversizedPDFLogsReason(t *testing.T) {
+	attachLogMu.Lock()
+	defer attachLogMu.Unlock()
+
+	var mu sync.Mutex
+	var entries []map[string]any
+	prev := utils.GetLevel()
+	utils.SetLevel(utils.LevelDebug)
+	utils.SetTestSink(func(_ utils.LogLevel, tag, msg string, fields map[string]any, _, _ string) {
+		if tag == "backend.claude_code" && msg == "pdf attachment not inlined" {
+			mu.Lock()
+			entries = append(entries, fields)
+			mu.Unlock()
+		}
+	})
+	defer func() {
+		utils.SetTestSink(nil)
+		utils.SetLevel(prev)
+	}()
+
+	pdf := writeTempPDF(t, "huge.pdf", maxInlineAttachmentBytes+1)
+	buildCliUserContent("conv-xyz", "read [Attached file: "+pdf+"]", nil)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(entries) == 0 {
+		t.Fatal("expected a 'pdf attachment not inlined' log for oversized PDF")
+	}
+	if entries[0]["reason"] != "oversize" {
+		t.Fatalf("expected reason=oversize, got %v", entries[0]["reason"])
+	}
+	if entries[0]["conversation_id"] != "conv-xyz" {
+		t.Fatalf("expected conversation_id=conv-xyz, got %v", entries[0]["conversation_id"])
+	}
+}
+
 func TestBuildCliUserContent_NonPDFAndPlanMarkersUntouched(t *testing.T) {
 	prompt := "x [Attached file: /tmp/notes.txt] y [Attached plan: /tmp/plan.md]"
-	blocks := buildCliUserContent(prompt, nil)
+	blocks := buildCliUserContent("test-conv", prompt, nil)
 	if len(blocks) != 1 {
 		t.Fatalf("non-pdf/plan markers should not produce media blocks; got %d", len(blocks))
 	}
@@ -109,7 +153,7 @@ func TestBuildCliUserContent_DuplicatePDFMarkerInlinedOnce(t *testing.T) {
 	pdf := writeTempPDF(t, "dup.pdf", 512)
 	prompt := "[Attached file: " + pdf + "] and again [Attached file: " + pdf + "]"
 
-	blocks := buildCliUserContent(prompt, nil)
+	blocks := buildCliUserContent("test-conv", prompt, nil)
 	docs := 0
 	for _, b := range blocks {
 		if blockType(b) == "document" {
@@ -131,7 +175,7 @@ func TestBuildCliUserContent_WirePDFDocumentBlock(t *testing.T) {
 	pdfB64 := base64.StdEncoding.EncodeToString([]byte("%PDF-1.4 fake"))
 	clientPath := "/Users/someone-else/Downloads/report.pdf" // does not exist here
 	prompt := "[Attached file: " + clientPath + "]\nsummarize this"
-	blocks := buildCliUserContent(prompt, []types.ImageAttachment{
+	blocks := buildCliUserContent("test-conv", prompt, []types.ImageAttachment{
 		{MediaType: "application/pdf", Data: pdfB64, Path: clientPath},
 	})
 	if len(blocks) != 2 {
@@ -153,7 +197,7 @@ func TestBuildCliUserContent_WirePDFDocumentBlock(t *testing.T) {
 // Mixed wire attachments keep their relative order and unknown media types are
 // dropped without breaking the rest.
 func TestBuildCliUserContent_WireMixedAndUnknown(t *testing.T) {
-	blocks := buildCliUserContent("look", []types.ImageAttachment{
+	blocks := buildCliUserContent("test-conv", "look", []types.ImageAttachment{
 		{MediaType: "image/png", Data: "aW1n"},
 		{MediaType: "application/zip", Data: "emlw"}, // dropped
 		{MediaType: "application/pdf", Data: "cGRm"},
@@ -170,7 +214,7 @@ func TestBuildCliUserContent_WireMixedAndUnknown(t *testing.T) {
 // local-disk #789 path or Read fallback still owns it).
 func TestBuildCliUserContent_UnmatchedFileMarkerKept(t *testing.T) {
 	prompt := "[Attached file: /nonexistent/other.pdf] and [Attached image: /tmp/x.png]"
-	blocks := buildCliUserContent(prompt, []types.ImageAttachment{
+	blocks := buildCliUserContent("test-conv", prompt, []types.ImageAttachment{
 		{MediaType: "application/pdf", Data: "cGRm", Path: "/somewhere/else.pdf"},
 	})
 	text := blocks[0]["text"].(string)

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // maxInlineAttachmentBytes caps a file we will base64-inline as a content
@@ -42,7 +43,7 @@ var attachmentMarkerRe = regexp.MustCompile(`\[Attached (file|image|plan): ([^\]
 // oversized or unreadable files) keeps its marker untouched so the existing
 // Read-tool path still works. The non-attachment case returns a single text
 // block identical to the previous hardcoded behavior.
-func buildCliUserContent(prompt string, attachments []types.ImageAttachment) []map[string]interface{} {
+func buildCliUserContent(convID, prompt string, attachments []types.ImageAttachment) []map[string]interface{} {
 	text := prompt
 	media := make([]map[string]interface{}, 0, len(attachments)+1)
 
@@ -59,10 +60,24 @@ func buildCliUserContent(prompt string, attachments []types.ImageAttachment) []m
 		}
 		info, err := os.Stat(path)
 		if err != nil || info.Size() == 0 || info.Size() > maxInlineAttachmentBytes {
-			continue // leave marker; model falls back to the Read tool
+			// Leave marker; model falls back to the Read tool. Log the reason so
+			// a PDF the user attached but the model never received is not silent.
+			reason := "stat_failed"
+			var size int64
+			if err == nil {
+				size = info.Size()
+				if info.Size() == 0 {
+					reason = "empty"
+				} else {
+					reason = "oversize"
+				}
+			}
+			utils.LogWithFields(utils.LevelWarn, "backend.claude_code", "pdf attachment not inlined", map[string]any{"conversation_id": convID, "attachmentPath": path, "reason": reason, "size": size, "error": utils.ErrStr(err)})
+			continue
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
+			utils.LogWithFields(utils.LevelWarn, "backend.claude_code", "pdf attachment not inlined", map[string]any{"conversation_id": convID, "attachmentPath": path, "reason": "read_failed", "error": utils.ErrStr(err)})
 			continue
 		}
 		seen[path] = true
@@ -86,6 +101,7 @@ func buildCliUserContent(prompt string, attachments []types.ImageAttachment) []m
 	consumedPaths := make(map[string]bool)
 	for _, a := range attachments {
 		if a.Data == "" || a.MediaType == "" {
+			utils.LogWithFields(utils.LevelWarn, "backend.claude_code", "wire attachment dropped", map[string]any{"conversation_id": convID, "mimeType": a.MediaType, "reason": "empty_data_or_media"})
 			continue
 		}
 		switch {
@@ -108,6 +124,7 @@ func buildCliUserContent(prompt string, attachments []types.ImageAttachment) []m
 				},
 			})
 		default:
+			utils.LogWithFields(utils.LevelWarn, "backend.claude_code", "wire attachment dropped", map[string]any{"conversation_id": convID, "mimeType": a.MediaType, "reason": "unsupported_media_type"})
 			continue
 		}
 		if a.Path != "" {

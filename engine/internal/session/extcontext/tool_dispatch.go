@@ -7,6 +7,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/tools"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // CallToolFromExtension dispatches an extension-initiated tool call through
@@ -78,11 +79,16 @@ func CallToolFromExtension(ctx context.Context, sa SessionAccessor, toolName str
 				content, err := conn.CallTool(callCtx, innerName, input)
 				callCancel()
 				if err != nil {
+					// Log at the call site so an MCP tool failure — which server,
+					// which tool — is visible from the logs alone, not only via
+					// the error bubbling up to an opaque caller.
+					utils.LogWithFields(utils.LevelError, "extcontext", "mcp tool call failed", map[string]any{"serverName": serverName, "toolName": innerName, "error": utils.ErrStr(err)})
 					return "", true, err
 				}
 				return content, false, nil
 			}
 		}
+		utils.LogWithFields(utils.LevelWarn, "extcontext", "mcp server not connected", map[string]any{"serverName": serverName, "toolName": innerName})
 		return fmt.Sprintf("MCP server %q not connected", serverName), true, nil
 	}
 

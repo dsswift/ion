@@ -10,6 +10,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/asyncreg"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 func (s *Scheduler) publish(ev types.EngineEvent) {
@@ -18,6 +19,10 @@ func (s *Scheduler) publish(ev types.EngineEvent) {
 	s.mu.RUnlock()
 	if fn != nil {
 		fn(ev)
+	} else {
+		// Emitter not wired — every schedule observability event is dropped.
+		// Log so a late-wired emitter (full schedule-event blackout) is visible.
+		utils.LogWithFields(utils.LevelWarn, "scheduling", "schedule event dropped: emitter not wired", map[string]any{"status": ev.Type, "run_id": ev.AsyncID})
 	}
 }
 

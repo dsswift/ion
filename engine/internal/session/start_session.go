@@ -288,7 +288,10 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 		for name, mcpCfg := range m.config.McpServers {
 			conn, err := mcp.Connect(name, mcpCfg)
 			if err != nil {
-				utils.LogWithFields(utils.LevelInfo, "session", "mcp connect failed", map[string]any{"model": name, "error": err})
+				// A whole server's tools going away is an error, not info, and
+				// missed by ERROR-level log sweeps at Info. Key by serverName;
+				// stringify the error so it serializes as a message not an object.
+				utils.LogWithFields(utils.LevelError, "session", "mcp connect failed", map[string]any{"serverName": name, "error": utils.ErrStr(err)})
 				continue
 			}
 			m.mu.Lock()

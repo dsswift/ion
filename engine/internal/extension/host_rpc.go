@@ -818,8 +818,13 @@ func (h *Host) sendResponse(id int64, result json.RawMessage, rpcErr *jsonrpcErr
 	h.pendMu.Unlock()
 	if w != nil {
 		h.writeMu.Lock()
-		_, _ = w.Write(data)
+		_, werr := w.Write(data)
 		h.writeMu.Unlock()
+		if werr != nil {
+			// A failed stdin write means the extension never receives its RPC
+			// reply and blocks/times out with no engine-side record.
+			utils.LogWithFields(utils.LevelInfo, "extension", "rpc response stdin write failed", map[string]any{"extension": h.name, "id": id, "error": werr.Error()})
+		}
 	}
 }
 
@@ -845,7 +850,12 @@ func (h *Host) sendNotification(method string, params json.RawMessage) {
 	h.pendMu.Unlock()
 	if w != nil {
 		h.writeMu.Lock()
-		_, _ = w.Write(data)
+		_, werr := w.Write(data)
 		h.writeMu.Unlock()
+		if werr != nil {
+			// A failed notification write means the extension never receives
+			// this message; log so the drop is visible.
+			utils.LogWithFields(utils.LevelInfo, "extension", "rpc notification stdin write failed", map[string]any{"extension": h.name, "method": method, "error": werr.Error()})
+		}
 	}
 }

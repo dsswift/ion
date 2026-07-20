@@ -187,6 +187,10 @@ func (r *RelayTransport) readLoop() {
 				utils.Log("Relay", "mobile peer connected")
 			case "relay:peer-disconnected":
 				utils.Log("Relay", "mobile peer disconnected")
+			default:
+				// Unknown control frame — log so relay protocol drift is
+				// visible rather than silently swallowed.
+				utils.LogWithFields(utils.LevelDebug, "transport.relay", "unknown control frame", map[string]any{"type": ctrl.Type})
 			}
 			continue
 		}
@@ -207,6 +211,11 @@ func (r *RelayTransport) backoffDelay() time.Duration {
 	return time.Duration(secs) * time.Second
 }
 
+// ErrRelayNotConnected is returned by relayConn.Send when the relay
+// WebSocket is not currently connected, so the caller can observe that a
+// broadcast was dropped rather than being told it was delivered.
+var ErrRelayNotConnected = fmt.Errorf("relay transport: not connected")
+
 // Broadcast sends data to the relay server (forwarded to mobile peer).
 func (r *RelayTransport) Broadcast(data []byte) {
 	r.mu.Lock()
@@ -214,6 +223,10 @@ func (r *RelayTransport) Broadcast(data []byte) {
 	r.mu.Unlock()
 
 	if conn == nil {
+		// No active relay connection (reconnecting or never connected). Every
+		// broadcast — including mobile push notifications — is dropped here.
+		// Log so the drop is visible instead of vanishing silently.
+		utils.LogWithFields(utils.LevelInfo, "transport.relay", "broadcast dropped: no relay connection", map[string]any{"bytes": len(data)})
 		return
 	}
 
@@ -250,6 +263,15 @@ type relayConn struct {
 }
 
 func (c *relayConn) Send(data []byte) error {
+	// Report the not-connected case to the caller instead of hardcoding a
+	// success return: a dropped broadcast must not look like a delivery.
+	c.transport.mu.Lock()
+	conn := c.transport.conn
+	c.transport.mu.Unlock()
+	if conn == nil {
+		utils.LogWithFields(utils.LevelInfo, "transport.relay", "send dropped: no relay connection", map[string]any{"bytes": len(data)})
+		return ErrRelayNotConnected
+	}
 	c.transport.Broadcast(data)
 	return nil
 }

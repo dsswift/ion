@@ -63,10 +63,18 @@ func ExtractPdfPages(path string, pageRange string) ([]string, error) {
 	var firstPage, lastPage int
 	if strings.Contains(pageRange, "-") {
 		parts := strings.SplitN(pageRange, "-", 2)
-		firstPage, _ = strconv.Atoi(parts[0])
-		lastPage, _ = strconv.Atoi(parts[1])
+		var errFirst, errLast error
+		firstPage, errFirst = strconv.Atoi(parts[0])
+		lastPage, errLast = strconv.Atoi(parts[1])
+		if errFirst != nil || errLast != nil {
+			utils.LogWithFields(utils.LevelDebug, "pdf", "page range parse failed; using defaults", map[string]any{"pageRange": pageRange})
+		}
 	} else {
-		firstPage, _ = strconv.Atoi(pageRange)
+		var err error
+		firstPage, err = strconv.Atoi(pageRange)
+		if err != nil {
+			utils.LogWithFields(utils.LevelDebug, "pdf", "page number parse failed; using defaults", map[string]any{"pageRange": pageRange})
+		}
 		lastPage = firstPage
 	}
 
@@ -129,6 +137,10 @@ func ExtractPdfPages(path string, pageRange string) ([]string, error) {
 		}
 		if data != nil {
 			pages = append(pages, base64.StdEncoding.EncodeToString(data))
+		} else {
+			// A requested page produced no file under any naming pattern —
+			// returning fewer pages than asked. Log so the gap is visible.
+			utils.LogWithFields(utils.LevelWarn, "pdf", "rendered page file not found", map[string]any{"page": p, "tmpDir": tmpDir})
 		}
 	}
 

@@ -517,11 +517,16 @@ func (m *Manager) wireExternalTools(s *engineSession, key string, extGroup *exte
 					content, err := conn.CallTool(callCtx, toolName, input)
 					callCancel()
 					if err != nil {
+						// Log at the call site so an MCP tool failure inside the
+						// agent loop — which server, which tool — is visible from
+						// logs alone, not only via the returned error.
+						utils.LogWithFields(utils.LevelError, "session", "mcp tool call failed", map[string]any{"serverName": serverName, "toolName": toolName, "conversation_id": key, "error": utils.ErrStr(err)})
 						return "", true, err
 					}
 					return content, false, nil
 				}
 			}
+			utils.LogWithFields(utils.LevelWarn, "session", "mcp server not connected", map[string]any{"serverName": serverName, "toolName": toolName, "conversation_id": key})
 			return "", true, fmt.Errorf("MCP server %q not connected", serverName)
 		}
 	}

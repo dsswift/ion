@@ -288,7 +288,10 @@ func (s *Server) Stop() error {
 			s.ownership.stopAll()
 		}
 
-		_ = s.manager.StopAll()
+		if err := s.manager.StopAll(); err != nil {
+			// Sessions refusing to stop during shutdown are otherwise invisible.
+			utils.LogWithFields(utils.LevelInfo, "server", "StopAll during shutdown returned error", map[string]any{"error": err.Error()})
+		}
 
 		s.mu.Lock()
 		for conn, cw := range s.clients {

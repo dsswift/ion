@@ -350,6 +350,10 @@ func (s *Scheduler) tickOnce() {
 		for _, d := range decls {
 			job, ok := d.(extension.ScheduleJob)
 			if !ok {
+				// A declaration registered under KindSchedule that is not a
+				// ScheduleJob can never fire. Log so the misregistration is
+				// visible instead of being silently skipped every tick.
+				utils.LogWithFields(utils.LevelError, "scheduling", "tick skip: declaration is not a ScheduleJob", map[string]any{"run_id": d.ID(), "model": h.Name()})
 				continue
 			}
 			key := extensionJobKey{name: h.Name(), id: job.JobID}
@@ -374,11 +378,19 @@ func (s *Scheduler) tickOnce() {
 			}
 		} else {
 			// Single mode (default): fire on the first alive host only.
+			fired := false
 			for _, e := range entries {
 				if !e.host.Dead() {
 					s.maybeFire(e.host, e.job, now, resolve)
+					fired = true
 					break
 				}
+			}
+			if !fired {
+				// Every host owning this schedule is dead — the job silently
+				// stops firing. Log so the dead-group gap is visible instead of
+				// the schedule vanishing without a trace.
+				utils.LogWithFields(utils.LevelWarn, "scheduling", "schedule not fired: all hosts dead", map[string]any{"run_id": entries[0].job.JobID, "extension": entries[0].host.Name(), "count": len(entries)})
 			}
 		}
 	}
