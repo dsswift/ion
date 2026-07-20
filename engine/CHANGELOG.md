@@ -13,6 +13,13 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.49.0](https://github.com/dsswift/ion/compare/engine-v1.48.0...engine-v1.49.0) (2026-07-20)
+
+### Features
+
+* **engine:** expose enterPlanMode / exitPlanMode / getPlanMode on SDK (#160) ([39a221a](https://github.com/dsswift/ion/commit/39a221a5914833a8570ffad4651f7f8291c5aac1))
+* **engine:** add ION_DATA_DIR for multi-instance deployments (#191) ([4de4d6a](https://github.com/dsswift/ion/commit/4de4d6a4e123b80a855b4f94c74d676c1ac22fd5))
+
 ## [1.48.0](https://github.com/dsswift/ion/compare/engine-v1.47.1...engine-v1.48.0) (2026-07-20)
 
 ### Features
