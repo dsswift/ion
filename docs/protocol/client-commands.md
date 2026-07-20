@@ -623,6 +623,38 @@ Publish a resource operation from the client. Routes to the global broker when `
 
 ---
 
+### resource_get
+
+Fetch a single resource item's full content on demand from the registered producer. The engine emits an `engine_resource_item` event on the requesting connection when the item is found, then sends a successful `ServerResult`. When the item is not found or no producer is registered for the kind, the engine returns an error `ServerResult` and no event is emitted.
+
+This is the lazy-fetch counterpart to `resource_subscribe`. It allows clients to request full content only when the user taps or expands an item, rather than receiving all item bodies in every snapshot.
+
+| Field            | Type                    | Required | Description                                                                 |
+|------------------|-------------------------|----------|-----------------------------------------------------------------------------|
+| `cmd`            | `"resource_get"`        | yes      | Command discriminator                                                       |
+| `key`            | string                  | no       | Session key for per-session broker; omit or use `""` with `resourceGlobal` |
+| `resourceKind`   | string                  | yes      | Kind of the item to fetch                                                   |
+| `resourceId`     | string                  | yes      | ID of the item to fetch                                                     |
+| `resourceGlobal` | boolean                 | no       | `true` to query the global (workspace-level) broker instead of per-session  |
+| `requestId`      | string                  | no       | Correlates with ServerResult                                                |
+
+```json
+{"cmd":"resource_get","key":"","resourceKind":"briefing","resourceId":"brief-42","resourceGlobal":true,"requestId":"r23"}
+```
+
+**Response event** (emitted before the `ServerResult` when the item is found):
+
+```json
+{"key":"","event":{"type":"engine_resource_item","resourceKind":"briefing","resourceItem":{"id":"brief-42","kind":"briefing","title":"Daily Brief","content":"Full briefing body…","createdAt":"2024-07-19T00:00:00Z"}}}
+```
+
+**Response:** `ServerResult` with `ok: true` on success, or `ok: false` with an error message when:
+- No producer is registered for `resourceKind`.
+- The producer returns no item for `resourceId`.
+- The session key has no active broker (for per-session queries).
+
+---
+
 ### query_session_status
 
 Request an immediate `engine_session_status` emission for a session. The status is emitted on the session's event stream, not as the RPC result. Useful for freshly reconnected clients that need current status without waiting for the next heartbeat.

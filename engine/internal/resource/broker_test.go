@@ -421,3 +421,98 @@ func TestBroker_RewireQueryHandlerAndResnapshot_MultipleSubscribers(t *testing.T
 		t.Errorf("sub2: expected 2 messages, got %d", msgCount["sub2"])
 	}
 }
+
+// ─── GetItem tests ────────────────────────────────────────────────────────────
+
+// TestBroker_GetItem_Found verifies that GetItem returns the matching item
+// when the producer holds it.
+func TestBroker_GetItem_Found(t *testing.T) {
+	t.Parallel()
+	items := []types.ResourceItem{
+		{ID: "item-a", Kind: "briefing", Title: "Alpha", Content: "Full content of alpha", CreatedAt: "2024-01-01T00:00:00Z"},
+		{ID: "item-b", Kind: "briefing", Title: "Beta", Content: "Full content of beta", CreatedAt: "2024-01-02T00:00:00Z"},
+	}
+	b, _ := newBrokerWithProducer(t, "briefing", items)
+
+	got, err := b.GetItem("briefing", "item-a")
+	if err != nil {
+		t.Fatalf("GetItem returned error: %v", err)
+	}
+	if got == nil {
+		t.Fatal("GetItem returned nil item, want item-a")
+	}
+	if got.ID != "item-a" {
+		t.Errorf("GetItem.ID = %q, want item-a", got.ID)
+	}
+	if got.Content != "Full content of alpha" {
+		t.Errorf("GetItem.Content = %q, want full content", got.Content)
+	}
+}
+
+// TestBroker_GetItem_NotFound verifies that GetItem returns (nil, nil) when
+// the producer exists but does not hold the requested ID.
+func TestBroker_GetItem_NotFound(t *testing.T) {
+	t.Parallel()
+	b, _ := newBrokerWithProducer(t, "briefing", []types.ResourceItem{
+		{ID: "exists", Kind: "briefing", Content: "x", CreatedAt: "2024-01-01T00:00:00Z"},
+	})
+
+	got, err := b.GetItem("briefing", "does-not-exist")
+	if err != nil {
+		t.Fatalf("GetItem returned unexpected error: %v", err)
+	}
+	if got != nil {
+		t.Errorf("GetItem returned item %+v, want nil for unknown ID", got)
+	}
+}
+
+// TestBroker_GetItem_NoProducer verifies that GetItem returns an error when
+// no producer is registered for the requested kind.
+func TestBroker_GetItem_NoProducer(t *testing.T) {
+	t.Parallel()
+	b := NewBroker()
+
+	_, err := b.GetItem("unregistered-kind", "any-id")
+	if err == nil {
+		t.Fatal("GetItem should return error for unregistered kind")
+	}
+}
+
+// TestBroker_GetItem_IDFieldPassedToProducer verifies that GetItem passes the
+// ID in the ResourceFilter so producers that support ID-scoped queries can
+// optimise their lookup without scanning all items.
+func TestBroker_GetItem_IDFieldPassedToProducer(t *testing.T) {
+	t.Parallel()
+
+	var capturedFilter types.ResourceFilter
+	b := NewBroker()
+	mp := &captureFilterProducer{
+		items: []types.ResourceItem{
+			{ID: "target", Kind: "note", Content: "body", CreatedAt: "2024-01-01T00:00:00Z"},
+		},
+		onQuery: func(f types.ResourceFilter) { capturedFilter = f },
+	}
+	if err := b.RegisterProducer("note", mp, types.ResourceDeclaration{Kind: "note"}); err != nil {
+		t.Fatalf("RegisterProducer: %v", err)
+	}
+
+	_, _ = b.GetItem("note", "target")
+
+	if capturedFilter.ID != "target" {
+		t.Errorf("filter.ID = %q, want target — GetItem must pass ID to producer", capturedFilter.ID)
+	}
+}
+
+// captureFilterProducer records the filter it receives and returns a fixed item set.
+type captureFilterProducer struct {
+	items   []types.ResourceItem
+	onQuery func(types.ResourceFilter)
+}
+
+func (c *captureFilterProducer) HandleQuery(filter types.ResourceFilter) ([]types.ResourceItem, error) {
+	if c.onQuery != nil {
+		c.onQuery(filter)
+	}
+	return c.items, nil
+}
+

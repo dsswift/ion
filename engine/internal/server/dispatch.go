@@ -480,6 +480,9 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "resource_publish":
 		s.dispatchResourcePublish(conn, cmd)
 
+	case "resource_get":
+		s.dispatchResourceGet(conn, cmd)
+
 	case "get_enterprise_policy":
 		// Return the NewConversationDefaults section of the enterprise config so
 		// clients can enforce the locked new-conversation policy without parsing
