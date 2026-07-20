@@ -14,6 +14,7 @@ import { ipcMain } from 'electron'
 import { IPC } from '../shared/types'
 import { log as _log } from './logger'
 import { engineBridge, state } from './state'
+import { broadcast } from './broadcast'
 import { notifyAtvActiveTab } from './atv-window-manager'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -308,5 +309,63 @@ export async function publishResourceDelete(kind: string, resourceId: string): P
 export function wireDeleteResourceHandler(): void {
   ipcMain.on(IPC.DELETE_RESOURCE, (_event: Electron.IpcMainEvent, { kind, resourceId }: { kind: string; resourceId: string }) => {
     publishResourceDelete(kind, resourceId).catch(() => {})
+  })
+}
+
+// ── resource_get: lazy fetch of a single item's full content ───────────────
+//
+// Sends resource_get to the engine for the given kind + id. The engine calls
+// the registered producer's query handler and emits engine_resource_item back
+// on the requesting connection, which event-wiring.ts broadcasts to the
+// renderer as resource_item. This call resolves once the command round-trip
+// completes; the actual item arrives via the event stream (engine_resource_item).
+//
+// resourceGlobal=true targets the workspace-level broker (briefings, global
+// notifications). resourceGlobal=false (default) targets the per-session broker
+// identified by sessionKey.
+export async function resourceGet(
+  kind: string,
+  id: string,
+  opts: { sessionKey?: string; global?: boolean } = {},
+): Promise<void> {
+  const key = opts.sessionKey ?? ''
+  const resourceGlobal = opts.global ?? true
+  log('resource_get', { kind, id: id.slice(-8), global: resourceGlobal })
+  await engineBridge.request('resource_get', {
+    key,
+    resourceKind: kind,
+    resourceId: id,
+    resourceGlobal,
+  }).catch((err: unknown) => {
+    log('resource_get: failed', { kind, id: id.slice(-8), error: String(err) })
+  })
+}
+
+export function wireResourceGetHandler(): void {
+  ipcMain.handle(
+    IPC.RESOURCE_GET,
+    async (_event: Electron.IpcMainInvokeEvent, { kind, id, sessionKey, global: isGlobal }: {
+      kind: string
+      id: string
+      sessionKey?: string
+      global?: boolean
+    }) => {
+      await resourceGet(kind, id, { sessionKey, global: isGlobal })
+    },
+  )
+}
+
+// ── handleResourceItemEvent ────────────────────────────────────────────────
+// Broadcasts a resource_item NormalizedEvent to the renderer. Called from
+// event-wiring.ts when engine_resource_item arrives — extracted here to keep
+// event-wiring.ts under the 600-line cap.
+export function handleResourceItemEvent(tabId: string, resourceKind: string, resourceItem: import('../shared/types-engine').ResourceItem | undefined): void {
+  if (!resourceItem) {
+    return
+  }
+  broadcast('ion:normalized-event', tabId, {
+    type: 'resource_item' as const,
+    resourceKind,
+    resourceItem,
   })
 }

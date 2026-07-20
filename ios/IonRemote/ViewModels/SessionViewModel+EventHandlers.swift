@@ -516,6 +516,16 @@ extension SessionViewModel {
             resourceStore.applySnapshot(kind: kind, rawItems: rawItems)
         case .engineResourceDelta(_, _, let kind, _, let rawDelta):
             resourceStore.applyDelta(kind: kind, rawDelta: rawDelta)
+        case .engineResourceItem(_, _, let kind, let rawItem):
+            // Full item content delivered in response to a resource_get request.
+            // Extract the id and content fields from the raw payload and forward
+            // to the resource store to update the cached item. This allows
+            // BriefingRow / NotificationsView to display full content on tap
+            // without requiring the full body in every snapshot.
+            if let id = rawItem["id"]?.value as? String,
+               let content = rawItem["content"]?.value as? String {
+                resourceStore.updateContent(kind: kind, resourceId: id, content: content)
+            }
         case .engineNotification:
             break
         case .resourceContent(let resourceId, let kind, let content):

@@ -185,3 +185,68 @@ func (s *Server) deliverResourceEvent(conn net.Conn, key string, msg resource.Re
 	line := protocol.SerializeServerEvent(key, json.RawMessage(raw))
 	s.writeToClient(conn, line)
 }
+
+// dispatchResourceGet handles the resource_get command: fetch a single item's
+// full content from the registered producer, then emit engine_resource_item
+// on the requesting connection.
+//
+// ResourceKind and ResourceID are required. ResourceGlobal selects the global
+// broker (workspace-scoped) vs. the session broker identified by cmd.Key.
+// Returns an error result when no producer is registered or the item is not
+// found; the engine_resource_item event is emitted only on success.
+func (s *Server) dispatchResourceGet(conn net.Conn, cmd *protocol.ClientCommand) {
+	if cmd.ResourceKind == "" {
+		s.sendResult(conn, cmd, fmt.Errorf("resource_get: resourceKind is required"), nil)
+		return
+	}
+	if cmd.ResourceID == "" {
+		s.sendResult(conn, cmd, fmt.Errorf("resource_get: resourceId is required"), nil)
+		return
+	}
+
+	var broker *resource.Broker
+	if cmd.ResourceGlobal {
+		broker = s.manager.GlobalResourceBroker()
+		if broker == nil {
+			s.sendResult(conn, cmd, fmt.Errorf("resource_get: global broker not available"), nil)
+			return
+		}
+	} else {
+		broker = s.manager.ResourceBroker(cmd.Key)
+		if broker == nil {
+			s.sendResult(conn, cmd, fmt.Errorf("resource_get: no broker for session %q", cmd.Key), nil)
+			return
+		}
+	}
+
+	item, err := broker.GetItem(cmd.ResourceKind, cmd.ResourceID)
+	if err != nil {
+		utils.LogWithFields(utils.LevelInfo, "server", "resource_get: query error", map[string]any{
+			"kind": cmd.ResourceKind, "id": cmd.ResourceID, "error": err.Error(),
+		})
+		s.sendResult(conn, cmd, err, nil)
+		return
+	}
+	if item == nil {
+		s.sendResult(conn, cmd, fmt.Errorf("resource_get: item %q not found in kind %q", cmd.ResourceID, cmd.ResourceKind), nil)
+		return
+	}
+
+	ev := types.EngineEvent{
+		Type:         "engine_resource_item",
+		ResourceKind: cmd.ResourceKind,
+		ResourceItem: item,
+	}
+	raw, err := json.Marshal(ev)
+	if err != nil {
+		utils.LogWithFields(utils.LevelError, "server", "resource_get: marshal error", map[string]any{"error": err.Error()})
+		s.sendResult(conn, cmd, fmt.Errorf("resource_get: marshal error: %w", err), nil)
+		return
+	}
+	line := protocol.SerializeServerEvent(cmd.Key, json.RawMessage(raw))
+	s.writeToClient(conn, line)
+	utils.LogWithFields(utils.LevelDebug, "server", "resource_get: delivered", map[string]any{
+		"kind": cmd.ResourceKind, "id": cmd.ResourceID,
+	})
+	s.sendResult(conn, cmd, nil, nil)
+}

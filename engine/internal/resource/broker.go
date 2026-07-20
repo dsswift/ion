@@ -133,6 +133,31 @@ func (b *Broker) Subscribe(kind string, filter types.ResourceFilter, deliver fun
 	return sub, nil
 }
 
+// GetItem fetches a single resource item by kind and ID by calling the
+// registered producer's query handler with an ID-scoped filter. Returns
+// (nil, nil) when the producer exists but returns no item for that ID.
+// Returns an error when no producer is registered for kind.
+func (b *Broker) GetItem(kind, id string) (*types.ResourceItem, error) {
+	b.mu.RLock()
+	entry, ok := b.producers[kind]
+	b.mu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("resource broker: no producer for kind %q", kind)
+	}
+
+	filter := types.ResourceFilter{Kind: kind, ID: id}
+	items, err := entry.host.HandleQuery(filter)
+	if err != nil {
+		return nil, fmt.Errorf("resource broker: query failed for kind %q id %q: %w", kind, id, err)
+	}
+	for i := range items {
+		if items[i].ID == id {
+			return &items[i], nil
+		}
+	}
+	return nil, nil // producer registered but item not found
+}
+
 // Unsubscribe removes the subscription identified by subID. No-op if not found.
 func (b *Broker) Unsubscribe(subID string) {
 	b.mu.Lock()

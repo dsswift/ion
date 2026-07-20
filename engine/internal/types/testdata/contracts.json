@@ -362,6 +362,7 @@
     "questionId",
     "requestId",
     "resourceDelta",
+    "resourceItem",
     "resourceItems",
     "resourceKind",
     "resourceSubId",

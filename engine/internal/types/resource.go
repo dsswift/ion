@@ -28,6 +28,11 @@ type ResourceFilter struct {
 	ConversationID string `json:"conversationId,omitempty"`
 	Since          string `json:"since,omitempty"`
 	Limit          int    `json:"limit,omitempty"`
+	// ID, when set, restricts the query to a single item by ID. Used by the
+	// engine's resource_get command to fetch a specific item's full content
+	// on demand. Producers that do not recognise this field return their
+	// normal result set and the engine post-filters by ID.
+	ID string `json:"id,omitempty"`
 }
 
 // ResourceDeclaration is what a producer registers with the broker.

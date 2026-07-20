@@ -215,6 +215,13 @@ export interface IonAPI extends AtvApi {
   /** Publish a delete op for a resource. Removes the item from all
    *  subscribers (including iOS) via the engine's resource broker. */
   publishResourceDelete(kind: string, resourceId: string): void
+  /** Fetch a single resource item's full content on demand by kind + id.
+   *  The engine calls the registered producer's query handler and emits
+   *  engine_resource_item, which the event-wiring layer broadcasts to the
+   *  renderer as resource_item. The call resolves once the command completes;
+   *  the item itself arrives via the event stream. Use resourceGlobal:true for
+   *  workspace-scoped items (briefings, global notifications). */
+  resourceGet(kind: string, id: string, opts?: { sessionKey?: string; global?: boolean }): Promise<void>
   onEngineEvent(callback: (key: string, event: EngineEvent) => void): () => void
 
   // ─── Plugin management ───

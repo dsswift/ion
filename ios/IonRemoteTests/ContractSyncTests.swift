@@ -616,6 +616,27 @@ final class ContractSyncTests: XCTestCase {
         }
     }
 
+    /// Pin that the engineResourceItem wire event decodes correctly. This is a
+    /// regression test for the desktop_resource_item TypeKey and CodingKey
+    /// alignment added in #211: if the TypeKey raw value, CodingKey names, or
+    /// the decoder case in NormalizedEvent+Resource.swift drift from the
+    /// desktop wire contract, this test will fail before CI runs the full build.
+    func testEngineResourceItemDecode() throws {
+        let json = """
+        {"type":"desktop_resource_item","tabId":"t1","resourceKind":"briefing","resourceItem":{"id":"r-1","kind":"briefing","title":"Daily brief","content":"Full body here","createdAt":"2024-01-01T00:00:00Z"}}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        guard case .engineResourceItem(let tabId, let instanceId, let kind, let rawItem) = event else {
+            XCTFail("Expected engineResourceItem, got \(event)")
+            return
+        }
+        XCTAssertEqual(tabId, "t1")
+        XCTAssertNil(instanceId)
+        XCTAssertEqual(kind, "briefing")
+        XCTAssertEqual(rawItem["id"]?.value as? String, "r-1", "resourceItem.id mismatch")
+        XCTAssertEqual(rawItem["content"]?.value as? String, "Full body here", "resourceItem.content mismatch")
+    }
+
     // MARK: - StatusFields with contextPercent as int (Go sends int)
 
     func testStatusFieldsContextPercentAsInt() throws {

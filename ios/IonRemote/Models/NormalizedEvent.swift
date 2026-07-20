@@ -347,6 +347,17 @@ enum RemoteEvent: Sendable {
         resourceSubId: String,
         resourceDelta: [String: AnyCodable]
     )
+    /// Resource item: emitted in response to a resource_get command.
+    /// Carries the full content of a single item fetched on demand from
+    /// the producer. iOS uses this to display full briefing / notification
+    /// content when the user taps an item, without requiring the full body
+    /// to ride the snapshot on every subscription.
+    case engineResourceItem(
+        tabId: String,
+        instanceId: String?,
+        resourceKind: String,
+        resourceItem: [String: AnyCodable]
+    )
     /// Notification from extension ctx.notify(). The relay handles APNs
     /// push delivery; iOS observes for diagnostic visibility.
     case engineNotification(
@@ -545,6 +556,7 @@ enum RemoteEvent: Sendable {
         case engineExport = "desktop_export"
         case engineResourceSnapshot = "desktop_resource_snapshot"
         case engineResourceDelta = "desktop_resource_delta"
+        case engineResourceItem = "desktop_resource_item"
         case engineNotification = "desktop_notification"
         case engineIntercept = "desktop_intercept"
         case desktopSettingsSnapshot = "desktop_settings_snapshot"
@@ -709,10 +721,11 @@ enum RemoteEvent: Sendable {
         // sheet's file extension. Mirrors EngineEvent.ExportFormat's JSON
         // tag. The rendered payload rides on the shared `message` key.
         case exportFormat
-        // engine_resource_snapshot / engine_resource_delta — resource
-        // subsystem events (D-007). iOS observes but does not act on
-        // these in Phase 1. Field names mirror the Go-side json tags.
-        case resourceKind, resourceSubId, resourceItems, resourceDelta
+        // engine_resource_snapshot / engine_resource_delta / engine_resource_item
+        // — resource subsystem events (D-007). iOS observes but does not act on
+        // snapshot/delta in Phase 1. resource_item is used for lazy-load on tap.
+        // Field names mirror the Go-side json tags.
+        case resourceKind, resourceSubId, resourceItems, resourceDelta, resourceItem
         // engine_notification — notification pipeline event (D-009).
         // The relay handles APNs push; iOS decodes for diagnostic visibility.
         case notifyKind, notifyTitle, notifyBody, notifySound, notifyScope

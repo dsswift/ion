@@ -46,6 +46,18 @@ extension RemoteEvent {
                 resourceDelta: resourceDelta
             )
 
+        case .engineResourceItem:
+            let tabId = try container.decode(String.self, forKey: .tabId)
+            let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
+            let resourceKind = try container.decodeIfPresent(String.self, forKey: .resourceKind) ?? ""
+            let resourceItem = try container.decodeIfPresent([String: AnyCodable].self, forKey: .resourceItem) ?? [:]
+            return .engineResourceItem(
+                tabId: tabId,
+                instanceId: instanceId,
+                resourceKind: resourceKind,
+                resourceItem: resourceItem
+            )
+
         case .engineNotification:
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)

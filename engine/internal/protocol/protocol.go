@@ -227,6 +227,13 @@ type ClientCommand struct {
 	// resource_publish: operation and item for client-side resource publishing.
 	ResourceOp   string              `json:"resourceOp,omitempty"`
 	ResourceItem *types.ResourceItem `json:"resourceItem,omitempty"`
+	// resource_get: fetch a single item's full content from the producer.
+	// ResourceKind and ResourceID identify the item. ResourceGlobal selects
+	// the global broker (workspace-scoped) vs. the per-session broker.
+	// The engine emits engine_resource_item on the requesting connection when
+	// the item is found; returns an error result when not found or when no
+	// producer is registered for the kind.
+	ResourceID string `json:"resourceId,omitempty"`
 
 	// delete_stored_sessions: cleanup stale conversation files.
 	MaxAgeDays int      `json:"maxAgeDays,omitempty"`
@@ -318,6 +325,7 @@ var validCommands = map[string]bool{
 	"resource_subscribe":   true,
 	"resource_unsubscribe": true,
 	"resource_publish":     true,
+	"resource_get":         true,
 	// get_plan_content: fetch a bounded byte-range window of a plan file.
 	// Key (session key) scopes the plan directory for the security check.
 	// Path is the absolute plan file path the engine emitted in a prior
@@ -572,6 +580,8 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "resourceSubId")
 	case "resource_publish":
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "resourceOp")
+	case "resource_get":
+		return hasNonEmptyString(raw, "resourceKind") && hasNonEmptyString(raw, "resourceId")
 	case "get_plan_content":
 		// key scopes the plan directory; path is the target plan file.
 		// offset and limit are optional (both default to 0 = start/server-default).

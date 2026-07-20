@@ -337,6 +337,9 @@ extension DiagnosticLog {
         case .requestDiagnosticLogs:
             log("EVENT: requestDiagnosticLogs", tag: "session", level: .info)
 
+        case .engineResourceItem(let tabId, let instanceId, let resourceKind, _):
+            log("EVENT: engineResourceItem tab=\(tabId.prefix(8)) inst=\(instanceId?.prefix(8) ?? "nil") kind=\(resourceKind)", tag: "session", level: .info)
+
         case .engineResourceSnapshot(let tabId, _, let kind, let subId, let items):
             log("EVENT: engineResourceSnapshot tab=\(tabId.prefix(8)) kind=\(kind) sub=\(subId.prefix(8)) items=\(items.count)", tag: "session", level: .info)
 

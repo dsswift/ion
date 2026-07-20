@@ -543,12 +543,19 @@ type EngineEvent struct {
 	// (create, update, delete, mark_read). Consumers apply the delta
 	// incrementally to their local collection.
 	//
-	// Both events carry ResourceKind and ResourceSubID so consumers can
-	// correlate events with their active subscriptions.
+	// engine_resource_item: emitted in response to a resource_get command.
+	// Carries the full content of a single item fetched on demand from the
+	// producer. When the item is not found the command returns an error and
+	// no event is emitted.
+	//
+	// engine_resource_snapshot and engine_resource_delta carry ResourceSubID
+	// for subscription correlation. All three carry ResourceKind.
 	ResourceKind  string         `json:"resourceKind,omitempty"`
 	ResourceSubID string         `json:"resourceSubId,omitempty"`
 	ResourceItems []ResourceItem `json:"resourceItems,omitempty"`
 	ResourceDelta *ResourceDelta `json:"resourceDelta,omitempty"`
+	// ResourceItem carries the single item returned by engine_resource_item.
+	ResourceItem *ResourceItem `json:"resourceItem,omitempty"`
 
 	// --- Notification events (D-009) ---
 	//

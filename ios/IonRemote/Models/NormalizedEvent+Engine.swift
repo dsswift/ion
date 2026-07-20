@@ -396,6 +396,11 @@ extension RemoteEvent {
             _ = tabId; _ = instanceId; _ = resourceKind; _ = resourceSubId; _ = resourceDelta
             return false
 
+        case .engineResourceItem(let tabId, let instanceId, let resourceKind, let resourceItem):
+            // Handled by NormalizedEvent+Resource.swift.
+            _ = tabId; _ = instanceId; _ = resourceKind; _ = resourceItem
+            return false
+
         case .desktopSettingsSnapshot(let settings, let schema, let groups, let newConversationPolicy):
             try container.encode(TypeKey.desktopSettingsSnapshot, forKey: .type)
             try container.encode(settings, forKey: .settings)
