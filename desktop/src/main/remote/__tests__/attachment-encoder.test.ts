@@ -171,12 +171,24 @@ describe('encodeAttachments — PDFs', () => {
     expect(encodeAttachments(text, [att(gone, 'file')], remote).rewrittenText).toBe('[file unavailable: gone.pdf]')
   })
 
-  it('leaves non-pdf file attachments and plan markers untouched', () => {
+  it('rewrites non-pdf file markers to unavailable on remote, keeps locally (#271 Gap 2)', () => {
     const txt = writeBytes('notes.txt', Buffer.from('hello'))
-    const text = `[Attached file: ${txt}]\n[Attached plan: /tmp/plan.md]\ngo`
-    const { encoded, rewrittenText } = encodeAttachments(text, [att(txt, 'file')], remote)
-    expect(encoded).toEqual([])
-    expect(rewrittenText).toBe(text)
+    const text = `[Attached file: ${txt}]\ngo`
+    // Remote: model needs an honest signal that the file is unavailable.
+    const { encoded: remEnc, rewrittenText: remText } = encodeAttachments(text, [att(txt, 'file')], remote)
+    expect(remEnc).toEqual([])
+    expect(remText).toContain('[File unavailable: notes.txt (remote attachment unsupported)]')
+    expect(remText).not.toContain('[Attached file:')
+    // Local: keep original marker so the engine can read the path from disk.
+    const { encoded: locEnc, rewrittenText: locText } = encodeAttachments(text, [att(txt, 'file')], local)
+    expect(locEnc).toEqual([])
+    expect(locText).toBe(text)
+  })
+
+  it('plan markers are always left untouched regardless of remote flag', () => {
+    const text = `[Attached plan: /tmp/plan.md]\ngo`
+    expect(encodeAttachments(text, [], remote).rewrittenText).toBe(text)
+    expect(encodeAttachments(text, [], local).rewrittenText).toBe(text)
   })
 
   it('handles pdf + image together', () => {

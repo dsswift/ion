@@ -191,7 +191,19 @@ export function encodeAttachments(
     const name = basename(a.path)
     const ext = extname(a.path).toLowerCase()
     const isPdf = a.type === 'file' && ext === '.pdf'
-    if (a.type !== 'image' && !isPdf) continue
+    if (a.type !== 'image' && !isPdf) {
+      // Non-PDF file attachment: can't encode as a content block. Locally the
+      // engine can read the path from disk (Read-tool fallback, #789), so keep
+      // the marker. Remotely the client-local path is unreachable on the engine
+      // host — rewrite to an explicit "unavailable" note so the model gets an
+      // honest signal instead of a dead marker (#271).
+      if (opts.isRemote) {
+        const marker = `[Attached ${a.type}: ${a.path}]`
+        warn('encode_skipped', { reason: 'non-pdf file on remote engine', path: a.path })
+        rewritten = replaceMarker(rewritten, marker, `[File unavailable: ${name} (remote attachment unsupported)]`)
+      }
+      continue
+    }
 
     const marker = `[Attached ${a.type}: ${a.path}]`
     const kindNoun = a.type === 'image' ? 'image' : 'file'
