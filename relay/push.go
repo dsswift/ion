@@ -266,10 +266,10 @@ func (p *APNsPusher) sendAsync(req pushRequest) error {
 			"kind", req.kind, "resource_id", req.resourceId)
 		return newAPNsError("transport", fmt.Errorf("apns transport: %w", err))
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { resp.Body.Close() }() //nolint:errcheck // response body close
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort read of an error-response body
 		reason := classifyAPNsStatus(resp.StatusCode)
 		logger.Error("APNs response error", "tag", "relay.apns.error",
 			"status", resp.StatusCode, "body", string(respBody),

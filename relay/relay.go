@@ -86,10 +86,10 @@ func (h *Hub) CloseAll() {
 	for _, ch := range h.channels {
 		ch.mu.Lock()
 		if ch.ion != nil {
-			_ = ch.ion.CloseNow()
+			ch.ion.CloseNow() //nolint:errcheck // connection teardown
 		}
 		if ch.mobile != nil {
-			_ = ch.mobile.CloseNow()
+			ch.mobile.CloseNow() //nolint:errcheck // connection teardown
 		}
 		ch.mu.Unlock()
 	}
@@ -130,7 +130,7 @@ type pushFailedControl struct {
 }
 
 func sendControl(conn *websocket.Conn, msgType string, timeout time.Duration, log *slog.Logger) {
-	msg, _ := json.Marshal(controlMessage{Type: msgType})
+	msg, _ := json.Marshal(controlMessage{Type: msgType}) //nolint:errcheck // marshal of a trivial fixed struct cannot fail
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	if err := conn.Write(ctx, websocket.MessageText, msg); err != nil {
@@ -207,12 +207,12 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 	switch role {
 	case "ion":
 		if ch.ion != nil {
-			_ = ch.ion.Close(websocket.StatusGoingAway, "replaced")
+			ch.ion.Close(websocket.StatusGoingAway, "replaced") //nolint:errcheck // closing a replaced connection
 		}
 		ch.ion = conn
 	case "mobile":
 		if ch.mobile != nil {
-			_ = ch.mobile.Close(websocket.StatusGoingAway, "replaced")
+			ch.mobile.Close(websocket.StatusGoingAway, "replaced") //nolint:errcheck // closing a replaced connection
 		}
 		ch.mobile = conn
 	}
@@ -366,7 +366,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 	connLog.Info("client disconnected", "tag", "relay.disconnect")
 	h.removeIfEmpty(channelID)
 	close(done)
-	_ = conn.CloseNow()
+	conn.CloseNow() //nolint:errcheck // connection teardown
 }
 
 func (ch *Channel) getPeerLocked(myRole string) *websocket.Conn {
