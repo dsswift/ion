@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -26,6 +27,10 @@ type Hub struct {
 	mu       sync.RWMutex
 	channels map[string]*Channel
 
+	// tokenStore persists APNs tokens per channel so they survive both
+	// channel deletion (desktop restart while phone is away) and relay restarts.
+	tokens *tokenStore
+
 	// Configurable timeouts and limits (set at construction, read-only after).
 	WriteTimeout   time.Duration // forward write deadline (default 10s)
 	PingInterval   time.Duration // keepalive ping interval (default 30s)
@@ -36,6 +41,7 @@ type Hub struct {
 func NewHub() *Hub {
 	return &Hub{
 		channels:       make(map[string]*Channel),
+		tokens:         newTokenStore(os.Getenv("RELAY_STATE_DIR")),
 		WriteTimeout:   10 * time.Second,
 		PingInterval:   30 * time.Second,
 		PingTimeout:    10 * time.Second,
@@ -48,7 +54,12 @@ func (h *Hub) getOrCreateChannel(id string) *Channel {
 	defer h.mu.Unlock()
 	ch, ok := h.channels[id]
 	if !ok {
-		ch = &Channel{}
+		// Restore the persisted APNs token so push works immediately even when
+		// the channel struct is fresh (desktop restarted while phone was away).
+		ch = &Channel{apnsToken: h.tokens.Get(id)}
+		if ch.apnsToken != "" {
+			logger.Debug("apns token restored from store", "tag", "relay.apns.token", "channel_id", id)
+		}
 		h.channels[id] = ch
 	}
 	return ch
@@ -206,10 +217,16 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 		ch.mobile = conn
 	}
 
-	// Capture the APNs token from mobile query param.
+	// Capture the APNs token from mobile query param and persist it so it
+	// survives both channel deletion (desktop restart while phone is away) and
+	// relay restarts. Without persistence the token only lives as long as the
+	// in-memory Channel struct, which removeIfEmpty destroys when both peers
+	// disconnect — defeating the primary purpose of APNs push (phone is away).
 	if role == "mobile" {
 		if token := r.URL.Query().Get("apns_token"); token != "" {
 			ch.apnsToken = token
+			h.tokens.Set(channelID, token)
+			connLog.Debug("apns token captured", "tag", "relay.apns.token", "channel_id", channelID)
 		}
 	}
 
@@ -247,46 +264,58 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 				connLog.Warn("forward error", "tag", "relay.forward_error", "err", err)
 			}
 			writeCancel()
-		} else if role == "ion" && pusher != nil && apnsToken != "" {
-			// Peer not connected. Check if this message requests a push notification.
+		} else if role == "ion" && pusher != nil {
+			// Mobile peer not connected; check if this message requests a push.
 			var msg relayMessage
 			if json.Unmarshal(data, &msg) == nil && msg.Push {
-				title := msg.PushTitle
-				body := msg.PushBody
-				if title == "" {
-					title = "Ion needs your attention"
-				}
-				if body == "" {
-					body = "Approval required"
-				}
-
-				resourceId := msg.NotifyResourceId
-
-				// Build the failure callback before enqueuing so both the
-				// queue-full path (Send return value) and the async worker path
-				// (onFailure callback) funnel through the same closure.
-				onFailure := func(reason string) {
-					ch.mu.Lock()
-					ionConn := ch.ion
-					ch.mu.Unlock()
-					if ionConn == nil {
-						return
+				if apnsToken == "" {
+					// No token — log at ERROR so the skip is visible in log scanners
+					// and operators can diagnose why notifications are not delivered
+					// (e.g. desktop restarted before the fix was applied, or phone
+					// never connected to this relay instance).
+					connLog.Error("push skipped: no APNs token for channel",
+						"tag", "relay.apns.skipped_no_token",
+						"channel_id", channelID,
+						"kind", msg.NotifyKind,
+						"resource_id", msg.NotifyResourceId)
+				} else {
+					title := msg.PushTitle
+					body := msg.PushBody
+					if title == "" {
+						title = "Ion needs your attention"
 					}
-					frame := pushFailedControl{
-						Type:       "relay:push-failed",
-						Reason:     reason,
-						ResourceId: resourceId,
+					if body == "" {
+						body = "Approval required"
 					}
-					connLog.Info("emitting push-failed to ion peer",
-						"tag", "relay.apns.push_failed",
-						"reason", reason,
-						"resource_id", resourceId)
-					sendControlPayload(ionConn, frame, h.WriteTimeout, connLog)
-				}
 
-				if err := pusher.SendWithNotify(apnsToken, title, body, msg.NotifyKind, resourceId, onFailure); err != nil {
-					// Queue was full — report back to the ion peer immediately.
-					onFailure("queue_full")
+					resourceId := msg.NotifyResourceId
+
+					// Build the failure callback before enqueuing so both the
+					// queue-full path (Send return value) and the async worker path
+					// (onFailure callback) funnel through the same closure.
+					onFailure := func(reason string) {
+						ch.mu.Lock()
+						ionConn := ch.ion
+						ch.mu.Unlock()
+						if ionConn == nil {
+							return
+						}
+						frame := pushFailedControl{
+							Type:       "relay:push-failed",
+							Reason:     reason,
+							ResourceId: resourceId,
+						}
+						connLog.Info("emitting push-failed to ion peer",
+							"tag", "relay.apns.push_failed",
+							"reason", reason,
+							"resource_id", resourceId)
+						sendControlPayload(ionConn, frame, h.WriteTimeout, connLog)
+					}
+
+					if err := pusher.SendWithNotify(apnsToken, title, body, msg.NotifyKind, resourceId, onFailure); err != nil {
+						// Queue was full — report back to the ion peer immediately.
+						onFailure("queue_full")
+					}
 				}
 			}
 		}

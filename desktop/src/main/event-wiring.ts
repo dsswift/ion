@@ -215,16 +215,37 @@ export function wireEngineBridgeEvents(): void {
         resourceDelta: d,
       })
     } else if (event.type === 'engine_notification') {
-      // Log-only in main process; forward to renderer via normalized stream
-      // so the renderer can display a notification indicator.
-      log('engine_notification', { title: event.notificationTitle, level: event.notificationLevel })
+      // Forward to renderer as engine_notification normalized event.
+      // Field mapping: engine EngineEvent uses notifyTitle/notifyBody/notifyKind
+      // (json tags); NormalizedEvent uses notificationTitle/Body/Level. Map here
+      // — the old code read notificationTitle/Level which are undefined on the
+      // raw EngineEvent, producing "title=undefined" in the log (#282).
+      log('engine_notification', { title: event.notifyTitle, kind: event.notifyKind })
       const tabIdForNotif = tabIdFromKey(key)
       broadcastNormalized(tabIdForNotif, {
         type: 'engine_notification',
-        notificationTitle: event.notificationTitle,
-        notificationBody: event.notificationBody,
-        notificationLevel: event.notificationLevel,
+        notificationTitle: event.notifyTitle,
+        notificationBody: event.notifyBody,
+        notificationLevel: event.notifyKind,
       })
+      // When push:true, send with push=true so the relay triggers APNs when the
+      // mobile peer is offline. The old code always sent push=false (default),
+      // silently dropping every ctx.notify() push (#282).
+      if (event.push && state.remoteTransport) {
+        const tabIdPush = tabIdFromKey(key)
+        const instanceIdPush = key.split(':')[1] || null
+        state.remoteTransport.send(
+          {
+            type: 'desktop_notification', tabId: tabIdPush, instanceId: instanceIdPush,
+            notifyTitle: event.notifyTitle, notifyBody: event.notifyBody,
+            notifyKind: event.notifyKind, notifyResourceId: event.notifyResourceId,
+            push: true, pushTitle: event.pushTitle, pushBody: event.pushBody,
+          },
+          true,
+          { title: event.pushTitle || event.notifyTitle, body: event.pushBody || event.notifyBody },
+        )
+        log('engine_notification: forwarded push to remote', { tab_id: tabIdPush, title: event.pushTitle || event.notifyTitle })
+      }
     } else if (event.type === 'engine_dispatch_activity') {
       // Live dispatched-agent transcript delta. Bridge it to the renderer as a
       // normalized event so the agent popup folds it into the per-dispatch
@@ -351,6 +372,12 @@ export function wireEngineBridgeEvents(): void {
         // Boundaries always forward (never gated) so the phone renders the
         // "💭 Thought for Ns" summary and never looks stalled mid-turn.
         state.remoteTransport.send({ ...event, tabId, instanceId, type: engineToWireType(event.type) })
+      } else if (event.type === 'engine_notification') {
+        // Forwarded to iOS with push=false when connected; the push=true path
+        // is handled in the early-exit branch above (avoids a duplicate frame).
+        if (!event.push) {
+          state.remoteTransport.send({ ...event, tabId, instanceId, type: engineToWireType(event.type) })
+        }
       } else {
         // Flush any buffered text for this key before forwarding turn-boundary
         // events. engine_message_end seals the current assistant row on iOS and
