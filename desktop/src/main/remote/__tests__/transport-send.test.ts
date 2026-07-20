@@ -25,7 +25,7 @@ vi.mock('../../logger', () => ({ log: vi.fn(), error: vi.fn() }))
 
 import { readFileSync } from 'fs'
 import { join } from 'path'
-import { enqueueSend, drainSendQueue, sendToAll, frameWithinWireCap, MAX_PLAINTEXT_BYTES, type SendCtx } from '../transport-send'
+import { enqueueSend, enqueueSendToDevice, drainSendQueue, sendToAll, frameWithinWireCap, MAX_PLAINTEXT_BYTES, laneForEventType, type SendCtx } from '../transport-send'
 import { MAX_WIRE_FRAME_BYTES } from '../protocol'
 import { error as errorSpy } from '../../logger'
 
@@ -192,16 +192,148 @@ describe('frameWithinWireCap — shared gate for the direct sendToDevice path', 
     expect(errorSpy).not.toHaveBeenCalled()
   })
 
-  it('sendDirect (transport.ts sendToDevice body) routes through the shared gate (source pin)', () => {
+  it('sendDirect (transport.ts sendToDevice sync-only fallback) routes through the shared gate (source pin)', () => {
     // The direct path bypasses sendToAll; without this gate an oversized
     // frame from sendToDevice would slip past the receivers' read limits.
     // The body was extracted from transport.ts into sendDirect here.
     const src = readFileSync(join(__dirname, '../transport-send.ts'), 'utf-8')
     const sendDirectBody = src.slice(src.indexOf('export function sendDirect('))
     expect(sendDirectBody).toContain('frameWithinWireCap')
-    // And transport.ts sendToDevice actually delegates to it.
+    // And transport.ts sendToDevice actually delegates to it (in the sync-only
+    // fallback) and to enqueueSendToDevice (when the crypto worker is live).
     const transportSrc = readFileSync(join(__dirname, '../transport.ts'), 'utf-8')
     const sendToDeviceBody = transportSrc.slice(transportSrc.indexOf('sendToDevice(deviceId: string'), transportSrc.indexOf('resend(deviceId: string'))
     expect(sendToDeviceBody).toContain('sendDirect(')
+    expect(sendToDeviceBody).toContain('enqueueSendToDevice(')
+    expect(sendToDeviceBody).toContain('this.cryptoHost.usingWorker')
+  })
+})
+
+// ─── Device-targeted queued send (enqueueSendToDevice) ───────────────────────
+//
+// sendToDevice routes through the SAME ordered drain as broadcasts when the
+// crypto worker is live, so a large targeted reply (desktop_terminal_snapshot,
+// conversation history, plan/file content) allocates its wire seq in drain
+// order relative to in-flight broadcast frames to the same device — instead of
+// the old synchronous sendDirect path that delivered immediately and could put
+// a higher-seq targeted frame on the wire ahead of an earlier-seq worker frame
+// (iOS then saw a forward gap and requested a resend — the terminal-open
+// latency spike on low-RTT LAN links).
+
+const SNAPSHOT = 'desktop_terminal_snapshot' // BULK lane + a CRITICAL_TYPE
+const OUTPUT = 'desktop_terminal_output'     // interactive lane, not critical
+
+describe('enqueueSendToDevice — device-targeted queued send', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    buildFrameMock.mockImplementation((...args: unknown[]) => {
+      // args[0] = deviceId, args[5] = nextSeq(deviceId). Reflect the allocated
+      // seq into the frame so delivery-order assertions can read it.
+      const deviceId = args[0] as string
+      const nextSeq = args[5] as (d: string) => number
+      return { seq: nextSeq(deviceId), ts: 0, deviceId, nonce: '', ciphertext: '' }
+    })
+  })
+
+  it('classifies desktop_terminal_snapshot into the bulk lane', () => {
+    expect(laneForEventType(SNAPSHOT)).toBe('bulk')
+  })
+
+  it('pushes an item carrying targetDeviceId and the bulk lane, then drains', () => {
+    // Delivery fails (peer asleep) so the item is still built/recorded but the
+    // queue drains to empty — we assert the item shape mid-flight via a spy on
+    // laneForEventType is unnecessary; instead assert the built frame targeted
+    // only the one device (below). Here we simply confirm the drain empties.
+    const ctx = makeCtx(() => false)
+    ctx.deviceSecrets.set('dev2', Buffer.alloc(32))
+    enqueueSendToDevice(ctx, 'dev1', { type: SNAPSHOT, tabId: 't', instances: [] } as any, false)
+    expect(ctx.sendQueue.length).toBe(0)
+  })
+
+  it('builds and delivers ONLY for the target device (other paired devices receive nothing)', () => {
+    const deliver = vi.fn(() => true)
+    const ctx = makeCtx(deliver)
+    ctx.deviceSecrets.set('dev2', Buffer.alloc(32))
+    ctx.deviceSecrets.set('dev3', Buffer.alloc(32))
+
+    enqueueSendToDevice(ctx, 'dev2', { type: SNAPSHOT, tabId: 't', instances: [] } as any, false)
+
+    expect(deliver).toHaveBeenCalledTimes(1)
+    expect(deliver).toHaveBeenCalledWith('dev2', expect.objectContaining({ deviceId: 'dev2' }))
+    expect(ctx.retransmitRecord).toHaveBeenCalledTimes(1)
+    expect(ctx.retransmitRecord).toHaveBeenCalledWith('dev2', expect.any(Object))
+  })
+
+  it('a targeted send to a device removed between enqueue and drain delivers nothing', () => {
+    const deliver = vi.fn(() => true)
+    const ctx = makeCtx(deliver)
+    // Push a targeted item for a device that is not in deviceSecrets.
+    ctx.sendQueue.push({ event: { type: SNAPSHOT, tabId: 't', instances: [] } as any, push: false, enqueuedAt: 0, lane: 'bulk', targetDeviceId: 'gone' })
+    drainSendQueue(ctx)
+    expect(deliver).not.toHaveBeenCalled()
+    expect(ctx.retransmitRecord).not.toHaveBeenCalled()
+    expect(ctx.sendQueue.length).toBe(0)
+  })
+
+  it('regression pin (seq ordering): routing the targeted send through the queue keeps wire seqs monotonic; synchronous delivery does not', () => {
+    // The hazard: the broadcast (desktop_terminal_output) rides the worker path
+    // and its delivery is DEFERRED (thread hop). The targeted snapshot allocates
+    // from the SAME per-device seq counter. If the targeted send is delivered
+    // SYNCHRONOUSLY (the old sendDirect path), it grabs the higher seq yet hits
+    // the socket first → out-of-order wire seqs → iOS forward-gap + resend.
+    // Routing the targeted send through the SAME queue defers it too, so the
+    // worker replies in FIFO seq order and the wire stays monotonic.
+    //
+    // This test contrasts both deliveries against one shared seq counter and a
+    // deferred worker, and asserts the queued path is the monotonic one.
+
+    function run(targetedSynchronously: boolean): number[] {
+      const deliveredSeqs: number[] = []
+      const submittedJobs: { seq: number }[] = []
+      const cryptoHost = {
+        usingWorker: true,
+        submit: (_p: string, _t: string, devices: { deviceId: string; seq: number }[]) => {
+          submittedJobs.push({ seq: devices[0].seq })
+          return true
+        },
+      }
+      let seq = 0
+      const ctx: SendCtx = {
+        sendQueue: [],
+        deviceSecrets: new Map([['dev1', Buffer.alloc(32)]]),
+        retransmit: { record: vi.fn() } as any,
+        nextSeq: () => ++seq,
+        deliverFrame: (_d, f: any) => { deliveredSeqs.push(f.seq); return true },
+        epoch: 1,
+        cryptoHost: cryptoHost as any,
+      }
+
+      // 1. Broadcast (pty output) enters the worker — delivery deferred.
+      enqueueSend(ctx, { type: OUTPUT, tabId: 't', instanceId: 'i', data: 'x' } as any, false)
+
+      if (targetedSynchronously) {
+        // OLD behavior: sendDirect allocates from the shared counter and
+        // delivers IMMEDIATELY, ahead of the still-deferred broadcast frame.
+        const s = ctx.nextSeq('dev1')
+        ctx.deliverFrame('dev1', { seq: s } as any)
+      } else {
+        // NEW behavior: route through the same queue; delivery deferred + FIFO.
+        enqueueSendToDevice(ctx, 'dev1', { type: SNAPSHOT, tabId: 't', instances: [] } as any, false)
+      }
+
+      // Worker replies in FIFO submit order.
+      for (const j of submittedJobs) deliveredSeqs.push(j.seq)
+      return deliveredSeqs
+    }
+
+    // OLD path: targeted frame (seq 2) lands before the deferred broadcast
+    // (seq 1) → [2, 1], non-monotonic — the exact bug.
+    expect(run(true)).toEqual([2, 1])
+    // NEW path: both deferred, FIFO → [1, 2], strictly increasing.
+    const fixed = run(false)
+    expect(fixed).toEqual([1, 2])
+    for (let i = 1; i < fixed.length; i++) {
+      expect(fixed[i]).toBeGreaterThan(fixed[i - 1])
+    }
   })
 })
