@@ -1,4 +1,4 @@
-.PHONY: default desktop engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test test test-all test-linux test-linux-engine test-linux-desktop clean check-file-sizes check-contracts check-status-writers check-atv-parity check-logging check-dashboards claude-symlinks hooks lint-desktop
+.PHONY: default desktop engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test test test-all test-linux test-linux-engine test-linux-desktop clean check-file-sizes check-contracts check-status-writers check-atv-parity check-logging check-swiftlint check-dashboards claude-symlinks hooks lint-desktop
 
 # Homebrew installs node/npm under /opt/homebrew/bin on Apple Silicon.
 # Make runs recipes with /bin/sh which only has /usr/bin:/bin in PATH,
@@ -75,7 +75,7 @@ test:
 # Run every test surface end-to-end before merging. Stops at the first
 # failure so you don't waste minutes on a downstream failure that's really
 # caused by an earlier component.
-test-all: check-file-sizes check-contracts check-status-writers check-atv-parity check-logging check-dashboards engine-test desktop-test ios-test
+test-all: check-file-sizes check-contracts check-status-writers check-atv-parity check-logging check-swiftlint check-dashboards engine-test desktop-test ios-test
 	@echo "✅ test-all: all surfaces green"
 
 # ---------------------------------------------------------------------------
@@ -174,6 +174,23 @@ check-contracts:
 # field keys. See scripts/check-logging.sh for the full check catalog.
 check-logging:
 	@bash scripts/check-logging.sh
+
+# Silent-failure gate for the iOS app (mirrors check-logging's "no silent
+# failures" goal). Custom SwiftLint rules flag empty `catch {}` blocks
+# (error — swallows the error) and silent `try?` statements (warning). Only
+# the empty-catch error fails the build; the try? warnings are advisory. We
+# deliberately do NOT pass --strict: --strict escalates every warning to an
+# error, which would fail the build on the 100+ legitimate try? sites this
+# gate intentionally leaves as warnings. Plain `swiftlint lint` exits non-zero
+# only on error-severity violations, which is exactly the gate we want.
+# No-ops gracefully (exit 0) when swiftlint is not installed so contributors
+# without it are not blocked locally; CI has it pinned.
+check-swiftlint:
+	@if ! command -v swiftlint >/dev/null 2>&1; then \
+		echo "check-swiftlint: swiftlint not installed — skipping (CI enforces this gate). Install: brew install swiftlint"; \
+		exit 0; \
+	fi
+	@swiftlint lint --config ios/.swiftlint.yml ios/IonRemote
 
 # Create CLAUDE.md symlinks pointing at sibling AGENTS.md files. Idempotent.
 # CLAUDE.md is gitignored; AGENTS.md is committed as the canonical context file.

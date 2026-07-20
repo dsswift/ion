@@ -59,6 +59,30 @@ jobs:
         # violates the standard — fix the call site, not the script.
         run: bash scripts/check-logging.sh
 
+  check-swiftlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: iOS silent-failure lint (SwiftLint)
+        # Silent-failure gate for the iOS app, mirroring the "no silent
+        # failures" goal of the observability pass and the desktop's
+        # check-logging gate. Custom rules in ios/.swiftlint.yml flag empty
+        # `catch {}` blocks (error — swallows the error) and silent `try?`
+        # statements (warning). Only the empty-catch error fails the build;
+        # the try? warnings are advisory, so we do NOT pass --strict (which
+        # would escalate every warning to an error and fail on the 100+
+        # legitimate try? sites this gate intentionally tolerates). Plain
+        # `swiftlint lint` exits non-zero only on error-severity violations.
+        #
+        # Pinned to the same SwiftLint version used locally (0.65.0) via the
+        # official GHCR image so the gate is deterministic and Linux-native
+        # (no macos runner needed). The image's entrypoint is swiftlint; we
+        # mount the checked-out workspace and lint the app source.
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work \
+            ghcr.io/realm/swiftlint:0.65.0 \
+            lint --config ios/.swiftlint.yml ios/IonRemote
+
   dashboards:
     runs-on: ubuntu-latest
     steps:

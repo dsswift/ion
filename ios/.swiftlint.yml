@@ -1,0 +1,95 @@
+# SwiftLint config for the IonRemote iOS app.
+#
+# Purpose: this gate exists for ONE reason — catch silent failures in shipped
+# iOS code, mirroring the desktop's check-logging gate and the observability
+# pass's "no silent failures" goal. It is NOT a full style overhaul of an
+# existing codebase. The only findings this config is meant to surface are the
+# two custom rules below:
+#
+#   - empty_catch_block   (error)   — an empty `catch {}` swallows the error
+#   - silent_try_optional (warning) — `try?` discards the error silently
+#
+# Every noisy default style rule is disabled so the baseline run is clean and
+# the gate is greenable. Do not add style rules here without a deliberate
+# decision — the scope is silent-failure detection, nothing else.
+
+included:
+  - IonRemote
+
+excluded:
+  - IonRemoteTests
+  - .build
+  - build
+  - DerivedData
+
+# Disable the entire default opt-in and style rule set. We only want the two
+# custom rules to produce findings. Listing the defaults explicitly (rather
+# than relying on `only_rules`) keeps the intent legible: each of these is a
+# pre-existing-style concern we are deliberately NOT enforcing in this gate.
+disabled_rules:
+  - line_length
+  - file_length
+  - type_body_length
+  - function_body_length
+  - function_parameter_count
+  - cyclomatic_complexity
+  - identifier_name
+  - type_name
+  - large_tuple
+  - nesting
+  - todo
+  - trailing_comma
+  - trailing_whitespace
+  - trailing_newline
+  - vertical_whitespace
+  - opening_brace
+  - comma
+  - colon
+  - control_statement
+  - statement_position
+  - return_arrow_whitespace
+  - operator_whitespace
+  - leading_whitespace
+  - mark
+  - force_cast
+  - force_try
+  - force_unwrapping
+  - redundant_optional_initialization
+  - redundant_string_enum_value
+  - redundant_void_return
+  - redundant_discardable_let
+  - unused_closure_parameter
+  - unused_optional_binding
+  - void_return
+  - closure_parameter_position
+  - empty_enum_arguments
+  - for_where
+  - shorthand_operator
+  - switch_case_alignment
+  - syntactic_sugar
+  - legacy_constructor
+  - legacy_hashing
+  - multiple_closures_with_trailing_closure
+  - orphaned_doc_comment
+  - unneeded_break_in_switch
+  - implicit_getter
+  - weak_delegate
+  - class_delegate_protocol
+  - private_over_fileprivate
+  - notification_center_detachment
+  - inclusive_language
+  - blanket_disable_command
+  - non_optional_string_data_conversion
+  - optional_data_string_conversion
+
+custom_rules:
+  empty_catch_block:
+    name: "Empty catch block"
+    regex: 'catch\s*\{\s*\}'
+    message: "Empty catch swallows the error. Log via DiagnosticLog.log(..., level: .warn/.error) or add a // reason."
+    severity: error
+  silent_try_optional:
+    name: "Silent try? on a statement"
+    regex: '(^|\s)try\?\s'
+    message: "try? discards the error silently. Prefer do/catch with DiagnosticLog, or justify with a comment."
+    severity: warning

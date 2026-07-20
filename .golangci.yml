@@ -13,6 +13,18 @@ linters:
     - staticcheck
     - unused
 
+  settings:
+    errcheck:
+      # check-blank flags `_ = fn()` discards; check-type-assertions flags
+      # unchecked `x := v.(T)`. Together they close the hole where errcheck's
+      # default (which only catches wholly-unchecked returns) is defeated by an
+      # explicit blank assignment — the exact pattern that let silent failures
+      # accumulate. Every genuinely-unactionable discard is handled at the call
+      # site (logged, or explicitly ignored with a reason); no blanket function
+      # exclusions are used, so a NEW discard of any function fails CI.
+      check-blank: true
+      check-type-assertions: true
+
   exclusions:
     rules:
       - path: _test\.go
