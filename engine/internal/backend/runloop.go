@@ -3,8 +3,6 @@ package backend
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -86,11 +84,9 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	run.touchedSink = types.NewTouchedPathSink()
 
 	// Resolve the conversations directory for post-compact .tree.jsonl path
-	// injection. Best-effort: an error just leaves the path empty.
-	convDir := ""
-	if home, err := os.UserHomeDir(); err == nil {
-		convDir = filepath.Join(home, ".ion", "conversations")
-	}
+	// injection. Respects ION_DATA_DIR for multi-instance deployments; returns
+	// "" when the home directory is unresolvable (path injection becomes a no-op).
+	convDir := conversation.DefaultConversationsDir()
 
 	// Emit the conversation/session ID early so the session manager can
 	// capture it before the first tool call or dispatch completes. Without

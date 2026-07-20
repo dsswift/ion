@@ -21,6 +21,19 @@ func looksLikeHostPort(path string) bool {
 	return strings.Contains(path, ":")
 }
 
+// ionDataDir returns the root data directory for this engine instance.
+// When ION_DATA_DIR is set it is used as-is, allowing multiple engine
+// instances to coexist on the same machine without colliding on shared
+// filesystem paths (PID lock, socket, conversations, scheduler).
+// When unset the default ~/.ion/ is returned.
+func ionDataDir() string {
+	if v := os.Getenv("ION_DATA_DIR"); v != "" {
+		return v
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".ion")
+}
+
 func socketPath() string {
 	if v := os.Getenv("ION_SOCKET_PATH"); v != "" {
 		return v
@@ -28,8 +41,7 @@ func socketPath() string {
 	if runtime.GOOS == "windows" {
 		return "127.0.0.1:21017"
 	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".ion", "engine.sock")
+	return filepath.Join(ionDataDir(), "engine.sock")
 }
 
 // dialNetwork returns the network type for the socket path.
@@ -46,16 +58,14 @@ func pidPath() string {
 	if v := os.Getenv("ION_PID_PATH"); v != "" {
 		return v
 	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".ion", "engine.pid")
+	return filepath.Join(ionDataDir(), "engine.pid")
 }
 
 func exitPath() string {
 	if v := os.Getenv("ION_EXIT_PATH"); v != "" {
 		return v
 	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".ion", "engine.exit")
+	return filepath.Join(ionDataDir(), "engine.exit")
 }
 
 func nextRequestID() string {

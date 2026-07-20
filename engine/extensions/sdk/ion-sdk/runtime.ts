@@ -548,6 +548,16 @@ function buildContext(ctxData: any): IonContext {
       const r = await request('ext/get_schedule_status', { id: id ?? '' })
       return Array.isArray(r) ? r as import('./types').ScheduleStatus[] : []
     },
+    async enterPlanMode(): Promise<void> {
+      await request('ext/set_plan_mode', { enabled: true, source: 'extension' })
+    },
+    async exitPlanMode(): Promise<void> {
+      await request('ext/set_plan_mode', { enabled: false, source: 'extension' })
+    },
+    async getPlanMode(): Promise<import('./types').PlanModeState> {
+      const r = await request('ext/get_plan_mode', {})
+      return (r as import('./types').PlanModeState) ?? { enabled: false, planFilePath: '' }
+    },
     async runOnce<T = void>(
       id: string,
       opts: RunOnceOpts,

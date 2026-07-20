@@ -1218,6 +1218,35 @@ export interface IonContext {
    * ```
    */
   runOnce<T = void>(id: string, opts: RunOnceOpts, fn: () => Promise<T>): Promise<RunOnceResult<T>>
+
+  /**
+   * Programmatically enter plan mode for this session. The engine flips the
+   * session into plan mode, allocates a plan file if needed, and emits
+   * `engine_plan_mode_changed` so all subscribers see the transition.
+   * Fires the existing `before_plan_mode_enter` hook so observation-only
+   * extensions receive the same signal they would from a client-initiated
+   * plan-mode entry. No-op when the session is already in plan mode.
+   *
+   * Useful for safety-gated workflows, approval loops, and headless sessions
+   * that want to capture a plan before execution.
+   */
+  enterPlanMode(): Promise<void>
+
+  /**
+   * Programmatically exit plan mode for this session. The engine transitions
+   * the session back to normal mode and emits `engine_plan_mode_changed`.
+   * Fires the existing `before_plan_mode_exit` hook. No-op when the session
+   * is already not in plan mode.
+   */
+  exitPlanMode(): Promise<void>
+
+  /**
+   * Query the current plan-mode state for this session.
+   * Returns whether plan mode is enabled and the plan file path (non-empty
+   * whenever a plan file has been allocated, even when plan mode is currently
+   * off — the path is preserved across toggles until the session is reset).
+   */
+  getPlanMode(): Promise<PlanModeState>
 }
 
 /** Describes a session as returned by ctx.sessions.list(). */
@@ -1226,6 +1255,19 @@ export interface SessionListEntry {
   hasActiveRun: boolean
   extensionName?: string
   conversationId?: string
+}
+
+/** Result returned by {@link IonContext.getPlanMode}. */
+export interface PlanModeState {
+  /** Whether plan mode is currently active for this session. */
+  enabled: boolean
+  /**
+   * The plan file path allocated for this session. Non-empty whenever a plan
+   * file has been created (even when plan mode is currently off — the path is
+   * preserved across toggles until the session resets). Empty when no plan
+   * file has ever been allocated.
+   */
+  planFilePath: string
 }
 
 /** Options for {@link IonContext.sendPrompt}. */

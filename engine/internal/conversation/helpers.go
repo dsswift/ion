@@ -12,6 +12,26 @@ import (
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
+// DefaultConversationsDir returns the root directory for conversation storage.
+// When ION_DATA_DIR is set in the environment, it is used as the base so that
+// multiple engine instances on the same machine can maintain independent
+// conversation stores without collision (#191). When unset, the conventional
+// ~/.ion/conversations path is returned.
+//
+// Functions in this package that accept an empty dir string call this helper
+// to resolve the default, so callers that pass dir="" automatically benefit
+// from ION_DATA_DIR without any changes to their call sites.
+func DefaultConversationsDir() string {
+	if v := os.Getenv("ION_DATA_DIR"); v != "" {
+		return filepath.Join(v, "conversations")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	return filepath.Join(home, ".ion", "conversations")
+}
+
 // DiscoverContextFiles walks parent directories looking for context files.
 // Deprecated: use WalkContextFiles from the context package instead, which
 // applies the ClaudeCompat gate (Ion-native files always; Claude files only

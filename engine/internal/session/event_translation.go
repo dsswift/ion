@@ -3,8 +3,6 @@ package session
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/conversation"
@@ -74,8 +72,7 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 			memoryDisabled := m.config != nil && m.config.Compaction != nil &&
 				m.config.Compaction.MemoryEnabled != nil && !*m.config.Compaction.MemoryEnabled
 			if s2.sessionMemory == nil && !memoryDisabled {
-				home, _ := os.UserHomeDir()
-				convDir := filepath.Join(home, ".ion", "conversations")
+				convDir := conversation.DefaultConversationsDir()
 				sm := NewSessionMemory(init.SessionID, convDir, nil)
 				sm.Start()
 				s2.sessionMemory = sm

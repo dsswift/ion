@@ -1,11 +1,14 @@
 package session
 
-// start_session_test.go — tests for StartSession context-% seeding (B1) and
-// the truthful initial idle engine_status (B2). A resumed conversation with a
-// non-zero Usage on an assistant message must report a non-zero contextPercent
-// in its first idle status, and lastContextPct must survive a run exit.
+// start_session_test.go — tests for StartSession context-% seeding (B1),
+// the truthful initial idle engine_status (B2), and ION_DATA_DIR session-memory
+// directory routing (B3). A resumed conversation with a non-zero Usage on an
+// assistant message must report a non-zero contextPercent in its first idle
+// status, and lastContextPct must survive a run exit.
 
 import (
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -134,5 +137,57 @@ func TestStartSession_IdleStatusRetainsPctAfterRunExit(t *testing.T) {
 	}
 	if last.Fields.ContextPercent != seeded {
 		t.Fatalf("idle status pct = %d, want retained %d", last.Fields.ContextPercent, seeded)
+	}
+}
+
+// TestStartSession_SessionMemoryUsesIonDataDir verifies that when ION_DATA_DIR
+// is set, StartSession initialises session memory pointing at
+// ION_DATA_DIR/conversations rather than ~/.ion/conversations (#191).
+func TestStartSession_SessionMemoryUsesIonDataDir(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv("ION_DATA_DIR", dataDir)
+	// HOME must not be the default so any fallback to ~/.ion would be obvious.
+	t.Setenv("HOME", t.TempDir())
+
+	const convID = "1781483744990-datadirtest"
+	// Seed a resumable conversation into ION_DATA_DIR/conversations so
+	// StartSession can load it and initialise session memory.
+	conv := conversation.CreateConversation(convID, "you are a bot", "claude-sonnet-4-6")
+	conversation.AddUserMessage(conv, "hello")
+	conversation.AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "hi"}}, types.LlmUsage{InputTokens: 100, OutputTokens: 5})
+	if err := conversation.Save(conv, ""); err != nil {
+		t.Fatalf("Save conversation: %v", err)
+	}
+
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	defer mgr.Shutdown()
+	mgr.SetHeartbeatInterval(10 * time.Minute)
+
+	cfg := defaultConfig()
+	cfg.SessionID = convID
+	if _, err := mgr.StartSession("datadir-test", cfg); err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+
+	mgr.mu.RLock()
+	s := mgr.sessions["datadir-test"]
+	mgr.mu.RUnlock()
+	if s == nil {
+		t.Fatalf("session not registered")
+	}
+
+	if s.sessionMemory == nil {
+		t.Fatalf("sessionMemory not initialised — ION_DATA_DIR path cannot be verified")
+	}
+
+	got := s.sessionMemory.convDir
+	want := filepath.Join(dataDir, "conversations")
+	if got != want {
+		t.Errorf("sessionMemory.convDir = %q, want %q (ION_DATA_DIR/conversations)", got, want)
+	}
+	// Sanity: must NOT fall back to the default ~/.ion path.
+	if strings.Contains(got, ".ion") {
+		t.Errorf("sessionMemory.convDir %q still references .ion — ION_DATA_DIR redirect not applied", got)
 	}
 }

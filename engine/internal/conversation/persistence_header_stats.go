@@ -40,11 +40,7 @@ type LlmHeaderStats struct {
 // or a parse failure.
 func LoadLlmHeaderStats(id, dir string) (LlmHeaderStats, error) {
 	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return LlmHeaderStats{}, err
-		}
-		dir = filepath.Join(home, ".ion", "conversations")
+		dir = DefaultConversationsDir()
 	}
 
 	llmPath := filepath.Join(dir, id+".llm.jsonl")

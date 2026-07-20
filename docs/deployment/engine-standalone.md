@@ -182,6 +182,17 @@ The engine creates and uses `~/.ion/` as its data directory:
   bin/              # Engine binary (when installed via make)
 ```
 
+### Environment variable overrides
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ION_DATA_DIR` | `~/.ion` | Root data directory for this engine instance. Redirects `conversations/`, `scheduler/`, socket, PID lock, and exit-sentinel to `ION_DATA_DIR/…`. Use to run multiple engine instances on the same machine without path collisions. |
+| `ION_SOCKET_PATH` | `ION_DATA_DIR/engine.sock` | Override the Unix socket path. On Windows defaults to `127.0.0.1:21017`. |
+| `ION_PID_PATH` | `ION_DATA_DIR/engine.pid` | Override the PID lock file path. |
+| `ION_EXIT_PATH` | `ION_DATA_DIR/engine.exit` | Override the exit-sentinel file path. |
+
+`ION_SOCKET_PATH`, `ION_PID_PATH`, and `ION_EXIT_PATH` take precedence over `ION_DATA_DIR` when both are set, allowing fine-grained overrides alongside a shared data root.
+
 ## Configuration
 
 The engine loads configuration from four layers, merged in order:
