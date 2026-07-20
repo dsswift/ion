@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.63.3](https://github.com/dsswift/ion/compare/desktop-v1.63.2...desktop-v1.63.3) (2026-07-20)
+
+### Bug Fixes
+
+* **desktop:** migrate archiver to v8 class API ([1747170](https://github.com/dsswift/ion/commit/17471700a5c8362e72f0702697ba4e6a504752df))
+
 ## [1.63.2](https://github.com/dsswift/ion/compare/desktop-v1.63.1...desktop-v1.63.2) (2026-07-20)
 
 ## [1.63.1](https://github.com/dsswift/ion/compare/desktop-v1.63.0...desktop-v1.63.1) (2026-07-20)
