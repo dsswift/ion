@@ -1,7 +1,4 @@
 import Foundation
-import os
-
-private let ionLog = Logger(subsystem: "com.sprague.ion.mobile", category: "engine")
 
 // MARK: - Snapshot Handling
 
@@ -292,7 +289,11 @@ extension SessionViewModel {
                     activeId: tab.activeConversationInstanceId,
                     instances: instances
                 )
-                ionLog.info("snapshot: conversation tab \(tab.id.prefix(8)), instances=\(instances.map(\.id)), active=\(tab.activeConversationInstanceId ?? "nil")")
+                DiagnosticLog.log("snapshot conversation tab instances", tag: "session.snapshot", fields: [
+                    "tab_id": String(tab.id.prefix(8)),
+                    "instances": instances.map(\.id).joined(separator: ","),
+                    "active": tab.activeConversationInstanceId ?? "nil"
+                ])
                 // Pre-load conversation history for tabs we haven't loaded yet.
                 // Guarded against `conversationLoaded` so the snapshot handler —
                 // which runs on every ~5s snapshot delivery — does not re-issue

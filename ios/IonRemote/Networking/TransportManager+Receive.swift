@@ -1,7 +1,4 @@
 import Foundation
-import os
-
-private let ionLog = Logger(subsystem: "com.sprague.ion.mobile", category: "transport")
 
 // MARK: - Inbound
 
@@ -214,7 +211,6 @@ extension TransportManager {
         if let incomingEpoch = wire.epoch {
             if let known = lastReceivedEpoch {
                 if incomingEpoch > known {
-                    ionLog.info("wire epoch advanced \(known) -> \(incomingEpoch): desktop seq space restarted; resetting receive dedup")
                     DiagnosticLog.log("wire epoch advanced, resetting dedup", tag: "transport.receive", fields: [
                         "old_epoch": String(Int64(known)),
                         "new_epoch": String(Int64(incomingEpoch))
@@ -254,7 +250,10 @@ extension TransportManager {
             if pendingResendSeqs.contains(wire.seq) {
                 pendingResendSeqs.remove(wire.seq)
                 let stillMissing = pendingResendSeqs.count
-                ionLog.info("wire resend frame applied seq=\(wire.seq) (\(stillMissing) still missing)")
+                DiagnosticLog.log("wire resend frame applied", tag: "transport.receive", fields: [
+                    "seq": String(wire.seq),
+                    "still_missing": String(stillMissing)
+                ])
                 // fall through to decrypt/apply this replayed frame
             } else {
                 return // genuine duplicate
@@ -266,7 +265,6 @@ extension TransportManager {
             if lastReceivedSeq > 0, wire.seq > lastReceivedSeq + 1 {
                 let expected = lastReceivedSeq + 1
                 let got = wire.seq
-                ionLog.warning("wire seq forward gap: expected \(expected), got \(got) — \(got - expected) frame(s) lost; requesting resend")
                 DiagnosticLog.log("wire seq forward gap; requesting resend", tag: "transport.receive", level: .warn, fields: [
                     "expected": String(expected), "got": String(got), "lost": String(got - expected),
                 ])
@@ -284,7 +282,6 @@ extension TransportManager {
         guard let ciphertextB64 = wire.ciphertext, let nonceB64 = wire.nonce,
               let ciphertext = Data(base64Encoded: ciphertextB64),
               let nonce = Data(base64Encoded: nonceB64) else {
-            ionLog.warning("wire message seq=\(wire.seq) missing ciphertext/nonce fields")
             DiagnosticLog.log("wire message missing ciphertext/nonce fields; frame dropped", tag: "transport.receive", level: .warn, fields: [
                 "seq": String(wire.seq),
             ])
@@ -292,7 +289,6 @@ extension TransportManager {
         }
 
         guard let payloadData = try? E2ECrypto.decrypt(ciphertext: ciphertext, nonce: nonce, key: sharedKey) else {
-            ionLog.warning("decrypt failed for seq=\(wire.seq) — possible key mismatch")
             DiagnosticLog.log("decrypt failed; frame dropped (possible key mismatch)", tag: "transport.receive", level: .warn, fields: [
                 "seq": String(wire.seq),
             ])
@@ -330,7 +326,6 @@ extension TransportManager {
             do {
                 jsonData = try PayloadCompression.inflateRaw(payloadData.dropFirst())
             } catch {
-                ionLog.error("decompression failed for seq=\(wire.seq): \(error)")
                 DiagnosticLog.log("decompression failed; frame dropped", tag: "transport.receive", level: .error, fields: [
                     "seq": String(wire.seq), "error": String(describing: error),
                 ])
@@ -397,14 +392,12 @@ extension TransportManager {
             // True decode failure: the type string matched a known TypeKey but
             // the payload was malformed (missing required field, wrong type,
             // truncated frame). Log at error and request a full resync so the
-            // state self-heals rather than stalling silently.
-            // ionLog writes to os_log (Console.app only). DiagnosticLog writes
-            // to the on-disk log file that gets sent to desktop via
+            // state self-heals rather than stalling silently. DiagnosticLog
+            // writes to the on-disk log file that gets sent to desktop via
             // requestDiagnosticLogs — without this, decode errors are invisible
             // in remote diagnostics.
             let typeHint = (try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any])?["type"] as? String ?? "unknown"
             let errDesc = String(describing: error).prefix(500)
-            ionLog.error("Failed to decode event type=\(typeHint): \(error)")
             DiagnosticLog.log("event decode failed", tag: "transport.receive", level: .error, fields: [
                 "type": typeHint,
                 "size": String(jsonData.count),
@@ -430,7 +423,6 @@ extension TransportManager {
         // those frames and let the snapshot reconcile heal the gap. The event is
         // still yielded so the ViewModel can log/observe it.
         if case .resendUnavailable(let fromSeq) = event {
-            ionLog.warning("resend unavailable fromSeq=\(fromSeq) — clearing pending range; snapshot reconcile will heal")
             DiagnosticLog.log("resend unavailable; clearing pending range (snapshot reconcile will heal)", tag: "transport.receive", level: .warn, fields: [
                 "fromSeq": String(fromSeq),
             ])
@@ -516,7 +508,10 @@ extension TransportManager {
         lastResendRequestAt = now
         lastResendRequestedRange = fromSeq...cappedTo
 
-        ionLog.info("requesting resend [\(fromSeq),\(cappedTo)]")
+        DiagnosticLog.log("requesting resend", tag: "transport.receive", fields: [
+            "from_seq": String(fromSeq),
+            "to_seq": String(cappedTo)
+        ])
         Task { [weak self] in
             do {
                 try await self?.send(.requestResend(fromSeq: fromSeq, toSeq: cappedTo))
@@ -555,7 +550,6 @@ extension TransportManager {
               let mergedTo = pendingResendSeqs.max() else { return }
         lastResendRequestAt = Date()
         lastResendRequestedRange = mergedFrom...mergedTo
-        ionLog.info("requesting coalesced resend [\(mergedFrom),\(mergedTo)]")
         DiagnosticLog.log("coalesced resend request", tag: "transport.receive", fields: [
             "from_seq": String(mergedFrom),
             "to_seq": String(mergedTo),

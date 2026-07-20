@@ -1,7 +1,4 @@
 import Foundation
-import os
-
-private let ionLog = Logger(subsystem: "com.sprague.ion.mobile", category: "engine")
 
 // MARK: - Commands
 
