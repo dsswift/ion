@@ -36,6 +36,12 @@ var reapGraceWindow = 5 * time.Minute
 // (new engine-instance id), so the old session — and its ~1-FD-per-watched-dir
 // workspace watcher — leaked until engine restart. This binds session liveness
 // to connection liveness with a reconnect grace window.
+//
+// Pinned sessions are exempt from reaping: the engine never automatically stops
+// them when all owning connections disconnect. A pinned session is intended for
+// headless daemon use cases where a long-lived extension with schedules/hooks
+// runs without a persistent UI owner. Explicit stop_session and engine shutdown
+// still terminate pinned sessions normally.
 type sessionOwnership struct {
 	mu sync.Mutex
 	// byConn maps a connection to the set of session keys it owns.
@@ -45,6 +51,12 @@ type sessionOwnership struct {
 	// pendingReaps holds the timer for each key currently in its grace window
 	// (last owner gone, not yet reaped). Re-claiming the key cancels the timer.
 	pendingReaps map[string]*time.Timer
+	// pinned holds keys that are exempt from orphan reaping. Entries are added
+	// via pin() on start_session when EngineConfig.Pinned is true. The engine
+	// never removes entries from this set — a pinned session stays pinned for
+	// its lifetime. An explicit stop_session or engine shutdown still terminates
+	// it; the exemption only applies to the automatic grace-window reap.
+	pinned map[string]struct{}
 	// reap is the function invoked when a key's grace window expires with no
 	// surviving owner. Injected so tests can observe reaping without a real
 	// manager; production wires it to Manager.StopSession.
@@ -60,6 +72,7 @@ func newSessionOwnership(reap func(key string)) *sessionOwnership {
 		byConn:       make(map[net.Conn]map[string]struct{}),
 		owners:       make(map[string]map[net.Conn]struct{}),
 		pendingReaps: make(map[string]*time.Timer),
+		pinned:       make(map[string]struct{}),
 		reap:         reap,
 		graceWindow:  reapGraceWindow,
 	}
@@ -77,6 +90,34 @@ func (o *sessionOwnership) setGraceWindow(d time.Duration) {
 	o.graceWindow = d
 	o.mu.Unlock()
 	utils.LogWithFields(utils.LevelInfo, "server", "session ownership reap grace window set", map[string]any{"duration_ms": d.Milliseconds()})
+}
+
+// pin marks key as reap-exempt. The engine will never automatically stop a
+// pinned session when all owning connections disconnect; only an explicit
+// stop_session command or engine shutdown terminates it. Idempotent. Safe to
+// call before or after claim.
+func (o *sessionOwnership) pin(key string) {
+	if key == "" {
+		return
+	}
+	o.mu.Lock()
+	o.pinned[key] = struct{}{}
+	// Cancel any pending reap — the session just became exempt.
+	if t, ok := o.pendingReaps[key]; ok {
+		t.Stop()
+		delete(o.pendingReaps, key)
+	}
+	o.mu.Unlock()
+	utils.LogWithFields(utils.LevelInfo, "server", "session ownership pinned reap-exempt", map[string]any{"session_id": key})
+}
+
+// isPinned reports whether key is exempt from orphan reaping. Caller must not
+// hold o.mu.
+func (o *sessionOwnership) isPinned(key string) bool {
+	o.mu.Lock()
+	_, ok := o.pinned[key]
+	o.mu.Unlock()
+	return ok
 }
 
 // claim records that conn owns the given session key. Idempotent. If the key
@@ -140,7 +181,12 @@ func (o *sessionOwnership) releaseConn(conn net.Conn) {
 // place (the existing window is authoritative). When the timer fires it
 // re-checks under the lock that the key is still ownerless before reaping, so a
 // claim that raced the timer's start does not get clobbered.
+// Pinned keys are always skipped — their session is reap-exempt.
 func (o *sessionOwnership) scheduleReapLocked(key string) {
+	if _, pinned := o.pinned[key]; pinned {
+		utils.LogWithFields(utils.LevelDebug, "server", "session ownership last owner gone but session is pinned skipping reap", map[string]any{"session_id": key})
+		return
+	}
 	if _, exists := o.pendingReaps[key]; exists {
 		return
 	}

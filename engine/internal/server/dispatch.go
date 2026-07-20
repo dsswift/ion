@@ -39,6 +39,9 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		result, err := s.manager.StartSession(cmd.Key, *cmd.Config)
 		if err == nil {
 			s.ownership.claim(conn, cmd.Key)
+			if cmd.Config.Pinned {
+				s.ownership.pin(cmd.Key)
+			}
 		}
 		s.sendResult(conn, cmd, err, result)
 

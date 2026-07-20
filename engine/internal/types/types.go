@@ -82,6 +82,17 @@ type EngineConfig struct {
 	// conversation. Additive and non-breaking — an absent value leaves parentId
 	// empty as before.
 	ParentConversationID string `json:"parentConversationId,omitempty"`
+
+	// Pinned marks this session as reap-exempt: the engine's orphaned-session
+	// reaper will never automatically stop it when all owning connections
+	// disconnect. Intended for headless daemon sessions that host long-lived
+	// extensions with schedules and hooks but have no persistent UI owner
+	// (e.g. a background orchestrator started at engine launch). A pinned
+	// session is still stopped by an explicit stop_session command or a full
+	// engine shutdown. The flag is opt-in; ordinary sessions (desktop tabs,
+	// short-lived CLI prompts) should leave it false so the leak-prevention
+	// reaper continues to protect them.
+	Pinned bool `json:"pinned,omitempty"`
 }
 
 // ThinkingConfig controls extended thinking for API-backend runs.

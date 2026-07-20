@@ -182,6 +182,134 @@ func hasSession(srv *Server, key string) bool {
 	return false
 }
 
+// ─── Pinned-session tests (#281) ─────────────────────────────────────────────
+
+// TestOwnership_PinnedSessionNotReaped is the core regression test for #281:
+// a pinned session must never be automatically reaped when its owning
+// connection disconnects, even after the grace window expires.
+//
+// Pre-fix: pin() and the scheduleReapLocked exemption did not exist; a
+// headless daemon session was reaped after the 5-minute grace window whenever
+// all UI clients disconnected, silently tearing down its extension.
+func TestOwnership_PinnedSessionNotReaped(t *testing.T) {
+	withReapGraceWindow(t, 30*time.Millisecond)
+	rec := newReapRecorder()
+	o := newSessionOwnership(rec.reap)
+
+	c := &fakeConn{id: 1}
+	o.claim(c, "daemon-1")
+	o.pin("daemon-1") // mark as reap-exempt
+
+	// Last owner disconnects — reap must NOT be scheduled.
+	o.releaseConn(c)
+
+	// Wait well past the grace window to confirm no reap fires.
+	time.Sleep(150 * time.Millisecond)
+	if n := rec.count(); n != 0 {
+		t.Fatalf("pinned session was reaped %d times; expected 0", n)
+	}
+}
+
+// TestOwnership_PinBeforeClaim verifies that calling pin() before claim()
+// (the order a client might use if it pins and then claims asynchronously)
+// still prevents reaping.
+func TestOwnership_PinBeforeClaim(t *testing.T) {
+	withReapGraceWindow(t, 30*time.Millisecond)
+	rec := newReapRecorder()
+	o := newSessionOwnership(rec.reap)
+
+	// Pin before any connection has claimed the key.
+	o.pin("daemon-2")
+	c := &fakeConn{id: 1}
+	o.claim(c, "daemon-2")
+	o.releaseConn(c)
+
+	time.Sleep(150 * time.Millisecond)
+	if n := rec.count(); n != 0 {
+		t.Fatalf("pinned session (pin before claim) was reaped %d times", n)
+	}
+}
+
+// TestOwnership_PinCancelsPendingReap verifies that calling pin() on a key
+// that already has a pending grace-window reap cancels the timer immediately.
+func TestOwnership_PinCancelsPendingReap(t *testing.T) {
+	withReapGraceWindow(t, 100*time.Millisecond)
+	rec := newReapRecorder()
+	o := newSessionOwnership(rec.reap)
+
+	c := &fakeConn{id: 1}
+	o.claim(c, "daemon-3")
+	o.releaseConn(c) // starts grace-window timer
+
+	// Pin mid-window — must cancel the running timer.
+	time.Sleep(20 * time.Millisecond)
+	o.pin("daemon-3")
+
+	// Wait past the original window.
+	time.Sleep(150 * time.Millisecond)
+	if n := rec.count(); n != 0 {
+		t.Fatalf("pin() did not cancel pending reap; session reaped %d times", n)
+	}
+}
+
+// TestOwnership_IsPinned verifies the isPinned accessor.
+func TestOwnership_IsPinned(t *testing.T) {
+	o := newSessionOwnership(nil)
+	if o.isPinned("x") {
+		t.Fatal("unpinned key should not be pinned")
+	}
+	o.pin("x")
+	if !o.isPinned("x") {
+		t.Fatal("key should be pinned after pin() call")
+	}
+	if o.isPinned("y") {
+		t.Fatal("different key should not be pinned")
+	}
+}
+
+// TestServer_PinnedSessionNotReaped is the end-to-end test: a session started
+// with pinned:true in the config is not reaped when its last owning client
+// disconnects, even after the grace window expires.
+func TestServer_PinnedSessionNotReaped(t *testing.T) {
+	withReapGraceWindow(t, 40*time.Millisecond)
+	mb := newMockBackend()
+	srv := newShortPathTestServer(t, mb)
+
+	conn := dialServer(t, srv)
+
+	// Start a pinned session.
+	sendJSON(t, conn, map[string]interface{}{
+		"cmd": "start_session",
+		"key": "pinned-daemon",
+		"config": map[string]interface{}{
+			"profileId":        "default",
+			"workingDirectory": "/tmp",
+			"model":            "claude-sonnet-4-6",
+			"pinned":           true,
+		},
+		"requestId": "req-pin-1",
+	})
+	lines := readLines(t, conn, 8, 2*time.Second)
+	r := findResult(t, lines)
+	if r == nil || !r.OK {
+		t.Fatalf("start_session (pinned) failed: %+v", r)
+	}
+
+	if !hasSession(srv, "pinned-daemon") {
+		t.Fatal("session not registered after start_session")
+	}
+
+	// Disconnect the sole owner.
+	conn.Close()
+
+	// Wait well past the grace window; session must still be alive.
+	time.Sleep(200 * time.Millisecond)
+	if !hasSession(srv, "pinned-daemon") {
+		t.Fatal("pinned session was reaped after owner disconnect; expected it to survive")
+	}
+}
+
+
 // TestServer_DisconnectReapsOrphanedSession is the end-to-end regression test
 // for the FD-leak fix: a client starts a session, then disconnects without
 // sending stop_session. After the grace window the server must reap the
