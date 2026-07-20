@@ -267,6 +267,7 @@ export type NormalizedEvent =
   | { type: 'command_result'; command: string; commandError?: string }
   | { type: 'resource_snapshot'; resourceKind: string; resourceSubId?: string; resourceItems: import('./types-engine').ResourceItem[] }
   | { type: 'resource_delta'; resourceKind: string; resourceDelta: import('./types-engine').ResourceDelta }
+  | { type: 'resource_item'; resourceKind: string; resourceItem: import('./types-engine').ResourceItem }
   | { type: 'engine_notification'; notificationTitle: string; notificationBody: string; notificationLevel: string }
   // dispatch_activity — a running dispatched (sub-)agent's intra-turn transcript
   // delta (tool start/end, streamed text), bridged from the engine's

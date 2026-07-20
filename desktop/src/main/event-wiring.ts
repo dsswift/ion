@@ -6,12 +6,12 @@ import { broadcast } from './broadcast'
 import { shouldStreamThinkingToRemote } from './settings-store'
 import { formatClearDivider } from '../shared/clear-divider'
 import { tabIdFromKey } from '../shared/session-key'
-import { subscribeToResourceKinds, subscribeToGlobalResourceKinds, clearResourceSubscriptions, markReadPersisted, resubscribeSessionResourceKinds } from './event-wiring-resources'
+import { subscribeToResourceKinds, subscribeToGlobalResourceKinds, clearResourceSubscriptions, markReadPersisted, resubscribeSessionResourceKinds, handleResourceItemEvent } from './event-wiring-resources'
 import { handleInterceptEvent } from './event-wiring-intercept'
 import { injectDiskResourcesIfEmpty } from './event-wiring-disk-seed'
 import { accumulateTextDelta, flushKeyDeltas, dropKeyDeltas } from './event-wiring-text-delta-batcher'
 import { notifyAtvPermissionResolved } from './atv-window-manager'
-export { wireTabFocusHandler, wireMarkResourceReadHandler, wireDeleteResourceHandler } from './event-wiring-resources'
+export { wireTabFocusHandler, wireMarkResourceReadHandler, wireDeleteResourceHandler, wireResourceGetHandler, handleResourceItemEvent } from './event-wiring-resources'
 export { wireRemoteSessionPlaneForwarding } from './event-wiring-remote'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -214,12 +214,12 @@ export function wireEngineBridgeEvents(): void {
         resourceKind: event.resourceKind,
         resourceDelta: d,
       })
+    } else if (event.type === 'engine_resource_item') {
+      log('resource_item', { key, kind: event.resourceKind, id: event.resourceItem?.id?.slice(-8) })
+      handleResourceItemEvent(tabIdFromKey(key), event.resourceKind, event.resourceItem)
     } else if (event.type === 'engine_notification') {
-      // Forward to renderer as engine_notification normalized event.
-      // Field mapping: engine EngineEvent uses notifyTitle/notifyBody/notifyKind
-      // (json tags); NormalizedEvent uses notificationTitle/Body/Level. Map here
-      // — the old code read notificationTitle/Level which are undefined on the
-      // raw EngineEvent, producing "title=undefined" in the log (#282).
+      // Map engine EngineEvent fields (notifyTitle/notifyBody/notifyKind) to
+      // NormalizedEvent fields (notificationTitle/Body/Level) (#282).
       log('engine_notification', { title: event.notifyTitle, kind: event.notifyKind })
       const tabIdForNotif = tabIdFromKey(key)
       broadcastNormalized(tabIdForNotif, {

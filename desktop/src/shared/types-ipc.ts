@@ -258,6 +258,7 @@ export const IPC = {
   GET_READ_RESOURCE_IDS: 'ion:get-read-resource-ids',
   GET_PERSISTED_RESOURCES: 'ion:get-persisted-resources',
   DELETE_RESOURCE: 'ion:delete-resource',
+  RESOURCE_GET: 'ion:resource-get',
 
   // Model & provider management
   LIST_MODELS: 'ion:list-models',

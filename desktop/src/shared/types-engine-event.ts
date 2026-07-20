@@ -367,7 +367,11 @@ export type EngineEvent =
   // engine_resource_delta: emitted when a producer publishes a change.
   // Consumers apply the delta incrementally.
   //
-  // Both carry resourceKind and resourceSubId for subscription correlation.
+  // engine_resource_item: emitted in response to a resource_get command.
+  // Carries the full content of a single item fetched on demand.
+  //
+  // engine_resource_snapshot and engine_resource_delta carry resourceSubId
+  // for subscription correlation. All three carry resourceKind.
   | {
       type: 'engine_resource_snapshot'
       resourceKind: string
@@ -379,6 +383,11 @@ export type EngineEvent =
       resourceKind: string
       resourceSubId: string
       resourceDelta: ResourceDelta
+    }
+  | {
+      type: 'engine_resource_item'
+      resourceKind: string
+      resourceItem: ResourceItem
     }
   // ─── Notification events (D-009) ───
   //
