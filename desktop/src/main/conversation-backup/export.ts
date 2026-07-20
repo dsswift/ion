@@ -9,7 +9,7 @@
 import { createWriteStream, existsSync, readFileSync, statSync } from 'fs'
 import { hostname } from 'os'
 import { basename } from 'path'
-import archiver from 'archiver'
+import { ZipArchive, type ProgressData, type Archiver } from 'archiver'
 import { log as _log } from '../logger'
 import { collectExportConversations, type ConversationFiles } from './collect-conversations'
 import { buildManifest, type ExportScope } from './manifest'
@@ -119,7 +119,7 @@ export async function runExport(args: {
 
   return new Promise((resolve) => {
     const output = createWriteStream(args.destinationPath)
-    const archive = archiver('zip', { zlib: { level: 6 } })
+    const archive = new ZipArchive({ zlib: { level: 6 } })
 
     let bytesWritten = 0
     let settled = false
@@ -151,7 +151,7 @@ export async function runExport(args: {
       // log them so the user sees what was skipped.
       log('backup_export: archive warning', { error: err.message })
     })
-    archive.on('progress', (data: archiver.ProgressData) => {
+    archive.on('progress', (data: ProgressData) => {
       bytesWritten = data.fs.processedBytes
     })
 
@@ -189,7 +189,7 @@ export async function runExport(args: {
  * silently — a fresh install may not have all of them yet.
  */
 function appendMetadataFiles(
-  archive: archiver.Archiver,
+  archive: Archiver,
   sources: ExportSources,
 ): void {
   const allMetadata = [
