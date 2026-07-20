@@ -159,7 +159,12 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         fullPrompt = `${attachmentCtx}\n\n${fullPrompt}`
       }
 
-      const needsTitle = tab.title === 'New Tab' || tab.title === 'Resumed Session'
+      // customTitle is the authoritative "this tab already has a real title"
+      // signal — every titling path (send-time AI titling, user rename) writes
+      // it, and every restore path restores it, while tab.title can lag on a
+      // 'New Tab'/'Resumed Session' sentinel after an engine-tab restore. Gate
+      // on customTitle so a mid-conversation prompt never re-fires titling.
+      const needsTitle = !tab.customTitle && (tab.title === 'New Tab' || tab.title === 'Resumed Session')
       const title = needsTitle
         ? (text.length > 40 ? text.substring(0, 37) + '...' : text)
         : tab.title
@@ -365,7 +370,9 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // the set() so the prompt-call reads pre-send modelOverride/planFilePath.
       const remoteInst = activeInstance(get().conversationPanes, tabId)
 
-      const needsTitle = tab.title === 'New Tab' || tab.title === 'Resumed Session'
+      // Gate on customTitle too — see submit() above. Prevents a mid-conversation
+      // remote prompt from re-titling a tab that already has a real title.
+      const needsTitle = !tab.customTitle && (tab.title === 'New Tab' || tab.title === 'Resumed Session')
       const title = needsTitle
         ? (prompt.length > 40 ? prompt.substring(0, 37) + '...' : prompt)
         : tab.title

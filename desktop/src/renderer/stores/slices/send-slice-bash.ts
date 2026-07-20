@@ -30,7 +30,7 @@ export function createSendBashSlice(set: StoreSet, get: StoreGet): Partial<State
         }))
         const tabs = s.tabs.map((t) => {
           if (t.id !== activeTabId) return t
-          const needsTitle = t.title === 'New Tab' || t.title === 'Resumed Session'
+          const needsTitle = !t.customTitle && (t.title === 'New Tab' || t.title === 'Resumed Session')
           const title = needsTitle
             ? (command.length > 40 ? command.substring(0, 37) + '...' : command)
             : t.title
@@ -100,7 +100,7 @@ export function createSendBashSlice(set: StoreSet, get: StoreGet): Partial<State
         }))
         const tabs = s.tabs.map((t) => {
           if (t.id !== tabId) return t
-          const needsTitle = t.title === 'New Tab' || t.title === 'Resumed Session'
+          const needsTitle = !t.customTitle && (t.title === 'New Tab' || t.title === 'Resumed Session')
           const title = needsTitle
             ? (command.length > 40 ? command.substring(0, 37) + '...' : command)
             : t.title
