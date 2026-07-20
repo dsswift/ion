@@ -13,6 +13,16 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.48.0](https://github.com/dsswift/ion/compare/engine-v1.47.1...engine-v1.48.0) (2026-07-20)
+
+### Features
+
+* **engine:** pinned sessions exempt from orphan reaping (#281) ([196bc15](https://github.com/dsswift/ion/commit/196bc15c6dae5294ce2341c851c87b4881120b41))
+
+### Bug Fixes
+
+* **engine:** apiBackend emits document blocks for PDF wire attachments (#271) ([ed82020](https://github.com/dsswift/ion/commit/ed820206dfec43e175133546ba8e50ccd7cfad5f))
+
 ## [1.47.1](https://github.com/dsswift/ion/compare/engine-v1.47.0...engine-v1.47.1) (2026-07-19)
 
 ### Bug Fixes

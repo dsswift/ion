@@ -10,6 +10,16 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.62.0](https://github.com/dsswift/ion/compare/desktop-v1.61.1...desktop-v1.62.0) (2026-07-20)
+
+### Features
+
+* **engine:** pinned sessions exempt from orphan reaping (#281) ([196bc15](https://github.com/dsswift/ion/commit/196bc15c6dae5294ce2341c851c87b4881120b41))
+
+### Bug Fixes
+
+* **desktop:** rewrite non-PDF file markers on remote engine sessions (#271) ([35d82e4](https://github.com/dsswift/ion/commit/35d82e40cfa0f4d28b05b6b47dc30a9d145ed2b7))
+
 ## [1.61.1](https://github.com/dsswift/ion/compare/desktop-v1.61.0...desktop-v1.61.1) (2026-07-19)
 
 ### Bug Fixes
