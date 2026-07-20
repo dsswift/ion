@@ -99,7 +99,7 @@ Logs write to `~/.ion/desktop.jsonl` in the canonical Ion JSONL schema (`compone
 - **Main process:** use `main/logger.ts` (`log`, `debug`, `warn`, `error`).
 - **Renderer process:** use `renderer/rendererLogger.ts` (`rInfo`, `rDebug`, `rWarn`, `rError`, `rTrace`). Renderer code cannot import `main/logger.ts` (it is Electron-bound and requires Node.js APIs). `rendererLogger.ts` routes through the contextBridge to the main process and lands in `~/.ion/desktop.jsonl`.
 - No `console.*` in shipped renderer code — `make check-logging` (ADR-019) enforces zero tolerance. Use `rendererLogger.ts` instead; its output is forwarded to `desktop.jsonl` identically.
-- No silent `catch {}`. Either log at debug (intentional fallback), increment a counter (parse-loop tolerance), or escalate to `error`.
+- No silent failures. This is enforced structurally by ESLint (`no-floating-promises`, `no-misused-promises`, `no-empty`) and the `check-logging` SILENT-CATCH category — but the discipline comes first, the gates are the backstop. Concretely: no empty `catch {}`, no floating promise, no `async` function passed where a `() => void` is expected, no swallowed `.catch(() => {})`. Either log (at debug for an intentional fallback, warn/error when the failure matters), increment a counter (parse-loop tolerance), or `void` a genuine fire-and-forget. A genuinely-benign swallow carries a trailing `// silent-ok: <reason>`. Route through `main/logger` (main) or `renderer/rendererLogger` (renderer); never `console.*` in renderer.
 
 ## Debugging the packaged app
 

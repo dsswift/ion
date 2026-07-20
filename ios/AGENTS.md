@@ -83,6 +83,10 @@ iOS logs write to `~/.ion/ios-diagnostic-logs.jsonl` on the paired desktop in th
 
 `tag` = Swift subsystem label (e.g. `ipc`, `session`, `transport`). Structured context goes in the `fields` map; do not concatenate it into `msg`.
 
+**`os.Logger` (e.g. a `private let ionLog = Logger(subsystem:...)`) does NOT reach the operator.** It writes to Apple's unified logging (Console.app only), which is invisible on a device with no attached Xcode session. Every error/warn path that matters must go through `DiagnosticLog.log(..., level: .warn/.error)`. A `grep`-based CI check forbids new `os.Logger`/`Logger(subsystem:` usage outside a narrow allowlist; SwiftLint (`ios/.swiftlint.yml`) flags empty `catch {}` (`empty_catch_block`, error) and discourages silent `try?` (`silent_try_optional`, warning).
+
+**No silent failures** (see root [`AGENTS.md`](../AGENTS.md) § "Logging policy → No silent failures"): an empty `catch {}` or a `try?` that discards an error on a path where the failure matters is a defect. Route the error through `DiagnosticLog.log`, or — if the failure is genuinely benign (cancellation, an expected-absent optional) — say so in a comment inside the `catch`. Silence with no reason is never acceptable.
+
 See root [`AGENTS.md`](../AGENTS.md) § "Logging policy" for file locations, `jq` recipes, and LogQL cheat-sheet.
 
 ## Pairing/transport

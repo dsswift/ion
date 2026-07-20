@@ -179,6 +179,14 @@ Extensions register async triggers — scheduled jobs and inbound webhook routes
 
 Additive schedule surface (no wire/contract break): `ion.schedule.once({ id, delayMs })` fires a one-shot job `delayMs` ms after registration then auto-deregisters; `ion.schedule.cancel(id)` is the id-addressable complement to `ScheduleHandle.unregister()`; every schedule handler receives an optional `control: ScheduleControl` second argument (`{ jobId, unregister() }`) for in-handler self-unregister. Both auto-deregister paths (`once_complete`) and explicit cancels reuse `engine_schedule_deregistered` — no new event type.
 
+## Observability and silent failures
+
+Observability is the most important property of the engine's mechanical implementation — the engine is headless, so logs are the only window into what it does. See root [`AGENTS.md`](../AGENTS.md) § "Logging policy" for the full standard. Engine-specific rules:
+
+- **Every failure branch logs.** `utils.Log`/`utils.Debug`/`utils.Error` (or `utils.LogWithFields`) land in `~/.ion/engine.jsonl`. Never `log.Printf`/`fmt.Printf` for operational logging — stderr is not a reliable channel for the launchd daemon.
+- **No bare `_ =` on an error.** `errcheck` runs with `check-blank` + `check-type-assertions` (root `.golangci.yml`), so a discarded error or unchecked type assertion fails CI. Either handle-and-log it, or mark a genuinely-unactionable discard `//nolint:errcheck // <reason>` (deferred `Close()`, best-effort cleanup, or an error already logged internally — e.g. the `Fire*` hooks log via `fireVoid`/`s.fire`). The reason is reviewed; silence is not an option.
+- **`(nil, nil)` resolver contracts** and similar "no error but no value" shapes must be guarded before dereferencing — a nil-deref in an unrecovered goroutine crashes the daemon and the diagnostic never lands (see the scheduler/webhook `SessionResolver` guards).
+
 ## Conventions
 
 - Logger: `utils.Log("Tag", "message")` → `~/.ion/engine.jsonl` (structured JSONL, `component=engine`). Extensions emit via JSON-RPC `log` notification; the host stamps `component=extension`, `tag=<extension-name>` and writes to the same file.
