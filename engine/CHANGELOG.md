@@ -13,6 +13,14 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.50.2](https://github.com/dsswift/ion/compare/engine-v1.50.1...engine-v1.50.2) (2026-07-20)
+
+### Bug Fixes
+
+* **engine:** guard scheduler/webhook resolve nil-deref panics ([12d3034](https://github.com/dsswift/ion/commit/12d303479afe10115e2eb13ac93d18dce4308767))
+* **engine:** eliminate silent failures across push/scheduler/mcp/attachments ([bd03249](https://github.com/dsswift/ion/commit/bd032495252d57e77ed01a20766b4bc3866db26c))
+* **engine:** resolve errcheck check-blank/type-assertion fallout ([8ea8cb2](https://github.com/dsswift/ion/commit/8ea8cb25d3288899571f541d32180e18d5e88e19))
+
 ## [1.50.1](https://github.com/dsswift/ion/compare/engine-v1.50.0...engine-v1.50.1) (2026-07-20)
 
 ## [1.50.0](https://github.com/dsswift/ion/compare/engine-v1.49.0...engine-v1.50.0) (2026-07-20)

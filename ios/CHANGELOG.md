@@ -10,6 +10,17 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.48.0](https://github.com/dsswift/ion/compare/ios-v1.47.0...ios-v1.48.0) (2026-07-20)
+
+### Features
+
+* **ci:** enforce silent-failure gates (errcheck, ESLint, SwiftLint, check-logging) ([4612ac0](https://github.com/dsswift/ion/commit/4612ac032c9c77607c574b1f0251a915e1beed17))
+
+### Bug Fixes
+
+* **ios:** route error paths through DiagnosticLog, log silent try?/guard drops ([86afa8e](https://github.com/dsswift/ion/commit/86afa8ec33d6c25a1ce2d4ed35f6a9d32e07e20a))
+* **ios:** remove os.Logger from shipped code, route all logging through DiagnosticLog ([95dd0b6](https://github.com/dsswift/ion/commit/95dd0b611a53c98a32b3097885076bf1aaa4d481))
+
 ## [1.47.0](https://github.com/dsswift/ion/compare/ios-v1.46.2...ios-v1.47.0) (2026-07-20)
 
 ### Features

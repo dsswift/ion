@@ -10,6 +10,13 @@ clients to Ion Engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.5.2](https://github.com/dsswift/ion/compare/relay-v1.5.1...relay-v1.5.2) (2026-07-20)
+
+### Bug Fixes
+
+* **relay:** log push-drop, disconnect reason, and ping teardown ([951e9f4](https://github.com/dsswift/ion/commit/951e9f4b0cebb4bf7c8cb53daa459192a5223c18))
+* **relay:** resolve errcheck check-blank fallout ([014fd4e](https://github.com/dsswift/ion/commit/014fd4e79606ea3d257675dc9407f6c768a20e23))
+
 ## [1.5.1](https://github.com/dsswift/ion/compare/relay-v1.5.0...relay-v1.5.1) (2026-07-20)
 
 ## [1.5.0](https://github.com/dsswift/ion/compare/relay-v1.4.2...relay-v1.5.0) (2026-07-17)

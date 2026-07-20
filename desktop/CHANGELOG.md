@@ -10,6 +10,17 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.63.4](https://github.com/dsswift/ion/compare/desktop-v1.63.3...desktop-v1.63.4) (2026-07-20)
+
+### Bug Fixes
+
+* **desktop:** order device-targeted sends through the send queue ([d02107d](https://github.com/dsswift/ion/commit/d02107d67fe23e315464ea74a999380e008c40de))
+* **desktop:** stop mid-conversation tab re-titling after restore ([8688425](https://github.com/dsswift/ion/commit/86884253398cf32a83564c52dae5d875f6d54692))
+* **desktop:** eliminate silent catches on transport/attachments/persistence/IPC ([02f6ead](https://github.com/dsswift/ion/commit/02f6ead2d8ec7d9083b8f2bdb68c50a1b5aa356d))
+* **desktop:** fix agent state group move race conditions ([1d8cd29](https://github.com/dsswift/ion/commit/1d8cd2969192a08c3d97c7e8a9d84508844f4d8c))
+* **desktop:** resolve no-floating-promises/no-misused-promises/no-empty fallout ([4d74439](https://github.com/dsswift/ion/commit/4d744393dc285fa64766ff5a5cd767379029cfd5))
+* **deps:** bump brace-expansion 5.0.6->5.0.7 (GHSA-3jxr-9vmj-r5cp) ([07bbe35](https://github.com/dsswift/ion/commit/07bbe3525e143b486c00248474207d7000cd9d25))
+
 ## [1.63.3](https://github.com/dsswift/ion/compare/desktop-v1.63.2...desktop-v1.63.3) (2026-07-20)
 
 ### Bug Fixes
