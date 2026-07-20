@@ -381,7 +381,13 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil || ctx == nil {
 		s.respond(w, http.StatusServiceUnavailable, "session not available", nil)
 		s.emitAsyncFireDropped(string(asyncreg.KindWebhook), route.Path, "no_session")
-		utils.LogWithFields(utils.LevelInfo, "webhooks", "session resolve failed", map[string]any{"run_id": requestID, "error": err.Error()})
+		// resolve may return (nil, nil) — a nil context with no error. Guard
+		// err.Error() so the nil-context case does not panic this HTTP handler.
+		errMsg := "nil context"
+		if err != nil {
+			errMsg = err.Error()
+		}
+		utils.LogWithFields(utils.LevelInfo, "webhooks", "session resolve failed", map[string]any{"run_id": requestID, "error": errMsg})
 		return
 	}
 

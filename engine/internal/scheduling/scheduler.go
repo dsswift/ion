@@ -481,7 +481,14 @@ func (s *Scheduler) fireJob(h *extension.Host, job extension.ScheduleJob, key ho
 	ctx, err := resolve(h)
 	if err != nil || ctx == nil {
 		s.emitScheduleSkipped(job, "no_session")
-		utils.LogWithFields(utils.LevelInfo, "scheduling", "fire job session resolve failed", map[string]any{"model": h.Name(), "run_id": job.JobID, "error": err.Error()})
+		// resolve may return (nil, nil) — a nil context with no error. Guard
+		// err.Error() so the nil-context case does not panic this fire goroutine
+		// (which has no recover). Mirrors fireJobWithMeta's guard.
+		errMsg := "nil context"
+		if err != nil {
+			errMsg = err.Error()
+		}
+		utils.LogWithFields(utils.LevelInfo, "scheduling", "fire job session resolve failed", map[string]any{"model": h.Name(), "run_id": job.JobID, "error": errMsg})
 		// For once jobs a session-resolve failure is not a spent shot —
 		// leave the next-run entry in place so the job retries next tick.
 		// For repeating jobs the next-run has already been advanced above.

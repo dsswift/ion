@@ -116,6 +116,49 @@ func TestScheduler_HandlerError_EmitsFailedEvent(t *testing.T) {
 	}
 }
 
+// TestScheduler_NilContextResolve_SkipsWithoutPanic pins the guard against the
+// SessionResolver (nil, nil) contract. A resolver that returns a nil context and
+// a nil error must produce a no_session skip, NOT a panic. fireJob runs in its
+// own goroutine with no recover, so an unguarded err.Error() on this branch
+// crashes the process. This test drives fireJob directly with such a resolver
+// and asserts the skip event is emitted (which is only reachable if the branch
+// does not panic first).
+func TestScheduler_NilContextResolve_SkipsWithoutPanic(t *testing.T) {
+	job := extension.ScheduleJob{
+		JobID:      "nil-ctx-job",
+		Kind:       extension.ScheduleInterval,
+		IntervalMs: 1000,
+	}
+	h := testHostWithSchedule(t, "ion-dev", job)
+
+	events := make(chan types.EngineEvent, 32)
+	s := New(Config{})
+	s.SetEmit(func(ev types.EngineEvent) { events <- ev })
+	s.nowFn = func() time.Time { return time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC) }
+	s.AddHost(h)
+
+	// Resolver returns (nil, nil): the exact contract shape that nil-derefs an
+	// unguarded err.Error(). fireJob is synchronous here (called directly, not
+	// via `go`), so a panic would fail the test rather than crash a detached
+	// goroutine.
+	nilResolver := func(_ *extension.Host) (*extension.Context, error) { return nil, nil }
+	key := hostJobKey{host: h, id: job.JobID}
+	s.fireJob(h, job, key, nilResolver)
+
+	collected := drainEvents(events)
+	var sawSkipped bool
+	for _, ev := range collected {
+		if ev.Type == "engine_schedule_skipped" &&
+			ev.AsyncID == "nil-ctx-job" &&
+			ev.AsyncReason == "no_session" {
+			sawSkipped = true
+		}
+	}
+	if !sawSkipped {
+		t.Fatalf("expected engine_schedule_skipped/no_session on nil-context resolve, got: %v", eventTypes(collected))
+	}
+}
+
 // setupWithMetaTest creates a scheduler and host wired for FireScheduleNow-based
 // tests of the fireJobWithMeta code path. The host is added to the scheduler so
 // the concurrency-target resolution inside FireScheduleNow finds it in s.hosts.

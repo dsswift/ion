@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dsswift/ion/engine/internal/asyncreg"
 	"github.com/dsswift/ion/engine/internal/extension"
 )
 
@@ -240,5 +241,37 @@ func TestServer_ConfigResolvesDefaults(t *testing.T) {
 	}
 	if c.FireTimeout != DefaultFireTimeout {
 		t.Fatalf("FireTimeout=%s want %s", c.FireTimeout, DefaultFireTimeout)
+	}
+}
+
+// TestServer_NilContextResolve_SkipsWithoutPanic pins the guard against the
+// SessionResolver (nil, nil) contract in the webhook HTTP handler. A resolver
+// returning a nil context with a nil error must produce a 503 "session not
+// available", NOT a panic from an unguarded err.Error(). serveHTTP is called
+// directly with an httptest recorder, so a panic on this branch fails the test.
+func TestServer_NilContextResolve_SkipsWithoutPanic(t *testing.T) {
+	h := extension.NewHost()
+	h.SetNameForTest("ion-dev")
+	route := extension.WebhookRoute{
+		Path:   "/hook",
+		Method: "POST",
+		Auth:   extension.WebhookAuth{Kind: extension.AuthNone},
+	}
+	if err := h.RegisterWebhookDecl(route, asyncreg.OriginInit); err != nil {
+		t.Fatalf("register webhook: %v", err)
+	}
+
+	s := New(Config{})
+	s.AddHost(h)
+	// Resolver returns (nil, nil): the exact shape that nil-derefs an unguarded
+	// err.Error().
+	s.SetSessionResolver(func(_ *extension.Host) (*extension.Context, error) { return nil, nil })
+
+	r := httptest.NewRequest("POST", "/hook", nil)
+	w := httptest.NewRecorder()
+	s.serveHTTP(w, r) // must not panic
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 on nil-context resolve, got %d", w.Code)
 	}
 }

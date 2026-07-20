@@ -239,7 +239,13 @@ func (s *Scheduler) bootstrapNextRun(h *extension.Host, job extension.ScheduleJo
 			go func() {
 				ctx, err := resolve(h)
 				if err != nil || ctx == nil {
-					utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap schedule missed hook resolve failed", map[string]any{"model": name, "run_id": job.JobID, "error": err})
+					// resolve may return (nil, nil); guard so the error field is
+					// a real reason and never a serialized null.
+					errMsg := "nil context"
+					if err != nil {
+						errMsg = err.Error()
+					}
+					utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap schedule missed hook resolve failed", map[string]any{"model": name, "run_id": job.JobID, "error": errMsg})
 					return
 				}
 				info := extension.ScheduleMissedInfo{
