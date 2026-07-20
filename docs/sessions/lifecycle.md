@@ -207,21 +207,21 @@ Extensions have full imperative control over plan mode via the `Context` object 
 
 ```typescript
 // Enter plan mode from a slash command or hook handler
-ctx.setSessionPlanMode(true, "slash_command")
+await ctx.enterPlanMode()
 
 // Exit plan mode programmatically
-ctx.setSessionPlanMode(false, "extension")
+await ctx.exitPlanMode()
 
 // Read current state — useful for conditional logic
-const { enabled, planFilePath } = ctx.getPlanMode()
+const { enabled, planFilePath } = await ctx.getPlanMode()
 if (enabled) {
   // currently in plan mode; planFilePath is the active plan file
 }
 ```
 
-`setSessionPlanMode` applies the same plan-ID-preservation semantics as a manual toggle: disabling keeps the `planFilePath` alive so a subsequent re-enable reuses it. The plan ID is only retired when the session is reset.
+Disabling plan mode via `exitPlanMode()` keeps the `planFilePath` alive so a subsequent `enterPlanMode()` reuses it. The plan ID is only retired when the session is reset.
 
-`getPlanMode` returns the current `(enabled, planFilePath)` state at the time of the call. The path is non-empty whenever a plan file has been allocated for the session, even if plan mode is currently off.
+`getPlanMode()` returns the current `(enabled, planFilePath)` state at the time of the call. The path is non-empty whenever a plan file has been allocated for the session, even if plan mode is currently off.
 
 ## Event flow diagram
 

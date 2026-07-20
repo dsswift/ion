@@ -400,6 +400,35 @@ Send a structured message to another session. The engine enforces same extension
 
 Response: `{"jsonrpc":"2.0","id":100014,"result":{"ok":true}}`
 
+### ext/set_plan_mode
+
+Enter or exit plan mode for the current session. Emits `engine_plan_mode_changed` to all subscribers. No-op when the session is already in the requested state.
+
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| `enabled` | boolean | yes | `true` to enter plan mode, `false` to exit |
+| `source` | string | no | Free-form audit string logged with the transition (e.g. `"extension"`, `"slash_command"`). Defaults to `"extension"` when blank. |
+
+```json
+{"jsonrpc":"2.0","id":100020,"method":"ext/set_plan_mode","params":{"enabled":true,"source":"safety_gate"}}
+```
+
+Response: `{"jsonrpc":"2.0","id":100020,"result":{"ok":true}}`
+
+### ext/get_plan_mode
+
+Query the current plan-mode state for this session.
+
+**Params:** none
+
+```json
+{"jsonrpc":"2.0","id":100021,"method":"ext/get_plan_mode","params":{}}
+```
+
+Response: `{"jsonrpc":"2.0","id":100021,"result":{"enabled":true,"planFilePath":"/Users/josh/.ion/plans/abc-123.md"}}`
+
+`planFilePath` is non-empty whenever a plan file has been allocated for the session, even when plan mode is currently off — the path is preserved across toggles until the session resets.
+
 ### ext/intercept
 
 Emit an `engine_intercept` event on a target session's stream. The engine stamps `interceptSource` from the calling extension's name.

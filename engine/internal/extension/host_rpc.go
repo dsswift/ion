@@ -783,6 +783,12 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 	case "ext/send_to_session":
 		h.handleSendToSession(id, raw)
 
+	case "ext/set_plan_mode":
+		h.handleSetPlanMode(id, raw)
+
+	case "ext/get_plan_mode":
+		h.handleGetPlanMode(id, raw)
+
 	default:
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32601, Message: "method not found: " + method})
 	}

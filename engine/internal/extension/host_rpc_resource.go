@@ -298,3 +298,63 @@ func (h *Host) handleSendToSession(id int64, raw []byte) {
 	utils.LogWithFields(utils.LevelDebug, "extension", "ext/send_to_session", map[string]any{"model": h.name, "target_key": req.Params.TargetKey, "kind": req.Params.Kind})
 	h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
 }
+
+// handleSetPlanMode handles ext/set_plan_mode: an extension calls
+// ctx.enterPlanMode() or ctx.exitPlanMode() and the engine toggles
+// plan-mode state for the session, emitting PlanModeChangedEvent so
+// all subscribers (desktop, iOS) see the transition.
+func (h *Host) handleSetPlanMode(id int64, raw []byte) {
+	var req struct {
+		Params struct {
+			Enabled bool   `json:"enabled"`
+			Source  string `json:"source"`
+		} `json:"params"`
+	}
+	if err := json.Unmarshal(raw, &req); err != nil {
+		utils.LogWithFields(utils.LevelInfo, "extension", "ext/set_plan_mode: parse error", map[string]any{"error": err})
+		h.sendResponse(id, nil, &jsonrpcError{Code: -32602, Message: "parse error: " + err.Error()})
+		return
+	}
+
+	ctx := h.ctxStack.Current()
+	if ctx == nil || ctx.SetPlanMode == nil {
+		utils.Debug("extension", "ext/set_plan_mode: no ctx or not wired")
+		h.sendResponse(id, nil, &jsonrpcError{Code: -32603, Message: "plan mode not available in this context"})
+		return
+	}
+
+	source := req.Params.Source
+	if source == "" {
+		source = "extension"
+	}
+	ctx.SetPlanMode(req.Params.Enabled, source)
+	utils.LogWithFields(utils.LevelDebug, "extension", "ext/set_plan_mode", map[string]any{"model": h.name, "enabled": req.Params.Enabled, "source": source})
+	h.sendResponse(id, json.RawMessage(`{"ok":true}`), nil)
+}
+
+// handleGetPlanMode handles ext/get_plan_mode: an extension calls
+// ctx.getPlanMode() to query whether plan mode is active and what the
+// current plan file path is.
+func (h *Host) handleGetPlanMode(id int64, _ []byte) {
+	ctx := h.ctxStack.Current()
+	if ctx == nil || ctx.GetPlanMode == nil {
+		utils.Debug("extension", "ext/get_plan_mode: no ctx or not wired")
+		h.sendResponse(id, nil, &jsonrpcError{Code: -32603, Message: "plan mode not available in this context"})
+		return
+	}
+
+	enabled, planFilePath := ctx.GetPlanMode()
+	result, err := json.Marshal(map[string]interface{}{
+		"enabled":      enabled,
+		"planFilePath": planFilePath,
+	})
+	if err != nil {
+		utils.LogWithFields(utils.LevelError, "extension", "ext/get_plan_mode: marshal error", map[string]any{"error": err})
+		h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "marshal error"})
+		return
+	}
+
+	utils.LogWithFields(utils.LevelDebug, "extension", "ext/get_plan_mode", map[string]any{"model": h.name, "enabled": enabled})
+	h.sendResponse(id, result, nil)
+}
+
