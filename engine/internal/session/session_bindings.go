@@ -24,7 +24,7 @@ func bindingsPath() string {
 	if v := os.Getenv("ION_SESSION_BINDINGS_PATH"); v != "" {
 		return v
 	}
-	home, _ := os.UserHomeDir()
+	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	return filepath.Join(home, ".ion", "session-bindings.json")
 }
 
@@ -73,7 +73,7 @@ func saveBinding(path, key, conversationID string) {
 		return
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
+		os.Remove(tmp) //nolint:errcheck // best-effort cleanup
 		utils.LogWithFields(utils.LevelInfo, "session-bindings", "rename", map[string]any{"error": err})
 		return
 	}
@@ -114,7 +114,7 @@ func deleteBinding(path, key string) {
 		return
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
+		os.Remove(tmp) //nolint:errcheck // best-effort cleanup
 		utils.LogWithFields(utils.LevelInfo, "session-bindings", "delete rename", map[string]any{"error": err})
 		return
 	}

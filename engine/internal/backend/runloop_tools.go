@@ -240,7 +240,7 @@ func (b *ApiBackend) executeTools(
 			// Pre-tool hook
 			if perToolHook != nil {
 				if _, hookErr := runHookCtx(gCtx, func() struct{} {
-					_, _ = perToolHook(block.Name, block.Input, "before")
+					perToolHook(block.Name, block.Input, "before") //nolint:errcheck // pre-tool hook fired for observation; rewrite/err not consumed on this path
 					return struct{}{}
 				}); hookErr != nil {
 					return hookErr
@@ -302,7 +302,7 @@ func (b *ApiBackend) executeTools(
 				// dispatched children block-and-resume like elicitations instead
 				// of terminating the run.
 				if run.cfg != nil && run.cfg.ChildElicitFn != nil {
-					question, _ := block.Input["question"].(string)
+					question, _ := block.Input["question"].(string) //nolint:errcheck // missing arg -> empty string
 					utils.LogWithFields(utils.LevelInfo, "backend.runloop", "ask_user routing to dispatcher via ChildElicitFn", map[string]any{
 						"run_id": run.requestID,
 					})
@@ -625,7 +625,7 @@ func (b *ApiBackend) executeTools(
 			// content IS on disk; the error is purely a behavioral correction
 			// signal, not a data-loss report.
 			if planWriteRedirectNotice != "" && !results[i].IsError {
-				wrongPath, _ := block.Input["file_path"].(string)
+				wrongPath, _ := block.Input["file_path"].(string) //nolint:errcheck // missing arg -> empty string
 				msg := fmt.Sprintf(
 					"Plan mode: %s targeted %q — that path is not the plan file for this session "+
 						"and the engine redirected the write to the canonical plan file (%s). "+
@@ -721,7 +721,7 @@ func (b *ApiBackend) executeTools(
 			// Post-tool hook
 			if perToolHook != nil {
 				if _, hookErr := runHookCtx(gCtx, func() struct{} {
-					_, _ = perToolHook(block.Name, results[i], "after")
+					perToolHook(block.Name, results[i], "after") //nolint:errcheck // post-tool hook fired for observation; rewrite/err not consumed on this path
 					return struct{}{}
 				}); hookErr != nil {
 					return hookErr

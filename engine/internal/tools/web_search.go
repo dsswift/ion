@@ -91,7 +91,7 @@ type TavilyBackend struct {
 }
 
 func (t *TavilyBackend) Search(ctx context.Context, query string, maxResults int) ([]SearchResult, error) {
-	payload, _ := json.Marshal(map[string]any{
+	payload, _ := json.Marshal(map[string]any{ //nolint:errcheck // marshal of a local struct
 		"api_key":     t.APIKey,
 		"query":       query,
 		"max_results": maxResults,
@@ -240,7 +240,7 @@ func WebSearchTool() *types.ToolDef {
 }
 
 func executeWebSearch(ctx context.Context, input map[string]any, _ string) (*types.ToolResult, error) {
-	query, _ := input["query"].(string)
+	query, _ := input["query"].(string) //nolint:errcheck // best-effort; failure not actionable here
 	if query == "" {
 		return &types.ToolResult{Content: "Error: query is required", IsError: true}, nil
 	}

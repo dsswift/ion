@@ -245,7 +245,7 @@ func ForkConversation(conv *Conversation, atMessageIndex int) *Conversation {
 			idx = len(messageEntries) - 1
 		}
 		if idx >= 0 && idx < len(messageEntries) {
-			_, _ = Branch(conv, messageEntries[idx].ID)
+			Branch(conv, messageEntries[idx].ID) //nolint:errcheck // best-effort branch to the resolved head; failure leaves conv at root
 		}
 		return conv
 	}

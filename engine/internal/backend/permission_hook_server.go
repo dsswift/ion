@@ -83,9 +83,12 @@ func NewPermissionHookServer(permEng *permissions.Engine) (*PermissionHookServer
 	return s, nil
 }
 
-// Port returns the listening port.
+// Port returns the listening port, or 0 if the listener is not a TCP listener.
 func (s *PermissionHookServer) Port() int {
-	return s.listener.Addr().(*net.TCPAddr).Port
+	if addr, ok := s.listener.Addr().(*net.TCPAddr); ok {
+		return addr.Port
+	}
+	return 0
 }
 
 // URL returns the full hook URL for a given token.
@@ -119,7 +122,7 @@ func (s *PermissionHookServer) GenerateSettingsJSON(token string) []byte {
 			},
 		},
 	}
-	data, _ := json.MarshalIndent(settings, "", "  ")
+	data, _ := json.MarshalIndent(settings, "", "  ") //nolint:errcheck // marshal of a fixed local struct cannot fail
 	return data
 }
 
@@ -142,7 +145,7 @@ func (s *PermissionHookServer) SetTimeouts(t *types.TimeoutsConfig) {
 
 // Close shuts down the hook server.
 func (s *PermissionHookServer) Close() {
-	_ = s.server.Close()
+	s.server.Close() //nolint:errcheck // server shutdown
 }
 
 func (s *PermissionHookServer) handlePreToolUse(w http.ResponseWriter, r *http.Request) {

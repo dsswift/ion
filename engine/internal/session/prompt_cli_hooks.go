@@ -242,10 +242,10 @@ func (m *Manager) wireAgentToolServer(s *engineSession, key string, opts *types.
 func (m *Manager) buildAgentToolHandler(s *engineSession, key, parentModel string) backend.ToolHandler {
 	spawner := m.buildRootAgentSpawner(s, key, parentModel, s.extGroup)
 	return func(input map[string]interface{}) (*types.ToolResult, error) {
-		prompt, _ := input["prompt"].(string)
-		name, _ := input["name"].(string)
-		description, _ := input["description"].(string)
-		model, _ := input["model"].(string)
+		prompt, _ := input["prompt"].(string)           //nolint:errcheck // best-effort; failure not actionable here
+		name, _ := input["name"].(string)               //nolint:errcheck // best-effort; failure not actionable here
+		description, _ := input["description"].(string) //nolint:errcheck // best-effort; failure not actionable here
+		model, _ := input["model"].(string)             //nolint:errcheck // best-effort; failure not actionable here
 
 		// Trace entry: the model (inside a delegated-CLI subprocess) invoked the
 		// ion_agent MCP tool. If this line is absent for a CLI run, the model

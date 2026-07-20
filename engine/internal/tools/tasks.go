@@ -59,7 +59,7 @@ func executeTaskCreate(ctx context.Context, input map[string]any, cwd string) (*
 	if err := ctx.Err(); err != nil {
 		return &types.ToolResult{Content: "Error: TaskCreate cancelled.", IsError: true}, nil
 	}
-	prompt, _ := input["prompt"].(string)
+	prompt, _ := input["prompt"].(string) //nolint:errcheck // best-effort; failure not actionable here
 	if prompt == "" {
 		return &types.ToolResult{Content: "Error: prompt is required", IsError: true}, nil
 	}
@@ -186,7 +186,7 @@ func executeTaskGet(ctx context.Context, input map[string]any, _ string) (*types
 	if err := ctx.Err(); err != nil {
 		return &types.ToolResult{Content: "Error: TaskGet cancelled.", IsError: true}, nil
 	}
-	taskID, _ := input["taskId"].(string)
+	taskID, _ := input["taskId"].(string) //nolint:errcheck // best-effort; failure not actionable here
 	if taskID == "" {
 		return &types.ToolResult{Content: "Error: taskId is required", IsError: true}, nil
 	}
@@ -248,7 +248,7 @@ func executeTaskStop(ctx context.Context, input map[string]any, _ string) (*type
 	if err := ctx.Err(); err != nil {
 		return &types.ToolResult{Content: "Error: TaskStop cancelled.", IsError: true}, nil
 	}
-	taskID, _ := input["taskId"].(string)
+	taskID, _ := input["taskId"].(string) //nolint:errcheck // best-effort; failure not actionable here
 	if taskID == "" {
 		return &types.ToolResult{Content: "Error: taskId is required", IsError: true}, nil
 	}

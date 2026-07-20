@@ -99,15 +99,15 @@ type Watcher struct {
 	root    string
 	ignores []string
 
-	mu       sync.Mutex
-	fsw      *fsnotify.Watcher
-	cancel   context.CancelFunc
-	pending  map[string]*pendingEvent
-	pendMu   sync.Mutex
-	started  bool
-	closed   bool
-	onEvent  func(Info)
-	doneCh   chan struct{}
+	mu      sync.Mutex
+	fsw     *fsnotify.Watcher
+	cancel  context.CancelFunc
+	pending map[string]*pendingEvent
+	pendMu  sync.Mutex
+	started bool
+	closed  bool
+	onEvent func(Info)
+	doneCh  chan struct{}
 
 	// maxDirs is the per-watcher directory cap. Resolved at construction from
 	// the New/NewWithMaxDirs argument: a positive value is used verbatim; zero
@@ -276,7 +276,7 @@ func (w *Watcher) Start(ctx context.Context, onEvent func(Info)) error {
 		// Walk itself only returns the root-stat error here; per-entry errors
 		// are swallowed above. If we got nothing usable, bail out cleanly.
 		utils.LogWithFields(utils.LevelError, "watcher", "start walk failed", map[string]any{"error": walkErr.Error()})
-		_ = fsw.Close()
+		fsw.Close() //nolint:errcheck // resource close
 		cancel()
 		w.mu.Lock()
 		w.started = false
@@ -441,7 +441,7 @@ func (w *Watcher) attachSubtree(root string, skipRoot bool) {
 	}
 	attached := 0
 	synthesized := 0
-	_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	filepath.Walk(root, func(path string, info os.FileInfo, err error) error { //nolint:errcheck // walk errors handled per-entry
 		if err != nil || info == nil {
 			return nil
 		}
@@ -599,14 +599,14 @@ func (w *Watcher) shouldIgnore(rel string, isDir bool) bool {
 		return false
 	}
 	for _, pat := range w.ignores {
-		if match, _ := doublestar.Match(pat, rel); match {
+		if match, _ := doublestar.Match(pat, rel); match { //nolint:errcheck // bad pattern means no match
 			return true
 		}
 		if isDir {
 			// "node_modules/**" should match the directory "node_modules"
 			// itself for SkipDir purposes; doublestar.Match with the literal
 			// directory name won't match the trailing /** form.
-			if match, _ := doublestar.Match(pat, rel+"/x"); match {
+			if match, _ := doublestar.Match(pat, rel+"/x"); match { //nolint:errcheck // bad pattern means no match
 				return true
 			}
 		}

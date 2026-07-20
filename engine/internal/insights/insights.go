@@ -120,7 +120,7 @@ func extractText(msg types.LlmMessage) string {
 		var parts []string
 		for _, item := range c {
 			if m, ok := item.(map[string]any); ok {
-				if t, _ := m["type"].(string); t == "text" {
+				if t, _ := m["type"].(string); t == "text" { //nolint:errcheck // best-effort; failure not actionable here
 					if text, ok := m["text"].(string); ok {
 						parts = append(parts, text)
 					}

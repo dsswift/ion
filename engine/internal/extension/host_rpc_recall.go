@@ -53,7 +53,7 @@ func (h *Host) handleRecallRPC(ctx *Context, id int64, raw []byte) {
 			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 			return
 		}
-		data, _ := json.Marshal(struct {
+		data, _ := json.Marshal(struct { //nolint:errcheck // marshal of a local RPC struct
 			Found bool `json:"found"`
 		}{Found: found})
 		h.sendResponse(id, json.RawMessage(data), nil)

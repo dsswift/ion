@@ -29,7 +29,7 @@ func goroutineID() uint64 {
 	if idx < 0 {
 		return 0
 	}
-	id, _ := strconv.ParseUint(s[:idx], 10, 64)
+	id, _ := strconv.ParseUint(s[:idx], 10, 64) //nolint:errcheck // parse failure -> zero value, handled
 	return id
 }
 

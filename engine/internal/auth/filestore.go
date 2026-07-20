@@ -156,8 +156,8 @@ func (fs *FileStore) writeFile(creds *credentialFile) error {
 // deriveKey produces a 32-byte AES key from machine identity.
 // Uses SHA-256 of hostname + username. This is basic obfuscation.
 func (fs *FileStore) deriveKey() []byte {
-	hostname, _ := os.Hostname()
-	u, _ := user.Current()
+	hostname, _ := os.Hostname() //nolint:errcheck // empty hostname is an acceptable key-derivation input
+	u, _ := user.Current()       //nolint:errcheck // nil user handled below
 	username := ""
 	if u != nil {
 		username = u.Username

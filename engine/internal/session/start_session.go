@@ -105,7 +105,7 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 	// nil registry — downstream call sites (extcontext.go) already guard
 	// with `if reg := sa.ProcRegistry(); reg != nil`, so extensions that
 	// would have used it degrade to no-op instead of silently failing.
-	home, _ := os.UserHomeDir()
+	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	pidsDir := filepath.Join(home, ".ion", "agent-pids")
 	if reg, err := extension.NewProcessRegistry(pidsDir); err != nil {
 		utils.LogWithFields(utils.LevelInfo, "session", "startsession : process registry unavailable", map[string]any{"key": key, "error": err})
@@ -301,7 +301,7 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 			// leak.
 			if cur, ok := m.sessions[key]; !ok || cur != s {
 				m.mu.Unlock()
-				_ = conn.Close()
+				conn.Close() //nolint:errcheck // resource close
 				utils.LogWithFields(utils.LevelInfo, "session", "mcp : session disposed during connect — closing leaked conn", map[string]any{"model": name, "key": key})
 				continue
 			}
@@ -568,7 +568,7 @@ func (m *Manager) loadAndWireExtensions(s *engineSession, key string, config typ
 		EventMessage: "Initializing extensions...",
 	})
 	ctx := m.newExtContext(s, key)
-	_ = group.FireSessionStart(ctx)
+	group.FireSessionStart(ctx) //nolint:errcheck // errors logged internally by fireVoid/s.fire
 
 	// Start the workspace filesystem watcher after extensions are loaded and
 	// session_start has fired. Wiring after session_start lets extensions

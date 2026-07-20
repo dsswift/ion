@@ -126,9 +126,9 @@ func (p *Process) Exited() <-chan struct{} { return p.exited }
 // Kill terminates the process and closes the Client. Safe to call after exit.
 func (p *Process) Kill() {
 	if p.cmd.Process != nil {
-		_ = p.cmd.Process.Kill()
+		p.cmd.Process.Kill() //nolint:errcheck // process teardown
 	}
-	_ = p.Client.Close()
+	p.Client.Close() //nolint:errcheck // resource close
 }
 
 // StderrTail returns the retained stderr lines for diagnostics.

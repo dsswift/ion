@@ -184,7 +184,7 @@ func globMatchesAny(patterns []string, target string) bool {
 		if p == target {
 			return true
 		}
-		if ok, _ := path.Match(p, target); ok {
+		if ok, _ := path.Match(p, target); ok { //nolint:errcheck // bad pattern means no match
 			return true
 		}
 	}

@@ -179,7 +179,7 @@ func asMessageData(data any) *MessageData {
 	case *MessageData:
 		return d
 	case map[string]any:
-		b, _ := json.Marshal(d)
+		b, _ := json.Marshal(d) //nolint:errcheck // re-marshal of decoded map; Unmarshal below guards the result
 		var md MessageData
 		if json.Unmarshal(b, &md) == nil {
 			return &md
@@ -195,7 +195,7 @@ func asCompactionData(data any) *CompactionData {
 	case *CompactionData:
 		return d
 	case map[string]any:
-		b, _ := json.Marshal(d)
+		b, _ := json.Marshal(d) //nolint:errcheck // re-marshal of decoded map; Unmarshal below guards the result
 		var cd CompactionData
 		if json.Unmarshal(b, &cd) == nil {
 			return &cd
@@ -211,7 +211,7 @@ func asPlanMarkerData(data any) *PlanMarkerData {
 	case *PlanMarkerData:
 		return d
 	case map[string]any:
-		b, _ := json.Marshal(d)
+		b, _ := json.Marshal(d) //nolint:errcheck // re-marshal of decoded map; Unmarshal below guards the result
 		var pd PlanMarkerData
 		if json.Unmarshal(b, &pd) == nil {
 			return &pd
@@ -227,7 +227,7 @@ func asSteerMarkerData(data any) *SteerMarkerData {
 	case *SteerMarkerData:
 		return d
 	case map[string]any:
-		b, _ := json.Marshal(d)
+		b, _ := json.Marshal(d) //nolint:errcheck // re-marshal of decoded map; Unmarshal below guards the result
 		var sd SteerMarkerData
 		if json.Unmarshal(b, &sd) == nil {
 			return &sd
@@ -243,7 +243,7 @@ func asAgentDispatchData(data any) *AgentDispatchData {
 	case *AgentDispatchData:
 		return d
 	case map[string]any:
-		b, _ := json.Marshal(d)
+		b, _ := json.Marshal(d) //nolint:errcheck // re-marshal of decoded map; Unmarshal below guards the result
 		var ad AgentDispatchData
 		if json.Unmarshal(b, &ad) == nil {
 			return &ad
@@ -283,7 +283,7 @@ func extractText(msg types.LlmMessage) string {
 		var parts []string
 		for _, item := range c {
 			if b, ok := item.(map[string]any); ok {
-				if t, _ := b["type"].(string); t == "text" {
+				if t, _ := b["type"].(string); t == "text" { //nolint:errcheck // non-string type is not text
 					if text, ok := b["text"].(string); ok {
 						parts = append(parts, text)
 					}

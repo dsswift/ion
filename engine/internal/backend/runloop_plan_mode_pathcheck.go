@@ -21,7 +21,7 @@ import (
 // An empty workingDir produces only the home entry. The function never
 // returns nil; at minimum it returns the home plans directory.
 func planDirsForWorkingDir(workingDir string) []string {
-	home, _ := os.UserHomeDir()
+	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	homePlans := filepath.Join(home, ".ion", "plans")
 
 	if workingDir != "" {

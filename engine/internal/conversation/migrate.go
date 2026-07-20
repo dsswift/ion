@@ -44,7 +44,7 @@ type claudeCodeMsg struct {
 type claudeCodeFullLine struct {
 	Type        string `json:"type"`
 	UUID        string `json:"uuid"`
-	ParentUUID  any    `json:"parentUuid"`      // string or null
+	ParentUUID  any    `json:"parentUuid"` // string or null
 	SessionID   string `json:"sessionId"`
 	Timestamp   string `json:"timestamp"`
 	IsSidechain bool   `json:"isSidechain"`
@@ -296,14 +296,14 @@ func ValidateConversion(sourceMsgs []ValidationMsg, convertedPath, format string
 	}
 
 	if len(sourceMsgs) != len(convertedMsgs) {
-		_ = os.Remove(convertedPath)
+		os.Remove(convertedPath) //nolint:errcheck // cleanup of a partial conversion
 		return fmt.Errorf("message count mismatch: source=%d converted=%d", len(sourceMsgs), len(convertedMsgs))
 	}
 
 	srcHash := contentHash(sourceMsgs)
 	convHash := contentHash(convertedMsgs)
 	if srcHash != convHash {
-		_ = os.Remove(convertedPath)
+		os.Remove(convertedPath) //nolint:errcheck // cleanup of a partial conversion
 		return fmt.Errorf("content hash mismatch: source=%s converted=%s", srcHash, convHash)
 	}
 	return nil
@@ -342,7 +342,7 @@ func ExtractValidationMsgsFromClaudeCode(path string) ([]ValidationMsg, error) {
 func contentHash(msgs []ValidationMsg) string {
 	h := sha256.New()
 	for _, m := range msgs {
-		_, _ = fmt.Fprintf(h, "%s:%s\n", m.Role, m.Content)
+		fmt.Fprintf(h, "%s:%s\n", m.Role, m.Content) //nolint:errcheck // writing to a hash.Hash never errors
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }
@@ -391,7 +391,7 @@ func flattenContent(content any) string {
 		var parts []string
 		for _, item := range c {
 			if b, ok := item.(map[string]any); ok {
-				if t, _ := b["type"].(string); t == "text" {
+				if t, _ := b["type"].(string); t == "text" { //nolint:errcheck // non-string type is not text
 					if text, ok := b["text"].(string); ok {
 						parts = append(parts, text)
 					}
@@ -400,7 +400,7 @@ func flattenContent(content any) string {
 		}
 		return strings.Join(parts, "\n")
 	case map[string]any:
-		if t, _ := c["type"].(string); t == "text" {
+		if t, _ := c["type"].(string); t == "text" { //nolint:errcheck // non-string type is not text
 			if text, ok := c["text"].(string); ok {
 				return text
 			}

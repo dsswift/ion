@@ -22,7 +22,7 @@ func (h *Host) handleGetSessionMemory(id int64, ctx *Context) {
 	type result struct {
 		Content string `json:"content"`
 	}
-	data, _ := json.Marshal(result{Content: content})
+	data, _ := json.Marshal(result{Content: content}) //nolint:errcheck // marshal of a local RPC struct
 	utils.LogWithFields(utils.LevelDebug, "extension", "ext/get_session_memory: returning chars", map[string]any{"count": len(content)})
 	h.sendResponse(id, json.RawMessage(data), nil)
 }

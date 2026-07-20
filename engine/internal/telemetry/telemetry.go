@@ -73,16 +73,16 @@ const (
 //   - SchemaVersion: contract version int (R4 — self-describing for central sinks).
 //   - Component:     "engine" (R3 — surface discriminator).
 //   - InstallID:     stable per-install anonymous UUID (R5, device ID per
-//                    feature 0008 — minted once at ~/.ion/install_id, never
-//                    changes, non-PII by design). Enables exact fleet counts and
-//                    per-device time-series in operational dashboards.
+//     feature 0008 — minted once at ~/.ion/install_id, never
+//     changes, non-PII by design). Enables exact fleet counts and
+//     per-device time-series in operational dashboards.
 //   - Host:          human-readable machine name (R19 — admin display).
 //   - Version:       engine build string (R21 — which build emitted this line).
 //   - EventID:       per-event unique ID (R22 — 16-char hex, for dedup during
-//                    retry storms and exactly-once delivery semantics in sinks).
+//     retry storms and exactly-once delivery semantics in sinks).
 //   - User:          identity carrier (R20 — populated from enterprise OIDC
-//                    auth context when present; omit-when-absent so open-source
-//                    and default installs are unchanged). Seam for future auth.
+//     auth context when present; omit-when-absent so open-source
+//     and default installs are unchanged). Seam for future auth.
 type Event struct {
 	Name          string `json:"name"`
 	Ts            string `json:"ts"`
@@ -577,8 +577,8 @@ func engineVersion() string {
 }
 
 var (
-	hostOnce   sync.Once
-	resolvedH  string
+	hostOnce  sync.Once
+	resolvedH string
 )
 
 // resolvedHost returns the machine hostname, resolved once per process.
@@ -659,8 +659,8 @@ func loadOrMintInstallID() string {
 	// format as 8-4-4-4-12 UUID). We generate 16 random bytes directly for the
 	// standard UUID shape.
 	id := mintInstallID()
-	_ = os.MkdirAll(filepath.Dir(idPath), 0o700)
-	_ = os.WriteFile(idPath, []byte(id+"\n"), 0o600)
+	os.MkdirAll(filepath.Dir(idPath), 0o700)     //nolint:errcheck // dir create; failure surfaces on use
+	os.WriteFile(idPath, []byte(id+"\n"), 0o600) //nolint:errcheck // best-effort write
 	utils.LogWithFields(utils.LevelInfo, "telemetry", "install id minted", map[string]any{"status": id})
 	return id
 }

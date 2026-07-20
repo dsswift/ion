@@ -132,7 +132,7 @@ func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 	utils.LogWithFields(utils.LevelDebug, "OpenAI", "do stream http response", map[string]any{"status": resp.StatusCode})
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort read of error-response body
 		utils.LogWithFields(utils.LevelError, "OpenAI", "do stream http error", map[string]any{"status": resp.StatusCode, "path": endpoint, "error": string(respBody)})
 		return FromOpenAIError(
 			fmt.Errorf("openai API error: %s", string(respBody)),
@@ -463,7 +463,7 @@ func formatOpenAIMessages(system string, messages []types.LlmMessage) []map[stri
 			for _, b := range otherBlocks {
 				switch b.Type {
 				case "tool_use":
-					inputJSON, _ := json.Marshal(b.Input)
+					inputJSON, _ := json.Marshal(b.Input) //nolint:errcheck // marshal of a local struct
 					toolUses = append(toolUses, map[string]any{
 						"id":   b.ID,
 						"type": "function",

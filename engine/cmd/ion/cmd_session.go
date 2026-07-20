@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -45,7 +44,7 @@ func cmdStart(flags map[string]string, listFlags map[string][]string) {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
 	}
-	data, _ := json.MarshalIndent(result, "", "  ")
+	data := mustMarshalCLI(result)
 	fmt.Println(string(data))
 }
 
@@ -62,7 +61,7 @@ func cmdStatus() {
 		os.Exit(1)
 	}
 
-	sessions, _ := result["data"].([]interface{})
+	sessions, _ := result["data"].([]interface{}) //nolint:errcheck // missing/!slice data yields nil -> "No active sessions"
 	if len(sessions) == 0 {
 		fmt.Println("No active sessions")
 		return
@@ -71,7 +70,7 @@ func cmdStatus() {
 	fmt.Printf("%-16s %-16s %-16s %-16s\n", "KEY", "PROFILE", "DIRECTORY", "STATE")
 	fmt.Println(strings.Repeat("-", 64))
 	for _, s := range sessions {
-		sm, _ := s.(map[string]interface{})
+		sm, _ := s.(map[string]interface{}) //nolint:errcheck // non-object row prints as zero-value fields
 		fmt.Printf("%-16s %-16s %-16s %-16s\n",
 			sm["key"], sm["profile"], sm["directory"], sm["state"])
 	}
@@ -89,7 +88,7 @@ func cmdStop(flags map[string]string) {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
 	}
-	data, _ := json.MarshalIndent(result, "", "  ")
+	data := mustMarshalCLI(result)
 	fmt.Println(string(data))
 }
 
@@ -101,7 +100,7 @@ func cmdShutdown() {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
 	}
-	data, _ := json.MarshalIndent(result, "", "  ")
+	data := mustMarshalCLI(result)
 	fmt.Println(string(data))
 }
 
@@ -113,18 +112,18 @@ func cmdHealth() {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
 	}
-	if errMsg, _ := result["error"].(string); errMsg != "" {
+	if errMsg, ok := result["error"].(string); ok && errMsg != "" {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", errMsg)
 		os.Exit(1)
 	}
-	data, _ := result["data"].(map[string]interface{})
+	data, _ := result["data"].(map[string]interface{}) //nolint:errcheck // nil/!object handled by the empty-response guard below
 	if data == nil {
 		fmt.Fprintln(os.Stderr, "Error: empty health response")
 		os.Exit(1)
 	}
-	out, _ := json.MarshalIndent(data, "", "  ")
+	out := mustMarshalCLI(data)
 	fmt.Println(string(out))
-	if ok, _ := data["ok"].(bool); !ok {
+	if ok, _ := data["ok"].(bool); !ok { //nolint:errcheck // missing/!bool ok treated as unhealthy -> exit 1
 		os.Exit(1)
 	}
 }

@@ -212,13 +212,13 @@ func allocateNewPlanFilePath(caps backend.BackendCapabilities, workingDir string
 	if caps.PlanFileProjectScoped && workingDir != "" {
 		plansDir = filepath.Join(workingDir, ".ion", "plans")
 	} else {
-		home, _ := os.UserHomeDir()
+		home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 		plansDir = filepath.Join(home, ".ion", "plans")
 	}
 	// MkdirAll is idempotent; ignore the error here. If it failed
 	// (permission, read-only fs, …) the subsequent file write will
 	// surface a clear error and the user will see it then.
-	_ = os.MkdirAll(plansDir, 0755)
+	os.MkdirAll(plansDir, 0755) //nolint:errcheck // dir create; failure surfaces on use
 	slug := generatePlanSlugUnique(plansDir)
 	return filepath.Join(plansDir, slug+".md")
 }

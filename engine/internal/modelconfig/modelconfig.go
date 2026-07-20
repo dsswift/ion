@@ -136,7 +136,7 @@ func ResolveTierChain(tierName string) (string, []string) {
 	case string:
 		return v, nil
 	case map[string]interface{}:
-		model, _ := v["model"].(string)
+		model, _ := v["model"].(string) //nolint:errcheck // empty model handled by the break below
 		if model == "" {
 			break
 		}

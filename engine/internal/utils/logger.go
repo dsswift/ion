@@ -88,8 +88,8 @@ func toSlogLevel(level LogLevel) slog.Level {
 // override them from LoggingConfig at startup.
 var (
 	maxLogSize      int64 = 20 * 1024 * 1024 // 20MB; overridden by LoggingConfig.MaxSizeMB
-	maxLogFiles     int   = 3                 // archived generations; overridden by LoggingConfig.MaxFiles
-	disableRotation       = false             // overridden by LoggingConfig.DisableRotation
+	maxLogFiles     int   = 3                // archived generations; overridden by LoggingConfig.MaxFiles
+	disableRotation       = false            // overridden by LoggingConfig.DisableRotation
 )
 
 // emptyFields is the canonical empty structured-context map. slog.Any renders
@@ -208,7 +208,7 @@ func ConfigureLogging(cfg *types.LoggingConfig) {
 
 	// Force re-init on next write so the new destination/dir takes effect.
 	if logFile != nil {
-		_ = logFile.Close()
+		logFile.Close() //nolint:errcheck // resource close
 		logFile = nil
 	}
 	logger = nil
@@ -424,7 +424,7 @@ func initLogger() {
 	// SetTestSink (which fires in logAtFull before initLogger runs). The
 	// default lazy path must go nowhere near ~/.ion.
 	if testing.Testing() {
-		home, _ := os.UserHomeDir()
+		home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 		ionDir := filepath.Join(home, ".ion")
 		if logDir == "" || logDir == ionDir {
 			h := slog.NewJSONHandler(io.Discard, &slog.HandlerOptions{
@@ -443,7 +443,7 @@ func initLogger() {
 		}
 		logDir = filepath.Join(home, ".ion")
 	}
-	_ = os.MkdirAll(logDir, 0o700)
+	os.MkdirAll(logDir, 0o700) //nolint:errcheck // dir create; failure surfaces on use
 
 	var writers []io.Writer
 
@@ -500,16 +500,16 @@ func rotateLocked() {
 	for i := maxLogFiles; i >= 2; i-- {
 		older := fmt.Sprintf("%s.%d", logPath, i)
 		newer := fmt.Sprintf("%s.%d", logPath, i-1)
-		_ = os.Remove(older)
-		_ = os.Rename(newer, older)
+		os.Remove(older)        //nolint:errcheck // best-effort cleanup
+		os.Rename(newer, older) //nolint:errcheck // best-effort rename
 	}
 
 	// Close the current handle, rename the live file to .1, and let the next
 	// initLogger() call open a fresh engine.jsonl.
-	_ = logFile.Close()
+	logFile.Close() //nolint:errcheck // resource close
 	logFile = nil
 	logger = nil
-	_ = os.Rename(logPath, logPath+".1")
+	os.Rename(logPath, logPath+".1") //nolint:errcheck // best-effort rename
 	bytesWritten = 0
 }
 

@@ -57,7 +57,7 @@ func (h *Host) handleSteerRPC(ctx *Context, method string, id int64, raw []byte)
 					h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 					return
 				}
-				data, _ := json.Marshal(result)
+				data, _ := json.Marshal(result) //nolint:errcheck // marshal of a local RPC struct
 				h.sendResponse(id, json.RawMessage(data), nil)
 			} else {
 				h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "steer dispatch not available"})
@@ -92,7 +92,7 @@ func (h *Host) handleSteerRPC(ctx *Context, method string, id int64, raw []byte)
 					h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 					return
 				}
-				data, _ := json.Marshal(result)
+				data, _ := json.Marshal(result) //nolint:errcheck // marshal of a local RPC struct
 				h.sendResponse(id, json.RawMessage(data), nil)
 			} else {
 				h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "steer dispatch by name not available"})
@@ -118,7 +118,7 @@ func (h *Host) handleSteerRPC(ctx *Context, method string, id int64, raw []byte)
 					h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 					return
 				}
-				data, _ := json.Marshal(result)
+				data, _ := json.Marshal(result) //nolint:errcheck // marshal of a local RPC struct
 				h.sendResponse(id, json.RawMessage(data), nil)
 			} else {
 				h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "steer self not available"})

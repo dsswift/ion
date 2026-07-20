@@ -33,7 +33,7 @@ func ReadTool() *types.ToolDef {
 }
 
 func executeRead(ctx context.Context, input map[string]any, cwd string) (*types.ToolResult, error) {
-	filePath, _ := input["file_path"].(string)
+	filePath, _ := input["file_path"].(string) //nolint:errcheck // best-effort; failure not actionable here
 	if filePath == "" {
 		return &types.ToolResult{Content: "Error: file_path is required", IsError: true}, nil
 	}

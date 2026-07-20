@@ -95,7 +95,7 @@ func executeLsp(ctx context.Context, input map[string]any, cwd string) (*types.T
 		return &types.ToolResult{Content: "Error: LSP cancelled.", IsError: true}, nil
 	}
 
-	operation, _ := input["operation"].(string)
+	operation, _ := input["operation"].(string) //nolint:errcheck // best-effort; failure not actionable here
 	filePath := stringFromInput(input, "file_path", "")
 	if filePath != "" {
 		filePath = resolvePath(cwd, filePath)

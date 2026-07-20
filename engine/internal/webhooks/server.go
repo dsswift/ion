@@ -264,7 +264,7 @@ func (s *Server) Stop() {
 	utils.Log("webhooks", "Stop: shutting down listener")
 	if err := srv.Shutdown(ctx); err != nil {
 		utils.LogWithFields(utils.LevelWarn, "webhooks", "shutdown returned error forcing close", map[string]any{"error": err.Error()})
-		_ = srv.Close()
+		srv.Close() //nolint:errcheck // resource close
 	}
 }
 
@@ -412,7 +412,7 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(status)
 	if respBody != "" {
-		_, _ = io.WriteString(w, respBody)
+		io.WriteString(w, respBody) //nolint:errcheck // best-effort write
 	}
 	s.emitWebhookResponded(requestID, route, r, status, start)
 	utils.LogWithFields(utils.LevelDebug, "webhooks", "respond", map[string]any{
@@ -439,7 +439,7 @@ func (s *Server) pathExistsAnyMethod(path string) bool {
 func (s *Server) respond(w http.ResponseWriter, status int, body string, _ map[string]string) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(status)
-	_, _ = io.WriteString(w, body)
+	io.WriteString(w, body) //nolint:errcheck // best-effort write
 }
 
 // readBodyCapped reads up to maxBytes from r and returns the body. A
@@ -450,7 +450,7 @@ func (s *Server) respond(w http.ResponseWriter, status int, body string, _ map[s
 // allowed for advanced use). The cap is applied at the io.Reader layer
 // so memory usage stays bounded.
 func readBodyCapped(r io.ReadCloser, maxBytes int64) ([]byte, error) {
-	defer func() { _ = r.Close() }()
+	defer func() { _ = r.Close() }() //nolint:errcheck // resource close
 	if maxBytes <= 0 {
 		return io.ReadAll(r)
 	}

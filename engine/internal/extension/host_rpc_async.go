@@ -70,7 +70,7 @@ func (h *Host) rpcRegisterWebhook(id int64, raw []byte) {
 			return
 		}
 		utils.LogWithFields(utils.LevelInfo, "extension", "ext/register_webhook: registered (origin=runtime)", map[string]any{"model": h.name, "path": req.Params.Path})
-		resp, _ := json.Marshal(struct {
+		resp, _ := json.Marshal(struct { //nolint:errcheck // marshal of a local anonymous struct
 			OK bool   `json:"ok"`
 			ID string `json:"id"`
 		}{OK: true, ID: req.Params.Path})
@@ -96,7 +96,7 @@ func (h *Host) rpcDeregisterWebhook(id int64, raw []byte) {
 	go func() {
 		removed := h.DeregisterWebhookDecl(req.Params.Path)
 		utils.LogWithFields(utils.LevelInfo, "extension", "ext/deregister_webhook", map[string]any{"model": h.name, "path": req.Params.Path, "removed": removed})
-		resp, _ := json.Marshal(struct {
+		resp, _ := json.Marshal(struct { //nolint:errcheck // marshal of a local anonymous struct
 			OK      bool `json:"ok"`
 			Removed bool `json:"removed"`
 		}{OK: true, Removed: removed})
@@ -122,7 +122,7 @@ func (h *Host) rpcRegisterSchedule(id int64, raw []byte) {
 			return
 		}
 		utils.LogWithFields(utils.LevelInfo, "extension", "ext/register_schedule: registered (origin=runtime)", map[string]any{"model": h.name, "run_id": req.Params.JobID})
-		resp, _ := json.Marshal(struct {
+		resp, _ := json.Marshal(struct { //nolint:errcheck // marshal of a local anonymous struct
 			OK bool   `json:"ok"`
 			ID string `json:"id"`
 		}{OK: true, ID: req.Params.JobID})
@@ -148,7 +148,7 @@ func (h *Host) rpcDeregisterSchedule(id int64, raw []byte) {
 	go func() {
 		removed := h.DeregisterScheduleDecl(req.Params.ID)
 		utils.LogWithFields(utils.LevelInfo, "extension", "ext/deregister_schedule", map[string]any{"model": h.name, "run_id": req.Params.ID, "removed": removed})
-		resp, _ := json.Marshal(struct {
+		resp, _ := json.Marshal(struct { //nolint:errcheck // marshal of a local anonymous struct
 			OK      bool `json:"ok"`
 			Removed bool `json:"removed"`
 		}{OK: true, Removed: removed})

@@ -57,9 +57,9 @@ func socketToken(sessionID string) string {
 
 // NewToolServer creates a tool server for the given session.
 func NewToolServer(sessionID string) *ToolServer {
-	home, _ := os.UserHomeDir()
+	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	sockDir := filepath.Join(home, ".ion", "mcp")
-	_ = os.MkdirAll(sockDir, 0o700)
+	os.MkdirAll(sockDir, 0o700) //nolint:errcheck // dir creation; failure surfaces on listen below
 
 	return &ToolServer{
 		tools:    make(map[string]toolEntry),
@@ -90,7 +90,7 @@ func (ts *ToolServer) Start() error {
 	defer ts.mu.Unlock()
 
 	// Clean up stale socket
-	_ = os.Remove(ts.sockPath)
+	os.Remove(ts.sockPath) //nolint:errcheck // stale socket cleanup; absent is fine
 
 	listener, err := net.Listen("unix", ts.sockPath)
 	if err != nil {
@@ -115,9 +115,9 @@ func (ts *ToolServer) Stop() {
 
 	ts.running = false
 	if ts.listener != nil {
-		_ = ts.listener.Close()
+		ts.listener.Close() //nolint:errcheck // listener teardown
 	}
-	_ = os.Remove(ts.sockPath)
+	os.Remove(ts.sockPath) //nolint:errcheck // stale socket cleanup; absent is fine
 }
 
 // SocketPath returns the path to the Unix socket.
@@ -136,7 +136,7 @@ func (ts *ToolServer) HasTool(name string) bool {
 
 // McpConfigPath writes MCP config JSON for the Claude CLI --mcp-config flag.
 func (ts *ToolServer) McpConfigPath(sessionID string) (string, error) {
-	home, _ := os.UserHomeDir()
+	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	configDir := filepath.Join(home, ".ion", "mcp")
 
 	config := map[string]interface{}{
@@ -199,7 +199,7 @@ func (ts *ToolServer) acceptLoop() {
 }
 
 func (ts *ToolServer) handleConnection(conn net.Conn) {
-	defer func() { _ = conn.Close() }()
+	defer func() { conn.Close() }() //nolint:errcheck // connection close
 
 	decoder := json.NewDecoder(conn)
 	encoder := json.NewEncoder(conn)

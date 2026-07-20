@@ -86,7 +86,7 @@ func (m *Manager) ForkSession(key string, messageIndex int) (string, error) {
 	// Fire session_fork hook after the fork succeeds.
 	if extGroup != nil && !extGroup.IsEmpty() {
 		ctx := m.newExtContext(s, key)
-		_ = extGroup.FireSessionFork(ctx, extension.ForkInfo{
+		extGroup.FireSessionFork(ctx, extension.ForkInfo{ //nolint:errcheck // errors logged internally by fireVoid/s.fire
 			SourceSessionKey: key,
 			NewSessionKey:    newKey,
 			ForkMessageIndex: messageIndex,

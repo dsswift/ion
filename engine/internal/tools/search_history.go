@@ -22,7 +22,7 @@ func WithHistorySearcher(ctx context.Context, fn HistorySearcher) context.Contex
 
 // HistorySearcherFromContext extracts a session-scoped history searcher, or nil.
 func HistorySearcherFromContext(ctx context.Context) HistorySearcher {
-	fn, _ := ctx.Value(historySearcherKey{}).(HistorySearcher)
+	fn, _ := ctx.Value(historySearcherKey{}).(HistorySearcher) //nolint:errcheck // best-effort; failure not actionable here
 	return fn
 }
 
@@ -50,7 +50,7 @@ func SearchHistoryTool() *types.ToolDef {
 }
 
 func executeSearchHistory(ctx context.Context, input map[string]any, _ string) (*types.ToolResult, error) {
-	query, _ := input["query"].(string)
+	query, _ := input["query"].(string) //nolint:errcheck // best-effort; failure not actionable here
 	if query == "" {
 		return &types.ToolResult{Content: "Error: query parameter is required", IsError: true}, nil
 	}
@@ -80,8 +80,8 @@ func executeSearchHistory(ctx context.Context, input map[string]any, _ string) (
 
 	// Format results as JSON for structured consumption by the model.
 	formatted, err := json.MarshalIndent(struct {
-		Query      string                    `json:"query"`
-		MatchCount int                       `json:"matchCount"`
+		Query      string                      `json:"query"`
+		MatchCount int                         `json:"matchCount"`
 		Matches    []conversation.HistoryMatch `json:"matches"`
 	}{
 		Query:      query,

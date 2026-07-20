@@ -155,7 +155,7 @@ func InitiateDeviceFlow(clientID, tokenURL, scope, audience, audienceParam strin
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort read of an error-response body
 		return nil, fmt.Errorf("device flow failed (status %d): %s", resp.StatusCode, string(body))
 	}
 
@@ -287,7 +287,11 @@ func StartPKCEFlow(cfg PKCEFlowConfig) (*PKCEFlowResult, error) {
 		return nil, fmt.Errorf("pkce: listen on %s: %w", addr, err)
 	}
 
-	port := listener.Addr().(*net.TCPAddr).Port
+	tcpAddr, ok := listener.Addr().(*net.TCPAddr)
+	if !ok {
+		return nil, fmt.Errorf("pkce: listener address is not TCP: %T", listener.Addr())
+	}
+	port := tcpAddr.Port
 	redirectURI := fmt.Sprintf("http://%s:%d%s", host, port, path)
 
 	// Build authorization URL.

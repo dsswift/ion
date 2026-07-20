@@ -23,7 +23,7 @@ var (
 // call. Safe for concurrent use after init.
 func getMachineIdentity() machineIdentity {
 	machineIdentityOnce.Do(func() {
-		host, _ := os.Hostname()
+		host, _ := os.Hostname() //nolint:errcheck // empty hostname fallback
 		platform := loadPlatformMachineIdentity()
 
 		cachedMachineIdentity = machineIdentity{

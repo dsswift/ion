@@ -40,12 +40,12 @@ func cmdPlugin(args []string) {
 			return
 		}
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		_, _ = fmt.Fprintln(w, "NAME\tSOURCE\tVERSION\tINSTALLED")
+		fmt.Fprintln(w, "NAME\tSOURCE\tVERSION\tINSTALLED") //nolint:errcheck // best-effort CLI stdout write
 		for _, p := range installed {
-			_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", //nolint:errcheck // best-effort CLI stdout write
 				p.Name, p.Source, p.Version, p.InstalledAt.Format("2006-01-02"))
 		}
-		_ = w.Flush()
+		w.Flush() //nolint:errcheck // best-effort CLI stdout write
 
 	case "remove":
 		if len(args) < 2 {

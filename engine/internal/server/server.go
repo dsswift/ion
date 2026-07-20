@@ -31,7 +31,7 @@ func DefaultSocketPath() string {
 	if runtime.GOOS == "windows" {
 		return "127.0.0.1:21017"
 	}
-	home, _ := os.UserHomeDir()
+	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	return filepath.Join(home, ".ion", "engine.sock")
 }
 
@@ -503,7 +503,7 @@ func (s *Server) writeToClient(conn net.Conn, line string) {
 	if !ok {
 		// Conn is not (or no longer) registered. Fall back to a direct write
 		// with a deadline so a wedged peer cannot stall the caller.
-		_ = conn.SetWriteDeadline(time.Now().Add(broadcastWriteDeadline))
+		conn.SetWriteDeadline(time.Now().Add(broadcastWriteDeadline)) //nolint:errcheck // best-effort deadline set
 		if _, err := conn.Write([]byte(line)); err != nil {
 			utils.LogWithFields(utils.LevelInfo, "server", "write error untracked client", map[string]any{"error": err.Error()})
 		}

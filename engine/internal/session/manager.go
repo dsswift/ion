@@ -22,7 +22,6 @@ type SessionInfo struct {
 	ExtensionName  string `json:"extensionName,omitempty"`
 }
 
-
 // Manager orchestrates multiple engine sessions, routing prompts to the
 // backend and forwarding events to connected clients.
 type Manager struct {
@@ -118,7 +117,6 @@ func (m *Manager) GetTelemetryConfig() *types.TelemetryConfig {
 	return m.config.Telemetry
 }
 
-
 // DefaultSessionStatusHeartbeatInterval is the cadence at which Manager
 // re-emits engine_status for every attached session. The value is
 // large enough that the per-session ~50-byte payload contributes
@@ -167,7 +165,6 @@ func NewManager(b backend.RunBackend) *Manager {
 
 	return m
 }
-
 
 // OnEvent registers the event callback. The key identifies which session
 // produced the event.
@@ -278,7 +275,6 @@ func (m *Manager) ListSessions() []SessionInfo {
 	return result
 }
 
-
 // SendCommand dispatches an internal command to a session.
 //
 // Resolution order:
@@ -359,7 +355,6 @@ func (m *Manager) StopSession(key string) error {
 		killProcess(pid)
 	}
 
-
 	// Capture subsystems before deleting session
 	extGroup := s.extGroup
 	mcpConns := s.mcpConns
@@ -410,7 +405,7 @@ func (m *Manager) StopSession(key string) error {
 	}
 	if extGroup != nil && !extGroup.IsEmpty() {
 		ctx := m.newExtContext(s, key)
-		_ = extGroup.FireSessionEnd(ctx)
+		extGroup.FireSessionEnd(ctx) //nolint:errcheck // errors logged internally by fireVoid/s.fire
 		// Remove every host from the async-trigger subsystems before
 		// Close() takes them down. Avoids the scheduler tick loop
 		// holding a stale host pointer.
@@ -420,7 +415,7 @@ func (m *Manager) StopSession(key string) error {
 		extGroup.Close()
 	}
 	for _, conn := range mcpConns {
-		_ = conn.Close()
+		conn.Close() //nolint:errcheck // resource close
 	}
 	if telemCollector != nil {
 		// Close the collector: stops the periodic flush goroutine, performs a
@@ -432,7 +427,7 @@ func (m *Manager) StopSession(key string) error {
 		telemCollector.Close()
 	}
 	if sessionRecorder != nil {
-		_ = sessionRecorder.Close()
+		sessionRecorder.Close() //nolint:errcheck // resource close
 	}
 
 	m.emit(key, types.EngineEvent{Type: "engine_dead"})
@@ -451,7 +446,7 @@ func (m *Manager) StopByPrefix(prefix string) {
 	m.mu.RUnlock()
 
 	for _, k := range keys {
-		_ = m.StopSession(k)
+		m.StopSession(k) //nolint:errcheck // best-effort stop; not-found is benign
 	}
 }
 
@@ -465,7 +460,7 @@ func (m *Manager) StopAll() error {
 	m.mu.RUnlock()
 
 	for _, k := range keys {
-		_ = m.StopSession(k)
+		m.StopSession(k) //nolint:errcheck // best-effort stop; not-found is benign
 	}
 	return nil
 }
@@ -491,7 +486,7 @@ func (m *Manager) Shutdown() {
 	})
 	<-m.heartbeatDone
 
-	_ = m.StopAll()
+	m.StopAll() //nolint:errcheck // best-effort stop; not-found is benign
 	m.asyncMu.Lock()
 	srv := m.webhookServer
 	sch := m.scheduler
@@ -538,7 +533,7 @@ func (m *Manager) sessionState(s *engineSession) string {
 // state for a session by cross-checking the in-memory requestID against
 // the backend's live-run set.
 //
-// Why the cross-check exists. The naive predicate "requestID != ''
+// Why the cross-check exists. The naive predicate "requestID != ”
 // means running" is the original implementation and the reason an
 // engine session can report "running" indefinitely: if a run terminates
 // abnormally without flowing through handleRunExit / StopSession (e.g.
@@ -699,4 +694,3 @@ func (m *Manager) ReconcileState(key string) {
 	// authoritative state computed by currentSessionStatus.
 	m.emitStatusSnapshot(key, "reconcile")
 }
-

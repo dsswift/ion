@@ -52,7 +52,7 @@ func (m *Manager) fireCliTurnHooks(s *engineSession, key string, sOk bool, event
 			s.extGroup.FireTurnStart(ctx, extension.TurnInfo{TurnNumber: turnNum})
 			taskID := fmt.Sprintf("%s-t%d", key, turnNum)
 			utils.LogWithFields(utils.LevelDebug, "session", "firecliturnhooks: task_created", map[string]any{"run_id": taskID, "key": key, "turn": turnNum})
-			_ = s.extGroup.FireTaskCreated(ctx, extension.TaskLifecycleInfo{
+			s.extGroup.FireTaskCreated(ctx, extension.TaskLifecycleInfo{ //nolint:errcheck // errors logged internally by fireVoid/s.fire
 				TaskID: taskID,
 				Name:   fmt.Sprintf("turn-%d", turnNum),
 				Status: "running",
@@ -75,7 +75,7 @@ func (m *Manager) fireCliTurnHooks(s *engineSession, key string, sOk bool, event
 			s.extGroup.FireTurnStart(ctx, extension.TurnInfo{TurnNumber: turnNum})
 			taskID := fmt.Sprintf("%s-t%d", key, turnNum)
 			utils.LogWithFields(utils.LevelDebug, "session", "firecliturnhooks: task_created", map[string]any{"run_id": taskID, "key": key, "turn": turnNum})
-			_ = s.extGroup.FireTaskCreated(ctx, extension.TaskLifecycleInfo{
+			s.extGroup.FireTaskCreated(ctx, extension.TaskLifecycleInfo{ //nolint:errcheck // errors logged internally by fireVoid/s.fire
 				TaskID: taskID,
 				Name:   fmt.Sprintf("turn-%d", turnNum),
 				Status: "running",
@@ -95,7 +95,7 @@ func (m *Manager) fireCliTurnHooks(s *engineSession, key string, sOk bool, event
 		if wasActive {
 			ctx := m.newExtContext(s, key)
 			if accum != "" {
-				_ = s.extGroup.FireMessageUpdate(ctx, extension.MessageUpdateInfo{
+				s.extGroup.FireMessageUpdate(ctx, extension.MessageUpdateInfo{ //nolint:errcheck // errors logged internally by fireVoid/s.fire
 					Role:    "assistant",
 					Content: accum,
 				})
@@ -116,7 +116,7 @@ func (m *Manager) fireCliTurnHooks(s *engineSession, key string, sOk bool, event
 		if wasActive {
 			ctx := m.newExtContext(s, key)
 			if accum != "" {
-				_ = s.extGroup.FireMessageUpdate(ctx, extension.MessageUpdateInfo{
+				s.extGroup.FireMessageUpdate(ctx, extension.MessageUpdateInfo{ //nolint:errcheck // errors logged internally by fireVoid/s.fire
 					Role:    "assistant",
 					Content: accum,
 				})
@@ -129,7 +129,7 @@ func (m *Manager) fireCliTurnHooks(s *engineSession, key string, sOk bool, event
 			ctx := m.newExtContext(s, key)
 			taskID := fmt.Sprintf("%s-t%d", key, turnNum)
 			utils.LogWithFields(utils.LevelDebug, "session", "firecliturnhooks: task_completed", map[string]any{"run_id": taskID, "key": key, "turn": turnNum})
-			_ = s.extGroup.FireTaskCompleted(ctx, extension.TaskLifecycleInfo{
+			s.extGroup.FireTaskCompleted(ctx, extension.TaskLifecycleInfo{ //nolint:errcheck // errors logged internally by fireVoid/s.fire
 				TaskID: taskID,
 				Name:   fmt.Sprintf("turn-%d", turnNum),
 				Status: "completed",

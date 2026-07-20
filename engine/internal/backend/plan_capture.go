@@ -122,7 +122,7 @@ func capturePlanMarkdown(
 		return PlanCaptureResult{}, err
 	}
 	if err := os.Rename(tmpPath, planFilePath); err != nil {
-		_ = os.Remove(tmpPath)
+		os.Remove(tmpPath) //nolint:errcheck // temp cleanup after failed rename
 		utils.LogWithFields(utils.LevelError, "backend.plan_capture", "rename failed", map[string]any{
 			"run_id": runID, "path": planFilePath, "error": err.Error(),
 		})

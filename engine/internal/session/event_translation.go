@@ -170,7 +170,7 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 		ctx := m.newExtContext(s, key)
 		switch e := event.Data.(type) {
 		case *types.ToolCallEvent:
-			_ = s.extGroup.FireToolStart(ctx, extension.ToolStartInfo{
+			s.extGroup.FireToolStart(ctx, extension.ToolStartInfo{ //nolint:errcheck // errors logged internally by fireVoid/s.fire
 				ToolName: e.ToolName,
 				ToolID:   e.ToolID,
 			})
@@ -216,7 +216,7 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 			if meta.name == "Agent" && accumulated != "" {
 				var input map[string]interface{}
 				if json.Unmarshal([]byte(accumulated), &input) == nil {
-					_, _ = s.extGroup.FireToolCall(ctx, extension.ToolCallInfo{
+					s.extGroup.FireToolCall(ctx, extension.ToolCallInfo{ //nolint:errcheck // errors logged internally by fireVoid/s.fire
 						ToolName: "Agent",
 						ToolID:   toolID,
 						Input:    input,
@@ -225,8 +225,8 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 			}
 
 		case *types.ToolResultEvent:
-			_ = e // suppress unused
-			_ = s.extGroup.FireToolEnd(ctx)
+			_ = e                       // suppress unused
+			s.extGroup.FireToolEnd(ctx) //nolint:errcheck // errors logged internally by fireVoid/s.fire
 		}
 	}
 
@@ -234,7 +234,7 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 	if sOk && s.extGroup != nil && !s.extGroup.IsEmpty() {
 		if errEv, ok := event.Data.(*types.ErrorEvent); ok {
 			errCtx := m.newExtContext(s, key)
-			_ = s.extGroup.FireOnError(errCtx, extension.ErrorInfo{
+			s.extGroup.FireOnError(errCtx, extension.ErrorInfo{ //nolint:errcheck // errors logged internally by fireVoid/s.fire
 				Message:      errEv.ErrorMessage,
 				ErrorCode:    errEv.ErrorCode,
 				Category:     classifyErrorCategory(errEv.ErrorCode),
@@ -301,7 +301,7 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 			if s2.dispatchRegistry != nil {
 				liveIDs = s2.dispatchRegistry.LiveConvIDs()
 			}
-			convCost, _ := cost.ConversationCost(convID, liveIDs, "")
+			convCost, _ := cost.ConversationCost(convID, liveIDs, "") //nolint:errcheck // ConversationCost logs internally, returns 0 on error
 			s2.lastConvCost = convCost
 
 			// Emit a run-level telemetry event. This is the one place every
@@ -329,7 +329,7 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 				// cost.ConversationCost is a best-effort disk walk that handles errors
 				// by returning 0 + a debug log, never panics, and is the same path
 				// already used by ComputeAndEmitContextBreakdown under the same lock.
-				aggregateCost, _ := cost.ConversationCost(convID, liveIDs, "")
+				aggregateCost, _ := cost.ConversationCost(convID, liveIDs, "") //nolint:errcheck // ConversationCost logs internally, returns 0 on error
 
 				// dispatchDepth is 0 for all sessions that emit run.complete through
 				// handleNormalizedEvent. Dispatched child agents run their backends

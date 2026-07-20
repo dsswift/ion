@@ -37,7 +37,7 @@ func Install(source string, progress func(string)) (InstalledPlugin, error) {
 		shortSHA = sha[:12]
 	}
 
-	home, _ := os.UserHomeDir()
+	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	installPath := filepath.Join(home, ".ion", "plugins", "cache", owner, repo, shortSHA)
 
 	// Already installed at this SHA?
@@ -93,7 +93,7 @@ func resolveGitHubSHA(owner, repo string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { resp.Body.Close() }() //nolint:errcheck // response body close
 	if resp.StatusCode != 200 {
 		return "", fmt.Errorf("GitHub API %s: %s", url, resp.Status)
 	}
@@ -116,7 +116,7 @@ func downloadAndExtract(owner, repo, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { resp.Body.Close() }() //nolint:errcheck // response body close
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("download %s: %s", url, resp.Status)
 	}
@@ -126,9 +126,9 @@ func downloadAndExtract(owner, repo, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = os.Remove(tmp.Name()) }()
+	defer func() { os.Remove(tmp.Name()) }() //nolint:errcheck // temp cleanup
 	if _, err := io.Copy(tmp, resp.Body); err != nil {
-		_ = tmp.Close()
+		tmp.Close() //nolint:errcheck // temp file close
 		return err
 	}
 	if err := tmp.Close(); err != nil {
@@ -149,7 +149,7 @@ func extractZip(zipPath, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = r.Close() }()
+	defer func() { r.Close() }() //nolint:errcheck // reader close
 
 	// Find the top-level prefix (first directory component).
 	prefix := ""
@@ -194,11 +194,11 @@ func extractZip(zipPath, dest string) error {
 		}
 		rc, err := f.Open()
 		if err != nil {
-			_ = out.Close()
+			out.Close() //nolint:errcheck // output file close on error path
 			return err
 		}
 		_, copyErr := io.Copy(out, rc)
-		_ = rc.Close()
+		rc.Close() //nolint:errcheck // reader close
 		if closeErr := out.Close(); closeErr != nil && copyErr == nil {
 			copyErr = closeErr
 		}

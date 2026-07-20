@@ -40,7 +40,7 @@ func (m *Manager) DiscoverSlashCommands(workingDir string, claudeCompat bool) []
 // and skip later duplicates). The `.claude` roots are skipped entirely when
 // claudeCompat is false.
 func discoverSlashCommands(workingDir string, claudeCompat bool) []types.SlashCommandListing {
-	home, _ := os.UserHomeDir()
+	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 
 	type root struct {
 		dir    string

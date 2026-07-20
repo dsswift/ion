@@ -67,7 +67,7 @@ func WithTouchedPathSink(ctx context.Context, s *TouchedPathSink) context.Contex
 // none is installed. The sink's methods are nil-safe, so callers can use the
 // result directly.
 func TouchedPathSinkFrom(ctx context.Context) *TouchedPathSink {
-	s, _ := ctx.Value(touchedPathSinkKey{}).(*TouchedPathSink)
+	s, _ := ctx.Value(touchedPathSinkKey{}).(*TouchedPathSink) //nolint:errcheck // best-effort; failure not actionable here
 	return s
 }
 

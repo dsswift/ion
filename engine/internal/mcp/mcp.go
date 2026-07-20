@@ -284,7 +284,7 @@ func (c *Connection) initialize() error {
 		JSONRPC: "2.0",
 		Method:  "notifications/initialized",
 	}
-	data, _ := json.Marshal(notif)
+	data, _ := json.Marshal(notif) //nolint:errcheck // marshal of a local struct
 	return c.transport.Send(data)
 }
 
@@ -584,11 +584,11 @@ func (t *stdioTransport) Receive() (json.RawMessage, error) {
 }
 
 func (t *stdioTransport) Close() error {
-	_ = t.stdin.Close()
-	_ = t.cmd.Process.Kill()
+	t.stdin.Close()      //nolint:errcheck // resource close
+	t.cmd.Process.Kill() //nolint:errcheck // process teardown
 	// Wait reaps the child process to prevent zombies. The error from Wait is
 	// always non-nil after Kill, so we ignore it.
-	_ = t.cmd.Wait()
+	t.cmd.Wait() //nolint:errcheck // process teardown
 	return nil
 }
 
@@ -672,7 +672,7 @@ func (t *sseTransport) readEventStream() {
 		utils.LogWithFields(utils.LevelError, "mcp.sse", "event stream connect failed", map[string]any{"serverName": t.serverName, "url": t.baseURL, "error": err.Error()})
 		return
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // resource close
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		// A non-2xx status (401/403/500) returns a body with no `data:` lines;
@@ -728,10 +728,10 @@ func (t *sseTransport) Send(msg json.RawMessage) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // resource close
 
 	if resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort read of error-response body
 		return fmt.Errorf("SSE send error (status %d): %s", resp.StatusCode, string(body))
 	}
 

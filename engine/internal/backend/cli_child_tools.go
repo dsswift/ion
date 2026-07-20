@@ -108,10 +108,10 @@ func BuildDelegatedChildToolServer(child RunBackend, sessionID string, cfg *RunC
 		spawner := cfg.AgentSpawner
 		cwd := opts.ProjectPath
 		ts.RegisterTool("ion_agent", func(input map[string]interface{}) (*types.ToolResult, error) {
-			prompt, _ := input["prompt"].(string)
-			name, _ := input["name"].(string)
-			description, _ := input["description"].(string)
-			model, _ := input["model"].(string)
+			prompt, _ := input["prompt"].(string)           //nolint:errcheck // missing arg -> empty string, validated below
+			name, _ := input["name"].(string)               //nolint:errcheck // missing arg -> empty string
+			description, _ := input["description"].(string) //nolint:errcheck // missing arg -> empty string
+			model, _ := input["model"].(string)             //nolint:errcheck // missing arg -> empty string
 			if prompt == "" {
 				return &types.ToolResult{Content: "error: prompt is required", IsError: true}, nil
 			}

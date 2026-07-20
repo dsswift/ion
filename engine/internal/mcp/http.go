@@ -97,7 +97,7 @@ func (t *httpTransport) Send(msg json.RawMessage) error {
 	}
 
 	if resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort read of error-response body
 		return fmt.Errorf("HTTP error (status %d): %s", resp.StatusCode, string(body))
 	}
 
@@ -145,7 +145,7 @@ func (t *httpTransport) Close() error {
 				}
 				resp, err := t.client.Do(req)
 				if err == nil {
-					_ = resp.Body.Close()
+					resp.Body.Close() //nolint:errcheck // resource close
 				}
 			}
 		}

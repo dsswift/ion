@@ -176,7 +176,7 @@ func (m *Manager) respawnDeadExtensions(key string) {
 
 		// Fire extension_respawned on the new instance so the harness
 		// can rebuild caches.
-		_ = h.SDK().FireExtensionRespawned(ctx, extension.ExtensionRespawnedInfo{
+		h.SDK().FireExtensionRespawned(ctx, extension.ExtensionRespawnedInfo{ //nolint:errcheck // errors logged internally by fireVoid/s.fire
 			AttemptNumber: attempt,
 			PrevExitCode:  prevExitCode,
 			PrevSignal:    prevSignal,
@@ -186,7 +186,7 @@ func (m *Manager) respawnDeadExtensions(key string) {
 		// turn lifecycle was interrupted. The harness can use this to
 		// reset per-turn state it was tracking.
 		if hadTurnInFlight {
-			_ = h.SDK().FireTurnAborted(ctx, extension.TurnAbortedInfo{Reason: "extension_died"})
+			h.SDK().FireTurnAborted(ctx, extension.TurnAbortedInfo{Reason: "extension_died"}) //nolint:errcheck // errors logged internally by fireVoid/s.fire
 		}
 
 		// Notify peers that the sibling came back.
@@ -244,7 +244,7 @@ func (m *Manager) firePeerExtensionDied(key string, dead *extension.Host, exitCo
 		if h == dead || h.Dead() {
 			continue
 		}
-		_ = h.SDK().FirePeerExtensionDied(ctx, info)
+		h.SDK().FirePeerExtensionDied(ctx, info) //nolint:errcheck // errors logged internally by fireVoid/s.fire
 	}
 }
 
@@ -269,6 +269,6 @@ func (m *Manager) firePeerExtensionRespawned(key string, respawned *extension.Ho
 		if h == respawned || h.Dead() {
 			continue
 		}
-		_ = h.SDK().FirePeerExtensionRespawned(ctx, info)
+		h.SDK().FirePeerExtensionRespawned(ctx, info) //nolint:errcheck // errors logged internally by fireVoid/s.fire
 	}
 }

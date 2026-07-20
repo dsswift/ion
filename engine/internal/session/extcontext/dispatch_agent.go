@@ -227,7 +227,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 							Registry:   registry,
 							SuspendFn:  suspendFn,
 						})
-						result, _ := childExtHost.FireToolCall(tcCtx, extension.ToolCallInfo{
+						result, _ := childExtHost.FireToolCall(tcCtx, extension.ToolCallInfo{ //nolint:errcheck // best-effort; failure not actionable here
 							ToolName: info.ToolName,
 							ToolID:   info.ToolID,
 							Input:    info.Input,
@@ -768,7 +768,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 					// Append only if the early SessionInitEvent path (above) did
 					// not already record this id, so conversationIds carries no
 					// duplicate when the id was captured at dispatch start.
-					existing, _ := state.Metadata["conversationIds"].([]interface{})
+					existing, _ := state.Metadata["conversationIds"].([]interface{}) //nolint:errcheck // best-effort; failure not actionable here
 					alreadyPresent := false
 					for _, v := range existing {
 						if s, ok := v.(string); ok && s == childSessionID {

@@ -43,7 +43,7 @@ func (h *Host) handleDeclareResource(id int64, raw []byte) {
 	}
 
 	utils.LogWithFields(utils.LevelInfo, "extension", "ext/declare_resource: registered", map[string]any{"model": h.name, "kind": req.Params.Kind})
-	resp, _ := json.Marshal(struct {
+	resp, _ := json.Marshal(struct { //nolint:errcheck // marshal of a local anonymous struct
 		OK   bool   `json:"ok"`
 		Kind string `json:"kind"`
 	}{OK: true, Kind: req.Params.Kind})
@@ -89,7 +89,7 @@ func (h *Host) handlePublishResource(id int64, raw []byte) {
 	}
 
 	utils.LogWithFields(utils.LevelDebug, "extension", "ext/publish_resource: published", map[string]any{"model": h.name, "kind": req.Params.Kind, "op": req.Params.Op})
-	resp, _ := json.Marshal(struct {
+	resp, _ := json.Marshal(struct { //nolint:errcheck // marshal of a local anonymous struct
 		OK bool `json:"ok"`
 	}{OK: true})
 	h.sendResponse(id, resp, nil)

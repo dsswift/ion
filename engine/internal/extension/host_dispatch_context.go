@@ -97,6 +97,6 @@ func (h *Host) handleWalkContextFiles(id int64, raw []byte) {
 		return
 	}
 	files := walkContextFilesForExtension(req.Params)
-	data, _ := json.Marshal(files)
+	data, _ := json.Marshal(files) //nolint:errcheck // marshal of a local slice
 	h.sendResponse(id, json.RawMessage(data), nil)
 }

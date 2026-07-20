@@ -14,7 +14,6 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-
 // transpileTS bundles a TypeScript file to JavaScript using the esbuild CLI.
 // Returns the path to the bundled .mjs file. The output lands in a
 // `.ion-build/` directory inside the extension's own folder so Node's ESM
@@ -34,7 +33,7 @@ func (h *Host) transpileTS(tsPath string, manifest *Manifest) (string, error) {
 	// version control. Best-effort; ignore errors.
 	gitignore := filepath.Join(buildDir, ".gitignore")
 	if _, err := os.Stat(gitignore); os.IsNotExist(err) {
-		_ = os.WriteFile(gitignore, []byte("*\n"), 0644)
+		_ = os.WriteFile(gitignore, []byte("*\n"), 0644) //nolint:errcheck // best-effort .gitignore for build artifacts; comment above documents intent
 	}
 	// Output as .mjs so Node treats the bundle as ESM regardless of any
 	// package.json `type` field nearby. ESM is required for top-level
@@ -193,8 +192,8 @@ func (h *Host) parseInitResult(raw json.RawMessage) {
 		// the host's pending-init buffer and the session manager
 		// commits them after wiring the lifecycle-hook callback so
 		// init-time vetoes can fire correctly.
-		Webhooks  []WebhookRoute             `json:"webhooks,omitempty"`
-		Schedules []ScheduleJob              `json:"schedules,omitempty"`
+		Webhooks  []WebhookRoute `json:"webhooks,omitempty"`
+		Schedules []ScheduleJob  `json:"schedules,omitempty"`
 		// Resource kinds declared at init time (optional). The session
 		// wires them into the broker after the extension is fully loaded.
 		Resources []types.ResourceDeclaration `json:"resources,omitempty"`
@@ -239,7 +238,7 @@ func (h *Host) parseInitResult(raw json.RawMessage) {
 				if err := json.Unmarshal(raw, &content); err != nil {
 					return &types.ToolResult{Content: string(raw)}, nil
 				}
-				formatted, _ := json.MarshalIndent(content, "", "  ")
+				formatted, _ := json.MarshalIndent(content, "", "  ") //nolint:errcheck // pretty-printing an already-unmarshaled value; re-marshal cannot fail
 				return &types.ToolResult{Content: string(formatted)}, nil
 			},
 		})

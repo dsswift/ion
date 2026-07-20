@@ -116,7 +116,7 @@ func (m *Manager) rehydrateDispatchState(s *engineSession, key string) *conversa
 			}
 
 			// Merge conversationIds: union old + new, preserving order, no duplicates.
-			existingIDs, _ := existing.Metadata["conversationIds"].([]interface{})
+			existingIDs, _ := existing.Metadata["conversationIds"].([]interface{}) //nolint:errcheck // best-effort; failure not actionable here
 			seen := make(map[string]bool, len(existingIDs))
 			for _, id := range existingIDs {
 				if s, ok := id.(string); ok {
@@ -143,7 +143,7 @@ func (m *Manager) rehydrateDispatchState(s *engineSession, key string) *conversa
 			// carries a full dispatches array, union it with whatever the slot
 			// already holds (it has startTime, elapsed, etc.). Otherwise fall
 			// back to unioning the bare dispatchEntry.
-			existingDispatches, _ := existing.Metadata["dispatches"].([]interface{})
+			existingDispatches, _ := existing.Metadata["dispatches"].([]interface{}) //nolint:errcheck // best-effort; failure not actionable here
 			if len(d.Dispatches) > 0 {
 				existing.Metadata["dispatches"] = dedupDispatchesByID(existingDispatches, d.Dispatches)
 			} else {
@@ -238,15 +238,15 @@ func (m *Manager) persistTerminalDispatches(key, convID string) {
 		}
 		// Only persist entries with dispatch metadata (task field).
 		// Extension-only roster entries (idle, no task) are skipped.
-		task, _ := meta["task"].(string)
+		task, _ := meta["task"].(string) //nolint:errcheck // best-effort; failure not actionable here
 		if task == "" {
 			continue
 		}
 
-		displayName, _ := meta["displayName"].(string)
-		model, _ := meta["model"].(string)
-		elapsed, _ := meta["elapsed"].(float64)
-		childConvID, _ := meta["conversationId"].(string)
+		displayName, _ := meta["displayName"].(string)    //nolint:errcheck // best-effort; failure not actionable here
+		model, _ := meta["model"].(string)                //nolint:errcheck // best-effort; failure not actionable here
+		elapsed, _ := meta["elapsed"].(float64)           //nolint:errcheck // best-effort; failure not actionable here
+		childConvID, _ := meta["conversationId"].(string) //nolint:errcheck // best-effort; failure not actionable here
 
 		// Dispatch depth and parent id follow the same read-from-meta pattern
 		// as conversationId above. dispatchDepth arrives as int when set by
@@ -255,7 +255,7 @@ func (m *Manager) persistTerminalDispatches(key, convID string) {
 		// both. dispatchParentId is always a string. Persisting these lets the
 		// depth/parent attribution survive an engine restart.
 		dispatchDepth := metaInt(meta, "dispatchDepth")
-		dispatchParentID, _ := meta["dispatchParentId"].(string)
+		dispatchParentID, _ := meta["dispatchParentId"].(string) //nolint:errcheck // best-effort; failure not actionable here
 
 		// Build the structured dispatches array, de-duplicating by each
 		// entry's stable "id". A grouped MergedSnapshot row can carry the same

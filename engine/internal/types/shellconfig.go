@@ -97,7 +97,7 @@ func WithShellConfig(ctx context.Context, s *ShellConfig) context.Context {
 // is set; the Resolve accessor is nil-safe, so callers can use the result
 // directly.
 func ShellConfigFrom(ctx context.Context) *ShellConfig {
-	s, _ := ctx.Value(shellConfigKey{}).(*ShellConfig)
+	s, _ := ctx.Value(shellConfigKey{}).(*ShellConfig) //nolint:errcheck // best-effort; failure not actionable here
 	return s
 }
 

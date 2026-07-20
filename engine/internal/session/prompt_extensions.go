@@ -112,7 +112,7 @@ func (m *Manager) lateLoadExtensions(s *engineSession, key string, overrides *Pr
 		}
 	}
 	ctx := m.newExtContext(s, key)
-	_ = group.FireSessionStart(ctx)
+	group.FireSessionStart(ctx) //nolint:errcheck // errors logged internally by fireVoid/s.fire
 }
 
 // fireBeforeAgentStart fires before_agent_start for primary system prompt injection.
@@ -123,7 +123,7 @@ func (m *Manager) fireBeforeAgentStart(s *engineSession, key string, extGroup *e
 	}
 	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: firing before_agent_start", map[string]any{"key": key})
 	basCtx := m.newExtContext(s, key)
-	agentSysPrompt, _, _ := extGroup.FireBeforeAgentStart(basCtx, extension.AgentInfo{IsRoot: true})
+	agentSysPrompt, _, _ := extGroup.FireBeforeAgentStart(basCtx, extension.AgentInfo{IsRoot: true}) //nolint:errcheck // errors logged internally by fireVoid/s.fire
 	if agentSysPrompt != "" {
 		opts.AppendSystemPrompt += "\n\n" + agentSysPrompt
 		utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: before_agent_start injected chars", map[string]any{"key": key, "count": len(agentSysPrompt)})
@@ -177,7 +177,7 @@ func (m *Manager) fireModelSelect(s *engineSession, key string, extGroup *extens
 	}
 	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: firing model_select ()", map[string]any{"key": key, "model": opts.Model})
 	msCtx := m.newExtContext(s, key)
-	if overridden, _ := extGroup.FireModelSelect(msCtx, extension.ModelSelectInfo{
+	if overridden, _ := extGroup.FireModelSelect(msCtx, extension.ModelSelectInfo{ //nolint:errcheck // errors logged internally by fireVoid/s.fire
 		RequestedModel: opts.Model,
 		Prompt:         opts.Prompt,
 	}); overridden != "" {

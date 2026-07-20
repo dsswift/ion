@@ -38,7 +38,7 @@ func MigrateConversation(raw map[string]any) (*Conversation, error) {
 		raw["version"] = float64(1)
 	}
 
-	version, _ := raw["version"].(float64)
+	version, _ := raw["version"].(float64) //nolint:errcheck // missing/non-number version -> 0, handled below
 
 	// v1 -> v2: convert flat messages to tree entries
 	if version < 2 {
@@ -363,26 +363,26 @@ func writeFileSynced(path string, data []byte) error {
 		return err
 	}
 	if _, err := f.Write(data); err != nil {
-		_ = f.Close()
-		_ = os.Remove(tmp)
+		f.Close()      //nolint:errcheck // close after write error; the write error is already returned
+		os.Remove(tmp) //nolint:errcheck // temp cleanup
 		return err
 	}
 	if err := f.Sync(); err != nil {
-		_ = f.Close()
-		_ = os.Remove(tmp)
+		f.Close()      //nolint:errcheck // close after write error; the write error is already returned
+		os.Remove(tmp) //nolint:errcheck // temp cleanup
 		return err
 	}
 	if err := f.Close(); err != nil {
-		_ = os.Remove(tmp)
+		os.Remove(tmp) //nolint:errcheck // temp cleanup
 		return err
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
+		os.Remove(tmp) //nolint:errcheck // temp cleanup
 		return err
 	}
 	if dir, err := os.Open(filepath.Dir(path)); err == nil {
-		_ = dir.Sync()
-		_ = dir.Close()
+		dir.Sync()  //nolint:errcheck // best-effort directory fsync
+		dir.Close() //nolint:errcheck // directory handle close
 	}
 	return nil
 }
@@ -404,7 +404,7 @@ func LoadLlmHeaderModel(id, dir string) (string, error) {
 		}
 		return "", fmt.Errorf("open llm file %s: %w", llmPath, err)
 	}
-	defer func() { _ = f.Close() }()
+	defer func() { f.Close() }() //nolint:errcheck // read-only file close
 
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 64*1024), maxScanTokenSize)
@@ -617,15 +617,15 @@ func loadSplit(id, llmPath, treePath string) (*Conversation, error) {
 	// --- Merge into Conversation ---
 	conv := &Conversation{
 		// Header fields from .llm.jsonl (canonical metadata source)
-		ID:                      jsonString(llmHeader, "id"),
-		System:                  jsonString(llmHeader, "system"),
-		Model:                   jsonString(llmHeader, "model"),
-		TotalInputTokens:        int(jsonFloat(llmHeader, "totalInputTokens", 0)),
-		TotalOutputTokens:       int(jsonFloat(llmHeader, "totalOutputTokens", 0)),
-		TotalCost:               jsonFloat(llmHeader, "totalCost", 0),
-		CreatedAt:               int64(jsonFloat(llmHeader, "createdAt", float64(nowMillis()))),
-		Version:                 int(jsonFloat(llmHeader, "version", 2)),
-		ParentID:                jsonString(llmHeader, "parentId"),
+		ID:                jsonString(llmHeader, "id"),
+		System:            jsonString(llmHeader, "system"),
+		Model:             jsonString(llmHeader, "model"),
+		TotalInputTokens:  int(jsonFloat(llmHeader, "totalInputTokens", 0)),
+		TotalOutputTokens: int(jsonFloat(llmHeader, "totalOutputTokens", 0)),
+		TotalCost:         jsonFloat(llmHeader, "totalCost", 0),
+		CreatedAt:         int64(jsonFloat(llmHeader, "createdAt", float64(nowMillis()))),
+		Version:           int(jsonFloat(llmHeader, "version", 2)),
+		ParentID:          jsonString(llmHeader, "parentId"),
 		// Backend discriminator (additive). Legacy headers without the field
 		// decode "" — treated as api by consumers.
 		Backend: jsonString(llmHeader, "backend"),
@@ -707,17 +707,17 @@ func loadFromJSONL(data []byte) (*Conversation, error) {
 	}
 
 	conv := &Conversation{
-		ID:                      jsonString(header, "id"),
-		System:                  jsonString(header, "system"),
-		Model:                   jsonString(header, "model"),
-		Messages:                []types.LlmMessage{},
-		TotalInputTokens:        int(jsonFloat(header, "totalInputTokens", 0)),
-		TotalOutputTokens:       int(jsonFloat(header, "totalOutputTokens", 0)),
-		TotalCost:               jsonFloat(header, "totalCost", 0),
-		CreatedAt:               int64(jsonFloat(header, "createdAt", float64(nowMillis()))),
-		Version:                 int(jsonFloat(header, "version", 2)),
-		ParentID:                jsonString(header, "parentId"),
-		Entries:                 entries,
+		ID:                jsonString(header, "id"),
+		System:            jsonString(header, "system"),
+		Model:             jsonString(header, "model"),
+		Messages:          []types.LlmMessage{},
+		TotalInputTokens:  int(jsonFloat(header, "totalInputTokens", 0)),
+		TotalOutputTokens: int(jsonFloat(header, "totalOutputTokens", 0)),
+		TotalCost:         jsonFloat(header, "totalCost", 0),
+		CreatedAt:         int64(jsonFloat(header, "createdAt", float64(nowMillis()))),
+		Version:           int(jsonFloat(header, "version", 2)),
+		ParentID:          jsonString(header, "parentId"),
+		Entries:           entries,
 	}
 
 	if leafID, ok := header["leafId"].(string); ok {

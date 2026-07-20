@@ -43,11 +43,11 @@ func (h *Host) disposeInternal() {
 
 	h.mu.Lock()
 	if h.stdin != nil {
-		_ = h.stdin.Close()
+		_ = h.stdin.Close() //nolint:errcheck // best-effort dispose teardown
 		h.stdin = nil
 	}
 	if h.process != nil {
-		_ = h.process.Kill()
+		_ = h.process.Kill() //nolint:errcheck // best-effort dispose teardown
 		h.process = nil
 	}
 	cmd := h.cmd
@@ -90,11 +90,11 @@ func (h *Host) disposeInternal() {
 				})
 			}
 		} else {
-			_ = cmd.Wait()
+			_ = cmd.Wait() //nolint:errcheck // best-effort dispose teardown
 		}
 	}
 	for _, f := range tempFiles {
-		_ = os.Remove(f)
+		_ = os.Remove(f) //nolint:errcheck // best-effort temp-file cleanup during dispose
 	}
 
 	// Wait for the reader goroutine to exit. Must be outside h.mu — the

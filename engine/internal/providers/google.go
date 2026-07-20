@@ -131,7 +131,7 @@ func (p *googleProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort read of an error-response body
 		return classifyGeminiError(resp.StatusCode, string(respBody))
 	}
 
@@ -230,7 +230,7 @@ func (p *googleProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 				}); err != nil {
 					return err
 				}
-				argsJSON, _ := json.Marshal(part.FunctionCall.Args)
+				argsJSON, _ := json.Marshal(part.FunctionCall.Args) //nolint:errcheck // marshal of a local struct
 				if err := sendEvent(ctx, events, types.LlmStreamEvent{
 					Type:       "content_block_delta",
 					BlockIndex: contentIndex,

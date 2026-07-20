@@ -14,11 +14,11 @@ import (
 func ensureServer(sock string) bool {
 	conn, err := net.DialTimeout(dialNetwork(), sock, 500*time.Millisecond)
 	if err == nil {
-		_ = conn.Close()
+		conn.Close() //nolint:errcheck // best-effort close of the liveness-probe conn
 		return false
 	}
 
-	exe, _ := os.Executable()
+	exe, _ := os.Executable() //nolint:errcheck // empty exe path surfaces as a cmd.Start error below
 	cmd := exec.Command(exe, "serve")
 	cmd.Stdout = nil
 	cmd.Stderr = nil
@@ -27,13 +27,13 @@ func ensureServer(sock string) bool {
 		fmt.Fprintf(os.Stderr, "Error: cannot start engine: %s\n", err)
 		os.Exit(1)
 	}
-	_ = cmd.Process.Release()
+	cmd.Process.Release() //nolint:errcheck // best-effort release of the detached engine process handle
 
 	for i := 0; i < 50; i++ {
 		time.Sleep(100 * time.Millisecond)
 		c, err := net.DialTimeout(dialNetwork(), sock, 200*time.Millisecond)
 		if err == nil {
-			_ = c.Close()
+			c.Close() //nolint:errcheck // best-effort close of the liveness-probe conn
 			return true
 		}
 	}

@@ -56,14 +56,14 @@ func encodingForModel(model string) (string, bool) {
 // getEncoder returns a cached tiktoken encoder for the given encoding name.
 func getEncoder(encodingName string) (*tiktoken.Tiktoken, error) {
 	if v, ok := encoderCache.Load(encodingName); ok {
-		return v.(*tiktoken.Tiktoken), nil
+		return v.(*tiktoken.Tiktoken), nil //nolint:errcheck // best-effort; failure not actionable here
 	}
 	enc, err := tiktoken.GetEncoding(encodingName)
 	if err != nil {
 		return nil, fmt.Errorf("load encoding %q: %w", encodingName, err)
 	}
 	actual, _ := encoderCache.LoadOrStore(encodingName, enc)
-	return actual.(*tiktoken.Tiktoken), nil
+	return actual.(*tiktoken.Tiktoken), nil //nolint:errcheck // best-effort; failure not actionable here
 }
 
 // LocalTokenCount counts tokens using the local BPE encoder for model.

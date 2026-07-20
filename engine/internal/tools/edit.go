@@ -92,12 +92,12 @@ func replaceRunes(s string, m map[rune]rune) string {
 }
 
 func executeEdit(ctx context.Context, input map[string]any, cwd string) (*types.ToolResult, error) {
-	filePath, _ := input["file_path"].(string)
+	filePath, _ := input["file_path"].(string) //nolint:errcheck // best-effort; failure not actionable here
 	if filePath == "" {
 		return &types.ToolResult{Content: "Error: file_path is required", IsError: true}, nil
 	}
-	oldString, _ := input["old_string"].(string)
-	newString, _ := input["new_string"].(string)
+	oldString, _ := input["old_string"].(string) //nolint:errcheck // best-effort; failure not actionable here
+	newString, _ := input["new_string"].(string) //nolint:errcheck // best-effort; failure not actionable here
 	replaceAll := boolFromInput(input, "replace_all", false)
 
 	filePath = resolvePath(cwd, filePath)

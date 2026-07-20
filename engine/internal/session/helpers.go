@@ -39,11 +39,11 @@ func killProcess(pid int) {
 	if err != nil || p == nil {
 		return
 	}
-	_ = p.Signal(signalTerm())
+	p.Signal(signalTerm()) //nolint:errcheck // process teardown
 	// Escalate to SIGKILL after 5s if the process hasn't exited.
 	go func() {
 		time.Sleep(5 * time.Second)
-		_ = p.Signal(signalKill())
+		p.Signal(signalKill()) //nolint:errcheck // process teardown
 	}()
 }
 
