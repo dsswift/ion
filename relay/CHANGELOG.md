@@ -10,6 +10,8 @@ clients to Ion Engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.5.1](https://github.com/dsswift/ion/compare/relay-v1.5.0...relay-v1.5.1) (2026-07-20)
+
 ## [1.5.0](https://github.com/dsswift/ion/compare/relay-v1.4.2...relay-v1.5.0) (2026-07-17)
 
 ### Features
