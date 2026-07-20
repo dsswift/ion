@@ -216,8 +216,7 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 		memoryDisabled := m.config != nil && m.config.Compaction != nil &&
 			m.config.Compaction.MemoryEnabled != nil && !*m.config.Compaction.MemoryEnabled
 		if !memoryDisabled {
-			home, _ := os.UserHomeDir()
-			convDir := filepath.Join(home, ".ion", "conversations")
+			convDir := conversation.DefaultConversationsDir()
 			sm := NewSessionMemory(s.conversationID, convDir, nil)
 			if sm.LoadMemory() {
 				utils.LogWithFields(utils.LevelInfo, "session", "startsession: loaded session memory for", map[string]any{"key": key, "run_id": s.conversationID})

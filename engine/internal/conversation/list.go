@@ -23,11 +23,7 @@ import (
 // purposes. The legacy file will be removed on the next Save.
 func ListStored(dir string, limit int) ([]types.StoredSessionInfo, error) {
 	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return nil, err
-		}
-		dir = filepath.Join(home, ".ion", "conversations")
+		dir = DefaultConversationsDir()
 	}
 	if limit <= 0 {
 		limit = 50

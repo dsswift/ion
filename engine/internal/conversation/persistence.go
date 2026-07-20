@@ -147,11 +147,7 @@ func rehydrateEntries(conv *Conversation) error {
 // still handled gracefully.
 func Save(conv *Conversation, dir string) error {
 	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return err
-		}
-		dir = filepath.Join(home, ".ion", "conversations")
+		dir = DefaultConversationsDir()
 	}
 
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -397,11 +393,7 @@ func writeFileSynced(path string, data []byte) error {
 // conversations).
 func LoadLlmHeaderModel(id, dir string) (string, error) {
 	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		dir = filepath.Join(home, ".ion", "conversations")
+		dir = DefaultConversationsDir()
 	}
 
 	llmPath := filepath.Join(dir, id+".llm.jsonl")
@@ -455,11 +447,7 @@ func LoadLlmHeaderModel(id, dir string) (string, error) {
 // probe. The orphan is overwritten on the next Save.
 func Load(id, dir string) (*Conversation, error) {
 	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return nil, err
-		}
-		dir = filepath.Join(home, ".ion", "conversations")
+		dir = DefaultConversationsDir()
 	}
 
 	llmPath := filepath.Join(dir, id+".llm.jsonl")
@@ -528,11 +516,7 @@ func Exists(id, dir string) bool {
 		return false
 	}
 	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return false
-		}
-		dir = filepath.Join(home, ".ion", "conversations")
+		dir = DefaultConversationsDir()
 	}
 
 	// Probe 1: new split format — both files must exist (matches Load's

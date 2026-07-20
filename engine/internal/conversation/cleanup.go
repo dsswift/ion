@@ -20,11 +20,7 @@ import (
 // of the client-supplied excludeIDs.
 func CleanupStored(dir string, maxAgeDays int, excludeIDs []string, activeSessionIDs []string, dryRun bool) (int, error) {
 	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return 0, err
-		}
-		dir = filepath.Join(home, ".ion", "conversations")
+		dir = DefaultConversationsDir()
 	}
 
 	cutoff := time.Now().AddDate(0, 0, -maxAgeDays)
