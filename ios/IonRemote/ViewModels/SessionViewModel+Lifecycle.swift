@@ -1,8 +1,5 @@
 import Foundation
 import CryptoKit
-import os
-
-private let ionLog = Logger(subsystem: "com.sprague.ion.mobile", category: "lifecycle")
 
 // MARK: - Lifecycle
 
@@ -14,7 +11,6 @@ extension SessionViewModel {
         tearDownTransport()
 
         guard let device = activeDevice else {
-            ionLog.warning("connect: no paired devices")
             DiagnosticLog.log("CONNECT: no paired devices")
             return
         }
@@ -29,7 +25,6 @@ extension SessionViewModel {
            let url = URL(string: effectiveRelayURL),
            let host = url.host(percentEncoded: false),
            let port = url.port {
-            ionLog.info("connect: device=\(device.name) via LAN-only (\(host):\(port))")
             DiagnosticLog.log("connect lan-direct", tag: "session.lifecycle", fields: [
                 "reason": device.name,
                 "path": "\(host):\(port)",
@@ -43,7 +38,6 @@ extension SessionViewModel {
         let sharedKey = SymmetricKey(data: device.sharedSecret)
         let channelId = E2ECrypto.deriveChannelId(sharedSecret: sharedKey)
 
-        ionLog.info("connect: device=\(device.name) relayURL=\(effectiveRelayURL) channelId=\(channelId.prefix(8))...")
         DiagnosticLog.log("connect relay", tag: "session.lifecycle", fields: [
             "reason": device.name,
             "path": effectiveRelayURL,
@@ -52,7 +46,9 @@ extension SessionViewModel {
 
         guard !effectiveRelayURL.isEmpty,
               let url = URL(string: effectiveRelayURL) else {
-            ionLog.error("connect: invalid or empty relay URL for device=\(device.name) apiKey=\(effectiveAPIKey), aborting")
+            DiagnosticLog.log("connect aborted: invalid or empty relay URL", tag: "lifecycle", level: .error, fields: [
+                "device": device.name,
+            ])
             return
         }
 
@@ -82,7 +78,6 @@ extension SessionViewModel {
 
         guard let device = activeDevice else { return }
 
-        ionLog.info("connectLAN: device=\(device.name) host=\(host):\(port)")
         DiagnosticLog.log("lan connect", tag: "session.lifecycle", fields: [
             "reason": device.name,
             "path": "\(host):\(port)",
@@ -122,7 +117,6 @@ extension SessionViewModel {
 
             switch outcome {
             case .success:
-                ionLog.info("connectLAN: auth succeeded for \(device.name)")
                 DiagnosticLog.log("lan connect auth ok", tag: "session.lifecycle", fields: [
                     "reason": device.name
                 ])
@@ -131,7 +125,6 @@ extension SessionViewModel {
                     self.send(.sync, intent: .automaticEssential)
                 }
             case .rejected:
-                ionLog.error("connectLAN: auth REJECTED for \(device.name)")
                 DiagnosticLog.log("lan connect auth rejected", tag: "session.lifecycle", level: .warn, fields: [
                     "reason": device.name
                 ])
@@ -147,7 +140,6 @@ extension SessionViewModel {
                 // bounce the user to the pairing screen over a valid pairing.
                 // Tear down and let the reconnect machinery (safety timer +
                 // disconnected-view auto-retry) keep trying.
-                ionLog.warning("connectLAN: transient auth failure for \(device.name), deferring to reconnect")
                 DiagnosticLog.log("lan connect transient, deferring to reconnect", tag: "session.lifecycle", level: .warn, fields: [
                     "reason": device.name,
                     "count": String(attempt)
@@ -174,7 +166,6 @@ extension SessionViewModel {
         let effectiveRelayURL = device.relayURL ?? relayURL
         let effectiveAPIKey = device.relayAPIKey ?? relayAPIKey
 
-        ionLog.info("softReconnect: device=\(device.name) apiKey=\(effectiveAPIKey) relayURL=\(effectiveRelayURL)")
         DiagnosticLog.log("soft reconnect", tag: "session.lifecycle", fields: [
             "reason": device.name,
             "count": String(effectiveAPIKey.prefix(8)),
@@ -262,7 +253,6 @@ extension SessionViewModel {
         guard id != activeDevice?.id else { return }
         let fromName = activeDevice?.name ?? "nil"
         let toName = pairedDevices.first(where: { $0.id == id })?.name ?? "unknown"
-        ionLog.info("switchToDevice: \(id)")
         DiagnosticLog.log("switch device", tag: "session.lifecycle", fields: [
             "reason": fromName,
             "status": toName,

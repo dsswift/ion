@@ -28,12 +28,12 @@ export function registerWorktreeIpc(): void {
       const removeArgs = ['worktree', 'remove', worktreePath]
       if (force) removeArgs.push('--force')
       await runGit(repoPath, removeArgs)
-      try { await runGit(repoPath, ['branch', '-D', branchName]) } catch {}
+      try { await runGit(repoPath, ['branch', '-D', branchName]) } catch { /* silent-ok: best-effort branch delete; worktree already removed */ }
       try {
         const parent = join(worktreePath, '..')
         const entries = readdirSync(parent)
         if (entries.length === 0) rmSync(parent, { recursive: true })
-      } catch {}
+      } catch { /* silent-ok: best-effort removal of the now-empty worktree parent dir */ }
       return { ok: true }
     } catch (err: any) {
       return { ok: false, error: err.message }
@@ -74,17 +74,17 @@ export function registerWorktreeIpc(): void {
       try {
         const ahead = await runGit(worktreePath, ['rev-list', '--count', `${sourceBranch}..HEAD`])
         aheadCount = parseInt(ahead.trim(), 10) || 0
-      } catch {}
+      } catch { /* silent-ok: no upstream/ref yet; ahead count stays 0 */ }
       try {
         const behind = await runGit(worktreePath, ['rev-list', '--count', `HEAD..${sourceBranch}`])
         behindCount = parseInt(behind.trim(), 10) || 0
-      } catch {}
+      } catch { /* silent-ok: no upstream/ref yet; behind count stays 0 */ }
 
       let isMerged = false
       try {
         await runGit(worktreePath, ['merge-base', '--is-ancestor', 'HEAD', sourceBranch])
         isMerged = true
-      } catch {}
+      } catch { /* silent-ok: non-zero exit means HEAD is not an ancestor; isMerged stays false */ }
 
       const status: WorktreeStatus = {
         hasUncommittedChanges,

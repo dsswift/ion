@@ -21,6 +21,7 @@ import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId } from '../session-store-helpers'
 import { commitInstance, activeInstance } from '../conversation-instance'
 import { conversationTailFingerprint } from '../../../shared/conversation-fingerprint'
+import { rError } from '../../rendererLogger'
 
 export function createEngineSubmitActions(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -34,7 +35,7 @@ export function createEngineSubmitActions(set: StoreSet, get: StoreGet): Partial
         dialogs.set(tabId, null)
         return { engineDialogs: dialogs }
       })
-      window.ion.engineDialogResponse(tabId, dialogId, value)
+      window.ion.engineDialogResponse(tabId, dialogId, value).catch((err) => rError('engine.submit', 'engineDialogResponse failed', { tab_id: tabId, dialog_id: dialogId, error: String(err) }))
     },
 
     addEngineSystemMessage: (tabId, content, planFilePath) => {

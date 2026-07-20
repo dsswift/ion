@@ -25,19 +25,19 @@ import (
 
 // claudeCodeRun tracks an active Claude CLI process.
 type claudeCodeRun struct {
-	requestID  string
-	cmd        *exec.Cmd
-	cancel     context.CancelFunc
-	stderr     *rpcstdio.RingBuffer
-	stdinPipe  io.WriteCloser
-	stdinMu    sync.Mutex
+	requestID string
+	cmd       *exec.Cmd
+	cancel    context.CancelFunc
+	stderr    *rpcstdio.RingBuffer
+	stdinPipe io.WriteCloser
+	stdinMu   sync.Mutex
 	// spawnedAt is set immediately after cmd.Start() succeeds and is used to
 	// compute elapsed time in diagnostic messages.
 	spawnedAt time.Time
 	// binaryPath is the resolved absolute path of the claude CLI binary, set
 	// alongside spawnedAt. Included in empty-stderr exit diagnostics so the
 	// operator can verify the binary that ran.
-	binaryPath string
+	binaryPath   string
 	planMode     bool
 	planFilePath string
 	// planCaptured latches once the native plan has been written to the plan
@@ -138,7 +138,7 @@ func (b *ClaudeCodeBackend) Cancel(requestID string) bool {
 
 	// Send SIGINT (graceful) on Unix, Kill directly on Windows
 	if runtime.GOOS == "windows" {
-		_ = proc.Kill()
+		proc.Kill() //nolint:errcheck // process teardown
 		run.cancel()
 		return true
 	}
@@ -147,7 +147,7 @@ func (b *ClaudeCodeBackend) Cancel(requestID string) bool {
 		utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "SIGINT failed, killing", map[string]any{
 			"error": utils.ErrStr(err),
 		})
-		_ = proc.Kill()
+		proc.Kill() //nolint:errcheck // process teardown after failed SIGINT
 		run.cancel()
 		return true
 	}
@@ -166,7 +166,7 @@ func (b *ClaudeCodeBackend) Cancel(requestID string) bool {
 			utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "process did not exit after SIGINT, sending SIGKILL", map[string]any{
 				"request_id": requestID,
 			})
-			_ = proc.Signal(syscall.SIGKILL)
+			proc.Signal(syscall.SIGKILL) //nolint:errcheck // force-kill on timeout
 			run.cancel()
 		}
 	}()
@@ -416,11 +416,17 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 		"type": "user",
 		"message": map[string]interface{}{
 			"role":    "user",
-			"content": buildCliUserContent(opts.Prompt, opts.Attachments),
+			"content": buildCliUserContent(opts.ConversationID, opts.Prompt, opts.Attachments),
 		},
 	}
-	if data, err := json.Marshal(initMsg); err == nil {
-		_, _ = stdinPipe.Write(append(data, '\n'))
+	if data, err := json.Marshal(initMsg); err != nil {
+		// Marshal failure means the CLI never receives the prompt and the run
+		// hangs forever with no event — this must not be silent.
+		utils.LogWithFields(utils.LevelError, "backend.claude_code", "initial prompt marshal failed", map[string]any{"request_id": run.requestID, "error": err.Error()})
+	} else if _, err := stdinPipe.Write(append(data, '\n')); err != nil {
+		// Write failure (broken pipe, subprocess died at spawn) also hangs the
+		// run silently. Log so the dead-on-arrival case is diagnosable.
+		utils.LogWithFields(utils.LevelError, "backend.claude_code", "initial prompt stdin write failed", map[string]any{"request_id": run.requestID, "error": err.Error()})
 	}
 
 	// Capture stderr in ring buffer
@@ -450,7 +456,7 @@ func (b *ClaudeCodeBackend) runProcess(ctx context.Context, run *claudeCodeRun, 
 		if json.Unmarshal(raw, &peek) == nil && peek.Type == "result" {
 			run.stdinMu.Lock()
 			if run.stdinPipe != nil {
-				_ = run.stdinPipe.Close()
+				run.stdinPipe.Close() //nolint:errcheck // closing stdin to signal EOF
 				run.stdinPipe = nil
 			}
 			run.stdinMu.Unlock()
@@ -589,7 +595,7 @@ func (b *ClaudeCodeBackend) removeRun(requestID string) {
 		// Ensure stdin pipe is closed on cleanup
 		run.stdinMu.Lock()
 		if run.stdinPipe != nil {
-			_ = run.stdinPipe.Close()
+			run.stdinPipe.Close() //nolint:errcheck // closing stdin to signal EOF
 			run.stdinPipe = nil
 		}
 		run.stdinMu.Unlock()

@@ -1,13 +1,17 @@
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
-import { log as _log } from '../../logger'
+import { log as _log, debug as _debug } from '../../logger'
 import { state } from '../../state'
 import { markReadPersisted, publishResourceMarkRead, publishResourceDelete } from '../../event-wiring-resources'
 import type { RemoteCommand } from '../protocol'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
+}
+
+function debug(msg: string, fields?: Record<string, unknown>): void {
+  _debug('main', msg, fields)
 }
 
 /**
@@ -45,7 +49,10 @@ export async function handleRequestResourceContent(
       })()
     `)
     content = typeof result === 'string' ? result : ''
-  } catch {
+  } catch (err) {
+    // Renderer probe failed; fall through to the disk fallback below, but log
+    // so the miss reason is not silent.
+    debug('request_resource_content: renderer probe failed', { error: String(err) })
     content = ''
   }
 
@@ -112,7 +119,11 @@ export async function handleMarkResourceRead(
         } catch(e) {}
       })()
     `)
-  } catch { /* non-fatal */ }
+  } catch (err) {
+    // Renderer store sync is non-fatal but must not be silent: a failure
+    // diverges the desktop tray from engine truth.
+    debug("resources: renderer store sync failed", { error: String(err) })
+  }
 }
 
 /**
@@ -150,5 +161,9 @@ export async function handleDeleteResource(
         } catch(e) {}
       })()
     `)
-  } catch { /* non-fatal */ }
+  } catch (err) {
+    // Renderer store sync is non-fatal but must not be silent: a failure
+    // diverges the desktop tray from engine truth.
+    debug("resources: renderer store sync failed", { error: String(err) })
+  }
 }

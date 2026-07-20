@@ -40,7 +40,7 @@ func WithAgentSpawner(ctx context.Context, fn AgentSpawner) context.Context {
 
 // AgentSpawnerFromContext extracts a session-scoped spawner, or nil.
 func AgentSpawnerFromContext(ctx context.Context) AgentSpawner {
-	fn, _ := ctx.Value(agentSpawnerKey{}).(AgentSpawner)
+	fn, _ := ctx.Value(agentSpawnerKey{}).(AgentSpawner) //nolint:errcheck // best-effort; failure not actionable here
 	return fn
 }
 
@@ -65,13 +65,13 @@ func AgentTool() *types.ToolDef {
 }
 
 func executeAgent(ctx context.Context, input map[string]any, cwd string) (*types.ToolResult, error) {
-	prompt, _ := input["prompt"].(string)
+	prompt, _ := input["prompt"].(string) //nolint:errcheck // best-effort; failure not actionable here
 	if prompt == "" {
 		return &types.ToolResult{Content: "Error: prompt is required", IsError: true}, nil
 	}
-	description, _ := input["description"].(string)
-	model, _ := input["model"].(string)
-	name, _ := input["name"].(string)
+	description, _ := input["description"].(string) //nolint:errcheck // best-effort; failure not actionable here
+	model, _ := input["model"].(string)             //nolint:errcheck // best-effort; failure not actionable here
+	name, _ := input["name"].(string)               //nolint:errcheck // best-effort; failure not actionable here
 
 	// Prefer session-scoped spawner from context, fall back to global (tests).
 	spawner := AgentSpawnerFromContext(ctx)

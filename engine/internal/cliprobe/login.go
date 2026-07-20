@@ -115,7 +115,9 @@ func loginCodex(ctx context.Context, emit LoginEmit) error {
 				return
 			}
 			var n codexrpc.LoginCompletedNotification
-			_ = json.Unmarshal(params, &n)
+			if err := json.Unmarshal(params, &n); err != nil {
+				utils.LogWithFields(utils.LevelWarn, "cliprobe", "login_completed notification decode failed", map[string]any{"error": utils.ErrStr(err)})
+			}
 			select {
 			case completed <- n:
 			default:
@@ -160,7 +162,7 @@ func loginCodex(ctx context.Context, emit LoginEmit) error {
 		emit(LoginStage{Stage: "failed", Error: n.Error, LoginID: n.LoginID})
 		return fmt.Errorf("codex login failed: %s", n.Error)
 	case <-ctx.Done():
-		_ = client.LoginCancel(context.Background(), start.LoginID)
+		client.LoginCancel(context.Background(), start.LoginID) //nolint:errcheck // best-effort cancel of an abandoned login
 		emit(LoginStage{Stage: "cancelled", LoginID: start.LoginID})
 		return ctx.Err()
 	}

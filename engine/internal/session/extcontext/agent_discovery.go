@@ -26,7 +26,7 @@ func BuildDiscoverAgentsFunc(sa SessionAccessor) func(extension.DiscoverAgentsOp
 		var dirs []string
 		sourceMap := make(map[string]string) // dir -> source label
 
-		home, _ := os.UserHomeDir()
+		home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 
 		// Collect extension directories from all hosts in the group.
 		// Each host knows its own ExtensionDir from Load(); the session-wide

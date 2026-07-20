@@ -35,7 +35,7 @@ func SetKeychainPassword(service, account, password string) error {
 		"-s", service,
 		"-a", account,
 	)
-	_ = del.Run()
+	del.Run() //nolint:errcheck // best-effort keychain delete; absent item is fine
 
 	cmd := exec.Command("security", "add-generic-password",
 		"-s", service,

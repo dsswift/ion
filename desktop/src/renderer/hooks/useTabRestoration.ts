@@ -10,7 +10,7 @@ import { lastPendingCardTool } from '../../shared/pending-card'
 import { mapSessionHistory } from '../../shared/session-message-mapper'
 import { parseToolInput, isSkeletonTab, normalizeLegacyTabFields, readMainInstance, reassertRestoredPlanMode, orderSessionCandidates, startSessionsSequentially, resolveBootActiveTabId, hydrateBootActiveTab } from './useTabRestoration-helpers'
 import { persistedTabHasExtensions } from '../../shared/tab-predicates'
-import { rDebug, rInfo, rWarn } from '../rendererLogger'
+import { rDebug, rInfo, rWarn, rError } from '../rendererLogger'
 
 /**
  * Bootstrap effect run once at app start. Initializes static info, restores
@@ -29,7 +29,11 @@ export function useTabRestoration() {
       const homeDir = useSessionStore.getState().staticInfo?.homePath || '~'
 
       // Try restoring saved tabs
-      const saved = await window.ion.loadTabs().catch(() => null)
+      const saved = await window.ion.loadTabs().catch((err) => {
+        // A failed tab load silently loses the user's restored session — log it.
+        rWarn('restore', 'loadTabs failed; starting with no restored tabs', { error: String(err) })
+        return null
+      })
       if (saved && saved.tabs && saved.tabs.length > 0) {
         // Normalize loaded tabs to the unified conversationPane shape in memory
         // (handles both the isEngine rename and the split→unified persisted
@@ -575,9 +579,9 @@ export function useTabRestoration() {
           // All retries failed — still set tabsReady so UI isn't stuck forever
           useSessionStore.setState({ tabsReady: true, rehydrating: false, initProgress: null })
         }
-        registerInitialTab()
+        registerInitialTab().catch((err) => rError('tab-restore', 'registerInitialTab failed', { error: String(err) }))
       }
-    })
+    }).catch((err) => rError('tab-restore', 'bootstrap tab restoration failed', { error: String(err) }))
     return () => { aborted = true }
   }, [])
 }

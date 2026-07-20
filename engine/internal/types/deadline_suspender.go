@@ -173,6 +173,6 @@ func WithDeadlineSuspender(ctx context.Context, ds DeadlineSuspender) context.Co
 // nil if none is set; nil is a safe no-op (Pause/Resume on a nil
 // *deadlineSuspender do nothing), so callers invoke it unconditionally.
 func DeadlineSuspenderFrom(ctx context.Context) DeadlineSuspender {
-	ds, _ := ctx.Value(deadlineSuspenderKey{}).(DeadlineSuspender)
+	ds, _ := ctx.Value(deadlineSuspenderKey{}).(DeadlineSuspender) //nolint:errcheck // best-effort; failure not actionable here
 	return ds
 }

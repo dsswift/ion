@@ -29,12 +29,12 @@ const listDirectoryMaxEntries = 5000
 // The values are immutable for the lifetime of the daemon, so it caches once.
 func computeHostInfo() map[string]interface{} {
 	hostInfoOnce.Do(func() {
-		home, _ := os.UserHomeDir()
+		home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 		username := ""
 		if u, err := user.Current(); err == nil {
 			username = u.Username
 		}
-		hostname, _ := os.Hostname()
+		hostname, _ := os.Hostname() //nolint:errcheck // empty hostname fallback
 		hostInfoCached = map[string]interface{}{
 			"home":     home,
 			"username": username,

@@ -1,9 +1,10 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useCallback } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { FloatingPanel } from './FloatingPanel'
 import { useColors } from '../theme'
 import { useNavigableText, NavigableText, NavigableCode } from '../hooks/useNavigableLinks'
+import { rError } from '../rendererLogger'
 
 const REMARK_PLUGINS = [remarkGfm]
 
@@ -16,6 +17,9 @@ interface ResourceViewerProps {
 export function ResourceViewer({ title, content, onClose }: ResourceViewerProps) {
   const colors = useColors()
   const { onOpenFile, onOpenUrl } = useNavigableText()
+  const handleOpenFile = useCallback((path: string) => {
+    void onOpenFile(path).catch((err) => rError('resource-viewer', 'open file failed', { error: String(err) }))
+  }, [onOpenFile])
 
   const markdownComponents = useMemo(() => ({
     a: ({ href, children }: any) => (
@@ -23,20 +27,20 @@ export function ResourceViewer({ title, content, onClose }: ResourceViewerProps)
         type="button"
         className="underline decoration-dotted underline-offset-2 cursor-pointer"
         style={{ color: colors.accent }}
-        onClick={() => { if (href) window.ion.openExternal(String(href)) }}
+        onClick={() => { if (href) void window.ion.openExternal(String(href)) }}
       >
         {children}
       </button>
     ),
     text: ({ children }: any) => (
-      <NavigableText onOpenFile={onOpenFile} onOpenUrl={onOpenUrl}>{children}</NavigableText>
+      <NavigableText onOpenFile={handleOpenFile} onOpenUrl={onOpenUrl}>{children}</NavigableText>
     ),
     code: ({ children, className, ...props }: any) => (
-      <NavigableCode className={className} onOpenFile={onOpenFile} onOpenUrl={onOpenUrl} {...props}>
+      <NavigableCode className={className} onOpenFile={handleOpenFile} onOpenUrl={onOpenUrl} {...props}>
         {children}
       </NavigableCode>
     ),
-  }), [colors, onOpenFile, onOpenUrl])
+  }), [colors, handleOpenFile, onOpenUrl])
 
   return (
     <FloatingPanel title={title} onClose={onClose} defaultWidth={720} defaultHeight={420}>

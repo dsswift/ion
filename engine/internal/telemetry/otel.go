@@ -77,8 +77,8 @@ type otlpScope struct {
 }
 
 type otlpAttribute struct {
-	Key   string         `json:"key"`
-	Value otlpAttrValue  `json:"value"`
+	Key   string        `json:"key"`
+	Value otlpAttrValue `json:"value"`
 }
 
 type otlpAttrValue struct {
@@ -155,7 +155,7 @@ func (b *OtelBridge) flushLoop() {
 	for {
 		select {
 		case <-ticker.C:
-			_ = b.Flush()
+			b.Flush() //nolint:errcheck // best-effort flush on teardown
 		case <-b.done:
 			return
 		}
@@ -192,7 +192,7 @@ func (b *OtelBridge) RecordEvent(event Event) {
 	// Session-aware trace ID so all spans in a session correlate. Prefer an
 	// explicit TraceID on the event, then the session's registered trace ID
 	// (via ctx.session_id), then a fresh fallback.
-	sessionID, _ := event.Context["session_id"].(string)
+	sessionID, _ := event.Context["session_id"].(string) //nolint:errcheck // best-effort; failure not actionable here
 
 	span := otlpSpan{
 		TraceID:    b.resolveTraceID(event.TraceID, sessionID),
@@ -210,7 +210,7 @@ func (b *OtelBridge) RecordEvent(event Event) {
 	b.mu.Unlock()
 
 	if shouldFlush {
-		_ = b.Flush()
+		b.Flush() //nolint:errcheck // best-effort flush on teardown
 	}
 }
 
@@ -220,8 +220,8 @@ func (b *OtelBridge) RecordEvent(event Event) {
 func (b *OtelBridge) RecordSpan(name string, startMs, endMs int64, attrs map[string]any) {
 	var eventTraceID, sessionID string
 	if attrs != nil {
-		eventTraceID, _ = attrs["trace_id"].(string)
-		sessionID, _ = attrs["session_id"].(string)
+		eventTraceID, _ = attrs["trace_id"].(string) //nolint:errcheck // best-effort; failure not actionable here
+		sessionID, _ = attrs["session_id"].(string)  //nolint:errcheck // best-effort; failure not actionable here
 	}
 	span := otlpSpan{
 		TraceID:    b.resolveTraceID(eventTraceID, sessionID),
@@ -238,7 +238,7 @@ func (b *OtelBridge) RecordSpan(name string, startMs, endMs int64, attrs map[str
 	b.mu.Unlock()
 
 	if shouldFlush {
-		_ = b.Flush()
+		b.Flush() //nolint:errcheck // best-effort flush on teardown
 	}
 }
 

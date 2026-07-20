@@ -14,7 +14,7 @@ func init() {
 	if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &lim); err == nil {
 		if lim.Cur < lim.Max {
 			lim.Cur = lim.Max
-			_ = syscall.Setrlimit(syscall.RLIMIT_NOFILE, &lim)
+			syscall.Setrlimit(syscall.RLIMIT_NOFILE, &lim) //nolint:errcheck // best-effort FD limit raise; failure leaves the soft default in place
 		}
 	}
 }

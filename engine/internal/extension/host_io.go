@@ -294,28 +294,30 @@ func (h *Host) callHook(method string, ctx *Context, payload interface{}) (json.
 // wire shape of `_ctx` (which keys appear, and when) can be pinned by tests
 // without a live subprocess.
 func (h *Host) buildHookEnvelope(ctx *Context, payload interface{}) map[string]interface{} {
-	wrapped := map[string]interface{}{
-		"_ctx": map[string]interface{}{
-			"cwd": ctx.Cwd,
-		},
+	// Build the _ctx metadata in a locally-typed map so we never repeat an
+	// inline type assertion on wrapped["_ctx"] (which errcheck flags and which
+	// would panic if the shape ever drifted).
+	ctxMeta := map[string]interface{}{
+		"cwd": ctx.Cwd,
 	}
+	wrapped := map[string]interface{}{"_ctx": ctxMeta}
 	if ctx.SessionKey != "" {
-		wrapped["_ctx"].(map[string]interface{})["sessionKey"] = ctx.SessionKey
+		ctxMeta["sessionKey"] = ctx.SessionKey
 	}
 	if ctx.ConversationID != "" {
-		wrapped["_ctx"].(map[string]interface{})["conversationId"] = ctx.ConversationID
+		ctxMeta["conversationId"] = ctx.ConversationID
 	}
 	// Dispatch identity: emitted only for child sessions (depth > 0) so the
 	// wire stays additive — SDK runtimes default depth to 0 / dispatchId to
 	// "" when the keys are absent, which is exactly the root-session shape.
 	if ctx.Depth > 0 {
-		wrapped["_ctx"].(map[string]interface{})["depth"] = ctx.Depth
+		ctxMeta["depth"] = ctx.Depth
 	}
 	if ctx.DispatchId != "" {
-		wrapped["_ctx"].(map[string]interface{})["dispatchId"] = ctx.DispatchId
+		ctxMeta["dispatchId"] = ctx.DispatchId
 	}
 	if ctx.Model != nil {
-		wrapped["_ctx"].(map[string]interface{})["model"] = map[string]interface{}{
+		ctxMeta["model"] = map[string]interface{}{
 			"id":            ctx.Model.ID,
 			"contextWindow": ctx.Model.ContextWindow,
 		}
@@ -332,7 +334,7 @@ func (h *Host) buildHookEnvelope(ctx *Context, payload interface{}) map[string]i
 		if cfg.ExtensionDir == "" && h.loadedConfig != nil && h.loadedConfig.ExtensionDir != "" {
 			cfg.ExtensionDir = h.loadedConfig.ExtensionDir
 		}
-		wrapped["_ctx"].(map[string]interface{})["config"] = cfg
+		ctxMeta["config"] = cfg
 	}
 
 	// Merge hook-specific payload into the wrapped map.
@@ -341,7 +343,7 @@ func (h *Host) buildHookEnvelope(ctx *Context, payload interface{}) map[string]i
 			wrapped[k] = v
 		}
 	} else if payload != nil {
-		payloadBytes, _ := json.Marshal(payload)
+		payloadBytes, _ := json.Marshal(payload) //nolint:errcheck // marshal of a local payload struct
 		var payloadMap map[string]interface{}
 		if json.Unmarshal(payloadBytes, &payloadMap) == nil {
 			for k, v := range payloadMap {

@@ -74,7 +74,7 @@ func (m *Manager) buildRootAgentSpawner(s *engineSession, key string, parentMode
 		// extension still gets a chance to resolve the specialist.
 		if requestedName == "" && capturedExtGroup != nil && !capturedExtGroup.IsEmpty() {
 			basCtx := m.newExtContext(s, capturedKey)
-			_, hookName, _ := capturedExtGroup.FireBeforeAgentStart(basCtx, extension.AgentInfo{
+			_, hookName, _ := capturedExtGroup.FireBeforeAgentStart(basCtx, extension.AgentInfo{ //nolint:errcheck // errors logged internally by fireVoid/s.fire
 				Task: prompt,
 			})
 			if hookName != "" {

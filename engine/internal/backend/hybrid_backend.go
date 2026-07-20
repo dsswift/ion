@@ -222,7 +222,12 @@ func (h *HybridBackend) SetAuthResolver(r *auth.Resolver) {
 // InnerApi returns the inner *ApiBackend, constructing it if necessary. Used by
 // the session package's watchdog / human-wait helpers, which only the
 // ApiBackend implements.
-func (h *HybridBackend) InnerApi() *ApiBackend { return h.get("api").(*ApiBackend) }
+func (h *HybridBackend) InnerApi() *ApiBackend {
+	if api, ok := h.get("api").(*ApiBackend); ok {
+		return api
+	}
+	return nil
+}
 
 // InnerClaudeCode returns the inner *ClaudeCodeBackend, constructing it if
 // necessary. Used by the session package's resolvedBackend helper for the

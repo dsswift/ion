@@ -85,6 +85,18 @@ export const CRITICAL_TYPES = new Set([
 // not at enqueue time. So build order == delivery order == monotonic seq per
 // device, regardless of how the lanes interleave. Lane selection can never
 // produce an out-of-order seq on the wire.
+//
+// This invariant now holds GLOBALLY, not just for broadcasts. Device-targeted
+// sends (sendToDevice) route through this same drain via enqueueSendToDevice
+// whenever the crypto worker is live, so a targeted frame allocates its seq in
+// drain order alongside broadcast frames and delivers in the worker's FIFO
+// reply order. Previously sendToDevice took the synchronous sendDirect path,
+// which allocated from the same per-device counter but delivered IMMEDIATELY —
+// so a targeted frame enqueued while a worker job was in flight got the higher
+// seq yet hit the socket first, producing an out-of-order seq on the wire (iOS
+// then saw a forward gap and requested a resend). Only the sync-only fallback
+// (no live worker) still uses sendDirect, where synchronous delivery already
+// equals allocation order because there is no async worker to race.
 
 /** Send lane: bulk (large reconcile payloads) vs interactive (everything else). */
 export type Lane = 'bulk' | 'interactive'
@@ -125,6 +137,15 @@ export interface SendQueueItem {
   pushBody?: string
   enqueuedAt: number
   lane: Lane
+  /**
+   * When set, this item is a device-TARGETED send (sendToDevice) — sendToAll
+   * builds/delivers it only for this device, not every paired device. Undefined
+   * for broadcasts. Routing a targeted send through the queue (instead of the
+   * synchronous sendDirect path) keeps its wire seq in drain order relative to
+   * in-flight broadcast frames to the same device — see the seq-monotonicity
+   * invariant note above.
+   */
+  targetDeviceId?: string
 }
 
 /**
@@ -166,6 +187,30 @@ export interface SendCtx {
   }
 }
 
+/**
+ * Apply backpressure before enqueueing `eventType`. Shared by enqueueSend
+ * (broadcast) and enqueueSendToDevice (targeted) so both honor the same cap and
+ * critical-type protection. Returns false when the item must be dropped (queue
+ * full and the event is non-critical); true when it is safe to push (having, if
+ * necessary, evicted the oldest non-critical item to make room for a critical
+ * one). The cap and eviction scan both span the single array, i.e. BOTH lanes
+ * combined and BOTH broadcast + targeted items together: MAX_QUEUE_SIZE counts
+ * everything, and the oldest non-critical item is evicted regardless of lane or
+ * target (push order == age order).
+ */
+function applyBackpressure(ctx: SendCtx, eventType: string): boolean {
+  if (ctx.sendQueue.length >= MAX_QUEUE_SIZE) {
+    if (!CRITICAL_TYPES.has(eventType)) {
+      log('transport: backpressure, dropping', { event_type: eventType })
+      return false
+    }
+    // For critical messages, drop the oldest non-critical message.
+    const dropIdx = ctx.sendQueue.findIndex((m) => !CRITICAL_TYPES.has(m.event.type))
+    if (dropIdx >= 0) ctx.sendQueue.splice(dropIdx, 1)
+  }
+  return true
+}
+
 /** Enqueue an event for delivery, applying backpressure, then drain. */
 export function enqueueSend(
   ctx: SendCtx,
@@ -173,21 +218,31 @@ export function enqueueSend(
   push: boolean,
   pushMeta?: { title?: string; body?: string },
 ): void {
-  // If the queue is full, apply backpressure. The cap and the eviction scan
-  // both span the single array, i.e. BOTH lanes combined: MAX_QUEUE_SIZE
-  // counts bulk + interactive together, and the oldest non-critical item is
-  // evicted regardless of its lane (push order == age order across lanes).
-  if (ctx.sendQueue.length >= MAX_QUEUE_SIZE) {
-    if (!CRITICAL_TYPES.has(event.type)) {
-      log('transport: backpressure, dropping', { event_type: event.type })
-      return
-    }
-    // For critical messages, drop the oldest non-critical message.
-    const dropIdx = ctx.sendQueue.findIndex((m) => !CRITICAL_TYPES.has(m.event.type))
-    if (dropIdx >= 0) ctx.sendQueue.splice(dropIdx, 1)
-  }
-
+  if (!applyBackpressure(ctx, event.type)) return
   ctx.sendQueue.push({ event, push, pushTitle: pushMeta?.title, pushBody: pushMeta?.body, enqueuedAt: Date.now(), lane: laneForEventType(event.type) })
+  drainSendQueue(ctx)
+}
+
+/**
+ * Enqueue a device-TARGETED event (the queued replacement for the synchronous
+ * sendDirect path) and drain. Identical backpressure and lane classification to
+ * enqueueSend; the only difference is the item carries `targetDeviceId`, so the
+ * drain builds and delivers it for that one device instead of broadcasting. Used
+ * by RemoteTransport.sendToDevice whenever the crypto worker is live, so a
+ * targeted frame's wire seq is allocated in drain order alongside in-flight
+ * broadcast frames to the same device (no synchronous frame can jump the counter
+ * and reach the socket ahead of an earlier-seq worker frame). See the
+ * seq-monotonicity invariant note above.
+ */
+export function enqueueSendToDevice(
+  ctx: SendCtx,
+  deviceId: string,
+  event: RemoteEvent,
+  push: boolean,
+  pushMeta?: { title?: string; body?: string },
+): void {
+  if (!applyBackpressure(ctx, event.type)) return
+  ctx.sendQueue.push({ event, push, pushTitle: pushMeta?.title, pushBody: pushMeta?.body, enqueuedAt: Date.now(), lane: laneForEventType(event.type), targetDeviceId: deviceId })
   drainSendQueue(ctx)
 }
 
@@ -249,7 +304,7 @@ export function drainSendQueue(ctx: SendCtx): void {
     mark(Activity.RelaySend)
     const idx = nextSendIndex(ctx.sendQueue, Date.now())
     const item = ctx.sendQueue[idx]
-    sendToAll(ctx, item.event, item.push, item.pushTitle, item.pushBody, item.enqueuedAt)
+    sendToAll(ctx, item.event, item.push, item.pushTitle, item.pushBody, item.enqueuedAt, item.targetDeviceId)
     ctx.sendQueue.splice(idx, 1)
   }
 }
@@ -278,13 +333,19 @@ export function frameWithinWireCap(msg: WireMessage, eventType: string, deviceId
 }
 
 /**
- * Direct single-device send (transport.ts sendToDevice body). No queue, no
- * worker: this path carries only small frames (heartbeats, unpair notices,
- * resend_unavailable) where a thread hop buys nothing — see the WI-10 design
- * note in transport-send-worker-host.ts. Applies the same two gates as the
- * broadcast path: plaintext early gate, then the authoritative wire-frame cap
- * BEFORE retransmit.record (an undeliverable frame must never be replayable).
- * enqueuedAt = sendTs, so queue dwell reads 0 for direct sends.
+ * Direct single-device send (the sync-only fallback for transport.ts
+ * sendToDevice). No queue, no worker. RemoteTransport.sendToDevice uses this
+ * ONLY when the crypto worker is not live (startup failure / permanent
+ * degrade); when the worker is live it routes targeted sends through the queued
+ * drain via enqueueSendToDevice instead, so their wire seq stays ordered
+ * relative to in-flight broadcast frames (see the seq-monotonicity invariant
+ * note above). In sync-only mode there is no async worker to race, so
+ * synchronous delivery here already equals allocation order.
+ *
+ * Applies the same two gates as the broadcast path: plaintext early gate, then
+ * the authoritative wire-frame cap BEFORE retransmit.record (an undeliverable
+ * frame must never be replayable). enqueuedAt = sendTs, so queue dwell reads 0
+ * for direct sends.
  */
 export function sendDirect(
   deviceId: string,
@@ -317,6 +378,7 @@ export function sendToAll(
   pushTitle?: string,
   pushBody?: string,
   enqueuedAt?: number,
+  targetDeviceId?: string,
 ): boolean {
   // Breadcrumb: serialization of an oversized event is one wedge candidate.
   mark(Activity.RelayStringify)
@@ -335,13 +397,22 @@ export function sendToAll(
     log('transport: snapshot payload', { bytes: plaintext.length, tab_count: (event as any).tabs?.length ?? 0 })
   }
 
+  // Recipient set: a targeted send (targetDeviceId set — the queued sendToDevice
+  // path) goes to exactly that one paired device; a broadcast goes to every
+  // paired device. A targeted device that is no longer paired yields an empty
+  // set (nothing to build/deliver — the caller's early secret lookup normally
+  // catches this, but a device removed between enqueue and drain lands here).
+  const recipientIds = targetDeviceId !== undefined
+    ? (ctx.deviceSecrets.has(targetDeviceId) ? [targetDeviceId] : [])
+    : [...ctx.deviceSecrets.keys()]
+
   // Breadcrumb + compress ONCE: DEFLATE is deterministic, so the compressed
   // bytes are identical for every device — only encryption (per secret) is
   // per-device. Compressing inside the per-device loop multiplied the top wedge
   // candidate by the connected-device count.
 
   // Worker offload: when a live crypto worker is attached, allocate every
-  // device's seq NOW (in drain order — the seq-ordering anchor) and hand the
+  // recipient's seq NOW (in drain order — the seq-ordering anchor) and hand the
   // compress+encrypt to the worker thread. The host finishes each frame on
   // reply (cap gate → retransmit.record → deliverFrame) in FIFO reply order,
   // so the wire stream is identical to the synchronous path. Returns true
@@ -349,7 +420,7 @@ export function sendToAll(
   // the caller (drainSendQueue) does not use the return value — durability is
   // the retransmit buffer either way.
   if (ctx.cryptoHost?.usingWorker) {
-    const devices = [...ctx.deviceSecrets.keys()].map((deviceId) => ({ deviceId, seq: ctx.nextSeq(deviceId) }))
+    const devices = recipientIds.map((deviceId) => ({ deviceId, seq: ctx.nextSeq(deviceId) }))
     if (devices.length === 0) return false
     const submitted = ctx.cryptoHost.submit(plaintext, eventType, devices, { push, pushTitle, pushBody, epoch: ctx.epoch }, enqueuedAt)
     if (submitted) return true
@@ -375,8 +446,10 @@ export function sendToAll(
 
   let sentAny = false
 
-  // Send to each device via its preferred transport.
-  for (const [deviceId, secret] of ctx.deviceSecrets) {
+  // Send to each recipient via its preferred transport.
+  for (const deviceId of recipientIds) {
+    const secret = ctx.deviceSecrets.get(deviceId)
+    if (!secret) continue
     // buildDeviceFrame marks its own relay_encrypt sub-stage.
     const msg = buildDeviceFrame(deviceId, secret, plaintext, wire, eventType, ctx.nextSeq, push, pushTitle, pushBody, enqueuedAt, ctx.epoch)
     if (!msg) continue // encrypt failed — skip this device

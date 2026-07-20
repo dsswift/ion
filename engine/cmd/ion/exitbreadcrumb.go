@@ -81,7 +81,9 @@ func writeClean(path, reason string) {
 	data, err := os.ReadFile(path)
 	var rec exitRecord
 	if err == nil {
-		_ = json.Unmarshal(data, &rec)
+		if uerr := json.Unmarshal(data, &rec); uerr != nil {
+			utils.LogWithFields(utils.LevelWarn, "breadcrumb", "prior breadcrumb unreadable; writing fresh clean record", map[string]any{"path": path, "error": utils.ErrStr(uerr)})
+		}
 	}
 	rec.Status = "clean"
 	rec.Reason = reason
@@ -100,7 +102,9 @@ func writePanic(path string, reason string, stack string) {
 	data, err := os.ReadFile(path)
 	var rec exitRecord
 	if err == nil {
-		_ = json.Unmarshal(data, &rec)
+		if uerr := json.Unmarshal(data, &rec); uerr != nil {
+			utils.LogWithFields(utils.LevelWarn, "breadcrumb", "prior breadcrumb unreadable; writing fresh panic record", map[string]any{"path": path, "error": utils.ErrStr(uerr)})
+		}
 	}
 	rec.Status = "panic"
 	rec.Reason = reason
@@ -202,21 +206,21 @@ func atomicWriteRecord(path string, rec exitRecord) error {
 		return fmt.Errorf("open tmp: %w", err)
 	}
 	if _, err := f.Write(data); err != nil {
-		_ = f.Close()
-		_ = os.Remove(tmp)
+		f.Close()      //nolint:errcheck // closing before removing the failed temp file
+		os.Remove(tmp) //nolint:errcheck // best-effort cleanup of failed temp file
 		return fmt.Errorf("write: %w", err)
 	}
 	if err := f.Sync(); err != nil {
-		_ = f.Close()
-		_ = os.Remove(tmp)
+		f.Close()      //nolint:errcheck // closing before removing the failed temp file
+		os.Remove(tmp) //nolint:errcheck // best-effort cleanup of failed temp file
 		return fmt.Errorf("sync: %w", err)
 	}
 	if err := f.Close(); err != nil {
-		_ = os.Remove(tmp)
+		os.Remove(tmp) //nolint:errcheck // best-effort cleanup of failed temp file
 		return fmt.Errorf("close: %w", err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
+		os.Remove(tmp) //nolint:errcheck // best-effort cleanup of failed temp file
 		return fmt.Errorf("rename: %w", err)
 	}
 	return nil

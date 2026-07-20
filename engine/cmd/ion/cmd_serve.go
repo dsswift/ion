@@ -32,9 +32,11 @@ import (
 )
 
 func cmdServe() {
-	home, _ := os.UserHomeDir()
+	home, _ := os.UserHomeDir() //nolint:errcheck // empty home falls back to a relative .ion dir
 	ionDir := filepath.Join(home, ".ion")
-	_ = os.MkdirAll(ionDir, 0o700)
+	if err := os.MkdirAll(ionDir, 0o700); err != nil {
+		utils.LogWithFields(utils.LevelError, "main", "failed to create ion data dir", map[string]any{"path": ionDir, "error": utils.ErrStr(err)})
+	}
 	utils.LogWithFields(utils.LevelInfo, "main", "=== engine process start ===", map[string]any{"run_id": os.Getpid(), "version": version})
 
 	// Read back any pre-existing exit breadcrumb so the prior exit is
@@ -384,7 +386,9 @@ func cmdServe() {
 		// graceful shutdown (Electron quit, kill -TERM, Ctrl+C). SIGKILL
 		// bypasses this; per-event Save() in the agent loop covers that.
 		b.FlushConversations()
-		_ = srv.Stop()
+		if err := srv.Stop(); err != nil {
+			utils.LogWithFields(utils.LevelError, "main", "server stop failed during shutdown", map[string]any{"error": utils.ErrStr(err)})
+		}
 	case <-srv.Done():
 		utils.Log("main", "shutdown command received, shutting down")
 		writeClean(exitPath(), "shutdown-cmd")
@@ -393,11 +397,15 @@ func cmdServe() {
 	}
 
 	if relay != nil {
-		_ = relay.Close()
+		if err := relay.Close(); err != nil {
+			utils.LogWithFields(utils.LevelWarn, "main", "relay close failed during shutdown", map[string]any{"error": utils.ErrStr(err)})
+		}
 	}
 
 	if pidLock != nil {
-		_ = pidLock.Release()
+		if err := pidLock.Release(); err != nil {
+			utils.LogWithFields(utils.LevelWarn, "main", "pid lock release failed during shutdown", map[string]any{"error": utils.ErrStr(err)})
+		}
 	}
 	fmt.Println("Engine stopped.")
 }

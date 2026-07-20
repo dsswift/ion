@@ -33,8 +33,8 @@ func (b *ClaudeCodeBackend) handlePlanModeAssistant(run *claudeCodeRun, e *types
 			// source. Newer claude-code writes the plan to
 			// ~/.claude/plans/<slug>.md (its own plans dir) and then calls
 			// ExitPlanMode with no text, so this is where the real plan lives.
-			path, _ := block.Input["file_path"].(string)
-			content, _ := block.Input["content"].(string)
+			path, _ := block.Input["file_path"].(string)  //nolint:errcheck // missing/typed-wrong path handled by isClaudePlansFilePath guard
+			content, _ := block.Input["content"].(string) //nolint:errcheck // empty content skips the branch below
 			if content != "" && isClaudePlansFilePath(path, run.planFilePath) {
 				run.pendingPlanFromFile = content
 				utils.LogWithFields(utils.LevelInfo, "backend.claude_code", "stashed plan from plans-file write", map[string]any{
@@ -45,7 +45,7 @@ func (b *ClaudeCodeBackend) handlePlanModeAssistant(run *claudeCodeRun, e *types
 			// The model proposed exiting plan mode — record it regardless of
 			// whether the argument carried plan text (see run.sawExitPlanMode).
 			run.sawExitPlanMode = true
-			plan, _ := block.Input["plan"].(string)
+			plan, _ := block.Input["plan"].(string) //nolint:errcheck // empty plan handled downstream
 			if plan == "" {
 				// Empty argument: the plan (if any) is in a plans-file Write,
 				// captured by handlePlanModeResult after all writes are seen.

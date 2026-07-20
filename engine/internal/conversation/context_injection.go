@@ -63,7 +63,7 @@ func contextInjectionPaths(msg types.LlmMessage) []string {
 		if !ok {
 			return nil
 		}
-		if t, _ := m["type"].(string); t != ContextInjectionBlockType {
+		if t, _ := m["type"].(string); t != ContextInjectionBlockType { //nolint:errcheck // non-string type is not the injection block
 			return nil
 		}
 		// After a JSON round-trip the []string lands as []interface{}.

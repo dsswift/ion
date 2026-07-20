@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { X, Circle, MagnifyingGlass } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
+import { rError } from '../rendererLogger'
 import type { GitBranchInfo } from '../../shared/types'
 
 const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] as const }
@@ -40,12 +41,12 @@ export function BranchPickerDialog({ repoPath, onSelect, onCancel }: BranchPicke
 
   // Load branches on mount; fire-and-forget fetch
   useEffect(() => {
-    window.ion.gitFetch(repoPath)
+    void window.ion.gitFetch(repoPath)
     window.ion.gitBranches(repoPath).then((result) => {
       setBranches(result.branches)
       setCurrentBranch(result.current)
       setLoading(false)
-    })
+    }).catch((err) => rError('branch-picker-dialog', 'gitBranches load failed', { error: String(err) }))
   }, [repoPath])
 
   // Focus the search input on mount

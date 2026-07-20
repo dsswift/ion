@@ -264,7 +264,7 @@ func WithTimeouts(ctx context.Context, t *TimeoutsConfig) context.Context {
 // TimeoutsFrom retrieves a TimeoutsConfig from the context. Returns nil if
 // none is set (callers should use the typed accessors which are nil-safe).
 func TimeoutsFrom(ctx context.Context) *TimeoutsConfig {
-	t, _ := ctx.Value(timeoutsKey{}).(*TimeoutsConfig)
+	t, _ := ctx.Value(timeoutsKey{}).(*TimeoutsConfig) //nolint:errcheck // best-effort; failure not actionable here
 	return t
 }
 

@@ -355,7 +355,11 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		fs := auth.NewFileStore()
 		if cmd.Credential == "" {
 			// Empty credential means "clear this key"
-			_ = fs.DeleteKey(cmd.Provider)
+			if err := fs.DeleteKey(cmd.Provider); err != nil {
+				// A failed delete means the key persists while the user is told
+				// it was cleared — this must not be silent.
+				utils.LogWithFields(utils.LevelError, "server", "credential delete failed", map[string]any{"provider": cmd.Provider, "error": err.Error()})
+			}
 			providers.SetProviderKey(cmd.Provider, "")
 		} else {
 			if err := fs.SetKey(cmd.Provider, cmd.Credential); err != nil {
@@ -501,7 +505,9 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		s.dispatchGetPlanContent(conn, cmd)
 
 	case "shutdown":
-		_ = s.Stop()
+		if err := s.Stop(); err != nil {
+			utils.LogWithFields(utils.LevelInfo, "server", "shutdown stop returned error", map[string]any{"error": err.Error()})
+		}
 
 	case "plugin_install":
 		utils.LogWithFields(utils.LevelInfo, "server", "plugin install", map[string]any{"source": cmd.Source})

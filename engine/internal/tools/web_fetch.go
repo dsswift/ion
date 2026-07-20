@@ -104,7 +104,7 @@ func WebFetchTool() *types.ToolDef {
 }
 
 func executeWebFetch(ctx context.Context, input map[string]any, _ string) (*types.ToolResult, error) {
-	rawURL, _ := input["url"].(string)
+	rawURL, _ := input["url"].(string) //nolint:errcheck // best-effort; failure not actionable here
 	if rawURL == "" {
 		return &types.ToolResult{Content: "Error: url is required", IsError: true}, nil
 	}

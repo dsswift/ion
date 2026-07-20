@@ -184,10 +184,11 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
       loadSingleConversation(convId).then(() => {
         for (const d of dispatches) {
           if (d.conversationId && d.conversationId !== convId) {
-            loadSingleConversation(d.conversationId)
+            // Background preload of the remaining dispatches — best-effort.
+            void loadSingleConversation(d.conversationId)
           }
         }
-      })
+      }).catch((err) => rError('agent-panel', 'load agent dispatch conversation failed', { error: String(err) }))
     }
   }, [selectedDispatch, loadSingleConversation])
 
@@ -249,7 +250,7 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
   useEffect(() => {
     if (!popupDispatchId || !popupSelConvId || !popupSelRunning) return
     const timer = setInterval(() => {
-      refetchConversation(popupSelConvId)
+      refetchConversation(popupSelConvId).catch((err) => rDebug('agent-panel', 'popup reconcile refetch failed', { conversation_id: popupSelConvId, error: String(err) }))
     }, RECONCILE_INTERVAL_MS)
     return () => clearInterval(timer)
   }, [popupDispatchId, popupSelConvId, popupSelRunning, refetchConversation])
@@ -258,7 +259,7 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
   const prevPopupRunning = useRef(false)
   useEffect(() => {
     if (popupDispatchId && popupSelConvId && prevPopupRunning.current && !popupSelRunning) {
-      refetchConversation(popupSelConvId)
+      refetchConversation(popupSelConvId).catch((err) => rDebug('agent-panel', 'final popup reconcile refetch failed', { conversation_id: popupSelConvId, error: String(err) }))
     }
     prevPopupRunning.current = popupSelRunning
   }, [popupDispatchId, popupSelConvId, popupSelRunning, refetchConversation])
@@ -517,7 +518,7 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
                   onSelectDispatch={(idx) => {
                     setSelectedDispatch(prev => { const next = new Map(prev); next.set(key, idx); return next })
                     const convId = dispatches[idx]?.conversationId
-                    if (convId) loadSingleConversation(convId)
+                    if (convId) loadSingleConversation(convId).catch((err) => rError('agent-panel', 'select dispatch load conversation failed', { conversation_id: convId, error: String(err) }))
                   }}
                 />
               )
@@ -537,7 +538,7 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
           onSelectDispatch={(idx) => {
             setSelectedDispatch(prev => { const next = new Map(prev); next.set(dispatchKey(popupAgent), idx); return next })
             const convId = popupData.dispatches[idx]?.conversationId
-            if (convId) loadSingleConversation(convId)
+            if (convId) loadSingleConversation(convId).catch((err) => rError('agent-panel', 'popup select dispatch load conversation failed', { conversation_id: convId, error: String(err) }))
           }}
           onClose={() => setPopupDispatchId(null)}
           dispatchTelemetry={dispatchTelemetry}

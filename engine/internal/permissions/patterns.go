@@ -46,13 +46,13 @@ func matchDoublestar(pattern, value string) bool {
 		segments := strings.Split(remaining, "/")
 		for i := range segments {
 			candidate := strings.Join(segments[i:], "/")
-			if matched, _ := filepath.Match(suffix, candidate); matched {
+			if matched, _ := filepath.Match(suffix, candidate); matched { //nolint:errcheck // bad pattern means no match
 				return true
 			}
 			// Also try matching just the last segment
 		}
 		// Try matching the full remaining against the suffix
-		if matched, _ := filepath.Match(suffix, remaining); matched {
+		if matched, _ := filepath.Match(suffix, remaining); matched { //nolint:errcheck // bad pattern means no match
 			return true
 		}
 		return false

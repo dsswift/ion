@@ -2,6 +2,7 @@ import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { bumpMsgCounter } from '../session-store-helpers'
 import { commitInstance } from '../conversation-instance'
+import { rWarn } from '../../rendererLogger'
 
 export function createWorktreeSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -94,7 +95,7 @@ export function createWorktreeSlice(set: StoreSet, get: StoreGet): Partial<State
           }))
           return
         }
-        await window.ion.gitWorktreeRemove(repoPath, worktreePath, branchName, true).catch(() => {})
+        await window.ion.gitWorktreeRemove(repoPath, worktreePath, branchName, true).catch((err) => rWarn("worktree", "gitWorktreeRemove failed (may leave orphan worktree)", { worktreePath, error: String(err) }))
         get().closeTab(tabId)
       } else {
         const pushResult = await window.ion.gitWorktreePush(worktreePath, sourceBranch)
@@ -112,9 +113,9 @@ export function createWorktreeSlice(set: StoreSet, get: StoreGet): Partial<State
           const url = pushResult.remoteUrl
             .replace(/\.git$/, '')
             .replace(/^git@([^:]+):/, 'https://$1/')
-          window.ion.openExternal(`${url}/compare/${sourceBranch}...${pushResult.remoteBranch}`)
+          window.ion.openExternal(`${url}/compare/${sourceBranch}...${pushResult.remoteBranch}`).catch((err) => rWarn('worktree', 'openExternal compare URL failed', { error: String(err) }))
         }
-        await window.ion.gitWorktreeRemove(repoPath, worktreePath, branchName, true).catch(() => {})
+        await window.ion.gitWorktreeRemove(repoPath, worktreePath, branchName, true).catch((err) => rWarn("worktree", "gitWorktreeRemove failed (may leave orphan worktree)", { worktreePath, error: String(err) }))
         get().closeTab(tabId)
       }
     },

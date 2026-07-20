@@ -125,12 +125,12 @@ func ExpandTilde(path string) string {
 }
 
 func globalConfigPath() string {
-	home, _ := os.UserHomeDir()
+	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	return filepath.Join(home, ".ion", "engine.json")
 }
 
 func settingsPath() string {
-	home, _ := os.UserHomeDir()
+	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	return filepath.Join(home, ".ion", "settings.json")
 }
 
@@ -169,13 +169,13 @@ func resolveEnvProviders(cfg map[string]any) {
 	if cfg == nil {
 		return
 	}
-	providers, _ := cfg["providers"].(map[string]any)
+	providers, _ := cfg["providers"].(map[string]any) //nolint:errcheck // nil map handled below
 	if providers == nil {
 		providers = make(map[string]any)
 		cfg["providers"] = providers
 	}
 
-	if anthropic, _ := providers["anthropic"].(map[string]any); anthropic == nil || anthropic["apiKey"] == nil {
+	if anthropic, _ := providers["anthropic"].(map[string]any); anthropic == nil || anthropic["apiKey"] == nil { //nolint:errcheck // nil map handled inline
 		if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
 			if anthropic == nil {
 				anthropic = make(map[string]any)
@@ -185,7 +185,7 @@ func resolveEnvProviders(cfg map[string]any) {
 		}
 	}
 
-	if openai, _ := providers["openai"].(map[string]any); openai == nil || openai["apiKey"] == nil {
+	if openai, _ := providers["openai"].(map[string]any); openai == nil || openai["apiKey"] == nil { //nolint:errcheck // nil map handled inline
 		if key := os.Getenv("OPENAI_API_KEY"); key != "" {
 			if openai == nil {
 				openai = make(map[string]any)

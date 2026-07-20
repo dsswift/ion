@@ -185,14 +185,16 @@ export class EngineBridge extends EventEmitter {
     this.reconnectAttempts++
     const delay = Math.min(500 * Math.pow(2, this.reconnectAttempts - 1), IS_REMOTE ? 8000 : 30000)
     log('reconnecting', { delay_ms: delay, attempt: this.reconnectAttempts })
-    this.reconnectTimer = setTimeout(async () => {
-      this.reconnectTimer = null
-      if (this.connected) return
-      try {
-        await this.connect()
-      } catch {
-        this._scheduleReconnect()
-      }
+    this.reconnectTimer = setTimeout(() => {
+      void (async () => {
+        this.reconnectTimer = null
+        if (this.connected) return
+        try {
+          await this.connect()
+        } catch {
+          this._scheduleReconnect()
+        }
+      })()
     }, delay)
   }
 

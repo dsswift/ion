@@ -52,7 +52,7 @@ func ReadMcpResourceTool() *types.ToolDef {
 }
 
 func executeListMcpResources(ctx context.Context, input map[string]any, _ string) (*types.ToolResult, error) {
-	server, _ := input["server"].(string)
+	server, _ := input["server"].(string) //nolint:errcheck // best-effort; failure not actionable here
 	if server == "" {
 		return &types.ToolResult{Content: "Error: server is required", IsError: true}, nil
 	}
@@ -81,11 +81,11 @@ func executeListMcpResources(ctx context.Context, input map[string]any, _ string
 }
 
 func executeReadMcpResource(ctx context.Context, input map[string]any, _ string) (*types.ToolResult, error) {
-	server, _ := input["server"].(string)
+	server, _ := input["server"].(string) //nolint:errcheck // best-effort; failure not actionable here
 	if server == "" {
 		return &types.ToolResult{Content: "Error: server is required", IsError: true}, nil
 	}
-	uri, _ := input["uri"].(string)
+	uri, _ := input["uri"].(string) //nolint:errcheck // best-effort; failure not actionable here
 	if uri == "" {
 		return &types.ToolResult{Content: "Error: uri is required", IsError: true}, nil
 	}

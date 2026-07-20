@@ -11,11 +11,11 @@ import (
 
 // Registry manages agent handles, specs, and state pills for a single session.
 type Registry struct {
-	mu             sync.RWMutex
-	handles        map[string]types.AgentHandle
-	specs          map[string]types.AgentSpec
-	states         []types.AgentStateUpdate
-	lastExtStates  []types.AgentStateUpdate
+	mu            sync.RWMutex
+	handles       map[string]types.AgentHandle
+	specs         map[string]types.AgentSpec
+	states        []types.AgentStateUpdate
+	lastExtStates []types.AgentStateUpdate
 }
 
 // NewRegistry creates a ready-to-use Registry.
@@ -591,7 +591,7 @@ func isDispatchBearing(meta map[string]interface{}) bool {
 	if meta == nil {
 		return false
 	}
-	task, _ := meta["task"].(string)
+	task, _ := meta["task"].(string) //nolint:errcheck // best-effort; failure not actionable here
 	return task != ""
 }
 
@@ -679,12 +679,12 @@ func ensureDispatchIdentity(entry interface{}) {
 	if !ok {
 		return
 	}
-	id, _ := m["id"].(string)
+	id, _ := m["id"].(string) //nolint:errcheck // best-effort; failure not actionable here
 	if id == "" {
 		// No stable id to mirror; leave the member untouched.
 		return
 	}
-	if existing, _ := m["dispatchId"].(string); existing == "" {
+	if existing, _ := m["dispatchId"].(string); existing == "" { //nolint:errcheck // best-effort; failure not actionable here
 		m["dispatchId"] = id
 	}
 	// dispatchParentId / dispatchDepth are already carried on the member when

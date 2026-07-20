@@ -107,7 +107,7 @@ func (h *Host) handleAnswerDispatchQuestion(id int64, raw []byte) {
 	}
 	key := req.Params.DispatchID + ":" + req.Params.RequestID
 	if ch, ok := h.childQuestions.Load(key); ok {
-		ch.(chan childQuestionReply) <- childQuestionReply{
+		ch.(chan childQuestionReply) <- childQuestionReply{ //nolint:errcheck // map only ever stores chan childQuestionReply
 			Answer:    req.Params.Answer,
 			Cancelled: req.Params.Cancelled,
 		}

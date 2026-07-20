@@ -14,7 +14,7 @@ import { ResourceViewer } from './ResourceViewer'
 import { parseAttachmentsFromMessages, type MsgLike } from './StatusBarAttachmentsParser'
 import { activeInstance } from '../stores/conversation-instance'
 import type { ResourceItem } from '../../shared/types-engine'
-import { rWarn } from '../rendererLogger'
+import { rWarn, rError } from '../rendererLogger'
 
 /* ─── Extension sets for icon picking ─── */
 
@@ -321,7 +321,7 @@ export function AttachmentsButton() {
                   {!collapsedSections.has('plans') && plans.map((a) => (
                     <button
                       key={a.path}
-                      onClick={() => handlePlanClick(a.path)}
+                      onClick={() => { void handlePlanClick(a.path).catch((err) => rError('attachments', 'open plan failed', { path: a.path, error: String(err) })) }}
                       className="flex items-center gap-2 w-full text-left transition-colors"
                       style={{
                         padding: '4px 12px',
@@ -389,7 +389,7 @@ export function AttachmentsButton() {
                   {!collapsedSections.has('files') && files.map((a) => (
                     <button
                       key={a.path}
-                      onClick={() => handleFileClick(a)}
+                      onClick={() => { void handleFileClick(a).catch((err) => rError('attachments', 'open file failed', { path: a.path, error: String(err) })) }}
                       className="flex items-center gap-2 w-full text-left transition-colors"
                       style={{
                         padding: '4px 12px',

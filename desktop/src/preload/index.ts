@@ -275,8 +275,11 @@ const api: IonAPI = {
   },
 
   // ─── Renderer logging bridge ───
-  logWrite: (level, tag, msg, fields) =>
-    ipcRenderer.invoke(IPC.LOG_WRITE, { level, tag, msg, fields: fields ?? {} }),
+  logWrite: (level, tag, msg, fields) => {
+    // Fire-and-forget log bridge: the renderer logger does not await delivery.
+    // Void the invoke promise so its (rare) rejection doesn't float.
+    void ipcRenderer.invoke(IPC.LOG_WRITE, { level, tag, msg, fields: fields ?? {} })
+  },
 
   on: (channel, callback) => {
     const handler = (_e: Electron.IpcRendererEvent, ...args: any[]) => callback(_e, ...args)

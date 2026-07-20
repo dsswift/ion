@@ -5,9 +5,10 @@ import { basename, join } from 'path'
 import { tmpdir } from 'os'
 import { IPC } from '../../shared/types'
 import { runGit, gitExec } from '../git-runner'
-import { error as _error } from '../logger'
+import { error as _error, debug as _debug } from '../logger'
 
 const logError = (msg: string): void => { _error('git-ipc', msg) }
+const logDebug = (msg: string, fields?: Record<string, unknown>): void => { _debug('git-ipc', msg, fields) }
 
 export function registerGitIpc(): void {
   ipcMain.handle(IPC.GIT_IS_REPO, async (_event, directory: string) => {
@@ -66,7 +67,7 @@ export function registerGitIpc(): void {
       try {
         const countOutput = await runGit(directory, countArgs)
         totalCount = parseInt(countOutput.trim(), 10) || 0
-      } catch {}
+      } catch (err) { logDebug("git: total-count read failed", { directory, error: String(err) }) }
 
       const commits = logOutput.trim().split('\n').filter(Boolean).map((line) => {
         const [hash, fullHash, parents, authorName, authorDate, subject, decorations] = line.split('\x00')
@@ -169,15 +170,15 @@ export function registerGitIpc(): void {
 
     let branch = ''
     try {
-      branch = (await runGit(directory, ['branch', '--show-current'])).trim()
-    } catch {}
+      branch = (await runGit(directory, ["branch", "--show-current"])).trim()
+    } catch (err) { logDebug("git: branch read failed", { directory, error: String(err) }) }
 
     let ahead = 0
     let behind = 0
     try {
       ahead = parseInt((await runGit(directory, ['rev-list', '--count', '@{upstream}..HEAD'])).trim(), 10) || 0
-      behind = parseInt((await runGit(directory, ['rev-list', '--count', 'HEAD..@{upstream}'])).trim(), 10) || 0
-    } catch {}
+      behind = parseInt((await runGit(directory, ["rev-list", "--count", "HEAD..@{upstream}"])).trim(), 10) || 0
+    } catch (err) { logDebug("git: ahead/behind read failed (no upstream?)", { directory, error: String(err) }) }
 
     try {
       const statusOutput = await runGit(directory, ['status', '--porcelain=v1', '-uall'])
@@ -374,7 +375,11 @@ export function registerGitIpc(): void {
         for (const p of untrackedPaths) {
           try {
             await unlink(join(directory, p))
-          } catch {}
+          } catch (err) {
+            // A failed unlink means a file the user asked to discard wasn't
+            // removed — log so the partial discard is visible.
+            logDebug('git: discard unlink failed', { path: p, error: String(err) })
+          }
         }
       }
       return { ok: true }
@@ -547,7 +552,7 @@ export function registerGitIpc(): void {
       const env = { ...process.env, GIT_SEQUENCE_EDITOR: `cat "${todoFile}" >` }
       await gitExec('git', ['rebase', '-i', onto], { cwd: directory, maxBuffer: 10 * 1024 * 1024, env })
 
-      try { unlinkSync(todoFile) } catch {}
+      try { unlinkSync(todoFile) } catch { /* silent-ok: best-effort rebase-todo temp-file cleanup */ }
       return { ok: true }
     } catch (err: any) {
       return { ok: false, error: err.stderr?.trim() || err.message }

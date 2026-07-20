@@ -1,4 +1,4 @@
-import { log as _log } from '../logger'
+import { log as _log, debug as _debug } from '../logger'
 import { state } from '../state'
 import { runGit } from '../git-runner'
 import { computeGraphLayout } from '../../shared/gitGraphLayout'
@@ -6,6 +6,10 @@ import type { GitRef } from '../../shared/types'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
+}
+
+function debug(msg: string, fields?: Record<string, unknown>): void {
+  _debug('main', msg, fields)
 }
 
 /** Broadcast git changes to all connected devices. */
@@ -19,12 +23,12 @@ export async function broadcastGitChanges(directory: string): Promise<void> {
       return
     }
     let branch = ''
-    try { branch = (await runGit(directory, ['branch', '--show-current'])).trim() } catch {}
+    try { branch = (await runGit(directory, ['branch', '--show-current'])).trim() } catch (err) { debug('git_changes: branch read failed', { dir: directory, error: String(err) }) }
     let ahead = 0, behind = 0
     try {
       ahead = parseInt((await runGit(directory, ['rev-list', '--count', '@{upstream}..HEAD'])).trim(), 10) || 0
       behind = parseInt((await runGit(directory, ['rev-list', '--count', 'HEAD..@{upstream}'])).trim(), 10) || 0
-    } catch {}
+    } catch (err) { debug('git_changes: ahead/behind read failed (no upstream?)', { dir: directory, error: String(err) }) }
     const statusOutput = await runGit(directory, ['status', '--porcelain=v1', '-uall'])
     const files: Array<{ path: string; status: string; staged: boolean; oldPath?: string }> = []
     for (const line of statusOutput.split('\n').filter((l) => l.length >= 4)) {
@@ -67,7 +71,7 @@ export async function broadcastGitGraph(directory: string): Promise<void> {
     const format = '%h%x00%H%x00%P%x00%an%x00%aI%x00%s%x00%D'
     const logOutput = await runGit(directory, ['log', '--all', `--format=${format}`, '--topo-order', '-n', '100'])
     let totalCount = 0
-    try { totalCount = parseInt((await runGit(directory, ['rev-list', '--all', '--count'])).trim(), 10) || 0 } catch {}
+    try { totalCount = parseInt((await runGit(directory, ['rev-list', '--all', '--count'])).trim(), 10) || 0 } catch (err) { debug('git_graph: total-count read failed', { dir: directory, error: String(err) }) }
     const commits = logOutput.trim().split('\n').filter(Boolean).map((line) => {
       const [hash, fullHash, parents, authorName, authorDate, subject, decorations] = line.split('\x00')
       const refs: GitRef[] = []

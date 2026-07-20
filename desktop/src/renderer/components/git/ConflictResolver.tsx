@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useColors } from '../../theme'
 import { FloatingPanel } from '../FloatingPanel'
+import { rError, rWarn } from '../../rendererLogger'
 
 interface ConflictBlock {
   type: 'context' | 'conflict'
@@ -88,7 +89,7 @@ export function ConflictResolver({ directory, files, onClose, onResolved }: Conf
   }, [directory])
 
   useEffect(() => {
-    if (currentFile) loadFile(currentFile)
+    if (currentFile) void loadFile(currentFile).catch((err) => rWarn('git', 'load conflict file failed', { error: String(err) }))
   }, [currentFile, loadFile])
 
   const blocks = useMemo(() => parseConflicts(content), [content])
@@ -168,7 +169,7 @@ export function ConflictResolver({ directory, files, onClose, onResolved }: Conf
             style={{ color: colors.textSecondary, border: `1px solid ${colors.containerBorder}` }}>
             Accept All Incoming
           </button>
-          <button onClick={handleSave} disabled={!allResolved || saving}
+          <button onClick={() => { void handleSave().catch((err) => rError('git', 'resolve conflict save failed', { error: String(err) })) }} disabled={!allResolved || saving}
             className="text-[9px] px-2 py-0.5 rounded font-medium"
             style={{ color: allResolved ? '#fff' : colors.textMuted,
               background: allResolved ? colors.accent : 'transparent',

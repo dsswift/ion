@@ -10,6 +10,7 @@ import {
   emptyProfileEdit as emptyEdit,
   type ProfileEditState as EditState,
 } from './engine-profile-edit-helpers'
+import { rError } from '../../rendererLogger'
 
 export function EngineCategory() {
   const colors = useColors()
@@ -146,7 +147,7 @@ export function EngineCategory() {
           </div>
         ))}
         <button
-          onClick={addExtensionFiles}
+          onClick={() => { void addExtensionFiles().catch((err) => rError('settings', 'add extension files failed', { error: String(err) })) }}
           style={{
             display: 'flex',
             alignItems: 'center',

@@ -161,21 +161,21 @@ export function FileEditorTabBar({ dir, files, activeFile, activeFileId }: FileE
           onCloseAll={handleCloseAll}
           onCloseToRight={() => handleCloseToRight(tabCtxMenu.file.id)}
           onCopyPath={() => {
-            if (tabCtxMenu.file.filePath) navigator.clipboard.writeText(tabCtxMenu.file.filePath)
+            if (tabCtxMenu.file.filePath) void navigator.clipboard.writeText(tabCtxMenu.file.filePath)
           }}
           onCopyRelativePath={() => {
             if (tabCtxMenu.file.filePath) {
               const rel = tabCtxMenu.file.filePath.startsWith(dir + '/')
                 ? tabCtxMenu.file.filePath.slice(dir.length + 1)
                 : tabCtxMenu.file.filePath
-              navigator.clipboard.writeText(rel)
+              void navigator.clipboard.writeText(rel)
             }
           }}
           onRevealInFinder={() => {
-            if (tabCtxMenu.file.filePath) window.ion.fsRevealInFinder(tabCtxMenu.file.filePath)
+            if (tabCtxMenu.file.filePath) void window.ion.fsRevealInFinder(tabCtxMenu.file.filePath)
           }}
           onOpenInVSCode={() => {
-            if (tabCtxMenu.file.filePath) window.ion.openExternal(`vscode://file${tabCtxMenu.file.filePath}`)
+            if (tabCtxMenu.file.filePath) void window.ion.openExternal(`vscode://file${tabCtxMenu.file.filePath}`)
           }}
         />
       )}

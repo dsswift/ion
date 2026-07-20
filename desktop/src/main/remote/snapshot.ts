@@ -25,7 +25,7 @@ import { homedir } from 'os'
 import { state, sessionPlane, lastMessagePreview } from '../state'
 import { TABS_FILE } from '../settings-store'
 import { isResourceRead } from '../event-wiring-resources'
-import { log, debug } from '../logger'
+import { log, debug, warn } from '../logger'
 import type { RemoteTabState } from './protocol'
 import type { TabStatus } from '../../shared/types'
 import type { RemoteTabStatesPayload, ProjectedRendererTab, ResourceManifest } from '../../shared/remote-projection-types'
@@ -112,7 +112,7 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
               if (data.id && data.kind) {
                 items.push({ id: data.id, kind: data.kind, title: data.title, createdAt: data.createdAt || '', read: isResourceRead(data.id) })
               }
-            } catch { /* skip corrupt files */ }
+            } catch (err) { debug('desktop_snapshot', 'skipping corrupt resource file', { file: f, error: String(err) }) }
           }
           if (items.length > 0) {
             const byKind: ResourceManifest = {}
@@ -125,7 +125,7 @@ export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
           }
         }
       }
-    } catch { /* disk read failure is non-fatal */ }
+    } catch (err) { debug('desktop_snapshot', 'resource manifest cold-load disk read failed', { error: String(err) }) }
   }
 
   // Apply persisted read state from the main process. The renderer's
@@ -258,7 +258,11 @@ function coldStartSnapshot(): RemoteTabSnapshot {
       persistedTabs = parsed.tabs || parsed
       if (!Array.isArray(persistedTabs)) persistedTabs = []
     }
-  } catch { /* unreadable tabs.json falls through to bare health below */ }
+  } catch (err) {
+    // Unreadable/corrupt tabs.json falls through to bare health below, but iOS
+    // would then see zero tabs cold-start with no trace — log the reason.
+    warn('desktop_snapshot', 'persisted tabs read failed for snapshot', { error: String(err) })
+  }
 
   const results: RemoteTabState[] = []
 

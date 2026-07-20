@@ -4,7 +4,7 @@ import { createInterface } from 'readline'
 import { homedir } from 'os'
 import { basename, join } from 'path'
 import { IPC } from '../../shared/types'
-import { log as _log } from '../logger'
+import { log as _log, debug as _debug } from '../logger'
 import { sessionPlane, engineBridge } from '../state'
 import { isValidProjectPath, isValidSessionId, resolveDiscoveryWorkingDir } from '../ipc-validation'
 import {
@@ -25,6 +25,10 @@ import {
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
+}
+
+function debug(msg: string, fields?: Record<string, unknown>): void {
+  _debug('main', msg, fields)
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -139,7 +143,11 @@ export function registerSessionsListIpc(): void {
                   if (cleaned) meta.lastResponse = cleaned
                 }
               }
-            } catch {}
+            } catch {
+              // Tolerate a malformed JSONL line: skip it and keep scanning the
+              // rest of the file rather than aborting the whole session read.
+              debug('sessions_list: skipping malformed jsonl line', { path: filePath })
+            }
           })
           rl.on('close', () => resolve())
         })

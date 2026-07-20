@@ -61,7 +61,7 @@ export function MessageAttachments({ attachments }: { attachments: Attachment[] 
         {attachments.map((a) => (
           <button
             key={a.id}
-            onClick={() => handleClick(a)}
+            onClick={() => { void handleClick(a).catch((err) => rWarn('conversation', 'open attachment failed', { error: String(err) })) }}
             className="flex items-center gap-1 cursor-pointer transition-opacity hover:opacity-80"
             style={{
               background: a.type === 'plan' ? 'rgba(34, 197, 94, 0.1)' : colors.surfacePrimary,

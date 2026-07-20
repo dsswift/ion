@@ -14,7 +14,7 @@ import { FileEditorTabBar } from './FileEditorTabBar'
 import { FileEditorPreview } from './FileEditorPreview'
 import { FileEditorCodeMirror, CursorPosition } from './FileEditorCodeMirror'
 import { FileEditorStatusBar } from './FileEditorStatusBar'
-import { rTrace } from '../rendererLogger'
+import { rTrace, rError } from '../rendererLogger'
 
 interface FileEditorProps {
   dir: string
@@ -42,6 +42,9 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
 
   // File loading, watcher, and save handler.
   const { handleSave } = useFileEditorContent({ dir, activeFile })
+  const handleSaveSync = useCallback(() => {
+    void handleSave().catch((err) => rError('file-editor', 'save failed', { error: String(err) }))
+  }, [handleSave])
 
   // Cursor position for the status bar
   const [cursorPos, setCursorPos] = useState<CursorPosition>({ line: 1, col: 1 })
@@ -159,7 +162,7 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
             <FileEditorCodeMirror
               dir={dir}
               activeFile={activeFile}
-              onSave={handleSave}
+              onSave={handleSaveSync}
               onCursorChange={setCursorPos}
               editorViewRef={editorViewRef}
               languageOverride={langOverride}

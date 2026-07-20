@@ -274,12 +274,12 @@ func extractText(msg types.LlmMessage) string {
 		var parts []string
 		for _, item := range c {
 			if m, ok := item.(map[string]any); ok {
-				if t, _ := m["type"].(string); t == "text" {
+				if t, _ := m["type"].(string); t == "text" { //nolint:errcheck // best-effort; failure not actionable here
 					if text, ok := m["text"].(string); ok {
 						parts = append(parts, text)
 					}
 				}
-				if t, _ := m["type"].(string); t == "tool_result" {
+				if t, _ := m["type"].(string); t == "tool_result" { //nolint:errcheck // best-effort; failure not actionable here
 					if text, ok := m["content"].(string); ok {
 						parts = append(parts, text)
 					}
@@ -307,7 +307,7 @@ func hasToolResults(msg types.LlmMessage) bool {
 	case []any:
 		for _, item := range c {
 			if m, ok := item.(map[string]any); ok {
-				if t, _ := m["type"].(string); t == "tool_result" {
+				if t, _ := m["type"].(string); t == "tool_result" { //nolint:errcheck // best-effort; failure not actionable here
 					return true
 				}
 			}

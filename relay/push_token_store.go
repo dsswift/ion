@@ -39,7 +39,7 @@ func (s *tokenStore) Set(channelID, token string) {
 	}
 	path := s.tokenPath(channelID)
 	if token == "" {
-		_ = os.Remove(path)
+		os.Remove(path) //nolint:errcheck // clearing a token; absent file is fine
 		return
 	}
 	data, err := json.Marshal(map[string]string{"token": token})
@@ -55,7 +55,7 @@ func (s *tokenStore) Set(channelID, token string) {
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		logger.Warn("tokenStore: rename failed", "tag", "relay.push_token_store", "err", err)
-		_ = os.Remove(tmp)
+		os.Remove(tmp) //nolint:errcheck // temp cleanup after failed rename
 	}
 }
 

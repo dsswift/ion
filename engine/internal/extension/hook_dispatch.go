@@ -145,7 +145,7 @@ func (h *Host) RegisterRequiredHooks(hooks []struct{ Event, Handler string }) {
 	for _, hk := range hooks {
 		handler := hk.Handler // capture for closure
 		h.sdk.PrependHook(hk.Event, func(ctx *Context, payload interface{}) (interface{}, error) {
-			payloadBytes, _ := json.Marshal(payload)
+			payloadBytes, _ := json.Marshal(payload) //nolint:errcheck // marshal of a local payload struct
 			cmd := exec.Command("sh", "-c", handler)
 			cmd.Stdin = bytes.NewReader(payloadBytes)
 			out, err := cmd.Output()

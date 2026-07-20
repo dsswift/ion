@@ -183,8 +183,11 @@ func (h *Host) DeregisterWebhookDecl(path string) bool {
 			Origin: string(o),
 			Decl:   decl,
 		}
-		// Deregistration is observation-only; ignore the error.
-		_ = h.fireLifecycleHook(HookWebhookDeregistered, info)
+		// Deregistration is observation-only, but a hook error should still be
+		// visible rather than silently dropped.
+		if err := h.fireLifecycleHook(HookWebhookDeregistered, info); err != nil {
+			utils.LogWithFields(utils.LevelDebug, "extension", "webhook deregistered hook error", map[string]any{"extension": h.name, "id": info.ID, "error": err.Error()})
+		}
 	}
 	return h.asyncRegistry().Deregister(asyncreg.KindWebhook, path, notify)
 }
@@ -219,7 +222,9 @@ func (h *Host) DeregisterScheduleDecl(id string) bool {
 			Origin: string(o),
 			Decl:   decl,
 		}
-		_ = h.fireLifecycleHook(HookScheduleDeregistered, info)
+		if err := h.fireLifecycleHook(HookScheduleDeregistered, info); err != nil {
+			utils.LogWithFields(utils.LevelDebug, "extension", "schedule deregistered hook error", map[string]any{"extension": h.name, "id": info.ID, "error": err.Error()})
+		}
 	}
 	return h.asyncRegistry().Deregister(asyncreg.KindSchedule, id, notify)
 }
@@ -285,7 +290,9 @@ func (h *Host) ResetAsyncRegistrations() int {
 			Origin: string(o),
 			Decl:   decl,
 		}
-		_ = h.fireLifecycleHook(HookWebhookDeregistered, info)
+		if err := h.fireLifecycleHook(HookWebhookDeregistered, info); err != nil {
+			utils.LogWithFields(utils.LevelDebug, "extension", "webhook deregistered hook error", map[string]any{"extension": h.name, "id": info.ID, "error": err.Error()})
+		}
 	}
 	notifySchedule := func(_ asyncreg.Kind, decl asyncreg.Declaration, o asyncreg.Origin) {
 		info := AsyncRegistrationInfo{
@@ -294,7 +301,9 @@ func (h *Host) ResetAsyncRegistrations() int {
 			Origin: string(o),
 			Decl:   decl,
 		}
-		_ = h.fireLifecycleHook(HookScheduleDeregistered, info)
+		if err := h.fireLifecycleHook(HookScheduleDeregistered, info); err != nil {
+			utils.LogWithFields(utils.LevelDebug, "extension", "schedule deregistered hook error", map[string]any{"extension": h.name, "id": info.ID, "error": err.Error()})
+		}
 	}
 	w := reg.Reset(asyncreg.KindWebhook, notifyWebhook)
 	s := reg.Reset(asyncreg.KindSchedule, notifySchedule)

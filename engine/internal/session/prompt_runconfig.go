@@ -270,7 +270,7 @@ func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID str
 		// identical TaskIDs regardless of which backend serviced the run.
 		taskID := fmt.Sprintf("%s-t%d", key, turnNum)
 		utils.LogWithFields(utils.LevelDebug, "session", "apibackend onturnstart: task_created", map[string]any{"run_id": taskID, "turn": turnNum})
-		_ = extGroup.FireTaskCreated(ctx, extension.TaskLifecycleInfo{
+		extGroup.FireTaskCreated(ctx, extension.TaskLifecycleInfo{ //nolint:errcheck // errors logged internally by fireVoid/s.fire
 			TaskID: taskID,
 			Name:   fmt.Sprintf("turn-%d", turnNum),
 			Status: "running",
@@ -282,7 +282,7 @@ func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID str
 		// matching task_created above.
 		taskID := fmt.Sprintf("%s-t%d", key, turnNum)
 		utils.LogWithFields(utils.LevelDebug, "session", "apibackend onturnend: task_completed", map[string]any{"run_id": taskID, "turn": turnNum})
-		_ = extGroup.FireTaskCompleted(ctx, extension.TaskLifecycleInfo{
+		extGroup.FireTaskCompleted(ctx, extension.TaskLifecycleInfo{ //nolint:errcheck // errors logged internally by fireVoid/s.fire
 			TaskID: taskID,
 			Name:   fmt.Sprintf("turn-%d", turnNum),
 			Status: "completed",
@@ -317,7 +317,7 @@ func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID str
 	}
 
 	runCfg.Hooks.OnBeforePrompt = func(_ string, prompt string) (string, string) {
-		rewritten, sysPrompt, _ := extGroup.FireBeforePrompt(ctx, prompt)
+		rewritten, sysPrompt, _ := extGroup.FireBeforePrompt(ctx, prompt) //nolint:errcheck // errors logged internally by fireVoid/s.fire
 		return rewritten, sysPrompt
 	}
 
@@ -394,7 +394,7 @@ func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID str
 	}
 
 	runCfg.Hooks.OnSessionBeforeCompact = func(_ string) bool {
-		cancel, _ := extGroup.FireSessionBeforeCompact(ctx, extension.CompactionInfo{})
+		cancel, _ := extGroup.FireSessionBeforeCompact(ctx, extension.CompactionInfo{}) //nolint:errcheck // errors logged internally by fireVoid/s.fire
 		return cancel
 	}
 	runCfg.Hooks.OnRequestCompactSummary = func(_ string, strategy string, messages []types.LlmMessage) (string, bool) {
@@ -517,11 +517,16 @@ func (m *Manager) wireExternalTools(s *engineSession, key string, extGroup *exte
 					content, err := conn.CallTool(callCtx, toolName, input)
 					callCancel()
 					if err != nil {
+						// Log at the call site so an MCP tool failure inside the
+						// agent loop — which server, which tool — is visible from
+						// logs alone, not only via the returned error.
+						utils.LogWithFields(utils.LevelError, "session", "mcp tool call failed", map[string]any{"serverName": serverName, "toolName": toolName, "conversation_id": key, "error": utils.ErrStr(err)})
 						return "", true, err
 					}
 					return content, false, nil
 				}
 			}
+			utils.LogWithFields(utils.LevelWarn, "session", "mcp server not connected", map[string]any{"serverName": serverName, "toolName": toolName, "conversation_id": key})
 			return "", true, fmt.Errorf("MCP server %q not connected", serverName)
 		}
 	}

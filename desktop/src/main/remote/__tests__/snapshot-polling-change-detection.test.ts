@@ -385,7 +385,15 @@ describe('startTabSnapshotPolling — change detection integration', () => {
       cb: (...args: unknown[]) => void,
       _ms?: number,
     ) => {
-      pollCallback = cb as () => Promise<void>
+      // The production callback is synchronous (`() => { void tick() }`) so the
+      // async tick runs detached. Wrap it so `await pollCallback()` flushes the
+      // pending microtasks and the tick's awaited work settles before we assert.
+      pollCallback = async () => {
+        ;(cb as () => void)()
+        // Flush the microtask queue so the detached `void tick()` chain
+        // (pollSnapshotOnce and its awaits) settles before assertions run.
+        for (let i = 0; i < 5; i++) await Promise.resolve()
+      }
       // Return a fake timer id — we drive the callback manually
       return origSetInterval(() => {}, 999_999)
     }) as typeof setInterval)

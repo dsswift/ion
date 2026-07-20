@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef } from 'react'
 import { useColors } from '../../theme'
 import { FloatingPanel } from '../FloatingPanel'
 import { DotsSixVertical } from '@phosphor-icons/react'
+import { rError } from '../../rendererLogger'
 
 type RebaseAction = 'pick' | 'reword' | 'edit' | 'squash' | 'fixup' | 'drop'
 const ACTIONS: RebaseAction[] = ['pick', 'reword', 'edit', 'squash', 'fixup', 'drop']
@@ -101,7 +102,7 @@ export function RebaseEditor({ directory, onto, initialCommits, onClose, onCompl
           <div style={{ flex: 1 }} />
           {error && (
             <button
-              onClick={handleAbort}
+              onClick={() => { void handleAbort().catch((err) => rError('git', 'rebase abort failed', { error: String(err) })) }}
               className="text-[9px] px-2 py-0.5 rounded"
               style={{ color: '#c47060', border: '1px solid #c47060' }}
             >
@@ -109,7 +110,7 @@ export function RebaseEditor({ directory, onto, initialCommits, onClose, onCompl
             </button>
           )}
           <button
-            onClick={handleExecute}
+            onClick={() => { void handleExecute().catch((err) => rError('git', 'rebase execute failed', { error: String(err) })) }}
             disabled={executing || activeCount === 0}
             className="text-[9px] px-2 py-0.5 rounded font-medium"
             style={{

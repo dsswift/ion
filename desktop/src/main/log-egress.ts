@@ -378,7 +378,7 @@ export class EgressForwarder {
   private flushAsync(): void {
     if (this.flushInProgress) return
     this.flushInProgress = true
-    this.flush().finally(() => {
+    void this.flush().finally(() => {
       this.flushInProgress = false
       if (this.stopped && this.shutdownResolve) {
         this.shutdownResolve()
@@ -478,8 +478,12 @@ export function configureEgress(
   opts?: { shipOwnRecords?: boolean },
 ): void {
   if (activeForwarder) {
-    // Drain the old forwarder asynchronously. Errors are already logged by Close.
-    activeForwarder.close().catch(() => {})
+    // Drain the old forwarder asynchronously. flush() failures are logged by
+    // logFlushError; a rejection of close() itself (e.g. the shutdown promise)
+    // would otherwise be silent, so log it explicitly.
+    activeForwarder.close().catch((err) => {
+      log('egress forwarder close failed during reconfigure', { error: String(err) })
+    })
     activeForwarder = null
   }
   _shipOwnRecords = opts?.shipOwnRecords ?? true
@@ -552,7 +556,7 @@ export async function flushEgress(): Promise<void> {
  */
 export function _resetEgressForTest(): void {
   if (activeForwarder) {
-    activeForwarder.close().catch(() => {})
+    activeForwarder.close().catch(() => {}) // silent-ok: test-only reset helper (_resetEgressForTest)
     activeForwarder = null
   }
   _egressUser = undefined

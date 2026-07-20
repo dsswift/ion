@@ -57,9 +57,9 @@ func socketToken(sessionID string) string {
 
 // NewToolServer creates a tool server for the given session.
 func NewToolServer(sessionID string) *ToolServer {
-	home, _ := os.UserHomeDir()
+	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	sockDir := filepath.Join(home, ".ion", "mcp")
-	_ = os.MkdirAll(sockDir, 0o700)
+	os.MkdirAll(sockDir, 0o700) //nolint:errcheck // dir creation; failure surfaces on listen below
 
 	return &ToolServer{
 		tools:    make(map[string]toolEntry),
@@ -90,7 +90,7 @@ func (ts *ToolServer) Start() error {
 	defer ts.mu.Unlock()
 
 	// Clean up stale socket
-	_ = os.Remove(ts.sockPath)
+	os.Remove(ts.sockPath) //nolint:errcheck // stale socket cleanup; absent is fine
 
 	listener, err := net.Listen("unix", ts.sockPath)
 	if err != nil {
@@ -115,9 +115,9 @@ func (ts *ToolServer) Stop() {
 
 	ts.running = false
 	if ts.listener != nil {
-		_ = ts.listener.Close()
+		ts.listener.Close() //nolint:errcheck // listener teardown
 	}
-	_ = os.Remove(ts.sockPath)
+	os.Remove(ts.sockPath) //nolint:errcheck // stale socket cleanup; absent is fine
 }
 
 // SocketPath returns the path to the Unix socket.
@@ -136,7 +136,7 @@ func (ts *ToolServer) HasTool(name string) bool {
 
 // McpConfigPath writes MCP config JSON for the Claude CLI --mcp-config flag.
 func (ts *ToolServer) McpConfigPath(sessionID string) (string, error) {
-	home, _ := os.UserHomeDir()
+	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	configDir := filepath.Join(home, ".ion", "mcp")
 
 	config := map[string]interface{}{
@@ -199,10 +199,19 @@ func (ts *ToolServer) acceptLoop() {
 }
 
 func (ts *ToolServer) handleConnection(conn net.Conn) {
-	defer func() { _ = conn.Close() }()
+	defer func() { conn.Close() }() //nolint:errcheck // connection close
 
 	decoder := json.NewDecoder(conn)
 	encoder := json.NewEncoder(conn)
+
+	// send wraps encoder.Encode so a failed write to the CLI (broken pipe,
+	// closed connection) is logged instead of silently dropping the reply,
+	// which would leave the CLI hanging on a tool call with no explanation.
+	send := func(method string, id interface{}, payload map[string]interface{}) {
+		if err := encoder.Encode(payload); err != nil {
+			utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "reply encode failed", map[string]any{"method": method, "id": id, "error": err.Error()})
+		}
+	}
 
 	for {
 		var req struct {
@@ -227,11 +236,13 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 			var params struct {
 				ProtocolVersion string `json:"protocolVersion"`
 			}
-			_ = json.Unmarshal(req.Params, &params)
+			if err := json.Unmarshal(req.Params, &params); err != nil {
+				utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "initialize params decode failed", map[string]any{"id": req.ID, "error": err.Error()})
+			}
 			utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "MCP initialize", map[string]any{
 				"protocol_version": params.ProtocolVersion,
 			})
-			_ = encoder.Encode(map[string]interface{}{
+			send(req.Method, req.ID, map[string]interface{}{
 				"jsonrpc": "2.0",
 				"id":      req.ID,
 				"result": map[string]interface{}{
@@ -270,7 +281,7 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 			continue
 
 		case "ping":
-			_ = encoder.Encode(map[string]interface{}{
+			send(req.Method, req.ID, map[string]interface{}{
 				"jsonrpc": "2.0",
 				"id":      req.ID,
 				"result":  map[string]interface{}{},
@@ -299,7 +310,7 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 			utils.LogWithFields(utils.LevelDebug, "backend.tool_server", "tools/list: returning tools", map[string]any{
 				"count": len(toolList),
 			})
-			_ = encoder.Encode(map[string]interface{}{
+			send(req.Method, req.ID, map[string]interface{}{
 				"jsonrpc": "2.0",
 				"id":      req.ID,
 				"result":  map[string]interface{}{"tools": toolList},
@@ -310,7 +321,11 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 				Name      string                 `json:"name"`
 				Arguments map[string]interface{} `json:"arguments"`
 			}
-			_ = json.Unmarshal(req.Params, &params)
+			if err := json.Unmarshal(req.Params, &params); err != nil {
+				// A decode failure yields an empty name, producing a misleading
+				// "tool not found" with no cause. Log the real reason.
+				utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "tools/call params decode failed", map[string]any{"id": req.ID, "error": err.Error()})
+			}
 
 			ts.mu.Lock()
 			entry, exists := ts.tools[params.Name]
@@ -320,7 +335,7 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 				utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "tool not found", map[string]any{
 					"name": params.Name,
 				})
-				_ = encoder.Encode(map[string]interface{}{
+				send(req.Method, req.ID, map[string]interface{}{
 					"jsonrpc": "2.0",
 					"id":      req.ID,
 					"error":   map[string]interface{}{"code": -32601, "message": "tool not found: " + params.Name},
@@ -337,7 +352,7 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 					"name":  params.Name,
 					"error": utils.ErrStr(err),
 				})
-				_ = encoder.Encode(map[string]interface{}{
+				send(req.Method, req.ID, map[string]interface{}{
 					"jsonrpc": "2.0",
 					"id":      req.ID,
 					"result": map[string]interface{}{
@@ -352,7 +367,7 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 					"name":     params.Name,
 					"is_error": result.IsError,
 				})
-				_ = encoder.Encode(map[string]interface{}{
+				send(req.Method, req.ID, map[string]interface{}{
 					"jsonrpc": "2.0",
 					"id":      req.ID,
 					"result": map[string]interface{}{
@@ -368,7 +383,7 @@ func (ts *ToolServer) handleConnection(conn net.Conn) {
 			utils.LogWithFields(utils.LevelInfo, "backend.tool_server", "unknown method", map[string]any{
 				"method": req.Method,
 			})
-			_ = encoder.Encode(map[string]interface{}{
+			send(req.Method, req.ID, map[string]interface{}{
 				"jsonrpc": "2.0",
 				"id":      req.ID,
 				"error":   map[string]interface{}{"code": -32601, "message": "method not found"},

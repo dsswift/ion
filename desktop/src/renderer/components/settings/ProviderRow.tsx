@@ -9,6 +9,7 @@ import {
   authSourceTooltip, providerAuthBadge,
   API_KEY_PROVIDERS, OAUTH_PROVIDERS, OAUTH_BUTTON_LABELS,
 } from './provider-auth-labels'
+import { rError, rWarn } from '../../rendererLogger'
 
 export function ProviderRow({ provider, colors, onCredentialSaved }: {
   provider: ProviderEntry
@@ -58,7 +59,7 @@ export function ProviderRow({ provider, colors, onCredentialSaved }: {
         const dc = await window.ion.oauthDeviceCode(provider.id)
         if (!dc.ok) { setError(dc.error || 'Failed to start'); setOauthLoading(false); return }
         setDeviceCode({ userCode: dc.userCode!, verificationUri: dc.verificationUri!, deviceCode: dc.deviceCode!, interval: dc.interval!, expiresIn: dc.expiresIn! })
-        window.ion.openExternal(dc.verificationUri!)
+        void window.ion.openExternal(dc.verificationUri!).catch((err) => rWarn('settings', 'open verification uri failed', { error: String(err) }))
         const poll = await window.ion.oauthDevicePoll(dc.deviceCode!, dc.interval!, dc.expiresIn!)
         if (poll.ok) onCredentialSaved(); else setError(poll.error || 'Device flow failed')
         setDeviceCode(null)
@@ -104,17 +105,17 @@ export function ProviderRow({ provider, colors, onCredentialSaved }: {
         <span title={authSourceTooltip(provider.authSource)} style={{ fontSize: 10, fontWeight: 500, color: badgeColor, padding: '1px 6px', borderRadius: 4, background: badgeBg, cursor: 'default' }}>
           {badgeLabel}
         </span>
-        {isOAuthSession && <button onClick={handleOAuthLogout} style={linkBtn(colors)}>Sign out</button>}
+        {isOAuthSession && <button onClick={() => { void handleOAuthLogout().catch((err) => rError('settings', 'oauth logout failed', { error: String(err) })) }} style={linkBtn(colors)}>Sign out</button>}
         {canManageKey && !editing && (
           <>
             <button onClick={() => setEditing(true)} style={linkBtn(colors)}>Change</button>
-            <button onClick={handleRemoveKey} style={linkBtn(colors)} title={provider.authSource === 'filestore' ? 'Remove saved API key' : 'Clear override and revert to the underlying credential source'}>
+            <button onClick={() => { void handleRemoveKey().catch((err) => rError('settings', 'remove key failed', { error: String(err) })) }} style={linkBtn(colors)} title={provider.authSource === 'filestore' ? 'Remove saved API key' : 'Clear override and revert to the underlying credential source'}>
               {provider.authSource === 'filestore' ? 'Remove' : 'Reset'}
             </button>
           </>
         )}
         {provider.hasAuth && (
-          <button onClick={handleRefreshModels} disabled={refreshing} style={{ ...linkBtn(colors), opacity: refreshing ? 0.5 : 1 }} title="Re-fetch available models">
+          <button onClick={() => { void handleRefreshModels().catch((err) => rWarn('settings', 'refresh models failed', { error: String(err) })) }} disabled={refreshing} style={{ ...linkBtn(colors), opacity: refreshing ? 0.5 : 1 }} title="Re-fetch available models">
             {refreshing ? '…' : '↻ Models'}
           </button>
         )}
@@ -135,7 +136,7 @@ export function ProviderRow({ provider, colors, onCredentialSaved }: {
       )}
 
       {isOAuthProvider && !provider.hasAuth && !deviceCode && (
-        <button onClick={handleOAuthLogin} disabled={oauthLoading} style={oauthBtn(colors, oauthLoading)}>
+        <button onClick={() => { void handleOAuthLogin().catch((err) => rError('settings', 'oauth login failed', { error: String(err) })) }} disabled={oauthLoading} style={oauthBtn(colors, oauthLoading)}>
           {oauthLoading ? (<><Spinner size={12} /> Waiting for browser…</>) : (OAUTH_BUTTON_LABELS[provider.id] || 'Sign in')}
         </button>
       )}
@@ -143,8 +144,8 @@ export function ProviderRow({ provider, colors, onCredentialSaved }: {
 
       {showApiKeyInput && (
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
-          <input type="password" placeholder={editing ? 'New API key' : `${getProviderDisplayName(provider.id)} API key`} value={apiKey} onChange={(e) => setApiKey(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSave()} style={inputSt(colors)} />
-          <button onClick={handleSave} disabled={saving || !apiKey.trim()} style={saveBtn(colors, saving || !apiKey.trim())}>{saving ? '…' : saved ? '✓' : 'Save'}</button>
+          <input type="password" placeholder={editing ? 'New API key' : `${getProviderDisplayName(provider.id)} API key`} value={apiKey} onChange={(e) => setApiKey(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void handleSave().catch((err) => rError('settings', 'save key failed', { error: String(err) })) }} style={inputSt(colors)} />
+          <button onClick={() => { void handleSave().catch((err) => rError('settings', 'save key failed', { error: String(err) })) }} disabled={saving || !apiKey.trim()} style={saveBtn(colors, saving || !apiKey.trim())}>{saving ? '…' : saved ? '✓' : 'Save'}</button>
           {editing && <button onClick={() => { setEditing(false); setApiKey('') }} style={linkBtn(colors)}>Cancel</button>}
         </div>
       )}

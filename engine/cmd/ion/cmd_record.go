@@ -7,6 +7,8 @@ import (
 	"net"
 	"os"
 	"strings"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 func cmdRecord(flags map[string]string) {
@@ -21,14 +23,14 @@ func cmdRecord(flags map[string]string) {
 		fmt.Fprintf(os.Stderr, "Error creating file: %s\n", err)
 		os.Exit(1)
 	}
-	defer func() { _ = f.Close() }()
+	defer func() { f.Close() }() //nolint:errcheck // best-effort close on read-only recording sink during teardown
 
 	conn, err := net.Dial(dialNetwork(), socketPath())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Connection error: %s\n", err)
 		os.Exit(1)
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() { conn.Close() }() //nolint:errcheck // best-effort IPC conn close during teardown
 
 	fmt.Printf("Recording to %s...\n", output)
 	if k := flags["key"]; k != "" {
@@ -46,12 +48,19 @@ func cmdRecord(flags map[string]string) {
 		if key := flags["key"]; key != "" {
 			var parsed map[string]interface{}
 			if json.Unmarshal([]byte(line), &parsed) == nil {
-				if k, _ := parsed["key"].(string); k != key {
+				if k, ok := parsed["key"].(string); !ok || k != key {
 					continue
 				}
 			}
 		}
-		_, _ = f.WriteString(line + "\n")
+		if _, err := f.WriteString(line + "\n"); err != nil {
+			utils.LogWithFields(utils.LevelError, "record", "recording sink write failed, stopping", map[string]any{
+				"path":  output,
+				"count": count,
+				"error": utils.ErrStr(err),
+			})
+			break
+		}
 		count++
 	}
 	fmt.Printf("\nRecorded %d messages to %s\n", count, output)
@@ -63,7 +72,7 @@ func cmdRpc() {
 		fmt.Fprintf(os.Stderr, "Connection error: %s\n", err)
 		os.Exit(1)
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() { conn.Close() }() //nolint:errcheck // best-effort IPC conn close during teardown
 
 	fmt.Fprintln(os.Stderr, "Connected to engine server (RPC mode)")
 
@@ -82,8 +91,8 @@ func cmdRpc() {
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.TrimSpace(line) != "" {
-			_, _ = conn.Write([]byte(line + "\n"))
+			conn.Write([]byte(line + "\n")) //nolint:errcheck // best-effort IPC write; peer read loop surfaces disconnect
 		}
 	}
-	_ = conn.Close()
+	conn.Close() //nolint:errcheck // best-effort IPC conn close during teardown
 }

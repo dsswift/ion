@@ -1,11 +1,12 @@
 import type { State } from '../session-store-types'
-import type { TabState } from '../../../shared/types'
+import type { TabState, AgentStateUpdate } from '../../../shared/types'
 import type { ConversationPane } from '../../../shared/types-engine'
 import { usePreferencesStore } from '../../preferences'
-import { scheduleDoneGroupMove } from '../session-store-helpers'
+import { scheduleDoneGroupMove, cancelDoneGroupMove } from '../session-store-helpers'
 import { activeInstance, effectivePermissionMode } from '../conversation-instance'
 import { isMirrorWindow } from '../../lib/window-role'
 import { rDebug, rInfo } from '../../rendererLogger'
+import { applyActiveGroupMove } from './event-slice-running-move'
 
 /**
  * Schedule the auto-move-to-done-group for a tab that has just reached a clean
@@ -164,4 +165,73 @@ function hasRunningAgents(panes: Map<string, ConversationPane>, tabId: string): 
     }
   }
   return false
+}
+
+/**
+ * Re-evaluate auto-group placement after an `agent_state` snapshot is
+ * committed to the store. Called post-commit from `handleNormalizedEvent`
+ * so `get()` already reflects the new `agentStates`.
+ *
+ * TWO SYMMETRIC GAPS this closes:
+ *
+ * BUG A — tab moved to done while a fast child ran start→done within the
+ * 1500ms timer window (or the child's `running` snapshot arrived after the
+ * timer fired). At that point the move already executed; now the freshly-
+ * committed snapshot shows running children → move the tab BACK to in-progress
+ * and cancel any pending done-move timer.
+ *
+ * BUG B — tab stranded in in-progress after children complete. The orchestrator
+ * went idle with running children so `maybeScheduleDoneMove` was suppressed.
+ * When the final `agent_state` arrives with all children terminal, nobody
+ * re-evaluates the done-move. This function fills that gap.
+ *
+ * MIRROR GUARD: group movement is an owner decision. Same contract as every
+ * other auto-move helper.
+ */
+export function maybeApplyAgentStateGroupMove(
+  tabId: string,
+  newAgentStates: AgentStateUpdate[],
+  get: () => State,
+): void {
+  if (isMirrorWindow()) {
+    rDebug('auto-move.agent-state', 'skipped: mirror window', { tab_id: tabId.slice(0, 8) })
+    return
+  }
+
+  const s = get()
+  const tab = s.tabs.find((t) => t.id === tabId)
+  if (!tab) return
+
+  const hasRunningChildren = newAgentStates.some((a) => a.status === 'running')
+  const { doneGroupId, inProgressGroupId } = usePreferencesStore.getState()
+
+  if (hasRunningChildren) {
+    // BUG A path: children are running — the tab must NOT be in the done group.
+    if (doneGroupId && tab.groupId === doneGroupId) {
+      rInfo('auto-move.agent-state', 'running children found in done group — moving back to in-progress', { tab_id: tabId.slice(0, 8), done_group: doneGroupId, in_progress_group: inProgressGroupId ?? '' })
+      // Cancel any pending done-move timer (may still be counting down).
+      cancelDoneGroupMove(tabId)
+      // Move back to planning/in-progress via the canonical active-group helper
+      // so the permission-mode → group mapping is applied consistently.
+      applyActiveGroupMove(tabId, tab, s.conversationPanes, get, 'agent_state')
+    } else {
+      rDebug('auto-move.agent-state', 'running children — tab already in correct group', { tab_id: tabId.slice(0, 8), current_group: tab.groupId ?? '' })
+    }
+    return
+  }
+
+  // BUG B path: all children terminal — re-evaluate the done-move if the tab
+  // is idle/completed. Use prevStatus='running' (synthetic: the children WERE
+  // running until this snapshot) so `maybeScheduleDoneMove`'s transition guard
+  // (`prevStatus === 'running'`) passes. The helper's remaining guards (auto
+  // mode, not pinned, doneGroupId configured, not already in done group, not
+  // permission-denied) apply as usual.
+  const tabStatus = tab.status
+  const isTerminal = tabStatus === 'idle' || tabStatus === 'completed'
+  if (isTerminal) {
+    rDebug('auto-move.agent-state', 'all children terminal — re-evaluating done move', { tab_id: tabId.slice(0, 8), tab_status: tabStatus, current_group: tab.groupId ?? '' })
+    maybeScheduleDoneMove(tabId, 'running', 'idle', tab, s.conversationPanes, get, 'agent_state')
+  } else {
+    rDebug('auto-move.agent-state', 'all children terminal but tab still active — no done move', { tab_id: tabId.slice(0, 8), tab_status: tabStatus })
+  }
 }

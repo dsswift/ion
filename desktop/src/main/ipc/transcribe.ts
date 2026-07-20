@@ -44,7 +44,7 @@ async function findWhisperBin(): Promise<string> {
     try {
       const found = await runExecFile('/bin/zsh', ['-lc', `whence -p ${name}`], 5000).then((s) => s.trim())
       if (found) return found
-    } catch {}
+    } catch { /* silent-ok: probe next whisper candidate when this lookup fails */ }
   }
 
   return ''
@@ -84,13 +84,13 @@ export function registerTranscribeIpc(): void {
           try {
             const report = JSON.parse(readFileSync(reportPath, 'utf-8'))
             const transcript = (report.text || '').trim()
-            try { unlinkSync(reportPath) } catch {}
+            try { unlinkSync(reportPath) } catch { /* silent-ok: best-effort WhisperKit report cleanup */ }
             const srtPath = join(reportDir, `${wavBasename}.srt`)
-            try { unlinkSync(srtPath) } catch {}
+            try { unlinkSync(srtPath) } catch { /* silent-ok: best-effort WhisperKit srt cleanup */ }
             return { error: null, transcript }
           } catch (parseErr: any) {
             log('transcribe: WhisperKit JSON parse failed, falling back to stdout', { error: parseErr.message })
-            try { unlinkSync(reportPath) } catch {}
+            try { unlinkSync(reportPath) } catch { /* silent-ok: best-effort WhisperKit report cleanup on parse-failure path */ }
           }
         }
         if (!output || !output.trim()) {
@@ -127,7 +127,7 @@ export function registerTranscribeIpc(): void {
         const txtPath = tmpWav.replace('.wav', '.txt')
         if (existsSync(txtPath)) {
           const transcript = readFileSync(txtPath, 'utf-8').trim()
-          try { unlinkSync(txtPath) } catch {}
+          try { unlinkSync(txtPath) } catch { /* silent-ok: best-effort whisper txt-output cleanup */ }
           return { error: null, transcript }
         }
         return {
@@ -152,7 +152,7 @@ export function registerTranscribeIpc(): void {
         transcript: null,
       }
     } finally {
-      try { unlinkSync(tmpWav) } catch {}
+      try { unlinkSync(tmpWav) } catch { /* silent-ok: best-effort temp-wav cleanup */ }
     }
   })
 }

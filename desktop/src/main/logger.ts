@@ -113,12 +113,18 @@ function initBytes(): void {
 function rotate(): void {
   if (disableRotation) return
   // Delete the oldest generation to make room, then shift each generation up.
-  try { unlinkSync(LOG_FILE + '.' + maxLogGenerations) } catch {}
+  try { unlinkSync(LOG_FILE + '.' + maxLogGenerations) } catch { /* oldest generation may not exist yet */ }
   for (let i = maxLogGenerations - 1; i >= 1; i--) {
-    try { renameSync(LOG_FILE + '.' + i, LOG_FILE + '.' + (i + 1)) } catch {}
+    try { renameSync(LOG_FILE + '.' + i, LOG_FILE + '.' + (i + 1)) } catch { /* generation i may not exist yet */ }
   }
   // Rename the live file to .1; next write creates a fresh desktop.jsonl.
-  try { renameSync(LOG_FILE, LOG_FILE + '.1') } catch {}
+  // A failure here means rotation silently stopped and the file grows
+  // unbounded — surface it on stderr since we cannot log to the file itself.
+  try {
+    renameSync(LOG_FILE, LOG_FILE + '.1')
+  } catch (err) {
+    try { process.stderr.write(`[logger] rotate rename failed; rotation stalled: ${String(err)}\n`) } catch { /* stderr unavailable */ }
+  }
   bytesWritten = 0
   bytesInitialized = false
 }
@@ -271,7 +277,13 @@ export function flushLogs(): void {
   buffer = []
   if (pending) {
     bytesWritten += pending.length
-    try { appendFileSync(LOG_FILE, pending) } catch {}
+    try {
+      appendFileSync(LOG_FILE, pending)
+    } catch (err) {
+      // The logger cannot log its own final-drain failure to the same file.
+      // Fall back to stderr so buffered lines don't vanish without a trace.
+      try { process.stderr.write(`[logger] flushLogs append failed: ${String(err)}\n`) } catch { /* stderr unavailable */ }
+    }
   }
 }
 

@@ -6,7 +6,7 @@ import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import { useSessionStore } from '../stores/sessionStore'
 import { LINK_RE, isCmdHeld, EDITABLE_EXTS } from '../hooks/useNavigableLinks'
-import { rDebug } from '../rendererLogger'
+import { rDebug, rWarn } from '../rendererLogger'
 import '@xterm/xterm/css/xterm.css'
 
 interface TerminalEntry {
@@ -99,9 +99,9 @@ function registerTerminalLinks(terminal: Terminal, cwd: string, tabId: string): 
           activate(event: MouseEvent, linkText: string) {
             if (!event.metaKey) return
             if (isUrl) {
-              window.ion.openExternal(linkText)
+              void window.ion.openExternal(linkText).catch((err) => rWarn('terminal', 'open external failed', { error: String(err) }))
             } else {
-              openTerminalFile(linkText, cwd, tabId)
+              void openTerminalFile(linkText, cwd, tabId).catch((err) => rWarn('terminal', 'open file failed', { error: String(err) }))
             }
           },
           hover() {
@@ -138,7 +138,7 @@ async function openTerminalFile(path: string, cwd: string, tabId: string): Promi
   if (EDITABLE_EXTS.has(ext)) {
     useSessionStore.getState().openFileInEditor(cwd, tabId, resolved)
   } else {
-    window.ion.fsOpenNative(resolved)
+    void window.ion.fsOpenNative(resolved).catch((err) => rWarn('terminal', 'open native failed', { error: String(err) }))
   }
 }
 
@@ -192,7 +192,7 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
 
         if (isMeta && ev.key === 'c') {
           if (terminal.hasSelection()) {
-            navigator.clipboard.writeText(terminal.getSelection())
+            void navigator.clipboard.writeText(terminal.getSelection()).catch((err) => rWarn('terminal', 'copy failed', { error: String(err) }))
             terminal.clearSelection()
           }
           return false
@@ -257,10 +257,10 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
         const e = terminalInstances.get(key)
         if (!e) return
         terminal.reset()
-        window.ion.terminalCreate(key, e.cwd).then(() => {
+        void window.ion.terminalCreate(key, e.cwd).then(() => {
           const dims = e.fitAddon.proposeDimensions()
           if (dims) window.ion.terminalResize(key, dims.cols, dims.rows)
-        })
+        }).catch((err) => rWarn('terminal', 'terminal recreate failed', { error: String(err) }))
       })
 
       entry = { terminal, fitAddon, serializeAddon, created: false, cwd, hostEl, unsubData, unsubExit, unsubLinks }
@@ -277,7 +277,7 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
       if (isNew && !entry!.created) {
         entry!.created = true
         const dims = entry!.fitAddon.proposeDimensions()
-        window.ion.terminalCreate(key, cwd).then(() => {
+        void window.ion.terminalCreate(key, cwd).then(() => {
           if (dims) {
             window.ion.terminalResize(key, dims.cols, dims.rows)
           }
@@ -286,7 +286,7 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
           if (pendingCmd) {
             setTimeout(() => window.ion.terminalWrite(key, pendingCmd + '\n'), 100)
           }
-        })
+        }).catch((err) => rWarn('terminal', 'terminal create failed', { error: String(err) }))
       }
     })
 

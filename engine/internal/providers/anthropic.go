@@ -133,7 +133,7 @@ func (p *anthropicProvider) doStream(ctx context.Context, opts types.LlmStreamOp
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort read of an error-response body
 		return FromAnthropicError(
 			fmt.Errorf("anthropic API error: %s", string(respBody)),
 			resp.StatusCode,
@@ -375,7 +375,7 @@ func (p *anthropicProvider) formatMessages(messages []types.LlmMessage) []map[st
 		// "cache_control cannot be set for empty text blocks". Skip this
 		// message's cache slot rather than poisoning the whole request.
 		if t, isText := last["type"].(string); isText && t == "text" {
-			if s, _ := last["text"].(string); s == "" {
+			if s, _ := last["text"].(string); s == "" { //nolint:errcheck // best-effort; failure not actionable here
 				utils.LogWithFields(utils.LevelDebug, "anthropic", "cache control skipping empty text block", map[string]any{"count": i})
 				continue
 			}

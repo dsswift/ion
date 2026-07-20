@@ -103,7 +103,7 @@ func parseSlashInvocation(text string) (name, args string, ok bool) {
 // gate in start_session.go. The engine owns no opinion on the flag — it honors
 // whatever the consumer hands it (here, via the session's EngineConfig).
 func resolveSlashCommand(name, args, workingDir string, claudeCompat bool) (*ResolvedSlash, bool) {
-	home, _ := os.UserHomeDir()
+	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	filePath := strings.ReplaceAll(name, ":", string(filepath.Separator)) + ".md"
 
 	type candidate struct {

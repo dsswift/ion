@@ -56,7 +56,7 @@ func runCommand(cmdStr, pluginRoot string, timeout time.Duration, extraEnv []str
 
 	cmd := exec.CommandContext(ctx, parts[0], parts[1:]...)
 
-	home, _ := os.UserHomeDir()
+	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	claudeDir := filepath.Join(home, ".claude")
 	ionDir := filepath.Join(home, ".ion")
 

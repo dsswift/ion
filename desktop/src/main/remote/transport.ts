@@ -18,9 +18,10 @@ import { RetransmitBuffer, replayRange } from './retransmit-buffer'
 import { InboundDedup } from './transport-dedup'
 import { InboundEpochTracker } from './transport-inbound-epoch'
 import { decodeInboundPayload } from './transport-inbound-payload'
-import { enqueueSend, drainSendQueue, sendDirect, type SendCtx, type SendQueueItem } from './transport-send'
+import { enqueueSend, enqueueSendToDevice, drainSendQueue, sendDirect, type SendCtx, type SendQueueItem } from './transport-send'
 import { TransportCryptoHost } from './transport-send-worker-host'
 import { connectRelayForDevice } from './transport-relay-wiring'
+import { startHeartbeat, stopHeartbeat, sendHeartbeatTo, type HeartbeatCtx } from './transport-heartbeat'
 import type {
   TransportState,
   WireMessage,
@@ -386,13 +387,27 @@ export class RemoteTransport extends EventEmitter {
     return [...this.deviceSecrets.keys()].filter(id => this._isDeviceConnected(id))
   }
 
-  /** Send to a specific device only (e.g. unpair notification). */
+  /** Send to a specific device only (e.g. unpair notification, terminal snapshot). */
   sendToDevice(deviceId: string, event: RemoteEvent, push = false): void {
     const secret = this.deviceSecrets.get(deviceId)
     if (!secret) return
-    // Direct path (no queue, no worker): carries only small frames —
-    // heartbeats, unpair notices, resend_unavailable — where a thread hop
-    // buys nothing. Pipeline body lives in transport-send.ts (sendDirect).
+    // Worker-live path: route the targeted send through the SAME ordered drain
+    // as broadcasts (enqueueSendToDevice). This keeps the frame's wire seq in
+    // drain order relative to any in-flight broadcast frame to the same device
+    // and offloads its compress+encrypt to the worker thread. It matters for
+    // large targeted replies (desktop_terminal_snapshot, conversation history,
+    // plan/file content): the old synchronous sendDirect path allocated from
+    // the same per-device seq counter but delivered IMMEDIATELY, so a targeted
+    // frame enqueued while a worker job was in flight got the higher seq yet
+    // reached the socket first — iOS saw a forward gap and requested a resend
+    // (the terminal-open latency spike on low-RTT LAN links).
+    if (this.cryptoHost.usingWorker) {
+      enqueueSendToDevice(this._sendCtx, deviceId, event, push)
+      return
+    }
+    // Sync-only fallback (worker not live): no async worker to race, so
+    // synchronous delivery already equals allocation order. Pipeline body lives
+    // in transport-send.ts (sendDirect).
     sendDirect(deviceId, secret, event, push, (d) => this._nextSeqFor(d), this.epoch, this.retransmit, (d, f) => this._deliverFrame(d, f))
   }
 
@@ -458,46 +473,31 @@ export class RemoteTransport extends EventEmitter {
 
   private _startHeartbeat(): void {
     this._stopHeartbeat()
-    log('transport: heartbeat started', { interval_ms: RemoteTransport.HEARTBEAT_INTERVAL_MS, devices: this.deviceSecrets.size })
-    this.heartbeatTimer = setInterval(() => this._sendHeartbeatsTick(), RemoteTransport.HEARTBEAT_INTERVAL_MS)
+    this.heartbeatTimer = startHeartbeat(this._heartbeatCtx())
   }
 
-  /** One heartbeat frame to every paired device, plus a single INFO line for
-   *  observability (the sender was previously log-silent, making it impossible
-   *  to confirm from desktop.jsonl that heartbeats were flowing at all). */
-  private _sendHeartbeatsTick(): void {
-    for (const deviceId of this.deviceSecrets.keys()) {
-      this._sendHeartbeatTo(deviceId)
-    }
-    log('transport: heartbeat sent', { devices: this.deviceSecrets.size, buffered: this.sendQueue.length })
-  }
-
-  /** Send one heartbeat frame to a single device.
-   *
-   * Heartbeats go per device so the payload `seq` is that device's own
-   * outbound counter (a single broadcast payload carried one global seq,
-   * which was meaningless under per-device counters). iOS currently reads
-   * only ts/buffered from heartbeats, but the seq must still be truthful:
-   * the payload carries the seq of the heartbeat frame ITSELF, which
-   * sendDirect allocates as current+1. Nothing can interleave between this
-   * read and the allocation — the main process is single-threaded and both
-   * happen in this synchronous call.
-   *
-   * Also invoked directly when a LAN client completes auth (see
-   * _lanAuthCtx.onAuthenticated) so a re-authenticated socket carries proof
-   * of life immediately instead of after up to one full interval. */
+  /** Send one heartbeat frame to a single device (delegates to the extracted
+   *  helper). Kept as a thin method so internal callers — the LAN-auth
+   *  onAuthenticated hook — read as before. */
   private _sendHeartbeatTo(deviceId: string): void {
-    const ts = Date.now()
-    const buffered = this.sendQueue.length
-    this.sendToDevice(deviceId, { type: 'desktop_heartbeat', seq: (this.seqs.get(deviceId) ?? 0) + 1, ts, buffered })
+    sendHeartbeatTo(this._heartbeatCtx(), deviceId)
+  }
+
+  /** Build the context handed to the extracted heartbeat helpers. Cheap to
+   *  build per call: the Maps are stable references and queuedCount reads the
+   *  live queue length. */
+  private _heartbeatCtx(): HeartbeatCtx {
+    return {
+      deviceSecrets: this.deviceSecrets,
+      seqs: this.seqs,
+      queuedCount: () => this.sendQueue.length,
+      sendToDevice: (deviceId, event) => this.sendToDevice(deviceId, event),
+      intervalMs: RemoteTransport.HEARTBEAT_INTERVAL_MS,
+    }
   }
 
   private _stopHeartbeat(): void {
-    if (this.heartbeatTimer) {
-      clearInterval(this.heartbeatTimer)
-      this.heartbeatTimer = null
-      log('transport: heartbeat stopped')
-    }
+    this.heartbeatTimer = stopHeartbeat(this.heartbeatTimer)
   }
 
   /** Recompute transport state based on all connections. */

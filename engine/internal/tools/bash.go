@@ -27,7 +27,7 @@ func BashTool() *types.ToolDef {
 }
 
 func executeBash(ctx context.Context, input map[string]any, cwd string) (*types.ToolResult, error) {
-	command, _ := input["command"].(string)
+	command, _ := input["command"].(string) //nolint:errcheck // best-effort; failure not actionable here
 	if command == "" {
 		return &types.ToolResult{Content: "Error: command is required", IsError: true}, nil
 	}

@@ -140,7 +140,7 @@ func InitNetwork(cfg *types.NetworkConfig) {
 // been called, a default transport is returned.
 func GetHTTPTransport() *http.Transport {
 	if httpTransport == nil {
-		return http.DefaultTransport.(*http.Transport).Clone()
+		return http.DefaultTransport.(*http.Transport).Clone() //nolint:errcheck // best-effort; failure not actionable here
 	}
 	return httpTransport
 }

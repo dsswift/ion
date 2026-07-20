@@ -1,6 +1,7 @@
 import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { activeInstance, instanceMessageCount } from '../conversation-instance'
+import { rWarn } from '../../rendererLogger'
 
 export function createDirectorySlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -46,7 +47,7 @@ export function createDirectorySlice(set: StoreSet, get: StoreGet): Partial<Stat
           tab.worktree.worktreePath,
           tab.worktree.branchName,
           true,
-        ).catch(() => {})
+        ).catch((err) => rWarn('worktree', 'gitWorktreeRemove on directory change failed', { worktreePath: tab.worktree?.worktreePath, error: String(err) }))
       }
 
       // setBaseDirectory intentionally starts a FRESH conversation in the new
@@ -91,7 +92,7 @@ export function createDirectorySlice(set: StoreSet, get: StoreGet): Partial<Stat
                   ),
                 }))
               }
-            })
+            }).catch((err) => rWarn('directory', 'gitWorktreeAdd failed', { dir, branch: defaultBranch, error: String(err) }))
           } else {
             set((s) => ({
               tabs: s.tabs.map((t) =>
@@ -99,7 +100,7 @@ export function createDirectorySlice(set: StoreSet, get: StoreGet): Partial<Stat
               ),
             }))
           }
-        })
+        }).catch((err) => rWarn('directory', 'gitIsRepo probe failed', { dir, error: String(err) }))
       }
     },
   }

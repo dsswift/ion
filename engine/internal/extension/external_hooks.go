@@ -299,7 +299,7 @@ func (m *ExternalHookManager) serializePayload(payload map[string]interface{}) s
 		"_truncated":     true,
 		"_original_keys": keys,
 	}
-	fallback, _ := json.Marshal(truncated)
+	fallback, _ := json.Marshal(truncated) //nolint:errcheck // trivially-infallible local map used only to build a truncated-payload log string
 	return string(fallback)
 }
 

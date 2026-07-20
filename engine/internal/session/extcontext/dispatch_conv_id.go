@@ -26,7 +26,7 @@ func recordChildConvID(sa SessionAccessor, agentID, childSessionID, agentName st
 		if state.Metadata == nil {
 			state.Metadata = map[string]interface{}{}
 		}
-		existing, _ := state.Metadata["conversationIds"].([]interface{})
+		existing, _ := state.Metadata["conversationIds"].([]interface{}) //nolint:errcheck // best-effort; failure not actionable here
 		alreadyPresent := false
 		for _, v := range existing {
 			if s, ok := v.(string); ok && s == childSessionID {

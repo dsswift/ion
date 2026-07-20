@@ -38,7 +38,9 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
             homePath: result.homePath || '~',
           },
         })
-      } catch {}
+      } catch (err) {
+        rDebug('tabs', 'initStaticInfo failed', { error: String(err) })
+      }
     },
 
     setPermissionMode: (mode, source) => {
@@ -234,7 +236,7 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       const targetTabAfter = get().tabs.find(t => t.id === tabId)
       if (targetTabAfter?.conversationId) {
         if (needsHistoryHydration(activeInstance(get().conversationPanes, tabId))) {
-          get().loadSkeletonMessages(tabId)
+          get().loadSkeletonMessages(tabId).catch((err) => rWarn('tab.select', 'loadSkeletonMessages failed', { tab_id: tabId.slice(0, 8), error: String(err) }))
         }
       }
     },
@@ -259,19 +261,19 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
           closingTab.worktree.worktreePath,
           closingTab.worktree.branchName,
           true,
-        ).catch(() => {})
+        ).catch((err) => rWarn('tabs', 'worktree remove on close failed', { tab_id: tabId, error: String(err) }))
       }
-      window.ion.closeTab(tabId).catch(() => {})
+      window.ion.closeTab(tabId).catch((err) => rWarn('tabs', 'closeTab IPC failed', { tab_id: tabId, error: String(err) }))
       // Delete the tab's externalized content file (schema v4) and drop its
       // change-tracking entry. The main-process orphan sweep is the backstop
       // for paths that never reach here (crash mid-close).
-      window.ion.deleteTabContent?.(tabId)?.catch?.(() => {})
+      window.ion.deleteTabContent?.(tabId)?.catch?.((err) => rDebug('tabs', 'deleteTabContent failed', { tab_id: tabId, error: String(err) }))
       forgetTabContentTracking(tabId)
       const pane = get().terminalPanes.get(tabId)
       if (pane) {
         for (const inst of pane.instances) {
           const key = `${tabId}:${inst.id}`
-          window.ion.terminalDestroy(key).catch(() => {})
+          window.ion.terminalDestroy(key).catch((err) => rWarn('tabs', 'terminalDestroy on close failed', { key, error: String(err) }))
           destroyTerminalInstance(key)
         }
       }

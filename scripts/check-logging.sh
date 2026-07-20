@@ -5,7 +5,7 @@
 # defined in ADR-019 (docs/architecture/adr/019-logging-architecture-and-standards.md)
 # and docs/observability/log-schema.md.
 #
-# Six check categories:
+# Eight check categories:
 #
 #   GO-INTERP    — Go logger call whose msg argument is a fmt.Sprintf(...)
 #                  or uses string concatenation with +. Covers utils.Log,
@@ -32,6 +32,17 @@
 #                  known-drift set from ADR-019: runID, sessionID, convID,
 #                  durationMs, elapsedMs, elapsed_ms (shadow of duration_ms),
 #                  errMsg, errorMsg, errStr.
+#
+#   SILENT-CATCH — Swallowed promise rejection (`.catch(() => {})` and friends)
+#                  in desktop TS, or empty `catch {}` in iOS Swift. The "no
+#                  silent failures" rule: a caught error must be observable.
+#                  Opt out with a trailing `// silent-ok: <reason>` comment.
+#
+#   OS-LOGGER    — iOS `Logger(subsystem:)` (Apple unified logging) outside
+#                  DiagnosticLog.swift. os.Logger only reaches Console.app, never
+#                  the operator's ~/.ion/ios-diagnostic-logs.jsonl. All iOS
+#                  logging must use DiagnosticLog. Opt out (rare) with a trailing
+#                  `// os-logger-ok: <reason>` comment.
 #
 # This gate runs in CI as the `check-logging` job in `.github/workflows/quality.yml`.
 # Any new violation added to the tree will fail the PR. See
@@ -61,6 +72,8 @@ cnt_renderer=0
 cnt_ts_interp=0
 cnt_swift_interp=0
 cnt_non_canon=0
+cnt_silent_catch=0
+cnt_os_logger=0
 total_violations=0
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -78,6 +91,8 @@ report() {
     TS-INTERP)    cnt_ts_interp=$(( cnt_ts_interp + 1 )) ;;
     SWIFT-INTERP) cnt_swift_interp=$(( cnt_swift_interp + 1 )) ;;
     NON-CANON)    cnt_non_canon=$(( cnt_non_canon + 1 )) ;;
+    SILENT-CATCH) cnt_silent_catch=$(( cnt_silent_catch + 1 )) ;;
+    OS-LOGGER)    cnt_os_logger=$(( cnt_os_logger + 1 )) ;;
   esac
   total_violations=$(( total_violations + 1 ))
 }
@@ -249,6 +264,75 @@ check_non_canon() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
+# CHECK 7: Silent catch / swallowed rejection (cross-surface)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# The "no silent failures" rule: a failure branch must be observable. This
+# catches two greppable swallow patterns that the other gates and lint rules do
+# NOT cover:
+#
+#   TS   — `.catch(() => {})`, `.catch(() => undefined)`, `.catch(() => null)`:
+#          a promise rejection consumed and discarded. no-floating-promises only
+#          flags an UNHANDLED promise; a promise whose rejection is handled by an
+#          empty arrow is "handled" as far as that rule is concerned, yet the
+#          error still vanishes. This closes that hole.
+#   Swift — empty `catch {}` / `catch { }`: an error caught and dropped.
+#          (SwiftLint also flags this; check-logging gives a single cross-surface
+#          net that runs without the SwiftLint toolchain.)
+#
+# Opt out on a legitimately-benign line with a trailing `// silent-ok: <reason>`
+# comment. Test files are excluded via the find_* filters.
+
+check_silent_catch_ts() {
+  local files=("$@")
+  [[ ${#files[@]} -eq 0 ]] && return
+  local file linenum rest
+  while IFS=: read -r file linenum rest; do
+    case "$rest" in
+      *'silent-ok:'*) continue ;;
+    esac
+    report "SILENT-CATCH" "$file" "$linenum" "$rest"
+  done < <(grep -EHn '\.catch\(\s*\(\s*\)\s*=>\s*(\{\s*\}|undefined|null)\s*\)' "${files[@]}" 2>/dev/null || true)
+}
+
+check_silent_catch_swift() {
+  local files=("$@")
+  [[ ${#files[@]} -eq 0 ]] && return
+  local file linenum rest
+  while IFS=: read -r file linenum rest; do
+    case "$rest" in
+      *'silent-ok:'*) continue ;;
+    esac
+    report "SILENT-CATCH" "$file" "$linenum" "$rest"
+  done < <(grep -EHn 'catch\s*\{\s*\}' "${files[@]}" 2>/dev/null || true)
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CHECK 8: iOS os.Logger outside DiagnosticLog
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# os.Logger (Apple unified logging) writes only to Console.app, which is
+# invisible on a device with no attached Xcode session — so any operational log
+# routed through it never reaches the operator's ~/.ion/ios-diagnostic-logs.jsonl.
+# All iOS logging must go through DiagnosticLog. The sole legitimate os.Logger is
+# the fallback sink INSIDE DiagnosticLog.swift itself.
+
+check_os_logger_swift() {
+  local files=("$@")
+  [[ ${#files[@]} -eq 0 ]] && return
+  local file linenum rest
+  while IFS=: read -r file linenum rest; do
+    case "$file" in
+      */DiagnosticLog.swift) continue ;; # the one legitimate os.Logger sink
+    esac
+    case "$rest" in
+      *'os-logger-ok:'*) continue ;;
+    esac
+    report "OS-LOGGER" "$file" "$linenum" "$rest"
+  done < <(grep -EHn 'Logger\(subsystem:' "${files[@]}" 2>/dev/null || true)
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Dispatch
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -290,6 +374,7 @@ if [[ "$SCOPE" == "all" || "$SCOPE" == "ts" ]]; then
   while IFS= read -r f; do DESKTOP_TS+=("$f"); done < <(find_ts desktop/src/)
   check_ts_interp "${DESKTOP_TS[@]}"
   check_non_canon "${DESKTOP_TS[@]}"
+  check_silent_catch_ts "${DESKTOP_TS[@]}"
 fi
 
 # iOS Swift interpolation
@@ -298,6 +383,8 @@ if [[ "$SCOPE" == "all" || "$SCOPE" == "swift" ]]; then
   while IFS= read -r f; do IOS_SWIFT+=("$f"); done < <(find_swift ios/)
   check_swift_interp "${IOS_SWIFT[@]}"
   check_non_canon "${IOS_SWIFT[@]}"
+  check_silent_catch_swift "${IOS_SWIFT[@]}"
+  check_os_logger_swift "${IOS_SWIFT[@]}"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -312,6 +399,8 @@ printf "  %-12s (%s)\n" "RENDERER"     "console.* in shipped renderer code:     
 printf "  %-12s (%s)\n" "TS-INTERP"    "template literal msg in TS logger call:    $cnt_ts_interp"
 printf "  %-12s (%s)\n" "SWIFT-INTERP" "\\( interpolation in DiagnosticLog call:    $cnt_swift_interp"
 printf "  %-12s (%s)\n" "NON-CANON"    "non-canonical field key in logger call:    $cnt_non_canon"
+printf "  %-12s (%s)\n" "SILENT-CATCH" "swallowed .catch / empty Swift catch:      $cnt_silent_catch"
+printf "  %-12s (%s)\n" "OS-LOGGER"    "iOS os.Logger outside DiagnosticLog:       $cnt_os_logger"
 echo "  ─────────────────────────────────────────────────────────────────────────"
 echo "  TOTAL:     $total_violations"
 

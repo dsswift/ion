@@ -138,7 +138,7 @@ export function AgentDetailPanel({
 
   // Load conversation whenever the top frame changes.
   useEffect(() => {
-    if (top.conversationId) loadConversation(top.conversationId)
+    if (top.conversationId) void loadConversation(top.conversationId)
   }, [top.conversationId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Resolve messages for the current top frame.

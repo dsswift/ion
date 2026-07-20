@@ -216,7 +216,7 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 		if procs == nil {
 			procs = []ProcessInfo{}
 		}
-		data, _ := json.Marshal(procs)
+		data, _ := json.Marshal(procs) //nolint:errcheck // marshal of a local RPC struct
 		h.sendResponse(id, data, nil)
 
 	case "ext/terminate_process":
@@ -242,7 +242,7 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 		if ctx != nil && ctx.CleanStaleProcesses != nil {
 			count = ctx.CleanStaleProcesses()
 		}
-		data, _ := json.Marshal(map[string]int{"cleaned": count})
+		data, _ := json.Marshal(map[string]int{"cleaned": count}) //nolint:errcheck // marshal of a local RPC struct
 		h.sendResponse(id, data, nil)
 
 	case "ext/discover_agents":
@@ -259,7 +259,7 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 				h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 				return
 			}
-			data, _ := json.Marshal(result)
+			data, _ := json.Marshal(result) //nolint:errcheck // marshal of a local RPC struct
 			h.sendResponse(id, json.RawMessage(data), nil)
 		} else {
 			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "agent discovery not available"})
@@ -309,49 +309,49 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 				agentName := req.Params.Name
 				req.Params.OnComplete = func(result DispatchAgentResult) {
 					result.Name = agentName
-					data, _ := json.Marshal(result)
+					data, _ := json.Marshal(result) //nolint:errcheck // marshal of a local RPC struct
 					h.sendNotification("dispatch_complete", data)
 				}
 				req.Params.OnError = func(err DispatchError) {
 					err.Name = agentName
-					data, _ := json.Marshal(err)
+					data, _ := json.Marshal(err) //nolint:errcheck // marshal of a local RPC struct
 					h.sendNotification("dispatch_error", data)
 				}
 				req.Params.OnRecall = func(info RecallInfo) {
 					info.Name = agentName
-					data, _ := json.Marshal(info)
+					data, _ := json.Marshal(info) //nolint:errcheck // marshal of a local RPC struct
 					h.sendNotification("dispatch_recall", data)
 				}
 
 				// Wire lifecycle callbacks to notifications.
 				req.Params.OnToolStart = func(info DispatchToolStartInfo) {
 					info.Name = agentName
-					data, _ := json.Marshal(info)
+					data, _ := json.Marshal(info) //nolint:errcheck // marshal of a local RPC struct
 					h.sendNotification("dispatch_tool_start", data)
 				}
 				req.Params.OnToolEnd = func(info DispatchToolEndInfo) {
 					info.Name = agentName
-					data, _ := json.Marshal(info)
+					data, _ := json.Marshal(info) //nolint:errcheck // marshal of a local RPC struct
 					h.sendNotification("dispatch_tool_end", data)
 				}
 				req.Params.OnToolError = func(info DispatchToolErrorInfo) {
 					info.Name = agentName
-					data, _ := json.Marshal(info)
+					data, _ := json.Marshal(info) //nolint:errcheck // marshal of a local RPC struct
 					h.sendNotification("dispatch_tool_error", data)
 				}
 				req.Params.OnUsage = func(info DispatchUsageInfo) {
 					info.Name = agentName
-					data, _ := json.Marshal(info)
+					data, _ := json.Marshal(info) //nolint:errcheck // marshal of a local RPC struct
 					h.sendNotification("dispatch_usage", data)
 				}
 				req.Params.OnTextDelta = func(info DispatchTextDeltaInfo) {
 					info.Name = agentName
-					data, _ := json.Marshal(info)
+					data, _ := json.Marshal(info) //nolint:errcheck // marshal of a local RPC struct
 					h.sendNotification("dispatch_text_delta", data)
 				}
 				req.Params.OnPlanProposal = func(info DispatchPlanProposalInfo) {
 					info.Name = agentName
-					data, _ := json.Marshal(info)
+					data, _ := json.Marshal(info) //nolint:errcheck // marshal of a local RPC struct
 					h.sendNotification("dispatch_plan_proposal", data)
 				}
 				req.Params.OnChildQuestion = h.makeOnChildQuestion(agentName)
@@ -365,7 +365,7 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 						h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 						return
 					}
-					data, _ := json.Marshal(result)
+					data, _ := json.Marshal(result) //nolint:errcheck // marshal of a local RPC struct
 					h.sendResponse(id, json.RawMessage(data), nil)
 				}()
 			} else {
@@ -379,7 +379,7 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 						h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 						return
 					}
-					data, _ := json.Marshal(result)
+					data, _ := json.Marshal(result) //nolint:errcheck // marshal of a local RPC struct
 					h.sendResponse(id, json.RawMessage(data), nil)
 				}()
 			}
@@ -452,7 +452,7 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 				h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 				return
 			}
-			data, _ := json.Marshal(struct {
+			data, _ := json.Marshal(struct { //nolint:errcheck // marshal of a local RPC struct
 				Response  map[string]interface{} `json:"response,omitempty"`
 				Cancelled bool                   `json:"cancelled"`
 			}{Response: resp, Cancelled: cancelled})
@@ -589,7 +589,7 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 					h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 					return
 				}
-				data, _ := json.Marshal(struct {
+				data, _ := json.Marshal(struct { //nolint:errcheck // marshal of a local RPC struct
 					Content string `json:"content"`
 					IsError bool   `json:"isError,omitempty"`
 				}{Content: content, IsError: isError})
@@ -603,7 +603,7 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 				h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 				return
 			}
-			data, _ := json.Marshal(struct {
+			data, _ := json.Marshal(struct { //nolint:errcheck // marshal of a local RPC struct
 				Content string `json:"content"`
 				IsError bool   `json:"isError,omitempty"`
 			}{Content: content, IsError: isError})
@@ -749,7 +749,7 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
 			return
 		}
-		data, _ := json.Marshal(struct {
+		data, _ := json.Marshal(struct { //nolint:errcheck // marshal of a local RPC struct
 			Wrapped  string `json:"wrapped"`
 			Platform string `json:"platform"`
 		}{Wrapped: wrapped, Platform: func() string {
@@ -818,8 +818,13 @@ func (h *Host) sendResponse(id int64, result json.RawMessage, rpcErr *jsonrpcErr
 	h.pendMu.Unlock()
 	if w != nil {
 		h.writeMu.Lock()
-		_, _ = w.Write(data)
+		_, werr := w.Write(data)
 		h.writeMu.Unlock()
+		if werr != nil {
+			// A failed stdin write means the extension never receives its RPC
+			// reply and blocks/times out with no engine-side record.
+			utils.LogWithFields(utils.LevelInfo, "extension", "rpc response stdin write failed", map[string]any{"extension": h.name, "id": id, "error": werr.Error()})
+		}
 	}
 }
 
@@ -845,7 +850,12 @@ func (h *Host) sendNotification(method string, params json.RawMessage) {
 	h.pendMu.Unlock()
 	if w != nil {
 		h.writeMu.Lock()
-		_, _ = w.Write(data)
+		_, werr := w.Write(data)
 		h.writeMu.Unlock()
+		if werr != nil {
+			// A failed notification write means the extension never receives
+			// this message; log so the drop is visible.
+			utils.LogWithFields(utils.LevelInfo, "extension", "rpc notification stdin write failed", map[string]any{"extension": h.name, "method": method, "error": werr.Error()})
+		}
 	}
 }

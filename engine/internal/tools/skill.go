@@ -28,8 +28,8 @@ const SkillManifestDefaultBudget = 8000
 //
 // Format (matches Claude Code's formatCommandsWithinBudget):
 //
-//	- <name>: <description> - <whenToUse>    (when WhenToUse is set)
-//	- <name>: <description>                  (when WhenToUse is empty)
+//   - <name>: <description> - <whenToUse>    (when WhenToUse is set)
+//   - <name>: <description>                  (when WhenToUse is empty)
 func buildSkillManifest() string {
 	all := skills.GetAllSkills()
 	if len(all) == 0 {
@@ -172,12 +172,12 @@ func executeSkill(ctx context.Context, input map[string]any, _ string) (*types.T
 	if err := ctx.Err(); err != nil {
 		return &types.ToolResult{Content: "Error: Skill cancelled.", IsError: true}, nil
 	}
-	name, _ := input["skill"].(string)
+	name, _ := input["skill"].(string) //nolint:errcheck // best-effort; failure not actionable here
 	if name == "" {
 		return &types.ToolResult{Content: "Missing required parameter: skill", IsError: true}, nil
 	}
 
-	args, _ := input["args"].(string)
+	args, _ := input["args"].(string) //nolint:errcheck // best-effort; failure not actionable here
 
 	available := skills.ListSkillNames()
 	if len(available) == 0 {

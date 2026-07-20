@@ -78,7 +78,7 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 
 	// Expand ~ to home directory
 	if strings.HasPrefix(extensionPath, "~/") {
-		home, _ := os.UserHomeDir()
+		home, _ := os.UserHomeDir() //nolint:errcheck // empty home falls back to leaving the ~ path unexpanded below
 		extensionPath = filepath.Join(home, extensionPath[2:])
 	}
 
@@ -197,18 +197,18 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		_ = stdin.Close()
+		_ = stdin.Close() //nolint:errcheck // best-effort cleanup on spawn-failure path
 		return fmt.Errorf("stdout pipe: %w", err)
 	}
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		_ = stdin.Close()
+		_ = stdin.Close() //nolint:errcheck // best-effort cleanup on spawn-failure path
 		return fmt.Errorf("stderr pipe: %w", err)
 	}
 
 	if err := cmd.Start(); err != nil {
-		_ = stdin.Close()
+		_ = stdin.Close() //nolint:errcheck // best-effort cleanup on spawn-failure path
 		return fmt.Errorf("start extension: %w", err)
 	}
 
@@ -501,7 +501,6 @@ func (h *Host) captureExitStatus() {
 		}
 	}
 }
-
 
 // extensionEntryCandidates is the conventional entry-point search order used
 // when Load is given a directory instead of a file. TypeScript-first because

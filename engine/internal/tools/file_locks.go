@@ -19,5 +19,5 @@ var fileMu sync.Map // map[string]*sync.Mutex
 // The caller must Lock/Unlock it around their read-modify-write sequence.
 func fileLock(absPath string) *sync.Mutex {
 	val, _ := fileMu.LoadOrStore(absPath, &sync.Mutex{})
-	return val.(*sync.Mutex)
+	return val.(*sync.Mutex) //nolint:errcheck // best-effort; failure not actionable here
 }

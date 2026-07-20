@@ -7,6 +7,7 @@ import { PlanViewer } from './PlanViewer'
 import { AskQuestionCard } from './AskQuestionCard'
 import type { AskData, AskOption } from './AskQuestionCard'
 import type { Message } from '../../shared/types'
+import { rDebug, rError } from '../rendererLogger'
 
 interface Props {
   tools: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }>
@@ -61,7 +62,9 @@ export function PermissionDeniedCard({ tools, tabId: _tabId, sessionId: _session
       try {
         const input = JSON.parse(exitMsg.toolInput)
         if (input.planFilePath) return input.planFilePath as string
-      } catch {}
+      } catch (err) {
+        rDebug('permission-denied-card', 'ExitPlanMode toolInput parse failed', { error: String(err) })
+      }
     }
     // Fallback: last Write to .ion/plans/*.md
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -71,7 +74,9 @@ export function PermissionDeniedCard({ tools, tabId: _tabId, sessionId: _session
           const input = JSON.parse(m.toolInput)
           const fp = input.file_path as string
           if (fp && /\/\.ion\/plans\/[^/]+\.md$/.test(fp)) return fp
-        } catch {}
+        } catch (err) {
+          rDebug('permission-denied-card', 'Write toolInput parse failed', { error: String(err) })
+        }
       }
     }
     return null
@@ -225,7 +230,7 @@ export function PermissionDeniedCard({ tools, tabId: _tabId, sessionId: _session
                 </button>
               )}
               {planFilePath && <button
-                onClick={handleViewPlan}
+                onClick={() => { void handleViewPlan().catch((err) => rError('permission-denied-card', 'view plan failed', { error: String(err) })) }}
                 className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
                 style={{
                   background: colors.surfaceHover,

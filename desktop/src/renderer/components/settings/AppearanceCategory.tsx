@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { rDebug } from '../../rendererLogger'
 import { useColors } from '../../theme'
 import { usePreferencesStore } from '../../preferences'
 import { themes, getTheme } from '../../theme-tokens'
@@ -7,7 +8,7 @@ import { SettingSection } from './SettingSection'
 import { SettingHeading } from './SettingHeading'
 
 let fontCache: string[] | null = null
-const fontPromise = window.ion?.listFonts().then((fonts) => { fontCache = fonts }).catch(() => {})
+const fontPromise = window.ion?.listFonts().then((fonts) => { fontCache = fonts }).catch((err) => rDebug("appearance", "listFonts failed", { error: String(err) }))
 
 export function AppearanceCategory() {
   const colors = useColors()
@@ -49,7 +50,7 @@ export function AppearanceCategory() {
   const [availableFonts, setAvailableFonts] = useState<string[]>(fontCache || [])
   useEffect(() => {
     if (fontCache) return
-    fontPromise.then(() => { if (fontCache) setAvailableFonts(fontCache) })
+    fontPromise.then(() => { if (fontCache) setAvailableFonts(fontCache) }).catch((err) => rDebug('settings', 'load fonts failed', { error: String(err) }))
   }, [])
 
   // Shared +/- font-size stepper (8–24px). Used by the Editor, Conversation,

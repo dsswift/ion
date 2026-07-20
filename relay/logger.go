@@ -184,14 +184,14 @@ func rotateRelayLogLocked() {
 		return
 	}
 	// Delete the oldest generation, then shift each one up.
-	_ = os.Remove(fmt.Sprintf("%s.%d", relayLogPath, maxRelayLogFiles))
+	os.Remove(fmt.Sprintf("%s.%d", relayLogPath, maxRelayLogFiles)) //nolint:errcheck // log rotation cleanup; cannot log to the file being rotated
 	for i := maxRelayLogFiles - 1; i >= 1; i-- {
-		_ = os.Rename(fmt.Sprintf("%s.%d", relayLogPath, i), fmt.Sprintf("%s.%d", relayLogPath, i+1))
+		os.Rename(fmt.Sprintf("%s.%d", relayLogPath, i), fmt.Sprintf("%s.%d", relayLogPath, i+1)) //nolint:errcheck // log rotation shift; best-effort
 	}
 	// Close the current handle and rename the live file to .1.
-	_ = relayLogFile.Close()
+	relayLogFile.Close() //nolint:errcheck // rotating out the old handle
 	relayLogFile = nil
-	_ = os.Rename(relayLogPath, relayLogPath+".1")
+	os.Rename(relayLogPath, relayLogPath+".1") //nolint:errcheck // log rotation; best-effort
 	relayBytesWritten = 0
 }
 

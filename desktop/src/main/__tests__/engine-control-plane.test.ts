@@ -49,7 +49,7 @@ const mockBridge = {
   updateSessionConversationId: vi.fn(),
   getSessionConfig: vi.fn().mockReturnValue(undefined),
   stopByPrefix: vi.fn(),
-  stopSession: vi.fn(),
+  stopSession: vi.fn().mockResolvedValue(undefined),
   stopAll: vi.fn(),
   on: vi.fn((event: string, handler: any) => {
     if (event === 'event') {

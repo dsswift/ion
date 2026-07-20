@@ -86,7 +86,7 @@ func IsCompactBoundary(msg types.LlmMessage) bool {
 			return false
 		}
 		if m, ok := c[0].(map[string]interface{}); ok {
-			if t, _ := m["type"].(string); t == CompactBoundaryBlockType {
+			if t, _ := m["type"].(string); t == CompactBoundaryBlockType { //nolint:errcheck // non-string type is not the boundary block
 				return true
 			}
 		}

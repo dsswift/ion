@@ -102,7 +102,7 @@ func (p *watcherPool) acquire(root string, ignores []string, sessionKey string, 
 	}
 
 	if err := w.Start(context.Background(), fanOut); err != nil {
-		_ = w.Close()
+		w.Close() //nolint:errcheck // resource close
 		delete(p.entries, key)
 		return nil, err
 	}

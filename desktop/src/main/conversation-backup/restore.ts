@@ -145,7 +145,9 @@ export async function runRestore(args: {
         return
       }
       zipfile.on('entry', (entry: yauzl.Entry) => {
-        handleEntry(zipfile, entry, args, result).finally(() => zipfile.readEntry())
+        handleEntry(zipfile, entry, args, result)
+          .catch((err) => log('backup_restore: entry handling failed', { error: err instanceof Error ? err.message : String(err) }))
+          .finally(() => zipfile.readEntry())
       })
       zipfile.on('end', () => {
         result.ok = true

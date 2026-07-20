@@ -1,5 +1,5 @@
 import { IPC } from '../../shared/types'
-import { log as _log } from '../logger'
+import { log as _log, warn as _warn, error as _error } from '../logger'
 import { state, modelCache, deviceFocusMap } from '../state'
 import { broadcast, startTerminalOutputFlushing, stopTerminalOutputFlushing } from '../broadcast'
 import { readSettings } from '../settings-store'
@@ -16,13 +16,21 @@ function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
 }
 
+function warn(msg: string, fields?: Record<string, unknown>): void {
+  _warn('main', msg, fields)
+}
+
+function error(msg: string, fields?: Record<string, unknown>): void {
+  _error('main', msg, fields)
+}
+
 export function initRemoteTransport(settings: Record<string, unknown>): void {
   log('remote_transport: init', { remote_enabled: settings.remoteEnabled, relay_url: settings.relayUrl })
 
   if (state.remoteTransport) {
     stopTabSnapshotPolling()
     stopGitWatcherBridge()
-    state.remoteTransport.stop()
+    state.remoteTransport.stop().catch((err) => warn('remote_transport: stop failed during re-init', { error: String(err) }))
     state.remoteTransport = null
     // No transport = no remote clients; let the git focus gate suspend again.
     focusState.setRemoteClientCount(0)
@@ -69,10 +77,13 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
         log('[Remote] peer connected but no paired device with shared secret -- skipping snapshot')
         return
       }
-    } catch {}
-
-    log('[Remote] peer connected, sending auto-snapshot')
-    setTimeout(async () => {
+    } catch (err) {
+      // A settings read failure here would silently skip the no-paired-device
+      // guard and fall through to send a snapshot anyway. Log it.
+      warn('[Remote] peer-connected settings read failed', { error: String(err) })
+    }
+    setTimeout(() => {
+      void (async () => {
       const { tabs, resourceManifest } = await getRemoteTabStates()
 
       try {
@@ -98,15 +109,22 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
         }
         const profiles = Array.isArray(peerSettings.engineProfiles) ? peerSettings.engineProfiles : []
         state.remoteTransport?.send({ type: 'desktop_engine_profiles', profiles })
-      } catch {}
+      } catch (err) {
+        // A throw here means iOS silently never receives its snapshot on peer
+        // connect — a view-readiness failure with no trace. Escalate to error.
+        error('[Remote] auto-snapshot send failed', { error: String(err) })
+      }
 
       // Start the git watcher bridge so tab directories get push-driven freshness
       const directories = new Set(tabs.map(t => t.workingDirectory).filter(Boolean))
       startGitWatcherBridge(directories)
+      })().catch((err) => error('[Remote] peer-connected snapshot task failed', { error: String(err) }))
     }, 300)
   })
 
-  state.remoteTransport.on('command', handleRemoteCommand)
+  state.remoteTransport.on('command', (cmd: any, deviceId: string) => {
+    void handleRemoteCommand(cmd, deviceId).catch((err) => error('remote_transport: command handler failed', { error: String(err) }))
+  })
 
   state.remoteTransport.on('state-change', (transportState: string) => {
     broadcast(IPC.REMOTE_STATE_CHANGED, { transportState })

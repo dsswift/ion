@@ -32,7 +32,7 @@ export function RemoteCategory() {
   const [lanDisabled, setLanDisabled] = useState(false)
   const handleToggleLan = useCallback((disabled: boolean) => {
     setLanDisabled(disabled)
-    window.ion?.remoteSetLanDisabled?.(disabled)
+    void window.ion?.remoteSetLanDisabled?.(disabled)?.catch((err) => rError('settings', 'set lan disabled failed', { error: String(err) }))
   }, [])
 
   // Listen for remote state changes from main process.
@@ -44,7 +44,7 @@ export function RemoteCategory() {
     // Load initial state.
     window.ion?.remoteGetState?.().then((state: { transportState: RemoteTransportState } | null) => {
       if (state) setTransportState(state.transportState)
-    })
+    }).catch((err) => rError('settings', 'load remote state failed', { error: String(err) }))
     return () => {
       window.ion?.off?.('ion:remote-state-changed', handler)
     }
@@ -153,7 +153,7 @@ export function RemoteCategory() {
             pairedDevices={pairedDevices}
             pairingCode={pairingCode}
             onRevokeDevice={handleRevokeDevice}
-            onStartPairing={handleStartPairing}
+            onStartPairing={() => { void handleStartPairing().catch((err) => rError('settings', 'start pairing failed', { error: String(err) })) }}
             onCancelPairing={handleCancelPairing}
           />
 

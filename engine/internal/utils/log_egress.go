@@ -74,22 +74,22 @@ type egressRecord struct {
 // downstream targets ("http", "otel"). Constructed by newEgressForwarder and
 // stored as a package-level singleton in logger.go (activeEgressForwarder).
 type EgressForwarder struct {
-	cfg         types.LoggingConfig
+	cfg types.LoggingConfig
 	// shipOwn gates whether the engine's own in-process records enter the
 	// buffer (matrix source "engine"). Tailed sources bypass the gate via
 	// shipTailed — a forwarder may exist solely to ship tailed files.
-	shipOwn     bool
-	spoolPath   string
-	spoolMaxB   int64
+	shipOwn   bool
+	spoolPath string
+	spoolMaxB int64
 	// ambientFields are stable machine-identity fields (host, machine_id,
 	// mdm_device_id, mdm_serial) merged into every egress record. Populated
 	// once at construction from getMachineIdentity(); never mutated after that.
 	// Caller-supplied fields take precedence — ambient only fills absent keys.
 	ambientFields map[string]any
 
-	mu          sync.Mutex
-	buffer      []egressRecord
-	loggedErrs  map[string]bool // dedup flush-error log lines (mirrors Collector)
+	mu         sync.Mutex
+	buffer     []egressRecord
+	loggedErrs map[string]bool // dedup flush-error log lines (mirrors Collector)
 
 	// Backoff state for sink failures.
 	backoffUntil time.Time
@@ -163,7 +163,7 @@ func newEgressForwarder(cfg types.LoggingConfig) *EgressForwarder {
 	}
 
 	// Locate the spool alongside ~/.ion/engine.jsonl.
-	home, _ := os.UserHomeDir()
+	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	spoolPath := filepath.Join(home, ".ion", ".engine-egress-spool.jsonl")
 
 	f := &EgressForwarder{
@@ -360,7 +360,7 @@ func (f *EgressForwarder) flushLoop() {
 		case <-f.stopCh:
 			// Final drain: attempt one spool drain then flush live buffer.
 			// Any remaining spool content stays on disk for the next launch.
-			_ = f.drainSpool()
+			f.drainSpool() //nolint:errcheck // best-effort; failure not actionable here
 			f.mu.Lock()
 			records := make([]egressRecord, len(f.buffer))
 			copy(records, f.buffer)
@@ -448,14 +448,14 @@ func (f *EgressForwarder) drainSpool() error {
 	}
 
 	if len(records) == 0 {
-		_ = os.Remove(f.spoolPath)
+		os.Remove(f.spoolPath) //nolint:errcheck // best-effort cleanup
 		return nil
 	}
 
 	lastErr := f.exportRecords(records)
 
 	if lastErr == nil {
-		_ = os.Remove(f.spoolPath)
+		os.Remove(f.spoolPath) //nolint:errcheck // best-effort cleanup
 		Log("log_egress", fmt.Sprintf("spool drained: %d records shipped", len(records)))
 	}
 	return lastErr

@@ -168,7 +168,7 @@ func (t *EgressTailer) pollFile(source, path string) {
 		Error("log_egress_tailer", "open failed: "+err.Error())
 		return
 	}
-	defer func() { _ = f.Close() }()
+	defer func() { _ = f.Close() }() //nolint:errcheck // resource close
 
 	if _, err := f.Seek(offset, 0); err != nil {
 		Error("log_egress_tailer", "seek failed: "+err.Error())

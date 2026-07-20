@@ -10,7 +10,7 @@
  * — the dispatcher in transport.ts continues to route by `type`.
  */
 
-import { log as _log } from '../../logger'
+import { log as _log, debug as _debug } from '../../logger'
 import { state } from '../../state'
 import { readSettings, writeSettings } from '../../settings-store'
 import { broadcastSync } from './tabs-sync'
@@ -18,6 +18,10 @@ import type { RemoteCommand } from '../protocol'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
+}
+
+function debug(msg: string, fields?: Record<string, unknown>): void {
+  _debug('main', msg, fields)
 }
 
 export async function handleSetTabGroupMode(cmd: Extract<RemoteCommand, { type: 'desktop_set_tab_group_mode' }>): Promise<void> {
@@ -80,7 +84,11 @@ export async function handleSetTabGroupMode(cmd: Extract<RemoteCommand, { type: 
         prefs.getState().setTabGroupMode(newMode);
       })()
     `)
-  } catch {}
+  } catch (err) {
+    // Renderer sync is best-effort; the settings-file write below is the
+    // durable source of truth. Log so a failed renderer update is diagnosable.
+    debug('tab_groups: renderer group-mode sync failed', { mode, error: String(err) })
+  }
   // Also persist to settings file directly for consistency
   const settings = readSettings()
   settings.tabGroupMode = mode

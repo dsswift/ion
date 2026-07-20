@@ -31,7 +31,7 @@ func GrepTool() *types.ToolDef {
 }
 
 func executeGrep(ctx context.Context, input map[string]any, cwd string) (*types.ToolResult, error) {
-	pattern, _ := input["pattern"].(string)
+	pattern, _ := input["pattern"].(string) //nolint:errcheck // best-effort; failure not actionable here
 	if pattern == "" {
 		return &types.ToolResult{Content: "Error: pattern is required", IsError: true}, nil
 	}

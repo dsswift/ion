@@ -13,6 +13,7 @@ import { VirtualCommitList } from './VirtualCommitList'
 import { FloatingPanel } from '../FloatingPanel'
 import { DiffPane } from './DiffPane'
 import type { GitCommit, GitCommitDetail, GitCommitFile } from '../../../shared/types'
+import { rWarn } from '../../rendererLogger'
 
 interface Props {
   directory: string
@@ -87,7 +88,7 @@ export function FileHistoryPanel({ directory, path, onClose }: Props) {
             onHover={() => {}}
             onLeave={() => {}}
             onContextMenu={() => {}}
-            onClick={handleCommitClick}
+            onClick={(commit) => { void handleCommitClick(commit).catch((err) => rWarn('git', 'load commit failed', { error: String(err) })) }}
             onFileClick={() => {}}
           />
         </div>

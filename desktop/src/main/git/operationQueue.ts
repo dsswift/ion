@@ -85,10 +85,10 @@ export class OperationQueue {
 
       if (kind === 'mutation') {
         this.mutationQueue.push(op as QueuedOperation<unknown>)
-        this.drainMutations()
+        void this.drainMutations()
       } else {
         this.pendingReads.push(op as QueuedOperation<unknown>)
-        this.drainReads()
+        void this.drainReads()
       }
     })
   }
@@ -109,7 +109,7 @@ export class OperationQueue {
     } finally {
       this.activeMutation = null
       this.onOperationComplete?.(op.id, 'mutation')
-      this.drainMutations()
+      void this.drainMutations()
     }
   }
 
@@ -128,7 +128,7 @@ export class OperationQueue {
         .finally(() => {
           this.activeReads--
           this.onOperationComplete?.(op.id, 'read')
-          this.drainReads()
+          void this.drainReads()
         })
     }
   }

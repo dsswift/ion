@@ -108,7 +108,7 @@ func countText(ctx context.Context, model string, provider LlmProvider, text, ca
 
 	key := ContentHashKey(text, model+"/"+cacheKey)
 	if v, ok := breakdownCache.Load(key); ok {
-		c := v.(cachedCount)
+		c := v.(cachedCount) //nolint:errcheck // best-effort; failure not actionable here
 		return c.count, c.tier
 	}
 

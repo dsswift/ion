@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs'
 import type { NormalizedEvent } from '../shared/types'
-import { log as _log } from './logger'
+import { log as _log, warn as _warn } from './logger'
 import { state, sessionPlane, activeAssistantMessages, lastMessagePreview } from './state'
 import { normalizedToRemote } from './remote/protocol'
 import { buildCompactionMarkerContent, buildManualCompactionNoOpNotice } from '../shared/compaction-marker'
@@ -10,8 +10,68 @@ function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
 }
 
+function warn(msg: string, fields?: Record<string, unknown>): void {
+  _warn('main', msg, fields)
+}
+
+/**
+ * Probe the renderer store for the plan file path of a tab's most recent
+ * plan-producing Write (or an ExitPlanMode permission denial). Runs a
+ * read-only function in the renderer VM. Returns undefined when no plan path is
+ * found or the probe throws (the throw is logged, not swallowed).
+ *
+ * Shared by both the permission-denial and task-complete forwarding paths so the
+ * probe cannot drift between the two.
+ */
+async function probePlanPathFromRenderer(tabId: string): Promise<string | undefined> {
+  if (!state.mainWindow) return undefined
+  try {
+    const escapedTabId = tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+    const result = await state.mainWindow.webContents.executeJavaScript(`
+      (function() {
+        var store = window.__Ion_SESSION_STORE__;
+        if (!store) return null;
+        var s = store.getState();
+        var tab = s.tabs.find(function(t) { return t.id === '${escapedTabId}'; });
+        if (!tab) return null;
+        // Per-conversation state now lives on the active ConversationInstance.
+        var pane = s.conversationPanes ? s.conversationPanes.get(tab.id) : null;
+        var inst = pane ? (pane.instances.find(function(i){ return i.id === pane.activeInstanceId; }) || pane.instances[0]) : null;
+        var msgs = (inst && inst.messages) || [];
+        for (var i = msgs.length - 1; i >= 0; i--) {
+          var m = msgs[i];
+          if (m.toolName === 'Write' && m.toolInput) {
+            try {
+              var input = JSON.parse(m.toolInput);
+              var fp = input.file_path;
+              if (fp && /\\/\\.ion\\/plans\\/[^/]+\\.md$/.test(fp)) return fp;
+            } catch(e) {}
+          }
+        }
+        // Fallback: check permissionDenied for planFilePath
+        var denied = inst && inst.permissionDenied && inst.permissionDenied.tools;
+        if (denied) {
+          for (var d = 0; d < denied.length; d++) {
+            if (denied[d].toolName === 'ExitPlanMode' && denied[d].toolInput && denied[d].toolInput.planFilePath) {
+              return denied[d].toolInput.planFilePath;
+            }
+          }
+        }
+        return null;
+      })()
+    `)
+    return result || undefined
+  } catch (err) {
+    // A probe failure means the remote payload ships without plan content; log
+    // so the missing plan is diagnosable instead of silently absent.
+    warn('remote: plan path renderer probe failed', { tab_id: tabId, error: String(err) })
+    return undefined
+  }
+}
+
 export function wireRemoteSessionPlaneForwarding(): void {
-  sessionPlane.on('event', async (tabId: string, event: NormalizedEvent) => {
+  sessionPlane.on('event', (tabId: string, event: NormalizedEvent) => {
+    void (async () => {
     if (!state.remoteTransport) return
 
     if (
@@ -112,43 +172,8 @@ export function wireRemoteSessionPlaneForwarding(): void {
         if (exitPlanDenial && state.remoteTransport) {
           let planPath = exitPlanDenial.toolInput?.planFilePath as string | undefined
 
-          if (!planPath && state.mainWindow) {
-            try {
-              const escapedTabId = tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-              planPath = await state.mainWindow.webContents.executeJavaScript(`
-                (function() {
-                  var store = window.__Ion_SESSION_STORE__;
-                  if (!store) return null;
-                  var s = store.getState();
-                  var tab = s.tabs.find(function(t) { return t.id === '${escapedTabId}'; });
-                  if (!tab) return null;
-                  // Per-conversation state now lives on the active ConversationInstance.
-                  var pane = s.conversationPanes ? s.conversationPanes.get(tab.id) : null;
-                  var inst = pane ? (pane.instances.find(function(i){ return i.id === pane.activeInstanceId; }) || pane.instances[0]) : null;
-                  var msgs = (inst && inst.messages) || [];
-                  for (var i = msgs.length - 1; i >= 0; i--) {
-                    var m = msgs[i];
-                    if (m.toolName === 'Write' && m.toolInput) {
-                      try {
-                        var input = JSON.parse(m.toolInput);
-                        var fp = input.file_path;
-                        if (fp && /\\/\\.ion\\/plans\\/[^/]+\\.md$/.test(fp)) return fp;
-                      } catch(e) {}
-                    }
-                  }
-                  // Fallback: check permissionDenied for planFilePath
-                  var denied = inst && inst.permissionDenied && inst.permissionDenied.tools;
-                  if (denied) {
-                    for (var d = 0; d < denied.length; d++) {
-                      if (denied[d].toolName === 'ExitPlanMode' && denied[d].toolInput && denied[d].toolInput.planFilePath) {
-                        return denied[d].toolInput.planFilePath;
-                      }
-                    }
-                  }
-                  return null;
-                })()
-              `) || undefined
-            } catch {}
+          if (!planPath) {
+            planPath = await probePlanPathFromRenderer(tabId)
           }
 
           let toolInput: Record<string, unknown> = { ...(exitPlanDenial.toolInput || {}) }
@@ -222,56 +247,23 @@ export function wireRemoteSessionPlaneForwarding(): void {
         break
       }
     }
+    })().catch((err) => warn('remote: session-plane event forwarding failed', { tab_id: tabId, error: String(err) }))
   })
 
-  sessionPlane.on('remote-permission', async (tabId: string, data: {
+  sessionPlane.on('remote-permission', (tabId: string, data: {
     questionId: string; toolName: string;
     toolInput?: Record<string, unknown>;
     options: Array<{ id: string; label: string; kind?: string }>
   }) => {
+    void (async () => {
     log('remote_permission_received', { tool: data.toolName, question_id: data.questionId, has_transport: !!state.remoteTransport, has_tool_input: !!data.toolInput })
     if (!state.remoteTransport) return
     let toolInput = data.toolInput
     if (data.toolName === 'ExitPlanMode') {
       let planPath = toolInput?.planFilePath as string | undefined
 
-      if (!planPath && state.mainWindow) {
-        try {
-          const escapedTabId = tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-          planPath = await state.mainWindow.webContents.executeJavaScript(`
-            (function() {
-              var store = window.__Ion_SESSION_STORE__;
-              if (!store) return null;
-              var s = store.getState();
-              var tab = s.tabs.find(function(t) { return t.id === '${escapedTabId}'; });
-              if (!tab) return null;
-              // Per-conversation state now lives on the active ConversationInstance.
-              var pane = s.conversationPanes ? s.conversationPanes.get(tab.id) : null;
-              var inst = pane ? (pane.instances.find(function(i){ return i.id === pane.activeInstanceId; }) || pane.instances[0]) : null;
-              var msgs = (inst && inst.messages) || [];
-              for (var i = msgs.length - 1; i >= 0; i--) {
-                var m = msgs[i];
-                if (m.toolName === 'Write' && m.toolInput) {
-                  try {
-                    var input = JSON.parse(m.toolInput);
-                    var fp = input.file_path;
-                    if (fp && /\\/\\.ion\\/plans\\/[^/]+\\.md$/.test(fp)) return fp;
-                  } catch(e) {}
-                }
-              }
-              // Fallback: check permissionDenied for planFilePath
-              var denied = inst && inst.permissionDenied && inst.permissionDenied.tools;
-              if (denied) {
-                for (var d = 0; d < denied.length; d++) {
-                  if (denied[d].toolName === 'ExitPlanMode' && denied[d].toolInput && denied[d].toolInput.planFilePath) {
-                    return denied[d].toolInput.planFilePath;
-                  }
-                }
-              }
-              return null;
-            })()
-          `) || undefined
-        } catch {}
+      if (!planPath) {
+        planPath = await probePlanPathFromRenderer(tabId)
       }
 
       if (planPath) {
@@ -307,6 +299,7 @@ export function wireRemoteSessionPlaneForwarding(): void {
       }
       sessionPlane.on('tab-status-change', resolveOnIdle)
     }
+    })().catch((err) => warn('remote: remote-permission forwarding failed', { tab_id: tabId, error: String(err) }))
   })
 
   sessionPlane.on('tab-status-change', (tabId: string, newStatus: string, oldStatus?: string) => {

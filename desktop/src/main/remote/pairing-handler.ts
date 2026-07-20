@@ -1,6 +1,6 @@
 import { existsSync } from 'fs'
 import { IPC } from '../../shared/types'
-import { log as _log } from '../logger'
+import { log as _log, warn as _warn } from '../logger'
 import { state, pairingManager } from '../state'
 import { broadcast } from '../broadcast'
 import { SETTINGS_FILE, readSettings, writeSettings } from '../settings-store'
@@ -10,6 +10,10 @@ import type { PairedDevice } from './protocol'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
+}
+
+function warn(msg: string, fields?: Record<string, unknown>): void {
+  _warn('main', msg, fields)
 }
 
 export interface PairRequest {
@@ -32,7 +36,12 @@ export function handlePairRequest(request: PairRequest): void {
       relayApiKey = s.relayApiKey || ''
       existingDevices = Array.isArray(s.pairedDevices) ? s.pairedDevices : []
     }
-  } catch {}
+  } catch (err) {
+    // A settings read failure here silently proceeds with empty relayUrl and
+    // existingDevices, breaking recovery detection (a genuine re-pair is then
+    // treated as new). Log so pairing failures are diagnosable.
+    warn('pairing: settings read failed', { error: String(err) })
+  }
 
   const isRecovery = request.recovery &&
     existingDevices.some((d: any) => d.name === request.deviceName)
@@ -111,15 +120,17 @@ export function handlePairRequest(request: PairRequest): void {
     state.remoteTransport.addDevice(pairedDevice as PairedDevice)
   }
 
-  setTimeout(async () => {
-    const { tabs, resourceManifest } = await getRemoteTabStates()
-    const pairSettings = readSettings()
-    const pairRecentDirs: string[] = Array.isArray(pairSettings.recentBaseDirectories) ? pairSettings.recentBaseDirectories : []
-    state.remoteTransport?.send({
-      type: 'desktop_snapshot',
-      tabs,
-      recentDirectories: pairRecentDirs,
-      resources: Object.keys(resourceManifest).length > 0 ? resourceManifest : undefined,
-    })
+  setTimeout(() => {
+    void (async () => {
+      const { tabs, resourceManifest } = await getRemoteTabStates()
+      const pairSettings = readSettings()
+      const pairRecentDirs: string[] = Array.isArray(pairSettings.recentBaseDirectories) ? pairSettings.recentBaseDirectories : []
+      state.remoteTransport?.send({
+        type: 'desktop_snapshot',
+        tabs,
+        recentDirectories: pairRecentDirs,
+        resources: Object.keys(resourceManifest).length > 0 ? resourceManifest : undefined,
+      })
+    })().catch((err) => warn('pairing: post-pair snapshot send failed', { error: String(err) }))
   }, 500)
 }

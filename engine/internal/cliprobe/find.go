@@ -25,7 +25,7 @@ import (
 // This generalizes the claude-specific discovery the claude-code backend
 // shipped so every delegated CLI resolves the same way.
 func Find(name string, extra []string) (string, error) {
-	home, _ := os.UserHomeDir()
+	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	candidates := []string{
 		filepath.Join("/usr/local/bin", name),
 		filepath.Join("/opt/homebrew/bin", name),

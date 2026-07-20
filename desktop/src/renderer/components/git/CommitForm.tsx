@@ -14,6 +14,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Check, Robot, ArrowCounterClockwise, CaretDown } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
+import { rError, rDebug } from '../../rendererLogger'
 
 interface CommitFormProps {
   directory: string
@@ -132,7 +133,7 @@ export function CommitForm({ directory, branch, stagedCount, onCommit, onQuickCo
         await window.ion.gitReset(directory, head, 'soft')
         setBannerOpen(false)
       }
-    } catch {}
+    } catch (err) { rDebug('git', 'undo commit failed', { error: String(err) }) }
   }, [directory])
 
   const insertPrefix = (prefix: string) => {
@@ -144,7 +145,7 @@ export function CommitForm({ directory, branch, stagedCount, onCommit, onQuickCo
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault()
-      handleCommit(primary === 'commit-push')
+      handleCommit(primary === 'commit-push').catch((err) => rError('git', 'commit failed', { error: String(err) }))
     }
   }, [handleCommit, primary])
 
@@ -248,7 +249,7 @@ export function CommitForm({ directory, branch, stagedCount, onCommit, onQuickCo
         {/* Commit combo button */}
         <div ref={menuRef} className="flex items-center flex-shrink-0" style={{ position: 'relative' }}>
           <button
-            onClick={() => handleCommit(primary === 'commit-push')}
+            onClick={() => { void handleCommit(primary === 'commit-push').catch((err) => rError('git', 'commit failed', { error: String(err) })) }}
             disabled={!canCommit}
             className="flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-l"
             style={{
@@ -357,7 +358,7 @@ export function CommitForm({ directory, branch, stagedCount, onCommit, onQuickCo
         <div className="flex items-center gap-2 mt-1 text-[9px]" style={{ color: colors.accent }}>
           <span>✓ Committed</span>
           <button onClick={onPush} className="underline" style={{ color: colors.accent }}>Push</button>
-          <button onClick={undoCommit} className="flex items-center gap-0.5" style={{ color: '#c47060' }}>
+          <button onClick={() => { void undoCommit().catch((err) => rError('git', 'undo commit failed', { error: String(err) })) }} className="flex items-center gap-0.5" style={{ color: '#c47060' }}>
             <ArrowCounterClockwise size={9} /> Undo
           </button>
           <button onClick={() => setBannerOpen(false)} style={{ color: colors.textTertiary }}>Dismiss</button>

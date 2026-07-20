@@ -155,8 +155,8 @@ func (s *SDK) fireAsyncRegistrationVeto(event string, ctx *Context, info AsyncRe
 			}
 		case map[string]interface{}:
 			// JSON-RPC subprocess extensions hand us decoded maps.
-			b, _ := v["block"].(bool)
-			rs, _ := v["reason"].(string)
+			b, _ := v["block"].(bool)     //nolint:errcheck // absent/mistyped block means "no veto" (zero value)
+			rs, _ := v["reason"].(string) //nolint:errcheck // absent/mistyped reason is intentionally empty
 			if b {
 				blocked = true
 				reason = rs

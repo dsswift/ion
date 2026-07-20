@@ -7,6 +7,7 @@ import { useSessionStore } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
+import { rError } from '../rendererLogger'
 
 // ─── Finish Work context menu (right-click on finish button) ───
 
@@ -84,7 +85,7 @@ export function FinishWorkContextMenu({ anchor, worktree, onClose }: {
       {items.map((item) => (
         <div
           key={item.label}
-          onClick={() => { item.action(); onClose() }}
+          onClick={() => { Promise.resolve(item.action()).catch((err) => rError('git-finish-menu', 'finish worktree failed', { error: String(err) })); onClose() }}
           style={{
             height: 28,
             display: 'flex',

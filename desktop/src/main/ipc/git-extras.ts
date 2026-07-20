@@ -67,7 +67,7 @@ export function registerGitExtrasIpc(): void {
       logError(`gitApplyPatch failed: ${err.message}`)
       return { ok: false, error: err.message }
     } finally {
-      try { unlinkSync(tmpPatch) } catch {}
+      try { unlinkSync(tmpPatch) } catch { /* silent-ok: best-effort temp-patch cleanup */ }
     }
   })
 

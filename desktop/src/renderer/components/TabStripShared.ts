@@ -8,6 +8,7 @@ import type { ConversationPane, StatusFields } from '../../shared/types-engine'
 import { activeInstance } from '../stores/conversation-instance'
 import { tabHasExtensions as _tabHasExtensions } from '../../shared/tab-predicates'
 import { computeAnchoredPosition } from './tabstrip-anchored-position'
+import { rDebug } from '../rendererLogger'
 export { computeAnchoredPosition } from './tabstrip-anchored-position'
 export { tabHasExtensions } from '../../shared/tab-predicates'
 export type { AnchoredPositionInput } from './tabstrip-anchored-position'
@@ -281,7 +282,7 @@ export function checkWorktreeUncommitted(tab: TabState | undefined): void {
   if (worktreeUncommittedMap.has(tab.id)) return
   window.ion.gitChanges(tab.workingDirectory).then((result) => {
     setWorktreeUncommitted(tab.id, result.files.length > 0)
-  }).catch(() => {})
+  }).catch((err) => rDebug("tabstrip", "gitChanges probe failed", { tab_id: tab.id, error: String(err) }))
 }
 
 /** Compact relative-time formatter for tab-pill subtitles. */

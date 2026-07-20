@@ -652,20 +652,20 @@ func (c *ClientCommand) ResolveExtensions() []string {
 // SerializeServerEvent serializes a session event as NDJSON.
 func SerializeServerEvent(key string, event types.RawEngineEvent) string {
 	msg := ServerEvent{Key: key, Event: event}
-	b, _ := json.Marshal(msg)
+	b, _ := json.Marshal(msg) //nolint:errcheck // marshal of a local struct
 	return string(b) + "\n"
 }
 
 // SerializeServerResult serializes a result message as NDJSON.
 func SerializeServerResult(msg ServerResult) string {
 	msg.Cmd = "result"
-	b, _ := json.Marshal(msg)
+	b, _ := json.Marshal(msg) //nolint:errcheck // marshal of a local struct
 	return string(b) + "\n"
 }
 
 // SerializeServerSessionList serializes a session list message as NDJSON.
 func SerializeServerSessionList(sessions []SessionInfo) string {
 	msg := ServerSessionList{Cmd: "session_list", Sessions: sessions}
-	b, _ := json.Marshal(msg)
+	b, _ := json.Marshal(msg) //nolint:errcheck // marshal of a local struct
 	return string(b) + "\n"
 }

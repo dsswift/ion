@@ -298,7 +298,7 @@ export function FloatingPanel({
           ;(e.currentTarget as HTMLButtonElement).style.background = 'transparent'
         }}
         onClick={() => {
-          navigator.clipboard.writeText(filePath)
+          void navigator.clipboard.writeText(filePath)
           setTitleCtxMenu(null)
         }}
       >
@@ -328,7 +328,7 @@ export function FloatingPanel({
             workingDir && filePath.startsWith(workingDir + '/')
               ? filePath.slice(workingDir!.length + 1)
               : filePath
-          navigator.clipboard.writeText(relativePath)
+          void navigator.clipboard.writeText(relativePath)
           setTitleCtxMenu(null)
         }}
       >

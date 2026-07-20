@@ -6,6 +6,7 @@ import {
 import { useColors } from '../theme'
 import { useCmdHeld, useNavigableText } from '../hooks/useNavigableLinks'
 import { Tooltip } from './git/Tooltip'
+import { rError } from '../rendererLogger'
 import type { GitChangedFile } from '../../shared/types'
 import { STATUS_COLORS, STATUS_LETTERS, type FileTreeNode } from './GitPanelTypes'
 
@@ -49,7 +50,7 @@ export function FileRow({
       onClick={(e) => {
         if (e.metaKey) {
           e.preventDefault()
-          onOpenFile(directory + '/' + file.path)
+          onOpenFile(directory + '/' + file.path).catch((err) => rError('git-file-row', 'open file failed', { error: String(err) }))
           return
         }
         onClick(file)

@@ -163,19 +163,19 @@ type TreeNode struct {
 
 // Conversation is the top-level session object.
 type Conversation struct {
-	ID                      string             `json:"id"`
-	System                  string             `json:"system"`
-	Model                   string             `json:"model"`
-	Messages                []types.LlmMessage `json:"messages"`
-	TotalInputTokens        int                `json:"totalInputTokens"`
-	TotalOutputTokens       int                `json:"totalOutputTokens"`
-	TotalCost               float64            `json:"totalCost"`
-	CreatedAt               int64              `json:"createdAt"`
-	Version                 int                `json:"version,omitempty"`
-	ParentID                string             `json:"parentId,omitempty"`
-	Entries                 []SessionEntry     `json:"entries,omitempty"`
-	LeafID                  *string            `json:"leafId"`
-	WorkingDirectory        string             `json:"workingDirectory,omitempty"`
+	ID                string             `json:"id"`
+	System            string             `json:"system"`
+	Model             string             `json:"model"`
+	Messages          []types.LlmMessage `json:"messages"`
+	TotalInputTokens  int                `json:"totalInputTokens"`
+	TotalOutputTokens int                `json:"totalOutputTokens"`
+	TotalCost         float64            `json:"totalCost"`
+	CreatedAt         int64              `json:"createdAt"`
+	Version           int                `json:"version,omitempty"`
+	ParentID          string             `json:"parentId,omitempty"`
+	Entries           []SessionEntry     `json:"entries,omitempty"`
+	LeafID            *string            `json:"leafId"`
+	WorkingDirectory  string             `json:"workingDirectory,omitempty"`
 
 	// Backend records which run backend produced this conversation ("api"
 	// today; CLI kinds if delegated backends ever write the Ion store).
@@ -405,7 +405,7 @@ func AddContextInjectionMessage(conv *Conversation, paths []string, renderedText
 	if transient {
 		return
 	}
-	blocks, _ := msg.Content.([]types.LlmContentBlock)
+	blocks, _ := msg.Content.([]types.LlmContentBlock) //nolint:errcheck // non-slice content yields nil blocks, handled below
 	if conv.Entries != nil {
 		appendEntryLocked(conv, EntryMessage, MessageData{Role: "user", Content: blocks}, "")
 	}

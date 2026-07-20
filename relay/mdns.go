@@ -15,8 +15,8 @@ type MDNSHandle struct {
 
 func (h *MDNSHandle) Shutdown() {
 	if h.cmd != nil && h.cmd.Process != nil {
-		_ = h.cmd.Process.Kill()
-		_ = h.cmd.Wait()
+		h.cmd.Process.Kill() //nolint:errcheck // mDNS subprocess teardown
+		h.cmd.Wait()         //nolint:errcheck // reaping the killed subprocess
 	}
 }
 
@@ -33,7 +33,7 @@ func StartMDNS(ctx context.Context, port int) (*MDNSHandle, error) {
 		return nil, nil
 	}
 
-	hostname, _ := os.Hostname()
+	hostname, _ := os.Hostname() //nolint:errcheck // empty hostname falls back below
 	hostname = strings.TrimSuffix(hostname, ".local")
 
 	// dns-sd -R <name> <type> <domain> <port>

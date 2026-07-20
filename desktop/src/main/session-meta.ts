@@ -2,12 +2,16 @@ import { createInterface } from 'readline'
 import { createReadStream, existsSync, readFileSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
-import { log as _log } from './logger'
+import { log as _log, debug as _debug } from './logger'
 import { loadSessionChains } from './settings-store'
 import { imageAttachmentFromBlock } from './conversation-image-store'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
+}
+
+function debug(msg: string, fields?: Record<string, unknown>): void {
+  _debug('main', msg, fields)
 }
 
 const PLAN_SLUG_RE = /^\[Attached plan: .*\/([^/]+)\.md\]/
@@ -213,7 +217,10 @@ export async function parseSessionMeta(
             if (cleaned) meta.lastResponse = cleaned
           }
         }
-      } catch {}
+      } catch {
+        // Tolerate a malformed JSONL line: skip it and keep scanning.
+        debug('session_meta: skipping malformed jsonl line', { path: filePath })
+      }
     })
     rl.on('close', () => resolve())
   })
@@ -249,7 +256,7 @@ export function decodeProjectPath(encoded: string): string | null {
           matched = true
           break
         }
-      } catch {}
+      } catch { /* silent-ok: unreadable candidate path; try the next segment split */ }
     }
     if (!matched) return null
   }
@@ -412,7 +419,7 @@ export function loadEngineConversationMessages(sessionId: string): any[] {
         } else if (block.type === 'tool_use') {
           let inputJSON = ''
           if (block.input) {
-            try { inputJSON = JSON.stringify(block.input) } catch {}
+            try { inputJSON = JSON.stringify(block.input) } catch { /* silent-ok: unserializable tool input; leave inputJSON empty */ }
           }
           toolCallIndex[block.id] = result.length
           result.push({
@@ -510,7 +517,7 @@ export function loadClaudeSessionMessages(sessionId: string, projectPath?: strin
         } else if (block.type === 'tool_use') {
           let inputJSON = ''
           if (block.input) {
-            try { inputJSON = JSON.stringify(block.input) } catch {}
+            try { inputJSON = JSON.stringify(block.input) } catch { /* silent-ok: unserializable tool input; leave inputJSON empty */ }
           }
           toolCallIndex[block.id] = result.length
           result.push({

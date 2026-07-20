@@ -15,7 +15,7 @@ import (
 // notebookCell represents a single Jupyter notebook cell.
 type notebookCell struct {
 	CellType       string           `json:"cell_type"`
-	Source          []string         `json:"source"`
+	Source         []string         `json:"source"`
 	Outputs        []map[string]any `json:"outputs,omitempty"`
 	Metadata       map[string]any   `json:"metadata,omitempty"`
 	ExecutionCount *int             `json:"execution_count,omitempty"`
@@ -62,7 +62,7 @@ func formatCell(cell notebookCell, index int) string {
 					outputTexts = append(outputTexts, anyToString(tp))
 				}
 			} else if ename, ok := o["ename"].(string); ok {
-				evalue, _ := o["evalue"].(string)
+				evalue, _ := o["evalue"].(string) //nolint:errcheck // best-effort; failure not actionable here
 				outputTexts = append(outputTexts, ename+": "+evalue)
 			}
 		}
@@ -128,8 +128,8 @@ func NotebookTool() *types.ToolDef {
 }
 
 func executeNotebook(ctx context.Context, input map[string]any, cwd string) (*types.ToolResult, error) {
-	action, _ := input["action"].(string)
-	path, _ := input["path"].(string)
+	action, _ := input["action"].(string) //nolint:errcheck // best-effort; failure not actionable here
+	path, _ := input["path"].(string)     //nolint:errcheck // best-effort; failure not actionable here
 	if action == "" || path == "" {
 		return &types.ToolResult{Content: "Error: action and path are required", IsError: true}, nil
 	}

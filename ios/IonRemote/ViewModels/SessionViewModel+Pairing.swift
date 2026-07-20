@@ -216,6 +216,11 @@ extension SessionViewModel {
             }
             return true
         } catch {
+            // A relay pairing failure (ws connect, crypto, decode) otherwise
+            // collapses to a bare false with no trace — log the reason.
+            DiagnosticLog.log("relay pairing attempt failed", tag: "pairing", level: .error, fields: [
+                "error": error.localizedDescription,
+            ])
             return false
         }
     }

@@ -42,7 +42,7 @@ func (h *Host) handleRunOnceCheck(id int64, raw []byte) {
 		utils.LogWithFields(utils.LevelDebug, "extension", "ext/run_once_check: no ctx or runoncecheck not wired ()", map[string]any{"run_id": req.Params.ID})
 		// Outside an active session context: allow execution so the call
 		// degrades gracefully rather than hanging. Not the normal path.
-		data, _ := json.Marshal(map[string]interface{}{"execute": true})
+		data, _ := json.Marshal(map[string]interface{}{"execute": true}) //nolint:errcheck // marshal of a local RPC struct
 		h.sendResponse(id, json.RawMessage(data), nil)
 		return
 	}
@@ -57,9 +57,9 @@ func (h *Host) handleRunOnceCheck(id int64, raw []byte) {
 
 	var data []byte
 	if execute {
-		data, _ = json.Marshal(map[string]interface{}{"execute": true})
+		data, _ = json.Marshal(map[string]interface{}{"execute": true}) //nolint:errcheck // marshal of a fixed literal map
 	} else {
-		data, _ = json.Marshal(map[string]interface{}{"execute": false, "reason": reason})
+		data, _ = json.Marshal(map[string]interface{}{"execute": false, "reason": reason}) //nolint:errcheck // marshal of a fixed literal map
 	}
 	h.sendResponse(id, json.RawMessage(data), nil)
 }

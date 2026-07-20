@@ -45,7 +45,10 @@ func (s *Scheduler) readMarker(name string, job extension.ScheduleJob) (lastRunM
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
-			utils.LogWithFields(utils.LevelDebug, "scheduling", "read marker no record", map[string]any{"path": path, "error": err.Error()})
+			// A real IO error (not simply "no marker yet") means catch-up
+			// state could not be read — Warn, not Debug, and don't call it
+			// "no record" when it is an actual failure.
+			utils.LogWithFields(utils.LevelWarn, "scheduling", "read marker failed", map[string]any{"path": path, "error": err.Error()})
 		}
 		return lastRunMarker{}, false
 	}

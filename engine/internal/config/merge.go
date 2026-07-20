@@ -294,7 +294,7 @@ func IsPluginDenied(source string, enterprise *types.EnterpriseConfig) bool {
 // Uses path.Match semantics: "JuliusBrussee/*" matches "JuliusBrussee/caveman".
 func matchesAny(patterns []string, target string) bool {
 	for _, p := range patterns {
-		if ok, _ := path.Match(p, target); ok {
+		if ok, _ := path.Match(p, target); ok { //nolint:errcheck // bad pattern -> no match, which is correct
 			return true
 		}
 		// Also try exact match for plain strings without wildcards.

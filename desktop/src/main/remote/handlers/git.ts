@@ -1,5 +1,5 @@
 import { basename, join } from 'path'
-import { log as _log } from '../../logger'
+import { log as _log, debug as _debug } from '../../logger'
 import { state } from '../../state'
 import { runGit } from '../../git-runner'
 import { computeGraphLayout } from '../../../shared/gitGraphLayout'
@@ -9,6 +9,10 @@ import { broadcastGitChanges, broadcastGitGraph } from '../git-broadcast'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
+}
+
+function debug(msg: string, fields?: Record<string, unknown>): void {
+  _debug('main', msg, fields)
 }
 
 export async function handleGitChanges(cmd: Extract<RemoteCommand, { type: 'desktop_git_changes' }>, deviceId: string): Promise<void> {
@@ -24,14 +28,18 @@ export async function handleGitChanges(cmd: Extract<RemoteCommand, { type: 'desk
     let branch = ''
     try {
       branch = (await runGit(directory, ['branch', '--show-current'])).trim()
-    } catch {}
+    } catch (err) {
+      debug('git: branch read failed', { directory, error: String(err) })
+    }
 
     let ahead = 0
     let behind = 0
     try {
       ahead = parseInt((await runGit(directory, ['rev-list', '--count', '@{upstream}..HEAD'])).trim(), 10) || 0
       behind = parseInt((await runGit(directory, ['rev-list', '--count', 'HEAD..@{upstream}'])).trim(), 10) || 0
-    } catch {}
+    } catch (err) {
+      debug('git: ahead/behind read failed (no upstream?)', { directory, error: String(err) })
+    }
 
     const statusOutput = await runGit(directory, ['status', '--porcelain=v1', '-uall'])
     const files: Array<{ path: string; status: string; staged: boolean; oldPath?: string }> = []
@@ -97,7 +105,9 @@ export async function handleGitGraph(cmd: Extract<RemoteCommand, { type: 'deskto
     try {
       const countOutput = await runGit(directory, ['rev-list', '--all', '--count'])
       totalCount = parseInt(countOutput.trim(), 10) || 0
-    } catch {}
+    } catch (err) {
+      debug('git: total-count read failed', { directory, error: String(err) })
+    }
 
     const commits = logOutput.trim().split('\n').filter(Boolean).map((line) => {
       const [hash, fullHash, parents, authorName, authorDate, subject, decorations] = line.split('\x00')
@@ -296,7 +306,7 @@ export async function handleGitDiscard(cmd: Extract<RemoteCommand, { type: 'desk
       const { unlink } = require('fs/promises')
       const { join } = require('path')
       for (const p of untrackedPaths) {
-        try { await unlink(join(directory, p)) } catch {}
+        try { await unlink(join(directory, p)) } catch { /* silent-ok: best-effort discard of an untracked file; already gone or unreadable */ }
       }
     }
   } catch (err) {

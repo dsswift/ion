@@ -139,7 +139,7 @@ beforeEach(() => {
   ;(globalThis as any).window = {
     addEventListener: vi.fn(),
     ion: {
-      saveTabs: vi.fn(),
+      saveTabs: vi.fn().mockResolvedValue(undefined),
       loadSessionChains: vi.fn(() => Promise.resolve({ chains: {}, reverse: {} })),
       saveSessionChains: vi.fn(() => Promise.resolve()),
     },

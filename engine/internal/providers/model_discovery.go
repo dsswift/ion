@@ -333,9 +333,9 @@ func fetchGoogleModels(baseURL, apiKey string) ([]types.ModelEntry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("http error: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // resource close
 	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512)) //nolint:errcheck // best-effort read of error-response body
 		return nil, fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
 	}
 	var result struct {
@@ -377,9 +377,9 @@ func doModelsFetch(req *http.Request, providerID string, factory modelFactory) (
 	if err != nil {
 		return nil, fmt.Errorf("http error: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // resource close
 	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512)) //nolint:errcheck // best-effort read of error-response body
 		return nil, fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
 	}
 	var result struct {

@@ -184,7 +184,7 @@ func (p *bedrockProvider) doStream(ctx context.Context, opts types.LlmStreamOpti
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort read of an error-response body
 		return classifyBedrockError(resp.StatusCode, string(respBody))
 	}
 
@@ -231,7 +231,7 @@ func (p *bedrockProvider) parseBedrockStream(ctx context.Context, reader io.Read
 
 		// contentBlockStart
 		if start, ok := event["contentBlockStart"].(map[string]any); ok {
-			startInfo, _ := start["start"].(map[string]any)
+			startInfo, _ := start["start"].(map[string]any) //nolint:errcheck // best-effort; failure not actionable here
 			if tu, ok := startInfo["toolUse"].(map[string]any); ok {
 				if err := sendEvent(ctx, events, types.LlmStreamEvent{
 					Type:       "content_block_start",

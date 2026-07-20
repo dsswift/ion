@@ -319,7 +319,7 @@ func LoadClaudeSkillsDirectory(dir string) ([]*Skill, error) {
 
 // IonSkillPaths returns the conventional skill paths for Ion.
 func IonSkillPaths() SkillPaths {
-	home, _ := os.UserHomeDir()
+	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	return SkillPaths{
 		User:       filepath.Join(home, ".ion", "skills"),
 		Project:    filepath.Join(".", ".ion", "skills"),

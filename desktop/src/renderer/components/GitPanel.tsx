@@ -11,6 +11,7 @@ import { useGitDragSplit } from '../hooks/useGitDragSplit'
 import { GitChangesSection } from './GitChangesSection'
 import { GitGraphSection } from './GitGraphSection'
 import { CommitForm } from './git/CommitForm'
+import { rDebug, rError } from '../rendererLogger'
 
 // ─── Main GitPanel ───
 
@@ -52,7 +53,7 @@ export function GitPanel() {
   }, [commitCommand, directory, activeTabId])
 
   const refresh = useCallback(() => {
-    if (directory && directory !== '~') window.ion.gitRefresh(directory).catch(() => {})
+    if (directory && directory !== '~') window.ion.gitRefresh(directory).catch((err) => rDebug("git", "gitRefresh failed", { directory, error: String(err) }))
   }, [directory])
 
   // Force a fresh snapshot whenever the panel opens. The git watcher is
@@ -61,7 +62,7 @@ export function GitPanel() {
   // data the moment the panel becomes visible.
   useEffect(() => {
     if (directory && directory !== '~') {
-      window.ion.gitRefresh(directory).catch(() => {})
+      window.ion.gitRefresh(directory).catch((err) => rDebug("git", "gitRefresh failed", { directory, error: String(err) }))
     }
   }, [directory])
 
@@ -223,9 +224,11 @@ export function GitPanel() {
                 return false
               }}
               onQuickCommit={handleQuickCommit}
-              onPush={async () => {
-                await window.ion.gitPush(directory)
-                refresh()
+              onPush={() => {
+                void (async () => {
+                  await window.ion.gitPush(directory)
+                  refresh()
+                })().catch((err) => rError('git-panel', 'push failed', { error: String(err) }))
               }}
             />
             <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>

@@ -160,7 +160,7 @@ func extractBlocks(msg types.LlmMessage) []textBlock {
 				if name == "" {
 					name = "tool_use"
 				}
-				inputJSON, _ := json.Marshal(b.Input)
+				inputJSON, _ := json.Marshal(b.Input) //nolint:errcheck // marshal of a local struct
 				blocks = append(blocks, textBlock{text: name + ": " + string(inputJSON)})
 			}
 		}
@@ -169,7 +169,7 @@ func extractBlocks(msg types.LlmMessage) []textBlock {
 		var blocks []textBlock
 		for _, item := range c {
 			if m, ok := item.(map[string]any); ok {
-				t, _ := m["type"].(string)
+				t, _ := m["type"].(string) //nolint:errcheck // best-effort; failure not actionable here
 				switch t {
 				case "text":
 					if text, ok := m["text"].(string); ok {

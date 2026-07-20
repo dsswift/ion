@@ -7,7 +7,7 @@ import { activeInstance, commitInstance, effectivePermissionMode, effectiveThink
 import { applyActiveGroupMove } from './event-slice-running-move'
 import { maybeSendTimeTitle } from './event-slice-titling'
 import { parseSlash } from '../../../main/slash-parse'
-import { rDebug, rInfo } from '../../rendererLogger'
+import { rDebug, rInfo, rWarn } from '../../rendererLogger'
 import { createSendBashSlice } from './send-slice-bash'
 
 export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
@@ -77,14 +77,19 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       //    warns and returns), covering the case where the desktop's status is
       //    stale while the engine still has a live run.
       rDebug('interrupt', 'aborting run', { tab_id: tabId })
-      window.ion.engineAbort(tabId).catch(() => {})
+      window.ion.engineAbort(tabId).catch((err) => {
+        // A failed abort means the interrupt button silently did nothing.
+        rWarn('interrupt', 'engineAbort IPC failed', { tab_id: tabId, error: String(err) })
+      })
 
       // 3. Reap descendant agents (external processes) that might outlive the
       //    parent run's cancellation cascade — only when there are running
       //    children to reap.
       if (hasRunningChildren) {
         rDebug('interrupt', 'reaping agent subtree', { tab_id: tabId })
-        window.ion.engineAbortAgent(tabId, '', true).catch(() => {})
+        window.ion.engineAbortAgent(tabId, '', true).catch((err) => {
+          rWarn('interrupt', 'engineAbortAgent IPC failed', { tab_id: tabId, error: String(err) })
+        })
       }
 
       // 4. 5s fallback: if the engine never confirms idle, force-recover the tab
@@ -159,7 +164,12 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         fullPrompt = `${attachmentCtx}\n\n${fullPrompt}`
       }
 
-      const needsTitle = tab.title === 'New Tab' || tab.title === 'Resumed Session'
+      // customTitle is the authoritative "this tab already has a real title"
+      // signal — every titling path (send-time AI titling, user rename) writes
+      // it, and every restore path restores it, while tab.title can lag on a
+      // 'New Tab'/'Resumed Session' sentinel after an engine-tab restore. Gate
+      // on customTitle so a mid-conversation prompt never re-fires titling.
+      const needsTitle = !tab.customTitle && (tab.title === 'New Tab' || tab.title === 'Resumed Session')
       const title = needsTitle
         ? (text.length > 40 ? text.substring(0, 37) + '...' : text)
         : tab.title
@@ -365,7 +375,9 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // the set() so the prompt-call reads pre-send modelOverride/planFilePath.
       const remoteInst = activeInstance(get().conversationPanes, tabId)
 
-      const needsTitle = tab.title === 'New Tab' || tab.title === 'Resumed Session'
+      // Gate on customTitle too — see submit() above. Prevents a mid-conversation
+      // remote prompt from re-titling a tab that already has a real title.
+      const needsTitle = !tab.customTitle && (tab.title === 'New Tab' || tab.title === 'Resumed Session')
       const title = needsTitle
         ? (prompt.length > 40 ? prompt.substring(0, 37) + '...' : prompt)
         : tab.title

@@ -51,7 +51,7 @@ func LoadLlmHeaderStats(id, dir string) (LlmHeaderStats, error) {
 		}
 		return LlmHeaderStats{}, fmt.Errorf("open llm file %s: %w", llmPath, err)
 	}
-	defer func() { _ = f.Close() }()
+	defer func() { f.Close() }() //nolint:errcheck // read-only file close
 
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 64*1024), maxScanTokenSize)

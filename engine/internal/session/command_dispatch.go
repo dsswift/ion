@@ -171,7 +171,7 @@ func (m *Manager) dispatchClear(s *engineSession, key string) {
 	if s.extGroup != nil && !s.extGroup.IsEmpty() {
 		utils.LogWithFields(utils.LevelInfo, "session", "firing session_start on clear for session", map[string]any{"key": key})
 		ctx := m.newExtContext(s, key)
-		_ = s.extGroup.FireSessionStart(ctx)
+		s.extGroup.FireSessionStart(ctx) //nolint:errcheck // errors logged internally by fireVoid/s.fire
 		utils.LogWithFields(utils.LevelInfo, "session", "session_start re-fired on clear for session", map[string]any{"key": key})
 	} else {
 		utils.LogWithFields(utils.LevelDebug, "session", "clear: no extensions loaded for , skipping session_start re-fire", map[string]any{"key": key})

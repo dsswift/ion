@@ -16,7 +16,8 @@ import (
 // v1 = everything before the cost-field rename / unified log contract batch.
 // v2 = unified snake_case payloads, schema/component/install_id top-level fields.
 // v3 = additive attribution fields: per-event unique ID (event_id, R22) and
-//      user identity carrier (user, R20 wired to auth context seam).
+//
+//	user identity carrier (user, R20 wired to auth context seam).
 const TelemetrySchemaVersion = 3
 
 // sidecarPath returns the path for the telemetry schema sidecar file.
@@ -83,7 +84,7 @@ func writeSidecar(path string, s schemaSidecar) error {
 		return fmt.Errorf("telemetry schema: write tmp: %w", err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
+		os.Remove(tmp) //nolint:errcheck // best-effort cleanup
 		return fmt.Errorf("telemetry schema: rename: %w", err)
 	}
 	return nil

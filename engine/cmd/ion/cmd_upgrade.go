@@ -92,7 +92,7 @@ func findLatestRelease() (ver string, url string, err error) {
 	if err != nil {
 		return "", "", err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { resp.Body.Close() }() //nolint:errcheck // deferred close on read-only HTTP response body
 
 	if resp.StatusCode != http.StatusOK {
 		return "", "", fmt.Errorf("GitHub API returned %d", resp.StatusCode)
@@ -159,7 +159,7 @@ func downloadAsset(url string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { resp.Body.Close() }() //nolint:errcheck // deferred close on read-only HTTP response body
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("download returned %d", resp.StatusCode)
@@ -197,22 +197,22 @@ func replaceBinary(data []byte) error {
 	tmpPath := tmp.Name()
 
 	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpPath)
+		tmp.Close()        //nolint:errcheck // closing before removing the failed temp file
+		os.Remove(tmpPath) //nolint:errcheck // best-effort cleanup of failed temp file
 		return fmt.Errorf("write temp file: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpPath)
+		os.Remove(tmpPath) //nolint:errcheck // best-effort cleanup of failed temp file
 		return fmt.Errorf("close temp file: %w", err)
 	}
 
 	if err := os.Chmod(tmpPath, info.Mode()); err != nil {
-		_ = os.Remove(tmpPath)
+		os.Remove(tmpPath) //nolint:errcheck // best-effort cleanup of failed temp file
 		return fmt.Errorf("chmod: %w", err)
 	}
 
 	if err := os.Rename(tmpPath, exe); err != nil {
-		_ = os.Remove(tmpPath)
+		os.Remove(tmpPath) //nolint:errcheck // best-effort cleanup of failed temp file
 		return fmt.Errorf("rename: %w", err)
 	}
 	return nil

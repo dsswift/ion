@@ -8,10 +8,18 @@ import { IPC } from '../../shared/types'
 import { state, SPACES_DEBUG } from '../state'
 import { broadcast } from '../broadcast'
 import { showWindow, snapshotWindowState } from '../window-manager'
-import { log as _log } from '../logger'
+import { log as _log, warn as _warn, debug as _debug } from '../logger'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
+}
+
+function warn(msg: string, fields?: Record<string, unknown>): void {
+  _warn('main', msg, fields)
+}
+
+function debug(msg: string, fields?: Record<string, unknown>): void {
+  _debug('main', msg, fields)
 }
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'])
@@ -75,7 +83,11 @@ function describeFile(fp: string): { id: string; type: 'image' | 'file'; name: s
       try {
         const buf = readFileSync(fp)
         dataUrl = `data:${mime};base64,${buf.toString('base64')}`
-      } catch {}
+      } catch (err) {
+        // Read failure drops the image preview (dataUrl stays undefined);
+        // the user sees a broken thumbnail. Log so the cause is visible.
+        debug('attachments: dataUrl read failed', { path: fp, error: String(err) })
+      }
     }
 
     return {
@@ -87,7 +99,10 @@ function describeFile(fp: string): { id: string; type: 'image' | 'file'; name: s
       dataUrl,
       size: stat.size,
     }
-  } catch {
+  } catch (err) {
+    // A file that can't be described is silently omitted from the attachment
+    // set — user-visible data loss. Log before returning null.
+    warn('attachments: describeFile failed', { path: fp, error: String(err) })
     return null
   }
 }

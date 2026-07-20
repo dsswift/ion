@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm'
 import { useColors } from '../../theme'
 import { TableScrollWrapper } from './AssistantMessage'
 import type { Message } from '../../../shared/types'
+import { rWarn } from '../../rendererLogger'
 
 // Intercept banners are emitted by the engine_intercept event. They render
 // inline in the conversation scrollback so the user sees that an extension
@@ -44,7 +45,7 @@ export function InterceptBanner({ message, skipMotion }: InterceptBannerProps) {
         type="button"
         className="underline decoration-dotted underline-offset-2 cursor-pointer"
         style={{ color: 'rgba(245, 158, 11, 0.9)' }}
-        onClick={() => { if (href) window.ion.openExternal(String(href)) }}
+        onClick={() => { if (href) void window.ion.openExternal(String(href)).catch((err) => rWarn('conversation', 'open link failed', { error: String(err) })) }}
       >
         {children}
       </button>

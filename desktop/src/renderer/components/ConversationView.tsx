@@ -17,7 +17,7 @@ import { useConversationSearch } from '../hooks/useConversationSearch'
 import { useScrollFollow } from './conversation/useScrollFollow'
 import { ScrollToBottomButton } from './conversation/ScrollToBottomButton'
 import { TranscriptRows } from './conversation/TranscriptRows'
-import { rDebug, rInfo } from '../rendererLogger'
+import { rDebug, rInfo, rError } from '../rendererLogger'
 import {
   groupMessages,
   MessageActions, InterruptButton,
@@ -193,13 +193,15 @@ export function ConversationView({ tabId }: ConversationViewProps) {
   // click forwards to the owner — the component never runs the business
   // logic itself (unpin ordering, mode flip, group move all happen in one
   // window against one store).
-  const handleImplement = useCallback(async (clearContext: boolean = false) => {
-    await useSessionStore.getState().implementPlan(tabId, { clearContext })
+  const handleImplement = useCallback((clearContext: boolean = false) => {
+    void useSessionStore.getState().implementPlan(tabId, { clearContext })
+      .catch((err) => rError('conversation', 'implement failed', { tab_id: tabId.slice(0, 8), error: String(err) }))
   }, [tabId])
 
-  const handleImplementAndUnpin = useCallback(async (clearContext: boolean = false) => {
+  const handleImplementAndUnpin = useCallback((clearContext: boolean = false) => {
     rInfo('conversation', 'implement-and-unpin', { tab_id: tabId.slice(0, 8), clear_context: clearContext })
-    await useSessionStore.getState().implementPlan(tabId, { clearContext, unpin: true })
+    void useSessionStore.getState().implementPlan(tabId, { clearContext, unpin: true })
+      .catch((err) => rError('conversation', 'implement-and-unpin failed', { tab_id: tabId.slice(0, 8), error: String(err) }))
   }, [tabId])
 
   const handleLoadOlder = useCallback(() => { setRenderOffset((o) => o + 1) }, [])

@@ -29,7 +29,7 @@ func WalkAgentFiles(opts WalkOptions) ([]string, error) {
 
 	dirs = append(dirs, opts.ExtraDirs...)
 
-	seen := make(map[string]bool)  // stem -> already collected
+	seen := make(map[string]bool) // stem -> already collected
 	var paths []string
 
 	for _, dir := range dirs {
@@ -57,7 +57,7 @@ func WalkAgentFiles(opts WalkOptions) ([]string, error) {
 				return nil // dedup: first dir wins
 			}
 			seen[stem] = true
-			abs, _ := filepath.Abs(p)
+			abs, _ := filepath.Abs(p) //nolint:errcheck // relative path falls back to p
 			paths = append(paths, abs)
 			return nil
 		})

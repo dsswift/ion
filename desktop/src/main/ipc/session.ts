@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import { IPC } from '../../shared/types'
 import type { RunOptions } from '../../shared/types'
-import { log as _log, setSessionContext } from '../logger'
+import { log as _log, warn as _warn, setSessionContext } from '../logger'
 import { state, sessionPlane, engineBridge, activeAssistantMessages, lastMessagePreview, lastForwardedTabStatus, lastForwardedTabMeta, extensionCommandRegistry, DEBUG_MODE } from '../state'
 import { terminalManager } from '../terminal-manager-instance'
 import { evictAtvTab } from '../atv-state-cache'
@@ -12,6 +12,10 @@ import { parseSlash } from '../slash-parse'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
+}
+
+function warn(msg: string, fields?: Record<string, unknown>): void {
+  _warn('main', msg, fields)
 }
 
 /**
@@ -51,7 +55,7 @@ export function registerSessionIpc(): void {
         if (newTab) {
           state.remoteTransport?.send({ type: 'desktop_tab_created', tab: newTab })
         }
-      })
+      }).catch((err) => warn('create_tab: remote tab-created notify failed', { tab_id: tabId, error: String(err) }))
     }
 
     return { tabId }
@@ -71,7 +75,7 @@ export function registerSessionIpc(): void {
         if (newTab) {
           state.remoteTransport?.send({ type: 'desktop_tab_created', tab: newTab })
         }
-      })
+      }).catch((err) => warn('adopt_tab: remote tab-created notify failed', { tab_id: adopted, error: String(err) }))
     }
 
     return { tabId: adopted }

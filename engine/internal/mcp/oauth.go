@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -46,7 +47,7 @@ type OAuthStore struct {
 
 // NewOAuthStore creates a token store backed by ~/.ion/mcp-tokens.json.
 func NewOAuthStore() *OAuthStore {
-	home, _ := os.UserHomeDir()
+	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	storePath := filepath.Join(home, ".ion", "mcp-tokens.json")
 
 	store := &OAuthStore{
@@ -172,6 +173,7 @@ func GeneratePKCEChallenge() (verifier string, challenge string, err error) {
 func (s *OAuthStore) save() {
 	data, err := json.MarshalIndent(s.tokens, "", "  ")
 	if err != nil {
+		utils.LogWithFields(utils.LevelError, "mcp.oauth", "save marshal failed", map[string]any{"path": s.path, "error": err.Error()})
 		return
 	}
 	dir := filepath.Dir(s.path)
@@ -187,10 +189,18 @@ func (s *OAuthStore) save() {
 func (s *OAuthStore) load() {
 	data, err := os.ReadFile(s.path)
 	if err != nil {
+		// A real read error (not simply "no token file yet") is worth a log —
+		// it means every OAuth server silently re-authenticates.
+		if !errors.Is(err, os.ErrNotExist) {
+			utils.LogWithFields(utils.LevelError, "mcp.oauth", "token store read failed", map[string]any{"path": s.path, "error": err.Error()})
+		}
 		return
 	}
 	var tokens map[string]*OAuthToken
 	if err := json.Unmarshal(data, &tokens); err != nil {
+		// Corrupt token file: without a log every stored token silently
+		// vanishes and every OAuth server re-auths or 401s.
+		utils.LogWithFields(utils.LevelError, "mcp.oauth", "token store unmarshal failed; stored tokens ignored", map[string]any{"path": s.path, "error": err.Error()})
 		return
 	}
 	s.tokens = tokens
@@ -222,11 +232,17 @@ func resolveOAuthHeaders(serverName string, oauthConfig *OAuthConfig) map[string
 		var err error
 		token, err = store.RefreshToken(serverName, oauthConfig)
 		if err != nil {
+			// Refresh failure: the connection proceeds unauthenticated, the
+			// server 401s, and every tool disappears. Log so this is not silent.
+			utils.LogWithFields(utils.LevelError, "mcp.oauth", "token refresh failed; connecting without auth", map[string]any{"serverName": serverName, "error": err.Error()})
 			return nil
 		}
 	}
 
 	if token == nil {
+		// No stored or refreshed token — connect unauthenticated. Warn so a
+		// missing token is visible when the server subsequently rejects calls.
+		utils.LogWithFields(utils.LevelWarn, "mcp.oauth", "no oauth token available; connecting without auth", map[string]any{"serverName": serverName})
 		return nil
 	}
 

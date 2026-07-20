@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -7,6 +7,7 @@ import { useNavigableText, NavigableText, NavigableCode } from '../../hooks/useN
 import { CopyButton } from './CopyButton'
 import { InlineMessageImages, deriveMessageImages } from './InlineMessageImages'
 import type { Message } from '../../../shared/types'
+import { rWarn } from '../../rendererLogger'
 
 const REMARK_PLUGINS = [remarkGfm]
 
@@ -20,6 +21,7 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
   const colors = useColors()
   const isBashCmd = !!message.userExecuted
   const { onOpenFile, onOpenUrl } = useNavigableText()
+  const onOpenFileVoid = useCallback((path: string) => { void onOpenFile(path).catch((err) => rWarn('conversation', 'open file failed', { error: String(err) })) }, [onOpenFile])
 
   const displayContent = (message.content || '')
     .replace(/^\[Attached (?:image|file): [^\]]+\]\n*/gm, '')
@@ -36,14 +38,14 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
         type="button"
         className="underline decoration-dotted underline-offset-2 cursor-pointer"
         style={{ color: colors.accent }}
-        onClick={() => { if (href) window.ion.openExternal(String(href)) }}
+        onClick={() => { if (href) void window.ion.openExternal(String(href)).catch((err) => rWarn('conversation', 'open link failed', { error: String(err) })) }}
       >
         {children}
       </button>
     ),
-    text: ({ children }: any) => <NavigableText onOpenFile={onOpenFile} onOpenUrl={onOpenUrl}>{children}</NavigableText>,
-    code: ({ children, className, ...props }: any) => <NavigableCode className={className} onOpenFile={onOpenFile} onOpenUrl={onOpenUrl} {...props}>{children}</NavigableCode>,
-  }), [colors, onOpenFile, onOpenUrl])
+    text: ({ children }: any) => <NavigableText onOpenFile={onOpenFileVoid} onOpenUrl={onOpenUrl}>{children}</NavigableText>,
+    code: ({ children, className, ...props }: any) => <NavigableCode className={className} onOpenFile={onOpenFileVoid} onOpenUrl={onOpenUrl} {...props}>{children}</NavigableCode>,
+  }), [colors, onOpenFileVoid, onOpenUrl])
 
   const defaultActions = <CopyButton text={displayContent} />
 

@@ -2,7 +2,7 @@ import { app, BrowserWindow, globalShortcut, Menu, screen } from 'electron'
 import { existsSync, rmSync, writeFileSync } from 'fs'
 import { readFileSync } from 'fs'
 import { join } from 'path'
-import { log as _log, flushLogs, initLoggerMachineIdentity } from './logger'
+import { log as _log, warn as _warn, error as _error, flushLogs, initLoggerMachineIdentity } from './logger'
 import { loadMachineIdentity } from './machine-identity'
 import { state, SPACES_DEBUG, sessionPlane, engineBridge, fileWatchers, bashProcesses } from './state'
 import { terminalManager } from './terminal-manager-instance'
@@ -34,6 +34,14 @@ import { startWatchdog, stopWatchdog } from './watchdog'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
+}
+
+function warn(msg: string, fields?: Record<string, unknown>): void {
+  _warn('main', msg, fields)
+}
+
+function error(msg: string, fields?: Record<string, unknown>): void {
+  _error('main', msg, fields)
 }
 
 /**
@@ -103,7 +111,7 @@ function initEgressFromEngineConfig(): void {
     // flush. If not signed in yet, the field remains absent (omitted by default).
     getSignedInIdentity().then((identity) => {
       if (identity) setEgressUser(identity.user)
-    }).catch(() => {})
+    }).catch((err) => log("app_lifecycle: egress user identity read failed", { error: String(err) }))
     startEgressTailers(clientSources)
     log('app_lifecycle: egress configured', { targets, sources: clientSources })
   } catch (err) {
@@ -167,7 +175,7 @@ function initEgressFromSettingsConfig(): void {
     configureEgress(cfg, oidcHeaderProvider, { shipOwnRecords: true })
     getSignedInIdentity().then((identity) => {
       if (identity) setEgressUser(identity.user)
-    }).catch(() => {})
+    }).catch((err) => log("app_lifecycle: egress user identity read failed", { error: String(err) }))
     startEgressTailers(['desktop', 'engine', 'ios', 'telemetry'])
     log('app_lifecycle: settings egress configured', { targets })
   } catch (err) {
@@ -420,7 +428,7 @@ export function setupAppLifecycle(): void {
       if (isAtvWindowOpen()) focusAtvWindow('app activate')
       else showWindow('app activate')
     })
-  })
+  }).catch((err) => error('app_lifecycle: whenReady startup failed', { error: String(err) }))
 
   app.on('will-quit', () => {
     stopWatchdog()
@@ -437,31 +445,33 @@ export function setupAppLifecycle(): void {
     }
     stopTabSnapshotPolling()
     if (state.remoteTransport) {
-      state.remoteTransport.stop()
+      state.remoteTransport.stop().catch((err) => warn('app_lifecycle: remote transport stop failed on will-quit', { error: String(err) }))
       state.remoteTransport = null
     }
-    try { rmSync(join(app.getPath('userData'), 'ion.pid')) } catch {}
+    try { rmSync(join(app.getPath('userData'), 'ion.pid')) } catch { /* silent-ok: best-effort pid-file cleanup on quit */ }
     flushLogs()
     // Stop tailers first so no new records arrive after we drain, then drain egress.
     stopEgressTailers()
-    closeEgress().catch(() => {})
+    closeEgress().catch(() => {}) // silent-ok: terminal shutdown drain; flushLogs already ran and closeEgress logs its own flush errors
   })
 
   process.on('SIGUSR1', () => {
     log('SIGUSR1 received, draining active work before quit')
-    const timeout = setTimeout(async () => {
-      log('Drain timeout (5min), force quitting')
-      await flushRendererTabs()
-      state.forceQuit = true
-      terminalManager.destroyAll()
-      // Bootout the daemon so launchd does not restart it after we exit.
-      await engineBridge.shutdownAndWait().catch((e) => { log('app_lifecycle: engine daemon bootout failed on quit', { error: e instanceof Error ? e.message : String(e) }) })
-      sessionPlane.shutdown()
-      globalShortcut.unregisterAll()
-      if (state.tray) { state.tray.destroy(); state.tray = null }
-      try { rmSync(join(app.getPath('userData'), 'ion.pid')) } catch {}
-      flushLogs()
-      app.exit(0)
+    const timeout = setTimeout(() => {
+      void (async () => {
+        log('Drain timeout (5min), force quitting')
+        await flushRendererTabs()
+        state.forceQuit = true
+        terminalManager.destroyAll()
+        // Bootout the daemon so launchd does not restart it after we exit.
+        await engineBridge.shutdownAndWait().catch((e) => { log('app_lifecycle: engine daemon bootout failed on quit', { error: e instanceof Error ? e.message : String(e) }) })
+        sessionPlane.shutdown()
+        globalShortcut.unregisterAll()
+        if (state.tray) { state.tray.destroy(); state.tray = null }
+        try { rmSync(join(app.getPath('userData'), 'ion.pid')) } catch { /* silent-ok: best-effort pid-file cleanup on quit */ }
+        flushLogs()
+        app.exit(0)
+      })()
     }, 5 * 60 * 1000)
 
     sessionPlane.drain(() => bashProcesses.size > 0).then(async () => {
@@ -475,10 +485,10 @@ export function setupAppLifecycle(): void {
       sessionPlane.shutdown()
       globalShortcut.unregisterAll()
       if (state.tray) { state.tray.destroy(); state.tray = null }
-      try { rmSync(join(app.getPath('userData'), 'ion.pid')) } catch {}
+      try { rmSync(join(app.getPath('userData'), 'ion.pid')) } catch { /* silent-ok: best-effort pid-file cleanup on quit */ }
       flushLogs()
       app.exit(0)
-    })
+    }).catch((err) => error('app_lifecycle: drain-quit sequence failed', { error: String(err) }))
   })
 
   app.on('window-all-closed', () => {

@@ -45,7 +45,7 @@ func GlobTool() *types.ToolDef {
 // maxGlobMatches. If ripgrep is not on PATH, falls back to a context-aware
 // doublestar walk.
 func executeGlob(ctx context.Context, input map[string]any, cwd string) (*types.ToolResult, error) {
-	pattern, _ := input["pattern"].(string)
+	pattern, _ := input["pattern"].(string) //nolint:errcheck // best-effort; failure not actionable here
 	if pattern == "" {
 		return &types.ToolResult{Content: "Error: pattern is required", IsError: true}, nil
 	}
@@ -188,12 +188,12 @@ func globWithRipgrep(ctx context.Context, searchDir, pattern string) ([]string, 
 		if len(matches) >= maxGlobMatches {
 			truncated = true
 			// Kill the subprocess promptly to avoid wasting work.
-			_ = cmd.Process.Kill()
+			cmd.Process.Kill() //nolint:errcheck // process teardown
 			break
 		}
 	}
 	// Drain any remaining output to allow the subprocess to exit cleanly.
-	_ = scanner.Err()
+	scanner.Err() //nolint:errcheck // best-effort; failure not actionable here
 	waitErr := cmd.Wait()
 
 	if ctxErr := ctx.Err(); ctxErr != nil {

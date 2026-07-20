@@ -157,7 +157,7 @@ function buildHarness(tabs: any[], opts?: { activeTabId?: string }): Harness {
     stashedManualTabAssignments: new Map(),
     // Skeleton-hydration entry point selectTab calls; stub so the regression
     // test can assert it fires for an un-hydrated existing conversation.
-    loadSkeletonMessages: vi.fn(),
+    loadSkeletonMessages: vi.fn().mockResolvedValue(undefined),
   }
   const set = (patch: any) => {
     if (typeof patch === 'function') Object.assign(state, patch(state))

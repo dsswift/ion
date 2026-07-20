@@ -274,7 +274,7 @@ func (c *Client) dispatch(line []byte) {
 func (c *Client) handlePeerRequest(method string, id json.RawMessage, params json.RawMessage) {
 	utils.LogWithFields(utils.LevelDebug, "rpcstdio", "peer request received", map[string]any{"tag": c.tag, "method": method})
 	if c.onRequest == nil {
-		_ = c.writeFrame(wireResponse{JSONRPC: "2.0", ID: id, Error: &RPCError{Code: -32601, Message: "method not found: " + method}})
+		c.writeFrame(wireResponse{JSONRPC: "2.0", ID: id, Error: &RPCError{Code: -32601, Message: "method not found: " + method}}) //nolint:errcheck // best-effort; failure not actionable here
 		return
 	}
 	result, rpcErr := c.onRequest(method, params)

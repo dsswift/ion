@@ -30,7 +30,7 @@ func ionDataDir() string {
 	if v := os.Getenv("ION_DATA_DIR"); v != "" {
 		return v
 	}
-	home, _ := os.UserHomeDir()
+	home, _ := os.UserHomeDir() //nolint:errcheck // empty home falls back to a relative .ion path
 	return filepath.Join(home, ".ion")
 }
 

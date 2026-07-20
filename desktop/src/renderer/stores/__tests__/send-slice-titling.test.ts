@@ -219,6 +219,21 @@ describe('send-slice — send-time tab titling', () => {
     expect(mockGenerateTitle).not.toHaveBeenCalled()
   })
 
+  it('does not re-title a restored tab that has a customTitle but a stale placeholder title', () => {
+    // Post-engine-restore shape: the AI title was persisted and restored into
+    // customTitle, but tab.title still carries the 'New Tab' sentinel that
+    // createConversationTab seeded (the engine restore path never mirrors
+    // tab.title). A mid-conversation prompt must NOT re-fire titling.
+    const { state } = buildHarness(
+      makeTab({ title: 'New Tab', customTitle: 'Real AI Title' }),
+    )
+
+    state.submit('tab-1', 'a mid-conversation prompt about something else')
+
+    expect(mockGenerateTitle).not.toHaveBeenCalled()
+    expect(state.tabs[0].customTitle).toBe('Real AI Title')
+  })
+
   it('does not call generateTitle when aiGeneratedTitles preference is off', () => {
     vi.mocked(usePreferencesStore.getState).mockReturnValue(
       defaultPrefs({ aiGeneratedTitles: false }) as any,

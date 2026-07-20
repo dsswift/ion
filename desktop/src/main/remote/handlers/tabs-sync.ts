@@ -21,7 +21,7 @@
  * snapshot alongside this one — two full builds + sends per sync) is retired.
  */
 
-import { log as _log } from '../../logger'
+import { log as _log, debug as _debug } from '../../logger'
 import { state, terminalScrollback } from '../../state'
 import { readSettings } from '../../settings-store'
 import { projectCurrentSettings, projectableSchema, projectableGroups } from '../../projectable-settings'
@@ -31,6 +31,10 @@ import { getEnterprisePolicyNewConversationDefaults } from '../../engine-bridge-
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
+}
+
+function debug(msg: string, fields?: Record<string, unknown>): void {
+  _debug('main', msg, fields)
 }
 
 /** Broadcast sync to all connected devices (used after state-changing operations). */
@@ -138,7 +142,11 @@ export async function sendSync(send: (event: any) => void, recipientDeviceIds: s
           activeInstanceId: tab.activeTerminalInstanceId || null,
           buffers: Object.keys(buffers).length > 0 ? buffers : undefined,
         })
-      } catch {}
+      } catch (err) {
+        // A failed terminal-buffer probe/send drops this tab's snapshot for
+        // this sync pass; log so the missing terminal state is diagnosable.
+        debug('tabs_sync: terminal snapshot send failed', { tab_id: tab.id, error: String(err) })
+      }
     }
   }
 }

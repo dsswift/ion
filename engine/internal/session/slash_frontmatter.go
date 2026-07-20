@@ -212,14 +212,14 @@ func substituteArguments(body, args string) string {
 
 	body = argIndexedRE.ReplaceAllStringFunc(body, func(m string) string {
 		sub := argIndexedRE.FindStringSubmatch(m)
-		i, _ := strconv.Atoi(sub[1])
+		i, _ := strconv.Atoi(sub[1]) //nolint:errcheck // parse failure -> zero value
 		if i >= 0 && i < len(parsed) {
 			return parsed[i]
 		}
 		return ""
 	})
 	body = argShorthand.ReplaceAllStringFunc(body, func(m string) string {
-		i, _ := strconv.Atoi(m[1:])
+		i, _ := strconv.Atoi(m[1:]) //nolint:errcheck // parse failure -> zero value
 		if i >= 0 && i < len(parsed) {
 			return parsed[i]
 		}
@@ -233,4 +233,3 @@ func substituteArguments(body, args string) string {
 	}
 	return body
 }
-

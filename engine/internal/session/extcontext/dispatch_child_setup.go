@@ -41,9 +41,9 @@ func loadChildExtension(sa SessionAccessor, registry *DispatchRegistry, opts *ex
 	if err := childExtHost.Load(opts.ExtensionDir, extCfg); err != nil {
 		stderrTail := childExtHost.StderrTail()
 		utils.LogWithFields(utils.LevelError, "session", "child extension load failed", map[string]any{
-			"error":      err.Error(),
-			"stderr":     stderrTail,
-			"ext_dir":    opts.ExtensionDir,
+			"error":       err.Error(),
+			"stderr":      stderrTail,
+			"ext_dir":     opts.ExtensionDir,
 			"session_key": sa.SessionKey(),
 		})
 		return nil
@@ -60,7 +60,12 @@ func loadChildExtension(sa SessionAccessor, registry *DispatchRegistry, opts *ex
 	// sa.SendPrompt so the delivery lands on the root session's run loop.
 	capturedSA := sa
 	childExtHost.SetOnSendMessage(func(payload extension.SendPromptPayload) {
-		_ = capturedSA.SendPrompt(payload.Text, payload.Model, payload.BashAllowlistAdditions)
+		// The callback signature is void — the error cannot be propagated. Log
+		// it instead so a dropped delivery (e.g. "no active session") is
+		// visible in the engine log, rather than silently stalling the child.
+		if err := capturedSA.SendPrompt(payload.Text, payload.Model, payload.BashAllowlistAdditions); err != nil {
+			utils.LogWithFields(utils.LevelWarn, "session", "child dispatch sendPrompt failed", map[string]any{"error": err.Error(), "session_key": capturedSA.SessionKey()})
+		}
 	})
 
 	// Fire session_start on child extension.
@@ -69,7 +74,11 @@ func loadChildExtension(sa SessionAccessor, registry *DispatchRegistry, opts *ex
 		DispatchId: childDispatchId,
 		Registry:   registry,
 	})
-	_ = childExtHost.FireSessionStart(childCtx)
+	if err := childExtHost.FireSessionStart(childCtx); err != nil {
+		// session_start failure means the child extension's init hook never
+		// ran — log so a silently-unconfigured child is diagnosable.
+		utils.LogWithFields(utils.LevelError, "session", "child extension session_start failed", map[string]any{"error": err.Error(), "session_key": sa.SessionKey()})
+	}
 
 	// Wire before_agent_start for system prompt.
 	basCtx := NewExtContext(sa, ExtContextOpts{
@@ -77,10 +86,16 @@ func loadChildExtension(sa SessionAccessor, registry *DispatchRegistry, opts *ex
 		DispatchId: childDispatchId,
 		Registry:   registry,
 	})
-	extSysPrompt, _, _ := childExtHost.FireBeforeAgentStart(basCtx, extension.AgentInfo{
+	extSysPrompt, _, err := childExtHost.FireBeforeAgentStart(basCtx, extension.AgentInfo{
 		Name: opts.Name,
 		Task: opts.Task,
 	})
+	if err != nil {
+		// before_agent_start failure means the system prompt may be incomplete;
+		// log so the gap is diagnosable instead of the child running with a
+		// partial or default system prompt and no trace.
+		utils.LogWithFields(utils.LevelError, "session", "child extension before_agent_start failed", map[string]any{"error": err.Error(), "session_key": sa.SessionKey()})
+	}
 	if extSysPrompt != "" {
 		if opts.SystemPrompt != "" {
 			opts.SystemPrompt = opts.SystemPrompt + "\n\n" + extSysPrompt

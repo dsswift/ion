@@ -8,6 +8,7 @@ import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
 import { usePreferencesStore } from '../preferences'
 import { pickDirectoryForSession } from '../stores/remote-fs-store'
+import { rError } from '../rendererLogger'
 
 interface DirectoryPickerProps {
   anchor: { x: number; y: number; bottom: number }
@@ -153,7 +154,7 @@ export function DirectoryPicker({
           background: 'transparent',
           cursor: 'pointer',
         }}
-        onClick={handleChooseDirectory}
+        onClick={() => { void handleChooseDirectory().catch((err) => rError('tabs', 'choose directory failed', { error: String(err) })) }}
         onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
       >

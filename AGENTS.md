@@ -395,6 +395,20 @@ If you skip a step, CI fails with a clear message identifying the drift (e.g. `"
 
 Logging is a **first-class citizen** of the architecture. Every code path must be observable through logs alone.
 
+**Observability is the single most important property of the backend/mechanical implementation.** User experience is paramount — but the backend has no UX; where the user cannot see, observability is what makes the work real. It is the only way the engineering team and the agents working in this codebase verify that a build actually does what it claims, and the only way anyone understands why the system does — or does not do — what it should. A feature that works but cannot be observed is indistinguishable from one that is silently broken. When there is a tension between a slightly cleaner mechanism and an observable one, choose observable. Instrumentation is not overhead on the feature; it *is* part of the feature.
+
+### No silent failures
+
+**A failure that is invisible in the logs is a defect, regardless of whether it is otherwise handled.** Every failure branch on every surface must be observable. This rule is enforced structurally (see § "Quality gates" — `errcheck` check-blank/type-assertions, the desktop ESLint `no-floating-promises`/`no-misused-promises`/`no-empty` rules, the `check-logging` SILENT-CATCH category, and SwiftLint `empty_catch_block`), but the gates are a backstop for the discipline, not a substitute for it.
+
+The forbidden patterns, by surface:
+
+- **Go:** a discarded error — `_ = fn()` or an `if err != nil { return }` branch with no log. Either handle-and-log the error, or, when the discard is genuinely unactionable (a deferred `Close()` on a read-only body, best-effort cleanup, a call whose error is already logged internally), mark it `//nolint:errcheck // <reason>` so the decision is explicit and reviewed. Never a bare `_ =` on an error.
+- **TypeScript:** a floating promise, an `async` function passed where a `() => void` is expected, a swallowed `.catch(() => {})`, or an empty `catch {}`. Fire-and-forget gets `void`; a failure that matters gets `.catch()` logging via `main/logger` or `renderer/rendererLogger`; a genuinely-benign swallow carries `// silent-ok: <reason>`.
+- **Swift:** an empty `catch {}`, or a `try?` that discards an error on a path where the failure matters. Route the error through `DiagnosticLog.log(..., level: .warn/.error)` — never `os.Logger`/`print()`, which never reach the operator's log file.
+
+The distinction is always the same: a failure is either **acted on and logged**, or it is **explicitly and visibly declared benign with a stated reason**. Silence is never the third option.
+
 ### Log files and format
 
 Logs are structured JSONL (one JSON object per line). Every line has a canonical schema — see [`docs/observability/log-schema.md`](docs/observability/log-schema.md) for the full field reference.
@@ -456,7 +470,7 @@ jq -c 'select(.level=="ERROR")' ~/.ion/*.jsonl
    - `utils.Error` / `ERROR` — unexpected failures, caught panics, invariant violations.
 4. **Include context in every log.** Always log the relevant identifiers (provider ID, model ID, session key, request ID, key lengths, URL, status codes). A log line without context is useless.
 5. **Log both sides of conditionals.** If an `if/else` branch makes a decision, log which branch was taken and why. Don't log only the happy path.
-6. **Desktop main process** uses the `log()` helper from `../logger`. Renderer code uses `console.log` sparingly (performance-sensitive hot paths excepted).
+6. **Desktop main process** uses the `log`/`debug`/`warn`/`error` helpers from `main/logger`. **Renderer code** uses `renderer/rendererLogger` (`rInfo`/`rDebug`/`rWarn`/`rError`/`rTrace`) — never `console.*`, which `make check-logging` (ADR-019) forbids with zero tolerance in shipped renderer code.
 7. **Engine Go code** uses `utils.Log(tag, msg)`, `utils.Debug(tag, msg)`, and `utils.Error(tag, msg)`. Never use `log.Printf` or `fmt.Printf` for operational logging — those go to stderr, which is not a reliable operational channel for the headless launchd engine daemon. All operational logs must go through `utils.Log` so they land in `~/.ion/engine.jsonl`.
 
 ### Anti-patterns

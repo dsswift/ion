@@ -86,10 +86,10 @@ func (h *Hub) CloseAll() {
 	for _, ch := range h.channels {
 		ch.mu.Lock()
 		if ch.ion != nil {
-			_ = ch.ion.CloseNow()
+			ch.ion.CloseNow() //nolint:errcheck // connection teardown
 		}
 		if ch.mobile != nil {
-			_ = ch.mobile.CloseNow()
+			ch.mobile.CloseNow() //nolint:errcheck // connection teardown
 		}
 		ch.mu.Unlock()
 	}
@@ -130,7 +130,7 @@ type pushFailedControl struct {
 }
 
 func sendControl(conn *websocket.Conn, msgType string, timeout time.Duration, log *slog.Logger) {
-	msg, _ := json.Marshal(controlMessage{Type: msgType})
+	msg, _ := json.Marshal(controlMessage{Type: msgType}) //nolint:errcheck // marshal of a trivial fixed struct cannot fail
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	if err := conn.Write(ctx, websocket.MessageText, msg); err != nil {
@@ -207,12 +207,12 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 	switch role {
 	case "ion":
 		if ch.ion != nil {
-			_ = ch.ion.Close(websocket.StatusGoingAway, "replaced")
+			ch.ion.Close(websocket.StatusGoingAway, "replaced") //nolint:errcheck // closing a replaced connection
 		}
 		ch.ion = conn
 	case "mobile":
 		if ch.mobile != nil {
-			_ = ch.mobile.Close(websocket.StatusGoingAway, "replaced")
+			ch.mobile.Close(websocket.StatusGoingAway, "replaced") //nolint:errcheck // closing a replaced connection
 		}
 		ch.mobile = conn
 	}
@@ -244,12 +244,16 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 	// NAT timeouts, load balancer idle limits, and mobile network switches
 	// can silently kill connections.
 	done := make(chan struct{})
-	go ping(conn, done, h.PingInterval, h.PingTimeout)
+	go ping(conn, done, h.PingInterval, h.PingTimeout, connLog)
 
 	// Read loop: forward messages to the peer.
 	for {
 		msgType, data, err := conn.Read(context.Background())
 		if err != nil {
+			// Log the exit reason so a clean close is distinguishable from a
+			// timeout or protocol error. websocket normal-closure is expected;
+			// anything else explains an otherwise-mysterious disconnect.
+			connLog.Info("read loop ended", "tag", "relay.disconnect", "role", role, "err", err)
 			break
 		}
 
@@ -267,7 +271,14 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 		} else if role == "ion" && pusher != nil {
 			// Mobile peer not connected; check if this message requests a push.
 			var msg relayMessage
-			if json.Unmarshal(data, &msg) == nil && msg.Push {
+			if err := json.Unmarshal(data, &msg); err != nil {
+				// A push-eligible frame that fails to unmarshal is silently
+				// skipped otherwise — no push, no push-failed frame back to ion.
+				connLog.Warn("push-eligible frame unmarshal failed",
+					"tag", "relay.apns.error",
+					"channel_id", channelID,
+					"err", err)
+			} else if msg.Push {
 				if apnsToken == "" {
 					// No token — log at ERROR so the skip is visible in log scanners
 					// and operators can diagnose why notifications are not delivered
@@ -318,6 +329,18 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 					}
 				}
 			}
+		} else if role == "ion" && pusher == nil {
+			// No mobile peer and push disabled (relay booted without APNs). If
+			// the frame actually wanted a push, log once so "why no
+			// notification" is debuggable instead of a silent no-op.
+			var msg relayMessage
+			if err := json.Unmarshal(data, &msg); err == nil && msg.Push {
+				connLog.Warn("push requested but push is unavailable (relay booted without APNs)",
+					"tag", "relay.apns.unavailable",
+					"channel_id", channelID,
+					"kind", msg.NotifyKind,
+					"resource_id", msg.NotifyResourceId)
+			}
 		}
 	}
 
@@ -343,7 +366,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 	connLog.Info("client disconnected", "tag", "relay.disconnect")
 	h.removeIfEmpty(channelID)
 	close(done)
-	_ = conn.CloseNow()
+	conn.CloseNow() //nolint:errcheck // connection teardown
 }
 
 func (ch *Channel) getPeerLocked(myRole string) *websocket.Conn {
@@ -356,7 +379,7 @@ func (ch *Channel) getPeerLocked(myRole string) *websocket.Conn {
 // ping sends WebSocket pings at the configured interval to detect dead connections.
 // If a pong is not received within pingTimeout, the connection is closed,
 // which causes the read loop to exit.
-func ping(conn *websocket.Conn, done <-chan struct{}, interval, pingTimeout time.Duration) {
+func ping(conn *websocket.Conn, done <-chan struct{}, interval, pingTimeout time.Duration, log *slog.Logger) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -368,7 +391,13 @@ func ping(conn *websocket.Conn, done <-chan struct{}, interval, pingTimeout time
 			err := conn.Ping(ctx)
 			cancel()
 			if err != nil {
-				_ = conn.CloseNow()
+				// A keepalive ping timeout tears the connection down. Log the
+				// reason before closing — this is often the one signal that
+				// explains an otherwise-mysterious disconnect.
+				log.Warn("keepalive ping failed; closing connection", "tag", "relay.ping_failed", "err", err)
+				if closeErr := conn.CloseNow(); closeErr != nil {
+					log.Debug("close after ping failure errored", "tag", "relay.ping_failed", "err", closeErr)
+				}
 				return
 			}
 		}

@@ -412,7 +412,10 @@ func probeThreadID(params json.RawMessage) string {
 	var probe struct {
 		ThreadID string `json:"threadId"`
 	}
-	_ = json.Unmarshal(params, &probe)
+	if err := json.Unmarshal(params, &probe); err != nil {
+		// A decode failure here misroutes the notification (empty threadID).
+		utils.LogWithFields(utils.LevelDebug, "backend.codex", "probeThreadID decode failed", map[string]any{"error": err.Error()})
+	}
 	return probe.ThreadID
 }
 

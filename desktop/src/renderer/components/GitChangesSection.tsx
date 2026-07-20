@@ -9,6 +9,7 @@ import { buildFileTree, type FileTreeNode } from './GitPanelTypes'
 import { useRepoGroups } from '../stores/git'
 import { ConflictResolver } from './git/ConflictResolver'
 import { SectionBlock } from './git/SectionBlock'
+import { rError, rDebug } from '../rendererLogger'
 
 // ─── Changes Section ───
 
@@ -43,7 +44,7 @@ export function GitChangesSection({
     } catch { setStashes([]) }
   }, [directory])
 
-  useEffect(() => { loadStashes() }, [loadStashes])
+  useEffect(() => { void loadStashes().catch((err) => rDebug('git-changes', 'load stashes failed', { error: String(err) })) }, [loadStashes])
 
   // Detect merge conflicts
   useEffect(() => {
@@ -56,19 +57,19 @@ export function GitChangesSection({
   const handleStashSave = async () => {
     const result = await window.ion.gitStashSave(directory)
     if (!result.ok) { setError(result.error || 'Stash failed'); return }
-    onRefresh(); loadStashes()
+    onRefresh(); void loadStashes().catch((err) => rDebug('git-changes', 'load stashes failed', { error: String(err) }))
   }
 
   const handleStashPop = async (ref: string) => {
     const result = await window.ion.gitStashPop(directory, ref)
     if (!result.ok) { setError(result.error || 'Stash pop failed'); return }
-    onRefresh(); loadStashes()
+    onRefresh(); void loadStashes().catch((err) => rDebug('git-changes', 'load stashes failed', { error: String(err) }))
   }
 
   const handleStashDrop = async (ref: string) => {
     const result = await window.ion.gitStashDrop(directory, ref)
     if (!result.ok) { setError(result.error || 'Stash drop failed'); return }
-    loadStashes()
+    void loadStashes().catch((err) => rDebug('git-changes', 'load stashes failed', { error: String(err) }))
   }
 
   useEffect(() => {
@@ -98,7 +99,7 @@ export function GitChangesSection({
   const toggleSection = useCallback((k: string) => {
     setOpenSections((prev) => {
       const next = { ...prev, [k]: !prev[k] }
-      try { localStorage.setItem('ion:git-section-open', JSON.stringify(next)) } catch {}
+      try { localStorage.setItem('ion:git-section-open', JSON.stringify(next)) } catch (err) { rDebug('git-changes', 'persist section state failed', { error: String(err) }) }
       return next
     })
   }, [])
@@ -210,7 +211,7 @@ export function GitChangesSection({
       }
     } else {
       // Single click — open diff
-      handleFileClick(file)
+      void handleFileClick(file).catch((err) => rError('git-changes', 'open diff failed', { error: String(err) }))
       setSelectedPaths(new Set([key]))
     }
     setLastClickedPath(key)
@@ -236,14 +237,14 @@ export function GitChangesSection({
         e.preventDefault()
         if (focusIndex >= 0 && focusIndex < allFiles.length) {
           const file = allFiles[focusIndex]
-          if (file.staged) handleUnstage(file.path)
-          else handleStage(file.path)
+          if (file.staged) void handleUnstage(file.path).catch((err) => rError('git-changes', 'unstage failed', { error: String(err) }))
+          else void handleStage(file.path).catch((err) => rError('git-changes', 'stage failed', { error: String(err) }))
         }
         break
       case 'Enter':
         e.preventDefault()
         if (focusIndex >= 0 && focusIndex < allFiles.length) {
-          handleFileClick(allFiles[focusIndex])
+          void handleFileClick(allFiles[focusIndex]).catch((err) => rError('git-changes', 'open diff failed', { error: String(err) }))
         }
         break
       case 'd':
@@ -254,6 +255,14 @@ export function GitChangesSection({
         break
     }
   }, [allFiles, focusIndex, handleStage, handleUnstage, handleFileClick, handleDiscard])
+
+  // Voided wrappers so async handlers can be passed to void-returning JSX props
+  const onStageVoid = useCallback((path: string) => { void handleStage(path).catch((err) => rError('git-changes', 'stage failed', { error: String(err) })) }, [handleStage])
+  const onUnstageVoid = useCallback((path: string) => { void handleUnstage(path).catch((err) => rError('git-changes', 'unstage failed', { error: String(err) })) }, [handleUnstage])
+  const onFileClickVoid = useCallback((file: GitChangedFile) => { void handleFileClick(file).catch((err) => rError('git-changes', 'open diff failed', { error: String(err) })) }, [handleFileClick])
+  const onStashSaveVoid = () => { void handleStashSave().catch((err) => rError('git-changes', 'stash save failed', { error: String(err) })) }
+  const onStageAllVoid = () => { void handleStageAll().catch((err) => rError('git-changes', 'stage all failed', { error: String(err) })) }
+  const onUnstageAllVoid = () => { void handleUnstageAll().catch((err) => rError('git-changes', 'unstage all failed', { error: String(err) })) }
 
   return (
     <>
@@ -276,10 +285,10 @@ export function GitChangesSection({
           treeView={treeView}
           expandedDirs={expandedDirs}
           onToggleDirExpand={toggleDirExpand}
-          onStage={handleStage}
-          onUnstage={handleUnstage}
+          onStage={onStageVoid}
+          onUnstage={onUnstageVoid}
           onDiscard={handleDiscard}
-          onClick={handleFileClick}
+          onClick={onFileClickVoid}
           selectedFile={diffFile}
         />
 
@@ -290,7 +299,7 @@ export function GitChangesSection({
           onToggle={() => toggleSection('staged')}
           actions={(
             <Tooltip text="Unstage all">
-              <button onClick={handleUnstageAll} className="text-[9px] px-1.5 py-0.5 rounded" style={{ color: colors.textTertiary }}>
+              <button onClick={onUnstageAllVoid} className="text-[9px] px-1.5 py-0.5 rounded" style={{ color: colors.textTertiary }}>
                 <Minus size={11} />
               </button>
             </Tooltip>
@@ -299,10 +308,10 @@ export function GitChangesSection({
           treeView={treeView}
           expandedDirs={expandedDirs}
           onToggleDirExpand={toggleDirExpand}
-          onStage={handleStage}
-          onUnstage={handleUnstage}
+          onStage={onStageVoid}
+          onUnstage={onUnstageVoid}
           onDiscard={handleDiscard}
-          onClick={handleFileClick}
+          onClick={onFileClickVoid}
           selectedFile={diffFile}
         />
 
@@ -314,12 +323,12 @@ export function GitChangesSection({
           actions={(
             <>
               <Tooltip text="Stash changes">
-                <button onClick={handleStashSave} className="text-[9px] px-1 py-0.5 rounded" style={{ color: colors.textTertiary }}>
+                <button onClick={onStashSaveVoid} className="text-[9px] px-1 py-0.5 rounded" style={{ color: colors.textTertiary }}>
                   <Tray size={11} />
                 </button>
               </Tooltip>
               <Tooltip text="Stage all">
-                <button onClick={handleStageAll} className="text-[9px] px-1.5 py-0.5 rounded" style={{ color: colors.textTertiary }}>
+                <button onClick={onStageAllVoid} className="text-[9px] px-1.5 py-0.5 rounded" style={{ color: colors.textTertiary }}>
                   <Plus size={11} />
                 </button>
               </Tooltip>
@@ -329,10 +338,10 @@ export function GitChangesSection({
           treeView={treeView}
           expandedDirs={expandedDirs}
           onToggleDirExpand={toggleDirExpand}
-          onStage={handleStage}
-          onUnstage={handleUnstage}
+          onStage={onStageVoid}
+          onUnstage={onUnstageVoid}
           onDiscard={handleDiscard}
-          onClick={handleFileClick}
+          onClick={onFileClickVoid}
           selectedFile={diffFile}
         />
 
@@ -354,7 +363,7 @@ export function GitChangesSection({
                 Stashes ({stashes.length})
               </button>
               <Tooltip text="Stash current changes">
-                <button onClick={handleStashSave} className="text-[9px] px-1.5 py-0.5 rounded" style={{ color: colors.textTertiary }}>
+                <button onClick={onStashSaveVoid} className="text-[9px] px-1.5 py-0.5 rounded" style={{ color: colors.textTertiary }}>
                   + Stash
                 </button>
               </Tooltip>
@@ -364,10 +373,10 @@ export function GitChangesSection({
                 <span className="text-[9px] font-mono flex-shrink-0" style={{ color: colors.textMuted, width: 50 }}>{s.ref}</span>
                 <span className="text-[10px] flex-1 truncate" style={{ color: colors.textSecondary }}>{s.message}</span>
                 <Tooltip text="Apply and remove stash">
-                  <button onClick={() => handleStashPop(s.ref)} className="text-[9px] px-1 opacity-0 group-hover:opacity-100" style={{ color: colors.accent }}>Pop</button>
+                  <button onClick={() => { void handleStashPop(s.ref).catch((err) => rError('git-changes', 'stash pop failed', { error: String(err) })) }} className="text-[9px] px-1 opacity-0 group-hover:opacity-100" style={{ color: colors.accent }}>Pop</button>
                 </Tooltip>
                 <Tooltip text="Delete stash">
-                  <button onClick={() => handleStashDrop(s.ref)} className="text-[9px] px-1 opacity-0 group-hover:opacity-100" style={{ color: '#c47060' }}>Drop</button>
+                  <button onClick={() => { void handleStashDrop(s.ref).catch((err) => rError('git-changes', 'stash drop failed', { error: String(err) })) }} className="text-[9px] px-1 opacity-0 group-hover:opacity-100" style={{ color: '#c47060' }}>Drop</button>
                 </Tooltip>
               </div>
             ))}
@@ -403,7 +412,7 @@ export function GitChangesSection({
           </span>
           <div className="flex items-center gap-1 flex-shrink-0">
             <button
-              onClick={confirmDiscard}
+              onClick={() => { void confirmDiscard().catch((err) => rError('git-changes', 'discard failed', { error: String(err) })) }}
               className="text-[10px] px-1.5 py-0.5 rounded"
               style={{ color: '#c47060' }}
             >

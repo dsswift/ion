@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { rDebug, rWarn, rError } from '../rendererLogger'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { CaretDown, Plus, GitBranch, Trash, Check, MagnifyingGlass, Clock } from '@phosphor-icons/react'
@@ -53,13 +54,15 @@ export function BranchPicker({
       const result = await window.ion.gitBranches(directory)
       setBranches(result.branches)
       setError(null)
-    } catch {}
+    } catch (err) {
+      rWarn('git', 'gitBranches load failed', { directory, error: String(err) })
+    }
   }, [directory])
 
   useEffect(() => {
     if (open) {
-      loadBranches()
-      window.ion.gitRecentRefs(directory, 20).then((r) => { if (r.ok) setRecent(r.refs.slice(0, 5)) }).catch(() => {})
+      loadBranches().catch((err) => rError('git', 'loadBranches failed', { directory, error: String(err) }))
+      window.ion.gitRecentRefs(directory, 20).then((r) => { if (r.ok) setRecent(r.refs.slice(0, 5)) }).catch((err) => rDebug("git", "gitRecentRefs failed", { directory, error: String(err) }))
     }
   }, [open, directory, loadBranches])
 
@@ -112,7 +115,7 @@ export function BranchPicker({
   const handleDelete = async (branch: string) => {
     const result = await window.ion.gitDeleteBranch(directory, branch)
     if (result.ok) {
-      loadBranches()
+      loadBranches().catch((err) => rError('git', 'loadBranches after delete failed', { directory, error: String(err) }))
     } else {
       setError(result.error || 'Delete failed')
     }
@@ -190,7 +193,7 @@ export function BranchPicker({
                   <Clock size={9} /> Recent
                 </div>
                 {recentBranches.map((name) => (
-                  <button key={`r-${name}`} onClick={() => handleCheckout(name)} className="w-full text-left px-2 py-1 text-[11px] truncate" style={{ color: colors.textSecondary }}>
+                  <button key={`r-${name}`} onClick={() => { void handleCheckout(name).catch((err) => rError('git', 'checkout failed', { branch: name, error: String(err) })) }} className="w-full text-left px-2 py-1 text-[11px] truncate" style={{ color: colors.textSecondary }}>
                     {name}
                   </button>
                 ))}
@@ -205,7 +208,7 @@ export function BranchPicker({
                 style={{ color: b.isCurrent ? colors.textPrimary : colors.textSecondary }}
               >
                 <button
-                  onClick={() => !b.isCurrent && handleCheckout(b.name)}
+                  onClick={() => { if (!b.isCurrent) void handleCheckout(b.name).catch((err) => rError('git', 'checkout failed', { branch: b.name, error: String(err) })) }}
                   className="flex items-center gap-1 truncate flex-1 text-left"
                   style={{ cursor: b.isCurrent ? 'default' : 'pointer' }}
                 >
@@ -214,7 +217,7 @@ export function BranchPicker({
                 </button>
                 {!b.isCurrent && !(worktree && (b.name === worktree.branchName || b.name === worktree.sourceBranch)) && (
                   <button
-                    onClick={() => handleDelete(b.name)}
+                    onClick={() => { void handleDelete(b.name).catch((err) => rError('git', 'delete failed', { branch: b.name, error: String(err) })) }}
                     className="opacity-0 group-hover:opacity-60 hover:!opacity-100 p-0.5 transition-opacity"
                     style={{ color: colors.textTertiary }}
                     title="Delete branch"
@@ -235,7 +238,7 @@ export function BranchPicker({
                 {remoteBranches.map((b) => (
                   <button
                     key={b.name}
-                    onClick={() => handleCheckout(b.name)}
+                    onClick={() => { void handleCheckout(b.name).catch((err) => rError('git', 'checkout failed', { branch: b.name, error: String(err) })) }}
                     className="w-full text-left px-2 py-1 text-[11px] truncate"
                     style={{ color: colors.textTertiary }}
                   >
@@ -261,12 +264,12 @@ export function BranchPicker({
                   autoFocus
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') setCreating(false) }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') void handleCreate().catch((err) => rError('git', 'create branch failed', { error: String(err) })); if (e.key === 'Escape') setCreating(false) }}
                   placeholder="branch-name"
                   className="flex-1 text-[11px] bg-transparent outline-none"
                   style={{ color: colors.textPrimary }}
                 />
-                <button onClick={handleCreate} className="text-[10px] px-1.5 py-0.5 rounded" style={{ color: colors.accent }}>
+                <button onClick={() => { void handleCreate().catch((err) => rError('git', 'create branch failed', { error: String(err) })) }} className="text-[10px] px-1.5 py-0.5 rounded" style={{ color: colors.accent }}>
                   Create
                 </button>
               </div>

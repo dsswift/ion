@@ -247,7 +247,7 @@ func (m *Manager) commitHostInitAsyncDecls(key string, host *extension.Host) {
 // emitAsyncLifecycle publishes a registered/deregistered event onto
 // the session's emit channel.
 func (m *Manager) emitAsyncLifecycle(key, evType string, kind asyncreg.Kind, id string, origin asyncreg.Origin, decl interface{}) {
-	declJSON, _ := json.Marshal(decl)
+	declJSON, _ := json.Marshal(decl) //nolint:errcheck // marshal of a local struct
 	m.emit(key, types.EngineEvent{
 		Type:        evType,
 		AsyncKind:   string(kind),

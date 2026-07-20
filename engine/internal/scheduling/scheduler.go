@@ -350,6 +350,10 @@ func (s *Scheduler) tickOnce() {
 		for _, d := range decls {
 			job, ok := d.(extension.ScheduleJob)
 			if !ok {
+				// A declaration registered under KindSchedule that is not a
+				// ScheduleJob can never fire. Log so the misregistration is
+				// visible instead of being silently skipped every tick.
+				utils.LogWithFields(utils.LevelError, "scheduling", "tick skip: declaration is not a ScheduleJob", map[string]any{"run_id": d.ID(), "model": h.Name()})
 				continue
 			}
 			key := extensionJobKey{name: h.Name(), id: job.JobID}
@@ -374,11 +378,19 @@ func (s *Scheduler) tickOnce() {
 			}
 		} else {
 			// Single mode (default): fire on the first alive host only.
+			fired := false
 			for _, e := range entries {
 				if !e.host.Dead() {
 					s.maybeFire(e.host, e.job, now, resolve)
+					fired = true
 					break
 				}
+			}
+			if !fired {
+				// Every host owning this schedule is dead — the job silently
+				// stops firing. Log so the dead-group gap is visible instead of
+				// the schedule vanishing without a trace.
+				utils.LogWithFields(utils.LevelWarn, "scheduling", "schedule not fired: all hosts dead", map[string]any{"run_id": entries[0].job.JobID, "extension": entries[0].host.Name(), "count": len(entries)})
 			}
 		}
 	}
@@ -481,7 +493,14 @@ func (s *Scheduler) fireJob(h *extension.Host, job extension.ScheduleJob, key ho
 	ctx, err := resolve(h)
 	if err != nil || ctx == nil {
 		s.emitScheduleSkipped(job, "no_session")
-		utils.LogWithFields(utils.LevelInfo, "scheduling", "fire job session resolve failed", map[string]any{"model": h.Name(), "run_id": job.JobID, "error": err.Error()})
+		// resolve may return (nil, nil) — a nil context with no error. Guard
+		// err.Error() so the nil-context case does not panic this fire goroutine
+		// (which has no recover). Mirrors fireJobWithMeta's guard.
+		errMsg := "nil context"
+		if err != nil {
+			errMsg = err.Error()
+		}
+		utils.LogWithFields(utils.LevelInfo, "scheduling", "fire job session resolve failed", map[string]any{"model": h.Name(), "run_id": job.JobID, "error": errMsg})
 		// For once jobs a session-resolve failure is not a spent shot —
 		// leave the next-run entry in place so the job retries next tick.
 		// For repeating jobs the next-run has already been advanced above.

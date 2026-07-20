@@ -6,6 +6,7 @@ import { SettingToggle } from './SettingToggle'
 import { SettingSection } from './SettingSection'
 import { SettingHeading } from './SettingHeading'
 import { deriveProfileOptions, resolveSelectedProfileOption } from './default-profile-options'
+import { rError } from '../../rendererLogger'
 
 export function GeneralCategory() {
   const colors = useColors()
@@ -67,7 +68,7 @@ export function GeneralCategory() {
             {defaultBaseDirectory || '~/'}
           </div>
           <button
-            onClick={handleBrowse}
+            onClick={() => { void handleBrowse().catch((err) => rError('settings', 'browse failed', { error: String(err) })) }}
             title="Browse..."
             style={{
               background: colors.surfacePrimary,

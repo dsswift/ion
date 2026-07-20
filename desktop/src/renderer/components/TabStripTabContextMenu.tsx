@@ -14,7 +14,7 @@ import type { TabState } from '../../shared/types'
 import { zoomRect, zoomViewport, useAnchoredPopoverPosition } from './TabStripShared'
 import { MoveToGroupSubmenu } from './TabStripMoveToGroupSubmenu'
 import { ConfirmDialog } from './git/ConfirmDialog'
-import { rDebug, rInfo } from '../rendererLogger'
+import { rDebug, rInfo, rError } from '../rendererLogger'
 
 interface TabContextMenuProps {
   anchor: { x: number; y: number }
@@ -210,7 +210,7 @@ export function TabContextMenu({
       )}
       {!tab.worktree && isGitRepo && (
         <button
-          onClick={tab.hasFileActivity ? undefined : () => { useSessionStore.getState().convertToWorktree(tab.id); window.dispatchEvent(new CustomEvent('ion:close-group-pickers')); onClose() }}
+          onClick={tab.hasFileActivity ? undefined : () => { void useSessionStore.getState().convertToWorktree(tab.id).catch((err) => rError('tabs', 'convert to worktree failed', { error: String(err) })); window.dispatchEvent(new CustomEvent('ion:close-group-pickers')); onClose() }}
           className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
           style={{
             ...menuItemStyle,

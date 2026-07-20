@@ -3,6 +3,7 @@ import { FolderOpen } from '@phosphor-icons/react'
 import { useSessionStore } from '../../stores/sessionStore'
 import { useColors } from '../../theme'
 import { pickDirectoryForSession } from '../../stores/remote-fs-store'
+import { rError } from '../../rendererLogger'
 import { useShallow } from 'zustand/shallow'
 
 /** Empty state shown when no messages exist yet — directory picker prompt. */
@@ -26,7 +27,7 @@ export function EmptyState() {
       style={{ minHeight: 80 }}
     >
       <button
-        onClick={handleChooseFolder}
+        onClick={() => { void handleChooseFolder().catch((err) => rError('conversation', 'choose folder failed', { error: String(err) })) }}
         className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-lg transition-colors"
         style={{
           color: colors.accent,

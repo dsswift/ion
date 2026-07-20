@@ -3,6 +3,7 @@ import { usePreferencesStore } from '../../preferences'
 import { destroyTerminalInstance } from '../../components/TerminalPanel'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { makeLocalTab, isReusableBlankTerminalTab } from '../session-store-helpers'
+import { rWarn } from '../../rendererLogger'
 
 // ─── Tall-suspend helpers ─────────────────────────────────────────────────────
 
@@ -90,7 +91,7 @@ export function createTerminalSlice(set: StoreSet, get: StoreGet): Partial<State
       const pane = panes.get(tabId)
       if (!pane) return
       const key = `${tabId}:${instanceId}`
-      window.ion.terminalDestroy(key).catch(() => {})
+      window.ion.terminalDestroy(key).catch((err) => rWarn('terminal', 'terminalDestroy IPC failed', { key, error: String(err) }))
       destroyTerminalInstance(key)
       const remaining = pane.instances.filter((i) => i.id !== instanceId)
       const activeId = pane.activeInstanceId === instanceId
@@ -289,7 +290,7 @@ export function createTerminalSlice(set: StoreSet, get: StoreGet): Partial<State
           }
         })
       }
-      resolveAndRun()
+      void resolveAndRun().catch((err) => rWarn('terminal', 'quick-tool resolveAndRun failed', { tab_id: tabId, tool_id: toolId, error: String(err) }))
     },
 
     consumeTerminalPendingCommand: (key) => {
