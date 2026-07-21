@@ -10,6 +10,18 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.64.0](https://github.com/dsswift/ion/compare/desktop-v1.63.4...desktop-v1.64.0) (2026-07-21)
+
+### Features
+
+* **desktop:** map clear marker to divider on history reload ([0017f7b](https://github.com/dsswift/ion/commit/0017f7bd7f0d45ea68b33d7bbf65f8860dd0f866))
+* **desktop:** list clickable running/awaiting tab names in workspace popover ([4fb1123](https://github.com/dsswift/ion/commit/4fb11230782e9e104a5f248a87cad6ed55dfa656))
+
+### Bug Fixes
+
+* **desktop:** apply forced-scheme theme on startup and persist on change ([6c14297](https://github.com/dsswift/ion/commit/6c14297f7d97e1e2f7ad856e48fc3bc90f6e21b7))
+* **desktop:** reset conversation view on tab switch ([6b29c80](https://github.com/dsswift/ion/commit/6b29c8044752c1321d77fcf584f7cd739070d0c1))
+
 ## [1.63.4](https://github.com/dsswift/ion/compare/desktop-v1.63.3...desktop-v1.63.4) (2026-07-20)
 
 ### Bug Fixes

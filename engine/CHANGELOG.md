@@ -13,6 +13,17 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.52.0](https://github.com/dsswift/ion/compare/engine-v1.51.0...engine-v1.52.0) (2026-07-21)
+
+### Features
+
+* **engine:** add egress request timeout config option ([1f7a187](https://github.com/dsswift/ion/commit/1f7a1872e98a83e54a10233fb0e67426e243b56d))
+* **engine:** persist clear checkpoint to tree; replay on history load ([70d5132](https://github.com/dsswift/ion/commit/70d5132430363a2a1c9954707c6744a8be57eb3b))
+
+### Bug Fixes
+
+* **engine:** guard status cross-check during prompt dispatch window ([0dc0290](https://github.com/dsswift/ion/commit/0dc0290f07a4ea697dafb62f95b36b74a61b3bb5))
+
 ## [1.51.0](https://github.com/dsswift/ion/compare/engine-v1.50.2...engine-v1.51.0) (2026-07-21)
 
 ### Features

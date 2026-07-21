@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.48.1](https://github.com/dsswift/ion/compare/ios-v1.48.0...ios-v1.48.1) (2026-07-21)
+
+### Bug Fixes
+
+* **ios:** scope live-tail preservation to streaming reloads ([319345c](https://github.com/dsswift/ion/commit/319345c41cddec0fe83df421cfd6f7ac20de853b))
+
 ## [1.48.0](https://github.com/dsswift/ion/compare/ios-v1.47.0...ios-v1.48.0) (2026-07-20)
 
 ### Features
