@@ -131,9 +131,66 @@ describe('preferences-persist round-trip — structural', () => {
   })
 })
 
+describe('loadPersistedSettings applies forced-scheme theme by id on startup', () => {
+  let originalIon: unknown
+  let originalDocument: unknown
+
+  beforeEach(() => {
+    originalIon = (globalThis as { window?: { ion?: unknown } }).window?.ion
+    originalDocument = (globalThis as { document?: unknown }).document
+    ;(globalThis as { document?: unknown }).document = {
+      documentElement: { style: {}, classList: { toggle: () => {}, add: () => {}, remove: () => {} } },
+    }
+  })
+
+  afterEach(() => {
+    ;(globalThis as { window?: { ion?: unknown } }).window = { ion: originalIon } as Window & typeof globalThis
+    ;(globalThis as { document?: unknown }).document = originalDocument
+  })
+
+  it('calls applyTheme with theme id string when selectedTheme is a forced-scheme theme', async () => {
+    ;(globalThis as { window?: { ion?: unknown } }).window = {
+      ion: {
+        loadSettings: () =>
+          Promise.resolve({ selectedTheme: 'jarvis-hud', themeMode: 'dark' }),
+      },
+    } as unknown as Window & typeof globalThis
+
+    const setStateMock = vi.fn()
+    const getStateMock = () => ({ _systemIsDark: false } as unknown as PreferencesState)
+    const applyThemeMock = vi.fn()
+
+    loadPersistedSettings(setStateMock, getStateMock, applyThemeMock)
+    await new Promise((resolve) => setImmediate(resolve))
+
+    // Must be called with the string 'jarvis-hud', not a boolean
+    expect(applyThemeMock).toHaveBeenCalledWith('jarvis-hud')
+    expect(applyThemeMock).not.toHaveBeenCalledWith(true)
+    expect(applyThemeMock).not.toHaveBeenCalledWith(false)
+  })
+
+  it('calls applyTheme with boolean when selectedTheme is a standard theme', async () => {
+    ;(globalThis as { window?: { ion?: unknown } }).window = {
+      ion: {
+        loadSettings: () =>
+          Promise.resolve({ selectedTheme: 'ion-dark', themeMode: 'dark' }),
+      },
+    } as unknown as Window & typeof globalThis
+
+    const setStateMock = vi.fn()
+    const getStateMock = () => ({ _systemIsDark: false } as unknown as PreferencesState)
+    const applyThemeMock = vi.fn()
+
+    loadPersistedSettings(setStateMock, getStateMock, applyThemeMock)
+    await new Promise((resolve) => setImmediate(resolve))
+
+    // Standard theme: boolean apply
+    expect(applyThemeMock).toHaveBeenCalledWith(true)
+  })
+})
+
 /**
  * Produce a sentinel disk value for a given default. The sentinel must
- * be type-compatible with the default (so hydration accepts it) but
  * distinct (so we can be sure the value flowed through hydration
  * rather than being silently re-defaulted). For arrays and maps we
  * use empty literals — the hydration validators check `Array.isArray`

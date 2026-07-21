@@ -453,6 +453,17 @@ export function getTheme(id: string): ThemeDefinition {
   return themes.find((t) => t.id === id) ?? themes[0]
 }
 
+/** Returns the active color palette for the given theme id and dark state.
+ * Forced-scheme themes (e.g. Jarvis HUD) return their own palette regardless
+ * of isDark. Standard themes return darkColors or lightColors. */
+export function resolveColors(selectedTheme: string, isDark: boolean): ColorPalette {
+  const theme = getTheme(selectedTheme)
+  if (theme.forcedColorScheme) {
+    return theme.colors
+  }
+  return isDark ? darkColors : lightColors
+}
+
 // Legacy static export — components migrating to useColors() may still read this.
 export const colors = darkColors
 
