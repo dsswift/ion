@@ -46,6 +46,12 @@ const defaultSpoolMaxBytes = 50 * 1024 * 1024
 // nginx/Traefik default to 1 MB). Configurable via LoggingConfig.EgressChunkSize.
 const defaultEgressChunkSize = 500
 
+// defaultEgressRequestTimeoutMs is the per-POST HTTP timeout for egress
+// flushes. 5 minutes is generous enough for a large spool chunk over a slow
+// link while still guaranteeing the flush goroutine can't block indefinitely.
+// Configurable via LoggingConfig.EgressRequestTimeoutMs.
+const defaultEgressRequestTimeoutMs = 5 * 60 * 1000
+
 // egressRecord is the structured payload shipped to downstream egress targets.
 // It mirrors the canonical log schema (docs/observability/log-schema.md) so
 // the egress stream is parseable by the same tooling as the local JSONL file,
@@ -88,6 +94,11 @@ type EgressForwarder struct {
 	shipOwn   bool
 	spoolPath string
 	spoolMaxB int64
+	// httpClient is the shared HTTP client for all egress POSTs. Built once at
+	// construction with the configured per-request timeout; never mutated after
+	// that. Using a dedicated client (rather than http.DefaultClient) ensures
+	// the timeout is scoped to egress only and does not affect other callers.
+	httpClient *http.Client
 	// ambientFields are stable machine-identity fields (host, machine_id,
 	// mdm_device_id, mdm_serial) merged into every egress record. Populated
 	// once at construction from getMachineIdentity(); never mutated after that.
@@ -169,6 +180,11 @@ func newEgressForwarder(cfg types.LoggingConfig) *EgressForwarder {
 		spoolMax = defaultSpoolMaxBytes
 	}
 
+	requestTimeoutMs := cfg.EgressRequestTimeoutMs
+	if requestTimeoutMs <= 0 {
+		requestTimeoutMs = defaultEgressRequestTimeoutMs
+	}
+
 	// Locate the spool alongside ~/.ion/engine.jsonl.
 	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	spoolPath := filepath.Join(home, ".ion", ".engine-egress-spool.jsonl")
@@ -178,6 +194,7 @@ func newEgressForwarder(cfg types.LoggingConfig) *EgressForwarder {
 		shipOwn:       shipSourcesContain(sources, "engine"),
 		spoolPath:     spoolPath,
 		spoolMaxB:     spoolMax,
+		httpClient:    &http.Client{Timeout: time.Duration(requestTimeoutMs) * time.Millisecond},
 		buffer:        make([]egressRecord, 0, 64),
 		loggedErrs:    make(map[string]bool),
 		stopCh:        make(chan struct{}),
@@ -294,11 +311,11 @@ func (f *EgressForwarder) exportRecords(records []egressRecord) error {
 	for _, target := range f.cfg.EgressTargets {
 		switch target {
 		case "http":
-			if err := flushEgressToHTTP(records, f.cfg.EgressEndpoint, httpHeaders); err != nil {
+			if err := flushEgressToHTTP(records, f.cfg.EgressEndpoint, httpHeaders, f.httpClient); err != nil {
 				lastErr = err
 			}
 		case "otel":
-			if err := flushEgressToOtel(records, otelCfg); err != nil {
+			if err := flushEgressToOtel(records, otelCfg, f.httpClient); err != nil {
 				lastErr = err
 			}
 		}
@@ -599,8 +616,8 @@ func (f *EgressForwarder) logFlushError(err error) {
 // Target implementations
 // ---------------------------------------------------------------------------
 
-// flushEgressToHTTP POSTs a JSON array of log records to endpoint.
-func flushEgressToHTTP(records []egressRecord, endpoint string, headers map[string]string) error {
+// flushEgressToHTTP POSTs a JSON array of log records to endpoint using client.
+func flushEgressToHTTP(records []egressRecord, endpoint string, headers map[string]string, client *http.Client) error {
 	if endpoint == "" {
 		return fmt.Errorf("log egress HTTP endpoint not configured")
 	}
@@ -616,7 +633,7 @@ func flushEgressToHTTP(records []egressRecord, endpoint string, headers map[stri
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("log egress http: POST: %w", err)
 	}

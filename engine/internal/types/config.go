@@ -1,3 +1,4 @@
+// @file-size-exception: cross-cutting config struct — canonical exception per engine/AGENTS.md
 package types
 
 // --- Profile Config (from engine/src/config/types.ts) ---
@@ -295,6 +296,12 @@ type LoggingConfig struct {
 	// rejected by intermediate proxies (Cloudflare, nginx, etc.) that enforce
 	// payload size limits. Zero means use the compiled default (500 records).
 	EgressChunkSize int `json:"egressChunkSize,omitempty"`
+
+	// EgressRequestTimeoutMs is the per-POST HTTP timeout for egress flushes.
+	// Applies to both "http" and "otel" target POSTs. Zero means use the
+	// compiled default (300000 ms = 5 minutes). Set higher for very large
+	// spool drains over slow links; set lower to fail fast against a dead sink.
+	EgressRequestTimeoutMs int64 `json:"egressRequestTimeoutMs,omitempty"`
 
 	// EgressFlushIntervalMs controls how often the egress forwarder flushes
 	// buffered records. Zero defaults to 5000 ms.

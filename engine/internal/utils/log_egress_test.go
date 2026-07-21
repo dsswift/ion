@@ -75,6 +75,7 @@ func newTestForwarder(t *testing.T, srv *httptest.Server, dir string, cfg ...typ
 		shipOwn:    true, // tests exercise the engine's own-record path
 		spoolPath:  spoolForDir(dir),
 		spoolMaxB:  c.EgressSpoolMaxBytes,
+		httpClient: http.DefaultClient, // tests use the default client (no special timeout needed)
 		buffer:     make([]egressRecord, 0, 64),
 		loggedErrs: make(map[string]bool),
 		stopCh:     make(chan struct{}),
@@ -607,7 +608,7 @@ func TestEgressHTTP_ErrorBodyInMessage(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	err := flushEgressToHTTP([]egressRecord{rec("x")}, srv.URL, nil)
+	err := flushEgressToHTTP([]egressRecord{rec("x")}, srv.URL, nil, http.DefaultClient)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
