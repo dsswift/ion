@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.65.0](https://github.com/dsswift/ion/compare/desktop-v1.64.0...desktop-v1.65.0) (2026-07-21)
+
+### Features
+
+* **desktop:** consume enterprise policy for updater, models, retention ([100b64a](https://github.com/dsswift/ion/commit/100b64a6e9cc7c96430e63f18661335c9beb9e1d))
+
 ## [1.64.0](https://github.com/dsswift/ion/compare/desktop-v1.63.4...desktop-v1.64.0) (2026-07-21)
 
 ### Features

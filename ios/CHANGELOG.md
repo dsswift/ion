@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.48.2](https://github.com/dsswift/ion/compare/ios-v1.48.1...ios-v1.48.2) (2026-07-21)
+
+### Bug Fixes
+
+* **ios:** add ResourceLimits to Swift contract sync test ([4a6be46](https://github.com/dsswift/ion/commit/4a6be469c2bcd9380923585544ebf1f932b3b2b1))
+
 ## [1.48.1](https://github.com/dsswift/ion/compare/ios-v1.48.0...ios-v1.48.1) (2026-07-21)
 
 ### Bug Fixes

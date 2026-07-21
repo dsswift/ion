@@ -13,6 +13,12 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.53.0](https://github.com/dsswift/ion/compare/engine-v1.52.0...engine-v1.53.0) (2026-07-21)
+
+### Features
+
+* **engine:** enterprise policy seals, limits, and dispatch cap ([71f7f38](https://github.com/dsswift/ion/commit/71f7f385477377086cd2ea3681196f3007ff8164))
+
 ## [1.52.0](https://github.com/dsswift/ion/compare/engine-v1.51.0...engine-v1.52.0) (2026-07-21)
 
 ### Features
