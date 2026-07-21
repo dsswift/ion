@@ -1,4 +1,4 @@
-.PHONY: default desktop engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test test test-all test-linux test-linux-engine test-linux-desktop clean check-file-sizes check-contracts check-status-writers check-atv-parity check-logging check-swiftlint check-dashboards claude-symlinks hooks lint-desktop
+.PHONY: default desktop engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test test test-all test-linux test-linux-engine test-linux-engine-summary test-linux-desktop clean check-file-sizes check-contracts check-status-writers check-atv-parity check-logging check-swiftlint check-dashboards claude-symlinks hooks lint-desktop
 
 # Homebrew installs node/npm under /opt/homebrew/bin on Apple Silicon.
 # Make runs recipes with /bin/sh which only has /usr/bin:/bin in PATH,
@@ -123,6 +123,26 @@ test-linux-engine:
 		                      go test -race ./... && \
 		                      GOPATH=/home/ionci/go GOCACHE=/home/ionci/gocache \
 		                      go test ./internal/types/ -run TestContractManifest'"
+
+# test-linux-engine-summary runs the same suite as test-linux-engine but pipes
+# output through grep so only pass/fail lines reach the terminal. Total output
+# is ~40 lines regardless of suite size — useful when capturing output in a
+# tool or CI step that has a small output budget. The exit code mirrors the
+# underlying go test exit code: 0 on full pass, non-zero on any failure.
+test-linux-engine-summary:
+	@command -v docker >/dev/null 2>&1 || { echo "❌ docker not found — install Docker/Colima to run the Linux parity gate"; exit 1; }
+	@echo "▶ engine: go test -race ./... on linux/amd64 (golang:$(GO_VERSION)) [summary]"
+	@docker run --rm --platform linux/amd64 -v "$(PWD)":/src -w /src/engine golang:$(GO_VERSION) \
+		bash -c "apt-get update -qq && apt-get install -y -qq nodejs && \
+		         useradd -m -s /bin/bash ionci && \
+		         chmod -R a+rX /src 2>/dev/null || true && \
+		         git config --global --add safe.directory /src && \
+		         su ionci -c 'mkdir -p /home/ionci/.ion /home/ionci/go /home/ionci/gocache && \
+		                      git config --global --add safe.directory /src && \
+		                      cd /src/engine && \
+		                      GOPATH=/home/ionci/go GOCACHE=/home/ionci/gocache \
+		                      go test -race ./... 2>&1 | grep -E \"^(ok|FAIL|--- FAIL|--- PASS)\"; \
+		                      exit \$${PIPESTATUS[0]}'"
 
 test-linux-desktop:
 	@command -v docker >/dev/null 2>&1 || { echo "❌ docker not found — install Docker/Colima to run the Linux parity gate"; exit 1; }
