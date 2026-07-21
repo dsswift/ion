@@ -33,6 +33,25 @@ final class ConversationHistoryReplaceTests: XCTestCase {
         Message(id: id, role: role, content: content, timestamp: ts, source: source)
     }
 
+    /// A tab in the given status. Live-tail preservation in the first-page merge
+    /// is scoped to an actively-streaming run (`.running` / `.connecting`); the
+    /// tests that pin that preservation must register a running tab so the merge
+    /// takes the streaming branch. Absent a registered tab the merge treats the
+    /// load as settled (idle) and replaces wholesale.
+    private func tab(id: String, status: TabStatus) -> RemoteTabState {
+        RemoteTabState(
+            id: id,
+            title: id,
+            customTitle: nil,
+            status: status,
+            workingDirectory: "/tmp",
+            permissionMode: .auto,
+            thinkingEffort: nil,
+            permissionQueue: [],
+            hasEngineExtension: false
+        )
+    }
+
     /// The production first-page shape: canonical engine row ids, more
     /// history behind it (hasMore: true, non-nil response cursor).
     private func firstPage() -> [Message] {
@@ -86,6 +105,9 @@ final class ConversationHistoryReplaceTests: XCTestCase {
     func testReplacePreservesLiveTailAndPendingOptimistic() {
         let vm = SessionViewModel()
         let tabId = "tab-replace-tail"
+        // Streaming run: live-tail preservation is in scope only while the tab
+        // is running (the page lags the live stream mid-run).
+        vm.tabs = [tab(id: tabId, status: .running)]
 
         vm.setConversationMessages(tabId: tabId, [
             msg(id: "e1", role: .user, content: "prompt 1", ts: 1_000),
@@ -116,6 +138,9 @@ final class ConversationHistoryReplaceTests: XCTestCase {
     func testReplaceTimestampFallbackDropsStaleRowsKeepsNewer() {
         let vm = SessionViewModel()
         let tabId = "tab-ts-fallback"
+        // Streaming run: the timestamp fallback preserves newer-than-page rows
+        // only while the tab is running.
+        vm.tabs = [tab(id: tabId, status: .running)]
 
         vm.setConversationMessages(tabId: tabId, [
             msg(id: "old-1", role: .assistant, content: "stale", ts: 1_000),

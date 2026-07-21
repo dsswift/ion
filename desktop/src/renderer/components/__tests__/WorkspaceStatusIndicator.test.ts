@@ -56,7 +56,7 @@ import { globalRunningTier, computeStatusCounts } from '../WorkspaceStatusIndica
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function makeTab(id: string, status: string, overrides: Record<string, unknown> = {}): any {
-  return { id, status, isTerminalOnly: false, bashExecuting: false, hasUnread: false, ...overrides }
+  return { id, status, title: id, customTitle: null, isTerminalOnly: false, bashExecuting: false, hasUnread: false, ...overrides }
 }
 
 // ─── globalRunningTier tests ──────────────────────────────────────────────────
@@ -266,5 +266,52 @@ describe('WorkspaceStatusIndicator.computeStatusCounts', () => {
     expect(c.bash).toBe(1)
     expect(c.unread).toBe(1)
     expect(c.idle).toBe(1) // t2 only
+  })
+
+  // ── name lists for active-work buckets ────────────────────────────────────
+
+  it('runningTabs collects running AND connecting tabs, in order', () => {
+    const tabs = [
+      makeTab('t1', 'running'),
+      makeTab('t2', 'idle'),
+      makeTab('t3', 'connecting'),
+    ]
+    const c = computeStatusCounts(tabs)
+    expect(c.runningTabs.map((t) => t.id)).toEqual(['t1', 't3'])
+  })
+
+  it('waitingTabs collects only tabs with running children', () => {
+    runningChildrenIds.add('t2')
+    const tabs = [makeTab('t1', 'idle'), makeTab('t2', 'idle'), makeTab('t3', 'idle')]
+    const c = computeStatusCounts(tabs)
+    expect(c.waitingTabs.map((t) => t.id)).toEqual(['t2'])
+    expect(c.runningTabs).toEqual([])
+  })
+
+  it('idle / question / plan-ready / bash / unread tabs appear in NEITHER name list', () => {
+    waitingStateMap.set('t2', 'question')
+    waitingStateMap.set('t3', 'plan-ready')
+    const tabs = [
+      makeTab('t1', 'idle'),
+      makeTab('t2', 'idle'),
+      makeTab('t3', 'idle'),
+      makeTab('t4', 'idle', { bashExecuting: true }),
+      makeTab('t5', 'idle', { hasUnread: true }),
+    ]
+    const c = computeStatusCounts(tabs)
+    expect(c.runningTabs).toEqual([])
+    expect(c.waitingTabs).toEqual([])
+  })
+
+  it('customTitle wins over title in the name list', () => {
+    const tabs = [makeTab('t1', 'running', { title: 'auto-name', customTitle: 'My Tab' })]
+    const c = computeStatusCounts(tabs)
+    expect(c.runningTabs[0]).toEqual({ id: 't1', title: 'My Tab' })
+  })
+
+  it('falls back to title when customTitle is null', () => {
+    const tabs = [makeTab('t1', 'connecting', { title: 'auto-name', customTitle: null })]
+    const c = computeStatusCounts(tabs)
+    expect(c.runningTabs[0].title).toBe('auto-name')
   })
 })

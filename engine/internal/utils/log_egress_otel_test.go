@@ -70,7 +70,7 @@ func decodeOtelBody(t *testing.T, rec egressRecord) (attrs map[string]otlpLogAtt
 	defer srv.Close()
 
 	cfg := &types.OtelConfig{Endpoint: srv.URL, ServiceName: "ion-engine"}
-	if err := flushEgressToOtel([]egressRecord{rec}, cfg); err != nil {
+	if err := flushEgressToOtel([]egressRecord{rec}, cfg, http.DefaultClient); err != nil {
 		t.Fatalf("flushEgressToOtel: %v", err)
 	}
 
@@ -294,7 +294,7 @@ func TestEgressOtel_ErrorBodyInMessage(t *testing.T) {
 	defer srv.Close()
 
 	cfg := &types.OtelConfig{Endpoint: srv.URL, ServiceName: "ion-engine"}
-	err := flushEgressToOtel([]egressRecord{canonicalRecord()}, cfg)
+	err := flushEgressToOtel([]egressRecord{canonicalRecord()}, cfg, http.DefaultClient)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

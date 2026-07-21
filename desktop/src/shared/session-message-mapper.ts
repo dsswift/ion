@@ -5,7 +5,7 @@
  * uses so the conversion — including marker-row handling — stays in lockstep.
  *
  * The engine now yields system-role marker rows on historical reload
- * (compaction / plan / steer) discriminated by `SessionLoadMessage.markerKind`.
+ * (compaction / plan / steer / clear) discriminated by `SessionLoadMessage.markerKind`.
  * The engine emits structured data, not display strings; this mapper formats
  * the content using the desktop's existing formatters so a reloaded marker is
  * byte-identical to the live-session divider the renderer already produces.
@@ -17,6 +17,7 @@
 import type { Message, SessionLoadMessage } from './types'
 import { buildCompactionMarkerContent } from './compaction-marker'
 import {
+  formatClearDivider,
   formatPlanCreatedDivider,
   formatPlanUpdatedDivider,
   formatSteerAppliedDivider,
@@ -30,6 +31,7 @@ import {
  *   - plan       → `formatPlanCreatedDivider` / `formatPlanUpdatedDivider`
  *                  (event-slice-plan-mode.ts `plan_file_written`)
  *   - steer      → `formatSteerAppliedDivider` (event-slice.ts `steer_injected`)
+ *   - clear      → `formatClearDivider` (event-wiring.ts `engine_command_result{clear}`)
  *
  * The marker timestamp drives the divider clock so a reloaded conversation
  * shows the original time, not the reload time. Returns `null` when the row is
@@ -55,6 +57,8 @@ export function buildMarkerContent(m: SessionLoadMessage): string | null {
         : formatPlanCreatedDivider(at, m.markerPlanSlug)
     case 'steer':
       return formatSteerAppliedDivider(at, m.markerMessageLength ?? 0)
+    case 'clear':
+      return formatClearDivider(at)
     default:
       return null
   }

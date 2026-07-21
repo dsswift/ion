@@ -221,8 +221,8 @@ func otlpAttrsFromRecord(r egressRecord) []otlpLogAttr {
 	return attrs
 }
 
-// flushEgressToOtel exports log records as OTLP log records.
-func flushEgressToOtel(records []egressRecord, cfg *types.OtelConfig) error {
+// flushEgressToOtel exports log records as OTLP log records using client.
+func flushEgressToOtel(records []egressRecord, cfg *types.OtelConfig, client *http.Client) error {
 	if cfg == nil || cfg.Endpoint == "" {
 		return fmt.Errorf("log egress otel: endpoint not configured")
 	}
@@ -274,7 +274,7 @@ func flushEgressToOtel(records []egressRecord, cfg *types.OtelConfig) error {
 	for k, v := range cfg.Headers {
 		req.Header.Set(k, v)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("log egress otel: POST: %w", err)
 	}

@@ -18,12 +18,12 @@ import XCTest
 @MainActor
 final class ConversationMergeReconcileTests: XCTestCase {
 
-    private func makeTab(id: String) -> RemoteTabState {
+    private func makeTab(id: String, status: TabStatus = .idle) -> RemoteTabState {
         RemoteTabState(
             id: id,
             title: id,
             customTitle: nil,
-            status: .idle,
+            status: status,
             workingDirectory: "/tmp",
             permissionMode: .auto,
             thinkingEffort: nil,
@@ -93,11 +93,13 @@ final class ConversationMergeReconcileTests: XCTestCase {
     }
 
     /// RC-11: a live tail with nil/equal timestamps survives a first-page replace
-    /// when no id anchors. The old timestamp heuristic dropped it; the isLive
-    /// boundary preserves it.
+    /// when no id anchors AND the run is streaming. The old timestamp heuristic
+    /// dropped it; the isLive boundary preserves it. Preservation is scoped to the
+    /// streaming case (tab .running) — see testSettledReloadDropsStaleLiveRowsNotInPage
+    /// for the idle counterpart where the page is authoritative to its end.
     func testLiveTailSurvivesReplaceWithNilTimestamps() {
         let vm = SessionViewModel()
-        vm.tabs = [makeTab(id: "t")]
+        vm.tabs = [makeTab(id: "t", status: .running)]
 
         // A live streaming assistant row appended with NO timestamp and a
         // non-canonical id (message_end re-key not yet arrived). Mark it live the
@@ -116,6 +118,69 @@ final class ConversationMergeReconcileTests: XCTestCase {
             "the live tail row must survive a first-page replace via the isLive boundary, not be dropped by a timestamp estimate")
         // And it stays below the persisted history.
         XCTAssertEqual(msgs.last?.id, "live-1")
+    }
+
+    /// The stale-conversation freeze regression. On a SETTLED (idle) reload — the
+    /// tab is not streaming — the incoming page is the authoritative, complete
+    /// transcript tail. A disjoint stale local slice whose isLive rows are NOT in
+    /// the page must be dropped wholesale, not appended below the page. Before the
+    /// fix, the no-anchor fallback kept every isLive row and appended it below the
+    /// authoritative page, producing a fixed point whose tail fingerprint never
+    /// matched the desktop's — the heal looped forever and the transcript froze.
+    func testSettledReloadDropsStaleLiveRowsNotInPage() {
+        let vm = SessionViewModel()
+        vm.tabs = [makeTab(id: "t", status: .idle)]
+
+        // Seed a stale local slice (an earlier era + rows streamed before the app
+        // backgrounded), all stamped isLive, NONE of whose ids appear in the page.
+        var stale1 = Message(id: "stale-user", role: .user, content: "old steer", timestamp: 100)
+        stale1.isLive = true
+        var stale2 = Message(id: "stale-asst", role: .assistant, content: "old partial reply", timestamp: 101)
+        stale2.isLive = true
+        vm.mutateConversationMessages(tabId: "t") { $0.append(contentsOf: [stale1, stale2]) }
+
+        // Authoritative first-page (before == nil) with DISTINCT ids ending at the
+        // completed answer. hasMore: true mirrors the real page (older history is
+        // paginated), which must not cause the stale rows to be kept as a "tail".
+        let pageUser = Message(id: "page-user", role: .user, content: "new question", timestamp: 200)
+        let pageAsst = Message(id: "page-asst", role: .assistant, content: "completed answer", timestamp: 201)
+        vm.handleConversationHistory(tabId: "t", newMessages: [pageUser, pageAsst], hasMore: true, cursor: "cur")
+
+        let msgs = vm.conversationMessages("t")
+        XCTAssertEqual(msgs.map(\.id), ["page-user", "page-asst"],
+            "an idle reload must render exactly the desktop page; stale isLive rows not in the page must be dropped")
+        XCTAssertFalse(msgs.contains { $0.id == "stale-user" || $0.id == "stale-asst" },
+            "stale steer-era rows must not survive a settled reload")
+        XCTAssertEqual(msgs.last?.id, "page-asst",
+            "the visible bottom is the page's last row, not a stale local row")
+    }
+
+    /// Companion to testLiveTailSurvivesReplaceWithNilTimestamps: verifies that the
+    /// tabRunning gate also fires for `.connecting` (the phase before `.running` while
+    /// the engine session is being established). The production `tabRunning` expression
+    /// is `status == .running || status == .connecting`; this test pins the `.connecting`
+    /// arm — it must fail if that clause is removed.
+    func testLiveTailSurvivesReplaceWhenConnecting() {
+        let vm = SessionViewModel()
+        vm.tabs = [makeTab(id: "t", status: .connecting)]
+
+        // A live streaming assistant row with no timestamp and a non-canonical id
+        // (same shape as testLiveTailSurvivesReplaceWithNilTimestamps). Marked live
+        // by the live event handler — the isLive boundary is what preserves it.
+        var liveRow = Message(id: "live-connecting-1", role: .assistant, content: "streaming reply during connect", timestamp: nil)
+        liveRow.isLive = true
+        vm.mutateConversationMessages(tabId: "t") { $0.append(liveRow) }
+
+        // First-page history with a distinct id — no id anchor to the live row.
+        let hist = Message(id: "hist-connecting-1", role: .user, content: "question sent while connecting", timestamp: nil)
+        vm.handleConversationHistory(tabId: "t", newMessages: [hist], hasMore: false, cursor: nil)
+
+        let msgs = vm.conversationMessages("t")
+        XCTAssertTrue(msgs.contains { $0.id == "live-connecting-1" },
+            "a .connecting tab is streaming: the live tail must survive a first-page replace via the isLive boundary")
+        // And the live row sits below the persisted history.
+        XCTAssertEqual(msgs.last?.id, "live-connecting-1",
+            "live tail must be appended below the page, not dropped")
     }
 
     /// RC-13: a reconnect/heal reload during an active run must NOT wipe the relay

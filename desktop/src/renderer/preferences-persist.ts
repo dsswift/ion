@@ -3,6 +3,7 @@ import { DEFAULT_TAB_GROUP_LABELS } from '../shared/types'
 import type { PreferencesState, ThemeMode } from './preferences-types'
 import { SETTINGS_DEFAULTS } from './preferences-types'
 import { rError } from './rendererLogger'
+import { getTheme } from './theme-tokens'
 
 export function saveSettings(s: Record<string, unknown>): void {
   window.ion?.saveSettings(s)?.catch((err) => rError('preferences', 'saveSettings failed; user settings not persisted', { error: String(err) }))
@@ -36,7 +37,7 @@ export const INITIAL_SAVED = { ...SETTINGS_DEFAULTS, expandedUI: false }
 export function loadPersistedSettings(
   setState: (patch: Partial<PreferencesState>) => void,
   getState: () => PreferencesState,
-  applyTheme: (isDark: boolean) => void,
+  applyTheme: (themeIdOrDark: string | boolean) => void,
 ): void {
   window.ion?.loadSettings().then((disk) => {
     if (!disk) return
@@ -167,7 +168,7 @@ export function loadPersistedSettings(
       ? Object.fromEntries(Object.entries(disk.keyboardShortcuts as Record<string, unknown>).filter(([k, v]) => typeof k === 'string' && typeof v === 'string')) as Record<string, string>
       : {}
     setState({ themeMode: mode, selectedTheme, isDark: resolved, soundEnabled: sound, expandedUI: expanded, ultraWide, defaultBaseDirectory: baseDir, recentBaseDirectories: recentDirs, directoryUsageCounts: dirUsageCounts, expandOnTabSwitch: expandTabSwitch, bashCommandEntry: bashCmd, gitPanelSplitRatio: splitRatio, gitPanelChangesOpen: changesOpen, gitPanelGraphOpen: graphOpen, expandToolResults: expandTools, terminalFontFamily: termFont, terminalFontSize: termSize, editorFontSize, conversationFontSize, previewFontSize, closeExplorerOnFileOpen: closeExplorer, openMarkdownInPreview: mdPreview, editorWordWrap: wordWrap, gitOpsMode, worktreeCompletionStrategy: wtStrategy, worktreeBranchDefaults: wtDefaults, worktreeSkipPrTitle: wtSkipPr, allowSettingsEdits: allowSettings, enableClaudeCompat: enableCompat, enableEarlyStopContinuation: enableEarlyStop, showTodoList: showTodo, agentPanelDefaultOpen, agentDetailPopup, unifiedTurnView, aiGeneratedTitles: aiTitles, hideOnExternalLaunch: hideExternal, tabGroupMode: tabGroupMode as TabGroupMode, tabGroups, autoGroupOrder, stashedManualGroups, stashedManualTabAssignments, inProgressGroupId, doneGroupId, planningGroupId, autoGroupMovement, commitCommand, gitChangesTreeView: changesTreeView, keepExplorerOnCollapse: keepExplorer, keepTerminalOnCollapse: keepTerminal, keepGitPanelOnCollapse: keepGitPanel, defaultPermissionMode: permMode, quickTools, uiZoom, remoteEnabled, relayUrl, relayApiKey, lanServerPort, pairedDevices, streamThinkingToRemote, thinkingEnabled, remoteDisplay, engineDefaultModel, defaultEngineProfileId, engineProfiles, preferredModel, defaultTallConversation, defaultTallTerminal, tabRecoveryEnabled, tabRecoveryTimeoutSec, planModelSplitEnabled, planModeModel, implementModeModel, showImplementClearContext, gitWatcherIgnoredDirectories: gitWatcherIgnoredDirs, excludedResourceKinds, keyboardShortcuts })
-    applyTheme(resolved)
+    applyTheme(getTheme(selectedTheme).forcedColorScheme ? selectedTheme : resolved)
     if (uiZoom !== 1) document.documentElement.style.zoom = String(uiZoom)
   })?.catch((err) => rError('preferences', 'loadSettings failed; using in-memory defaults', { error: String(err) }))
 }

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { TabGroup } from '../shared/types'
-import { applyTheme, syncTokensToCss, darkColors, lightColors, getTheme, type ColorPalette } from './theme-tokens'
+import { applyTheme, syncTokensToCss, darkColors, lightColors, getTheme, resolveColors, type ColorPalette } from './theme-tokens'
 import type { PreferencesState } from './preferences-types'
 import { saveSettings, getAllSettings, INITIAL_SAVED, loadPersistedSettings } from './preferences-persist'
 import { parseChord } from './shortcuts/chord'
@@ -111,7 +111,12 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   setIsDark: (isDark) => {
     set({ isDark })
-    applyTheme(isDark)
+    const activeTheme = get().selectedTheme
+    if (getTheme(activeTheme).forcedColorScheme) {
+      applyTheme(activeTheme)
+    } else {
+      applyTheme(isDark)
+    }
   },
   setThemeMode: (mode) => {
     const resolved = mode === 'system' ? get()._systemIsDark : mode === 'dark'
@@ -131,6 +136,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     } else {
       applyTheme(get().isDark)
     }
+    saveSettings(getAllSettings(get))
   },
   setSoundEnabled: (enabled) => {
     set({ soundEnabled: enabled })
@@ -529,7 +535,12 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     // Only apply if following system
     if (get().themeMode === 'system') {
       set({ isDark })
-      applyTheme(isDark)
+      const activeTheme = get().selectedTheme
+      if (getTheme(activeTheme).forcedColorScheme) {
+        applyTheme(activeTheme)
+      } else {
+        applyTheme(isDark)
+      }
     }
   },
   applyPreset: (preset) => {
@@ -576,10 +587,11 @@ window.ion?.on?.('ion:settings-changed', (_e: unknown, key: string, value: unkno
 /** Reactive hook — returns the active color palette */
 export function useColors(): ColorPalette {
   const isDark = usePreferencesStore((s) => s.isDark)
-  return isDark ? darkColors : lightColors
+  const selectedTheme = usePreferencesStore((s) => s.selectedTheme)
+  return resolveColors(selectedTheme, isDark)
 }
 
 /** Non-reactive getter — use outside React components */
 export function getColors(isDark: boolean): ColorPalette {
-  return isDark ? darkColors : lightColors
+  return resolveColors(usePreferencesStore.getState().selectedTheme, isDark)
 }

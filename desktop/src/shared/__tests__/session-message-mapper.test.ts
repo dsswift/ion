@@ -16,6 +16,7 @@ import { describe, it, expect } from 'vitest'
 import type { SessionLoadMessage } from '../types'
 import { mapSessionMessage, mapSessionHistory } from '../session-message-mapper'
 import { COMPACTION_MARKER_PREFIX } from '../compaction-marker'
+import { isClearDivider } from '../clear-divider'
 
 let counter = 0
 const makeId = () => `id-${++counter}`
@@ -125,6 +126,22 @@ describe('mapSessionMessage — marker rows', () => {
     expect(msg!.role).toBe('system')
     expect(msg!.content).toContain('Steer applied')
     expect(msg!.content).toContain('42 chars')
+  })
+
+  it('maps a clear marker to a system Message with isClearDivider content', () => {
+    const row: SessionLoadMessage = {
+      role: 'system',
+      content: '──',
+      timestamp: 4500,
+      markerKind: 'clear',
+    }
+    const msg = mapSessionMessage(row, makeId)
+    expect(msg).not.toBeNull()
+    expect(msg!.role).toBe('system')
+    // The formatted content must satisfy isClearDivider so every consumer that
+    // gates on the sentinel (pending-card.ts, SystemMessage.tsx, etc.) fires.
+    expect(isClearDivider(msg!.content)).toBe(true)
+    expect(msg!.timestamp).toBe(4500)
   })
 })
 

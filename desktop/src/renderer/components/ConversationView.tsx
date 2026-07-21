@@ -138,7 +138,7 @@ export function ConversationView({ tabId }: ConversationViewProps) {
   }, [messages, submit, tabId])
 
   // Reset pagination when switching engine instances
-  useEffect(() => { setRenderOffset(0) }, [activeInstanceId])
+  useEffect(() => { setRenderOffset(0) }, [tabId])
 
   // Pagination
   const totalCount = messages.length

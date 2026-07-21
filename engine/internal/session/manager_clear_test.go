@@ -393,10 +393,12 @@ func TestClearConversationFile_MessagesDurableAfterReload(t *testing.T) {
 		t.Errorf("BUG #146: Messages not cleared after reload — got %d message(s): %+v",
 			len(cleared.Messages), cleared.Messages)
 	}
-	// Entries must be preserved — /clear is a checkpoint, not a delete.
-	if len(cleared.Entries) != seedEntryCount {
-		t.Errorf("Entries count changed after clear: got %d, want %d",
-			len(cleared.Entries), seedEntryCount)
+	// Entries must be preserved AND include one new EntryCleared — /clear is
+	// a checkpoint that appends to the tree, not a delete or a no-op.
+	wantEntries := seedEntryCount + 1
+	if len(cleared.Entries) != wantEntries {
+		t.Errorf("Entries count after clear: got %d, want %d (original + EntryCleared)",
+			len(cleared.Entries), wantEntries)
 	}
 	// After /clear, GetContextUsage must use the heuristic path (no messages).
 	usage := conversation.GetContextUsage(cleared, 200000)

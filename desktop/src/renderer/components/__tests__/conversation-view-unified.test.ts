@@ -35,8 +35,10 @@ describe('conversation view is unified — structural guards', () => {
     expect(app).not.toContain('<EngineView')
     expect(app).not.toMatch(/\bisEngine\b/)
     expect(app).not.toMatch(/\bisEngineTall\b/)
-    // The single conversation mount is data-agnostic (keyed on non-terminal).
-    expect(app).toContain('<ConversationView tabId={activeTabId} />')
+    // The single conversation mount is data-agnostic (keyed on activeTabId so
+    // React remounts on tab switch, resetting local state). key={activeTabId}
+    // is part of the fix for the tab-switch stale-renderOffset bug.
+    expect(app).toContain('<ConversationView key={activeTabId} tabId={activeTabId} />')
   })
 
   it('submitEnginePrompt is gone from the renderer source tree', () => {

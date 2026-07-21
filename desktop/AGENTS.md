@@ -52,7 +52,7 @@ desktop/src/
 
 - 600-line cap per `.ts`/`.tsx`. CI hard-fails above.
 - Co-locate tests as `Foo.test.tsx` next to `Foo.tsx`. Existing `__tests__/` migrates per phase.
-- `TabStrip.tsx` and `GitPanel.tsx` are allowlisted god files. Do not extend; extract new modules.
+- Files exceeding the cap must be split; `.file-size-allowlist.yml` (repo root) is the source of truth for any temporarily-exempt files. Do not extend an allowlisted file; extract new modules.
 
 ## IPC
 

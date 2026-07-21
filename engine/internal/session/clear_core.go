@@ -110,12 +110,13 @@ func (m *Manager) clearConversationCore(conversationID, preferKey string) (clear
 	}
 
 	conv.Messages = nil
+	conversation.AppendEntry(conv, conversation.EntryCleared, conversation.ClearedData{})
 	if err := conversation.Save(conv, ""); err != nil {
 		utils.LogWithFields(utils.LevelInfo, "session", "clearcore: save failed", map[string]any{"run_id": conversationID, "error": err})
 		return res, fmt.Errorf("save conversation %q: %w", conversationID, err)
 	}
 	res.wiped = true
-	utils.LogWithFields(utils.LevelInfo, "session", "clearcore: wiped messages ( entries preserved in tree)", map[string]any{"run_id": conversationID, "count": len(conv.Entries), "session_key": res.sessionKey, "denied_cleared": res.deniedCleared})
+	utils.LogWithFields(utils.LevelInfo, "session", "clearcore: wiped messages, appended cleared entry (entries preserved in tree)", map[string]any{"run_id": conversationID, "count": len(conv.Entries), "session_key": res.sessionKey, "denied_cleared": res.deniedCleared})
 	return res, nil
 }
 

@@ -38,6 +38,40 @@ type engineSession struct {
 	config         types.EngineConfig
 	requestID      string // empty when no active run
 
+	// dispatchingRunID marks the dispatch-in-flight window for a run. It is
+	// set to the run's requestID inside SendPrompt, under m.mu, at the same
+	// instant s.requestID is assigned, and cleared (run-scoped: only when it
+	// still equals that requestID) by SendPrompt's deferred block on every
+	// exit path — early aborts, panic unwind, and normal return after the
+	// backend Start* call has registered the run.
+	//
+	// Why it exists. Between the requestID assignment and the backend
+	// Start*/StartRunWithConfig call, the run genuinely exists — a prompt is
+	// being dispatched — but backend.IsRunning(requestID) still answers
+	// false because registration happens inside the backend call, hundreds
+	// of milliseconds later (slash resolution, plan-file allocation,
+	// capability gates, extension/MCP wiring all run in between). Without
+	// this marker, currentSessionStatus's stale-requestID cross-check
+	// misfires in that window: any concurrent status computation (heartbeat
+	// tick, ReconcileState, QuerySessionStatus) sees "requestID set, backend
+	// disclaims" and destructively clears s.requestID. The engine then
+	// reports state=idle for the entire run — it never emits running again —
+	// and consumers mark the live conversation done while it is actively
+	// streaming (the done-group misplacement bug).
+	//
+	// currentSessionStatus treats dispatchingRunID == requestID as backend
+	// ownership: report running, no clear. The original stale-detection is
+	// untouched for started runs (marker cleared once Start* returns), so a
+	// run that terminates abnormally without flowing through handleRunExit
+	// is still recovered to idle.
+	//
+	// Run-scoped (a string, not a bool) because a fast run can exit and
+	// dequeue the next prompt before the first SendPrompt returns; a bool's
+	// deferred clear would strip the NEW dispatch's protection. The deferred
+	// clear compares against its own requestID and abstains when a newer
+	// dispatch owns the marker. Guarded by m.mu.
+	dispatchingRunID string
+
 	// rootCtx is the per-session cancellation root. Every cancellable
 	// operation spawned on behalf of this session derives its own
 	// context.Context from rootCtx — the backend run (via
