@@ -24,6 +24,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"os"
@@ -38,6 +39,12 @@ import (
 // defaultSpoolMaxBytes is the maximum size of the on-disk spool before
 // drop-oldest trimming kicks in. 50 MB matches the operational-log default.
 const defaultSpoolMaxBytes = 50 * 1024 * 1024
+
+// defaultEgressChunkSize is the maximum number of records per POST when
+// draining the spool. 500 records at ~350 bytes each ≈ 175 KB per POST, well
+// within the limits of any intermediate proxy (Cloudflare caps at 100 MB;
+// nginx/Traefik default to 1 MB). Configurable via LoggingConfig.EgressChunkSize.
+const defaultEgressChunkSize = 500
 
 // egressRecord is the structured payload shipped to downstream egress targets.
 // It mirrors the canonical log schema (docs/observability/log-schema.md) so
@@ -418,8 +425,15 @@ func (f *EgressForwarder) appendToSpool(records []egressRecord) {
 	}
 }
 
-// drainSpool reads all spooled records and ships them to the configured targets.
-// On success it removes the spool file. Returns the first target error.
+// drainSpool reads all spooled records and ships them to the configured
+// targets in chunks, removing shipped records from the spool as each chunk
+// lands. Chunking prevents oversized POST bodies from being rejected by
+// intermediate proxies: a 22k-record spool would serialize to ~18 MB of
+// OTLP JSON, but 500-record chunks stay under 200 KB each.
+//
+// On success the spool file is removed. On partial failure (some chunks
+// shipped before the first error) the spool is rewritten to contain only
+// the unshipped tail, preserving FIFO order. Returns the first target error.
 func (f *EgressForwarder) drainSpool() error {
 	info, err := os.Stat(f.spoolPath)
 	if os.IsNotExist(err) || (err == nil && info.Size() == 0) {
@@ -452,13 +466,71 @@ func (f *EgressForwarder) drainSpool() error {
 		return nil
 	}
 
-	lastErr := f.exportRecords(records)
-
-	if lastErr == nil {
-		os.Remove(f.spoolPath) //nolint:errcheck // best-effort cleanup
-		Log("log_egress", fmt.Sprintf("spool drained: %d records shipped", len(records)))
+	chunkSize := f.cfg.EgressChunkSize
+	if chunkSize <= 0 {
+		chunkSize = defaultEgressChunkSize
 	}
-	return lastErr
+
+	shipped := 0
+	for shipped < len(records) {
+		end := shipped + chunkSize
+		if end > len(records) {
+			end = len(records)
+		}
+		chunk := records[shipped:end]
+
+		if err := f.exportRecords(chunk); err != nil {
+			// Some chunks may have already landed. Drop those from the spool
+			// so they are not re-shipped on the next drain attempt. Failure
+			// here is logged but not returned — the records are already
+			// delivered; at worst a re-send is harmless double-delivery.
+			if shipped > 0 {
+				if rewriteErr := f.rewriteSpoolDropFirst(shipped); rewriteErr != nil {
+					Error("log_egress", fmt.Sprintf("spool partial-drain rewrite failed (double-delivery possible): %v", rewriteErr))
+				}
+			}
+			return err
+		}
+
+		Debug("log_egress", fmt.Sprintf("spool chunk shipped: %d records (offset %d)", len(chunk), shipped))
+		shipped += len(chunk)
+	}
+
+	os.Remove(f.spoolPath) //nolint:errcheck // best-effort cleanup
+	Log("log_egress", fmt.Sprintf("spool drained: %d records shipped", shipped))
+	return nil
+}
+
+// rewriteSpoolDropFirst rewrites the spool file, discarding the first n parsed
+// records (i.e., those already successfully shipped). If n covers all records
+// the file is deleted. Called only after a partial drain where some chunks
+// landed before the first failure; the goal is idempotency, not perfection —
+// if the rewrite itself fails the worst case is harmless double-delivery.
+func (f *EgressForwarder) rewriteSpoolDropFirst(n int) error {
+	data, err := os.ReadFile(f.spoolPath)
+	if err != nil {
+		return fmt.Errorf("rewrite spool read: %w", err)
+	}
+
+	// Collect all non-empty lines as raw JSON to avoid a re-marshal round-trip
+	// that could alter numeric types (the spool already stores canonical JSON).
+	var lines []string
+	sc := bufio.NewScanner(strings.NewReader(string(data)))
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line != "" {
+			lines = append(lines, line)
+		}
+	}
+
+	if n >= len(lines) {
+		// All records shipped — delete the file.
+		os.Remove(f.spoolPath) //nolint:errcheck // best-effort cleanup
+		return nil
+	}
+
+	remaining := strings.Join(lines[n:], "\n") + "\n"
+	return os.WriteFile(f.spoolPath, []byte(remaining), 0o644)
 }
 
 // trimSpoolToCap ensures the spool file is at most maxBytes bytes by removing
@@ -548,11 +620,20 @@ func flushEgressToHTTP(records []egressRecord, endpoint string, headers map[stri
 	if err != nil {
 		return fmt.Errorf("log egress http: POST: %w", err)
 	}
+	if resp.StatusCode >= 400 {
+		// Read up to 512 bytes of the error body so the rejection reason
+		// appears in engine.jsonl instead of a bare status code.
+		errBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 512))
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			Log("log_egress", fmt.Sprintf("http: response body close (error path) failed: %v", closeErr))
+		}
+		if readErr != nil || len(errBody) == 0 {
+			return fmt.Errorf("log egress http: POST returned status %d", resp.StatusCode)
+		}
+		return fmt.Errorf("log egress http: POST returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(errBody)))
+	}
 	if err := resp.Body.Close(); err != nil {
 		Log("log_egress", fmt.Sprintf("http: response body close failed: %v", err))
-	}
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("log egress http: POST returned status %d", resp.StatusCode)
 	}
 	return nil
 }

@@ -290,6 +290,12 @@ type LoggingConfig struct {
 	// ticker is the only flush trigger.
 	EgressBatchSize int `json:"egressBatchSize,omitempty"`
 
+	// EgressChunkSize is the maximum number of records per POST when draining
+	// the on-disk spool. Chunking prevents oversized request bodies from being
+	// rejected by intermediate proxies (Cloudflare, nginx, etc.) that enforce
+	// payload size limits. Zero means use the compiled default (500 records).
+	EgressChunkSize int `json:"egressChunkSize,omitempty"`
+
 	// EgressFlushIntervalMs controls how often the egress forwarder flushes
 	// buffered records. Zero defaults to 5000 ms.
 	EgressFlushIntervalMs int64 `json:"egressFlushIntervalMs,omitempty"`
