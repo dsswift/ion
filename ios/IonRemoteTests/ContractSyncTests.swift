@@ -859,6 +859,30 @@ final class ContractSyncTests: XCTestCase {
         XCTAssert(unhandled.isEmpty, "Go ProviderLoginUpdate has fields not tracked in Swift test: \(unhandled.sorted())")
     }
 
+    /// Drift-detection gate for ResourceLimits (D-007). iOS does not decode
+    /// ResourceLimits directly — the engine enforces the caps server-side and
+    /// the desktop consumes the policy blob. The test ensures that if Go renames
+    /// maxSessions or maxAgentsPerSession the mismatch surfaces at CI time rather
+    /// than silently diverging in the manifest.
+    func testResourceLimits() throws {
+        let manifest = try loadManifest()
+        guard let goFields = manifest.sharedTypes["ResourceLimits"] else {
+            XCTFail("ResourceLimits not found in Go manifest — was it removed or renamed?")
+            return
+        }
+        // Both fields are declared in Go's ResourceLimits struct in
+        // internal/types/config_resource_limits.go (D-007). iOS does not decode
+        // these at runtime; this test exists purely as a drift-detection gate.
+        let swiftHandled: Set<String> = [
+            "maxSessions",
+            "maxAgentsPerSession",
+        ]
+        let unhandled = Set(goFields).subtracting(swiftHandled)
+        XCTAssert(unhandled.isEmpty, "Go ResourceLimits has fields not tracked in Swift test: \(unhandled.sorted())")
+        let untracked = swiftHandled.subtracting(Set(goFields))
+        XCTAssert(untracked.isEmpty, "Swift test tracks ResourceLimits fields absent from Go manifest: \(untracked.sorted())")
+    }
+
     // MARK: - EngineEvent dispatch field coverage
 
     /// Pins that dispatchId and dispatchConversationId are present in the Go
