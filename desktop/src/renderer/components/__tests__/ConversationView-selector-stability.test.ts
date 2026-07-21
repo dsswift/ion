@@ -36,6 +36,16 @@ import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import { shallow } from 'zustand/vanilla/shallow'
 
+// Paths for structural guards (used by multiple describe blocks below).
+const conversationViewSrc = readFileSync(
+  resolve(__dirname, '../ConversationView.tsx'),
+  'utf8',
+)
+const appSrc = readFileSync(
+  resolve(__dirname, '../../App.tsx'),
+  'utf8',
+)
+
 // ── Stable fallback constants (same as ConversationView module-level) ─────────
 
 const EMPTY_AGENTS: any[] = []
@@ -71,10 +81,7 @@ describe('ConversationView selector — shallow stability (#185 regression)', ()
 
   it('[STRUCTURAL] ConversationView uses useShallow for the agentStates/dispatchTelemetry selector', () => {
     // This test goes red the instant useShallow is removed from the selector.
-    const src = readFileSync(
-      resolve(__dirname, '../ConversationView.tsx'),
-      'utf8',
-    )
+    const src = conversationViewSrc
 
     // Import must be present.
     expect(src).toContain("import { useShallow } from 'zustand/shallow'")
@@ -148,3 +155,47 @@ describe('ConversationView selector — shallow stability (#185 regression)', ()
     expect(shallow(first, second)).toBe(true)
   })
 })
+
+// ─── Tab-switch reset guards ──────────────────────────────────────────────────
+//
+// Pins two structural fixes that reset ConversationView state on tab switch:
+//
+//   1. `useEffect(() => { setRenderOffset(0) }, [tabId])` — resets the
+//      pagination offset when tabId changes. Pre-fix the dep array was
+//      [activeInstanceId], which only fired on engine-instance change; switching
+//      to a different tab with the same instance left renderOffset at a stale
+//      non-zero value and showed a partial transcript on the new tab.
+//
+//   2. `key={activeTabId}` on <ConversationView> in App.tsx — forces React to
+//      unmount/remount the component on tab switch, resetting all component
+//      state (scroll position, search state, etc.) to initial values.
+//
+// Revert contract: restoring [activeInstanceId] or removing key={activeTabId}
+// causes the corresponding assertion to fail immediately.
+
+describe('ConversationView tab-switch reset — structural guards', () => {
+  it('[STRUCTURAL] useEffect pagination reset uses [tabId] dep array (not [activeInstanceId])', () => {
+    // This assertion goes red when the dep array is changed back to [activeInstanceId].
+    // The comment "Reset pagination when switching engine instances" is intentionally
+    // retained in source as documentation of the pre-fix intent; we only guard the
+    // dep array value, not the comment.
+    expect(conversationViewSrc).toContain('useEffect(() => { setRenderOffset(0) }, [tabId])')
+
+    // Negative: the pre-fix dep array must no longer be present in the pagination reset.
+    // (activeInstanceId is still used in OTHER useEffect deps in the file — we scope
+    // the check to the setRenderOffset(0) line only by checking for the exact old form.)
+    expect(conversationViewSrc).not.toContain('useEffect(() => { setRenderOffset(0) }, [activeInstanceId])')
+  })
+
+  it('[STRUCTURAL] App.tsx mounts ConversationView with key={activeTabId}', () => {
+    // key={activeTabId} forces a full remount on tab switch, resetting scroll,
+    // search state, and any other component-local state accumulated for the
+    // previous tab. Reverting to no key (or a different key expression) causes
+    // this assertion to fail.
+    expect(appSrc).toContain('key={activeTabId}')
+
+    // Scope: the key must appear on the ConversationView element specifically.
+    expect(appSrc).toMatch(/<ConversationView key=\{activeTabId\}/)
+  })
+})
+

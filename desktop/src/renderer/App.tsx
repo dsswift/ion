@@ -359,7 +359,7 @@ export default function App() {
             {!isTerminalOnly && !isTerminalTall && activeTab && (
               <div style={{ height: isTall ? tallBodyMax : 420 }}>
                 <ConversationErrorBoundary>
-                  <ConversationView tabId={activeTabId} />
+                  <ConversationView key={activeTabId} tabId={activeTabId} />
                 </ConversationErrorBoundary>
               </div>
             )}
