@@ -13,11 +13,22 @@ import (
 // keyForRun(runID). Before this binding, keyForRun resolved the key by
 // scanning sessions for one whose engineSession.requestID matched the runID
 // (see keyForRun in helpers.go). That coupling is fragile: requestID is a
-// transient field that currentSessionStatus clears mid-run when the backend
-// momentarily "disclaims" a still-live run (manager.go:
+// transient field that currentSessionStatus HISTORICALLY cleared mid-run when
+// the backend momentarily "disclaimed" a still-live run (manager.go:
 // `currentSessionStatus: clearing stale requestID ... (backend disclaims
-// run)`). When that clear races an in-flight emit, the scan returns "" and
-// handleNormalizedEvent drops the event before it reaches any consumer.
+// run)`). When that clear raced an in-flight emit, the scan returned "" and
+// handleNormalizedEvent dropped the event before it reached any consumer.
+//
+// The root cause of that spurious mid-run disclaim — a status computation
+// racing SendPrompt's window between the requestID assignment and the
+// backend Start* registration — has since been fixed at the source: the
+// engineSession.dispatchingRunID marker makes currentSessionStatus report
+// running (without clearing) throughout the dispatch window. See
+// engineSession.dispatchingRunID in types.go. The binding remains
+// load-bearing regardless: event routing must not depend on requestID
+// surviving every concurrent status query, and the legitimate disclaim-clear
+// (a run that terminated abnormally without flowing through handleRunExit)
+// still exists by design.
 //
 // The observed production failure: an auto-dispatched run that flipped to plan
 // mode mid-run emitted PlanModeChangedEvent{Enabled:true} exactly while

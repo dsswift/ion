@@ -152,6 +152,24 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 
 	requestID := fmt.Sprintf("%s-%d", key, time.Now().UnixMilli())
 	s.requestID = requestID
+	// Mark the dispatch-in-flight window so currentSessionStatus does not
+	// misread the not-yet-registered run as stale and destructively clear
+	// s.requestID (the state=idle-for-a-live-run bug). The deferred clear
+	// covers every exit from this function — the early-abort paths, the
+	// normal return after the backend Start* call (registration is
+	// synchronous inside it), and panic unwind. It is run-scoped: it clears
+	// only while the marker still belongs to THIS requestID, so a fast run
+	// that exits and dequeues the next prompt before this frame returns
+	// cannot strip the NEW dispatch's window. See
+	// engineSession.dispatchingRunID.
+	s.dispatchingRunID = requestID
+	defer func() {
+		m.mu.Lock()
+		if cur, ok := m.sessions[key]; ok && cur.dispatchingRunID == requestID {
+			cur.dispatchingRunID = ""
+		}
+		m.mu.Unlock()
+	}()
 	// Bind runID -> key for event routing, independent of the transient
 	// s.requestID (which currentSessionStatus may clear mid-run). Held under
 	// m.mu here, same as the s.requestID assignment above. Cleared at the

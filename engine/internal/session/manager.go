@@ -33,15 +33,18 @@ type Manager struct {
 	// runKeyBindings maps an active run's requestID -> its session key,
 	// independent of engineSession.requestID. It exists because event routing
 	// (keyForRun) must not be coupled to the transient requestID field, which
-	// currentSessionStatus clears mid-run when the backend momentarily
-	// "disclaims" a still-live run (manager.go currentSessionStatus). When that
-	// clear races an in-flight emit, the requestID-scan lookup returns "" and the
-	// event — including the one-shot PlanModeChangedEvent{Enabled:true} — is
-	// silently dropped before reaching consumers. This binding is the stable
-	// runID->key link: set at dispatch (prompt_dispatch.go), consulted first by
-	// keyForRun, and cleared only at the authoritative terminal points
-	// (handleRunExit and the early-abort paths that never start a run). Guarded
-	// by m.mu, exactly like sessions. See run_key_binding.go for the accessors.
+	// currentSessionStatus clears when the backend disclaims a run. That clear
+	// historically fired mid-dispatch (a status query racing SendPrompt's
+	// pre-registration window — now guarded by engineSession.dispatchingRunID)
+	// and still fires by design for runs that terminate abnormally without
+	// flowing through handleRunExit. When such a clear races an in-flight emit,
+	// the requestID-scan lookup returns "" and the event — including the
+	// one-shot PlanModeChangedEvent{Enabled:true} — is silently dropped before
+	// reaching consumers. This binding is the stable runID->key link: set at
+	// dispatch (prompt_dispatch.go), consulted first by keyForRun, and cleared
+	// only at the authoritative terminal points (handleRunExit and the
+	// early-abort paths that never start a run). Guarded by m.mu, exactly like
+	// sessions. See run_key_binding.go for the accessors.
 	runKeyBindings map[string]string
 
 	onEvent func(string, types.EngineEvent)
@@ -562,6 +565,21 @@ func (m *Manager) sessionState(s *engineSession) string {
 func (m *Manager) currentSessionStatus(s *engineSession) string {
 	if s.requestID == "" {
 		return "idle"
+	}
+	// Dispatch-in-flight guard: SendPrompt assigns s.requestID hundreds of
+	// milliseconds BEFORE the backend Start* call registers the run in its
+	// live-run table (slash resolution, plan-file allocation, capability
+	// gates, extension/MCP wiring all run in between). In that window the
+	// run is real but backend.IsRunning answers false; without this guard a
+	// concurrent status computation (heartbeat tick, ReconcileState,
+	// QuerySessionStatus) would misread the run as stale, destructively
+	// clear s.requestID, and report idle for the entire run — the engine
+	// never emits running again and consumers mark a live, streaming
+	// conversation as done. The marker is run-scoped (equals the requestID
+	// it protects) and cleared when SendPrompt returns, so it cannot mask a
+	// genuinely stale requestID from an earlier run.
+	if s.dispatchingRunID == s.requestID {
+		return "running"
 	}
 	// requestID is set — confirm the backend actually still owns the
 	// run. If not, the field has lingered after a non-graceful run
