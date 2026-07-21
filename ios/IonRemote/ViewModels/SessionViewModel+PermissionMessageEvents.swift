@@ -175,26 +175,44 @@ extension SessionViewModel {
                 guard msg.role == .user && msg.source == .remote else { return false }
                 return !isAlreadyInPage(msg)
             }
+            // Live-tail preservation is valid ONLY while a run is actively
+            // streaming. Mid-run, the engine page is a point-in-time cut and rows
+            // arriving as live deltas AFTER that cut are legitimately newer than
+            // the page, so they must survive the wholesale replace. On a SETTLED
+            // (idle) reload the page is the authoritative, complete transcript tail
+            // to its end — preserving local rows the page does not contain
+            // reintroduces stale content. That was the freeze bug: a disjoint stale
+            // local slice (no id anchor) had its isLive rows kept and appended
+            // BELOW the authoritative page, producing a fixed point whose tail
+            // fingerprint never matched the desktop's, so the heal looped forever.
+            // Gate the entire tail-candidate path on tabRunning; when not
+            // streaming, tailCandidates stays empty and the merge replaces the
+            // local transcript with exactly the desktop page.
             var tailCandidates: [Message] = []
-            if let anchorIdx = current.lastIndex(where: { incomingIds.contains($0.id) }) {
-                // Anchor found: everything after the last row the page also holds
-                // is newer than the page (the precise, preferred path).
-                tailCandidates = Array(current[(anchorIdx + 1)...])
-            } else {
-                // RC-11: no id anchors (a fully pre-canonical local list). Prefer
-                // the STORED live boundary — rows appended by live events since the
-                // last history load carry isLive == true — over a timestamp
-                // estimate. The old `timestamp > max(incoming)` guess dropped the
-                // whole live tail when incoming had no timestamps (.max() nil) and
-                // dropped rows with nil/equal stamps (strict >, ?? 0): the "only
-                // the most recent turn" symptom. isLive is a fact, not a guess.
-                let liveRows = current.filter { $0.isLive }
-                if !liveRows.isEmpty {
-                    tailCandidates = liveRows
-                } else if let lastTs = incoming.compactMap({ $0.timestamp }).max() {
-                    // Legacy fallback only when nothing is marked live (e.g. rows
-                    // restored from a cache that predates the isLive flag).
-                    tailCandidates = current.filter { ($0.timestamp ?? 0) > lastTs }
+            if tabRunning {
+                if let anchorIdx = current.lastIndex(where: { incomingIds.contains($0.id) }) {
+                    // Anchor found: everything after the last row the page also holds
+                    // is newer than the page (the precise, preferred path).
+                    tailCandidates = Array(current[(anchorIdx + 1)...])
+                } else {
+                    // RC-11: no id anchors (a fully pre-canonical local list). Prefer
+                    // the STORED live boundary — rows appended by live events since the
+                    // last history load carry isLive == true — over a timestamp
+                    // estimate. The old `timestamp > max(incoming)` guess dropped the
+                    // whole live tail when incoming had no timestamps (.max() nil) and
+                    // dropped rows with nil/equal stamps (strict >, ?? 0): the "only
+                    // the most recent turn" symptom. isLive is a fact that a row was
+                    // streamed live — but it only means "newer than the page" WHILE the
+                    // run is streaming (this branch). Applying it across a settled
+                    // reload is the defect the tabRunning gate prevents.
+                    let liveRows = current.filter { $0.isLive }
+                    if !liveRows.isEmpty {
+                        tailCandidates = liveRows
+                    } else if let lastTs = incoming.compactMap({ $0.timestamp }).max() {
+                        // Legacy fallback only when nothing is marked live (e.g. rows
+                        // restored from a cache that predates the isLive flag).
+                        tailCandidates = current.filter { ($0.timestamp ?? 0) > lastTs }
+                    }
                 }
             }
             let pending = current.filter(isPendingOptimistic)
