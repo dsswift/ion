@@ -534,6 +534,10 @@
       "userCode",
       "verificationUrl"
     ],
+    "ResourceLimits": [
+      "maxAgentsPerSession",
+      "maxSessions"
+    ],
     "SessionMessage": [
       "attachments",
       "content",

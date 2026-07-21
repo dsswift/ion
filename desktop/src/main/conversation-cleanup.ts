@@ -6,15 +6,22 @@ import { listContentTabIds, deleteInstanceContent } from './tab-content-store'
 
 function log(msg: string, fields?: Record<string, unknown>): void { _log('cleanup', msg, fields) }
 
-// DRY_RUN is intentionally `true` for the first deploy cycle of this collector.
+// DRY_RUN semantics (D-018): the cleanup runs in dry-run mode UNLESS an
+// enterprise retention policy (conversationRetentionDays from the engine's
+// get_enterprise_policy blob) is in force. Unmanaged installs therefore keep
+// the original always-dry-run behavior — nothing is ever deleted — while a
+// managed install with a declared TTL performs real deletions against that
+// TTL. The per-run resolution lives in runCleanup; there is no module-level
+// flag anymore, because "dry run or not" is a property of the active policy,
+// not of the build.
 //
-// Flipping to `false` requires verifying the dry-run output against a manual
-// count of stale conversations and confirming all open-tab conversationIds
-// appear in the engine's debug-level "skipped due to exclude" log. See
-// docs/plans/grassy-chirping-crest.md "Layer 4 — Keep dryRun=true for one
-// more deploy cycle" for the cross-check procedure. The flip lives in a
-// separate follow-up commit referencing the tracking issue.
-const DRY_RUN = true
+// Before the policy-driven flip existed, DRY_RUN was a hardcoded `true` with
+// a manual verification procedure documented in
+// docs/plans/grassy-chirping-crest.md "Layer 4". That cross-check discipline
+// still applies to any enterprise enabling retention for the first time:
+// verify the dry-run log output (run one cycle without the policy) against a
+// manual count before deploying conversationRetentionDays.
+const DEFAULT_MAX_AGE_DAYS = 14
 
 const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000
 const MIN_STARTUP_DELAY_MS = 5 * 60 * 1000  // Boot gate: wait at least 5 min after main process start.
@@ -208,7 +215,21 @@ export function sweepOrphanedTabContent(tabsFile: string = TABS_FILE): number {
   return deleted
 }
 
-async function runCleanup(sources: CleanupSources): Promise<void> {
+/**
+ * Resolve the effective cleanup mode from the enterprise retention policy.
+ * Exported for tests. A undefined/invalid TTL means dry-run with the default
+ * age window (the unmanaged-install behavior: log candidates, delete
+ * nothing). A positive integer TTL means live deletion of conversations
+ * older than that many days.
+ */
+export function resolveCleanupMode(retentionDays: number | undefined): { dryRun: boolean; maxAgeDays: number } {
+  if (typeof retentionDays === 'number' && Number.isFinite(retentionDays) && retentionDays > 0) {
+    return { dryRun: false, maxAgeDays: Math.floor(retentionDays) }
+  }
+  return { dryRun: true, maxAgeDays: DEFAULT_MAX_AGE_DAYS }
+}
+
+async function runCleanup(sources: CleanupSources, retentionDays: number | undefined): Promise<void> {
   try {
     // Local, cheap, and independent of the engine: sweep orphaned content
     // files on the same cadence as the conversation cleanup.
@@ -232,17 +253,18 @@ async function runCleanup(sources: CleanupSources): Promise<void> {
       return
     }
 
-    log('cleanup: starting', { exclude_ids: excludeIds.length, dry_run: DRY_RUN })
+    const { dryRun, maxAgeDays } = resolveCleanupMode(retentionDays)
+    log('cleanup: starting', { exclude_ids: excludeIds.length, dry_run: dryRun, max_age_days: maxAgeDays, retention_policy: retentionDays ?? null })
     await engineBridge.connect()
     const result = await engineBridge._sendWithData<{ deleted: number }>({
       cmd: 'delete_stored_sessions',
-      maxAgeDays: 14,
+      maxAgeDays,
       excludeIds,
-      dryRun: DRY_RUN,
+      dryRun,
     })
     if (result.ok) {
       const count = result.data?.deleted ?? 0
-      log(DRY_RUN ? 'cleanup: dry-run would delete' : 'cleanup: deleted stale conversations', { count })
+      log(dryRun ? 'cleanup: dry-run would delete' : 'cleanup: deleted stale conversations', { count })
     } else {
       log('cleanup: engine error', { error: result.error })
     }
@@ -275,7 +297,7 @@ async function runCleanup(sources: CleanupSources): Promise<void> {
  * with no further boot-gate checks (the boot-time race is long over by
  * then).
  */
-function scheduleFirstRun(sources: CleanupSources): void {
+function scheduleFirstRun(sources: CleanupSources, retentionDays: number | undefined): void {
   const startTime = Date.now()
   const minDeadline = startTime + MIN_STARTUP_DELAY_MS
   const maxDeadline = startTime + MAX_STARTUP_DELAY_MS
@@ -296,7 +318,7 @@ function scheduleFirstRun(sources: CleanupSources): void {
     if (activeSessionCount > 0 || now >= maxDeadline) {
       const trigger = activeSessionCount > 0 ? `sessions=${activeSessionCount}` : 'max-uptime-reached'
       log('cleanup: boot-gate triggering first run', { elapsed_s: Math.round(elapsedMs / 1000), trigger })
-      void runCleanup(sources)
+      void runCleanup(sources, retentionDays)
       return
     }
 
@@ -317,10 +339,16 @@ function scheduleFirstRun(sources: CleanupSources): void {
  * the lazy `require('./settings-store')` failure mode that caused the
  * desktop to send `excludeIds=[]` on its first invocation. See
  * docs/plans/grassy-chirping-crest.md Layer 2 for the post-mortem.
+ *
+ * `retentionDays` is the enterprise conversationRetentionDays policy (D-018),
+ * fetched by the caller from the engine's get_enterprise_policy blob.
+ * Undefined = no retention policy = dry-run mode (nothing is ever deleted),
+ * preserving the unmanaged-install behavior.
  */
-export function startConversationCleanup(sources: CleanupSources): void {
-  scheduleFirstRun(sources)
-  setInterval(() => void runCleanup(sources), CLEANUP_INTERVAL_MS)
-  log('cleanup: scheduled', { min_delay_min: Math.round(MIN_STARTUP_DELAY_MS / 60000), max_delay_min: Math.round(MAX_STARTUP_DELAY_MS / 60000), dry_run: DRY_RUN })
+export function startConversationCleanup(sources: CleanupSources, retentionDays?: number): void {
+  const { dryRun, maxAgeDays } = resolveCleanupMode(retentionDays)
+  scheduleFirstRun(sources, retentionDays)
+  setInterval(() => void runCleanup(sources, retentionDays), CLEANUP_INTERVAL_MS)
+  log('cleanup: scheduled', { min_delay_min: Math.round(MIN_STARTUP_DELAY_MS / 60000), max_delay_min: Math.round(MAX_STARTUP_DELAY_MS / 60000), dry_run: dryRun, max_age_days: maxAgeDays })
   log('cleanup: sources', { tabs: sources.tabsFiles.length, chains: sources.chainsFiles.length, labels: sources.labelsFiles.length })
 }

@@ -5,7 +5,7 @@ import { IPC } from '../../shared/types'
 import { state } from '../state'
 import { showWindow } from '../window-manager'
 import { validateExternalUrl } from '../ipc-validation'
-import { engineIsRemote, getEngineHostInfo, listEngineDirectory, getEnterprisePolicyNewConversationDefaults } from '../engine-bridge-fs'
+import { engineIsRemote, getEngineHostInfo, listEngineDirectory, getEnterprisePolicyNewConversationDefaults, getEnterprisePolicy } from '../engine-bridge-fs'
 import { log as _log } from '../logger'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -66,6 +66,12 @@ export function registerFileDialogIpc(): void {
   // merged config (includes MDM/system-level settings). Returns null when no
   // enterprise config is active.
   ipcMain.handle(IPC.GET_ENTERPRISE_POLICY, async () => getEnterprisePolicyNewConversationDefaults())
+
+  // Full enterprise policy blob (D-004): the complete EnterpriseConfig
+  // passthrough, consumed by the renderer for model-picker filtering (D-011)
+  // and any other client-side enterprise constraint. Null when no
+  // enterprise config is active.
+  ipcMain.handle(IPC.GET_ENTERPRISE_POLICY_FULL, async () => getEnterprisePolicy())
 
   ipcMain.handle(IPC.OPEN_EXTERNAL, async (_event, url: string) => {
     const validUrl = validateExternalUrl(url)

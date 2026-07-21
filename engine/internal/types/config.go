@@ -74,8 +74,21 @@ type EnterpriseConfig struct {
 	// disabled by the user. Non-egress fields (Format, MaxSizeMB, OutputMode,
 	// LogDir) in this block are NOT enforced by EnforceEnterprise — those remain
 	// user-configurable. Mirrors the Telemetry enforcement pattern.
-	Logging      *LoggingConfig `json:"logging,omitempty"`
-	CustomFields map[string]any `json:"customFields,omitempty"`
+	Logging *LoggingConfig `json:"logging,omitempty"`
+	// ResourceLimits caps concurrent sessions and per-session agent
+	// dispatches (D-007). Sealed ceiling: user/project config cannot raise
+	// the caps above the enterprise values. Nil means no limits.
+	ResourceLimits *ResourceLimits `json:"resourceLimits,omitempty"`
+	// ConversationRetentionDays is the enterprise-declared TTL for locally
+	// persisted conversations (D-018). Consumers that manage local
+	// conversation storage (e.g. the desktop's cleanup job) treat
+	// conversations older than this many days as deletable. Nil means no
+	// retention policy — local conversations are kept indefinitely, which
+	// is the default for every unmanaged install. The engine itself does
+	// not delete conversations; this field is policy carried to consumers
+	// via get_enterprise_policy.
+	ConversationRetentionDays *int           `json:"conversationRetentionDays,omitempty"`
+	CustomFields              map[string]any `json:"customFields,omitempty"`
 }
 
 // ToolRestrictions defines tool allow/deny lists.
@@ -127,7 +140,13 @@ type EngineRuntimeConfig struct {
 	DefaultModel string                     `json:"defaultModel"`
 	Providers    map[string]ProviderConfig  `json:"providers,omitempty"`
 	Limits       LimitsConfig               `json:"limits"`
-	McpServers   map[string]McpServerConfig `json:"mcpServers,omitempty"`
+	// ResourceLimits caps concurrent sessions and per-session agent
+	// dispatches. Per-run Limits bound depth (turns, budget); resource
+	// limits bound breadth (how many orchestration contexts run at once).
+	// Pointer so engine.json can omit the block entirely (nil = unlimited).
+	// Enterprise policy seals this as a ceiling — see EnforceEnterprise.
+	ResourceLimits *ResourceLimits            `json:"resourceLimits,omitempty"`
+	McpServers     map[string]McpServerConfig `json:"mcpServers,omitempty"`
 	// Plugins holds the user-layer plugin policy (force-installs, allow/deny
 	// lists). Enterprise policy layers on top via PluginAllowlist /
 	// PluginDenylist / PluginForceInstalled on EnterpriseConfig.

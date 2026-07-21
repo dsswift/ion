@@ -103,6 +103,17 @@ export const modelCache = {
 }
 
 /**
+ * Enterprise policy cache (D-004), populated once at startup in
+ * app-lifecycle.ts from the engine's get_enterprise_policy blob. Read-only
+ * runtime constraint. `allowedModels` filters the model cache above so the
+ * iOS snapshot projection (availableModels) honors the same policy as the
+ * desktop's own pickers (D-011 parity).
+ */
+export const enterprisePolicyCache = {
+  policy: null as import('../shared/types-engine').EnterprisePolicy | null,
+}
+
+/**
  * Per-session extension-command registry cache.
  *
  * Keyed by engine session key — `tabId` for CLI tabs, `${tabId}:${instanceId}`

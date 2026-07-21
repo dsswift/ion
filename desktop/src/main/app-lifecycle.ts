@@ -4,7 +4,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { log as _log, warn as _warn, error as _error, flushLogs, initLoggerMachineIdentity } from './logger'
 import { loadMachineIdentity } from './machine-identity'
-import { state, SPACES_DEBUG, sessionPlane, engineBridge, fileWatchers, bashProcesses } from './state'
+import { state, SPACES_DEBUG, sessionPlane, engineBridge, fileWatchers, bashProcesses, enterprisePolicyCache } from './state'
 import { terminalManager } from './terminal-manager-instance'
 import { stopTabSnapshotPolling } from './remote/snapshot-polling'
 import { createTray, createWindow, installContentSecurityPolicy, snapshotWindowState, showWindow, toggleWindow } from './window-manager'
@@ -30,6 +30,8 @@ import { claimEngineEgressForDesktop } from './engine-egress-claim'
 import { configureEgress, closeEgress, setEgressUser, type EgressConfig, type AuthHeaderProvider } from './log-egress'
 import { startEgressTailers, stopEgressTailers } from './log-egress-tailer'
 import { getAccessToken, getSignedInIdentity, ensureEntraAuthConfig } from './oauth/entra-auth'
+import { getEnterprisePolicy } from './engine-bridge-fs'
+import { initAutoUpdater } from './updater'
 import { startWatchdog, stopWatchdog } from './watchdog'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -274,6 +276,32 @@ export function setupAppLifecycle(): void {
       log('app_lifecycle: engine connect failed, will retry', { error: err.message })
     }
 
+    // Fetch the enterprise policy blob (D-004) once the bridge is up. The
+    // policy is a read-only runtime constraint consumed by the auto-updater
+    // gate (D-012) and the conversation-cleanup TTL (D-018) below. A null
+    // policy (no enterprise config, engine unreachable) means no constraints
+    // — the safe default that preserves unmanaged-install behavior.
+    let enterprisePolicy: import('../shared/types-engine').EnterprisePolicy | null = null
+    try {
+      enterprisePolicy = await getEnterprisePolicy()
+    } catch (err: any) {
+      log('app_lifecycle: enterprise policy fetch failed, proceeding unconstrained', { error: err.message })
+    }
+    // Cache the policy for main-process consumers that run later: the model
+    // cache filter (D-011 iOS-parity in ipc/models.ts) reads it on every
+    // list_models refresh.
+    enterprisePolicyCache.policy = enterprisePolicy
+
+    // Auto-updater (D-012): enterprise-managed installs pin their version
+    // through MDM; the app-level updater must not fight it. The flag rides
+    // the desktop-owned customFields['ion-desktop'] namespace of the blob.
+    const ionDesktopFields = (enterprisePolicy?.customFields?.['ion-desktop'] ?? {}) as import('../shared/types-engine').IonDesktopPolicyFields
+    const disableAutoUpdate = ionDesktopFields.disableAutoUpdate === true
+    if (disableAutoUpdate) {
+      log('app_lifecycle: auto-update disabled by enterprise policy')
+    }
+    initAutoUpdater({ disableAutoUpdate })
+
     installContentSecurityPolicy()
 
     cleanOrphanedWorktrees().catch((err: Error) => log('app_lifecycle: worktree cleanup failed', { error: err.message }))
@@ -414,11 +442,15 @@ export function setupAppLifecycle(): void {
     // are still read during the merge-migration window — a conversation
     // referenced only by a not-yet-merged legacy file is still a valid
     // resumable conversation and must not be deleted.
+    //
+    // conversationRetentionDays (D-018): when the enterprise policy declares
+    // a TTL, the cleanup performs real deletions against it; absent policy
+    // keeps the dry-run default (nothing deleted).
     startConversationCleanup({
       tabsFiles: [TABS_FILE, legacyTabsFileForBackend('api'), legacyTabsFileForBackend('cli')],
       chainsFiles: [SESSION_CHAINS_FILE, legacySessionChainsFileForBackend('api'), legacySessionChainsFileForBackend('cli')],
       labelsFiles: [SESSION_LABELS_FILE, legacySessionLabelsFileForBackend('api'), legacySessionLabelsFileForBackend('cli')],
-    })
+    }, enterprisePolicy?.conversationRetentionDays)
 
     // Dock click / Cmd-Tab. The Dock icon only exists while the ATV window is
     // open (atvDockPresence flips the activation policy) — so an activate

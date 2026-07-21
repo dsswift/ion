@@ -1,7 +1,7 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import { IPC } from '../../shared/types'
 import { log as _log, debug as _debug } from '../logger'
-import { engineBridge, modelCache } from '../state'
+import { engineBridge, modelCache, enterprisePolicyCache } from '../state'
 import { getModelDisplayLabel } from '../../shared/types-models'
 import type { ModelEntry, ProviderEntry } from '../../shared/types-models'
 
@@ -22,7 +22,16 @@ function notifyRenderers(): void {
 /** Update the model cache from a list_models result. */
 function updateCache(result: { models: any[]; providers: any[] }): void {
   const providers: ProviderEntry[] = result.providers || []
-  const models: ModelEntry[] = result.models || []
+  let models: ModelEntry[] = result.models || []
+  // Enterprise model allowlist (D-011 iOS-parity): the cache feeds the
+  // remote snapshot's availableModels projection, so filtering here keeps
+  // iOS in policy lockstep with the desktop's own pickers. Engine-side
+  // enforcement (dispatch rejection) remains the security boundary.
+  const allowedModels = enterprisePolicyCache.policy?.allowedModels
+  if (allowedModels && allowedModels.length > 0) {
+    const allowed = new Set(allowedModels)
+    models = models.filter((m) => allowed.has(m.id))
+  }
   const providerAuth = new Map(providers.map((p) => [p.id, p.hasAuth]))
   modelCache.models = models.map((m) => ({
     id: m.id,

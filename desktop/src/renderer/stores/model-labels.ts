@@ -24,6 +24,27 @@ export const AVAILABLE_MODELS = [
   { id: 'llama-3.1-8b', label: 'Llama 3.1 8B', contextWindow: 131_072 },
 ] as const
 
+/** One entry in the model-picker list (element type of AVAILABLE_MODELS). */
+export type AvailableModel = (typeof AVAILABLE_MODELS)[number]
+
+/**
+ * Filter the model list against the enterprise allowedModels policy (D-011).
+ * An empty or absent allowlist means no restriction — the full list is
+ * returned, preserving open-source behavior. Enforcement is engine-side
+ * (disallowed per-run overrides are rejected at dispatch); this filter is
+ * the UI half: a general user in a model-restricted deployment should never
+ * see models they cannot select.
+ *
+ * Pure function (no store imports) so it stays trivially testable; reactive
+ * consumers pair it with `usePreferencesStore((s) =>
+ * s.enterprisePolicy?.allowedModels)`.
+ */
+export function getFilteredModels(allowedModels?: string[] | null): readonly AvailableModel[] {
+  if (!allowedModels || allowedModels.length === 0) return AVAILABLE_MODELS
+  const allowed = new Set(allowedModels)
+  return AVAILABLE_MODELS.filter((m) => allowed.has(m.id))
+}
+
 export function getModelContextWindow(modelId: string): number {
   const normalizedId = normalizeModelId(modelId)
   const known = AVAILABLE_MODELS.find((m) => normalizedId === m.id || normalizedId.startsWith(m.id + '-'))

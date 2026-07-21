@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net/url"
 	"path"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -76,6 +77,27 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 		result.DefaultModel = fallback
 	}
 
+	// Provider restrictions -- allow list (D-005). When the enterprise
+	// declares AllowedProviders, every provider not on the list is stripped
+	// from the merged config so a hand-edited ~/.ion/engine.json cannot
+	// route model traffic around the enterprise gateway. Same sealed-ceiling
+	// prune pattern as the MCP allowlist below: re-applied on every config
+	// load, so edits do not survive.
+	if len(enterprise.AllowedProviders) > 0 && result.Providers != nil {
+		// Deep copy Providers so deletes don't mutate the input.
+		pruned := make(map[string]types.ProviderConfig, len(result.Providers))
+		for k, v := range result.Providers {
+			pruned[k] = v
+		}
+		for key := range pruned {
+			if !contains(enterprise.AllowedProviders, key) {
+				utils.Log("ConfigMerge", "enterprise: removing non-allowlisted provider \""+key+"\"")
+				delete(pruned, key)
+			}
+		}
+		result.Providers = pruned
+	}
+
 	// MCP server restrictions -- deny list
 	if len(enterprise.McpDenylist) > 0 && result.McpServers != nil {
 		for _, denied := range enterprise.McpDenylist {
@@ -86,13 +108,24 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 		}
 	}
 
-	// MCP server restrictions -- allow list
+	// MCP server restrictions -- allow list. A server passes when its config
+	// key is on the allowlist (exact match) OR its configured URL host
+	// glob-matches an allowlist pattern (D-010: "*.dcim.com" admits any
+	// server whose URL host is a dcim.com subdomain, regardless of what the
+	// server entry is named). Host matching closes the rename bypass: a
+	// name-only allowlist lets a constrained user point a server named
+	// "internal-tools" anywhere; host patterns pin the actual destination.
 	if len(enterprise.McpAllowlist) > 0 && result.McpServers != nil {
-		for key := range result.McpServers {
-			if !contains(enterprise.McpAllowlist, key) {
-				utils.Log("ConfigMerge", "enterprise: removing non-allowlisted MCP server \""+key+"\"")
-				delete(result.McpServers, key)
+		for key, server := range result.McpServers {
+			if contains(enterprise.McpAllowlist, key) {
+				continue
 			}
+			if host := mcpServerURLHost(server); host != "" && matchesAny(enterprise.McpAllowlist, host) {
+				utils.LogWithFields(utils.LevelInfo, "config.merge", "enterprise: MCP server allowed by URL host pattern", map[string]any{"server": key, "host": host})
+				continue
+			}
+			utils.Log("ConfigMerge", "enterprise: removing non-allowlisted MCP server \""+key+"\"")
+			delete(result.McpServers, key)
 		}
 	}
 
@@ -217,10 +250,62 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 		}
 	}
 
+	// Resource limits: sealed ceiling (D-007). The enterprise value caps the
+	// user value — a user/project config may set a LOWER limit than the
+	// enterprise allows but can never exceed it, and an absent user value
+	// takes the enterprise value directly. Mirrors the AllowedModels pattern:
+	// enforcement lowers, never raises.
+	if enterprise.ResourceLimits != nil {
+		if result.ResourceLimits == nil {
+			result.ResourceLimits = &types.ResourceLimits{}
+		} else {
+			// Copy-on-write so the ceiling clamp below doesn't mutate the
+			// caller's config (same discipline as the McpServers deep copy).
+			dup := *result.ResourceLimits
+			result.ResourceLimits = &dup
+		}
+		result.ResourceLimits.MaxSessions = sealLimitCeiling(result.ResourceLimits.MaxSessions, enterprise.ResourceLimits.MaxSessions, "maxSessions")
+		result.ResourceLimits.MaxAgentsPerSession = sealLimitCeiling(result.ResourceLimits.MaxAgentsPerSession, enterprise.ResourceLimits.MaxAgentsPerSession, "maxAgentsPerSession")
+	}
+
 	// Store enterprise config for runtime access
 	result.Enterprise = enterprise
 
 	return &result
+}
+
+// sealLimitCeiling resolves one resource-limit field against the enterprise
+// ceiling. A nil enterprise value leaves the user value untouched (no policy
+// on this axis). A non-nil enterprise value caps the result: an absent or
+// higher user value is replaced by the ceiling; a lower user value stands
+// (users may self-restrict below policy, never exceed it).
+func sealLimitCeiling(user, enterprise *int, name string) *int {
+	if enterprise == nil {
+		return user
+	}
+	if user == nil || *user > *enterprise {
+		if user != nil {
+			utils.LogWithFields(utils.LevelInfo, "config.merge", "enterprise: resource limit capped to ceiling", map[string]any{"limit": name, "user": *user, "ceiling": *enterprise})
+		}
+		v := *enterprise
+		return &v
+	}
+	return user
+}
+
+// mcpServerURLHost extracts the hostname from an MCP server's configured URL.
+// Returns "" for stdio servers (no URL) and for URLs that fail to parse —
+// callers treat "" as "no host to match", falling back to name-only checks.
+func mcpServerURLHost(server types.McpServerConfig) string {
+	if server.URL == "" {
+		return ""
+	}
+	u, err := url.Parse(server.URL)
+	if err != nil {
+		utils.LogWithFields(utils.LevelInfo, "config.merge", "MCP server URL unparseable for host allowlist match", map[string]any{"url": server.URL, "error": err.Error()})
+		return ""
+	}
+	return u.Hostname()
 }
 
 // IsModelAllowed checks if a model is permitted by enterprise policy.
@@ -381,6 +466,13 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 	// as Permissions / Network / Telemetry.
 	if src.Plugins != nil {
 		dst.Plugins = src.Plugins
+	}
+
+	// ResourceLimits: whole-block override (pointer), same convention as
+	// Plugins above. Enterprise ceiling enforcement happens later in
+	// EnforceEnterprise; this merge only carries the user/project layers.
+	if src.ResourceLimits != nil {
+		dst.ResourceLimits = src.ResourceLimits
 	}
 
 	// Profiles: replace if provided

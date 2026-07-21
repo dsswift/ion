@@ -145,6 +145,10 @@ func buildManifest() contractManifest {
 		// error-flag fields stay mirrored in the desktop mapper and iOS model.
 		"SessionMessage":           reflect.TypeOf(SessionMessage{}),
 		"SessionMessageAttachment": reflect.TypeOf(SessionMessageAttachment{}),
+		// ResourceLimits crosses the wire inside the get_enterprise_policy
+		// response (D-007). Tracked so client mirrors enforce the same
+		// session/agent caps the engine enforces.
+		"ResourceLimits": reflect.TypeOf(ResourceLimits{}),
 	}
 	for name, typ := range shared {
 		m.SharedTypes[name] = jsonFieldNames(typ)

@@ -5,6 +5,7 @@
  */
 import type { AtvApi } from './atv-api'
 import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus, EngineConfig, EngineEvent, EngineHostInfo, EngineDirListing, RemoteTransportState, DiscoveredCommand, GitEvent, RepoSnapshot, NewConversationDefaultsPolicy } from '../shared/types'
+import type { EnterprisePolicy } from '../shared/types-engine'
 
 export interface IonAPI extends AtvApi {
   // ─── Request-response (renderer → main) ───
@@ -39,6 +40,8 @@ export interface IonAPI extends AtvApi {
   engineIsRemote(): Promise<boolean>
   /** Fetch the enterprise new-tab policy from the engine. Returns null when no enterprise config is active. */
   getEnterprisePolicy(): Promise<NewConversationDefaultsPolicy | null>
+  /** Fetch the full enterprise policy blob (D-004). Returns null when no enterprise config is active. */
+  getEnterprisePolicyFull(): Promise<EnterprisePolicy | null>
   openExternal(url: string): Promise<boolean>
 
   attachFiles(): Promise<FileAttachment[] | null>

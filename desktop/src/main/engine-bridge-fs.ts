@@ -2,6 +2,7 @@ import { IS_REMOTE } from './engine-bridge'
 import { engineBridge } from './state'
 import { log } from './logger'
 import type { EngineDirListing, EngineHostInfo, NewConversationDefaultsPolicy } from '../shared/types'
+import type { EnterprisePolicy } from '../shared/types-engine'
 
 /** Returns the bridge singleton.
  *
@@ -68,6 +69,43 @@ export async function listEngineDirectory(
 }
 
 /**
+ * Wire shape of the engine's get_enterprise_policy response. `policy` is the
+ * D-004 full-blob passthrough (the complete EnterpriseConfig, null when no
+ * enterprise config is loaded); `newConversationDefaults` is the original
+ * single-policy key kept for consumers built against the pre-D-004 shape.
+ */
+interface EnterprisePolicyResponse {
+  newConversationDefaults: NewConversationDefaultsPolicy | null
+  policy: EnterprisePolicy | null
+}
+
+/**
+ * Fetch the full enterprise policy blob from the engine (D-004). The engine
+ * reads MDM/system-level config (macOS managed-preferences plist, Windows
+ * registry, Linux drop-ins) and passes the merged EnterpriseConfig through
+ * verbatim — including the opaque customFields['ion-desktop'] namespace the
+ * desktop owns. Returns null when no enterprise config is present or the
+ * engine has not started. Callers treat null as "no enterprise constraints".
+ *
+ * The result is a read-only runtime constraint: never persisted to user
+ * settings, never user-editable, refreshed only by re-calling this function.
+ */
+export async function getEnterprisePolicy(): Promise<EnterprisePolicy | null> {
+  const result = await bridge().request<EnterprisePolicyResponse>('get_enterprise_policy')
+  if (result.ok && result.data?.policy) {
+    log('engine-bridge-fs', 'getEnterprisePolicy: policy loaded', {
+      allowed_models: result.data.policy.allowedModels?.length ?? 0,
+      has_custom_fields: result.data.policy.customFields !== undefined,
+      retention_days: result.data.policy.conversationRetentionDays ?? null,
+      max_sessions: result.data.policy.resourceLimits?.maxSessions ?? null,
+    })
+    return result.data.policy
+  }
+  log('engine-bridge-fs', 'getEnterprisePolicy: no enterprise policy', { ok: result.ok })
+  return null
+}
+
+/**
  * Fetch the enterprise new-tab policy from the engine. The engine reads this
  * from MDM/system-level config (macOS defaults, Linux drop-in JSON, etc.) and
  * projects it here so the desktop can enforce the locked new-tab behavior
@@ -77,8 +115,7 @@ export async function listEngineDirectory(
  * not yet started. The renderer treats null as "no enterprise constraint".
  */
 export async function getEnterprisePolicyNewConversationDefaults(): Promise<NewConversationDefaultsPolicy | null> {
-  interface PolicyResponse { newConversationDefaults: NewConversationDefaultsPolicy | null }
-  const result = await bridge().request<PolicyResponse>('get_enterprise_policy')
+  const result = await bridge().request<EnterprisePolicyResponse>('get_enterprise_policy')
   if (result.ok && result.data?.newConversationDefaults) {
     log('engine-bridge-fs', 'getEnterprisePolicyNewConversationDefaults', { locked: result.data.newConversationDefaults.locked, dir: result.data.newConversationDefaults.baseDirectory, profile: result.data.newConversationDefaults.engineProfileId })
     return result.data.newConversationDefaults

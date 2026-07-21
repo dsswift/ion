@@ -50,6 +50,27 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			return nil, err
 		}
 
+		// --- Enterprise agent-count gate (D-007) ---
+		// MaxAgentsPerSession caps the number of concurrently-running dispatched
+		// agents within a single session. The ceiling is sealed by EnforceEnterprise
+		// before the merged config reaches here, so reading it once is sufficient.
+		// registry.Count() returns the number of active (non-reserved, or reserved
+		// but live) dispatch entries — the same population MaxAgentsPerSession is
+		// intended to bound. This check is symmetric with the MaxSessions gate in
+		// start_session.go: both read the sealed merged config and reject before
+		// the new orchestration context is created.
+		if registry != nil {
+			if cfg := sa.EngineConfig(); cfg != nil && cfg.ResourceLimits != nil && cfg.ResourceLimits.MaxAgentsPerSession != nil {
+				limit := *cfg.ResourceLimits.MaxAgentsPerSession
+				active := registry.Count()
+				if active >= limit {
+					utils.LogWithFields(utils.LevelInfo, "session", "dispatch rejected by enterprise agent limit", map[string]any{"session_key": sa.SessionKey(), "agent": opts.Name, "active_agents": active, "limit": limit})
+					return nil, fmt.Errorf("agent dispatch limit reached: enterprise policy allows a maximum of %d concurrent agent dispatches per session", limit)
+				}
+				utils.LogWithFields(utils.LevelDebug, "session", "enterprise agent limit check passed", map[string]any{"session_key": sa.SessionKey(), "agent": opts.Name, "active_agents": active, "limit": limit})
+			}
+		}
+
 		start := time.Now()
 
 		utils.LogWithFields(utils.LevelInfo, "server", "starting dispatch", map[string]any{"model": opts.Name, "truncate": truncate(opts.Task, 80), "model_2": opts.Model, "count": len(opts.SystemPrompt), "background": opts.Background, "plan_mode": opts.PlanMode, "session_key": sa.SessionKey()})

@@ -31,9 +31,19 @@ interface ModelPickerPopoverProps {
 
 export function ModelPickerPopover({ selectedModelId, onSelect, onClose, position, popoverRef }: ModelPickerPopoverProps) {
   const colors = useColors()
-  const models = useModelStore((s) => s.models)
+  const allModels = useModelStore((s) => s.models)
   const providers = useModelStore((s) => s.providers)
   const preferredModel = usePreferencesStore((s) => s.preferredModel)
+  // Enterprise model allowlist (D-011): when active, the picker only lists
+  // permitted models. Enforcement is engine-side (disallowed overrides are
+  // rejected at dispatch); this filter is the UI half so restricted users
+  // never see untouchable entries.
+  const enterpriseAllowedModels = usePreferencesStore((s) => s.enterprisePolicy?.allowedModels)
+  const models = useMemo(() => {
+    if (!enterpriseAllowedModels || enterpriseAllowedModels.length === 0) return allModels
+    const allowed = new Set(enterpriseAllowedModels)
+    return allModels.filter((m) => allowed.has(m.id))
+  }, [allModels, enterpriseAllowedModels])
   const [search, setSearch] = useState('')
   const [collapsed, setCollapsed] = useState(loadCollapsed)
 

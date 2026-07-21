@@ -64,6 +64,22 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 		return &StartSessionResult{Existed: true, ConversationID: convID}, nil
 	}
 
+	// D-007: enterprise session cap. Checked after the idempotency branch so
+	// re-asserting an EXISTING session (the desktop's restart-restore path)
+	// never trips the limit — only genuinely new session creation counts
+	// against the ceiling. The merged config's ResourceLimits already carries
+	// the enterprise seal (EnforceEnterprise caps user values), so a single
+	// read here enforces policy for every client on the socket.
+	if m.config != nil && m.config.ResourceLimits != nil && m.config.ResourceLimits.MaxSessions != nil {
+		limit := *m.config.ResourceLimits.MaxSessions
+		if len(m.sessions) >= limit {
+			m.mu.Unlock()
+			utils.LogWithFields(utils.LevelInfo, "session", "startsession: rejected by session limit", map[string]any{"key": key, "active": len(m.sessions), "limit": limit})
+			return nil, fmt.Errorf("session limit reached: enterprise policy allows a maximum of %d concurrent sessions", limit)
+		}
+		utils.LogWithFields(utils.LevelDebug, "session", "startsession: session limit check passed", map[string]any{"key": key, "active": len(m.sessions), "limit": limit})
+	}
+
 	// Resolve the conversation ID for this session. When the caller supplies an
 	// explicit SessionID it wins; otherwise the binding store and the
 	// ForceNewConversation flag decide between resume and fresh-mint. See

@@ -93,6 +93,25 @@ func (m *Manager) buildRunConfig(
 		runCfg.SecurityCfg = m.config.Security
 	}
 
+	// G07/D-009: Enterprise tool restrictions apply to EVERY session
+	// unconditionally — enterprise policy is not an extension concern, so
+	// the check is installed here rather than inside wireExtensionHooks.
+	// A plain (extension-less) conversation gets the same tool gate as a
+	// harness conversation. When an extension group attaches below,
+	// wireExtensionHooks WRAPS this callback: the enterprise check runs
+	// first, extension hooks second — an extension can be stricter than
+	// enterprise policy but can never override an enterprise block.
+	if m.config != nil && m.config.Enterprise != nil {
+		capturedEnterprise := m.config.Enterprise
+		runCfg.Hooks.OnToolCall = func(info backend.ToolCallInfo) (*backend.ToolCallResult, error) {
+			if !ionconfig.IsToolAllowed(info.ToolName, capturedEnterprise) {
+				utils.LogWithFields(utils.LevelInfo, "session", "enterprise policy blocked tool call", map[string]any{"key": key, "tool": info.ToolName})
+				return &backend.ToolCallResult{Block: true, Reason: "tool blocked by enterprise policy"}, nil
+			}
+			return nil, nil
+		}
+	}
+
 	if extGroup != nil && !extGroup.IsEmpty() && !skipExtensions {
 		m.wireExtensionHooks(s, key, requestID, apiBackend, extGroup, runCfg, currentModel)
 	}
@@ -228,16 +247,22 @@ func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID str
 		return apiBackend.GetCurrentTurn(capturedRequestID)
 	}
 
-	capturedEnterprise := func() *types.EnterpriseConfig {
-		if m.config != nil {
-			return m.config.Enterprise
-		}
-		return nil
-	}()
+	// Compose with the base OnToolCall installed by buildRunConfig (the
+	// unconditional enterprise tool gate, D-009). Evaluation order:
+	// enterprise policy first, extension hooks second. Either layer blocking
+	// blocks the call — an extension can be stricter than enterprise policy,
+	// never more permissive. baseToolCall is nil when no enterprise config
+	// is loaded; the extension hooks then run alone.
+	baseToolCall := runCfg.Hooks.OnToolCall
 	runCfg.Hooks.OnToolCall = func(info backend.ToolCallInfo) (*backend.ToolCallResult, error) {
-		// G07: Enterprise tool restriction check
-		if capturedEnterprise != nil && !ionconfig.IsToolAllowed(info.ToolName, capturedEnterprise) {
-			return &backend.ToolCallResult{Block: true, Reason: "tool blocked by enterprise policy"}, nil
+		if baseToolCall != nil {
+			result, err := baseToolCall(info)
+			if err != nil {
+				return nil, err
+			}
+			if result != nil && result.Block {
+				return result, nil
+			}
 		}
 		result, err := extGroup.FireToolCall(ctx, extension.ToolCallInfo{
 			ToolName: info.ToolName,
