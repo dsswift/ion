@@ -494,6 +494,20 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 				MarkerMessageLength: sd.MessageLength,
 			})
 			continue
+		case EntryCleared:
+			// Replay a persisted /clear checkpoint as a system-role marker row.
+			// Clients format the "── Cleared at ──" divider from MarkerKind
+			// and the entry timestamp. Content carries the "──" sentinel the
+			// iOS detection code already looks for; no structured payload
+			// fields are needed (ClearedData is empty).
+			result = append(result, types.SessionMessage{
+				ID:         rowID(entry.ID, 0),
+				Role:       "system",
+				Content:    "──",
+				Timestamp:  entry.Timestamp,
+				MarkerKind: "clear",
+			})
+			continue
 		case EntryMessage:
 			// falls through to the message-flattening logic below
 		default:

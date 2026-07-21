@@ -153,6 +153,46 @@ func TestPlanMarker_ReplayedOnLoad(t *testing.T) {
 	}
 }
 
+// TestClearMarker_ReplayedOnLoad asserts an EntryCleared entry is replayed as
+// a system-role marker row by flattenEntries after a Save → Load round-trip.
+//
+// This test is red without the EntryCleared case in flattenEntries: revert
+// that case and the marker row disappears (findMarker returns nil), failing at
+// the "expected a clear marker row" assertion.
+func TestClearMarker_ReplayedOnLoad(t *testing.T) {
+	dir := t.TempDir()
+
+	conv := CreateConversation("clear-marker", "be helpful", "claude-3-5-sonnet")
+	AddUserMessage(conv, "first question")
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "first reply"}},
+		types.LlmUsage{InputTokens: 10, OutputTokens: 15})
+
+	// Simulate /clear: wipe messages, append the cleared entry.
+	conv.Messages = nil
+	AppendEntry(conv, EntryCleared, ClearedData{})
+
+	if err := Save(conv, dir); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	// Load through the same path external callers use.
+	msgs, err := LoadMessages(conv.ID, dir)
+	if err != nil {
+		t.Fatalf("LoadMessages: %v", err)
+	}
+
+	marker := findMarker(msgs, "clear")
+	if marker == nil {
+		t.Fatal("expected a clear marker row after reload, found none")
+	}
+	if marker.Role != "system" {
+		t.Errorf("marker Role = %q, want \"system\"", marker.Role)
+	}
+	if marker.Content != "──" {
+		t.Errorf("marker Content = %q, want \"──\"", marker.Content)
+	}
+}
+
 // TestSteerMarker_ReplayedOnLoad asserts an EntrySteerMarker is replayed as a
 // system-role marker row by flattenEntries after a Save → Load round-trip, and
 // that the marker row is a DISTINCT additional row from the injected user

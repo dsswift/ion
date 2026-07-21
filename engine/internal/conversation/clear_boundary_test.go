@@ -3,16 +3,16 @@ package conversation
 // clear_boundary_test.go — pins the agent-context-empty vs human-transcript-full
 // duality that /clear creates, and the restart-reattach contract.
 //
-// Two tests:
+// Three tests:
 //
 //  1. TestClear_ContextBoundaryDuality — directly exercises clear_core.go:112-114
-//     (conv.Messages = nil, token counters = 0).  In one test: after a
+//     (conv.Messages = nil, EntryCleared appended).  In one test: after a
 //     simulated /clear the loaded conversation must have Messages == nil (not
 //     just len == 0 — the LLM sees no history) AND LastInputTokens == 0 AND
 //     LastInputTokensMsgCount == 0, while the .tree.jsonl sidecar must still
-//     contain exactly N entry lines (one per tree entry).  Both halves of the
-//     duality are asserted in the same test so regression on either is caught
-//     together.
+//     contain exactly N+1 entry lines (N original entries + 1 EntryCleared).
+//     Both halves of the duality are asserted in the same test so regression
+//     on either is caught together.
 //
 //  2. TestClear_RestartReattach — after /clear, a fresh conversation.Load (the
 //     path that loadOrCreateConversation calls on restart) must return the
@@ -20,6 +20,12 @@ package conversation
 //     tree. This pins the correctness guarantee documented in loadSplit: "NOT
 //     rebuilt via BuildContextPath; whatever is in the file is the authoritative
 //     LLM context."
+//
+//  3. TestClear_MarkerReplayedOnLoadMessages — after a real clearConversationCore-
+//     style wipe (Messages = nil, EntryCleared appended, Save), LoadMessages must
+//     return exactly one MarkerKind=="clear" row. This is the end-to-end pin for
+//     the flattenEntries replay arm: clients depend on this row to reconstruct the
+//     "── Cleared at ──" divider on historical reload.
 
 import (
 	"bufio"
@@ -31,18 +37,21 @@ import (
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
-// TestClear_ContextBoundaryDuality directly pins clear_core.go:112-114.
+// TestClear_ContextBoundaryDuality directly pins the clear mechanics.
 //
 // Scenario:
 //   - Build a conversation with N user+assistant turns (Messages and Entries).
-//   - Simulate /clear: set Messages = nil, zero both token counters, Save.
+//   - Simulate /clear: set Messages = nil, append EntryCleared, Save.
 //   - Reload from disk and assert:
 //     (a) Messages is nil — the agent context is empty.
-//     (b) LastInputTokens == 0 and LastInputTokensMsgCount == 0.
-//     (c) The .tree.jsonl file has exactly N non-header lines — the human
-//         transcript is intact.
+//     (b) GetContextUsage returns Estimated=true (no assistant messages to scan).
+//     (c) The .tree.jsonl file has exactly N+1 non-header lines — the original
+//         N message entries plus 1 EntryCleared, all preserved.
+//     (d) LoadMessages returns exactly one MarkerKind=="clear" row.
 //
-// (c) is the hard half: it proves /clear does NOT touch the tree file.
+// (c)+(d) are the hard halves: (c) proves /clear appends to the tree rather
+// than touching existing entries; (d) proves flattenEntries replays the cleared
+// marker so clients reconstruct the divider on reload.
 func TestClear_ContextBoundaryDuality(t *testing.T) {
 	dir := t.TempDir()
 	id := "clear-boundary-duality"
@@ -83,8 +92,9 @@ func TestClear_ContextBoundaryDuality(t *testing.T) {
 		t.Fatalf("setup: expected at least one assistant message with Usage before clear")
 	}
 
-	// Simulate clear_core.go: wipe Messages only (scalar was removed).
+	// Simulate clear_core.go: wipe Messages, append EntryCleared, Save.
 	pre.Messages = nil
+	AppendEntry(pre, EntryCleared, ClearedData{})
 
 	if err := Save(pre, dir); err != nil {
 		t.Fatalf("post-clear Save: %v", err)
@@ -106,9 +116,9 @@ func TestClear_ContextBoundaryDuality(t *testing.T) {
 		t.Errorf("(b) expected Estimated=true after /clear (no assistant messages to scan), got Estimated=false")
 	}
 
-	// (c): Inspect .tree.jsonl directly to prove the tree is intact.
+	// (c): Inspect .tree.jsonl directly to prove the tree is intact and has
+	// exactly expectedEntries + 1 lines (original entries + EntryCleared).
 	// The file format is: one header line + one line per entry.
-	// We count non-empty lines and subtract 1 for the header.
 	treePath := filepath.Join(dir, id+".tree.jsonl")
 	treeData, err := os.ReadFile(treePath)
 	if err != nil {
@@ -131,15 +141,32 @@ func TestClear_ContextBoundaryDuality(t *testing.T) {
 	if err := scanner.Err(); err != nil {
 		t.Fatalf("(c) scan .tree.jsonl: %v", err)
 	}
-	if treeEntryLines != expectedEntries {
-		t.Errorf("(c) .tree.jsonl entry lines = %d, want %d — /clear must not touch the tree (human transcript must be full)",
-			treeEntryLines, expectedEntries)
+	// expectedEntries original message entries + 1 EntryCleared.
+	wantTreeLines := expectedEntries + 1
+	if treeEntryLines != wantTreeLines {
+		t.Errorf("(c) .tree.jsonl entry lines = %d, want %d (original entries + EntryCleared)",
+			treeEntryLines, wantTreeLines)
 	}
 
 	// Sanity: the loaded Entries count must also match.
-	if len(post.Entries) != expectedEntries {
+	if len(post.Entries) != wantTreeLines {
 		t.Errorf("(c) loaded Entries count = %d, want %d after /clear",
-			len(post.Entries), expectedEntries)
+			len(post.Entries), wantTreeLines)
+	}
+
+	// (d): LoadMessages must yield exactly one MarkerKind=="clear" row.
+	msgs, err := LoadMessages(id, dir)
+	if err != nil {
+		t.Fatalf("(d) LoadMessages: %v", err)
+	}
+	var clearMarkers int
+	for _, m := range msgs {
+		if m.MarkerKind == "clear" {
+			clearMarkers++
+		}
+	}
+	if clearMarkers != 1 {
+		t.Errorf("(d) LoadMessages: got %d MarkerKind==\"clear\" rows, want 1", clearMarkers)
 	}
 }
 
@@ -175,13 +202,14 @@ func TestClear_RestartReattach(t *testing.T) {
 		t.Fatalf("initial Save: %v", err)
 	}
 
-	// Step 2: simulate /clear by loading, wiping Messages, saving.
-	// This models the clearConversationCore path (scalar removed).
+	// Step 2: simulate /clear by loading, wiping Messages, appending EntryCleared,
+	// saving. This models the clearConversationCore path.
 	mid, err := Load(id, dir)
 	if err != nil {
 		t.Fatalf("pre-clear Load: %v", err)
 	}
 	mid.Messages = nil // clear_core.go: wipe the LLM context
+	AppendEntry(mid, EntryCleared, ClearedData{})
 
 	if err := Save(mid, dir); err != nil {
 		t.Fatalf("post-clear Save: %v", err)
@@ -210,9 +238,78 @@ func TestClear_RestartReattach(t *testing.T) {
 		t.Errorf("restart: expected Estimated=true after /clear (no assistant messages with Usage), got Estimated=false")
 	}
 
-	// The tree must still be intact — the human transcript survives.
-	if len(reattached.Entries) != treeEntryCount {
-		t.Errorf("restart: Entries count = %d, want %d — /clear must not destroy the tree",
-			len(reattached.Entries), treeEntryCount)
+	// The tree must still be intact — original entries + 1 EntryCleared.
+	wantEntries := treeEntryCount + 1
+	if len(reattached.Entries) != wantEntries {
+		t.Errorf("restart: Entries count = %d, want %d — /clear must append EntryCleared, not destroy the tree",
+			len(reattached.Entries), wantEntries)
+	}
+
+	// LoadMessages must yield exactly one MarkerKind=="clear" row after restart.
+	msgs, err := LoadMessages(id, dir)
+	if err != nil {
+		t.Fatalf("restart LoadMessages: %v", err)
+	}
+	var clearMarkers int
+	for _, m := range msgs {
+		if m.MarkerKind == "clear" {
+			clearMarkers++
+		}
+	}
+	if clearMarkers != 1 {
+		t.Errorf("restart: LoadMessages got %d MarkerKind==\"clear\" rows, want 1", clearMarkers)
+	}
+}
+
+// TestClear_MarkerReplayedOnLoadMessages is the end-to-end pin for the
+// flattenEntries EntryCleared replay arm. After a real wipe-and-append
+// (Messages = nil, EntryCleared appended, Save), LoadMessages must return
+// exactly one MarkerKind=="clear" system row and the row must carry the
+// "──" content sentinel clients use to identify dividers.
+//
+// This test is intentionally separate from TestClear_ContextBoundaryDuality
+// and TestClear_RestartReattach so a failure here immediately names the
+// flattenEntries replay arm as the root cause.
+func TestClear_MarkerReplayedOnLoadMessages(t *testing.T) {
+	dir := t.TempDir()
+	id := "clear-marker-reload"
+
+	conv := CreateConversation(id, "be helpful", "claude-3-5-sonnet")
+	AddUserMessage(conv, "question before clear")
+	AddAssistantMessage(conv,
+		[]types.LlmContentBlock{{Type: "text", Text: "answer before clear"}},
+		types.LlmUsage{InputTokens: 20, OutputTokens: 10})
+
+	// Simulate clearConversationCore: wipe Messages, append EntryCleared, Save.
+	conv.Messages = nil
+	AppendEntry(conv, EntryCleared, ClearedData{})
+
+	if err := Save(conv, dir); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	msgs, err := LoadMessages(id, dir)
+	if err != nil {
+		t.Fatalf("LoadMessages: %v", err)
+	}
+
+	var clearRow *types.SessionMessage
+	for i := range msgs {
+		if msgs[i].MarkerKind == "clear" {
+			clearRow = &msgs[i]
+			break
+		}
+	}
+	if clearRow == nil {
+		t.Fatal("LoadMessages: expected exactly one MarkerKind==\"clear\" row after /clear, found none")
+	}
+	if clearRow.Role != "system" {
+		t.Errorf("clear marker Role = %q, want \"system\"", clearRow.Role)
+	}
+	if clearRow.Content != "──" {
+		t.Errorf("clear marker Content = %q, want \"──\"", clearRow.Content)
+	}
+	if clearRow.Timestamp == 0 {
+		t.Error("clear marker Timestamp is zero — entry timestamp must be carried through")
 	}
 }

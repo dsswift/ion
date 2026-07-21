@@ -36,6 +36,11 @@ const (
 	// survives reload; it renders live via SteerInjectedEvent, which is not
 	// persisted.
 	EntrySteerMarker SessionEntryType = "steer_marker"
+	// EntryCleared records a /clear checkpoint so the "── Cleared at ──"
+	// divider survives reload. The live divider is synthesized by clients
+	// from engine_command_result{command:"clear"}; without this entry there
+	// is no persisted signal for flattenEntries to replay on reload.
+	EntryCleared SessionEntryType = "cleared"
 )
 
 // MessageData holds a chat message entry.
@@ -116,6 +121,12 @@ type PlanMarkerData struct {
 type SteerMarkerData struct {
 	MessageLength int `json:"messageLength"`
 }
+
+// ClearedData records a /clear checkpoint for persistence and replay.
+// It carries no payload beyond the timestamp embedded in the tree entry
+// itself — the only signal flattenEntries needs is that a clear occurred
+// at a specific point in the tree so clients can replay the divider.
+type ClearedData struct{}
 
 // ModelChangeData records a model switch.
 type ModelChangeData struct {
