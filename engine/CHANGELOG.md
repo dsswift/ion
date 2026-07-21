@@ -13,6 +13,13 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.51.0](https://github.com/dsswift/ion/compare/engine-v1.50.2...engine-v1.51.0) (2026-07-21)
+
+### Features
+
+* **engine:** add egress chunk size config option ([91dac65](https://github.com/dsswift/ion/commit/91dac657d8b084b098afcaa6435f8d1d9a81ed53))
+* **engine:** implement chunked egress with spool rewrite ([bbd6118](https://github.com/dsswift/ion/commit/bbd6118b817d0ebbb4f79a3a7a60cad083e497a6))
+
 ## [1.50.2](https://github.com/dsswift/ion/compare/engine-v1.50.1...engine-v1.50.2) (2026-07-20)
 
 ### Bug Fixes
