@@ -191,6 +191,11 @@ func mergeEnterprisePartial(base, overlay *types.EnterpriseConfig) *types.Enterp
 	if overlay.ToolRestrictions != nil {
 		result.ToolRestrictions = overlay.ToolRestrictions
 	}
+	// Permissions was historically missing from this partial merge — a
+	// drop-in overlay declaring a permission policy was silently dropped.
+	if overlay.Permissions != nil {
+		result.Permissions = overlay.Permissions
+	}
 	if overlay.Telemetry != nil {
 		result.Telemetry = overlay.Telemetry
 	}
@@ -205,6 +210,12 @@ func mergeEnterprisePartial(base, overlay *types.EnterpriseConfig) *types.Enterp
 	}
 	if overlay.Logging != nil {
 		result.Logging = overlay.Logging
+	}
+	if overlay.ResourceLimits != nil {
+		result.ResourceLimits = overlay.ResourceLimits
+	}
+	if overlay.ConversationRetentionDays != nil {
+		result.ConversationRetentionDays = overlay.ConversationRetentionDays
 	}
 	if len(overlay.CustomFields) > 0 {
 		result.CustomFields = overlay.CustomFields

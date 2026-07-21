@@ -488,16 +488,29 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		s.dispatchResourceGet(conn, cmd)
 
 	case "get_enterprise_policy":
-		// Return the NewConversationDefaults section of the enterprise config so
-		// clients can enforce the locked new-conversation policy without parsing
-		// MDM sources themselves. Returns null when no enterprise config is
-		// loaded or no NewConversationDefaults section is present.
+		// Full enterprise policy passthrough (D-004). The engine is the
+		// single authoritative reader of MDM/system-level config sources
+		// (registry, plist, env, drop-ins); clients receive the merged
+		// EnterpriseConfig here instead of parsing OS-specific sources
+		// themselves. The blob is a DUMB passthrough: client-specific
+		// configuration lives under customFields keyed by convention
+		// (e.g. customFields["ion-desktop"]) and the engine neither
+		// validates nor interprets it — ownership of those keys is the
+		// client's. newConversationDefaults stays duplicated as a
+		// top-level key for consumers built against the original
+		// single-policy response shape (additive evolution: existing
+		// decoders keep working, new consumers read the full policy).
 		var newConversationDefaults interface{}
-		if s.config != nil && s.config.Enterprise != nil && s.config.Enterprise.NewConversationDefaults != nil {
-			newConversationDefaults = s.config.Enterprise.NewConversationDefaults
+		var enterprisePolicy interface{}
+		if s.config != nil && s.config.Enterprise != nil {
+			enterprisePolicy = s.config.Enterprise
+			if s.config.Enterprise.NewConversationDefaults != nil {
+				newConversationDefaults = s.config.Enterprise.NewConversationDefaults
+			}
 		}
 		s.sendResult(conn, cmd, nil, map[string]interface{}{
 			"newConversationDefaults": newConversationDefaults,
+			"policy":                  enterprisePolicy,
 		})
 
 	case "get_plan_content":
