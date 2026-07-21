@@ -5,6 +5,7 @@ import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
 import { anyEngineInstanceHasRunningChildren, getWaitingState } from './TabStripShared'
 import { activeInstance } from '../stores/conversation-instance'
+import { Tooltip } from './git/Tooltip'
 import type { TabState } from '../../shared/types'
 
 // ─── WorkspaceStatusIndicator ───────────────────────────────────────────────
@@ -39,7 +40,28 @@ export function globalRunningTier(tabs: TabState[]): 'running' | 'waiting' | 'id
   return hasWaiting ? 'waiting' : 'idle'
 }
 
-/** Count tabs in each named bucket for the popover breakdown.
+/** Identity of a single tab surfaced as a clickable name in the popover. */
+export interface WorkspaceTabRef {
+  id: string
+  title: string
+}
+
+/** Display name for a tab, mirroring TabStripTabPill's `displayTitle`
+ *  (customTitle wins over title). Kept local so the fold stays pure. */
+function tabDisplayTitle(tab: TabState): string {
+  return tab.customTitle || tab.title
+}
+
+/** Count tabs in each named bucket for the popover breakdown, and collect the
+ *  actual tab identities for the two ACTIVE-WORK buckets only: running/connecting
+ *  (foreground work) and waitingChildren (background agents). Those two lists are
+ *  rendered as clickable names so the user can jump straight to an actively-working
+ *  tab regardless of which group buries it. Idle-ish buckets (question, plan-ready,
+ *  bash, unread, idle, dead) stay count-only — they are plentiful and not "working".
+ *
+ *  Each identity is pushed in the exact same branch that increments its count, so
+ *  the list and the count can never drift.
+ *
  *  Exported for unit testing (pure folding logic). */
 export function computeStatusCounts(tabs: TabState[]): {
   running: number
@@ -51,15 +73,21 @@ export function computeStatusCounts(tabs: TabState[]): {
   unread: number
   idle: number
   dead: number
+  runningTabs: WorkspaceTabRef[]
+  waitingTabs: WorkspaceTabRef[]
 } {
   const conversationPanes = useSessionStore.getState().conversationPanes
-  const c = { running: 0, connecting: 0, waitingChildren: 0, questions: 0, planReady: 0, bash: 0, unread: 0, idle: 0, dead: 0 }
+  const c = {
+    running: 0, connecting: 0, waitingChildren: 0, questions: 0, planReady: 0, bash: 0, unread: 0, idle: 0, dead: 0,
+    runningTabs: [] as WorkspaceTabRef[],
+    waitingTabs: [] as WorkspaceTabRef[],
+  }
   for (const tab of tabs) {
     if (tab.isTerminalOnly) continue
     if (tab.status === 'dead' || tab.status === 'failed') { c.dead++; continue }
-    if (tab.status === 'running') { c.running++; continue }
-    if (tab.status === 'connecting') { c.connecting++; continue }
-    if (anyEngineInstanceHasRunningChildren(tab.id)) { c.waitingChildren++; continue }
+    if (tab.status === 'running') { c.running++; c.runningTabs.push({ id: tab.id, title: tabDisplayTitle(tab) }); continue }
+    if (tab.status === 'connecting') { c.connecting++; c.runningTabs.push({ id: tab.id, title: tabDisplayTitle(tab) }); continue }
+    if (anyEngineInstanceHasRunningChildren(tab.id)) { c.waitingChildren++; c.waitingTabs.push({ id: tab.id, title: tabDisplayTitle(tab) }); continue }
     // Check questions/plan-ready BEFORE bash/unread — matches getTabStatusColor's cascade
     // where plan-ready/question outrank bash/unread.
     const inst = activeInstance(conversationPanes, tab.id)
@@ -90,6 +118,12 @@ export function WorkspaceStatusIndicator() {
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState({ top: 0, left: 0 })
   const dotRef = useRef<HTMLButtonElement>(null)
+  // Ref on the portaled popover so the outside-click handler can exclude it.
+  // The popover renders into PopoverLayer, NOT inside dotRef, so without this a
+  // mousedown on an interactive row (a tab-name button) counts as "outside",
+  // fires setOpen(false), unmounts the button, and the click never completes —
+  // navigation silently no-ops.
+  const popoverRef = useRef<HTMLDivElement>(null)
 
   const dotColor =
     tier === 'running' ? colors.statusRunning :
@@ -110,6 +144,7 @@ export function WorkspaceStatusIndicator() {
     if (!open) return
     const handler = (e: MouseEvent) => {
       if (dotRef.current && dotRef.current.contains(e.target as Node)) return
+      if (popoverRef.current && popoverRef.current.contains(e.target as Node)) return
       setOpen(false)
     }
     document.addEventListener('mousedown', handler)
@@ -118,8 +153,22 @@ export function WorkspaceStatusIndicator() {
 
   const counts = open ? computeStatusCounts(tabs) : null
 
+  // Jump to a tab from the popover, then close it. selectTab is the single
+  // activation path (tab-slice.ts) — same action the tab pills use — so this
+  // navigates correctly no matter which group buries the tab.
+  const handleNavigate = useCallback((tabId: string) => {
+    useSessionStore.getState().selectTab(tabId)
+    setOpen(false)
+  }, [])
+
   const popover = open && counts && popoverLayer && createPortal(
     <div
+      ref={popoverRef}
+      // Marks this portaled popover as interactive UI. Without it, useClickThrough
+      // (elementFromPoint().closest('[data-ion-ui]')) sees no UI under the cursor
+      // and keeps the transparent overlay in OS click-through mode, so clicks on
+      // the tab-name rows pass straight through to whatever app is behind the glass.
+      data-ion-ui
       style={{
         position: 'fixed',
         top: pos.top,
@@ -141,7 +190,16 @@ export function WorkspaceStatusIndicator() {
       </div>
       <WorkspaceCountRow label="Running" count={counts.running} color={colors.statusRunning} colors={colors} />
       <WorkspaceCountRow label="Connecting" count={counts.connecting} color={colors.statusRunning} colors={colors} />
+      {/* Clickable names for actively-working (foreground) tabs — running + connecting.
+          Only these active buckets get name lists; idle buckets stay count-only. */}
+      {counts.runningTabs.map((t) => (
+        <WorkspaceTabRow key={t.id} tab={t} onNavigate={handleNavigate} colors={colors} />
+      ))}
       <WorkspaceCountRow label="Awaiting agents" count={counts.waitingChildren} color={colors.statusWaitingChildren} colors={colors} />
+      {/* Clickable names for tabs awaiting background agents. */}
+      {counts.waitingTabs.map((t) => (
+        <WorkspaceTabRow key={t.id} tab={t} onNavigate={handleNavigate} colors={colors} />
+      ))}
       <WorkspaceCountRow label="Question" count={counts.questions} color={colors.infoText} colors={colors} />
       <WorkspaceCountRow label="Awaiting plan" count={counts.planReady} color={colors.statusComplete} colors={colors} />
       <WorkspaceCountRow label="Bash" count={counts.bash} color={colors.statusBash} colors={colors} />
@@ -209,5 +267,59 @@ function WorkspaceCountRow({ label, count, color, colors }: WorkspaceCountRowPro
       <span style={{ flex: 1 }}>{label}</span>
       <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: colors.textPrimary }}>{count}</span>
     </div>
+  )
+}
+
+// ─── WorkspaceTabRow ──────────────────────────────────────────────────────────
+//
+// A clickable tab name nested under the Running / Awaiting-agents category.
+// Clicking routes through selectTab (via onNavigate) to switch to the tab and
+// close the popover. Indented under the category header; long titles truncate
+// with an ellipsis and a Tooltip carries the full name (native `title` renders
+// behind the Electron overlay — desktop AGENTS.md).
+
+interface WorkspaceTabRowProps {
+  tab: WorkspaceTabRef
+  onNavigate: (tabId: string) => void
+  colors: ReturnType<typeof useColors>
+}
+
+function WorkspaceTabRow({ tab, onNavigate, colors }: WorkspaceTabRowProps) {
+  const [hover, setHover] = useState(false)
+  return (
+    <Tooltip text={tab.title} position="below">
+      <button
+        onClick={() => onNavigate(tab.id)}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          width: '100%',
+          gap: 6,
+          marginLeft: 14,
+          marginBottom: 3,
+          padding: '2px 6px',
+          border: 'none',
+          borderRadius: 4,
+          cursor: 'pointer',
+          background: hover ? colors.surfaceHover : 'transparent',
+          color: hover ? colors.textPrimary : colors.textSecondary,
+          fontSize: 12,
+          textAlign: 'left',
+        }}
+      >
+        <span
+          style={{
+            flex: 1,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {tab.title}
+        </span>
+      </button>
+    </Tooltip>
   )
 }
