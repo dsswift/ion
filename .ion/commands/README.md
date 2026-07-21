@@ -10,7 +10,7 @@ Type `/{filename}` (without `.md` extension) in any Ion session with this repo a
 
 ### `/align`
 
-Context-aware alignment gate. In plan mode (after `/spec`): audits the current plan against Ion's architectural principles, then updates the plan with the alignment amendments. Outside plan mode: reviews all branch changes against Ion quality standards as a pre-PR gate, then enters planning mode and authors a fix plan for the findings. Supports PR mode (`in PR #N`), branch mode (`in branch <name>`), and optional focus narrowing. Never edits source files — the only file it writes is a plan.
+Context-aware alignment gate. In plan mode (after `/spec`): audits the current plan against Ion's architectural principles, then updates the plan with the alignment amendments. Outside plan mode: reviews all branch changes against Ion quality standards as a pre-PR gate, then enters planning mode and authors a fix plan for the findings — and after the operator approves the plan, implements the fixes and commits them (it never squashes, rebases, pushes, or opens/modifies PRs). Supports PR mode (`in PR #N`, or a bare PR reference like `/align 287` — reviews the pull request pending merge and lands fixes on the PR's head branch in a dedicated worktree), branch mode (`in branch <name>`), and optional focus narrowing.
 
 ### `/create-pr`
 

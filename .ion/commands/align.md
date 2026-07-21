@@ -53,26 +53,37 @@ If neither condition applies (no PR/branch target in ARGS, branch is even with `
 
 ---
 
-## Grounding docs (both modes — always read these)
+## Grounding docs (both modes — scope-triggered)
 
-Read every one of these before evaluating anything. Do not operate from memory. Read them every invocation.
+Grounding reads are tiered. Read the mandatory doc every invocation; read each conditional doc **only when its trigger matches the scope of the diff or plan**. Whatever set is triggered must actually be read on this invocation — do not operate from memory, and do not skip a triggered doc because it was read in a previous session.
 
-- `docs/engine-grounding.md` — non-negotiable engine framing.
-- `docs/architecture/adr/001-engine-vs-harness.md` — engine-vs-harness boundary.
-- `docs/architecture/agent-state.md` — snapshot semantics; the exemplar of how event contracts are reasoned about.
-- `docs/architecture/file-organization.md` — cohesion of change, size caps, file-organization rules.
+**Always read:**
+
 - `AGENTS.md` (repo root) — logging policy, commit rules, contract stability, layered architecture, **and § "Engine consumers" — who the engine ships for, and the forbidden review question *"does desktop use this?"***. This section is load-bearing for every engine finding; an audit that re-derives the consumer list from its own prose without anchoring to § "Engine consumers" is malformed.
+
+**Read when the trigger matches:**
+
+- `docs/engine-grounding.md` — when `engine/` is in scope. Non-negotiable engine framing (matches root `AGENTS.md`: "Before any work that touches `engine/`").
+- `docs/architecture/adr/001-engine-vs-harness.md` — when engine or extension surface is touched. Engine-vs-harness boundary.
+- `docs/architecture/agent-state.md` — when events, agent lifecycle, or snapshot semantics are touched. The exemplar of how event contracts are reasoned about.
+- `docs/architecture/file-organization.md` — when code files are added or any touched file is near its size cap. Cohesion of change, size caps, file-organization rules.
+- `docs/architecture/adr/021-atv-shell-mirror-store.md` and `desktop/src/renderer/atv/README.md` — when `desktop/src/renderer/` or store slices are touched. Overlay↔ATV mirror-store parity.
+- `docs/architecture/adr/019-logging-architecture-and-standards.md` and `docs/observability/log-schema.md` — when logging surface is touched (new log statements, logger plumbing, log schema fields).
+- `docs/architecture/adr/008-wire-event-naming-and-ownership.md` — when wire events or protocol members are touched.
+- `docs/architecture/adr/017-opinionless-tool-instructions.md` — when tool instructions or tool definitions are touched.
 
 Then read the per-component `AGENTS.md` for every component in scope:
 - `engine/AGENTS.md` — if engine is touched.
 - `desktop/AGENTS.md` — if desktop is touched.
 - `ios/AGENTS.md` — if iOS is touched.
-- `relay/AGENTS.md` — if relay is touched.
+- (Relay has no per-component `AGENTS.md`; relay changes are governed by the root `AGENTS.md`.)
 
 If a subsystem with its own doc page is in scope:
 - `docs/architecture/hybrid-backend.md` — if provider routing or backend selection is involved.
 - `docs/hooks/reference.md` — if hooks or the extension SDK are involved.
 - `docs/protocol/normalized-events.md` — if events or wire protocol are involved.
+
+**Efficiency guardrail.** The review is thorough where the diff or plan actually goes, and silent everywhere else. Never read a grounding doc whose trigger does not match the scope. Dimension checks that require looking beyond the diff (e.g. verifying a dead-code keep's producer/consumer, or a contract mirror's presence) are **targeted greps for the specific symbol**, never codebase-wide sweeps. The report stays proportional to findings — dimensions with nothing to say emit the single `No findings.` line and nothing more.
 
 ---
 
@@ -172,6 +183,8 @@ Walk the plan and check every proposed change for correct layer assignment (engi
 - User preferences and cross-session memory belong in the harness or client.
 - Hook payloads shaped to a specific renderer's needs ("for the desktop sidebar") must be reshaped to be UI-agnostic.
 - Plan steps that propose conditional branches inside engine packages keyed on consumer identity ("if desktop, do X") are BLOCKER.
+- **Opinionless mechanics:** a planned engine feature that hardcodes an opinion — one fixed behavior with no config field **and** no hook/SDK seam for a consumer to override it — is an incomplete feature (root `AGENTS.md` § "Opinionless mechanics, extensible opinions"). Flag it; the plan must name the seam.
+- **Typed-event corollary:** when the plan has the engine communicate a signal, it emits one typed `NormalizedEvent` variant and stops. Plans that also surface the same signal in stream content (appending to `TaskCompleteEvent.Result`, mutating `TextChunkEvent`, synthetic system messages, log-line-as-source-of-truth) are double-surfacing — flag it.
 
 For every proposed engine touch: write one sentence answering *Why does this need to be in the engine and not the harness or client?*
 
@@ -180,6 +193,8 @@ For every proposed engine touch: write one sentence answering *Why does this nee
 If the plan proposes changes to wire protocol, NormalizedEvent variants, SDK types, or hook payloads:
 - Is it additive (allowed) or does it remove/rename/retype something (forbidden)?
 - Does the plan name the regen step (`cd engine && go test ./internal/types/ -run TestContractManifest -update`) and the cross-language mirror updates (TS in `desktop/src/shared/`, Swift in `ios/IonRemote/Models/`)?
+- Does every proposed new wire member carry the owner prefix from its first commit (`engine_` on the engine socket, `desktop_` on the desktop↔iOS wire — ADR-008)? A plan introducing an unprefixed or cross-prefixed member is BLOCKER.
+- Distinguish the wires: the **engine wire is scrutinized** (breaking changes need explicit operator approval), but the **desktop↔iOS wire is lockstep** — a rename that updates every side in the same PR (`desktop/src/main/remote/protocol.ts`, `RemoteCommand.swift`, `NormalizedEvent.swift` TypeKeys, string-switching handlers) is conforming. Do not flag lockstep-wire renames as published-contract breaks; the only gate is same-PR parity, and the plan must name all sides.
 
 Missing regen step for a contract change = BLOCKER.
 
@@ -189,6 +204,9 @@ A plan that names one half of a cross-platform feature without its counterpart i
 - Shared Go type changes → does the plan name `desktop/src/shared/types-engine.ts`, `contract-sync.test.ts`, and the Swift model?
 - Desktop user-facing change → does the plan acknowledge the iOS counterpart?
 - New SDK hook or type → does the plan name the SDK and hook reference docs?
+- Overlay UI/state change → does the plan address the ATV shell (root `AGENTS.md` § "Cross-client parity (overlay ↔ ATV)", ADR-021)? A shared surface is ONE component mounted in both windows; a plan proposing a bespoke ATV widget for a surface the overlay already has a component for is a finding.
+- New store action → does the plan classify it in `desktop/src/shared/atv-mirror-actions.ts` (FORWARDED vs MIRROR_LOCAL, with justification)? Unclassified actions fail `mirror-parity.test.ts`.
+- New main-process event push → does the plan route it through `broadcast()`? Direct `webContents.send` outside the owner-only allowlist fails `make check-atv-parity`.
 
 List the exact companion file paths the plan should add.
 
@@ -200,18 +218,22 @@ Flag:
 - "Quick fix" or "workaround" language where a proper extension point exists.
 - Conditional branches inside engine packages keyed on consumer identity.
 - TODO/HACK/FIXME/XXX markers as deliverables.
-- Code added to allowlisted god files when a sibling file would be cohesive.
+- Code added to a file allowlisted in `.file-size-allowlist.yml` (or carrying `@file-size-exception`) when a sibling file would be cohesive.
 - Comment-stripping to satisfy file-size caps (comments are load-bearing; splitting is correct).
 - New state bolted into existing types rather than introducing a new typed concept.
+- **Dead-code discipline** (root `AGENTS.md` § "Dead code is not load-bearing until proven otherwise"): a plan step that keeps a no-op / pass-through / vestigial layer on an unverified "some consumer might need it" claim is a finding — a keep is legitimate only with a cited live producer/consumer. Conversely, a plan step that deletes such a layer must show the layer check (wire decoder vs typed case vs handler body) so only genuinely dead layers are removed.
+- **Volatile counts** (root `AGENTS.md` § "Volatile counts"): a plan step that writes a hand-encoded "N of X" count into docs or comments (hook count, provider count, tool count) is a finding — qualitative phrasing or by-name lists instead. Sole exception: the top-level `README.md` header badge.
 
 ### Logging plan
 
-Does the plan pre-commit to instrumentation?
+Does the plan pre-commit to instrumentation and to the "No silent failures" standard (root `AGENTS.md`)?
 - Which operations will log success and failure?
 - Are both sides of new conditionals covered?
-- Engine Go code: `utils.Log`/`utils.Debug`/`utils.Error` — never `log.Printf` or `fmt.Printf`.
+- Engine Go code: `utils.Log`/`utils.Debug`/`utils.Error` — never `log.Printf` or `fmt.Printf`. No bare `_ =` on an error; a genuinely-unactionable discard carries `//nolint:errcheck // <reason>`.
+- Desktop TS: no floating promises, no empty `catch {}`, no swallowed `.catch(() => {})`; a benign swallow carries `// silent-ok: <reason>`. Main process uses `main/logger`; renderer uses `renderer/rendererLogger` (`rInfo`/`rDebug`/`rWarn`/`rError`/`rTrace`) — **no `console.*` in shipped renderer code, no exceptions** (`make check-logging`, ADR-019).
+- Swift: no empty `catch {}`; errors route through `DiagnosticLog.log()`, never `os.Logger`/`print()`.
 
-Silent plan for non-trivial behavior = CONCERN.
+Silent plan for non-trivial behavior = CONCERN. A plan whose failure branches are invisible in logs is planning a defect.
 
 ### Test plan
 
@@ -220,6 +242,9 @@ Does the plan name the specific test files and what they validate?
 - New hook wiring → a test that the hook fires
 - Contract changes → `TestContractManifest -update`
 - Desktop logic → corresponding `*.test.ts`
+- Bug-fix steps → a **regression test that fails on the unfixed code** (red-on-revert). "Add a test" without naming the distinguishing assertion is not a test plan.
+- New behavior → the test must pin the behavior's **value** (the new field's value at the changed path, the serialized wire shape for a cross-boundary field), not merely that plumbing ran. A planned test that only asserts "a payload arrived" is false coverage.
+- Cross-client parity → a field that flows through the snapshot to one client needs a test pinning that it reaches the other, or an explicit documented decision that it does not apply.
 
 Contract change with no test plan = BLOCKER. Behavior change with no test plan = CONCERN.
 
@@ -227,13 +252,17 @@ Contract change with no test plan = BLOCKER. Behavior change with no test plan =
 
 - Are changes cohesive in one folder per feature?
 - Does any planned file approach the hard cap (600 TS / 800 Go / 1500 Go test / 600 Swift)?
-- Is code being added to an allowlisted god file when a sibling file would be correct?
+- Is code being added to a file allowlisted in `.file-size-allowlist.yml` when a sibling file would be correct? (The allowlist file is the source of truth for which files are exempt — do not carry a memorized list.)
 
 ### Necessity and correctness
 
 For each logical change in the plan, answer both:
 1. **Who is the consumer?** Name the canonical consumer audience. For engine changes, the default answer is "external SDK users and third-party harnesses." If the plan's answer is "the in-repo desktop/iOS app" for an *engine* change, that's the smell — see § "Engine consumers" in root `AGENTS.md`.
 2. **Does the change serve that consumer well?** Right layer, right primitive, right place?
+
+**Harness completeness** (root `AGENTS.md` §§ "Harnesses and extensions are in scope" / "Missing engine/SDK capability is fixed at the root"):
+- When the plan's engine/SDK surface exists to serve a **named** in-repo or installed harness (the harness is the reported bug's source or the feature's end-goal consumer), the consuming harness upgrade must be in the same plan. Mechanism-without-consumer is a finding.
+- Inverse: a plan step that has a harness route around a missing engine/SDK primitive (a raw timer standing in for a missing schedule kind, a polling loop standing in for a missing event, a local reimplementation of engine-owned mechanics) is a finding — the root-cause engine/SDK enhancement is the fix, planned alongside the harness consumption.
 
 Where the honest answer is "not really," recommend the smaller, cleaner alternative and propose the specific plan section that should change.
 
@@ -545,6 +574,8 @@ Specifically flag:
 - Engine code that persists user preferences or reads them from disk at runtime.
 - Hardcoded policy decisions (which agent loads, delegation routing, retention rules) inside engine packages.
 - Engine changes that exist only to compensate for a consumer-side gap that could be fixed in the consumer.
+- **Opinionless mechanics:** an engine feature shipped in this diff that hardcodes an opinion — one fixed behavior with no config field **and** no hook/SDK seam for a consumer to override it — is an incomplete feature (root `AGENTS.md` § "Opinionless mechanics, extensible opinions"). Flag it.
+- **Typed-event corollary:** when the engine has signal to communicate, it emits one typed `NormalizedEvent` variant and stops. Double-surfacing the same signal into stream content (appending to `TaskCompleteEvent.Result`, mutating `TextChunkEvent`, synthetic system messages, log-line-as-source-of-truth) forces every consumer through one UI-shaped interpretation — flag it.
 
 For every engine commit: write one sentence answering *Why did this need to be in the engine?* If you cannot answer that from the diff, that is a BLOCKER.
 
@@ -562,6 +593,9 @@ Flag as BLOCKER:
 - Non-additive payload changes on existing hooks.
 - Changes to wire-protocol framing or envelope structure.
 - Changes to **event semantics** even when wire shape is unchanged (snapshot ↔ incremental). Cross-reference `docs/architecture/agent-state.md`.
+- New wire members without the owner prefix (ADR-008): every new member carries its owner's prefix from its first commit — `engine_` on the engine socket, `desktop_` on the desktop↔iOS wire. Unprefixed or cross-prefixed members are BLOCKER.
+
+**Distinguish the wires.** The engine wire is **scrutinized** — breaking it requires explicit operator approval, and the BLOCKER list above applies in full. The desktop↔iOS wire is **lockstep** — all clients live in this repo, and a rename that updates every side in the same PR (`desktop/src/main/remote/protocol.ts`, `RemoteCommand.swift`, `NormalizedEvent.swift` TypeKey raw values, every handler that switches on the string) is conforming. Do not flag a lockstep-wire rename as a published-contract break; the only finding available there is a **parity gap** (a side not updated in the same PR).
 
 If `engine/internal/types/` changed: was `contracts.json` regenerated in the same commit? If not, BLOCKER: `cd engine && go test ./internal/types/ -run TestContractManifest -update`.
 
@@ -572,6 +606,9 @@ Flag every half-shipped feature:
 - Desktop user-facing setting changed → iOS counterpart considered (Remote settings tab, main-process write helper, broadcast path, sync snapshot)?
 - New SDK hook or type → SDK docs (`docs/extensions/sdk-typescript.md`, `sdk-go.md`, `sdk-raw.md`) and hook reference (`docs/hooks/reference.md`) updated?
 - New normalized event variant or field → protocol docs (`docs/protocol/normalized-events.md` and/or `docs/protocol/server-events.md`) updated?
+- Overlay UI/state change → ATV shell counterpart present (root `AGENTS.md` § "Cross-client parity (overlay ↔ ATV)", ADR-021)? A shared surface is ONE component mounted in both windows; a bespoke ATV widget for a surface the overlay already has a component for is a finding.
+- New store action → classified in `desktop/src/shared/atv-mirror-actions.ts` (FORWARDED vs MIRROR_LOCAL, with justification)? Unclassified actions fail `mirror-parity.test.ts`.
+- New main-process event push → routed through `broadcast()`? Direct `webContents.send` outside the owner-only allowlist fails `make check-atv-parity`.
 
 Name the exact missing file paths.
 
@@ -588,23 +625,27 @@ Flag:
 - Consumer-specific conditionals inside engine packages.
 - `TODO`, `HACK`, `FIXME`, or `XXX` comments added in this diff (quote each with file and line).
 - Copy-pasted blocks that should be extracted into a helper.
-- Code added to allowlisted god files (`engine/internal/session/manager.go`, `engine/internal/extension/host.go`).
+- Code added to files allowlisted in `.file-size-allowlist.yml` (or carrying `@file-size-exception` on line 1). The allowlist file is the source of truth for which files are exempt — do not carry a memorized list.
 - Comment-stripping or whitespace-collapsing edits done to satisfy file-size caps. Per root `AGENTS.md`: comments are load-bearing; splitting is the answer, not stripping.
+- **Dead-code discipline** (root `AGENTS.md` § "Dead code is not load-bearing until proven otherwise"): a no-op / pass-through / vestigial layer kept in this diff on an unverified "some consumer might need it" claim is a finding — a keep is legitimate only with a cited live producer/consumer (verify with a targeted grep for the specific symbol, not a sweep). Conversely, a deletion of such a layer must show the layer check (wire decoder vs typed case vs handler body) so the genuinely load-bearing layer survives.
+- **Volatile counts** (root `AGENTS.md` § "Volatile counts"): a hand-encoded "N of X" count added to docs or comments in this diff (hook count, provider count, tool count, event-variant count) is a finding — qualitative phrasing or by-name lists instead. Sole exception: the top-level `README.md` header badge.
 
 ### Logging discipline
 
-Per the logging-policy section of root `AGENTS.md`:
+Per the logging-policy and "No silent failures" sections of root `AGENTS.md`:
 - New operations must log success and failure with context.
 - New `if/else` branches must log which branch ran and why. Both sides.
-- Engine Go code: `utils.Log`/`utils.Debug`/`utils.Error` — never `log.Printf`, `fmt.Printf`, or `fmt.Println` for operational logging.
-- Desktop main-process code: `log()` helper from `../logger`. Renderer hot paths are excepted.
+- **A failure invisible in the logs is a defect, regardless of whether it is otherwise handled.** Every failure branch is either acted-on-and-logged, or explicitly declared benign with a stated reason. Silence is never the third option.
+- Engine Go code: `utils.Log`/`utils.Debug`/`utils.Error` — never `log.Printf`, `fmt.Printf`, or `fmt.Println` for operational logging. No bare `_ =` on an error; a genuinely-unactionable discard carries `//nolint:errcheck // <reason>`.
+- Desktop TS: no floating promises, no empty `catch {}`, no swallowed `.catch(() => {})`; a benign swallow carries `// silent-ok: <reason>`. Main process uses the `log()` helper from `main/logger`; renderer uses `renderer/rendererLogger` (`rInfo`/`rDebug`/`rWarn`/`rError`/`rTrace`) — **no `console.*` in shipped renderer code, no exceptions** (`make check-logging` enforces ADR-019 with zero tolerance).
+- Swift: no empty `catch {}`, no `try?` discarding an error that matters; errors route through `DiagnosticLog.log()`, never `os.Logger`/`print()` (those never reach the operator's log file).
 - When the diff touches under-instrumented code, the "first, add comprehensive logging" rule applies.
 
 ### File size and organization
 
 Read `docs/architecture/file-organization.md` and `.file-size-allowlist.yml`. Walk the diff:
 - Note the new line count for each changed file. Flag files approaching the hard cap (600 TS / 800 Go / 1500 Go test / 600 Swift) as CONCERN; exceeding the hard cap as BLOCKER (unless allowlisted or carrying `@file-size-exception` on line 1).
-- Flag new code added to allowlisted god files.
+- Flag new code added to files on the allowlist (the allowlist file is the source of truth; do not carry a memorized list).
 - Flag features whose changes are spread across many folders (violating cohesion-of-change).
 
 ### Tests
@@ -614,16 +655,28 @@ For every engine behavior change: corresponding `*_test.go` or integration test?
 - New hook wiring: test that the hook fires?
 - Contract changes: `TestContractManifest` rerun?
 - Desktop logic changes: corresponding `*.test.ts` updated?
+- Bug fix: is there a **regression test that fails on the unfixed code** (red-on-revert)? A test that passes with the fix reverted does not pin the fix — flag it.
+- New behavior: does the test pin the behavior's **value** (the new field's value at the changed path, the serialized wire shape for a cross-boundary field), not merely that plumbing ran? A test asserting only "a payload arrived" is false coverage — flag it.
+- Cross-client parity: a field flowing through the snapshot to one client and silently not the other is a testable defect — expect a pinning test or an explicit documented decision that it does not apply.
 
 ### Commit message quality
 
 Walk every commit on the branch and check each commit *message* is well-formed:
 - Conventional Commits with required scope: `type(scope): subject`
 - Allowed types: `feat`, `fix`, `chore`, `docs`, `feat!`
-- Allowed scopes: `engine`, `desktop`, `relay`, `ios`, `docs`, `repo`
+- Allowed scopes (per `commitlint.config.js`): `engine`, `desktop`, `relay`, `ios`, `docs`, `repo`, `ci`, `deps`
+- Subject ≤ 65 chars (self-imposed target; commitlint's enforced `header-max-length` is 100), lowercase, imperative, no period. Body lines wrap ≤ 100 chars (commitlint enforces this).
 - Issue association (when working from an issue): subject must end with ` (#N)` AND body must include `Fixes #N` or `Closes #N` trailer. Both are required.
 
 **Out of scope for `/align`:** commit *partitioning* and *squash shape* — one-scope-per-commit, the Release-Damnit version-detection seams, whether commits should be re-cut or split. That is owned by `/squash` (see `squash.md` § "Scope enforcement"). Do not flag cross-commit bundling here, and do not propose re-cutting, splitting, squashing, or rebasing commits in any finding, recommendation, or plan step. Align reviews whether each commit *message* is correct, not how the commits are partitioned.
+
+### Harness completeness
+
+Per root `AGENTS.md` §§ "Harnesses and extensions are in scope" and "Missing engine/SDK capability is fixed at the root":
+
+- When the diff's engine/SDK surface exists to serve a **named** in-repo or installed harness (the harness was the reported bug's source, or is the feature's end-goal consumer), the consuming harness upgrade must be in the same body of work — committed at its own scope seam, in its own working tree if the harness lives outside this repo. Mechanism shipped without wiring the named consumer is a finding: the reported bug stays unfixed in practice and the new capability stays unexercised.
+- Inverse: a harness-local workaround in the diff that routes around a missing engine/SDK primitive (a raw timer standing in for a missing schedule kind, a polling loop standing in for a missing event, a local reimplementation of mechanics the engine should own) is a finding — the root-cause engine/SDK enhancement is the fix, with the harness consuming it.
+- This dimension fires only when a specific harness is named as source or end-goal consumer. It does **not** resurrect the forbidden in-repo-caller question for generic engine surface — new engine surface with no consumer at all remains the expected default (§ "Engine consumers").
 
 ### Necessity and correctness
 
@@ -865,7 +918,7 @@ This step runs **only after the operator approves the fix plan** authored in B-S
 When the operator approves:
 
 1. **Implement every plan step.** Edit source to resolve each finding exactly as the plan specifies — code change, contract change, code deletion, or a test that pins behavior. Honor the "Plan resolution rules — no document-instead-of-fix moves" section: no TODO/FIXME/HACK/XXX markers, no "open a follow-up issue", no narrative-scope comments standing in for a fix.
-2. **Run the scoped quality gates for what you touched** (root `AGENTS.md` § "Quality gates (run while developing)"): scoped Go tests + `golangci-lint` for touched engine packages, `npm run typecheck` + scoped `npm test` for touched desktop areas, `make check-file-sizes`, and `make check-contracts` when a shared type changed. Do **not** run the heavy PR-time gates (`make test-linux`, full `go test -race ./...`, `govulncheck`, full `npm test`, `make ios-check`) — those are the operator's `/create-pr` gate.
+2. **Run the scoped quality gates for what you touched** (root `AGENTS.md` § "Quality gates (run while developing)"): scoped Go tests + `golangci-lint` for touched engine packages, `npm run typecheck` + scoped `npm test` for touched desktop areas, `make check-file-sizes`, `make check-contracts` when a shared type changed, `make check-logging` when logging-adjacent code changed, `make check-atv-parity` when main-process event pushes or the ATV shell changed, and `make check-status-writers` when `engine_status` / `engine_session_status` emitters changed. Do **not** run the heavy PR-time gates (`make test-linux`, full `go test -race ./...`, `govulncheck`, full `npm test`, `make ios-check`) — those are the operator's `/create-pr` gate.
 3. **For a bug-fix finding, confirm the test fails on the unfixed code** before claiming it pins the fix (revert the fix mentally or temporarily, watch the test go red). A test that passes with the fix reverted does not pin the fix.
 4. **Commit the completed work** with conventional, correctly-scoped commits (root `AGENTS.md` § "Commits"): `type(scope): subject`, scope matching the primary path, subject ≤ 65 chars, body wrapped ≤ 100 chars (commitlint enforces this), and the issue trailer (`Fixes #N` / `Closes #N` + ` (#N)` subject suffix) when the work came from an issue. Split into separate commits at clean scope seams when the fixes span scopes (e.g. one `chore(engine)`, one `chore(desktop)`, one `docs(repo)`).
 5. **Never** squash, rebase, amend across the operator's prior commits, force-push, push, or open/modify a PR. Commit only. The operator runs `/squash` and `/create-pr` when ready.
