@@ -235,6 +235,10 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
     'probedAt',
     'version',
   ],
+  // Enterprise session/agent caps (D-007). Mirrors Go's ResourceLimits in
+  // internal/types/config_resource_limits.go; carried inside the
+  // get_enterprise_policy response blob.
+  ResourceLimits: ['maxAgentsPerSession', 'maxSessions'],
   // Payload of engine_provider_login (EngineEvent.providerLogin). Mirrors Go's
   // ProviderLoginUpdate.
   ProviderLoginUpdate: [

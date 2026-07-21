@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 import type { TabGroup } from '../shared/types'
-import { applyTheme, syncTokensToCss, darkColors, lightColors, getTheme, resolveColors, type ColorPalette } from './theme-tokens'
+import { applyTheme, getTheme, resolveColors, type ColorPalette } from './theme-tokens'
 import type { PreferencesState } from './preferences-types'
-import { saveSettings, getAllSettings, INITIAL_SAVED, loadPersistedSettings } from './preferences-persist'
+import { saveSettings, getAllSettings, INITIAL_SAVED } from './preferences-persist'
+import { bootstrapPreferences } from './preferences-bootstrap'
 import { parseChord } from './shortcuts/chord'
 import { SHORTCUT_CATALOG } from './shortcuts/shortcut-catalog'
 import { rWarn } from './rendererLogger'
@@ -80,6 +81,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   defaultEngineProfileId: saved.defaultEngineProfileId,
   // Enterprise policy: starts null, loaded from engine at startup.
   enterpriseNewConversationDefaults: null,
+  enterprisePolicy: null,
   defaultTallConversation: saved.defaultTallConversation,
   defaultTallTerminal: saved.defaultTallTerminal,
   tabRecoveryEnabled: saved.tabRecoveryEnabled,
@@ -465,6 +467,11 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     // Not persisted: enterprise policy is always fetched from the engine.
     set({ enterpriseNewConversationDefaults: policy })
   },
+  setEnterprisePolicy: (policy) => {
+    // Not persisted: the full enterprise blob (D-004) is always fetched from
+    // the engine — a runtime constraint, never a user setting.
+    set({ enterprisePolicy: policy })
+  },
   addEngineProfile: (profile) => {
     set({ engineProfiles: [...get().engineProfiles, profile] })
     saveSettings(getAllSettings(get))
@@ -549,40 +556,10 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
 }))
 
-// Initialize CSS vars with saved theme
-if (getTheme(_savedThemeId).forcedColorScheme) {
-  syncTokensToCss(getTheme(_savedThemeId).colors)
-  document.documentElement.classList.add('dark')
-  document.documentElement.classList.remove('light')
-} else {
-  syncTokensToCss(saved.themeMode === 'light' ? lightColors : darkColors)
-}
-
-// Load persisted settings from disk (async, fires once on startup)
-loadPersistedSettings(
-  (patch) => usePreferencesStore.setState(patch),
-  () => usePreferencesStore.getState(),
-  applyTheme,
-)
-
-// Load enterprise policy from engine at startup (async, not persisted).
-// Errors are non-fatal: the app runs without enterprise constraints.
-window.ion?.getEnterprisePolicy?.()?.then?.((policy) => {
-  usePreferencesStore.getState().setEnterpriseNewConversationDefaults(policy)
-})?.catch?.(() => {
-  // Engine not yet ready or no enterprise config — leave null.
-})
-
-// Listen for settings changes pushed from the main process (e.g. iOS
-// `set_desktop_setting` writes). Without this, iOS-originated changes
-// only land on disk — the renderer Zustand store keeps the stale
-// in-memory value until the next restart.
-window.ion?.on?.('ion:settings-changed', (_e: unknown, key: string, value: unknown) => {
-  const current = usePreferencesStore.getState()
-  if (key in current && (current as unknown as Record<string, unknown>)[key] !== value) {
-    usePreferencesStore.setState({ [key]: value })
-  }
-})
+// Startup side effects (theme CSS seed, persisted-settings hydration,
+// enterprise policy fetches, main-process settings-push listener) live in
+// preferences-bootstrap.ts — extracted at the 600-line cap split.
+bootstrapPreferences(usePreferencesStore, _savedThemeId)
 
 /** Reactive hook — returns the active color palette */
 export function useColors(): ColorPalette {

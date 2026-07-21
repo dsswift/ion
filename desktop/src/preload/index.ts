@@ -31,6 +31,7 @@ const api: IonAPI = {
     ipcRenderer.invoke(IPC.LIST_ENGINE_DIRECTORY, path, showHidden),
   engineIsRemote: () => ipcRenderer.invoke(IPC.ENGINE_IS_REMOTE),
   getEnterprisePolicy: () => ipcRenderer.invoke(IPC.GET_ENTERPRISE_POLICY),
+  getEnterprisePolicyFull: () => ipcRenderer.invoke(IPC.GET_ENTERPRISE_POLICY_FULL),
   openExternal: (url) => ipcRenderer.invoke(IPC.OPEN_EXTERNAL, url),
   attachFiles: () => ipcRenderer.invoke(IPC.ATTACH_FILES),
   attachFileByPath: (path) => ipcRenderer.invoke(IPC.ATTACH_FILE_BY_PATH, path),

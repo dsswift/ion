@@ -109,6 +109,7 @@ export const IPC = {
 
   // Enterprise policy
   GET_ENTERPRISE_POLICY: 'ion:get-enterprise-policy',
+  GET_ENTERPRISE_POLICY_FULL: 'ion:get-enterprise-policy-full',
 
   // Git operations
   GIT_GRAPH: 'ion:git-graph',

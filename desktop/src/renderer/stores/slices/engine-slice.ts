@@ -115,10 +115,20 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
       window.ion.engineStart(key, startOpts).then((result) => {
         if (result && !result.ok) {
           rError('engine.session', 'failed to start session', { error: result.error })
+          // D-007: the engine rejects session creation past the enterprise
+          // maxSessions ceiling with a stable "session limit reached" prefix.
+          // Surface that as actionable guidance, not a generic extension error.
+          const isSessionLimit = typeof result.error === 'string' && result.error.includes('session limit reached')
+          const notifText = isSessionLimit
+            ? 'Maximum sessions reached. Close a tab to open a new one.'
+            : `Extension error: ${result.error}`
+          const msgText = isSessionLimit
+            ? 'Maximum sessions reached. Close a tab to open a new one.'
+            : `Failed to start engine: ${result.error}`
           set((state) => {
             const notifications = new Map(state.engineNotifications)
             const keyNotifs = [...(notifications.get(key) || [])]
-            keyNotifs.push({ id: nextMsgId(), message: `Extension error: ${result.error}`, level: 'error', timestamp: Date.now() })
+            keyNotifs.push({ id: nextMsgId(), message: notifText, level: 'error', timestamp: Date.now() })
             notifications.set(key, keyNotifs)
             const conversationPanes = new Map(state.conversationPanes)
             const paneInner = conversationPanes.get(tabId)
@@ -126,7 +136,7 @@ export function createEngineSlice(set: StoreSet, get: StoreGet): Partial<State> 
               const idx = paneInner.instances.findIndex((i) => i.id === 'main')
               if (idx !== -1) {
                 const instances = paneInner.instances.slice()
-                const msgs = [...(instances[idx].messages || []), { id: nextMsgId(), role: 'system' as const, content: `Failed to start engine: ${result.error}`, timestamp: Date.now() }]
+                const msgs = [...(instances[idx].messages || []), { id: nextMsgId(), role: 'system' as const, content: msgText, timestamp: Date.now() }]
                 instances[idx] = { ...instances[idx], messages: msgs }
                 conversationPanes.set(tabId, { ...paneInner, instances })
               }

@@ -4,7 +4,8 @@ import { createPortal } from 'react-dom'
 import { CaretDown } from '@phosphor-icons/react'
 import { useShallow } from 'zustand/shallow'
 import { useSessionStore } from '../stores/sessionStore'
-import { AVAILABLE_MODELS, getModelDisplayLabel } from '../stores/model-labels'
+import { getModelDisplayLabel } from '../stores/model-labels'
+import { useAllowedModels } from '../stores/use-allowed-models'
 import { useModelStore } from '../stores/model-store'
 import { ModelPickerPopover } from './ModelPickerPopover'
 import { usePopoverLayer } from './PopoverLayer'
@@ -39,6 +40,9 @@ import { tabHasExtensions } from '../../shared/tab-predicates'
 export function ModelPicker() {
   const preferredModel = usePreferencesStore((s) => s.preferredModel)
   const engineDefaultModel = usePreferencesStore((s) => s.engineDefaultModel)
+  // Enterprise-filtered model list (D-011). Full AVAILABLE_MODELS when no
+  // enterprise policy is active; only permitted models when it is.
+  const allowedModels = useAllowedModels()
   const tab = useSessionStore(
     useShallow((s) => {
       const t = s.tabs.find((t) => t.id === s.activeTabId)
@@ -123,10 +127,11 @@ export function ModelPicker() {
   // harness-governed conversation folds in `engineDefaultModel` as a sensible
   // default before falling back to the global `preferredModel` — that fold is
   // the only place `harnessGoverned` (data) participates, not a read fork.
+  const fallbackModel = allowedModels[0] ?? { id: '', label: '' }
   const effectiveModel = tab?.modelOverride
     || (harnessGoverned ? engineDefaultModel : '')
     || preferredModel
-    || AVAILABLE_MODELS[0].id
+    || fallbackModel.id
 
   const activeLabel = (() => {
     if (tab?.modelOverride) return getModelDisplayLabel(tab.modelOverride)
@@ -137,7 +142,7 @@ export function ModelPicker() {
     // are simply absent for an ungoverned plain tab that hasn't run yet.
     if (engineStatus?.model) return getModelDisplayLabel(engineStatus.model)
     if (tab?.sessionModel) return getModelDisplayLabel(tab.sessionModel)
-    return AVAILABLE_MODELS[0].label
+    return fallbackModel.label
   })()
 
   // Show the (actualLabel) parenthetical when the engine reports it is actually
@@ -155,6 +160,22 @@ export function ModelPicker() {
     if (activeTabId) {
       setTabModel(activeTabId, modelId)
     }
+  }
+
+  // D-011: when enterprise policy narrows the list to a single model there is
+  // nothing to pick — render the model name as a static label instead of a
+  // dropdown. (Without a policy the list is the full AVAILABLE_MODELS, so
+  // this branch only fires under an active single-model enterprise policy.)
+  if (allowedModels.length === 1) {
+    return (
+      <span
+        className="flex items-center gap-0.5 text-[10px] rounded-full px-1.5 py-0.5"
+        style={{ color: colors.textTertiary }}
+        title="Model is set by your organization"
+      >
+        {getModelDisplayLabel(allowedModels[0].id)}
+      </span>
+    )
   }
 
   return (

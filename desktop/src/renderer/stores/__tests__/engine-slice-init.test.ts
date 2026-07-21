@@ -239,3 +239,40 @@ describe('engine-slice — single-instance guard (#256 phase 1)', () => {
     expect((slice as any).reorderEngineInstances).toBeUndefined()
   })
 })
+
+describe('engine-slice — session-limit rejection surfaces actionable message (D-007)', () => {
+  it('shows "Maximum sessions reached" guidance when the engine rejects with the session-limit error', async () => {
+    const { state, slice } = buildHarness()
+    const startMock = (globalThis as any).window.ion.engineStart as ReturnType<typeof vi.fn>
+    startMock.mockClear()
+    startMock.mockResolvedValueOnce({
+      ok: false,
+      error: 'session limit reached: enterprise policy allows a maximum of 3 concurrent sessions',
+    })
+
+    slice.addEngineInstance!('tab1')
+    // Let the engineStart promise chain settle.
+    await new Promise((r) => setTimeout(r, 0))
+
+    const notifs = state.engineNotifications.get('tab1') ?? []
+    expect(notifs.some((n: any) => n.message === 'Maximum sessions reached. Close a tab to open a new one.')).toBe(true)
+    // The generic "Extension error" framing must NOT be used for this case.
+    expect(notifs.some((n: any) => String(n.message).startsWith('Extension error'))).toBe(false)
+
+    const inst = getInstance(state, 'tab1', 'main')
+    expect(inst?.messages.some((m: any) => m.content === 'Maximum sessions reached. Close a tab to open a new one.')).toBe(true)
+  })
+
+  it('keeps the generic error framing for non-limit failures', async () => {
+    const { state, slice } = buildHarness()
+    const startMock = (globalThis as any).window.ion.engineStart as ReturnType<typeof vi.fn>
+    startMock.mockClear()
+    startMock.mockResolvedValueOnce({ ok: false, error: 'extension load failed: boom' })
+
+    slice.addEngineInstance!('tab2')
+    await new Promise((r) => setTimeout(r, 0))
+
+    const notifs = state.engineNotifications.get('tab2') ?? []
+    expect(notifs.some((n: any) => String(n.message).startsWith('Extension error'))).toBe(true)
+  })
+})

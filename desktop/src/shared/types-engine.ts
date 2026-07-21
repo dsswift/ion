@@ -509,3 +509,54 @@ export interface ModelBreakdown {
    */
   isSelf?: boolean
 }
+
+/**
+ * Enterprise resource limits (D-007). Mirrors Go's ResourceLimits in
+ * internal/types/config_resource_limits.go. Absent fields mean unlimited.
+ */
+export interface ResourceLimits {
+  /** Maximum concurrent engine sessions. Absent = unlimited. */
+  maxSessions?: number
+  /** Maximum concurrently-running dispatched agents per session. Absent = unlimited. */
+  maxAgentsPerSession?: number
+}
+
+/**
+ * The full enterprise policy blob from the engine's get_enterprise_policy RPC
+ * (D-004 passthrough). Mirrors Go's EnterpriseConfig in internal/types/config.go.
+ * Only the fields the desktop consumes are typed here; the blob may carry
+ * more (the engine passes its entire enterprise config through). This is a
+ * read-only runtime constraint — never persisted to user settings, never
+ * user-editable.
+ */
+export interface EnterprisePolicy {
+  /** Models the enterprise permits. Empty/absent = no restriction. */
+  allowedModels?: string[]
+  /** Models the enterprise blocks. */
+  blockedModels?: string[]
+  /** Session/agent concurrency caps (sealed ceiling, enforced engine-side). */
+  resourceLimits?: ResourceLimits
+  /**
+   * TTL in days for locally persisted conversations (D-018). The desktop's
+   * cleanup job deletes conversations older than this. Absent = no retention
+   * policy (conversations kept indefinitely).
+   */
+  conversationRetentionDays?: number
+  /**
+   * Opaque client-config namespace. Desktop-specific constraints live under
+   * customFields['ion-desktop'] by convention; the engine passes this
+   * through without validating or interpreting it.
+   */
+  customFields?: Record<string, unknown>
+}
+
+/**
+ * Desktop-specific enterprise constraints carried under
+ * customFields['ion-desktop'] in the enterprise policy blob. Schema is owned
+ * by the desktop (the engine treats it as opaque). All fields optional —
+ * absent means unconstrained.
+ */
+export interface IonDesktopPolicyFields {
+  /** When true, the auto-updater is fully disabled (enterprise-pinned version; D-012). */
+  disableAutoUpdate?: boolean
+}

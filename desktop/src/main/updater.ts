@@ -27,7 +27,24 @@ const updaterLogger = {
 
 let intervalId: ReturnType<typeof setInterval> | undefined;
 
-export function initAutoUpdater(): void {
+/** Options for initAutoUpdater. */
+export interface AutoUpdaterOptions {
+  /**
+   * When true, the auto-updater is fully disabled: no check, no download,
+   * no install-on-quit (D-012). Set from the enterprise policy blob
+   * (customFields['ion-desktop'].disableAutoUpdate) on managed installs
+   * where MDM owns the version lifecycle — the application must not fight
+   * the pinned version. Default false preserves open-source behavior.
+   */
+  disableAutoUpdate?: boolean;
+}
+
+export function initAutoUpdater(options: AutoUpdaterOptions = {}): void {
+  if (options.disableAutoUpdate) {
+    info(tag, "skipping — auto-update disabled by enterprise policy");
+    return;
+  }
+
   if (!app.isPackaged) {
     info(tag, "skipping — not packaged");
     return;

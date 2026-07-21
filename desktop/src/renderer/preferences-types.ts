@@ -1,4 +1,5 @@
 import type { GitOpsMode, WorktreeCompletionStrategy, TabGroupMode, TabGroup, QuickTool, RemotePairedDevice, EngineProfile, NewConversationDefaultsPolicy } from '../shared/types'
+import type { EnterprisePolicy } from '../shared/types-engine'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
 
@@ -151,6 +152,14 @@ export interface PreferencesState {
    * Not persisted to disk — always loaded fresh from the engine.
    */
   enterpriseNewConversationDefaults: NewConversationDefaultsPolicy | null
+  /**
+   * Full enterprise policy blob (D-004) fetched from the engine at startup.
+   * null means no enterprise config is active. Read-only runtime constraint:
+   * not persisted to disk, not user-editable, refreshed only by re-fetch.
+   * Consumed by the model picker (allowedModels filtering, D-011) and any
+   * other renderer surface that honors enterprise constraints.
+   */
+  enterprisePolicy: EnterprisePolicy | null
   /** Default tall mode. One flag for every conversation tab (the engine-
    *  specific default was collapsed away), plus a terminal-specific flag. */
   defaultTallConversation: boolean
@@ -295,6 +304,7 @@ export interface PreferencesState {
   setDefaultEngineProfileId: (profileId: string) => void
   /** Load the enterprise new-tab policy from the engine and store it. Not persisted. */
   setEnterpriseNewConversationDefaults: (policy: NewConversationDefaultsPolicy | null) => void
+  setEnterprisePolicy: (policy: EnterprisePolicy | null) => void
   addEngineProfile: (profile: EngineProfile) => void
   updateEngineProfile: (id: string, updates: Partial<EngineProfile>) => void
   removeEngineProfile: (id: string) => void

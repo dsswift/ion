@@ -5,7 +5,7 @@ import { join } from 'path'
 
 vi.mock('electron', () => ({ app: { getPath: vi.fn() }, ipcMain: { on: vi.fn(), handle: vi.fn() } }))
 
-import { collectProtectedIds } from '../conversation-cleanup'
+import { collectProtectedIds, resolveCleanupMode } from '../conversation-cleanup'
 
 let dir: string
 
@@ -209,5 +209,32 @@ describe('collectProtectedIds', () => {
     })
 
     expect(new Set(result.ids)).toEqual(new Set(['valid', 'ok', 'inst-ok', 'real-conv']))
+  })
+})
+
+describe('resolveCleanupMode (D-018 retention policy)', () => {
+  it('defaults to dry-run with the 14-day window when no retention policy is set', () => {
+    expect(resolveCleanupMode(undefined)).toEqual({ dryRun: true, maxAgeDays: 14 })
+  })
+
+  it('performs live deletion against the policy TTL when retention is declared', () => {
+    expect(resolveCleanupMode(90)).toEqual({ dryRun: false, maxAgeDays: 90 })
+  })
+
+  it('floors a fractional TTL', () => {
+    expect(resolveCleanupMode(30.9)).toEqual({ dryRun: false, maxAgeDays: 30 })
+  })
+
+  it('treats zero as no policy (dry-run)', () => {
+    expect(resolveCleanupMode(0)).toEqual({ dryRun: true, maxAgeDays: 14 })
+  })
+
+  it('treats a negative TTL as no policy (dry-run)', () => {
+    expect(resolveCleanupMode(-5)).toEqual({ dryRun: true, maxAgeDays: 14 })
+  })
+
+  it('treats a non-finite TTL as no policy (dry-run)', () => {
+    expect(resolveCleanupMode(Number.NaN)).toEqual({ dryRun: true, maxAgeDays: 14 })
+    expect(resolveCleanupMode(Number.POSITIVE_INFINITY)).toEqual({ dryRun: true, maxAgeDays: 14 })
   })
 })

@@ -7,7 +7,8 @@ import { SettingToggle } from './SettingToggle'
 import { EngineCategory } from './EngineCategory'
 import { ProvidersCategory } from './ProvidersCategory'
 import { BashAllowlistEditor } from './BashAllowlistEditor'
-import { AVAILABLE_MODELS, getModelDisplayLabel } from '../../stores/model-labels'
+import { getModelDisplayLabel } from '../../stores/model-labels'
+import { useAllowedModels } from '../../stores/use-allowed-models'
 import { useModelStore } from '../../stores/model-store'
 import { getProviderDisplayName } from '../../../shared/types-models'
 import { rWarn } from '../../rendererLogger'
@@ -53,6 +54,13 @@ export function AIModelsCategory() {
   const dynamicModels = useModelStore((s) => s.models)
   const providers = useModelStore((s) => s.providers)
   const hasModels = dynamicModels.length > 0
+  // Enterprise-filtered fallback list (D-011): the segmented pickers below
+  // use this instead of the full AVAILABLE_MODELS when the dynamic model
+  // list hasn't loaded. Full list when no enterprise policy is active.
+  const availableModels = useAllowedModels()
+  // Enterprise model allowlist applied to the dynamic (provider-reported)
+  // models too, so both render paths honor the policy.
+  const enterpriseAllowedModels = usePreferencesStore((s) => s.enterprisePolicy?.allowedModels)
 
   useEffect(() => {
     if (!hasModels) void fetchModels().catch((err) => rWarn('settings', 'fetch models failed', { error: String(err) }))
@@ -64,15 +72,19 @@ export function AIModelsCategory() {
 
   const grouped = useMemo(() => {
     if (!hasModels) return null
+    const allowed = enterpriseAllowedModels && enterpriseAllowedModels.length > 0
+      ? new Set(enterpriseAllowedModels)
+      : null
     const map = new Map<string, typeof dynamicModels>()
     for (const m of dynamicModels) {
       if (!authedProviderIds.has(m.providerId)) continue
+      if (allowed && !allowed.has(m.id)) continue
       const list = map.get(m.providerId) || []
       list.push(m)
       map.set(m.providerId, list)
     }
     return map
-  }, [dynamicModels, hasModels, authedProviderIds])
+  }, [dynamicModels, hasModels, authedProviderIds, enterpriseAllowedModels])
 
   const selectStyle: React.CSSProperties = {
     width: '100%',
@@ -130,7 +142,7 @@ export function AIModelsCategory() {
           </select>
         ) : (
           <div style={segmentContainer}>
-            {AVAILABLE_MODELS.map((m) => (
+            {availableModels.map((m) => (
               <button
                 key={m.id}
                 onClick={() => setPreferredModel(m.id)}
@@ -170,7 +182,7 @@ export function AIModelsCategory() {
             >
               Default
             </button>
-            {AVAILABLE_MODELS.map((m) => (
+            {availableModels.map((m) => (
               <button
                 key={m.id}
                 onClick={() => setEngineDefaultModel(m.id)}
@@ -237,7 +249,7 @@ export function AIModelsCategory() {
                 >
                   Default
                 </button>
-                {AVAILABLE_MODELS.map((m) => (
+                {availableModels.map((m) => (
                   <button
                     key={m.id}
                     onClick={() => setPlanModeModel(m.id)}
@@ -277,7 +289,7 @@ export function AIModelsCategory() {
                 >
                   Default
                 </button>
-                {AVAILABLE_MODELS.map((m) => (
+                {availableModels.map((m) => (
                   <button
                     key={m.id}
                     onClick={() => setImplementModeModel(m.id)}
