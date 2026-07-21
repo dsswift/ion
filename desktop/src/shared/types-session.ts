@@ -566,13 +566,14 @@ export interface SessionLoadMessage {
   /**
    * Marker payload fields (additive, omitempty on the wire). Set only when
    * `role === 'system'` and this row is a persisted marker entry (compaction,
-   * plan, steer) the engine's `flattenEntries` replays on historical reload.
-   * The engine emits structured data, not display strings; the desktop formats
-   * the divider content from these fields using its existing formatters (see
-   * shared/session-message-mapper.ts). `markerKind` discriminates the family.
-   * Mirror of `types.SessionMessage.Marker*` in engine/internal/types/types.go.
+   * plan, steer, clear) the engine's `flattenEntries` replays on historical
+   * reload. The engine emits structured data, not display strings; the desktop
+   * formats the divider content from these fields using its existing formatters
+   * (see shared/session-message-mapper.ts). `markerKind` discriminates the
+   * family. Mirror of `types.SessionMessage.Marker*` in
+   * engine/internal/types/types.go.
    */
-  markerKind?: string
+  markerKind?: string // "compaction" | "plan" | "steer" | "clear"
   /** Compaction marker fields (markerKind === 'compaction'). */
   markerMessagesBefore?: number
   markerMessagesAfter?: number
