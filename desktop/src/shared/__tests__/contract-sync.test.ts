@@ -239,6 +239,10 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
   // internal/types/config_resource_limits.go; carried inside the
   // get_enterprise_policy response blob.
   ResourceLimits: ['maxAgentsPerSession', 'maxSessions'],
+  // Extension allowlist entry (feature 0011 / D-020, issue #308). An element
+  // of EnterpriseConfig.ExtensionAllowlist, carried inside the
+  // get_enterprise_policy blob. sha256 is omitempty in Go — TS-optional matches.
+  ExtensionAllowlistEntry: ['id', 'sha256'],
   // Payload of engine_provider_login (EngineEvent.providerLogin). Mirrors Go's
   // ProviderLoginUpdate.
   ProviderLoginUpdate: [
