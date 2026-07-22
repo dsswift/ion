@@ -1,4 +1,4 @@
-.PHONY: default desktop engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test test test-all test-linux test-linux-engine test-linux-engine-summary test-linux-desktop clean check-file-sizes check-contracts check-status-writers check-atv-parity check-logging check-swiftlint check-dashboards claude-symlinks hooks lint-desktop
+.PHONY: default desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test test test-all test-linux test-linux-engine test-linux-engine-summary test-linux-desktop clean check-file-sizes check-contracts check-status-writers check-atv-parity check-logging check-swiftlint check-dashboards claude-symlinks hooks lint-desktop
 
 # Homebrew installs node/npm under /opt/homebrew/bin on Apple Silicon.
 # Make runs recipes with /bin/sh which only has /usr/bin:/bin in PATH,
@@ -36,6 +36,13 @@ generate-dashboards:
 desktop:
 	@$(MAKE) engine
 	@cd desktop && bash commands/install-bg.command
+
+# Build the macOS installer .pkg for MDM (Intune) deployment (D-003). Chains
+# the electron-builder --dir build (produces release/mac*/Ion.app) into
+# pkgbuild via scripts/build-pkg.sh. Does NOT install or relaunch — unlike
+# `make desktop`, this only produces the artifact under desktop/release/.
+desktop-pkg:
+	@cd desktop && npm run dist && npm run pkg
 
 relay:
 	@cd relay && docker build --platform linux/amd64 -t ion-relay:latest .
