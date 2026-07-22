@@ -57,6 +57,13 @@ type EnterpriseConfig struct {
 	// need not also appear in AllowedProviders. Empty means no provider pinning.
 	Providers        map[string]ProviderConfig `json:"providers,omitempty"`
 	RequiredHooks    []HookDef                 `json:"requiredHooks,omitempty"`
+	// ExtensionAllowlist, when non-empty, restricts which extensions the engine
+	// will load (feature 0011 / D-020, issue #308). Each entry is an exact
+	// extension identifier (manifest name, else directory basename) with an
+	// optional SHA-256 of the resolved entry-point file for integrity pinning.
+	// Empty (the default) means no restriction — every extension loads as
+	// before. Enforced at Host.Load; see checkExtensionAllowlist.
+	ExtensionAllowlist []ExtensionAllowlistEntry `json:"extensionAllowlist,omitempty"`
 	McpAllowlist     []string  `json:"mcpAllowlist,omitempty"`
 	McpDenylist      []string  `json:"mcpDenylist,omitempty"`
 	// PluginAllowlist, when non-empty, restricts plugins to only matching sources.
@@ -102,6 +109,17 @@ type EnterpriseConfig struct {
 	// via get_enterprise_policy.
 	ConversationRetentionDays *int           `json:"conversationRetentionDays,omitempty"`
 	CustomFields              map[string]any `json:"customFields,omitempty"`
+}
+
+// ExtensionAllowlistEntry is a single entry in the enterprise extension
+// allowlist (feature 0011 / D-020, issue #308). ID is the exact extension
+// identifier (manifest name, else directory basename). SHA256, when set, pins
+// the hex-encoded SHA-256 of the resolved entry-point file so a tampered or
+// substituted extension with an allowed name is still blocked. An empty SHA256
+// means "allow by identifier only" (no integrity check on this entry).
+type ExtensionAllowlistEntry struct {
+	ID     string `json:"id"`
+	SHA256 string `json:"sha256,omitempty"`
 }
 
 // ToolRestrictions defines tool allow/deny lists.

@@ -134,6 +134,19 @@ func (h *Host) spawnAndInit(extensionPath string, config *ExtensionConfig, isRes
 		h.version = manifest.Version
 	}
 
+	// Enterprise extension allowlist (feature 0011 / D-020, issue #308). The
+	// identifier is final here (manifest name else directory basename, above)
+	// and extensionPath is the resolved entry-point file used for integrity
+	// hashing. A block returns before ensureNodeModules/spawn so a disallowed
+	// extension never runs npm install or launches a subprocess. Every load
+	// path (initial, daemon-restart re-registration, respawn) funnels through
+	// spawnAndInit, so this single check covers hot-reload.
+	if config != nil {
+		if err := checkExtensionAllowlist(h.name, extensionPath, config.ExtensionAllowlist); err != nil {
+			return err
+		}
+	}
+
 	// Run `npm install` if the extension declares dependencies. Idempotent:
 	// skips when node_modules is up to date with package.json.
 	if err := ensureNodeModules(extensionDir); err != nil {

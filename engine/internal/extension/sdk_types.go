@@ -505,6 +505,13 @@ type ExtensionConfig struct {
 	Model            string `json:"model,omitempty"`
 	WorkingDirectory string `json:"workingDirectory"`
 	McpConfigPath    string `json:"mcpConfigPath,omitempty"`
+	// ExtensionAllowlist, when non-empty, restricts which extensions Host.Load
+	// will spawn (feature 0011 / D-020, issue #308). The session layer copies
+	// the enterprise allowlist into this field so every load path (initial,
+	// daemon-restart re-registration, respawn) consults the same policy. Empty
+	// means no restriction. Not serialized to the subprocess — it is engine-side
+	// enforcement metadata, not extension init config.
+	ExtensionAllowlist []types.ExtensionAllowlistEntry `json:"-"`
 }
 
 // ToolDefinition describes a tool registered by an extension.

@@ -390,3 +390,22 @@ func TestMergeEnterprisePartial_ProvidersOverlay(t *testing.T) {
 		t.Errorf("overlay Providers must carry through: got %q", got)
 	}
 }
+
+// ─── Feature 0011 / #308: extension allowlist overlay merge ───
+
+func TestMergeEnterprisePartial_ExtensionAllowlist(t *testing.T) {
+	base := &types.EnterpriseConfig{}
+	overlay := &types.EnterpriseConfig{
+		ExtensionAllowlist: []types.ExtensionAllowlistEntry{
+			{ID: "ion-meta"},
+			{ID: "chief-of-staff", SHA256: "abc123"},
+		},
+	}
+	result := mergeEnterprisePartial(base, overlay)
+	if len(result.ExtensionAllowlist) != 2 {
+		t.Fatalf("overlay ExtensionAllowlist must carry through: got %d", len(result.ExtensionAllowlist))
+	}
+	if result.ExtensionAllowlist[1].SHA256 != "abc123" {
+		t.Errorf("overlay entry hash must survive: got %q", result.ExtensionAllowlist[1].SHA256)
+	}
+}

@@ -179,6 +179,10 @@ func mergeEnterprisePartial(base, overlay *types.EnterpriseConfig) *types.Enterp
 	if len(overlay.RequiredHooks) > 0 {
 		result.RequiredHooks = overlay.RequiredHooks
 	}
+	// ExtensionAllowlist: whole-slice replace, existing convention.
+	if len(overlay.ExtensionAllowlist) > 0 {
+		result.ExtensionAllowlist = overlay.ExtensionAllowlist
+	}
 	if len(overlay.McpAllowlist) > 0 {
 		result.McpAllowlist = overlay.McpAllowlist
 	}
