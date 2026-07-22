@@ -10,6 +10,13 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.66.0](https://github.com/dsswift/ion/compare/desktop-v1.65.0...desktop-v1.66.0) (2026-07-22)
+
+### Features
+
+* **desktop:** mirror event_id on egress records ([7b72c15](https://github.com/dsswift/ion/commit/7b72c15c12fdc527e81841591cd4770f6390229f))
+* **desktop:** add macOS pkg build script for MDM deployment ([390a91e](https://github.com/dsswift/ion/commit/390a91ec3a69e0b96a29b9193b6b9a2786e07bf5))
+
 ## [1.65.0](https://github.com/dsswift/ion/compare/desktop-v1.64.0...desktop-v1.65.0) (2026-07-21)
 
 ### Features

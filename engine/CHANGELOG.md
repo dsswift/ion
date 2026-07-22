@@ -13,6 +13,20 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.54.0](https://github.com/dsswift/ion/compare/engine-v1.53.0...engine-v1.54.0) (2026-07-22)
+
+### Features
+
+* **engine:** pin enterprise provider definitions in EnforceEnterprise ([f9ce3de](https://github.com/dsswift/ion/commit/f9ce3de236360f9cba11930c4205b511f74b178c))
+* **engine:** emit enforcement audit events through telemetry ([5690480](https://github.com/dsswift/ion/commit/56904805f5d58ca8d6811fcd8c8fb7367fed206c))
+* **engine:** enforce extension loading allowlist at host load path (#308) ([6a9228c](https://github.com/dsswift/ion/commit/6a9228c651dc2dd6db76cab92ca77d701bf2a0a7))
+* **engine:** stamp event_id and install_id on egress records (#310) ([99d9c69](https://github.com/dsswift/ion/commit/99d9c6964a14c5147ddf64c7390c59ada37bb482))
+
+### Bug Fixes
+
+* **engine:** map telemetry events in OTLP egress for parity ([bbf766d](https://github.com/dsswift/ion/commit/bbf766dcc304c8295aee22de9cc53dc822484ea3))
+* **engine:** route telemetry/web/operator HTTP through enterprise transport ([d6b7ec1](https://github.com/dsswift/ion/commit/d6b7ec1eb578b20a38c96c69fe459d3e2315c53f))
+
 ## [1.53.0](https://github.com/dsswift/ion/compare/engine-v1.52.0...engine-v1.53.0) (2026-07-21)
 
 ### Features
