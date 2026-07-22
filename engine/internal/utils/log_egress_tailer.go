@@ -207,12 +207,21 @@ func (t *EgressTailer) pollFile(source, path string) {
 				Component: source,
 				Tag:       "tailer_raw",
 			}
+		} else if isTelemetryEventRecord(rec) {
+			// Telemetry event ({name, payload, ...}): the parsed carrier fields
+			// (Name/Payload/Context/Schema/InstallID/Version/Host/EventID) now
+			// hold the full envelope, so the OTLP exporter maps them to the
+			// file-tail-parity attribute set (kind/service/payload/context) and
+			// emits the verbatim event JSON as the body. Leave Msg empty —
+			// stuffing the raw line into Msg is the operational-wrapper bug that
+			// made the remote ion_otlp_unwrap pipeline unable to recognize
+			// telemetry.
 		} else if rec.Msg == "" {
-			// Valid JSON but no "msg" field — most likely a telemetry event,
-			// which uses "name" not "msg". Ship the raw line as the body so
-			// the downstream OTLP exporter has non-empty content and the record
-			// is not silently discarded as an empty log line. The stream labels
-			// (component, level) are still populated from the parsed struct.
+			// Valid JSON, not a telemetry event, but no "msg" field. Ship the raw
+			// line as the body so the downstream OTLP exporter has non-empty
+			// content and the record is not silently discarded as an empty log
+			// line. The stream labels (component, level) are still populated from
+			// the parsed struct.
 			rec.Msg = line
 		}
 		if rec.Component == "" {
