@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // contract_test.go holds the logging-contract matrix.
@@ -92,9 +93,10 @@ func newFileCollector(t *testing.T, telFile string) *Collector {
 	})
 }
 
-// resetInstallIDOnceT resets the package-level install_id sync.Once for tests.
+// resetInstallIDOnceT resets the shared install_id singleton (now owned by
+// utils) so tests exercise minting in isolation.
 func resetInstallIDOnceT() {
-	installIDOnce = sync.Once{}
+	utils.ResetInstallIDForTest()
 }
 
 // resetHostOnceT resets the package-level host sync.Once for tests.

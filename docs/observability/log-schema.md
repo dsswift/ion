@@ -233,9 +233,14 @@ When egress is configured, the engine forwarder (`engine/internal/utils/log_egre
 | Field | Source | Notes |
 |---|---|---|
 | `host` | `os.Hostname()` | Always present. Matches the `host` field on telemetry events for the same machine — the Fleet board join key. |
-| `machine_id` | `ioreg IOPlatformUUID` (macOS) / `/etc/machine-id` (Linux) | Stable hardware UUID independent of the username. Absent on platforms without a source. |
+| `machine_id` | `ioreg IOPlatformUUID` (macOS) / `/etc/machine-id` (Linux) | Stable **hardware** UUID independent of the username. Absent on platforms without a source. Distinct from `install_id` — see the note below. |
+| `install_id` | `~/.ion/install_id` (minted once) | Anonymous **per-install** UUID, the same value telemetry stamps (`utils.InstallID`). Joins egress records to the telemetry stream. Distinct from `machine_id` — see the note below. |
 | `mdm_device_id` | MDM config (`MDMDeviceID` key) | Present only on MDM-enrolled machines (e.g. Intune). Enables cross-reference to the MDM console. |
 | `mdm_serial` | MDM config (`MDMSerialNumber` key) | Present only on MDM-enrolled machines. |
+
+> **`machine_id` vs `install_id` are different identifiers, not a naming drift.** `machine_id` is the stable **hardware** UUID (survives reinstalls, changes on new hardware); `install_id` is the **per-install** anonymous UUID (changes on reinstall, joins to the telemetry stream which stamps the same value). Both ship on every egress record so a consumer can group by hardware (`machine_id`) or by install (`install_id`) as needed.
+
+Every egress record also carries a per-record `event_id` (16 hex chars, stamped at the enqueue chokepoint) for downstream dedup during retry storms — the same shape as the telemetry `event_id`. A record that already carries an `event_id` (e.g. a tailed telemetry event) keeps its own.
 
 ### extension (`component: "extension"`)
 

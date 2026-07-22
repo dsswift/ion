@@ -257,9 +257,18 @@ func (f *EgressForwarder) shipTailed(rec egressRecord) {
 }
 
 // enqueue is the shared buffer-append + batch-flush trigger behind ship and
-// shipTailed. Merges ambient machine-identity fields into the record before
-// buffering: ambient fills absent keys; caller-supplied fields take precedence.
+// shipTailed. Stamps a per-record event_id (when absent) and merges ambient
+// machine-identity fields into the record before buffering: ambient fills
+// absent keys; caller-supplied fields take precedence.
 func (f *EgressForwarder) enqueue(rec egressRecord) {
+	// Stamp a unique event_id when the record does not already carry one. This
+	// is the single construction chokepoint both ship and shipTailed funnel
+	// through, so engine-own records get an id here, while a tailed telemetry
+	// record that already parsed its own event_id keeps it (downstream-dedup
+	// key). 16 hex chars, matching the telemetry event_id shape.
+	if rec.EventID == "" {
+		rec.EventID = GenEventID()
+	}
 	if len(f.ambientFields) > 0 {
 		if rec.Fields == nil {
 			merged := make(map[string]any, len(f.ambientFields))

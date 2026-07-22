@@ -228,6 +228,9 @@ func otlpAttrsFromRecord(r egressRecord) []otlpLogAttr {
 	if r.User != "" {
 		attrs = append(attrs, otlpLogAttr{Key: "user", Value: otlpStr(r.User)})
 	}
+	if r.EventID != "" {
+		attrs = append(attrs, otlpLogAttr{Key: "event_id", Value: otlpStr(r.EventID)})
+	}
 	for k, v := range r.Fields {
 		attrs = append(attrs, otlpLogAttr{Key: k, Value: otlpAttrValFromAny(v)})
 	}

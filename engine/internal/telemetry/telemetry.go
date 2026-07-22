@@ -3,12 +3,10 @@ package telemetry
 
 import (
 	"bytes"
-	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -640,58 +638,11 @@ func resolvedUserIdentity() string {
 // Minted once on first engine run; never changed. Non-PII by design.
 // ---------------------------------------------------------------------------
 
-var (
-	installIDOnce   sync.Once
-	resolvedInstall string
-)
-
-// resolvedInstallID returns the per-install anonymous UUID, minting it on the
-// first call. Thread-safe.
+// resolvedInstallID returns the per-install anonymous UUID. Delegates to the
+// shared utils.InstallID accessor so telemetry and egress mint/read the SAME
+// value (egress carries install_id to join its records to the telemetry
+// stream). Thread-safe.
 func resolvedInstallID() string {
-	installIDOnce.Do(func() {
-		resolvedInstall = loadOrMintInstallID()
-	})
-	return resolvedInstall
+	return utils.InstallID()
 }
 
-// loadOrMintInstallID reads ~/.ion/install_id, minting a fresh UUID if absent.
-func loadOrMintInstallID() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	idPath := filepath.Join(home, ".ion", "install_id")
-	if data, err := os.ReadFile(idPath); err == nil {
-		id := string(data)
-		// Trim whitespace/newlines from a human-edited file.
-		for len(id) > 0 && (id[len(id)-1] == '\n' || id[len(id)-1] == '\r' || id[len(id)-1] == ' ') {
-			id = id[:len(id)-1]
-		}
-		if id != "" {
-			return id
-		}
-	}
-	// Mint a new UUID using crypto/rand via the genTraceID helper (32-hex →
-	// format as 8-4-4-4-12 UUID). We generate 16 random bytes directly for the
-	// standard UUID shape.
-	id := mintInstallID()
-	os.MkdirAll(filepath.Dir(idPath), 0o700)     //nolint:errcheck // dir create; failure surfaces on use
-	os.WriteFile(idPath, []byte(id+"\n"), 0o600) //nolint:errcheck // best-effort write
-	utils.LogWithFields(utils.LevelInfo, "telemetry", "install id minted", map[string]any{"status": id})
-	return id
-}
-
-// mintInstallID generates a new random UUID v4 string.
-func mintInstallID() string {
-	// Use 16 random bytes → UUID v4 format.
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		// Fallback: use genTraceID (32 hex chars) as a non-UUID unique ID.
-		return genTraceID()
-	}
-	// Set version 4 and variant bits.
-	b[6] = (b[6] & 0x0f) | 0x40
-	b[8] = (b[8] & 0x3f) | 0x80
-	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
-		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
-}
