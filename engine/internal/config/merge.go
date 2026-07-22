@@ -98,6 +98,37 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 		result.Providers = pruned
 	}
 
+	// Provider definition pinning (feature 0004 root-cause fix). AllowedProviders
+	// above strips providers by KEY, but an allowed provider's BaseURL / AuthHeader
+	// / Backend stay user-editable in ~/.ion/engine.json — the gateway bypass
+	// survives one field deeper. Enterprise-declared provider definitions close
+	// that residual: each replaces the user-layer definition for the same key
+	// WHOLESALE (not a field-merge — a partial merge would let a user-supplied
+	// baseURL survive an enterprise block that omitted it). The single exception
+	// is APIKey: enterprise blocks routinely omit it because per-user keys are
+	// user-supplied, so an empty enterprise APIKey preserves the user's key while
+	// BaseURL/AuthHeader/Backend always come from the enterprise block. Declared
+	// keys are implicitly allowed (union with AllowedProviders). Re-applied on
+	// every load, so edits do not survive. Both branches logged.
+	if len(enterprise.Providers) > 0 {
+		pinned := make(map[string]types.ProviderConfig, len(result.Providers)+len(enterprise.Providers))
+		for k, v := range result.Providers {
+			pinned[k] = v
+		}
+		for key, entProvider := range enterprise.Providers {
+			userProvider, hadUser := pinned[key]
+			// Whole-value replace with the ONE exception: an empty enterprise
+			// APIKey preserves the user-layer key (per-user keys are user-supplied).
+			if entProvider.APIKey == "" && hadUser && userProvider.APIKey != "" {
+				entProvider.APIKey = userProvider.APIKey
+				utils.LogWithFields(utils.LevelInfo, "config.merge", "enterprise: pinning provider definition, preserving user apiKey", map[string]any{"provider": key, "baseURL": entProvider.BaseURL})
+			} else {
+				utils.LogWithFields(utils.LevelInfo, "config.merge", "enterprise: pinning provider definition", map[string]any{"provider": key, "baseURL": entProvider.BaseURL, "had_user_entry": hadUser})
+			}
+			pinned[key] = entProvider
+		}
+		result.Providers = pinned
+	}
 	// MCP server restrictions -- deny list
 	if len(enterprise.McpDenylist) > 0 && result.McpServers != nil {
 		for _, denied := range enterprise.McpDenylist {

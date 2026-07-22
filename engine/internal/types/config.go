@@ -43,7 +43,20 @@ type EnterpriseConfig struct {
 	AllowedModels    []string  `json:"allowedModels,omitempty"`
 	BlockedModels    []string  `json:"blockedModels,omitempty"`
 	AllowedProviders []string  `json:"allowedProviders,omitempty"`
-	RequiredHooks    []HookDef `json:"requiredHooks,omitempty"`
+	// Providers declares enterprise-owned provider definitions. Each entry
+	// REPLACES the user-layer definition for the same key wholesale at
+	// EnforceEnterprise time: BaseURL, AuthHeader, and Backend always come from
+	// the enterprise block, so a hand-edited ~/.ion/engine.json cannot point an
+	// allowed provider's baseURL away from the enterprise gateway (the residual
+	// the AllowedProviders key-strip alone leaves open — feature 0004's "the
+	// configured gateway URL ... cannot be changed by the user"). The one
+	// exception is APIKey: enterprise blocks routinely omit it because per-user
+	// keys are user-supplied, so an empty enterprise APIKey preserves the
+	// user-layer key rather than clobbering it (a non-empty enterprise APIKey
+	// still wins). Declared keys are implicitly allowed — a provider named here
+	// need not also appear in AllowedProviders. Empty means no provider pinning.
+	Providers        map[string]ProviderConfig `json:"providers,omitempty"`
+	RequiredHooks    []HookDef                 `json:"requiredHooks,omitempty"`
 	McpAllowlist     []string  `json:"mcpAllowlist,omitempty"`
 	McpDenylist      []string  `json:"mcpDenylist,omitempty"`
 	// PluginAllowlist, when non-empty, restricts plugins to only matching sources.
