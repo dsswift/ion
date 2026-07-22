@@ -65,6 +65,21 @@ const (
 	ExtensionColdstart   = "extension.coldstart"
 	ExtensionHookLatency = "extension.hook_latency"
 	ClientBackpressure   = "client.backpressure"
+
+	// Family 4f — Enterprise enforcement (D-018 / feature 0010 audit clause).
+	// Each names an enforcement action taken as an enterprise policy seal is
+	// applied — a tool/model/provider/server was blocked, pruned, pinned, or a
+	// session limit rejected a start. Routed through the same Collector.Event
+	// pipeline; the payload carries the subject, the policy source, and any
+	// correlation context in scope. Additive event names only — the telemetry
+	// schema is unchanged (no version bump).
+	EnforcementToolBlocked      = "enforcement.tool_blocked"
+	EnforcementModelRejected    = "enforcement.model_rejected"
+	EnforcementProviderPruned   = "enforcement.provider_pruned"
+	EnforcementProviderPinned   = "enforcement.provider_pinned"
+	EnforcementMcpPruned        = "enforcement.mcp_pruned"
+	EnforcementSessionLimit     = "enforcement.session_limit"
+	EnforcementExtensionBlocked = "enforcement.extension_blocked"
 )
 
 // Event is a single telemetry data point.

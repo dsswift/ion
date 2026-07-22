@@ -92,6 +92,7 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 		for key := range pruned {
 			if !contains(enterprise.AllowedProviders, key) {
 				utils.Log("ConfigMerge", "enterprise: removing non-allowlisted provider \""+key+"\"")
+				recordEnforcement(EnforcementProviderPruned, key, "allowlist", nil)
 				delete(pruned, key)
 			}
 		}
@@ -125,6 +126,7 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 			} else {
 				utils.LogWithFields(utils.LevelInfo, "config.merge", "enterprise: pinning provider definition", map[string]any{"provider": key, "baseURL": entProvider.BaseURL, "had_user_entry": hadUser})
 			}
+			recordEnforcement(EnforcementProviderPinned, key, "pin", map[string]any{"base_url": entProvider.BaseURL})
 			pinned[key] = entProvider
 		}
 		result.Providers = pinned
@@ -134,6 +136,7 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 		for _, denied := range enterprise.McpDenylist {
 			if _, ok := result.McpServers[denied]; ok {
 				utils.Log("ConfigMerge", "enterprise: removing denied MCP server \""+denied+"\"")
+				recordEnforcement(EnforcementMcpPruned, denied, "denylist", nil)
 				delete(result.McpServers, denied)
 			}
 		}
@@ -156,6 +159,7 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 				continue
 			}
 			utils.Log("ConfigMerge", "enterprise: removing non-allowlisted MCP server \""+key+"\"")
+			recordEnforcement(EnforcementMcpPruned, key, "allowlist", nil)
 			delete(result.McpServers, key)
 		}
 	}

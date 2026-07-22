@@ -73,8 +73,19 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 	if m.config != nil && m.config.ResourceLimits != nil && m.config.ResourceLimits.MaxSessions != nil {
 		limit := *m.config.ResourceLimits.MaxSessions
 		if len(m.sessions) >= limit {
+			procTelem := m.procTelemetry
 			m.mu.Unlock()
 			utils.LogWithFields(utils.LevelInfo, "session", "startsession: rejected by session limit", map[string]any{"key": key, "active": len(m.sessions), "limit": limit})
+			// Enforcement audit event (feature 0010 audit clause). Emitted via
+			// the process-level collector because no per-session collector
+			// exists at rejection time. Nil-safe.
+			if procTelem != nil {
+				procTelem.Event(telemetry.EnforcementSessionLimit, map[string]any{
+					"subject": key,
+					"source":  "limit",
+					"limit":   limit,
+				}, nil)
+			}
 			return nil, fmt.Errorf("session limit reached: enterprise policy allows a maximum of %d concurrent sessions", limit)
 		}
 		utils.LogWithFields(utils.LevelDebug, "session", "startsession: session limit check passed", map[string]any{"key": key, "active": len(m.sessions), "limit": limit})

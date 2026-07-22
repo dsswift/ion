@@ -288,6 +288,13 @@ func cmdServe() {
 	// is already correct before cmdServe runs).
 	telemetry.SetEngineVersion(version)
 
+	// Drain load-time enterprise enforcement actions into the telemetry
+	// collector (feature 0010 audit clause / D-018 rider #2). EnforceEnterprise
+	// runs at config load, before any collector exists, and records its prune/pin
+	// actions into config's package-level recorder. Now that telemetry is
+	// initialized, drain them so each enforcement action becomes one audit event.
+	drainEnforcementActions(srv.Telemetry())
+
 	// Start async model discovery (fetches /v1/models from each provider).
 	// Results cached and used by list_models; falls back to hardcoded catalog.
 	providers.StartModelDiscovery(resolver.ResolveKey, cfg.Providers)

@@ -8,6 +8,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/resource"
 	"github.com/dsswift/ion/engine/internal/scheduling"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 	"github.com/dsswift/ion/engine/internal/webhooks"
@@ -100,6 +101,25 @@ type Manager struct {
 	// Entries clear automatically when the last session for an extension
 	// path stops. See run_once.go.
 	runOnce *runOnceRegistry
+
+	// procTelemetry is the process-level telemetry collector used for events
+	// that fire OUTSIDE any session's lifecycle — specifically the
+	// enterprise session-limit rejection in StartSession, which is decided
+	// before a session (and thus its per-session collector) exists. Nil when
+	// telemetry is disabled; every emit site guards on nil. Set via
+	// SetProcessTelemetry from the server's SetConfig, alongside the server's
+	// own process collector. Guarded by m.mu.
+	procTelemetry *telemetry.Collector
+}
+
+// SetProcessTelemetry installs the process-level telemetry collector used for
+// Manager-level enforcement audit events (the session-limit rejection). Nil
+// disables it. Set from the server's SetConfig so the Manager and the server
+// share the same enabled/disabled decision.
+func (m *Manager) SetProcessTelemetry(c *telemetry.Collector) {
+	m.mu.Lock()
+	m.procTelemetry = c
+	m.mu.Unlock()
 }
 
 // SetConfig stores the engine runtime config for applying defaults.
