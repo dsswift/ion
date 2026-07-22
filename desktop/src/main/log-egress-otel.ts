@@ -302,6 +302,7 @@ export function otlpAttrsFromRecord(r: EgressRecord): OtlpLogAttr[] {
   if (r.conversation_id) attrs.push({ key: 'conversation_id', value: otlpStr(r.conversation_id) })
   if (r.trace_id) attrs.push({ key: 'trace_id', value: otlpStr(r.trace_id) })
   if (r.user) attrs.push({ key: 'user', value: otlpStr(r.user) })
+  if (typeof r.event_id === 'string' && r.event_id) attrs.push({ key: 'event_id', value: otlpStr(r.event_id) })
   if (r.fields) {
     for (const [k, v] of Object.entries(r.fields)) {
       attrs.push({ key: k, value: otlpAttrValFromAny(v) })

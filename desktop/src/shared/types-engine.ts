@@ -522,6 +522,27 @@ export interface ResourceLimits {
 }
 
 /**
+ * An enterprise-pinned provider definition (feature 0004). Mirrors Go's
+ * ProviderConfig fields the enterprise overrides. apiKey is user-supplied and
+ * usually absent from the enterprise block.
+ */
+export interface EnterpriseProviderDefinition {
+  apiKey?: string
+  baseURL?: string
+  authHeader?: string
+  backend?: string
+}
+
+/**
+ * A single entry in the enterprise extension allowlist (feature 0011 / #308).
+ * Mirrors Go's ExtensionAllowlistEntry.
+ */
+export interface ExtensionAllowlistEntry {
+  id: string
+  sha256?: string
+}
+
+/**
  * The full enterprise policy blob from the engine's get_enterprise_policy RPC
  * (D-004 passthrough). Mirrors Go's EnterpriseConfig in internal/types/config.go.
  * Only the fields the desktop consumes are typed here; the blob may carry
@@ -534,6 +555,23 @@ export interface EnterprisePolicy {
   allowedModels?: string[]
   /** Models the enterprise blocks. */
   blockedModels?: string[]
+  /** Providers the enterprise permits. Empty/absent = no restriction. */
+  allowedProviders?: string[]
+  /**
+   * Enterprise-pinned provider definitions (feature 0004). Each entry replaces
+   * the user-layer provider for the same key (baseURL/authHeader/backend) at
+   * config-merge time so the gateway URL cannot be edited by the user. The
+   * engine enforces this in EnforceEnterprise; the desktop reads the blob as a
+   * read-only runtime constraint. Keyed by provider id.
+   */
+  providers?: Record<string, EnterpriseProviderDefinition>
+  /**
+   * Extension loading allowlist (feature 0011 / D-020, issue #308). When
+   * non-empty, only listed extensions load; an optional per-entry sha256 pins
+   * the entry-point integrity. Empty/absent = no restriction. Enforced engine-
+   * side at extension load.
+   */
+  extensionAllowlist?: ExtensionAllowlistEntry[]
   /** Session/agent concurrency caps (sealed ceiling, enforced engine-side). */
   resourceLimits?: ResourceLimits
   /**
