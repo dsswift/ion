@@ -104,6 +104,15 @@ func (s *Server) SetTelemetry(c *telemetry.Collector) {
 	s.mu.Unlock()
 }
 
+// Telemetry returns the process-level telemetry collector, or nil when
+// telemetry is disabled. Used at serve startup to drain load-time enforcement
+// actions (config.DrainEnforcementActions) into the collector.
+func (s *Server) Telemetry() *telemetry.Collector {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.telemetry
+}
+
 // SetConfig stores the engine runtime config for use by sessions.
 func (s *Server) SetConfig(cfg *types.EngineRuntimeConfig) {
 	s.manager.SetConfig(cfg)
@@ -114,7 +123,12 @@ func (s *Server) SetConfig(cfg *types.EngineRuntimeConfig) {
 	// (client.backpressure) when telemetry is enabled in config. Nil-safe: a
 	// disabled or absent telemetry block leaves server telemetry off.
 	if cfg != nil && cfg.Telemetry != nil && cfg.Telemetry.Enabled {
-		s.SetTelemetry(telemetry.NewCollector(*cfg.Telemetry))
+		collector := telemetry.NewCollector(*cfg.Telemetry)
+		s.SetTelemetry(collector)
+		// Share the process collector with the manager for Manager-level
+		// enforcement audit events (the session-limit rejection fires before
+		// any per-session collector exists).
+		s.manager.SetProcessTelemetry(collector)
 	}
 	// Store the config after the collector wiring so the field assignment
 	// below is not racing the SetTelemetry lock above.

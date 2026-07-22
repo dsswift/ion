@@ -4,6 +4,8 @@ description: Squash the current branch into clean conventional commits. Creates 
 
 You are running the `/squash` command. Your job is to collapse the current branch's commits into clean conventional commits — one per logical feature — using an interactive rebase. You create a backup branch first, generate a squash plan for review, and execute it.
 
+**Output contract: no narrative.** This command emits only structured output at every step — commit lists, the plan block, tool calls, and the final report. Never narrate analysis, reasoning, or intermediate findings as prose. Emit the structure; skip the commentary.
+
 **Interaction rule.**
 
 Any point where the protocol needs a human decision MUST be a single `AskUserQuestion` tool call. Never end a turn on a decision-shaped question written as prose: a prose question followed by `end_turn` leaves the session idle with nothing to wait on, and the run stalls. This applies to scripted gates (Step 6's proceed/adjust/abort confirmation) AND to any unscripted fork discovered mid-execution (e.g. an execution-method choice surfaced during conflict analysis in Step 7).
@@ -179,25 +181,25 @@ This is the only correct attribution. The deeper reason: when two genuinely diff
 
 Note in the plan which files are shared and which result commits will split their hunks, so the user sees the attribution before approving.
 
-Present the squash plan to the user:
+Present the squash plan to the user. **Output the structured block only — no narrative, no reasoning, no commentary before or after the block.** The user wants the outcome, not the analysis.
 
 ```
-Squash plan:
+{N} commits → {M} commits. {squash count} squash(es), {split count} split(s).
 
-{N} commits -> {M} clean commits
+Operations:
+  squash: {SHA} {subject} → folds into group N
+  split:  {SHA} {subject} → {scope-A} + {scope-B}
 
-Logical group 1: {description}
-  Commits: {list of short SHAs and subjects being squashed}
-  Result commit: {proposed commit subject}
+Result commits:
+  1. {proposed commit subject}        [{source SHAs}]
+  2. {proposed commit subject}        [{source SHAs}]
+  ...
 
-Logical group 2: {description}
-  Commits: {list}
-  Result commit: {proposed commit subject}
+Shared files (hunk-level attribution):
+  {file}: {SHA} owns hunks A-B, {SHA} owns hunks C-D
+  (omit this section if no shared files exist)
 
-...
-
-Backup branch `backup--{branch_name}` is pointing to current HEAD.
-The full unsquashed history is preserved there.
+Backup: backup--{branch_name} at {HEAD SHA}
 ```
 
 After presenting the plan, call `AskUserQuestion` with the question "Proceed with the squash as planned?" and options: `Proceed`, `Adjust`, `Abort`. Do not execute the rebase until the user selects `Proceed`.
@@ -300,20 +302,21 @@ If this produces any output, the squash changed the code — which is a bug. Abo
 
 ---
 
+**Output contract: no narrative.** Every step of this command emits only structured output — commit lists, tool calls, and the templates below. Do not narrate analysis, reasoning, or intermediate findings as prose. The user reads the result, not the process.
+
+---
+
 ## Step 9: Report
 
 ```
 Squash complete.
 
 Branch: {branch name}
-Before: {N} commits
-After: {M} commits
+Before: {N} commits  After: {M} commits
 
-Result commits:
-  {list of new commit SHAs and subjects}
+{short SHA} {subject}
+{short SHA} {subject}
+...
 
-Backup: backup--{branch_name} at {SHA} (full pre-squash history preserved)
-
-No git push was run.
-Next step: /create-pr to push and open the pull request.
+Backup: backup--{branch_name} at {SHA}
 ```

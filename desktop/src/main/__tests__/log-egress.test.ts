@@ -290,6 +290,42 @@ describe('EgressForwarder', () => {
     // close() must have triggered a flush.
     expect(mockFetch).toHaveBeenCalledTimes(1)
   })
+
+  // F (#310): every record shipped through the funnel is stamped with a
+  // unique event_id; a record that already carries one keeps it.
+  it('stamps a unique event_id on every shipped record', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200, body: null })
+    const origFetch = global.fetch
+    global.fetch = mockFetch as typeof fetch
+
+    configureEgress(
+      {
+        egressTargets: ['http'],
+        egressEndpoint: 'http://localhost:1',
+        egressFlushIntervalMs: 60_000,
+      },
+      async () => ({}),
+    )
+
+    for (let i = 0; i < 3; i++) {
+      shipToEgress({ ts: new Date().toISOString(), level: 'INFO', msg: `m${i}`, component: 'engine', tag: 'test' })
+    }
+    // A record already carrying an event_id keeps it.
+    shipToEgress({ ts: new Date().toISOString(), level: 'INFO', msg: 'preset', component: 'engine', tag: 'test', event_id: 'preexisting012345' })
+
+    await flushEgress()
+    global.fetch = origFetch
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body as string) as EgressRecord[]
+    const ids = new Set<string>()
+    for (const r of body) {
+      expect(typeof r.event_id).toBe('string')
+      expect(r.event_id).toBeTruthy()
+      ids.add(r.event_id as string)
+    }
+    expect(ids.size).toBe(body.length) // all unique
+    expect(body.find((r) => r.msg === 'preset')?.event_id).toBe('preexisting012345')
+  })
 })
 
 // ---------------------------------------------------------------------------

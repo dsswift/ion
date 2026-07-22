@@ -170,8 +170,18 @@ func mergeEnterprisePartial(base, overlay *types.EnterpriseConfig) *types.Enterp
 	if len(overlay.AllowedProviders) > 0 {
 		result.AllowedProviders = overlay.AllowedProviders
 	}
+	// Providers: whole-map replace when the overlay declares any (matches the
+	// existing slice-replace convention). Enterprise-pinned provider definitions
+	// are a sealed ceiling, so a drop-in that sets them replaces the base map.
+	if len(overlay.Providers) > 0 {
+		result.Providers = overlay.Providers
+	}
 	if len(overlay.RequiredHooks) > 0 {
 		result.RequiredHooks = overlay.RequiredHooks
+	}
+	// ExtensionAllowlist: whole-slice replace, existing convention.
+	if len(overlay.ExtensionAllowlist) > 0 {
+		result.ExtensionAllowlist = overlay.ExtensionAllowlist
 	}
 	if len(overlay.McpAllowlist) > 0 {
 		result.McpAllowlist = overlay.McpAllowlist

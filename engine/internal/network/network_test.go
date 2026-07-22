@@ -8,7 +8,9 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
+	"net/http"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,6 +22,8 @@ func resetGlobals() {
 	httpTransport = nil
 	proxyURL = nil
 	noProxyList = nil
+	httpClientOnce = sync.Once{}
+	sharedClient = nil
 }
 
 // writeTempCACert generates a self-signed CA cert, writes it to a temp file,
@@ -412,5 +416,59 @@ func TestGetProxyForURLInvalidTarget(t *testing.T) {
 	got := GetProxyForURL("://not a valid url")
 	if got != "" {
 		t.Errorf("expected empty string for invalid URL, got %q", got)
+	}
+}
+
+// --- GetHTTPClient (D-018 proxy/CA transport routing) --------------------------
+
+func TestGetHTTPClientUsesConfiguredTransport(t *testing.T) {
+	resetGlobals()
+	t.Setenv("HTTPS_PROXY", "")
+	t.Setenv("https_proxy", "")
+	t.Setenv("HTTP_PROXY", "")
+	t.Setenv("http_proxy", "")
+
+	proxy := "http://proxy.corp.example:8080"
+	InitNetwork(&types.NetworkConfig{Proxy: &types.ProxyConfig{HttpsProxy: proxy}})
+
+	client := GetHTTPClient()
+	if client == nil {
+		t.Fatal("GetHTTPClient returned nil")
+	}
+	tr, ok := client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("client transport is not *http.Transport: %T", client.Transport)
+	}
+	if tr != GetHTTPTransport() {
+		t.Error("GetHTTPClient must use the configured shared transport")
+	}
+	if tr.Proxy == nil {
+		t.Fatal("configured transport must carry a proxy func when a proxy is set")
+	}
+	req, _ := http.NewRequest(http.MethodGet, "https://api.anthropic.com/v1", nil)
+	u, err := tr.Proxy(req)
+	if err != nil {
+		t.Fatalf("proxy func returned error: %v", err)
+	}
+	if u == nil || u.String() != proxy {
+		t.Errorf("proxy func = %v, want %s", u, proxy)
+	}
+}
+
+func TestGetHTTPClientWithoutInitReturnsDefaultCloneTransport(t *testing.T) {
+	resetGlobals()
+	client := GetHTTPClient()
+	if client == nil || client.Transport == nil {
+		t.Fatal("GetHTTPClient must return a client with a non-nil transport even without InitNetwork")
+	}
+}
+
+func TestGetHTTPClientIsSingleton(t *testing.T) {
+	resetGlobals()
+	InitNetwork(nil)
+	first := GetHTTPClient()
+	second := GetHTTPClient()
+	if first != second {
+		t.Error("GetHTTPClient must return the same shared client instance")
 	}
 }

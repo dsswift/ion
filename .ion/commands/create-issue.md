@@ -33,9 +33,11 @@ If `$ARGUMENTS` contains an explicit classification keyword (`bug`, `feature`, `
 Analyze the current conversation to identify the Ion engine gap. Extract:
 
 - **What is missing or broken** — the specific engine behavior, hook, event, config field, protocol command, SDK method, or tool capability that is absent or incorrect.
-- **Why it matters** — what a consumer or extension cannot do today because of this gap. Frame in generic terms.
-- **How it would be used** — the expected interaction pattern (hook fires at X point, event carries Y fields, config field controls Z behavior).
-- **What was tried** — any workarounds or alternatives discussed in the conversation that fell short.
+- **Why it matters** — what a consumer or extension cannot do today because of this gap. Frame in generic terms: what class of consumer would benefit, not the specific one who surfaced it.
+- **What the capability looks like** — the expected engine-side contract (hook fires at X point, event carries Y fields, config field controls Z behavior). Focus on the engine's public API surface, not how the consumer uses it internally.
+- **What was tried** — describe any workarounds in pure engine/SDK terms. Do not describe what the consumer was trying to accomplish; describe what engine primitives were reached for and why they fell short.
+
+**Do not carry consumer framing forward from this step.** The extraction captures the engine gap. The consumer's specific use case, workflow, or internal architecture is not part of the engine issue and must not appear in the draft.
 
 If `$ARGUMENTS` provides additional context, incorporate it. If the conversation does not contain enough information to identify a specific engine-level need, stop and tell the user: "I cannot identify a specific Ion engine issue from this conversation. Describe the engine gap you want to file and I will draft the issue."
 
@@ -85,6 +87,8 @@ Use the subsystem label(s) in the issue title prefix and body.
 
 ## Step 4: Build the issue
 
+**Voice rule:** Write entirely in impersonal third person. Every sentence must read as if filed by an external Ion SDK consumer who has no relationship to any specific organization. Forbidden voice: "we", "our", "I", "us", "my". Required voice: "a consumer", "an extension", "a harness", "extension authors", "this capability". If you catch yourself writing from the inside perspective of the person who discovered the bug, stop and rewrite from the outside perspective of someone who independently ran into the same engine limitation.
+
 ### Title
 
 Write a clear, action-oriented title:
@@ -107,11 +111,14 @@ Use the appropriate template below. Every section is required unless marked opti
 
 ## Motivation
 
-<Why this is needed. Describe the use case generically:>
-<- "A consumer building [generic description] needs to…">
-<- "An extension that [generic purpose] wants to…">
-<- "A harness using the SDK expects to…">
-<Do NOT name the specific consumer, project, product, or domain.>
+<Why this capability is needed. Write from the perspective of a generic SDK consumer or extension author who has independently arrived at this need. The motivation must read as if any developer building on Ion could have written it — not as if it describes one specific project or workflow.>
+
+<Good patterns:>
+<- "Extensions that need to observe X currently have no way to…">
+<- "A harness that manages Y has no engine primitive for…">
+<- "Consumers who want to customize Z behavior must approximate it with…">
+
+<Forbidden: anything that implies a specific organization, product, industry, or workflow. If the only consumers who would care about this are in one domain, reframe around the capability, not the domain.>
 
 ## Proposed behavior
 
@@ -146,6 +153,8 @@ type BeforeCompactionPayload struct {
 <2-3 concrete examples of how a consumer or extension would use this capability.>
 <Frame each as: "A consumer could…", "An extension would…", "A harness might…">
 <Show example SDK code, hook handlers, or config snippets where helpful.>
+
+**Diversity requirement:** The examples must span different, plausible applications of the capability — not variations of a single scenario. If all examples describe the same kind of workflow from different angles, that implies the capability has only one real use case. Write examples that independently justify the capability on their own merits. A stranger should be unable to identify which example (if any) resembles the actual use case that motivated the issue.
 
 ## Acceptance criteria
 
@@ -189,10 +198,7 @@ type BeforeCompactionPayload struct {
 
 ## Context
 
-<How this was discovered, framed generically:>
-<- "A consumer observed that…">
-<- "While building an extension that…">
-<Do NOT name the specific consumer, project, or domain.>
+<One or two sentences stating that this was discovered while building on Ion. Do NOT describe what was being built, why, or for whom. Never include: what the consumer was trying to accomplish, the workflow that triggered the discovery, or any organizational or product context. The context section exists only to acknowledge this is a practical finding, not a theoretical one. If there is nothing useful to say without leaking consumer context, omit this section entirely.>
 
 ## Acceptance criteria
 
@@ -218,12 +224,18 @@ Before presenting the draft, walk this checklist against the **entire issue body
 | Person names | Any person's name other than public Ion contributors | Remove entirely |
 | Internal paths | File paths outside `engine/`, `desktop/`, `ios/`, `relay/`, `docs/` | "a consumer's codebase", or remove |
 | Domain terms | Industry-specific or product-specific terminology that reveals what the consumer does | Generic equivalent: "a workflow", "a data pipeline", "a user-facing feature" |
+| Organizational vocabulary | Non-proper-noun jargon specific to one org ("briefings", "intake queue", "dispatch cycle", "compliance run") — words with no common meaning outside that organization | Replace with generic workflow language: "a scheduled operation", "a queued task", "a processing step" |
+| Workflow patterns | Descriptions of multi-step processes specific enough to imply one industry or product ("after approval, before send, once review is complete") | Strip to capability terms: "before the operation completes", "after a hook fires" |
+| Insider voice | First-person plural ("we need", "our extension", "we discovered", "for us") | Rewrite as impersonal third person: "a consumer", "an extension author", "this was observed" |
 | Proprietary APIs | References to non-public APIs, databases, internal services | "an external service", "a backend API" |
 | Internal URLs | URLs pointing to internal tools, dashboards, repos (not `dsswift/ion`) | Remove entirely |
 | Logs/output | Console output, error messages, or stack traces containing consumer-specific data | Redact consumer-specific portions, keep only Ion engine frames |
 | Conversation quotes | Direct quotes from the conversation that contain consumer context | Rephrase in Ion engine terms |
 
-After the scrub, re-read the full draft one more time with the question: *"If a stranger read this issue, could they determine what project filed it, what that project does, or who works on it?"* If the answer is anything other than a firm no, scrub again.
+After the scrub, re-read the full draft with **two** questions:
+
+1. *"If a stranger read this issue, could they determine what project filed it, what that project does, or who works on it?"* If anything other than a firm no, scrub again.
+2. *"Could a developer who has never met the filer have independently discovered this same engine gap and written this exact issue?"* If no — if the issue only makes sense knowing the consumer's use case — it still leaks intent. Generalize further until yes.
 
 ## Step 6: Present draft for review
 
@@ -252,8 +264,12 @@ Title: <title>
   - Person names: ✅ none found
   - Internal paths: ✅ none found
   - Domain-specific terms: ✅ none found (or: ⚠️ "<term>" replaced with "<generic>")
+  - Organizational vocabulary: ✅ none found
+  - Workflow specificity: ✅ none found
+  - Insider voice (we/our/I): ✅ none found
   - Proprietary APIs: ✅ none found
   - Internal URLs: ✅ none found
+  - Independent-filer test: ✅ reads as externally filed
 ```
 
 Then call `AskUserQuestion` with the question "Ready to create this issue on dsswift/ion?" and options: `Create it`, `Make changes`.

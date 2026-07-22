@@ -81,6 +81,35 @@ type egressRecord struct {
 	TraceID        string         `json:"trace_id,omitempty"`
 	User           string         `json:"user,omitempty"`
 	Fields         map[string]any `json:"fields,omitempty"`
+
+	// --- Telemetry-event carrier fields ---
+	//
+	// A telemetry event ({name, ts, schema, component, payload, context, ...})
+	// is a DISTINCT shape from an operational log line ({ts, level, msg, ...,
+	// fields}). The engine egress tailer (log_egress_tailer.go) ships
+	// ~/.ion/telemetry.jsonl verbatim, so those events arrive here. These fields
+	// carry the parsed telemetry envelope so the OTLP exporter can map them to
+	// the file-tail-parity attribute set (kind/service/payload/context) instead
+	// of stuffing the raw JSON into Msg — which the remote ion_otlp_unwrap
+	// pipeline cannot recognize as telemetry. All omitempty so operational
+	// records serialize unchanged and the fields survive the spool JSON
+	// round-trip. Mirrors the desktop EgressRecord index-signature carrying the
+	// parsed telemetry event (desktop/src/main/log-egress-otel.ts).
+	Name      string         `json:"name,omitempty"`
+	Payload   map[string]any `json:"payload,omitempty"`
+	Context   map[string]any `json:"context,omitempty"`
+	Schema    any            `json:"schema,omitempty"`
+	InstallID string         `json:"install_id,omitempty"`
+	Version   string         `json:"version,omitempty"`
+	// Host and EventID complete the telemetry v3 envelope in the OTLP body so
+	// the shipped body is lossless (the remote Fleet dashboard queries `host`
+	// from the telemetry stream, and `event_id` is the downstream-dedup key).
+	// They are carried in the BODY only — the attribute set omits them to stay
+	// byte-identical with the desktop otlpAttrsFromTelemetryEvent. The telemetry
+	// envelope is a versioned typed contract (telemetry.Event); a schema field
+	// addition updates that struct and this carrier in lockstep.
+	Host    string `json:"host,omitempty"`
+	EventID string `json:"event_id,omitempty"`
 }
 
 // EgressForwarder buffers operational log lines and ships them to one or more
@@ -228,9 +257,18 @@ func (f *EgressForwarder) shipTailed(rec egressRecord) {
 }
 
 // enqueue is the shared buffer-append + batch-flush trigger behind ship and
-// shipTailed. Merges ambient machine-identity fields into the record before
-// buffering: ambient fills absent keys; caller-supplied fields take precedence.
+// shipTailed. Stamps a per-record event_id (when absent) and merges ambient
+// machine-identity fields into the record before buffering: ambient fills
+// absent keys; caller-supplied fields take precedence.
 func (f *EgressForwarder) enqueue(rec egressRecord) {
+	// Stamp a unique event_id when the record does not already carry one. This
+	// is the single construction chokepoint both ship and shipTailed funnel
+	// through, so engine-own records get an id here, while a tailed telemetry
+	// record that already parsed its own event_id keeps it (downstream-dedup
+	// key). 16 hex chars, matching the telemetry event_id shape.
+	if rec.EventID == "" {
+		rec.EventID = GenEventID()
+	}
 	if len(f.ambientFields) > 0 {
 		if rec.Fields == nil {
 			merged := make(map[string]any, len(f.ambientFields))

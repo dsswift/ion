@@ -118,13 +118,14 @@ func TestOtelExporterLossless_EveryKeyBecomesAttribute(t *testing.T) {
 	}
 
 	// Expected attribute set: component, tag, the three correlation IDs, user,
-	// and every fields key (run_id included). This is the canonical set; a
-	// missing or extra key fails.
+	// every fields key (run_id included), and the loki.attribute.labels
+	// promotion hint. This is the canonical set; a missing or extra key fails.
 	wantKeys := []string{
 		"component", "tag",
 		"session_id", "conversation_id", "trace_id", "user",
 		"run_id", "model", "turn", "cost_usd", "cache_hit",
 		"duration_ms", "nested", "list", "whole_float",
+		"loki.attribute.labels",
 	}
 	if len(attrs) != len(wantKeys) {
 		t.Errorf("attribute count = %d, want %d; got keys %v", len(attrs), len(wantKeys), keysOf(attrs))
@@ -142,6 +143,8 @@ func TestOtelExporterLossless_EveryKeyBecomesAttribute(t *testing.T) {
 	assertStr(t, attrs, "conversation_id", "1780093348767-c1c03e998388")
 	assertStr(t, attrs, "trace_id", "4bf92f3577b34da6a3ce929d0e0e4736")
 	assertStr(t, attrs, "user", "user@example.com")
+	// Operational records carry the component/tag promotion hint (desktop parity).
+	assertStr(t, attrs, "loki.attribute.labels", "component, tag")
 	// run_id rides inside fields but must still surface as its own attribute.
 	assertStr(t, attrs, "run_id", "run-xyz")
 	assertStr(t, attrs, "model", "claude-opus-4-5")
@@ -307,8 +310,191 @@ func TestEgressOtel_ErrorBodyInMessage(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Assertion helpers
+// Telemetry-event OTLP fidelity (engine↔desktop parity; dashboard strip fix)
+//
+// These mirror desktop/src/main/__tests__/log-egress-otel.test.ts
+// "telemetry event OTLP fidelity". A telemetry event shipped via the engine
+// egress tailer must map to the file-tail attribute set (kind/service/payload/
+// context) with the verbatim event JSON as the body — NOT an operational
+// wrapper whose msg holds the escaped telemetry JSON. Reverting the telemetry
+// branch in flushEgressToOtel makes the body an operational wrapper and these
+// tests go red.
 // ---------------------------------------------------------------------------
+
+// runCompleteRecord is a real run.complete event line as it lands in
+// telemetry.jsonl and is shipped verbatim by the tailer (shape mirrors the
+// desktop fixture so both surfaces pin the same attribute set).
+func runCompleteRecord() egressRecord {
+	return egressRecord{
+		Name:      "run.complete",
+		Ts:        "2026-07-09T12:06:59.845721Z",
+		Schema:    float64(3),
+		Component: "engine",
+		InstallID: "5a435113-060b-4b0c-a5c9-1184ccd709a5",
+		Version:   "dev",
+		Host:      "jolteon",
+		EventID:   "86693acc4aa9560e",
+		TraceID:   "4bf92f3577b34da6a3ce929d0e0e4736",
+		Payload: map[string]any{
+			"aggregate_cost_usd":          766.8477343999997,
+			"cache_creation_input_tokens": float64(176086),
+			"cache_read_input_tokens":     float64(348822),
+			"dispatch_depth":              float64(0),
+			"duration_ms":                 float64(31341),
+			"input_tokens":                float64(6),
+			"model":                       "claude-opus-4-8",
+			"num_turns":                   float64(3),
+			"output_tokens":               float64(1758),
+			"run_cost_usd":                1.3189285000000002,
+		},
+		Context: map[string]any{
+			"conversation_id":   "1783339918596-0a78dd0c12ca",
+			"extension":         "ion-dev",
+			"extension_version": "0.2.0",
+			"session_id":        "230dad54-0960-4c08-ace2-35f75a8f23be",
+		},
+	}
+}
+
+// TestTelemetryEvent_Recognized pins the discriminator: telemetry events are
+// recognized and operational records are not misclassified.
+func TestTelemetryEvent_Recognized(t *testing.T) {
+	if !isTelemetryEventRecord(runCompleteRecord()) {
+		t.Error("run.complete event not recognized as telemetry")
+	}
+	if isTelemetryEventRecord(canonicalRecord()) {
+		t.Error("operational canonicalRecord misclassified as telemetry")
+	}
+}
+
+// TestTelemetryEvent_AttributeMap pins name→kind and the payload/context
+// file-tail rename map with native typing. Mirrors the desktop assertions.
+func TestTelemetryEvent_AttributeMap(t *testing.T) {
+	rec := runCompleteRecord()
+	attrs, body, sevText, sevNum := decodeOtelBody(t, rec)
+
+	// Body is the verbatim event JSON with top-level name + payload intact:
+	// `| json | unwrap payload_run_cost_usd` flattens payload.run_cost_usd.
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(body), &parsed); err != nil {
+		t.Fatalf("body is not valid JSON: %q: %v", body, err)
+	}
+	if parsed["name"] != "run.complete" {
+		t.Errorf("body[\"name\"] = %v, want run.complete", parsed["name"])
+	}
+	pl, ok := parsed["payload"].(map[string]any)
+	if !ok {
+		t.Fatalf("body[\"payload\"] not an object: %v", parsed["payload"])
+	}
+	if pl["run_cost_usd"] != 1.3189285000000002 {
+		t.Errorf("body payload.run_cost_usd = %v, want 1.3189285000000002", pl["run_cost_usd"])
+	}
+	// Body is lossless: host and event_id complete the v3 envelope (the remote
+	// Fleet dashboard queries host; event_id is the dedup key). They ride in the
+	// BODY even though they are omitted from the attribute set (desktop parity).
+	if parsed["host"] != "jolteon" {
+		t.Errorf("body[\"host\"] = %v, want jolteon", parsed["host"])
+	}
+	if parsed["event_id"] != "86693acc4aa9560e" {
+		t.Errorf("body[\"event_id\"] = %v, want 86693acc4aa9560e", parsed["event_id"])
+	}
+
+	// Telemetry events carry no level → severity defaults to INFO/9.
+	if sevText != "INFO" || sevNum != 9 {
+		t.Errorf("severity = %q/%d, want INFO/9", sevText, sevNum)
+	}
+
+	// kind + service are the stream-label discriminators the dashboards select.
+	assertStr(t, attrs, "kind", "run.complete")
+	assertStr(t, attrs, "service", "ion-telemetry")
+	assertStr(t, attrs, "component", "engine")
+
+	// payload.* with the file-tail rename map (aggregate_cost_usd→agg_cost_usd,
+	// cache_*_input_tokens→cache_*_tokens). Native typing: whole floats→intValue.
+	assertDouble(t, attrs, "run_cost_usd", 1.3189285000000002)
+	assertDouble(t, attrs, "agg_cost_usd", 766.8477343999997)
+	assertStr(t, attrs, "model", "claude-opus-4-8")
+	assertInt(t, attrs, "num_turns", "3")
+	assertInt(t, attrs, "input_tokens", "6")
+	assertInt(t, attrs, "output_tokens", "1758")
+	assertInt(t, attrs, "cache_read_tokens", "348822")
+	assertInt(t, attrs, "cache_creation_tokens", "176086")
+	assertInt(t, attrs, "duration_ms", "31341")
+	// dispatch_depth is a present zero — it must still be emitted.
+	assertInt(t, attrs, "dispatch_depth", "0")
+
+	// context.* attribution.
+	assertStr(t, attrs, "context_extension", "ion-dev")
+	assertStr(t, attrs, "context_extension_version", "0.2.0")
+	assertStr(t, attrs, "context_conversation_id", "1783339918596-0a78dd0c12ca")
+	assertStr(t, attrs, "context_session_id", "230dad54-0960-4c08-ace2-35f75a8f23be")
+
+	// top-level envelope.
+	assertInt(t, attrs, "schema_version", "3")
+	assertStr(t, attrs, "install_id", "5a435113-060b-4b0c-a5c9-1184ccd709a5")
+	assertStr(t, attrs, "engine_version", "dev")
+	assertStr(t, attrs, "trace_id", "4bf92f3577b34da6a3ce929d0e0e4736")
+
+	// The label-promotion hint names service+kind+component so
+	// otelcol.exporter.loki promotes them to Loki stream labels.
+	assertStr(t, attrs, "loki.attribute.labels", "service, kind, component")
+
+	// host and event_id ride in the BODY (asserted above) but are omitted from
+	// the ATTRIBUTE set to stay byte-identical with the desktop exporter.
+	for _, absent := range []string{"host", "event_id"} {
+		if _, ok := attrs[absent]; ok {
+			t.Errorf("attribute %q must be omitted (body-only; desktop attribute parity)", absent)
+		}
+	}
+}
+
+// TestTelemetryEvent_OmitsAbsentFields verifies a sparse event (llm.call with
+// no cost/token fields) omits the absent payload/context attributes entirely
+// rather than emitting empty-string noise.
+func TestTelemetryEvent_OmitsAbsentFields(t *testing.T) {
+	rec := egressRecord{
+		Name:      "llm.call",
+		Ts:        "2026-07-09T12:06:59.240797Z",
+		Schema:    float64(3),
+		Component: "engine",
+		Payload: map[string]any{
+			"duration_ms": float64(5820),
+			"model":       "claude-opus-4-8",
+			"stop_reason": "end_turn",
+		},
+		Context: map[string]any{"session_id": "s1"},
+	}
+	attrs, _, _, _ := decodeOtelBody(t, rec)
+
+	assertStr(t, attrs, "kind", "llm.call")
+	assertInt(t, attrs, "duration_ms", "5820")
+	assertStr(t, attrs, "stop_reason", "end_turn")
+	for _, absent := range []string{"run_cost_usd", "num_turns", "input_tokens", "context_extension"} {
+		if _, ok := attrs[absent]; ok {
+			t.Errorf("attribute %q must be omitted when absent", absent)
+		}
+	}
+}
+
+// TestTelemetryEvent_NotOperationalWrapper is the regression guard: the body
+// must be the verbatim telemetry envelope, NOT an operational egressRecord
+// wrapper whose "msg" holds the escaped telemetry JSON. This is exactly the
+// pre-fix bug that made the remote ion_otlp_unwrap name-parse fail.
+func TestTelemetryEvent_NotOperationalWrapper(t *testing.T) {
+	_, body, _, _ := decodeOtelBody(t, runCompleteRecord())
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(body), &parsed); err != nil {
+		t.Fatalf("body not JSON: %v", err)
+	}
+	// A telemetry body has top-level "name"; an operational wrapper has "msg"
+	// and no "name". Assert the telemetry shape.
+	if _, hasName := parsed["name"]; !hasName {
+		t.Error("telemetry body missing top-level \"name\" (remote ion_otlp_unwrap would fail to classify it)")
+	}
+	if _, hasMsg := parsed["msg"]; hasMsg {
+		t.Error("telemetry body carries operational \"msg\" wrapper; want verbatim event JSON")
+	}
+}
 
 func keysOf(m map[string]otlpLogAttrVal) []string {
 	ks := make([]string, 0, len(m))

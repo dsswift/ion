@@ -9,6 +9,7 @@ import (
 	ionconfig "github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/providers"
+	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -348,6 +349,21 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// G07: Enterprise model enforcement
 	if m.config != nil && m.config.Enterprise != nil {
 		if !ionconfig.IsModelAllowed(opts.Model, m.config.Enterprise) {
+			// Enforcement audit event (feature 0010 audit clause). Emitted while
+			// s.telemetry is still in scope under the lock; nil-safe.
+			if s.telemetry != nil {
+				source := "allowlist"
+				for _, b := range m.config.Enterprise.BlockedModels {
+					if b == opts.Model {
+						source = "denylist"
+						break
+					}
+				}
+				s.telemetry.Event(telemetry.EnforcementModelRejected, map[string]any{
+					"subject": opts.Model,
+					"source":  source,
+				}, nil)
+			}
 			m.mu.Unlock()
 			m.emit(key, types.EngineEvent{
 				Type:         "engine_error",

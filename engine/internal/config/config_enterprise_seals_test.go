@@ -243,3 +243,169 @@ func TestSessionLimitErrorMessageShape(t *testing.T) {
 		t.Error("session-limit error must contain the stable 'session limit reached' prefix")
 	}
 }
+
+// ─── Feature 0004: enterprise provider definition pinning (BaseURL pin) ───
+
+func TestEnforceEnterprise_ProviderPin_OverridesBaseURLAndAuthHeader(t *testing.T) {
+	cfg := &types.EngineRuntimeConfig{
+		Providers: map[string]types.ProviderConfig{
+			// User tries to route around the gateway by editing baseURL/authHeader.
+			"anthropic": {BaseURL: "https://api.anthropic.com", AuthHeader: "x-user", APIKey: "user-key"},
+		},
+	}
+	enterprise := &types.EnterpriseConfig{
+		Providers: map[string]types.ProviderConfig{
+			"anthropic": {BaseURL: "https://gateway.corp.example", AuthHeader: "x-corp", Backend: "api"},
+		},
+	}
+	result := EnforceEnterprise(cfg, enterprise)
+
+	got := result.Providers["anthropic"]
+	if got.BaseURL != "https://gateway.corp.example" {
+		t.Errorf("enterprise BaseURL must win: got %q", got.BaseURL)
+	}
+	if got.AuthHeader != "x-corp" {
+		t.Errorf("enterprise AuthHeader must win: got %q", got.AuthHeader)
+	}
+	if got.Backend != "api" {
+		t.Errorf("enterprise Backend must win: got %q", got.Backend)
+	}
+}
+
+func TestEnforceEnterprise_ProviderPin_PreservesUserAPIKeyWhenEnterpriseOmits(t *testing.T) {
+	cfg := &types.EngineRuntimeConfig{
+		Providers: map[string]types.ProviderConfig{
+			"anthropic": {BaseURL: "https://api.anthropic.com", APIKey: "user-key"},
+		},
+	}
+	enterprise := &types.EnterpriseConfig{
+		Providers: map[string]types.ProviderConfig{
+			// No APIKey — per-user key is user-supplied.
+			"anthropic": {BaseURL: "https://gateway.corp.example"},
+		},
+	}
+	result := EnforceEnterprise(cfg, enterprise)
+
+	got := result.Providers["anthropic"]
+	if got.APIKey != "user-key" {
+		t.Errorf("user APIKey must be preserved when enterprise omits it: got %q", got.APIKey)
+	}
+	if got.BaseURL != "https://gateway.corp.example" {
+		t.Errorf("enterprise BaseURL must still win: got %q", got.BaseURL)
+	}
+}
+
+func TestEnforceEnterprise_ProviderPin_EnterpriseAPIKeyWinsWhenSet(t *testing.T) {
+	cfg := &types.EngineRuntimeConfig{
+		Providers: map[string]types.ProviderConfig{
+			"anthropic": {APIKey: "user-key"},
+		},
+	}
+	enterprise := &types.EnterpriseConfig{
+		Providers: map[string]types.ProviderConfig{
+			"anthropic": {BaseURL: "https://gateway.corp.example", APIKey: "corp-key"},
+		},
+	}
+	result := EnforceEnterprise(cfg, enterprise)
+
+	if got := result.Providers["anthropic"].APIKey; got != "corp-key" {
+		t.Errorf("enterprise APIKey must win when set: got %q", got)
+	}
+}
+
+func TestEnforceEnterprise_ProviderPin_DeclaredProviderImplicitlyAllowed(t *testing.T) {
+	// A provider declared by enterprise survives even though it is not on the
+	// AllowedProviders list, while a user-added extra provider is stripped.
+	cfg := &types.EngineRuntimeConfig{
+		Providers: map[string]types.ProviderConfig{
+			"anthropic": {BaseURL: "https://api.anthropic.com"},
+			"rogue":     {BaseURL: "https://rogue.example"},
+		},
+	}
+	enterprise := &types.EnterpriseConfig{
+		AllowedProviders: []string{"openai"},
+		Providers: map[string]types.ProviderConfig{
+			"anthropic": {BaseURL: "https://gateway.corp.example"},
+		},
+	}
+	result := EnforceEnterprise(cfg, enterprise)
+
+	if _, ok := result.Providers["anthropic"]; !ok {
+		t.Error("enterprise-declared provider must survive even without an allowlist entry")
+	}
+	if _, ok := result.Providers["rogue"]; ok {
+		t.Error("user-added non-allowlisted provider must be stripped")
+	}
+}
+
+func TestEnforceEnterprise_ProviderPin_DoesNotMutateInput(t *testing.T) {
+	cfg := &types.EngineRuntimeConfig{
+		Providers: map[string]types.ProviderConfig{
+			"anthropic": {BaseURL: "https://api.anthropic.com"},
+		},
+	}
+	enterprise := &types.EnterpriseConfig{
+		Providers: map[string]types.ProviderConfig{
+			"anthropic": {BaseURL: "https://gateway.corp.example"},
+		},
+	}
+	_ = EnforceEnterprise(cfg, enterprise)
+
+	if got := cfg.Providers["anthropic"].BaseURL; got != "https://api.anthropic.com" {
+		t.Errorf("input config must not be mutated by provider pinning: got %q", got)
+	}
+}
+
+func TestEnforceEnterprise_ProviderPin_RePinIdempotent(t *testing.T) {
+	cfg := &types.EngineRuntimeConfig{
+		Providers: map[string]types.ProviderConfig{
+			"anthropic": {BaseURL: "https://api.anthropic.com", APIKey: "user-key"},
+		},
+	}
+	enterprise := &types.EnterpriseConfig{
+		Providers: map[string]types.ProviderConfig{
+			"anthropic": {BaseURL: "https://gateway.corp.example"},
+		},
+	}
+	first := EnforceEnterprise(cfg, enterprise)
+	second := EnforceEnterprise(first, enterprise)
+
+	if got := second.Providers["anthropic"].BaseURL; got != "https://gateway.corp.example" {
+		t.Errorf("re-pin must be idempotent: got %q", got)
+	}
+	if got := second.Providers["anthropic"].APIKey; got != "user-key" {
+		t.Errorf("re-pin must preserve user key: got %q", got)
+	}
+}
+
+func TestMergeEnterprisePartial_ProvidersOverlay(t *testing.T) {
+	base := &types.EnterpriseConfig{}
+	overlay := &types.EnterpriseConfig{
+		Providers: map[string]types.ProviderConfig{
+			"anthropic": {BaseURL: "https://gateway.corp.example"},
+		},
+	}
+	result := mergeEnterprisePartial(base, overlay)
+	if got := result.Providers["anthropic"].BaseURL; got != "https://gateway.corp.example" {
+		t.Errorf("overlay Providers must carry through: got %q", got)
+	}
+}
+
+// ─── Feature 0011 / #308: extension allowlist overlay merge ───
+
+func TestMergeEnterprisePartial_ExtensionAllowlist(t *testing.T) {
+	base := &types.EnterpriseConfig{}
+	overlay := &types.EnterpriseConfig{
+		ExtensionAllowlist: []types.ExtensionAllowlistEntry{
+			{ID: "ion-meta"},
+			{ID: "chief-of-staff", SHA256: "abc123"},
+		},
+	}
+	result := mergeEnterprisePartial(base, overlay)
+	if len(result.ExtensionAllowlist) != 2 {
+		t.Fatalf("overlay ExtensionAllowlist must carry through: got %d", len(result.ExtensionAllowlist))
+	}
+	if result.ExtensionAllowlist[1].SHA256 != "abc123" {
+		t.Errorf("overlay entry hash must survive: got %q", result.ExtensionAllowlist[1].SHA256)
+	}
+}

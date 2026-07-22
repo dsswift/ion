@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/auth"
+	"github.com/dsswift/ion/engine/internal/network"
 	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -146,7 +147,7 @@ func DoOperatorHTTPRequest(ctx context.Context, params OperatorHTTPRequestParams
 		"scope":  params.Scope,
 	})
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := network.GetHTTPClient().Do(req)
 	if err != nil {
 		if reqCtx.Err() != nil {
 			return nil, fmt.Errorf("request timed out after %s", timeout)

@@ -103,9 +103,27 @@ func (m *Manager) buildRunConfig(
 	// enterprise policy but can never override an enterprise block.
 	if m.config != nil && m.config.Enterprise != nil {
 		capturedEnterprise := m.config.Enterprise
+		capturedTelem := telemCollector
 		runCfg.Hooks.OnToolCall = func(info backend.ToolCallInfo) (*backend.ToolCallResult, error) {
 			if !ionconfig.IsToolAllowed(info.ToolName, capturedEnterprise) {
 				utils.LogWithFields(utils.LevelInfo, "session", "enterprise policy blocked tool call", map[string]any{"key": key, "tool": info.ToolName})
+				// Enforcement audit event (feature 0010 audit clause). Nil-safe:
+				// a session without telemetry emits nothing.
+				if capturedTelem != nil {
+					source := "allowlist"
+					if capturedEnterprise.ToolRestrictions != nil {
+						for _, d := range capturedEnterprise.ToolRestrictions.Deny {
+							if d == info.ToolName {
+								source = "denylist"
+								break
+							}
+						}
+					}
+					capturedTelem.Event(telemetry.EnforcementToolBlocked, map[string]any{
+						"subject": info.ToolName,
+						"source":  source,
+					}, nil)
+				}
 				return &backend.ToolCallResult{Block: true, Reason: "tool blocked by enterprise policy"}, nil
 			}
 			return nil, nil

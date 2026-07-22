@@ -24,6 +24,7 @@
  * immediately. It never holds the logger's write path.
  */
 
+import { randomBytes } from 'crypto'
 import { log as _log } from './logger'
 import { flushToOtel } from './log-egress-otel'
 import {
@@ -72,6 +73,13 @@ export interface EgressRecord {
    * for the claim-selection rationale.
    */
   user?: string
+  /**
+   * Per-record unique ID (16 hex chars), stamped at the enqueue funnel for
+   * downstream dedup during retry storms. Byte-shape parity with the engine
+   * egressRecord.event_id (engine/internal/utils/log_egress.go). A record that
+   * already carries an event_id (e.g. a tailed telemetry event) keeps its own.
+   */
+  event_id?: string
   fields?: Record<string, unknown>
   [key: string]: unknown
 }
@@ -523,11 +531,22 @@ export function shipTailedToEgress(rec: EgressRecord): void {
 
 function enqueueRecord(rec: EgressRecord): void {
   if (!activeForwarder) return
-  if (_egressUser && !rec.user) {
-    activeForwarder.ship({ ...rec, user: _egressUser })
+  // Stamp a per-record event_id when absent (downstream-dedup key). Byte-shape
+  // parity with the engine forwarder, which stamps at its own enqueue funnel.
+  const stamped: EgressRecord = rec.event_id ? rec : { ...rec, event_id: genEventID() }
+  if (_egressUser && !stamped.user) {
+    activeForwarder.ship({ ...stamped, user: _egressUser })
   } else {
-    activeForwarder.ship(rec)
+    activeForwarder.ship(stamped)
   }
+}
+
+/**
+ * genEventID returns a 16-hex-char (8 random bytes) unique record identifier,
+ * matching the engine's utils.GenEventID / telemetry event_id shape.
+ */
+function genEventID(): string {
+  return randomBytes(8).toString('hex')
 }
 
 /**

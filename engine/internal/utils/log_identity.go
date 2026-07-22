@@ -37,9 +37,13 @@ func getMachineIdentity() machineIdentity {
 }
 
 // ambientFieldsFromIdentity builds the fields map to merge into every egress
-// record. Only non-empty values are included.
+// record. Only non-empty values are included. install_id (the per-install
+// anonymous UUID) is included alongside the hardware machine_id: they are
+// DISTINCT identifiers, not a naming drift. install_id joins egress records to
+// the telemetry stream (which stamps the same value); machine_id stays
+// hardware-stable across reinstalls. Both ship. See docs/observability/log-schema.md.
 func ambientFieldsFromIdentity(id machineIdentity) map[string]any {
-	m := make(map[string]any, 5)
+	m := make(map[string]any, 6)
 	if id.Host != "" {
 		m["host"] = id.Host
 	}
@@ -51,6 +55,9 @@ func ambientFieldsFromIdentity(id machineIdentity) map[string]any {
 	}
 	if id.MDMSerial != "" {
 		m["mdm_serial"] = id.MDMSerial
+	}
+	if iid := InstallID(); iid != "" {
+		m["install_id"] = iid
 	}
 	return m
 }

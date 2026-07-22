@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/dsswift/ion/engine/internal/network"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -42,7 +43,7 @@ func (b *BraveSearchBackend) Search(ctx context.Context, query string, maxResult
 	req.Header.Set("X-Subscription-Token", b.APIKey)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := network.GetHTTPClient().Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +103,7 @@ func (t *TavilyBackend) Search(ctx context.Context, query string, maxResults int
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := network.GetHTTPClient().Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +157,7 @@ func (s *SearXNGBackend) Search(ctx context.Context, query string, maxResults in
 	if err != nil {
 		return nil, err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := network.GetHTTPClient().Do(req)
 	if err != nil {
 		return nil, err
 	}

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/network"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -162,7 +163,7 @@ func executeWebFetch(ctx context.Context, input map[string]any, _ string) (*type
 		}
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := network.GetHTTPClient().Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
 			return &types.ToolResult{Content: fmt.Sprintf("Request timed out after %s", fetchTimeout), IsError: true}, nil
