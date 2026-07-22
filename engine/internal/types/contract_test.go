@@ -149,6 +149,10 @@ func buildManifest() contractManifest {
 		// response (D-007). Tracked so client mirrors enforce the same
 		// session/agent caps the engine enforces.
 		"ResourceLimits": reflect.TypeOf(ResourceLimits{}),
+		// ExtensionAllowlistEntry is an element of EnterpriseConfig.ExtensionAllowlist
+		// (feature 0011 / D-020, issue #308), carried inside the
+		// get_enterprise_policy blob. Tracked so Go↔TS drift is caught by CI.
+		"ExtensionAllowlistEntry": reflect.TypeOf(ExtensionAllowlistEntry{}),
 	}
 	for name, typ := range shared {
 		m.SharedTypes[name] = jsonFieldNames(typ)

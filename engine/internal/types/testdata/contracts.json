@@ -441,6 +441,10 @@
       "workingDirectory",
       "workspaceWatchIgnore"
     ],
+    "ExtensionAllowlistEntry": [
+      "id",
+      "sha256"
+    ],
     "LlmContentBlock": [
       "clearedBlocks",
       "content",
