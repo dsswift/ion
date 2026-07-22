@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -143,6 +144,30 @@ func GetHTTPTransport() *http.Transport {
 		return http.DefaultTransport.(*http.Transport).Clone() //nolint:errcheck // best-effort; failure not actionable here
 	}
 	return httpTransport
+}
+
+var (
+	httpClientOnce sync.Once
+	sharedClient   *http.Client
+)
+
+// GetHTTPClient returns a process-shared *http.Client whose Transport is the
+// enterprise-configured transport (proxy + custom CA) from InitNetwork. Every
+// engine-owned outbound HTTP call that is NOT an LLM provider stream (telemetry
+// flush, web_search / web_fetch tools, operator ctx.http.*) must route through
+// this client so an enterprise proxy/CA policy applies uniformly — using
+// http.DefaultClient bypasses the configured transport and breaks on a proxied
+// or custom-CA network (D-018).
+//
+// Built once, lazily: GetHTTPTransport reflects the transport configured by the
+// InitNetwork call at serve startup, which always runs before any consumer here
+// makes a request. Callers that need a per-request timeout should set it via the
+// request context rather than mutating this shared client.
+func GetHTTPClient() *http.Client {
+	httpClientOnce.Do(func() {
+		sharedClient = &http.Client{Transport: GetHTTPTransport()}
+	})
+	return sharedClient
 }
 
 // GetProxyForURL returns the proxy URL string to use for the given target URL,

@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/network"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
@@ -539,7 +540,7 @@ func flushToHTTP(events []Event, endpoint string, headers map[string]string) err
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := network.GetHTTPClient().Do(req)
 	if err != nil {
 		return err
 	}
