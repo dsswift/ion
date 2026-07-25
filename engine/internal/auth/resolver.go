@@ -340,7 +340,7 @@ func (r *Resolver) ListStored() []StoredCredential {
 
 	// Encrypted file store
 	fs := NewFileStore()
-	if creds, err := fs.readFile(); err == nil {
+	if creds, _, err := fs.readFile(); err == nil {
 		for provider := range creds.Keys {
 			// Skip internal oauth token entries; expose only plain provider keys.
 			if strings.HasPrefix(provider, "oauth:") {
