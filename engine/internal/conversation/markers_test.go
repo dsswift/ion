@@ -167,8 +167,10 @@ func TestClearMarker_ReplayedOnLoad(t *testing.T) {
 	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "first reply"}},
 		types.LlmUsage{InputTokens: 10, OutputTokens: 15})
 
-	// Simulate /clear: wipe messages, append the cleared entry.
+	// Simulate /clear: wipe messages, append the DisplayOnly /clear invocation
+	// row, then the cleared marker (mirrors clearConversationCore's tree order).
 	conv.Messages = nil
+	AppendEntry(conv, EntryMessage, MessageData{Role: "user", Content: "/clear", SlashCommand: "/clear", SlashSource: "ion", DisplayOnly: true})
 	AppendEntry(conv, EntryCleared, ClearedData{})
 
 	if err := Save(conv, dir); err != nil {
@@ -190,6 +192,22 @@ func TestClearMarker_ReplayedOnLoad(t *testing.T) {
 	}
 	if marker.Content != "──" {
 		t.Errorf("marker Content = %q, want \"──\"", marker.Content)
+	}
+
+	// The /clear invocation pill and the marker must both replay, pill first.
+	var clearIdx = -1
+	for i := range msgs {
+		if msgs[i].MarkerKind == "clear" {
+			clearIdx = i
+			break
+		}
+	}
+	if clearIdx <= 0 {
+		t.Fatalf("clear marker at index %d — expected the /clear invocation row before it", clearIdx)
+	}
+	pill := msgs[clearIdx-1]
+	if pill.Role != "user" || pill.SlashCommand != "/clear" {
+		t.Errorf("row before clear marker = {role:%q slash:%q}, want {role:\"user\" slash:\"/clear\"} — pill must replay immediately before the divider", pill.Role, pill.SlashCommand)
 	}
 }
 

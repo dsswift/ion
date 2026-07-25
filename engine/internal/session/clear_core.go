@@ -46,6 +46,13 @@ type clearResult struct {
 	// Messages cleared. False when the conversation file did not exist
 	// (never-prompted, pre-minted id) — still a semantic success.
 	wiped bool
+	// clearEntryID is the canonical tree-entry id of the display-only `/clear`
+	// invocation row the core persists immediately before the EntryCleared
+	// marker. Empty when no file was wiped (nothing to persist). Callers emit
+	// it via engine_user_turn_persisted so consumers can re-key their optimistic
+	// `/clear` entry to this id and a history reload dedups against it — the same
+	// re-key contract every other slash command already has. See dispatchClear.
+	clearEntryID string
 }
 
 // clearConversationCore is the single source of clear semantics. It:
@@ -110,13 +117,36 @@ func (m *Manager) clearConversationCore(conversationID, preferKey string) (clear
 	}
 
 	conv.Messages = nil
+	// Persist the `/clear` invocation as a DisplayOnly user entry chained
+	// BEFORE the EntryCleared marker. This makes /clear symmetric with every
+	// other slash command (which the run loop persists as a user turn carrying
+	// slash provenance), so the invocation is a persisted display turn with a
+	// canonical tree-entry id that a consumer can re-key its optimistic entry
+	// to. Without this row the optimistic entry had nothing to reconcile against
+	// and was ordered inconsistently on reload/replay.
+	//
+	// DisplayOnly keeps the row OUT of BuildContextPath (see tree.go), so a
+	// rebuilt .llm.jsonl never resurrects the invocation as a real user turn —
+	// the LLM context stays empty, which is the whole point of /clear. Tree
+	// order (invocation → marker) means flattenEntries yields the invocation row
+	// then the divider row, matching the live insert order.
+	clearEntry := conversation.AppendEntry(conv, conversation.EntryMessage, conversation.MessageData{
+		Role:         "user",
+		Content:      "/clear",
+		SlashCommand: "/clear",
+		SlashSource:  "ion",
+		DisplayOnly:  true,
+	})
+	if clearEntry != nil {
+		res.clearEntryID = clearEntry.ID
+	}
 	conversation.AppendEntry(conv, conversation.EntryCleared, conversation.ClearedData{})
 	if err := conversation.Save(conv, ""); err != nil {
 		utils.LogWithFields(utils.LevelInfo, "session", "clearcore: save failed", map[string]any{"run_id": conversationID, "error": err})
 		return res, fmt.Errorf("save conversation %q: %w", conversationID, err)
 	}
 	res.wiped = true
-	utils.LogWithFields(utils.LevelInfo, "session", "clearcore: wiped messages, appended cleared entry (entries preserved in tree)", map[string]any{"run_id": conversationID, "count": len(conv.Entries), "session_key": res.sessionKey, "denied_cleared": res.deniedCleared})
+	utils.LogWithFields(utils.LevelInfo, "session", "clearcore: wiped messages, appended /clear invocation + cleared entry (entries preserved in tree)", map[string]any{"run_id": conversationID, "count": len(conv.Entries), "clear_entry_id": res.clearEntryID, "session_key": res.sessionKey, "denied_cleared": res.deniedCleared})
 	return res, nil
 }
 

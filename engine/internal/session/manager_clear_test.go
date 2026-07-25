@@ -393,17 +393,73 @@ func TestClearConversationFile_MessagesDurableAfterReload(t *testing.T) {
 		t.Errorf("BUG #146: Messages not cleared after reload — got %d message(s): %+v",
 			len(cleared.Messages), cleared.Messages)
 	}
-	// Entries must be preserved AND include one new EntryCleared — /clear is
-	// a checkpoint that appends to the tree, not a delete or a no-op.
-	wantEntries := seedEntryCount + 1
+	// Entries must be preserved AND include two new entries — the DisplayOnly
+	// `/clear` invocation row followed by the EntryCleared marker. /clear is a
+	// checkpoint that appends to the tree, not a delete or a no-op.
+	wantEntries := seedEntryCount + 2
 	if len(cleared.Entries) != wantEntries {
-		t.Errorf("Entries count after clear: got %d, want %d (original + EntryCleared)",
+		t.Errorf("Entries count after clear: got %d, want %d (original + /clear invocation + EntryCleared)",
 			len(cleared.Entries), wantEntries)
+	}
+	// The two appended entries must be, in order: a DisplayOnly user message
+	// carrying SlashCommand "/clear", then the EntryCleared marker chained as
+	// its child. This is the reload-order contract: flattenEntries yields the
+	// pill row immediately before the divider row.
+	clearMsg := cleared.Entries[seedEntryCount]
+	clearMarker := cleared.Entries[seedEntryCount+1]
+	if clearMsg.Type != conversation.EntryMessage {
+		t.Errorf("appended entry[%d] type = %q, want %q (the /clear invocation row)", seedEntryCount, clearMsg.Type, conversation.EntryMessage)
+	}
+	if md := clearMessageData(t, clearMsg); md != nil {
+		if !md.DisplayOnly {
+			t.Errorf("/clear invocation row must be DisplayOnly (kept out of LLM context)")
+		}
+		if md.SlashCommand != "/clear" {
+			t.Errorf("/clear invocation row SlashCommand = %q, want \"/clear\"", md.SlashCommand)
+		}
+	}
+	if clearMarker.Type != conversation.EntryCleared {
+		t.Errorf("appended entry[%d] type = %q, want %q (the cleared marker)", seedEntryCount+1, clearMarker.Type, conversation.EntryCleared)
+	}
+	if clearMarker.ParentID == nil || *clearMarker.ParentID != clearMsg.ID {
+		got := "nil"
+		if clearMarker.ParentID != nil {
+			got = *clearMarker.ParentID
+		}
+		t.Errorf("EntryCleared parent = %q, want %q (the /clear invocation row) — marker must chain AFTER the pill", got, clearMsg.ID)
 	}
 	// After /clear, GetContextUsage must use the heuristic path (no messages).
 	usage := conversation.GetContextUsage(cleared, 200000)
 	if !usage.Estimated {
 		t.Errorf("expected Estimated=true after clear (no messages with Usage), got Estimated=false")
+	}
+}
+
+// clearMessageData decodes the MessageData payload of a message tree entry for
+// assertion. A loaded tree entry stores Data either as a typed MessageData
+// (in-process path) or a map[string]any (JSON round-trip path); handle both.
+func clearMessageData(t *testing.T, entry conversation.SessionEntry) *conversation.MessageData {
+	t.Helper()
+	switch d := entry.Data.(type) {
+	case conversation.MessageData:
+		return &d
+	case *conversation.MessageData:
+		return d
+	case map[string]any:
+		md := &conversation.MessageData{}
+		if v, ok := d["role"].(string); ok {
+			md.Role = v
+		}
+		if v, ok := d["slashCommand"].(string); ok {
+			md.SlashCommand = v
+		}
+		if v, ok := d["displayOnly"].(bool); ok {
+			md.DisplayOnly = v
+		}
+		return md
+	default:
+		t.Fatalf("entry.Data is %T, want MessageData or map[string]any", entry.Data)
+		return nil
 	}
 }
 

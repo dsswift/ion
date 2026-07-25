@@ -158,7 +158,22 @@ func (m *Manager) dispatchClear(s *engineSession, key string) {
 		m.emitCommandResult(key, "clear", err)
 		return
 	}
-	utils.LogWithFields(utils.LevelInfo, "session", "clear: core done", map[string]any{"key": key, "run_id": s.conversationID, "wiped": res.wiped, "denied_cleared": res.deniedCleared})
+	utils.LogWithFields(utils.LevelInfo, "session", "clear: core done", map[string]any{"key": key, "run_id": s.conversationID, "wiped": res.wiped, "clear_entry_id": res.clearEntryID, "denied_cleared": res.deniedCleared})
+
+	// Announce the canonical id of the persisted `/clear` invocation row so
+	// consumers can re-key their optimistic `/clear` entry to it (and a history
+	// reload dedups against it). Reuses the existing engine_user_turn_persisted
+	// re-key signal — the same event every other slash command's user turn
+	// emits — rather than inventing a /clear-specific wire type. Emitted before
+	// the clear signal so the re-key lands before the clear marker a consumer
+	// derives from engine_command_result. Only when the core actually persisted
+	// the row (a file existed to wipe); a never-prompted pre-minted id has no row.
+	if res.clearEntryID != "" {
+		m.emit(key, types.EngineEvent{
+			Type:            "engine_user_turn_persisted",
+			UserTurnEntryID: res.clearEntryID,
+		})
+	}
 
 	// Re-fire session_start so the harness can re-prime the now-empty
 	// conversation. `/clear` is a checkpoint, not a session restart — the
