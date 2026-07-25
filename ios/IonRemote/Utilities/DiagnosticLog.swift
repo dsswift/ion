@@ -79,7 +79,10 @@ final class DiagnosticLog: @unchecked Sendable {
     private static let maxTotalBytes = 10_485_760
 
     private let lock = OSAllocatedUnfairLock(initialState: [Entry]())
-    private let logger = Logger(subsystem: "com.sprague.ion.mobile", category: "diag")
+    // Subsystem derives from the app bundle so forks/rebrands get a correct
+    // unified-logging subsystem with zero edits. (os.Logger output is
+    // Console.app-only; the operator-facing log path is the JSONL file.)
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "ion.mobile", category: "diag")
     /// Internal (not private) so tests can inject rotated session files to
     /// exercise the export-cursor rotation path.
     let logDirectory: URL
