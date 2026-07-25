@@ -20,6 +20,19 @@ type LlmProvider interface {
 	CountTokens(ctx context.Context, req CountTokensRequest) (int, error)
 }
 
+// ImageProvider generates images from a text prompt. It is a separate
+// interface from LlmProvider because image APIs (DALL-E, gpt-image-1, etc.)
+// have a completely different wire shape: single prompt in, image bytes out —
+// no streaming, no conversation history, no tools. A provider may implement
+// both interfaces.
+type ImageProvider interface {
+	ID() string
+	// Generate submits a single text prompt to the image-generation API and
+	// returns one or more image results. Data in each result is raw base64
+	// bytes (never a URL); callers are responsible for persisting to disk.
+	Generate(ctx context.Context, opts types.ImageGenerateOptions) ([]types.ImageResult, error)
+}
+
 // CountTokensRequest carries the content to be counted.
 type CountTokensRequest struct {
 	Model    string
@@ -29,9 +42,10 @@ type CountTokensRequest struct {
 }
 
 var (
-	providerRegistry = make(map[string]LlmProvider)
-	modelRegistry    = make(map[string]types.ModelInfo)
-	mu               sync.RWMutex
+	providerRegistry      = make(map[string]LlmProvider)
+	imageProviderRegistry = make(map[string]ImageProvider)
+	modelRegistry         = make(map[string]types.ModelInfo)
+	mu                    sync.RWMutex
 )
 
 // RegisterProvider adds a provider to the global registry.
@@ -46,6 +60,42 @@ func GetProvider(id string) LlmProvider {
 	mu.RLock()
 	defer mu.RUnlock()
 	return providerRegistry[id]
+}
+
+// RegisterImageProvider adds an image provider to the global registry.
+func RegisterImageProvider(p ImageProvider) {
+	mu.Lock()
+	defer mu.Unlock()
+	utils.LogWithFields(utils.LevelDebug, "Providers", "register image provider", map[string]any{"provider": p.ID()})
+	imageProviderRegistry[p.ID()] = p
+}
+
+// GetImageProvider returns a registered image provider by ID.
+func GetImageProvider(id string) ImageProvider {
+	mu.RLock()
+	defer mu.RUnlock()
+	return imageProviderRegistry[id]
+}
+
+// ResolveImageProvider finds the ImageProvider for a given model name by
+// looking up the model's ProviderID in the model registry, then returning the
+// ImageProvider registered for that provider ID. Returns nil when no image
+// provider is registered for the model's provider.
+func ResolveImageProvider(model string) ImageProvider {
+	mu.RLock()
+	defer mu.RUnlock()
+	info, ok := modelRegistry[model]
+	if !ok {
+		utils.LogWithFields(utils.LevelInfo, "Providers", "resolve image provider: model not in registry", map[string]any{"model": model})
+		return nil
+	}
+	p := imageProviderRegistry[info.ProviderID]
+	if p == nil {
+		utils.LogWithFields(utils.LevelInfo, "Providers", "resolve image provider: no image provider registered", map[string]any{"model": model, "provider": info.ProviderID})
+	} else {
+		utils.LogWithFields(utils.LevelDebug, "Providers", "resolve image provider hit", map[string]any{"model": model, "provider": p.ID()})
+	}
+	return p
 }
 
 // ResolveProvider finds the provider for a given model name using model registry
@@ -187,6 +237,7 @@ func ListModels() []types.ModelEntry {
 			ThinkingMode:     info.ThinkingMode,
 			ThinkingEfforts:  info.ThinkingEfforts,
 			Tokenizer:        info.Tokenizer,
+			ModelKind:        info.ModelKind,
 			IsCustom:         info.IsCustom,
 		}
 		if info.IsCustom {
@@ -245,6 +296,12 @@ func ListModels() []types.ModelEntry {
 					dm.ThinkingEfforts = catalog.ThinkingEfforts
 					if dm.Tokenizer == "" {
 						dm.Tokenizer = catalog.Tokenizer
+					}
+					// ModelKind from the catalog always wins: live discovery
+					// never returns a modelKind field so a model present in the
+					// catalog (e.g. dall-e-3) must inherit its kind from there.
+					if dm.ModelKind == "" {
+						dm.ModelKind = catalog.ModelKind
 					}
 				}
 				entries = append(entries, dm)
@@ -314,6 +371,13 @@ func GetProviderKey(providerID string) string {
 
 // ApplyConfig re-registers providers that have config overrides (baseURL,
 // authHeader, etc.). Call after loading engine config.
+//
+// For any provider that has a baseURL (first-class or custom), an image
+// provider is also registered under the same ID. This allows user-config
+// providers (e.g. a custom Azure OpenAI deployment that serves DALL-E, or
+// an on-premise endpoint that implements the /v1/images/generations API) to
+// declare image models via modelKind="image" in their models.json entry and
+// have those models route through runImageLoop without additional setup.
 func ApplyConfig(configs map[string]types.ProviderConfig) {
 	for name, cfg := range configs {
 		opts := &ProviderOptions{
@@ -326,6 +390,9 @@ func ApplyConfig(configs map[string]types.ProviderConfig) {
 			RegisterProvider(NewAnthropicProvider(opts))
 		case "openai":
 			RegisterProvider(NewOpenAIProvider(opts))
+			// Re-register the image provider in case baseURL was overridden
+			// (e.g. Azure OpenAI endpoint serving DALL-E).
+			RegisterImageProvider(NewOpenAIImageProvider(opts))
 		case "google":
 			RegisterProvider(NewGoogleProvider(opts))
 		default:
@@ -337,17 +404,38 @@ func ApplyConfig(configs map[string]types.ProviderConfig) {
 				if baseURL == "" {
 					baseURL = dflt
 				}
-				RegisterProvider(NewOpenAICompatibleProvider(CompatibleProviderOptions{
-					ID:      name,
-					APIKey:  cfg.APIKey,
-					BaseURL: baseURL,
+				compatOpts := CompatibleProviderOptions{
+					ID:         name,
+					APIKey:     cfg.APIKey,
+					BaseURL:    baseURL,
+					AuthHeader: cfg.AuthHeader,
+				}
+				RegisterProvider(NewOpenAICompatibleProvider(compatOpts))
+				// Known compatible providers may also host image models (e.g.
+				// a Together endpoint that serves Flux). Register an image
+				// provider so modelKind="image" entries route correctly.
+				RegisterImageProvider(NewOpenAIImageProvider(&ProviderOptions{
+					ID:         name,
+					APIKey:     cfg.APIKey,
+					BaseURL:    baseURL,
+					AuthHeader: cfg.AuthHeader,
 				}))
 			} else if cfg.BaseURL != "" {
-				// Unknown provider name with a baseURL — register as a new compatible provider.
+				// Unknown provider name with a baseURL — register as a new
+				// compatible provider (chat) AND an image provider so that
+				// any of its models declared with modelKind="image" route
+				// through runImageLoop without additional config.
 				RegisterProvider(NewOpenAICompatibleProvider(CompatibleProviderOptions{
-					ID:      name,
-					APIKey:  cfg.APIKey,
-					BaseURL: cfg.BaseURL,
+					ID:         name,
+					APIKey:     cfg.APIKey,
+					BaseURL:    cfg.BaseURL,
+					AuthHeader: cfg.AuthHeader,
+				}))
+				RegisterImageProvider(NewOpenAIImageProvider(&ProviderOptions{
+					ID:         name,
+					APIKey:     cfg.APIKey,
+					BaseURL:    cfg.BaseURL,
+					AuthHeader: cfg.AuthHeader,
 				}))
 			} else {
 				utils.LogWithFields(utils.LevelInfo, "Providers", "apply config skipping unknown provider", map[string]any{"provider": name, "reason": "no baseURL"})
@@ -363,6 +451,7 @@ func ResetRegistries() {
 	mu.Lock()
 	defer mu.Unlock()
 	providerRegistry = make(map[string]LlmProvider)
+	imageProviderRegistry = make(map[string]ImageProvider)
 	modelRegistry = make(map[string]types.ModelInfo)
 }
 
@@ -401,4 +490,7 @@ func restoreInitRegistries() {
 	if err := loadModelsFromJSON(modelCatalogJSON); err != nil {
 		panic("failed to load model catalog: " + err.Error())
 	}
+
+	// Register the OpenAI image provider (DALL-E 3, gpt-image-1).
+	RegisterImageProvider(NewOpenAIImageProvider(nil))
 }

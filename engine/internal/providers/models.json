@@ -304,5 +304,15 @@
     "costPer1kInput": 0.0001,
     "costPer1kOutput": 0.0001,
     "tokenizer": "cl100k_base"
+  },
+  {
+    "id": "dall-e-3",
+    "providerId": "openai",
+    "modelKind": "image"
+  },
+  {
+    "id": "gpt-image-1",
+    "providerId": "openai",
+    "modelKind": "image"
   }
 ]

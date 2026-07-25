@@ -262,14 +262,12 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 		return types.EngineEvent{Type: "engine_steer_injected", SteerMessageLength: e.MessageLength}
 
 	case *types.PromptInjectedEvent:
-		// Engine-initiated prompt (extension ctx.sendPrompt): live clients
-		// must render the turn from this event — no client submitted it, so
-		// no client did an optimistic insert. The full text crosses the wire
-		// deliberately (unlike the steer confirmation): it IS the turn.
-		// Exception: Kind=="agent_completion" means this is an internal
-		// machine-to-machine signal (a child agent's result routed back to its
-		// parent). Clients must NOT render agent_completion injections as user
-		// bubbles — they are dispatch callbacks, not user-authored turns.
+		// Engine-initiated prompt (extension ctx.sendPrompt): the run's user
+		// turn was not submitted by any consumer — the full text crosses the
+		// wire so consumers can observe the injected turn. Kind classifies the
+		// injection semantically; "agent_completion" marks a machine-to-machine
+		// dispatch callback (a child agent's result routed to its parent) rather
+		// than a user-authored turn. Consumers interpret Kind however they choose.
 		return types.EngineEvent{Type: "engine_prompt_injected", InjectedPrompt: e.Prompt, InjectedPromptOrigin: e.Origin, InjectedPromptKind: e.Kind}
 
 	case *types.ModelFallbackEvent:

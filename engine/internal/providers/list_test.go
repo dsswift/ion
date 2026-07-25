@@ -44,7 +44,10 @@ func TestListModels(t *testing.T) {
 		if m.ProviderID == "" {
 			t.Errorf("model %q has empty ProviderID", m.ID)
 		}
-		if m.ContextWindow <= 0 {
+		// Image-generation models have no concept of a context window (they accept
+		// a single prompt string, not a token-counted conversation). Exempt them
+		// from the ContextWindow > 0 check.
+		if m.ModelKind != "image" && m.ContextWindow <= 0 {
 			t.Errorf("model %q has invalid ContextWindow: %d", m.ID, m.ContextWindow)
 		}
 	}

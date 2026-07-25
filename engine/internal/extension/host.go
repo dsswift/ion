@@ -413,11 +413,11 @@ type SendPromptPayload struct {
 	// prefixes, unioned with the session allowlist for the single run this
 	// prompt starts. Never persisted on the session. Empty/nil is a no-op.
 	BashAllowlistAdditions []string
-	// Kind classifies the injection for downstream clients. "agent_completion"
-	// means this is an internal dispatch callback (a completed child agent's
-	// result being routed back to its parent agent) — clients must NOT render
-	// these as user-visible bubbles. Empty means a genuine extension-initiated
-	// user turn and should be rendered normally. Propagates to
+	// Kind classifies the injection semantically. "agent_completion" means
+	// this is a machine-to-machine dispatch callback (a completed child
+	// agent's result being routed back to its parent agent) rather than a
+	// user-authored turn. Empty means a genuine extension-initiated user
+	// turn with no special classification. Propagates to
 	// PromptInjectedEvent.Kind and the engine_prompt_injected wire field
 	// InjectedPromptKind.
 	Kind string

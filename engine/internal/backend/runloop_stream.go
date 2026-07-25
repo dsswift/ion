@@ -171,7 +171,23 @@ func (b *ApiBackend) processStream(
 			// carrying the on-disk FILE PATH (never base64 on the wire), with
 			// Source="provider" and no ToolID. A save failure is logged and the
 			// image is dropped rather than failing the run.
+			//
+			// Persistence: stamp the base64 bytes onto the block's Source so
+			// the assistant entry saved to the conversation tree carries the
+			// image. Without this the persisted block is a bare
+			// {"type":"image"} and the image vanishes on historical reload —
+			// the live ImageContentEvent is not persisted; the block IS the
+			// durable record (same pattern as tool-result images, whose
+			// reload path re-derives the content-addressed path from these
+			// bytes via imageAttachmentFromBlock).
 			if cb.Type == "image" || cb.ImageData != "" {
+				if currentBlockIndex < len(assistantBlocks) {
+					assistantBlocks[currentBlockIndex].Source = &types.ImageSource{
+						Type:      "base64",
+						MediaType: cb.ImageMediaType,
+						Data:      cb.ImageData,
+					}
+				}
 				if path := b.saveProviderImage(run, cb.ImageMediaType, cb.ImageData); path != "" {
 					b.emit(run, types.NormalizedEvent{Data: &types.ImageContentEvent{
 						Path:      path,

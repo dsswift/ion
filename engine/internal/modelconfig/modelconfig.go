@@ -222,6 +222,9 @@ func UserModels(config map[string]interface{}) map[string]types.ModelInfo {
 					}
 					info.ThinkingEfforts = efforts
 				}
+				if v, ok := m["modelKind"].(string); ok {
+					info.ModelKind = v
+				}
 			}
 			result[modelName] = info
 		}

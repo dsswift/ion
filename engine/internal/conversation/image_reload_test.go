@@ -359,3 +359,100 @@ func TestUserPromptDocument_TypedAsFile(t *testing.T) {
 		t.Error("attachment Path is empty, want an on-disk file path")
 	}
 }
+
+// TestAssistantImage_ReplayedOnLoad asserts that a provider-generated image
+// persisted on an ASSISTANT entry (the image-generation loop's revised-prompt
+// text + image blocks, or a chat model's inline image output) survives a full
+// Save → Load round-trip and reloads as an attachment on the assistant text
+// row.
+//
+// This test is RED without the "image" case in flattenEntries' assistant
+// branch: before the fix only "text" and "tool_use" blocks were handled there,
+// so a generated image rendered live (via the non-persisted ImageContentEvent)
+// but vanished from history on reload — the exact defect reported for
+// conversation 1784764874325-a33c3135e88a.
+func TestAssistantImage_ReplayedOnLoad(t *testing.T) {
+	dir := t.TempDir()
+	b64 := base64.StdEncoding.EncodeToString(tinyPNG)
+
+	conv := CreateConversation("assistant-image-reload", "", "FLUX.2-flex")
+	AddUserMessage(conv, "Generate the following image: a cat snowboarding")
+	// Exactly what runImageLoop persists: revised-prompt text + image block.
+	AddAssistantMessage(conv, []types.LlmContentBlock{
+		{Type: "text", Text: "A fluffy tabby cat snowboarding down a mountain."},
+		{Type: "image", Source: &types.ImageSource{Type: "base64", MediaType: "image/png", Data: b64}},
+	}, types.LlmUsage{})
+
+	if err := Save(conv, dir); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	msgs, err := LoadMessages(conv.ID, dir)
+	if err != nil {
+		t.Fatalf("LoadMessages: %v", err)
+	}
+
+	var assistantRow *types.SessionMessage
+	for i := range msgs {
+		if msgs[i].Role == "assistant" {
+			assistantRow = &msgs[i]
+			break
+		}
+	}
+	if assistantRow == nil {
+		t.Fatal("expected an assistant row after reload, found none")
+	}
+	if len(assistantRow.Attachments) != 1 {
+		t.Fatalf("assistant row Attachments len = %d, want 1 (generated image dropped on reload)", len(assistantRow.Attachments))
+	}
+	att := assistantRow.Attachments[0]
+	if att.Type != "image" {
+		t.Errorf("attachment Type = %q, want \"image\"", att.Type)
+	}
+	if att.Path == "" {
+		t.Error("attachment Path is empty, want an on-disk file path")
+	}
+	if _, statErr := os.Stat(att.Path); statErr != nil {
+		t.Errorf("attachment Path does not exist on disk: %v", statErr)
+	}
+	// The revised-prompt text still renders as the row content.
+	if assistantRow.Content != "A fluffy tabby cat snowboarding down a mountain." {
+		t.Errorf("assistant row Content = %q, want the revised prompt", assistantRow.Content)
+	}
+}
+
+// TestAssistantImage_NoTextSibling asserts an assistant entry carrying ONLY an
+// image block (no revised prompt — some image models return none) reloads as a
+// standalone assistant row with the image attachment, rather than being
+// dropped because no text row exists to attach to.
+func TestAssistantImage_NoTextSibling(t *testing.T) {
+	dir := t.TempDir()
+	b64 := base64.StdEncoding.EncodeToString(tinyPNG)
+
+	conv := CreateConversation("assistant-image-only-reload", "", "gpt-image-1")
+	AddUserMessage(conv, "an abstract painting")
+	AddAssistantMessage(conv, []types.LlmContentBlock{
+		{Type: "image", Source: &types.ImageSource{Type: "base64", MediaType: "image/png", Data: b64}},
+	}, types.LlmUsage{})
+
+	if err := Save(conv, dir); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	msgs, err := LoadMessages(conv.ID, dir)
+	if err != nil {
+		t.Fatalf("LoadMessages: %v", err)
+	}
+
+	var assistantRow *types.SessionMessage
+	for i := range msgs {
+		if msgs[i].Role == "assistant" {
+			assistantRow = &msgs[i]
+			break
+		}
+	}
+	if assistantRow == nil {
+		t.Fatal("expected a standalone assistant row for the image-only entry, found none")
+	}
+	if len(assistantRow.Attachments) != 1 {
+		t.Fatalf("assistant row Attachments len = %d, want 1", len(assistantRow.Attachments))
+	}
+}

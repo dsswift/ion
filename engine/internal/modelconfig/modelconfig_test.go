@@ -308,6 +308,61 @@ func TestUserModels(t *testing.T) {
 	}
 }
 
+// TestUserModels_ModelKind pins that user-config model entries carry
+// modelKind through to ModelInfo. This is the config path that lets an
+// enterprise-gateway user declare image models (e.g. FLUX deployments
+// behind an OpenAI-compatible gateway) in ~/.ion/models.json:
+//
+//	"openai": { "baseURL": "https://ai.dcim.com", "models": {
+//	    "FLUX.2-pro": { "modelKind": "image" } } }
+//
+// Without modelKind flowing through UserModels, the entry registers with
+// empty kind and routes through the chat loop instead of runImageLoop.
+func TestUserModels_ModelKind(t *testing.T) {
+	config := map[string]interface{}{
+		"providers": map[string]interface{}{
+			"openai": map[string]interface{}{
+				"baseURL": "https://ai.dcim.com",
+				"models": map[string]interface{}{
+					"FLUX.2-pro": map[string]interface{}{
+						"modelKind": "image",
+					},
+					"FLUX.2-flex": map[string]interface{}{
+						"modelKind": "image",
+					},
+					"gpt-4.1": map[string]interface{}{
+						"contextWindow": float64(1047576),
+					},
+				},
+			},
+		},
+	}
+
+	models := UserModels(config)
+
+	for _, id := range []string{"FLUX.2-pro", "FLUX.2-flex"} {
+		m, ok := models[id]
+		if !ok {
+			t.Fatalf("expected %s in UserModels output", id)
+		}
+		if m.ModelKind != "image" {
+			t.Errorf("%s: ModelKind = %q, want %q", id, m.ModelKind, "image")
+		}
+		if m.ProviderID != "openai" {
+			t.Errorf("%s: ProviderID = %q, want %q", id, m.ProviderID, "openai")
+		}
+	}
+
+	// A chat model with no modelKind stays empty (treated as chat).
+	gpt, ok := models["gpt-4.1"]
+	if !ok {
+		t.Fatal("expected gpt-4.1 in UserModels output")
+	}
+	if gpt.ModelKind != "" {
+		t.Errorf("gpt-4.1: ModelKind = %q, want empty (chat default)", gpt.ModelKind)
+	}
+}
+
 func TestUserModels_Empty(t *testing.T) {
 	models := UserModels(map[string]interface{}{})
 	if len(models) != 0 {

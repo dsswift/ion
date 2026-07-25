@@ -337,14 +337,44 @@ func (p *anthropicProvider) buildRequestBody(opts types.LlmStreamOptions) map[st
 func (p *anthropicProvider) formatMessages(messages []types.LlmMessage) []map[string]any {
 	result := make([]map[string]any, 0, len(messages))
 
+	// carryImages holds assistant-generated image blocks awaiting re-homing
+	// into the NEXT user message. The Anthropic API accepts image blocks only
+	// in USER messages — an image inside an assistant turn is a 400
+	// invalid_request_error. But the persisted assistant image block (a
+	// provider-generated image from a chat model or the image-generation
+	// loop) is real conversation content the model should be able to SEE on
+	// follow-up turns, exactly like a user-uploaded image. So instead of
+	// dropping it, we carry it forward and prepend it to the next user
+	// message's content. There is always a next user message at request time
+	// — the engine only calls the provider when a new user turn exists.
+	var carryImages []types.LlmContentBlock
+
 	for _, msg := range messages {
 		blocks := contentBlocks(msg)
 		if blocks == nil {
 			continue
 		}
 
+		// Re-home any carried assistant images into this user message. A short
+		// provenance text part precedes them so the model knows these are its
+		// OWN prior generations, not user uploads. This text exists only in
+		// the synthesized wire message — never persisted, never rendered.
+		if msg.Role == "user" && len(carryImages) > 0 {
+			pre := []types.LlmContentBlock{{Type: "text", Text: assistantImageProvenanceText}}
+			blocks = append(append(pre, carryImages...), blocks...)
+			utils.LogWithFields(utils.LevelDebug, "anthropic", "re-homed assistant image blocks into user message", map[string]any{"count": len(carryImages)})
+			carryImages = nil
+		}
+
 		formatted := make([]map[string]any, 0, len(blocks))
 		for _, block := range blocks {
+			if msg.Role == "assistant" && block.Type == "image" {
+				// Defer to the next user message (see carryImages above).
+				if block.Source != nil && block.Source.Data != "" {
+					carryImages = append(carryImages, block)
+				}
+				continue
+			}
 			fb := formatAnthropicBlock(block)
 			if fb != nil {
 				formatted = append(formatted, fb)
