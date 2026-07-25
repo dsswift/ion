@@ -36,6 +36,10 @@ func (m *Manager) buildRunConfig(
 ) *backend.RunConfig {
 	runCfg := &backend.RunConfig{}
 
+	// Attribute background Bash tasks (run_in_background) to this session so
+	// StopSession kills any still running (tools.StopBackgroundTasksForOwner).
+	runCfg.BackgroundTaskOwner = key
+
 	// Thread the engine's default model so the run loop can fall back
 	// when a requested model doesn't resolve (e.g. unrecognized tier alias).
 	if m.config != nil && m.config.DefaultModel != "" {

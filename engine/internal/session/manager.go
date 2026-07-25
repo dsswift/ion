@@ -9,6 +9,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/resource"
 	"github.com/dsswift/ion/engine/internal/scheduling"
 	"github.com/dsswift/ion/engine/internal/telemetry"
+	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 	"github.com/dsswift/ion/engine/internal/webhooks"
@@ -408,6 +409,11 @@ func (m *Manager) StopSession(key string) error {
 	if purgeExtDir != "" {
 		m.runOnce.purgeExtension(purgeExtDir)
 	}
+
+	// Kill any background Bash tasks (run_in_background) this session owns —
+	// they run detached from run contexts, so the registry is the only
+	// teardown path. Every kill is logged inside.
+	tools.StopBackgroundTasksForOwner(key)
 
 	// Stop session memory background summarizer before other cleanup so
 	// any in-flight goroutine drains cleanly.

@@ -340,6 +340,13 @@ type RunConfig struct {
 	Telemetry     TelemetryCollector
 	Timeouts      *types.TimeoutsConfig
 
+	// BackgroundTaskOwner is the session key stamped onto tool contexts so
+	// background Bash tasks (run_in_background) are attributed to their
+	// session; StopSession kills a session's running background tasks via
+	// tools.StopBackgroundTasksForOwner. Empty means no ownership (background
+	// tasks then outlive session stop and are managed only via TaskStop).
+	BackgroundTaskOwner string
+
 	// Shell carries EngineRuntimeConfig.Shell so the Bash tool can run
 	// commands through the user's login shell when Shell.UseLoginShell is
 	// set. Nil means "use the default non-login bash -c path".

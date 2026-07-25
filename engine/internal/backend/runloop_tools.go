@@ -33,6 +33,7 @@ func (b *ApiBackend) executeTools(
 	var mcpRouter func(context.Context, string, map[string]interface{}) (*types.ToolResult, error)
 	var telem TelemetryCollector
 	var spawnerFn tools.AgentSpawner
+	var bgOwner string
 	if run.cfg != nil {
 		hooks = run.cfg.Hooks
 		permEng = run.cfg.PermEngine
@@ -40,6 +41,7 @@ func (b *ApiBackend) executeTools(
 		mcpRouter = run.cfg.McpToolRouter
 		telem = run.cfg.Telemetry
 		spawnerFn = run.cfg.AgentSpawner
+		bgOwner = run.cfg.BackgroundTaskOwner
 	}
 	hookFn := hooks.OnToolCall
 	perToolHook := hooks.OnPerToolHook
@@ -55,6 +57,12 @@ func (b *ApiBackend) executeTools(
 	// dispatch child path (BuildChildAgentSpawner) wire a spawner. Log
 	// loudly so any future nil-spawner regression surfaces as a
 	// diagnosable log line instead of an opaque model narration.
+	// Stamp the background-task owner so run_in_background Bash commands are
+	// attributed to their session and killed at session stop.
+	if bgOwner != "" {
+		gCtx = tools.WithBackgroundTaskOwner(gCtx, bgOwner)
+	}
+
 	if spawnerFn != nil {
 		gCtx = tools.WithAgentSpawner(gCtx, spawnerFn)
 	} else {
