@@ -478,6 +478,10 @@ type ProviderConfig struct {
 	APIKey     string `json:"apiKey,omitempty"`
 	BaseURL    string `json:"baseURL,omitempty"`
 	AuthHeader string `json:"authHeader,omitempty"`
+	// DisplayName is the human-friendly name clients show for this provider
+	// (e.g. "dci Marketing" for provider id "dci-marketing"). Empty means
+	// clients fall back to their built-in name map / capitalized id.
+	DisplayName string `json:"displayName,omitempty"`
 	// Backend selects which run backend serves this provider's models when
 	// the top-level backend is "hybrid". Empty means "use the default rule"
 	// (anthropic → claude-code, every other provider → api). Allowed values

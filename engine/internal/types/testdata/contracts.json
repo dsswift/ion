@@ -528,6 +528,7 @@
       "backend",
       "baseURL",
       "cli",
+      "displayName",
       "hasAuth",
       "id"
     ],

@@ -370,6 +370,10 @@ type ProviderEntry struct {
 	AuthSource string `json:"authSource,omitempty"`
 	BaseURL    string `json:"baseURL,omitempty"`
 	APIKeyRef  string `json:"apiKeyRef,omitempty"`
+	// DisplayName is the operator-configured human-friendly name for this
+	// provider (ProviderConfig.DisplayName). Empty means clients fall back to
+	// their built-in name map / capitalized id. Additive, omitempty.
+	DisplayName string `json:"displayName,omitempty"`
 	// Backend is the credential-derived effective run backend for this
 	// provider ("api" | "claude-code" | "codex" | "grok" | "cursor") — the
 	// kind hybrid routing will actually pick for the next run (explicit

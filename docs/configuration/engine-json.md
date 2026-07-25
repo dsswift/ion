@@ -29,6 +29,7 @@ Map of provider name to credentials. Keys are provider identifiers (e.g., `"anth
 | `apiKey` | string | `""` | API key. If the value is all uppercase letters and underscores (e.g., `"ANTHROPIC_API_KEY"`), the engine resolves it from the environment variable of that name. |
 | `baseURL` | string | `""` | Custom API endpoint. Use this for proxies, gateways, or self-hosted providers. |
 | `authHeader` | string | `""` | Custom authorization header name. Overrides the provider's default auth header. |
+| `displayName` | string | `""` | Human-friendly name clients show for this provider (e.g. `"dci Marketing"` for the provider id `dci-marketing`). Surfaced on the `list_models` `ProviderEntry` wire shape. Empty ⇒ clients fall back to their own built-in name map, then to the capitalized id. |
 
 ```json
 {
