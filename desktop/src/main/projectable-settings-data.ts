@@ -60,9 +60,9 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
     key: 'enableClaudeCompat',
     type: 'boolean',
     group: 'general',
-    label: 'Claude Code commands',
-    description: 'Resolve .claude/commands/*.md and .claude/skills/ templates when a slash command does not match a registered extension command. Commands in .ion/commands/ are always available.',
-    defaultValue: true,
+    label: 'Claude Code compatibility',
+    description: 'Load .claude content alongside the always-on .ion roots: .claude/commands and .claude/skills in slash discovery and resolution, and CLAUDE.md context files. For users migrating from or co-running Claude Code. Off by default; .ion content needs no flag.',
+    defaultValue: false,
   },
   {
     key: 'enableEarlyStopContinuation',
@@ -224,16 +224,17 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
   // (local-machine font selection has no meaning on a phone).
   // ═══════════════════════════════════════════════════════════════════
   {
-    key: 'themeMode',
+    key: 'selectedTheme',
     type: 'enum',
     group: 'appearance',
-    label: 'Theme mode',
-    description: 'System follows the OS, Light/Dark override it.',
-    defaultValue: 'dark',
+    label: 'Color theme',
+    description: 'Visual theme for the desktop app.',
+    defaultValue: 'ion-dark',
     choices: [
-      { value: 'system', label: 'System' },
-      { value: 'light', label: 'Light' },
-      { value: 'dark', label: 'Dark' },
+      { value: 'ion-dark', label: 'Ion Dark' },
+      { value: 'ion-light', label: 'Ion Light' },
+      { value: 'ion-classic', label: 'Ion Classic' },
+      { value: 'jarvis-hud', label: 'Jarvis HUD' },
     ],
   },
   {
