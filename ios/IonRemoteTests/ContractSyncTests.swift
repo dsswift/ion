@@ -781,6 +781,18 @@ final class ContractSyncTests: XCTestCase {
             "modelKind",   // consumed: gates the image-model banner (ConversationView+InputBar, ConversationStatusBar)
             "tokenizer",   // engine field; iOS does not consume it (thin client)
             "maxOutputTokens", // engine field; iOS does not consume it (thin client)
+            // Wire protocol a dialect-dispatching (gateway) provider speaks for
+            // this model ("anthropic" | "openai-chat" | "openai-responses" |
+            // "image"). Protocol selection is an engine-side routing concern —
+            // iOS sends a model id and the engine picks the dialect — so this
+            // is deliberately NOT projected into RemoteModelEntry by the
+            // desktop (see desktop/src/main/ipc/models.ts updateCache).
+            "dialect",
+            // Per-image USD rate for per-image-billed image models. The engine
+            // computes image-run cost itself (cost.ImageCost →
+            // TaskCompleteEvent.CostUsd) and iOS renders the resulting cost, so
+            // the raw rate is not projected into RemoteModelEntry either.
+            "costPerImage",
         ]
         let goSet = Set(goFields)
         let unhandled = goSet.subtracting(swiftHandled)
