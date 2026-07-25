@@ -226,6 +226,8 @@ export interface State {
   resumeSessionWithChain: (sessionId: string, historicalSessionIds: string[], title?: string, projectPath?: string, customTitle?: string | null, encodedDir?: string | null) => Promise<string>
   /** Load messages for a skeleton tab (messages: null) on demand. Called by selectTab. */
   loadSkeletonMessages: (tabId: string) => Promise<void>
+  /** Re-arm hydration for panes whose history load failed while the engine was down. Called on engine reconnect. */
+  rehydrateFailedHistory: () => void
   addSystemMessage: (content: string) => void
   startBashCommand: (command: string, execId: string) => { toolMsgId: string; tabId: string }
   completeBashCommand: (tabId: string, toolMsgId: string, command: string, stdout: string, stderr: string, exitCode: number | null) => void

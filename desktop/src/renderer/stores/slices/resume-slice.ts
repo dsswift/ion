@@ -304,11 +304,16 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
           // (written after a session recycle that cleared the pane) misses the
           // real conversation rows, which the engine still has on disk.
           const tab = get().tabs.find((t) => t.id === tabId)
+          // Degrading to content-only when the engine chain fails is fine for
+          // rendering, but it must not masquerade as a complete load — the
+          // flag marks the pane for retry when the engine reconnects.
+          let chainLoadFailed = false
           const [content, chainHistory] = await Promise.all([
             window.ion.loadTabContent(tabId),
             tab?.conversationId
               ? window.ion.loadChainHistory([...(tab.historicalSessionIds ?? []), tab.conversationId])
                   .catch((err: unknown) => {
+                    chainLoadFailed = true
                     rWarn('session.restore', 'external content: engine chain load failed, using content file only', { tab_id: tabId.slice(0, 8), error: String(err) })
                     return [] as unknown[]
                   })
@@ -356,6 +361,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
                 messages: [...allRows, ...liveTail],
                 messageCount: allRows.length + liveTail.length,
                 historyHydrated: true,
+                historyHydrationFailed: chainLoadFailed,
                 externalContentStatus: content ? ('loaded' as const) : ('error' as const),
               }
             }),
@@ -363,11 +369,14 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
         } catch (err) {
           rWarn('session.restore', 'external content load failed', { tab_id: tabId.slice(0, 8), error: String(err) })
           // Mark errored-but-hydrated so the tab is usable (count-only
-          // rendering) and selectTab doesn't retry on every switch.
+          // rendering) and selectTab doesn't retry on every switch. The
+          // failure marker lets rehydrateFailedHistory retry this pane when
+          // the engine reconnects.
           set((s) => ({
             conversationPanes: commitInstance(s.conversationPanes, tabId, (i) => ({
               ...i,
               historyHydrated: true,
+              historyHydrationFailed: true,
               externalContentStatus: 'error' as const,
             })),
           }))
@@ -430,6 +439,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
               messages: [...allMessages, ...liveTail],
               messageCount: allMessages.length + liveTail.length,
               historyHydrated: true,
+              historyHydrationFailed: false,
               ...(restoredDenied ? { permissionDenied: restoredDenied } : {}),
             }
           }),
@@ -438,13 +448,62 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
         rWarn('session.restore', 'skeleton load failed', { tab_id: tabId.slice(0, 8), error: String(err) })
         // Mark hydrated with whatever live messages exist so the tab is
         // usable and selectTab doesn't retry the failing load on every switch.
+        // The persisted messageCount is intentionally NOT clobbered with the
+        // live length — the history still exists on disk, and zeroing the
+        // count would lie to blank-tab detection and the iOS wire. The
+        // failure marker lets rehydrateFailedHistory retry this pane when the
+        // engine reconnects.
         set((s) => ({
           conversationPanes: commitInstance(s.conversationPanes, tabId, (i) => ({
             ...i,
-            messageCount: i.messages.length,
             historyHydrated: true,
+            historyHydrationFailed: true,
           })),
         }))
+      }
+    },
+
+    rehydrateFailedHistory: () => {
+      // Engine is reachable again: re-arm hydration for every pane whose
+      // history load failed while it was down. Markers are reset here; the
+      // actual reload is lazy — the active tab reloads immediately below, and
+      // background tabs reload on their next activation through the existing
+      // needsHistoryHydration gate in selectTab. This avoids re-firing 30
+      // simultaneous history loads at an engine that just came back up.
+      const failedTabIds: string[] = []
+      set((s) => {
+        const conversationPanes = new Map(s.conversationPanes)
+        for (const [tabId, pane] of conversationPanes) {
+          if (!pane.instances.some((i) => i.historyHydrationFailed)) continue
+          failedTabIds.push(tabId)
+          conversationPanes.set(tabId, {
+            ...pane,
+            instances: pane.instances.map((i) =>
+              i.historyHydrationFailed
+                ? {
+                    ...i,
+                    historyHydrated: false,
+                    historyHydrationFailed: false,
+                    // Any external-content pane re-enters the external path so
+                    // the content-file + engine-chain merge reruns whole (a
+                    // chain-failed pane may have been marked 'loaded' with
+                    // engine rows missing). Non-external panes (undefined)
+                    // pass through unchanged.
+                    ...(i.externalContentStatus
+                      ? { externalContentStatus: 'pending' as const }
+                      : {}),
+                  }
+                : i,
+            ),
+          })
+        }
+        return failedTabIds.length > 0 ? { conversationPanes } : {}
+      })
+      if (failedTabIds.length === 0) return
+      rInfo('session.restore', 'rehydrating failed history after engine reconnect', { tab_count: failedTabIds.length })
+      const activeTabId = get().activeTabId
+      if (activeTabId && failedTabIds.includes(activeTabId)) {
+        void get().loadSkeletonMessages(activeTabId)
       }
     },
 

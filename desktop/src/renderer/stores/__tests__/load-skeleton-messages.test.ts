@@ -50,6 +50,7 @@ function makeHarness(paneOverrides: Record<string, unknown>, tabOverrides: Recor
   }
   let state = {
     tabs: [tab],
+    activeTabId: 'tab-1',
     conversationPanes: new Map([['tab-1', makeMainPane(paneOverrides)]]),
   } as unknown as State
   const get = () => state
@@ -58,8 +59,12 @@ function makeHarness(paneOverrides: Record<string, unknown>, tabOverrides: Recor
     state = { ...state, ...patch }
   }
   const slice = createResumeSlice(set as never, get as never)
+  // rehydrateFailedHistory reaches the reload through get().loadSkeletonMessages
+  // (store actions live on state in the real store); mirror that here.
+  ;(state as unknown as Record<string, unknown>).loadSkeletonMessages = slice.loadSkeletonMessages
   return {
     load: () => slice.loadSkeletonMessages!('tab-1'),
+    rehydrate: () => slice.rehydrateFailedHistory!(),
     inst: () => activeInstance(get().conversationPanes, 'tab-1')!,
     appendLive: (msg: Message) => {
       const pane = state.conversationPanes.get('tab-1')!
@@ -147,14 +152,36 @@ describe('loadSkeletonMessages', () => {
     expect(mockLoadChainHistory).not.toHaveBeenCalled()
   })
 
-  it('load failure keeps live messages and marks hydrated (no retry loop)', async () => {
+  it('load failure keeps live messages and marks for retry', async () => {
     mockLoadChainHistory.mockRejectedValue(new Error('ipc down'))
     const h = makeHarness({ messages: [liveMsg('live', 'live only')], messageCount: 5, historyHydrated: false })
     await h.load()
     expect(h.inst().messages.map((m) => m.content)).toEqual(['live only'])
+    // Live messages present → commitInstance's lockstep keeps the count in
+    // sync with what the pane can actually render.
     expect(h.inst().messageCount).toBe(1)
     expect(h.inst().historyHydrated).toBe(true)
+    // No retry loop on tab switch...
     expect(needsHistoryHydration(h.inst())).toBe(false)
+    // ...but the pane is marked so the engine-reconnect path retries it.
+    expect(h.inst().historyHydrationFailed).toBe(true)
+  })
+
+  it('load failure on an EMPTY pane preserves the persisted count (outage regression)', async () => {
+    // The 30-tab outage scenario: skeleton pane, nothing streamed, engine
+    // down. The old catch set messageCount to the live length — ZERO — which
+    // lied to blank-tab detection and the iOS wire, and permanently broke the
+    // needsHistoryHydration gate (count 0 → "nothing to load") so the tab
+    // could never hydrate even after re-arming.
+    mockLoadChainHistory.mockRejectedValue(new Error('engine down'))
+    const h = makeHarness({ messages: [], messageCount: 5, historyHydrated: false })
+    await h.load()
+    expect(h.inst().messages).toHaveLength(0)
+    expect(h.inst().messageCount).toBe(5)
+    expect(h.inst().historyHydrationFailed).toBe(true)
+    // The preserved count is what lets the re-armed pane pass the hydration
+    // gate on the next activation.
+    expect(needsHistoryHydration({ ...h.inst(), historyHydrated: false, historyHydrationFailed: false })).toBe(true)
   })
 })
 
@@ -276,6 +303,9 @@ describe('loadSkeletonMessages — externalized content (schema v4)', () => {
     expect(inst.externalContentStatus).toBe('loaded')
     // Content file harness row survives
     expect(inst.messages.some((m) => m.content === 'banner')).toBe(true)
+    // But the engine rows are missing, so the pane is marked for retry when
+    // the engine reconnects — 'loaded' must not masquerade as complete.
+    expect(inst.historyHydrationFailed).toBe(true)
   })
 
   it('keeps live rows that streamed in during the async load', async () => {
@@ -326,5 +356,90 @@ describe('loadSkeletonMessages — externalized content (schema v4)', () => {
 
     expect(mockLoadTabContent).not.toHaveBeenCalled()
     expect(mockLoadChainHistory).toHaveBeenCalled()
+  })
+})
+
+// ─── Engine-reconnect rehydration ─────────────────────────────────────────────
+//
+// Regression pin for the engine-outage stranding: a history load that failed
+// while the engine was down marked the pane hydrated and NOTHING ever retried
+// it — the tab stayed empty for the rest of the app session even after the
+// engine came back. rehydrateFailedHistory (fired on the bridge 'reconnected'
+// broadcast) re-arms exactly the failed panes.
+
+describe('rehydrateFailedHistory', () => {
+  const mockLoadTabContent = vi.fn()
+
+  beforeEach(() => {
+    mockLoadTabContent.mockReset()
+    mockLoadChainHistory.mockReset()
+    ;(globalThis as { window?: { ion?: object } }).window!.ion = {
+      loadChainHistory: mockLoadChainHistory,
+      loadTabContent: mockLoadTabContent,
+    } as never
+  })
+
+  const flush = () => new Promise((r) => setTimeout(r, 0))
+
+  it('re-arms a failed engine-chain pane and reloads the active tab', async () => {
+    mockLoadChainHistory.mockRejectedValueOnce(new Error('engine down'))
+    const h = makeHarness({ messages: [], messageCount: 3, historyHydrated: false })
+    await h.load()
+    expect(h.inst().historyHydrationFailed).toBe(true)
+    expect(h.inst().messages).toHaveLength(0)
+
+    // Engine is back: the retry loads the real history.
+    mockLoadChainHistory.mockResolvedValue([
+      { role: 'user', content: 'recovered prompt' },
+      { role: 'assistant', content: 'recovered answer' },
+    ])
+    h.rehydrate()
+    await flush()
+
+    expect(h.inst().messages.map((m) => m.content)).toEqual(['recovered prompt', 'recovered answer'])
+    expect(h.inst().historyHydrated).toBe(true)
+    expect(h.inst().historyHydrationFailed).toBe(false)
+  })
+
+  it('is a no-op when no pane failed', async () => {
+    mockLoadChainHistory.mockResolvedValue([{ role: 'user', content: 'hi' }])
+    const h = makeHarness({ messages: [], messageCount: 1, historyHydrated: false })
+    await h.load()
+    mockLoadChainHistory.mockClear()
+
+    h.rehydrate()
+    await flush()
+
+    expect(mockLoadChainHistory).not.toHaveBeenCalled()
+    expect(h.inst().historyHydrated).toBe(true)
+  })
+
+  it('re-enters the external path for a chain-failed external pane (completes the merge)', async () => {
+    // First pass: content file loads, engine chain fails → 'loaded' but
+    // marked for retry (engine rows missing).
+    mockLoadTabContent.mockResolvedValue({
+      tabId: 'tab-1', instanceId: 'main', schemaVersion: 4,
+      messages: [{ role: 'harness', content: 'banner', timestamp: 1 }],
+    })
+    mockLoadChainHistory.mockRejectedValueOnce(new Error('engine down'))
+    const h = makeHarness({ messages: [], messageCount: 2, externalContentStatus: 'pending' })
+    await h.load()
+    expect(h.inst().externalContentStatus).toBe('loaded')
+    expect(h.inst().historyHydrationFailed).toBe(true)
+    expect(h.inst().messages.map((m) => m.content)).toEqual(['banner'])
+
+    // Engine is back: the full content-file + engine-chain merge reruns.
+    mockLoadChainHistory.mockResolvedValue([
+      { role: 'user', content: 'hello', timestamp: 2 },
+      { role: 'assistant', content: 'hi', timestamp: 3 },
+    ])
+    h.rehydrate()
+    await flush()
+
+    const inst = h.inst()
+    expect(inst.messages.map((m) => m.content)).toEqual(['banner', 'hello', 'hi'])
+    expect(inst.externalContentStatus).toBe('loaded')
+    expect(inst.historyHydrationFailed).toBe(false)
+    expect(inst.historyHydrated).toBe(true)
   })
 })

@@ -68,6 +68,20 @@ cp -r desktop/release/mac-arm64/Ion.app /Applications/
 
 `make desktop` handles the full lifecycle: build, package, copy to `/Applications`, and relaunch the app. It waits for any active agent sessions to finish before replacing the binary.
 
+## Updating
+
+**Self-service: let the app update itself.** Release builds ship a built-in auto-updater that checks GitHub Releases on launch and every four hours, downloads a newer signed build in the background, and prompts you to relaunch (`quitAndInstall`). This is the supported update path.
+
+**Do not hand-drag a new `Ion.app` into `/Applications` while Ion is running.** macOS refuses to replace a running app bundle (the "Ion is already running" install error), and even a manual replace only takes effect on the next launch. The auto-updater exists precisely so you never have to do this.
+
+**The engine daemon is swapped by content hash, not version string.** On every launch, the desktop compares the bundled engine binary against the installed daemon binary (`~/.ion/bin/ion`) by sha256 hash. If they differ it installs the new binary and force-restarts the daemon (`launchctl kickstart -k`), so a new engine reliably becomes the running daemon. Earlier builds compared `ion version` output; because no build stamped a version, every binary reported `ion-engine dev` and an update over a prior install was silently skipped — the old daemon kept running and API-key auth appeared to break (routing fell back to the Claude CLI login). If you are recovering a machine stuck on an old daemon, install a current build and relaunch; the hash check swaps it. Manual unblock:
+
+```bash
+launchctl kickstart -k gui/$(id -u)/com.ion.engine
+```
+
+**Enterprise-managed machines** pin the version through MDM and disable the auto-updater; updates arrive as a pushed `.pkg`. See [enterprise/mdm.md](../enterprise/mdm.md#desktop-app-distribution-signed-pkg).
+
 ## How it works
 
 Desktop is a client, not a host. It connects to the engine via Unix socket at `~/.ion/engine.sock` and renders whatever the engine sends.

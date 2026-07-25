@@ -191,3 +191,51 @@ sudo chown root:root /etc/ion/config.json
 ```
 
 On macOS, Managed Preferences are protected by the system and do not need manual permission changes.
+
+## Desktop app distribution (signed .pkg)
+
+The sections above deliver engine *configuration*. This section covers pushing the Ion **desktop application** binary itself to managed Macs. Self-service users install the DMG and update through the app's built-in auto-updater; managed fleets pin the version and push a signed, notarized installer package.
+
+### The artifact
+
+Each desktop release publishes a component installer, `Ion-<version>.pkg`, on the GitHub release. CI builds it (`build-pkg.sh`), signs it with a Developer ID Installer certificate (`productsign`), and notarizes it. The package installs `Ion.app` to `/Applications` and force-replaces any existing copy. On first launch the app self-installs its launchd LaunchAgent (`com.ion.engine`) and installs/updates the engine daemon binary at `~/.ion/bin/ion`, swapping it by content hash. No additional endpoint steps are required.
+
+Verify a package before distributing:
+
+```bash
+pkgutil --check-signature Ion-<version>.pkg   # Developer ID Installer
+spctl -a -vvv -t install Ion-<version>.pkg    # Gatekeeper accepts
+```
+
+### Push via Jamf / Intune
+
+Upload `Ion-<version>.pkg` as a managed package and scope it to the target devices. Because the package force-replaces `/Applications/Ion.app`, redeploying a newer package updates in place. macOS will not replace a running app bundle, so quit Ion before the package installs if a session is active; MDM run-time policies can force-quit or defer.
+
+### Disable the in-app auto-updater on managed machines
+
+A managed fleet owns the version lifecycle, so the app must not self-update and fight the pinned version. Set the kill switch in the desktop-owned `customFields['ion-desktop']` namespace of the same `com.ion.engine` Managed Preferences payload:
+
+```xml
+<key>customFields</key>
+<dict>
+  <key>ion-desktop</key>
+  <dict>
+    <key>disableAutoUpdate</key>
+    <true/>
+  </dict>
+</dict>
+```
+
+With this set, the desktop skips its update check and install-on-quit entirely (`initAutoUpdater`), and version changes arrive only through your pushed `.pkg`.
+
+### CI signing prerequisites
+
+The release pipeline signs and notarizes the package when these repository secrets are present:
+
+| Secret | Purpose |
+|--------|---------|
+| `APPLE_CERT_BASE64` / `APPLE_CERT_PASSWORD` | Developer ID **Application** cert — signs `Ion.app` and the DMG |
+| `APPLE_INSTALLER_CERT_BASE64` / `APPLE_INSTALLER_CERT_PASSWORD` | Developer ID **Installer** cert — `productsign` for the `.pkg` (a distinct cert type from the Application cert) |
+| `APPLE_API_KEY` / `APPLE_API_KEY_ID` / `APPLE_API_ISSUER` | App Store Connect API key (base64-encoded `.p8`) — notarization for both the app and the pkg |
+
+Without the Installer cert, CI still builds the `.pkg` but leaves it unsigned, which is not usable for MDM push.
