@@ -6,7 +6,7 @@ import (
 )
 
 func TestAuthMiddleware(t *testing.T) {
-	auth := NewAuthMiddleware("secret-key-123")
+	auth := NewAuthMiddleware("secret-key-123", nil)
 
 	tests := []struct {
 		name   string
@@ -28,7 +28,7 @@ func TestAuthMiddleware(t *testing.T) {
 			if tt.header != "" {
 				req.Header.Set("Authorization", tt.header)
 			}
-			got := auth.Validate(req)
+			_, got := auth.Validate(req)
 			if got != tt.want {
 				t.Errorf("Validate() = %v, want %v", got, tt.want)
 			}
@@ -38,17 +38,17 @@ func TestAuthMiddleware(t *testing.T) {
 
 func TestAuthTimingSafety(t *testing.T) {
 	// Verify that similar-length keys don't cause different behavior.
-	auth := NewAuthMiddleware("abcdefghijklmnop")
+	auth := NewAuthMiddleware("abcdefghijklmnop", nil)
 
 	req1, _ := http.NewRequest("GET", "/", nil)
 	req1.Header.Set("Authorization", "Bearer abcdefghijklmnoq") // off by one char
-	if auth.Validate(req1) {
+	if _, ok := auth.Validate(req1); ok {
 		t.Error("should reject near-miss key")
 	}
 
 	req2, _ := http.NewRequest("GET", "/", nil)
 	req2.Header.Set("Authorization", "Bearer abcdefghijklmnop")
-	if !auth.Validate(req2) {
+	if _, ok := auth.Validate(req2); !ok {
 		t.Error("should accept exact key")
 	}
 }

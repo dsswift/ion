@@ -52,6 +52,7 @@ All configuration is through environment variables.
 | `APNS_KEY_PATH` | No | -- | Path to APNs `.p8` key file. |
 | `APNS_KEY_ID` | No | -- | APNs key ID from Apple Developer portal. |
 | `APNS_TEAM_ID` | No | -- | Apple Developer team ID. |
+| `APNS_TOPIC` | With APNs | -- | The iOS app's bundle identifier, sent as the `apns-topic` header. Required when the three APNs variables above are set; the relay refuses to enable push without it. |
 | `RELAY_WRITE_TIMEOUT_MS` | No | `10000` | Write timeout in milliseconds when forwarding messages to a peer. |
 | `RELAY_PING_INTERVAL_S` | No | `30` | Interval in seconds between WebSocket keepalive pings. |
 | `RELAY_PING_TIMEOUT_S` | No | `10` | Maximum seconds to wait for a pong response before closing the connection. |
@@ -184,3 +185,16 @@ Each channel supports exactly two peers: one with `role=ion` (the engine) and on
 - **Origin check**: the relay rejects browser cross-origin WebSocket requests to prevent CSRF-style attacks from web pages.
 - **End-to-end encryption**: all message payloads are encrypted by the clients before transmission. The relay forwards opaque byte sequences. It cannot read, modify, or replay message content.
 - **No persistence**: the relay stores nothing to disk. Channel state exists only in memory for the duration of both peer connections.
+
+## OpenID Connect Authentication
+
+As an alternative to pre-shared keys, the relay can authenticate clients using OIDC tokens from any identity provider (Microsoft Entra, Keycloak, Okta, Auth0, Dex, etc.). Both authentication modes can be active simultaneously.
+
+For full setup, configuration examples, and troubleshooting: see [Relay with OpenID Connect Identity](./relay-oidc.md).
+
+OIDC mode requires:
+- `RELAY_OIDC_ISSUER` — the OIDC issuer URL
+- `RELAY_OIDC_AUDIENCE` — the relay's OAuth2 audience (app registration ID)
+- `RELAY_OIDC_REQUIRED_SCOPE` — the scope name clients must request (e.g., `Relay.Access`)
+
+Clients (desktop and iOS) mint tokens via their identity provider's token endpoint. The relay validates tokens by fetching JWKS keys from the issuer and verifying RS256 signatures.

@@ -161,7 +161,11 @@ type relayMessage struct {
 	NotifyResourceId string `json:"notifyResourceId,omitempty"`
 }
 
-func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID, role string, pusher *APNsPusher) {
+// HandleWebSocket upgrades the HTTP connection to WebSocket and runs the relay
+// loop for channelID/role. identity is non-nil for OIDC-authenticated connections
+// and nil for PSK connections. Token expiry enforcement applies only when
+// identity.TokenExpiry is non-zero.
+func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID, role string, pusher *APNsPusher, identity *UserIdentity) {
 	// Reject connections with an Origin header. Native apps (Ion desktop,
 	// iOS) don't send Origin; browsers do. This prevents browser-based
 	// cross-site WebSocket hijacking attacks against the relay.
@@ -175,6 +179,9 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 	connLog := logger.With("channel_id", channelID, "role", role)
 	if sessionID != "" {
 		connLog = connLog.With("session_id", sessionID)
+	}
+	if identity != nil {
+		connLog = connLog.With("subject", identity.Subject)
 	}
 
 	// Enable compression only for the desktop ("ion") role.  Apple's
@@ -245,6 +252,12 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, channelID,
 	// can silently kill connections.
 	done := make(chan struct{})
 	go ping(conn, done, h.PingInterval, h.PingTimeout, connLog)
+
+	// Token expiry enforcement: for OIDC connections with a finite exp, close
+	// the connection at expiry time with close code 4401.
+	if identity != nil && !identity.TokenExpiry.IsZero() {
+		go watchTokenExpiry(conn, done, identity, channelID, role, connLog)
+	}
 
 	// Read loop: forward messages to the peer.
 	for {
@@ -401,5 +414,37 @@ func ping(conn *websocket.Conn, done <-chan struct{}, interval, pingTimeout time
 				return
 			}
 		}
+	}
+}
+
+// watchTokenExpiry closes the WebSocket connection with close code 4401 when
+// the JWT token expires. It applies a 60-second leeway (waiting until
+// expiry + 60s) to account for clock skew that was also accepted at validation.
+// PSK connections never call this function (identity.TokenExpiry is zero).
+func watchTokenExpiry(conn *websocket.Conn, done <-chan struct{}, identity *UserIdentity, channelID, role string, log *slog.Logger) {
+	// Add 60s leeway matching the validation leeway so we don't disconnect
+	// a connection whose token was accepted with leeway applied.
+	fireAt := identity.TokenExpiry.Add(60 * time.Second)
+	delay := time.Until(fireAt)
+	if delay <= 0 {
+		// Already expired (including leeway); close immediately.
+		delay = 0
+	}
+
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-done:
+		return
+	case <-timer.C:
+		log.Info("token expired; disconnecting client",
+			"tag", "relay.token.expired_disconnect",
+			"channel_id", channelID,
+			"role", role,
+			"subject", identity.Subject,
+			"expired_at", identity.TokenExpiry)
+		// Close code 4401 signals token expiry to the client.
+		conn.Close(4401, "token_expired") //nolint:errcheck // connection teardown
 	}
 }

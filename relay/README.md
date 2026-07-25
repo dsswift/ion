@@ -67,6 +67,30 @@ APNs variables are only needed if you want push notifications on iOS when
 the app is backgrounded. The relay works without them. You just won't get
 lock-screen notifications for permission requests.
 
+## Deployment Tiers
+
+Ion Relay supports two deployment models. Both can run simultaneously to
+support migration between them.
+
+**Tier 1: Personal (PSK)** — existing model. Single shared secret
+(`RELAY_API_KEY`), zero external dependencies, suitable for personal use or
+small trusted teams. See [docs/deployment-guide.md](docs/deployment-guide.md)
+for quick-start steps.
+
+**Tier 2: Enterprise (OIDC)** — token-based authentication via Azure AD /
+Entra, Okta, Auth0, Keycloak, or any OIDC-compliant provider. Channels are
+isolated per user identity. No shared secrets stored in the relay. See
+[docs/deployment-guide.md](docs/deployment-guide.md) for the full environment
+variable reference and Kubernetes deployment pattern, and
+[docs/entra-setup.md](docs/entra-setup.md) for Azure AD step-by-step
+configuration.
+
+Additional reference:
+- [docs/api-reference.md](docs/api-reference.md) — endpoint reference,
+  authentication modes, WebSocket close codes
+- [docs/security.md](docs/security.md) — encryption model, auth details,
+  channel isolation, audit logging
+
 ## Protocol
 
 The relay exposes a single WebSocket endpoint:
