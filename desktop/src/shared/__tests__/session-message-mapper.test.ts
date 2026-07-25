@@ -221,4 +221,37 @@ describe('mapSessionHistory', () => {
     expect(out.map((m) => m.role)).toEqual(['user', 'system', 'assistant'])
     expect(out[1].planFilePath).toBe('/p.md')
   })
+
+  it('drops agent_completion injection rows — desktop rendering opinion', () => {
+    // The engine persists dispatch completion deliveries with injectionKind:
+    // "agent_completion". The desktop treats these as machine-to-machine signals
+    // that the user should not see in conversation scrollback.
+    const history: SessionLoadMessage[] = [
+      { role: 'user', content: 'start task', timestamp: 1 },
+      {
+        role: 'user',
+        content: '[Agent Dev Lead completed in 12s]\n\nHere is the output.',
+        timestamp: 2,
+        injectionKind: 'agent_completion',
+      },
+      { role: 'assistant', content: 'Great, here is my response.', timestamp: 3 },
+    ]
+    const out = mapSessionHistory(history, makeId)
+    // The agent_completion row must be absent; ordinary rows survive.
+    expect(out).toHaveLength(2)
+    expect(out[0].role).toBe('user')
+    expect(out[0].content).toBe('start task')
+    expect(out[1].role).toBe('assistant')
+  })
+
+  it('passes through injection rows with empty or absent injectionKind', () => {
+    // An ordinary extension-initiated prompt (not a dispatch callback) has
+    // injectionKind="" or omitted — those must render normally.
+    const history: SessionLoadMessage[] = [
+      { role: 'user', content: 'check in from extension', timestamp: 1, injectionKind: '' },
+      { role: 'user', content: 'ordinary turn', timestamp: 2 },
+    ]
+    const out = mapSessionHistory(history, makeId)
+    expect(out).toHaveLength(2)
+  })
 })

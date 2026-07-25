@@ -587,6 +587,14 @@ export interface SessionLoadMessage {
   markerPlanSlug?: string
   /** Steer marker fields (markerKind === 'steer'). */
   markerMessageLength?: number
+  /**
+   * Classifies engine-side injected user turns on historical reload.
+   * "agent_completion" marks a machine-to-machine dispatch callback (a child
+   * agent's result routed to its parent) rather than a user-authored turn.
+   * Absent (or empty string) means an ordinary user turn. Additive: absent on
+   * legacy history rows, which correctly read as ordinary turns.
+   */
+  injectionKind?: string
 }
 
 // ─── Terminal Multiplexing ───

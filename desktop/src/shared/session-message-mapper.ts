@@ -130,9 +130,16 @@ export function mapSessionMessage(m: SessionLoadMessage, makeId: () => string): 
 
 /**
  * Map an array of engine history rows to client `Message`s, filtering out
- * internal rows and any dropped marker rows (no-op compactions). Convenience
- * wrapper over `mapSessionMessage` for the common `history.filter(...).map(...)`
- * shape the load paths repeat.
+ * internal rows, any dropped marker rows (no-op compactions), and engine-
+ * injected turns that are machine-to-machine signals rather than user-authored
+ * content. Convenience wrapper over `mapSessionMessage` for the common
+ * `history.filter(...).map(...)` shape the load paths repeat.
+ *
+ * Desktop rendering opinion: "agent_completion" injection-kind rows are
+ * dispatch callbacks (a child agent's result delivered to its parent) — the
+ * agent receives them in its LLM context but the user never authored them and
+ * should not see them in the conversation scrollback. The engine faithfully
+ * persists and surfaces the classification; the desktop chooses to suppress.
  */
 export function mapSessionHistory(
   history: readonly SessionLoadMessage[],
@@ -141,6 +148,7 @@ export function mapSessionHistory(
   const out: Message[] = []
   for (const m of history) {
     if (m.internal) continue
+    if (m.injectionKind === 'agent_completion') continue
     const mapped = mapSessionMessage(m, makeId)
     if (mapped) out.push(mapped)
   }

@@ -84,4 +84,45 @@ describe('prompt_injected reducer arm', () => {
     expect(msgs[0].role).toBe('user')
     expect(msgs[0].content).toBe(text)
   })
+
+  // kind="slash_command" is the expanded body of a slash command whose display
+  // turn is the command pill. Rendering it would put the whole multi-KB command
+  // template on screen as a second user message (the /align wall-of-text
+  // regression). The reducer must suppress it; the pill comes from the optimistic
+  // insert + persisted display entry, not from this event.
+  it('suppresses a slash_command-kind injection (no second bubble)', () => {
+    const { state, slice } = buildHarness()
+    const expandedBody = 'You are running the /align command. '.repeat(500)
+    slice.handleNormalizedEvent('tab1', {
+      type: 'prompt_injected', prompt: expandedBody, origin: 'ion-dev', kind: 'slash_command',
+    } as any)
+
+    const msgs = mainInstance(state.conversationPanes, 'tab1')?.messages ?? []
+    expect(msgs).toHaveLength(0)
+  })
+
+  // agent_completion (machine-to-machine dispatch callback) stays suppressed —
+  // regression guard alongside the new slash_command case.
+  it('suppresses an agent_completion-kind injection', () => {
+    const { state, slice } = buildHarness()
+    slice.handleNormalizedEvent('tab1', {
+      type: 'prompt_injected', prompt: 'child result body', origin: 'ion-dev', kind: 'agent_completion',
+    } as any)
+
+    const msgs = mainInstance(state.conversationPanes, 'tab1')?.messages ?? []
+    expect(msgs).toHaveLength(0)
+  })
+
+  // An empty kind is a genuine extension-initiated user turn (check-in, revive)
+  // and must still render — the suppression is scoped to classified injections.
+  it('renders an empty-kind injection as a user message', () => {
+    const { state, slice } = buildHarness()
+    slice.handleNormalizedEvent('tab1', {
+      type: 'prompt_injected', prompt: 'please continue', origin: 'ion-dev', kind: '',
+    } as any)
+
+    const msgs = mainInstance(state.conversationPanes, 'tab1')?.messages ?? []
+    expect(msgs).toHaveLength(1)
+    expect(msgs[0].content).toBe('please continue')
+  })
 })

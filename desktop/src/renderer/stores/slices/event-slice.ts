@@ -227,12 +227,18 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               // transcript (this closes the "ATV shows [Agent X completed]
               // turns the overlay never displayed" divergence).
               //
-              // Exception: kind="agent_completion" means this is a machine-to-
-              // machine dispatch callback (a child agent's result being routed
-              // back to its parent agent). These are internal signals, not user-
-              // authored turns. Do NOT render them as user bubbles — they
-              // should never appear in the visible conversation stream.
-              if (event.kind !== 'agent_completion') {
+              // Exceptions — engine-classified injections that must NOT render
+              // as user bubbles:
+              //   - "agent_completion": a machine-to-machine dispatch callback
+              //     (a child agent's result routed back to its parent). Internal
+              //     signal, not a user-authored turn.
+              //   - "slash_command": the expanded body of a slash command whose
+              //     display turn is the command pill. The engine already persists
+              //     the raw invocation as the display entry (rendered as a pill
+              //     via the optimistic insert + reload), so the multi-KB expansion
+              //     body is redundant — rendering it puts the whole command
+              //     template on screen as a second user message.
+              if (event.kind !== 'agent_completion' && event.kind !== 'slash_command') {
                 messages = [
                   ...messages,
                   { id: nextMsgId(), role: 'user' as const, content: event.prompt, timestamp: Date.now() },
