@@ -172,6 +172,18 @@ extension SessionViewModel {
         }
     }
 
+    /// Accumulates a streaming toolInput chunk onto the running tool row.
+    /// Called for each desktop_tool_update event; chunks are concatenated in
+    /// order to build the full toolInput JSON string, matching the desktop
+    /// renderer's event-slice accumulation in event-slice.ts.
+    @MainActor
+    func handleEngineToolUpdate(tabId: String, toolId: String, partialInput: String) {
+        mutateConversationMessages(tabId: tabId) { msgs in
+            guard let idx = msgs.firstIndex(where: { $0.id == toolId }) else { return }
+            msgs[idx].toolInput = (msgs[idx].toolInput ?? "") + partialInput
+        }
+    }
+
     @MainActor
     func handleEngineToolEnd(tabId: String, instanceId: String?, toolId: String, result: String?, isError: Bool) {
         DiagnosticLog.log("engine tool end", tag: "session.engine", level: .debug, fields: [
@@ -448,6 +460,24 @@ extension SessionViewModel {
         if !stderrTail.isEmpty { deathMsg += "\n" + stderrTail.suffix(5).joined(separator: "\n") }
         let msg = Message(id: UUID().uuidString, role: .system, content: deathMsg, timestamp: Date().timeIntervalSince1970 * 1000)
         mutateEngineInstance(tabId: tabId, instanceId: instanceId) { $0.messages.append(msg) }
+    }
+
+    /// Per-category context breakdown from the engine (forwarded by the desktop).
+    /// Stored on the active instance so StatusDrawerView can read it without a
+    /// separate fetch. Mirrors the desktop's engine-event-slice handler that
+    /// writes contextBreakdown onto the ConversationInstance. Extracted from
+    /// SessionViewModel+EventHandlers.swift to keep that file under the
+    /// 600-line cap.
+    @MainActor
+    func handleContextBreakdown(tabId: String, instanceId: String?, payload: ContextBreakdownPayload) {
+        DiagnosticLog.log("context breakdown", tag: "session.events", level: .debug, fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "count": String(payload.categories.count),
+            "max": String(payload.totalTokens)
+        ])
+        mutateEngineInstance(tabId: tabId, instanceId: instanceId) {
+            $0.contextBreakdown = payload
+        }
     }
 
     // handleEngineInstanceRemoved was removed in #256 (single-instance collapse).

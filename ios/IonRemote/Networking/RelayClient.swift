@@ -24,6 +24,8 @@ final class RelayClient {
     private let apiKey: String
     private let channelId: String
     private let apnsToken: String?
+    private let getCredential: (() async throws -> String)?
+    private let onTokenRejected: (() -> Void)?
 
     // MARK: - Internals
 
@@ -54,11 +56,15 @@ final class RelayClient {
 
     // MARK: - Init
 
-    init(relayURL: URL, apiKey: String, channelId: String, apnsToken: String? = nil) {
+    init(relayURL: URL, apiKey: String, channelId: String, apnsToken: String? = nil,
+         getCredential: (() async throws -> String)? = nil,
+         onTokenRejected: (() -> Void)? = nil) {
         self.relayURL = relayURL
         self.apiKey = apiKey
         self.channelId = channelId
         self.apnsToken = apnsToken
+        self.getCredential = getCredential
+        self.onTokenRejected = onTokenRejected
 
         var continuation: AsyncStream<Data>.Continuation!
         self.messages = AsyncStream { continuation = $0 }
@@ -170,7 +176,21 @@ final class RelayClient {
         ])
 
         var request = URLRequest(url: url)
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        let bearer: String
+        if let getCredential {
+            do {
+                bearer = try await getCredential()
+            } catch {
+                DiagnosticLog.log("relay credential fetch failed, scheduling reconnect", tag: "relay.client", level: .warn, fields: [
+                    "error": error.localizedDescription
+                ])
+                scheduleReconnect()
+                return
+            }
+        } else {
+            bearer = apiKey
+        }
+        request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
 
         let urlSession = URLSession(configuration: .default)
         self.session = urlSession
@@ -223,9 +243,31 @@ final class RelayClient {
                 self.receiveLoop(wsTask)
 
             case .failure(let error):
-                DiagnosticLog.log("relay websocket receive failed", tag: "relay.client", level: .warn, fields: [
-                    "error": error.localizedDescription
-                ])
+                // Inspect the close code from the underlying WebSocket task before
+                // clearing state. Close code 4401 means the relay rejected the bearer
+                // token (expired OIDC token). The relay uses application-layer 4401
+                // (a custom code in the 4000–4999 range); URLSessionWebSocketTask
+                // surfaces it via `closeCode.rawValue`.
+                //
+                // iOS acquires tokens autonomously: onTokenRejected invalidates the
+                // cached access token, and the next connect resolves a fresh one
+                // through OIDCTokenManager.accessToken() — silent Keychain refresh
+                // when possible, interactive PKCE (ASWebAuthenticationSession) when
+                // the refresh token is gone. A fresh relay_config pushed by the
+                // desktop is still honored, but iOS no longer depends on it to
+                // recover from a 4401.
+                let rawCloseCode = wsTask.closeCode.rawValue
+                if rawCloseCode == 4401 {
+                    onTokenRejected?()
+                    DiagnosticLog.log("relay websocket closed with 4401 (token rejected), invalidating credential", tag: "relay.client", level: .warn, fields: [
+                        "close_code": "4401"
+                    ])
+                } else {
+                    DiagnosticLog.log("relay websocket receive failed", tag: "relay.client", level: .warn, fields: [
+                        "error": error.localizedDescription,
+                        "close_code": rawCloseCode > 0 ? String(rawCloseCode) : "none"
+                    ])
+                }
                 self.handleDisconnect()
             }
         }

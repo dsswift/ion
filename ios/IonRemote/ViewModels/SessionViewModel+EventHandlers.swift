@@ -15,8 +15,8 @@ extension SessionViewModel {
         case .unpair:
             handleUnpair()
 
-        case .relayConfig(let relayUrl, let relayApiKey):
-            handleRelayConfig(relayUrl: relayUrl, relayApiKey: relayApiKey)
+        case .relayConfig(let relayUrl, let relayApiKey, let authMode, let relayOidcIssuer, let relayOidcAudience, let relayOidcRequiredScope, let relayOidcClientId):
+            handleRelayConfig(relayUrl: relayUrl, relayApiKey: relayApiKey, authMode: authMode, relayOidcIssuer: relayOidcIssuer, relayOidcAudience: relayOidcAudience, relayOidcRequiredScope: relayOidcRequiredScope, relayOidcClientId: relayOidcClientId)
 
         case .transportReconnecting:
             if connectionState == .connected {
@@ -229,10 +229,15 @@ extension SessionViewModel {
             handleEngineSteerInjected(tabId: tabId, instanceId: instanceId, messageLength: messageLength)
 
         case .enginePromptInjected(let tabId, let instanceId, let prompt, _, let kind):
-            // kind="agent_completion" means this is a machine-to-machine dispatch
-            // callback (a child agent's result routed to its parent). iOS must NOT
-            // inject these as user messages — they are internal signals, not user turns.
-            guard kind != "agent_completion" else { break }
+            // Engine-classified injections that must NOT render as user messages:
+            //   - "agent_completion": a machine-to-machine dispatch callback (a
+            //     child agent's result routed to its parent). Internal signal.
+            //   - "slash_command": the expanded body of a slash command whose
+            //     display turn is the command pill. The engine persists the raw
+            //     invocation as the display entry, so the multi-KB expansion body
+            //     is redundant — rendering it puts the whole command template on
+            //     screen as a second user message.
+            guard kind != "agent_completion", kind != "slash_command" else { break }
             handleEnginePromptInjected(tabId: tabId, instanceId: instanceId, prompt: prompt)
 
         // Extended-thinking events (issue #158). A thinking block is OPTIONAL
@@ -248,9 +253,17 @@ extension SessionViewModel {
         case .engineThinkingBlockEnd(let tabId, let instanceId, let totalTokens, let elapsedSeconds, let redacted):
             handleEngineThinkingBlockEnd(tabId: tabId, instanceId: instanceId, totalTokens: totalTokens, elapsedSeconds: elapsedSeconds, redacted: redacted)
 
-        // No-op: iOS does not render these events yet. Decoding them
-        // prevents the 123 decode-errors/session diagnostic finding.
-        case .engineToolUpdate, .engineToolComplete, .engineScheduleFired, .engineLlmCall:
+        // Accumulate streaming tool input chunks onto the running tool row.
+        // The desktop streams partialInput deltas via desktop_tool_update;
+        // iOS appends each chunk to build the full toolInput JSON string,
+        // matching the desktop renderer's event-slice accumulation.
+        case .engineToolUpdate(let tabId, _, let toolId, let partialInput):
+            handleEngineToolUpdate(tabId: tabId, toolId: toolId, partialInput: partialInput)
+
+        // No-op: engineToolComplete, engineScheduleFired, engineLlmCall are
+        // decoded to prevent the 123 decode-errors/session diagnostic finding
+        // but iOS does not yet render them.
+        case .engineToolComplete, .engineScheduleFired, .engineLlmCall:
             break
 
         // Dispatch telemetry: accumulate start/end into the per-instance
@@ -385,7 +398,7 @@ extension SessionViewModel {
             // exportFormat drives the shared file's extension.
             handleEngineExport(tabId: tabId, payload: message, format: exportFormat)
 
-        case .desktopSettingsSnapshot(let settings, let schema, let groups, let newConversationPolicy):
+        case .desktopSettingsSnapshot(let settings, let schema, let groups, let newConversationPolicy, let themePolicy):
             // Per-desktop user-preferences projection. Snapshot semantics
             // — replace the cached state wholesale. The view layer binds
             // to `viewModel.desktopSettings` and re-renders the Settings
@@ -411,6 +424,14 @@ extension SessionViewModel {
                     "reason": String(policy.engineProfileId.prefix(8))
                 ])
             }
+            // Enterprise theme lock — see SessionViewModel+ThemeSync.swift.
+            applyThemePolicy(themePolicy)
+
+        // Theme-pack sync — handlers in SessionViewModel+ThemeSync.swift.
+        case .desktopThemeManifest(let themes, let hash):
+            handleThemeManifest(themes: themes, hash: hash)
+        case .desktopThemeAssetContent(let themeId, let slot, let ok, let sha256, let dataUrl):
+            handleThemeAssetContent(themeId: themeId, slot: slot, ok: ok, sha256: sha256, dataUrl: dataUrl)
 
         // Git events
         case .gitChangesResponse(let directory, let response):
@@ -545,23 +566,14 @@ extension SessionViewModel {
             handleEngineIntercept(tabId: tabId, instanceId: instanceId, level: level, title: title, message: message)
 
         case .desktopContextBreakdown(let tabId, let instanceId, let payload):
-            // Per-category context breakdown from the engine (forwarded by the desktop).
-            // Store on the active instance so StatusDrawerView can read it without a
-            // separate fetch. Mirrors the desktop's engine-event-slice handler that
-            // writes contextBreakdown onto the ConversationInstance.
-            DiagnosticLog.log("context breakdown", tag: "session.events", level: .debug, fields: [
-                "tab_id": String(tabId.prefix(8)),
-                "count": String(payload.categories.count),
-                "max": String(payload.totalTokens)
-            ])
-            mutateEngineInstance(tabId: tabId, instanceId: instanceId) {
-                $0.contextBreakdown = payload
-            }
+            // handleContextBreakdown lives in SessionViewModel+EngineEvents.swift
+            // to keep this file under the 600-line cap.
+            handleContextBreakdown(tabId: tabId, instanceId: instanceId, payload: payload)
         }
     }
 
     // MARK: - Connection events
-    // handleUnpair and handleRelayConfig live in SessionViewModel+ConnectionEvents.swift.
+    // handleUnpair / handleLANAuthRejected: ConnectionEvents.swift. handleRelayConfig: RelayAuth.swift.
 
     // MARK: - Permission/message events
     //

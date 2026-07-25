@@ -72,7 +72,15 @@ extension TransportManager {
 
         for await data in lan.messages {
             guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let type = json["type"] as? String else { continue }
+                  let type = json["type"] as? String else {
+                // Non-JSON frame: this is an encrypted data frame (e.g. a
+                // snapshot the desktop pushed immediately after auth). Buffer
+                // it for dispatch once startLANListener begins. Without this
+                // the frame is silently consumed and discarded here, and iOS
+                // never receives the snapshot.
+                preLANAuthBuffer.append(data)
+                continue
+            }
 
             if !awaitingResult {
                 // Phase 1: waiting for auth_challenge
