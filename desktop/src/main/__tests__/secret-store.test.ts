@@ -3,10 +3,14 @@
  *
  * Tests for the two-tier encryption system in secretStore.ts.
  * Tier 1 (safeStorage) is mocked since it requires Electron's main process.
- * Tier 2 (machine-derived AES-GCM) is tested directly.
+ * Tier 2 (keyfile AES-GCM, enc:v3:) and the legacy machine-derived decrypt
+ * fallback (enc:v2:) are tested directly.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { mkdtempSync, readFileSync, rmSync, statSync, existsSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { describe, it, expect, beforeEach, afterAll } from 'vitest'
 
 // ---------------------------------------------------------------------------
 // Inject an Electron app/safeStorage stub via the module's test seam.
@@ -26,6 +30,8 @@ import {
   encryptSensitiveSettings,
   decryptSensitiveSettings,
   _setElectronForTest,
+  _setKeyfilePathForTest,
+  _setHostnameForTest,
 } from '../utils/secretStore'
 
 _setElectronForTest({
@@ -51,6 +57,20 @@ _setElectronForTest({
 })
 
 // ---------------------------------------------------------------------------
+// Keyfile redirection — tests never touch the real ~/.ion.
+// ---------------------------------------------------------------------------
+
+const testDir = mkdtempSync(join(tmpdir(), 'secret-store-test-'))
+const testKeyfile = join(testDir, 'desktop-secrets.key')
+_setKeyfilePathForTest(testKeyfile)
+
+afterAll(() => {
+  _setKeyfilePathForTest(undefined)
+  _setHostnameForTest(undefined)
+  rmSync(testDir, { recursive: true, force: true })
+})
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -58,7 +78,35 @@ beforeEach(() => {
   mockIsPackaged = false
   mockSafeStorageAvailable = false
   mockEncryptedValues.clear()
+  _setHostnameForTest(undefined)
 })
+
+/**
+ * Produces an enc:v2: value exactly as a pre-keyfile build would have
+ * written it: AES-256-GCM keyed from SHA-256(salt + hostname + username),
+ * wire format nonce(12) || tag(16) || ciphertext.
+ */
+function legacyV2Encrypt(plaintext: string, hostnameOverride?: string): string {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { createCipheriv, createHash, randomBytes } = require('crypto') as typeof import('crypto')
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { hostname, userInfo } = require('os') as typeof import('os')
+  const h = createHash('sha256')
+  h.update('ion-desktop-secrets:')
+  h.update(hostnameOverride ?? hostname())
+  h.update(':')
+  try {
+    h.update(userInfo().username)
+  } catch {
+    h.update('unknown')
+  }
+  const key = h.digest()
+  const nonce = randomBytes(12)
+  const cipher = createCipheriv('aes-256-gcm', key, nonce, { authTagLength: 16 })
+  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf-8'), cipher.final()])
+  const tag = cipher.getAuthTag()
+  return 'enc:v2:' + Buffer.concat([nonce, tag, encrypted]).toString('base64')
+}
 
 // ---------------------------------------------------------------------------
 // isSafeStorageReady
@@ -85,13 +133,13 @@ describe('isSafeStorageReady', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Tier 2: machine-derived encryption (dev builds)
+// Tier 2: keyfile encryption (dev builds, enc:v3:)
 // ---------------------------------------------------------------------------
 
-describe('machine-derived encryption (tier 2)', () => {
-  it('encrypts with enc:v2: prefix in dev builds', () => {
+describe('keyfile encryption (tier 2, enc:v3:)', () => {
+  it('encrypts with enc:v3: prefix in dev builds', () => {
     const encrypted = encryptForDisk('my-secret-key')
-    expect(encrypted.startsWith('enc:v2:')).toBe(true)
+    expect(encrypted.startsWith('enc:v3:')).toBe(true)
     expect(encrypted).not.toContain('my-secret-key')
   })
 
@@ -100,6 +148,15 @@ describe('machine-derived encryption (tier 2)', () => {
     const encrypted = encryptForDisk(plaintext)
     const decrypted = decryptFromDisk(encrypted)
     expect(decrypted).toBe(plaintext)
+  })
+
+  it('creates the keyfile with 0600 permissions and a 32-byte hex key', () => {
+    encryptForDisk('force-keyfile-creation')
+    expect(existsSync(testKeyfile)).toBe(true)
+    const mode = statSync(testKeyfile).mode & 0o777
+    expect(mode).toBe(0o600)
+    const key = Buffer.from(readFileSync(testKeyfile, 'utf-8').trim(), 'hex')
+    expect(key.length).toBe(32)
   })
 
   it('produces different ciphertext for the same plaintext (random nonce)', () => {
@@ -122,18 +179,60 @@ describe('machine-derived encryption (tier 2)', () => {
     expect(decryptFromDisk(encrypted)).toBe(plaintext)
   })
 
-  it('returns empty string for corrupted v2 ciphertext', () => {
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const result = decryptFromDisk('enc:v2:dGhpcyBpcyBub3QgdmFsaWQ=')
-    expect(result).toBe('')
-    spy.mockRestore()
+  it('returns empty string for corrupted v3 ciphertext', () => {
+    const longEnough = Buffer.alloc(40, 7).toString('base64')
+    expect(decryptFromDisk('enc:v3:' + longEnough)).toBe('')
   })
 
-  it('returns empty string for truncated v2 ciphertext', () => {
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const result = decryptFromDisk('enc:v2:AAAA')
-    expect(result).toBe('')
-    spy.mockRestore()
+  it('returns empty string for truncated v3 ciphertext', () => {
+    expect(decryptFromDisk('enc:v3:AAAA')).toBe('')
+  })
+
+  it('REGRESSION: v3 values survive a hostname change (the lost-API-key bug)', () => {
+    _setHostnameForTest(() => 'host-a.local')
+    const encrypted = encryptForDisk('survives-reboot')
+    // Simulate the reboot renaming the machine (DHCP/mDNS rename).
+    _setHostnameForTest(() => 'host-b-2.lan')
+    expect(decryptFromDisk(encrypted)).toBe('survives-reboot')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Legacy enc:v2: (machine-derived) decrypt fallback
+// ---------------------------------------------------------------------------
+
+describe('legacy machine-derived values (enc:v2:)', () => {
+  it('decrypts v2 values written under the current hostname', () => {
+    const v2 = legacyV2Encrypt('legacy-relay-key')
+    expect(decryptFromDisk(v2)).toBe('legacy-relay-key')
+  })
+
+  it('clears v2 values when the hostname has changed (documented data loss path)', () => {
+    const v2 = legacyV2Encrypt('sealed-under-old-host', 'old-hostname.local')
+    // Current hostname differs from 'old-hostname.local' → legacy key mismatch.
+    expect(decryptFromDisk(v2)).toBe('')
+  })
+
+  it('upgrades v2 values to v3 on encryptSensitiveSettings (write path)', () => {
+    const v2 = legacyV2Encrypt('upgrade-me')
+    const out = encryptSensitiveSettings({ relayApiKey: v2 })
+    expect(out.relayApiKey.startsWith('enc:v3:')).toBe(true)
+    expect(decryptFromDisk(out.relayApiKey)).toBe('upgrade-me')
+  })
+
+  it('upgrades v2 device sharedSecrets to v3 on encryptSensitiveSettings', () => {
+    const v2 = legacyV2Encrypt('device-secret')
+    const out = encryptSensitiveSettings({
+      pairedDevices: [{ id: 'dev1', name: 'iPhone', sharedSecret: v2 }],
+    })
+    expect(out.pairedDevices[0].sharedSecret.startsWith('enc:v3:')).toBe(true)
+    expect(decryptFromDisk(out.pairedDevices[0].sharedSecret)).toBe('device-secret')
+  })
+
+  it('clears an undecryptable v2 value on write upgrade instead of keeping a dead ciphertext', () => {
+    const v2 = legacyV2Encrypt('lost-forever', 'some-other-host')
+    const out = encryptSensitiveSettings({ relayApiKey: v2 })
+    expect(out.relayApiKey).toBe('')
   })
 })
 
@@ -164,10 +263,7 @@ describe('safeStorage encryption (tier 1)', () => {
 
     // Simulate switching to dev build
     mockIsPackaged = false
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const result = decryptFromDisk(encrypted)
-    expect(result).toBe('')
-    spy.mockRestore()
+    expect(decryptFromDisk(encrypted)).toBe('')
   })
 })
 
@@ -191,10 +287,10 @@ describe('legacy plaintext handling', () => {
     const encrypted = encryptSensitiveSettings(settings)
     // relayApiKey should now be encrypted
     expect(encrypted.relayApiKey).not.toBe('old-plaintext-relay-key')
-    expect(encrypted.relayApiKey.startsWith('enc:v2:')).toBe(true)
+    expect(encrypted.relayApiKey.startsWith('enc:v3:')).toBe(true)
     // sharedSecret should now be encrypted
     expect(encrypted.pairedDevices[0].sharedSecret).not.toBe('old-plaintext-secret')
-    expect(encrypted.pairedDevices[0].sharedSecret.startsWith('enc:v2:')).toBe(true)
+    expect(encrypted.pairedDevices[0].sharedSecret.startsWith('enc:v3:')).toBe(true)
     // Non-sensitive fields unchanged
     expect(encrypted.themeMode).toBe('dark')
     expect(encrypted.pairedDevices[0].id).toBe('dev1')
@@ -254,18 +350,28 @@ describe('decryptSensitiveSettings', () => {
     expect(decrypted.pairedDevices[0].id).toBe('dev1')
     expect(decrypted.pairedDevices[1].sharedSecret).toBe('anothersecret')
   })
+
+  it('decrypts a mixed settings file (v2 legacy + v3 current)', () => {
+    const settings = {
+      relayApiKey: legacyV2Encrypt('legacy-key'),
+      pairedDevices: [{ id: 'd1', sharedSecret: encryptForDisk('current-secret') }],
+    }
+    const decrypted = decryptSensitiveSettings(settings)
+    expect(decrypted.relayApiKey).toBe('legacy-key')
+    expect(decrypted.pairedDevices[0].sharedSecret).toBe('current-secret')
+  })
 })
 
 // ---------------------------------------------------------------------------
-// Cross-tier: v2 written in dev, read in dev
+// Cross-tier: v3 written in dev, read in dev
 // ---------------------------------------------------------------------------
 
 describe('cross-tier scenarios', () => {
-  it('v2 values written in dev are readable in dev', () => {
+  it('v3 values written in dev are readable in dev', () => {
     // Dev build writes
     const settings = { relayApiKey: 'dev-key' }
     const encrypted = encryptSensitiveSettings(settings)
-    expect(encrypted.relayApiKey.startsWith('enc:v2:')).toBe(true)
+    expect(encrypted.relayApiKey.startsWith('enc:v3:')).toBe(true)
 
     // Dev build reads
     const decrypted = decryptSensitiveSettings(encrypted)
@@ -292,9 +398,16 @@ describe('cross-tier scenarios', () => {
     // Switch to dev build
     mockIsPackaged = false
     mockSafeStorageAvailable = false
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const decrypted = decryptSensitiveSettings(encrypted)
     expect(decrypted.relayApiKey).toBe('')
-    spy.mockRestore()
+  })
+
+  it('v2 written in prod-downgrade scenario upgrades to v1 when packaged', () => {
+    const v2 = legacyV2Encrypt('promote-to-keychain')
+    mockIsPackaged = true
+    mockSafeStorageAvailable = true
+    const out = encryptSensitiveSettings({ relayApiKey: v2 })
+    expect(out.relayApiKey.startsWith('enc:v1:')).toBe(true)
+    expect(decryptFromDisk(out.relayApiKey)).toBe('promote-to-keychain')
   })
 })
