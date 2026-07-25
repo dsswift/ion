@@ -79,6 +79,8 @@ func BuildChildAgentSpawner(
 		if result == nil {
 			return "", nil
 		}
-		return result.Output, nil
+		// Usage suffix: model-facing per-dispatch token/cost accounting.
+		// See dispatch_usage_suffix.go.
+		return result.Output + FormatDispatchUsageSuffix(result), nil
 	}
 }

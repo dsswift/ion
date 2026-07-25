@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -41,6 +42,9 @@ type childStubBackend struct {
 	// resultText is emitted as TaskCompleteEvent.Result before exit
 	// (when releaseGate is nil, i.e. immediate completion).
 	resultText string
+	// resultUsage, when non-nil, is stamped onto the TaskCompleteEvent so
+	// tests can pin the usage suffix the spawner appends to its return value.
+	resultUsage *types.UsageData
 	// emitModelFallback, when true, causes the stub to emit a synthetic
 	// ModelFallbackEvent before the TaskCompleteEvent. Used by lifecycle
 	// tests to verify the parent's agent_state snapshot sequence isn't
@@ -79,6 +83,7 @@ func (c *childStubBackend) StartRun(requestID string, opts types.RunOptions) {
 	onExit := c.onExit
 	gate := c.releaseGate
 	result := c.resultText
+	usage := c.resultUsage
 	emitFallback := c.emitModelFallback
 	emitActivity := c.emitActivity
 	errToEmit := c.childErr
@@ -112,12 +117,14 @@ func (c *childStubBackend) StartRun(requestID string, opts types.RunOptions) {
 			})
 		}
 		if onNorm != nil && result != "" {
-			onNorm(requestID, types.NormalizedEvent{
-				Data: &types.TaskCompleteEvent{
-					Result:    result,
-					SessionID: "child-conv-id",
-				},
-			})
+			tc := &types.TaskCompleteEvent{
+				Result:    result,
+				SessionID: "child-conv-id",
+			}
+			if usage != nil {
+				tc.Usage = *usage
+			}
+			onNorm(requestID, types.NormalizedEvent{Data: tc})
 		}
 		if errToEmit != nil {
 			c.mu.Lock()
@@ -351,13 +358,24 @@ func TestWireAgentSpawner_EmitsDispatchActivity(t *testing.T) {
 	}
 }
 
+// stripUsageSuffix removes the "\n\n<usage>…</usage>" block the spawner
+// appends to the child output, so tests asserting the output text alone stay
+// focused. The suffix itself is pinned by
+// TestWireAgentSpawner_AppendsUsageSuffix.
+func stripUsageSuffix(s string) string {
+	if i := strings.LastIndex(s, "\n\n<usage>"); i >= 0 && strings.HasSuffix(s, "</usage>") {
+		return s[:i]
+	}
+	return s
+}
+
 func TestWireAgentSpawner_FiresAgentStartAndEnd_OnSuccess(t *testing.T) {
 	stub := &childStubBackend{resultText: "child output"}
 	result, cap, err := runSpawnerOnce(t, stub, context.Background(), "do thing")
 	if err != nil {
 		t.Fatalf("spawner returned error: %v", err)
 	}
-	if result != "child output" {
+	if stripUsageSuffix(result) != "child output" {
 		t.Fatalf("expected child output, got %q", result)
 	}
 
@@ -453,8 +471,34 @@ func TestWireAgentSpawner_NilExtGroup_DoesNotPanic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("spawner returned error with nil extGroup: %v", err)
 	}
-	if result != "ok" {
+	if stripUsageSuffix(result) != "ok" {
 		t.Fatalf("expected ok, got %q", result)
+	}
+}
+
+// TestWireAgentSpawner_AppendsUsageSuffix pins the model-facing usage block:
+// the Agent tool result must end with a <usage> suffix carrying the child
+// dispatch's token counts, so prompts and skills that account for subagent
+// spend (e.g. per-chunk cost trackers) can read real numbers instead of
+// placeholders.
+func TestWireAgentSpawner_AppendsUsageSuffix(t *testing.T) {
+	in, out := 1200, 340
+	stub := &childStubBackend{
+		resultText:  "usage-bearing output",
+		resultUsage: &types.UsageData{InputTokens: &in, OutputTokens: &out},
+	}
+	result, _, err := runSpawnerOnce(t, stub, context.Background(), "count tokens")
+	if err != nil {
+		t.Fatalf("spawner returned error: %v", err)
+	}
+	if !strings.HasPrefix(result, "usage-bearing output\n\n<usage>") {
+		t.Fatalf("expected output followed by usage block, got %q", result)
+	}
+	if !strings.HasSuffix(result, "</usage>") {
+		t.Fatalf("expected result to end with </usage>, got %q", result)
+	}
+	if !strings.Contains(result, "input_tokens=1200") || !strings.Contains(result, "output_tokens=340") {
+		t.Fatalf("usage block missing real token counts: %q", result)
 	}
 }
 
@@ -532,7 +576,7 @@ func TestWireAgentSpawner_ResolvesTierAlias(t *testing.T) {
 	if spawnErr != nil {
 		t.Fatalf("spawner returned error: %v", spawnErr)
 	}
-	if result != "tier resolved" {
+	if stripUsageSuffix(result) != "tier resolved" {
 		t.Fatalf("expected %q, got %q", "tier resolved", result)
 	}
 
