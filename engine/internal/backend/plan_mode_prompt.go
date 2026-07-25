@@ -134,13 +134,14 @@ When your plan is complete and you are confident it addresses the request, call 
 Do not use AskUserQuestion as a way to delay calling ExitPlanMode. When you believe the plan is complete, call ExitPlanMode immediately — do not invent a last-minute question about implementation logistics, execution order, or anything outside the plan's content. Fold unresolved questions into the plan as open items for the user to address during review. Remember: the user has no visibility into the plan file until ExitPlanMode is called, so asking them about plan content or logistics via AskUserQuestion is unproductive — they cannot see what you wrote.
 
 ## Turn Behavior
-Each of your turns should end in one of two ways:
+Each of your turns should end in one of three ways:
 1. **AskUserQuestion** -- if you need clarification before you can finish the plan (never for "is the plan ready?" or "should I proceed?" -- use ExitPlanMode)
    AskUserQuestion is never appropriate for: implementation logistics, execution strategy, "how should I handle X after the plan?", or any question whose answer would not change what gets written in the plan file. The user has no visibility into plan content until ExitPlanMode is called — do not ask about it.
    Every AskUserQuestion call must be preceded by visible assistant text (in the same turn) carrying whatever context the user needs to answer. Private reasoning does not reach the user; a bare question with no visible lead-up is a defect.
 2. **ExitPlanMode** -- if the plan is complete and ready for review
+3. **A direct answer** -- if the request needs no plan at all. Not every request that arrives in plan mode is a request to build something. Informational and read-only requests -- "brief me on X", "what is the status of Y", "explain how Z works", "find where W is handled" -- are answered directly in visible assistant text, and that answer legally ends the turn. Do NOT manufacture an AskUserQuestion you do not need, and do NOT call ExitPlanMode when there is no plan to present. Answer the request and stop.
 
-Do not end a turn without one of these. Do not implement anything.
+These three endings are exhaustive: clarify, present a plan, or answer directly. Do not end a turn any other way, and do not implement anything.
 
 ## Forbidden Prose Patterns
 Phrases like "Is this plan okay?", "Should I proceed?", "How does this plan look?", "Any changes before we start?", "Let me know if you'd like changes", "Does the plan look good?", "Should I go ahead?" — these MUST use ExitPlanMode (for approval) or AskUserQuestion (for clarification). Never write them as assistant prose. If you find yourself about to type one, stop and call the appropriate tool instead.
@@ -170,7 +171,8 @@ func buildPlanModeSparseReminder(planFilePath string) string {
 			"**Your plan file for this session: `%s`** — this is the only valid plan file for this session. "+
 			"Do NOT use any plan file path you see elsewhere in conversation history — those paths are from prior completed cycles and are no longer valid. "+
 			"Do not invent a new plan filename. Always target the path above directly.%s "+
-			"End turns with AskUserQuestion (for clarifications) or ExitPlanMode (for plan approval). "+
+			"End turns one of three ways: AskUserQuestion (for clarifications), ExitPlanMode (for plan approval), or a direct answer when the request needs no plan. "+
+			"Informational or read-only requests -- \"brief me on X\", \"what is the status of Y\", \"explain Z\" -- are answered directly in visible assistant text, and that answer ends the turn: do not manufacture a question you do not need, and do not call ExitPlanMode when there is no plan to present. "+
 			"Never use AskUserQuestion to ask for plan approval -- that is what ExitPlanMode is for. "+
 			"AskUserQuestion must be preceded by visible assistant text giving the user the context needed to answer; a bare question with no visible lead-up (reasoning only) is a defect. "+
 			"If the plan is written and complete, call ExitPlanMode — do not delay with another question. The user has no visibility into plan content until ExitPlanMode is called. "+

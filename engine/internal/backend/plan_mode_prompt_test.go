@@ -104,3 +104,66 @@ func TestBuildPlanModeSparseReminder_CycleNote(t *testing.T) {
 		}
 	}
 }
+
+// TestBuildPlanModePrompt_ThirdPath_DirectAnswer verifies that the Turn
+// Behavior section documents the third legal turn-ending: an informational or
+// read-only request that needs no plan is answered directly, and that answer
+// legally ends the turn. Without this clause the model reads the turn contract
+// as binary (AskUserQuestion OR ExitPlanMode) and manufactures a needless
+// question when a request carries no plan to present.
+func TestBuildPlanModePrompt_ThirdPath_DirectAnswer(t *testing.T) {
+	for _, exists := range []bool{false, true} {
+		out := buildPlanModePrompt(testPlanPath, exists, nil)
+		wantPhrases := []string{
+			"one of three ways",
+			"A direct answer",
+			"answered directly in visible assistant text",
+			"do NOT call ExitPlanMode when there is no plan to present",
+		}
+		for _, phrase := range wantPhrases {
+			if !strings.Contains(out, phrase) {
+				t.Errorf("prompt (exists=%v) missing third-path phrase %q", exists, phrase)
+			}
+		}
+	}
+}
+
+// TestBuildPlanModePrompt_NoBinaryPhrasing verifies the superseded binary
+// framing ("one of two ways" / "Do not end a turn without one of these") is
+// gone. That phrasing presented AskUserQuestion and ExitPlanMode as the only
+// legal endings, which is the exact coercion the third path removes.
+func TestBuildPlanModePrompt_NoBinaryPhrasing(t *testing.T) {
+	for _, exists := range []bool{false, true} {
+		out := buildPlanModePrompt(testPlanPath, exists, nil)
+		badPhrases := []string{
+			"one of two ways",
+			"Do not end a turn without one of these",
+		}
+		for _, phrase := range badPhrases {
+			if strings.Contains(out, phrase) {
+				t.Errorf("prompt (exists=%v) still contains superseded binary phrasing %q", exists, phrase)
+			}
+		}
+	}
+}
+
+// TestBuildPlanModeSparseReminder_ThirdPath verifies the per-turn sparse
+// reminder carries the same third-path clause, so the re-injected reminder
+// stops re-asserting the binary contract every few turns.
+func TestBuildPlanModeSparseReminder_ThirdPath(t *testing.T) {
+	out := buildPlanModeSparseReminder(testPlanPath)
+	wantPhrases := []string{
+		"one of three ways",
+		"answered directly in visible assistant text",
+		"do not call ExitPlanMode when there is no plan to present",
+	}
+	for _, phrase := range wantPhrases {
+		if !strings.Contains(out, phrase) {
+			t.Errorf("sparse reminder missing third-path phrase %q", phrase)
+		}
+	}
+	// The superseded binary clause must be gone.
+	if strings.Contains(out, "End turns with AskUserQuestion (for clarifications) or ExitPlanMode") {
+		t.Error("sparse reminder still contains superseded binary end-turn clause")
+	}
+}
