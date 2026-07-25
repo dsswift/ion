@@ -1,6 +1,7 @@
 import { log as _log } from '../../logger'
 import { state } from '../../state'
 import type { RemoteCommand } from '../protocol'
+import { scanMessagesForAttachments, type ScanInput } from './tab-attachment-scan'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -8,9 +9,15 @@ function log(msg: string, fields?: Record<string, unknown>): void {
 
 /**
  * Handle `load_attachments` command from iOS.
- * Extracts all unique attachments from a tab's full message history
- * via executeJavaScript in the renderer, then sends the result back
- * to the requesting device.
+ *
+ * Projects the tab's raw message/plan/resource state out of the renderer via a
+ * single `executeJavaScript` call, then runs the pure, unit-tested
+ * `scanMessagesForAttachments` in the main process to build the attachment
+ * list. Keeping the extraction logic in an importable module (rather than a
+ * giant inlined JS string) is what lets the tool/assistant image branch be
+ * regression-tested — the old inline scan silently dropped engine-generated
+ * images that attach to `role: 'tool'`/`role: 'assistant'` messages, so iOS
+ * showed "No attachments" for image-generation conversations.
  */
 export async function handleLoadAttachments(
   cmd: Extract<RemoteCommand, { type: 'desktop_load_attachments' }>,
@@ -57,115 +64,61 @@ export async function handleLoadAttachments(
       })()
     `)
 
-    const attachments = await state.mainWindow.webContents.executeJavaScript(`
+    // Project the raw store state the scan needs, then parse in the main
+    // process with the pure, unit-tested `scanMessagesForAttachments`. The
+    // renderer side is deliberately dumb: it extracts data, it does not decide
+    // what an attachment is. `content` is only carried for user messages (the
+    // only role that uses `[Attached ...]` markers) to bound the payload, and
+    // `toolInput` is normalized to a JSON string for plan-path extraction.
+    const raw = (await state.mainWindow.webContents.executeJavaScript(`
       (function() {
         try {
           var store = window.__Ion_SESSION_STORE__;
-          if (!store) return [];
+          if (!store) return null;
           var s = store.getState();
           var tab = s.tabs.find(function(t) { return t.id === '${escapedTabId}'; });
-          if (!tab) return [];
+          if (!tab) return null;
           // Messages live on the active conversation instance for EVERY tab.
           var pane = s.conversationPanes ? s.conversationPanes.get('${escapedTabId}') : null;
           var inst = pane ? (pane.instances.find(function(i){ return i.id === pane.activeInstanceId; }) || pane.instances[0]) : null;
           var msgs = (inst && inst.messages) || [];
-          var seen = {};
-          var result = [];
-          var re = /^\\[Attached (image|file|plan): ([^\\]]+)\\]$/;
-          var planTools = { 'Write': 1, 'Edit': 1, 'NotebookEdit': 1 };
-          var planPathRe = /[\\\/]plans[\\\/][^\\\/]+\\.md$/;
-          for (var i = 0; i < msgs.length; i++) {
-            var msg = msgs[i];
-            // 1. Structured attachments on user messages
-            if (msg.role === 'user') {
-              var ma = msg.attachments;
-              if (ma) {
-                for (var j = 0; j < ma.length; j++) {
-                  var p = ma[j].path;
-                  if (p && !seen[p]) {
-                    seen[p] = true;
-                    result.push({ type: ma[j].type, name: ma[j].name || '', path: p });
-                  }
-                }
-              }
-              // 2. Content markers
-              var lines = (msg.content || '').split('\\n');
-              for (var k = 0; k < lines.length; k++) {
-                var m = re.exec(lines[k]);
-                if (!m) break;
-                if (!seen[m[2]]) {
-                  seen[m[2]] = true;
-                  var parts = m[2].split('/');
-                  result.push({ type: m[1], name: parts[parts.length - 1] || m[2], path: m[2] });
-                }
-              }
+          var messages = msgs.map(function(msg) {
+            var ti = msg.toolInput;
+            if (ti != null && typeof ti !== 'string') {
+              try { ti = JSON.stringify(ti); } catch(e) { ti = undefined; }
             }
-            // 3. System divider messages with planFilePath
-            if (msg.role === 'system' && msg.planFilePath && !seen[msg.planFilePath]) {
-              seen[msg.planFilePath] = true;
-              var sp = msg.planFilePath.split('/');
-              result.push({ type: 'plan', name: sp[sp.length - 1] || 'plan.md', path: msg.planFilePath });
-            }
-            // 4. Tool-call plan detection (Write/Edit on **/plans/*.md)
-            if (msg.role === 'tool' && msg.toolName && planTools[msg.toolName]) {
-              var ti = msg.toolInput || msg.input || '';
-              if (typeof ti === 'string') {
-                try { ti = JSON.parse(ti); } catch(e) {}
-              }
-              var fp = (ti && typeof ti === 'object') ? (ti.file_path || ti.path || ti.filePath || '') : '';
-              if (fp && planPathRe.test(fp) && !seen[fp]) {
-                seen[fp] = true;
-                var tp = fp.split('/');
-                result.push({ type: 'plan', name: tp[tp.length - 1] || 'plan.md', path: fp });
-              }
-            }
-          }
-          // Plan file: read from the active conversation instance.
-          var planPath = (inst && inst.planFilePath) || null;
-          if (planPath && !seen[planPath]) {
-            var pp = planPath.split('/');
-            result.push({ type: 'plan', name: pp[pp.length - 1] || 'plan.md', path: planPath });
-          }
-          // Include conversation-scoped resources for this tab. These are
-          // keyed by conversationId in s.resources and are not attached to
-          // messages — they arrive through the resource broker for ANY kind
-          // an extension declares. Encode generically as type='resource' with
-          // path='resource:<id>' and carry the real kind so iOS buckets and
-          // labels by kind, never by a hardcoded type. (Previously this
-          // hardcoded type='briefing', baking one extension's kind into the
-          // client; the pipeline is now kind-agnostic.)
-          //
-          // SHAPE CONTRACT: this object MUST match resourceToAttachmentEntry()
-          // in ./resource-attachment-entry.ts (the unit-tested source of truth
-          // for the entry shape). This code runs inside executeJavaScript and
-          // cannot import that module, so the shape is duplicated by necessity
-          // — keep the two in sync.
+            return {
+              role: msg.role,
+              content: msg.role === 'user' ? (msg.content || '') : undefined,
+              attachments: (msg.attachments || []).map(function(a) {
+                return { type: a.type, name: a.name, path: a.path };
+              }),
+              planFilePath: msg.planFilePath,
+              toolName: msg.toolName,
+              toolInput: ti,
+            };
+          });
+          // Conversation-scoped resources for this tab, pre-filtered by
+          // conversationId. The main process maps these through the shared
+          // resourceToAttachmentEntry(), so no entry shape is duplicated here.
+          var resources = [];
           var convId = tab.conversationId || null;
           if (convId) {
-            var resources = s.resources || {};
-            Object.keys(resources).forEach(function(kind) {
-              var items = resources[kind] || [];
-              for (var ri = 0; ri < items.length; ri++) {
-                var item = items[ri];
+            var byKind = s.resources || {};
+            Object.keys(byKind).forEach(function(kind) {
+              (byKind[kind] || []).forEach(function(item) {
                 if (item.conversationId === convId) {
-                  var resourcePath = 'resource:' + item.id;
-                  if (!seen[resourcePath]) {
-                    seen[resourcePath] = true;
-                    result.push({
-                      type: 'resource',
-                      kind: item.kind || '',
-                      name: item.title || item.kind || 'Resource',
-                      path: resourcePath,
-                    });
-                  }
+                  resources.push({ id: item.id, kind: item.kind, title: item.title, conversationId: item.conversationId });
                 }
-              }
+              });
             });
           }
-          return result;
-        } catch(e) { return []; }
+          return { messages: messages, planFilePath: (inst && inst.planFilePath) || null, resources: resources };
+        } catch(e) { return null; }
       })()
-    `) || []
+    `)) as ScanInput | null
+
+    const attachments = raw ? scanMessagesForAttachments(raw) : []
 
     log('load_attachments: found', { tab_id: tabId, count: attachments.length })
     state.remoteTransport?.sendToDevice(deviceId, {

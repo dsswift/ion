@@ -32,6 +32,13 @@ export interface ModelEntry {
    * Absent for models with no local encoder mapping.
    */
   tokenizer?: string
+  /**
+   * API shape this model uses. "" / absent means "chat" (standard conversational
+   * chat-completion API). "image" means a dedicated image-generation API (e.g.
+   * DALL-E 3, gpt-image-1) — the engine routes these through runImageLoop, which
+   * sends only the current prompt with no conversation history. Additive, omitempty.
+   */
+  modelKind?: string
   isCustom?: boolean
 }
 
