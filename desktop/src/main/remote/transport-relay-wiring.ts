@@ -18,6 +18,11 @@ function log(msg: string, fields?: Record<string, unknown>): void {
 export interface RelayWiringCtx {
   relayUrl: string
   relayApiKey: string
+  /**
+   * OIDC credential factory. When set, the relay client calls this before each
+   * connect attempt to mint a fresh bearer token instead of using relayApiKey.
+   */
+  getCredential?: () => Promise<string>
   relays: Map<string, RelayClient>
   setDeviceSecret: (deviceId: string, secret: Buffer) => void
   handleIncoming: (msg: WireMessage, deviceId: string) => void
@@ -39,6 +44,7 @@ export function connectRelayForDevice(ctx: RelayWiringCtx, device: PairedDevice)
     relayUrl: ctx.relayUrl,
     apiKey: ctx.relayApiKey,
     channelId: device.channelId,
+    getCredential: ctx.getCredential,
   })
 
   relay.on('connected', () => {
@@ -84,4 +90,58 @@ export function connectRelayForDevice(ctx: RelayWiringCtx, device: PairedDevice)
 
   ctx.relays.set(device.id, relay)
   relay.connect()
+}
+
+/** The slice of RemoteTransport that updateConfig's relay reconciliation needs. */
+export interface RelayReconcileCtx {
+  relayUrl: string
+  relayApiKey: string
+  getCredential?: () => Promise<string>
+  relays: Map<string, RelayClient>
+  getPairedDevice: (deviceId: string) => PairedDevice | null
+  getAllPairedDevices: () => PairedDevice[]
+  connectRelayForDevice: (device: PairedDevice) => void
+}
+
+/**
+ * Reconcile relay connections after a config change: update credentials on
+ * existing connections, drop connections for unpaired devices, and CREATE
+ * connections for paired devices that have none.
+ *
+ * The create step is load-bearing for OIDC bootstrap: start() skips relay
+ * creation entirely when it runs without a usable credential (relayApiKey
+ * empty, getCredential not yet set because the relay auth-config probe is
+ * async). The probe then hot-swaps the credential via updateConfig; before
+ * this reconciliation created missing connections, the hot-swap updated ZERO
+ * relays and the desktop stayed LAN-only until the next full restart —
+ * mobile clients authenticated to the relay channel and found no peer.
+ */
+export function reconcileRelayConnections(ctx: RelayReconcileCtx): void {
+  // Update or drop existing connections.
+  for (const [deviceId, relay] of ctx.relays) {
+    const device = ctx.getPairedDevice(deviceId)
+    if (!device) {
+      relay.disconnect()
+      ctx.relays.delete(deviceId)
+      continue
+    }
+    relay.updateOptions({
+      relayUrl: ctx.relayUrl,
+      apiKey: ctx.relayApiKey,
+      getCredential: ctx.getCredential,
+      channelId: device.channelId,
+    })
+    relay.disconnect()
+    relay.connect()
+  }
+
+  // Create connections for paired devices that don't have one yet.
+  if (ctx.relayUrl && (ctx.relayApiKey || ctx.getCredential)) {
+    for (const device of ctx.getAllPairedDevices()) {
+      if (!ctx.relays.has(device.id)) {
+        log('transport: creating missing relay connection after config update', { device_id: device.id })
+        ctx.connectRelayForDevice(device)
+      }
+    }
+  }
 }

@@ -20,7 +20,7 @@ import { InboundEpochTracker } from './transport-inbound-epoch'
 import { decodeInboundPayload } from './transport-inbound-payload'
 import { enqueueSend, enqueueSendToDevice, drainSendQueue, sendDirect, type SendCtx, type SendQueueItem } from './transport-send'
 import { TransportCryptoHost } from './transport-send-worker-host'
-import { connectRelayForDevice } from './transport-relay-wiring'
+import { connectRelayForDevice, reconcileRelayConnections } from './transport-relay-wiring'
 import { startHeartbeat, stopHeartbeat, sendHeartbeatTo, type HeartbeatCtx } from './transport-heartbeat'
 import type {
   TransportState,
@@ -37,6 +37,12 @@ function log(msg: string, fields?: Record<string, unknown>): void {
 export interface RemoteTransportConfig {
   relayUrl: string
   relayApiKey: string
+  /**
+   * OIDC credential factory. When set, relay connections use this to mint a
+   * fresh bearer token before each connect attempt instead of relayApiKey.
+   * Set by transport-init when the relay advertises OIDC auth mode.
+   */
+  getCredential?: () => Promise<string>
   lanPort: number
   /** Callback to look up a paired device by ID. */
   getPairedDevice?: (deviceId: string) => PairedDevice | null
@@ -155,7 +161,7 @@ export class RemoteTransport extends EventEmitter {
     this._syncWorkerSecrets()
 
     // Start relay connections for all paired devices.
-    if (this.config.relayUrl && this.config.relayApiKey) {
+    if (this.config.relayUrl && (this.config.relayApiKey || this.config.getCredential)) {
       const devices = this.config.getAllPairedDevices?.() || []
       for (const device of devices) {
         this._connectRelayForDevice(device)
@@ -252,6 +258,7 @@ export class RemoteTransport extends EventEmitter {
     connectRelayForDevice({
       relayUrl: this.config.relayUrl,
       relayApiKey: this.config.relayApiKey,
+      getCredential: this.config.getCredential,
       relays: this.relays,
       setDeviceSecret: (deviceId, secret) => {
         this.deviceSecrets.set(deviceId, secret)
@@ -299,28 +306,23 @@ export class RemoteTransport extends EventEmitter {
     this._setState('disconnected')
   }
 
-  /** Update relay URL/API key. Reconnects all relay clients. */
+  /** Update relay URL/API key/credential provider. Reconciles all relay
+   *  clients: updates existing, drops unpaired, creates missing (see
+   *  reconcileRelayConnections for why the create step is load-bearing). */
   updateConfig(config: Partial<RemoteTransportConfig>): void {
-    const relayChanged = config.relayUrl !== undefined || config.relayApiKey !== undefined
+    const relayChanged = config.relayUrl !== undefined || config.relayApiKey !== undefined || config.getCredential !== undefined
     Object.assign(this.config, config)
 
     if (relayChanged) {
-      // Reconnect all relays with new credentials.
-      for (const [deviceId, relay] of this.relays) {
-        const device = this.config.getPairedDevice?.(deviceId)
-        if (!device) {
-          relay.disconnect()
-          this.relays.delete(deviceId)
-          continue
-        }
-        relay.updateOptions({
-          relayUrl: this.config.relayUrl,
-          apiKey: this.config.relayApiKey,
-          channelId: device.channelId,
-        })
-        relay.disconnect()
-        relay.connect()
-      }
+      reconcileRelayConnections({
+        relayUrl: this.config.relayUrl,
+        relayApiKey: this.config.relayApiKey,
+        getCredential: this.config.getCredential,
+        relays: this.relays,
+        getPairedDevice: (id) => this.config.getPairedDevice?.(id) || null,
+        getAllPairedDevices: () => this.config.getAllPairedDevices?.() || [],
+        connectRelayForDevice: (device) => this._connectRelayForDevice(device),
+      })
     }
   }
 
@@ -338,7 +340,7 @@ export class RemoteTransport extends EventEmitter {
       this.relays.delete(device.id)
     }
 
-    if (this.config.relayUrl && this.config.relayApiKey) {
+    if (this.config.relayUrl && (this.config.relayApiKey || this.config.getCredential)) {
       this._connectRelayForDevice(device)
     }
   }
@@ -565,6 +567,7 @@ export class RemoteTransport extends EventEmitter {
       lanAuthPending: this.lanAuthPending,
       lanDeviceMap: this.lanDeviceMap,
       deviceSecrets: this.deviceSecrets,
+      syncWorkerSecrets: () => this._syncWorkerSecrets(),
       getPairedDevice: (id) => this.config.getPairedDevice?.(id) || null,
       recomputeState: () => this._recomputeState(),
       emit: (event, ...args) => { this.emit(event, ...args) },

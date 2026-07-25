@@ -32,6 +32,7 @@ const api: IonAPI = {
   engineIsRemote: () => ipcRenderer.invoke(IPC.ENGINE_IS_REMOTE),
   getEnterprisePolicy: () => ipcRenderer.invoke(IPC.GET_ENTERPRISE_POLICY),
   getEnterprisePolicyFull: () => ipcRenderer.invoke(IPC.GET_ENTERPRISE_POLICY_FULL),
+  listCustomThemes: () => ipcRenderer.invoke(IPC.THEMES_LIST_CUSTOM),
   openExternal: (url) => ipcRenderer.invoke(IPC.OPEN_EXTERNAL, url),
   attachFiles: () => ipcRenderer.invoke(IPC.ATTACH_FILES),
   attachFileByPath: (path) => ipcRenderer.invoke(IPC.ATTACH_FILE_BY_PATH, path),
@@ -75,12 +76,6 @@ const api: IonAPI = {
   cancelBash: (id) => ipcRenderer.send(IPC.CANCEL_BASH, id),
   sendRemote: (event) => ipcRenderer.send(IPC.REMOTE_SEND, event),
   setPermissionMode: (tabId, mode, source, planFilePath) => ipcRenderer.send(IPC.SET_PERMISSION_MODE, { tabId, mode, source, planFilePath }),
-  getTheme: () => ipcRenderer.invoke(IPC.GET_THEME),
-  onThemeChange: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, isDark: boolean) => callback(isDark)
-    ipcRenderer.on(IPC.THEME_CHANGED, handler)
-    return () => ipcRenderer.removeListener(IPC.THEME_CHANGED, handler)
-  },
   loadSettings: () => ipcRenderer.invoke(IPC.LOAD_SETTINGS),
   saveSettings: (data) => ipcRenderer.invoke(IPC.SAVE_SETTINGS, data),
   loadTabs: () => ipcRenderer.invoke(IPC.LOAD_TABS),
@@ -263,6 +258,7 @@ const api: IonAPI = {
   remoteDiscoverRelays: () => ipcRenderer.invoke(IPC.REMOTE_DISCOVER_RELAYS),
   remoteStopDiscovery: () => ipcRenderer.send(IPC.REMOTE_STOP_DISCOVERY),
   remoteTestRelay: (url, key) => ipcRenderer.invoke(IPC.REMOTE_TEST_RELAY, url, key),
+  remoteRelayAuthConfig: (url) => ipcRenderer.invoke(IPC.REMOTE_RELAY_AUTH_CONFIG, url),
   remoteSetLanDisabled: (disabled) => ipcRenderer.invoke(IPC.REMOTE_SET_LAN_DISABLED, disabled),
   remoteSetDisplay: (customName, customIcon) => ipcRenderer.invoke(IPC.REMOTE_SET_DISPLAY, customName, customIcon),
   remoteGetDisplay: () => ipcRenderer.invoke('ion:remote-get-display'),

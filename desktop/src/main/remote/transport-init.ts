@@ -1,8 +1,8 @@
 import { IPC } from '../../shared/types'
 import { log as _log, warn as _warn, error as _error } from '../logger'
-import { state, modelCache, deviceFocusMap } from '../state'
+import { state, modelCache, deviceFocusMap, engineBridge } from '../state'
 import { broadcast, startTerminalOutputFlushing, stopTerminalOutputFlushing } from '../broadcast'
-import { readSettings } from '../settings-store'
+import { readSettings, writeSettings } from '../settings-store'
 import { RemoteTransport } from './transport'
 import { handleRemoteCommand } from './command-handler'
 import { handlePairRequest } from './pairing-handler'
@@ -11,6 +11,8 @@ import { startTabSnapshotPolling, stopTabSnapshotPolling } from './snapshot-poll
 import { getRemoteTabStates } from './snapshot'
 import { startGitWatcherBridge, stopGitWatcherBridge } from './git-watcher-bridge'
 import { focusState } from '../git/focus-state'
+import { probeRelayAuthConfig, composeOidcScope } from './relay-auth'
+import { getConfiguredOidcClientId } from '../oauth/entra-auth'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -24,10 +26,112 @@ function error(msg: string, fields?: Record<string, unknown>): void {
   _error('main', msg, fields)
 }
 
+// ---------------------------------------------------------------------------
+// Token refresh timer
+// ---------------------------------------------------------------------------
+
+/** How many ms before token expiry to mint a fresh token (5 minutes). */
+const TOKEN_REFRESH_LEAD_MS = 5 * 60 * 1000
+
+/** Module-level token refresh timer. Cleared when transport is torn down. */
+let tokenRefreshTimer: ReturnType<typeof setTimeout> | null = null
+
+function clearTokenRefreshTimer(): void {
+  if (tokenRefreshTimer !== null) {
+    clearTimeout(tokenRefreshTimer)
+    tokenRefreshTimer = null
+  }
+}
+
+/**
+ * Schedule a proactive token refresh before expiry. When the timer fires, mint
+ * a fresh token and push a relay_config update to iOS so it reconnects with the
+ * new credential. The 5-minute lead gives plenty of room for network latency.
+ */
+function scheduleTokenRefresh(oidcScope: string, expiresAtMs: number): void {
+  clearTokenRefreshTimer()
+  const refreshAt = expiresAtMs - TOKEN_REFRESH_LEAD_MS
+  const delayMs = Math.max(0, refreshAt - Date.now())
+  log('remote_transport: scheduling token refresh', { delay_ms: Math.round(delayMs), expires_at: new Date(expiresAtMs).toISOString() })
+
+  tokenRefreshTimer = setTimeout(() => {
+    tokenRefreshTimer = null
+    void (async () => {
+      try {
+        const result = await engineBridge.request<{ accessToken?: string; expiresAt?: number }>('oidc_token', { oidcScope })
+        if (!result.ok || !result.data?.accessToken) {
+          warn('remote_transport: proactive token refresh failed, relay will reconnect on expiry', { error: result.error ?? 'no token' })
+          return
+        }
+        const freshToken = result.data.accessToken
+        const freshExpiry = result.data.expiresAt ?? (Date.now() + 60 * 60 * 1000)
+        log('remote_transport: proactive token refresh succeeded, pushing relay_config')
+
+        // Push fresh relay_config to iOS with the new token in relayApiKey.
+        // iOS uses relayApiKey to connect to the relay, so this keeps it current.
+        const s = readSettings()
+        const peerRelayUrl = (s.relayUrl as string) || ''
+        if (peerRelayUrl && state.remoteTransport) {
+          state.remoteTransport.send({
+            type: 'desktop_relay_config',
+            relayUrl: peerRelayUrl,
+            relayApiKey: freshToken,
+            authMode: 'oidc',
+            relayOidcIssuer: (s.relayOidcIssuer as string) || '',
+            relayOidcAudience: (s.relayOidcAudience as string) || '',
+            // Composed scope — iOS passes it verbatim to Entra (idempotent
+            // when settings already hold the composed form).
+            relayOidcRequiredScope: composeOidcScope(
+              (s.relayOidcAudience as string) || '',
+              (s.relayOidcRequiredScope as string) || ''
+            ),
+            relayOidcClientId: getConfiguredOidcClientId(),
+          })
+        }
+
+        // Schedule the next refresh.
+        scheduleTokenRefresh(oidcScope, freshExpiry)
+      } catch (err) {
+        warn('remote_transport: proactive token refresh threw', { error: String(err) })
+      }
+    })()
+  }, delayMs)
+}
+
+// ---------------------------------------------------------------------------
+// Credential factory
+// ---------------------------------------------------------------------------
+
+/**
+ * Build an OIDC credential factory for the given scope. Each call mints a
+ * fresh bearer token via the engine's oidc_token command.
+ *
+ * Also schedules a proactive token refresh so iOS receives fresh credentials
+ * before expiry.
+ */
+function buildGetCredential(oidcScope: string): () => Promise<string> {
+  return async () => {
+    const result = await engineBridge.request<{ accessToken?: string; expiresAt?: number }>('oidc_token', { oidcScope })
+    if (!result.ok || !result.data?.accessToken) {
+      throw new Error(result.error ?? 'oidc_token: no token returned')
+    }
+    const expiresAt = result.data.expiresAt ?? (Date.now() + 60 * 60 * 1000)
+    // Schedule proactive refresh each time we mint a credential (idempotent:
+    // rescheduling replaces the previous timer so it never double-fires).
+    scheduleTokenRefresh(oidcScope, expiresAt)
+    return result.data.accessToken
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------------------
+
 export function initRemoteTransport(settings: Record<string, unknown>): void {
   log('remote_transport: init', { remote_enabled: settings.remoteEnabled, relay_url: settings.relayUrl })
 
   if (state.remoteTransport) {
+    clearTokenRefreshTimer()
     stopTabSnapshotPolling()
     stopGitWatcherBridge()
     state.remoteTransport.stop().catch((err) => warn('remote_transport: stop failed during re-init', { error: String(err) }))
@@ -45,12 +149,28 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
   const relayUrl = (settings.relayUrl as string) || ''
   const relayApiKey = (settings.relayApiKey as string) || ''
 
+  // Stored auth config from previous probe (set after async probe completes).
+  // On first call settings.relayAuthMode may be undefined; the async probe
+  // below will populate it and re-init the transport if OIDC is detected.
+  const authMode = (settings.relayAuthMode as 'psk' | 'oidc' | undefined) || 'psk'
+  const oidcAudience = (settings.relayOidcAudience as string) || ''
+  const oidcRequiredScope = (settings.relayOidcRequiredScope as string) || ''
+
   const pairedDevices = settings.pairedDevices as any[] | undefined
-  log('remote_transport: paired devices', { count: pairedDevices?.length || 0, has_relay: !!relayUrl })
+  log('remote_transport: paired devices', { count: pairedDevices?.length || 0, has_relay: !!relayUrl, auth_mode: authMode })
+
+  // Build credential factory when in OIDC mode.
+  let getCredential: (() => Promise<string>) | undefined
+  if (authMode === 'oidc' && oidcAudience && oidcRequiredScope) {
+    const scope = composeOidcScope(oidcAudience, oidcRequiredScope)
+    log('remote_transport: using OIDC credential provider', { scope })
+    getCredential = buildGetCredential(scope)
+  }
 
   state.remoteTransport = new RemoteTransport({
     relayUrl,
     relayApiKey,
+    getCredential,
     lanPort: (settings.lanServerPort as number) || 19837,
     getPairedDevice: (deviceId: string) => {
       try {
@@ -66,6 +186,50 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
       } catch { return [] }
     },
   })
+
+  // If relay URL is set but auth mode is not yet known (first init, no stored
+  // config), probe the relay async. If it reports OIDC, swap the relay
+  // credentials on the running transport without tearing down the LAN server
+  // or Bonjour advertisement.
+  if (relayUrl && authMode === 'psk') {
+    void (async () => {
+      const probed = await probeRelayAuthConfig(relayUrl)
+      if (probed?.oidc && state.remoteTransport) {
+        const scope = composeOidcScope(probed.audience, probed.requiredScope)
+        log('remote_transport: relay requires OIDC, upgrading credential provider in-place', { issuer: probed.issuer, audience: probed.audience, scope })
+        const credential = buildGetCredential(scope)
+        // Hot-swap: update the relay credential on the running transport.
+        // This reconnects relay clients with OIDC tokens but leaves the
+        // LAN server, Bonjour, snapshot polling, and git watcher intact.
+        state.remoteTransport.updateConfig({
+          relayApiKey: '', // clear PSK; credential provider takes precedence
+          getCredential: credential,
+        })
+        // Persist OIDC config to settings so the peer-connected push
+        // (and any subsequent restarts) know the auth mode without re-probing.
+        // Without this, peerSettings.relayAuthMode is undefined when iOS
+        // connects, causing the peer-connected handler to send an empty token.
+        try {
+          const current = readSettings()
+          writeSettings({
+            ...current,
+            relayAuthMode: 'oidc',
+            relayOidcIssuer: probed.issuer,
+            relayOidcAudience: probed.audience,
+            // Persist the COMPOSED scope (api://<audience>/<scope>), not the
+            // bare probed.requiredScope. protocol.ts documents
+            // relayOidcRequiredScope as "Full OIDC scope string" and iOS
+            // passes it verbatim to Entra — a bare "Relay.Access" resolves
+            // against Microsoft Graph and fails with AADSTS650053.
+            relayOidcRequiredScope: scope,
+          })
+          log('remote_transport: persisted OIDC config to settings', { issuer: probed.issuer, scope })
+        } catch (err) {
+          warn('remote_transport: failed to persist OIDC config to settings', { error: String(err) })
+        }
+      }
+    })()
+  }
 
   startTabSnapshotPolling()
 
@@ -105,7 +269,50 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
         const peerRelayUrl = (peerSettings.relayUrl as string) || ''
         const peerRelayApiKey = (peerSettings.relayApiKey as string) || ''
         if (peerRelayUrl) {
-          state.remoteTransport?.send({ type: 'desktop_relay_config', relayUrl: peerRelayUrl, relayApiKey: peerRelayApiKey })
+          // Build the relay_config payload: include OIDC fields when in OIDC mode.
+          const peerAuthMode = (peerSettings.relayAuthMode as 'psk' | 'oidc' | undefined) || 'psk'
+          if (peerAuthMode === 'oidc') {
+            // In OIDC mode, mint a fresh token to send as relayApiKey.
+            // peerRelayApiKey is empty (the credential lives in the in-memory
+            // factory, not settings), so iOS needs a freshly-minted token to
+            // connect before it has its own OIDCTokenManager running.
+            const oidcAudience = (peerSettings.relayOidcAudience as string) || ''
+            const oidcScope = (peerSettings.relayOidcRequiredScope as string) || ''
+            const scope = composeOidcScope(oidcAudience, oidcScope)
+            void (async () => {
+              try {
+                const result = await engineBridge.request<{ accessToken?: string; expiresAt?: number }>('oidc_token', { oidcScope: scope })
+                const freshToken = (result.ok && result.data?.accessToken) ? result.data.accessToken : peerRelayApiKey
+                if (!freshToken) {
+                  warn('remote_transport: peer-connected OIDC token mint failed, iOS may not connect', { error: result.error ?? 'no token' })
+                }
+                state.remoteTransport?.send({
+                  type: 'desktop_relay_config' as const,
+                  relayUrl: peerRelayUrl,
+                  relayApiKey: freshToken,
+                  authMode: 'oidc' as const,
+                  relayOidcIssuer: (peerSettings.relayOidcIssuer as string) || '',
+                  relayOidcAudience: oidcAudience,
+                  // Always the COMPOSED scope (api://<audience>/<scope>) — iOS
+                  // passes it verbatim to Entra. composeOidcScope is idempotent
+                  // so an already-composed settings value passes through.
+                  relayOidcRequiredScope: scope,
+                  relayOidcClientId: getConfiguredOidcClientId(),
+                })
+                if (result.data?.expiresAt) {
+                  scheduleTokenRefresh(scope, result.data.expiresAt)
+                }
+              } catch (err) {
+                warn('remote_transport: peer-connected OIDC token mint threw', { error: String(err) })
+              }
+            })()
+          } else {
+            state.remoteTransport?.send({
+              type: 'desktop_relay_config' as const,
+              relayUrl: peerRelayUrl,
+              relayApiKey: peerRelayApiKey,
+            })
+          }
         }
         const profiles = Array.isArray(peerSettings.engineProfiles) ? peerSettings.engineProfiles : []
         state.remoteTransport?.send({ type: 'desktop_engine_profiles', profiles })

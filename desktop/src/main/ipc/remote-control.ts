@@ -8,6 +8,7 @@ import { revokeDeviceLocally } from '../remote/revoke'
 import { requestLogsFromFirstDevice } from '../remote/handlers/diagnostics'
 import { setRemoteDisplay, readRemoteDisplay } from '../remote/handlers/display'
 import { isValidRemoteTabStatesPayload } from '../ipc-validation'
+import { probeRelayAuthConfig } from '../remote/relay-auth'
 import type { RemoteTabStatesPayload } from '../../shared/remote-projection-types'
 import type { DiscoveredRelay } from '../remote/discovery'
 
@@ -177,5 +178,10 @@ export function registerRemoteControlIpc(): void {
         resolve({ success: false, error: (err as Error).message })
       }
     })
+  })
+
+  // Probe the relay's auth config so the UI can adapt without a full connect.
+  ipcMain.handle(IPC.REMOTE_RELAY_AUTH_CONFIG, async (_event, relayUrl: string) => {
+    return probeRelayAuthConfig(relayUrl)
   })
 }

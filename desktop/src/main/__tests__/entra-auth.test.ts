@@ -86,6 +86,25 @@ vi.mock('../state', () => ({
   },
 }))
 
+// Identity is deployment-configuration (engine.json auth block), never
+// hardcoded. Mock a configured identity so getAccessToken can resolve the
+// telemetry scope; a second suite below pins the unconfigured behavior.
+vi.mock('../settings-store', () => ({
+  ENGINE_CONFIG_FILE: '/tmp/engine.json',
+  readEngineConfig: vi.fn(() => ({
+    auth: {
+      identityProvider: 'entra',
+      oauth: {
+        entra: {
+          clientId: 'test-client-id',
+          scopes: ['openid', 'profile', 'offline_access', 'api://test-client-id/Telemetry.Write'],
+        },
+      },
+    },
+  })),
+  writeEngineConfig: vi.fn(),
+}))
+
 // ---------------------------------------------------------------------------
 // Import after mocks are established
 // ---------------------------------------------------------------------------
@@ -307,5 +326,37 @@ describe('egress user-attribution (F4) and matrix gates', () => {
     const body = shippedRecords()
     expect(body).toHaveLength(1)
     expect(body[0].msg).toBe('tailed-record')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Tests: identity is configuration, not code (no hardcoded identity)
+// ---------------------------------------------------------------------------
+
+describe('configured identity resolution', () => {
+  it('getConfiguredOidcClientId reads the client ID from engine.json auth block', async () => {
+    const { getConfiguredOidcClientId } = await import('../oauth/entra-auth')
+    expect(getConfiguredOidcClientId()).toBe('test-client-id')
+  })
+
+  it('getConfiguredTelemetryScope resolves the resource-scoped scope from configured scopes', async () => {
+    const { getConfiguredTelemetryScope } = await import('../oauth/entra-auth')
+    expect(getConfiguredTelemetryScope()).toBe('api://test-client-id/Telemetry.Write')
+  })
+
+  it('getAccessToken passes the configured scope to oidc_token', async () => {
+    queueResponse('oidc_token', { ok: true, data: { accessToken: 'tok' } })
+    await getAccessToken()
+    expect(bridgeState.calls[0].payload.oidcScope).toBe('api://test-client-id/Telemetry.Write')
+  })
+
+  it('source carries no hardcoded identity (no GUID literals in entra-auth.ts)', async () => {
+    // Regression pin for the deployment-specifics scrub: the module must not
+    // define any client/tenant GUID constants. A GUID literal appearing in
+    // the module source is a deployment-specific identity leak.
+    const { readFileSync } = await vi.importActual<typeof import('fs')>('fs')
+    const src = readFileSync(new URL('../oauth/entra-auth.ts', import.meta.url), 'utf-8')
+    const guidLiteral = /['"][0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}['"]/i
+    expect(src).not.toMatch(guidLiteral)
   })
 })

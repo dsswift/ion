@@ -64,8 +64,6 @@ export const IPC = {
   SKILL_STATUS: 'ion:skill-status',
 
   // Theme
-  GET_THEME: 'ion:get-theme',
-  THEME_CHANGED: 'ion:theme-changed',
 
   // Command discovery
   DISCOVER_COMMANDS: 'ion:discover-commands',
@@ -110,6 +108,9 @@ export const IPC = {
   // Enterprise policy
   GET_ENTERPRISE_POLICY: 'ion:get-enterprise-policy',
   GET_ENTERPRISE_POLICY_FULL: 'ion:get-enterprise-policy-full',
+
+  // Theme packs (custom color themes; main scans disk, renderer registers)
+  THEMES_LIST_CUSTOM: 'ion:themes-list-custom',
 
   // Git operations
   GIT_GRAPH: 'ion:git-graph',
@@ -223,6 +224,7 @@ export const IPC = {
   REMOTE_DISCOVER_RELAYS: 'ion:remote-discover-relays',
   REMOTE_STOP_DISCOVERY: 'ion:remote-stop-discovery',
   REMOTE_TEST_RELAY: 'ion:remote-test-relay',
+  REMOTE_RELAY_AUTH_CONFIG: 'ion:remote-relay-auth-config',
   REMOTE_RELAYS_CHANGED: 'ion:remote-relays-changed',
   REMOTE_DEVICE_PAIRED: 'ion:remote-device-paired',
   REMOTE_DEVICE_REVOKED: 'ion:remote-device-revoked',
