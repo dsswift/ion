@@ -73,7 +73,7 @@ Send a user message to an active session.
 | `compactEnabled`            | boolean  | no       | Gate for proactive compaction on this prompt. `false` disables proactive compaction; reactive compaction still fires on provider errors. |
 | `compactSummaryEnabled`     | boolean  | no       | Whether LLM-based summarization is used during compaction for this prompt. |
 | `compactMemoryEnabled`      | boolean  | no       | Whether the background session memory summarizer is active for this prompt. |
-| `resolveSlash`              | boolean  | no       | When `true`, signals that `text` is a slash-command invocation (`/name args`) the engine should resolve and expand rather than treat as plain content. The engine looks the command up across the conventional roots (extension registry, `.ion/commands`, `.claude/commands`, skills, project), substitutes `$ARGUMENTS`, feeds the **expanded** body to the model, and persists the **raw** invocation as the displayed user turn. Default `false`; existing clients sending `/`-prefixed content as ordinary text are unaffected because they do not set this flag. |
+| `resolveSlash`              | boolean  | no       | When `true`, signals that `text` is a slash-command invocation (`/name args`) the engine should resolve and expand rather than treat as plain content. The engine looks the command up across the conventional roots in precedence order — `{workingDir}/.ion/commands`, `~/.ion/commands`, `{workingDir}/.ion/skills/<name>/SKILL.md`, `~/.ion/skills/<name>/SKILL.md`, then (only when Claude compatibility is enabled) `{workingDir}/.claude/commands`, `~/.claude/commands`, `~/.claude/skills/<name>/SKILL.md` — substitutes `$ARGUMENTS`, feeds the **expanded** body to the model (SKILL.md bodies are prefixed with their base directory so relative companion files resolve), and persists the **raw** invocation as the displayed user turn. Default `false`; existing clients sending `/`-prefixed content as ordinary text are unaffected because they do not set this flag. |
 
 ```json
 {"cmd":"send_prompt","key":"abc-123","text":"List all files in the current directory","requestId":"r2"}
@@ -419,7 +419,7 @@ Discover filesystem slash-command templates and skills available across the conv
 | `argumentHint`  | string | Argument hint string, if present                                                     |
 | `source`        | string | Where the template lives: `"ion"`, `"claude"`, or `"skill"`                         |
 
-Higher-precedence roots shadow same-name entries in lower-precedence roots (project-level beats user-level). The engine owns the discovery walk so every consumer's autocomplete menu is fed by one owner with no per-consumer filesystem walk.
+Higher-precedence roots shadow same-name entries in lower-precedence roots. The walk order matches slash resolution: `{workingDir}/.ion/commands`, `~/.ion/commands`, `{workingDir}/.ion/skills`, `~/.ion/skills`, then (Claude compatibility only) `{workingDir}/.claude/commands`, `~/.claude/commands`, `~/.claude/skills`. The `.ion` roots are the product's defaults and are never gated. Commands and skills are listed by default; a template with `user-invocable: false` frontmatter is omitted from the feed (typed resolution is not gated). The engine owns the discovery walk so every consumer's autocomplete menu is fed by one owner with no per-consumer filesystem walk.
 
 ---
 

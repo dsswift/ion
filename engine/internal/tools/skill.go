@@ -3,11 +3,13 @@ package tools
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/dsswift/ion/engine/internal/skills"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // SkillManifestPerEntryMaxChars is the maximum number of characters rendered
@@ -207,15 +209,33 @@ func executeSkill(ctx context.Context, input map[string]any, _ string) (*types.T
 		}, nil
 	}
 
+	// Base directory: skills ship companion files next to their SKILL.md
+	// (references/*.md, scripts, assets) addressed by paths relative to the
+	// skill directory. The model can only resolve those paths when the result
+	// names the directory. Wording is pinned to match the slash-resolution
+	// annotation in session/slash_skill_dir.go so the model sees one
+	// convention on both invocation paths (tests in each package pin it).
+	// Programmatically registered skills have no Source — omit the line.
+	baseDir := ""
+	if skill.Source != "" {
+		baseDir = filepath.Dir(skill.Source)
+	}
+
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "# Skill: %s\n", skill.Name)
 	if skill.Description != "" {
 		fmt.Fprintf(&sb, "> %s\n", skill.Description)
 	}
+	if baseDir != "" {
+		fmt.Fprintf(&sb, "Base directory for this skill: %s\n", baseDir)
+		sb.WriteString("Relative paths in this skill (e.g. references/...) resolve against this base directory.\n")
+	}
 	if args != "" {
 		fmt.Fprintf(&sb, "Arguments: %s\n", args)
 	}
 	sb.WriteString(skill.Content)
+
+	utils.LogWithFields(utils.LevelInfo, "tools.skill", "skill executed", map[string]any{"model": name, "path": baseDir, "count": len(args)})
 
 	return &types.ToolResult{Content: sb.String()}, nil
 }

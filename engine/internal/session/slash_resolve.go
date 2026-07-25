@@ -90,40 +90,57 @@ func parseSlashInvocation(text string) (name, args string, ok bool) {
 // Precedence (first match wins):
 //  1. {workingDir}/.ion/commands/{name}.md      → ion
 //  2. ~/.ion/commands/{name}.md                 → ion
-//  3. {workingDir}/.claude/commands/{name}.md   → claude
-//  4. ~/.claude/commands/{name}.md              → claude
-//  5. ~/.claude/skills/{name}/SKILL.md          → skill
+//  3. {workingDir}/.ion/skills/{name}/SKILL.md  → skill
+//  4. ~/.ion/skills/{name}/SKILL.md             → skill
+//  5. {workingDir}/.claude/commands/{name}.md   → claude
+//  6. ~/.claude/commands/{name}.md              → claude
+//  7. ~/.claude/skills/{name}/SKILL.md          → skill
 //
 // Colon-delimited names map to subdirectory paths (e2e:setup → e2e/setup.md).
-// Returns ok=false when no template is found on disk (caller surfaces
-// unknown_command).
+// Skill roots are never probed for colon-delimited names (skill directory
+// names are flat). Returns ok=false when no template is found on disk (caller
+// surfaces unknown_command).
 //
+// The `.ion` roots are the product's defaults and are always probed.
 // claudeCompat gates ALL `.claude` / `~/.claude` roots (commands AND skills):
 // when false, only the `.ion` roots are probed, mirroring the skill-loading
-// gate in start_session.go. The engine owns no opinion on the flag — it honors
-// whatever the consumer hands it (here, via the session's EngineConfig).
+// gate in start_session.go. Claude compatibility is a migration feature, not
+// a default. The engine owns no opinion on the flag — it honors whatever the
+// consumer hands it (here, via the session's EngineConfig).
 func resolveSlashCommand(name, args, workingDir string, claudeCompat bool) (*ResolvedSlash, bool) {
 	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	filePath := strings.ReplaceAll(name, ":", string(filepath.Separator)) + ".md"
+	flatName := !strings.Contains(name, ":")
 
 	type candidate struct {
 		path   string
 		source string
+		// isSkill marks a SKILL.md candidate; the expanded body of a skill is
+		// prefixed with its base directory so the model can resolve the
+		// skill's relative companion files (references/*.md etc.).
+		isSkill bool
 	}
 	var candidates []candidate
 	if workingDir != "" {
-		candidates = append(candidates, candidate{filepath.Join(workingDir, ".ion", "commands", filePath), slashSourceIon})
+		candidates = append(candidates, candidate{path: filepath.Join(workingDir, ".ion", "commands", filePath), source: slashSourceIon})
 	}
-	candidates = append(candidates, candidate{filepath.Join(home, ".ion", "commands", filePath), slashSourceIon})
+	candidates = append(candidates, candidate{path: filepath.Join(home, ".ion", "commands", filePath), source: slashSourceIon})
+	// Ion-native skill roots — always probed, like the .ion command roots.
+	if flatName {
+		if workingDir != "" {
+			candidates = append(candidates, candidate{path: filepath.Join(workingDir, ".ion", "skills", name, "SKILL.md"), source: slashSourceSkill, isSkill: true})
+		}
+		candidates = append(candidates, candidate{path: filepath.Join(home, ".ion", "skills", name, "SKILL.md"), source: slashSourceSkill, isSkill: true})
+	}
 	// .claude command + skill roots are gated on claudeCompat. When the
 	// consumer has Claude compatibility disabled, these are never probed.
 	if claudeCompat {
 		if workingDir != "" {
-			candidates = append(candidates, candidate{filepath.Join(workingDir, ".claude", "commands", filePath), slashSourceClaude})
+			candidates = append(candidates, candidate{path: filepath.Join(workingDir, ".claude", "commands", filePath), source: slashSourceClaude})
 		}
-		candidates = append(candidates, candidate{filepath.Join(home, ".claude", "commands", filePath), slashSourceClaude})
-		if !strings.Contains(name, ":") {
-			candidates = append(candidates, candidate{filepath.Join(home, ".claude", "skills", name, "SKILL.md"), slashSourceSkill})
+		candidates = append(candidates, candidate{path: filepath.Join(home, ".claude", "commands", filePath), source: slashSourceClaude})
+		if flatName {
+			candidates = append(candidates, candidate{path: filepath.Join(home, ".claude", "skills", name, "SKILL.md"), source: slashSourceSkill, isSkill: true})
 		}
 	}
 
@@ -134,8 +151,14 @@ func resolveSlashCommand(name, args, workingDir string, claudeCompat bool) (*Res
 		}
 		fm, body := parseOpenFrontmatter(string(data))
 		expanded := substituteArguments(body, args)
+		skillDir := ""
+		if c.isSkill {
+			skillDir = filepath.Dir(c.path)
+			expanded = annotateSkillBody(expanded, skillDir)
+			utils.LogWithFields(utils.LevelDebug, "session.slash", "annotated skill body with base directory", map[string]any{"model": name, "path": skillDir})
+		}
 
-		utils.LogWithFields(utils.LevelInfo, "session.slash", "resolved", map[string]any{"model": name, "reason": c.source, "path": c.path, "count": len(args), "max": len(body)})
+		utils.LogWithFields(utils.LevelInfo, "session.slash", "resolved", map[string]any{"model": name, "reason": c.source, "path": c.path, "skill_dir": skillDir, "count": len(args), "max": len(body)})
 
 		return &ResolvedSlash{
 			Command:             "/" + name,
@@ -145,7 +168,7 @@ func resolveSlashCommand(name, args, workingDir string, claudeCompat bool) (*Res
 			Frontmatter:         fm,
 			Model:               frontmatterString(fm, "model"),
 			AllowedBashCommands: frontmatterList(fm, "allowed-tools", "allowed_bash_commands"),
-			UserInvocable:       frontmatterUserInvocable(fm, c.source),
+			UserInvocable:       frontmatterUserInvocable(fm),
 			Context:             frontmatterContext(fm),
 		}, true
 	}

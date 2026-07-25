@@ -179,15 +179,21 @@ func TestParseOpenFrontmatter_NoFence(t *testing.T) {
 }
 
 func TestFrontmatterUserInvocable_SourceDefaults(t *testing.T) {
-	// Skills default to model-only; commands default to user-invocable.
-	if frontmatterUserInvocable(map[string]any{}, slashSourceSkill) {
-		t.Error("skill should default to NOT user-invocable")
+	// Commands AND skills default to user-invocable (Claude Code lists skills
+	// in its slash menu; Ion matches). Explicit user-invocable: false opts out.
+	if !frontmatterUserInvocable(map[string]any{}) {
+		t.Error("skill should default to user-invocable")
 	}
-	if !frontmatterUserInvocable(map[string]any{}, slashSourceIon) {
+	if !frontmatterUserInvocable(map[string]any{}) {
 		t.Error("ion command should default to user-invocable")
 	}
-	// Explicit opt-in on a skill.
-	if !frontmatterUserInvocable(map[string]any{"user-invocable": "true"}, slashSourceSkill) {
+	if frontmatterUserInvocable(map[string]any{"user-invocable": "false"}) {
+		t.Error("skill with user-invocable: false should be hidden")
+	}
+	if frontmatterUserInvocable(map[string]any{"user-invocable": "false"}) {
+		t.Error("command with user-invocable: false should be hidden")
+	}
+	if !frontmatterUserInvocable(map[string]any{"user-invocable": "true"}) {
 		t.Error("skill with user-invocable: true should be invocable")
 	}
 }
@@ -230,5 +236,109 @@ func TestResolveSlashCommand_ClaudeCompatGate(t *testing.T) {
 	}
 	if res.Source != slashSourceClaude {
 		t.Errorf("source = %q want %q", res.Source, slashSourceClaude)
+	}
+}
+
+// TestResolveSlashCommand_IonSkillRoots pins the .ion skill roots: skills in
+// {workingDir}/.ion/skills and ~/.ion/skills resolve as source "skill" with
+// claudeCompat=false — the .ion roots are the product's defaults and are
+// never gated behind Claude compatibility.
+func TestResolveSlashCommand_IonSkillRoots(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	work := t.TempDir()
+	writeTemplate(t, work, ".ion/skills/foo/SKILL.md", "---\ndescription: project skill\n---\nProject skill body")
+	writeTemplate(t, home, ".ion/skills/bar/SKILL.md", "---\ndescription: user skill\n---\nUser skill body")
+
+	res, ok := resolveSlashCommand("foo", "", work, false)
+	if !ok {
+		t.Fatal("expected project .ion skill to resolve with claudeCompat=false")
+	}
+	if res.Source != slashSourceSkill {
+		t.Errorf("source = %q want %q", res.Source, slashSourceSkill)
+	}
+
+	res, ok = resolveSlashCommand("bar", "", work, false)
+	if !ok {
+		t.Fatal("expected user ~/.ion skill to resolve with claudeCompat=false")
+	}
+	if res.Source != slashSourceSkill {
+		t.Errorf("source = %q want %q", res.Source, slashSourceSkill)
+	}
+}
+
+// TestResolveSlashCommand_IonSkillPrecedence pins the interleaved precedence:
+// ion commands beat ion skills; ion skills beat claude commands.
+func TestResolveSlashCommand_IonSkillPrecedence(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	work := t.TempDir()
+
+	// Same name as command (~/.ion/commands) and project skill → command wins.
+	writeTemplate(t, home, ".ion/commands/x.md", "---\ndescription: command\n---\nCommand body")
+	writeTemplate(t, work, ".ion/skills/x/SKILL.md", "---\ndescription: skill\n---\nSkill body")
+	res, ok := resolveSlashCommand("x", "", work, true)
+	if !ok {
+		t.Fatal("expected resolution")
+	}
+	if res.Source != slashSourceIon {
+		t.Errorf("command should shadow skill: source = %q want %q", res.Source, slashSourceIon)
+	}
+
+	// Same name as ion skill and claude command → ion skill wins.
+	writeTemplate(t, work, ".ion/skills/y/SKILL.md", "---\ndescription: ion skill\n---\nIon skill body")
+	writeTemplate(t, home, ".claude/commands/y.md", "---\ndescription: claude command\n---\nClaude body")
+	res, ok = resolveSlashCommand("y", "", work, true)
+	if !ok {
+		t.Fatal("expected resolution")
+	}
+	if res.Source != slashSourceSkill {
+		t.Errorf("ion skill should shadow claude command: source = %q want %q", res.Source, slashSourceSkill)
+	}
+}
+
+// TestResolveSlashCommand_SkillBodyCarriesBaseDirectory pins the base-dir
+// annotation: a resolved skill's expanded body names its base directory so
+// the model can resolve relative companion files (references/*.md); a plain
+// command's body carries no such line.
+func TestResolveSlashCommand_SkillBodyCarriesBaseDirectory(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	work := t.TempDir()
+	writeTemplate(t, work, ".ion/skills/withrefs/SKILL.md", "---\ndescription: s\n---\nSee references/spec.md for details.")
+	writeTemplate(t, work, ".ion/commands/plain.md", "---\ndescription: c\n---\nCommand body")
+
+	res, ok := resolveSlashCommand("withrefs", "", work, false)
+	if !ok {
+		t.Fatal("expected skill resolution")
+	}
+	wantDir := filepath.Join(work, ".ion", "skills", "withrefs")
+	// Literal wording (not the constants) so drift against the Skill tool's
+	// base-directory lines in tools/skill.go fails a test in this package too.
+	wantPrefix := "Base directory for this skill: " + wantDir + "\n" +
+		"Relative paths in this skill (e.g. references/...) resolve against this base directory.\n\n"
+	if got := res.ExpandedBody; len(got) < len(wantPrefix) || got[:len(wantPrefix)] != wantPrefix {
+		t.Errorf("expanded body missing base-dir prefix:\n got: %q\nwant prefix: %q", got, wantPrefix)
+	}
+
+	cmdRes, ok := resolveSlashCommand("plain", "", work, false)
+	if !ok {
+		t.Fatal("expected command resolution")
+	}
+	if cmdRes.ExpandedBody != "Command body" {
+		t.Errorf("plain command body must not be annotated: %q", cmdRes.ExpandedBody)
+	}
+}
+
+// TestResolveSlashCommand_ColonNameSkipsSkillRoots pins that colon-delimited
+// names (e2e:setup) never probe the flat skill roots.
+func TestResolveSlashCommand_ColonNameSkipsSkillRoots(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	work := t.TempDir()
+	// A pathological skill dir literally named "e2e:setup" must not resolve.
+	writeTemplate(t, work, ".ion/skills/e2e:setup/SKILL.md", "---\ndescription: bad\n---\nBody")
+	if _, ok := resolveSlashCommand("e2e:setup", "", work, false); ok {
+		t.Error("colon-delimited name must not resolve from skill roots")
 	}
 }

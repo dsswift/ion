@@ -8,6 +8,13 @@ description: How Ion grounds every conversation — including dispatched sub-age
 Ion injects context files (AGENTS.md, ION.md, CLAUDE.md under compat) into every
 conversation — including dispatched sub-agents — via a four-level policy cascade.
 
+Ion-native files (AGENTS.md, ION.md, the `.ion` roots) are always in play.
+Claude-compat files (CLAUDE.md, the `.claude` roots) load only when the
+consumer enables Claude compatibility on the session config — a migration
+feature for users coming from or co-running Claude Code, off unless enabled
+(the engine's zero value is off, and the desktop reference implementation
+defaults its `enableClaudeCompat` setting to off).
+
 ## The four levels
 
 | Level | Surface | Behavior |

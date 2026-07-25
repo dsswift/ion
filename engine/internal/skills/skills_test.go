@@ -120,6 +120,30 @@ func TestSkillPaths(t *testing.T) {
 	}
 }
 
+// TestIonSkillPathsFor verifies the project root resolves against the given
+// working directory (not the process cwd) and is empty when no working
+// directory is supplied.
+func TestIonSkillPathsFor(t *testing.T) {
+	wd := t.TempDir()
+	paths := IonSkillPathsFor(wd)
+	want := filepath.Join(wd, ".ion", "skills")
+	if paths.Project != want {
+		t.Errorf("Project = %q, want %q", paths.Project, want)
+	}
+	if paths.User == "" || paths.ClaudeUser == "" {
+		t.Error("expected non-empty User and ClaudeUser paths")
+	}
+
+	empty := IonSkillPathsFor("")
+	if empty.Project != "" {
+		t.Errorf("Project for empty workingDir = %q, want empty", empty.Project)
+	}
+	base := IonSkillPaths()
+	if empty.User != base.User || empty.ClaudeUser != base.ClaudeUser {
+		t.Error("IonSkillPathsFor should agree with IonSkillPaths on User/ClaudeUser")
+	}
+}
+
 // TestLoadSkillWhenToUse verifies that the when_to_use frontmatter key is
 // parsed into WhenToUse and exposed on the Skill struct.
 func TestLoadSkillWhenToUse(t *testing.T) {

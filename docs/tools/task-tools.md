@@ -8,6 +8,8 @@ sidebar_position: 4
 
 Four optional tools for asynchronous task management. These tools let the LLM spawn background sub-sessions, track their progress, and collect results.
 
+The tasks registry also tracks **background Bash commands** started with the Bash tool's `run_in_background` parameter. Those tasks carry `bash-` IDs, an on-disk output file, and a real process that `TaskStop` kills — see the differences noted per tool below and the Bash section of the [tool reference](reference.md).
+
 ## Enabling Task Tools
 
 Task tools are not registered by default. The harness must opt in:
@@ -98,14 +100,26 @@ Refactored auth module into three files...
 Duration: 45.2s
 ```
 
+For background Bash tasks (`bash-` IDs), the response additionally includes the output-file path, the exit code once the process finishes, and a bounded tail of recent output:
+
+```
+Task: bash-3-1713800002000
+Status: running
+Prompt: python -m graphify.watch . --debounce 3
+Output file: /Users/me/.ion/tasks/bash-1713800002.out
+Recent output:
+[watch] rebuilt graph.json (2 files changed)
+Duration: 92.1s (running)
+```
+
 ### Task Statuses
 
 | Status | Meaning |
 |--------|---------|
 | `running` | Task is still executing |
-| `completed` | Task finished successfully |
-| `failed` | Task encountered an error |
-| `stopped` | Task was stopped by TaskStop |
+| `completed` | Task finished successfully (background Bash: exit code 0) |
+| `failed` | Task encountered an error (background Bash: non-zero exit code) |
+| `stopped` | Task was stopped by TaskStop or killed at session stop (background Bash) |
 
 ## TaskStop
 
@@ -119,7 +133,7 @@ Stop a running task.
 
 ### Behavior
 
-Sets the task status to `stopped` and records the completion time. Returns an error if the task is not in the `running` state.
+Sets the task status to `stopped` and records the completion time. For background Bash tasks this also kills the process group. Returns an error if the task is not in the `running` state.
 
 ### Response
 

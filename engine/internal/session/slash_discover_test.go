@@ -101,3 +101,77 @@ func TestDiscoverSlashCommands_ClaudeCompatGate(t *testing.T) {
 		t.Errorf("expected both commands when claudeCompat=true; got %+v", on)
 	}
 }
+
+// TestDiscoverSlashCommands_IonSkillsRoots pins the .ion skill roots in the
+// autocomplete feed: skills under {workingDir}/.ion/skills and ~/.ion/skills
+// surface with source "skill" at claudeCompat=false — never gated behind
+// Claude compatibility.
+func TestDiscoverSlashCommands_IonSkillsRoots(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	work := t.TempDir()
+	writeTemplate(t, work, ".ion/skills/projskill/SKILL.md", "---\ndescription: project skill\n---\nbody")
+	writeTemplate(t, home, ".ion/skills/userskill/SKILL.md", "---\ndescription: user skill\n---\nbody")
+
+	got := discoverSlashCommands(work, false)
+	bySource := map[string]string{}
+	for _, l := range got {
+		bySource[l.Name] = l.Source
+	}
+	if bySource["projskill"] != slashSourceSkill {
+		t.Errorf("projskill source = %q want %q (listings %+v)", bySource["projskill"], slashSourceSkill, got)
+	}
+	if bySource["userskill"] != slashSourceSkill {
+		t.Errorf("userskill source = %q want %q", bySource["userskill"], slashSourceSkill)
+	}
+}
+
+// TestDiscoverSlashCommands_SkillsListedByDefault pins the user-invocable
+// default flip: a SKILL.md with no `user-invocable` key IS listed (matching
+// Claude Code's slash menu); an explicit `user-invocable: false` is hidden.
+func TestDiscoverSlashCommands_SkillsListedByDefault(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	work := t.TempDir()
+	writeTemplate(t, home, ".ion/skills/plainskill/SKILL.md", "---\ndescription: no key\n---\nbody")
+	writeTemplate(t, home, ".ion/skills/hiddenskill/SKILL.md", "---\ndescription: hidden\nuser-invocable: false\n---\nbody")
+
+	got := discoverSlashCommands(work, false)
+	names := map[string]bool{}
+	for _, l := range got {
+		names[l.Name] = true
+	}
+	if !names["plainskill"] {
+		t.Error("skill without user-invocable key should be listed by default")
+	}
+	if names["hiddenskill"] {
+		t.Error("skill with user-invocable: false must be hidden")
+	}
+}
+
+// TestDiscoverSlashCommands_InterleavedPrecedence pins dedup across the
+// interleaved root order: a name in ~/.ion/skills shadows the same name in
+// {workingDir}/.claude/commands.
+func TestDiscoverSlashCommands_InterleavedPrecedence(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	work := t.TempDir()
+	writeTemplate(t, home, ".ion/skills/shared/SKILL.md", "---\ndescription: ion skill\n---\nbody")
+	writeTemplate(t, work, ".claude/commands/shared.md", "---\ndescription: claude cmd\n---\nbody")
+
+	got := discoverSlashCommands(work, true)
+	count := 0
+	var src string
+	for _, l := range got {
+		if l.Name == "shared" {
+			count++
+			src = l.Source
+		}
+	}
+	if count != 1 {
+		t.Fatalf("expected shared once, got %d", count)
+	}
+	if src != slashSourceSkill {
+		t.Errorf("shared should come from the higher-precedence ion skill root, got %q", src)
+	}
+}

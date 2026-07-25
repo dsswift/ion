@@ -35,38 +35,47 @@ func (m *Manager) DiscoverSlashCommands(workingDir string, claudeCompat bool) []
 
 // discoverSlashCommands walks the conventional command/skill roots for the given
 // working directory and returns a de-duplicated, name-sorted listing. Precedence
-// matches resolveSlashCommand: a name found in a higher-precedence root shadows
-// the same name in a lower one (the first occurrence wins, so we keep the first
-// and skip later duplicates). The `.claude` roots are skipped entirely when
-// claudeCompat is false.
+// matches resolveSlashCommand (see its doc comment for the full root order):
+// a name found in a higher-precedence root shadows the same name in a lower one
+// (the first occurrence wins, so we keep the first and skip later duplicates).
+// The `.ion` roots are the product's defaults and always walked; the `.claude`
+// roots are skipped entirely when claudeCompat is false.
 func discoverSlashCommands(workingDir string, claudeCompat bool) []types.SlashCommandListing {
 	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 
 	type root struct {
 		dir    string
 		source string
+		skills bool // walk as a skills dir (<name>/SKILL.md) instead of *.md templates
 	}
 	var roots []root
 	if workingDir != "" {
-		roots = append(roots, root{filepath.Join(workingDir, ".ion", "commands"), slashSourceIon})
+		roots = append(roots, root{dir: filepath.Join(workingDir, ".ion", "commands"), source: slashSourceIon})
 	}
-	roots = append(roots, root{filepath.Join(home, ".ion", "commands"), slashSourceIon})
+	roots = append(roots, root{dir: filepath.Join(home, ".ion", "commands"), source: slashSourceIon})
+	if workingDir != "" {
+		roots = append(roots, root{dir: filepath.Join(workingDir, ".ion", "skills"), source: slashSourceSkill, skills: true})
+	}
+	roots = append(roots, root{dir: filepath.Join(home, ".ion", "skills"), source: slashSourceSkill, skills: true})
 	if claudeCompat {
 		if workingDir != "" {
-			roots = append(roots, root{filepath.Join(workingDir, ".claude", "commands"), slashSourceClaude})
+			roots = append(roots, root{dir: filepath.Join(workingDir, ".claude", "commands"), source: slashSourceClaude})
 		}
-		roots = append(roots, root{filepath.Join(home, ".claude", "commands"), slashSourceClaude})
+		roots = append(roots, root{dir: filepath.Join(home, ".claude", "commands"), source: slashSourceClaude})
+		roots = append(roots, root{dir: filepath.Join(home, ".claude", "skills"), source: slashSourceSkill, skills: true})
 	}
 
 	seen := map[string]struct{}{}
 	var out []types.SlashCommandListing
 
 	for _, r := range roots {
+		if r.skills {
+			before := len(out)
+			walkSkillsDir(r.dir, seen, &out)
+			utils.LogWithFields(utils.LevelDebug, "session.slash", "walked skills root", map[string]any{"path": r.dir, "count": len(out) - before})
+			continue
+		}
 		walkCommandDir(r.dir, r.source, seen, &out)
-	}
-	// Skills: ~/.claude/skills/<name>/SKILL.md — also gated on claudeCompat.
-	if claudeCompat {
-		walkSkillsDir(filepath.Join(home, ".claude", "skills"), seen, &out)
 	}
 
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
@@ -140,9 +149,10 @@ func addListing(path, name, source string, seen map[string]struct{}, out *[]type
 	}
 	fm, _ := parseOpenFrontmatter(string(data))
 
-	// Skills default to model-only; skip those from the user autocomplete feed
-	// unless they opt in via user-invocable: true.
-	if !frontmatterUserInvocable(fm, source) {
+	// Commands and skills are user-invocable by default: a discoverable
+	// template is directly addressable by the user who can see it. An explicit
+	// `user-invocable: false` hides the entry from the autocomplete feed.
+	if !frontmatterUserInvocable(fm) {
 		delete(seen, name) // allow a user-invocable peer in a lower root to win
 		return
 	}
