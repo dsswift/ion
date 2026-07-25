@@ -80,6 +80,12 @@ export interface ProviderEntry {
   authSource?: string
   baseURL?: string
   apiKeyRef?: string
+  /**
+   * Operator-configured human-friendly name for this provider (mirrors Go
+   * ProviderEntry.DisplayName, from engine.json's provider displayName).
+   * Absent means clients fall back to the built-in name map / capitalized id.
+   */
+  displayName?: string
   /** Run backend currently selected for this provider (api | claude-code | codex | grok | cursor). */
   backend?: string
   /** Delegated-CLI install/auth status; present only for providers with a CLI backend option. */
@@ -110,8 +116,15 @@ const PROVIDER_NAMES: Record<string, string> = {
   ollama: 'Ollama',
 }
 
-/** Get human-friendly display name for a provider ID. */
-export function getProviderDisplayName(providerId: string): string {
+/**
+ * Get human-friendly display name for a provider ID. When the engine's
+ * provider entries are available, an operator-configured displayName
+ * (engine.json) wins over the built-in name map; the final fallback is the
+ * capitalized id.
+ */
+export function getProviderDisplayName(providerId: string, providers?: Array<Pick<ProviderEntry, 'id' | 'displayName'>>): string {
+  const configured = providers?.find((p) => p.id === providerId)?.displayName
+  if (configured) return configured
   return PROVIDER_NAMES[providerId] || providerId.charAt(0).toUpperCase() + providerId.slice(1)
 }
 

@@ -221,6 +221,7 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
     'backend',
     'baseURL',
     'cli',
+    'displayName',
     'hasAuth',
     'id',
   ],

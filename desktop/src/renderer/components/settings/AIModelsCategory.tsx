@@ -133,7 +133,7 @@ export function AIModelsCategory() {
             style={selectStyle}
           >
             {Array.from(grouped.entries()).map(([providerId, models]) => (
-              <optgroup key={providerId} label={getProviderDisplayName(providerId)}>
+              <optgroup key={providerId} label={getProviderDisplayName(providerId, providers)}>
                 {models.map((m) => (
                   <option key={m.id} value={m.id}>{getModelDisplayLabel(m.id)}</option>
                 ))}
@@ -167,7 +167,7 @@ export function AIModelsCategory() {
           >
             <option value="">Default</option>
             {Array.from(grouped.entries()).map(([providerId, models]) => (
-              <optgroup key={providerId} label={getProviderDisplayName(providerId)}>
+              <optgroup key={providerId} label={getProviderDisplayName(providerId, providers)}>
                 {models.map((m) => (
                   <option key={m.id} value={m.id}>{getModelDisplayLabel(m.id)}</option>
                 ))}
@@ -234,7 +234,7 @@ export function AIModelsCategory() {
               >
                 <option value="">Default (use conversation model)</option>
                 {Array.from(grouped.entries()).map(([providerId, models]) => (
-                  <optgroup key={providerId} label={getProviderDisplayName(providerId)}>
+                  <optgroup key={providerId} label={getProviderDisplayName(providerId, providers)}>
                     {models.map((m) => (
                       <option key={m.id} value={m.id}>{getModelDisplayLabel(m.id)}</option>
                     ))}
@@ -274,7 +274,7 @@ export function AIModelsCategory() {
               >
                 <option value="">Default (use conversation model)</option>
                 {Array.from(grouped.entries()).map(([providerId, models]) => (
-                  <optgroup key={providerId} label={getProviderDisplayName(providerId)}>
+                  <optgroup key={providerId} label={getProviderDisplayName(providerId, providers)}>
                     {models.map((m) => (
                       <option key={m.id} value={m.id}>{getModelDisplayLabel(m.id)}</option>
                     ))}
