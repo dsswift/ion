@@ -10,6 +10,24 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.67.0](https://github.com/dsswift/ion/compare/desktop-v1.66.0...desktop-v1.67.0) (2026-07-25)
+
+### Features
+
+* **desktop:** add image model support and ios wire projection ([b557bb7](https://github.com/dsswift/ion/commit/b557bb75371d9e460b237893c7e3e05cf9e9149d))
+* **desktop:** add stacked status dots for active groups ([df4d67f](https://github.com/dsswift/ion/commit/df4d67f666ae6a0c60f5ee0e8e39ea3d0ae961a1))
+* **desktop:** redesign theme, add packs and interactive states ([4786746](https://github.com/dsswift/ion/commit/4786746af73bb4ea65f0f3af553659c2e6b12cd7))
+* **desktop:** add enterprise relay oidc auth ([e7ab107](https://github.com/dsswift/ion/commit/e7ab107dce796dc7cffbd4d603ac49e807e031e2))
+* **desktop:** filter agent-completion and slash-command injections from ui ([d450f1a](https://github.com/dsswift/ion/commit/d450f1af118691550b7415ac4c52743438379061))
+
+### Bug Fixes
+
+* **desktop:** stabilize dispatch popup loading and child model display ([d7e23ba](https://github.com/dsswift/ion/commit/d7e23ba1a9cda05570e48f6fc5d3669cf6c45ca7))
+* **desktop:** key tier-2 secrets from keyfile, not hostname ([83b4477](https://github.com/dsswift/ion/commit/83b44770ce1bf0748e36c2d5aea107ed52b2f8af))
+* **desktop:** default claude code compatibility to off ([aaa8434](https://github.com/dsswift/ion/commit/aaa8434dcabf06be183b75e3184dc7931a64103f))
+* **desktop:** swap engine daemon by binary hash and recover from outages ([8fa68c7](https://github.com/dsswift/ion/commit/8fa68c7a494a0e5d59aef9705ce43798b45bc56d))
+* **desktop:** forward engine-reconnected to the atv window ([b5bb205](https://github.com/dsswift/ion/commit/b5bb20551df0cd83e750c5e85baa732ff72c1256))
+
 ## [1.66.0](https://github.com/dsswift/ion/compare/desktop-v1.65.0...desktop-v1.66.0) (2026-07-22)
 
 ### Features

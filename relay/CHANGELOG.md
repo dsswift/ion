@@ -10,6 +10,12 @@ clients to Ion Engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.6.0](https://github.com/dsswift/ion/compare/relay-v1.5.2...relay-v1.6.0) (2026-07-25)
+
+### Features
+
+* **relay:** add oidc resource-server auth with channel isolation ([3c3d3b5](https://github.com/dsswift/ion/commit/3c3d3b5757baeac09ac80c053be01e3917e0d227))
+
 ## [1.5.2](https://github.com/dsswift/ion/compare/relay-v1.5.1...relay-v1.5.2) (2026-07-20)
 
 ### Bug Fixes

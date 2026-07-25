@@ -10,6 +10,20 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.49.0](https://github.com/dsswift/ion/compare/ios-v1.48.2...ios-v1.49.0) (2026-07-25)
+
+### Features
+
+* **ios:** stream tool input during execution ([8063635](https://github.com/dsswift/ion/commit/806363559003b20d3ba3d352db3a72248dcd2ca5))
+* **ios:** add image model support and generated-image rendering ([f07ac71](https://github.com/dsswift/ion/commit/f07ac7156b3cd9ed2d641f82264346d66f7ede11))
+* **ios:** add cross-platform themes, pack sync, enterprise lock ([15bbb24](https://github.com/dsswift/ion/commit/15bbb24295392f04d6d0e8df76df35361e602829))
+* **ios:** add enterprise relay oidc auth and token manager ([f4dbce0](https://github.com/dsswift/ion/commit/f4dbce08368eb251dc4aa9f55cc5fdbf95267a8c))
+* **ios:** add injection kind and suppress slash-command injections ([2870fbe](https://github.com/dsswift/ion/commit/2870fbe68127e26169376d89be0acbfb7742f5e2))
+
+### Bug Fixes
+
+* **ios:** derive log subsystem from bundle id ([f91c208](https://github.com/dsswift/ion/commit/f91c208a3deb243347897b9fc48e52ce06638080))
+
 ## [1.48.2](https://github.com/dsswift/ion/compare/ios-v1.48.1...ios-v1.48.2) (2026-07-21)
 
 ### Bug Fixes

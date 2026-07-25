@@ -13,6 +13,23 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.55.0](https://github.com/dsswift/ion/compare/engine-v1.54.0...engine-v1.55.0) (2026-07-25)
+
+### Features
+
+* **engine:** add image generation model support ([fe028be](https://github.com/dsswift/ion/commit/fe028be5ed6579576d19342c71cc623195fe4d4a))
+* **engine:** add oidc credential provider to relay transport ([8e03a45](https://github.com/dsswift/ion/commit/8e03a45ed26f7bcae5bfebf45b6fc90c14053f08))
+* **engine:** add injection kind and classify slash-command injections ([fd47c19](https://github.com/dsswift/ion/commit/fd47c19f4d4bf8bba0f2e3ae1b490ec7e3df8003))
+* **engine:** resolve and list skills from .ion/skills roots ([5021559](https://github.com/dsswift/ion/commit/5021559c60d572ffedf3bec035ba54900eab310c))
+* **engine:** append usage block to agent tool results ([b8fe853](https://github.com/dsswift/ion/commit/b8fe8532412748c9fbca4b8c3f0b4cc6e252da1f))
+* **engine:** add run_in_background to the bash tool ([c2bf2a0](https://github.com/dsswift/ion/commit/c2bf2a07935235277c2c5d7b32774a6d13617655))
+
+### Bug Fixes
+
+* **engine:** persist /clear as display-only slash entry for pill ordering ([c1a8d58](https://github.com/dsswift/ion/commit/c1a8d5874b5c4f72e8bd9194ecf35dd776db8108))
+* **engine:** key credential store from keyfile, not hostname ([b4dca34](https://github.com/dsswift/ion/commit/b4dca346ee1259e1f651506236952ad02f2b334e))
+* **engine:** add plan-mode third turn-ending for no-plan requests ([f572f85](https://github.com/dsswift/ion/commit/f572f85a8917153a593093374f011d433a0d08b2))
+
 ## [1.54.0](https://github.com/dsswift/ion/compare/engine-v1.53.0...engine-v1.54.0) (2026-07-22)
 
 ### Features
