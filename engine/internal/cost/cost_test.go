@@ -268,8 +268,8 @@ func TestTurnCost_CacheAware(t *testing.T) {
 	const model = "test-cost-cache-model"
 	providers.RegisterModel(model, types.ModelInfo{
 		ProviderID:      "test",
-		CostPer1kInput:  1.0,  // $1.00 per 1k input tokens
-		CostPer1kOutput: 2.0,  // $2.00 per 1k output tokens
+		CostPer1kInput:  1.0, // $1.00 per 1k input tokens
+		CostPer1kOutput: 2.0, // $2.00 per 1k output tokens
 		// No explicit cache pricing — fallbacks apply:
 		//   creation = 1.25 * $1.00 = $1.25/1k
 		//   read     = 0.10 * $1.00 = $0.10/1k

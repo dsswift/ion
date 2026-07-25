@@ -178,7 +178,8 @@ func TestConversationCostBreakdown_EmptyConvID(t *testing.T) {
 
 // TestConversationCostBreakdown_VisitedSetDedup verifies that a conversation ID
 // appearing in both the root's dispatch tree and liveIDs is counted only once.
-func TestConversationCostBreakdown_VisitedSetDedup(t *testing.T) {	dir := t.TempDir()
+func TestConversationCostBreakdown_VisitedSetDedup(t *testing.T) {
+	dir := t.TempDir()
 	writeTestHeader(t, dir, "root", "claude-opus-4-5", 10_000, 500, 1.00)
 	writeTestHeader(t, dir, "child", "claude-sonnet-4-6", 5_000, 200, 0.50)
 
