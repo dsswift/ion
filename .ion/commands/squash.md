@@ -1,8 +1,14 @@
 ---
-description: Squash the current branch into clean conventional commits. Creates a backup branch first, reads all commits to understand logical groupings, generates a squash plan, executes the rebase. Does not push.
+description: Squash the current branch into clean conventional commits. Creates a backup branch first, reads all commits to understand logical groupings, generates a squash plan, then rebuilds the branch from a soft reset into one commit per scope per feature. Does not push.
 ---
 
-You are running the `/squash` command. Your job is to collapse the current branch's commits into clean conventional commits — one per logical feature — using an interactive rebase. You create a backup branch first, generate a squash plan for review, and execute it.
+You are running the `/squash` command. Your job is to collapse the current branch's commits into clean conventional commits — one per code scope per logical feature — by rebuilding the branch from a soft reset (Step 7). You create a backup branch first, generate a squash plan for review, and execute it.
+
+**Two distinct units are in play and they never collapse into each other: the feature is the unit of *counting*; the scope is the unit of *physical commits*.**
+
+- **Counting unit — the feature.** A single feature that touches `engine/`, `desktop/`, `ios/`, `relay/`, and `docs/` is **one feature**. When you count, group, headline, and report, count *features*. The per-scope commits are the *implementation* of a feature, not separate features. Never report "N features" using the scoped-commit total: a branch that implemented a dozen features across many scopes is a dozen features, not thirty commits' worth of features. All the scattered fixes, tests, alignment commits, and per-scope slices that serve one feature fold into that one feature's count. The headline number the user sees is always the feature count first; the resulting scoped-commit count is a secondary, parenthetical figure.
+
+- **Physical-commit unit — the scope. The scope split is mandatory and can never be bypassed by the feature-counting rule.** Counting a cross-scope feature as *one feature* does **not** authorize merging its scopes into one commit. Each code scope a feature touches (`engine/`, `desktop/`, `ios/`, `relay/`) becomes its **own** commit — `feat(engine)`, `feat(desktop)`, `feat(ios)`, `feat(relay)` — never a single commit carrying two component directories. This is not a stylistic preference: the CI/CD release pipeline (Release Damnit) detects which components changed **by commit scope**, and builds each component's artifact from its matching scoped commit. An `engine` change piggybacked inside a `feat(desktop)` commit is invisible to the versioning system — the engine artifact never builds. So a one-feature count *always* still expands into one physical commit per code scope. Feature counting compresses the *headline*; it never compresses the *commits*.
 
 **Output contract: no narrative.** This command emits only structured output at every step — commit lists, the plan block, tool calls, and the final report. Never narrate analysis, reasoning, or intermediate findings as prose. Emit the structure; skip the commentary.
 
@@ -119,9 +125,12 @@ Read every commit message in full: subject, body, and trailers. The commit messa
 Analyze the commits and identify logical groupings. A logical group is a set of commits that all implement a single feature, fix, or task. Rules:
 
 - Commits that implement the same feature belong in one group, even if they were made separately (e.g. the initial implementation, a fix, and a test addition).
+- **A feature that spans multiple scopes is still one logical group.** Do not create a separate group per scope. The single group for a cross-scope feature (engine + desktop + ios + relay + docs) is what gets counted as *one feature*; the scope split in the next subsection then expands that one group into one commit per code scope. Grouping is by feature; the per-scope expansion happens after, at commit time.
 - Alignment fixes that address a specific feature belong with that feature's group.
 - Unrelated changes stay in separate groups.
 - The order of groups should be chronological (oldest first).
+
+The feature count is the number of logical groups. The scoped-commit count is the number of result commits after the scope split below (always ≥ the feature count, because every cross-scope feature expands). Report both, feature count first.
 
 ### Scope enforcement
 
@@ -151,7 +160,7 @@ for sha in $(git log main..HEAD --format="%H"); do
 done
 ```
 
-Flag any commit where a **code** directory doesn't match the scope — that is the versioning-critical violation that must be split during the rebase. The script will *also* show multi-dir output for a feature commit carrying a `docs/` file (e.g. `engine | docs,engine`) or for a `docs(repo)` commit spanning directories — those flags are **expected and acceptable**, not violations, because documentation is versioning-inert. The check only matters for code under a mismatched scope.
+Flag any commit where a **code** directory doesn't match the scope — that is the versioning-critical violation that must be carved into separate per-scope commits during the rebuild. The script will *also* show multi-dir output for a feature commit carrying a `docs/` file (e.g. `engine | docs,engine`) or for a `docs(repo)` commit spanning directories — those flags are **expected and acceptable**, not violations, because documentation is versioning-inert. The check only matters for code under a mismatched scope.
 
 The plan must list every result commit with its scope and the directories it will contain. No result commit may mix **code** directories across scopes; documentation directories riding alongside a feature (or spanning a `docs(repo)` commit) are fine.
 
@@ -162,7 +171,7 @@ For each logical group, propose a clean conventional commit:
 
 ### Cross-feature shared files
 
-Do not assume feature groups map to disjoint sets of files. The same file is frequently edited by **two or more different feature groups** across separate source commits. Detect this **before** finalizing the plan, because it changes how the rebase must be executed (Step 7).
+Do not assume feature groups map to disjoint sets of files. The same file is frequently edited by **two or more different feature groups** across separate source commits. Detect this **before** finalizing the plan, because it changes how the rebuild must be executed (Step 7).
 
 Detect shared files: for every file changed on the branch, list which source commits touched it. Any file touched by commits that you've assigned to *different* result groups is a **cross-feature shared file**.
 
@@ -177,32 +186,48 @@ done
 
 **Default policy: hunk-level precise split.** A shared file's individual hunks belong to the feature that introduced them. Do **not** assign the whole file to one feature: the final file state is the union of every feature's hunks, so a whole-file assignment leaves the other features' commits missing their contribution and produces logically wrong commits. Each hunk rides in the commit of the feature that authored it.
 
-This is the only correct attribution. The deeper reason: when two genuinely different features both edit the same file, the final file content contains both features' changes; only hunk-level splitting attributes each change to the right commit. Whole-file or "latest-commit-wins" path-staging cannot do this — **do not** rebuild the branch by staging whole files per path; that scatters a feature's hunks into unrelated later commits. Use the interactive rebase + hunk-staging method in Step 7.
+This is the correct default attribution. The deeper reason: when two genuinely different features both edit the same file, the final file content contains both features' changes; only hunk-level splitting attributes each change to the right commit. Whole-file or "latest-commit-wins" path-staging cannot do this — as a **default**, **do not** stage a shared file whole into one feature's commit; that scatters a feature's hunks into unrelated commits. Use the soft-reset rebuild + `git add -p` hunk-staging method in Step 7.
 
-Note in the plan which files are shared and which result commits will split their hunks, so the user sees the attribution before approving.
+### Exception: impossibly-interleaved shared files → whole-file to last-toucher
+
+Hunk-splitting is achievable only when a file's per-feature hunks can be laid down in a single linear feature order. When features were developed **interleaved** — the normal case in this repo — a hot shared file can carry a **cyclic** feature sequence in history: feature A edits it, then B, then A again (history order `… A … B … A …`). No linear ordering of feature commits preserves authorship order for such a file, so clean per-feature hunk attribution is **mathematically unachievable by replay**; forcing it requires hand-resolved 3-way surgery on a known-target tree, where every manual resolution risks a silently-wrong tree.
+
+For any shared file where hunk-splitting is either impossible (cyclic sequence) or low-value and high-risk (a **generated** file such as `ios/IonRemote.xcodeproj/project.pbxproj`, or a mechanically-formatted lock/manifest file), use **whole-file to last-toucher**: the file's final content lands, in full, in the commit of the **last feature (in result-commit order) that touches it**; earlier features do not carry it. This is deterministic, conflict-free, and its final tree is guaranteed correct by construction — the Step 8 `git diff backup--{branch_name}` identity check proves it.
+
+This exception is safe for versioning because **every file lives in exactly one scope directory**, so whole-file placement never moves a file across scopes — it only chooses *which feature's commit within that scope* carries it. The versioning-critical rule (no *code* file under a mismatched scope) is untouched. A consequence to expect: a feature whose entire contribution to a scope was edits to shared files may **collapse** — that scope's commit disappears because a later feature now owns those files wholesale. That is correct, not a defect; note it in the plan.
+
+Decision rule when planning: hunk-split shared files whose feature sequence is **linear** (contiguous per feature) and where attribution has review value; use **whole-file to last-toucher** for shared files that are cyclic, generated, or low-value/high-risk.
+
+Note in the plan which files are shared and, for each, whether its hunks are split per feature or the whole file rides with its last-toucher, so the user sees the attribution before approving.
 
 Present the squash plan to the user. **Output the structured block only — no narrative, no reasoning, no commentary before or after the block.** The user wants the outcome, not the analysis.
 
 ```
-{N} commits → {M} commits. {squash count} squash(es), {split count} split(s).
+{N} source commits → {F} features → {M} result commits. {squash count} squash(es), {split count} split(s).
 
-Operations:
-  squash: {SHA} {subject} → folds into group N
-  split:  {SHA} {subject} → {scope-A} + {scope-B}
-
-Result commits:
-  1. {proposed commit subject}        [{source SHAs}]
-  2. {proposed commit subject}        [{source SHAs}]
+Features (counting unit — one line per feature, regardless of scope span):
+  1. {feature description} — scopes: {engine, desktop, ios, relay, docs}   [{source SHAs}]
+  2. {feature description} — scopes: {desktop}                             [{source SHAs}]
   ...
 
-Shared files (hunk-level attribution):
-  {file}: {SHA} owns hunks A-B, {SHA} owns hunks C-D
+Result commits (physical unit — one per code scope per feature; docs ride with their feature):
+  1. {proposed commit subject}        [feature 1] [{source SHAs}]
+  2. {proposed commit subject}        [feature 1] [{source SHAs}]
+  ...
+
+Shared files (attribution):
+  hunk-split:      {file}: feature X owns hunks A-B, feature Y owns hunks C-D
+  last-toucher:    {file}: whole file → feature Z (cyclic|generated|low-value)
   (omit this section if no shared files exist)
+
+Collapsed scope commits (feature touched the scope only via shared files a later feature now owns):
+  {feature} {scope}: collapses into {later feature}
+  (omit if none)
 
 Backup: backup--{branch_name} at {HEAD SHA}
 ```
 
-After presenting the plan, call `AskUserQuestion` with the question "Proceed with the squash as planned?" and options: `Proceed`, `Adjust`, `Abort`. Do not execute the rebase until the user selects `Proceed`.
+After presenting the plan, call `AskUserQuestion` with the question "Proceed with the squash as planned?" and options: `Proceed`, `Adjust`, `Abort`. Do not begin the rebuild until the user selects `Proceed`.
 
 ---
 
@@ -210,52 +235,80 @@ After presenting the plan, call `AskUserQuestion` with the question "Proceed wit
 
 When the user selects `Proceed` (or after making any requested adjustments to the plan):
 
-Use `git rebase -i main` to execute the squash. In the interactive rebase:
-- The first commit in each logical group gets `pick`
-- All subsequent commits in the group get `squash` or `fixup`
-- Between groups, the next group's first commit gets `pick` again
+### Method: rebuild from a soft reset, do not replay history
 
-After the rebase, amend each resulting commit to use the clean conventional message from the squash plan.
+**The execution method is `git reset --soft main` followed by rebuilding each result commit forward in plan order. This is the primary method, not a fallback.** Do **not** use `git rebase -i main` to replay and squash the original commits.
 
-If the rebase produces conflicts, resolve them using the source commits as ground truth. Do not invent code — resolve conflicts by understanding what each commit was trying to do.
+This is a deliberate choice grounded in how this repository works. Nearly all work here is **interleaved multi-scope features**: a single feature touches `engine/`, `desktop/`, `ios/`, `relay/`, and `docs/`, and several features in flight at once edit the **same merge-hostile files** — `ios/IonRemote.xcodeproj/project.pbxproj`, `desktop/src/main/remote/protocol.ts`, the Go event/type files, the iOS event-handler switches. An interactive rebase *replays* the original commits in a new order, so it stops to hand-resolve a conflict in those shared files at nearly every reorder boundary — dozens of error-prone manual resolutions, each a chance to silently corrupt the tree. The soft-reset rebuild **reorders nothing and replays nothing**: the final tree is already correct on the branch tip, so you reset the branch pointer back to `main` with the working tree untouched, then carve that single known-correct tree into clean commits moving forward. There are no conflicts to resolve because there is no replay. The Step 8 `git diff backup--{branch_name}` check proves the rebuild reproduced the tip tree exactly.
 
-**Unscripted method forks during execution.** If conflict analysis or an unexpected situation surfaces a genuine choice (for example: the actual hunk attribution is ambiguous between two attributions, or a conflict cannot be resolved without a strategy decision), do not proceed on a default and say "I'll do X unless you object." Stop and call `AskUserQuestion` with the specific choice and options. The interaction rule applies here exactly as it does at scripted gates.
+Execute:
 
-### Splitting multi-scope code commits
+```bash
+git reset --soft main
+```
 
-Only commits that touch **code** files from multiple *code* scope directories (`engine/`, `desktop/`, `ios/`, `relay/`) must be split during the rebase — that is the versioning-critical case. A commit whose multi-directory footprint is **documentation** (a `docs/` file riding with a feature, or `AGENTS.md` files spanning directories) does **not** need splitting: documentation is versioning-inert and bundles with its feature (or collapses into one `docs(repo)` commit). Mark a code-multi-scope commit as `edit` instead of `pick`. When the rebase stops:
+This moves the branch pointer to `main` and stages every net change from the whole branch, with the working tree byte-identical to the pre-squash tip. Nothing is lost; the backup branch holds the original history regardless.
 
-1. `git reset HEAD~1` — unstage all changes from that commit
-2. Stage and commit files for each code scope separately, in this order. Feature documentation may stay with its feature's code slice (e.g. `docs/configuration/engine-json.md` committed alongside the engine code) rather than being carved into a separate docs commit:
-   - `git add engine/ && git commit -m "type(engine): ..."` — engine files (plus any feature docs for the engine feature)
-   - `git add desktop/ && git commit -m "type(desktop): ..."` — desktop files
-   - `git add ios/ && git commit -m "type(ios): ..."` — iOS files
-   - `git add relay/ && git commit -m "type(relay): ..."` — relay files
-   - `git add . && git commit -m "type(repo): ..."` — remaining root-level / unassociated-docs files (`docs(repo)` for standalone documentation)
-3. `git rebase --continue`
+Now build the result commits **in plan order (oldest feature first)**. The staging index currently holds everything; you will unstage it and add back precisely what each commit owns:
 
-Issue references (`(#N)`) stay on all split children so GitHub cross-links work. `Closes #N` / `Fixes #N` trailers go only on the primary child (usually the engine commit).
+```bash
+git reset            # unstage everything; working tree still identical to tip
+```
 
-### Splitting a cross-feature shared file (hunk-level)
+For each result commit in the plan, in order:
 
-A file edited by two or more different feature groups (detected in Step 6) needs **hunk-level** attribution — a *different* operation from the scope-directory split above. The scope split assigns whole files by their directory; hunk splitting divides a *single* file's diff between commits because each feature authored only part of it.
+1. **Stage exactly the files/hunks this commit owns:**
+   - **Single-owner files** (touched by only one result commit): `git add <path>` — whole file.
+   - **Cross-feature shared files** (touched by multiple result commits, detected in Step 6): `git add -p <path>` — interactively stage **only** this commit's hunks. Use `s` to split a hunk and `e` to hand-edit when this commit's changes are adjacent to another commit's. The remaining hunks stay unstaged for the commits that own them.
+2. **Verify the staged slice matches the intended scope** before committing:
+   ```bash
+   git diff --cached --name-only | awk -F/ '{print $1}' | sort -u
+   ```
+   A code-scoped commit's staged files must all sit under that one code directory (docs may ride along — see the scope rules). If anything foreign is staged, `git restore --staged <path>` it before committing.
+3. **Commit with the clean conventional subject from the plan:**
+   ```bash
+   git commit -m "type(scope): subject (#N)"
+   ```
+   Subject-only, per the hard rules. Add a `Fixes #N` / `Closes #N` trailer only when the feature is issue-associated (on the primary scope's commit).
 
-For a result commit that must claim only *some* hunks of a shared file, mark the relevant source commit `edit`. When the rebase stops:
+Repeat until the index and working tree are empty. If `git status` shows any remaining tracked changes after the last planned commit, a hunk or file was missed — do not force it into an unrelated commit; find which result commit owns it and correct the sequence.
 
-1. `git reset HEAD~1` — unstage the commit's changes
-2. `git add -p <shared-file>` — interactively stage **only** this feature's hunks (use `s` to split a hunk, `e` to edit it by hand when hunks are adjacent). Stage whole files normally for any non-shared file in the same commit.
-3. `git commit -m "type(scope): ..."` — commits this feature's hunks; the remaining hunks stay in the working tree for the next group's commit.
-4. `git rebase --continue`
+### Scope split is mechanical here, not a special case
 
-**Do not** rebuild the branch by staging whole files per path ("latest-claimant" path-staging) — it scatters a feature's hunks into unrelated later commits and produces logically wrong commits. The interactive rebase with `git add -p` is the only method that attributes hunks correctly.
+Because you are building commits forward from a clean tree, a multi-scope feature is not a commit to be "split after the fact" — you simply stage and commit each scope's slice as its own commit in sequence:
 
-Hunk-splitting is orthogonal to scope-splitting: a shared file within a single scope still needs hunk attribution; a shared file that also spans code scopes needs both. Whatever the attribution, the Step 8 tree-identity check is the non-negotiable backstop — hunk attribution changes *which commit* owns a hunk, never the final tree.
+```bash
+git add engine/ ...   && git commit -m "feat(engine): ..."   # engine slice (+ its feature docs)
+git add desktop/ ...  && git commit -m "feat(desktop): ..."  # desktop slice
+git add ios/ ...      && git commit -m "feat(ios): ..."      # iOS slice
+git add relay/ ...    && git commit -m "feat(relay): ..."    # relay slice
+```
+
+Feature documentation may ride with any one of the feature's scope commits (documentation is versioning-inert — see the scope rules). Root-level config/build files (`Makefile`, `.github/`, `scripts/`, `.ion/`) that are not feature docs get their own `chore(repo)` / `feat(ci)` commit. Issue references (`(#N)`) stay on all of a feature's scope commits so GitHub cross-links work; `Closes #N` / `Fixes #N` goes only on the primary scope commit.
+
+### Cross-feature shared files: attribution by the Step 6 treatment
+
+A file edited by two or more features (detected in Step 6) carries one of two treatments, decided in the plan:
+
+**Linear/high-value files → hunk-split.** Divide the file's hunks between those features' commits; each hunk rides in the commit of the feature that authored it. Because commits are built forward in feature order, `git add -p <shared-file>` at each feature's turn stages only that feature's hunks; the rest wait in the working tree for later features. By the last feature that touches the file, its remaining hunks are all that's left to stage. **Attribute by authorship, never by "whoever staged it last."**
+
+**Cyclic/generated/low-value files → whole-file to last-toucher.** Do not attempt to hunk-split. Leave the file unstaged at every earlier feature's turn; when the **last feature (in result-commit order) that touches it** builds its commit, stage the whole file (`git add <path>`). Its content is already the final version in the working tree (the rebuild started from a tree identical to the tip), so a whole-file `git add` lands exactly the target content. A deletion vs `main` is staged with `git rm <path>` at its last-toucher's turn instead.
+
+Whichever treatment a file takes, attribution changes only *which commit* owns the content; it never changes the final tree, which the Step 8 `git diff backup--{branch_name}` identity check guarantees. If applying the last-toucher rule empties a feature's scope slice (every file it would have carried is now owned by a later feature), that scope commit **collapses** — do not create an empty commit; the feature simply produces fewer scoped commits than it touched scopes.
+
+### Unscripted method forks during execution
+
+If hunk attribution is genuinely ambiguous (a single hunk plausibly belongs to two features) or any situation surfaces a real strategy choice, do **not** proceed on a silent default. Stop and call `AskUserQuestion` with the specific choice and options. The interaction rule applies here exactly as it does at scripted gates. Never invent code to resolve an ambiguity — the source commits and their messages are ground truth for what each hunk was for.
+
+### Unscripted method forks during execution
+
+If hunk attribution is genuinely ambiguous (a single hunk plausibly belongs to two features) or any situation surfaces a real strategy choice, do **not** proceed on a silent default. Stop and call `AskUserQuestion` with the specific choice and options. The interaction rule applies here exactly as it does at scripted gates. Never invent code to resolve an ambiguity — the source commits and their messages are ground truth for what each hunk was for.
 
 ---
 
 ## Step 8: Verify
 
-After the rebase completes:
+After the rebuild is complete:
 
 ```bash
 git log main..HEAD --oneline
@@ -312,7 +365,7 @@ If this produces any output, the squash changed the code — which is a bug. Abo
 Squash complete.
 
 Branch: {branch name}
-Before: {N} commits  After: {M} commits
+Before: {N} commits  After: {M} commits ({F} features across {M} scoped commits)
 
 {short SHA} {subject}
 {short SHA} {subject}
