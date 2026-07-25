@@ -829,6 +829,13 @@ final class ContractSyncTests: XCTestCase {
             // not run CLIs, so it does not act on these, but the contract test
             // tracks awareness of every Go field (see testProviderCliStatus).
             "backend", "cli",
+            // Operator-configured human-friendly provider name (engine.json
+            // provider displayName). iOS does not decode ProviderEntry — the
+            // desktop flattens per-model auth into RemoteModelEntry and iOS
+            // groups models by providerId — so there is no iOS surface that
+            // renders a provider display name today. Tracked for awareness; a
+            // future iOS provider list would consume it via the snapshot.
+            "displayName",
         ]
         let goSet = Set(goFields)
         let unhandled = goSet.subtracting(swiftHandled)
