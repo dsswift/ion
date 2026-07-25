@@ -225,6 +225,12 @@ func UserModels(config map[string]interface{}) map[string]types.ModelInfo {
 				if v, ok := m["modelKind"].(string); ok {
 					info.ModelKind = v
 				}
+				if v, ok := m["dialect"].(string); ok {
+					info.Dialect = v
+				}
+				if v, ok := m["costPerImage"].(float64); ok {
+					info.CostPerImage = v
+				}
 			}
 			result[modelName] = info
 		}

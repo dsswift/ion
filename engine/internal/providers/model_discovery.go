@@ -119,7 +119,7 @@ func DiscoverProvider(providerID, apiKey string, providerConfigs map[string]type
 		return
 	}
 	utils.LogWithFields(utils.LevelInfo, "ModelDiscovery", "on-demand discovery", map[string]any{"provider": providerID, "path": baseURL, "status": apiKey != ""})
-	go discoverOne(providerID, baseURL, apiKey)
+	go discoverOne(providerID, baseURL, apiKey, resolveAuthHeader(providerID, providerConfigs))
 }
 
 // RefreshModels re-discovers models for the given provider (or all
@@ -147,7 +147,7 @@ func RefreshModels(providerID string, force bool, resolveKey keyResolver, provid
 			utils.LogWithFields(utils.LevelInfo, "ModelDiscovery", "skipping refresh last fetch under 24h", map[string]any{"provider": providerID})
 			return
 		}
-		discoverOne(providerID, baseURL, apiKey)
+		discoverOne(providerID, baseURL, apiKey, resolveAuthHeader(providerID, providerConfigs))
 	} else {
 		runDiscoveryAll(resolveKey, providerConfigs, force)
 	}
@@ -187,6 +187,17 @@ func resolveBaseURL(providerID string, configs map[string]types.ProviderConfig) 
 	return defaultBaseURLs[providerID]
 }
 
+// resolveAuthHeader returns the provider's configured auth header style
+// ("" means the provider default — bearer for OpenAI-compatible fetches).
+// Enterprise gateways (e.g. APIM) typically require x-api-key; without this
+// the discovery request would send Authorization: Bearer and be rejected.
+func resolveAuthHeader(providerID string, configs map[string]types.ProviderConfig) string {
+	if cfg, ok := configs[providerID]; ok {
+		return cfg.AuthHeader
+	}
+	return ""
+}
+
 func runDiscoveryAll(resolveKey keyResolver, providerConfigs map[string]types.ProviderConfig, force bool) {
 	providerIDs := ListProviderIDs()
 	var wg sync.WaitGroup
@@ -221,7 +232,7 @@ func runDiscoveryAll(resolveKey keyResolver, providerConfigs map[string]types.Pr
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			models, err := fetchModelsForProvider(pid, baseURL, apiKey)
+			models, err := fetchModelsForProvider(pid, baseURL, apiKey, resolveAuthHeader(pid, providerConfigs))
 			results <- result{pid: pid, models: models, err: err}
 		}()
 	}
@@ -233,8 +244,8 @@ func runDiscoveryAll(resolveKey keyResolver, providerConfigs map[string]types.Pr
 	utils.Log("ModelDiscovery", "bulk discovery complete")
 }
 
-func discoverOne(providerID, baseURL, apiKey string) {
-	models, err := fetchModelsForProvider(providerID, baseURL, apiKey)
+func discoverOne(providerID, baseURL, apiKey, authHeader string) {
+	models, err := fetchModelsForProvider(providerID, baseURL, apiKey, authHeader)
 	storeResult(providerID, models, err)
 }
 
@@ -259,50 +270,185 @@ func storeResult(providerID string, models []types.ModelEntry, err error) {
 	// This is critical for meta-routers like OpenRouter whose model
 	// IDs (e.g. "deepseek/deepseek-chat") would otherwise match the
 	// wrong provider via prefix heuristics.
+	//
+	// Registration carries the full discovered metadata (dialect, context
+	// window, costs, capabilities) — an extended /models payload (enterprise
+	// gateway) is the source of truth for dialect dispatch and cost display.
+	//
+	// Merge, never replace: a stock provider's /models payload is ids only, so
+	// every extended field is zero. Overwriting the registry entry with that
+	// sparse struct would destroy the embedded-catalog metadata that
+	// GetModelInfo serves — and GetModelInfo is what cost.TurnCost reads, so a
+	// clobbered entry silently prices every turn at $0. mergeDiscoveredInfo
+	// overlays only the non-zero live values (see its contract), which also
+	// preserves the cache-pricing fields that have no ModelEntry counterpart
+	// and therefore cannot survive a round-trip through a discovered entry.
+	//
+	// Dual-provider coexistence: when the bare id is already claimed by a
+	// DIFFERENT provider (e.g. public anthropic owns claude-opus-4-8 and a
+	// gateway also serves it), only the provider-qualified id
+	// ("<provider>/<model>") is registered so the existing owner is never
+	// stomped. The qualified id is always registered for gateway entries that
+	// carry a dialect, so pickers can address the gateway copy explicitly.
 	if len(models) > 0 {
 		mu.Lock()
-		registered := 0
+		// Counters describe exactly what happened to the registry, so the log
+		// line an operator reads while debugging discovery is the truth:
+		// added = ids the registry had never seen, refreshed = existing
+		// same-provider entries updated with live metadata, qualified = new
+		// provider-qualified aliases for gateway models.
+		added, refreshed, qualifiedAdded := 0, 0, 0
 		for _, m := range models {
-			if _, exists := modelRegistry[m.ID]; !exists {
-				modelRegistry[m.ID] = types.ModelInfo{ProviderID: providerID}
-				registered++
+			info := types.ModelInfo{
+				ProviderID:       providerID,
+				ContextWindow:    m.ContextWindow,
+				CostPer1kInput:   m.CostPer1kInput,
+				CostPer1kOutput:  m.CostPer1kOutput,
+				SupportsCaching:  m.SupportsCaching,
+				SupportsThinking: m.SupportsThinking,
+				SupportsImages:   m.SupportsImages,
+				MaxOutputTokens:  m.MaxOutputTokens,
+				ThinkingMode:     m.ThinkingMode,
+				ThinkingEfforts:  m.ThinkingEfforts,
+				Tokenizer:        m.Tokenizer,
+				ModelKind:        m.ModelKind,
+				Dialect:          m.Dialect,
+				CostPerImage:     m.CostPerImage,
+			}
+			existing, exists := modelRegistry[m.ID]
+			if !exists {
+				modelRegistry[m.ID] = info
+				added++
+			} else if existing.ProviderID == providerID {
+				// Same provider re-discovered: overlay live metadata onto the
+				// existing entry (catalog values survive where the payload is
+				// silent).
+				modelRegistry[m.ID] = mergeDiscoveredInfo(existing, info)
+				refreshed++
+			}
+			// Qualified id for dialect-carrying (gateway) models, so the same
+			// bare model id can coexist across providers.
+			if m.Dialect != "" {
+				qualified := providerID + "/" + m.ID
+				if qExisting, qExists := modelRegistry[qualified]; qExists {
+					modelRegistry[qualified] = mergeDiscoveredInfo(qExisting, info)
+				} else {
+					modelRegistry[qualified] = info
+					qualifiedAdded++
+				}
 			}
 		}
 		mu.Unlock()
-		utils.LogWithFields(utils.LevelInfo, "ModelDiscovery", "registered new models in provider registry", map[string]any{"provider": providerID, "count": registered})
+		utils.LogWithFields(utils.LevelInfo, "ModelDiscovery", "registered discovered models in provider registry", map[string]any{
+			"provider":  providerID,
+			"count":     len(models),
+			"added":     added,
+			"refreshed": refreshed,
+			"qualified": qualifiedAdded,
+		})
 	}
+}
+
+// mergeDiscoveredInfo overlays live-discovered metadata onto an existing
+// registry entry. Fill-if-set only: a non-zero/non-empty discovered value wins
+// (live metadata from an extended /models payload is authoritative), and every
+// field the payload left empty keeps the existing value.
+//
+// This asymmetry is deliberate and is the inverse of MergeModelInfo's
+// catalog-wins rule for ContextWindow: MergeModelInfo reconciles *user config*
+// against the catalog (where the catalog is trusted over a hand-written
+// override), whereas this reconciles a *provider's own live payload* against
+// the catalog (where the provider is trusted over a possibly-stale embedded
+// entry). Discovery must never subtract: a stock provider returning ids only
+// leaves the entry exactly as it was.
+//
+// Fields absent from types.ModelEntry (CostPer1kCacheCreation,
+// CostPer1kCacheRead, IsCustom) are carried through untouched by construction,
+// since the merge starts from the existing entry.
+func mergeDiscoveredInfo(existing, discovered types.ModelInfo) types.ModelInfo {
+	merged := existing
+	// ProviderID is the routing key. Callers only merge when the provider
+	// already matches, so this is a no-op guard rather than a reassignment.
+	if discovered.ProviderID != "" {
+		merged.ProviderID = discovered.ProviderID
+	}
+	if discovered.ContextWindow != 0 {
+		merged.ContextWindow = discovered.ContextWindow
+	}
+	if discovered.CostPer1kInput != 0 {
+		merged.CostPer1kInput = discovered.CostPer1kInput
+	}
+	if discovered.CostPer1kOutput != 0 {
+		merged.CostPer1kOutput = discovered.CostPer1kOutput
+	}
+	if discovered.MaxOutputTokens != 0 {
+		merged.MaxOutputTokens = discovered.MaxOutputTokens
+	}
+	// Capabilities are additive, matching MergeModelInfo: a payload that omits
+	// a flag must not disable a known capability.
+	if discovered.SupportsCaching {
+		merged.SupportsCaching = true
+	}
+	if discovered.SupportsThinking {
+		merged.SupportsThinking = true
+	}
+	if discovered.SupportsImages {
+		merged.SupportsImages = true
+	}
+	if discovered.ThinkingMode != "" {
+		merged.ThinkingMode = discovered.ThinkingMode
+	}
+	if len(discovered.ThinkingEfforts) > 0 {
+		merged.ThinkingEfforts = discovered.ThinkingEfforts
+	}
+	if discovered.Tokenizer != "" {
+		merged.Tokenizer = discovered.Tokenizer
+	}
+	if discovered.ModelKind != "" {
+		merged.ModelKind = discovered.ModelKind
+	}
+	if discovered.Dialect != "" {
+		merged.Dialect = discovered.Dialect
+	}
+	if discovered.CostPerImage != 0 {
+		merged.CostPerImage = discovered.CostPerImage
+	}
+	return merged
 }
 
 // ─── Provider-specific fetch implementations ──────────────────────
 
-func fetchModelsForProvider(providerID, baseURL, apiKey string) ([]types.ModelEntry, error) {
+func fetchModelsForProvider(providerID, baseURL, apiKey, authHeader string) ([]types.ModelEntry, error) {
 	switch providerID {
 	case "anthropic":
 		return fetchAnthropicModels(baseURL, apiKey)
 	case "google":
 		return fetchGoogleModels(baseURL, apiKey)
-	case "openai":
-		// OpenAI's default base URL (https://api.openai.com) doesn't include /v1,
-		// unlike the compatible providers. Append /v1 only if not already present.
-		if !strings.HasSuffix(baseURL, "/v1") && !strings.Contains(baseURL, "/v1/") {
-			baseURL = strings.TrimRight(baseURL, "/") + "/v1"
-		}
-		return fetchOpenAICompatModels(providerID, baseURL, apiKey)
 	case "bedrock", "azure":
 		return nil, fmt.Errorf("discovery not supported for %s", providerID)
 	default:
-		return fetchOpenAICompatModels(providerID, baseURL, apiKey)
+		// OpenAI and every OpenAI-compatible provider (incl. custom gateways):
+		// normalize to a /v1 base so the request hits {base}/v1/models. The
+		// stock compatible providers' default base URLs already end in /v1;
+		// api.openai.com and enterprise gateways (e.g. https://ai.dcim.com) do not.
+		if !strings.HasSuffix(baseURL, "/v1") && !strings.Contains(baseURL, "/v1/") {
+			baseURL = strings.TrimRight(baseURL, "/") + "/v1"
+		}
+		return fetchOpenAICompatModels(providerID, baseURL, apiKey, authHeader)
 	}
 }
 
-func fetchOpenAICompatModels(providerID, baseURL, apiKey string) ([]types.ModelEntry, error) {
+func fetchOpenAICompatModels(providerID, baseURL, apiKey, authHeader string) ([]types.ModelEntry, error) {
 	url := strings.TrimRight(baseURL, "/") + "/models"
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
 	if apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+apiKey)
+		// Honor the provider's configured auth header style (setAuthHeader
+		// defaults to Authorization: Bearer when authHeader is empty).
+		// Enterprise gateways commonly require x-api-key instead.
+		setAuthHeader(req, authHeader, apiKey)
 	}
 	return doModelsFetch(req, providerID, func(id string) types.ModelEntry {
 		return types.ModelEntry{ID: id, ProviderID: providerID}
@@ -371,6 +517,28 @@ func fetchGoogleModels(baseURL, apiKey string) ([]types.ModelEntry, error) {
 
 type modelFactory func(id string) types.ModelEntry
 
+// discoveredModelEntry is the wire shape of one /models list entry. Beyond the
+// standard OpenAI {id} field it decodes the extended capability metadata that
+// enterprise gateways emit (field names match ModelEntry's JSON tags). Stock
+// providers omit the extended fields — zero values, behavior unchanged.
+type discoveredModelEntry struct {
+	ID                     string   `json:"id"`
+	Dialect                string   `json:"dialect,omitempty"`
+	ContextWindow          int      `json:"contextWindow,omitempty"`
+	MaxOutputTokens        int      `json:"maxOutputTokens,omitempty"`
+	CostPer1kInput         float64  `json:"costPer1kInput,omitempty"`
+	CostPer1kOutput        float64  `json:"costPer1kOutput,omitempty"`
+	CostPer1kCacheCreation float64  `json:"costPer1kCacheCreation,omitempty"`
+	CostPer1kCacheRead     float64  `json:"costPer1kCacheRead,omitempty"`
+	CostPerImage           float64  `json:"costPerImage,omitempty"`
+	SupportsCaching        bool     `json:"supportsCaching,omitempty"`
+	SupportsThinking       bool     `json:"supportsThinking,omitempty"`
+	SupportsImages         bool     `json:"supportsImages,omitempty"`
+	ThinkingMode           string   `json:"thinkingMode,omitempty"`
+	ThinkingEfforts        []string `json:"thinkingEfforts,omitempty"`
+	ModelKind              string   `json:"modelKind,omitempty"`
+}
+
 func doModelsFetch(req *http.Request, providerID string, factory modelFactory) ([]types.ModelEntry, error) {
 	client := &http.Client{Timeout: discoveryTimeout}
 	resp, err := client.Do(req)
@@ -383,9 +551,7 @@ func doModelsFetch(req *http.Request, providerID string, factory modelFactory) (
 		return nil, fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
 	}
 	var result struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
+		Data []discoveredModelEntry `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode error: %w", err)
@@ -395,7 +561,24 @@ func doModelsFetch(req *http.Request, providerID string, factory modelFactory) (
 		if m.ID == "" {
 			continue
 		}
-		entries = append(entries, factory(m.ID))
+		entry := factory(m.ID)
+		// Overlay extended payload fields (zero values from stock providers
+		// leave the factory entry untouched, minus fields the factory set).
+		entry.Dialect = m.Dialect
+		if m.ContextWindow != 0 {
+			entry.ContextWindow = m.ContextWindow
+		}
+		entry.MaxOutputTokens = m.MaxOutputTokens
+		entry.CostPer1kInput = m.CostPer1kInput
+		entry.CostPer1kOutput = m.CostPer1kOutput
+		entry.CostPerImage = m.CostPerImage
+		entry.SupportsCaching = m.SupportsCaching
+		entry.SupportsThinking = m.SupportsThinking
+		entry.SupportsImages = m.SupportsImages
+		entry.ThinkingMode = m.ThinkingMode
+		entry.ThinkingEfforts = m.ThinkingEfforts
+		entry.ModelKind = m.ModelKind
+		entries = append(entries, entry)
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].ID < entries[j].ID })
 	return entries, nil

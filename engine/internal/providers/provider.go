@@ -115,6 +115,19 @@ func ResolveProvider(model string) LlmProvider {
 		return p
 	}
 
+	// Provider-qualified id: "<providerID>/<model>" routes to that provider
+	// directly (dual-provider coexistence — e.g. "dci-marketing/claude-opus-4-8"
+	// alongside public anthropic's "claude-opus-4-8"). Only fires when the
+	// prefix matches a REGISTERED provider id, so OpenRouter-style wire ids
+	// ("deepseek/deepseek-chat"), whose slash is part of the model id and which
+	// resolve via the exact registry hit above, are unaffected.
+	if idx := strings.Index(model, "/"); idx > 0 {
+		if p := providerRegistry[model[:idx]]; p != nil {
+			utils.LogWithFields(utils.LevelInfo, "Providers", "resolve provider qualified id", map[string]any{"model": model, "provider": p.ID()})
+			return p
+		}
+	}
+
 	// Prefix matching
 	var matched string
 	switch {
@@ -238,6 +251,8 @@ func ListModels() []types.ModelEntry {
 			ThinkingEfforts:  info.ThinkingEfforts,
 			Tokenizer:        info.Tokenizer,
 			ModelKind:        info.ModelKind,
+			Dialect:          info.Dialect,
+			CostPerImage:     info.CostPerImage,
 			IsCustom:         info.IsCustom,
 		}
 		if info.IsCustom {
@@ -311,6 +326,12 @@ func ListModels() []types.ModelEntry {
 					}
 					if dm.ModelKind == "" {
 						dm.ModelKind = catalog.ModelKind
+					}
+					if dm.Dialect == "" {
+						dm.Dialect = catalog.Dialect
+					}
+					if dm.CostPerImage == 0 {
+						dm.CostPerImage = catalog.CostPerImage
 					}
 				}
 				entries = append(entries, dm)
@@ -419,7 +440,11 @@ func ApplyConfig(configs map[string]types.ProviderConfig) {
 					BaseURL:    baseURL,
 					AuthHeader: cfg.AuthHeader,
 				}
-				RegisterProvider(NewOpenAICompatibleProvider(compatOpts))
+				// Dialect-dispatching provider: for stock compatible providers
+				// (no dialect metadata in their /models payload) this behaves
+				// byte-identically to the plain compatible provider; for
+				// gateways it routes per-model by the registered dialect.
+				RegisterProvider(NewGatewayProvider(compatOpts))
 				// Known compatible providers may also host image models (e.g.
 				// a Together endpoint that serves Flux). Register an image
 				// provider so modelKind="image" entries route correctly.
@@ -430,11 +455,12 @@ func ApplyConfig(configs map[string]types.ProviderConfig) {
 					AuthHeader: cfg.AuthHeader,
 				}))
 			} else if cfg.BaseURL != "" {
-				// Unknown provider name with a baseURL — register as a new
-				// compatible provider (chat) AND an image provider so that
+				// Unknown provider name with a baseURL — register a
+				// dialect-dispatching provider (chat by default, per-model
+				// dialect routing for gateways) AND an image provider so that
 				// any of its models declared with modelKind="image" route
 				// through runImageLoop without additional config.
-				RegisterProvider(NewOpenAICompatibleProvider(CompatibleProviderOptions{
+				RegisterProvider(NewGatewayProvider(CompatibleProviderOptions{
 					ID:         name,
 					APIKey:     cfg.APIKey,
 					BaseURL:    cfg.BaseURL,

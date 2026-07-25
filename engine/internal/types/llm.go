@@ -312,7 +312,21 @@ type ModelInfo struct {
 	// agent loop; no conversation history, no tools, single prompt in / image out.
 	// Additive field — omitempty, zero-value "" is treated as "chat".
 	ModelKind string `json:"modelKind,omitempty"`
-	IsCustom  bool   `json:"-"` // not serialized; set by config loader, propagated to ModelEntry
+	// Dialect declares the wire protocol a dialect-dispatching (gateway)
+	// provider must speak for this model:
+	//   "anthropic"        — Anthropic Messages API (/v1/messages)
+	//   "openai-chat"      — OpenAI Chat Completions API (/v1/chat/completions)
+	//   "openai-responses" — OpenAI Responses API (/v1/responses)
+	//   "image"            — OpenAI Image API (/v1/images/generations)
+	//   "" (absent)        — legacy/stock provider; the provider's own protocol applies
+	// Populated from extended /models discovery payloads (enterprise gateways)
+	// or user config. Additive field — omitempty, never breaks existing consumers.
+	Dialect string `json:"dialect,omitempty"`
+	// CostPerImage is the USD cost of one standard (1MP) image generation for
+	// image models, whose billing is per-image rather than per-token. Zero for
+	// chat models and image models with unknown pricing. Additive, omitempty.
+	CostPerImage float64 `json:"costPerImage,omitempty"`
+	IsCustom     bool    `json:"-"` // not serialized; set by config loader, propagated to ModelEntry
 }
 
 // ModelEntry is the wire-format model information returned by list_models.
@@ -337,7 +351,15 @@ type ModelEntry struct {
 	// ModelKind declares the API shape this model uses. See ModelInfo.ModelKind
 	// for the value contract. "" / absent is treated as "chat". Additive, omitempty.
 	ModelKind string `json:"modelKind,omitempty"`
-	IsCustom  bool   `json:"isCustom,omitempty"`
+	// Dialect declares the wire protocol a dialect-dispatching (gateway)
+	// provider must speak for this model. See ModelInfo.Dialect for the value
+	// contract. Additive, omitempty.
+	Dialect string `json:"dialect,omitempty"`
+	// CostPerImage is the USD cost of one standard (1MP) image generation for
+	// image models. See ModelInfo.CostPerImage for the value contract.
+	// Additive, omitempty.
+	CostPerImage float64 `json:"costPerImage,omitempty"`
+	IsCustom     bool    `json:"isCustom,omitempty"`
 }
 
 // ProviderEntry is the wire-format provider information returned by list_models.

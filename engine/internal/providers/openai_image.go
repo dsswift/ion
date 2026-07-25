@@ -72,6 +72,9 @@ func (p *openaiImageProvider) ID() string { return p.id }
 // returns each result as a base64-encoded ImageResult. The provider always
 // requests response_format=b64_json so no secondary download is needed.
 func (p *openaiImageProvider) Generate(ctx context.Context, opts types.ImageGenerateOptions) ([]types.ImageResult, error) {
+	// Strip a provider-qualified id ("<provider>/<model>") to the bare wire
+	// model — gateways and upstream APIs expect the vendor's model id.
+	opts.Model = StripProviderQualifier(p.id, opts.Model)
 	utils.LogWithFields(utils.LevelInfo, "OpenAIImage", "generate start", map[string]any{
 		"model":  opts.Model,
 		"size":   opts.Size,

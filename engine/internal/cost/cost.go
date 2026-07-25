@@ -79,6 +79,27 @@ func TurnCost(model string, usage types.LlmUsage) float64 {
 	return total
 }
 
+// ImageCost computes the USD cost of an image-generation run: images × the
+// model's per-image rate (CostPerImage, USD per standard 1MP generation).
+// Image models bill per image, not per token — token-based TurnCost math does
+// not apply. Returns 0 when the model is unknown or carries no per-image
+// pricing (per-token image models like gpt-image-1 report token usage and go
+// through TurnCost instead).
+func ImageCost(model string, images int) float64 {
+	if images <= 0 {
+		return 0
+	}
+	info := providers.GetModelInfo(model)
+	if info == nil || info.CostPerImage == 0 {
+		return 0
+	}
+	total := float64(images) * info.CostPerImage
+	utils.LogWithFields(utils.LevelDebug, "cost", "image cost", map[string]any{
+		"model": model, "count": images, "cost_usd": total,
+	})
+	return total
+}
+
 // ConversationCost returns the total USD cost for convID and every descendant
 // conversation reachable via the dispatch tree. It is the authoritative
 // conversation-level cost aggregation function.

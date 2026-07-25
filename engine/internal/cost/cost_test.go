@@ -331,6 +331,81 @@ func TestTurnCost_UnknownModel(t *testing.T) {
 	}
 }
 
+// ─── ImageCost ────────────────────────────────────────────────────
+//
+// Image models bill per image, not per token, so token-based TurnCost math
+// does not apply. ImageCost feeds TaskCompleteEvent.CostUsd for image runs
+// (backend.runImageLoop), so each branch below is a user-visible number.
+
+// TestImageCost_PerImageRate pins the multiply: images × CostPerImage.
+func TestImageCost_PerImageRate(t *testing.T) {
+	const model = "test-image-cost-model"
+	providers.RegisterModel(model, types.ModelInfo{
+		ProviderID:   "test",
+		ModelKind:    "image",
+		CostPerImage: 0.03, // $0.03 per standard 1MP generation
+	})
+	t.Cleanup(func() { providers.UnregisterModel(model) })
+
+	const eps = 1e-9
+	cases := []struct {
+		images int
+		want   float64
+	}{
+		{1, 0.03},
+		{4, 0.12},
+	}
+	for _, c := range cases {
+		got := cost.ImageCost(model, c.images)
+		if got < c.want-eps || got > c.want+eps {
+			t.Errorf("ImageCost(%d images) = %f, want %f", c.images, got, c.want)
+		}
+	}
+}
+
+// TestImageCost_NonPositiveImages returns 0 when nothing was generated — a
+// failed or empty image run must never be billed.
+func TestImageCost_NonPositiveImages(t *testing.T) {
+	const model = "test-image-cost-zero-model"
+	providers.RegisterModel(model, types.ModelInfo{
+		ProviderID:   "test",
+		ModelKind:    "image",
+		CostPerImage: 0.03,
+	})
+	t.Cleanup(func() { providers.UnregisterModel(model) })
+
+	for _, images := range []int{0, -1} {
+		if got := cost.ImageCost(model, images); got != 0 {
+			t.Errorf("ImageCost(%d images) = %f, want 0", images, got)
+		}
+	}
+}
+
+// TestImageCost_NoPerImagePricing returns 0 for an image model with no
+// per-image rate. Per-token image models (e.g. gpt-image-1) report token usage
+// and are priced through TurnCost instead — double-billing them here would
+// inflate the reported cost.
+func TestImageCost_NoPerImagePricing(t *testing.T) {
+	const model = "test-image-cost-unpriced-model"
+	providers.RegisterModel(model, types.ModelInfo{
+		ProviderID: "test",
+		ModelKind:  "image",
+		// CostPerImage deliberately unset.
+	})
+	t.Cleanup(func() { providers.UnregisterModel(model) })
+
+	if got := cost.ImageCost(model, 3); got != 0 {
+		t.Errorf("ImageCost with no per-image rate = %f, want 0", got)
+	}
+}
+
+// TestImageCost_UnknownModel returns 0 for a model absent from the registry.
+func TestImageCost_UnknownModel(t *testing.T) {
+	if got := cost.ImageCost("completely-unknown-image-model-xyz", 2); got != 0 {
+		t.Errorf("ImageCost for unknown model = %f, want 0", got)
+	}
+}
+
 // randSuffix returns a short unique-ish suffix so AgentIDs in tests are
 // distinct even when they point at the same conversation.
 var randCounter int
