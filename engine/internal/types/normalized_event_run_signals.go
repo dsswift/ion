@@ -68,13 +68,16 @@ type PromptInjectedEvent struct {
 	// Origin names the injector when known — the hosting extension's name.
 	// Empty when the session has no extension identity.
 	Origin string `json:"origin,omitempty"`
-	// Kind classifies the injection so clients can decide whether to render
-	// it as a user-visible turn. The value "agent_completion" indicates an
-	// internal agent dispatch callback (a completed child agent's result
-	// being routed back to a parent agent) — these are machine-to-machine
-	// signals, not turns the user authored, and clients should NOT render
-	// them as user bubbles. Empty (the default) means the injection is a
-	// genuine extension-initiated user turn and should be rendered normally.
+	// Kind classifies the injection semantically. "agent_completion" means
+	// this is a machine-to-machine dispatch callback (a completed child
+	// agent's result being routed back to a parent agent) rather than a
+	// turn the user authored. "slash_command" means the injection is the
+	// expanded body of a slash command whose display turn is the command
+	// pill (the engine persists the raw invocation via
+	// AddUserMessageWithInvocation); the body is redundant with the pill and
+	// clients suppress it. Empty (the default) means the injection is a
+	// genuine extension-initiated turn with no special classification.
+	// Consumers interpret the classification however they choose.
 	Kind string `json:"kind,omitempty"`
 }
 

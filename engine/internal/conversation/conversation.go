@@ -81,6 +81,14 @@ type MessageData struct {
 	// is part of the LLM context. Additive (omitempty) — absent on every legacy
 	// entry, which correctly reconstructs as before.
 	DisplayOnly bool `json:"displayOnly,omitempty"`
+
+	// InjectionKind classifies the origin of an engine-side injected user
+	// turn. "agent_completion" marks a machine-to-machine dispatch callback
+	// (a child agent's result routed to its parent) rather than a turn the
+	// user authored. Empty means an ordinary user turn with no special
+	// classification. Additive (omitempty): absent on every legacy entry,
+	// which correctly reads as an ordinary turn.
+	InjectionKind string `json:"injectionKind,omitempty"`
 }
 
 // CompactionData holds metadata about a compaction event. The enriched fields
@@ -305,6 +313,27 @@ func AddUserMessage(conv *Conversation, content any) *SessionEntry {
 
 	if conv.Entries != nil {
 		return appendEntryLocked(conv, EntryMessage, MessageData{Role: "user", Content: blocks}, "")
+	}
+	return nil
+}
+
+// AddUserMessageWithKind is the kind-aware variant of AddUserMessage. It
+// stamps InjectionKind on the persisted entry so consumers can classify the
+// injection on historical reload (e.g. "agent_completion" marks a
+// machine-to-machine dispatch callback rather than a user-authored turn).
+// An empty kind is identical to calling AddUserMessage.
+func AddUserMessageWithKind(conv *Conversation, content any, kind string) *SessionEntry {
+	if kind == "" {
+		return AddUserMessage(conv, content)
+	}
+	blocks := toContentBlocks(content)
+
+	conv.lock()
+	defer conv.unlock()
+	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: blocks})
+
+	if conv.Entries != nil {
+		return appendEntryLocked(conv, EntryMessage, MessageData{Role: "user", Content: blocks, InjectionKind: kind}, "")
 	}
 	return nil
 }

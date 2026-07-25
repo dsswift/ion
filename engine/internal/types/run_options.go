@@ -328,6 +328,15 @@ type RunOptions struct {
 	// In-process run field. Empty for non-slash prompts.
 	ResolvedSlashContext string `json:"-"`
 
+	// InjectionKind classifies an engine-side injected user turn so the
+	// backend can stamp it on the persisted conversation entry. "agent_completion"
+	// marks a machine-to-machine dispatch callback rather than a user-authored
+	// turn. Empty for ordinary client-submitted prompts. In-process only
+	// (json:"-"): never crosses the wire; the classification travels in the
+	// persisted MessageData.InjectionKind and the SessionMessage.InjectionKind
+	// fields instead.
+	InjectionKind string `json:"-"`
+
 	// ParentCtx is the session's cancellation root. When non-nil, the
 	// backend derives the run's cancellation context from it
 	// (context.WithCancel(ParentCtx)) instead of context.Background(), so

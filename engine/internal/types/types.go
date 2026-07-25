@@ -444,6 +444,14 @@ type SessionMessage struct {
 	// Steer marker fields (MarkerKind=="steer"): mirror SteerMarkerData.
 	MarkerMessageLength int `json:"markerMessageLength,omitempty"`
 
+	// InjectionKind classifies an engine-side injected user turn on historical
+	// reload. "agent_completion" marks a machine-to-machine dispatch callback
+	// (a child agent's result routed to its parent) rather than a turn the user
+	// authored. Empty means an ordinary user turn with no special classification.
+	// Additive (omitempty): absent on legacy rows, which correctly read as
+	// ordinary turns. Propagated from MessageData.InjectionKind by flattenEntries.
+	InjectionKind string `json:"injectionKind,omitempty"`
+
 	// Attachments carries engine-produced image references replayed on
 	// historical reload. Set (on a tool-role row) when flattenEntries encounters
 	// image blocks persisted alongside a tool result, or (on an assistant-role

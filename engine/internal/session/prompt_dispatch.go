@@ -99,6 +99,15 @@ type PromptOverrides struct {
 	// invocation against the conventional roots, rewrites the LLM-visible prompt
 	// to the expanded body, and persists the raw invocation as the display turn.
 	ResolveSlash bool
+
+	// InjectionKind classifies an engine-side injected prompt so the
+	// persisted conversation entry carries the semantic type. "agent_completion"
+	// marks a machine-to-machine dispatch callback (a child agent's result
+	// routed to its parent) rather than a user-authored turn. Empty for
+	// ordinary client-submitted prompts. Propagates to
+	// MessageData.InjectionKind via appendInboundUserMessage so consumers
+	// can classify the turn on historical reload.
+	InjectionKind string
 }
 
 // SendPrompt dispatches a prompt to the session's backend run.
