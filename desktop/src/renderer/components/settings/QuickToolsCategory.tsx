@@ -291,7 +291,7 @@ export function QuickToolsCategory() {
             background: colors.accent,
             border: 'none',
             borderRadius: 6,
-            color: '#fff',
+            color: colors.textOnAccent,
             cursor: 'pointer',
             fontSize: 12,
             opacity: canSave ? 1 : 0.5,

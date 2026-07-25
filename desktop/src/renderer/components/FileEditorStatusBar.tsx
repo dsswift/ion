@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useColors } from '../theme'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { transitions } from '../theme-tokens'
 import { getLanguageLabel, ALL_LANGUAGES } from './FileEditorShared'
 import type { CursorPosition } from './FileEditorCodeMirror'
 
@@ -10,6 +12,43 @@ interface FileEditorStatusBarProps {
   languageOverride: string | null
   onLanguageChange: (langId: string | null) => void
   onGoToLine?: () => void
+}
+
+/** Language-picker entry with the standard hover/pressed/selected cascade. */
+function LangPickerItem({
+  label,
+  selected,
+  onSelect,
+  colors,
+}: {
+  label: string
+  selected: boolean
+  onSelect: () => void
+  colors: ReturnType<typeof useColors>
+}) {
+  const { hover, pressed, handlers } = useInteractiveState()
+  return (
+    <button
+      onClick={onSelect}
+      className="ion-focusable"
+      {...handlers}
+      style={{
+        display: 'block',
+        width: '100%',
+        padding: '4px 10px',
+        border: 'none',
+        background: interactiveBg(colors, { hover, pressed, selected }),
+        color: colors.textPrimary,
+        fontWeight: selected ? 500 : undefined,
+        textAlign: 'left',
+        cursor: 'pointer',
+        fontSize: 11,
+        transition: `background ${transitions.base}`,
+      }}
+    >
+      {label}
+    </button>
+  )
 }
 
 /**
@@ -26,6 +65,8 @@ export function FileEditorStatusBar({
   const colors = useColors()
   const [showLangPicker, setShowLangPicker] = useState(false)
   const pickerRef = useRef<HTMLDivElement>(null)
+  const gotoBtn = useInteractiveState()
+  const langBtn = useInteractiveState()
 
   const langLabel = languageOverride ?? getLanguageLabel(fileName)
 
@@ -62,14 +103,18 @@ export function FileEditorStatusBar({
       <div style={{ display: 'flex', gap: 12 }}>
         <button
           onClick={onGoToLine}
+          className="ion-focusable"
+          {...gotoBtn.handlers}
           style={{
-            background: 'none',
+            background: interactiveBg(colors, gotoBtn),
             border: 'none',
+            borderRadius: 4,
             color: colors.textTertiary,
             cursor: 'pointer',
             padding: 0,
             fontSize: 11,
             fontFamily: 'inherit',
+            transition: `background ${transitions.base}`,
           }}
           title="Go to Line (⌘G)"
         >
@@ -83,14 +128,18 @@ export function FileEditorStatusBar({
       <div style={{ position: 'relative' }} ref={pickerRef}>
         <button
           onClick={() => setShowLangPicker(!showLangPicker)}
+          className="ion-focusable"
+          {...langBtn.handlers}
           style={{
-            background: 'none',
+            background: interactiveBg(colors, langBtn),
             border: 'none',
+            borderRadius: 4,
             color: colors.textTertiary,
             cursor: 'pointer',
             padding: '0 4px',
             fontSize: 11,
             fontFamily: 'inherit',
+            transition: `background ${transitions.base}`,
           }}
           title="Select language mode"
         >
@@ -108,49 +157,25 @@ export function FileEditorStatusBar({
               background: colors.containerBg,
               border: `1px solid ${colors.containerBorder}`,
               borderRadius: 8,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+              boxShadow: colors.popoverShadow,
               padding: '4px 0',
               zIndex: 99999,
             }}
           >
-            <button
-              onClick={() => { onLanguageChange(null); setShowLangPicker(false) }}
-              style={{
-                display: 'block',
-                width: '100%',
-                padding: '4px 10px',
-                border: 'none',
-                background: languageOverride === null ? colors.surfaceHover : 'transparent',
-                color: colors.textPrimary,
-                textAlign: 'left',
-                cursor: 'pointer',
-                fontSize: 11,
-              }}
-            >
-              Auto Detect
-            </button>
+            <LangPickerItem
+              label="Auto Detect"
+              selected={languageOverride === null}
+              onSelect={() => { onLanguageChange(null); setShowLangPicker(false) }}
+              colors={colors}
+            />
             {ALL_LANGUAGES.map(({ id, label }) => (
-              <button
+              <LangPickerItem
                 key={id}
-                onClick={() => { onLanguageChange(id); setShowLangPicker(false) }}
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  padding: '4px 10px',
-                  border: 'none',
-                  background: languageOverride === id ? colors.surfaceHover : 'transparent',
-                  color: colors.textPrimary,
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  fontSize: 11,
-                }}
-                onMouseEnter={(e) => { (e.target as HTMLElement).style.background = colors.surfaceHover }}
-                onMouseLeave={(e) => {
-                  (e.target as HTMLElement).style.background = languageOverride === id ? colors.surfaceHover : 'transparent'
-                }}
-              >
-                {label}
-              </button>
+                label={label}
+                selected={languageOverride === id}
+                onSelect={() => { onLanguageChange(id); setShowLangPicker(false) }}
+                colors={colors}
+              />
             ))}
           </div>
         )}

@@ -251,7 +251,7 @@ export function BranchPicker({
 
           {/* Error */}
           {error && (
-            <div className="px-2 py-1.5 text-[10px]" style={{ color: '#c47060', borderTop: `1px solid ${colors.popoverBorder}` }}>
+            <div className="px-2 py-1.5 text-[10px]" style={{ color: colors.dangerFg, borderTop: `1px solid ${colors.popoverBorder}` }}>
               {error}
             </div>
           )}

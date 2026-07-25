@@ -63,6 +63,9 @@ import { readSettings, SETTINGS_DEFAULTS } from './settings-store'
 import { SETTINGS_DEFAULTS as RENDERER_SETTINGS_DEFAULTS } from '../renderer/preferences-types'
 import { PROJECTABLE_SETTINGS_DATA, ENGINE_CONFIG_BACKED_KEYS } from './projectable-settings-data'
 import { readPlanBashAllowlist } from './plan-bash-allowlist-store'
+import { customThemeChoices, isKnownDesktopThemeId } from './theme-packs'
+import { getEnterpriseThemePolicy } from './theme-policy'
+import { BUILTIN_THEME_IDS } from '../shared/theme-pack-types'
 import type {
   ProjectableChoice,
   ProjectableGroup,
@@ -189,6 +192,16 @@ export function validateSettingValue(key: string, value: unknown): string | null
     case 'enum':
       if (value === null || actualType === 'string') {
         if (isDynamicGroupIdKey(key)) return null
+        // selectedTheme's canonical choice set is the live theme registry:
+        // built-ins plus installed theme packs that carry a desktop
+        // component. The static choices on the data entry cover only the
+        // built-ins, so a custom-pack id must validate against the registry
+        // — otherwise iOS writes of installed custom themes are silently
+        // rejected.
+        if (key === 'selectedTheme') {
+          if (typeof value === 'string' && isKnownDesktopThemeId(value, BUILTIN_THEME_IDS)) return null
+          return `key ${key} value ${JSON.stringify(value)} is not an installed theme id`
+        }
         const choices = entry.choices ?? []
         const ok = choices.some((c) => c.value === value)
         return ok ? null : `key ${key} value ${JSON.stringify(value)} not in enum choices`
@@ -253,6 +266,14 @@ export function projectCurrentSettings(): Record<string, unknown> {
       out[key] = null
     }
   }
+  // Enterprise theme lock: the projected value is the enforced theme, not
+  // the user's saved pick (the on-disk value is left untouched so the
+  // choice restores when the policy lifts — same non-persisting rule as
+  // every enterprise constraint).
+  const themePolicy = getEnterpriseThemePolicy()
+  if (themePolicy?.locked) {
+    out.selectedTheme = themePolicy.themeId
+  }
   return out
 }
 
@@ -315,6 +336,11 @@ export function projectableSchema(): ProjectableSettingSchema[] {
     }
     if (isDynamicGroupIdKey(s.key)) {
       base.choices = groupChoices
+    } else if (s.key === 'selectedTheme') {
+      // Live registry injection: built-in choices from the data entry plus
+      // every installed theme pack with a desktop component, so the iOS
+      // picker reflects the packs on this desktop without a wire round-trip.
+      base.choices = [...(s.choices ?? []), ...customThemeChoices()]
     } else if (s.choices) {
       base.choices = s.choices
     }

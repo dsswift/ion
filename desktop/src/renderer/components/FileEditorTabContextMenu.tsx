@@ -1,5 +1,46 @@
 import React, { useEffect, useRef } from 'react'
 import { useColors } from '../theme'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { transitions } from '../theme-tokens'
+
+/** Menu entry button with the standard hover/pressed/disabled states. */
+function TabMenuButton({
+  label,
+  disabled,
+  onSelect,
+  colors,
+}: {
+  label: string
+  disabled?: boolean
+  onSelect: () => void
+  colors: ReturnType<typeof useColors>
+}) {
+  const { hover, pressed, handlers } = useInteractiveState()
+  return (
+    <button
+      onClick={onSelect}
+      disabled={disabled}
+      className="ion-focusable"
+      {...handlers}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        width: '100%',
+        padding: '5px 12px',
+        border: 'none',
+        background: disabled ? 'transparent' : interactiveBg(colors, { hover, pressed }),
+        color: colors.textPrimary,
+        opacity: disabled ? 0.45 : undefined,
+        cursor: disabled ? 'default' : 'pointer',
+        textAlign: 'left',
+        fontSize: 12,
+        transition: `background ${transitions.base}`,
+      }}
+    >
+      {label}
+    </button>
+  )
+}
 
 interface TabContextMenuProps {
   x: number
@@ -71,7 +112,7 @@ export function FileEditorTabContextMenu({
         background: colors.containerBg,
         border: `1px solid ${colors.containerBorder}`,
         borderRadius: 8,
-        boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+        boxShadow: colors.popoverShadow,
         padding: '4px 0',
         zIndex: 99999,
         fontFamily: 'system-ui, -apple-system, sans-serif',
@@ -88,31 +129,13 @@ export function FileEditorTabContextMenu({
           )
         }
         return (
-          <button
+          <TabMenuButton
             key={item.label}
-            onClick={item.action}
+            label={item.label}
             disabled={item.disabled}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              width: '100%',
-              padding: '5px 12px',
-              border: 'none',
-              background: 'transparent',
-              color: item.disabled ? colors.textTertiary : colors.textPrimary,
-              cursor: item.disabled ? 'default' : 'pointer',
-              textAlign: 'left',
-              fontSize: 12,
-            }}
-            onMouseEnter={(e) => {
-              if (!item.disabled) (e.target as HTMLElement).style.background = colors.surfaceHover
-            }}
-            onMouseLeave={(e) => {
-              (e.target as HTMLElement).style.background = 'transparent'
-            }}
-          >
-            {item.label}
-          </button>
+            onSelect={item.action}
+            colors={colors}
+          />
         )
       })}
     </div>

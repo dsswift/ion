@@ -1,10 +1,13 @@
 import React, { useEffect, useRef, useCallback, useMemo } from 'react'
 import {
-  CaretDown, CaretRight, ArrowsClockwise, X, ListBullets, TreeStructure, Info,
+  ArrowsClockwise, X, ListBullets, TreeStructure, Info,
 } from '@phosphor-icons/react'
 import { useShallow } from 'zustand/shallow'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { transitions } from '../theme-tokens'
+import { Chevron } from './Chevron'
 import { usePreferencesStore } from '../preferences'
 import { useRepoState } from '../stores/git'
 import { useGitDragSplit } from '../hooks/useGitDragSplit'
@@ -12,6 +15,92 @@ import { GitChangesSection } from './GitChangesSection'
 import { GitGraphSection } from './GitGraphSection'
 import { CommitForm } from './git/CommitForm'
 import { rDebug, rError } from '../rendererLogger'
+
+/** Panel-header icon button (close, refresh, tree/list toggle). */
+function PanelIconButton({
+  title,
+  onClick,
+  colors,
+  className,
+  style,
+  children,
+}: {
+  title?: string
+  onClick: () => void
+  colors: ReturnType<typeof useColors>
+  className?: string
+  style?: React.CSSProperties
+  children: React.ReactNode
+}) {
+  const { hover, pressed, handlers } = useInteractiveState()
+  return (
+    <button
+      title={title}
+      onClick={onClick}
+      className={`${className ?? ''} ion-focusable`}
+      {...handlers}
+      style={{
+        color: hover ? colors.accent : colors.textTertiary,
+        cursor: 'pointer',
+        border: 'none',
+        background: interactiveBg(colors, { hover: false, pressed }),
+        display: 'flex',
+        alignItems: 'center',
+        transition: `color ${transitions.base}, background ${transitions.base}`,
+        ...style,
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
+/** Collapsible-section header toggle (Changes / Graph) with rotating chevron. */
+function SectionToggleButton({
+  open,
+  label,
+  onClick,
+  colors,
+  className,
+  style,
+  opaqueBase,
+}: {
+  open: boolean
+  label: string
+  onClick: () => void
+  colors: ReturnType<typeof useColors>
+  className?: string
+  style?: React.CSSProperties
+  /**
+   * Opaque base background (e.g. surfacePrimary). The translucent
+   * hover/pressed token is layered over it so the header never turns
+   * see-through.
+   */
+  opaqueBase?: string
+}) {
+  const { hover, pressed, handlers } = useInteractiveState()
+  const overlay = interactiveBg(colors, { hover, pressed })
+  const background = opaqueBase
+    ? (overlay === 'transparent' ? opaqueBase : `linear-gradient(${overlay}, ${overlay}), ${opaqueBase}`)
+    : overlay
+  return (
+    <button
+      onClick={onClick}
+      className={`${className ?? ''} ion-focusable`}
+      {...handlers}
+      style={{
+        background,
+        border: 'none',
+        cursor: 'pointer',
+        transition: `background ${transitions.base}`,
+        ...style,
+      }}
+    >
+      <Chevron open={open} size={10} weight="regular" />
+      {label}
+    </button>
+  )
+}
 
 // ─── Main GitPanel ───
 
@@ -132,14 +221,15 @@ export function GitPanel() {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <button
+          <PanelIconButton
             onClick={() => useSessionStore.getState().closeGitPanel()}
-            className="flex items-center justify-center rounded transition-colors"
-            style={{ color: colors.textTertiary, cursor: 'pointer', padding: 1 }}
+            className="justify-center rounded"
+            style={{ padding: 1 }}
             title="Close git panel"
+            colors={colors}
           >
             <X size={11} />
-          </button>
+          </PanelIconButton>
           <span className="text-[10px] font-medium" style={{ color: colors.textTertiary }}>
             Git
             <span style={{ color: colors.textMuted, marginLeft: 4 }}>
@@ -155,14 +245,14 @@ export function GitPanel() {
             <Info size={11} />
           </span>
         )}
-        <button
+        <PanelIconButton
           onClick={refresh}
-          className="p-0.5 rounded transition-colors"
-          style={{ color: colors.textTertiary }}
+          className="p-0.5 rounded"
           title="Refresh"
+          colors={colors}
         >
           <ArrowsClockwise size={11} />
-        </button>
+        </PanelIconButton>
       </div>
 
       {/* Changes section */}
@@ -182,14 +272,14 @@ export function GitPanel() {
             flexShrink: 0,
           }}
         >
-          <button
+          <SectionToggleButton
+            open={changesOpen}
+            label="Changes"
             onClick={() => setChangesOpen(!changesOpen)}
             className="flex items-center gap-1"
-            style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0 }}
-          >
-            {changesOpen ? <CaretDown size={10} /> : <CaretRight size={10} />}
-            Changes
-          </button>
+            style={{ color: 'inherit', padding: 0, borderRadius: 4 }}
+            colors={colors}
+          />
           {files.length > 0 && (
             <span
               className="text-[9px] px-1 rounded-full"
@@ -201,14 +291,14 @@ export function GitPanel() {
           {changesOpen && files.length > 0 && (
             <>
               <div style={{ flex: 1 }} />
-              <button
+              <PanelIconButton
                 onClick={() => usePreferencesStore.getState().setGitChangesTreeView(!gitChangesTreeView)}
-                className="p-0.5 rounded transition-colors"
-                style={{ color: colors.textTertiary, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                className="p-0.5 rounded"
                 title={gitChangesTreeView ? 'List view' : 'Tree view'}
+                colors={colors}
               >
                 {gitChangesTreeView ? <ListBullets size={11} /> : <TreeStructure size={11} />}
-              </button>
+              </PanelIconButton>
             </>
           )}
         </div>
@@ -276,21 +366,21 @@ export function GitPanel() {
         flex: (!changesOpen && !graphOpen) ? 1 : undefined,
         minHeight: 0,
       }}>
-        <button
+        <SectionToggleButton
+          open={graphOpen}
+          label="Graph"
           onClick={() => setGraphOpen(!graphOpen)}
           className="flex items-center gap-1 px-2.5 w-full text-left"
           style={{
             height: 28,
-            background: colors.surfacePrimary,
             borderBottom: `1px solid ${colors.containerBorder}`,
             color: colors.textSecondary,
             fontSize: 11,
             flexShrink: 0,
           }}
-        >
-          {graphOpen ? <CaretDown size={10} /> : <CaretRight size={10} />}
-          Graph
-        </button>
+          opaqueBase={colors.surfacePrimary}
+          colors={colors}
+        />
         {graphOpen && (
           <div style={{ height: graphContentHeight, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             <GitGraphSection directory={directory} onRefresh={refresh} refreshKey={refreshKey} worktree={worktree} hasUncommittedChanges={files.length > 0} />

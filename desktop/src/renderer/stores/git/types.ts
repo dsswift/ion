@@ -3,15 +3,18 @@
  */
 
 import type { GitChangedFile, ResourceGroups, HeadInfo, UpstreamInfo, MergeState, RepoSnapshot } from '../../../shared/types'
+import type { ColorPalette } from '../../theme-tokens'
 
 // ─── Status badge colors ───
-export const STATUS_COLORS: Record<string, string> = {
-  added: '#7aac8c',
-  modified: '#6b9bd2',
-  deleted: '#c47060',
-  renamed: '#b08fd8',
-  untracked: '#d4a843',
-  conflict: '#d97757',
+// Theme token keys, not literal colors. React consumers resolve via
+// `const colors = useColors()` → `colors[GIT_STATUS_COLOR_KEYS[status]]`.
+export const GIT_STATUS_COLOR_KEYS: Record<string, keyof ColorPalette> = {
+  added: 'gitAdded',
+  modified: 'gitModified',
+  deleted: 'gitDeleted',
+  renamed: 'gitRenamed',
+  untracked: 'gitUntracked',
+  conflict: 'gitConflict',
 }
 
 export const STATUS_LETTERS: Record<string, string> = {

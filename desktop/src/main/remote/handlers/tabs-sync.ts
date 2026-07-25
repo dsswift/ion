@@ -22,12 +22,14 @@
  */
 
 import { log as _log, debug as _debug } from '../../logger'
-import { state, terminalScrollback } from '../../state'
+import { state, terminalScrollback, enterprisePolicyCache } from '../../state'
+import { getEnterpriseThemePolicy } from '../../theme-policy'
 import { readSettings } from '../../settings-store'
 import { projectCurrentSettings, projectableSchema, projectableGroups } from '../../projectable-settings'
 import { buildSnapshotEvent, noteSnapshotSentToDevices } from '../snapshot-polling'
 import { readRemoteDisplay } from './display'
 import { getEnterprisePolicyNewConversationDefaults } from '../../engine-bridge-fs'
+import { buildThemeManifest, rescanThemePacks } from '../../theme-packs'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -100,13 +102,29 @@ export async function sendSync(send: (event: any) => void, recipientDeviceIds: s
   } catch (err) {
     log('snap_send: enterprise policy fetch failed', { error: String(err) })
   }
+  // Refresh the main-process cache so synchronous emitters
+  // (broadcastDesktopSettingsSnapshot) project the same policy without an RPC.
+  enterprisePolicyCache.newConversationDefaults = newConversationPolicy
   send({
     type: 'desktop_settings_snapshot',
     settings: projectCurrentSettings(),
     schema: projectableSchema(),
     groups: projectableGroups(),
     newConversationPolicy,
+    // Enterprise theme policy — enforced/suggested theme + picker lock,
+    // mirrored on iOS. Null when unmanaged.
+    themePolicy: getEnterpriseThemePolicy(),
   })
+  // Custom theme packs: rescan the disk roots (an MDM may have dropped a
+  // pack since the last connect), then ship the iOS components. Sync runs
+  // on first pairing AND every reconnect, which is what keeps iOS
+  // converged with the desktop's installed theme set. If the rescan found
+  // changes, the theme-packs change listeners also push the refreshed set
+  // to the desktop renderers — sendSync stays the single wire emitter here.
+  rescanThemePacks()
+  const themeManifest = buildThemeManifest()
+  log('snap_send: theme manifest', { theme_count: themeManifest.themes.length, hash: themeManifest.hash })
+  send({ type: 'desktop_theme_manifest', ...themeManifest })
   for (const tab of tabs) {
     if (tab.isTerminalOnly && tab.terminalInstances && tab.terminalInstances.length > 0) {
       try {

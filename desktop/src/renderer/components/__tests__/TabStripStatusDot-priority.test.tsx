@@ -55,7 +55,7 @@ vi.mock('../../theme', () => ({
     statusWaitingChildrenGlow: '#070707',
     statusComplete:            '#080808',
     tabGlowPlanReady:          '#090909',
-    infoText:                  '#0a0a0a',
+    statusQuestion:            '#0a0a0a',
     tabGlowQuestion:           '#0b0b0b',
     statusBash:                '#0c0c0c',
     statusBashGlow:            '#0d0d0d',
@@ -74,6 +74,7 @@ const C = {
   statusRunning:             '#050505',
   statusWaitingChildren:     '#060606',
   statusComplete:            '#080808',
+  statusQuestion:            '#0a0a0a',
 } as const
 
 // --- Helpers -------------------------------------------------------------
@@ -144,9 +145,25 @@ describe('StatusDot — hasRunningChildren outranks plan-ready', () => {
   })
 
   it('foreground running still outranks running children', () => {
-    // Orange wins over yellow — running/connecting is the highest active signal.
+    // Teal wins over amber — running/connecting is the highest active signal.
     const color = renderDotColor({ ...BASE, status: 'running', hasRunningChildren: true })
     expect(color).toBe(hex2rgb(C.statusRunning))
+  })
+
+  it('running dot uses the dedicated statusRunning (teal), not the question color', () => {
+    // Pins the teal/purple split: the running dot must not borrow the
+    // question color, and vice-versa.
+    const color = renderDotColor({ ...BASE, status: 'running' })
+    expect(color).toBe(hex2rgb(C.statusRunning))
+    expect(color).not.toBe(hex2rgb(C.statusQuestion))
+  })
+
+  it('question dot uses the dedicated statusQuestion (purple), not statusRunning', () => {
+    // Regression guard for the two-blues collision: the question dot reads
+    // colors.statusQuestion, a token independent of statusRunning/infoText.
+    const color = renderDotColor({ ...BASE, waitingState: 'question' })
+    expect(color).toBe(hex2rgb(C.statusQuestion))
+    expect(color).not.toBe(hex2rgb(C.statusRunning))
   })
 })
 

@@ -1,19 +1,51 @@
 import React from 'react'
 import { useColors } from '../../theme'
+import { useInteractiveState, interactiveBg } from '../../hooks/useInteractiveState'
+import { transitions } from '../../theme-tokens'
+import { GIT_STATUS_COLOR_KEYS } from '../../stores/git/types'
 import type { GitCommit, GitCommitFile, GitCommitDetail } from '../../../shared/types'
-
-const STATUS_COLORS: Record<string, string> = {
-  added: '#7aac8c',
-  modified: '#6b9bd2',
-  deleted: '#c47060',
-  renamed: '#b08fd8',
-}
 
 const STATUS_LETTERS: Record<string, string> = {
   added: 'A',
   modified: 'M',
   deleted: 'D',
   renamed: 'R',
+}
+
+/** Single file row in the commit details pane — standard hover/pressed states. */
+function DetailFileRow({ file, onFileClick }: {
+  file: GitCommitFile
+  onFileClick: (file: GitCommitFile) => void
+}) {
+  const colors = useColors()
+  const { hover, pressed, handlers } = useInteractiveState()
+  return (
+    <div
+      className="flex items-center cursor-pointer group"
+      {...handlers}
+      style={{
+        height: 20,
+        paddingRight: 4,
+        background: interactiveBg(colors, { hover, pressed }),
+        transition: `background ${transitions.base}`,
+      }}
+      onClick={() => onFileClick(file)}
+    >
+      <span
+        className="text-[9px] font-mono flex-shrink-0"
+        style={{ color: GIT_STATUS_COLOR_KEYS[file.status] ? colors[GIT_STATUS_COLOR_KEYS[file.status]] : colors.textTertiary, width: 14, textAlign: 'center' }}
+      >
+        {STATUS_LETTERS[file.status] || '?'}
+      </span>
+      <span
+        className="text-[10px] truncate flex-1"
+        style={{ color: colors.textSecondary, marginLeft: 4 }}
+        title={file.path}
+      >
+        {file.path}
+      </span>
+    </div>
+  )
 }
 
 interface CommitDetailsPaneProps {
@@ -61,8 +93,8 @@ export function CommitDetailsPane({ commit, detail, files, onFileClick }: Commit
       {detail && (
         <div className="flex items-center gap-2 mt-1 text-[9px]" style={{ color: colors.textTertiary }}>
           <span>{detail.filesChanged} file{detail.filesChanged !== 1 ? 's' : ''}</span>
-          {detail.insertions > 0 && <span style={{ color: '#7aac8c' }}>+{detail.insertions}</span>}
-          {detail.deletions > 0 && <span style={{ color: '#c47060' }}>−{detail.deletions}</span>}
+          {detail.insertions > 0 && <span style={{ color: colors.successFg }}>+{detail.insertions}</span>}
+          {detail.deletions > 0 && <span style={{ color: colors.dangerFg }}>−{detail.deletions}</span>}
         </div>
       )}
 
@@ -70,28 +102,7 @@ export function CommitDetailsPane({ commit, detail, files, onFileClick }: Commit
       {files.length > 0 && (
         <div className="mt-1.5" style={{ maxHeight: 120, overflowY: 'auto' }}>
           {files.map((file) => (
-            <div
-              key={file.path}
-              className="flex items-center cursor-pointer group"
-              style={{ height: 20, paddingRight: 4 }}
-              onClick={() => onFileClick(file)}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = colors.surfaceHover }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
-            >
-              <span
-                className="text-[9px] font-mono flex-shrink-0"
-                style={{ color: STATUS_COLORS[file.status] || colors.textTertiary, width: 14, textAlign: 'center' }}
-              >
-                {STATUS_LETTERS[file.status] || '?'}
-              </span>
-              <span
-                className="text-[10px] truncate flex-1"
-                style={{ color: colors.textSecondary, marginLeft: 4 }}
-                title={file.path}
-              >
-                {file.path}
-              </span>
-            </div>
+            <DetailFileRow key={file.path} file={file} onFileClick={onFileClick} />
           ))}
         </div>
       )}

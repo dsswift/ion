@@ -5,14 +5,15 @@ import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import type { TabGroupView } from '../hooks/useTabGroups'
-import { abbreviateProfileName, checkWorktreeUncommitted, getGroupStatusColor, getWaitingState, shouldUseWorktree, zoomRect } from './TabStripShared'
-import { GroupStatusDot } from './TabStripStatusDot'
+import { abbreviateProfileName, checkWorktreeUncommitted, getGroupDotModel, getWaitingState, shouldUseWorktree, zoomRect } from './TabStripShared'
+import { GroupStatusDot, GroupStatusDotStack } from './TabStripStatusDot'
 import { InlineRenameInput } from './TabStripInlineRenameInput'
 import { PillColorPicker } from './TabStripPillColorPicker'
 import { TabContextMenu } from './TabStripTabContextMenu'
 import { InactiveGroupMenu } from './TabStripInactiveGroupMenu'
 import { GroupPickerDropdown } from './TabStripGroupPickerDropdown'
 import { newTabInDirectory } from './new-conversation-routing'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { rError } from '../rendererLogger'
 
 interface GroupPillProps {
@@ -42,6 +43,12 @@ export function GroupPill({
   const [renamingTitle, setRenamingTitle] = useState(false)
   const [confirmingClose, setConfirmingClose] = useState(false)
   const pillRef = useRef<HTMLDivElement>(null)
+  // Pointer states: pill surface, rename pencil, close-X. One hook per
+  // element (all top-level — the buttons render conditionally but the hooks
+  // always run).
+  const pillState = useInteractiveState()
+  const renameBtnState = useInteractiveState()
+  const closeBtnState = useInteractiveState()
 
   const selectedTab = group.tabs.find((t) => t.id === group.selectedTabId) || group.tabs[0]
 
@@ -122,11 +129,19 @@ export function GroupPill({
     <>
       <div
         ref={pillRef}
-        className={`group flex items-center gap-1.5 cursor-pointer select-none flex-shrink-0 ${waitingBorder ? 'animate-border-pulse' : ''}`}
+        className={`group flex items-center gap-1.5 cursor-pointer select-none flex-shrink-0 ion-focusable ${waitingBorder ? 'animate-border-pulse' : ''}`}
         style={{
           '--border-waiting': waitingBorder ?? 'transparent',
           '--border-default': isActive ? colors.tabActiveBorder : 'transparent',
-          background: isActive ? colors.tabActive : 'transparent',
+          // Active group pill keeps the dedicated tabActive treatment;
+          // inactive pills answer to the pointer (pressed > hover > base).
+          background: isActive
+            ? colors.tabActive
+            : pillState.pressed
+              ? colors.surfacePressed
+              : pillState.hover
+                ? colors.tabHover
+                : 'transparent',
           borderWidth: 1,
           borderStyle: 'solid',
           borderColor: waitingBorder ?? (isActive ? colors.tabActiveBorder : 'transparent'),
@@ -136,7 +151,11 @@ export function GroupPill({
           color: isActive ? colors.textPrimary : colors.textTertiary,
           fontWeight: isActive ? 500 : 400,
         } as React.CSSProperties}
+        {...pillState.handlers}
         onMouseDown={(e) => {
+          // Merge with the pointer-state hook: mark pressed, then run the
+          // existing middle-click close (semantics unchanged).
+          pillState.handlers.onMouseDown()
           if (e.button === 1) {
             e.preventDefault()
             if (!isActive || !selectedTab || selectedTab.worktree) return
@@ -169,8 +188,17 @@ export function GroupPill({
           } : undefined}
         >
           {(() => {
-            const { bg, pulse, glow, glowColor } = getGroupStatusColor(group.tabs, colors)
-            return <GroupStatusDot bg={bg} pulse={pulse} glow={glow} glowColor={glowColor} />
+            const model = getGroupDotModel(group.tabs, group.selectedTabId, isActive, colors)
+            if (model.kind === 'stack') {
+              return (
+                <GroupStatusDotStack
+                  foreground={model.foreground}
+                  background={model.background}
+                  pillBg={colors.tabActive}
+                />
+              )
+            }
+            return <GroupStatusDot bg={model.dot.bg} pulse={model.dot.pulse} glow={model.dot.glow} glowColor={model.dot.glowColor} />
           })()}
         </span>
         <span className="flex-shrink-0 text-[10px] font-medium" style={{ color: colors.textSecondary, opacity: 0.5 }}>
@@ -240,10 +268,15 @@ export function GroupPill({
         {isActive && (
           <button
             onClick={(e) => { e.stopPropagation(); setRenamingTitle(true) }}
-            className="flex-shrink-0 rounded-full w-4 h-4 flex items-center justify-center"
-            style={{ opacity: 0.5, color: colors.textSecondary, background: 'none', border: 'none', cursor: 'pointer' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1' }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.5' }}
+            className="flex-shrink-0 rounded-full w-4 h-4 flex items-center justify-center ion-focusable"
+            style={{
+              opacity: renameBtnState.hover ? 1 : 0.5,
+              color: colors.textSecondary,
+              background: interactiveBg(colors, renameBtnState),
+              border: 'none',
+              cursor: 'pointer',
+            }}
+            {...renameBtnState.handlers}
           >
             <PencilSimple size={10} />
           </button>
@@ -270,14 +303,14 @@ export function GroupPill({
               <div className="flex items-center gap-0.5 text-[9px] flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                 <button
                   onClick={() => setConfirmingClose(false)}
-                  className="px-1 rounded"
+                  className="px-1 rounded ion-focusable"
                   style={{ color: colors.textTertiary, background: 'none', border: 'none', cursor: 'pointer' }}
                 >
                   No
                 </button>
                 <button
                   onClick={() => { useSessionStore.getState().closeTab(tab.id); setConfirmingClose(false) }}
-                  className="px-1 rounded"
+                  className="px-1 rounded ion-focusable"
                   style={{ color: colors.accent, background: 'none', border: 'none', cursor: 'pointer' }}
                 >
                   Yes
@@ -288,10 +321,15 @@ export function GroupPill({
           return (
             <button
               onClick={(e) => { e.stopPropagation(); setConfirmingClose(true) }}
-              className="flex-shrink-0 rounded-full w-4 h-4 flex items-center justify-center"
-              style={{ opacity: 0.5, color: colors.textSecondary, background: 'none', border: 'none', cursor: 'pointer' }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1' }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.5' }}
+              className="flex-shrink-0 rounded-full w-4 h-4 flex items-center justify-center ion-focusable"
+              style={{
+                opacity: closeBtnState.hover ? 1 : 0.5,
+                color: colors.textSecondary,
+                background: interactiveBg(colors, closeBtnState),
+                border: 'none',
+                cursor: 'pointer',
+              }}
+              {...closeBtnState.handlers}
             >
               <X size={10} />
             </button>

@@ -48,6 +48,9 @@ vi.mock('../plan-bash-allowlist-store', () => ({
 const transport = vi.hoisted(() => ({ sent: [] as any[] }))
 vi.mock('../state', () => ({
   state: { get remoteTransport() { return { send: (m: any) => transport.sent.push(m) } } },
+  // settings-broadcast projects the enterprise policies from this cache on
+  // every snapshot; null = unmanaged (the routing under test is unaffected).
+  enterprisePolicyCache: { policy: null, newConversationDefaults: null },
 }))
 vi.mock('../broadcast', () => ({ broadcast: vi.fn() }))
 vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))

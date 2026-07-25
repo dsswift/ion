@@ -169,23 +169,44 @@ describe('loadPersistedSettings applies forced-scheme theme by id on startup', (
     expect(applyThemeMock).not.toHaveBeenCalledWith(false)
   })
 
-  it('calls applyTheme with boolean when selectedTheme is a standard theme', async () => {
+  it('calls applyTheme with the theme id for standard themes too', async () => {
     ;(globalThis as { window?: { ion?: unknown } }).window = {
       ion: {
         loadSettings: () =>
-          Promise.resolve({ selectedTheme: 'ion-dark', themeMode: 'dark' }),
+          Promise.resolve({ selectedTheme: 'ion-dark' }),
       },
     } as unknown as Window & typeof globalThis
 
     const setStateMock = vi.fn()
-    const getStateMock = () => ({ _systemIsDark: false } as unknown as PreferencesState)
+    const getStateMock = () => ({} as unknown as PreferencesState)
     const applyThemeMock = vi.fn()
 
     loadPersistedSettings(setStateMock, getStateMock, applyThemeMock)
     await new Promise((resolve) => setImmediate(resolve))
 
-    // Standard theme: boolean apply
-    expect(applyThemeMock).toHaveBeenCalledWith(true)
+    // Theme selection is single-axis: apply is always by id, never boolean.
+    expect(applyThemeMock).toHaveBeenCalledWith('ion-dark')
+    expect(applyThemeMock).not.toHaveBeenCalledWith(true)
+    expect(applyThemeMock).not.toHaveBeenCalledWith(false)
+  })
+
+  it('migrates a legacy save with no selectedTheme from the retired themeMode', async () => {
+    ;(globalThis as { window?: { ion?: unknown } }).window = {
+      ion: {
+        loadSettings: () =>
+          Promise.resolve({ themeMode: 'light' }),
+      },
+    } as unknown as Window & typeof globalThis
+
+    const setStateMock = vi.fn()
+    const getStateMock = () => ({} as unknown as PreferencesState)
+    const applyThemeMock = vi.fn()
+
+    loadPersistedSettings(setStateMock, getStateMock, applyThemeMock)
+    await new Promise((resolve) => setImmediate(resolve))
+
+    expect(applyThemeMock).toHaveBeenCalledWith('ion-light')
+    expect(setStateMock).toHaveBeenCalledWith(expect.objectContaining({ selectedTheme: 'ion-light' }))
   })
 })
 

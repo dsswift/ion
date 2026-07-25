@@ -48,6 +48,17 @@ vi.mock('../plan-bash-allowlist-store', () => ({
   writePlanBashAllowlist: vi.fn(),
 }))
 
+// Enterprise theme policy: mocked so the projection tests control the lock
+// without importing the full main-process state module (theme-policy reads
+// the startup policy cache, which is irrelevant to allowlist mechanics).
+const themePolicyMock = vi.hoisted(() => ({
+  getEnterpriseThemePolicy: vi.fn((): { themeId: string; locked: boolean } | null => null),
+}))
+vi.mock('../theme-policy', () => ({
+  getEnterpriseThemePolicy: () => themePolicyMock.getEnterpriseThemePolicy(),
+  isThemeLocked: () => themePolicyMock.getEnterpriseThemePolicy()?.locked === true,
+}))
+
 import {
   PROJECTABLE_SETTINGS,
   PROJECTABLE_GROUP_ORDER,
@@ -60,6 +71,31 @@ import {
   projectableGroups,
 } from '../projectable-settings'
 import * as settingsStore from '../settings-store'
+import { resetThemePacksForTest } from '../theme-packs'
+import { mkdtempSync, rmSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+
+// selectedTheme validation + schema choices consult the live theme-pack
+// registry (fs scan). Point both roots at hermetic temp dirs so the
+// developer's real ~/.ion/themes never leaks into assertions. The
+// theme-specific behavior tests (custom-pack validation, schema choices,
+// enterprise lock) live in projectable-settings-theme.test.ts (cap split).
+let themesUserRoot: string
+let themesSystemRoot: string
+
+beforeEach(() => {
+  themesUserRoot = mkdtempSync(join(tmpdir(), 'ion-proj-themes-user-'))
+  themesSystemRoot = mkdtempSync(join(tmpdir(), 'ion-proj-themes-system-'))
+  resetThemePacksForTest({ user: themesUserRoot, system: themesSystemRoot })
+  themePolicyMock.getEnterpriseThemePolicy.mockReturnValue(null)
+})
+
+afterEach(() => {
+  resetThemePacksForTest()
+  rmSync(themesUserRoot, { recursive: true, force: true })
+  rmSync(themesSystemRoot, { recursive: true, force: true })
+})
 
 describe('projectable-settings allowlist', () => {
   it('every entry has a non-empty key, label, and description', () => {

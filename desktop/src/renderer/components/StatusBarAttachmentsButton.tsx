@@ -7,6 +7,8 @@ import {
 import { useShallow } from 'zustand/shallow'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { transitions } from '../theme-tokens'
 import { usePopoverLayer } from './PopoverLayer'
 import { PlanViewer } from './PlanViewer'
 import { ImageViewer } from './ImageViewer'
@@ -44,6 +46,38 @@ function fileIcon(name: string, size: number) {
   if (CODE_EXTS.has(ext)) return <FileCode size={size} />
   if (TEXT_EXTS.has(ext)) return <FileText size={size} />
   return <File size={size} />
+}
+
+/** One clickable row in the attachments popover (plan / file / resource).
+ * A separate component so each row owns its own useInteractiveState hook
+ * (rules-of-hooks: no hooks inside the section map loops). `hoverBg` keeps
+ * each section's tint (plans green, files surface, resources purple-neutral);
+ * pressed uses the standard surfacePressed layer. */
+function AttachmentRow({ colors, hoverBg, color, onClick, children }: {
+  colors: ReturnType<typeof useColors>
+  hoverBg: string
+  color: string
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  const { hover, pressed, handlers } = useInteractiveState()
+  return (
+    <button
+      onClick={onClick}
+      {...handlers}
+      className="flex items-center gap-2 w-full text-left ion-focusable"
+      style={{
+        padding: '4px 12px',
+        fontSize: 11,
+        color,
+        cursor: 'pointer',
+        background: pressed ? colors.surfacePressed : hover ? hoverBg : 'transparent',
+        border: 'none',
+      }}
+    >
+      {children}
+    </button>
+  )
 }
 
 /* ─── Component ─── */
@@ -97,6 +131,7 @@ export function selectAttachmentsData(s: {
 export function AttachmentsButton() {
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
+  const triggerState = useInteractiveState()
   const btnRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
 
@@ -223,8 +258,14 @@ export function AttachmentsButton() {
       <button
         ref={btnRef}
         onClick={toggle}
-        className="flex items-center rounded-full px-1 py-0.5 transition-colors flex-shrink-0"
-        style={{ color: open ? colors.accent : colors.textTertiary, cursor: 'pointer', position: 'relative' }}
+        {...triggerState.handlers}
+        className="flex items-center rounded-full px-1 py-0.5 flex-shrink-0 ion-focusable"
+        style={{
+          color: open ? colors.accent : triggerState.hover ? colors.textPrimary : colors.textTertiary,
+          background: interactiveBg(colors, triggerState),
+          cursor: 'pointer',
+          position: 'relative',
+        }}
         title={count > 0 ? `${count} attachment${count > 1 ? 's' : ''}` : 'No attachments'}
       >
         <Paperclip size={11} />
@@ -240,7 +281,7 @@ export function AttachmentsButton() {
               height: 12,
               borderRadius: 6,
               background: colors.accent,
-              color: '#fff',
+              color: colors.textOnAccent,
               textAlign: 'center',
               padding: '0 2px',
               fontWeight: 600,
@@ -294,13 +335,13 @@ export function AttachmentsButton() {
                   <button
                     type="button"
                     onClick={() => toggleSection('plans')}
-                    className="flex items-center gap-1 w-full"
+                    className="flex items-center gap-1 w-full ion-focusable"
                     style={{
                       fontSize: 9,
                       fontWeight: 600,
                       textTransform: 'uppercase',
                       letterSpacing: '0.05em',
-                      color: 'rgba(34, 197, 94, 0.7)',
+                      color: colors.successFg,
                       padding: '4px 12px 2px',
                       background: 'transparent',
                       border: 'none',
@@ -312,35 +353,23 @@ export function AttachmentsButton() {
                       weight="bold"
                       style={{
                         flexShrink: 0,
-                        transition: 'transform 0.15s',
+                        transition: `transform ${transitions.fast}`,
                         transform: collapsedSections.has('plans') ? 'rotate(0deg)' : 'rotate(90deg)',
                       }}
                     />
                     <span>Plans ({plans.length})</span>
                   </button>
                   {!collapsedSections.has('plans') && plans.map((a) => (
-                    <button
+                    <AttachmentRow
                       key={a.path}
+                      colors={colors}
+                      hoverBg={colors.permissionAllowBg}
+                      color={colors.successFg}
                       onClick={() => { void handlePlanClick(a.path).catch((err) => rError('attachments', 'open plan failed', { path: a.path, error: String(err) })) }}
-                      className="flex items-center gap-2 w-full text-left transition-colors"
-                      style={{
-                        padding: '4px 12px',
-                        fontSize: 11,
-                        color: 'rgba(34, 197, 94, 0.85)',
-                        cursor: 'pointer',
-                        background: 'transparent',
-                        border: 'none',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = 'rgba(34, 197, 94, 0.08)'
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'transparent'
-                      }}
                     >
                       <ListChecks size={13} style={{ flexShrink: 0 }} />
                       <span className="truncate">{a.name}</span>
-                    </button>
+                    </AttachmentRow>
                   ))}
                 </div>
               )}
@@ -362,7 +391,7 @@ export function AttachmentsButton() {
                   <button
                     type="button"
                     onClick={() => toggleSection('files')}
-                    className="flex items-center gap-1 w-full"
+                    className="flex items-center gap-1 w-full ion-focusable"
                     style={{
                       fontSize: 9,
                       fontWeight: 600,
@@ -380,37 +409,25 @@ export function AttachmentsButton() {
                       weight="bold"
                       style={{
                         flexShrink: 0,
-                        transition: 'transform 0.15s',
+                        transition: `transform ${transitions.fast}`,
                         transform: collapsedSections.has('files') ? 'rotate(0deg)' : 'rotate(90deg)',
                       }}
                     />
                     <span>Files ({files.length})</span>
                   </button>
                   {!collapsedSections.has('files') && files.map((a) => (
-                    <button
+                    <AttachmentRow
                       key={a.path}
+                      colors={colors}
+                      hoverBg={colors.surfacePrimary}
+                      color={colors.textSecondary}
                       onClick={() => { void handleFileClick(a).catch((err) => rError('attachments', 'open file failed', { path: a.path, error: String(err) })) }}
-                      className="flex items-center gap-2 w-full text-left transition-colors"
-                      style={{
-                        padding: '4px 12px',
-                        fontSize: 11,
-                        color: colors.textSecondary,
-                        cursor: 'pointer',
-                        background: 'transparent',
-                        border: 'none',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = colors.surfacePrimary
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = 'transparent'
-                      }}
                     >
                       <span style={{ flexShrink: 0, color: colors.textTertiary }}>
                         {fileIcon(a.name, 13)}
                       </span>
                       <span className="truncate">{a.name}</span>
-                    </button>
+                    </AttachmentRow>
                   ))}
                 </div>
               )}
@@ -432,13 +449,13 @@ export function AttachmentsButton() {
                   <button
                     type="button"
                     onClick={() => toggleSection('resources')}
-                    className="flex items-center gap-1 w-full"
+                    className="flex items-center gap-1 w-full ion-focusable"
                     style={{
                       fontSize: 9,
                       fontWeight: 600,
                       textTransform: 'uppercase',
                       letterSpacing: '0.05em',
-                      color: 'rgba(139, 92, 246, 0.7)',
+                      color: colors.iconPurple,
                       padding: '4px 12px 2px',
                       background: 'transparent',
                       border: 'none',
@@ -450,7 +467,7 @@ export function AttachmentsButton() {
                       weight="bold"
                       style={{
                         flexShrink: 0,
-                        transition: 'transform 0.15s',
+                        transition: `transform ${transitions.fast}`,
                         transform: collapsedSections.has('resources') ? 'rotate(0deg)' : 'rotate(90deg)',
                       }}
                     />
@@ -459,26 +476,14 @@ export function AttachmentsButton() {
                   {!collapsedSections.has('resources') && convResources.map((item) => {
                     const title = item.title || item.kind || 'Resource'
                     return (
-                      <button
+                      <AttachmentRow
                         key={item.id}
+                        colors={colors}
+                        hoverBg={colors.surfaceHover}
+                        color={colors.iconPurple}
                         onClick={() => {
                           setViewerData({ title, content: item.content })
                           setOpen(false)
-                        }}
-                        className="flex items-center gap-2 w-full text-left transition-colors"
-                        style={{
-                          padding: '4px 12px',
-                          fontSize: 11,
-                          color: 'rgba(139, 92, 246, 0.85)',
-                          cursor: 'pointer',
-                          background: 'transparent',
-                          border: 'none',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'rgba(139, 92, 246, 0.08)'
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = 'transparent'
                         }}
                       >
                         <BookOpen size={13} style={{ flexShrink: 0 }} />
@@ -487,7 +492,7 @@ export function AttachmentsButton() {
                           style={{
                             fontSize: 9,
                             flexShrink: 0,
-                            color: 'rgba(139, 92, 246, 0.5)',
+                            color: colors.iconPurple,
                             fontWeight: 600,
                             textTransform: 'uppercase',
                             letterSpacing: '0.04em',
@@ -495,7 +500,7 @@ export function AttachmentsButton() {
                         >
                           {item.kind}
                         </span>
-                      </button>
+                      </AttachmentRow>
                     )
                   })}
                 </div>

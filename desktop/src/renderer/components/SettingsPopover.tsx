@@ -7,6 +7,8 @@ import { usePreferencesStore } from '../preferences'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { transitions } from '../theme-tokens'
 import { activeInstance } from '../stores/conversation-instance'
 import { tabHasExtensions, computeSessionIdCopyPayload } from '../../shared/tab-predicates'
 import { rDebug, rError } from '../rendererLogger'
@@ -22,25 +24,74 @@ function RowToggle({
   colors: ReturnType<typeof useColors>
   label: string
 }) {
+  const { hover, pressed, handlers } = useInteractiveState()
+  // Checked track darkens through the accent ladder; unchecked track
+  // follows the standard surface cascade over its surfaceSecondary base.
+  const track = checked
+    ? (pressed ? colors.accentPressed : hover ? colors.accentHover : colors.accent)
+    : interactiveBg(colors, { hover, pressed }, colors.surfaceSecondary)
   return (
     <button
       type="button"
       aria-label={label}
       aria-pressed={checked}
       onClick={() => onChange(!checked)}
-      className="relative w-9 h-5 rounded-full transition-colors"
+      {...handlers}
+      className="ion-focusable relative w-9 h-5 rounded-full"
       style={{
-        background: checked ? colors.accent : colors.surfaceSecondary,
+        background: track,
         border: `1px solid ${checked ? colors.accent : colors.containerBorder}`,
+        transition: `background ${transitions.base}, border-color ${transitions.base}`,
       }}
     >
       <span
         className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full transition-all"
         style={{
           left: checked ? 18 : 2,
-          background: '#fff',
+          background: colors.textOnAccent,
         }}
       />
+    </button>
+  )
+}
+
+/** One popover action row (icon + label). Extracted so `useInteractiveState`
+ *  runs per row; disabled rows get the standard treatment (opacity 0.45,
+ *  default cursor, inert hover/pressed handlers). */
+function PopoverActionRow({ icon, label, onClick, disabled = false, title }: {
+  icon: React.ReactNode
+  label: string
+  onClick: () => void
+  disabled?: boolean
+  title?: string
+}) {
+  const colors = useColors()
+  const { hover, pressed, handlers } = useInteractiveState()
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      onMouseEnter={disabled ? undefined : handlers.onMouseEnter}
+      onMouseLeave={handlers.onMouseLeave}
+      onMouseDown={disabled ? undefined : handlers.onMouseDown}
+      onMouseUp={disabled ? undefined : handlers.onMouseUp}
+      onBlur={handlers.onBlur}
+      className="ion-focusable flex items-center gap-2 w-full"
+      style={{
+        background: disabled ? 'transparent' : interactiveBg(colors, { hover, pressed }),
+        border: 'none',
+        cursor: disabled ? 'default' : 'pointer',
+        padding: '2px 0',
+        borderRadius: 4,
+        opacity: disabled ? 0.45 : 1,
+        transition: `background ${transitions.base}`,
+      }}
+    >
+      {icon}
+      <span className="text-[12px] font-medium" style={{ color: colors.textPrimary }}>
+        {label}
+      </span>
     </button>
   )
 }
@@ -57,6 +108,7 @@ function formatTranscript(messages: Array<{ role: string; content: string }>): s
 /* ─── Settings popover ─── */
 
 export function SettingsPopover() {
+  const triggerIx = useInteractiveState()
   const showTodoList = usePreferencesStore((s) => s.showTodoList)
   const setShowTodoList = usePreferencesStore((s) => s.setShowTodoList)
   const expandedUI = usePreferencesStore((s) => s.expandedUI)
@@ -252,8 +304,13 @@ export function SettingsPopover() {
       <button
         ref={triggerRef}
         onClick={handleToggle}
-        className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full transition-colors"
-        style={{ color: colors.textTertiary }}
+        {...triggerIx.handlers}
+        className="ion-focusable flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full"
+        style={{
+          color: triggerIx.hover ? colors.textSecondary : colors.textTertiary,
+          background: interactiveBg(colors, triggerIx),
+          transition: `background ${transitions.base}, color ${transitions.base}`,
+        }}
         title="Settings"
       >
         <DotsThree size={16} weight="bold" />
@@ -305,103 +362,51 @@ export function SettingsPopover() {
             <div style={{ height: 1, background: colors.popoverBorder }} />
 
             {/* Copy transcript */}
-            <button
+            <PopoverActionRow
+              icon={<ClipboardText size={14} style={{ color: colors.textTertiary }} />}
+              label="Copy transcript"
               onClick={handleCopyTranscript}
-              className="flex items-center gap-2 w-full"
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '2px 0',
-              }}
-            >
-              <ClipboardText size={14} style={{ color: colors.textTertiary }} />
-              <span className="text-[12px] font-medium" style={{ color: colors.textPrimary }}>
-                Copy transcript
-              </span>
-            </button>
+            />
 
             <div style={{ height: 1, background: colors.popoverBorder }} />
 
             {/* Copy log path */}
-            <button
+            <PopoverActionRow
+              icon={<Bug size={14} style={{ color: colors.textTertiary }} />}
+              label="Copy log path"
               onClick={() => { void handleCopyDebugInfo().catch((err) => rError('settings-popover', 'copy debug info failed', { error: String(err) })) }}
               disabled={!hasDebugInfo}
-              className="flex items-center gap-2 w-full"
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: hasDebugInfo ? 'pointer' : 'default',
-                padding: '2px 0',
-                opacity: hasDebugInfo ? 1 : 0.4,
-              }}
               title="Copies every conversation file the engine has written for this tab. Multiple paths are newline-separated."
-            >
-              <Bug size={14} style={{ color: colors.textTertiary }} />
-              <span className="text-[12px] font-medium" style={{ color: colors.textPrimary }}>
-                Copy log path
-              </span>
-            </button>
+            />
 
             {/* Copy session id */}
-            <button
+            <PopoverActionRow
+              icon={<Hash size={14} style={{ color: colors.textTertiary }} />}
+              label="Copy session id"
               onClick={handleCopySessionId}
               disabled={!hasDebugInfo}
-              className="flex items-center gap-2 w-full"
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: hasDebugInfo ? 'pointer' : 'default',
-                padding: '2px 0',
-                opacity: hasDebugInfo ? 1 : 0.4,
-              }}
               title="Copies the session id(s) for this conversation. Multiple ids are newline-separated."
-            >
-              <Hash size={14} style={{ color: colors.textTertiary }} />
-              <span className="text-[12px] font-medium" style={{ color: colors.textPrimary }}>
-                Copy session id
-              </span>
-            </button>
+            />
 
             {/* Reveal conversations folder in Finder */}
-            <button
+            <PopoverActionRow
+              icon={<FolderOpen size={14} style={{ color: colors.textTertiary }} />}
+              label="Reveal conversations folder"
               onClick={handleRevealConversationsFolder}
-              className="flex items-center gap-2 w-full"
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '2px 0',
-              }}
               title="Open ~/.ion/conversations in Finder."
-            >
-              <FolderOpen size={14} style={{ color: colors.textTertiary }} />
-              <span className="text-[12px] font-medium" style={{ color: colors.textPrimary }}>
-                Reveal conversations folder
-              </span>
-            </button>
+            />
 
             <div style={{ height: 1, background: colors.popoverBorder }} />
 
             {/* All settings */}
-            <button
+            <PopoverActionRow
+              icon={<Gear size={14} style={{ color: colors.textTertiary }} />}
+              label="Settings..."
               onClick={() => {
                 setOpen(false)
                 useSessionStore.getState().openSettings()
               }}
-              className="flex items-center gap-2 w-full"
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '2px 0',
-              }}
-            >
-              <Gear size={14} style={{ color: colors.textTertiary }} />
-              <span className="text-[12px] font-medium" style={{ color: colors.textPrimary }}>
-                Settings...
-              </span>
-            </button>
+            />
           </div>
         </motion.div>,
         popoverLayer,

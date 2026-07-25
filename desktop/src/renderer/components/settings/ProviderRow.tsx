@@ -30,6 +30,12 @@ export function ProviderRow({ provider, colors, onCredentialSaved }: {
   const isOAuthProvider = OAUTH_PROVIDERS.has(provider.id)
   const isOAuthSession = isOAuthProvider && provider.hasAuth && provider.authSource === 'oauth'
   const canManageKey = isApiKeyProvider && provider.hasAuth && provider.authSource !== undefined && ['filestore', 'programmatic', 'keychain', 'credentials.json'].includes(provider.authSource)
+  // CLI-subscription auth (claude-code / codex / grok / cursor). An API key
+  // can be ADDED on top of it: the engine's credential-derived routing then
+  // prefers the key (api-key-wins), and removing the key falls back to the
+  // CLI subscription. Without this the key input is unreachable while a CLI
+  // session is active.
+  const isCliAuthed = isApiKeyProvider && provider.hasAuth && provider.authSource !== undefined && ['claude-code', 'codex', 'grok', 'cursor'].includes(provider.authSource)
   const hasCustomGateway = !!provider.baseURL
 
   const handleSave = useCallback(async () => {
@@ -86,8 +92,11 @@ export function ProviderRow({ provider, colors, onCredentialSaved }: {
   }, [provider.id, onCredentialSaved])
 
   const badgeLabel = providerAuthBadge(provider)
-  const badgeColor = provider.hasAuth ? '#22c55e' : colors.textTertiary
-  const badgeBg = provider.hasAuth ? 'rgba(34,197,94,0.1)' : `${colors.textTertiary}15`
+  const badgeColor = provider.hasAuth ? colors.successFg : colors.textTertiary
+  const badgeBg = provider.hasAuth ? colors.permissionAllowBg : `${colors.textTertiary}15`
+  // The key input shows when: no auth at all, explicitly editing an existing
+  // key, or a CLI subscription is active and the user opts to add a key on
+  // top (isCliAuthed + editing via the "Add API key" link below).
   const showApiKeyInput = isApiKeyProvider && (!provider.hasAuth || editing)
   // A stored OpenAI key that returns no models is the poisoned-credential case
   // (a ChatGPT token stored as an API key). Under credential-derived routing
@@ -114,6 +123,11 @@ export function ProviderRow({ provider, colors, onCredentialSaved }: {
             </button>
           </>
         )}
+        {isCliAuthed && !editing && (
+          <button onClick={() => setEditing(true)} style={linkBtn(colors)} title="Add an API key on top of the CLI sign-in. The engine prefers the key for API routing; removing it reverts to the CLI subscription.">
+            Add API key
+          </button>
+        )}
         {provider.hasAuth && (
           <button onClick={() => { void handleRefreshModels().catch((err) => rWarn('settings', 'refresh models failed', { error: String(err) })) }} disabled={refreshing} style={{ ...linkBtn(colors), opacity: refreshing ? 0.5 : 1 }} title="Re-fetch available models">
             {refreshing ? '…' : '↻ Models'}
@@ -130,7 +144,7 @@ export function ProviderRow({ provider, colors, onCredentialSaved }: {
       <ProviderCliAuth provider={provider} colors={colors} />
 
       {showPoisonedHint && (
-        <div style={{ marginTop: 4, fontSize: 11, color: '#f59e0b' }}>
+        <div style={{ marginTop: 4, fontSize: 11, color: colors.warningFg }}>
           This stored OpenAI credential isn’t returning models. Remove it and sign in with ChatGPT below instead.
         </div>
       )}
@@ -150,7 +164,7 @@ export function ProviderRow({ provider, colors, onCredentialSaved }: {
         </div>
       )}
 
-      {error && <div style={{ marginTop: 4, fontSize: 11, color: '#ef4444' }}>{error}</div>}
+      {error && <div style={{ marginTop: 4, fontSize: 11, color: colors.dangerFg }}>{error}</div>}
     </div>
   )
 }
@@ -170,7 +184,7 @@ function ConfigDetails({ provider, colors, hasCustomGateway }: { provider: Provi
         </span>
       ))}
       {hasCustomGateway && (
-        <span style={{ fontSize: 10, color: '#f59e0b', fontWeight: 500 }} title="This provider is configured with a custom gateway — not the public cloud API">
+        <span style={{ fontSize: 10, color: colors.warningFg, fontWeight: 500 }} title="This provider is configured with a custom gateway — not the public cloud API">
           custom gateway
         </span>
       )}

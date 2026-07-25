@@ -180,7 +180,7 @@ export function WorkspaceStatusIndicator() {
         borderRadius: 8,
         padding: '10px 14px',
         minWidth: 160,
-        boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+        boxShadow: colors.popoverShadow,
         fontSize: 12,
         color: colors.textSecondary,
       }}
@@ -200,7 +200,7 @@ export function WorkspaceStatusIndicator() {
       {counts.waitingTabs.map((t) => (
         <WorkspaceTabRow key={t.id} tab={t} onNavigate={handleNavigate} colors={colors} />
       ))}
-      <WorkspaceCountRow label="Question" count={counts.questions} color={colors.infoText} colors={colors} />
+      <WorkspaceCountRow label="Question" count={counts.questions} color={colors.statusQuestion} colors={colors} />
       <WorkspaceCountRow label="Awaiting plan" count={counts.planReady} color={colors.statusComplete} colors={colors} />
       <WorkspaceCountRow label="Bash" count={counts.bash} color={colors.statusBash} colors={colors} />
       <WorkspaceCountRow label="Unread" count={counts.unread} color={colors.statusComplete} colors={colors} />
@@ -287,39 +287,41 @@ interface WorkspaceTabRowProps {
 function WorkspaceTabRow({ tab, onNavigate, colors }: WorkspaceTabRowProps) {
   const [hover, setHover] = useState(false)
   return (
-    <Tooltip text={tab.title} position="below">
-      <button
-        onClick={() => onNavigate(tab.id)}
-        onMouseEnter={() => setHover(true)}
-        onMouseLeave={() => setHover(false)}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          width: '100%',
-          gap: 6,
-          marginLeft: 14,
-          marginBottom: 3,
-          padding: '2px 6px',
-          border: 'none',
-          borderRadius: 4,
-          cursor: 'pointer',
-          background: hover ? colors.surfaceHover : 'transparent',
-          color: hover ? colors.textPrimary : colors.textSecondary,
-          fontSize: 12,
-          textAlign: 'left',
-        }}
-      >
-        <span
+    <div style={{ display: 'block', width: '100%' }}>
+      <Tooltip text={tab.title} position="below">
+        <button
+          onClick={() => onNavigate(tab.id)}
+          onMouseEnter={() => setHover(true)}
+          onMouseLeave={() => setHover(false)}
           style={{
-            flex: 1,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
+            display: 'flex',
+            alignItems: 'center',
+            width: '100%',
+            gap: 6,
+            marginLeft: 14,
+            marginBottom: 3,
+            padding: '2px 6px',
+            border: 'none',
+            borderRadius: 4,
+            cursor: 'pointer',
+            background: hover ? colors.surfaceHover : 'transparent',
+            color: hover ? colors.textPrimary : colors.textSecondary,
+            fontSize: 12,
+            textAlign: 'left',
           }}
         >
-          {tab.title}
-        </span>
-      </button>
-    </Tooltip>
+          <span
+            style={{
+              flex: 1,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {tab.title}
+          </span>
+        </button>
+      </Tooltip>
+    </div>
   )
 }

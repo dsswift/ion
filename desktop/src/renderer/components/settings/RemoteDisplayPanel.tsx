@@ -233,7 +233,7 @@ export function RemoteDisplayPanel() {
             border: 'none',
             borderRadius: 8,
             padding: '6px 16px',
-            color: '#fff',
+            color: colors.textOnAccent,
             fontSize: 13,
             fontWeight: 500,
             cursor: saving ? 'wait' : 'pointer',

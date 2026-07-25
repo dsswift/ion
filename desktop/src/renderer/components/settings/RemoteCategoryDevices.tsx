@@ -121,7 +121,7 @@ export function RemoteCategoryDevices({
             background: colors.accent,
             border: 'none',
             borderRadius: 8,
-            color: '#fff',
+            color: colors.textOnAccent,
             fontSize: 13,
             fontWeight: 500,
             cursor: 'pointer',

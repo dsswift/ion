@@ -96,7 +96,7 @@ vi.mock('../../stores/sessionStore', () => ({
   ),
 }))
 
-vi.mock('../TabStripStatusDot', () => ({ GroupStatusDot: () => null }))
+vi.mock('../TabStripStatusDot', () => ({ GroupStatusDot: () => null, GroupStatusDotStack: () => null }))
 vi.mock('../TabStripInlineRenameInput', () => ({ InlineRenameInput: () => null }))
 vi.mock('../TabStripPillColorPicker', () => ({ PillColorPicker: () => null }))
 vi.mock('../TabStripTabContextMenu', () => ({ TabContextMenu: () => null }))

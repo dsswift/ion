@@ -6,10 +6,41 @@ import { CaretDown, Check, ShieldCheck, ListChecks } from '@phosphor-icons/react
 import { useSessionStore } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { effectivePermissionMode } from '../stores/conversation-instance'
 import { tabHasExtensions } from '../../shared/tab-predicates'
 
 /* ─── Permission Mode Picker ─── */
+
+/** One row in the Plan/Auto popover. A separate component so each row owns
+ * its own useInteractiveState hook (rules-of-hooks: one hook per element). */
+function ModeOptionRow({ colors, selected, icon, label, onSelect }: {
+  colors: ReturnType<typeof useColors>
+  selected: boolean
+  icon: React.ReactNode
+  label: string
+  onSelect: () => void
+}) {
+  const { hover, pressed, handlers } = useInteractiveState()
+  return (
+    <button
+      onClick={onSelect}
+      {...handlers}
+      className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] ion-focusable"
+      style={{
+        color: selected ? colors.textPrimary : colors.textSecondary,
+        fontWeight: selected ? 500 : 400,
+        background: interactiveBg(colors, { hover, pressed, selected }),
+      }}
+    >
+      <span className="flex items-center gap-1.5">
+        {icon}
+        {label}
+      </span>
+      {selected && <Check size={12} style={{ color: colors.accent }} />}
+    </button>
+  )
+}
 
 /**
  * Permission mode picker rendered in the unified `StatusBar` left
@@ -43,6 +74,10 @@ export function PermissionModePicker() {
 
   const [open, setOpen] = useState(false)
   const [showModeConfirm, setShowModeConfirm] = useState(false)
+  // Pointer states: trigger pill + the two confirm-modal buttons.
+  const triggerState = useInteractiveState()
+  const cancelBtnState = useInteractiveState()
+  const confirmBtnState = useInteractiveState()
   const triggerRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
   // Keep the portaled popover inside the window (ATV top-anchored strip).
@@ -91,7 +126,7 @@ export function PermissionModePicker() {
     ? <ListChecks size={11} weight="bold" />
     : <ShieldCheck size={11} weight="fill" />
   const modeColor = permissionMode === 'plan'
-    ? '#2eb8a6'
+    ? colors.modeAcceptEdits
     : colors.textTertiary
 
   return (
@@ -99,9 +134,11 @@ export function PermissionModePicker() {
       <button
         ref={triggerRef}
         onClick={handleToggle}
-        className="flex items-center gap-0.5 text-[10px] rounded-full px-1.5 py-0.5 transition-colors"
+        {...triggerState.handlers}
+        className="flex items-center gap-0.5 text-[10px] rounded-full px-1.5 py-0.5 ion-focusable"
         style={{
           color: modeColor,
+          background: interactiveBg(colors, triggerState),
           cursor: 'pointer',
         }}
         title={permissionModeGoverned ? 'Permission mode — extensions control this; click to override' : 'Permission mode (this tab)'}
@@ -138,37 +175,23 @@ export function PermissionModePicker() {
           }}
         >
           <div className="py-1">
-            <button
-              onClick={() => { setPermissionMode('plan', 'ui_dropdown'); setOpen(false) }}
-              className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] transition-colors"
-              style={{
-                color: permissionMode === 'plan' ? colors.textPrimary : colors.textSecondary,
-                fontWeight: permissionMode === 'plan' ? 600 : 400,
-              }}
-            >
-              <span className="flex items-center gap-1.5">
-                <ListChecks size={12} weight="bold" />
-                Plan
-              </span>
-              {permissionMode === 'plan' && <Check size={12} style={{ color: colors.accent }} />}
-            </button>
+            <ModeOptionRow
+              colors={colors}
+              selected={permissionMode === 'plan'}
+              icon={<ListChecks size={12} weight="bold" />}
+              label="Plan"
+              onSelect={() => { setPermissionMode('plan', 'ui_dropdown'); setOpen(false) }}
+            />
 
             <div className="mx-2 my-0.5" style={{ height: 1, background: colors.popoverBorder }} />
 
-            <button
-              onClick={() => { setPermissionMode('auto', 'ui_dropdown'); setOpen(false) }}
-              className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] transition-colors"
-              style={{
-                color: permissionMode === 'auto' ? colors.textPrimary : colors.textSecondary,
-                fontWeight: permissionMode === 'auto' ? 600 : 400,
-              }}
-            >
-              <span className="flex items-center gap-1.5">
-                <ShieldCheck size={12} weight="fill" />
-                Auto
-              </span>
-              {permissionMode === 'auto' && <Check size={12} style={{ color: colors.accent }} />}
-            </button>
+            <ModeOptionRow
+              colors={colors}
+              selected={permissionMode === 'auto'}
+              icon={<ShieldCheck size={12} weight="fill" />}
+              label="Auto"
+              onSelect={() => { setPermissionMode('auto', 'ui_dropdown'); setOpen(false) }}
+            />
           </div>
         </motion.div>,
         popoverLayer,
@@ -183,7 +206,7 @@ export function PermissionModePicker() {
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,0.4)',
+            background: colors.scrim,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -216,8 +239,10 @@ export function PermissionModePicker() {
               <button
                 data-ion-ui
                 onClick={() => setShowModeConfirm(false)}
+                {...cancelBtnState.handlers}
+                className="ion-focusable"
                 style={{
-                  background: 'none',
+                  background: interactiveBg(colors, cancelBtnState),
                   border: `1px solid ${colors.containerBorder}`,
                   borderRadius: 6,
                   padding: '5px 14px',
@@ -234,14 +259,23 @@ export function PermissionModePicker() {
                   setPermissionMode(permissionMode === 'plan' ? 'auto' : 'plan', 'ui_dropdown')
                   setShowModeConfirm(false)
                 }}
+                {...confirmBtnState.handlers}
+                className="ion-focusable"
                 style={{
-                  background: colors.accent,
+                  // Accent CTA: accentHover / accentPressed are the accent
+                  // button states from the style guide.
+                  background: confirmBtnState.pressed
+                    ? colors.accentPressed
+                    : confirmBtnState.hover
+                      ? colors.accentHover
+                      : colors.accent,
                   border: 'none',
                   borderRadius: 6,
                   padding: '5px 14px',
                   fontSize: 12,
-                  color: '#fff',
+                  color: colors.textOnAccent,
                   fontWeight: 600,
+                  cursor: 'pointer',
                 }}
               >
                 Switch to {permissionMode === 'plan' ? 'Auto' : 'Plan'}

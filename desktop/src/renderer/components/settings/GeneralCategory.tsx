@@ -129,7 +129,7 @@ export function GeneralCategory() {
                 flex: 1,
                 padding: '7px 0',
                 background: defaultPermissionMode === mode ? colors.accent : 'transparent',
-                color: defaultPermissionMode === mode ? '#fff' : colors.textSecondary,
+                color: defaultPermissionMode === mode ? colors.textOnAccent : colors.textSecondary,
                 border: 'none',
                 cursor: 'pointer',
                 fontSize: 13,

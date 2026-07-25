@@ -24,9 +24,12 @@
 // component is purely presentational; switching sub-tabs unmounts these toasts
 // and the per-toast timers restart on remount (acceptable for ephemeral signals).
 
-import React, { useEffect } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { X } from '@phosphor-icons/react'
+import { useColors } from '../theme'
+import { useInteractiveState } from '../hooks/useInteractiveState'
+import { transitions, type ColorPalette } from '../theme-tokens'
 
 /** Shape of one entry in the store's engineNotifications lists.
  *  Mirrors session-store-types.ts → State.engineNotifications. */
@@ -53,23 +56,40 @@ const AUTO_DISMISS_MS = 5000
  *  oldest three (`slice(0, 3)`), which hid new signals behind stale ones. */
 const MAX_VISIBLE = 4
 
-/** Level → background color. Carried over verbatim from EngineView. */
-function toastBackground(level: string): string {
-  if (level === 'error') return 'rgba(200,50,50,0.9)'
-  if (level === 'warning') return 'rgba(180,140,30,0.9)'
-  return 'rgba(60,60,55,0.95)'
+/** Level → background color, resolved from the active theme palette. */
+function toastBackground(level: string, colors: ColorPalette): string {
+  if (level === 'error') return colors.stopBg
+  if (level === 'warning') return colors.statusWarning
+  return colors.surfaceSecondary
 }
 
-/** One toast row: message text + X button + own auto-dismiss timer. */
+/** One toast row: message text + X button + own auto-dismiss timer.
+ *  Hovering the toast pauses the auto-dismiss countdown (the remaining
+ *  window is preserved and resumes on mouse-leave), so a toast being
+ *  read never vanishes mid-read. */
 function Toast({ notif, onDismiss }: { notif: EngineNotification; onDismiss: (id: string) => void }) {
+  const colors = useColors()
+  const closeIx = useInteractiveState()
+  const [hovered, setHovered] = useState(false)
+  // Milliseconds left in this toast's auto-dismiss window. Decremented on
+  // every effect cleanup (hover pause, dep change) so pauses accumulate
+  // correctly instead of restarting the full window.
+  const remainingRef = useRef(AUTO_DISMISS_MS)
   // Per-toast auto-dismiss. The timer is keyed to THIS notification's id,
   // so it removes exactly this toast regardless of siblings being added
   // or removed in the meantime. Cleared on unmount (tab switch, manual
-  // dismiss) — unmounting and remounting restarts the 5s window.
+  // dismiss) — unmounting and remounting restarts the 5s window. While
+  // hovered no timer is scheduled; the cleanup records how much of the
+  // window was consumed so the countdown resumes where it left off.
   useEffect(() => {
-    const timer = setTimeout(() => onDismiss(notif.id), AUTO_DISMISS_MS)
-    return () => clearTimeout(timer)
-  }, [notif.id, onDismiss])
+    if (hovered) return
+    const started = Date.now()
+    const timer = setTimeout(() => onDismiss(notif.id), remainingRef.current)
+    return () => {
+      clearTimeout(timer)
+      remainingRef.current = Math.max(0, remainingRef.current - (Date.now() - started))
+    }
+  }, [hovered, notif.id, onDismiss])
 
   return (
     <motion.div
@@ -77,6 +97,8 @@ function Toast({ notif, onDismiss }: { notif: EngineNotification; onDismiss: (id
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex',
         alignItems: 'flex-start',
@@ -85,9 +107,9 @@ function Toast({ notif, onDismiss }: { notif: EngineNotification; onDismiss: (id
         padding: '8px 12px',
         borderRadius: 8,
         fontSize: 12,
-        background: toastBackground(notif.level),
-        color: '#fff',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+        background: toastBackground(notif.level, colors),
+        color: colors.textOnAccent,
+        boxShadow: colors.cardShadow,
         // Toasts overlay the scrollable conversation area; without this
         // the column container's pointerEvents: 'none' (which lets clicks
         // pass through the empty anchor region) would also swallow the
@@ -101,20 +123,24 @@ function Toast({ notif, onDismiss }: { notif: EngineNotification; onDismiss: (id
       <button
         onClick={() => onDismiss(notif.id)}
         title="Dismiss"
+        {...closeIx.handlers}
+        className="ion-focusable"
         style={{
           flexShrink: 0,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: 'transparent',
+          // Toasts have solid semantic backgrounds, so pressed layers the
+          // white-alpha surfacePressed token on top of the toast fill.
+          background: closeIx.pressed ? colors.surfacePressed : 'transparent',
           border: 'none',
           padding: 2,
           marginTop: 1,
+          borderRadius: 4,
           cursor: 'pointer',
-          color: 'rgba(255,255,255,0.7)',
+          color: closeIx.hover ? colors.textOnAccent : colors.textOnAccentMuted,
+          transition: `background ${transitions.base}, color ${transitions.base}`,
         }}
-        onMouseEnter={(e) => { e.currentTarget.style.color = '#fff' }}
-        onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(255,255,255,0.7)' }}
       >
         <X size={12} weight="bold" />
       </button>

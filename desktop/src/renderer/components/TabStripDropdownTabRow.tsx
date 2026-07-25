@@ -5,6 +5,8 @@ import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import type { TabState } from '../../shared/types'
 import { PILL_ICON_MAP, getTabStatusColor, getWaitingState, abbreviateProfileName } from './TabStripShared'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { transitions } from '../theme-tokens'
 import { InlineRenameInput } from './TabStripInlineRenameInput'
 
 const DROPDOWN_DRAG_THRESHOLD = 8
@@ -48,6 +50,9 @@ export function DropdownTabRow({
 }: DropdownTabRowProps) {
   const dragControls = useDragControls()
   const isDragging = useRef(false)
+  // Row pointer state — this component is already one-instance-per-row, so
+  // the hook is legal here (no hooks in loops in the parent).
+  const { hover, pressed, handlers } = useInteractiveState()
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     if (e.button !== 0) return
@@ -112,12 +117,17 @@ export function DropdownTabRow({
       style={{
         '--border-waiting': waitingBorder ?? 'transparent',
         '--border-default': defaultBorder,
+        // Standard row cascade (pressed > hover > selected > base) via
+        // interactiveBg; a user pill color keeps the runtime `${pillColor}NN`
+        // alpha-concat pattern, deepening 10 → 18 on hover.
         background: tab.pillColor
-          ? `${tab.pillColor}${isActive ? '18' : '10'}`
-          : isActive ? colors.tabActive : 'transparent',
+          ? `${tab.pillColor}${isActive || hover ? '18' : '10'}`
+          : interactiveBg(colors, { hover, pressed, selected: isActive }),
         borderLeft: `2px solid ${waitingBorder ?? defaultBorder}`,
         fontSize: 12,
+        fontWeight: isActive ? 500 : 400,
         listStyle: 'none',
+        transition: `background ${transitions.base}`,
       } as React.CSSProperties}
       onClick={() => {
         if (isDragging.current) return
@@ -128,7 +138,11 @@ export function DropdownTabRow({
         }
       }}
       onPointerDown={onPointerDown}
+      {...handlers}
       onMouseDown={(e) => {
+        // Merge with the pointer-state hook: mark pressed, then run the
+        // existing middle-click close (semantics unchanged).
+        handlers.onMouseDown()
         if (e.button === 1) {
           e.preventDefault()
           if (!tab.worktree && !isRunning && !tab.bashExecuting) onCloseTab(tab.id)
@@ -140,8 +154,6 @@ export function DropdownTabRow({
         setDirMenuTabId(tab.id)
         setDirMenuAnchor({ x: e.clientX, y: e.clientY })
       }}
-      onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = tab.pillColor ? `${tab.pillColor}18` : colors.surfaceHover }}
-      onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = tab.pillColor ? `${tab.pillColor}10` : 'transparent' }}
     >
       <span
         className="flex-shrink-0 inline-flex items-center justify-center"
@@ -244,7 +256,7 @@ export function DropdownTabRow({
 
       <button
         onClick={(e) => { e.stopPropagation(); setEditingTabId(tab.id) }}
-        className="flex-shrink-0 rounded-full w-4 h-4 flex items-center justify-center"
+        className="flex-shrink-0 rounded-full w-4 h-4 flex items-center justify-center ion-focusable"
         style={{ opacity: 0.5, color: colors.textSecondary, background: 'none', border: 'none', cursor: 'pointer' }}
         onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1' }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.5' }}
@@ -256,14 +268,14 @@ export function DropdownTabRow({
         <div className="flex items-center gap-0.5 text-[9px] flex-shrink-0" onClick={(e) => e.stopPropagation()}>
           <button
             onClick={() => setConfirmingCloseId(null)}
-            className="px-1 rounded"
+            className="px-1 rounded ion-focusable"
             style={{ color: colors.textTertiary, background: 'none', border: 'none', cursor: 'pointer' }}
           >
             No
           </button>
           <button
             onClick={() => { onCloseTab(tab.id); setConfirmingCloseId(null) }}
-            className="px-1 rounded"
+            className="px-1 rounded ion-focusable"
             style={{ color: colors.accent, background: 'none', border: 'none', cursor: 'pointer' }}
           >
             Yes
@@ -272,7 +284,7 @@ export function DropdownTabRow({
       ) : !isRunning && (
         <button
           onClick={(e) => { e.stopPropagation(); setConfirmingCloseId(tab.id) }}
-          className="flex-shrink-0 rounded-full w-4 h-4 flex items-center justify-center"
+          className="flex-shrink-0 rounded-full w-4 h-4 flex items-center justify-center ion-focusable"
           style={{ opacity: 0.5, color: colors.textSecondary, background: 'none', border: 'none', cursor: 'pointer' }}
           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1' }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.5' }}

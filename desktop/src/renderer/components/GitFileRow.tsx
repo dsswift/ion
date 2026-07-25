@@ -1,14 +1,17 @@
 import React from 'react'
 import {
-  CaretDown, CaretRight, Plus, Minus, ArrowCounterClockwise,
+  Plus, Minus, ArrowCounterClockwise,
   Folder, FolderOpen, Warning, ArrowRight,
 } from '@phosphor-icons/react'
 import { useColors } from '../theme'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { transitions } from '../theme-tokens'
+import { Chevron } from './Chevron'
 import { useCmdHeld, useNavigableText } from '../hooks/useNavigableLinks'
 import { Tooltip } from './git/Tooltip'
 import { rError } from '../rendererLogger'
 import type { GitChangedFile } from '../../shared/types'
-import { STATUS_COLORS, STATUS_LETTERS, type FileTreeNode } from './GitPanelTypes'
+import { GIT_STATUS_COLOR_KEYS, STATUS_LETTERS, type FileTreeNode } from './GitPanelTypes'
 
 // ─── File Row ───
 
@@ -34,18 +37,23 @@ export function FileRow({
   const colors = useColors()
   const cmdHeld = useCmdHeld()
   const { onOpenFile } = useNavigableText()
+  const { hover, pressed, handlers } = useInteractiveState()
   const fileName = file.path.split('/').pop() || file.path
   const oldName = file.oldPath?.split('/').pop()
   const isConflict = file.status === 'conflict'
+  const statusKey = GIT_STATUS_COLOR_KEYS[file.status] as keyof typeof colors | undefined
+  const statusColor = statusKey ? colors[statusKey] : colors.textTertiary
 
   return (
     <div
       className="flex items-center group cursor-pointer"
+      {...handlers}
       style={{
         height: 24,
         paddingLeft: 8 + depth * 12,
         paddingRight: 4,
-        background: isSelected ? colors.surfaceHover : undefined,
+        background: interactiveBg(colors, { hover, pressed, selected: isSelected }),
+        transition: `background ${transitions.base}`,
       }}
       onClick={(e) => {
         if (e.metaKey) {
@@ -57,11 +65,11 @@ export function FileRow({
       }}
     >
       {isConflict ? (
-        <Warning size={11} weight="fill" color={STATUS_COLORS.conflict} style={{ width: 14, flexShrink: 0 }} />
+        <Warning size={11} weight="fill" color={colors[GIT_STATUS_COLOR_KEYS.conflict]} style={{ width: 14, flexShrink: 0 }} />
       ) : (
         <span
           className="text-[10px] font-mono flex-shrink-0"
-          style={{ color: STATUS_COLORS[file.status] || colors.textTertiary, width: 14, display: 'inline-block', textAlign: 'center' }}
+          style={{ color: statusColor, width: 14, display: 'inline-block', textAlign: 'center' }}
         >
           {STATUS_LETTERS[file.status] || '?'}
         </span>
@@ -81,9 +89,9 @@ export function FileRow({
             <ArrowRight size={9} color={colors.textMuted} />
           </>
         )}
-        <span className="truncate">{fileName}</span>
+        <span className="truncate" style={{ fontWeight: isSelected ? 500 : undefined }}>{fileName}</span>
         {isConflict && file.conflictKind && (
-          <span className="text-[8px] font-mono" style={{ color: STATUS_COLORS.conflict, marginLeft: 2 }}>{file.conflictKind}</span>
+          <span className="text-[8px] font-mono" style={{ color: colors[GIT_STATUS_COLOR_KEYS.conflict], marginLeft: 2 }}>{file.conflictKind}</span>
         )}
       </span>
       {/* Hover actions */}
@@ -92,7 +100,7 @@ export function FileRow({
           <Tooltip text="Unstage">
             <button
               onClick={(e) => { e.stopPropagation(); onUnstage(file.path) }}
-              className="px-1 py-1 rounded transition-colors"
+              className="px-1 py-1 rounded transition-colors ion-focusable"
               style={{ color: colors.textTertiary }}
             >
               <Minus size={12} />
@@ -102,7 +110,7 @@ export function FileRow({
           <Tooltip text="Stage">
             <button
               onClick={(e) => { e.stopPropagation(); onStage(file.path) }}
-              className="px-1 py-1 rounded transition-colors"
+              className="px-1 py-1 rounded transition-colors ion-focusable"
               style={{ color: colors.textTertiary }}
             >
               <Plus size={12} />
@@ -112,7 +120,7 @@ export function FileRow({
         <Tooltip text="Discard changes">
           <button
             onClick={(e) => { e.stopPropagation(); onDiscard(file.path) }}
-            className="px-1 py-1 rounded transition-colors"
+            className="px-1 py-1 rounded transition-colors ion-focusable"
             style={{ color: colors.textTertiary }}
           >
             <ArrowCounterClockwise size={12} />
@@ -149,6 +157,7 @@ export function FileTreeRow({
   selectedFile: { path: string; staged: boolean } | null
 }) {
   const colors = useColors()
+  const { hover, pressed, handlers } = useInteractiveState()
   const isExpanded = expandedDirs.has(node.path)
 
   if (node.isDir) {
@@ -156,16 +165,17 @@ export function FileTreeRow({
       <>
         <div
           className="flex items-center cursor-pointer"
+          {...handlers}
           style={{
             height: 24,
             paddingLeft: 8 + depth * 12,
             paddingRight: 4,
+            background: interactiveBg(colors, { hover, pressed }),
+            transition: `background ${transitions.base}`,
           }}
           onClick={() => onToggleDirExpand(node.path)}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = colors.surfaceHover }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
         >
-          {isExpanded ? <CaretDown size={10} color={colors.textTertiary} /> : <CaretRight size={10} color={colors.textTertiary} />}
+          <Chevron open={isExpanded} size={10} color={colors.textTertiary} weight="regular" />
           {isExpanded
             ? <FolderOpen size={12} color={colors.accent} weight="fill" style={{ marginLeft: 2 }} />
             : <Folder size={12} color={colors.accent} weight="fill" style={{ marginLeft: 2 }} />

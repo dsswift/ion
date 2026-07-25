@@ -160,7 +160,7 @@ export function FileEditorCodeMirror({ dir, activeFile, onSave, onCursorChange, 
       exts.push(EditorView.editable.of(false))
     }
 
-    exts.push(blameExtension())
+    exts.push(blameExtension(colors))
 
     // Track cursor position for status bar
     exts.push(EditorView.updateListener.of((update) => {
@@ -182,7 +182,7 @@ export function FileEditorCodeMirror({ dir, activeFile, onSave, onCursorChange, 
     }
 
     return exts
-  }, [ionTheme, dir, updateEditorContent, editorWordWrap, languageOverride])
+  }, [ionTheme, colors, dir, updateEditorContent, editorWordWrap, languageOverride])
 
   // ---- CodeMirror lifecycle ----
   useEffect(() => {

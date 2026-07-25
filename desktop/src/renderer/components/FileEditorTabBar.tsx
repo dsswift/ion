@@ -2,10 +2,57 @@ import React, { useState, useCallback } from 'react'
 import { Reorder } from 'framer-motion'
 import { X, Plus, Eye, PencilSimple, TextAlignLeft } from '@phosphor-icons/react'
 import { useColors } from '../theme'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { transitions } from '../theme-tokens'
 import { usePreferencesStore } from '../preferences'
 import { useSessionStore, FileEditorTab } from '../stores/sessionStore'
 import { isMarkdownFile } from './FileEditorShared'
 import { FileEditorTabContextMenu } from './FileEditorTabContextMenu'
+
+/**
+ * Icon button in the tab bar (new scratch, preview/read-only/word-wrap
+ * toggles, tab close X). Standard hover/pressed backgrounds over an
+ * optional active-toggle base background.
+ */
+function TabBarIconButton({
+  title,
+  onClick,
+  colors,
+  color,
+  activeBg,
+  className,
+  style,
+  children,
+}: {
+  title?: string
+  onClick: (e: React.MouseEvent) => void
+  colors: ReturnType<typeof useColors>
+  color: string
+  /** Base background when the toggle is active (e.g. accentLight). */
+  activeBg?: string
+  className?: string
+  style?: React.CSSProperties
+  children: React.ReactNode
+}) {
+  const { hover, pressed, handlers } = useInteractiveState()
+  return (
+    <button
+      title={title}
+      onClick={onClick}
+      className={`${className ?? ''} ion-focusable`}
+      {...handlers}
+      style={{
+        color,
+        cursor: 'pointer',
+        background: interactiveBg(colors, { hover, pressed }, activeBg ?? 'transparent'),
+        transition: `color ${transitions.base}, background ${transitions.base}`,
+        ...style,
+      }}
+    >
+      {children}
+    </button>
+  )
+}
 
 interface FileEditorTabBarProps {
   dir: string
@@ -93,60 +140,52 @@ export function FileEditorTabBar({ dir, files, activeFile, activeFileId }: FileE
             />
           </Reorder.Item>
         ))}
-        <button
-          className="flex items-center justify-center px-2 rounded transition-colors"
-          style={{
-            height: 30,
-            color: colors.textTertiary,
-            cursor: 'pointer',
-          }}
+        <TabBarIconButton
+          className="flex items-center justify-center px-2 rounded"
+          style={{ height: 30 }}
+          color={colors.textTertiary}
+          colors={colors}
           onClick={() => createScratchFile(dir)}
           title="New scratch file"
         >
           <Plus size={12} weight="bold" />
-        </button>
+        </TabBarIconButton>
       </Reorder.Group>
 
       {/* Right-side actions */}
       <div className="flex items-center gap-1 px-2">
         {activeFile && isMarkdownFile(activeFile.fileName) && (
-          <button
-            className="flex items-center justify-center rounded p-1 transition-colors"
-            style={{
-              color: activeFile.isPreview ? colors.accent : colors.textTertiary,
-              cursor: 'pointer',
-              background: activeFile.isPreview ? colors.accentLight : 'transparent',
-            }}
+          <TabBarIconButton
+            className="flex items-center justify-center rounded p-1"
+            color={activeFile.isPreview ? colors.accent : colors.textTertiary}
+            activeBg={activeFile.isPreview ? colors.accentLight : undefined}
+            colors={colors}
             onClick={() => toggleEditorPreview(dir, activeFile.id)}
             title="Toggle preview"
           >
             <Eye size={13} />
-          </button>
+          </TabBarIconButton>
         )}
         {activeFile && activeFile.isReadOnly && (
-          <button
-            className="flex items-center justify-center rounded p-1 transition-colors"
-            style={{
-              color: colors.textTertiary,
-              cursor: 'pointer',
-            }}
+          <TabBarIconButton
+            className="flex items-center justify-center rounded p-1"
+            color={colors.textTertiary}
+            colors={colors}
             onClick={() => toggleEditorReadOnly(dir, activeFile.id)}
             title="Enable editing"
           >
             <PencilSimple size={13} />
-          </button>
+          </TabBarIconButton>
         )}
-        <button
-          className="flex items-center justify-center rounded p-1 transition-colors"
-          style={{
-            color: editorWordWrap ? colors.accent : colors.textTertiary,
-            cursor: 'pointer',
-          }}
+        <TabBarIconButton
+          className="flex items-center justify-center rounded p-1"
+          color={editorWordWrap ? colors.accent : colors.textTertiary}
+          colors={colors}
           onClick={() => setEditorWordWrap(!editorWordWrap)}
           title={editorWordWrap ? 'Disable word wrap' : 'Enable word wrap'}
         >
           <TextAlignLeft size={13} />
-        </button>
+        </TabBarIconButton>
       </div>
 
       {/* Tab context menu */}
@@ -196,6 +235,7 @@ interface FileEditorTabItemProps {
 
 function FileEditorTabItem({ file, isActive, colors, onSelect, onClose, onContextMenu }: FileEditorTabItemProps) {
   const [confirmingClose, setConfirmingClose] = useState(false)
+  const { hover, pressed, handlers } = useInteractiveState()
 
   const handleClose = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -208,35 +248,37 @@ function FileEditorTabItem({ file, isActive, colors, onSelect, onClose, onContex
 
   return (
     <div
-      className="flex items-center gap-1.5 px-2 cursor-pointer transition-colors"
+      className="flex items-center gap-1.5 px-2 cursor-pointer"
+      {...handlers}
       style={{
         height: 30,
-        background: isActive ? colors.surfaceSecondary : 'transparent',
+        background: interactiveBg(colors, { hover, pressed }, isActive ? colors.tabActive : 'transparent'),
         borderBottom: isActive ? `2px solid ${colors.accent}` : '2px solid transparent',
         fontFamily: 'monospace',
         fontSize: 11,
         color: isActive ? colors.textPrimary : colors.textTertiary,
         whiteSpace: 'nowrap',
+        transition: `background ${transitions.base}, color ${transitions.base}`,
       }}
       onClick={onSelect}
       onContextMenu={onContextMenu}
       onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); handleClose(e) } }}
     >
-      <span style={{ fontStyle: file.filePath === null ? 'italic' : 'normal' }}>
+      <span style={{ fontStyle: file.filePath === null ? 'italic' : 'normal', fontWeight: isActive ? 500 : undefined }}>
         {file.fileName}
       </span>
       {confirmingClose ? (
         <div className="flex items-center gap-0.5 text-[9px] flex-shrink-0" onClick={(e) => e.stopPropagation()}>
           <button
             onClick={() => setConfirmingClose(false)}
-            className="px-1 rounded"
+            className="px-1 rounded ion-focusable"
             style={{ color: colors.textTertiary, background: 'none', border: 'none', cursor: 'pointer' }}
           >
             No
           </button>
           <button
             onClick={(e) => { onClose(e); setConfirmingClose(false) }}
-            className="px-1 rounded"
+            className="px-1 rounded ion-focusable"
             style={{ color: colors.accent, background: 'none', border: 'none', cursor: 'pointer' }}
           >
             Yes
@@ -256,18 +298,15 @@ function FileEditorTabItem({ file, isActive, colors, onSelect, onClose, onContex
               }}
             />
           )}
-          <button
-            className="flex items-center justify-center rounded p-0.5 transition-colors"
-            style={{
-              color: colors.textTertiary,
-              cursor: 'pointer',
-              opacity: 0.6,
-              flexShrink: 0,
-            }}
+          <TabBarIconButton
+            className="flex items-center justify-center rounded p-0.5"
+            color={colors.textTertiary}
+            colors={colors}
+            style={{ opacity: 0.6, flexShrink: 0 }}
             onClick={handleClose}
           >
             <X size={10} />
-          </button>
+          </TabBarIconButton>
         </>
       )}
     </div>

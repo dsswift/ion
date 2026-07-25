@@ -10,6 +10,7 @@ import { useModelStore } from '../stores/model-store'
 import { ModelPickerPopover } from './ModelPickerPopover'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { usePreferencesStore } from '../preferences'
 import { rError } from '../rendererLogger'
 import { useActiveEngineStatusFields } from './StatusBarEngineHelpers'
@@ -64,6 +65,9 @@ export function ModelPicker() {
   const popoverLayer = usePopoverLayer()
   const colors = useColors()
   const [open, setOpen] = useState(false)
+  // Trigger pointer state (handlers gated off while busy — a disabled
+  // control does not respond to hover/pressed).
+  const triggerState = useInteractiveState()
   const triggerRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
   // Keep the portaled popover inside the window (ATV top-anchored strip).
@@ -183,10 +187,14 @@ export function ModelPicker() {
       <button
         ref={triggerRef}
         onClick={handleToggle}
-        className="flex items-center gap-0.5 text-[10px] rounded-full px-1.5 py-0.5 transition-colors"
+        disabled={isBusy}
+        {...(isBusy ? {} : triggerState.handlers)}
+        className="flex items-center gap-0.5 text-[10px] rounded-full px-1.5 py-0.5 ion-focusable"
         style={{
-          color: colors.textTertiary,
-          cursor: isBusy ? 'not-allowed' : 'pointer',
+          color: triggerState.hover && !isBusy ? colors.textPrimary : colors.textTertiary,
+          background: isBusy ? 'transparent' : interactiveBg(colors, triggerState),
+          opacity: isBusy ? 0.45 : 1,
+          cursor: isBusy ? 'default' : 'pointer',
         }}
         title={isBusy ? 'Stop the task to change model' : 'Switch model'}
       >

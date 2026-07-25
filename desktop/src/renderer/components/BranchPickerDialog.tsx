@@ -4,6 +4,8 @@ import { motion } from 'framer-motion'
 import { X, Circle, MagnifyingGlass } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { transitions } from '../theme-tokens'
 import { rError } from '../rendererLogger'
 import type { GitBranchInfo } from '../../shared/types'
 
@@ -38,6 +40,8 @@ export function BranchPickerDialog({ repoPath, onSelect, onCancel }: BranchPicke
 
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
+  const closeIx = useInteractiveState()
+  const cancelIx = useInteractiveState()
 
   // Load branches on mount; fire-and-forget fetch
   useEffect(() => {
@@ -117,7 +121,7 @@ export function BranchPickerDialog({ repoPath, onSelect, onCancel }: BranchPicke
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(0, 0, 0, 0.4)',
+        background: colors.scrim,
         pointerEvents: 'auto',
         display: 'flex',
         alignItems: 'center',
@@ -168,16 +172,19 @@ export function BranchPickerDialog({ repoPath, onSelect, onCancel }: BranchPicke
           </div>
           <button
             onClick={onCancel}
+            {...closeIx.handlers}
+            className="ion-focusable"
             style={{
-              background: 'none',
+              background: interactiveBg(colors, closeIx),
               border: 'none',
               cursor: 'pointer',
-              color: colors.textTertiary,
+              color: closeIx.hover ? colors.textSecondary : colors.textTertiary,
               padding: 4,
               borderRadius: 6,
               display: 'flex',
               alignItems: 'center',
               flexShrink: 0,
+              transition: `background ${transitions.base}, color ${transitions.base}`,
             }}
           >
             <X size={16} />
@@ -338,14 +345,17 @@ export function BranchPickerDialog({ repoPath, onSelect, onCancel }: BranchPicke
           <button
             data-ion-ui
             onClick={onCancel}
+            {...cancelIx.handlers}
+            className="ion-focusable"
             style={{
-              background: 'none',
+              background: interactiveBg(colors, cancelIx),
               border: 'none',
               cursor: 'pointer',
-              color: colors.textTertiary,
+              color: cancelIx.hover ? colors.textSecondary : colors.textTertiary,
               fontSize: 12,
               padding: '4px 8px',
               borderRadius: 6,
+              transition: `background ${transitions.base}, color ${transitions.base}`,
             }}
           >
             Cancel

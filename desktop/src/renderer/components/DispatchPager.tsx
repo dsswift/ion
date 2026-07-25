@@ -40,8 +40,8 @@ export function DispatchPager({ dispatches, selectedIndex, onSelect, compact }: 
               key={d.id || i}
               onClick={(e) => { e.stopPropagation(); onSelect(i) }}
               style={{
-                background: isActive ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.04)',
-                border: isActive ? '1px solid rgba(255,255,255,0.2)' : '1px solid rgba(255,255,255,0.06)',
+                background: isActive ? colors.surfacePressed : colors.surfaceHover,
+                border: isActive ? `1px solid ${colors.tabActiveBorder}` : `1px solid ${colors.borderSubtle}`,
                 borderRadius: 4,
                 padding: '1px 6px',
                 fontSize: 10,

@@ -29,7 +29,7 @@ export function ScrollToBottomButton({ visible, onClick }: ScrollToBottomButtonP
         border: `1px solid ${colors.containerBorder}`,
         color: colors.textSecondary,
         cursor: 'pointer',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+        boxShadow: colors.cardShadow,
       }}
       title="Scroll to bottom"
     >

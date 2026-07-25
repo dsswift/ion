@@ -1,11 +1,42 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useColors } from '../theme'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { transitions } from '../theme-tokens'
 import { ConfirmDialog } from './git/ConfirmDialog'
 import { rError } from '../rendererLogger'
 import type { GitCommit } from '../../shared/types'
 
 // ─── Commit context menu ───
+
+/**
+ * One commit-menu row. Extracted so `useInteractiveState` runs per row
+ * (hooks cannot run inside the parent's map). Hover/pressed follow the
+ * standard surface cascade; danger rows keep `dangerFg` text.
+ */
+function CommitMenuRow({ danger, onClick, children }: {
+  danger: boolean
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  const colors = useColors()
+  const { hover, pressed, handlers } = useInteractiveState()
+  return (
+    <div
+      onClick={onClick}
+      {...handlers}
+      style={{
+        height: 28, display: 'flex', alignItems: 'center', padding: '0 12px',
+        fontSize: 11, color: danger ? colors.dangerFg : colors.textPrimary,
+        cursor: 'pointer', userSelect: 'none',
+        background: interactiveBg(colors, { hover, pressed }),
+        transition: `background ${transitions.base}`,
+      }}
+    >
+      {children}
+    </div>
+  )
+}
 
 export function CommitContextMenu({ anchor, commit, directory, onRefresh, onClose, onRebase }: {
   anchor: { x: number; y: number }
@@ -98,13 +129,13 @@ export function CommitContextMenu({ anchor, commit, directory, onRefresh, onClos
           }
           const isDanger = 'danger' in item && item.danger
           return (
-            <div key={item.label} onClick={() => { item.action(); if (!('danger' in item)) onClose() }}
-              style={{ height: 28, display: 'flex', alignItems: 'center', padding: '0 12px',
-                fontSize: 11, color: isDanger ? '#c47060' : colors.textPrimary, cursor: 'pointer', userSelect: 'none' }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = colors.surfaceHover }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}>
+            <CommitMenuRow
+              key={item.label}
+              danger={!!isDanger}
+              onClick={() => { item.action(); if (!('danger' in item)) onClose() }}
+            >
               {item.label}
-            </div>
+            </CommitMenuRow>
           )
         })}
       </motion.div>

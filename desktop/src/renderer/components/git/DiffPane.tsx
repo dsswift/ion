@@ -125,8 +125,8 @@ export function DiffPane({ diff, fileName, filePath, staged, directory, onClose,
           <span style={{ color: colors.textMuted, fontSize: 9 }}>{filePath}</span>
           {!binary && (insertions > 0 || deletions > 0) && (
             <span style={{ color: colors.textTertiary }}>
-              <span style={{ color: '#7aac8c' }}>+{insertions}</span>{' '}
-              <span style={{ color: '#c47060' }}>−{deletions}</span>
+              <span style={{ color: colors.successFg }}>+{insertions}</span>{' '}
+              <span style={{ color: colors.dangerFg }}>−{deletions}</span>
             </span>
           )}
           {selected.size > 0 && (
@@ -174,7 +174,7 @@ export function DiffPane({ diff, fileName, filePath, staged, directory, onClose,
       </div>
 
       {error && (
-        <div className="px-2 py-1.5 text-[10px]" style={{ color: '#c47060', borderTop: `1px solid ${colors.containerBorder}`, background: colors.surfacePrimary }}>
+        <div className="px-2 py-1.5 text-[10px]" style={{ color: colors.dangerFg, borderTop: `1px solid ${colors.containerBorder}`, background: colors.surfacePrimary }}>
           {error}
         </div>
       )}

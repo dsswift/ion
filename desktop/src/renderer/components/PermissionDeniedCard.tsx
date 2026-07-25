@@ -158,7 +158,7 @@ export function PermissionDeniedCard({ tools, tabId: _tabId, sessionId: _session
             background: colors.containerBg,
             border: `1px solid ${colors.permissionAllowBorder}`,
             borderRadius: 14,
-            boxShadow: `0 2px 12px rgba(34, 197, 94, 0.06)`,
+            boxShadow: `0 2px 12px ${colors.permissionAllowBg}`,
           }}
           className="overflow-hidden"
         >
@@ -170,8 +170,8 @@ export function PermissionDeniedCard({ tools, tabId: _tabId, sessionId: _session
               borderBottom: `1px solid ${colors.permissionAllowBorder}`,
             }}
           >
-            <ListChecks size={14} style={{ color: 'rgba(34, 197, 94, 0.85)' }} />
-            <span className="text-[12px] font-semibold" style={{ color: 'rgba(34, 197, 94, 0.85)' }}>
+            <ListChecks size={14} style={{ color: colors.successFg }} />
+            <span className="text-[12px] font-semibold" style={{ color: colors.successFg }}>
               Plan Ready
             </span>
           </div>
@@ -190,7 +190,7 @@ export function PermissionDeniedCard({ tools, tabId: _tabId, sessionId: _session
                   className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
                   style={{
                     background: colors.permissionAllowBg,
-                    color: 'rgba(34, 197, 94, 0.85)',
+                    color: colors.successFg,
                     border: `1px solid ${colors.permissionAllowBorder}`,
                   }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = colors.permissionAllowHoverBg }}
@@ -205,7 +205,7 @@ export function PermissionDeniedCard({ tools, tabId: _tabId, sessionId: _session
                 className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
                 style={{
                   background: colors.permissionAllowBg,
-                  color: 'rgba(34, 197, 94, 0.85)',
+                  color: colors.successFg,
                   border: `1px solid ${colors.permissionAllowBorder}`,
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.background = colors.permissionAllowHoverBg }}
@@ -335,7 +335,7 @@ export function PermissionDeniedCard({ tools, tabId: _tabId, sessionId: _session
                 className="text-[11px] font-medium px-3 py-1.5 rounded-full transition-colors cursor-pointer flex items-center gap-1.5"
                 style={{
                   background: colors.permissionAllowBg,
-                  color: 'rgba(34, 197, 94, 0.85)',
+                  color: colors.successFg,
                   border: `1px solid ${colors.permissionAllowBorder}`,
                 }}
                 onMouseEnter={(e) => {

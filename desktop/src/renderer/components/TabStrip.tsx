@@ -16,6 +16,7 @@ import { createNewConversationTab } from './new-conversation-tab'
 import { useTabGroups } from '../hooks/useTabGroups'
 import type { TabState } from '../../shared/types'
 import { useManualReorder } from '../hooks/useManualReorder'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { checkWorktreeUncommitted, shouldUseWorktree, zoomRect } from './TabStripShared'
 import { PillColorPicker } from './TabStripPillColorPicker'
 import { DirContextMenu } from './TabStripDirContextMenu'
@@ -67,12 +68,20 @@ export function TabStrip() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const tabRefs = useRef<Map<string, HTMLDivElement>>(new Map())
 
+  // Pointer-state tracking for the strip's chrome buttons (scroll carets,
+  // new-conversation, terminal). One hook per element — see useInteractiveState.
+  const scrollLeftState = useInteractiveState()
+  const scrollRightState = useInteractiveState()
+  const newTabState = useInteractiveState()
+  const terminalBtnState = useInteractiveState()
+
   // Manual drag-to-reorder for flat tab mode
   const flatReorder = useManualReorder({
     items: tabs,
     keyFn: (t) => t.id,
     itemRefs: tabRefs,
     onReorder: reorderTabs,
+    insertIndicatorColor: colors.dragInsertIndicator,
   })
 
   // Manual drag-to-reorder for ungrouped tabs
@@ -80,6 +89,7 @@ export function TabStrip() {
     items: ungrouped,
     keyFn: (t) => t.id,
     itemRefs: tabRefs,
+    insertIndicatorColor: colors.dragInsertIndicator,
     onReorder: (reordered) => {
       const ungroupedOrder = new Map(reordered.map((t, i) => [t.id, i]))
       const result = [...tabs].sort((a, b) => {
@@ -256,10 +266,9 @@ export function TabStrip() {
         {canScrollLeft && (
           <button
             onClick={() => scrollBy(-150)}
-            className="absolute left-0 top-0 bottom-0 z-10 flex items-center justify-center w-5 transition-opacity"
-            style={{ color: colors.textTertiary, background: `linear-gradient(to right, ${colors.containerBg}, transparent)` }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = colors.textPrimary }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = colors.textTertiary }}
+            className="absolute left-0 top-0 bottom-0 z-10 flex items-center justify-center w-5 ion-focusable"
+            style={{ color: scrollLeftState.hover ? colors.textPrimary : colors.textTertiary, background: `linear-gradient(to right, ${colors.containerBg}, transparent)` }}
+            {...scrollLeftState.handlers}
           >
             <CaretLeft size={12} weight="bold" />
           </button>
@@ -267,10 +276,9 @@ export function TabStrip() {
         {canScrollRight && (
           <button
             onClick={() => scrollBy(150)}
-            className="absolute right-0 top-0 bottom-0 z-10 flex items-center justify-center w-5 transition-opacity"
-            style={{ color: colors.textTertiary, background: `linear-gradient(to left, ${colors.containerBg}, transparent)` }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = colors.textPrimary }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = colors.textTertiary }}
+            className="absolute right-0 top-0 bottom-0 z-10 flex items-center justify-center w-5 ion-focusable"
+            style={{ color: scrollRightState.hover ? colors.textPrimary : colors.textTertiary, background: `linear-gradient(to left, ${colors.containerBg}, transparent)` }}
+            {...scrollRightState.handlers}
           >
             <CaretRight size={12} weight="bold" />
           </button>
@@ -475,8 +483,12 @@ export function TabStrip() {
             const rect = zoomRect((e.currentTarget as HTMLElement).getBoundingClientRect())
             setDirPickerState({ anchor: { x: rect.left, y: rect.top, bottom: rect.bottom }, mode: 'conversation' })
           }}
-          className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full transition-colors"
-          style={{ color: colors.textTertiary }}
+          className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full ion-focusable"
+          style={{
+            color: newTabState.hover ? colors.textPrimary : colors.textTertiary,
+            background: interactiveBg(colors, newTabState),
+          }}
+          {...newTabState.handlers}
           title="New conversation tab"
         >
           <ChatCircle size={14} />
@@ -491,8 +503,14 @@ export function TabStrip() {
               setDirPickerState({ anchor: { x: rect.left, y: rect.top, bottom: rect.bottom }, mode: 'terminal' })
             }
           }}
-          className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full transition-colors"
-          style={{ color: terminalOpenTabIds.has(activeTabId) ? colors.accent : colors.textTertiary }}
+          className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full ion-focusable"
+          style={{
+            color: terminalOpenTabIds.has(activeTabId)
+              ? colors.accent
+              : terminalBtnState.hover ? colors.textPrimary : colors.textTertiary,
+            background: interactiveBg(colors, terminalBtnState),
+          }}
+          {...terminalBtnState.handlers}
           title="New terminal tab (Alt+click: toggle panel)"
         >
           <Terminal size={14} />

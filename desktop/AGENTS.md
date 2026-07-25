@@ -70,7 +70,7 @@ desktop/src/
 
 ## Renderer conventions
 
-- `useColors()` for all color references. Never hardcode color values (breaks theming).
+- `useColors()` for all color references. Never hardcode color values (breaks theming) — `src/renderer/theme/hardcoded-colors-scan.test.ts` fails the build on untagged literals. Interactive states (hover/pressed/focus/selected/disabled), layering, and token workflow: see [docs/design/desktop-style-guide.md](../docs/design/desktop-style-guide.md).
 - Phosphor icons (`@phosphor-icons/react`). Don't add other icon libraries.
 - Use `<Tooltip text="...">` (from `components/git/Tooltip.tsx`) instead of the HTML `title` attribute. Native tooltips render behind the Electron overlay. The Tooltip component portals through PopoverLayer.
 - Framer Motion for animations.

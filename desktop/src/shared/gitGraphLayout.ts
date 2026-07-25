@@ -18,9 +18,14 @@ export interface GitGraphConnection {
   color: string
 }
 
+/**
+ * Fallback lane palette for callers that pass no palette (tests, headless
+ * consumers). Themed callers pass their own palette via `options.palette` —
+ * the desktop renderer derives one from the active theme in GitGraphSection.
+ */
 export const DEFAULT_LANE_COLORS = [
-  '#d97757', '#7aac8c', '#6b9bd2', '#c47060',
-  '#b08fd8', '#d4a843', '#5bbfbf', '#d97ba3',
+  '#366FFB', '#34d399', '#60a5fa', '#f87171',
+  '#a78bfa', '#fbbf24', '#2dd4bf', '#ec4899',
 ]
 
 /** Stable hash → palette index. Used so a branch name always picks the same color. */

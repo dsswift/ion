@@ -137,7 +137,25 @@ export function GitGraphSection({
     })
   }, [commits, stashes])
 
-  const graphNodes = useMemo(() => computeGraphLayout(decoratedCommits), [decoratedCommits])
+  // Lane colors come from the theme so branch lanes recolor with the palette;
+  // the hue spread keeps adjacent lanes distinguishable.
+  const lanePalette = useMemo(
+    () => [
+      colors.accent,
+      colors.successFg,
+      colors.gitModified,
+      colors.dangerFg,
+      colors.gitRenamed,
+      colors.gitUntracked,
+      colors.modeAcceptEdits,
+      colors.statusBash,
+    ],
+    [colors],
+  )
+  const graphNodes = useMemo(
+    () => computeGraphLayout(decoratedCommits, { palette: lanePalette }),
+    [decoratedCommits, lanePalette],
+  )
 
 
   // ─── Commit hover popup ───
@@ -429,7 +447,7 @@ export function GitGraphSection({
       {rebaseError && (
         <div
           className="flex items-center justify-between px-2 py-1.5 text-[10px]"
-          style={{ color: '#c47060', borderBottom: `1px solid ${colors.containerBorder}`, background: colors.surfacePrimary, flexShrink: 0 }}
+          style={{ color: colors.dangerFg, borderBottom: `1px solid ${colors.containerBorder}`, background: colors.surfacePrimary, flexShrink: 0 }}
         >
           <span className="truncate flex-1">{rebaseError}</span>
           <button

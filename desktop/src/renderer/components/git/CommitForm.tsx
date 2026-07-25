@@ -224,7 +224,7 @@ export function CommitForm({ directory, branch, stagedCount, onCommit, onQuickCo
               fontSize: 9,
               lineHeight: '12px',
               fontFamily: 'var(--font-mono, monospace)',
-              backgroundImage: 'linear-gradient(to right, transparent calc(50ch + 6px), rgba(212,168,67,0.12) calc(50ch + 6px) calc(50ch + 6px + 1px), transparent calc(50ch + 6px + 1px), transparent calc(72ch + 6px), rgba(196,112,96,0.16) calc(72ch + 6px) calc(72ch + 6px + 1px), transparent calc(72ch + 6px + 1px))',
+              backgroundImage: `linear-gradient(to right, transparent calc(50ch + 6px), ${colors.permissionHeaderBorder} calc(50ch + 6px) calc(50ch + 6px + 1px), transparent calc(50ch + 6px + 1px), transparent calc(72ch + 6px), ${colors.permissionDenyHoverBg} calc(72ch + 6px) calc(72ch + 6px + 1px), transparent calc(72ch + 6px + 1px))`,
               backgroundRepeat: 'no-repeat',
             }}
           />
@@ -236,7 +236,7 @@ export function CommitForm({ directory, branch, stagedCount, onCommit, onQuickCo
                 position: 'absolute',
                 right: 4,
                 bottom: 2,
-                color: farOver ? '#c47060' : overLimit ? '#d4a843' : colors.textMuted,
+                color: farOver ? colors.dangerFg : overLimit ? colors.warningFg : colors.textMuted,
                 pointerEvents: 'none',
                 lineHeight: 1,
               }}
@@ -253,7 +253,7 @@ export function CommitForm({ directory, branch, stagedCount, onCommit, onQuickCo
             disabled={!canCommit}
             className="flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-l"
             style={{
-              color: canCommit ? '#fff' : colors.textTertiary,
+              color: canCommit ? colors.textOnAccent : colors.textTertiary,
               background: canCommit ? colors.accent : 'transparent',
               border: canCommit ? 'none' : `1px solid ${colors.containerBorder}`,
               cursor: canCommit ? 'pointer' : 'not-allowed',
@@ -262,15 +262,16 @@ export function CommitForm({ directory, branch, stagedCount, onCommit, onQuickCo
             }}
           >
             <Check size={10} weight="bold" />
-            {hasToggles && <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#fff', opacity: 0.7, flexShrink: 0 }} />}
+            {hasToggles && <span style={{ width: 4, height: 4, borderRadius: '50%', background: colors.textOnAccent, opacity: 0.7, flexShrink: 0 }} />}
           </button>
           <button
             onClick={() => setMenuOpen(v => !v)}
             className="text-[9px] px-0.5 py-0.5 rounded-r"
             style={{
-              color: canCommit ? '#fff' : colors.textTertiary,
+              color: canCommit ? colors.textOnAccent : colors.textTertiary,
               background: canCommit ? colors.accent : 'transparent',
-              borderLeft: canCommit ? '1px solid rgba(255,255,255,0.2)' : `1px solid ${colors.containerBorder}`,
+              borderLeft: canCommit ? '1px solid rgba(255,255,255,0.2)' : `1px solid ${colors.containerBorder}`, // hardcoded-ok: white-alpha divider on accent background, legible on any accent hue
+
               borderTop: canCommit ? 'none' : `1px solid ${colors.containerBorder}`,
               borderRight: canCommit ? 'none' : `1px solid ${colors.containerBorder}`,
               borderBottom: canCommit ? 'none' : `1px solid ${colors.containerBorder}`,
@@ -358,7 +359,7 @@ export function CommitForm({ directory, branch, stagedCount, onCommit, onQuickCo
         <div className="flex items-center gap-2 mt-1 text-[9px]" style={{ color: colors.accent }}>
           <span>✓ Committed</span>
           <button onClick={onPush} className="underline" style={{ color: colors.accent }}>Push</button>
-          <button onClick={() => { void undoCommit().catch((err) => rError('git', 'undo commit failed', { error: String(err) })) }} className="flex items-center gap-0.5" style={{ color: '#c47060' }}>
+          <button onClick={() => { void undoCommit().catch((err) => rError('git', 'undo commit failed', { error: String(err) })) }} className="flex items-center gap-0.5" style={{ color: colors.dangerFg }}>
             <ArrowCounterClockwise size={9} /> Undo
           </button>
           <button onClick={() => setBannerOpen(false)} style={{ color: colors.textTertiary }}>Dismiss</button>

@@ -21,6 +21,7 @@ import { registerProvidersIpc } from './providers'
 import { registerConversationBackupIpc } from './conversation-backup'
 import { registerLogIpc } from './log'
 import { registerAtvIpc } from './atv'
+import { registerThemesIpc } from './themes'
 
 export function registerAllIpc(): void {
   registerWindowIpc()
@@ -46,4 +47,5 @@ export function registerAllIpc(): void {
   registerConversationBackupIpc()
   registerLogIpc()
   registerAtvIpc()
+  registerThemesIpc()
 }

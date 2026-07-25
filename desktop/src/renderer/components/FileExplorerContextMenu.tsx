@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom'
 import { Paperclip, Copy, FolderOpen as FolderOpenIcon, ArrowSquareOut, PencilSimple } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { transitions } from '../theme-tokens'
 import { maybeCloseExplorerBeforeExternal } from '../utils/externalLaunch'
 import { rError } from '../rendererLogger'
 import type { FsEntry } from '../../shared/types'
@@ -11,6 +13,43 @@ export interface ContextMenuState {
   x: number
   y: number
   entry: FsEntry
+}
+
+/** Menu row with the standard hover/pressed background cascade. */
+function ContextMenuRow({
+  label,
+  Icon,
+  onSelect,
+  colors,
+}: {
+  label: string
+  Icon: React.ComponentType<{ size?: number; color?: string }>
+  onSelect: () => void
+  colors: ReturnType<typeof useColors>
+}) {
+  const { hover, pressed, handlers } = useInteractiveState()
+  return (
+    <div
+      onClick={onSelect}
+      {...handlers}
+      style={{
+        height: 28,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '0 12px',
+        fontSize: 11,
+        color: colors.textPrimary,
+        cursor: 'pointer',
+        userSelect: 'none',
+        background: interactiveBg(colors, { hover, pressed }),
+        transition: `background ${transitions.base}`,
+      }}
+    >
+      <Icon size={14} color={colors.textTertiary} />
+      {label}
+    </div>
+  )
 }
 
 /** Right-click context menu for FileExplorer rows. */
@@ -100,28 +139,14 @@ export function FileExplorerContextMenu({
         if ('separator' in item) {
           return <div key={`sep-${i}`} style={{ height: 1, background: colors.containerBorder, margin: '4px 8px' }} />
         }
-        const Icon = item.icon
         return (
-          <div
+          <ContextMenuRow
             key={item.label}
-            onClick={() => { item.action(); onClose() }}
-            style={{
-              height: 28,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '0 12px',
-              fontSize: 11,
-              color: colors.textPrimary,
-              cursor: 'pointer',
-              userSelect: 'none',
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = colors.surfaceHover }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
-          >
-            <Icon size={14} color={colors.textTertiary} />
-            {item.label}
-          </div>
+            label={item.label}
+            Icon={item.icon}
+            onSelect={() => { item.action(); onClose() }}
+            colors={colors}
+          />
         )
       })}
     </div>,

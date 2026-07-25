@@ -2,6 +2,7 @@ import React from 'react'
 import { motion } from 'framer-motion'
 import { Square } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
+import { useInteractiveState } from '../../hooks/useInteractiveState'
 
 interface InterruptButtonProps {
   onInterrupt: () => void
@@ -9,6 +10,10 @@ interface InterruptButtonProps {
 
 export function InterruptButton({ onInterrupt }: InterruptButtonProps) {
   const colors = useColors()
+  // Danger-family cascade: hover → statusErrorBg tint, pressed → the deeper
+  // permissionDenyHoverBg tint. Keyboard focus rides `.ion-focusable`, whose
+  // class transition covers the background shift.
+  const { hover, pressed, handlers } = useInteractiveState()
 
   return (
     <motion.button
@@ -17,14 +22,17 @@ export function InterruptButton({ onInterrupt }: InterruptButtonProps) {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.12 }}
       onClick={onInterrupt}
-      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] cursor-pointer flex-shrink-0 transition-colors"
+      {...handlers}
+      className="ion-focusable inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] cursor-pointer flex-shrink-0"
       style={{
-        background: 'transparent',
+        background: pressed
+          ? colors.permissionDenyHoverBg
+          : hover
+            ? colors.statusErrorBg
+            : 'transparent',
         color: colors.statusError,
         border: 'none',
       }}
-      onMouseEnter={(e) => { e.currentTarget.style.background = colors.statusErrorBg }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
       title="Stop current task"
     >
       <Square size={9} weight="fill" />

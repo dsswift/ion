@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef } from 'react'
 import { useColors } from '../../theme'
+import type { ColorPalette } from '../../theme-tokens'
 import { FloatingPanel } from '../FloatingPanel'
 import { DotsSixVertical } from '@phosphor-icons/react'
 import { rError } from '../../rendererLogger'
@@ -7,13 +8,14 @@ import { rError } from '../../rendererLogger'
 type RebaseAction = 'pick' | 'reword' | 'edit' | 'squash' | 'fixup' | 'drop'
 const ACTIONS: RebaseAction[] = ['pick', 'reword', 'edit', 'squash', 'fixup', 'drop']
 
-const ACTION_COLORS: Record<RebaseAction, string> = {
-  pick: '#7aac8c',
-  reword: '#6b9bd2',
-  edit: '#d4a843',
-  squash: '#b08fd8',
-  fixup: '#8bb5e0',
-  drop: '#c47060',
+// Theme token keys per rebase action — resolved via useColors() at render time.
+const ACTION_COLOR_KEYS: Record<RebaseAction, keyof ColorPalette> = {
+  pick: 'successFg',
+  reword: 'gitModified',
+  edit: 'warningFg',
+  squash: 'gitRenamed',
+  fixup: 'iconSky',
+  drop: 'dangerFg',
 }
 
 export interface RebaseCommit {
@@ -104,7 +106,7 @@ export function RebaseEditor({ directory, onto, initialCommits, onClose, onCompl
             <button
               onClick={() => { void handleAbort().catch((err) => rError('git', 'rebase abort failed', { error: String(err) })) }}
               className="text-[9px] px-2 py-0.5 rounded"
-              style={{ color: '#c47060', border: '1px solid #c47060' }}
+              style={{ color: colors.dangerFg, border: `1px solid ${colors.dangerFg}` }}
             >
               Abort Rebase
             </button>
@@ -114,7 +116,7 @@ export function RebaseEditor({ directory, onto, initialCommits, onClose, onCompl
             disabled={executing || activeCount === 0}
             className="text-[9px] px-2 py-0.5 rounded font-medium"
             style={{
-              color: activeCount > 0 ? '#fff' : colors.textMuted,
+              color: activeCount > 0 ? colors.textOnAccent : colors.textMuted,
               background: activeCount > 0 ? colors.accent : 'transparent',
               cursor: activeCount > 0 ? 'pointer' : 'not-allowed',
             }}
@@ -124,7 +126,7 @@ export function RebaseEditor({ directory, onto, initialCommits, onClose, onCompl
         </div>
 
         {error && (
-          <div className="px-3 py-1 text-[10px]" style={{ color: '#c47060', flexShrink: 0 }}>
+          <div className="px-3 py-1 text-[10px]" style={{ color: colors.dangerFg, flexShrink: 0 }}>
             {error}
           </div>
         )}
@@ -163,14 +165,14 @@ export function RebaseEditor({ directory, onto, initialCommits, onClose, onCompl
                 onChange={(e) => handleActionChange(i, e.target.value as RebaseAction)}
                 className="text-[9px] rounded px-1 py-0.5 bg-transparent outline-none cursor-pointer"
                 style={{
-                  color: ACTION_COLORS[commit.action],
+                  color: colors[ACTION_COLOR_KEYS[commit.action]],
                   border: `1px solid ${colors.containerBorder}`,
                   minWidth: 55,
                 }}
                 onClick={(e) => e.stopPropagation()}
               >
                 {ACTIONS.map(a => (
-                  <option key={a} value={a} style={{ color: ACTION_COLORS[a] }}>
+                  <option key={a} value={a} style={{ color: colors[ACTION_COLOR_KEYS[a]] }}>
                     {a}
                   </option>
                 ))}

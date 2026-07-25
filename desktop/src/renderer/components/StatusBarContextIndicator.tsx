@@ -80,8 +80,8 @@ export function ContextIndicator() {
   const tooltip = `${formatTokens(tokens)} / ${formatTokens(windowSize)} tokens`
 
   let color = colors.textTertiary
-  if (pct >= 80) color = '#e06040'
-  else if (pct >= 60) color = '#d4a017'
+  if (pct >= 80) color = colors.dangerFg
+  else if (pct >= 60) color = colors.warningFg
 
   const handleEnter = () => {
     if (ref.current) {
@@ -95,7 +95,11 @@ export function ContextIndicator() {
     <>
       <span
         ref={ref}
-        className="text-[10px] px-0.5"
+        // ion-focusable normalizes the interactive transition timing; the
+        // hover mechanics stay bespoke because hover here drives the token
+        // tooltip, and the color itself is semantic (context-fill level),
+        // so it does not swap on hover.
+        className="text-[10px] px-0.5 ion-focusable"
         style={{ color, cursor: 'pointer' }}
         onClick={toggleStatusDrawer}
         onMouseEnter={handleEnter}

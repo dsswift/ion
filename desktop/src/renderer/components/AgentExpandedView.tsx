@@ -85,9 +85,9 @@ export function AgentExpandedView({ agent, colors, loadedMessages, loading, isFu
       style={{
         display: 'flex', alignItems: 'center', gap: 4,
         padding: `4px 12px 4px ${leftPad}px`,
-        background: 'rgba(255,255,255,0.03)',
+        background: colors.surfaceHover,
         fontSize: 10, color: colors.textTertiary,
-        borderBottom: '1px solid rgba(255,255,255,0.04)',
+        borderBottom: `1px solid ${colors.borderSubtle}`,
       }}
     >
       {agentModel && <span>Model: {agentModel}</span>}
@@ -109,7 +109,7 @@ export function AgentExpandedView({ agent, colors, loadedMessages, loading, isFu
 
   if (loading) {
     return (
-      <div style={{ background: 'rgba(255,255,255,0.03)' }}>
+      <div style={{ background: colors.surfaceHover }}>
         {renderedHeader}
         <div style={{
           display: 'flex', alignItems: 'center', gap: 6,
@@ -125,7 +125,7 @@ export function AgentExpandedView({ agent, colors, loadedMessages, loading, isFu
   // Render grouped messages via shared TranscriptRows.
   if (messages && messages.length > 0) {
     return (
-      <div style={{ background: 'rgba(255,255,255,0.03)' }}>
+      <div style={{ background: colors.surfaceHover }}>
         {renderedHeader}
         <div style={{
           maxHeight: isFullscreen ? undefined : 200,
@@ -142,7 +142,7 @@ export function AgentExpandedView({ agent, colors, loadedMessages, loading, isFu
   const fullOutput = meta(agent, 'fullOutput', '')
   if (fullOutput) {
     return (
-      <div style={{ background: 'rgba(255,255,255,0.03)' }}>
+      <div style={{ background: colors.surfaceHover }}>
         {renderedHeader}
         <div style={{
           maxHeight: isFullscreen ? undefined : 120,
@@ -157,7 +157,7 @@ export function AgentExpandedView({ agent, colors, loadedMessages, loading, isFu
   }
 
   return (
-    <div style={{ background: 'rgba(255,255,255,0.03)' }}>
+    <div style={{ background: colors.surfaceHover }}>
       {renderedHeader}
       <div style={{ padding: `8px 12px 8px ${leftPad}px`, fontSize: 11, color: colors.textTertiary }}>
         {dispatchIsRunning

@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/shallow'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { useGitRepo } from '../hooks/useGitRepo'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { ModelPicker } from './StatusBarModelPicker'
 import { ContextIndicator } from './StatusBarContextIndicator'
 import { PermissionModePicker } from './StatusBarPermissionModePicker'
@@ -66,6 +67,9 @@ export function StatusBar() {
   const editorOpen = useSessionStore((s) => s.fileEditorOpenDirs.has(s.tabs.find((t) => t.id === s.activeTabId)?.workingDirectory || ''))
   const toggleFileEditor = useSessionStore((s) => s.toggleFileEditor)
   const colors = useColors()
+  // Pointer states for the two workspace-toggle icon buttons.
+  const explorerBtnState = useInteractiveState()
+  const editorBtnState = useInteractiveState()
 
   const [isGitRepo, setIsGitRepo] = useState(false)
   const closeGitPanel = useSessionStore((s) => s.closeGitPanel)
@@ -102,8 +106,13 @@ export function StatusBar() {
         {/* File explorer toggle */}
         <button
           onClick={() => toggleFileExplorer(activeTabId)}
-          className="flex items-center rounded-full px-1 py-0.5 transition-colors flex-shrink-0"
-          style={{ color: explorerOpen ? colors.accent : colors.textTertiary, cursor: 'pointer' }}
+          className="flex items-center rounded-full px-1 py-0.5 flex-shrink-0 ion-focusable"
+          style={{
+            color: explorerOpen ? colors.accent : explorerBtnState.hover ? colors.textPrimary : colors.textTertiary,
+            background: interactiveBg(colors, explorerBtnState),
+            cursor: 'pointer',
+          }}
+          {...explorerBtnState.handlers}
           title={explorerOpen ? 'Close file explorer (⌘1)' : 'Open file explorer (⌘1)'}
         >
           <TreeStructure size={11} />
@@ -111,8 +120,13 @@ export function StatusBar() {
         {/* File editor toggle */}
         <button
           onClick={() => toggleFileEditor(activeTabId)}
-          className="flex items-center rounded-full px-1 py-0.5 transition-colors flex-shrink-0"
-          style={{ color: editorOpen ? colors.accent : colors.textTertiary, cursor: 'pointer' }}
+          className="flex items-center rounded-full px-1 py-0.5 flex-shrink-0 ion-focusable"
+          style={{
+            color: editorOpen ? colors.accent : editorBtnState.hover ? colors.textPrimary : colors.textTertiary,
+            background: interactiveBg(colors, editorBtnState),
+            cursor: 'pointer',
+          }}
+          {...editorBtnState.handlers}
           title={editorOpen ? 'Close file editor (⌘E)' : 'Open file editor (⌘E)'}
         >
           <NotePencil size={11} />

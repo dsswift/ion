@@ -12,6 +12,7 @@ import { usePopoverLayer } from './PopoverLayer'
 import { usePreferencesStore, getEffectiveTabGroups } from '../preferences'
 import type { TabState } from '../../shared/types'
 import { zoomRect, zoomViewport, useAnchoredPopoverPosition } from './TabStripShared'
+import { ContextMenuItem } from './ContextMenuItem'
 import { MoveToGroupSubmenu } from './TabStripMoveToGroupSubmenu'
 import { ConfirmDialog } from './git/ConfirmDialog'
 import { rDebug, rInfo, rError } from '../rendererLogger'
@@ -139,14 +140,6 @@ export function TabContextMenu({
 
   if (!popoverLayer) return null
 
-  const menuItemStyle = {
-    fontSize: 12,
-    color: colors.textPrimary,
-    background: 'transparent' as string,
-    border: 'none' as const,
-    cursor: 'pointer' as const,
-  }
-
   return createPortal(
     <>
       <motion.div
@@ -173,93 +166,54 @@ export function TabContextMenu({
         }}
       >
       {onRename && (
-        <button
-          onClick={() => { onRename(); onClose() }}
-          className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
-          style={menuItemStyle}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-        >
+        <ContextMenuItem onClick={() => { onRename(); onClose() }}>
           <PencilSimple size={14} color={colors.textSecondary} />
           <span>Rename</span>
-        </button>
+        </ContextMenuItem>
       )}
       {onForkTab && (
-        <button
-          onClick={() => { onForkTab(); onClose() }}
-          className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
-          style={menuItemStyle}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-        >
+        <ContextMenuItem onClick={() => { onForkTab(); onClose() }}>
           <GitFork size={14} color={colors.textSecondary} />
           <span>Fork conversation</span>
-        </button>
+        </ContextMenuItem>
       )}
       {tab.workingDirectory && (
-        <button
-          onClick={() => { onNewTabInDir(); onClose() }}
-          className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
-          style={menuItemStyle}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-        >
+        <ContextMenuItem onClick={() => { onNewTabInDir(); onClose() }}>
           <FolderOpen size={14} color={colors.textSecondary} />
           <span>New tab in directory</span>
-        </button>
+        </ContextMenuItem>
       )}
       {!tab.worktree && isGitRepo && (
-        <button
-          onClick={tab.hasFileActivity ? undefined : () => { void useSessionStore.getState().convertToWorktree(tab.id).catch((err) => rError('tabs', 'convert to worktree failed', { error: String(err) })); window.dispatchEvent(new CustomEvent('ion:close-group-pickers')); onClose() }}
-          className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
-          style={{
-            ...menuItemStyle,
-            ...(tab.hasFileActivity ? { color: colors.textTertiary, cursor: 'not-allowed', opacity: 0.5 } : {}),
-          }}
-          onMouseEnter={(e) => { if (!tab.hasFileActivity) (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+        <ContextMenuItem
+          disabled={tab.hasFileActivity}
+          onClick={() => { void useSessionStore.getState().convertToWorktree(tab.id).catch((err) => rError('tabs', 'convert to worktree failed', { error: String(err) })); window.dispatchEvent(new CustomEvent('ion:close-group-pickers')); onClose() }}
         >
           <GitBranch size={14} color={tab.hasFileActivity ? colors.textTertiary : colors.textSecondary} />
           <span>Convert to worktree</span>
-        </button>
+        </ContextMenuItem>
       )}
       {tab.worktree && (
-        <button
-          onClick={() => { if (!finishWorkDisabled) { onFinishWork(); onClose() } }}
-          className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
-          style={{
-            ...menuItemStyle,
-            ...(finishWorkDisabled ? { color: colors.textTertiary, cursor: 'not-allowed', opacity: 0.5 } : {}),
-          }}
-          onMouseEnter={(e) => { if (!finishWorkDisabled) (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+        <ContextMenuItem
+          disabled={!!finishWorkDisabled}
+          onClick={() => { onFinishWork(); onClose() }}
         >
           <CheckCircle size={14} color={finishWorkDisabled ? colors.textTertiary : colors.worktreeGreen} />
           <span>{finishWorkDisabled === 'checking' ? 'Finish work (checking...)' : finishWorkDisabled ? 'Finish work (uncommitted changes)' : 'Finish work'}</span>
-        </button>
+        </ContextMenuItem>
       )}
       {tabGroupMode === 'manual' && (
         <>
           <div style={{ height: 1, background: colors.popoverBorder, margin: '2px 0' }} />
-          <button
-            onClick={() => { toggleTabGroupPin(tab.id); onClose() }}
-            className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
-            style={menuItemStyle}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-          >
+          <ContextMenuItem onClick={() => { toggleTabGroupPin(tab.id); onClose() }}>
             {tab.groupPinned
               ? <PushPinSlash size={14} color={colors.textSecondary} />
               : <PushPin size={14} color={colors.textSecondary} />
             }
             <span>{tab.groupPinned ? 'Unpin from group' : 'Pin to group'}</span>
-          </button>
-          <button
+          </ContextMenuItem>
+          <ContextMenuItem
             ref={moveItemRef}
-            className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
-            style={menuItemStyle}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.background = colors.tabActive
+            onHoverStart={() => {
               setMoveAllSubmenu(null)
               setMoveAllParentRect(null)
               setMovePinSubmenu(null)
@@ -270,7 +224,6 @@ export function TabContextMenu({
                 setMoveParentRect({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom })
               }
             }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
             onClick={() => {
               if (moveItemRef.current) {
                 const rect = zoomRect(moveItemRef.current.getBoundingClientRect())
@@ -282,7 +235,7 @@ export function TabContextMenu({
             <Rows size={14} color={colors.textSecondary} />
             <span>Move to group</span>
             <CaretDown size={10} color={colors.textTertiary} style={{ marginLeft: 'auto', transform: 'rotate(-90deg)' }} />
-          </button>
+          </ContextMenuItem>
           {/*
             "Move to group and pin" — combined action. Identical layout to the
             "Move to group" row above but uses a distinct submenu (different
@@ -291,12 +244,9 @@ export function TabContextMenu({
             Shown alongside the plain "Move" so the user can pick either
             semantic without having to perform two separate steps.
           */}
-          <button
+          <ContextMenuItem
             ref={movePinItemRef}
-            className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
-            style={menuItemStyle}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.background = colors.tabActive
+            onHoverStart={() => {
               setMoveAllSubmenu(null)
               setMoveAllParentRect(null)
               setMoveSubmenu(null)
@@ -307,7 +257,6 @@ export function TabContextMenu({
                 setMovePinParentRect({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom })
               }
             }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
             onClick={() => {
               if (movePinItemRef.current) {
                 const rect = zoomRect(movePinItemRef.current.getBoundingClientRect())
@@ -319,16 +268,13 @@ export function TabContextMenu({
             <PushPin size={14} color={colors.textSecondary} />
             <span>Move to group and pin</span>
             <CaretDown size={10} color={colors.textTertiary} style={{ marginLeft: 'auto', transform: 'rotate(-90deg)' }} />
-          </button>
+          </ContextMenuItem>
         </>
       )}
       {showMoveAll && tabGroupMode === 'manual' && (
-        <button
+        <ContextMenuItem
           ref={moveAllItemRef}
-          className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
-          style={menuItemStyle}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.background = colors.tabActive
+          onHoverStart={() => {
             setMoveSubmenu(null)
             setMoveParentRect(null)
             setMovePinSubmenu(null)
@@ -339,7 +285,6 @@ export function TabContextMenu({
               setMoveAllParentRect({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom })
             }
           }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
           onClick={() => {
             if (moveAllItemRef.current) {
               const rect = zoomRect(moveAllItemRef.current.getBoundingClientRect())
@@ -351,7 +296,7 @@ export function TabContextMenu({
           <ArrowsInSimple size={14} color={colors.textSecondary} />
           <span>Move all to group</span>
           <CaretDown size={10} color={colors.textTertiary} style={{ marginLeft: 'auto', transform: 'rotate(-90deg)' }} />
-        </button>
+        </ContextMenuItem>
       )}
       {moveSubmenu && (
         <MoveToGroupSubmenu
@@ -519,17 +464,10 @@ function MoveAllToGroupInlineSubmenu({
         Move all to group
       </div>
       {targets.map((t) => (
-        <button
-          key={t.id}
-          className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
-          style={{ fontSize: 12, color: colors.textPrimary, background: 'transparent', border: 'none', cursor: 'pointer' }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-          onClick={() => onPickTarget(t.id, t.label)}
-        >
+        <ContextMenuItem key={t.id} onClick={() => onPickTarget(t.id, t.label)}>
           <ArrowRight size={12} color={colors.textTertiary} />
           <span>{t.label}</span>
-        </button>
+        </ContextMenuItem>
       ))}
       <div style={{ height: 1, background: colors.popoverBorder, margin: '2px 0' }} />
       {showNewGroupInput ? (
@@ -554,16 +492,10 @@ function MoveAllToGroupInlineSubmenu({
           />
         </div>
       ) : (
-        <button
-          className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
-          style={{ fontSize: 12, color: colors.accent, background: 'transparent', border: 'none', cursor: 'pointer' }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-          onClick={() => setShowNewGroupInput(true)}
-        >
+        <ContextMenuItem color={colors.accent} onClick={() => setShowNewGroupInput(true)}>
           <Plus size={12} color={colors.accent} />
           <span>New group...</span>
-        </button>
+        </ContextMenuItem>
       )}
     </motion.div>,
     popoverLayer,

@@ -2,6 +2,8 @@ import React, { useState, useMemo, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { Star, MagnifyingGlass, CaretDown, CaretRight } from '@phosphor-icons/react'
 import { useColors } from '../theme'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { transitions } from '../theme-tokens'
 import { useModelStore } from '../stores/model-store'
 import { usePreferencesStore } from '../preferences'
 import { getProviderDisplayName } from '../../shared/types-models'
@@ -19,6 +21,109 @@ function loadCollapsed(): Set<string> {
 
 function saveCollapsed(set: Set<string>): void {
   try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...set])) } catch { /* ignore */ }
+}
+
+/**
+ * Provider group header — clickable to collapse. Extracted so
+ * `useInteractiveState` runs per row (hooks cannot run inside the
+ * parent's map). Hover/pressed follow the standard surface cascade.
+ */
+function ProviderHeaderRow({ hasAuth, label, count, Caret, onClick }: {
+  hasAuth: boolean
+  label: string
+  count: number
+  Caret: typeof CaretDown
+  onClick: () => void
+}) {
+  const colors = useColors()
+  const { hover, pressed, handlers } = useInteractiveState()
+  return (
+    <button
+      onClick={onClick}
+      {...handlers}
+      className="ion-focusable"
+      style={{
+        display: 'flex', alignItems: 'center', gap: 4, width: '100%',
+        padding: '5px 10px 3px', border: 'none', cursor: 'pointer',
+        background: interactiveBg(colors, { hover, pressed }, 'transparent'),
+        transition: `background ${transitions.base}`,
+      }}
+    >
+      <Caret size={10} weight="bold" style={{ color: colors.textTertiary, flexShrink: 0 }} />
+      <span style={{
+        fontSize: 11, fontWeight: 600, color: hasAuth ? colors.textSecondary : colors.textTertiary,
+        letterSpacing: '0.02em',
+      }}>
+        {label}
+      </span>
+      {!hasAuth && <span style={{ fontSize: 9, color: colors.textTertiary, opacity: 0.6 }}>⚠ not configured</span>}
+      <span style={{ flex: 1 }} />
+      <span style={{ fontSize: 9, color: colors.textTertiary }}>{count}</span>
+    </button>
+  )
+}
+
+/**
+ * One model row. This menu's selection convention is `accentLight` bg
+ * with `fontWeight: 600`; hover uses the standard `surfaceHover` layer
+ * (selected rows keep accentLight while hovered) and pressed wins with
+ * `surfacePressed`. Unauthenticated providers render their rows with the
+ * standard disabled treatment: opacity 0.45, default cursor, inert
+ * hover/pressed handlers (the `disabled` attribute inerts the click).
+ */
+function ModelRow({ model, hasAuth, isSelected, isDefault, isDupe, onPick }: {
+  model: ModelEntry
+  hasAuth: boolean
+  isSelected: boolean
+  isDefault: boolean
+  isDupe: boolean
+  onPick: () => void
+}) {
+  const colors = useColors()
+  const { hover, pressed, handlers } = useInteractiveState()
+  const label = getModelDisplayLabel(model.id)
+  return (
+    <button
+      onClick={onPick}
+      onMouseEnter={hasAuth ? handlers.onMouseEnter : undefined}
+      onMouseLeave={handlers.onMouseLeave}
+      onMouseDown={hasAuth ? handlers.onMouseDown : undefined}
+      onMouseUp={hasAuth ? handlers.onMouseUp : undefined}
+      onBlur={handlers.onBlur}
+      className="ion-focusable w-full flex items-center text-[11px]"
+      style={{
+        padding: '3px 12px 3px 24px',
+        color: isSelected ? colors.textPrimary : hasAuth ? colors.textSecondary : colors.textTertiary,
+        fontWeight: isSelected ? 600 : 400,
+        opacity: hasAuth ? 1 : 0.45,
+        background: pressed
+          ? colors.surfacePressed
+          : isSelected ? colors.accentLight : hover ? colors.surfaceHover : 'transparent',
+        borderRadius: isSelected ? 4 : 0,
+        border: 'none', cursor: hasAuth ? 'pointer' : 'default',
+        gap: 4, justifyContent: 'flex-start',
+        transition: `background ${transitions.base}`,
+      }}
+      disabled={!hasAuth}
+      title={model.id}
+    >
+      {isDefault && <Star size={10} weight="fill" style={{ color: colors.statusWarning, flexShrink: 0 }} />}
+      <span style={{ flex: 1, textAlign: 'left' }}>
+        {label}
+        {isDupe && <span style={{ marginLeft: 4, fontSize: 9, opacity: 0.5, fontFamily: 'monospace' }}>{model.id}</span>}
+      </span>
+      {model.modelKind === 'image' && (
+        <span style={{ fontSize: 8, fontWeight: 500, padding: '0px 4px', borderRadius: 3, color: colors.infoFg, background: colors.infoBg, flexShrink: 0 }}>
+          image gen
+        </span>
+      )}
+      {model.isCustom && (
+        <span style={{ fontSize: 8, fontWeight: 500, padding: '0px 4px', borderRadius: 3, color: colors.iconPurple, background: colors.surfaceActive, flexShrink: 0 }}>
+          custom
+        </span>
+      )}
+    </button>
+  )
 }
 
 interface ModelPickerPopoverProps {
@@ -131,61 +236,25 @@ export function ModelPickerPopover({ selectedModelId, onSelect, onClose, positio
               {/* Divider between groups */}
               {idx > 0 && <div style={{ height: 1, background: colors.containerBorder, margin: '4px 10px' }} />}
               {/* Provider header — clickable to collapse */}
-              <button
+              <ProviderHeaderRow
+                hasAuth={hasAuth}
+                label={getProviderDisplayName(providerId)}
+                count={providerModels.length}
+                Caret={Caret}
                 onClick={() => toggleCollapsed(providerId)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 4, width: '100%',
-                  padding: '5px 10px 3px', background: 'none', border: 'none', cursor: 'pointer',
-                }}
-              >
-                <Caret size={10} weight="bold" style={{ color: colors.textTertiary, flexShrink: 0 }} />
-                <span style={{
-                  fontSize: 11, fontWeight: 600, color: hasAuth ? colors.textSecondary : colors.textTertiary,
-                  letterSpacing: '0.02em',
-                }}>
-                  {getProviderDisplayName(providerId)}
-                </span>
-                {!hasAuth && <span style={{ fontSize: 9, color: colors.textTertiary, opacity: 0.6 }}>⚠ not configured</span>}
-                <span style={{ flex: 1 }} />
-                <span style={{ fontSize: 9, color: colors.textTertiary }}>{providerModels.length}</span>
-              </button>
+              />
               {/* Model rows */}
-              {!isCollapsed && providerModels.map((m) => {
-                const isSelected = m.id === selectedModelId
-                const isDefault = m.id === preferredModel
-                const label = getModelDisplayLabel(m.id)
-                const isDupe = duplicateLabels.has(label)
-                return (
-                  <button
-                    key={m.id}
-                    onClick={() => { onSelect(m.id); onClose() }}
-                    className="w-full flex items-center text-[11px] transition-colors"
-                    style={{
-                      padding: '3px 12px 3px 24px',
-                      color: isSelected ? colors.textPrimary : hasAuth ? colors.textSecondary : colors.textTertiary,
-                      fontWeight: isSelected ? 600 : 400,
-                      opacity: hasAuth ? 1 : 0.5,
-                      background: isSelected ? `${colors.accent}18` : 'none',
-                      borderRadius: isSelected ? 4 : 0,
-                      border: 'none', cursor: hasAuth ? 'pointer' : 'default',
-                      gap: 4, justifyContent: 'flex-start',
-                    }}
-                    disabled={!hasAuth}
-                    title={m.id}
-                  >
-                    {isDefault && <Star size={10} weight="fill" style={{ color: '#f59e0b', flexShrink: 0 }} />}
-                    <span style={{ flex: 1, textAlign: 'left' }}>
-                      {label}
-                      {isDupe && <span style={{ marginLeft: 4, fontSize: 9, opacity: 0.5, fontFamily: 'monospace' }}>{m.id}</span>}
-                    </span>
-                    {m.isCustom && (
-                      <span style={{ fontSize: 8, fontWeight: 500, padding: '0px 4px', borderRadius: 3, color: '#a78bfa', background: 'rgba(167,139,250,0.1)', flexShrink: 0 }}>
-                        custom
-                      </span>
-                    )}
-                  </button>
-                )
-              })}
+              {!isCollapsed && providerModels.map((m) => (
+                <ModelRow
+                  key={m.id}
+                  model={m}
+                  hasAuth={hasAuth}
+                  isSelected={m.id === selectedModelId}
+                  isDefault={m.id === preferredModel}
+                  isDupe={duplicateLabels.has(getModelDisplayLabel(m.id))}
+                  onPick={() => { onSelect(m.id); onClose() }}
+                />
+              ))}
             </div>
           )
         })}

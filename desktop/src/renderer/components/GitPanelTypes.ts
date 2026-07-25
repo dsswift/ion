@@ -1,13 +1,10 @@
 import type { GitChangedFile } from '../../shared/types'
 
 // ─── Status badge colors ───
-export const STATUS_COLORS: Record<string, string> = {
-  added: '#7aac8c',
-  modified: '#6b9bd2',
-  deleted: '#c47060',
-  renamed: '#b08fd8',
-  untracked: '#d4a843',
-}
+// Single source of truth for the status → theme-token-key mapping lives in
+// the git store (`stores/git/types.ts`); re-exported here for component-side
+// consumers. Resolve via `useColors()`: `colors[GIT_STATUS_COLOR_KEYS[status]]`.
+export { GIT_STATUS_COLOR_KEYS } from '../stores/git/types'
 
 export const STATUS_LETTERS: Record<string, string> = {
   added: 'A',

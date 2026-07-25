@@ -7,8 +7,10 @@
  */
 
 import React from 'react'
-import { CaretDown, CaretRight } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
+import { useInteractiveState, interactiveBg } from '../../hooks/useInteractiveState'
+import { transitions } from '../../theme-tokens'
+import { Chevron } from '../Chevron'
 import type { GitChangedFile } from '../../../shared/types'
 import { VirtualFlatFileList, TreeFileList } from './VirtualFileList'
 
@@ -32,7 +34,15 @@ interface Props {
 
 export function SectionBlock(props: Props) {
   const colors = useColors()
+  const { hover, pressed, handlers } = useInteractiveState()
   const { label, files, open, onToggle, actions, accentColor, treeView } = props
+  // The header is sticky and must stay opaque while rows scroll beneath it,
+  // so the (translucent) hover/pressed token is layered over surfacePrimary
+  // instead of replacing it.
+  const overlay = interactiveBg(colors, { hover, pressed })
+  const headerBg = overlay === 'transparent'
+    ? colors.surfacePrimary
+    : `linear-gradient(${overlay}, ${overlay}), ${colors.surfacePrimary}`
   if (files.length === 0) return null
 
   return (
@@ -40,19 +50,21 @@ export function SectionBlock(props: Props) {
       <div
         className="flex items-center justify-between px-2 cursor-pointer"
         onClick={onToggle}
+        {...handlers}
         style={{
           fontSize: 10,
           color: accentColor ?? colors.textTertiary,
           position: 'sticky',
           top: 0,
           zIndex: 2,
-          background: colors.surfacePrimary,
+          background: headerBg,
           borderBottom: `1px solid ${colors.containerBorder}`,
           height: 22,
+          transition: `background ${transitions.base}`,
         }}
       >
         <span className="flex items-center gap-1">
-          {open ? <CaretDown size={9} /> : <CaretRight size={9} />}
+          <Chevron open={open} size={9} weight="regular" />
           {label} ({files.length})
         </span>
         <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>

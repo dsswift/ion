@@ -64,21 +64,21 @@ export function MessageAttachments({ attachments }: { attachments: Attachment[] 
             onClick={() => { void handleClick(a).catch((err) => rWarn('conversation', 'open attachment failed', { error: String(err) })) }}
             className="flex items-center gap-1 cursor-pointer transition-opacity hover:opacity-80"
             style={{
-              background: a.type === 'plan' ? 'rgba(34, 197, 94, 0.1)' : colors.surfacePrimary,
-              border: `1px solid ${a.type === 'plan' ? 'rgba(34, 197, 94, 0.3)' : colors.surfaceSecondary}`,
+              background: a.type === 'plan' ? colors.permissionAllowBg : colors.surfacePrimary,
+              border: `1px solid ${a.type === 'plan' ? colors.permissionAllowBorder : colors.surfaceSecondary}`,
               borderRadius: 10,
               padding: '2px 7px',
               maxWidth: 180,
             }}
           >
-            <span className="flex-shrink-0" style={{ color: a.type === 'plan' ? 'rgba(34, 197, 94, 0.85)' : colors.textTertiary }}>
+            <span className="flex-shrink-0" style={{ color: a.type === 'plan' ? colors.successFg : colors.textTertiary }}>
               {a.type === 'plan'
                 ? <ListChecks size={12} />
                 : FILE_ICONS[(a as any).mimeType || ''] || <File size={12} />}
             </span>
             <span
               className="text-[10px] font-medium truncate"
-              style={{ color: a.type === 'plan' ? 'rgba(34, 197, 94, 0.85)' : colors.textSecondary }}
+              style={{ color: a.type === 'plan' ? colors.successFg : colors.textSecondary }}
             >
               {a.name}
             </span>

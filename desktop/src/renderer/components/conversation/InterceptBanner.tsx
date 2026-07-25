@@ -32,25 +32,26 @@ export function InterceptBanner({ message, skipMotion }: InterceptBannerProps) {
 
   const isRedirect = message.interceptLevel === 'redirect'
 
-  // Amber palette — mirrors the permission card amber so intercepts feel
+  // Amber palette — reuses the permission-card amber tokens so intercepts feel
   // visually related to "action required" surfaces without being identical.
-  const borderColor = 'rgba(245, 158, 11, 0.55)'
-  const bgColor = isRedirect ? 'rgba(245, 158, 11, 0.07)' : colors.surfaceHover
+  const borderColor = colors.permissionBorder
+  const bgColor = isRedirect ? colors.permissionHeaderBg : colors.surfaceHover
   const textColor = colors.textSecondary
 
+  const linkColor = colors.warningFg
   const markdownComponents = useMemo(() => ({
     table: ({ children }: any) => <TableScrollWrapper>{children}</TableScrollWrapper>,
     a: ({ href, children }: any) => (
       <button
         type="button"
         className="underline decoration-dotted underline-offset-2 cursor-pointer"
-        style={{ color: 'rgba(245, 158, 11, 0.9)' }}
+        style={{ color: linkColor }}
         onClick={() => { if (href) void window.ion.openExternal(String(href)).catch((err) => rWarn('conversation', 'open link failed', { error: String(err) })) }}
       >
         {children}
       </button>
     ),
-  }), [])
+  }), [linkColor])
 
   const content = (message.content || '').trim()
 

@@ -64,11 +64,11 @@ describe('setSelectedTheme — persistence guard (structural)', () => {
     expect(body).toContain('saveSettings(getAllSettings(get))')
   })
 
-  it('[STRUCTURAL] setSelectedTheme applies theme for forced-scheme themes (forcedColorScheme branch)', () => {
-    // The fix also corrected the startup apply path. Guard that the forced-scheme
-    // branch (applyTheme(id)) is present alongside the persist call.
+  it('[STRUCTURAL] setSelectedTheme applies the selected theme by id', () => {
+    // Theme selection is single-axis: the setter must apply the picked
+    // theme's palette directly (behavioral coverage of the full contract
+    // lives in preferences-theme-switch.test.ts).
     const body = extractSetSelectedThemeBody()
-    expect(body).toContain('forcedColorScheme')
     expect(body).toContain('applyTheme(id)')
   })
 })

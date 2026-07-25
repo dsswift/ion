@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react'
 import { rDebug } from '../../rendererLogger'
 import { useColors } from '../../theme'
 import { usePreferencesStore } from '../../preferences'
-import { themes, getTheme } from '../../theme-tokens'
+import { getTheme } from '../../theme-tokens'
+import { useAllThemes } from '../../hooks/useThemeRegistry'
+import { deriveEnterpriseThemePolicy } from '../../../shared/enterprise-theme-policy'
 import { SettingToggle } from './SettingToggle'
 import { SettingSection } from './SettingSection'
 import { SettingHeading } from './SettingHeading'
@@ -16,8 +18,6 @@ export function AppearanceCategory() {
   const setExpandedUI = usePreferencesStore((s) => s.setExpandedUI)
   const ultraWide = usePreferencesStore((s) => s.ultraWide)
   const setUltraWide = usePreferencesStore((s) => s.setUltraWide)
-  const themeMode = usePreferencesStore((s) => s.themeMode)
-  const setThemeMode = usePreferencesStore((s) => s.setThemeMode)
   const selectedTheme = usePreferencesStore((s) => s.selectedTheme)
   const setSelectedTheme = usePreferencesStore((s) => s.setSelectedTheme)
   const expandToolResults = usePreferencesStore((s) => s.expandToolResults)
@@ -46,6 +46,16 @@ export function AppearanceCategory() {
   const setTerminalFontFamily = usePreferencesStore((s) => s.setTerminalFontFamily)
   const terminalFontSize = usePreferencesStore((s) => s.terminalFontSize)
   const setTerminalFontSize = usePreferencesStore((s) => s.setTerminalFontSize)
+
+  const allThemes = useAllThemes()
+  const enterprisePolicy = usePreferencesStore((s) => s.enterprisePolicy)
+  const themePolicy = deriveEnterpriseThemePolicy(enterprisePolicy)
+  const themeLocked = themePolicy?.locked === true
+  // A locked policy renders (and displays) the enforced theme regardless of
+  // the user's saved pick; the pick itself is preserved for when the policy
+  // lifts (never overwritten — see preferences-bootstrap).
+  const displayedThemeId = themeLocked ? themePolicy.themeId : selectedTheme
+  const activeTheme = getTheme(displayedThemeId)
 
   const [availableFonts, setAvailableFonts] = useState<string[]>(fontCache || [])
   useEffect(() => {
@@ -135,10 +145,26 @@ export function AppearanceCategory() {
 
       <SettingHeading>Theme</SettingHeading>
 
-      <SettingSection label="Color Theme" description="Choose a visual theme for the app.">
+      {activeTheme.logoUrl && (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '4px 0 10px' }}>
+          <img
+            src={activeTheme.logoUrl}
+            alt={`${activeTheme.displayName} logo`}
+            style={{ maxHeight: 48, maxWidth: 220, objectFit: 'contain' }}
+          />
+        </div>
+      )}
+
+      <SettingSection
+        label="Color Theme"
+        description={themeLocked
+          ? 'Theme is managed by your organization.'
+          : 'Choose a visual theme for the app.'}
+      >
         <select
-          value={selectedTheme}
+          value={displayedThemeId}
           onChange={(e) => setSelectedTheme(e.target.value)}
+          disabled={themeLocked}
           style={{
             width: '100%',
             padding: '6px 10px',
@@ -150,23 +176,15 @@ export function AppearanceCategory() {
             borderRadius: 8,
             outline: 'none',
             boxSizing: 'border-box' as const,
-            cursor: 'pointer',
+            cursor: themeLocked ? 'not-allowed' : 'pointer',
+            opacity: themeLocked ? 0.6 : 1,
           }}
         >
-          {themes.map((t) => (
+          {allThemes.map((t) => (
             <option key={t.id} value={t.id}>{t.displayName}</option>
           ))}
         </select>
       </SettingSection>
-
-      {!getTheme(selectedTheme).forcedColorScheme && (
-        <SettingToggle
-          label="Dark Theme"
-          description="Toggle between light and dark theme."
-          checked={themeMode === 'dark'}
-          onChange={(next) => setThemeMode(next ? 'dark' : 'light')}
-        />
-      )}
 
       <SettingToggle
         label="Tool Output"

@@ -75,6 +75,7 @@ import {
 import { handleLoadAttachments } from './handlers/attachments'
 import { handleSetRemoteDisplay } from './handlers/display'
 import { handleSetDesktopSetting } from './handlers/desktop-settings'
+import { handleRequestThemeAsset } from './handlers/themes'
 import { handleRequestResourceContent, handleMarkResourceRead, handleDeleteResource } from './handlers/resources'
 import { handleRequestPlanContent } from './handlers/plan-content'
 import { handleImplementPlan } from './handlers/implement-plan'
@@ -171,6 +172,7 @@ export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string):
     case 'desktop_fs_list_dir': await handleFsListDir(cmd, deviceId); break
     case 'desktop_fs_read_file': await handleFsReadFile(cmd, deviceId); break
     case 'desktop_fs_read_image': await handleFsReadImage(cmd); break
+    case 'desktop_request_theme_asset': handleRequestThemeAsset(cmd, deviceId); break
     case 'desktop_fs_write_file': await handleFsWriteFile(cmd); break
     case 'desktop_fs_rename': await handleFsRename(cmd); break
     case 'desktop_discover_commands': await handleDiscoverCommands(cmd, deviceId); break
