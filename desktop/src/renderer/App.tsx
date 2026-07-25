@@ -22,7 +22,6 @@ import { RemoteDirectoryPicker } from './components/RemoteDirectoryPicker'
 import { useRemoteFsStore } from './stores/remote-fs-store'
 import { useEngineEvents } from './hooks/useEngineEvents'
 import { useHealthReconciliation } from './hooks/useHealthReconciliation'
-import { useThemeSync } from './hooks/useThemeSync'
 import { useTrayMenuListeners } from './hooks/useTrayMenuListeners'
 import { useTabRestoration } from './hooks/useTabRestoration'
 import { useEnginePermissionDenialBackfill } from './hooks/useEnginePermissionDenialBackfill'
@@ -44,7 +43,6 @@ const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] as const }
 export default function App() {
   useEngineEvents()
   useHealthReconciliation()
-  useThemeSync()
   useTrayMenuListeners()
   useTabRestoration()
   useEnginePermissionDenialBackfill()
@@ -303,7 +301,7 @@ export default function App() {
               >
                 <div
                   data-ion-ui
-                  className="glass-surface overflow-hidden"
+                  className="glass-surface ion-theme-backdrop overflow-hidden"
                   style={{
                     width: cardExpandedWidth,
                     borderRadius: 20,
@@ -324,7 +322,7 @@ export default function App() {
           {/* ─── Tabs / message shell ─── */}
           <motion.div
             data-ion-ui
-            className="overflow-hidden flex flex-col"
+            className="ion-theme-backdrop overflow-hidden flex flex-col"
             animate={{
               width: isExpanded || isTerminalOnly || isTerminalTall || isConversation ? cardExpandedWidth : cardCollapsedWidth,
               marginBottom: isExpanded || isTerminalOnly || isTerminalTall || isConversation ? 10 : -14,
@@ -439,8 +437,8 @@ export default function App() {
             {/* Input pill */}
             <div
               data-ion-ui
-              className="glass-surface w-full"
-              style={{ minHeight: 50, borderRadius: 25, padding: '0 6px 0 16px', background: colors.inputPillBg, boxShadow: bashModeActive ? 'inset 0 0 0 2px rgba(244, 114, 182, 0.5)' : undefined, transition: 'box-shadow 0.15s' }}
+              className="glass-surface ion-input-shell w-full"
+              style={{ minHeight: 50, borderRadius: 25, padding: '0 6px 0 16px', background: colors.inputPillBg, boxShadow: bashModeActive ? `inset 0 0 0 2px ${colors.bashModeRing}` : undefined }}
             >
               <InputBar />
             </div>

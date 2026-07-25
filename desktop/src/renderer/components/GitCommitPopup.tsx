@@ -70,10 +70,10 @@ export function CommitPopup({ commit, rect, detail, panelRight, onMouseEnter, on
         <div className="text-[10px] mt-2" style={{ color: colors.textSecondary }}>
           {detail.filesChanged} {detail.filesChanged === 1 ? 'file' : 'files'} changed
           {detail.insertions > 0 && (
-            <span>, <span style={{ color: '#7aac8c' }}>{detail.insertions} {detail.insertions === 1 ? 'insertion' : 'insertions'}(+)</span></span>
+            <span>, <span style={{ color: colors.successFg }}>{detail.insertions} {detail.insertions === 1 ? 'insertion' : 'insertions'}(+)</span></span>
           )}
           {detail.deletions > 0 && (
-            <span>, <span style={{ color: '#c47060' }}>{detail.deletions} {detail.deletions === 1 ? 'deletion' : 'deletions'}(-)</span></span>
+            <span>, <span style={{ color: colors.dangerFg }}>{detail.deletions} {detail.deletions === 1 ? 'deletion' : 'deletions'}(-)</span></span>
           )}
         </div>
       )}

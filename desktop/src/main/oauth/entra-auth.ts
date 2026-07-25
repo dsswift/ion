@@ -35,7 +35,7 @@ import { join } from 'path'
 import { homedir } from 'os'
 import { existsSync, unlinkSync } from 'fs'
 import { engineBridge } from '../state'
-import { ENGINE_CONFIG_FILE, readEngineConfig, writeEngineConfig } from '../settings-store'
+import { ENGINE_CONFIG_FILE, readEngineConfig } from '../settings-store'
 import { log as _log } from '../logger'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -43,25 +43,60 @@ function log(msg: string, fields?: Record<string, unknown>): void {
 }
 
 // ---------------------------------------------------------------------------
-// App registration constants (operator-provisioned, public client, Ion)
+// Identity configuration (deployment-provided, never hardcoded)
 // ---------------------------------------------------------------------------
+//
+// The identity used for OIDC flows is CONFIGURATION, not code. Ion ships with
+// no default identity: a deployment provides one by writing the auth block
+// into ~/.ion/engine.json (auth.identityProvider + auth.oauth.<provider>) —
+// by hand, by installer, or by an MDM-managed configuration. A fresh install
+// with no configured identity simply has OIDC sign-in unavailable until
+// configured. Nothing in this repository carries a real tenant, client ID,
+// or hostname.
 
-const ENTRA_CLIENT_ID = '2539daa2-51e3-47e0-975c-7297283f82cf'
-const ENTRA_TENANT_ID = '5698dde5-3af7-4060-8ecb-e8da8747fb4a'
-const ENTRA_AUTHORITY = `https://login.microsoftonline.com/${ENTRA_TENANT_ID}`
+/**
+ * The configured OIDC client ID for this install, read from engine.json's
+ * auth block (auth.oauth.<identityProvider>.clientId). Returns '' when no
+ * identity is configured. This is the value pushed to iOS as
+ * relayOidcClientId so the mobile app can run its own PKCE flow against
+ * the same registration.
+ */
+export function getConfiguredOidcClientId(): string {
+  try {
+    const cfg = readEngineConfig()
+    const auth = (cfg.auth ?? {}) as Record<string, unknown>
+    const provider = auth.identityProvider as string | undefined
+    if (!provider) return ''
+    const oauth = (auth.oauth ?? {}) as Record<string, unknown>
+    const entry = oauth[provider] as Record<string, unknown> | undefined
+    return (entry?.clientId as string) || ''
+  } catch {
+    return '' // silent-ok: no identity configured is a valid state; callers treat '' as unconfigured
+  }
+}
 
-/** The downstream API scope used when minting tokens for egress endpoints
- *  (e.g. ion-telemetry.sprague.house). This is the resource-scoped scope
- *  the engine passes to Entra when calling oidc_token; must be specified
- *  explicitly or Entra returns AADSTS90009 (app requesting token for itself). */
-export const ENTRA_TELEMETRY_SCOPE = `api://${ENTRA_CLIENT_ID}/Telemetry.Write`
-
-const ENTRA_SCOPES = [
-  'openid',
-  'profile',
-  'offline_access',
-  ENTRA_TELEMETRY_SCOPE,
-]
+/**
+ * The downstream telemetry scope for this install, derived from the
+ * configured auth block: the first configured scope containing a '/'
+ * (resource-scoped, e.g. api://<id>/Telemetry.Write). Entra requires a
+ * resource-scoped scope on oidc_token or it returns AADSTS90009. Returns ''
+ * when no identity or no resource scope is configured — telemetry egress
+ * is then unavailable, which is the honest state.
+ */
+export function getConfiguredTelemetryScope(): string {
+  try {
+    const cfg = readEngineConfig()
+    const auth = (cfg.auth ?? {}) as Record<string, unknown>
+    const provider = auth.identityProvider as string | undefined
+    if (!provider) return ''
+    const oauth = (auth.oauth ?? {}) as Record<string, unknown>
+    const entry = oauth[provider] as Record<string, unknown> | undefined
+    const scopes = (entry?.scopes as string[]) || []
+    return scopes.find((s) => s.includes('/') && !s.startsWith('openid')) || ''
+  } catch {
+    return '' // silent-ok: unconfigured identity; telemetry egress simply disabled
+  }
+}
 
 /** Legacy MSAL token-cache blob; deleted on sign-out (migration cleanup). */
 const LEGACY_MSAL_CACHE_FILE = join(homedir(), '.ion', 'entra-token-cache.enc')
@@ -72,47 +107,30 @@ const SIGN_IN_TIMEOUT_MS = 5 * 60 * 1000
 const SIGN_IN_POLL_MS = 2000
 
 // ---------------------------------------------------------------------------
-// Engine auth-config seeding
+// Identity configuration check (startup observability)
 // ---------------------------------------------------------------------------
 
 /**
- * Seed the Ion Entra app registration into ~/.ion/engine.json's auth block
- * when absent, making the engine the identity authority for this install.
- * Call at startup BEFORE ensureEngineDaemon() (alongside
- * claimEngineEgressForDesktop) so a fresh daemon reads it on first start.
- *
- * Idempotent: never overwrites an existing auth.oauth.entra entry or an
- * existing identityProvider choice — an operator or enterprise that
- * configured a different identity keeps it. Returns true when it wrote.
+ * Log the identity-configuration state at startup so an unconfigured install
+ * is diagnosable from the log file alone. Identity lives in engine.json's
+ * auth block (auth.identityProvider + auth.oauth.<provider>); deployments
+ * write it by hand, by installer, or by MDM-managed configuration. This
+ * function never writes anything. Returns true when an identity is configured.
  */
 export function ensureEntraAuthConfig(): boolean {
   if (!existsSync(ENGINE_CONFIG_FILE)) return false
   try {
     const cfg = readEngineConfig()
     const auth = (cfg.auth ?? {}) as Record<string, unknown>
-    const oauth = (auth.oauth ?? {}) as Record<string, unknown>
-    if (auth.identityProvider || oauth.entra) return false // operator/enterprise decided
-
-    oauth.entra = {
-      clientId: ENTRA_CLIENT_ID,
-      authorizationUrl: `${ENTRA_AUTHORITY}/oauth2/v2.0/authorize`,
-      tokenUrl: `${ENTRA_AUTHORITY}/oauth2/v2.0/token`,
-      deviceAuthorizationUrl: `${ENTRA_AUTHORITY}/oauth2/v2.0/devicecode`,
-      scopes: ENTRA_SCOPES,
-      usePkce: true,
-      // Entra matches public-client loopback redirects on the literal
-      // "localhost" spelling (host+path, port ignored). The app
-      // registration allows http://localhost/callback.
-      redirectUri: 'http://localhost/callback',
+    const provider = auth.identityProvider as string | undefined
+    if (provider) {
+      log('entra_auth: identity configured', { provider })
+      return true
     }
-    auth.oauth = oauth
-    auth.identityProvider = 'entra'
-    cfg.auth = auth
-    writeEngineConfig(cfg)
-    log('entra_auth: seeded engine auth config (identityProvider=entra)')
-    return true
+    log('entra_auth: no identity configured; OIDC sign-in unavailable until auth block is written to engine.json')
+    return false
   } catch (err) {
-    log('entra_auth: auth config seed failed (non-fatal)', {
+    log('entra_auth: identity config check failed (non-fatal)', {
       error: err instanceof Error ? err.message : String(err),
     })
     return false
@@ -160,15 +178,21 @@ function toEntraIdentity(data: OidcIdentityData): EntraIdentity {
 // ---------------------------------------------------------------------------
 
 /**
- * Returns a valid access token for the Telemetry.Write scope, minted by the
- * engine (silent refresh included). The scope must be passed explicitly —
+ * Returns a valid access token for the configured telemetry scope, minted by
+ * the engine (silent refresh included). The scope must be passed explicitly —
  * omitting it causes Entra to return AADSTS90009 (app requesting token for
  * itself with no resource). Returns null when not signed in, no identity
- * provider is configured, or the engine is unreachable.
+ * provider is configured, no resource scope is configured, or the engine is
+ * unreachable.
  */
 export async function getAccessToken(): Promise<string | null> {
+  const scope = getConfiguredTelemetryScope()
+  if (!scope) {
+    log('entra_auth: getAccessToken: no telemetry scope configured; egress token unavailable')
+    return null
+  }
   const result = await engineBridge.request<{ accessToken?: string }>('oidc_token', {
-    oidcScope: ENTRA_TELEMETRY_SCOPE,
+    oidcScope: scope,
   })
   if (!result.ok || !result.data?.accessToken) {
     log('entra_auth: getAccessToken: engine mint unavailable', { error: result.error ?? 'no token in result' })

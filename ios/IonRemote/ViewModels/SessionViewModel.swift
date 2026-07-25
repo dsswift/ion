@@ -197,6 +197,12 @@ final class SessionViewModel {
     /// desktop build — treat as unlocked).
     var enterpriseNewConversationPolicy: RemoteNewConversationPolicy? = nil
 
+    /// The app's ThemeManager, wired by IonRemoteApp at launch (same
+    /// pattern as appDelegate.sessionViewModel). Event handlers route
+    /// `desktop_theme_manifest` / `desktop_theme_asset_content` into it so
+    /// synced custom themes join the registry. Weak: the app owns it.
+    weak var themeManager: ThemeManager?
+
     /// Default model list used before the desktop sends a dynamic list.
     static let defaultModels: [RemoteModelEntry] = [
         RemoteModelEntry(id: "claude-opus-4-7", providerId: "anthropic", label: "Opus 4.7", contextWindow: 1_000_000, hasAuth: true),
@@ -268,6 +274,9 @@ final class SessionViewModel {
     var pairedDevices: [PairedDevice] = []
     var connectionState: ConnectionState = .disconnected
     var pairingState: PairingState = .idle
+    /// OIDC token manager for autonomous relay authentication (Phase 2).
+    /// Non-nil when the active device is in OIDC mode and has a client ID.
+    var oidcTokenManager: OIDCTokenManager?
 
     /// Blocks deferred until the transport reaches `.connected` (i.e. the
     /// first snapshot has arrived and confirmed the round-trip works).

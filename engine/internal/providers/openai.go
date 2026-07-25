@@ -432,17 +432,57 @@ func formatOpenAIMessages(system string, messages []types.LlmMessage) []map[stri
 		{"role": "system", "content": system},
 	}
 
+	// carryImages holds assistant-generated image blocks awaiting re-homing
+	// into the NEXT user message. OpenAI's assistant message shape has no
+	// image part — persisted assistant image blocks (provider-generated
+	// images, image-generation loop output) would be silently dropped. They
+	// are real conversation content the model should SEE on follow-up turns,
+	// exactly like a user-uploaded image, so they carry forward into the next
+	// user message's content parts (as image_url data URLs — the same shape
+	// user uploads take). Mirrors the identical mechanism in
+	// anthropic.go formatMessages.
+	var carryImages []types.LlmContentBlock
+
 	for _, msg := range messages {
 		blocks := contentBlocks(msg)
 
 		// Simple string content
 		if s, ok := msg.Content.(string); ok {
+			if msg.Role == "user" && len(carryImages) > 0 {
+				// Promote to parts form so the carried images ride along,
+				// preceded by the wire-only provenance line (see
+				// assistantImageProvenanceText).
+				parts := []map[string]any{
+					{"type": "text", "text": assistantImageProvenanceText},
+				}
+				for _, img := range carryImages {
+					url := fmt.Sprintf("data:%s;base64,%s", img.Source.MediaType, img.Source.Data)
+					parts = append(parts, map[string]any{
+						"type":      "image_url",
+						"image_url": map[string]any{"url": url},
+					})
+				}
+				parts = append(parts, map[string]any{"type": "text", "text": s})
+				utils.LogWithFields(utils.LevelDebug, "OpenAI", "re-homed assistant image blocks into user message", map[string]any{"count": len(carryImages)})
+				carryImages = nil
+				result = append(result, map[string]any{"role": "user", "content": parts})
+				continue
+			}
 			result = append(result, map[string]any{"role": msg.Role, "content": s})
 			continue
 		}
 
 		if blocks == nil {
 			continue
+		}
+
+		// Re-home any carried assistant images into this user message,
+		// preceded by the wire-only provenance line.
+		if msg.Role == "user" && len(carryImages) > 0 {
+			pre := []types.LlmContentBlock{{Type: "text", Text: assistantImageProvenanceText}}
+			blocks = append(append(pre, carryImages...), blocks...)
+			utils.LogWithFields(utils.LevelDebug, "OpenAI", "re-homed assistant image blocks into user message", map[string]any{"count": len(carryImages)})
+			carryImages = nil
 		}
 
 		// Separate tool_result blocks (they become separate "tool" messages)
@@ -474,6 +514,11 @@ func formatOpenAIMessages(system string, messages []types.LlmMessage) []map[stri
 					})
 				case "text":
 					textParts = append(textParts, b.Text)
+				case "image":
+					// Defer to the next user message (see carryImages above).
+					if b.Source != nil && b.Source.Data != "" {
+						carryImages = append(carryImages, b)
+					}
 				}
 			}
 

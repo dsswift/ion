@@ -10,6 +10,7 @@ import { subscribeToResourceKinds, subscribeToGlobalResourceKinds, clearResource
 import { handleInterceptEvent } from './event-wiring-intercept'
 import { injectDiskResourcesIfEmpty } from './event-wiring-disk-seed'
 import { accumulateTextDelta, flushKeyDeltas, dropKeyDeltas } from './event-wiring-text-delta-batcher'
+import { projectEngineEventToWire } from './event-wiring-wire-projection'
 import { notifyAtvPermissionResolved } from './atv-window-manager'
 export { wireTabFocusHandler, wireMarkResourceReadHandler, wireDeleteResourceHandler, wireResourceGetHandler, handleResourceItemEvent } from './event-wiring-resources'
 export { wireRemoteSessionPlaneForwarding } from './event-wiring-remote'
@@ -88,6 +89,15 @@ export function wireEngineBridgeEvents(): void {
     })
   }
   engineBridge.on('reconnected', subscribeGlobalResources)
+
+  // Tell the renderers the engine is reachable again so panes whose history
+  // load failed during the outage re-arm hydration (rehydrateFailedHistory).
+  // Routed through broadcast() so the overlay and the ATV mirror both hear it
+  // — each window re-hydrates its own store.
+  engineBridge.on('reconnected', () => {
+    log('engineBridge: broadcasting engine reconnect to renderers')
+    broadcast('ion:engine-reconnected')
+  })
 
   // Track whether we've done the initial global resource subscription.
   // The first engine event signals the bridge is live. Fire once.
@@ -336,17 +346,11 @@ export function wireEngineBridgeEvents(): void {
       // the event for diagnostic visibility only — the desktop is the
       // authoritative responder via early-stop-policy.ts — but the wire
       // protocol is now uniform across consumers.
-      // Map engine event type strings to desktop_ wire event types. Most
-      // engine_* events strip the engine_ prefix and add desktop_ (e.g.
-      // engine_status → desktop_status). Exceptions below preserve the
-      // engine_ segment in the output name so iOS decoders stay unambiguous.
-      const engineToWireType = (engineType: string): string => {
-        switch (engineType) {
-          case 'engine_error':    return 'desktop_engine_error'
-          case 'engine_profiles': return 'desktop_engine_profiles'
-          default:                return `desktop_${engineType.replace('engine_', '')}`
-        }
-      }
+      //
+      // The engine→wire type mapping and the per-type envelope projection
+      // (including the explicit field mappings for engine_tool_stalled and
+      // engine_image_content, whose raw engine field names differ from the
+      // wire contract) live in event-wiring-wire-projection.ts.
       // Low-bandwidth mode (issue #158): gate the per-token reasoning stream.
       // `engine_thinking_delta` becomes `desktop_thinking_delta` on the wire.
       // When `streamThinkingToRemote` is OFF for this desktop we DROP the
@@ -355,28 +359,22 @@ export function wireEngineBridgeEvents(): void {
       // the "💭 Thought for Ns" summary and never looks stalled mid-turn.
       // Both branches log so the operational log explains exactly why a
       // given iOS device did or did not receive the reasoning stream.
-      //
-      // Spread order matters: `...event` carries the engine's own
-      // `type: 'engine_thinking_*'`, so it MUST come before the `type:`
-      // override or it clobbers the computed wire type and iOS (which decodes
-      // `desktop_thinking_*`) never matches. The text-delta path above
-      // constructs its envelope explicitly for the same reason.
       if (event.type === 'engine_thinking_delta') {
         if (!shouldStreamThinkingToRemote()) {
           trace('thinking_delta: dropped', { key, reason: 'streamThinkingToRemote=off' })
         } else {
           trace('thinking_delta: forwarding', { key })
-          state.remoteTransport.send({ ...event, tabId, instanceId, type: engineToWireType(event.type) })
+          state.remoteTransport.send(projectEngineEventToWire(event, tabId, instanceId) as any)
         }
       } else if (event.type === 'engine_thinking_block_start' || event.type === 'engine_thinking_block_end') {
         // Boundaries always forward (never gated) so the phone renders the
         // "💭 Thought for Ns" summary and never looks stalled mid-turn.
-        state.remoteTransport.send({ ...event, tabId, instanceId, type: engineToWireType(event.type) })
+        state.remoteTransport.send(projectEngineEventToWire(event, tabId, instanceId) as any)
       } else if (event.type === 'engine_notification') {
         // Forwarded to iOS with push=false when connected; the push=true path
         // is handled in the early-exit branch above (avoids a duplicate frame).
         if (!event.push) {
-          state.remoteTransport.send({ ...event, tabId, instanceId, type: engineToWireType(event.type) })
+          state.remoteTransport.send(projectEngineEventToWire(event, tabId, instanceId) as any)
         }
       } else {
         // Flush any buffered text for this key before forwarding turn-boundary
@@ -399,35 +397,11 @@ export function wireEngineBridgeEvents(): void {
         if (event.type === 'engine_stream_reset') {
           dropKeyDeltas(key)
         }
-        // engine_tool_stalled needs an explicit projection: the raw engine
-        // event carries `toolElapsed`, but the wire contract (protocol.ts
-        // desktop_tool_stalled) declares `elapsed`. A blind spread would ship
-        // `toolElapsed` and omit `elapsed`, and iOS's decoder requires
-        // `elapsed` — the decode throws ("Key 'elapsed' not found") and
-        // triggers a full resync on every stalled-tool tick. Constructed with
-        // exactly the protocol's declared fields (toolId / toolName already
-        // line up), mirroring the renderer mapping in
-        // engine-control-plane-stream.ts (elapsed: event.toolElapsed).
-        if (event.type === 'engine_tool_stalled') {
-          state.remoteTransport.send({
-            type: 'desktop_tool_stalled',
-            tabId,
-            instanceId,
-            toolId: event.toolId,
-            toolName: event.toolName,
-            elapsed: event.toolElapsed,
-          })
-        } else {
-          // Spread order matters (same hazard documented above for the thinking
-          // path): `...event` carries the engine's own `type: 'engine_*'`, so it
-          // MUST come BEFORE the computed wire type or it clobbers it back to the
-          // raw `engine_*` name. iOS decoders key off `desktop_*` (see
-          // NormalizedEvent.swift TypeKey), so a clobbered `engine_*` type fails
-          // to decode and the event is silently dropped on the phone. tabId /
-          // instanceId likewise come last so an engine-supplied tabId on the
-          // payload can't override the wire-key-derived split.
-          state.remoteTransport.send({ ...event, tabId, instanceId, type: engineToWireType(event.type) })
-        }
+        // Envelope construction (generic spread + the explicit projections for
+        // engine_tool_stalled / engine_image_content, whose engine field names
+        // differ from the wire contract) is centralized in
+        // event-wiring-wire-projection.ts.
+        state.remoteTransport.send(projectEngineEventToWire(event, tabId, instanceId) as any)
       }
 
       // Synthesize a `permission_request` envelope for iOS when an

@@ -62,6 +62,13 @@ describe('broadcast → ATV full-stream gate', () => {
     expect(win.webContents.send).toHaveBeenCalledTimes(2)
   })
 
+  it('forwards engine-reconnected to the open ATV window so the mirror re-arms failed hydration', () => {
+    const win = fakeWindow()
+    ;(state as { atvWindow: unknown }).atvWindow = win
+    broadcast('ion:engine-reconnected')
+    expect(win.webContents.send).toHaveBeenCalledWith('ion:engine-reconnected')
+  })
+
   it('drops nothing into the void: closed ATV window means no send, no throw', () => {
     expect(() => broadcast('ion:normalized-event', 'tab-1', { type: 'text_chunk', text: 'hi' })).not.toThrow()
     expect(() => broadcast('ion:tab-status-change', 'tab-1', 'running', 'idle')).not.toThrow()

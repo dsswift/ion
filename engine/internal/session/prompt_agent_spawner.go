@@ -222,7 +222,11 @@ func (m *Manager) buildRootAgentSpawner(s *engineSession, key string, parentMode
 			utils.LogWithFields(utils.LevelDebug, "session", "agent spawner returning empty", map[string]any{"model": agentName})
 			return "", nil
 		}
-		utils.LogWithFields(utils.LevelDebug, "session", "agent spawner returning", map[string]any{"model": agentName, "exit_code": result.ExitCode, "count": len(result.Output)})
-		return result.Output, nil
+		utils.LogWithFields(utils.LevelDebug, "session", "agent spawner returning", map[string]any{"model": agentName, "exit_code": result.ExitCode, "count": len(result.Output), "input_tokens": result.InputTokens, "output_tokens": result.OutputTokens})
+		// Usage suffix: model-facing per-dispatch token/cost accounting. The
+		// dispatch path already computes these numbers; without the suffix
+		// they were dropped from the Agent tool result and the model had no
+		// way to account for subagent spend. See extcontext/dispatch_usage_suffix.go.
+		return result.Output + extcontext.FormatDispatchUsageSuffix(result), nil
 	}
 }

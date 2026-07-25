@@ -36,10 +36,10 @@ export function DispatchMetaBar({ dispatch, agentStatus }: Props) {
         alignItems: 'center',
         gap: 4,
         padding: '4px 12px',
-        background: 'rgba(255,255,255,0.03)',
+        background: colors.surfaceHover,
         fontSize: 10,
         color: colors.textTertiary,
-        borderBottom: '1px solid rgba(255,255,255,0.04)',
+        borderBottom: `1px solid ${colors.borderSubtle}`,
       }}
     >
       {model && <span>Model: {model}</span>}

@@ -24,6 +24,9 @@ struct IonRemoteApp: App {
                 .tint(themeManager.accent)
                 .onAppear {
                     appDelegate.sessionViewModel = viewModel
+                    // Theme sync: event handlers route desktop_theme_manifest
+                    // and asset content into the ThemeManager's registry.
+                    viewModel.themeManager = themeManager
                     DiagnosticLog.log("theme injected", tag: "app", fields: [
                         "reason": themeManager.selectedThemeId,
                         "status": String(describing: themeManager.accent)

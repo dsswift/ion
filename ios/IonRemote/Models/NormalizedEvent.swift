@@ -45,7 +45,19 @@ enum RemoteEvent: Sendable {
     /// Desktop revoked this device's pairing -- clear local state.
     case unpair
     /// Desktop pushed updated relay configuration.
-    case relayConfig(relayUrl: String, relayApiKey: String)
+    /// Desktop pushed updated relay configuration.
+    /// `authMode` is `"psk"` or `"oidc"` (nil = pre-enterprise desktop).
+    /// When `authMode == "oidc"`, `relayApiKey` carries a minted bearer token;
+    /// the desktop pushes a fresh relay_config before the token expires.
+    case relayConfig(
+        relayUrl: String,
+        relayApiKey: String,
+        authMode: String?,
+        relayOidcIssuer: String?,
+        relayOidcAudience: String?,
+        relayOidcRequiredScope: String?,
+        relayOidcClientId: String?
+    )
     /// Desktop pushed the per-desktop display override. Sent live to all
     /// connected paired phones when any phone (or the desktop UI) writes
     /// a new value; also delivered in the `snapshot` event on reconnect.
@@ -93,7 +105,7 @@ enum RemoteEvent: Sendable {
     case engineWorkingMessage(tabId: String, instanceId: String?, message: String, metadata: [String: AnyCodable]?)
     case engineToolStart(tabId: String, instanceId: String?, toolName: String, toolId: String)
     case engineToolEnd(tabId: String, instanceId: String?, toolId: String, result: String?, isError: Bool)
-    case engineToolUpdate(tabId: String, instanceId: String?)
+    case engineToolUpdate(tabId: String, instanceId: String?, toolId: String, partialInput: String)
     case engineToolComplete(tabId: String, instanceId: String?)
     case engineToolStalled(tabId: String, instanceId: String?, toolId: String, toolName: String, elapsed: Double)
     /// Engine progress watchdog tripped: this run made no forward
@@ -412,8 +424,20 @@ enum RemoteEvent: Sendable {
         settings: [String: AnyCodable],
         schema: [DesktopSettingSchemaEntry],
         groups: [DesktopSettingGroupDescriptor],
-        newConversationPolicy: RemoteNewConversationPolicy?
+        newConversationPolicy: RemoteNewConversationPolicy?,
+        themePolicy: RemoteThemePolicy?
     )
+    /// Custom theme packs installed on the paired desktop — iOS components
+    /// only (built-ins are compiled into both clients). Snapshot semantics
+    /// scoped per desktop: replace the cached theme set for the sending
+    /// desktop wholesale; themes absent from the manifest were uninstalled
+    /// and are pruned. `hash` fingerprints the payload so an unchanged set
+    /// can skip re-persisting on reconnect. See SyncedThemeStore.
+    case desktopThemeManifest(themes: [SyncedThemePayload], hash: String)
+    /// Lazy-fetched theme-pack image asset (response to
+    /// `desktop_request_theme_asset`). `ok: false` means the asset is
+    /// unknown or unreadable on the desktop; dataUrl/sha256 are nil then.
+    case desktopThemeAssetContent(themeId: String, slot: String, ok: Bool, sha256: String?, dataUrl: String?)
     // Git events
     case gitChangesResponse(directory: String, response: GitChangesResponse)
     case gitGraphResponse(directory: String, response: GitGraphResponse)
@@ -560,6 +584,8 @@ enum RemoteEvent: Sendable {
         case engineNotification = "desktop_notification"
         case engineIntercept = "desktop_intercept"
         case desktopSettingsSnapshot = "desktop_settings_snapshot"
+        case desktopThemeManifest = "desktop_theme_manifest"
+        case desktopThemeAssetContent = "desktop_theme_asset_content"
         case gitChangesResponse = "desktop_git_changes_response"
         case gitGraphResponse = "desktop_git_graph_response"
         case gitDiffResponse = "desktop_git_diff_response"
@@ -611,11 +637,19 @@ enum RemoteEvent: Sendable {
         case sinceSeq  // desktop_request_diagnostic_logs incremental seq cursor
         case questionId, toolInput, options, message
         case messages, hasMore, cursor, messageId, prompts, relayUrl, relayApiKey
+        // desktop_relay_config OIDC extension fields (Enterprise Relay Phase 1).
+        // authMode: "psk" | "oidc". Present for enterprise relays; nil for plain PSK.
+        // The three relayOidc* fields carry the OIDC issuer, audience, and required
+        // scope so the client can validate tokens; nil for non-OIDC relays.
+        case authMode, relayOidcIssuer, relayOidcAudience, relayOidcRequiredScope, relayOidcClientId
         // desktop_conversation_history — echo of the REQUEST cursor from the
         // desktop_load_conversation this page answers. Discriminates
         // wholesale-replace (nil) from older-page prepend (non-nil).
         case before
         case toolStatus, source, recentDirectories
+        // desktop_tool_update: incremental tool input chunk for the running
+        // tool row keyed by toolId. iOS accumulates these to build toolInput.
+        case partialInput
         case switchTo
         case instanceId, data, exitCode, instance, instances, activeInstanceId, buffers
         case level, dialogId, method, title, defaultValue
@@ -738,7 +772,11 @@ enum RemoteEvent: Sendable {
         // `settings` is the value map; `schema` carries per-key
         // metadata (type, group, label, description, defaultValue);
         // `groups` is the ordered list of section descriptors.
-        case settings, schema, groups, newConversationPolicy
+        case settings, schema, groups, newConversationPolicy, themePolicy
+        // desktop_theme_manifest / desktop_theme_asset_content — custom
+        // theme-pack sync. `hash` and `ok` are declared above (shared with
+        // the git/fs wire events); `dataUrl` with the image events.
+        case themes, themeId, slot, sha256
         // Pass-through harness-defined hint map carried on the four
         // user-visible engine events (status, working_message, notify,
         // harness_message). iOS does not act on the field yet but

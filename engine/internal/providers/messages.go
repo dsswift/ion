@@ -6,6 +6,18 @@ import (
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
+// assistantImageProvenanceText is the synthetic provenance line prepended to
+// re-homed assistant image blocks when they ride the next user message on the
+// wire (see the carryImages mechanism in anthropic.go formatMessages and
+// openai.go formatOpenAIMessages). Both provider APIs accept images only in
+// user messages, so a generated image travels as user content — this line
+// tells the model the image is its OWN prior generation, not a user upload.
+//
+// Wire-only: it is synthesized at request-format time from the persisted
+// assistant image block. It is never persisted to the conversation tree and
+// never emitted on any event, so no client ever renders it.
+const assistantImageProvenanceText = "[The following image is one you generated earlier in this conversation. It is included so you can see your own prior output.]"
+
 // contentBlocks extracts typed content blocks from an LlmMessage's Content field.
 // Content can be a string, []types.LlmContentBlock, or []any (from JSON unmarshal).
 func contentBlocks(msg types.LlmMessage) []types.LlmContentBlock {

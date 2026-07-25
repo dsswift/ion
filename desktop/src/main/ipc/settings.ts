@@ -27,7 +27,9 @@ import {
   saveSessionLabels,
 } from '../settings-store'
 import { initRemoteTransport } from '../remote/transport-init'
+import { composeOidcScope } from '../remote/relay-auth'
 import { persistAndBroadcastSettings } from '../settings-broadcast'
+import { getConfiguredOidcClientId } from '../oauth/entra-auth'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -136,10 +138,31 @@ export function registerSettingsIpc(): void {
 
       const relayConfigChanged = data.relayUrl !== prev.relayUrl || data.relayApiKey !== prev.relayApiKey
       if (relayConfigChanged && !transportConfigChanged && state.remoteTransport) {
+        const s = readSettings()
         const relayUrl = (data.relayUrl as string) || ''
         const relayApiKey = (data.relayApiKey as string) || ''
+        const relayAuthMode = (s.relayAuthMode as string) || 'psk'
         if (relayUrl) {
-          state.remoteTransport.send({ type: 'desktop_relay_config', relayUrl, relayApiKey })
+          const msg = relayAuthMode === 'oidc' ? {
+            type: 'desktop_relay_config' as const,
+            relayUrl,
+            relayApiKey,
+            authMode: 'oidc' as const,
+            relayOidcIssuer: (s.relayOidcIssuer as string) || '',
+            relayOidcAudience: (s.relayOidcAudience as string) || '',
+            // Composed scope (api://<audience>/<scope>) — iOS passes it
+            // verbatim to Entra; idempotent when already composed.
+            relayOidcRequiredScope: composeOidcScope(
+              (s.relayOidcAudience as string) || '',
+              (s.relayOidcRequiredScope as string) || ''
+            ),
+            relayOidcClientId: getConfiguredOidcClientId(),
+          } : {
+            type: 'desktop_relay_config' as const,
+            relayUrl,
+            relayApiKey,
+          }
+          state.remoteTransport.send(msg)
         }
       }
     } catch (err) {

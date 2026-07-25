@@ -318,11 +318,34 @@ func LoadClaudeSkillsDirectory(dir string) ([]*Skill, error) {
 }
 
 // IonSkillPaths returns the conventional skill paths for Ion.
+//
+// The Project field here is a legacy relative path ("./.ion/skills") that
+// resolves against the engine process's cwd — for the launchd daemon that is
+// never a session's working directory. Callers that have a session working
+// directory must use IonSkillPathsFor instead; this zero-argument form is kept
+// for callers with no directory context.
 func IonSkillPaths() SkillPaths {
 	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
 	return SkillPaths{
 		User:       filepath.Join(home, ".ion", "skills"),
 		Project:    filepath.Join(".", ".ion", "skills"),
+		ClaudeUser: filepath.Join(home, ".claude", "skills"),
+	}
+}
+
+// IonSkillPathsFor returns the conventional skill paths for Ion, resolving the
+// project-local root against the given session working directory. When
+// workingDir is empty the Project field is empty (no project root to probe) —
+// callers skip loading it.
+func IonSkillPathsFor(workingDir string) SkillPaths {
+	home, _ := os.UserHomeDir() //nolint:errcheck // empty home handled by caller
+	project := ""
+	if workingDir != "" {
+		project = filepath.Join(workingDir, ".ion", "skills")
+	}
+	return SkillPaths{
+		User:       filepath.Join(home, ".ion", "skills"),
+		Project:    project,
 		ClaudeUser: filepath.Join(home, ".claude", "skills"),
 	}
 }

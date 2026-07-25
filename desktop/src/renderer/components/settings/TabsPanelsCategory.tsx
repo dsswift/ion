@@ -171,7 +171,7 @@ export function TabsPanelsCategory() {
                 flex: 1,
                 padding: '7px 0',
                 background: tabGroupMode === key ? colors.accent : 'transparent',
-                color: tabGroupMode === key ? '#fff' : colors.textSecondary,
+                color: tabGroupMode === key ? colors.textOnAccent : colors.textSecondary,
                 border: 'none',
                 cursor: 'pointer',
                 fontSize: 13,
@@ -258,7 +258,7 @@ export function TabsPanelsCategory() {
                     padding: 2,
                     display: 'flex',
                     alignItems: 'center',
-                    color: planningGroupId === group.id ? '#5b9bd5' : colors.textTertiary,
+                    color: planningGroupId === group.id ? colors.infoFg : colors.textTertiary,
                   }}
                 >
                   <Notepad size={14} weight={planningGroupId === group.id ? 'fill' : 'regular'} />
@@ -279,7 +279,7 @@ export function TabsPanelsCategory() {
                     padding: 2,
                     display: 'flex',
                     alignItems: 'center',
-                    color: inProgressGroupId === group.id ? '#d4a024' : colors.textTertiary,
+                    color: inProgressGroupId === group.id ? colors.warningFg : colors.textTertiary,
                   }}
                 >
                   <Lightning size={14} weight={inProgressGroupId === group.id ? 'fill' : 'regular'} />
@@ -300,7 +300,7 @@ export function TabsPanelsCategory() {
                     padding: 2,
                     display: 'flex',
                     alignItems: 'center',
-                    color: doneGroupId === group.id ? '#7aac8c' : colors.textTertiary,
+                    color: doneGroupId === group.id ? colors.successFg : colors.textTertiary,
                   }}
                 >
                   <CheckCircle size={14} weight={doneGroupId === group.id ? 'fill' : 'regular'} />

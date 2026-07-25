@@ -41,7 +41,7 @@ export function ProviderCliAuth({ provider, colors }: { provider: ProviderEntry;
             >
               {guidance.installCmd}
             </code>
-            {copied && <span style={{ marginLeft: 6, color: '#22c55e' }}>copied</span>}
+            {copied && <span style={{ marginLeft: 6, color: colors.successFg }}>copied</span>}
           </>
         ) : (
           <span>Install the {guidance?.name || kind} CLI, then press ↻ Models.</span>
@@ -79,12 +79,12 @@ export function ProviderCliAuth({ provider, colors }: { provider: ProviderEntry;
     <div style={{ marginTop: 4 }}>
       <button
         onClick={() => void window.ion.providerLogin(provider.id)}
-        style={{ padding: '6px 14px', background: colors.accent, color: '#fff', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+        style={{ padding: '6px 14px', background: colors.accent, color: colors.textOnAccent, border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
       >
         Sign in with {guidance?.name || kind}
       </button>
       {loginState?.phase === 'error' && (
-        <span style={{ marginLeft: 8, fontSize: 11, color: '#ef4444' }}>{loginState.error}</span>
+        <span style={{ marginLeft: 8, fontSize: 11, color: colors.dangerFg }}>{loginState.error}</span>
       )}
     </div>
   )

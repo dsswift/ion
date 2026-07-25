@@ -13,10 +13,10 @@ import SwiftUI
 //
 //   8 = error            (dead/failed — red)
 //   7 = permission       (generic tool permission — orange glow)
-//   6 = running          (running/connecting — orange pulse)
+//   6 = running          (running/connecting — teal pulse)
 //   5 = running-children (background agents — yellow pulse)
 //   4 = plan-ready       (ExitPlanMode denial — green glow)
-//   3 = question         (AskUserQuestion denial — blue glow)
+//   3 = question         (AskUserQuestion denial — purple glow)
 //   2 = bash             (desktop-only — see note)
 //   1 = unread           (desktop-only — see note)
 //   0 = idle             (gray, dimmed)
@@ -58,11 +58,16 @@ enum TabStatusRollup {
     // 2 = bash and 1 = unread are desktop-only (not on the iOS wire).
     static let priorityIdle = 0
 
-    // ─── Palette (hexes match TabRowView.statusInfo / desktop theme) ─────────
+    // ─── Palette ─────────────────────────────────────────────────────────────
+    // Theme-independent tab-dot constants. Running and question mirror the
+    // desktop Ion Dark intent — steel-teal running (statusRunning #5EA9C9) and
+    // purple question (statusQuestion #A78BFA) — kept legibly distinct from each
+    // other, from the accent blue, and from the orange permission dot.
     static let errorColor = Color(hex: 0xC47060)
     static let permissionOrange = Color(hex: 0xE8854A)
     static let childrenYellow = Color(hex: 0xF59E0B)
-    static let questionBlue = Color(hex: 0x4A9EF5)
+    static let runningTeal = Color(hex: 0x5EA9C9)
+    static let questionPurple = Color(hex: 0xA78BFA)
     static let idleGray = Color(hex: 0x8A8A80)
 
     /// Classify a single tab into its status info. This is the exact cascade
@@ -99,15 +104,17 @@ enum TabStatusRollup {
             )
         }
 
-        // 3. Running / connecting → orange pulse (foreground active). Wins over
-        //    the passive plan/question waits below.
+        // 3. Running / connecting → teal pulse (foreground active). Wins over
+        //    the passive plan/question waits below. Teal (not the orange
+        //    permission color) so a pulsing running dot and a steady permission
+        //    dot never read as the same signal.
         if tab.status == .running || tab.status == .connecting {
             return GroupTabStatus(
                 priority: priorityRunning,
-                color: permissionOrange,
+                color: runningTeal,
                 shouldPulse: true,
                 glow: true,
-                glowColor: permissionOrange
+                glowColor: runningTeal
             )
         }
 
@@ -136,14 +143,14 @@ enum TabStatusRollup {
             )
         }
 
-        // 6. Question pending → blue glow (AskUserQuestion denial).
+        // 6. Question pending → purple glow (AskUserQuestion denial).
         if hasQuestion && (tab.status == .idle || tab.status == .completed) {
             return GroupTabStatus(
                 priority: priorityQuestion,
-                color: questionBlue,
+                color: questionPurple,
                 shouldPulse: false,
                 glow: true,
-                glowColor: questionBlue
+                glowColor: questionPurple
             )
         }
 

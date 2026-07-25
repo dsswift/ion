@@ -1,7 +1,7 @@
-import React, { useState, useCallback } from 'react'
-import { Trash, Plus, MagnifyingGlass, ArrowClockwise, PencilSimple, FloppyDisk, X, CircleNotch } from '@phosphor-icons/react'
+import React, { useState, useCallback, useEffect } from 'react'
+import { Trash, Plus, MagnifyingGlass, ArrowClockwise, PencilSimple, FloppyDisk, X, CircleNotch, SignIn, CheckCircle } from '@phosphor-icons/react'
 import { useColors } from '../../theme'
-import { rError } from '../../rendererLogger'
+import { rError, rInfo } from '../../rendererLogger'
 
 export interface DiscoveredRelay {
   id: string
@@ -9,6 +9,14 @@ export interface DiscoveredRelay {
   host: string
   port: number
   addresses: string[]
+}
+
+interface RelayAuthConfig {
+  oidc: boolean
+  issuer: string
+  audience: string
+  requiredScope: string
+  psk: boolean
 }
 
 interface Props {
@@ -43,6 +51,52 @@ export function RemoteCategoryRelay({
   const [isTesting, setIsTesting] = useState(false)
   const [testError, setTestError] = useState<string | null>(null)
 
+  // OIDC probe state (populated after URL entry)
+  const [authConfig, setAuthConfig] = useState<RelayAuthConfig | null>(null)
+  const [isProbing, setIsProbing] = useState(false)
+  const [signedInUser, setSignedInUser] = useState<string | null>(null)
+  const [isSigningIn, setIsSigningIn] = useState(false)
+
+  // Probe auth config when URL changes and is non-empty.
+  useEffect(() => {
+    const url = editUrl.trim()
+    if (!url || !isEditingRelay) {
+      setAuthConfig(null)
+      setSignedInUser(null)
+      return
+    }
+
+    let cancelled = false
+    setIsProbing(true)
+
+    void (async () => {
+      try {
+        const cfg = await window.ion?.remoteRelayAuthConfig?.(url)
+        if (cancelled) return
+        setAuthConfig(cfg ?? null)
+
+        if (cfg?.oidc) {
+          // Check signed-in identity.
+          const idResult = await window.ion?.entraIdentity?.()
+          if (!cancelled) {
+            setSignedInUser(idResult?.identity?.username ?? null)
+          }
+        } else {
+          setSignedInUser(null)
+        }
+      } catch (err) {
+        if (!cancelled) {
+          rError('settings', 'relay auth config probe failed', { error: String(err) })
+          setAuthConfig(null)
+        }
+      } finally {
+        if (!cancelled) setIsProbing(false)
+      }
+    })()
+
+    return () => { cancelled = true }
+  }, [editUrl, isEditingRelay])
+
   const handleDiscover = useCallback(async () => {
     setIsDiscovering(true)
     setDiscoveredRelays([])
@@ -68,6 +122,8 @@ export function RemoteCategoryRelay({
     setEditUrl(relayUrl)
     setEditApiKey(relayApiKey)
     setTestError(null)
+    setAuthConfig(null)
+    setSignedInUser(null)
     setIsEditingRelay(true)
   }
 
@@ -77,6 +133,40 @@ export function RemoteCategoryRelay({
     window.ion?.remoteStopDiscovery?.()
     setDiscoveredRelays([])
     setTestError(null)
+    setAuthConfig(null)
+    setSignedInUser(null)
+  }
+
+  const handleEnterpriseSignIn = async () => {
+    setIsSigningIn(true)
+    setTestError(null)
+    try {
+      const result = await window.ion?.entraSignIn?.()
+      if (result?.ok && result.identity) {
+        setSignedInUser(result.identity.username)
+        rInfo('settings', 'relay enterprise sign-in succeeded', { user: result.identity.username })
+      } else {
+        setTestError(result?.error ?? 'Sign-in failed')
+      }
+    } catch (err) {
+      setTestError((err as Error).message)
+    } finally {
+      setIsSigningIn(false)
+    }
+  }
+
+  const handleOidcConnect = async () => {
+    if (!signedInUser) return
+    const url = editUrl.trim()
+    setRelayUrl(url)
+    // In OIDC mode, relayApiKey is empty (token is minted dynamically).
+    setRelayApiKey('')
+    setIsEditingRelay(false)
+    setIsDiscovering(false)
+    window.ion?.remoteStopDiscovery?.()
+    setDiscoveredRelays([])
+    setAuthConfig(null)
+    setSignedInUser(null)
   }
 
   const handleTestAndSave = async () => {
@@ -137,6 +227,10 @@ export function RemoteCategoryRelay({
   }
 
   if (isEditingRelay) {
+    // Determine what the action panel shows based on auth config probe.
+    const isOidc = authConfig?.oidc === true
+    const isPsk = !isOidc
+
     return (
       <div style={{
         background: colors.surfacePrimary,
@@ -165,7 +259,7 @@ export function RemoteCategoryRelay({
                 borderRadius: 8,
                 padding: '8px 10px',
                 cursor: 'pointer',
-                color: isDiscovering ? '#fff' : colors.textSecondary,
+                color: isDiscovering ? colors.textOnAccent : colors.textSecondary,
                 display: 'flex',
                 alignItems: 'center',
                 flexShrink: 0,
@@ -229,18 +323,39 @@ export function RemoteCategoryRelay({
           )}
         </div>
 
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ color: colors.textSecondary, fontSize: 12, display: 'block', marginBottom: 4 }}>
-            API Key
-          </label>
-          <input
-            type="password"
-            value={editApiKey}
-            onChange={(e) => { setEditApiKey(e.target.value); setTestError(null) }}
-            placeholder="Shared secret for relay authentication"
-            style={inputStyle}
+        {/* Probing indicator */}
+        {isProbing && editUrl.trim() && (
+          <div style={{ color: colors.textTertiary, fontSize: 11, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
+            <CircleNotch size={12} style={{ animation: 'spin 1s linear infinite' }} />
+            Checking relay auth mode...
+          </div>
+        )}
+
+        {/* PSK mode: show API key field */}
+        {isPsk && !isProbing && (
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ color: colors.textSecondary, fontSize: 12, display: 'block', marginBottom: 4 }}>
+              API Key
+            </label>
+            <input
+              type="password"
+              value={editApiKey}
+              onChange={(e) => { setEditApiKey(e.target.value); setTestError(null) }}
+              placeholder="Shared secret for relay authentication"
+              style={inputStyle}
+            />
+          </div>
+        )}
+
+        {/* OIDC mode: enterprise auth panel */}
+        {isOidc && !isProbing && (
+          <OidcAuthPanel
+            signedInUser={signedInUser}
+            isSigningIn={isSigningIn}
+            onSignIn={() => { void handleEnterpriseSignIn().catch((err) => rError('settings', 'enterprise sign-in failed', { error: String(err) })) }}
+            colors={colors}
           />
-        </div>
+        )}
 
         {/* Test error */}
         {testError && (
@@ -258,26 +373,43 @@ export function RemoteCategoryRelay({
 
         {/* Action buttons */}
         <div style={{ display: 'flex', gap: 6 }}>
-          <button
-            onClick={() => { void handleTestAndSave().catch((err) => rError('settings', 'relay test and save failed', { error: String(err) })) }}
-            disabled={isTesting}
-            style={{
-              ...smallBtnStyle,
-              background: colors.accent,
-              color: '#fff',
-              opacity: isTesting ? 0.7 : 1,
-            }}
-          >
-            {isTesting ? (
-              <CircleNotch size={14} style={{ animation: 'spin 1s linear infinite' }} />
-            ) : (
-              <FloppyDisk size={14} />
-            )}
-            {isTesting ? 'Testing...' : 'Test & Save'}
-          </button>
+          {isOidc && !isProbing ? (
+            <button
+              onClick={() => { void handleOidcConnect().catch((err) => rError('settings', 'oidc connect failed', { error: String(err) })) }}
+              disabled={!signedInUser}
+              style={{
+                ...smallBtnStyle,
+                background: signedInUser ? colors.accent : colors.surfacePrimary,
+                color: signedInUser ? colors.textOnAccent : colors.textTertiary,
+                border: signedInUser ? 'none' : `1px solid ${colors.containerBorder}`,
+                opacity: signedInUser ? 1 : 0.6,
+              }}
+            >
+              <CheckCircle size={14} />
+              Connect
+            </button>
+          ) : (
+            <button
+              onClick={() => { void handleTestAndSave().catch((err) => rError('settings', 'relay test and save failed', { error: String(err) })) }}
+              disabled={isTesting || isProbing}
+              style={{
+                ...smallBtnStyle,
+                background: colors.accent,
+                color: colors.textOnAccent,
+                opacity: isTesting || isProbing ? 0.7 : 1,
+              }}
+            >
+              {isTesting ? (
+                <CircleNotch size={14} style={{ animation: 'spin 1s linear infinite' }} />
+              ) : (
+                <FloppyDisk size={14} />
+              )}
+              {isTesting ? 'Testing...' : 'Test & Save'}
+            </button>
+          )}
           <button
             onClick={handleCancelEdit}
-            disabled={isTesting}
+            disabled={isTesting || isSigningIn}
             style={{
               ...smallBtnStyle,
               background: 'transparent',
@@ -367,5 +499,90 @@ export function RemoteCategoryRelay({
         </>
       )}
     </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// OIDC auth sub-panel (extracted to keep RemoteCategoryRelay under 600 lines)
+// ---------------------------------------------------------------------------
+
+interface OidcAuthPanelProps {
+  signedInUser: string | null
+  isSigningIn: boolean
+  onSignIn: () => void
+  colors: ReturnType<typeof useColors>
+}
+
+function OidcAuthPanel({ signedInUser, isSigningIn, onSignIn, colors }: OidcAuthPanelProps) {
+  const smallBtnStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 5,
+    padding: '6px 12px',
+    borderRadius: 8,
+    fontSize: 12,
+    cursor: 'pointer',
+    border: 'none',
+  }
+
+  if (signedInUser) {
+    return (
+      <div style={{
+        marginBottom: 12,
+        padding: '8px 12px',
+        background: `${colors.statusComplete}15`,
+        border: `1px solid ${colors.statusComplete}40`,
+        borderRadius: 8,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+      }}>
+        <CheckCircle size={16} color={colors.statusComplete} />
+        <div>
+          <div style={{ color: colors.textPrimary, fontSize: 12, fontWeight: 500 }}>
+            Signed in as {signedInUser}
+          </div>
+          <div style={{ color: colors.textTertiary, fontSize: 11 }}>
+            Enterprise relay auth ready
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{
+        padding: '8px 12px',
+        background: `${colors.accent}10`,
+        border: `1px solid ${colors.accent}30`,
+        borderRadius: 8,
+        marginBottom: 8,
+      }}>
+        <div style={{ color: colors.textPrimary, fontSize: 12, fontWeight: 500, marginBottom: 2 }}>
+          Enterprise sign-in required
+        </div>
+        <div style={{ color: colors.textTertiary, fontSize: 11 }}>
+          This relay uses Microsoft Entra identity. Sign in to connect.
+        </div>
+      </div>
+      <button
+        onClick={onSignIn}
+        disabled={isSigningIn}
+        style={{
+          ...smallBtnStyle,
+          background: colors.accent,
+          color: colors.textOnAccent,
+          opacity: isSigningIn ? 0.7 : 1,
+        }}
+      >
+        {isSigningIn ? (
+          <CircleNotch size={14} style={{ animation: 'spin 1s linear infinite' }} />
+        ) : (
+          <SignIn size={14} />
+        )}
+        {isSigningIn ? 'Signing in...' : 'Sign in with Microsoft'}
+      </button>
+    </div>
   )
 }

@@ -273,15 +273,22 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 		m.loadAndWireExtensions(s, key, config)
 	}
 
-	// Load skills from default paths
-	skillPaths := skills.IonSkillPaths()
+	// Load skills from default paths. The project root resolves against the
+	// session's working directory (not the daemon cwd) via IonSkillPathsFor.
+	skillPaths := skills.IonSkillPathsFor(config.WorkingDirectory)
 	for _, dir := range []string{skillPaths.User, skillPaths.Project} {
-		loaded, err := skills.LoadSkillDirectory(dir, nil)
-		if err == nil {
-			for _, sk := range loaded {
-				skills.RegisterSkill(sk)
-			}
+		if dir == "" {
+			continue
 		}
+		loaded, err := skills.LoadSkillDirectory(dir, nil)
+		if err != nil {
+			utils.LogWithFields(utils.LevelError, "session", "skill dir load failed", map[string]any{"key": key, "dir": dir, "error": utils.ErrStr(err)})
+			continue
+		}
+		for _, sk := range loaded {
+			skills.RegisterSkill(sk)
+		}
+		utils.LogWithFields(utils.LevelInfo, "session", "skill dir loaded", map[string]any{"key": key, "dir": dir, "count": len(loaded)})
 	}
 	// Load Claude Code–style skills from ~/.claude/skills (one subdir per
 	// skill, each with a SKILL.md file). Only attempted when the ClaudeCompat

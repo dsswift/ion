@@ -18,12 +18,12 @@ import (
 // returning nil for the empty case, one of these sub-assertions fails.
 func TestBuildPromptOverrides_PinsUnifiedSeam(t *testing.T) {
 	t.Run("both empty returns nil", func(t *testing.T) {
-		if got := buildPromptOverrides("", nil); got != nil {
+		if got := buildPromptOverrides("", nil, ""); got != nil {
 			t.Fatalf("expected nil overrides for empty input, got %+v", got)
 		}
 	})
 	t.Run("model only", func(t *testing.T) {
-		got := buildPromptOverrides("claude-opus-4-20250514", nil)
+		got := buildPromptOverrides("claude-opus-4-20250514", nil, "")
 		if got == nil || got.Model != "claude-opus-4-20250514" {
 			t.Fatalf("expected model carried, got %+v", got)
 		}
@@ -33,7 +33,7 @@ func TestBuildPromptOverrides_PinsUnifiedSeam(t *testing.T) {
 	})
 	t.Run("additions only", func(t *testing.T) {
 		adds := []string{"gh issue create", "git diff"}
-		got := buildPromptOverrides("", adds)
+		got := buildPromptOverrides("", adds, "")
 		if got == nil || got.Model != "" {
 			t.Fatalf("expected empty model, got %+v", got)
 		}
@@ -43,7 +43,7 @@ func TestBuildPromptOverrides_PinsUnifiedSeam(t *testing.T) {
 	})
 	t.Run("both present", func(t *testing.T) {
 		adds := []string{"gh pr view"}
-		got := buildPromptOverrides("m", adds)
+		got := buildPromptOverrides("m", adds, "")
 		if got == nil || got.Model != "m" || !reflect.DeepEqual(got.BashAllowlistAdditionsForThisPrompt, adds) {
 			t.Fatalf("expected both carried, got %+v", got)
 		}
@@ -109,9 +109,9 @@ func TestOnSendMessagePayload_ParityWithAccessor(t *testing.T) {
 
 	// Fallback-path inputs as they arrive on the SendPromptPayload, then routed
 	// through the shared helper exactly as the onSendMessage closures do.
-	fallback := buildPromptOverrides(model, adds)
+	fallback := buildPromptOverrides(model, adds, "")
 	// Active-hook-path inputs as they arrive on sessionAccessor.SendPrompt args.
-	accessor := buildPromptOverrides(model, adds)
+	accessor := buildPromptOverrides(model, adds, "")
 
 	if !reflect.DeepEqual(fallback, accessor) {
 		t.Fatalf("override parity broken between fallback and accessor paths: fallback=%+v accessor=%+v", fallback, accessor)

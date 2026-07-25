@@ -1,21 +1,20 @@
 import { create } from 'zustand'
 import type { TabGroup } from '../shared/types'
-import { applyTheme, getTheme, resolveColors, type ColorPalette } from './theme-tokens'
+import { applyTheme, resolveColors, type ColorPalette } from './theme-tokens'
 import type { PreferencesState } from './preferences-types'
 import { saveSettings, getAllSettings, INITIAL_SAVED } from './preferences-persist'
 import { bootstrapPreferences } from './preferences-bootstrap'
 import { parseChord } from './shortcuts/chord'
 import { SHORTCUT_CATALOG } from './shortcuts/shortcut-catalog'
+import { deriveEnterpriseThemePolicy } from '../shared/enterprise-theme-policy'
 import { rWarn } from './rendererLogger'
-export type { ThemeMode, PreferencesState } from './preferences-types'
+export type { PreferencesState } from './preferences-types'
 export { getEffectiveTabGroups } from './preferences-persist'
 
 const saved = INITIAL_SAVED
 const _savedThemeId = localStorage.getItem('ion_selectedTheme') ?? 'ion-dark'
 
 export const usePreferencesStore = create<PreferencesState>((set, get) => ({
-  isDark: saved.themeMode === 'dark' ? true : saved.themeMode === 'light' ? false : true,
-  themeMode: saved.themeMode,
   selectedTheme: _savedThemeId,
   soundEnabled: saved.soundEnabled,
   expandedUI: saved.expandedUI,
@@ -43,7 +42,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   worktreeBranchDefaults: saved.worktreeBranchDefaults,
   worktreeSkipPrTitle: saved.worktreeSkipPrTitle,
   allowSettingsEdits: saved.allowSettingsEdits,
-  enableClaudeCompat: saved.enableClaudeCompat ?? true,
+  enableClaudeCompat: saved.enableClaudeCompat ?? false,
   enableEarlyStopContinuation: saved.enableEarlyStopContinuation ?? false,
   showTodoList: saved.showTodoList,
   agentPanelDefaultOpen: saved.agentPanelDefaultOpen,
@@ -93,7 +92,6 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   gitWatcherIgnoredDirectories: saved.gitWatcherIgnoredDirectories,
   excludedResourceKinds: saved.excludedResourceKinds,
   keyboardShortcuts: saved.keyboardShortcuts,
-  _systemIsDark: true,
   setDefaultTallConversation: (enabled) => {
     set({ defaultTallConversation: enabled })
     saveSettings(getAllSettings(get))
@@ -111,33 +109,24 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     set({ tabRecoveryTimeoutSec: clamped })
     saveSettings(getAllSettings(get))
   },
-  setIsDark: (isDark) => {
-    set({ isDark })
-    const activeTheme = get().selectedTheme
-    if (getTheme(activeTheme).forcedColorScheme) {
-      applyTheme(activeTheme)
-    } else {
-      applyTheme(isDark)
-    }
-  },
-  setThemeMode: (mode) => {
-    const resolved = mode === 'system' ? get()._systemIsDark : mode === 'dark'
-    set({ themeMode: mode, isDark: resolved })
-    // Only apply ion-dark/ion-light if no forced-scheme theme is active
-    if (!getTheme(get().selectedTheme).forcedColorScheme) {
-      applyTheme(resolved)
-    }
-    saveSettings(getAllSettings(get))
-  },
+  // Theme selection is the single control: every built-in theme declares
+  // its own color scheme, so picking a theme fully determines the look.
+  // Enterprise lock: a locked themePolicy makes theme selection read-only
+  // (the picker is disabled in AppearanceCategory; this guard is the
+  // belt-and-suspenders for programmatic callers and iOS-originated
+  // settings pushes, mirroring the main-process write-funnel strip).
   setSelectedTheme: (id) => {
-    set({ selectedTheme: id })
-    localStorage.setItem('ion_selectedTheme', id)
-    const theme = getTheme(id)
-    if (theme.forcedColorScheme) {
-      applyTheme(id)
-    } else {
-      applyTheme(get().isDark)
+    const themePolicy = deriveEnterpriseThemePolicy(get().enterprisePolicy)
+    if (themePolicy?.locked && id !== themePolicy.themeId) {
+      rWarn('preferences', 'setSelectedTheme rejected by enterprise lock', {
+        attempted: id,
+        enforced: themePolicy.themeId,
+      })
+      return
     }
+    localStorage.setItem('ion_selectedTheme', id)
+    set({ selectedTheme: id })
+    applyTheme(id)
     saveSettings(getAllSettings(get))
   },
   setSoundEnabled: (enabled) => {
@@ -537,19 +526,6 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     set({ keyboardShortcuts: {} })
     saveSettings(getAllSettings(get))
   },
-  setSystemTheme: (isDark) => {
-    set({ _systemIsDark: isDark })
-    // Only apply if following system
-    if (get().themeMode === 'system') {
-      set({ isDark })
-      const activeTheme = get().selectedTheme
-      if (getTheme(activeTheme).forcedColorScheme) {
-        applyTheme(activeTheme)
-      } else {
-        applyTheme(isDark)
-      }
-    }
-  },
   applyPreset: (preset) => {
     set(preset)
     saveSettings(getAllSettings(get))
@@ -563,12 +539,11 @@ bootstrapPreferences(usePreferencesStore, _savedThemeId)
 
 /** Reactive hook — returns the active color palette */
 export function useColors(): ColorPalette {
-  const isDark = usePreferencesStore((s) => s.isDark)
   const selectedTheme = usePreferencesStore((s) => s.selectedTheme)
-  return resolveColors(selectedTheme, isDark)
+  return resolveColors(selectedTheme)
 }
 
 /** Non-reactive getter — use outside React components */
-export function getColors(isDark: boolean): ColorPalette {
-  return resolveColors(usePreferencesStore.getState().selectedTheme, isDark)
+export function getColors(): ColorPalette {
+  return resolveColors(usePreferencesStore.getState().selectedTheme)
 }

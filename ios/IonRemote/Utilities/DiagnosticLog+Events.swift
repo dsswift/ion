@@ -144,8 +144,8 @@ extension DiagnosticLog {
         case .engineThinkingBlockEnd(let tabId, let instId, let totalTokens, let elapsedSeconds, let redacted):
             log("EVENT: engineThinkingBlockEnd tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") tokens=\(totalTokens.map(String.init) ?? "nil") elapsed=\(elapsedSeconds.map { String(format: "%.1f", $0) } ?? "nil") redacted=\(redacted ?? false)", tag: "session", level: .info)
 
-        case .engineToolUpdate(let tabId, let instId):
-            log("EVENT: engineToolUpdate tab=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil")", tag: "session", level: .info)
+        case .engineToolUpdate(let tabId, let instId, let toolId, _):
+            log("EVENT: engineToolUpdate tab=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") tool=\(toolId.prefix(8))", tag: "session", level: .info)
         case .engineToolComplete(let tabId, let instId):
             log("EVENT: engineToolComplete tab=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil")", tag: "session", level: .info)
         case .engineScheduleFired(let tabId, let instId):
@@ -277,14 +277,21 @@ extension DiagnosticLog {
             // separately at the view layer.
             log("EVENT: engineExport tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") format=\(exportFormat ?? "nil") bytes=\(message.count)", tag: "session", level: .info)
 
-        case .desktopSettingsSnapshot(let settings, let schema, let groups, let newConversationPolicy):
+        case .desktopSettingsSnapshot(let settings, let schema, let groups, let newConversationPolicy, let themePolicy):
             // Snapshot of the desktop's projectable user preferences.
             // Logged with counts only — the actual values can be
             // sensitive and the wire payload is small enough that a
             // future diagnostic dump can capture the full record if
             // needed.
             _ = newConversationPolicy // logged at assignment site in EventHandlers
+            _ = themePolicy // logged at assignment site in EventHandlers
             log("EVENT: desktopSettingsSnapshot values=\(settings.count) schema=\(schema.count) groups=\(groups.count)", tag: "session", level: .info)
+
+        case .desktopThemeManifest(let themes, let hash):
+            log("EVENT: desktopThemeManifest themes=\(themes.count) hash=\(hash.prefix(12))", tag: "session", level: .info)
+
+        case .desktopThemeAssetContent(let themeId, let slot, let ok, _, let dataUrl):
+            log("EVENT: desktopThemeAssetContent theme=\(themeId) slot=\(slot) ok=\(ok) bytes=\(dataUrl?.count ?? 0)", tag: "session", level: .info)
 
         case .gitChangesResponse(let dir, _):
             log("EVENT: gitChangesResponse dir=\(dir.suffix(30))", tag: "session", level: .info)

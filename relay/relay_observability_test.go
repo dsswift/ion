@@ -83,16 +83,16 @@ func TestPushEligibleUnmarshalFail_LogsError(t *testing.T) {
 	// APNs network is needed.
 	hub := NewHub()
 	pusher := newTestPusher(t, "http://localhost:9", 1)
-	auth := NewAuthMiddleware(apiKey)
+	auth := NewAuthMiddleware(apiKey, nil)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/channel/{channelId}", func(w http.ResponseWriter, r *http.Request) {
-		if !auth.Validate(r) {
+		if _, ok := auth.Validate(r); !ok {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 		channelID := r.PathValue("channelId")
 		role := r.URL.Query().Get("role")
-		hub.HandleWebSocket(w, r, channelID, role, pusher)
+		hub.HandleWebSocket(w, r, channelID, role, pusher, nil)
 	})
 	server := httptest.NewServer(mux)
 	t.Cleanup(func() {

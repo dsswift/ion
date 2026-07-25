@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Folder, FolderOpen, CaretUp, House, Eye, EyeSlash, X } from '@phosphor-icons/react'
 import { useRemoteFsStore } from '../stores/remote-fs-store'
 import { useColors } from '../theme'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { transitions } from '../theme-tokens'
 import type { EngineDirListing } from '../../shared/types'
 
 /**
@@ -30,6 +32,9 @@ export function RemoteDirectoryPicker() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showHidden, setShowHidden] = useState(false)
+  const closeIx = useInteractiveState()
+  const cancelIx = useInteractiveState()
+  const confirmIx = useInteractiveState()
 
   const load = useCallback(
     async (p: string) => {
@@ -103,7 +108,7 @@ export function RemoteDirectoryPicker() {
         style={{
           position: 'fixed',
           inset: 0,
-          background: 'rgba(0,0,0,0.4)',
+          background: colors.scrim,
           zIndex: 9000,
           display: 'flex',
           alignItems: 'center',
@@ -163,12 +168,16 @@ export function RemoteDirectoryPicker() {
             </div>
             <button
               onClick={cancel}
+              {...closeIx.handlers}
+              className="ion-focusable"
               style={{
-                background: 'none',
+                background: interactiveBg(colors, closeIx),
                 border: 'none',
-                color: colors.textTertiary,
+                color: closeIx.hover ? colors.textSecondary : colors.textTertiary,
                 cursor: 'pointer',
                 padding: 4,
+                borderRadius: 6,
+                transition: `background ${transitions.base}, color ${transitions.base}`,
               }}
               title="Close (Esc)"
               aria-label="Close"
@@ -186,26 +195,20 @@ export function RemoteDirectoryPicker() {
               borderBottom: `1px solid ${colors.popoverBorder}`,
             }}
           >
-            <button
-              onClick={goUp}
-              disabled={!listing?.parent}
-              style={controlStyle(colors, !listing?.parent)}
-              title="Parent directory"
-            >
+            <ControlButton onClick={goUp} disabled={!listing?.parent} title="Parent directory">
               <CaretUp size={11} /> Up
-            </button>
-            <button onClick={goHome} disabled={!hostInfo?.home} style={controlStyle(colors, !hostInfo?.home)} title="Home">
+            </ControlButton>
+            <ControlButton onClick={goHome} disabled={!hostInfo?.home} title="Home">
               <House size={11} /> Home
-            </button>
+            </ControlButton>
             <div style={{ flex: 1 }} />
-            <button
+            <ControlButton
               onClick={() => setShowHidden((v) => !v)}
-              style={controlStyle(colors, false)}
               title={showHidden ? 'Hide dotfiles' : 'Show dotfiles'}
             >
               {showHidden ? <EyeSlash size={11} /> : <Eye size={11} />}
               {showHidden ? 'Hide hidden' : 'Show hidden'}
-            </button>
+            </ControlButton>
           </div>
 
           {/* Listing */}
@@ -219,44 +222,9 @@ export function RemoteDirectoryPicker() {
             {!loading && !error && listing && listing.entries.length === 0 && (
               <div style={{ padding: 12, fontSize: 11, color: colors.textTertiary }}>(empty directory)</div>
             )}
-            {!loading && !error && listing && listing.entries.map((entry) => {
-              const clickable = entry.isDir && entry.readable
-              return (
-                <button
-                  key={entry.name}
-                  onClick={() => clickable && enterDir(entry.name)}
-                  disabled={!clickable}
-                  style={{
-                    width: '100%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '4px 12px',
-                    fontSize: 12,
-                    color: clickable
-                      ? colors.textPrimary
-                      : entry.readable
-                        ? colors.textSecondary
-                        : colors.textTertiary,
-                    background: 'none',
-                    border: 'none',
-                    cursor: clickable ? 'pointer' : 'default',
-                    textAlign: 'left',
-                    opacity: entry.readable ? 1 : 0.5,
-                  }}
-                  className="hover:bg-white/5"
-                  title={!entry.readable ? `${entry.name} (no permission)` : entry.name}
-                >
-                  {entry.isDir
-                    ? <Folder size={13} style={{ color: colors.accent, flexShrink: 0 }} />
-                    : <span style={{ width: 13, height: 13, flexShrink: 0 }} />}
-                  <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {entry.name}
-                    {entry.isSymlink && <span style={{ color: colors.textTertiary, marginLeft: 4 }}>→</span>}
-                  </span>
-                </button>
-              )
-            })}
+            {!loading && !error && listing && listing.entries.map((entry) => (
+              <DirEntryRow key={entry.name} entry={entry} onEnter={() => enterDir(entry.name)} />
+            ))}
             {listing?.truncated && (
               <div style={{ padding: '6px 12px', fontSize: 10, color: colors.textTertiary }}>
                 Showing first 5000 entries — narrow the path to see more.
@@ -276,14 +244,17 @@ export function RemoteDirectoryPicker() {
           >
             <button
               onClick={cancel}
+              {...cancelIx.handlers}
+              className="ion-focusable"
               style={{
                 padding: '4px 12px',
                 fontSize: 11,
                 color: colors.textSecondary,
-                background: 'none',
+                background: interactiveBg(colors, cancelIx),
                 border: `1px solid ${colors.popoverBorder}`,
                 borderRadius: 6,
                 cursor: 'pointer',
+                transition: `background ${transitions.base}`,
               }}
             >
               Cancel
@@ -291,15 +262,22 @@ export function RemoteDirectoryPicker() {
             <button
               onClick={confirm}
               disabled={!path}
+              onMouseEnter={path ? confirmIx.handlers.onMouseEnter : undefined}
+              onMouseLeave={confirmIx.handlers.onMouseLeave}
+              onMouseDown={path ? confirmIx.handlers.onMouseDown : undefined}
+              onMouseUp={path ? confirmIx.handlers.onMouseUp : undefined}
+              onBlur={confirmIx.handlers.onBlur}
+              className="ion-focusable"
               style={{
                 padding: '4px 12px',
                 fontSize: 11,
                 color: colors.textOnAccent,
-                background: colors.accent,
+                background: confirmIx.pressed ? colors.accentPressed : confirmIx.hover ? colors.accentHover : colors.accent,
                 border: 'none',
                 borderRadius: 6,
                 cursor: path ? 'pointer' : 'default',
-                opacity: path ? 1 : 0.5,
+                opacity: path ? 1 : 0.45,
+                transition: `background ${transitions.base}`,
               }}
             >
               Use this folder
@@ -312,17 +290,97 @@ export function RemoteDirectoryPicker() {
   )
 }
 
-function controlStyle(colors: ReturnType<typeof useColors>, disabled: boolean): React.CSSProperties {
-  return {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 4,
-    padding: '4px 8px',
-    fontSize: 11,
-    color: disabled ? colors.textTertiary : colors.textSecondary,
-    background: 'none',
-    border: 'none',
-    cursor: disabled ? 'default' : 'pointer',
-    opacity: disabled ? 0.5 : 1,
-  }
+/** Toolbar control (Up / Home / hidden toggle). Hover/pressed via the
+ *  standard surface cascade; disabled gets the standard treatment
+ *  (opacity 0.45, default cursor, inert hover/pressed handlers). */
+function ControlButton({ onClick, disabled = false, title, children }: {
+  onClick: () => void
+  disabled?: boolean
+  title: string
+  children: React.ReactNode
+}) {
+  const colors = useColors()
+  const { hover, pressed, handlers } = useInteractiveState()
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      onMouseEnter={disabled ? undefined : handlers.onMouseEnter}
+      onMouseLeave={handlers.onMouseLeave}
+      onMouseDown={disabled ? undefined : handlers.onMouseDown}
+      onMouseUp={disabled ? undefined : handlers.onMouseUp}
+      onBlur={handlers.onBlur}
+      className="ion-focusable"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        padding: '4px 8px',
+        fontSize: 11,
+        color: disabled ? colors.textTertiary : colors.textSecondary,
+        background: disabled ? 'transparent' : interactiveBg(colors, { hover, pressed }),
+        border: 'none',
+        borderRadius: 6,
+        cursor: disabled ? 'default' : 'pointer',
+        opacity: disabled ? 0.45 : 1,
+        transition: `background ${transitions.base}`,
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
+/** One directory-listing row. Extracted so `useInteractiveState` runs per
+ *  row (hooks cannot run inside the parent's map); replaces the previous
+ *  `hover:bg-white/5` utility class with the token-driven cascade.
+ *  Non-navigable entries (files, unreadable dirs) render inert. */
+function DirEntryRow({ entry, onEnter }: {
+  entry: EngineDirListing['entries'][number]
+  onEnter: () => void
+}) {
+  const colors = useColors()
+  const { hover, pressed, handlers } = useInteractiveState()
+  const clickable = entry.isDir && entry.readable
+  return (
+    <button
+      onClick={() => clickable && onEnter()}
+      disabled={!clickable}
+      onMouseEnter={clickable ? handlers.onMouseEnter : undefined}
+      onMouseLeave={handlers.onMouseLeave}
+      onMouseDown={clickable ? handlers.onMouseDown : undefined}
+      onMouseUp={clickable ? handlers.onMouseUp : undefined}
+      onBlur={handlers.onBlur}
+      className="ion-focusable"
+      style={{
+        width: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '4px 12px',
+        fontSize: 12,
+        color: clickable
+          ? colors.textPrimary
+          : entry.readable
+            ? colors.textSecondary
+            : colors.textTertiary,
+        background: clickable ? interactiveBg(colors, { hover, pressed }) : 'transparent',
+        border: 'none',
+        cursor: clickable ? 'pointer' : 'default',
+        textAlign: 'left',
+        opacity: entry.readable ? 1 : 0.45,
+        transition: `background ${transitions.base}`,
+      }}
+      title={!entry.readable ? `${entry.name} (no permission)` : entry.name}
+    >
+      {entry.isDir
+        ? <Folder size={13} style={{ color: colors.accent, flexShrink: 0 }} />
+        : <span style={{ width: 13, height: 13, flexShrink: 0 }} />}
+      <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        {entry.name}
+        {entry.isSymlink && <span style={{ color: colors.textTertiary, marginLeft: 4 }}>→</span>}
+      </span>
+    </button>
+  )
 }

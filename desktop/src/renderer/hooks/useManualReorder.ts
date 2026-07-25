@@ -9,6 +9,14 @@ interface UseManualReorderOpts<T> {
   axis?: 'x' | 'y'
   threshold?: number
   gap?: number
+  /** When set, a 2px insertion bar of this color is rendered at the current
+   * drop index while a drag is in flight (the standard "drag insertion"
+   * state from the desktop style guide). Pass a token value — e.g.
+   * `colors.dragInsertIndicator` — never a literal. The bar lives alongside
+   * the drag clone as an imperative DOM node: this hook renders drag
+   * feedback outside the React tree by design, so the indicator follows the
+   * same mechanism instead of forcing per-move re-renders. */
+  insertIndicatorColor?: string
 }
 
 interface UseManualReorderResult {
@@ -17,7 +25,7 @@ interface UseManualReorderResult {
 }
 
 export function useManualReorder<T>(opts: UseManualReorderOpts<T>): UseManualReorderResult {
-  const { items, keyFn, itemRefs, onReorder, axis = 'x', threshold = 8, gap = 4 } = opts
+  const { items, keyFn, itemRefs, onReorder, axis = 'x', threshold = 8, gap = 4, insertIndicatorColor } = opts
   const isDraggingRef = useRef(false)
   const stateRef = useRef<{
     dragKey: string
@@ -25,9 +33,10 @@ export function useManualReorder<T>(opts: UseManualReorderOpts<T>): UseManualReo
     originY: number
     clone: HTMLDivElement | null
     originalEl: HTMLDivElement | null
+    indicator: HTMLDivElement | null
     dropIndex: number
     startIndex: number
-    siblingRects: Array<{ key: string; el: HTMLDivElement; mid: number }>
+    siblingRects: Array<{ key: string; el: HTMLDivElement; mid: number; rect: DOMRect }>
   } | null>(null)
 
   const onItemPointerDown = useCallback((key: string, e: React.PointerEvent) => {
@@ -47,6 +56,7 @@ export function useManualReorder<T>(opts: UseManualReorderOpts<T>): UseManualReo
       originY,
       clone: null,
       originalEl: el,
+      indicator: null,
       dropIndex: startIndex,
       startIndex,
       siblingRects: [],
@@ -78,7 +88,7 @@ export function useManualReorder<T>(opts: UseManualReorderOpts<T>): UseManualReo
         state.clone = clone
         state.originalEl!.style.opacity = '0'
 
-        // Snapshot sibling midpoints
+        // Snapshot sibling midpoints (and full rects, for the insertion bar)
         const refs = itemRefs.current
         if (refs) {
           state.siblingRects = items
@@ -88,9 +98,32 @@ export function useManualReorder<T>(opts: UseManualReorderOpts<T>): UseManualReo
               if (!sibEl) return null
               const r = sibEl.getBoundingClientRect()
               const mid = axis === 'x' ? r.left + r.width / 2 : r.top + r.height / 2
-              return { key: k, el: sibEl, mid }
+              return { key: k, el: sibEl, mid, rect: r }
             })
             .filter((s): s is NonNullable<typeof s> => s !== null)
+        }
+
+        // Drag-insertion indicator: a fixed 2px bar positioned at the drop
+        // index on every move (below). Only created when the consumer opted
+        // in with a token color.
+        if (insertIndicatorColor) {
+          const bar = document.createElement('div')
+          bar.style.position = 'fixed'
+          bar.style.zIndex = '99998'
+          bar.style.pointerEvents = 'none'
+          bar.style.background = insertIndicatorColor
+          bar.style.borderRadius = '1px'
+          if (axis === 'x') {
+            bar.style.width = '2px'
+            bar.style.height = `${rect.height}px`
+            bar.style.top = `${rect.top}px`
+          } else {
+            bar.style.height = '2px'
+            bar.style.width = `${rect.width}px`
+            bar.style.left = `${rect.left}px`
+          }
+          document.body.appendChild(bar)
+          state.indicator = bar
         }
       }
 
@@ -141,6 +174,31 @@ export function useManualReorder<T>(opts: UseManualReorderOpts<T>): UseManualReo
           sib.el.style.transition = 'transform 150ms ease'
           sib.el.style.transform = `${prop}(${shift}px)`
         }
+
+        // Position the insertion bar at the drop slot. Geometry is derived
+        // from the ORIGINAL (unshifted) rects snapshotted at drag start:
+        //   - drop at own slot        → the dragged item's original leading edge
+        //   - drop after start (d>s)  → the gap opens where item d's trailing
+        //                               edge lands after the leftward shift
+        //   - drop before start (d<s) → the gap opens at item d's original
+        //                               leading edge (d shifts away from it)
+        if (state.indicator) {
+          const dropItem = items[state.dropIndex]
+          const dropRect = dropItem
+            ? state.siblingRects.find((s) => s.key === keyFn(dropItem))?.rect
+            : undefined
+          if (dropRect) {
+            const d = state.dropIndex
+            const start = state.startIndex
+            if (axis === 'x') {
+              const pos = d > start ? dropRect.right + gap - dragWidth : dropRect.left
+              state.indicator.style.left = `${pos - 1}px`
+            } else {
+              const pos = d > start ? dropRect.bottom + gap - dragWidth : dropRect.top
+              state.indicator.style.top = `${pos - 1}px`
+            }
+          }
+        }
       }
     }
 
@@ -151,9 +209,12 @@ export function useManualReorder<T>(opts: UseManualReorderOpts<T>): UseManualReo
       const state = stateRef.current
       if (!state) return
 
-      // Clean up clone and sibling transforms
+      // Clean up clone, insertion bar, and sibling transforms
       if (state.clone) {
         state.clone.remove()
+      }
+      if (state.indicator) {
+        state.indicator.remove()
       }
       if (state.originalEl) {
         state.originalEl.style.opacity = ''
@@ -180,7 +241,7 @@ export function useManualReorder<T>(opts: UseManualReorderOpts<T>): UseManualReo
 
     window.addEventListener('pointermove', onPointerMove)
     window.addEventListener('pointerup', onPointerUp)
-  }, [items, keyFn, itemRefs, onReorder, axis, threshold, gap])
+  }, [items, keyFn, itemRefs, onReorder, axis, threshold, gap, insertIndicatorColor])
 
   return { onItemPointerDown, isDraggingRef }
 }

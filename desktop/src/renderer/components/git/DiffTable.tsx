@@ -53,7 +53,7 @@ export function DiffTable({ parsed, selected, staged, onLineClick, onHunkAction,
                         {staged ? 'Unstage' : 'Stage'}{selected.size > 0 ? ' selected' : ' hunk'}
                       </button>
                       {!staged && (
-                        <button onClick={() => onHunkDiscard(line.hunkIndex)} className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px]" style={{ color: '#c47060' }} title="Discard hunk">
+                        <button onClick={() => onHunkDiscard(line.hunkIndex)} className="flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px]" style={{ color: colors.dangerFg }} title="Discard hunk">
                           <ArrowCounterClockwise size={9} />Discard
                         </button>
                       )}
@@ -66,7 +66,7 @@ export function DiffTable({ parsed, selected, staged, onLineClick, onHunkAction,
 
           const isSel = selected.has(line.rawIndex)
           const bgColor = isSel
-            ? colors.accent + '22'
+            ? colors.accentLight
             : line.type === 'add' ? colors.diffAddBg
             : line.type === 'remove' ? colors.diffRemoveBg
             : 'transparent'
@@ -85,8 +85,8 @@ export function DiffTable({ parsed, selected, staged, onLineClick, onHunkAction,
                   <span
                     key={ti}
                     style={{
-                      background: tok.type === 'add' ? '#7aac8c44'
-                        : tok.type === 'remove' ? '#c4706044'
+                      background: tok.type === 'add' ? colors.permissionAllowHoverBg
+                        : tok.type === 'remove' ? colors.permissionDenyHoverBg
                         : undefined,
                     }}
                   >{tok.text}</span>

@@ -168,18 +168,23 @@ func frontmatterList(fm map[string]any, keys ...string) []string {
 	return nil
 }
 
-// frontmatterUserInvocable resolves the `user-invocable` key with the
-// source-dependent default: commands default to user-invocable (a user may type
-// /name); skills default to model-only (the model invokes via the Skill tool).
-func frontmatterUserInvocable(fm map[string]any, source string) bool {
+// frontmatterUserInvocable resolves the `user-invocable` key. Commands AND
+// skills default to user-invocable: a discoverable template is directly
+// addressable by the user who can see it — a user who can find /name in the
+// autocomplete feed can reasonably type it, so exposure and invocability are
+// the same affordance by default. An explicit `user-invocable: false` opts a
+// template out of the feed for the cases where a template is meant only for
+// programmatic resolution (typed resolution is never gated — see
+// resolveSlashIntoOpts).
+func frontmatterUserInvocable(fm map[string]any) bool {
 	v, ok := fm["user-invocable"]
 	if !ok || v == nil {
-		return source != slashSourceSkill
+		return true
 	}
 	if s, ok := v.(string); ok {
 		return strings.EqualFold(strings.TrimSpace(s), "true")
 	}
-	return source != slashSourceSkill
+	return true
 }
 
 // frontmatterContext resolves the `context` key: "fork" runs the command as a

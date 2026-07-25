@@ -1,5 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import { useColors } from '../../theme'
+import { useInteractiveState, interactiveBg } from '../../hooks/useInteractiveState'
+import { transitions } from '../../theme-tokens'
 
 interface ConfirmDialogProps {
   title: string
@@ -22,6 +24,8 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const colors = useColors()
   const confirmRef = useRef<HTMLButtonElement>(null)
+  const cancelIx = useInteractiveState()
+  const confirmIx = useInteractiveState()
 
   useEffect(() => {
     confirmRef.current?.focus()
@@ -40,7 +44,7 @@ export function ConfirmDialog({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'rgba(0,0,0,0.4)',
+        background: colors.scrim,
         zIndex: 10000,
         pointerEvents: 'auto',
       }}
@@ -69,10 +73,14 @@ export function ConfirmDialog({
         <div className="flex justify-end gap-2 mt-4">
           <button
             onClick={onCancel}
-            className="text-[11px] px-3 py-1 rounded-md"
+            {...cancelIx.handlers}
+            className="ion-focusable text-[11px] px-3 py-1 rounded-md"
             style={{
               color: colors.textSecondary,
               border: `1px solid ${colors.containerBorder}`,
+              background: interactiveBg(colors, cancelIx),
+              cursor: 'pointer',
+              transition: `background ${transitions.base}`,
             }}
           >
             {cancelLabel}
@@ -80,11 +88,19 @@ export function ConfirmDialog({
           <button
             ref={confirmRef}
             onClick={onConfirm}
-            className="text-[11px] px-3 py-1 rounded-md font-medium"
+            {...confirmIx.handlers}
+            className="ion-focusable text-[11px] px-3 py-1 rounded-md font-medium"
             style={{
-              color: '#fff',
-              background: danger ? '#c47060' : colors.accent,
+              color: colors.textOnAccent,
+              // Destructive confirms use the stop family (no dedicated
+              // pressed token — stopHover serves both active states);
+              // neutral confirms darken through the accent ladder.
+              background: danger
+                ? (confirmIx.hover || confirmIx.pressed ? colors.stopHover : colors.stopBg)
+                : confirmIx.pressed ? colors.accentPressed : confirmIx.hover ? colors.accentHover : colors.accent,
               border: 'none',
+              cursor: 'pointer',
+              transition: `background ${transitions.base}`,
             }}
           >
             {confirmLabel}

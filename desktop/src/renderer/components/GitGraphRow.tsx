@@ -1,8 +1,10 @@
 import React, { useRef } from 'react'
 import { useColors } from '../theme'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { transitions } from '../theme-tokens'
 import type { GitCommit, GitCommitFile } from '../../shared/types'
 import type { GitGraphNode } from '../utils/gitGraphLayout'
-import { relativeDate } from './GitPanelTypes'
+import { GIT_STATUS_COLOR_KEYS, relativeDate } from './GitPanelTypes'
 import { forkOrMergePath } from './git/laneGeometry'
 
 // ─── Graph layout constants ───
@@ -21,6 +23,7 @@ export function GraphRow({ node, onHover, onLeave, onContextMenu, onClick, isExp
   selectedHash?: string | null
 }) {
   const colors = useColors()
+  const { hover, pressed, handlers } = useInteractiveState()
   const commit = node.commit
   const rowMaxLane = Math.max(
     node.lane,
@@ -36,12 +39,24 @@ export function GraphRow({ node, onHover, onLeave, onContextMenu, onClick, isExp
     <div
       ref={rowRef}
       className="flex"
-      style={{ height: ROW_HEIGHT, whiteSpace: 'nowrap', minWidth: 'fit-content', cursor: 'pointer', background: isExpanded ? colors.surfaceHover : undefined }}
+      {...handlers}
+      style={{
+        height: ROW_HEIGHT,
+        whiteSpace: 'nowrap',
+        minWidth: 'fit-content',
+        cursor: 'pointer',
+        background: interactiveBg(colors, { hover, pressed, selected: isExpanded }),
+        transition: `background ${transitions.base}`,
+      }}
       onClick={onClick}
       onMouseEnter={() => {
+        handlers.onMouseEnter()
         if (rowRef.current) onHover(commit, rowRef.current.getBoundingClientRect())
       }}
-      onMouseLeave={onLeave}
+      onMouseLeave={() => {
+        handlers.onMouseLeave()
+        onLeave()
+      }}
       onContextMenu={(e) => onContextMenu(e, commit)}
     >
       {/* SVG lane column */}
@@ -122,6 +137,50 @@ export function GraphRow({ node, onHover, onLeave, onContextMenu, onClick, isExp
   )
 }
 
+const STATUS_LETTERS_COMMIT: Record<string, string> = {
+  added: 'A',
+  modified: 'M',
+  deleted: 'D',
+  renamed: 'R',
+}
+
+/** Single file row in an expanded commit — standard hover/pressed states. */
+function CommitFileRow({ file, onFileClick }: {
+  file: GitCommitFile
+  onFileClick: (file: GitCommitFile) => void
+}) {
+  const colors = useColors()
+  const { hover, pressed, handlers } = useInteractiveState()
+  return (
+    <div
+      className="flex items-center cursor-pointer group"
+      {...handlers}
+      style={{
+        height: 22,
+        paddingLeft: 20,
+        paddingRight: 8,
+        background: interactiveBg(colors, { hover, pressed }),
+        transition: `background ${transitions.base}`,
+      }}
+      onClick={() => onFileClick(file)}
+    >
+      <span
+        className="text-[9px] font-mono flex-shrink-0"
+        style={{ color: GIT_STATUS_COLOR_KEYS[file.status] ? colors[GIT_STATUS_COLOR_KEYS[file.status]] : colors.textTertiary, width: 14, textAlign: 'center' }}
+      >
+        {STATUS_LETTERS_COMMIT[file.status] || '?'}
+      </span>
+      <span
+        className="text-[10px] truncate flex-1"
+        style={{ color: colors.textSecondary, marginLeft: 6 }}
+        title={file.path}
+      >
+        {file.path}
+      </span>
+    </div>
+  )
+}
+
 export function CommitFileList({ files, directory: _directory, hash: _hash, onFileClick }: {
   files: GitCommitFile[]
   directory: string
@@ -130,45 +189,10 @@ export function CommitFileList({ files, directory: _directory, hash: _hash, onFi
 }) {
   const colors = useColors()
 
-  const STATUS_COLORS_COMMIT: Record<string, string> = {
-    added: '#7aac8c',
-    modified: '#6b9bd2',
-    deleted: '#c47060',
-    renamed: '#b08fd8',
-  }
-
-  const STATUS_LETTERS_COMMIT: Record<string, string> = {
-    added: 'A',
-    modified: 'M',
-    deleted: 'D',
-    renamed: 'R',
-  }
-
   return (
     <div style={{ background: colors.surfacePrimary, borderBottom: `1px solid ${colors.containerBorder}` }}>
       {files.map((file) => (
-        <div
-          key={file.path}
-          className="flex items-center cursor-pointer group"
-          style={{ height: 22, paddingLeft: 20, paddingRight: 8 }}
-          onClick={() => onFileClick(file)}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = colors.surfaceHover }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
-        >
-          <span
-            className="text-[9px] font-mono flex-shrink-0"
-            style={{ color: STATUS_COLORS_COMMIT[file.status] || colors.textTertiary, width: 14, textAlign: 'center' }}
-          >
-            {STATUS_LETTERS_COMMIT[file.status] || '?'}
-          </span>
-          <span
-            className="text-[10px] truncate flex-1"
-            style={{ color: colors.textSecondary, marginLeft: 6 }}
-            title={file.path}
-          >
-            {file.path}
-          </span>
-        </div>
+        <CommitFileRow key={file.path} file={file} onFileClick={onFileClick} />
       ))}
     </div>
   )

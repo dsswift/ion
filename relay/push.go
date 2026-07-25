@@ -21,7 +21,6 @@ import (
 const (
 	apnsProductionURL = "https://api.push.apple.com"
 	apnsSandboxURL    = "https://api.sandbox.push.apple.com"
-	apnsTopic         = "com.sprague.ion.mobile"
 	tokenTTL          = 50 * time.Minute // Apple requires refresh within 60 min
 )
 
@@ -75,6 +74,7 @@ type APNsPusher struct {
 	baseURL string
 	keyID   string
 	teamID  string
+	topic   string // apns-topic header: the client app's bundle ID (APNS_TOPIC env)
 	key     *ecdsa.PrivateKey
 
 	mu          sync.Mutex
@@ -84,7 +84,10 @@ type APNsPusher struct {
 	queue chan pushRequest
 }
 
-func NewAPNsPusher(keyPath, keyID, teamID string) (*APNsPusher, error) {
+func NewAPNsPusher(keyPath, keyID, teamID, topic string) (*APNsPusher, error) {
+	if topic == "" {
+		return nil, fmt.Errorf("APNs topic is required (set APNS_TOPIC to the iOS app bundle ID)")
+	}
 	keyData, err := os.ReadFile(keyPath)
 	if err != nil {
 		return nil, fmt.Errorf("read APNs key: %w", err)
@@ -119,6 +122,7 @@ func NewAPNsPusher(keyPath, keyID, teamID string) (*APNsPusher, error) {
 		baseURL: baseURL,
 		keyID:   keyID,
 		teamID:  teamID,
+		topic:   topic,
 		key:     ecKey,
 		queue:   make(chan pushRequest, 64),
 	}, nil
@@ -256,7 +260,7 @@ func (p *APNsPusher) sendAsync(req pushRequest) error {
 	}
 
 	httpReq.Header.Set("Authorization", "bearer "+token)
-	httpReq.Header.Set("apns-topic", apnsTopic)
+	httpReq.Header.Set("apns-topic", p.topic)
 	httpReq.Header.Set("apns-push-type", "alert")
 	httpReq.Header.Set("apns-priority", "10")
 

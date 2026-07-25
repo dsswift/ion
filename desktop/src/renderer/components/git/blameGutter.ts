@@ -1,5 +1,6 @@
 import { EditorView, gutter, GutterMarker } from '@codemirror/view'
 import { StateField, StateEffect } from '@codemirror/state'
+import type { ColorPalette } from '../../theme-tokens'
 
 // Types
 export interface BlameLine {
@@ -26,16 +27,18 @@ const blameField = StateField.define<BlameLine[]>({
   },
 })
 
-// Deterministic color from hash
-function hashColor(hash: string): string {
-  const colors = [
-    '#6b9bd2', '#7aac8c', '#b08fd8', '#d4a843', '#c47060',
-    '#8bb5e0', '#93c5a4', '#c4a6e8', '#e0be5c', '#d4887a',
-    '#5fa0d6', '#6dbf82', '#a67dd4', '#c9a836', '#b85c4e',
-  ]
+// Deterministic color from hash — a categorical spread of theme token keys,
+// resolved against the active palette threaded in via blameExtension().
+const HASH_COLOR_KEYS: Array<keyof ColorPalette> = [
+  'gitModified', 'gitAdded', 'gitRenamed', 'gitUntracked', 'gitDeleted',
+  'iconSky', 'iconGreen', 'iconPurple', 'iconYellow', 'iconOrange',
+  'accent', 'modeAcceptEdits', 'statusBash', 'iconGray', 'stopBg',
+]
+
+function hashColor(hash: string, colors: ColorPalette): string {
   let n = 0
   for (let i = 0; i < hash.length; i++) n = (n * 31 + hash.charCodeAt(i)) | 0
-  return colors[Math.abs(n) % colors.length]
+  return colors[HASH_COLOR_KEYS[Math.abs(n) % HASH_COLOR_KEYS.length]]
 }
 
 // Author initials
@@ -65,6 +68,7 @@ class BlameMarker extends GutterMarker {
   constructor(
     readonly blame: BlameLine,
     readonly prevHash: string | null,
+    readonly colors: ColorPalette,
   ) { super() }
 
   toDOM(): HTMLElement {
@@ -78,7 +82,7 @@ class BlameMarker extends GutterMarker {
       return el
     }
 
-    const color = hashColor(this.blame.hash)
+    const color = hashColor(this.blame.hash, this.colors)
     el.style.cssText = `display:inline-flex;align-items:center;gap:4px;width:120px;font-size:10px;padding:0 6px;cursor:pointer;color:${color};`
     el.title = `${this.blame.hash} by ${this.blame.author}\n${new Date(this.blame.date).toLocaleString()}`
 
@@ -107,50 +111,54 @@ const emptyMarker = new class extends GutterMarker {
   }
 }
 
-// Gutter
-const blameGutter = gutter({
-  class: 'cm-blame-gutter',
-  markers: (view) => {
-    const data = view.state.field(blameField)
-    if (data.length === 0) return []
+// Gutter — created per palette so markers resolve theme tokens
+function makeBlameGutter(colors: ColorPalette) {
+  return gutter({
+    class: 'cm-blame-gutter',
+    markers: (view) => {
+      const data = view.state.field(blameField)
+      if (data.length === 0) return []
 
-    // Build a map from line number to blame
-    const byLine = new Map<number, BlameLine>()
-    for (const b of data) byLine.set(b.lineNo, b)
+      // Build a map from line number to blame
+      const byLine = new Map<number, BlameLine>()
+      for (const b of data) byLine.set(b.lineNo, b)
 
-    // Create marker list
-    const markers: Array<{ from: number; marker: GutterMarker }> = []
-    for (let i = 1; i <= view.state.doc.lines; i++) {
-      const line = view.state.doc.line(i)
-      const blame = byLine.get(i)
-      if (blame) {
-        const prevBlame = byLine.get(i - 1)
-        markers.push({ from: line.from, marker: new BlameMarker(blame, prevBlame?.hash ?? null) })
-      } else {
-        markers.push({ from: line.from, marker: emptyMarker })
-      }
-    }
-
-    // Return as a RangeSet-compatible object
-    return {
-      between(from: number, to: number, f: (from: number, to: number, value: GutterMarker) => void | false) {
-        for (const m of markers) {
-          if (m.from >= from && m.from <= to) {
-            if (f(m.from, m.from, m.marker) === false) return
-          }
+      // Create marker list
+      const markers: Array<{ from: number; marker: GutterMarker }> = []
+      for (let i = 1; i <= view.state.doc.lines; i++) {
+        const line = view.state.doc.line(i)
+        const blame = byLine.get(i)
+        if (blame) {
+          const prevBlame = byLine.get(i - 1)
+          markers.push({ from: line.from, marker: new BlameMarker(blame, prevBlame?.hash ?? null, colors) })
+        } else {
+          markers.push({ from: line.from, marker: emptyMarker })
         }
-      },
-    } as any
-  },
-})
+      }
 
-// Theme for the gutter
-const blameTheme = EditorView.theme({
-  '.cm-blame-gutter': {
-    borderRight: '1px solid var(--cm-blame-border, #333)',
-    backgroundColor: 'var(--cm-blame-bg, transparent)',
-  },
-})
+      // Return as a RangeSet-compatible object
+      return {
+        between(from: number, to: number, f: (from: number, to: number, value: GutterMarker) => void | false) {
+          for (const m of markers) {
+            if (m.from >= from && m.from <= to) {
+              if (f(m.from, m.from, m.marker) === false) return
+            }
+          }
+        },
+      } as any
+    },
+  })
+}
+
+// Theme for the gutter — border resolves from the active palette
+function makeBlameTheme(colors: ColorPalette) {
+  return EditorView.theme({
+    '.cm-blame-gutter': {
+      borderRight: `1px solid ${colors.containerBorder}`,
+      backgroundColor: 'transparent',
+    },
+  })
+}
 
 // Public API
 
@@ -164,7 +172,9 @@ export function clearBlame(view: EditorView) {
   view.dispatch({ effects: clearBlameData.of(null) })
 }
 
-/** CM6 extension array for blame gutter. Add to editor extensions. */
-export function blameExtension(): import('@codemirror/state').Extension {
-  return [blameField, blameGutter, blameTheme]
+/** CM6 extension array for blame gutter. Add to editor extensions.
+ * Takes the resolved theme palette (from `useColors()`) so marker and
+ * border colors follow the active theme. */
+export function blameExtension(colors: ColorPalette): import('@codemirror/state').Extension {
+  return [blameField, makeBlameGutter(colors), makeBlameTheme(colors)]
 }

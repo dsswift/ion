@@ -275,6 +275,11 @@ extension RemoteCommand {
             try container.encode(TypeKey.fsReadImage, forKey: .type)
             try container.encode(filePath, forKey: .filePath)
 
+        case .requestThemeAsset(let themeId, let slot):
+            try container.encode(TypeKey.requestThemeAsset, forKey: .type)
+            try container.encode(themeId, forKey: .themeId)
+            try container.encode(slot, forKey: .slot)
+
         case .fsWriteFile(let filePath, let content):
             try container.encode(TypeKey.fsWriteFile, forKey: .type)
             try container.encode(filePath, forKey: .filePath)

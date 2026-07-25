@@ -43,10 +43,10 @@ type SessionAccessor interface {
 	RootContext() context.Context
 	SendPrompt(text string, model string, bashAllowlistAdditions []string) error
 	// SendPromptWithKind is the Kind-aware variant of SendPrompt. It threads
-	// the Kind classification into PromptInjectedEvent.Kind so clients can
-	// suppress rendering of machine-to-machine injections (e.g. agent
-	// completion callbacks with kind="agent_completion"). Callers that do not
-	// need Kind should use SendPrompt; this method exists so the ext/send_prompt
+	// the Kind classification into PromptInjectedEvent.Kind so consumers can
+	// inspect the semantic type of the injection (e.g. "agent_completion" for
+	// machine-to-machine dispatch callbacks). Callers that do not need Kind
+	// should use SendPrompt; this method exists so the ext/send_prompt
 	// active-hook path can pass Kind without changing SendPrompt's signature.
 	SendPromptWithKind(text string, model string, bashAllowlistAdditions []string, kind string) error
 

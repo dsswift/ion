@@ -5,6 +5,8 @@ import { ArrowCircleUp } from '@phosphor-icons/react'
 import { usePopoverLayer } from './PopoverLayer'
 import { useUpdateStore } from '../stores/update-store'
 import { useColors } from '../theme'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { transitions } from '../theme-tokens'
 
 const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] as const }
 
@@ -17,6 +19,8 @@ export function UpdateDialog(): React.ReactElement | null {
   const version = useUpdateStore((s) => s.version)
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
+  const laterIx = useInteractiveState()
+  const installIx = useInteractiveState()
 
   useEffect(() => {
     if (!dialogOpen) return
@@ -42,7 +46,7 @@ export function UpdateDialog(): React.ReactElement | null {
         style={{
           position: 'fixed',
           inset: 0,
-          background: 'rgba(0, 0, 0, 0.4)',
+          background: colors.scrim,
           pointerEvents: 'auto',
           display: 'flex',
           alignItems: 'center',
@@ -82,24 +86,28 @@ export function UpdateDialog(): React.ReactElement | null {
           <div style={{ display: 'flex', gap: 8, marginTop: 8, width: '100%' }}>
             <button
               onClick={() => useUpdateStore.getState().hideDialog()}
-              className="flex-1 py-1.5 rounded-lg text-[12px] font-medium"
+              {...laterIx.handlers}
+              className="ion-focusable flex-1 py-1.5 rounded-lg text-[12px] font-medium"
               style={{
                 color: colors.textSecondary,
-                background: colors.surfacePrimary,
+                background: interactiveBg(colors, laterIx, colors.surfacePrimary),
                 border: `1px solid ${colors.containerBorder}`,
                 cursor: 'pointer',
+                transition: `background ${transitions.base}`,
               }}
             >
               Later
             </button>
             <button
               onClick={() => window.ion.installUpdate()}
-              className="flex-1 py-1.5 rounded-lg text-[12px] font-medium"
+              {...installIx.handlers}
+              className="ion-focusable flex-1 py-1.5 rounded-lg text-[12px] font-medium"
               style={{
                 color: colors.textOnAccent,
-                background: colors.accent,
+                background: installIx.pressed ? colors.accentPressed : installIx.hover ? colors.accentHover : colors.accent,
                 border: 'none',
                 cursor: 'pointer',
+                transition: `background ${transitions.base}`,
               }}
             >
               Install Now

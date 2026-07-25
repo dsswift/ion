@@ -225,7 +225,12 @@ struct SettingsView: View {
 
     // MARK: - Helpers
 
-    private var currentThemeName: String {        ThemeRegistry.themes.first { $0.id == theme.selectedThemeId }?.displayName ?? "Default"
+    private var currentThemeName: String {
+        // The ThemeManager already resolves the selected id (including the
+        // ion-dark fallback for stale ids and desktop-synced custom themes),
+        // so its displayName is always the name of the theme actually
+        // rendering.
+        theme.displayName
     }
 
     private var currentModelLabel: String {

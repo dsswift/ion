@@ -266,7 +266,7 @@ const COLORS = {
   statusWaitingChildrenGlow: 'waitingChildrenGlow',
   statusComplete: 'complete',
   tabGlowPlanReady: 'glowPlanReady',
-  infoText: 'info',
+  statusQuestion: 'question',
   tabGlowQuestion: 'glowQuestion',
   statusBash: 'bash',
   statusBashGlow: 'bashGlow',

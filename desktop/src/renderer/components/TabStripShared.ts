@@ -1,5 +1,4 @@
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react'
-import { Diamond, Square, StarFour, Triangle, Heart, Hexagon, Lightning, Terminal, DeviceMobile, Monitor, Gear } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
 import type { useColors } from '../theme'
@@ -13,48 +12,7 @@ export { computeAnchoredPosition } from './tabstrip-anchored-position'
 export { tabHasExtensions } from '../../shared/tab-predicates'
 export type { AnchoredPositionInput } from './tabstrip-anchored-position'
 
-/** Pill background-color presets shown in the color picker. `null` means "use theme default". */
-export const PILL_COLOR_PRESETS = [
-  { color: null, label: 'Default' },
-  { color: '#f08c4a', label: 'Orange' },
-  { color: '#4ece78', label: 'Green' },
-  { color: '#ef5350', label: 'Red' },
-  { color: '#42a5f5', label: 'Blue' },
-  { color: '#b06de8', label: 'Purple' },
-  { color: '#f5c842', label: 'Gold' },
-] as const
-
-/** Pill status-icon presets shown in the icon picker. `null` means "use the default dot". */
-export const PILL_ICON_PRESETS = [
-  { icon: null, label: 'Default' },
-  { icon: 'diamond', label: 'Diamond' },
-  { icon: 'square', label: 'Square' },
-  { icon: 'star', label: 'Star' },
-  { icon: 'triangle', label: 'Triangle' },
-  { icon: 'heart', label: 'Heart' },
-  { icon: 'hexagon', label: 'Hexagon' },
-  { icon: 'lightning', label: 'Lightning' },
-  { icon: 'mobile', label: 'Mobile' },
-  { icon: 'desktop', label: 'Desktop' },
-  { icon: 'gear', label: 'Gear' },
-] as const
-
-/** Maps the persisted `pillIcon` string to a Phosphor icon component. */
-export const PILL_ICON_MAP: Record<string, React.ComponentType<any>> = {
-  diamond: Diamond,
-  square: Square,
-  star: StarFour,
-  triangle: Triangle,
-  heart: Heart,
-  hexagon: Hexagon,
-  lightning: Lightning,
-  Terminal,
-  // Note: `Monitor` is used instead of `Desktop` to avoid collision with the
-  // reserved JS keyword; the persisted icon string remains "desktop".
-  mobile: DeviceMobile,
-  desktop: Monitor,
-  gear: Gear,
-}
+export { PILL_COLOR_PRESETS, PILL_ICON_PRESETS, PILL_ICON_MAP } from './TabStripPillPresets'
 
 /** Adjust viewport rect to zoomed coordinate space for fixed positioning.
  * getBoundingClientRect() returns viewport pixels, but position:fixed inside
@@ -519,8 +477,8 @@ export function getTabStatusColor(
     bg = colors.statusPermission; glow = true
     priority = 7 // STATUS_PRIORITY_PERMISSION
   } else if (tab.status === 'connecting' || tab.status === 'running' || isAnyEngineInstanceRunning(tab.id)) {
-    // Orange "foreground running" wins over yellow "background only" —
-    // the orchestrator's own activity is the strongest signal. Yellow
+    // Teal "foreground running" wins over amber "background only" —
+    // the orchestrator's own activity is the strongest signal. Amber
     // "awaiting children" fires below for the case where orchestrator
     // is idle but dispatched agents are still executing. Data-driven: the
     // instance fold runs for every tab (a plain conversation with background
@@ -530,7 +488,7 @@ export function getTabStatusColor(
   } else if (anyEngineInstanceHasRunningChildren(tab.id)) {
     // Yellow "awaiting children" — orchestrator idle, dispatched
     // background agents still running. Visually distinct from the
-    // orange running state so users can tell at a glance whether
+    // teal running state so users can tell at a glance whether
     // foreground or background work is in flight. Glow uses the
     // matching amber tint so the rim around the pill stays in palette.
     // Outranks plan-ready: active background work is a stronger signal
@@ -541,7 +499,7 @@ export function getTabStatusColor(
     bg = colors.statusComplete; glow = true; glowColor = colors.tabGlowPlanReady
     priority = 4 // STATUS_PRIORITY_PLAN_READY
   } else if (waitingState === 'question') {
-    bg = colors.infoText; glow = true; glowColor = colors.tabGlowQuestion
+    bg = colors.statusQuestion; glow = true; glowColor = colors.tabGlowQuestion
     priority = 3 // STATUS_PRIORITY_QUESTION
   } else if (tab.bashExecuting) {
     bg = colors.statusBash; pulse = true; glow = true; glowColor = colors.statusBashGlow
@@ -562,7 +520,8 @@ export function getTabStatusColor(
  * Re-exported from TabStripGroupStatus.ts (extracted to keep TabStripShared.ts
  * under the 600-line cap). Consumers import from here as usual.
  */
-export { getGroupStatusColor } from './TabStripGroupStatus'
+export { getGroupStatusColor, getGroupDotModel } from './TabStripGroupStatus'
+export type { GroupDotModel } from './TabStripGroupStatus'
 
 /** Model-fallback fact stored per engine instance. */
 export interface TabModelFallback {

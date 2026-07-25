@@ -4,6 +4,8 @@ import { motion } from 'framer-motion'
 import { Trash, PuzzlePiece, Broom, DownloadSimple } from '@phosphor-icons/react'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
+import { useInteractiveState } from '../hooks/useInteractiveState'
+import { transitions } from '../theme-tokens'
 import { fuzzyFilterAndSort } from '../../shared/fuzzy-match'
 
 export interface SlashCommand {
@@ -62,6 +64,62 @@ export function slashMenuEnterAction(filteredCount: number): 'complete' | 'send'
   return filteredCount > 0 ? 'complete' : 'send'
 }
 
+/**
+ * One slash-menu row. Extracted so `useInteractiveState` runs per row
+ * (hooks cannot run inside the parent's map). This menu's selection
+ * convention is `accentLight` bg + `accent` text; hover shares the
+ * accentLight fill, and pressed layers `surfacePressed` on top.
+ */
+function SlashCommandRow({ cmd, index, isSelected, onSelect }: {
+  cmd: SlashCommand
+  index: number
+  isSelected: boolean
+  onSelect: (cmd: SlashCommand) => void
+}) {
+  const colors = useColors()
+  const { hover, pressed, handlers } = useInteractiveState()
+  return (
+    <button
+      data-cmd-idx={index}
+      onClick={() => onSelect(cmd)}
+      {...handlers}
+      className="ion-focusable w-full flex items-center gap-2.5 px-3 py-1.5 text-left"
+      style={{
+        background: pressed
+          ? colors.surfacePressed
+          : (isSelected || hover) ? colors.accentLight : 'transparent',
+        border: 'none',
+        transition: `background ${transitions.base}`,
+      }}
+    >
+      <span
+        className="flex items-center justify-center w-6 h-6 rounded-md flex-shrink-0"
+        style={{
+          background: isSelected ? colors.accentSoft : colors.surfaceHover,
+          color: isSelected ? colors.accent : colors.textTertiary,
+          transition: `background ${transitions.base}, color ${transitions.base}`,
+        }}
+      >
+        {cmd.icon}
+      </span>
+      <div className="min-w-0 flex-1">
+        <span
+          className="text-[12px] font-mono font-medium"
+          style={{ color: isSelected ? colors.accent : colors.textPrimary, transition: `color ${transitions.base}` }}
+        >
+          {cmd.command}
+        </span>
+        <span
+          className="text-[11px] ml-2"
+          style={{ color: colors.textTertiary }}
+        >
+          {cmd.description}
+        </span>
+      </div>
+    </button>
+  )
+}
+
 export function SlashCommandMenu({ filter, selectedIndex, onSelect, anchorRect, extraCommands = [] }: Props) {
   const listRef = useRef<HTMLDivElement>(null)
   const popoverLayer = usePopoverLayer()
@@ -118,46 +176,7 @@ export function SlashCommandMenu({ filter, selectedIndex, onSelect, anchorRect, 
                   {GROUP_LABELS[currentGroup] || currentGroup}
                 </div>
               )}
-              <button
-                data-cmd-idx={i}
-                onClick={() => onSelect(cmd)}
-                className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left transition-colors"
-                style={{
-                  background: isSelected ? colors.accentLight : 'transparent',
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = colors.accentLight
-                }}
-                onMouseLeave={(e) => {
-                  if (!isSelected) {
-                    (e.currentTarget as HTMLElement).style.background = 'transparent'
-                  }
-                }}
-              >
-                <span
-                  className="flex items-center justify-center w-6 h-6 rounded-md flex-shrink-0"
-                  style={{
-                    background: isSelected ? colors.accentSoft : colors.surfaceHover,
-                    color: isSelected ? colors.accent : colors.textTertiary,
-                  }}
-                >
-                  {cmd.icon}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <span
-                    className="text-[12px] font-mono font-medium"
-                    style={{ color: isSelected ? colors.accent : colors.textPrimary }}
-                  >
-                    {cmd.command}
-                  </span>
-                  <span
-                    className="text-[11px] ml-2"
-                    style={{ color: colors.textTertiary }}
-                  >
-                    {cmd.description}
-                  </span>
-                </div>
-              </button>
+              <SlashCommandRow cmd={cmd} index={i} isSelected={isSelected} onSelect={onSelect} />
             </React.Fragment>
           )
         })}

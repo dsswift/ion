@@ -185,7 +185,7 @@ export function NotificationsPanel() {
         {unreadCount > 0 && (
           <span
             className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 rounded-full flex items-center justify-center text-[9px] font-bold leading-none px-0.5"
-            style={{ background: colors.accent, color: '#fff' }}
+            style={{ background: colors.accent, color: colors.textOnAccent }}
           >
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>

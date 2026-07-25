@@ -20,6 +20,24 @@ type TaskInfo struct {
 	Error       string
 	StartedAt   time.Time
 	CompletedAt *time.Time
+
+	// Kind distinguishes task types: "" / "agent" for TaskCreate sub-sessions,
+	// "bash" for background Bash commands (tasks_bash.go).
+	Kind string
+	// OutputPath is the on-disk output file for Kind=="bash" tasks.
+	OutputPath string
+	// Owner is the session key that started a Kind=="bash" task; session
+	// cleanup kills all running bash tasks for their owner.
+	Owner string
+	// ExitCode is the process exit code for completed Kind=="bash" tasks.
+	ExitCode int
+	// PID is the shell process ID for Kind=="bash" tasks.
+	PID int
+
+	// stop kills the underlying process (Kind=="bash"). nil for agent tasks.
+	stop func()
+	// tail returns the bounded in-memory output tail (Kind=="bash").
+	tail func() string
 }
 
 // TaskSpawner is a function that creates a sub-session for a task.
@@ -88,8 +106,12 @@ func executeTaskCreate(ctx context.Context, input map[string]any, cwd string) (*
 
 	_, resultCh, err := taskSpawner(prompt, cwd)
 	if err != nil {
+		// Mutate under the lock: the task is already registered and visible
+		// to concurrent TaskList/TaskGet readers.
+		tasksMu.Lock()
 		info.Status = "failed"
 		info.Error = err.Error()
+		tasksMu.Unlock()
 		return &types.ToolResult{Content: fmt.Sprintf("Failed to create task: %s", err), IsError: true}, nil
 	}
 
@@ -191,9 +213,11 @@ func executeTaskGet(ctx context.Context, input map[string]any, _ string) (*types
 		return &types.ToolResult{Content: "Error: taskId is required", IsError: true}, nil
 	}
 
+	// Hold the read lock while rendering: the background-bash Done-watcher
+	// goroutine (tasks_bash.go) mutates task fields under tasksMu.
 	tasksMu.RLock()
+	defer tasksMu.RUnlock()
 	task, ok := tasks[taskID]
-	tasksMu.RUnlock()
 
 	if !ok {
 		return &types.ToolResult{Content: fmt.Sprintf("Task not found: %s", taskID), IsError: true}, nil
@@ -215,6 +239,17 @@ func executeTaskGet(ctx context.Context, input map[string]any, _ string) (*types
 	}
 	if task.Error != "" {
 		parts = append(parts, fmt.Sprintf("Error: %s", task.Error))
+	}
+	if task.Kind == "bash" {
+		parts = append(parts, fmt.Sprintf("Output file: %s", task.OutputPath))
+		if task.CompletedAt != nil {
+			parts = append(parts, fmt.Sprintf("Exit code: %d", task.ExitCode))
+		}
+		if task.tail != nil {
+			if tail := task.tail(); tail != "" {
+				parts = append(parts, fmt.Sprintf("Recent output:\n%s", tail))
+			}
+		}
 	}
 
 	var duration string
@@ -253,23 +288,34 @@ func executeTaskStop(ctx context.Context, input map[string]any, _ string) (*type
 		return &types.ToolResult{Content: "Error: taskId is required", IsError: true}, nil
 	}
 
+	// Hold the lock through the status mutation: the background-bash
+	// Done-watcher goroutine (tasks_bash.go) writes the same fields under
+	// tasksMu, and the "stopped" stamp must win over a concurrent exit.
 	tasksMu.Lock()
 	task, ok := tasks[taskID]
-	tasksMu.Unlock()
-
 	if !ok {
+		tasksMu.Unlock()
 		return &types.ToolResult{Content: fmt.Sprintf("Task not found: %s", taskID), IsError: true}, nil
 	}
-
 	if task.Status != "running" {
+		status := task.Status
+		tasksMu.Unlock()
 		return &types.ToolResult{
-			Content: fmt.Sprintf("Task %s is not running (status: %s)", taskID, task.Status),
+			Content: fmt.Sprintf("Task %s is not running (status: %s)", taskID, status),
 		}, nil
 	}
-
 	now := time.Now()
 	task.Status = "stopped"
 	task.CompletedAt = &now
+	// Bash tasks own a real process: actually kill it (stop() signals the
+	// process group and returns without waiting, so holding tasksMu is fine).
+	// Agent tasks keep the historical status-flip behavior (their run is
+	// torn down elsewhere).
+	stop := task.stop
+	tasksMu.Unlock()
+	if stop != nil {
+		stop()
+	}
 
 	return &types.ToolResult{Content: fmt.Sprintf("Task %s stopped.", taskID)}, nil
 }

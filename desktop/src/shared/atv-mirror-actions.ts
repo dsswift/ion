@@ -112,6 +112,7 @@ export const MIRROR_LOCAL_ACTIONS: Record<string, string> = {
   addSystemMessage: 'ingestion: local system row',
   addEngineSystemMessage: 'ingestion: local system row',
   loadSkeletonMessages: 'ingestion: lazy history hydration',
+  rehydrateFailedHistory: 'ingestion: retry lazy history hydration after engine reconnect',
   initStaticInfo: 'boot: reads static info; no durable writes',
   // Pure read accessor: derives a canonical tail fingerprint from local store
   // state; no writes, no IPC. Safe to run in either window.

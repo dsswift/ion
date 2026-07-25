@@ -59,7 +59,7 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
             fontSize: 'var(--ion-conv-font-size, 13px)',
             background: colors.userBubble,
             color: colors.userBubbleText,
-            border: isBashCmd ? '2px solid rgba(244, 114, 182, 0.5)' : `1px solid ${colors.userBubbleBorder}`,
+            border: isBashCmd ? `2px solid ${colors.bashModeRing}` : `1px solid ${colors.userBubbleBorder}`,
             borderRadius: '14px 14px 4px 14px',
           }}
         >

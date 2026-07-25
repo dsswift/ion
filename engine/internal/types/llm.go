@@ -2,6 +2,27 @@ package types
 
 // --- LLM Provider Types (from engine/src/providers/types.ts) ---
 
+// ImageGenerateOptions configures a single image generation request.
+// Only Prompt is required; the other fields use provider defaults when empty.
+type ImageGenerateOptions struct {
+	Model   string `json:"model"`
+	Prompt  string `json:"prompt"`
+	Size    string `json:"size,omitempty"`    // e.g. "1024x1024" (default when empty)
+	Quality string `json:"quality,omitempty"` // "standard" | "hd"
+	Style   string `json:"style,omitempty"`   // "vivid" | "natural"
+	N       int    `json:"n,omitempty"`       // number of images; defaults to 1
+}
+
+// ImageResult is a single image returned by an image generation API call.
+// Data is raw base64-encoded image bytes (never a URL). MediaType is the MIME
+// type (e.g. "image/png"). RevisedPrompt is the provider-rewritten prompt, if
+// the provider returned one (DALL-E 3 always does; gpt-image-1 may not).
+type ImageResult struct {
+	Data          string `json:"data"`
+	MediaType     string `json:"mediaType"`
+	RevisedPrompt string `json:"revisedPrompt,omitempty"`
+}
+
 // LlmStreamOptions configures a streaming LLM call.
 type LlmStreamOptions struct {
 	Model       string           `json:"model"`
@@ -284,6 +305,13 @@ type ModelInfo struct {
 	// and approximate fallback for other families), or "" (no local encoder).
 	// Additive field — omitempty, never breaks existing consumers.
 	Tokenizer string `json:"tokenizer,omitempty"`
+	// ModelKind declares the API shape this model uses. "" or "chat" means the
+	// standard conversational chat-completion API (the default for all existing
+	// models). "image" means a dedicated image-generation API (e.g. DALL-E 3,
+	// gpt-image-1) — the engine routes these through runImageLoop instead of the
+	// agent loop; no conversation history, no tools, single prompt in / image out.
+	// Additive field — omitempty, zero-value "" is treated as "chat".
+	ModelKind string `json:"modelKind,omitempty"`
 	IsCustom  bool   `json:"-"` // not serialized; set by config loader, propagated to ModelEntry
 }
 
@@ -306,6 +334,9 @@ type ModelEntry struct {
 	// Tokenizer is the tiktoken encoding name for this model's local BPE encoder.
 	// See ModelInfo.Tokenizer for the value contract. Additive, omitempty.
 	Tokenizer string `json:"tokenizer,omitempty"`
+	// ModelKind declares the API shape this model uses. See ModelInfo.ModelKind
+	// for the value contract. "" / absent is treated as "chat". Additive, omitempty.
+	ModelKind string `json:"modelKind,omitempty"`
 	IsCustom  bool   `json:"isCustom,omitempty"`
 }
 

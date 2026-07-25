@@ -28,7 +28,7 @@ export function TerminalBigScreen({ tabId }: Props) {
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 9999,
-        background: 'rgba(0, 0, 0, 0.6)',
+        background: 'rgba(0, 0, 0, 0.6)', // hardcoded-ok: pure-black modal scrim
         pointerEvents: 'auto',
       }}
       onClick={(e) => {
@@ -47,7 +47,7 @@ export function TerminalBigScreen({ tabId }: Props) {
           borderRadius: 16,
           background: colors.containerBg,
           border: `1px solid ${colors.containerBorder}`,
-          boxShadow: `0 24px 80px rgba(0, 0, 0, 0.5)`,
+          boxShadow: `0 24px 80px rgba(0, 0, 0, 0.5)`, // hardcoded-ok: pure-black drop shadow, geometry specific to the big-screen modal
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',

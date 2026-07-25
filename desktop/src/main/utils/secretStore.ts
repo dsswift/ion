@@ -1,5 +1,18 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto'
-import { hostname, userInfo } from 'os'
+import { mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { homedir, hostname, userInfo } from 'os'
+import { dirname, join } from 'path'
+import { warn as _warn, error as _error, log as _log } from '../logger'
+
+function warn(msg: string, fields?: Record<string, unknown>): void {
+  _warn('secretStore', msg, fields)
+}
+function error(msg: string, fields?: Record<string, unknown>): void {
+  _error('secretStore', msg, fields)
+}
+function log(msg: string, fields?: Record<string, unknown>): void {
+  _log('secretStore', msg, fields)
+}
 
 // ---------------------------------------------------------------------------
 // Lazy electron resolution.
@@ -12,7 +25,7 @@ import { hostname, userInfo } from 'os'
 // Linux parity gate run): require('electron') throws "Electron failed to
 // install correctly" at import time. Resolution is deferred to first use;
 // when electron is unavailable the caller falls back to Tier 2
-// (machine-derived AES-GCM), which is the correct behavior outside a
+// (keyfile AES-GCM), which is the correct behavior outside a
 // packaged Electron app anyway.
 // ---------------------------------------------------------------------------
 
@@ -53,8 +66,18 @@ export function _setElectronForTest(stub: ElectronSecrets | null | undefined): v
 /** Electron safeStorage (Keychain-backed, production builds). */
 const ENC_V1_PREFIX = 'enc:v1:'
 
-/** Machine-derived AES-GCM (dev / ad-hoc signed builds). */
+/**
+ * LEGACY, decrypt-only: machine-derived AES-GCM keyed from
+ * SHA-256(hostname + username). The hostname component broke decryption
+ * whenever DHCP/mDNS renamed the machine between boots, losing the stored
+ * secrets. Values on disk written by earlier builds still carry this prefix,
+ * so the decoder stays; writes now produce enc:v3: and
+ * encryptSensitiveSettings upgrades v2 values on the next settings save.
+ */
 const ENC_V2_PREFIX = 'enc:v2:'
+
+/** Keyfile-backed AES-GCM (dev / ad-hoc signed builds). */
+const ENC_V3_PREFIX = 'enc:v3:'
 
 // ---------------------------------------------------------------------------
 // Tier detection
@@ -70,11 +93,15 @@ const ENC_V2_PREFIX = 'enc:v2:'
 //            process and freezes the app. So we only use safeStorage when the
 //            app is packaged with a stable code signature.
 //
-//   Tier 2 — Machine-derived AES-256-GCM, keyed from SHA-256(hostname + uid).
-//            This is obfuscation, not strong security — it prevents casual
-//            `cat` and scripted scraping of settings.json, but won't stop a
-//            determined attacker with local access. Used for dev builds and
-//            any environment where safeStorage is unavailable.
+//   Tier 2 — AES-256-GCM keyed by a random 256-bit key persisted in a 0600
+//            keyfile (~/.ion/desktop-secrets.key). This is obfuscation, not
+//            strong security — it prevents casual `cat` and scripted scraping
+//            of settings.json, but won't stop a determined attacker with
+//            local access (who could read the keyfile too). Used for dev
+//            builds and any environment where safeStorage is unavailable.
+//            Earlier builds derived this key from machine identity
+//            (hostname + uid), which broke across hostname changes; that
+//            derivation survives only as the enc:v2: decrypt fallback.
 //
 // Both tiers protect the same fields: relayApiKey and pairedDevices[].sharedSecret.
 // Engine API keys (ANTHROPIC_API_KEY, etc.) are deliberately NOT managed here —
@@ -97,23 +124,83 @@ export function isSafeStorageReady(): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Machine-derived encryption (Tier 2)
+// Keyfile-backed encryption (Tier 2, enc:v3:)
 // ---------------------------------------------------------------------------
 
 const CIPHER_ALG = 'aes-256-gcm'
 const NONCE_LEN = 12
 const TAG_LEN = 16
+const KEY_LEN = 32
+
+/** Default keyfile location; overridable for tests via _setKeyfilePathForTest. */
+let keyfilePath = join(homedir(), '.ion', 'desktop-secrets.key')
 
 /**
- * Derives a 32-byte AES key from machine identity. Uses the same approach as
- * the engine's FileStore (engine/internal/auth/filestore.go): SHA-256 of a
- * salt + hostname + username. Basic obfuscation — stops `cat`, not a forensic
- * examiner.
+ * TEST ONLY. Redirect the keyfile to a temp location so tests never touch
+ * the real ~/.ion. Pass undefined to restore the default path.
  */
-function deriveMachineKey(): Buffer {
+export function _setKeyfilePathForTest(path: string | undefined): void {
+  keyfilePath = path ?? join(homedir(), '.ion', 'desktop-secrets.key')
+}
+
+/**
+ * Loads the 32-byte Tier-2 key from the keyfile, creating it with fresh
+ * random bytes on first use. Creation uses the 'wx' flag (O_EXCL) so a
+ * concurrent-process race resolves to one winner; the loser re-reads the
+ * winner's key. A present-but-malformed keyfile throws rather than being
+ * regenerated — regenerating would orphan every value encrypted under it.
+ */
+function loadOrCreateKeyfile(): Buffer {
+  let raw: string | null = null
+  try {
+    raw = readFileSync(keyfilePath, 'utf-8')
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+  }
+  if (raw !== null) {
+    const key = Buffer.from(raw.trim(), 'hex')
+    if (key.length !== KEY_LEN) {
+      throw new Error(`keyfile ${keyfilePath}: expected ${KEY_LEN}-byte key, got ${key.length} bytes`)
+    }
+    return key
+  }
+
+  const key = randomBytes(KEY_LEN)
+  mkdirSync(dirname(keyfilePath), { recursive: true, mode: 0o700 })
+  try {
+    writeFileSync(keyfilePath, key.toString('hex'), { mode: 0o600, flag: 'wx' })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
+      // Lost the creation race to another process; use its key.
+      const existing = Buffer.from(readFileSync(keyfilePath, 'utf-8').trim(), 'hex')
+      if (existing.length !== KEY_LEN) {
+        throw new Error(`keyfile ${keyfilePath}: expected ${KEY_LEN}-byte key, got ${existing.length} bytes`)
+      }
+      return existing
+    }
+    throw err
+  }
+  log('created desktop secrets keyfile', { keyfilePath })
+  return key
+}
+
+/**
+ * LEGACY. Derives the pre-keyfile 32-byte AES key from machine identity
+ * (SHA-256 of salt + hostname + username). Retained only to decrypt enc:v2:
+ * values written by earlier builds — the hostname input made this derivation
+ * break across reboots when the network renamed the machine.
+ */
+let hostnameFn: () => string = hostname
+
+/** TEST ONLY. Override the hostname used by the legacy v2 key derivation. */
+export function _setHostnameForTest(fn: (() => string) | undefined): void {
+  hostnameFn = fn ?? hostname
+}
+
+function deriveLegacyMachineKey(): Buffer {
   const h = createHash('sha256')
   h.update('ion-desktop-secrets:')
-  h.update(hostname())
+  h.update(hostnameFn())
   h.update(':')
   try {
     h.update(userInfo().username)
@@ -123,26 +210,24 @@ function deriveMachineKey(): Buffer {
   return h.digest()
 }
 
-function machineEncrypt(plaintext: string): string {
-  const key = deriveMachineKey()
+function aesGcmEncrypt(key: Buffer, plaintext: string): string {
   const nonce = randomBytes(NONCE_LEN)
   const cipher = createCipheriv(CIPHER_ALG, key, nonce, { authTagLength: TAG_LEN })
   const encrypted = Buffer.concat([cipher.update(plaintext, 'utf-8'), cipher.final()])
   const tag = cipher.getAuthTag()
   // Wire format: nonce (12) || tag (16) || ciphertext
   const combined = Buffer.concat([nonce, tag, encrypted])
-  return ENC_V2_PREFIX + combined.toString('base64')
+  return combined.toString('base64')
 }
 
-function machineDecrypt(value: string): string {
-  const raw = Buffer.from(value.slice(ENC_V2_PREFIX.length), 'base64')
+function aesGcmDecrypt(key: Buffer, base64Payload: string): string {
+  const raw = Buffer.from(base64Payload, 'base64')
   if (raw.length < NONCE_LEN + TAG_LEN) {
-    throw new Error('machine-encrypted value too short')
+    throw new Error('encrypted value too short')
   }
   const nonce = raw.subarray(0, NONCE_LEN)
   const tag = raw.subarray(NONCE_LEN, NONCE_LEN + TAG_LEN)
   const ciphertext = raw.subarray(NONCE_LEN + TAG_LEN)
-  const key = deriveMachineKey()
   const decipher = createDecipheriv(CIPHER_ALG, key, nonce, { authTagLength: TAG_LEN })
   decipher.setAuthTag(tag)
   return decipher.update(ciphertext) + decipher.final('utf-8')
@@ -156,7 +241,7 @@ function machineDecrypt(value: string): string {
  * Encrypts a plaintext value for on-disk storage.
  *
  * - Production (packaged + signed): uses Electron safeStorage → `enc:v1:…`
- * - Dev / ad-hoc signed: uses machine-derived AES-GCM → `enc:v2:…`
+ * - Dev / ad-hoc signed: uses keyfile AES-GCM → `enc:v3:…`
  */
 export function encryptForDisk(plaintext: string): string {
   if (!plaintext) return plaintext
@@ -164,15 +249,17 @@ export function encryptForDisk(plaintext: string): string {
     const buf = getElectron()!.safeStorage.encryptString(plaintext)
     return ENC_V1_PREFIX + buf.toString('base64')
   }
-  return machineEncrypt(plaintext)
+  return ENC_V3_PREFIX + aesGcmEncrypt(loadOrCreateKeyfile(), plaintext)
 }
 
 /**
  * Decrypts a value previously written by encryptForDisk.
  *
- * Handles three cases:
+ * Handles four cases:
  *  - `enc:v1:…` — safeStorage (needs safeStorage available)
- *  - `enc:v2:…` — machine-derived AES-GCM (always available)
+ *  - `enc:v3:…` — keyfile AES-GCM (always available)
+ *  - `enc:v2:…` — legacy machine-derived AES-GCM (decrypt-only; upgraded to
+ *    v3 by encryptSensitiveSettings on the next settings write)
  *  - no prefix  — legacy plaintext (returned as-is, will be encrypted on next write)
  */
 export function decryptFromDisk(value: string): string {
@@ -180,9 +267,7 @@ export function decryptFromDisk(value: string): string {
 
   if (value.startsWith(ENC_V1_PREFIX)) {
     if (!isSafeStorageReady()) {
-      console.warn(
-        '[secretStore] found safeStorage-encrypted value but safeStorage unavailable; value cleared — re-enter in settings',
-      )
+      warn('found safeStorage-encrypted value but safeStorage unavailable; value cleared — re-enter in settings')
       return ''
     }
     try {
@@ -193,11 +278,22 @@ export function decryptFromDisk(value: string): string {
     }
   }
 
+  if (value.startsWith(ENC_V3_PREFIX)) {
+    try {
+      return aesGcmDecrypt(loadOrCreateKeyfile(), value.slice(ENC_V3_PREFIX.length))
+    } catch (err) {
+      error('keyfile decrypt failed; value cleared — re-enter in settings', { error: String(err) })
+      return ''
+    }
+  }
+
   if (value.startsWith(ENC_V2_PREFIX)) {
     try {
-      return machineDecrypt(value)
-    } catch {
-      console.warn('[secretStore] machine-decrypt failed; value cleared — re-enter in settings')
+      return aesGcmDecrypt(deriveLegacyMachineKey(), value.slice(ENC_V2_PREFIX.length))
+    } catch (err) {
+      // The classic failure: the hostname changed since the value was
+      // written, so the legacy machine-derived key no longer matches.
+      warn('legacy machine-derived decrypt failed (hostname changed?); value cleared — re-enter in settings', { error: String(err) })
       return ''
     }
   }
@@ -220,7 +316,30 @@ const SENSITIVE_DEVICE_FIELDS = ['sharedSecret'] as const
 
 /** Returns true when `value` carries any encryption prefix. */
 function isEncrypted(value: string): boolean {
-  return value.startsWith(ENC_V1_PREFIX) || value.startsWith(ENC_V2_PREFIX)
+  return value.startsWith(ENC_V1_PREFIX) || value.startsWith(ENC_V2_PREFIX) || value.startsWith(ENC_V3_PREFIX)
+}
+
+/**
+ * Re-encryptable: plaintext (no prefix) or a legacy enc:v2: value that
+ * should be upgraded to the current scheme on the next write. enc:v2: is
+ * upgraded eagerly because its machine-derived key dies with the next
+ * hostname change — every settings save that leaves it in place is a
+ * missed rescue.
+ */
+function needsWriteUpgrade(value: string): boolean {
+  return !isEncrypted(value) || value.startsWith(ENC_V2_PREFIX)
+}
+
+/**
+ * Produces the on-disk form of a sensitive value: plaintext is encrypted,
+ * legacy enc:v2: is decrypted with the machine-derived key and re-encrypted
+ * under the current scheme (v1 or v3). An undecryptable v2 value becomes ''
+ * (decryptFromDisk logs the warning) — same terminal state it would reach
+ * on read.
+ */
+function upgradeForDisk(value: string): string {
+  const plaintext = value.startsWith(ENC_V2_PREFIX) ? decryptFromDisk(value) : value
+  return plaintext ? encryptForDisk(plaintext) : plaintext
 }
 
 // encryptSensitiveSettings returns a copy of settings with sensitive fields
@@ -229,8 +348,8 @@ export function encryptSensitiveSettings(settings: Record<string, any>): Record<
   const out: Record<string, any> = { ...settings }
   for (const key of SENSITIVE_TOP_FIELDS) {
     const v = out[key]
-    if (typeof v === 'string' && v && !isEncrypted(v)) {
-      out[key] = encryptForDisk(v)
+    if (typeof v === 'string' && v && needsWriteUpgrade(v)) {
+      out[key] = upgradeForDisk(v)
     }
   }
   if (Array.isArray(out.pairedDevices)) {
@@ -239,8 +358,8 @@ export function encryptSensitiveSettings(settings: Record<string, any>): Record<
       const next = { ...device }
       for (const key of SENSITIVE_DEVICE_FIELDS) {
         const v = next[key]
-        if (typeof v === 'string' && v && !isEncrypted(v)) {
-          next[key] = encryptForDisk(v)
+        if (typeof v === 'string' && v && needsWriteUpgrade(v)) {
+          next[key] = upgradeForDisk(v)
         }
       }
       return next

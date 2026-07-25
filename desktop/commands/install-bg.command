@@ -37,13 +37,23 @@ echo
 
 ENGINE_OUT="resources/engine/ion"
 mkdir -p "resources/engine"
-if ! (cd ../engine && go build -o "../desktop/${ENGINE_OUT}" ./cmd/ion); then
+# Stamp main.version so `ion version` reports a real identifier instead of the
+# "dev" default (parity with the CI release build; observability, not a swap
+# gate — the daemon is swapped by binary hash in engine-bootstrap.ts).
+ENGINE_VERSION="$(git -C ../engine describe --tags --always --dirty 2>/dev/null || echo dev)"
+if ! (cd ../engine && go build -ldflags "-X main.version=${ENGINE_VERSION}" -o "../desktop/${ENGINE_OUT}" ./cmd/ion); then
   echo
   echo "Engine build failed."
   exit 1
 fi
 chmod +x "${ENGINE_OUT}"
-codesign --force --sign - "${ENGINE_OUT}" 2>/dev/null || true
+# Sign with the SAME stable identifier and hardened runtime that afterPack.js
+# uses for the packaged copy. The default filename-derived "ion" identifier is
+# poisoned in the SIP-locked NetworkExtension policy store (see afterPack.js and
+# engine/commands/install.command), which silently suppresses the macOS Local
+# Network grant; keep local and packaged engine identity consistent.
+codesign --force --sign - --identifier house.sprague.ion.engine --options runtime \
+  --entitlements resources/entitlements.mac.plist "${ENGINE_OUT}" 2>/dev/null || true
 xattr -cr "${ENGINE_OUT}" 2>/dev/null || true
 echo "Engine built: ${ENGINE_OUT}"
 

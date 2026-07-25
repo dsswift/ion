@@ -2,12 +2,13 @@ import SwiftUI
 
 // MARK: - IonTheme
 
-/// Centralized design tokens — single source of truth for the entire app.
+/// Centralized design tokens — legacy static palette.
 ///
-/// Color tokens here reflect the Ion Default palette and are kept for
-/// backward compatibility with views that reference `IonTheme.accent`
-/// directly. Theme-aware views should read colors from the `appTheme`
-/// environment value instead (see `AppTheme.swift`).
+/// Color tokens here reflect the retired system-adaptive palette (the
+/// pre-cross-platform "Ion Default" look) and are kept only for backward
+/// compatibility with views that reference `IonTheme.accent` directly.
+/// Theme-aware views should read colors from the `appTheme` environment
+/// value instead (see `AppTheme.swift`).
 enum IonTheme {
 
     // MARK: Colors

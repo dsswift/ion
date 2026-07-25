@@ -7,6 +7,7 @@ import { useShallow } from 'zustand/shallow'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { compactPath } from './StatusBarShared'
 import { pickDirectoryForSession } from '../stores/remote-fs-store'
 import { activeInstance, instanceMessageCount } from '../stores/conversation-instance'
@@ -40,6 +41,11 @@ export function DirectoryPicker() {
   const colors = useColors()
 
   const [dirOpen, setDirOpen] = useState(false)
+  // Pointer states: trigger pill, base-directory row, add-directory row.
+  // All top-level (the popover renders conditionally; the hooks always run).
+  const triggerState = useInteractiveState()
+  const baseDirState = useInteractiveState()
+  const addDirState = useInteractiveState()
   const dirRef = useRef<HTMLButtonElement>(null)
   const dirPopRef = useRef<HTMLDivElement>(null)
   // Keep the portaled popover inside the window (ATV top-anchored strip).
@@ -116,10 +122,13 @@ export function DirectoryPicker() {
       <button
         ref={dirRef}
         onClick={handleDirClick}
-        className="flex items-center gap-1 rounded-full px-1.5 py-0.5 transition-colors flex-shrink-0"
+        {...(isRunning ? {} : triggerState.handlers)}
+        className="flex items-center gap-1 rounded-full px-1.5 py-0.5 flex-shrink-0 ion-focusable"
         style={{
-          color: colors.textTertiary,
-          cursor: isRunning ? 'not-allowed' : 'pointer',
+          color: triggerState.hover && !isRunning ? colors.textPrimary : colors.textTertiary,
+          background: isRunning ? 'transparent' : interactiveBg(colors, triggerState),
+          opacity: isRunning ? 0.45 : 1,
+          cursor: isRunning ? 'default' : 'pointer',
           maxWidth: 140,
         }}
         title={dirTooltip}
@@ -161,8 +170,13 @@ export function DirectoryPicker() {
             <button
               onClick={() => { void handleChangeBaseDir().catch((err) => rError('directory-picker', 'change base dir failed', { error: String(err) })) }}
               disabled={isRunning || baseLocked}
-              className="w-full text-left px-2 py-1 rounded-lg transition-colors hover:bg-white/5"
-              style={{ cursor: isRunning || baseLocked ? 'default' : 'pointer', opacity: baseLocked ? 0.7 : 1 }}
+              {...(isRunning || baseLocked ? {} : baseDirState.handlers)}
+              className="w-full text-left px-2 py-1 rounded-lg ion-focusable"
+              style={{
+                cursor: isRunning || baseLocked ? 'default' : 'pointer',
+                opacity: baseLocked ? 0.45 : 1,
+                background: isRunning || baseLocked ? 'transparent' : interactiveBg(colors, baseDirState),
+              }}
               title={baseLocked ? 'Base directory is locked after the conversation starts' : tab.hasChosenDirectory ? `${tab.workingDirectory} — click to change` : 'Click to choose a base directory'}
             >
               <div className="text-[9px] uppercase tracking-wider mb-1" style={{ color: colors.textTertiary }}>
@@ -189,7 +203,7 @@ export function DirectoryPicker() {
                       </span>
                       <button
                         onClick={() => removeDirectory(dir)}
-                        className="flex-shrink-0 opacity-50 hover:opacity-100 transition-opacity"
+                        className="flex-shrink-0 opacity-50 hover:opacity-100 transition-opacity ion-focusable"
                         style={{ color: colors.textTertiary }}
                         title="Remove directory"
                       >
@@ -206,8 +220,9 @@ export function DirectoryPicker() {
             {/* Add directory button */}
             <button
               onClick={() => { void handleAddDir().catch((err) => rError('directory-picker', 'add dir failed', { error: String(err) })) }}
-              className="w-full flex items-center gap-1.5 px-2 py-1.5 text-[11px] transition-colors rounded-lg"
-              style={{ color: colors.accent }}
+              {...addDirState.handlers}
+              className="w-full flex items-center gap-1.5 px-2 py-1.5 text-[11px] rounded-lg ion-focusable"
+              style={{ color: colors.accent, background: interactiveBg(colors, addDirState) }}
             >
               <Plus size={10} />
               Add directory...

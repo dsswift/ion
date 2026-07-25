@@ -74,7 +74,22 @@ extension RemoteEvent {
         case .relayConfig:
             let relayUrl = try container.decode(String.self, forKey: .relayUrl)
             let relayApiKey = try container.decode(String.self, forKey: .relayApiKey)
-            return .relayConfig(relayUrl: relayUrl, relayApiKey: relayApiKey)
+            // Enterprise Relay Phase 1 additive fields. Pre-enterprise desktops omit
+            // them; decoding must succeed without them (backward compat).
+            let authMode = try container.decodeIfPresent(String.self, forKey: .authMode)
+            let relayOidcIssuer = try container.decodeIfPresent(String.self, forKey: .relayOidcIssuer)
+            let relayOidcAudience = try container.decodeIfPresent(String.self, forKey: .relayOidcAudience)
+            let relayOidcRequiredScope = try container.decodeIfPresent(String.self, forKey: .relayOidcRequiredScope)
+            let relayOidcClientId = try container.decodeIfPresent(String.self, forKey: .relayOidcClientId)
+            return .relayConfig(
+                relayUrl: relayUrl,
+                relayApiKey: relayApiKey,
+                authMode: authMode,
+                relayOidcIssuer: relayOidcIssuer,
+                relayOidcAudience: relayOidcAudience,
+                relayOidcRequiredScope: relayOidcRequiredScope,
+                relayOidcClientId: relayOidcClientId
+            )
 
         case .remoteDisplay:
             // Both fields are nullable on the wire — server normalizes empty
@@ -184,10 +199,15 @@ extension RemoteEvent {
             try container.encode(TypeKey.unpair, forKey: .type)
             return true
 
-        case .relayConfig(let relayUrl, let relayApiKey):
+        case .relayConfig(let relayUrl, let relayApiKey, let authMode, let relayOidcIssuer, let relayOidcAudience, let relayOidcRequiredScope, let relayOidcClientId):
             try container.encode(TypeKey.relayConfig, forKey: .type)
             try container.encode(relayUrl, forKey: .relayUrl)
             try container.encode(relayApiKey, forKey: .relayApiKey)
+            try container.encodeIfPresent(authMode, forKey: .authMode)
+            try container.encodeIfPresent(relayOidcIssuer, forKey: .relayOidcIssuer)
+            try container.encodeIfPresent(relayOidcAudience, forKey: .relayOidcAudience)
+            try container.encodeIfPresent(relayOidcRequiredScope, forKey: .relayOidcRequiredScope)
+            try container.encodeIfPresent(relayOidcClientId, forKey: .relayOidcClientId)
             return true
 
         case .remoteDisplay(let customName, let customIcon, let updatedAt):

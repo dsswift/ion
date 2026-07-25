@@ -41,6 +41,7 @@ function updateCache(result: { models: any[]; providers: any[] }): void {
     hasAuth: providerAuth.get(m.providerId) ?? false,
     thinkingMode: m.thinkingMode,
     thinkingEfforts: m.thinkingEfforts,
+    modelKind: m.modelKind,
   }))
   modelCache.lastFetched = Date.now()
 }

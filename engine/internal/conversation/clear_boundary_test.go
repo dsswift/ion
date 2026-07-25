@@ -92,8 +92,10 @@ func TestClear_ContextBoundaryDuality(t *testing.T) {
 		t.Fatalf("setup: expected at least one assistant message with Usage before clear")
 	}
 
-	// Simulate clear_core.go: wipe Messages, append EntryCleared, Save.
+	// Simulate clear_core.go: wipe Messages, append the DisplayOnly /clear
+	// invocation row, then the EntryCleared marker, Save.
 	pre.Messages = nil
+	AppendEntry(pre, EntryMessage, MessageData{Role: "user", Content: "/clear", SlashCommand: "/clear", SlashSource: "ion", DisplayOnly: true})
 	AppendEntry(pre, EntryCleared, ClearedData{})
 
 	if err := Save(pre, dir); err != nil {
@@ -117,8 +119,8 @@ func TestClear_ContextBoundaryDuality(t *testing.T) {
 	}
 
 	// (c): Inspect .tree.jsonl directly to prove the tree is intact and has
-	// exactly expectedEntries + 1 lines (original entries + EntryCleared).
-	// The file format is: one header line + one line per entry.
+	// exactly expectedEntries + 2 lines (original entries + /clear invocation +
+	// EntryCleared). The file format is: one header line + one line per entry.
 	treePath := filepath.Join(dir, id+".tree.jsonl")
 	treeData, err := os.ReadFile(treePath)
 	if err != nil {
@@ -141,10 +143,10 @@ func TestClear_ContextBoundaryDuality(t *testing.T) {
 	if err := scanner.Err(); err != nil {
 		t.Fatalf("(c) scan .tree.jsonl: %v", err)
 	}
-	// expectedEntries original message entries + 1 EntryCleared.
-	wantTreeLines := expectedEntries + 1
+	// expectedEntries original message entries + /clear invocation + EntryCleared.
+	wantTreeLines := expectedEntries + 2
 	if treeEntryLines != wantTreeLines {
-		t.Errorf("(c) .tree.jsonl entry lines = %d, want %d (original entries + EntryCleared)",
+		t.Errorf("(c) .tree.jsonl entry lines = %d, want %d (original entries + /clear invocation + EntryCleared)",
 			treeEntryLines, wantTreeLines)
 	}
 
@@ -154,19 +156,32 @@ func TestClear_ContextBoundaryDuality(t *testing.T) {
 			len(post.Entries), wantTreeLines)
 	}
 
-	// (d): LoadMessages must yield exactly one MarkerKind=="clear" row.
+	// (d): LoadMessages must yield exactly one MarkerKind=="clear" row, and it
+	// must be immediately preceded by the DisplayOnly /clear invocation row
+	// (a user row carrying SlashCommand "/clear"). This is the reload-order
+	// regression pin: the pill renders right before the divider.
 	msgs, err := LoadMessages(id, dir)
 	if err != nil {
 		t.Fatalf("(d) LoadMessages: %v", err)
 	}
 	var clearMarkers int
-	for _, m := range msgs {
+	clearMarkerIdx := -1
+	for i, m := range msgs {
 		if m.MarkerKind == "clear" {
 			clearMarkers++
+			clearMarkerIdx = i
 		}
 	}
 	if clearMarkers != 1 {
 		t.Errorf("(d) LoadMessages: got %d MarkerKind==\"clear\" rows, want 1", clearMarkers)
+	}
+	if clearMarkerIdx <= 0 {
+		t.Fatalf("(d) clear marker at index %d — expected a /clear invocation row before it", clearMarkerIdx)
+	}
+	pill := msgs[clearMarkerIdx-1]
+	if pill.Role != "user" || pill.SlashCommand != "/clear" {
+		t.Errorf("(d) row before clear marker = {role:%q slash:%q}, want {role:\"user\" slash:\"/clear\"} — the /clear pill must render immediately before the divider",
+			pill.Role, pill.SlashCommand)
 	}
 }
 
@@ -209,6 +224,7 @@ func TestClear_RestartReattach(t *testing.T) {
 		t.Fatalf("pre-clear Load: %v", err)
 	}
 	mid.Messages = nil // clear_core.go: wipe the LLM context
+	AppendEntry(mid, EntryMessage, MessageData{Role: "user", Content: "/clear", SlashCommand: "/clear", SlashSource: "ion", DisplayOnly: true})
 	AppendEntry(mid, EntryCleared, ClearedData{})
 
 	if err := Save(mid, dir); err != nil {
@@ -238,10 +254,11 @@ func TestClear_RestartReattach(t *testing.T) {
 		t.Errorf("restart: expected Estimated=true after /clear (no assistant messages with Usage), got Estimated=false")
 	}
 
-	// The tree must still be intact — original entries + 1 EntryCleared.
-	wantEntries := treeEntryCount + 1
+	// The tree must still be intact — original entries + /clear invocation +
+	// EntryCleared.
+	wantEntries := treeEntryCount + 2
 	if len(reattached.Entries) != wantEntries {
-		t.Errorf("restart: Entries count = %d, want %d — /clear must append EntryCleared, not destroy the tree",
+		t.Errorf("restart: Entries count = %d, want %d — /clear must append the /clear invocation + EntryCleared, not destroy the tree",
 			len(reattached.Entries), wantEntries)
 	}
 
@@ -280,8 +297,10 @@ func TestClear_MarkerReplayedOnLoadMessages(t *testing.T) {
 		[]types.LlmContentBlock{{Type: "text", Text: "answer before clear"}},
 		types.LlmUsage{InputTokens: 20, OutputTokens: 10})
 
-	// Simulate clearConversationCore: wipe Messages, append EntryCleared, Save.
+	// Simulate clearConversationCore: wipe Messages, append the DisplayOnly
+	// /clear invocation row, then the EntryCleared marker, Save.
 	conv.Messages = nil
+	AppendEntry(conv, EntryMessage, MessageData{Role: "user", Content: "/clear", SlashCommand: "/clear", SlashSource: "ion", DisplayOnly: true})
 	AppendEntry(conv, EntryCleared, ClearedData{})
 
 	if err := Save(conv, dir); err != nil {
@@ -294,9 +313,11 @@ func TestClear_MarkerReplayedOnLoadMessages(t *testing.T) {
 	}
 
 	var clearRow *types.SessionMessage
+	clearIdx := -1
 	for i := range msgs {
 		if msgs[i].MarkerKind == "clear" {
 			clearRow = &msgs[i]
+			clearIdx = i
 			break
 		}
 	}
@@ -311,5 +332,13 @@ func TestClear_MarkerReplayedOnLoadMessages(t *testing.T) {
 	}
 	if clearRow.Timestamp == 0 {
 		t.Error("clear marker Timestamp is zero — entry timestamp must be carried through")
+	}
+	// The /clear invocation pill must render immediately before the divider.
+	if clearIdx <= 0 {
+		t.Fatalf("clear marker at index %d — expected the /clear invocation row before it", clearIdx)
+	}
+	pill := msgs[clearIdx-1]
+	if pill.Role != "user" || pill.SlashCommand != "/clear" {
+		t.Errorf("row before clear marker = {role:%q slash:%q}, want {role:\"user\" slash:\"/clear\"}", pill.Role, pill.SlashCommand)
 	}
 }

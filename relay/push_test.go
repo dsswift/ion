@@ -30,8 +30,23 @@ func newTestPusher(t *testing.T, baseURL string, queueSize int) *APNsPusher {
 		baseURL: baseURL,
 		keyID:   "TESTKID01",
 		teamID:  "TESTTEAM1",
+		topic:   "com.example.ion.test",
 		key:     priv,
 		queue:   make(chan pushRequest, queueSize),
+	}
+}
+
+// TestNewAPNsPusherRequiresTopic pins that the APNs topic (the client app's
+// bundle ID) is deployment configuration, not code: constructing a pusher
+// without APNS_TOPIC set must fail loudly rather than pushing with a baked-in
+// or empty topic (Apple rejects an empty apns-topic with TopicDisallowed).
+func TestNewAPNsPusherRequiresTopic(t *testing.T) {
+	_, err := NewAPNsPusher("/nonexistent-key.p8", "KID", "TEAM", "")
+	if err == nil {
+		t.Fatal("expected error when APNs topic is empty, got nil")
+	}
+	if !strings.Contains(err.Error(), "APNS_TOPIC") {
+		t.Fatalf("error should name the APNS_TOPIC env var, got: %v", err)
 	}
 }
 
@@ -159,7 +174,7 @@ func TestSendAsyncTransportError(t *testing.T) {
 func startTestRelayWithPusher(t *testing.T, apiKey string, pusher *APNsPusher) (*httptest.Server, *Hub) {
 	t.Helper()
 	hub := NewHub()
-	auth := NewAuthMiddleware(apiKey)
+	auth := NewAuthMiddleware(apiKey, nil)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -167,7 +182,7 @@ func startTestRelayWithPusher(t *testing.T, apiKey string, pusher *APNsPusher) (
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 	mux.HandleFunc("GET /v1/channel/{channelId}", func(w http.ResponseWriter, r *http.Request) {
-		if !auth.Validate(r) {
+		if _, ok := auth.Validate(r); !ok {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -177,7 +192,7 @@ func startTestRelayWithPusher(t *testing.T, apiKey string, pusher *APNsPusher) (
 			http.Error(w, "role must be 'ion' or 'mobile'", http.StatusBadRequest)
 			return
 		}
-		hub.HandleWebSocket(w, r, channelID, role, pusher)
+		hub.HandleWebSocket(w, r, channelID, role, pusher, nil)
 	})
 
 	server := httptest.NewServer(mux)

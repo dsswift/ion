@@ -48,9 +48,10 @@ describe('agent-helpers relocation', () => {
 
 // ─── getStatusDot: standardized three-state dot vocabulary ─────────────────
 //
-// Pins the cascade to the platform tokens (orange running / yellow
-// waiting-children / green done). Reverting any branch to a different token
-// turns the matching case red.
+// Pins the cascade to the platform tokens (statusRunning / statusWaitingChildren
+// / statusComplete). Reverting any branch to a different token turns the
+// matching case red. The stub values below are arbitrary; assertions compare
+// against the stub, so the test is palette-agnostic by design.
 
 const DOT_COLORS = {
   statusRunning: '#d97757',
@@ -66,12 +67,12 @@ function agentWith(status: string): import('../../../shared/types').AgentStateUp
 }
 
 describe('getStatusDot', () => {
-  it('running with no running children → pulsing orange, no glow', () => {
+  it('running with no running children → pulsing statusRunning, no glow', () => {
     const dot = lib.getStatusDot(agentWith('running'), DOT_COLORS, false)
     expect(dot).toEqual({ bg: DOT_COLORS.statusRunning, pulse: true, glowColor: '' })
   })
 
-  it('running with a running child → pulsing yellow + glow (waiting on children)', () => {
+  it('running with a running child → pulsing statusWaitingChildren + glow', () => {
     const dot = lib.getStatusDot(agentWith('running'), DOT_COLORS, true)
     expect(dot).toEqual({
       bg: DOT_COLORS.statusWaitingChildren,
@@ -80,7 +81,7 @@ describe('getStatusDot', () => {
     })
   })
 
-  it('done → solid green, no pulse', () => {
+  it('done → solid statusComplete, no pulse', () => {
     const dot = lib.getStatusDot(agentWith('done'), DOT_COLORS, false)
     expect(dot).toEqual({ bg: DOT_COLORS.statusComplete, pulse: false, glowColor: '' })
   })

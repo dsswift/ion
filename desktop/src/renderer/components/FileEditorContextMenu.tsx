@@ -3,7 +3,54 @@ import { EditorView } from '@codemirror/view'
 import { toggleComment } from '@codemirror/commands'
 import { gotoLine } from '@codemirror/search'
 import { useColors } from '../theme'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { transitions } from '../theme-tokens'
 import { rWarn, rError } from '../rendererLogger'
+
+/** Menu entry button with the standard hover/pressed/disabled states. */
+function EditorMenuButton({
+  label,
+  shortcut,
+  disabled,
+  onSelect,
+  colors,
+}: {
+  label: string
+  shortcut?: string
+  disabled?: boolean
+  onSelect: () => void
+  colors: ReturnType<typeof useColors>
+}) {
+  const { hover, pressed, handlers } = useInteractiveState()
+  return (
+    <button
+      onClick={onSelect}
+      disabled={disabled}
+      className="ion-focusable"
+      {...handlers}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        width: '100%',
+        padding: '5px 12px',
+        border: 'none',
+        background: disabled ? 'transparent' : interactiveBg(colors, { hover, pressed }),
+        color: colors.textPrimary,
+        opacity: disabled ? 0.45 : undefined,
+        cursor: disabled ? 'default' : 'pointer',
+        textAlign: 'left',
+        fontSize: 12,
+        transition: `background ${transitions.base}`,
+      }}
+    >
+      <span>{label}</span>
+      {shortcut && (
+        <span style={{ color: colors.textTertiary, fontSize: 11 }}>{shortcut}</span>
+      )}
+    </button>
+  )
+}
 
 interface FileEditorContextMenuProps {
   x: number
@@ -137,7 +184,7 @@ export function FileEditorContextMenu({ x, y, isReadOnly, viewRef, onClose }: Fi
         background: colors.containerBg,
         border: `1px solid ${colors.containerBorder}`,
         borderRadius: 8,
-        boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+        boxShadow: colors.popoverShadow,
         padding: '4px 0',
         zIndex: 99999,
         fontFamily: 'system-ui, -apple-system, sans-serif',
@@ -154,35 +201,14 @@ export function FileEditorContextMenu({ x, y, isReadOnly, viewRef, onClose }: Fi
           )
         }
         return (
-          <button
+          <EditorMenuButton
             key={item.label}
-            onClick={item.action}
+            label={item.label}
+            shortcut={item.shortcut}
             disabled={item.disabled}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              width: '100%',
-              padding: '5px 12px',
-              border: 'none',
-              background: 'transparent',
-              color: item.disabled ? colors.textTertiary : colors.textPrimary,
-              cursor: item.disabled ? 'default' : 'pointer',
-              textAlign: 'left',
-              fontSize: 12,
-            }}
-            onMouseEnter={(e) => {
-              if (!item.disabled) (e.target as HTMLElement).style.background = colors.surfaceHover
-            }}
-            onMouseLeave={(e) => {
-              (e.target as HTMLElement).style.background = 'transparent'
-            }}
-          >
-            <span>{item.label}</span>
-            {item.shortcut && (
-              <span style={{ color: colors.textTertiary, fontSize: 11 }}>{item.shortcut}</span>
-            )}
-          </button>
+            onSelect={item.action}
+            colors={colors}
+          />
         )
       })}
     </div>

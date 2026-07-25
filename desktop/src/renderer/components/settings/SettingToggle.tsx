@@ -49,7 +49,7 @@ export function SettingToggle({ label, description, checked, onChange, warning }
               width: 14,
               height: 14,
               borderRadius: 7,
-              background: checked ? '#fff' : colors.textTertiary,
+              background: checked ? colors.textOnAccent : colors.textTertiary,
               position: 'absolute',
               top: 2,
               left: checked ? 16 : 2,
@@ -71,7 +71,7 @@ export function SettingToggle({ label, description, checked, onChange, warning }
       {checked && warning && (
         <p
           style={{
-            color: '#d97706',
+            color: colors.warningFg,
             fontSize: 10,
             margin: '4px 0 0',
             lineHeight: 1.4,

@@ -90,7 +90,10 @@ extension RemoteEvent {
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
             switch type {
-            case .engineToolUpdate: return .engineToolUpdate(tabId: tabId, instanceId: instanceId)
+            case .engineToolUpdate:
+                let toolId = try container.decodeIfPresent(String.self, forKey: .toolId) ?? ""
+                let partialInput = try container.decodeIfPresent(String.self, forKey: .partialInput) ?? ""
+                return .engineToolUpdate(tabId: tabId, instanceId: instanceId, toolId: toolId, partialInput: partialInput)
             case .engineToolComplete: return .engineToolComplete(tabId: tabId, instanceId: instanceId)
             case .engineScheduleFired: return .engineScheduleFired(tabId: tabId, instanceId: instanceId)
             case .engineLlmCall: return .engineLlmCall(tabId: tabId, instanceId: instanceId)
@@ -423,7 +426,29 @@ extension RemoteEvent {
             let schema = try container.decode([DesktopSettingSchemaEntry].self, forKey: .schema)
             let groups = try container.decode([DesktopSettingGroupDescriptor].self, forKey: .groups)
             let newConversationPolicy = try container.decodeIfPresent(RemoteNewConversationPolicy.self, forKey: .newConversationPolicy)
-            return .desktopSettingsSnapshot(settings: settings, schema: schema, groups: groups, newConversationPolicy: newConversationPolicy)
+            // themePolicy: enterprise theme enforcement (absent/null on
+            // unmanaged desktops and older desktop builds — decodes nil).
+            let themePolicy = try container.decodeIfPresent(RemoteThemePolicy.self, forKey: .themePolicy)
+            return .desktopSettingsSnapshot(settings: settings, schema: schema, groups: groups, newConversationPolicy: newConversationPolicy, themePolicy: themePolicy)
+
+        case .desktopThemeManifest:
+            // Custom theme-pack sync — replace-wholesale per desktop.
+            // SyncedThemeStore persists the payload keyed by the sending
+            // desktop's device id so themes work offline and desktop A's
+            // manifest never prunes desktop B's themes.
+            let themes = try container.decode([SyncedThemePayload].self, forKey: .themes)
+            let hash = try container.decode(String.self, forKey: .hash)
+            return .desktopThemeManifest(themes: themes, hash: hash)
+
+        case .desktopThemeAssetContent:
+            // Lazy asset fetch response. ok=false → asset unknown/unreadable
+            // on the desktop; the theme still renders tokens-only.
+            let themeId = try container.decode(String.self, forKey: .themeId)
+            let slot = try container.decode(String.self, forKey: .slot)
+            let ok = try container.decode(Bool.self, forKey: .ok)
+            let sha256 = try container.decodeIfPresent(String.self, forKey: .sha256)
+            let dataUrl = try container.decodeIfPresent(String.self, forKey: .dataUrl)
+            return .desktopThemeAssetContent(themeId: themeId, slot: slot, ok: ok, sha256: sha256, dataUrl: dataUrl)
 
         case .engineIntercept:
             // Intercept event routed from the desktop after it has applied

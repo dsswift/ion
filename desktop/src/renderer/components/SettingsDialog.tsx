@@ -4,6 +4,8 @@ import { motion } from 'framer-motion'
 import { X, GearSix, GitBranch, Columns, PaintBrush, WifiHigh, Lightning, Brain, Faders, MagnifyingGlass, Bell, Keyboard, Buildings } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { transitions } from '../theme-tokens'
 import { GeneralCategory } from './settings/GeneralCategory'
 import { AIModelsCategory } from './settings/AIModelsCategory'
 import { GitCategory } from './settings/GitCategory'
@@ -57,6 +59,48 @@ function resolveTab(tab: string | null | undefined): string {
 
 const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] as const }
 
+/** One sidebar category row. Extracted so `useInteractiveState` runs per
+ *  row (hooks cannot run inside the parent's map). Keeps the existing
+ *  active convention (`surfaceSecondary` fill + filled icon); hover and
+ *  pressed layer the standard surface cascade on top. */
+function CategoryButton({ category, isActive, onPick }: {
+  category: Category
+  isActive: boolean
+  onPick: () => void
+}) {
+  const colors = useColors()
+  const { hover, pressed, handlers } = useInteractiveState()
+  const IconComp = category.icon
+  return (
+    <button
+      onClick={onPick}
+      {...handlers}
+      className="ion-focusable"
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '6px 10px',
+        borderRadius: 8,
+        border: 'none',
+        cursor: 'pointer',
+        fontSize: 13,
+        fontWeight: 500,
+        color: isActive ? colors.textPrimary : colors.textSecondary,
+        background: pressed
+          ? colors.surfacePressed
+          : isActive ? colors.surfaceSecondary : hover ? colors.surfaceHover : 'transparent',
+        transition: `background ${transitions.base}, color ${transitions.base}`,
+        width: '100%',
+        textAlign: 'left',
+      }}
+    >
+      <IconComp size={16} weight={isActive ? 'fill' : 'regular'} />
+      {category.label}
+    </button>
+  )
+}
+
 interface SettingsDialogProps {
   onClose: () => void
   initialTab?: string | null
@@ -68,6 +112,7 @@ const DIALOG_HEIGHT = 600
 export function SettingsDialog({ onClose, initialTab }: SettingsDialogProps) {
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
+  const closeIx = useInteractiveState()
   const [activeCategory, setActiveCategory] = useState(resolveTab(initialTab))
   const [searchQuery, setSearchQuery] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
@@ -173,16 +218,24 @@ export function SettingsDialog({ onClose, initialTab }: SettingsDialogProps) {
         </span>
         <button
           onClick={onClose}
-          onMouseDown={(e) => e.stopPropagation()}
+          onMouseEnter={closeIx.handlers.onMouseEnter}
+          onMouseLeave={closeIx.handlers.onMouseLeave}
+          onMouseUp={closeIx.handlers.onMouseUp}
+          onBlur={closeIx.handlers.onBlur}
+          // stopPropagation keeps the drag-to-move header from grabbing the
+          // press; pressed state is tracked in the same handler.
+          onMouseDown={(e) => { e.stopPropagation(); closeIx.handlers.onMouseDown() }}
+          className="ion-focusable"
           style={{
-            background: 'none',
+            background: interactiveBg(colors, closeIx),
             border: 'none',
             cursor: 'pointer',
-            color: colors.textTertiary,
+            color: closeIx.hover ? colors.textSecondary : colors.textTertiary,
             padding: 4,
             borderRadius: 6,
             display: 'flex',
             alignItems: 'center',
+            transition: `background ${transitions.base}, color ${transitions.base}`,
           }}
         >
           <X size={16} />
@@ -271,38 +324,17 @@ export function SettingsDialog({ onClose, initialTab }: SettingsDialogProps) {
             </div>
           )}
 
-          {visibleCategories.map((cat) => {
-            const isActive = cat.id === activeCategory
-            const IconComp = cat.icon
-            return (
-              <button
-                key={cat.id}
-                onClick={() => {
-                  setActiveCategory(cat.id)
-                  setSearchQuery('')
-                }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '6px 10px',
-                  borderRadius: 8,
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: 13,
-                  fontWeight: 500,
-                  color: isActive ? colors.textPrimary : colors.textSecondary,
-                  background: isActive ? colors.surfaceSecondary : 'transparent',
-                  transition: 'background 0.15s, color 0.15s',
-                  width: '100%',
-                  textAlign: 'left',
-                }}
-              >
-                <IconComp size={16} weight={isActive ? 'fill' : 'regular'} />
-                {cat.label}
-              </button>
-            )
-          })}
+          {visibleCategories.map((cat) => (
+            <CategoryButton
+              key={cat.id}
+              category={cat}
+              isActive={cat.id === activeCategory}
+              onPick={() => {
+                setActiveCategory(cat.id)
+                setSearchQuery('')
+              }}
+            />
+          ))}
         </div>
 
         {/* Content */}

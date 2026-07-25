@@ -16,14 +16,18 @@ export function Tooltip({ text, children, position = 'above' }: Props) {
   const timerRef = useRef<ReturnType<typeof setTimeout>>(null)
   const [rect, setRect] = useState<DOMRect | null>(null)
 
-  const onMouseEnter = useCallback(() => {
+  // Shared show/hide used for both pointer hover and keyboard focus of the
+  // wrapped child (focus/blur bubble from a focusable child to this span in
+  // React's synthetic event system). Both paths use the same 400ms delay.
+  const show = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => {
       const r = spanRef.current?.getBoundingClientRect()
       if (r) setRect(r)
     }, 400)
   }, [])
 
-  const onMouseLeave = useCallback(() => {
+  const hide = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current)
     setRect(null)
   }, [])
@@ -39,8 +43,10 @@ export function Tooltip({ text, children, position = 'above' }: Props) {
       <span
         ref={spanRef}
         style={{ display: 'inline-flex' }}
-        onMouseEnter={onMouseEnter}
-        onMouseLeave={onMouseLeave}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
         title={popoverLayer ? undefined : text}
       >
         {children}

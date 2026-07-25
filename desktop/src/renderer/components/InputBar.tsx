@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from 'react'
-import { AnimatePresence } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { create } from 'zustand'
 import { useSessionStore } from '../stores/sessionStore'
 import { activeInstance } from '../stores/conversation-instance'
@@ -13,6 +13,7 @@ import { useVoiceRecording, VoiceButtons } from './InputBarVoiceButton'
 import { SendButton } from './InputBarSendButton'
 import { UpdateButton } from './UpdateButton'
 import { rDebug, rError } from '../rendererLogger'
+import { useModelStore } from '../stores/model-store'
 
 /** Shared transient state for bash command mode (consumed by App.tsx for pill styling) */
 export const useBashModeStore = create<{ active: boolean; set: (v: boolean) => void }>((set) => ({
@@ -60,6 +61,18 @@ export function InputBar() {
   const initProgress = useSessionStore((s) => s.initProgress)
   const bashCommandEntry = usePreferencesStore((s) => s.bashCommandEntry)
   const colors = useColors()
+
+  // Determine whether the active conversation instance has an image-generation
+  // model selected. Image models (modelKind === "image") use a single-prompt
+  // API with no conversation history — the InputBar shows a disclosure banner.
+  const modelOverride = useSessionStore((s) => {
+    const tabId = s.activeTabId ?? ''
+    return activeInstance(s.conversationPanes, tabId)?.modelOverride ?? null
+  })
+  const preferredModel = usePreferencesStore((s) => s.preferredModel)
+  const findModel = useModelStore((s) => s.findModel)
+  const effectiveModelId = modelOverride ?? preferredModel ?? ''
+  const isImageModel = effectiveModelId !== '' && findModel(effectiveModelId)?.modelKind === 'image'
   const isBusy = tab?.status === 'running' || tab?.status === 'connecting'
   const isConnecting = tab?.status === 'connecting' || !tabsReady
   const hasContent = input.trim().length > 0 || (tab?.attachments?.length ?? 0) > 0
@@ -442,6 +455,34 @@ export function InputBar() {
           <AttachmentChips attachments={attachments} onRemove={removeAttachment} />
         </div>
       )}
+
+      {/* Image model disclosure banner — shown when an image-generation model
+          is selected. Informs the user that only the current message is sent
+          (no conversation history). Animates in/out on model switch. */}
+      <AnimatePresence>
+        {isImageModel && (
+          <motion.div
+            key="image-model-banner"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.15 }}
+            style={{ overflow: 'hidden' }}
+          >
+            <div style={{
+              fontSize: 10,
+              color: colors.textTertiary,
+              borderLeft: `2px solid ${colors.containerBorder}`,
+              paddingLeft: 6,
+              paddingTop: 4,
+              paddingBottom: 2,
+              marginTop: hasAttachments ? 4 : 6,
+            }}>
+              Image model — only your current message is sent (no conversation history)
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Single-line: inline controls. Multi-line: controls in bottom row */}
       <div className="w-full" style={{ minHeight: 50 }}>

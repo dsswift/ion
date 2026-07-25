@@ -56,7 +56,7 @@ final class DesktopSettingsContractTests: XCTestCase {
         """.data(using: .utf8)!
 
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .desktopSettingsSnapshot(let settings, let schema, let groups, _) = event {
+        if case .desktopSettingsSnapshot(let settings, let schema, let groups, _, _) = event {
             XCTAssertEqual(settings.count, 3)
             XCTAssertEqual(settings["enableEarlyStopContinuation"]?.value as? Bool, true)
             XCTAssertEqual(settings["aiGeneratedTitles"]?.value as? Bool, false)
@@ -209,7 +209,7 @@ final class DesktopSettingsContractTests: XCTestCase {
         """.data(using: .utf8)!
 
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        guard case .desktopSettingsSnapshot(let settings, let schema, _, _) = event else {
+        guard case .desktopSettingsSnapshot(let settings, let schema, _, _, _) = event else {
             XCTFail("expected desktopSettingsSnapshot")
             return
         }
@@ -286,7 +286,7 @@ final class DesktopSettingsContractTests: XCTestCase {
         """.data(using: .utf8)!
 
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        guard case .desktopSettingsSnapshot(let settings, let schema, _, _) = event else {
+        guard case .desktopSettingsSnapshot(let settings, let schema, _, _, _) = event else {
             XCTFail("expected desktopSettingsSnapshot")
             return
         }
@@ -332,7 +332,7 @@ final class DesktopSettingsContractTests: XCTestCase {
         """.data(using: .utf8)!
 
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        guard case .desktopSettingsSnapshot(_, let schema, _, _) = event else {
+        guard case .desktopSettingsSnapshot(_, let schema, _, _, _) = event else {
             XCTFail("expected desktopSettingsSnapshot")
             return
         }
@@ -378,7 +378,7 @@ final class DesktopSettingsContractTests: XCTestCase {
         """.data(using: .utf8)!
 
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        guard case .desktopSettingsSnapshot(let settings, let schema, _, _) = event else {
+        guard case .desktopSettingsSnapshot(let settings, let schema, _, _, _) = event else {
             XCTFail("expected desktopSettingsSnapshot, got \(event)")
             return
         }
@@ -453,7 +453,7 @@ final class DesktopSettingsContractTests: XCTestCase {
         """.data(using: .utf8)!
 
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        guard case .desktopSettingsSnapshot(let settings, let schema, let groups, _) = event else {
+        guard case .desktopSettingsSnapshot(let settings, let schema, let groups, _, _) = event else {
             XCTFail("expected desktopSettingsSnapshot, got \(event)")
             return
         }

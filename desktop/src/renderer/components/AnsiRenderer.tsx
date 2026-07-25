@@ -13,20 +13,18 @@ interface StyledSegment {
   bg: string | null
 }
 
-function parseAnsiLine(line: string): StyledSegment[] {
+/**
+ * Parse one line of ANSI-escaped terminal output into styled segments.
+ * `ansi16` maps the standard 16-color SGR codes (30-37 fg, 90-97 bright fg;
+ * 40-47 backgrounds reuse the 30-37 entries) to theme colors — built from
+ * the active palette's ansi* tokens in the component via useColors().
+ */
+function parseAnsiLine(line: string, ansi16: Record<number, string>): StyledSegment[] {
   const segments: StyledSegment[] = []
   let bold = false
   let fg: string | null = null
   let bg: string | null = null
   let i = 0
-
-  // Standard 16-color palette (SGR 30-37, 90-97)
-  const ansi16: Record<number, string> = {
-    30: '#000', 31: '#c23621', 32: '#25bc24', 33: '#adad27',
-    34: '#492ee1', 35: '#d338d3', 36: '#33bbc8', 37: '#cbcccd',
-    90: '#818383', 91: '#fc391f', 92: '#31e722', 93: '#eaec23',
-    94: '#5833ff', 95: '#f935f8', 96: '#14f0f0', 97: '#e9ebeb',
-  }
 
   while (i < line.length) {
     if (line[i] === '\x1b' && line[i + 1] === '[') {
@@ -49,11 +47,11 @@ function parseAnsiLine(line: string): StyledSegment[] {
         else if (p >= 40 && p <= 47) bg = ansi16[p - 10] || null
         else if (p === 38 && params[k + 1] === 2) {
           // 24-bit fg: 38;2;R;G;B
-          fg = `rgb(${params[k + 2]},${params[k + 3]},${params[k + 4]})`
+          fg = `rgb(${params[k + 2]},${params[k + 3]},${params[k + 4]})` // hardcoded-ok: 24-bit SGR passthrough from terminal data
           k += 4
         } else if (p === 48 && params[k + 1] === 2) {
           // 24-bit bg: 48;2;R;G;B
-          bg = `rgb(${params[k + 2]},${params[k + 3]},${params[k + 4]})`
+          bg = `rgb(${params[k + 2]},${params[k + 3]},${params[k + 4]})` // hardcoded-ok: 24-bit SGR passthrough from terminal data
           k += 4
         } else if (p === 38 && params[k + 1] === 5) {
           // 256-color fg (simplified: pass through)
@@ -79,9 +77,17 @@ function parseAnsiLine(line: string): StyledSegment[] {
 export function AnsiRenderer({ lines, style }: AnsiRendererProps) {
   const colors = useColors()
 
+  // Standard 16-color palette (SGR 30-37, 90-97), resolved from theme tokens.
+  const ansi16 = useMemo<Record<number, string>>(() => ({
+    30: colors.ansiBlack, 31: colors.ansiRed, 32: colors.ansiGreen, 33: colors.ansiYellow,
+    34: colors.ansiBlue, 35: colors.ansiMagenta, 36: colors.ansiCyan, 37: colors.ansiWhite,
+    90: colors.ansiBrightBlack, 91: colors.ansiBrightRed, 92: colors.ansiBrightGreen, 93: colors.ansiBrightYellow,
+    94: colors.ansiBrightBlue, 95: colors.ansiBrightMagenta, 96: colors.ansiBrightCyan, 97: colors.ansiBrightWhite,
+  }), [colors])
+
   const rendered = useMemo(() => {
     return lines.map((line, lineIdx) => {
-      const segments = parseAnsiLine(line)
+      const segments = parseAnsiLine(line, ansi16)
       if (segments.length === 0) return <div key={lineIdx} style={{ minHeight: '1.2em' }}>&nbsp;</div>
 
       return (
@@ -101,7 +107,7 @@ export function AnsiRenderer({ lines, style }: AnsiRendererProps) {
         </div>
       )
     })
-  }, [lines, colors.textPrimary])
+  }, [lines, colors.textPrimary, ansi16])
 
   return (
     <div style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 12, ...style }}>

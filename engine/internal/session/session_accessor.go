@@ -54,23 +54,28 @@ func (a *sessionAccessor) SendPrompt(text string, model string, bashAllowlistAdd
 
 // SendPromptWithKind is the Kind-aware variant of SendPrompt. The Kind field
 // propagates into PromptInjectedEvent.Kind and the wire field
-// InjectedPromptKind so clients can classify injections and suppress
-// rendering of machine-to-machine signals (e.g. agent completion callbacks).
+// InjectedPromptKind so consumers can classify injections by semantic type
+// (e.g. "agent_completion" for machine-to-machine dispatch callbacks). It also
+// stamps the persisted conversation entry with the kind via
+// MessageData.InjectionKind so historical reload carries the classification.
 // After queuing the prompt, it also signals any suspended dispatch on this
 // session that is waiting for a bare revive (no pending children) so the
 // dispatch's LLM run restarts with the new conversation context.
 func (a *sessionAccessor) SendPromptWithKind(text string, model string, bashAllowlistAdditions []string, kind string) error {
-	overrides := buildPromptOverrides(model, bashAllowlistAdditions)
+	overrides := buildPromptOverrides(model, bashAllowlistAdditions, kind)
 	if len(bashAllowlistAdditions) > 0 {
 		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "sessionaccessor.sendprompt: threading bash-allowlist additions for this prompt", map[string]any{"key": a.key, "count": len(bashAllowlistAdditions), "bash_allowlist_additions": bashAllowlistAdditions})
 	}
+	// Classify the injection BEFORE SendPrompt consumes any pending slash
+	// invocation (see resolvePromptInjectedKind).
+	injectedKind := a.m.resolvePromptInjectedKind(a.key, kind)
 	if err := a.m.SendPrompt(a.key, text, overrides); err != nil {
 		return err
 	}
 	// Extension-initiated prompt (ctx.sendPrompt / steerSelf fallback):
 	// surface the injected turn to live clients. Client wire prompts never
 	// route through this accessor. See emitPromptInjected.
-	a.m.emitPromptInjected(a.key, text, kind)
+	a.m.emitPromptInjected(a.key, text, injectedKind)
 
 	// Signal any suspended dispatch on this session so its LLM run revives
 	// with the new conversation context. The new user turn is already

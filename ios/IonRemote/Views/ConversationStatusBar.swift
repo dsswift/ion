@@ -238,6 +238,9 @@ struct ConversationStatusBar: View {
                     } label: {
                         HStack {
                             Text(model.label)
+                            if model.modelKind == "image" {
+                                Text("image gen")
+                            }
                             if model.id == effectiveModel {
                                 Image(systemName: "checkmark")
                             }

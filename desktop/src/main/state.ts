@@ -98,7 +98,7 @@ export const state: MutableState = {
 
 /** Cached model list from engine, populated by LIST_MODELS IPC and included in remote snapshots. */
 export const modelCache = {
-  models: [] as Array<{ id: string; providerId: string; label: string; contextWindow: number; hasAuth: boolean; thinkingMode?: string; thinkingEfforts?: string[] }>,
+  models: [] as Array<{ id: string; providerId: string; label: string; contextWindow: number; hasAuth: boolean; thinkingMode?: string; thinkingEfforts?: string[]; modelKind?: string }>,
   lastFetched: 0,
 }
 
@@ -111,6 +111,17 @@ export const modelCache = {
  */
 export const enterprisePolicyCache = {
   policy: null as import('../shared/types-engine').EnterprisePolicy | null,
+  /**
+   * The resolved new-conversation defaults policy (pre-D-004 single-policy
+   * key). Populated at startup alongside `policy` and refreshed on every
+   * sendSync fetch, so synchronous wire emitters
+   * (broadcastDesktopSettingsSnapshot) can project it without an RPC.
+   */
+  newConversationDefaults: null as {
+    baseDirectory: string
+    engineProfileId: string
+    locked: boolean
+  } | null,
 }
 
 /**

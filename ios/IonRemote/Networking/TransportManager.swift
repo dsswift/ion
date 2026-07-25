@@ -57,6 +57,8 @@ final class TransportManager {
     /// Used to filter Bonjour discovery to the correct host when multiple
     /// Ion instances are on the network.
     var deviceName: String?
+    private let getCredential: (() async throws -> String)?
+    private let onTokenRejected: (() -> Void)?
 
     // MARK: - Internals
 
@@ -98,6 +100,12 @@ final class TransportManager {
     /// seqs are removed; cleared when empty or on desktop_resend_unavailable.
     /// See TransportManager+Receive.swift requestResendForGap / pendingResend.
     var pendingResendSeqs: Set<UInt64> = []
+    /// Frames that arrived on the LAN socket during the auth handshake
+    /// (before startLANListener begins). The auth loop only processes
+    /// JSON auth frames; any encrypted data frame (e.g. the desktop's
+    /// immediate snapshot push) lands here. Drained into enqueueIncomingData
+    /// when activateLANConnection calls startLANListener.
+    var preLANAuthBuffer: [Data] = []
     /// Debounce: the last time a resend request was sent, so a burst of gaps
     /// coalesces into one request.
     var lastResendRequestAt: Date = .distantPast
@@ -199,11 +207,16 @@ final class TransportManager {
 
     // MARK: - Init (Relay + LAN)
 
-    init(relayURL: URL, apiKey: String, channelId: String, sharedKey: SymmetricKey, apnsToken: String? = nil) {
-        self.relay = RelayClient(relayURL: relayURL, apiKey: apiKey, channelId: channelId, apnsToken: apnsToken)
+    init(relayURL: URL, apiKey: String, channelId: String, sharedKey: SymmetricKey, apnsToken: String? = nil,
+         getCredential: (() async throws -> String)? = nil,
+         onTokenRejected: (() -> Void)? = nil) {
+        self.relay = RelayClient(relayURL: relayURL, apiKey: apiKey, channelId: channelId, apnsToken: apnsToken,
+                                 getCredential: getCredential, onTokenRejected: onTokenRejected)
         self.lan = LANClient()
         self.bonjour = BonjourBrowser()
         self.sharedKey = sharedKey
+        self.getCredential = getCredential
+        self.onTokenRejected = onTokenRejected
 
         var continuation: AsyncStream<RemoteEvent>.Continuation!
         self.events = AsyncStream { continuation = $0 }
@@ -219,6 +232,8 @@ final class TransportManager {
         self.bonjour = BonjourBrowser()
         self.sharedKey = sharedKey
         self.deviceId = deviceId
+        self.getCredential = nil
+        self.onTokenRejected = nil
 
         var continuation: AsyncStream<RemoteEvent>.Continuation!
         self.events = AsyncStream { continuation = $0 }
@@ -327,6 +342,21 @@ final class TransportManager {
             port: port
         )
         startLANListener()
+        // Drain frames buffered during the auth handshake. The auth loop
+        // processes only JSON auth frames; any encrypted data frame that
+        // arrived before startLANListener was ready was buffered in
+        // preLANAuthBuffer. Dispatch them now so they go through the
+        // normal decrypt/dedup/yield path.
+        if !preLANAuthBuffer.isEmpty {
+            let buffered = preLANAuthBuffer
+            preLANAuthBuffer.removeAll()
+            DiagnosticLog.log("activateLANConnection: draining pre-auth buffer", tag: "transport.receive", fields: [
+                "count": String(buffered.count)
+            ])
+            for data in buffered {
+                enqueueIncomingData(data, isRelay: false)
+            }
+        }
         startLANStateObservation()
         startNetworkMonitor()
         // Start Bonjour browsing so the observation loop can auto-reconnect

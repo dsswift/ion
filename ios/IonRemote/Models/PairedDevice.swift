@@ -22,6 +22,22 @@ struct PairedDevice: Codable, Identifiable, Sendable {
     var relayAPIKey: String?
     var apnsToken: String?
 
+    // MARK: - Enterprise Relay Phase 1 (OIDC)
+
+    /// Auth mode for the relay: `"psk"` (pre-shared key) or `"oidc"`.
+    /// Nil for pre-enterprise desktops.
+    var relayAuthMode: String?
+    /// OIDC issuer URL. Present when `relayAuthMode == "oidc"`.
+    var relayOidcIssuer: String?
+    /// OIDC audience (app registration client ID).
+    var relayOidcAudience: String?
+    /// Full OIDC scope string (e.g. `"api://<id>/Relay.Access"`).
+    var relayOidcRequiredScope: String?
+    /// OAuth2 client ID used by iOS to acquire OIDC tokens independently
+    /// (ASWebAuthenticationSession PKCE flow). Nil for PSK-mode and
+    /// pre-Phase-2 OIDC devices that pre-date autonomous acquisition.
+    var relayOidcClientId: String?
+
     /// User-supplied override for the desktop's display name. Empty/whitespace
     /// is treated as "no override" and the original `name` (host name) is used.
     var customName: String?

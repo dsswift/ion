@@ -1,14 +1,21 @@
 /**
- * engine-bootstrap, plist install + version check + kickstart tests.
+ * engine-bootstrap, plist install + binary-identity check + kickstart tests.
  *
  * Pins the first-launch bootstrap contract:
  *   1. Plist template $HOME substitution works correctly.
- *   2. Version-mismatched binary triggers a copy.
- *   3. Version-matched binary skips the copy.
- *   4. launchctl kickstart -k force-restarts ONLY when the plist or binary
+ *   2. Content-changed binary triggers a copy.
+ *   3. Content-matched binary skips the copy.
+ *   4. A binary with the SAME `ion version` string but DIFFERENT bytes still
+ *      triggers a copy + force-restart (the stale-daemon regression: identity
+ *      is a content hash, not a version string).
+ *   5. launchctl kickstart -k force-restarts ONLY when the plist or binary
  *      changed; an unchanged relaunch uses a non-destructive kickstart (no -k)
  *      so the persistent daemon and its in-flight work are not killed.
- *   5. No-op on non-darwin platforms.
+ *   6. No-op on non-darwin platforms.
+ *   7. Kickstart is retried on transient launchctl failure, and the daemon is
+ *      verified UP via a real socket probe before ensureEngineDaemon returns
+ *      (the relaunch-handoff regression: a single swallowed `spawnSync
+ *      ETIMEDOUT` left the engine down for the whole app session).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -17,22 +24,50 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 const execSyncCalls: string[] = []
 const execFileSyncCalls: Array<{ file: string; args: string[] }> = []
 const copiedFiles: Array<{ src: string; dst: string }> = []
+const renamedFiles: Array<{ src: string; dst: string }> = []
 let writtenFiles: Record<string, string> = {}
 let fakeFs: Record<string, string> = {}
+// Armed by the kickstart-retry tests: the next N `launchctl kickstart`
+// invocations throw (simulating the observed `spawnSync /bin/sh ETIMEDOUT`).
+let kickstartFailuresRemaining = 0
+// Socket-probe control for waitForEngineSocket: per-probe queue, then default.
+let socketProbeResults: boolean[] = []
+let socketDefaultReachable = true
+let socketProbeCount = 0
+
+vi.mock('net', () => ({
+  createConnection: vi.fn(() => {
+    socketProbeCount++
+    const reachable = socketProbeResults.length > 0 ? socketProbeResults.shift()! : socketDefaultReachable
+    const handlers: Record<string, () => void> = {}
+    const conn = {
+      once: (ev: string, cb: () => void) => {
+        handlers[ev] = cb
+        return conn
+      },
+      destroy: vi.fn(),
+    }
+    queueMicrotask(() => {
+      handlers[reachable ? 'connect' : 'error']?.()
+    })
+    return conn
+  }),
+}))
 
 vi.mock('child_process', () => ({
   execSync: vi.fn((cmd: string) => {
     execSyncCalls.push(cmd)
+    if (cmd.includes('kickstart') && kickstartFailuresRemaining > 0) {
+      kickstartFailuresRemaining--
+      throw new Error('spawnSync /bin/sh ETIMEDOUT')
+    }
     return ''
   }),
   execFileSync: vi.fn((file: string, args: string[], _opts?: any) => {
     execFileSyncCalls.push({ file, args })
-    if (args[0] === 'version') {
-      // Bundled binary returns 2.0.0, installed returns 1.0.0 by default.
-      if (file === '/bundled/ion') return 'ion-engine 2.0.0'
-      if (file === '/Users/testuser/.ion/bin/ion') return 'ion-engine 1.0.0'
-      return 'ion-engine dev'
-    }
+    // Binary identity is decided by a content hash of the bytes (see hashBinary),
+    // NOT by `ion version` — the engine binary is never exec'd for the copy
+    // decision. execFileSync is used only for `install-assets`.
     if (args[0] === 'install-assets') return '==> install-assets complete'
     return ''
   }),
@@ -50,6 +85,11 @@ vi.mock('fs', () => ({
     copiedFiles.push({ src, dst })
     fakeFs[dst] = fakeFs[src] || ''
   }),
+  renameSync: vi.fn((src: string, dst: string) => {
+    renamedFiles.push({ src, dst })
+    fakeFs[dst] = fakeFs[src] || ''
+    delete fakeFs[src]
+  }),
   chmodSync: vi.fn(),
 }))
 
@@ -59,6 +99,7 @@ vi.mock('os', () => ({
 
 vi.mock('../logger', () => ({
   log: vi.fn(),
+  error: vi.fn(),
 }))
 
 const originalPlatform = process.platform
@@ -68,8 +109,13 @@ beforeEach(() => {
   execSyncCalls.length = 0
   execFileSyncCalls.length = 0
   copiedFiles.length = 0
+  renamedFiles.length = 0
   writtenFiles = {}
   fakeFs = {}
+  kickstartFailuresRemaining = 0
+  socketProbeResults = []
+  socketDefaultReachable = true
+  socketProbeCount = 0
   vi.clearAllMocks()
   // Pin to darwin so that the darwin-branch code paths execute regardless of
   // the CI host OS. The production guard (process.platform !== 'darwin') is
@@ -135,29 +181,25 @@ describe('engine-bootstrap', () => {
     expect(writtenFiles[plistDest]).toContain('/Users/testuser/.ion/engine.sock')
   })
 
-  it('copies the binary when versions differ', async () => {
+  it('copies the binary when its content differs', async () => {
     fakeFs[plistTemplatePath] = '<string>$HOME/.ion/bin/ion</string>'
-    fakeFs[bundledBinaryPath] = 'bundled-binary'
+    fakeFs[bundledBinaryPath] = 'bundled-binary-bytes'
 
     const destBinary = '/Users/testuser/.ion/bin/ion'
-    fakeFs[destBinary] = 'old-binary'
-
-    // Override execFileSync to return different versions per path.
-    vi.mocked(execFileSync).mockImplementation((file: any, args: any) => {
-      execFileSyncCalls.push({ file, args })
-      if (args[0] === 'version') {
-        if (file === bundledBinaryPath) return 'ion-engine 2.0.0'
-        if (file === destBinary) return 'ion-engine 1.0.0'
-      }
-      if (args[0] === 'install-assets') return 'done'
-      return '' as any
-    })
+    fakeFs[destBinary] = 'old-binary-bytes'
 
     await ensureEngineDaemon()
 
+    // The copy must land on a STAGING path and reach the destination only via
+    // rename, so the installed binary always gets a fresh inode. Copying onto
+    // destBinary directly reuses the vnode, whose cached code-signing state
+    // poisons every subsequent exec with SIGKILL "Taskgated Invalid Signature".
     expect(copiedFiles.length).toBe(1)
     expect(copiedFiles[0].src).toBe(bundledBinaryPath)
-    expect(copiedFiles[0].dst).toBe(destBinary)
+    expect(copiedFiles[0].dst).toBe(`${destBinary}.staging`)
+    expect(copiedFiles[0].dst).not.toBe(destBinary)
+    expect(renamedFiles).toEqual([{ src: `${destBinary}.staging`, dst: destBinary }])
+    expect(fakeFs[destBinary]).toBe('bundled-binary-bytes')
 
     // install-assets must run from the BUNDLED binary, not the installed copy.
     const installAssetsCall = execFileSyncCalls.find((c) => c.args[0] === 'install-assets')
@@ -166,29 +208,65 @@ describe('engine-bootstrap', () => {
     expect(installAssetsCall!.file).not.toBe(destBinary)
   })
 
-  it('skips binary copy when versions match', async () => {
+  it('skips binary copy when the content is identical', async () => {
     fakeFs[plistTemplatePath] = '<string>$HOME/.ion/bin/ion</string>'
-    fakeFs[bundledBinaryPath] = 'binary'
+    fakeFs[bundledBinaryPath] = 'identical-bytes'
 
     const destBinary = '/Users/testuser/.ion/bin/ion'
-    fakeFs[destBinary] = 'binary'
-
-    vi.mocked(execFileSync).mockImplementation((_file: any, args: any) => {
-      execFileSyncCalls.push({ file: _file, args })
-      if (args[0] === 'version') return 'ion-engine 2.0.0' // same version
-      if (args[0] === 'install-assets') return 'done'
-      return '' as any
-    })
+    fakeFs[destBinary] = 'identical-bytes'
 
     await ensureEngineDaemon()
 
     expect(copiedFiles.length).toBe(0)
 
     // install-assets must still run from the BUNDLED binary even when the
-    // installed copy is version-matched (it installs SDK/ion-meta, not just binary).
+    // installed copy is content-matched (it installs SDK/ion-meta, not just binary).
     const installAssetsCall = execFileSyncCalls.find((c) => c.args[0] === 'install-assets')
     expect(installAssetsCall).toBeDefined()
     expect(installAssetsCall!.file).toBe(bundledBinaryPath)
+  })
+
+  it('copies + force-restarts when the version string matches but the bytes differ', async () => {
+    // The stale-daemon regression. A DMG-bundled engine and the installed
+    // ~/.ion/bin/ion both reported `ion-engine dev` (neither build stamped a
+    // version), so a version-string equality check treated a genuinely different
+    // binary as identical: it skipped the copy AND the force-restart, leaving the
+    // old daemon running. Identity is now a content hash, so different bytes are
+    // detected even when the version string is identical.
+    fakeFs[plistTemplatePath] = '<string>$HOME/.ion/bin/ion</string>'
+    fakeFs[bundledBinaryPath] = 'NEW-engine-with-the-features'
+
+    const destBinary = '/Users/testuser/.ion/bin/ion'
+    fakeFs[destBinary] = 'OLD-engine-different-bytes'
+
+    // Pre-write the plist dest with the exact rendered content so the plist is
+    // UNCHANGED this run — the binary content is the ONLY thing that differs, so
+    // the force-restart can only come from binaryUpdated.
+    const plistDest = '/Users/testuser/Library/LaunchAgents/com.ion.engine.plist'
+    fakeFs[plistDest] = '<string>/Users/testuser/.ion/bin/ion</string>'
+
+    // Both binaries report the SAME version string — the exact condition that
+    // fooled the old check. It must NOT save the copy now.
+    vi.mocked(execFileSync).mockImplementation((file: any, args: any) => {
+      execFileSyncCalls.push({ file, args })
+      if (args[0] === 'version') return 'ion-engine dev' // identical on both sides
+      if (args[0] === 'install-assets') return 'done'
+      return '' as any
+    })
+
+    await ensureEngineDaemon()
+
+    // The new binary is installed despite the matching version string
+    // (staged copy + rename onto the destination).
+    expect(copiedFiles.length).toBe(1)
+    expect(copiedFiles[0].src).toBe(bundledBinaryPath)
+    expect(copiedFiles[0].dst).toBe(`${destBinary}.staging`)
+    expect(renamedFiles).toEqual([{ src: `${destBinary}.staging`, dst: destBinary }])
+
+    // And the daemon is force-restarted so it actually runs the new binary.
+    const kickstartCall = execSyncCalls.find((c) => c.includes('launchctl kickstart'))
+    expect(kickstartCall).toBeDefined()
+    expect(kickstartCall).toContain('-k')
   })
 
   it('runs install-assets from the bundled binary, not the installed binary', async () => {
@@ -198,20 +276,10 @@ describe('engine-bootstrap', () => {
     // but NOT next to destBinary (~/.ion/bin/ion). Running from destBinary would cause
     // install-assets to fail to find any assets to install.
     fakeFs[plistTemplatePath] = '<string>$HOME/.ion/bin/ion</string>'
-    fakeFs[bundledBinaryPath] = 'bundled-binary'
+    fakeFs[bundledBinaryPath] = 'bundled-binary-bytes'
 
     const destBinary = '/Users/testuser/.ion/bin/ion'
-    fakeFs[destBinary] = 'old-binary'
-
-    vi.mocked(execFileSync).mockImplementation((file: any, args: any) => {
-      execFileSyncCalls.push({ file, args })
-      if (args[0] === 'version') {
-        if (file === bundledBinaryPath) return 'ion-engine 2.0.0'
-        if (file === destBinary) return 'ion-engine 1.0.0'
-      }
-      if (args[0] === 'install-assets') return '==> install-assets complete'
-      return '' as any
-    })
+    fakeFs[destBinary] = 'old-binary-bytes'
 
     await ensureEngineDaemon()
 
@@ -244,25 +312,15 @@ describe('engine-bootstrap', () => {
 
   it('force-restarts with kickstart -k when a new binary was copied', async () => {
     fakeFs[plistTemplatePath] = '<string>$HOME/.ion/bin/ion</string>'
-    fakeFs[bundledBinaryPath] = 'bundled-binary'
+    fakeFs[bundledBinaryPath] = 'bundled-binary-bytes'
 
     const destBinary = '/Users/testuser/.ion/bin/ion'
-    fakeFs[destBinary] = 'old-binary'
+    fakeFs[destBinary] = 'old-binary-bytes'
 
     // Pre-write the plist dest with the exact rendered content so the plist is
     // UNCHANGED this run — the only change is the binary copy (binaryUpdated=true).
     const plistDest = '/Users/testuser/Library/LaunchAgents/com.ion.engine.plist'
     fakeFs[plistDest] = '<string>/Users/testuser/.ion/bin/ion</string>'
-
-    vi.mocked(execFileSync).mockImplementation((file: any, args: any) => {
-      execFileSyncCalls.push({ file, args })
-      if (args[0] === 'version') {
-        if (file === bundledBinaryPath) return 'ion-engine 2.0.0'
-        if (file === destBinary) return 'ion-engine 1.0.0'
-      }
-      if (args[0] === 'install-assets') return 'done'
-      return '' as any
-    })
 
     await ensureEngineDaemon()
 
@@ -275,23 +333,16 @@ describe('engine-bootstrap', () => {
 
   it('does NOT force-restart (no -k) when neither plist nor binary changed', async () => {
     fakeFs[plistTemplatePath] = '<string>$HOME/.ion/bin/ion</string>'
-    fakeFs[bundledBinaryPath] = 'binary'
+    fakeFs[bundledBinaryPath] = 'identical-bytes'
 
     const destBinary = '/Users/testuser/.ion/bin/ion'
-    fakeFs[destBinary] = 'binary'
+    fakeFs[destBinary] = 'identical-bytes'
 
     // Pre-write the plist dest with the EXACT rendered content so Step 1 skips
-    // the write (plistChanged=false). Versions match so Step 2 skips the copy
-    // (binaryUpdated=false). The persistent daemon must be left running.
+    // the write (plistChanged=false). Binary content matches so Step 2 skips the
+    // copy (binaryUpdated=false). The persistent daemon must be left running.
     const plistDest = '/Users/testuser/Library/LaunchAgents/com.ion.engine.plist'
     fakeFs[plistDest] = '<string>/Users/testuser/.ion/bin/ion</string>'
-
-    vi.mocked(execFileSync).mockImplementation((_file: any, args: any) => {
-      execFileSyncCalls.push({ file: _file, args })
-      if (args[0] === 'version') return 'ion-engine 2.0.0' // same version both sides
-      if (args[0] === 'install-assets') return 'done'
-      return '' as any
-    })
 
     await ensureEngineDaemon()
 
@@ -346,5 +397,79 @@ describe('restartEngineDaemon', () => {
 
     expect(ok).toBe(false)
     expect(execSyncCalls.length).toBe(0)
+  })
+})
+
+// ─── Daemon readiness: kickstart retry + socket verification ─────────────────
+//
+// The relaunch-handoff regression: the quitting desktop instance boots the
+// agent out, the new instance's kickstart races the teardown and fails with
+// `spawnSync /bin/sh ETIMEDOUT`, the old code swallowed it with a log line,
+// and the app then ran for minutes against a dead engine (30 restoring tabs
+// each timing out). These tests fail on that code: it issued exactly ONE
+// kickstart and ZERO socket probes.
+
+describe('ensureEngineDaemon — daemon readiness', () => {
+  // Small budgets so retry/verify paths run without real multi-second waits.
+  const FAST = {
+    kickstartTimeoutMs: 50,
+    kickstartAttempts: 3,
+    kickstartSettleMs: 1,
+    socketWaitMs: 20,
+    socketPollMs: 1,
+  }
+
+  function seedInstalledFs() {
+    // Unchanged plist + matched binary: the non-destructive kickstart path,
+    // isolating these tests to the kickstart/verify behavior.
+    fakeFs[plistTemplatePath] = '<string>$HOME/.ion/bin/ion</string>'
+    fakeFs[bundledBinaryPath] = 'identical-bytes'
+    fakeFs['/Users/testuser/.ion/bin/ion'] = 'identical-bytes'
+    fakeFs['/Users/testuser/Library/LaunchAgents/com.ion.engine.plist'] = '<string>/Users/testuser/.ion/bin/ion</string>'
+  }
+
+  it('retries kickstart when launchctl transiently fails (ETIMEDOUT regression)', async () => {
+    seedInstalledFs()
+    kickstartFailuresRemaining = 1
+
+    await ensureEngineDaemon(FAST)
+
+    // Old code: one attempt, failure swallowed. New code: the failed attempt
+    // is followed by a retry that succeeds.
+    const kickstarts = execSyncCalls.filter((c) => c.includes('launchctl kickstart'))
+    expect(kickstarts.length).toBe(2)
+    // Daemon reachable → no recovery round beyond the succeeded kickstart.
+    expect(socketProbeCount).toBeGreaterThan(0)
+  })
+
+  it('verifies the daemon socket after kickstart, polling until it binds', async () => {
+    seedInstalledFs()
+    // Daemon takes a couple of poll intervals to bind after kickstart.
+    socketProbeResults = [false, false, true]
+
+    await ensureEngineDaemon(FAST)
+
+    // Old code never probed the socket at all (zero probes).
+    expect(socketProbeCount).toBe(3)
+  })
+
+  it('re-issues kickstart when the socket never binds, then surfaces the failure', async () => {
+    seedInstalledFs()
+    socketDefaultReachable = false
+
+    await ensureEngineDaemon(FAST)
+
+    // Initial round + recovery round.
+    const kickstarts = execSyncCalls.filter((c) => c.includes('launchctl kickstart'))
+    expect(kickstarts.length).toBe(2)
+    // Both readiness waits actually probed.
+    expect(socketProbeCount).toBeGreaterThanOrEqual(2)
+    // The terminal failure is surfaced at error level, not swallowed.
+    const { error } = await import('../logger')
+    expect(vi.mocked(error)).toHaveBeenCalledWith(
+      'bootstrap',
+      expect.stringContaining('failed to come up'),
+      expect.objectContaining({ socket: expect.stringContaining('engine.sock') }),
+    )
   })
 })

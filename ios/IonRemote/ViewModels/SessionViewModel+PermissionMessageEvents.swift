@@ -107,7 +107,15 @@ extension SessionViewModel {
 
         // Deduplicate incoming by message ID, keeping last occurrence (most
         // recent version).
-        let incoming = deduplicateMessages(newMessages)
+        //
+        // iOS rendering opinion: filter out engine-injected user turns classified
+        // as "agent_completion" — machine-to-machine dispatch callbacks (a child
+        // agent's result delivered to its parent) that the user never authored and
+        // should not see in conversation scrollback. The engine faithfully persists
+        // and surfaces the classification; iOS chooses to suppress. Mirrors the
+        // desktop's mapSessionHistory filter in session-message-mapper.ts.
+        let filtered = newMessages.filter { $0.injectionKind != "agent_completion" }
+        let incoming = deduplicateMessages(filtered)
         let incomingIds = Set(incoming.map { $0.id })
         let current = conversationMessages(tabId)
 

@@ -70,7 +70,7 @@ export function CommandPalette(props: CommandPaletteProps): React.JSX.Element | 
         justifyContent: 'center',
         paddingTop: '18vh',
         pointerEvents: 'auto',
-        background: 'rgba(0,0,0,0.25)',
+        background: 'rgba(0,0,0,0.25)', // hardcoded-ok: pure-black modal scrim
       }}
       onClick={() => setOpen(false)}
     >
@@ -84,7 +84,7 @@ export function CommandPalette(props: CommandPaletteProps): React.JSX.Element | 
           background: colors.containerBg,
           border: `1px solid ${colors.containerBorder}`,
           borderRadius: 10,
-          boxShadow: '0 12px 40px rgba(0,0,0,0.45)',
+          boxShadow: colors.popoverShadow,
           overflow: 'hidden',
           fontFamily: 'system-ui, sans-serif',
         }}

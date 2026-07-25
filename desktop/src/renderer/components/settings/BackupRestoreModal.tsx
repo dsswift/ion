@@ -114,7 +114,7 @@ export function RestoreModalContent({
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               width: '100%', padding: '8px 12px',
               background: restoring ? colors.containerBg : colors.accent, border: 'none', borderRadius: 8,
-              color: restoring ? colors.textTertiary : '#fff',
+              color: restoring ? colors.textTertiary : colors.textOnAccent,
               cursor: restoring ? 'default' : 'pointer', fontSize: 13, fontWeight: 600,
             }}
           >
@@ -134,9 +134,9 @@ export function RestoreModalContent({
 function RestoreResultCard({ result, cardStyle, colors, onClose }: { result: RestoreResult; cardStyle: React.CSSProperties; colors: ReturnType<typeof useColors>; onClose: () => void }) {
   if (result.ok) {
     return (
-      <div style={{ ...cardStyle, borderColor: '#34d399' }}>
+      <div style={{ ...cardStyle, borderColor: colors.successFg }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-          <CheckCircle size={16} color="#34d399" weight="fill" />
+          <CheckCircle size={16} color={colors.successFg} weight="fill" />
           <span style={{ fontSize: 12, fontWeight: 600, color: colors.textPrimary }}>Restore complete</span>
         </div>
         <div style={{ fontSize: 11, color: colors.textTertiary, lineHeight: 1.5 }}>
@@ -163,9 +163,9 @@ function RestoreResultCard({ result, cardStyle, colors, onClose }: { result: Res
     )
   }
   return (
-    <div style={{ ...cardStyle, borderColor: '#f87171' }}>
+    <div style={{ ...cardStyle, borderColor: colors.dangerFg }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-        <WarningCircle size={16} color="#f87171" weight="fill" />
+        <WarningCircle size={16} color={colors.dangerFg} weight="fill" />
         <span style={{ fontSize: 12, fontWeight: 600, color: colors.textPrimary }}>Restore failed</span>
       </div>
       <div style={{ fontSize: 11, color: colors.textTertiary }}>{result.error}</div>

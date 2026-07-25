@@ -136,7 +136,7 @@ export function PresetsCategory() {
                     onClick={() => handleApply(preset)}
                     style={{
                       background: colors.accent,
-                      color: '#fff',
+                      color: colors.textOnAccent,
                       border: 'none',
                       borderRadius: 6,
                       padding: '5px 14px',

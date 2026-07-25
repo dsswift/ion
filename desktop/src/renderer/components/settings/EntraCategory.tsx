@@ -143,7 +143,7 @@ export function EntraCategory() {
                 style={{
                   ...buttonBase,
                   background: colors.accent,
-                  color: '#ffffff',
+                  color: colors.textOnAccent,
                 }}
               >
                 Sign in with Microsoft

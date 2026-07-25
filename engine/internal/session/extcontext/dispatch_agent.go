@@ -286,6 +286,10 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		}
 		utils.LogWithFields(utils.LevelInfo, "session", "child run config: source=dispatch", map[string]any{"model": dispatchDefaultModel, "session_key": sa.SessionKey(), "model_2": model})
 
+		// Attribute background Bash tasks started by the dispatched child to
+		// the parent session so StopSession kills them with the session.
+		childCfg.BackgroundTaskOwner = sa.SessionKey()
+
 		// Wire AgentSpawner so the child can dispatch grandchildren via the
 		// engine Agent tool (see dispatch_child_spawner.go for rationale).
 		childCfg.AgentSpawner = BuildChildAgentSpawner(sa, registry, childDepth, agentID)

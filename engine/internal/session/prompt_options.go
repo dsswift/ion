@@ -13,10 +13,11 @@ import (
 )
 
 // buildPromptOverrides constructs the *PromptOverrides for a per-prompt
-// dispatch from the two run-scoped options every sendPrompt entry point
-// carries: an optional model override and optional plan-mode Bash allowlist
-// additions. Returns nil when both are empty so callers pass nil (the
-// "no overrides" sentinel) rather than an empty struct.
+// dispatch from the run-scoped options every sendPrompt entry point carries:
+// an optional model override, optional plan-mode Bash allowlist additions,
+// and an optional injection kind that classifies extension-initiated turns.
+// Returns nil when all are empty so callers pass nil (the "no overrides"
+// sentinel) rather than an empty struct.
 //
 // This is the single seam every sendPrompt path routes through so the active-
 // hook path (sessionAccessor.SendPrompt) and the fallback path (the
@@ -29,11 +30,11 @@ import (
 // run via opts.BashAllowlistAdditionsForThisPrompt (applied in buildRunOptions
 // below) and the run loop's effectiveBashAllowlist; they are never persisted on
 // the engineSession. See extension.Context.SendPrompt for the contract.
-func buildPromptOverrides(model string, bashAllowlistAdditions []string) *PromptOverrides {
-	if model == "" && len(bashAllowlistAdditions) == 0 {
+func buildPromptOverrides(model string, bashAllowlistAdditions []string, kind string) *PromptOverrides {
+	if model == "" && len(bashAllowlistAdditions) == 0 && kind == "" {
 		return nil
 	}
-	overrides := &PromptOverrides{Model: model}
+	overrides := &PromptOverrides{Model: model, InjectionKind: kind}
 	if len(bashAllowlistAdditions) > 0 {
 		overrides.BashAllowlistAdditionsForThisPrompt = bashAllowlistAdditions
 	}
@@ -54,17 +55,58 @@ func buildPromptOverrides(model string, bashAllowlistAdditions []string) *Prompt
 // origin is a short label ("start_session" / "prompt_extensions") used only in
 // the log line so an operator can tell which wiring site queued the prompt.
 func (m *Manager) dispatchSendPromptPayload(key, origin string, payload extension.SendPromptPayload) {
-	overrides := buildPromptOverrides(payload.Model, payload.BashAllowlistAdditions)
+	overrides := buildPromptOverrides(payload.Model, payload.BashAllowlistAdditions, payload.Kind)
 	if len(payload.BashAllowlistAdditions) > 0 {
 		utils.LogWithFields(utils.LevelInfo, "session.plan_mode", "onsendmessage(): forwarding bash-allowlist additions", map[string]any{"origin": origin, "key": key, "count": len(payload.BashAllowlistAdditions), "bash_allowlist_additions": payload.BashAllowlistAdditions})
 	}
+	// Classify the injection BEFORE SendPrompt consumes any pending slash
+	// invocation (see resolvePromptInjectedKind).
+	injectedKind := m.resolvePromptInjectedKind(key, payload.Kind)
 	if err := m.SendPrompt(key, payload.Text, overrides); err != nil {
 		utils.LogWithFields(utils.LevelInfo, "session", "ext/send_message failed", map[string]any{"error": err})
 		return
 	}
 	// Extension-initiated prompt accepted: surface it as a typed event so
 	// live clients can render the turn (see emitPromptInjected).
-	m.emitPromptInjected(key, payload.Text, payload.Kind)
+	m.emitPromptInjected(key, payload.Text, injectedKind)
+}
+
+// SlashCommandInjectionKind is the classification stamped on an
+// engine_prompt_injected event when the injected prompt is the delivery of a
+// slash command's expanded template body. When an extension registers a command
+// and its handler calls ctx.sendPrompt with the expanded body, the engine has
+// already stashed the raw invocation as a pendingSlashInvocation (see
+// dispatchCommand). The run loop persists that raw invocation as the display
+// turn via AddUserMessageWithInvocation, while the expanded body is the
+// LLM-visible turn. The injected body is therefore REDUNDANT with the persisted
+// display turn: both describe the same user action. The kind lets a consumer
+// distinguish the redundant expansion from a genuine user turn and interpret it
+// however it chooses (the reference clients suppress it). The persisted display
+// entry is unaffected; it carries no injection kind and reloads identically.
+const SlashCommandInjectionKind = "slash_command"
+
+// resolvePromptInjectedKind derives the kind to stamp on the emitted
+// engine_prompt_injected event. An explicit extension-provided kind always wins
+// (e.g. "agent_completion"). Otherwise, when the injected prompt fulfills a
+// pending slash-command invocation on this session — dispatchCommand stashed it
+// and the imminent SendPrompt is about to consume it — classify the injection as
+// SlashCommandInjectionKind so consumers can distinguish the redundant expansion
+// body from a genuine user turn.
+//
+// MUST be called BEFORE m.SendPrompt, which consumes pendingSlashInvocation
+// (prompt_dispatch.go). This only classifies the LIVE event; the persisted
+// display entry is written by AddUserMessageWithInvocation and carries no
+// injection kind, so a history reload is unaffected.
+func (m *Manager) resolvePromptInjectedKind(key, extKind string) string {
+	if extKind != "" {
+		return extKind
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if s, ok := m.sessions[key]; ok && s.pendingSlashInvocation != nil {
+		return SlashCommandInjectionKind
+	}
+	return ""
 }
 
 // emitPromptInjected surfaces an ENGINE-SIDE prompt injection (extension
@@ -76,10 +118,13 @@ func (m *Manager) dispatchSendPromptPayload(key, origin string, payload extensio
 // (sessionAccessor.SendPromptWithKind and dispatchSendPromptPayload), after
 // m.SendPrompt accepted the prompt.
 //
-// kind classifies the injection for clients. "agent_completion" means this is
+// kind classifies the injection for consumers. "agent_completion" means this is
 // a machine-to-machine dispatch callback (a child agent's result routed to its
-// parent); clients must not render these as user-visible bubbles. Empty means
-// a genuine extension-initiated user turn.
+// parent) rather than a user-authored turn. "slash_command"
+// (SlashCommandInjectionKind) means the injection is the expanded body of a
+// slash command whose display turn is persisted separately — the expansion is
+// redundant with it. Empty means a genuine extension-initiated user turn with no
+// special classification. Consumers interpret each kind however they choose.
 func (m *Manager) emitPromptInjected(key, text, kind string) {
 	m.mu.RLock()
 	origin := ""
@@ -206,6 +251,12 @@ func buildRunOptions(s *engineSession, text string, overrides *PromptOverrides) 
 		}
 		if overrides.CompactMemoryEnabled != nil {
 			opts.CompactMemoryEnabled = overrides.CompactMemoryEnabled
+		}
+		// Thread the injection kind onto RunOptions so appendInboundUserMessage
+		// can stamp it on the persisted conversation entry, enabling consumers
+		// to classify the turn on historical reload.
+		if overrides.InjectionKind != "" {
+			opts.InjectionKind = overrides.InjectionKind
 		}
 	}
 

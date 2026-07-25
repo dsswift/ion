@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -313,6 +314,58 @@ func TestSkillToolRegisteredSkill(t *testing.T) {
 	}
 	if !strings.Contains(result.Content, "A test skill") {
 		t.Errorf("expected description in output, got %q", result.Content)
+	}
+}
+
+// TestSkillToolBaseDirectory pins the base-directory line: a skill loaded
+// from disk carries "Base directory for this skill: <dir>" in the result so
+// the model can resolve the skill's relative companion files. Wording must
+// match the slash-resolution annotation in session/slash_skill_dir.go.
+func TestSkillToolBaseDirectory(t *testing.T) {
+	dir := t.TempDir()
+	skillDir := filepath.Join(dir, "refskill")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	skillFile := filepath.Join(skillDir, "SKILL.md")
+	if err := os.WriteFile(skillFile, []byte("---\ndescription: has refs\n---\nSee references/spec.md."), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sk, err := skills.LoadSkill(skillFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sk.Name = "refskill"
+	skills.RegisterSkill(sk)
+	defer skills.ClearSkillRegistry()
+
+	result, _ := ExecuteTool(context.Background(), "Skill", map[string]any{"skill": "refskill"}, "/tmp")
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+	if !strings.Contains(result.Content, "Base directory for this skill: "+skillDir+"\n") {
+		t.Errorf("expected base-directory line for %q, got %q", skillDir, result.Content)
+	}
+	if !strings.Contains(result.Content, "Relative paths in this skill (e.g. references/...) resolve against this base directory.") {
+		t.Errorf("expected relative-path hint, got %q", result.Content)
+	}
+}
+
+// TestSkillToolNoSourceOmitsBaseDirectory pins the guard: programmatically
+// registered skills (no Source path) carry no base-directory line.
+func TestSkillToolNoSourceOmitsBaseDirectory(t *testing.T) {
+	skills.RegisterSkill(&skills.Skill{
+		Name:    "memory-skill",
+		Content: "No disk backing.",
+	})
+	defer skills.ClearSkillRegistry()
+
+	result, _ := ExecuteTool(context.Background(), "Skill", map[string]any{"skill": "memory-skill"}, "/tmp")
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+	if strings.Contains(result.Content, "Base directory for this skill:") {
+		t.Errorf("source-less skill must not carry a base-directory line, got %q", result.Content)
 	}
 }
 

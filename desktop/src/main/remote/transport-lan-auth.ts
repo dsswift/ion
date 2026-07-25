@@ -12,6 +12,10 @@ export interface LanAuthCtx {
   lanAuthPending: Map<string, { nonce: string; timeout: ReturnType<typeof setTimeout> }>
   lanDeviceMap: Map<string, string>
   deviceSecrets: Map<string, Buffer>
+  /** Push the current secret set to the crypto worker. MUST be called after
+   *  any deviceSecrets mutation — the worker holds its own copy and frames
+   *  fail to build ("no secret for device") for any device it doesn't know. */
+  syncWorkerSecrets: () => void
   getPairedDevice: (deviceId: string) => PairedDevice | null
   recomputeState: () => void
   emit: (event: string, ...args: unknown[]) => void
@@ -99,6 +103,13 @@ export function handleLanAuthResponse(ctx: LanAuthCtx, msg: WireMessage, connect
   ctx.lanDeviceMap.set(device.id, device.id)
 
   ctx.deviceSecrets.set(device.id, secret)
+  // Sync the crypto worker's secret copy. Without this, the worker (which
+  // builds ALL broadcast frames: snapshots, heartbeats, relay_config) fails
+  // every frame for this device with "no secret for device" — the desktop
+  // logs "snapshot payload" (queued) but nothing reaches the wire. This was
+  // the root cause of iOS connecting via LAN auth but never receiving a
+  // snapshot: main-thread secrets had the device, the worker's copy did not.
+  ctx.syncWorkerSecrets()
 
   // No inbound-dedup reset here. iOS's outbound seq is continuous for the
   // life of its TransportManager instance — a LAN re-auth does NOT restart

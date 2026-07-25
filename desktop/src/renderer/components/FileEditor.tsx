@@ -6,6 +6,8 @@ import { EditorView } from '@codemirror/view'
 import { gotoLine } from '@codemirror/search'
 // Editor portals to document.body (not PopoverLayer) so z-index can go behind main UI
 import { useColors } from '../theme'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { transitions } from '../theme-tokens'
 import { useSessionStore } from '../stores/sessionStore'
 import { useFileEditorPanel } from '../hooks/useFileEditorPanel'
 import { useFileEditorContent } from '../hooks/useFileEditorContent'
@@ -67,6 +69,10 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
   const isFocused = useSessionStore((s) => s.fileEditorFocused)
   const focusFileEditor = useSessionStore((s) => s.focusFileEditor)
 
+  // Interactive state for the header close button (hook stays above the
+  // early return below so hook call count is stable across renders).
+  const closeBtn = useInteractiveState()
+
   if (typeof document === 'undefined') return null
 
   const baseDirName = dir.split('/').pop() || dir
@@ -98,7 +104,7 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
         flexDirection: 'column',
         background: colors.containerBg,
         border: `1px solid ${colors.containerBorder}`,
-        boxShadow: isFocused ? '0 16px 48px rgba(0, 0, 0, 0.4)' : '0 4px 12px rgba(0, 0, 0, 0.2)',
+        boxShadow: isFocused ? colors.containerShadow : colors.cardShadow,
         overflow: 'hidden',
         pointerEvents: 'auto',
         zIndex: isFocused ? 10000 : 5,
@@ -122,9 +128,15 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
       >
         <button
           onClick={handleClose}
-          className="flex-shrink-0 p-0.5 rounded transition-colors"
-          style={{ color: colors.textTertiary, cursor: 'pointer' }}
-          onMouseDown={(e) => e.stopPropagation()}
+          className="flex-shrink-0 p-0.5 rounded ion-focusable"
+          {...closeBtn.handlers}
+          style={{
+            color: closeBtn.hover ? colors.accent : colors.textTertiary,
+            cursor: 'pointer',
+            background: interactiveBg(colors, { hover: false, pressed: closeBtn.pressed }),
+            transition: `color ${transitions.base}, background ${transitions.base}`,
+          }}
+          onMouseDown={(e) => { e.stopPropagation(); closeBtn.handlers.onMouseDown() }}
         >
           <X size={12} />
         </button>
@@ -151,7 +163,7 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
              be loaded (deleted/unreadable path). Restored non-dirty files
              reload from disk, so this banner is what distinguishes "file is
              gone" from "file is empty" — the buffer is read-only underneath. */
-          <div style={{ padding: '4px 10px', fontSize: 11, color: '#ef4444', background: 'rgba(239,68,68,0.08)', borderBottom: `1px solid ${colors.containerBorder}` }}>
+          <div style={{ padding: '4px 10px', fontSize: 11, color: colors.dangerFg, background: colors.statusErrorBg, borderBottom: `1px solid ${colors.containerBorder}` }}>
             {activeFile.readError} — the file may have been moved or deleted. Buffer is read-only.
           </div>
         )}

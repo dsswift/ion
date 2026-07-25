@@ -120,9 +120,9 @@ export function ShortcutRow({ entry, resolvedChord, isCustom, conflictsWith, onS
             fontSize: 10,
             padding: '1px 5px',
             borderRadius: 4,
-            background: '#c4706022',
-            color: '#c47060',
-            border: '1px solid #c4706055',
+            background: colors.permissionDenyBg,
+            color: colors.dangerFg,
+            border: `1px solid ${colors.permissionDenyBorder}`,
             flexShrink: 0,
           }}
         >

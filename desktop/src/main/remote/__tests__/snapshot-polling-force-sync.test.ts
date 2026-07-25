@@ -70,6 +70,14 @@ vi.mock('../../state', () => ({
   lastForwardedTabStatus: new Map(),
   extensionCommandRegistry: new Map(),
   terminalScrollback: new Map(),
+  enterprisePolicyCache: { policy: null, newConversationDefaults: null },
+}))
+
+// tabs-sync reads the enterprise theme policy synchronously; the state mock
+// above carries a null policy so this resolves to null (unmanaged).
+vi.mock('../../theme-policy', () => ({
+  getEnterpriseThemePolicy: vi.fn(() => null),
+  isThemeLocked: vi.fn(() => false),
 }))
 
 vi.mock('../../settings-store', () => ({
@@ -105,6 +113,17 @@ vi.mock('../../engine-bridge-fs', () => ({
 
 vi.mock('../handlers/display', () => ({
   readRemoteDisplay: vi.fn(() => null),
+}))
+
+// Theme-pack sync: mock the loader so the test never scans the developer's
+// real ~/.ion/themes (nondeterministic) and the manifest payload is pinned.
+const { mockBuildThemeManifest, mockRescanThemePacks } = vi.hoisted(() => ({
+  mockBuildThemeManifest: vi.fn(() => ({ themes: [{ id: 'acme-corp', name: 'Acme', version: '1.0.0', tokens: { accent: '#FF6600FF' } }], hash: 'fixed-hash' })),
+  mockRescanThemePacks: vi.fn(() => false),
+}))
+vi.mock('../../theme-packs', () => ({
+  buildThemeManifest: () => mockBuildThemeManifest(),
+  rescanThemePacks: () => mockRescanThemePacks(),
 }))
 
 // handleSync deps beyond tabs-sync
@@ -218,5 +237,18 @@ describe('handleSync — exactly one snapshot per sync (B6-2)', () => {
     const types = mockSendToDevice.mock.calls.filter((c) => c[0] === 'device-A').map((c) => c[1]?.type)
     expect(types).toContain('desktop_engine_profiles')
     expect(types).toContain('desktop_settings_snapshot')
+  })
+
+  it('rescans theme packs and sends the theme manifest after the settings snapshot', async () => {
+    await handleSync('device-A')
+    expect(mockRescanThemePacks).toHaveBeenCalled()
+    const events = mockSendToDevice.mock.calls.filter((c) => c[0] === 'device-A').map((c) => c[1])
+    const manifestIdx = events.findIndex((e) => e?.type === 'desktop_theme_manifest')
+    const settingsIdx = events.findIndex((e) => e?.type === 'desktop_settings_snapshot')
+    expect(manifestIdx).toBeGreaterThan(settingsIdx)
+    expect(events[manifestIdx].themes).toEqual([
+      { id: 'acme-corp', name: 'Acme', version: '1.0.0', tokens: { accent: '#FF6600FF' } },
+    ])
+    expect(events[manifestIdx].hash).toBe('fixed-hash')
   })
 })

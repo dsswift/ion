@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { CaretDown, CaretRight, Folder, FolderOpen } from '@phosphor-icons/react'
+import { Folder, FolderOpen } from '@phosphor-icons/react'
 import { useColors } from '../theme'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { transitions } from '../theme-tokens'
+import { Chevron } from './Chevron'
 import { getFileIcon } from './FileExplorerIcons'
 import type { FsEntry } from '../../shared/types'
 
@@ -26,13 +29,15 @@ export function FileExplorerTreeRow({
   onContextMenu: (e: React.MouseEvent) => void
   colors: ReturnType<typeof useColors>
 }) {
+  const { hover, pressed, handlers } = useInteractiveState()
   const paddingLeft = depth * 16 + 4
-  const iconInfo = entry.isDirectory ? null : getFileIcon(entry.name, colors.textTertiary)
+  const iconInfo = entry.isDirectory ? null : getFileIcon(entry.name)
 
   return (
     <div
       onClick={entry.isDirectory ? onToggle : onClick}
       onContextMenu={onContextMenu}
+      {...handlers}
       style={{
         height: 24,
         display: 'flex',
@@ -41,24 +46,16 @@ export function FileExplorerTreeRow({
         paddingRight: 8,
         cursor: 'pointer',
         userSelect: 'none',
-        background: selected ? colors.surfaceHover : 'transparent',
+        background: interactiveBg(colors, { hover, pressed, selected }),
         borderRadius: selected ? 4 : 0,
         gap: 4,
         opacity: isGitIgnored ? 0.45 : undefined,
-      }}
-      onMouseEnter={(e) => {
-        if (!selected) (e.currentTarget as HTMLDivElement).style.background = colors.surfaceHover
-      }}
-      onMouseLeave={(e) => {
-        if (!selected) (e.currentTarget as HTMLDivElement).style.background = 'transparent'
+        transition: `background ${transitions.base}`,
       }}
     >
       {entry.isDirectory ? (
         <>
-          {expanded
-            ? <CaretDown size={10} color={colors.textTertiary} weight="fill" />
-            : <CaretRight size={10} color={colors.textTertiary} weight="fill" />
-          }
+          <Chevron open={expanded} size={10} color={colors.textTertiary} />
           {expanded
             ? <FolderOpen size={14} color={colors.accent} weight="fill" />
             : <Folder size={14} color={colors.accent} weight="fill" />
@@ -68,12 +65,13 @@ export function FileExplorerTreeRow({
         <>
           {/* Spacer matching chevron width */}
           <span style={{ width: 10, flexShrink: 0 }} />
-          {iconInfo && <iconInfo.icon size={14} color={iconInfo.color} />}
+          {iconInfo && <iconInfo.icon size={14} color={colors[iconInfo.colorKey]} />}
         </>
       )}
       <span
         style={{
           fontSize: 12,
+          fontWeight: selected ? 500 : undefined,
           color: isGitIgnored ? colors.textTertiary : colors.textPrimary,
           overflow: 'hidden',
           textOverflow: 'ellipsis',

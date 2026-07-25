@@ -59,8 +59,8 @@ export function MessageActions({ message, variant, engineContext }: Props) {
             disabled={!isIdle}
             className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] cursor-pointer flex-shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
             style={{
-              background: confirmRewind ? 'rgba(239, 68, 68, 0.15)' : 'transparent',
-              color: confirmRewind ? '#ef4444' : colors.textTertiary,
+              background: confirmRewind ? colors.permissionDenyHoverBg : 'transparent',
+              color: confirmRewind ? colors.dangerFg : colors.textTertiary,
               border: 'none',
             }}
             title="Rewind conversation to this message"

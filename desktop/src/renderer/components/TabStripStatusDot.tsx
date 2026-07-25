@@ -76,7 +76,7 @@ export function StatusDot(props: StatusDotAllProps) {
       bg = colors.statusPermission
       glow = true
     } else if (props.status === 'connecting' || props.status === 'running') {
-      // Orange "foreground running" wins over yellow "background only" —
+      // Teal "foreground running" wins over amber "background only" —
       // see TabStripShared.getTabStatusColor for the rationale.
       bg = colors.statusRunning
       pulse = true
@@ -97,7 +97,7 @@ export function StatusDot(props: StatusDotAllProps) {
       glow = true
       glowColor = colors.tabGlowPlanReady
     } else if (props.waitingState === 'question') {
-      bg = colors.infoText
+      bg = colors.statusQuestion
       glow = true
       glowColor = colors.tabGlowQuestion
     } else if (props.bashExecuting) {
@@ -134,12 +134,23 @@ export function StatusDot(props: StatusDotAllProps) {
   )
 }
 
-// ─── GroupStatusDot ─────────────────────────────────────────────────────────
+// ─── GroupStatusDot / GroupStatusDotStack ────────────────────────────────────
 //
-// A single dot representing the highest-priority status across all tabs in a
-// group. Replaces the old StackedStatusDots which rendered one dot per tab and
-// overflowed for large groups. The group pill already shows the tab count as a
-// number, so the +N overflow was redundant. One dot is cleaner and unambiguous.
+// Two components for the group pill's status indicator:
+//
+//   GroupStatusDot — a single dot representing the highest-priority status
+//     across all tabs in the group (for inactive groups and single-tab groups).
+//     Replaces the old StackedStatusDots which rendered one dot per tab and
+//     overflowed for large groups.
+//
+//   GroupStatusDotStack — two overlapping dots for the active multi-tab group:
+//     the foreground dot shows the selected tab's own status and the background
+//     dot shows the aggregate of all other tabs. This restores the ability to
+//     see the selected conversation's status distinctly from the group aggregate.
+//     The foreground dot is offset slightly forward (marginLeft -3) and sits at
+//     a higher z-index, matching the old StackedStatusDots overlap system.
+//     A thin ring on the foreground dot (outline in the active pill background
+//     color) visually separates the two dots so they read as distinct layers.
 //
 // Color is derived via getGroupStatusColor (TabStripShared) which folds
 // getTabStatusColor — the same 9-level cascade used for individual tab dots,
@@ -167,5 +178,58 @@ export function GroupStatusDot({ bg, pulse, glow, glowColor }: GroupStatusDotPro
         ...(glow ? { boxShadow: `0 0 6px 2px ${glowColor}` } : {}),
       }}
     />
+  )
+}
+
+interface GroupStatusDotStackProps {
+  /** Selected tab's own status dot (foreground, on top). */
+  foreground: GroupStatusDotProps
+  /** Aggregate status of all other tabs (background, behind). */
+  background: GroupStatusDotProps
+  /** Active pill background color — used as the foreground dot's separator ring. */
+  pillBg: string
+}
+
+/**
+ * Two overlapping status dots for the active multi-tab group pill.
+ *
+ * Foreground dot (right / on top): the selected tab's own status. Carries a
+ * 1px outline in the active pill background color so it reads distinctly from
+ * the background dot beneath it.
+ *
+ * Background dot (left / behind): the aggregate of all other tabs in the group,
+ * partially obscured by the foreground dot.
+ *
+ * The negative margin and z-index reproduce the old StackedStatusDots overlap
+ * system, keeping the total visual footprint close to a single dot.
+ */
+export function GroupStatusDotStack({ foreground, background, pillBg }: GroupStatusDotStackProps) {
+  const colors = useColors()
+  return (
+    <span className="flex-shrink-0 inline-flex items-center" style={{ position: 'relative' }}>
+      {/* Background dot — aggregate of other tabs */}
+      <span
+        className={`w-[6px] h-[6px] rounded-full ${background.pulse ? 'animate-pulse-dot' : ''}`}
+        style={{
+          background: background.bg,
+          position: 'relative',
+          zIndex: 1,
+          ...(background.glow ? { boxShadow: `0 0 6px 2px ${background.glowColor}` } : {}),
+        }}
+      />
+      {/* Foreground dot — selected tab's own status */}
+      <span
+        className={`w-[6px] h-[6px] rounded-full ${foreground.pulse ? 'animate-pulse-dot' : ''}`}
+        style={{
+          background: foreground.bg,
+          marginLeft: -3,
+          position: 'relative',
+          zIndex: 2,
+          // Ring in the active pill background color separates foreground from background.
+          outline: `1.5px solid ${pillBg || colors.tabActive}`,
+          ...(foreground.glow ? { boxShadow: `0 0 6px 2px ${foreground.glowColor}` } : {}),
+        }}
+      />
+    </span>
   )
 }

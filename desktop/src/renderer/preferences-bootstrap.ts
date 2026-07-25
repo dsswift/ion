@@ -8,11 +8,25 @@
  * preferences.ts.
  */
 import type { StoreApi, UseBoundStore } from 'zustand'
-import { applyTheme, syncTokensToCss, darkColors, lightColors, getTheme } from './theme-tokens'
+import { applyTheme, onThemeRegistryChanged, registerCustomThemes } from './theme-tokens'
 import type { PreferencesState } from './preferences-types'
-import { INITIAL_SAVED, loadPersistedSettings } from './preferences-persist'
+import type { CustomThemeForRenderer } from '../shared/theme-pack-types'
+import { deriveEnterpriseThemePolicy } from '../shared/enterprise-theme-policy'
+import { loadPersistedSettings } from './preferences-persist'
+import { rError, rInfo } from './rendererLogger'
 
 type PreferencesStore = UseBoundStore<StoreApi<PreferencesState>>
+
+/**
+ * The theme id that must actually render: the enterprise-enforced id when
+ * a locked policy is present, otherwise the caller's (user) choice. The
+ * user's saved pick is never overwritten by enforcement — it resumes when
+ * the policy lifts.
+ */
+function effectiveThemeId(store: PreferencesStore, userChoice: string): string {
+  const policy = deriveEnterpriseThemePolicy(store.getState().enterprisePolicy)
+  return policy?.locked ? policy.themeId : userChoice
+}
 
 /**
  * Run the one-time startup sequence: seed theme CSS variables, hydrate
@@ -20,21 +34,41 @@ type PreferencesStore = UseBoundStore<StoreApi<PreferencesState>>
  * and subscribe to main-process settings pushes.
  */
 export function bootstrapPreferences(store: PreferencesStore, savedThemeId: string): void {
-  // Initialize CSS vars with saved theme
-  if (getTheme(savedThemeId).forcedColorScheme) {
-    syncTokensToCss(getTheme(savedThemeId).colors)
-    document.documentElement.classList.add('dark')
-    document.documentElement.classList.remove('light')
-  } else {
-    syncTokensToCss(INITIAL_SAVED.themeMode === 'light' ? lightColors : darkColors)
-  }
+  // Initialize CSS vars + scheme classes with the saved theme so the first
+  // paint is already correct (disk hydration below may still change it).
+  applyTheme(savedThemeId)
 
-  // Load persisted settings from disk (async, fires once on startup)
+  // Load persisted settings from disk (async, fires once on startup).
+  // The theme callback routes through the enterprise gate: if the policy
+  // fetch below resolved first with a lock, the disk value must not win.
   loadPersistedSettings(
     (patch) => store.setState(patch),
     () => store.getState(),
-    applyTheme,
+    (id) => applyTheme(effectiveThemeId(store, id)),
   )
+
+  // Whenever the custom-theme registry changes (boot fetch below or a live
+  // ion:themes-changed push), re-apply the effective theme: a selected (or
+  // enforced) custom theme just arrived/updated, or was removed (getTheme
+  // falls back to ion-dark visually; the saved id is kept so the choice
+  // restores if the pack returns).
+  onThemeRegistryChanged(() => {
+    applyTheme(effectiveThemeId(store, store.getState().selectedTheme))
+  })
+
+  // Custom theme packs: fetch the installed set once at boot. Built-ins are
+  // compiled in, so this only affects users with packs on disk; the initial
+  // applyTheme above already painted correctly for built-in selections.
+  window.ion?.listCustomThemes?.()?.then?.((customs: CustomThemeForRenderer[]) => {
+    registerCustomThemes(customs ?? [])
+  })?.catch?.((err: unknown) => {
+    rError('preferences', 'listCustomThemes failed; custom themes unavailable', { error: String(err) })
+  })
+
+  // Live pack-set updates (fs watcher / sync-time rescan in main).
+  window.ion?.on?.('ion:themes-changed', (_e: unknown, customs: CustomThemeForRenderer[]) => {
+    registerCustomThemes(customs ?? [])
+  })
 
   // Load enterprise policy from engine at startup (async, not persisted).
   // Errors are non-fatal: the app runs without enterprise constraints.
@@ -49,6 +83,18 @@ export function bootstrapPreferences(store: PreferencesStore, savedThemeId: stri
   // semantics as the new-conversation policy above.
   window.ion?.getEnterprisePolicyFull?.()?.then?.((policy) => {
     store.getState().setEnterprisePolicy(policy)
+    // Enterprise theme policy: locked → the enforced theme renders now and
+    // the picker disables (AppearanceCategory reads the same derivation);
+    // unlocked → managed DEFAULT, honored only when this profile has never
+    // picked a theme (a fresh install on a managed machine boots branded).
+    const themePolicy = deriveEnterpriseThemePolicy(policy)
+    if (themePolicy?.locked) {
+      rInfo('preferences', 'enterprise theme lock active', { theme_id: themePolicy.themeId })
+      applyTheme(themePolicy.themeId)
+    } else if (themePolicy && !localStorage.getItem('ion_selectedTheme')) {
+      rInfo('preferences', 'enterprise managed default theme applied', { theme_id: themePolicy.themeId })
+      store.getState().setSelectedTheme(themePolicy.themeId)
+    }
   })?.catch?.(() => {
     // Engine not yet ready or no enterprise config — leave null.
   })
@@ -59,8 +105,13 @@ export function bootstrapPreferences(store: PreferencesStore, savedThemeId: stri
   // in-memory value until the next restart.
   window.ion?.on?.('ion:settings-changed', (_e: unknown, key: string, value: unknown) => {
     const current = store.getState()
-    if (key in current && (current as unknown as Record<string, unknown>)[key] !== value) {
-      store.setState({ [key]: value })
+    if (!(key in current) || (current as unknown as Record<string, unknown>)[key] === value) return
+    // Theme selection must go through the setter so the palette is applied
+    // (and localStorage mirrored) — a bare setState only updates the store.
+    if (key === 'selectedTheme' && typeof value === 'string') {
+      current.setSelectedTheme(value)
+      return
     }
+    store.setState({ [key]: value })
   })
 }

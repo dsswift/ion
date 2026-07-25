@@ -175,7 +175,7 @@ export function TerminalInstanceView({ tabId, instanceId, cwd, readOnly }: Props
           background: 'transparent',
           foreground: colors.textPrimary,
           cursor: readOnly ? 'transparent' : colors.accent,
-          selectionBackground: colors.textSecondary + '40',
+          selectionBackground: colors.focusRing,
         },
         allowTransparency: true,
         scrollback: 5000,

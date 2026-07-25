@@ -1,25 +1,28 @@
 import { describe, it, expect } from 'vitest'
-import { hudColors, darkColors, lightColors, resolveColors } from '../theme-tokens'
+import { hudColors, darkColors, lightColors, classicColors, resolveColors } from '../theme-tokens'
 
-describe('useColors / resolveColors — forced-scheme theme palette', () => {
-  it('resolveColors returns hudColors when selectedTheme is jarvis-hud', () => {
-    const palette = resolveColors('jarvis-hud', true)
+describe('resolveColors — theme id resolves its own palette', () => {
+  it('returns hudColors for jarvis-hud', () => {
+    const palette = resolveColors('jarvis-hud')
     expect(palette.accent).toBe('#33C3F7')
     expect(palette).toBe(hudColors)
   })
 
-  it('resolveColors returns darkColors for ion-dark with isDark=true', () => {
-    const palette = resolveColors('ion-dark', true)
-    expect(palette).toBe(darkColors)
+  it('returns darkColors for ion-dark', () => {
+    expect(resolveColors('ion-dark')).toBe(darkColors)
   })
 
-  it('resolveColors returns lightColors for ion-light with isDark=false', () => {
-    const palette = resolveColors('ion-light', false)
-    expect(palette).toBe(lightColors)
+  it('returns lightColors for ion-light', () => {
+    expect(resolveColors('ion-light')).toBe(lightColors)
   })
 
-  it('resolveColors ignores isDark for forced-scheme theme', () => {
-    // jarvis-hud has forcedColorScheme: 'dark' — isDark=false should still return hudColors
-    expect(resolveColors('jarvis-hud', false)).toBe(hudColors)
+  it('returns classicColors for ion-classic', () => {
+    const palette = resolveColors('ion-classic')
+    expect(palette.accent).toBe('#d97757')
+    expect(palette).toBe(classicColors)
+  })
+
+  it('falls back to the default Ion Dark for unknown ids', () => {
+    expect(resolveColors('not-a-theme')).toBe(darkColors)
   })
 })

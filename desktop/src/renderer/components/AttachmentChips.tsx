@@ -2,6 +2,8 @@ import React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, FileText, Image, FileCode, File } from '@phosphor-icons/react'
 import { useColors } from '../theme'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { transitions } from '../theme-tokens'
 import type { FileAttachment } from '../../shared/types'
 
 const FILE_ICONS: Record<string, React.ReactNode> = {
@@ -15,6 +17,39 @@ const FILE_ICONS: Record<string, React.ReactNode> = {
   'application/json': <FileCode size={14} />,
   'text/yaml': <FileCode size={14} />,
   'text/toml': <FileCode size={14} />,
+}
+
+/**
+ * Remove-X button for a chip. Module-level component (one hook instance per
+ * chip) so `useInteractiveState` is legal inside the chips map. Keeps the
+ * group-hover opacity reveal; `focus-visible:opacity-100` makes the button
+ * (and its `.ion-focusable` ring) visible when keyboard-focused, since
+ * opacity 0 would hide the ring along with the glyph.
+ */
+function AttachmentRemoveButton({
+  colors,
+  onRemove,
+}: {
+  colors: ReturnType<typeof useColors>
+  onRemove: () => void
+}) {
+  const { hover, pressed, handlers } = useInteractiveState()
+  return (
+    <button
+      {...handlers}
+      onClick={onRemove}
+      className="ion-focusable flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+      style={{
+        color: colors.textTertiary,
+        background: interactiveBg(colors, { hover, pressed }),
+        // Inline transition replaces the .ion-focusable class shorthand, so it
+        // must re-list box-shadow (focus ring) alongside the opacity reveal.
+        transition: `opacity ${transitions.base}, background ${transitions.base}, box-shadow ${transitions.base}`,
+      }}
+    >
+      <X size={10} />
+    </button>
+  )
 }
 
 export function AttachmentChips({
@@ -71,13 +106,7 @@ export function AttachmentChips({
             </span>
 
             {/* Remove button */}
-            <button
-              onClick={() => onRemove(a.id)}
-              className="flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-              style={{ color: colors.textTertiary }}
-            >
-              <X size={10} />
-            </button>
+            <AttachmentRemoveButton colors={colors} onRemove={() => onRemove(a.id)} />
           </motion.div>
         ))}
       </AnimatePresence>

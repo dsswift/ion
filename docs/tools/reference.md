@@ -54,9 +54,12 @@ Execute a bash command and return its output.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `command` | string | yes | The bash command to execute |
-| `timeout` | number | no | Timeout in milliseconds (default: 120000) |
+| `timeout` | number | no | Timeout in milliseconds (default: 120000). Ignored when `run_in_background` is true |
+| `run_in_background` | boolean | no | Run the command in the background and return immediately with a task ID and output-file path |
 
 Runs through the pluggable `BashOperations` backend. Returns stdout and stderr. Non-zero exit codes are reported as tool errors. The backend supports sandboxing via Seatbelt (macOS) or bubblewrap (Linux).
+
+With `run_in_background: true`, the command starts detached from the tool call in its own process group and the tool returns immediately with a `bash-<n>` task ID and an output file under `~/.ion/tasks/` capturing interleaved stdout+stderr. The task registers in the tasks registry: `TaskGet` shows status, exit code, output path, and a bounded tail of recent output; `TaskStop` kills the process group. When the owning session stops, its running background tasks are killed. The Task tools are harness opt-in — without them, the model reads the output file directly (the result says which hint applies). Backends advertise support via the `BackgroundBashOperations` capability interface; only the local backend implements it today, and unsupported backends return a clean error.
 
 ### Grep
 
@@ -156,9 +159,11 @@ Invoke a loaded skill by name.
 | `skill` | string | yes | The name of the skill to invoke |
 | `args` | string | no | Optional arguments to pass to the skill |
 
-Returns the skill content for execution. Skills are loaded from the skills registry, which the harness populates at session start.
+Returns the skill content for execution, prefixed with the skill's name, description, and — for disk-loaded skills — a `Base directory for this skill:` line so the model can resolve the skill's relative companion files (`references/*.md`, scripts, assets). Skills are loaded from the skills registry, which the engine populates at session start.
 
-Skills can be placed in `~/.ion/skills/` or `.ion/skills/` in two formats:
+Skill roots (always loaded): `~/.ion/skills/` and `{workingDir}/.ion/skills/`. When the consumer enables Claude compatibility, `~/.claude/skills/` is loaded as well. Skills are also user-invocable as slash commands by default (`/name` resolves the SKILL.md and lists it in slash discovery); set `user-invocable: false` in frontmatter to hide a skill from the autocomplete feed (typed resolution still works), or `disable-model-invocation: true` to block the Skill tool path.
+
+Skills can be placed in the roots above in two formats:
 
 - **Flat file**: `<name>.md` — the skill name comes from the `name` frontmatter key, falling back to the filename stem.
 - **Subdirectory**: `<name>/SKILL.md` — the skill name is always the directory name. This is the industry-standard layout used by most third-party skill repositories.

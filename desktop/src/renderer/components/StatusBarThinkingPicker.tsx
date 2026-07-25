@@ -8,6 +8,7 @@ import { usePreferencesStore } from '../preferences'
 import { useModelStore } from '../stores/model-store'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { activeInstance } from '../stores/conversation-instance'
 import type { ThinkingEffort } from '../../shared/types-session'
 
@@ -40,6 +41,36 @@ const LEVELS: Array<{ value: ThinkingEffort; label: string }> = [
   { value: 'high', label: 'High' },
 ]
 
+/** One row in the effort popover. A separate component so each row owns its
+ * own useInteractiveState hook (rules-of-hooks: no hooks inside the
+ * LEVELS.map loop). */
+function ThinkingLevelRow({ colors, selected, level, onSelect }: {
+  colors: ReturnType<typeof useColors>
+  selected: boolean
+  level: { value: ThinkingEffort; label: string }
+  onSelect: () => void
+}) {
+  const { hover, pressed, handlers } = useInteractiveState()
+  return (
+    <button
+      onClick={onSelect}
+      {...handlers}
+      className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] ion-focusable"
+      style={{
+        color: selected ? colors.textPrimary : colors.textSecondary,
+        fontWeight: selected ? 500 : 400,
+        background: interactiveBg(colors, { hover, pressed, selected }),
+      }}
+    >
+      <span className="flex items-center gap-1.5">
+        <Brain size={12} weight={level.value === 'off' ? 'regular' : 'fill'} />
+        {level.label}
+      </span>
+      {selected && <Check size={12} style={{ color: colors.accent }} />}
+    </button>
+  )
+}
+
 export function ThinkingPicker() {
   const thinkingEnabled = usePreferencesStore((s) => s.thinkingEnabled)
 
@@ -70,6 +101,9 @@ export function ThinkingPicker() {
   const colors = useColors()
 
   const [open, setOpen] = useState(false)
+  // Trigger pointer state (handlers are gated off while the control is
+  // disabled — disabled elements do not respond to hover/pressed).
+  const triggerState = useInteractiveState()
   const triggerRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
   // Keep the portaled popover inside the window (ATV top-anchored strip).
@@ -107,7 +141,7 @@ export function ThinkingPicker() {
 
   const isActive = effort !== 'off'
   const label = LEVELS.find((l) => l.value === effort)?.label ?? 'Off'
-  const color = isActive ? '#8b7fd4' : colors.textTertiary
+  const color = isActive ? colors.modeThinking : colors.textTertiary
 
   return (
     <>
@@ -115,10 +149,12 @@ export function ThinkingPicker() {
         ref={triggerRef}
         onClick={handleToggle}
         disabled={!modelSupportsThinking}
-        className="flex items-center gap-0.5 text-[10px] rounded-full px-1.5 py-0.5 transition-colors"
+        {...(modelSupportsThinking ? triggerState.handlers : {})}
+        className="flex items-center gap-0.5 text-[10px] rounded-full px-1.5 py-0.5 ion-focusable"
         style={{
           color: modelSupportsThinking ? color : colors.textTertiary,
-          opacity: modelSupportsThinking ? 1 : 0.4,
+          background: modelSupportsThinking ? interactiveBg(colors, triggerState) : 'transparent',
+          opacity: modelSupportsThinking ? 1 : 0.45,
           cursor: modelSupportsThinking ? 'pointer' : 'default',
         }}
         title={
@@ -165,20 +201,12 @@ export function ThinkingPicker() {
               return (
                 <React.Fragment key={lvl.value}>
                   {i > 0 && <div className="mx-2 my-0.5" style={{ height: 1, background: colors.popoverBorder }} />}
-                  <button
-                    onClick={() => { setThinkingEffort(lvl.value); setOpen(false) }}
-                    className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] transition-colors"
-                    style={{
-                      color: selected ? colors.textPrimary : colors.textSecondary,
-                      fontWeight: selected ? 600 : 400,
-                    }}
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <Brain size={12} weight={lvl.value === 'off' ? 'regular' : 'fill'} />
-                      {lvl.label}
-                    </span>
-                    {selected && <Check size={12} style={{ color: colors.accent }} />}
-                  </button>
+                  <ThinkingLevelRow
+                    colors={colors}
+                    selected={selected}
+                    level={lvl}
+                    onSelect={() => { setThinkingEffort(lvl.value); setOpen(false) }}
+                  />
                 </React.Fragment>
               )
             })}

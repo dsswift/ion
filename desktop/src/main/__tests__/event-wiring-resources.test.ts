@@ -48,7 +48,7 @@ vi.mock('fs', () => ({
   mkdirSync: vi.fn(),
 }))
 
-vi.mock('os', () => ({ homedir: () => '/test-home' }))
+vi.mock('os', () => ({ homedir: () => '/test-home', hostname: () => 'test-host' }))
 vi.mock('electron', () => ({ ipcMain: { on: vi.fn(), handle: vi.fn() } }))
 
 import {

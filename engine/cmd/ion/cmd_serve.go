@@ -351,6 +351,26 @@ func cmdServe() {
 			relay.SetWriteTimeout(cfg.Timeouts.RelayWrite())
 		}
 
+		// When UseOidc is set and an operator identity manager is configured,
+		// install a credential provider that mints a fresh OIDC access token
+		// before every reconnect. The static APIKey remains the fallback when
+		// no identity manager is available or UseOidc is false.
+		if cfg.Relay.UseOidc {
+			if op := auth.Operator(); op != nil {
+				oidcScope := cfg.Relay.OidcScope
+				oidcAudience := cfg.Relay.OidcAudience
+				relay.SetCredentialProvider(func(ctx context.Context) (string, error) {
+					return op.GetTokenWithAudience(ctx, oidcScope, oidcAudience)
+				})
+				utils.LogWithFields(utils.LevelInfo, "relay", "OIDC credential provider installed", map[string]any{
+					"scope":    oidcScope,
+					"audience": oidcAudience,
+				})
+			} else {
+				utils.LogWithFields(utils.LevelWarn, "relay", "useOidc is true but no operator identity configured; falling back to static apiKey", nil)
+			}
+		}
+
 		relay.OnMessage = func(data []byte) {
 			line := strings.TrimSpace(string(data))
 			if line == "" {

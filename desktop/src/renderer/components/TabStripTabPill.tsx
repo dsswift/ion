@@ -9,6 +9,7 @@ import {
   formatRelativeShort, abbreviateProfileName, resolveTabModelFallback, getTabStatusColor,
 } from './TabStripShared'
 import { activeInstance } from '../stores/conversation-instance'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { StatusDot } from './TabStripStatusDot'
 import { InlineRenameInput } from './TabStripInlineRenameInput'
 
@@ -60,6 +61,9 @@ export function TabPill({
   const colors = useColors()
   const gitOpsMode = usePreferencesStore((s) => s.gitOpsMode)
   const tabGroupMode = usePreferencesStore((s) => s.tabGroupMode)
+  // Pointer states: one hook for the pill surface, one for the close-X.
+  const pillState = useInteractiveState()
+  const closeState = useInteractiveState()
   // Resolve the profile name for the harness badge. DATA-driven: the badge
   // renders iff the tab carries an engineProfileId (a resolvable harness name),
   // not because of a tab-type branch. A plain conversation carries no profile
@@ -152,7 +156,8 @@ export function TabPill({
         onClick={() => { if (isDraggingRef.current) return; onCancelClose(); onSelect() }}
         onPointerDown={onPointerDown}
         onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onOpenTabMenu(tab.id, { x: e.clientX, y: e.clientY }) }}
-        className={`group flex items-center gap-1.5 cursor-pointer select-none ${
+        {...pillState.handlers}
+        className={`group flex items-center gap-1.5 cursor-pointer select-none ion-focusable ${
           isEditing || isConfirmingClose ? '' : 'max-w-[240px]'
         } ${waitingBorder ? 'animate-border-pulse' : ''}`}
         style={{
@@ -160,9 +165,20 @@ export function TabPill({
           '--border-default': tab.pillColor
             ? `${tab.pillColor}${isActive ? '40' : '25'}`
             : isActive ? colors.tabActiveBorder : 'transparent',
+          // Background cascade: the active pill keeps its dedicated
+          // tabActive/tabActiveBorder treatment; inactive pills answer to the
+          // pointer (pressed > hover > transparent). A user pill color keeps
+          // the runtime `${pillColor}NN` alpha-concat pattern, deepening
+          // 10 → 18 on hover.
           background: tab.pillColor
-            ? `${tab.pillColor}${isActive ? '18' : '10'}`
-            : isActive ? colors.tabActive : 'transparent',
+            ? `${tab.pillColor}${isActive || pillState.hover ? '18' : '10'}`
+            : isActive
+              ? colors.tabActive
+              : pillState.pressed
+                ? colors.surfacePressed
+                : pillState.hover
+                  ? colors.tabHover
+                  : 'transparent',
           borderWidth: 1,
           borderStyle: 'solid',
           borderColor: waitingBorder
@@ -288,14 +304,14 @@ export function TabPill({
         <div className="flex items-center gap-0.5 text-[9px] flex-shrink-0" onClick={(e) => e.stopPropagation()}>
           <button
             onClick={onCancelClose}
-            className="px-1 rounded"
+            className="px-1 rounded ion-focusable"
             style={{ color: colors.textTertiary }}
           >
             No
           </button>
           <button
             onClick={() => { onClose(); onCancelClose() }}
-            className="px-1 rounded"
+            className="px-1 rounded ion-focusable"
             style={{ color: colors.accent }}
           >
             Yes
@@ -310,13 +326,13 @@ export function TabPill({
         // closeTab — UI and action layer enforce the same rule.
         <button
           onClick={(e) => { e.stopPropagation(); onConfirmClose() }}
-          className="flex-shrink-0 rounded-full w-4 h-4 flex items-center justify-center transition-opacity"
+          className="flex-shrink-0 rounded-full w-4 h-4 flex items-center justify-center transition-opacity ion-focusable"
           style={{
-            opacity: isActive ? 0.5 : 0,
+            opacity: closeState.hover ? 1 : isActive ? 0.5 : 0,
             color: colors.textSecondary,
+            background: interactiveBg(colors, closeState),
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1' }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = isActive ? '0.5' : '0' }}
+          {...closeState.handlers}
         >
           <X size={10} />
         </button>

@@ -38,6 +38,47 @@ html, body, #root {
   box-shadow: var(--ion-card-shadow);
 }
 
+/* ─── Theme backdrop — pack-provided background image ───
+ * Applied to the main content surfaces (conversation shell, terminal panel).
+ * `--ion-theme-background-image` is set by applyTheme() when the active
+ * theme pack ships a background asset and removed otherwise, so built-in
+ * themes render exactly as before (no image layer). */
+.ion-theme-backdrop {
+  background-image: var(--ion-theme-background-image, none);
+  background-size: cover;
+  background-position: center;
+}
+
+/* ─── Interactive-state classes ───
+ * Keyboard focus lives in CSS (inline styles cannot express :focus-visible);
+ * pointer hover/pressed live in useInteractiveState() because inline token
+ * styles cannot be driven by :hover/:active. The two compose.
+ *
+ * .ion-focusable  — every keyboard-focusable control: focus border + 3px
+ *                   ring on :focus-visible only (mouse clicks stay ringless).
+ * .ion-input-shell — the container around a text input (the input pill):
+ *                   same treatment on :focus-within, so the shell lights up
+ *                   while the inner textarea holds focus.
+ * Both are defined after .glass-surface so the border-color override wins at
+ * equal specificity. An inline box-shadow (e.g. the bash-mode ring) still
+ * outranks these — that priority is intentional: mode rings beat focus rings.
+ */
+.ion-focusable {
+  transition: box-shadow 150ms ease, border-color 150ms ease, background 150ms ease, color 150ms ease;
+}
+.ion-focusable:focus-visible {
+  outline: none;
+  border-color: var(--ion-focus-border);
+  box-shadow: 0 0 0 3px var(--ion-focus-ring);
+}
+.ion-input-shell {
+  transition: box-shadow 150ms ease, border-color 150ms ease;
+}
+.ion-input-shell:focus-within {
+  border-color: var(--ion-focus-border);
+  box-shadow: 0 0 0 3px var(--ion-focus-ring);
+}
+
 /* ─── Textarea reset ─── */
 textarea {
   font-family: inherit;
@@ -81,8 +122,10 @@ input::placeholder {
   word-break: break-all;
 }
 .prose-cloud code {
-  background: var(--ion-accent-light);
-  color: var(--ion-accent);
+  /* Neutral chip, not the accent tint — inline code should read quietly and
+     leave accent blue for genuine accents. Matches iOS's subtle inline code. */
+  background: var(--ion-inline-code-bg);
+  color: var(--ion-text-primary);
   padding: 0.15em 0.35em;
   border-radius: 4px;
   font-size: 0.9em;
@@ -160,12 +203,12 @@ input::placeholder {
   color: inherit;
 }
 .prose-cloud-user code {
-  background: rgba(0, 0, 0, 0.12);
+  background: var(--ion-bubble-code-bg);
   color: inherit;
 }
 .prose-cloud-user pre {
-  background: rgba(0, 0, 0, 0.1);
-  border-color: rgba(0, 0, 0, 0.1);
+  background: var(--ion-bubble-pre-bg);
+  border-color: var(--ion-bubble-pre-border);
 }
 .prose-cloud-user h1,
 .prose-cloud-user h2,
@@ -178,7 +221,7 @@ input::placeholder {
   opacity: 0.8;
 }
 .prose-cloud-user th {
-  background: rgba(0, 0, 0, 0.08);
+  background: var(--ion-bubble-th-bg);
 }
 
 /* ─── Pulsing dot animation ─── */
@@ -272,5 +315,5 @@ mark[data-ion-search-match] {
 }
 mark[data-ion-search-match].ion-search-active {
   background: var(--ion-accent);
-  color: #fff;
+  color: var(--ion-text-on-accent);
 }

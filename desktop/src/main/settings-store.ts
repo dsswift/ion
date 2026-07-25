@@ -19,7 +19,7 @@ export const SETTINGS_FILE = join(SETTINGS_DIR, 'settings.json')
 export const ENGINE_CONFIG_FILE = join(SETTINGS_DIR, 'engine.json')
 
 export const SETTINGS_DEFAULTS = {
-  themeMode: 'dark',
+  selectedTheme: 'ion-dark',
   soundEnabled: true,
   expandedUI: false,
   ultraWide: false,
@@ -30,7 +30,10 @@ export const SETTINGS_DEFAULTS = {
   terminalFontFamily: 'Menlo, Monaco, monospace',
   terminalFontSize: 13,
   allowSettingsEdits: false,
-  enableClaudeCompat: true,
+  // Claude Code compatibility is a migration feature, not a default: .claude
+  // roots (commands, skills, CLAUDE.md context) load only when the user
+  // explicitly enables it. Greenfield installs are .ion-only.
+  enableClaudeCompat: false,
   preferredModel: 'claude-opus-4-6',
   // Early-stop continuation nudge: when the model emits end_turn below the
   // configured output-token target, ask it to keep working. Default OFF per

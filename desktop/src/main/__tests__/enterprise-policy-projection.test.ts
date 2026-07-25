@@ -56,6 +56,13 @@ vi.mock('../state', () => ({
   deviceFocusMap: new Map(),
   terminalScrollback: new Map(),
   modelCache: { models: [] },
+  enterprisePolicyCache: { policy: null, newConversationDefaults: null },
+}))
+
+// Theme packs ride sendSync; mock the loader so this test never scans disk.
+vi.mock('../theme-packs', () => ({
+  buildThemeManifest: vi.fn(() => ({ themes: [], hash: 'empty' })),
+  rescanThemePacks: vi.fn(() => false),
 }))
 
 vi.mock('../logger', () => ({
@@ -90,6 +97,7 @@ vi.mock('../remote/handlers/display', () => ({
 // ─── SUT ─────────────────────────────────────────────────────────────────────
 
 import { sendSync } from '../remote/handlers/tabs-sync'
+import { enterprisePolicyCache } from '../state'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -164,5 +172,47 @@ describe('sendSync: enterprise new-tab policy projection', () => {
     expect(types).toContain('desktop_settings_snapshot')
     expect(types).toContain('desktop_snapshot')
     expect(types).toContain('desktop_engine_profiles')
+  })
+})
+
+describe('sendSync: enterprise theme policy projection', () => {
+  beforeEach(() => {
+    mocks.sendMock.mockClear()
+    mocks.getEnterprisePolicyMock.mockReset()
+    mocks.getEnterprisePolicyMock.mockResolvedValue(null)
+    enterprisePolicyCache.policy = null
+  })
+
+  it('projects themePolicy=null when unmanaged', async () => {
+    await sendSync(mocks.sendMock)
+    const snap = captureSettingsSnapshot()
+    expect(snap!.themePolicy).toBeNull()
+  })
+
+  it('projects the locked theme policy from customFields[ion-desktop]', async () => {
+    enterprisePolicyCache.policy = {
+      customFields: { 'ion-desktop': { themePolicy: { themeId: 'acme-corp', locked: true } } },
+    } as any
+    await sendSync(mocks.sendMock)
+    const snap = captureSettingsSnapshot()
+    expect(snap!.themePolicy).toEqual({ themeId: 'acme-corp', locked: true })
+  })
+
+  it('normalizes an absent locked flag to locked=false (managed default)', async () => {
+    enterprisePolicyCache.policy = {
+      customFields: { 'ion-desktop': { themePolicy: { themeId: 'ion-classic' } } },
+    } as any
+    await sendSync(mocks.sendMock)
+    const snap = captureSettingsSnapshot()
+    expect(snap!.themePolicy).toEqual({ themeId: 'ion-classic', locked: false })
+  })
+
+  it('ignores a malformed themePolicy (missing themeId)', async () => {
+    enterprisePolicyCache.policy = {
+      customFields: { 'ion-desktop': { themePolicy: { locked: true } } },
+    } as any
+    await sendSync(mocks.sendMock)
+    const snap = captureSettingsSnapshot()
+    expect(snap!.themePolicy).toBeNull()
   })
 })

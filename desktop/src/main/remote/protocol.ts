@@ -156,6 +156,13 @@ export type RemoteCommand =
   | { type: 'desktop_fs_rename'; oldPath: string; newPath: string }
   | { type: 'desktop_discover_commands'; directory: string }
   | { type: 'desktop_upload_attachment'; dataUrl: string; name: string; correlationId?: string }
+  // desktop_request_theme_asset: lazy fetch of one theme-pack image asset
+  // (same pattern as desktop_fs_read_image). iOS sends this after a
+  // desktop_theme_manifest whose asset descriptor sha256 misses its local
+  // cache; the desktop answers with desktop_theme_asset_content. Assets are
+  // capped at 3 MB raw (theme-packs.ts) so the base64 response stays under
+  // the wire plaintext gate.
+  | { type: 'desktop_request_theme_asset'; themeId: string; slot: 'background' | 'logo' }
   | { type: 'desktop_voice_config'; enabled: boolean; mode: 'client' | 'desktop'; systemPrompt?: string }
   | { type: 'desktop_diagnostic_logs_response'; logs: string; pairingId: string; nextSeq: number }
   | { type: 'desktop_set_remote_display'; customName: string | null; customIcon: string | null; updatedAt: number }
@@ -207,7 +214,7 @@ export type RemoteCommand =
 // ─── Ion → iOS events ───
 
 export type RemoteEvent =
-  | { type: 'desktop_snapshot'; tabs: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }>; preferredModel?: string; engineDefaultModel?: string; availableModels?: Array<{ id: string; providerId: string; label: string; contextWindow: number; hasAuth: boolean; thinkingMode?: string; thinkingEfforts?: string[] }>; customName?: string | null; customIcon?: string | null; remoteDisplayUpdatedAt?: number; resources?: Record<string, Array<{ id: string; kind: string; title?: string; createdAt: string; read?: boolean; conversationId?: string }>> }
+  | { type: 'desktop_snapshot'; tabs: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }>; preferredModel?: string; engineDefaultModel?: string; availableModels?: Array<{ id: string; providerId: string; label: string; contextWindow: number; hasAuth: boolean; thinkingMode?: string; thinkingEfforts?: string[]; modelKind?: string }>; customName?: string | null; customIcon?: string | null; remoteDisplayUpdatedAt?: number; resources?: Record<string, Array<{ id: string; kind: string; title?: string; createdAt: string; read?: boolean; conversationId?: string }>> }
   | { type: 'desktop_resource_content'; resourceId: string; kind: string; content: string }
   // `clientCmdId` echoes the id the iOS client attached to `desktop_create_tab`
   // / `desktop_create_terminal_tab` so the client's confirm-or-resend tracker
@@ -244,6 +251,12 @@ export type RemoteEvent =
     }
   | { type: 'desktop_text_chunk'; tabId: string; text: string }
   | { type: 'desktop_tool_call'; tabId: string; toolName: string; toolId: string }
+  // desktop_tool_update: forwarded verbatim from engine_tool_update by the
+  // generic engine-event forwarder. Carries incremental tool input chunks as
+  // the LLM streams them. iOS accumulates partialInput onto the matching
+  // running tool row (keyed by toolId) to build the full toolInput string,
+  // enabling rich tool descriptions during live streaming.
+  | { type: 'desktop_tool_update'; tabId: string; instanceId?: string; toolId: string; partialInput: string }
   | { type: 'desktop_tool_result'; tabId: string; toolId: string; content: string; isError: boolean }
   | { type: 'desktop_task_complete'; tabId: string; result: string; costUsd: number }
   // `instanceId` scopes engine-view permission requests to the engine
@@ -305,14 +318,16 @@ export type RemoteEvent =
   // optimistic insert; clients append it to the transcript from this event.
   // Field names carried verbatim from the engine ({...event} spread).
   | { type: 'desktop_prompt_injected'; tabId: string; instanceId?: string | null; injectedPrompt: string; injectedPromptOrigin?: string }
-  // desktop_image_content: forwarded verbatim from engine_image_content by the
-  // generic engine-event forwarder in event-wiring.ts (engineToWireType strips
-  // the engine_ prefix). Carries the desktop-local FILE PATH (never base64 —
-  // the engine's never-base64-on-the-wire contract). iOS decodes this and
-  // fetches the bytes lazily via desktop_fs_read_image → desktop_fs_image_content
-  // when the path misses its local cache. source is 'tool' (with toolId) or
-  // 'provider' (no toolId). No dedicated send site: the generic forwarder owns
-  // the send; this union member exists for type-completeness and lockstep parity.
+  // desktop_image_content: explicitly projected from engine_image_content by
+  // the engine-event forwarder in event-wiring.ts. The raw engine event carries
+  // image-prefixed field names (imagePath/imageMediaType/imageSource/imageToolId
+  // — see engine_event.go); the forwarder maps them to the contract fields
+  // below because iOS's decoder requires `path` (a blind spread shipped
+  // `imagePath` and the decode threw, dropping every image frame). Carries the
+  // desktop-local FILE PATH (never base64 — the engine's never-base64-on-the-
+  // wire contract). iOS decodes this and fetches the bytes lazily via
+  // desktop_fs_read_image → desktop_fs_image_content when the path misses its
+  // local cache. source is 'tool' (with toolId) or 'provider' (no toolId).
   | { type: 'desktop_image_content'; tabId: string; instanceId?: string | null; path: string; mediaType: string; source: string; toolId?: string }
   | { type: 'desktop_model_override'; tabId: string; instanceId?: string | null; model: string }
   | { type: 'desktop_dead'; tabId: string; instanceId?: string | null; exitCode: number | null; signal: string | null; stderrTail: string[] }
@@ -398,13 +413,78 @@ export type RemoteEvent =
         engineProfileId: string
         locked: boolean
       } | null
+      /**
+       * Enterprise theme policy (customFields['ion-desktop'].themePolicy).
+       * Null/absent = unmanaged. `locked: true` means iOS must render the
+       * enforced theme (resolved against built-ins + synced theme packs)
+       * and disable its theme picker; `locked: false` is a managed default
+       * the user may override. Same wire-backward-compat posture as
+       * newConversationPolicy — old iOS clients ignore the field.
+       */
+      themePolicy?: {
+        themeId: string
+        locked: boolean
+      } | null
+    }
+  // desktop_theme_manifest: the iOS components of every installed custom
+  // theme pack (built-ins never ride the wire — they are compiled into both
+  // clients and pinned identical by the parity fixture). Sent during
+  // sendSync (first pairing AND every reconnect, so iOS always converges on
+  // the desktop's current pack set) and re-broadcast when the on-disk pack
+  // set changes. **Snapshot semantics, scoped per desktop**: iOS REPLACES
+  // its cached theme set for THIS desktop with the payload — themes absent
+  // from the manifest were uninstalled and must be pruned (per-desktop
+  // keying keeps desktop A's sync from deleting desktop B's themes).
+  //
+  // Token payloads are the full iOS AppTheme token set (#RRGGBBAA), small
+  // enough to inline. Image assets are NOT inlined: each is described by
+  // {slot, sha256, size} and fetched lazily via desktop_request_theme_asset
+  // when the sha misses the iOS cache.
+  //
+  // `hash` fingerprints the canonical payload so iOS can skip re-persisting
+  // an unchanged set on every reconnect.
+  | {
+      type: 'desktop_theme_manifest'
+      themes: Array<{
+        id: string
+        name: string
+        version: string
+        tokens: Record<string, string>
+        preferredColorScheme?: 'light' | 'dark'
+        assets?: Array<{ slot: 'background' | 'logo'; sha256: string; size: number }>
+      }>
+      hash: string
+    }
+  // desktop_theme_asset_content: response to desktop_request_theme_asset.
+  // dataUrl is empty and ok=false when the asset is unknown/unreadable.
+  | {
+      type: 'desktop_theme_asset_content'
+      themeId: string
+      slot: 'background' | 'logo'
+      ok: boolean
+      sha256?: string
+      dataUrl?: string
     }
   | { type: 'desktop_heartbeat'; seq: number; ts: number; buffered: number }
   // desktop_resend_unavailable: the requested resend range was evicted from the
   // retransmit buffer (too old); iOS falls back to the snapshot reconcile.
   | { type: 'desktop_resend_unavailable'; fromSeq: number }
   | { type: 'desktop_unpair' }
-  | { type: 'desktop_relay_config'; relayUrl: string; relayApiKey: string }
+  | {
+      type: 'desktop_relay_config'
+      relayUrl: string
+      relayApiKey: string
+      /** Auth mode the relay advertised. Absent/undefined = PSK (legacy). */
+      authMode?: 'psk' | 'oidc'
+      /** OIDC issuer URL. Present when authMode === 'oidc'. */
+      relayOidcIssuer?: string
+      /** OIDC audience (app registration client ID). Present when authMode === 'oidc'. */
+      relayOidcAudience?: string
+      /** Full OIDC scope string (e.g. "api://<id>/Relay.Access"). Present when authMode === 'oidc'. */
+      relayOidcRequiredScope?: string
+      /** Entra app registration client ID. Present when authMode === 'oidc'. iOS uses this to acquire tokens autonomously. */
+      relayOidcClientId?: string
+    }
   | { type: 'desktop_remote_display'; customName: string | null; customIcon: string | null; updatedAt: number }
   | { type: 'desktop_git_changes_response'; directory: string; files: Array<{ path: string; status: string; staged: boolean; oldPath?: string }>; branch: string; isGitRepo: boolean; ahead: number; behind: number; stagedCount?: number; unstagedCount?: number }
   | { type: 'desktop_git_graph_response'; directory: string; commits: Array<{ hash: string; fullHash: string; parents: string[]; authorName: string; authorDate: string; subject: string; refs: Array<{ name: string; type: string; isCurrent: boolean }> }>; isGitRepo: boolean; totalCount: number; graphLayout?: Array<{ lane: number; color: string; hasIncoming: boolean; connections: Array<{ fromLane: number; toLane: number; type: 'straight' | 'merge' | 'fork'; color: string }>; passThroughLanes: Array<{ lane: number; color: string }> }> }
@@ -468,111 +548,22 @@ export type RemoteEvent =
   // more data available at offset+content.length. content is UTF-8 text.
   | { type: 'desktop_plan_content'; questionId: string; planFilePath: string; offset: number; content: string; totalBytes: number; hasMore: boolean }
 
-// ─── Relay control frames (injected by relay, not by Ion) ───
-
-export interface RelayControlMessage {
-  type: 'relay:peer-disconnected' | 'relay:peer-reconnected' | 'relay:paired' | 'relay:ping' | 'relay:pong' | 'relay:push-failed'
-  /** Failure reason (queue_full | invalid_token | transient | token | marshal | request | transport). Present when type === 'relay:push-failed'. */
-  reason?: string
-  /** Resource ID from the originating push message. Present when type === 'relay:push-failed'. */
-  resourceId?: string
-}
-
-// ─── Wire envelope (wraps RemoteEvent for relay transport) ───
-
-/**
- * Hard cap on the serialized size of one WireMessage — the JSON frame that
- * actually crosses the WebSocket (envelope + base64 ciphertext). Every wire
- * consumer enforces a receive limit, and a frame larger than the tightest one
- * is undeliverable: the receiver fails the read, disconnects, resyncs, and the
- * desktop rebuilds the same oversized frame — a reconnect loop.
- *
- * Receive limits this cap must stay under:
- *   - relay read limit: 12 MB — `relay/relay.go:42` (`MaxMessageSize: 12 *
- *     1024 * 1024`, field documented at relay.go:33), applied via
- *     `conn.SetReadLimit(h.MaxMessageSize)` at relay.go:189.
- *   - iOS `URLSessionWebSocketTask.maximumMessageSize`: 16 MiB —
- *     `ios/IonRemote/Networking/LANClient.swift:108` and
- *     `RelayClient.swift:170`.
- *
- * 8 MiB leaves comfortable headroom under the tightest limit (relay, 12 MB).
- * The desktop's pre-send plaintext gate (MAX_PLAINTEXT_BYTES in
- * transport-send.ts) is sized so a worst-case incompressible payload lands at
- * roughly this cap after DEFLATE + base64; this constant is the authoritative
- * backstop on the frame the wire actually carries.
- */
-export const MAX_WIRE_FRAME_BYTES = 8 * 1024 * 1024
-
-export interface WireMessage {
-  seq: number
-  ts: number               // Unix ms timestamp
-  // Outbound-seq epoch (generation id). Stable for the life of one desktop
-  // outbound-seq space; regenerated whenever that space resets to seq=1 (desktop
-  // process restart → new RemoteTransport, or an in-process stop()). iOS keys its
-  // receive-side dedup high-water to this: when the epoch changes it resets
-  // lastReceivedSeq/pendingResendSeqs BEFORE the seq comparison, so a fresh seq=1
-  // stream after a desktop restart is not mistaken for stale/duplicate frames
-  // (the retransmit buffer is also empty post-restart, so resend can't heal it —
-  // the epoch is the deterministic signal). Omitted only by a desktop predating
-  // the field; iOS treats absent epoch as "unchanged" (legacy behavior).
-  epoch?: number
-  payload?: string         // JSON-encoded RemoteEvent or RemoteCommand (absent when encrypted)
-  push?: boolean           // hint to relay: send APNs push if peer is disconnected
-  pushTitle?: string       // notification title (used by relay when push=true)
-  pushBody?: string        // notification body (used by relay when push=true)
-  nonce?: string           // base64 12-byte nonce (present when encrypted)
-  ciphertext?: string      // base64 encrypted payload (replaces `payload` when encrypted)
-  deviceId?: string        // identifies the sending device (set by transport)
-}
-
-// ─── Auth handshake (exchanged before any data flows) ───
-
-export interface AuthChallenge {
-  type: 'auth_challenge'
-  nonce: string            // base64-encoded 32 random bytes
-}
-
-export interface AuthResponse {
-  type: 'auth_response'
-  deviceId: string         // paired device ID
-  proof: string            // HMAC-SHA256(nonce, sharedSecret), base64
-}
-
-export interface AuthResult {
-  type: 'auth_result'
-  success: boolean
-  reason?: string
-}
-
-export type AuthMessage = AuthChallenge | AuthResponse | AuthResult
-
-// ─── Paired device record ───
-
-export interface PairedDevice {
-  id: string
-  name: string
-  pairedAt: string
-  lastSeen: string | null
-  channelId: string
-  /** Base64-encoded shared secret (NaCl secretbox key) */
-  sharedSecret: string
-  /** APNs device token for push notifications */
-  apnsToken?: string
-  /**
-   * Per-desktop display override cached on the iOS side. Not authoritative —
-   * the desktop owns the value via the top-level `remoteDisplay` settings
-   * record. Present here only to mirror the iOS PairedDevice struct.
-   * Identifier from the curated icon set: "desktop", "laptop", "macmini",
-   * "macpro", "display", "server", "terminal", "briefcase", "house",
-   * "gamepad". Unknown values render as the default desktop glyph.
-   */
-  customName?: string | null
-  customIcon?: string | null
-}
-
-// ─── Transport state ───
-
-export type TransportState = 'disconnected' | 'relay_only' | 'lan_preferred'
+// ─── Envelope / auth / pairing types ───
+// RelayControlMessage, MAX_WIRE_FRAME_BYTES, WireMessage, AuthChallenge,
+// AuthResponse, AuthResult, AuthMessage, PairedDevice, and TransportState
+// moved to protocol-envelope.ts at the 600-line cap split; re-exported so
+// existing import paths remain valid.
+export { MAX_WIRE_FRAME_BYTES } from './protocol-envelope'
+export type {
+  RelayControlMessage,
+  WireMessage,
+  AuthChallenge,
+  AuthResponse,
+  AuthResult,
+  AuthMessage,
+  PairedDevice,
+  TransportState,
+} from './protocol-envelope'
 
 // Re-export NormalizedEvent transform helpers (extracted to protocol-helpers.ts for line-cap).
 export { normalizedToRemote, normalizedToMessages } from './protocol-helpers'

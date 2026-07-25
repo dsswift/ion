@@ -171,7 +171,7 @@ export function ConflictResolver({ directory, files, onClose, onResolved }: Conf
           </button>
           <button onClick={() => { void handleSave().catch((err) => rError('git', 'resolve conflict save failed', { error: String(err) })) }} disabled={!allResolved || saving}
             className="text-[9px] px-2 py-0.5 rounded font-medium"
-            style={{ color: allResolved ? '#fff' : colors.textMuted,
+            style={{ color: allResolved ? colors.textOnAccent : colors.textMuted,
               background: allResolved ? colors.accent : 'transparent',
               border: allResolved ? 'none' : `1px solid ${colors.containerBorder}`,
               cursor: allResolved ? 'pointer' : 'not-allowed' }}>
@@ -181,7 +181,7 @@ export function ConflictResolver({ directory, files, onClose, onResolved }: Conf
 
         {/* Error */}
         {error && (
-          <div className="px-3 py-1 text-[10px]" style={{ color: '#c47060', flexShrink: 0 }}>{error}</div>
+          <div className="px-3 py-1 text-[10px]" style={{ color: colors.dangerFg, flexShrink: 0 }}>{error}</div>
         )}
 
         {/* Content */}
@@ -210,20 +210,20 @@ export function ConflictResolver({ directory, files, onClose, onResolved }: Conf
                   <div style={{ flex: 1 }} />
                   <button onClick={() => handleResolve(ci, 'ours')}
                     className="text-[9px] px-1.5 py-0.5 rounded"
-                    style={{ color: resolution === 'ours' ? '#fff' : '#6b9bd2',
-                      background: resolution === 'ours' ? '#6b9bd2' : 'transparent' }}>
+                    style={{ color: resolution === 'ours' ? colors.textOnAccent : colors.gitModified,
+                      background: resolution === 'ours' ? colors.gitModified : 'transparent' }}>
                     Current
                   </button>
                   <button onClick={() => handleResolve(ci, 'theirs')}
                     className="text-[9px] px-1.5 py-0.5 rounded"
-                    style={{ color: resolution === 'theirs' ? '#fff' : '#7aac8c',
-                      background: resolution === 'theirs' ? '#7aac8c' : 'transparent' }}>
+                    style={{ color: resolution === 'theirs' ? colors.textOnAccent : colors.successFg,
+                      background: resolution === 'theirs' ? colors.successFg : 'transparent' }}>
                     Incoming
                   </button>
                   <button onClick={() => handleResolve(ci, 'both')}
                     className="text-[9px] px-1.5 py-0.5 rounded"
-                    style={{ color: resolution === 'both' ? '#fff' : '#b08fd8',
-                      background: resolution === 'both' ? '#b08fd8' : 'transparent' }}>
+                    style={{ color: resolution === 'both' ? colors.textOnAccent : colors.gitRenamed,
+                      background: resolution === 'both' ? colors.gitRenamed : 'transparent' }}>
                     Both
                   </button>
                 </div>
@@ -235,7 +235,7 @@ export function ConflictResolver({ directory, files, onClose, onResolved }: Conf
                     background: resolution === 'ours' || resolution === 'both' ? colors.diffAddBg : 'transparent',
                     borderRight: `1px solid ${colors.containerBorder}`,
                     opacity: resolution === 'theirs' ? 0.4 : 1 }}>
-                    <div className="text-[9px] mb-1" style={{ color: '#6b9bd2' }}>Current</div>
+                    <div className="text-[9px] mb-1" style={{ color: colors.gitModified }}>Current</div>
                     {block.ours?.map((line, j) => (
                       <div key={j} style={{ color: colors.textSecondary, whiteSpace: 'pre', minHeight: 16, fontSize: 11 }}>{line}</div>
                     ))}
@@ -247,7 +247,7 @@ export function ConflictResolver({ directory, files, onClose, onResolved }: Conf
                   <div style={{ flex: 1, padding: '4px 8px',
                     background: resolution === 'theirs' || resolution === 'both' ? colors.diffAddBg : 'transparent',
                     opacity: resolution === 'ours' ? 0.4 : 1 }}>
-                    <div className="text-[9px] mb-1" style={{ color: '#7aac8c' }}>Incoming</div>
+                    <div className="text-[9px] mb-1" style={{ color: colors.successFg }}>Incoming</div>
                     {block.theirs?.map((line, j) => (
                       <div key={j} style={{ color: colors.textSecondary, whiteSpace: 'pre', minHeight: 16, fontSize: 11 }}>{line}</div>
                     ))}

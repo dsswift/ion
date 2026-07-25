@@ -3,6 +3,8 @@ import { motion } from 'framer-motion'
 import { createPortal } from 'react-dom'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { transitions } from '../theme-tokens'
 
 const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] as const }
 
@@ -19,6 +21,8 @@ export function CloseTabConfirmDialog({
 }) {
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
+  const cancelIx = useInteractiveState()
+  const confirmIx = useInteractiveState()
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -42,7 +46,7 @@ export function CloseTabConfirmDialog({
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(0, 0, 0, 0.4)',
+        background: colors.scrim,
         pointerEvents: 'auto',
         display: 'flex',
         alignItems: 'center',
@@ -76,24 +80,28 @@ export function CloseTabConfirmDialog({
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
           <button
             onClick={onCancel}
-            className="px-3 py-1 rounded-lg text-[11px]"
+            {...cancelIx.handlers}
+            className="ion-focusable px-3 py-1 rounded-lg text-[11px]"
             style={{
               color: colors.textSecondary,
-              background: colors.surfacePrimary,
+              background: interactiveBg(colors, cancelIx, colors.surfacePrimary),
               border: `1px solid ${colors.containerBorder}`,
               cursor: 'pointer',
+              transition: `background ${transitions.base}`,
             }}
           >
             Cancel
           </button>
           <button
             onClick={onConfirm}
-            className="px-3 py-1 rounded-lg text-[11px]"
+            {...confirmIx.handlers}
+            className="ion-focusable px-3 py-1 rounded-lg text-[11px]"
             style={{
-              color: '#fff',
-              background: colors.accent,
+              color: colors.textOnAccent,
+              background: confirmIx.pressed ? colors.accentPressed : confirmIx.hover ? colors.accentHover : colors.accent,
               border: 'none',
               cursor: 'pointer',
+              transition: `background ${transitions.base}`,
             }}
           >
             Close

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Microphone, SpinnerGap, X, Check } from '@phosphor-icons/react'
 import { useColors } from '../theme'
+import { useInteractiveState } from '../hooks/useInteractiveState'
 import { blobToWavBase64 } from './InputBarVoiceUtils'
 
 export type VoiceState = 'idle' | 'recording' | 'transcribing'
@@ -98,8 +99,22 @@ export interface VoiceButtonsProps {
 /**
  * Tri-state button cluster: idle (mic), recording (cancel + confirm),
  * transcribing (spinner). Animates between states with framer-motion.
+ *
+ * Interactive states follow the desktop style guide: the mic button steps
+ * through the mic* solid-surface ladder (micBg → micHover → micPressed), the
+ * cancel button through the alpha layer ladder (surfaceHover → surfaceActive
+ * → surfacePressed), and the confirm button through the accent family.
+ * Disabled (connecting) mic dims to 0.45 with inert handlers. Keyboard focus
+ * rides `.ion-focusable`; its class transition covers background/color.
  */
 export function VoiceButtons({ voiceState, isConnecting, colors, onToggle, onCancel, onStop }: VoiceButtonsProps) {
+  // One interactive-state hook per button — hooks stay top-level and
+  // unconditional even though only one branch renders at a time.
+  const cancelIx = useInteractiveState()
+  const confirmIx = useInteractiveState()
+  const micIx = useInteractiveState()
+  const micInteractive = !isConnecting
+
   return (
     <AnimatePresence mode="wait">
       {voiceState === 'recording' ? (
@@ -112,19 +127,41 @@ export function VoiceButtons({ voiceState, isConnecting, colors, onToggle, onCan
           className="flex items-center gap-1"
         >
           <button
-            onMouseDown={(e) => e.preventDefault()}
+            onMouseDown={(e) => { e.preventDefault(); cancelIx.handlers.onMouseDown() }}
+            onMouseUp={cancelIx.handlers.onMouseUp}
+            onMouseEnter={cancelIx.handlers.onMouseEnter}
+            onMouseLeave={cancelIx.handlers.onMouseLeave}
+            onBlur={cancelIx.handlers.onBlur}
             onClick={onCancel}
-            className="w-9 h-9 rounded-full flex items-center justify-center transition-colors"
-            style={{ background: colors.surfaceHover, color: colors.textTertiary }}
+            className="ion-focusable w-9 h-9 rounded-full flex items-center justify-center"
+            style={{
+              background: cancelIx.pressed
+                ? colors.surfacePressed
+                : cancelIx.hover
+                  ? colors.surfaceActive
+                  : colors.surfaceHover,
+              color: colors.textTertiary,
+            }}
             title="Cancel recording"
           >
             <X size={15} weight="bold" />
           </button>
           <button
-            onMouseDown={(e) => e.preventDefault()}
+            onMouseDown={(e) => { e.preventDefault(); confirmIx.handlers.onMouseDown() }}
+            onMouseUp={confirmIx.handlers.onMouseUp}
+            onMouseEnter={confirmIx.handlers.onMouseEnter}
+            onMouseLeave={confirmIx.handlers.onMouseLeave}
+            onBlur={confirmIx.handlers.onBlur}
             onClick={onStop}
-            className="w-9 h-9 rounded-full flex items-center justify-center transition-colors"
-            style={{ background: colors.accent, color: colors.textOnAccent }}
+            className="ion-focusable w-9 h-9 rounded-full flex items-center justify-center"
+            style={{
+              background: confirmIx.pressed
+                ? colors.accentPressed
+                : confirmIx.hover
+                  ? colors.accentHover
+                  : colors.accent,
+              color: colors.textOnAccent,
+            }}
             title="Confirm recording"
           >
             <Check size={15} weight="bold" />
@@ -135,7 +172,7 @@ export function VoiceButtons({ voiceState, isConnecting, colors, onToggle, onCan
           <button
             disabled
             className="w-9 h-9 rounded-full flex items-center justify-center"
-            style={{ background: colors.micBg, color: colors.micColor }}
+            style={{ background: colors.micBg, color: colors.micColor, cursor: 'default' }}
           >
             <SpinnerGap size={16} className="animate-spin" />
           </button>
@@ -143,13 +180,28 @@ export function VoiceButtons({ voiceState, isConnecting, colors, onToggle, onCan
       ) : (
         <motion.div key="mic" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }} transition={{ duration: 0.1 }}>
           <button
-            onMouseDown={(e) => e.preventDefault()}
+            onMouseDown={(e) => {
+              e.preventDefault()
+              if (micInteractive) micIx.handlers.onMouseDown()
+            }}
+            onMouseUp={micInteractive ? micIx.handlers.onMouseUp : undefined}
+            onMouseEnter={micInteractive ? micIx.handlers.onMouseEnter : undefined}
+            onMouseLeave={micIx.handlers.onMouseLeave}
+            onBlur={micIx.handlers.onBlur}
             onClick={onToggle}
             disabled={isConnecting}
-            className="w-9 h-9 rounded-full flex items-center justify-center transition-colors"
+            className="ion-focusable w-9 h-9 rounded-full flex items-center justify-center"
             style={{
-              background: colors.micBg,
+              background: isConnecting
+                ? colors.micBg
+                : micIx.pressed
+                  ? colors.micPressed
+                  : micIx.hover
+                    ? colors.micHover
+                    : colors.micBg,
               color: isConnecting ? colors.micDisabled : colors.micColor,
+              opacity: isConnecting ? 0.45 : 1,
+              cursor: isConnecting ? 'default' : 'pointer',
             }}
             title="Voice input"
           >

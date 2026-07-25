@@ -6,6 +6,7 @@
 import type { AtvApi } from './atv-api'
 import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus, EngineConfig, EngineEvent, EngineHostInfo, EngineDirListing, RemoteTransportState, DiscoveredCommand, GitEvent, RepoSnapshot, NewConversationDefaultsPolicy } from '../shared/types'
 import type { EnterprisePolicy } from '../shared/types-engine'
+import type { CustomThemeForRenderer } from '../shared/theme-pack-types'
 
 export interface IonAPI extends AtvApi {
   // ─── Request-response (renderer → main) ───
@@ -42,6 +43,8 @@ export interface IonAPI extends AtvApi {
   getEnterprisePolicy(): Promise<NewConversationDefaultsPolicy | null>
   /** Fetch the full enterprise policy blob (D-004). Returns null when no enterprise config is active. */
   getEnterprisePolicyFull(): Promise<EnterprisePolicy | null>
+  /** Custom theme packs installed on disk (desktop components, resolved with inline asset data URLs). */
+  listCustomThemes(): Promise<CustomThemeForRenderer[]>
   openExternal(url: string): Promise<boolean>
 
   attachFiles(): Promise<FileAttachment[] | null>
@@ -75,8 +78,6 @@ export interface IonAPI extends AtvApi {
   cancelBash(id: string): void
   sendRemote(event: any): void
   setPermissionMode(tabId: string, mode: string, source?: string, planFilePath?: string): void
-  getTheme(): Promise<{ isDark: boolean }>
-  onThemeChange(callback: (isDark: boolean) => void): () => void
   loadSettings(): Promise<Record<string, any>>
   saveSettings(data: Record<string, any>): Promise<void>
   loadTabs(): Promise<PersistedTabState | null>
@@ -267,6 +268,8 @@ export interface IonAPI extends AtvApi {
   remoteDiscoverRelays(): Promise<Array<{ id: string; name: string; host: string; port: number; addresses: string[] }>>
   remoteStopDiscovery(): void
   remoteTestRelay(relayUrl: string, relayApiKey: string): Promise<{ success: boolean; error?: string }>
+  /** Probe the relay's auth config without connecting (returns null on failure). */
+  remoteRelayAuthConfig(relayUrl: string): Promise<{ oidc: boolean; issuer: string; audience: string; requiredScope: string; psk: boolean } | null>
   remoteSetLanDisabled(disabled: boolean): Promise<void>
   /** Set the per-desktop display name/icon override. Returns the value now stored. */
   remoteSetDisplay(customName: string | null, customIcon: string | null): Promise<{ customName: string | null; customIcon: string | null; updatedAt: number }>

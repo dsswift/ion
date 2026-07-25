@@ -22,6 +22,10 @@ interface ErrorState {
  * as a structured event (component=desktop, level=ERROR) instead of the
  * unattributed "Uncaught Error: Minified React error #185…" lines that appear
  * when nothing catches the throw.
+ *
+ * Colors are intentionally literal (not theme tokens): this fallback must
+ * render even when the theme/preferences subsystem is the thing that crashed,
+ * so it takes no dependency on the color system.
  */
 export class RootErrorBoundary extends React.Component<Props, ErrorState> {
   state: ErrorState = { hasError: false, error: null }
@@ -54,14 +58,14 @@ export class RootErrorBoundary extends React.Component<Props, ErrorState> {
             gap: 16,
             padding: 32,
             fontFamily: 'system-ui, -apple-system, sans-serif',
-            color: 'rgba(255,255,255,0.7)',
-            background: '#111',
+            color: 'rgba(255,255,255,0.7)', // hardcoded-ok: root fallback must render without the (possibly crashed) theme system
+            background: '#111', // hardcoded-ok: root fallback must render without the (possibly crashed) theme system
           }}
         >
-          <div style={{ fontWeight: 600, fontSize: 15, color: 'rgba(255,255,255,0.9)' }}>
+          <div style={{ fontWeight: 600, fontSize: 15, color: 'rgba(255,255,255,0.9)' /* hardcoded-ok: theme-independent root fallback */ }}>
             Something went wrong
           </div>
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', maxWidth: 320, textAlign: 'center', lineHeight: 1.5 }}>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', maxWidth: 320, textAlign: 'center', lineHeight: 1.5 /* hardcoded-ok: theme-independent root fallback */ }}>
             {this.state.error?.message || 'An unexpected error occurred.'}
           </div>
           <button
@@ -71,9 +75,9 @@ export class RootErrorBoundary extends React.Component<Props, ErrorState> {
               marginTop: 4,
               padding: '7px 18px',
               borderRadius: 8,
-              border: '1px solid rgba(255,255,255,0.15)',
-              background: 'rgba(255,255,255,0.08)',
-              color: 'rgba(255,255,255,0.8)',
+              border: '1px solid rgba(255,255,255,0.15)', // hardcoded-ok: theme-independent root fallback
+              background: 'rgba(255,255,255,0.08)', // hardcoded-ok: theme-independent root fallback
+              color: 'rgba(255,255,255,0.8)', // hardcoded-ok: theme-independent root fallback
               fontSize: 12,
               cursor: 'pointer',
               fontFamily: 'inherit',

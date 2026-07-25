@@ -132,8 +132,8 @@ export const ThinkingBlock = React.memo(function ThinkingBlock({
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'flex-end',
-          maskImage: 'linear-gradient(to bottom, transparent, black 28%)',
-          WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 28%)',
+          maskImage: 'linear-gradient(to bottom, transparent, black 28%)', // hardcoded-ok: mask alpha gradient — "black" is full mask opacity, not a rendered color
+          WebkitMaskImage: 'linear-gradient(to bottom, transparent, black 28%)', // hardcoded-ok: mask alpha gradient — "black" is full mask opacity, not a rendered color
         }}
       >
         <div

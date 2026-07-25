@@ -16,7 +16,7 @@ const ExitPlanModeName = "ExitPlanMode"
 func ExitPlanModeTool() *types.ToolDef {
 	return &types.ToolDef{
 		Name:        ExitPlanModeName,
-		Description: "Signal that you have finished planning and are ready to present your plan for approval. Call this tool only when your plan is complete.",
+		Description: "Signal that you have finished planning and are ready to present your plan for approval. Call this tool only when you have a completed plan to present. If the request needs no plan -- an informational, read-only, or already-answered request -- do not call this tool; answer directly instead.",
 		InputSchema: map[string]any{
 			"type":       "object",
 			"properties": map[string]any{},

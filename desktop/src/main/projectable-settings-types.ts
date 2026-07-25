@@ -17,7 +17,7 @@
  *
  * `'enum'` — a fixed or dynamic set of string (or null) choices. The
  * `choices` field on the entry enumerates them. Used by string-enum
- * preferences (`gitOpsMode`, `themeMode`, …) and by the three tab-group
+ * preferences (`gitOpsMode`, `selectedTheme`, …) and by the three tab-group
  * pointer keys (`inProgressGroupId`, `doneGroupId`, `planningGroupId`)
  * whose choices are derived dynamically from the user's current
  * `tabGroups` at snapshot time.

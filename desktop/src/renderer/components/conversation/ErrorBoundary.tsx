@@ -1,6 +1,5 @@
 import React from 'react'
 import { getColors } from '../../theme'
-import { usePreferencesStore } from '../../preferences'
 import { rError } from '../../rendererLogger'
 
 interface Props {
@@ -49,7 +48,7 @@ export class ConversationErrorBoundary extends React.Component<Props, ErrorState
 
   render() {
     if (this.state.hasError) {
-      const colors = getColors(usePreferencesStore.getState().isDark)
+      const colors = getColors()
       const loop = isLoopError(this.state.error)
       return (
         <div

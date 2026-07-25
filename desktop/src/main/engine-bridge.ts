@@ -1,8 +1,7 @@
 import { EventEmitter } from 'events'
-import { createConnection, Socket } from 'net'
-import { join } from 'path'
-import { homedir } from 'os'
+import { Socket } from 'net'
 import { log as _log, debug as _debug, warn as _warn, error as _error } from './logger'
+import { doConnect, scheduleReconnect } from './engine-bridge-connection'
 import { startSession as startSessionImpl, reRegisterSessions as reRegisterSessionsImpl } from './engine-bridge-start-session'
 import { sendReconcileState as sendReconcileStateImpl, sendQuerySessionStatus as sendQuerySessionStatusImpl } from './engine-bridge-state-sync'
 import { stopAll as stopAllImpl, shutdownAndWait as shutdownAndWaitImpl } from './engine-bridge-lifecycle'
@@ -17,16 +16,10 @@ function debug(msg: string, fields?: Record<string, unknown>): void { _debug(TAG
 function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, msg, fields) }
 function error(msg: string, fields?: Record<string, unknown>): void { _error(TAG, msg, fields) }
 
-const ION_HOME = join(homedir(), '.ion')
-const SOCKET_PATH = join(ION_HOME, 'engine.sock')
-
-/**
- * When ION_DESKTOP_ENGINE_SOCKET is set to "host:port", the bridge connects
- * over TCP to a remote engine instead of spawning a local one. Reconnect on
- * disconnect is automatic with exponential backoff (500 ms → 8 s, then 30 s cap).
- */
-export const REMOTE_SOCKET = process.env.ION_DESKTOP_ENGINE_SOCKET || ''
-export const IS_REMOTE = REMOTE_SOCKET.includes(':')
+// Connection constants live in engine-bridge-connection.ts (the connect
+// ladder + reconnect-loop module); re-exported here so existing consumers
+// keep importing them from the bridge module.
+export { IS_REMOTE, REMOTE_SOCKET, LADDER_FAST_FAIL_WINDOW_MS } from './engine-bridge-connection'
 
 /**
  * EngineBridge: thin socket client connecting Ion to the standalone
@@ -37,13 +30,24 @@ export const IS_REMOTE = REMOTE_SOCKET.includes(':')
  */
 export class EngineBridge extends EventEmitter {
   conn: Socket | null = null
-  private buffer = ''
+  // Package-internal (written by engine-bridge-connection.ts).
+  buffer = ''
   connected = false
   reconnectTimer: ReturnType<typeof setTimeout> | null = null
-  private reconnectAttempts = 0
+  // Package-internal (managed by engine-bridge-connection.ts).
+  reconnectAttempts = 0
   private requestCallbacks = new Map<string, (result: any) => void>()
   private requestCounter = 0
   private connectPromise: Promise<void> | null = null
+  /**
+   * Set when a full connect retry ladder exhausted against a dead socket;
+   * cleared on any successful connect. While recent (see
+   * LADDER_FAST_FAIL_WINDOW_MS), subsequent connect() callers make one
+   * immediate attempt and then fail fast instead of re-running the ladder —
+   * the background reconnect loop owns recovery during an outage.
+   * Package-internal (managed by engine-bridge-connection.ts).
+   */
+  lastLadderFailureAt = 0
   reconnectDisabled = false
   private _drainScheduled = false
   // Package-internal (used by engine-bridge-start-session.ts and other siblings).
@@ -65,109 +69,12 @@ export class EngineBridge extends EventEmitter {
     // Prevent concurrent connect() calls from creating multiple connections.
     // All callers share the same in-flight connection attempt.
     if (this.connectPromise) return this.connectPromise
-    this.connectPromise = this._doConnect()
+    this.connectPromise = doConnect(this)
     try {
       await this.connectPromise
     } finally {
       this.connectPromise = null
     }
-  }
-
-  private async _doConnect(): Promise<void> {
-    // Try connecting to the daemon socket directly. The engine is a launchd
-    // daemon; the desktop never spawns it. If the socket is not reachable,
-    // retry with backoff (launchd may still be starting the daemon after
-    // bootstrap/kickstart).
-    try {
-      await this._connectSocket()
-      return
-    } catch {
-      // Socket not ready yet
-    }
-
-    // In remote mode we never auto-start, just throw.
-    if (IS_REMOTE) {
-      throw new Error(`Remote engine at ${REMOTE_SOCKET} is not reachable`)
-    }
-
-    // Retry with backoff. The daemon should already be running via launchd;
-    // these retries cover the window between launchctl kickstart and the
-    // engine binding the socket.
-    const delays = [500, 1000, 2000, 4000]
-    for (let i = 0; i < delays.length; i++) {
-      await new Promise<void>((resolve) => setTimeout(resolve, delays[i]))
-      try {
-        await this._connectSocket()
-        return
-      } catch {
-        if (i < delays.length - 1) {
-          log('engine_daemon: not ready, retrying', { delay_ms: delays[i] })
-        }
-      }
-    }
-    throw new Error(
-      `Engine daemon not reachable at ${SOCKET_PATH}. ` +
-      'Ensure the Ion Engine LaunchAgent is installed and running ' +
-      '(launchctl print gui/${UID}/com.ion.engine).',
-    )
-  }
-
-  private _connectSocket(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      let conn: Socket
-      if (IS_REMOTE) {
-        const [host, portStr] = REMOTE_SOCKET.split(':')
-        const port = parseInt(portStr, 10)
-        conn = createConnection({ host, port })
-      } else {
-        conn = createConnection(SOCKET_PATH)
-      }
-
-      conn.on('connect', () => {
-        const wasReconnect = this.reconnectAttempts > 0
-        this.conn = conn
-        this.connected = true
-        this.reconnectAttempts = 0
-        this.buffer = ''
-        log('Connected to engine server')
-        resolve()
-        if (wasReconnect) {
-          this.emit('reconnected')
-          this._reRegisterSessions()
-        }
-      })
-
-      conn.on('data', (chunk: Buffer) => {
-        this.buffer += chunk.toString()
-        this._drainBuffer()
-      })
-
-      conn.on('close', () => {
-        this.connected = false
-        this.conn = null
-        log('Disconnected from engine server')
-        this._scheduleReconnect()
-      })
-
-      conn.on('error', (err: NodeJS.ErrnoException) => {
-        if (!this.connected) {
-          warn('connect_err', { code: err.code, socket: REMOTE_SOCKET })
-          reject(err)
-          return
-        }
-        // For remote connections, emit a toast-friendly event for transient
-        // network errors instead of flooding each chat with error bubbles.
-        if (IS_REMOTE && (err.code === 'EHOSTDOWN' || err.code === 'ECONNREFUSED' || err.code === 'ECONNRESET')) {
-          warn('remote_engine_unreachable', { code: err.code })
-          this._failPendingRequests('Remote engine unreachable')
-        } else {
-          log('connection_error', { error: err.message })
-        }
-        this.connected = false
-        this.conn = null
-        this._scheduleReconnect()
-      })
-    })
   }
 
   private _onRequestTimeout(): void {
@@ -178,28 +85,16 @@ export class EngineBridge extends EventEmitter {
     }
   }
 
-  private _scheduleReconnect(): void {
-    if (this.reconnectDisabled) return
-    if (this.reconnectTimer) return
-    if (this.connected) return
-    this.reconnectAttempts++
-    const delay = Math.min(500 * Math.pow(2, this.reconnectAttempts - 1), IS_REMOTE ? 8000 : 30000)
-    log('reconnecting', { delay_ms: delay, attempt: this.reconnectAttempts })
-    this.reconnectTimer = setTimeout(() => {
-      void (async () => {
-        this.reconnectTimer = null
-        if (this.connected) return
-        try {
-          await this.connect()
-        } catch {
-          this._scheduleReconnect()
-        }
-      })()
-    }, delay)
+  // Package-internal seam: the reconnect loop lives in
+  // engine-bridge-connection.ts; this thin method remains for in-class
+  // callers (request-timeout eviction path).
+  _scheduleReconnect(): void {
+    scheduleReconnect(this)
   }
 
-  /** Reject all pending request callbacks with an error message. */
-  private _failPendingRequests(reason: string): void {
+  /** Reject all pending request callbacks with an error message.
+   * Package-internal (called by engine-bridge-connection.ts on remote errors). */
+  _failPendingRequests(reason: string): void {
     for (const [_id, cb] of this.requestCallbacks) {
       cb({ ok: false, error: reason })
     }
@@ -211,8 +106,9 @@ export class EngineBridge extends EventEmitter {
    * Prevents the main process from blocking for 5+ seconds when a large
    * burst of events arrives in one TCP chunk, which triggers the engine's
    * 5s write-deadline eviction → disconnect/reconnect storm.
+   * Package-internal (called by engine-bridge-connection.ts on socket data).
    */
-  private _drainBuffer(): void {
+  _drainBuffer(): void {
     if (this._drainScheduled) return
     const BATCH_SIZE = 10
     let processed = 0
@@ -234,8 +130,9 @@ export class EngineBridge extends EventEmitter {
     }
   }
 
-  /** Re-register all tracked sessions, then reconcile (see engine-bridge-start-session.ts). */
-  private _reRegisterSessions(): void {
+  /** Re-register all tracked sessions, then reconcile (see engine-bridge-start-session.ts).
+   * Package-internal (called by engine-bridge-connection.ts after a reconnect). */
+  _reRegisterSessions(): void {
     reRegisterSessionsImpl(this)
   }
 

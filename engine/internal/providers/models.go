@@ -25,6 +25,10 @@ type catalogEntry struct {
 	ThinkingMode           string   `json:"thinkingMode,omitempty"`
 	ThinkingEfforts        []string `json:"thinkingEfforts,omitempty"`
 	Tokenizer              string   `json:"tokenizer,omitempty"`
+	// ModelKind declares the API shape: "" / "chat" (default) or "image".
+	// Image models are routed through the image-generation endpoint instead of
+	// the chat-completion endpoint.
+	ModelKind string `json:"modelKind,omitempty"`
 }
 
 // MergeModelInfo overlays user-config fields onto a catalog (base) entry.
@@ -81,6 +85,11 @@ func MergeModelInfo(base, user types.ModelInfo) types.ModelInfo {
 	if user.Tokenizer != "" {
 		merged.Tokenizer = user.Tokenizer
 	}
+	// ModelKind: non-empty user value wins. Lets a custom model entry declare
+	// its kind (e.g. "image") explicitly. Additive — matches the rule above.
+	if user.ModelKind != "" {
+		merged.ModelKind = user.ModelKind
+	}
 	return merged
 }
 
@@ -106,6 +115,7 @@ func loadModelsFromJSON(data []byte) error {
 			ThinkingMode:           e.ThinkingMode,
 			ThinkingEfforts:        e.ThinkingEfforts,
 			Tokenizer:              e.Tokenizer,
+			ModelKind:              e.ModelKind,
 		})
 	}
 	utils.LogWithFields(utils.LevelInfo, "Registry", "models loaded from catalog", map[string]any{"count": len(entries)})

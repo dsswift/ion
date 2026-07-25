@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Plus, Minus, Tray } from '@phosphor-icons/react'
 import { useColors } from '../theme'
+import { Chevron } from './Chevron'
 import { FloatingPanel } from './FloatingPanel'
 import { DiffPane } from './git/DiffPane'
 import { Tooltip } from './git/Tooltip'
@@ -273,7 +274,7 @@ export function GitChangesSection({
           files={mergeFiles}
           open={openSections.merge}
           onToggle={() => toggleSection('merge')}
-          accentColor="#c47060"
+          accentColor={colors.gitConflict}
           actions={mergeFiles.length > 0 && (
             <button
               onClick={() => setShowResolver(true)}
@@ -358,8 +359,8 @@ export function GitChangesSection({
               className="flex items-center justify-between px-2 py-1"
               style={{ fontSize: 10, color: colors.textTertiary, borderTop: `1px solid ${colors.containerBorder}` }}
             >
-              <button onClick={() => setStashExpanded(!stashExpanded)} className="flex items-center gap-1">
-                <span style={{ fontSize: 8, display: 'inline-block', transform: stashExpanded ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>▶</span>
+              <button onClick={() => setStashExpanded(!stashExpanded)} className="flex items-center gap-1 ion-focusable">
+                <Chevron open={stashExpanded} size={8} weight="regular" />
                 Stashes ({stashes.length})
               </button>
               <Tooltip text="Stash current changes">
@@ -376,7 +377,7 @@ export function GitChangesSection({
                   <button onClick={() => { void handleStashPop(s.ref).catch((err) => rError('git-changes', 'stash pop failed', { error: String(err) })) }} className="text-[9px] px-1 opacity-0 group-hover:opacity-100" style={{ color: colors.accent }}>Pop</button>
                 </Tooltip>
                 <Tooltip text="Delete stash">
-                  <button onClick={() => { void handleStashDrop(s.ref).catch((err) => rError('git-changes', 'stash drop failed', { error: String(err) })) }} className="text-[9px] px-1 opacity-0 group-hover:opacity-100" style={{ color: '#c47060' }}>Drop</button>
+                  <button onClick={() => { void handleStashDrop(s.ref).catch((err) => rError('git-changes', 'stash drop failed', { error: String(err) })) }} className="text-[9px] px-1 opacity-0 group-hover:opacity-100" style={{ color: colors.dangerFg }}>Drop</button>
                 </Tooltip>
               </div>
             ))}
@@ -390,7 +391,7 @@ export function GitChangesSection({
           className="flex items-center justify-between px-2 py-1.5"
           style={{ borderTop: `1px solid ${colors.containerBorder}`, background: colors.surfacePrimary, flexShrink: 0 }}
         >
-          <span className="text-[10px] truncate" style={{ color: '#c47060' }}>{error}</span>
+          <span className="text-[10px] truncate" style={{ color: colors.dangerFg }}>{error}</span>
           <button
             onClick={() => setError(null)}
             className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
@@ -414,7 +415,7 @@ export function GitChangesSection({
             <button
               onClick={() => { void confirmDiscard().catch((err) => rError('git-changes', 'discard failed', { error: String(err) })) }}
               className="text-[10px] px-1.5 py-0.5 rounded"
-              style={{ color: '#c47060' }}
+              style={{ color: colors.dangerFg }}
             >
               Discard
             </button>

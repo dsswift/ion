@@ -91,3 +91,63 @@ func TestProcessStreamProviderImageEmitsImageContentEvent(t *testing.T) {
 		t.Errorf("saved image bytes = %d, want 5 (the decoded payload)", len(data))
 	}
 }
+
+// TestProcessStreamProviderImagePersistsSourceOnBlock pins that the assistant
+// content block accumulated for history carries the image bytes in Source.
+// The live ImageContentEvent is NOT persisted — the block IS the durable
+// record. Without Source stamped on the block, the persisted assistant entry
+// holds a bare {"type":"image"} and the image vanishes on historical reload
+// (flattenEntries has no bytes to re-derive the content-addressed path from).
+// Reverting the Source stamping in the content_block_start image branch turns
+// this red.
+func TestProcessStreamProviderImagePersistsSourceOnBlock(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	b := NewApiBackend()
+	b.OnNormalized(func(string, types.NormalizedEvent) {})
+
+	run := &activeRun{requestID: "prov-img-persist", conv: &conversation.Conversation{ID: "conv-img-2"}}
+
+	const b64 = "AAECAwQ="
+	evs := []types.LlmStreamEvent{
+		{Type: "message_start", MessageInfo: &types.LlmStreamMessageInfo{ID: "m1", Model: "test"}},
+		{
+			Type:       "content_block_start",
+			BlockIndex: 0,
+			ContentBlock: &types.LlmStreamContentBlock{
+				Type:           "image",
+				ImageData:      b64,
+				ImageMediaType: "image/png",
+			},
+		},
+		{Type: "content_block_stop", BlockIndex: 0},
+		{Type: "message_delta", Delta: &types.LlmStreamDelta{Type: "message_delta", StopReason: strPtr("end_turn")}},
+	}
+
+	events, errc := streamEventChan(evs)
+	blocks, _, _, err := b.processStream(context.Background(), run, events, errc)
+	if err != nil {
+		t.Fatalf("processStream error: %v", err)
+	}
+
+	var imgBlock *types.LlmContentBlock
+	for i := range blocks {
+		if blocks[i].Type == "image" {
+			imgBlock = &blocks[i]
+			break
+		}
+	}
+	if imgBlock == nil {
+		t.Fatal("no image block in accumulated assistant blocks")
+	}
+	if imgBlock.Source == nil {
+		t.Fatal("image block Source is nil; the persisted entry would drop the image on reload")
+	}
+	if imgBlock.Source.Data != b64 {
+		t.Errorf("Source.Data = %q, want the original base64", imgBlock.Source.Data)
+	}
+	if imgBlock.Source.MediaType != "image/png" {
+		t.Errorf("Source.MediaType = %q, want image/png", imgBlock.Source.MediaType)
+	}
+}

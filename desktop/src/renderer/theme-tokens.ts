@@ -1,340 +1,27 @@
 /**
- * Ion Design Tokens — Dual theme (dark + light)
- * Colors derived from ChatCN oklch system and design-fixed.html reference.
+ * Ion Design Tokens — theme registry and utilities.
+ *
+ * Palettes live in `theme/palette-{dark,light,classic,hud}.ts`; this module
+ * re-exports them alongside the registry, CSS-variable sync, and non-color
+ * scales.
+ *
+ * Theme selection is single-axis: every built-in theme declares its color
+ * scheme via `forcedColorScheme`, and the theme picker is the only control.
+ * There is no separate dark/light mode toggle.
  *
  * Leaf module: imports nothing from preferences. Importing from theme.ts
  * brings these in along with the reactive `useColors` hook; importing here
  * directly avoids the preferences ↔ theme cycle.
  */
 
-// ─── Color palettes ───
+import { darkColors, type ColorPalette } from './theme/palette-dark'
+import { lightColors } from './theme/palette-light'
+import { classicColors } from './theme/palette-classic'
+import { hudColors } from './theme/palette-hud'
+import type { CustomThemeForRenderer } from '../shared/theme-pack-types'
 
-export const darkColors = {
-  // Container (glass surfaces)
-  containerBg: '#242422',
-  containerBgCollapsed: '#21211e',
-  containerBorder: '#3b3b36',
-  containerShadow: '0 8px 28px rgba(0, 0, 0, 0.35), 0 1px 6px rgba(0, 0, 0, 0.25)',
-  cardShadow: '0 2px 8px rgba(0,0,0,0.35)',
-  cardShadowCollapsed: '0 2px 6px rgba(0,0,0,0.4)',
-
-  // Surface layers
-  surfacePrimary: '#353530',
-  surfaceSecondary: '#42423d',
-  surfaceHover: 'rgba(255, 255, 255, 0.05)',
-  surfaceActive: 'rgba(255, 255, 255, 0.08)',
-
-  // Input
-  inputBg: 'transparent',
-  inputBorder: '#3b3b36',
-  inputFocusBorder: 'rgba(217, 119, 87, 0.4)',
-  inputPillBg: '#2a2a27',
-
-  // Text
-  textPrimary: '#ccc9c0',
-  textSecondary: '#c0bdb2',
-  textTertiary: '#76766e',
-  textMuted: '#353530',
-
-  // Accent — orange
-  accent: '#d97757',
-  accentLight: 'rgba(217, 119, 87, 0.1)',
-  accentSoft: 'rgba(217, 119, 87, 0.15)',
-
-  // Status dots
-  statusIdle: '#8a8a80',
-  statusRunning: '#d97757',
-  statusRunningBg: 'rgba(217, 119, 87, 0.1)',
-  statusCompacting: '#60a5fa',
-  statusCompactingBg: 'rgba(96, 165, 250, 0.1)',
-  statusComplete: '#7aac8c',
-  statusCompleteBg: 'rgba(122, 172, 140, 0.1)',
-  statusError: '#c47060',
-  statusErrorBg: 'rgba(196, 112, 96, 0.08)',
-  statusWarning: '#f59e0b',
-  statusDead: '#c47060',
-  statusBash: '#cc6b9a',
-  statusBashGlow: 'rgba(204, 107, 154, 0.4)',
-  statusPermission: '#d97757',
-  statusPermissionGlow: 'rgba(217, 119, 87, 0.4)',
-  // "Awaiting children" state — orchestrator is idle but dispatched
-  // background agents are still executing. Reuses the amber palette
-  // already used for permission cards (rgba(245,158,11,...)) so the
-  // visual language stays consistent: yellow ⇒ "in flight, not yet
-  // done". Distinct from the orange statusRunning so a quick glance
-  // tells the user whether foreground or background work is active.
-  statusWaitingChildren: '#f59e0b',
-  statusWaitingChildrenGlow: 'rgba(245, 158, 11, 0.4)',
-
-  // Tab
-  tabActive: '#353530',
-  tabActiveBorder: '#4a4a45',
-  tabInactive: 'transparent',
-  tabHover: 'rgba(255, 255, 255, 0.05)',
-
-  // User message bubble
-  userBubble: '#353530',
-  userBubbleBorder: '#4a4a45',
-  userBubbleText: '#ccc9c0',
-
-  // Tool card
-  toolBg: '#353530',
-  toolBorder: '#4a4a45',
-  toolRunningBorder: 'rgba(217, 119, 87, 0.3)',
-  toolRunningBg: 'rgba(217, 119, 87, 0.05)',
-
-  // Timeline
-  timelineLine: '#353530',
-  timelineNode: 'rgba(217, 119, 87, 0.2)',
-  timelineNodeActive: '#d97757',
-
-  // Scrollbar
-  scrollThumb: 'rgba(255, 255, 255, 0.15)',
-  scrollThumbHover: 'rgba(255, 255, 255, 0.25)',
-
-  // Stop button
-  stopBg: '#ef4444',
-  stopHover: '#dc2626',
-
-  // Send button
-  sendBg: '#d97757',
-  sendHover: '#c96442',
-  sendDisabled: 'rgba(217, 119, 87, 0.3)',
-
-  // Popover
-  popoverBg: '#292927',
-  popoverBorder: '#3b3b36',
-  popoverShadow: '0 4px 20px rgba(0,0,0,0.3), 0 1px 4px rgba(0,0,0,0.2)',
-
-  // Code block
-  codeBg: '#1a1a18',
-
-  // Mic button
-  micBg: '#353530',
-  micColor: '#c0bdb2',
-  micDisabled: '#42423d',
-
-  // Placeholder
-  placeholder: '#6b6b60',
-
-  // Disabled button color
-  btnDisabled: '#42423d',
-
-  // Text on accent backgrounds
-  textOnAccent: '#ffffff',
-
-  // Button hover (CSS-only stack buttons)
-  btnHoverColor: '#c0bdb2',
-  btnHoverBg: '#302f2d',
-
-  // Accent border variants (replaces hex-alpha concatenation antipattern)
-  accentBorder: 'rgba(217, 119, 87, 0.19)',
-  accentBorderMedium: 'rgba(217, 119, 87, 0.25)',
-
-  // Permission card (amber)
-  permissionBorder: 'rgba(245, 158, 11, 0.3)',
-  permissionShadow: '0 2px 12px rgba(245, 158, 11, 0.08)',
-  permissionHeaderBg: 'rgba(245, 158, 11, 0.06)',
-  permissionHeaderBorder: 'rgba(245, 158, 11, 0.12)',
-
-  // Permission allow (green)
-  permissionAllowBg: 'rgba(34, 197, 94, 0.1)',
-  permissionAllowHoverBg: 'rgba(34, 197, 94, 0.22)',
-  permissionAllowBorder: 'rgba(34, 197, 94, 0.25)',
-
-  // Permission deny (red)
-  permissionDenyBg: 'rgba(239, 68, 68, 0.08)',
-  permissionDenyHoverBg: 'rgba(239, 68, 68, 0.18)',
-  permissionDenyBorder: 'rgba(239, 68, 68, 0.22)',
-
-  // Permission denied card
-  permissionDeniedBorder: 'rgba(196, 112, 96, 0.3)',
-  permissionDeniedHeaderBorder: 'rgba(196, 112, 96, 0.12)',
-
-  // Info / question card (blue)
-  infoBg: 'rgba(96, 165, 250, 0.1)',
-  infoHoverBg: 'rgba(96, 165, 250, 0.15)',
-  infoBorder: 'rgba(96, 165, 250, 0.25)',
-  infoText: 'rgba(96, 165, 250, 0.85)',
-  infoShadow: 'rgba(96, 165, 250, 0.06)',
-
-  // Tab waiting-state glows
-  tabGlowPlanReady: 'rgba(122, 172, 140, 0.5)',
-  tabGlowPlanReadyShadow: 'rgba(122, 172, 140, 0.25)',
-  tabGlowQuestion: 'rgba(96, 165, 250, 0.5)',
-  tabGlowQuestionShadow: 'rgba(96, 165, 250, 0.25)',
-
-  // Worktree branch indicator
-  worktreeGreen: '#4ade80',
-
-  // Diff (inline edit diffs + git diff viewer)
-  diffAddBg: 'rgba(122, 172, 140, 0.12)',
-  diffAddText: '#7aac8c',
-  diffRemoveBg: 'rgba(196, 112, 96, 0.1)',
-  diffRemoveText: '#c47060',
-} as const
-
-export const lightColors = {
-  // Container (glass surfaces)
-  containerBg: '#f9f8f5',
-  containerBgCollapsed: '#f4f2ed',
-  containerBorder: '#dddad2',
-  containerShadow: '0 8px 28px rgba(0, 0, 0, 0.08), 0 1px 6px rgba(0, 0, 0, 0.04)',
-  cardShadow: '0 2px 8px rgba(0,0,0,0.06)',
-  cardShadowCollapsed: '0 2px 6px rgba(0,0,0,0.08)',
-
-  // Surface layers
-  surfacePrimary: '#edeae0',
-  surfaceSecondary: '#dddad2',
-  surfaceHover: 'rgba(0, 0, 0, 0.04)',
-  surfaceActive: 'rgba(0, 0, 0, 0.06)',
-
-  // Input
-  inputBg: 'transparent',
-  inputBorder: '#dddad2',
-  inputFocusBorder: 'rgba(217, 119, 87, 0.4)',
-  inputPillBg: '#ffffff',
-
-  // Text
-  textPrimary: '#3c3929',
-  textSecondary: '#5a5749',
-  textTertiary: '#8a8a80',
-  textMuted: '#dddad2',
-
-  // Accent — orange (same)
-  accent: '#d97757',
-  accentLight: 'rgba(217, 119, 87, 0.1)',
-  accentSoft: 'rgba(217, 119, 87, 0.12)',
-
-  // Status dots
-  statusIdle: '#8a8a80',
-  statusRunning: '#d97757',
-  statusRunningBg: 'rgba(217, 119, 87, 0.1)',
-  statusCompacting: '#3b82f6',
-  statusCompactingBg: 'rgba(59, 130, 246, 0.1)',
-  statusComplete: '#5a9e6f',
-  statusCompleteBg: 'rgba(90, 158, 111, 0.1)',
-  statusError: '#c47060',
-  statusErrorBg: 'rgba(196, 112, 96, 0.06)',
-  statusWarning: '#f59e0b',
-  statusDead: '#c47060',
-  statusBash: '#cc6b9a',
-  statusBashGlow: 'rgba(204, 107, 154, 0.3)',
-  statusPermission: '#d97757',
-  statusPermissionGlow: 'rgba(217, 119, 87, 0.3)',
-  // "Awaiting children" state — see darkColors for full rationale.
-  statusWaitingChildren: '#f59e0b',
-  statusWaitingChildrenGlow: 'rgba(245, 158, 11, 0.3)',
-
-  // Tab
-  tabActive: '#edeae0',
-  tabActiveBorder: '#dddad2',
-  tabInactive: 'transparent',
-  tabHover: 'rgba(0, 0, 0, 0.04)',
-
-  // User message bubble
-  userBubble: '#edeae0',
-  userBubbleBorder: '#dddad2',
-  userBubbleText: '#3c3929',
-
-  // Tool card
-  toolBg: '#edeae0',
-  toolBorder: '#dddad2',
-  toolRunningBorder: 'rgba(217, 119, 87, 0.3)',
-  toolRunningBg: 'rgba(217, 119, 87, 0.05)',
-
-  // Timeline
-  timelineLine: '#dddad2',
-  timelineNode: 'rgba(217, 119, 87, 0.2)',
-  timelineNodeActive: '#d97757',
-
-  // Scrollbar
-  scrollThumb: 'rgba(0, 0, 0, 0.1)',
-  scrollThumbHover: 'rgba(0, 0, 0, 0.18)',
-
-  // Stop button
-  stopBg: '#ef4444',
-  stopHover: '#dc2626',
-
-  // Send button
-  sendBg: '#d97757',
-  sendHover: '#c96442',
-  sendDisabled: 'rgba(217, 119, 87, 0.3)',
-
-  // Popover
-  popoverBg: '#f9f8f5',
-  popoverBorder: '#dddad2',
-  popoverShadow: '0 4px 20px rgba(0,0,0,0.1), 0 1px 4px rgba(0,0,0,0.06)',
-
-  // Code block
-  codeBg: '#f0eee8',
-
-  // Mic button
-  micBg: '#edeae0',
-  micColor: '#5a5749',
-  micDisabled: '#c8c5bc',
-
-  // Placeholder
-  placeholder: '#b0ada4',
-
-  // Disabled button color
-  btnDisabled: '#c8c5bc',
-
-  // Text on accent backgrounds
-  textOnAccent: '#ffffff',
-
-  // Button hover (CSS-only stack buttons)
-  btnHoverColor: '#3c3929',
-  btnHoverBg: '#edeae0',
-
-  // Accent border variants (replaces hex-alpha concatenation antipattern)
-  accentBorder: 'rgba(217, 119, 87, 0.19)',
-  accentBorderMedium: 'rgba(217, 119, 87, 0.25)',
-
-  // Permission card (amber)
-  permissionBorder: 'rgba(245, 158, 11, 0.3)',
-  permissionShadow: '0 2px 12px rgba(245, 158, 11, 0.08)',
-  permissionHeaderBg: 'rgba(245, 158, 11, 0.06)',
-  permissionHeaderBorder: 'rgba(245, 158, 11, 0.12)',
-
-  // Permission allow (green)
-  permissionAllowBg: 'rgba(34, 197, 94, 0.1)',
-  permissionAllowHoverBg: 'rgba(34, 197, 94, 0.22)',
-  permissionAllowBorder: 'rgba(34, 197, 94, 0.25)',
-
-  // Permission deny (red)
-  permissionDenyBg: 'rgba(239, 68, 68, 0.08)',
-  permissionDenyHoverBg: 'rgba(239, 68, 68, 0.18)',
-  permissionDenyBorder: 'rgba(239, 68, 68, 0.22)',
-
-  // Permission denied card
-  permissionDeniedBorder: 'rgba(196, 112, 96, 0.3)',
-  permissionDeniedHeaderBorder: 'rgba(196, 112, 96, 0.12)',
-
-  // Info / question card (blue)
-  infoBg: 'rgba(96, 165, 250, 0.08)',
-  infoHoverBg: 'rgba(96, 165, 250, 0.12)',
-  infoBorder: 'rgba(96, 165, 250, 0.25)',
-  infoText: 'rgba(59, 130, 246, 0.9)',
-  infoShadow: 'rgba(96, 165, 250, 0.06)',
-
-  // Tab waiting-state glows
-  tabGlowPlanReady: 'rgba(90, 158, 111, 0.5)',
-  tabGlowPlanReadyShadow: 'rgba(90, 158, 111, 0.2)',
-  tabGlowQuestion: 'rgba(59, 130, 246, 0.5)',
-  tabGlowQuestionShadow: 'rgba(59, 130, 246, 0.2)',
-
-  // Worktree branch indicator
-  worktreeGreen: '#22c55e',
-
-  // Diff (inline edit diffs + git diff viewer)
-  diffAddBg: 'rgba(90, 158, 111, 0.12)',
-  diffAddText: '#5a9e6f',
-  diffRemoveBg: 'rgba(196, 112, 96, 0.08)',
-  diffRemoveText: '#c47060',
-} as const
-
-export type ColorPalette = { [K in keyof typeof darkColors]: string }
+export { darkColors, lightColors, classicColors, hudColors }
+export type { ColorPalette }
 
 // ─── Theme utilities ───
 
@@ -349,89 +36,28 @@ export function syncTokensToCss(tokens: ColorPalette): void {
   }
 }
 
-export function applyTheme(themeIdOrDark: string | boolean): void {
-  if (typeof themeIdOrDark === 'boolean') {
-    const isDark = themeIdOrDark
-    document.documentElement.classList.toggle('dark', isDark)
-    document.documentElement.classList.toggle('light', !isDark)
-    syncTokensToCss(isDark ? darkColors : lightColors)
-    return
-  }
-  const theme = getTheme(themeIdOrDark)
-  const isDark = theme.forcedColorScheme !== 'light'
+/** The color scheme a theme renders: its declared scheme, else derived from
+ * which palette it carries (defensive fallback for a malformed registry
+ * entry — every built-in declares `forcedColorScheme`). */
+export function themeScheme(theme: ThemeDefinition): 'dark' | 'light' {
+  return theme.forcedColorScheme ?? (theme.colors === lightColors ? 'light' : 'dark')
+}
+
+/** Apply a theme by id: sync its palette to CSS variables, set the
+ * dark/light root classes from the theme's scheme, and set/clear the
+ * theme background image var consumed by `.ion-theme-backdrop`. */
+export function applyTheme(themeId: string): void {
+  const theme = getTheme(themeId)
+  const isDark = themeScheme(theme) === 'dark'
   document.documentElement.classList.toggle('dark', isDark)
   document.documentElement.classList.toggle('light', !isDark)
   syncTokensToCss(theme.colors)
-}
-
-// ─── HUD / Jarvis palette ───
-// Arc reactor cyan overrides on top of the dark base. Only keys that render
-// visibly brownish in HUD mode are replaced; everything else falls through.
-export const hudColors: ColorPalette = {
-  ...darkColors,
-
-  // Surfaces — deep navy instead of warm gray
-  containerBg: 'rgba(4, 12, 26, 0.96)',
-  containerBgCollapsed: 'rgba(4, 12, 26, 0.96)',
-  containerBorder: 'rgba(51, 195, 247, 0.18)',
-  containerShadow: '0 8px 28px rgba(0, 0, 0, 0.6)',
-
-  surfacePrimary: 'rgba(6, 18, 34, 0.98)',
-  surfaceSecondary: 'rgba(8, 22, 40, 0.98)',
-  surfaceHover: 'rgba(51, 195, 247, 0.06)',
-  surfaceActive: 'rgba(51, 195, 247, 0.10)',
-
-  inputBg: 'transparent',
-  inputBorder: 'rgba(51, 195, 247, 0.35)',
-  inputFocusBorder: 'rgba(51, 195, 247, 0.65)',
-  inputPillBg: 'rgba(10, 30, 50, 0.60)',
-
-  textPrimary: 'rgba(190, 235, 255, 0.92)',
-  textSecondary: 'rgba(130, 195, 235, 0.65)',
-  textTertiary: 'rgba(80, 150, 195, 0.55)',
-  textMuted: 'rgba(51, 195, 247, 0.10)',
-
-  // Accent — cyan replaces orange
-  accent: '#33C3F7',
-  accentLight: 'rgba(51, 195, 247, 0.10)',
-  accentSoft: 'rgba(51, 195, 247, 0.15)',
-  accentBorder: 'rgba(51, 195, 247, 0.19)',
-  accentBorderMedium: 'rgba(51, 195, 247, 0.25)',
-
-  statusRunning: '#33C3F7',
-  statusRunningBg: 'rgba(51, 195, 247, 0.10)',
-  // HUD inherits the amber "awaiting children" from darkColors via the
-  // spread above. The amber stays distinct from the cyan running color
-  // so the foreground-vs-background visual vocabulary is preserved in
-  // the HUD theme too; deliberately not cyan-tinted because a second
-  // cyan dot would collide with statusRunning at a glance.
-
-  tabActive: 'rgba(8, 22, 40, 0.95)',
-  tabActiveBorder: 'rgba(51, 195, 247, 0.30)',
-  tabInactive: 'transparent',
-  tabHover: 'rgba(51, 195, 247, 0.06)',
-
-  userBubble: 'rgba(6, 18, 34, 0.98)',
-  userBubbleBorder: 'rgba(51, 195, 247, 0.22)',
-  userBubbleText: 'rgba(190, 235, 255, 0.92)',
-
-  toolBg: 'rgba(6, 18, 34, 0.98)',
-  toolBorder: 'rgba(51, 195, 247, 0.18)',
-  toolRunningBorder: 'rgba(51, 195, 247, 0.35)',
-  toolRunningBg: 'rgba(51, 195, 247, 0.05)',
-
-  sendBg: '#33C3F7',
-  sendHover: '#22b3e7',
-  sendDisabled: 'rgba(51, 195, 247, 0.3)',
-
-  placeholder: 'rgba(80, 150, 195, 0.45)',
-
-  scrollThumb: 'rgba(51, 195, 247, 0.20)',
-  scrollThumbHover: 'rgba(51, 195, 247, 0.35)',
-
-  popoverBg: 'rgba(4, 14, 28, 0.98)',
-  popoverBorder: 'rgba(51, 195, 247, 0.22)',
-  popoverShadow: '0 4px 20px rgba(0,0,0,0.5), 0 1px 4px rgba(0,0,0,0.3)',
+  const style = document.documentElement.style
+  if (theme.backgroundImageUrl) {
+    style.setProperty('--ion-theme-background-image', `url("${theme.backgroundImageUrl}")`)
+  } else {
+    style.removeProperty('--ion-theme-background-image')
+  }
 }
 
 // ─── Theme registry ───
@@ -441,27 +67,79 @@ export interface ThemeDefinition {
   displayName: string
   colors: ColorPalette
   forcedColorScheme?: 'light' | 'dark'
+  /** True for disk-loaded theme packs (absent on built-ins). */
+  custom?: boolean
+  /** Data URL of the pack's background asset, rendered by `.ion-theme-backdrop`. */
+  backgroundImageUrl?: string
+  /** Data URL of the pack's logo asset, shown in Settings → Appearance. */
+  logoUrl?: string
 }
 
 export const themes: ThemeDefinition[] = [
-  { id: 'ion-dark',   displayName: 'Ion Dark',   colors: darkColors },
-  { id: 'ion-light',  displayName: 'Ion Light',  colors: lightColors },
-  { id: 'jarvis-hud', displayName: 'Jarvis HUD', colors: hudColors, forcedColorScheme: 'dark' },
+  { id: 'ion-dark',    displayName: 'Ion Dark',    colors: darkColors,    forcedColorScheme: 'dark' },
+  { id: 'ion-light',   displayName: 'Ion Light',   colors: lightColors,   forcedColorScheme: 'light' },
+  { id: 'ion-classic', displayName: 'Ion Classic', colors: classicColors, forcedColorScheme: 'dark' },
+  { id: 'jarvis-hud',  displayName: 'Jarvis HUD',  colors: hudColors,     forcedColorScheme: 'dark' },
 ]
 
-export function getTheme(id: string): ThemeDefinition {
-  return themes.find((t) => t.id === id) ?? themes[0]
+// Custom themes are loaded from theme packs on disk (main process scans
+// ~/.ion/themes + the system root, renderer receives them via IPC at boot
+// and via the ion:themes-changed push). Module-level so the registry stays
+// a leaf — the store subscribes through onThemeRegistryChanged.
+let customThemes: ThemeDefinition[] = []
+const registryListeners = new Set<() => void>()
+
+/** Resolve one pack payload into a full ThemeDefinition: the base built-in
+ * palette filled with the pack's token overlay. Only known ColorPalette
+ * keys are applied (the loader validates, this stays defensive). */
+export function resolveCustomThemeDefinition(t: CustomThemeForRenderer): ThemeDefinition {
+  const base = themes.find((b) => b.id === t.base) ?? themes[0]
+  // ColorPalette is homomorphic over the as-const dark palette, so its
+  // properties are readonly — build through a mutable record, then narrow.
+  const colors: Record<string, string> = { ...base.colors }
+  for (const key of Object.keys(colors)) {
+    const v = t.tokens[key]
+    if (typeof v === 'string') colors[key] = v
+  }
+  return {
+    id: t.id,
+    displayName: t.name,
+    colors: colors as ColorPalette,
+    forcedColorScheme: t.forcedColorScheme ?? base.forcedColorScheme,
+    custom: true,
+    ...(t.backgroundDataUrl ? { backgroundImageUrl: t.backgroundDataUrl } : {}),
+    ...(t.logoDataUrl ? { logoUrl: t.logoDataUrl } : {}),
+  }
 }
 
-/** Returns the active color palette for the given theme id and dark state.
- * Forced-scheme themes (e.g. Jarvis HUD) return their own palette regardless
- * of isDark. Standard themes return darkColors or lightColors. */
-export function resolveColors(selectedTheme: string, isDark: boolean): ColorPalette {
-  const theme = getTheme(selectedTheme)
-  if (theme.forcedColorScheme) {
-    return theme.colors
-  }
-  return isDark ? darkColors : lightColors
+/** Replace the custom-theme set (wholesale — snapshot semantics) and notify
+ * subscribers so pickers re-render and the active theme re-applies. */
+export function registerCustomThemes(payloads: CustomThemeForRenderer[]): void {
+  customThemes = payloads.map(resolveCustomThemeDefinition)
+  for (const listener of registryListeners) listener()
+}
+
+/** Built-ins followed by installed custom themes (picker order). */
+export function getAllThemes(): ThemeDefinition[] {
+  return [...themes, ...customThemes]
+}
+
+/** Subscribe to registry changes (custom-theme set replaced). */
+export function onThemeRegistryChanged(listener: () => void): () => void {
+  registryListeners.add(listener)
+  return () => registryListeners.delete(listener)
+}
+
+export function getTheme(id: string): ThemeDefinition {
+  return themes.find((t) => t.id === id)
+    ?? customThemes.find((t) => t.id === id)
+    ?? themes[0]  // Defaults to ion-dark (also covers a stale custom id)
+}
+
+/** Returns the color palette for the given theme id (unknown ids fall back
+ * to the default Ion Dark theme). */
+export function resolveColors(selectedTheme: string): ColorPalette {
+  return getTheme(selectedTheme).colors
 }
 
 // Legacy static export — components migrating to useColors() may still read this.
@@ -480,6 +158,28 @@ export const spacing = {
   pillRadius: 9999,
   circleSize: 36,
   circleGap: 8,
+} as const
+
+// ─── Radius scale ───
+// Standard corner radii for chrome elements. The pill/circle shapes
+// (spacing.pillRadius, spacing.containerRadius) are layout constants above.
+
+export const radius = {
+  sm: 6,
+  md: 8,
+  lg: 10,
+  xl: 14,
+} as const
+
+// ─── Transition timing ───
+// Standard durations for interactive-state changes. Use `base` for
+// hover/pressed/focus color and background shifts; `fast` for small
+// glyph movement (chevron rotation); `slow` for panel-level changes.
+
+export const transitions = {
+  fast: '120ms ease',
+  base: '150ms ease',
+  slow: '250ms ease',
 } as const
 
 // ─── Animation ───

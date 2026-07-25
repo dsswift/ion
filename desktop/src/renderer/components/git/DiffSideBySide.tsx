@@ -48,14 +48,14 @@ function buildRows(parsed: ParsedDiff): Row[] {
   return rows
 }
 
-function renderInline(text: string, side: 'left' | 'right', pair?: { left: string; right: string }, _colors?: ReturnType<typeof useColors>): React.ReactNode {
+function renderInline(text: string, side: 'left' | 'right', pair?: { left: string; right: string }, colors?: ReturnType<typeof useColors>): React.ReactNode {
   if (!pair) return text
   const tokens = wordDiff(pair.left, pair.right)
   const arr = side === 'left' ? tokens.old : tokens.new
   return (
     <>
       {arr.map((tok, ti) => (
-        <span key={ti} style={{ background: tok.type === 'add' ? '#7aac8c44' : tok.type === 'remove' ? '#c4706044' : undefined }}>{tok.text}</span>
+        <span key={ti} style={{ background: tok.type === 'add' ? colors?.permissionAllowHoverBg : tok.type === 'remove' ? colors?.permissionDenyHoverBg : undefined }}>{tok.text}</span>
       ))}
     </>
   )

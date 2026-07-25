@@ -12,6 +12,11 @@ type CompatibleProviderOptions struct {
 	ID      string
 	APIKey  string
 	BaseURL string
+	// AuthHeader overrides the auth header style ("bearer" default,
+	// "x-api-key", "api-key", or a custom header name — see setAuthHeader).
+	// Enterprise gateways (e.g. APIM with subscription keys) often require
+	// x-api-key instead of Authorization: Bearer.
+	AuthHeader string
 }
 
 // NewOpenAICompatibleProvider creates a provider for any OpenAI-API-compatible
@@ -20,9 +25,10 @@ type CompatibleProviderOptions struct {
 func NewOpenAICompatibleProvider(opts CompatibleProviderOptions) LlmProvider {
 	utils.LogWithFields(utils.LevelInfo, "CompatProvider", "new openai compatible provider", map[string]any{"provider": opts.ID, "path": opts.BaseURL})
 	p := NewOpenAIProvider(&ProviderOptions{
-		ID:      opts.ID,
-		APIKey:  opts.APIKey,
-		BaseURL: opts.BaseURL,
+		ID:         opts.ID,
+		APIKey:     opts.APIKey,
+		BaseURL:    opts.BaseURL,
+		AuthHeader: opts.AuthHeader,
 	})
 
 	// Wrap to override ID

@@ -1301,6 +1301,19 @@ export interface SendPromptOpts {
    * An empty/omitted array is a no-op.
    */
   bashAllowlistAdditions?: string[]
+
+  /**
+   * Semantic classification of this injection.
+   *
+   * `"agent_completion"` means this is a machine-to-machine dispatch callback:
+   * a completed child agent's result being routed back to its parent. The
+   * injected prompt is not a turn the user authored; it is an internal signal
+   * between engine-side actors. Consumers interpret the classification however
+   * they choose — the engine carries no opinion about what any consumer should
+   * do with it. Empty (the default) means the injection is a genuine
+   * extension-initiated turn with no special classification.
+   */
+  kind?: string
 }
 
 export interface ElicitOptions {
@@ -1831,6 +1844,74 @@ export interface BeforePlanModeExitResult {
 }
 
 /**
+ * Payload for the `before_plan_mode_auto_exit` hook. Fired immediately
+ * before the engine synthesizes an ExitPlanMode call at end-of-turn — i.e.
+ * when a plan-mode run ends with stop reason `end_turn` / `stop` but the
+ * assistant never invoked ExitPlanMode or AskUserQuestion. The hook lets a
+ * harness observe, suppress, or rewrite the synthesized exit (see
+ * {@link BeforePlanModeAutoExitResult}).
+ *
+ * Mirrors `extension.BeforePlanModeAutoExitInfo` in the Go SDK.
+ */
+export interface BeforePlanModeAutoExitInfo {
+  /** Engine session ID for this run. */
+  sessionId: string
+  /** Engine-issued request ID for this run. */
+  runId: string
+  /**
+   * Provider stop reason (`"end_turn"` or `"stop"`) that triggered the
+   * synthesis decision. Other stop reasons never reach this hook.
+   */
+  stopReason: string
+  /**
+   * Resolved plan file path the synthesized exit would reference. Never
+   * empty when this hook fires — the engine short-circuits synthesis
+   * (without firing the hook) when no path is resolvable.
+   */
+  planFilePath: string
+  /**
+   * Concatenated text content of the final assistant turn that triggered
+   * synthesis. Useful for distinguishing "the model presented a plan" from
+   * "the model just answered / dispatched."
+   */
+  assistantText: string
+  /**
+   * Tool names the assistant emitted on this turn (none of which were
+   * ExitPlanMode / AskUserQuestion). Empty when the turn ended with
+   * text-only content.
+   */
+  emittedTools?: string[]
+}
+
+/**
+ * Optional return value from a `before_plan_mode_auto_exit` handler.
+ * Returning `undefined` (or an all-empty object) means "no opinion —
+ * proceed with synthesis using the engine defaults." Across multiple hosts,
+ * the last non-empty value wins per field (last-writer semantics).
+ *
+ * Mirrors `extension.BeforePlanModeAutoExitResult` in the Go SDK.
+ */
+export interface BeforePlanModeAutoExitResult {
+  /**
+   * When `true`, blocks the synthesis. The run completes as a normal
+   * `end_turn` with no plan-approval card surfaced; the conversation stays
+   * parked in plan mode. Use this for a turn that produced no plan to
+   * review (e.g. an informational or dispatch-only turn).
+   */
+  suppress?: boolean
+  /**
+   * When non-empty, overrides the resolved plan file path used in the
+   * synthesized exit. Empty means "no change."
+   */
+  planFilePath?: string
+  /**
+   * When non-empty, replaces the engine's default reason string recorded
+   * on the synthesized exit. Empty means "use the engine default."
+   */
+  reason?: string
+}
+
+/**
  * Payload for the `before_early_stop_decision` hook. Fires after the
  * model emits `end_turn` / `stop` and after the engine has updated its
  * cumulative output-token counter, but **before** it evaluates the
@@ -2093,6 +2174,7 @@ export interface HookPayloadMap {
   // state-vs-workflow distinction these hooks live alongside.
   before_plan_mode_enter: PlanModeEnterInfo
   before_plan_mode_exit: BeforePlanModeExitInfo
+  before_plan_mode_auto_exit: BeforePlanModeAutoExitInfo
 
   // System inject (1) -- fired before the engine injects any system message.
   // The `kind` discriminator carries the reason (plan_mode_reminder,

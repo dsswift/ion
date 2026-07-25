@@ -30,7 +30,7 @@ import { claimEngineEgressForDesktop } from './engine-egress-claim'
 import { configureEgress, closeEgress, setEgressUser, type EgressConfig, type AuthHeaderProvider } from './log-egress'
 import { startEgressTailers, stopEgressTailers } from './log-egress-tailer'
 import { getAccessToken, getSignedInIdentity, ensureEntraAuthConfig } from './oauth/entra-auth'
-import { getEnterprisePolicy } from './engine-bridge-fs'
+import { getEnterprisePolicy, getEnterprisePolicyNewConversationDefaults } from './engine-bridge-fs'
 import { initAutoUpdater } from './updater'
 import { startWatchdog, stopWatchdog } from './watchdog'
 
@@ -289,8 +289,14 @@ export function setupAppLifecycle(): void {
     }
     // Cache the policy for main-process consumers that run later: the model
     // cache filter (D-011 iOS-parity in ipc/models.ts) reads it on every
-    // list_models refresh.
+    // list_models refresh; the theme lock (theme-policy.ts) and the
+    // settings-snapshot broadcaster read it synchronously.
     enterprisePolicyCache.policy = enterprisePolicy
+    try {
+      enterprisePolicyCache.newConversationDefaults = await getEnterprisePolicyNewConversationDefaults()
+    } catch (err: any) {
+      log('app_lifecycle: new-conversation policy fetch failed, proceeding unconstrained', { error: err.message })
+    }
 
     // Auto-updater (D-012): enterprise-managed installs pin their version
     // through MDM; the app-level updater must not fight it. The flag rides

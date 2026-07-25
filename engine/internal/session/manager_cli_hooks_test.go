@@ -697,7 +697,7 @@ func TestBuildAgentToolHandler_RoutesThroughDispatch(t *testing.T) {
 	if res.IsError {
 		t.Fatalf("unexpected error result: %s", res.Content)
 	}
-	if res.Content != "child output" {
+	if stripUsageSuffix(res.Content) != "child output" {
 		t.Errorf("result = %q, want %q (child dispatch output)", res.Content, "child output")
 	}
 	mu.Lock()

@@ -147,12 +147,23 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
    *  pulling newly persisted messages as the child agent works. The child
    *  conversation file grows incrementally on disk (the engine saves after
    *  every assistant turn and tool result), so each refetch returns a longer
-   *  transcript until the dispatch reaches a terminal state. */
-  const refetchConversation = useCallback(async (convId: string) => {
+   *  transcript until the dispatch reaches a terminal state.
+   *
+   *  `showLoading` gates the "Loading conversation..." placeholder. It is set
+   *  only for the initial one-shot load, when there is nothing to show yet. A
+   *  BACKGROUND reconcile (the 12s poller, the terminal-transition refetch)
+   *  must NOT raise the loading flag: the popup already has a cached transcript
+   *  (plus the live push transcript) to display, and flipping loading true on
+   *  every poll cycle blanks the panel to the placeholder while the fetch is in
+   *  flight — the ~12s flashing between content and "Loading conversation...".
+   *  Per the View readiness principle, no loading placeholder for data we have. */
+  const refetchConversation = useCallback(async (convId: string, showLoading = false) => {
     if (!convId) return
-    setConvLoading(prev => { const next = new Map(prev); next.set(convId, true); return next })
+    if (showLoading) {
+      setConvLoading(prev => { const next = new Map(prev); next.set(convId, true); return next })
+    }
     try {
-      rDebug('agent-panel', 'fetching conversation', { conversation_id: convId })
+      rDebug('agent-panel', 'fetching conversation', { conversation_id: convId, show_loading: showLoading })
       const data = await window.ion.getConversation(convId, 0, 200)
       const msgs: Message[] = mapConversationMessages(data.messages || [])
       rDebug('agent-panel', 'loaded conversation messages', { conversation_id: convId, count: msgs.length })
@@ -160,7 +171,9 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
     } catch (err) {
       rError('agent-panel', 'loadConversation error', { error: String(err) })
     } finally {
-      setConvLoading(prev => { const next = new Map(prev); next.set(convId, false); return next })
+      if (showLoading) {
+        setConvLoading(prev => { const next = new Map(prev); next.set(convId, false); return next })
+      }
     }
   }, [])
 
@@ -168,7 +181,9 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
    *  yet. The live poller uses refetchConversation to force a refresh. */
   const loadSingleConversation = useCallback(async (convId: string) => {
     if (!convId || convMessages.has(convId)) return
-    return refetchConversation(convId)
+    // First load for this conversation — nothing cached yet, so surface the
+    // loading placeholder. Background reconciles refetch silently.
+    return refetchConversation(convId, true)
   }, [convMessages, refetchConversation])
 
   /** Load the conversation for the selected dispatch of an agent,

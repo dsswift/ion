@@ -12,7 +12,11 @@
 		A1B2C3D4E5F60001000005AA /* RemoteTabState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000006AA /* RemoteTabState.swift */; };
 		A1B2C3D4E5F60001000007AA /* RemoteCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000008AA /* RemoteCommand.swift */; };
 		A1B2C3D4E5F60001000009AA /* PairedDevice.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100000AAA /* PairedDevice.swift */; };
+		THEMESYNCPAY0000000002 /* SyncedThemePayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = THEMESYNCPAY0000000001 /* SyncedThemePayload.swift */; };
+		THEMESYNCSTORE00000002 /* SyncedThemeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = THEMESYNCSTORE00000001 /* SyncedThemeStore.swift */; };
+		THEMESYNCTHEME00000002 /* SyncedTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = THEMESYNCTHEME00000001 /* SyncedTheme.swift */; };
 		A1B2C3D4E5F6000100000BAA /* RelayClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100000CAA /* RelayClient.swift */; };
+		A2B3C4D5E6F700000000001B /* OIDCTokenManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F700000000001A /* OIDCTokenManager.swift */; };
 		A1B2C3D4E5F6000100000DAA /* LANClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100000EAA /* LANClient.swift */; };
 		LANAUTHOUT0000000000001 /* LANAuthOutcome.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANAUTHOUT0000000000002 /* LANAuthOutcome.swift */; };
 		LANBACKOFF0000000000001 /* LANReconnectBackoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANBACKOFF0000000000002 /* LANReconnectBackoff.swift */; };
@@ -38,6 +42,8 @@
 		A1B2C3D4E5F60001000027AA /* E2ECryptoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000028AA /* E2ECryptoTests.swift */; };
 		A1B2C3D4E5F60001000029AA /* TransportManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */; };
 		A1B2C3D4E5F6000100002BAA /* RelayClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */; };
+		A2B3C4D5E6F700000000002B /* OIDCTokenManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F700000000002A /* OIDCTokenManagerTests.swift */; };
+		RELAYOIDC00000000000001 /* RelayConfigOidcTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RELAYOIDC00000000000002 /* RelayConfigOidcTests.swift */; };
 		TMRTESTS00000000000001 /* TransportManagerReceiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TMRTESTS00000000000002 /* TransportManagerReceiveTests.swift */; };
 		EPOCHRST00000000000001 /* TransportManagerEpochResetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EPOCHRST00000000000002 /* TransportManagerEpochResetTests.swift */; };
 		MRGRECON00000000000001 /* ConversationMergeReconcileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MRGRECON00000000000002 /* ConversationMergeReconcileTests.swift */; };
@@ -46,8 +52,10 @@
 		SPCARDRS00000000000001 /* SpecialCardDismissalResetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SPCARDRS00000000000002 /* SpecialCardDismissalResetTests.swift */; };
 		IMGFETRT00000000000001 /* RemoteImageFetcherRetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = IMGFETRT00000000000002 /* RemoteImageFetcherRetryTests.swift */; };
 		TOOLLIFE00000000000001 /* ToolRowLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TOOLLIFE00000000000002 /* ToolRowLifecycleTests.swift */; };
+		TOOLDESC000000000000001 /* ToolDescriptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TOOLDESC000000000000002 /* ToolDescriptionTests.swift */; };
 		DEDUPIMG00000000000001 /* DedupAndImageAttachTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEDUPIMG00000000000002 /* DedupAndImageAttachTests.swift */; };
 		LIVEBND00000000000001 /* LiveBoundaryMarkingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LIVEBND00000000000002 /* LiveBoundaryMarkingTests.swift */; };
+		PROMPTINJ00000000000001 /* PromptInjectedSuppressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PROMPTINJ00000000000002 /* PromptInjectedSuppressionTests.swift */; };
 		A1B2C3D4E5F60001000090AA /* Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000091AA /* Message.swift */; };
 		PENDINGCARD0000000000001 /* PendingCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = PENDINGCARD0000000000002 /* PendingCard.swift */; };
 		PLANCARDGATE000000000001 /* PlanCardGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLANCARDGATE000000000002 /* PlanCardGate.swift */; };
@@ -90,6 +98,7 @@
 		A1B2C3D4E5F600010000FCAA /* TabRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010000FDAA /* TabRowView.swift */; };
 		DRAFT0000000000000000002 /* SessionViewModel+Drafts.swift in Sources */ = {isa = PBXBuildFile; fileRef = DRAFT0000000000000000001 /* SessionViewModel+Drafts.swift */; };
 		A1B2C3D4E5F60001000200AA /* SessionViewModel+Lifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000201AA /* SessionViewModel+Lifecycle.swift */; };
+		700180B7333F5A03BE7F8C16 /* SessionViewModel+DeviceManagement.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9612EDB59ED764A140EADEC /* SessionViewModel+DeviceManagement.swift */; };
 		A1B2C3D4E5F60001000202AA /* SessionViewModel+Pairing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */; };
 		A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */; };
 		A1B2C3D4E5F600010002049A /* SessionViewModel+GitCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */; };
@@ -186,6 +195,7 @@
 		A1B2C3D4E5F60001000900AA /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000901AA /* AppDelegate.swift */; };
 		A1B2C3D4E5F60001000902AA /* SessionViewModel+Snapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000903AA /* SessionViewModel+Snapshot.swift */; };
 		A1B2C3D4E5F60001000950AA /* SessionViewModel+OnConnected.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000951AA /* SessionViewModel+OnConnected.swift */; };
+		THEMESYNCVM00000000002 /* SessionViewModel+ThemeSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = THEMESYNCVM00000000001 /* SessionViewModel+ThemeSync.swift */; };
 		A1B2C3D4E5F600010009F1AA /* SessionViewModel+PendingCreate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010009F2AA /* SessionViewModel+PendingCreate.swift */; };
 		A1B2C3D4E5F600010009F5AA /* SessionViewModel+Listening.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010009F6AA /* SessionViewModel+Listening.swift */; };
 		SENDINT00000000000000001 /* SendIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = SENDINT00000000000000002 /* SendIntent.swift */; };
@@ -253,6 +263,8 @@
 		A1B2C3D4E5F60001005210AA /* VoiceInputOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005211AA /* VoiceInputOverlay.swift */; };
 		A1B2C3D4E5F60001005300AA /* AttachmentImageCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005301AA /* AttachmentImageCache.swift */; };
 		A1B2C3D4E5F60001005302AA /* AttachmentImagePreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005303AA /* AttachmentImagePreview.swift */; };
+		A1B2C3D4E5F600010053E0AA /* MessageAttachmentImages.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010053E1AA /* MessageAttachmentImages.swift */; };
+		A1B2C3D4E5F600010053E2AA /* MessageImageAttachmentsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010053E3AA /* MessageImageAttachmentsTests.swift */; };
 		A1B2C3D4E5F60001005304AA /* RemoteImageFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005305AA /* RemoteImageFetcher.swift */; };
 		A1B2C3D4E5F60001005306AA /* RemoteCommand+Encode.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005307AA /* RemoteCommand+Encode.swift */; };
 		A1B2C3D4E5F60001005308AA /* SessionViewModel+TabEventHandlers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005309AA /* SessionViewModel+TabEventHandlers.swift */; };
@@ -282,6 +294,7 @@
 		A1B2C3D4E5F6000100A101AA /* NormalizedEvent+PlanModeAutoExit.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100A100AA /* NormalizedEvent+PlanModeAutoExit.swift */; };
 		A1B2C3D4E5F6000100A201AA /* SessionViewModel+UploadEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100A200AA /* SessionViewModel+UploadEvents.swift */; };
 		A1B2C3D4E5F60001CE0006AA /* SessionViewModel+ConnectionEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001CE0007AA /* SessionViewModel+ConnectionEvents.swift */; };
+		A1B2C3D4E5F60001RA0006AA /* SessionViewModel+RelayAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001RA0007AA /* SessionViewModel+RelayAuth.swift */; };
 		A1B2C3D4E5F60001D70006AA /* DesktopSettingsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001D70007AA /* DesktopSettingsModel.swift */; };
 		A1B2C3D4E5F60001D80006AA /* DesktopSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001D80007AA /* DesktopSettingsView.swift */; };
 		A1B2C3D4E5F60001D90006AA /* DesktopSettingsListEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001D90007AA /* DesktopSettingsListEditor.swift */; };
@@ -296,12 +309,14 @@
 		E11C17CA0001F00012AB0001 /* ElicitationCodecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E11C17CA0001F00013AB0001 /* ElicitationCodecTests.swift */; };
 		B1B2C3D4E5F60001CC000001 /* ConversationStatusBarContextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B2C3D4E5F60001CC000002 /* ConversationStatusBarContextTests.swift */; };
 		D1B2C3D4E5F60001AB000001 /* InputBarAbortGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1B2C3D4E5F60001AB000002 /* InputBarAbortGateTests.swift */; };
+		D1B2C3D4E5F60001AB000003 /* InputBarImageBannerGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1B2C3D4E5F60001AB000004 /* InputBarImageBannerGateTests.swift */; };
 		MSGADDFRESH00000000000001 /* MessageAddedFreshConversationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MSGADDFRESH00000000000002 /* MessageAddedFreshConversationTests.swift */; };
 		PLANDIVIDER0000000000001 /* PlanDividerCreatedUpdatedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLANDIVIDER0000000000002 /* PlanDividerCreatedUpdatedTests.swift */; };
 		MARKERRELOAD00000000000001 /* MarkerReloadDecodeGroupingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MARKERRELOAD00000000000002 /* MarkerReloadDecodeGroupingTests.swift */; };
 		ATTCHSEGPARSE000000001 /* AttachmentSegmentParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ATTCHSEGPARSE000000002 /* AttachmentSegmentParsingTests.swift */; };
 		PEERSTATLOG000000001 /* PeerStatusPollerLoggingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PEERSTATLOG000000002 /* PeerStatusPollerLoggingTests.swift */; };
 		OPTINSERT00000000000001 /* OptimisticInsertTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = OPTINSERT00000000000002 /* OptimisticInsertTests.swift */; };
+		CLRPILLRECON00000001 /* ClearPillReconcileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CLRPILLRECON00000002 /* ClearPillReconcileTests.swift */; };
 		SLSHPILL0000000000000001 /* SlashPillOptimisticTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SLSHPILL0000000000000002 /* SlashPillOptimisticTests.swift */; };
 		A1B2C3D4E5F600010009F3AA /* PendingCreateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010009F4AA /* PendingCreateTests.swift */; };
 		PLANCARDGATETEST00000001 /* PlanCardGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLANCARDGATETEST00000002 /* PlanCardGateTests.swift */; };
@@ -317,7 +332,14 @@
 		B1B2C3D4E5F60001CC000013 /* NormalizedEvent+Codable.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B2C3D4E5F60001CC000014 /* NormalizedEvent+Codable.swift */; };
 		B1B2C3D4E5F60001CC000009 /* SessionViewModelTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B2C3D4E5F60001CC000010 /* SessionViewModelTypes.swift */; };
 		A1B2C3D4E5F60001F10002AA /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F10001AA /* AppTheme.swift */; };
-		A1B2C3D4E5F60001F10004AA /* IonDefaultTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F10003AA /* IonDefaultTheme.swift */; };
+		THEMEDARK00000000000002 /* IonDarkTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = THEMEDARK00000000000001 /* IonDarkTheme.swift */; };
+		THEMELIGHT0000000000002 /* IonLightTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = THEMELIGHT0000000000001 /* IonLightTheme.swift */; };
+		THEMECLASSIC00000000002 /* IonClassicTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = THEMECLASSIC00000000001 /* IonClassicTheme.swift */; };
+		THEMEPARITYTST000000002 /* ThemeParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = THEMEPARITYTST000000001 /* ThemeParityTests.swift */; };
+		THEMEMIGRTST0000000002 /* ThemeManagerMigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = THEMEMIGRTST0000000001 /* ThemeManagerMigrationTests.swift */; };
+		THEMESTORETST000000002 /* SyncedThemeStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = THEMESTORETST000000001 /* SyncedThemeStoreTests.swift */; };
+		THEMEWIRETST0000000002 /* ThemeSyncWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = THEMEWIRETST0000000001 /* ThemeSyncWireTests.swift */; };
+		THEMEENFTST00000000002 /* ThemeEnforcementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = THEMEENFTST00000000001 /* ThemeEnforcementTests.swift */; };
 		A1B2C3D4E5F60001F10006AA /* JarvisArcReactorTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F10005AA /* JarvisArcReactorTheme.swift */; };
 		A1B2C3D4E5F60001F10008AA /* ArcReactorBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F10007AA /* ArcReactorBackground.swift */; };
 		A1B2C3D4E5F60001F1000AAA /* ThinkingScanLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F10009AA /* ThinkingScanLine.swift */; };
@@ -372,7 +394,11 @@
 		A1B2C3D4E5F60001000006AA /* RemoteTabState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTabState.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000008AA /* RemoteCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteCommand.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100000AAA /* PairedDevice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairedDevice.swift; sourceTree = "<group>"; };
+		THEMESYNCPAY0000000001 /* SyncedThemePayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncedThemePayload.swift; sourceTree = "<group>"; };
+		THEMESYNCSTORE00000001 /* SyncedThemeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncedThemeStore.swift; sourceTree = "<group>"; };
+		THEMESYNCTHEME00000001 /* SyncedTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncedTheme.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100000CAA /* RelayClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayClient.swift; sourceTree = "<group>"; };
+		A2B3C4D5E6F700000000001A /* OIDCTokenManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OIDCTokenManager.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100000EAA /* LANClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANClient.swift; sourceTree = "<group>"; };
 		LANAUTHOUT0000000000002 /* LANAuthOutcome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANAuthOutcome.swift; sourceTree = "<group>"; };
 		LANBACKOFF0000000000002 /* LANReconnectBackoff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANReconnectBackoff.swift; sourceTree = "<group>"; };
@@ -398,6 +424,8 @@
 		A1B2C3D4E5F60001000028AA /* E2ECryptoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E2ECryptoTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportManagerTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayClientTests.swift; sourceTree = "<group>"; };
+		A2B3C4D5E6F700000000002A /* OIDCTokenManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OIDCTokenManagerTests.swift; sourceTree = "<group>"; };
+		RELAYOIDC00000000000002 /* RelayConfigOidcTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayConfigOidcTests.swift; sourceTree = "<group>"; };
 		TMRTESTS00000000000002 /* TransportManagerReceiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportManagerReceiveTests.swift; sourceTree = "<group>"; };
 		EPOCHRST00000000000002 /* TransportManagerEpochResetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportManagerEpochResetTests.swift; sourceTree = "<group>"; };
 		MRGRECON00000000000002 /* ConversationMergeReconcileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationMergeReconcileTests.swift; sourceTree = "<group>"; };
@@ -406,8 +434,10 @@
 		SPCARDRS00000000000002 /* SpecialCardDismissalResetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpecialCardDismissalResetTests.swift; sourceTree = "<group>"; };
 		IMGFETRT00000000000002 /* RemoteImageFetcherRetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteImageFetcherRetryTests.swift; sourceTree = "<group>"; };
 		TOOLLIFE00000000000002 /* ToolRowLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolRowLifecycleTests.swift; sourceTree = "<group>"; };
+		TOOLDESC000000000000002 /* ToolDescriptionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolDescriptionTests.swift; sourceTree = "<group>"; };
 		DEDUPIMG00000000000002 /* DedupAndImageAttachTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DedupAndImageAttachTests.swift; sourceTree = "<group>"; };
 		LIVEBND00000000000002 /* LiveBoundaryMarkingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveBoundaryMarkingTests.swift; sourceTree = "<group>"; };
+		PROMPTINJ00000000000002 /* PromptInjectedSuppressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptInjectedSuppressionTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002EAA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002FAA /* IonRemote.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = IonRemote.entitlements; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000032AA /* IonRemote.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = IonRemote.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -453,6 +483,7 @@
 		A1B2C3D4E5F600010000FDAA /* TabRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabRowView.swift; sourceTree = "<group>"; };
 		DRAFT0000000000000000001 /* SessionViewModel+Drafts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Drafts.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000201AA /* SessionViewModel+Lifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Lifecycle.swift"; sourceTree = "<group>"; };
+		F9612EDB59ED764A140EADEC /* SessionViewModel+DeviceManagement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+DeviceManagement.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Pairing.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Commands.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+GitCommands.swift"; sourceTree = "<group>"; };
@@ -549,6 +580,7 @@
 		A1B2C3D4E5F60001000901AA /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000903AA /* SessionViewModel+Snapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Snapshot.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000951AA /* SessionViewModel+OnConnected.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+OnConnected.swift"; sourceTree = "<group>"; };
+		THEMESYNCVM00000000001 /* SessionViewModel+ThemeSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ThemeSync.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010009F2AA /* SessionViewModel+PendingCreate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+PendingCreate.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010009F6AA /* SessionViewModel+Listening.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Listening.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000981AA /* SessionViewModel+SessionStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+SessionStatus.swift"; sourceTree = "<group>"; };
@@ -607,6 +639,8 @@
 		A1B2C3D4E5F60001005211AA /* VoiceInputOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceInputOverlay.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005301AA /* AttachmentImageCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentImageCache.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005303AA /* AttachmentImagePreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentImagePreview.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010053E1AA /* MessageAttachmentImages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageAttachmentImages.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010053E3AA /* MessageImageAttachmentsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageImageAttachmentsTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005305AA /* RemoteImageFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteImageFetcher.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005307AA /* RemoteCommand+Encode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RemoteCommand+Encode.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005309AA /* SessionViewModel+TabEventHandlers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+TabEventHandlers.swift"; sourceTree = "<group>"; };
@@ -636,6 +670,7 @@
 		A1B2C3D4E5F6000100A100AA /* NormalizedEvent+PlanModeAutoExit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+PlanModeAutoExit.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100A200AA /* SessionViewModel+UploadEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+UploadEvents.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001CE0007AA /* SessionViewModel+ConnectionEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ConnectionEvents.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001RA0007AA /* SessionViewModel+RelayAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+RelayAuth.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001D70007AA /* DesktopSettingsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopSettingsModel.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001D80007AA /* DesktopSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopSettingsView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001D90007AA /* DesktopSettingsListEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopSettingsListEditor.swift; sourceTree = "<group>"; };
@@ -650,12 +685,14 @@
 		E11C17CA0001F00013AB0001 /* ElicitationCodecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElicitationCodecTests.swift; sourceTree = "<group>"; };
 		B1B2C3D4E5F60001CC000002 /* ConversationStatusBarContextTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationStatusBarContextTests.swift; sourceTree = "<group>"; };
 		D1B2C3D4E5F60001AB000002 /* InputBarAbortGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputBarAbortGateTests.swift; sourceTree = "<group>"; };
+		D1B2C3D4E5F60001AB000004 /* InputBarImageBannerGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputBarImageBannerGateTests.swift; sourceTree = "<group>"; };
 		MSGADDFRESH00000000000002 /* MessageAddedFreshConversationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageAddedFreshConversationTests.swift; sourceTree = "<group>"; };
 		PLANDIVIDER0000000000002 /* PlanDividerCreatedUpdatedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanDividerCreatedUpdatedTests.swift; sourceTree = "<group>"; };
 		MARKERRELOAD00000000000002 /* MarkerReloadDecodeGroupingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkerReloadDecodeGroupingTests.swift; sourceTree = "<group>"; };
 		ATTCHSEGPARSE000000002 /* AttachmentSegmentParsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentSegmentParsingTests.swift; sourceTree = "<group>"; };
 		PEERSTATLOG000000002 /* PeerStatusPollerLoggingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeerStatusPollerLoggingTests.swift; sourceTree = "<group>"; };
 		OPTINSERT00000000000002 /* OptimisticInsertTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptimisticInsertTests.swift; sourceTree = "<group>"; };
+		CLRPILLRECON00000002 /* ClearPillReconcileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClearPillReconcileTests.swift; sourceTree = "<group>"; };
 		SLSHPILL0000000000000002 /* SlashPillOptimisticTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlashPillOptimisticTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010009F4AA /* PendingCreateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingCreateTests.swift; sourceTree = "<group>"; };
 		PLANCARDGATETEST00000002 /* PlanCardGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanCardGateTests.swift; sourceTree = "<group>"; };
@@ -671,7 +708,14 @@
 		B1B2C3D4E5F60001CC000014 /* NormalizedEvent+Codable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Codable.swift"; sourceTree = "<group>"; };
 		B1B2C3D4E5F60001CC000010 /* SessionViewModelTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionViewModelTypes.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001F10001AA /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
-		A1B2C3D4E5F60001F10003AA /* IonDefaultTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IonDefaultTheme.swift; sourceTree = "<group>"; };
+		THEMEDARK00000000000001 /* IonDarkTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IonDarkTheme.swift; sourceTree = "<group>"; };
+		THEMELIGHT0000000000001 /* IonLightTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IonLightTheme.swift; sourceTree = "<group>"; };
+		THEMECLASSIC00000000001 /* IonClassicTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IonClassicTheme.swift; sourceTree = "<group>"; };
+		THEMEPARITYTST000000001 /* ThemeParityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeParityTests.swift; sourceTree = "<group>"; };
+		THEMEMIGRTST0000000001 /* ThemeManagerMigrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeManagerMigrationTests.swift; sourceTree = "<group>"; };
+		THEMESTORETST000000001 /* SyncedThemeStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncedThemeStoreTests.swift; sourceTree = "<group>"; };
+		THEMEWIRETST0000000001 /* ThemeSyncWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeSyncWireTests.swift; sourceTree = "<group>"; };
+		THEMEENFTST00000000001 /* ThemeEnforcementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeEnforcementTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001F10005AA /* JarvisArcReactorTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JarvisArcReactorTheme.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001F10007AA /* ArcReactorBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArcReactorBackground.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001F10009AA /* ThinkingScanLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingScanLine.swift; sourceTree = "<group>"; };
@@ -805,6 +849,7 @@
 				KINDNM00000000000000002 /* RemoteCommand+KindName.swift */,
 				RMDECERR000000000000002 /* RemoteEventDecodeError.swift */,
 				A1B2C3D4E5F6000100000AAA /* PairedDevice.swift */,
+				THEMESYNCPAY0000000001 /* SyncedThemePayload.swift */,
 				A1B2C3D4E5F60001000091AA /* Message.swift */,
 				PENDINGCARD0000000000002 /* PendingCard.swift */,
 				PLANCARDGATE000000000002 /* PlanCardGate.swift */,
@@ -824,6 +869,7 @@
 			isa = PBXGroup;
 			children = (
 				A1B2C3D4E5F6000100000CAA /* RelayClient.swift */,
+				A2B3C4D5E6F700000000001A /* OIDCTokenManager.swift */,
 				A1B2C3D4E5F6000100000EAA /* LANClient.swift */,
 				LANAUTHOUT0000000000002 /* LANAuthOutcome.swift */,
 				LANBACKOFF0000000000002 /* LANReconnectBackoff.swift */,
@@ -931,6 +977,7 @@
 				A1B2C3D4E5F60001003003AA /* EngineDialogSheet.swift */,
 				A1B2C3D4E5F60001004003AA /* AttachmentChipsView.swift */,
 				A1B2C3D4E5F60001005303AA /* AttachmentImagePreview.swift */,
+				A1B2C3D4E5F600010053E1AA /* MessageAttachmentImages.swift */,
 				A1B2C3D4E5F60001004005AA /* FilePickerSheet.swift */,
 				A1B2C3D4E5F60001004007AA /* EngineMessageRow.swift */,
 				A1B2C3D4E5F60001F00021AA /* EngineMessageRow+SlashBubble.swift */,
@@ -954,6 +1001,7 @@
 				B1B2C3D4E5F60001CC000010 /* SessionViewModelTypes.swift */,
 				DRAFT0000000000000000001 /* SessionViewModel+Drafts.swift */,
 			A1B2C3D4E5F60001000201AA /* SessionViewModel+Lifecycle.swift */,
+				F9612EDB59ED764A140EADEC /* SessionViewModel+DeviceManagement.swift */,
 				A1B2C3D4E5F6000100A200AA /* SessionViewModel+UploadEvents.swift */,
 				A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */,
 				A1B2C3D4E5F60001009200AA /* SessionViewModel+RemoteDisplay.swift */,
@@ -969,6 +1017,7 @@
 				A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */,
 				A1B2C3D4E5F60001FF0022AA /* SessionViewModel+ConversationHelpers.swift */,
 				A1B2C3D4E5F60001CE0007AA /* SessionViewModel+ConnectionEvents.swift */,
+				A1B2C3D4E5F60001RA0007AA /* SessionViewModel+RelayAuth.swift */,
 				A1B2C3D4E5F60001EF0007AA /* SessionViewModel+EngineWorkflowEvents.swift */,
 				A1B2C3D4E5F60001005309AA /* SessionViewModel+TabEventHandlers.swift */,
 				A1B2C3D4E5F60001008101AA /* SessionViewModel+EngineKeys.swift */,
@@ -984,6 +1033,7 @@
 				DTELACC000000000000A2 /* SessionViewModel+DispatchTelemetryAccessors.swift */,
 				A1B2C3D4E5F60001000991AA /* SessionViewModel+PermissionMessageEvents.swift */,
 				A1B2C3D4E5F60001000951AA /* SessionViewModel+OnConnected.swift */,
+				THEMESYNCVM00000000001 /* SessionViewModel+ThemeSync.swift */,
 				A1B2C3D4E5F600010009F2AA /* SessionViewModel+PendingCreate.swift */,
 				A1B2C3D4E5F600010009F6AA /* SessionViewModel+Listening.swift */,
 				SENDINT00000000000000002 /* SendIntent.swift */,
@@ -998,6 +1048,11 @@
 			children = (
 				PAYCMPTESTGROUP0000001 /* Networking */,
 				LOADCONVTESTGROUP000001 /* ViewModels */,
+				THEMEPARITYTST000000001 /* ThemeParityTests.swift */,
+				THEMEMIGRTST0000000001 /* ThemeManagerMigrationTests.swift */,
+				THEMESTORETST000000001 /* SyncedThemeStoreTests.swift */,
+				THEMEWIRETST0000000001 /* ThemeSyncWireTests.swift */,
+				THEMEENFTST00000000001 /* ThemeEnforcementTests.swift */,
 				DIAGLOG0000000000002 /* DiagnosticLogSchemaTests.swift */,
 				KINDNMTST00000000000002 /* RemoteCommandKindNameTests.swift */,
 				DIAGBNDTST0000000000002 /* DiagnosticLogBoundsTests.swift */,
@@ -1009,6 +1064,7 @@
 				A1B2C3D4E5F60001000245AA /* NormalizedEventLifecycleTests.swift */,
 				A1B2C3D4E5F60001000247AA /* NormalizedEventTerminalTests.swift */,
 				A1B2C3D4E5F60001000249AA /* ContractSyncTests.swift */,
+				A1B2C3D4E5F600010053E3AA /* MessageImageAttachmentsTests.swift */,
 				TYPEKEY00000000000000004A /* NormalizedEventTypeKeyTests.swift */,
 				A1B2C3D4E5F60001000A01AA /* SessionStatusSynthesisTests.swift */,
 				A1B2C3D4E5F60003000202AA /* ModelFallbackSnapshotTests.swift */,
@@ -1068,12 +1124,14 @@
 				REQCTXBD0000000000002 /* RequestContextBreakdownTests.swift */,
 				B1B2C3D4E5F60001CC000002 /* ConversationStatusBarContextTests.swift */,
 				D1B2C3D4E5F60001AB000002 /* InputBarAbortGateTests.swift */,
+				D1B2C3D4E5F60001AB000004 /* InputBarImageBannerGateTests.swift */,
 				MSGADDFRESH00000000000002 /* MessageAddedFreshConversationTests.swift */,
 				PLANDIVIDER0000000000002 /* PlanDividerCreatedUpdatedTests.swift */,
 				MARKERRELOAD00000000000002 /* MarkerReloadDecodeGroupingTests.swift */,
 				ATTCHSEGPARSE000000002 /* AttachmentSegmentParsingTests.swift */,
 				PEERSTATLOG000000002 /* PeerStatusPollerLoggingTests.swift */,
 				OPTINSERT00000000000002 /* OptimisticInsertTests.swift */,
+				CLRPILLRECON00000002 /* ClearPillReconcileTests.swift */,
 				SLSHPILL0000000000000002 /* SlashPillOptimisticTests.swift */,
 				A1B2C3D4E5F600010009F4AA /* PendingCreateTests.swift */,
 				PLANCARDGATETEST00000002 /* PlanCardGateTests.swift */,
@@ -1083,6 +1141,8 @@
 				A1B2C3D4E5F60001FF0012AA /* FrontmatterSplitterTests.swift */,
 				A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */,
 				A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */,
+				A2B3C4D5E6F700000000002A /* OIDCTokenManagerTests.swift */,
+				RELAYOIDC00000000000002 /* RelayConfigOidcTests.swift */,
 				TMRTESTS00000000000002 /* TransportManagerReceiveTests.swift */,
 				EPOCHRST00000000000002 /* TransportManagerEpochResetTests.swift */,
 				MRGRECON00000000000002 /* ConversationMergeReconcileTests.swift */,
@@ -1091,8 +1151,10 @@
 				SPCARDRS00000000000002 /* SpecialCardDismissalResetTests.swift */,
 				IMGFETRT00000000000002 /* RemoteImageFetcherRetryTests.swift */,
 				TOOLLIFE00000000000002 /* ToolRowLifecycleTests.swift */,
+				TOOLDESC000000000000002 /* ToolDescriptionTests.swift */,
 				DEDUPIMG00000000000002 /* DedupAndImageAttachTests.swift */,
 				LIVEBND00000000000002 /* LiveBoundaryMarkingTests.swift */,
+				PROMPTINJ00000000000002 /* PromptInjectedSuppressionTests.swift */,
 				HRNSBDG0000000000000004 /* EngineHarnessBadgeTests.swift */,
 				HRNMSGRELO0000000000002 /* HarnessMessageRelocateTests.swift */,
 				PLANCARD0000000000000002 /* PlanApprovalCardContentTests.swift */,
@@ -1176,9 +1238,13 @@
 				DIAGLOG0000000000003 /* DiagnosticLog+Schema.swift */,
 				A1B2C3D4E5F60001005103AA /* KeychainHelper.swift */,
 				A1B2C3D4E5F60001F10001AA /* AppTheme.swift */,
-				A1B2C3D4E5F60001F10003AA /* IonDefaultTheme.swift */,
+				THEMEDARK00000000000001 /* IonDarkTheme.swift */,
+				THEMELIGHT0000000000001 /* IonLightTheme.swift */,
+				THEMECLASSIC00000000001 /* IonClassicTheme.swift */,
 				A1B2C3D4E5F60001F10005AA /* JarvisArcReactorTheme.swift */,
 				A1B2C3D4E5F60001005301AA /* AttachmentImageCache.swift */,
+				THEMESYNCSTORE00000001 /* SyncedThemeStore.swift */,
+				THEMESYNCTHEME00000001 /* SyncedTheme.swift */,
 				A1B2C3D4E5F60001005305AA /* RemoteImageFetcher.swift */,
 				A1B2C3D4E5F60001009001AA /* TabSearchHelper.swift */,
 				A1B2C3D4E5F60001009D00AA /* SafeDecodable.swift */,
@@ -1335,11 +1401,15 @@
 				A1B2C3D4E5F60001005306AA /* RemoteCommand+Encode.swift in Sources */,
 				A1B2C3D4E5F60001FF0021AA /* RemoteCommand+Decode.swift in Sources */,
 				A1B2C3D4E5F60001000009AA /* PairedDevice.swift in Sources */,
+				THEMESYNCPAY0000000002 /* SyncedThemePayload.swift in Sources */,
+				THEMESYNCSTORE00000002 /* SyncedThemeStore.swift in Sources */,
+				THEMESYNCTHEME00000002 /* SyncedTheme.swift in Sources */,
 				A1B2C3D4E5F60001000090AA /* Message.swift in Sources */,
 				PENDINGCARD0000000000001 /* PendingCard.swift in Sources */,
 				PLANCARDGATE000000000001 /* PlanCardGate.swift in Sources */,
 				A1B2C3D4E5F60001000092AA /* MessageAttachment.swift in Sources */,
 				A1B2C3D4E5F6000100000BAA /* RelayClient.swift in Sources */,
+				A2B3C4D5E6F700000000001B /* OIDCTokenManager.swift in Sources */,
 				A1B2C3D4E5F6000100000DAA /* LANClient.swift in Sources */,
 				LANAUTHOUT0000000000001 /* LANAuthOutcome.swift in Sources */,
 				LANBACKOFF0000000000001 /* LANReconnectBackoff.swift in Sources */,
@@ -1380,6 +1450,7 @@
 				A1B2C3D4E5F60001000021AA /* SessionViewModel.swift in Sources */,
 				DRAFT0000000000000000002 /* SessionViewModel+Drafts.swift in Sources */,
 			A1B2C3D4E5F60001000200AA /* SessionViewModel+Lifecycle.swift in Sources */,
+				700180B7333F5A03BE7F8C16 /* SessionViewModel+DeviceManagement.swift in Sources */,
 				A1B2C3D4E5F60001000202AA /* SessionViewModel+Pairing.swift in Sources */,
 				A1B2C3D4E5F60001009201AA /* SessionViewModel+RemoteDisplay.swift in Sources */,
 				A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */,
@@ -1394,6 +1465,7 @@
 				A1B2C3D4E5F60001000206AA /* SessionViewModel+EventHandlers.swift in Sources */,
 				A1B2C3D4E5F60001FF0023AA /* SessionViewModel+ConversationHelpers.swift in Sources */,
 				A1B2C3D4E5F60001CE0006AA /* SessionViewModel+ConnectionEvents.swift in Sources */,
+				A1B2C3D4E5F60001RA0006AA /* SessionViewModel+RelayAuth.swift in Sources */,
 				A1B2C3D4E5F60001EF0006AA /* SessionViewModel+EngineWorkflowEvents.swift in Sources */,
 				A1B2C3D4E5F60001005308AA /* SessionViewModel+TabEventHandlers.swift in Sources */,
 				A1B2C3D4E5F60001008100AA /* SessionViewModel+EngineKeys.swift in Sources */,
@@ -1410,6 +1482,7 @@
 				DISPINVAL000000000000007 /* SessionViewModel+DispatchCacheInvalidation.swift in Sources */,
 				A1B2C3D4E5F60001000990AA /* SessionViewModel+PermissionMessageEvents.swift in Sources */,
 				A1B2C3D4E5F60001000950AA /* SessionViewModel+OnConnected.swift in Sources */,
+				THEMESYNCVM00000000002 /* SessionViewModel+ThemeSync.swift in Sources */,
 				A1B2C3D4E5F600010009F1AA /* SessionViewModel+PendingCreate.swift in Sources */,
 				A1B2C3D4E5F600010009F5AA /* SessionViewModel+Listening.swift in Sources */,
 				SENDINT00000000000000001 /* SendIntent.swift in Sources */,
@@ -1516,6 +1589,7 @@
 				A1B2C3D4E5F60001004002AA /* AttachmentChipsView.swift in Sources */,
 				A1B2C3D4E5F60001005300AA /* AttachmentImageCache.swift in Sources */,
 				A1B2C3D4E5F60001005302AA /* AttachmentImagePreview.swift in Sources */,
+				A1B2C3D4E5F600010053E0AA /* MessageAttachmentImages.swift in Sources */,
 				A1B2C3D4E5F60001005304AA /* RemoteImageFetcher.swift in Sources */,
 				A1B2C3D4E5F60001004004AA /* FilePickerSheet.swift in Sources */,
 				A1B2C3D4E5F60001004006AA /* EngineMessageRow.swift in Sources */,
@@ -1535,7 +1609,9 @@
 				A1B2C3D4E5F60001005210AA /* VoiceInputOverlay.swift in Sources */,
 				A1B2C3D4E5F60001005102AA /* KeychainHelper.swift in Sources */,
 				A1B2C3D4E5F60001F10002AA /* AppTheme.swift in Sources */,
-				A1B2C3D4E5F60001F10004AA /* IonDefaultTheme.swift in Sources */,
+				THEMEDARK00000000000002 /* IonDarkTheme.swift in Sources */,
+				THEMELIGHT0000000000002 /* IonLightTheme.swift in Sources */,
+				THEMECLASSIC00000000002 /* IonClassicTheme.swift in Sources */,
 				A1B2C3D4E5F60001F10006AA /* JarvisArcReactorTheme.swift in Sources */,
 				A1B2C3D4E5F60001F10008AA /* ArcReactorBackground.swift in Sources */,
 				A1B2C3D4E5F60001F1000AAA /* ThinkingScanLine.swift in Sources */,
@@ -1549,6 +1625,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				THEMEPARITYTST000000002 /* ThemeParityTests.swift in Sources */,
+				THEMEMIGRTST0000000002 /* ThemeManagerMigrationTests.swift in Sources */,
+				THEMESTORETST000000002 /* SyncedThemeStoreTests.swift in Sources */,
+				THEMEWIRETST0000000002 /* ThemeSyncWireTests.swift in Sources */,
+				THEMEENFTST00000000002 /* ThemeEnforcementTests.swift in Sources */,
 				DIAGLOG0000000000001 /* DiagnosticLogSchemaTests.swift in Sources */,
 				KINDNMTST00000000000001 /* RemoteCommandKindNameTests.swift in Sources */,
 				DIAGBNDTST0000000000001 /* DiagnosticLogBoundsTests.swift in Sources */,
@@ -1614,6 +1695,7 @@
 				CSBTRIG0000000000000007 /* ConversationStatusBarTriggerTests.swift in Sources */,
 				UCSTORE0000000000000007 /* UnifiedConversationStoreTests.swift in Sources */,
 				A1B2C3D4E5F60001000248AA /* ContractSyncTests.swift in Sources */,
+				A1B2C3D4E5F600010053E2AA /* MessageImageAttachmentsTests.swift in Sources */,
 				TYPEKEY00000000000000003A /* NormalizedEventTypeKeyTests.swift in Sources */,
 				A1B2C3D4E5F60001000A00AA /* SessionStatusSynthesisTests.swift in Sources */,
 				A1B2C3D4E5F60001E80006AA /* DesktopSettingsContractTests.swift in Sources */,
@@ -1631,12 +1713,14 @@
 				REQCTXBD0000000000001 /* RequestContextBreakdownTests.swift in Sources */,
 				B1B2C3D4E5F60001CC000001 /* ConversationStatusBarContextTests.swift in Sources */,
 				D1B2C3D4E5F60001AB000001 /* InputBarAbortGateTests.swift in Sources */,
+				D1B2C3D4E5F60001AB000003 /* InputBarImageBannerGateTests.swift in Sources */,
 				MSGADDFRESH00000000000001 /* MessageAddedFreshConversationTests.swift in Sources */,
 				PLANDIVIDER0000000000001 /* PlanDividerCreatedUpdatedTests.swift in Sources */,
 				MARKERRELOAD00000000000001 /* MarkerReloadDecodeGroupingTests.swift in Sources */,
 				ATTCHSEGPARSE000000001 /* AttachmentSegmentParsingTests.swift in Sources */,
 				PEERSTATLOG000000001 /* PeerStatusPollerLoggingTests.swift in Sources */,
 				OPTINSERT00000000000001 /* OptimisticInsertTests.swift in Sources */,
+				CLRPILLRECON00000001 /* ClearPillReconcileTests.swift in Sources */,
 				SLSHPILL0000000000000001 /* SlashPillOptimisticTests.swift in Sources */,
 				A1B2C3D4E5F600010009F3AA /* PendingCreateTests.swift in Sources */,
 				PLANCARDGATETEST00000001 /* PlanCardGateTests.swift in Sources */,
@@ -1646,6 +1730,8 @@
 				A1B2C3D4E5F60001FF0013AA /* FrontmatterSplitterTests.swift in Sources */,
 				A1B2C3D4E5F60001000029AA /* TransportManagerTests.swift in Sources */,
 				A1B2C3D4E5F6000100002BAA /* RelayClientTests.swift in Sources */,
+				A2B3C4D5E6F700000000002B /* OIDCTokenManagerTests.swift in Sources */,
+				RELAYOIDC00000000000001 /* RelayConfigOidcTests.swift in Sources */,
 				TMRTESTS00000000000001 /* TransportManagerReceiveTests.swift in Sources */,
 				EPOCHRST00000000000001 /* TransportManagerEpochResetTests.swift in Sources */,
 				MRGRECON00000000000001 /* ConversationMergeReconcileTests.swift in Sources */,
@@ -1654,8 +1740,10 @@
 				SPCARDRS00000000000001 /* SpecialCardDismissalResetTests.swift in Sources */,
 				IMGFETRT00000000000001 /* RemoteImageFetcherRetryTests.swift in Sources */,
 				TOOLLIFE00000000000001 /* ToolRowLifecycleTests.swift in Sources */,
+				TOOLDESC000000000000001 /* ToolDescriptionTests.swift in Sources */,
 				DEDUPIMG00000000000001 /* DedupAndImageAttachTests.swift in Sources */,
 				LIVEBND00000000000001 /* LiveBoundaryMarkingTests.swift in Sources */,
+				PROMPTINJ00000000000001 /* PromptInjectedSuppressionTests.swift in Sources */,
 				HRNSBDG0000000000000003 /* EngineHarnessBadgeTests.swift in Sources */,
 				HRNMSGRELO0000000000001 /* HarnessMessageRelocateTests.swift in Sources */,
 				PLANCARD0000000000000001 /* PlanApprovalCardContentTests.swift in Sources */,

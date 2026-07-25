@@ -124,6 +124,7 @@ describe('LAN auth immediate heartbeat', () => {
       lanAuthPending: new Map([['lan-1', { nonce: 'test-nonce', timeout: setTimeout(() => {}, 10_000) }]]),
       lanDeviceMap: new Map(),
       deviceSecrets: new Map(),
+      syncWorkerSecrets: () => { order.push('syncSecrets') },
       getPairedDevice: () => DEVICE,
       recomputeState: () => { order.push('recompute') },
       emit: () => {},
@@ -136,7 +137,7 @@ describe('LAN auth immediate heartbeat', () => {
     // recomputeState first (so _deliverFrame routes over the new LAN socket),
     // then the heartbeat callback. Red on unfixed code: onAuthenticated never
     // fires, so order is ['recompute'] only.
-    expect(order).toEqual(['recompute', `heartbeat:${DEVICE.id}`])
+    expect(order).toEqual(['syncSecrets', 'recompute', `heartbeat:${DEVICE.id}`])
   })
 
   it('RemoteTransport delivers an immediate desktop_heartbeat over LAN on auth completion', async () => {

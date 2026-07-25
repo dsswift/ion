@@ -279,6 +279,11 @@ func appendInboundUserMessage(conv *conversation.Conversation, opts *types.RunOp
 		})
 	case len(opts.Attachments) > 0:
 		return conversation.AddUserMessage(conv, buildUserContentBlocks(opts.Prompt, opts.Attachments))
+	case opts.InjectionKind != "":
+		// Engine-injected prompt with a semantic classification (e.g.
+		// "agent_completion" for a dispatch callback). Stamp the kind on the
+		// persisted entry so consumers can classify the turn on historical reload.
+		return conversation.AddUserMessageWithKind(conv, opts.Prompt, opts.InjectionKind)
 	default:
 		return conversation.AddUserMessage(conv, opts.Prompt)
 	}

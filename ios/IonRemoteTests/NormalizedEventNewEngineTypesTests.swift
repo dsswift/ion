@@ -3,15 +3,15 @@ import XCTest
 
 /// Decode + round-trip tests for the 5 engine event types added to
 /// eliminate the 123 decode-errors/session diagnostic finding:
-///   - engine_tool_update
+///   - engine_tool_update  (now carries toolId + partialInput for streaming accumulation)
 ///   - engine_tool_complete
 ///   - engine_schedule_fired
 ///   - engine_llm_call
 ///   - engine_dispatch_start
 ///
-/// All five share the same (tabId, instanceId?) shape. Each event
-/// gets a decode test, a round-trip test, and a without-instanceId
-/// decode test.
+/// engine_tool_update gets a full decode test, a round-trip test, a
+/// without-instanceId test, and a test that pins field values. The
+/// others get the same decode/round-trip/without-instanceId pattern.
 final class NormalizedEventNewEngineTypesTests: XCTestCase {
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
@@ -20,24 +20,28 @@ final class NormalizedEventNewEngineTypesTests: XCTestCase {
 
     func testDecodeEngineToolUpdate() throws {
         let json = """
-        {"type":"desktop_tool_update","tabId":"t1","instanceId":"i1"}
+        {"type":"desktop_tool_update","tabId":"t1","instanceId":"i1","toolId":"tool-abc","partialInput":"chunk1"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineToolUpdate(let tabId, let instanceId) = event {
+        if case .engineToolUpdate(let tabId, let instanceId, let toolId, let partialInput) = event {
             XCTAssertEqual(tabId, "t1")
             XCTAssertEqual(instanceId, "i1")
+            XCTAssertEqual(toolId, "tool-abc")
+            XCTAssertEqual(partialInput, "chunk1")
         } else {
             XCTFail("Expected engineToolUpdate, got \(event)")
         }
     }
 
     func testRoundTripEngineToolUpdate() throws {
-        let original = RemoteEvent.engineToolUpdate(tabId: "t1", instanceId: "i1")
+        let original = RemoteEvent.engineToolUpdate(tabId: "t1", instanceId: "i1", toolId: "tool-abc", partialInput: "{\"command\":\"ls\"}")
         let data = try encoder.encode(original)
         let decoded = try decoder.decode(RemoteEvent.self, from: data)
-        if case .engineToolUpdate(let tabId, let instanceId) = decoded {
+        if case .engineToolUpdate(let tabId, let instanceId, let toolId, let partialInput) = decoded {
             XCTAssertEqual(tabId, "t1")
             XCTAssertEqual(instanceId, "i1")
+            XCTAssertEqual(toolId, "tool-abc")
+            XCTAssertEqual(partialInput, "{\"command\":\"ls\"}")
         } else {
             XCTFail("Round-trip engineToolUpdate failed")
         }
@@ -45,12 +49,31 @@ final class NormalizedEventNewEngineTypesTests: XCTestCase {
 
     func testDecodeEngineToolUpdateWithoutInstanceId() throws {
         let json = """
-        {"type":"desktop_tool_update","tabId":"t1"}
+        {"type":"desktop_tool_update","tabId":"t1","toolId":"tid","partialInput":"chunk"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineToolUpdate(let tabId, let instanceId) = event {
+        if case .engineToolUpdate(let tabId, let instanceId, let toolId, let partialInput) = event {
             XCTAssertEqual(tabId, "t1")
             XCTAssertNil(instanceId)
+            XCTAssertEqual(toolId, "tid")
+            XCTAssertEqual(partialInput, "chunk")
+        } else {
+            XCTFail("Expected engineToolUpdate, got \(event)")
+        }
+    }
+
+    /// Missing toolId and partialInput (legacy event before the field expansion)
+    /// must not throw — both decode to empty strings via decodeIfPresent fallback.
+    func testDecodeEngineToolUpdateMissingFields() throws {
+        let json = """
+        {"type":"desktop_tool_update","tabId":"t1","instanceId":"i1"}
+        """.data(using: .utf8)!
+        let event = try decoder.decode(RemoteEvent.self, from: json)
+        if case .engineToolUpdate(let tabId, let instanceId, let toolId, let partialInput) = event {
+            XCTAssertEqual(tabId, "t1")
+            XCTAssertEqual(instanceId, "i1")
+            XCTAssertEqual(toolId, "")
+            XCTAssertEqual(partialInput, "")
         } else {
             XCTFail("Expected engineToolUpdate, got \(event)")
         }

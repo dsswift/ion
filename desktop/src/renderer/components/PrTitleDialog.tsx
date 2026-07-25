@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { transitions } from '../theme-tokens'
 
 const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] as const }
 
@@ -18,6 +20,9 @@ export function PrTitleDialog({ defaultTitle, onSubmit, onSkipForever, onCancel 
   const popoverLayer = usePopoverLayer()
   const [title, setTitle] = useState(defaultTitle)
   const inputRef = useRef<HTMLInputElement>(null)
+  const createIx = useInteractiveState()
+  const skipIx = useInteractiveState()
+  const cancelIx = useInteractiveState()
 
   // Focus and select input on mount
   useEffect(() => {
@@ -46,7 +51,7 @@ export function PrTitleDialog({ defaultTitle, onSubmit, onSkipForever, onCancel 
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(0, 0, 0, 0.4)',
+        background: colors.scrim,
         pointerEvents: 'auto',
         display: 'flex',
         alignItems: 'center',
@@ -124,16 +129,19 @@ export function PrTitleDialog({ defaultTitle, onSubmit, onSkipForever, onCancel 
           <button
             data-ion-ui
             onClick={() => onSubmit(title)}
+            {...createIx.handlers}
+            className="ion-focusable"
             style={{
               width: '100%',
               padding: '8px 0',
               fontSize: 13,
               fontWeight: 600,
-              background: colors.accent,
+              background: createIx.pressed ? colors.accentPressed : createIx.hover ? colors.accentHover : colors.accent,
               color: colors.textOnAccent,
               border: 'none',
               borderRadius: 8,
               cursor: 'pointer',
+              transition: `background ${transitions.base}`,
             }}
           >
             Create PR
@@ -143,15 +151,18 @@ export function PrTitleDialog({ defaultTitle, onSubmit, onSkipForever, onCancel 
           <button
             data-ion-ui
             onClick={onSkipForever}
+            {...skipIx.handlers}
+            className="ion-focusable"
             style={{
               width: '100%',
               padding: '6px 0',
               fontSize: 12,
-              background: 'none',
+              background: interactiveBg(colors, skipIx),
               color: colors.textTertiary,
               border: 'none',
               cursor: 'pointer',
               borderRadius: 6,
+              transition: `background ${transitions.base}`,
             }}
           >
             Use generated and don't ask again
@@ -161,15 +172,18 @@ export function PrTitleDialog({ defaultTitle, onSubmit, onSkipForever, onCancel 
           <button
             data-ion-ui
             onClick={onCancel}
+            {...cancelIx.handlers}
+            className="ion-focusable"
             style={{
               width: '100%',
               padding: '4px 0',
               fontSize: 12,
-              background: 'none',
+              background: interactiveBg(colors, cancelIx),
               color: colors.textTertiary,
               border: 'none',
               cursor: 'pointer',
               borderRadius: 6,
+              transition: `background ${transitions.base}`,
             }}
           >
             Cancel

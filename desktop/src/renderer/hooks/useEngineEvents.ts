@@ -98,6 +98,14 @@ export function useEngineEvents() {
       }
     })
 
+    // Engine came back after an outage: re-arm history hydration for panes
+    // whose load failed while it was down. Mirror-local (each window
+    // re-hydrates its own store), same as loadSkeletonMessages.
+    const engineReconnectedHandler = () => {
+      useSessionStore.getState().rehydrateFailedHistory()
+    }
+    window.ion.on('ion:engine-reconnected', engineReconnectedHandler)
+
     // Remote user messages (sent from iOS) — submit through the renderer's normal flow
     // so the tab's working directory, session ID, model, and addDirs are used automatically.
     // `attachments` is the raw iOS attachment metadata (type/name/path) the pipeline
@@ -247,6 +255,7 @@ export function useEngineEvents() {
       unsubStatus()
       unsubError()
       unsubSkill()
+      window.ion.off('ion:engine-reconnected', engineReconnectedHandler)
       window.ion.off(IPC.REMOTE_USER_MESSAGE, remoteUserMsgHandler)
       window.ion.off(IPC.REMOTE_BASH_COMMAND, remoteBashCommandHandler)
       window.ion.off(IPC.REMOTE_SET_PERMISSION_MODE, remoteSetModeHandler)

@@ -22,6 +22,7 @@ import { X, CircleNotch, Copy, Check } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useShallow } from 'zustand/shallow'
 import { useColors } from '../theme'
+import type { ColorPalette } from '../theme-tokens'
 import { meta, getDispatches, buildBreadcrumbStack } from './agent-panel-helpers'
 import { AgentDetailPanel } from './AgentDetailPanel'
 import type { AgentStateUpdate } from '../../shared/types'
@@ -53,7 +54,7 @@ function TierBadge({ tier, colors }: { tier: Tier; colors: ReturnType<typeof use
 
 function UsageBar({ percent, colors }: { percent: number; colors: ReturnType<typeof useColors> }) {
   const clamped = Math.max(0, Math.min(100, percent))
-  const barColor = clamped >= 90 ? colors.statusError : clamped >= 70 ? '#d4882a' : colors.accent
+  const barColor = clamped >= 90 ? colors.statusError : clamped >= 70 ? colors.statusWarning : colors.accent
   return (
     <div style={{ height: 4, borderRadius: 2, background: colors.containerBorder, overflow: 'hidden', flexShrink: 0 }}>
       <div style={{ height: '100%', width: `${clamped}%`, background: barColor, borderRadius: 2, transition: 'width 0.4s ease' }} />
@@ -100,14 +101,14 @@ const KIND_LABEL: Record<KindKey, string> = {
   unaccounted: 'Unaccounted',
 }
 
-// Colors for the proportion graph segments (per kind bucket). Matches the
-// spirit of the reference ContextVisualization.tsx color palette.
-const KIND_COLOR: Record<KindKey, string> = {
-  system_prompt: '#7c6af7',
-  tools: '#3b82f6',
-  conversation: '#22c55e',
-  file: '#f59e0b',
-  unaccounted: '#6b7280',
+// Theme-token keys for the proportion graph segments (per kind bucket).
+// Resolved through useColors() at render time so the graph follows the theme.
+const KIND_COLOR: Record<KindKey, keyof ColorPalette> = {
+  system_prompt: 'iconPurple',
+  tools: 'infoFg',
+  conversation: 'successFg',
+  file: 'statusWarning',
+  unaccounted: 'textTertiary',
 }
 
 function kindKey(kind: string): KindKey {
@@ -134,7 +135,7 @@ function ProportionGraph({ segments, contextWindow, colors }: {
       <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', background: colors.surfaceHover }}>
         {segments.map((seg) => seg.pct > 0 && (
           <div key={seg.kind} title={`${KIND_LABEL[seg.kind]}: ${seg.tokens.toLocaleString()} tokens (${seg.pct.toFixed(1)}%)`}
-            style={{ width: `${seg.pct}%`, background: KIND_COLOR[seg.kind], transition: 'width 0.4s ease' }} />
+            style={{ width: `${seg.pct}%`, background: colors[KIND_COLOR[seg.kind]], transition: 'width 0.4s ease' }} />
         ))}
         {freePct > 0 && (
           <div title={`Free: ${(freePct / 100 * contextWindow).toFixed(0)} tokens (${freePct.toFixed(1)}%)`}
@@ -145,7 +146,7 @@ function ProportionGraph({ segments, contextWindow, colors }: {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 8px', marginTop: 4 }}>
         {segments.filter((s) => s.pct > 0).map((seg) => (
           <span key={seg.kind} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 9, color: colors.textTertiary }}>
-            <span style={{ width: 6, height: 6, borderRadius: 1, background: KIND_COLOR[seg.kind], flexShrink: 0, display: 'inline-block' }} />
+            <span style={{ width: 6, height: 6, borderRadius: 1, background: colors[KIND_COLOR[seg.kind]], flexShrink: 0, display: 'inline-block' }} />
             {KIND_LABEL[seg.kind]}
           </span>
         ))}
@@ -505,7 +506,7 @@ export function StatusDrawer() {
               <div key={kind}>
                 {/* Bucket header */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2, marginTop: 4 }}>
-                  <span style={{ width: 6, height: 6, borderRadius: 1, background: KIND_COLOR[kind], flexShrink: 0, display: 'inline-block' }} />
+                  <span style={{ width: 6, height: 6, borderRadius: 1, background: colors[KIND_COLOR[kind]], flexShrink: 0, display: 'inline-block' }} />
                   <span style={{ fontSize: 9, fontWeight: 600, color: colors.textTertiary, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                     {KIND_LABEL[kind]}
                   </span>

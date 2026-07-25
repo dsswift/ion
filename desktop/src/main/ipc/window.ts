@@ -1,7 +1,6 @@
-import { app, BrowserWindow, ipcMain, nativeTheme } from 'electron'
+import { app, BrowserWindow, ipcMain } from 'electron'
 import { IPC } from '../../shared/types'
 import { state } from '../state'
-import { broadcast } from '../broadcast'
 
 export function registerWindowIpc(): void {
   ipcMain.on(IPC.RESIZE_HEIGHT, () => {
@@ -35,11 +34,4 @@ export function registerWindowIpc(): void {
     return { version: app.getVersion(), auth: {}, mcpServers: [], projectPath: process.cwd(), homePath: require('os').homedir() }
   })
 
-  ipcMain.handle(IPC.GET_THEME, () => {
-    return { isDark: nativeTheme.shouldUseDarkColors }
-  })
-
-  nativeTheme.on('updated', () => {
-    broadcast(IPC.THEME_CHANGED, nativeTheme.shouldUseDarkColors)
-  })
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // MARK: - AppTheme Protocol
 
@@ -26,7 +27,7 @@ protocol AppTheme {
     /// amber pulsing dot on the parent tab pill, sub-tab pill, and
     /// footer state label. Mirrors the desktop's
     /// `statusWaitingChildren` token in `theme-tokens.ts`. Distinct
-    /// from `statusRunning` (orange = foreground) so foreground vs.
+    /// from `statusRunning` (teal = foreground) so foreground vs.
     /// background activity is visually disambiguated. See
     /// `ConversationStatusBar.swift` and `TabRowView.swift` for the
     /// render sites.
@@ -48,19 +49,37 @@ protocol AppTheme {
     /// Custom activity indicator. `Bool` arg is whether animation is active.
     /// Nil falls back to `ProgressView()`.
     var activityIndicator: ((Bool) -> AnyView)? { get }
+
+    /// Brand mark shown in the Settings appearance surface. Only theme
+    /// packs carry logos (see `SyncedTheme`); built-ins inherit the nil
+    /// default from the protocol extension below. Declared as a
+    /// requirement (not extension-only) so existential access dispatches
+    /// to the conforming type's implementation.
+    var logoImage: UIImage? { get }
+}
+
+extension AppTheme {
+    var logoImage: UIImage? { nil }
 }
 
 // MARK: - ThemeRegistry
 
-/// Central list of all available themes. Add new themes here.
+/// Central list of the built-in themes. The four cross-platform themes
+/// mirror the desktop registry in `theme-tokens.ts`; Ion Dark/Light/Classic
+/// are pinned identical to the desktop palettes by the parity fixture
+/// (`assets/theme-parity.json`), while `jarvis-hud` is the iOS part of the
+/// two-part Jarvis theme. Custom themes synced from a paired desktop are
+/// layered on top by `ThemeManager` (see `reloadCustomThemes`).
 enum ThemeRegistry {
     nonisolated(unsafe) static let themes: [any AppTheme] = [
-        IonDefaultTheme(),
+        IonDarkTheme(),
+        IonLightTheme(),
+        IonClassicTheme(),
         JarvisArcReactorTheme(),
     ]
 
     static func theme(for id: String) -> any AppTheme {
-        themes.first { $0.id == id } ?? IonDefaultTheme()
+        themes.first { $0.id == id } ?? IonDarkTheme()
     }
 }
 
@@ -81,6 +100,45 @@ final class ThemeManager: AppTheme {
     /// giving SwiftUI a clear dependency to subscribe to.
     private var _currentTheme: any AppTheme
 
+    /// Custom themes synced from paired desktops (built-ins stay in
+    /// ThemeRegistry). Replaced wholesale by `reloadCustomThemes` — on app
+    /// launch from SyncedThemeStore, and on every `desktop_theme_manifest`
+    /// / theme-asset arrival.
+    private(set) var customThemes: [SyncedTheme] = []
+
+    /// Enterprise-enforced theme id (locked `themePolicy` from the active
+    /// desktop's settings snapshot). Non-nil overrides `selectedThemeId`
+    /// for rendering and disables the theme picker; the user's selection
+    /// is preserved and resumes when the policy lifts. Persisted so
+    /// enforcement survives an offline relaunch.
+    private(set) var enforcedThemeId: String? {
+        didSet {
+            if let enforcedThemeId {
+                UserDefaults.standard.set(enforcedThemeId, forKey: "enforcedThemeId")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "enforcedThemeId")
+            }
+        }
+    }
+
+    /// Apply (or clear, with nil) the enterprise theme enforcement.
+    /// Called from the settings-snapshot handler on every projection, so a
+    /// policy change on the desktop propagates without an app restart.
+    func setEnforcedTheme(_ id: String?) {
+        guard id != enforcedThemeId else { return }
+        DiagnosticLog.log("enforced theme changed", tag: "theme.manager", fields: [
+            "reason": enforcedThemeId ?? "none",
+            "status": id ?? "none"
+        ])
+        enforcedThemeId = id
+        _currentTheme = resolveTheme(id: id ?? selectedThemeId)
+    }
+
+    /// Built-ins followed by synced custom themes — the picker order.
+    var availableThemes: [any AppTheme] {
+        ThemeRegistry.themes + customThemes.map { $0 as any AppTheme }
+    }
+
     var selectedThemeId: String {
         didSet {
             guard selectedThemeId != oldValue else { return }
@@ -88,7 +146,7 @@ final class ThemeManager: AppTheme {
                 "reason": oldValue,
                 "status": selectedThemeId
             ])
-            _currentTheme = ThemeRegistry.theme(for: selectedThemeId)
+            _currentTheme = resolveTheme(id: enforcedThemeId ?? selectedThemeId)
             DiagnosticLog.log("theme resolved id", tag: "theme.manager", fields: [
                 "status": _currentTheme.id
             ])
@@ -96,10 +154,57 @@ final class ThemeManager: AppTheme {
         }
     }
 
+    /// Resolve an id against built-ins, then synced customs, falling back
+    /// to Ion Dark. A selected custom theme whose pack was uninstalled
+    /// therefore renders Ion Dark while the saved id is kept — the choice
+    /// restores automatically if the pack returns on a later sync.
+    func resolveTheme(id: String) -> any AppTheme {
+        if let builtin = ThemeRegistry.themes.first(where: { $0.id == id }) { return builtin }
+        if let custom = customThemes.first(where: { $0.id == id }) { return custom }
+        return IonDarkTheme()
+    }
+
+    /// Replace the custom-theme set (wholesale) and re-resolve the current
+    /// theme — the selection (or enforced theme) may have just arrived,
+    /// updated, or vanished.
+    func reloadCustomThemes(_ payloads: [SyncedThemePayload], store: SyncedThemeStore = .shared) {
+        customThemes = payloads.map { SyncedTheme(payload: $0, store: store) }
+        _currentTheme = resolveTheme(id: enforcedThemeId ?? selectedThemeId)
+        DiagnosticLog.log("custom themes reloaded", tag: "theme.manager", fields: [
+            "count": String(customThemes.count),
+            "status": _currentTheme.id
+        ])
+    }
+
+    /// Retired theme ids rewritten to their successors on init:
+    ///   - `ion-default` (system-adaptive iOS-only theme) was removed when
+    ///     the cross-platform theme set landed; users migrate to `ion-dark`.
+    ///   - `jarvis-arc-reactor` was unified with the desktop under the
+    ///     shared `jarvis-hud` id (one theme, two platform parts).
+    private static let migratedThemeIds: [String: String] = [
+        "ion-default": "ion-dark",
+        "jarvis-arc-reactor": "jarvis-hud",
+    ]
+
     init() {
-        let saved = UserDefaults.standard.string(forKey: "selectedTheme") ?? "ion-default"
+        var saved = UserDefaults.standard.string(forKey: "selectedTheme") ?? "ion-dark"
+        if let migrated = Self.migratedThemeIds[saved] {
+            DiagnosticLog.log("theme id migrated", tag: "theme.manager", fields: [
+                "reason": saved,
+                "status": migrated
+            ])
+            saved = migrated
+            UserDefaults.standard.set(saved, forKey: "selectedTheme")
+        }
         self.selectedThemeId = saved
+        // Persisted enterprise enforcement (survives offline relaunch;
+        // cleared by the next settings snapshot when the policy lifts).
+        self.enforcedThemeId = UserDefaults.standard.string(forKey: "enforcedThemeId")
         self._currentTheme = ThemeRegistry.theme(for: saved)
+        // Seed synced custom themes from disk so a selected (or enforced)
+        // custom theme renders correctly offline, before any desktop
+        // connection exists. Also re-resolves against enforcedThemeId.
+        reloadCustomThemes(SyncedThemeStore.shared.allThemes())
         DiagnosticLog.log("theme manager init", tag: "theme.manager", fields: [
             "status": saved,
             "reason": String(describing: self._currentTheme.accent),
@@ -134,6 +239,7 @@ final class ThemeManager: AppTheme {
     var preferredColorScheme: ColorScheme? { _currentTheme.preferredColorScheme }
     var backgroundView: AnyView? { _currentTheme.backgroundView }
     var activityIndicator: ((Bool) -> AnyView)? { _currentTheme.activityIndicator }
+    var logoImage: UIImage? { _currentTheme.logoImage }
 }
 
 // MARK: - Environment Key

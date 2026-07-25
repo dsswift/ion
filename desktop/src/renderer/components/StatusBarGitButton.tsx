@@ -2,6 +2,7 @@ import React from 'react'
 import { GitBranch } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { useRepoState } from '../stores/git'
 
 /* ─── Git Branch Button (right side of StatusBar) ─── */
@@ -10,6 +11,7 @@ export function GitButton({ directory }: { directory: string }) {
   const gitPanelOpen = useSessionStore((s) => s.gitPanelOpen)
   const toggleGitPanel = useSessionStore((s) => s.toggleGitPanel)
   const colors = useColors()
+  const { hover, pressed, handlers } = useInteractiveState()
 
   const repo = useRepoState(directory)
   const gitBranch = repo?.branch ?? ''
@@ -20,8 +22,13 @@ export function GitButton({ directory }: { directory: string }) {
   return (
     <button
       onClick={toggleGitPanel}
-      className="flex items-center gap-1 rounded-full px-1.5 py-0.5 transition-colors"
-      style={{ color: gitPanelOpen ? colors.accent : colors.textTertiary, cursor: 'pointer' }}
+      {...handlers}
+      className="flex items-center gap-1 rounded-full px-1.5 py-0.5 ion-focusable"
+      style={{
+        color: gitPanelOpen ? colors.accent : hover ? colors.textPrimary : colors.textTertiary,
+        background: interactiveBg(colors, { hover, pressed }),
+        cursor: 'pointer',
+      }}
       title={gitPanelOpen ? 'Close git panel' : 'Open git panel'}
     >
       <GitBranch size={11} className="flex-shrink-0" />

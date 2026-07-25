@@ -63,6 +63,19 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		return
 	}
 
+	// Image-generation models (ModelKind == "image") use a completely
+	// different API endpoint and have no conversation history, tools, or
+	// streaming. Dispatch to runImageLoop and exit; the agent loop below
+	// is not appropriate for these models.
+	if info := providers.GetModelInfo(model); info != nil && info.ModelKind == "image" {
+		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "routing to image loop", map[string]any{
+			"run_id": run.requestID,
+			"model":  model,
+		})
+		b.runImageLoop(ctx, run, opts)
+		return
+	}
+
 	// Load or create conversation
 	conv, convErr := loadOrCreateConversation(opts, model)
 	if convErr != nil {

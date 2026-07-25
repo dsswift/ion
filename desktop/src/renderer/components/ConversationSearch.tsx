@@ -142,7 +142,7 @@ export function ConversationSearch({ state, actions, hiddenCount, onLoadAllOlder
             background: colors.containerBg,
             border: `1px solid ${colors.toolBorder}`,
             borderRadius: 10,
-            boxShadow: `0 4px 16px rgba(0,0,0,0.18)`,
+            boxShadow: colors.popoverShadow,
             display: 'flex',
             flexDirection: 'column',
             gap: 0,

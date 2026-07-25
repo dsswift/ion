@@ -31,12 +31,15 @@ export function broadcast(channel: string, ...args: unknown[]): void {
       maybeBeacon(event)
     }
   } else if (
-    (channel === 'ion:tab-status-change' || channel === 'ion:enriched-error' || channel === 'ion:settings-changed') &&
+    (channel === 'ion:tab-status-change' || channel === 'ion:enriched-error' || channel === 'ion:settings-changed' || channel === 'ion:themes-changed' || channel === 'ion:engine-reconnected') &&
     state.atvWindow &&
     !state.atvWindow.isDestroyed()
   ) {
-    // Status transitions, enriched errors, and settings changes feed the
-    // mirror store's reducers exactly as they feed the overlay's.
+    // Status transitions, enriched errors, settings changes, theme-pack
+    // updates, and engine-reconnected signals feed the mirror store's
+    // reducers exactly as they feed the overlay's. The mirror's mounted
+    // useEngineEvents subscribes ion:engine-reconnected and re-arms its own
+    // failed history hydration, so the forward must reach the ATV window.
     state.atvWindow.webContents.send(channel, ...args)
   }
   if (channel === IPC.TERMINAL_INCOMING && state.remoteTransport) {

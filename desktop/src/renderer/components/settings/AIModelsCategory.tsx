@@ -102,7 +102,7 @@ export function AIModelsCategory() {
     flex: 1,
     padding: '7px 0',
     background: active ? colors.accent : 'transparent',
-    color: active ? '#fff' : colors.textSecondary,
+    color: active ? colors.textOnAccent : colors.textSecondary,
     border: 'none',
     cursor: 'pointer',
     fontSize: 13,

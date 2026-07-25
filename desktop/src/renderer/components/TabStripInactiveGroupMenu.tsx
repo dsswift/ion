@@ -10,6 +10,7 @@ import { usePreferencesStore, getEffectiveTabGroups } from '../preferences'
 import type { TabGroupView } from '../hooks/useTabGroups'
 import type { TabGroupMode } from '../../shared/types-session'
 import { zoomRect, zoomViewport, useAnchoredPopoverPosition } from './TabStripShared'
+import { ContextMenuItem } from './ContextMenuItem'
 import { ConfirmDialog } from './git/ConfirmDialog'
 import { rDebug, rInfo } from '../rendererLogger'
 
@@ -87,8 +88,6 @@ export function InactiveGroupMenu({
 
   if (!popoverLayer) return null
 
-  const menuItemStyle = { fontSize: 12, color: colors.textPrimary, background: 'transparent' as string, border: 'none' as const, cursor: 'pointer' as const }
-
   const requestMoveAll = (targetGroupId: string, targetLabel: string) => {
     rDebug('inactive-group-menu', 'move-all confirmation requested', { tab_count: group.tabs.length, target_group: targetGroupId, target_label: targetLabel })
     setMoveSubmenu(null)
@@ -121,19 +120,15 @@ export function InactiveGroupMenu({
           minWidth: 160,
         }}
       >
-      <button
+      <ContextMenuItem
         ref={moveItemRef}
-        className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
-        style={menuItemStyle}
-        onMouseEnter={(e) => {
-          (e.currentTarget as HTMLElement).style.background = colors.tabActive
+        onHoverStart={() => {
           if (moveItemRef.current) {
             const rect = zoomRect(moveItemRef.current.getBoundingClientRect())
             setMoveSubmenu({ x: rect.right, y: rect.top })
             setMoveParentRect({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom })
           }
         }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
         onClick={() => {
           if (moveItemRef.current) {
             const rect = zoomRect(moveItemRef.current.getBoundingClientRect())
@@ -145,7 +140,7 @@ export function InactiveGroupMenu({
         <Rows size={14} color={colors.textSecondary} />
         <span>Move all to group</span>
         <CaretDown size={10} color={colors.textTertiary} style={{ marginLeft: 'auto', transform: 'rotate(-90deg)' }} />
-      </button>
+      </ContextMenuItem>
       {moveSubmenu && (
         <InactiveGroupMoveAllSubmenu
           anchor={moveSubmenu}
@@ -270,17 +265,10 @@ function InactiveGroupMoveAllSubmenu({
         Move all to group
       </div>
       {targets.map((t) => (
-        <button
-          key={t.id}
-          className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
-          style={{ fontSize: 12, color: colors.textPrimary, background: 'transparent', border: 'none', cursor: 'pointer' }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-          onClick={() => onPickTarget(t.id, t.label)}
-        >
+        <ContextMenuItem key={t.id} onClick={() => onPickTarget(t.id, t.label)}>
           <ArrowRight size={12} color={colors.textTertiary} />
           <span>{t.label}</span>
-        </button>
+        </ContextMenuItem>
       ))}
       {tabGroupMode === 'manual' && (
         <>
@@ -307,16 +295,10 @@ function InactiveGroupMoveAllSubmenu({
               />
             </div>
           ) : (
-            <button
-              className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-left"
-              style={{ fontSize: 12, color: colors.accent, background: 'transparent', border: 'none', cursor: 'pointer' }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-              onClick={() => setShowNewGroupInput(true)}
-            >
+            <ContextMenuItem color={colors.accent} onClick={() => setShowNewGroupInput(true)}>
               <Plus size={12} color={colors.accent} />
               <span>New group...</span>
-            </button>
+            </ContextMenuItem>
           )}
         </>
       )}

@@ -43,15 +43,23 @@ func (b *syncBuffer) Bytes() []byte {
 func startTestRelay(t *testing.T, apiKey string) (*httptest.Server, *Hub) {
 	t.Helper()
 	hub := NewHub()
-	auth := NewAuthMiddleware(apiKey)
+	auth := NewAuthMiddleware(apiKey, nil)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ok"}`))
 	})
+	mux.HandleFunc("GET /v1/auth/config", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		resp := map[string]any{
+			"psk":  len(auth.apiKey) > 0,
+			"oidc": auth.oidc != nil,
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	})
 	mux.HandleFunc("GET /v1/channel/{channelId}", func(w http.ResponseWriter, r *http.Request) {
-		if !auth.Validate(r) {
+		if _, ok := auth.Validate(r); !ok {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -61,7 +69,7 @@ func startTestRelay(t *testing.T, apiKey string) (*httptest.Server, *Hub) {
 			http.Error(w, "role must be 'ion' or 'mobile'", http.StatusBadRequest)
 			return
 		}
-		hub.HandleWebSocket(w, r, channelID, role, nil)
+		hub.HandleWebSocket(w, r, channelID, role, nil, nil)
 	})
 
 	server := httptest.NewServer(mux)

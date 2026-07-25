@@ -5,6 +5,8 @@ import {
 import { useSessionStore, isTextFile } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
+import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { transitions } from '../theme-tokens'
 import { usePreferencesStore } from '../preferences'
 import { FileExplorerContextMenu, type ContextMenuState } from './FileExplorerContextMenu'
 import { FileExplorerTreeRow, FileExplorerInlineInput } from './FileExplorerTreeRow'
@@ -13,6 +15,50 @@ import type { FsEntry } from '../../shared/types'
 import { rDebug, rInfo, rWarn, rError } from '../rendererLogger'
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp', '.tiff'])
+
+/**
+ * Header icon button (close X, New File, New Folder, Refresh, Collapse All).
+ * Standard interactive states: hover keeps the existing color swap to
+ * accent, pressed adds the surfacePressed background, keyboard focus gets
+ * the `.ion-focusable` ring.
+ */
+function ExplorerHeaderButton({
+  title,
+  onClick,
+  colors,
+  style,
+  children,
+}: {
+  title: string
+  onClick: () => void
+  colors: ReturnType<typeof useColors>
+  style?: React.CSSProperties
+  children: React.ReactNode
+}) {
+  const { hover, pressed, handlers } = useInteractiveState()
+  return (
+    <button
+      title={title}
+      onClick={onClick}
+      className="ion-focusable"
+      {...handlers}
+      style={{
+        background: interactiveBg(colors, { hover: false, pressed }),
+        border: 'none',
+        padding: 2,
+        cursor: 'pointer',
+        color: hover ? colors.accent : colors.textTertiary,
+        display: 'flex',
+        alignItems: 'center',
+        borderRadius: 4,
+        transition: `color ${transitions.base}, background ${transitions.base}`,
+        ...style,
+      }}
+    >
+      {children}
+    </button>
+  )
+}
 
 export function FileExplorer() {
   const colors = useColors()
@@ -344,14 +390,14 @@ export function FileExplorer() {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
-          <button
-            onClick={() => toggleFileExplorer(activeTabId)}
-            className="flex items-center justify-center rounded transition-colors"
-            style={{ color: colors.textTertiary, cursor: 'pointer', flexShrink: 0, padding: 1 }}
+          <ExplorerHeaderButton
             title="Close explorer"
+            onClick={() => toggleFileExplorer(activeTabId)}
+            colors={colors}
+            style={{ flexShrink: 0, padding: 1, justifyContent: 'center' }}
           >
             <X size={11} />
-          </button>
+          </ExplorerHeaderButton>
           <span
             style={{
               fontSize: 10,
@@ -373,25 +419,9 @@ export function FileExplorer() {
             { Icon: ArrowsClockwise, title: 'Refresh', action: refreshAll },
             { Icon: ArrowsInLineVertical, title: 'Collapse All', action: () => workingDir && collapseAllExplorer(workingDir) },
           ].map(({ Icon, title, action }) => (
-            <button
-              key={title}
-              title={title}
-              onClick={action}
-              style={{
-                background: 'none',
-                border: 'none',
-                padding: 2,
-                cursor: 'pointer',
-                color: colors.textTertiary,
-                display: 'flex',
-                alignItems: 'center',
-                borderRadius: 4,
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = colors.accent }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = colors.textTertiary }}
-            >
+            <ExplorerHeaderButton key={title} title={title} onClick={action} colors={colors}>
               <Icon size={14} />
-            </button>
+            </ExplorerHeaderButton>
           ))}
         </div>
       </div>

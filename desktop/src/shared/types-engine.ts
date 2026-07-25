@@ -257,6 +257,15 @@ export interface ConversationInstance {
    */
   historyHydrated?: boolean
   /**
+   * Set when `loadSkeletonMessages` failed (engine unreachable, unreadable
+   * store). The pane is still marked `historyHydrated: true` so it renders
+   * and tab switches don't hammer a down engine — this flag is what the
+   * engine-reconnect path (`rehydrateFailedHistory`) uses to find panes whose
+   * hydration must be retried now that the engine is back. Cleared on retry.
+   * Client-only and transient: never persisted, not part of the Go contract.
+   */
+  historyHydrationFailed?: boolean
+  /**
    * Lazy-load state for externalized scrollback (schema v4). 'pending' is set
    * on restore when the persisted instance carries `hasExternalContent` and
    * its content file was not eager-merged (only the active tab merges at
@@ -510,91 +519,14 @@ export interface ModelBreakdown {
   isSelf?: boolean
 }
 
-/**
- * Enterprise resource limits (D-007). Mirrors Go's ResourceLimits in
- * internal/types/config_resource_limits.go. Absent fields mean unlimited.
- */
-export interface ResourceLimits {
-  /** Maximum concurrent engine sessions. Absent = unlimited. */
-  maxSessions?: number
-  /** Maximum concurrently-running dispatched agents per session. Absent = unlimited. */
-  maxAgentsPerSession?: number
-}
-
-/**
- * An enterprise-pinned provider definition (feature 0004). Mirrors Go's
- * ProviderConfig fields the enterprise overrides. apiKey is user-supplied and
- * usually absent from the enterprise block.
- */
-export interface EnterpriseProviderDefinition {
-  apiKey?: string
-  baseURL?: string
-  authHeader?: string
-  backend?: string
-}
-
-/**
- * A single entry in the enterprise extension allowlist (feature 0011 / #308).
- * Mirrors Go's ExtensionAllowlistEntry.
- */
-export interface ExtensionAllowlistEntry {
-  id: string
-  sha256?: string
-}
-
-/**
- * The full enterprise policy blob from the engine's get_enterprise_policy RPC
- * (D-004 passthrough). Mirrors Go's EnterpriseConfig in internal/types/config.go.
- * Only the fields the desktop consumes are typed here; the blob may carry
- * more (the engine passes its entire enterprise config through). This is a
- * read-only runtime constraint — never persisted to user settings, never
- * user-editable.
- */
-export interface EnterprisePolicy {
-  /** Models the enterprise permits. Empty/absent = no restriction. */
-  allowedModels?: string[]
-  /** Models the enterprise blocks. */
-  blockedModels?: string[]
-  /** Providers the enterprise permits. Empty/absent = no restriction. */
-  allowedProviders?: string[]
-  /**
-   * Enterprise-pinned provider definitions (feature 0004). Each entry replaces
-   * the user-layer provider for the same key (baseURL/authHeader/backend) at
-   * config-merge time so the gateway URL cannot be edited by the user. The
-   * engine enforces this in EnforceEnterprise; the desktop reads the blob as a
-   * read-only runtime constraint. Keyed by provider id.
-   */
-  providers?: Record<string, EnterpriseProviderDefinition>
-  /**
-   * Extension loading allowlist (feature 0011 / D-020, issue #308). When
-   * non-empty, only listed extensions load; an optional per-entry sha256 pins
-   * the entry-point integrity. Empty/absent = no restriction. Enforced engine-
-   * side at extension load.
-   */
-  extensionAllowlist?: ExtensionAllowlistEntry[]
-  /** Session/agent concurrency caps (sealed ceiling, enforced engine-side). */
-  resourceLimits?: ResourceLimits
-  /**
-   * TTL in days for locally persisted conversations (D-018). The desktop's
-   * cleanup job deletes conversations older than this. Absent = no retention
-   * policy (conversations kept indefinitely).
-   */
-  conversationRetentionDays?: number
-  /**
-   * Opaque client-config namespace. Desktop-specific constraints live under
-   * customFields['ion-desktop'] by convention; the engine passes this
-   * through without validating or interpreting it.
-   */
-  customFields?: Record<string, unknown>
-}
-
-/**
- * Desktop-specific enterprise constraints carried under
- * customFields['ion-desktop'] in the enterprise policy blob. Schema is owned
- * by the desktop (the engine treats it as opaque). All fields optional —
- * absent means unconstrained.
- */
-export interface IonDesktopPolicyFields {
-  /** When true, the auto-updater is fully disabled (enterprise-pinned version; D-012). */
-  disableAutoUpdate?: boolean
-}
+// Enterprise policy types (ResourceLimits, EnterpriseProviderDefinition,
+// ExtensionAllowlistEntry, EnterprisePolicy, IonDesktopPolicyFields) moved
+// to types-enterprise.ts at the 600-line cap split; re-exported here so
+// existing imports keep working.
+export type {
+  ResourceLimits,
+  EnterpriseProviderDefinition,
+  ExtensionAllowlistEntry,
+  EnterprisePolicy,
+  IonDesktopPolicyFields,
+} from './types-enterprise'

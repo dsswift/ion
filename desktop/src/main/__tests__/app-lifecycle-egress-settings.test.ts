@@ -198,7 +198,7 @@ describe('initEgressFromSettingsConfig', () => {
     fakeSettings = {
       logging: {
         egressTargets: ['otel'],
-        egressOtel: { endpoint: 'https://ion-telemetry.sprague.house' },
+        egressOtel: { endpoint: 'https://telemetry.example.com' },
       },
     }
 
@@ -207,7 +207,7 @@ describe('initEgressFromSettingsConfig', () => {
     expect(configureEgressMock).toHaveBeenCalledOnce()
     const [cfg, , opts] = configureEgressMock.mock.calls[0] as [EgressConfig, unknown, { shipOwnRecords: boolean }]
     expect(cfg.egressTargets).toEqual(['otel'])
-    expect(cfg.egressOtel).toEqual({ endpoint: 'https://ion-telemetry.sprague.house' })
+    expect(cfg.egressOtel).toEqual({ endpoint: 'https://telemetry.example.com' })
     expect(opts.shipOwnRecords).toBe(true)
 
     expect(startEgressTailersMock).toHaveBeenCalledOnce()

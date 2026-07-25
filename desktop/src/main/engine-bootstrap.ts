@@ -9,25 +9,127 @@
  *   1. Write/refresh ~/Library/LaunchAgents/com.ion.engine.plist from the
  *      bundled template, substituting $HOME with the real home directory.
  *   2. Copy the bundled engine binary to ~/.ion/bin/ion if missing or
- *      version-mismatched (compare `ion version` output).
+ *      content-changed (sha256 hash of the bytes — see hashBinary).
  *   3. Run `ion install-assets` to install SDK/ion-meta/canonical docs.
- *   4. `launchctl bootstrap` + `kickstart` the agent.
+ *   4. `launchctl bootstrap` + `kickstart` the agent (kickstart retried —
+ *      launchctl transiently fails while a booted-out agent tears down).
+ *   5. Verify the daemon is actually up by connecting to its socket; if it
+ *      never binds, retry the kickstart once, then surface the failure.
  *
  * All steps are idempotent. A no-op on Linux/Windows (daemon is macOS-only).
  */
 
 import { execFileSync, execSync } from 'child_process'
-import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, chmodSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, chmodSync, renameSync } from 'fs'
+import { createHash } from 'crypto'
+import { createConnection } from 'net'
 import { homedir } from 'os'
 import { join } from 'path'
-import { log as _log } from './logger'
+import { log as _log, error as _error } from './logger'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('bootstrap', msg, fields)
 }
+function error(msg: string, fields?: Record<string, unknown>): void {
+  _error('bootstrap', msg, fields)
+}
 
 const PLIST_LABEL = 'com.ion.engine'
 const PLIST_FILENAME = 'com.ion.engine.plist'
+const ENGINE_SOCKET_PATH = join(homedir(), '.ion', 'engine.sock')
+
+/**
+ * Timing knobs for the kickstart-and-verify sequence. Injectable so tests can
+ * exercise the retry/verify paths without real multi-second waits; production
+ * callers use the defaults.
+ */
+export interface DaemonReadinessOpts {
+  /** execSync timeout for each launchctl kickstart attempt. */
+  kickstartTimeoutMs?: number
+  /** Attempts per kickstart round (launchctl can transiently hang or refuse
+   *  while a just-booted-out agent is still tearing down). */
+  kickstartAttempts?: number
+  /** Settle delay between kickstart attempts. */
+  kickstartSettleMs?: number
+  /** Total budget for one socket-readiness wait. */
+  socketWaitMs?: number
+  /** Poll interval for the socket-readiness wait. */
+  socketPollMs?: number
+}
+
+const READINESS_DEFAULTS: Required<DaemonReadinessOpts> = {
+  kickstartTimeoutMs: 10000,
+  kickstartAttempts: 3,
+  kickstartSettleMs: 1000,
+  socketWaitMs: 15000,
+  socketPollMs: 500,
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * Issue `launchctl kickstart` with retries. launchctl transiently fails
+ * (observed: `spawnSync /bin/sh ETIMEDOUT` under the old 5s timeout) when the
+ * agent namespace is still settling from a just-completed `bootout` — the
+ * exact state during a desktop-relaunch handoff, where the quitting instance
+ * boots the agent out while the new instance re-bootstraps it. A single
+ * swallowed failure here left the engine down for the whole app session
+ * (nothing retried, nothing verified), so every retry is logged and the
+ * outcome is returned for the caller's verify step.
+ */
+async function kickstartDaemon(uid: number, force: boolean, opts: Required<DaemonReadinessOpts>): Promise<boolean> {
+  const cmd = force
+    ? `launchctl kickstart -k gui/${uid}/${PLIST_LABEL}`
+    : `launchctl kickstart gui/${uid}/${PLIST_LABEL}`
+  for (let attempt = 1; attempt <= opts.kickstartAttempts; attempt++) {
+    try {
+      execSync(cmd, { timeout: opts.kickstartTimeoutMs })
+      log('engine_bootstrap: launchctl kickstart succeeded', { force_restart: force, attempt })
+      return true
+    } catch (err: any) {
+      log('engine_bootstrap: launchctl kickstart attempt failed', {
+        force_restart: force,
+        attempt,
+        attempts_max: opts.kickstartAttempts,
+        error: err.message,
+      })
+      if (attempt < opts.kickstartAttempts) await sleep(opts.kickstartSettleMs)
+    }
+  }
+  return false
+}
+
+/**
+ * Poll the engine daemon socket until it accepts a connection or the budget
+ * runs out. This is the fetching primitive — "kickstart returned 0" only
+ * proves launchctl accepted the command, not that the engine bound its
+ * socket. Each probe opens and immediately closes a real connection.
+ */
+export async function waitForEngineSocket(opts: Required<DaemonReadinessOpts>): Promise<boolean> {
+  const deadline = Date.now() + opts.socketWaitMs
+  const started = Date.now()
+  for (;;) {
+    const ok = await new Promise<boolean>((resolve) => {
+      const conn = createConnection(ENGINE_SOCKET_PATH)
+      conn.once('connect', () => {
+        conn.destroy()
+        resolve(true)
+      })
+      conn.once('error', () => {
+        conn.destroy()
+        resolve(false)
+      })
+    })
+    if (ok) {
+      log('engine_bootstrap: engine socket reachable', { elapsed_ms: Date.now() - started })
+      return true
+    }
+    if (Date.now() >= deadline) return false
+    await sleep(opts.socketPollMs)
+  }
+}
 
 /**
  * Locate the plist template. Checked in order:
@@ -64,12 +166,25 @@ function findBundledBinary(): string | null {
   return null
 }
 
-/** Read the output of `ion version` for a given binary path. Returns null on failure. */
-function getVersion(binaryPath: string): string | null {
+/**
+ * sha256 content hash of a binary, hex-encoded. Returns null if the file is
+ * missing or unreadable.
+ *
+ * This is the precise identity check for "is the installed daemon binary the
+ * same as the one we bundle?" — it replaces string-comparing `ion version`
+ * output, which is only a proxy for identity and collides whenever two builds
+ * share a version string (e.g. the `dev` default, or any un-bumped release).
+ * A version-string match let a genuinely different binary be treated as
+ * identical, so the DMG-bundled engine was never copied and the daemon was
+ * never force-restarted — the stale-daemon bug. Hashing bytes is exact, is
+ * cheaper than exec'ing the binary, and does not fail on a quarantined binary
+ * that macOS would refuse to run.
+ */
+function hashBinary(binaryPath: string): string | null {
   try {
-    return execFileSync(binaryPath, ['version'], { encoding: 'utf-8', timeout: 5000 }).trim()
+    return createHash('sha256').update(readFileSync(binaryPath)).digest('hex')
   } catch (err) {
-    log('engine_bootstrap: getVersion failed', { path: binaryPath, error: err instanceof Error ? err.message : String(err) })
+    log('engine_bootstrap: hashBinary failed', { path: binaryPath, error: err instanceof Error ? err.message : String(err) })
     return null
   }
 }
@@ -80,11 +195,12 @@ function getVersion(binaryPath: string): string | null {
  *
  * Exported for testing. In production, call from app-lifecycle.ts.
  */
-export async function ensureEngineDaemon(): Promise<void> {
+export async function ensureEngineDaemon(readiness: DaemonReadinessOpts = {}): Promise<void> {
   if (process.platform !== 'darwin') {
     log('Not macOS, skipping launchd daemon bootstrap')
     return
   }
+  const opts: Required<DaemonReadinessOpts> = { ...READINESS_DEFAULTS, ...readiness }
 
   const home = homedir()
   const uid = process.getuid?.() ?? 501
@@ -127,7 +243,14 @@ export async function ensureEngineDaemon(): Promise<void> {
     }
   }
 
-  // ── Step 2: Copy engine binary if missing or version-mismatched ────────────
+  // ── Step 2: Copy engine binary if missing or content-changed ───────────────
+  //
+  // Identity is decided by a sha256 hash of the binary bytes, NOT by
+  // `ion version` string equality. Two builds can share a version string (the
+  // `dev` default, or any un-bumped release) while being genuinely different
+  // binaries; a string match previously skipped the copy AND the force-restart,
+  // so a DMG update kept running the old daemon. Hash comparison catches every
+  // real change.
 
   const ionBinDir = join(home, '.ion', 'bin')
   const destBinary = join(ionBinDir, 'ion')
@@ -139,19 +262,31 @@ export async function ensureEngineDaemon(): Promise<void> {
     // Source IS the destination (globally installed binary). Nothing to copy.
     log('Engine binary is already at daemon path, skipping copy')
   } else {
-    const srcVersion = getVersion(srcBinary)
-    const destVersion = existsSync(destBinary) ? getVersion(destBinary) : null
+    const srcHash = hashBinary(srcBinary)
+    const destHash = existsSync(destBinary) ? hashBinary(destBinary) : null
 
-    if (destVersion && destVersion === srcVersion) {
-      log('engine_bootstrap: binary version match, skipping copy', { version: destVersion })
+    if (destHash && srcHash && destHash === srcHash) {
+      log('engine_bootstrap: binary hash match, skipping copy', { hash: srcHash.slice(0, 12) })
     } else {
-      log(
-        `Engine binary ${destVersion ? `version mismatch (${destVersion} -> ${srcVersion})` : 'missing'}` +
-        `, copying from ${srcBinary}`,
-      )
+      log('engine_bootstrap: binary content differs, copying', {
+        reason: destHash ? 'hash_mismatch' : 'missing',
+        src_hash: srcHash ? srcHash.slice(0, 12) : null,
+        dest_hash: destHash ? destHash.slice(0, 12) : null,
+        src: srcBinary,
+      })
       mkdirSync(ionBinDir, { recursive: true })
-      copyFileSync(srcBinary, destBinary)
-      chmodSync(destBinary, 0o755)
+      // Install via copy-to-staging + rename so the destination gets a FRESH
+      // inode. Copying onto the existing file reuses its vnode, and macOS
+      // caches code-signing state per vnode: an in-place overwrite of a signed
+      // Mach-O — especially one launchd is actively respawning — leaves that
+      // cache poisoned, and every subsequent exec is SIGKILLed with "Taskgated
+      // Invalid Signature" even though `codesign --verify` passes on disk.
+      // rename() atomically swaps in the new inode, so the kernel evaluates
+      // the new binary's signature from scratch.
+      const stagingBinary = `${destBinary}.staging`
+      copyFileSync(srcBinary, stagingBinary)
+      chmodSync(stagingBinary, 0o755)
+      renameSync(stagingBinary, destBinary)
       binaryUpdated = true
       log('engine_bootstrap: binary installed', { path: destBinary })
     }
@@ -216,23 +351,36 @@ export async function ensureEngineDaemon(): Promise<void> {
   // guarantees the daemon is up (covering the case where a prior graceful quit
   // booted it out) without disturbing a running one.
   const forceRestart = binaryUpdated || plistChanged
-  const kickstartCmd = forceRestart
-    ? `launchctl kickstart -k gui/${uid}/${PLIST_LABEL}`
-    : `launchctl kickstart gui/${uid}/${PLIST_LABEL}`
-  try {
-    execSync(kickstartCmd, { timeout: 5000 })
-    if (forceRestart) {
-      log('engine_bootstrap: launchctl kickstart succeeded', { binary_updated: binaryUpdated, plist_changed: plistChanged })
-    } else {
-      log('launchctl kickstart succeeded (no change — daemon left running if already up)')
-    }
-  } catch (err: any) {
-    log('engine_bootstrap: launchctl kickstart failed', { force_restart: forceRestart, error: err.message })
-  }
+  log('engine_bootstrap: kickstarting daemon', { force_restart: forceRestart, binary_updated: binaryUpdated, plist_changed: plistChanged })
+  await kickstartDaemon(uid, forceRestart, opts)
+
+  // ── Step 5: Verify the daemon actually came up ─────────────────────────────
+  //
+  // ensureEngineDaemon's contract is "installed, current, and RUNNING" — so
+  // verify running with the primitive that proves it (a socket connect), not
+  // by trusting launchctl's exit code. The failure this closes: during a
+  // desktop-relaunch handoff the old instance boots the agent out, the new
+  // instance's kickstart races the teardown and fails or lands on a dead
+  // namespace, and the app then starts against a down engine — 30 restoring
+  // tabs each timing out against a socket nobody was going to bring back.
+  if (await waitForEngineSocket(opts)) return
+
+  // One recovery round: re-issue the kickstart (the first may have raced the
+  // bootout teardown) and wait again.
+  log('engine_bootstrap: socket not reachable after kickstart, retrying kickstart')
+  await kickstartDaemon(uid, forceRestart, opts)
+  if (await waitForEngineSocket(opts)) return
+
+  // Still down. Surface loudly and return — the bridge's background reconnect
+  // keeps retrying, so the app is degraded but not wedged.
+  error('engine_bootstrap: engine daemon failed to come up; bridge reconnect will keep retrying', {
+    socket: ENGINE_SOCKET_PATH,
+    force_restart: forceRestart,
+  })
 }
 
 // Exported for testing
-export { findPlistTemplate, findBundledBinary, getVersion, PLIST_LABEL, PLIST_FILENAME }
+export { findPlistTemplate, findBundledBinary, hashBinary, PLIST_LABEL, PLIST_FILENAME }
 
 /**
  * Force-restart the running engine daemon so it re-reads engine.json.
@@ -260,7 +408,11 @@ export function restartEngineDaemon(): boolean {
   }
   const uid = process.getuid?.() ?? 501
   try {
-    execSync(`launchctl kickstart -k gui/${uid}/${PLIST_LABEL}`, { timeout: 5000 })
+    // 10s timeout: launchctl transiently hangs past the old 5s budget while
+    // the agent namespace is busy (see kickstartDaemon). This path stays a
+    // single synchronous attempt — it runs on a tray click and must not block
+    // the main process through a multi-attempt retry ladder.
+    execSync(`launchctl kickstart -k gui/${uid}/${PLIST_LABEL}`, { timeout: 10000 })
     log('restartEngineDaemon: launchctl kickstart -k succeeded (daemon recycled, re-reading engine.json)')
     return true
   } catch (err: any) {
