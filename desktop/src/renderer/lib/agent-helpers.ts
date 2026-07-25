@@ -39,6 +39,43 @@ export function getDispatches(agent: AgentStateUpdate): DispatchInfo[] {
 }
 
 /**
+ * Find a dispatch by id across ALL agent-state pills. This is the DURABLE
+ * per-dispatch lookup: pills are re-emitted on every `engine_agent_state`
+ * heartbeat snapshot and carry the dispatch's own model / task /
+ * conversationId / startTime, so the lookup succeeds even when the one-shot
+ * `dispatchTelemetry` stream was never observed (late attach / tab reopen).
+ * Returns undefined when no pill owns the id.
+ */
+export function findDispatchById(
+  agents: AgentStateUpdate[],
+  dispatchId: string,
+): DispatchInfo | undefined {
+  if (!dispatchId) return undefined
+  for (const agent of agents) {
+    const match = getDispatches(agent).find((d) => d.id === dispatchId)
+    if (match) return match
+  }
+  return undefined
+}
+
+/**
+ * Convert a flat DispatchTelemetryEntry (from engine_dispatch_start/end) into
+ * the DispatchInfo shape the header chrome and dispatch rows render. Status is
+ * derived from exitCode presence: undefined means the dispatch_end has not
+ * arrived yet, so the dispatch is still running.
+ */
+export function telemetryToDispatchInfo(entry: DispatchTelemetryEntry): DispatchInfo {
+  return {
+    id: entry.dispatchId,
+    task: entry.dispatchTask,
+    model: entry.dispatchModel,
+    conversationId: entry.conversationId ?? '',
+    elapsed: entry.elapsed,
+    status: entry.exitCode !== undefined ? (entry.exitCode === 0 ? 'done' : 'error') : 'running',
+  }
+}
+
+/**
  * The stable key under which per-agent UI state (expand/select/popup) is stored
  * in AgentPanel. Uses the MOST RECENT dispatch's id so two dispatches of the
  * same agent name remain distinct rows with independent state. Falls back to

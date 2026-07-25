@@ -202,4 +202,84 @@ describe('AgentPanel slow reconcile backstop', () => {
     })
     container.remove()
   })
+
+  // Regression: the 12s background reconcile must NOT flash the popup to the
+  // "Loading conversation..." placeholder. Before the fix, refetchConversation
+  // raised the loading flag on every poll cycle, so while each in-flight fetch
+  // was pending the panel blanked its cached transcript for the placeholder —
+  // the ~12s flashing the user saw. The reconcile now refetches silently.
+  it('does not flash the loading placeholder on background reconcile', async () => {
+    // The reconcile fetch is held PENDING via a deferred so the in-flight
+    // window (where the old code showed the placeholder) is observable.
+    let resolveReconcile: ((v: { messages: unknown[]; total: number }) => void) | null = null
+    let calls = 0
+    const getConversation = vi.fn(() => {
+      calls++
+      if (calls <= 1) {
+        return Promise.resolve({
+          messages: [{ role: 'assistant', content: 'first step', timestamp: 0 }],
+          total: 1,
+        })
+      }
+      return new Promise<{ messages: unknown[]; total: number }>((res) => {
+        resolveReconcile = res
+      })
+    })
+    ;(globalThis as unknown as { window: { ion: unknown } }).window.ion = { getConversation }
+
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    await act(async () => {
+      root.render(React.createElement(AgentPanel, { agents: [runningAgent()] }))
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    const label = Array.from(container.querySelectorAll('span')).find(
+      (el) => el.textContent === 'Dev Lead',
+    ) as HTMLElement | undefined
+    expect(label, 'agent name label should be present').toBeTruthy()
+    await act(async () => {
+      label!.click()
+    })
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    // Initial one-shot load populated the popup.
+    expect(container.textContent).toContain('first step')
+
+    // Fire the 12s reconcile. Its fetch stays pending (deferred not resolved).
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(12500)
+    })
+    expect(getConversation.mock.calls.length).toBeGreaterThan(1)
+
+    // While the reconcile fetch is in flight the cached transcript must remain
+    // and the placeholder must NOT appear. Old code turned this red here.
+    expect(container.textContent).toContain('first step')
+    expect(container.textContent).not.toContain('Loading conversation')
+
+    // Resolving the reconcile folds the grown snapshot into the open popup.
+    await act(async () => {
+      resolveReconcile?.({
+        messages: [
+          { role: 'assistant', content: 'first step', timestamp: 0 },
+          { role: 'assistant', content: 'second step now visible', timestamp: 0 },
+        ],
+        total: 2,
+      })
+      await Promise.resolve()
+    })
+    expect(container.textContent).toContain('second step now visible')
+    expect(container.textContent).not.toContain('Loading conversation')
+
+    await act(async () => {
+      root.unmount()
+    })
+    container.remove()
+  })
 })

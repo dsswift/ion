@@ -8,7 +8,7 @@ import { FloatingPanel } from './FloatingPanel'
 import { Transcript } from './conversation/Transcript'
 import { DispatchPager } from './DispatchPager'
 import { DispatchMetaBar } from './DispatchMetaBar'
-import { meta, childrenOfDispatch, childAgentsOf, getDispatches } from './agent-panel-helpers'
+import { meta, childrenOfDispatch, childAgentsOf, getDispatches, findDispatchById, telemetryToDispatchInfo } from './agent-panel-helpers'
 import { mapConversationMessages } from './agent-conversation-mapper'
 import type { DispatchInfo, BreadcrumbFrame } from './agent-panel-helpers'
 import type { AgentStateUpdate } from '../../shared/types'
@@ -183,14 +183,7 @@ export function AgentDetailPanel({
         displayName: entry.dispatchAgent,
         dispatchParentId: entry.dispatchParentId,
         dispatchDepth: entry.dispatchDepth,
-        dispatches: [{
-          id: entry.dispatchId,
-          task: entry.dispatchTask,
-          model: entry.dispatchModel,
-          conversationId: entry.conversationId ?? '',
-          elapsed: entry.elapsed,
-          status: entry.exitCode !== undefined ? (entry.exitCode === 0 ? 'done' : 'error') : 'running',
-        }],
+        dispatches: [telemetryToDispatchInfo(entry)],
       },
     }))
 
@@ -219,24 +212,21 @@ export function AgentDetailPanel({
 
   // Resolve the dispatch info for the top-of-stack frame so the header
   // chrome reflects the currently-viewed dispatch (root or drilled-in child).
+  //
+  // Non-root resolution mirrors the child-listing logic above: DURABLE
+  // agent-state pill first (survives heartbeat replay, carries the dispatch's
+  // own model/startTime), one-shot dispatchTelemetry as the live supplement.
+  // When neither knows the dispatch, the header renders no meta row. It must
+  // NEVER fall back to the root frame's dispatch: that displays the PARENT
+  // agent's model and ticking duration under the child's breadcrumb (e.g. a
+  // dev-lead's Opus id and elapsed shown for its Sonnet specialist).
+  const topTelemetryEntry = isRoot
+    ? undefined
+    : dispatchTelemetry?.find(e => e.dispatchId === top.dispatchId)
   const topDispatch: DispatchInfo | undefined = isRoot
     ? dispatches[selectedDispatch]
-    : (() => {
-        // Find the dispatch from dispatchTelemetry that matches the current frame.
-        const entry = dispatchTelemetry?.find(e => e.dispatchId === top.dispatchId)
-        if (!entry) return dispatches[selectedDispatch]
-        return {
-          id: entry.dispatchId,
-          task: entry.dispatchTask,
-          model: entry.dispatchModel,
-          conversationId: entry.conversationId ?? '',
-          elapsed: entry.elapsed,
-          status: entry.exitCode !== undefined
-            ? (entry.exitCode === 0 ? 'done' : 'error')
-            : 'running',
-          startTime: undefined,
-        }
-      })()
+    : findDispatchById(allAgents ?? [], top.dispatchId)
+      ?? (topTelemetryEntry ? telemetryToDispatchInfo(topTelemetryEntry) : undefined)
 
   // For the DispatchPager: at root level show all root dispatches with the
   // selectedDispatch index. When drilled into a child, the child has no
