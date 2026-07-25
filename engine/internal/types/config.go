@@ -453,6 +453,15 @@ type RelayConfig struct {
 	URL       string `json:"url"`       // WebSocket relay URL (e.g. wss://relay.example.com)
 	APIKey    string `json:"apiKey"`    // Bearer token for relay auth
 	ChannelID string `json:"channelId"` // 32-char hex channel identifier
+
+	// UseOidc, when true, instructs the engine to mint a fresh OIDC access
+	// token before each relay reconnect using the configured operator identity
+	// (auth.identityProvider). OidcScope and OidcAudience control the token
+	// grant. The static APIKey is used as fallback when no operator identity is
+	// configured. When UseOidc is false (the default), APIKey is always used.
+	UseOidc      bool   `json:"useOidc,omitempty"`
+	OidcScope    string `json:"oidcScope,omitempty"`
+	OidcAudience string `json:"oidcAudience,omitempty"`
 }
 
 // FeatureFlagsConfig defines feature flag source configuration.

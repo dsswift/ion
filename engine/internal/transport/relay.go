@@ -22,6 +22,12 @@ type controlMessage struct {
 	Type string `json:"type"`
 }
 
+// CredentialProvider is a function that returns a Bearer token for the relay
+// connection. It is called before each dial attempt so that dynamic credentials
+// (e.g. short-lived OIDC access tokens) are fresh on every reconnect.
+// An error causes the dial to be skipped and retried after backoff.
+type CredentialProvider func(ctx context.Context) (string, error)
+
 // RelayTransport connects to a WebSocket relay server with automatic
 // exponential backoff reconnection. Each incoming non-control message
 // is dispatched to OnMessage.
@@ -29,6 +35,11 @@ type RelayTransport struct {
 	url       string
 	apiKey    string
 	channelID string
+
+	// credentialProvider, when set, is called before each dial attempt to
+	// obtain a fresh Bearer token. It takes precedence over apiKey. When nil,
+	// apiKey is used as-is for every connection attempt.
+	credentialProvider CredentialProvider
 
 	// writeTimeout is the timeout for relay broadcast writes (default 10s).
 	writeTimeout time.Duration
@@ -61,6 +72,17 @@ func (r *RelayTransport) SetWriteTimeout(d time.Duration) {
 	r.writeTimeout = d
 }
 
+// SetCredentialProvider sets a function that provides Bearer tokens on demand.
+// The provider is called before each dial attempt, so it must return fresh
+// credentials suitable for a new connection. An error causes the dial to be
+// skipped and retried after backoff.
+// When set, the provider's token takes precedence over the static APIKey.
+func (r *RelayTransport) SetCredentialProvider(fn CredentialProvider) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.credentialProvider = fn
+}
+
 // Listen starts the WebSocket connection loop with reconnection.
 // The handler is called each time a connection is established (providing
 // a Conn for sending responses). For relay, this is a single logical
@@ -78,7 +100,24 @@ func (r *RelayTransport) connectLoop(handler func(conn Conn)) {
 		default:
 		}
 
-		err := r.dial()
+		// Resolve credential before dialing. A provider error is treated as a
+		// dial failure: log it and retry with backoff.
+		token, credErr := r.resolveCredential(context.Background())
+		if credErr != nil {
+			utils.LogWithFields(utils.LevelError, "transport.relay", "credential provider error; skipping dial", map[string]any{"attempt": r.attempt, "error": credErr.Error()})
+			delay := r.backoffDelay()
+			select {
+			case <-time.After(delay):
+			case <-r.done:
+				return
+			}
+			r.mu.Lock()
+			r.attempt++
+			r.mu.Unlock()
+			continue
+		}
+
+		err := r.dialWithToken(token)
 		if err != nil {
 			utils.LogWithFields(utils.LevelInfo, "transport.relay", "dial failed", map[string]any{"attempt": r.attempt, "error": err.Error()})
 
@@ -130,12 +169,26 @@ func (r *RelayTransport) connectLoop(handler func(conn Conn)) {
 	}
 }
 
-func (r *RelayTransport) dial() error {
+// resolveCredential returns the Bearer token to use for the next dial.
+// When a CredentialProvider is set it is called; otherwise the static apiKey
+// is returned. An error is returned only when a provider is set and fails.
+func (r *RelayTransport) resolveCredential(ctx context.Context) (string, error) {
+	r.mu.Lock()
+	provider := r.credentialProvider
+	staticKey := r.apiKey
+	r.mu.Unlock()
+	if provider == nil {
+		return staticKey, nil
+	}
+	return provider(ctx)
+}
+
+func (r *RelayTransport) dialWithToken(token string) error {
 	dialURL := fmt.Sprintf("%s/v1/channel/%s?role=ion", r.url, r.channelID)
 
 	opts := &websocket.DialOptions{
 		HTTPHeader: http.Header{
-			"Authorization": []string{"Bearer " + r.apiKey},
+			"Authorization": []string{"Bearer " + token},
 		},
 		CompressionMode: websocket.CompressionContextTakeover,
 	}
