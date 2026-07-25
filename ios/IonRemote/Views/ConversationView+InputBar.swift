@@ -36,6 +36,38 @@ extension ConversationView {
         return running || (hasRunningChildren == true)
     }
 
+    /// Whether the active conversation instance has an image-generation model
+    /// selected. Image models (modelKind == "image") use a single-prompt API
+    /// with no conversation history, so the input bar shows a disclosure hint.
+    /// Mirrors the desktop's `isImageModel` check in `InputBar.tsx`.
+    var isImageModel: Bool {
+        let activeInst = viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)
+        let effectiveModelId = activeInst?.modelOverride ?? viewModel.preferredModel
+        guard !effectiveModelId.isEmpty else { return false }
+        return viewModel.availableModels.first(where: { $0.id == effectiveModelId })?.modelKind == "image"
+    }
+
+    /// Whether the image-model disclosure banner is visible. Gated on the user
+    /// actively composing (input focused or a non-empty draft) so the banner
+    /// informs the prompt being written instead of permanently occupying input-
+    /// bar space while the user reads the conversation. Phone screens are far
+    /// tighter than the desktop overlay, so unlike InputBar.tsx (always visible
+    /// while an image model is selected) iOS shows it only when it is relevant.
+    var showImageModelBanner: Bool {
+        ConversationView.computeShowImageModelBanner(
+            isImageModel: isImageModel,
+            isInputFocused: isInputFocused,
+            promptText: promptText
+        )
+    }
+
+    /// Pure, view-independent gate for the image-model banner. Extracted so the
+    /// visibility logic is unit-testable without instantiating the view (same
+    /// pattern as computeCanAbort above).
+    static func computeShowImageModelBanner(isImageModel: Bool, isInputFocused: Bool, promptText: String) -> Bool {
+        isImageModel && (isInputFocused || !promptText.isEmpty)
+    }
+
     // MARK: - Engine input bar
 
     var engineInputBar: some View {
@@ -50,6 +82,27 @@ extension ConversationView {
                     }
                 )
                 .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
+            // Image model disclosure banner — shown while the user is composing
+            // with an image-generation model selected (showImageModelBanner:
+            // focused or non-empty draft). Informs the user that only the
+            // current message is sent (no conversation history). Compact single
+            // line so it never dominates the input bar on a phone screen.
+            if showImageModelBanner {
+                HStack(spacing: 4) {
+                    Image(systemName: "photo")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                    Text("Image model — only this message is sent")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 4)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
 
             HStack(spacing: 8) {
@@ -117,6 +170,7 @@ extension ConversationView {
         .animation(IonTheme.snappySpring, value: slashFilter)
         .animation(IonTheme.snappySpring, value: isRecordingVoice)
         .animation(IonTheme.snappySpring, value: canAbort)
+        .animation(.easeInOut(duration: 0.15), value: showImageModelBanner)
         .alert("Microphone Access Required", isPresented: $showPermissionDeniedAlert) {
             Button("Open Settings") {
                 if let url = URL(string: UIApplication.openSettingsURLString) {

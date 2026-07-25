@@ -94,51 +94,15 @@ struct EngineMessageRow: View {
         return formatter.localizedString(for: date, relativeTo: Date())
     }
 
-    // MARK: - Attachment views (conversation mode)
+    // MARK: - Attachment preview helper
 
-    @ViewBuilder
-    private func attachmentViews(_ attachments: [MessageAttachment]) -> some View {
-        VStack(alignment: .trailing, spacing: 4) {
-            ForEach(attachments) { att in
-                let img = AttachmentImageCache.shared.image(forKey: att.id)
-                    ?? AttachmentImageCache.shared.image(forKey: att.path)
-                if att.type == .image, let img {
-                    // Cache hit — render inline thumbnail directly.
-                    Image(uiImage: img)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: 200)
-                        .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.medium))
-                        .onTapGesture {
-                            previewName = att.name
-                            previewImage = img
-                        }
-                } else if att.type == .image {
-                    // Cache miss — ask the desktop for the image bytes via
-                    // RemoteImageFetcher. InlineAttachmentImage handles the
-                    // in-flight placeholder and error state. This restores
-                    // full image preview for history-reloaded messages whose
-                    // bytes are not yet in the local cache.
-                    InlineAttachmentImage(path: att.path) { fetched in
-                        previewName = att.name
-                        previewImage = fetched
-                    }
-                } else {
-                    HStack(spacing: 3) {
-                        Image(systemName: "doc")
-                            .font(.caption2)
-                        Text(att.name)
-                            .font(.caption2)
-                            .lineLimit(1)
-                    }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color(.secondarySystemFill))
-                    .clipShape(Capsule())
-                    .foregroundStyle(.secondary)
-                }
-            }
-        }
+    /// Drives the row's full-screen preview sheet from a tapped thumbnail.
+    /// Passed to `MessageAttachmentImages` by the user/assistant/tool bubbles.
+    /// Internal (not private) so the tool-bubble extension in
+    /// `EngineMessageRow+ToolBubble.swift` can pass it through as well.
+    func previewAttachment(_ image: UIImage, _ name: String) {
+        previewName = name
+        previewImage = image
     }
 
     // MARK: - User
@@ -170,7 +134,7 @@ struct EngineMessageRow: View {
                 }
 
                 if let attachments = message.attachments, !attachments.isEmpty {
-                    attachmentViews(attachments)
+                    MessageAttachmentImages(attachments: attachments, alignment: .trailing, onPreview: previewAttachment)
                 }
 
                 let segments = parseAttachmentSegments(message.content)
@@ -356,6 +320,14 @@ struct EngineMessageRow: View {
                             .textSelection(.enabled)
                         }
 
+                        // Provider-generated images (e.g. an image-model turn)
+                        // arrive as structured image attachments on the assistant
+                        // message, often with empty content. Render them inline so
+                        // the turn shows the image instead of a blank row.
+                        if !message.imageAttachments.isEmpty {
+                            MessageAttachmentImages(attachments: message.imageAttachments, alignment: .leading, onPreview: previewAttachment)
+                        }
+
                         // Blinking cursor for streaming
                         if isRunning && message.isAssistant {
                             RoundedRectangle(cornerRadius: 0.5)
@@ -463,14 +435,21 @@ struct EngineMessageRow: View {
 
     /// Engine-view compact assistant bubble: plain markdown, no chrome.
     private var engineAssistantBubble: some View {
-        HStack {
-            MarkdownContentView(
-                blocks: MarkdownBlockCache.shared.blocks(for: message.content)
-            )
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .clipped()
-            Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                MarkdownContentView(
+                    blocks: MarkdownBlockCache.shared.blocks(for: message.content)
+                )
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .clipped()
+                Spacer(minLength: 0)
+            }
+            // Provider-generated images on the assistant turn (see
+            // conversationAssistantBubble) — render inline here too.
+            if !message.imageAttachments.isEmpty {
+                MessageAttachmentImages(attachments: message.imageAttachments, alignment: .leading, onPreview: previewAttachment)
+            }
         }
     }
 

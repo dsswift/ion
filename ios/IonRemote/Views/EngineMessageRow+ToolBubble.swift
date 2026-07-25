@@ -35,8 +35,21 @@ extension EngineMessageRow {
 
     // MARK: - Conversation-view tool bubble
 
-    /// Full conversation-view tool bubble: expandable input/output detail.
+    /// Full conversation-view tool bubble: expandable input/output detail,
+    /// with any tool-returned images rendered inline beneath it (always
+    /// visible, independent of the expand/collapse state — matching the
+    /// desktop tool image strip).
     var conversationToolBubble: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            toolBubbleBody
+            if !message.imageAttachments.isEmpty {
+                MessageAttachmentImages(attachments: message.imageAttachments, alignment: .leading, onPreview: previewAttachment)
+                    .padding(.horizontal, 12)
+            }
+        }
+    }
+
+    private var toolBubbleBody: some View {
         HStack(spacing: 0) {
             RoundedRectangle(cornerRadius: 1)
                 .fill(toolAccentColor)
@@ -125,18 +138,25 @@ extension EngineMessageRow {
     // MARK: - Engine-view tool bubble
 
     /// Engine-view compact tool bubble: icon + name only, no expand.
+    /// Tool-returned images render inline beneath the name row.
     var engineToolBubble: some View {
-        HStack(spacing: 6) {
-            engineToolStatusIcon
-            Text(message.toolName ?? "tool")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Spacer()
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                engineToolStatusIcon
+                Text(message.toolName ?? "tool")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color(.secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+
+            if !message.imageAttachments.isEmpty {
+                MessageAttachmentImages(attachments: message.imageAttachments, alignment: .leading, onPreview: previewAttachment)
+            }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
     @ViewBuilder
