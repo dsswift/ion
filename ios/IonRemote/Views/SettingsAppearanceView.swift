@@ -28,8 +28,30 @@ struct SettingsAppearanceView: View {
             // desktop. The desktop carries its own theme setting that
             // is projected separately under Desktop Settings.
             Section {
+                // Theme-pack brand mark (enterprise logo). Only custom
+                // packs carry one; built-ins render no image row.
+                if let logo = theme.logoImage {
+                    HStack {
+                        Spacer()
+                        Image(uiImage: logo)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxHeight: 48)
+                        Spacer()
+                    }
+                }
                 Picker("Theme", selection: Binding(
-                    get: { theme.selectedThemeId },
+                    get: {
+                        // Under enforcement the picker displays the enforced
+                        // theme (when it is resolvable in the list); the
+                        // user's own selection is preserved underneath and
+                        // resumes when the policy lifts.
+                        if let enforced = theme.enforcedThemeId,
+                           theme.availableThemes.contains(where: { $0.id == enforced }) {
+                            return enforced
+                        }
+                        return theme.selectedThemeId
+                    },
                     set: { newValue in
                         theme.selectedThemeId = newValue
                         DiagnosticLog.log("theme picker set", tag: "view.settings", fields: [
@@ -37,10 +59,14 @@ struct SettingsAppearanceView: View {
                         ])
                     }
                 )) {
-                    ForEach(ThemeRegistry.themes, id: \.id) { t in
+                    // Built-ins + custom themes synced from paired desktops
+                    // (only themes with an iOS component ever reach this
+                    // list — the desktop ships nothing else).
+                    ForEach(theme.availableThemes, id: \.id) { t in
                         Text(t.displayName).tag(t.id)
                     }
                 }
+                .disabled(theme.enforcedThemeId != nil)
                 .onChange(of: theme.selectedThemeId) { oldVal, newVal in
                     DiagnosticLog.log("theme picker changed", tag: "view.settings", fields: [
                         "reason": oldVal,
@@ -53,7 +79,11 @@ struct SettingsAppearanceView: View {
             } header: {
                 Text("Theme")
             } footer: {
-                Text("Arc Reactor forces dark mode. Ion Default follows system settings.")
+                if theme.enforcedThemeId != nil {
+                    Text("Theme is managed by your organization.")
+                } else {
+                    Text("Ion Dark, Ion Classic, and Jarvis HUD render dark; Ion Light renders light. Ion Dark, Ion Light, and Ion Classic match the desktop themes of the same name.")
+                }
             }
 
             // ─── New Tab ────────────────────────────────────────────

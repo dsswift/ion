@@ -29,7 +29,7 @@ final class TabRowSubtitlePriorityTests: XCTestCase {
     // MARK: - Helpers
 
     private let yellowHex: UInt = 0xF59E0B   // childrenYellow
-    private let blueHex: UInt = 0x4A9EF5     // questionBlue
+    private let purpleHex: UInt = 0xA78BFA   // questionPurple
 
     /// A fixed now/since pair so `relativeTime` is deterministic. 2h apart →
     /// the elapsed suffix is always "2h ago".
@@ -125,8 +125,8 @@ final class TabRowSubtitlePriorityTests: XCTestCase {
         XCTAssertEqual(subtitleColor(for: tab), .green)
     }
 
-    /// idle + AskUserQuestion, no children → question blue.
-    func testQuestionAloneResolvesBlueSubtitle() {
+    /// idle + AskUserQuestion, no children → question purple.
+    func testQuestionAloneResolvesPurpleSubtitle() {
         let tab = makeTab(
             status: .idle,
             hasRunningChildren: nil,
@@ -134,7 +134,7 @@ final class TabRowSubtitlePriorityTests: XCTestCase {
         )
 
         XCTAssertEqual(subtitle(for: tab), "Waiting on you · \(elapsedSuffix)")
-        XCTAssertEqual(subtitleColor(for: tab), Color(hex: blueHex))
+        XCTAssertEqual(subtitleColor(for: tab), Color(hex: purpleHex))
     }
 
     /// idle + hasRunningChildren, empty queue → running-children label.

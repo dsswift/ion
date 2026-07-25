@@ -4,9 +4,15 @@ import SwiftUI
 
 /// Arc reactor aesthetic. Forces dark mode. Uses animated concentric
 /// rings as the background and a scan-line activity indicator.
+///
+/// This is the iOS part of the cross-platform `jarvis-hud` theme: the
+/// desktop part (`palette-hud.ts`) and this one share the theme id but
+/// deliberately differ in rendering — one theme, two platform-native
+/// looks. The id is unified so enterprise enforcement and the theme
+/// registry treat them as a single theme.
 struct JarvisArcReactorTheme: AppTheme {
-    let id = "jarvis-arc-reactor"
-    let displayName = "Jarvis Arc Reactor"
+    let id = "jarvis-hud"
+    let displayName = "Jarvis HUD"
 
     let accent = Color(red: 0x33 / 255, green: 0xC3 / 255, blue: 0xF7 / 255)
     let accentSubtle = Color(red: 0x33 / 255, green: 0xC3 / 255, blue: 0xF7 / 255).opacity(0.12)
@@ -22,7 +28,7 @@ struct JarvisArcReactorTheme: AppTheme {
     // foreground (cyan) vs. background (amber) distinction stays
     // legible. A second cyan-tinted dot would collide with statusRunning
     // at a glance, defeating the visual vocabulary the dot establishes
-    // on the desktop and IonDefaultTheme.
+    // on the desktop and the other built-in themes.
     let statusWaitingChildren = Color(red: 0xF5 / 255, green: 0x9E / 255, blue: 0x0B / 255)
     // "Mixed failure" — same amber as statusWaitingChildren so the
     // amber = advisory vocabulary holds across themes.

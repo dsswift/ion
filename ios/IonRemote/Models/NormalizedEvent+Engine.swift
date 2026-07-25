@@ -91,10 +91,12 @@ extension RemoteEvent {
             try container.encodeIfPresent(kind, forKey: .injectedPromptKind)
             return true
 
-        case .engineToolUpdate(let tabId, let instanceId):
+        case .engineToolUpdate(let tabId, let instanceId, let toolId, let partialInput):
             try container.encode(TypeKey.engineToolUpdate, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
+            try container.encode(toolId, forKey: .toolId)
+            try container.encode(partialInput, forKey: .partialInput)
             return true
         case .engineToolComplete(let tabId, let instanceId):
             try container.encode(TypeKey.engineToolComplete, forKey: .type)
@@ -401,12 +403,28 @@ extension RemoteEvent {
             _ = tabId; _ = instanceId; _ = resourceKind; _ = resourceItem
             return false
 
-        case .desktopSettingsSnapshot(let settings, let schema, let groups, let newConversationPolicy):
+        case .desktopSettingsSnapshot(let settings, let schema, let groups, let newConversationPolicy, let themePolicy):
             try container.encode(TypeKey.desktopSettingsSnapshot, forKey: .type)
             try container.encode(settings, forKey: .settings)
             try container.encode(schema, forKey: .schema)
             try container.encode(groups, forKey: .groups)
             try container.encodeIfPresent(newConversationPolicy, forKey: .newConversationPolicy)
+            try container.encodeIfPresent(themePolicy, forKey: .themePolicy)
+            return true
+
+        case .desktopThemeManifest(let themes, let hash):
+            try container.encode(TypeKey.desktopThemeManifest, forKey: .type)
+            try container.encode(themes, forKey: .themes)
+            try container.encode(hash, forKey: .hash)
+            return true
+
+        case .desktopThemeAssetContent(let themeId, let slot, let ok, let sha256, let dataUrl):
+            try container.encode(TypeKey.desktopThemeAssetContent, forKey: .type)
+            try container.encode(themeId, forKey: .themeId)
+            try container.encode(slot, forKey: .slot)
+            try container.encode(ok, forKey: .ok)
+            try container.encodeIfPresent(sha256, forKey: .sha256)
+            try container.encodeIfPresent(dataUrl, forKey: .dataUrl)
             return true
 
         case .engineIntercept(let tabId, let instanceId, let level, let title, let message, let source, let metadata):

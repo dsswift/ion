@@ -134,6 +134,10 @@ enum RemoteCommand: Codable, Sendable {
     case fsListDir(directory: String, includeHidden: Bool = false)
     case fsReadFile(filePath: String)
     case fsReadImage(filePath: String)
+    /// Lazy fetch of one theme-pack image asset after a
+    /// `desktop_theme_manifest` whose descriptor sha256 misses the local
+    /// cache. Desktop answers with `desktopThemeAssetContent`.
+    case requestThemeAsset(themeId: String, slot: String)
     case fsWriteFile(filePath: String, content: String)
     /// Rename a file or directory inside a project root on the paired
     /// desktop. The desktop validates both paths via `isValidProjectPath`
@@ -285,6 +289,7 @@ enum RemoteCommand: Codable, Sendable {
         case fsListDir = "desktop_fs_list_dir"
         case fsReadFile = "desktop_fs_read_file"
         case fsReadImage = "desktop_fs_read_image"
+        case requestThemeAsset = "desktop_request_theme_asset"
         case fsWriteFile = "desktop_fs_write_file"
         case fsRename = "desktop_fs_rename"
         case discoverCommands = "desktop_discover_commands"
@@ -339,6 +344,9 @@ enum RemoteCommand: Codable, Sendable {
         // CodingKey above.
         case key
         case conversationIds
+        // requestThemeAsset payload — theme-pack id + asset slot
+        // ("background" | "logo").
+        case themeId, slot
         // setPillColor / setPillIcon payloads.
         case pillColor, pillIcon
         // reportFocus payload. `interceptEnabled` is the iOS-local

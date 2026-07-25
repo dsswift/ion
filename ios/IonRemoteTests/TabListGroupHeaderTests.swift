@@ -73,6 +73,10 @@ final class TabListGroupHeaderTests: XCTestCase {
         let running = TabStatusRollup.classify(makeTab(status: .running))
         XCTAssertEqual(running.priority, TabStatusRollup.priorityRunning)
         XCTAssertTrue(running.shouldPulse)
+        // Running is the steel-teal dot, NOT the orange permission color — a
+        // pulsing running dot and a steady permission dot must never share a hue.
+        XCTAssertEqual(running.color, TabStatusRollup.runningTeal)
+        XCTAssertNotEqual(running.color, TabStatusRollup.permissionOrange)
         XCTAssertEqual(TabStatusRollup.classify(makeTab(status: .connecting)).priority, TabStatusRollup.priorityRunning)
     }
 
@@ -94,7 +98,10 @@ final class TabListGroupHeaderTests: XCTestCase {
     func testClassifyQuestion() {
         let s = TabStatusRollup.classify(makeTab(status: .idle, permissionQueue: [questionEntry()]))
         XCTAssertEqual(s.priority, TabStatusRollup.priorityQuestion)
-        XCTAssertEqual(s.color, TabStatusRollup.questionBlue)
+        // Dedicated purple, distinct from the teal running dot — the two-blues
+        // collision this replaced is guarded by the inequality below.
+        XCTAssertEqual(s.color, TabStatusRollup.questionPurple)
+        XCTAssertNotEqual(s.color, TabStatusRollup.runningTeal)
         XCTAssertTrue(s.glow)
     }
 

@@ -172,6 +172,9 @@ extension DiagnosticLog {
         case .fsReadImage(let path):
             log("CMD: fsReadImage path=\(path.suffix(40))", tag: "ipc", level: .info)
 
+        case .requestThemeAsset(let themeId, let slot):
+            log("CMD: requestThemeAsset theme=\(themeId) slot=\(slot)", tag: "ipc", level: .info)
+
         case .fsWriteFile(let path, let content):
             log("CMD: fsWriteFile path=\(path.suffix(40)) len=\(content.count)", tag: "ipc", level: .info)
 
