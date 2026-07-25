@@ -2,6 +2,8 @@ package providers
 
 import (
 	"testing"
+
+	"github.com/dsswift/ion/engine/internal/types"
 )
 
 func TestListModels(t *testing.T) {
@@ -83,5 +85,68 @@ func TestListProviderIDs(t *testing.T) {
 		if ids[i-1] > ids[i] {
 			t.Errorf("provider IDs not sorted: %s > %s", ids[i-1], ids[i])
 		}
+	}
+}
+
+// TestListModelsEnrichmentFillIfZero guards the enrichment contract: catalog
+// metadata only fills fields the discovered entry left empty. A discovered
+// model carrying live metadata (extended /models payload) must never have its
+// values clobbered by the embedded catalog.
+func TestListModelsEnrichmentFillIfZero(t *testing.T) {
+	ResetDiscoveryCache()
+	t.Cleanup(ResetDiscoveryCache)
+
+	// claude-opus-4-6 exists in the embedded catalog with its own metadata.
+	// Discover it with different live metadata and verify the live values survive.
+	live := types.ModelEntry{
+		ID:               "claude-opus-4-6",
+		ProviderID:       "anthropic",
+		ContextWindow:    1000000,
+		CostPer1kInput:   0.009,
+		CostPer1kOutput:  0.045,
+		SupportsCaching:  true,
+		SupportsThinking: true,
+		SupportsImages:   true,
+		ThinkingMode:     "adaptive",
+		ThinkingEfforts:  []string{"low", "high"},
+	}
+	// Sparse sibling: only ID — catalog must fill everything it knows.
+	sparse := types.ModelEntry{ID: "claude-sonnet-4-6", ProviderID: "anthropic"}
+	SetExternalModels("anthropic", []types.ModelEntry{live, sparse})
+
+	byID := make(map[string]types.ModelEntry)
+	for _, m := range ListModels() {
+		byID[m.ID] = m
+	}
+
+	got, ok := byID["claude-opus-4-6"]
+	if !ok {
+		t.Fatal("discovered model claude-opus-4-6 missing from ListModels")
+	}
+	if got.ContextWindow != 1000000 {
+		t.Errorf("live ContextWindow clobbered: got %d want 1000000", got.ContextWindow)
+	}
+	if got.CostPer1kInput != 0.009 || got.CostPer1kOutput != 0.045 {
+		t.Errorf("live costs clobbered: got %v/%v want 0.009/0.045", got.CostPer1kInput, got.CostPer1kOutput)
+	}
+	if got.ThinkingMode != "adaptive" {
+		t.Errorf("live ThinkingMode clobbered: got %q want %q", got.ThinkingMode, "adaptive")
+	}
+	if len(got.ThinkingEfforts) != 2 {
+		t.Errorf("live ThinkingEfforts clobbered: got %v", got.ThinkingEfforts)
+	}
+	if !got.SupportsCaching || !got.SupportsThinking || !got.SupportsImages {
+		t.Errorf("live capability flags lost: caching=%v thinking=%v images=%v", got.SupportsCaching, got.SupportsThinking, got.SupportsImages)
+	}
+
+	gotSparse, ok := byID["claude-sonnet-4-6"]
+	if !ok {
+		t.Fatal("discovered model claude-sonnet-4-6 missing from ListModels")
+	}
+	if gotSparse.ContextWindow == 0 {
+		t.Error("catalog enrichment did not fill ContextWindow for sparse discovered entry")
+	}
+	if gotSparse.CostPer1kInput == 0 {
+		t.Error("catalog enrichment did not fill CostPer1kInput for sparse discovered entry")
 	}
 }

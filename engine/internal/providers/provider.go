@@ -273,10 +273,12 @@ func ListModels() []types.ModelEntry {
 	for pid := range providerIDs {
 		discovered := GetDiscoveredModels(pid)
 		if len(discovered) > 0 {
-			// Use live-discovered models, enriched with catalog metadata
+			// Use live-discovered models, enriched with catalog metadata.
+			// Enrichment is fill-if-zero only: a discovered value always wins
+			// over the embedded catalog (live metadata from an extended
+			// /models payload must never be clobbered by stale catalog data).
 			for _, dm := range discovered {
 				if catalog, ok := catalogLookup[dm.ID]; ok {
-					// Enrich with known cost/capability info
 					if dm.ContextWindow == 0 {
 						dm.ContextWindow = catalog.ContextWindow
 					}
@@ -289,17 +291,24 @@ func ListModels() []types.ModelEntry {
 					if dm.MaxOutputTokens == 0 {
 						dm.MaxOutputTokens = catalog.MaxOutputTokens
 					}
-					dm.SupportsCaching = catalog.SupportsCaching
-					dm.SupportsThinking = catalog.SupportsThinking
-					dm.SupportsImages = catalog.SupportsImages
-					dm.ThinkingMode = catalog.ThinkingMode
-					dm.ThinkingEfforts = catalog.ThinkingEfforts
+					if !dm.SupportsCaching {
+						dm.SupportsCaching = catalog.SupportsCaching
+					}
+					if !dm.SupportsThinking {
+						dm.SupportsThinking = catalog.SupportsThinking
+					}
+					if !dm.SupportsImages {
+						dm.SupportsImages = catalog.SupportsImages
+					}
+					if dm.ThinkingMode == "" {
+						dm.ThinkingMode = catalog.ThinkingMode
+					}
+					if len(dm.ThinkingEfforts) == 0 {
+						dm.ThinkingEfforts = catalog.ThinkingEfforts
+					}
 					if dm.Tokenizer == "" {
 						dm.Tokenizer = catalog.Tokenizer
 					}
-					// ModelKind from the catalog always wins: live discovery
-					// never returns a modelKind field so a model present in the
-					// catalog (e.g. dall-e-3) must inherit its kind from there.
 					if dm.ModelKind == "" {
 						dm.ModelKind = catalog.ModelKind
 					}
