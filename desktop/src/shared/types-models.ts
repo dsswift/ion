@@ -39,6 +39,19 @@ export interface ModelEntry {
    * sends only the current prompt with no conversation history. Additive, omitempty.
    */
   modelKind?: string
+  /**
+   * Wire protocol a dialect-dispatching (gateway) provider speaks for this model
+   * (mirrors Go ModelEntry.Dialect):
+   * "anthropic" | "openai-chat" | "openai-responses" | "image".
+   * Absent for stock providers (their own protocol applies). Additive, omitempty.
+   */
+  dialect?: string
+  /**
+   * USD cost of one standard (1MP) image generation for per-image-billed image
+   * models (mirrors Go ModelEntry.CostPerImage). Absent for chat models and
+   * image models with unknown pricing. Additive, omitempty.
+   */
+  costPerImage?: number
   isCustom?: boolean
 }
 
@@ -131,5 +144,15 @@ export function getModelDisplayLabel(model: ModelEntry): string {
     'llama-3.3-70b': 'Llama 3.3 70B',
     'llama-3.1-8b': 'Llama 3.1 8B',
   }
-  return LABELS[id] || id
+  if (LABELS[id]) return LABELS[id]
+  // Provider-qualified id ("<providerId>/<model>"): label as "<bare or known
+  // label> (<providerId>)" so a gateway copy is distinguishable from the same
+  // bare model on its public provider. OpenRouter-style ids, where the slash
+  // is part of the wire id (prefix != providerId), pass through unchanged.
+  const slash = id.indexOf('/')
+  if (slash > 0 && id.slice(0, slash) === model.providerId) {
+    const bare = id.slice(slash + 1)
+    return `${LABELS[bare] || bare} (${model.providerId})`
+  }
+  return id
 }

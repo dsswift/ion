@@ -26,7 +26,12 @@ export function ProviderRow({ provider, colors, onCredentialSaved }: {
   const [refreshing, setRefreshing] = useState(false)
   const providerModelCount = useModelStore((s) => s.models.filter((m) => m.providerId === provider.id).length)
 
-  const isApiKeyProvider = API_KEY_PROVIDERS.has(provider.id)
+  const hasCustomGateway = !!provider.baseURL
+  // Custom gateway providers (any provider with a baseURL that is not
+  // OAuth/CLI-backed, e.g. an enterprise APIM gateway) authenticate with an
+  // API key exactly like the hardcoded API_KEY_PROVIDERS set — render the
+  // same key input / save / remove UI for them.
+  const isApiKeyProvider = API_KEY_PROVIDERS.has(provider.id) || (hasCustomGateway && !OAUTH_PROVIDERS.has(provider.id))
   const isOAuthProvider = OAUTH_PROVIDERS.has(provider.id)
   const isOAuthSession = isOAuthProvider && provider.hasAuth && provider.authSource === 'oauth'
   const canManageKey = isApiKeyProvider && provider.hasAuth && provider.authSource !== undefined && ['filestore', 'programmatic', 'keychain', 'credentials.json'].includes(provider.authSource)
@@ -36,7 +41,6 @@ export function ProviderRow({ provider, colors, onCredentialSaved }: {
   // CLI subscription. Without this the key input is unreachable while a CLI
   // session is active.
   const isCliAuthed = isApiKeyProvider && provider.hasAuth && provider.authSource !== undefined && ['claude-code', 'codex', 'grok', 'cursor'].includes(provider.authSource)
-  const hasCustomGateway = !!provider.baseURL
 
   const handleSave = useCallback(async () => {
     if (!apiKey.trim()) return

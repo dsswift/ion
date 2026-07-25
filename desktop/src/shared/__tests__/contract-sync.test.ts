@@ -201,6 +201,8 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
     'contextWindow',
     'costPer1kInput',
     'costPer1kOutput',
+    'costPerImage',
+    'dialect',
     'id',
     'isCustom',
     'maxOutputTokens',
