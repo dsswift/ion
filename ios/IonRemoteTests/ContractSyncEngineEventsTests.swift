@@ -815,12 +815,14 @@ final class ContractSyncEngineEventsTests: XCTestCase {
 
     func testEngineToolUpdateDecode() throws {
         let json = """
-        {"type":"desktop_tool_update","tabId":"t1","instanceId":"i1"}
+        {"type":"desktop_tool_update","tabId":"t1","instanceId":"i1","toolId":"tid","partialInput":"chunk"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .engineToolUpdate(let tabId, let instanceId) = event {
+        if case .engineToolUpdate(let tabId, let instanceId, let toolId, let partialInput) = event {
             XCTAssertEqual(tabId, "t1")
             XCTAssertEqual(instanceId, "i1")
+            XCTAssertEqual(toolId, "tid")
+            XCTAssertEqual(partialInput, "chunk")
         } else {
             XCTFail("Expected engineToolUpdate")
         }
