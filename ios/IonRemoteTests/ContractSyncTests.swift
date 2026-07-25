@@ -701,6 +701,10 @@ final class ContractSyncTests: XCTestCase {
             // Decoded by Message(engineJSON:) (markerKind + markerPlanFilePath
             // fallback for plan-divider links).
             "markerKind", "markerPlanFilePath",
+            // Decoded: classifies engine-injected user turns. "agent_completion"
+            // rows are filtered out of handleConversationHistory so dispatch
+            // completion messages never render as user bubbles on history load.
+            "injectionKind",
             // Tracked but not decoded: the desktop history mapper folds these
             // marker payload details into the rendered divider content before
             // iOS sees the row; the engineJSON path routes markers by their
@@ -774,7 +778,8 @@ final class ContractSyncTests: XCTestCase {
             "supportsCaching", "supportsThinking", "supportsImages",
             "thinkingMode", "thinkingEfforts",
             "isCustom",
-            "tokenizer", // engine field; iOS does not consume it (thin client)
+            "modelKind",   // consumed: gates the image-model banner (ConversationView+InputBar, ConversationStatusBar)
+            "tokenizer",   // engine field; iOS does not consume it (thin client)
             "maxOutputTokens", // engine field; iOS does not consume it (thin client)
         ]
         let goSet = Set(goFields)

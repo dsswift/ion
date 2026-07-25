@@ -92,6 +92,14 @@ struct Message: Codable, Identifiable, Sendable {
     /// for future routing without a contract change. Optional/additive.
     var markerKind: String? = nil
 
+    /// Classifies engine-side injected user turns on historical reload.
+    /// "agent_completion" marks a machine-to-machine dispatch callback (a child
+    /// agent's result routed to its parent) rather than a turn the user authored.
+    /// Absent (or nil) means an ordinary user turn. iOS filters these rows in
+    /// handleConversationHistory to avoid rendering dispatch completion messages
+    /// as user bubbles. Additive/optional — absent on legacy history rows.
+    var injectionKind: String? = nil
+
     // MARK: - Extended-thinking summary (issue #158)
     //
     // These fields are populated ONLY on `role: .thinking` messages, which
@@ -124,12 +132,24 @@ struct Message: Codable, Identifiable, Sendable {
     var isHarness: Bool { role == .harness }
     var isThinking: Bool { role == .thinking }
 
+    /// Image attachments to render inline in a message bubble. Provider-generated
+    /// images (assistant turns) and tool-returned images (tool turns) arrive as
+    /// structured `attachments` of type `.image` — never as content markers and
+    /// often on an empty-content turn. The desktop surfaces them via
+    /// `deriveMessageImages`; iOS mirrors that here so an image-generation turn
+    /// renders the image instead of a blank assistant/tool row. Empty when the
+    /// message carries no image attachment.
+    var imageAttachments: [MessageAttachment] {
+        (attachments ?? []).filter { $0.type == .image }
+    }
+
     private enum CodingKeys: String, CodingKey {
         case id, role, content, toolName, toolInput, toolId, toolStatus
         case attachments, timestamp, source
         case isInternal = "internal"
         case slashCommand, slashArgs, slashSource
         case planFilePath, markerKind
+        case injectionKind
         // clientMsgId: desktop-local reconciliation key on history user rows (RC-9).
         case clientMsgId
         // dedupKey / dedupMode: decoded from the desktop history-replay wire
@@ -219,6 +239,13 @@ extension Message {
             planFilePath = try container.decodeIfPresent(String.self, forKey: .markerPlanFilePath)
         }
 
+        // injectionKind classifies engine-side injected user turns. "agent_completion"
+        // marks a machine-to-machine dispatch callback (a child agent's result routed
+        // to its parent) rather than a turn the user authored. Decoded so iOS can
+        // filter these rows in handleConversationHistory and avoid rendering dispatch
+        // completion messages as user bubbles on history load.
+        injectionKind = try container.decodeIfPresent(String.self, forKey: .injectionKind)
+
         // Engine SessionMessage carries image references on historical reload
         // in `attachments` (engine flattenEntries replays a persisted tool-result
         // image as a SessionMessageAttachment on the owning tool row). Decode it
@@ -238,7 +265,7 @@ extension Message {
         case isInternal = "internal"
         case slashCommand, slashArgs, slashSource
         case planFilePath
-        case markerKind, markerPlanFilePath
+        case markerKind, markerPlanFilePath, injectionKind
         case attachments
     }
 
