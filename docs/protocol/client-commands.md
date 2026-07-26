@@ -260,6 +260,12 @@ Toggle plan mode for a session. In plan mode, the agent plans without executing 
 
 This separation lets harnesses (a) install the allowlist as engine policy via `engine.json` — edited directly, resolved fresh per dispatch, and served identically to headless consumers, (b) optionally push a session override via `set_plan_mode` (external consumers only; the reference desktop edits `engine.json`), and (c) grant per-turn permissions via slash commands without leaking those grants into the user's session state.
 
+**Layer 0: the enterprise ceiling.** When enterprise config sets `limits.planModeAllowedBashCommands`, the composed result of all three layers above is intersected against it before the run's tool list and gate are built. This is not a fourth precedence step but a cap applied over the outcome — layers 1-3 can only ever narrow within what policy permits, never widen past it.
+
+The clamp deliberately covers layers 2 and 3, not just the config layer. Those two are client-supplied and therefore the easier paths to abuse: a ceiling that bound only `engine.json` would leave a `set_plan_mode` override or a slash command's `allowed_bash_commands` frontmatter free to grant commands the organisation forbids. Absent an enterprise policy the clamp is a pass-through.
+
+Note that layer 1 merges the user and project `engine.json` files **additively** (union, de-duplicated) rather than by replacement, so a project can contribute commands its workflow needs on top of the developer's global list. See [Sealed Configuration → Plan-mode Bash allowlist](../enterprise/sealed-config.md#plan-mode-bash-allowlist) for the full model, including the prefix-matching direction rule.
+
 **Response:** `ServerResult` with `ok: true`.
 
 ---

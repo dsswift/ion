@@ -28,6 +28,10 @@ const (
 	EnforcementProviderPinned EnforcementActionKind = "provider_pinned"
 	// EnforcementMcpPruned: a non-allowlisted / denied MCP server was removed.
 	EnforcementMcpPruned EnforcementActionKind = "mcp_pruned"
+	// EnforcementPlanModeBashPruned: a user- or project-layer plan-mode Bash
+	// allowlist entry was stripped because the enterprise ceiling did not
+	// sanction it (or blocks Bash in plan mode outright).
+	EnforcementPlanModeBashPruned EnforcementActionKind = "plan_mode_bash_pruned"
 )
 
 // EnforcementAction is one recorded enforcement action. Subject names the

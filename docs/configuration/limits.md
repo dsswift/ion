@@ -19,6 +19,7 @@ Resource limits control how long an agent session can run and how much it can sp
 | `planModeAutoExitOnEndTurn` | *bool | unset (defaults to `true`) | -- | Controls the deterministic plan-mode exit safety net introduced in [ADR-007](../architecture/adr/007-plan-mode-auto-exit.md). When `true` (the engine default), a plan-mode run that ends with stop reason `end_turn` / `stop` without the assistant invoking `ExitPlanMode` or `AskUserQuestion` triggers an engine-synthesized `ExitPlanMode` so consumers always see the plan-approval card. Set to `false` to disable the synthesis — useful for strict automation policies that prefer the conversation to park rather than auto-surface when the model misroutes plan exit. Per-run overrides flow through `RunOptions.PlanModeAutoExit`; the `before_plan_mode_auto_exit` extension hook overrides both. |
 | `disableTurnLimitWarning` | bool | unset (`false`) | -- | When `true`, the turn-limit wind-down message is not injected. |
 | `disableMaxTokenContinue` | bool | unset (`false`) | -- | When `true`, the max-tokens continue prompt is not injected. |
+| `planModeAllowedBashCommands` | string[] | unset (Bash blocked in plan mode) | -- | Bash command prefixes the model may run while in plan mode. The engine ships no built-in list, so an unset field means Bash is unavailable in plan mode. Unlike every other field here this one merges **additively** across the user and project layers and is capped by enterprise policy — see [Plan-mode Bash allowlist](#plan-mode-bash-allowlist) below. |
 
 The engine ships unopinionated. There is no built-in default cap on turns or budget. Harness engineers and operators set them via `engine.json`, CLI flags, or per-call options. For operational timeouts (tool execution, MCP calls, extension RPC, etc.), see the [`timeouts`](engine-json.md#timeouts) section.
 
@@ -53,6 +54,42 @@ Limit fields use nullable (pointer) types internally. This means:
 - **Setting a field to a value** (including zero) overrides the lower layer.
 
 For example, if the user config sets `maxTurns: 100` and the project config omits `maxTurns`, the merged result is 100. If the project config sets `maxTurns: 30`, the merged result is 30.
+
+`planModeAllowedBashCommands` is the one exception: it is a list, not a scalar, and the user and project layers **union** rather than replace. See [Plan-mode Bash allowlist](#plan-mode-bash-allowlist).
+
+## Plan-mode Bash allowlist
+
+Plan mode is read-only apart from this one field, which names the Bash command prefixes a planning session may execute. Matching is token-based: `"gh"` permits `gh pr view 123` but not `ghost`; `"git log"` permits `git log --oneline` but not `git status`.
+
+Three properties make it behave differently from the scalar limits above.
+
+**It merges additively across user and project.** A repository can declare the commands its workflow needs without knowing what each developer already allows globally.
+
+```jsonc
+// ~/.ion/engine.json
+{ "limits": { "planModeAllowedBashCommands": ["git log", "ls"] } }
+```
+
+```jsonc
+// <repo>/.ion/engine.json — committed, travels with every clone
+{ "limits": { "planModeAllowedBashCommands": ["graphify"] } }
+```
+
+Resolved: `["git log", "ls", "graphify"]`. Duplicates collapse, and user entries come first.
+
+This is a portability mechanism, not a security control — it exists so a checked-in project file does not have to restate (or silently strip) each developer's personal entries.
+
+**An explicit empty list means "block Bash entirely."** The field is tri-valued, and the distinction is load-bearing:
+
+| Value | Meaning |
+|---|---|
+| omitted / `null` | This layer expresses no opinion; the lower layer stands. |
+| `[]` | Permit nothing. Bash is unavailable in plan mode, beating any lower-layer list. |
+| `["graphify", ...]` | Additive. Unioned with the lower layer. |
+
+**Enterprise policy caps it.** When enterprise config sets a ceiling, the merged list is intersected against it and nothing below can widen past it. That intersection covers the two run-time sources as well — the `set_plan_mode` session override and per-prompt `bashAllowlistAdditionsForThisPrompt` additions — so a client cannot push a command policy forbids. Absent an enterprise ceiling the merged union stands as-is, which is the normal case on an unmanaged machine.
+
+Full semantics, including the prefix-matching direction rule and how to write an effective ceiling, are in [Sealed Configuration → Plan-mode Bash allowlist](../enterprise/sealed-config.md#plan-mode-bash-allowlist).
 
 ## How limits interact
 
@@ -122,6 +159,8 @@ When messages are persisted (the default), they are tagged with `internal: true`
 ## Enterprise constraints
 
 Enterprise policy can enforce limit values that lower layers cannot weaken. If the enterprise layer sets a budget ceiling, neither the user config nor the project config can raise it above that value.
+
+For `planModeAllowedBashCommands` the constraint is an intersection rather than a numeric cap, and it also binds the two client-supplied run-time sources. See [Sealed Configuration → Plan-mode Bash allowlist](../enterprise/sealed-config.md#plan-mode-bash-allowlist).
 
 ## Practical guidelines
 

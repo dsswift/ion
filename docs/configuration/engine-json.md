@@ -57,6 +57,7 @@ Resource limits for agent runs. All fields are optional pointers -- omitting a f
 | `disablePlanModeReminder` | bool (nullable) | unset (`false`) | When `true`, the plan mode sparse reminder is not injected on turn 2+. Default: unset (`false`). Power users who want to customize the reminder text rather than suppress it entirely should see `RunOptions.PlanModeSparseReminder` in [client-commands.md](../protocol/client-commands.md#send_prompt) or the harness-level `desktop.planModeSparseReminder` key in [settings-json.md](./settings-json.md). |
 | `disableTurnLimitWarning` | bool (nullable) | unset (`false`) | When `true`, the turn-limit wind-down message is not injected. Default: unset (`false`). |
 | `disableMaxTokenContinue` | bool (nullable) | unset (`false`) | When `true`, the max-tokens continue prompt is not injected. Default: unset (`false`). |
+| `planModeAllowedBashCommands` | string[] | unset (Bash blocked in plan mode) | Bash command prefixes permitted while in plan mode. **Merges additively across the user and project layers** rather than replacing, so a repository can declare the commands its workflow needs on top of each developer's global list. Tri-valued: omitted means "no opinion at this layer"; `[]` means "block Bash in plan mode" and beats a lower layer's list; a non-empty list is unioned. Capped by enterprise policy when present. See [Plan-mode Bash allowlist](limits.md#plan-mode-bash-allowlist). |
 
 These can also be overridden per-session via CLI flags. See [Limits](limits.md) for details.
 
@@ -68,10 +69,39 @@ These can also be overridden per-session via CLI flags. See [Limits](limits.md) 
     "suppressSystemMessages": false,
     "disablePlanModeReminder": false,
     "disableTurnLimitWarning": false,
-    "disableMaxTokenContinue": false
+    "disableMaxTokenContinue": false,
+    "planModeAllowedBashCommands": ["git log", "git diff", "ls"]
   }
 }
 ```
+
+### Project-level `limits` and portability
+
+`planModeAllowedBashCommands` is the field where the project layer earns its keep. A checked-in `.ion/engine.json` cannot know what any individual developer allows globally, so replacement semantics would force every repo to either restate those entries or silently strip them. Union means the repo contributes only what it needs:
+
+```jsonc
+// <repo>/.ion/engine.json — committed, travels with every clone
+{
+  "limits": {
+    "planModeAllowedBashCommands": ["graphify"]
+  }
+}
+```
+
+Every developer who clones the repository gains `graphify` in plan mode on top of their own global entries, with no per-machine setup. On a machine with enterprise policy, the same file is capped by the ceiling and contributes nothing the organisation has not sanctioned.
+
+### Other project-scoped roots under `.ion/`
+
+`.ion/engine.json` is not the only project-scoped artifact the engine reads from a session's working directory. Skills follow the same pattern:
+
+| Path | Contents |
+|---|---|
+| `<workingDir>/.ion/engine.json` | Project config, merged over user config |
+| `<workingDir>/.ion/skills/<name>/SKILL.md` | Project-scoped skills |
+
+Project skills are **session-scoped**: they register into the registry of sessions whose working directory contains them, and are evicted when that session stops. A skill shipped in one repository is never advertised in another project's conversations, and two repositories may ship same-named skills without collision. User-scoped skills from `~/.ion/skills/` are copied into every session's registry rather than shared, so one session's teardown can never strip a skill another live session is using. See `engine/internal/skills/skills_session.go`.
+
+Both roots make a repository self-describing: clone it and the project's config and skills arrive with it, with no per-machine install step.
 
 ## earlyStopContinue
 

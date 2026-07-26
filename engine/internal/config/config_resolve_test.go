@@ -51,7 +51,16 @@ func TestResolvePlanModeBashAllowlist_GlobalLayer(t *testing.T) {
 	}
 }
 
-func TestResolvePlanModeBashAllowlist_ProjectOverridesGlobal(t *testing.T) {
+// TestResolvePlanModeBashAllowlist_ProjectAddsToGlobal pins the additive union
+// across the global and project layers. The project layer contributes the
+// commands a repo needs on top of whatever the developer allows globally; it
+// does not replace the global list, because a committed project file cannot
+// know each developer's personal entries.
+//
+// This mechanism is intentionally permissive and is NOT the security boundary.
+// EnforceEnterprise intersects the result against the enterprise ceiling
+// afterwards — see config_plan_mode_bash_layers_test.go.
+func TestResolvePlanModeBashAllowlist_ProjectAddsToGlobal(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	writeGlobalEngineJSON(t, home, map[string]any{
@@ -66,8 +75,31 @@ func TestResolvePlanModeBashAllowlist_ProjectOverridesGlobal(t *testing.T) {
 	if !found {
 		t.Fatal("expected found=true")
 	}
-	if len(cmds) != 2 || cmds[0] != "git status" || cmds[1] != "git diff" {
-		t.Fatalf("expected project override [git status, git diff], got %v", cmds)
+	if len(cmds) != 3 || cmds[0] != "gh" || cmds[1] != "git status" || cmds[2] != "git diff" {
+		t.Fatalf("expected union [gh, git status, git diff], got %v", cmds)
+	}
+}
+
+// TestResolvePlanModeBashAllowlist_ProjectEmptyBlocksAll verifies the project
+// layer can still shut Bash off entirely in plan mode. An explicit [] is a
+// "permit nothing" signal, not "add nothing", so it beats the global list.
+func TestResolvePlanModeBashAllowlist_ProjectEmptyBlocksAll(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	writeGlobalEngineJSON(t, home, map[string]any{
+		"limits": map[string]any{"planModeAllowedBashCommands": []string{"gh", "git log"}},
+	})
+	projectDir := t.TempDir()
+	writeEngineJSON(t, projectDir, map[string]any{
+		"limits": map[string]any{"planModeAllowedBashCommands": []string{}},
+	})
+
+	cmds, found := ResolvePlanModeBashAllowlist(projectDir)
+	if !found {
+		t.Fatal("expected found=true for an explicit empty list")
+	}
+	if len(cmds) != 0 {
+		t.Fatalf("expected project [] to block all Bash, got %v", cmds)
 	}
 }
 

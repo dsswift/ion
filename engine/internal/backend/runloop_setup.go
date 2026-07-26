@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/tools"
@@ -32,7 +33,24 @@ import (
 // See docs/protocol/client-commands.md § set_plan_mode for the
 // three-layer configuration model (engine config → session override
 // → per-prompt additions).
+//
+// The union is then clamped to the enterprise ceiling. This is the single gate
+// where all three sources are bounded: the engine.json layer is already capped
+// during the config merge, but the session override and per-prompt additions
+// arrive from a client and never pass through a config merge at all. Clamping
+// here rather than at each source means a new caller cannot forget the check.
+// Absent an enterprise policy the clamp is a pass-through, so an unmanaged
+// machine keeps the full union (see docs/enterprise/sealed-config.md
+// § "Plan-mode Bash allowlist").
 func effectiveBashAllowlist(opts types.RunOptions) []string {
+	return config.ClampPlanModeBashToEnterprise(unionPromptBashAllowlist(opts))
+}
+
+// unionPromptBashAllowlist computes the un-clamped union of the session
+// allowlist and any per-prompt additions. Split out from
+// effectiveBashAllowlist so the union logic stays independently testable from
+// the enterprise clamp applied on top of it.
+func unionPromptBashAllowlist(opts types.RunOptions) []string {
 	if len(opts.BashAllowlistAdditionsForThisPrompt) == 0 {
 		// Hot path: most runs carry no per-prompt additions; return the
 		// session allowlist as-is so the caller can compare lengths
@@ -269,7 +287,7 @@ func buildSystemPrompt(opts *types.RunOptions, conv *conversation.Conversation, 
 	// or no skill directive at all reaches it through one of these two paths
 	// instead of being forced onto the engine's default directive.
 	if !opts.DisableSkillSystemPrompt {
-		if skillSection := tools.BuildSkillSystemPromptSection(); skillSection != "" {
+		if skillSection := tools.BuildSkillSystemPromptSectionFor(opts.SessionKey); skillSection != "" {
 			text := skillSection
 			if hooks.OnSystemInject != nil {
 				hookText, suppress := hooks.OnSystemInject("skill_listing", skillSection, 0, 0)
