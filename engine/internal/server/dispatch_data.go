@@ -237,10 +237,11 @@ func (s *Server) buildProviderEntries() []types.ProviderEntry {
 			utils.LogWithFields(utils.LevelDebug, "server", "provider claude-code-auth fallback applied", map[string]any{"provider": pid})
 		}
 
-		// Populate config details (gateway URL, API key reference)
+		// Populate config details (gateway URL, API key reference, display name)
 		if s.config != nil {
 			if pc, ok := s.config.Providers[pid]; ok {
 				entry.BaseURL = pc.BaseURL
+				entry.DisplayName = pc.DisplayName
 				// Show the API key reference if it looks like an env var
 				// (starts with $), otherwise just indicate it's set.
 				if pc.APIKey != "" {

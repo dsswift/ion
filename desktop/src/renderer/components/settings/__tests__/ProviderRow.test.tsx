@@ -103,3 +103,22 @@ describe('ProviderRow — API key alongside CLI subscription', () => {
     expect(container.querySelector('input[type="password"]')).not.toBeNull()
   })
 })
+
+describe('ProviderRow — custom gateway provider key management', () => {
+  it('renders the API key input for a custom gateway provider (baseURL, not in API_KEY_PROVIDERS)', () => {
+    render({ id: 'dci-marketing', hasAuth: false, baseURL: 'https://ai.dcim.com' })
+    expect(container.querySelector('input[type="password"]')).not.toBeNull()
+  })
+
+  it('shows Change/Remove for a filestore-authed custom gateway provider', () => {
+    render({ id: 'dci-marketing', hasAuth: true, authSource: 'filestore', baseURL: 'https://ai.dcim.com' })
+    const labels = Array.from(container.querySelectorAll('button')).map((b) => b.textContent)
+    expect(labels).toContain('Change')
+    expect(labels).toContain('Remove')
+  })
+
+  it('does not render a key input for an unknown provider without a baseURL', () => {
+    render({ id: 'mystery-provider', hasAuth: false })
+    expect(container.querySelector('input[type="password"]')).toBeNull()
+  })
+})

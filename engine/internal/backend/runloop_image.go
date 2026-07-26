@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
+	"github.com/dsswift/ion/engine/internal/cost"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -236,7 +237,10 @@ func (b *ApiBackend) runImageLoop(ctx context.Context, run *activeRun, opts type
 
 	durationMs := time.Since(start).Milliseconds()
 	b.emit(run, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
-		Result:     revisedPrompt,
+		Result: revisedPrompt,
+		// Per-image billing (e.g. FLUX on Azure Foundry): images × the model's
+		// CostPerImage rate. Zero for per-token image models / unknown pricing.
+		CostUsd:    cost.ImageCost(model, len(results)),
 		DurationMs: durationMs,
 		NumTurns:   1,
 		SessionID:  conv.ID,

@@ -781,6 +781,18 @@ final class ContractSyncTests: XCTestCase {
             "modelKind",   // consumed: gates the image-model banner (ConversationView+InputBar, ConversationStatusBar)
             "tokenizer",   // engine field; iOS does not consume it (thin client)
             "maxOutputTokens", // engine field; iOS does not consume it (thin client)
+            // Wire protocol a dialect-dispatching (gateway) provider speaks for
+            // this model ("anthropic" | "openai-chat" | "openai-responses" |
+            // "image"). Protocol selection is an engine-side routing concern —
+            // iOS sends a model id and the engine picks the dialect — so this
+            // is deliberately NOT projected into RemoteModelEntry by the
+            // desktop (see desktop/src/main/ipc/models.ts updateCache).
+            "dialect",
+            // Per-image USD rate for per-image-billed image models. The engine
+            // computes image-run cost itself (cost.ImageCost →
+            // TaskCompleteEvent.CostUsd) and iOS renders the resulting cost, so
+            // the raw rate is not projected into RemoteModelEntry either.
+            "costPerImage",
         ]
         let goSet = Set(goFields)
         let unhandled = goSet.subtracting(swiftHandled)
@@ -817,6 +829,13 @@ final class ContractSyncTests: XCTestCase {
             // not run CLIs, so it does not act on these, but the contract test
             // tracks awareness of every Go field (see testProviderCliStatus).
             "backend", "cli",
+            // Operator-configured human-friendly provider name (engine.json
+            // provider displayName). iOS does not decode ProviderEntry — the
+            // desktop flattens per-model auth into RemoteModelEntry and iOS
+            // groups models by providerId — so there is no iOS surface that
+            // renders a provider display name today. Tracked for awareness; a
+            // future iOS provider list would consume it via the snapshot.
+            "displayName",
         ]
         let goSet = Set(goFields)
         let unhandled = goSet.subtracting(swiftHandled)

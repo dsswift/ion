@@ -40,9 +40,9 @@ type NewConversationDefaultsPolicy struct {
 
 // EnterpriseConfig represents MDM/system-level sealed configuration.
 type EnterpriseConfig struct {
-	AllowedModels    []string  `json:"allowedModels,omitempty"`
-	BlockedModels    []string  `json:"blockedModels,omitempty"`
-	AllowedProviders []string  `json:"allowedProviders,omitempty"`
+	AllowedModels    []string `json:"allowedModels,omitempty"`
+	BlockedModels    []string `json:"blockedModels,omitempty"`
+	AllowedProviders []string `json:"allowedProviders,omitempty"`
 	// Providers declares enterprise-owned provider definitions. Each entry
 	// REPLACES the user-layer definition for the same key wholesale at
 	// EnforceEnterprise time: BaseURL, AuthHeader, and Backend always come from
@@ -55,8 +55,8 @@ type EnterpriseConfig struct {
 	// user-layer key rather than clobbering it (a non-empty enterprise APIKey
 	// still wins). Declared keys are implicitly allowed — a provider named here
 	// need not also appear in AllowedProviders. Empty means no provider pinning.
-	Providers        map[string]ProviderConfig `json:"providers,omitempty"`
-	RequiredHooks    []HookDef                 `json:"requiredHooks,omitempty"`
+	Providers     map[string]ProviderConfig `json:"providers,omitempty"`
+	RequiredHooks []HookDef                 `json:"requiredHooks,omitempty"`
 	// ExtensionAllowlist, when non-empty, restricts which extensions the engine
 	// will load (feature 0011 / D-020, issue #308). Each entry is an exact
 	// extension identifier (manifest name, else directory basename) with an
@@ -64,8 +64,8 @@ type EnterpriseConfig struct {
 	// Empty (the default) means no restriction — every extension loads as
 	// before. Enforced at Host.Load; see checkExtensionAllowlist.
 	ExtensionAllowlist []ExtensionAllowlistEntry `json:"extensionAllowlist,omitempty"`
-	McpAllowlist     []string  `json:"mcpAllowlist,omitempty"`
-	McpDenylist      []string  `json:"mcpDenylist,omitempty"`
+	McpAllowlist       []string                  `json:"mcpAllowlist,omitempty"`
+	McpDenylist        []string                  `json:"mcpDenylist,omitempty"`
 	// PluginAllowlist, when non-empty, restricts plugins to only matching sources.
 	// Glob patterns supported (e.g. "JuliusBrussee/*"). Sealed ceiling: overrides
 	// any per-user allowlist. Empty means no restriction (all sources permitted).
@@ -167,10 +167,10 @@ type EngineRuntimeConfig struct {
 	// Backend selects the top-level run backend. Canonical values:
 	// "api" | "claude-code" | "hybrid". "cli" is a permanently accepted
 	// legacy input alias for "claude-code" and is normalized to it at load.
-	Backend      string                     `json:"backend"`
-	DefaultModel string                     `json:"defaultModel"`
-	Providers    map[string]ProviderConfig  `json:"providers,omitempty"`
-	Limits       LimitsConfig               `json:"limits"`
+	Backend      string                    `json:"backend"`
+	DefaultModel string                    `json:"defaultModel"`
+	Providers    map[string]ProviderConfig `json:"providers,omitempty"`
+	Limits       LimitsConfig              `json:"limits"`
 	// ResourceLimits caps concurrent sessions and per-session agent
 	// dispatches. Per-run Limits bound depth (turns, budget); resource
 	// limits bound breadth (how many orchestration contexts run at once).
@@ -478,6 +478,10 @@ type ProviderConfig struct {
 	APIKey     string `json:"apiKey,omitempty"`
 	BaseURL    string `json:"baseURL,omitempty"`
 	AuthHeader string `json:"authHeader,omitempty"`
+	// DisplayName is the human-friendly name clients show for this provider
+	// (e.g. "dci Marketing" for provider id "dci-marketing"). Empty means
+	// clients fall back to their built-in name map / capitalized id.
+	DisplayName string `json:"displayName,omitempty"`
 	// Backend selects which run backend serves this provider's models when
 	// the top-level backend is "hybrid". Empty means "use the default rule"
 	// (anthropic → claude-code, every other provider → api). Allowed values

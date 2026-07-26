@@ -238,7 +238,7 @@ export function ModelPickerPopover({ selectedModelId, onSelect, onClose, positio
               {/* Provider header — clickable to collapse */}
               <ProviderHeaderRow
                 hasAuth={hasAuth}
-                label={getProviderDisplayName(providerId)}
+                label={getProviderDisplayName(providerId, providers)}
                 count={providerModels.length}
                 Caret={Caret}
                 onClick={() => toggleCollapsed(providerId)}

@@ -26,7 +26,12 @@ export function ProviderRow({ provider, colors, onCredentialSaved }: {
   const [refreshing, setRefreshing] = useState(false)
   const providerModelCount = useModelStore((s) => s.models.filter((m) => m.providerId === provider.id).length)
 
-  const isApiKeyProvider = API_KEY_PROVIDERS.has(provider.id)
+  const hasCustomGateway = !!provider.baseURL
+  // Custom gateway providers (any provider with a baseURL that is not
+  // OAuth/CLI-backed, e.g. an enterprise APIM gateway) authenticate with an
+  // API key exactly like the hardcoded API_KEY_PROVIDERS set — render the
+  // same key input / save / remove UI for them.
+  const isApiKeyProvider = API_KEY_PROVIDERS.has(provider.id) || (hasCustomGateway && !OAUTH_PROVIDERS.has(provider.id))
   const isOAuthProvider = OAUTH_PROVIDERS.has(provider.id)
   const isOAuthSession = isOAuthProvider && provider.hasAuth && provider.authSource === 'oauth'
   const canManageKey = isApiKeyProvider && provider.hasAuth && provider.authSource !== undefined && ['filestore', 'programmatic', 'keychain', 'credentials.json'].includes(provider.authSource)
@@ -36,7 +41,6 @@ export function ProviderRow({ provider, colors, onCredentialSaved }: {
   // CLI subscription. Without this the key input is unreachable while a CLI
   // session is active.
   const isCliAuthed = isApiKeyProvider && provider.hasAuth && provider.authSource !== undefined && ['claude-code', 'codex', 'grok', 'cursor'].includes(provider.authSource)
-  const hasCustomGateway = !!provider.baseURL
 
   const handleSave = useCallback(async () => {
     if (!apiKey.trim()) return
@@ -109,7 +113,7 @@ export function ProviderRow({ provider, colors, onCredentialSaved }: {
     <div style={{ marginBottom: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
         <span style={{ color: colors.textSecondary, fontSize: 13, fontWeight: 500 }}>
-          {getProviderDisplayName(provider.id)}
+          {getProviderDisplayName(provider.id, [provider])}
         </span>
         <span title={authSourceTooltip(provider.authSource)} style={{ fontSize: 10, fontWeight: 500, color: badgeColor, padding: '1px 6px', borderRadius: 4, background: badgeBg, cursor: 'default' }}>
           {badgeLabel}
@@ -158,7 +162,7 @@ export function ProviderRow({ provider, colors, onCredentialSaved }: {
 
       {showApiKeyInput && (
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
-          <input type="password" placeholder={editing ? 'New API key' : `${getProviderDisplayName(provider.id)} API key`} value={apiKey} onChange={(e) => setApiKey(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void handleSave().catch((err) => rError('settings', 'save key failed', { error: String(err) })) }} style={inputSt(colors)} />
+          <input type="password" placeholder={editing ? 'New API key' : `${getProviderDisplayName(provider.id, [provider])} API key`} value={apiKey} onChange={(e) => setApiKey(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void handleSave().catch((err) => rError('settings', 'save key failed', { error: String(err) })) }} style={inputSt(colors)} />
           <button onClick={() => { void handleSave().catch((err) => rError('settings', 'save key failed', { error: String(err) })) }} disabled={saving || !apiKey.trim()} style={saveBtn(colors, saving || !apiKey.trim())}>{saving ? '…' : saved ? '✓' : 'Save'}</button>
           {editing && <button onClick={() => { setEditing(false); setApiKey('') }} style={linkBtn(colors)}>Cancel</button>}
         </div>

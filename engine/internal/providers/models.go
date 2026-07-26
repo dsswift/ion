@@ -29,6 +29,12 @@ type catalogEntry struct {
 	// Image models are routed through the image-generation endpoint instead of
 	// the chat-completion endpoint.
 	ModelKind string `json:"modelKind,omitempty"`
+	// Dialect declares the wire protocol a dialect-dispatching (gateway)
+	// provider must speak for this model. See types.ModelInfo.Dialect.
+	Dialect string `json:"dialect,omitempty"`
+	// CostPerImage is the USD cost of one standard (1MP) image generation.
+	// See types.ModelInfo.CostPerImage.
+	CostPerImage float64 `json:"costPerImage,omitempty"`
 }
 
 // MergeModelInfo overlays user-config fields onto a catalog (base) entry.
@@ -90,6 +96,15 @@ func MergeModelInfo(base, user types.ModelInfo) types.ModelInfo {
 	if user.ModelKind != "" {
 		merged.ModelKind = user.ModelKind
 	}
+	// Dialect: non-empty user value wins (additive, matches the rule above).
+	// Lets a user-config model entry pin its wire protocol for gateway dispatch.
+	if user.Dialect != "" {
+		merged.Dialect = user.Dialect
+	}
+	// CostPerImage: non-zero user value wins (additive, matches the rule above).
+	if user.CostPerImage != 0 {
+		merged.CostPerImage = user.CostPerImage
+	}
 	return merged
 }
 
@@ -116,6 +131,8 @@ func loadModelsFromJSON(data []byte) error {
 			ThinkingEfforts:        e.ThinkingEfforts,
 			Tokenizer:              e.Tokenizer,
 			ModelKind:              e.ModelKind,
+			Dialect:                e.Dialect,
+			CostPerImage:           e.CostPerImage,
 		})
 	}
 	utils.LogWithFields(utils.LevelInfo, "Registry", "models loaded from catalog", map[string]any{"count": len(entries)})

@@ -39,6 +39,19 @@ export interface ModelEntry {
    * sends only the current prompt with no conversation history. Additive, omitempty.
    */
   modelKind?: string
+  /**
+   * Wire protocol a dialect-dispatching (gateway) provider speaks for this model
+   * (mirrors Go ModelEntry.Dialect):
+   * "anthropic" | "openai-chat" | "openai-responses" | "image".
+   * Absent for stock providers (their own protocol applies). Additive, omitempty.
+   */
+  dialect?: string
+  /**
+   * USD cost of one standard (1MP) image generation for per-image-billed image
+   * models (mirrors Go ModelEntry.CostPerImage). Absent for chat models and
+   * image models with unknown pricing. Additive, omitempty.
+   */
+  costPerImage?: number
   isCustom?: boolean
 }
 
@@ -67,6 +80,12 @@ export interface ProviderEntry {
   authSource?: string
   baseURL?: string
   apiKeyRef?: string
+  /**
+   * Operator-configured human-friendly name for this provider (mirrors Go
+   * ProviderEntry.DisplayName, from engine.json's provider displayName).
+   * Absent means clients fall back to the built-in name map / capitalized id.
+   */
+  displayName?: string
   /** Run backend currently selected for this provider (api | claude-code | codex | grok | cursor). */
   backend?: string
   /** Delegated-CLI install/auth status; present only for providers with a CLI backend option. */
@@ -97,8 +116,15 @@ const PROVIDER_NAMES: Record<string, string> = {
   ollama: 'Ollama',
 }
 
-/** Get human-friendly display name for a provider ID. */
-export function getProviderDisplayName(providerId: string): string {
+/**
+ * Get human-friendly display name for a provider ID. When the engine's
+ * provider entries are available, an operator-configured displayName
+ * (engine.json) wins over the built-in name map; the final fallback is the
+ * capitalized id.
+ */
+export function getProviderDisplayName(providerId: string, providers?: Array<Pick<ProviderEntry, 'id' | 'displayName'>>): string {
+  const configured = providers?.find((p) => p.id === providerId)?.displayName
+  if (configured) return configured
   return PROVIDER_NAMES[providerId] || providerId.charAt(0).toUpperCase() + providerId.slice(1)
 }
 
@@ -131,5 +157,15 @@ export function getModelDisplayLabel(model: ModelEntry): string {
     'llama-3.3-70b': 'Llama 3.3 70B',
     'llama-3.1-8b': 'Llama 3.1 8B',
   }
-  return LABELS[id] || id
+  if (LABELS[id]) return LABELS[id]
+  // Provider-qualified id ("<providerId>/<model>"): label as "<bare or known
+  // label> (<providerId>)" so a gateway copy is distinguishable from the same
+  // bare model on its public provider. OpenRouter-style ids, where the slash
+  // is part of the wire id (prefix != providerId), pass through unchanged.
+  const slash = id.indexOf('/')
+  if (slash > 0 && id.slice(0, slash) === model.providerId) {
+    const bare = id.slice(slash + 1)
+    return `${LABELS[bare] || bare} (${model.providerId})`
+  }
+  return id
 }

@@ -44,7 +44,8 @@ You need a `models.json` entry when:
     "<provider-id>": {
       // Provider IDs match the engine's built-in registry: ollama, openai,
       // anthropic, google, openrouter, groq, cerebras, mistral, together,
-      // fireworks, xai, deepseek, bedrock, azure, vertex, foundry.
+      // fireworks, xai, deepseek, bedrock, azure, vertex, foundry — or any
+      // custom provider id you declared in engine.json.
       "models": {
         "<model-name>": {
           "contextWindow": 32768,
@@ -54,7 +55,11 @@ You need a `models.json` entry when:
           "supportsThinking": false,
           "supportsImages": false,
           "thinkingMode": "reasoning_effort",
-          "thinkingEfforts": ["low", "medium", "high"]
+          "thinkingEfforts": ["low", "medium", "high"],
+          // Wire protocol for gateway-served models. Omit for normal providers.
+          "dialect": "openai-responses",
+          // Per-image rate for image models that bill per image, not per token.
+          "costPerImage": 0.0
         }
       }
     }
@@ -84,14 +89,35 @@ Register a model under a specific provider. Each entry sets the routing target p
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `contextWindow` | int | 0 | Maximum tokens the model accepts in a single request. Used for compaction triggers. |
+| `contextWindow` | int | 0 | Maximum tokens the model accepts in a single request. Used for compaction triggers. When the model also exists in the engine's built-in catalog, the catalog value wins (the catalog is the reconciled source for context windows). |
 | `costPer1kInput` | float | 0.0 | USD cost per 1,000 input tokens. Used for budget tracking. |
 | `costPer1kOutput` | float | 0.0 | USD cost per 1,000 output tokens. Used for budget tracking. |
+| `costPer1kCacheCreation` | float | 0.0 | USD cost per 1,000 prompt-cache-creation tokens. When unset, the engine falls back to 1.25× `costPer1kInput`. |
+| `costPer1kCacheRead` | float | 0.0 | USD cost per 1,000 prompt-cache-read tokens. When unset, the engine falls back to 0.1× `costPer1kInput`. |
+| `costPerImage` | float | 0.0 | USD cost of one standard (1MP) generation for image models, which bill per image rather than per token. Used for `modelKind: "image"` runs; leave unset for per-token image models (they report token usage and are priced through the normal token math). |
+| `maxOutputTokens` | int | 0 | Maximum output tokens the model can produce in one response. Unset ⇒ the engine sends no cap and the provider applies the model's own maximum. |
 | `supportsCaching` | bool | false | Provider supports prompt caching for this model. |
 | `supportsThinking` | bool | false | Model exposes a reasoning/thinking channel. |
 | `supportsImages` | bool | false | Model accepts image inputs. |
 | `thinkingMode` | string | `""` | Reasoning mechanism the model uses on the wire. One of `adaptive` (Anthropic adaptive thinking + effort), `budget` (Anthropic legacy `type:"enabled"` + `budget_tokens`), `reasoning_effort` (OpenAI / OpenAI-compatible `reasoning_effort`), `gemini` (Google Gemini `thinkingConfig`), or `none`/`""` (no reasoning). Empty ⇒ the engine emits **no** thinking directive for this model, even when a prompt requests one — declare this field to opt a model in. |
 | `thinkingEfforts` | string[] | `[]` | Effort levels the model accepts, e.g. `["low","medium","high"]`. Clients use this with `thinkingMode` to show or hide the per-conversation thinking control honestly; empty ⇒ the control is hidden for this model. Surfaced on the `list_models` `ModelEntry` wire shape so both desktop and iOS gate the control identically. |
+| `tokenizer` | string | `""` | tiktoken encoding name for local token counting (e.g. `cl100k_base`, `o200k_base`). Empty ⇒ the engine falls back to a character-based estimate. |
+| `modelKind` | string | `""` | API shape the model uses. `image` routes the run through the image-generation endpoint (single prompt in, image out, no conversation history or tools). Empty ⇒ `chat`. |
+| `dialect` | string | `""` | Wire protocol the engine speaks for this model when it is served by a gateway. See [Dialect routing](#dialect-routing) below. Empty ⇒ the provider's own protocol applies. |
+
+### Dialect routing
+
+A provider configured with a custom `baseURL` may be an **enterprise gateway** that fronts models from several upstream vendors behind one URL and one auth header. Those models do not all speak the same protocol, so the engine picks the wire protocol per model from the model's `dialect`:
+
+| `dialect` | Protocol the engine speaks |
+|-----------|----------------------------|
+| `anthropic` | Anthropic Messages API (`/v1/messages`) |
+| `openai-chat` | OpenAI Chat Completions API (`/v1/chat/completions`) |
+| `openai-responses` | OpenAI Responses API (`/v1/responses`) — the Responses-native models, e.g. `gpt-*-codex` |
+| `image` | OpenAI Image API (`/v1/images/generations`) |
+| `""` (absent) | OpenAI Chat Completions — identical to a plain OpenAI-compatible provider |
+
+Most gateway operators do not need to set this by hand: a gateway that advertises `dialect` in its own `/v1/models` response is self-describing and the engine picks it up during discovery. Set `dialect` in `models.json` when the gateway does not advertise it. See [Custom endpoints → Enterprise gateways](../providers/custom-endpoints.md#enterprise-gateways-multi-vendor-behind-one-url).
 
 ## Worked example: Ollama with qwen2.5:14b
 
