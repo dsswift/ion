@@ -48,7 +48,7 @@ Cohesion of change: a feature lives in one folder. Full reference: `docs/archite
 
 ## Local hooks
 
-Run `make hooks` once per clone to point git at `.githooks/`. The pre-push hook runs `make check-file-sizes` so cap violations fail locally before reaching CI. Bypass with `--no-verify` only when intentional.
+Hooks are managed by husky and install themselves: root `package.json` has `"prepare": "husky"`, so `npm install` — or `make bootstrap`, which wraps it — points `core.hooksPath` at `.husky/_` with no manual step. The pre-push hook runs the file-size cap plus change-scoped lint, build, typecheck, and test gates. Husky invokes hooks with `sh -e`, which ignores the shebang and is dash on Linux, so `.husky/pre-push` is a dash-safe one-line delegator and the bash gate body lives in `scripts/pre-push.sh` — edit the gates there. Bypass with `--no-verify` only when intentional. If `core.hooksPath` has been manually overridden in a clone, `make hooks` repairs it.
 
 ## Forbidden commands
 

@@ -224,11 +224,13 @@ check-swiftlint:
 claude-symlinks:
 	@bash scripts/setup-claude-symlinks.sh
 
-# Point this clone's git hooks at the tracked .githooks/ directory so the
-# pre-push file-size check runs before pushes hit CI. One-time per clone.
+# Repair this clone's git hooks when core.hooksPath has drifted. Husky owns
+# the hook system: root `package.json` has `"prepare": "husky"`, so a plain
+# `npm install` already points core.hooksPath at `.husky/_`. This target only
+# exists to fix a clone where that config was manually overridden.
 hooks:
-	@git config core.hooksPath .githooks
-	@echo "core.hooksPath -> .githooks"
+	@git config core.hooksPath .husky/_
+	@echo "core.hooksPath -> .husky/_"
 
 # Local pipeline testing (requires: brew install act)
 test-pipeline-dry:
