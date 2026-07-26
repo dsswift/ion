@@ -116,7 +116,6 @@ function makeTab(overrides: Partial<TabState> = {}): TabState {
     groupId: null,
     groupPinned: false,
     contextTokens: null,
-    contextPercent: null,
     contextWindow: null,
     isCompacting: false,
     isTerminalOnly: false,
@@ -149,7 +148,6 @@ function buildHarness(
     engineNotifications: new Map(),
     engineDialogs: new Map(),
     enginePinnedPrompt: new Map(),
-    engineUsage: new Map(),
     conversationPanes: seedMainPane(initialTab.id, {
       ...instanceOverrides,
     }),

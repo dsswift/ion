@@ -111,7 +111,6 @@ export function makeLocalTab(): TabState {
     groupId: null,
     groupPinned: false,
     contextTokens: null,
-    contextPercent: null,
     contextWindow: null,
     isCompacting: false,
     isTerminalOnly: false,

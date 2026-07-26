@@ -3,9 +3,12 @@
  * StatusBarContextIndicator — drawer-trigger and tooltip compose correctly.
  *
  * Two assertions:
- *   1. Clicking the % span calls toggleStatusDrawer (new behavior).
- *   2. Hovering the % span still produces the token-count tooltip via the
+ *   1. Clicking the indicator calls toggleStatusDrawer.
+ *   2. Hovering it still produces the token-count tooltip via the
  *      self-rolled portal (pre-existing behavior that must not regress).
+ *
+ * The percentage is no longer rendered as text — the ring replaced it — so
+ * the accessible name is what carries the figure now.
  *
  * The store is stubbed so `toggleStatusDrawer` is a vi.fn() we can spy on.
  * PopoverLayer is stubbed to return a real DOM node so createPortal has a
@@ -29,7 +32,7 @@ const storeState = {
   activeTabId: 'tab1',
   conversationPanes: new Map([
     ['tab1', {
-      instances: [{ id: 'main', statusFields: { contextPercent: 25, contextWindow: 200_000 }, modelOverride: null, sessionModel: null }],
+      instances: [{ id: 'main', statusFields: { contextTokens: 50_000, contextPercent: 25, contextWindow: 200_000 }, modelOverride: null, sessionModel: null }],
       activeInstanceId: 'main',
     }],
   ]),
@@ -50,6 +53,8 @@ vi.mock('zustand/shallow', () => ({
 vi.mock('../../theme', () => ({
   useColors: () => ({
     textTertiary: '#888888',
+    warningFg: '#f59e0b',
+    dangerFg: '#c47060',
     popoverBg: '#1e1e1e',
     popoverBorder: '#333',
     popoverShadow: 'none',
@@ -99,13 +104,12 @@ beforeEach(() => {
 })
 
 describe('StatusBarContextIndicator — click wires toggleStatusDrawer', () => {
-  it('clicking the % span calls toggleStatusDrawer', () => {
+  it('clicking the indicator calls toggleStatusDrawer', () => {
     const { container, root } = renderIntoContainer()
     act(() => { root.render(<ContextIndicator />) })
 
     const span = container.querySelector('span')
     expect(span).not.toBeNull()
-    expect(span!.textContent).toMatch(/\d+%/)
 
     act(() => { span!.click() })
     expect(toggleStatusDrawer).toHaveBeenCalledTimes(1)
@@ -114,7 +118,23 @@ describe('StatusBarContextIndicator — click wires toggleStatusDrawer', () => {
     container.remove()
   })
 
-  it('% span has cursor:pointer style', () => {
+  it('renders the ring and carries the percentage in its accessible name', () => {
+    // 50k / 200k = 25%. The ring is the only visual, so the aria-label is
+    // the sole textual carrier of the figure.
+    const { container, root } = renderIntoContainer()
+    act(() => { root.render(<ContextIndicator />) })
+
+    const span = container.querySelector('span')
+    expect(span!.getAttribute('aria-label')).toMatch(/25%/)
+    expect(span!.getAttribute('aria-label')).toMatch(/50k \/ 200k tokens/)
+    expect(container.querySelector('svg')).not.toBeNull()
+    expect(container.querySelectorAll('circle').length).toBe(2)
+
+    act(() => { root.unmount() })
+    container.remove()
+  })
+
+  it('indicator has cursor:pointer style', () => {
     const { container, root } = renderIntoContainer()
     act(() => { root.render(<ContextIndicator />) })
 

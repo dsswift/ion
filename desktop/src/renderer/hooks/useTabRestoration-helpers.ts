@@ -1,4 +1,4 @@
-import type { ConversationPane } from '../../shared/types-engine'
+import type { ConversationPane, StatusFields } from '../../shared/types-engine'
 import type { PersistedTab, PersistedConversationInstance } from '../../shared/types-persistence'
 import { migrateTabToUnified } from '../../main/tab-migration-unify'
 import { activeInstance, needsHistoryHydration } from '../stores/conversation-instance'
@@ -65,6 +65,41 @@ export function readMainInstance(tab: PersistedTab): PersistedConversationInstan
   const pane = tab.conversationPane
   if (!pane || pane.instances.length === 0) return null
   return pane.instances.find((i) => i.id === 'main') ?? pane.instances[0]
+}
+
+/**
+ * Seed the persisted context-occupancy scalars back onto a restored
+ * instance's `statusFields`.
+ *
+ * The status-bar indicator reads `statusFields.contextTokens`, so without
+ * this a cold-started tab renders no context reading at all until the first
+ * engine status event lands — a "count that updates after the user sees it",
+ * which the view-readiness principle forbids. Only the two context scalars
+ * are restored; the rest of `statusFields` (state, label, denials) is
+ * live-only and a persisted copy would be stale by construction.
+ *
+ * Returns an empty object when nothing was persisted, so callers can spread
+ * it unconditionally into an instance patch.
+ */
+export function seedContextStatusFields(
+  inst: { statusFields?: StatusFields | null },
+  main: PersistedConversationInstance | null,
+): { statusFields?: StatusFields } {
+  if (!main?.contextTokens && !main?.contextWindow) return {}
+  const base: StatusFields = inst.statusFields ?? {
+    label: '',
+    state: 'idle',
+    model: '',
+    contextPercent: 0,
+    contextWindow: 0,
+  }
+  return {
+    statusFields: {
+      ...base,
+      ...(main.contextTokens ? { contextTokens: main.contextTokens } : {}),
+      ...(main.contextWindow ? { contextWindow: main.contextWindow } : {}),
+    },
+  }
 }
 
 /**

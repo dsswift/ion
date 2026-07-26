@@ -62,7 +62,6 @@ function buildHarness() {
     engineNotifications: new Map(),
     engineDialogs: new Map(),
     enginePinnedPrompt: new Map(),
-    engineUsage: new Map(),
     engineModelFallbacks: new Map(),
   }
   const set = (partial: any) => {
@@ -107,6 +106,24 @@ describe('prompt_injected reducer arm', () => {
     const { state, slice } = buildHarness()
     slice.handleNormalizedEvent('tab1', {
       type: 'prompt_injected', prompt: 'child result body', origin: 'ion-dev', kind: 'agent_completion',
+    } as any)
+
+    const msgs = mainInstance(state.conversationPanes, 'tab1')?.messages ?? []
+    expect(msgs).toHaveLength(0)
+  })
+
+  // background_task_completion — a finished background bash command's result
+  // routed back to wake a parked session (ADR-023). Machine-to-machine like
+  // agent_completion: the engine is reporting an exit code and output tail to
+  // the model, so rendering it puts raw command output in the transcript as a
+  // user bubble. Observed live before this was suppressed.
+  it('suppresses a background_task_completion-kind injection', () => {
+    const { state, slice } = buildHarness()
+    slice.handleNormalizedEvent('tab1', {
+      type: 'prompt_injected',
+      prompt: 'Background command bash-1 (failed).\nExit code: 7\nRecent output:\nboom',
+      origin: '',
+      kind: 'background_task_completion',
     } as any)
 
     const msgs = mainInstance(state.conversationPanes, 'tab1')?.messages ?? []

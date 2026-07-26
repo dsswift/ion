@@ -118,6 +118,19 @@ export interface PersistedConversationInstance {
   agentStates?: Array<{ name: string; id?: string; status: string; metadata?: Record<string, any> }>
   dispatchTelemetry?: Array<{ dispatchId: string; dispatchAgent: string; dispatchSessionId: string; dispatchModel: string; dispatchTask: string; dispatchDepth: number; dispatchParentId: string }>
   planFilePath?: string | null
+  /**
+   * Context-window occupancy in tokens, and the window the engine computed
+   * against, carried from the instance's `statusFields`.
+   *
+   * Persisted so a cold-started tab paints the correct context reading on
+   * first frame instead of blank-until-first-status (the view-readiness
+   * principle). Only these two scalars are persisted, not the whole
+   * `statusFields` blob: `state`, `label`, and the denial list are live-only
+   * and a persisted copy would be stale by construction. The engine's
+   * session-start seed overwrites both within one status event.
+   */
+  contextTokens?: number
+  contextWindow?: number
 }
 
 /** Unified persisted pane: the instances for a tab + which is active. */

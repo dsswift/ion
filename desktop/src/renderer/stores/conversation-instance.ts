@@ -30,7 +30,7 @@
  */
 
 import { MAIN_INSTANCE_ID } from '../../shared/session-key'
-import type { ConversationRef, ConversationInstance, ConversationPane } from '../../shared/types-engine'
+import type { ConversationRef, ConversationInstance, ConversationPane, StatusFields } from '../../shared/types-engine'
 import type { Message as _Message } from '../../shared/types-session'
 
 /** A fully-typed instance row as stored in `ConversationPane.instances`. */
@@ -61,6 +61,32 @@ export function emptyConversationInstance(
     dispatchTelemetry: [],
     contextBreakdown: null,
     ...overrides,
+  }
+}
+
+/**
+ * The neutral `StatusFields` an instance carries before its first
+ * `engine_status` event.
+ *
+ * `statusFields` starts as `null` (see `emptyConversationInstance` above) and
+ * `resetEngineInstance` puts it back, so there is a real window — every event
+ * from session start until the first status arrives — where a writer that
+ * wants to stamp one field has no object to stamp it onto. Skipping the write
+ * in that window is what left the context indicator blank on a cold start
+ * while the correct figure sat on the tab mirror; the indicator reads only
+ * `inst.statusFields.contextTokens`.
+ *
+ * Callers that need to write a single field spread this as the base. Shared
+ * rather than inlined so the reducer arms and the restoration seed cannot
+ * drift on what a synthesized base looks like.
+ */
+export function baseStatusFields(): StatusFields {
+  return {
+    label: '',
+    state: 'idle',
+    model: '',
+    contextPercent: 0,
+    contextWindow: 0,
   }
 }
 

@@ -276,6 +276,11 @@ export function serializeConversationPane(
       out.dispatchTelemetry = inst.dispatchTelemetry
     }
     if (inst.planFilePath) out.planFilePath = inst.planFilePath
+    // Context occupancy: persisted so a cold-started tab renders the correct
+    // reading on first frame rather than blank until the first engine status
+    // arrives. Conditional-write like every other optional field above.
+    if (inst.statusFields?.contextTokens) out.contextTokens = inst.statusFields.contextTokens
+    if (inst.statusFields?.contextWindow) out.contextWindow = inst.statusFields.contextWindow
     return out
   })
 

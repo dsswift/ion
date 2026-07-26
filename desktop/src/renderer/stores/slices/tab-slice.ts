@@ -301,15 +301,13 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
         const engineNotifications = new Map(get().engineNotifications)
         const engineDialogs = new Map(get().engineDialogs)
         const enginePinnedPrompt = new Map(get().enginePinnedPrompt)
-        const engineUsage = new Map(get().engineUsage)
         const conversationPanes = new Map(get().conversationPanes)
         for (const k of engineWorkingMessages.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) engineWorkingMessages.delete(k)
         for (const k of engineNotifications.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) engineNotifications.delete(k)
         for (const k of engineDialogs.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) engineDialogs.delete(k)
         for (const k of enginePinnedPrompt.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) enginePinnedPrompt.delete(k)
-        for (const k of engineUsage.keys()) if (k === tabId || k.startsWith(`${tabId}:`)) engineUsage.delete(k)
         conversationPanes.delete(tabId)
-        set({ engineWorkingMessages, engineNotifications, engineDialogs, enginePinnedPrompt, engineUsage, conversationPanes })
+        set({ engineWorkingMessages, engineNotifications, engineDialogs, enginePinnedPrompt, conversationPanes })
         cleanupTabDeltas(tabId)
       }
       if (closingTab) {

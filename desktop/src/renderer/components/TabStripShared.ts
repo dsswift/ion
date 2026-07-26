@@ -324,13 +324,9 @@ export function getWaitingState(
 // The "is work in flight?" fold cluster lives in TabStripActivityFolds.ts
 // (extracted at the file-size cap). Re-exported here so every existing import
 // site keeps working and the cascade below can use them unqualified.
-export {
-  isAnyEngineInstanceRunning,
-  effectiveRunningChildrenCount,
-  anyEngineInstanceHasRunningChildren,
-  engineInstanceBackgroundShellCount,
-  anyEngineInstanceHasRunningShells,
-} from './TabStripActivityFolds'
+export * from './TabStripActivityFolds'
+// Imported as well as re-exported: the cascade below uses these three
+// unqualified, and `export *` alone does not bind them in this module's scope.
 import {
   isAnyEngineInstanceRunning,
   anyEngineInstanceHasRunningChildren,

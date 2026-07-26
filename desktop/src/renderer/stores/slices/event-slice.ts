@@ -1,5 +1,10 @@
 // @file-size-exception: event-slice.ts is the single-path normalized event reducer.
-// Grew by 17 lines to add context_breakdown caching (plan modest-leaping-waffle).
+// Over cap because every normalized event variant is reduced in one switch —
+// splitting the switch across files would make the event contract harder to
+// read, not easier. Current growth over the pre-exception baseline: the
+// context_breakdown cache arm, plus the occupancy writes in the `usage` and
+// `context_breakdown` arms that synthesize a StatusFields base when the
+// instance has none yet.
 import type { TabStatus, Message } from '../../../shared/types'
 import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
@@ -7,7 +12,7 @@ import { nextMsgId, totalInputTokens } from '../session-store-helpers'
 import { formatSteerAppliedDivider } from '../../../shared/clear-divider'
 import { buildCompactionMarkerContent, buildManualCompactionNoOpNotice } from '../../../shared/compaction-marker'
 import { captureSessionInitId } from './session-init-capture'
-import { activeInstance, commitInstance } from '../conversation-instance'
+import { activeInstance, commitInstance, baseStatusFields } from '../conversation-instance'
 import { handleThinkingEvent, discardActiveThinking } from './event-slice-thinking'
 import { attachImageToMessages } from './event-slice-images'
 import { handleCrossNormalizedEvent } from './engine-event-slice-messages'
@@ -238,7 +243,17 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               //     via the optimistic insert + reload), so the multi-KB expansion
               //     body is redundant — rendering it puts the whole command
               //     template on screen as a second user message.
-              if (event.kind !== 'agent_completion' && event.kind !== 'slash_command') {
+              //   - "background_task_completion": a finished background bash
+              //     command's result, routed back to wake a parked session
+              //     (ADR-023). Machine-to-machine like agent_completion — the
+              //     engine is reporting an exit code and output tail to the
+              //     model, not relaying something the user said. Rendering it
+              //     puts raw command output on screen as a user bubble.
+              if (
+                event.kind !== 'agent_completion' &&
+                event.kind !== 'slash_command' &&
+                event.kind !== 'background_task_completion'
+              ) {
                 messages = [
                   ...messages,
                   { id: nextMsgId(), role: 'user' as const, content: event.prompt, timestamp: Date.now() },
@@ -376,9 +391,27 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
             }
 
             case 'usage': {
+              // Live per-turn occupancy. The engine already summed
+              // input + cache_read + cache_creation before emitting, so this
+              // is what the model actually carried — not cumulative run
+              // billing. Written onto the instance's statusFields (the
+              // single numerator the indicator reads) and mirrored onto the
+              // tab for the iOS snapshot projection, so the live path and
+              // the idle status path converge on one cell instead of
+              // competing.
               const usageTokens = totalInputTokens(event.usage)
               if (usageTokens > 0) {
                 updated.contextTokens = usageTokens
+                // Synthesize a base when statusFields is still null (fresh or
+                // just-reset instance, before the first engine_status). The
+                // indicator reads ONLY inst.statusFields.contextTokens, so
+                // skipping this write blanks it for the whole pre-status
+                // window even though the tab mirror above is correct.
+                instPatch = {
+                  ...instPatch,
+                  statusFields: { ...(inst0?.statusFields ?? baseStatusFields()), contextTokens: usageTokens },
+                }
+                instTouched = true
               }
               break
             }
@@ -517,9 +550,10 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
             case 'context_breakdown':
               // Cache the per-category breakdown on the instance so the Status
-              // Drawer can render it synchronously on open. Also write contextWindow
-              // onto the tab so the status-bar denominator is correct mid-run and
-              // survives reload.
+              // Drawer can render it synchronously on open. The breakdown is
+              // the most precise occupancy figure available (the engine
+              // reassembles system prompt + tools + messages to produce it),
+              // so its totalTokens supersedes the streamed usage figure.
               instPatch = {
                 ...instPatch,
                 contextBreakdown: {
@@ -535,12 +569,30 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                   modelBreakdown: event.modelBreakdown,
                 },
               }
-              // Mirror the authoritative contextWindow from the breakdown onto the
-              // tab so StatusBarContextIndicator has the correct denominator without
-              // needing to reach into inst.statusFields.
+              // Mirror the breakdown's authoritative figures onto statusFields
+              // (the indicator's numerator) and onto the tab (the iOS snapshot
+              // carrier), so every surface reads the same number.
               if (event.contextWindow) {
                 updated.contextWindow = event.contextWindow
               }
+              if (event.totalTokens) {
+                updated.contextTokens = event.totalTokens
+              }
+              if (event.totalTokens || event.contextWindow) {
+                // Same synthesize-a-base rule as the `usage` arm above, for
+                // the same reason: statusFields is null until the first
+                // engine_status and the indicator reads only that field.
+                instPatch = {
+                  ...instPatch,
+                  statusFields: {
+                    ...(inst0?.statusFields ?? baseStatusFields()),
+                    ...(event.totalTokens ? { contextTokens: event.totalTokens } : {}),
+                    ...(event.contextWindow ? { contextWindow: event.contextWindow } : {}),
+                  },
+                }
+              }
+              // Unconditional: this arm always patched contextBreakdown above,
+              // so the instance is dirty regardless of the occupancy fields.
               instTouched = true
               break
           }

@@ -68,7 +68,6 @@ const initialState = {
   engineNotifications: new Map(),
   engineDialogs: new Map(),
   enginePinnedPrompt: new Map(),
-  engineUsage: new Map(),
   conversationPanes: initialEnginePanes,
   engineModelFallbacks: new Map<string, { requestedModel: string; fallbackModel: string; reason: string; at: number }>(),
   resources: {} as Record<string, import('../../shared/types-engine').ResourceItem[]>,

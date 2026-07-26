@@ -43,11 +43,11 @@ export { compactPath } from './StatusBarShared'
  * this level.
  *
  * The context indicator (`<ContextIndicator />`) works on both tab
- * types: it reads `tab.contextPercent` / `tab.contextTokens`, both
- * of which are populated for the active engine instance by the
- * engine event slice (see engine-event-slice.ts case 'message_end').
- * One indicator, one rendering — the simple `65%` percent with a
- * hover tooltip showing the token count.
+ * types: it reads the active instance's `statusFields.contextTokens` —
+ * the engine's absolute occupancy figure, seeded at session start,
+ * updated per turn, and recomputed at run exit — and divides it by the
+ * SELECTED model's context window. A radial ring with a hover tooltip
+ * carrying the exact token counts; click opens the status drawer.
  */
 
 export function StatusBar() {
@@ -144,10 +144,10 @@ export function StatusBar() {
             self-gates internally. */}
         <StatusBarEngineState />
         <ModelPicker />
-        {/* Context indicator — same component on both tab types.
-            Reads `tab.contextPercent` / `tab.contextTokens`, which the
-            engine event slice populates for the active engine instance
-            (see engine-event-slice.ts case 'message_end'). */}
+        {/* Context indicator — same component on both tab types. Reads the
+            active instance's `statusFields.contextTokens` (engine-reported
+            occupancy) and divides by the SELECTED model's window, so a model
+            switch recomputes with no engine round-trip. */}
         <ContextIndicator />
 
         <span style={{ color: colors.textMuted, fontSize: 10 }}>|</span>

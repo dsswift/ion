@@ -302,8 +302,23 @@ export interface StatusFields {
   sessionId?: string
   team?: string
   model: string
+  /** Context-window occupancy as a percentage. UNBOUNDED — values above 100
+   *  mean the conversation holds more tokens than the window it is measured
+   *  against (the normal case when a conversation accumulated under a
+   *  large-window model and the operator then selects a smaller one).
+   *  Renderers clamp at their own display layer; the engine reports truth. */
   contextPercent: number
+  /** Context window in tokens of the model the ENGINE actually used, i.e. the
+   *  denominator `contextPercent` was computed against. Not the display
+   *  denominator: a client whose model picker disagrees with the engine
+   *  recomputes from `contextTokens` and the selected model's window. */
   contextWindow: number
+  /** Absolute context-window occupancy in tokens — the numerator behind
+   *  `contextPercent`, cache-aware (input + cache_read + cache_creation).
+   *  This is the field clients divide by the SELECTED model's window: there
+   *  is no engine command to change an idle session's model, so the
+   *  picker-driven recompute is necessarily client-side arithmetic. */
+  contextTokens?: number
   /** Cost of the most recent run in USD (cache-aware, descendants included).
    *  Replaces the former totalCostUsd field; the rename makes the scope
    *  unambiguous — "run" not "conversation". */
@@ -320,6 +335,13 @@ export interface StatusFields {
    *  progress. Clients use this to keep the tab status active and the
    *  interrupt button visible. */
   backgroundAgents?: number
+  /** Number of background bash commands (Bash run_in_background +
+   *  notify_on_complete) the session is still waiting on. The shell
+   *  counterpart to `backgroundAgents`: when > 0 the orchestrator may be idle
+   *  while real work is in flight, and the engine holds the session open until
+   *  the commands finish. Commands started WITHOUT notify_on_complete are not
+   *  counted — nothing is waiting on them. */
+  backgroundShells?: number
   /** Number of LLM turns completed in the most recent run. Stamped from
    *  TaskCompleteEvent.NumTurns; absent on idle and heartbeat status events. */
   numTurns?: number
@@ -361,13 +383,23 @@ export interface SessionStatus {
   /** Number of background dispatch agents still running. Same
    *  semantics as `StatusFields.backgroundAgents`. */
   backgroundAgentCount?: number
+  /** Number of background bash commands the session is still waiting on.
+   *  Same semantics as `StatusFields.backgroundShells` — the shell
+   *  counterpart to `backgroundAgentCount`, so a consumer reading only this
+   *  event can tell a parked session (idle orchestrator, commands in flight)
+   *  from a plain idle one. */
+  backgroundShellCount?: number
   /** Unresolved AskUserQuestion / ExitPlanMode entries retained
    *  across status emissions. Same shape as
    *  `StatusFields.permissionDenials`. */
   permissionDenialsPending?: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }>
   model?: string
+  /** UNBOUNDED — see StatusFields.contextPercent. */
   contextPercent?: number
   contextWindow?: number
+  /** Absolute context-window occupancy in tokens. Mirrors
+   *  StatusFields.contextTokens. */
+  contextTokens?: number
   /** Cost of the most recent run in USD. Matches StatusFields.runCostUsd semantics. */
   runCostUsd?: number
   /** Cumulative cost of the entire conversation (this session + all descendant dispatches) in USD. */

@@ -80,7 +80,6 @@ export interface State {
   engineNotifications: Map<string, Array<{ id: string; message: string; level: string; timestamp: number }>>
   engineDialogs: Map<string, { dialogId: string; method: string; title: string; options?: string[]; defaultValue?: string } | null>
   enginePinnedPrompt: Map<string, string>
-  engineUsage: Map<string, { percent: number; tokens: number; cost: number }>
   conversationPanes: Map<string, ConversationPane>
   /**
    * Pending model-fallback notice per engine tab, keyed by the bare tabId

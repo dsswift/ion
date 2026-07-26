@@ -102,7 +102,17 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
   model_fallback: ['fallbackModel', 'reason', 'requestedModel'],
   capability_unsupported: ['backend', 'capability', 'reason'],
   run_stalled: ['lastActivity', 'stalledDuration'],
-  task_suspend: ['awaitingDispatchIds'],
+  task_suspend: ['awaitingDispatchIds', 'awaitingTaskIds'],
+  background_task_complete: [
+    'command',
+    'elapsedMs',
+    'exitCode',
+    'outputPath',
+    'remainingTaskIds',
+    'status',
+    'tail',
+    'taskId',
+  ],
   engine_plan_content: ['content', 'hasMore', 'offset', 'planFilePath', 'totalBytes'],
   thinking_block_start: [],
   thinking_delta: ['text'],
@@ -141,7 +151,9 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
 const TS_SHARED_TYPES: Record<string, string[]> = {
   StatusFields: [
     'backgroundAgents',
+    'backgroundShells',
     'contextPercent',
+    'contextTokens',
     'contextWindow',
     'conversationCostUsd',
     'conversationTurns',
@@ -157,7 +169,9 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
   ],
   SessionStatus: [
     'backgroundAgentCount',
+    'backgroundShellCount',
     'contextPercent',
+    'contextTokens',
     'contextWindow',
     'conversationCostUsd',
     'extensionName',

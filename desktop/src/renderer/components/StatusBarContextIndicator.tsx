@@ -7,35 +7,33 @@ import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import { activeInstance } from '../stores/conversation-instance'
+import { ContextRadial } from './StatusBarContextRadial'
+import { resolveContextDisplay, formatTokens } from './context-usage'
 
-/* ─── Context Percentage Indicator ─── */
+/* ─── Context Usage Indicator ─── */
+
+// The resolution math lives in context-usage.ts (pure, no React or theme
+// imports) so the status bar, the radial, the drawer, and the tests all read
+// the same shipped functions.
 
 export function ContextIndicator() {
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const preferredModel = usePreferencesStore((s) => s.preferredModel)
-  const { contextTokens, contextPercent, engineContextWindow, modelOverride, sessionModel } = useSessionStore(
+  const { contextTokens, modelOverride, sessionModel } = useSessionStore(
     useShallow((s) => {
       const tab = s.tabs.find((t) => t.id === s.activeTabId)
-      // Per-conversation model state now lives on the active instance
-      // (`modelOverride` / `sessionModel`), resolved via `activeInstance`.
+      // Per-conversation state (model + engine status) lives on the active
+      // instance. statusFields.contextTokens is the single numerator: the
+      // engine writes it on every status snapshot — seeded at session start
+      // from the persisted conversation, updated per turn from the
+      // occupancy usage event, and recomputed from disk at run exit. There
+      // is no second "live" source to prefer over it; preferring one is
+      // what let a cumulative-billing figure mask a 227k-token
+      // conversation as 0%.
       const inst = tab ? activeInstance(s.conversationPanes, tab.id) : null
-      // During a live run: contextTokens is set from `usage` events; contextWindow is
-      // written from context_breakdown (added in B3/B4). When the run is idle,
-      // both go null and we fall back to the engine's last-known statusFields
-      // (the authoritative idle heartbeat source the drawer already uses).
-      const liveTokens = tab?.contextTokens ?? null
-      const liveWindow = tab?.contextWindow ?? null
-      const sfPercent = inst?.statusFields?.contextPercent ?? null
-      const sfWindow = inst?.statusFields?.contextWindow ?? null
       return {
-        // During a live run: use the live token count + contextWindow from context_breakdown.
-        // At idle / after reload: fall back to statusFields which carry the engine's
-        // last-known fill (seeded on resume by B1/B2 engine changes).
-        contextTokens: liveTokens,
-        contextPercent: liveTokens !== null ? null : sfPercent,
-        // Denominator priority: live breakdown window > statusFields window > null (picker fallback)
-        engineContextWindow: liveWindow ?? sfWindow,
+        contextTokens: inst?.statusFields?.contextTokens ?? null,
         modelOverride: inst?.modelOverride ?? null,
         sessionModel: inst?.sessionModel ?? null,
       }
@@ -47,41 +45,15 @@ export function ContextIndicator() {
   const [pos, setPos] = useState({ bottom: 0, left: 0 })
   const toggleStatusDrawer = useSessionStore((s) => s.toggleStatusDrawer)
 
-  // Resolve effective picker-model: per-tab override > session model >
-  // global preferred. Used ONLY as the fallback denominator when the
-  // engine has not yet reported a window (cold-start tabs, post-clear
-  // state). Once the engine has answered at least once, the numerator
-  // and denominator must come from the same model — see the bug
-  // diagnosed in plan cosy-pacing-bee.md (a Sonnet-picker reading
-  // displayed an Opus conversation as 100% / 498k / 200k because the
-  // denominator was the picker's nominal window).
+  // Effective picker-model: per-tab override > session model > global
+  // preferred. This is the denominator, always — see resolveContextDisplay.
   const effectiveModel = modelOverride || sessionModel || preferredModel
-  const fallbackWindow = getDynamicContextWindow(effectiveModel)
+  const windowSize = getDynamicContextWindow(effectiveModel)
 
-  // Compute the denominator: prefer the engine-truth window over the
-  // picker fallback. Both numerator and denominator must come from the
-  // same model the engine actually billed.
-  const windowSize = engineContextWindow ?? fallbackWindow
+  const display = resolveContextDisplay(contextTokens, windowSize)
+  if (display === null) return null
 
-  // Local percent recomputation: when contextTokens is available (live run),
-  // divide by the engine's reported window (anchored to the model that produced
-  // those tokens). When contextTokens is null (idle/reload), fall back to the
-  // engine's pre-computed contextPercent from statusFields — which is seeded on
-  // session resume by the B1/B2 engine fix so idle tabs show the real last fill.
-  // The cap at 100 is a display guard against transient mismatch.
-  const pct = contextTokens != null
-    ? Math.min(100, Math.round((contextTokens / windowSize) * 100))
-    : contextPercent
-
-  if (pct === null) return null
-
-  const tokens = contextTokens ?? (pct * windowSize / 100)
-  const formatTokens = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : `${Math.round(n / 1000)}k`
-  const tooltip = `${formatTokens(tokens)} / ${formatTokens(windowSize)} tokens`
-
-  let color = colors.textTertiary
-  if (pct >= 80) color = colors.dangerFg
-  else if (pct >= 60) color = colors.warningFg
+  const tooltip = `${formatTokens(display.tokens)} / ${formatTokens(display.windowSize)} tokens`
 
   const handleEnter = () => {
     if (ref.current) {
@@ -97,15 +69,18 @@ export function ContextIndicator() {
         ref={ref}
         // ion-focusable normalizes the interactive transition timing; the
         // hover mechanics stay bespoke because hover here drives the token
-        // tooltip, and the color itself is semantic (context-fill level),
-        // so it does not swap on hover.
-        className="text-[10px] px-0.5 ion-focusable"
-        style={{ color, cursor: 'pointer' }}
+        // tooltip, and the ring color is semantic (context-fill level), so
+        // it does not swap on hover.
+        className="px-0.5 ion-focusable"
+        style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
         onClick={toggleStatusDrawer}
         onMouseEnter={handleEnter}
         onMouseLeave={() => setHover(false)}
+        // The percentage is no longer rendered as text, so the accessible
+        // name has to carry it.
+        aria-label={`Context usage ${display.pct}% — ${tooltip}`}
       >
-        {pct}%
+        <ContextRadial pct={display.pct} />
       </span>
       {popoverLayer && hover && createPortal(
         <div
@@ -127,7 +102,7 @@ export function ContextIndicator() {
             boxShadow: colors.popoverShadow,
           }}
         >
-          {tooltip}
+          {display.pct}% · {tooltip}
         </div>,
         popoverLayer,
       )}

@@ -8,7 +8,7 @@ import { makeLocalTab } from '../stores/session-store-helpers'
 import { makeMainPane, commitInstance, activeInstance } from '../stores/conversation-instance'
 import { lastPendingCardTool } from '../../shared/pending-card'
 import { mapSessionHistory } from '../../shared/session-message-mapper'
-import { parseToolInput, isSkeletonTab, normalizeLegacyTabFields, readMainInstance, reassertRestoredPlanMode, orderSessionCandidates, startSessionsSequentially, resolveBootActiveTabId, hydrateBootActiveTab } from './useTabRestoration-helpers'
+import { parseToolInput, isSkeletonTab, normalizeLegacyTabFields, readMainInstance, seedContextStatusFields, reassertRestoredPlanMode, orderSessionCandidates, startSessionsSequentially, resolveBootActiveTabId, hydrateBootActiveTab } from './useTabRestoration-helpers'
 import { persistedTabHasExtensions } from '../../shared/tab-predicates'
 import { rDebug, rInfo, rWarn, rError } from '../rendererLogger'
 
@@ -102,6 +102,7 @@ export function useTabRestoration() {
                   // Persisted permissionDenied is authoritative over resumeSession reconstruction
                   ...(main?.permissionDenied ? { permissionDenied: main.permissionDenied } : {}),
                   ...(main?.planFilePath ? { planFilePath: main.planFilePath } : {}),
+                  ...seedContextStatusFields(inst, main),
                 }))
                 return {
                   conversationPanes,
@@ -120,8 +121,8 @@ export function useTabRestoration() {
                           lastKnownSessionId: st.lastKnownSessionId || null,
                           groupId: st.groupId || null,
                           groupPinned: st.groupPinned ?? false,
-                          contextTokens: st.contextTokens || null,
-                          contextWindow: st.contextWindow || null,
+                          contextTokens: main?.contextTokens ?? st.contextTokens ?? null,
+                          contextWindow: main?.contextWindow ?? st.contextWindow ?? null,
                           queuedPrompts: st.queuedPrompts?.length ? [st.queuedPrompts.join('\n\n')] : [],
                           lastMessagePreview: st.lastMessagePreview || null,
                           lastEventAt: st.lastEventAt ?? null,
@@ -149,6 +150,11 @@ export function useTabRestoration() {
               }
               restoredTabIds.push({ tabId, sessionId: st.conversationId, index: i })
 
+              // Read the persisted `main` instance up front: the tab literal
+              // below seeds its context scalars from it, and the skeleton
+              // pane built afterwards reuses the same read.
+              const main = readMainInstance(st)
+
               const tab: TabState = {
                 ...makeLocalTab(),
                 id: tabId,
@@ -167,8 +173,8 @@ export function useTabRestoration() {
                 worktree: restoredWorktree,
                 groupId: st.groupId || null,
                 groupPinned: st.groupPinned ?? false,
-                contextTokens: st.contextTokens || null,
-                contextWindow: st.contextWindow || null,
+                contextTokens: main?.contextTokens ?? st.contextTokens ?? null,
+                contextWindow: main?.contextWindow ?? st.contextWindow ?? null,
                 queuedPrompts: st.queuedPrompts?.length ? [st.queuedPrompts.join('\n\n')] : [],
                 lastMessagePreview: st.lastMessagePreview || null,
                 lastEventAt: st.lastEventAt ?? null,
@@ -185,7 +191,6 @@ export function useTabRestoration() {
               // modelOverride / draftInput / permissionDenied / planFilePath
               // moved off TabState onto the instance — restored here via the
               // makeMainPane overrides and written into conversationPanes in the same set.
-              const main = readMainInstance(st)
               // permissionMode: prefer instance-persisted; fall back to legacy tab-level field.
               const skeletonMode: 'auto' | 'plan' = main?.permissionMode ?? (st as any).permissionMode ?? 'auto'
               const pane = makeMainPane({
@@ -200,6 +205,9 @@ export function useTabRestoration() {
                 permissionDenied: main?.permissionDenied ?? null,
                 planFilePath: main?.planFilePath ?? null,
                 permissionMode: skeletonMode,
+                // Context occupancy so the indicator is correct on first
+                // paint, before any engine status arrives.
+                ...seedContextStatusFields({}, main),
               })
 
               useSessionStore.setState((s) => {

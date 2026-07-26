@@ -166,23 +166,31 @@ export interface TabState {
    * Toggle via right-click → "Pin to group" / "Unpin from group".
    */
   groupPinned: boolean
-  /** Latest input_tokens from API response (total context sent to model) */
+  /**
+   * Absolute context-window occupancy in tokens for the tab's active
+   * conversation instance, mirrored from `statusFields.contextTokens`.
+   *
+   * The renderer's own indicator reads `statusFields` directly — this
+   * tab-level copy exists because the desktop→iOS snapshot projects
+   * per-tab scalars and does NOT project per-instance `statusFields`
+   * (see remote-projection.ts). It is the wire carrier, not a second
+   * source of truth: both are written from the same engine status event.
+   */
   contextTokens: number | null
-  /** Engine-computed context usage percentage (accounts for model-specific context window) */
-  contextPercent: number | null
   /**
    * Engine-reported context window size (tokens) for the model the engine
-   * actually used on the most recent turn. Distinct from the picker-selected
-   * model's nominal window — when the user switches the model picker
-   * between turns, this field stays anchored to the model that produced
-   * `contextTokens`. Renderers MUST use this as the denominator when
-   * computing percent locally; substituting the picker model's window
-   * produces a 100% reading whenever the picker disagrees with the engine.
+   * actually used on the most recent turn — the denominator the ENGINE
+   * computed its percentage against. Mirrored from
+   * `statusFields.contextWindow` for the same snapshot-projection reason
+   * as `contextTokens`.
    *
-   * Null on a fresh tab (no engine response yet) and during the
-   * StatusFields-merge window before the engine has resolved the model's
-   * context window. Renderers fall back to the picker model's nominal
-   * window only when this is null.
+   * This is NOT the display denominator. The status bar and drawer divide
+   * `contextTokens` by the SELECTED model's window
+   * (`getDynamicContextWindow`), because there is no engine command to
+   * change an idle session's model: a picker-driven recompute is
+   * necessarily client-side arithmetic.
+   *
+   * Null on a fresh tab (no engine response yet).
    */
   contextWindow: number | null
   /** True while the engine is actively compacting context */
