@@ -188,12 +188,28 @@ extension SessionViewModel {
             DiagnosticLog.log("relay config hydrate skipped, no active device", tag: "session.relay")
             return
         }
-        relayURL = device.relayURL ?? ""
-        relayAPIKey = device.relayAPIKey ?? ""
+        // Non-empty guard, matching handleRelayConfig's rule for the same two
+        // properties. On the loadPairedDevices path the in-memory values are
+        // empty and the stored record is the only truth, so this is a plain
+        // write. On the switchDesktop path it is not: if the new device's
+        // stored record is empty but a relay_config push has already landed for
+        // it in this session, an unconditional write would clobber a good live
+        // value with "" — reintroducing the exact empty-value defect
+        // handleRelayConfig was hardened against. Ordering makes that narrow
+        // today (switchDesktop disconnects first), which is precisely why the
+        // asymmetry should not be left to luck.
+        if let storedURL = device.relayURL, !storedURL.isEmpty {
+            relayURL = storedURL
+        }
+        if let storedKey = device.relayAPIKey, !storedKey.isEmpty {
+            relayAPIKey = storedKey
+        }
         DiagnosticLog.log("relay config hydrated from device", tag: "session.relay", fields: [
             "device": String(device.id.prefix(8)),
             "has_url": String(!relayURL.isEmpty),
             "has_key": String(!relayAPIKey.isEmpty),
+            "stored_url_empty": String((device.relayURL ?? "").isEmpty),
+            "stored_key_empty": String((device.relayAPIKey ?? "").isEmpty),
             "auth_mode": device.relayAuthMode ?? "psk"
         ])
     }

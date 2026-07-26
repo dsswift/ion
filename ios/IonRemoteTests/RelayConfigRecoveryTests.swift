@@ -120,10 +120,13 @@ final class RelayConfigRecoveryTests: XCTestCase {
     }
 
     @MainActor
-    func testSoftReconnectWithMalformedRelayURLStillBuildsATransport() {
+    func testSoftReconnectWithHostlessRelayURLStillBuildsATransport() {
         let vm = SessionViewModel()
-        // A stored value that is non-empty but unparseable hit the same
-        // `guard ... else { return }` dead end.
+        // A stored value that is non-empty but unusable hit the same
+        // `guard ... else { return }` dead end. Note that modern Foundation
+        // does NOT reject this string — URL(string:) percent-encodes it into a
+        // host-less URL, which RelayClient can never connect to. That is why
+        // the guard checks for a host, not merely for parseability.
         vm.pairedDevices = [makeDevice(relayURL: "not a url", relayAPIKey: "k")]
         vm.activeDeviceId = "dev-recovery"
         vm.relayURL = "not a url"
@@ -136,6 +139,16 @@ final class RelayConfigRecoveryTests: XCTestCase {
         XCTAssertEqual(vm.connectionState, .disconnected)
 
         vm.disconnect()
+    }
+
+    @MainActor
+    func testUsableRelayURLRejectsHostlessAndEmptyValues() {
+        let vm = SessionViewModel()
+        XCTAssertNil(vm.usableRelayURL(""))
+        XCTAssertNil(vm.usableRelayURL("not a url"),
+            "URL(string:) accepts this and yields a host-less URL — it must still be rejected")
+        XCTAssertNotNil(vm.usableRelayURL("wss://relay.example.com"))
+        XCTAssertNotNil(vm.usableRelayURL("ws://192.168.1.10:19837"))
     }
 
     @MainActor

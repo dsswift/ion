@@ -50,11 +50,10 @@ extension SessionViewModel {
             "count": String(channelId.prefix(8))
         ])
 
-        guard !effectiveRelayURL.isEmpty,
-              let url = URL(string: effectiveRelayURL) else {
+        guard let url = usableRelayURL(effectiveRelayURL) else {
             fallBackToLANOnly(device: device, reason: effectiveRelayURL.isEmpty
                               ? "connect: no relay URL configured"
-                              : "connect: relay URL is malformed")
+                              : "connect: relay URL is unusable")
             return
         }
 
@@ -99,6 +98,13 @@ extension SessionViewModel {
             "path": "\(host):\(port)",
             "device": String(device.id.prefix(8))
         ])
+
+        // Restore the cached layout, exactly as both connect() paths do. This
+        // path needs it most: the relay is unusable and the user is waiting on
+        // a Bonjour discovery tick, so without the cache a cold start renders
+        // an empty tab list — the readiness failure the view-readiness
+        // principle forbids, on the one path least able to recover quickly.
+        restoreCachedLayout(for: device.id)
 
         let sharedKey = SymmetricKey(data: device.sharedSecret)
         let tm = TransportManager(sharedKey: sharedKey, deviceId: device.id)
@@ -206,11 +212,10 @@ extension SessionViewModel {
         let sharedKey = SymmetricKey(data: device.sharedSecret)
         let channelId = E2ECrypto.deriveChannelId(sharedSecret: sharedKey)
 
-        guard !effectiveRelayURL.isEmpty,
-              let url = URL(string: effectiveRelayURL) else {
+        guard let url = usableRelayURL(effectiveRelayURL) else {
             fallBackToLANOnly(device: device, reason: effectiveRelayURL.isEmpty
                               ? "softReconnect: no relay URL configured"
-                              : "softReconnect: relay URL is malformed")
+                              : "softReconnect: relay URL is unusable")
             return
         }
 
@@ -252,6 +257,25 @@ extension SessionViewModel {
     }
 
     // MARK: - LAN-only Fallback
+
+    /// Parse a stored relay URL into one that can actually be connected to,
+    /// or nil when it cannot.
+    ///
+    /// A bare `URL(string:)` check is NOT sufficient. Modern Foundation
+    /// percent-encodes rather than rejecting, so `URL(string: "not a url")`
+    /// succeeds and yields a host-less URL. `RelayClient.doConnect` builds its
+    /// endpoint from `relayURL.host(percentEncoded:)`, so a host-less URL
+    /// produces an unconnectable endpoint and every attempt fails at the
+    /// socket. Requiring a host is what makes the guard mean "usable".
+    func usableRelayURL(_ raw: String) -> URL? {
+        guard !raw.isEmpty,
+              let url = URL(string: raw),
+              let host = url.host(percentEncoded: false),
+              !host.isEmpty else {
+            return nil
+        }
+        return url
+    }
 
     /// Build a relay-less transport when the relay cannot be used.
     ///
