@@ -42,11 +42,12 @@ func (p *panicTestAccessor) Emit(ev types.EngineEvent) {
 	defer p.mu.Unlock()
 	p.emittedEvents = append(p.emittedEvents, ev)
 }
-func (p *panicTestAccessor) SendAbort()                               {}
-func (p *panicTestAccessor) RootContext() context.Context             { return context.Background() }
-func (p *panicTestAccessor) SendPrompt(_, _ string, _ []string) error                 { return nil }
+func (p *panicTestAccessor) SendAbort()                                                 {}
+func (p *panicTestAccessor) RootContext() context.Context                               { return context.Background() }
+func (p *panicTestAccessor) SendPrompt(_, _ string, _ []string) error                   { return nil }
 func (p *panicTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error { return nil }
-func (p *panicTestAccessor) SteerSelfMainLoop(_ string) bool          { return false }
+func (p *panicTestAccessor) SteerSelfMainLoop(_ string) bool                            { return false }
+func (p *panicTestAccessor) ParkSelfMainLoop() bool                                     { return false }
 func (p *panicTestAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }
@@ -59,18 +60,18 @@ func (p *panicTestAccessor) DeregisterAgentSpec(_ string)                   {}
 func (p *panicTestAccessor) LookupAgentSpec(_ string) (types.AgentSpec, bool) {
 	return types.AgentSpec{}, false
 }
-func (p *panicTestAccessor) LookupExtDisplayName(_ string) string     { return "" }
-func (p *panicTestAccessor) ExtGroup() *extension.ExtensionGroup      { return p.extGroup }
-func (p *panicTestAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
-func (p *panicTestAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
-func (p *panicTestAccessor) NewChildBackend() backend.RunBackend      { return nil }
-func (p *panicTestAccessor) AllocatePlanFilePath(_ string) string             { return "/tmp/.ion/plans/plan.md" }
-func (p *panicTestAccessor) BumpParentProgress()                      {}
-func (p *panicTestAccessor) EmitDispatchCountStatus(_ string)         {}
-func (p *panicTestAccessor) EngineConfig() *types.EngineRuntimeConfig { return nil }
-func (p *panicTestAccessor) ClaudeCompat() bool { return false }
+func (p *panicTestAccessor) LookupExtDisplayName(_ string) string                 { return "" }
+func (p *panicTestAccessor) ExtGroup() *extension.ExtensionGroup                  { return p.extGroup }
+func (p *panicTestAccessor) ExtConfig() *extension.ExtensionConfig                { return nil }
+func (p *panicTestAccessor) ProcRegistry() *extension.ProcessRegistry             { return nil }
+func (p *panicTestAccessor) NewChildBackend() backend.RunBackend                  { return nil }
+func (p *panicTestAccessor) AllocatePlanFilePath(_ string) string                 { return "/tmp/.ion/plans/plan.md" }
+func (p *panicTestAccessor) BumpParentProgress()                                  {}
+func (p *panicTestAccessor) EmitDispatchCountStatus(_ string)                     {}
+func (p *panicTestAccessor) EngineConfig() *types.EngineRuntimeConfig             { return nil }
+func (p *panicTestAccessor) ClaudeCompat() bool                                   { return false }
 func (p *panicTestAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
-func (p *panicTestAccessor) ResolveTier(_ string) string              { return "" }
+func (p *panicTestAccessor) ResolveTier(_ string) string                          { return "" }
 func (p *panicTestAccessor) PermissionCheck(_ string, _ map[string]interface{}) (string, string) {
 	return "", ""
 }

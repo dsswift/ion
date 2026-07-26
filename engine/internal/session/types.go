@@ -292,4 +292,26 @@ type engineSession struct {
 	// attach slashCommand/slashArgs provenance. Consumed (cleared) on the next
 	// SendPrompt so it applies exactly once.
 	pendingSlashInvocation *conversation.SlashInvocation
+
+	// outstandingBackgroundTasks tracks background bash commands started with
+	// notify_on_complete that have not yet reported a terminal state. Keyed by
+	// task ID. SESSION-scoped, not run-scoped, and that is the whole point: a
+	// model may start commands across several turns and several runs before
+	// the session finally parks for them, so this set must outlive any one
+	// run. Guarded by Manager.mu like the rest of engineSession.
+	//
+	// See background_task_registry.go for the accessors and
+	// background_task_wake.go for the park/wake cycle that consumes it.
+	outstandingBackgroundTasks map[string]outstandingBackgroundTask
+
+	// parked records that this session's run exited at a turn boundary
+	// because outstandingBackgroundTasks was non-empty, and is waiting to be
+	// woken by a completion. Nil when the session is not parked. Distinct from
+	// "idle": a parked session has work in flight and will resume on its own.
+	parked *parkedRun
+
+	// pendingBackgroundCompletions holds completions that arrived under the
+	// "queue" delivery mode (or while a wake could not start a run). They ride
+	// along with the next run the session starts for any other reason.
+	pendingBackgroundCompletions []backgroundCompletionPayload
 }

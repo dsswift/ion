@@ -374,6 +374,9 @@ Out-of-tree paths are not covered. Extensions that need to watch files outside t
 |------|------|---------|--------|--------|
 | `task_created` | Turn starts (every backend) | `TaskLifecycleInfo{TaskID, Name, Status, Extra}` | ignored | Observe only |
 | `task_completed` | Turn ends (every backend) | `TaskLifecycleInfo{TaskID, Name, Status, Extra}` | ignored | Observe only |
+| `background_task_completed` | A background bash command started with `notify_on_complete` reaches a terminal state | `BackgroundTaskCompletedInfo{TaskID, SessionKey, Command, Status, ExitCode, ElapsedMs, OutputPath, Tail, RemainingTaskIDs}` | ignored | Observe only |
+
+> **`background_task_completed` is not a turn hook.** Despite sitting in this table, it reports a *shell process*, not a turn: its `TaskID` is the tasks-registry id the Bash tool returned (`bash-<n>-<millis>`), not the `<session-key>-t<turn-number>` format below. It fires for every notifying command regardless of the configured delivery mode, so a harness observes completions even when the engine is configured not to start runs on them. `Status` is `completed` / `failed` / `stopped`. See [../tools/task-tools.md](../tools/task-tools.md) § "Background bash completion".
 
 > **Contract — TaskID format.** `TaskID` is `<session-key>-t<turn-number>` on every engine backend (`ApiBackend`, `CliBackend`, `HybridBackend`). Consumers join `task_created` and `task_completed` on `(SessionKey, TaskID)` and correlate with the adjacent `turn_start` / `turn_end` hooks via `TurnInfo.TurnNumber`. **The format is a public contract.** Changing it requires an ADR documenting the rationale and migration impact, following the precedent of [ADR-003](../architecture/adr/003-state-events-vs-workflow-events.md) for the `engine_plan_mode_changed` trigger removal. Adding new components to the right of `-t<turn-number>` is non-breaking (consumers parse left-anchored); removing or reordering existing components is breaking.
 

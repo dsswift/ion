@@ -374,6 +374,49 @@ Not retained or replayed on reconnect. Headless harnesses receive the event in t
 
 ---
 
+### task_suspend
+
+A run ended without completing. Two distinct causes share this variant:
+
+- A dispatched agent called `ctx.suspend()` / `ctx.suspendUntilAll()` and is parked waiting for child completions or a revive message (`awaitingDispatchIds`).
+- The engine parked a session at a turn boundary because it has outstanding notifying background bash commands (`awaitingTaskIds`).
+
+The revive semantics differ by design: the dispatch path revives only when **every** awaited child has completed, whereas the background-task set is drained one task at a time and the session is woken on **each** completion. A session that ends its next turn with tasks still outstanding parks again. See [ADR-023](../architecture/adr/023-root-session-park-and-wake.md).
+
+| Field                 | Type              | Description |
+|-----------------------|-------------------|-------------|
+| `type`                | `"task_suspend"`  | Event type |
+| `awaitingDispatchIds` | string[]          | Dispatch IDs the suspending agent is waiting on. Empty for a bare `suspend()` (revives on the next prompt to the session). |
+| `awaitingTaskIds`     | string[]          | Background bash task IDs a parked session is waiting on. Distinct from `awaitingDispatchIds`: those are child agents, these are shell processes. |
+
+**On the wire:** `engine_task_suspended` carries the **counts** of each set (`taskSuspendAwaitingCount`, `taskSuspendAwaitingTaskCount`), not the ID arrays.
+
+**Produced from:** `TaskSuspendEvent` in [`engine/internal/types/normalized_event_run_signals.go`](https://github.com/dsswift/ion/blob/main/engine/internal/types/normalized_event_run_signals.go).
+
+---
+
+### background_task_complete
+
+A background bash command started with `Bash(run_in_background: true, notify_on_complete: true)` reached a terminal state — exited cleanly, failed, or was stopped.
+
+Emitted once per completion, before the engine resolves delivery. This is the engine's complete signaling obligation for the completion: what happens next (start a run, queue the result, do nothing) is the operator's opinion, configured with `backgroundTasks.delivery`. See [`docs/tools/task-tools.md`](../tools/task-tools.md) § "Background bash completion".
+
+| Field              | Type                            | Description |
+|--------------------|---------------------------------|-------------|
+| `type`             | `"background_task_complete"`    | Event type |
+| `taskId`           | string                          | Tasks-registry task ID, format `bash-<n>-<millis>` |
+| `status`           | string                          | Terminal status: `completed`, `failed`, or `stopped` |
+| `exitCode`         | number                          | Process exit code |
+| `elapsedMs`        | number                          | Wall-clock duration in milliseconds |
+| `outputPath`       | string                          | Path to the captured output file |
+| `tail`             | string                          | Trailing output excerpt |
+| `command`          | string                          | The command that ran |
+| `remainingTaskIds` | string[]                        | Task IDs still outstanding for the session after this completion |
+
+**Produced from:** `BackgroundTaskCompleteEvent` in [`engine/internal/types/normalized_event_run_signals.go`](https://github.com/dsswift/ion/blob/main/engine/internal/types/normalized_event_run_signals.go). Wire name: `engine_background_task_complete`.
+
+---
+
 ## Normalization Pipeline
 
 The normalizer processes raw events by inspecting the top-level `type` field:

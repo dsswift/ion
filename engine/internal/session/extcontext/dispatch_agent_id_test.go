@@ -25,9 +25,9 @@ type idTestAccessor struct {
 	noopPluginMethods
 	child backend.RunBackend
 
-	mu      sync.Mutex
-	emitted []types.EngineEvent
-	states  []types.AgentStateUpdate // all AppendOrUpdate calls, in order
+	mu        sync.Mutex
+	emitted   []types.EngineEvent
+	states    []types.AgentStateUpdate // all AppendOrUpdate calls, in order
 	stateByID map[string]*types.AgentStateUpdate
 }
 
@@ -73,22 +73,23 @@ func (a *idTestAccessor) UpsertAgentStateByID(id string, seed types.AgentStateUp
 	updater(st)
 }
 
-func (a *idTestAccessor) EmitAgentSnapshot(_ string) {}
-func (a *idTestAccessor) BumpParentProgress()        {}
+func (a *idTestAccessor) EmitAgentSnapshot(_ string)       {}
+func (a *idTestAccessor) BumpParentProgress()              {}
 func (a *idTestAccessor) EmitDispatchCountStatus(_ string) {}
 
-func (a *idTestAccessor) NewChildBackend() backend.RunBackend { return a.child }
-func (a *idTestAccessor) AllocatePlanFilePath(_ string) string        { return "/tmp/.ion/plans/plan.md" }
-func (a *idTestAccessor) RootContext() context.Context        { return context.Background() }
-func (a *idTestAccessor) SessionKey() string                       { return "id-test-session" }
-func (a *idTestAccessor) ExtensionName() string    { return "" }
-func (a *idTestAccessor) ExtensionVersion() string { return "" }
-func (a *idTestAccessor) ConversationID() string                   { return "" }
-func (a *idTestAccessor) WorkingDirectory() string                 { return "/tmp" }
-func (a *idTestAccessor) SendAbort()                               {}
-func (a *idTestAccessor) SendPrompt(_, _ string, _ []string) error { return nil }
+func (a *idTestAccessor) NewChildBackend() backend.RunBackend                        { return a.child }
+func (a *idTestAccessor) AllocatePlanFilePath(_ string) string                       { return "/tmp/.ion/plans/plan.md" }
+func (a *idTestAccessor) RootContext() context.Context                               { return context.Background() }
+func (a *idTestAccessor) SessionKey() string                                         { return "id-test-session" }
+func (a *idTestAccessor) ExtensionName() string                                      { return "" }
+func (a *idTestAccessor) ExtensionVersion() string                                   { return "" }
+func (a *idTestAccessor) ConversationID() string                                     { return "" }
+func (a *idTestAccessor) WorkingDirectory() string                                   { return "/tmp" }
+func (a *idTestAccessor) SendAbort()                                                 {}
+func (a *idTestAccessor) SendPrompt(_, _ string, _ []string) error                   { return nil }
 func (a *idTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error { return nil }
-func (a *idTestAccessor) SteerSelfMainLoop(_ string) bool          { return false }
+func (a *idTestAccessor) SteerSelfMainLoop(_ string) bool                            { return false }
+func (a *idTestAccessor) ParkSelfMainLoop() bool                                     { return false }
 func (a *idTestAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }
@@ -101,14 +102,14 @@ func (a *idTestAccessor) DeregisterAgentSpec(_ string)                   {}
 func (a *idTestAccessor) LookupAgentSpec(_ string) (types.AgentSpec, bool) {
 	return types.AgentSpec{}, false
 }
-func (a *idTestAccessor) LookupExtDisplayName(_ string) string     { return "" }
-func (a *idTestAccessor) ExtGroup() *extension.ExtensionGroup      { return nil }
-func (a *idTestAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
-func (a *idTestAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
-func (a *idTestAccessor) EngineConfig() *types.EngineRuntimeConfig { return nil }
-func (a *idTestAccessor) ClaudeCompat() bool { return false }
+func (a *idTestAccessor) LookupExtDisplayName(_ string) string                 { return "" }
+func (a *idTestAccessor) ExtGroup() *extension.ExtensionGroup                  { return nil }
+func (a *idTestAccessor) ExtConfig() *extension.ExtensionConfig                { return nil }
+func (a *idTestAccessor) ProcRegistry() *extension.ProcessRegistry             { return nil }
+func (a *idTestAccessor) EngineConfig() *types.EngineRuntimeConfig             { return nil }
+func (a *idTestAccessor) ClaudeCompat() bool                                   { return false }
 func (a *idTestAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
-func (a *idTestAccessor) ResolveTier(_ string) string              { return "" }
+func (a *idTestAccessor) ResolveTier(_ string) string                          { return "" }
 func (a *idTestAccessor) PermissionCheck(_ string, _ map[string]interface{}) (string, string) {
 	return "", ""
 }
@@ -138,7 +139,7 @@ func (a *idTestAccessor) GetScheduleStatus(_, _ string) ([]extension.ScheduleSta
 }
 func (a *idTestAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
 func (a *idTestAccessor) RunOnceComplete(_ string, _ bool)              {}
-func (a *idTestAccessor) Telemetry() *telemetry.Collector { return nil }
+func (a *idTestAccessor) Telemetry() *telemetry.Collector               { return nil }
 
 // --- deterministic child backend ---
 

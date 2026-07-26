@@ -20,6 +20,7 @@ func (m *Manager) buildIdleStatusFields(s *engineSession, key string, bgCount in
 	var model string
 	var runCost, convCost float64
 	var sessionID string
+	var shellCount int
 	if s2, ok := m.sessions[key]; ok {
 		pct = s2.lastContextPct
 		cw = s2.lastContextWindow
@@ -27,6 +28,10 @@ func (m *Manager) buildIdleStatusFields(s *engineSession, key string, bgCount in
 		runCost = s2.lastTotalCost
 		convCost = s2.lastConvCost
 		sessionID = s2.conversationID
+		// Outstanding background shells are read live here, alongside the
+		// dispatch count, so an idle session that is holding for background
+		// commands reports them on the same status event.
+		shellCount = len(s2.outstandingBackgroundTasks)
 	}
 	m.mu.RUnlock()
 	return &types.StatusFields{
@@ -34,7 +39,33 @@ func (m *Manager) buildIdleStatusFields(s *engineSession, key string, bgCount in
 		ContextPercent: pct, ContextWindow: cw,
 		Model: model, RunCostUsd: runCost, ConversationCostUsd: convCost,
 		BackgroundAgents: bgCount,
+		BackgroundShells: shellCount,
 	}
+}
+
+// emitSessionStatus emits a corrected engine_status for the session using the
+// shared idle-status projection. Used by the background-task registry when the
+// outstanding-shell count changes outside a run-exit or dispatch-deregister
+// boundary (a command started mid-turn, or a completion drained the set), so
+// consumers never render a stale count.
+func (m *Manager) emitSessionStatus(key, reason string) {
+	m.mu.RLock()
+	s, ok := m.sessions[key]
+	var bgCount int
+	if ok && s.dispatchRegistry != nil {
+		bgCount = len(s.dispatchRegistry.ActiveIDs())
+	}
+	m.mu.RUnlock()
+	if !ok {
+		utils.LogWithFields(utils.LevelDebug, "session", "emitsessionstatus: no such session", map[string]any{"key": key, "reason": reason})
+		return
+	}
+
+	fields := m.buildIdleStatusFields(s, key, bgCount)
+	utils.LogWithFields(utils.LevelDebug, "session", "emitsessionstatus", map[string]any{
+		"key": key, "reason": reason, "bg_count": bgCount, "shell_count": fields.BackgroundShells,
+	})
+	m.emit(key, types.EngineEvent{Type: "engine_status", Fields: fields})
 }
 
 // emitDispatchCountStatus re-samples the live dispatch count from the session's

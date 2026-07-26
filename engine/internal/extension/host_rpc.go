@@ -463,12 +463,19 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 		h.handleAnswerDispatchQuestion(id, raw)
 
 	case "ext/task_suspend":
-		// ext/task_suspend — end the LLM run without completing the dispatch.
-		// The agent's LLM exits cleanly (saving tokens, showing as idle/suspended
-		// in the UI). The parent's OnComplete does NOT fire. runChild loops and
-		// blocks on reviveCh until a sendPrompt to this session (or until all
-		// awaiting child dispatches complete). Only wired for dispatched children
-		// (ctx.Suspend is nil at depth 0 / the orchestrator).
+		// ext/task_suspend — end the current LLM run without completing it.
+		// Two shapes, both reached through ctx.Suspend:
+		//
+		//   Inside a dispatched run: the agent's LLM exits cleanly (saving
+		//   tokens, showing as idle/suspended), the parent's OnComplete does
+		//   NOT fire, and runChild blocks on reviveCh until a sendPrompt to
+		//   this session or until all awaiting child dispatches complete.
+		//
+		//   At depth 0 (the orchestrator): the root run ends and the session
+		//   parks on its outstanding background bash commands, resuming when
+		//   one completes. The root has no runChild goroutine to revive, so
+		//   the session layer starts a fresh run instead. Rejected when
+		//   nothing is outstanding to park on — see ParkMainLoop.
 		var req struct {
 			Params struct {
 				AwaitingDispatchIDs []string `json:"awaitingDispatchIds,omitempty"`
@@ -479,8 +486,8 @@ func (h *Host) handleExtRequest(method string, id int64, raw []byte) {
 			return
 		}
 		if ctx == nil || ctx.Suspend == nil {
-			utils.Debug("extension", "ext/task_suspend: not available at this context depth (depth 0 / no active dispatch)")
-			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "suspend not available: not inside a dispatched run"})
+			utils.Debug("extension", "ext/task_suspend: no suspend capability on this context")
+			h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "suspend not available: no active run to suspend"})
 			return
 		}
 		utils.LogWithFields(utils.LevelInfo, "extension", "ext/task_suspend: suspending run", map[string]any{"awaiting": len(req.Params.AwaitingDispatchIDs)})

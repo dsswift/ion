@@ -21,21 +21,24 @@ type eligibilityTestAccessor struct {
 	cfg *types.EngineRuntimeConfig
 }
 
-func (a *eligibilityTestAccessor) SessionKey() string                       { return "elig-test-session" }
-func (a *eligibilityTestAccessor) ExtensionName() string    { return "" }
-func (a *eligibilityTestAccessor) ExtensionVersion() string { return "" }
-func (a *eligibilityTestAccessor) EngineConfig() *types.EngineRuntimeConfig { return a.cfg }
-func (a *eligibilityTestAccessor) ClaudeCompat() bool { return false }
+func (a *eligibilityTestAccessor) SessionKey() string                                   { return "elig-test-session" }
+func (a *eligibilityTestAccessor) ExtensionName() string                                { return "" }
+func (a *eligibilityTestAccessor) ExtensionVersion() string                             { return "" }
+func (a *eligibilityTestAccessor) EngineConfig() *types.EngineRuntimeConfig             { return a.cfg }
+func (a *eligibilityTestAccessor) ClaudeCompat() bool                                   { return false }
 func (a *eligibilityTestAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
 
-func (a *eligibilityTestAccessor) ConversationID() string                          { return "" }
-func (a *eligibilityTestAccessor) WorkingDirectory() string                        { return "/tmp" }
-func (a *eligibilityTestAccessor) Emit(_ types.EngineEvent)                         {}
-func (a *eligibilityTestAccessor) SendAbort()                                       {}
-func (a *eligibilityTestAccessor) RootContext() context.Context                     { return context.Background() }
-func (a *eligibilityTestAccessor) SendPrompt(_, _ string, _ []string) error         { return nil }
-func (a *eligibilityTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error { return nil }
-func (a *eligibilityTestAccessor) SteerSelfMainLoop(_ string) bool                  { return false }
+func (a *eligibilityTestAccessor) ConversationID() string                   { return "" }
+func (a *eligibilityTestAccessor) WorkingDirectory() string                 { return "/tmp" }
+func (a *eligibilityTestAccessor) Emit(_ types.EngineEvent)                 {}
+func (a *eligibilityTestAccessor) SendAbort()                               {}
+func (a *eligibilityTestAccessor) RootContext() context.Context             { return context.Background() }
+func (a *eligibilityTestAccessor) SendPrompt(_, _ string, _ []string) error { return nil }
+func (a *eligibilityTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error {
+	return nil
+}
+func (a *eligibilityTestAccessor) SteerSelfMainLoop(_ string) bool { return false }
+func (a *eligibilityTestAccessor) ParkSelfMainLoop() bool          { return false }
 func (a *eligibilityTestAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }
@@ -53,10 +56,12 @@ func (a *eligibilityTestAccessor) ExtGroup() *extension.ExtensionGroup      { re
 func (a *eligibilityTestAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
 func (a *eligibilityTestAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
 func (a *eligibilityTestAccessor) NewChildBackend() backend.RunBackend      { return nil }
-func (a *eligibilityTestAccessor) AllocatePlanFilePath(_ string) string             { return "/tmp/.ion/plans/plan.md" }
-func (a *eligibilityTestAccessor) BumpParentProgress()                      {}
-func (a *eligibilityTestAccessor) EmitDispatchCountStatus(_ string)         {}
-func (a *eligibilityTestAccessor) ResolveTier(_ string) string              { return "" }
+func (a *eligibilityTestAccessor) AllocatePlanFilePath(_ string) string {
+	return "/tmp/.ion/plans/plan.md"
+}
+func (a *eligibilityTestAccessor) BumpParentProgress()              {}
+func (a *eligibilityTestAccessor) EmitDispatchCountStatus(_ string) {}
+func (a *eligibilityTestAccessor) ResolveTier(_ string) string      { return "" }
 func (a *eligibilityTestAccessor) PermissionCheck(_ string, _ map[string]interface{}) (string, string) {
 	return "", ""
 }
@@ -67,18 +72,20 @@ func (a *eligibilityTestAccessor) SetSessionMemory(_ string)                    
 func (a *eligibilityTestAccessor) TranslateEvent(_ types.NormalizedEvent, _ int) types.EngineEvent {
 	return types.EngineEvent{}
 }
-func (a *eligibilityTestAccessor) SetPlanMode(_ bool, _ string)                            {}
-func (a *eligibilityTestAccessor) GetPlanModeState() (bool, string)                        { return false, "" }
-func (a *eligibilityTestAccessor) AppendOrUpdateAgentState(_ types.AgentStateUpdate) string { return "" }
+func (a *eligibilityTestAccessor) SetPlanMode(_ bool, _ string)     {}
+func (a *eligibilityTestAccessor) GetPlanModeState() (bool, string) { return false, "" }
+func (a *eligibilityTestAccessor) AppendOrUpdateAgentState(_ types.AgentStateUpdate) string {
+	return ""
+}
 func (a *eligibilityTestAccessor) UpdateAgentStateByID(_ string, _ func(*types.AgentStateUpdate)) {
 }
 func (a *eligibilityTestAccessor) UpsertAgentStateByID(_ string, _ types.AgentStateUpdate, _ func(*types.AgentStateUpdate)) {
 }
-func (a *eligibilityTestAccessor) EmitAgentSnapshot(_ string)                  {}
-func (a *eligibilityTestAccessor) ResourceBroker() *resource.Broker            { return nil }
-func (a *eligibilityTestAccessor) GlobalResourceBroker() *resource.Broker      { return nil }
-func (a *eligibilityTestAccessor) BroadcastNotification(_ types.NotifyOpts)    {}
-func (a *eligibilityTestAccessor) BroadcastIntercept(_ extension.InterceptOpts) {}
+func (a *eligibilityTestAccessor) EmitAgentSnapshot(_ string)                    {}
+func (a *eligibilityTestAccessor) ResourceBroker() *resource.Broker              { return nil }
+func (a *eligibilityTestAccessor) GlobalResourceBroker() *resource.Broker        { return nil }
+func (a *eligibilityTestAccessor) BroadcastNotification(_ types.NotifyOpts)      {}
+func (a *eligibilityTestAccessor) BroadcastIntercept(_ extension.InterceptOpts)  {}
 func (a *eligibilityTestAccessor) ListAllSessions() []extension.SessionListEntry { return nil }
 func (a *eligibilityTestAccessor) SendToSession(_, _, _ string, _ map[string]interface{}) error {
 	return nil
@@ -90,7 +97,7 @@ func (a *eligibilityTestAccessor) GetScheduleStatus(_, _ string) ([]extension.Sc
 }
 func (a *eligibilityTestAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
 func (a *eligibilityTestAccessor) RunOnceComplete(_ string, _ bool)              {}
-func (a *eligibilityTestAccessor) Telemetry() *telemetry.Collector { return nil }
+func (a *eligibilityTestAccessor) Telemetry() *telemetry.Collector               { return nil }
 
 // registerDispatcher records a depth-1 dispatch named name with id in the
 // registry so NameForID resolves the dispatcher's own name in the guard.

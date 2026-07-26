@@ -149,3 +149,45 @@ The engine fires hooks when tasks are created and completed:
 - `task_completed` -- fired when a task finishes. Payload: `TaskLifecycleInfo{TaskID, Name, Status, Extra}`.
 
 These hooks are observational. Extensions can use them for logging, notifications, or updating UI state.
+
+Note that `task_created` / `task_completed` are **turn** lifecycle hooks (`TaskID` is `<session-key>-t<turn-number>`). Background shell commands have their own hook — see below.
+
+## Background bash completion
+
+`Bash({ run_in_background: true, notify_on_complete: true })` starts a shell command the session will be told about when it finishes, rather than one the model has to poll with `TaskGet`.
+
+### The outstanding set
+
+A notifying command joins the session's **outstanding set**. The set is session-scoped, not run-scoped: a model can start a command in one turn, keep working, start another in a later turn, and both are still tracked when it finally stops. A command started without `notify_on_complete` never joins the set — nothing is waiting on it.
+
+`backgroundTasks.maxOutstandingPerSession` bounds the set. Past the cap a command still runs and still emits its completion event; it simply is not tracked, so a runaway loop cannot park the session on an unbounded pile.
+
+### Park, wake, re-park
+
+The cycle the engine runs:
+
+1. The model works, starting notifying commands whenever it wants.
+2. It ends its turn. If the outstanding set is non-empty the engine **parks** the run — it exits without completing, emitting `engine_task_suspended` with `awaitingTaskIds`. No tokens are consumed while parked.
+3. A command finishes. The engine emits `engine_background_task_complete`, fires `background_task_completed`, drains that command from the set, and **wakes** the session with an injected prompt carrying the result and the still-outstanding list.
+4. The woken run either does work the completion unblocked, or ends its turn — and if anything is still outstanding, the engine parks it again.
+5. When the last command completes, the set is empty and the next turn boundary completes the run normally.
+
+Wake is per completion, deliberately unlike dispatch's `PendingChildren` (which revives only when every awaited child is done). A finished command may unblock work the model can do while the others still run; withholding its result until the whole set drains would forfeit that.
+
+### Delivery modes
+
+`backgroundTasks.delivery` in `engine.json`:
+
+| Mode | Behavior |
+|------|----------|
+| `wake` (default) | An idle or parked session is woken: the completion is injected and a run starts. |
+| `queue` | The completion is held and delivered with the next run the session starts for any other reason. Nothing runs unattended. |
+| `event_only` | The typed event and the hook fire; nothing is injected and no run starts. |
+
+A completion arriving while a run is **already active** is always steered in mid-turn regardless of mode — there is no unattended-run concern when the session is already working.
+
+### `background_task_completed`
+
+Fired for every notifying command that reaches a terminal state, under every delivery mode. Payload: `BackgroundTaskCompletedInfo{TaskID, SessionKey, Command, Status, ExitCode, ElapsedMs, OutputPath, Tail, RemainingTaskIDs}`.
+
+`Status` is `completed` (exit 0), `failed` (non-zero), or `stopped` (killed by `TaskStop` or session teardown before finishing). A stopped command notifies too — otherwise a parked session would wait forever on a process that was killed out from under it.

@@ -59,8 +59,10 @@ func (a *activityRecordingAccessor) terminalEmitted() bool {
 }
 
 func (a *activityRecordingAccessor) NewChildBackend() backend.RunBackend { return a.child }
-func (a *activityRecordingAccessor) AllocatePlanFilePath(_ string) string        { return "/tmp/.ion/plans/plan.md" }
-func (a *activityRecordingAccessor) RootContext() context.Context        { return context.Background() }
+func (a *activityRecordingAccessor) AllocatePlanFilePath(_ string) string {
+	return "/tmp/.ion/plans/plan.md"
+}
+func (a *activityRecordingAccessor) RootContext() context.Context { return context.Background() }
 
 func (a *activityRecordingAccessor) AppendOrUpdateAgentState(s types.AgentStateUpdate) string {
 	a.mu.Lock()
@@ -100,8 +102,8 @@ func (a *activityRecordingAccessor) BumpParentProgress()              {}
 func (a *activityRecordingAccessor) EmitDispatchCountStatus(_ string) {}
 
 func (a *activityRecordingAccessor) SessionKey() string                       { return "activity-test-session" }
-func (a *activityRecordingAccessor) ExtensionName() string    { return "" }
-func (a *activityRecordingAccessor) ExtensionVersion() string { return "" }
+func (a *activityRecordingAccessor) ExtensionName() string                    { return "" }
+func (a *activityRecordingAccessor) ExtensionVersion() string                 { return "" }
 func (a *activityRecordingAccessor) ConversationID() string                   { return "" }
 func (a *activityRecordingAccessor) WorkingDirectory() string                 { return "/tmp" }
 func (a *activityRecordingAccessor) SendAbort()                               {}
@@ -109,7 +111,8 @@ func (a *activityRecordingAccessor) SendPrompt(_, _ string, _ []string) error { 
 func (a *activityRecordingAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error {
 	return nil
 }
-func (a *activityRecordingAccessor) SteerSelfMainLoop(_ string) bool          { return false }
+func (a *activityRecordingAccessor) SteerSelfMainLoop(_ string) bool { return false }
+func (a *activityRecordingAccessor) ParkSelfMainLoop() bool          { return false }
 func (a *activityRecordingAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }
@@ -122,14 +125,14 @@ func (a *activityRecordingAccessor) DeregisterAgentSpec(_ string)               
 func (a *activityRecordingAccessor) LookupAgentSpec(_ string) (types.AgentSpec, bool) {
 	return types.AgentSpec{}, false
 }
-func (a *activityRecordingAccessor) LookupExtDisplayName(_ string) string     { return "" }
-func (a *activityRecordingAccessor) ExtGroup() *extension.ExtensionGroup      { return nil }
-func (a *activityRecordingAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
-func (a *activityRecordingAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
-func (a *activityRecordingAccessor) EngineConfig() *types.EngineRuntimeConfig { return nil }
-func (a *activityRecordingAccessor) ClaudeCompat() bool { return false }
+func (a *activityRecordingAccessor) LookupExtDisplayName(_ string) string                 { return "" }
+func (a *activityRecordingAccessor) ExtGroup() *extension.ExtensionGroup                  { return nil }
+func (a *activityRecordingAccessor) ExtConfig() *extension.ExtensionConfig                { return nil }
+func (a *activityRecordingAccessor) ProcRegistry() *extension.ProcessRegistry             { return nil }
+func (a *activityRecordingAccessor) EngineConfig() *types.EngineRuntimeConfig             { return nil }
+func (a *activityRecordingAccessor) ClaudeCompat() bool                                   { return false }
 func (a *activityRecordingAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
-func (a *activityRecordingAccessor) ResolveTier(_ string) string              { return "" }
+func (a *activityRecordingAccessor) ResolveTier(_ string) string                          { return "" }
 func (a *activityRecordingAccessor) PermissionCheck(_ string, _ map[string]interface{}) (string, string) {
 	return "", ""
 }
@@ -159,7 +162,7 @@ func (a *activityRecordingAccessor) GetScheduleStatus(_, _ string) ([]extension.
 }
 func (a *activityRecordingAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
 func (a *activityRecordingAccessor) RunOnceComplete(_ string, _ bool)              {}
-func (a *activityRecordingAccessor) Telemetry() *telemetry.Collector { return nil }
+func (a *activityRecordingAccessor) Telemetry() *telemetry.Collector               { return nil }
 
 // activityChildBackend emits, before any TaskCompleteEvent: SessionInitEvent
 // (the conv id), then a ToolCallEvent + ToolResultEvent pair, then a

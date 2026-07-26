@@ -651,3 +651,12 @@ func (g *ExtensionGroup) FireWorkspaceFileChanged(ctx *Context, info WorkspaceFi
 		h.SDK().FireWorkspaceFileChanged(ctx, info)
 	}
 }
+
+// FireBackgroundTaskCompleted fans the background_task_completed hook out to
+// every host in the group. Called when a background bash command started with
+// notify_on_complete reaches a terminal state.
+func (g *ExtensionGroup) FireBackgroundTaskCompleted(ctx *Context, info BackgroundTaskCompletedInfo) {
+	for _, h := range g.hosts {
+		h.SDK().FireBackgroundTaskCompleted(ctx, info)
+	}
+}

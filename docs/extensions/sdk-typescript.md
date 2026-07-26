@@ -318,6 +318,23 @@ interface SendPromptOpts {
 }
 ```
 
+**`suspend()`** -- end the current LLM run without completing it, then revive later.
+
+Behaviour depends on depth, because the two cases are structurally different:
+
+- **Inside a dispatched run (depth >= 1):** the dispatch stays alive and goes idle; the parent's `OnComplete` does NOT fire. A revive message via `sendPrompt` (typically a child's completion callback) restarts the run with the updated conversation. Use `suspendUntilAll(dispatchIds)` for N-child fan-out, or the `dispatch_agents` tool, which calls it for you.
+- **At depth 0 (the orchestrator):** parks the ROOT session on its outstanding background bash commands — the same thing the engine does automatically at a turn boundary, exposed so an extension can end the turn deliberately. The root's run exits fully rather than parking a live goroutine, and a NEW run is started when a command completes. Each completion wakes the session once; if the next turn also ends with commands outstanding, it parks again. See [ADR-023](../architecture/adr/023-root-session-park-and-wake.md).
+
+```typescript
+// depth >= 1: park until a specific child reports back
+await ctx.suspend()
+
+// depth 0: park the orchestrator on its own background commands
+await ctx.suspend()
+```
+
+It throws at depth 0 when there is no active run to park, or no outstanding **notifying** background commands to park on (`notify_on_complete: true` — a fire-and-forget command is not something the session waits for). Parking with nothing to wait for would strand the session, so the engine refuses rather than hanging. Passing `awaitingDispatchIds` at depth 0 also throws: those are child dispatches, which only exist inside a dispatched run.
+
 **`dispatchAgent(opts)`** -- dispatch an engine-native agent. In the default (foreground) mode, blocks until the agent completes and returns a `DispatchAgentResult`.
 
 ```typescript

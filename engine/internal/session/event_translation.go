@@ -117,6 +117,16 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 
 	m.emit(key, ee)
 
+	// Record a turn-boundary park. TaskSuspendEvent carrying task IDs means
+	// the run ended because this session still has background commands
+	// running; the session must remember that so a completion can revive it.
+	// Done here rather than in the pure translateToEngineEvent because it
+	// needs the manager. Dispatch-driven suspends (AwaitingDispatchIDs) are
+	// not parks in this sense — a live runChild goroutine owns their revival.
+	if ts, ok := event.Data.(*types.TaskSuspendEvent); ok && len(ts.AwaitingTaskIDs) > 0 {
+		m.markSessionParked(key, ts.AwaitingTaskIDs)
+	}
+
 	// Track plan mode changes so re-entering plan mode triggers reentry
 	// detection in SendPrompt. We do this here (rather than in the pure
 	// translateToEngineEvent) because we need access to the session manager.

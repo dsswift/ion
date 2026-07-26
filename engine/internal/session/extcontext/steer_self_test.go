@@ -26,13 +26,13 @@ type steerSelfAccessor struct {
 	sendPromptCalls    []string
 }
 
-func (a *steerSelfAccessor) SessionKey() string          { return "steer-self-test" }
-func (a *steerSelfAccessor) ExtensionName() string    { return "" }
-func (a *steerSelfAccessor) ExtensionVersion() string { return "" }
-func (a *steerSelfAccessor) ConversationID() string      { return "conv-steer" }
-func (a *steerSelfAccessor) WorkingDirectory() string    { return "/tmp" }
-func (a *steerSelfAccessor) Emit(ev types.EngineEvent)   {}
-func (a *steerSelfAccessor) SendAbort()                  {}
+func (a *steerSelfAccessor) SessionKey() string           { return "steer-self-test" }
+func (a *steerSelfAccessor) ExtensionName() string        { return "" }
+func (a *steerSelfAccessor) ExtensionVersion() string     { return "" }
+func (a *steerSelfAccessor) ConversationID() string       { return "conv-steer" }
+func (a *steerSelfAccessor) WorkingDirectory() string     { return "/tmp" }
+func (a *steerSelfAccessor) Emit(ev types.EngineEvent)    {}
+func (a *steerSelfAccessor) SendAbort()                   {}
 func (a *steerSelfAccessor) RootContext() context.Context { return context.Background() }
 
 func (a *steerSelfAccessor) SendPrompt(text string, model string, bash []string) error {
@@ -54,6 +54,8 @@ func (a *steerSelfAccessor) SteerSelfMainLoop(message string) bool {
 	return live
 }
 
+func (a *steerSelfAccessor) ParkSelfMainLoop() bool { return false }
+
 func (a *steerSelfAccessor) Elicit(info extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }
@@ -66,18 +68,18 @@ func (a *steerSelfAccessor) DeregisterAgentSpec(name string)                    
 func (a *steerSelfAccessor) LookupAgentSpec(name string) (types.AgentSpec, bool) {
 	return types.AgentSpec{}, false
 }
-func (a *steerSelfAccessor) LookupExtDisplayName(name string) string  { return "" }
-func (a *steerSelfAccessor) ExtGroup() *extension.ExtensionGroup      { return nil }
-func (a *steerSelfAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
-func (a *steerSelfAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
-func (a *steerSelfAccessor) NewChildBackend() backend.RunBackend      { return backend.NewApiBackend() }
-func (a *steerSelfAccessor) AllocatePlanFilePath(_ string) string             { return "/tmp/.ion/plans/plan.md" }
-func (a *steerSelfAccessor) BumpParentProgress()                      {}
-func (a *steerSelfAccessor) EmitDispatchCountStatus(_ string)         {}
-func (a *steerSelfAccessor) EngineConfig() *types.EngineRuntimeConfig { return nil }
-func (a *steerSelfAccessor) ClaudeCompat() bool { return false }
+func (a *steerSelfAccessor) LookupExtDisplayName(name string) string              { return "" }
+func (a *steerSelfAccessor) ExtGroup() *extension.ExtensionGroup                  { return nil }
+func (a *steerSelfAccessor) ExtConfig() *extension.ExtensionConfig                { return nil }
+func (a *steerSelfAccessor) ProcRegistry() *extension.ProcessRegistry             { return nil }
+func (a *steerSelfAccessor) NewChildBackend() backend.RunBackend                  { return backend.NewApiBackend() }
+func (a *steerSelfAccessor) AllocatePlanFilePath(_ string) string                 { return "/tmp/.ion/plans/plan.md" }
+func (a *steerSelfAccessor) BumpParentProgress()                                  {}
+func (a *steerSelfAccessor) EmitDispatchCountStatus(_ string)                     {}
+func (a *steerSelfAccessor) EngineConfig() *types.EngineRuntimeConfig             { return nil }
+func (a *steerSelfAccessor) ClaudeCompat() bool                                   { return false }
 func (a *steerSelfAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
-func (a *steerSelfAccessor) ResolveTier(name string) string           { return name }
+func (a *steerSelfAccessor) ResolveTier(name string) string                       { return name }
 func (a *steerSelfAccessor) PermissionCheck(toolName string, input map[string]interface{}) (string, string) {
 	return "", ""
 }
@@ -98,12 +100,12 @@ func (a *steerSelfAccessor) AppendOrUpdateAgentState(state types.AgentStateUpdat
 func (a *steerSelfAccessor) UpdateAgentStateByID(id string, updater func(*types.AgentStateUpdate)) {}
 func (a *steerSelfAccessor) UpsertAgentStateByID(id string, seed types.AgentStateUpdate, updater func(*types.AgentStateUpdate)) {
 }
-func (a *steerSelfAccessor) EmitAgentSnapshot(reason string)                                       {}
-func (a *steerSelfAccessor) ResourceBroker() *resource.Broker                                      { return nil }
-func (a *steerSelfAccessor) GlobalResourceBroker() *resource.Broker                                { return nil }
-func (a *steerSelfAccessor) BroadcastNotification(opts types.NotifyOpts)                           {}
-func (a *steerSelfAccessor) BroadcastIntercept(opts extension.InterceptOpts)                       {}
-func (a *steerSelfAccessor) ListAllSessions() []extension.SessionListEntry                         { return nil }
+func (a *steerSelfAccessor) EmitAgentSnapshot(reason string)                 {}
+func (a *steerSelfAccessor) ResourceBroker() *resource.Broker                { return nil }
+func (a *steerSelfAccessor) GlobalResourceBroker() *resource.Broker          { return nil }
+func (a *steerSelfAccessor) BroadcastNotification(opts types.NotifyOpts)     {}
+func (a *steerSelfAccessor) BroadcastIntercept(opts extension.InterceptOpts) {}
+func (a *steerSelfAccessor) ListAllSessions() []extension.SessionListEntry   { return nil }
 func (a *steerSelfAccessor) SendToSession(senderKey, targetKey, kind string, payload map[string]interface{}) error {
 	return nil
 }
@@ -116,7 +118,7 @@ func (a *steerSelfAccessor) RunOnceCheck(operationID string, debounceMs int64) (
 	return false, ""
 }
 func (a *steerSelfAccessor) RunOnceComplete(operationID string, failed bool) {}
-func (a *steerSelfAccessor) Telemetry() *telemetry.Collector { return nil }
+func (a *steerSelfAccessor) Telemetry() *telemetry.Collector                 { return nil }
 
 func (a *steerSelfAccessor) snapshot() (steerCalls, sendCalls []string) {
 	a.mu.Lock()

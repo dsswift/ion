@@ -220,6 +220,11 @@ type EngineRuntimeConfig struct {
 	// omit the block; the scheduler is OFF by default and auto-starts
 	// when any extension declares a job.
 	Scheduling *SchedulingConfig `json:"scheduling,omitempty"`
+	// BackgroundTasks configures delivery of background bash command
+	// completions (Bash run_in_background + notify_on_complete). Pointer so
+	// engine.json can omit the block and inherit the compiled defaults. See
+	// types.BackgroundTasksDefaults().
+	BackgroundTasks *BackgroundTasksConfig `json:"backgroundTasks,omitempty"`
 	LogLevel   string            `json:"logLevel,omitempty"` // "trace", "debug", "info", "warn", "error"
 	// Logging controls structured log output format, destination, and
 	// rotation. Pointer so engine.json can omit the block and inherit the

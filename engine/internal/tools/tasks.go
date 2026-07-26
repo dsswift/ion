@@ -33,6 +33,13 @@ type TaskInfo struct {
 	ExitCode int
 	// PID is the shell process ID for Kind=="bash" tasks.
 	PID int
+	// NotifyOnComplete marks a Kind=="bash" task whose terminal transition
+	// invokes the completion notifier (tasks_bash.go). Set from the Bash
+	// tool's notify_on_complete input. The set of tasks a *session* is
+	// waiting on is NOT tracked here: that state is session-scoped and must
+	// survive across runs, so it lives in the session layer. This package
+	// owns only the per-task "does this one notify" bit.
+	NotifyOnComplete bool
 
 	// stop kills the underlying process (Kind=="bash"). nil for agent tasks.
 	stop func()
@@ -245,6 +252,11 @@ func executeTaskGet(ctx context.Context, input map[string]any, _ string) (*types
 		if task.CompletedAt != nil {
 			parts = append(parts, fmt.Sprintf("Exit code: %d", task.ExitCode))
 		}
+		if task.NotifyOnComplete {
+			// Tell the model it does not need to poll: the engine delivers
+			// this task's completion to the session on its own.
+			parts = append(parts, "Completion delivery: on")
+		}
 		if task.tail != nil {
 			if tail := task.tail(); tail != "" {
 				parts = append(parts, fmt.Sprintf("Recent output:\n%s", tail))
@@ -312,9 +324,20 @@ func executeTaskStop(ctx context.Context, input map[string]any, _ string) (*type
 	// Agent tasks keep the historical status-flip behavior (their run is
 	// torn down elsewhere).
 	stop := task.stop
+	// The Done-watcher bails out on a non-"running" status, so this path owns
+	// the completion notification for the task it stops — otherwise a parked
+	// session waits forever on a task the model deliberately killed.
+	var completion *TaskCompletion
+	if task.NotifyOnComplete {
+		c := completionFor(task, nil)
+		completion = &c
+	}
 	tasksMu.Unlock()
 	if stop != nil {
 		stop()
+	}
+	if completion != nil {
+		notifyTaskCompletion(*completion)
 	}
 
 	return &types.ToolResult{Content: fmt.Sprintf("Task %s stopped.", taskID)}, nil

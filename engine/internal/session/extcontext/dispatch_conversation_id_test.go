@@ -38,8 +38,10 @@ type snapshotSample struct {
 }
 
 func (a *convIDRecordingAccessor) NewChildBackend() backend.RunBackend { return a.child }
-func (a *convIDRecordingAccessor) AllocatePlanFilePath(_ string) string        { return "/tmp/.ion/plans/plan.md" }
-func (a *convIDRecordingAccessor) RootContext() context.Context        { return context.Background() }
+func (a *convIDRecordingAccessor) AllocatePlanFilePath(_ string) string {
+	return "/tmp/.ion/plans/plan.md"
+}
+func (a *convIDRecordingAccessor) RootContext() context.Context { return context.Background() }
 
 func (a *convIDRecordingAccessor) AppendOrUpdateAgentState(s types.AgentStateUpdate) string {
 	a.mu.Lock()
@@ -129,15 +131,18 @@ func (a *convIDRecordingAccessor) BumpParentProgress()              {}
 func (a *convIDRecordingAccessor) EmitDispatchCountStatus(_ string) {}
 
 func (a *convIDRecordingAccessor) SessionKey() string                       { return "convid-test-session" }
-func (a *convIDRecordingAccessor) ExtensionName() string    { return "" }
-func (a *convIDRecordingAccessor) ExtensionVersion() string { return "" }
+func (a *convIDRecordingAccessor) ExtensionName() string                    { return "" }
+func (a *convIDRecordingAccessor) ExtensionVersion() string                 { return "" }
 func (a *convIDRecordingAccessor) ConversationID() string                   { return "" }
 func (a *convIDRecordingAccessor) WorkingDirectory() string                 { return "/tmp" }
 func (a *convIDRecordingAccessor) Emit(_ types.EngineEvent)                 {}
 func (a *convIDRecordingAccessor) SendAbort()                               {}
-func (a *convIDRecordingAccessor) SendPrompt(_, _ string, _ []string) error                 { return nil }
-func (a *convIDRecordingAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error { return nil }
-func (a *convIDRecordingAccessor) SteerSelfMainLoop(_ string) bool          { return false }
+func (a *convIDRecordingAccessor) SendPrompt(_, _ string, _ []string) error { return nil }
+func (a *convIDRecordingAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error {
+	return nil
+}
+func (a *convIDRecordingAccessor) SteerSelfMainLoop(_ string) bool { return false }
+func (a *convIDRecordingAccessor) ParkSelfMainLoop() bool          { return false }
 func (a *convIDRecordingAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }
@@ -150,14 +155,14 @@ func (a *convIDRecordingAccessor) DeregisterAgentSpec(_ string)                 
 func (a *convIDRecordingAccessor) LookupAgentSpec(_ string) (types.AgentSpec, bool) {
 	return types.AgentSpec{}, false
 }
-func (a *convIDRecordingAccessor) LookupExtDisplayName(_ string) string     { return "" }
-func (a *convIDRecordingAccessor) ExtGroup() *extension.ExtensionGroup      { return nil }
-func (a *convIDRecordingAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
-func (a *convIDRecordingAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
-func (a *convIDRecordingAccessor) EngineConfig() *types.EngineRuntimeConfig { return nil }
-func (a *convIDRecordingAccessor) ClaudeCompat() bool { return false }
+func (a *convIDRecordingAccessor) LookupExtDisplayName(_ string) string                 { return "" }
+func (a *convIDRecordingAccessor) ExtGroup() *extension.ExtensionGroup                  { return nil }
+func (a *convIDRecordingAccessor) ExtConfig() *extension.ExtensionConfig                { return nil }
+func (a *convIDRecordingAccessor) ProcRegistry() *extension.ProcessRegistry             { return nil }
+func (a *convIDRecordingAccessor) EngineConfig() *types.EngineRuntimeConfig             { return nil }
+func (a *convIDRecordingAccessor) ClaudeCompat() bool                                   { return false }
 func (a *convIDRecordingAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
-func (a *convIDRecordingAccessor) ResolveTier(_ string) string              { return "" }
+func (a *convIDRecordingAccessor) ResolveTier(_ string) string                          { return "" }
 func (a *convIDRecordingAccessor) PermissionCheck(_ string, _ map[string]interface{}) (string, string) {
 	return "", ""
 }
@@ -185,7 +190,7 @@ func (a *convIDRecordingAccessor) GetScheduleStatus(_, _ string) ([]extension.Sc
 }
 func (a *convIDRecordingAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
 func (a *convIDRecordingAccessor) RunOnceComplete(_ string, _ bool)              {}
-func (a *convIDRecordingAccessor) Telemetry() *telemetry.Collector { return nil }
+func (a *convIDRecordingAccessor) Telemetry() *telemetry.Collector               { return nil }
 
 // allConversationIDs returns every conversationIds slice across all agent
 // state entries (not just the first hit). Used by the re-dispatch test to

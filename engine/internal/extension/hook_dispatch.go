@@ -22,6 +22,12 @@ func (h *Host) FireTaskCreated(ctx *Context, info TaskLifecycleInfo) error {
 func (h *Host) FireTaskCompleted(ctx *Context, info TaskLifecycleInfo) error {
 	return h.sdk.FireTaskCompleted(ctx, info)
 }
+
+// FireBackgroundTaskCompleted forwards the background_task_completed hook to
+// this host's SDK.
+func (h *Host) FireBackgroundTaskCompleted(ctx *Context, info BackgroundTaskCompletedInfo) {
+	h.sdk.FireBackgroundTaskCompleted(ctx, info)
+}
 func (h *Host) FireMessageUpdate(ctx *Context, info MessageUpdateInfo) error {
 	return h.sdk.FireMessageUpdate(ctx, info)
 }

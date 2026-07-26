@@ -106,8 +106,18 @@ func (a *sessionAccessor) SteerSelfMainLoop(message string) bool {
 	return outcome.Delivered()
 }
 
-func (a *sessionAccessor) SuppressTool(name string) {
-	a.m.mu.Lock()
+// ParkSelfMainLoop parks the session's own main run on its outstanding
+// background bash commands. See Manager.ParkMainLoop for the mechanics and the
+// reason a root park differs from a dispatched child's suspend.
+func (a *sessionAccessor) ParkSelfMainLoop() bool {
+	parked := a.m.ParkMainLoop(a.key)
+	utils.LogWithFields(utils.LevelInfo, "session", "sessionaccessor.parkselfmainloop", map[string]any{
+		"session_id": a.key, "parked": parked,
+	})
+	return parked
+}
+
+func (a *sessionAccessor) SuppressTool(name string) {	a.m.mu.Lock()
 	a.s.suppressedTools = append(a.s.suppressedTools, name)
 	a.m.mu.Unlock()
 }

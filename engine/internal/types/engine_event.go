@@ -152,15 +152,21 @@ type EngineEvent struct {
 	InjectedPromptOrigin string `json:"injectedPromptOrigin,omitempty"`
 	InjectedPromptKind   string `json:"injectedPromptKind,omitempty"`
 
-	// engine_task_suspended — a dispatched agent's LLM run ended without
-	// completing the dispatch (the agent called ctx.suspend() or
-	// ctx.suspendUntilAll()). The agent is parked, waiting for child
-	// completions or a revive message. TaskSuspendAwaitingCount is the number
-	// of child dispatches the agent is waiting on (0 for bare suspend).
-	// Clients may update the agent-state indicator to show "suspended" or
-	// "idle" while the dispatch is parked. TaskCompleteEvent (and idle
-	// engine_status) fires only when the agent truly finishes after revival.
+	// engine_task_suspended — a run ended without completing, because it is
+	// parked. Two producers. A dispatched agent that called ctx.suspend() or
+	// ctx.suspendUntilAll() is waiting on child completions or a revive
+	// message; TaskSuspendAwaitingCount is the number of child dispatches it
+	// awaits (0 for bare suspend). A session parked at a turn boundary is
+	// waiting on outstanding background bash commands;
+	// TaskSuspendAwaitingTaskCount is how many. Clients may update the state
+	// indicator to show "parked"/"idle" while either is pending.
+	// TaskCompleteEvent (and idle engine_status) fires only when the run
+	// truly finishes after revival.
 	TaskSuspendAwaitingCount int `json:"taskSuspendAwaitingCount,omitempty"`
+	// TaskSuspendAwaitingTaskCount is the number of outstanding background
+	// bash commands a parked session is waiting on. Additive companion to
+	// TaskSuspendAwaitingCount; zero for dispatch-driven suspends.
+	TaskSuspendAwaitingTaskCount int `json:"taskSuspendAwaitingTaskCount,omitempty"`
 
 	// engine_model_fallback — workflow signal emitted when the engine
 	// fell back to its configured defaultModel because the requested
@@ -559,6 +565,14 @@ type EngineEvent struct {
 	// ResourceItem carries the single item returned by engine_resource_item.
 	ResourceItem *ResourceItem `json:"resourceItem,omitempty"`
 
+	// engine_background_task_complete — a background bash command started
+	// with notify_on_complete reached a terminal state. Nested rather than
+	// flattened (same treatment as ResourceDelta / ContextBreakdown) so the
+	// envelope does not grow a scalar per field. See
+	// BackgroundTaskCompleteEvent for the normalized variant and the full
+	// field semantics.
+	BackgroundTaskComplete *BackgroundTaskCompletePayload `json:"backgroundTaskComplete,omitempty"`
+
 	// --- Notification events (D-009) ---
 	//
 	// engine_notification: emitted when an extension calls ctx.Notify.
@@ -668,4 +682,24 @@ type ContextBreakdownPayload struct {
 	// tree. Populated by the on-demand breakdown. Sorted by CostUsd descending.
 	// Empty for runloop-emitted breakdowns.
 	ModelBreakdown []ModelBreakdown `json:"modelBreakdown,omitempty"`
+}
+
+// BackgroundTaskCompletePayload is the payload for
+// engine_background_task_complete events. Mirrors the internal
+// BackgroundTaskCompleteEvent shape: a background bash command started with
+// notify_on_complete reached a terminal state.
+//
+// RemainingTaskIDs is the session's still-outstanding notifying task set at
+// the instant this task completed, so a consumer can render progress
+// ("2 of 3 done") without having tracked the starts. Empty means this was the
+// last outstanding command.
+type BackgroundTaskCompletePayload struct {
+	TaskID           string   `json:"taskId"`
+	Status           string   `json:"status"`
+	ExitCode         int      `json:"exitCode"`
+	ElapsedMs        int64    `json:"elapsedMs"`
+	OutputPath       string   `json:"outputPath,omitempty"`
+	Tail             string   `json:"tail,omitempty"`
+	Command          string   `json:"command,omitempty"`
+	RemainingTaskIDs []string `json:"remainingTaskIds,omitempty"`
 }

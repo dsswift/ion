@@ -260,6 +260,37 @@ type TaskLifecycleInfo struct {
 	Extra  map[string]interface{} `json:"extra,omitempty"`
 }
 
+// BackgroundTaskCompletedInfo carries the terminal report for a background
+// bash command started with notify_on_complete. Payload for the
+// background_task_completed hook.
+//
+// Not to be confused with TaskLifecycleInfo, which describes a TURN. This
+// describes a shell process: TaskID is the tasks-registry ID the Bash tool
+// returned when the command was started ("bash-<n>-<millis>").
+type BackgroundTaskCompletedInfo struct {
+	// TaskID is the tasks-registry ID of the completed command.
+	TaskID string `json:"task_id"`
+	// SessionKey is the session that started the command.
+	SessionKey string `json:"session_key"`
+	// Command is the shell command that ran.
+	Command string `json:"command,omitempty"`
+	// Status is the terminal status: "completed", "failed", or "stopped".
+	Status string `json:"status"`
+	// ExitCode is the process exit code; zero for a command stopped before it
+	// reported one.
+	ExitCode int `json:"exit_code"`
+	// ElapsedMs is wall-clock milliseconds from start to terminal transition.
+	ElapsedMs int64 `json:"elapsed_ms"`
+	// OutputPath is the on-disk file holding the full interleaved output.
+	OutputPath string `json:"output_path,omitempty"`
+	// Tail is the bounded in-memory tail of the command's output.
+	Tail string `json:"tail,omitempty"`
+	// RemainingTaskIDs lists the session's still-outstanding background
+	// commands at the instant this one completed. Empty means this was the
+	// last one.
+	RemainingTaskIDs []string `json:"remaining_task_ids,omitempty"`
+}
+
 // ElicitationRequestInfo carries details about an elicitation request.
 type ElicitationRequestInfo struct {
 	RequestID string                 `json:"request_id"`
