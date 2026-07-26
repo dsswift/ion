@@ -187,7 +187,20 @@ export type NormalizedEvent =
   // this turn, so no client did an optimistic insert — the renderer appends
   // it as a user message. The text is also persisted as the run's user turn,
   // so a conversation reload shows the same content.
-  | { type: 'task_suspend'; awaitingDispatchIds?: string[] }
+  // task_suspend — a run ended without completing. Either a dispatched agent
+  // called ctx.suspend()/suspendUntilAll() and is parked on child completions
+  // (awaitingDispatchIds), or the engine parked a session at a turn boundary
+  // because it has outstanding notifying background bash commands
+  // (awaitingTaskIds). The two sets are distinct: child agents vs shell
+  // processes, and they revive differently — dispatch waits for ALL children,
+  // background tasks wake the session on EACH completion.
+  //
+  // Note the engine's outbound wire (engine_task_suspended) carries only the
+  // COUNTS of each set, not the ID arrays, so a consumer reading the socket
+  // gets taskSuspendAwaitingCount / taskSuspendAwaitingTaskCount. These array
+  // fields mirror the engine's internal NormalizedEvent shape and are the
+  // contract the manifest pins.
+  | { type: 'task_suspend'; awaitingDispatchIds?: string[]; awaitingTaskIds?: string[] }
   | { type: 'prompt_injected'; prompt: string; origin?: string; kind?: string }
   | { type: 'model_fallback'; requestedModel: string; fallbackModel: string; reason: string }
   // capability_unsupported — a requested feature (e.g. plan mode) is not

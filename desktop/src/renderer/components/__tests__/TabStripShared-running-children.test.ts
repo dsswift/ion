@@ -57,7 +57,7 @@ vi.mock('../../preferences', () => ({
   usePreferencesStore: { getState: () => ({ uiZoom: 1, gitOpsMode: 'standard' }) },
 }))
 
-import { anyEngineInstanceHasRunningChildren, effectiveRunningChildrenCount, isAnyEngineInstanceRunning, getTabStatusColor } from '../TabStripShared'
+import { anyEngineInstanceHasRunningChildren, anyEngineInstanceHasRunningShells, effectiveRunningChildrenCount, engineInstanceBackgroundShellCount, isAnyEngineInstanceRunning, getTabStatusColor } from '../TabStripShared'
 
 function resetState() {
   state.conversationPanes = new Map()
@@ -343,5 +343,127 @@ describe('getTabStatusColor — children outrank plan-ready', () => {
     const tab = makeTab('tab2')
     const result = getTabStatusColor(tab, COLORS)
     expect(result.bg).toBe(COLORS.statusComplete)
+  })
+})
+
+// ─── Background shell commands ──────────────────────────────────────────────
+//
+// The shell counterpart to the running-children fold above. Covers
+// `engineInstanceBackgroundShellCount` / `anyEngineInstanceHasRunningShells`
+// and their branch in the `getTabStatusColor` cascade, which renders the pink
+// dot when the orchestrator is idle but background bash commands are still
+// running.
+
+/** Stamp inst.statusFields.backgroundShells on one instance of tabId. */
+function setBackgroundShells(tabId: string, instanceId: string, count: number) {
+  const pane = state.conversationPanes.get(tabId)
+  if (!pane) return
+  const idx = pane.instances.findIndex((i: any) => i.id === instanceId)
+  if (idx === -1) return
+  const existing = pane.instances[idx].statusFields || {}
+  pane.instances[idx] = {
+    ...pane.instances[idx],
+    statusFields: { ...existing, backgroundShells: count },
+  }
+}
+
+describe('engineInstanceBackgroundShellCount / anyEngineInstanceHasRunningShells', () => {
+  beforeEach(resetState)
+
+  it('returns 0 / false for an unknown tab', () => {
+    expect(engineInstanceBackgroundShellCount('unknown')).toBe(0)
+    expect(anyEngineInstanceHasRunningShells('unknown')).toBe(false)
+  })
+
+  it('returns 0 / false when no instance reports outstanding shells', () => {
+    setPane('tab1', ['inst1'])
+    expect(engineInstanceBackgroundShellCount('tab1')).toBe(0)
+    expect(anyEngineInstanceHasRunningShells('tab1')).toBe(false)
+  })
+
+  it('reads the count from statusFields.backgroundShells', () => {
+    setPane('tab1', ['inst1'])
+    setBackgroundShells('tab1', 'inst1', 3)
+    expect(engineInstanceBackgroundShellCount('tab1')).toBe(3)
+    expect(anyEngineInstanceHasRunningShells('tab1')).toBe(true)
+  })
+
+  it('SUMS across instances (separate instances run separate processes)', () => {
+    // Deliberately different from effectiveRunningChildrenCount, which takes a
+    // max because its two sources observe the same agents. Two instances each
+    // running a shell are running two distinct processes.
+    setPane('tab1', ['inst1', 'inst2'])
+    setBackgroundShells('tab1', 'inst1', 2)
+    setBackgroundShells('tab1', 'inst2', 3)
+    expect(engineInstanceBackgroundShellCount('tab1')).toBe(5)
+  })
+})
+
+describe('getTabStatusColor — background shell branch', () => {
+  beforeEach(resetState)
+
+  /** Pane with one idle instance carrying `shells` outstanding commands. */
+  function setShellPane(tabId: string, shells: number, extraInstance: Record<string, any> = {}) {
+    state.conversationPanes.set(tabId, {
+      instances: [
+        {
+          id: 'inst1',
+          label: 'inst1',
+          agentStates: [],
+          statusFields: { backgroundShells: shells },
+          permissionQueue: [],
+          ...extraInstance,
+        },
+      ],
+      activeInstanceId: 'inst1',
+    })
+  }
+
+  it('renders pink when the orchestrator is idle and shells are outstanding', () => {
+    setShellPane('tab1', 2)
+    const result = getTabStatusColor(makeTab('tab1'), COLORS)
+    expect(result.bg).toBe(COLORS.statusBash)
+    expect(result.pulse).toBe(true)
+    expect(result.glow).toBe(true)
+  })
+
+  it('foreground running still wins over outstanding shells', () => {
+    setShellPane('tab1', 2)
+    const result = getTabStatusColor(makeTab('tab1', { status: 'running' }), COLORS)
+    expect(result.bg).toBe(COLORS.statusRunning)
+  })
+
+  it('running children still outrank outstanding shells', () => {
+    // Both kinds of background work in flight: the richer agent signal wins.
+    setShellPane('tab1', 2, { agentStates: [{ name: 'child', status: 'running', metadata: {} }] })
+    const result = getTabStatusColor(makeTab('tab1'), COLORS)
+    expect(result.bg).toBe(COLORS.statusWaitingChildren)
+  })
+
+  it('outstanding shells outrank plan-ready', () => {
+    // Active background work beats a passive "waiting on you" state, matching
+    // how the children branch is ranked.
+    setShellPane('tab1', 1, { permissionDenied: { tools: [{ toolName: 'ExitPlanMode' }] } })
+    const result = getTabStatusColor(makeTab('tab1'), COLORS)
+    expect(result.bg).toBe(COLORS.statusBash)
+  })
+
+  it('a user-typed ! command and an agent background command render identically', () => {
+    // The dot reports "a shell is executing in this tab", not who started it.
+    setShellPane('tab1', 1)
+    const agentShell = getTabStatusColor(makeTab('tab1'), COLORS)
+
+    resetState()
+    setShellPane('tab2', 0)
+    const userShell = getTabStatusColor(makeTab('tab2', { bashExecuting: true }), COLORS)
+
+    expect(agentShell.bg).toBe(userShell.bg)
+    expect(agentShell.bg).toBe(COLORS.statusBash)
+  })
+
+  it('no shells and nothing else active falls through to idle', () => {
+    setShellPane('tab1', 0)
+    const result = getTabStatusColor(makeTab('tab1'), COLORS)
+    expect(result.bg).toBe(COLORS.statusIdle)
   })
 })

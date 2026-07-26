@@ -244,6 +244,53 @@ describe('projectRemoteTabStates — running-children fold (backgroundAgents par
   })
 })
 
+// ─── Background-shell fold ────────────────────────────────────────────────────
+
+// The canonical projector is what iOS actually reads in steady state:
+// snapshot.ts prefers state.rendererSnapshotCache and only falls back to the
+// main-process IIFE on a cache miss. A field projected by the IIFE alone is
+// therefore dead in production, which is exactly what happened to
+// backgroundShellCount — hence this suite mirrors the backgroundAgents fold
+// above, so the shell dimension cannot regress the way it shipped.
+describe('projectRemoteTabStates — background-shell fold (backgroundShellCount parity)', () => {
+  const shellInstance = (id: string, backgroundShells: number) =>
+    makeInstance({
+      id,
+      statusFields: { label: '', state: 'idle', model: '', contextPercent: 0, contextWindow: 0, backgroundShells },
+    })
+
+  it('projects statusFields.backgroundShells onto the per-instance count', () => {
+    const s = makeState(
+      [makeTab({ id: 't-shell' })],
+      [['t-shell', { instances: [shellInstance('main', 2)], activeInstanceId: 'main' }]],
+    )
+    const tab = projectRemoteTabStates(s).tabs[0]
+    expect(tab.conversationInstances?.[0].backgroundShellCount).toBe(2)
+    expect(tab.backgroundShellCount).toBe(2)
+  })
+
+  it('SUMS across instances for the tab aggregate — separate instances run separate processes', () => {
+    const s = makeState(
+      [makeTab({ id: 't-sum' })],
+      [['t-sum', { instances: [shellInstance('main', 1), shellInstance('inst-2', 2)], activeInstanceId: 'main' }]],
+    )
+    const tab = projectRemoteTabStates(s).tabs[0]
+    expect(tab.conversationInstances?.map((i) => i.backgroundShellCount)).toEqual([1, 2])
+    expect(tab.backgroundShellCount).toBe(3)
+  })
+
+  it('omits the count at zero and when statusFields is absent (older engine)', () => {
+    const s = makeState(
+      [makeTab({ id: 't-none' })],
+      [['t-none', { instances: [shellInstance('main', 0), makeInstance({ id: 'inst-2', statusFields: null })], activeInstanceId: 'main' }]],
+    )
+    const tab = projectRemoteTabStates(s).tabs[0]
+    expect(tab.conversationInstances?.[0].backgroundShellCount).toBeUndefined()
+    expect(tab.conversationInstances?.[1].backgroundShellCount).toBeUndefined()
+    expect(tab.backgroundShellCount).toBeUndefined()
+  })
+})
+
 // ─── Per-instance signals ─────────────────────────────────────────────────────
 
 describe('projectRemoteTabStates — conversationInstances', () => {

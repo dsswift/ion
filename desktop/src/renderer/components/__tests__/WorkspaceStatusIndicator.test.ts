@@ -24,6 +24,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 
 // Control which tab IDs have running children via this settable set.
 const runningChildrenIds = new Set<string>()
+const runningShellIds = new Set<string>()
 
 // Control getWaitingState return value per tab ID.
 const waitingStateMap = new Map<string, 'plan-ready' | 'question' | null>()
@@ -33,6 +34,7 @@ const permissionQueueMap = new Map<string, number>()
 
 vi.mock('../TabStripShared', () => ({
   anyEngineInstanceHasRunningChildren: (tabId: string) => runningChildrenIds.has(tabId),
+  anyEngineInstanceHasRunningShells: (tabId: string) => runningShellIds.has(tabId),
   getWaitingState: (tab: any) => waitingStateMap.get(tab.id) ?? null,
 }))
 
@@ -62,7 +64,7 @@ function makeTab(id: string, status: string, overrides: Record<string, unknown> 
 // ─── globalRunningTier tests ──────────────────────────────────────────────────
 
 describe('WorkspaceStatusIndicator.globalRunningTier', () => {
-  afterEach(() => { runningChildrenIds.clear() })
+  afterEach(() => { runningChildrenIds.clear(); runningShellIds.clear() })
 
   it('returns idle for an empty tab list', () => {
     expect(globalRunningTier([])).toBe('idle')
@@ -118,6 +120,7 @@ describe('WorkspaceStatusIndicator.globalRunningTier', () => {
 describe('WorkspaceStatusIndicator.computeStatusCounts', () => {
   afterEach(() => {
     runningChildrenIds.clear()
+    runningShellIds.clear()
     waitingStateMap.clear()
     permissionQueueMap.clear()
   })
@@ -313,5 +316,61 @@ describe('WorkspaceStatusIndicator.computeStatusCounts', () => {
     const tabs = [makeTab('t1', 'connecting', { title: 'auto-name', customTitle: null })]
     const c = computeStatusCounts(tabs)
     expect(c.runningTabs[0].title).toBe('auto-name')
+  })
+})
+
+// ─── Background-shell branch ──────────────────────────────────────────────────
+
+// runningShellIds was wired into the TabStripShared mock when the shell
+// dimension shipped, but no test ever populated it — so globalRunningTier's
+// shell branch and computeStatusCounts' waitingShells / waitingShellTabs had
+// zero coverage and the set existed only to keep the mock shape valid. These
+// pin the branch from both directions, matching how the agent branch is pinned
+// above.
+describe('WorkspaceStatusIndicator — background-shell branch', () => {
+  afterEach(() => { runningChildrenIds.clear(); runningShellIds.clear(); waitingStateMap.clear(); permissionQueueMap.clear() })
+
+  it('globalRunningTier reports waiting for an idle tab holding background shells', () => {
+    runningShellIds.add('t1')
+    expect(globalRunningTier([makeTab('t1', 'idle')])).toBe('waiting')
+  })
+
+  it('globalRunningTier still prefers running: a live turn outranks a held shell', () => {
+    runningShellIds.add('t2')
+    expect(globalRunningTier([makeTab('t1', 'running'), makeTab('t2', 'idle')])).toBe('running')
+  })
+
+  it('counts an idle tab with shells in waitingShells, with its name', () => {
+    runningShellIds.add('t1')
+    const c = computeStatusCounts([makeTab('t1', 'idle', { customTitle: 'Builder' })])
+    expect(c.waitingShells).toBe(1)
+    expect(c.waitingShellTabs).toEqual([{ id: 't1', title: 'Builder' }])
+    // Not double-counted into the agent bucket.
+    expect(c.waitingChildren).toBe(0)
+    expect(c.idle).toBe(0)
+  })
+
+  it('agents outrank shells when a tab has both', () => {
+    runningChildrenIds.add('t1')
+    runningShellIds.add('t1')
+    const c = computeStatusCounts([makeTab('t1', 'idle')])
+    expect(c.waitingChildren).toBe(1)
+    expect(c.waitingShells).toBe(0)
+    expect(c.waitingShellTabs).toEqual([])
+  })
+
+  it('shells outrank plan-ready and bash — matches getTabStatusColor cascade', () => {
+    runningShellIds.add('t1')
+    waitingStateMap.set('t1', 'plan-ready')
+    const c = computeStatusCounts([makeTab('t1', 'idle', { bashExecuting: true })])
+    expect(c.waitingShells).toBe(1)
+    expect(c.planReady).toBe(0)
+    expect(c.bash).toBe(0)
+  })
+
+  it('a terminal-only tab is skipped even when it reports shells', () => {
+    runningShellIds.add('t1')
+    const c = computeStatusCounts([makeTab('t1', 'idle', { isTerminalOnly: true })])
+    expect(c.waitingShells).toBe(0)
   })
 })

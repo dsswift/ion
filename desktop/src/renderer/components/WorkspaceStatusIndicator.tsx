@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
-import { anyEngineInstanceHasRunningChildren, getWaitingState } from './TabStripShared'
+import { anyEngineInstanceHasRunningChildren, anyEngineInstanceHasRunningShells, getWaitingState } from './TabStripShared'
 import { activeInstance } from '../stores/conversation-instance'
 import { Tooltip } from './git/Tooltip'
 import type { TabState } from '../../shared/types'
@@ -17,14 +17,16 @@ import type { TabState } from '../../shared/types'
 //
 // Tier model (global indicator — intentionally simpler than the per-tab dot):
 //   orange  = any tab has foreground running (status === 'running'/'connecting')
-//   yellow  = any tab has running background agents (none foreground)
+//   yellow  = any tab is waiting on background work — dispatched agents or
+//             background bash commands (none foreground)
 //   gray    = all tabs idle
 //
 // Rationale for the two-tier model: the global indicator is an ambient glance
 // signal, not a per-tab debugger. "Something is running" (orange) and "something
-// is waiting on background agents" (yellow) are the two distinctions a user
-// needs at workspace level. Finer distinctions (permission, plan-ready, bash)
-// are visible on individual tab pills and group dots.
+// is waiting on background work" (yellow) are the two distinctions a user
+// needs at workspace level. Finer distinctions (permission, plan-ready, which
+// KIND of background work) are visible on individual tab pills, group dots,
+// and the popover breakdown below.
 //
 // Click opens a popover breakdown of per-status counts across all tabs.
 
@@ -35,7 +37,9 @@ export function globalRunningTier(tabs: TabState[]): 'running' | 'waiting' | 'id
   let hasWaiting = false
   for (const tab of tabs) {
     if (tab.status === 'running' || tab.status === 'connecting') return 'running'
-    if (anyEngineInstanceHasRunningChildren(tab.id)) hasWaiting = true
+    if (anyEngineInstanceHasRunningChildren(tab.id) || anyEngineInstanceHasRunningShells(tab.id)) {
+      hasWaiting = true
+    }
   }
   return hasWaiting ? 'waiting' : 'idle'
 }
@@ -67,6 +71,7 @@ export function computeStatusCounts(tabs: TabState[]): {
   running: number
   connecting: number
   waitingChildren: number
+  waitingShells: number
   questions: number
   planReady: number
   bash: number
@@ -75,12 +80,14 @@ export function computeStatusCounts(tabs: TabState[]): {
   dead: number
   runningTabs: WorkspaceTabRef[]
   waitingTabs: WorkspaceTabRef[]
+  waitingShellTabs: WorkspaceTabRef[]
 } {
   const conversationPanes = useSessionStore.getState().conversationPanes
   const c = {
-    running: 0, connecting: 0, waitingChildren: 0, questions: 0, planReady: 0, bash: 0, unread: 0, idle: 0, dead: 0,
+    running: 0, connecting: 0, waitingChildren: 0, waitingShells: 0, questions: 0, planReady: 0, bash: 0, unread: 0, idle: 0, dead: 0,
     runningTabs: [] as WorkspaceTabRef[],
     waitingTabs: [] as WorkspaceTabRef[],
+    waitingShellTabs: [] as WorkspaceTabRef[],
   }
   for (const tab of tabs) {
     if (tab.isTerminalOnly) continue
@@ -88,6 +95,9 @@ export function computeStatusCounts(tabs: TabState[]): {
     if (tab.status === 'running') { c.running++; c.runningTabs.push({ id: tab.id, title: tabDisplayTitle(tab) }); continue }
     if (tab.status === 'connecting') { c.connecting++; c.runningTabs.push({ id: tab.id, title: tabDisplayTitle(tab) }); continue }
     if (anyEngineInstanceHasRunningChildren(tab.id)) { c.waitingChildren++; c.waitingTabs.push({ id: tab.id, title: tabDisplayTitle(tab) }); continue }
+    // Background bash commands the session is holding for. Ranked directly
+    // after agents, matching getTabStatusColor's cascade.
+    if (anyEngineInstanceHasRunningShells(tab.id)) { c.waitingShells++; c.waitingShellTabs.push({ id: tab.id, title: tabDisplayTitle(tab) }); continue }
     // Check questions/plan-ready BEFORE bash/unread — matches getTabStatusColor's cascade
     // where plan-ready/question outrank bash/unread.
     const inst = activeInstance(conversationPanes, tab.id)
@@ -198,6 +208,11 @@ export function WorkspaceStatusIndicator() {
       <WorkspaceCountRow label="Awaiting agents" count={counts.waitingChildren} color={colors.statusWaitingChildren} colors={colors} />
       {/* Clickable names for tabs awaiting background agents. */}
       {counts.waitingTabs.map((t) => (
+        <WorkspaceTabRow key={t.id} tab={t} onNavigate={handleNavigate} colors={colors} />
+      ))}
+      <WorkspaceCountRow label="Awaiting shells" count={counts.waitingShells} color={colors.statusBash} colors={colors} />
+      {/* Clickable names for tabs awaiting background bash commands. */}
+      {counts.waitingShellTabs.map((t) => (
         <WorkspaceTabRow key={t.id} tab={t} onNavigate={handleNavigate} colors={colors} />
       ))}
       <WorkspaceCountRow label="Question" count={counts.questions} color={colors.statusQuestion} colors={colors} />

@@ -135,11 +135,21 @@ export function mapSessionMessage(m: SessionLoadMessage, makeId: () => string): 
  * content. Convenience wrapper over `mapSessionMessage` for the common
  * `history.filter(...).map(...)` shape the load paths repeat.
  *
- * Desktop rendering opinion: "agent_completion" injection-kind rows are
- * dispatch callbacks (a child agent's result delivered to its parent) — the
- * agent receives them in its LLM context but the user never authored them and
- * should not see them in the conversation scrollback. The engine faithfully
- * persists and surfaces the classification; the desktop chooses to suppress.
+ * Desktop rendering opinion: two injection kinds are machine-to-machine
+ * signals the agent receives in its LLM context but the user never authored and
+ * should not see in conversation scrollback:
+ *
+ *   - "agent_completion" — a dispatch callback (a child agent's result
+ *     delivered to its parent).
+ *   - "background_task_completion" — a finished background bash command's
+ *     result, routed back to wake a parked session (ADR-023). The engine is
+ *     reporting an exit code and output tail to the model; rendering it puts
+ *     raw command output in the transcript as a user turn.
+ *
+ * The engine faithfully persists and surfaces the classification; the desktop
+ * chooses to suppress. Must stay in sync with the live-event filter in
+ * stores/slices/event-slice.ts — a kind suppressed live but not on reload
+ * (or vice versa) makes the transcript change shape when history rehydrates.
  */
 export function mapSessionHistory(
   history: readonly SessionLoadMessage[],
@@ -149,6 +159,7 @@ export function mapSessionHistory(
   for (const m of history) {
     if (m.internal) continue
     if (m.injectionKind === 'agent_completion') continue
+    if (m.injectionKind === 'background_task_completion') continue
     const mapped = mapSessionMessage(m, makeId)
     if (mapped) out.push(mapped)
   }

@@ -42,6 +42,11 @@ interface StatusDotProps {
    *  Sits below the running/connecting branch in the priority cascade
    *  so foreground work always wins. */
   hasRunningChildren?: boolean
+  /** When true, the tab is waiting on background bash commands (Bash
+   *  run_in_background + notify_on_complete) even though the orchestrator's
+   *  own state is idle. Renders the same pink as `bashExecuting`: the dot
+   *  reports that a shell is executing in this tab, not who started it. */
+  hasRunningShells?: boolean
 }
 
 type StatusDotAllProps = StatusDotDerived | StatusDotProps
@@ -63,8 +68,8 @@ export function StatusDot(props: StatusDotAllProps) {
     // ── Prop mode: inline cascade (must mirror getTabStatusColor priority) ──
     //
     // Priority order (matches TabStripShared.getTabStatusColor):
-    //   error > permission > running > running-children > plan-ready >
-    //   question > bash > unread > idle
+    //   error > permission > running > running-children > bash-background >
+    //   plan-ready > question > bash > unread > idle
     bg = colors.statusIdle
     pulse = false
     glow = false
@@ -92,6 +97,17 @@ export function StatusDot(props: StatusDotAllProps) {
       pulse = true
       glow = true
       glowColor = colors.statusWaitingChildrenGlow
+    } else if (props.hasRunningShells) {
+      // Pink "waiting on background shells" — orchestrator idle, background
+      // bash commands still running. Mirrors the
+      // anyEngineInstanceHasRunningShells branch in getTabStatusColor so
+      // direct-prop callers and derived callers produce the same dot for the
+      // same condition. Same color as the bashExecuting branch below: the dot
+      // says a shell is executing here, not who started it.
+      bg = colors.statusBash
+      pulse = true
+      glow = true
+      glowColor = colors.statusBashGlow
     } else if (props.waitingState === 'plan-ready') {
       bg = colors.statusComplete
       glow = true

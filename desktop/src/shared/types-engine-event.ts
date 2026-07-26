@@ -149,12 +149,37 @@ export type EngineEvent =
   // RunStall threshold. The authoritative completion signal is the follow-up
   // task_complete; this event is for observability only.
   | { type: 'engine_run_stalled'; runStalledDuration: number; runStalledLastActivity?: string }
-  // engine_task_suspended — a dispatched agent's LLM run ended without completing
-  // the dispatch (ctx.suspend() or ctx.suspendUntilAll() was called). The agent is
-  // parked waiting for child completions or a revive message. taskSuspendAwaitingCount
-  // is the number of pending children (0 for bare suspend). Clients may update the
-  // agent-state indicator to show suspended/idle. Task completion fires later on revival.
-  | { type: 'engine_task_suspended'; taskSuspendAwaitingCount?: number }
+  // engine_task_suspended — a run ended without completing, because it is parked.
+  // Two producers. A dispatched agent that called ctx.suspend() /
+  // ctx.suspendUntilAll() is waiting on child completions or a revive message;
+  // taskSuspendAwaitingCount is the number of pending children (0 for bare
+  // suspend). A session parked at a turn boundary is waiting on outstanding
+  // background bash commands; taskSuspendAwaitingTaskCount is how many. Clients
+  // may show a parked/idle indicator. Task completion fires later on revival.
+  | {
+      type: 'engine_task_suspended'
+      taskSuspendAwaitingCount?: number
+      taskSuspendAwaitingTaskCount?: number
+    }
+  // engine_background_task_complete — a background bash command started with
+  // Bash({ run_in_background: true, notify_on_complete: true }) reached a
+  // terminal state. Emitted for every notifying command regardless of whether
+  // the engine also delivers the result into a run, so a consumer can render
+  // completions without scraping run content. remainingTaskIds carries the
+  // session's still-outstanding commands at that instant.
+  | {
+      type: 'engine_background_task_complete'
+      backgroundTaskComplete?: {
+        taskId: string
+        status: string
+        exitCode: number
+        elapsedMs: number
+        outputPath?: string
+        tail?: string
+        command?: string
+        remainingTaskIds?: string[]
+      }
+    }
   // engine_model_fallback — workflow signal emitted by the engine when
   // it fell back to its configured defaultModel because the requested
   // model didn't resolve to a provider. Mirrors the underlying

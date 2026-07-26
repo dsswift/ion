@@ -200,6 +200,12 @@ export async function pollRendererTabStates(): Promise<RemoteTabStatesPayload> {
                 }
                 var fromBackgroundAgents = (inst.statusFields && inst.statusFields.backgroundAgents) || 0;
                 instRunningAgents = Math.max(fromAgentStates, fromBackgroundAgents);
+                // Background bash commands the session is waiting on (Bash
+                // run_in_background + notify_on_complete). Unlike agents there
+                // is a single source, so this is a straight read. Drives the
+                // iOS pink shell dot and the "waiting on N background shells"
+                // indicator.
+                var instBackgroundShells = (inst.statusFields && inst.statusFields.backgroundShells) || 0;
                 // Per-instance model-fallback indicator (⚠ on the iOS
                 // EngineInstanceBar). Only requested + fallback model strings
                 // are forwarded — see remote-projection.ts.
@@ -210,7 +216,7 @@ export async function pollRendererTabStates(): Promise<RemoteTabStatesPayload> {
                     mfOut = { requestedModel: mf.requestedModel, fallbackModel: mf.fallbackModel };
                   }
                 }
-                return { id: inst.id, label: inst.label, waitingState: ws, isRunning: instRunning || undefined, runningAgentCount: instRunningAgents > 0 ? instRunningAgents : undefined, modelFallback: mfOut, conversationIds: inst.conversationIds && inst.conversationIds.length > 0 ? inst.conversationIds : undefined, thinkingEffort: (inst.thinkingEffort && inst.thinkingEffort !== 'off') ? inst.thinkingEffort : undefined, dispatchTelemetry: inst.dispatchTelemetry && inst.dispatchTelemetry.length > 0 ? inst.dispatchTelemetry : undefined };
+                return { id: inst.id, label: inst.label, waitingState: ws, isRunning: instRunning || undefined, runningAgentCount: instRunningAgents > 0 ? instRunningAgents : undefined, backgroundShellCount: instBackgroundShells > 0 ? instBackgroundShells : undefined, modelFallback: mfOut, conversationIds: inst.conversationIds && inst.conversationIds.length > 0 ? inst.conversationIds : undefined, thinkingEffort: (inst.thinkingEffort && inst.thinkingEffort !== 'off') ? inst.thinkingEffort : undefined, dispatchTelemetry: inst.dispatchTelemetry && inst.dispatchTelemetry.length > 0 ? inst.dispatchTelemetry : undefined };
               });
               activeConversationInstanceId = ePaneForList.activeInstanceId || ePaneForList.instances[0].id;
             }
@@ -221,6 +227,16 @@ export async function pollRendererTabStates(): Promise<RemoteTabStatesPayload> {
               for (var ei = 0; ei < conversationInstances.length; ei++) {
                 if ((conversationInstances[ei].runningAgentCount || 0) > 0) anyInstanceHasRunningChildren = true;
                 if (anyInstanceHasRunningChildren) break;
+              }
+            }
+            // Aggregate "any instance is waiting on background bash commands" —
+            // drives the iOS parent tab pill's pink shell dot. Summed rather
+            // than max'd across instances: separate instances run separate
+            // processes.
+            var backgroundShellCount = 0;
+            if (conversationInstances) {
+              for (var si = 0; si < conversationInstances.length; si++) {
+                backgroundShellCount += conversationInstances[si].backgroundShellCount || 0;
               }
             }
             return {
@@ -258,6 +274,7 @@ export async function pollRendererTabStates(): Promise<RemoteTabStatesPayload> {
               modelOverride: (activeInst && activeInst.modelOverride) || null,
               groupPinned: t.groupPinned || false,
               hasRunningChildren: anyInstanceHasRunningChildren || undefined,
+              backgroundShellCount: backgroundShellCount > 0 ? backgroundShellCount : undefined,
               conversationId: t.conversationId || null,
               lastMessageContent: lastMsg,
               lastActivityTs: lastTs || 0,

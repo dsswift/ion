@@ -6,6 +6,7 @@ import { useSessionStore } from '../stores/sessionStore'
 import type { TabState } from '../../shared/types'
 import {
   getWaitingState, isAnyEngineInstanceRunning, anyEngineInstanceHasRunningChildren,
+  anyEngineInstanceHasRunningShells,
   formatRelativeShort, abbreviateProfileName, resolveTabModelFallback, getTabStatusColor,
 } from './TabStripShared'
 import { activeInstance } from '../stores/conversation-instance'
@@ -115,14 +116,20 @@ export function TabPill({
   // drives the yellow "awaiting children" dot and the hard-block on the X
   // close button. Foreground orange wins over background yellow.
   const anyInstanceHasRunningChildren = anyEngineInstanceHasRunningChildren(tab.id)
+  // Parallel "any instance is waiting on background bash commands" — drives
+  // the pink shell dot and the same close hard-block. Closing the tab kills
+  // those shell processes, so an outstanding command blocks close exactly as a
+  // running child does.
+  const anyInstanceHasRunningShells = anyEngineInstanceHasRunningShells(tab.id)
   const _effectiveStatus = (anyInstanceRunning && !isRunning) ? 'running' as const : tab.status
   // Combined "must not close" predicate. Hard-blocks the X close
   // button below. Mirrors the action-layer guard in tab-slice.ts
   // closeTab so every entry point — UI affordance, keyboard shortcut,
   // programmatic call — refuses to destroy a tab whose orchestrator
-  // is running or whose dispatched background agents are still
-  // executing. The user must stop the tab first.
-  const closeBlocked = isRunning || anyInstanceHasRunningChildren
+  // is running, whose dispatched background agents are still
+  // executing, or which is waiting on background bash commands. The
+  // user must stop the tab first.
+  const closeBlocked = isRunning || anyInstanceHasRunningChildren || anyInstanceHasRunningShells
 
   // Derive waiting-for-user state from permission denials
   const waitingState = getWaitingState(tab, conversationPanes)

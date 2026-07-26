@@ -62,3 +62,28 @@ export function useActiveEngineAgentRunningCount(): number {
     return effectiveRunningChildrenCount(inst)
   })
 }
+
+/**
+ * Number of background bash commands the ACTIVE tab's active instance is
+ * waiting on (Bash run_in_background + notify_on_complete).
+ *
+ * The shell counterpart to `useActiveEngineAgentRunningCount`. Drives the
+ * status-bar "waiting for N background shell(s)" slot when the orchestrator
+ * itself is idle but shell work is still in flight.
+ *
+ * Counts only notifying commands — a fire-and-forget `run_in_background`
+ * command is not something the session is holding for, so it does not appear
+ * here.
+ *
+ * Returns 0 when there is no active instance or no outstanding commands.
+ */
+export function useActiveEngineBackgroundShellCount(): number {
+  return useSessionStore((s) => {
+    const pane = s.conversationPanes.get(s.activeTabId)
+    const instanceId = pane?.activeInstanceId
+    if (!instanceId) return 0
+    const inst = pane.instances.find((i: { id: string }) => i.id === instanceId)
+    if (!inst) return 0
+    return inst.statusFields?.backgroundShells ?? 0
+  })
+}

@@ -47,10 +47,15 @@ export type GroupDotModel =
 //   1 = unread           (green, notification)
 //   0 = idle             (gray, no activity)
 
-export const STATUS_PRIORITY_ERROR       = 8
-export const STATUS_PRIORITY_PERMISSION  = 7
-export const STATUS_PRIORITY_RUNNING     = 6
-export const STATUS_PRIORITY_CHILDREN    = 5
+export const STATUS_PRIORITY_ERROR       = 9
+export const STATUS_PRIORITY_PERMISSION  = 8
+export const STATUS_PRIORITY_RUNNING     = 7
+export const STATUS_PRIORITY_CHILDREN    = 6
+// Background shell commands the session is waiting on (Bash
+// run_in_background + notify_on_complete). Sits between CHILDREN and
+// PLAN_READY: it is active background work like CHILDREN, but the agent
+// signal is richer, and both outrank the passive "waiting on you" states.
+export const STATUS_PRIORITY_BASH_BACKGROUND = 5
 export const STATUS_PRIORITY_PLAN_READY  = 4
 export const STATUS_PRIORITY_QUESTION    = 3
 export const STATUS_PRIORITY_BASH        = 2

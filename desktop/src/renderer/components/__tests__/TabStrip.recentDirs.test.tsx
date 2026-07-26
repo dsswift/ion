@@ -144,6 +144,7 @@ vi.mock('../TabStripShared', () => ({
   shouldUseWorktree: () => false,
   zoomRect: (r: DOMRect) => r,
   anyEngineInstanceHasRunningChildren: () => false,
+  anyEngineInstanceHasRunningShells: () => false,
 }))
 
 vi.mock('../PopoverLayer', () => ({

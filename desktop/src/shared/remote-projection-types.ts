@@ -57,6 +57,10 @@ export interface ProjectedConversationInstance {
   waitingState?: 'plan-ready' | 'question' | null
   isRunning?: boolean
   runningAgentCount?: number
+  /** Background bash commands this instance is waiting on (Bash
+   *  run_in_background + notify_on_complete). The shell counterpart to
+   *  runningAgentCount; drives the iOS pink shell dot. */
+  backgroundShellCount?: number
   modelFallback?: { requestedModel: string; fallbackModel: string }
   conversationIds?: string[]
   thinkingEffort?: 'low' | 'medium' | 'high'
@@ -103,6 +107,9 @@ export interface ProjectedRendererTab {
   modelOverride: string | null
   groupPinned: boolean
   hasRunningChildren?: boolean
+  /** Summed outstanding background bash commands across instances. Drives
+   *  the iOS parent tab pill's pink shell dot. Omitted at zero. */
+  backgroundShellCount?: number
   conversationId: string | null
   lastMessageContent: string | null
   lastActivityTs: number

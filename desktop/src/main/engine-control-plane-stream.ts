@@ -72,15 +72,25 @@ export function handleStreamSignalEvent(
       return true
 
     case 'engine_task_suspended':
-      // A dispatched agent's LLM run ended without completing the dispatch.
-      // The agent called ctx.suspend() or ctx.suspendUntilAll() and is now
-      // parked waiting for child completions or a revive message. Forward as
-      // a normalized task_suspend so renderer can show "suspended/idle" state.
-      debug('task_suspended', { tab_id: tabId, awaiting_count: event.taskSuspendAwaitingCount ?? 0 })
-      ctx.emit('event', tabId, {
-        type: 'task_suspend',
-        awaitingDispatchIds: undefined,
-      } as NormalizedEvent)
+      // A run ended without completing. Either a dispatched agent called
+      // ctx.suspend()/suspendUntilAll() and is parked waiting for child
+      // completions or a revive message, or the engine parked a session at a
+      // turn boundary on outstanding background bash commands. Forward as a
+      // normalized task_suspend so the renderer can show "suspended/idle".
+      //
+      // The wire event carries COUNTS, not the ID arrays (see
+      // EngineEvent.taskSuspendAwaitingCount / …TaskCount). The normalized
+      // variant's fields are ID arrays, so there is nothing faithful to put in
+      // them here — fabricating placeholder IDs from a count would be worse
+      // than omitting them. Both counts are logged instead, which is what
+      // makes a parked session distinguishable from a dispatch-suspended one
+      // in the log alone.
+      debug('task_suspended', {
+        tab_id: tabId,
+        awaiting_count: event.taskSuspendAwaitingCount ?? 0,
+        awaiting_task_count: event.taskSuspendAwaitingTaskCount ?? 0,
+      })
+      ctx.emit('event', tabId, { type: 'task_suspend' } as NormalizedEvent)
       return true
 
     case 'engine_steer_injected':
