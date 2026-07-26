@@ -72,8 +72,11 @@ export const lightColors: ColorPalette = {
   statusErrorBg: 'rgba(220, 38, 38, 0.08)',
   statusWarning: '#f59e0b',
   statusDead: '#dc2626',
-  statusBash: '#db2777',
-  statusBashGlow: 'rgba(219, 39, 119, 0.3)',
+  // Shell-activity dot — see palette-dark.ts for the rationale. Deepened for
+  // a light surface: it must hold contrast against white while staying
+  // unmistakably pink rather than drifting toward statusError's red (#dc2626).
+  statusBash: '#e6007a',
+  statusBashGlow: 'rgba(230, 0, 122, 0.3)',
   statusPermission: '#d97706',
   statusPermissionGlow: 'rgba(217, 119, 6, 0.3)',
   // "Awaiting children" state — see palette-dark.ts for full rationale.

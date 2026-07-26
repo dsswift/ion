@@ -42,6 +42,7 @@ export const IOS_THEME_TOKEN_KEYS = [
   'statusError',
   'statusPending',
   'statusWaitingChildren',
+  'statusBash',
   'statusWarning',
   'surfaceElevated',
   'codeBg',

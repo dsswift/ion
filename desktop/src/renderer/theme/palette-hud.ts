@@ -72,8 +72,11 @@ export const hudColors: ColorPalette = {
   statusErrorBg: 'rgba(196, 112, 96, 0.08)',
   statusWarning: '#f59e0b',
   statusDead: '#c47060',
-  statusBash: '#cc6b9a',
-  statusBashGlow: 'rgba(204, 107, 154, 0.4)',
+  // Shell-activity dot — see palette-dark.ts for the rationale. HUD is a dark
+  // surface, so it takes the same blaze pink as Ion Dark. The previous value
+  // (#cc6b9a, shared with Classic) read as washed-out mauve at 6px.
+  statusBash: '#ff2d95',
+  statusBashGlow: 'rgba(255, 45, 149, 0.4)',
   statusPermission: '#d97757',
   statusPermissionGlow: 'rgba(217, 119, 87, 0.4)',
   // Amber "awaiting children" stays distinct from the cyan running color

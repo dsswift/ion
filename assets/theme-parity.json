@@ -1,63 +1,210 @@
 {
-  "_comment": "Cross-platform theme parity fixture. Pins the iOS token values of the shared built-in themes (ion-dark, ion-light, ion-classic) to their desktop palette sources. desktopToken names the desktop ColorPalette key each iOS AppTheme token derives from; hex is the resolved #RRGGBBAA value both sides must render. Asserted by desktop/src/renderer/theme/theme-parity.test.ts and ios/IonRemoteTests/ThemeParityTests.swift — drift on either side fails that side's build. jarvis-hud is intentionally absent: its desktop and iOS parts are two renderings of one theme and do not share token values.",
+  "_comment": "Cross-platform theme parity fixture. Pins the iOS token values of the shared built-in themes (ion-dark, ion-light, ion-classic) to their desktop palette sources. desktopToken names the desktop ColorPalette key each iOS AppTheme token derives from; hex is the resolved #RRGGBBAA value both sides must render. Asserted by desktop/src/renderer/theme/theme-parity.test.ts and ios/IonRemoteTests/ThemeParityTests.swift \u2014 drift on either side fails that side's build. jarvis-hud is intentionally absent: its desktop and iOS parts are two renderings of one theme and do not share token values.",
   "ion-dark": {
     "preferredColorScheme": "dark",
     "tokens": {
-      "accent": { "desktopToken": "accent", "hex": "#366FFBFF" },
-      "accentSubtle": { "desktopToken": "accentLight", "hex": "#366FFB1F" },
-      "accentGlow": { "desktopToken": "accentSoft", "hex": "#366FFB2E" },
-      "background": { "desktopToken": "containerBg", "hex": "#131316FF" },
-      "textPrimary": { "desktopToken": "textPrimary", "hex": "#F5F5F5FF" },
-      "textSecondary": { "desktopToken": "textSecondary", "hex": "#B9B9C0FF" },
-      "statusRunning": { "desktopToken": "statusRunning", "hex": "#5EA9C9FF" },
-      "statusDone": { "desktopToken": "statusComplete", "hex": "#34D399FF" },
-      "statusError": { "desktopToken": "statusError", "hex": "#F87171FF" },
-      "statusPending": { "desktopToken": "statusIdle", "hex": "#818188FF" },
-      "statusWaitingChildren": { "desktopToken": "statusWaitingChildren", "hex": "#FBBF24FF" },
-      "statusWarning": { "desktopToken": "statusWarning", "hex": "#F59E0BFF" },
-      "surfaceElevated": { "desktopToken": "surfacePrimary", "hex": "#1E1E23FF" },
-      "codeBg": { "desktopToken": "codeBg", "hex": "#0E0E11FF" },
-      "userBubbleTint": { "desktopToken": "userBubble", "hex": "#1E1E23FF" }
+      "accent": {
+        "desktopToken": "accent",
+        "hex": "#366FFBFF"
+      },
+      "accentSubtle": {
+        "desktopToken": "accentLight",
+        "hex": "#366FFB1F"
+      },
+      "accentGlow": {
+        "desktopToken": "accentSoft",
+        "hex": "#366FFB2E"
+      },
+      "background": {
+        "desktopToken": "containerBg",
+        "hex": "#131316FF"
+      },
+      "textPrimary": {
+        "desktopToken": "textPrimary",
+        "hex": "#F5F5F5FF"
+      },
+      "textSecondary": {
+        "desktopToken": "textSecondary",
+        "hex": "#B9B9C0FF"
+      },
+      "statusRunning": {
+        "desktopToken": "statusRunning",
+        "hex": "#5EA9C9FF"
+      },
+      "statusDone": {
+        "desktopToken": "statusComplete",
+        "hex": "#34D399FF"
+      },
+      "statusError": {
+        "desktopToken": "statusError",
+        "hex": "#F87171FF"
+      },
+      "statusPending": {
+        "desktopToken": "statusIdle",
+        "hex": "#818188FF"
+      },
+      "statusWaitingChildren": {
+        "desktopToken": "statusWaitingChildren",
+        "hex": "#FBBF24FF"
+      },
+      "statusBash": {
+        "desktopToken": "statusBash",
+        "hex": "#FF2D95FF"
+      },
+      "statusWarning": {
+        "desktopToken": "statusWarning",
+        "hex": "#F59E0BFF"
+      },
+      "surfaceElevated": {
+        "desktopToken": "surfacePrimary",
+        "hex": "#1E1E23FF"
+      },
+      "codeBg": {
+        "desktopToken": "codeBg",
+        "hex": "#0E0E11FF"
+      },
+      "userBubbleTint": {
+        "desktopToken": "userBubble",
+        "hex": "#1E1E23FF"
+      }
     }
   },
   "ion-light": {
     "preferredColorScheme": "light",
     "tokens": {
-      "accent": { "desktopToken": "accent", "hex": "#2B5FE8FF" },
-      "accentSubtle": { "desktopToken": "accentLight", "hex": "#2B5FE81A" },
-      "accentGlow": { "desktopToken": "accentSoft", "hex": "#2B5FE824" },
-      "background": { "desktopToken": "containerBg", "hex": "#FBFBFCFF" },
-      "textPrimary": { "desktopToken": "textPrimary", "hex": "#18181BFF" },
-      "textSecondary": { "desktopToken": "textSecondary", "hex": "#4B4B52FF" },
-      "statusRunning": { "desktopToken": "statusRunning", "hex": "#3F86A6FF" },
-      "statusDone": { "desktopToken": "statusComplete", "hex": "#059669FF" },
-      "statusError": { "desktopToken": "statusError", "hex": "#DC2626FF" },
-      "statusPending": { "desktopToken": "statusIdle", "hex": "#74747CFF" },
-      "statusWaitingChildren": { "desktopToken": "statusWaitingChildren", "hex": "#F59E0BFF" },
-      "statusWarning": { "desktopToken": "statusWarning", "hex": "#F59E0BFF" },
-      "surfaceElevated": { "desktopToken": "surfacePrimary", "hex": "#F2F2F4FF" },
-      "codeBg": { "desktopToken": "codeBg", "hex": "#EEEEF1FF" },
-      "userBubbleTint": { "desktopToken": "userBubble", "hex": "#F2F2F4FF" }
+      "accent": {
+        "desktopToken": "accent",
+        "hex": "#2B5FE8FF"
+      },
+      "accentSubtle": {
+        "desktopToken": "accentLight",
+        "hex": "#2B5FE81A"
+      },
+      "accentGlow": {
+        "desktopToken": "accentSoft",
+        "hex": "#2B5FE824"
+      },
+      "background": {
+        "desktopToken": "containerBg",
+        "hex": "#FBFBFCFF"
+      },
+      "textPrimary": {
+        "desktopToken": "textPrimary",
+        "hex": "#18181BFF"
+      },
+      "textSecondary": {
+        "desktopToken": "textSecondary",
+        "hex": "#4B4B52FF"
+      },
+      "statusRunning": {
+        "desktopToken": "statusRunning",
+        "hex": "#3F86A6FF"
+      },
+      "statusDone": {
+        "desktopToken": "statusComplete",
+        "hex": "#059669FF"
+      },
+      "statusError": {
+        "desktopToken": "statusError",
+        "hex": "#DC2626FF"
+      },
+      "statusPending": {
+        "desktopToken": "statusIdle",
+        "hex": "#74747CFF"
+      },
+      "statusWaitingChildren": {
+        "desktopToken": "statusWaitingChildren",
+        "hex": "#F59E0BFF"
+      },
+      "statusBash": {
+        "desktopToken": "statusBash",
+        "hex": "#E6007AFF"
+      },
+      "statusWarning": {
+        "desktopToken": "statusWarning",
+        "hex": "#F59E0BFF"
+      },
+      "surfaceElevated": {
+        "desktopToken": "surfacePrimary",
+        "hex": "#F2F2F4FF"
+      },
+      "codeBg": {
+        "desktopToken": "codeBg",
+        "hex": "#EEEEF1FF"
+      },
+      "userBubbleTint": {
+        "desktopToken": "userBubble",
+        "hex": "#F2F2F4FF"
+      }
     }
   },
   "ion-classic": {
     "preferredColorScheme": "dark",
     "tokens": {
-      "accent": { "desktopToken": "accent", "hex": "#D97757FF" },
-      "accentSubtle": { "desktopToken": "accentLight", "hex": "#D977571A" },
-      "accentGlow": { "desktopToken": "accentSoft", "hex": "#D9775726" },
-      "background": { "desktopToken": "containerBg", "hex": "#242422FF" },
-      "textPrimary": { "desktopToken": "textPrimary", "hex": "#CCC9C0FF" },
-      "textSecondary": { "desktopToken": "textSecondary", "hex": "#C0BDB2FF" },
-      "statusRunning": { "desktopToken": "statusRunning", "hex": "#D97757FF" },
-      "statusDone": { "desktopToken": "statusComplete", "hex": "#7AAC8CFF" },
-      "statusError": { "desktopToken": "statusError", "hex": "#C47060FF" },
-      "statusPending": { "desktopToken": "statusIdle", "hex": "#8A8A80FF" },
-      "statusWaitingChildren": { "desktopToken": "statusWaitingChildren", "hex": "#F59E0BFF" },
-      "statusWarning": { "desktopToken": "statusWarning", "hex": "#F59E0BFF" },
-      "surfaceElevated": { "desktopToken": "surfacePrimary", "hex": "#353530FF" },
-      "codeBg": { "desktopToken": "codeBg", "hex": "#1A1A18FF" },
-      "userBubbleTint": { "desktopToken": "userBubble", "hex": "#353530FF" }
+      "accent": {
+        "desktopToken": "accent",
+        "hex": "#D97757FF"
+      },
+      "accentSubtle": {
+        "desktopToken": "accentLight",
+        "hex": "#D977571A"
+      },
+      "accentGlow": {
+        "desktopToken": "accentSoft",
+        "hex": "#D9775726"
+      },
+      "background": {
+        "desktopToken": "containerBg",
+        "hex": "#242422FF"
+      },
+      "textPrimary": {
+        "desktopToken": "textPrimary",
+        "hex": "#CCC9C0FF"
+      },
+      "textSecondary": {
+        "desktopToken": "textSecondary",
+        "hex": "#C0BDB2FF"
+      },
+      "statusRunning": {
+        "desktopToken": "statusRunning",
+        "hex": "#D97757FF"
+      },
+      "statusDone": {
+        "desktopToken": "statusComplete",
+        "hex": "#7AAC8CFF"
+      },
+      "statusError": {
+        "desktopToken": "statusError",
+        "hex": "#C47060FF"
+      },
+      "statusPending": {
+        "desktopToken": "statusIdle",
+        "hex": "#8A8A80FF"
+      },
+      "statusWaitingChildren": {
+        "desktopToken": "statusWaitingChildren",
+        "hex": "#F59E0BFF"
+      },
+      "statusBash": {
+        "desktopToken": "statusBash",
+        "hex": "#E0559BFF"
+      },
+      "statusWarning": {
+        "desktopToken": "statusWarning",
+        "hex": "#F59E0BFF"
+      },
+      "surfaceElevated": {
+        "desktopToken": "surfacePrimary",
+        "hex": "#353530FF"
+      },
+      "codeBg": {
+        "desktopToken": "codeBg",
+        "hex": "#1A1A18FF"
+      },
+      "userBubbleTint": {
+        "desktopToken": "userBubble",
+        "hex": "#353530FF"
+      }
     }
   }
 }

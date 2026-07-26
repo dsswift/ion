@@ -74,8 +74,14 @@ export const classicColors: ColorPalette = {
   statusErrorBg: 'rgba(196, 112, 96, 0.08)',
   statusWarning: '#f59e0b',
   statusDead: '#c47060',
-  statusBash: '#cc6b9a',
-  statusBashGlow: 'rgba(204, 107, 154, 0.4)',
+  // Shell-activity dot — see palette-dark.ts for the rationale. Classic's
+  // language is muted and earthy (statusRunning #d97757, statusError #c47060),
+  // so this is a saturated pink rather than the neon blaze the dark themes
+  // use: bright enough to read as pink at 6px (the previous #cc6b9a read as
+  // washed-out mauve) without breaking the theme's register, and clearly
+  // separated from the terracotta error/permission tones.
+  statusBash: '#e0559b',
+  statusBashGlow: 'rgba(224, 85, 155, 0.4)',
   statusPermission: '#d97757',
   statusPermissionGlow: 'rgba(217, 119, 87, 0.4)',
   // Amber "awaiting children" — distinct from the orange running dot so a
