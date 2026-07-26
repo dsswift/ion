@@ -13,6 +13,18 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.56.0](https://github.com/dsswift/ion/compare/engine-v1.55.0...engine-v1.56.0) (2026-07-26)
+
+### Features
+
+* **engine:** native openai responses api streaming client ([595f65c](https://github.com/dsswift/ion/commit/595f65c251fda02ad75161c1572d835e8735bd21))
+* **engine:** dialect-routed gateway discovery and qualified model ids ([0e2cc42](https://github.com/dsswift/ion/commit/0e2cc42ec0f61b8b9c0e6716717c01c9eb467ef5))
+* **engine:** provider displayName config surfaced on provider entries ([bb03c32](https://github.com/dsswift/ion/commit/bb03c327d4637f46fbe494b4205120c65c58fac4))
+
+### Bug Fixes
+
+* **engine:** stop catalog enrichment clobbering discovered models ([ea9ab30](https://github.com/dsswift/ion/commit/ea9ab304035fc9ab659bffbe270d4fa4eab853bc))
+
 ## [1.55.0](https://github.com/dsswift/ion/compare/engine-v1.54.0...engine-v1.55.0) (2026-07-25)
 
 ### Features

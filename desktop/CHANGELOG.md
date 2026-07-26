@@ -10,6 +10,13 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.68.0](https://github.com/dsswift/ion/compare/desktop-v1.67.0...desktop-v1.68.0) (2026-07-26)
+
+### Features
+
+* **desktop:** gateway provider keys and model dialect types ([d4e76f1](https://github.com/dsswift/ion/commit/d4e76f118e58fb77583a07e08478a01cc29f3fd6))
+* **desktop:** honor provider displayName in pickers and settings ([4b19d09](https://github.com/dsswift/ion/commit/4b19d096a0ea11cbd93a5c544c2516273d07aee0))
+
 ## [1.67.0](https://github.com/dsswift/ion/compare/desktop-v1.66.0...desktop-v1.67.0) (2026-07-25)
 
 ### Features

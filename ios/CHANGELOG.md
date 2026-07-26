@@ -10,6 +10,13 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.49.1](https://github.com/dsswift/ion/compare/ios-v1.49.0...ios-v1.49.1) (2026-07-26)
+
+### Bug Fixes
+
+* **ios:** track dialect and costPerImage in contract sync ([b40cce1](https://github.com/dsswift/ion/commit/b40cce1a948982b51f241104b5312838ecc67e2b))
+* **ios:** track provider displayName in contract sync ([29a1ce4](https://github.com/dsswift/ion/commit/29a1ce44750331917b12acded87fba5206f838ea))
+
 ## [1.49.0](https://github.com/dsswift/ion/compare/ios-v1.48.2...ios-v1.49.0) (2026-07-25)
 
 ### Features
