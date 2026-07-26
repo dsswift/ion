@@ -1,7 +1,7 @@
 ---
 title: Branch Protection
 description: GitHub branch protection settings for the Ion repository.
-sidebar_position: 4
+sidebar_position: 6
 ---
 
 # Branch Protection
