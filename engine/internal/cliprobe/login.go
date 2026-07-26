@@ -55,6 +55,8 @@ func Login(ctx context.Context, kind string, emit LoginEmit) error {
 	switch kind {
 	case "codex":
 		return loginCodex(ctx, emit)
+	case "claude-code":
+		return loginClaudeCode(ctx, emit)
 	case "grok":
 		return loginACP(ctx, kind, "grok", []string{"agent", "stdio"}, []string{"GROK_OAUTH2_REFERRER=ion"}, grokAuthMethod(), emit)
 	case "cursor":
@@ -64,12 +66,23 @@ func Login(ctx context.Context, kind string, emit LoginEmit) error {
 	}
 }
 
-// Logout clears the stored credential for a backend kind (codex only; the ACP
-// agents manage their own credential store).
+// Logout clears the stored credential for a backend kind. codex uses its
+// app-server Logout RPC; claude-code uses the non-interactive `claude auth
+// logout`. The ACP agents manage their own credential store and have no logout
+// surface to drive.
 func Logout(ctx context.Context, kind string) error {
-	if kind != "codex" {
+	switch kind {
+	case "codex":
+		return logoutCodex(ctx)
+	case "claude-code":
+		return logoutClaudeCode(ctx)
+	default:
 		return fmt.Errorf("logout not supported for backend %q", kind)
 	}
+}
+
+// logoutCodex clears the codex CLI's stored credential via its app-server.
+func logoutCodex(ctx context.Context) error {
 	if _, ok := ctx.Deadline(); !ok {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, logoutTimeout)

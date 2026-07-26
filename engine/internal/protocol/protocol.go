@@ -281,13 +281,20 @@ var validCommands = map[string]bool{
 	"store_credential":     true,
 	"refresh_models":       true,
 	// provider_login / provider_login_cancel / provider_logout: delegated-CLI
-	// (codex/grok/cursor) interactive auth lifecycle. The engine drives the
-	// CLI login/logout and broadcasts engine_provider_login stage events plus
-	// engine_providers_updated so clients refresh. Dispatched in
+	// (codex/claude-code/grok/cursor) interactive auth lifecycle. The engine
+	// drives the CLI login/logout and broadcasts engine_provider_login stage
+	// events plus engine_providers_updated so clients refresh. Dispatched in
 	// server/dispatch_provider_login.go.
+	//
+	// provider_login_code returns an authorization code to a login parked on the
+	// await_auth_code stage. Required by flows the engine drives through a CLI's
+	// manual-paste fallback rather than its own callback (claude-code): the
+	// provider issues the code to the user in the browser and the CLI waits on
+	// stdin for it, so the consumer must hand it back to the engine.
 	"provider_login":        true,
 	"provider_login_cancel": true,
 	"provider_logout":       true,
+	"provider_login_code":   true,
 	// oidc_begin_login / oidc_logout / oidc_identity: operator OIDC
 	// identity lifecycle. The engine owns the token (storage, refresh,
 	// per-scope minting); these commands let a consumer start a login
@@ -543,6 +550,9 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasNonEmptyString(raw, "provider") && hasString(raw, "credential")
 	case "provider_login", "provider_login_cancel", "provider_logout":
 		return hasNonEmptyString(raw, "provider")
+	case "provider_login_code":
+		// The pasted authorization code rides in `text`.
+		return hasNonEmptyString(raw, "provider") && hasNonEmptyString(raw, "text")
 	case "oidc_begin_login":
 		// oidcFlow is optional ("pkce" default; "device" for headless).
 		return true

@@ -395,6 +395,9 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "provider_login_cancel":
 		s.dispatchProviderLoginCancel(conn, cmd)
 
+	case "provider_login_code":
+		s.dispatchProviderLoginCode(conn, cmd)
+
 	case "provider_logout":
 		s.dispatchProviderLogout(conn, cmd)
 
