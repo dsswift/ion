@@ -20,6 +20,7 @@ final class SessionStatusSynthesisTests: XCTestCase {
         model: String? = nil,
         contextPercent: Int? = nil,
         contextWindow: Int? = nil,
+        contextTokens: Int? = nil,
         runCostUsd: Double? = nil,
         conversationCostUsd: Double? = nil,
         permissionDenialsPending: [PermissionDenialEntry]? = nil,
@@ -39,6 +40,7 @@ final class SessionStatusSynthesisTests: XCTestCase {
             model: model,
             contextPercent: contextPercent,
             contextWindow: contextWindow,
+            contextTokens: contextTokens,
             runCostUsd: runCostUsd,
             conversationCostUsd: conversationCostUsd,
             sessionId: sessionId,
@@ -217,22 +219,59 @@ final class SessionStatusMergeTests: XCTestCase {
         vm.mutateEngineInstance(tabId: "t", instanceId: nil) {
             $0.statusFields = StatusFields(
                 label: "t", state: "running", sessionId: "s", team: nil, model: "m",
-                contextPercent: 10, contextWindow: 200_000, runCostUsd: nil,
+                contextPercent: 10, contextWindow: 200_000, contextTokens: 20_000, runCostUsd: nil,
                 conversationCostUsd: nil, permissionDenials: nil, extensionName: nil,
-                backgroundAgents: nil, numTurns: 3, conversationTurns: 9
+                backgroundAgents: nil, backgroundShells: nil, numTurns: 3, conversationTurns: 9
             )
         }
 
         let ss = SessionStatus(
             key: "t", state: "idle", stateSince: nil, lastEmittedAt: 1,
             hasInflightRun: false, backgroundAgentCount: nil, permissionDenialsPending: nil,
-            model: "m", contextPercent: 10, contextWindow: 200_000, runCostUsd: nil,
-            conversationCostUsd: nil, sessionId: "s", extensionName: nil
+            model: "m", contextPercent: 10, contextWindow: 200_000, contextTokens: 20_000,
+            runCostUsd: nil, conversationCostUsd: nil, sessionId: "s", extensionName: nil
         )
         vm.applyEngineSessionStatus(tabId: "t", instanceId: nil, status: ss)
 
         let sf = vm.engineInstance(tabId: "t", instanceId: nil)?.statusFields
         XCTAssertEqual(sf?.numTurns, 3, "engine_session_status must not nil-clobber numTurns")
         XCTAssertEqual(sf?.conversationTurns, 9, "engine_session_status must not nil-clobber conversationTurns")
+    }
+
+    /// SessionStatus omits the context fields when zero (omitempty in Go).
+    /// Coalescing an absent value to 0 manufactured a false "0% context"
+    /// reading that overwrote a good figure from the prior engine_status —
+    /// the same clobbering defect RC-23 fixed for the turn counts.
+    func testSessionStatusDoesNotClobberContextFigures() {
+        let vm = SessionViewModel()
+        vm.tabs = [RemoteTabState(
+            id: "t", title: "t", customTitle: nil, status: .running,
+            workingDirectory: "/tmp", permissionMode: .auto, thinkingEffort: nil,
+            permissionQueue: [], hasEngineExtension: false
+        )]
+        vm.ensureMainInstance(tabId: "t")
+        vm.mutateEngineInstance(tabId: "t", instanceId: nil) {
+            $0.statusFields = StatusFields(
+                label: "t", state: "running", sessionId: "s", team: nil, model: "m",
+                contextPercent: 22, contextWindow: 1_000_000, contextTokens: 223_791,
+                runCostUsd: nil, conversationCostUsd: nil, permissionDenials: nil,
+                extensionName: nil, backgroundAgents: nil, backgroundShells: nil,
+                numTurns: nil, conversationTurns: nil
+            )
+        }
+
+        // A status with every context field absent.
+        let ss = SessionStatus(
+            key: "t", state: "idle", stateSince: nil, lastEmittedAt: 1,
+            hasInflightRun: false, backgroundAgentCount: nil, permissionDenialsPending: nil,
+            model: "m", contextPercent: nil, contextWindow: nil, contextTokens: nil,
+            runCostUsd: nil, conversationCostUsd: nil, sessionId: "s", extensionName: nil
+        )
+        vm.applyEngineSessionStatus(tabId: "t", instanceId: nil, status: ss)
+
+        let sf = vm.engineInstance(tabId: "t", instanceId: nil)?.statusFields
+        XCTAssertEqual(sf?.contextTokens, 223_791, "absent contextTokens must not clobber a good figure")
+        XCTAssertEqual(sf?.contextPercent, 22, "absent contextPercent must not become 0")
+        XCTAssertEqual(sf?.contextWindow, 1_000_000, "absent contextWindow must not become 0")
     }
 }

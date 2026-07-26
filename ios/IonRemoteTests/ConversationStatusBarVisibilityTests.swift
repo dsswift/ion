@@ -20,7 +20,8 @@ final class ConversationStatusBarVisibilityTests: XCTestCase {
         model: String,
         contextPercent: Double,
         contextWindow: Int,
-        extensionName: String?
+        extensionName: String?,
+        contextTokens: Int? = nil
     ) -> StatusFields {
         StatusFields(
             label: "",
@@ -30,11 +31,13 @@ final class ConversationStatusBarVisibilityTests: XCTestCase {
             model: model,
             contextPercent: contextPercent,
             contextWindow: contextWindow,
+            contextTokens: contextTokens,
             runCostUsd: nil,
             conversationCostUsd: nil,
             permissionDenials: nil,
             extensionName: extensionName,
             backgroundAgents: nil,
+            backgroundShells: nil,
             numTurns: nil,
             conversationTurns: nil
         )

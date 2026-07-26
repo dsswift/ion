@@ -276,15 +276,12 @@ struct ConversationView: View {
 
     private var headerSection: some View {
         VStack(spacing: 0) {
-            if let fields = viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)?.statusFields {
-                GeometryReader { geo in
-                    Rectangle()
-                        .fill(contextBarColor(fields.contextPercent))
-                        .frame(width: geo.size.width * min(CGFloat(fields.contextPercent) / 100, 1))
-                }
-                .frame(height: 3)
-                .background(Color(.tertiarySystemFill))
-            }
+            ConversationContextStrip(
+                statusFields: viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)?.statusFields,
+                modelOverride: viewModel.engineInstance(tabId: tabId, instanceId: activeInstanceId)?.modelOverride,
+                preferredModel: viewModel.preferredModel,
+                availableModels: viewModel.availableModels,
+            )
 
             if instances.count > 1 {
                 EngineInstanceBar(
@@ -341,7 +338,7 @@ struct ConversationView: View {
                 modelOverride: activeInst?.modelOverride,
                 preferredModel: engineInputs.preferredModel,
                 contextPercent: engineInputs.contextPercent,
-                contextTokens: nil,
+                contextTokens: engineInputs.contextTokens,
                 engineContextWindow: engineInputs.engineContextWindow,
                 isRunning: isRunning,
                 permissionMode: viewModel.tab(for: tabId)?.permissionMode,

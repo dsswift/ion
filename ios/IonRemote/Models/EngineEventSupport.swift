@@ -296,8 +296,21 @@ struct StatusFields: Codable, Sendable {
     let sessionId: String?       // omitempty in Go — may be absent
     let team: String?            // omitempty in Go — may be absent
     let model: String
+    /// Context-window occupancy as a percentage. UNBOUNDED — values above 100
+    /// mean the conversation holds more tokens than the window it is measured
+    /// against (the normal case when a conversation accumulated under a
+    /// large-window model and the operator then selects a smaller one).
+    /// Renderers clamp for geometry only.
     let contextPercent: Double
+    /// Context window in tokens of the model the ENGINE used, i.e. the
+    /// denominator `contextPercent` was computed against. Not the display
+    /// denominator — see `contextTokens`.
     let contextWindow: Int
+    /// Absolute context-window occupancy in tokens, cache-aware. This is the
+    /// numerator the status bar divides by the SELECTED model's window: no
+    /// engine command can change an idle session's model, so the
+    /// picker-driven recompute is necessarily client-side arithmetic.
+    let contextTokens: Int?
     /// Cost of the most recent run in USD (cache-aware, descendants included).
     /// Replaces the former totalCostUsd; the rename makes the scope unambiguous.
     let runCostUsd: Double?
@@ -312,6 +325,12 @@ struct StatusFields: Codable, Sendable {
     /// progress. Clients use this to keep the tab status active and the
     /// interrupt button visible.
     let backgroundAgents: Int?
+    /// Number of background bash commands (Bash with run_in_background +
+    /// notify_on_complete) the session is still waiting on. The shell
+    /// counterpart to backgroundAgents: when > 0 the orchestrator may be idle
+    /// while real work is in flight, and the engine holds the session open
+    /// until the commands finish. nil/absent when none are outstanding.
+    let backgroundShells: Int?
     /// Number of LLM turns completed in the most recent run. Stamped from
     /// TaskCompleteEvent.NumTurns; nil/absent on idle and heartbeat status
     /// events that have no associated run.
@@ -367,10 +386,20 @@ struct SessionStatus: Codable, Sendable {
     let lastEmittedAt: Int64
     let hasInflightRun: Bool?
     let backgroundAgentCount: Int?
+    /// Number of background bash commands the session is still waiting on.
+    /// Mirrors StatusFields.backgroundShells — the shell counterpart to
+    /// backgroundAgentCount, so a consumer reading only this event can tell a
+    /// parked session (idle orchestrator, commands in flight) from a plain
+    /// idle one.
+    let backgroundShellCount: Int?
     let permissionDenialsPending: [PermissionDenialEntry]?
     let model: String?
+    /// UNBOUNDED — see StatusFields.contextPercent.
     let contextPercent: Int?
     let contextWindow: Int?
+    /// Absolute context-window occupancy in tokens. Mirrors
+    /// StatusFields.contextTokens.
+    let contextTokens: Int?
     /// Cost of the most recent run in USD. Renamed from totalCostUsd per Commit 2.
     let runCostUsd: Double?
     /// Cumulative conversation cost (this session + all descendant dispatches).

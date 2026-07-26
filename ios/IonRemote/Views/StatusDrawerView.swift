@@ -73,14 +73,26 @@ struct StatusDrawerView: View {
         return inst?.conversationIds?.last
     }
 
-    /// Context% with an idle/reload fallback (C8g): when `fields` is nil at the
-    /// call site the drawer still shows the engine's last-known percent from the
-    /// stored instance rather than snapping to 0.
+    /// Context occupancy percentage. Resolved through the same helper the
+    /// status bar and the header strip use — tokens over the SELECTED model's
+    /// window — so the drawer can never report a different figure from the
+    /// ring above it. UNBOUNDED, like every other context percent on iOS.
     private var contextPercent: Double {
-        fields?.contextPercent ?? inst?.statusFields?.contextPercent ?? 0
+        ConversationStatusBar.resolveContextPercent(
+            contextPercent: fields?.contextPercent ?? inst?.statusFields?.contextPercent,
+            contextTokens: contextTokens,
+            selectedModelWindow: ConversationStatusBar.windowForModel(
+                inst?.modelOverride ?? viewModel.preferredModel,
+                availableModels: viewModel.availableModels,
+                engineContextWindow: contextWindow,
+            ),
+        ) ?? 0
     }
 
     /// Engine-reported context window (prefer breakdown, then fields, then instance).
+    /// This is what the ENGINE measured against — the breakdown grid stays
+    /// proportional to it, while the headline percentage above uses the
+    /// selected model's window.
     private var contextWindow: Int? {
         if let w = contextBreakdown?.contextWindow, w > 0 { return w }
         if let w = fields?.contextWindow, w > 0 { return w }
@@ -88,10 +100,15 @@ struct StatusDrawerView: View {
         return nil
     }
 
-    /// Absolute context tokens derived from percent × window (parity with desktop).
+    /// Absolute context tokens. Read straight from the engine's reported
+    /// occupancy (breakdown first, then status fields) rather than derived
+    /// from percent × window, which was lossy and disagreed with the status
+    /// bar whenever the picker differed from the engine's model.
     private var contextTokens: Int? {
-        guard contextPercent > 0, let w = contextWindow, w > 0 else { return nil }
-        return Int(round(contextPercent / 100.0 * Double(w)))
+        if let t = contextBreakdown?.totalTokens, t > 0 { return t }
+        if let t = fields?.contextTokens, t > 0 { return t }
+        if let t = inst?.statusFields?.contextTokens, t > 0 { return t }
+        return nil
     }
 
     /// Run cost (prefer live fields, then instance, then snapshot-projected).
@@ -134,6 +151,16 @@ struct StatusDrawerView: View {
         fields?.state ?? inst?.statusFields?.state
     }
 
+    /// The drawer's usage bar uses 90/70, NOT the 80/60 ladder
+    /// ContextUsageRing owns. That is deliberate parity with the desktop:
+    /// StatusDrawerParts.tsx's UsageBar is also 90/70 against the ring's 80/60.
+    ///
+    /// The two surfaces answer different questions. The status-bar ring is an
+    /// at-a-glance warning that wants to fire early, while the drawer bar is
+    /// read when the user has already opened the panel to look at occupancy in
+    /// detail and a bar that is orange at 60% is noise there. Both clients must
+    /// keep making the same choice, so do not "align" one to the other without
+    /// changing the desktop in the same commit.
     private func contextColor(_ pct: Double) -> Color {
         if pct >= 90 { return .red }
         if pct >= 70 { return .orange }

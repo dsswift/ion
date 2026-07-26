@@ -54,7 +54,10 @@ extension SessionViewModel {
                 tabId: tabId,
                 status: status,
                 priorNumTurns: inst.statusFields?.numTurns,
-                priorConversationTurns: inst.statusFields?.conversationTurns
+                priorConversationTurns: inst.statusFields?.conversationTurns,
+                priorContextPercent: inst.statusFields?.contextPercent,
+                priorContextWindow: inst.statusFields?.contextWindow,
+                priorContextTokens: inst.statusFields?.contextTokens
             )
             inst.statusFields = synthesized
         }
@@ -103,21 +106,43 @@ enum SessionStatusSynthesis {
         tabId: String,
         status: SessionStatus,
         priorNumTurns: Int? = nil,
-        priorConversationTurns: Int? = nil
+        priorConversationTurns: Int? = nil,
+        priorContextPercent: Double? = nil,
+        priorContextWindow: Int? = nil,
+        priorContextTokens: Int? = nil
     ) -> StatusFields {
+        // Same RC-23 preservation as the turn counts: SessionStatus omits the
+        // context fields when zero (omitempty in Go), and coalescing an absent
+        // value to 0 manufactures a false "0% context" reading that overwrites
+        // a good figure from the prior engine_status. Carry the previous value
+        // through instead of clobbering it. Resolved into locals because the
+        // chained fallbacks defeat Swift's type-checker inside the initializer.
+        let resolvedPercent: Double
+        if let p = status.contextPercent {
+            resolvedPercent = Double(p)
+        } else {
+            resolvedPercent = priorContextPercent ?? 0
+        }
+        let resolvedWindow: Int = status.contextWindow ?? priorContextWindow ?? 0
+        let resolvedTokens: Int? = status.contextTokens ?? priorContextTokens
+
         return StatusFields(
             label: tabId,
             state: status.state,
             sessionId: status.sessionId,
             team: nil,
             model: status.model ?? "",
-            contextPercent: Double(status.contextPercent ?? 0),
-            contextWindow: status.contextWindow ?? 0,
+            contextPercent: resolvedPercent,
+            contextWindow: resolvedWindow,
+            contextTokens: resolvedTokens,
             runCostUsd: status.runCostUsd,
             conversationCostUsd: status.conversationCostUsd,
             permissionDenials: status.permissionDenialsPending,
             extensionName: status.extensionName,
             backgroundAgents: status.backgroundAgentCount,
+            // No SessionStatus source for the shell count (it rides
+            // StatusFields on the legacy engine_status path only).
+            backgroundShells: nil,
             numTurns: priorNumTurns,
             conversationTurns: priorConversationTurns
         )

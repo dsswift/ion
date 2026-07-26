@@ -332,9 +332,4 @@ extension ConversationView {
         pendingAttachments = []
     }
 
-    func contextBarColor(_ percent: Double) -> Color {
-        if percent < 60 { return .green }
-        if percent < 80 { return .orange }
-        return .red
-    }
 }
