@@ -34,6 +34,8 @@ The engine never:
 
 > **Note:** The engine *does* persist conversation-scoped operational state (`.tree.jsonl`, `.llm.jsonl`, `.memory.md`) as part of session management. This is not "memory" in the LLM sense — it is compaction infrastructure that the engine owns. The prohibition targets user preference persistence and durable cross-session memory features, which belong to the harness or client.
 
+> **Note on "blocks for user input":** the prohibition is about the **socket**, not about every goroutine. A dispatch arm must never hold the client's read loop waiting on a human. Long-running interactive flows the engine *drives* — a delegated-CLI login, an OIDC grant — are started by a command that returns immediately (`{started: true}`), then progress on a background goroutine that may legitimately await a user-supplied value, always under a bounded deadline and always cancellable by a follow-up command. The engine still never *decides* anything about that input; it transports it. What remains forbidden is a synchronous dispatch that parks the socket, or an engine-side prompt that assumes a UI is there to answer it.
+
 When labeling work, decide first: is this engine, harness, or client? If a harness or client gap is caused by a missing engine capability, call that out explicitly — but the default answer is almost always "fix it in the consumer."
 
 ## 3. Contracts are sacred. Breaking changes are a stop-the-line event.

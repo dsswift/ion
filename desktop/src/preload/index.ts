@@ -227,9 +227,10 @@ const api: IonAPI = {
   storeCredential: (provider, credential) => ipcRenderer.invoke(IPC.STORE_CREDENTIAL, { provider, credential }),
   refreshModels: (provider) => ipcRenderer.invoke(IPC.REFRESH_MODELS, { provider }),
 
-  // ─── Delegated-CLI provider auth (codex/grok/cursor) ───
+  // ─── Delegated-CLI provider auth (codex/claude-code/grok/cursor) ───
   providerLogin: (provider) => ipcRenderer.invoke(IPC.PROVIDER_LOGIN, { provider }),
   providerLoginCancel: (provider) => ipcRenderer.invoke(IPC.PROVIDER_LOGIN_CANCEL, { provider }),
+  providerLoginCode: (provider, code) => ipcRenderer.invoke(IPC.PROVIDER_LOGIN_CODE, { provider, code }),
   providerLogout: (provider) => ipcRenderer.invoke(IPC.PROVIDER_LOGOUT, { provider }),
   onProviderLoginEvent: (handler) => {
     const listener = (_e: unknown, update: import('../shared/types-engine-event').ProviderLoginUpdate) => handler(update)

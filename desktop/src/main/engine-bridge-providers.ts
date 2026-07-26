@@ -39,6 +39,15 @@ export async function providerLoginCancel(bridge: EngineBridge, provider: string
   return bridge._sendWithResult({ cmd: 'provider_login_cancel', provider })
 }
 
+// providerLoginCode returns a browser-issued authorization code to a login
+// parked on the await_auth_code stage. The code rides in `text` per the engine's
+// provider_login_code contract; only its length is logged.
+export async function providerLoginCode(bridge: EngineBridge, provider: string, code: string): Promise<{ ok: boolean; error?: string }> {
+  await bridge.connect()
+  log('provider_login_code', { provider, codeLength: code.length })
+  return bridge._sendWithResult({ cmd: 'provider_login_code', provider, text: code })
+}
+
 export async function providerLogout(bridge: EngineBridge, provider: string): Promise<{ ok: boolean; error?: string }> {
   await bridge.connect()
   return bridge._sendWithResult({ cmd: 'provider_logout', provider })

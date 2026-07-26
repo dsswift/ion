@@ -24,7 +24,7 @@ import type {
 export interface ProviderLoginUpdate {
   provider: string
   backend: string
-  /** started | await_browser | await_device_code | completed | failed | cancelled */
+  /** started | await_browser | await_device_code | await_auth_code | completed | failed | cancelled */
   stage: string
   authUrl?: string
   userCode?: string

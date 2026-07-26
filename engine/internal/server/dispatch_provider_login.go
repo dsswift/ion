@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/cliprobe"
@@ -16,9 +17,12 @@ import (
 )
 
 // loginState tracks in-flight provider logins so provider_login_cancel can
-// abort one. Guarded by loginMu.
+// abort one. pendingCodes carries an authorization code from a
+// provider_login_code command to the login goroutine waiting for it (see
+// ProviderLoginAwaitAuthCode). Both guarded by loginMu.
 var (
 	activeLogins = make(map[string]context.CancelFunc)
+	pendingCodes = make(map[string]chan string)
 	loginMu      sync.Mutex
 )
 
@@ -66,14 +70,25 @@ func (s *Server) dispatchProviderLogin(conn net.Conn, cmd *protocol.ClientComman
 	}
 
 	ctx, cancel := context.WithCancel(s.serveContext())
+	// The auth-code channel rides on the login's own context, so a second
+	// concurrent login (a different provider) can never receive this one's code.
+	codeCh := make(chan string, 1)
+	ctx = cliprobe.WithAuthCodeChannel(ctx, codeCh)
+	// lastStage records the most recent stage the driver emitted so the
+	// error path below can tell whether a terminal stage already reached
+	// consumers. Atomic: emit runs on the driver's goroutine(s).
+	var lastStage atomic.Value
+	lastStage.Store("")
 	loginMu.Lock()
 	if prev, exists := activeLogins[provider]; exists {
 		prev() // cancel a prior in-flight login for this provider
 	}
 	activeLogins[provider] = cancel
+	pendingCodes[provider] = codeCh
 	loginMu.Unlock()
 
 	emit := func(st cliprobe.LoginStage) {
+		lastStage.Store(st.Stage)
 		s.broadcastProviderLogin(types.ProviderLoginUpdate{
 			Provider:        provider,
 			Backend:         kind,
@@ -91,11 +106,19 @@ func (s *Server) dispatchProviderLogin(conn net.Conn, cmd *protocol.ClientComman
 			cancel()
 			loginMu.Lock()
 			delete(activeLogins, provider)
+			delete(pendingCodes, provider)
 			loginMu.Unlock()
 		}()
 		err := s.loginDriver()(ctx, kind, emit)
 		if err != nil {
 			utils.LogWithFields(utils.LevelInfo, "server.provider_login", "login ended", map[string]any{"provider": provider, "kind": kind, "error": err.Error()})
+			// A driver that returned an error without emitting a terminal stage
+			// would leave every consumer parked on a login that is already over
+			// (the inert-button defect). Emit the terminal stage here so the
+			// failure is always observable, whatever the driver did.
+			if !isTerminalLoginStage(stageString(lastStage.Load())) {
+				emit(cliprobe.LoginStage{Stage: types.ProviderLoginFailed, Error: err.Error()})
+			}
 			return
 		}
 		utils.LogWithFields(utils.LevelInfo, "server.provider_login", "login completed", map[string]any{"provider": provider, "kind": kind})
@@ -105,6 +128,47 @@ func (s *Server) dispatchProviderLogin(conn net.Conn, cmd *protocol.ClientComman
 	}()
 
 	s.sendResult(conn, cmd, nil, map[string]any{"started": true, "backend": kind})
+}
+
+// dispatchProviderLoginCode hands an authorization code to a login parked on the
+// await_auth_code stage.
+func (s *Server) dispatchProviderLoginCode(conn net.Conn, cmd *protocol.ClientCommand) {
+	loginMu.Lock()
+	ch, ok := pendingCodes[cmd.Provider]
+	loginMu.Unlock()
+	if !ok {
+		utils.LogWithFields(utils.LevelWarn, "server.provider_login", "auth code for provider with no in-flight login", map[string]any{"provider": cmd.Provider})
+		s.sendResult(conn, cmd, fmt.Errorf("no in-flight login for provider %q", cmd.Provider), nil)
+		return
+	}
+	select {
+	case ch <- cmd.Text:
+		utils.LogWithFields(utils.LevelInfo, "server.provider_login", "auth code delivered", map[string]any{"provider": cmd.Provider, "codeLength": len(cmd.Text)})
+		s.sendResult(conn, cmd, nil, map[string]any{"delivered": true})
+	default:
+		utils.LogWithFields(utils.LevelWarn, "server.provider_login", "auth code already supplied", map[string]any{"provider": cmd.Provider})
+		s.sendResult(conn, cmd, fmt.Errorf("an auth code was already supplied for provider %q", cmd.Provider), nil)
+	}
+}
+
+// stageString reads a stage recorded in an atomic.Value, tolerating the
+// zero value.
+func stageString(v any) string {
+	s, ok := v.(string)
+	if !ok {
+		return ""
+	}
+	return s
+}
+
+// isTerminalLoginStage reports whether a stage ends the login lifecycle.
+func isTerminalLoginStage(stage string) bool {
+	switch stage {
+	case types.ProviderLoginCompleted, types.ProviderLoginFailed, types.ProviderLoginCancelled:
+		return true
+	default:
+		return false
+	}
 }
 
 // dispatchProviderLoginCancel aborts an in-flight login for a provider.

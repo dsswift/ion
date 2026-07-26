@@ -947,12 +947,16 @@ Delegated-CLI login lifecycle for a provider (e.g. `openai` via the `codex` CLI)
 | `type` | `"engine_provider_login"` | Event type |
 | `providerLogin.provider` | string | Provider whose CLI is authenticating (e.g. `openai`) |
 | `providerLogin.backend` | string | CLI backend kind driving the login (e.g. `codex`) |
-| `providerLogin.stage` | string | `started` \| `await_browser` \| `await_device_code` \| `completed` \| `failed` \| `cancelled` |
-| `providerLogin.authUrl` | string | Browser URL to open (`await_browser`, optional) |
+| `providerLogin.stage` | string | `started` \| `await_browser` \| `await_device_code` \| `await_auth_code` \| `completed` \| `failed` \| `cancelled` |
+| `providerLogin.authUrl` | string | Browser URL to open (`await_browser`, optional). For a CLI that opens its own browser (claude-code), this is the CLI's printed *fallback* URL — it carries a different `redirect_uri` and cannot self-complete, so a consumer should offer it on demand rather than auto-open it |
 | `providerLogin.userCode` | string | Device code the user enters (`await_device_code`, optional) |
 | `providerLogin.verificationUrl` | string | Where the user enters the device code (`await_device_code`, optional) |
 | `providerLogin.loginError` | string | Failure reason (`failed`, optional) |
 | `providerLogin.loginId` | string | CLI login handle, usable to cancel the flow (optional) |
+
+**Stage directions.** `await_device_code` and `await_auth_code` both involve a code, in opposite directions. On `await_device_code` the CLI generated the code and the user types it into the provider's verification page. On `await_auth_code` the *provider* issued the code to the user in the browser and the CLI is waiting for it on stdin — the consumer must return it with [`provider_login_code`](client-commands.md#provider_login_code). A login parked on `await_auth_code` makes no progress until it does.
+
+**Terminal stages.** Every login ends in exactly one of `completed`, `failed`, or `cancelled`. The engine guarantees this even when a login driver fails without reporting a stage of its own, so a consumer can always retire its pending-login state on the first terminal stage it sees.
 
 #### engine_providers_updated
 
