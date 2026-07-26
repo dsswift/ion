@@ -42,9 +42,73 @@ Cohesion of change: a feature lives in one folder. Full reference: `docs/archite
 ## Context files
 
 - `AGENTS.md` is canonical and committed.
-- `CLAUDE.md` is a local-only symlink to sibling `AGENTS.md`. Gitignored. Run `make claude-symlinks` (or `npm install` in `desktop/`) to create.
+- `CLAUDE.md` is a local-only symlink to sibling `AGENTS.md`. Gitignored. Created by `make bootstrap` (or directly via `make claude-symlinks`).
 - Do not seed per-bounded-context `AGENTS.md`. Defer until traces show confusion.
 - **Before any work that touches `engine/`, read [`docs/engine-grounding.md`](docs/engine-grounding.md).** It is the non-negotiable framing for engine changes — contract stability, snapshot semantics, engine-vs-harness boundaries, and the "modifying the engine is restricted" default. Engine work without this grounding is a defect.
+
+## Codebase questions — query the graph first, always
+
+**When the task is to understand how something in this codebase works, your FIRST tool call is a graph query.** Not a `Grep`. Not a `Read`. Not a check for whether the graph exists. Query it.
+
+```bash
+graphify query "<identifier or question>"
+```
+
+**Do not check whether the graph exists — just query it.** If graphify is not installed or this clone has no graph, the command fails in about 2 milliseconds with `command not found` or a missing-file error. That failure is your signal: fall back to `Grep`/`Glob`/`Read` and continue without comment. One failed call costs nothing measurable; the sweep it replaces costs a dozen calls and a large slice of the context window.
+
+This is deliberately unconditional. An earlier version of this section led with "graphify is optional" and told you to probe for `graphify-out/graph.json` first. The result was an agent that ran the probe, got `EXISTS`, and then swept with ~24 `Grep`/`Read` calls anyway — the check became a ritual that made skipping look like compliance. A conditional instruction is a decision point, and a decision point resolves toward the habitual path. So: no probe, no condition, query first and let failure route you.
+
+**Graphify remains optional for contributors.** Nothing in Ion requires it — no build, test, CI job, or quality gate reads the graph, and a clone without it is fully supported (`make bootstrap` prints a notice and moves on). "Optional to install" and "query it first when you are working" are different statements: the first is a project-dependency fact for humans, the second is an instruction to you. Never treat a missing graph as a setup error, never suggest installing graphify, and never make answering a question contingent on it — just fall through to file search.
+
+Fires on any question about structure, flow, or relationships: "how does X work", "what calls Y", "trace the path from A to B", "where is Z handled", "does subsystem X notify Y". It fires on the *shape of the question*, not on the user typing `/graphify` — a plain-English architecture question is exactly the trigger.
+
+```bash
+graphify query "<question>"              # BFS traversal, broad context
+graphify query "<question>" --dfs        # trace one specific path
+graphify query "<question>" --budget N   # widen when results are truncated
+```
+
+**Seed on identifiers, not prose.** The traversal seeds on the query's terms, so generic words (`agent`, `call`, `done`, `handler`) seed on generic nodes and return noise. Name the symbol, type, function, or file you are actually asking about — `startBackgroundBashTask`, `buildPlanModePrompt`, `bash_background.go` — and the traversal lands on the right neighborhood. If a query returns unrelated nodes, re-run it with a concrete identifier before falling back to grep.
+
+**When you have a symptom and no symbol, grep once to get one.** The rule above assumes you already know the identifier, which is the easy case. The hard case is a behavioural symptom — "the orchestrator doesn't re-activate", "the tab shows the wrong status" — where the natural query is a sentence and a sentence seeds on nothing useful. The move is: grep for one distinctive literal from the symptom (a log message, an error string, a UI label, a config key), take the symbol name that grep lands on, then query the graph on *that*. One grep to acquire an identifier, then the graph for the relationships around it.
+
+The failure this prevents is real and has happened here: a plan-mode session investigating a wake-up bug queried `"background agent completion re-activate orchestrator conversation idle"` — six prose words, no identifier — got nothing usable, and fell back to a manual `ls` / `grep -rn` / `Read` sweep for the rest of the investigation. Seeding the same question on `startBackgroundBashTask` returns the correct neighbourhood in one call.
+
+Nodes are functions, methods, types, and files. Package-level variables and constants are not extracted, so a query for one returns `No matching nodes found` — that means "not a node," not "not in the codebase." Query the function that reads it, or grep for it directly.
+
+The graph is a starting point, not the authority. It tells you *where* to look; the source file is what you read and cite. Treat a truncation notice as an instruction to raise `--budget` or narrow the query, not as the full answer.
+
+### The graph is a local build cache
+
+`graphify-out/` is **gitignored**. It never appears in `git status`, a diff, or a pull request, and there is nothing to commit, schedule, or clean up. It is derived entirely from tracked source and read by no build, test, or CI job — which is what makes graphify safe to leave uninstalled.
+
+`make bootstrap` builds it when graphify is available, and prints a skip notice when it is not. Bootstrap always succeeds either way: it is the entry point for **every** contributor, not just graphify users, because it is also what activates the git hooks (commitlint, the pre-push gates). Skipping bootstrap to avoid graphify would forfeit those gates and gain nothing.
+
+Once a graph exists the hooks keep it current — `post-commit` for your own commits, `post-checkout` for branch switches, and Ion's own `post-merge` / `post-rewrite` for pulls, rebases, and amends (`scripts/graphify-rebuild.sh`). They re-extract changed files incrementally, AST-only, in a detached process, and write files without ever staging or committing them. Every one of them exits cleanly when graphify is absent, so a contributor without it sees no failures. Set `GRAPHIFY_SKIP_HOOK=1` to skip one rebuild.
+
+Because the rebuild is detached, it finishes a few seconds *after* the commit that triggered it closes. The graph is therefore always a moment behind. That is by design and requires no action.
+
+**To rebuild from scratch, run `make graph-rebuild`.** It moves the existing graph aside, re-extracts, and restores the old one if extraction fails — no manual `rm -rf` needed, and a failed rebuild never leaves the clone with no graph. (`make graph` builds only when none exists; `make graph-refresh` re-extracts incrementally into the existing one.) All three are cheap and offline: extraction is pure local tree-sitter (`graphify . --code-only`, skipping the docs/PDFs/images that would need an LLM backend), then `graphify cluster-only . --no-viz --no-label` partitions communities and writes `GRAPH_REPORT.md`. No API key, nothing leaves the machine. Reach for a rebuild to purge nodes that repeated incremental updates have left stale.
+
+Community **partitioning** is offline; community **naming** is not. `--no-label` keeps the build key-free and leaves `Community N` placeholders, which is what a bootstrapped clone gets. Descriptive names ("Plan Mode Prompt Builder") come from `graphify label` with a backend configured — useful for readability, an opt-in cost, and never required to query the graph.
+
+`make bootstrap` is the one command a fresh clone needs:
+
+```bash
+make bootstrap    # npm install (husky hooks) + CLAUDE.md symlinks + graph build
+```
+
+Until it runs, no hook fires — git looks in an empty `.git/hooks`, because `core.hooksPath` is per-clone state that git never clones. Bootstrap is idempotent, and it skips the graph build when one already exists.
+
+The graphify skill at `.ion/skills/graphify/` and the project `.ion/engine.json` that permits `graphify` in plan mode **are** tracked, so they arrive with the clone and need nothing. Only the graph is built locally.
+
+A missing graphify install is never fatal. Bootstrap prints an install notice and continues; the rebuild hooks resolve their interpreter through a probe chain (a `$HOME`-relative pin, then `graphify-out/.graphify_python`, the `graphify` launcher on `PATH`, its shebang, then `python3`/`python`) and exit cleanly with a remediation message if every probe misses. A commit never fails over graphify.
+
+Graphify is a general-purpose tool with no knowledge of Ion, so its `graphify install` targets (`.claude/`, `.codex/`, `.agents/`) do not match Ion's layout. Ion reads skills from `~/.ion/skills/` and `./.ion/skills/`. This repo's copy is tracked at `.ion/skills/graphify/` and arrives with the clone — **do not run `graphify install`**, which would write a tree Ion never loads. (This prohibition covers `graphify install` only; `graphify hook install` is a different subcommand that writes git hooks and is husky-aware. Bootstrap calls neither — the hooks are already tracked.)
+
+Project-scoped skills reach only sessions whose working directory contains them (`internal/skills/skills_session.go`), so the graphify skill is advertised in this repo's conversations and nowhere else.
+
+Full lifecycle context, including where the graph sits relative to `/align`, `/squash`, and `/create-pr`: [`docs/contributing/branch-lifecycle.md`](docs/contributing/branch-lifecycle.md).
 
 ## Local hooks
 

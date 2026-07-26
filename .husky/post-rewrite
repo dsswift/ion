@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+# Refresh the graphify graph after history is rewritten — `git rebase` and
+# `git commit --amend`.
+#
+# graphify's post-commit and post-checkout hooks deliberately bail while a
+# rebase is in progress, so replaying N commits does not fire N racing
+# rebuilds. That suppression is correct but leaves nothing to cover the result:
+# post-rewrite is git's post-rebase notification, and graphify does not install
+# it. See scripts/graphify-rebuild.sh.
+#
+# git passes the trigger ("rebase" or "amend") as $1.
+bash scripts/graphify-rebuild.sh "${1:-rewrite}"

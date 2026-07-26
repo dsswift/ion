@@ -57,16 +57,33 @@ Four git hooks, managed by husky. They install themselves: root `package.json` h
 
 `pre-push` is the gate that catches most problems locally. Bypass with `git push --no-verify` only when you mean it.
 
-## The graph is a local cache
+## The graph is a local cache (and optional)
 
-`graphify-out/` holds a knowledge graph of the codebase that agents query instead of grepping. Understanding one thing about it prevents most confusion: **it is a gitignored local build cache, and there is nothing for you to do about it, ever.**
+`graphify-out/` holds a knowledge graph of the codebase that agents can query instead of grepping. Two things to know, and the second matters more than the first.
+
+**It is entirely optional.** Graphify is not a project requirement. No build, test, CI job, or quality gate reads the graph. If you do not have graphify installed — or cannot install it in your environment — `make bootstrap` prints a skip notice and completes normally, you get every quality gate, and nothing else about contributing changes. Agents are instructed to fall back to ordinary file search when no graph is present.
+
+**Run `make bootstrap` regardless.** It is the entry point for every contributor, not just graphify users, because it is what activates the git hooks (commitlint on every commit, the pre-push gate suite). Skipping it to avoid graphify would forfeit those gates and gain nothing.
+
+If you *do* use graphify, understanding one thing prevents all confusion: **it is a gitignored build cache and there is nothing for you to do about it, ever.**
 
 - It never appears in `git status`, a diff, or a pull request.
 - It needs no commit, no cadence, and no cleanup.
 - The rebuild hooks **write files but never stage or commit them** — neither `.husky/post-commit` nor `.husky/post-checkout` runs `git add` or `git commit`. They rewrite `graph.json` and `GRAPH_REPORT.md` in place and exit. (`post-commit` mentions `git commit` in one comment, explaining why the rebuild is detached; it does not invoke it.)
-- The rebuild is **detached**, finishing a few seconds after the commit that triggered it closes. The graph is therefore always a moment behind the commit that caused it, which is expected and harmless.
+- The rebuild is **detached**, finishing a few seconds after the triggering command returns. The graph is therefore always a moment behind, which is expected and harmless.
+- Every rebuild path exits cleanly when graphify is missing, so a contributor without it never sees a hook failure.
 
-`make bootstrap` builds the graph once on a fresh clone. `make graph` rebuilds it deliberately — useful if the graph is lost, or to purge nodes that repeated incremental rebuilds have left stale. Both are offline and need no API key: code extraction is local tree-sitter and community labels are LLM-free.
+Refreshes are automatic across every path that changes history: your own commits (`post-commit`), branch switches (`post-checkout`), and pulls, rebases, and amends (Ion's own `post-merge` / `post-rewrite`, via `scripts/graphify-rebuild.sh`). You should never need to refresh by hand.
+
+| Command | When |
+|---|---|
+| `make bootstrap` | Once per clone. Builds the graph if graphify is installed. |
+| `make graph-refresh` | Force an incremental update, e.g. after a `GRAPHIFY_SKIP_HOOK=1` commit |
+| `make graph-rebuild` | Discard and re-extract, to purge nodes left stale by incremental updates |
+
+All of these are offline and need no API key: extraction is local tree-sitter, and community partitioning runs with `--no-label` so nothing calls out.
+
+That last flag is why a freshly bootstrapped graph shows `Community 172` rather than a descriptive name. Partitioning is offline; *naming* the communities calls an LLM backend, so bootstrap skips it by default. Run `graphify label` with a backend configured if you want readable names — it improves query output but is never required to query.
 
 Set `GRAPHIFY_SKIP_HOOK=1` to suppress the rebuild for one command.
 
@@ -79,4 +96,6 @@ git clone <repo> && cd ion
 make bootstrap
 ```
 
-That is the whole setup. `make bootstrap` runs `npm install` (activating the hooks), creates the `CLAUDE.md` symlinks, and builds the graph. It is idempotent — re-run it any time.
+That is the whole setup. `make bootstrap` runs `npm install` (activating the hooks), creates the `CLAUDE.md` symlinks, and builds the knowledge graph if graphify is installed. It is idempotent — re-run it any time.
+
+Graphify is the only optional piece. Without it bootstrap prints a skip notice and completes; you get every quality gate and lose only the graph. Install it with `uv tool install graphifyy` (or `pipx install graphifyy`) and re-run `make bootstrap` if you want it later.

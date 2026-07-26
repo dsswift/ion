@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+# Refresh the graphify graph after a merge — most importantly `git pull`.
+#
+# graphify's own post-checkout hook only fires on a branch switch, so a
+# fast-forward pull rebuilds nothing. This is the hook git provides for that
+# case, and graphify does not install it. See scripts/graphify-rebuild.sh.
+bash scripts/graphify-rebuild.sh "merge/pull"
