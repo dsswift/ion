@@ -464,6 +464,7 @@ export class EngineBridge extends EventEmitter {
   async refreshModels(provider?: string): Promise<{ ok: boolean; error?: string }> { return prov.refreshModels(this, provider) }
   async providerLogin(provider: string): Promise<{ ok: boolean; error?: string }> { return prov.providerLogin(this, provider) }
   async providerLoginCancel(provider: string): Promise<{ ok: boolean; error?: string }> { return prov.providerLoginCancel(this, provider) }
+  async providerLoginCode(provider: string, code: string): Promise<{ ok: boolean; error?: string }> { return prov.providerLoginCode(this, provider, code) }
   async providerLogout(provider: string): Promise<{ ok: boolean; error?: string }> { return prov.providerLogout(this, provider) }
 
   sendReconcileState(key: string): void { sendReconcileStateImpl(this, key) }

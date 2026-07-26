@@ -241,9 +241,11 @@ export interface IonAPI extends AtvApi {
   storeCredential(provider: string, credential: string): Promise<{ ok: boolean; error?: string }>
   refreshModels(provider?: string): Promise<{ ok: boolean; error?: string }>
 
-  // ─── Delegated-CLI provider auth (codex/grok/cursor) ───
+  // ─── Delegated-CLI provider auth (codex/claude-code/grok/cursor) ───
   providerLogin(provider: string): Promise<{ ok: boolean; error?: string }>
   providerLoginCancel(provider: string): Promise<{ ok: boolean; error?: string }>
+  /** Return a browser-issued auth code to a login parked on await_auth_code. */
+  providerLoginCode(provider: string, code: string): Promise<{ ok: boolean; error?: string }>
   providerLogout(provider: string): Promise<{ ok: boolean; error?: string }>
   onProviderLoginEvent(handler: (update: import('../shared/types-engine-event').ProviderLoginUpdate) => void): () => void
 
