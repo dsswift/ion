@@ -193,7 +193,7 @@ When enterprise policy strips something from a merged config, the engine records
 | `mcp_pruned` | An MCP server was removed by `mcpAllowlist` / `mcpDenylist`. |
 | `plan_mode_bash_pruned` | A plan-mode Bash command was rejected by the enterprise ceiling. Subject is the rejected command. |
 
-Actions are recorded during config merge and drained at serve startup and on each enterprise config reload, then emitted through the telemetry pipeline. With central log collection configured they land alongside the rest of the engine's structured output — see [Central Log Collection](central-log-collection.md) and [Telemetry](telemetry.md).
+Actions are recorded during config merge and drained once at serve startup, then emitted through the telemetry pipeline. The engine has no config-reload watcher, so a policy change is audited on the next start rather than live; the recorder is bounded (FIFO, 1024 actions) so nothing accumulates in the meantime. With central log collection configured they land alongside the rest of the engine's structured output — see [Central Log Collection](central-log-collection.md) and [Telemetry](telemetry.md).
 
 The recorder is bounded, so a consumer that never drains it keeps the most recent actions rather than growing without limit.
 
@@ -234,7 +234,7 @@ This configuration:
 - Restricts to Anthropic models only
 - Blocks the Bash tool (no shell access)
 - Limits MCP to filesystem and GitHub servers
-- Caps plan-mode shell access to three read-only commands
+- Caps plan-mode shell access to a read-only command set
 - Requires user approval for all tool invocations
 - Enforces sandbox on all sessions
 - Ships telemetry to a central SIEM

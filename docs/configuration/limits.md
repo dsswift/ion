@@ -1,7 +1,7 @@
 ---
 title: Resource Limits
 description: Configuring turn limits and budget ceilings for Ion Engine sessions.
-sidebar_position: 5
+sidebar_position: 6
 ---
 
 # Resource Limits

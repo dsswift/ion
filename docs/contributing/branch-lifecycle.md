@@ -45,15 +45,17 @@ A branch that reads "four squashed commits, then two fix commits" is honest hist
 
 ## What runs automatically
 
-Four git hooks, managed by husky. They install themselves: root `package.json` has `"prepare": "husky"`, so `npm install` (or `make bootstrap`, which wraps it) points `core.hooksPath` at `.husky/_`.
+Git hooks, managed by husky. They install themselves: root `package.json` has `"prepare": "husky"`, so `npm install` (or `make bootstrap`, which wraps it) points `core.hooksPath` at `.husky/_`.
 
 | Hook | When | What |
 |------|------|------|
 | `pre-commit` | Every commit | `actionlint` on workflow files, when any are staged |
 | `commit-msg` | Every commit | `commitlint` — enforces `type(scope): subject` against the allowed scope list |
-| `pre-push` | Every push | File-size cap, dashboards drift audit, and change-scoped lint / build / typecheck / tests |
+| `pre-push` | Every push | File-size cap, dashboards drift audit, and change-scoped lint / build / typecheck / tests. Husky runs hooks with `sh -e`, so `.husky/pre-push` is a dash-safe delegator that execs bash on `scripts/pre-push.sh` — the gate body needs bash, and the shebang is not consulted |
 | `post-commit` | Commits touching code | Rebuilds the graphify knowledge graph incrementally (AST-only, detached) |
 | `post-checkout` | Branch switches | Same graph rebuild |
+| `post-merge` | `git pull` / merge | Graph refresh via `scripts/graphify-rebuild.sh` — a fast-forward moves the branch pointer without a checkout, so `post-checkout` never fires |
+| `post-rewrite` | `git rebase` / amend | Same refresh; `post-commit` and `post-checkout` both bail during a rebase, so this is their counterpart |
 
 `pre-push` is the gate that catches most problems locally. Bypass with `git push --no-verify` only when you mean it.
 

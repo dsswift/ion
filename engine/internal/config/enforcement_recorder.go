@@ -74,9 +74,11 @@ func recordEnforcement(kind EnforcementActionKind, subject, source string, field
 }
 
 // DrainEnforcementActions returns all recorded enforcement actions and clears
-// the recorder. Called at serve startup (and on each EnforceEnterprise reload
-// pass, via the drain hook wired in cmd_serve) to emit one telemetry event per
-// action. Safe for concurrent use.
+// the recorder. Called once at serve startup (cmd/ion/cmd_serve.go, via
+// drainEnforcementActions) to emit one telemetry event per action. There is no
+// config-reload path that drains again — the engine has no reload watcher — so
+// actions recorded after startup surface on the next start. The recorder is
+// bounded FIFO, so that is a delay rather than a leak. Safe for concurrent use.
 func DrainEnforcementActions() []EnforcementAction {
 	enforcementMu.Lock()
 	defer enforcementMu.Unlock()
