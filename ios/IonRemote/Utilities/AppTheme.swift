@@ -32,6 +32,12 @@ protocol AppTheme {
     /// `ConversationStatusBar.swift` and `TabRowView.swift` for the
     /// render sites.
     var statusWaitingChildren: Color { get }
+    /// Background bash commands the session is holding for. Rendered as a
+    /// pink pulsing dot, ranked directly after `statusWaitingChildren` in the
+    /// tab-dot cascade. Mirrors the desktop's `statusBash` token — a shell
+    /// process running detached from any turn, distinct from a dispatched
+    /// agent. See `TabStatusRollup.swift` and `EngineInstanceBar.swift`.
+    var statusBash: Color { get }
     /// Mixed tool-group outcome: some tools failed, but not all. Amber
     /// triangle. Distinct from `statusError` (all failed) so partial
     /// failure is visually differentiated from total failure.
@@ -232,6 +238,7 @@ final class ThemeManager: AppTheme {
     var statusError: Color { _currentTheme.statusError }
     var statusPending: Color { _currentTheme.statusPending }
     var statusWaitingChildren: Color { _currentTheme.statusWaitingChildren }
+    var statusBash: Color { _currentTheme.statusBash }
     var statusWarning: Color { _currentTheme.statusWarning }
     var surfaceElevated: Color { _currentTheme.surfaceElevated }
     var codeBg: Color { _currentTheme.codeBg }

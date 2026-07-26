@@ -77,7 +77,10 @@ enum TabStatusRollup {
     static let runningTeal = Color(hex: 0x5EA9C9)
     static let questionPurple = Color(hex: 0xA78BFA)
     /// Blaze pink for the shell-activity dot. Mirrors the desktop Ion Dark
-    /// `statusBash` (#ff2d95), pinned identical by the theme-parity fixture.
+    /// `statusBash` (#ff2d95). Like every constant in this block the value is
+    /// theme-independent by design (see the note above), and the Ion Dark
+    /// source value it mirrors is pinned by assets/theme-parity.json —
+    /// asserted from both sides by theme-parity.test.ts and ThemeParityTests.
     /// Deliberately far from errorColor so "a shell is running" never reads as
     /// an error.
     static let shellPink = Color(hex: 0xFF2D95)
