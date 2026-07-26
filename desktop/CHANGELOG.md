@@ -10,6 +10,13 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.68.1](https://github.com/dsswift/ion/compare/desktop-v1.68.0...desktop-v1.68.1) (2026-07-26)
+
+### Bug Fixes
+
+* **desktop:** wire claude-code auth code entry and pre-probe state (#320) ([f75dac7](https://github.com/dsswift/ion/commit/f75dac7afd8e02d9e963fb7bf991f4def4ac7d5e))
+* **desktop:** quit a running Ion before installing the .pkg (#318) ([8275392](https://github.com/dsswift/ion/commit/8275392755b59e9c32c330f6f9e9b6d32fce26c3))
+
 ## [1.68.0](https://github.com/dsswift/ion/compare/desktop-v1.67.0...desktop-v1.68.0) (2026-07-26)
 
 ### Features

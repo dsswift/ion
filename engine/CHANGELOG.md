@@ -13,6 +13,12 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.56.1](https://github.com/dsswift/ion/compare/engine-v1.56.0...engine-v1.56.1) (2026-07-26)
+
+### Bug Fixes
+
+* **engine:** implement claude-code auth probe and login driver (#320) ([f222aa4](https://github.com/dsswift/ion/commit/f222aa43a2c780408f5bde13a3612fa6483a9621))
+
 ## [1.56.0](https://github.com/dsswift/ion/compare/engine-v1.55.0...engine-v1.56.0) (2026-07-26)
 
 ### Features
