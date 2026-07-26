@@ -27,9 +27,8 @@ import {
   saveSessionLabels,
 } from '../settings-store'
 import { initRemoteTransport } from '../remote/transport-init'
-import { composeOidcScope } from '../remote/relay-auth'
+import { sendRelayConfigToPeers } from '../remote/relay-config-push'
 import { persistAndBroadcastSettings } from '../settings-broadcast'
-import { getConfiguredOidcClientId } from '../oauth/entra-auth'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -43,11 +42,26 @@ function warn(msg: string, fields?: Record<string, unknown>): void {
 
 /**
  * Settings keys owned exclusively by the main process. Written by dedicated
- * main-side paths (pairing handler, revoke) — never legitimately changed by a
- * renderer SAVE_SETTINGS payload, whose full-object saves would otherwise
- * clobber them with a stale store snapshot. Exported for the regression test.
+ * main-side paths (pairing handler, revoke, the relay OIDC probe) — never
+ * legitimately changed by a renderer SAVE_SETTINGS payload, whose full-object
+ * saves would otherwise clobber them with a stale store snapshot. Exported for
+ * the regression test.
+ *
+ * The relay OIDC keys are probe-derived: `probeRelayAuthConfig` discovers them
+ * from the relay's auth-config endpoint and `transport-init` persists them. The
+ * renderer has no reference to any of them (they are absent from
+ * `getAllSettings` in `renderer/preferences-persist.ts`), so they arrive as
+ * `undefined` in every SAVE_SETTINGS payload. The merge in the handler below
+ * already preserves absent keys; listing them here is the second line of
+ * defence for the day a renderer surface starts sending them.
  */
-export const MAIN_OWNED_SETTINGS_KEYS = ['pairedDevices'] as const
+export const MAIN_OWNED_SETTINGS_KEYS = [
+  'pairedDevices',
+  'relayAuthMode',
+  'relayOidcIssuer',
+  'relayOidcAudience',
+  'relayOidcRequiredScope',
+] as const
 
 // ─── Tab persistence safety ───
 //
@@ -119,51 +133,56 @@ export function registerSettingsIpc(): void {
         else delete data[key]
       }
 
+      // Merge over disk rather than replacing it. `writeSettings` serializes
+      // exactly what it is handed, so a key absent from the renderer's payload
+      // is DELETED from settings.json — and the renderer's payload is a fixed
+      // key list (`getAllSettings` in renderer/preferences-persist.ts) that
+      // knows nothing about keys written only by main-process paths.
+      //
+      // The failure this prevents: the relay OIDC probe persisted
+      // relayAuthMode + the three relayOidc* keys, then the next preference
+      // toggle (any toggle — they all send the same full object) erased them.
+      // The peer-connect handler then read relayAuthMode as undefined,
+      // defaulted to PSK, and pushed an empty credential to the paired iPhone,
+      // which persisted the emptiness into its keychain and lost the ability
+      // to reconnect over the relay.
+      //
+      // Merging is loss-free for renderer-owned keys: the renderer always
+      // emits its full list, so every key it owns is present in `data` and
+      // overwrites the disk value. It never deletes a key it owns.
+      const merged: Record<string, unknown> = { ...prev, ...data }
+
       // Single write+broadcast path shared with the iOS set_desktop_setting
       // wire command. The helper handles persistence atomically and emits a
       // desktop_settings_snapshot only when a projectable key changed (the
       // diff lives inside the helper now). Per engine-grounding §6 — both
       // edit surfaces funnel through one helper, exactly one log prefix
       // ([SETTINGS] persistAndBroadcast) to grep for in audit traces.
-      persistAndBroadcastSettings(data, prev)
+      persistAndBroadcastSettings(merged, prev)
 
+      // Compare against `merged`, not `data`: `merged` is what is persisted and
+      // what initRemoteTransport is handed below, so the decision and the
+      // action must read the same object. A caller that omits relayUrl (a
+      // partial patch) would otherwise compute `undefined !== 'wss://…'` and
+      // fire a spurious transport re-init and relay push.
       const transportConfigChanged =
-        data.remoteEnabled !== prev.remoteEnabled ||
-        data.relayUrl !== prev.relayUrl ||
-        data.relayApiKey !== prev.relayApiKey ||
-        data.lanServerPort !== prev.lanServerPort
-      if (transportConfigChanged && typeof data.remoteEnabled === 'boolean') {
-        initRemoteTransport(data)
+        merged.remoteEnabled !== prev.remoteEnabled ||
+        merged.relayUrl !== prev.relayUrl ||
+        merged.relayApiKey !== prev.relayApiKey ||
+        merged.lanServerPort !== prev.lanServerPort
+      if (transportConfigChanged && typeof merged.remoteEnabled === 'boolean') {
+        initRemoteTransport(merged)
       }
 
-      const relayConfigChanged = data.relayUrl !== prev.relayUrl || data.relayApiKey !== prev.relayApiKey
+      const relayConfigChanged = merged.relayUrl !== prev.relayUrl || merged.relayApiKey !== prev.relayApiKey
       if (relayConfigChanged && !transportConfigChanged && state.remoteTransport) {
-        const s = readSettings()
-        const relayUrl = (data.relayUrl as string) || ''
-        const relayApiKey = (data.relayApiKey as string) || ''
-        const relayAuthMode = (s.relayAuthMode as string) || 'psk'
-        if (relayUrl) {
-          const msg = relayAuthMode === 'oidc' ? {
-            type: 'desktop_relay_config' as const,
-            relayUrl,
-            relayApiKey,
-            authMode: 'oidc' as const,
-            relayOidcIssuer: (s.relayOidcIssuer as string) || '',
-            relayOidcAudience: (s.relayOidcAudience as string) || '',
-            // Composed scope (api://<audience>/<scope>) — iOS passes it
-            // verbatim to Entra; idempotent when already composed.
-            relayOidcRequiredScope: composeOidcScope(
-              (s.relayOidcAudience as string) || '',
-              (s.relayOidcRequiredScope as string) || ''
-            ),
-            relayOidcClientId: getConfiguredOidcClientId(),
-          } : {
-            type: 'desktop_relay_config' as const,
-            relayUrl,
-            relayApiKey,
-          }
-          state.remoteTransport.send(msg)
-        }
+        // Same single push path the peer-connect handler uses: resolves the
+        // auth mode from the transport's own resolution before falling back to
+        // disk, and never sends a credential-less config (which would wipe the
+        // phone's stored relay record).
+        void sendRelayConfigToPeers('relay-settings-changed').catch((err) =>
+          warn('settings: relay_config push failed', { error: String(err) }),
+        )
       }
     } catch (err) {
       log('settings: save failed', { error: String(err) })
