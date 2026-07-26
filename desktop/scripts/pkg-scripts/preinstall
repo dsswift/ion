@@ -1,0 +1,72 @@
+#!/bin/bash
+# @file-size-exception: installer script; length is inline documentation, not logic
+#
+# preinstall — quit a running Ion before the .pkg payload is written.
+#
+# Installing over a live app bundle corrupts the running process's own code and
+# resources: the payload lands on top of the executable, frameworks, and the
+# bundled engine binary while they are mapped and in use, which crashes or fails
+# the install and leaves /Applications/Ion.app in a broken state.
+#
+# This mirrors the graceful-quit sequence the source-build installer performs
+# (desktop/commands/install-app.command). The app handles SIGUSR1 by draining
+# active agents, flushing renderer tab state, booting out the engine daemon so
+# launchd does not restart it, then exiting (src/main/app-lifecycle.ts).
+#
+# Contract: this script MUST exit 0 on every path. A non-zero exit aborts the
+# whole install, so "Ion is not running" and "the PID vanished mid-wait" are
+# success cases, not failures. Nothing here is load-bearing for correctness of
+# the payload itself — it only protects a live process.
+#
+# Timing: pkgbuild kills a top-level script after 10 minutes. The drain wait
+# below is bounded well under that ceiling.
+
+APP_NAME="Ion"
+# Graceful-drain budget. Under the pkgbuild 10-minute script ceiling with room
+# for the force-kill and helper reap that follow.
+DRAIN_TIMEOUT=300
+
+log() { printf '[Ion preinstall] %s\n' "$1"; }
+
+# Match only the main app executable, never helper processes or an unrelated
+# binary whose path happens to contain "Ion".
+APP_PID="$(pgrep -f "${APP_NAME}.app/Contents/MacOS/${APP_NAME}\$" 2>/dev/null | head -1)"
+
+if [ -z "$APP_PID" ]; then
+  log "${APP_NAME} is not running; proceeding with install."
+  exit 0
+fi
+
+log "${APP_NAME} is running (pid ${APP_PID}). Signaling it to finish active agents and quit..."
+kill -USR1 "$APP_PID" 2>/dev/null || true
+
+WAITED=0
+while kill -0 "$APP_PID" 2>/dev/null && [ "$WAITED" -lt "$DRAIN_TIMEOUT" ]; do
+  sleep 1
+  WAITED=$((WAITED + 1))
+  if [ $((WAITED % 15)) -eq 0 ]; then
+    log "Waiting for agents to finish... (${WAITED}s)"
+  fi
+done
+
+if kill -0 "$APP_PID" 2>/dev/null; then
+  log "Drain timed out after ${DRAIN_TIMEOUT}s; force quitting ${APP_NAME}."
+  kill -9 "$APP_PID" 2>/dev/null || true
+  sleep 1
+else
+  log "${APP_NAME} shut down gracefully after ${WAITED}s."
+fi
+
+# Reap stray helper processes (GPU, network, renderer, audio). These do not
+# respond to SIGUSR1 and would keep file handles open on the bundle being
+# replaced.
+STRAY_PIDS="$(pgrep -f "${APP_NAME}.app/Contents" 2>/dev/null || true)"
+if [ -n "$STRAY_PIDS" ]; then
+  log "Reaping stray ${APP_NAME} helper processes."
+  # shellcheck disable=SC2086 # intentional word splitting: pgrep returns a PID list
+  kill -9 $STRAY_PIDS 2>/dev/null || true
+  sleep 1
+fi
+
+log "Ready to install."
+exit 0

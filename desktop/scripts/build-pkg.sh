@@ -14,6 +14,17 @@
 #      to /Applications. pkgbuild's component-install semantics REPLACE any
 #      existing /Applications/Ion.app, which satisfies feature 0009 Scenario 1
 #      (force-overwrite on reinstall) for free.
+#   4. Embeds pkg-scripts/ so the package carries a preinstall that quits a
+#      running Ion before overwriting its bundle. Replacing a live app bundle
+#      corrupts the running process and fails the install; the preinstall sends
+#      SIGUSR1 (the app's graceful-drain signal), waits, then force-quits. It
+#      always exits 0, so a not-running app never blocks the install.
+#
+# Note: the .dmg target cannot do this. A DMG is a drag-to-Applications disk
+# image with no install-time hook (electron-builder's dmg options expose no
+# script key), so Finder performs the copy and no project code runs. Users
+# updating in place should use the in-app updater, which quits before swapping
+# the bundle (src/main/updater.ts).
 #
 # Prerequisites: a built Ion.app. Produce one with:
 #     cd desktop && npm run dist            # builds release/mac*/Ion.app
@@ -74,11 +85,15 @@ OUT_PKG="${RELEASE_DIR}/Ion-${VERSION}.pkg"
 # --component packages the app as a single component payload.
 # --install-location /Applications makes the installer place (and replace)
 # Ion.app there. --identifier + --version tag the package for MDM tracking.
+# --scripts embeds pkg-scripts/, whose preinstall quits a running Ion before the
+# payload is written (installing over a live bundle crashes or fails). The
+# script exits 0 when Ion is not running, so it never blocks an install.
 pkgbuild \
   --component "${APP_PATH}" \
   --install-location "/Applications" \
   --identifier "${APP_IDENTIFIER}" \
   --version "${VERSION}" \
+  --scripts "${SCRIPT_DIR}/pkg-scripts" \
   "${OUT_PKG}"
 
 log "built installer: ${OUT_PKG}"
