@@ -862,3 +862,80 @@ Uninstall a plugin by name. The `label` field carries the plugin name to remove.
 ```
 
 **Response:** `ServerResult` with `data: { removed: string }` echoing the removed plugin name.
+
+---
+
+### provider_login
+
+Start an interactive login for a provider's delegated CLI (`anthropic` → claude-code, `openai` → codex, `xai` → grok, `cursor` → cursor). The engine resolves the CLI kind, drives the flow in the background, and broadcasts [`engine_provider_login`](server-events.md#engine_provider_login) stage events. **The socket never blocks:** the command returns as soon as the flow is started. A provider with no delegated CLI returns an error.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"provider_login"` | yes | Command discriminator |
+| `provider` | string | yes | Provider ID whose CLI should authenticate |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"provider_login","provider":"anthropic","requestId":"r47"}
+```
+
+**Response:** `ServerResult` with `data: { started: true, backend: string }` naming the CLI kind driving the flow.
+
+Starting a login for a provider that already has one in flight cancels the previous one. On completion the engine re-probes the CLI and broadcasts `engine_providers_updated`, so consumers re-query `list_models` rather than assuming the new auth state.
+
+---
+
+### provider_login_code
+
+Return a browser-issued authorization code to a login parked on the `await_auth_code` stage. Required by flows the engine drives through a CLI's manual-paste fallback rather than its own callback: the provider hands the user a code in the browser and the CLI waits for it on stdin, so the consumer must carry it back.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"provider_login_code"` | yes | Command discriminator |
+| `provider` | string | yes | Provider whose parked login the code belongs to |
+| `text` | string | yes | The authorization code |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"provider_login_code","provider":"anthropic","text":"<code>","requestId":"r48"}
+```
+
+**Response:** `ServerResult` with `data: { delivered: true }`. Returns an error when the provider has no in-flight login, or when a code was already supplied for it.
+
+The code is a bearer-grade secret. The engine logs only its length, never its value; consumers should do the same. Each parked login accepts exactly one code, and codes are scoped to their own login — a code sent for one provider can never reach another provider's flow.
+
+---
+
+### provider_login_cancel
+
+Abort an in-flight login for a provider. Cancels the driver's context, which terminates the CLI subprocess (and for codex, sends `account/login/cancel`).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"provider_login_cancel"` | yes | Command discriminator |
+| `provider` | string | yes | Provider whose login should be aborted |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"provider_login_cancel","provider":"anthropic","requestId":"r49"}
+```
+
+**Response:** `ServerResult` with `data: { cancelled: boolean }` — `false` when no login was in flight for that provider.
+
+---
+
+### provider_logout
+
+Clear the provider CLI's stored credential and re-probe so the provider reflects the signed-out state. Supported for the CLIs that expose a logout surface (codex via its app-server, claude-code via `claude auth logout`); the ACP agents manage their own credential store and return an error.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"provider_logout"` | yes | Command discriminator |
+| `provider` | string | yes | Provider whose CLI credential should be cleared |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"provider_logout","provider":"anthropic","requestId":"r50"}
+```
+
+**Response:** `ServerResult` with `data: { ok: true }`. The logout itself runs in the background and is bounded, so the result acknowledges dispatch rather than completion. A completed logout emits no login-stage event — `engine_providers_updated` is the only signal, so consumers must handle it to notice.

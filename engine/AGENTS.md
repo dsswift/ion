@@ -119,6 +119,8 @@ Client --[Unix socket, NDJSON]--> Server
 
 Engine executes, harness decides. Engine never blocks for user input, never persists user preferences or cross-session memory (conversation-scoped state like `.memory.md` is part of session management, not memory), never decides policy. Engine is UI-agnostic — emits typed data events; clients interpret.
 
+"Never blocks for user input" is a rule about the **socket**: no dispatch arm may hold the client's read loop waiting on a human. Engine-driven interactive flows (delegated-CLI login, OIDC grants) return immediately and continue on a bounded, cancellable background goroutine that may await a user-supplied value delivered by a follow-up command. See [`../docs/engine-grounding.md`](../docs/engine-grounding.md) § 2 for the full framing.
+
 ## Event contracts
 
 The engine's typed events are part of the public contract. Two invariants matter most often:

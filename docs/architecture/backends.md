@@ -105,17 +105,38 @@ openai never issues that request — its models come from `codex model/list`.
 Login is engine-driven but never blocks the socket. The client sends
 `provider_login`; the engine resolves the provider's CLI kind, drives the flow in
 the background, and broadcasts `engine_provider_login` events (one per stage:
-`started`, `await_browser`, `await_device_code`, `completed`, `failed`,
-`cancelled`). The consumer opens the browser or shows the device code; the engine
-opens nothing.
+`started`, `await_browser`, `await_device_code`, `await_auth_code`, `completed`,
+`failed`, `cancelled`). The consumer opens the browser or shows the device code;
+the engine opens nothing. Every login ends in exactly one terminal stage
+(`completed` / `failed` / `cancelled`) — the dispatch layer emits one even when a
+driver fails without reporting a stage itself, so a consumer is never left parked
+on a login that has already ended.
 
 - **codex**: `account/login/start` returns a browser URL or a device code; the
   engine waits for the `account/login/completed` notification.
 - **grok / cursor**: ACP `authenticate`; the CLI drives its own browser.
+- **claude-code**: `claude auth login --claudeai`. The CLI starts a loopback
+  callback server and opens that tab itself, then prints a separate fallback URL
+  whose `redirect_uri` points at the provider (it cannot self-complete). The
+  engine cannot observe the loopback completion, so it drives the fallback:
+  scrape the printed URL, emit `await_browser` with it, then emit
+  `await_auth_code` and write the code the consumer returns via
+  `provider_login_code` to the CLI's stdin. Because the CLI already opened a tab,
+  consumers should surface this URL on demand rather than auto-open it.
 
 `provider_login_cancel` aborts the in-flight login (and sends `account/login/cancel`
-for codex); `provider_logout` clears the codex credential. On completion the
-engine re-probes so the provider flips to authed.
+for codex). `provider_logout` clears the credential for the CLIs that expose a
+logout surface — codex via its app-server RPC, claude-code via the
+non-interactive `claude auth logout`; the ACP agents own their credential store
+and return an error. On completion the engine re-probes so the provider flips to
+authed (or signed-out).
+
+Auth probing is per-CLI and never inferred from install state: a binary on disk
+says nothing about whether the user is signed in. claude-code reports real state
+from `claude auth status --json` and fails closed on a spawn error, empty output,
+or unparseable payload, so a signed-out CLI is never projected as authenticated
+(which would both mislead consumers and let routing select a CLI that cannot
+serve a request).
 
 ## Approvals
 
