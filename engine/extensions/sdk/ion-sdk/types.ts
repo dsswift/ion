@@ -851,8 +851,14 @@ export interface IonContext {
    * have nothing more to do until it completes. Use `suspendUntilAll()` for
    * N-child fan-out (or use the dispatch_agents tool which calls it for you).
    *
-   * Only available inside a dispatched run (depth >= 1). Throws if called at
-   * depth 0 (the orchestrator cannot suspend its own root run).
+   * At depth 0 this parks the ROOT session on its outstanding background bash
+   * commands instead — the same thing the engine does automatically at a turn
+   * boundary, exposed so an extension can end the orchestrator's turn
+   * deliberately. The root's run exits fully rather than parking a live
+   * goroutine, and it is revived by a NEW run when a command completes (see
+   * ADR-023). It throws at depth 0 when there is no active run to park, or no
+   * outstanding notifying background commands to park on — parking with
+   * nothing to wait for would strand the session.
    */
   suspend(): Promise<void>
 
@@ -1707,6 +1713,42 @@ export interface TaskLifecycleInfo {
   extra?: Record<string, unknown>
 }
 
+/**
+ * Payload for `background_task_completed`.
+ *
+ * Reports a background bash command started with
+ * `Bash({ run_in_background: true, notify_on_complete: true })` reaching a
+ * terminal state. Distinct from `TaskLifecycleInfo`, which describes a TURN —
+ * this describes a shell process, keyed by the tasks-registry task id.
+ *
+ * Fires for every notifying command regardless of the engine's configured
+ * delivery mode, so a harness observes completions even when the engine is
+ * configured not to start runs on them.
+ */
+export interface BackgroundTaskCompletedInfo {
+  /** Tasks-registry id of the completed command ("bash-<n>-<millis>"). */
+  task_id: string
+  /** Session that started the command. */
+  session_key: string
+  /** The shell command that ran. */
+  command?: string
+  /** Terminal status: "completed" (exit 0), "failed", or "stopped". */
+  status: string
+  /** Process exit code; 0 for a command stopped before reporting one. */
+  exit_code: number
+  /** Wall-clock milliseconds from start to terminal transition. */
+  elapsed_ms: number
+  /** On-disk file holding the full interleaved stdout+stderr. */
+  output_path?: string
+  /** Bounded in-memory tail of the command's output. */
+  tail?: string
+  /**
+   * The session's still-outstanding background commands at the instant this
+   * one completed. Empty means this was the last one.
+   */
+  remaining_task_ids?: string[]
+}
+
 /** Payload for `elicitation_request`. */
 export interface ElicitationRequestInfo {
   request_id: string
@@ -2150,6 +2192,9 @@ export interface HookPayloadMap {
   // Task (2)
   task_created: TaskLifecycleInfo
   task_completed: TaskLifecycleInfo
+
+  // Background shell commands
+  background_task_completed: BackgroundTaskCompletedInfo
 
   // Elicitation (2)
   elicitation_request: ElicitationRequestInfo

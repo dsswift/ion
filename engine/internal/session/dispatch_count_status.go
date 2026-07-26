@@ -1,7 +1,6 @@
 package session
 
 import (
-
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )

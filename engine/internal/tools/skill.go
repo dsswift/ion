@@ -25,9 +25,9 @@ const SkillManifestDefaultBudget = 8000
 
 // skillSessionKey is the context key carrying the session whose skill registry
 // a tool call resolves against. Stamped by the runloop from
-// RunConfig.BackgroundTaskOwner's sibling — the run's session key — so
-// executeSkill resolves the caller's own skills rather than a global set that
-// any other session may have written to.
+// types.RunOptions.SessionKey (see backend/runloop_tools.go) — so executeSkill
+// resolves the caller's own skills rather than a global set that any other
+// session may have written to.
 type skillSessionKeyType struct{}
 
 // WithSkillSessionKey returns a context carrying the session key used for

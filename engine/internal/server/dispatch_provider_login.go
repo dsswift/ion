@@ -143,7 +143,7 @@ func (s *Server) dispatchProviderLoginCode(conn net.Conn, cmd *protocol.ClientCo
 	}
 	select {
 	case ch <- cmd.Text:
-		utils.LogWithFields(utils.LevelInfo, "server.provider_login", "auth code delivered", map[string]any{"provider": cmd.Provider, "codeLength": len(cmd.Text)})
+		utils.LogWithFields(utils.LevelInfo, "server.provider_login", "auth code delivered", map[string]any{"provider": cmd.Provider, "count": len(cmd.Text)})
 		s.sendResult(conn, cmd, nil, map[string]any{"delivered": true})
 	default:
 		utils.LogWithFields(utils.LevelWarn, "server.provider_login", "auth code already supplied", map[string]any{"provider": cmd.Provider})

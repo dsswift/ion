@@ -8,8 +8,8 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/modelconfig"
-	"github.com/dsswift/ion/engine/internal/plugins"
 	"github.com/dsswift/ion/engine/internal/permissions"
+	"github.com/dsswift/ion/engine/internal/plugins"
 	"github.com/dsswift/ion/engine/internal/resource"
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -117,7 +117,8 @@ func (a *sessionAccessor) ParkSelfMainLoop() bool {
 	return parked
 }
 
-func (a *sessionAccessor) SuppressTool(name string) {	a.m.mu.Lock()
+func (a *sessionAccessor) SuppressTool(name string) {
+	a.m.mu.Lock()
 	a.s.suppressedTools = append(a.s.suppressedTools, name)
 	a.m.mu.Unlock()
 }
