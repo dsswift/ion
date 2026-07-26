@@ -28,28 +28,24 @@ If the block above is empty, the command was invoked with no arguments. Everywhe
 
 ## Mode Detection
 
-**The discriminator is the attached plan, not the harness plan-mode flag.** `/align` selects its mode by one question only: *is a pre-implementation plan attached to this conversation?*
+**Plan mode active at invocation → Mode A. Not in plan mode → Mode B.** That is the whole rule. It is binary, it requires no interpretation, and it needs no fallback heuristics.
 
-- **Plan attached → Mode A (Plan Alignment).** Audit that plan before any code is written.
-- **No plan attached → Mode B (Post-Changes Alignment).** Review the branch's changes.
+- **Plan mode active → Mode A (Plan Alignment).** A plan exists and the operator wants it audited before implementation.
+- **Plan mode not active → Mode B (Post-Changes Alignment).** Review the branch, or whatever ARGS points at.
 
-"Attached plan" means exactly what A-Step 1 defines: an ARGS-supplied plan path, or a `[Attached plan: <path>]` / `Implement the following plan:` block in this conversation's context (see "A-Step 1: Resolve and read the plan" for the full resolution order). Do not restate that definition here — that section is the single source of truth.
+> **Sample the flag at invocation, not later.** Mode B *enters* planning mode partway through its own run (B-Step 5) to author its fix plan. That is an output action downstream of detection and says nothing about which mode to run — it happens after the review report is already emitted. Read the flag when `/align` fires and decide once.
 
-> **Ignore the harness "plan mode active" flag for mode detection.** `/align` *always* runs inside harness plan mode, because it authors its fix plan in planning mode in **every** sub-mode (see B-Step 5: "enter planning mode and author a fix plan … applies in all three sub-modes"). So "plan mode is active" is true on every invocation and carries **zero** signal about which mode to run. A conversation that is in harness plan mode with **no attached plan** is the normal Mode B starting state, not a Mode A signal. Never key mode detection off the harness flag.
+**Mode A (Plan Alignment)** runs when the conversation is in plan mode. Resolve and read the plan per A-Step 1, then audit it.
 
-**Mode A (Plan Alignment)** runs when a plan is attached (via ARGS or a conversation attachment). Resolve and read it per A-Step 1, then audit it.
+**Mode B (Post-Changes Alignment)** runs when the conversation is not in plan mode.
 
-**Mode B (Post-Changes Alignment)** runs when **no** plan is attached and the branch has commits ahead of `main` (or uncommitted changes).
+**Step zero — parse ARGS for a target BEFORE any local git check.** Parse ARGS for target and focus (see the argument grammar in Mode B). **PR-target arguments force Mode B (PR mode) regardless of plan-mode state and regardless of local branch state.** A PR target is either the explicit `in PR` prefix or a bare PR reference: `287`, `#287`, `PR 287`, `PR #287`, or a comma/whitespace-separated list of these. When the operator passes a PR reference, they are asking for alignment of *that pull request* — not the local checkout. Do not review, diff, or even orient against the local branch; go straight to Mode B Step 1B. Likewise, `in branch` forces Mode B (Branch mode). **When ARGS carries a PR or branch target, every check below this paragraph is skipped** — the local branch being even with `main`, dirty, or clean carries zero signal about the target, and the "Nothing to align" stop-rule below never applies to a targeted run.
 
-**Step zero — parse ARGS for a target BEFORE any local git check.** Parse ARGS for target and focus (see the argument grammar in Mode B). **PR-target arguments force Mode B (PR mode) regardless of any attached plan and regardless of local branch state.** A PR target is either the explicit `in PR` prefix or a bare PR reference: `287`, `#287`, `PR 287`, `PR #287`, or a comma/whitespace-separated list of these. When the operator passes a PR reference, they are asking for alignment of *that pull request* — not the local checkout. Do not review, diff, or even orient against the local branch; go straight to Mode B Step 1B. Likewise, `in branch` forces Mode B (Branch mode). **When ARGS carries a PR or branch target, every check below this paragraph is skipped** — the local branch being even with `main`, dirty, or clean carries zero signal about the target, and the "Nothing to align" stop-rule below never applies to a targeted run.
+Only when ARGS carries **no** PR or branch target, and the conversation is **not** in plan mode, check the local branch: `git log main..HEAD --oneline`
 
-Only when ARGS carries **no** PR or branch target, check the local branch: `git log main..HEAD --oneline`
+**A branch ahead of `main` (or a dirty tree) outside plan mode is NOT ambiguous — it is the standard Mode B case. Run Mode B over the branch without asking.** This is the common steady state: the user runs `/align` to review the work on their branch. Never ask the user which mode to run; the binary rule above already decided.
 
-**No attached plan + a branch ahead of `main` (or a dirty tree) is NOT ambiguous — it is the standard Mode B case. Run Mode B over the branch without asking.** This is the common steady state: the user runs `/align` to review the work on their branch, and there is no pre-implementation plan to audit. Do not treat the absence of an attached plan as a conflict, and do not ask the user which mode to run for it.
-
-If neither condition applies (no PR/branch target in ARGS, branch is even with `main`, no attached plan, no uncommitted work), report: "Nothing to align — no plan attached and branch is even with `main`." and stop. This stop-rule exists for the *untargeted* invocation only; it is unreachable when ARGS names a PR or branch.
-
-**The only time to ask the user which mode to run** is the genuinely-ambiguous residue: a plan **is** attached **and** the branch also carries implementation commits made *after* that plan was created — so it is unclear whether the user wants the attached plan audited (Mode A) or the already-implemented changes reviewed (Mode B). Only then, ask. The bare "no attached plan, branch has changes" case never reaches this ask — it is unconditionally Mode B above.
+If none of the above applies (no PR/branch target in ARGS, not in plan mode, branch is even with `main`, no uncommitted work), report: "Nothing to align — not in plan mode and branch is even with `main`." and stop. This stop-rule exists for the *untargeted* invocation only; it is unreachable when ARGS names a PR or branch, and it never applies in plan mode (where the plan is the target).
 
 
 ---
@@ -132,7 +128,7 @@ You are reviewing the current plan before any code is written. The goal is to ca
 
 > **Plan selection is anchored to the conversation, not to filesystem mtime.**
 >
-> Parallel planning is the common case — the user often has several plan-mode conversations open at once (one per worktree, one per topic, one per AI assistant window). Every plan-mode conversation has the *exact* plan it was opened against already pinned in the agent's context window: the harness attaches it as `[Attached plan: <absolute-path>]` (or its equivalent `Implement the following plan:` block) at conversation start, and that attachment is the authoritative source for which plan this conversation is auditing.
+> Parallel planning is the common case — the user often has several plan-mode conversations open at once (one per worktree, one per topic, one per AI assistant window). Every plan-mode conversation has the *exact* plan it was opened against already pinned in the agent's context window: the harness names it in the plan-mode preamble (`**Your plan file for this session: <absolute-path>**`), or attaches it as `[Attached plan: <absolute-path>]` / an `Implement the following plan:` block. That pinned path is the authoritative source for which plan this conversation is auditing.
 >
 > **Resolution order — use the first one that applies:**
 
@@ -141,9 +137,14 @@ You are reviewing the current plan before any code is written. The goal is to ca
    - Bare filename or hash (with or without `.md`): resolve from `~/.ion/plans/`.
    - Unique hash prefix: glob `~/.ion/plans/{prefix}*.md`. If zero or more than one match, stop and report ambiguity — do not fall back to context-derived or mtime-derived defaults silently.
 
-2. **ARGS empty, but the conversation has an attached plan in context.** This is the standard plan-mode default. The agent must look back through the conversation context and find the most recent message that introduced the plan — typically a user message containing `[Attached plan: <path>]` or `Implement the following plan:` followed by the plan markdown. The path from that attachment **is** the canonical plan for this session. Use it without further lookup.
+2. **ARGS empty, in plan mode.** This is the standard Mode A default. The harness pins the session's plan path in context; find it and use it without further lookup. The recognised forms are exhaustive:
+   - **Ion harness preamble** (what Ion itself emits, via `buildPlanModePrompt` in `engine/internal/backend/plan_mode_prompt.go`): `**Your plan file for this session: <absolute-path>**`, followed by either `The plan file already exists. You MUST Read it first...` or `No plan file exists yet. Create it using the Write tool...`. The path on that line **is** this conversation's plan. When the preamble says the file already exists, read it and audit it. When it says no plan file exists yet, the conversation entered plan mode without authoring one — say so and stop; there is nothing to audit.
+   - `[Attached plan: <path>]`
+   - `Implement the following plan:` followed by the plan markdown.
 
-3. **ARGS empty and no plan attachment in the conversation context.** This is the fallback path, and even here the agent must verify before proceeding:
+   If more than one appears, the most recent wins. No other form counts — do not infer a plan from prose that merely mentions a path.
+
+3. **ARGS empty and no plan-mode context at all.** Last resort, reachable only when the conversation is not in plan mode and yet a plan audit was requested. Even here, verify before proceeding:
    - List the three most-recently-modified plan files: `ls -1t ~/.ion/plans/*.md 2>/dev/null | head -3`.
    - Read the first heading (`#`) of each candidate.
    - Compare against any topic signals the conversation provides (recent prompts, the working branch name, recent commit messages, recent tool calls).
