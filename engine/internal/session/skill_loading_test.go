@@ -714,3 +714,154 @@ func TestSkillLoading_ClaudeSkipsDirsWithoutSkillMd(t *testing.T) {
 		t.Errorf("expected name 'present', got %q", loaded[0].Name)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Session-scoped skill registry.
+//
+// The registry was process-global: a project-scoped skill loaded from
+// <workingDir>/.ion/skills stayed registered after its session ended and was
+// advertised to every other session. These tests pin the isolation that
+// replaces it. See internal/skills/skills_session.go.
+// ---------------------------------------------------------------------------
+
+// TestSessionSkills_ProjectSkillDoesNotLeakToOtherSession is the regression
+// test for the cross-session leak. Session A loads a project skill; session B
+// (a different project) must not see it in its manifest.
+//
+// Revert RegisterSkillFor to RegisterSkill in start_session.go and this fails:
+// B's manifest picks up A's skill from the global registry.
+func TestSessionSkills_ProjectSkillDoesNotLeakToOtherSession(t *testing.T) {
+	skills.ClearSkillRegistry()
+	defer skills.ClearSkillRegistry()
+	defer skills.ClearSkillsFor("session-A")
+	defer skills.ClearSkillsFor("session-B")
+
+	projectA := t.TempDir()
+	writeIonSkill(t, filepath.Join(projectA, ".ion", "skills"),
+		"graphify.md", "graphify", "Query the knowledge graph", "graphify body")
+
+	// Session A loads project A's skills.
+	loaded, err := skills.LoadSkillDirectory(filepath.Join(projectA, ".ion", "skills"), nil)
+	if err != nil {
+		t.Fatalf("load project A skills: %v", err)
+	}
+	if len(loaded) != 1 {
+		t.Fatalf("expected 1 skill in project A, got %d", len(loaded))
+	}
+	for _, sk := range loaded {
+		skills.RegisterSkillFor("session-A", sk)
+	}
+
+	// Session B is a different project with no skills of its own.
+	if got := skills.GetSkillFor("session-B", "graphify"); got != nil {
+		t.Error("project skill from session A leaked into session B")
+	}
+
+	// And session A still resolves it.
+	if got := skills.GetSkillFor("session-A", "graphify"); got == nil {
+		t.Error("session A cannot resolve its own project skill")
+	}
+
+	// The system-prompt section is the surface the model actually sees.
+	if section := tools.BuildSkillSystemPromptSectionFor("session-B"); strings.Contains(section, "graphify") {
+		t.Errorf("session B's skill listing advertises session A's project skill:\n%s", section)
+	}
+	if section := tools.BuildSkillSystemPromptSectionFor("session-A"); !strings.Contains(section, "graphify") {
+		t.Errorf("session A's skill listing omits its own project skill:\n%s", section)
+	}
+}
+
+// TestSessionSkills_SameNameResolvesIndependently verifies two projects that
+// each ship a same-named skill resolve to their own copy. Under the global
+// registry the last session to start won for every session.
+func TestSessionSkills_SameNameResolvesIndependently(t *testing.T) {
+	skills.ClearSkillRegistry()
+	defer skills.ClearSkillRegistry()
+	defer skills.ClearSkillsFor("sess-1")
+	defer skills.ClearSkillsFor("sess-2")
+
+	p1 := t.TempDir()
+	writeIonSkill(t, filepath.Join(p1, ".ion", "skills"),
+		"deploy.md", "deploy", "Project one deploy", "ONE")
+	p2 := t.TempDir()
+	writeIonSkill(t, filepath.Join(p2, ".ion", "skills"),
+		"deploy.md", "deploy", "Project two deploy", "TWO")
+
+	for _, tc := range []struct{ key, dir string }{
+		{"sess-1", filepath.Join(p1, ".ion", "skills")},
+		{"sess-2", filepath.Join(p2, ".ion", "skills")},
+	} {
+		loaded, err := skills.LoadSkillDirectory(tc.dir, nil)
+		if err != nil {
+			t.Fatalf("load %s: %v", tc.dir, err)
+		}
+		for _, sk := range loaded {
+			skills.RegisterSkillFor(tc.key, sk)
+		}
+	}
+
+	one := skills.GetSkillFor("sess-1", "deploy")
+	two := skills.GetSkillFor("sess-2", "deploy")
+	if one == nil || two == nil {
+		t.Fatal("both sessions must resolve their own deploy skill")
+	}
+	if !strings.Contains(one.Content, "ONE") {
+		t.Errorf("sess-1 resolved the wrong deploy skill: %q", one.Content)
+	}
+	if !strings.Contains(two.Content, "TWO") {
+		t.Errorf("sess-2 resolved the wrong deploy skill: %q", two.Content)
+	}
+}
+
+// TestSessionSkills_ClearEvictsOnlyThatSession verifies teardown is scoped.
+// A stopped session's skills go away; a concurrently-live session keeps its
+// own — including a user-scoped skill of the same name, which is why user
+// skills are copied per session rather than shared via fallback.
+func TestSessionSkills_ClearEvictsOnlyThatSession(t *testing.T) {
+	skills.ClearSkillRegistry()
+	defer skills.ClearSkillRegistry()
+	defer skills.ClearSkillsFor("stays")
+
+	userDir := t.TempDir()
+	writeIonSkill(t, userDir, "caveman.md", "caveman", "User-scoped skill", "user body")
+	loaded, err := skills.LoadSkillDirectory(userDir, nil)
+	if err != nil {
+		t.Fatalf("load user skills: %v", err)
+	}
+
+	// Both sessions register the same user skill (the per-session copy model).
+	for _, key := range []string{"goes-away", "stays"} {
+		for _, sk := range loaded {
+			skills.RegisterSkillFor(key, sk)
+		}
+	}
+
+	evicted := skills.ClearSkillsFor("goes-away")
+	if evicted != 1 {
+		t.Errorf("expected 1 evicted entry, got %d", evicted)
+	}
+	if got := skills.GetSkillFor("stays", "caveman"); got == nil {
+		t.Error("clearing one session stripped a live session's user skill")
+	}
+}
+
+// TestSessionSkills_ZeroKeyFallsBackToGlobal pins the additive contract: a
+// caller with no session key (external SDK consumer, API-backend path) still
+// resolves against the global registry, so existing behaviour is unchanged.
+func TestSessionSkills_ZeroKeyFallsBackToGlobal(t *testing.T) {
+	skills.ClearSkillRegistry()
+	defer skills.ClearSkillRegistry()
+
+	skills.RegisterSkill(&skills.Skill{Name: "global-only", Description: "Registered globally"})
+
+	if got := skills.GetSkillFor("", "global-only"); got == nil {
+		t.Error("empty key must resolve against the global registry")
+	}
+	names := skills.ListSkillNamesFor("")
+	if len(names) != 1 || names[0] != "global-only" {
+		t.Errorf("expected [global-only] from the global registry, got %v", names)
+	}
+	if section := tools.BuildSkillSystemPromptSectionFor(""); !strings.Contains(section, "global-only") {
+		t.Errorf("empty-key skill listing must read the global registry:\n%s", section)
+	}
+}

@@ -275,20 +275,35 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 
 	// Load skills from default paths. The project root resolves against the
 	// session's working directory (not the daemon cwd) via IonSkillPathsFor.
+	//
+	// Registration is session-scoped: every skill this session loads — user
+	// AND project — goes into this session's own map. User skills are copied
+	// per session rather than resolved through a shared fallback, so a
+	// session's teardown (ClearSkillsFor) can only ever evict its own entries
+	// and can never strip a user skill another live session is still using.
+	// Project skills therefore reach only sessions whose working directory
+	// actually contains them, instead of leaking into every other session
+	// through the process-global registry.
 	skillPaths := skills.IonSkillPathsFor(config.WorkingDirectory)
-	for _, dir := range []string{skillPaths.User, skillPaths.Project} {
-		if dir == "" {
+	for _, dir := range []struct {
+		path  string
+		scope string
+	}{
+		{skillPaths.User, "user"},
+		{skillPaths.Project, "project"},
+	} {
+		if dir.path == "" {
 			continue
 		}
-		loaded, err := skills.LoadSkillDirectory(dir, nil)
+		loaded, err := skills.LoadSkillDirectory(dir.path, nil)
 		if err != nil {
-			utils.LogWithFields(utils.LevelError, "session", "skill dir load failed", map[string]any{"key": key, "dir": dir, "error": utils.ErrStr(err)})
+			utils.LogWithFields(utils.LevelError, "session", "skill dir load failed", map[string]any{"key": key, "dir": dir.path, "scope": dir.scope, "error": utils.ErrStr(err)})
 			continue
 		}
 		for _, sk := range loaded {
-			skills.RegisterSkill(sk)
+			skills.RegisterSkillFor(key, sk)
 		}
-		utils.LogWithFields(utils.LevelInfo, "session", "skill dir loaded", map[string]any{"key": key, "dir": dir, "count": len(loaded)})
+		utils.LogWithFields(utils.LevelInfo, "session", "skill dir loaded", map[string]any{"key": key, "dir": dir.path, "scope": dir.scope, "count": len(loaded)})
 	}
 	// Load Claude Code–style skills from ~/.claude/skills (one subdir per
 	// skill, each with a SKILL.md file). Only attempted when the ClaudeCompat
@@ -297,18 +312,25 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 	if config.ClaudeCompat {
 		if claudeSkills, err := skills.LoadClaudeSkillsDirectory(skillPaths.ClaudeUser); err == nil {
 			for _, sk := range claudeSkills {
-				skills.RegisterSkill(sk)
+				skills.RegisterSkillFor(key, sk)
 			}
+			utils.LogWithFields(utils.LevelInfo, "session", "claude skill dir loaded", map[string]any{"key": key, "dir": skillPaths.ClaudeUser, "scope": "claude-user", "count": len(claudeSkills)})
 		}
 	} else {
 		utils.Debug("Session", "skipping ~/.claude/skills/ (claudeCompat not set)")
 	}
-	if names := skills.ListSkillNames(); len(names) > 0 {
-		utils.LogWithFields(utils.LevelInfo, "session", "loaded skills", map[string]any{"count": len(names), "model": names})
+	if names := skills.ListSkillNamesFor(key); len(names) > 0 {
+		utils.LogWithFields(utils.LevelInfo, "session", "loaded skills", map[string]any{"key": key, "count": len(names), "model": names})
 		// Refresh the Skill tool's description so the model's tool manifest
 		// lists the available skills (with their when_to_use hints). This
 		// must run after all skills are registered; RefreshSkillToolDescription
 		// re-registers the Skill tool with a freshly-built manifest.
+		//
+		// The tool description is process-wide and built from the global
+		// registry, so it cannot vary per session. Per-session accuracy comes
+		// from the system-prompt section, which buildSystemPrompt assembles
+		// per run via BuildSkillSystemPromptSectionFor(opts.SessionKey), and
+		// from executeSkill resolving against the calling session's registry.
 		tools.RefreshSkillToolDescription()
 	}
 

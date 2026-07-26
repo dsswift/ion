@@ -8,7 +8,15 @@ import (
 
 // defaultPlanModeTools is the read-only tool set allowed during plan mode.
 // Extensions and harness can override via HookPlanModePrompt or set_plan_mode command.
-var defaultPlanModeTools = []string{"Read", "Grep", "Glob", "Agent", "WebFetch", "WebSearch"}
+//
+// Skill is in the set because invoking a skill is itself read-only: executeSkill
+// looks the skill up in the registry and returns its instruction text, touching
+// no file and spawning no process. Whatever the returned instructions then tell
+// the model to do still passes through this same filter, so a skill cannot be
+// used to smuggle a mutating tool into plan mode. Omitting Skill disabled the
+// entire skill system precisely in the mode where codebase-investigation skills
+// are most useful, and the model silently fell back to raw Grep/Read sweeps.
+var defaultPlanModeTools = []string{"Read", "Grep", "Glob", "Agent", "WebFetch", "WebSearch", "Skill"}
 
 // planModeReminderInterval is the number of turns between sparse plan-mode
 // reminder injections. The first reminder fires on turn 2 (first post-entry
@@ -81,11 +89,14 @@ When the user requests changes or additions, **amend the existing plan** -- do n
 	}
 
 	// Determine the tool list and bash-specific guidance based on allowedBashCommands.
-	readOnlyTools := "Read, Grep, Glob, Agent, WebFetch, WebSearch"
+	// The prose list is derived from defaultPlanModeTools rather than hand-written
+	// so the system prompt can never advertise a different set than the filter in
+	// buildToolDefs actually permits.
+	readOnlyTools := strings.Join(defaultPlanModeTools, ", ")
 	bashSection := ""
 	bashRestriction := "- You MUST NOT call Bash, NotebookEdit, or any tool that mutates state"
 	if len(allowedBashCommands) > 0 {
-		readOnlyTools = "Read, Grep, Glob, Agent, WebFetch, WebSearch, Bash (restricted)"
+		readOnlyTools = strings.Join(append(append([]string{}, defaultPlanModeTools...), "Bash (restricted)"), ", ")
 		bashRestriction = "- You MUST NOT call NotebookEdit or any tool that mutates state"
 		bashSection = fmt.Sprintf(`
 - You MAY call Bash, but ONLY for commands starting with: %s

@@ -167,3 +167,27 @@ func TestBuildPlanModeSparseReminder_ThirdPath(t *testing.T) {
 		t.Error("sparse reminder still contains superseded binary end-turn clause")
 	}
 }
+
+// TestBuildPlanModePrompt_AdvertisesSkill verifies the plan-mode system prompt
+// names Skill in its read-only tool list. The prose is derived from
+// defaultPlanModeTools, so this also pins that the advertised set and the
+// enforced set cannot drift apart.
+func TestBuildPlanModePrompt_AdvertisesSkill(t *testing.T) {
+	out := buildPlanModePrompt(testPlanPath, false, nil)
+	if !strings.Contains(out, "Skill") {
+		t.Error("plan-mode prompt does not advertise the Skill tool")
+	}
+}
+
+// TestBuildPlanModePrompt_ToolProseMatchesAllowlist verifies every tool in
+// defaultPlanModeTools appears in the prompt prose. A hand-maintained prose
+// list previously drifted from the enforced allowlist; deriving it from the
+// slice makes that impossible, and this test pins the guarantee.
+func TestBuildPlanModePrompt_ToolProseMatchesAllowlist(t *testing.T) {
+	out := buildPlanModePrompt(testPlanPath, false, nil)
+	for _, tool := range defaultPlanModeTools {
+		if !strings.Contains(out, tool) {
+			t.Errorf("plan-mode prompt prose omits allowlisted tool %q", tool)
+		}
+	}
+}

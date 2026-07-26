@@ -14,9 +14,13 @@ import (
 // register at session start. Before the fix the project root was the literal
 // relative path "./.ion/skills" — resolved against the daemon's cwd, so a
 // session's project skills never loaded.
+//
+// Registration is session-scoped (see internal/skills/skills_session.go), so
+// the assertion reads the session's own registry rather than the global one.
 func TestStartSession_LoadsProjectSkillsFromWorkingDirectory(t *testing.T) {
 	skills.ClearSkillRegistry()
 	t.Cleanup(skills.ClearSkillRegistry)
+	t.Cleanup(func() { skills.ClearSkillsFor("skill-wd") })
 	// Isolate HOME so the real ~/.ion/skills does not leak into the registry.
 	t.Setenv("HOME", t.TempDir())
 
@@ -36,9 +40,9 @@ func TestStartSession_LoadsProjectSkillsFromWorkingDirectory(t *testing.T) {
 		t.Fatalf("StartSession: %v", err)
 	}
 
-	sk := skills.GetSkill("proj-skill")
+	sk := skills.GetSkillFor("skill-wd", "proj-skill")
 	if sk == nil {
-		t.Fatalf("project skill not registered; registry = %v", skills.ListSkillNames())
+		t.Fatalf("project skill not registered; session registry = %v", skills.ListSkillNamesFor("skill-wd"))
 	}
 	if sk.Description != "project-local test skill" {
 		t.Errorf("Description = %q", sk.Description)
@@ -50,6 +54,7 @@ func TestStartSession_LoadsProjectSkillsFromWorkingDirectory(t *testing.T) {
 func TestStartSession_EmptyWorkingDirectorySkipsProjectSkills(t *testing.T) {
 	skills.ClearSkillRegistry()
 	t.Cleanup(skills.ClearSkillRegistry)
+	t.Cleanup(func() { skills.ClearSkillsFor("skill-nowd") })
 	t.Setenv("HOME", t.TempDir())
 
 	mb := newMockBackend()
@@ -57,7 +62,7 @@ func TestStartSession_EmptyWorkingDirectorySkipsProjectSkills(t *testing.T) {
 	if _, err := mgr.StartSession("skill-nowd", types.EngineConfig{ProfileID: "test"}); err != nil {
 		t.Fatalf("StartSession: %v", err)
 	}
-	if names := skills.ListSkillNames(); len(names) != 0 {
+	if names := skills.ListSkillNamesFor("skill-nowd"); len(names) != 0 {
 		t.Errorf("expected no skills registered, got %v", names)
 	}
 }

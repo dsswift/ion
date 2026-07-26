@@ -23,17 +23,40 @@ const SkillManifestPerEntryMaxChars = 250
 // listed until this budget is exhausted, then a truncation note is appended.
 const SkillManifestDefaultBudget = 8000
 
+// skillSessionKey is the context key carrying the session whose skill registry
+// a tool call resolves against. Stamped by the runloop from
+// RunConfig.BackgroundTaskOwner's sibling — the run's session key — so
+// executeSkill resolves the caller's own skills rather than a global set that
+// any other session may have written to.
+type skillSessionKeyType struct{}
+
+// WithSkillSessionKey returns a context carrying the session key used for
+// skill resolution. An empty key is not stamped; resolution then falls back to
+// the global registry.
+func WithSkillSessionKey(ctx context.Context, key string) context.Context {
+	return context.WithValue(ctx, skillSessionKeyType{}, key)
+}
+
+// SkillSessionKeyFromContext extracts the skill-resolution session key, or "".
+func SkillSessionKeyFromContext(ctx context.Context) string {
+	key, _ := ctx.Value(skillSessionKeyType{}).(string) //nolint:errcheck // absent value means no session scope
+	return key
+}
+
 // buildSkillManifest returns the "Available skills:" block to embed in the
 // Skill tool description. Skills with DisableModelInvocation=true are omitted.
 // Entries are sorted alphabetically and capped at SkillManifestPerEntryMaxChars
 // each; the total manifest is capped at SkillManifestDefaultBudget characters.
 //
+// sessionKey scopes which registry is read: a session's own skills when set,
+// the global registry when empty (see skills.GetAllSkillsFor).
+//
 // Format (matches Claude Code's formatCommandsWithinBudget):
 //
 //   - <name>: <description> - <whenToUse>    (when WhenToUse is set)
 //   - <name>: <description>                  (when WhenToUse is empty)
-func buildSkillManifest() string {
-	all := skills.GetAllSkills()
+func buildSkillManifest(sessionKey string) string {
+	all := skills.GetAllSkillsFor(sessionKey)
 	if len(all) == 0 {
 		return ""
 	}
@@ -106,8 +129,15 @@ const skillProactiveInstruction = "When a user's request matches an available sk
 // embedding a budgeted manifest of currently-registered model-invocable skills
 // and the proactive-invocation instruction. It is called at session start after
 // skill loading completes so the description reflects the actual loaded registry.
+//
+// The description is built from the global registry: the tool is registered
+// process-wide, so its static description cannot vary per session. Per-session
+// accuracy comes from the system-prompt section
+// (BuildSkillSystemPromptSectionFor), which is assembled fresh for every run
+// with that run's session key, and from executeSkill, which resolves against
+// the calling session's registry.
 func buildSkillToolDescription() string {
-	manifest := buildSkillManifest()
+	manifest := buildSkillManifest("")
 	if manifest == "" {
 		return "Execute a skill by name. Returns the skill content for execution."
 	}
@@ -123,8 +153,24 @@ func buildSkillToolDescription() string {
 // skill list in a <system-reminder> user message on every turn — Ion delivers
 // the same information more cleanly via the system prompt assembled per run in
 // buildSystemPrompt.
+//
+// Reads the global registry. Retained as published surface for external
+// consumers that have no session key; in-engine callers use
+// BuildSkillSystemPromptSectionFor so the listing matches the run's session.
 func BuildSkillSystemPromptSection() string {
-	manifest := buildSkillManifest()
+	return BuildSkillSystemPromptSectionFor("")
+}
+
+// BuildSkillSystemPromptSectionFor is BuildSkillSystemPromptSection scoped to
+// one session's skill registry. An empty key reads the global registry, so it
+// is a safe drop-in everywhere.
+//
+// This is the per-run accuracy seam: the Skill tool's static description is
+// process-wide and cannot vary per session, but the system prompt is rebuilt
+// for every run, so scoping it here is what keeps a project's skills out of
+// unrelated sessions' prompts.
+func BuildSkillSystemPromptSectionFor(sessionKey string) string {
+	manifest := buildSkillManifest(sessionKey)
 	if manifest == "" {
 		return ""
 	}
@@ -181,13 +227,21 @@ func executeSkill(ctx context.Context, input map[string]any, _ string) (*types.T
 
 	args, _ := input["args"].(string) //nolint:errcheck // best-effort; failure not actionable here
 
-	available := skills.ListSkillNames()
+	// Resolve against the calling session's registry. The runloop stamps the
+	// session key onto the tool context; an unstamped context (external
+	// consumer, direct call) falls back to the global registry.
+	sessionKey := SkillSessionKeyFromContext(ctx)
+
+	available := skills.ListSkillNamesFor(sessionKey)
 	if len(available) == 0 {
 		return &types.ToolResult{Content: "No skills registered", IsError: true}, nil
 	}
 
-	skill := skills.GetSkill(name)
+	skill := skills.GetSkillFor(sessionKey, name)
 	if skill == nil {
+		utils.LogWithFields(utils.LevelInfo, "tools.skill", "unknown skill requested", map[string]any{
+			"model": name, "key": sessionKey, "count": len(available),
+		})
 		return &types.ToolResult{
 			Content: fmt.Sprintf("Unknown skill: %s\nAvailable skills: %s", name, strings.Join(available, ", ")),
 			IsError: true,
@@ -235,7 +289,7 @@ func executeSkill(ctx context.Context, input map[string]any, _ string) (*types.T
 	}
 	sb.WriteString(skill.Content)
 
-	utils.LogWithFields(utils.LevelInfo, "tools.skill", "skill executed", map[string]any{"model": name, "path": baseDir, "count": len(args)})
+	utils.LogWithFields(utils.LevelInfo, "tools.skill", "skill executed", map[string]any{"model": name, "path": baseDir, "count": len(args), "key": sessionKey})
 
 	return &types.ToolResult{Content: sb.String()}, nil
 }

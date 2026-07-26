@@ -1269,3 +1269,61 @@ func TestLoadOrCreateConversation_BackfillsLegacyLoadedConversation(t *testing.T
 		t.Fatalf("Backend = %q, want api backfilled on legacy load", loaded.Backend)
 	}
 }
+
+// TestBuildToolDefs_PlanMode_SkillSurvivesFilter is the regression test for the
+// plan-mode skill blackout. Skill was absent from defaultPlanModeTools, so the
+// plan-mode filter stripped it from the tool manifest and the entire skill
+// system was unavailable in the mode where investigation skills matter most.
+// The model could not call a skill even when the user's request matched one,
+// and silently fell back to raw Grep/Read sweeps.
+//
+// Invoking a skill is read-only (executeSkill returns registry text, touching
+// no file and spawning no process), so it belongs in the read-only set.
+//
+// Revert the "Skill" entry in defaultPlanModeTools and this test goes red.
+func TestBuildToolDefs_PlanMode_SkillSurvivesFilter(t *testing.T) {
+	b := NewApiBackend()
+	run := &activeRun{
+		requestID:    "plan-skill-survives",
+		planMode:     true,
+		planFilePath: "/tmp/plan.md",
+		cfg:          &RunConfig{},
+	}
+	opts := types.RunOptions{PlanMode: true, PlanFilePath: "/tmp/plan.md"}
+	provider := &mockLlmProvider{id: "anthropic"}
+
+	toolDefs, _ := b.buildToolDefs(run, opts, provider)
+	for _, td := range toolDefs {
+		if td.Name == "Skill" {
+			return
+		}
+	}
+	t.Error("expected Skill to survive plan-mode filtering; skills are unusable in plan mode without it")
+}
+
+// TestBuildToolDefs_PlanMode_MutatingToolsStillFiltered guards the other side of
+// the change: admitting Skill must not widen the plan-mode surface generally.
+// Write and Edit are permitted (plan-file gate enforces the target), but the
+// genuinely mutating tools stay out.
+func TestBuildToolDefs_PlanMode_MutatingToolsStillFiltered(t *testing.T) {
+	b := NewApiBackend()
+	run := &activeRun{
+		requestID:    "plan-mutating-filtered",
+		planMode:     true,
+		planFilePath: "/tmp/plan.md",
+		cfg:          &RunConfig{},
+	}
+	opts := types.RunOptions{PlanMode: true, PlanFilePath: "/tmp/plan.md"}
+	provider := &mockLlmProvider{id: "anthropic"}
+
+	toolDefs, _ := b.buildToolDefs(run, opts, provider)
+	for _, td := range toolDefs {
+		if td.Name == "NotebookEdit" {
+			t.Error("NotebookEdit must remain filtered out in plan mode")
+		}
+		// Bash is only admitted when an allowlist is configured; none here.
+		if td.Name == "Bash" {
+			t.Error("Bash must remain filtered out in plan mode with no allowlist")
+		}
+	}
+}
