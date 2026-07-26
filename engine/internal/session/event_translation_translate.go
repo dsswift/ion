@@ -51,13 +51,16 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 		}
 
 	case *types.TaskCompleteEvent:
-		var pct int
-		if e.Usage.InputTokens != nil && contextWindow > 0 {
-			pct = *e.Usage.InputTokens * 100 / contextWindow
-			if pct > 100 {
-				pct = 100
-			}
-		}
+		// ContextPercent / ContextTokens are deliberately NOT stamped here.
+		// TaskCompleteEvent.Usage is CUMULATIVE run billing (summed across
+		// every turn, see backend.cumulativeUsage), which is a different
+		// quantity from context-window occupancy. Conflating the two is what
+		// made a 227k-token conversation report 0% at idle. The authoritative
+		// idle figure is recomputed from the persisted conversation by
+		// Manager.refreshContextUsage on run exit, and rides the idle
+		// engine_status that handleRunExit emits immediately after this one.
+		// translateToEngineEvent is pure and has no session access, so it
+		// cannot resolve the real figure here.
 		return types.EngineEvent{
 			Type: "engine_status",
 			Fields: &types.StatusFields{
@@ -65,7 +68,6 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 				SessionID:         e.SessionID,
 				RunCostUsd:        e.CostUsd,
 				ContextWindow:     contextWindow,
-				ContextPercent:    pct,
 				PermissionDenials: e.PermissionDenials,
 				NumTurns:          e.NumTurns,
 				ConversationTurns: e.ConversationTurns,
@@ -118,6 +120,12 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 		}
 
 	case *types.UsageEvent:
+		// The per-turn UsageEvent is the authoritative context-occupancy
+		// signal: backend.runloop sums input + cache_read + cache_creation
+		// before emitting, so InputTokens here is what the model actually
+		// carried. Percent is UNBOUNDED — above 100 means the conversation
+		// exceeds the window it is measured against, which is real
+		// information, not an error to be clamped away.
 		var pct int
 		if e.Usage.InputTokens != nil {
 			window := contextWindow
@@ -125,9 +133,6 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 				window = conversation.DefaultContext
 			}
 			pct = *e.Usage.InputTokens * 100 / window
-			if pct > 100 {
-				pct = 100
-			}
 		}
 		return types.EngineEvent{
 			Type: "engine_message_end",

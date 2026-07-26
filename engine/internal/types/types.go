@@ -191,13 +191,28 @@ type SlashCommandListing struct {
 
 // StatusFields are the fields emitted by engine_status events.
 type StatusFields struct {
-	Label          string `json:"label"`
-	State          string `json:"state"`
-	SessionID      string `json:"sessionId,omitempty"`
-	Team           string `json:"team,omitempty"`
-	Model          string `json:"model"`
-	ContextPercent int    `json:"contextPercent"`
-	ContextWindow  int    `json:"contextWindow"`
+	Label     string `json:"label"`
+	State     string `json:"state"`
+	SessionID string `json:"sessionId,omitempty"`
+	Team      string `json:"team,omitempty"`
+	Model     string `json:"model"`
+	// ContextPercent is context-window occupancy as a percentage. UNBOUNDED:
+	// values above 100 are emitted verbatim and mean the conversation holds
+	// more tokens than the window it is measured against (the normal case
+	// when a conversation accumulated under a large-window model and the
+	// operator then selects a smaller one). Consumers that render this into
+	// a fixed-width bar clamp at their own display layer.
+	ContextPercent int `json:"contextPercent"`
+	// ContextWindow is the context window in tokens of the model the engine
+	// actually used, i.e. the denominator ContextPercent was computed against.
+	ContextWindow int `json:"contextWindow"`
+	// ContextTokens is the absolute context-window occupancy in tokens —
+	// the numerator behind ContextPercent. Published so a consumer can
+	// recompute the percentage against a different model's window without
+	// an engine round-trip (there is no command to change an idle session's
+	// model, so a client-side model picker must own that arithmetic).
+	// Cache-aware: input + cache_read + cache_creation.
+	ContextTokens int `json:"contextTokens,omitempty"`
 	// RunCostUsd is the cumulative cost of the most recent run in USD. It
 	// represents the sum of all turns in the run (cache-aware, descendants
 	// included). Replaces the former totalCostUsd field; the rename makes
@@ -218,6 +233,14 @@ type StatusFields struct {
 	// isn't running) but background work is in progress. Clients use this to keep
 	// the tab status active and the interrupt button visible.
 	BackgroundAgents int `json:"backgroundAgents,omitempty"`
+	// BackgroundShells is the number of background bash commands (Bash with
+	// run_in_background + notify_on_complete) the session is still waiting on.
+	// The shell counterpart to BackgroundAgents: when > 0 the orchestrator may
+	// be idle while real work is in flight, and the engine holds the session
+	// open until the commands finish. Zero when no notifying commands are
+	// outstanding. Commands started WITHOUT notify_on_complete are not counted
+	// — nothing is waiting on them.
+	BackgroundShells int `json:"backgroundShells,omitempty"`
 	// NumTurns is the number of LLM turns completed in the most recent run.
 	// Stamped from TaskCompleteEvent.NumTurns in translateToEngineEvent; zero
 	// on idle and heartbeat status events that have no associated run.
@@ -252,11 +275,12 @@ type StatusFields struct {
 //     that needs to render "running for 3m 12s" reads StateSince.
 //     Without these, every consumer had to maintain its own clock.
 //
-//   - HasInflightRun and BackgroundAgentCount let consumers
-//     distinguish "the LLM turn is running" from "the LLM turn ended
-//     but dispatched agents are still running" without re-deriving it
-//     from inst.agentStates. Today's renderer keeps a separate
-//     `anyInstanceHasRunningChildren` projection just to recover this.
+//   - HasInflightRun, BackgroundAgentCount, and BackgroundShellCount let
+//     consumers distinguish "the LLM turn is running" from "the LLM turn
+//     ended but dispatched agents or background shell commands are still
+//     running" without re-deriving it from inst.agentStates. Today's
+//     renderer keeps a separate `anyInstanceHasRunningChildren` projection
+//     just to recover this.
 //
 // Contract stability note: this type is additive. Once published it
 // follows the same backwards-compatibility rules as every other shared
@@ -289,6 +313,13 @@ type SessionStatus struct {
 	// BackgroundAgentCount is the number of background dispatch agents
 	// still running. Same semantics as StatusFields.BackgroundAgents.
 	BackgroundAgentCount int `json:"backgroundAgentCount,omitempty"`
+	// BackgroundShellCount is the number of background bash commands the
+	// session is still waiting on. Same semantics as
+	// StatusFields.BackgroundShells — the shell counterpart to
+	// BackgroundAgentCount, so a consumer reading only this event can tell a
+	// parked session (idle orchestrator, commands in flight) from a plain
+	// idle one without re-deriving it.
+	BackgroundShellCount int `json:"backgroundShellCount,omitempty"`
 	// PermissionDenialsPending mirrors StatusFields.PermissionDenials.
 	// Same retention contract — unresolved AskUserQuestion / ExitPlanMode
 	// entries surface here so a re-attaching consumer sees them.
@@ -297,9 +328,14 @@ type SessionStatus struct {
 	// the session has never dispatched a prompt.
 	Model string `json:"model,omitempty"`
 	// ContextPercent is the most recent context-window usage percent.
+	// UNBOUNDED — see StatusFields.ContextPercent for the full semantics.
 	ContextPercent int `json:"contextPercent,omitempty"`
 	// ContextWindow is the model's context window in tokens.
 	ContextWindow int `json:"contextWindow,omitempty"`
+	// ContextTokens is the absolute context-window occupancy in tokens.
+	// Mirrors StatusFields.ContextTokens — the numerator a consumer needs
+	// to recompute the percentage against a different model's window.
+	ContextTokens int `json:"contextTokens,omitempty"`
 	// RunCostUsd is the cumulative cost of the most recent run in USD.
 	// Matches StatusFields.RunCostUsd semantics — run-scoped, cache-aware,
 	// descendants included.

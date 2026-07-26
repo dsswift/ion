@@ -124,6 +124,7 @@ func (m *Manager) respawnDeadExtensions(key string) {
 				Label: key, State: "extension_restarting",
 				ContextPercent: s.lastContextPct,
 				ContextWindow:  s.lastContextWindow,
+				ContextTokens:  s.lastContextTokens,
 				Model:          s.lastModel,
 				RunCostUsd:     s.lastTotalCost,
 			},
@@ -201,12 +202,13 @@ func (m *Manager) respawnDeadExtensions(key string) {
 
 	// Settle status back to idle once all hosts have been processed.
 	m.mu.RLock()
-	var idlePct, idleCW int
+	var idlePct, idleCW, idleTokens int
 	var idleModel string
 	var idleCost, idleConvCost float64
 	if sess, ok2 := m.sessions[key]; ok2 {
 		idlePct = sess.lastContextPct
 		idleCW = sess.lastContextWindow
+		idleTokens = sess.lastContextTokens
 		idleModel = sess.lastModel
 		idleCost = sess.lastTotalCost
 		idleConvCost = sess.lastConvCost
@@ -216,7 +218,7 @@ func (m *Manager) respawnDeadExtensions(key string) {
 		Type: "engine_status",
 		Fields: &types.StatusFields{
 			Label: key, State: "idle",
-			ContextPercent: idlePct, ContextWindow: idleCW,
+			ContextPercent: idlePct, ContextWindow: idleCW, ContextTokens: idleTokens,
 			Model: idleModel, RunCostUsd: idleCost, ConversationCostUsd: idleConvCost,
 		},
 	})

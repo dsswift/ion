@@ -404,15 +404,28 @@ func TestEstimateTokens_MessageArrayImageAware(t *testing.T) {
 
 // --- Context usage ---
 
-func TestGetContextUsage_PercentCap(t *testing.T) {
+// TestGetContextUsage_PercentUncapped pins the uncapped-percent contract.
+// Percent is the true Tokens/Limit ratio and MUST exceed 100 when the
+// conversation holds more tokens than the window it is measured against —
+// the normal case when a conversation accumulated under a large-window model
+// and is then measured against a smaller one. Clamping here is what made an
+// over-budget conversation indistinguishable from an exactly-full one, and
+// left every consumer unable to tell the operator how far over they are.
+//
+// Tokens has always been unclamped and is what every compaction decision
+// reads, so this widening does not affect compaction behavior.
+func TestGetContextUsage_PercentUncapped(t *testing.T) {
 	conv := CreateConversation("cap-test", "", "claude-3")
 	AddUserMessage(conv, "hello")
 	u := types.LlmUsage{InputTokens: 30000}
 	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "hi"}}, u)
 
 	info := GetContextUsage(conv, 10000)
-	if info.Percent != 100 {
-		t.Errorf("expected capped at 100, got %d", info.Percent)
+	if info.Percent < 300 {
+		t.Errorf("expected uncapped percent >= 300 (30000 tokens / 10000 window), got %d", info.Percent)
+	}
+	if info.Tokens < 30000 {
+		t.Errorf("expected tokens >= 30000, got %d", info.Tokens)
 	}
 }
 

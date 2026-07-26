@@ -180,6 +180,14 @@ func AutoCompactTokenLimit(window, maxOutputTokens int) int {
 // after compaction), it falls back to a heuristic estimate of conv.Messages
 // plus conv.System, which is used until the next API response populates Usage
 // on a new assistant message.
+//
+// Percent is UNBOUNDED: it is the true Tokens/Limit ratio and may exceed 100.
+// A value above 100 means the conversation holds more tokens than the window
+// being measured against — the normal case when a conversation accumulated
+// under a large-window model and is then measured against a smaller one.
+// Callers that render Percent into a fixed-width bar must clamp at their own
+// display layer; the engine reports the real figure. Tokens has always been
+// unclamped and remains the input to every compaction decision.
 func GetContextUsage(conv *Conversation, contextWindow int) ContextUsageInfo {
 	conv.lock()
 	defer conv.unlock()
@@ -207,7 +215,7 @@ func GetContextUsage(conv *Conversation, contextWindow int) ContextUsageInfo {
 		for _, msg := range conv.Messages[lastUsageIdx+1:] {
 			total += EstimateTokens(msg.Content)
 		}
-		pct := int(math.Min(100, math.Round(float64(total)/float64(limit)*100)))
+		pct := int(math.Round(float64(total) / float64(limit) * 100))
 		utils.LogWithFields(utils.LevelDebug, "conversation.compact", "get context usage api cached", map[string]any{
 			"turn": total, "count": lastUsageIdx, "max": len(conv.Messages),
 		})
@@ -222,7 +230,7 @@ func GetContextUsage(conv *Conversation, contextWindow int) ContextUsageInfo {
 	if conv.System != "" {
 		estimated += EstimateTokens(conv.System)
 	}
-	pct := int(math.Min(100, math.Round(float64(estimated)/float64(limit)*100)))
+	pct := int(math.Round(float64(estimated) / float64(limit) * 100))
 	utils.LogWithFields(utils.LevelDebug, "conversation.compact", "get context usage heuristic", map[string]any{
 		"count": len(conv.Messages), "turn": estimated,
 	})

@@ -181,6 +181,10 @@ func NewManager(b backend.RunBackend) *Manager {
 	b.OnExit(m.handleRunExit)
 	b.OnError(m.handleRunError)
 
+	// Route background bash completions into the park/wake driver
+	// (background_task_wake.go).
+	m.wireBackgroundTaskNotifier()
+
 	// Start the status-heartbeat goroutine. The goroutine reads
 	// heartbeatInterval atomically (via a snapshot in runStatusHeartbeat)
 	// so SetHeartbeatInterval calls before the first tick take effect.
@@ -261,9 +265,11 @@ func buildSessionStatusMirror(key string, f *types.StatusFields, s *engineSessio
 			LastEmittedAt:            time.Now().UnixMilli(),
 			HasInflightRun:           hasInflight,
 			BackgroundAgentCount:     f.BackgroundAgents,
+			BackgroundShellCount:     f.BackgroundShells,
 			Model:                    f.Model,
 			ContextPercent:           f.ContextPercent,
 			ContextWindow:            f.ContextWindow,
+			ContextTokens:            f.ContextTokens,
 			RunCostUsd:               f.RunCostUsd,
 			ConversationCostUsd:      f.ConversationCostUsd,
 			PermissionDenialsPending: f.PermissionDenials,
@@ -390,6 +396,11 @@ func (m *Manager) StopSession(key string) error {
 
 	delete(m.sessions, key)
 
+	// Drop this session's skill registrations (see session_skills.go). Done
+	// here alongside the session-map delete so a project's skills never
+	// outlive the session that loaded them.
+	clearSessionSkills(key)
+
 	// If no remaining sessions use the same extension directory, purge all
 	// runOnce entries for that extension. The debounce window only applies
 	// while at least one session of the extension is alive. We check while
@@ -414,6 +425,11 @@ func (m *Manager) StopSession(key string) error {
 	// they run detached from run contexts, so the registry is the only
 	// teardown path. Every kill is logged inside.
 	tools.StopBackgroundTasksForOwner(key)
+
+	// Drop the outstanding-set bookkeeping and any park state. The call above
+	// kills the processes; this clears what the session was tracking, so a
+	// late completion finds nothing to revive.
+	m.clearOutstandingBackgroundTasks(key)
 
 	// Stop session memory background summarizer before other cleanup so
 	// any in-flight goroutine drains cleanly.

@@ -493,6 +493,12 @@ type DispatchStateEntry struct {
 }
 
 // ContextUsage reports current context window utilization.
+//
+// Percent is UNBOUNDED: it is the true Tokens/window ratio and may exceed
+// 100, which means the conversation holds more tokens than the window it is
+// measured against. Extensions that gate on context pressure should prefer
+// Tokens (an absolute count) over Percent when the comparison must hold
+// across a model switch.
 type ContextUsage struct {
 	Percent int
 	Tokens  int

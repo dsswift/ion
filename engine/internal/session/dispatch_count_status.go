@@ -16,7 +16,7 @@ import (
 // emission sites stay field-identical.
 func (m *Manager) buildIdleStatusFields(s *engineSession, key string, bgCount int) *types.StatusFields {
 	m.mu.RLock()
-	var pct, cw int
+	var pct, cw, tokens int
 	var model string
 	var runCost, convCost float64
 	var sessionID string
@@ -24,6 +24,7 @@ func (m *Manager) buildIdleStatusFields(s *engineSession, key string, bgCount in
 	if s2, ok := m.sessions[key]; ok {
 		pct = s2.lastContextPct
 		cw = s2.lastContextWindow
+		tokens = s2.lastContextTokens
 		model = s2.lastModel
 		runCost = s2.lastTotalCost
 		convCost = s2.lastConvCost
@@ -36,7 +37,7 @@ func (m *Manager) buildIdleStatusFields(s *engineSession, key string, bgCount in
 	m.mu.RUnlock()
 	return &types.StatusFields{
 		Label: key, State: "idle", SessionID: sessionID,
-		ContextPercent: pct, ContextWindow: cw,
+		ContextPercent: pct, ContextWindow: cw, ContextTokens: tokens,
 		Model: model, RunCostUsd: runCost, ConversationCostUsd: convCost,
 		BackgroundAgents: bgCount,
 		BackgroundShells: shellCount,

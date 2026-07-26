@@ -166,6 +166,7 @@ func (m *Manager) emitStatusSnapshot(key, reason string) {
 	pendingDenials := s.lastPermissionDenials
 	lastPct := s.lastContextPct
 	lastWindow := s.lastContextWindow
+	lastTokens := s.lastContextTokens
 	lastModel := s.lastModel
 	lastCost := s.lastTotalCost
 	lastConvCost := s.lastConvCost
@@ -180,7 +181,7 @@ func (m *Manager) emitStatusSnapshot(key, reason string) {
 	shellCount := len(s.outstandingBackgroundTasks)
 	m.mu.Unlock()
 
-	utils.LogWithFields(utils.LevelDebug, "session", "status_snapshot_emitted", map[string]any{"key": key, "session_state": sessionState, "reason": reason, "count": len(pendingDenials), "model": lastModel, "last_pct": lastPct, "bg_count": bgCount, "shell_count": shellCount})
+	utils.LogWithFields(utils.LevelDebug, "session", "status_snapshot_emitted", map[string]any{"key": key, "session_state": sessionState, "reason": reason, "count": len(pendingDenials), "model": lastModel, "last_pct": lastPct, "last_tokens": lastTokens, "bg_count": bgCount, "shell_count": shellCount})
 	m.emit(key, types.EngineEvent{
 		Type: "engine_status",
 		Fields: &types.StatusFields{
@@ -189,6 +190,7 @@ func (m *Manager) emitStatusSnapshot(key, reason string) {
 			SessionID:           sessionID,
 			ContextPercent:      lastPct,
 			ContextWindow:       lastWindow,
+			ContextTokens:       lastTokens,
 			Model:               lastModel,
 			RunCostUsd:          lastCost,
 			ConversationCostUsd: lastConvCost,

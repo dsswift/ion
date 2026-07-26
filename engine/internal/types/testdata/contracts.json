@@ -3,6 +3,16 @@
     "agent_state": [
       "agents"
     ],
+    "background_task_complete": [
+      "command",
+      "elapsedMs",
+      "exitCode",
+      "outputPath",
+      "remainingTaskIds",
+      "status",
+      "tail",
+      "taskId"
+    ],
     "capability_unsupported": [
       "backend",
       "capability",
@@ -170,7 +180,8 @@
       "usage"
     ],
     "task_suspend": [
-      "awaitingDispatchIds"
+      "awaitingDispatchIds",
+      "awaitingTaskIds"
     ],
     "task_update": [
       "message"
@@ -238,6 +249,7 @@
     "asyncRequestId",
     "asyncStatus",
     "attemptNumber",
+    "backgroundTaskComplete",
     "cancelled",
     "capability",
     "capabilityBackend",
@@ -381,6 +393,7 @@
     "strategy",
     "summary",
     "taskSuspendAwaitingCount",
+    "taskSuspendAwaitingTaskCount",
     "text",
     "thinkingElapsedSeconds",
     "thinkingRedacted",
@@ -582,7 +595,9 @@
     ],
     "SessionStatus": [
       "backgroundAgentCount",
+      "backgroundShellCount",
       "contextPercent",
+      "contextTokens",
       "contextWindow",
       "conversationCostUsd",
       "extensionName",
@@ -598,7 +613,9 @@
     ],
     "StatusFields": [
       "backgroundAgents",
+      "backgroundShells",
       "contextPercent",
+      "contextTokens",
       "contextWindow",
       "conversationCostUsd",
       "conversationTurns",

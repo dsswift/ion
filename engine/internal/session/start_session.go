@@ -209,32 +209,55 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 		// to its preference default (which may differ from the conversation's
 		// actual model). This also seeds lastContextWindow so the context-percent
 		// denominator is correct from the first status.
-		if conv != nil && conv.Model != "" {
+		//
+		// The MODEL seed requires a header model; the CONTEXT seed does not.
+		// They were once a single gate, which meant every conversation whose
+		// .llm.jsonl header carries model:"" — the shape persistCliTurn writes
+		// for delegated-CLI turns, and nothing ever rewrites it — reported 0%
+		// context forever. Resolve the window from whatever model we can name
+		// (header > already-retained > config default) and seed the usage
+		// regardless.
+		if conv != nil {
 			convModel := conv.Model
+			m.mu.RLock()
+			retainedModel := s.lastModel
+			m.mu.RUnlock()
+			windowModel := convModel
+			if windowModel == "" {
+				windowModel = retainedModel
+			}
+			if windowModel == "" && m.config != nil {
+				windowModel = m.config.DefaultModel
+			}
 			ctxWindow := conversation.DefaultContext
-			if info := providers.GetModelInfo(convModel); info != nil {
+			if info := providers.GetModelInfo(windowModel); info != nil && info.ContextWindow > 0 {
 				ctxWindow = info.ContextWindow
 			}
-			// Seed lastContextPct from the persisted conversation so the initial
-			// idle engine_status reports the true usage instead of 0%. Without
-			// this a resumed conversation shows an empty context bar until the
-			// first prompt's usage event lands. Computed against the already-loaded
-			// conv and the resolved context window.
-			seededPct := 0
+			// Seed context usage from the persisted conversation so the initial
+			// idle engine_status reports the true occupancy instead of 0%.
+			// Without this a resumed conversation shows an empty context bar
+			// until the first prompt's usage event lands. Computed against the
+			// already-loaded conv and the resolved context window.
+			//
+			// Written unconditionally: a genuine zero on an empty conversation
+			// is the correct value. The former `if seededPct > 0` guard is what
+			// let a stale non-zero figure survive a conversation being cleared.
 			usage := conversation.GetContextUsage(conv, ctxWindow)
-			if usage.Percent > 0 {
-				seededPct = usage.Percent
-			}
 			m.mu.Lock()
-			s.lastModel = convModel
-			s.lastContextWindow = ctxWindow
-			if seededPct > 0 {
-				s.lastContextPct = seededPct
+			if convModel != "" {
+				s.lastModel = convModel
 			}
+			s.lastContextWindow = ctxWindow
+			s.lastContextTokens = usage.Tokens
+			s.lastContextPct = usage.Percent
 			m.mu.Unlock()
-			utils.LogWithFields(utils.LevelInfo, "session", "startsession: seeded from", map[string]any{"key": key, "model": convModel, "ctx_window": ctxWindow, "seeded_pct": seededPct, "run_id": s.conversationID})
+			utils.LogWithFields(utils.LevelInfo, "session", "startsession: seeded from", map[string]any{
+				"key": key, "model": convModel, "window_model": windowModel, "ctx_window": ctxWindow,
+				"seeded_pct": usage.Percent, "seeded_tokens": usage.Tokens, "estimated": usage.Estimated,
+				"run_id": s.conversationID,
+			})
 		} else {
-			utils.LogWithFields(utils.LevelDebug, "session", "startsession: no conversation model to seed", map[string]any{"key": key, "run_id": s.conversationID})
+			utils.LogWithFields(utils.LevelDebug, "session", "startsession: no conversation to seed context from", map[string]any{"key": key, "run_id": s.conversationID})
 		}
 
 		// Initialize session memory for resumed conversations. The memory
@@ -398,27 +421,46 @@ func (m *Manager) rebindSession(s *engineSession, key, newConvID string) {
 	saveBinding(bindingsPath(), key, newConvID)
 
 	// Re-seed model and context usage from the target conversation so the
-	// next status snapshot carries correct values.
-	if convModel, err := conversation.LoadLlmHeaderModel(newConvID, ""); err == nil && convModel != "" {
-		ctxWindow := conversation.DefaultContext
-		if info := providers.GetModelInfo(convModel); info != nil {
-			ctxWindow = info.ContextWindow
-		}
-		seededPct := 0
-		if conv, lerr := conversation.Load(newConvID, ""); lerr == nil {
-			usage := conversation.GetContextUsage(conv, ctxWindow)
-			if usage.Percent > 0 {
-				seededPct = usage.Percent
-			}
-		}
+	// next status snapshot carries correct values. Same gate split as
+	// StartSession: an empty header model must not suppress the context
+	// seed, or every delegated-CLI conversation rebinds to 0%.
+	convModel, mErr := conversation.LoadLlmHeaderModel(newConvID, "")
+	if mErr != nil {
+		utils.LogWithFields(utils.LevelDebug, "session", "rebindsession: no header model on target conversation", map[string]any{"key": key, "conversation_id": newConvID, "error": mErr})
+	}
+	m.mu.RLock()
+	retainedModel := s.lastModel
+	m.mu.RUnlock()
+	windowModel := convModel
+	if windowModel == "" {
+		windowModel = retainedModel
+	}
+	if windowModel == "" && m.config != nil {
+		windowModel = m.config.DefaultModel
+	}
+	ctxWindow := conversation.DefaultContext
+	if info := providers.GetModelInfo(windowModel); info != nil && info.ContextWindow > 0 {
+		ctxWindow = info.ContextWindow
+	}
+	if conv, lerr := conversation.Load(newConvID, ""); lerr == nil {
+		usage := conversation.GetContextUsage(conv, ctxWindow)
 		m.mu.Lock()
-		s.lastModel = convModel
-		s.lastContextWindow = ctxWindow
-		if seededPct > 0 {
-			s.lastContextPct = seededPct
+		if convModel != "" {
+			s.lastModel = convModel
 		}
+		s.lastContextWindow = ctxWindow
+		s.lastContextTokens = usage.Tokens
+		s.lastContextPct = usage.Percent
 		m.mu.Unlock()
-		utils.LogWithFields(utils.LevelInfo, "session", "rebindsession: seeded model and context from target conversation", map[string]any{"key": key, "model": convModel, "context_window": ctxWindow, "context_pct": seededPct, "conversation_id": newConvID, "was": oldConvID})
+		utils.LogWithFields(utils.LevelInfo, "session", "rebindsession: seeded model and context from target conversation", map[string]any{
+			"key": key, "model": convModel, "window_model": windowModel, "context_window": ctxWindow,
+			"context_pct": usage.Percent, "context_tokens": usage.Tokens,
+			"conversation_id": newConvID, "was": oldConvID,
+		})
+	} else {
+		utils.LogWithFields(utils.LevelInfo, "session", "rebindsession: target conversation load failed, context not re-seeded", map[string]any{
+			"key": key, "conversation_id": newConvID, "error": lerr,
+		})
 	}
 
 	m.emitStatusSnapshot(key, "rebind")
