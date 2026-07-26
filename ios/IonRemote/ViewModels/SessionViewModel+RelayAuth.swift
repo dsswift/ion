@@ -12,6 +12,16 @@ import Foundation
 
 extension SessionViewModel {
 
+    /// First non-empty string in the given order, or `""` when all are empty.
+    /// Used to resolve a relay credential from incoming → in-memory → stored
+    /// without ever letting an empty value win.
+    func firstNonEmpty(_ candidates: String?...) -> String {
+        for candidate in candidates {
+            if let value = candidate, !value.isEmpty { return value }
+        }
+        return ""
+    }
+
     /// Initializes `oidcTokenManager` from the stored `PairedDevice` fields when
     /// the device is in OIDC mode and all required fields are present.
     ///
@@ -88,27 +98,47 @@ extension SessionViewModel {
             // Legitimate upgrade from LAN-direct to relay — fall through.
         }
 
-        // In OIDC mode, desktop sends relayApiKey as a freshly-minted bearer
-        // token for bootstrap. If the token mint is async and not yet complete,
-        // relayApiKey arrives empty. Never update relayURL or relayAPIKey when
-        // the token is empty — that leaves the device with the relay URL but
-        // the lan-direct sentinel, breaking the LAN-direct detection in
-        // softReconnect() which requires ws://host:port format with a port.
-        // OIDC metadata (issuer, audience, scope, clientId) can still be
-        // persisted — useful for Phase 2 autonomous acquisition.
+        // Resolve the values to persist. In OIDC mode the desktop sends
+        // relayApiKey as a freshly-minted bearer token for bootstrap; if that
+        // mint failed or is still in flight, relayApiKey arrives empty.
+        //
+        // An empty value must NEVER reach the device record. iOS persists what
+        // it is given straight into the keychain, so writing "" destroys the
+        // pairing's relay config — after which softReconnect has no URL to
+        // build a transport from. The fallback chain is:
+        //   incoming value -> in-memory value -> stored device value
+        // and the write is skipped entirely when all three are empty. The
+        // in-memory pair is hydrated from the active device at launch and on
+        // every desktop switch (see hydrateRelayConfig), so on a cold start it
+        // already holds the stored config rather than "".
+        let storedUrl = activeDevice?.relayURL ?? ""
+        let storedApiKey = activeDevice?.relayAPIKey ?? ""
+        let effectiveUrl = firstNonEmpty(relayUrl, self.relayURL, storedUrl)
+        let effectiveApiKey = firstNonEmpty(relayApiKey, self.relayAPIKey, storedApiKey)
         let hasRealToken = !relayApiKey.isEmpty
-        let effectiveApiKey = hasRealToken ? relayApiKey : self.relayAPIKey
-        let effectiveUrl = hasRealToken ? relayUrl : self.relayURL
         let credentialChanged = hasRealToken && (relayApiKey != self.relayAPIKey)
 
-        self.relayURL = effectiveUrl
-        self.relayAPIKey = effectiveApiKey
+        if !hasRealToken {
+            DiagnosticLog.log("relay config carried no usable credential, keeping stored relay config", tag: "session.relay", level: .warn, fields: [
+                "auth_mode": authMode ?? "psk",
+                "has_stored_url": String(!effectiveUrl.isEmpty),
+                "has_stored_key": String(!effectiveApiKey.isEmpty)
+            ])
+        }
+
+        // Only publish non-empty values. A partial config (URL but no key, or
+        // vice versa) still updates the half it actually carries.
+        if !effectiveUrl.isEmpty { self.relayURL = effectiveUrl }
+        if !effectiveApiKey.isEmpty { self.relayAPIKey = effectiveApiKey }
+
         if let device = activeDevice,
            let idx = pairedDevices.firstIndex(where: { $0.id == device.id }) {
-            pairedDevices[idx].relayURL = effectiveUrl
-            pairedDevices[idx].relayAPIKey = effectiveApiKey
+            if !effectiveUrl.isEmpty { pairedDevices[idx].relayURL = effectiveUrl }
+            if !effectiveApiKey.isEmpty { pairedDevices[idx].relayAPIKey = effectiveApiKey }
             // Persist OIDC metadata so reconnects after an app restart carry
             // the auth mode and OIDC context without re-contacting the desktop.
+            // This is independently useful even when no credential arrived —
+            // iOS mints its own tokens from the issuer + client ID.
             pairedDevices[idx].relayAuthMode = authMode
             pairedDevices[idx].relayOidcIssuer = relayOidcIssuer
             pairedDevices[idx].relayOidcAudience = relayOidcAudience
@@ -120,7 +150,9 @@ extension SessionViewModel {
             DiagnosticLog.log("relay config accepted", tag: "session.relay", fields: [
                 "device": String(device.id.prefix(8)),
                 "auth_mode": authMode ?? "psk",
-                "credential_changed": String(credentialChanged)
+                "credential_changed": String(credentialChanged),
+                "url_written": String(!effectiveUrl.isEmpty),
+                "key_written": String(!effectiveApiKey.isEmpty)
             ])
         }
 

@@ -26,9 +26,10 @@ final class TabListGroupHeaderTests: XCTestCase {
         status: TabStatus = .idle,
         hasRunningChildren: Bool? = nil,
         permissionQueue: [PermissionRequest] = [],
-        isTerminalOnly: Bool? = nil
+        isTerminalOnly: Bool? = nil,
+        backgroundShellCount: Int? = nil
     ) -> RemoteTabState {
-        RemoteTabState(
+        var tab = RemoteTabState(
             id: id,
             title: "Tab",
             customTitle: nil,
@@ -40,6 +41,8 @@ final class TabListGroupHeaderTests: XCTestCase {
             isTerminalOnly: isTerminalOnly,
             hasRunningChildren: hasRunningChildren
         )
+        tab.backgroundShellCount = backgroundShellCount
+        return tab
     }
 
     private func permission(_ toolName: String) -> PermissionRequest {
@@ -85,6 +88,66 @@ final class TabListGroupHeaderTests: XCTestCase {
         XCTAssertEqual(s.priority, TabStatusRollup.priorityChildren)
         XCTAssertTrue(s.shouldPulse)
         XCTAssertEqual(s.color, TabStatusRollup.childrenYellow)
+    }
+
+    // ─── Background shell commands ──────────────────────────────────────────
+    //
+    // Level 5 of the cascade. Reachable on iOS because the desktop snapshot
+    // projects backgroundShellCount onto RemoteTabState — see the note in
+    // TabStatusRollup.swift's header, which previously documented level 5's
+    // neighborhood as desktop-only.
+
+    func testClassifyBackgroundShells() {
+        let s = TabStatusRollup.classify(makeTab(status: .idle, backgroundShellCount: 2))
+        XCTAssertEqual(s.priority, TabStatusRollup.priorityBashBackground)
+        XCTAssertTrue(s.shouldPulse)
+        XCTAssertEqual(s.color, TabStatusRollup.shellPink)
+        // Never confusable with the error dot: error is the top-priority state
+        // and a "your build is running" pink that reads as red is misleading.
+        XCTAssertNotEqual(s.color, TabStatusRollup.errorColor)
+    }
+
+    func testRunningChildrenOutrankBackgroundShells() {
+        // Both kinds of background work in flight: the richer agent signal wins,
+        // matching the desktop cascade.
+        let s = TabStatusRollup.classify(
+            makeTab(status: .idle, hasRunningChildren: true, backgroundShellCount: 3)
+        )
+        XCTAssertEqual(s.priority, TabStatusRollup.priorityChildren)
+        XCTAssertEqual(s.color, TabStatusRollup.childrenYellow)
+    }
+
+    func testForegroundRunningOutranksBackgroundShells() {
+        let s = TabStatusRollup.classify(makeTab(status: .running, backgroundShellCount: 3))
+        XCTAssertEqual(s.priority, TabStatusRollup.priorityRunning)
+    }
+
+    func testBackgroundShellsOutrankPlanReady() {
+        // Active background work beats a passive "waiting on you" state — the
+        // same ranking argument the children branch makes.
+        let s = TabStatusRollup.classify(
+            makeTab(status: .idle, permissionQueue: [planReadyEntry()], backgroundShellCount: 1)
+        )
+        XCTAssertEqual(s.priority, TabStatusRollup.priorityBashBackground)
+    }
+
+    func testZeroBackgroundShellsFallsThroughToIdle() {
+        let s = TabStatusRollup.classify(makeTab(status: .idle, backgroundShellCount: 0))
+        XCTAssertEqual(s.priority, TabStatusRollup.priorityIdle)
+    }
+
+    /// The iOS priority numbers must match the desktop constants in
+    /// TabStripGroupStatus.ts exactly — the two folds disagree otherwise on a
+    /// tab that matches two states at once.
+    func testPriorityConstantsMatchDesktop() {
+        XCTAssertEqual(TabStatusRollup.priorityError, 9)
+        XCTAssertEqual(TabStatusRollup.priorityPermission, 8)
+        XCTAssertEqual(TabStatusRollup.priorityRunning, 7)
+        XCTAssertEqual(TabStatusRollup.priorityChildren, 6)
+        XCTAssertEqual(TabStatusRollup.priorityBashBackground, 5)
+        XCTAssertEqual(TabStatusRollup.priorityPlanReady, 4)
+        XCTAssertEqual(TabStatusRollup.priorityQuestion, 3)
+        XCTAssertEqual(TabStatusRollup.priorityIdle, 0)
     }
 
     func testClassifyPlanReady() {

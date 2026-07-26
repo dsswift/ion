@@ -52,9 +52,9 @@ extension SessionViewModel {
 
         guard !effectiveRelayURL.isEmpty,
               let url = URL(string: effectiveRelayURL) else {
-            DiagnosticLog.log("connect aborted: invalid or empty relay URL", tag: "lifecycle", level: .error, fields: [
-                "device": device.name,
-            ])
+            fallBackToLANOnly(device: device, reason: effectiveRelayURL.isEmpty
+                              ? "connect: no relay URL configured"
+                              : "connect: relay URL is malformed")
             return
         }
 
@@ -207,7 +207,12 @@ extension SessionViewModel {
         let channelId = E2ECrypto.deriveChannelId(sharedSecret: sharedKey)
 
         guard !effectiveRelayURL.isEmpty,
-              let url = URL(string: effectiveRelayURL) else { return }
+              let url = URL(string: effectiveRelayURL) else {
+            fallBackToLANOnly(device: device, reason: effectiveRelayURL.isEmpty
+                              ? "softReconnect: no relay URL configured"
+                              : "softReconnect: relay URL is malformed")
+            return
+        }
 
         connectionState = .reconnecting
         DiagnosticLog.log("soft reconnect relay path", tag: "session.lifecycle", fields: [
@@ -244,6 +249,52 @@ extension SessionViewModel {
     func reconnect() {
         disconnect()
         connect()
+    }
+
+    // MARK: - LAN-only Fallback
+
+    /// Build a relay-less transport when the relay cannot be used.
+    ///
+    /// Both `connect()` and `softReconnect()` reach a point where the stored
+    /// relay URL is empty or unparseable. Previously each simply returned —
+    /// and because `tearDownTransport()` had already run while
+    /// `connectionState` still read `.connected`, that left the app in a state
+    /// nothing could recover from: `transport == nil` so every command was
+    /// deferred forever, and `ContentView`'s auto-retry only fires on
+    /// `.disconnected` / `.connecting`, so it never engaged. The user saw a
+    /// normal-looking UI that silently accepted input and did nothing.
+    ///
+    /// A missing relay URL is not a reason to have no transport at all. The
+    /// LAN path is fully independent of the relay: `TransportManager`'s
+    /// relay-less initializer plus `start()` brings up Bonjour browsing, the
+    /// auto-reconnect observation loop, LAN state observation, and the network
+    /// monitor. On the user's own network that reconnects on its own within a
+    /// discovery tick, and the desktop pushes a fresh `relay_config` on peer
+    /// connect, which repairs the stored relay config for next time.
+    ///
+    /// `connectionState` is set to `.disconnected` (not left stale) so the
+    /// disconnected view's 5-second auto-retry re-arms as a second recovery
+    /// path when LAN is unavailable too.
+    func fallBackToLANOnly(device: PairedDevice, reason: String) {
+        DiagnosticLog.log("relay unavailable, falling back to LAN-only transport", tag: "session.lifecycle", level: .warn, fields: [
+            "reason": reason,
+            "device": String(device.id.prefix(8)),
+            "status": device.name
+        ])
+
+        let sharedKey = SymmetricKey(data: device.sharedSecret)
+        let tm = TransportManager(sharedKey: sharedKey, deviceId: device.id)
+        tm.deviceName = device.name
+        self.transport = tm
+        // NOT .connecting: there is no relay handshake to await, and a
+        // lingering .connecting state suppresses the disconnected view's
+        // auto-retry. Bonjour flips this to .lanPreferred on a successful LAN
+        // auth; until then the app is honestly disconnected.
+        connectionState = .disconnected
+
+        Task { await tm.start() }
+        startListening()
+        startReconnectSafetyTimer()
     }
 
     // MARK: - Suspend/Resume (background/foreground)
@@ -290,6 +341,10 @@ extension SessionViewModel {
         ])
         disconnect()
         activeDeviceId = id
+        // relayURL / relayAPIKey are per-device. Without re-hydrating, the
+        // in-memory pair still holds the PREVIOUS desktop's values and
+        // handleRelayConfig would fall back onto them for the new pairing.
+        hydrateRelayConfig()
         restoreCachedLayout(for: id)
         connect()
     }

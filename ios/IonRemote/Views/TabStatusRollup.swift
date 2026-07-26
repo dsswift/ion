@@ -11,23 +11,30 @@ import SwiftUI
 //
 // ─── Priority cascade (mirrors desktop TabStripGroupStatus.ts) ──────────────
 //
-//   8 = error            (dead/failed — red)
-//   7 = permission       (generic tool permission — orange glow)
-//   6 = running          (running/connecting — teal pulse)
-//   5 = running-children (background agents — yellow pulse)
+//   9 = error            (dead/failed — red)
+//   8 = permission       (generic tool permission — orange glow)
+//   7 = running          (running/connecting — teal pulse)
+//   6 = running-children (background agents — yellow pulse)
+//   5 = bash-background  (background shell commands — pink pulse)
 //   4 = plan-ready       (ExitPlanMode denial — green glow)
 //   3 = question         (AskUserQuestion denial — purple glow)
-//   2 = bash             (desktop-only — see note)
+//   2 = bash             (user-typed `!` command — desktop-only, see note)
 //   1 = unread           (desktop-only — see note)
 //   0 = idle             (gray, dimmed)
 //
 // The numeric priorities are kept identical to the desktop constants so the
-// fold ranks the same way on both clients. Levels 2 (bash) and 1 (unread) are
-// intentionally UNREACHABLE on iOS: the desktop→iOS wire (RemoteTabState in
-// desktop/src/main/remote/protocol.ts) does not project `bashExecuting` or
-// `hasUnread` — those are desktop-renderer-only `TabState` fields. If either is
-// ever added to the wire and to `RemoteTabState.swift`, its branch slots into
-// the existing numeric gap without renumbering anything else.
+// fold ranks the same way on both clients. When the desktop renumbers its
+// tiers, these renumber in lockstep — otherwise the two folds silently
+// disagree on a tab that matches two states at once.
+//
+// Level 5 (bash-background) IS reachable: the desktop projects
+// `backgroundShellCount` onto RemoteTabState, so a session holding for
+// background bash commands renders the pink dot here exactly as it does on the
+// desktop. Levels 2 (user-typed `!` bash) and 1 (unread) remain UNREACHABLE on
+// iOS: the wire carries neither `bashExecuting` nor `hasUnread`, which are
+// desktop-renderer-only `TabState` fields. If either is ever added to the wire
+// and to `RemoteTabState.swift`, its branch slots into the existing numeric gap
+// without renumbering anything else.
 //
 // iOS wire nuance vs. desktop: on the desktop, ExitPlanMode / AskUserQuestion
 // denials live on a separate `permissionDenied` field while `permissionQueue`
@@ -49,13 +56,14 @@ struct GroupTabStatus: Equatable {
 
 enum TabStatusRollup {
     // ─── Priority constants (mirror desktop) ─────────────────────────────────
-    static let priorityError = 8
-    static let priorityPermission = 7
-    static let priorityRunning = 6
-    static let priorityChildren = 5
+    static let priorityError = 9
+    static let priorityPermission = 8
+    static let priorityRunning = 7
+    static let priorityChildren = 6
+    static let priorityBashBackground = 5
     static let priorityPlanReady = 4
     static let priorityQuestion = 3
-    // 2 = bash and 1 = unread are desktop-only (not on the iOS wire).
+    // 2 = user-typed `!` bash and 1 = unread are desktop-only (not on the wire).
     static let priorityIdle = 0
 
     // ─── Palette ─────────────────────────────────────────────────────────────
@@ -68,6 +76,11 @@ enum TabStatusRollup {
     static let childrenYellow = Color(hex: 0xF59E0B)
     static let runningTeal = Color(hex: 0x5EA9C9)
     static let questionPurple = Color(hex: 0xA78BFA)
+    /// Blaze pink for the shell-activity dot. Mirrors the desktop Ion Dark
+    /// `statusBash` (#ff2d95), pinned identical by the theme-parity fixture.
+    /// Deliberately far from errorColor so "a shell is running" never reads as
+    /// an error.
+    static let shellPink = Color(hex: 0xFF2D95)
     static let idleGray = Color(hex: 0x8A8A80)
 
     /// Classify a single tab into its status info. This is the exact cascade
@@ -132,7 +145,22 @@ enum TabStatusRollup {
             )
         }
 
-        // 5. Plan ready → green glow (ExitPlanMode denial, run idle/completed).
+        // 5. Awaiting background shells → pink pulse (orchestrator idle,
+        //    background bash commands still running). Ranked directly under
+        //    children: both are active background work, and both outrank the
+        //    passive plan/question waits, but the agent signal is the richer
+        //    one when both are in flight.
+        if (tab.backgroundShellCount ?? 0) > 0 {
+            return GroupTabStatus(
+                priority: priorityBashBackground,
+                color: shellPink,
+                shouldPulse: true,
+                glow: true,
+                glowColor: shellPink
+            )
+        }
+
+        // 6. Plan ready → green glow (ExitPlanMode denial, run idle/completed).
         if hasPlanReady && (tab.status == .idle || tab.status == .completed) {
             return GroupTabStatus(
                 priority: priorityPlanReady,
@@ -143,7 +171,7 @@ enum TabStatusRollup {
             )
         }
 
-        // 6. Question pending → purple glow (AskUserQuestion denial).
+        // 7. Question pending → purple glow (AskUserQuestion denial).
         if hasQuestion && (tab.status == .idle || tab.status == .completed) {
             return GroupTabStatus(
                 priority: priorityQuestion,
@@ -154,7 +182,7 @@ enum TabStatusRollup {
             )
         }
 
-        // 7. Idle → dimmed gray (no pulse, no glow).
+        // 8. Idle → dimmed gray (no pulse, no glow).
         return GroupTabStatus(
             priority: priorityIdle,
             color: idleGray,

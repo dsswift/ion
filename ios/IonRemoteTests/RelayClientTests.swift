@@ -133,4 +133,53 @@ final class RelayClientTests: XCTestCase {
         XCTAssertFalse(client.isPingKeepaliveActive,
             "one stop clears the keepalive — startPing must not stack loops")
     }
+
+    // MARK: - Credential rejection classification
+
+    // The relay refuses a bad bearer two different ways depending on when it
+    // notices, and only one of them was ever recognised. `auth.Validate` runs
+    // in the HTTP handler BEFORE the WebSocket upgrade, so a token that is
+    // already stale at connect time is refused with HTTP 401 and no WebSocket
+    // (hence no close code) is ever created. Reading only `closeCode` made
+    // that look like a generic network error: the credential was never
+    // invalidated and the backoff ladder retried the same dead token out to
+    // its 30-second ceiling forever.
+
+    func testCloseCode4401IsCredentialRejection() {
+        XCTAssertTrue(RelayRejection.isCredentialRejection(closeCode: 4401, httpStatus: nil),
+            "4401 is the relay's mid-connection token-expiry close")
+    }
+
+    func testHTTP401IsCredentialRejection() {
+        // The connect-time path: refused at the HTTP upgrade, no close code.
+        XCTAssertTrue(RelayRejection.isCredentialRejection(closeCode: nil, httpStatus: 401),
+            "an upgrade refused with 401 is a credential rejection")
+    }
+
+    func testHTTP403IsCredentialRejection() {
+        // Channel ownership denial (subject mismatch) also refuses at the
+        // upgrade and equally warrants re-acquiring the credential.
+        XCTAssertTrue(RelayRejection.isCredentialRejection(closeCode: nil, httpStatus: 403),
+            "an upgrade refused with 403 is a credential rejection")
+    }
+
+    func testAbnormalCloseIsNotCredentialRejection() {
+        // 1006 = abnormal closure (network drop). Invalidating the token here
+        // would force a needless re-auth on every flaky-network blip.
+        XCTAssertFalse(RelayRejection.isCredentialRejection(closeCode: 1006, httpStatus: nil))
+    }
+
+    func testNoSignalsIsNotCredentialRejection() {
+        XCTAssertFalse(RelayRejection.isCredentialRejection(closeCode: nil, httpStatus: nil))
+    }
+
+    func testSuccessfulUpgradeStatusIsNotCredentialRejection() {
+        // 101 Switching Protocols with a policy close: not a credential fault.
+        XCTAssertFalse(RelayRejection.isCredentialRejection(closeCode: 1008, httpStatus: 101))
+    }
+
+    func testGoingAwayWithSuccessStatusIsNotCredentialRejection() {
+        // The relay closes with 1001 "replaced" when the same role reconnects.
+        XCTAssertFalse(RelayRejection.isCredentialRejection(closeCode: 1001, httpStatus: 101))
+    }
 }

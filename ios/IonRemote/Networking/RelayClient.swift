@@ -243,29 +243,49 @@ final class RelayClient {
                 self.receiveLoop(wsTask)
 
             case .failure(let error):
-                // Inspect the close code from the underlying WebSocket task before
-                // clearing state. Close code 4401 means the relay rejected the bearer
-                // token (expired OIDC token). The relay uses application-layer 4401
-                // (a custom code in the 4000–4999 range); URLSessionWebSocketTask
-                // surfaces it via `closeCode.rawValue`.
+                // Inspect BOTH rejection signals before clearing state — the
+                // relay refuses a bad credential two different ways depending
+                // on when it notices.
                 //
-                // iOS acquires tokens autonomously: onTokenRejected invalidates the
-                // cached access token, and the next connect resolves a fresh one
-                // through OIDCTokenManager.accessToken() — silent Keychain refresh
-                // when possible, interactive PKCE (ASWebAuthenticationSession) when
-                // the refresh token is gone. A fresh relay_config pushed by the
+                // Close code 4401 is the mid-connection case: the relay's
+                // expiry watcher closes an open socket whose token has aged
+                // out. URLSessionWebSocketTask surfaces it via
+                // `closeCode.rawValue`.
+                //
+                // HTTP 401/403 is the connect-time case: `auth.Validate` runs
+                // in the HTTP handler BEFORE the WebSocket upgrade, so a token
+                // that is already bad is refused with a plain HTTP status and
+                // no WebSocket is ever created. There is no close code at all
+                // — only `task.response`. Reading just the close code (as this
+                // did) made every stale-token connect look like a generic
+                // network error, so the credential was never invalidated and
+                // the backoff ladder retried the same dead token forever.
+                //
+                // iOS acquires tokens autonomously: onTokenRejected invalidates
+                // the cached access token, and the next connect resolves a
+                // fresh one through OIDCTokenManager.accessToken() — silent
+                // Keychain refresh when possible, interactive PKCE when the
+                // refresh token is gone. A fresh relay_config pushed by the
                 // desktop is still honored, but iOS no longer depends on it to
-                // recover from a 4401.
+                // recover.
                 let rawCloseCode = wsTask.closeCode.rawValue
-                if rawCloseCode == 4401 {
+                let httpStatus = (wsTask.response as? HTTPURLResponse)?.statusCode
+                let rejected = RelayRejection.isCredentialRejection(
+                    closeCode: rawCloseCode > 0 ? rawCloseCode : nil,
+                    httpStatus: httpStatus
+                )
+                if rejected {
                     onTokenRejected?()
-                    DiagnosticLog.log("relay websocket closed with 4401 (token rejected), invalidating credential", tag: "relay.client", level: .warn, fields: [
-                        "close_code": "4401"
+                    DiagnosticLog.log("relay rejected credential, invalidating token", tag: "relay.client", level: .warn, fields: [
+                        "close_code": rawCloseCode > 0 ? String(rawCloseCode) : "none",
+                        "http_status": httpStatus.map(String.init) ?? "none",
+                        "error": error.localizedDescription
                     ])
                 } else {
                     DiagnosticLog.log("relay websocket receive failed", tag: "relay.client", level: .warn, fields: [
                         "error": error.localizedDescription,
-                        "close_code": rawCloseCode > 0 ? String(rawCloseCode) : "none"
+                        "close_code": rawCloseCode > 0 ? String(rawCloseCode) : "none",
+                        "http_status": httpStatus.map(String.init) ?? "none"
                     ])
                 }
                 self.handleDisconnect()

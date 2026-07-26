@@ -237,7 +237,14 @@ extension SessionViewModel {
             //     invocation as the display entry, so the multi-KB expansion body
             //     is redundant — rendering it puts the whole command template on
             //     screen as a second user message.
-            guard kind != "agent_completion", kind != "slash_command" else { break }
+            //   - "background_task_completion": a finished background bash
+            //     command's result, routed back to wake a parked session
+            //     (ADR-023). Machine-to-machine like agent_completion — the
+            //     engine is reporting an exit code and output tail to the model,
+            //     not relaying anything the user said.
+            guard kind != "agent_completion",
+                  kind != "slash_command",
+                  kind != "background_task_completion" else { break }
             handleEnginePromptInjected(tabId: tabId, instanceId: instanceId, prompt: prompt)
 
         // Extended-thinking events (issue #158). A thinking block is OPTIONAL
@@ -571,26 +578,5 @@ extension SessionViewModel {
             handleContextBreakdown(tabId: tabId, instanceId: instanceId, payload: payload)
         }
     }
-
-    // MARK: - Connection events
-    // handleUnpair / handleLANAuthRejected: ConnectionEvents.swift. handleRelayConfig: RelayAuth.swift.
-
-    // MARK: - Permission/message events
-    //
-    // handlePermissionRequest, handleConversationHistory,
-    // handleMessageAdded, handleMessageUpdated, and handleInputPrefill
-    // live in SessionViewModel+PermissionMessageEvents.swift to keep
-    // this file under the 600-line cap. They are members of the same
-    // `extension SessionViewModel` so the dispatch in handleEvent
-    // above resolves them without further wiring.
-
-    // MARK: - Upload attachment result
-
-    // `deduplicateMessages` lives in SessionViewModel+ConversationHelpers.swift
-    // to keep this file under the 600-line cap.
-
-    // `handleUploadAttachmentResult` lives in
-    // SessionViewModel+UploadEvents.swift to keep this file under the
-    // 600-line cap. The dispatch above just calls it.
 
 }

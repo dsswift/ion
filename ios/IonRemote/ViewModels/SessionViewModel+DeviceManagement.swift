@@ -167,6 +167,35 @@ extension SessionViewModel {
                 "error": String(describing: error)
             ])
         }
+        hydrateRelayConfig()
+    }
+
+    /// Populate the in-memory `relayURL` / `relayAPIKey` from the active
+    /// device's persisted record.
+    ///
+    /// These two properties start empty on every launch and were previously
+    /// only ever written by `completePairing` or an inbound `relay_config`.
+    /// That made them a *destructive* fallback: `handleRelayConfig` treats them
+    /// as the "keep what we have" source when an incoming config carries no
+    /// token, so on a fresh launch it fell back onto `""` and wrote empty
+    /// values over a perfectly good stored relay config — after which
+    /// `softReconnect` had no URL to connect to and the app could not recover.
+    ///
+    /// Called after `loadPairedDevices()` and on every desktop switch (the
+    /// values are per-device, so they must follow the active device).
+    func hydrateRelayConfig() {
+        guard let device = activeDevice else {
+            DiagnosticLog.log("relay config hydrate skipped, no active device", tag: "session.relay")
+            return
+        }
+        relayURL = device.relayURL ?? ""
+        relayAPIKey = device.relayAPIKey ?? ""
+        DiagnosticLog.log("relay config hydrated from device", tag: "session.relay", fields: [
+            "device": String(device.id.prefix(8)),
+            "has_url": String(!relayURL.isEmpty),
+            "has_key": String(!relayAPIKey.isEmpty),
+            "auth_mode": device.relayAuthMode ?? "psk"
+        ])
     }
 
     func savePairedDevices() {
