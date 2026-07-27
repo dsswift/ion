@@ -8,9 +8,10 @@ import { makeLocalTab } from '../stores/session-store-helpers'
 import { makeMainPane, commitInstance, activeInstance } from '../stores/conversation-instance'
 import { lastPendingCardTool } from '../../shared/pending-card'
 import { mapSessionHistory } from '../../shared/session-message-mapper'
-import { parseToolInput, isSkeletonTab, normalizeLegacyTabFields, readMainInstance, seedContextStatusFields, reassertRestoredPlanMode, orderSessionCandidates, startSessionsSequentially, resolveBootActiveTabId, hydrateBootActiveTab } from './useTabRestoration-helpers'
+import { parseToolInput, isSkeletonTab, normalizeLegacyTabFields, readMainInstance, seedContextStatusFields, reassertRestoredPlanMode, resolveBootActiveTabId, hydrateBootActiveTab } from './useTabRestoration-helpers'
+import { startRestoredSessions } from './useTabRestoration-sessions'
 import { persistedTabHasExtensions } from '../../shared/tab-predicates'
-import { rDebug, rInfo, rWarn, rError } from '../rendererLogger'
+import { rDebug, rWarn, rError } from '../rendererLogger'
 
 /**
  * Bootstrap effect run once at app start. Initializes static info, restores
@@ -54,6 +55,10 @@ export function useTabRestoration() {
         // Content-vs-skeleton is data-driven in serializeConversationPane (WI-005).
         // Legacy hasEngineExtension fallback is a one-time migration READ only.
         const restoredTabIds: Array<{ tabId: string; sessionId: string | null; index: number }> = []
+        // Per-tab result of the "is this worktree still on disk" probe, keyed by
+        // saved-tab index. Shared with the eager session start below so the tab
+        // state and its session resolve one directory, not two.
+        const worktreeAliveByIndex = new Map<number, boolean>()
         for (let i = 0; i < saved.tabs.length; i++) {
           useSessionStore.setState({ initProgress: `Restoring tab ${i + 1} of ${saved.tabs.length}…` })
           const st = saved.tabs[i]
@@ -73,6 +78,11 @@ export function useTabRestoration() {
                 restoredWorktree = null
               }
             }
+            // Record the probe result so the eager session start below resolves
+            // the SAME directory the tab state gets. Reading the raw persisted
+            // `workingDirectory` there is what put worktree conversations back
+            // in the base repo on every restart.
+            worktreeAliveByIndex.set(i, restoredWorktree !== null)
 
             if (isActiveTab) {
               // Active tab: load messages eagerly via resumeSession
@@ -318,41 +328,16 @@ export function useTabRestoration() {
         }
 
         // Eager durable session start for restored NORMAL (non-engine) tabs
-        // that have a conversationId. Staggered: the active tab starts first
-        // (what the user sees), then remaining tabs start sequentially so the
-        // shared engine daemon's dispatch goroutine isn't overwhelmed by a
-        // simultaneous burst. Ordering + sequential start are pure/structural
-        // helpers so the no-burst contract is unit-pinned (see
-        // useTabRestoration-helpers.ts).
-        const sessionCandidates = restoredTabIds.filter(({ index }) => {
-          const st = saved.tabs[index]
-          return st && !persistedTabHasExtensions(st) && !st.isTerminalOnly && st.conversationId
-        })
-        const activeIdx = saved.activeTabIndex ?? -1
-        const activeFirst = orderSessionCandidates(sessionCandidates, activeIdx)
-        await startSessionsSequentially(activeFirst, async ({ tabId, index }) => {
-          const st = saved.tabs[index]
-          // Read permission mode from the restored conversation instance (the
-          // authoritative location post-WI-002). Fall back to the legacy
-          // tab-level field for tabs persisted before WI-002.
-          const restoredMain = readMainInstance(st)
-          const sessionPermMode: 'auto' | 'plan' = restoredMain?.permissionMode ?? (st as any).permissionMode ?? 'auto'
-          try {
-            const res = await window.ion.ensureEngineSession({
-              tabId,
-              workingDirectory: st.workingDirectory,
-              conversationId: st.conversationId!,
-              permissionMode: sessionPermMode,
-            })
-            if (res?.ok) {
-              rInfo('restore', 'eager session started', { tab_id: tabId.slice(0, 8), conversation_id: st.conversationId?.slice(0, 24) ?? '' })
-            } else {
-              rWarn('restore', 'eager session start failed', { tab_id: tabId.slice(0, 8), error: res?.error ?? 'unknown' })
-            }
-          } catch (err: any) {
-            rWarn('restore', 'eager session start threw', { tab_id: tabId.slice(0, 8), error: err?.message ?? String(err) })
-          }
-        })
+        // that have a conversationId. Staggered ordering, the worktree-aware
+        // directory resolution, and the per-tab logging all live in the sibling
+        // module — see useTabRestoration-sessions.ts.
+        await startRestoredSessions(
+          restoredTabIds,
+          saved.tabs,
+          saved.activeTabIndex ?? -1,
+          worktreeAliveByIndex,
+          persistedTabHasExtensions,
+        )
 
         useSessionStore.setState({ initProgress: 'Loading history…' })
         // Load historical session messages for tabs that have them

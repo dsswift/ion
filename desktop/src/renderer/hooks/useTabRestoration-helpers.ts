@@ -58,6 +58,41 @@ export function normalizeLegacyTabFields(tabs: PersistedTab[]): PersistedTab[] {
 }
 
 /**
+ * The directory a restored tab should actually run in.
+ *
+ * ── Why this is not simply `tab.workingDirectory` ───────────────────────────
+ * The persisted `workingDirectory` can disagree with the tab's own worktree
+ * record, and when it does the worktree is right. That disagreement is exactly
+ * what a historical create-order defect produced: sessions were started in the
+ * base repo before the worktree existed, so five conversations persisted a
+ * `workingDirectory` pointing at the shared checkout while carrying a correct
+ * `worktree.worktreePath`.
+ *
+ * The tab-state restore path already resolved this (it prefers the worktree path
+ * when the directory still exists, and falls back to the repo when the worktree
+ * was cleaned up externally) — but the EAGER SESSION START read the raw
+ * persisted value, so a restart put every one of those sessions back in the base
+ * repo. Deriving the directory in one function means the tab state and the
+ * session it starts cannot disagree.
+ *
+ * `worktreeExists` is passed in rather than probed here so this stays a pure
+ * function: the caller has already probed the directory to decide whether to
+ * keep the worktree record at all, and probing twice could return two answers.
+ */
+export function resolveRestoredWorkingDirectory(
+  tab: PersistedTab,
+  worktreeExists: boolean,
+): string {
+  if (tab.worktree) {
+    // The worktree is the authority when it is still on disk. When it is gone,
+    // the repo it was cut from is the only sane place for the conversation to
+    // resume — never the stale persisted path, which may be the dead worktree.
+    return worktreeExists ? tab.worktree.worktreePath : tab.worktree.repoPath
+  }
+  return tab.workingDirectory
+}
+
+/**
  * Read the plain-conversation `main` instance fields from a unified tab. Used by
  * the plain-tab restore path, which previously read flat fields off the tab.
  */
