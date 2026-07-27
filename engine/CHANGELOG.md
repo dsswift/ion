@@ -13,6 +13,17 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.58.0](https://github.com/dsswift/ion/compare/engine-v1.57.1...engine-v1.58.0) (2026-07-27)
+
+### Features
+
+* **engine:** refuse git history writes inside a bench ([825e315](https://github.com/dsswift/ion/commit/825e315aeac29fbbff3e685c7450833aaa588c35))
+
+### Bug Fixes
+
+* **engine:** assert the dispatch fixture instead of rewriting it ([a14168b](https://github.com/dsswift/ion/commit/a14168b3898560e1ee80f0dd222f3464bccf97f3))
+* **engine:** persist changed working directory on runs ([811e294](https://github.com/dsswift/ion/commit/811e2944f468930a8f7aafaf45edfa3f88398dd9))
+
 ## [1.57.1](https://github.com/dsswift/ion/compare/engine-v1.57.0...engine-v1.57.1) (2026-07-27)
 
 ### Bug Fixes

@@ -10,6 +10,16 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.70.0](https://github.com/dsswift/ion/compare/desktop-v1.69.1...desktop-v1.70.0) (2026-07-27)
+
+### Features
+
+* **desktop:** worktree lifecycle and integration bench ([6e302f3](https://github.com/dsswift/ion/commit/6e302f31c31ba70c51119ab0c8d3b70e2b58b120))
+
+### Bug Fixes
+
+* **desktop:** render steer at its application point, not send point ([94deaf5](https://github.com/dsswift/ion/commit/94deaf57d0855522bb2398cc7301321e8297d4a5))
+
 ## [1.69.1](https://github.com/dsswift/ion/compare/desktop-v1.69.0...desktop-v1.69.1) (2026-07-27)
 
 ### Bug Fixes

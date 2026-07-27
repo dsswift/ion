@@ -10,6 +10,17 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.51.0](https://github.com/dsswift/ion/compare/ios-v1.50.0...ios-v1.51.0) (2026-07-27)
+
+### Features
+
+* **ios:** worktree and integration bench parity ([247de31](https://github.com/dsswift/ion/commit/247de316c6defae997b73fbb4e35a1a5c418dce9))
+
+### Bug Fixes
+
+* **ios:** repair SessionStatus test helper construction sites ([85fafd4](https://github.com/dsswift/ion/commit/85fafd4415483f2c0342f101faad470733e64191))
+* **ios:** render steer at its application point, not send point ([0e22668](https://github.com/dsswift/ion/commit/0e22668bae671000224547d59db68bdf9d4ba264))
+
 ## [1.50.0](https://github.com/dsswift/ion/compare/ios-v1.49.1...ios-v1.50.0) (2026-07-27)
 
 ### Features
