@@ -174,6 +174,48 @@ rebuild, and `apply` in particular is how hunk-level staging works, so refusing
 it would break diff review in the one place the bench exists to serve.
 Over-blocking here is as much a defect as under-blocking.
 
+### A worktree refuses writes outside itself
+
+The bench rule above has a sibling that applies to ordinary worktrees. A worktree
+exists to isolate one conversation's work onto its own branch, so a write from a
+worktree conversation into the **base repo it was cut from**, or into a **sibling
+worktree of the same repo**, is refused: `engine/extensions/ion-meta/worktree-gate.ts`,
+wired into the same `tool_call` hook and checked before the git-gate.
+
+The failure it prevents is not theoretical. Five worktree conversations once ran
+with their sessions pointed at the shared base checkout. Each one's `git status`
+showed the others' uncommitted files, a `git add -A` swept up work belonging to
+another conversation, and one commit shipped ~3,000 lines from an unrelated
+conversation. The worktrees stayed clean, the base repo went dirty, and nothing
+recorded which conversation authored which hunk — review could not untangle it
+afterwards.
+
+The rule is deliberately narrow. It is **not** "confine the agent to its cwd":
+writes to `/tmp`, `~/.ion`, an unrelated repo, or anywhere else all pass, because
+agents legitimately need them and over-blocking would make worktree
+conversations useless for real work. The predicate is only:
+
+> cwd is a registered worktree of repo R ⇒ deny writes into R's main checkout,
+> and into R's other registered worktrees.
+
+Sibling worktrees are included because sibling-to-sibling bleed is the same
+defect with a different destination, and `~/.ion/worktree-registry.json` already
+carries the `worktreePath → repoPath` mapping. When cwd is not a registered
+worktree the gate passes everything, so an ordinary repo conversation is
+completely unaffected. It fails open on a missing or corrupt registry, for the
+same reason the bench guards do.
+
+**What this gate does not catch.** Its predicate is "is my cwd a registered
+worktree", so it is silent on the failure that motivated it — there the sessions'
+cwd *was* the base repo, and the gate correctly concludes "not a worktree
+conversation" and passes. The fix for that is on the desktop side: worktree
+resolution now runs before the engine session starts
+(`tab-slice-worktree-resolve.ts`), every directory change relocates the live
+session (`tab-working-directory.ts`), and `submitPrompt` reconciles a divergence
+rather than discarding the prompt's path (`engine-control-plane-cwd.ts`). This
+gate is the net for the next way a directory drifts, not a substitute for
+pointing sessions correctly.
+
 ### Enrollment is manual; disenrollment is automatic
 
 The bench is created on **first enrollment**, not on first use of a directory:
