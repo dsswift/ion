@@ -16,6 +16,16 @@ import { GitGraphSection } from './GitGraphSection'
 import { WorktreesSection } from './WorktreesSection'
 import { IntegrationSection } from './IntegrationSection'
 import { CommitForm } from './git/CommitForm'
+import {
+  computeGitPanelLayout,
+  PANEL_HEADER,
+  SECTION_HEADER,
+  DIVIDER,
+  WORKTREES_HEADER,
+  WORKTREES_BODY_MAX,
+  INTEGRATION_HEADER,
+  INTEGRATION_BODY_MAX,
+} from './git/gitPanelLayout'
 import { rDebug, rError } from '../rendererLogger'
 
 /** Panel-header icon button (close, refresh, tree/list toggle). */
@@ -180,18 +190,24 @@ export function GitPanel() {
   const benchStaleCount = (benchWorkspaces ?? [])
     .reduce((n, w) => n + w.members.filter((m) => m.status === 'stale').length, 0)
 
-  // Worktrees section: collapsible, fixed-height, and NOT part of the drag
-  // split. Its header always occupies a row of chrome, so the split math below
-  // accounts for it whether it is open or closed.
-  const WORKTREES_HEADER = 28
-  const WORKTREES_BODY_MAX = 132
-  const INTEGRATION_HEADER = 28
-  const INTEGRATION_BODY_MAX = 148
+  // Panel height ceiling = conversation card + gap + input pill so top edges
+  // align. card: bodyMaxHeight + tabStrip(40) + border(2), gap: 10, pill: 38.
+  const bodyMaxHeight = expandedUI ? 520 : 400
+  const layout = computeGitPanelLayout({
+    maxHeight: bodyMaxHeight + 82,
+    changesOpen,
+    graphOpen,
+    worktreesOpen,
+    integrationOpen,
+    splitRatio,
+  })
 
-  // Drag split between Changes and Graph
-  const FIXED_CHROME = 28 + 28 + 28 + 6 + WORKTREES_HEADER + INTEGRATION_HEADER // panel header + changes/graph/worktrees/integration headers + divider
+  // Drag split between Changes and Graph. The hook converts a cursor delta into
+  // a ratio delta, so it needs the size of everything that is NOT the pool --
+  // chrome plus the two fixed bodies -- or the divider lags the cursor whenever
+  // Worktrees or Integration is open.
   const { onMouseDown: onDividerMouseDown, isDragging } = useGitDragSplit(
-    containerRef, splitRatio, setSplitRatio, FIXED_CHROME,
+    containerRef, splitRatio, setSplitRatio, layout.nonSplitTotal,
   )
 
   // Cursor override during drag
@@ -202,31 +218,6 @@ export function GitPanel() {
     }
   }, [isDragging])
 
-  // Panel height = conversation card + gap + input pill so top edges align
-  // card: bodyMaxHeight + tabStrip(40) + border(2), gap: 10, input pill: 38
-  const bodyMaxHeight = expandedUI ? 520 : 400
-  const panelHeight = bodyMaxHeight + 82
-  const bothOpen = changesOpen && graphOpen
-  // The worktrees body, when open, takes its space out of the shared pool so
-  // the panel never overflows its fixed height.
-  const worktreesBodyHeight = worktreesOpen ? WORKTREES_BODY_MAX : 0
-  const integrationBodyHeight = integrationOpen ? INTEGRATION_BODY_MAX : 0
-  const availableHeight = panelHeight - FIXED_CHROME - worktreesBodyHeight - integrationBodyHeight
-
-  let changesContentHeight: number | undefined
-  let graphContentHeight: number | undefined
-
-  if (bothOpen) {
-    changesContentHeight = Math.round(availableHeight * splitRatio)
-    graphContentHeight = availableHeight - changesContentHeight
-  } else if (changesOpen) {
-    // Reclaim divider space only — collapsed graph header stays visible
-    changesContentHeight = availableHeight + 6
-  } else if (graphOpen) {
-    // Reclaim divider space only — collapsed changes header stays visible
-    graphContentHeight = availableHeight + 6
-  }
-
   return (
     <div
       ref={containerRef}
@@ -234,7 +225,11 @@ export function GitPanel() {
       className="glass-surface rounded-xl flex flex-col"
       style={{
         width: 320,
-        height: panelHeight,
+        // maxHeight, not height: the flex column shrink-wraps its sections, so
+        // collapsing Changes and Graph shortens the panel instead of leaving an
+        // unusable band at the bottom. No child may carry `flex: 1` -- a grow
+        // sink would re-absorb the freed space and restore the dead band.
+        maxHeight: layout.height,
         background: colors.containerBg,
         border: `1px solid ${colors.containerBorder}`,
         overflow: 'hidden',
@@ -244,7 +239,7 @@ export function GitPanel() {
       <div
         className="flex items-center justify-between px-2.5"
         style={{
-          height: 28,
+          height: PANEL_HEADER,
           borderBottom: `1px solid ${colors.containerBorder}`,
           background: colors.surfacePrimary,
           flexShrink: 0,
@@ -287,14 +282,14 @@ export function GitPanel() {
 
       {/* Changes section */}
       <div className="flex flex-col" style={{
-        height: changesOpen ? (changesContentHeight! + 28) : 28,
+        height: SECTION_HEADER + layout.changesBody,
         flexShrink: 0,
         overflow: 'hidden',
       }}>
         <div
           className="flex items-center gap-1 px-2.5"
           style={{
-            height: 28,
+            height: SECTION_HEADER,
             background: colors.surfacePrimary,
             borderBottom: `1px solid ${colors.containerBorder}`,
             color: colors.textSecondary,
@@ -333,7 +328,7 @@ export function GitPanel() {
           )}
         </div>
         {changesOpen && (
-          <div style={{ height: changesContentHeight, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ height: layout.changesBody, display: 'flex', flexDirection: 'column' }}>
             <CommitForm
               directory={directory}
               branch={repoState?.branch ?? ''}
@@ -359,12 +354,12 @@ export function GitPanel() {
       </div>
 
       {/* Draggable divider */}
-      {bothOpen && (
+      {layout.dividerVisible && (
         <div
           data-ion-ui
           onMouseDown={onDividerMouseDown}
           style={{
-            height: 6,
+            height: DIVIDER,
             flexShrink: 0,
             cursor: 'row-resize',
             display: 'flex',
@@ -390,10 +385,11 @@ export function GitPanel() {
         </div>
       )}
 
-      {/* Worktrees section — the re-entry surface. Fixed height, outside the
-          Changes/Graph drag split. */}
+      {/* Worktrees section — the re-entry surface. Bounded height, outside the
+          Changes/Graph drag split. `maxHeight` rather than `height` so a short
+          list renders short and the panel shrink-wraps around it. */}
       <div className="flex flex-col" style={{
-        height: worktreesOpen ? (WORKTREES_BODY_MAX + WORKTREES_HEADER) : WORKTREES_HEADER,
+        maxHeight: worktreesOpen ? (WORKTREES_BODY_MAX + WORKTREES_HEADER) : WORKTREES_HEADER,
         flexShrink: 0,
         overflow: 'hidden',
         borderTop: `1px solid ${colors.containerBorder}`,
@@ -437,15 +433,15 @@ export function GitPanel() {
           )}
         </div>
         {worktreesOpen && (
-          <div style={{ height: WORKTREES_BODY_MAX, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ maxHeight: WORKTREES_BODY_MAX, minHeight: 0, flex: '0 1 auto', display: 'flex', flexDirection: 'column' }}>
             <WorktreesSection repoPath={repoRootPath} refreshKey={refreshKey} />
           </div>
         )}
       </div>
 
-      {/* Integration (bench) section — fixed height, outside the drag split. */}
+      {/* Integration (bench) section — bounded height, outside the drag split. */}
       <div className="flex flex-col" style={{
-        height: integrationOpen ? (INTEGRATION_BODY_MAX + INTEGRATION_HEADER) : INTEGRATION_HEADER,
+        maxHeight: integrationOpen ? (INTEGRATION_BODY_MAX + INTEGRATION_HEADER) : INTEGRATION_HEADER,
         flexShrink: 0,
         overflow: 'hidden',
         borderTop: `1px solid ${colors.containerBorder}`,
@@ -489,16 +485,17 @@ export function GitPanel() {
           )}
         </div>
         {integrationOpen && (
-          <div style={{ height: INTEGRATION_BODY_MAX, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ maxHeight: INTEGRATION_BODY_MAX, minHeight: 0, flex: '0 1 auto', display: 'flex', flexDirection: 'column' }}>
             <IntegrationSection repoPath={repoRootPath} refreshKey={refreshKey} />
           </div>
         )}
       </div>
 
-      {/* Graph section */}
+      {/* Graph section. No `flex: 1` here (and no trailing spacer): the layout
+          assigns every pixel, so a grow sink could only hold dead space. */}
       <div className="flex flex-col" style={{
-        height: graphOpen ? (graphContentHeight! + 28) : 28,
-        flex: (!changesOpen && !graphOpen) ? 1 : undefined,
+        height: SECTION_HEADER + layout.graphBody,
+        flexShrink: 0,
         minHeight: 0,
       }}>
         <SectionToggleButton
@@ -507,7 +504,7 @@ export function GitPanel() {
           onClick={() => setGraphOpen(!graphOpen)}
           className="flex items-center gap-1 px-2.5 w-full text-left"
           style={{
-            height: 28,
+            height: SECTION_HEADER,
             borderBottom: `1px solid ${colors.containerBorder}`,
             color: colors.textSecondary,
             fontSize: 11,
@@ -517,16 +514,11 @@ export function GitPanel() {
           colors={colors}
         />
         {graphOpen && (
-          <div style={{ height: graphContentHeight, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ height: layout.graphBody, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             <GitGraphSection directory={directory} onRefresh={refresh} refreshKey={refreshKey} worktree={worktree} hasUncommittedChanges={files.length > 0} />
           </div>
         )}
       </div>
-
-      {/* Spacer when both collapsed */}
-      {!changesOpen && !graphOpen && (
-        <div style={{ flex: 1 }} />
-      )}
     </div>
   )
 }
