@@ -1,4 +1,4 @@
-.PHONY: default desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test test test-all test-linux test-linux-engine test-linux-engine-summary test-linux-desktop clean check-file-sizes check-contracts check-status-writers check-atv-parity check-logging check-swiftlint check-dashboards claude-symlinks bootstrap graph graph-refresh graph-rebuild hooks lint-desktop
+.PHONY: default desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test test test-all test-linux test-linux-engine test-linux-engine-summary test-linux-desktop clean check-file-sizes check-contracts check-status-writers check-atv-parity check-logging check-swiftlint check-dashboards claude-symlinks bootstrap graph graph-ensure graph-refresh hooks lint-desktop
 
 # Homebrew installs node/npm under /opt/homebrew/bin on Apple Silicon.
 # Make runs recipes with /bin/sh which only has /usr/bin:/bin in PATH,
@@ -255,7 +255,7 @@ bootstrap:
 	@echo "▶ npm install (husky hooks)"
 	@npm install --silent
 	@$(MAKE) --no-print-directory claude-symlinks
-	@$(MAKE) --no-print-directory graph
+	@$(MAKE) --no-print-directory graph-ensure
 	@echo "✅ bootstrap complete"
 
 # Build the graphify knowledge graph if this clone has none.
@@ -283,15 +283,19 @@ bootstrap:
 # rebases (see scripts/graphify-rebuild.sh).
 #
 # `make graph-refresh` forces an incremental re-extraction against the existing
-# graph; `make graph-rebuild` discards it and extracts from scratch. Reach for
-# refresh when you suspect the graph missed something, and rebuild to purge
-# nodes that repeated incremental updates have left stale.
+# graph; `make graph` discards it and extracts from scratch. Reach for refresh
+# when you suspect the graph missed something, and `make graph` to purge nodes
+# that repeated incremental updates have left stale.
+#
+# This target (`graph-ensure`) is the bootstrap-only build-if-absent path; the
+# deliberately awkward name keeps `make graph` free for the thing a developer
+# actually means when they type it.
 #
 # A missing graphify install is a notice, never a failure: the graph is an
 # optional developer convenience and bootstrap must not break over it.
-graph:
+graph-ensure:
 	@if [ -f graphify-out/graph.json ]; then \
-		echo "▶ graphify: graph already present, skipping build (use 'make graph-refresh' or 'make graph-rebuild')"; \
+		echo "▶ graphify: graph already present, skipping build (use 'make graph-refresh' or 'make graph')"; \
 	elif ! command -v graphify >/dev/null 2>&1; then \
 		echo "⚠️  graphify not on PATH — skipping graph build."; \
 		echo "   Install with 'uv tool install graphifyy' (or 'pipx install graphifyy'), then re-run 'make bootstrap'."; \
@@ -321,7 +325,7 @@ graph-refresh:
 		echo "⚠️  graphify not on PATH — nothing to refresh."; \
 	elif [ ! -f graphify-out/graph.json ]; then \
 		echo "▶ graphify: no graph yet — building instead"; \
-		$(MAKE) --no-print-directory graph; \
+		$(MAKE) --no-print-directory graph-ensure; \
 	else \
 		echo "▶ graphify: incremental refresh (offline, no API key)"; \
 		graphify update .; \
@@ -335,7 +339,7 @@ graph-refresh:
 # rebuild fails. Deleting first means a failed extraction (no graphify, no
 # disk, interrupted run) leaves the clone with no graph at all — strictly
 # worse than the stale one it had, and a full re-extraction is not cheap.
-graph-rebuild:
+graph:
 	@if ! command -v graphify >/dev/null 2>&1; then \
 		echo "⚠️  graphify not on PATH — nothing to rebuild."; \
 	else \
