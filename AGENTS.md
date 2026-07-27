@@ -842,6 +842,17 @@ Retire verb, which appraises what would be lost, refuses when the answer is work
 and relocates any conversation still living there so it is not left pointed at a
 deleted directory.
 
+**A new worktree arrives provisioned.** A bare checkout has no `node_modules`, no
+git hooks, and no build caches — everything gitignored is absent, so nothing
+builds. Ion materialises what the project declares in the committed
+`.ion/worktree.json`: each `seed` entry is cloned (copy-on-write), built with its
+own command, or copied, and the project's `setup` command runs afterward. A clone
+is a separate inode sharing blocks, so an install inside a worktree stays
+independent of the main clone — Ion never symlinks a shared dependency directory.
+No manifest means no provisioning. Ion refuses to seed any path git does not
+ignore, so provisioning can never dirty `git status`. Reference:
+[`docs/configuration/worktree-json.md`](docs/configuration/worktree-json.md).
+
 See [ADR-024](docs/architecture/adr/024-integration-workspace.md).
 
 ## Conversation storage

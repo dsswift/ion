@@ -105,3 +105,12 @@ Project override (`.ion/engine.json`):
 ```
 
 Merged result: model is `claude-haiku-4-5-20251001`, max turns is 100 (from user), budget ceiling is $2.00 (from project).
+
+## Related project-level files
+
+Not every file under `.ion/` belongs to the engine's four-layer merge.
+
+| File | Owner | Merged? |
+|---|---|---|
+| `.ion/engine.json` | Engine | Yes — the project layer described above. |
+| [`.ion/worktree.json`](worktree-json.md) | Desktop | No. Read only when creating a worktree, to provision the gitignored dependency state git cannot carry. It has no user or enterprise layer because it describes the *project's* build inputs, not a person's preferences. |
