@@ -276,3 +276,77 @@ describe('steerPending lifecycle (WI-001 normalized path)', () => {
     expect(bubble?.steerFailed).toBeUndefined()
   })
 })
+
+// ─── Part 3: bubble ↔ divider pairing (render-time relocation) ───────────
+
+describe('steer_injected pairs the bubble with its divider', () => {
+  function pendingBubble(id: string, content = 'redirect the agent') {
+    return { id, role: 'user', content, timestamp: Date.now(), steerPending: true }
+  }
+
+  it('stamps steerApplied and the divider id on the resolving bubble', () => {
+    const { state, eventSlice } = buildHarness({ instanceMessages: [pendingBubble('b1')] })
+
+    eventSlice.handleNormalizedEvent('tab1', {
+      type: 'steer_injected',
+      messageLength: 18,
+    } as any)
+
+    const msgs = getMessages(state)
+    const bubble = msgs.find((m: any) => m.id === 'b1')
+    const divider = msgs.find((m: any) => m.role === 'system' && m.content?.includes('Steer'))
+
+    expect(bubble?.steerPending).toBeUndefined()
+    expect(bubble?.steerApplied).toBe(true)
+    // The shared key is what lets the grouping pass relocate the bubble to
+    // the divider — see tool-helpers.ts isRelocatableSteer.
+    expect(divider?.id).toBeTruthy()
+    expect(bubble?.steerAppliedDividerId).toBe(divider?.id)
+  })
+
+  it('resolves one bubble per event, oldest first (two queued steers do not collapse)', () => {
+    const { state, eventSlice } = buildHarness({
+      instanceMessages: [pendingBubble('b1', 'first steer'), pendingBubble('b2', 'second steer')],
+    })
+
+    eventSlice.handleNormalizedEvent('tab1', { type: 'steer_injected', messageLength: 11 } as any)
+
+    let msgs = getMessages(state)
+    expect(msgs.find((m: any) => m.id === 'b1')?.steerApplied).toBe(true)
+    // The second steer is still buffered in the engine — untouched.
+    expect(msgs.find((m: any) => m.id === 'b2')?.steerPending).toBe(true)
+    expect(msgs.find((m: any) => m.id === 'b2')?.steerApplied).toBeUndefined()
+
+    eventSlice.handleNormalizedEvent('tab1', { type: 'steer_injected', messageLength: 12 } as any)
+
+    msgs = getMessages(state)
+    const b1 = msgs.find((m: any) => m.id === 'b1')
+    const b2 = msgs.find((m: any) => m.id === 'b2')
+    expect(b2?.steerApplied).toBe(true)
+    // Each bubble points at its OWN divider.
+    expect(b1?.steerAppliedDividerId).toBeTruthy()
+    expect(b2?.steerAppliedDividerId).toBeTruthy()
+    expect(b1?.steerAppliedDividerId).not.toBe(b2?.steerAppliedDividerId)
+
+    const dividerIds = msgs
+      .filter((m: any) => m.role === 'system' && m.content?.includes('Steer'))
+      .map((m: any) => m.id)
+    expect(dividerIds).toHaveLength(2)
+    expect(dividerIds).toContain(b1?.steerAppliedDividerId)
+    expect(dividerIds).toContain(b2?.steerAppliedDividerId)
+  })
+
+  it('a failed steer carries no divider id', () => {
+    const { state, eventSlice } = buildHarness({ instanceMessages: [pendingBubble('b1')] })
+
+    eventSlice.handleNormalizedEvent('tab1', {
+      type: 'session_dead',
+      exitCode: 1,
+    } as any)
+
+    const bubble = getMessages(state).find((m: any) => m.id === 'b1')
+    expect(bubble?.steerFailed).toBe(true)
+    expect(bubble?.steerApplied).toBeUndefined()
+    expect(bubble?.steerAppliedDividerId).toBeUndefined()
+  })
+})

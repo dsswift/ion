@@ -203,25 +203,44 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               updated.currentActivity = `Running ${event.toolName} (${Math.round(event.elapsed)}s)...`
               break
 
-            case 'steer_injected':
-              // Engine confirmed a mid-turn steer landed in the
-              // conversation as a user turn. Resolve the optimistic
-              // pending bubble (clear steerPending) and append a
-              // "Steer applied" divider so the user can see where
-              // the steer fell in the scrollback.
-              messages = messages.map((m) =>
-                m.steerPending ? { ...m, steerPending: undefined } : m,
-              )
+            case 'steer_injected': {
+              // Engine confirmed a mid-turn steer landed in the conversation
+              // as a user turn. Resolve the optimistic pending bubble and
+              // append a "Steer applied" divider marking the point where the
+              // steer actually took effect.
+              //
+              // The bubble and the divider share the divider's id
+              // (steerAppliedDividerId) so the grouping pass can RELOCATE the
+              // bubble out of its send position and re-emit it directly after
+              // the divider — see groupMessages in tool-helpers.ts. Without
+              // that pairing the steer text is stranded rows above the divider
+              // that announces it.
+              //
+              // Resolution is FIFO against the oldest still-pending bubble:
+              // the engine's steer channel drains in order and emits one
+              // steer_injected per message, so a single event must resolve
+              // exactly ONE bubble. Clearing every pending bubble here would
+              // collapse two queued steers onto the first divider.
+              const dividerId = nextMsgId()
+              const pendingIdx = messages.findIndex((m) => m.steerPending)
+              if (pendingIdx !== -1) {
+                messages = messages.map((m, i) =>
+                  i === pendingIdx
+                    ? { ...m, steerPending: undefined, steerApplied: true, steerAppliedDividerId: dividerId }
+                    : m,
+                )
+              }
               messages = [
                 ...messages,
                 {
-                  id: nextMsgId(),
+                  id: dividerId,
                   role: 'system' as const,
                   content: formatSteerAppliedDivider(new Date(), event.messageLength),
                   timestamp: Date.now(),
                 },
               ]
               break
+            }
 
             case 'prompt_injected':
               // Extension-injected prompt (engine ctx.sendPrompt — dispatch

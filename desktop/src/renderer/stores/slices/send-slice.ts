@@ -179,6 +179,12 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         // every tab (the view renders it iff present — harmless for plain).
         // remoteAttachments: iOS-forwarded metadata from REMOTE_ENGINE_PROMPT.
         // Use a.path as synthetic id — AttachmentImageCache keys by path on iOS.
+        //
+        // When the tab is busy this send routes through window.ion.steer (see
+        // below), so mark the bubble steerPending: the engine has not drained it
+        // yet. steer_injected clears the flag and pairs the bubble with its
+        // "Steer applied" divider; error/session_dead flip it to steerFailed.
+        const isSteer = isBusy && !implementationPhase
         const userMessage = {
           id: nextMsgId(),
           role: 'user' as const,
@@ -188,6 +194,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
               ? (remoteAttachments || []).map((a) => ({ id: a.path, type: a.type as Attachment['type'], name: a.name, path: a.path }))
               : undefined,
           timestamp: Date.now(),
+          ...(isSteer ? { steerPending: true } : {}),
         }
         const conversationPanes = commitInstance(s.conversationPanes, tabId, (inst) => ({
           ...inst,
@@ -398,6 +405,9 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
             : undefined,
           timestamp: Date.now(),
           source: 'remote' as const,
+          // Busy tab → routes through window.ion.steer below; same pending
+          // lifecycle as submit(). See the steerPending doc in types-session.ts.
+          ...(isBusy ? { steerPending: true } : {}),
         }
         const conversationPanes = commitInstance(s.conversationPanes, tabId, (inst) => ({
           ...inst,

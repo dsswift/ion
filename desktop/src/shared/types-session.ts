@@ -296,6 +296,30 @@ export interface Message {
    * The renderer shows an error affordance instead of the pending indicator.
    */
   steerFailed?: boolean
+  /**
+   * Local UI state only -- NOT a wire protocol field, NOT persisted.
+   * Set to true on the optimistic user bubble when `steer_injected` confirms
+   * the engine drained it into the conversation. Marks the bubble as "this
+   * user turn was a mid-turn steer" so the renderer can label it distinctly
+   * from a normal turn-opening prompt.
+   */
+  steerApplied?: boolean
+  /**
+   * Local UI state only -- NOT a wire protocol field, NOT persisted.
+   * The `id` of the "── Steer applied" divider that `steer_injected` appended
+   * for this bubble. The two rows share this key so the grouping pass
+   * (groupMessages / groupMessagesUnified in tool-helpers.ts) can RELOCATE the
+   * bubble out of its send position and re-emit it directly after its divider —
+   * the point in the scrollback where the steer actually took effect.
+   *
+   * Live-session only. The optimistic bubble is inserted where the user typed
+   * it, but the engine applies the steer later; without this pairing the text
+   * is stranded rows above the divider that announces it. After a restart the
+   * engine's conversation file already carries the turn at its true applied
+   * position and this field is absent, so no relocation happens (and none is
+   * needed).
+   */
+  steerAppliedDividerId?: string
   // ─── Extended-thinking fields (issue #158) ───
   // Populated ONLY on `role: 'thinking'` messages, which the renderer
   // synthesizes from the engine's `engine_thinking_block_start` /

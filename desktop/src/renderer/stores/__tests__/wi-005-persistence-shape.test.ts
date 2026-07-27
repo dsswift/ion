@@ -223,6 +223,35 @@ describe('serializeConversationPane — content arm on data fact', () => {
     expect(persistedDivider).toBeDefined()
     expect((persistedDivider as any).planFilePath).toBe('/tmp/happy-rabbit.md')
   })
+
+  it('does not persist the UI-only steer pairing fields', () => {
+    // steerPending / steerApplied / steerAppliedDividerId drive the live-session
+    // relocation of a mid-turn steer to its "Steer applied" divider. They are
+    // UI-only. After a restart the engine's conversation file already carries
+    // the turn at its applied position, so persisting the pairing would relocate
+    // a bubble that is already in the right place.
+    const steer = makeMsg('user', 'redirect the agent')
+    steer.steerApplied = true
+    steer.steerAppliedDividerId = 'divider-1'
+    steer.steerPending = true
+    steer.steerFailed = true
+    const divider = makeMsg('system', '── Steer applied at 3:21 PM · 18 chars ──')
+    divider.id = 'divider-1'
+    const msgs = [steer, divider]
+    const inst = makeInstance({ messages: msgs, messageCount: msgs.length })
+    const pane = makePane(inst)
+    serializeConversationPane(pane, { tabIdForLog: 'tab-steer' })
+
+    const content = collectExternalInstanceMessages(pane)
+    const persistedSteer = content?.messages.find((m) => m.role === 'user')
+    expect(persistedSteer).toBeDefined()
+    expect((persistedSteer as any).steerApplied).toBeUndefined()
+    expect((persistedSteer as any).steerAppliedDividerId).toBeUndefined()
+    expect((persistedSteer as any).steerPending).toBeUndefined()
+    expect((persistedSteer as any).steerFailed).toBeUndefined()
+    // The divider text itself still survives — it is a real system row.
+    expect(content?.messages.some((m) => m.role === 'system')).toBe(true)
+  })
 })
 
 // ─── 6. Count-only arm fires when no renderer-only rows ──────────────────────
