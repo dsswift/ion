@@ -117,12 +117,32 @@ struct EngineMessageRow: View {
         }
     }
 
+    /// Label for the mid-turn steer affordance, or nil for an ordinary turn.
+    /// "Steer queued" while the engine has not drained it yet; "Steer" once
+    /// applied (the bubble is then rendered under its divider).
+    private var steerLabel: String? {
+        if message.steerPending { return "Steer queued" }
+        if message.steerApplied { return "Steer" }
+        return nil
+    }
+
     /// Full conversation-view user bubble: source badge, attachments, bash
     /// highlight, timestamp, context menu with rewind/fork.
     private var conversationUserBubble: some View {
         HStack {
             Spacer(minLength: 24)
             VStack(alignment: .trailing, spacing: 4) {
+                // Mid-turn steer affordance. Distinguishes a steer from a
+                // turn-opening prompt, which matters most once the bubble has
+                // been relocated to sit under its "Steer applied" divider — it
+                // no longer sits where the user typed it. Desktop parity: the
+                // steer tag in MessageBubble.tsx.
+                if let steerLabel {
+                    Text(steerLabel)
+                        .font(.caption2)
+                        .foregroundStyle(message.steerPending ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
+                }
+
                 if let source = message.source, source == .remote {
                     HStack(spacing: 4) {
                         Image(systemName: "iphone")
