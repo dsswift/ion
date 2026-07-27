@@ -10,6 +10,12 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.69.1](https://github.com/dsswift/ion/compare/desktop-v1.69.0...desktop-v1.69.1) (2026-07-27)
+
+### Bug Fixes
+
+* **desktop:** fail pending bridge requests on connection close ([4362140](https://github.com/dsswift/ion/commit/4362140a986b7034b3532ea2423e60b0c356d568))
+
 ## [1.69.0](https://github.com/dsswift/ion/compare/desktop-v1.68.1...desktop-v1.69.0) (2026-07-27)
 
 ### Features

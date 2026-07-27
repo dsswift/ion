@@ -13,6 +13,12 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.57.1](https://github.com/dsswift/ion/compare/engine-v1.57.0...engine-v1.57.1) (2026-07-27)
+
+### Bug Fixes
+
+* **engine:** enlarge Unix socket buffer to prevent client eviction ([9c4cbf1](https://github.com/dsswift/ion/commit/9c4cbf153e816fa79fa21be5079995a718a5631d))
+
 ## [1.57.0](https://github.com/dsswift/ion/compare/engine-v1.56.1...engine-v1.57.0) (2026-07-27)
 
 ### Features
