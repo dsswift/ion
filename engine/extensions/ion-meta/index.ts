@@ -37,6 +37,7 @@ import {
 import { isFreshConversation } from './fresh-session'
 import { WELCOME_MARKDOWN } from './greeting'
 import { gateWriteToolCall } from './git-gate'
+import { gateBenchCommand } from './bench-gate'
 import {
   scaffoldTool,
   validateAgentTool,
@@ -281,13 +282,23 @@ ion.on('on_error', (ctx, info) => {
   })
 })
 
-// ─── Deterministic write-gate ─────────────────────────────────────────────
+// ─── Deterministic write-gates ────────────────────────────────────────────
 //
-// Refuse write-class tool calls (Write / Edit / Bash / ion_scaffold) when
-// the target isn't inside a git working tree. Engine-level enforcement;
-// the LLM cannot override. See git-gate.ts for the design rationale and
-// docs/architecture/adr/006-deterministic-seams-and-probabilistic-judgment.md
-// for the framing.
+// Two independent refusals, both engine-level and neither overridable by the
+// LLM:
+//
+//   1. bench-gate — refuses a git command that writes HISTORY inside an
+//      integration bench. A bench branch is recreated from scratch on every
+//      rebuild, so a commit made there is destroyed and a push would publish a
+//      synthetic merge of other people's in-flight work. See bench-gate.ts and
+//      docs/architecture/adr/024-integration-workspace.md.
+//   2. git-gate — refuses write-class tool calls (Write / Edit / Bash /
+//      ion_scaffold) when the target isn't inside a git working tree at all.
+//      See git-gate.ts and
+//      docs/architecture/adr/006-deterministic-seams-and-probabilistic-judgment.md.
+//
+// The two do not overlap: a bench IS a git working tree, so the git-gate
+// passes every bench commit. Only the bench-gate catches that case.
 //
 // Returning `{ block: true, reason }` blocks the tool call; the engine
 // surfaces the reason back to the LLM as the tool result. Returning
@@ -297,6 +308,34 @@ ion.on('on_error', (ctx, info) => {
 // branches.
 ion.on('tool_call', (ctx, info) => {
   try {
+    // Bench gate first. It is the narrower and more consequential refusal: the
+    // git-gate below only asks "is this inside a repo", and a bench IS a repo,
+    // so it passes a bench commit through. Checking it first also means the
+    // refusal the LLM sees names the real problem (a rebuildable bench) rather
+    // than a generic one.
+    if ((info?.toolName ?? '') === 'Bash') {
+      const command = typeof info?.input?.command === 'string' ? info.input.command : ''
+      const benchDecision = gateBenchCommand(command, ctx.cwd)
+      if (benchDecision.block) {
+        log.info('ion-meta: bench-gate blocked git history write', {
+          tool: info?.toolName,
+          toolId: info?.toolId,
+          path: benchDecision.benchPath,
+          subcommand: benchDecision.subcommand,
+          sessionKey: ctx.sessionKey,
+          reason: benchDecision.reason,
+        })
+        return { block: true, reason: benchDecision.reason ?? 'blocked by ion-meta bench-gate' }
+      }
+      // Pass-case at debug: every Bash call reaches this branch, so info
+      // would be noise. The block case above is the audit signal.
+      log.debug('ion-meta: bench-gate passed Bash call', {
+        tool: info?.toolName,
+        toolId: info?.toolId,
+        sessionKey: ctx.sessionKey,
+      })
+    }
+
     const decision = gateWriteToolCall(
       { toolName: info?.toolName ?? '', toolId: info?.toolId ?? '', input: info?.input ?? {} },
       ctx.cwd,
