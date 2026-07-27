@@ -183,6 +183,9 @@ export const IPC = {
   // to describe and act on them (the re-entry surface after a tab close).
   GIT_WORKTREE_INVENTORY: 'ion:git-worktree-inventory',
   GIT_WORKTREE_APPRAISE: 'ion:git-worktree-appraise',
+  // Re-run provisioning for a worktree whose dependency state the operator
+  // believes is wrong. Same code path as creation.
+  GIT_WORKTREE_REPROVISION: 'ion:git-worktree-reprovision',
   // Reveal a directory in the OS file manager. Separate from OPEN_EXTERNAL,
   // which deliberately rejects non-http(s) URLs.
   REVEAL_PATH: 'ion:reveal-path',

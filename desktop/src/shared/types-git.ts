@@ -106,6 +106,26 @@ export interface WorktreeMoveResult {
 }
 
 /**
+ * Where a worktree is in the provisioning lifecycle.
+ *
+ * Provisioning materialises the gitignored dependency state a checkout needs but
+ * git will never carry (`node_modules`, hooks, build caches). It runs behind the
+ * worktree rather than blocking it, so this state is what the UI renders while
+ * the work happens.
+ *
+ * `ready` is also the state of a worktree in a repo with no manifest at all —
+ * "nothing to do" and "everything done" are indistinguishable to a consumer, and
+ * should be.
+ */
+export type WorktreeProvisionState =
+  | 'idle'
+  | 'probing'
+  | 'seeding'
+  | 'building'
+  | 'ready'
+  | 'failed'
+
+/**
  * One worktree in the inventory, with everything a client needs to describe it
  * and decide what to offer. Mirrors WorktreeInventoryEntry in
  * main/worktree/inventory.ts; kept in shared/ so the renderer and iOS wire can
@@ -128,6 +148,10 @@ export interface WorktreeInventoryEntry {
   unlandedCommitCount: number
   needsSync: boolean
   safeToDiscard: boolean
+  /** Provisioning lifecycle state. Absent on worktrees created before this existed. */
+  provisionState?: WorktreeProvisionState
+  /** Operator-facing reason when `provisionState` is `failed`. */
+  provisionError?: string
 }
 
 /** What removing a worktree would cost. Mirrors main/worktree/safety.ts. */
