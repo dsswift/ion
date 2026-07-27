@@ -122,3 +122,6 @@ docs/**/*.html
 # API key is involved. `make bootstrap` builds it once on a fresh clone and the
 # post-commit hook keeps it current from then on.
 graphify-out/
+
+# Editor/tool-local settings dropped by AI coding tools (e.g. grok CLI).
+.grok/
