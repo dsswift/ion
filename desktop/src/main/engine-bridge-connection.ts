@@ -129,6 +129,7 @@ function connectSocket(bridge: EngineBridge): Promise<void> {
       bridge.connected = false
       bridge.conn = null
       log('Disconnected from engine server')
+      bridge._failPendingRequests('Connection closed')
       scheduleReconnect(bridge)
     })
 

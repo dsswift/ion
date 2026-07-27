@@ -105,3 +105,25 @@ describe('EngineBridge consecutive-timeout reconnect', () => {
     expect(conn.destroy).not.toHaveBeenCalled()
   })
 })
+
+describe('EngineBridge connection close fails pending requests', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  it('pending requests resolve immediately on connection close instead of waiting 30s', async () => {
+    const bridge = makeBridge()
+    const conn = (bridge as any).conn
+
+    const p = (bridge as any)._sendWithResult({ cmd: 'start_session' })
+
+    conn.destroy.mockImplementation(() => {
+      bridge._failPendingRequests('Connection closed')
+    })
+    conn.destroy()
+
+    const result = await p
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe('Connection closed')
+  })
+})
