@@ -40,6 +40,18 @@ func (m *Manager) buildRunConfig(
 	// StopSession kills any still running (tools.StopBackgroundTasksForOwner).
 	runCfg.BackgroundTaskOwner = key
 
+	// Background-command park/wake wiring. The registrar lets a
+	// notify_on_complete Bash call add itself to this session's outstanding
+	// set; the reader lets the run loop consult that set at the turn boundary
+	// and park rather than complete while commands are still running. Both are
+	// session-scoped by design: the set outlives any single run.
+	runCfg.RegisterOutstandingBackgroundTask = func(taskID, command string) {
+		m.registerOutstandingBackgroundTask(key, taskID, command)
+	}
+	runCfg.OutstandingBackgroundTasks = func() []string {
+		return m.OutstandingBackgroundTaskIDs(key)
+	}
+
 	// Thread the engine's default model so the run loop can fall back
 	// when a requested model doesn't resolve (e.g. unrecognized tier alias).
 	if m.config != nil && m.config.DefaultModel != "" {
@@ -167,6 +179,30 @@ func (m *Manager) buildRunConfig(
 			}
 			return msgs
 		}
+	}
+
+	// Deliver any background-command completions that were queued while this
+	// session had no run to receive them (the "queue" delivery mode, or a wake
+	// whose run could not start). They ride into the conversation as
+	// system-reminder user messages on this run's first turn, so the result is
+	// never silently lost.
+	//
+	// Composed around any existing OnInitialMessages rather than replacing it:
+	// the plugin UserPromptSubmit wiring above owns the same hook, and both
+	// contributions belong in the message list.
+	priorInitialMessages := runCfg.Hooks.OnInitialMessages
+	runCfg.Hooks.OnInitialMessages = func(runID string, prompt string) []types.LlmMessage {
+		var msgs []types.LlmMessage
+		for _, pending := range m.takePendingBackgroundCompletions(key) {
+			msgs = append(msgs, types.LlmMessage{
+				Role:    "user",
+				Content: wrapInSystemReminder(pending.Text),
+			})
+		}
+		if priorInitialMessages != nil {
+			msgs = append(msgs, priorInitialMessages(runID, prompt)...)
+		}
+		return msgs
 	}
 
 	if telemCollector != nil {

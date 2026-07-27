@@ -1,7 +1,7 @@
 ---
 title: Profile Configuration
 description: How to define and use engine profiles in settings.json.
-sidebar_position: 3
+sidebar_position: 4
 ---
 
 # Profile Configuration

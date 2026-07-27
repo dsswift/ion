@@ -49,6 +49,16 @@ Create a Configuration Profile with a Custom Settings payload targeting the `com
     <key>mode</key>
     <string>ask</string>
   </dict>
+  <key>limits</key>
+  <dict>
+    <key>planModeAllowedBashCommands</key>
+    <array>
+      <string>git log</string>
+      <string>git diff</string>
+      <string>gh pr view</string>
+      <string>ls</string>
+    </array>
+  </dict>
   <key>telemetry</key>
   <dict>
     <key>enabled</key>
@@ -94,6 +104,9 @@ Enterprise config maps to registry values under the `IonEngine` key. Complex str
 | `Permissions` | `REG_SZ` (JSON object) | `{"mode":"ask"}` |
 | `Telemetry` | `REG_SZ` (JSON object) | `{"enabled":true}` |
 | `Network` | `REG_SZ` (JSON object) | `{"proxy":{"httpProxy":"..."}}` |
+| `ConfigJson` | `REG_SZ` (JSON object) | `{"limits":{"planModeAllowedBashCommands":["git log"]}}` |
+
+`ConfigJson` is the general-purpose escape hatch: its keys are merged into the enterprise config root, so it is how you set nested blocks that have no dedicated registry value of their own. The plan-mode Bash ceiling is one of these — set it via `ConfigJson` rather than expecting a `Limits` value name.
 
 ### Group Policy template
 
@@ -129,6 +142,9 @@ sudo cat > /etc/ion/config.json << 'EOF'
   "permissions": {
     "mode": "ask"
   },
+  "limits": {
+    "planModeAllowedBashCommands": ["git log", "git diff", "gh pr view", "ls"]
+  },
   "telemetry": {
     "enabled": true,
     "targets": ["http"],
@@ -137,6 +153,10 @@ sudo cat > /etc/ion/config.json << 'EOF'
 }
 EOF
 ```
+
+The `limits.planModeAllowedBashCommands` key is the ceiling for shell commands a planning session may run. It uses the same key path as `engine.json`, so administrators and developers write the concept in one place rather than two.
+
+Setting it caps every lower source — the developer's `~/.ion/engine.json`, any committed `.ion/engine.json` in a cloned repository, and the two client-supplied run-time paths. Omitting it entirely means no policy on this axis and lower layers compose freely; setting it to `[]` blocks Bash in plan mode outright. Because a narrower entry is retained against a broader ceiling, write the ceiling at the broadest level you are willing to permit. See [Sealed Configuration → Plan-mode Bash allowlist](sealed-config.md#plan-mode-bash-allowlist).
 
 ### Drop-in files
 

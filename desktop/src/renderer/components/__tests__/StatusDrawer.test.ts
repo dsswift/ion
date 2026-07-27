@@ -367,8 +367,11 @@ describe('ModelBreakdownRows — self vs. dispatch grouping', () => {
   it('StatusDrawer source renders "This conversation" and "Dispatches" group labels', async () => {
     const { readFileSync } = await import('fs')
     const { resolve } = await import('path')
+    // ModelBreakdownRows moved to StatusDrawerParts.tsx when StatusDrawer.tsx
+    // was split at its presentational seam; the labels live with the component
+    // that renders them.
     const src = readFileSync(
-      resolve(__dirname, '../StatusDrawer.tsx'),
+      resolve(__dirname, '../StatusDrawerParts.tsx'),
       'utf8',
     )
     expect(src).toContain('This conversation')

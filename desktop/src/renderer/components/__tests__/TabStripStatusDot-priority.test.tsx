@@ -75,6 +75,7 @@ const C = {
   statusWaitingChildren:     '#060606',
   statusComplete:            '#080808',
   statusQuestion:            '#0a0a0a',
+  statusBash:                '#0c0c0c',
 } as const
 
 // --- Helpers -------------------------------------------------------------
@@ -108,6 +109,7 @@ const BASE: React.ComponentProps<typeof StatusDot> = {
   waitingState: null,
   pillIcon: null,
   hasRunningChildren: false,
+  hasRunningShells: false,
 }
 
 const divsToCleanup: HTMLElement[] = []
@@ -192,5 +194,54 @@ describe('StatusDot — derived mode bypasses inline cascade', () => {
       },
     })
     expect(color).toBe(hex2rgb(C.statusIdle))
+  })
+})
+
+// ─── Background shells in the prop-mode cascade ─────────────────────────────
+//
+// The prop-mode cascade in StatusDot MUST mirror getTabStatusColor's derived
+// cascade — that duplication is the whole reason this file exists. These pin
+// the background-shell branch at the same rank in both.
+
+describe('StatusDot — hasRunningShells branch', () => {
+  it('renders the bash pink when only hasRunningShells is set', () => {
+    const color = renderDotColor({ ...BASE, hasRunningShells: true })
+    expect(color).toBe(hex2rgb(C.statusBash))
+  })
+
+  it('hasRunningChildren outranks hasRunningShells', () => {
+    // Both kinds of background work: the richer agent signal wins, matching
+    // getTabStatusColor.
+    const color = renderDotColor({ ...BASE, hasRunningChildren: true, hasRunningShells: true })
+    expect(color).toBe(hex2rgb(C.statusWaitingChildren))
+  })
+
+  it('hasRunningShells outranks plan-ready', () => {
+    // Active background work beats a passive "waiting on you" state — the same
+    // ranking argument the children branch makes.
+    const color = renderDotColor({ ...BASE, hasRunningShells: true, waitingState: 'plan-ready' })
+    expect(color).toBe(hex2rgb(C.statusBash))
+  })
+
+  it('hasRunningShells outranks question', () => {
+    const color = renderDotColor({ ...BASE, hasRunningShells: true, waitingState: 'question' })
+    expect(color).toBe(hex2rgb(C.statusBash))
+  })
+
+  it('running status outranks hasRunningShells', () => {
+    const color = renderDotColor({ ...BASE, status: 'running', hasRunningShells: true })
+    expect(color).toBe(hex2rgb(C.statusRunning))
+  })
+
+  it('permission outranks hasRunningShells', () => {
+    const color = renderDotColor({ ...BASE, hasPermission: true, hasRunningShells: true })
+    expect(color).not.toBe(hex2rgb(C.statusBash))
+  })
+
+  it('a user-typed ! command renders the same pink as an agent background shell', () => {
+    const agentShell = renderDotColor({ ...BASE, hasRunningShells: true })
+    const userShell = renderDotColor({ ...BASE, bashExecuting: true })
+    expect(agentShell).toBe(userShell)
+    expect(agentShell).toBe(hex2rgb(C.statusBash))
   })
 })

@@ -184,12 +184,10 @@ export function createEngineRewindActions(set: StoreSet, get: StoreGet): Partial
       const engineNotifications = new Map(get().engineNotifications)
       const engineDialogs = new Map(get().engineDialogs)
       const enginePinnedPrompt = new Map(get().enginePinnedPrompt)
-      const engineUsage = new Map(get().engineUsage)
       engineWorkingMessages.delete(key)
       engineNotifications.delete(key)
       engineDialogs.delete(key)
       enginePinnedPrompt.delete(key)
-      engineUsage.delete(key)
 
       set((state) => ({
         conversationPanes: panes,
@@ -197,7 +195,6 @@ export function createEngineRewindActions(set: StoreSet, get: StoreGet): Partial
         engineNotifications,
         engineDialogs,
         enginePinnedPrompt,
-        engineUsage,
         // Set pendingInput on the parent TabState so InputBar pre-fills
         // immediately (same one-shot pattern as CLI rewindToMessage).
         tabs: state.tabs.map((t) =>

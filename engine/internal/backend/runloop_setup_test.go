@@ -1,7 +1,9 @@
 package backend
 
 import (
+	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -1267,5 +1269,146 @@ func TestLoadOrCreateConversation_BackfillsLegacyLoadedConversation(t *testing.T
 	}
 	if loaded.Backend != "api" {
 		t.Fatalf("Backend = %q, want api backfilled on legacy load", loaded.Backend)
+	}
+}
+
+// TestBuildToolDefs_PlanMode_SkillSurvivesFilter is the regression test for the
+// plan-mode skill blackout. Skill was absent from defaultPlanModeTools, so the
+// plan-mode filter stripped it from the tool manifest and the entire skill
+// system was unavailable in the mode where investigation skills matter most.
+// The model could not call a skill even when the user's request matched one,
+// and silently fell back to raw Grep/Read sweeps.
+//
+// Invoking a skill is read-only (executeSkill returns registry text, touching
+// no file and spawning no process), so it belongs in the read-only set.
+//
+// Revert the "Skill" entry in defaultPlanModeTools and this test goes red.
+func TestBuildToolDefs_PlanMode_SkillSurvivesFilter(t *testing.T) {
+	b := NewApiBackend()
+	run := &activeRun{
+		requestID:    "plan-skill-survives",
+		planMode:     true,
+		planFilePath: "/tmp/plan.md",
+		cfg:          &RunConfig{},
+	}
+	opts := types.RunOptions{PlanMode: true, PlanFilePath: "/tmp/plan.md"}
+	provider := &mockLlmProvider{id: "anthropic"}
+
+	toolDefs, _ := b.buildToolDefs(run, opts, provider)
+	for _, td := range toolDefs {
+		if td.Name == "Skill" {
+			return
+		}
+	}
+	t.Error("expected Skill to survive plan-mode filtering; skills are unusable in plan mode without it")
+}
+
+// TestBuildToolDefs_PlanMode_MutatingToolsStillFiltered guards the other side of
+// the change: admitting Skill must not widen the plan-mode surface generally.
+// Write and Edit are permitted (plan-file gate enforces the target), but the
+// genuinely mutating tools stay out.
+func TestBuildToolDefs_PlanMode_MutatingToolsStillFiltered(t *testing.T) {
+	b := NewApiBackend()
+	run := &activeRun{
+		requestID:    "plan-mutating-filtered",
+		planMode:     true,
+		planFilePath: "/tmp/plan.md",
+		cfg:          &RunConfig{},
+	}
+	opts := types.RunOptions{PlanMode: true, PlanFilePath: "/tmp/plan.md"}
+	provider := &mockLlmProvider{id: "anthropic"}
+
+	toolDefs, _ := b.buildToolDefs(run, opts, provider)
+	for _, td := range toolDefs {
+		if td.Name == "NotebookEdit" {
+			t.Error("NotebookEdit must remain filtered out in plan mode")
+		}
+		// Bash is only admitted when an allowlist is configured; none here.
+		if td.Name == "Bash" {
+			t.Error("Bash must remain filtered out in plan mode with no allowlist")
+		}
+	}
+}
+
+// --- Enterprise clamp on the run-time plan-mode Bash allowlist ---
+
+// writeEnterpriseBashCeiling points ION_ENTERPRISE_CONFIG at a temp file
+// declaring a plan-mode Bash ceiling for the duration of the test.
+func writeEnterpriseBashCeiling(t *testing.T, ceiling []string) {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "enterprise.json")
+	body, err := json.Marshal(map[string]any{
+		"limits": map[string]any{"planModeAllowedBashCommands": ceiling},
+	})
+	// NOTE: the enterprise schema nests this under `limits`, matching the
+	// engine.json key path exactly so administrators write one location for
+	// the concept rather than learning a second.
+	if err != nil {
+		t.Fatalf("marshal enterprise config: %v", err)
+	}
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		t.Fatalf("write enterprise config: %v", err)
+	}
+	t.Setenv("ION_ENTERPRISE_CONFIG", path)
+}
+
+// TestEffectiveBashAllowlist_PerPromptAdditionsClampedByEnterprise is the
+// regression test for the run-time bypass. The engine.json layer is clamped
+// during the config merge, but per-prompt additions arrive on send_prompt and
+// never pass through a config merge — so before the clamp at
+// effectiveBashAllowlist, a slash command's frontmatter could grant a command
+// the enterprise ceiling forbids.
+//
+// Remove the config.ClampPlanModeBashToEnterprise call in
+// effectiveBashAllowlist and this test goes red with "curl" present.
+func TestEffectiveBashAllowlist_PerPromptAdditionsClampedByEnterprise(t *testing.T) {
+	writeEnterpriseBashCeiling(t, []string{"git log"})
+
+	got := effectiveBashAllowlist(types.RunOptions{
+		PlanModeAllowedBashCommands:         []string{"git log"},
+		BashAllowlistAdditionsForThisPrompt: []string{"curl"},
+	})
+
+	for _, cmd := range got {
+		if cmd == "curl" {
+			t.Fatal("per-prompt addition bypassed the enterprise ceiling")
+		}
+	}
+	if len(got) != 1 || got[0] != "git log" {
+		t.Fatalf("expected [git log], got %v", got)
+	}
+}
+
+// TestEffectiveBashAllowlist_SessionOverrideClampedByEnterprise covers the
+// other client-supplied source: a set_plan_mode override stored verbatim on the
+// session. It must not be able to widen past policy either.
+func TestEffectiveBashAllowlist_SessionOverrideClampedByEnterprise(t *testing.T) {
+	writeEnterpriseBashCeiling(t, []string{"ls"})
+
+	got := effectiveBashAllowlist(types.RunOptions{
+		PlanModeAllowedBashCommands: []string{"ls", "sh", "rm -rf"},
+	})
+
+	if len(got) != 1 || got[0] != "ls" {
+		t.Fatalf("expected session override clamped to [ls], got %v", got)
+	}
+}
+
+// TestEffectiveBashAllowlist_NoEnterpriseLeavesUnionIntact pins the unmanaged
+// default: with no enterprise policy the clamp is a pass-through, so the full
+// union of session entries and per-prompt additions survives. Without this,
+// a regression that clamped too aggressively would silently break plan mode on
+// every personal machine.
+func TestEffectiveBashAllowlist_NoEnterpriseLeavesUnionIntact(t *testing.T) {
+	t.Setenv("ION_ENTERPRISE_CONFIG", "")
+
+	got := effectiveBashAllowlist(types.RunOptions{
+		PlanModeAllowedBashCommands:         []string{"git log"},
+		BashAllowlistAdditionsForThisPrompt: []string{"graphify"},
+	})
+
+	if len(got) != 2 || got[0] != "git log" || got[1] != "graphify" {
+		t.Fatalf("expected [git log, graphify] with no enterprise policy, got %v", got)
 	}
 }

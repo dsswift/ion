@@ -108,13 +108,19 @@ extension SessionViewModel {
         // Deduplicate incoming by message ID, keeping last occurrence (most
         // recent version).
         //
-        // iOS rendering opinion: filter out engine-injected user turns classified
-        // as "agent_completion" — machine-to-machine dispatch callbacks (a child
-        // agent's result delivered to its parent) that the user never authored and
-        // should not see in conversation scrollback. The engine faithfully persists
-        // and surfaces the classification; iOS chooses to suppress. Mirrors the
-        // desktop's mapSessionHistory filter in session-message-mapper.ts.
-        let filtered = newMessages.filter { $0.injectionKind != "agent_completion" }
+        // iOS rendering opinion: filter out engine-injected user turns that are
+        // machine-to-machine signals the user never authored and should not see
+        // in conversation scrollback:
+        //   - "agent_completion" — a dispatch callback (a child agent's result
+        //     delivered to its parent).
+        //   - "background_task_completion" — a finished background bash
+        //     command's result, routed back to wake a parked session (ADR-023).
+        // The engine faithfully persists and surfaces the classification; iOS
+        // chooses to suppress. Mirrors the desktop's mapSessionHistory filter in
+        // session-message-mapper.ts, and must stay in sync with the live-event
+        // filter in SessionViewModel+EventHandlers.swift.
+        let suppressedInjectionKinds: Set<String> = ["agent_completion", "background_task_completion"]
+        let filtered = newMessages.filter { !suppressedInjectionKinds.contains($0.injectionKind ?? "") }
         let incoming = deduplicateMessages(filtered)
         let incomingIds = Set(incoming.map { $0.id })
         let current = conversationMessages(tabId)

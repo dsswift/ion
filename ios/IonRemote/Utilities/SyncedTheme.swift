@@ -27,6 +27,7 @@ struct SyncedTheme: AppTheme {
     let statusError: Color
     let statusPending: Color
     let statusWaitingChildren: Color
+    let statusBash: Color
     let statusWarning: Color
     let surfaceElevated: Color
     let codeBg: Color
@@ -72,6 +73,7 @@ struct SyncedTheme: AppTheme {
         statusError = color("statusError", fallback.statusError)
         statusPending = color("statusPending", fallback.statusPending)
         statusWaitingChildren = color("statusWaitingChildren", fallback.statusWaitingChildren)
+        statusBash = color("statusBash", fallback.statusBash)
         statusWarning = color("statusWarning", fallback.statusWarning)
         surfaceElevated = color("surfaceElevated", fallback.surfaceElevated)
         codeBg = color("codeBg", fallback.codeBg)

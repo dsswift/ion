@@ -148,7 +148,6 @@ function buildHarness(tabs: any[], opts?: { activeTabId?: string }): Harness {
     engineNotifications: new Map(),
     engineDialogs: new Map(),
     enginePinnedPrompt: new Map(),
-    engineUsage: new Map(),
     engineModelFallbacks: new Map(),
     terminalPanes: new Map(),
     terminalOpenTabIds: new Set(),

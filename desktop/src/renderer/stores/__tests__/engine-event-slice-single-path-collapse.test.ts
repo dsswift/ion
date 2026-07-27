@@ -67,7 +67,6 @@ describe('WI-001 guard: handleEngineEvent is retired', () => {
       engineNotifications: new Map(),
       engineDialogs: new Map(),
       enginePinnedPrompt: new Map(),
-      engineUsage: new Map(),
       engineModelFallbacks: new Map(),
       conversationPanes: new Map(),
     }
@@ -174,7 +173,6 @@ function buildStore(isExtensionTab: boolean) {
     engineNotifications: new Map(),
     engineDialogs: new Map(),
     enginePinnedPrompt: new Map(),
-    engineUsage: new Map(),
     engineModelFallbacks: new Map(),
     backend: 'api',
     resources: new Map(),

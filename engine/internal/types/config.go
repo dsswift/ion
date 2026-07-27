@@ -107,8 +107,45 @@ type EnterpriseConfig struct {
 	// is the default for every unmanaged install. The engine itself does
 	// not delete conversations; this field is policy carried to consumers
 	// via get_enterprise_policy.
-	ConversationRetentionDays *int           `json:"conversationRetentionDays,omitempty"`
-	CustomFields              map[string]any `json:"customFields,omitempty"`
+	ConversationRetentionDays *int `json:"conversationRetentionDays,omitempty"`
+	// Limits carries enterprise ceilings for fields that also exist under
+	// `limits` in engine.json. The path is deliberately identical in both
+	// schemas — an administrator writing `limits.planModeAllowedBashCommands`
+	// as policy uses the same key a developer would write in engine.json,
+	// rather than having to learn a second location for the same concept.
+	//
+	// Only fields the engine actually enforces belong here; this is not a
+	// mirror of LimitsConfig. Adding a field without enforcement would make
+	// the schema claim a guarantee the engine does not keep.
+	Limits       *EnterpriseLimits `json:"limits,omitempty"`
+	CustomFields map[string]any    `json:"customFields,omitempty"`
+}
+
+// EnterpriseLimits holds enterprise-sealed ceilings that mirror `limits` keys
+// in engine.json.
+type EnterpriseLimits struct {
+	// PlanModeAllowedBashCommands is the ceiling for the plan-mode Bash
+	// allowlist. The merged user+project list — plus the two run-time sources
+	// (the `set_plan_mode` session override and per-prompt additions) — is
+	// INTERSECTED against this set, so no lower layer and no client can
+	// permit a command the enterprise did not sanction. A lower layer may
+	// still narrow further, including blocking Bash entirely with [].
+	//
+	// Nil means no enterprise plan-mode policy, and the merged union stands
+	// as-is. That is the correct default for an unmanaged machine: absent a
+	// policy there is nothing to circumvent, and the project layer's whole
+	// purpose is letting a repo declare the commands its workflow needs. An
+	// explicit empty [] is a real policy — "no Bash in plan mode, ever" — and
+	// strips every lower-layer entry.
+	//
+	// Intersection is prefix-aware: an entry is retained when it exactly
+	// matches a ceiling entry, or when it EXTENDS one at a word boundary
+	// (ceiling "gh" retains "gh pr view", because the gate's prefix match
+	// already permits every "gh ..." invocation the ceiling allows). The
+	// reverse never holds — a lower layer cannot generalise "gh pr view" up
+	// to "gh" and thereby reach commands the ceiling excluded. See
+	// config.intersectBashCommandsWithCeiling.
+	PlanModeAllowedBashCommands []string `json:"planModeAllowedBashCommands,omitempty"`
 }
 
 // ExtensionAllowlistEntry is a single entry in the enterprise extension
@@ -220,7 +257,12 @@ type EngineRuntimeConfig struct {
 	// omit the block; the scheduler is OFF by default and auto-starts
 	// when any extension declares a job.
 	Scheduling *SchedulingConfig `json:"scheduling,omitempty"`
-	LogLevel   string            `json:"logLevel,omitempty"` // "trace", "debug", "info", "warn", "error"
+	// BackgroundTasks configures delivery of background bash command
+	// completions (Bash run_in_background + notify_on_complete). Pointer so
+	// engine.json can omit the block and inherit the compiled defaults. See
+	// types.BackgroundTasksDefaults().
+	BackgroundTasks *BackgroundTasksConfig `json:"backgroundTasks,omitempty"`
+	LogLevel        string                 `json:"logLevel,omitempty"` // "trace", "debug", "info", "warn", "error"
 	// Logging controls structured log output format, destination, and
 	// rotation. Pointer so engine.json can omit the block and inherit the
 	// compiled defaults. See types.LoggingConfig.

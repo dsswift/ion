@@ -306,4 +306,124 @@ final class RelayConfigOidcTests: XCTestCase {
         // connectionState must remain .connected — no reconnect fired.
         XCTAssertEqual(vm.connectionState, .connected)
     }
+
+    // MARK: - An empty credential must never overwrite the stored relay config
+
+    // The live failure: the desktop's on-disk relayAuthMode had been wiped by a
+    // renderer settings save, so its peer-connect handler fell through to the
+    // PSK branch and pushed `{ relayUrl, relayApiKey: "" }` (the stored PSK is
+    // deliberately empty in OIDC mode). iOS persisted that emptiness straight
+    // into the keychain, destroying the pairing's relay record — after which
+    // softReconnect had no URL to build a transport from and the app could not
+    // reconnect at all.
+    //
+    // Fails on the unfixed code: both fields become "".
+
+    @MainActor
+    func testEmptyCredentialDoesNotWipeStoredRelayConfig() throws {
+        let vm = SessionViewModel()
+
+        let device = PairedDevice(
+            id: "dev-empty-push",
+            name: "TestMac",
+            pairedAt: Date(),
+            lastSeen: nil,
+            channelId: "channel-empty",
+            sharedSecret: Data(repeating: 0xEF, count: 32),
+            relayURL: "wss://relay.example.com",
+            relayAPIKey: "working-token"
+        )
+        vm.pairedDevices = [device]
+        vm.activeDeviceId = device.id
+        // In-memory pair deliberately left empty: this is the cold-launch
+        // state, which is exactly when the defect struck.
+        vm.relayURL = ""
+        vm.relayAPIKey = ""
+
+        vm.handleRelayConfig(
+            relayUrl: "wss://relay.example.com",
+            relayApiKey: "",
+            authMode: "psk",
+            relayOidcIssuer: nil,
+            relayOidcAudience: nil,
+            relayOidcRequiredScope: nil,
+            relayOidcClientId: nil
+        )
+
+        XCTAssertEqual(vm.pairedDevices.first?.relayURL, "wss://relay.example.com",
+            "an empty push must not erase the stored relay URL")
+        XCTAssertEqual(vm.pairedDevices.first?.relayAPIKey, "working-token",
+            "an empty push must not erase the stored relay credential")
+    }
+
+    @MainActor
+    func testEmptyCredentialStillPersistsOidcMetadata() throws {
+        // The OIDC metadata is independently useful even with no token: iOS
+        // mints its own against the issuer + client ID.
+        let vm = SessionViewModel()
+
+        let device = PairedDevice(
+            id: "dev-meta",
+            name: "TestMac",
+            pairedAt: Date(),
+            lastSeen: nil,
+            channelId: "channel-meta",
+            sharedSecret: Data(repeating: 0x11, count: 32),
+            relayURL: "wss://relay.example.com",
+            relayAPIKey: "working-token"
+        )
+        vm.pairedDevices = [device]
+        vm.activeDeviceId = device.id
+        vm.relayURL = ""
+        vm.relayAPIKey = ""
+
+        vm.handleRelayConfig(
+            relayUrl: "wss://relay.example.com",
+            relayApiKey: "",
+            authMode: "oidc",
+            relayOidcIssuer: "https://issuer.example.com/v2.0",
+            relayOidcAudience: "api://audience",
+            relayOidcRequiredScope: "api://audience/Relay.Access",
+            relayOidcClientId: "client-id"
+        )
+
+        XCTAssertEqual(vm.pairedDevices.first?.relayAPIKey, "working-token")
+        XCTAssertEqual(vm.pairedDevices.first?.relayOidcIssuer, "https://issuer.example.com/v2.0")
+        XCTAssertEqual(vm.pairedDevices.first?.relayOidcClientId, "client-id")
+    }
+
+    @MainActor
+    func testRealCredentialStillOverwritesStoredConfig() throws {
+        // The guard must not make the stored config sticky — a genuine
+        // rotation still has to land.
+        let vm = SessionViewModel()
+
+        let device = PairedDevice(
+            id: "dev-rotate",
+            name: "TestMac",
+            pairedAt: Date(),
+            lastSeen: nil,
+            channelId: "channel-rotate",
+            sharedSecret: Data(repeating: 0x22, count: 32),
+            relayURL: "wss://old-relay.example.com",
+            relayAPIKey: "old-token"
+        )
+        vm.pairedDevices = [device]
+        vm.activeDeviceId = device.id
+        vm.relayURL = "wss://old-relay.example.com"
+        vm.relayAPIKey = "old-token"
+
+        vm.handleRelayConfig(
+            relayUrl: "wss://new-relay.example.com",
+            relayApiKey: "new-token",
+            authMode: "psk",
+            relayOidcIssuer: nil,
+            relayOidcAudience: nil,
+            relayOidcRequiredScope: nil,
+            relayOidcClientId: nil
+        )
+
+        XCTAssertEqual(vm.pairedDevices.first?.relayURL, "wss://new-relay.example.com")
+        XCTAssertEqual(vm.pairedDevices.first?.relayAPIKey, "new-token")
+    }
 }

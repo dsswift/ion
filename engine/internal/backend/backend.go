@@ -347,6 +347,26 @@ type RunConfig struct {
 	// tasks then outlive session stop and are managed only via TaskStop).
 	BackgroundTaskOwner string
 
+	// OutstandingBackgroundTasks reports the session's outstanding background
+	// bash commands (started with notify_on_complete) at the moment it is
+	// called. The run loop consults it at the turn boundary: a non-empty set
+	// parks the run instead of completing it, so the session stays open while
+	// the commands finish.
+	//
+	// A FUNCTION rather than a slice on purpose. The set is session-scoped and
+	// mutates during the run — the model may start more background commands
+	// mid-turn — so a value copied at run start would be stale exactly when
+	// the park decision reads it. Nil means the run never parks for background
+	// work (the pre-existing behavior).
+	OutstandingBackgroundTasks func() []string
+
+	// RegisterOutstandingBackgroundTask adds a task to the session's
+	// outstanding set. Stamped onto tool contexts so the Bash tool can
+	// register a notify_on_complete task with the owning session. Nil means
+	// notify_on_complete tasks still run and still emit their completion
+	// event, but nothing holds the session for them.
+	RegisterOutstandingBackgroundTask func(taskID, command string)
+
 	// Shell carries EngineRuntimeConfig.Shell so the Bash tool can run
 	// commands through the user's login shell when Shell.UseLoginShell is
 	// set. Nil means "use the default non-login bash -c path".

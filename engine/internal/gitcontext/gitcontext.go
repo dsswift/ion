@@ -108,8 +108,22 @@ func FormatForPrompt(ctx *GitContext) string {
 	return "# Git Context\n" + strings.Join(parts, "\n")
 }
 
+// runGit executes a read-only git query in cwd.
+//
+// Every call is prefixed with --no-optional-locks. Without it, `git status`
+// opportunistically refreshes the on-disk index, and that refresh takes
+// .git/index.lock. This function runs on every prompt dispatch (see
+// session.injectGitContext), so in a repo the operator is actively working in
+// it collides with whatever git command they are running: an interactive
+// rebase, an amend, or a squash fails with
+// "Unable to create '.git/index.lock': File exists" because a prompt landed at
+// the wrong moment. The engine only ever reads here, so the index refresh is
+// pure overhead — dropping the lock removes the race without changing output.
+//
+// The flag suppresses only *optional* locks; commands that genuinely must lock
+// still do. GIT_OPTIONAL_LOCKS=0 is the environment equivalent.
 func runGit(cwd string, args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
+	cmd := exec.Command("git", append([]string{"--no-optional-locks"}, args...)...)
 	cmd.Dir = cwd
 	out, err := cmd.Output()
 	if err != nil {

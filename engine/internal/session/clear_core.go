@@ -168,7 +168,12 @@ func (m *Manager) clearSessionDenials(key string) (string, int) {
 		utils.LogWithFields(utils.LevelInfo, "session", "clearsessiondenials: clearing retained permission_denials (/clear dismisses pending question/plan card)", map[string]any{"key": key, "n": n})
 		s.lastPermissionDenials = nil
 	}
+	// /clear empties the LLM-visible messages, so occupancy really is zero.
+	// Both the percent and its numerator reset together — leaving the token
+	// count behind would let a consumer recompute a non-zero percentage from
+	// a conversation that no longer holds anything.
 	s.lastContextPct = 0
+	s.lastContextTokens = 0
 	return key, n
 }
 
@@ -225,6 +230,7 @@ func (m *Manager) emitClearSignal(key string) {
 		Fields: &types.StatusFields{
 			State:          state,
 			ContextPercent: 0,
+			ContextTokens:  0,
 			ContextWindow:  window,
 			Model:          model,
 			RunCostUsd:     cost,

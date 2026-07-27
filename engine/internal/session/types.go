@@ -34,9 +34,9 @@ type pendingPrompt struct {
 
 // engineSession holds the state for a single session managed by the Manager.
 type engineSession struct {
-	key            string
-	config         types.EngineConfig
-	requestID      string // empty when no active run
+	key       string
+	config    types.EngineConfig
+	requestID string // empty when no active run
 
 	// dispatchingRunID marks the dispatch-in-flight window for a run. It is
 	// set to the run's requestID inside SendPrompt, under m.mu, at the same
@@ -132,7 +132,7 @@ type engineSession struct {
 	// the model is final. handleRunExit reads it to decide whether (and
 	// under which kind) to capture the backend-reported session id as a
 	// native-session cursor. Guarded by m.mu; overwritten on every dispatch.
-	runCaps                     backend.BackendCapabilities
+	runCaps backend.BackendCapabilities
 	// pendingCliUserTurn holds the current run's original user prompt (the
 	// display text, before any transcript bridging mutated opts.Prompt) when
 	// the run is served by a native-session (delegated-CLI) backend. Together
@@ -142,12 +142,12 @@ type engineSession struct {
 	// Ion and a later cross-provider turn's transcript bridge misses them (the
 	// continuity-loss bug). Empty for engine-owned backends, which persist
 	// their own turns via the runloop. Guarded by m.mu.
-	pendingCliUserTurn          string
+	pendingCliUserTurn string
 	// pendingCliAssistantText holds the current run's final assistant text
 	// (TaskCompleteEvent.LastText, else Result), captured as the event flows
 	// through handleNormalizedEvent, for the same CLI-turn persistence.
 	// Guarded by m.mu.
-	pendingCliAssistantText     string
+	pendingCliAssistantText string
 	// traceID is a stable per-session OpenTelemetry-compatible 32-hex trace ID.
 	// Generated once in newSessionRootContext and threaded into rootCtx via
 	// utils.WithTraceID so every log line and telemetry span emitted for this
@@ -176,10 +176,10 @@ type engineSession struct {
 	//      consult this flag — otherwise a prompt submitted mid-compaction
 	//      would start a real run that clobbers the compaction's save. See
 	//      dispatchCompact and SendPrompt.
-	compactInFlight             bool
-	hasExitedPlanMode           bool // set when ExitPlanMode fires; enables reentry detection
-	promptQueue                 []pendingPrompt
-	maxQueueDepth               int // default 32
+	compactInFlight   bool
+	hasExitedPlanMode bool // set when ExitPlanMode fires; enables reentry detection
+	promptQueue       []pendingPrompt
+	maxQueueDepth     int // default 32
 
 	// Wired subsystems (populated in StartSession)
 	extGroup       *extension.ExtensionGroup
@@ -199,11 +199,19 @@ type engineSession struct {
 
 	// Last-known context usage state, carried forward across status
 	// emissions so the footer always reflects the most recent data.
-	lastContextPct     int
-	lastContextWindow  int
-	lastModel          string
-	lastTotalCost      float64  // run-scoped cost (alias: RunCostUsd)
-	lastConvCost       float64  // conversation-scoped cost (alias: ConversationCostUsd)
+	//
+	// lastContextTokens is the absolute occupancy (the numerator);
+	// lastContextPct is that figure over lastContextWindow. All three are
+	// refreshed together — at session start from the persisted conversation
+	// (start_session.go), per turn from the UsageEvent occupancy signal
+	// (event_translation.go), and at run exit by refreshContextUsage
+	// (context_refresh.go). Cumulative run billing never writes them.
+	lastContextPct    int
+	lastContextTokens int
+	lastContextWindow int
+	lastModel         string
+	lastTotalCost     float64 // run-scoped cost (alias: RunCostUsd)
+	lastConvCost      float64 // conversation-scoped cost (alias: ConversationCostUsd)
 
 	// lastPermissionDenials retains the PermissionDenials slice from the
 	// most recent TaskCompleteEvent. The slice typically contains
@@ -292,4 +300,26 @@ type engineSession struct {
 	// attach slashCommand/slashArgs provenance. Consumed (cleared) on the next
 	// SendPrompt so it applies exactly once.
 	pendingSlashInvocation *conversation.SlashInvocation
+
+	// outstandingBackgroundTasks tracks background bash commands started with
+	// notify_on_complete that have not yet reported a terminal state. Keyed by
+	// task ID. SESSION-scoped, not run-scoped, and that is the whole point: a
+	// model may start commands across several turns and several runs before
+	// the session finally parks for them, so this set must outlive any one
+	// run. Guarded by Manager.mu like the rest of engineSession.
+	//
+	// See background_task_registry.go for the accessors and
+	// background_task_wake.go for the park/wake cycle that consumes it.
+	outstandingBackgroundTasks map[string]outstandingBackgroundTask
+
+	// parked records that this session's run exited at a turn boundary
+	// because outstandingBackgroundTasks was non-empty, and is waiting to be
+	// woken by a completion. Nil when the session is not parked. Distinct from
+	// "idle": a parked session has work in flight and will resume on its own.
+	parked *parkedRun
+
+	// pendingBackgroundCompletions holds completions that arrived under the
+	// "queue" delivery mode (or while a wake could not start a run). They ride
+	// along with the next run the session starts for any other reason.
+	pendingBackgroundCompletions []backgroundCompletionPayload
 }

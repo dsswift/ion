@@ -122,6 +122,23 @@ const (
 	HookTaskCreated   = "task_created"
 	HookTaskCompleted = "task_completed"
 
+	// HookBackgroundTaskCompleted fires when a background bash command
+	// started with Bash(run_in_background: true, notify_on_complete: true)
+	// reaches a terminal state — exited cleanly, failed, or was stopped.
+	//
+	// Distinct from HookTaskCompleted, which is a TURN lifecycle hook
+	// (TaskID = "<session-key>-t<turn-number>"). This one reports a shell
+	// process, keyed by the tasks-registry task ID.
+	//
+	// Fires for every notifying command regardless of the configured delivery
+	// mode, so a harness observes completions even when the engine is
+	// configured not to start runs on them. Observe-only: the engine has
+	// already emitted the typed event and resolved delivery from config by the
+	// time handlers run, and handler return values are discarded. Delivery is
+	// an operator opinion configured with backgroundTasks.delivery, not a
+	// per-completion hook decision.
+	HookBackgroundTaskCompleted = "background_task_completed"
+
 	// Elicitation hooks
 	HookElicitationRequest = "elicitation_request"
 	HookElicitationResult  = "elicitation_result"

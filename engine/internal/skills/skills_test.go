@@ -175,7 +175,7 @@ Draw a diagram.
 // true (case-insensitive) is parsed correctly.
 func TestLoadSkillDisableModelInvocation(t *testing.T) {
 	tests := []struct {
-		value    string
+		value        string
 		wantDisabled bool
 	}{
 		{"true", true},
@@ -267,4 +267,3 @@ func TestLoadClaudeSkillsDirectoryMissing(t *testing.T) {
 		t.Errorf("expected nil skills for missing dir")
 	}
 }
-

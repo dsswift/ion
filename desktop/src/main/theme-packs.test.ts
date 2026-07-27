@@ -228,7 +228,10 @@ describe('rescan + consumers', () => {
     // Desktop-only packs never ride the wire.
     expect(manifest.themes.map((t) => t.id)).toEqual(['acme-corp'])
     expect(manifest.themes[0].preferredColorScheme).toBe('dark')
-    expect(Object.keys(manifest.themes[0].tokens)).toHaveLength(15)
+    // Derived from IOS_THEME_TOKEN_KEYS, not hardcoded: a bare count goes stale
+    // the moment a token is added (it did — statusBash), and the constant is
+    // already the source of truth this file imports.
+    expect(Object.keys(manifest.themes[0].tokens)).toHaveLength(IOS_THEME_TOKEN_KEYS.length)
     expect(manifest.themes[0].assets).toHaveLength(1)
     expect(manifest.themes[0].assets![0].slot).toBe('background')
     expect(manifest.themes[0].assets![0].sha256).toMatch(/^[0-9a-f]{64}$/)

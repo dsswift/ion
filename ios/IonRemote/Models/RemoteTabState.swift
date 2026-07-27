@@ -71,6 +71,15 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     /// yellow until they're upgraded. See CLAUDE.md § "Common parity
     /// surfaces" parity table for the desktop/iOS parity rule.
     var hasRunningChildren: Bool?
+    /// Total background bash commands this tab is waiting on (Bash
+    /// run_in_background + notify_on_complete), summed across sub-instances
+    /// by the desktop's `getRemoteTabStates` snapshot. Drives the pink
+    /// "waiting on background shells" pulse on the parent tab pill in
+    /// `TabRowView`, and the count in `EngineInstanceBar`. Nil/absent means
+    /// zero — older desktops that don't emit this field continue to work,
+    /// with the pill simply not showing the shell state until upgraded. See
+    /// AGENTS.md § "Common parity surfaces".
+    var backgroundShellCount: Int?
     /// Engine profile ID for this tab. Non-nil when the tab was created with
     /// a specific engine profile (i.e. `hasEngineExtension == true`). Used
     /// by `TabRowView` to resolve the profile display name for the harness
@@ -195,6 +204,11 @@ struct ConversationInstanceInfo: Codable, Identifiable, Sendable {
     /// Nil/zero means no background agents are running. See
     /// CLAUDE.md § "Common parity surfaces" parity table.
     var runningAgentCount: Int? = nil
+    /// Background bash commands this instance is waiting on (Bash
+    /// run_in_background + notify_on_complete). The shell counterpart to
+    /// `runningAgentCount`; drives the per-instance "waiting on N background
+    /// shell(s)" indicator in EngineInstanceBar. Nil/absent means zero.
+    var backgroundShellCount: Int? = nil
     /// Per-engine-instance model-fallback indicator. Non-nil when the
     /// desktop's engineModelFallbacks map holds an entry for this
     /// `tabId:instanceId` — i.e. the engine emitted ModelFallbackEvent
@@ -266,6 +280,7 @@ struct ConversationInstanceInfo: Codable, Identifiable, Sendable {
         case waitingState
         case isRunning
         case runningAgentCount
+        case backgroundShellCount
         case modelFallback
         case conversationIds
         case thinkingEffort
@@ -293,6 +308,7 @@ extension ConversationInstanceInfo {
         waitingState = try container.decodeIfPresent(String.self, forKey: .waitingState)
         isRunning = try container.decodeIfPresent(Bool.self, forKey: .isRunning)
         runningAgentCount = try container.decodeIfPresent(Int.self, forKey: .runningAgentCount)
+        backgroundShellCount = try container.decodeIfPresent(Int.self, forKey: .backgroundShellCount)
         modelFallback = try container.decodeIfPresent(EngineInstanceModelFallback.self, forKey: .modelFallback)
         conversationIds = try container.decodeIfPresent([String].self, forKey: .conversationIds)
         thinkingEffort = try container.decodeIfPresent(String.self, forKey: .thinkingEffort)
@@ -307,6 +323,7 @@ extension ConversationInstanceInfo {
         try container.encodeIfPresent(waitingState, forKey: .waitingState)
         try container.encodeIfPresent(isRunning, forKey: .isRunning)
         try container.encodeIfPresent(runningAgentCount, forKey: .runningAgentCount)
+        try container.encodeIfPresent(backgroundShellCount, forKey: .backgroundShellCount)
         try container.encodeIfPresent(modelFallback, forKey: .modelFallback)
         try container.encodeIfPresent(conversationIds, forKey: .conversationIds)
         try container.encodeIfPresent(thinkingEffort, forKey: .thinkingEffort)

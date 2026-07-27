@@ -98,6 +98,64 @@ type TaskSuspendEvent struct {
 	// all listed children have completed. Empty for a bare suspend() call
 	// (revives on the next sendPrompt to this session, regardless of origin).
 	AwaitingDispatchIDs []string `json:"awaitingDispatchIds,omitempty"`
+	// AwaitingTaskIDs lists the background bash task IDs the run is waiting
+	// on when the engine parks a session at a turn boundary because it has
+	// outstanding notifying background commands (Bash run_in_background with
+	// notify_on_complete). Distinct from AwaitingDispatchIDs: those are child
+	// agents, these are shell processes. A parked ROOT session reports its
+	// task IDs here — unlike a dispatched child, the root's run exits fully
+	// and is revived by starting a new run when a task completes.
+	//
+	// Revive semantics differ from AwaitingDispatchIDs by design: the dispatch
+	// path revives only when EVERY awaited child has completed, whereas this
+	// set is drained one task at a time and the session is woken on EACH
+	// completion (a finished command may unblock work the model can do while
+	// the rest still run). If the session ends its next turn with tasks still
+	// outstanding, it parks again.
+	AwaitingTaskIDs []string `json:"awaitingTaskIds,omitempty"`
 }
 
 func (TaskSuspendEvent) eventType() string { return EventTaskSuspend }
+
+// BackgroundTaskCompleteEvent fires when a background bash command started
+// with notify_on_complete reaches a terminal state (exited, failed, or was
+// stopped). It is the engine's complete signaling obligation for that
+// completion: it is emitted for every notifying task regardless of whether the
+// engine also delivers the result into a run.
+//
+// The event is advisory in the sense that a consumer which ignores it still
+// sees the effect through the normal pipeline — under the default delivery
+// mode the session is woken with the result as an injected prompt, which
+// surfaces as an ordinary run. Consumers that want to render completions
+// distinctly (a toast, a task list, a headless pipeline that acts on exit
+// codes) read this event instead of scraping run content.
+type BackgroundTaskCompleteEvent struct {
+	// TaskID is the tasks-registry ID of the completed task, matching the ID
+	// the Bash tool returned when the command was started.
+	TaskID string `json:"taskId"`
+	// Status is the terminal status: "completed" (exit 0), "failed"
+	// (non-zero exit), or "stopped" (killed via TaskStop or session teardown
+	// before it finished).
+	Status string `json:"status"`
+	// ExitCode is the process exit code. Zero for a "stopped" task killed
+	// before it reported one.
+	ExitCode int `json:"exitCode"`
+	// ElapsedMs is wall-clock milliseconds from command start to terminal
+	// transition.
+	ElapsedMs int64 `json:"elapsedMs"`
+	// OutputPath is the on-disk file holding the command's full interleaved
+	// stdout+stderr. Always present; the file outlives the event.
+	OutputPath string `json:"outputPath,omitempty"`
+	// Tail is the bounded in-memory tail of the command's output, provided so
+	// a consumer can render a result without reading OutputPath.
+	Tail string `json:"tail,omitempty"`
+	// Command is the shell command that ran, so a consumer can label the
+	// completion without having retained the start event.
+	Command string `json:"command,omitempty"`
+	// RemainingTaskIDs lists the session's still-outstanding notifying task
+	// IDs at the instant this one completed. Empty means this was the last
+	// one. Lets a consumer render "2 of 3 done" without tracking starts.
+	RemainingTaskIDs []string `json:"remainingTaskIds,omitempty"`
+}
+
+func (BackgroundTaskCompleteEvent) eventType() string { return EventBackgroundTaskComplete }

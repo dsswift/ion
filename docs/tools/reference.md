@@ -56,10 +56,21 @@ Execute a bash command and return its output.
 | `command` | string | yes | The bash command to execute |
 | `timeout` | number | no | Timeout in milliseconds (default: 120000). Ignored when `run_in_background` is true |
 | `run_in_background` | boolean | no | Run the command in the background and return immediately with a task ID and output-file path |
+| `notify_on_complete` | boolean | no | Only meaningful with `run_in_background`. Deliver the command's result back to the session when it finishes, instead of requiring polling |
 
 Runs through the pluggable `BashOperations` backend. Returns stdout and stderr. Non-zero exit codes are reported as tool errors. The backend supports sandboxing via Seatbelt (macOS) or bubblewrap (Linux).
 
 With `run_in_background: true`, the command starts detached from the tool call in its own process group and the tool returns immediately with a `bash-<n>` task ID and an output file under `~/.ion/tasks/` capturing interleaved stdout+stderr. The task registers in the tasks registry: `TaskGet` shows status, exit code, output path, and a bounded tail of recent output; `TaskStop` kills the process group. When the owning session stops, its running background tasks are killed. The Task tools are harness opt-in — without them, the model reads the output file directly (the result says which hint applies). Backends advertise support via the `BackgroundBashOperations` capability interface; only the local backend implements it today, and unsupported backends return a clean error.
+
+With `notify_on_complete: true` the command additionally joins the session's **outstanding set**, and the engine takes responsibility for delivering its result — the model does not poll. Three consequences follow:
+
+- **The model may keep working.** Starting a notifying command does not commit the session to waiting. It can start more commands, do unrelated work, and end its turn whenever it wants.
+- **The engine parks the session at the turn boundary.** When the model finishes its turn with commands still outstanding, the run ends without completing (`engine_task_suspended` carrying `awaitingTaskIds`) and the session consumes no tokens while it waits. A session with an empty outstanding set completes exactly as it always has.
+- **Each completion wakes the session once.** The result arrives as an injected prompt naming the command's exit code, output path, output tail, and whatever is still outstanding. If the woken run ends its turn with work still in flight, it parks again. The cycle repeats until the set empties.
+
+A completion that arrives while the session is already running is delivered mid-turn via the steer path instead, so a working orchestrator is never interrupted.
+
+Delivery is an opinion the consumer owns: `engine.json`'s `backgroundTasks.delivery` selects `"wake"` (default), `"queue"` (hold the result for the next run the session starts for another reason), or `"event_only"` (emit the typed event and fire the hook; start nothing). The typed `engine_background_task_complete` event and the `background_task_completed` hook fire under every mode. `backgroundTasks.parkTimeoutMs` bounds how long a session stays parked on a command that never exits; on timeout the session wakes and the command stays tracked.
 
 ### Grep
 

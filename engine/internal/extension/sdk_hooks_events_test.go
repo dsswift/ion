@@ -132,6 +132,57 @@ func TestSDK_FireTaskCompleted(t *testing.T) {
 	}
 }
 
+// TestSDK_FireBackgroundTaskCompleted pins the full payload of the
+// background_task_completed hook. Unlike task_completed (a TURN lifecycle
+// hook), this reports a background shell process, so the exit code, output
+// path, and remaining-work list must all reach the handler — a harness acting
+// on a failed build needs the exit code, not just the task ID.
+func TestSDK_FireBackgroundTaskCompleted(t *testing.T) {
+	sdk := NewSDK()
+
+	var received BackgroundTaskCompletedInfo
+	var calls int
+	sdk.On(HookBackgroundTaskCompleted, func(ctx *Context, payload interface{}) (interface{}, error) {
+		received = payload.(BackgroundTaskCompletedInfo)
+		calls++
+		return nil, nil
+	})
+
+	sdk.FireBackgroundTaskCompleted(testCtx(), BackgroundTaskCompletedInfo{
+		TaskID:           "bash-1-1700000000000",
+		SessionKey:       "sess-a",
+		Command:          "make build",
+		Status:           "failed",
+		ExitCode:         2,
+		ElapsedMs:        4200,
+		OutputPath:       "/tmp/bash-1.out",
+		Tail:             "compile error",
+		RemainingTaskIDs: []string{"bash-2", "bash-3"},
+	})
+
+	if calls != 1 {
+		t.Fatalf("handler called %d times, want exactly 1", calls)
+	}
+	if received.TaskID != "bash-1-1700000000000" {
+		t.Errorf("TaskID = %q, want the tasks-registry id", received.TaskID)
+	}
+	if received.SessionKey != "sess-a" {
+		t.Errorf("SessionKey = %q, want sess-a", received.SessionKey)
+	}
+	if received.Status != "failed" || received.ExitCode != 2 {
+		t.Errorf("Status/ExitCode = %q/%d, want failed/2", received.Status, received.ExitCode)
+	}
+	if received.Command != "make build" {
+		t.Errorf("Command = %q, want the command that ran", received.Command)
+	}
+	if received.OutputPath != "/tmp/bash-1.out" || received.Tail != "compile error" {
+		t.Errorf("output fields = %q/%q, want the path and tail carried through", received.OutputPath, received.Tail)
+	}
+	if len(received.RemainingTaskIDs) != 2 {
+		t.Errorf("RemainingTaskIDs = %v, want the two still-running commands", received.RemainingTaskIDs)
+	}
+}
+
 func TestSDK_FireElicitationRequest_NoHandler(t *testing.T) {
 	sdk := NewSDK()
 

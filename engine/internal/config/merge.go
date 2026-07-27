@@ -3,6 +3,7 @@ package config
 import (
 	"net/url"
 	"path"
+	"strings"
 
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -303,10 +304,79 @@ func EnforceEnterprise(config *types.EngineRuntimeConfig, enterprise *types.Ente
 		result.ResourceLimits.MaxAgentsPerSession = sealLimitCeiling(result.ResourceLimits.MaxAgentsPerSession, enterprise.ResourceLimits.MaxAgentsPerSession, "maxAgentsPerSession")
 	}
 
+	// Plan-mode Bash allowlist: sealed ceiling. The merged user+project union
+	// is intersected against the enterprise set, so a project .ion/engine.json
+	// committed into a repo cannot widen plan-mode Bash on a managed machine.
+	// Nil enterprise value means no policy on this axis and the union stands.
+	if enterprise.Limits != nil && enterprise.Limits.PlanModeAllowedBashCommands != nil {
+		result.Limits.PlanModeAllowedBashCommands = intersectBashCommandsWithCeiling(
+			result.Limits.PlanModeAllowedBashCommands,
+			enterprise.Limits.PlanModeAllowedBashCommands,
+		)
+	}
+
 	// Store enterprise config for runtime access
 	result.Enterprise = enterprise
 
 	return &result
+}
+
+// intersectBashCommandsWithCeiling clamps a merged plan-mode Bash allowlist to
+// an enterprise ceiling, returning only the entries the ceiling sanctions.
+//
+// An empty (non-nil) ceiling is the "no Bash in plan mode" policy and strips
+// everything. Otherwise an entry is retained when it is exactly a ceiling
+// entry, or when it is a MORE SPECIFIC form of one — ceiling "gh" retains
+// "gh pr view", because the gate's prefix matching already lets every "gh ..."
+// command through when "gh" is permitted, so keeping the narrower entry grants
+// nothing new.
+//
+// The asymmetry is the whole security property, and it runs one way only:
+// a lower layer can never generalise a ceiling entry outward. With ceiling
+// "gh pr view", a project asking for "gh" is dropped, not kept — retaining it
+// would permit "gh repo delete", which the ceiling deliberately excluded.
+// Every dropped entry is recorded as an enforcement action so the operator can
+// see which project/user entries policy rejected.
+func intersectBashCommandsWithCeiling(merged, ceiling []string) []string {
+	if len(ceiling) == 0 {
+		// Explicit block-all policy. Record each stripped entry.
+		for _, cmd := range merged {
+			recordEnforcement(EnforcementPlanModeBashPruned, cmd, "planModeAllowedBashCommands", map[string]any{
+				"reason": "enterprise policy blocks Bash in plan mode",
+			})
+		}
+		return []string{}
+	}
+	out := make([]string, 0, len(merged))
+	for _, cmd := range merged {
+		if bashCommandWithinCeiling(cmd, ceiling) {
+			out = append(out, cmd)
+			continue
+		}
+		recordEnforcement(EnforcementPlanModeBashPruned, cmd, "planModeAllowedBashCommands", map[string]any{
+			"reason": "not permitted by enterprise plan-mode Bash ceiling",
+		})
+	}
+	return out
+}
+
+// bashCommandWithinCeiling reports whether cmd is permitted by the ceiling:
+// an exact match, or an extension of a ceiling entry at a word boundary.
+//
+// The word-boundary check prevents a prefix-string coincidence from passing as
+// a policy match: ceiling "git" must not sanction "github-cli-doer" merely
+// because the bytes line up. Requiring the next character to be a space means
+// only genuine sub-commands ("git log") are treated as narrower forms.
+func bashCommandWithinCeiling(cmd string, ceiling []string) bool {
+	for _, allowed := range ceiling {
+		if cmd == allowed {
+			return true
+		}
+		if strings.HasPrefix(cmd, allowed+" ") {
+			return true
+		}
+	}
+	return false
 }
 
 // sealLimitCeiling resolves one resource-limit field against the enterprise
@@ -463,15 +533,40 @@ func mergeInto(dst, src *types.EngineRuntimeConfig) {
 	if src.Limits.DisableMaxTokenContinue != nil {
 		dst.Limits.DisableMaxTokenContinue = src.Limits.DisableMaxTokenContinue
 	}
-	// PlanModeAllowedBashCommands is a slice, not a pointer: nil means "not
-	// set by this layer" (leave the earlier layer intact), while a non-nil
-	// slice — INCLUDING an explicit empty [] — is an intentional set that
-	// overrides. The empty-slice case is the "block Bash entirely in plan
-	// mode" signal, so it must win over an earlier non-empty list. This is
-	// the tri-valued contract the dispatch-time resolver relies on
-	// (config_resolve.go / prompt_options.go).
+	// PlanModeAllowedBashCommands is a slice, not a pointer, and carries a
+	// tri-valued contract across layers:
+	//
+	//   nil        — this layer did not set the field; the earlier layer stands.
+	//   non-empty  — ADDITIVE. Unioned with the earlier layer's list, so a
+	//                project .ion/engine.json can permit a command the user's
+	//                global config never mentioned (and vice versa) without
+	//                either layer having to restate the other's entries.
+	//   empty ([]) — an intentional "block Bash entirely in plan mode" signal.
+	//                It wins over any earlier non-empty list, matching normal
+	//                layer precedence: the later, more specific layer decides.
+	//
+	// Additive-union (rather than whole-slice replacement) is what makes the
+	// project layer portable: a repo that needs one extra command ships it in
+	// .ion/engine.json and every clone gains it on top of whatever each
+	// developer already allows globally. Replacement would force the project
+	// file to restate every developer's personal list, which it cannot know.
+	//
+	// This union is deliberately NOT a security boundary. When an enterprise
+	// policy exists, EnforceEnterprise intersects the merged result against
+	// the enterprise ceiling AFTER this merge runs, so no combination of user
+	// and project entries can widen past what the enterprise permits. Absent
+	// an enterprise policy there is no policy to circumvent — an unmanaged
+	// machine configuring its own tool is the point of the project layer.
 	if src.Limits.PlanModeAllowedBashCommands != nil {
-		dst.Limits.PlanModeAllowedBashCommands = src.Limits.PlanModeAllowedBashCommands
+		if len(src.Limits.PlanModeAllowedBashCommands) == 0 {
+			// Explicit block-all from the higher-precedence layer.
+			dst.Limits.PlanModeAllowedBashCommands = []string{}
+		} else {
+			dst.Limits.PlanModeAllowedBashCommands = unionBashCommands(
+				dst.Limits.PlanModeAllowedBashCommands,
+				src.Limits.PlanModeAllowedBashCommands,
+			)
+		}
 	}
 	// MaxTokenThinkingOnlyBreaker is a non-pointer int: zero means "not set /
 	// use the built-in default", so only a non-zero value from a later layer
@@ -622,4 +717,35 @@ func contains(slice []string, item string) bool {
 		}
 	}
 	return false
+}
+
+// unionBashCommands merges two plan-mode Bash allowlists, preserving order and
+// dropping duplicates. Entries from base come first (the lower-precedence
+// layer), then any entry from add that base did not already contain.
+//
+// Order is stable rather than sorted so the resolved list reads the way the
+// operator wrote it: their global entries, then whatever the project added.
+// The gate that consumes this list does prefix matching, and prefix matching
+// is order-independent, so ordering is a readability property (log lines,
+// system-prompt prose) rather than a semantic one.
+//
+// Duplicate collapsing matters because both layers legitimately name common
+// commands (git log, ls). Without it the resolved list, which is echoed into
+// the plan-mode system prompt, would repeat entries back to the model.
+func unionBashCommands(base, add []string) []string {
+	seen := make(map[string]struct{}, len(base)+len(add))
+	out := make([]string, 0, len(base)+len(add))
+	for _, list := range [][]string{base, add} {
+		for _, cmd := range list {
+			if cmd == "" {
+				continue
+			}
+			if _, dup := seen[cmd]; dup {
+				continue
+			}
+			seen[cmd] = struct{}{}
+			out = append(out, cmd)
+		}
+	}
+	return out
 }

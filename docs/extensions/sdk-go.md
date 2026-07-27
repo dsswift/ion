@@ -378,6 +378,8 @@ enabled, planFilePath := ctx.GetPlanMode()
 
 **`RegisterProcess`**, **`DeregisterProcess`**, **`ListProcesses`**, **`TerminateProcess`**, **`CleanStaleProcesses`** -- process lifecycle management (see TypeScript SDK for semantics).
 
+**`Suspend()`** / **`SuspendUntilAll(dispatchIDs)`** -- end the current LLM run without completing it, then revive later. Inside a dispatched run (depth >= 1) the dispatch stays alive and idle until a revive message arrives; at depth 0 it parks the ROOT session on its outstanding background bash commands, and a new run starts when one completes. Errors at depth 0 when there is no active run to park or no outstanding notifying commands to park on. Same semantics as the TypeScript SDK — see [sdk-typescript.md](sdk-typescript.md) § `suspend()` and [ADR-023](../architecture/adr/023-root-session-park-and-wake.md).
+
 **`DispatchAgent(opts)`** -- dispatch an engine-native child agent.
 
 **`DiscoverAgents(opts)`** -- list agents discoverable via the harness's configured search paths (extension agents, project agents, user agents). Returns a structured result the harness can filter and register via `RegisterAgent`.

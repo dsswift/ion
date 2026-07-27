@@ -117,6 +117,10 @@ export interface RemoteTabState {
     waitingState?: 'plan-ready' | 'question' | null
     isRunning?: boolean
     runningAgentCount?: number
+    /** Background bash commands this instance is waiting on (Bash
+     *  run_in_background + notify_on_complete). The shell counterpart to
+     *  runningAgentCount; drives the iOS pink shell dot. */
+    backgroundShellCount?: number
     modelFallback?: { requestedModel: string; fallbackModel: string }
     conversationIds?: string[]
     thinkingEffort?: 'low' | 'medium' | 'high'
@@ -137,6 +141,15 @@ export interface RemoteTabState {
    * parity rule.
    */
   hasRunningChildren?: boolean
+  /**
+   * Total background bash commands this tab is waiting on, summed across
+   * `conversationInstances[*].backgroundShellCount`. Optional so older iOS
+   * builds that don't decode the field continue to work; iOS uses it to drive
+   * the parent tab pill's pink shell dot and the "waiting on N background
+   * shells" indicator. Summed rather than max'd: separate instances run
+   * separate processes.
+   */
+  backgroundShellCount?: number
   /** The current conversation/session ID for this tab. Engine tabs use StatusFields.sessionId instead. */
   conversationId?: string | null
   /** Unix ms timestamp of the last status-changing activity (message, status change). */

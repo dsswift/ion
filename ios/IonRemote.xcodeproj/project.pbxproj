@@ -19,6 +19,7 @@
 		A2B3C4D5E6F700000000001B /* OIDCTokenManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F700000000001A /* OIDCTokenManager.swift */; };
 		A1B2C3D4E5F6000100000DAA /* LANClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100000EAA /* LANClient.swift */; };
 		LANAUTHOUT0000000000001 /* LANAuthOutcome.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANAUTHOUT0000000000002 /* LANAuthOutcome.swift */; };
+		RELAYREJECT00000000001 /* RelayRejection.swift in Sources */ = {isa = PBXBuildFile; fileRef = RELAYREJECT00000000002 /* RelayRejection.swift */; };
 		LANBACKOFF0000000000001 /* LANReconnectBackoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANBACKOFF0000000000002 /* LANReconnectBackoff.swift */; };
 		TMBONJRC000000000000001 /* TransportManager+BonjourReconnect.swift in Sources */ = {isa = PBXBuildFile; fileRef = TMBONJRC000000000000002 /* TransportManager+BonjourReconnect.swift */; };
 		LANBACKTST0000000000001 /* LANReconnectBackoffTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LANBACKTST0000000000002 /* LANReconnectBackoffTests.swift */; };
@@ -44,6 +45,7 @@
 		A1B2C3D4E5F6000100002BAA /* RelayClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */; };
 		A2B3C4D5E6F700000000002B /* OIDCTokenManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B3C4D5E6F700000000002A /* OIDCTokenManagerTests.swift */; };
 		RELAYOIDC00000000000001 /* RelayConfigOidcTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RELAYOIDC00000000000002 /* RelayConfigOidcTests.swift */; };
+		RELAYRECOV0000000000001 /* RelayConfigRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RELAYRECOV0000000000002 /* RelayConfigRecoveryTests.swift */; };
 		TMRTESTS00000000000001 /* TransportManagerReceiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TMRTESTS00000000000002 /* TransportManagerReceiveTests.swift */; };
 		EPOCHRST00000000000001 /* TransportManagerEpochResetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EPOCHRST00000000000002 /* TransportManagerEpochResetTests.swift */; };
 		MRGRECON00000000000001 /* ConversationMergeReconcileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MRGRECON00000000000002 /* ConversationMergeReconcileTests.swift */; };
@@ -99,6 +101,7 @@
 		DRAFT0000000000000000002 /* SessionViewModel+Drafts.swift in Sources */ = {isa = PBXBuildFile; fileRef = DRAFT0000000000000000001 /* SessionViewModel+Drafts.swift */; };
 		A1B2C3D4E5F60001000200AA /* SessionViewModel+Lifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000201AA /* SessionViewModel+Lifecycle.swift */; };
 		700180B7333F5A03BE7F8C16 /* SessionViewModel+DeviceManagement.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9612EDB59ED764A140EADEC /* SessionViewModel+DeviceManagement.swift */; };
+		700180B7333F5A03BE7F8C17 /* SessionViewModel+EventHandlerMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9612EDB59ED764A140EADED /* SessionViewModel+EventHandlerMap.swift */; };
 		A1B2C3D4E5F60001000202AA /* SessionViewModel+Pairing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */; };
 		A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */; };
 		A1B2C3D4E5F600010002049A /* SessionViewModel+GitCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */; };
@@ -250,6 +253,8 @@
 		CVAGENT00000000000000007 /* ConversationView+Agents.swift in Sources */ = {isa = PBXBuildFile; fileRef = CVAGENT00000000000000008 /* ConversationView+Agents.swift */; };
 		CVINPUT00000000000000007 /* ConversationView+InputBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = CVINPUT00000000000000008 /* ConversationView+InputBar.swift */; };
 		A1B2C3D4E5F6000100400FAA /* ConversationStatusBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100400EAA /* ConversationStatusBar.swift */; };
+		A1B2C3D4E5F6000100400FDD /* ContextUsageRing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100400EDD /* ContextUsageRing.swift */; };
+		A1B2C3D4E5F6000100400FDE /* ConversationContextStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100400EDE /* ConversationContextStrip.swift */; };
 		A1B2C3D4E5F60001004011AA /* ConversationTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001004010AA /* ConversationTerminalView.swift */; };
 		A1B2C3D4E5F60001005001AA /* ChatCollectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005002AA /* ChatCollectionView.swift */; };
 		A1B2C3D4E5F60001005100AA /* VoiceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005101AA /* VoiceService.swift */; };
@@ -308,6 +313,7 @@
 		A1B2C3D4E5F60001F00012AB /* ThinkingEffortCodecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001F00013AB /* ThinkingEffortCodecTests.swift */; };
 		E11C17CA0001F00012AB0001 /* ElicitationCodecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E11C17CA0001F00013AB0001 /* ElicitationCodecTests.swift */; };
 		B1B2C3D4E5F60001CC000001 /* ConversationStatusBarContextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B2C3D4E5F60001CC000002 /* ConversationStatusBarContextTests.swift */; };
+		B1B2C3D4E5F60001CC0000E1 /* ContextUsageRingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B2C3D4E5F60001CC0000E2 /* ContextUsageRingTests.swift */; };
 		D1B2C3D4E5F60001AB000001 /* InputBarAbortGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1B2C3D4E5F60001AB000002 /* InputBarAbortGateTests.swift */; };
 		D1B2C3D4E5F60001AB000003 /* InputBarImageBannerGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1B2C3D4E5F60001AB000004 /* InputBarImageBannerGateTests.swift */; };
 		MSGADDFRESH00000000000001 /* MessageAddedFreshConversationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MSGADDFRESH00000000000002 /* MessageAddedFreshConversationTests.swift */; };
@@ -353,6 +359,7 @@
 		A1B2C3D4E5F60001FF0023AA /* SessionViewModel+ConversationHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0022AA /* SessionViewModel+ConversationHelpers.swift */; };
 		A1B2C3D4E5F60001FF0025AA /* NormalizedEvent+EngineDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001FF0024AA /* NormalizedEvent+EngineDecoder.swift */; };
 		A1B2C3D4E5F60003000201AA /* ModelFallbackSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60003000202AA /* ModelFallbackSnapshotTests.swift */; };
+		A1B2C3D4E5F60003000201BB /* SnapshotBackgroundShellMergeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60003000202BB /* SnapshotBackgroundShellMergeTests.swift */; };
 		TABSTSRT000000000000001 /* TabRowStatusPriorityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TABSTSRT000000000000002 /* TabRowStatusPriorityTests.swift */; };
 		TABSUBST000000000000001 /* TabRowSubtitlePriorityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TABSUBST000000000000002 /* TabRowSubtitlePriorityTests.swift */; };
 		TABGRPHDR00000000000001 /* TabListGroupHeaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TABGRPHDR00000000000002 /* TabListGroupHeaderTests.swift */; };
@@ -401,6 +408,7 @@
 		A2B3C4D5E6F700000000001A /* OIDCTokenManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OIDCTokenManager.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100000EAA /* LANClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANClient.swift; sourceTree = "<group>"; };
 		LANAUTHOUT0000000000002 /* LANAuthOutcome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANAuthOutcome.swift; sourceTree = "<group>"; };
+		RELAYREJECT00000000002 /* RelayRejection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayRejection.swift; sourceTree = "<group>"; };
 		LANBACKOFF0000000000002 /* LANReconnectBackoff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANReconnectBackoff.swift; sourceTree = "<group>"; };
 		TMBONJRC000000000000002 /* TransportManager+BonjourReconnect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TransportManager+BonjourReconnect.swift"; sourceTree = "<group>"; };
 		LANBACKTST0000000000002 /* LANReconnectBackoffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANReconnectBackoffTests.swift; sourceTree = "<group>"; };
@@ -426,6 +434,7 @@
 		A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayClientTests.swift; sourceTree = "<group>"; };
 		A2B3C4D5E6F700000000002A /* OIDCTokenManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OIDCTokenManagerTests.swift; sourceTree = "<group>"; };
 		RELAYOIDC00000000000002 /* RelayConfigOidcTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayConfigOidcTests.swift; sourceTree = "<group>"; };
+		RELAYRECOV0000000000002 /* RelayConfigRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayConfigRecoveryTests.swift; sourceTree = "<group>"; };
 		TMRTESTS00000000000002 /* TransportManagerReceiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportManagerReceiveTests.swift; sourceTree = "<group>"; };
 		EPOCHRST00000000000002 /* TransportManagerEpochResetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportManagerEpochResetTests.swift; sourceTree = "<group>"; };
 		MRGRECON00000000000002 /* ConversationMergeReconcileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationMergeReconcileTests.swift; sourceTree = "<group>"; };
@@ -484,6 +493,7 @@
 		DRAFT0000000000000000001 /* SessionViewModel+Drafts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Drafts.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000201AA /* SessionViewModel+Lifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Lifecycle.swift"; sourceTree = "<group>"; };
 		F9612EDB59ED764A140EADEC /* SessionViewModel+DeviceManagement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+DeviceManagement.swift"; sourceTree = "<group>"; };
+		F9612EDB59ED764A140EADED /* SessionViewModel+EventHandlerMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EventHandlerMap.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Pairing.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Commands.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+GitCommands.swift"; sourceTree = "<group>"; };
@@ -626,6 +636,8 @@
 		CVAGENT00000000000000008 /* ConversationView+Agents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConversationView+Agents.swift"; sourceTree = "<group>"; };
 		CVINPUT00000000000000008 /* ConversationView+InputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConversationView+InputBar.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100400EAA /* ConversationStatusBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationStatusBar.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000100400EDD /* ContextUsageRing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextUsageRing.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000100400EDE /* ConversationContextStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationContextStrip.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001004010AA /* ConversationTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationTerminalView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005002AA /* ChatCollectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatCollectionView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005101AA /* VoiceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceService.swift; sourceTree = "<group>"; };
@@ -684,6 +696,7 @@
 		A1B2C3D4E5F60001F00013AB /* ThinkingEffortCodecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingEffortCodecTests.swift; sourceTree = "<group>"; };
 		E11C17CA0001F00013AB0001 /* ElicitationCodecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElicitationCodecTests.swift; sourceTree = "<group>"; };
 		B1B2C3D4E5F60001CC000002 /* ConversationStatusBarContextTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationStatusBarContextTests.swift; sourceTree = "<group>"; };
+		B1B2C3D4E5F60001CC0000E2 /* ContextUsageRingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextUsageRingTests.swift; sourceTree = "<group>"; };
 		D1B2C3D4E5F60001AB000002 /* InputBarAbortGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputBarAbortGateTests.swift; sourceTree = "<group>"; };
 		D1B2C3D4E5F60001AB000004 /* InputBarImageBannerGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputBarImageBannerGateTests.swift; sourceTree = "<group>"; };
 		MSGADDFRESH00000000000002 /* MessageAddedFreshConversationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageAddedFreshConversationTests.swift; sourceTree = "<group>"; };
@@ -737,6 +750,7 @@
 		A1B2C3D4E5F60001FF0022AA /* SessionViewModel+ConversationHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ConversationHelpers.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001FF0024AA /* NormalizedEvent+EngineDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+EngineDecoder.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60003000202AA /* ModelFallbackSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelFallbackSnapshotTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60003000202BB /* SnapshotBackgroundShellMergeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotBackgroundShellMergeTests.swift; sourceTree = "<group>"; };
 		TABSTSRT000000000000002 /* TabRowStatusPriorityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabRowStatusPriorityTests.swift; sourceTree = "<group>"; };
 		TABSUBST000000000000002 /* TabRowSubtitlePriorityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabRowSubtitlePriorityTests.swift; sourceTree = "<group>"; };
 		TABGRPHDR00000000000002 /* TabListGroupHeaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabListGroupHeaderTests.swift; sourceTree = "<group>"; };
@@ -872,6 +886,7 @@
 				A2B3C4D5E6F700000000001A /* OIDCTokenManager.swift */,
 				A1B2C3D4E5F6000100000EAA /* LANClient.swift */,
 				LANAUTHOUT0000000000002 /* LANAuthOutcome.swift */,
+				RELAYREJECT00000000002 /* RelayRejection.swift */,
 				LANBACKOFF0000000000002 /* LANReconnectBackoff.swift */,
 				A1B2C3D4E5F60001000010AA /* TransportManager.swift */,
 				TMBONJRC000000000000002 /* TransportManager+BonjourReconnect.swift */,
@@ -954,6 +969,8 @@
 				STATUSDWRBRK000000002 /* StatusDrawerBreakdown.swift */,
 				ACTLROW00000000000002 /* ActiveToolRow.swift */,
 				A1B2C3D4E5F6000100400EAA /* ConversationStatusBar.swift */,
+				A1B2C3D4E5F6000100400EDD /* ContextUsageRing.swift */,
+				A1B2C3D4E5F6000100400EDE /* ConversationContextStrip.swift */,
 				A1B2C3D4E5F60001000304AA /* GitPaneView.swift */,
 				A1B2C3D4E5F60001000306AA /* GitChangesListView.swift */,
 				A1B2C3D4E5F60001000308AA /* GitGraphListView.swift */,
@@ -1002,6 +1019,7 @@
 				DRAFT0000000000000000001 /* SessionViewModel+Drafts.swift */,
 			A1B2C3D4E5F60001000201AA /* SessionViewModel+Lifecycle.swift */,
 				F9612EDB59ED764A140EADEC /* SessionViewModel+DeviceManagement.swift */,
+				F9612EDB59ED764A140EADED /* SessionViewModel+EventHandlerMap.swift */,
 				A1B2C3D4E5F6000100A200AA /* SessionViewModel+UploadEvents.swift */,
 				A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */,
 				A1B2C3D4E5F60001009200AA /* SessionViewModel+RemoteDisplay.swift */,
@@ -1068,6 +1086,7 @@
 				TYPEKEY00000000000000004A /* NormalizedEventTypeKeyTests.swift */,
 				A1B2C3D4E5F60001000A01AA /* SessionStatusSynthesisTests.swift */,
 				A1B2C3D4E5F60003000202AA /* ModelFallbackSnapshotTests.swift */,
+				A1B2C3D4E5F60003000202BB /* SnapshotBackgroundShellMergeTests.swift */,
 				TABSTSRT000000000000002 /* TabRowStatusPriorityTests.swift */,
 				TABSUBST000000000000002 /* TabRowSubtitlePriorityTests.swift */,
 				TABGRPHDR00000000000002 /* TabListGroupHeaderTests.swift */,
@@ -1123,6 +1142,7 @@
 				CTXBDTST0000000000002 /* ContextBreakdownDecodeTests.swift */,
 				REQCTXBD0000000000002 /* RequestContextBreakdownTests.swift */,
 				B1B2C3D4E5F60001CC000002 /* ConversationStatusBarContextTests.swift */,
+				B1B2C3D4E5F60001CC0000E2 /* ContextUsageRingTests.swift */,
 				D1B2C3D4E5F60001AB000002 /* InputBarAbortGateTests.swift */,
 				D1B2C3D4E5F60001AB000004 /* InputBarImageBannerGateTests.swift */,
 				MSGADDFRESH00000000000002 /* MessageAddedFreshConversationTests.swift */,
@@ -1143,6 +1163,7 @@
 				A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */,
 				A2B3C4D5E6F700000000002A /* OIDCTokenManagerTests.swift */,
 				RELAYOIDC00000000000002 /* RelayConfigOidcTests.swift */,
+				RELAYRECOV0000000000002 /* RelayConfigRecoveryTests.swift */,
 				TMRTESTS00000000000002 /* TransportManagerReceiveTests.swift */,
 				EPOCHRST00000000000002 /* TransportManagerEpochResetTests.swift */,
 				MRGRECON00000000000002 /* ConversationMergeReconcileTests.swift */,
@@ -1412,6 +1433,7 @@
 				A2B3C4D5E6F700000000001B /* OIDCTokenManager.swift in Sources */,
 				A1B2C3D4E5F6000100000DAA /* LANClient.swift in Sources */,
 				LANAUTHOUT0000000000001 /* LANAuthOutcome.swift in Sources */,
+				RELAYREJECT00000000001 /* RelayRejection.swift in Sources */,
 				LANBACKOFF0000000000001 /* LANReconnectBackoff.swift in Sources */,
 				A1B2C3D4E5F6000100000FAA /* TransportManager.swift in Sources */,
 				TMBONJRC000000000000001 /* TransportManager+BonjourReconnect.swift in Sources */,
@@ -1451,6 +1473,7 @@
 				DRAFT0000000000000000002 /* SessionViewModel+Drafts.swift in Sources */,
 			A1B2C3D4E5F60001000200AA /* SessionViewModel+Lifecycle.swift in Sources */,
 				700180B7333F5A03BE7F8C16 /* SessionViewModel+DeviceManagement.swift in Sources */,
+				700180B7333F5A03BE7F8C17 /* SessionViewModel+EventHandlerMap.swift in Sources */,
 				A1B2C3D4E5F60001000202AA /* SessionViewModel+Pairing.swift in Sources */,
 				A1B2C3D4E5F60001009201AA /* SessionViewModel+RemoteDisplay.swift in Sources */,
 				A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */,
@@ -1551,6 +1574,8 @@
 				ACTLROW00000000000001 /* ActiveToolRow.swift in Sources */,
 				CTXBDPAY0000000000001 /* ContextBreakdownPayload.swift in Sources */,
 				A1B2C3D4E5F6000100400FAA /* ConversationStatusBar.swift in Sources */,
+				A1B2C3D4E5F6000100400FDD /* ContextUsageRing.swift in Sources */,
+				A1B2C3D4E5F6000100400FDE /* ConversationContextStrip.swift in Sources */,
 				A1B2C3D4E5F600010000F0AA /* EngineProfile.swift in Sources */,
 				A1B2C3D4E5F600010000F2AA /* KeyboardUtilityBar.swift in Sources */,
 				A1B2C3D4E5F600010000F6AA /* MarkdownFormatter.swift in Sources */,
@@ -1653,6 +1678,7 @@
 				A1B2C3D4E5F60001000244AA /* NormalizedEventLifecycleTests.swift in Sources */,
 				A1B2C3D4E5F60001000246AA /* NormalizedEventTerminalTests.swift in Sources */,
 				A1B2C3D4E5F60003000201AA /* ModelFallbackSnapshotTests.swift in Sources */,
+				A1B2C3D4E5F60003000201BB /* SnapshotBackgroundShellMergeTests.swift in Sources */,
 				TABSTSRT000000000000001 /* TabRowStatusPriorityTests.swift in Sources */,
 				TABSUBST000000000000001 /* TabRowSubtitlePriorityTests.swift in Sources */,
 				TABGRPHDR00000000000001 /* TabListGroupHeaderTests.swift in Sources */,
@@ -1712,6 +1738,7 @@
 				CTXBDTST0000000000001 /* ContextBreakdownDecodeTests.swift in Sources */,
 				REQCTXBD0000000000001 /* RequestContextBreakdownTests.swift in Sources */,
 				B1B2C3D4E5F60001CC000001 /* ConversationStatusBarContextTests.swift in Sources */,
+				B1B2C3D4E5F60001CC0000E1 /* ContextUsageRingTests.swift in Sources */,
 				D1B2C3D4E5F60001AB000001 /* InputBarAbortGateTests.swift in Sources */,
 				D1B2C3D4E5F60001AB000003 /* InputBarImageBannerGateTests.swift in Sources */,
 				MSGADDFRESH00000000000001 /* MessageAddedFreshConversationTests.swift in Sources */,
@@ -1732,6 +1759,7 @@
 				A1B2C3D4E5F6000100002BAA /* RelayClientTests.swift in Sources */,
 				A2B3C4D5E6F700000000002B /* OIDCTokenManagerTests.swift in Sources */,
 				RELAYOIDC00000000000001 /* RelayConfigOidcTests.swift in Sources */,
+				RELAYRECOV0000000000001 /* RelayConfigRecoveryTests.swift in Sources */,
 				TMRTESTS00000000000001 /* TransportManagerReceiveTests.swift in Sources */,
 				EPOCHRST00000000000001 /* TransportManagerEpochResetTests.swift in Sources */,
 				MRGRECON00000000000001 /* ConversationMergeReconcileTests.swift in Sources */,

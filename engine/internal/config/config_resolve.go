@@ -44,3 +44,31 @@ func ResolvePlanModeBashAllowlist(projectDir string) ([]string, bool) {
 	})
 	return cmds, found
 }
+
+// ClampPlanModeBashToEnterprise filters a run-time plan-mode Bash allowlist
+// down to what enterprise policy sanctions, returning the input unchanged when
+// no enterprise ceiling is configured.
+//
+// Why this exists separately from the EnforceEnterprise path: the engine.json
+// layer is clamped during the config merge, but the plan-mode allowlist has two
+// additional run-time sources that never pass through a config merge at all —
+// the session-scoped `set_plan_mode` wire command and the per-prompt
+// `bashAllowlistAdditionsForThisPrompt` additions. A ceiling that bound only
+// engine.json would leave both open, which is the reverse of useful: those two
+// are client-supplied and therefore the easier paths to abuse, while
+// engine.json is the one an operator controls directly.
+//
+// Call this at the point where the effective run-time list is assembled so all
+// three sources are clamped by one gate. Every dropped entry is recorded as an
+// enforcement action.
+func ClampPlanModeBashToEnterprise(cmds []string) []string {
+	if len(cmds) == 0 {
+		return cmds
+	}
+	enterprise := LoadEnterpriseConfig()
+	if enterprise == nil || enterprise.Limits == nil || enterprise.Limits.PlanModeAllowedBashCommands == nil {
+		// No policy on this axis: the caller's list stands.
+		return cmds
+	}
+	return intersectBashCommandsWithCeiling(cmds, enterprise.Limits.PlanModeAllowedBashCommands)
+}

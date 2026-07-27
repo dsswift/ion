@@ -532,11 +532,14 @@ func TestApiBackendPlanModeDefaultTools(t *testing.T) {
 		t.Fatal("expected at least one provider call")
 	}
 
-	// Default set: Read, Grep, Glob, Agent, WebFetch, WebSearch + Write, Edit + ExitPlanMode
+	// Default set: Read, Grep, Glob, Agent, WebFetch, WebSearch, Skill + Write, Edit + ExitPlanMode
 	// AskUserQuestion is also injected universally (see runloop_setup.go:144).
+	// Skill is part of defaultPlanModeTools (plan_mode_prompt.go): invoking a
+	// skill is read-only, and without it skills are unusable while planning.
 	expectedTools := map[string]bool{
 		"Read": true, "Grep": true, "Glob": true,
 		"Agent": true, "WebFetch": true, "WebSearch": true,
+		"Skill": true,
 		"Write": true, "Edit": true, "ExitPlanMode": true,
 		"AskUserQuestion": true,
 	}

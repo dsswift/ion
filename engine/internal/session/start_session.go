@@ -209,32 +209,55 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 		// to its preference default (which may differ from the conversation's
 		// actual model). This also seeds lastContextWindow so the context-percent
 		// denominator is correct from the first status.
-		if conv != nil && conv.Model != "" {
+		//
+		// The MODEL seed requires a header model; the CONTEXT seed does not.
+		// They were once a single gate, which meant every conversation whose
+		// .llm.jsonl header carries model:"" — the shape persistCliTurn writes
+		// for delegated-CLI turns, and nothing ever rewrites it — reported 0%
+		// context forever. Resolve the window from whatever model we can name
+		// (header > already-retained > config default) and seed the usage
+		// regardless.
+		if conv != nil {
 			convModel := conv.Model
+			m.mu.RLock()
+			retainedModel := s.lastModel
+			m.mu.RUnlock()
+			windowModel := convModel
+			if windowModel == "" {
+				windowModel = retainedModel
+			}
+			if windowModel == "" && m.config != nil {
+				windowModel = m.config.DefaultModel
+			}
 			ctxWindow := conversation.DefaultContext
-			if info := providers.GetModelInfo(convModel); info != nil {
+			if info := providers.GetModelInfo(windowModel); info != nil && info.ContextWindow > 0 {
 				ctxWindow = info.ContextWindow
 			}
-			// Seed lastContextPct from the persisted conversation so the initial
-			// idle engine_status reports the true usage instead of 0%. Without
-			// this a resumed conversation shows an empty context bar until the
-			// first prompt's usage event lands. Computed against the already-loaded
-			// conv and the resolved context window.
-			seededPct := 0
+			// Seed context usage from the persisted conversation so the initial
+			// idle engine_status reports the true occupancy instead of 0%.
+			// Without this a resumed conversation shows an empty context bar
+			// until the first prompt's usage event lands. Computed against the
+			// already-loaded conv and the resolved context window.
+			//
+			// Written unconditionally: a genuine zero on an empty conversation
+			// is the correct value. The former `if seededPct > 0` guard is what
+			// let a stale non-zero figure survive a conversation being cleared.
 			usage := conversation.GetContextUsage(conv, ctxWindow)
-			if usage.Percent > 0 {
-				seededPct = usage.Percent
-			}
 			m.mu.Lock()
-			s.lastModel = convModel
-			s.lastContextWindow = ctxWindow
-			if seededPct > 0 {
-				s.lastContextPct = seededPct
+			if convModel != "" {
+				s.lastModel = convModel
 			}
+			s.lastContextWindow = ctxWindow
+			s.lastContextTokens = usage.Tokens
+			s.lastContextPct = usage.Percent
 			m.mu.Unlock()
-			utils.LogWithFields(utils.LevelInfo, "session", "startsession: seeded from", map[string]any{"key": key, "model": convModel, "ctx_window": ctxWindow, "seeded_pct": seededPct, "run_id": s.conversationID})
+			utils.LogWithFields(utils.LevelInfo, "session", "startsession: seeded from", map[string]any{
+				"key": key, "model": convModel, "window_model": windowModel, "ctx_window": ctxWindow,
+				"seeded_pct": usage.Percent, "seeded_tokens": usage.Tokens, "estimated": usage.Estimated,
+				"run_id": s.conversationID,
+			})
 		} else {
-			utils.LogWithFields(utils.LevelDebug, "session", "startsession: no conversation model to seed", map[string]any{"key": key, "run_id": s.conversationID})
+			utils.LogWithFields(utils.LevelDebug, "session", "startsession: no conversation to seed context from", map[string]any{"key": key, "run_id": s.conversationID})
 		}
 
 		// Initialize session memory for resumed conversations. The memory
@@ -275,20 +298,35 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 
 	// Load skills from default paths. The project root resolves against the
 	// session's working directory (not the daemon cwd) via IonSkillPathsFor.
+	//
+	// Registration is session-scoped: every skill this session loads — user
+	// AND project — goes into this session's own map. User skills are copied
+	// per session rather than resolved through a shared fallback, so a
+	// session's teardown (ClearSkillsFor) can only ever evict its own entries
+	// and can never strip a user skill another live session is still using.
+	// Project skills therefore reach only sessions whose working directory
+	// actually contains them, instead of leaking into every other session
+	// through the process-global registry.
 	skillPaths := skills.IonSkillPathsFor(config.WorkingDirectory)
-	for _, dir := range []string{skillPaths.User, skillPaths.Project} {
-		if dir == "" {
+	for _, dir := range []struct {
+		path  string
+		scope string
+	}{
+		{skillPaths.User, "user"},
+		{skillPaths.Project, "project"},
+	} {
+		if dir.path == "" {
 			continue
 		}
-		loaded, err := skills.LoadSkillDirectory(dir, nil)
+		loaded, err := skills.LoadSkillDirectory(dir.path, nil)
 		if err != nil {
-			utils.LogWithFields(utils.LevelError, "session", "skill dir load failed", map[string]any{"key": key, "dir": dir, "error": utils.ErrStr(err)})
+			utils.LogWithFields(utils.LevelError, "session", "skill dir load failed", map[string]any{"key": key, "dir": dir.path, "scope": dir.scope, "error": utils.ErrStr(err)})
 			continue
 		}
 		for _, sk := range loaded {
-			skills.RegisterSkill(sk)
+			skills.RegisterSkillFor(key, sk)
 		}
-		utils.LogWithFields(utils.LevelInfo, "session", "skill dir loaded", map[string]any{"key": key, "dir": dir, "count": len(loaded)})
+		utils.LogWithFields(utils.LevelInfo, "session", "skill dir loaded", map[string]any{"key": key, "dir": dir.path, "scope": dir.scope, "count": len(loaded)})
 	}
 	// Load Claude Code–style skills from ~/.claude/skills (one subdir per
 	// skill, each with a SKILL.md file). Only attempted when the ClaudeCompat
@@ -297,18 +335,25 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 	if config.ClaudeCompat {
 		if claudeSkills, err := skills.LoadClaudeSkillsDirectory(skillPaths.ClaudeUser); err == nil {
 			for _, sk := range claudeSkills {
-				skills.RegisterSkill(sk)
+				skills.RegisterSkillFor(key, sk)
 			}
+			utils.LogWithFields(utils.LevelInfo, "session", "claude skill dir loaded", map[string]any{"key": key, "dir": skillPaths.ClaudeUser, "scope": "claude-user", "count": len(claudeSkills)})
 		}
 	} else {
 		utils.Debug("Session", "skipping ~/.claude/skills/ (claudeCompat not set)")
 	}
-	if names := skills.ListSkillNames(); len(names) > 0 {
-		utils.LogWithFields(utils.LevelInfo, "session", "loaded skills", map[string]any{"count": len(names), "model": names})
+	if names := skills.ListSkillNamesFor(key); len(names) > 0 {
+		utils.LogWithFields(utils.LevelInfo, "session", "loaded skills", map[string]any{"key": key, "count": len(names), "model": names})
 		// Refresh the Skill tool's description so the model's tool manifest
 		// lists the available skills (with their when_to_use hints). This
 		// must run after all skills are registered; RefreshSkillToolDescription
 		// re-registers the Skill tool with a freshly-built manifest.
+		//
+		// The tool description is process-wide and built from the global
+		// registry, so it cannot vary per session. Per-session accuracy comes
+		// from the system-prompt section, which buildSystemPrompt assembles
+		// per run via BuildSkillSystemPromptSectionFor(opts.SessionKey), and
+		// from executeSkill resolving against the calling session's registry.
 		tools.RefreshSkillToolDescription()
 	}
 
@@ -376,27 +421,46 @@ func (m *Manager) rebindSession(s *engineSession, key, newConvID string) {
 	saveBinding(bindingsPath(), key, newConvID)
 
 	// Re-seed model and context usage from the target conversation so the
-	// next status snapshot carries correct values.
-	if convModel, err := conversation.LoadLlmHeaderModel(newConvID, ""); err == nil && convModel != "" {
-		ctxWindow := conversation.DefaultContext
-		if info := providers.GetModelInfo(convModel); info != nil {
-			ctxWindow = info.ContextWindow
-		}
-		seededPct := 0
-		if conv, lerr := conversation.Load(newConvID, ""); lerr == nil {
-			usage := conversation.GetContextUsage(conv, ctxWindow)
-			if usage.Percent > 0 {
-				seededPct = usage.Percent
-			}
-		}
+	// next status snapshot carries correct values. Same gate split as
+	// StartSession: an empty header model must not suppress the context
+	// seed, or every delegated-CLI conversation rebinds to 0%.
+	convModel, mErr := conversation.LoadLlmHeaderModel(newConvID, "")
+	if mErr != nil {
+		utils.LogWithFields(utils.LevelDebug, "session", "rebindsession: no header model on target conversation", map[string]any{"key": key, "conversation_id": newConvID, "error": mErr})
+	}
+	m.mu.RLock()
+	retainedModel := s.lastModel
+	m.mu.RUnlock()
+	windowModel := convModel
+	if windowModel == "" {
+		windowModel = retainedModel
+	}
+	if windowModel == "" && m.config != nil {
+		windowModel = m.config.DefaultModel
+	}
+	ctxWindow := conversation.DefaultContext
+	if info := providers.GetModelInfo(windowModel); info != nil && info.ContextWindow > 0 {
+		ctxWindow = info.ContextWindow
+	}
+	if conv, lerr := conversation.Load(newConvID, ""); lerr == nil {
+		usage := conversation.GetContextUsage(conv, ctxWindow)
 		m.mu.Lock()
-		s.lastModel = convModel
-		s.lastContextWindow = ctxWindow
-		if seededPct > 0 {
-			s.lastContextPct = seededPct
+		if convModel != "" {
+			s.lastModel = convModel
 		}
+		s.lastContextWindow = ctxWindow
+		s.lastContextTokens = usage.Tokens
+		s.lastContextPct = usage.Percent
 		m.mu.Unlock()
-		utils.LogWithFields(utils.LevelInfo, "session", "rebindsession: seeded model and context from target conversation", map[string]any{"key": key, "model": convModel, "context_window": ctxWindow, "context_pct": seededPct, "conversation_id": newConvID, "was": oldConvID})
+		utils.LogWithFields(utils.LevelInfo, "session", "rebindsession: seeded model and context from target conversation", map[string]any{
+			"key": key, "model": convModel, "window_model": windowModel, "context_window": ctxWindow,
+			"context_pct": usage.Percent, "context_tokens": usage.Tokens,
+			"conversation_id": newConvID, "was": oldConvID,
+		})
+	} else {
+		utils.LogWithFields(utils.LevelInfo, "session", "rebindsession: target conversation load failed, context not re-seeded", map[string]any{
+			"key": key, "conversation_id": newConvID, "error": lerr,
+		})
 	}
 
 	m.emitStatusSnapshot(key, "rebind")

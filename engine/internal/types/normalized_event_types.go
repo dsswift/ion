@@ -62,6 +62,10 @@ const (
 	// Consumers (desktop, iOS) may update the agent-state pill to show a
 	// "suspended" or "idle" indicator while the dispatch is parked.
 	EventTaskSuspend = "task_suspend"
+	// EventBackgroundTaskComplete fires when a background bash command started
+	// with notify_on_complete reaches a terminal state. See
+	// BackgroundTaskCompleteEvent in normalized_event_run_signals.go.
+	EventBackgroundTaskComplete = "background_task_complete"
 	// EventPlanContent is emitted in response to a get_plan_content command.
 	// It carries a bounded byte-range window of a plan file so remote clients
 	// can page through large plans without filesystem access to the engine host.

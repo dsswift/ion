@@ -21,6 +21,7 @@ struct IonLightTheme: AppTheme {
     let statusError = Color(hex: 0xDC2626)                    // statusError
     let statusPending = Color(hex: 0x74747C)                  // statusIdle
     let statusWaitingChildren = Color(hex: 0xF59E0B)          // statusWaitingChildren
+    let statusBash = Color(hex: 0xE6007A)                     // statusBash
     let statusWarning = Color(hex: 0xF59E0B)                  // statusWarning
     let surfaceElevated = Color(hex: 0xF2F2F4)                // surfacePrimary
     let codeBg = Color(hex: 0xEEEEF1)                         // codeBg

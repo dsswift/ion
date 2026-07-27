@@ -58,6 +58,7 @@ import {
   collectExternalInstanceMessages,
 } from '../../stores/serialize-conversation-pane'
 import { buildPopulatedInstance } from '../../hooks/useTabRestoration-engine'
+import { seedContextStatusFields } from '../../hooks/useTabRestoration-helpers'
 import type { ConversationPane, ConversationInstance, ConversationRef } from '../../../shared/types-engine'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -264,3 +265,40 @@ describe('serializeConversationPane + buildPopulatedInstance round-trip', () => 
   })
 })
 
+
+// ─── 8. Context occupancy survives the round trip ────────────────────────────
+
+describe('context occupancy persistence', () => {
+  it('persists the instance context scalars and seeds them back onto statusFields', () => {
+    // Without this, a cold-started tab renders no context reading until the
+    // first engine status arrives — a "count that updates after the user sees
+    // it", which the view-readiness principle forbids.
+    const inst = makeInstance({
+      statusFields: {
+        label: '', state: 'idle', model: 'claude-opus-5',
+        contextPercent: 22, contextWindow: 1_000_000, contextTokens: 223_791,
+      } as any,
+    })
+    const serialized = serializeConversationPane(makePane(inst), { tabIdForLog: 'rt-ctx' })
+    const persisted = serialized!.instances[0]
+
+    expect(persisted.contextTokens).toBe(223_791)
+    expect(persisted.contextWindow).toBe(1_000_000)
+
+    // Restore seeds them back onto a fresh instance's statusFields, which is
+    // what the status-bar indicator reads.
+    const seeded = seedContextStatusFields({}, persisted)
+    expect(seeded.statusFields?.contextTokens).toBe(223_791)
+    expect(seeded.statusFields?.contextWindow).toBe(1_000_000)
+  })
+
+  it('omits the scalars entirely when the instance has no occupancy figure', () => {
+    const serialized = serializeConversationPane(makePane(makeInstance()), { tabIdForLog: 'rt-ctx-empty' })
+    const persisted = serialized!.instances[0]
+
+    expect(persisted.contextTokens).toBeUndefined()
+    expect(persisted.contextWindow).toBeUndefined()
+    // Nothing persisted → nothing to seed, so callers can spread it safely.
+    expect(seedContextStatusFields({}, persisted)).toEqual({})
+  })
+})

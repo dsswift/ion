@@ -3,7 +3,7 @@ import { useSessionStore } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
 import type { useColors } from '../theme'
 import type { TabState } from '../../shared/types'
-import type { ConversationPane, StatusFields } from '../../shared/types-engine'
+import type { ConversationPane } from '../../shared/types-engine'
 import { activeInstance } from '../stores/conversation-instance'
 import { tabHasExtensions as _tabHasExtensions } from '../../shared/tab-predicates'
 import { computeAnchoredPosition } from './tabstrip-anchored-position'
@@ -319,79 +319,19 @@ export function getWaitingState(
  * subscribe to `engineStatusFields` (or a projection of it) so the
  * component re-renders when instance states change.
  */
-export function isAnyEngineInstanceRunning(tabId: string): boolean {
-  const s = useSessionStore.getState()
-  const pane = s.conversationPanes.get(tabId)
-  if (!pane || pane.instances.length === 0) return false
-  for (const inst of pane.instances) {
-    const state = inst.statusFields?.state
-    if (state === 'running' || state === 'connecting' || state === 'starting') return true
-  }
-  return false
-}
-
-/**
- * Canonical running-children count for a single conversation instance.
- *
- * Two data sources can report running background agents for the same
- * instance — we take the MAX, not the sum, because both vantage points
- * observe the same underlying agents:
- *
- *   • `inst.agentStates` — per-agent entries emitted by the engine for
- *     extension-hosted (orchestrator) conversations.
- *   • `inst.statusFields.backgroundAgents` — a scalar count the engine
- *     emits for plain-conversation dispatches where individual agent
- *     states are not surfaced via `agentStates`.
- *
- * Taking the max prevents double-counting when both fields are populated
- * simultaneously while still catching the backgroundAgents-only case
- * (plain conversations) that the agentStates-only fold missed.
- *
- * TAB-TYPE-AGNOSTIC: a plain conversation with background agents
- * qualifies too. The fix makes the "awaiting children" aspirational
- * comments in this file true in practice.
- */
-export function effectiveRunningChildrenCount(inst: {
-  agentStates: ReadonlyArray<{ status: string }>
-  statusFields?: Pick<StatusFields, 'backgroundAgents'> | null
-}): number {
-  let fromAgentStates = 0
-  for (const a of inst.agentStates) {
-    if (a.status === 'running') fromAgentStates++
-  }
-  const fromBackgroundAgents = inst.statusFields?.backgroundAgents ?? 0
-  return Math.max(fromAgentStates, fromBackgroundAgents)
-}
-
-/**
- * Check whether any engine instance under a tab has running dispatched
- * background agents. Sibling to `isAnyEngineInstanceRunning` — folds
- * across `conversationPanes` instances and reads per-instance entries from
- * both `inst.agentStates` and `inst.statusFields.backgroundAgents` via
- * the canonical `effectiveRunningChildrenCount` helper.
- *
- * This is the data source for the "awaiting children" yellow pulsing dot
- * on the parent tab pill and for the action-layer guard in `closeTab`
- * that hard-blocks tab close while background agents are still executing.
- *
- * TAB-TYPE-AGNOSTIC: a plain conversation with background agents qualifies
- * too — `inst.statusFields.backgroundAgents` carries the count for plain
- * dispatches where `inst.agentStates` remains empty.
- *
- * NOTE: Reads from `useSessionStore.getState()` — not reactive on its
- * own. Callers in React components must subscribe to
- * `engineAgentStates` so the component re-renders when child agents
- * start or finish (e.g. via `useSessionStore((s) => s.engineAgentStates)`).
- */
-export function anyEngineInstanceHasRunningChildren(tabId: string): boolean {
-  const s = useSessionStore.getState()
-  const pane = s.conversationPanes.get(tabId)
-  if (!pane || pane.instances.length === 0) return false
-  for (const inst of pane.instances) {
-    if (effectiveRunningChildrenCount(inst) > 0) return true
-  }
-  return false
-}
+// ─── Activity folds (re-exported) ──────────────────────────────────────────
+//
+// The "is work in flight?" fold cluster lives in TabStripActivityFolds.ts
+// (extracted at the file-size cap). Re-exported here so every existing import
+// site keeps working and the cascade below can use them unqualified.
+export * from './TabStripActivityFolds'
+// Imported as well as re-exported: the cascade below uses these three
+// unqualified, and `export *` alone does not bind them in this module's scope.
+import {
+  isAnyEngineInstanceRunning,
+  anyEngineInstanceHasRunningChildren,
+  anyEngineInstanceHasRunningShells,
+} from './TabStripActivityFolds'
 
 // ─── Harness badge helpers ─────────────────────────────────────────────────
 //
@@ -440,7 +380,8 @@ export function abbreviateProfileName(name: string | null | undefined): string {
 // Inlined as numeric literals to keep TabStripGroupStatus.ts as a one-way
 // consumer (avoids a circular import). Named constants are in TabStripGroupStatus.ts.
 //
-//   8=error 7=permission 6=running 5=children 4=plan-ready 3=question 2=bash 1=unread 0=idle
+//   9=error 8=permission 7=running 6=children 5=bash-background 4=plan-ready
+//   3=question 2=bash 1=unread 0=idle
 
 /** Status-dot color/pulse/glow derived from a tab's runtime state.
  *
@@ -472,10 +413,10 @@ export function getTabStatusColor(
 
   if (tab.status === 'dead' || tab.status === 'failed') {
     bg = colors.statusError
-    priority = 8 // STATUS_PRIORITY_ERROR
+    priority = 9 // STATUS_PRIORITY_ERROR
   } else if (permissionQueueLength > 0) {
     bg = colors.statusPermission; glow = true
-    priority = 7 // STATUS_PRIORITY_PERMISSION
+    priority = 8 // STATUS_PRIORITY_PERMISSION
   } else if (tab.status === 'connecting' || tab.status === 'running' || isAnyEngineInstanceRunning(tab.id)) {
     // Teal "foreground running" wins over amber "background only" —
     // the orchestrator's own activity is the strongest signal. Amber
@@ -484,7 +425,7 @@ export function getTabStatusColor(
     // instance fold runs for every tab (a plain conversation with background
     // agents qualifies too), so no tab-type guard.
     bg = colors.statusRunning; pulse = true
-    priority = 6 // STATUS_PRIORITY_RUNNING
+    priority = 7 // STATUS_PRIORITY_RUNNING
   } else if (anyEngineInstanceHasRunningChildren(tab.id)) {
     // Yellow "awaiting children" — orchestrator idle, dispatched
     // background agents still running. Visually distinct from the
@@ -494,7 +435,17 @@ export function getTabStatusColor(
     // Outranks plan-ready: active background work is a stronger signal
     // than a passive "waiting on you" state.
     bg = colors.statusWaitingChildren; pulse = true; glow = true; glowColor = colors.statusWaitingChildrenGlow
-    priority = 5 // STATUS_PRIORITY_CHILDREN
+    priority = 6 // STATUS_PRIORITY_CHILDREN
+  } else if (anyEngineInstanceHasRunningShells(tab.id)) {
+    // Pink "waiting on background shells" — orchestrator idle, background
+    // bash commands still running. Same treatment as the user-typed `!`
+    // command below (identical color): the dot answers "a shell is executing
+    // in this tab", not "who started it". Ranked just under children because
+    // agents and shells can be outstanding at once and the agent signal is
+    // the richer one; both outrank the passive plan-ready / question states,
+    // for the same reason the children branch does.
+    bg = colors.statusBash; pulse = true; glow = true; glowColor = colors.statusBashGlow
+    priority = 5 // STATUS_PRIORITY_BASH_BACKGROUND
   } else if (waitingState === 'plan-ready') {
     bg = colors.statusComplete; glow = true; glowColor = colors.tabGlowPlanReady
     priority = 4 // STATUS_PRIORITY_PLAN_READY

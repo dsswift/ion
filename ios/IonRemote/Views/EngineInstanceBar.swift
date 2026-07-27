@@ -69,7 +69,10 @@ struct EngineInstanceBar: View {
             // 1. waitingState (question → blue, plan-ready → green)
             // 2. isRunning → pulsing orange
             // 3. runningAgentCount > 0 → pulsing yellow
-            // 4. Neither → no dot shown
+            // 4. backgroundShellCount > 0 → pulsing pink (background bash
+            //    commands the session is holding for; ranked under agents,
+            //    matching the tab-dot cascade in TabStatusRollup)
+            // 5. None → no dot shown
             if let ws = instance.waitingState {
                 Circle()
                     .fill(ws == "question" ? Color(hex: 0x4A9EF5) : Color.green)
@@ -78,12 +81,26 @@ struct EngineInstanceBar: View {
                 InstancePulsingDot()
             } else if (instance.runningAgentCount ?? 0) > 0 {
                 InstanceWaitingChildrenDot()
+            } else if (instance.backgroundShellCount ?? 0) > 0 {
+                InstanceWaitingShellsDot()
             }
             Image(systemName: "bolt")
                 .font(.caption2)
             Text(instance.label)
                 .font(.caption)
                 .lineLimit(1)
+
+            // Background-shell count. Shown only when the instance is not
+            // otherwise busy, so the bar reports the ONE thing the session is
+            // actually waiting on rather than stacking indicators.
+            if instance.isRunning != true,
+               (instance.runningAgentCount ?? 0) == 0,
+               let shells = instance.backgroundShellCount, shells > 0 {
+                Text("\(shells) shell\(shells == 1 ? "" : "s")")
+                    .font(.caption2)
+                    .foregroundStyle(TabStatusRollup.shellPink)
+                    .accessibilityLabel("Waiting on \(shells) background shell\(shells == 1 ? "" : "s")")
+            }
 
             // Model-fallback indicator.
             if let fb = instance.modelFallback {
@@ -159,6 +176,31 @@ private struct InstanceWaitingChildrenDot: View {
     var body: some View {
         Circle()
             .fill(theme.statusWaitingChildren)
+            .frame(width: 6, height: 6)
+            .opacity(pulseOpacity)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
+                    pulseOpacity = 0.3
+                }
+            }
+    }
+}
+
+/// Pulsing pink dot for an instance holding on background bash commands
+/// (Bash run_in_background + notify_on_complete). Same pulse as the two dots
+/// above; only the fill differs. Uses TabStatusRollup.shellPink so the
+/// instance bar and the tab dot render the identical color — the desktop
+/// makes the same guarantee via the shared statusBash token.
+///
+/// Only instantiated when isRunning is false and runningAgentCount is 0:
+/// foreground work and dispatched agents both outrank shells, matching the
+/// cascade in TabStatusRollup.classify.
+private struct InstanceWaitingShellsDot: View {
+    @State private var pulseOpacity: Double = 1.0
+
+    var body: some View {
+        Circle()
+            .fill(TabStatusRollup.shellPink)
             .frame(width: 6, height: 6)
             .opacity(pulseOpacity)
             .onAppear {

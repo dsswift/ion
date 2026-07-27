@@ -162,6 +162,15 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 
 	requestID := fmt.Sprintf("%s-%d", key, time.Now().UnixMilli())
 	s.requestID = requestID
+	// A run is starting, so the session is no longer parked on outstanding
+	// background commands. Clear any park record here — under the same lock
+	// that assigns requestID — so the two can never disagree. This covers
+	// every way a run can start while parked: the wake itself, a queued prompt
+	// drained by handleRunExit on the park's own exit, a user prompt typed
+	// while parked, or an extension injection. A stale park record would let a
+	// concurrently-arriving completion claim a park that nothing is waiting on
+	// and start a second concurrent run. See clearParkedStateLocked.
+	clearParkedStateLocked(s, key, "run_start")
 	// Mark the dispatch-in-flight window so currentSessionStatus does not
 	// misread the not-yet-registered run as stale and destructively clear
 	// s.requestID (the state=idle-for-a-live-run bug). The deferred clear
@@ -478,6 +487,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		s.lastPermissionDenials = nil
 	}
 	lastPct := s.lastContextPct
+	lastTokens := s.lastContextTokens
 	m.mu.Unlock()
 
 	m.emit(key, types.EngineEvent{
@@ -486,6 +496,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 			Label: key, State: "running", Model: opts.Model,
 			ContextWindow:  promptCtxWindow,
 			ContextPercent: lastPct,
+			ContextTokens:  lastTokens,
 		},
 	})
 

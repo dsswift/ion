@@ -69,6 +69,17 @@ export function handleExtensionSurfaceEvent(ctx: ExtensionSurfaceCtx, event: Nor
       // field was null forever.
       rTrace('event.status', 'statusFields updated', { tab_id: tabId, state: event.fields.state })
       ctx.instPatch.statusFields = event.fields
+      // Mirror the context scalars onto the tab. The renderer's own
+      // indicator reads inst.statusFields directly; this copy exists purely
+      // because the desktop→iOS snapshot projects per-tab scalars and does
+      // NOT project per-instance statusFields (remote-projection.ts). Both
+      // are written from this one event, so they cannot disagree.
+      if (typeof event.fields.contextTokens === 'number') {
+        ctx.updated.contextTokens = event.fields.contextTokens
+      }
+      if (event.fields.contextWindow) {
+        ctx.updated.contextWindow = event.fields.contextWindow
+      }
       ctx.instTouched = true
       return true
 

@@ -87,7 +87,7 @@ function makeTab(overrides: Partial<TabState> = {}): TabState {
     workingDirectory: '/home/test', hasChosenDirectory: true, additionalDirs: [],
     bashResults: [], bashExecuting: false, bashExecId: null, pillColor: null, pillIcon: null,
     forkedFromSessionId: null, hasFileActivity: false, worktree: null, pendingWorktreeSetup: false,
-    groupId: null, groupPinned: false, contextTokens: null, contextPercent: null, contextWindow: null,
+    groupId: null, groupPinned: false, contextTokens: null, contextWindow: null,
     isCompacting: false, isTerminalOnly: false, engineProfileId: null,
     lastMessagePreview: null, ...overrides,
   } as TabState
@@ -107,7 +107,6 @@ function buildHarness(initialTab: TabState, instanceOverrides: Record<string, un
     engineNotifications: new Map(),
     engineDialogs: new Map(),
     enginePinnedPrompt: new Map(),
-    engineUsage: new Map(),
     conversationPanes: seedMainPane(initialTab.id, { permissionMode: 'auto', ...instanceOverrides } as any),
     engineModelFallbacks: new Map(),
     fileExplorerOpenDirs: new Set(),

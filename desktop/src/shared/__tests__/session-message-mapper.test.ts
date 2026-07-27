@@ -244,6 +244,27 @@ describe('mapSessionHistory', () => {
     expect(out[1].role).toBe('assistant')
   })
 
+  it('drops background_task_completion injection rows — must match the live filter', () => {
+    // The wake payload PERSISTS to the conversation file with its kind, so a
+    // filter that suppressed it live but not on reload would make the raw
+    // command output reappear in the transcript on every rehydrate — and the
+    // transcript would change shape between the live session and a reload.
+    const history: SessionLoadMessage[] = [
+      { role: 'user', content: 'run the build in the background', timestamp: 1 },
+      {
+        role: 'user',
+        content: 'Background command bash-1 (failed).\nExit code: 7\nRecent output:\nboom',
+        timestamp: 2,
+        injectionKind: 'background_task_completion',
+      },
+      { role: 'assistant', content: 'The build failed with exit 7.', timestamp: 3 },
+    ]
+    const out = mapSessionHistory(history, makeId)
+    expect(out).toHaveLength(2)
+    expect(out[0].content).toBe('run the build in the background')
+    expect(out[1].role).toBe('assistant')
+  })
+
   it('passes through injection rows with empty or absent injectionKind', () => {
     // An ordinary extension-initiated prompt (not a dispatch callback) has
     // injectionKind="" or omitted — those must render normally.

@@ -99,6 +99,8 @@ func (e *NormalizedEvent) UnmarshalJSON(data []byte) error {
 		target = &RunStalledEvent{}
 	case EventTaskSuspend:
 		target = &TaskSuspendEvent{}
+	case EventBackgroundTaskComplete:
+		target = &BackgroundTaskCompleteEvent{}
 	case EventPlanContent:
 		target = &PlanContentEvent{}
 	case EventThinkingBlockStart:

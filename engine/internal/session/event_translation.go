@@ -117,6 +117,16 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 
 	m.emit(key, ee)
 
+	// Record a turn-boundary park. TaskSuspendEvent carrying task IDs means
+	// the run ended because this session still has background commands
+	// running; the session must remember that so a completion can revive it.
+	// Done here rather than in the pure translateToEngineEvent because it
+	// needs the manager. Dispatch-driven suspends (AwaitingDispatchIDs) are
+	// not parks in this sense — a live runChild goroutine owns their revival.
+	if ts, ok := event.Data.(*types.TaskSuspendEvent); ok && len(ts.AwaitingTaskIDs) > 0 {
+		m.markSessionParked(key, ts.AwaitingTaskIDs)
+	}
+
 	// Track plan mode changes so re-entering plan mode triggers reentry
 	// detection in SendPrompt. We do this here (rather than in the pure
 	// translateToEngineEvent) because we need access to the session manager.
@@ -156,10 +166,19 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 
 	// Track last-known context usage on the session so subsequent
 	// engine_status emissions carry the latest values.
-	if ee.EndUsage != nil && ee.EndUsage.ContextPercent > 0 {
+	//
+	// This is the OCCUPANCY path and the only per-turn writer of the
+	// retained context state. ee.EndUsage here originates from a
+	// *types.UsageEvent, whose InputTokens the backend already summed as
+	// input + cache_read + cache_creation — i.e. what the model actually
+	// carried. The guard is on InputTokens (do we have data?) rather than
+	// on ContextPercent > 0: guarding on the percent discards a legitimate
+	// post-compaction drop and lets a stale high value stick.
+	if ee.EndUsage != nil && ee.EndUsage.InputTokens > 0 {
 		m.mu.Lock()
 		if s, ok2 := m.sessions[key]; ok2 {
 			s.lastContextPct = ee.EndUsage.ContextPercent
+			s.lastContextTokens = ee.EndUsage.InputTokens
 		}
 		m.mu.Unlock()
 	}
@@ -247,21 +266,24 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 
 	// TaskComplete also emits engine_message_end with usage
 	if tc, ok := event.Data.(*types.TaskCompleteEvent); ok {
-		var pct int
-		if tc.Usage.InputTokens != nil {
-			pct = *tc.Usage.InputTokens * 100 / contextWindow
-			if pct > 100 {
-				pct = 100
-			}
-		}
+		// NOTE: tc.Usage is CUMULATIVE RUN BILLING (backend.cumulativeUsage
+		// sums every turn's tokens), NOT context-window occupancy. It must
+		// never write the retained context state — doing so is what made a
+		// 227k-token conversation report 0% at idle, because a run whose
+		// turns were almost entirely cache reads sums to a tiny cumulative
+		// figure. Occupancy is written by the UsageEvent path above and
+		// recomputed from disk by refreshContextUsage on run exit.
+		//
+		// retainedPct carries the session's occupancy percent onto this
+		// event so the cost-bearing run-complete message_end still reports a
+		// truthful context figure alongside its cumulative token counts.
+		var retainedPct int
 		m.mu.Lock()
 		if s2, ok2 := m.sessions[key]; ok2 {
-			if pct > 0 {
-				s2.lastContextPct = pct
-			}
 			if tc.CostUsd > 0 {
 				s2.lastTotalCost = tc.CostUsd
 			}
+			retainedPct = s2.lastContextPct
 			// Capture the final assistant text for delegated-CLI turn
 			// persistence (see persistCliTurn in native_session.go). LastText
 			// carries the last substantive text even when the final turn was
@@ -364,9 +386,13 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 		m.emit(key, types.EngineEvent{
 			Type: "engine_message_end",
 			EndUsage: &types.MessageEndUsage{
+				// InputTokens/OutputTokens are cumulative run billing; the
+				// percent is the session's retained context occupancy. The
+				// two are deliberately different quantities on this event —
+				// see the NOTE above.
 				InputTokens:    derefInt(tc.Usage.InputTokens),
 				OutputTokens:   derefInt(tc.Usage.OutputTokens),
-				ContextPercent: pct,
+				ContextPercent: retainedPct,
 				Cost:           tc.CostUsd,
 			},
 		})
@@ -536,6 +562,14 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	// same helper is used by emitDispatchCountStatus so both emission sites
 	// carry identical fields — preventing drift between the run-exit snapshot
 	// and the post-deregister correction.
+	//
+	// Refresh the retained context state from the persisted conversation
+	// FIRST, so the idle snapshot below reports what is actually on disk
+	// rather than whatever the last streamed event left behind. This is the
+	// only recompute point between runs; without it a session whose backend
+	// emits no usage events (the ACP backends) reports zero forever.
+	m.refreshContextUsage(key, "run_exit")
+
 	m.mu.RLock()
 	var exitSession *engineSession
 	if s2, ok := m.sessions[key]; ok {

@@ -1,0 +1,5 @@
+{
+  "limits": {
+    "planModeAllowedBashCommands": ["graphify"]
+  }
+}

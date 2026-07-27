@@ -27,8 +27,8 @@ type dispatchContextTestAccessor struct {
 }
 
 func (a *dispatchContextTestAccessor) SessionKey() string        { return "ctx-test" }
-func (a *dispatchContextTestAccessor) ExtensionName() string    { return "" }
-func (a *dispatchContextTestAccessor) ExtensionVersion() string { return "" }
+func (a *dispatchContextTestAccessor) ExtensionName() string     { return "" }
+func (a *dispatchContextTestAccessor) ExtensionVersion() string  { return "" }
 func (a *dispatchContextTestAccessor) ConversationID() string    { return "conv-ctx" }
 func (a *dispatchContextTestAccessor) WorkingDirectory() string  { return "/tmp" }
 func (a *dispatchContextTestAccessor) Emit(ev types.EngineEvent) {}
@@ -43,6 +43,7 @@ func (a *dispatchContextTestAccessor) SendPromptWithKind(_, _ string, _ []string
 	return nil
 }
 func (a *dispatchContextTestAccessor) SteerSelfMainLoop(message string) bool { return false }
+func (a *dispatchContextTestAccessor) ParkSelfMainLoop() bool                { return false }
 func (a *dispatchContextTestAccessor) Elicit(info extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }
@@ -60,9 +61,11 @@ func (a *dispatchContextTestAccessor) ExtGroup() *extension.ExtensionGroup      
 func (a *dispatchContextTestAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
 func (a *dispatchContextTestAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
 func (a *dispatchContextTestAccessor) NewChildBackend() backend.RunBackend      { return nil }
-func (a *dispatchContextTestAccessor) AllocatePlanFilePath(_ string) string             { return "/tmp/.ion/plans/plan.md" }
-func (a *dispatchContextTestAccessor) BumpParentProgress()                      {}
-func (a *dispatchContextTestAccessor) EmitDispatchCountStatus(_ string)         {}
+func (a *dispatchContextTestAccessor) AllocatePlanFilePath(_ string) string {
+	return "/tmp/.ion/plans/plan.md"
+}
+func (a *dispatchContextTestAccessor) BumpParentProgress()              {}
+func (a *dispatchContextTestAccessor) EmitDispatchCountStatus(_ string) {}
 func (a *dispatchContextTestAccessor) EngineConfig() *types.EngineRuntimeConfig {
 	return a.engineConfig
 }
@@ -110,7 +113,7 @@ func (a *dispatchContextTestAccessor) RunOnceCheck(operationID string, debounceM
 	return false, ""
 }
 func (a *dispatchContextTestAccessor) RunOnceComplete(operationID string, failed bool) {}
-func (a *dispatchContextTestAccessor) Telemetry() *telemetry.Collector { return nil }
+func (a *dispatchContextTestAccessor) Telemetry() *telemetry.Collector                 { return nil }
 
 // writeAgents writes an AGENTS.md with the given body into dir and returns its path.
 func writeAgents(t *testing.T, dir, body string) string {

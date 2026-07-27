@@ -44,7 +44,7 @@ function plainTab(id: string): TabState {
     bashExecuting: false, bashExecId: null, pillColor: null, pillIcon: null,
     forkedFromSessionId: null, hasFileActivity: false, worktree: null,
     pendingWorktreeSetup: false, groupId: null, groupPinned: false,
-    contextTokens: null, contextPercent: null, contextWindow: null,
+    contextTokens: null, contextWindow: null,
     isCompacting: false, isTerminalOnly: false, engineProfileId: null,
     lastMessagePreview: null,
   }

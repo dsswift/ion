@@ -99,6 +99,95 @@ final class ContractSyncTests: XCTestCase {
 
     // MARK: - StatusFields decode
 
+    // MARK: - Variant coverage sweep
+
+    /// Every Go NormalizedEvent variant is accounted for on the iOS side:
+    /// either decoded, or listed below as a deliberate non-consumer with a
+    /// reason.
+    ///
+    /// ios/AGENTS.md § "Contract sync" promises "the test target will fail if
+    /// Go has fields you haven't accounted for". That was true of the handful
+    /// of types with a field-coverage set, and false for VARIANTS — a brand-new
+    /// Go variant landed with nothing on this side that would notice. The TS
+    /// side has had `every Go variant exists in TS map` from the start, which
+    /// is why this gap was iOS-only.
+    ///
+    /// The skip-list is the point of the test, not a weakness in it. iOS is a
+    /// reference implementation and "no in-repo consumer" is the expected
+    /// default for new engine surface (root AGENTS.md § "Engine consumers"), so
+    /// the goal is not to decode all 40-plus variants — it is to make each
+    /// omission a stated decision instead of an invisible hole. Adding a Go
+    /// variant now forces a one-line choice here: decode it, or say why not.
+    func testEveryGoVariantIsAccountedFor() throws {
+        let manifest = try loadManifest()
+
+        /// Variants iOS deliberately does not decode, each with its reason.
+        let deliberatelyNotDecoded: [String: String] = [
+            "background_task_complete":
+                "Engine-socket only. The desktop consumes it to drive tab status and "
+                + "projects the outcome through the snapshot (backgroundShellCount); "
+                + "the desktop<->iOS wire carries no desktop_background_task_complete, "
+                + "so there is nothing here to decode.",
+            "capability_unsupported":
+                "See the type-level note above: the desktop renders the recoverable "
+                + "message and iOS converges through the snapshot (tab stays idle).",
+            "model_fallback":
+                "Projected onto RemoteTabState.conversationInstances[i].modelFallback "
+                + "rather than decoded live, so the indicator survives reconnect.",
+            "events_dropped":
+                "Engine-internal backpressure signal for a socket consumer; the "
+                + "snapshot is authoritative for iOS, which re-syncs wholesale.",
+            "extension_dead_permanent": "Extension-host lifecycle; no iOS surface renders it.",
+            "extension_died": "Extension-host lifecycle; no iOS surface renders it.",
+            "extension_respawned": "Extension-host lifecycle; no iOS surface renders it.",
+            "plan_file_written": "Desktop-only affordance (reveals the file on disk).",
+            "session_init": "Desktop owns engine session lifecycle; iOS attaches to tabs.",
+            "stream_reset": "Desktop-side stream bookkeeping; iOS renders from message events.",
+            "task_suspend":
+                "The wire carries only the awaited COUNTS, which ride tab status; iOS "
+                + "has no per-dispatch suspend surface to render.",
+            "tool_stalled": "Desktop-only diagnostic surface.",
+            "run_stalled": "Desktop-only diagnostic surface.",
+            "user_turn_persisted": "Desktop persistence confirmation; iOS reads the snapshot.",
+        ]
+
+        var unaccounted: [String] = []
+        for variant in manifest.normalizedEvents.keys {
+            if deliberatelyNotDecoded[variant] != nil { continue }
+            if Self.iosDecodedVariants.contains(variant) { continue }
+            unaccounted.append(variant)
+        }
+
+        XCTAssertTrue(
+            unaccounted.isEmpty,
+            "Go NormalizedEvent variants with no iOS decode and no documented reason: "
+            + "\(unaccounted.sorted()). Either decode the variant, or add it to "
+            + "deliberatelyNotDecoded with the reason it does not apply to iOS."
+        )
+
+        // The skip-list must not outlive the variants it excuses: a stale entry
+        // for a variant Go no longer emits is its own kind of lie.
+        let goVariants = Set(manifest.normalizedEvents.keys)
+        let staleExcuses = Set(deliberatelyNotDecoded.keys).subtracting(goVariants)
+        XCTAssertTrue(
+            staleExcuses.isEmpty,
+            "deliberatelyNotDecoded names variants absent from the Go manifest: \(staleExcuses.sorted())"
+        )
+    }
+
+    /// NormalizedEvent variants iOS decodes and renders. Mirrors the bare
+    /// internal names in the Go manifest (the engine's translateToEngineEvent
+    /// maps these to engine_* on the wire).
+    private static let iosDecodedVariants: Set<String> = [
+        "agent_state", "compacting", "context_breakdown", "dialog", "engine_plan_content",
+        "error", "harness_message", "image_content", "message_end", "notify",
+        "permission_request", "plan_mode_auto_exit", "plan_mode_changed", "plan_proposal",
+        "prompt_injected", "rate_limit", "session_dead", "steer_injected", "task_complete",
+        "task_update", "text_chunk", "thinking_block_end", "thinking_block_start",
+        "thinking_delta", "tool_call", "tool_call_complete", "tool_call_update",
+        "tool_result", "usage", "working_message",
+    ]
+
     func testStatusFieldsDecode() throws {
         let manifest = try loadManifest()
         guard let goFields = manifest.sharedTypes["StatusFields"] else {
@@ -115,6 +204,7 @@ final class ContractSyncTests: XCTestCase {
             "model": "claude-4",
             "contextPercent": 42,
             "contextWindow": 200000,
+            "contextTokens": 84000,
             "runCostUsd": 1.23,
             "conversationCostUsd": 2.34,
             "permissionDenials": [
@@ -133,6 +223,7 @@ final class ContractSyncTests: XCTestCase {
         XCTAssertEqual(fields.sessionId, "sess-1")
         XCTAssertEqual(fields.model, "claude-4")
         XCTAssertEqual(fields.contextPercent, 42.0) // Double decodes int fine
+        XCTAssertEqual(fields.contextTokens, 84000)
         XCTAssertEqual(fields.extensionName, "Chief of Staff")
         XCTAssertEqual(fields.runCostUsd, 1.23)
         XCTAssertEqual(fields.conversationCostUsd, 2.34)
@@ -141,8 +232,8 @@ final class ContractSyncTests: XCTestCase {
 
         // Verify we know about all Go fields (document any intentional gaps)
         let swiftHandled: Set<String> = [
-            "backgroundAgents", "label", "state", "sessionId", "team", "model",
-            "contextPercent", "contextWindow", "runCostUsd", "conversationCostUsd",
+            "backgroundAgents", "backgroundShells", "label", "state", "sessionId", "team", "model",
+            "contextPercent", "contextWindow", "contextTokens", "runCostUsd", "conversationCostUsd",
             "permissionDenials", "extensionName", "numTurns", "conversationTurns",
         ]
         let goSet = Set(goFields)
@@ -172,12 +263,14 @@ final class ContractSyncTests: XCTestCase {
             "lastEmittedAt": 1_780_000_005_000,
             "hasInflightRun": true,
             "backgroundAgentCount": 3,
+            "backgroundShellCount": 2,
             "permissionDenialsPending": [
                 ["toolName": "AskUserQuestion", "toolUseId": "tu-99"],
             ],
             "model": "claude-4",
             "contextPercent": 42,
             "contextWindow": 200_000,
+            "contextTokens": 84_000,
             "runCostUsd": 1.23,
             "conversationCostUsd": 2.34,
             "sessionId": "conv-abc",
@@ -191,6 +284,7 @@ final class ContractSyncTests: XCTestCase {
         XCTAssertEqual(status.lastEmittedAt, 1_780_000_005_000)
         XCTAssertEqual(status.hasInflightRun, true)
         XCTAssertEqual(status.backgroundAgentCount, 3)
+        XCTAssertEqual(status.backgroundShellCount, 2)
         XCTAssertEqual(status.sessionId, "conv-abc")
         XCTAssertEqual(status.extensionName, "Chief of Staff")
         XCTAssertEqual(status.runCostUsd, 1.23)
@@ -199,7 +293,8 @@ final class ContractSyncTests: XCTestCase {
         // Verify we know about all Go fields (any intentional gap is
         // documented in the assertion message — there should be none).
         let swiftHandled: Set<String> = [
-            "backgroundAgentCount", "contextPercent", "contextWindow",
+            "backgroundAgentCount", "backgroundShellCount", "contextPercent",
+            "contextWindow", "contextTokens",
             "conversationCostUsd", "extensionName", "hasInflightRun", "key",
             "lastEmittedAt", "model", "permissionDenialsPending", "runCostUsd",
             "sessionId", "state", "stateSince",
@@ -302,10 +397,12 @@ final class ContractSyncTests: XCTestCase {
                 lastEmittedAt: 1_780_000_005_000,
                 hasInflightRun: false,
                 backgroundAgentCount: nil,
+                backgroundShellCount: 3,
                 permissionDenialsPending: nil,
                 model: "claude-4",
                 contextPercent: 12,
                 contextWindow: 200_000,
+                contextTokens: 24_000,
                 runCostUsd: 0.5,
                 conversationCostUsd: 2.5,
                 sessionId: "conv-x",
@@ -325,6 +422,10 @@ final class ContractSyncTests: XCTestCase {
             XCTAssertEqual(status.hasInflightRun, false)
             XCTAssertEqual(status.model, "claude-4")
             XCTAssertEqual(status.contextPercent, 12)
+            XCTAssertEqual(status.contextTokens, 24_000)
+            // Survives the encode/decode round-trip: a dropped CodingKey on
+            // the encode side would silently lose the parked-session signal.
+            XCTAssertEqual(status.backgroundShellCount, 3)
             XCTAssertEqual(status.sessionId, "conv-x")
         } else {
             XCTFail("Round-trip expected engineSessionStatus, got \(decoded)")

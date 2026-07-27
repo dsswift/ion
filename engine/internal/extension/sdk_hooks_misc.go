@@ -64,6 +64,14 @@ func (s *SDK) FireTaskCompleted(ctx *Context, info TaskLifecycleInfo) error {
 	return nil
 }
 
+// FireBackgroundTaskCompleted fires the background_task_completed hook for a
+// finished background bash command. Observe-only from the engine's side: the
+// engine has already emitted the typed event and decided delivery by the time
+// handlers run.
+func (s *SDK) FireBackgroundTaskCompleted(ctx *Context, info BackgroundTaskCompletedInfo) {
+	s.fire(HookBackgroundTaskCompleted, ctx, info)
+}
+
 // FireElicitationRequest fires the elicitation_request hook.
 // Returns the first non-nil response from handlers.
 func (s *SDK) FireElicitationRequest(ctx *Context, info ElicitationRequestInfo) (map[string]interface{}, error) {

@@ -65,6 +65,7 @@ vi.mock('../settings-broadcast', async () => {
 })
 
 vi.mock('../remote/transport-init', () => ({ initRemoteTransport: vi.fn() }))
+vi.mock('../remote/relay-config-push', () => ({ sendRelayConfigToPeers: vi.fn().mockResolvedValue({ sent: false }) }))
 vi.mock('../state', () => ({ state: { remoteTransport: null }, engineBridge: {} }))
 vi.mock('../tab-migration-unify-runner', () => ({ runTabUnifyMigration: vi.fn().mockReturnValue({ reason: 'skipped' }) }))
 vi.mock('../tab-migration-split-runner', () => ({ runTabSplitMigration: vi.fn().mockReturnValue({ reason: 'skipped' }) }))
@@ -102,5 +103,77 @@ describe('SAVE_SETTINGS main-owned keys', () => {
 
     expect(settingsStoreMock.written).not.toBeNull()
     expect('pairedDevices' in settingsStoreMock.written!).toBe(false)
+  })
+
+  // ─── Relay OIDC config survival ───
+  //
+  // The renderer's SAVE_SETTINGS payload is a FIXED key list (getAllSettings in
+  // renderer/preferences-persist.ts) that contains none of the relay OIDC keys.
+  // Before the merge, writeSettings serialized exactly the payload it was
+  // handed, so every preference toggle DELETED the probe-persisted OIDC config
+  // from settings.json. The peer-connect handler then read relayAuthMode as
+  // undefined, fell through to PSK, and pushed an empty credential to the
+  // paired iPhone — which persisted the emptiness and lost relay reconnect.
+  //
+  // Fails on the unfixed handler: the keys vanish from the write.
+
+  it('preserves main-written relay OIDC keys absent from the renderer payload', async () => {
+    settingsStoreMock.onDisk = {
+      theme: 'dark',
+      relayUrl: 'wss://relay.example.com',
+      relayAuthMode: 'oidc',
+      relayOidcIssuer: 'https://issuer.example.com/v2.0',
+      relayOidcAudience: 'api://audience-id',
+      relayOidcRequiredScope: 'api://audience-id/Relay.Access',
+    }
+
+    const save = ipcHandlers.get(IPC.SAVE_SETTINGS)!
+    // A realistic renderer payload: knows relayUrl, knows nothing about the
+    // four probe-derived OIDC keys.
+    await save({}, { theme: 'light', relayUrl: 'wss://relay.example.com' })
+
+    expect(settingsStoreMock.written).not.toBeNull()
+    expect(settingsStoreMock.written!.theme).toBe('light')
+    expect(settingsStoreMock.written!.relayAuthMode).toBe('oidc')
+    expect(settingsStoreMock.written!.relayOidcIssuer).toBe('https://issuer.example.com/v2.0')
+    expect(settingsStoreMock.written!.relayOidcAudience).toBe('api://audience-id')
+    expect(settingsStoreMock.written!.relayOidcRequiredScope).toBe('api://audience-id/Relay.Access')
+  })
+
+  it('preserves any main-written key the renderer payload omits', async () => {
+    // The rule is general, not an OIDC special case: writeSettings replaces the
+    // file wholesale, so ANY key written only by a main-process path must
+    // survive a renderer save that has never heard of it.
+    settingsStoreMock.onDisk = { theme: 'dark', atvBounds: { x: 10, y: 20 } }
+
+    const save = ipcHandlers.get(IPC.SAVE_SETTINGS)!
+    await save({}, { theme: 'light' })
+
+    expect(settingsStoreMock.written!.atvBounds).toEqual({ x: 10, y: 20 })
+  })
+
+  it('lets the renderer overwrite the keys it does own', async () => {
+    // Merging must not make renderer-owned keys sticky: the renderer always
+    // emits its full list, and those values are authoritative.
+    settingsStoreMock.onDisk = { theme: 'dark', soundEnabled: true, relayAuthMode: 'oidc' }
+
+    const save = ipcHandlers.get(IPC.SAVE_SETTINGS)!
+    await save({}, { theme: 'light', soundEnabled: false })
+
+    expect(settingsStoreMock.written!.theme).toBe('light')
+    expect(settingsStoreMock.written!.soundEnabled).toBe(false)
+    expect(settingsStoreMock.written!.relayAuthMode).toBe('oidc')
+  })
+
+  it('keeps the disk relay auth mode when a renderer payload carries a stale one', async () => {
+    // Second line of defence: relayAuthMode is in MAIN_OWNED_SETTINGS_KEYS, so
+    // even a renderer that starts sending it cannot downgrade the probe's
+    // resolution.
+    settingsStoreMock.onDisk = { theme: 'dark', relayAuthMode: 'oidc' }
+
+    const save = ipcHandlers.get(IPC.SAVE_SETTINGS)!
+    await save({}, { theme: 'light', relayAuthMode: 'psk' })
+
+    expect(settingsStoreMock.written!.relayAuthMode).toBe('oidc')
   })
 })

@@ -6,18 +6,25 @@
  * `blocked`, the action returns early and the close is refused.
  *
  * ─── Action-layer guard ──────────────────────────────────────────────────
- * Hard-block conversation tab close while the orchestrator is running OR
- * dispatched background agents are still executing. Mirrors the X-button
+ * Hard-block conversation tab close while the orchestrator is running, while
+ * dispatched background agents are still executing, or while background bash
+ * commands the session is waiting on are still running. Mirrors the X-button
  * suppression in TabStripTabPill.tsx and exists for defense-in-depth — it
  * catches keyboard shortcuts (Cmd+W → CloseTabConfirmDialog), group-pill close
  * paths, and any future entry point we haven't enumerated.
  *
  * No escape hatch: there is no `force` flag. Either the tab is completely idle
- * (no orchestrator activity, no dispatched background children) and close is
- * allowed, or the tab is active and the user must stop it first (via the in-pane
- * Interrupt button, or by waiting for natural completion). The user's path to
- * close an active tab is: interrupt → wait for idle → close. This protects
- * dispatched background agents from accidental SIGTERM via tab close.
+ * (no orchestrator activity, no dispatched background children, no outstanding
+ * background commands) and close is allowed, or the tab is active and the user
+ * must stop it first (via the in-pane Interrupt button, or by waiting for
+ * natural completion). The user's path to close an active tab is: interrupt →
+ * wait for idle → close. This protects dispatched background agents from
+ * accidental SIGTERM via tab close.
+ *
+ * Background bash commands are protected for the same reason: closing the tab
+ * runs the engine's StopBackgroundTasksForOwner, which kills the session's
+ * running shell processes. A long build or test run dying because a tab was
+ * closed is the same footgun as a killed sub-agent.
  *
  * Internal cleanup paths (tab close after the single engine instance is torn
  * down) abort the orchestrator above the call site, which propagates to children
@@ -40,7 +47,7 @@
 /** Minimal instance shape the guard reads. */
 interface GuardInstance {
   id: string
-  statusFields?: { state?: string } | null
+  statusFields?: { state?: string; backgroundShells?: number } | null
   agentStates?: Array<{ status?: string } | null> | null
 }
 
@@ -56,6 +63,8 @@ export interface CloseGuardResult {
   orchestratorRunning: boolean
   /** Per-instance running-child counts (for the refusal log). */
   childCounts: Array<{ id: string; count: number }>
+  /** Total outstanding background bash commands across instances. */
+  shellCount: number
 }
 
 /**
@@ -69,10 +78,11 @@ export interface CloseGuardResult {
 export function evaluateCloseGuard(pane: GuardPane | null | undefined): CloseGuardResult {
   const childCounts: Array<{ id: string; count: number }> = []
   if (!pane || !pane.instances) {
-    return { blocked: false, orchestratorRunning: false, childCounts }
+    return { blocked: false, orchestratorRunning: false, childCounts, shellCount: 0 }
   }
 
   let orchestratorRunning = false
+  let shellCount = 0
   for (const inst of pane.instances) {
     const state = inst.statusFields?.state
     if (state === 'running' || state === 'connecting' || state === 'starting') {
@@ -81,9 +91,15 @@ export function evaluateCloseGuard(pane: GuardPane | null | undefined): CloseGua
     const agents = inst.agentStates || []
     const running = agents.filter((a) => a?.status === 'running').length
     childCounts.push({ id: inst.id, count: running })
+    shellCount += inst.statusFields?.backgroundShells ?? 0
   }
   const childRunning = childCounts.some((c) => c.count > 0)
-  return { blocked: orchestratorRunning || childRunning, orchestratorRunning, childCounts }
+  return {
+    blocked: orchestratorRunning || childRunning || shellCount > 0,
+    orchestratorRunning,
+    childCounts,
+    shellCount,
+  }
 }
 
 /** Build the refusal warning line for a blocked close (keeps the message in one place). */
@@ -91,7 +107,8 @@ export function formatCloseGuardRefusal(tabId: string, result: CloseGuardResult)
   return (
     `[closeTab] refused tab close: tabId=${tabId.slice(0, 8)} ` +
     `orchestratorRunning=${result.orchestratorRunning} ` +
-    `childCounts=${JSON.stringify(result.childCounts.map((c) => `${c.id.slice(0, 6)}:${c.count}`))}` +
-    ' — user must stop the tab (interrupt + wait for children) before closing'
+    `childCounts=${JSON.stringify(result.childCounts.map((c) => `${c.id.slice(0, 6)}:${c.count}`))} ` +
+    `backgroundShells=${result.shellCount}` +
+    ' — user must stop the tab (interrupt + wait for children and background commands) before closing'
   )
 }

@@ -19,9 +19,11 @@ export interface HydratedTabs {
   activeTabId: string | null
 }
 
+import { seedContextStatusFields } from '../../hooks/useTabRestoration-helpers'
+
 /** Read the persisted `main` instance from a persisted conversation pane. */
 function readMainInstance(st: PersistedTabState['tabs'][number]):
-  | { messageCount?: number; modelOverride?: string | null; permissionMode?: 'auto' | 'plan'; permissionDenied?: unknown; planFilePath?: string | null }
+  | { messageCount?: number; modelOverride?: string | null; permissionMode?: 'auto' | 'plan'; permissionDenied?: unknown; planFilePath?: string | null; contextTokens?: number; contextWindow?: number }
   | null {
   const pane = (st as { conversationPane?: { instances?: Array<{ id?: string } & Record<string, unknown>> } }).conversationPane
   const inst = pane?.instances?.find((i) => i.id === 'main') ?? pane?.instances?.[0]
@@ -91,8 +93,8 @@ export function tabsFromSnapshot(
       worktree: st.worktree ?? null,
       groupId: st.groupId || null,
       groupPinned: st.groupPinned ?? false,
-      contextTokens: st.contextTokens || null,
-      contextWindow: st.contextWindow || null,
+      contextTokens: readMainInstance(st)?.contextTokens ?? st.contextTokens ?? null,
+      contextWindow: readMainInstance(st)?.contextWindow ?? st.contextWindow ?? null,
       queuedPrompts: st.queuedPrompts ?? [],
       lastMessagePreview: st.lastMessagePreview || null,
       lastEventAt: st.lastEventAt ?? null,
@@ -149,6 +151,9 @@ export function mergePanes(
         permissionMode: main?.permissionMode ?? 'auto',
         permissionDenied: (main?.permissionDenied as never) ?? null,
         planFilePath: main?.planFilePath ?? null,
+        // Context occupancy so the ATV's status bar (the SAME component as
+        // the overlay's) is correct on first paint.
+        ...seedContextStatusFields({}, main as never),
       }),
     )
   }

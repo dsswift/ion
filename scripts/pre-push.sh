@@ -6,12 +6,29 @@
 #
 # Bypass: `git push --no-verify` (use sparingly).
 #
-# Enable once per clone via `make hooks`.
+# Husky is the single hook system for this repo: root `package.json` has
+# `"prepare": "husky"`, so `npm install` points core.hooksPath at `.husky/_`
+# on every clone with no manual step.
+#
+# Why this body lives in scripts/ instead of directly in .husky/pre-push:
+# husky's generated wrapper invokes the hook with `sh -e "$hook"` (see
+# .husky/_/h), which means the hook file's shebang is never consulted. On
+# Linux /bin/sh is dash, which rejects both `set -o pipefail` and bash array
+# syntax (`failures=()`) — the hook would exit 2 before running a single
+# gate, and every push from a Linux clone would be blocked with zero checks
+# performed. macOS masks this entirely because /bin/sh is bash there. So
+# .husky/pre-push is a one-line dash-safe delegator that execs bash on this
+# file, and the bash-dependent gate logic lives here where the interpreter
+# is guaranteed.
 
 set -uo pipefail
 
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-cd "$REPO_ROOT"
+# Guard both the rev-parse and the cd: `set -e` is deliberately absent (a
+# failing gate must be recorded, not abort the script), so an unguarded cd
+# would silently continue and resolve every relative path below against the
+# wrong directory. Matches scripts/graphify-rebuild.sh.
+REPO_ROOT="$(git rev-parse --show-toplevel)" || exit 1
+cd "$REPO_ROOT" || exit 1
 
 # Resolve the merge-base against origin/main so we only run checks for the
 # components actually touched on this branch.
@@ -60,6 +77,7 @@ fi
 if touched "^engine/"; then
   run "engine lint (new vs origin/main)" bash -c \
     "cd engine && golangci-lint run --new-from-merge-base=origin/main"
+  run "engine build" bash -c "cd engine && go build ./..."
 fi
 
 # Relay: same.
@@ -72,6 +90,7 @@ fi
 if touched "^desktop/"; then
   run "desktop typecheck" bash -c "cd desktop && npm run typecheck"
   run "desktop tests"     bash -c "cd desktop && npm test --silent"
+  run "desktop build"     bash -c "cd desktop && npm run build"
 fi
 
 # Workflow YAML changes: actionlint mirrors CI.

@@ -245,6 +245,10 @@ function projectTab(t: TabState, s: ProjectionStoreState): ProjectedRendererTab 
       // surfaces": when the desktop renders a per-instance signal, iOS must
       // see the same data through the snapshot.
       const instRunningAgents = effectiveRunningChildrenCount(inst)
+      // Outstanding background bash commands for this instance. iOS renders a
+      // pink shell dot and an "N background shells" label from it; the tab
+      // aggregate below drives the parent pill's dot.
+      const instBackgroundShells = inst.statusFields?.backgroundShells ?? 0
       // Per-instance model-fallback indicator. Projects the renderer's
       // engineModelFallbacks map onto each instance so iOS can render a
       // matching ⚠ glyph on its EngineInstanceBar. We forward only the
@@ -261,6 +265,7 @@ function projectTab(t: TabState, s: ProjectionStoreState): ProjectedRendererTab 
         waitingState: ws,
         isRunning: instRunning || undefined,
         runningAgentCount: instRunningAgents > 0 ? instRunningAgents : undefined,
+        backgroundShellCount: instBackgroundShells > 0 ? instBackgroundShells : undefined,
         modelFallback: mfOut,
         conversationIds: inst.conversationIds && inst.conversationIds.length > 0 ? inst.conversationIds : undefined,
         thinkingEffort: (inst.thinkingEffort && inst.thinkingEffort !== 'off') ? inst.thinkingEffort : undefined,
@@ -277,6 +282,16 @@ function projectTab(t: TabState, s: ProjectionStoreState): ProjectedRendererTab 
   if (conversationInstances) {
     for (const ci of conversationInstances) {
       if ((ci.runningAgentCount || 0) > 0) { anyInstanceHasRunningChildren = true; break }
+    }
+  }
+
+  // Parallel aggregate for background bash commands — drives the iOS parent
+  // tab pill's pink shell dot. SUMMED rather than max'd across instances:
+  // separate instances run separate shell processes, so the counts add.
+  let backgroundShellCount = 0
+  if (conversationInstances) {
+    for (const ci of conversationInstances) {
+      backgroundShellCount += ci.backgroundShellCount || 0
     }
   }
 
@@ -340,6 +355,9 @@ function projectTab(t: TabState, s: ProjectionStoreState): ProjectedRendererTab 
     // "awaiting children" dot fires without folding across
     // conversationInstances client-side.
     hasRunningChildren: anyInstanceHasRunningChildren || undefined,
+    // Top-level sum of outstanding background bash commands across instances.
+    // iOS reads it on the parent tab pill for the pink shell dot.
+    backgroundShellCount: backgroundShellCount > 0 ? backgroundShellCount : undefined,
     conversationId: t.conversationId || null,
     lastMessageContent: lastMsg,
     lastActivityTs: lastTs || 0,

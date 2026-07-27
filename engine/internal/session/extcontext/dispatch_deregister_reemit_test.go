@@ -99,7 +99,9 @@ func (a *dispatchCountSpyAccessor) dispatchCountCallCount() int {
 func (a *dispatchCountSpyAccessor) BumpParentProgress() {}
 
 func (a *dispatchCountSpyAccessor) NewChildBackend() backend.RunBackend { return a.child }
-func (a *dispatchCountSpyAccessor) AllocatePlanFilePath(_ string) string        { return "/tmp/.ion/plans/plan.md" }
+func (a *dispatchCountSpyAccessor) AllocatePlanFilePath(_ string) string {
+	return "/tmp/.ion/plans/plan.md"
+}
 func (a *dispatchCountSpyAccessor) RootContext() context.Context {
 	if a.rootCtx != nil {
 		return a.rootCtx
@@ -118,9 +120,12 @@ func (a *dispatchCountSpyAccessor) Emit(ev types.EngineEvent) {
 	a.mu.Unlock()
 }
 func (a *dispatchCountSpyAccessor) SendAbort()                               {}
-func (a *dispatchCountSpyAccessor) SendPrompt(_, _ string, _ []string) error                 { return nil }
-func (a *dispatchCountSpyAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error { return nil }
-func (a *dispatchCountSpyAccessor) SteerSelfMainLoop(_ string) bool          { return false }
+func (a *dispatchCountSpyAccessor) SendPrompt(_, _ string, _ []string) error { return nil }
+func (a *dispatchCountSpyAccessor) SendPromptWithKind(_, _ string, _ []string, _ string) error {
+	return nil
+}
+func (a *dispatchCountSpyAccessor) SteerSelfMainLoop(_ string) bool { return false }
+func (a *dispatchCountSpyAccessor) ParkSelfMainLoop() bool          { return false }
 func (a *dispatchCountSpyAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }
@@ -133,21 +138,23 @@ func (a *dispatchCountSpyAccessor) DeregisterAgentSpec(_ string)                
 func (a *dispatchCountSpyAccessor) LookupAgentSpec(_ string) (types.AgentSpec, bool) {
 	return types.AgentSpec{}, false
 }
-func (a *dispatchCountSpyAccessor) LookupExtDisplayName(_ string) string     { return "" }
-func (a *dispatchCountSpyAccessor) ExtGroup() *extension.ExtensionGroup      { return nil }
-func (a *dispatchCountSpyAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
-func (a *dispatchCountSpyAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
-func (a *dispatchCountSpyAccessor) EngineConfig() *types.EngineRuntimeConfig { return nil }
-func (a *dispatchCountSpyAccessor) ClaudeCompat() bool { return false }
+func (a *dispatchCountSpyAccessor) LookupExtDisplayName(_ string) string                 { return "" }
+func (a *dispatchCountSpyAccessor) ExtGroup() *extension.ExtensionGroup                  { return nil }
+func (a *dispatchCountSpyAccessor) ExtConfig() *extension.ExtensionConfig                { return nil }
+func (a *dispatchCountSpyAccessor) ProcRegistry() *extension.ProcessRegistry             { return nil }
+func (a *dispatchCountSpyAccessor) EngineConfig() *types.EngineRuntimeConfig             { return nil }
+func (a *dispatchCountSpyAccessor) ClaudeCompat() bool                                   { return false }
 func (a *dispatchCountSpyAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
-func (a *dispatchCountSpyAccessor) ResolveTier(_ string) string              { return "" }
+func (a *dispatchCountSpyAccessor) ResolveTier(_ string) string                          { return "" }
 func (a *dispatchCountSpyAccessor) PermissionCheck(_ string, _ map[string]interface{}) (string, string) {
 	return "", ""
 }
-func (a *dispatchCountSpyAccessor) McpConnections() []*mcp.Connection                      { return nil }
-func (a *dispatchCountSpyAccessor) SearchHistory(_ string, _ int) []extension.HistoryMatch { return nil }
-func (a *dispatchCountSpyAccessor) GetSessionMemory() string                               { return "" }
-func (a *dispatchCountSpyAccessor) SetSessionMemory(_ string)                              {}
+func (a *dispatchCountSpyAccessor) McpConnections() []*mcp.Connection { return nil }
+func (a *dispatchCountSpyAccessor) SearchHistory(_ string, _ int) []extension.HistoryMatch {
+	return nil
+}
+func (a *dispatchCountSpyAccessor) GetSessionMemory() string  { return "" }
+func (a *dispatchCountSpyAccessor) SetSessionMemory(_ string) {}
 func (a *dispatchCountSpyAccessor) TranslateEvent(_ types.NormalizedEvent, _ int) types.EngineEvent {
 	return types.EngineEvent{}
 }
@@ -185,12 +192,12 @@ func (a *dispatchCountSpyAccessor) UpsertAgentStateByID(id string, seed types.Ag
 	}
 	updater(st)
 }
-func (a *dispatchCountSpyAccessor) EmitAgentSnapshot(_ string)                                     {}
-func (a *dispatchCountSpyAccessor) ResourceBroker() *resource.Broker                               { return nil }
-func (a *dispatchCountSpyAccessor) GlobalResourceBroker() *resource.Broker                         { return nil }
-func (a *dispatchCountSpyAccessor) BroadcastNotification(_ types.NotifyOpts)                       {}
-func (a *dispatchCountSpyAccessor) BroadcastIntercept(_ extension.InterceptOpts)                   {}
-func (a *dispatchCountSpyAccessor) ListAllSessions() []extension.SessionListEntry                  { return nil }
+func (a *dispatchCountSpyAccessor) EmitAgentSnapshot(_ string)                    {}
+func (a *dispatchCountSpyAccessor) ResourceBroker() *resource.Broker              { return nil }
+func (a *dispatchCountSpyAccessor) GlobalResourceBroker() *resource.Broker        { return nil }
+func (a *dispatchCountSpyAccessor) BroadcastNotification(_ types.NotifyOpts)      {}
+func (a *dispatchCountSpyAccessor) BroadcastIntercept(_ extension.InterceptOpts)  {}
+func (a *dispatchCountSpyAccessor) ListAllSessions() []extension.SessionListEntry { return nil }
 func (a *dispatchCountSpyAccessor) SendToSession(_, _, _ string, _ map[string]interface{}) error {
 	return nil
 }
@@ -201,7 +208,7 @@ func (a *dispatchCountSpyAccessor) GetScheduleStatus(_, _ string) ([]extension.S
 }
 func (a *dispatchCountSpyAccessor) RunOnceCheck(_ string, _ int64) (bool, string) { return true, "" }
 func (a *dispatchCountSpyAccessor) RunOnceComplete(_ string, _ bool)              {}
-func (a *dispatchCountSpyAccessor) Telemetry() *telemetry.Collector { return nil }
+func (a *dispatchCountSpyAccessor) Telemetry() *telemetry.Collector               { return nil }
 
 // TestDeregisterReEmitsDispatchCount is the primary regression test for the
 // nested-dispatch completion race (Bug 1).

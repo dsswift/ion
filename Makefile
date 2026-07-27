@@ -1,4 +1,4 @@
-.PHONY: default desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test test test-all test-linux test-linux-engine test-linux-engine-summary test-linux-desktop clean check-file-sizes check-contracts check-status-writers check-atv-parity check-logging check-swiftlint check-dashboards claude-symlinks hooks lint-desktop
+.PHONY: default desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test test test-all test-linux test-linux-engine test-linux-engine-summary test-linux-desktop clean check-file-sizes check-contracts check-status-writers check-atv-parity check-logging check-swiftlint check-dashboards claude-symlinks bootstrap graph graph-refresh graph-rebuild hooks lint-desktop
 
 # Homebrew installs node/npm under /opt/homebrew/bin on Apple Silicon.
 # Make runs recipes with /bin/sh which only has /usr/bin:/bin in PATH,
@@ -224,11 +224,128 @@ check-swiftlint:
 claude-symlinks:
 	@bash scripts/setup-claude-symlinks.sh
 
-# Point this clone's git hooks at the tracked .githooks/ directory so the
-# pre-push file-size check runs before pushes hit CI. One-time per clone.
+# One-command setup for a fresh clone. Idempotent — safe to re-run.
+#
+# Two things a clone cannot carry:
+#
+#  1. core.hooksPath. `npm install` runs the root `prepare` script, which runs
+#     husky: it generates .husky/_ and points core.hooksPath at it, activating
+#     the tracked pre-push, commit-msg, and graphify rebuild hooks. That config
+#     is per-clone git state, never cloned, which is why this step exists.
+#  2. graphify-out/. The knowledge graph is a gitignored local build cache, so
+#     a fresh clone has none and builds it once here.
+#
+# The graphify skill (.ion/skills/) and the project engine.json (.ion/) ARE
+# tracked, so they arrive with the clone and need nothing.
+bootstrap:
+	@echo "▶ npm install (husky hooks)"
+	@npm install --silent
+	@$(MAKE) --no-print-directory claude-symlinks
+	@$(MAKE) --no-print-directory graph
+	@echo "✅ bootstrap complete"
+
+# Build the graphify knowledge graph if this clone has none.
+#
+# Two stages, because `extract` alone leaves the graph half-built:
+#
+#  1. `graphify . --code-only` extracts nodes and edges. Offline and free —
+#     code extraction is pure local tree-sitter, and --code-only skips the
+#     docs/PDFs/images that would otherwise need an LLM backend (under 2% of
+#     nodes in this repo). Queries work after this stage.
+#  2. `graphify cluster-only . --no-label` partitions the graph into
+#     communities (Leiden) and writes GRAPH_REPORT.md. Without it, query
+#     results carry no community field and there is no readable report.
+#
+# --no-label is deliberate: community *partitioning* is offline, but community
+# *naming* calls an LLM backend. --no-label keeps the whole build key-free and
+# leaves honest "Community N" placeholders. To get descriptive names later
+# (e.g. "Plan Mode Prompt Builder"), run `graphify label` with a backend
+# configured — an opt-in cost, never part of bootstrap.
+#
+# Idempotent by design: an existing graph.json short-circuits both stages, so
+# re-running `make bootstrap` never re-extracts. The hooks keep the graph
+# current from then on — post-commit for your own commits, post-checkout for
+# branch switches, and Ion's own post-merge / post-rewrite for pulls and
+# rebases (see scripts/graphify-rebuild.sh).
+#
+# `make graph-refresh` forces an incremental re-extraction against the existing
+# graph; `make graph-rebuild` discards it and extracts from scratch. Reach for
+# refresh when you suspect the graph missed something, and rebuild to purge
+# nodes that repeated incremental updates have left stale.
+#
+# A missing graphify install is a notice, never a failure: the graph is an
+# optional developer convenience and bootstrap must not break over it.
+graph:
+	@if [ -f graphify-out/graph.json ]; then \
+		echo "▶ graphify: graph already present, skipping build (use 'make graph-refresh' or 'make graph-rebuild')"; \
+	elif ! command -v graphify >/dev/null 2>&1; then \
+		echo "⚠️  graphify not on PATH — skipping graph build."; \
+		echo "   Install with 'uv tool install graphifyy' (or 'pipx install graphifyy'), then re-run 'make bootstrap'."; \
+	else \
+		echo "▶ graphify: extracting the knowledge graph (offline, no API key)"; \
+		graphify . --code-only; \
+		echo "▶ graphify: clustering + report"; \
+		graphify cluster-only . --no-viz --no-label; \
+	fi
+
+# Incrementally re-extract new and changed files into the existing graph.
+# This is the same operation the hooks perform, run on demand — useful when a
+# rebuild was skipped (GRAPHIFY_SKIP_HOOK) or you want to be certain the graph
+# reflects the working tree before a long investigation.
+#
+# The whole recipe is one shell so the missing-graphify branch actually skips
+# the work. A `command -v ... || { echo; exit 0; }` guard on its own recipe
+# line only exits that line's sub-shell — make proceeds to the next line and
+# runs the refresh anyway, ending with a 127. Notice, never a failure.
+#
+# `graphify update` is the code-only incremental path by definition ("no LLM
+# needed") and rejects --code-only as an unknown option. It routes through the
+# same watch-rebuild code the git hooks use, which takes the per-repo flock —
+# so a refresh racing a hook rebuild cannot lose an update.
+graph-refresh:
+	@if ! command -v graphify >/dev/null 2>&1; then \
+		echo "⚠️  graphify not on PATH — nothing to refresh."; \
+	elif [ ! -f graphify-out/graph.json ]; then \
+		echo "▶ graphify: no graph yet — building instead"; \
+		$(MAKE) --no-print-directory graph; \
+	else \
+		echo "▶ graphify: incremental refresh (offline, no API key)"; \
+		graphify update .; \
+	fi
+
+# Discard the graph and extract from scratch. Incremental updates accumulate
+# stale nodes for files that leave the scan corpus, and only a full extraction
+# purges them. Offline and key-free, same as the bootstrap build.
+#
+# The existing graph is moved aside rather than deleted, and restored if the
+# rebuild fails. Deleting first means a failed extraction (no graphify, no
+# disk, interrupted run) leaves the clone with no graph at all — strictly
+# worse than the stale one it had, and a full re-extraction is not cheap.
+graph-rebuild:
+	@if ! command -v graphify >/dev/null 2>&1; then \
+		echo "⚠️  graphify not on PATH — nothing to rebuild."; \
+	else \
+		echo "▶ graphify: rebuilding from scratch"; \
+		rm -rf graphify-out.bak; \
+		if [ -d graphify-out ]; then mv graphify-out graphify-out.bak; fi; \
+		if graphify . --code-only && graphify cluster-only . --no-viz --no-label; then \
+			rm -rf graphify-out.bak; \
+			echo "▶ graphify: rebuild complete"; \
+		else \
+			echo "⚠️  graphify: rebuild failed — restoring the previous graph."; \
+			rm -rf graphify-out; \
+			if [ -d graphify-out.bak ]; then mv graphify-out.bak graphify-out; fi; \
+			exit 1; \
+		fi; \
+	fi
+
+# Repair this clone's git hooks when core.hooksPath has drifted. Husky owns
+# the hook system: root `package.json` has `"prepare": "husky"`, so a plain
+# `npm install` already points core.hooksPath at `.husky/_`. This target only
+# exists to fix a clone where that config was manually overridden.
 hooks:
-	@git config core.hooksPath .githooks
-	@echo "core.hooksPath -> .githooks"
+	@git config core.hooksPath .husky/_
+	@echo "core.hooksPath -> .husky/_"
 
 # Local pipeline testing (requires: brew install act)
 test-pipeline-dry:

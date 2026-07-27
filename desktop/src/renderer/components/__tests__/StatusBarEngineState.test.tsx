@@ -55,6 +55,7 @@ vi.mock('../../theme', () => ({
   useColors: () => ({
     statusRunning: '#d97757',
     statusWaitingChildren: '#f59e0b',
+    statusBash: '#ff2d95',
     textTertiary: '#888888',
   }),
 }))
@@ -72,13 +73,17 @@ function setActiveTab(tab: { id: string; engineProfileId: string | null; status:
   state.activeTabId = tab.id
 }
 
-function setPaneAgents(tabId: string, statuses: string[]) {
+function setPaneAgents(tabId: string, statuses: string[], backgroundShells = 0) {
   state.conversationPanes.set(tabId, {
     instances: [
       {
         id: 'main',
         label: 'main',
-        statusFields: null,
+        // backgroundShells is the ONE statusFields value the renderer does
+        // populate (the engine stamps it on every status snapshot), so the
+        // shell branch reads a real field where the agent branch reads
+        // agentStates. null when no shells, matching a fresh instance.
+        statusFields: backgroundShells > 0 ? { backgroundShells } : null,
         agentStates: statuses.map((status, i) => ({ name: `agent-${i}`, status })),
       },
     ],
@@ -140,5 +145,58 @@ describe('StatusBarEngineState — derives from tab.status + agentRunningCount',
     setActiveTab({ id: 'tab1', engineProfileId: null, status: 'idle' })
     setPaneAgents('tab1', ['done', 'cancelled'])
     expect(renderHTML()).toBe('')
+  })
+})
+
+// ─── Background-shell branch ──────────────────────────────────────────────────
+
+// The shell counterpart to the agent cases above. useActiveEngineBackgroundShellCount
+// and the three-way stateColor/label cascade shipped with no test at all, so
+// none of these boundaries were pinned: the branch firing, its singular/plural
+// wording, or its rank against agents.
+describe('StatusBarEngineState — background-shell branch', () => {
+  beforeEach(reset)
+
+  it('idle orchestrator, 1 background shell → "[waiting for 1 background shell]"', () => {
+    setActiveTab({ id: 'tab1', engineProfileId: null, status: 'idle' })
+    setPaneAgents('tab1', [], 1)
+    expect(renderHTML()).toContain('[waiting for 1 background shell]')
+  })
+
+  it('pluralizes at 2 → "background shells"', () => {
+    setActiveTab({ id: 'tab1', engineProfileId: null, status: 'idle' })
+    setPaneAgents('tab1', [], 2)
+    expect(renderHTML()).toContain('[waiting for 2 background shells]')
+  })
+
+  it('agents outrank shells when both are outstanding', () => {
+    setActiveTab({ id: 'tab1', engineProfileId: null, status: 'idle' })
+    setPaneAgents('tab1', ['running'], 3)
+    const html = renderHTML()
+    expect(html).toContain('[waiting for 1 agent]')
+    expect(html).not.toContain('background shell')
+  })
+
+  it('a running orchestrator outranks shells', () => {
+    setActiveTab({ id: 'tab1', engineProfileId: null, status: 'running' })
+    setPaneAgents('tab1', [], 2)
+    const html = renderHTML()
+    expect(html).toContain('[running]')
+    expect(html).not.toContain('background shell')
+  })
+
+  it('renders nothing when idle with no agents and no shells', () => {
+    setActiveTab({ id: 'tab1', engineProfileId: null, status: 'idle' })
+    setPaneAgents('tab1', [], 0)
+    expect(renderHTML()).toBe('')
+  })
+
+  it('uses the statusBash token for the shell dot, not the agent token', () => {
+    setActiveTab({ id: 'tab1', engineProfileId: null, status: 'idle' })
+    setPaneAgents('tab1', [], 1)
+    // jsdom serializes inline styles as rgb(), not the source hex.
+    const html = renderHTML()
+    expect(html).toContain('rgb(255, 45, 149)')      // statusBash
+    expect(html).not.toContain('rgb(245, 158, 11)')  // statusWaitingChildren
   })
 })

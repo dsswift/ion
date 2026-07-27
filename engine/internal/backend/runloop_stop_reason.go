@@ -132,6 +132,24 @@ func (b *ApiBackend) dispatchStopReason(
 			return false
 		}
 
+		// The model has finished its turn. If the session still has background
+		// commands outstanding (Bash run_in_background + notify_on_complete),
+		// park instead of completing: the work is not done, it is merely not
+		// occupying a turn. The session layer revives the session with a fresh
+		// run when a command completes.
+		//
+		// Ordered AFTER the steer drain deliberately — an in-flight steer is
+		// immediate work the model should react to now, whereas parking is for
+		// when there is genuinely nothing left to do this turn.
+		//
+		// An empty outstanding set falls through to the normal completion path
+		// below, so a session that never used notify_on_complete behaves
+		// exactly as it did before this existed.
+		if outstanding := b.outstandingBackgroundTaskIDs(run); len(outstanding) > 0 {
+			b.parkForBackgroundTasks(run, conv, outstanding)
+			return true
+		}
+
 		// Save conversation
 		if err := conversation.Save(conv, ""); err != nil {
 			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation", map[string]any{

@@ -61,6 +61,62 @@ describe('evaluateCloseGuard', () => {
   })
 })
 
+describe('evaluateCloseGuard — background bash commands', () => {
+  // Closing a tab runs the engine's StopBackgroundTasksForOwner, which kills
+  // the session's running shell processes. A long build dying because a tab
+  // was closed is the same footgun as a killed sub-agent, so outstanding
+  // background commands block close exactly as running children do.
+  //
+  // This guard is the single authoritative one — the X button, middle-click,
+  // Cmd+W, the dropdown row, and the group-pill close path all funnel through
+  // closeTab, which calls it. Pinning it here covers every entry point.
+
+  it('blocks when an instance is waiting on background commands', () => {
+    const r = evaluateCloseGuard({
+      instances: [{ id: 'main', statusFields: { state: 'idle', backgroundShells: 2 }, agentStates: [] }],
+    })
+    expect(r.blocked).toBe(true)
+    expect(r.shellCount).toBe(2)
+    expect(r.orchestratorRunning).toBe(false)
+  })
+
+  it('sums outstanding commands across instances', () => {
+    const r = evaluateCloseGuard({
+      instances: [
+        { id: 'inst1', statusFields: { state: 'idle', backgroundShells: 1 }, agentStates: [] },
+        { id: 'inst2', statusFields: { state: 'idle', backgroundShells: 3 }, agentStates: [] },
+      ],
+    })
+    expect(r.shellCount).toBe(4)
+    expect(r.blocked).toBe(true)
+  })
+
+  it('does not block when no commands are outstanding', () => {
+    const r = evaluateCloseGuard({
+      instances: [{ id: 'main', statusFields: { state: 'idle', backgroundShells: 0 }, agentStates: [] }],
+    })
+    expect(r.blocked).toBe(false)
+    expect(r.shellCount).toBe(0)
+  })
+
+  it('does not block when the field is absent entirely (older engine)', () => {
+    const r = evaluateCloseGuard({
+      instances: [{ id: 'main', statusFields: { state: 'idle' }, agentStates: [] }],
+    })
+    expect(r.blocked).toBe(false)
+    expect(r.shellCount).toBe(0)
+  })
+
+  it('blocks on shells even when agents and orchestrator are both quiet', () => {
+    const r = evaluateCloseGuard({
+      instances: [
+        { id: 'main', statusFields: { state: 'idle', backgroundShells: 1 }, agentStates: [{ status: 'done' }] },
+      ],
+    })
+    expect(r.blocked).toBe(true)
+  })
+})
+
 describe('formatCloseGuardRefusal', () => {
   it('includes the tab id, orchestrator flag, and per-instance counts', () => {
     const r = evaluateCloseGuard({ instances: [{ id: 'main-abc', statusFields: { state: 'idle' }, agentStates: [{ status: 'running' }] }] })
@@ -68,5 +124,6 @@ describe('formatCloseGuardRefusal', () => {
     expect(msg).toContain('refused tab close')
     expect(msg).toContain('orchestratorRunning=false')
     expect(msg).toContain('main-a:1')
+    expect(msg).toContain('backgroundShells=0')
   })
 })

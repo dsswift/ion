@@ -30,6 +30,7 @@ struct JarvisArcReactorTheme: AppTheme {
     // at a glance, defeating the visual vocabulary the dot establishes
     // on the desktop and the other built-in themes.
     let statusWaitingChildren = Color(red: 0xF5 / 255, green: 0x9E / 255, blue: 0x0B / 255)
+    let statusBash = Color(red: 0xFF / 255, green: 0x2D / 255, blue: 0x95 / 255)
     // "Mixed failure" — same amber as statusWaitingChildren so the
     // amber = advisory vocabulary holds across themes.
     let statusWarning = Color(red: 0xF5 / 255, green: 0x9E / 255, blue: 0x0B / 255)

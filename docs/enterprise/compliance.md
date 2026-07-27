@@ -154,6 +154,49 @@ Required hooks are prepended to the handler chain for their respective hook poin
 
 The handler implementations must be provided by an extension that is installed and active. If a required hook's handler is not found at session start, the session fails to start with an error identifying the missing handler.
 
+## Plan-mode shell access
+
+Plan mode is read-only except for one seam: `limits.planModeAllowedBashCommands` names the Bash command prefixes a planning session may run. Because it is the only way a plan-mode session reaches a shell, it is worth setting explicitly rather than leaving to lower layers.
+
+```json
+{
+  "enterprise": {
+    "limits": {
+      "planModeAllowedBashCommands": ["git log", "git diff", "gh pr view", "ls"]
+    }
+  }
+}
+```
+
+The enterprise value is a **ceiling**. The developer's `~/.ion/engine.json`, any `.ion/engine.json` committed into a cloned repository, and the two client-supplied run-time paths (`set_plan_mode` overrides and per-prompt slash-command grants) are all intersected against it. Lower layers can narrow further but never widen.
+
+Three values with distinct meanings:
+
+| Enterprise value | Effect |
+|---|---|
+| omitted | No policy on this axis. Lower layers compose freely — the correct choice for unmanaged machines. |
+| `[]` | No Bash in plan mode, ever. Strips every lower-layer entry. |
+| `["git log", ...]` | Only these commands, plus narrower forms of them, survive from any lower layer. |
+
+Note this is independent of `toolRestrictions.deny: ["Bash"]`. Denying the Bash tool outright removes it everywhere, including outside plan mode; the plan-mode allowlist governs only what a *planning* session may run and leaves normal execution untouched. An organisation that wants shell access during implementation but not during planning sets the allowlist, not the tool denial.
+
+Full semantics, including how prefix matching decides what a ceiling entry sanctions, are in [Sealed Configuration → Plan-mode Bash allowlist](sealed-config.md#plan-mode-bash-allowlist).
+
+## Auditing enforcement
+
+When enterprise policy strips something from a merged config, the engine records an enforcement action rather than silently dropping it. This is what lets an administrator confirm a policy is active, and lets a developer discover why their config had no effect.
+
+| Action | Meaning |
+|---|---|
+| `provider_pruned` | A provider not on `allowedProviders` was removed. |
+| `provider_pinned` | An enterprise provider definition replaced a user-layer definition (base URL, auth header, backend). |
+| `mcp_pruned` | An MCP server was removed by `mcpAllowlist` / `mcpDenylist`. |
+| `plan_mode_bash_pruned` | A plan-mode Bash command was rejected by the enterprise ceiling. Subject is the rejected command. |
+
+Actions are recorded during config merge and drained once at serve startup, then emitted through the telemetry pipeline. The engine has no config-reload watcher, so a policy change is audited on the next start rather than live; the recorder is bounded (FIFO, 1024 actions) so nothing accumulates in the meantime. With central log collection configured they land alongside the rest of the engine's structured output — see [Central Log Collection](central-log-collection.md) and [Telemetry](telemetry.md).
+
+The recorder is bounded, so a consumer that never drains it keeps the most recent actions rather than growing without limit.
+
 ## Combining controls
 
 These controls work together. A typical enterprise deployment might combine several:
@@ -167,6 +210,9 @@ These controls work together. A typical enterprise deployment might combine seve
       "deny": ["Bash"]
     },
     "mcpAllowlist": ["filesystem", "github"],
+    "limits": {
+      "planModeAllowedBashCommands": ["git log", "git diff", "ls"]
+    },
     "permissions": {
       "mode": "ask"
     },
@@ -188,6 +234,7 @@ This configuration:
 - Restricts to Anthropic models only
 - Blocks the Bash tool (no shell access)
 - Limits MCP to filesystem and GitHub servers
+- Caps plan-mode shell access to a read-only command set
 - Requires user approval for all tool invocations
 - Enforces sandbox on all sessions
 - Ships telemetry to a central SIEM

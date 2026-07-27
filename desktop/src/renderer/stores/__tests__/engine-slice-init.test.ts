@@ -75,7 +75,6 @@ function buildHarness() {
     engineNotifications: new Map(),
     engineDialogs: new Map(),
     enginePinnedPrompt: new Map(),
-    engineUsage: new Map(),
     engineModelFallbacks: new Map(),
     closeTab: vi.fn(),
   }
@@ -173,7 +172,6 @@ describe('engine-slice — resetEngineInstance', () => {
       agentStates: [{ name: 'chief', status: 'idle' }],
       statusFields: { state: 'running' },
     }
-    state.engineUsage.set('tab1', { percent: 5, tokens: 100, cost: 0.001 })
 
     slice.resetEngineInstance!('tab1', instanceId)
 
@@ -190,8 +188,6 @@ describe('engine-slice — resetEngineInstance', () => {
     expect(inst?.permissionDenied).toBeNull()
     expect(inst?.conversationIds).toEqual([])
 
-    // Non-ConversationInstance Maps cleaned up.
-    expect(state.engineUsage.has('tab1')).toBe(false)
 
     // The instance pane entry itself is preserved.
     expect(state.conversationPanes.get('tab1')?.instances.some((i: any) => i.id === instanceId)).toBe(true)

@@ -61,7 +61,6 @@ function buildHarness() {
     engineNotifications: new Map(),
     engineDialogs: new Map(),
     enginePinnedPrompt: new Map(),
-    engineUsage: new Map(),
     engineModelFallbacks: new Map(),
     resources: {},
     resourceSubscriptions: new Map(),

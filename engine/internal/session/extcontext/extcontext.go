@@ -57,6 +57,17 @@ type SessionAccessor interface {
 	// This is the depth-0 arm of ctx.SteerSelf — depth-N contexts steer their
 	// dispatch's child run through the DispatchRegistry instead.
 	SteerSelfMainLoop(message string) bool
+
+	// ParkSelfMainLoop parks the session's OWN main run loop (the depth-0 /
+	// orchestrator run) on its outstanding background bash commands. Returns
+	// true when a live main run was signalled to park; false when there is no
+	// active run to park, or when nothing is outstanding to park on.
+	//
+	// This is the depth-0 arm of ctx.Suspend. A dispatched child suspends by
+	// signalling its own backend run, which a live runChild goroutine then
+	// revives; the root has no such goroutine, so parking it means ending the
+	// run and letting a background-command completion start a new one.
+	ParkSelfMainLoop() bool
 	Elicit(info extension.ElicitationRequestInfo) (map[string]interface{}, bool, error)
 	SuppressTool(name string)
 	CacheExtAgentStates(agents []types.AgentStateUpdate)
@@ -265,7 +276,6 @@ func NewExtContext(sa SessionAccessor, args ...interface{}) *extension.Context {
 	var depth int
 	var dispatchId string
 	var suspendFn func(awaitingDispatchIDs []string) error
-
 	for _, arg := range args {
 		switch v := arg.(type) {
 		case *DispatchRegistry:
@@ -275,6 +285,24 @@ func NewExtContext(sa SessionAccessor, args ...interface{}) *extension.Context {
 			depth = v.Depth
 			dispatchId = v.DispatchId
 			suspendFn = v.SuspendFn
+		}
+	}
+
+	// At depth 0 there is no dispatched run to suspend, but the ROOT session
+	// can still park — on its outstanding background bash commands. Wire
+	// ctx.Suspend to the root park path so an extension can end the
+	// orchestrator's turn deliberately, the same capability the engine
+	// exercises automatically at the turn boundary. Before this, depth 0
+	// rejected suspend outright because the capability did not exist.
+	if suspendFn == nil {
+		suspendFn = func(awaitingDispatchIDs []string) error {
+			if len(awaitingDispatchIDs) > 0 {
+				return fmt.Errorf("suspend with awaitingDispatchIds is only available inside a dispatched run")
+			}
+			if !sa.ParkSelfMainLoop() {
+				return fmt.Errorf("suspend unavailable: no active run to park, or no outstanding background commands to park on")
+			}
+			return nil
 		}
 	}
 

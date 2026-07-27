@@ -1,30 +1,22 @@
 import XCTest
 @testable import IonRemote
 
-/// Tests for `RemoteTabState.contextWindow` decoding and the
-/// `ConversationStatusBar.resolvedContextPercent` math.
+/// Tests for `RemoteTabState.contextWindow` decoding and the shipped
+/// `ConversationStatusBar.resolveContextPercent` math.
 ///
-/// The bug fixed in plan cosy-pacing-bee.md is that the iOS indicator
-/// computed `Double(tokens) / Double(pickerModel.contextWindow)` when
-/// the engine's `contextPercent` was null but `contextTokens` was set.
-/// On a conversation anchored to opus-4-7 (1M window) with the picker
-/// set to Sonnet 4.6, the local fallback returned 248% and the UI
-/// rendered nonsense.
-///
-/// The fix takes the new optional `RemoteTabState.contextWindow` (the
-/// engine's reported window) over the picker model's nominal window
-/// whenever both are present. We test the decode path (proving the new
-/// field round-trips) and reproduce the math here so a future
-/// regression in `resolvedContextPercent` fails this test, not a
-/// production user.
+/// These call the real resolver rather than re-implementing it. The previous
+/// version of this file carried a local `resolvePercent` copy behind a "kept
+/// in lockstep with the view" comment, and four of its six assertions
+/// exercised a branch the production call site could never reach — the only
+/// `ConversationStatusBar(...)` construction passed `contextTokens: nil`
+/// hardcoded, so the token path was dead code on iOS.
 final class ConversationStatusBarContextTests: XCTestCase {
     private let decoder = JSONDecoder()
 
     // MARK: - Decode
 
-    /// Round-trip the new optional `contextWindow` field. Absent decodes
-    /// to nil (cold-start tab); present decodes to its Int value (engine
-    /// has reported).
+    /// Round-trip the optional `contextWindow` field. Absent decodes to nil
+    /// (cold-start tab); present decodes to its Int value.
     func testRemoteTabStateDecodesContextWindow_Present() throws {
         let json = """
         {"id":"t1","title":"T","status":"idle","workingDirectory":"/","permissionMode":"auto","permissionQueue":[],"lastMessage":null,"contextTokens":497742,"contextWindow":1000000}
@@ -44,97 +36,88 @@ final class ConversationStatusBarContextTests: XCTestCase {
         XCTAssertNil(tab.contextWindow)
     }
 
-    // MARK: - Percent math
+    // MARK: - Percent math (the shipped resolver)
 
-    /// Mirrors the math in ConversationStatusBar.resolvedContextPercent.
-    /// Kept in lockstep with the view; any change in the view's
-    /// fallback chain must update both sides. The "engine window wins"
-    /// invariant is locked by the next test.
-    private func resolvePercent(
-        contextPercent: Double?,
-        contextTokens: Int?,
-        engineContextWindow: Int?,
-        pickerWindow: Int?
-    ) -> Double? {
-        if let cp = contextPercent { return cp }
-        guard let tokens = contextTokens else { return nil }
-        let denominator: Int
-        if let w = engineContextWindow, w > 0 {
-            denominator = w
-        } else if let w = pickerWindow, w > 0 {
-            denominator = w
-        } else {
-            return nil
-        }
-        return Double(tokens) / Double(denominator) * 100.0
-    }
-
-    func testEngineWindowWinsOverPickerWindow() {
-        // The original bug scenario: opus-running, picker on Sonnet.
-        // Pre-fix the indicator returned 248% (and the UI rendered
-        // nonsense). Post-fix the indicator returns ~50% because the
-        // engine's reported 1M window wins.
-        let pct = resolvePercent(
+    func testTokensOverSelectedWindow() {
+        // The reported bug: an idle conversation holding ~224k tokens showed
+        // 0%. The engine now publishes the absolute occupancy and the client
+        // divides it by the selected model's window.
+        let pct = ConversationStatusBar.resolveContextPercent(
             contextPercent: nil,
-            contextTokens: 497742,
-            engineContextWindow: 1_000_000,
-            pickerWindow: 200_000
+            contextTokens: 223_791,
+            selectedModelWindow: 1_000_000,
         )
         XCTAssertNotNil(pct)
-        XCTAssertEqual(pct!, 49.7742, accuracy: 0.01)
+        XCTAssertEqual(pct!, 22.4, accuracy: 0.1)
     }
 
-    func testFallsBackToPickerWindowWhenEngineWindowAbsent() {
-        // Cold-start tab: the engine hasn't reported a window yet but the
-        // user is typing. The picker model's nominal window is the
-        // documented fallback so the indicator renders something.
-        let pct = resolvePercent(
-            contextPercent: nil,
-            contextTokens: 50_000,
-            engineContextWindow: nil,
-            pickerWindow: 200_000
-        )
-        XCTAssertNotNil(pct)
-        XCTAssertEqual(pct!, 25.0, accuracy: 0.01)
+    func testModelSwitchRecomputes() {
+        // No engine command can change an idle session's model, so the
+        // picker-driven recompute must be pure client-side division.
+        let onOpus = ConversationStatusBar.resolveContextPercent(
+            contextPercent: nil, contextTokens: 220_000, selectedModelWindow: 1_000_000)
+        let onSonnet = ConversationStatusBar.resolveContextPercent(
+            contextPercent: nil, contextTokens: 220_000, selectedModelWindow: 200_000)
+        XCTAssertEqual(onOpus!, 22.0, accuracy: 0.01)
+        XCTAssertEqual(onSonnet!, 110.0, accuracy: 0.01)
     }
 
-    func testEnginePercentTakesPrecedenceOverLocalComputation() {
-        // When the engine has supplied a pre-computed percent, the local
-        // fallback never runs. This path was iOS-correct before the
-        // bug fix and must remain so.
-        let pct = resolvePercent(
-            contextPercent: 42.0,
-            contextTokens: 99_999,
-            engineContextWindow: 200_000,
-            pickerWindow: 1_000_000
-        )
-        XCTAssertEqual(pct, 42.0)
+    func testUncappedOverBudget() {
+        // 220k on a 100k model is 220%, not 100%. Over-budget is real
+        // information and must not be clamped away at the data layer.
+        let pct = ConversationStatusBar.resolveContextPercent(
+            contextPercent: nil, contextTokens: 220_000, selectedModelWindow: 100_000)
+        XCTAssertEqual(pct!, 220.0, accuracy: 0.01)
+    }
+
+    func testTokensWinOverEnginePercent() {
+        // The engine's percent is anchored to whatever window IT measured
+        // against, so it cannot react to the picker. Tokens win when present.
+        let pct = ConversationStatusBar.resolveContextPercent(
+            contextPercent: 42, contextTokens: 220_000, selectedModelWindow: 200_000)
+        XCTAssertEqual(pct!, 110.0, accuracy: 0.01)
+    }
+
+    func testFallsBackToEnginePercentWithoutTokens() {
+        // An older engine, or a backend that emits no usage events.
+        let pct = ConversationStatusBar.resolveContextPercent(
+            contextPercent: 42, contextTokens: nil, selectedModelWindow: 200_000)
+        XCTAssertEqual(pct!, 42.0, accuracy: 0.01)
     }
 
     func testNilWhenNoDataAtAll() {
-        // Brand-new tab with no engine response and no tokens.
-        let pct = resolvePercent(
-            contextPercent: nil,
-            contextTokens: nil,
-            engineContextWindow: 1_000_000,
-            pickerWindow: 200_000
-        )
-        XCTAssertNil(pct)
+        XCTAssertNil(ConversationStatusBar.resolveContextPercent(
+            contextPercent: nil, contextTokens: nil, selectedModelWindow: 200_000))
     }
 
-    func testEngineWindowZeroTreatedAsAbsent() {
-        // Some engine_status ticks arrive before the model is resolved
-        // and report contextWindow=0. The iOS view treats 0 as "not yet
-        // resolved" and falls back to the picker, matching the
-        // desktop's "do not overwrite with 0" behavior in
-        // engine-event-status.ts.
-        let pct = resolvePercent(
-            contextPercent: nil,
-            contextTokens: 50_000,
-            engineContextWindow: 0,
-            pickerWindow: 200_000
-        )
-        XCTAssertNotNil(pct)
-        XCTAssertEqual(pct!, 25.0, accuracy: 0.01)
+    func testNilWindowFallsBackToEnginePercent() {
+        // Picker model absent from the catalog and no engine window: the
+        // token path cannot resolve, so the engine's percent is all we have.
+        let pct = ConversationStatusBar.resolveContextPercent(
+            contextPercent: 42, contextTokens: 220_000, selectedModelWindow: nil)
+        XCTAssertEqual(pct!, 42.0, accuracy: 0.01)
+    }
+
+    // MARK: - Denominator resolution
+
+    func testWindowPrefersSelectedModelOverEngineWindow() {
+        let models = [
+            RemoteModelEntry(id: "claude-sonnet-4-6", providerId: "anthropic", label: "Sonnet 4.6",
+                             contextWindow: 200_000, hasAuth: true),
+        ]
+        let w = ConversationStatusBar.windowForModel(
+            "claude-sonnet-4-6", availableModels: models, engineContextWindow: 1_000_000)
+        XCTAssertEqual(w, 200_000)
+    }
+
+    func testWindowFallsBackToEngineWhenModelUnknown() {
+        let w = ConversationStatusBar.windowForModel(
+            "some-unlisted-model", availableModels: [], engineContextWindow: 1_000_000)
+        XCTAssertEqual(w, 1_000_000)
+    }
+
+    func testWindowNilWhenNeitherAvailable() {
+        XCTAssertNil(ConversationStatusBar.windowForModel(
+            "some-unlisted-model", availableModels: [], engineContextWindow: nil))
     }
 }

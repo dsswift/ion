@@ -34,6 +34,7 @@ func (b *ApiBackend) executeTools(
 	var telem TelemetryCollector
 	var spawnerFn tools.AgentSpawner
 	var bgOwner string
+	var bgRegistrar func(taskID, command string)
 	if run.cfg != nil {
 		hooks = run.cfg.Hooks
 		permEng = run.cfg.PermEngine
@@ -42,6 +43,7 @@ func (b *ApiBackend) executeTools(
 		telem = run.cfg.Telemetry
 		spawnerFn = run.cfg.AgentSpawner
 		bgOwner = run.cfg.BackgroundTaskOwner
+		bgRegistrar = run.cfg.RegisterOutstandingBackgroundTask
 	}
 	hookFn := hooks.OnToolCall
 	perToolHook := hooks.OnPerToolHook
@@ -61,6 +63,27 @@ func (b *ApiBackend) executeTools(
 	// attributed to their session and killed at session stop.
 	if bgOwner != "" {
 		gCtx = tools.WithBackgroundTaskOwner(gCtx, bgOwner)
+	}
+
+	// Stamp the outstanding-set registrar so a Bash call with
+	// notify_on_complete can register the task with the owning session, which
+	// is what makes the session hold for it at the turn boundary.
+	if bgRegistrar != nil {
+		gCtx = tools.WithOutstandingRegistrar(gCtx, bgRegistrar)
+	}
+
+	// Stamp the session key so the Skill tool resolves against this session's
+	// own skill registry. Without it a project-scoped skill loaded by another
+	// session would be reachable here, which is the cross-session leak the
+	// session-scoped registry exists to close. An empty key (API-backend path
+	// with no client session) leaves the context unstamped and the tool falls
+	// back to the global registry.
+	//
+	// run.opts is a pointer and is legitimately nil on paths that build an
+	// activeRun without RunOptions (child dispatch, direct executeTools
+	// callers), so it is nil-guarded the same way runloop_compaction.go does.
+	if run.opts != nil && run.opts.SessionKey != "" {
+		gCtx = tools.WithSkillSessionKey(gCtx, run.opts.SessionKey)
 	}
 
 	if spawnerFn != nil {

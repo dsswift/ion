@@ -58,6 +58,7 @@ struct ConversationStatusBar: View {
     struct EngineInputs: Equatable {
         let preferredModel: String
         let contextPercent: Double?
+        let contextTokens: Int?
         let engineContextWindow: Int?
         let extensionName: String?
     }
@@ -73,6 +74,7 @@ struct ConversationStatusBar: View {
         EngineInputs(
             preferredModel: fields?.model ?? fallbackPreferredModel,
             contextPercent: fields?.contextPercent,
+            contextTokens: fields?.contextTokens,
             engineContextWindow: (fields?.contextWindow ?? 0) > 0 ? fields?.contextWindow : nil,
             extensionName: fields?.extensionName,
         )
@@ -125,37 +127,85 @@ struct ConversationStatusBar: View {
         availableModels.first(where: { $0.id == effectiveModel })?.label ?? effectiveModel
     }
 
-    /// Resolved context percentage (0–100) from either direct percent or computed from tokens.
-    private var resolvedContextPercent: Double? {
+    /// Resolved context occupancy percentage. UNBOUNDED — may exceed 100.
+    ///
+    /// Tokens-first, matching the desktop: divide the engine's absolute
+    /// occupancy figure by the SELECTED model's window. No engine command can
+    /// change an idle session's model, so a picker-driven recompute has to be
+    /// client-side arithmetic — this is what makes switching a 220k-token
+    /// conversation from a 1M model to a 100k one read 220% immediately.
+    ///
+    /// `contextPercent` is the fallback for a session whose engine has not
+    /// reported a token count (an older engine, or a backend that emits no
+    /// usage). That percentage is anchored to whatever window the engine
+    /// measured against, so it cannot react to the picker.
+    ///
+    /// Not capped: over-budget is real information, and an operator at 220%
+    /// needs to see 220% rather than a figure identical to exactly-full.
+    /// Callers clamp for geometry only.
+    var resolvedContextPercent: Double? {
+        Self.resolveContextPercent(
+            contextPercent: contextPercent,
+            contextTokens: contextTokens,
+            selectedModelWindow: selectedModelWindow,
+        )
+    }
+
+    /// Pure form of the above, so every iOS surface that shows context usage
+    /// (this bar, the conversation header's fill strip) resolves one number
+    /// from one implementation and the two can never disagree.
+    static func resolveContextPercent(
+        contextPercent: Double?,
+        contextTokens: Int?,
+        selectedModelWindow: Int?,
+    ) -> Double? {
+        if let tokens = contextTokens, tokens > 0, let denominator = selectedModelWindow, denominator > 0 {
+            return Double(tokens) / Double(denominator) * 100.0
+        }
         if let cp = contextPercent {
             return cp
-        }
-        if let tokens = contextTokens {
-            // Prefer the engine-reported window over the picker-selected
-            // model's nominal window. They diverge whenever the user
-            // changes the picker between turns; honoring the engine's
-            // truth keeps the indicator accurate. Falls back to the
-            // picker model's window only when the engine has not yet
-            // reported (cold-start tabs). See plan cosy-pacing-bee.md for
-            // the regression this fix prevents.
-            let denominator: Int
-            if let engineWindow = engineContextWindow, engineWindow > 0 {
-                denominator = engineWindow
-            } else if let model = availableModels.first(where: { $0.id == effectiveModel }), model.contextWindow > 0 {
-                denominator = model.contextWindow
-            } else {
-                return nil
-            }
-            return Double(tokens) / Double(denominator) * 100.0
         }
         return nil
     }
 
+    /// Context window of a named model from the catalog, falling back to the
+    /// engine's reported window. Static so non-bar surfaces can resolve the
+    /// same denominator.
+    static func windowForModel(
+        _ modelId: String,
+        availableModels: [RemoteModelEntry],
+        engineContextWindow: Int?,
+    ) -> Int? {
+        if let model = availableModels.first(where: { $0.id == modelId }), model.contextWindow > 0 {
+            return model.contextWindow
+        }
+        if let engineWindow = engineContextWindow, engineWindow > 0 {
+            return engineWindow
+        }
+        return nil
+    }
+
+    /// Context window of the model currently SELECTED in the picker — the
+    /// display denominator. Falls back to the engine's window when the picker
+    /// model is not in the catalog (so the reading degrades to the engine's
+    /// own view rather than vanishing).
+    private var selectedModelWindow: Int? {
+        Self.windowForModel(effectiveModel, availableModels: availableModels, engineContextWindow: engineContextWindow)
+    }
+
+    /// Accessible name for the context ring. Carries the true uncapped
+    /// percentage plus the raw counts, since no number is rendered as text.
+    func contextAccessibilityLabel(pct: Double) -> String {
+        if let tokens = contextTokens, tokens > 0, let window = selectedModelWindow, window > 0 {
+            return "Context usage \(Int(pct)) percent, \(tokens) of \(window) tokens"
+        }
+        return "Context usage \(Int(pct)) percent"
+    }
+
     private var contextColor: Color {
         guard let pct = resolvedContextPercent else { return .secondary }
-        if pct >= 80 { return .red }
-        if pct >= 60 { return .orange }
-        return .secondary
+        // ContextUsageRing owns the one threshold ladder — see its `level(_:)`.
+        return ContextUsageRing.color(for: pct)
     }
 
     /// Effort levels the active model accepts (empty ⇒ unsupported).
@@ -340,18 +390,16 @@ struct ConversationStatusBar: View {
             }
             .buttonStyle(.plain)
 
-            // Context usage (only when data is available)
+            // Context usage (only when data is available). The ring replaced
+            // the percentage text, so the accessibility label is what carries
+            // the figure — including the true uncapped value when the arc
+            // itself has saturated.
             if let pct = resolvedContextPercent {
                 Button(action: onTapContextIndicator) {
-                    HStack(spacing: 4) {
-                        ProgressView(value: min(pct / 100.0, 1.0))
-                            .frame(width: 40)
-                            .tint(contextColor)
-                        Text("\(Int(pct))%")
-                            .foregroundStyle(contextColor)
-                    }
+                    ContextUsageRing(percent: pct, color: contextColor)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(contextAccessibilityLabel(pct: pct))
             }
         }
         .font(.caption2)

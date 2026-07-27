@@ -41,9 +41,48 @@ describe('palette parity', () => {
     expect(lightColors.statusQuestion).not.toBe(lightColors.statusRunning)
   })
 
-  // Inline `code` chip is a neutral subtle surface in every theme — never the
-  // accent tint. This keeps prose from smattering accent blue across every
-  // backticked token (accent stays reserved for genuine accents).
+  // The shell-activity dot (statusBash) fires when a shell is executing in a
+  // tab — a user-typed `!` command or an agent's background command. It must
+  // never be confusable with the error dot: error is the top-priority state in
+  // the cascade, so a "your build is running" pink that reads as red is an
+  // actively misleading signal. It must also stay distinct from the question
+  // dot, which sits adjacent in the priority order.
+  it('shell dot is distinct from the error and question dots in every palette', () => {
+    for (const [name, palette] of Object.entries({
+      dark: darkColors,
+      light: lightColors,
+      classic: classicColors,
+      hud: hudColors,
+    })) {
+      const p = palette as Record<string, string>
+      expect(p.statusBash, `${name}: statusBash must differ from statusError`).not.toBe(p.statusError)
+      expect(p.statusBash, `${name}: statusBash must differ from statusDead`).not.toBe(p.statusDead)
+      expect(p.statusBash, `${name}: statusBash must differ from statusQuestion`).not.toBe(
+        p.statusQuestion,
+      )
+      expect(p.statusBash, `${name}: statusBash must differ from statusPermission`).not.toBe(
+        p.statusPermission,
+      )
+      expect(
+        p.statusBash,
+        `${name}: statusBash must differ from statusWaitingChildren`,
+      ).not.toBe(p.statusWaitingChildren)
+    }
+  })
+
+  // Each palette tunes the shell dot for its own surface: blaze on the dark
+  // themes, deepened on light, saturated-but-restrained in Classic's earthy
+  // register. Pinning the values keeps a future palette edit from drifting one
+  // theme back toward the washed-out mauve (#cc6b9a) that Classic and HUD
+  // previously shared, or toward the error red.
+  it('shell dot is tuned per theme', () => {
+    expect(darkColors.statusBash).toBe('#ff2d95')
+    expect(hudColors.statusBash).toBe('#ff2d95')
+    expect(lightColors.statusBash).toBe('#e6007a')
+    expect(classicColors.statusBash).toBe('#e0559b')
+  })
+
+
   it('inline-code chip is neutral, decoupled from the accent tint', () => {
     for (const palette of [darkColors, lightColors, classicColors, hudColors]) {
       const p = palette as Record<string, string>
@@ -77,8 +116,12 @@ describe('Jarvis HUD freeze', () => {
     statusErrorBg: 'rgba(196, 112, 96, 0.08)',
     statusWarning: '#f59e0b',
     statusDead: '#c47060',
-    statusBash: '#cc6b9a',
-    statusBashGlow: 'rgba(204, 107, 154, 0.4)',
+    // statusBash / statusBashGlow are deliberately NOT frozen here. This map
+    // pins values HUD and Classic share; the shell dot is now tuned per theme
+    // (blaze #ff2d95 on the dark HUD surface, a restrained #e0559b in
+    // Classic's earthy register), so a shared pin would be wrong for one of
+    // them. Both are pinned individually by the "shell dot is tuned per theme"
+    // test above, which is the stronger guard.
     statusPermission: '#d97757',
     statusPermissionGlow: 'rgba(217, 119, 87, 0.4)',
     statusWaitingChildren: '#f59e0b',

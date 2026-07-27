@@ -75,8 +75,14 @@ export const darkColors = {
   statusErrorBg: 'rgba(239, 68, 68, 0.10)',
   statusWarning: '#f59e0b',
   statusDead: '#f87171',
-  statusBash: '#ec4899',
-  statusBashGlow: 'rgba(236, 72, 153, 0.4)',
+  // Shell-activity dot — a shell is executing in this tab, whether the user
+  // typed a `!` command or an agent started a background command. Blaze pink:
+  // deliberately far from statusError's red (#f87171), since error is the
+  // top-priority state and must never be mistaken for "a shell is running",
+  // and far from the violet statusQuestion (#A78BFA). Pinned by
+  // palette-parity.test.ts.
+  statusBash: '#ff2d95',
+  statusBashGlow: 'rgba(255, 45, 149, 0.4)',
   statusPermission: '#f59e0b',
   statusPermissionGlow: 'rgba(245, 158, 11, 0.4)',
   // "Awaiting children" state — orchestrator is idle but dispatched

@@ -12,7 +12,11 @@ import { getRemoteTabStates } from './snapshot'
 import { startGitWatcherBridge, stopGitWatcherBridge } from './git-watcher-bridge'
 import { focusState } from '../git/focus-state'
 import { probeRelayAuthConfig, composeOidcScope } from './relay-auth'
-import { getConfiguredOidcClientId } from '../oauth/entra-auth'
+import {
+  clearResolvedRelayAuth,
+  sendRelayConfigToPeers,
+  setResolvedRelayAuth,
+} from './relay-config-push'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -63,31 +67,14 @@ function scheduleTokenRefresh(oidcScope: string, expiresAtMs: number): void {
           warn('remote_transport: proactive token refresh failed, relay will reconnect on expiry', { error: result.error ?? 'no token' })
           return
         }
-        const freshToken = result.data.accessToken
         const freshExpiry = result.data.expiresAt ?? (Date.now() + 60 * 60 * 1000)
         log('remote_transport: proactive token refresh succeeded, pushing relay_config')
 
-        // Push fresh relay_config to iOS with the new token in relayApiKey.
-        // iOS uses relayApiKey to connect to the relay, so this keeps it current.
-        const s = readSettings()
-        const peerRelayUrl = (s.relayUrl as string) || ''
-        if (peerRelayUrl && state.remoteTransport) {
-          state.remoteTransport.send({
-            type: 'desktop_relay_config',
-            relayUrl: peerRelayUrl,
-            relayApiKey: freshToken,
-            authMode: 'oidc',
-            relayOidcIssuer: (s.relayOidcIssuer as string) || '',
-            relayOidcAudience: (s.relayOidcAudience as string) || '',
-            // Composed scope — iOS passes it verbatim to Entra (idempotent
-            // when settings already hold the composed form).
-            relayOidcRequiredScope: composeOidcScope(
-              (s.relayOidcAudience as string) || '',
-              (s.relayOidcRequiredScope as string) || ''
-            ),
-            relayOidcClientId: getConfiguredOidcClientId(),
-          })
-        }
+        // Push a fresh relay_config so iOS reconnects with a current token.
+        // sendRelayConfigToPeers mints its own token from the same scope and
+        // refuses to send when the mint fails — an empty credential would
+        // overwrite the phone's stored relay config with nothing.
+        await sendRelayConfigToPeers('proactive-token-refresh')
 
         // Schedule the next refresh.
         scheduleTokenRefresh(oidcScope, freshExpiry)
@@ -132,6 +119,7 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
 
   if (state.remoteTransport) {
     clearTokenRefreshTimer()
+    clearResolvedRelayAuth()
     stopTabSnapshotPolling()
     stopGitWatcherBridge()
     state.remoteTransport.stop().catch((err) => warn('remote_transport: stop failed during re-init', { error: String(err) }))
@@ -165,6 +153,14 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
     const scope = composeOidcScope(oidcAudience, oidcRequiredScope)
     log('remote_transport: using OIDC credential provider', { scope })
     getCredential = buildGetCredential(scope)
+    // Record what the transport actually resolved so the iOS push doesn't
+    // depend on settings.json still holding these keys when it fires.
+    setResolvedRelayAuth({
+      mode: 'oidc',
+      issuer: (settings.relayOidcIssuer as string) || '',
+      audience: oidcAudience,
+      scope,
+    })
   }
 
   state.remoteTransport = new RemoteTransport({
@@ -198,6 +194,15 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
         const scope = composeOidcScope(probed.audience, probed.requiredScope)
         log('remote_transport: relay requires OIDC, upgrading credential provider in-place', { issuer: probed.issuer, audience: probed.audience, scope })
         const credential = buildGetCredential(scope)
+        // Record the probe's resolution before the hot-swap: peer-connect can
+        // fire at any moment after this and must see OIDC, not the stale
+        // stored mode.
+        setResolvedRelayAuth({
+          mode: 'oidc',
+          issuer: probed.issuer,
+          audience: probed.audience,
+          scope,
+        })
         // Hot-swap: update the relay credential on the running transport.
         // This reconnects relay clients with OIDC tokens but leaves the
         // LAN server, Bonjour, snapshot polling, and git watcher intact.
@@ -266,53 +271,18 @@ export function initRemoteTransport(settings: Record<string, unknown>): void {
           availableModels: modelCache.models.length > 0 ? modelCache.models : undefined,
           resources: Object.keys(resourceManifest).length > 0 ? resourceManifest : undefined,
         })
-        const peerRelayUrl = (peerSettings.relayUrl as string) || ''
-        const peerRelayApiKey = (peerSettings.relayApiKey as string) || ''
-        if (peerRelayUrl) {
-          // Build the relay_config payload: include OIDC fields when in OIDC mode.
-          const peerAuthMode = (peerSettings.relayAuthMode as 'psk' | 'oidc' | undefined) || 'psk'
-          if (peerAuthMode === 'oidc') {
-            // In OIDC mode, mint a fresh token to send as relayApiKey.
-            // peerRelayApiKey is empty (the credential lives in the in-memory
-            // factory, not settings), so iOS needs a freshly-minted token to
-            // connect before it has its own OIDCTokenManager running.
-            const oidcAudience = (peerSettings.relayOidcAudience as string) || ''
-            const oidcScope = (peerSettings.relayOidcRequiredScope as string) || ''
-            const scope = composeOidcScope(oidcAudience, oidcScope)
-            void (async () => {
-              try {
-                const result = await engineBridge.request<{ accessToken?: string; expiresAt?: number }>('oidc_token', { oidcScope: scope })
-                const freshToken = (result.ok && result.data?.accessToken) ? result.data.accessToken : peerRelayApiKey
-                if (!freshToken) {
-                  warn('remote_transport: peer-connected OIDC token mint failed, iOS may not connect', { error: result.error ?? 'no token' })
-                }
-                state.remoteTransport?.send({
-                  type: 'desktop_relay_config' as const,
-                  relayUrl: peerRelayUrl,
-                  relayApiKey: freshToken,
-                  authMode: 'oidc' as const,
-                  relayOidcIssuer: (peerSettings.relayOidcIssuer as string) || '',
-                  relayOidcAudience: oidcAudience,
-                  // Always the COMPOSED scope (api://<audience>/<scope>) — iOS
-                  // passes it verbatim to Entra. composeOidcScope is idempotent
-                  // so an already-composed settings value passes through.
-                  relayOidcRequiredScope: scope,
-                  relayOidcClientId: getConfiguredOidcClientId(),
-                })
-                if (result.data?.expiresAt) {
-                  scheduleTokenRefresh(scope, result.data.expiresAt)
-                }
-              } catch (err) {
-                warn('remote_transport: peer-connected OIDC token mint threw', { error: String(err) })
-              }
-            })()
-          } else {
-            state.remoteTransport?.send({
-              type: 'desktop_relay_config' as const,
-              relayUrl: peerRelayUrl,
-              relayApiKey: peerRelayApiKey,
-            })
-          }
+        // Relay config for iOS. The single push path resolves the auth mode
+        // from the transport's own resolution (falling back to settings),
+        // mints a fresh OIDC token when needed, and refuses to send a
+        // credential-less config — an empty relayApiKey would overwrite the
+        // phone's stored relay record and break its reconnect.
+        const pushed = await sendRelayConfigToPeers('peer-connected')
+        if (pushed.expiresAt && pushed.scope) {
+          // Scope comes from the push result, not from resolved-auth state:
+          // the refresh must mint against the same scope the push used, and a
+          // `?? ''` fallback would arm a refresh that fails at mint time and
+          // ends the chain (no re-schedule on that path).
+          scheduleTokenRefresh(pushed.scope, pushed.expiresAt)
         }
         const profiles = Array.isArray(peerSettings.engineProfiles) ? peerSettings.engineProfiles : []
         state.remoteTransport?.send({ type: 'desktop_engine_profiles', profiles })

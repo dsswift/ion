@@ -1,6 +1,8 @@
 package session
 
 import (
+	"encoding/json"
+	"strings"
 	"sync"
 	"testing"
 
@@ -141,5 +143,49 @@ func TestBuildSessionStatusMirror_StatusFieldsSessionIDOverrides(t *testing.T) {
 	mirror := buildSessionStatusMirror("override-key", f, s)
 	if mirror.SessionStatus.SessionID != "fresh-conv" {
 		t.Errorf("expected StatusFields.SessionID to win, got %q", mirror.SessionStatus.SessionID)
+	}
+}
+
+// TestBuildSessionStatusMirror_ProjectsBackgroundCounts pins both outstanding-
+// work counters onto the mirror. BackgroundShellCount is what lets a consumer
+// reading only engine_session_status tell a parked session — idle orchestrator,
+// background commands still in flight — from a plain idle one.
+//
+// Red before the field existed: the mirror projected BackgroundAgents and
+// dropped BackgroundShells, so a parked session was indistinguishable from idle
+// on this event.
+func TestBuildSessionStatusMirror_ProjectsBackgroundCounts(t *testing.T) {
+	f := &types.StatusFields{
+		State:            "idle",
+		BackgroundAgents: 2,
+		BackgroundShells: 3,
+	}
+	mirror := buildSessionStatusMirror("counts-key", f, nil)
+	if got := mirror.SessionStatus.BackgroundAgentCount; got != 2 {
+		t.Errorf("BackgroundAgentCount = %d, want 2", got)
+	}
+	if got := mirror.SessionStatus.BackgroundShellCount; got != 3 {
+		t.Errorf("BackgroundShellCount = %d, want 3", got)
+	}
+}
+
+// The mirror crosses a language boundary, so the wire shape is the contract a
+// TS/Swift consumer decodes — a Go struct-equality assertion would not catch a
+// wrong or missing json tag. Pins the key name and the omitempty behavior.
+func TestSessionStatus_BackgroundShellCountSerialization(t *testing.T) {
+	withShells, err := json.Marshal(types.SessionStatus{Key: "k", State: "idle", BackgroundShellCount: 4})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(withShells), `"backgroundShellCount":4`) {
+		t.Errorf("expected backgroundShellCount on the wire, got %s", withShells)
+	}
+
+	zero, err := json.Marshal(types.SessionStatus{Key: "k", State: "idle"})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(zero), "backgroundShellCount") {
+		t.Errorf("expected backgroundShellCount omitted when zero, got %s", zero)
 	}
 }

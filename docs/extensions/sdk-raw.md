@@ -246,6 +246,24 @@ Response:
 
 The `found` field is `true` when a running background dispatch was found and recalled, `false` otherwise.
 
+### ext/task_suspend
+
+Ends the current LLM run without completing it. Two shapes, distinguished by depth:
+
+```json
+{"jsonrpc":"2.0","id":100003,"method":"ext/task_suspend","params":{}}
+```
+
+```json
+{"jsonrpc":"2.0","id":100004,"method":"ext/task_suspend","params":{"awaitingDispatchIds":["d-1","d-2"]}}
+```
+
+Inside a dispatched run (depth >= 1) the agent's LLM exits cleanly and shows as idle/suspended, the parent's `OnComplete` does NOT fire, and the run blocks until a `sendPrompt` to this session arrives — or, when `awaitingDispatchIds` is given, until every listed child dispatch has completed.
+
+At depth 0 (the orchestrator) the root run ends and the session parks on its outstanding background bash commands, resuming when one completes. The root has no child goroutine to revive, so the engine starts a fresh run instead. See [ADR-023](../architecture/adr/023-root-session-park-and-wake.md).
+
+Rejected with an error when there is nothing to park on — at depth 0 that means no active run, or no outstanding commands started with `notify_on_complete: true`. `awaitingDispatchIds` is rejected at depth 0: child dispatches only exist inside a dispatched run.
+
 ### ext/get_session_memory
 
 Returns the current session memory content.

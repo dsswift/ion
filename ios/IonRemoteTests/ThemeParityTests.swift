@@ -92,6 +92,7 @@ final class ThemeParityTests: XCTestCase {
         case "statusError": return theme.statusError
         case "statusPending": return theme.statusPending
         case "statusWaitingChildren": return theme.statusWaitingChildren
+        case "statusBash": return theme.statusBash
         case "statusWarning": return theme.statusWarning
         case "surfaceElevated": return theme.surfaceElevated
         case "codeBg": return theme.codeBg

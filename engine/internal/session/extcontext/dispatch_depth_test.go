@@ -37,7 +37,7 @@ func (a *depthTestAccessor) Emit(ev types.EngineEvent) {
 	a.events = append(a.events, ev)
 	a.mu.Unlock()
 }
-func (a *depthTestAccessor) SendAbort()              {}
+func (a *depthTestAccessor) SendAbort()                   {}
 func (a *depthTestAccessor) RootContext() context.Context { return context.Background() }
 func (a *depthTestAccessor) SendPrompt(text string, model string, bash []string) error {
 	return a.SendPromptWithKind(text, model, bash, "")
@@ -46,21 +46,22 @@ func (a *depthTestAccessor) SendPromptWithKind(text string, _ string, _ []string
 	return nil
 }
 func (a *depthTestAccessor) SteerSelfMainLoop(message string) bool { return false }
+func (a *depthTestAccessor) ParkSelfMainLoop() bool                { return false }
 func (a *depthTestAccessor) Elicit(info extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
 }
-func (a *depthTestAccessor) SuppressTool(name string)                              {}
-func (a *depthTestAccessor) CacheExtAgentStates(agents []types.AgentStateUpdate)   {}
-func (a *depthTestAccessor) RegisterAgent(name string, handle types.AgentHandle)   {}
-func (a *depthTestAccessor) DeregisterAgent(name string)                           {}
-func (a *depthTestAccessor) RegisterAgentSpec(spec types.AgentSpec)                {}
-func (a *depthTestAccessor) DeregisterAgentSpec(name string)                       {}
+func (a *depthTestAccessor) SuppressTool(name string)                            {}
+func (a *depthTestAccessor) CacheExtAgentStates(agents []types.AgentStateUpdate) {}
+func (a *depthTestAccessor) RegisterAgent(name string, handle types.AgentHandle) {}
+func (a *depthTestAccessor) DeregisterAgent(name string)                         {}
+func (a *depthTestAccessor) RegisterAgentSpec(spec types.AgentSpec)              {}
+func (a *depthTestAccessor) DeregisterAgentSpec(name string)                     {}
 func (a *depthTestAccessor) LookupAgentSpec(name string) (types.AgentSpec, bool) {
 	return types.AgentSpec{}, false
 }
-func (a *depthTestAccessor) LookupExtDisplayName(name string) string { return "" }
-func (a *depthTestAccessor) ExtGroup() *extension.ExtensionGroup     { return nil }
-func (a *depthTestAccessor) ExtConfig() *extension.ExtensionConfig   { return nil }
+func (a *depthTestAccessor) LookupExtDisplayName(name string) string  { return "" }
+func (a *depthTestAccessor) ExtGroup() *extension.ExtensionGroup      { return nil }
+func (a *depthTestAccessor) ExtConfig() *extension.ExtensionConfig    { return nil }
 func (a *depthTestAccessor) ProcRegistry() *extension.ProcessRegistry { return nil }
 func (a *depthTestAccessor) NewChildBackend() backend.RunBackend {
 	b := backend.NewApiBackend()
@@ -69,13 +70,13 @@ func (a *depthTestAccessor) NewChildBackend() backend.RunBackend {
 	}
 	return b
 }
-func (a *depthTestAccessor) BumpParentProgress()                         {}
-func (a *depthTestAccessor) AllocatePlanFilePath(_ string) string                { return "/tmp/.ion/plans/plan.md" }
-func (a *depthTestAccessor) EmitDispatchCountStatus(_ string)            {}
-func (a *depthTestAccessor) EngineConfig() *types.EngineRuntimeConfig    { return a.config }
-func (a *depthTestAccessor) ClaudeCompat() bool { return false }
+func (a *depthTestAccessor) BumpParentProgress()                                  {}
+func (a *depthTestAccessor) AllocatePlanFilePath(_ string) string                 { return "/tmp/.ion/plans/plan.md" }
+func (a *depthTestAccessor) EmitDispatchCountStatus(_ string)                     {}
+func (a *depthTestAccessor) EngineConfig() *types.EngineRuntimeConfig             { return a.config }
+func (a *depthTestAccessor) ClaudeCompat() bool                                   { return false }
 func (a *depthTestAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
-func (a *depthTestAccessor) ResolveTier(name string) string              { return name }
+func (a *depthTestAccessor) ResolveTier(name string) string                       { return name }
 func (a *depthTestAccessor) PermissionCheck(toolName string, input map[string]interface{}) (string, string) {
 	return "", ""
 }
@@ -83,25 +84,25 @@ func (a *depthTestAccessor) McpConnections() []*mcp.Connection { return nil }
 func (a *depthTestAccessor) SearchHistory(query string, maxResults int) []extension.HistoryMatch {
 	return nil
 }
-func (a *depthTestAccessor) GetSessionMemory() string      { return "" }
+func (a *depthTestAccessor) GetSessionMemory() string        { return "" }
 func (a *depthTestAccessor) SetSessionMemory(content string) {}
 func (a *depthTestAccessor) TranslateEvent(ev types.NormalizedEvent, contextWindow int) types.EngineEvent {
 	return types.EngineEvent{}
 }
-func (a *depthTestAccessor) SetPlanMode(enabled bool, source string)       {}
-func (a *depthTestAccessor) GetPlanModeState() (bool, string)              { return false, "" }
+func (a *depthTestAccessor) SetPlanMode(enabled bool, source string) {}
+func (a *depthTestAccessor) GetPlanModeState() (bool, string)        { return false, "" }
 func (a *depthTestAccessor) AppendOrUpdateAgentState(state types.AgentStateUpdate) string {
 	return state.ID
 }
 func (a *depthTestAccessor) UpdateAgentStateByID(id string, updater func(*types.AgentStateUpdate)) {}
 func (a *depthTestAccessor) UpsertAgentStateByID(id string, seed types.AgentStateUpdate, updater func(*types.AgentStateUpdate)) {
 }
-func (a *depthTestAccessor) EmitAgentSnapshot(reason string)                                       {}
-func (a *depthTestAccessor) ResourceBroker() *resource.Broker                                      { return nil }
-func (a *depthTestAccessor) GlobalResourceBroker() *resource.Broker                                { return nil }
-func (a *depthTestAccessor) BroadcastNotification(opts types.NotifyOpts)                           {}
-func (a *depthTestAccessor) BroadcastIntercept(opts extension.InterceptOpts)                       {}
-func (a *depthTestAccessor) ListAllSessions() []extension.SessionListEntry                         { return nil }
+func (a *depthTestAccessor) EmitAgentSnapshot(reason string)                 {}
+func (a *depthTestAccessor) ResourceBroker() *resource.Broker                { return nil }
+func (a *depthTestAccessor) GlobalResourceBroker() *resource.Broker          { return nil }
+func (a *depthTestAccessor) BroadcastNotification(opts types.NotifyOpts)     {}
+func (a *depthTestAccessor) BroadcastIntercept(opts extension.InterceptOpts) {}
+func (a *depthTestAccessor) ListAllSessions() []extension.SessionListEntry   { return nil }
 func (a *depthTestAccessor) SendToSession(senderKey, targetKey, kind string, payload map[string]interface{}) error {
 	return nil
 }
@@ -114,7 +115,7 @@ func (a *depthTestAccessor) RunOnceCheck(operationID string, debounceMs int64) (
 	return false, ""
 }
 func (a *depthTestAccessor) RunOnceComplete(operationID string, failed bool) {}
-func (a *depthTestAccessor) Telemetry() *telemetry.Collector { return a.telem }
+func (a *depthTestAccessor) Telemetry() *telemetry.Collector                 { return a.telem }
 
 func (a *depthTestAccessor) emittedEvents() []types.EngineEvent {
 	a.mu.Lock()
@@ -134,15 +135,15 @@ func TestDepthGuard(t *testing.T) {
 		perDispatchMax int
 		wantAllowed    bool
 	}{
-		{"depth0_default_cap3_allowed", 0, 0, 0, true},            // child=1 < cap=3
-		{"depth1_default_cap3_allowed", 1, 0, 0, true},            // child=2 < cap=3
-		{"depth2_default_cap3_blocked", 2, 0, 0, false},           // child=3 >= cap=3
-		{"depth0_config_cap2_allowed", 0, 2, 0, true},             // child=1 < cap=2
-		{"depth1_config_cap2_blocked", 1, 2, 0, false},            // child=2 >= cap=2
-		{"depth0_perdispatch_cap1_blocked", 0, 0, 1, false},       // child=1 >= cap=1
-		{"depth0_perdispatch_cap5_allowed", 0, 0, 5, true},        // child=1 < cap=5
-		{"perdispatch_overrides_config", 1, 2, 5, true},           // child=2, config=2 but per-dispatch=5 wins
-		{"depth0_config_cap1_blocked", 0, 1, 0, false},            // child=1 >= cap=1
+		{"depth0_default_cap3_allowed", 0, 0, 0, true},      // child=1 < cap=3
+		{"depth1_default_cap3_allowed", 1, 0, 0, true},      // child=2 < cap=3
+		{"depth2_default_cap3_blocked", 2, 0, 0, false},     // child=3 >= cap=3
+		{"depth0_config_cap2_allowed", 0, 2, 0, true},       // child=1 < cap=2
+		{"depth1_config_cap2_blocked", 1, 2, 0, false},      // child=2 >= cap=2
+		{"depth0_perdispatch_cap1_blocked", 0, 0, 1, false}, // child=1 >= cap=1
+		{"depth0_perdispatch_cap5_allowed", 0, 0, 5, true},  // child=1 < cap=5
+		{"perdispatch_overrides_config", 1, 2, 5, true},     // child=2, config=2 but per-dispatch=5 wins
+		{"depth0_config_cap1_blocked", 0, 1, 0, false},      // child=1 >= cap=1
 	}
 
 	for _, tc := range cases {
@@ -417,10 +418,10 @@ func TestResolveMaxDispatchDepth(t *testing.T) {
 		engineCfg   int
 		want        int
 	}{
-		{0, 0, DefaultMaxDispatchDepth},  // both unset -> default
-		{0, 5, 5},                        // engine config wins
-		{3, 5, 3},                        // per-dispatch wins
-		{7, 0, 7},                        // per-dispatch with no config
+		{0, 0, DefaultMaxDispatchDepth},   // both unset -> default
+		{0, 5, 5},                         // engine config wins
+		{3, 5, 3},                         // per-dispatch wins
+		{7, 0, 7},                         // per-dispatch with no config
 		{-1, -1, DefaultMaxDispatchDepth}, // negative treated as unset
 	}
 

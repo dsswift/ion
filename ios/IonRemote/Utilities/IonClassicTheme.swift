@@ -22,6 +22,7 @@ struct IonClassicTheme: AppTheme {
     let statusError = Color(hex: 0xC47060)                    // statusError
     let statusPending = Color(hex: 0x8A8A80)                  // statusIdle
     let statusWaitingChildren = Color(hex: 0xF59E0B)          // statusWaitingChildren
+    let statusBash = Color(hex: 0xE0559B)                     // statusBash
     let statusWarning = Color(hex: 0xF59E0B)                  // statusWarning
     let surfaceElevated = Color(hex: 0x353530)                // surfacePrimary
     let codeBg = Color(hex: 0x1A1A18)                         // codeBg

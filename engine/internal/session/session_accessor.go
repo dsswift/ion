@@ -8,8 +8,8 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/modelconfig"
-	"github.com/dsswift/ion/engine/internal/plugins"
 	"github.com/dsswift/ion/engine/internal/permissions"
+	"github.com/dsswift/ion/engine/internal/plugins"
 	"github.com/dsswift/ion/engine/internal/resource"
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -104,6 +104,17 @@ func (a *sessionAccessor) SteerSelfMainLoop(message string) bool {
 	outcome := a.m.SteerAgent(a.key, "", message)
 	utils.LogWithFields(utils.LevelInfo, "session", "sessionaccessor.steerselfmainloop", map[string]any{"session_id": a.key, "count": len(message), "outcome": outcome, "delivered": outcome.Delivered()})
 	return outcome.Delivered()
+}
+
+// ParkSelfMainLoop parks the session's own main run on its outstanding
+// background bash commands. See Manager.ParkMainLoop for the mechanics and the
+// reason a root park differs from a dispatched child's suspend.
+func (a *sessionAccessor) ParkSelfMainLoop() bool {
+	parked := a.m.ParkMainLoop(a.key)
+	utils.LogWithFields(utils.LevelInfo, "session", "sessionaccessor.parkselfmainloop", map[string]any{
+		"session_id": a.key, "parked": parked,
+	})
+	return parked
 }
 
 func (a *sessionAccessor) SuppressTool(name string) {

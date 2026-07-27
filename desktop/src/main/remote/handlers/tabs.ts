@@ -9,6 +9,7 @@ import { readSettings, readClaudeCompat } from '../../settings-store'
 import { getRemoteTabStates } from '../snapshot'
 import { autoPullDiagnosticLogs } from './diagnostics'
 import { sendSync } from './tabs-sync'
+import { evaluateRemoteCloseGuard, formatRemoteCloseGuardRefusal } from './tabs-close-guard'
 import { resolveTabSessionChain, paginateHistory, planPathFromHistory, toRemoteMessage } from './tabs-session-chain'
 import { mapSessionHistory } from '../../../shared/session-message-mapper'
 import { shouldServeLoad } from './load-conversation-gate'
@@ -300,6 +301,23 @@ export async function handleCreateTerminalTab(cmd: Extract<RemoteCommand, { type
 
 export function handleCloseTab(cmd: Extract<RemoteCommand, { type: 'desktop_close_tab' }>): void {
   const tabId = cmd.tabId
+
+  // Same rule the desktop enforces on Cmd+W: refuse the close while the
+  // orchestrator, a dispatched agent, or a background bash command is still
+  // in flight. Closing anyway stops the engine session and orphans that work,
+  // so the phone must not be able to do what the desktop refuses. The guard
+  // reads the projected tab states (the cache the iOS snapshot itself is served
+  // from) because conversationPanes lives in the renderer.
+  const cachedTabs = state.rendererSnapshotCache?.tabs ?? []
+  const guard = evaluateRemoteCloseGuard(cachedTabs.find((t) => t.id === tabId))
+  if (guard.blocked) {
+    // No desktop_tab_closed is sent, so the phone's next snapshot tick restores
+    // the row if it removed it optimistically — the snapshot is authoritative
+    // for tab existence, exactly as it is for every other tab field.
+    warn('close_tab refused: work still in flight', formatRemoteCloseGuardRefusal(tabId, guard))
+    return
+  }
+
   sessionPlane.closeTab(tabId)
   terminalManager.destroyByPrefix(`${tabId}:`)
   // Conversations now key their engine session by the bare tabId (ADR-010),

@@ -317,8 +317,11 @@ Reports session-level status changes.
 | `model`             | string             | Active model                  |
 | `contextPercent`    | number             | Context window utilization %  |
 | `contextWindow`     | number             | Context window size in tokens |
+| `contextTokens`     | number             | Absolute context-window occupancy in tokens. The numerator a consumer needs to recompute the percentage against a different model's window. |
 | `runCostUsd`        | number             | Per-run cost in USD (cache-aware, descendants included). Replaces former `totalCostUsd`. |
 | `conversationCostUsd` | number           | Cumulative conversation cost (this session + all descendant dispatches) in USD. |
+| `backgroundAgents`  | number             | Dispatched background agents still running. |
+| `backgroundShells`  | number             | Outstanding background bash commands (`run_in_background` + `notify_on_complete`) the session is waiting on. When > 0 the orchestrator may be idle while real work is in flight. Commands started without `notify_on_complete` are not counted — nothing is waiting on them. |
 | `permissionDenials` | PermissionDenial[] | Denied tool calls             |
 
 #### engine_working_message
@@ -859,10 +862,12 @@ Typed per-session status snapshot. Emitted alongside the legacy `engine_status` 
 | `lastEmittedAt` | number | Unix-ms timestamp of this emission |
 | `hasInflightRun` | boolean | True when the backend has a live run |
 | `backgroundAgentCount` | number | Number of background dispatch agents still running |
+| `backgroundShellCount` | number | Outstanding background bash commands the session is waiting on. The shell counterpart to `backgroundAgentCount`, so a consumer reading only this event can tell a parked session (idle orchestrator, commands in flight) from a plain idle one. |
 | `permissionDenialsPending` | array | Unresolved AskUserQuestion / ExitPlanMode entries |
 | `model` | string | Model the most recent run resolved to |
 | `contextPercent` | number | Context-window usage percent |
 | `contextWindow` | number | Model's context window in tokens |
+| `contextTokens` | number | Absolute context-window occupancy in tokens. Mirrors `StatusFields.contextTokens`. |
 | `runCostUsd` | number | Per-run cost in USD (cache-aware). Replaces former `totalCostUsd`. |
 | `conversationCostUsd` | number | Cumulative conversation cost (this session + all descendant dispatches) in USD. |
 | `sessionId` | string | Conversation ID |
@@ -877,6 +882,34 @@ Advisory workflow signal emitted once per run when the engine's progress watchdo
 | `type` | `"engine_run_stalled"` | Event type |
 | `runStalledDuration` | number | Seconds since last progress event |
 | `runStalledLastActivity` | string | Description of the most recent progress event (optional) |
+
+#### engine_task_suspended
+
+A run ended without completing: either a dispatched agent suspended on child completions, or the engine parked a session at a turn boundary on outstanding background bash commands. `engine_task_complete` (and the idle `engine_status`) fires only when the run truly finishes after revival, so a consumer that treats this as a completion will report the run done too early.
+
+The event carries the **counts** of each awaited set, not the IDs. Clients may render a "parked"/"idle" indicator while either is non-zero.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_task_suspended"` | Event type |
+| `taskSuspendAwaitingCount` | number | Pending child dispatches. Zero for a bare `suspend()`. |
+| `taskSuspendAwaitingTaskCount` | number | Outstanding background bash commands. Zero for dispatch-driven suspends. |
+
+#### engine_background_task_complete
+
+A background bash command started with `Bash(run_in_background: true, notify_on_complete: true)` reached a terminal state. Emitted once per completion, before the engine resolves delivery — the typed event is the engine's complete signaling obligation, and what happens next (start a run, queue the result, do nothing) is the operator's opinion configured with `backgroundTasks.delivery`. See [`docs/tools/task-tools.md`](../tools/task-tools.md) § "Background bash completion" and [ADR-023](../architecture/adr/023-root-session-park-and-wake.md).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_background_task_complete"` | Event type |
+| `taskId` | string | Tasks-registry task ID, format `bash-<n>-<millis>` |
+| `status` | string | `completed`, `failed`, or `stopped` |
+| `exitCode` | number | Process exit code |
+| `elapsedMs` | number | Wall-clock duration in milliseconds |
+| `outputPath` | string | Path to the captured output file |
+| `tail` | string | Trailing output excerpt |
+| `command` | string | The command that ran |
+| `remainingTaskIds` | string[] | Task IDs still outstanding for the session after this completion |
 
 #### engine_capability_unsupported
 

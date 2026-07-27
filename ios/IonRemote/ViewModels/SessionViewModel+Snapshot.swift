@@ -245,8 +245,12 @@ extension SessionViewModel {
                 // ticks. ConversationInstanceInfo carries two flavors of state:
                 //
                 //   - Snapshot-projected (Codable): id, label, waitingState,
-                //     isRunning, runningAgentCount, modelFallback. These are
-                //     authoritative from the desktop snapshot every tick.
+                //     isRunning, runningAgentCount, backgroundShellCount,
+                //     modelFallback, thinkingEffort. These are authoritative
+                //     from the desktop snapshot every tick, so EVERY one of
+                //     them must be copied in the merge below — a field added to
+                //     the struct but not to the merge is silently frozen at
+                //     whatever it held when the instance was first seen.
                 //   - Runtime-only (excluded from Codable): messages,
                 //     agentStates, statusFields, modelOverride. These are
                 //     populated by live events / loadConversation and
@@ -269,6 +273,7 @@ extension SessionViewModel {
                         prior.waitingState = snap.waitingState
                         prior.isRunning = snap.isRunning
                         prior.runningAgentCount = snap.runningAgentCount
+                        prior.backgroundShellCount = snap.backgroundShellCount
                         prior.modelFallback = snap.modelFallback
                         // thinkingEffort is snapshot-projected (desktop sends it
                         // from the active instance). Update it every tick so a

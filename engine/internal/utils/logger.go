@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -345,7 +346,7 @@ func logAtFull(level LogLevel, component, tag, msg string, fields map[string]any
 		attrs = append(attrs, slog.String("trace_id", traceID))
 	}
 	if fields != nil {
-		attrs = append(attrs, slog.Any("fields", fields))
+		attrs = append(attrs, slog.Any("fields", normalizeFieldValues(fields)))
 	} else {
 		attrs = append(attrs, slog.Any("fields", emptyFields))
 	}
@@ -525,4 +526,53 @@ func ErrStr(err error) string {
 		return ""
 	}
 	return err.Error()
+}
+
+// normalizeFieldValues renders field values that JSON cannot usefully encode.
+//
+// The load-bearing case is a bare `error`. Most error implementations are
+// structs with no exported fields (errors.errorString, fmt.wrapError), so
+// encoding/json emits `{}` and the message is destroyed:
+//
+//	map[string]any{"error": errors.New("disk on fire")}  ->  "error":{}
+//
+// Every failure branch that logged a raw err rather than ErrStr(err) therefore
+// produced a line with no diagnostic content — the exact opposite of the
+// logging policy's "a log line without context is useless", and worst on the
+// branches that matter most, since those are the ones that only fire when
+// something has already gone wrong.
+//
+// Normalizing at this single choke point repairs every existing call site and
+// makes the mistake unreproducible at new ones. The alternative — auditing
+// ~136 call sites and trusting the 137th to remember ErrStr — is the kind of
+// per-site discipline that does not survive contact with a growing codebase.
+// ErrStr remains correct and preferred at the call site (it is explicit, and
+// it is required for a possibly-nil error), but it is no longer load-bearing
+// for correctness of the output.
+//
+// Errors implementing json.Marshaler are left alone: those opted into a
+// specific wire shape deliberately. The map is copied only when a rewrite is
+// actually needed, so the overwhelmingly common path allocates nothing.
+func normalizeFieldValues(fields map[string]any) map[string]any {
+	var out map[string]any
+	for k, v := range fields {
+		err, isErr := v.(error)
+		if !isErr {
+			continue
+		}
+		if _, ok := v.(json.Marshaler); ok {
+			continue
+		}
+		if out == nil {
+			out = make(map[string]any, len(fields))
+			for ck, cv := range fields {
+				out[ck] = cv
+			}
+		}
+		out[k] = err.Error()
+	}
+	if out == nil {
+		return fields
+	}
+	return out
 }
