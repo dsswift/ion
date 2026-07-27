@@ -10,6 +10,19 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.50.0](https://github.com/dsswift/ion/compare/ios-v1.49.1...ios-v1.50.0) (2026-07-27)
+
+### Features
+
+* **ios:** render tabs waiting on background bash commands ([498ffc8](https://github.com/dsswift/ion/commit/498ffc8ecd3f09f168aea56f40c2984a9ecf2123))
+* **ios:** carry the blaze pink shell dot through every theme ([372c597](https://github.com/dsswift/ion/commit/372c597ba8ab880e7be5830c4fbfd6358157296b))
+
+### Bug Fixes
+
+* **ios:** recover instead of dead-ending when the relay URL is unusable ([3b7feaf](https://github.com/dsswift/ion/commit/3b7feaf40c0e03f08ca5b9c661d3bf5def4c538d))
+* **ios:** show true context usage and match desktop with radial ring ([4bc8a2e](https://github.com/dsswift/ion/commit/4bc8a2e30d64be992a57633f9781bea41ad940e4))
+* **ios:** sweep every Go event variant for iOS coverage ([e7083d4](https://github.com/dsswift/ion/commit/e7083d4d7e7e334745ae483586c5e151839bd434))
+
 ## [1.49.1](https://github.com/dsswift/ion/compare/ios-v1.49.0...ios-v1.49.1) (2026-07-26)
 
 ### Bug Fixes

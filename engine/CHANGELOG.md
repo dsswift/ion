@@ -13,6 +13,20 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.57.0](https://github.com/dsswift/ion/compare/engine-v1.56.1...engine-v1.57.0) (2026-07-27)
+
+### Features
+
+* **engine:** wake orchestrator on background bash completion ([6387a0c](https://github.com/dsswift/ion/commit/6387a0c426d62e06cfcbb296f6740b2ea09064f9))
+* **engine:** additive project plan-mode bash with enterprise ceiling ([04551b2](https://github.com/dsswift/ion/commit/04551b2249820cfb932511abd828c083ae67da03))
+
+### Bug Fixes
+
+* **engine:** scope the skill registry per session and allow Skill in plan mode ([8ed8fe0](https://github.com/dsswift/ion/commit/8ed8fe0201842ca8c20b75824c64f9947408c38d))
+* **engine:** report true context usage at idle and uncap percent ([bb3c08f](https://github.com/dsswift/ion/commit/bb3c08ff96e411aa80867f3cb06b32efefa109a8))
+* **engine:** render error log fields as messages, not empty objects ([1f08988](https://github.com/dsswift/ion/commit/1f08988e67636d6a58f08d46337c66cd8e4ce88b))
+* **engine:** stop taking the git index lock when reading repo context ([58260ab](https://github.com/dsswift/ion/commit/58260ab2ef4981f09a28bd50b59d97bf490d7846))
+
 ## [1.56.1](https://github.com/dsswift/ion/compare/engine-v1.56.0...engine-v1.56.1) (2026-07-26)
 
 ### Bug Fixes

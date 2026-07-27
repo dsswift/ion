@@ -10,6 +10,19 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.69.0](https://github.com/dsswift/ion/compare/desktop-v1.68.1...desktop-v1.69.0) (2026-07-27)
+
+### Features
+
+* **desktop:** show tabs waiting on background bash commands ([2bdc2a4](https://github.com/dsswift/ion/commit/2bdc2a455b2cc6bde16be4adbf3c2ca1ccf5b823))
+* **desktop:** retune the shell status dot to a blaze pink per theme ([b121f29](https://github.com/dsswift/ion/commit/b121f2907be6f7bc55cfea647b1260066649eadd))
+
+### Bug Fixes
+
+* **desktop:** stop wiping relay OIDC config and pushing empty credentials ([63dbedc](https://github.com/dsswift/ion/commit/63dbedc1751302be64a04aed5dc3fdbceffe6b3f))
+* **desktop:** read engine context tokens and add the radial context meter ([5e85922](https://github.com/dsswift/ion/commit/5e85922ebf21ca825b327d2042b8afb2a1b73d72))
+* **desktop:** stop taking the git index lock on read-only git calls ([b144206](https://github.com/dsswift/ion/commit/b144206aa9c02950b541e95c4549ef03c893a498))
+
 ## [1.68.1](https://github.com/dsswift/ion/compare/desktop-v1.68.0...desktop-v1.68.1) (2026-07-26)
 
 ### Bug Fixes
