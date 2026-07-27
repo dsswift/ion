@@ -62,11 +62,57 @@ This is deliberately unconditional. An earlier version of this section led with 
 
 Fires on any question about structure, flow, or relationships: "how does X work", "what calls Y", "trace the path from A to B", "where is Z handled", "does subsystem X notify Y". It fires on the *shape of the question*, not on the user typing `/graphify` — a plain-English architecture question is exactly the trigger.
 
+### Three subcommands, not one
+
+`query` is the opening move, not the whole tool. Reaching for it when you want `explain` or `path` is why the graph gets used as a fuzzy file-finder.
+
+| Command | Answers | Use when |
+|---|---|---|
+| `graphify query "<identifier>"` | where does this live, what is near it | Opening move on any structure question |
+| `graphify explain "<symbol>"` | what exactly does this touch, with `file:line` | You have a symbol and need its real edges |
+| `graphify path "<A>" "<B>"` | how do these two things connect | A change spans layers and you need the wiring |
+
 ```bash
-graphify query "<question>"              # BFS traversal, broad context
-graphify query "<question>" --dfs        # trace one specific path
-graphify query "<question>" --budget N   # widen when results are truncated
+graphify query "<question>"                 # BFS traversal, broad context
+graphify query "<question>" --dfs           # trace one specific path
+graphify query "<question>" --context call  # filter by edge type (see below)
+graphify explain "clearSessionSkills"       # full typed edge list for one node
+graphify path "createWorktreeSlice" "registerWorktreeIpc"
 ```
+
+`explain` returns the node's degree, community, and every edge with direction, type, confidence, and `file:line`. `path` returns the shortest hop chain between two nodes with the same per-edge tagging.
+
+### Never set a tiny budget
+
+**Do not pass `--budget` below 400.** Omit it entirely to take the 2000 default; raise it when a result is truncated and you need more.
+
+This is the single most expensive mistake available here. A real query on this codebase returns 50-200 nodes; `--budget 40` shows about four of them and appends a truncation notice. The output then reads like "the graph doesn't know," when in fact the answer was in the discarded remainder. That exact failure has happened: a `--budget 40` query returned 4 of 193 nodes, the three files the agent needed were in the result set, and it spent ~24 `Grep`/`Read` calls rediscovering what it had already been told.
+
+### How to read a result
+
+The graph is a **locator**. The first 3-5 nodes name the files worth opening; go open them. Results past roughly rank 15-20 drift into infrastructure and are usually noise.
+
+A truncation notice is **normal** on any real question. It means "narrow or raise the budget," not "nothing here."
+
+That drift is structural, not a symptom of a small codebase. The graph is a power-law network: median node degree is 3, while the top nodes run into the hundreds — `LogWithFields()`, `NewManager()`, `Context`, `newMockBackend()`, `useColors()`, `shared/types.ts`. These logger, store, and type-barrel nodes legitimately connect to everything, so a depth-2 traversal reaches one within a hop or two of almost any seed and its neighbours then crowd the result. **A larger codebase makes this worse, not better** — more code means more logger callers, and the hubs grow faster than any relevant neighbourhood.
+
+The correction is `--context <type>`, not a bigger budget. Valid values: `call`, `import`, `field`, `parameter_type`, `return_type`, `generic_arg` (`param` and `params` alias to `parameter_type`). Filtering to `call` on a function seed drops the preferences/theme/logger cluster and returns actual callers and callees. It is a heuristic rather than a cure — `LogWithFields()` is itself reached *by* call edges, so it survives a call filter — but it reliably improves the top of the result.
+
+### Query throughout the task, not once at the start
+
+The graph is available for the whole task. The default rhythm is a loop: **query → read the source → new symbol in hand → query again.**
+
+Concrete trigger points:
+
+- **Before editing an unfamiliar function** — `explain` it first to learn the blast radius before you change a signature.
+- **Before deleting or renaming anything** — `explain` gives the caller list. This is how you satisfy § "Dead code is not load-bearing until proven otherwise", which demands a *cited* live producer or consumer rather than a guess. `explain "clearSessionSkills"` returns `<-- .StopSession() [calls] engine/internal/session/manager.go:L402` — exactly that citation.
+- **After a grep hands you a symbol** — go back to the graph with it. Acquiring an identifier by grep is step one; re-querying on it is step two, and skipping step two is the most common way the graph gets underused.
+- **When a change crosses layers** — `path` before hand-tracing engine → desktop → iOS.
+- **Before writing a test** — `explain` the unit under test to see what it actually calls.
+
+**Edge confidence matters when you cite.** Edges are tagged `EXTRACTED` (read directly from source) or `INFERRED` (resolved by graphify). Call edges are frequently `INFERRED` — every call edge on `clearSessionSkills` is, with only the structural `contains` edge marked `EXTRACTED`. So treat a caller list as *the set of places to check in source*, not as proof on its own. The graph locates; the source file confirms.
+
+Worked examples, the hub table, and the full `--budget 40` post-mortem: [`docs/contributing/graph-queries.md`](docs/contributing/graph-queries.md).
 
 **Seed on identifiers, not prose.** The traversal seeds on the query's terms, so generic words (`agent`, `call`, `done`, `handler`) seed on generic nodes and return noise. Name the symbol, type, function, or file you are actually asking about — `startBackgroundBashTask`, `buildPlanModePrompt`, `bash_background.go` — and the traversal lands on the right neighborhood. If a query returns unrelated nodes, re-run it with a concrete identifier before falling back to grep.
 
