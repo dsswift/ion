@@ -11,6 +11,7 @@ import { createConversationTabAction } from './engine-slice-create'
 import { evaluateCloseGuard, formatCloseGuardRefusal } from './tab-close-guard'
 import { forgetTabContentTracking } from '../tab-content-tracking'
 import { pickNextActiveTab } from './tab-slice-next-active'
+import { resolveWorktreeForNewTab } from './tab-slice-worktree-resolve'
 import { getEffectiveTabGroups } from '../../preferences'
 import { rInfo, rDebug, rWarn } from '../../rendererLogger'
 import {
@@ -86,29 +87,21 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       const { tabGroupMode, tabGroups } = usePreferencesStore.getState()
       const defaultGroupId = tabGroupMode === 'manual' ? (tabGroups.find((g) => g.isDefault)?.id || tabGroups[0]?.id || null) : null
 
+      // Same shared resolver createTabInDirectory uses. This path already
+      // resolved before its set() and pre-starts no session, so it converged
+      // correctly on its own — routing it through the resolver means there is
+      // ONE implementation of "where does a worktree conversation live" rather
+      // than two that happen to agree.
+      const resolved = await resolveWorktreeForNewTab(startDir, useWorktree)
+
       const tab: TabState = {
         ...makeLocalTab(),
         id: tabId,
-        workingDirectory: startDir,
+        workingDirectory: resolved.dir,
         hasChosenDirectory: hasChosen,
         groupId: defaultGroupId,
-      }
-
-      if (useWorktree) {
-        const { isRepo } = await window.ion.gitIsRepo(startDir)
-        if (isRepo) {
-          const defaults = usePreferencesStore.getState().worktreeBranchDefaults
-          const defaultBranch = defaults[startDir]
-          if (defaultBranch) {
-            const result = await window.ion.gitWorktreeAdd(startDir, defaultBranch)
-            if (result.ok && result.worktree) {
-              tab.worktree = result.worktree
-              tab.workingDirectory = result.worktree.worktreePath
-            }
-          } else {
-            tab.pendingWorktreeSetup = true
-          }
-        }
+        worktree: resolved.worktree,
+        pendingWorktreeSetup: resolved.pendingSetup,
       }
 
       set((s) => ({
@@ -142,12 +135,22 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       usePreferencesStore.getState().addRecentBaseDirectory(dir)
       usePreferencesStore.getState().incrementDirectoryUsage(dir)
 
+      // Worktree resolution runs BEFORE tab creation, and this ordering is the
+      // whole point. createConversationTab eagerly starts an engine session in
+      // the directory it is handed, and the engine pins a session's working
+      // directory at start_session — so creating the tab first and attaching the
+      // worktree afterward left the session in the base repo while the UI showed
+      // the worktree. That is how five worktree conversations came to share one
+      // checkout. Resolving first means the tab is BORN in its worktree and
+      // nothing ever has to be relocated.
+      const resolved = await resolveWorktreeForNewTab(dir, useWorktree)
+
       // Base tab + pane creation via the unified path (Phase 2, #256).
       // createConversationTab gets the real tab ID from the main process,
       // seeds the main pane with a session-start divider, sets active tab,
       // and calls window.ion.setPermissionMode. We then apply the extra
       // options that are specific to this entry point (worktree, group pin).
-      const tabId = await createConversationTab(dir, { setActive: true })
+      const tabId = await createConversationTab(resolved.dir, { setActive: true })
 
       // Apply group pin if explicitly requested (iOS per-group "+" button or
       // desktop "Move to group and pin"). Override the group placement that
@@ -164,31 +167,18 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
         }))
       }
 
-      // Worktree setup (unchanged from prior implementation).
-      if (useWorktree) {
-        const { isRepo } = await window.ion.gitIsRepo(dir)
-        if (isRepo) {
-          const defaults = usePreferencesStore.getState().worktreeBranchDefaults
-          const defaultBranch = defaults[dir]
-          if (defaultBranch) {
-            const result = await window.ion.gitWorktreeAdd(dir, defaultBranch)
-            if (result.ok && result.worktree) {
-              set((s) => ({
-                tabs: s.tabs.map((t) =>
-                  t.id === tabId
-                    ? { ...t, worktree: result.worktree!, workingDirectory: result.worktree!.worktreePath }
-                    : t
-                ),
-              }))
-            }
-          } else {
-            set((s) => ({
-              tabs: s.tabs.map((t) =>
-                t.id === tabId ? { ...t, pendingWorktreeSetup: true } : t
-              ),
-            }))
-          }
-        }
+      // Attach the worktree metadata resolved above. This is a pure state patch
+      // with no relocation: `workingDirectory` is already the worktree path
+      // because the tab was created there. `pendingWorktreeSetup` marks the tab
+      // for TabStrip's branch picker when the repo had no recorded default.
+      if (resolved.worktree || resolved.pendingSetup) {
+        set((s) => ({
+          tabs: s.tabs.map((t) =>
+            t.id === tabId
+              ? { ...t, worktree: resolved.worktree, pendingWorktreeSetup: resolved.pendingSetup }
+              : t
+          ),
+        }))
       }
 
       return tabId

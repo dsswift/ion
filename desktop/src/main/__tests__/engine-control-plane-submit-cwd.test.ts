@@ -36,10 +36,10 @@ vi.mock('electron', () => ({
  * than inferred.
  */
 const callOrder: string[] = []
-const startedConfigs = new Map<string, { workingDirectory: string }>()
+const startedConfigs = new Map<string, { workingDirectory: string; sessionId?: string }>()
 
 const mockBridge = {
-  startSession: vi.fn(async (key: string, config: { workingDirectory: string }) => {
+  startSession: vi.fn(async (key: string, config: { workingDirectory: string; sessionId?: string }) => {
     callOrder.push(`startSession:${config.workingDirectory}`)
     startedConfigs.set(key, { ...config })
     return { ok: true }

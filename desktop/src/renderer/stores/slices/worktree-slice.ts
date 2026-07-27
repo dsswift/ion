@@ -3,6 +3,7 @@ import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { bumpMsgCounter } from '../session-store-helpers'
 import { commitInstance } from '../conversation-instance'
 import { rWarn } from '../../rendererLogger'
+import { setTabWorkingDirectory } from './tab-working-directory'
 
 export function createWorktreeSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -17,18 +18,20 @@ export function createWorktreeSlice(set: StoreSet, get: StoreGet): Partial<State
 
       const result = await window.ion.gitWorktreeAdd(repoPath, sourceBranch)
       if (result.ok && result.worktree) {
-        set((s) => ({
-          tabs: s.tabs.map((t) =>
-            t.id === tabId
-              ? {
-                  ...t,
-                  worktree: result.worktree!,
-                  workingDirectory: result.worktree!.worktreePath,
-                  pendingWorktreeSetup: false,
-                }
-              : t
-          ),
-        }))
+        // Route through setTabWorkingDirectory: this tab's engine session is
+        // already live in the base repo (it was started at tab creation), so
+        // patching only renderer state would leave the agent working in the repo
+        // while the UI shows the worktree. The helper relocates the live session
+        // as well.
+        await setTabWorkingDirectory(set, get, tabId, result.worktree.worktreePath, {
+          worktree: result.worktree,
+          pendingWorktreeSetup: false,
+        })
+      } else {
+        rWarn('worktree', 'setup refused; tab left in the base repo', {
+          tab_id: tabId.slice(0, 8), repo_path: repoPath, source_branch: sourceBranch,
+          error: result.error ?? 'unknown',
+        })
       }
     },
 
@@ -41,20 +44,17 @@ export function createWorktreeSlice(set: StoreSet, get: StoreGet): Partial<State
       if (defaultBranch) {
         const result = await window.ion.gitWorktreeAdd(tab.workingDirectory, defaultBranch)
         if (result.ok && result.worktree) {
-          set((s) => ({
-            tabs: s.tabs.map((t) =>
-              t.id === tabId
-                ? {
-                    ...t,
-                    worktree: result.worktree!,
-                    workingDirectory: result.worktree!.worktreePath,
-                    pendingWorktreeSetup: false,
-                  }
-                : t
-            ),
-          }))
+          // Same reasoning as setupWorktree: the session is already live in the
+          // base repo and must be moved, not just re-labelled.
+          await setTabWorkingDirectory(set, get, tabId, result.worktree.worktreePath, {
+            worktree: result.worktree,
+            pendingWorktreeSetup: false,
+          })
           return
         }
+        rWarn('worktree', 'convert refused; falling back to the branch picker', {
+          tab_id: tabId.slice(0, 8), error: result.error ?? 'unknown',
+        })
       }
 
       set((s) => ({

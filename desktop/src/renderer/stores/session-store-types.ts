@@ -320,6 +320,12 @@ export interface State {
   /** Open (or focus) a conversation in an existing worktree. */
   openWorktreeConversation: (worktreePath: string) => Promise<string>
   syncWorktree: (worktreePath: string, sourceBranch: string, repoPath: string) => Promise<{ ok: boolean; error?: string; hasConflicts?: boolean; refusedDirty?: boolean }>
+  /**
+   * Retire a worktree, relocating any conversation inside it first so the tab is
+   * never left pointed at a deleted directory. Callers must confirm against
+   * `gitWorktreeAppraise` before invoking: this forces removal.
+   */
+  retireWorktree: (repoPath: string, worktreePath: string, branchName: string) => Promise<{ ok: boolean; error?: string; workingDirectory?: string }>
   refreshBench: (repoPath: string) => Promise<void>
   /** Open (or focus) a conversation in the bench worktree. */
   openBenchConversation: (repoPath: string, sourceBranch: string) => Promise<string | null>

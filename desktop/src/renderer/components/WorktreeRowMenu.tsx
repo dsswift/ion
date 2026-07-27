@@ -111,13 +111,15 @@ export function WorktreeRowMenu({
   async function doRetire(): Promise<void> {
     setBusy(true)
     try {
-      const result = await window.ion.gitWorktreeRetire({
+      // Routed through the store action rather than calling the IPC directly:
+      // retire deletes the directory, so any conversation living in it must be
+      // relocated first, and that read-then-mutate sequence must run in the
+      // owner window. See retireWorktree in worktree-inventory-slice.ts.
+      const result = await useSessionStore.getState().retireWorktree(
         repoPath,
-        worktreePath: entry.worktreePath,
-        branchName: entry.branchName,
-        // Force only after the operator confirmed against a concrete appraisal.
-        force: true,
-      })
+        entry.worktreePath,
+        entry.branchName,
+      )
       if (!result.ok) {
         rWarn('worktree.menu', 'retire failed', { branch: entry.branchName, error: result.error ?? '' })
       }
