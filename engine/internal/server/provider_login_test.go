@@ -44,21 +44,43 @@ func loginTestServer(t *testing.T, login cliprobe.LoginFunc, logout cliprobe.Log
 			}
 		}
 	})
-	t.Cleanup(func() { close(s.done) })
-	// activeLogins / pendingCodes are package state shared by every test in this
-	// file. A login goroutine clears its own entry, but asynchronously, so a
-	// test that returns while one is still finishing would leak an entry into
-	// the next test. Clear both here so each test starts from a clean registry.
+	// Wait for every login goroutine spawned by this Server to drain from the
+	// package-level activeLogins/pendingCodes maps before returning. The
+	// dispatchProviderLogin goroutine's defer clears its own entry, but that
+	// happens asynchronously after ctx cancellation via close(s.done). Under
+	// `go test -race -count=N` a returning cleanup left goroutines racing to
+	// delete entries — a late deletion from iteration N would clobber the
+	// entry iteration N+1 just wrote, and N+1's dispatchProviderLoginCode
+	// would then find no pendingCodes[provider] and skip delivery.
+	//
+	// t.Cleanup is LIFO: register the map-drain wait FIRST so it runs LAST,
+	// AFTER the close(s.done) registered next cancels the goroutines. That
+	// gives every goroutine the chance to exit and clear its own entry before
+	// the next test iteration begins.
 	t.Cleanup(func() {
-		loginMu.Lock()
-		for p := range activeLogins {
-			delete(activeLogins, p)
+		deadline := time.Now().Add(2 * time.Second)
+		for {
+			loginMu.Lock()
+			empty := len(activeLogins) == 0 && len(pendingCodes) == 0
+			if empty || time.Now().After(deadline) {
+				// On timeout, force-clear so the next test starts clean. A
+				// hung goroutine would still be a bug worth surfacing, but
+				// leaving stale entries silently would cascade the failure
+				// into unrelated tests.
+				for p := range activeLogins {
+					delete(activeLogins, p)
+				}
+				for p := range pendingCodes {
+					delete(pendingCodes, p)
+				}
+				loginMu.Unlock()
+				return
+			}
+			loginMu.Unlock()
+			time.Sleep(2 * time.Millisecond)
 		}
-		for p := range pendingCodes {
-			delete(pendingCodes, p)
-		}
-		loginMu.Unlock()
 	})
+	t.Cleanup(func() { close(s.done) })
 	return s, events
 }
 
