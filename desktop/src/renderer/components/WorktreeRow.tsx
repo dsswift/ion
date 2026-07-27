@@ -10,7 +10,7 @@
  * operator needs a way back in without knowing the `~/.ion/worktrees/...` path.
  */
 import React from 'react'
-import { ArrowsClockwise, CircleNotch, DotsThree } from '@phosphor-icons/react'
+import { ArrowsClockwise, CircleNotch, DotsThree, Warning } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { Tooltip } from './git/Tooltip'
 import type { WorktreeInventoryEntry } from '../../shared/types'
@@ -114,6 +114,35 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
                 ? <CircleNotch size={11} className="animate-spin" />
                 : <ArrowsClockwise size={11} />}
             </button>
+          </Tooltip>
+        )}
+
+        {/* Provisioning: the gitignored dependency state a checkout needs but
+            git never carries (node_modules, hooks, build caches). Shown only
+            while it is in flight or has failed -- a `ready` worktree is the
+            normal case and needs no badge, and a worktree with no provisioning
+            record at all (created before this existed) shows nothing rather
+            than claiming a state Ion cannot know. */}
+        {(entry.provisionState === 'seeding' || entry.provisionState === 'building' || entry.provisionState === 'probing') && (
+          <Tooltip text="Installing dependencies for this worktree">
+            <span
+              data-testid={`worktree-provisioning-${entry.branchName}`}
+              style={{ display: 'inline-flex', alignItems: 'center', color: colors.textTertiary, flexShrink: 0 }}
+            >
+              <CircleNotch size={11} className="animate-spin" />
+            </span>
+          </Tooltip>
+        )}
+        {entry.provisionState === 'failed' && (
+          <Tooltip text={entry.provisionError
+            ? `Dependency setup failed: ${entry.provisionError}`
+            : 'Dependency setup failed. Use Re-provision in the row menu.'}>
+            <span
+              data-testid={`worktree-provision-failed-${entry.branchName}`}
+              style={{ display: 'inline-flex', alignItems: 'center', color: colors.dangerFg, flexShrink: 0 }}
+            >
+              <Warning size={11} />
+            </span>
           </Tooltip>
         )}
 

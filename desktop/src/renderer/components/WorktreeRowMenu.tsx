@@ -9,7 +9,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { ArrowLineDown, ArrowsClockwise, Flask, FolderOpen, Trash } from '@phosphor-icons/react'
+import { ArrowLineDown, ArrowsClockwise, Flask, FolderOpen, Package, Trash } from '@phosphor-icons/react'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
@@ -194,6 +194,25 @@ export function WorktreeRowMenu({
         void window.ion.revealPath(entry.worktreePath)
           .catch((err: unknown) => rError('worktree.menu', 'reveal failed', { error: String(err) }))
         onClose()
+      },
+    },
+    {
+      label: 'Re-provision',
+      icon: <Package size={12} color={colors.textSecondary} />,
+      run: () => {
+        setBusy(true)
+        void useSessionStore.getState()
+          .reprovisionWorktree(repoPath, entry.worktreePath)
+          .then((result) => {
+            if (!result.ok) {
+              rWarn('worktree.menu', 'reprovision failed', {
+                branch: entry.branchName, error: result.error ?? '',
+              })
+            }
+            onRefresh()
+          })
+          .catch((err) => rError('worktree.menu', 'reprovision threw', { error: String(err) }))
+          .finally(() => { setBusy(false); onClose() })
       },
     },
     {

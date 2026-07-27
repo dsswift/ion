@@ -155,6 +155,27 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
     },
 
     /**
+     * Re-run provisioning for a worktree, then refresh so the row reflects the
+     * new state.
+     *
+     * A store action rather than a component handler because it mutates
+     * owner-side state and then reads it back through the inventory — the
+     * pattern the ATV mirror rules require (a handler would run locally in the
+     * mirror and decide against stale state).
+     */
+    reprovisionWorktree: async (repoPath, worktreePath) => {
+      rInfo('worktree.inventory', 'reprovision requested', { worktree_path: worktreePath })
+      const result = await window.ion.gitWorktreeReprovision({ repoPath, worktreePath })
+      if (!result.ok) {
+        rWarn('worktree.inventory', 'reprovision failed', {
+          worktree_path: worktreePath, state: result.state, error: result.error ?? '',
+        })
+      }
+      await get().refreshWorktreeInventory(repoPath)
+      return result
+    },
+
+    /**
      * Sync a worktree onto its source branch (resolves BASE staleness), then
      * refresh the inventory so the badge clears.
      */

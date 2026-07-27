@@ -1,4 +1,4 @@
-import type { TabState, NormalizedEvent, EnrichedError, Attachment, FileAttachment, TerminalPaneState, ConversationPane, ImageAttachmentPayload, WorktreeInventoryEntry, IntegrationWorkspace, BenchRebuildResult } from '../../shared/types'
+import type { TabState, NormalizedEvent, EnrichedError, Attachment, FileAttachment, TerminalPaneState, ConversationPane, ImageAttachmentPayload, WorktreeInventoryEntry, WorktreeProvisionState, IntegrationWorkspace, BenchRebuildResult } from '../../shared/types'
 import type { ResourceItem } from '../../shared/types-engine'
 
 export interface StaticInfo {
@@ -326,6 +326,11 @@ export interface State {
    * `gitWorktreeAppraise` before invoking: this forces removal.
    */
   retireWorktree: (repoPath: string, worktreePath: string, branchName: string) => Promise<{ ok: boolean; error?: string; workingDirectory?: string }>
+  /**
+   * Re-run provisioning for a worktree whose dependency state looks wrong
+   * (missing node_modules, a half-finished install). Same path creation uses.
+   */
+  reprovisionWorktree: (repoPath: string, worktreePath: string) => Promise<{ ok: boolean; state: WorktreeProvisionState; error?: string }>
   refreshBench: (repoPath: string) => Promise<void>
   /** Open (or focus) a conversation in the bench worktree. */
   openBenchConversation: (repoPath: string, sourceBranch: string) => Promise<string | null>

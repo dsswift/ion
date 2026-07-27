@@ -98,6 +98,7 @@ final class WorktreeWireTests: XCTestCase {
               "unlandedCommitCount": 4,
               "needsSync": true,
               "safeToDiscard": false,
+              "provisionState": "building",
               "openTabId": "tab-1"
             }],
             "benches": [{
@@ -136,6 +137,7 @@ final class WorktreeWireTests: XCTestCase {
         XCTAssertTrue(wt.isDirty)
         XCTAssertTrue(wt.needsSync)
         XCTAssertFalse(wt.safeToDiscard)
+        XCTAssertEqual(wt.provisionState, .building)
         XCTAssertEqual(wt.openTabId, "tab-1")
 
         let bench = try XCTUnwrap(state.benches.first)
@@ -167,6 +169,43 @@ final class WorktreeWireTests: XCTestCase {
 
         guard case let .worktreeState(states) = event else { return XCTFail("wrong case") }
         XCTAssertNil(states[0].worktrees[0].sourceBranch)
+    }
+
+    /// A worktree created before provisioning existed carries no `provisionState`
+    /// at all. Absent must decode as nil — "Ion has no record" — and the row
+    /// renders nothing. Treating absence as a failure would put an error badge on
+    /// every pre-existing worktree.
+    func testAbsentProvisionStateDecodesAsNil() throws {
+        let json = """
+        {"type":"desktop_worktree_state","states":[{"repoPath":"/repo","benches":[],"worktrees":[{
+          "worktreePath":"/wt/x","branchName":"wt/x","label":"x","sourceBranch":"josh",
+          "head":"abc","lastCommitSubject":"","isDirty":false,"unlandedCommitCount":0,
+          "needsSync":false,"safeToDiscard":false}]}]}
+        """.data(using: .utf8)!
+
+        let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
+
+        guard case let .worktreeState(states) = event else { return XCTFail("wrong case") }
+        XCTAssertNil(states[0].worktrees[0].provisionState)
+    }
+
+    /// An unrecognised provisioning state from a newer desktop must not fail the
+    /// whole worktree decode — one new enum case would otherwise blank the entire
+    /// worktree list on an older build.
+    func testUnknownProvisionStateDegradesRatherThanFailing() throws {
+        let json = """
+        {"type":"desktop_worktree_state","states":[{"repoPath":"/repo","benches":[],"worktrees":[{
+          "worktreePath":"/wt/x","branchName":"wt/x","label":"x","sourceBranch":"josh",
+          "head":"abc","lastCommitSubject":"","isDirty":false,"unlandedCommitCount":0,
+          "needsSync":false,"safeToDiscard":false,"provisionState":"quantum-tunnelling"}]}]}
+        """.data(using: .utf8)!
+
+        let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
+
+        guard case let .worktreeState(states) = event else { return XCTFail("wrong case") }
+        // Degrades to a benign state; the worktree itself still decoded.
+        XCTAssertEqual(states[0].worktrees[0].provisionState, .idle)
+        XCTAssertEqual(states[0].worktrees[0].label, "x")
     }
 
     /// An unknown status from a newer desktop must not fail the whole payload:

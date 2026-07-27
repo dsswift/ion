@@ -29,9 +29,31 @@ struct RemoteWorktree: Codable, Identifiable, Hashable {
     /// clear teaches the operator to ignore every badge.
     var needsSync: Bool
     var safeToDiscard: Bool
+    /// Where this worktree is in the dependency-provisioning lifecycle
+    /// (node_modules, hooks, build caches -- the gitignored state git never
+    /// carries). Nil means Ion has no record: a worktree created before
+    /// provisioning existed, or one whose in-memory record did not survive a
+    /// desktop restart. Nil is "unknown", NOT "failed", so it renders as nothing.
+    var provisionState: ProvisionState?
+    /// Operator-facing reason when `provisionState` is `.failed`.
+    var provisionError: String?
     /// Set when a conversation is already open here, so tapping focuses it
     /// rather than stacking a duplicate.
     var openTabId: String?
+
+    /// Mirrors WorktreeProvisionState in desktop/src/shared/types-git.ts.
+    ///
+    /// Decoded leniently: an unrecognised value from a newer desktop becomes
+    /// nil rather than failing the whole worktree decode, so one new state
+    /// cannot blank the entire worktree list on an older build.
+    enum ProvisionState: String, Codable, Hashable {
+        case idle, probing, seeding, building, ready, failed
+
+        init(from decoder: Decoder) throws {
+            let raw = try decoder.singleValueContainer().decode(String.self)
+            self = ProvisionState(rawValue: raw) ?? .idle
+        }
+    }
 
     var id: String { worktreePath }
 }

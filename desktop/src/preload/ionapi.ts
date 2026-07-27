@@ -4,7 +4,7 @@
  * re-exports it (renderer/env.d.ts imports it from ../preload/index).
  */
 import type { AtvApi } from './atv-api'
-import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus, LandResult, WorktreeMoveResult, WorktreeInventoryEntry, WorktreeAppraisalWire, IntegrationWorkspace, BenchRebuildResult, EngineConfig, EngineEvent, EngineHostInfo, EngineDirListing, RemoteTransportState, DiscoveredCommand, GitEvent, RepoSnapshot, NewConversationDefaultsPolicy } from '../shared/types'
+import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus, LandResult, WorktreeMoveResult, WorktreeInventoryEntry, WorktreeAppraisalWire, WorktreeProvisionState, IntegrationWorkspace, BenchRebuildResult, EngineConfig, EngineEvent, EngineHostInfo, EngineDirListing, RemoteTransportState, DiscoveredCommand, GitEvent, RepoSnapshot, NewConversationDefaultsPolicy } from '../shared/types'
 import type { EnterprisePolicy } from '../shared/types-engine'
 import type { CustomThemeForRenderer } from '../shared/theme-pack-types'
 
@@ -187,6 +187,11 @@ export interface IonAPI extends AtvApi {
   /** Base staleness: has the feature branch moved ahead of this worktree? */
   gitWorktreeBaseStatus(worktreePath: string, sourceBranch: string): Promise<{ behindCount: number; behindSubjects: string[]; needsSync: boolean; hasUncommittedChanges: boolean; appraisalFailed?: boolean }>
   gitWorktreeRetire(args: { repoPath: string; worktreePath: string; branchName: string; force?: boolean }): Promise<WorktreeMoveResult>
+  /**
+   * Re-run provisioning for a worktree whose dependency state looks wrong.
+   * Same code path as creation, so a repair cannot drift from a fresh provision.
+   */
+  gitWorktreeReprovision(args: { repoPath: string; worktreePath: string }): Promise<{ ok: boolean; state: WorktreeProvisionState; error?: string }>
   gitWorktreeReattach(args: { repoPath: string; sourceBranch: string }): Promise<WorktreeMoveResult>
 
   // ─── Filesystem operations ───
