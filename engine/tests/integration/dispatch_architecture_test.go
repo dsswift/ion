@@ -5,7 +5,9 @@ package integration
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -23,6 +25,21 @@ import (
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/tests/helpers"
 )
+
+// updateFixture gates rewriting testdata/dispatch_architecture_events.json.
+//
+// The fixture is tracked and transcribed by two downstream consumers
+// (desktop/src/main/__tests__/fixtures/dispatch-architecture.fixture.ts and
+// ios/IonRemoteTests/DispatchArchitectureE2ETests.swift), which copy its values
+// verbatim so all three layers assert the same reality. It is therefore a
+// cross-language contract, not scratch output: an unannounced rewrite silently
+// desynchronises those consumers from the engine.
+//
+// Default behaviour is to ASSERT against the committed bytes and fail on drift.
+// Pass -update to regenerate after an intentional change, then review the diff
+// and re-transcribe the desktop and iOS fixtures. This mirrors the golden-file
+// convention in internal/types/contract_test.go.
+var updateFixture = flag.Bool("update", false, "update testdata/dispatch_architecture_events.json")
 
 // dispatchSessionResults collects events and dispatch outcomes for one session.
 type dispatchSessionResults struct {
@@ -670,7 +687,12 @@ type fixtureEvent struct {
 // writeEventFixture serialises a normalised, deterministic snapshot of
 // engine events from the 8-dispatch test to testdata/dispatch_architecture_events.json.
 //
-// Two sources of non-determinism are removed at the root:
+// The fixture is a cross-language contract: the desktop and iOS fixtures
+// transcribe its values verbatim so all three layers assert the same reality.
+// By default this ASSERTS the computed bytes against the committed file and
+// fails on drift; -update rewrites it. See the updateFixture flag.
+//
+// Three sources of non-determinism are removed at the root:
 //
 //  1. Volatile fields: sessionId (nanosecond-seeded) and elapsed (wall-clock)
 //     are omitted entirely from the fixture.  Downstream consumers that need
@@ -682,8 +704,15 @@ type fixtureEvent struct {
 //     event stream, we partition it into logical segments at each
 //     engine_agent_state boundary, sort dispatch_start and dispatch_end events
 //     within each segment by agent name (alpha < beta), and collapse
-//     consecutive engine_agent_state runs down to a single sentinel.  The
-//     result is the same bytes every run regardless of goroutine scheduling.
+//     consecutive engine_agent_state runs down to a single sentinel.
+//
+//  3. Float accumulation: cost is a float64 sum whose exact bits depend on the
+//     order the parallel dispatches were added, so the same logical cost
+//     serialises as 0.000105 on one run and 0.00010499999999999999 on the next.
+//     Rounding to a fixed precision at the serialisation boundary is the root
+//     fix -- exact bytes were never achievable for a float sum.
+//
+// The result is the same bytes every run regardless of goroutine scheduling.
 func writeEventFixture(t *testing.T, sessA, sessB *dispatchSessionResults) {
 	t.Helper()
 
@@ -702,7 +731,7 @@ func writeEventFixture(t *testing.T, sessA, sessB *dispatchSessionResults) {
 			case "engine_dispatch_end":
 				out = append(out, fixtureEvent{
 					Type: ev.Type, Agent: ev.DispatchAgent, ExitCode: ev.DispatchExitCode,
-					Cost: ev.DispatchCost, Session: label,
+					Cost: quantizeCost(ev.DispatchCost), Session: label,
 					// elapsed omitted: wall-clock, volatile every run.
 				})
 			case "engine_agent_state":
@@ -717,17 +746,50 @@ func writeEventFixture(t *testing.T, sessA, sessB *dispatchSessionResults) {
 
 	data, err := json.MarshalIndent(fixture, "", "  ")
 	if err != nil {
-		t.Logf("marshal fixture: %v", err)
+		t.Fatalf("marshal fixture: %v", err)
+	}
+	// Trailing newline for git friendliness, matching the contract manifest.
+	data = append(data, '\n')
+
+	path := filepath.Join("testdata", "dispatch_architecture_events.json")
+
+	if *updateFixture {
+		if err := os.MkdirAll("testdata", 0o755); err != nil {
+			t.Fatalf("mkdir testdata: %v", err)
+		}
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			t.Fatalf("write fixture: %v", err)
+		}
+		t.Logf("updated %s (%d events)", path, len(fixture))
 		return
 	}
-	dir := filepath.Join("testdata")
-	_ = os.MkdirAll(dir, 0o755)
-	path := filepath.Join(dir, "dispatch_architecture_events.json")
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		t.Logf("write fixture: %v", err)
-		return
+
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read fixture (run with -update to create): %v", err)
 	}
-	t.Logf("wrote %d events to %s", len(fixture), path)
+
+	if string(data) != string(want) {
+		t.Errorf("dispatch event fixture has drifted from %s\n"+
+			"Run: cd engine && go test -tags integration ./tests/integration/ -run TestDispatchArchitecture -update\n"+
+			"Then review the diff and re-transcribe the desktop and iOS fixtures:\n"+
+			"  desktop/src/main/__tests__/fixtures/dispatch-architecture.fixture.ts\n"+
+			"  ios/IonRemoteTests/DispatchArchitectureE2ETests.swift",
+			path)
+		t.Logf("got:\n%s", data)
+	}
+}
+
+// quantizeCost rounds a per-dispatch cost to 9 decimal places.
+//
+// Cost is accumulated as a float64 across parallel dispatches, so the low bits
+// depend on summation order and the same logical value serialises differently
+// between runs (0.000105 vs 0.00010499999999999999). Nine places preserves far
+// more precision than any real cost figure needs while making the serialised
+// bytes stable.
+func quantizeCost(c float64) float64 {
+	const places = 1e9
+	return math.Round(c*places) / places
 }
 
 // normalizeFixture makes the fixture deterministic:
@@ -835,5 +897,26 @@ func normalizeFixture(events []fixtureEvent) []fixtureEvent {
 			cursors[k]++
 		}
 	}
-	return result
+
+	// Step 4: drop the engine_agent_state sentinels from the emitted fixture.
+	//
+	// They are segmentation scaffolding for the sorting above, not fixture data.
+	// engine_agent_state is a snapshot emitted on every state transition, so how
+	// many land between two dispatch events is decided by goroutine timing: a run
+	// that interleaves them differently yields 15 sentinels instead of 16, and the
+	// step-1 collapse only merges *consecutive* runs so interleaving defeats it.
+	// Keeping them made the fixture non-deterministic in its event count.
+	//
+	// Dropping them loses nothing. The entries carry no payload beyond type and
+	// session, and neither downstream consumer references them -- the desktop and
+	// iOS fixtures transcribe the dispatch events only. Their ordering role is
+	// already fully applied by the time this runs.
+	deduped := result[:0:0]
+	for _, ev := range result {
+		if ev.Type == "engine_agent_state" {
+			continue
+		}
+		deduped = append(deduped, ev)
+	}
+	return deduped
 }
