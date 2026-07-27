@@ -36,7 +36,11 @@ describe('LANServer pairing clears auth cooldown', () => {
   let server: LANServer
 
   beforeEach(async () => {
-    server = new LANServer({ port: TEST_PORT })
+    // advertise: false — this test exercises the auth/pairing path only. With
+    // advertisement on, start() would register _ion._tcp with the developer's
+    // system mDNSResponder and sweep for stale registrations, mutating live
+    // machine state from a unit test.
+    server = new LANServer({ port: TEST_PORT, advertise: false })
     await server.start()
   })
 

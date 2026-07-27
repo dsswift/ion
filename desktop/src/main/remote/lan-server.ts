@@ -9,10 +9,9 @@
 
 import { EventEmitter } from 'events'
 import { createServer, type Server } from 'http'
-import { execSync, spawn, type ChildProcess } from 'child_process'
-import { hostname } from 'os'
 import WebSocket, { WebSocketServer } from 'ws'
 import { log as _log } from '../logger'
+import { BonjourAdvertiser } from './lan-bonjour'
 import type { WireMessage } from './protocol'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -23,6 +22,18 @@ const DEFAULT_PORT = 19837
 
 export interface LANServerOptions {
   port?: number
+  /**
+   * Register the `_ion._tcp` service with the system mDNS responder on start.
+   * Defaults to true — production always advertises, otherwise iOS cannot
+   * discover the desktop to pair.
+   *
+   * Tests that construct a real LANServer set this to false. Advertising is
+   * machine-global state (it spawns a dns-sd child that registers with
+   * mDNSResponder and sweeps for stale registrations), so a test that
+   * advertises mutates the developer's live Bonjour environment rather than
+   * just its own process.
+   */
+  advertise?: boolean
 }
 
 /**
@@ -51,13 +62,18 @@ export class LANServer extends EventEmitter {
   private clients: Map<string, WebSocket> = new Map()
   private clientIps: Map<string, string> = new Map()
   private port: number
-  private dnssdProc: ChildProcess | null = null
+  /** Owns the `_ion._tcp` mDNS registration and its recovery ladder. */
+  private bonjour: BonjourAdvertiser
   private nextId = 0
   private failedAuth: Map<string, AuthFailureRecord> = new Map()
 
   constructor(options: LANServerOptions = {}) {
     super()
     this.port = options.port || DEFAULT_PORT
+    this.bonjour = new BonjourAdvertiser({
+      port: this.port,
+      advertise: options.advertise !== false,
+    })
   }
 
   /** Returns ms remaining until this IP can attempt auth again, or 0 if not blocked. */
@@ -201,7 +217,7 @@ export class LANServer extends EventEmitter {
 
       this.httpServer.listen(this.port, () => {
         log('lan_server: listening', { port: this.port })
-        this._advertiseBonjour()
+        this.bonjour.start()
         resolve(this.port)
       })
 
@@ -263,7 +279,7 @@ export class LANServer extends EventEmitter {
   }
 
   async stop(): Promise<void> {
-    this._unadvertiseBonjour()
+    this.bonjour.stop()
 
     for (const [_id, ws] of this.clients) {
       try { ws.close() } catch { /* ignore */ }
@@ -359,82 +375,5 @@ export class LANServer extends EventEmitter {
     ws.on('close', () => {
       clearTimeout(timeout)
     })
-  }
-
-  private _advertiseBonjour(): void {
-    // Use macOS dns-sd to register through the system's mDNSResponder.
-    // This is the only reliable way to be visible to Apple's NWBrowser.
-    //
-    // Kill any orphaned dns-sd processes from prior app instances first.
-    // When the app is force-killed or crashes, _unadvertiseBonjour never
-    // runs and the old dns-sd child lives on. Hundreds of stale registrations
-    // confuse mDNSResponder and make the service undiscoverable on iOS.
-    this._killOrphanedDnssd()
-
-    const name = hostname().replace(/\.local$/, '')
-    log('lan_server: bonjour spawning dns-sd', { name, port: this.port })
-    try {
-      this.dnssdProc = spawn('/usr/bin/dns-sd', [
-        '-R', name, '_ion._tcp', 'local', String(this.port),
-      ], { stdio: 'pipe' })
-
-      this.dnssdProc.stdout?.on('data', (data: Buffer) => {
-        log('lan_server: dns-sd stdout', { data: data.toString().trim() })
-      })
-
-      this.dnssdProc.stderr?.on('data', (data: Buffer) => {
-        log('lan_server: dns-sd stderr', { data: data.toString().trim() })
-      })
-
-      this.dnssdProc.on('error', (err) => {
-        log('lan_server: dns-sd spawn error', { error: err.message })
-        this.dnssdProc = null
-      })
-
-      this.dnssdProc.on('exit', (code, signal) => {
-        log('lan_server: dns-sd exited', { code, signal })
-        this.dnssdProc = null
-      })
-
-      log('lan_server: bonjour advertising', { name, port: this.port, pid: this.dnssdProc.pid })
-    } catch (err) {
-      log('lan_server: bonjour unavailable', { error: (err as Error).message })
-    }
-  }
-
-  /**
-   * Kill orphaned dns-sd processes from previous app instances.
-   * Spares the process we own (this.dnssdProc) if one exists.
-   */
-  private _killOrphanedDnssd(): void {
-    try {
-      const myPid = this.dnssdProc?.pid
-      const raw = execSync(
-        'pgrep -f "dns-sd -R .* _ion._tcp"',
-        { encoding: 'utf8', timeout: 3000 },
-      ).trim()
-      if (!raw) return
-      const pids = raw.split('\n').map(Number).filter(Boolean)
-      let killed = 0
-      for (const pid of pids) {
-        if (pid === myPid) continue
-        try {
-          process.kill(pid, 'SIGTERM')
-          killed++
-        } catch { /* already dead */ }
-      }
-      if (killed > 0) {
-        log('lan_server: bonjour killed orphaned dns-sd', { count: killed })
-      }
-    } catch {
-      // pgrep returns exit code 1 when no matches — expected on fresh start.
-    }
-  }
-
-  private _unadvertiseBonjour(): void {
-    if (this.dnssdProc) {
-      this.dnssdProc.kill()
-      this.dnssdProc = null
-    }
   }
 }
