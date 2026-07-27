@@ -21,6 +21,12 @@ vi.mock('electron', () => ({
 
 const mockBridge = {
   startSession: vi.fn().mockResolvedValue({ ok: true }),
+  // The real bridge retains the last EngineConfig per session key; submitPrompt's
+  // cwd reconciler reads it to decide whether the prompt's directory diverges
+  // from the started one. Undefined here means "no recorded config", which the
+  // reconciler treats as a fail-open no-op — correct for these tests, which are
+  // about ensureSession's own behaviour rather than relocation.
+  getSessionConfig: vi.fn(() => undefined),
   sendPrompt: vi.fn().mockResolvedValue({ ok: true }),
   sendAbort: vi.fn(),
   sendDialogResponse: vi.fn(),
