@@ -6,6 +6,8 @@ import { basename, join } from 'path'
 import { IPC } from '../../shared/types'
 import type { WorktreeInfo, WorktreeStatus } from '../../shared/types'
 import { runGit } from '../git-runner'
+import { landWorktree } from '../worktree/integrate'
+import { registerWorktree, unregisterWorktree } from '../worktree/inventory'
 
 export function registerWorktreeIpc(): void {
   ipcMain.handle(IPC.GIT_WORKTREE_ADD, async (_event, { repoPath, sourceBranch }: { repoPath: string; sourceBranch: string }) => {
@@ -17,6 +19,11 @@ export function registerWorktreeIpc(): void {
       mkdirSync(worktreeDir, { recursive: true })
       await runGit(repoPath, ['worktree', 'add', '-b', branchName, worktreePath, sourceBranch])
       const worktree: WorktreeInfo = { worktreePath, branchName, sourceBranch, repoPath }
+      // Record the source branch: git does not store which branch a worktree
+      // was cut from, and every lifecycle verb (land, sync, base staleness)
+      // needs it. Without this the inventory has to guess, and a wrong guess
+      // would land work into the wrong branch.
+      registerWorktree({ worktreePath, repoPath, branchName, sourceBranch })
       return { ok: true, worktree }
     } catch (err: any) {
       return { ok: false, error: err.message }
@@ -29,6 +36,7 @@ export function registerWorktreeIpc(): void {
       if (force) removeArgs.push('--force')
       await runGit(repoPath, removeArgs)
       try { await runGit(repoPath, ['branch', '-D', branchName]) } catch { /* silent-ok: best-effort branch delete; worktree already removed */ }
+      unregisterWorktree(worktreePath)
       try {
         const parent = join(worktreePath, '..')
         const entries = readdirSync(parent)
@@ -99,21 +107,25 @@ export function registerWorktreeIpc(): void {
     }
   })
 
-  ipcMain.handle(IPC.GIT_WORKTREE_MERGE, async (_event, { repoPath, worktreeBranch, sourceBranch, noFf }: { repoPath: string; worktreeBranch: string; sourceBranch: string; noFf?: boolean }) => {
-    try {
-      await runGit(repoPath, ['checkout', sourceBranch])
-      const mergeArgs = noFf
-        ? ['merge', '--no-ff', worktreeBranch]
-        : ['merge', '--ff-only', worktreeBranch]
-      await runGit(repoPath, mergeArgs)
-      return { ok: true }
-    } catch (err: any) {
-      const msg = err.message || ''
-      if (msg.includes('CONFLICT') || msg.includes('Merge conflict')) {
-        return { ok: false, hasConflicts: true, error: msg }
-      }
-      return { ok: false, error: msg }
-    }
+  // GIT_WORKTREE_MERGE is retained as a channel (no wire removal) but its body
+  // now DELEGATES to landWorktree. The original implementation ran a bare
+  // `git checkout <sourceBranch>` in the main repo followed by `merge
+  // --ff-only`, which clobbered the operator's checkout, could not be repeated
+  // after another worktree landed, and raced other tabs. Routing through the
+  // land path means no caller can bypass the dirty/branch preflight or the
+  // per-repo serialization. See main/worktree/integrate.ts.
+  ipcMain.handle(IPC.GIT_WORKTREE_MERGE, async (_event, { repoPath, worktreeBranch, sourceBranch, noFf, worktreePath }: { repoPath: string; worktreeBranch: string; sourceBranch: string; noFf?: boolean; worktreePath?: string }) => {
+    return landWorktree({
+      repoPath,
+      // Older callers of this channel did not pass worktreePath. The land
+      // preflight uses it only for the "is the worktree committed" gate;
+      // falling back to repoPath keeps those callers working (the gate then
+      // checks the repo, which is the conservative direction).
+      worktreePath: worktreePath || repoPath,
+      worktreeBranch,
+      sourceBranch,
+      noFf,
+    })
   })
 
   ipcMain.handle(IPC.GIT_WORKTREE_PUSH, async (_event, { worktreePath }: { worktreePath: string }) => {

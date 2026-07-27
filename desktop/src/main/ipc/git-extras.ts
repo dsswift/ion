@@ -11,6 +11,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { IPC } from '../../shared/types'
 import { runGit } from '../git-runner'
+import { benchGuard } from '../integration/bench-guard'
 import { log as _log, error as _error } from '../logger'
 import { subscribe as gitSubscribe, unsubscribe as gitUnsubscribe } from '../git/subscriptions'
 import { repositoryManager } from '../git/repositoryManager'
@@ -53,6 +54,12 @@ export function registerGitExtrasIpc(): void {
     }
   })
 
+  // GIT_APPLY_PATCH is deliberately NOT bench-guarded. `git apply` writes only
+  // the working tree and index — it creates no commit and moves no branch — and
+  // it is how hunk-level staging works in the git panel. A rebuild's
+  // `--discard-changes` already resets what it touched, so nothing durable is
+  // at risk, and refusing it would break diff review inside the bench, which is
+  // the one thing the bench exists to serve.
   ipcMain.handle(IPC.GIT_APPLY_PATCH, async (_event, { directory, patch, reverse, cached }: { directory: string; patch: string; reverse?: boolean; cached?: boolean }) => {
     const args = ['apply', '--whitespace=nowarn']
     if (cached) args.push('--cached')
@@ -71,7 +78,12 @@ export function registerGitExtrasIpc(): void {
     }
   })
 
+  // A tag OUTLIVES the rebuild that destroys the commit it points at, and it is
+  // pushable — so it both anchors a synthetic bench commit indefinitely and can
+  // publish other people's in-flight work. Guarded.
   ipcMain.handle(IPC.GIT_TAG_CREATE, async (_event, { directory, name, ref, message }: { directory: string; name: string; ref?: string; message?: string }) => {
+    const refusal = benchGuard(directory, 'create a tag')
+    if (refusal) return refusal
     try {
       const args = ['tag']
       if (message) args.push('-a', name, '-m', message)

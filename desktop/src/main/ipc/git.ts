@@ -1,10 +1,9 @@
 import { ipcMain } from 'electron'
 import { unlink } from 'fs/promises'
-import { writeFileSync, unlinkSync } from 'fs'
 import { basename, join } from 'path'
-import { tmpdir } from 'os'
 import { IPC } from '../../shared/types'
-import { runGit, gitExec } from '../git-runner'
+import { runGit } from '../git-runner'
+import { benchGuard } from '../integration/bench-guard'
 import { error as _error, debug as _debug } from '../logger'
 
 const logError = (msg: string): void => { _error('git-ipc', msg) }
@@ -223,10 +222,9 @@ export function registerGitIpc(): void {
   })
 
   ipcMain.handle(IPC.GIT_COMMIT, async (_event, { directory, message, amend, signoff, gpg }: { directory: string; message: string; amend?: boolean; signoff?: boolean; gpg?: boolean }) => {
+    const refusal = benchGuard(directory, 'commit')
+    if (refusal) return refusal
     try {
-      const args = ['commit', '-m', message]
-      if (amend) args.unshift('commit', '--amend', '-m', message), args.splice(0, 3)
-      // rebuild cleanly:
       const built = ['commit']
       if (amend) built.push('--amend')
       if (signoff) built.push('--signoff')
@@ -249,6 +247,8 @@ export function registerGitIpc(): void {
   })
 
   ipcMain.handle(IPC.GIT_PULL, async (_event, { directory }: { directory: string }) => {
+    const refusal = benchGuard(directory, 'pull')
+    if (refusal) return refusal
     try {
       await runGit(directory, ['pull'])
       return { ok: true }
@@ -258,6 +258,8 @@ export function registerGitIpc(): void {
   })
 
   ipcMain.handle(IPC.GIT_PUSH, async (_event, { directory }: { directory: string }) => {
+    const refusal = benchGuard(directory, 'push')
+    if (refusal) return refusal
     try {
       await runGit(directory, ['push'])
       return { ok: true }
@@ -287,6 +289,8 @@ export function registerGitIpc(): void {
   })
 
   ipcMain.handle(IPC.GIT_CHECKOUT, async (_event, { directory, branch }: { directory: string; branch: string }) => {
+    const refusal = benchGuard(directory, 'switch branches')
+    if (refusal) return refusal
     try {
       await runGit(directory, ['checkout', branch])
       return { ok: true }
@@ -296,6 +300,8 @@ export function registerGitIpc(): void {
   })
 
   ipcMain.handle(IPC.GIT_CREATE_BRANCH, async (_event, { directory, name }: { directory: string; name: string }) => {
+    const refusal = benchGuard(directory, 'create a branch')
+    if (refusal) return refusal
     try {
       await runGit(directory, ['checkout', '-b', name])
       return { ok: true }
@@ -390,6 +396,8 @@ export function registerGitIpc(): void {
   })
 
   ipcMain.handle(IPC.GIT_DELETE_BRANCH, async (_event, { directory, branch }: { directory: string; branch: string }) => {
+    const refusal = benchGuard(directory, 'delete a branch')
+    if (refusal) return refusal
     try {
       await runGit(directory, ['branch', '-d', branch])
       return { ok: true }
@@ -411,6 +419,8 @@ export function registerGitIpc(): void {
   })
 
   ipcMain.handle(IPC.GIT_STASH_SAVE, async (_event, { directory, message }: { directory: string; message?: string }) => {
+    const refusal = benchGuard(directory, 'stash')
+    if (refusal) return refusal
     try {
       const args = message ? ['stash', 'push', '-m', message] : ['stash', 'push']
       await runGit(directory, args)
@@ -419,6 +429,8 @@ export function registerGitIpc(): void {
   })
 
   ipcMain.handle(IPC.GIT_STASH_POP, async (_event, { directory, ref }: { directory: string; ref?: string }) => {
+    const refusal = benchGuard(directory, 'pop a stash')
+    if (refusal) return refusal
     try {
       const args = ref ? ['stash', 'pop', ref] : ['stash', 'pop']
       await runGit(directory, args)
@@ -427,6 +439,8 @@ export function registerGitIpc(): void {
   })
 
   ipcMain.handle(IPC.GIT_STASH_DROP, async (_event, { directory, ref }: { directory: string; ref: string }) => {
+    const refusal = benchGuard(directory, 'drop a stash')
+    if (refusal) return refusal
     try {
       await runGit(directory, ['stash', 'drop', ref])
       return { ok: true }
@@ -434,6 +448,8 @@ export function registerGitIpc(): void {
   })
 
   ipcMain.handle(IPC.GIT_CHERRY_PICK, async (_event, { directory, hash }: { directory: string; hash: string }) => {
+    const refusal = benchGuard(directory, 'cherry-pick')
+    if (refusal) return refusal
     try {
       await runGit(directory, ['cherry-pick', hash])
       return { ok: true }
@@ -441,6 +457,8 @@ export function registerGitIpc(): void {
   })
 
   ipcMain.handle(IPC.GIT_REVERT, async (_event, { directory, hash }: { directory: string; hash: string }) => {
+    const refusal = benchGuard(directory, 'revert')
+    if (refusal) return refusal
     try {
       await runGit(directory, ['revert', '--no-edit', hash])
       return { ok: true }
@@ -448,6 +466,8 @@ export function registerGitIpc(): void {
   })
 
   ipcMain.handle(IPC.GIT_RESET, async (_event, { directory, hash, mode }: { directory: string; hash: string; mode: 'soft' | 'mixed' | 'hard' }) => {
+    const refusal = benchGuard(directory, 'reset')
+    if (refusal) return refusal
     try {
       await runGit(directory, ['reset', `--${mode}`, hash])
       return { ok: true }
@@ -517,60 +537,6 @@ export function registerGitIpc(): void {
       const fullPath = join(directory, path)
       writeFsSync(fullPath, content, 'utf-8')
       await runGit(directory, ['add', '--', path])
-      return { ok: true }
-    } catch (err: any) {
-      return { ok: false, error: err.message }
-    }
-  })
-
-  // ─── Interactive rebase ───
-
-  ipcMain.handle(IPC.GIT_REBASE_TODO, async (_event, { directory, onto }: { directory: string; onto: string }) => {
-    try {
-      const output = await runGit(directory, ['log', '--reverse', '--format=%H%x00%s', `${onto}..HEAD`])
-      const commits = output.trim().split('\n').filter(Boolean).map(line => {
-        const [hash, subject] = line.split('\x00')
-        return { hash, subject, action: 'pick' as const }
-      })
-      return { commits, ok: true }
-    } catch (err: any) {
-      return { commits: [], ok: false, error: err.message }
-    }
-  })
-
-  ipcMain.handle(IPC.GIT_REBASE_EXEC, async (_event, { directory, onto, commits }: { directory: string; onto: string; commits: Array<{ hash: string; action: string }> }) => {
-    try {
-      const todoContent = commits
-        .filter(c => c.action !== 'drop')
-        .map(c => `${c.action} ${c.hash}`)
-        .join('\n') + '\n'
-
-      const todoFile = join(tmpdir(), `ion-rebase-todo-${Date.now()}`)
-      writeFileSync(todoFile, todoContent)
-
-      // Use GIT_SEQUENCE_EDITOR to supply our pre-built todo list
-      const env = { ...process.env, GIT_SEQUENCE_EDITOR: `cat "${todoFile}" >` }
-      await gitExec('git', ['rebase', '-i', onto], { cwd: directory, maxBuffer: 10 * 1024 * 1024, env })
-
-      try { unlinkSync(todoFile) } catch { /* silent-ok: best-effort rebase-todo temp-file cleanup */ }
-      return { ok: true }
-    } catch (err: any) {
-      return { ok: false, error: err.stderr?.trim() || err.message }
-    }
-  })
-
-  ipcMain.handle(IPC.GIT_REBASE_ABORT, async (_event, { directory }: { directory: string }) => {
-    try {
-      await runGit(directory, ['rebase', '--abort'])
-      return { ok: true }
-    } catch (err: any) {
-      return { ok: false, error: err.message }
-    }
-  })
-
-  ipcMain.handle(IPC.GIT_REBASE_CONTINUE, async (_event, { directory }: { directory: string }) => {
-    try {
-      await runGit(directory, ['rebase', '--continue'])
       return { ok: true }
     } catch (err: any) {
       return { ok: false, error: err.message }

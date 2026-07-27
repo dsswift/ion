@@ -12,7 +12,7 @@ import { evaluateCloseGuard, formatCloseGuardRefusal } from './tab-close-guard'
 import { forgetTabContentTracking } from '../tab-content-tracking'
 import { pickNextActiveTab } from './tab-slice-next-active'
 import { getEffectiveTabGroups } from '../../preferences'
-import { rDebug, rWarn } from '../../rendererLogger'
+import { rInfo, rDebug, rWarn } from '../../rendererLogger'
 import {
   moveTabToGroupAction, moveTabToGroupAndPinAction, setTabGroupIdAction,
   toggleTabGroupPinAction, setWorktreeUncommittedAction, addSystemMessageAction,
@@ -255,13 +255,26 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
           return
         }
       }
+      // Closing a conversation NEVER removes its worktree.
+      //
+      // This used to call gitWorktreeRemove(..., force = true), and the remove
+      // handler then ran `git branch -D`. A stray Cmd+W therefore destroyed
+      // uncommitted changes and made unlanded commits unreachable, silently and
+      // unrecoverably.
+      //
+      // A conversation and a worktree are separate lifetimes: a conversation is
+      // a thread of discussion, a worktree is a place work lives. Removing a
+      // worktree is its own explicit verb ("Retire"), gated by its own
+      // appraisal (main/worktree/safety.ts). Because close is now cheap and
+      // reversible it does not need to be forbidden — the worktree survives,
+      // and the Worktrees list in the git panel offers a one-click path back
+      // into it with a fresh conversation.
       if (closingTab?.worktree) {
-        window.ion.gitWorktreeRemove(
-          closingTab.worktree.repoPath,
-          closingTab.worktree.worktreePath,
-          closingTab.worktree.branchName,
-          true,
-        ).catch((err) => rWarn('tabs', 'worktree remove on close failed', { tab_id: tabId, error: String(err) }))
+        rInfo('tabs', 'closing worktree conversation; worktree preserved', {
+          tab_id: tabId,
+          worktree_path: closingTab.worktree.worktreePath,
+          branch: closingTab.worktree.branchName,
+        })
       }
       window.ion.closeTab(tabId).catch((err) => rWarn('tabs', 'closeTab IPC failed', { tab_id: tabId, error: String(err) }))
       // Delete the tab's externalized content file (schema v4) and drop its

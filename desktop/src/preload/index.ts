@@ -34,6 +34,7 @@ const api: IonAPI = {
   getEnterprisePolicyFull: () => ipcRenderer.invoke(IPC.GET_ENTERPRISE_POLICY_FULL),
   listCustomThemes: () => ipcRenderer.invoke(IPC.THEMES_LIST_CUSTOM),
   openExternal: (url) => ipcRenderer.invoke(IPC.OPEN_EXTERNAL, url),
+  revealPath: (path) => ipcRenderer.invoke(IPC.REVEAL_PATH, path),
   attachFiles: () => ipcRenderer.invoke(IPC.ATTACH_FILES),
   attachFileByPath: (path) => ipcRenderer.invoke(IPC.ATTACH_FILE_BY_PATH, path),
   takeScreenshot: () => ipcRenderer.invoke(IPC.TAKE_SCREENSHOT),
@@ -50,6 +51,7 @@ const api: IonAPI = {
   ensureEngineSession: (args) => ipcRenderer.invoke(IPC.ENSURE_ENGINE_SESSION, args),
   resetTabSession: (tabId) => ipcRenderer.send(IPC.RESET_TAB_SESSION, tabId),
   restartTabSession: (tabId: string) => ipcRenderer.send(IPC.RESTART_TAB_SESSION, tabId),
+  relocateTabSession: (tabId, workingDirectory) => ipcRenderer.invoke(IPC.RELOCATE_TAB_SESSION, { tabId, workingDirectory }),
   listSessions: (projectPath?: string) => ipcRenderer.invoke(IPC.LIST_SESSIONS, projectPath),
   listAllSessions: () => ipcRenderer.invoke(IPC.LIST_ALL_SESSIONS),
   loadSession: (sessionId: string, projectPath?: string, encodedDir?: string) => ipcRenderer.invoke(IPC.LOAD_SESSION, { sessionId, projectPath, encodedDir }),
@@ -71,6 +73,19 @@ const api: IonAPI = {
     const handler = (_e: Electron.IpcRendererEvent, key: string, exitCode: number) => callback(key, exitCode)
     ipcRenderer.on(IPC.TERMINAL_EXIT, handler)
     return () => ipcRenderer.removeListener(IPC.TERMINAL_EXIT, handler)
+  },
+  // iOS asked to open a worktree / bench conversation. Tab creation lives in
+  // the renderer store (it owns panes and titling), so main relays the intent
+  // here rather than duplicating that logic.
+  onRemoteOpenWorktreeConversation: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, worktreePath: string) => callback(worktreePath)
+    ipcRenderer.on('ion:remote-open-worktree-conversation', handler)
+    return () => ipcRenderer.removeListener('ion:remote-open-worktree-conversation', handler)
+  },
+  onRemoteOpenBenchConversation: (callback) => {
+    const handler = (_e: Electron.IpcRendererEvent, arg: { repoPath: string; sourceBranch: string }) => callback(arg)
+    ipcRenderer.on('ion:remote-open-bench-conversation', handler)
+    return () => ipcRenderer.removeListener('ion:remote-open-bench-conversation', handler)
   },
   executeBash: (id, command, cwd) => ipcRenderer.invoke(IPC.EXECUTE_BASH, { id, command, cwd }),
   cancelBash: (id) => ipcRenderer.send(IPC.CANCEL_BASH, id),
@@ -167,6 +182,22 @@ const api: IonAPI = {
   gitWorktreeMerge: (repoPath, worktreeBranch, sourceBranch, noFf) => ipcRenderer.invoke(IPC.GIT_WORKTREE_MERGE, { repoPath, worktreeBranch, sourceBranch, noFf }),
   gitWorktreePush: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_PUSH, { worktreePath, sourceBranch }),
   gitWorktreeRebase: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_REBASE, { worktreePath, sourceBranch }),
+  gitWorktreeLand: (args) => ipcRenderer.invoke(IPC.GIT_WORKTREE_LAND, args),
+  gitWorktreeSync: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_SYNC, { worktreePath, sourceBranch }),
+  gitWorktreeBaseStatus: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_BASE_STATUS, { worktreePath, sourceBranch }),
+  gitWorktreeInventory: (repoPath) => ipcRenderer.invoke(IPC.GIT_WORKTREE_INVENTORY, { repoPath }),
+  benchList: (repoPath) => ipcRenderer.invoke(IPC.BENCH_LIST, { repoPath }),
+  benchEnsure: (repoPath, sourceBranch) => ipcRenderer.invoke(IPC.BENCH_ENSURE, { repoPath, sourceBranch }),
+  benchAddMember: (args) => ipcRenderer.invoke(IPC.BENCH_ADD_MEMBER, args),
+  benchRemoveMember: (args) => ipcRenderer.invoke(IPC.BENCH_REMOVE_MEMBER, args),
+  benchSetEnabled: (args) => ipcRenderer.invoke(IPC.BENCH_SET_ENABLED, args),
+  benchUpdateMember: (args) => ipcRenderer.invoke(IPC.BENCH_UPDATE_MEMBER, args),
+  benchUpdateAll: (repoPath, sourceBranch) => ipcRenderer.invoke(IPC.BENCH_UPDATE_ALL, { repoPath, sourceBranch }),
+  benchRebuild: (repoPath, sourceBranch) => ipcRenderer.invoke(IPC.BENCH_REBUILD, { repoPath, sourceBranch }),
+  benchRefreshStaleness: (repoPath, sourceBranch) => ipcRenderer.invoke(IPC.BENCH_REFRESH_STALENESS, { repoPath, sourceBranch }),
+  gitWorktreeAppraise: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_APPRAISE, { worktreePath, sourceBranch }),
+  gitWorktreeRetire: (args) => ipcRenderer.invoke(IPC.GIT_WORKTREE_RETIRE, args),
+  gitWorktreeReattach: (args) => ipcRenderer.invoke(IPC.GIT_WORKTREE_REATTACH, args),
 
   // ─── Filesystem operations ───
   fsReadDir: (directory) => ipcRenderer.invoke(IPC.FS_READ_DIR, { directory }),

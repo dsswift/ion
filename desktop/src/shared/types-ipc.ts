@@ -32,6 +32,9 @@ export const IPC = {
   ENSURE_ENGINE_SESSION: 'ion:ensure-engine-session',
   RESET_TAB_SESSION: 'ion:reset-tab-session',
   RESTART_TAB_SESSION: 'ion:restart-tab-session',
+  // Move a live conversation to a different working directory, preserving its
+  // conversationId and history. See engine-control-plane-relocate.ts.
+  RELOCATE_TAB_SESSION: 'ion:relocate-tab-session',
   ANIMATE_HEIGHT: 'ion:animate-height',
   LIST_SESSIONS: 'ion:list-sessions',
   LIST_ALL_SESSIONS: 'ion:list-all-sessions',
@@ -168,6 +171,32 @@ export const IPC = {
   GIT_WORKTREE_MERGE: 'ion:git-worktree-merge',
   GIT_WORKTREE_PUSH: 'ion:git-worktree-push',
   GIT_WORKTREE_REBASE: 'ion:git-worktree-rebase',
+  // Worktree lifecycle: repeatable land, sync, and the retire / re-attach
+  // pair that lets a conversation outlive its worktree.
+  GIT_WORKTREE_LAND: 'ion:git-worktree-land',
+  GIT_WORKTREE_SYNC: 'ion:git-worktree-sync',
+  GIT_WORKTREE_RETIRE: 'ion:git-worktree-retire',
+  GIT_WORKTREE_REATTACH: 'ion:git-worktree-reattach',
+  // Base staleness: has the feature branch moved ahead of this worktree?
+  GIT_WORKTREE_BASE_STATUS: 'ion:git-worktree-base-status',
+  // Worktree inventory: what worktrees exist for a repo, with the state needed
+  // to describe and act on them (the re-entry surface after a tab close).
+  GIT_WORKTREE_INVENTORY: 'ion:git-worktree-inventory',
+  GIT_WORKTREE_APPRAISE: 'ion:git-worktree-appraise',
+  // Reveal a directory in the OS file manager. Separate from OPEN_EXTERNAL,
+  // which deliberately rejects non-http(s) URLs.
+  REVEAL_PATH: 'ion:reveal-path',
+  // Integration workspace (the bench): read the workspace list, mutate the
+  // member set, and rebuild. Rebuild is always operator-triggered.
+  BENCH_LIST: 'ion:bench-list',
+  BENCH_ENSURE: 'ion:bench-ensure',
+  BENCH_ADD_MEMBER: 'ion:bench-add-member',
+  BENCH_REMOVE_MEMBER: 'ion:bench-remove-member',
+  BENCH_SET_ENABLED: 'ion:bench-set-enabled',
+  BENCH_UPDATE_MEMBER: 'ion:bench-update-member',
+  BENCH_UPDATE_ALL: 'ion:bench-update-all',
+  BENCH_REBUILD: 'ion:bench-rebuild',
+  BENCH_REFRESH_STALENESS: 'ion:bench-refresh-staleness',
 
   // Filesystem operations
   FS_READ_DIR: 'ion:fs-read-dir',

@@ -13,6 +13,8 @@ import { useRepoState } from '../stores/git'
 import { useGitDragSplit } from '../hooks/useGitDragSplit'
 import { GitChangesSection } from './GitChangesSection'
 import { GitGraphSection } from './GitGraphSection'
+import { WorktreesSection } from './WorktreesSection'
+import { IntegrationSection } from './IntegrationSection'
 import { CommitForm } from './git/CommitForm'
 import { rDebug, rError } from '../rendererLogger'
 
@@ -119,6 +121,10 @@ export function GitPanel() {
   const changesOpen = usePreferencesStore((s) => s.gitPanelChangesOpen)
   const setChangesOpen = usePreferencesStore((s) => s.setGitPanelChangesOpen)
   const graphOpen = usePreferencesStore((s) => s.gitPanelGraphOpen)
+  const worktreesOpen = usePreferencesStore((s) => s.gitPanelWorktreesOpen)
+  const integrationOpen = usePreferencesStore((s) => s.gitPanelIntegrationOpen)
+  const setIntegrationOpen = usePreferencesStore((s) => s.setGitPanelIntegrationOpen)
+  const setWorktreesOpen = usePreferencesStore((s) => s.setGitPanelWorktreesOpen)
   const setGraphOpen = usePreferencesStore((s) => s.setGitPanelGraphOpen)
   const repoState = useRepoState(directory)
   const files = useMemo(() => repoState?.files ?? [], [repoState?.files])
@@ -162,8 +168,28 @@ export function GitPanel() {
     }
   }, [worktree, activeTabId, files])
 
+  // The repo root for worktree listing. When the active tab IS a worktree, its
+  // worktrees belong to the parent repo, not to the worktree directory -- so
+  // resolve through the worktree metadata rather than using `directory`.
+  const repoRootPath = worktree?.repoPath ?? directory
+  const worktreeEntries = useSessionStore((s) => s.worktreeInventory.get(repoRootPath))
+  const worktreeCount = worktreeEntries?.length ?? 0
+  const staleWorktreeCount = (worktreeEntries ?? []).filter((w) => w.needsSync).length
+  const benchWorkspaces = useSessionStore((s) => s.benchWorkspaces.get(repoRootPath))
+  const benchMemberCount = (benchWorkspaces ?? []).reduce((n, w) => n + w.members.length, 0)
+  const benchStaleCount = (benchWorkspaces ?? [])
+    .reduce((n, w) => n + w.members.filter((m) => m.status === 'stale').length, 0)
+
+  // Worktrees section: collapsible, fixed-height, and NOT part of the drag
+  // split. Its header always occupies a row of chrome, so the split math below
+  // accounts for it whether it is open or closed.
+  const WORKTREES_HEADER = 28
+  const WORKTREES_BODY_MAX = 132
+  const INTEGRATION_HEADER = 28
+  const INTEGRATION_BODY_MAX = 148
+
   // Drag split between Changes and Graph
-  const FIXED_CHROME = 28 + 28 + 28 + 6 // panel header + changes header + graph header + divider
+  const FIXED_CHROME = 28 + 28 + 28 + 6 + WORKTREES_HEADER + INTEGRATION_HEADER // panel header + changes/graph/worktrees/integration headers + divider
   const { onMouseDown: onDividerMouseDown, isDragging } = useGitDragSplit(
     containerRef, splitRatio, setSplitRatio, FIXED_CHROME,
   )
@@ -181,7 +207,11 @@ export function GitPanel() {
   const bodyMaxHeight = expandedUI ? 520 : 400
   const panelHeight = bodyMaxHeight + 82
   const bothOpen = changesOpen && graphOpen
-  const availableHeight = panelHeight - FIXED_CHROME
+  // The worktrees body, when open, takes its space out of the shared pool so
+  // the panel never overflows its fixed height.
+  const worktreesBodyHeight = worktreesOpen ? WORKTREES_BODY_MAX : 0
+  const integrationBodyHeight = integrationOpen ? INTEGRATION_BODY_MAX : 0
+  const availableHeight = panelHeight - FIXED_CHROME - worktreesBodyHeight - integrationBodyHeight
 
   let changesContentHeight: number | undefined
   let graphContentHeight: number | undefined
@@ -203,7 +233,7 @@ export function GitPanel() {
       data-ion-ui
       className="glass-surface rounded-xl flex flex-col"
       style={{
-        width: 280,
+        width: 320,
         height: panelHeight,
         background: colors.containerBg,
         border: `1px solid ${colors.containerBorder}`,
@@ -359,6 +389,111 @@ export function GitPanel() {
           }} />
         </div>
       )}
+
+      {/* Worktrees section — the re-entry surface. Fixed height, outside the
+          Changes/Graph drag split. */}
+      <div className="flex flex-col" style={{
+        height: worktreesOpen ? (WORKTREES_BODY_MAX + WORKTREES_HEADER) : WORKTREES_HEADER,
+        flexShrink: 0,
+        overflow: 'hidden',
+        borderTop: `1px solid ${colors.containerBorder}`,
+      }}>
+        <div
+          className="flex items-center gap-1 px-2.5"
+          style={{
+            height: WORKTREES_HEADER,
+            background: colors.surfacePrimary,
+            borderBottom: worktreesOpen ? `1px solid ${colors.containerBorder}` : 'none',
+            color: colors.textSecondary,
+            fontSize: 11,
+            flexShrink: 0,
+          }}
+        >
+          <SectionToggleButton
+            open={worktreesOpen}
+            label="Worktrees"
+            onClick={() => setWorktreesOpen(!worktreesOpen)}
+            className="flex items-center gap-1"
+            style={{ color: 'inherit', padding: 0, borderRadius: 4 }}
+            colors={colors}
+          />
+          {worktreeCount > 0 && (
+            <span
+              data-testid="worktree-count"
+              className="text-[9px] px-1 rounded-full"
+              style={{ background: colors.accentLight, color: colors.accent }}
+            >
+              {worktreeCount}
+            </span>
+          )}
+          {staleWorktreeCount > 0 && (
+            <span
+              data-testid="worktree-stale-count"
+              className="text-[9px]"
+              style={{ color: colors.warningFg }}
+            >
+              {staleWorktreeCount} stale
+            </span>
+          )}
+        </div>
+        {worktreesOpen && (
+          <div style={{ height: WORKTREES_BODY_MAX, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            <WorktreesSection repoPath={repoRootPath} refreshKey={refreshKey} />
+          </div>
+        )}
+      </div>
+
+      {/* Integration (bench) section — fixed height, outside the drag split. */}
+      <div className="flex flex-col" style={{
+        height: integrationOpen ? (INTEGRATION_BODY_MAX + INTEGRATION_HEADER) : INTEGRATION_HEADER,
+        flexShrink: 0,
+        overflow: 'hidden',
+        borderTop: `1px solid ${colors.containerBorder}`,
+      }}>
+        <div
+          className="flex items-center gap-1 px-2.5"
+          style={{
+            height: INTEGRATION_HEADER,
+            background: colors.surfacePrimary,
+            borderBottom: integrationOpen ? `1px solid ${colors.containerBorder}` : 'none',
+            color: colors.textSecondary,
+            fontSize: 11,
+            flexShrink: 0,
+          }}
+        >
+          <SectionToggleButton
+            open={integrationOpen}
+            label="Integration"
+            onClick={() => setIntegrationOpen(!integrationOpen)}
+            className="flex items-center gap-1"
+            style={{ color: 'inherit', padding: 0, borderRadius: 4 }}
+            colors={colors}
+          />
+          {benchMemberCount > 0 && (
+            <span
+              data-testid="bench-member-count"
+              className="text-[9px] px-1 rounded-full"
+              style={{ background: colors.accentLight, color: colors.accent }}
+            >
+              {benchMemberCount}
+            </span>
+          )}
+          {benchStaleCount > 0 && (
+            <span
+              data-testid="bench-stale-count"
+              className="text-[9px]"
+              style={{ color: colors.warningFg }}
+            >
+              {benchStaleCount} stale
+            </span>
+          )}
+        </div>
+        {integrationOpen && (
+          <div style={{ height: INTEGRATION_BODY_MAX, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            <IntegrationSection repoPath={repoRootPath} refreshKey={refreshKey} />
+          </div>
+        )}
+      </div>
 
       {/* Graph section */}
       <div className="flex flex-col" style={{

@@ -12,7 +12,10 @@ import { registerAttachmentsIpc } from './attachments'
 import { registerFilesIpc } from './files'
 import { registerGitIpc } from './git'
 import { registerGitExtrasIpc } from './git-extras'
+import { registerGitRebaseIpc } from './git-rebase'
 import { registerWorktreeIpc } from './worktree'
+import { registerWorktreeLifecycleIpc } from './worktree-lifecycle'
+import { registerBenchIpc } from './bench'
 import { registerSettingsIpc } from './settings'
 import { registerRemoteControlIpc } from './remote-control'
 import { registerModelsIpc } from './models'
@@ -38,7 +41,10 @@ export function registerAllIpc(): void {
   registerFilesIpc()
   registerGitIpc()
   registerGitExtrasIpc()
+  registerGitRebaseIpc()
   registerWorktreeIpc()
+  registerWorktreeLifecycleIpc()
+  registerBenchIpc()
   registerSettingsIpc()
   registerRemoteControlIpc()
   registerModelsIpc()

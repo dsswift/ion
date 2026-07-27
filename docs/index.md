@@ -50,3 +50,4 @@ Work on the engine, providers, tools, or protocol.
 | Configuration | [configuration/](configuration/) |
 | Protocol | [protocol/](protocol/) |
 | Providers | [providers/](providers/) |
+| Worktree workflow | [design/worktree-workflow.md](design/worktree-workflow.md) |

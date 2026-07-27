@@ -663,6 +663,8 @@ export interface TerminalPaneState {
 export type {
   GitCommit, GitRef, GitCommitDetail, GitCommitFile, GitGraphData,
   GitConflictKind, GitChangedFile, GitChangesData, GitBranchInfo,
+  LandMode, LandResult, WorktreeMoveResult, WorktreeInventoryEntry, WorktreeAppraisalWire,
+  MemberStatus, IntegrationMember, IntegrationWorkspace, BenchRebuildResult,
 } from './types-git'
 
 // ─── Worktree Types ───

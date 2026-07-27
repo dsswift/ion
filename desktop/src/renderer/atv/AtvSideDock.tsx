@@ -17,6 +17,7 @@ import { activeInstance, needsHistoryHydration } from '../stores/conversation-in
 import { ConversationView } from '../components/ConversationView'
 import { InputBar } from '../components/InputBar'
 import { FileExplorer } from '../components/FileExplorer'
+import { AtvWorktreeDockPane } from './AtvWorktreeDockPane'
 import { useColors } from '../theme'
 import { rDebug } from '../rendererLogger'
 
@@ -24,7 +25,7 @@ const MIN_W = 320
 const MAX_W = 720
 const DEFAULT_W = 420
 
-export type DockTab = 'conversation' | 'files'
+export type DockTab = 'conversation' | 'files' | 'worktrees'
 
 export interface AtvSideDockProps {
   open: boolean
@@ -107,7 +108,7 @@ export function AtvSideDock(props: AtvSideDockProps): React.JSX.Element | null {
           gap: 8,
         }}
       >
-        {(['conversation', 'files'] as const).map((t) => (
+        {(['conversation', 'files', 'worktrees'] as const).map((t) => (
           <button
             key={t}
             onClick={() => props.onLayoutChange({ dockTab: t })}
@@ -122,7 +123,7 @@ export function AtvSideDock(props: AtvSideDockProps): React.JSX.Element | null {
               borderBottom: tab === t ? `2px solid ${colors.accent}` : '2px solid transparent',
             }}
           >
-            {t === 'conversation' ? 'Conversation' : 'Files'}
+            {t === 'conversation' ? 'Conversation' : t === 'files' ? 'Files' : 'Worktrees'}
           </button>
         ))}
         <button
@@ -158,13 +159,18 @@ export function AtvSideDock(props: AtvSideDockProps): React.JSX.Element | null {
               </div>
             </div>
           </>
-        ) : (
+        ) : tab === 'files' ? (
           // Files: the real explorer, scoped to the active tab's working
           // directory. Opening a file routes through openFileInEditor →
           // the floating FileEditor rendered at the shell level.
           <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
             <FileExplorer />
           </div>
+        ) : (
+          // Worktrees + Integration: the SAME components the overlay's git
+          // panel mounts, running on the mirror store. Parity mechanism 1 --
+          // a shared surface is one component, never a bespoke ATV widget.
+          <AtvWorktreeDockPane />
         )}
       </div>
     </div>

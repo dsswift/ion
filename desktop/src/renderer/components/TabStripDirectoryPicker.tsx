@@ -1,8 +1,8 @@
-import React, { useState, useRef, useEffect, useLayoutEffect } from 'react'
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react'
 import { useViewportClamp } from '../hooks/useViewportClamp'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { FolderPlus, FolderOpen, Trash } from '@phosphor-icons/react'
+import { FolderPlus, FolderOpen, Trash, GitBranch, Flask as FlaskIcon } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
@@ -30,6 +30,47 @@ export function DirectoryPicker({
   const recentDirs = usePreferencesStore((s) => s.recentBaseDirectories)
   const usageCounts = usePreferencesStore((s) => s.directoryUsageCounts)
   const [flipDown, setFlipDown] = useState(false)
+
+  // Worktrees + benches for every project the operator has open. This is the
+  // ZERO-KNOWLEDGE recovery path: closing a worktree conversation no longer
+  // destroys anything, but the operator still needs a way back in without
+  // knowing the generated `~/.ion/worktrees/...` path — and without the git
+  // panel necessarily being open.
+  const tabs = useSessionStore((s) => s.tabs)
+  const worktreeInventory = useSessionStore((s) => s.worktreeInventory)
+  const benchWorkspaces = useSessionStore((s) => s.benchWorkspaces)
+
+  const openRepoPaths = useMemo(() => {
+    const set = new Set<string>()
+    for (const t of tabs) {
+      const repo = t.worktree?.repoPath ?? t.workingDirectory
+      if (repo && repo !== '~') set.add(repo)
+    }
+    return [...set]
+  }, [tabs])
+
+  // Refresh on open so the list is correct the moment it renders rather than a
+  // beat later (view-readiness).
+  useEffect(() => {
+    for (const repo of openRepoPaths) {
+      void useSessionStore.getState().refreshWorktreeInventory(repo)
+      void useSessionStore.getState().refreshBench(repo)
+    }
+  }, [openRepoPaths])
+
+  const worktreeEntries = useMemo(
+    () => openRepoPaths.flatMap((repo) =>
+      (worktreeInventory.get(repo) ?? []).map((w) => ({ repo, entry: w }))),
+    [openRepoPaths, worktreeInventory],
+  )
+  const benchEntries = useMemo(
+    () => openRepoPaths.flatMap((repo) =>
+      (benchWorkspaces.get(repo) ?? [])
+        // Only benches that have been built have a directory to open.
+        .filter((ws) => ws.lastBuiltAt > 0)
+        .map((ws) => ({ repo, ws }))),
+    [openRepoPaths, benchWorkspaces],
+  )
 
   // Sort by usage frequency (descending), then alphabetically as tiebreaker
   const sortedDirs = [...recentDirs].sort((a, b) => {
@@ -96,6 +137,67 @@ export function DirectoryPicker({
         minWidth: 220,
       }}
     >
+      {/* Benches first: distinct from feature worktrees, and the surface an
+          operator reaches for when a combined build is failing. */}
+      {benchEntries.map(({ repo, ws }) => (
+        <div
+          key={ws.benchPath}
+          data-testid={`picker-bench-${ws.sourceBranch}`}
+          className="flex items-center w-full rounded px-2 py-1.5"
+          style={{ fontSize: 12, color: colors.textPrimary, cursor: 'pointer' }}
+          title={ws.benchPath}
+          onClick={() => {
+            void useSessionStore.getState().openBenchConversation(repo, ws.sourceBranch)
+              .catch((err) => rError('tabs', 'open bench conversation failed', { error: String(err) }))
+            onClose()
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+        >
+          <FlaskIcon size={14} color={colors.accent} style={{ flexShrink: 0, marginRight: 8 }} />
+          <span style={{ whiteSpace: 'nowrap', flex: 1 }}>Bench · {ws.sourceBranch}</span>
+          <span style={{ fontSize: 10, color: colors.textTertiary }}>
+            {ws.members.filter((m) => m.enabled).length} member{ws.members.filter((m) => m.enabled).length === 1 ? '' : 's'}
+          </span>
+        </div>
+      ))}
+
+      {worktreeEntries.map(({ entry }) => {
+        const openTab = tabs.find((t) => t.workingDirectory === entry.worktreePath)
+        return (
+          <div
+            key={entry.worktreePath}
+            data-testid={`picker-worktree-${entry.branchName}`}
+            className="flex items-center w-full rounded px-2 py-1.5"
+            style={{ fontSize: 12, color: colors.textPrimary, cursor: 'pointer' }}
+            title={entry.worktreePath}
+            onClick={() => {
+              void useSessionStore.getState().openWorktreeConversation(entry.worktreePath)
+                .catch((err) => rError('tabs', 'open worktree conversation failed', { error: String(err) }))
+              onClose()
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+          >
+            <GitBranch size={14} color={colors.worktreeGreen} style={{ flexShrink: 0, marginRight: 8 }} />
+            <span style={{ whiteSpace: 'nowrap', flex: 1 }}>{entry.label}</span>
+            {entry.isDirty && (
+              <span style={{ fontSize: 10, color: colors.worktreeGreen, marginRight: 6 }}>dirty</span>
+            )}
+            {entry.needsSync && (
+              <span style={{ fontSize: 10, color: colors.warningFg, marginRight: 6 }}>base moved</span>
+            )}
+            {openTab && (
+              <span style={{ fontSize: 10, color: colors.accent }}>open</span>
+            )}
+          </div>
+        )
+      })}
+
+      {(benchEntries.length > 0 || worktreeEntries.length > 0) && sortedDirs.length > 0 && (
+        <div style={{ borderTop: `1px solid ${colors.popoverBorder}`, margin: '4px 0' }} />
+      )}
+
       {sortedDirs.map((dir) => {
         const homePath = useSessionStore.getState().staticInfo?.homePath || ''
         const displayPath = homePath && dir.startsWith(homePath) ? '~' + dir.slice(homePath.length) : dir

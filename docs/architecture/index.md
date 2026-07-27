@@ -78,3 +78,11 @@ The engine is also UI-agnostic. It emits typed data events over the socket. It h
 | [ADR-014](adr/014-dispatch-conversation-identity.md) | Accepted | Every dispatch mints a fresh conversation by default; continuation is an explicit, dispatch-id-targeted act; the engine is opinionless about conversation relationships. |
 | [ADR-015](adr/015-hierarchical-dispatch.md) | Accepted | Orchestrator dispatches department leads; leads dispatch their own specialists. Each tier distills context and surfaces only genuinely unanswerable questions upward. |
 | [ADR-016](adr/016-agent-state-grouped-snapshot.md) | Accepted | Same-name engine dispatches group into one representative AgentStateUpdate row; per-dispatch identity is preserved in metadata.dispatches[]. |
+| [ADR-017](adr/017-opinionless-tool-instructions.md) | Accepted | The engine ships input-shape and channel mechanics for tool instructions; style, depth, and workflow framing are consumer-owned. |
+| [ADR-018](adr/018-cost-centralization.md) | Accepted | Per-run token costs aggregate in one place rather than being recomputed by each consumer. |
+| [ADR-019](adr/019-logging-architecture-and-standards.md) | Accepted | Canonical JSONL across every surface; no interpolated messages, no console.* in shipped renderer code, no silent catches. |
+| [ADR-020](adr/020-dashboards-as-code.md) | Accepted | Observability dashboards are versioned artifacts in the repo, not console-edited state. |
+| [ADR-021](adr/021-atv-shell-mirror-store.md) | Accepted | The ATV window runs the real session store in mirror mode; shared surfaces are one component, and every action is classified forwarded or mirror-local. |
+| [ADR-022](adr/022-dashboard-time-window-policy.md) | Accepted | Dashboard panels declare their time window explicitly rather than inheriting an ambient default. |
+| [ADR-023](adr/023-root-session-park-and-wake.md) | Accepted | Background bash completion is session-scoped outstanding work; the root parks at the turn boundary and is woken per completion. |
+| [ADR-024](adr/024-integration-workspace.md) | Accepted | The integration bench is a pure function of (source tip, ordered pinned members). Integration is manual, staleness is advisory, and landing absorbs a member into the base. |

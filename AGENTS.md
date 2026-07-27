@@ -392,6 +392,10 @@ Desktop and iOS are co-equal clients. When a desktop change touches a feature th
 | Tab context menu (TabStripTabContextMenu) | Tab context menu (TabRowContextMenu) | Actions operate on `RemoteTabState` fields; session identity via `snapshot.ts` → `RemoteTabState.conversationId` for all conversations. For extension-loaded tabs, per-instance session IDs are available in `conversationInstances[i].conversationIds` (historical) and `StatusFields.sessionId` (live). |
 | Desktop Settings dialog (SettingsDialog categories) | Desktop Settings detail (DesktopSettingsView sections) | `projectable-settings.ts` → `desktop_settings_snapshot` event → `DesktopSettingsView` auto-renders sections. iOS group IDs **must** match `PROJECTABLE_GROUP_ORDER` (exported from `projectable-settings.ts`); renaming a group requires updating `PROJECTABLE_GROUP_LABELS` in that same file and the test in `src/main/__tests__/projectable-settings.test.ts`. Adding a new user-editable desktop preference requires a parallel entry in `PROJECTABLE_SETTINGS_DATA` in `projectable-settings-data.ts` unless the setting is local-machine-only (font, path, secret). |
 | Model fallback indicator (EngineStatusBar per-instance ⚠) | Model fallback indicator (EngineInstanceBar per-instance ⚠) | `snapshot.ts` → `RemoteTabState.conversationInstances[i].modelFallback`. Desktop populates `engineModelFallbacks` from the `engine_model_fallback` event; the snapshot poller projects each entry onto the corresponding `conversationInstances[i]` and iOS reads it from the snapshot. Cleared on the next idle transition (per-instance). |
+| Worktrees list (git panel WorktreesSection) | Worktrees & Bench screen (WorktreeListView) + new-tab sheet rows | `desktop_worktree_state` → `RemoteWorktreeState.worktrees`. The desktop computes dirty/unlanded/needsSync; clients render, never derive. |
+| Integration bench (git panel IntegrationSection) | Bench sections in WorktreeListView | `desktop_worktree_state` → `RemoteWorktreeState.benches`. Pins, staleness, and conflict attribution are all main-process values. |
+| Worktree lifecycle verbs (land / sync / retire) | Tab-row context menu + worktree row swipe actions | `desktop_worktree_*` / `desktop_bench_*` commands; results ride `desktop_worktree_op_result` so a refusal reads differently from a failure. |
+| Base-moved indicator (WorktreeRow) | Tab row indicator (TabRowView) | `RemoteWorktree.needsSync`. Only set when a sync would actually change the worktree — never for a no-op. |
 | Theme registry + picker (AppearanceCategory) | Theme picker (SettingsAppearanceView) | Built-in themes are compiled into both clients and pinned identical by the parity fixture (`assets/theme-parity.json`, asserted by `theme-parity.test.ts` on desktop and `ThemeParityTests.swift` on iOS) — a shared-theme palette edit must update the fixture and the Swift theme in the same change. Custom theme packs sync their iOS components via `desktop_theme_manifest` (sendSync + on pack-set change) with lazy asset fetch (`desktop_request_theme_asset`); enterprise lock rides `desktop_settings_snapshot.themePolicy`. Theme selection is per-device (never synced). Authoring guide: `docs/design/theme-packs.md`. |
 
 ### When to skip iOS
@@ -803,6 +807,26 @@ When a feature exists on one client and not another, or is implemented two diffe
 ### The forbidden completion claim
 
 Do not report a feature or fix as "done," "complete," or "verified" when the only verification performed is: it compiles, it type-checks, existing tests still pass, and the code reads correctly. Those are necessary but **not sufficient**. The sufficient condition is a test that exercises the new behavior and would fail without the change. If you are about to commit and there is no such test, the work is not done — write the test first.
+
+## Integration benches refuse history writes
+
+A directory under `~/.ion/integration/` is a rebuildable bench: its branch is
+recreated from the feature branch plus each member's pinned commit on every
+rebuild. A commit made there is destroyed by the next rebuild, and a push would
+publish a synthetic merge of other people's in-flight work.
+
+Git commands that write **history** are refused inside a bench — `commit`,
+`push`, `pull`, `merge`, `rebase`, `cherry-pick`, `revert`, `reset`, `stash`,
+`tag`, and branch mutation — by the desktop UI
+(`desktop/src/main/integration/bench-guard.ts`) and by ion-meta's tool gate
+(`engine/extensions/ion-meta/bench-gate.ts`). Reading, building, testing, and
+staging are unaffected. A fix diagnosed in the bench belongs in the member
+worktree that owns the file: commit it there, then update that member in the
+bench. See [ADR-024](docs/architecture/adr/024-integration-workspace.md).
+
+Closing a conversation never removes a worktree. Removal is only the explicit
+Retire verb, which appraises what would be lost and refuses when the answer is
+work.
 
 ## Conversation storage
 

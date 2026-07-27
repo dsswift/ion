@@ -1,4 +1,4 @@
-import type { TabState, NormalizedEvent, EnrichedError, Attachment, FileAttachment, TerminalPaneState, ConversationPane, ImageAttachmentPayload } from '../../shared/types'
+import type { TabState, NormalizedEvent, EnrichedError, Attachment, FileAttachment, TerminalPaneState, ConversationPane, ImageAttachmentPayload, WorktreeInventoryEntry, IntegrationWorkspace, BenchRebuildResult } from '../../shared/types'
 import type { ResourceItem } from '../../shared/types-engine'
 
 export interface StaticInfo {
@@ -75,6 +75,15 @@ export interface State {
   rehydrating: boolean
   initProgress: string | null
   worktreeUncommittedMap: Map<string, boolean>
+  /**
+   * Worktree inventory per repo path. Keyed by repo so several projects can be
+   * open at once without their inventories overwriting each other.
+   */
+  worktreeInventory: Map<string, WorktreeInventoryEntry[]>
+  /** Integration workspaces per repo path (one per source branch). */
+  benchWorkspaces: Map<string, IntegrationWorkspace[]>
+  /** Current source-branch tips per repo, keyed by branch name. */
+  benchSourceTips: Map<string, Record<string, string>>
 
   engineWorkingMessages: Map<string, string>
   engineNotifications: Map<string, Array<{ id: string; message: string; level: string; timestamp: number }>>
@@ -307,6 +316,19 @@ export interface State {
   setTabGroupId: (tabId: string, groupId: string | null) => void
   toggleTabGroupPin: (tabId: string) => void
   setWorktreeUncommitted: (tabId: string, hasChanges: boolean) => void
+  refreshWorktreeInventory: (repoPath: string) => Promise<void>
+  /** Open (or focus) a conversation in an existing worktree. */
+  openWorktreeConversation: (worktreePath: string) => Promise<string>
+  syncWorktree: (worktreePath: string, sourceBranch: string, repoPath: string) => Promise<{ ok: boolean; error?: string; hasConflicts?: boolean; refusedDirty?: boolean }>
+  refreshBench: (repoPath: string) => Promise<void>
+  /** Open (or focus) a conversation in the bench worktree. */
+  openBenchConversation: (repoPath: string, sourceBranch: string) => Promise<string | null>
+  benchRebuild: (repoPath: string, sourceBranch: string) => Promise<BenchRebuildResult>
+  benchUpdateMember: (repoPath: string, sourceBranch: string, worktreePath: string) => Promise<BenchRebuildResult>
+  benchUpdateAll: (repoPath: string, sourceBranch: string) => Promise<BenchRebuildResult>
+  benchAddMember: (repoPath: string, sourceBranch: string, worktreePath: string, branchName: string) => Promise<{ ok: boolean; error?: string }>
+  benchRemoveMember: (repoPath: string, sourceBranch: string, worktreePath: string) => Promise<void>
+  benchSetEnabled: (repoPath: string, sourceBranch: string, worktreePath: string, enabled: boolean) => Promise<void>
   /**
    * Unified tab + engine-instance creation entry point (Phase 2, #256).
    * Both plain and engine tabs are created through this path. The extension

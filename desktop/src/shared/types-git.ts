@@ -3,6 +3,11 @@
 // Extracted from types-session.ts to keep that file under the 600-line cap.
 // Re-exported from types-session.ts so existing import paths keep working.
 
+// Type-only import: `WorktreeInfo` lives in types-session.ts (which re-exports
+// this file). Type-only imports are erased at compile time, so this does not
+// create a runtime module cycle.
+import type { WorktreeInfo } from './types-session'
+
 export interface GitCommit {
   hash: string
   fullHash: string
@@ -62,3 +67,197 @@ export interface GitBranchInfo {
   upstream: string | null
   isRemote: boolean
 }
+
+// ─── Worktree lifecycle ───
+
+/**
+ * How a land actually integrated the worktree branch into its source branch.
+ *
+ * - `ref-advance` — the source branch was checked out in NO worktree, so the
+ *   ref was advanced directly (`git fetch . <wt>:<source>`). Zero working-tree
+ *   impact: nobody's checkout moved.
+ * - `merge` — the source branch IS checked out somewhere, so the merge ran in
+ *   place in that worktree after a dirty/branch preflight.
+ */
+export type LandMode = 'ref-advance' | 'merge'
+
+/** Result of a land attempt. Refusals carry an actionable `error`. */
+export interface LandResult {
+  ok: boolean
+  mode?: LandMode
+  /** Source-branch commit after a successful land. */
+  sha?: string
+  error?: string
+  /** True when the failure was a merge conflict (distinct from a refusal). */
+  hasConflicts?: boolean
+}
+
+/** Result of retiring or re-attaching a worktree. */
+export interface WorktreeMoveResult {
+  ok: boolean
+  /**
+   * Directory the caller should relocate the conversation into: the repo root
+   * after a retire, the new worktree path after a re-attach.
+   */
+  workingDirectory?: string
+  /** Populated on re-attach: the freshly created worktree. */
+  worktree?: WorktreeInfo
+  error?: string
+}
+
+/**
+ * One worktree in the inventory, with everything a client needs to describe it
+ * and decide what to offer. Mirrors WorktreeInventoryEntry in
+ * main/worktree/inventory.ts; kept in shared/ so the renderer and iOS wire can
+ * both name it.
+ */
+export interface WorktreeInventoryEntry {
+  worktreePath: string
+  branchName: string
+  /** Display label, derived from the worktree directory name. */
+  label: string
+  /**
+   * Null when Ion did not create this worktree and cannot know what it was cut
+   * from. Land/sync/staleness are unanswerable in that case, so clients must
+   * ask rather than guess -- a wrong source branch lands work in the wrong place.
+   */
+  sourceBranch: string | null
+  head: string
+  lastCommitSubject: string
+  isDirty: boolean
+  unlandedCommitCount: number
+  needsSync: boolean
+  safeToDiscard: boolean
+}
+
+/** What removing a worktree would cost. Mirrors main/worktree/safety.ts. */
+export interface WorktreeAppraisalWire {
+  hasUncommittedChanges: boolean
+  uncommittedPaths: string[]
+  unlandedCommitCount: number
+  unlandedSubjects: string[]
+  fullyLanded: boolean
+  safeToDiscard: boolean
+  reason?: string
+  appraisalFailed?: boolean
+}
+
+// ─── Integration workspace (the "bench") ───
+
+/**
+ * Per-member state, computed on rebuild and on staleness evaluation.
+ *
+ * - `integrated` — the pinned contribution is merged and the member branch has
+ *   not moved past it.
+ * - `landed` — the contribution is now contained in the source branch itself,
+ *   so it is part of the bench's base permanently and needs no merge. This is
+ *   a terminal state: the member is retired from the list on the next rebuild.
+ *   See `IntegrationWorkspace` for why landing is absorption, not removal.
+ * - `stale` — the member branch's committed content differs from what is
+ *   pinned. Advisory only: nothing rebuilds until the operator says so.
+ * - `conflicted` — the pinned contribution could not merge; the member was
+ *   skipped and the rest of the bench still built.
+ * - `missing` — the branch or worktree is gone.
+ * - `excluded` — present in the member list but disabled, so skipped.
+ */
+export type MemberStatus = 'integrated' | 'landed' | 'stale' | 'conflicted' | 'missing' | 'excluded'
+
+/**
+ * One worktree enrolled in an integration workspace.
+ *
+ * A member contributes its **committed** work only: the tree of its branch
+ * HEAD. Uncommitted work in a worktree cannot reach the bench — see
+ * `IntegrationWorkspace` for why that is a hard rule rather than a default.
+ */
+export interface IntegrationMember {
+  /** Absolute path of the member worktree. Identity within a workspace. */
+  worktreePath: string
+  branchName: string
+  /** Display label (defaults to the worktree directory name). */
+  label: string
+  /** False = kept in the list but skipped in the merge (`excluded`). */
+  enabled: boolean
+  /**
+   * The exact contribution currently integrated. Rebuild merges THIS, never a
+   * fresh read of the member's tip -- that is what stops a rebuild triggered
+   * for one member from dragging in another member's half-finished work.
+   * Advanced only by an explicit act: enrollment, or Update on this member.
+   */
+  pinnedSha: string
+  pinnedTreeHash: string
+  /**
+   * The member's contribution as of the last staleness evaluation. Differs
+   * from `pinnedTreeHash` exactly when the member is stale. Compared as a TREE
+   * hash rather than a sha: an amend or reword produces a new sha with an
+   * identical tree (a false stale), and a rebase changes content with no new
+   * commit (a missed stale).
+   */
+  currentTreeHash: string
+  status: MemberStatus
+  /** Populated when `status === 'conflicted'`. */
+  conflictPaths?: string[]
+  /** Branch names of earlier-merged members this one collided with. */
+  conflictsWith?: string[]
+}
+
+/**
+ * An integration workspace: a rebuildable bench worktree whose contents are a
+ * deterministic function of `(source tip, ordered member list)`.
+ *
+ * Keyed by `(repoPath, sourceBranch)`. That key is the mechanism that keeps
+ * each project's — and each source branch's — integrations separate; blending
+ * across projects is not possible by construction.
+ *
+ * **Only committed work integrates.** A member contributes the tree of its
+ * branch HEAD, so uncommitted changes in a worktree cannot enter the bench.
+ * This is deliberate and structural rather than a configurable default: a
+ * bench built from a half-saved working tree represents a state that exists
+ * nowhere in history and cannot be reproduced, reviewed, or landed. Committing
+ * is the act that declares a unit of work coherent, and it is the same signal
+ * the operator already uses to decide a change is ready. There is no mode that
+ * relaxes this.
+ *
+ * **Landing is absorption, not removal.** When a member's work lands into the
+ * source branch it becomes part of the bench's BASE — permanently, and with no
+ * option to exclude it. The bench is rebuilt from the source tip, so the landed
+ * work arrives with the base and needs no merge commit; git reports "Already
+ * up to date" for it. The member record is then retired from the list, because
+ * a member represents *pending* work to layer on top of the base, and this work
+ * is no longer pending. Nothing is lost by retiring it: the content is in the
+ * source branch, which is exactly where a pull request into the trunk reads
+ * from. Disabling a landed member cannot remove its content either — `enabled`
+ * governs whether a member's merge is applied, and there is no merge to skip.
+ */
+export interface IntegrationWorkspace {
+  repoPath: string
+  sourceBranch: string
+  /** Bench worktree location (~/.ion/integration/<repo>-<slug>). */
+  benchPath: string
+  /** Bench branch (ion/bench/<slug>), recreated from scratch on every build. */
+  benchBranch: string
+  /** Merge order. */
+  members: IntegrationMember[]
+  /** Source-branch commit the last build started from. */
+  baseSha: string
+  /** Unix ms of the last successful rebuild; 0 when never built. */
+  lastBuiltAt: number
+}
+
+/** Outcome of a rebuild attempt. */
+export interface BenchRebuildResult {
+  ok: boolean
+  workspace?: IntegrationWorkspace
+  /**
+   * Members retired during this rebuild because their work landed into the
+   * source branch. Their content is now part of the bench's base permanently.
+   * Surfaced so the UI can tell the operator what was absorbed rather than
+   * having rows vanish silently.
+   */
+  retired?: IntegrationMember[]
+  /** Refusal reason (dirty bench, running conversation, git failure). */
+  error?: string
+  /** Set when the refusal is a guard the operator can resolve. */
+  refusal?: 'dirty-bench' | 'conversation-running'
+}
+
+
