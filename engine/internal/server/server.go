@@ -384,6 +384,8 @@ func (s *Server) acceptLoop() {
 			}
 		}
 
+		tuneSocketBuffer(conn)
+
 		cw := &clientWriter{
 			conn:        conn,
 			stateQueue:  make(chan []byte, stateQueueSize),
@@ -396,6 +398,42 @@ func (s *Server) acceptLoop() {
 
 		go s.drainClient(cw)
 		go s.handleClient(conn)
+	}
+}
+
+// socketBufferSize is the target send/receive buffer for accepted client
+// connections. macOS defaults Unix domain sockets to 8 KB; a desktop
+// restoring 30+ sessions produces hundreds of state events in seconds,
+// filling the 8 KB pipe faster than the client can drain it and causing
+// the 5 s write-deadline eviction. 256 KB absorbs the startup burst
+// without requiring the client to keep up in real time.
+const socketBufferSize = 256 * 1024
+
+// tuneSocketBuffer enlarges the send and receive buffers on an accepted
+// connection. Best-effort: a failure is logged but does not reject the
+// client.
+func tuneSocketBuffer(conn net.Conn) {
+	sc, ok := conn.(syscall.Conn)
+	if !ok {
+		return
+	}
+	raw, err := sc.SyscallConn()
+	if err != nil {
+		utils.LogWithFields(utils.LevelDebug, "server", "tune socket buffer: SyscallConn failed", map[string]any{"error": err.Error()})
+		return
+	}
+	var setErr error
+	raw.Control(func(fd uintptr) { //nolint:errcheck // best-effort tuning
+		if err := syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_SNDBUF, socketBufferSize); err != nil {
+			setErr = err
+			return
+		}
+		if err := syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_RCVBUF, socketBufferSize); err != nil {
+			setErr = err
+		}
+	})
+	if setErr != nil {
+		utils.LogWithFields(utils.LevelDebug, "server", "tune socket buffer: setsockopt failed", map[string]any{"error": setErr.Error()})
 	}
 }
 
