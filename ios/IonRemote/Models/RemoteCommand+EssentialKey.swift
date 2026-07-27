@@ -31,6 +31,12 @@ extension RemoteCommand {
             return "discoverCommands:\(dir)"
         case .requestTerminalSnapshot(let tabId):
             return "requestTerminalSnapshot:\(tabId)"
+        // Read-only refresh: dedupe per repo so a view that appears while a
+        // refresh is already queued does not stack duplicates. The mutating
+        // bench/worktree verbs are deliberately NOT keyed -- each is a distinct
+        // operator action and must never be collapsed into another.
+        case .worktreeRefresh(let repoPath):
+            return "worktreeRefresh:\(repoPath)"
         case .gitChanges(let dir):
             return "gitChanges:\(dir)"
         case .gitGraph(let dir, let skip, let limit):

@@ -4,6 +4,10 @@ import SwiftUI
 
 struct TabRowView: View {
     @Environment(\.appTheme) private var theme
+    // Read from the environment rather than taken as a parameter: this view's
+    // initializer is already at the point where adding another defaulted
+    // argument breaks SwiftUI type inference at the call sites.
+    @Environment(SessionViewModel.self) private var viewModel
     let tab: RemoteTabState
     var showDirectory: Bool = false
     var showGitInfo: Bool = false
@@ -110,6 +114,15 @@ struct TabRowView: View {
     @ViewBuilder
     private var secondaryRow: some View {
         HStack(spacing: 4) {
+            // The base-moved signal belongs on the ROW: otherwise the operator
+            // must drill two navigations into the git pane to discover they are
+            // building against stale code.
+            if viewModel.isWorktreeBaseStale(tab.workingDirectory) {
+                Label("base moved", systemImage: "arrow.triangle.pull")
+                    .labelStyle(.iconOnly)
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+            }
             // Harness badge — leading element when a harness/extension NAME is
             // present. #256 follow-up: gate on the DATA (a resolvable harness
             // label) rather than the `tab.hasEngineExtension` tab-type flag, so

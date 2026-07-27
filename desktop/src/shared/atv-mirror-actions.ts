@@ -55,6 +55,22 @@ export const FORWARDED_ACTIONS: Record<string, ForwardedActionSpec> = {
   convertToWorktree: { minArgs: 1, maxArgs: 2, tabIdAt: 0 },
   setupWorktree: { minArgs: 1, maxArgs: 2, tabIdAt: 0 },
   cancelWorktreeSetup: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
+  // Worktree inventory actions. openWorktreeConversation is a multi-step flow
+  // (find-existing / create tab / attach worktree metadata) that reads store
+  // state between mutations, so it MUST be one forwarded action rather than a
+  // component handler -- in the mirror a handler would mix forwarded and local
+  // calls and decide against stale mirror state.
+  openWorktreeConversation: { minArgs: 1, maxArgs: 1 },
+  syncWorktree: { minArgs: 3, maxArgs: 3 },
+  // Bench mutations are owner-durable: they advance pins and rebuild a shared
+  // worktree, so the mirror must never run them locally.
+  openBenchConversation: { minArgs: 2, maxArgs: 2 },
+  benchRebuild: { minArgs: 2, maxArgs: 2 },
+  benchUpdateMember: { minArgs: 3, maxArgs: 3 },
+  benchUpdateAll: { minArgs: 2, maxArgs: 2 },
+  benchAddMember: { minArgs: 4, maxArgs: 4 },
+  benchRemoveMember: { minArgs: 3, maxArgs: 3 },
+  benchSetEnabled: { minArgs: 4, maxArgs: 4 },
   forceRecoverTab: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
   autoRecoverStuckTab: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
   resumeSession: { minArgs: 1, maxArgs: 3 },
@@ -138,6 +154,8 @@ export const MIRROR_LOCAL_ACTIONS: Record<string, string> = {
   setResourceViewerGeometry: 'per-window UI',
   setAgentDetailGeometry: 'per-window UI',
   setWorktreeUncommitted: 'per-window derived cache',
+  refreshWorktreeInventory: 'read-only IPC fetch into a per-window derived cache',
+  refreshBench: 'read-only IPC fetch into a per-window derived cache',
   // File explorer / editor (window-local workbench state).
   toggleFileExplorer: 'per-window UI',
   collapseAllExplorer: 'per-window UI',

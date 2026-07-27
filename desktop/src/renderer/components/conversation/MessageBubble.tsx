@@ -49,8 +49,36 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
 
   const defaultActions = <CopyButton text={displayContent} />
 
+  // Mid-turn steer affordance. Three states, all driven by UI-only flags set
+  // by the send path and the steer_injected / error / session_dead arms of
+  // event-slice.ts:
+  //   steerPending — buffered in the engine runloop, not yet drained.
+  //   steerFailed  — engine died before the steer was drained.
+  //   steerApplied — drained; this bubble has been relocated to sit directly
+  //                  under its "Steer applied" divider (see tool-helpers.ts).
+  // The label distinguishes a steer from a normal turn-opening prompt, which
+  // matters most for the relocated case: the bubble no longer sits where the
+  // user typed it.
+  const steerLabel = message.steerFailed
+    ? 'Steer not delivered'
+    : message.steerPending
+      ? 'Steer queued'
+      : message.steerApplied
+        ? 'Steer'
+        : null
+
+  const steerTag = steerLabel && (
+    <div
+      className="text-[10px] leading-none pb-1 pr-0.5 select-none"
+      style={{ color: message.steerFailed ? colors.statusError : colors.textTertiary }}
+    >
+      {steerLabel}
+    </div>
+  )
+
   const content = (
     <div className="group/msg relative inline-flex flex-col items-end max-w-[85%] min-w-0">
+      {steerTag}
       {hasInlineImages && <InlineMessageImages content={message.content || ''} attachments={message.attachments} />}
       {displayContent.trim() && (
         <div

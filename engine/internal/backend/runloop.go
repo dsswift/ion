@@ -110,10 +110,11 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		SessionID: conv.ID,
 	}})
 
-	// Persist the working directory so migrated conversations carry the project context.
-	if opts.ProjectPath != "" && conv.WorkingDirectory == "" {
-		conv.WorkingDirectory = opts.ProjectPath
-	}
+	// Record the run's project path on the conversation so the persisted
+	// working directory follows a conversation that moves (e.g. relocated out
+	// of a worktree that is being removed). See runloop_working_dir.go for the
+	// full rationale and the logging of both outcomes.
+	syncConversationWorkingDirectory(conv, opts.ProjectPath, run.requestID)
 
 	// Build system prompt (may rewrite opts.Prompt and opts.PlanModeTools)
 	conv.System = buildSystemPrompt(&opts, conv, hooks, run.requestID, run)

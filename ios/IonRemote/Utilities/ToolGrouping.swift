@@ -36,6 +36,43 @@ enum ConversationItem: Identifiable {
     }
 }
 
+// MARK: - Steer relocation
+
+/// A mid-turn steer is inserted optimistically where the user typed it, but the
+/// engine applies it later and emits a "── Steer applied" divider at the point
+/// it took effect. Rendering the bubble at its send position strands the text
+/// rows above the divider that announces it.
+///
+/// `handleEngineSteerInjected` stamps the resolved bubble and its divider with a
+/// shared `steerAppliedDividerId`. The grouping pass uses that key to HOLD the
+/// bubble back and re-emit it immediately after its divider.
+///
+/// Pure render-time relocation: the stored conversation is untouched and the
+/// pairing fields are client-only. On a history reload the engine's file already
+/// carries the turn at its applied position, the ids are absent, and grouping
+/// emits everything in natural order. Desktop parity: `isRelocatableSteer` in
+/// `tool-helpers.ts` — the two implementations are lockstep.
+private func isRelocatableSteer(_ msg: Message) -> Bool {
+    msg.role == .user && msg.steerAppliedDividerId != nil
+}
+
+/// Emit any steer bubbles still held when the list ends. Their divider never
+/// arrived (the run died before the drain, or the divider fell outside the
+/// loaded window), so they are emitted in insertion order rather than dropped —
+/// a steer must never vanish from the scrollback.
+private func flushHeldSteers(_ held: inout [(key: String, msg: Message)], into result: inout [ConversationItem]) {
+    for entry in held {
+        result.append(.user(entry.msg))
+    }
+    held.removeAll()
+}
+
+/// Remove and return the steer held for `dividerId`, if any.
+private func takeHeldSteer(_ held: inout [(key: String, msg: Message)], dividerId: String) -> Message? {
+    guard let idx = held.firstIndex(where: { $0.key == dividerId }) else { return nil }
+    return held.remove(at: idx).msg
+}
+
 // MARK: - Grouping
 
 /// Buffer-and-flush: accumulate consecutive `.tool` messages, flush them as a
@@ -55,6 +92,9 @@ func groupConversationItems(_ messages: [Message], unifiedTurnView: Bool = false
 private func groupConversationItemsClassic(_ messages: [Message]) -> [ConversationItem] {
     var result: [ConversationItem] = []
     var toolBuf: [Message] = []
+    // Steer bubbles held until their "Steer applied" divider is reached, in
+    // insertion order, keyed by the shared steerAppliedDividerId.
+    var heldSteers: [(key: String, msg: Message)] = []
 
     func flushTools() {
         if !toolBuf.isEmpty {
@@ -69,7 +109,13 @@ private func groupConversationItemsClassic(_ messages: [Message]) -> [Conversati
         } else {
             flushTools()
             switch msg.role {
-            case .user:      result.append(.user(msg))
+            case .user:
+                // Hold an applied steer until its divider; emit anything else here.
+                if isRelocatableSteer(msg), let key = msg.steerAppliedDividerId {
+                    heldSteers.append((key: key, msg: msg))
+                } else {
+                    result.append(.user(msg))
+                }
             case .assistant: result.append(.assistant(msg))
             case .thinking:  result.append(.thinking(msg))
             case .system, .harness:
@@ -77,12 +123,17 @@ private func groupConversationItemsClassic(_ messages: [Message]) -> [Conversati
                     result.append(.compaction(msg))
                 } else {
                     result.append(.system(msg))
+                    // The divider lands first, then the steer it announces.
+                    if let steer = takeHeldSteer(&heldSteers, dividerId: msg.id) {
+                        result.append(.user(steer))
+                    }
                 }
             case .tool:      break // already handled above
             }
         }
     }
     flushTools()
+    flushHeldSteers(&heldSteers, into: &result)
     return result
 }
 
@@ -101,6 +152,9 @@ private func groupConversationItemsUnified(_ messages: [Message]) -> [Conversati
     // display row per turn at flush time — one continuous thought stream
     // pinned at the top of the turn, mirroring the desktop's grouping.
     var turnThinking: [Message] = []
+    // Steer bubbles held until their "Steer applied" divider is reached, in
+    // insertion order, keyed by the shared steerAppliedDividerId.
+    var heldSteers: [(key: String, msg: Message)] = []
 
     func flushTurn() {
         // One merged thought row per turn (or nil when the model did not
@@ -139,13 +193,25 @@ private func groupConversationItemsUnified(_ messages: [Message]) -> [Conversati
                 result.append(.compaction(msg))
             } else {
                 result.append(.system(msg))
+                // The divider lands first, then the steer it announces.
+                if let steer = takeHeldSteer(&heldSteers, dividerId: msg.id) {
+                    result.append(.user(steer))
+                }
             }
             continue
         }
 
         if msg.role == .user {
-            flushTurn()
-            result.append(.user(msg))
+            // An applied steer belongs at its divider, not at its send
+            // position, so hold it back. It does NOT flush the turn here — the
+            // steer landed mid-turn, and flushing on it would split the agent
+            // turn at the wrong point.
+            if isRelocatableSteer(msg), let key = msg.steerAppliedDividerId {
+                heldSteers.append((key: key, msg: msg))
+            } else {
+                flushTurn()
+                result.append(.user(msg))
+            }
             continue
         }
 
@@ -165,6 +231,7 @@ private func groupConversationItemsUnified(_ messages: [Message]) -> [Conversati
         }
     }
     flushTurn()
+    flushHeldSteers(&heldSteers, into: &result)
     return result
 }
 

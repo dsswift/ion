@@ -95,7 +95,23 @@ export function createWorktreeSlice(set: StoreSet, get: StoreGet): Partial<State
           }))
           return
         }
-        await window.ion.gitWorktreeRemove(repoPath, worktreePath, branchName, true).catch((err) => rWarn("worktree", "gitWorktreeRemove failed (may leave orphan worktree)", { worktreePath, error: String(err) }))
+        // Retire through the appraised path, never a blind force-remove. The
+        // land above succeeded, so the worktree SHOULD be safe to retire — but
+        // "should" is not a guarantee: an agent may have written files between
+        // the land and this call. retireWorktree asks git what would actually
+        // be lost and refuses when the answer is "work", so a surprise leaves
+        // an extra directory behind instead of destroying changes.
+        const retire = await window.ion.gitWorktreeRetire({ repoPath, worktreePath, branchName })
+        if (!retire.ok) {
+          set((s) => ({
+            conversationPanes: commitInstance(s.conversationPanes, tabId, (inst) => ({
+              ...inst,
+              messages: [...inst.messages, { id: `msg-${bumpMsgCounter()}`, role: 'system' as const, content: `Landed successfully. The worktree was kept: ${retire.error}`, timestamp: Date.now() }],
+            })),
+          }))
+          rWarn('worktree', 'retire refused after land; worktree kept', { worktreePath, error: retire.error ?? '' })
+          return
+        }
         get().closeTab(tabId)
       } else {
         const pushResult = await window.ion.gitWorktreePush(worktreePath, sourceBranch)
@@ -115,7 +131,23 @@ export function createWorktreeSlice(set: StoreSet, get: StoreGet): Partial<State
             .replace(/^git@([^:]+):/, 'https://$1/')
           window.ion.openExternal(`${url}/compare/${sourceBranch}...${pushResult.remoteBranch}`).catch((err) => rWarn('worktree', 'openExternal compare URL failed', { error: String(err) }))
         }
-        await window.ion.gitWorktreeRemove(repoPath, worktreePath, branchName, true).catch((err) => rWarn("worktree", "gitWorktreeRemove failed (may leave orphan worktree)", { worktreePath, error: String(err) }))
+        // Retire through the appraised path, never a blind force-remove. The
+        // land above succeeded, so the worktree SHOULD be safe to retire — but
+        // "should" is not a guarantee: an agent may have written files between
+        // the land and this call. retireWorktree asks git what would actually
+        // be lost and refuses when the answer is "work", so a surprise leaves
+        // an extra directory behind instead of destroying changes.
+        const retire = await window.ion.gitWorktreeRetire({ repoPath, worktreePath, branchName })
+        if (!retire.ok) {
+          set((s) => ({
+            conversationPanes: commitInstance(s.conversationPanes, tabId, (inst) => ({
+              ...inst,
+              messages: [...inst.messages, { id: `msg-${bumpMsgCounter()}`, role: 'system' as const, content: `Landed successfully. The worktree was kept: ${retire.error}`, timestamp: Date.now() }],
+            })),
+          }))
+          rWarn('worktree', 'retire refused after land; worktree kept', { worktreePath, error: retire.error ?? '' })
+          return
+        }
         get().closeTab(tabId)
       }
     },

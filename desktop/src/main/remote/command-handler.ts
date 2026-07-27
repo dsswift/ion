@@ -79,6 +79,7 @@ import { handleRequestThemeAsset } from './handlers/themes'
 import { handleRequestResourceContent, handleMarkResourceRead, handleDeleteResource } from './handlers/resources'
 import { handleRequestPlanContent } from './handlers/plan-content'
 import { handleImplementPlan } from './handlers/implement-plan'
+import { handleWorktreeCommand } from './handlers/worktree'
 import type { RemoteCommand } from './protocol'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -87,6 +88,9 @@ function log(msg: string, fields?: Record<string, unknown>): void {
 
 export async function handleRemoteCommand(cmd: RemoteCommand, deviceId: string): Promise<void> {
   log('remote_command', { type: cmd.type })
+  // Worktree + bench verbs live in their own handler (this switch is at its
+  // size cap). It returns false for anything it does not own.
+  if (await handleWorktreeCommand(cmd)) return
   switch (cmd.type) {
     case 'desktop_sync': await handleSync(deviceId); break
     case 'desktop_create_tab': await handleCreateTab(cmd); break

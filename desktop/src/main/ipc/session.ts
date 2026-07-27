@@ -8,6 +8,7 @@ import { evictAtvTab } from '../atv-state-cache'
 import { notifyAtvUserMessageEcho } from '../atv-window-manager'
 import { getRemoteTabStates } from '../remote/snapshot'
 import { processIncomingPrompt } from '../prompt-pipeline'
+import { isValidProjectPath } from '../ipc-validation'
 import { parseSlash } from '../slash-parse'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -120,6 +121,31 @@ export function registerSessionIpc(): void {
     sessionPlane.restartTabSession(tabId)
     log('restart_tab_session: stop enqueued', { tab_id: tabId })
   })
+
+  // RELOCATE_TAB_SESSION moves a LIVE conversation to a different working
+  // directory, preserving conversationId and history. It is the primitive that
+  // lets a conversation outlive its worktree (retire / re-attach). Distinct
+  // from RESET_TAB_SESSION, which deliberately cuts a NEW conversation, and
+  // from RESTART_TAB_SESSION, which recycles the transport without changing
+  // the directory. Request/response (not fire-and-forget) because the caller
+  // needs to know whether the move succeeded before it removes a worktree.
+  ipcMain.handle(
+    IPC.RELOCATE_TAB_SESSION,
+    async (_event, { tabId, workingDirectory }: { tabId: string; workingDirectory: string }) => {
+      if (!isValidProjectPath(workingDirectory)) {
+        warn('relocate_tab_session: rejected invalid working directory', { tab_id: tabId, dir: workingDirectory })
+        return { ok: false, error: `Invalid working directory: ${workingDirectory}` }
+      }
+      log('relocate_tab_session', { tab_id: tabId, dir: workingDirectory })
+      const result = await sessionPlane.relocateSession(tabId, workingDirectory)
+      if (!result.ok) {
+        warn('relocate_tab_session: failed', { tab_id: tabId, dir: workingDirectory, error: result.error ?? 'unknown' })
+      } else {
+        log('relocate_tab_session: done', { tab_id: tabId, dir: workingDirectory, conversation_id: result.conversationId ?? '' })
+      }
+      return result
+    },
+  )
 
   ipcMain.handle(IPC.PROMPT, async (_event, { tabId, requestId, options }: { tabId: string; requestId: string; options: RunOptions }) => {
     // Mirror echo: the OWNER renderer does the optimistic transcript insert

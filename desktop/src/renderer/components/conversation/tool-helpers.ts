@@ -20,6 +20,48 @@ const HIDDEN_MESSAGES = [
   'Plan mode is not active. Do not create plans or call ExitPlanMode. Implement the requested changes directly using Edit, Write, and Bash tools.',
 ]
 
+// ─── Steer relocation ───
+
+/**
+ * A mid-turn steer is inserted optimistically where the user typed it, but the
+ * engine applies it later and emits a "── Steer applied" divider at the point
+ * it actually took effect. Rendering the bubble at its send position strands
+ * the text rows above the divider that announces it.
+ *
+ * `steer_injected` stamps the resolved bubble and its divider with a shared
+ * `steerAppliedDividerId` (see event-slice.ts). The grouping pass uses that key
+ * to HOLD the bubble back and re-emit it immediately after its divider, so the
+ * steer reads at its true moment of application.
+ *
+ * This is a pure render-time relocation: the stored conversation is untouched
+ * and the pairing fields are UI-only, never persisted. After a restart the
+ * engine's conversation file already carries the turn at its applied position,
+ * the ids are absent, and grouping emits everything in natural order.
+ */
+function isRelocatableSteer(msg: Message): boolean {
+  return msg.role === 'user' && !!msg.steerAppliedDividerId
+}
+
+/**
+ * Emit any steer bubbles still held when the list ends. Their divider never
+ * arrived (engine died before drain, or the divider fell outside the visible
+ * window), so they are emitted in insertion order rather than dropped — a
+ * steer must never vanish from the scrollback.
+ */
+function flushHeldSteers(
+  held: Map<string, Message>,
+  result: GroupedItem[],
+  includeUser: boolean,
+): void {
+  if (held.size === 0) return
+  if (includeUser) {
+    for (const message of held.values()) {
+      result.push({ kind: 'user', message })
+    }
+  }
+  held.clear()
+}
+
 // ─── groupMessages ───
 
 interface GroupOptions {
@@ -38,6 +80,9 @@ export function groupMessages(messages: Message[], opts?: GroupOptions): Grouped
 
   const result: GroupedItem[] = []
   let toolBuf: Message[] = []
+  // Steer bubbles held back until their "Steer applied" divider is reached,
+  // keyed by the shared steerAppliedDividerId. See isRelocatableSteer.
+  const heldSteers = new Map<string, Message>()
 
   const flushTools = () => {
     if (toolBuf.length > 0) {
@@ -61,7 +106,12 @@ export function groupMessages(messages: Message[], opts?: GroupOptions): Grouped
     } else {
       flushTools()
       if (msg.role === 'user') {
-        if (includeUser) result.push({ kind: 'user', message: msg })
+        // Hold an applied steer until its divider; emit everything else here.
+        if (isRelocatableSteer(msg)) {
+          heldSteers.set(msg.steerAppliedDividerId!, msg)
+        } else if (includeUser) {
+          result.push({ kind: 'user', message: msg })
+        }
       } else if (msg.role === 'assistant') {
         result.push({ kind: 'assistant', message: msg })
       } else if (msg.role === 'harness') {
@@ -74,10 +124,17 @@ export function groupMessages(messages: Message[], opts?: GroupOptions): Grouped
         result.push({ kind: 'compaction', message: msg })
       } else {
         result.push({ kind: 'system', message: msg })
+        // The divider lands first, then the steer it announces.
+        const steer = heldSteers.get(msg.id)
+        if (steer) {
+          heldSteers.delete(msg.id)
+          if (includeUser) result.push({ kind: 'user', message: steer })
+        }
       }
     }
   }
   flushTools()
+  flushHeldSteers(heldSteers, result, includeUser)
 
   return result
 }
@@ -99,6 +156,9 @@ function groupMessagesUnified(
   // continuous thought stream pinned at the top of the turn, mirroring how
   // the unified view merges the rest of the turn.
   let turnThinking: Message[] = []
+  // Steer bubbles held back until their "Steer applied" divider is reached,
+  // keyed by the shared steerAppliedDividerId. See isRelocatableSteer.
+  const heldSteers = new Map<string, Message>()
 
   const flushTurn = () => {
     // Merge the turn's thinking rows (if any) into one display message —
@@ -137,8 +197,15 @@ function groupMessagesUnified(
     if (msg.role === 'assistant' && hidden.includes((msg.content || '').trim())) continue
 
     if (msg.role === 'user') {
-      flushTurn()
-      if (includeUser) result.push({ kind: 'user', message: msg })
+      // An applied steer belongs at its divider, not at its send position, so
+      // hold it back. It does NOT flush the turn here — the steer landed mid-
+      // turn, and flushing on it would split the agent turn at the wrong point.
+      if (isRelocatableSteer(msg)) {
+        heldSteers.set(msg.steerAppliedDividerId!, msg)
+      } else {
+        flushTurn()
+        if (includeUser) result.push({ kind: 'user', message: msg })
+      }
     } else if (msg.role === 'thinking') {
       // Accumulate the turn's thinking rows; they merge into one display
       // row per turn at flush time (see flushTurn). Never emitted standalone
@@ -163,10 +230,17 @@ function groupMessagesUnified(
     } else {
       flushTurn()
       result.push({ kind: 'system', message: msg })
+      // The divider lands first, then the steer it announces.
+      const steer = heldSteers.get(msg.id)
+      if (steer) {
+        heldSteers.delete(msg.id)
+        if (includeUser) result.push({ kind: 'user', message: steer })
+      }
     }
   }
 
   flushTurn()
+  flushHeldSteers(heldSteers, result, includeUser)
 
   return result
 }

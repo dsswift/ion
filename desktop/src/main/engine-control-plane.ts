@@ -1,9 +1,10 @@
 import { EventEmitter } from 'events'
 import { EngineBridge } from './engine-bridge'
-import { engineIsRemote, getEngineHostInfo, listEngineDirectory } from './engine-bridge-fs'
+import { resolveRemoteWorkingDirectory } from './engine-control-plane-remote-dir'
 import { log as _log, warn as _warn, error as _error } from './logger'
 import { handleEngineEvent, type TabEntry, type EventEmitterContext } from './engine-control-plane-events'
 import { makeEmptyTab, registerNewTab, registerAdoptedTab, resetTabEntry, restartTabEntry } from './engine-control-plane-tab'
+import { relocateTabSession, type RelocateResult } from './engine-control-plane-relocate'
 import { performUnifiedInterrupt } from './engine-control-plane-interrupt'
 import * as historyReads from './engine-control-plane-history'
 import { readSettings, SETTINGS_DEFAULTS } from './settings-store'
@@ -112,6 +113,21 @@ export class EngineControlPlane extends EventEmitter {
    */
   restartTabSession(tabId: string): void {
     restartTabEntry(this.tabs, tabId, (id) => { void this.bridge.stopSession(id).catch((err) => warn('restart_tab: stop session failed', { tab_id: id, error: String(err) })) })
+  }
+
+  /**
+   * Move a LIVE conversation to a different working directory, preserving
+   * `conversationId` and its full history. Composed from restartTabSession +
+   * ensureSession; see engine-control-plane-relocate.ts for the rationale and
+   * why this is a consumer-side composition rather than an engine change.
+   *
+   * This is the primitive that lets a conversation outlive its worktree.
+   */
+  relocateSession(tabId: string, workingDirectory: string): Promise<RelocateResult> {
+    return relocateTabSession(this.tabs, tabId, workingDirectory, {
+      restartSession: (id) => this.restartTabSession(id),
+      ensureSession: (id, opts) => this.ensureSession(id, opts),
+    })
   }
 
   closeTab(tabId: string): void {
@@ -344,36 +360,20 @@ export class EngineControlPlane extends EventEmitter {
       })(),
     }
 
-    // When the engine is remote, the workingDirectory must exist on the engine
-    // host (the desktop's local file dialog cannot know that). If a stale path
-    // from this desktop's filesystem is sent, the CLI dies with chdir errors
-    // and the tab silently stays idle. Resolve ~/~-prefixed paths against the
-    // engine's home, then probe the engine and surface a clear error instead.
-    if (engineIsRemote() && config.workingDirectory) {
-      let wd = config.workingDirectory
-      if (wd === '~' || wd.startsWith('~/')) {
-        const hostInfo = await getEngineHostInfo()
-        if (hostInfo.ok && hostInfo.data?.home) {
-          wd = wd === '~' ? hostInfo.data.home : `${hostInfo.data.home}/${wd.slice(2)}`
-          config.workingDirectory = wd
-        }
-      }
-      const probe = await listEngineDirectory(wd, false)
-      if (!probe.ok) {
-        warn('working_directory: unreachable on engine', { tab_id: tabId, dir: wd, error: probe.error })
-        this._setStatus(tabId, 'failed')
-        this.emit('error', tabId, {
-          message:
-            `Working directory "${wd}" does not exist on the engine host. ` +
-            'Choose a directory on the remote engine via the status-bar folder picker, then try again.',
-          stderrTail: [],
-          exitCode: 1,
-          elapsedMs: 0,
-          toolCallCount: 0,
-        } as EnrichedError)
-        return
-      }
-      log('working_directory: confirmed', { tab_id: tabId, dir: wd })
+    // When the engine is remote, verify the working directory exists on the
+    // ENGINE host before starting — see engine-control-plane-remote-dir.ts.
+    // Resolves ~-prefixed paths onto `config` in place.
+    const dirCheck = await resolveRemoteWorkingDirectory(tabId, config)
+    if (!dirCheck.ok) {
+      this._setStatus(tabId, 'failed')
+      this.emit('error', tabId, {
+        message: dirCheck.message,
+        stderrTail: [],
+        exitCode: 1,
+        elapsedMs: 0,
+        toolCallCount: 0,
+      } as EnrichedError)
+      return
     }
 
     // Single start site: delegate to ensureSession (idempotent). It is a

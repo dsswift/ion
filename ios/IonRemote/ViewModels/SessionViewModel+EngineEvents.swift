@@ -128,7 +128,31 @@ extension SessionViewModel {
         formatter.dateFormat = "h:mm a"
         let timeStr = formatter.string(from: time)
         let content = "── Steer applied at \(timeStr) · \(messageLength) chars ──"
-        var msg = Message(id: UUID().uuidString, role: .system, content: content, timestamp: time.timeIntervalSince1970 * 1000)
+        let dividerId = UUID().uuidString
+        // Pair the divider with the optimistic bubble this steer resolves so
+        // the grouping pass can relocate the bubble out of its send position
+        // and re-emit it directly after the divider — the point where the
+        // steer actually took effect. Resolution is FIFO against the oldest
+        // still-pending bubble: the engine's steer channel drains in order and
+        // emits one steer_injected per message, so one event resolves exactly
+        // ONE bubble. Desktop parity: the steer_injected arm in event-slice.ts.
+        //
+        // Routed by instanceId the same way appendLiveMessage routes the
+        // divider below, so the bubble and its divider always land on the
+        // same instance.
+        let resolvePendingSteer: (inout [Message]) -> Void = { msgs in
+            if let idx = msgs.firstIndex(where: { $0.steerPending }) {
+                msgs[idx].steerPending = false
+                msgs[idx].steerApplied = true
+                msgs[idx].steerAppliedDividerId = dividerId
+            }
+        }
+        if instanceId != nil {
+            mutateEngineInstance(tabId: tabId, instanceId: instanceId) { resolvePendingSteer(&$0.messages) }
+        } else {
+            mutateConversationMessages(tabId: tabId) { resolvePendingSteer(&$0) }
+        }
+        var msg = Message(id: dividerId, role: .system, content: content, timestamp: time.timeIntervalSince1970 * 1000)
         // RC-11: steer dividers appear mid-run; preserve in the live tail.
         appendLiveMessage(tabId: tabId, instanceId: instanceId, msg)
     }

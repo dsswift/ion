@@ -1,4 +1,4 @@
-.PHONY: default desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test test test-all test-linux test-linux-engine test-linux-engine-summary test-linux-desktop clean check-file-sizes check-contracts check-status-writers check-atv-parity check-logging check-swiftlint check-dashboards claude-symlinks bootstrap graph graph-refresh graph-rebuild hooks lint-desktop
+.PHONY: default desktop desktop-pkg engine generate-dashboards relay relay-local ios ios-check ios-test desktop-test engine-test test test-all test-linux test-linux-engine test-linux-engine-summary test-linux-desktop clean check-file-sizes check-contracts check-status-writers check-atv-parity check-logging check-swiftlint check-dashboards claude-symlinks bootstrap graph graph-ensure graph-refresh hooks lint-desktop
 
 # Homebrew installs node/npm under /opt/homebrew/bin on Apple Silicon.
 # Make runs recipes with /bin/sh which only has /usr/bin:/bin in PATH,
@@ -89,7 +89,8 @@ test-all: check-file-sizes check-contracts check-status-writers check-atv-parity
 # Linux parity gate (run before opening a PR for engine/ or desktop/ changes)
 # ---------------------------------------------------------------------------
 #
-# CI runs `engine-test` (go test -race) and `desktop-test` (npm test) on
+# CI runs `engine-test` (unit race + contract manifest + integration race) and
+# `desktop-lint` / `desktop-test` (ESLint, typecheck, npm test) on
 # ubuntu-latest. macOS-only local runs miss OS-sensitive failures: path
 # semantics, file-watcher timing, locale, and goroutine starvation under the
 # Linux race detector. These targets run the SAME commands CI runs, in Linux
@@ -109,15 +110,26 @@ test-all: check-file-sizes check-contracts check-status-writers check-atv-parity
 #     tree is owned by the host user, not the container user.
 #   - Desktop uses `npm ci --ignore-scripts`, exactly as CI does — this is what
 #     surfaces eager-`require('electron')` import failures.
+#   - Integration tests need `-tags integration`. They are behind a build tag,
+#     so `go test ./...` silently skips them: the files never compile and a
+#     stale assertion in tests/integration/ passes the gate and fails CI.
+#   - Desktop lint must run here too. `npm run typecheck` does NOT catch unused
+#     imports or react-hooks violations — those are ESLint rules, and CI runs
+#     them as a separate blocking job. Typecheck alone is not a substitute.
+#
+# When a job is added to .github/workflows/quality.yml that runs engine or
+# desktop tests, mirror it here. A gate that claims CI parity while running a
+# subset is worse than no gate: it green-lights the exact failures it is
+# supposed to catch.
 
 GO_VERSION := $(shell awk '/^go / {print $$2}' engine/go.mod)
 
 test-linux: test-linux-engine test-linux-desktop
-	@echo "✅ test-linux: engine race + desktop suites green on Linux (CI parity)"
+	@echo "✅ test-linux: engine unit+integration race, desktop lint+typecheck+test green on Linux (CI parity)"
 
 test-linux-engine:
 	@command -v docker >/dev/null 2>&1 || { echo "❌ docker not found — install Docker/Colima to run the Linux parity gate"; exit 1; }
-	@echo "▶ engine: go test -race ./... on linux/amd64 (golang:$(GO_VERSION))"
+	@echo "▶ engine: go test -race ./... + integration on linux/amd64 (golang:$(GO_VERSION))"
 	@docker run --rm --platform linux/amd64 -v "$(PWD)":/src -w /src/engine golang:$(GO_VERSION) \
 		bash -c "apt-get update -qq && apt-get install -y -qq nodejs && \
 		         useradd -m -s /bin/bash ionci && \
@@ -129,7 +141,9 @@ test-linux-engine:
 		                      GOPATH=/home/ionci/go GOCACHE=/home/ionci/gocache \
 		                      go test -race ./... && \
 		                      GOPATH=/home/ionci/go GOCACHE=/home/ionci/gocache \
-		                      go test ./internal/types/ -run TestContractManifest'"
+		                      go test ./internal/types/ -run TestContractManifest && \
+		                      GOPATH=/home/ionci/go GOCACHE=/home/ionci/gocache \
+		                      go test -race -tags integration ./tests/integration/...'"
 
 # test-linux-engine-summary runs the same suite as test-linux-engine but pipes
 # output through grep so only pass/fail lines reach the terminal. Total output
@@ -153,12 +167,12 @@ test-linux-engine-summary:
 
 test-linux-desktop:
 	@command -v docker >/dev/null 2>&1 || { echo "❌ docker not found — install Docker/Colima to run the Linux parity gate"; exit 1; }
-	@echo "▶ desktop: npm ci --ignore-scripts && npm run typecheck && npm test on linux (node:22)"
+	@echo "▶ desktop: npm ci --ignore-scripts && npm run lint && npm run typecheck && npm test on linux (node:22)"
 	@docker run --rm --platform linux/amd64 -v "$(PWD)":/src -v /src/desktop/node_modules -w /src/desktop node:22 \
 		bash -c "useradd -m -s /bin/bash ionci && \
 		         chmod -R a+rX /src 2>/dev/null || true && \
 		         chown ionci:ionci /src/desktop/node_modules && \
-		         su ionci -c 'cd /src/desktop && npm ci --ignore-scripts && npm run typecheck && npm test'"
+		         su ionci -c 'cd /src/desktop && npm ci --ignore-scripts && npm run lint && npm run typecheck && npm test'"
 
 clean:
 	@cd engine && rm -rf bin/ dist/
@@ -241,7 +255,7 @@ bootstrap:
 	@echo "▶ npm install (husky hooks)"
 	@npm install --silent
 	@$(MAKE) --no-print-directory claude-symlinks
-	@$(MAKE) --no-print-directory graph
+	@$(MAKE) --no-print-directory graph-ensure
 	@echo "✅ bootstrap complete"
 
 # Build the graphify knowledge graph if this clone has none.
@@ -269,15 +283,19 @@ bootstrap:
 # rebases (see scripts/graphify-rebuild.sh).
 #
 # `make graph-refresh` forces an incremental re-extraction against the existing
-# graph; `make graph-rebuild` discards it and extracts from scratch. Reach for
-# refresh when you suspect the graph missed something, and rebuild to purge
-# nodes that repeated incremental updates have left stale.
+# graph; `make graph` discards it and extracts from scratch. Reach for refresh
+# when you suspect the graph missed something, and `make graph` to purge nodes
+# that repeated incremental updates have left stale.
+#
+# This target (`graph-ensure`) is the bootstrap-only build-if-absent path; the
+# deliberately awkward name keeps `make graph` free for the thing a developer
+# actually means when they type it.
 #
 # A missing graphify install is a notice, never a failure: the graph is an
 # optional developer convenience and bootstrap must not break over it.
-graph:
+graph-ensure:
 	@if [ -f graphify-out/graph.json ]; then \
-		echo "▶ graphify: graph already present, skipping build (use 'make graph-refresh' or 'make graph-rebuild')"; \
+		echo "▶ graphify: graph already present, skipping build (use 'make graph-refresh' or 'make graph')"; \
 	elif ! command -v graphify >/dev/null 2>&1; then \
 		echo "⚠️  graphify not on PATH — skipping graph build."; \
 		echo "   Install with 'uv tool install graphifyy' (or 'pipx install graphifyy'), then re-run 'make bootstrap'."; \
@@ -307,7 +325,7 @@ graph-refresh:
 		echo "⚠️  graphify not on PATH — nothing to refresh."; \
 	elif [ ! -f graphify-out/graph.json ]; then \
 		echo "▶ graphify: no graph yet — building instead"; \
-		$(MAKE) --no-print-directory graph; \
+		$(MAKE) --no-print-directory graph-ensure; \
 	else \
 		echo "▶ graphify: incremental refresh (offline, no API key)"; \
 		graphify update .; \
@@ -321,7 +339,7 @@ graph-refresh:
 # rebuild fails. Deleting first means a failed extraction (no graphify, no
 # disk, interrupted run) leaves the clone with no graph at all — strictly
 # worse than the stale one it had, and a full re-extraction is not cheap.
-graph-rebuild:
+graph:
 	@if ! command -v graphify >/dev/null 2>&1; then \
 		echo "⚠️  graphify not on PATH — nothing to rebuild."; \
 	else \

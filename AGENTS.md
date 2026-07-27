@@ -62,11 +62,57 @@ This is deliberately unconditional. An earlier version of this section led with 
 
 Fires on any question about structure, flow, or relationships: "how does X work", "what calls Y", "trace the path from A to B", "where is Z handled", "does subsystem X notify Y". It fires on the *shape of the question*, not on the user typing `/graphify` — a plain-English architecture question is exactly the trigger.
 
+### Three subcommands, not one
+
+`query` is the opening move, not the whole tool. Reaching for it when you want `explain` or `path` is why the graph gets used as a fuzzy file-finder.
+
+| Command | Answers | Use when |
+|---|---|---|
+| `graphify query "<identifier>"` | where does this live, what is near it | Opening move on any structure question |
+| `graphify explain "<symbol>"` | what exactly does this touch, with `file:line` | You have a symbol and need its real edges |
+| `graphify path "<A>" "<B>"` | how do these two things connect | A change spans layers and you need the wiring |
+
 ```bash
-graphify query "<question>"              # BFS traversal, broad context
-graphify query "<question>" --dfs        # trace one specific path
-graphify query "<question>" --budget N   # widen when results are truncated
+graphify query "<question>"                 # BFS traversal, broad context
+graphify query "<question>" --dfs           # trace one specific path
+graphify query "<question>" --context call  # filter by edge type (see below)
+graphify explain "clearSessionSkills"       # full typed edge list for one node
+graphify path "createWorktreeSlice" "registerWorktreeIpc"
 ```
+
+`explain` returns the node's degree, community, and every edge with direction, type, confidence, and `file:line`. `path` returns the shortest hop chain between two nodes with the same per-edge tagging.
+
+### Never set a tiny budget
+
+**Do not pass `--budget` below 400.** Omit it entirely to take the 2000 default; raise it when a result is truncated and you need more.
+
+This is the single most expensive mistake available here. A real query on this codebase returns 50-200 nodes; `--budget 40` shows about four of them and appends a truncation notice. The output then reads like "the graph doesn't know," when in fact the answer was in the discarded remainder. That exact failure has happened: a `--budget 40` query returned 4 of 193 nodes, the three files the agent needed were in the result set, and it spent ~24 `Grep`/`Read` calls rediscovering what it had already been told.
+
+### How to read a result
+
+The graph is a **locator**. The first 3-5 nodes name the files worth opening; go open them. Results past roughly rank 15-20 drift into infrastructure and are usually noise.
+
+A truncation notice is **normal** on any real question. It means "narrow or raise the budget," not "nothing here."
+
+That drift is structural, not a symptom of a small codebase. The graph is a power-law network: median node degree is 3, while the top nodes run into the hundreds — `LogWithFields()`, `NewManager()`, `Context`, `newMockBackend()`, `useColors()`, `shared/types.ts`. These logger, store, and type-barrel nodes legitimately connect to everything, so a depth-2 traversal reaches one within a hop or two of almost any seed and its neighbours then crowd the result. **A larger codebase makes this worse, not better** — more code means more logger callers, and the hubs grow faster than any relevant neighbourhood.
+
+The correction is `--context <type>`, not a bigger budget. Valid values: `call`, `import`, `field`, `parameter_type`, `return_type`, `generic_arg` (`param` and `params` alias to `parameter_type`). Filtering to `call` on a function seed drops the preferences/theme/logger cluster and returns actual callers and callees. It is a heuristic rather than a cure — `LogWithFields()` is itself reached *by* call edges, so it survives a call filter — but it reliably improves the top of the result.
+
+### Query throughout the task, not once at the start
+
+The graph is available for the whole task. The default rhythm is a loop: **query → read the source → new symbol in hand → query again.**
+
+Concrete trigger points:
+
+- **Before editing an unfamiliar function** — `explain` it first to learn the blast radius before you change a signature.
+- **Before deleting or renaming anything** — `explain` gives the caller list. This is how you satisfy § "Dead code is not load-bearing until proven otherwise", which demands a *cited* live producer or consumer rather than a guess. `explain "clearSessionSkills"` returns `<-- .StopSession() [calls] engine/internal/session/manager.go:L402` — exactly that citation.
+- **After a grep hands you a symbol** — go back to the graph with it. Acquiring an identifier by grep is step one; re-querying on it is step two, and skipping step two is the most common way the graph gets underused.
+- **When a change crosses layers** — `path` before hand-tracing engine → desktop → iOS.
+- **Before writing a test** — `explain` the unit under test to see what it actually calls.
+
+**Edge confidence matters when you cite.** Edges are tagged `EXTRACTED` (read directly from source) or `INFERRED` (resolved by graphify). Call edges are frequently `INFERRED` — every call edge on `clearSessionSkills` is, with only the structural `contains` edge marked `EXTRACTED`. So treat a caller list as *the set of places to check in source*, not as proof on its own. The graph locates; the source file confirms.
+
+Worked examples, the hub table, and the full `--budget 40` post-mortem: [`docs/contributing/graph-queries.md`](docs/contributing/graph-queries.md).
 
 **Seed on identifiers, not prose.** The traversal seeds on the query's terms, so generic words (`agent`, `call`, `done`, `handler`) seed on generic nodes and return noise. Name the symbol, type, function, or file you are actually asking about — `startBackgroundBashTask`, `buildPlanModePrompt`, `bash_background.go` — and the traversal lands on the right neighborhood. If a query returns unrelated nodes, re-run it with a concrete identifier before falling back to grep.
 
@@ -88,7 +134,7 @@ Once a graph exists the hooks keep it current — `post-commit` for your own com
 
 Because the rebuild is detached, it finishes a few seconds *after* the commit that triggered it closes. The graph is therefore always a moment behind. That is by design and requires no action.
 
-**To rebuild from scratch, run `make graph-rebuild`.** It moves the existing graph aside, re-extracts, and restores the old one if extraction fails — no manual `rm -rf` needed, and a failed rebuild never leaves the clone with no graph. (`make graph` builds only when none exists; `make graph-refresh` re-extracts incrementally into the existing one.) All three are cheap and offline: extraction is pure local tree-sitter (`graphify . --code-only`, skipping the docs/PDFs/images that would need an LLM backend), then `graphify cluster-only . --no-viz --no-label` partitions communities and writes `GRAPH_REPORT.md`. No API key, nothing leaves the machine. Reach for a rebuild to purge nodes that repeated incremental updates have left stale.
+**To rebuild from scratch, run `make graph`.** It moves the existing graph aside, re-extracts, and restores the old one if extraction fails — no manual `rm -rf` needed, and a failed rebuild never leaves the clone with no graph. (`make graph-refresh` re-extracts incrementally into the existing one; `make graph-ensure` is the bootstrap-only build-if-absent path.) All three are cheap and offline: extraction is pure local tree-sitter (`graphify . --code-only`, skipping the docs/PDFs/images that would need an LLM backend), then `graphify cluster-only . --no-viz --no-label` partitions communities and writes `GRAPH_REPORT.md`. No API key, nothing leaves the machine. Reach for a rebuild to purge nodes that repeated incremental updates have left stale.
 
 Community **partitioning** is offline; community **naming** is not. `--no-label` keeps the build key-free and leaves `Community N` placeholders, which is what a bootstrapped clone gets. Descriptive names ("Plan Mode Prompt Builder") come from `graphify label` with a backend configured — useful for readability, an opt-in cost, and never required to query the graph.
 
@@ -150,9 +196,11 @@ The following gates are **slow** — Docker container spin-up, full-network vuln
 | Full desktop suite | `cd desktop && npm test` |
 | iOS build | `make ios-check` |
 
-**The heavy gates run at PR time, not during development.** CI (`quality.yml`) is the authoritative gate: it runs the full set above — race suites, integration, `govulncheck`, `npm audit`, iOS build — on **every PR**, on `ubuntu-latest`. Locally, `/create-pr` runs the **Linux parity** subset (`make test-linux`, which executes the full race suite + desktop tests inside Linux containers) **once**, right before pushing, to catch Linux-only failures before they burn Actions minutes on a red build. The only times the agent runs a heavy gate are (a) when `/create-pr` explicitly instructs it to, or (b) when the user explicitly asks for it (e.g. to reproduce a known Linux-only failure). Outside those two cases, the heavy gates are off-limits during development — CI is what proves them green on the PR.
+**The heavy gates run at PR time, not during development.** CI (`quality.yml`) is the authoritative gate: it runs the full set above — race suites, integration, `govulncheck`, `npm audit`, iOS build — on **every PR**, on `ubuntu-latest`. Locally, `/create-pr` runs the **Linux parity** subset (`make test-linux`, which executes the engine unit + integration race suites and the desktop lint, typecheck, and test steps inside Linux containers) **once**, right before pushing, to catch Linux-only failures before they burn Actions minutes on a red build. The only times the agent runs a heavy gate are (a) when `/create-pr` explicitly instructs it to, or (b) when the user explicitly asks for it (e.g. to reproduce a known Linux-only failure). Outside those two cases, the heavy gates are off-limits during development — CI is what proves them green on the PR.
 
-> **Why `/create-pr` runs `make test-linux`.** Local validation runs on macOS; the blocking CI gates run on `ubuntu-latest`. `go test -race ./...` (the `engine-test` job) and `npm test` (the `desktop-test` job) run on Linux in CI, so a macOS-only pass is **not** sufficient — OS-sensitive failures (path semantics, file-watcher timing, locale, goroutine starvation under the Linux race detector, eager `require('electron')` under `npm ci --ignore-scripts`) slip through. `make test-linux` runs the same commands CI runs, in Linux containers, so those failures surface before the PR instead of after burning Actions minutes on a red build. `/create-pr` runs this gate automatically before pushing and pauses if Docker isn't running — the common path needs no manual step.
+> **Why `/create-pr` runs `make test-linux`.** Local validation runs on macOS; the blocking CI gates run on `ubuntu-latest`. `go test -race ./...` plus `go test -race -tags integration ./tests/integration/...` (the `engine-test` job), `npm run lint` (the `desktop-lint` job), and `npm test` (the `desktop-test` job) all run on Linux in CI, so a macOS-only pass is **not** sufficient — OS-sensitive failures (path semantics, file-watcher timing, locale, goroutine starvation under the Linux race detector, eager `require('electron')` under `npm ci --ignore-scripts`) slip through. `make test-linux` runs the same commands CI runs, in Linux containers, so those failures surface before the PR instead of after burning Actions minutes on a red build. `/create-pr` runs this gate automatically before pushing and pauses if Docker isn't running — the common path needs no manual step.
+>
+> **When a CI job that runs engine or desktop tests is added to `quality.yml`, mirror it into `make test-linux`.** The gate's value is that it is a faithful subset; a gate that claims CI parity while skipping a job green-lights the exact failures it exists to catch. Two concrete traps: integration tests are behind the `integration` build tag, so `go test ./...` silently skips them rather than failing, and `npm run typecheck` does not catch unused imports or react-hooks violations — those are ESLint rules that CI runs as a separate blocking job.
 
 ## Branch workflow
 
@@ -344,6 +392,10 @@ Desktop and iOS are co-equal clients. When a desktop change touches a feature th
 | Tab context menu (TabStripTabContextMenu) | Tab context menu (TabRowContextMenu) | Actions operate on `RemoteTabState` fields; session identity via `snapshot.ts` → `RemoteTabState.conversationId` for all conversations. For extension-loaded tabs, per-instance session IDs are available in `conversationInstances[i].conversationIds` (historical) and `StatusFields.sessionId` (live). |
 | Desktop Settings dialog (SettingsDialog categories) | Desktop Settings detail (DesktopSettingsView sections) | `projectable-settings.ts` → `desktop_settings_snapshot` event → `DesktopSettingsView` auto-renders sections. iOS group IDs **must** match `PROJECTABLE_GROUP_ORDER` (exported from `projectable-settings.ts`); renaming a group requires updating `PROJECTABLE_GROUP_LABELS` in that same file and the test in `src/main/__tests__/projectable-settings.test.ts`. Adding a new user-editable desktop preference requires a parallel entry in `PROJECTABLE_SETTINGS_DATA` in `projectable-settings-data.ts` unless the setting is local-machine-only (font, path, secret). |
 | Model fallback indicator (EngineStatusBar per-instance ⚠) | Model fallback indicator (EngineInstanceBar per-instance ⚠) | `snapshot.ts` → `RemoteTabState.conversationInstances[i].modelFallback`. Desktop populates `engineModelFallbacks` from the `engine_model_fallback` event; the snapshot poller projects each entry onto the corresponding `conversationInstances[i]` and iOS reads it from the snapshot. Cleared on the next idle transition (per-instance). |
+| Worktrees list (git panel WorktreesSection) | Worktrees & Bench screen (WorktreeListView) + new-tab sheet rows | `desktop_worktree_state` → `RemoteWorktreeState.worktrees`. The desktop computes dirty/unlanded/needsSync; clients render, never derive. |
+| Integration bench (git panel IntegrationSection) | Bench sections in WorktreeListView | `desktop_worktree_state` → `RemoteWorktreeState.benches`. Pins, staleness, and conflict attribution are all main-process values. |
+| Worktree lifecycle verbs (land / sync / retire) | Tab-row context menu + worktree row swipe actions | `desktop_worktree_*` / `desktop_bench_*` commands; results ride `desktop_worktree_op_result` so a refusal reads differently from a failure. |
+| Base-moved indicator (WorktreeRow) | Tab row indicator (TabRowView) | `RemoteWorktree.needsSync`. Only set when a sync would actually change the worktree — never for a no-op. |
 | Theme registry + picker (AppearanceCategory) | Theme picker (SettingsAppearanceView) | Built-in themes are compiled into both clients and pinned identical by the parity fixture (`assets/theme-parity.json`, asserted by `theme-parity.test.ts` on desktop and `ThemeParityTests.swift` on iOS) — a shared-theme palette edit must update the fixture and the Swift theme in the same change. Custom theme packs sync their iOS components via `desktop_theme_manifest` (sendSync + on pack-set change) with lazy asset fetch (`desktop_request_theme_asset`); enterprise lock rides `desktop_settings_snapshot.themePolicy`. Theme selection is per-device (never synced). Authoring guide: `docs/design/theme-packs.md`. |
 
 ### When to skip iOS
@@ -755,6 +807,26 @@ When a feature exists on one client and not another, or is implemented two diffe
 ### The forbidden completion claim
 
 Do not report a feature or fix as "done," "complete," or "verified" when the only verification performed is: it compiles, it type-checks, existing tests still pass, and the code reads correctly. Those are necessary but **not sufficient**. The sufficient condition is a test that exercises the new behavior and would fail without the change. If you are about to commit and there is no such test, the work is not done — write the test first.
+
+## Integration benches refuse history writes
+
+A directory under `~/.ion/integration/` is a rebuildable bench: its branch is
+recreated from the feature branch plus each member's pinned commit on every
+rebuild. A commit made there is destroyed by the next rebuild, and a push would
+publish a synthetic merge of other people's in-flight work.
+
+Git commands that write **history** are refused inside a bench — `commit`,
+`push`, `pull`, `merge`, `rebase`, `cherry-pick`, `revert`, `reset`, `stash`,
+`tag`, and branch mutation — by the desktop UI
+(`desktop/src/main/integration/bench-guard.ts`) and by ion-meta's tool gate
+(`engine/extensions/ion-meta/bench-gate.ts`). Reading, building, testing, and
+staging are unaffected. A fix diagnosed in the bench belongs in the member
+worktree that owns the file: commit it there, then update that member in the
+bench. See [ADR-024](docs/architecture/adr/024-integration-workspace.md).
+
+Closing a conversation never removes a worktree. Removal is only the explicit
+Retire verb, which appraises what would be lost and refuses when the answer is
+work.
 
 ## Conversation storage
 

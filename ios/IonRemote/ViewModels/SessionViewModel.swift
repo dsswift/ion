@@ -226,6 +226,10 @@ final class SessionViewModel {
     var gitCommitFileDiff: [String: GitCommitFileDiffResponse] = [:]  // keyed by "hash:path"
     var gitToast: GitToast? = nil
 
+    // Worktree + integration bench state. Accessors and the state shape live
+    // in SessionViewModel+WorktreeState.swift (this file is at its size cap).
+    var worktreeUI = WorktreeUIState()
+
     // File explorer state (per directory/path)
     var fileListings: [String: FsDirListingResponse] = [:]   // directory -> listing
     var fileContent: [String: FsFileContentResponse] = [:]    // filePath -> content

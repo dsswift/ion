@@ -61,6 +61,22 @@ export default function App() {
     return initRemoteProjectionPush()
   }, [])
 
+  // iOS asked to open a conversation in a worktree or the bench. The store
+  // actions own the open-or-focus decision, so both clients behave identically.
+  useEffect(() => {
+    return window.ion.onRemoteOpenWorktreeConversation((worktreePath) => {
+      void useSessionStore.getState().openWorktreeConversation(worktreePath)
+        .catch((err) => rError('remote', 'open worktree conversation failed', { error: String(err) }))
+    })
+  }, [])
+
+  useEffect(() => {
+    return window.ion.onRemoteOpenBenchConversation(({ repoPath, sourceBranch }) => {
+      void useSessionStore.getState().openBenchConversation(repoPath, sourceBranch)
+        .catch((err) => rError('remote', 'open bench conversation failed', { error: String(err) }))
+    })
+  }, [])
+
   // Conversation-picker selections from the ATV window: switch the desktop
   // tab so both surfaces stay on the same conversation.
   useEffect(() => {

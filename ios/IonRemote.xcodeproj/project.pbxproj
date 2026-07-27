@@ -40,6 +40,7 @@
 		A1B2C3D4E5F6000100001FAA /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000020AA /* SettingsView.swift */; };
 		A1B2C3D4E5F60001000021AA /* SessionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000022AA /* SessionViewModel.swift */; };
 		A1B2C3D4E5F60001000023AA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000024AA /* Assets.xcassets */; };
+		A1B2C3D4E5F600010004AB01 /* WorktreeWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010003AB01 /* WorktreeWireTests.swift */; };
 		A1B2C3D4E5F60001000027AA /* E2ECryptoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000028AA /* E2ECryptoTests.swift */; };
 		A1B2C3D4E5F60001000029AA /* TransportManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */; };
 		A1B2C3D4E5F6000100002BAA /* RelayClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */; };
@@ -104,6 +105,8 @@
 		700180B7333F5A03BE7F8C17 /* SessionViewModel+EventHandlerMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9612EDB59ED764A140EADED /* SessionViewModel+EventHandlerMap.swift */; };
 		A1B2C3D4E5F60001000202AA /* SessionViewModel+Pairing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */; };
 		A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */; };
+		A1B2C3D4E5F6000100049A03 /* SessionViewModel+WorktreeCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039A03 /* SessionViewModel+WorktreeCommands.swift */; };
+		A1B2C3D4E5F6000100049A04 /* SessionViewModel+WorktreeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039A04 /* SessionViewModel+WorktreeState.swift */; };
 		A1B2C3D4E5F600010002049A /* SessionViewModel+GitCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */; };
 		A1B2C3D4E5F600010002069A /* SessionViewModel+FsCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010002079A /* SessionViewModel+FsCommands.swift */; };
 		A1B2C3D4E5F60001000206AA /* SessionViewModel+EventHandlers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */; };
@@ -123,6 +126,7 @@
 		WATCHDOG00000000000007 /* LANLivenessWatchdogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WATCHDOG00000000000008 /* LANLivenessWatchdogTests.swift */; };
 		THINKFORK00000000000007 /* ThinkingEffortStorageForkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = THINKFORK00000000000008 /* ThinkingEffortStorageForkTests.swift */; };
 		TGHOIST000000000000007 /* ToolGroupingHoistTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TGHOIST000000000000008 /* ToolGroupingHoistTests.swift */; };
+		TGSTEER000000000000007 /* ToolGroupingSteerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TGSTEER000000000000008 /* ToolGroupingSteerTests.swift */; };
 		AGTRNORD000000000000007 /* AgentTurnRenderOrderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AGTRNORD000000000000008 /* AgentTurnRenderOrderTests.swift */; };
 		DIVGUARD000000000000007 /* UnifiedConversationDivergenceGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DIVGUARD000000000000008 /* UnifiedConversationDivergenceGuardTests.swift */; };
 		MERGEDV0000000000000007 /* MergedConversationViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MERGEDV0000000000000008 /* MergedConversationViewTests.swift */; };
@@ -177,7 +181,11 @@
 		A1B2C3D4E5F60001000248AA /* ContractSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000249AA /* ContractSyncTests.swift */; };
 		TYPEKEY00000000000000003A /* NormalizedEventTypeKeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TYPEKEY00000000000000004A /* NormalizedEventTypeKeyTests.swift */; };
 		A1B2C3D4E5F60001000301AA /* GitTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000300AA /* GitTypes.swift */; };
+		A1B2C3D4E5F6000100049A01 /* WorktreeTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039A01 /* WorktreeTypes.swift */; };
+		A1B2C3D4E5F6000100049A02 /* NormalizedEvent+Worktree.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039A02 /* NormalizedEvent+Worktree.swift */; };
 		A1B2C3D4E5F60001000303AA /* NormalizedEvent+Git.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000302AA /* NormalizedEvent+Git.swift */; };
+		A1B2C3D4E5F6000100049A05 /* WorktreeListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039A05 /* WorktreeListView.swift */; };
+		A1B2C3D4E5F6000100049A06 /* WorktreeRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039A06 /* WorktreeRowView.swift */; };
 		A1B2C3D4E5F60001000305AA /* GitPaneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000304AA /* GitPaneView.swift */; };
 		A1B2C3D4E5F60001000307AA /* GitChangesListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000306AA /* GitChangesListView.swift */; };
 		A1B2C3D4E5F60001000309AA /* GitGraphListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000308AA /* GitGraphListView.swift */; };
@@ -429,6 +437,7 @@
 		A1B2C3D4E5F60001000020AA /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000022AA /* SessionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionViewModel.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000024AA /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A1B2C3D4E5F600010003AB01 /* WorktreeWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreeWireTests.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000028AA /* E2ECryptoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E2ECryptoTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportManagerTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayClientTests.swift; sourceTree = "<group>"; };
@@ -496,6 +505,8 @@
 		F9612EDB59ED764A140EADED /* SessionViewModel+EventHandlerMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EventHandlerMap.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Pairing.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Commands.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000100039A03 /* SessionViewModel+WorktreeCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+WorktreeCommands.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000100039A04 /* SessionViewModel+WorktreeState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+WorktreeState.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+GitCommands.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010002079A /* SessionViewModel+FsCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+FsCommands.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000207AA /* SessionViewModel+EventHandlers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EventHandlers.swift"; sourceTree = "<group>"; };
@@ -515,6 +526,7 @@
 		WATCHDOG00000000000008 /* LANLivenessWatchdogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANLivenessWatchdogTests.swift; sourceTree = "<group>"; };
 		THINKFORK00000000000008 /* ThinkingEffortStorageForkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingEffortStorageForkTests.swift; sourceTree = "<group>"; };
 		TGHOIST000000000000008 /* ToolGroupingHoistTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolGroupingHoistTests.swift; sourceTree = "<group>"; };
+		TGSTEER000000000000008 /* ToolGroupingSteerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolGroupingSteerTests.swift; sourceTree = "<group>"; };
 		AGTRNORD000000000000008 /* AgentTurnRenderOrderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentTurnRenderOrderTests.swift; sourceTree = "<group>"; };
 		DIVGUARD000000000000008 /* UnifiedConversationDivergenceGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedConversationDivergenceGuardTests.swift; sourceTree = "<group>"; };
 		MERGEDV0000000000000008 /* MergedConversationViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MergedConversationViewTests.swift; sourceTree = "<group>"; };
@@ -569,7 +581,11 @@
 		A1B2C3D4E5F60001000249AA /* ContractSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContractSyncTests.swift; sourceTree = "<group>"; };
 		TYPEKEY00000000000000004A /* NormalizedEventTypeKeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NormalizedEventTypeKeyTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000300AA /* GitTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitTypes.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000100039A01 /* WorktreeTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreeTypes.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000100039A02 /* NormalizedEvent+Worktree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Worktree.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000302AA /* NormalizedEvent+Git.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NormalizedEvent+Git.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000100039A05 /* WorktreeListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreeListView.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000100039A06 /* WorktreeRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WorktreeRowView.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000304AA /* GitPaneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitPaneView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000306AA /* GitChangesListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitChangesListView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000308AA /* GitGraphListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitGraphListView.swift; sourceTree = "<group>"; };
@@ -849,6 +865,8 @@
 				A1B2C3D4E5F60001E50007AA /* EngineEventSupport.swift */,
 				CTXBDPAY0000000000002 /* ContextBreakdownPayload.swift */,
 				A1B2C3D4E5F60001D70007AA /* DesktopSettingsModel.swift */,
+				A1B2C3D4E5F6000100039A01 /* WorktreeTypes.swift */,
+				A1B2C3D4E5F6000100039A02 /* NormalizedEvent+Worktree.swift */,
 				A1B2C3D4E5F60001000302AA /* NormalizedEvent+Git.swift */,
 				A1B2C3D4E5F60001000402AA /* NormalizedEvent+Files.swift */,
 				A1B2C3D4E5F60001009F00AA /* NormalizedEvent+Resource.swift */,
@@ -971,6 +989,8 @@
 				A1B2C3D4E5F6000100400EAA /* ConversationStatusBar.swift */,
 				A1B2C3D4E5F6000100400EDD /* ContextUsageRing.swift */,
 				A1B2C3D4E5F6000100400EDE /* ConversationContextStrip.swift */,
+				A1B2C3D4E5F6000100039A05 /* WorktreeListView.swift */,
+				A1B2C3D4E5F6000100039A06 /* WorktreeRowView.swift */,
 				A1B2C3D4E5F60001000304AA /* GitPaneView.swift */,
 				A1B2C3D4E5F60001000306AA /* GitChangesListView.swift */,
 				A1B2C3D4E5F60001000308AA /* GitGraphListView.swift */,
@@ -1024,6 +1044,8 @@
 				A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */,
 				A1B2C3D4E5F60001009200AA /* SessionViewModel+RemoteDisplay.swift */,
 				A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */,
+				A1B2C3D4E5F6000100039A03 /* SessionViewModel+WorktreeCommands.swift */,
+				A1B2C3D4E5F6000100039A04 /* SessionViewModel+WorktreeState.swift */,
 				A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */,
 				A1B2C3D4E5F600010002079A /* SessionViewModel+FsCommands.swift */,
 				B2C3D4E5F600BB991010E000AA /* SessionViewModel+EngineCommands.swift */,
@@ -1094,6 +1116,7 @@
 				A1B2C3D4E5F60003000402AA /* SnapshotTerminalInstanceGateTests.swift */,
 				A1B2C3D4E5F60003000302AA /* FileEditorReopenTests.swift */,
 				TGHOIST000000000000008 /* ToolGroupingHoistTests.swift */,
+				TGSTEER000000000000008 /* ToolGroupingSteerTests.swift */,
 				AGTRNORD000000000000008 /* AgentTurnRenderOrderTests.swift */,
 				THINK00000000000000000008 /* ThinkingAccumulatorTests.swift */,
 				THINKFORK00000000000008 /* ThinkingEffortStorageForkTests.swift */,
@@ -1155,6 +1178,7 @@
 				SLSHPILL0000000000000002 /* SlashPillOptimisticTests.swift */,
 				A1B2C3D4E5F600010009F4AA /* PendingCreateTests.swift */,
 				PLANCARDGATETEST00000002 /* PlanCardGateTests.swift */,
+				A1B2C3D4E5F600010003AB01 /* WorktreeWireTests.swift */,
 				A1B2C3D4E5F60001000028AA /* E2ECryptoTests.swift */,
 				A1B2C3D4E5F60001FF0004AA /* MarkdownFormatterFixtures.swift */,
 				A1B2C3D4E5F60001FF0006AA /* MarkdownFormatterTests.swift */,
@@ -1477,6 +1501,8 @@
 				A1B2C3D4E5F60001000202AA /* SessionViewModel+Pairing.swift in Sources */,
 				A1B2C3D4E5F60001009201AA /* SessionViewModel+RemoteDisplay.swift in Sources */,
 				A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */,
+				A1B2C3D4E5F6000100049A03 /* SessionViewModel+WorktreeCommands.swift in Sources */,
+				A1B2C3D4E5F6000100049A04 /* SessionViewModel+WorktreeState.swift in Sources */,
 				A1B2C3D4E5F600010002049A /* SessionViewModel+GitCommands.swift in Sources */,
 				A1B2C3D4E5F600010002069A /* SessionViewModel+FsCommands.swift in Sources */,
 				B2C3D4E5F600BB991010E001AA /* SessionViewModel+EngineCommands.swift in Sources */,
@@ -1534,8 +1560,12 @@
 				A1B2C3D4E5F60001D90006AA /* DesktopSettingsListEditor.swift in Sources */,
 				A1B2C3D4E5F60001DA0006AA /* DesktopSettingsListRecordEditor.swift in Sources */,
 				A1B2C3D4E5F60001DB0006AA /* DesktopSettingsPrimitiveListEditor.swift in Sources */,
+				A1B2C3D4E5F6000100049A01 /* WorktreeTypes.swift in Sources */,
+				A1B2C3D4E5F6000100049A02 /* NormalizedEvent+Worktree.swift in Sources */,
 				A1B2C3D4E5F60001000303AA /* NormalizedEvent+Git.swift in Sources */,
 				A1B2C3D4E5F60001000301AA /* GitTypes.swift in Sources */,
+				A1B2C3D4E5F6000100049A05 /* WorktreeListView.swift in Sources */,
+				A1B2C3D4E5F6000100049A06 /* WorktreeRowView.swift in Sources */,
 				A1B2C3D4E5F60001000305AA /* GitPaneView.swift in Sources */,
 				A1B2C3D4E5F60001000307AA /* GitChangesListView.swift in Sources */,
 				A1B2C3D4E5F60001000309AA /* GitGraphListView.swift in Sources */,
@@ -1686,6 +1716,7 @@
 				A1B2C3D4E5F60003000401AA /* SnapshotTerminalInstanceGateTests.swift in Sources */,
 				A1B2C3D4E5F60003000301AA /* FileEditorReopenTests.swift in Sources */,
 				TGHOIST000000000000007 /* ToolGroupingHoistTests.swift in Sources */,
+				TGSTEER000000000000007 /* ToolGroupingSteerTests.swift in Sources */,
 				AGTRNORD000000000000007 /* AgentTurnRenderOrderTests.swift in Sources */,
 				THINK00000000000000000007 /* ThinkingAccumulatorTests.swift in Sources */,
 				THINKFORK00000000000007 /* ThinkingEffortStorageForkTests.swift in Sources */,
@@ -1751,6 +1782,7 @@
 				SLSHPILL0000000000000001 /* SlashPillOptimisticTests.swift in Sources */,
 				A1B2C3D4E5F600010009F3AA /* PendingCreateTests.swift in Sources */,
 				PLANCARDGATETEST00000001 /* PlanCardGateTests.swift in Sources */,
+				A1B2C3D4E5F600010004AB01 /* WorktreeWireTests.swift in Sources */,
 				A1B2C3D4E5F60001000027AA /* E2ECryptoTests.swift in Sources */,
 				A1B2C3D4E5F60001FF0005AA /* MarkdownFormatterFixtures.swift in Sources */,
 				A1B2C3D4E5F60001FF0007AA /* MarkdownFormatterTests.swift in Sources */,

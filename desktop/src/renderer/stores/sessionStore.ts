@@ -15,6 +15,8 @@ import { createFileExplorerSlice } from './slices/file-explorer-slice'
 import { createFileEditorSlice } from './slices/file-editor-slice'
 import { createDirectorySlice } from './slices/directory-slice'
 import { createWorktreeSlice } from './slices/worktree-slice'
+import { createWorktreeInventorySlice } from './slices/worktree-inventory-slice'
+import { createBenchSlice } from './slices/bench-slice'
 import { createAttachmentsSlice } from './slices/attachments-slice'
 import { createPermissionsSlice } from './slices/permissions-slice'
 import { createSendSlice } from './slices/send-slice'
@@ -64,6 +66,9 @@ const initialState = {
   rehydrating: false,
   initProgress: null,
   worktreeUncommittedMap: new Map(),
+  worktreeInventory: new Map(),
+  benchWorkspaces: new Map(),
+  benchSourceTips: new Map(),
   engineWorkingMessages: new Map(),
   engineNotifications: new Map(),
   engineDialogs: new Map(),
@@ -95,6 +100,8 @@ export const useSessionStore = create<State>((set, get) => {
     ...createFileEditorSlice(_set, _get),
     ...createDirectorySlice(_set, _get),
     ...createWorktreeSlice(_set, _get),
+    ...createWorktreeInventorySlice(_set, _get),
+    ...createBenchSlice(_set, _get),
     ...createAttachmentsSlice(_set, _get),
     ...createPermissionsSlice(_set, _get),
     ...createSendSlice(_set, _get),

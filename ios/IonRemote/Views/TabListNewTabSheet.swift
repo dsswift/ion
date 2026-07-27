@@ -21,6 +21,7 @@ import SwiftUI
 // start, suppressing the first-prompt auto-movement that would otherwise
 // yank the tab away from the user's explicit group choice.
 struct TabListNewTabSheet: View {
+    @Environment(SessionViewModel.self) private var viewModel
     let directories: [(label: String, fullPath: String)]
     let pendingPinToGroupId: String?
     @Binding var isPresented: Bool
@@ -33,6 +34,15 @@ struct TabListNewTabSheet: View {
     var body: some View {
         NavigationStack {
             List {
+                // Worktrees + benches first. This is the ZERO-KNOWLEDGE
+                // recovery path: closing a worktree conversation no longer
+                // destroys anything, but the operator still needs a way back in
+                // without knowing a generated ~/.ion/worktrees/... path -- and
+                // on iOS the git pane is two navigations away, so it cannot be
+                // the only route.
+                worktreeSections
+
+                Section("Directories") {
                 ForEach(directories, id: \.fullPath) { dir in
                     HStack {
                         Text(dir.label)
@@ -58,6 +68,7 @@ struct TabListNewTabSheet: View {
                         .buttonBorderShape(.circle)
                     }
                 }
+                }
             }
             .navigationTitle(pendingPinToGroupId == nil ? "New Tab" : "New Tab in Group")
             .navigationBarTitleDisplayMode(.inline)
@@ -67,6 +78,68 @@ struct TabListNewTabSheet: View {
                 }
             }
         }
+        .task { viewModel.refreshAllWorktrees() }
         .presentationDetents([.medium])
+    }
+}
+
+extension TabListNewTabSheet {
+
+    /// Bench and worktree rows, grouped per project.
+    @ViewBuilder
+    var worktreeSections: some View {
+        ForEach(viewModel.worktreeProjects) { state in
+            let builtBenches = state.benches.filter(\.hasBeenBuilt)
+            if !builtBenches.isEmpty || !state.worktrees.isEmpty {
+                Section(projectLabel(state.repoPath)) {
+                    // Only built benches: an unbuilt bench has no directory to
+                    // open a conversation in.
+                    ForEach(builtBenches) { bench in
+                        Button {
+                            isPresented = false
+                            viewModel.openBenchConversation(repoPath: state.repoPath,
+                                                            sourceBranch: bench.sourceBranch)
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "flask").foregroundStyle(.tint)
+                                Text("Bench · \(bench.sourceBranch)")
+                                Spacer()
+                                Text("\(bench.enabledMemberCount) member\(bench.enabledMemberCount == 1 ? "" : "s")")
+                                    .font(.caption2).foregroundStyle(.secondary)
+                                if bench.openTabId != nil {
+                                    Text("open").font(.caption2).foregroundStyle(.tint)
+                                }
+                            }
+                        }
+                    }
+                    ForEach(state.worktrees) { wt in
+                        Button {
+                            isPresented = false
+                            viewModel.openWorktreeConversation(worktreePath: wt.worktreePath)
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "arrow.triangle.branch")
+                                    .foregroundStyle(.green)
+                                Text(wt.label).lineLimit(1)
+                                Spacer()
+                                if wt.isDirty {
+                                    Text("dirty").font(.caption2).foregroundStyle(.green)
+                                }
+                                if wt.needsSync {
+                                    Text("base moved").font(.caption2).foregroundStyle(.orange)
+                                }
+                                if wt.openTabId != nil {
+                                    Text("open").font(.caption2).foregroundStyle(.tint)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func projectLabel(_ repoPath: String) -> String {
+        repoPath.split(separator: "/").last.map(String.init) ?? repoPath
     }
 }

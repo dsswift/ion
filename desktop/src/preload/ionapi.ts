@@ -4,7 +4,7 @@
  * re-exports it (renderer/env.d.ts imports it from ../preload/index).
  */
 import type { AtvApi } from './atv-api'
-import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus, EngineConfig, EngineEvent, EngineHostInfo, EngineDirListing, RemoteTransportState, DiscoveredCommand, GitEvent, RepoSnapshot, NewConversationDefaultsPolicy } from '../shared/types'
+import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus, LandResult, WorktreeMoveResult, WorktreeInventoryEntry, WorktreeAppraisalWire, IntegrationWorkspace, BenchRebuildResult, EngineConfig, EngineEvent, EngineHostInfo, EngineDirListing, RemoteTransportState, DiscoveredCommand, GitEvent, RepoSnapshot, NewConversationDefaultsPolicy } from '../shared/types'
 import type { EnterprisePolicy } from '../shared/types-engine'
 import type { CustomThemeForRenderer } from '../shared/theme-pack-types'
 
@@ -46,6 +46,12 @@ export interface IonAPI extends AtvApi {
   /** Custom theme packs installed on disk (desktop components, resolved with inline asset data URLs). */
   listCustomThemes(): Promise<CustomThemeForRenderer[]>
   openExternal(url: string): Promise<boolean>
+  /** iOS asked to open (or focus) a conversation in a worktree. */
+  onRemoteOpenWorktreeConversation(callback: (worktreePath: string) => void): () => void
+  /** iOS asked to open (or focus) a conversation in the integration bench. */
+  onRemoteOpenBenchConversation(callback: (arg: { repoPath: string; sourceBranch: string }) => void): () => void
+  /** Reveal a directory in the OS file manager. */
+  revealPath(path: string): Promise<boolean>
 
   attachFiles(): Promise<FileAttachment[] | null>
   attachFileByPath(path: string): Promise<FileAttachment | null>
@@ -60,6 +66,11 @@ export interface IonAPI extends AtvApi {
   ensureEngineSession(args: { tabId: string; workingDirectory: string; conversationId?: string | null; permissionMode?: 'auto' | 'plan' }): Promise<{ ok: boolean; error?: string; conversationId?: string }>
   resetTabSession(tabId: string): void
   restartTabSession(tabId: string): void
+  /**
+   * Move a live conversation to a new working directory, preserving its
+   * conversationId and history. Lets a conversation outlive its worktree.
+   */
+  relocateTabSession(tabId: string, workingDirectory: string): Promise<{ ok: boolean; conversationId?: string; error?: string }>
   listSessions(projectPath?: string): Promise<SessionMeta[]>
   listAllSessions(): Promise<SessionMeta[]>
   loadSession(sessionId: string, projectPath?: string, encodedDir?: string): Promise<SessionLoadMessage[]>
@@ -152,6 +163,31 @@ export interface IonAPI extends AtvApi {
   gitWorktreeMerge(repoPath: string, worktreeBranch: string, sourceBranch: string, noFf?: boolean): Promise<{ ok: boolean; error?: string; hasConflicts?: boolean }>
   gitWorktreePush(worktreePath: string, sourceBranch: string): Promise<{ ok: boolean; error?: string; remoteBranch?: string; remoteUrl?: string }>
   gitWorktreeRebase(worktreePath: string, sourceBranch: string): Promise<{ ok: boolean; error?: string; hasConflicts?: boolean }>
+  /**
+   * Worktree lifecycle verbs. `land` integrates repeatably without clobbering
+   * a checkout; `retire` and `reattach` return the directory the caller should
+   * relocate the conversation into (see relocateTabSession).
+   */
+  gitWorktreeLand(args: { repoPath: string; worktreePath: string; worktreeBranch: string; sourceBranch: string; noFf?: boolean; syncFirst?: boolean }): Promise<LandResult>
+  gitWorktreeSync(worktreePath: string, sourceBranch: string): Promise<{ ok: boolean; error?: string; hasConflicts?: boolean; refusedDirty?: boolean }>
+  /** Every managed worktree for a repo, with state for describing and acting on it. */
+  gitWorktreeInventory(repoPath: string): Promise<{ worktrees: WorktreeInventoryEntry[] }>
+  /** What would be lost if this worktree were removed right now. */
+  gitWorktreeAppraise(worktreePath: string, sourceBranch: string): Promise<WorktreeAppraisalWire>
+  // ── Integration workspace (the bench) ──
+  benchList(repoPath: string): Promise<{ workspaces: IntegrationWorkspace[]; tips: Record<string, string> }>
+  benchEnsure(repoPath: string, sourceBranch: string): Promise<{ workspace: IntegrationWorkspace }>
+  benchAddMember(args: { repoPath: string; sourceBranch: string; worktreePath: string; branchName: string }): Promise<{ ok: boolean; error?: string; workspace?: IntegrationWorkspace }>
+  benchRemoveMember(args: { repoPath: string; sourceBranch: string; worktreePath: string }): Promise<{ workspace: IntegrationWorkspace | null }>
+  benchSetEnabled(args: { repoPath: string; sourceBranch: string; worktreePath: string; enabled: boolean }): Promise<{ workspace: IntegrationWorkspace | null }>
+  benchUpdateMember(args: { repoPath: string; sourceBranch: string; worktreePath: string }): Promise<BenchRebuildResult>
+  benchUpdateAll(repoPath: string, sourceBranch: string): Promise<BenchRebuildResult>
+  benchRebuild(repoPath: string, sourceBranch: string): Promise<BenchRebuildResult>
+  benchRefreshStaleness(repoPath: string, sourceBranch: string): Promise<{ workspace: IntegrationWorkspace | null }>
+  /** Base staleness: has the feature branch moved ahead of this worktree? */
+  gitWorktreeBaseStatus(worktreePath: string, sourceBranch: string): Promise<{ behindCount: number; behindSubjects: string[]; needsSync: boolean; hasUncommittedChanges: boolean; appraisalFailed?: boolean }>
+  gitWorktreeRetire(args: { repoPath: string; worktreePath: string; branchName: string; force?: boolean }): Promise<WorktreeMoveResult>
+  gitWorktreeReattach(args: { repoPath: string; sourceBranch: string }): Promise<WorktreeMoveResult>
 
   // ─── Filesystem operations ───
   fsReadDir(directory: string): Promise<{ entries: FsEntry[]; error?: string }>

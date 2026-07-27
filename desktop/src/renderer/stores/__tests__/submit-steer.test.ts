@@ -94,4 +94,21 @@ describe('submit — mid-turn steering', () => {
     expect(msgs[0].role).toBe('user')
     expect(msgs[0].content).toBe('redirect please')
   })
+
+  it('marks the mid-turn optimistic bubble steerPending', () => {
+    // The engine has not drained the steer yet. steer_injected clears this and
+    // pairs the bubble with its divider; error/session_dead flip it to
+    // steerFailed. Without the flag none of that lifecycle can find the bubble.
+    const state = buildHarness('running')
+    state.submit('tab1', 'redirect please')
+    const msgs = state.conversationPanes.get('tab1')?.instances.find((i: any) => i.id === 'main')?.messages ?? []
+    expect(msgs[0].steerPending).toBe(true)
+  })
+
+  it('does not mark a fresh (idle) prompt steerPending', () => {
+    const state = buildHarness('idle')
+    state.submit('tab1', 'a new prompt')
+    const msgs = state.conversationPanes.get('tab1')?.instances.find((i: any) => i.id === 'main')?.messages ?? []
+    expect(msgs[0].steerPending).toBeUndefined()
+  })
 })

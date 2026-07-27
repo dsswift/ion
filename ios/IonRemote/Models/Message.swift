@@ -63,6 +63,29 @@ struct Message: Codable, Identifiable, Sendable {
     /// wire default to false (the key is excluded from CodingKeys), so a
     /// persisted row is never mistaken for a live one.
     var isLive: Bool = false
+    /// Local UI state only -- NOT a wire protocol field, NOT persisted.
+    /// Set to true on the optimistic user bubble when the tab was already
+    /// running at submit time (the desktop routes that send through the
+    /// engine's mid-turn steer path). Cleared when the steer is confirmed.
+    var steerPending: Bool = false
+    /// Local UI state only -- NOT a wire protocol field, NOT persisted.
+    /// Set to true when the steer was drained into the conversation. Marks the
+    /// bubble as a mid-turn steer rather than a turn-opening prompt.
+    var steerApplied: Bool = false
+    /// Local UI state only -- NOT a wire protocol field, NOT persisted.
+    /// The id of the "── Steer applied" divider that `handleEngineSteerInjected`
+    /// appended for this bubble. The two rows share this key so the grouping
+    /// pass (groupConversationItems in ToolGrouping.swift) can RELOCATE the
+    /// bubble out of its send position and re-emit it directly after its
+    /// divider — the point where the steer actually took effect.
+    ///
+    /// Live-session only, mirroring the desktop's `Message.steerAppliedDividerId`.
+    /// The optimistic bubble is inserted where the user typed it, but the engine
+    /// applies the steer later; without this pairing the text is stranded rows
+    /// above the divider that announces it. On a history reload the engine's
+    /// conversation file already carries the turn at its applied position and
+    /// this field is absent, so no relocation happens (and none is needed).
+    var steerAppliedDividerId: String? = nil
     /// Intercept level carried from `engine_intercept.interceptLevel`.
     /// Populated only on `role: .harness` messages pushed by the
     /// `engineIntercept` handler in SessionViewModel+EngineEvents.swift.

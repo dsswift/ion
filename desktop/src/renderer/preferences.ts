@@ -28,6 +28,8 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   gitPanelSplitRatio: saved.gitPanelSplitRatio,
   gitPanelChangesOpen: saved.gitPanelChangesOpen,
   gitPanelGraphOpen: saved.gitPanelGraphOpen,
+  gitPanelWorktreesOpen: saved.gitPanelWorktreesOpen,
+  gitPanelIntegrationOpen: saved.gitPanelIntegrationOpen,
   expandToolResults: saved.expandToolResults,
   terminalFontFamily: saved.terminalFontFamily,
   terminalFontSize: saved.terminalFontSize,
@@ -186,6 +188,14 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   setGitPanelGraphOpen: (open) => {
     set({ gitPanelGraphOpen: open })
+  },
+
+  setGitPanelWorktreesOpen: (open) => {
+    set({ gitPanelWorktreesOpen: open })
+  },
+
+  setGitPanelIntegrationOpen: (open) => {
+    set({ gitPanelIntegrationOpen: open })
     saveSettings(getAllSettings(get))
   },
   setExpandToolResults: (enabled) => {

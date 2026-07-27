@@ -33,6 +33,7 @@ ion/
 | [Testing](testing.md) | Three test tiers, helpers, writing tests |
 | [Conventions](conventions.md) | Code patterns, logging, types, streaming |
 | [Branch lifecycle](branch-lifecycle.md) | Feature work → align → squash → PR, and the hooks that run automatically |
+| [Graph queries](graph-queries.md) | Querying the graphify knowledge graph: subcommands, budgets, edge confidence |
 | [Branch protection](branch-protection.md) | GitHub ruleset, required checks, release bypass |
 
 ## Quick reference

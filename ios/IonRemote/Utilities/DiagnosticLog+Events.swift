@@ -293,6 +293,12 @@ extension DiagnosticLog {
         case .desktopThemeAssetContent(let themeId, let slot, let ok, _, let dataUrl):
             log("EVENT: desktopThemeAssetContent theme=\(themeId) slot=\(slot) ok=\(ok) bytes=\(dataUrl?.count ?? 0)", tag: "session", level: .info)
 
+        // ── Worktree + integration bench ──
+        case .worktreeState(let states):
+            log("EVT: worktreeState projects=\(states.count)", tag: "ipc", level: .debug)
+        case .worktreeOpResult(let result):
+            log("EVT: worktreeOpResult op=\(result.operation.rawValue) ok=\(result.ok)", tag: "ipc", level: .info)
+
         case .gitChangesResponse(let dir, _):
             log("EVENT: gitChangesResponse dir=\(dir.suffix(30))", tag: "session", level: .info)
 

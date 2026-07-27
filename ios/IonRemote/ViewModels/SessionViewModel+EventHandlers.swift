@@ -440,6 +440,13 @@ extension SessionViewModel {
         case .desktopThemeAssetContent(let themeId, let slot, let ok, let sha256, let dataUrl):
             handleThemeAssetContent(themeId: themeId, slot: slot, ok: ok, sha256: sha256, dataUrl: dataUrl)
 
+        // Worktree + integration bench events
+        case .worktreeState(let states):
+            handleWorktreeState(states)
+
+        case .worktreeOpResult(let result):
+            handleWorktreeOpResult(result)
+
         // Git events
         case .gitChangesResponse(let directory, let response):
             gitChanges[directory] = response

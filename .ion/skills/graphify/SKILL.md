@@ -26,7 +26,7 @@ description: "Use for any question about a codebase, its architecture, file rela
 > without it is fully supported.
 >
 > **Do not run a full extraction unasked.** If the operator wants a graph built,
-> `make bootstrap` (or `make graph`) is theirs to run. Ion builds with
+> `make bootstrap` (or `make graph-ensure`) is theirs to run. Ion builds with
 > `--code-only` and clusters with `--no-label`, so the pipeline stays offline and
 > needs no API key — anything below implying a semantic/LLM pass does not apply
 > to routine Ion use.

@@ -45,6 +45,69 @@ extension RemoteCommand {
             // iOS client is targeting a specific engine instance (merged from
             // the former desktop_engine_prompt command shape, #256).
             try container.encodeIfPresent(instanceId, forKey: .instanceId)
+        // ── Worktree + integration bench ──
+        case .worktreeRefresh(let repoPath):
+            try container.encode(TypeKey.worktreeRefresh, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+
+        case .worktreeOpenConversation(let worktreePath):
+            try container.encode(TypeKey.worktreeOpenConversation, forKey: .type)
+            try container.encode(worktreePath, forKey: .worktreePath)
+
+        case .worktreeSync(let worktreePath, let sourceBranch, let repoPath):
+            try container.encode(TypeKey.worktreeSync, forKey: .type)
+            try container.encode(worktreePath, forKey: .worktreePath)
+            try container.encode(sourceBranch, forKey: .sourceBranch)
+            try container.encode(repoPath, forKey: .repoPath)
+
+        case .worktreeLand(let repoPath, let worktreePath, let worktreeBranch, let sourceBranch):
+            try container.encode(TypeKey.worktreeLand, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+            try container.encode(worktreePath, forKey: .worktreePath)
+            try container.encode(worktreeBranch, forKey: .worktreeBranch)
+            try container.encode(sourceBranch, forKey: .sourceBranch)
+
+        case .benchOpenConversation(let repoPath, let sourceBranch):
+            try container.encode(TypeKey.benchOpenConversation, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+            try container.encode(sourceBranch, forKey: .sourceBranch)
+
+        case .benchRebuild(let repoPath, let sourceBranch):
+            try container.encode(TypeKey.benchRebuild, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+            try container.encode(sourceBranch, forKey: .sourceBranch)
+
+        case .benchUpdateMember(let repoPath, let sourceBranch, let worktreePath):
+            try container.encode(TypeKey.benchUpdateMember, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+            try container.encode(sourceBranch, forKey: .sourceBranch)
+            try container.encode(worktreePath, forKey: .worktreePath)
+
+        case .benchUpdateAll(let repoPath, let sourceBranch):
+            try container.encode(TypeKey.benchUpdateAll, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+            try container.encode(sourceBranch, forKey: .sourceBranch)
+
+        case .benchSetEnabled(let repoPath, let sourceBranch, let worktreePath, let enabled):
+            try container.encode(TypeKey.benchSetEnabled, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+            try container.encode(sourceBranch, forKey: .sourceBranch)
+            try container.encode(worktreePath, forKey: .worktreePath)
+            try container.encode(enabled, forKey: .enabled)
+
+        case .benchAddMember(let repoPath, let sourceBranch, let worktreePath, let branchName):
+            try container.encode(TypeKey.benchAddMember, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+            try container.encode(sourceBranch, forKey: .sourceBranch)
+            try container.encode(worktreePath, forKey: .worktreePath)
+            try container.encode(branchName, forKey: .branchName)
+
+        case .benchRemoveMember(let repoPath, let sourceBranch, let worktreePath):
+            try container.encode(TypeKey.benchRemoveMember, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+            try container.encode(sourceBranch, forKey: .sourceBranch)
+            try container.encode(worktreePath, forKey: .worktreePath)
+
         case .cancel(let tabId):
             try container.encode(TypeKey.cancel, forKey: .type)
             try container.encode(tabId, forKey: .tabId)

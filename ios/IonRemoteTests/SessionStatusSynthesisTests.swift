@@ -26,6 +26,7 @@ final class SessionStatusSynthesisTests: XCTestCase {
         permissionDenialsPending: [PermissionDenialEntry]? = nil,
         extensionName: String? = nil,
         backgroundAgentCount: Int? = nil,
+        backgroundShellCount: Int? = nil,
         hasInflightRun: Bool? = nil,
         lastEmittedAt: Int64 = 1_780_000_000_000
     ) -> SessionStatus {
@@ -36,6 +37,7 @@ final class SessionStatusSynthesisTests: XCTestCase {
             lastEmittedAt: lastEmittedAt,
             hasInflightRun: hasInflightRun,
             backgroundAgentCount: backgroundAgentCount,
+            backgroundShellCount: backgroundShellCount,
             permissionDenialsPending: permissionDenialsPending,
             model: model,
             contextPercent: contextPercent,
@@ -227,7 +229,8 @@ final class SessionStatusMergeTests: XCTestCase {
 
         let ss = SessionStatus(
             key: "t", state: "idle", stateSince: nil, lastEmittedAt: 1,
-            hasInflightRun: false, backgroundAgentCount: nil, permissionDenialsPending: nil,
+            hasInflightRun: false, backgroundAgentCount: nil, backgroundShellCount: nil,
+            permissionDenialsPending: nil,
             model: "m", contextPercent: 10, contextWindow: 200_000, contextTokens: 20_000,
             runCostUsd: nil, conversationCostUsd: nil, sessionId: "s", extensionName: nil
         )
@@ -263,7 +266,8 @@ final class SessionStatusMergeTests: XCTestCase {
         // A status with every context field absent.
         let ss = SessionStatus(
             key: "t", state: "idle", stateSince: nil, lastEmittedAt: 1,
-            hasInflightRun: false, backgroundAgentCount: nil, permissionDenialsPending: nil,
+            hasInflightRun: false, backgroundAgentCount: nil, backgroundShellCount: nil,
+            permissionDenialsPending: nil,
             model: "m", contextPercent: nil, contextWindow: nil, contextTokens: nil,
             runCostUsd: nil, conversationCostUsd: nil, sessionId: "s", extensionName: nil
         )

@@ -1,7 +1,7 @@
 import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { activeInstance, instanceMessageCount } from '../conversation-instance'
-import { rWarn } from '../../rendererLogger'
+import { rInfo, rWarn } from '../../rendererLogger'
 
 export function createDirectorySlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -39,15 +39,28 @@ export function createDirectorySlice(set: StoreSet, get: StoreGet): Partial<Stat
       const s = get()
       const tab = s.tabs.find((t) => t.id === activeTabId)
 
-      // Message state lives on the active conversation instance now; resolve the
-      // effective count from conversationPanes for the "is this worktree empty?" check.
-      if (tab?.worktree && instanceMessageCount(activeInstance(s.conversationPanes, tab.id)) === 0) {
-        window.ion.gitWorktreeRemove(
-          tab.worktree.repoPath,
-          tab.worktree.worktreePath,
-          tab.worktree.branchName,
-          true,
-        ).catch((err) => rWarn('worktree', 'gitWorktreeRemove on directory change failed', { worktreePath: tab.worktree?.worktreePath, error: String(err) }))
+      // Changing the base directory does NOT remove the tab's worktree, even
+      // when the conversation has no messages yet.
+      //
+      // This used to call gitWorktreeRemove(..., force = true) for an
+      // "empty" worktree conversation, inferring from a zero message count
+      // that the worktree was disposable. That inference is unsound: an agent
+      // can commit work without the conversation accumulating messages, and a
+      // worktree created moments ago may already hold a branch the operator
+      // cares about. Message count is not a proxy for "contains no work".
+      //
+      // Worktree removal is its own explicit verb ("Retire"), gated by an
+      // appraisal that asks git what would actually be lost
+      // (main/worktree/safety.ts). Leaving an unused worktree behind costs a
+      // directory the operator can retire deliberately; removing one that held
+      // work costs the work.
+      if (tab?.worktree) {
+        rInfo('worktree', 'base directory changed; worktree preserved', {
+          tab_id: tab.id,
+          worktree_path: tab.worktree.worktreePath,
+          branch: tab.worktree.branchName,
+          message_count: instanceMessageCount(activeInstance(s.conversationPanes, tab.id)),
+        })
       }
 
       // setBaseDirectory intentionally starts a FRESH conversation in the new

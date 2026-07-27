@@ -439,6 +439,12 @@ enum RemoteEvent: Sendable {
     /// unknown or unreadable on the desktop; dataUrl/sha256 are nil then.
     case desktopThemeAssetContent(themeId: String, slot: String, ok: Bool, sha256: String?, dataUrl: String?)
     // Git events
+    /// Per-repo worktree + bench state. The desktop computes every derived
+    /// fact (staleness, drift, safety) so iOS renders main-process truth.
+    case worktreeState(states: [RemoteWorktreeState])
+    /// Outcome of a worktree/bench verb, so a toast can attribute the result
+    /// and distinguish a fixable refusal from a hard failure.
+    case worktreeOpResult(result: RemoteWorktreeOpResult)
     case gitChangesResponse(directory: String, response: GitChangesResponse)
     case gitGraphResponse(directory: String, response: GitGraphResponse)
     case gitDiffResponse(response: GitDiffResponse)
@@ -586,6 +592,8 @@ enum RemoteEvent: Sendable {
         case desktopSettingsSnapshot = "desktop_settings_snapshot"
         case desktopThemeManifest = "desktop_theme_manifest"
         case desktopThemeAssetContent = "desktop_theme_asset_content"
+        case worktreeState = "desktop_worktree_state"
+        case worktreeOpResult = "desktop_worktree_op_result"
         case gitChangesResponse = "desktop_git_changes_response"
         case gitGraphResponse = "desktop_git_graph_response"
         case gitDiffResponse = "desktop_git_diff_response"
@@ -625,6 +633,8 @@ enum RemoteEvent: Sendable {
     enum CodingKeys: String, CodingKey {
         case type
         case tabs, tab, tabId, status, text, toolName, toolId
+        // Worktree + integration bench payload keys.
+        case states, operation, refusedDirty, hasConflicts
         // desktop_tab_created echo of the iOS create command's correlation id,
         // consumed by the confirm-or-resend delivery loop (create-tab reliability).
         case clientCmdId

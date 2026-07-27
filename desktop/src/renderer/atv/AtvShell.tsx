@@ -22,7 +22,7 @@ import { TabStrip } from '../components/TabStrip'
 import { useColors } from '../theme'
 import { rInfo } from '../rendererLogger'
 import { applyMirrorOverrides, initTabsSync, initPermissionResolutionSync, initUserMessageEcho } from './state/secondary-store'
-import { AtvSideDock } from './AtvSideDock'
+import { AtvSideDock, type DockTab } from './AtvSideDock'
 import { AtvApp } from './AtvApp'
 import { AtvControlsPopover } from './AtvControlsPopover'
 import { useAtvControlsBus } from './state/controls-bus'
@@ -76,7 +76,7 @@ export function AtvShell(): React.JSX.Element {
     return (inst?.permissionQueue.length ?? 0) > 0
   })
   const autoDrawerRef = useRef(true)
-  const [dockLayout, setDockLayout] = useState<{ dockWidth: number; dockTab: 'conversation' | 'files' }>({ dockWidth: 420, dockTab: 'conversation' })
+  const [dockLayout, setDockLayout] = useState<{ dockWidth: number; dockTab: DockTab }>({ dockWidth: 420, dockTab: 'conversation' })
   useEffect(() => {
     void window.ion.atvGetSettings().then((s) => {
       if (!s) return
@@ -86,7 +86,10 @@ export function AtvShell(): React.JSX.Element {
         setDockOpen(s.atvLayout.dockOpen === true)
         setDockLayout({
           dockWidth: typeof s.atvLayout.dockWidth === 'number' ? s.atvLayout.dockWidth : 420,
-          dockTab: s.atvLayout.dockTab === 'files' ? 'files' : 'conversation',
+          dockTab: ((): DockTab => {
+            const t = s.atvLayout.dockTab as string
+            return t === 'files' || t === 'worktrees' ? t : 'conversation'
+          })(),
         })
       }
     })
@@ -94,7 +97,7 @@ export function AtvShell(): React.JSX.Element {
 
   // Persist the layout on any change (debounced — resize drags fire often).
   const layoutTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const persistLayout = (patch: Partial<{ dockOpen: boolean; dockWidth: number; dockTab: 'conversation' | 'files' }>): void => {
+  const persistLayout = (patch: Partial<{ dockOpen: boolean; dockWidth: number; dockTab: DockTab }>): void => {
     if (layoutTimer.current) clearTimeout(layoutTimer.current)
     const next = { dockOpen, ...dockLayout, ...patch }
     layoutTimer.current = setTimeout(() => {

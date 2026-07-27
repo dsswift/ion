@@ -81,7 +81,7 @@ Refreshes are automatic across every path that changes history: your own commits
 |---|---|
 | `make bootstrap` | Once per clone. Builds the graph if graphify is installed. |
 | `make graph-refresh` | Force an incremental update, e.g. after a `GRAPHIFY_SKIP_HOOK=1` commit |
-| `make graph-rebuild` | Discard and re-extract, to purge nodes left stale by incremental updates |
+| `make graph` | Full rebuild from scratch, to purge nodes left stale by incremental updates |
 
 All of these are offline and need no API key: extraction is local tree-sitter, and community partitioning runs with `--no-label` so nothing calls out.
 

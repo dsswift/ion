@@ -4,9 +4,13 @@ import { join } from 'path'
 import { IPC } from '../../shared/types'
 import { state } from '../state'
 import { showWindow } from '../window-manager'
-import { validateExternalUrl } from '../ipc-validation'
+import { validateExternalUrl, isValidProjectPath } from '../ipc-validation'
 import { engineIsRemote, getEngineHostInfo, listEngineDirectory, getEnterprisePolicyNewConversationDefaults, getEnterprisePolicy } from '../engine-bridge-fs'
-import { log as _log } from '../logger'
+import { log as _log, warn as _warn } from '../logger'
+
+function warn(msg: string, fields?: Record<string, unknown>): void {
+  _warn('file-dialog', msg, fields)
+}
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('file-dialog', msg, fields)
@@ -72,6 +76,25 @@ export function registerFileDialogIpc(): void {
   // and any other client-side enterprise constraint. Null when no
   // enterprise config is active.
   ipcMain.handle(IPC.GET_ENTERPRISE_POLICY_FULL, async () => getEnterprisePolicy())
+
+  // Reveal a path in the OS file manager. OPEN_EXTERNAL cannot serve this: it
+  // validates for http(s) and rejects file:// by design. The path is checked
+  // with the same absolute-path validator used elsewhere, and shell.openPath
+  // only ever opens a location -- it never executes.
+  ipcMain.handle(IPC.REVEAL_PATH, async (_event, path: string) => {
+    if (!isValidProjectPath(path)) {
+      warn('reveal_path: rejected invalid path', { path })
+      return false
+    }
+    try {
+      shell.showItemInFolder(path)
+      log('reveal_path', { path })
+      return true
+    } catch (err) {
+      warn('reveal_path failed', { path, error: String(err) })
+      return false
+    }
+  })
 
   ipcMain.handle(IPC.OPEN_EXTERNAL, async (_event, url: string) => {
     const validUrl = validateExternalUrl(url)

@@ -136,6 +136,15 @@ extension SessionViewModel {
         // that races the desktop echo preserves it via the isLive boundary
         // rather than a timestamp estimate.
         optimistic.isLive = true
+        // Mid-turn steer: the tab was already running when the user sent this,
+        // so the desktop routes it through the engine's steer path rather than
+        // opening a new turn. Mark it pending until the engine confirms the
+        // drain (handleEngineSteerInjected), which pairs the bubble with its
+        // "Steer applied" divider so the grouping pass can relocate it there.
+        // Desktop parity: the steerPending branch in send-slice.ts submit().
+        if tabs.first(where: { $0.id == tabId })?.status == .running {
+            optimistic.steerPending = true
+        }
         // Slash-command provenance on the optimistic insert. When the raw
         // text starts with a `/command`, populate the metadata fields so the
         // pill renders immediately. The desktop echo and eventual history

@@ -45,6 +45,13 @@ export interface DesktopSettingsSchemaEntry {
 // All types re-exported so existing import paths remain valid.
 export type { RemoteTabState, TerminalInstanceInfo, RemoteMessage, RemoteAttachment } from './protocol-remote-tab'
 
+// ─── Worktree + integration bench wire members (extracted for line cap) ───
+export type {
+  RemoteWorktree, RemoteBenchMember, RemoteBench, RemoteWorktreeState,
+  RemoteWorktreeCommand, RemoteWorktreeEvent,
+} from './protocol-worktree'
+import type { RemoteWorktreeCommand, RemoteWorktreeEvent } from './protocol-worktree'
+
 // ─── iOS → Ion commands ───
 
 export type RemoteCommand =
@@ -144,6 +151,7 @@ export type RemoteCommand =
   | { type: 'desktop_git_push'; directory: string }
   | { type: 'desktop_git_commit_files'; directory: string; hash: string }
   | { type: 'desktop_git_commit_file_diff'; directory: string; hash: string; path: string }
+  | RemoteWorktreeCommand
   | { type: 'desktop_fs_list_dir'; directory: string; includeHidden?: boolean }
   | { type: 'desktop_fs_read_file'; filePath: string }
   | { type: 'desktop_fs_read_image'; filePath: string }
@@ -214,6 +222,7 @@ export type RemoteCommand =
 // ─── Ion → iOS events ───
 
 export type RemoteEvent =
+  | RemoteWorktreeEvent
   | { type: 'desktop_snapshot'; tabs: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }>; preferredModel?: string; engineDefaultModel?: string; availableModels?: Array<{ id: string; providerId: string; label: string; contextWindow: number; hasAuth: boolean; thinkingMode?: string; thinkingEfforts?: string[]; modelKind?: string }>; customName?: string | null; customIcon?: string | null; remoteDisplayUpdatedAt?: number; resources?: Record<string, Array<{ id: string; kind: string; title?: string; createdAt: string; read?: boolean; conversationId?: string }>> }
   | { type: 'desktop_resource_content'; resourceId: string; kind: string; content: string }
   // `clientCmdId` echoes the id the iOS client attached to `desktop_create_tab`
