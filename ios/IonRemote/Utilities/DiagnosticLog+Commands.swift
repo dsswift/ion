@@ -18,6 +18,30 @@ extension DiagnosticLog {
                 log("CMD: createTab dir=\(dir?.suffix(30) ?? "nil") pinToGroup=\(pinToGroupId?.prefix(8) ?? "nil")", tag: "ipc", level: .info)
             }
 
+        // ── Worktree + integration bench ──
+        case .worktreeRefresh(let repoPath):
+            log("CMD: worktreeRefresh repo=\(repoPath.suffix(30))", tag: "ipc", level: .debug)
+        case .worktreeOpenConversation(let worktreePath):
+            log("CMD: worktreeOpenConversation wt=\(worktreePath.suffix(30))", tag: "ipc", level: .info)
+        case .worktreeSync(let worktreePath, let sourceBranch, _):
+            log("CMD: worktreeSync wt=\(worktreePath.suffix(30)) source=\(sourceBranch)", tag: "ipc", level: .info)
+        case .worktreeLand(_, let worktreePath, let worktreeBranch, let sourceBranch):
+            log("CMD: worktreeLand wt=\(worktreePath.suffix(30)) branch=\(worktreeBranch) source=\(sourceBranch)", tag: "ipc", level: .info)
+        case .benchOpenConversation(_, let sourceBranch):
+            log("CMD: benchOpenConversation source=\(sourceBranch)", tag: "ipc", level: .info)
+        case .benchRebuild(_, let sourceBranch):
+            log("CMD: benchRebuild source=\(sourceBranch)", tag: "ipc", level: .info)
+        case .benchUpdateMember(_, let sourceBranch, let worktreePath):
+            log("CMD: benchUpdateMember source=\(sourceBranch) wt=\(worktreePath.suffix(30))", tag: "ipc", level: .info)
+        case .benchUpdateAll(_, let sourceBranch):
+            log("CMD: benchUpdateAll source=\(sourceBranch)", tag: "ipc", level: .info)
+        case .benchSetEnabled(_, let sourceBranch, let worktreePath, let enabled):
+            log("CMD: benchSetEnabled source=\(sourceBranch) wt=\(worktreePath.suffix(30)) enabled=\(enabled)", tag: "ipc", level: .info)
+        case .benchAddMember(_, let sourceBranch, _, let branchName):
+            log("CMD: benchAddMember source=\(sourceBranch) branch=\(branchName)", tag: "ipc", level: .info)
+        case .benchRemoveMember(_, let sourceBranch, let worktreePath):
+            log("CMD: benchRemoveMember source=\(sourceBranch) wt=\(worktreePath.suffix(30))", tag: "ipc", level: .info)
+
         case .createTerminalTab(let dir, _):
             log("CMD: createTerminalTab dir=\(dir?.suffix(30) ?? "nil")", tag: "ipc", level: .info)
 

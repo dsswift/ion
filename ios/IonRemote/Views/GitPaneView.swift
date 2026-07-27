@@ -32,6 +32,7 @@ struct GitPaneView: View {
                 VStack(spacing: 0) {
                     branchHeader
                     summaryBar
+                    worktreeLink
 
                     // Changes section
                     collapsibleSection(
@@ -105,6 +106,46 @@ struct GitPaneView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Worktree console link
+
+    /// Entry point to the worktree + bench console. A NavigationLink rather
+    /// than an inline section: the phone has one view at a time, and the
+    /// console needs the whole screen to show per-member state.
+    private var worktreeLink: some View {
+        let state = viewModel.worktreeState(for: directory)
+        let worktreeCount = state?.worktrees.count ?? 0
+        let staleBases = state?.staleBaseCount ?? 0
+        let benchStale = (state?.benches ?? []).reduce(0) { $0 + $1.staleMemberCount }
+
+        return NavigationLink {
+            WorktreeListView(repoPath: directory)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.triangle.branch")
+                    .foregroundStyle(.secondary)
+                Text("Worktrees & Bench")
+                    .font(.subheadline)
+                Spacer()
+                if worktreeCount > 0 {
+                    Text("\(worktreeCount)")
+                        .font(.caption2)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color.accentColor.opacity(0.15), in: Capsule())
+                }
+                if staleBases + benchStale > 0 {
+                    Text("\(staleBases + benchStale) stale")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color(.secondarySystemGroupedBackground))
+        }
+        .buttonStyle(.plain)
+        .task { viewModel.refreshWorktrees(repoPath: directory) }
     }
 
     // MARK: - Branch header

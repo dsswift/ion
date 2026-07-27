@@ -416,6 +416,68 @@ extension RemoteCommand {
             let offset = try container.decode(Int.self, forKey: .offset)
             let length = try container.decode(Int.self, forKey: .length)
             self = .requestPlanContent(tabId: tabId, questionId: questionId, planFilePath: planFilePath, offset: offset, length: length)
+        // ── Worktree + integration bench ──
+        // iOS only SENDS these; the decode paths exist because Codable
+        // conformance requires them (same pattern as implementPlan above).
+        case .worktreeRefresh:
+            self = .worktreeRefresh(repoPath: try container.decode(String.self, forKey: .repoPath))
+
+        case .worktreeOpenConversation:
+            self = .worktreeOpenConversation(worktreePath: try container.decode(String.self, forKey: .worktreePath))
+
+        case .worktreeSync:
+            self = .worktreeSync(
+                worktreePath: try container.decode(String.self, forKey: .worktreePath),
+                sourceBranch: try container.decode(String.self, forKey: .sourceBranch),
+                repoPath: try container.decode(String.self, forKey: .repoPath))
+
+        case .worktreeLand:
+            self = .worktreeLand(
+                repoPath: try container.decode(String.self, forKey: .repoPath),
+                worktreePath: try container.decode(String.self, forKey: .worktreePath),
+                worktreeBranch: try container.decode(String.self, forKey: .worktreeBranch),
+                sourceBranch: try container.decode(String.self, forKey: .sourceBranch))
+
+        case .benchOpenConversation:
+            self = .benchOpenConversation(
+                repoPath: try container.decode(String.self, forKey: .repoPath),
+                sourceBranch: try container.decode(String.self, forKey: .sourceBranch))
+
+        case .benchRebuild:
+            self = .benchRebuild(
+                repoPath: try container.decode(String.self, forKey: .repoPath),
+                sourceBranch: try container.decode(String.self, forKey: .sourceBranch))
+
+        case .benchUpdateMember:
+            self = .benchUpdateMember(
+                repoPath: try container.decode(String.self, forKey: .repoPath),
+                sourceBranch: try container.decode(String.self, forKey: .sourceBranch),
+                worktreePath: try container.decode(String.self, forKey: .worktreePath))
+
+        case .benchUpdateAll:
+            self = .benchUpdateAll(
+                repoPath: try container.decode(String.self, forKey: .repoPath),
+                sourceBranch: try container.decode(String.self, forKey: .sourceBranch))
+
+        case .benchSetEnabled:
+            self = .benchSetEnabled(
+                repoPath: try container.decode(String.self, forKey: .repoPath),
+                sourceBranch: try container.decode(String.self, forKey: .sourceBranch),
+                worktreePath: try container.decode(String.self, forKey: .worktreePath),
+                enabled: try container.decode(Bool.self, forKey: .enabled))
+
+        case .benchAddMember:
+            self = .benchAddMember(
+                repoPath: try container.decode(String.self, forKey: .repoPath),
+                sourceBranch: try container.decode(String.self, forKey: .sourceBranch),
+                worktreePath: try container.decode(String.self, forKey: .worktreePath),
+                branchName: try container.decode(String.self, forKey: .branchName))
+
+        case .benchRemoveMember:
+            self = .benchRemoveMember(
+                repoPath: try container.decode(String.self, forKey: .repoPath),
+                sourceBranch: try container.decode(String.self, forKey: .sourceBranch),
+                worktreePath: try container.decode(String.self, forKey: .worktreePath))
         }
     }
 

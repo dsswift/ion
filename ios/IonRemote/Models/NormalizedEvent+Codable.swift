@@ -62,6 +62,10 @@ extension RemoteEvent: Codable {
             self = event
             return
         }
+        if let event = try Self.decodeWorktree(type: type, container: container) {
+            self = event
+            return
+        }
         if let event = try Self.decodeGit(type: type, container: container) {
             self = event
             return
@@ -90,6 +94,7 @@ extension RemoteEvent: Codable {
         if try encodeEngine(into: &container) { return }
         if try encodeThinking(into: &container) { return }
         if try encodeResource(into: &container) { return }
+        if try encodeWorktree(into: &container) { return }
         if try encodeGit(into: &container) { return }
         if try encodeFiles(into: &container) { return }
         // Unreachable: every case must be encoded by exactly one family.

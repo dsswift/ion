@@ -131,6 +131,18 @@ enum RemoteCommand: Codable, Sendable {
     case gitPush(directory: String)
     case gitCommitFiles(directory: String, hash: String)
     case gitCommitFileDiff(directory: String, hash: String, path: String)
+    // ── Worktree + integration bench (see Models/WorktreeTypes.swift) ──
+    case worktreeRefresh(repoPath: String)
+    case worktreeOpenConversation(worktreePath: String)
+    case worktreeSync(worktreePath: String, sourceBranch: String, repoPath: String)
+    case worktreeLand(repoPath: String, worktreePath: String, worktreeBranch: String, sourceBranch: String)
+    case benchOpenConversation(repoPath: String, sourceBranch: String)
+    case benchRebuild(repoPath: String, sourceBranch: String)
+    case benchUpdateMember(repoPath: String, sourceBranch: String, worktreePath: String)
+    case benchUpdateAll(repoPath: String, sourceBranch: String)
+    case benchSetEnabled(repoPath: String, sourceBranch: String, worktreePath: String, enabled: Bool)
+    case benchAddMember(repoPath: String, sourceBranch: String, worktreePath: String, branchName: String)
+    case benchRemoveMember(repoPath: String, sourceBranch: String, worktreePath: String)
     case fsListDir(directory: String, includeHidden: Bool = false)
     case fsReadFile(filePath: String)
     case fsReadImage(filePath: String)
@@ -286,6 +298,17 @@ enum RemoteCommand: Codable, Sendable {
         case gitPush = "desktop_git_push"
         case gitCommitFiles = "desktop_git_commit_files"
         case gitCommitFileDiff = "desktop_git_commit_file_diff"
+        case worktreeRefresh = "desktop_worktree_refresh"
+        case worktreeOpenConversation = "desktop_worktree_open_conversation"
+        case worktreeSync = "desktop_worktree_sync"
+        case worktreeLand = "desktop_worktree_land"
+        case benchOpenConversation = "desktop_bench_open_conversation"
+        case benchRebuild = "desktop_bench_rebuild"
+        case benchUpdateMember = "desktop_bench_update_member"
+        case benchUpdateAll = "desktop_bench_update_all"
+        case benchSetEnabled = "desktop_bench_set_enabled"
+        case benchAddMember = "desktop_bench_add_member"
+        case benchRemoveMember = "desktop_bench_remove_member"
         case fsListDir = "desktop_fs_list_dir"
         case fsReadFile = "desktop_fs_read_file"
         case fsReadImage = "desktop_fs_read_image"
@@ -328,6 +351,7 @@ enum RemoteCommand: Codable, Sendable {
         // echo for the confirm-or-resend delivery loop (create-tab reliability).
         case clientCmdId
         case directory, path, staged, paths, skip, limit, message, filePath, content, includeHidden, hash
+        case repoPath, worktreePath, worktreeBranch, sourceBranch, branchName
         // fs_rename payload — both paths are absolute and live under a
         // project root. New CodingKeys (no collision with existing entries);
         // checked against the full enum above before adding.

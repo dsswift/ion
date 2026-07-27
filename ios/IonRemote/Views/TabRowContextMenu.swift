@@ -26,8 +26,48 @@ struct TabRowContextMenu: ViewModifier {
         return ids
     }
 
+    /// The worktree this tab is running in, when it is one. Resolved from the
+    /// desktop's projection rather than inferred from the path.
+    private var worktreeForTab: (state: RemoteWorktreeState, worktree: RemoteWorktree)? {
+        for state in viewModel.worktreeStates.values {
+            if let wt = state.worktrees.first(where: { $0.worktreePath == tab.workingDirectory }) {
+                return (state, wt)
+            }
+        }
+        return nil
+    }
+
     func body(content: Content) -> some View {
         content.contextMenu {
+            // -- Worktree actions --
+            //
+            // Surfaced HERE, not only in the git pane: on iOS the pane is two
+            // navigations away, and these are the actions an operator reaches
+            // for while scanning the tab list.
+            if let (state, wt) = worktreeForTab {
+                Button {
+                    viewModel.openWorktreeConversation(worktreePath: wt.worktreePath)
+                } label: {
+                    Label("New conversation in this worktree", systemImage: "bubble.left.and.bubble.right")
+                }
+                if let source = wt.sourceBranch {
+                    Button {
+                        viewModel.syncWorktree(wt, repoPath: state.repoPath)
+                    } label: {
+                        Label("Sync from \(source)", systemImage: "arrow.triangle.pull")
+                    }
+                    .disabled(wt.isDirty)
+
+                    Button {
+                        viewModel.landWorktree(wt, repoPath: state.repoPath)
+                    } label: {
+                        Label("Land into \(source)", systemImage: "arrow.down.to.line")
+                    }
+                    .disabled(wt.isDirty || wt.unlandedCommitCount == 0)
+                }
+                Divider()
+            }
+
             // -- Clipboard actions --
             if tab.hasEngineExtension == true {
                 if !engineSessionIds.isEmpty {
