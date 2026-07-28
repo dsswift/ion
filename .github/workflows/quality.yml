@@ -107,6 +107,50 @@ jobs:
         working-directory: docs/observability/dashboards
         run: npm test
 
+  engine-crossbuild:
+    # Compile gate for every platform the release matrix ships
+    # (.github/workflows/build.yml). No other job sets GOOS: engine-test runs
+    # on ubuntu-latest and macos-14, and engine-lint runs host-native, so a
+    # platform-specific compile error is invisible until the release workflow
+    # runs after merge. That is how a syscall.SetsockoptInt call that
+    # type-checks on Unix but not on Windows shipped — the windows/amd64
+    # release job failed and, being a fail-fast matrix at the time, cancelled
+    # the other three platforms and published engine releases with no assets.
+    #
+    # CGO_ENABLED=0 for every target, including darwin: the cgo-dependent
+    # Local Network probe is behind `//go:build darwin && cgo` with a
+    # constraint-complementary fallback (internal/network/lanwarmup_other.go),
+    # so a CGO-free darwin cross-build exercises the real code path for this
+    # purpose. This is a compile gate rather than a test job, so it is not
+    # mirrored into `make test-linux`.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: windows
+            goarch: amd64
+          - goos: linux
+            goarch: amd64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: engine/go.mod
+          cache-dependency-path: engine/go.sum
+      - name: Cross-build engine (${{ matrix.goos }}/${{ matrix.goarch }})
+        working-directory: engine
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build ./...
+
   engine-test:
     strategy:
       fail-fast: false
