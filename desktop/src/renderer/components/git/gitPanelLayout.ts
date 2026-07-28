@@ -50,6 +50,20 @@ export interface GitPanelLayoutInput {
   integrationOpen: boolean
   /** Fraction of the split pool given to Changes when both split sections are open. */
   splitRatio: number
+  /**
+   * The panel is showing an integration bench.
+   *
+   * A bench is rebuildable: its branch is recreated from the source branch plus
+   * each member's pinned commit on every rebuild. So it must never hold
+   * uncommitted changes (they are destroyed by the next rebuild) and its
+   * history is synthetic (one merge per member, recreated each time). Changes
+   * and Graph are therefore not merely collapsed but ABSENT, and the freed
+   * space belongs to Worktrees and Integration.
+   *
+   * Distinct from `changesOpen: false, graphOpen: false`, which is a collapse
+   * the operator can undo. In bench mode there is nothing to expand.
+   */
+  benchMode?: boolean
 }
 
 export interface GitPanelLayout {
@@ -95,14 +109,24 @@ export interface GitPanelLayout {
  * - Neither open: there is no pool. The panel shrink-wraps to `nonSplitTotal`.
  */
 export function computeGitPanelLayout(input: GitPanelLayoutInput): GitPanelLayout {
-  const { maxHeight, changesOpen, graphOpen, worktreesOpen, integrationOpen, splitRatio } = input
+  const { maxHeight, worktreesOpen, integrationOpen, splitRatio, benchMode } = input
+
+  // In a bench the split sections do not exist, so neither their headers nor
+  // their bodies nor the divider occupy any space. Forcing the flags here (as
+  // opposed to hiding the sections only in the JSX) is what keeps the arithmetic
+  // and the DOM in agreement: chrome counts two fewer headers, and the
+  // conservation invariant still holds.
+  const changesOpen = benchMode ? false : input.changesOpen
+  const graphOpen = benchMode ? false : input.graphOpen
 
   const bothSplitOpen = changesOpen && graphOpen
   const dividerVisible = bothSplitOpen
 
   const chrome =
     PANEL_HEADER +
-    SECTION_HEADER * 4 + // Changes, Worktrees, Integration, Graph
+    // Changes, Worktrees, Integration, Graph — minus Changes and Graph in a
+    // bench, where those sections are not rendered at all.
+    SECTION_HEADER * (benchMode ? 2 : 4) +
     (dividerVisible ? DIVIDER : 0)
 
   const worktreesBody = worktreesOpen ? WORKTREES_BODY_MAX : 0

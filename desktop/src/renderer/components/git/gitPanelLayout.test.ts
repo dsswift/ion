@@ -154,3 +154,77 @@ describe('computeGitPanelLayout', () => {
     expect(l.height).toBe(l.nonSplitTotal)
   })
 })
+
+describe('computeGitPanelLayout — bench mode', () => {
+  // A bench is rebuilt from scratch on every rebuild, so it must never hold
+  // uncommitted changes and its history is synthetic. Changes and Graph are
+  // therefore ABSENT, not collapsed — and the space they would occupy belongs
+  // to Worktrees and Integration, not to a dead band.
+  it('assigns no space at all to the split sections', () => {
+    const l = computeGitPanelLayout({
+      maxHeight: MAX,
+      changesOpen: true,
+      graphOpen: true,
+      worktreesOpen: true,
+      integrationOpen: true,
+      splitRatio: RATIO,
+      benchMode: true,
+    })
+
+    expect(l.changesBody).toBe(0)
+    expect(l.graphBody).toBe(0)
+    expect(l.splitPool).toBe(0)
+    expect(l.dividerVisible).toBe(false)
+  })
+
+  it('drops both section headers from chrome, since neither is rendered', () => {
+    const bench = computeGitPanelLayout({
+      maxHeight: MAX, changesOpen: false, graphOpen: false,
+      worktreesOpen: true, integrationOpen: true, splitRatio: RATIO, benchMode: true,
+    })
+    const normal = computeGitPanelLayout({
+      maxHeight: MAX, changesOpen: false, graphOpen: false,
+      worktreesOpen: true, integrationOpen: true, splitRatio: RATIO,
+    })
+
+    // Two fewer headers: Changes and Graph.
+    expect(normal.chrome - bench.chrome).toBe(SECTION_HEADER * 2)
+  })
+
+  it('shrink-wraps to exactly chrome plus the two fixed bodies', () => {
+    const l = computeGitPanelLayout({
+      maxHeight: MAX, changesOpen: true, graphOpen: true,
+      worktreesOpen: true, integrationOpen: true, splitRatio: RATIO, benchMode: true,
+    })
+
+    expect(l.height).toBe(l.chrome + WORKTREES_BODY_MAX + INTEGRATION_BODY_MAX)
+    // Conservation still holds: every pixel is accounted for.
+    expect(l.height).toBe(
+      l.chrome + l.worktreesBody + l.integrationBody + l.changesBody + l.graphBody,
+    )
+  })
+
+  it('still honours the fixed sections collapsing', () => {
+    const l = computeGitPanelLayout({
+      maxHeight: MAX, changesOpen: true, graphOpen: true,
+      worktreesOpen: false, integrationOpen: false, splitRatio: RATIO, benchMode: true,
+    })
+
+    expect(l.worktreesBody).toBe(0)
+    expect(l.integrationBody).toBe(0)
+    expect(l.height).toBe(l.chrome)
+  })
+
+  it('leaves non-bench geometry byte-identical', () => {
+    // The regression guard: a dragged split ratio and every existing dimension
+    // must survive the addition of benchMode. `benchMode: false` and an absent
+    // flag must both behave exactly as before.
+    const input = {
+      maxHeight: MAX, changesOpen: true, graphOpen: true,
+      worktreesOpen: true, integrationOpen: true, splitRatio: RATIO,
+    }
+    expect(computeGitPanelLayout({ ...input, benchMode: false })).toEqual(
+      computeGitPanelLayout(input),
+    )
+  })
+})

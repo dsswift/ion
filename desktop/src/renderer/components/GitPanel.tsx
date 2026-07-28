@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useCallback, useMemo } from 'react'
 import {
-  ArrowsClockwise, X, ListBullets, TreeStructure, Info,
+  ArrowsClockwise, X, ListBullets, TreeStructure, Info, Flask,
 } from '@phosphor-icons/react'
 import { useShallow } from 'zustand/shallow'
 import { useSessionStore } from '../stores/sessionStore'
@@ -26,6 +26,7 @@ import {
   INTEGRATION_HEADER,
   INTEGRATION_BODY_MAX,
 } from './git/gitPanelLayout'
+import { resolveBenchContext } from './git/benchContext'
 import { rDebug, rError } from '../rendererLogger'
 
 /** Panel-header icon button (close, refresh, tree/list toggle). */
@@ -190,6 +191,13 @@ export function GitPanel() {
   const benchStaleCount = (benchWorkspaces ?? [])
     .reduce((n, w) => n + w.members.filter((m) => m.status === 'stale').length, 0)
 
+  // Is this panel looking AT a bench (rather than at a repo that owns one)?
+  // A bench is rebuilt from scratch on every rebuild, so it must never hold
+  // uncommitted changes and its history is synthetic — Changes and Graph are
+  // hidden rather than merely collapsed. See git/benchContext.ts.
+  const benchContext = resolveBenchContext(directory, benchWorkspaces)
+  const inBench = benchContext !== null
+
   // Panel height ceiling = conversation card + gap + input pill so top edges
   // align. card: bodyMaxHeight + tabStrip(40) + border(2), gap: 10, pill: 38.
   const bodyMaxHeight = expandedUI ? 520 : 400
@@ -200,6 +208,7 @@ export function GitPanel() {
     worktreesOpen,
     integrationOpen,
     splitRatio,
+    benchMode: inBench,
   })
 
   // Drag split between Changes and Graph. The hook converts a cursor delta into
@@ -280,7 +289,32 @@ export function GitPanel() {
         </PanelIconButton>
       </div>
 
-      {/* Changes section */}
+      {/* Bench banner: names WHICH bench, so the operator can tell without
+          opening Integration. Only rendered in a bench. */}
+      {inBench && benchContext && (
+        <div
+          data-testid="git-panel-bench-banner"
+          className="flex items-center gap-1 px-2.5"
+          style={{
+            height: SECTION_HEADER,
+            flexShrink: 0,
+            fontSize: 10,
+            color: colors.textTertiary,
+            borderBottom: `1px solid ${colors.containerBorder}`,
+          }}
+        >
+          <Flask size={11} />
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            Integration bench for <strong style={{ color: colors.textSecondary }}>{benchContext.sourceBranch}</strong>
+            {' '}— edits belong in the member worktrees
+          </span>
+        </div>
+      )}
+
+      {/* Changes section. Absent in a bench: a bench must never hold
+          uncommitted changes, because the next rebuild discards them, so
+          offering the section would invite exactly the work that gets lost. */}
+      {!inBench && (
       <div className="flex flex-col" style={{
         height: SECTION_HEADER + layout.changesBody,
         flexShrink: 0,
@@ -352,6 +386,8 @@ export function GitPanel() {
           </div>
         )}
       </div>
+
+      )}
 
       {/* Draggable divider */}
       {layout.dividerVisible && (
@@ -459,7 +495,7 @@ export function GitPanel() {
         >
           <SectionToggleButton
             open={integrationOpen}
-            label="Integration"
+            label={inBench ? 'Integration (Bench)' : 'Integration'}
             onClick={() => setIntegrationOpen(!integrationOpen)}
             className="flex items-center gap-1"
             style={{ color: 'inherit', padding: 0, borderRadius: 4 }}
@@ -492,7 +528,11 @@ export function GitPanel() {
       </div>
 
       {/* Graph section. No `flex: 1` here (and no trailing spacer): the layout
-          assigns every pixel, so a grow sink could only hold dead space. */}
+          assigns every pixel, so a grow sink could only hold dead space.
+          Absent in a bench: the history there is synthetic — one merge commit
+          per member, recreated from scratch on every rebuild — so reading it
+          tells the operator nothing about real history. */}
+      {!inBench && (
       <div className="flex flex-col" style={{
         height: SECTION_HEADER + layout.graphBody,
         flexShrink: 0,
@@ -519,6 +559,7 @@ export function GitPanel() {
           </div>
         )}
       </div>
+      )}
     </div>
   )
 }
