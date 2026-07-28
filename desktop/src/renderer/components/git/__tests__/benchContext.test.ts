@@ -81,3 +81,41 @@ describe('resolveBenchContext — outside a bench', () => {
     expect(resolveBenchContext(BENCH, [workspace({ benchPath: '' })])).toBeNull()
   })
 })
+
+describe('resolveBenchContext — separator handling', () => {
+  // This module runs in the RENDERER, which Vite bundles for the browser, so it
+  // cannot import Node's `path` — that resolves to __vite-browser-external and
+  // fails the production build. Both separators are therefore matched
+  // explicitly. These tests pin that, because a typecheck and a Node-hosted
+  // unit run both pass with the broken import.
+  const WIN_BENCH = 'C:\\Users\\test\\.ion\\integration\\ion-josh'
+
+  function winWorkspace(): IntegrationWorkspace {
+    return {
+      repoPath: 'C:\\Users\\test\\project',
+      sourceBranch: 'josh',
+      benchPath: WIN_BENCH,
+      benchBranch: 'ion/bench/josh',
+      members: [],
+      baseSha: 'abc',
+      lastBuiltAt: 1,
+    } as IntegrationWorkspace
+  }
+
+  it('matches a Windows bench root', () => {
+    expect(resolveBenchContext(WIN_BENCH, [winWorkspace()])).not.toBeNull()
+  })
+
+  it('matches a Windows subdirectory', () => {
+    expect(resolveBenchContext(`${WIN_BENCH}\\desktop\\src`, [winWorkspace()])).not.toBeNull()
+  })
+
+  it('does not match a Windows prefix-sharing sibling', () => {
+    expect(resolveBenchContext(`${WIN_BENCH}-other`, [winWorkspace()])).toBeNull()
+    expect(resolveBenchContext(`${WIN_BENCH}-other\\src`, [winWorkspace()])).toBeNull()
+  })
+
+  it('still requires a separator, not a bare prefix, on POSIX', () => {
+    expect(resolveBenchContext(`${BENCH}x`, [workspace()])).toBeNull()
+  })
+})

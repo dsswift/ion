@@ -23,8 +23,28 @@
  * Both sections are therefore hidden in a bench, and the panel says which bench
  * you are in instead.
  */
-import { sep } from 'path'
 import type { IntegrationWorkspace, IntegrationMember } from '../../../shared/types'
+
+/**
+ * Path separators, checked without importing Node's `path`.
+ *
+ * This module runs in the RENDERER, which Vite bundles for the browser — a
+ * `import { sep } from 'path'` resolves to `__vite-browser-external` and fails
+ * the production build outright (it type-checks and unit-tests fine, because
+ * both of those run under Node, which is how it slipped through).
+ *
+ * Both separators are accepted rather than the current platform's: the paths
+ * being compared come from the main process and from persisted state, so a
+ * Windows path can legitimately reach a renderer that has no `path` module to
+ * ask about it.
+ */
+const SEPARATORS = ['/', '\\'] as const
+
+/** True when `path` is `root` itself or a descendant directory of it. */
+function isWithin(path: string, root: string): boolean {
+  if (path === root) return true
+  return SEPARATORS.some((s) => path.startsWith(root + s))
+}
 
 export interface BenchContext {
   /** The bench directory this path is inside. */
@@ -57,8 +77,7 @@ export function resolveBenchContext(
 
   for (const ws of workspaces) {
     if (!ws.benchPath) continue
-    const isBench = directory === ws.benchPath || directory.startsWith(ws.benchPath + sep)
-    if (!isBench) continue
+    if (!isWithin(directory, ws.benchPath)) continue
     return {
       benchPath: ws.benchPath,
       sourceBranch: ws.sourceBranch,
