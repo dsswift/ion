@@ -13,6 +13,18 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.59.0](https://github.com/dsswift/ion/compare/engine-v1.58.0...engine-v1.59.0) (2026-07-28)
+
+### Features
+
+* **engine:** refuse writes outside a worktree conversation's own tree ([477ae2a](https://github.com/dsswift/ion/commit/477ae2a58f24f214ee09c482c355f683d7fdaf7b))
+* **engine:** a bench refuses edits and names the member that owns the file ([e2ae12d](https://github.com/dsswift/ion/commit/e2ae12dd2f42d0f2318dc260c58356e50f3f1775))
+* **engine:** accept prompt text on stdin ([87575fb](https://github.com/dsswift/ion/commit/87575fb5ea319cd5ec0841279a68adaacd5d4010))
+
+### Bug Fixes
+
+* **engine:** build the socket-buffer tuning per platform ([b99e6ed](https://github.com/dsswift/ion/commit/b99e6ed9e69ed63f97ae1a71e237665afd0385ee))
+
 ## [1.58.0](https://github.com/dsswift/ion/compare/engine-v1.57.1...engine-v1.58.0) (2026-07-27)
 
 ### Features

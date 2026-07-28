@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.52.0](https://github.com/dsswift/ion/compare/ios-v1.51.0...ios-v1.52.0) (2026-07-28)
+
+### Features
+
+* **desktop:** surface worktree provisioning state and re-provision ([90a458e](https://github.com/dsswift/ion/commit/90a458e97c3cbae32bbe512dc7194c3fe644abae))
+
 ## [1.51.0](https://github.com/dsswift/ion/compare/ios-v1.50.0...ios-v1.51.0) (2026-07-27)
 
 ### Features

@@ -10,6 +10,26 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.71.0](https://github.com/dsswift/ion/compare/desktop-v1.70.0...desktop-v1.71.0) (2026-07-28)
+
+### Features
+
+* **engine:** refuse writes outside a worktree conversation's own tree ([477ae2a](https://github.com/dsswift/ion/commit/477ae2a58f24f214ee09c482c355f683d7fdaf7b))
+* **desktop:** provision a new worktree so it can build ([67ba5a4](https://github.com/dsswift/ion/commit/67ba5a47a50870627e64d291b8b101bf549949a5))
+* **desktop:** surface worktree provisioning state and re-provision ([90a458e](https://github.com/dsswift/ion/commit/90a458e97c3cbae32bbe512dc7194c3fe644abae))
+* **desktop:** the git panel shows a bench only what a bench is for ([9f35228](https://github.com/dsswift/ion/commit/9f352287e54498365d91938c22896ffc0b02f820))
+* **engine:** a bench refuses edits and names the member that owns the file ([e2ae12d](https://github.com/dsswift/ion/commit/e2ae12dd2f42d0f2318dc260c58356e50f3f1775))
+* **desktop:** resizable proportional panes in the git panel ([3badb53](https://github.com/dsswift/ion/commit/3badb53e429d58115c329df7a97b3a4ac4afacc2))
+
+### Bug Fixes
+
+* **desktop:** relocate the session when a prompt's cwd diverges ([fa463b3](https://github.com/dsswift/ion/commit/fa463b30b59002c662370fdfa9fe21007890a9fe))
+* **desktop:** create worktree tabs in their worktree, and relocate on change ([f90f384](https://github.com/dsswift/ion/commit/f90f384d3bf7ed28913347875e748b1b588628ad))
+* **desktop:** restore a worktree conversation into its worktree ([7f5882a](https://github.com/dsswift/ion/commit/7f5882a9fb5034c9a5d1941f3b81524c177a17ab))
+* **desktop:** honour the completion strategy and give a worktree one name ([cd96042](https://github.com/dsswift/ion/commit/cd9604235cf426c26c86ed0aa778486316c386b1))
+* **desktop:** reclaim collapsed git panel space ([451743b](https://github.com/dsswift/ion/commit/451743b7fdbdc4da734ede9ffa8412ed5d8f8035))
+* **desktop:** drop the node path import from renderer bench detection ([29c06b3](https://github.com/dsswift/ion/commit/29c06b3cabb2dce5c1848af380302490c0832e5e))
+
 ## [1.70.0](https://github.com/dsswift/ion/compare/desktop-v1.69.1...desktop-v1.70.0) (2026-07-27)
 
 ### Features
