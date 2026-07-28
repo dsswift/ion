@@ -29,11 +29,11 @@ export function registerWorktreeLifecycleIpc(): void {
     IPC.GIT_WORKTREE_LAND,
     async (
       _event,
-      { repoPath, worktreePath, worktreeBranch, sourceBranch, noFf, syncFirst }:
-        { repoPath: string; worktreePath: string; worktreeBranch: string; sourceBranch: string; noFf?: boolean; syncFirst?: boolean },
+      { repoPath, worktreePath, worktreeBranch, sourceBranch, noFf, syncFirst, requireFastForward }:
+        { repoPath: string; worktreePath: string; worktreeBranch: string; sourceBranch: string; noFf?: boolean; syncFirst?: boolean; requireFastForward?: boolean },
     ) => {
-      log('land request', { repo_path: repoPath, worktree_branch: worktreeBranch, source_branch: sourceBranch, no_ff: !!noFf, sync_first: !!syncFirst })
-      const result = await landWorktree({ repoPath, worktreePath, worktreeBranch, sourceBranch, noFf, syncFirst })
+      log('land request', { repo_path: repoPath, worktree_branch: worktreeBranch, source_branch: sourceBranch, no_ff: !!noFf, sync_first: !!syncFirst, require_fast_forward: !!requireFastForward })
+      const result = await landWorktree({ repoPath, worktreePath, worktreeBranch, sourceBranch, noFf, syncFirst, requireFastForward })
       if (!result.ok) {
         warn('land refused', { worktree_branch: worktreeBranch, source_branch: sourceBranch, has_conflicts: !!result.hasConflicts, error: result.error ?? '' })
       } else {

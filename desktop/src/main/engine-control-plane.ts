@@ -5,6 +5,9 @@ import { log as _log, warn as _warn, error as _error } from './logger'
 import { handleEngineEvent, type TabEntry, type EventEmitterContext } from './engine-control-plane-events'
 import { makeEmptyTab, registerNewTab, registerAdoptedTab, resetTabEntry, restartTabEntry } from './engine-control-plane-tab'
 import { relocateTabSession, type RelocateResult } from './engine-control-plane-relocate'
+import { reconcileSessionWorkingDirectory } from './engine-control-plane-cwd'
+import { sendPromptWithRecovery, bridgeSendAdapter } from './engine-control-plane-send'
+import { buildHealthReport, anyTabRunning } from './engine-control-plane-status'
 import { performUnifiedInterrupt } from './engine-control-plane-interrupt'
 import * as historyReads from './engine-control-plane-history'
 import { readSettings, SETTINGS_DEFAULTS } from './settings-store'
@@ -376,6 +379,30 @@ export class EngineControlPlane extends EventEmitter {
       return
     }
 
+    // A LIVE session keeps the working directory it was started with — the
+    // engine pins it at start_session and no wire command changes it. So a
+    // prompt whose project path differs from the started directory must
+    // RELOCATE the session, not silently run in the old one. Without this the
+    // `if (!tab.engineSessionStarted)` guard below drops the prompt's directory
+    // on the floor, which is how worktree conversations ended up sharing the
+    // base checkout. See engine-control-plane-cwd.ts for the full framing.
+    //
+    // Awaited: the prompt must land on the reconciled session, not the one it
+    // replaced. A failed relocation is logged there and deliberately does NOT
+    // abort the prompt — running in the previous directory is worse than
+    // ideal, but refusing the operator's prompt outright is worse still, and
+    // the warn line makes the condition visible.
+    await reconcileSessionWorkingDirectory(
+      {
+        startedWorkingDirectory: (id) => this.bridge.getSessionConfig(id)?.workingDirectory,
+        restartSession: (id) => this.restartTabSession(id),
+        ensureSession: (id, opts) => this.ensureSession(id, opts),
+      },
+      tabId,
+      tab,
+      config.workingDirectory,
+    )
+
     // Single start site: delegate to ensureSession (idempotent). It is a
     // no-op when the session is already started, and otherwise starts it with
     // the resolved working directory + tracked conversationId so the first
@@ -406,31 +433,21 @@ export class EngineControlPlane extends EventEmitter {
 
     this._setStatus(tabId, 'running')
 
-    let result = await this.bridge.sendPrompt(tabId, options.prompt, options.model, options.appendSystemPrompt, options.imageAttachments, options.implementationPhase, options.enterPlanModeDescription, options.planModeSparseReminder, options.planFilePath, undefined, options.thinkingEffort, options.resolveSlash)
-
-    if (!result.ok && result.error?.includes('not found')) {
-      warn('send_prompt: session lost, re-creating', { tab_id: tabId })
-      // Reset the started flag so ensureSession actually re-starts (it no-ops
-      // when the flag is set). Route the recovery through the same single
-      // start site rather than re-issuing startSession inline.
-      tab.engineSessionStarted = false
-
-      const startResult = await this.ensureSession(tabId, {
-        workingDirectory: config.workingDirectory,
-        conversationId: config.sessionId ?? tab.conversationId,
-        permissionMode: tab.permissionMode,
-        extensions: config.extensions,
-        model: config.model,
-        maxTokens: config.maxTokens,
-        thinking: config.thinking,
-      })
-      if (startResult.ok) {
-        result = await this.bridge.sendPrompt(tabId, options.prompt, options.model, options.appendSystemPrompt, undefined, options.implementationPhase, options.enterPlanModeDescription, options.planModeSparseReminder, options.planFilePath, undefined, options.thinkingEffort, options.resolveSlash)
-      } else {
-        error('session re-create failed', { tab_id: tabId, error: startResult.error })
-        result = startResult
-      }
-    }
+    // Send + one lost-session recovery live in a sibling module; see
+    // engine-control-plane-send.ts for why the recovery re-send drops
+    // attachments. Status transitions and error emission stay here.
+    const result = await sendPromptWithRecovery(
+      {
+        sendPrompt: bridgeSendAdapter(this.bridge),
+        ensureSession: (id, opts) => this.ensureSession(id, opts),
+        warn,
+        error,
+      },
+      tabId,
+      tab,
+      config,
+      options,
+    )
 
     if (!result.ok) {
       error('send_prompt: failed', { tab_id: tabId, error: result.error })
@@ -496,18 +513,7 @@ export class EngineControlPlane extends EventEmitter {
   }
 
   getHealth(): HealthReport {
-    const tabs: HealthReport['tabs'] = []
-    for (const tab of this.tabs.values()) {
-      tabs.push({
-        tabId: tab.tabId,
-        status: tab.status,
-        activeRequestId: tab.activeRequestId,
-        conversationId: tab.conversationId,
-        alive: tab.status !== 'dead' && tab.status !== 'failed',
-        lastActivityAt: tab.lastActivityAt,
-      })
-    }
-    return { tabs, queueDepth: 0 }
+    return buildHealthReport(this.tabs)
   }
 
   getTabStatus(tabId: string): TabEntry | undefined {
@@ -515,12 +521,7 @@ export class EngineControlPlane extends EventEmitter {
   }
 
   hasRunningTabs(): boolean {
-    for (const tab of this.tabs.values()) {
-      if (tab.status === 'running' || tab.status === 'connecting') {
-        return true
-      }
-    }
-    return false
+    return anyTabRunning(this.tabs)
   }
 
   async listStoredSessions(limit?: number): Promise<any[]> {

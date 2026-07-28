@@ -38,6 +38,8 @@ import { isFreshConversation } from './fresh-session'
 import { WELCOME_MARKDOWN } from './greeting'
 import { gateWriteToolCall } from './git-gate'
 import { gateBenchCommand } from './bench-gate'
+import { gateWorktreeWrite } from './worktree-gate'
+import { gateBenchWrite } from './bench-write-gate'
 import {
   scaffoldTool,
   validateAgentTool,
@@ -292,13 +294,21 @@ ion.on('on_error', (ctx, info) => {
 //      rebuild, so a commit made there is destroyed and a push would publish a
 //      synthetic merge of other people's in-flight work. See bench-gate.ts and
 //      docs/architecture/adr/024-integration-workspace.md.
-//   2. git-gate — refuses write-class tool calls (Write / Edit / Bash /
+//   2. worktree-gate — refuses a write-class tool call whose target is outside
+//      the worktree the session runs in: the base repo it was cut from, or a
+//      sibling worktree of the same repo. Writing into the shared checkout
+//      interleaves several conversations' work in one dirty tree, which cannot
+//      be untangled by review afterwards. See worktree-gate.ts.
+//   3. git-gate — refuses write-class tool calls (Write / Edit / Bash /
 //      ion_scaffold) when the target isn't inside a git working tree at all.
 //      See git-gate.ts and
 //      docs/architecture/adr/006-deterministic-seams-and-probabilistic-judgment.md.
 //
-// The two do not overlap: a bench IS a git working tree, so the git-gate
-// passes every bench commit. Only the bench-gate catches that case.
+// The three do not overlap. A bench IS a git working tree, so the git-gate
+// passes every bench commit — only the bench-gate catches that case. A worktree
+// is also a git working tree, and its base repo is one too, so the git-gate
+// passes a cross-worktree write — only the worktree-gate catches that case.
+// Each gate exists because the one after it cannot see the problem.
 //
 // Returning `{ block: true, reason }` blocks the tool call; the engine
 // surfaces the reason back to the LLM as the tool result. Returning
@@ -335,6 +345,62 @@ ion.on('tool_call', (ctx, info) => {
         sessionKey: ctx.sessionKey,
       })
     }
+
+    // Bench WRITE containment. Checked before the worktree gate because a bench
+    // IS a git worktree of the repo, so the worktree gate would either miss it
+    // or name the wrong destination. This gate names the member that owns the
+    // file, which is the only actionable answer.
+    const benchWriteDecision = gateBenchWrite(
+      { toolName: info?.toolName ?? '', toolId: info?.toolId ?? '', input: info?.input ?? {} },
+      ctx.cwd,
+    )
+    if (benchWriteDecision.block) {
+      log.info('ion-meta: bench-write-gate blocked edit inside a bench', {
+        tool: info?.toolName,
+        toolId: info?.toolId,
+        benchPath: benchWriteDecision.benchPath,
+        targetPath: benchWriteDecision.targetPath,
+        ownerCount: benchWriteDecision.owners?.length ?? 0,
+        owners: (benchWriteDecision.owners ?? []).map((o) => o.branchName).join(','),
+        sessionKey: ctx.sessionKey,
+        reason: benchWriteDecision.reason,
+      })
+      return { block: true, reason: benchWriteDecision.reason ?? 'blocked by ion-meta bench-write-gate' }
+    }
+    log.debug('ion-meta: bench-write-gate passed tool call', {
+      tool: info?.toolName,
+      toolId: info?.toolId,
+      sessionKey: ctx.sessionKey,
+    })
+
+    // Worktree containment. Checked before the git-gate for the same reason the
+    // bench-gate is: the git-gate only asks "is this inside a repo", and both a
+    // worktree and its base repo are repos, so it passes a cross-worktree write
+    // silently. Checking here means the refusal names the real problem — this
+    // conversation writing into another one's tree.
+    const worktreeDecision = gateWorktreeWrite(
+      { toolName: info?.toolName ?? '', toolId: info?.toolId ?? '', input: info?.input ?? {} },
+      ctx.cwd,
+    )
+    if (worktreeDecision.block) {
+      log.info('ion-meta: worktree-gate blocked out-of-worktree write', {
+        tool: info?.toolName,
+        toolId: info?.toolId,
+        worktreePath: worktreeDecision.worktreePath,
+        targetPath: worktreeDecision.targetPath,
+        targetKind: worktreeDecision.targetKind,
+        sessionKey: ctx.sessionKey,
+        reason: worktreeDecision.reason,
+      })
+      return { block: true, reason: worktreeDecision.reason ?? 'blocked by ion-meta worktree-gate' }
+    }
+    // Pass-case at debug: every write-class call reaches this branch, so info
+    // would be noise. The block case above is the audit signal.
+    log.debug('ion-meta: worktree-gate passed tool call', {
+      tool: info?.toolName,
+      toolId: info?.toolId,
+      sessionKey: ctx.sessionKey,
+    })
 
     const decision = gateWriteToolCall(
       { toolName: info?.toolName ?? '', toolId: info?.toolId ?? '', input: info?.input ?? {} },

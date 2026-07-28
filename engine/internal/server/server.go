@@ -406,7 +406,9 @@ func (s *Server) acceptLoop() {
 // restoring 30+ sessions produces hundreds of state events in seconds,
 // filling the 8 KB pipe faster than the client can drain it and causing
 // the 5 s write-deadline eviction. 256 KB absorbs the startup burst
-// without requiring the client to keep up in real time.
+// without requiring the client to keep up in real time. The same tuning
+// is applied to the Windows TCP loopback listener (see DefaultSocketPath),
+// where an identical burst reaches the client over a different transport.
 const socketBufferSize = 256 * 1024
 
 // tuneSocketBuffer enlarges the send and receive buffers on an accepted
@@ -424,13 +426,7 @@ func tuneSocketBuffer(conn net.Conn) {
 	}
 	var setErr error
 	raw.Control(func(fd uintptr) { //nolint:errcheck // best-effort tuning
-		if err := syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_SNDBUF, socketBufferSize); err != nil {
-			setErr = err
-			return
-		}
-		if err := syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_RCVBUF, socketBufferSize); err != nil {
-			setErr = err
-		}
+		setErr = setSocketBuffers(fd, socketBufferSize)
 	})
 	if setErr != nil {
 		utils.LogWithFields(utils.LevelDebug, "server", "tune socket buffer: setsockopt failed", map[string]any{"error": setErr.Error()})

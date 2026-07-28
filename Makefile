@@ -293,8 +293,21 @@ bootstrap:
 #
 # A missing graphify install is a notice, never a failure: the graph is an
 # optional developer convenience and bootstrap must not break over it.
+#
+# Skipped entirely in a linked worktree. The graphify hooks (post-commit,
+# post-checkout, and scripts/graphify-rebuild.sh) all deliberately no-op outside
+# the primary checkout, so a graph built here would be born unmaintained — and
+# building it costs a full tree-sitter extraction of the whole repo on every
+# worktree creation. Worktree provisioning seeds `graphify-out` from the primary
+# checkout instead (.ion/worktree.json), which is near-instant on a
+# copy-on-write filesystem. An explicit `make graph-refresh` still works here.
+#
+# Detection matches the guard the hooks already use: a linked worktree's
+# --git-dir is .git/worktrees/<name> while --git-common-dir is the shared .git.
 graph-ensure:
-	@if [ -f graphify-out/graph.json ]; then \
+	@if [ "$$(cd "$$(git rev-parse --git-dir 2>/dev/null)" 2>/dev/null && pwd)" != "$$(cd "$$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd)" ]; then \
+		echo "▶ graphify: linked worktree — skipping graph build (provisioning seeds it; 'make graph-refresh' forces one)"; \
+	elif [ -f graphify-out/graph.json ]; then \
 		echo "▶ graphify: graph already present, skipping build (use 'make graph-refresh' or 'make graph')"; \
 	elif ! command -v graphify >/dev/null 2>&1; then \
 		echo "⚠️  graphify not on PATH — skipping graph build."; \

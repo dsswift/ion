@@ -31,9 +31,9 @@ func teardownSend(sock, cmd, key string) {
 }
 
 func cmdPrompt(positional []string, flags map[string]string, listFlags map[string][]string) {
-	text := strings.Join(positional, " ")
-	if text == "" {
-		fmt.Fprintln(os.Stderr, "Error: prompt text required")
+	text, err := resolvePromptText(positional, os.Stdin)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
 	}
 

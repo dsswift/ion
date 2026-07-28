@@ -174,6 +174,86 @@ rebuild, and `apply` in particular is how hunk-level staging works, so refusing
 it would break diff review in the one place the bench exists to serve.
 Over-blocking here is as much a defect as under-blocking.
 
+### The bench refuses edits, and names where they belong
+
+The history rule above governs `commit`, `push`, and their kin. It says nothing
+about `Write` and `Edit` — and the agent-side gate only ever inspected `Bash`, so
+an agent in a bench conversation could edit bench files freely. The edit
+succeeded, looked successful, and was destroyed by the next
+`switch -C … --discard-changes`. Same invisible work-loss the history rule
+prevents, left open on the other axis.
+
+`engine/extensions/ion-meta/bench-write-gate.ts` closes it: a write-class tool
+call (`Write`, `Edit`, `ion_scaffold`) whose target is inside a bench is refused.
+`Bash` is deliberately excluded — gating it on cwd would refuse the builds and
+tests the bench exists to run.
+
+The desktop half is the panel itself: in a bench the git panel hides Changes and
+Graph entirely and titles the section `Integration (Bench)`
+(`desktop/src/renderer/components/git/benchContext.ts`). A Changes section in a
+bench is an invitation to lose work, and bench history is synthetic — one merge
+per member, recreated each rebuild.
+
+**Attribution is per-member, never "who last touched it."** The obvious answer is
+`git log -1 -- <path>`, and it is wrong whenever more than one member touches a
+file. Measured against this repository's own bench, `AGENTS.md` was modified by
+all four enrolled members, so a single-owner answer would have been confidently
+wrong three times out of four — sending the agent to edit a file in a worktree
+that does not own the change.
+
+The sound question is asked of every member independently:
+`git diff --name-only <baseSha> <member.pinnedSha> -- <path>`. That yields the
+true owning *set*. One owner is named outright; several are listed with the line
+ranges each changed (`git diff -U0`), so the agent picks by the region it is
+actually editing. Reporting a true multi-owner answer is correct; guessing one is
+the heuristic-for-mechanism anti-pattern.
+
+Staging, discarding, and patch-applying stay allowed in a bench, unchanged —
+they touch the index rather than history, `--discard-changes` already resets
+them, and blocking them would stop the operator tidying a bench tree.
+
+### A worktree refuses writes outside itself
+
+The bench rule above has a sibling that applies to ordinary worktrees. A worktree
+exists to isolate one conversation's work onto its own branch, so a write from a
+worktree conversation into the **base repo it was cut from**, or into a **sibling
+worktree of the same repo**, is refused: `engine/extensions/ion-meta/worktree-gate.ts`,
+wired into the same `tool_call` hook and checked before the git-gate.
+
+The failure it prevents is not theoretical. Five worktree conversations once ran
+with their sessions pointed at the shared base checkout. Each one's `git status`
+showed the others' uncommitted files, a `git add -A` swept up work belonging to
+another conversation, and one commit shipped ~3,000 lines from an unrelated
+conversation. The worktrees stayed clean, the base repo went dirty, and nothing
+recorded which conversation authored which hunk — review could not untangle it
+afterwards.
+
+The rule is deliberately narrow. It is **not** "confine the agent to its cwd":
+writes to `/tmp`, `~/.ion`, an unrelated repo, or anywhere else all pass, because
+agents legitimately need them and over-blocking would make worktree
+conversations useless for real work. The predicate is only:
+
+> cwd is a registered worktree of repo R ⇒ deny writes into R's main checkout,
+> and into R's other registered worktrees.
+
+Sibling worktrees are included because sibling-to-sibling bleed is the same
+defect with a different destination, and `~/.ion/worktree-registry.json` already
+carries the `worktreePath → repoPath` mapping. When cwd is not a registered
+worktree the gate passes everything, so an ordinary repo conversation is
+completely unaffected. It fails open on a missing or corrupt registry, for the
+same reason the bench guards do.
+
+**What this gate does not catch.** Its predicate is "is my cwd a registered
+worktree", so it is silent on the failure that motivated it — there the sessions'
+cwd *was* the base repo, and the gate correctly concludes "not a worktree
+conversation" and passes. The fix for that is on the desktop side: worktree
+resolution now runs before the engine session starts
+(`tab-slice-worktree-resolve.ts`), every directory change relocates the live
+session (`tab-working-directory.ts`), and `submitPrompt` reconciles a divergence
+rather than discarding the prompt's path (`engine-control-plane-cwd.ts`). This
+gate is the net for the next way a directory drifts, not a substitute for
+pointing sessions correctly.
+
 ### Enrollment is manual; disenrollment is automatic
 
 The bench is created on **first enrollment**, not on first use of a directory:

@@ -27,6 +27,15 @@ export interface RemoteWorktree {
   /** Feature branch has moved ahead AND a sync would change this worktree. */
   needsSync: boolean
   safeToDiscard: boolean
+  /**
+   * Where this worktree is in the dependency-provisioning lifecycle. Absent when
+   * Ion has no record — a worktree created before provisioning existed, or one
+   * whose record did not survive a desktop restart. Absent means "unknown", not
+   * "not provisioned", so clients must not render it as a failure.
+   */
+  provisionState?: 'idle' | 'probing' | 'seeding' | 'building' | 'ready' | 'failed'
+  /** Operator-facing reason when `provisionState` is `failed`. */
+  provisionError?: string
   /** Tab id when a conversation is already open here, so iOS focuses it. */
   openTabId?: string
 }

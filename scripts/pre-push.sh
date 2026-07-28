@@ -78,6 +78,13 @@ if touched "^engine/"; then
   run "engine lint (new vs origin/main)" bash -c \
     "cd engine && golangci-lint run --new-from-merge-base=origin/main"
   run "engine build" bash -c "cd engine && go build ./..."
+  # Windows is the one release target the host build cannot approximate: the
+  # setsockopt descriptor type differs there (int vs syscall.Handle), so a
+  # platform-specific compile error passes a native build and only surfaces in
+  # the release workflow after merge. CI's engine-crossbuild job covers all
+  # four release targets; this covers the one that actually broke, cheaply.
+  run "engine cross-build (windows)" bash -c \
+    "cd engine && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./..."
 fi
 
 # Relay: same.

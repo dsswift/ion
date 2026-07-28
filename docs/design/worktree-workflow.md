@@ -224,6 +224,79 @@ landing, and even after **Land & retire** deletes the branch.
 | Two benches for one repo | You integrate into two source branches. | Expected; each branch gets its own. |
 | Bench build is slow | The first build after creating a bench is cold. | Later rebuilds are incremental — ignored build output is preserved. |
 | The bench directory was deleted | Removed outside Ion. | It self-heals on the next rebuild. |
+| An edit in the bench was refused | Edits there are destroyed by the next rebuild. | The refusal names the member worktree that owns the file — edit and commit there, then Update that member. |
+| The refusal listed several members | More than one member changes that file, so no single owner is the honest answer. | Pick the member whose listed line ranges cover the region you are editing. |
+| The bench panel has no Changes or Graph | Deliberate: a bench must hold no uncommitted changes, and its history is synthetic. | Use the member worktrees for both. |
+| A new worktree has no `node_modules` | The repo has no `.ion/worktree.json`, or the seed entry is missing. | Add the manifest; existing worktrees get it via Re-provision. |
+| Provisioning shows a warning badge | A `build` or `setup` command failed. | Read the reason in the tooltip, fix it, then Re-provision. |
+| Provisioning is slow every time | No copy-on-write between your repo and the worktree root — different volumes, or a filesystem without reflink (NTFS, ext4). | Expected. Put the worktree root on the same volume as the repo to get the fast path. |
+| A seeded path shows in `git status` | It cannot: Ion refuses to seed any path git does not ignore. | If you see this, the path came from something other than provisioning. |
+| The graph is missing in a worktree | `make bootstrap` deliberately skips the graph build in a worktree. | Provisioning seeds it; `make graph-refresh` forces one. |
+
+## Provisioning — a new worktree arrives ready to build
+
+A git worktree is a bare checkout. Everything your project needs but git does
+not track — `node_modules`, git hooks, build caches, generated config — is
+absent, so a fresh worktree looks like the repo and cannot run a single gate.
+
+Ion fills that gap from a committed manifest at `.ion/worktree.json`. **No
+manifest means no provisioning**, and worktree creation behaves exactly as it
+always has.
+
+```json
+{
+  "version": 1,
+  "worktree": {
+    "seed": [
+      { "path": "node_modules", "build": "npm ci", "staleWhen": ["package-lock.json"] }
+    ],
+    "setup": "make bootstrap"
+  }
+}
+```
+
+Each `seed` entry names a gitignored directory and how to rebuild it. `setup` is
+your project's own idempotent recipe, run once after seeding. The fields carry
+no knowledge of any language: the same four express `vendor/` + `go mod
+download`, `.venv/` + `uv sync`, or `Pods/` + `pod install`.
+
+### How a directory gets there
+
+| Rung | When | Cost |
+|---|---|---|
+| **clone** | Source and destination are on one copy-on-write volume (APFS, Btrfs, XFS, ReFS Dev Drive) | near-zero |
+| **build** | No clone available — runs your `build` command | a normal install |
+| **copy** | Last resort, only when no `build` is declared | full disk, slow |
+
+Ion probes the filesystem rather than guessing from the operating system, so a
+Btrfs Linux box gets the fast path and an NTFS Windows box correctly falls to
+`build`. Reflink needs both sides on the **same volume**, so if your repo and
+`~/.ion/worktrees` are on different disks you will get `build` regardless of
+filesystem.
+
+**A cloned directory is fully independent.** A reflink shares physical blocks but
+is a separate file, so the first write splits them. Running `npm install` inside
+a worktree is safe and affects nothing else — it costs only the packages that
+actually change. Ion never symlinks a shared `node_modules`, because that *would*
+make one worktree's install mutate every other.
+
+### Keeping it current
+
+Just run your package manager. Because every rung produces an independent tree,
+`npm install` in a worktree is correct with no involvement from Ion.
+
+Ion also compares each `staleWhen` file (your lockfiles) against the source and
+re-runs `build` when they diverge — which is what happens when you sync and pick
+up a sibling's dependency bump. If a tree still looks wrong, **Re-provision** in
+the worktree row menu re-runs the whole ladder.
+
+### Watching it happen
+
+Provisioning runs *behind* worktree creation, so the directory is usable
+immediately. The worktree row shows a spinner while it works and a warning if it
+fails, with the failing command's output in the tooltip. A failure never blocks
+you and never destroys anything: you get a usable worktree, an explanation, and
+the Re-provision verb.
 
 ## Where state lives
 

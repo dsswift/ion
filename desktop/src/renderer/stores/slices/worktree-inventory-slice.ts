@@ -11,6 +11,7 @@
  */
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { rInfo, rWarn, rDebug } from '../../rendererLogger'
+import { setTabWorkingDirectory } from './tab-working-directory'
 
 export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -87,6 +88,91 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
         })
       }
       return tabId
+    },
+
+    /**
+     * Retire a worktree, first relocating any conversation living inside it.
+     *
+     * ── Why this is a store action, not a component handler ─────────────────
+     * It reads store state between mutations (find the tab on this worktree,
+     * relocate it, then remove the directory). Per AGENTS.md § ATV shell rules a
+     * component handler doing that would mix forwarded and local calls in the
+     * mirror and decide against stale mirror state.
+     *
+     * ── Why the relocation comes first ──────────────────────────────────────
+     * `retireWorktree` deletes the directory. A conversation still pointed at it
+     * would be left with a working directory that does not exist — the engine
+     * would fail to start the session on the next prompt, and a later resume
+     * from the session browser would open into nothing. `retireWorktree` already
+     * returns the directory the conversation should move to (the repo root), and
+     * that return value was previously discarded.
+     *
+     * The relocation is best-effort: if it fails the retire is still attempted,
+     * because leaving the worktree behind AND the conversation pointed at it is
+     * strictly worse than a conversation whose next prompt gets reconciled by
+     * the main process. Both outcomes log.
+     */
+    retireWorktree: async (repoPath, worktreePath, branchName) => {
+      const occupant = get().tabs.find((t) => t.workingDirectory === worktreePath)
+      rInfo('worktree.inventory', 'retire requested', {
+        worktree_path: worktreePath,
+        branch: branchName,
+        occupant_tab: occupant ? occupant.id.slice(0, 8) : 'none',
+      })
+
+      const result = await window.ion.gitWorktreeRetire({
+        repoPath,
+        worktreePath,
+        branchName,
+        // Force only after the caller confirmed against a concrete appraisal.
+        force: true,
+      })
+
+      if (!result.ok) {
+        rWarn('worktree.inventory', 'retire refused; nothing relocated', {
+          worktree_path: worktreePath, error: result.error ?? '',
+        })
+        await get().refreshWorktreeInventory(repoPath)
+        return result
+      }
+
+      // The worktree is gone. Move its conversation to the directory the retire
+      // nominated (the repo root) so the tab is not pointed at a dead path.
+      const relocateTo = result.workingDirectory
+      if (occupant && relocateTo) {
+        await setTabWorkingDirectory(set, get, occupant.id, relocateTo, {
+          worktree: null,
+          pendingWorktreeSetup: false,
+        })
+      } else if (occupant) {
+        rWarn('worktree.inventory', 'retire returned no relocation target; tab left on a dead path', {
+          worktree_path: worktreePath, tab_id: occupant.id.slice(0, 8),
+        })
+      }
+
+      await get().refreshWorktreeInventory(repoPath)
+      return result
+    },
+
+    /**
+     * Re-run provisioning for a worktree, then refresh so the row reflects the
+     * new state.
+     *
+     * A store action rather than a component handler because it mutates
+     * owner-side state and then reads it back through the inventory — the
+     * pattern the ATV mirror rules require (a handler would run locally in the
+     * mirror and decide against stale state).
+     */
+    reprovisionWorktree: async (repoPath, worktreePath) => {
+      rInfo('worktree.inventory', 'reprovision requested', { worktree_path: worktreePath })
+      const result = await window.ion.gitWorktreeReprovision({ repoPath, worktreePath })
+      if (!result.ok) {
+        rWarn('worktree.inventory', 'reprovision failed', {
+          worktree_path: worktreePath, state: result.state, error: result.error ?? '',
+        })
+      }
+      await get().refreshWorktreeInventory(repoPath)
+      return result
     },
 
     /**

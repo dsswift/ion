@@ -808,25 +808,63 @@ When a feature exists on one client and not another, or is implemented two diffe
 
 Do not report a feature or fix as "done," "complete," or "verified" when the only verification performed is: it compiles, it type-checks, existing tests still pass, and the code reads correctly. Those are necessary but **not sufficient**. The sufficient condition is a test that exercises the new behavior and would fail without the change. If you are about to commit and there is no such test, the work is not done — write the test first.
 
-## Integration benches refuse history writes
+## Worktrees and benches refuse the writes that cannot be reviewed
 
-A directory under `~/.ion/integration/` is a rebuildable bench: its branch is
-recreated from the feature branch plus each member's pinned commit on every
-rebuild. A commit made there is destroyed by the next rebuild, and a push would
-publish a synthetic merge of other people's in-flight work.
+Two directory kinds under `~/.ion/` refuse a class of writes based on what the
+directory *is*. Both are enforced for the agent by ion-meta's `tool_call` hook
+and (for benches) for the operator by the desktop's git IPC. Both fail open when
+their backing record is unreadable, because a false refusal where the operator is
+working is worse than a briefly missing guard.
 
-Git commands that write **history** are refused inside a bench — `commit`,
-`push`, `pull`, `merge`, `rebase`, `cherry-pick`, `revert`, `reset`, `stash`,
-`tag`, and branch mutation — by the desktop UI
-(`desktop/src/main/integration/bench-guard.ts`) and by ion-meta's tool gate
-(`engine/extensions/ion-meta/bench-gate.ts`). Reading, building, testing, and
-staging are unaffected. A fix diagnosed in the bench belongs in the member
-worktree that owns the file: commit it there, then update that member in the
-bench. See [ADR-024](docs/architecture/adr/024-integration-workspace.md).
+**An integration bench refuses history writes.** A directory under
+`~/.ion/integration/` is a rebuildable bench: its branch is recreated from the
+feature branch plus each member's pinned commit on every rebuild. A commit made
+there is destroyed by the next rebuild, and a push would publish a synthetic
+merge of other people's in-flight work. So `commit`, `push`, `pull`, `merge`,
+`rebase`, `cherry-pick`, `revert`, `reset`, `stash`, `tag`, and branch mutation
+are refused by the desktop UI (`desktop/src/main/integration/bench-guard.ts`) and
+by ion-meta's tool gate (`engine/extensions/ion-meta/bench-gate.ts`). Reading,
+building, testing, and staging are unaffected. A fix diagnosed in the bench
+belongs in the member worktree that owns the file: commit it there, then update
+that member in the bench.
+
+**A bench refuses edits, and names where they belong.** The history rule above
+covers `commit`/`push`; a bench also refuses `Write`, `Edit`, and `ion_scaffold`
+(`engine/extensions/ion-meta/bench-write-gate.ts`), because an edit made there is
+destroyed by the next rebuild. `Bash` stays open — building and testing are what
+a bench is for, as do staging and discarding. The refusal names the member
+worktree that owns the file, resolved by diffing each member's pinned commit
+against the bench base rather than asking who last touched it: when several
+members change one file, all of them are listed with their changed line ranges
+so the agent can pick by the region it is editing. The git panel matches: in a
+bench it hides Changes and Graph and titles the section `Integration (Bench)`.
+
+**A worktree refuses writes outside itself.** A conversation whose cwd is a
+registered worktree (`~/.ion/worktree-registry.json`) may not write into the base
+repo it was cut from, nor into a sibling worktree of the same repo
+(`engine/extensions/ion-meta/worktree-gate.ts`). This is **not** a cwd jail:
+`/tmp`, `~/.ion`, and unrelated repos all stay writable, and a conversation that
+is not in a worktree is unaffected. The rule exists because cross-worktree writes
+interleave several conversations in one dirty checkout, and review cannot
+attribute the hunks afterwards.
 
 Closing a conversation never removes a worktree. Removal is only the explicit
-Retire verb, which appraises what would be lost and refuses when the answer is
-work.
+Retire verb, which appraises what would be lost, refuses when the answer is work,
+and relocates any conversation still living there so it is not left pointed at a
+deleted directory.
+
+**A new worktree arrives provisioned.** A bare checkout has no `node_modules`, no
+git hooks, and no build caches — everything gitignored is absent, so nothing
+builds. Ion materialises what the project declares in the committed
+`.ion/worktree.json`: each `seed` entry is cloned (copy-on-write), built with its
+own command, or copied, and the project's `setup` command runs afterward. A clone
+is a separate inode sharing blocks, so an install inside a worktree stays
+independent of the main clone — Ion never symlinks a shared dependency directory.
+No manifest means no provisioning. Ion refuses to seed any path git does not
+ignore, so provisioning can never dirty `git status`. Reference:
+[`docs/configuration/worktree-json.md`](docs/configuration/worktree-json.md).
+
+See [ADR-024](docs/architecture/adr/024-integration-workspace.md).
 
 ## Conversation storage
 

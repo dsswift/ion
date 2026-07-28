@@ -2,6 +2,8 @@ import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { activeInstance, instanceMessageCount } from '../conversation-instance'
 import { rInfo, rWarn } from '../../rendererLogger'
+import { resolveWorktreeForNewTab } from './tab-slice-worktree-resolve'
+import { setTabWorkingDirectory } from './tab-working-directory'
 
 export function createDirectorySlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -90,30 +92,29 @@ export function createDirectorySlice(set: StoreSet, get: StoreGet): Partial<Stat
 
       const gitOpsMode = usePreferencesStore.getState().gitOpsMode
       if (gitOpsMode === 'worktree') {
-        window.ion.gitIsRepo(dir).then(({ isRepo }) => {
-          if (!isRepo) return
-          const defaults = usePreferencesStore.getState().worktreeBranchDefaults
-          const defaultBranch = defaults[dir]
-          if (defaultBranch) {
-            window.ion.gitWorktreeAdd(dir, defaultBranch).then((result) => {
-              if (result.ok && result.worktree) {
-                set((s) => ({
-                  tabs: s.tabs.map((t) =>
-                    t.id === activeTabId
-                      ? { ...t, worktree: result.worktree!, workingDirectory: result.worktree!.worktreePath }
-                      : t
-                  ),
-                }))
-              }
-            }).catch((err) => rWarn('directory', 'gitWorktreeAdd failed', { dir, branch: defaultBranch, error: String(err) }))
-          } else {
+        // Resolve through the shared resolver so this path cannot drift from
+        // the two tab-creation paths, and apply the result through
+        // setTabWorkingDirectory so the engine session follows the directory.
+        //
+        // resetTabSession above cleared the engine-side session, so a relocation
+        // here is usually a no-op start in the right place — but relying on that
+        // ordering is exactly the assumption that produced the original bug, so
+        // the helper is used unconditionally rather than trusted to be
+        // unnecessary.
+        void resolveWorktreeForNewTab(dir, true).then(async (resolved) => {
+          if (resolved.worktree) {
+            await setTabWorkingDirectory(set, get, activeTabId, resolved.dir, {
+              worktree: resolved.worktree,
+              pendingWorktreeSetup: false,
+            })
+          } else if (resolved.pendingSetup) {
             set((s) => ({
               tabs: s.tabs.map((t) =>
                 t.id === activeTabId ? { ...t, pendingWorktreeSetup: true } : t
               ),
             }))
           }
-        }).catch((err) => rWarn('directory', 'gitIsRepo probe failed', { dir, error: String(err) }))
+        }).catch((err) => rWarn('directory', 'worktree resolution failed', { dir, error: String(err) }))
       }
     },
   }

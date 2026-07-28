@@ -9,10 +9,12 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { ArrowLineDown, ArrowsClockwise, Flask, FolderOpen, Trash } from '@phosphor-icons/react'
+import { ArrowLineDown, ArrowsClockwise, Flask, FolderOpen, Package, Trash } from '@phosphor-icons/react'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
+import { usePreferencesStore } from '../preferences'
+import { landFlagsForStrategy, describeLandStrategy } from '../../shared/worktree-land-strategy'
 import { ConfirmDialog } from './git/ConfirmDialog'
 import { rError, rInfo, rWarn } from '../rendererLogger'
 import type { WorktreeInventoryEntry } from '../../shared/types'
@@ -35,6 +37,10 @@ export function WorktreeRowMenu({
   const ref = useRef<HTMLDivElement>(null)
   const benchWorkspaces = useSessionStore((s) => s.benchWorkspaces.get(repoPath))
   const [confirmRetire, setConfirmRetire] = useState<string | null>(null)
+  // A land refusal (diverged branch, conflict) is actionable and must be shown,
+  // not swallowed into the log while the menu closes as if it had worked.
+  const [landError, setLandError] = useState<string | null>(null)
+  const strategy = usePreferencesStore((s) => s.worktreeCompletionStrategy)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -73,21 +79,31 @@ export function WorktreeRowMenu({
     if (!entry.sourceBranch) return
     setBusy(true)
     try {
+      // Honour the operator's configured strategy. This used to pass no flags
+      // at all, so a "Merge (ff)" setting silently produced a merge commit
+      // whenever the source branch had moved on.
+      const flags = landFlagsForStrategy(strategy)
       const result = await window.ion.gitWorktreeLand({
         repoPath,
         worktreePath: entry.worktreePath,
         worktreeBranch: entry.branchName,
         sourceBranch: entry.sourceBranch,
+        noFf: flags.noFf,
+        syncFirst: flags.syncFirst,
+        requireFastForward: flags.requireFastForward,
       })
       if (!result.ok) {
         rWarn('worktree.menu', 'land refused', { branch: entry.branchName, error: result.error ?? '' })
-      } else {
-        rInfo('worktree.menu', 'landed', { branch: entry.branchName, mode: result.mode ?? '' })
+        // A refusal is actionable (sync first, resolve a conflict) and must not
+        // vanish: surface it rather than leaving the operator to wonder why the
+        // branch did not move.
+        setLandError(result.error ?? 'Land failed.')
+        return
       }
+      rInfo('worktree.menu', 'landed', { branch: entry.branchName, mode: result.mode ?? '' })
       onRefresh()
     } finally {
       setBusy(false)
-      onClose()
     }
   }
 
@@ -111,13 +127,15 @@ export function WorktreeRowMenu({
   async function doRetire(): Promise<void> {
     setBusy(true)
     try {
-      const result = await window.ion.gitWorktreeRetire({
+      // Routed through the store action rather than calling the IPC directly:
+      // retire deletes the directory, so any conversation living in it must be
+      // relocated first, and that read-then-mutate sequence must run in the
+      // owner window. See retireWorktree in worktree-inventory-slice.ts.
+      const result = await useSessionStore.getState().retireWorktree(
         repoPath,
-        worktreePath: entry.worktreePath,
-        branchName: entry.branchName,
-        // Force only after the operator confirmed against a concrete appraisal.
-        force: true,
-      })
+        entry.worktreePath,
+        entry.branchName,
+      )
       if (!result.ok) {
         rWarn('worktree.menu', 'retire failed', { branch: entry.branchName, error: result.error ?? '' })
       }
@@ -182,7 +200,9 @@ export function WorktreeRowMenu({
       label: `Land into ${entry.sourceBranch ?? 'source'}`,
       icon: <ArrowLineDown size={12} color={canLand ? colors.worktreeGreen : colors.textTertiary} />,
       disabled: !canLand,
-      hint: landReason,
+      // Name the strategy that will actually run, so the operator is not
+      // guessing which of the three shapes this click produces.
+      hint: landReason ?? (entry.sourceBranch ? describeLandStrategy(strategy, entry.sourceBranch) : undefined),
       run: () => { void doLand().catch((err) => rError('worktree.menu', 'land threw', { error: String(err) })) },
     },
     {
@@ -192,6 +212,25 @@ export function WorktreeRowMenu({
         void window.ion.revealPath(entry.worktreePath)
           .catch((err: unknown) => rError('worktree.menu', 'reveal failed', { error: String(err) }))
         onClose()
+      },
+    },
+    {
+      label: 'Re-provision',
+      icon: <Package size={12} color={colors.textSecondary} />,
+      run: () => {
+        setBusy(true)
+        void useSessionStore.getState()
+          .reprovisionWorktree(repoPath, entry.worktreePath)
+          .then((result) => {
+            if (!result.ok) {
+              rWarn('worktree.menu', 'reprovision failed', {
+                branch: entry.branchName, error: result.error ?? '',
+              })
+            }
+            onRefresh()
+          })
+          .catch((err) => rError('worktree.menu', 'reprovision threw', { error: String(err) }))
+          .finally(() => { setBusy(false); onClose() })
       },
     },
     {
@@ -244,6 +283,17 @@ export function WorktreeRowMenu({
           </button>
         ))}
       </motion.div>
+
+      {landError !== null && (
+        <ConfirmDialog
+          title="Land did not complete"
+          message={landError}
+          confirmLabel="OK"
+          cancelLabel="Dismiss"
+          onConfirm={() => { setLandError(null); onClose() }}
+          onCancel={() => { setLandError(null); onClose() }}
+        />
+      )}
 
       {confirmRetire !== null && (
         <ConfirmDialog

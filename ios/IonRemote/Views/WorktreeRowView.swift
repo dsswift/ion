@@ -47,6 +47,23 @@ struct WorktreeRowView: View {
                             .font(.caption2)
                             .foregroundStyle(.orange)
                     }
+                    // Dependency provisioning (node_modules, hooks, caches --
+                    // the gitignored state git never carries). Shown only while
+                    // in flight or failed: `ready` is the normal case and needs
+                    // no badge, and a nil state means Ion has no record rather
+                    // than that something went wrong.
+                    switch worktree.provisionState {
+                    case .seeding, .building, .probing:
+                        Image(systemName: "shippingbox")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    case .failed:
+                        Image(systemName: "shippingbox.badge.exclamationmark")
+                            .font(.caption2)
+                            .foregroundStyle(.red)
+                    case .idle, .ready, .none:
+                        EmptyView()
+                    }
                     if busy { ProgressView().controlSize(.mini) }
                 }
 

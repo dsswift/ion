@@ -25,7 +25,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   defaultPermissionMode: saved.defaultPermissionMode,
   expandOnTabSwitch: saved.expandOnTabSwitch,
   bashCommandEntry: saved.bashCommandEntry,
-  gitPanelSplitRatio: saved.gitPanelSplitRatio,
+  gitPanelPaneProportions: saved.gitPanelPaneProportions,
   gitPanelChangesOpen: saved.gitPanelChangesOpen,
   gitPanelGraphOpen: saved.gitPanelGraphOpen,
   gitPanelWorktreesOpen: saved.gitPanelWorktreesOpen,
@@ -178,8 +178,8 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     set({ bashCommandEntry: enabled })
     saveSettings(getAllSettings(get))
   },
-  setGitPanelSplitRatio: (ratio) => {
-    set({ gitPanelSplitRatio: ratio })
+  setGitPanelPaneProportions: (proportions) => {
+    set({ gitPanelPaneProportions: proportions })
     saveSettings(getAllSettings(get))
   },
   setGitPanelChangesOpen: (open) => {

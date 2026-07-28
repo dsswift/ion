@@ -142,14 +142,22 @@ jobs:
       - name: Generate summary with ion
         run: |
           set -euo pipefail
-          docker run --rm \
+          # The prompt is fed on stdin, not as an argv entry. A single argument
+          # is capped at MAX_ARG_STRLEN (128 KiB) regardless of total ARG_MAX,
+          # and this context document — every released component's CHANGELOG
+          # entry, AGENTS.md, subsystem rules, changed files, and diffstat —
+          # routinely exceeds it. The argv form failed with "Argument list too
+          # long" (exit 126) before the engine ever started. `-i` is required
+          # for the container to receive stdin.
+          docker run --rm -i \
             -v /tmp/ion-data:/data \
             ghcr.io/${{ github.repository }}/engine:latest \
-            prompt "$(cat /tmp/ion-prompt.txt)" \
+            prompt - \
             --output text \
             --no-extensions \
             --timeout 3m \
             --max-budget 1.00 \
+            < /tmp/ion-prompt.txt \
             > /tmp/summary.md
           echo "Summary size: $(wc -c < /tmp/summary.md) bytes"
 

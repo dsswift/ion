@@ -8,14 +8,26 @@ import type { WorktreeInfo, WorktreeStatus } from '../../shared/types'
 import { runGit } from '../git-runner'
 import { landWorktree } from '../worktree/integrate'
 import { registerWorktree, unregisterWorktree } from '../worktree/inventory'
+import { provisionWorktree } from '../worktree/provision'
+import { setProvisionState, clearProvisionState } from '../worktree/provision-state'
 
 export function registerWorktreeIpc(): void {
   ipcMain.handle(IPC.GIT_WORKTREE_ADD, async (_event, { repoPath, sourceBranch }: { repoPath: string; sourceBranch: string }) => {
     try {
-      const id = randomBytes(4).toString('hex')
-      const branchName = `wt/${randomBytes(4).toString('hex')}`
+      // ONE identity for the worktree, used for both the directory and the
+      // branch. These used to be two independent randomBytes() calls, so a
+      // worktree at `ion-452a6bd3` carried branch `wt/807940c2` — nothing
+      // connected them, the row label showed the directory while every git
+      // verb and every agent sentence used the branch, and the operator had to
+      // consult the registry to map one to the other.
+      //
+      // Deriving both from one slug makes the mapping trivial in either
+      // direction (`ion-a3372546` ⇄ `wt/ion-a3372546`), so a single label can
+      // identify the worktree everywhere.
+      const slug = `${basename(repoPath)}-${randomBytes(4).toString('hex')}`
+      const branchName = `wt/${slug}`
       const worktreeDir = join(homedir(), '.ion', 'worktrees')
-      const worktreePath = join(worktreeDir, `${basename(repoPath)}-${id}`)
+      const worktreePath = join(worktreeDir, slug)
       mkdirSync(worktreeDir, { recursive: true })
       await runGit(repoPath, ['worktree', 'add', '-b', branchName, worktreePath, sourceBranch])
       const worktree: WorktreeInfo = { worktreePath, branchName, sourceBranch, repoPath }
@@ -24,6 +36,22 @@ export function registerWorktreeIpc(): void {
       // needs it. Without this the inventory has to guess, and a wrong guess
       // would land work into the wrong branch.
       registerWorktree({ worktreePath, repoPath, branchName, sourceBranch })
+
+      // Provisioning runs BEHIND the worktree, not in front of it: the operator
+      // gets a usable directory immediately and watches the dependency state
+      // fill in. A cold `npm ci` would otherwise block worktree creation for
+      // minutes. Fire-and-forget with `void` — every failure is captured into
+      // provisionState rather than thrown, so there is nothing to await here.
+      setProvisionState(worktreePath, 'seeding')
+      void provisionWorktree(repoPath, worktreePath, (state, detail) => {
+        setProvisionState(worktreePath, state, detail)
+      }).catch((err) => {
+        // Defensive: provisionWorktree is documented never to reject. If that
+        // contract is ever broken the worktree must still end in a terminal
+        // state rather than sitting in `seeding` forever.
+        setProvisionState(worktreePath, 'failed', String(err))
+      })
+
       return { ok: true, worktree }
     } catch (err: any) {
       return { ok: false, error: err.message }
@@ -37,6 +65,9 @@ export function registerWorktreeIpc(): void {
       await runGit(repoPath, removeArgs)
       try { await runGit(repoPath, ['branch', '-D', branchName]) } catch { /* silent-ok: best-effort branch delete; worktree already removed */ }
       unregisterWorktree(worktreePath)
+      // Drop the provisioning record too: a future worktree reusing this path
+      // must start with no state rather than inheriting a stale `failed`.
+      clearProvisionState(worktreePath)
       try {
         const parent = join(worktreePath, '..')
         const entries = readdirSync(parent)
@@ -47,6 +78,23 @@ export function registerWorktreeIpc(): void {
       return { ok: false, error: err.message }
     }
   })
+
+  // Re-provision: re-run the ladder for a worktree whose dependency state the
+  // operator believes is wrong. Deliberately the SAME path creation uses, so a
+  // repair can never drift from a fresh provision.
+  //
+  // Awaited (unlike creation) because the caller asked for it explicitly and
+  // wants to know the outcome.
+  ipcMain.handle(
+    IPC.GIT_WORKTREE_REPROVISION,
+    async (_event, { repoPath, worktreePath }: { repoPath: string; worktreePath: string }) => {
+      setProvisionState(worktreePath, 'seeding')
+      const outcome = await provisionWorktree(repoPath, worktreePath, (state, detail) => {
+        setProvisionState(worktreePath, state, detail)
+      })
+      return { ok: outcome.state === 'ready', state: outcome.state, error: outcome.error }
+    },
+  )
 
   ipcMain.handle(IPC.GIT_WORKTREE_LIST, async (_event, { repoPath }: { repoPath: string }) => {
     try {

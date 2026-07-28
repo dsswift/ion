@@ -62,6 +62,15 @@ export const FORWARDED_ACTIONS: Record<string, ForwardedActionSpec> = {
   // calls and decide against stale mirror state.
   openWorktreeConversation: { minArgs: 1, maxArgs: 1 },
   syncWorktree: { minArgs: 3, maxArgs: 3 },
+  // Retire destroys a directory and relocates the conversation that lived in it,
+  // reading store state between the two steps. Owner-only: a mirror-local run
+  // would relocate against stale mirror state, and a double retire would race
+  // the directory removal.
+  retireWorktree: { minArgs: 3, maxArgs: 3 },
+  // Provisioning spawns install processes and mutates the worktree on disk.
+  // Owner-only: a mirror-local run would start a second `npm ci` against the
+  // same tree while the owner's is still going.
+  reprovisionWorktree: { minArgs: 2, maxArgs: 2 },
   // Bench mutations are owner-durable: they advance pins and rebuild a shared
   // worktree, so the mirror must never run them locally.
   openBenchConversation: { minArgs: 2, maxArgs: 2 },

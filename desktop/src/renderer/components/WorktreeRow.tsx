@@ -10,7 +10,7 @@
  * operator needs a way back in without knowing the `~/.ion/worktrees/...` path.
  */
 import React from 'react'
-import { ArrowsClockwise, CircleNotch, DotsThree } from '@phosphor-icons/react'
+import { ArrowsClockwise, CircleNotch, DotsThree, Warning } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { Tooltip } from './git/Tooltip'
 import type { WorktreeInventoryEntry } from '../../shared/types'
@@ -70,12 +70,27 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
           />
         </Tooltip>
 
-        <span style={{ fontSize: 11, color: colors.textPrimary, fontWeight: 500, flexShrink: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {entry.label}
-        </span>
-        <span style={{ fontSize: 9, color: colors.textTertiary, flexShrink: 0 }}>
-          {entry.branchName}
-        </span>
+        {/* ONE identifier. The branch is `wt/<label>` by construction (see
+            GIT_WORKTREE_ADD), so printing both was redundant — and worse, the
+            two used to be unrelated random hex, which made the prominent text
+            useless for finding the branch every git verb actually names. */}
+        <Tooltip text={`Branch ${entry.branchName}`}>
+          <span style={{ fontSize: 11, color: colors.textPrimary, fontWeight: 500, flexShrink: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {entry.label}
+          </span>
+        </Tooltip>
+
+        {/* Open-or-focus sits next to the name it qualifies. On the second line
+            it read as an attribute of the commit subject rather than of the
+            worktree. */}
+        {openTabId && (
+          <span
+            data-testid={`worktree-open-${entry.branchName}`}
+            style={{ fontSize: 9, color: colors.accent, flexShrink: 0 }}
+          >
+            {openTabIndex ? `open in tab ${openTabIndex}` : 'open'}
+          </span>
+        )}
 
         <span style={{ flex: 1 }} />
 
@@ -117,6 +132,35 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
           </Tooltip>
         )}
 
+        {/* Provisioning: the gitignored dependency state a checkout needs but
+            git never carries (node_modules, hooks, build caches). Shown only
+            while it is in flight or has failed -- a `ready` worktree is the
+            normal case and needs no badge, and a worktree with no provisioning
+            record at all (created before this existed) shows nothing rather
+            than claiming a state Ion cannot know. */}
+        {(entry.provisionState === 'seeding' || entry.provisionState === 'building' || entry.provisionState === 'probing') && (
+          <Tooltip text="Installing dependencies for this worktree">
+            <span
+              data-testid={`worktree-provisioning-${entry.branchName}`}
+              style={{ display: 'inline-flex', alignItems: 'center', color: colors.textTertiary, flexShrink: 0 }}
+            >
+              <CircleNotch size={11} className="animate-spin" />
+            </span>
+          </Tooltip>
+        )}
+        {entry.provisionState === 'failed' && (
+          <Tooltip text={entry.provisionError
+            ? `Dependency setup failed: ${entry.provisionError}`
+            : 'Dependency setup failed. Use Re-provision in the row menu.'}>
+            <span
+              data-testid={`worktree-provision-failed-${entry.branchName}`}
+              style={{ display: 'inline-flex', alignItems: 'center', color: colors.dangerFg, flexShrink: 0 }}
+            >
+              <Warning size={11} />
+            </span>
+          </Tooltip>
+        )}
+
         <button
           data-testid={`worktree-menu-${entry.branchName}`}
           onClick={(e) => {
@@ -135,18 +179,11 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
       </div>
 
       {/* Second line: the last commit subject tells worktrees apart far better
-          than a generated `wt/a3f1` branch name does. */}
+          than a generated slug does. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, paddingLeft: 11 }}>
         <span style={{ fontSize: 9, color: colors.textTertiary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1, minWidth: 0 }}>
           {entry.lastCommitSubject || 'no commits yet'}
         </span>
-        {/* Open-or-focus: without this hint the operator creates a second
-            conversation in a worktree that already has one. */}
-        {openTabId && (
-          <span style={{ fontSize: 9, color: colors.accent, flexShrink: 0 }}>
-            {openTabIndex ? `open in tab ${openTabIndex}` : 'open'}
-          </span>
-        )}
         {!entry.sourceBranch && (
           <Tooltip text="Ion did not create this worktree, so its source branch is unknown. Land and sync will ask.">
             <span

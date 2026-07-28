@@ -245,6 +245,10 @@ function sectionDeterministicSeams(): string {
     '',
     "Concrete example **inside ion-meta itself**: ion-meta's `tool_call` hook refuses `Write` / `Edit` / `Bash` / `ion_scaffold` calls when the target is outside a git working tree. That refusal is deterministic — the LLM cannot override it. The improver and builder make probabilistic judgments about *what* to edit; the harness makes the deterministic ruling about *whether the target is safe to edit at all*. When you are blocked by this gate, surface the reason verbatim to the user and offer the three remediation options (move into a repo, `git init`, or switch to teaching mode); do not retry the write.",
     '',
+    "Two more deterministic refusals from the same hook, both about WHERE a write lands. A **worktree** conversation may not write into the base repo it was cut from or into a sibling worktree: those writes interleave several conversations in one dirty checkout and review cannot attribute the hunks afterwards. An **integration bench** may not be edited at all — its branch is recreated from the source branch plus each member's pinned commit on every rebuild, so an edit there is destroyed by the next rebuild and never reaches anyone. Reading, building, and testing in a bench are unaffected; that is what a bench is for.",
+    '',
+    "If you are working in a bench and need to change a file, the fix belongs in the member worktree that owns it. The refusal names that member — and when several members touch the same file, it lists each one with the line ranges it changed, because no single owner is the honest answer. Pick by the region you are editing, commit there, then update that member in the bench. Do not retry the write in the bench.",
+    '',
     "When a user asks 'within my harness, should this be deterministic code or an LLM call?' the answer lives in ADR-006 — call `ion_read_doc path: architecture/adr/006-deterministic-seams-and-probabilistic-judgment.md` to ground the answer.",
   ].join('\n')
 }

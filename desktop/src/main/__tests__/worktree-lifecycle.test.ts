@@ -292,3 +292,62 @@ describe('worktree list parsing', () => {
     expect(entries[1]).toEqual({ path: '/wt/a', head: 'def456', branch: '' })
   })
 })
+
+describe('landWorktree — fast-forward strategy', () => {
+  // The defect: the row menu passed no flags, so a "Merge (ff)" setting ran a
+  // plain `git merge`. That fast-forwards when it can and SILENTLY writes a
+  // merge commit when it cannot — the operator asked for linear history and got
+  // a merge point with nothing on screen saying so.
+  it('refuses rather than writing a merge commit when a fast-forward is impossible', async () => {
+    const a = makeWorktree('a')
+    const b = makeWorktree('b')
+
+    // `a` lands first, so main moves and `b` is no longer a fast-forward.
+    expect((await landWorktree({
+      repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: 'main',
+    })).ok).toBe(true)
+
+    const before = git(repo, 'rev-parse', 'main').trim()
+    const result = await landWorktree({
+      repoPath: repo, worktreePath: b.path, worktreeBranch: b.branch, sourceBranch: 'main',
+      requireFastForward: true,
+    })
+
+    expect(result.ok).toBe(false)
+    // The message must be actionable, not git's raw "Not possible to fast-forward".
+    expect(result.error).toContain('Sync this worktree')
+    // And nothing moved: no merge commit was written behind the refusal.
+    expect(git(repo, 'rev-parse', 'main').trim()).toBe(before)
+  })
+
+  it('fast-forwards cleanly when the source has not moved', async () => {
+    const a = makeWorktree('a')
+
+    const result = await landWorktree({
+      repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: 'main',
+      requireFastForward: true,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.mode).toBe('fast-forward')
+    // A fast-forward leaves a single-parent commit: no merge point.
+    expect(git(repo, 'rev-list', '--count', '--merges', 'main').trim()).toBe('0')
+  })
+
+  it('syncFirst makes a diverged branch fast-forwardable', async () => {
+    // This is the pairing the merge-ff strategy ships: rebase onto the source
+    // tip, which is what MAKES the fast-forward available, then require it.
+    const a = makeWorktree('a')
+    const b = makeWorktree('b')
+    await landWorktree({ repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: 'main' })
+
+    const result = await landWorktree({
+      repoPath: repo, worktreePath: b.path, worktreeBranch: b.branch, sourceBranch: 'main',
+      syncFirst: true, requireFastForward: true,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.mode).toBe('fast-forward')
+    expect(git(repo, 'rev-list', '--count', '--merges', 'main').trim()).toBe('0')
+  })
+})

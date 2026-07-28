@@ -34,6 +34,8 @@ import { runGit } from '../git-runner'
 import { parseWorktreeList } from './integrate'
 import { appraiseWorktree } from './safety'
 import { appraiseBase } from './base-staleness'
+import { getProvisionState } from './provision-state'
+import type { WorktreeInventoryEntry } from '../../shared/types'
 
 const TAG = 'worktree.inventory'
 function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
@@ -119,27 +121,17 @@ export function lookupSourceBranch(worktreePath: string): string | null {
   return loadRegistry().find((e) => e.worktreePath === worktreePath)?.sourceBranch ?? null
 }
 
-/** One worktree, with everything the UI needs to describe and act on it. */
-export interface WorktreeInventoryEntry {
-  worktreePath: string
-  branchName: string
-  /** Display label, derived from the worktree directory name. */
-  label: string
-  /** Null when Ion did not create it and cannot know — callers must ask. */
-  sourceBranch: string | null
-  /** Short HEAD sha for display. */
-  head: string
-  /** Latest commit subject, for telling worktrees apart at a glance. */
-  lastCommitSubject: string
-  /** Uncommitted changes present. */
-  isDirty: boolean
-  /** Commits not yet landed in the source branch. */
-  unlandedCommitCount: number
-  /** True when the feature branch has moved ahead and a sync would help. */
-  needsSync: boolean
-  /** True when removing this worktree would destroy nothing. */
-  safeToDiscard: boolean
-}
+/**
+ * One worktree, with everything the UI needs to describe and act on it.
+ *
+ * Re-exported from `shared/types-git` rather than declared here. This used to be
+ * a second, hand-maintained copy of the same shape; two declarations of one wire
+ * contract drift the moment a field is added to only one of them (which is
+ * exactly what happened when `provisionState` was introduced). The shared file
+ * is the single definition, and this export keeps the existing import paths in
+ * this package working.
+ */
+export type { WorktreeInventoryEntry } from '../../shared/types'
 
 /**
  * List every managed worktree for a repo, enriched with the state needed to
@@ -193,6 +185,11 @@ export async function inventoryWorktrees(repoPath: string): Promise<WorktreeInve
       }
     }
 
+    // Provisioning state is per-run and lives in memory, so a worktree with no
+    // record (created before provisioning existed, or before a restart) simply
+    // omits the field rather than claiming a state it cannot know.
+    const provision = getProvisionState(wt.path)
+
     entries.push({
       worktreePath: wt.path,
       branchName: wt.branch,
@@ -204,6 +201,8 @@ export async function inventoryWorktrees(repoPath: string): Promise<WorktreeInve
       unlandedCommitCount,
       needsSync,
       safeToDiscard,
+      provisionState: provision?.state,
+      provisionError: provision?.error,
     })
   }
 

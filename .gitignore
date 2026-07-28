@@ -25,6 +25,7 @@
 !/.ion/commands/
 !/.ion/skills/
 !/.ion/engine.json
+!/.ion/worktree.json
 
 # Build output
 node_modules/

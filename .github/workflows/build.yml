@@ -21,6 +21,14 @@ jobs:
   build-engine:
     if: contains(fromJSON(inputs.release_report).components, 'engine')
     strategy:
+      # A compile or signing failure on one platform must not cancel the
+      # others. With the default fail-fast, the windows/amd64 job's failure
+      # cancelled darwin-arm64, darwin-amd64, and linux-amd64 mid-upload and
+      # skipped engine-checksums, so the release published with zero assets
+      # while still being marked "latest" — breaking the README install
+      # command for every platform, not just the one that failed. Partial
+      # assets plus a red job is strictly recoverable; an empty release is not.
+      fail-fast: false
       matrix:
         include:
           - goos: linux

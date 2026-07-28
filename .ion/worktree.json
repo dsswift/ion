@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "worktree": {
+    "seed": [
+      {
+        "path": "node_modules",
+        "build": "npm ci",
+        "staleWhen": ["package-lock.json"]
+      },
+      {
+        "path": "desktop/node_modules",
+        "build": "npm ci",
+        "cwd": "desktop",
+        "staleWhen": ["desktop/package-lock.json"]
+      },
+      {
+        "path": "graphify-out",
+        "build": "make graph-refresh",
+        "staleWhen": []
+      }
+    ],
+    "setup": "make bootstrap"
+  }
+}
