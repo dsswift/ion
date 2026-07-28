@@ -208,6 +208,24 @@ final class WorktreeWireTests: XCTestCase {
         XCTAssertEqual(states[0].worktrees[0].label, "x")
     }
 
+    /// `pending` decodes to its own case rather than degrading. A member enrolled
+    /// before its first commit is a normal state, and showing it as `stale` would
+    /// offer an Update that has nothing to advance to.
+    func testPendingMemberStatusDecodes() throws {
+        let json = """
+        {"type":"desktop_worktree_state","states":[{"repoPath":"/repo","worktrees":[],"benches":[{
+          "repoPath":"/repo","sourceBranch":"josh","benchPath":"/b","benchBranch":"ion/bench/josh",
+          "baseSha":"a","lastBuiltAt":1,"baseDrifted":false,"members":[{
+            "worktreePath":"/wt/a","branchName":"wt/a","label":"a","enabled":true,
+            "pinnedSha":"abc","status":"pending"}]}]}]}
+        """.data(using: .utf8)!
+
+        let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
+
+        guard case let .worktreeState(states) = event else { return XCTFail("wrong case") }
+        XCTAssertEqual(states[0].benches[0].members[0].status, .pending)
+    }
+
     /// An unknown status from a newer desktop must not fail the whole payload:
     /// the operator would lose the entire bench view over one field.
     func testUnknownMemberStatusDegradesRatherThanFailing() throws {

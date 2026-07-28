@@ -1,4 +1,4 @@
-import type { TabState, NormalizedEvent, EnrichedError, Attachment, FileAttachment, TerminalPaneState, ConversationPane, ImageAttachmentPayload, WorktreeInventoryEntry, WorktreeProvisionState, IntegrationWorkspace, BenchRebuildResult } from '../../shared/types'
+import type { TabState, NormalizedEvent, EnrichedError, Attachment, FileAttachment, TerminalPaneState, ConversationPane, ImageAttachmentPayload, WorktreeInventoryEntry, WorktreeProvisionState, IntegrationWorkspace, IntegrationMember, BenchRebuildResult } from '../../shared/types'
 import type { ResourceItem } from '../../shared/types-engine'
 
 export interface StaticInfo {
@@ -84,6 +84,13 @@ export interface State {
   benchWorkspaces: Map<string, IntegrationWorkspace[]>
   /** Current source-branch tips per repo, keyed by branch name. */
   benchSourceTips: Map<string, Record<string, string>>
+  /**
+   * Members the last rebuild absorbed into the base, per repo then per source
+   * branch. Retiring a member removes its row, and a row vanishing with no
+   * explanation is indistinguishable from the bench losing a worktree — this is
+   * what lets the UI say what happened. Cleared by the operator dismissing it.
+   */
+  benchRetired: Map<string, Map<string, IntegrationMember[]>>
 
   engineWorkingMessages: Map<string, string>
   engineNotifications: Map<string, Array<{ id: string; message: string; level: string; timestamp: number }>>
@@ -340,6 +347,8 @@ export interface State {
   benchAddMember: (repoPath: string, sourceBranch: string, worktreePath: string, branchName: string) => Promise<{ ok: boolean; error?: string }>
   benchRemoveMember: (repoPath: string, sourceBranch: string, worktreePath: string) => Promise<void>
   benchSetEnabled: (repoPath: string, sourceBranch: string, worktreePath: string, enabled: boolean) => Promise<void>
+  /** Dismiss the absorbed-into-base notice for one workspace. */
+  clearBenchRetired: (repoPath: string, sourceBranch: string) => void
   /**
    * Unified tab + engine-instance creation entry point (Phase 2, #256).
    * Both plain and engine tabs are created through this path. The extension

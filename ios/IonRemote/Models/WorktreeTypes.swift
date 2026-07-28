@@ -61,7 +61,10 @@ struct RemoteWorktree: Codable, Identifiable, Hashable {
 /// One worktree layered onto the bench.
 struct RemoteBenchMember: Codable, Identifiable, Hashable {
     enum Status: String, Codable {
-        case integrated, landed, stale, conflicted, missing, excluded
+        /// `pending` — enrolled but the pin carries no commits of its own, so
+        /// there is nothing to merge yet. Not an error and not terminal: the
+        /// member becomes `stale` as soon as the worktree commits.
+        case integrated, pending, landed, stale, conflicted, missing, excluded
     }
 
     var worktreePath: String

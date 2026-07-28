@@ -10,7 +10,7 @@
  * hosts them and decide against stale mirror state.
  */
 import type { StoreSet, StoreGet, State } from '../session-store-types'
-import type { IntegrationWorkspace } from '../../../shared/types'
+import type { BenchRebuildResult, IntegrationWorkspace } from '../../../shared/types'
 import { rInfo, rWarn, rDebug } from '../../rendererLogger'
 
 export function createBenchSlice(set: StoreSet, get: StoreGet): Partial<State> {
@@ -86,6 +86,7 @@ export function createBenchSlice(set: StoreSet, get: StoreGet): Partial<State> {
       rInfo('bench', 'rebuild requested', { source_branch: sourceBranch })
       const result = await window.ion.benchRebuild(repoPath, sourceBranch)
       if (!result.ok) rWarn('bench', 'rebuild failed', { error: result.error ?? '' })
+      recordRetired(set, repoPath, sourceBranch, result)
       await get().refreshBench(repoPath)
       return result
     },
@@ -94,6 +95,7 @@ export function createBenchSlice(set: StoreSet, get: StoreGet): Partial<State> {
       rInfo('bench', 'update member', { worktree_path: worktreePath })
       const result = await window.ion.benchUpdateMember({ repoPath, sourceBranch, worktreePath })
       if (!result.ok) rWarn('bench', 'update member failed', { error: result.error ?? '' })
+      recordRetired(set, repoPath, sourceBranch, result)
       await get().refreshBench(repoPath)
       return result
     },
@@ -102,6 +104,7 @@ export function createBenchSlice(set: StoreSet, get: StoreGet): Partial<State> {
       rInfo('bench', 'update all stale', { source_branch: sourceBranch })
       const result = await window.ion.benchUpdateAll(repoPath, sourceBranch)
       if (!result.ok) rWarn('bench', 'update all failed', { error: result.error ?? '' })
+      recordRetired(set, repoPath, sourceBranch, result)
       await get().refreshBench(repoPath)
       return result
     },
@@ -123,5 +126,49 @@ export function createBenchSlice(set: StoreSet, get: StoreGet): Partial<State> {
       await window.ion.benchSetEnabled({ repoPath, sourceBranch, worktreePath, enabled })
       await get().refreshBench(repoPath)
     },
+
+    clearBenchRetired: (repoPath, sourceBranch) => {
+      rDebug('bench', 'absorbed notice dismissed', { repo_path: repoPath, source_branch: sourceBranch })
+      set((s) => {
+        const forRepo = s.benchRetired.get(repoPath)
+        if (!forRepo || !forRepo.has(sourceBranch)) return {}
+        const nextForRepo = new Map(forRepo)
+        nextForRepo.delete(sourceBranch)
+        return { benchRetired: new Map(s.benchRetired).set(repoPath, nextForRepo) }
+      })
+    },
   }
+}
+
+/**
+ * Record the members a rebuild absorbed into the base so the section can say what
+ * happened.
+ *
+ * A retired member's row disappears from the list, and a row vanishing with no
+ * explanation is indistinguishable from the bench losing a worktree — which is
+ * exactly how the pending-member defect was first reported. An empty or absent
+ * `retired` list clears any previous notice rather than leaving a stale one on
+ * screen.
+ */
+function recordRetired(
+  set: StoreSet,
+  repoPath: string,
+  sourceBranch: string,
+  result: BenchRebuildResult,
+): void {
+  const absorbed = result.retired ?? []
+  if (absorbed.length > 0) {
+    rInfo('bench', 'members absorbed into base', {
+      repo_path: repoPath,
+      source_branch: sourceBranch,
+      count: absorbed.length,
+      branches: absorbed.map((m) => m.branchName).join(','),
+    })
+  }
+  set((s) => {
+    const forRepo = new Map(s.benchRetired.get(repoPath) ?? [])
+    if (absorbed.length > 0) forRepo.set(sourceBranch, absorbed)
+    else forRepo.delete(sourceBranch)
+    return { benchRetired: new Map(s.benchRetired).set(repoPath, forRepo) }
+  })
 }

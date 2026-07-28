@@ -14,13 +14,19 @@
  * `~/.ion/integration/...` path.
  */
 import React, { useCallback, useEffect, useState } from 'react'
-import { ArrowsClockwise, ChatCircle, CircleNotch, Plus } from '@phosphor-icons/react'
+import { ArrowsClockwise, ChatCircle, CircleNotch, Plus, X } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { Tooltip } from './git/Tooltip'
 import { BenchMemberRow } from './BenchMemberRow'
 import { rError } from '../rendererLogger'
-import type { IntegrationWorkspace } from '../../shared/types'
+import type { IntegrationMember, IntegrationWorkspace } from '../../shared/types'
+
+/**
+ * Stable empty map so the `benchRetired` selector does not return a fresh object
+ * every render, which would re-render the section on every store change.
+ */
+const EMPTY_RETIRED: ReadonlyMap<string, IntegrationMember[]> = new Map()
 
 function relativeTime(ms: number): string {
   if (!ms) return 'never built'
@@ -42,6 +48,7 @@ export function IntegrationSection({
   const workspaces = useSessionStore((s) => s.benchWorkspaces.get(repoPath))
   const tips = useSessionStore((s) => s.benchSourceTips.get(repoPath))
   const inventory = useSessionStore((s) => s.worktreeInventory.get(repoPath))
+  const retired = useSessionStore((s) => s.benchRetired.get(repoPath)) ?? EMPTY_RETIRED
   const [busy, setBusy] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
 
@@ -84,7 +91,12 @@ export function IntegrationSection({
 
   const staleCount = active.members.filter((m) => m.status === 'stale').length
   const conflictCount = active.members.filter((m) => m.status === 'conflicted').length
+  const pendingCount = active.members.filter((m) => m.status === 'pending').length
   const baseDrifted = !!tips?.[active.sourceBranch] && tips[active.sourceBranch] !== active.baseSha
+  // Members absorbed into the base by the last rebuild, for THIS workspace. A
+  // retired member's row disappears, and a row vanishing with no explanation is
+  // what made absorption read as the bench eating a worktree.
+  const absorbed = retired.get(active.sourceBranch) ?? []
 
   const run = (key: string, fn: () => Promise<unknown>) => {
     setBusy(key)
@@ -178,6 +190,42 @@ export function IntegrationSection({
           </button>
         </Tooltip>
       </div>
+
+      {absorbed.length > 0 && (
+        <div
+          data-testid="bench-absorbed-notice"
+          style={{
+            display: 'flex', alignItems: 'flex-start', gap: 4,
+            padding: '3px 8px', fontSize: 9, color: colors.textSecondary,
+          }}
+        >
+          <span style={{ flex: 1 }}>
+            {absorbed.map((m) => m.label).join(', ')} landed into {active.sourceBranch} and{' '}
+            {absorbed.length === 1 ? 'is' : 'are'} now part of the base.
+          </span>
+          <button
+            data-testid="bench-absorbed-dismiss"
+            onClick={() => useSessionStore.getState().clearBenchRetired(repoPath, active.sourceBranch)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', padding: 0,
+              background: 'transparent', border: 'none',
+              color: colors.textTertiary, cursor: 'pointer', flexShrink: 0,
+            }}
+          >
+            <X size={9} />
+          </button>
+        </div>
+      )}
+
+      {pendingCount > 0 && (
+        <div
+          data-testid="bench-pending-notice"
+          style={{ padding: '2px 8px', fontSize: 9, color: colors.textTertiary }}
+        >
+          {pendingCount} member{pendingCount === 1 ? '' : 's'} {pendingCount === 1 ? 'has' : 'have'} no
+          commits yet and {pendingCount === 1 ? 'is' : 'are'} not in the build.
+        </div>
+      )}
 
       {conflictCount > 0 && (
         <div style={{ padding: '2px 8px', fontSize: 9, color: colors.dangerFg }}>

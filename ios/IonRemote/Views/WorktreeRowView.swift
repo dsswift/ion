@@ -193,6 +193,10 @@ struct BenchMemberRowView: View {
         case .integrated:
             Label("@\(String(member.pinnedSha.prefix(7)))", systemImage: "checkmark.circle.fill")
                 .font(.caption2).labelStyle(.titleOnly).foregroundStyle(.green)
+        case .pending:
+            // No sha: the pin carries no commits, so showing one would claim the
+            // bench holds a contribution that does not exist.
+            Text("no commits yet").font(.caption2).foregroundStyle(.secondary)
         case .landed:
             Label("landed", systemImage: "arrow.down.to.line")
                 .font(.caption2).labelStyle(.titleOnly).foregroundStyle(.green)

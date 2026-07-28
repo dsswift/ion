@@ -135,6 +135,45 @@ Absorption is bookkeeping on the bench's member list. It runs **no git command
 against the member worktree**: the branch, its commits, and its working tree are
 untouched and remain fully usable.
 
+### A contribution is a range, so "not started" is not "landed"
+
+All three landed tiers above answer *yes* for a member that has committed
+**nothing**. A worktree cut from the feature branch and enrolled before its first
+commit has a HEAD identical to the feature-branch tip, so the pinned commit is an
+ancestor of the source branch, the pinned tree is in its history, and the branch
+does not differ from it. The bench read that as landed and retired the member on
+every rebuild — a worktree could not stay enrolled before its first commit, which
+is precisely when an operator wants to enroll it.
+
+No query at rebuild time can separate the two cases, because after the fact they
+are identical: in both, `sourceBranch..pinnedSha` is empty. The separating fact is
+where the contribution **starts**, so a pin records it: `pinnedBaseSha` is the
+merge base of `pinnedSha` and the source branch, captured when the pin is taken.
+A contribution is therefore the range `pinnedBaseSha..pinnedSha`, and an equal
+pair means empty — a fact that survives the source branch moving underneath it.
+
+An empty contribution is reported `pending`: kept in the member list, merged into
+nothing, never retired. It is not terminal and not an error. The member becomes
+`stale` the moment the worktree commits, and Update pins the real work. Absorption
+now applies only to a pin that carried commits in the first place.
+
+Records written before the range was tracked carry `pinnedBaseSha: ""`, which
+means **unknown**, never empty. Rebuild resolves it once against the member branch
+and backfills it: a branch with commits beyond the source branch behaves exactly
+as before, a branch with none is `pending`, and a branch that no longer exists
+(the normal *Land & retire* outcome) stays unknown and falls through to the tiers
+above, which correctly retire it.
+
+### Retirement is surfaced, never silent
+
+A retired member's row disappears. A row vanishing with no explanation is
+indistinguishable from the bench losing a worktree, which is how the `pending`
+defect above was first reported. `BenchRebuildResult.retired` carries the absorbed
+members and the git panel names them ("… landed into `<branch>` and is now part of
+the base") until the operator dismisses the notice. Dismissal is per-window UI
+state: it mutates no bench record, which is why it is mirror-local rather than
+forwarded.
+
 ### Never `git clean -x`
 
 `switch -C ... --discard-changes` resets tracked files and **leaves ignored

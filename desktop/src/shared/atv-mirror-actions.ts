@@ -128,6 +128,10 @@ export const MIRROR_LOCAL_ACTIONS: Record<string, string> = {
   markResourceRead: 'pass-through: mark_read delta via engine broker + local read-state',
   markAllResourcesRead: 'pass-through: mark_read deltas via engine broker + local read-state',
   deleteResource: 'local view of resource list; producer owns persistence',
+  // Dismissing the absorbed-into-base notice is per-window UI state: the bench
+  // record itself is untouched, and each window's operator dismisses their own
+  // notice. Forwarding it would clear the overlay's notice from the ATV.
+  clearBenchRetired: 'per-window notice dismissal; no bench mutation',
   runQuickTool: 'pass-through: one-shot tool run',
   // Event-stream ingestion (mirror consumes the same normalized stream).
   handleNormalizedEvent: 'ingestion: normalized-event reducer',

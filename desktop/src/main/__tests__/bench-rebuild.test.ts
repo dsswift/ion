@@ -71,12 +71,13 @@ function workspaceFor(members: IntegrationMember[] = []): IntegrationWorkspace {
 
 /** Enroll a worktree, pinning it at its committed contribution. */
 async function enroll(wt: { path: string; branch: string }): Promise<IntegrationMember> {
-  const contribution = await captureContribution(wt.path)
+  const contribution = await captureContribution(wt.path, 'main')
   return makeMember({
     worktreePath: wt.path,
     branchName: wt.branch,
     pinnedSha: contribution.sha,
     pinnedTreeHash: contribution.treeHash,
+    pinnedBaseSha: contribution.baseSha,
   })
 }
 
@@ -378,7 +379,7 @@ describe('captureContribution — committed work only', () => {
     // assertion would be measuring the test rather than the product.
     const indexPath = join(repo, '.git', 'worktrees', 'a', 'index')
     const indexMtimeBefore = statSync(indexPath).mtimeMs
-    const contribution = await captureContribution(a.path)
+    const contribution = await captureContribution(a.path, 'main')
     const indexMtimeAfter = statSync(indexPath).mtimeMs
 
     expect(contribution.sha).toBe(headBefore)

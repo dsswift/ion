@@ -69,6 +69,7 @@ const initialState = {
   worktreeInventory: new Map(),
   benchWorkspaces: new Map(),
   benchSourceTips: new Map(),
+  benchRetired: new Map(),
   engineWorkingMessages: new Map(),
   engineNotifications: new Map(),
   engineDialogs: new Map(),

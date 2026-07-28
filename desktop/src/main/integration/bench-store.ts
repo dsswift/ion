@@ -14,10 +14,14 @@
  * because they resolve to different keys, not because some rule forbids it.
  *
  * ── Pins ────────────────────────────────────────────────────────────────────
- * `pinnedSha` / `pinnedTreeHash` record exactly what is integrated. A rebuild
- * merges the pins, never a fresh read of the member's tip, so updating one
- * member cannot drag in another member's half-finished work. Pins advance only
- * on enrollment or an explicit Update.
+ * `pinnedSha` / `pinnedTreeHash` record exactly what is integrated, and
+ * `pinnedBaseSha` records where that contribution STARTS. The contribution is
+ * the range `pinnedBaseSha..pinnedSha`, not the tip: an equal pair means the
+ * member has committed nothing of its own, which is the one fact no git query at
+ * rebuild time can recover once the source branch moves. A rebuild merges the
+ * pins, never a fresh read of the member's tip, so updating one member cannot
+ * drag in another member's half-finished work. Pins advance only on enrollment
+ * or an explicit Update.
  */
 import { existsSync, mkdirSync, readFileSync } from 'fs'
 import { homedir } from 'os'
@@ -162,6 +166,7 @@ export function makeMember(args: {
   label?: string
   pinnedSha: string
   pinnedTreeHash: string
+  pinnedBaseSha: string
 }): IntegrationMember {
   return {
     worktreePath: args.worktreePath,
@@ -170,9 +175,15 @@ export function makeMember(args: {
     enabled: true,
     pinnedSha: args.pinnedSha,
     pinnedTreeHash: args.pinnedTreeHash,
+    pinnedBaseSha: args.pinnedBaseSha,
     // Seeded to the pin: a freshly enrolled member is by definition current.
     currentTreeHash: args.pinnedTreeHash,
-    status: 'integrated',
+    // A member enrolled before it has committed anything contributes nothing, and
+    // says so. Calling that `integrated` would claim content the bench does not
+    // hold; the bench used to call it `landed` and delete the member outright.
+    status: args.pinnedBaseSha !== '' && args.pinnedBaseSha === args.pinnedSha
+      ? 'pending'
+      : 'integrated',
   }
 }
 
@@ -214,9 +225,16 @@ function normalizeMember(raw: unknown): IntegrationMember | null {
     enabled: typeof m.enabled === 'boolean' ? m.enabled : true,
     pinnedSha: typeof m.pinnedSha === 'string' ? m.pinnedSha : '',
     pinnedTreeHash: typeof m.pinnedTreeHash === 'string' ? m.pinnedTreeHash : '',
+    // Absent on records written before the contribution range was tracked.
+    // Empty means UNKNOWN, never "empty contribution" — rebuild resolves it once
+    // against the member branch and backfills it. Defaulting it to the pinned sha
+    // instead would declare every legacy member's contribution empty and skip
+    // work that is genuinely integrated.
+    pinnedBaseSha: typeof m.pinnedBaseSha === 'string' ? m.pinnedBaseSha : '',
     currentTreeHash: typeof m.currentTreeHash === 'string' ? m.currentTreeHash : '',
-    status: m.status === 'integrated' || m.status === 'stale' || m.status === 'conflicted' ||
-      m.status === 'missing' || m.status === 'excluded' ? m.status : 'stale',
+    status: m.status === 'integrated' || m.status === 'pending' || m.status === 'stale' ||
+      m.status === 'conflicted' || m.status === 'missing' || m.status === 'excluded'
+      ? m.status : 'stale',
     conflictPaths: Array.isArray(m.conflictPaths) ? m.conflictPaths.filter((p): p is string => typeof p === 'string') : undefined,
     conflictsWith: Array.isArray(m.conflictsWith) ? m.conflictsWith.filter((b): b is string => typeof b === 'string') : undefined,
   }

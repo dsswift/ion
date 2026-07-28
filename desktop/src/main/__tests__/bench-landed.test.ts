@@ -92,8 +92,14 @@ function workspaceFor(members: IntegrationMember[] = []): IntegrationWorkspace {
 }
 
 async function enroll(wt: { path: string; branch: string }): Promise<IntegrationMember> {
-  const c = await captureContribution(wt.path)
-  return makeMember({ worktreePath: wt.path, branchName: wt.branch, pinnedSha: c.sha, pinnedTreeHash: c.treeHash })
+  const c = await captureContribution(wt.path, FEATURE)
+  return makeMember({
+    worktreePath: wt.path,
+    branchName: wt.branch,
+    pinnedSha: c.sha,
+    pinnedTreeHash: c.treeHash,
+    pinnedBaseSha: c.baseSha,
+  })
 }
 
 function benchMergeCount(benchPath: string): number {
@@ -472,3 +478,20 @@ describe('landed absorption — rewritten history (squash, rebase, cherry-pick)'
     expect(git(repo, 'branch', '--list', a.branch).trim()).toContain(a.branch)
   })
 })
+
+/**
+ * A member enrolled before it has committed anything.
+ *
+ * ── The defect ──────────────────────────────────────────────────────────────
+ * A worktree cut from the feature branch and enrolled before its first commit
+ * has a HEAD identical to the feature-branch tip. Every landed-detection tier
+ * then answers "landed": the pinned commit IS an ancestor of the source branch,
+ * the pinned tree IS in its history, and the branch does NOT differ from it. So
+ * the member was absorbed and retired on every rebuild, and the operator could
+ * never keep it enrolled.
+ *
+ * Landing and never-started are indistinguishable by any live git query, which
+ * is why the contribution is recorded as a RANGE at pin time. These tests pin
+ * both halves: the empty member survives, and a genuinely landed member is still
+ * retired.
+ */

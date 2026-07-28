@@ -48,7 +48,7 @@ export interface RemoteBenchMember {
   enabled: boolean
   /** Short sha of the contribution currently integrated. */
   pinnedSha: string
-  status: 'integrated' | 'landed' | 'stale' | 'conflicted' | 'missing' | 'excluded'
+  status: 'integrated' | 'pending' | 'landed' | 'stale' | 'conflicted' | 'missing' | 'excluded'
   conflictPaths?: string[]
   conflictsWith?: string[]
 }

@@ -6,6 +6,10 @@
  * (`stale`). Those are different facts, and collapsing them would hide the
  * central guarantee: the bench holds exactly what was pinned, so updating one
  * member cannot drag in another's half-finished work.
+ *
+ * A `pending` member shows `no commits yet` rather than a sha, because its pin
+ * carries nothing: displaying `@abc1234` there would claim the bench holds a
+ * contribution that does not exist.
  */
 import React from 'react'
 import { ArrowsClockwise, CircleNotch, Warning, X } from '@phosphor-icons/react'
@@ -35,13 +39,30 @@ export function BenchMemberRow({
       : member.status === 'stale' ? colors.warningFg
         : member.status === 'missing' ? colors.textTertiary
           : member.status === 'excluded' ? colors.textTertiary
-            : colors.worktreeGreen
+            : member.status === 'pending' ? colors.textTertiary
+              : colors.worktreeGreen
 
+  // Every status names itself. The previous `: member.pinnedSha ? '@sha'` tail
+  // printed a bare pinned sha for any status it did not enumerate, which read as
+  // "integrated at this commit" for states that hold nothing — exactly the wrong
+  // claim for a member with no commits behind its pin.
   const statusLabel =
     member.status === 'conflicted' ? 'conflict'
       : member.status === 'missing' ? 'missing'
         : member.status === 'excluded' ? 'excluded'
-          : member.pinnedSha ? `@${member.pinnedSha.slice(0, 7)}` : ''
+          : member.status === 'pending' ? 'no commits yet'
+            : member.status === 'landed' ? 'landed'
+              : member.pinnedSha ? `@${member.pinnedSha.slice(0, 7)}` : ''
+
+  const statusTooltip =
+    member.status === 'stale' ? 'This worktree has committed work newer than what the bench holds'
+      : member.status === 'conflicted' ? 'Could not merge; skipped so the rest of the bench still builds'
+        : member.status === 'pending'
+          ? 'Enrolled; nothing to integrate until this worktree has a commit'
+          : member.status === 'missing' ? 'The branch or worktree is gone'
+            : member.status === 'excluded' ? 'Excluded from the bench, so its merge is skipped'
+              : member.status === 'landed' ? 'Landed into the feature branch; part of the bench base'
+                : 'Integrated at this commit'
 
   return (
     <div
@@ -82,11 +103,7 @@ export function BenchMemberRow({
 
         <span style={{ flex: 1 }} />
 
-        <Tooltip text={member.status === 'stale'
-          ? 'This worktree has committed work newer than what the bench holds'
-          : member.status === 'conflicted'
-            ? 'Could not merge; skipped so the rest of the bench still builds'
-            : 'Integrated at this commit'}>
+        <Tooltip text={statusTooltip}>
           <span data-testid={`bench-status-${member.branchName}`} style={{ fontSize: 9, color: statusColor, flexShrink: 0 }}>
             {statusLabel}{member.status === 'stale' ? ' · stale' : ''}
           </span>

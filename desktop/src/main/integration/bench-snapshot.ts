@@ -41,21 +41,78 @@ export interface Contribution {
   sha: string
   /** Tree hash — the content identity used for staleness. */
   treeHash: string
+  /**
+   * The merge base of `sha` and the source branch at the moment the pin was
+   * taken. Together with `sha` this defines the contribution as a RANGE
+   * (`baseSha..sha`) rather than a tip.
+   *
+   * That distinction is what separates "this member has not committed anything
+   * yet" from "this member's work has landed". Both leave `pinnedSha` as an
+   * ancestor of the source branch with an empty `sourceBranch..pinnedSha`, so no
+   * question asked at rebuild time can tell them apart — the bench used to call
+   * the first case landed and silently retire the member. When `baseSha` equals
+   * `sha` the contribution is empty by construction, and that fact survives the
+   * source branch moving underneath it.
+   *
+   * Empty when the merge base could not be read (a branch with no common
+   * ancestor); callers treat that as "unknown", never as "empty".
+   */
+  baseSha: string
 }
 
 /**
- * Capture a worktree's contribution: its committed HEAD and that commit's
- * tree. Read-only — nothing in the member worktree is written.
+ * Capture a worktree's contribution: its committed HEAD, that commit's tree, and
+ * the merge base with the source branch. Read-only — nothing in the member
+ * worktree is written.
+ *
+ * `sourceBranch` is required because the contribution is a range, and the range
+ * is meaningless without the branch it is measured against.
  */
-export async function captureContribution(worktreePath: string): Promise<Contribution> {
+export async function captureContribution(
+  worktreePath: string,
+  sourceBranch: string,
+): Promise<Contribution> {
   const sha = (await runGit(worktreePath, ['rev-parse', 'HEAD'])).trim()
   const treeHash = (await runGit(worktreePath, ['rev-parse', 'HEAD^{tree}'])).trim()
+  const baseSha = await mergeBaseWith(worktreePath, sha, sourceBranch)
   log('captured contribution', {
     worktree_path: worktreePath,
     sha: sha.slice(0, 7),
     tree: treeHash.slice(0, 7),
+    base: baseSha ? baseSha.slice(0, 7) : 'unknown',
+    source_branch: sourceBranch,
+    // The single fact that decides whether this member has anything to merge.
+    empty_contribution: baseSha !== '' && baseSha === sha,
   })
-  return { sha, treeHash }
+  return { sha, treeHash, baseSha }
+}
+
+/**
+ * Merge base of `sha` and `sourceBranch`, or `''` when it cannot be determined.
+ *
+ * Returns empty rather than throwing: a member whose branch has no common
+ * ancestor with the source branch is unusual but not a reason to fail the whole
+ * enrollment, and the caller distinguishes unknown from empty.
+ */
+async function mergeBaseWith(
+  worktreePath: string,
+  sha: string,
+  sourceBranch: string,
+): Promise<string> {
+  if (!sourceBranch) {
+    log('no source branch, merge base not resolved', { worktree_path: worktreePath })
+    return ''
+  }
+  try {
+    return (await runGit(worktreePath, ['merge-base', sha, sourceBranch])).trim()
+  } catch (err) {
+    warn('could not resolve merge base with source branch', {
+      worktree_path: worktreePath,
+      source_branch: sourceBranch,
+      error: String(err),
+    })
+    return ''
+  }
 }
 
 /** True when the worktree has changes that are not committed. */
@@ -76,8 +133,17 @@ export async function hasUncommittedWork(worktreePath: string): Promise<boolean>
  */
 export async function contributedTreeHash(member: IntegrationMember): Promise<string | null> {
   try {
-    const contribution = await captureContribution(member.worktreePath)
-    return contribution.treeHash
+    // Reads the tree directly rather than going through captureContribution:
+    // staleness is a pure content question and needs no merge base, so asking for
+    // one here would make the source branch a parameter of every staleness poll
+    // for no gain.
+    const treeHash = (await runGit(member.worktreePath, ['rev-parse', 'HEAD^{tree}'])).trim()
+    log('read member tree hash', {
+      worktree_path: member.worktreePath,
+      branch: member.branchName,
+      tree: treeHash.slice(0, 7),
+    })
+    return treeHash
   } catch (err) {
     warn('could not read member contribution', {
       worktree_path: member.worktreePath,
