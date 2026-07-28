@@ -36,6 +36,15 @@ export interface RemoteWorktree {
   provisionState?: 'idle' | 'probing' | 'seeding' | 'building' | 'ready' | 'failed'
   /** Operator-facing reason when `provisionState` is `failed`. */
   provisionError?: string
+  /**
+   * Set while a rebase/merge/cherry-pick is in progress here (a conflicted
+   * sync stops mid-rebase). The appraisal fields above are conservative
+   * defaults in that state, not live answers. Resolution is desktop-only; iOS
+   * renders the state so the worktree does not look healthy or vanish.
+   */
+  operationState?: 'rebasing' | 'merging' | 'cherry-picking'
+  /** Number of conflicted files when the operation is conflicted. */
+  conflictedCount?: number
   /** Tab id when a conversation is already open here, so iOS focuses it. */
   openTabId?: string
 }

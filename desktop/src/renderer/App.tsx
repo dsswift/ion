@@ -18,6 +18,7 @@ import { PopoverLayerProvider } from './components/PopoverLayer'
 import { CommandPalette } from './components/CommandPalette'
 import { CloseTabConfirmDialog } from './components/CloseTabConfirmDialog'
 import { UpdateDialog } from './components/UpdateDialog'
+import { ConflictToasts } from './components/ConflictToasts'
 import { RemoteDirectoryPicker } from './components/RemoteDirectoryPicker'
 import { useRemoteFsStore } from './stores/remote-fs-store'
 import { useEngineEvents } from './hooks/useEngineEvents'
@@ -535,6 +536,11 @@ export default function App() {
         {tabsReady && isTerminalBigScreen && (
           <TerminalBigScreen tabId={activeTabId} />
         )}
+
+        {/* Conflicted-sync toasts: fire at the moment a sync/land fails with
+            conflicts, from any tab. App-level because the failure is not tied
+            to the active conversation. */}
+        <ConflictToasts />
 
         {/* Auto-update install dialog */}
         <UpdateDialog />

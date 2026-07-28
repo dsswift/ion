@@ -13,6 +13,7 @@ import { registerFilesIpc } from './files'
 import { registerGitIpc } from './git'
 import { registerGitExtrasIpc } from './git-extras'
 import { registerGitRebaseIpc } from './git-rebase'
+import { registerGitConflictsIpc } from './git-conflicts'
 import { registerWorktreeIpc } from './worktree'
 import { registerWorktreeLifecycleIpc } from './worktree-lifecycle'
 import { registerBenchIpc } from './bench'
@@ -42,6 +43,7 @@ export function registerAllIpc(): void {
   registerGitIpc()
   registerGitExtrasIpc()
   registerGitRebaseIpc()
+  registerGitConflictsIpc()
   registerWorktreeIpc()
   registerWorktreeLifecycleIpc()
   registerBenchIpc()

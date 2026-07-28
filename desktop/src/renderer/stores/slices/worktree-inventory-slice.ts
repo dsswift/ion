@@ -28,6 +28,21 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
         set((s) => ({
           worktreeInventory: new Map(s.worktreeInventory).set(repoPath, worktrees),
         }))
+        // Conflict alerts ride the same refresh: a worktree reporting an
+        // in-progress operation is recorded (covers conflicts raised outside a
+        // sync click — a restart, a manual rebase), and a directory whose
+        // operation finished has its alert cleared so nothing goes stale.
+        for (const wt of worktrees) {
+          if (wt.operationState) {
+            get().recordConflictAlert(wt.worktreePath, {
+              source: 'detected',
+              operationState: wt.operationState,
+              label: wt.label,
+            })
+          } else {
+            get().clearConflictAlert(wt.worktreePath)
+          }
+        }
         rDebug('worktree.inventory', 'refreshed', { repo_path: repoPath, count: worktrees.length })
       } catch (err) {
         rWarn('worktree.inventory', 'refresh failed', { repo_path: repoPath, error: String(err) })
@@ -189,6 +204,17 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
           has_conflicts: !!result.hasConflicts,
           error: result.error ?? '',
         })
+        // A conflicted sync used to fail into the log and nowhere else; the
+        // operator believed it succeeded. Record it so the toast and the row
+        // badge fire at the moment of failure.
+        if (result.hasConflicts) {
+          get().recordConflictAlert(worktreePath, {
+            source: 'sync',
+            operationState: 'rebasing',
+            message: result.error,
+            label: worktreePath.split('/').filter(Boolean).pop(),
+          })
+        }
       }
       await get().refreshWorktreeInventory(repoPath)
       return result

@@ -177,6 +177,39 @@ holding real commits. Both `captureContribution` and `contributedTreeHash` now
 resolve `member.branchName`, which is correct at every moment with no
 mid-operation mode split.
 
+### A conflicted sync is surfaced and resolvable, never silent
+
+The sync verb rebases the worktree onto its source branch, and a real conflict
+stops that rebase halfway: HEAD detaches, the worktree drops out of every
+appraisal, and — before this was fixed — the failure went to the log file only
+while the panel showed nothing. The operator believed the sync succeeded.
+
+Three surfaces now carry the state, all fed by the same probe
+(`main/git/operation-state.ts`, which resolves rebase/merge/cherry-pick state
+via `rev-parse --git-path` so linked worktrees are read correctly):
+
+- the inventory keeps a mid-operation worktree visible, with `operationState`
+  and its conflicted paths (the branch is recovered from
+  `rebase-merge/head-name` while HEAD is detached);
+- a toast fires at the moment a sync or land fails with conflicts, and the
+  worktree row shows `conflict · Resolve`; dismissing the toast never hides the
+  row badge, which derives from live repository state;
+- the ConflictsDialog lists each conflicted file with its shape (both
+  modified, both added, delete/modify) and resolves it by Accept Yours, Accept
+  Theirs, or a 3-way merge editor (`merge-model.ts` implements the diff3
+  alignment; one-sided changes auto-apply, only contested chunks demand a
+  decision). Ours/theirs are always labelled with branch names, because a
+  rebase inverts git's sides and bare "ours" mid-rebase means the branch being
+  rebased ONTO — precisely the confusion a resolution UI must remove.
+
+The dialog's AI Assisted button opens (or focuses) a conversation in the
+conflicted directory and submits `Please fix my currently in-progress rebase.`
+verbatim — one forwarded store action, per the ATV multi-step rule. Abort and
+Continue drive the underlying rebase; Continue enables only when nothing is
+left unmerged. Resolution is desktop-only; iOS renders `operationState` and a
+conflicted-file count so a mid-rebase worktree neither vanishes nor looks
+healthy on the phone.
+
 ### Retirement is surfaced, never silent
 
 A retired member's row disappears. A row vanishing with no explanation is

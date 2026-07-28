@@ -45,10 +45,17 @@ async function openTabsByDirectory(): Promise<Map<string, string>> {
 /** Build the per-repo worktree + bench projection for iOS. */
 export async function buildWorktreeState(repoPath: string): Promise<RemoteWorktreeState> {
   const openTabs = await openTabsByDirectory()
-  const worktrees = (await inventoryWorktrees(repoPath)).map((w) => ({
-    ...w,
-    openTabId: openTabs.get(w.worktreePath),
-  }))
+  const worktrees = (await inventoryWorktrees(repoPath)).map((w) => {
+    // Project conflictedPaths down to a count: iOS renders "N conflicted", and
+    // shipping the path list would put repository file names on the wire for a
+    // surface that cannot act on them (resolution is desktop-only).
+    const { conflictedPaths, ...rest } = w
+    return {
+      ...rest,
+      conflictedCount: conflictedPaths?.length,
+      openTabId: openTabs.get(w.worktreePath),
+    }
+  })
 
   const benches: RemoteBench[] = []
   for (const ws of listWorkspaces(repoPath)) {

@@ -22,6 +22,7 @@ import { Plus } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { WorktreeRow } from './WorktreeRow'
+import { ConflictsDialog } from './git/ConflictsDialog'
 import { WorktreeRowMenu } from './WorktreeRowMenu'
 import { rError } from '../rendererLogger'
 import type { WorktreeInventoryEntry } from '../../shared/types'
@@ -38,6 +39,7 @@ export function WorktreesSection({
   const tabs = useSessionStore((s) => s.tabs)
   const [syncing, setSyncing] = useState<string | null>(null)
   const [menu, setMenu] = useState<{ entry: WorktreeInventoryEntry; anchor: { x: number; y: number } } | null>(null)
+  const [resolving, setResolving] = useState<string | null>(null)
 
   const refresh = useCallback(() => {
     void useSessionStore.getState().refreshWorktreeInventory(repoPath)
@@ -83,6 +85,7 @@ export function WorktreesSection({
               }}
               onSync={() => handleSync(entry)}
               onMenu={(anchor) => setMenu({ entry, anchor })}
+              onResolve={() => setResolving(entry.worktreePath)}
             />
           )
         })
@@ -110,6 +113,13 @@ export function WorktreesSection({
         <Plus size={10} />
         <span>New worktree</span>
       </button>
+
+      {resolving && (
+        <ConflictsDialog
+          directory={resolving}
+          onClose={() => { setResolving(null); refresh() }}
+        />
+      )}
 
       {menu && (
         <WorktreeRowMenu

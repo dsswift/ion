@@ -26,6 +26,8 @@ export interface WorktreeRowProps {
   onOpen(): void
   onSync(): void
   onMenu(anchor: { x: number; y: number }): void
+  /** Open the conflict-resolution dialog. Offered when `operationState` is set. */
+  onResolve?(): void
 }
 
 export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
@@ -93,6 +95,27 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
         )}
 
         <span style={{ flex: 1 }} />
+
+        {/* An in-progress conflicted operation outranks every other badge: the
+            worktree is mid-rebase, its other numbers are meaningless, and the
+            one useful action is Resolve. This used to be invisible — the
+            worktree simply vanished from the list mid-rebase. */}
+        {entry.operationState && (
+          <Tooltip text={`A ${entry.operationState === 'rebasing' ? 'rebase' : entry.operationState === 'merging' ? 'merge' : 'cherry-pick'} is in progress${(entry.conflictedPaths?.length ?? 0) > 0 ? ` with ${entry.conflictedPaths!.length} conflicted file${entry.conflictedPaths!.length === 1 ? '' : 's'}` : ''}. Click to resolve.`}>
+            <button
+              data-testid={`worktree-conflict-${entry.branchName}`}
+              onClick={(e) => { e.stopPropagation(); props.onResolve?.() }}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 3,
+                fontSize: 9, padding: '1px 6px', borderRadius: 3, flexShrink: 0,
+                border: `1px solid ${colors.dangerFg}`, background: 'transparent',
+                color: colors.dangerFg, cursor: 'pointer',
+              }}
+            >
+              <Warning size={9} /> conflict · Resolve
+            </button>
+          </Tooltip>
+        )}
 
         {/* Unlanded commits: what this worktree is holding that the feature
             branch does not have yet. */}

@@ -208,6 +208,60 @@ final class WorktreeWireTests: XCTestCase {
         XCTAssertEqual(states[0].worktrees[0].label, "x")
     }
 
+    /// A mid-operation worktree (the state a conflicted sync leaves behind)
+    /// decodes with its operation and conflict count. This worktree used to
+    /// vanish from the desktop panel entirely; on iOS the same state must at
+    /// minimum render, not disappear or look healthy.
+    func testMidOperationWorktreeDecodes() throws {
+        let json = """
+        {"type":"desktop_worktree_state","states":[{"repoPath":"/repo","benches":[],"worktrees":[{
+          "worktreePath":"/wt/a","branchName":"wt/a","label":"a","sourceBranch":"josh",
+          "head":"abc1234","lastCommitSubject":"edit shared","isDirty":false,
+          "unlandedCommitCount":0,"needsSync":false,"safeToDiscard":false,
+          "operationState":"rebasing","conflictedCount":2}]}]}
+        """.data(using: .utf8)!
+
+        let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
+
+        guard case let .worktreeState(states) = event else { return XCTFail("wrong case") }
+        let wt = states[0].worktrees[0]
+        XCTAssertEqual(wt.operationState, .rebasing)
+        XCTAssertEqual(wt.conflictedCount, 2)
+    }
+
+    /// An unknown operationState from a newer desktop degrades to `.rebasing`
+    /// (generic "operation in progress") rather than failing the payload.
+    func testUnknownOperationStateDegradesRatherThanFailing() throws {
+        let json = """
+        {"type":"desktop_worktree_state","states":[{"repoPath":"/repo","benches":[],"worktrees":[{
+          "worktreePath":"/wt/a","branchName":"wt/a","label":"a","sourceBranch":"josh",
+          "head":"abc1234","lastCommitSubject":"x","isDirty":false,
+          "unlandedCommitCount":0,"needsSync":false,"safeToDiscard":false,
+          "operationState":"some_future_operation"}]}]}
+        """.data(using: .utf8)!
+
+        let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
+
+        guard case let .worktreeState(states) = event else { return XCTFail("wrong case") }
+        XCTAssertEqual(states[0].worktrees[0].operationState, .rebasing)
+        XCTAssertNil(states[0].worktrees[0].conflictedCount)
+    }
+
+    /// A quiescent worktree carries neither field.
+    func testQuiescentWorktreeHasNoOperationState() throws {
+        let json = """
+        {"type":"desktop_worktree_state","states":[{"repoPath":"/repo","benches":[],"worktrees":[{
+          "worktreePath":"/wt/a","branchName":"wt/a","label":"a","sourceBranch":"josh",
+          "head":"abc1234","lastCommitSubject":"x","isDirty":false,
+          "unlandedCommitCount":0,"needsSync":false,"safeToDiscard":true}]}]}
+        """.data(using: .utf8)!
+
+        let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
+
+        guard case let .worktreeState(states) = event else { return XCTFail("wrong case") }
+        XCTAssertNil(states[0].worktrees[0].operationState)
+    }
+
     /// `pending` decodes to its own case rather than degrading. A member enrolled
     /// before its first commit is a normal state, and showing it as `stale` would
     /// offer an Update that has nothing to advance to.

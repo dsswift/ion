@@ -143,8 +143,6 @@ export const IPC = {
   GIT_REVERT: 'git:revert',
   GIT_RESET: 'git:reset',
   GIT_BLAME: 'ion:git-blame',
-  GIT_CONFLICTS: 'ion:git-conflicts',
-  GIT_CONFLICT_FILE: 'ion:git-conflict-file',
   GIT_RESOLVE_CONFLICT: 'ion:git-resolve-conflict',
   GIT_APPLY_PATCH: 'ion:git-apply-patch',
   GIT_TAG_CREATE: 'ion:git-tag-create',
@@ -162,6 +160,11 @@ export const IPC = {
   GIT_REBASE_EXEC: 'ion:git-rebase-exec',
   GIT_REBASE_ABORT: 'ion:git-rebase-abort',
   GIT_REBASE_CONTINUE: 'ion:git-rebase-continue',
+
+  // Conflict resolution (3-way merge, accept-side, operation labels)
+  GIT_CONFLICT_STAGES: 'ion:git-conflict-stages',
+  GIT_CONFLICT_ACCEPT: 'ion:git-conflict-accept',
+  GIT_OP_STATE: 'ion:git-op-state',
 
   // Git worktree operations
   GIT_WORKTREE_ADD: 'ion:git-worktree-add',

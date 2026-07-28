@@ -40,6 +40,29 @@ struct RemoteWorktree: Codable, Identifiable, Hashable {
     /// Set when a conversation is already open here, so tapping focuses it
     /// rather than stacking a duplicate.
     var openTabId: String?
+    /// Set while a rebase/merge/cherry-pick is in progress in this worktree —
+    /// the state a conflicted sync leaves behind. The appraisal fields above
+    /// are conservative defaults in that state, not live answers. Resolution
+    /// is desktop-only; iOS renders the state so the worktree does not look
+    /// healthy or vanish.
+    var operationState: OperationState?
+    /// Number of conflicted files when the operation is conflicted.
+    var conflictedCount: Int?
+
+    /// Mirrors GitOperationState in desktop/src/shared/types-git.ts.
+    ///
+    /// Decoded leniently like ProvisionState: an unrecognised value from a
+    /// newer desktop becomes `.rebasing` (the generic "an operation is in
+    /// progress" rendering) rather than failing the whole worktree decode.
+    enum OperationState: String, Codable, Hashable {
+        case rebasing, merging
+        case cherryPicking = "cherry-picking"
+
+        init(from decoder: Decoder) throws {
+            let raw = try decoder.singleValueContainer().decode(String.self)
+            self = OperationState(rawValue: raw) ?? .rebasing
+        }
+    }
 
     /// Mirrors WorktreeProvisionState in desktop/src/shared/types-git.ts.
     ///

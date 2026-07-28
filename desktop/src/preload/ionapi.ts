@@ -138,13 +138,31 @@ export interface IonAPI extends AtvApi {
   gitRevert(directory: string, hash: string): Promise<{ ok: boolean; error?: string }>
   gitReset(directory: string, hash: string, mode: 'soft' | 'mixed' | 'hard'): Promise<{ ok: boolean; error?: string }>
   gitBlame(directory: string, path: string): Promise<{ lines: Array<{ hash: string; author: string; date: string; lineNo: number; content: string }>; ok: boolean; error?: string }>
-  gitConflicts(directory: string): Promise<{ files: string[]; ok: boolean; error?: string }>
-  gitConflictFile(directory: string, path: string): Promise<{ content: string; ok: boolean; error?: string }>
   gitResolveConflict(directory: string, path: string, content: string): Promise<{ ok: boolean; error?: string }>
   gitRebaseTodo(directory: string, onto: string): Promise<{ commits: Array<{ hash: string; subject: string; action: string }>; ok: boolean; error?: string }>
   gitRebaseExec(directory: string, onto: string, commits: Array<{ hash: string; action: string }>): Promise<{ ok: boolean; error?: string }>
   gitRebaseAbort(directory: string): Promise<{ ok: boolean; error?: string }>
   gitRebaseContinue(directory: string): Promise<{ ok: boolean; error?: string }>
+  gitOpState(directory: string): Promise<{
+    ok: boolean
+    error?: string
+    state?: 'rebasing' | 'merging' | 'cherry-picking' | null
+    branch?: string | null
+    onto?: string | null
+    oursLabel?: string
+    theirsLabel?: string
+    files?: Array<{ path: string; shape: string; hasBase: boolean; hasOurs: boolean; hasTheirs: boolean }>
+  }>
+  gitConflictStages(directory: string, path: string): Promise<{
+    ok: boolean
+    error?: string
+    base?: string | null
+    ours?: string | null
+    theirs?: string | null
+    oursLabel?: string
+    theirsLabel?: string
+  }>
+  gitConflictAccept(directory: string, path: string, side: 'ours' | 'theirs'): Promise<{ ok: boolean; error?: string }>
   gitSubscribe(directory: string): Promise<{ snapshot: RepoSnapshot | null }>
   gitUnsubscribe(directory: string): Promise<{ ok: boolean }>
   gitRefresh(directory: string): Promise<{ ok: boolean }>

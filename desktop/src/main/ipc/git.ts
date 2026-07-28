@@ -510,27 +510,6 @@ export function registerGitIpc(): void {
     }
   })
 
-  ipcMain.handle(IPC.GIT_CONFLICTS, async (_event, { directory }: { directory: string }) => {
-    try {
-      const output = await runGit(directory, ['diff', '--name-only', '--diff-filter=U'])
-      const files = output.trim().split('\n').filter(Boolean)
-      return { files, ok: true }
-    } catch (err: any) {
-      return { files: [], ok: false, error: err.message }
-    }
-  })
-
-  ipcMain.handle(IPC.GIT_CONFLICT_FILE, async (_event, { directory, path }: { directory: string; path: string }) => {
-    try {
-      const { readFileSync } = require('fs')
-      const fullPath = join(directory, path)
-      const content = readFileSync(fullPath, 'utf-8')
-      return { content, ok: true }
-    } catch (err: any) {
-      return { content: '', ok: false, error: err.message }
-    }
-  })
-
   ipcMain.handle(IPC.GIT_RESOLVE_CONFLICT, async (_event, { directory, path, content }: { directory: string; path: string; content: string }) => {
     try {
       const { writeFileSync: writeFsSync } = require('fs')
