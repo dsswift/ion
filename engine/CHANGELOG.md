@@ -13,6 +13,12 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.59.1](https://github.com/dsswift/ion/compare/engine-v1.59.0...engine-v1.59.1) (2026-07-28)
+
+### Bug Fixes
+
+* **engine:** de-flake the tool-stall watchdog test on linux -race ([4d8c3d0](https://github.com/dsswift/ion/commit/4d8c3d0ed181745169a4cae81c2414ebc07050be))
+
 ## [1.59.0](https://github.com/dsswift/ion/compare/engine-v1.58.0...engine-v1.59.0) (2026-07-28)
 
 ### Features
