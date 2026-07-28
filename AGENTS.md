@@ -828,6 +828,17 @@ building, testing, and staging are unaffected. A fix diagnosed in the bench
 belongs in the member worktree that owns the file: commit it there, then update
 that member in the bench.
 
+**A bench refuses edits, and names where they belong.** The history rule above
+covers `commit`/`push`; a bench also refuses `Write`, `Edit`, and `ion_scaffold`
+(`engine/extensions/ion-meta/bench-write-gate.ts`), because an edit made there is
+destroyed by the next rebuild. `Bash` stays open — building and testing are what
+a bench is for, as do staging and discarding. The refusal names the member
+worktree that owns the file, resolved by diffing each member's pinned commit
+against the bench base rather than asking who last touched it: when several
+members change one file, all of them are listed with their changed line ranges
+so the agent can pick by the region it is editing. The git panel matches: in a
+bench it hides Changes and Graph and titles the section `Integration (Bench)`.
+
 **A worktree refuses writes outside itself.** A conversation whose cwd is a
 registered worktree (`~/.ion/worktree-registry.json`) may not write into the base
 repo it was cut from, nor into a sibling worktree of the same repo

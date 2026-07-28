@@ -224,6 +224,9 @@ landing, and even after **Land & retire** deletes the branch.
 | Two benches for one repo | You integrate into two source branches. | Expected; each branch gets its own. |
 | Bench build is slow | The first build after creating a bench is cold. | Later rebuilds are incremental — ignored build output is preserved. |
 | The bench directory was deleted | Removed outside Ion. | It self-heals on the next rebuild. |
+| An edit in the bench was refused | Edits there are destroyed by the next rebuild. | The refusal names the member worktree that owns the file — edit and commit there, then Update that member. |
+| The refusal listed several members | More than one member changes that file, so no single owner is the honest answer. | Pick the member whose listed line ranges cover the region you are editing. |
+| The bench panel has no Changes or Graph | Deliberate: a bench must hold no uncommitted changes, and its history is synthetic. | Use the member worktrees for both. |
 | A new worktree has no `node_modules` | The repo has no `.ion/worktree.json`, or the seed entry is missing. | Add the manifest; existing worktrees get it via Re-provision. |
 | Provisioning shows a warning badge | A `build` or `setup` command failed. | Read the reason in the tooltip, fix it, then Re-provision. |
 | Provisioning is slow every time | No copy-on-write between your repo and the worktree root — different volumes, or a filesystem without reflink (NTFS, ext4). | Expected. Put the worktree root on the same volume as the repo to get the fast path. |

@@ -39,6 +39,7 @@ import { WELCOME_MARKDOWN } from './greeting'
 import { gateWriteToolCall } from './git-gate'
 import { gateBenchCommand } from './bench-gate'
 import { gateWorktreeWrite } from './worktree-gate'
+import { gateBenchWrite } from './bench-write-gate'
 import {
   scaffoldTool,
   validateAgentTool,
@@ -344,6 +345,33 @@ ion.on('tool_call', (ctx, info) => {
         sessionKey: ctx.sessionKey,
       })
     }
+
+    // Bench WRITE containment. Checked before the worktree gate because a bench
+    // IS a git worktree of the repo, so the worktree gate would either miss it
+    // or name the wrong destination. This gate names the member that owns the
+    // file, which is the only actionable answer.
+    const benchWriteDecision = gateBenchWrite(
+      { toolName: info?.toolName ?? '', toolId: info?.toolId ?? '', input: info?.input ?? {} },
+      ctx.cwd,
+    )
+    if (benchWriteDecision.block) {
+      log.info('ion-meta: bench-write-gate blocked edit inside a bench', {
+        tool: info?.toolName,
+        toolId: info?.toolId,
+        benchPath: benchWriteDecision.benchPath,
+        targetPath: benchWriteDecision.targetPath,
+        ownerCount: benchWriteDecision.owners?.length ?? 0,
+        owners: (benchWriteDecision.owners ?? []).map((o) => o.branchName).join(','),
+        sessionKey: ctx.sessionKey,
+        reason: benchWriteDecision.reason,
+      })
+      return { block: true, reason: benchWriteDecision.reason ?? 'blocked by ion-meta bench-write-gate' }
+    }
+    log.debug('ion-meta: bench-write-gate passed tool call', {
+      tool: info?.toolName,
+      toolId: info?.toolId,
+      sessionKey: ctx.sessionKey,
+    })
 
     // Worktree containment. Checked before the git-gate for the same reason the
     // bench-gate is: the git-gate only asks "is this inside a repo", and both a
