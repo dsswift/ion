@@ -79,7 +79,7 @@ export interface GitBranchInfo {
  * - `merge` — the source branch IS checked out somewhere, so the merge ran in
  *   place in that worktree after a dirty/branch preflight.
  */
-export type LandMode = 'ref-advance' | 'merge'
+export type LandMode = 'ref-advance' | 'merge' | 'fast-forward'
 
 /** Result of a land attempt. Refusals carry an actionable `error`. */
 export interface LandResult {

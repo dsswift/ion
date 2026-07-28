@@ -135,8 +135,24 @@ export interface LandOptions {
    * Bring the source branch's commits into the worktree first. Reduces the
    * chance the integration itself conflicts, at the cost of rewriting the
    * worktree's history onto the new base.
+   *
+   * This is also what makes a linear (fast-forward) land POSSIBLE at all: once
+   * the source tip is the worktree's base, the source branch is an ancestor of
+   * the worktree branch and the merge degenerates to a pointer move. Without a
+   * sync, any land onto a branch that has moved on necessarily writes a merge
+   * commit — there is no third option.
    */
   syncFirst?: boolean
+  /**
+   * Refuse rather than write a merge commit.
+   *
+   * The honest complement to `syncFirst`. A caller asking for a linear history
+   * wants "fast-forward, or tell me why not" — silently producing a merge
+   * commit when the fast-forward is unavailable is the defect this exists to
+   * prevent. With `syncFirst` the refusal should be rare; when it fires, the
+   * message names the reason.
+   */
+  requireFastForward?: boolean
 }
 
 /**
@@ -218,7 +234,7 @@ export async function landWorktree(opts: LandOptions): Promise<LandResult> {
  * path that is not already serialized).
  */
 export async function landWorktreeUnqueued(opts: LandOptions): Promise<LandResult> {
-  const { repoPath, worktreePath, worktreeBranch, sourceBranch, noFf, syncFirst } = opts
+  const { repoPath, worktreePath, worktreeBranch, sourceBranch, noFf, syncFirst, requireFastForward } = opts
   log('land: starting', {
     repo_path: repoPath,
     worktree_path: worktreePath,
@@ -226,6 +242,7 @@ export async function landWorktreeUnqueued(opts: LandOptions): Promise<LandResul
     source_branch: sourceBranch,
     no_ff: !!noFf,
     sync_first: !!syncFirst,
+    require_fast_forward: !!requireFastForward,
   })
 
   // ── Gate 1: the worktree must be committed ────────────────────────────────
@@ -304,12 +321,26 @@ export async function landWorktreeUnqueued(opts: LandOptions): Promise<LandResul
 
   const mergeArgs = noFf
     ? ['merge', '--no-ff', '-m', `Merge ${worktreeBranch} into ${sourceBranch}`, worktreeBranch]
-    : ['merge', '-m', `Merge ${worktreeBranch} into ${sourceBranch}`, worktreeBranch]
+    : requireFastForward
+      // `--ff-only` makes the promise enforceable: git refuses rather than
+      // silently writing a merge commit. A caller that asked for a linear
+      // history gets one or gets told why not — never a merge commit it did
+      // not ask for. That silent substitution is exactly what a plain `merge`
+      // does when the branches have diverged, and it is the defect this
+      // branch exists to prevent.
+      ? ['merge', '--ff-only', worktreeBranch]
+      : ['merge', '-m', `Merge ${worktreeBranch} into ${sourceBranch}`, worktreeBranch]
   try {
     await runGit(holder.path, mergeArgs)
     const sha = (await runGit(holder.path, ['rev-parse', 'HEAD'])).trim()
-    log('land: merged', { source_branch: sourceBranch, holder_path: holder.path, sha: sha.slice(0, 7), no_ff: !!noFf })
-    return { ok: true, mode: 'merge', sha }
+    log('land: merged', {
+      source_branch: sourceBranch,
+      holder_path: holder.path,
+      sha: sha.slice(0, 7),
+      no_ff: !!noFf,
+      require_fast_forward: !!requireFastForward,
+    })
+    return { ok: true, mode: requireFastForward ? 'fast-forward' : 'merge', sha }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     // Ask git whether this is actually a conflict rather than pattern-matching
@@ -323,6 +354,18 @@ export async function landWorktreeUnqueued(opts: LandOptions): Promise<LandResul
         ok: false,
         hasConflicts: true,
         error: `Merge conflict landing ${worktreeBranch} into ${sourceBranch}. Resolve it in ${holder.path}, then land again.`,
+      }
+    }
+    // A --ff-only refusal is not a conflict and not an unknown failure: it is
+    // the guard working. Say what happened and what fixes it, rather than
+    // surfacing git's raw "Not possible to fast-forward, aborting."
+    if (requireFastForward) {
+      return {
+        ok: false,
+        error:
+          `Cannot fast-forward ${sourceBranch} from ${worktreeBranch}: the source branch has commits this ` +
+          `worktree does not have. Sync this worktree from ${sourceBranch} first, then land again — or land ` +
+          `with a merge commit instead.`,
       }
     }
     return { ok: false, error: msg }

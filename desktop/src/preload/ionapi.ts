@@ -168,7 +168,7 @@ export interface IonAPI extends AtvApi {
    * a checkout; `retire` and `reattach` return the directory the caller should
    * relocate the conversation into (see relocateTabSession).
    */
-  gitWorktreeLand(args: { repoPath: string; worktreePath: string; worktreeBranch: string; sourceBranch: string; noFf?: boolean; syncFirst?: boolean }): Promise<LandResult>
+  gitWorktreeLand(args: { repoPath: string; worktreePath: string; worktreeBranch: string; sourceBranch: string; noFf?: boolean; syncFirst?: boolean; requireFastForward?: boolean }): Promise<LandResult>
   gitWorktreeSync(worktreePath: string, sourceBranch: string): Promise<{ ok: boolean; error?: string; hasConflicts?: boolean; refusedDirty?: boolean }>
   /** Every managed worktree for a repo, with state for describing and acting on it. */
   gitWorktreeInventory(repoPath: string): Promise<{ worktrees: WorktreeInventoryEntry[] }>

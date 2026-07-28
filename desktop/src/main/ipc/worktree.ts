@@ -14,10 +14,20 @@ import { setProvisionState, clearProvisionState } from '../worktree/provision-st
 export function registerWorktreeIpc(): void {
   ipcMain.handle(IPC.GIT_WORKTREE_ADD, async (_event, { repoPath, sourceBranch }: { repoPath: string; sourceBranch: string }) => {
     try {
-      const id = randomBytes(4).toString('hex')
-      const branchName = `wt/${randomBytes(4).toString('hex')}`
+      // ONE identity for the worktree, used for both the directory and the
+      // branch. These used to be two independent randomBytes() calls, so a
+      // worktree at `ion-452a6bd3` carried branch `wt/807940c2` — nothing
+      // connected them, the row label showed the directory while every git
+      // verb and every agent sentence used the branch, and the operator had to
+      // consult the registry to map one to the other.
+      //
+      // Deriving both from one slug makes the mapping trivial in either
+      // direction (`ion-a3372546` ⇄ `wt/ion-a3372546`), so a single label can
+      // identify the worktree everywhere.
+      const slug = `${basename(repoPath)}-${randomBytes(4).toString('hex')}`
+      const branchName = `wt/${slug}`
       const worktreeDir = join(homedir(), '.ion', 'worktrees')
-      const worktreePath = join(worktreeDir, `${basename(repoPath)}-${id}`)
+      const worktreePath = join(worktreeDir, slug)
       mkdirSync(worktreeDir, { recursive: true })
       await runGit(repoPath, ['worktree', 'add', '-b', branchName, worktreePath, sourceBranch])
       const worktree: WorktreeInfo = { worktreePath, branchName, sourceBranch, repoPath }

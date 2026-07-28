@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useViewportClamp } from '../hooks/useViewportClamp'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
@@ -7,7 +7,10 @@ import { useSessionStore } from '../stores/sessionStore'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
-import { rError } from '../rendererLogger'
+import { rError, rInfo } from '../rendererLogger'
+import { ConfirmDialog } from './git/ConfirmDialog'
+import { describeLandStrategy } from '../../shared/worktree-land-strategy'
+import type { WorktreeCompletionStrategy } from '../../shared/types'
 
 // ─── Finish Work context menu (right-click on finish button) ───
 
@@ -23,6 +26,11 @@ export function FinishWorkContextMenu({ anchor, worktree, onClose }: {
   useViewportClamp(ref, true)
   const strategy = usePreferencesStore((s) => s.worktreeCompletionStrategy)
   const activeTabId = useSessionStore((s) => s.activeTabId)
+  // Finish work is the FUSED verb: it integrates, then removes the worktree,
+  // then closes the conversation. Land — which does strictly less — already
+  // confirms through the retire appraisal, so the more destructive action was
+  // the one with no prompt. Hold the choice until it is confirmed.
+  const [pending, setPending] = useState<WorktreeCompletionStrategy | null>(null)
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -41,25 +49,18 @@ export function FinishWorkContextMenu({ anchor, worktree, onClose }: {
 
   if (!popoverLayer) return null
 
-  const items = [
-    {
-      label: `Fast-forward into ${worktree.sourceBranch}`,
-      isDefault: strategy === 'merge-ff',
-      action: () => useSessionStore.getState().finishWorktreeTab(activeTabId, 'merge-ff'),
-    },
-    {
-      label: `Merge into ${worktree.sourceBranch} (no-ff)`,
-      isDefault: strategy === 'merge',
-      action: () => useSessionStore.getState().finishWorktreeTab(activeTabId, 'merge'),
-    },
-    {
-      label: `Push & create PR`,
-      isDefault: strategy === 'pr',
-      action: () => useSessionStore.getState().finishWorktreeTab(activeTabId, 'pr'),
-    },
+  // Labels come from describeLandStrategy so they cannot drift from behaviour
+  // again. The old first entry read "Fast-forward into <branch>" while the code
+  // ran a plain merge — it fast-forwarded when it could and silently wrote a
+  // merge commit when it could not.
+  const items: Array<{ label: string; isDefault: boolean; strategy: WorktreeCompletionStrategy }> = [
+    { label: describeLandStrategy('merge-ff', worktree.sourceBranch), isDefault: strategy === 'merge-ff', strategy: 'merge-ff' },
+    { label: describeLandStrategy('merge', worktree.sourceBranch), isDefault: strategy === 'merge', strategy: 'merge' },
+    { label: describeLandStrategy('pr', worktree.sourceBranch), isDefault: strategy === 'pr', strategy: 'pr' },
   ]
 
   return createPortal(
+    <>
     <motion.div
       ref={ref}
       data-ion-ui
@@ -85,7 +86,7 @@ export function FinishWorkContextMenu({ anchor, worktree, onClose }: {
       {items.map((item) => (
         <div
           key={item.label}
-          onClick={() => { Promise.resolve(item.action()).catch((err) => rError('git-finish-menu', 'finish worktree failed', { error: String(err) })); onClose() }}
+          onClick={() => setPending(item.strategy)}
           style={{
             height: 28,
             display: 'flex',
@@ -104,7 +105,31 @@ export function FinishWorkContextMenu({ anchor, worktree, onClose }: {
           {item.label}
         </div>
       ))}
-    </motion.div>,
+    </motion.div>
+
+    {pending !== null && (
+      <ConfirmDialog
+        title="Finish this worktree?"
+        message={
+          `${describeLandStrategy(pending, worktree.sourceBranch)}. ` +
+          `The worktree at ${worktree.worktreePath} is then removed and this conversation closes. ` +
+          `To integrate without ending the worktree, use Land from the Worktrees list instead.`
+        }
+        confirmLabel="Finish work"
+        cancelLabel="Cancel"
+        danger
+        onConfirm={() => {
+          const chosen = pending
+          setPending(null)
+          rInfo('git-finish-menu', 'finish work confirmed', { strategy: chosen, branch: worktree.branchName })
+          Promise.resolve(useSessionStore.getState().finishWorktreeTab(activeTabId, chosen))
+            .catch((err) => rError('git-finish-menu', 'finish worktree failed', { error: String(err) }))
+          onClose()
+        }}
+        onCancel={() => { setPending(null); onClose() }}
+      />
+    )}
+    </>,
     popoverLayer,
   )
 }

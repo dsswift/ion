@@ -67,7 +67,7 @@ export function GitCategory() {
 
       <SettingSection
         label="Completion Strategy"
-        description="How finished worktree work is integrated back into the source branch."
+        description="How worktree work is integrated back into the source branch. Applies to Land and to Finish work. Linear syncs first so the fast-forward is actually available, and refuses rather than quietly writing a merge commit."
       >
         <div
           style={{
@@ -78,7 +78,7 @@ export function GitCategory() {
             overflow: 'hidden',
           }}
         >
-          {([{ key: 'merge-ff', label: 'Merge (ff)' }, { key: 'merge', label: 'Merge (--no-ff)' }, { key: 'pr', label: 'Pull Request' }] as const).map(({ key, label }) => (
+          {([{ key: 'merge-ff', label: 'Linear (sync + ff)' }, { key: 'merge', label: 'Merge commit' }, { key: 'pr', label: 'Pull Request' }] as const).map(({ key, label }) => (
             <button
               key={key}
               onClick={() => setWorktreeCompletionStrategy(key as WorktreeCompletionStrategy)}
