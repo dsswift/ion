@@ -66,6 +66,7 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, "    --key KEY              Session key (default: profile name)")
 	fmt.Fprintln(os.Stderr, "    --extension FILE       Load extension (can be repeated)")
 	fmt.Fprintln(os.Stderr, "  prompt \"text\"             Send prompt")
+	fmt.Fprintln(os.Stderr, "  prompt -                 Read prompt text from stdin (also: prompt < file)")
 	fmt.Fprintln(os.Stderr, "    --no-extensions        Skip extensions for this prompt")
 	fmt.Fprintln(os.Stderr, "    --extension FILE       Load extension (can be repeated)")
 	fmt.Fprintln(os.Stderr, "    --attach               Stream output until idle (keyed sessions)")
