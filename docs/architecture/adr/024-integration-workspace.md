@@ -164,6 +164,19 @@ as before, a branch with none is `pending`, and a branch that no longer exists
 (the normal *Land & retire* outcome) stays unknown and falls through to the tiers
 above, which correctly retire it.
 
+### A pin reads the branch ref, never HEAD
+
+A member's identity is its **branch**, not whatever its worktree has checked
+out. The two differ exactly when it matters most: a conflicted rebase (the sync
+verb's failure mode) leaves the worktree in detached HEAD at the rebase's
+transient position, while the branch ref still points at the member's real tip —
+git only moves the branch when the operation completes. An earlier
+`captureContribution` read HEAD, so a member stranded mid-rebase was pinned at
+the source tip with an empty range and reported `no commits yet` for a branch
+holding real commits. Both `captureContribution` and `contributedTreeHash` now
+resolve `member.branchName`, which is correct at every moment with no
+mid-operation mode split.
+
 ### Retirement is surfaced, never silent
 
 A retired member's row disappears. A row vanishing with no explanation is

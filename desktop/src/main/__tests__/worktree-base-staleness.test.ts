@@ -230,7 +230,7 @@ describe('the two staleness directions are independent', () => {
     commitIn(b.path, 'b.txt', 'b v1\n', 'b work')
 
     async function enroll(wt: { path: string; branch: string }): Promise<IntegrationMember> {
-      const c = await captureContribution(wt.path, FEATURE)
+      const c = await captureContribution(wt.path, FEATURE, wt.branch)
       return makeMember({
         worktreePath: wt.path,
         branchName: wt.branch,
@@ -251,7 +251,7 @@ describe('the two staleness directions are independent', () => {
     // Direction 1 — B commits more: BENCH is stale for B, base is not.
     commitIn(b.path, 'b.txt', 'b v2\n', 'b more work')
     const bMember = built.members.find((m) => m.branchName === b.branch)!
-    const bNow = await captureContribution(b.path, FEATURE)
+    const bNow = await captureContribution(b.path, FEATURE, b.branch)
     expect(bNow.treeHash).not.toBe(bMember.pinnedTreeHash)   // bench stale
     expect((await appraiseBase(b.path, FEATURE)).needsSync).toBe(false)  // base fine
 
@@ -265,7 +265,7 @@ describe('the two staleness directions are independent', () => {
     const synced = await syncWorktreeFromSource(b.path, FEATURE)
     expect(synced.ok).toBe(true)
     expect((await appraiseBase(b.path, FEATURE)).needsSync).toBe(false)
-    const bAfterSync = await captureContribution(b.path, FEATURE)
+    const bAfterSync = await captureContribution(b.path, FEATURE, b.branch)
     expect(bAfterSync.treeHash).not.toBe(bMember.pinnedTreeHash)  // still bench-stale
 
     // Resolving BENCH staleness (re-pin + rebuild) integrates B's new work.

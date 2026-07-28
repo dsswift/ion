@@ -35,6 +35,7 @@ import { parseWorktreeList } from './integrate'
 import { appraiseWorktree } from './safety'
 import { appraiseBase } from './base-staleness'
 import { getProvisionState } from './provision-state'
+import { probeOperationState } from '../git/operation-state'
 import type { WorktreeInventoryEntry } from '../../shared/types'
 
 const TAG = 'worktree.inventory'
@@ -154,7 +155,29 @@ export async function inventoryWorktrees(repoPath: string): Promise<WorktreeInve
     // Skip the repo root itself and the integration bench.
     if (wt.path === repoPath) continue
     if (wt.branch.startsWith('ion/bench/')) continue
-    if (!wt.branch) continue // detached HEAD — not a managed feature worktree
+
+    // A detached HEAD is usually not a managed feature worktree — but a
+    // conflicted rebase detaches HEAD too, and dropping the entry in that state
+    // made two mid-rebase worktrees vanish from the panel at the exact moment
+    // the operator needed to see them. Probe for an in-progress operation and
+    // recover the branch git recorded (rebase-merge/head-name) before skipping.
+    let branchName = wt.branch
+    const operation = await probeOperationState(wt.path)
+    if (!branchName) {
+      if (operation.state && operation.branch) {
+        branchName = operation.branch
+        log('recovered mid-operation worktree', {
+          worktree_path: wt.path,
+          branch: branchName,
+          operation: operation.state,
+          conflicted: operation.conflictedPaths.length,
+        })
+      } else {
+        // Genuinely detached (operator checkout, bisect artifact) — not ours.
+        log('skipping detached worktree with no recorded operation', { worktree_path: wt.path })
+        continue
+      }
+    }
 
     const sourceBranch = lookupSourceBranch(wt.path)
 
@@ -166,18 +189,21 @@ export async function inventoryWorktrees(repoPath: string): Promise<WorktreeInve
     }
 
     // Without a known source branch the land-relative facts are unanswerable.
-    // Report what IS knowable and leave the rest conservative.
+    // Report what IS knowable and leave the rest conservative. A mid-operation
+    // worktree also skips the appraisals: unlanded counts and needsSync are
+    // meaningless halfway through a rebase, and their git reads can fail — the
+    // operation itself is the state worth reporting.
     let unlandedCommitCount = 0
     let safeToDiscard = false
     let needsSync = false
     let isDirty = false
-    if (sourceBranch) {
+    if (sourceBranch && !operation.state) {
       const appraisal = await appraiseWorktree(wt.path, sourceBranch)
       isDirty = appraisal.hasUncommittedChanges
       unlandedCommitCount = appraisal.unlandedCommitCount
       safeToDiscard = appraisal.safeToDiscard
       needsSync = (await appraiseBase(wt.path, sourceBranch)).needsSync
-    } else {
+    } else if (!operation.state) {
       try {
         isDirty = (await runGit(wt.path, ['status', '--porcelain'])).trim().length > 0
       } catch (err) {
@@ -192,8 +218,8 @@ export async function inventoryWorktrees(repoPath: string): Promise<WorktreeInve
 
     entries.push({
       worktreePath: wt.path,
-      branchName: wt.branch,
-      label: wt.path.split('/').filter(Boolean).pop() || wt.branch,
+      branchName,
+      label: wt.path.split('/').filter(Boolean).pop() || branchName,
       sourceBranch,
       head: wt.head.slice(0, 7),
       lastCommitSubject,
@@ -201,6 +227,8 @@ export async function inventoryWorktrees(repoPath: string): Promise<WorktreeInve
       unlandedCommitCount,
       needsSync,
       safeToDiscard,
+      operationState: operation.state,
+      conflictedPaths: operation.conflictedPaths.length > 0 ? operation.conflictedPaths : undefined,
       provisionState: provision?.state,
       provisionError: provision?.error,
     })

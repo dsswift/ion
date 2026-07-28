@@ -126,6 +126,12 @@ export type WorktreeProvisionState =
   | 'failed'
 
 /**
+ * An in-progress git operation in a checkout. `none` is represented by the
+ * field being absent, so consumers switch on presence.
+ */
+export type GitOperationState = 'rebasing' | 'merging' | 'cherry-picking'
+
+/**
  * One worktree in the inventory, with everything a client needs to describe it
  * and decide what to offer. Mirrors WorktreeInventoryEntry in
  * main/worktree/inventory.ts; kept in shared/ so the renderer and iOS wire can
@@ -148,6 +154,17 @@ export interface WorktreeInventoryEntry {
   unlandedCommitCount: number
   needsSync: boolean
   safeToDiscard: boolean
+  /**
+   * Set while a rebase/merge/cherry-pick is in progress in this worktree. A
+   * conflicted sync stops mid-rebase with HEAD detached; the worktree used to
+   * vanish from the inventory in that state (the detached-HEAD skip), which is
+   * exactly when the operator most needs to see it. While set, the appraisal
+   * fields above are conservative defaults, not live answers — mid-operation
+   * they are meaningless.
+   */
+  operationState?: GitOperationState
+  /** Unmerged paths when the operation is conflicted. Absent when clean. */
+  conflictedPaths?: string[]
   /** Provisioning lifecycle state. Absent on worktrees created before this existed. */
   provisionState?: WorktreeProvisionState
   /** Operator-facing reason when `provisionState` is `failed`. */

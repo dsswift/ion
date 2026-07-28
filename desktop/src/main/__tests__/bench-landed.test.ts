@@ -92,7 +92,7 @@ function workspaceFor(members: IntegrationMember[] = []): IntegrationWorkspace {
 }
 
 async function enroll(wt: { path: string; branch: string }): Promise<IntegrationMember> {
-  const c = await captureContribution(wt.path, FEATURE)
+  const c = await captureContribution(wt.path, FEATURE, wt.branch)
   return makeMember({
     worktreePath: wt.path,
     branchName: wt.branch,

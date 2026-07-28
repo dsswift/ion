@@ -3,7 +3,7 @@
  * hash that identifies it.
  *
  * ── Only committed work integrates ──────────────────────────────────────────
- * A member contributes the tree of its branch HEAD. Uncommitted changes in a
+ * A member contributes the tree of its branch tip. Uncommitted changes in a
  * worktree cannot reach the bench, and there is no mode that relaxes this.
  *
  * The reason is not convenience. A bench assembled from a half-saved working
@@ -37,7 +37,7 @@ function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, 
 
 /** A member's contribution: the commit to merge and the tree identifying it. */
 export interface Contribution {
-  /** Commit the bench merges — the member branch's HEAD. */
+  /** Commit the bench merges — the member BRANCH's tip. */
   sha: string
   /** Tree hash — the content identity used for staleness. */
   treeHash: string
@@ -61,9 +61,19 @@ export interface Contribution {
 }
 
 /**
- * Capture a worktree's contribution: its committed HEAD, that commit's tree, and
- * the merge base with the source branch. Read-only — nothing in the member
- * worktree is written.
+ * Capture a member's contribution: its BRANCH tip, that commit's tree, and the
+ * merge base with the source branch. Read-only — nothing in the member worktree
+ * is written.
+ *
+ * ── Why the branch ref, never HEAD ──────────────────────────────────────────
+ * A member's identity is its branch, not whatever the worktree happens to have
+ * checked out. The difference is not academic: a conflicted rebase leaves the
+ * worktree in detached HEAD at the rebase's transient position, and an earlier
+ * version of this function read HEAD there — it pinned the source-branch tip as
+ * the member's contribution, computed an empty range, and the bench reported
+ * `no commits yet` for a member whose branch held two commits. The branch ref
+ * only moves when an operation COMPLETES, so reading it is correct at every
+ * moment, mid-operation included, with no mode split.
  *
  * `sourceBranch` is required because the contribution is a range, and the range
  * is meaningless without the branch it is measured against.
@@ -71,12 +81,14 @@ export interface Contribution {
 export async function captureContribution(
   worktreePath: string,
   sourceBranch: string,
+  branchName: string,
 ): Promise<Contribution> {
-  const sha = (await runGit(worktreePath, ['rev-parse', 'HEAD'])).trim()
-  const treeHash = (await runGit(worktreePath, ['rev-parse', 'HEAD^{tree}'])).trim()
+  const sha = (await runGit(worktreePath, ['rev-parse', branchName])).trim()
+  const treeHash = (await runGit(worktreePath, ['rev-parse', `${branchName}^{tree}`])).trim()
   const baseSha = await mergeBaseWith(worktreePath, sha, sourceBranch)
   log('captured contribution', {
     worktree_path: worktreePath,
+    branch: branchName,
     sha: sha.slice(0, 7),
     tree: treeHash.slice(0, 7),
     base: baseSha ? baseSha.slice(0, 7) : 'unknown',
@@ -125,7 +137,7 @@ export async function hasUncommittedWork(worktreePath: string): Promise<boolean>
  * The tree hash a member currently contributes — the single definition of
  * "this member's content", used for staleness.
  *
- * Reads the member branch's committed HEAD, so uncommitted edits never mark a
+ * Reads the member branch's committed tip, so uncommitted edits never mark a
  * member stale: there is nothing the operator could integrate from them.
  *
  * Returns null when the worktree or branch is gone (the `missing` case), which
@@ -133,11 +145,11 @@ export async function hasUncommittedWork(worktreePath: string): Promise<boolean>
  */
 export async function contributedTreeHash(member: IntegrationMember): Promise<string | null> {
   try {
-    // Reads the tree directly rather than going through captureContribution:
-    // staleness is a pure content question and needs no merge base, so asking for
-    // one here would make the source branch a parameter of every staleness poll
-    // for no gain.
-    const treeHash = (await runGit(member.worktreePath, ['rev-parse', 'HEAD^{tree}'])).trim()
+    // Reads the BRANCH ref, not HEAD, for the same reason captureContribution
+    // does: mid-rebase HEAD is a transient position while the branch still
+    // points at the member's real tip, so the branch answer is right at every
+    // moment. Staleness needs no merge base, so this stays a single read.
+    const treeHash = (await runGit(member.worktreePath, ['rev-parse', `${member.branchName}^{tree}`])).trim()
     log('read member tree hash', {
       worktree_path: member.worktreePath,
       branch: member.branchName,

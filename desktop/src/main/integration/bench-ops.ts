@@ -76,7 +76,7 @@ export async function addMember(
     return { ok: false, error: 'This worktree is already a member of the bench.' }
   }
   try {
-    const contribution = await captureContribution(worktreePath, sourceBranch)
+    const contribution = await captureContribution(worktreePath, sourceBranch, branchName)
     const member = makeMember({
       worktreePath,
       branchName,
@@ -205,7 +205,7 @@ export async function updateMember(
 
   let contribution
   try {
-    contribution = await captureContribution(worktreePath, sourceBranch)
+    contribution = await captureContribution(worktreePath, sourceBranch, member.branchName)
   } catch (err) {
     warn('update member failed to read contribution', { worktree_path: worktreePath, error: String(err) })
     return { ok: false, error: `Could not read that worktree: ${String(err)}` }
@@ -249,7 +249,7 @@ export async function updateAllStale(
     const current = await contributedTreeHash(m)
     if (!current || current === m.pinnedTreeHash) continue
     try {
-      const contribution = await captureContribution(m.worktreePath, sourceBranch)
+      const contribution = await captureContribution(m.worktreePath, sourceBranch, m.branchName)
       members[i] = {
         ...m,
         pinnedSha: contribution.sha,
