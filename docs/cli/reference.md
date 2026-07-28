@@ -69,7 +69,17 @@ Send a prompt to the engine. If no daemon is running, one is auto-started. If no
 
 ```bash
 ion prompt "text" [--model M] [--max-turns N] [--max-budget USD] [--output FORMAT] [--key KEY] [--extension PATH] [--no-extensions] [--attach] [--timeout DURATION]
+ion prompt -     [flags]   # read prompt text from stdin
+ion prompt       [flags] < prompt.txt
 ```
+
+#### Prompt text: argument or stdin
+
+Prompt text comes from a positional argument, or from stdin when the positional argument is the single token `-` or is omitted entirely. Positional text wins when both are present.
+
+**Use stdin for anything large.** A single command-line argument is capped by the kernel at `MAX_ARG_STRLEN` (128 KiB on Linux), independently of the much larger total `ARG_MAX`. A prompt past that ceiling fails with `Argument list too long` before Ion runs at all, so `ion prompt "$(cat big-context.md)"` is not viable for a generated context document — pipe or redirect it instead. This is why the repo's release-notification workflows feed their prompt on stdin; do not "simplify" them back to command substitution.
+
+When no positional argument is given and stdin is an interactive terminal, Ion reports `prompt text required` and exits 1 rather than waiting on the terminal. An explicit `-` always reads stdin.
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
@@ -111,6 +121,10 @@ ion prompt "hello" --no-extensions
 
 # CI/scripting: fail if not done in 5 minutes
 ion prompt "run the test suite" --timeout 5m
+
+# Large generated prompt — stdin, not command substitution
+ion prompt - --output text --no-extensions < release-context.md
+ion prompt --output text < release-context.md
 ```
 
 ---
