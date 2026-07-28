@@ -179,11 +179,10 @@ func TestRunloopWatchdogCancelsStalledRun(t *testing.T) {
 	}
 
 	// Assertion 3: the run is no longer in activeRuns (deferred removeRun
-	// fired after ctx cancellation unwound runLoop).
-	b.mu.Lock()
-	_, stillActive := b.activeRuns[requestID]
-	b.mu.Unlock()
-	if stillActive {
+	// fired after ctx cancellation unwound runLoop). Waited rather than
+	// sampled — the defer runs after the OnExit callback that released
+	// waitForExit. See waitForRunRemoved.
+	if !waitForRunRemoved(b, requestID, 5*time.Second) {
 		t.Error("expected run to be removed from activeRuns after watchdog cancellation")
 	}
 }
@@ -211,11 +210,18 @@ func TestRunStallFiresDespiteToolStallEmits(t *testing.T) {
 	// A tool that wedges until ctx cancellation. Named "Agent" so the runloop
 	// takes the deadline-exempt branch (no per-tool DeadlineSuspender). It
 	// honors ctx so the watchdog's run.cancel() unblocks it cleanly.
+	//
+	// toolEntered closes as soon as Execute is reached, which is what makes the
+	// timing assertions below deterministic (see the wait after
+	// StartRunWithConfig).
+	toolEntered := make(chan struct{})
+	var toolEnterOnce sync.Once
 	tools.RegisterTool(&types.ToolDef{
 		Name:        tools.AgentToolName,
 		Description: "wedges forever (test)",
 		InputSchema: map[string]any{"type": "object"},
 		Execute: func(ctx context.Context, _ map[string]any, _ string) (*types.ToolResult, error) {
+			toolEnterOnce.Do(func() { close(toolEntered) })
 			<-ctx.Done()
 			return &types.ToolResult{Content: "cancelled", IsError: true}, ctx.Err()
 		},
@@ -235,13 +241,24 @@ func TestRunStallFiresDespiteToolStallEmits(t *testing.T) {
 	const requestID = "req-agent-wedge"
 	c := collectEvents(b, requestID)
 
-	// Tool-stall interval (50ms) well below the run-stall threshold (400ms):
-	// several ToolStalledEvents fire before the run-stall window elapses, so
-	// the test genuinely exercises "stall emits do not hold the watchdog off".
+	// Tool-stall interval (50ms) far below the run-stall threshold (2s): many
+	// ToolStalledEvents fire before the run-stall window elapses, so the test
+	// genuinely exercises "stall emits do not hold the watchdog off".
+	//
+	// The run-stall threshold must also be comfortably larger than the time it
+	// takes the run goroutine to start, stream the tool_use block, and dispatch
+	// the tool. The run-stall clock starts at run registration, so on a
+	// CPU-starved Linux -race runner the 400ms this test originally used could
+	// elapse during startup: the watchdog then cancelled the run before
+	// executeTools ever dispatched, no advisory could fire, and the
+	// ToolStalledEvent assertion failed while both watchdog assertions still
+	// passed. That is the exact engine-test (ubuntu-latest) signature this
+	// threshold removes — the same wall-clock-timer-vs-starved-goroutine flake
+	// class as TestRunloopWatchdogCancelsStalledRun (#239).
 	cfg := &RunConfig{
 		Timeouts: &types.TimeoutsConfig{
 			ToolStallMs: 50,
-			RunStallMs:  400,
+			RunStallMs:  2000,
 		},
 	}
 	b.StartRunWithConfig(requestID, types.RunOptions{
@@ -250,7 +267,24 @@ func TestRunStallFiresDespiteToolStallEmits(t *testing.T) {
 		EarlyStopEnabled: testEarlyStopDisabled(),
 	}, cfg)
 
-	if !waitForExit(c, 5*time.Second) {
+	// Confirm the wedged tool was actually entered before relying on the
+	// watchdog, so a startup regression reports itself here rather than as a
+	// confusing missing-advisory assertion further down.
+	select {
+	case <-toolEntered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("wedged Agent tool was never entered within 10s — tool dispatch regressed")
+	}
+
+	// Then wait for the first stall advisory. Ordering the waits this way is
+	// what makes the assertions below deterministic: the advisory is emitted
+	// 50ms into a tool that the watchdog will not cancel for 2s, so observing
+	// one here does not race the cancellation.
+	if !waitForToolStalled(c, "agent-wedge-1", 10*time.Second) {
+		t.Fatal("no ToolStalledEvent for the wedged Agent tool within 10s — the stall advisory regressed")
+	}
+
+	if !waitForExit(c, 15*time.Second) {
 		t.Fatal("run-stall watchdog never fired despite a wedged deadline-exempt Agent tool — tool-stall emits are defeating the watchdog (the incident defect)")
 	}
 
@@ -286,11 +320,63 @@ func TestRunStallFiresDespiteToolStallEmits(t *testing.T) {
 		t.Error("expected ErrorEvent{run_stalled} for headless consumers")
 	}
 
-	b.mu.Lock()
-	_, stillActive := b.activeRuns[requestID]
-	b.mu.Unlock()
-	if stillActive {
+	if !waitForRunRemoved(b, requestID, 5*time.Second) {
 		t.Error("expected run removed from activeRuns after watchdog cancellation")
+	}
+}
+
+// waitForRunRemoved polls until requestID is gone from b.activeRuns, up to
+// timeout.
+//
+// Sampling activeRuns immediately after waitForExit is a race, not a check:
+// runLoop calls emitExit (which fires the OnExit callback waitForExit observes)
+// and only then returns, so the deferred removeRun runs *after* the test has
+// already been released. On an unstarved machine the defer wins by microseconds
+// and the sample passes; under Linux -race on a loaded runner the test wins and
+// the assertion fails on a run that was about to be removed correctly. Waiting
+// pins the real invariant — the run is removed — without depending on which
+// side of the callback the defer lands.
+func waitForRunRemoved(b *ApiBackend, requestID string, timeout time.Duration) bool {
+	deadline := time.After(timeout)
+	for {
+		b.mu.Lock()
+		_, stillActive := b.activeRuns[requestID]
+		b.mu.Unlock()
+		if !stillActive {
+			return true
+		}
+		select {
+		case <-deadline:
+			return false
+		default:
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+}
+
+// waitForToolStalled polls the collected events for a ToolStalledEvent carrying
+// toolID, up to timeout. It exists so the stall-advisory assertion can be an
+// explicit wait rather than a post-hoc scan of whatever happened to arrive
+// before the run exited: the advisory and the watchdog cancellation are driven
+// by two independent timers, and scanning after exit makes the assertion a race
+// on which timer won under CPU starvation.
+func waitForToolStalled(c *collectedEvents, toolID string, timeout time.Duration) bool {
+	deadline := time.After(timeout)
+	for {
+		c.mu.Lock()
+		for _, ev := range c.normalized {
+			if d, ok := ev.Data.(*types.ToolStalledEvent); ok && d.ToolID == toolID {
+				c.mu.Unlock()
+				return true
+			}
+		}
+		c.mu.Unlock()
+		select {
+		case <-deadline:
+			return false
+		default:
+			time.Sleep(5 * time.Millisecond)
+		}
 	}
 }
 
