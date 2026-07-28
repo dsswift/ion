@@ -243,6 +243,31 @@ worktree the gate passes everything, so an ordinary repo conversation is
 completely unaffected. It fails open on a missing or corrupt registry, for the
 same reason the bench guards do.
 
+**A `Bash` call is judged by its command text, not only its cwd.** A single
+command can leave the worktree and commit elsewhere, and for a while this is
+exactly what happened: a conversation whose cwd was its worktree ran 115 commands
+prefixed `cd <base repo> &&` and landed two commits on the base repo's branch,
+because the gate resolved a `Bash` call to the session cwd and never read the
+command. So `engine/extensions/ion-meta/bash-destination.ts` splits the command on
+`&&`, `||`, `;`, `|`, and `&` (respecting quotes, so a `&&` inside a commit
+message is not a separator) and resolves every destination-changing construct it
+can read as a **literal** path: `cd`, `pushd`, `git -C`, `--git-dir`,
+`--work-tree`. `cd` is applied sequentially, because everything after it runs in
+the new directory. Each resolved destination is then checked by the same policy as
+any other target.
+
+A destination is only ever resolved when it is literal. `cd "$TARGET"`,
+`cd $(git rev-parse --show-toplevel)`, and a path built inside an invoked script
+are **not** resolved: the call passes and the construct is logged at WARN
+(`ion-meta: worktree-gate could not resolve a bash destination`) so the residual
+gap is queryable rather than invisible. That asymmetry is the design — a refusal
+requires a positively-resolved literal path, which makes a false refusal in the
+operator's own worktree structurally impossible. Refusing on unresolved
+destinations was rejected: it would block `cd $(...)`, per-directory loops, and
+any script that changes directory internally, all legitimate work, while `eval`
+and `bash -c` defeat any command-string parser regardless. Closing that remainder
+needs process-level containment, which is a different mechanism.
+
 **What this gate does not catch.** Its predicate is "is my cwd a registered
 worktree", so it is silent on the failure that motivated it — there the sessions'
 cwd *was* the base repo, and the gate correctly concludes "not a worktree

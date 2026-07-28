@@ -39,6 +39,10 @@ function write(file: string): { toolName: string; toolId: string; input: Record<
   return { toolName: 'Write', toolId: 't1', input: { file_path: file } }
 }
 
+function bash(command: string): { toolName: string; toolId: string; input: Record<string, unknown> } {
+  return { toolName: 'Bash', toolId: 't1', input: { command } }
+}
+
 beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), 'ion-wtgate-'))
   process.env.ION_WT_TEST_HOME = home
@@ -98,18 +102,18 @@ describe('gateWorktreeWrite — the writes that must pass', () => {
     expect(gateWorktreeWrite(write(join(MINE, 'engine/x.go')), MINE).block).toBe(false)
   })
 
-  it('allows a Bash call from inside the session own worktree', () => {
-    // Bash is gated on the session cwd (see git-gate's extractTargetPath) rather
-    // than a parsed target, because this gate cannot see a `cd` mid-command and
-    // guessing would produce false refusals in the operator's own directory.
+  it('allows a Bash call whose command stays inside the session own worktree', () => {
+    // Bash destinations are resolved from the command TEXT (see
+    // bash-destination.ts): a command with no `cd` runs in the session cwd, and a
+    // `cd` to a path inside the worktree is still inside it.
     expect(
-      gateWorktreeWrite({ toolName: 'Bash', toolId: 't1', input: { command: 'touch x' } }, MINE).block,
+      gateWorktreeWrite(bash('touch x'), MINE).block,
     ).toBe(false)
     expect(
-      gateWorktreeWrite(
-        { toolName: 'Bash', toolId: 't1', input: { command: 'touch x' } },
-        join(MINE, 'engine'),
-      ).block,
+      gateWorktreeWrite(bash('touch x'), join(MINE, 'engine')).block,
+    ).toBe(false)
+    expect(
+      gateWorktreeWrite(bash(`cd ${join(MINE, 'desktop')} && npm test`), MINE).block,
     ).toBe(false)
   })
 
@@ -151,6 +155,114 @@ describe('gateWorktreeWrite — the writes that must pass', () => {
 
   it('passes when the tool carries no extractable target', () => {
     expect(gateWorktreeWrite({ toolName: 'Write', toolId: 't1', input: {} }, MINE).block).toBe(false)
+  })
+})
+
+/**
+ * The defect these tests pin: a conversation whose cwd was its worktree ran 115
+ * commands prefixed `cd /Users/Shared/source/personal/ion &&` and committed twice
+ * onto the base repo's branch. The gate passed every one of them, because a
+ * `Bash` call was resolved to the session cwd and the command text was never
+ * read. The worktree's own reflog showed only its creation entries.
+ */
+describe('gateWorktreeWrite — Bash commands that leave the worktree', () => {
+  it('blocks a cd into the base repo followed by a commit', () => {
+    // The exact shape that lost the work.
+    const d = gateWorktreeWrite(bash(`cd ${REPO} && git add desktop/src && git commit -m x`), MINE)
+    expect(d.block).toBe(true)
+    expect(d.targetKind).toBe('base repo')
+    expect(d.targetPath).toBe(REPO)
+    expect(d.reason).toContain(MINE)
+  })
+
+  it('blocks a cd into a subdirectory of the base repo', () => {
+    const d = gateWorktreeWrite(bash(`cd ${join(REPO, 'desktop')} && npm test`), MINE)
+    expect(d.block).toBe(true)
+    expect(d.targetKind).toBe('base repo')
+  })
+
+  it('blocks a cd into a sibling worktree', () => {
+    const d = gateWorktreeWrite(bash(`cd ${SIBLING} && touch x`), MINE)
+    expect(d.block).toBe(true)
+    expect(d.targetKind).toBe('sibling worktree')
+  })
+
+  it('blocks git -C into the base repo, and allows it into the worktree', () => {
+    expect(gateWorktreeWrite(bash(`git -C ${REPO} commit -m x`), MINE).block).toBe(true)
+    expect(gateWorktreeWrite(bash(`git -C ${MINE} commit -m x`), MINE).block).toBe(false)
+  })
+
+  it('blocks --git-dir and --work-tree redirection into the base repo', () => {
+    expect(gateWorktreeWrite(bash(`git --work-tree=${REPO} add .`), MINE).block).toBe(true)
+    expect(gateWorktreeWrite(bash(`git --git-dir ${join(REPO, '.git')} log`), MINE).block).toBe(true)
+  })
+
+  it('blocks when the escaping cd is not the first segment', () => {
+    // `cd` is sequential: everything after it runs in the new directory, so a
+    // late `cd` is exactly as dangerous as a leading one.
+    const d = gateWorktreeWrite(bash(`npm test && cd ${REPO} && git commit -m x`), MINE)
+    expect(d.block).toBe(true)
+  })
+
+  it('blocks a cd reached through a pipeline or semicolon chain', () => {
+    expect(gateWorktreeWrite(bash(`echo hi ; cd ${REPO} && touch x`), MINE).block).toBe(true)
+    expect(gateWorktreeWrite(bash(`cat f | cd ${REPO}`), MINE).block).toBe(true)
+  })
+
+  it('blocks a relative cd that climbs out into the base repo', () => {
+    // MINE is /tmp/ion-wt-fixture/worktrees/project-a3372546, so ../../project
+    // is the base repo. Relative paths resolve against the tracked directory.
+    const d = gateWorktreeWrite(bash('cd ../../project && git commit -m x'), MINE)
+    expect(d.block).toBe(true)
+    expect(d.targetKind).toBe('base repo')
+  })
+
+  it('allows destinations outside the repo entirely — Downloads, /tmp, ~/.ion', () => {
+    // The operator's stated scope: a worktree conversation may read and write
+    // anywhere except the repo it was cut from and that repo's other worktrees.
+    expect(gateWorktreeWrite(bash('cd ~/Downloads && unzip a.zip'), MINE).block).toBe(false)
+    expect(gateWorktreeWrite(bash('cd ~/Documents && cat notes.md'), MINE).block).toBe(false)
+    expect(gateWorktreeWrite(bash('cd /tmp && touch scratch'), MINE).block).toBe(false)
+    expect(gateWorktreeWrite(bash(`cd ${OTHER_REPO} && git log`), MINE).block).toBe(false)
+    expect(gateWorktreeWrite(bash(`cd ${join(home, '.ion')} && cat config.json`), MINE).block).toBe(false)
+  })
+
+  it('passes a dynamic destination it cannot resolve, and reports it', () => {
+    // Refusing here would block legitimate work in the operator's own worktree,
+    // so the call passes — but the unresolved construct is surfaced so the caller
+    // can log it and the residual gap stays queryable.
+    const varForm = gateWorktreeWrite(bash('cd "$TARGET" && touch x'), MINE)
+    expect(varForm.block).toBe(false)
+    expect(varForm.unresolvedDestination).toBe('cd "$TARGET"')
+
+    const substForm = gateWorktreeWrite(bash('cd $(git rev-parse --show-toplevel) && touch x'), MINE)
+    expect(substForm.block).toBe(false)
+    expect(substForm.unresolvedDestination).toContain('rev-parse')
+  })
+
+  it('reports no unresolved destination when everything resolved', () => {
+    expect(gateWorktreeWrite(bash('npm test'), MINE).unresolvedDestination).toBeUndefined()
+    expect(
+      gateWorktreeWrite(bash(`cd ${join(MINE, 'desktop')} && npm test`), MINE).unresolvedDestination,
+    ).toBeUndefined()
+  })
+
+  it('does not split on an operator inside a quoted commit message', () => {
+    // `git commit -m "a && b"` must not be read as a chain whose second segment
+    // is `b"`. The message stays inside its segment and nothing escapes.
+    const d = gateWorktreeWrite(bash('git commit -m "fix a && b"'), MINE)
+    expect(d.block).toBe(false)
+  })
+
+  it('is unaffected when the session is not in a worktree', () => {
+    // A base-repo conversation may cd wherever it likes; this gate is only about
+    // worktree containment.
+    expect(gateWorktreeWrite(bash(`cd ${REPO} && git commit -m x`), REPO).block).toBe(false)
+    expect(gateWorktreeWrite(bash(`cd ${MINE} && git commit -m x`), REPO).block).toBe(false)
+  })
+
+  it('passes a Bash call with no command string', () => {
+    expect(gateWorktreeWrite({ toolName: 'Bash', toolId: 't1', input: {} }, MINE).block).toBe(false)
   })
 })
 

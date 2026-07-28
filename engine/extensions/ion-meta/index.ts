@@ -396,6 +396,22 @@ ion.on('tool_call', (ctx, info) => {
     }
     // Pass-case at debug: every write-class call reaches this branch, so info
     // would be noise. The block case above is the audit signal.
+    //
+    // The exception is a Bash command carrying a destination-changing construct
+    // the gate could not resolve literally (`cd "$TARGET"`, `cd $(...)`). That
+    // passes by design, but it is the one shape that could still write outside
+    // the worktree unseen, so it is logged at WARN — the residual gap is then
+    // queryable in ~/.ion/engine.jsonl instead of invisible.
+    if (worktreeDecision.unresolvedDestination !== undefined) {
+      log.warn('ion-meta: worktree-gate could not resolve a bash destination', {
+        tool: info?.toolName,
+        toolId: info?.toolId,
+        worktreePath: worktreeDecision.worktreePath,
+        unresolvedDestination: worktreeDecision.unresolvedDestination,
+        command: String(info?.input?.command ?? '').slice(0, 120),
+        sessionKey: ctx.sessionKey,
+      })
+    }
     log.debug('ion-meta: worktree-gate passed tool call', {
       tool: info?.toolName,
       toolId: info?.toolId,

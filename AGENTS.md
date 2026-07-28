@@ -846,7 +846,14 @@ repo it was cut from, nor into a sibling worktree of the same repo
 `/tmp`, `~/.ion`, and unrelated repos all stay writable, and a conversation that
 is not in a worktree is unaffected. The rule exists because cross-worktree writes
 interleave several conversations in one dirty checkout, and review cannot
-attribute the hunks afterwards.
+attribute the hunks afterwards. A `Bash` call is judged by its command text, not
+only its cwd: every literal `cd` / `pushd` / `git -C` / `--work-tree` destination
+in the chain is checked (`bash-destination.ts`), because a command that `cd`s into
+the base repo and commits there is the exact way two commits once landed on the
+wrong branch. A dynamic destination (`cd "$VAR"`, `cd $(...)`) cannot be resolved,
+so it passes and is logged at WARN rather than guessed at — a refusal requires a
+literal path, which is what makes a false refusal in your own worktree
+impossible.
 
 Closing a conversation never removes a worktree. Removal is only the explicit
 Retire verb, which appraises what would be lost, refuses when the answer is work,

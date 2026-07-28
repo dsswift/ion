@@ -110,8 +110,11 @@ export function gateWriteToolCall(info: ToolCallInfo, sessionCwd: string): GateD
  *
  * Tool-specific shapes (matches the SDK / Anthropic tool conventions):
  *   - Write / Edit → `input.file_path`
- *   - Bash → `sessionCwd` (best deterministic signal; `Bash` commands
- *     can `cd` mid-run, but the inbound cwd is what we have at gate time)
+ *   - Bash → `sessionCwd`. This gate only asks "is the target inside ANY git
+ *     working tree", and a `cd` elsewhere in the command almost always lands in
+ *     one too, so the cwd is a sufficient signal here. Callers that need to know
+ *     WHICH tree a command operates in (worktree-gate.ts) resolve the command
+ *     text via bash-destination.ts instead.
  *   - ion_scaffold → `input.targetDir` (when provided). When `targetDir`
  *     doesn't exist yet, we gate the *parent* — because the target dir
  *     is the thing being created, the question is whether its parent
