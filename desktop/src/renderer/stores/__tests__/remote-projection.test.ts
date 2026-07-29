@@ -99,7 +99,6 @@ function makeTab(overrides: Record<string, unknown> = {}): any {
     pillColor: null,
     pillIcon: null,
     forkedFromSessionId: null,
-    hasFileActivity: false,
     worktree: null,
     pendingWorktreeSetup: false,
     groupId: null,

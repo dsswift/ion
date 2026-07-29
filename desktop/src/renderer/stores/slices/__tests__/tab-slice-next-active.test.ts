@@ -36,7 +36,6 @@ function makeTab(over: Partial<TabState> & { id: string }): TabState {
     pillColor: null,
     pillIcon: null,
     forkedFromSessionId: null,
-    hasFileActivity: false,
     worktree: null,
     pendingWorktreeSetup: false,
     groupId: null,

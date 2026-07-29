@@ -99,7 +99,6 @@ function makeEngineTab(id: string) {
     pillColor: null,
     pillIcon: null,
     forkedFromSessionId: null,
-    hasFileActivity: false,
     worktree: null,
     pendingWorktreeSetup: false,
     groupId: null,
