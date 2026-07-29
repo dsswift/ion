@@ -8,7 +8,9 @@
  * and flagging a clean chunk as conflicted buries the operator in noise.
  */
 import { describe, it, expect } from 'vitest'
-import { buildMergeModel, applyChunk, unresolvedCount, composeResult } from './merge-model'
+import {
+  buildMergeModel, applyChunk, setSideDecision, unresolvedCount, composeResult, composeLines,
+} from './merge-model'
 
 const BASE = 'line1\nline2\nline3\nline4\nline5\n'
 
@@ -125,7 +127,7 @@ describe('buildMergeModel — degraded shapes', () => {
     expect(unresolvedCount(model)).toBeGreaterThan(0)
     let resolved = model
     model.chunks.forEach((c, i) => {
-      if (c.kind === 'conflict' && c.resolution === null) resolved = applyChunk(resolved, i, 'theirs')
+      if (c.kind === 'conflict') resolved = applyChunk(resolved, i, 'theirs')
     })
     expect(composeResult(resolved)).toBe('')
   })
@@ -133,5 +135,101 @@ describe('buildMergeModel — degraded shapes', () => {
   it('handles a file with no trailing newline', () => {
     const model = buildMergeModel('a\nb', 'a\nB', 'a\nb')
     expect(composeResult(model)).toBe('a\nB\n')
+  })
+})
+
+describe('per-side decisions — the JetBrains interaction model', () => {
+  const BASE2 = 'line1\nline2\nline3\nline4\nline5\n'
+
+  it('accepting one side of a conflict leaves it unresolved until the other side is decided', () => {
+    const ours = 'line1\nOURS\nline3\nline4\nline5\n'
+    const theirs = 'line1\nTHEIRS\nline3\nline4\nline5\n'
+    let model = buildMergeModel(BASE2, ours, theirs)
+    const idx = model.chunks.findIndex((c) => c.kind === 'conflict')
+
+    model = setSideDecision(model, idx, 'ours', 'accepted')
+    // Ours is in, but theirs is still pending — the operator has not said
+    // whether theirs joins or is excluded, so the result must not compose yet.
+    expect(unresolvedCount(model)).toBe(1)
+    expect(composeResult(model)).toBeNull()
+
+    model = setSideDecision(model, idx, 'theirs', 'excluded')
+    expect(unresolvedCount(model)).toBe(0)
+    expect(composeResult(model)).toBe(ours)
+  })
+
+  it('accepting both sides composes ours-then-theirs', () => {
+    const ours = 'line1\nOURS\nline3\nline4\nline5\n'
+    const theirs = 'line1\nTHEIRS\nline3\nline4\nline5\n'
+    let model = buildMergeModel(BASE2, ours, theirs)
+    const idx = model.chunks.findIndex((c) => c.kind === 'conflict')
+
+    model = setSideDecision(model, idx, 'ours', 'accepted')
+    model = setSideDecision(model, idx, 'theirs', 'accepted')
+    expect(composeResult(model)).toBe('line1\nOURS\nTHEIRS\nline3\nline4\nline5\n')
+  })
+
+  it('excluding both sides keeps the base', () => {
+    const ours = 'line1\nOURS\nline3\nline4\nline5\n'
+    const theirs = 'line1\nTHEIRS\nline3\nline4\nline5\n'
+    let model = buildMergeModel(BASE2, ours, theirs)
+    const idx = model.chunks.findIndex((c) => c.kind === 'conflict')
+
+    model = setSideDecision(model, idx, 'ours', 'excluded')
+    model = setSideDecision(model, idx, 'theirs', 'excluded')
+    expect(composeResult(model)).toBe(BASE2)
+  })
+
+  it('a one-sided chunk can be excluded, reverting its span to base', () => {
+    // The × on an auto-applied chunk: the operator drops a clean change.
+    const ours = 'line1\nOURS\nline3\nline4\nline5\n'
+    let model = buildMergeModel(BASE2, ours, BASE2)
+    const idx = model.chunks.findIndex((c) => c.kind === 'ours')
+    expect(composeResult(model)).toBe(ours) // auto-applied by default
+
+    model = setSideDecision(model, idx, 'ours', 'excluded')
+    expect(composeResult(model)).toBe(BASE2)
+
+    // And re-accepted: the decision is reversible, not a one-shot.
+    model = setSideDecision(model, idx, 'ours', 'accepted')
+    expect(composeResult(model)).toBe(ours)
+  })
+})
+
+describe('composeLines — provenance for result coloring', () => {
+  const BASE3 = 'line1\nline2\nline3\nline4\nline5\n'
+
+  it('tags each composed line with where it came from', () => {
+    const ours = 'line1\nOURS\nline3\nline4\nline5\n'      // edits line2
+    const theirs = 'line1\nline2\nline3\nTHEIRS\nline5\n'  // edits line4
+    const model = buildMergeModel(BASE3, ours, theirs)
+
+    const lines = composeLines(model)!
+    expect(lines.map((l) => `${l.source}:${l.text}`)).toEqual([
+      'base:line1',
+      'ours:OURS',
+      'base:line3',
+      'theirs:THEIRS',
+      'base:line5',
+    ])
+  })
+
+  it('tags accepted conflict sides by their origin', () => {
+    const ours = 'line1\nOURS\nline3\nline4\nline5\n'
+    const theirs = 'line1\nTHEIRS\nline3\nline4\nline5\n'
+    let model = buildMergeModel(BASE3, ours, theirs)
+    const idx = model.chunks.findIndex((c) => c.kind === 'conflict')
+    model = applyChunk(model, idx, 'both')
+
+    const lines = composeLines(model)!
+    expect(lines[1]).toEqual({ text: 'OURS', source: 'ours' })
+    expect(lines[2]).toEqual({ text: 'THEIRS', source: 'theirs' })
+  })
+
+  it('returns null while any conflict side is pending', () => {
+    const ours = 'line1\nOURS\nline3\nline4\nline5\n'
+    const theirs = 'line1\nTHEIRS\nline3\nline4\nline5\n'
+    const model = buildMergeModel(BASE3, ours, theirs)
+    expect(composeLines(model)).toBeNull()
   })
 })

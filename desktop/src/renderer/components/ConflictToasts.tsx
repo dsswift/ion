@@ -31,7 +31,12 @@ export function ConflictToasts(): React.JSX.Element | null {
 
   return (
     <>
+      {/* data-ion-ui: the overlay window ignores mouse events except over
+          elements carrying this marker (useClickThrough). Without it every
+          click on the toast — Resolve, dismiss — passed through to the
+          desktop underneath, making the toast undismissable. */}
       <div
+        data-ion-ui
         style={{
           position: 'fixed', bottom: 32, right: 12, zIndex: 60,
           display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end',

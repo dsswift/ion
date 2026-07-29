@@ -9,14 +9,20 @@
  * group hunks that overlap on the base. Each group is exactly one of:
  *
  *   - one-sided: only ours (or only theirs) changed that region —
- *     auto-appliable, the same resolution `git merge` itself would produce;
+ *     auto-applied, the same resolution `git merge` itself would produce;
  *   - both sides made the IDENTICAL change — not a conflict;
- *   - both sides changed the region differently — a conflict the operator (or
- *     the editor's controls) must decide.
+ *   - both sides changed the region differently — a conflict the operator
+ *     must decide.
  *
- * This mirrors what a 3-way tool like the JetBrains merge window shows: the
- * non-conflicting majority applies automatically, and attention goes to the
- * genuinely contested chunks.
+ * ── Per-SIDE decisions, not per-chunk choices ───────────────────────────────
+ * Matching the JetBrains merge window: each side of a chunk is independently
+ * ACCEPTED (its change joins the result) or EXCLUDED (dropped). A one-sided
+ * chunk starts accepted and can be excluded (the ×); a conflict starts with
+ * both sides pending and resolves once BOTH have a decision — accept one,
+ * accept both (ours-then-theirs), or exclude both (the base survives). The
+ * composed result updates as decisions land, and every composed line carries
+ * its PROVENANCE (base / ours / theirs) so the UI can color where each line
+ * came from.
  *
  * ── Degraded shapes ─────────────────────────────────────────────────────────
  * add/add (no base) and delete/modify (a side missing) are real conflict
@@ -31,6 +37,17 @@ import { diffLines } from 'diff'
 
 export type ChunkKind = 'same' | 'ours' | 'theirs' | 'conflict'
 
+/** One side's standing within a chunk. */
+export type SideDecision = 'pending' | 'accepted' | 'excluded'
+
+/** Where a composed line came from, for provenance coloring. */
+export type LineSource = 'base' | 'ours' | 'theirs'
+
+export interface ComposedLine {
+  text: string
+  source: LineSource
+}
+
 export interface MergeChunk {
   kind: ChunkKind
   /** Base lines this chunk covers (empty for pure insertions or add/add). */
@@ -40,10 +57,13 @@ export interface MergeChunk {
   /** What theirs has for this span. Equals `base` when theirs did not change it. */
   theirs: string[]
   /**
-   * The chosen content, or null while an operator decision is pending.
-   * Non-conflict chunks are born resolved; conflicts start null.
+   * Whether ours' change is in the result. `accepted` from birth for a
+   * one-sided ours chunk (auto-apply); `pending` for a conflict until the
+   * operator decides. Meaningless on `same`/`theirs` chunks.
    */
-  resolution: string[] | null
+  oursDecision: SideDecision
+  /** Symmetric to `oursDecision`. */
+  theirsDecision: SideDecision
 }
 
 export interface MergeModel {
@@ -140,7 +160,8 @@ export function buildMergeModel(
         base: [],
         ours: ours !== null ? splitLines(ours) : [],
         theirs: theirs !== null ? splitLines(theirs) : [],
-        resolution: null,
+        oursDecision: 'pending',
+        theirsDecision: 'pending',
       }],
     }
   }
@@ -186,7 +207,10 @@ export function buildMergeModel(
     // Unchanged base run before this group.
     if (g.start > cursor) {
       const span = baseLines.slice(cursor, g.start)
-      chunks.push({ kind: 'same', base: span, ours: span, theirs: span, resolution: span })
+      chunks.push({
+        kind: 'same', base: span, ours: span, theirs: span,
+        oursDecision: 'accepted', theirsDecision: 'accepted',
+      })
     }
     const baseSpan = baseLines.slice(g.start, g.end)
     const oursSpan = composeSide(baseLines, g.ours, g.start, g.end)
@@ -194,28 +218,68 @@ export function buildMergeModel(
 
     if (g.ours.length > 0 && g.theirs.length > 0) {
       if (sameLines(oursSpan, theirsSpan)) {
-        // Both sides made the identical change — not a conflict.
-        chunks.push({ kind: 'same', base: baseSpan, ours: oursSpan, theirs: theirsSpan, resolution: oursSpan })
+        // Both sides made the identical change — not a conflict. Rendered as
+        // an agreed change (ours-sourced) rather than untouched base.
+        chunks.push({
+          kind: 'ours', base: baseSpan, ours: oursSpan, theirs: theirsSpan,
+          oursDecision: 'accepted', theirsDecision: 'accepted',
+        })
       } else {
-        chunks.push({ kind: 'conflict', base: baseSpan, ours: oursSpan, theirs: theirsSpan, resolution: null })
+        chunks.push({
+          kind: 'conflict', base: baseSpan, ours: oursSpan, theirs: theirsSpan,
+          oursDecision: 'pending', theirsDecision: 'pending',
+        })
       }
     } else if (g.ours.length > 0) {
-      chunks.push({ kind: 'ours', base: baseSpan, ours: oursSpan, theirs: baseSpan, resolution: oursSpan })
+      // One-sided: auto-applied, exactly as `git merge` would resolve it. The
+      // operator can still exclude it (the ×), reverting the span to base.
+      chunks.push({
+        kind: 'ours', base: baseSpan, ours: oursSpan, theirs: baseSpan,
+        oursDecision: 'accepted', theirsDecision: 'excluded',
+      })
     } else {
-      chunks.push({ kind: 'theirs', base: baseSpan, ours: baseSpan, theirs: theirsSpan, resolution: theirsSpan })
+      chunks.push({
+        kind: 'theirs', base: baseSpan, ours: baseSpan, theirs: theirsSpan,
+        oursDecision: 'excluded', theirsDecision: 'accepted',
+      })
     }
     cursor = Math.max(cursor, g.end)
   }
   // Trailing unchanged run.
   if (cursor < baseLines.length) {
     const span = baseLines.slice(cursor)
-    chunks.push({ kind: 'same', base: span, ours: span, theirs: span, resolution: span })
+    chunks.push({
+      kind: 'same', base: span, ours: span, theirs: span,
+      oursDecision: 'accepted', theirsDecision: 'accepted',
+    })
   }
 
   return { chunks, degradedNoBase: false }
 }
 
-/** Resolve one conflict chunk. `skip` composes the base lines (change dropped). */
+/**
+ * Set one side's decision on one chunk — the primitive behind every gutter
+ * control. Returns a new model; chunks are never mutated in place.
+ */
+export function setSideDecision(
+  model: MergeModel,
+  index: number,
+  side: 'ours' | 'theirs',
+  decision: SideDecision,
+): MergeModel {
+  const chunks = model.chunks.map((c, i) => {
+    if (i !== index) return c
+    return side === 'ours' ? { ...c, oursDecision: decision } : { ...c, theirsDecision: decision }
+  })
+  return { ...model, chunks }
+}
+
+/**
+ * Resolve one conflict chunk with a whole-chunk verdict. A convenience over
+ * setSideDecision for the bulk actions ("all ours", "all theirs"):
+ * `ours` accepts ours and excludes theirs, `both` accepts both
+ * (ours-then-theirs), `skip` excludes both (the base survives).
+ */
 export function applyChunk(
   model: MergeModel,
   index: number,
@@ -223,27 +287,81 @@ export function applyChunk(
 ): MergeModel {
   const chunks = model.chunks.map((c, i) => {
     if (i !== index) return c
-    const resolution =
-      choice === 'ours' ? c.ours
-        : choice === 'theirs' ? c.theirs
-          : choice === 'both' ? [...c.ours, ...c.theirs]
-            : c.base
-    return { ...c, resolution }
+    const [oursDecision, theirsDecision]: [SideDecision, SideDecision] =
+      choice === 'ours' ? ['accepted', 'excluded']
+        : choice === 'theirs' ? ['excluded', 'accepted']
+          : choice === 'both' ? ['accepted', 'accepted']
+            : ['excluded', 'excluded']
+    return { ...c, oursDecision, theirsDecision }
   })
   return { ...model, chunks }
 }
 
-/** Count of conflict chunks still unresolved. */
+/** True when a conflict chunk still has an undecided side. */
+export function isUnresolved(chunk: MergeChunk): boolean {
+  return chunk.kind === 'conflict' &&
+    (chunk.oursDecision === 'pending' || chunk.theirsDecision === 'pending')
+}
+
+/** Count of conflict chunks with any undecided side. */
 export function unresolvedCount(model: MergeModel): number {
-  return model.chunks.filter((c) => c.kind === 'conflict' && c.resolution === null).length
+  return model.chunks.filter(isUnresolved).length
 }
 
 /**
- * The composed result, or null while any conflict is unresolved. Joined with
- * a trailing newline, matching how git stores text stages.
+ * Compose one chunk into provenance-tagged lines, or null while a conflict
+ * side is still pending.
+ */
+export function composeChunk(chunk: MergeChunk): ComposedLine[] | null {
+  if (isUnresolved(chunk)) return null
+  switch (chunk.kind) {
+    case 'same':
+      return chunk.base.map((text) => ({ text, source: 'base' as const }))
+    case 'ours':
+      return chunk.oursDecision === 'accepted'
+        ? chunk.ours.map((text) => ({ text, source: 'ours' as const }))
+        : chunk.base.map((text) => ({ text, source: 'base' as const }))
+    case 'theirs':
+      return chunk.theirsDecision === 'accepted'
+        ? chunk.theirs.map((text) => ({ text, source: 'theirs' as const }))
+        : chunk.base.map((text) => ({ text, source: 'base' as const }))
+    case 'conflict': {
+      const lines: ComposedLine[] = []
+      if (chunk.oursDecision === 'accepted') {
+        lines.push(...chunk.ours.map((text) => ({ text, source: 'ours' as const })))
+      }
+      if (chunk.theirsDecision === 'accepted') {
+        lines.push(...chunk.theirs.map((text) => ({ text, source: 'theirs' as const })))
+      }
+      if (chunk.oursDecision === 'excluded' && chunk.theirsDecision === 'excluded') {
+        lines.push(...chunk.base.map((text) => ({ text, source: 'base' as const })))
+      }
+      return lines
+    }
+  }
+}
+
+/**
+ * The composed result with per-line provenance, or null while any conflict is
+ * unresolved. This is what the result pane renders — the coloring IS the
+ * provenance.
+ */
+export function composeLines(model: MergeModel): ComposedLine[] | null {
+  const out: ComposedLine[] = []
+  for (const chunk of model.chunks) {
+    const lines = composeChunk(chunk)
+    if (lines === null) return null
+    out.push(...lines)
+  }
+  return out
+}
+
+/**
+ * The composed result as text, or null while any conflict is unresolved.
+ * Joined with a trailing newline, matching how git stores text stages.
  */
 export function composeResult(model: MergeModel): string | null {
-  if (unresolvedCount(model) > 0) return null
-  const lines = model.chunks.flatMap((c) => c.resolution ?? [])
-  return lines.length > 0 ? `${lines.join('\n')}\n` : ''
+  const lines = composeLines(model)
+  if (lines === null) return null
+  return lines.length > 0 ? `${lines.map((l) => l.text).join('\n')}\n` : ''
 }
