@@ -209,3 +209,18 @@ While developing, run only the **scoped** gates for what you touched — see roo
 2. `golangci-lint run ./internal/<touched-pkg>/...` clean for the packages you touched.
 3. `make check-file-sizes` passes.
 4. Don't `git push`. The full race suite, integration tests, and `govulncheck` run at PR time (CI is authoritative; `/create-pr` runs the Linux subset) — not here.
+
+## Extension SDK source location
+
+The TypeScript SDK that extensions import lives in **two places**:
+
+| Location | Role |
+|----------|------|
+| `engine/extensions/sdk/ion-sdk/` | **Source of truth.** Edit here. |
+| `~/.ion/extensions/sdk/ion-sdk/` | **Installed copy.** Overwritten at build time. Never edit. |
+
+The build process copies the repo source to the installed location. Any edit made only to `~/.ion/extensions/sdk/` will be lost on the next build.
+
+**Always edit `engine/extensions/sdk/ion-sdk/`** for SDK changes — types, runtime, or any other SDK file. The installed copy at `~/.ion/` is read-only from the agent's perspective.
+
+Corollary for harness work: a harness that consumes a brand-new SDK field may need a structural-typing shim until the operator rebuilds the engine/SDK, because the installed copy does not carry the field until that rebuild happens.
