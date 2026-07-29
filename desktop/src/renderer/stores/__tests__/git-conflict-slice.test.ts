@@ -166,21 +166,27 @@ describe('openConflictAssist', () => {
     expect(CONFLICT_ASSIST_PROMPT).toBe('Please fix my currently in-progress rebase.')
   })
 
-  it('focuses an existing conversation in the directory instead of stacking one', async () => {
+  it('creates a FRESH conversation even when one already exists in the directory', async () => {
+    // The regression this pins: the first version focused the existing
+    // conversation and submitted there — interrupting the operator's live
+    // development thread, whose context could also sway the rebase fix. The
+    // assist must always get a bare conversation with no prior context.
     const submit = vi.fn()
     const selectTab = vi.fn()
-    const createTabInDirectory = vi.fn()
+    const createTabInDirectory = vi.fn().mockResolvedValue('tab-fresh')
     const h = harness({
       submit, selectTab, createTabInDirectory,
       tabs: [{ id: 'tab-existing', workingDirectory: WT }],
-      activeTabId: 'other',
+      activeTabId: 'tab-existing',
     })
 
     const tabId = await h.slice.openConflictAssist!(WT)
 
-    expect(tabId).toBe('tab-existing')
-    expect(selectTab).toHaveBeenCalledWith('tab-existing')
-    expect(createTabInDirectory).not.toHaveBeenCalled()
-    expect(submit).toHaveBeenCalledWith('tab-existing', CONFLICT_ASSIST_PROMPT)
+    expect(tabId).toBe('tab-fresh')
+    expect(createTabInDirectory).toHaveBeenCalledWith(WT, false, true)
+    // The existing conversation is untouched: not focused, nothing submitted.
+    expect(selectTab).not.toHaveBeenCalled()
+    expect(submit).not.toHaveBeenCalledWith('tab-existing', CONFLICT_ASSIST_PROMPT)
+    expect(submit).toHaveBeenCalledWith('tab-fresh', CONFLICT_ASSIST_PROMPT)
   })
 })

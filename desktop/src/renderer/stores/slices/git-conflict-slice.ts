@@ -23,10 +23,12 @@
  * truth stays visible until the conflict is actually resolved.
  *
  * ── AI Assisted ─────────────────────────────────────────────────────────────
- * `openConflictAssist` is ONE store action (ATV multi-step rule): focus an
- * existing conversation in the conflicted directory or create one, then submit
- * the fixed prompt. A component handler chaining these calls would run in
- * whichever window hosts it and decide against stale mirror state.
+ * `openConflictAssist` is ONE store action (ATV multi-step rule): create a
+ * FRESH conversation in the conflicted directory, then submit the fixed
+ * prompt. Always a new tab — commandeering an existing conversation would
+ * interrupt it and let its context sway the fix. A component handler chaining
+ * these calls would run in whichever window hosts it and decide against stale
+ * mirror state.
  */
 import type { StoreSet, StoreGet, State, GitConflictAlert } from '../session-store-types'
 import { rInfo, rDebug } from '../../rendererLogger'
@@ -90,28 +92,26 @@ export function createGitConflictSlice(set: StoreSet, get: StoreGet): Partial<St
     },
 
     /**
-     * AI Assisted resolution: a conversation in the conflicted directory with
-     * the fixed prompt. Focuses an existing conversation there first (the
-     * bench-conversation pattern) so the assist lands in the operator's
-     * context instead of stacking a duplicate tab.
+     * AI Assisted resolution: a FRESH conversation in the conflicted
+     * directory with the fixed prompt.
+     *
+     * Always a new tab, never a focused existing one. The first version
+     * focused an existing conversation in the directory (the bench-conversation
+     * re-entry pattern), which was wrong twice over: submitting into a live
+     * development conversation interrupts it mid-thread, and the accumulated
+     * context can sway how the model resolves the rebase. The fix needs a
+     * clean context whose entire instruction is the one prompt. The operator's
+     * development conversation stays untouched.
      */
     openConflictAssist: async (directory) => {
-      const existing = get().tabs.find((t) => t.workingDirectory === directory)
-
-      let tabId: string
-      if (existing) {
-        rInfo('git.conflicts', 'assist: focusing existing conversation', {
-          directory,
-          tab_id: existing.id.slice(0, 8),
-        })
-        get().selectTab(existing.id)
-        tabId = existing.id
-      } else {
-        rInfo('git.conflicts', 'assist: opening conversation in conflicted directory', { directory })
-        // useWorktree=false: the directory IS the checkout to fix; a nested
-        // worktree would point the conversation somewhere else entirely.
-        tabId = await get().createTabInDirectory(directory, false, true)
-      }
+      rInfo('git.conflicts', 'assist: opening fresh conversation in conflicted directory', { directory })
+      // useWorktree=false: the directory IS the checkout to fix; a nested
+      // worktree would point the conversation somewhere else entirely.
+      // skipDuplicateCheck=true: a blank tab reuse is fine, but an existing
+      // NON-blank conversation must never be commandeered — and the duplicate
+      // check's blank-reuse path is only safe because a blank tab has no
+      // context to sway the fix. Skipping keeps the guarantee unconditional.
+      const tabId = await get().createTabInDirectory(directory, false, true)
 
       get().submit(tabId, CONFLICT_ASSIST_PROMPT)
       rInfo('git.conflicts', 'assist prompt submitted', { directory, tab_id: tabId.slice(0, 8) })
