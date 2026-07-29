@@ -15,6 +15,7 @@ make build                                                # -> bin/ion
 make build-linux                                          # cross-compile linux/amd64
 make docker                                               # Docker image from scratch
 go test ./internal/<pkg>/...                              # scoped unit (dev loop; add -race for concurrency)
+go test -run <TestPrefix> ./internal/<slow-pkg>/          # further scoping for slow packages (see note below)
 golangci-lint run ./internal/<pkg>/...                    # scoped lint (dev loop)
 go test -race ./...                                       # FULL unit suite — heavy, PR-time only (see root AGENTS.md)
 go test -race -tags integration ./tests/integration/...   # integration — heavy, PR-time only
@@ -205,7 +206,7 @@ Observability is the most important property of the engine's mechanical implemen
 
 While developing, run only the **scoped** gates for what you touched — see root [`AGENTS.md`](../AGENTS.md) § "Quality gates (run while developing)". Do **not** run the full `go test -race ./...` sweep, integration tests, or `govulncheck` mid-development; those are heavy gates that run at PR time — CI is authoritative, and `/create-pr` runs the Linux parity subset once before pushing.
 
-1. `go test ./internal/<touched-pkg>/...` passes (add `-race` when concurrency is involved). Run the packages you changed, not the whole tree.
+1. `go test ./internal/<touched-pkg>/...` passes (add `-race` when concurrency is involved). Run the packages you changed, not the whole tree. **In a known-slow package, scope further with `-run <TestPrefix>`** — some packages wait on real timers and a full package run costs minutes of wall-clock the dev loop should not pay (`internal/server` is ~150s: socket lifecycle, reap/heartbeat waits, per-test broadcast windows). Run the test functions covering the arms you touched; the package's full run happens once at PR time via CI. Do not sit through a multi-minute package sweep to validate a one-handler change.
 2. `golangci-lint run ./internal/<touched-pkg>/...` clean for the packages you touched.
 3. `make check-file-sizes` passes.
 4. Don't `git push`. The full race suite, integration tests, and `govulncheck` run at PR time (CI is authoritative; `/create-pr` runs the Linux subset) — not here.
