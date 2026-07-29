@@ -184,14 +184,20 @@ export function MergeEditor({
     )
   }
 
-  const paneStyle: React.CSSProperties = {
-    flex: 1, minWidth: 0, overflow: 'auto', fontFamily: 'monospace', fontSize: 10,
-    lineHeight: 1.5, whiteSpace: 'pre', padding: '4px 6px',
-    color: colors.textPrimary,
+  /**
+   * One grid cell (a chunk's slice of one column). No per-cell overflow: the
+   * single shared scroller owns scrolling, which is what keeps the three
+   * columns aligned. Long lines wrap rather than introducing a second axis of
+   * per-cell horizontal scrolling that would break the row alignment.
+   */
+  const cellStyle: React.CSSProperties = {
+    minWidth: 0, fontFamily: 'monospace', fontSize: 10,
+    lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+    padding: '0 6px', color: colors.textPrimary,
   }
   const paneHeader: React.CSSProperties = {
-    fontSize: 9, color: colors.textSecondary, position: 'sticky', top: 0,
-    background: colors.containerBg, zIndex: 1, paddingBottom: 2,
+    fontSize: 9, color: colors.textSecondary,
+    background: colors.containerBg,
   }
 
   return (
@@ -263,22 +269,28 @@ export function MergeEditor({
           </button>
         </div>
 
-        {/* The three panes. */}
-        <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-          {/* OURS — controls on the right edge, pointing at the result. */}
-          <div style={{ ...paneStyle, borderRight: `1px solid ${colors.containerBorder}` }}>
-            <div style={paneHeader}>{stages?.oursLabel ?? 'yours'}</div>
-            {model?.chunks.map((c, i) => (
-              <div key={i} style={{ background: chunkTint(colors, c, 'ours'), display: 'flex', alignItems: 'flex-start', borderRadius: 2 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>{c.ours.join('\n') || '\u00A0'}</div>
-                {sideControls(i, c, 'ours')}
-              </div>
-            ))}
-          </div>
-
-          {/* RESULT — provenance-colored composition, live as decisions land. */}
-          <div style={{ ...paneStyle, borderRight: `1px solid ${colors.containerBorder}` }}>
-            <div style={{ ...paneHeader, display: 'flex', alignItems: 'center', gap: 6 }}>
+        {/* ── The three panes ─────────────────────────────────────────────
+            ONE scroll container, laid out as a grid with one ROW PER CHUNK
+            and three columns (ours / result / theirs). Alignment is
+            structural: each row stretches to its tallest cell, so a chunk's
+            ours, result, and theirs always sit directly across from each
+            other at every scroll position — scrolling to a conflict scrolls
+            all three "panes" to it by construction. Three separate scroll
+            containers with synced scrollTop cannot do this: the sides have
+            different line counts per chunk, so equal offsets drift apart
+            within a screenful. */}
+        <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }} data-testid="merge-scroll">
+          {/* Sticky column headers stay visible inside the shared scroller. */}
+          <div
+            style={{
+              display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
+              position: 'sticky', top: 0, zIndex: 1, background: colors.containerBg,
+            }}
+          >
+            <div style={{ ...paneHeader, padding: '2px 6px', borderRight: `1px solid ${colors.containerBorder}` }}>
+              {stages?.oursLabel ?? 'yours'}
+            </div>
+            <div style={{ ...paneHeader, padding: '2px 6px', borderRight: `1px solid ${colors.containerBorder}`, display: 'flex', alignItems: 'center', gap: 6 }}>
               result
               <Tooltip text="Edit the composed result as free text before saving">
                 <button
@@ -298,58 +310,74 @@ export function MergeEditor({
                 </button>
               </Tooltip>
             </div>
-            {editing ? (
-              <textarea
-                data-testid="merge-result-textarea"
-                value={editedText}
-                onChange={(e) => setEditedText(e.target.value)}
-                style={{
-                  width: '100%', height: '90%', resize: 'none', fontFamily: 'monospace', fontSize: 10,
-                  background: 'transparent', color: colors.textPrimary, border: `1px solid ${colors.containerBorder}`,
-                }}
-              />
-            ) : (
-              model?.chunks.map((c, i) => {
-                const composed = composeChunk(c)
-                if (composed === null) {
-                  // Undecided conflict: hold the space with an unmissable marker.
-                  return (
-                    <div key={i} data-testid={`merge-result-pending-${i}`} style={{ background: colors.diffRemoveBg, color: colors.diffRemoveText, borderRadius: 2 }}>
-                      {'<?> resolve this conflict'}
-                    </div>
-                  )
-                }
-                return (
-                  <div key={i}>
-                    {composed.map((line, j) => (
-                      <div
-                        key={j}
-                        style={{
-                          background: line.source === 'ours' ? colors.accentLight
-                            : line.source === 'theirs' ? colors.diffAddBg : 'transparent',
-                          borderRadius: 2,
-                        }}
-                      >
-                        {line.text || '\u00A0'}
-                      </div>
-                    ))}
-                    {composed.length === 0 && <div style={{ color: colors.textTertiary }}>{'\u00A0'}</div>}
-                  </div>
-                )
-              })
-            )}
+            <div style={{ ...paneHeader, padding: '2px 6px' }}>
+              {stages?.theirsLabel ?? 'incoming'}
+            </div>
           </div>
 
-          {/* THEIRS — controls on the left edge, pointing at the result. */}
-          <div style={paneStyle}>
-            <div style={paneHeader}>{stages?.theirsLabel ?? 'incoming'}</div>
-            {model?.chunks.map((c, i) => (
-              <div key={i} style={{ background: chunkTint(colors, c, 'theirs'), display: 'flex', alignItems: 'flex-start', borderRadius: 2 }}>
-                {sideControls(i, c, 'theirs')}
-                <div style={{ flex: 1, minWidth: 0 }}>{c.theirs.join('\n') || '\u00A0'}</div>
-              </div>
-            ))}
-          </div>
+          {editing ? (
+            <textarea
+              data-testid="merge-result-textarea"
+              value={editedText}
+              onChange={(e) => setEditedText(e.target.value)}
+              style={{
+                width: '100%', height: '90%', resize: 'none', fontFamily: 'monospace', fontSize: 10,
+                background: 'transparent', color: colors.textPrimary, border: `1px solid ${colors.containerBorder}`,
+              }}
+            />
+          ) : (
+            model?.chunks.map((c, i) => {
+              const composed = composeChunk(c)
+              return (
+                <div
+                  key={i}
+                  data-testid={`merge-chunk-row-${i}`}
+                  style={{
+                    display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
+                    alignItems: 'stretch',
+                  }}
+                >
+                  {/* OURS — controls on the right edge, pointing at the result. */}
+                  <div style={{ ...cellStyle, borderRight: `1px solid ${colors.containerBorder}`, background: chunkTint(colors, c, 'ours'), display: 'flex', alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>{c.ours.join('\n') || '\u00A0'}</div>
+                    {sideControls(i, c, 'ours')}
+                  </div>
+
+                  {/* RESULT — provenance-colored composition, live as decisions land. */}
+                  <div style={{ ...cellStyle, borderRight: `1px solid ${colors.containerBorder}` }}>
+                    {composed === null ? (
+                      // Undecided conflict: hold the space with an unmissable marker.
+                      <div data-testid={`merge-result-pending-${i}`} style={{ background: colors.diffRemoveBg, color: colors.diffRemoveText, borderRadius: 2 }}>
+                        {'<?> resolve this conflict'}
+                      </div>
+                    ) : (
+                      <>
+                        {composed.map((line, j) => (
+                          <div
+                            key={j}
+                            style={{
+                              background: line.source === 'ours' ? colors.accentLight
+                                : line.source === 'theirs' ? colors.diffAddBg : 'transparent',
+                              borderRadius: 2,
+                            }}
+                          >
+                            {line.text || '\u00A0'}
+                          </div>
+                        ))}
+                        {composed.length === 0 && <div style={{ color: colors.textTertiary }}>{'\u00A0'}</div>}
+                      </>
+                    )}
+                  </div>
+
+                  {/* THEIRS — controls on the left edge, pointing at the result. */}
+                  <div style={{ ...cellStyle, background: chunkTint(colors, c, 'theirs'), display: 'flex', alignItems: 'flex-start' }}>
+                    {sideControls(i, c, 'theirs')}
+                    <div style={{ flex: 1, minWidth: 0 }}>{c.theirs.join('\n') || '\u00A0'}</div>
+                  </div>
+                </div>
+              )
+            })
+          )}
         </div>
 
         {/* Footer */}

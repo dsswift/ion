@@ -150,3 +150,43 @@ describe('MergeEditor — per-side accept/exclude', () => {
     expect(gitResolveConflict).toHaveBeenCalledWith(DIR, 'shared.txt', 'line1\nTHEIRS\nline3\n')
   })
 })
+
+describe('MergeEditor — aligned rows in one scroller', () => {
+  it('renders each chunk as ONE grid row holding ours, result, and theirs', async () => {
+    // The alignment guarantee is structural: a chunk's three cells live in the
+    // same row element inside the single scroll container, so they cannot
+    // drift apart at any scroll position. Three synced scrollTops could not
+    // promise this — the sides have different line counts per chunk.
+    await render()
+
+    const scroller = host.querySelector('[data-testid="merge-scroll"]')
+    expect(scroller).not.toBeNull()
+
+    // Fixture chunks: [same(line1), conflict(line2), same(line3)].
+    for (let i = 0; i < 3; i++) {
+      const row = host.querySelector(`[data-testid="merge-chunk-row-${i}"]`)
+      expect(row, `row ${i}`).not.toBeNull()
+      // The row is a 3-column grid…
+      expect((row as HTMLElement).style.gridTemplateColumns).toBe('1fr 1fr 1fr')
+      // …inside the shared scroller, not a per-pane one.
+      expect(scroller!.contains(row)).toBe(true)
+    }
+
+    // The conflict row carries all three representations side by side: ours
+    // content, the pending marker, theirs content.
+    const conflictRow = host.querySelector(`[data-testid="merge-chunk-row-${CONFLICT}"]`)!
+    expect(conflictRow.textContent).toContain('OURS')
+    expect(conflictRow.textContent).toContain('THEIRS')
+    expect(conflictRow.querySelector(`[data-testid="merge-result-pending-${CONFLICT}"]`)).not.toBeNull()
+  })
+
+  it('keeps no per-column scroll container (one scroller owns all three)', async () => {
+    await render()
+    // Any nested overflow:auto inside the scroller would reintroduce
+    // independent scrolling and break the row alignment.
+    const scroller = host.querySelector('[data-testid="merge-scroll"]') as HTMLElement
+    const nested = Array.from(scroller.querySelectorAll('div'))
+      .filter((d) => (d as HTMLElement).style.overflow === 'auto' || (d as HTMLElement).style.overflowY === 'auto')
+    expect(nested).toHaveLength(0)
+  })
+})
