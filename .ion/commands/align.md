@@ -1,5 +1,6 @@
 ---
 description: Context-aware alignment. In plan mode: injects Ion quality standards into the current plan, then updates the plan with the alignment amendments. Outside plan mode: reviews all branch changes against Ion quality gates and principles, then enters planning mode and authors a fix plan for the findings — and after the operator approves the plan, may implement the fixes and commit them. Supports PR mode (`in PR #N`, or bare `287` / `#287` / `PR 287` / `PR #287` — reviews the pull request pending merge to main, ignores the local branch entirely, and lands fixes as commits on top of the PR's head branch in a dedicated worktree), branch mode (in branch <name>), and optional focus narrowing. Fixes for defects introduced by commits on the active branch are amended into those commits by default, so the history reads as though the defect never shipped; published history (main, remotes, PRs) is only ever appended to. Never squashes, splits, reorders, pushes, or opens PRs.
+model: reasoning
 allowed_bash_commands: [ls, stat, git, gh pr view, gh pr diff, gh pr list, gh pr checks, gh pr checkout]
 ---
 
