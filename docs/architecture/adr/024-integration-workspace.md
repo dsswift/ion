@@ -202,13 +202,19 @@ via `rev-parse --git-path` so linked worktrees are read correctly):
   rebase inverts git's sides and bare "ours" mid-rebase means the branch being
   rebased ONTO — precisely the confusion a resolution UI must remove.
 
-The dialog's AI Assisted button opens (or focuses) a conversation in the
-conflicted directory and submits `Please fix my currently in-progress rebase.`
-verbatim — one forwarded store action, per the ATV multi-step rule. Abort and
-Continue drive the underlying rebase; Continue enables only when nothing is
-left unmerged. Resolution is desktop-only; iOS renders `operationState` and a
-conflicted-file count so a mid-rebase worktree neither vanishes nor looks
-healthy on the phone.
+The dialog's AI Assisted button opens a FRESH conversation in the conflicted
+directory (never an existing one — a live thread would be interrupted and its
+context could sway the fix) and submits
+`Please fix my currently in-progress rebase.` verbatim — one forwarded store
+action, per the ATV multi-step rule. The assist requires the `standard` tier in
+`~/.ion/models.json` and refuses with a remediation message when it is absent
+(resolved through the engine's `resolve_model_tier` command; the engine owns
+the file's semantics). The fresh conversation is pinned to that tier's model
+and forced into auto mode regardless of the operator's default — a plan-mode
+default would park the fix writing a plan. Abort and Continue drive the
+underlying rebase; Continue enables only when nothing is left unmerged.
+Resolution is desktop-only; iOS renders `operationState` and a conflicted-file
+count so a mid-rebase worktree neither vanishes nor looks healthy on the phone.
 
 ### Retirement is surfaced, never silent
 

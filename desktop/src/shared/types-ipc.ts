@@ -300,6 +300,7 @@ export const IPC = {
 
   // Model & provider management
   LIST_MODELS: 'ion:list-models',
+  MODEL_TIER_RESOLVE: 'ion:model-tier-resolve',
   STORE_CREDENTIAL: 'ion:store-credential',
   REFRESH_MODELS: 'ion:refresh-models',
 

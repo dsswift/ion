@@ -13,7 +13,12 @@ vi.mock('../../rendererLogger', () => ({
   rInfo: vi.fn(), rDebug: vi.fn(), rWarn: vi.fn(), rError: vi.fn(), rTrace: vi.fn(),
 }))
 
-import { createGitConflictSlice, CONFLICT_ASSIST_PROMPT } from '../slices/git-conflict-slice'
+const applyPermissionModeForTab = vi.fn()
+vi.mock('../slices/tab-slice-permission-mode', () => ({
+  applyPermissionModeForTab: (...args: unknown[]) => applyPermissionModeForTab(...args),
+}))
+
+import { createGitConflictSlice, CONFLICT_ASSIST_PROMPT, CONFLICT_ASSIST_TIER } from '../slices/git-conflict-slice'
 import { createWorktreeInventorySlice } from '../slices/worktree-inventory-slice'
 import type { State, GitConflictAlert } from '../session-store-types'
 
@@ -152,10 +157,26 @@ describe('inventory refresh drives detection and clearing', () => {
 })
 
 describe('openConflictAssist', () => {
+  /** window.ion with a configured standard tier, overridable per test. */
+  function ionWith(tier: Partial<{ model: string; configured: boolean }> = {}): void {
+    ;(globalThis as unknown as { window: Record<string, unknown> }).window = {
+      ion: {
+        resolveModelTier: vi.fn().mockResolvedValue({
+          tier: CONFLICT_ASSIST_TIER,
+          model: tier.model ?? 'prov/claude-sonnet-4-6',
+          fallbacks: [],
+          configured: tier.configured ?? true,
+        }),
+      },
+    }
+  }
+
   it('creates a conversation in the directory and submits the exact prompt', async () => {
+    ionWith()
     const submit = vi.fn()
+    const setTabModel = vi.fn()
     const createTabInDirectory = vi.fn().mockResolvedValue('tab-new')
-    const h = harness({ submit, createTabInDirectory, tabs: [], activeTabId: null })
+    const h = harness({ submit, setTabModel, createTabInDirectory, tabs: [], activeTabId: null })
 
     const tabId = await h.slice.openConflictAssist!(WT)
 
@@ -171,11 +192,13 @@ describe('openConflictAssist', () => {
     // conversation and submitted there — interrupting the operator's live
     // development thread, whose context could also sway the rebase fix. The
     // assist must always get a bare conversation with no prior context.
+    ionWith()
     const submit = vi.fn()
     const selectTab = vi.fn()
+    const setTabModel = vi.fn()
     const createTabInDirectory = vi.fn().mockResolvedValue('tab-fresh')
     const h = harness({
-      submit, selectTab, createTabInDirectory,
+      submit, selectTab, setTabModel, createTabInDirectory,
       tabs: [{ id: 'tab-existing', workingDirectory: WT }],
       activeTabId: 'tab-existing',
     })
@@ -188,5 +211,46 @@ describe('openConflictAssist', () => {
     expect(selectTab).not.toHaveBeenCalled()
     expect(submit).not.toHaveBeenCalledWith('tab-existing', CONFLICT_ASSIST_PROMPT)
     expect(submit).toHaveBeenCalledWith('tab-fresh', CONFLICT_ASSIST_PROMPT)
+  })
+
+  it('refuses with a remediation message when the standard tier is not configured', async () => {
+    // The assist runs on the standard tier by specification — never the
+    // operator's default (often a reasoning model), never highest/lowest.
+    // No tier, no tab: the refusal must create nothing to clean up.
+    ionWith({ configured: false })
+    const submit = vi.fn()
+    const createTabInDirectory = vi.fn()
+    const h = harness({ submit, createTabInDirectory, tabs: [], activeTabId: null })
+
+    await expect(h.slice.openConflictAssist!(WT)).rejects.toThrow(/standard.*models\.json/s)
+    expect(createTabInDirectory).not.toHaveBeenCalled()
+    expect(submit).not.toHaveBeenCalled()
+  })
+
+  it('pins the tier model on the fresh conversation', async () => {
+    ionWith({ model: 'prov/claude-sonnet-4-6' })
+    const submit = vi.fn()
+    const setTabModel = vi.fn()
+    const createTabInDirectory = vi.fn().mockResolvedValue('tab-new')
+    const h = harness({ submit, setTabModel, createTabInDirectory, tabs: [], activeTabId: null })
+
+    await h.slice.openConflictAssist!(WT)
+
+    expect(setTabModel).toHaveBeenCalledWith('tab-new', 'prov/claude-sonnet-4-6')
+  })
+
+  it('forces auto mode on the fresh conversation regardless of the default', async () => {
+    // A plan-mode default would park the assist writing a plan for work the
+    // operator already requested verbatim.
+    ionWith()
+    const setTabModel = vi.fn()
+    const createTabInDirectory = vi.fn().mockResolvedValue('tab-new')
+    const h = harness({ submit: vi.fn(), setTabModel, createTabInDirectory, tabs: [], activeTabId: null })
+
+    await h.slice.openConflictAssist!(WT)
+
+    expect(applyPermissionModeForTab).toHaveBeenCalledWith(
+      expect.anything(), expect.anything(), 'tab-new', 'auto', 'conflict_assist',
+    )
   })
 })

@@ -17,6 +17,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/conversation"
+	"github.com/dsswift/ion/engine/internal/modelconfig"
 	"github.com/dsswift/ion/engine/internal/plugins"
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/providers"
@@ -325,6 +326,28 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "list_models":
 		// Implementation in dispatch_data.go.
 		s.dispatchListModels(conn, cmd)
+
+	case "resolve_model_tier":
+		// Map a tier name (cmd.Text) from ~/.ion/models.json to its configured
+		// model + fallback chain. `configured` distinguishes "the user defined
+		// this tier" from ResolveTierChain's pass-through behavior, which
+		// returns an unrecognized name as-is — a consumer gating a feature on
+		// a tier existing needs that distinction, not the echo.
+		tierName := cmd.Text
+		model, fallbacks := modelconfig.ResolveTierChain(tierName)
+		configured := model != tierName
+		utils.LogWithFields(utils.LevelInfo, "server", "resolve_model_tier", map[string]any{
+			"tier":       tierName,
+			"model":      model,
+			"configured": configured,
+			"fallbacks":  len(fallbacks),
+		})
+		s.sendResult(conn, cmd, nil, map[string]interface{}{
+			"tier":       tierName,
+			"model":      model,
+			"fallbacks":  fallbacks,
+			"configured": configured,
+		})
 
 	case "get_host_info":
 		s.sendResult(conn, cmd, nil, computeHostInfo())

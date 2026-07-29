@@ -29,12 +29,28 @@
  * interrupt it and let its context sway the fix. A component handler chaining
  * these calls would run in whichever window hosts it and decide against stale
  * mirror state.
+ *
+ * The assist requires the `standard` model tier (CONFLICT_ASSIST_TIER) and
+ * refuses with a remediation message when it is not configured. The fresh
+ * conversation is pinned to that tier's model and forced into auto mode —
+ * a plan-mode default would park the fix writing a plan.
  */
 import type { StoreSet, StoreGet, State, GitConflictAlert } from '../session-store-types'
-import { rInfo, rDebug } from '../../rendererLogger'
+import { rInfo, rDebug, rWarn } from '../../rendererLogger'
+import { applyPermissionModeForTab } from './tab-slice-permission-mode'
 
 /** The exact prompt the AI Assisted button sends. Verbatim by specification. */
 export const CONFLICT_ASSIST_PROMPT = 'Please fix my currently in-progress rebase.'
+
+/**
+ * The model tier the assist runs on. A rebase fix is bounded, mechanical work:
+ * the operator's default is often a reasoning model, which is slower and more
+ * expensive than this task warrants, and the highest/lowest tiers are the
+ * wrong axis. The `standard` tier from ~/.ion/models.json is the deliberate
+ * choice, and the assist REFUSES when it is not configured rather than
+ * silently running on some other model.
+ */
+export const CONFLICT_ASSIST_TIER = 'standard'
 
 export function createGitConflictSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -104,7 +120,25 @@ export function createGitConflictSlice(set: StoreSet, get: StoreGet): Partial<St
      * development conversation stays untouched.
      */
     openConflictAssist: async (directory) => {
-      rInfo('git.conflicts', 'assist: opening fresh conversation in conflicted directory', { directory })
+      // ── Gate: the standard tier must be configured ─────────────────────
+      // Resolved through the engine (it owns models.json semantics), before
+      // any tab exists, so a refusal creates nothing to clean up.
+      const tier = await window.ion.resolveModelTier(CONFLICT_ASSIST_TIER)
+      if (!tier.configured) {
+        rWarn('git.conflicts', 'assist refused: model tier not configured', {
+          directory,
+          tier: CONFLICT_ASSIST_TIER,
+        })
+        throw new Error(
+          `AI Assisted resolution needs a "${CONFLICT_ASSIST_TIER}" model tier. ` +
+          `Add one under "tiers" in ~/.ion/models.json (e.g. "standard": "<provider>/<model>") and try again.`,
+        )
+      }
+
+      rInfo('git.conflicts', 'assist: opening fresh conversation in conflicted directory', {
+        directory,
+        model: tier.model,
+      })
       // useWorktree=false: the directory IS the checkout to fix; a nested
       // worktree would point the conversation somewhere else entirely.
       // skipDuplicateCheck=true: a blank tab reuse is fine, but an existing
@@ -113,8 +147,21 @@ export function createGitConflictSlice(set: StoreSet, get: StoreGet): Partial<St
       // context to sway the fix. Skipping keeps the guarantee unconditional.
       const tabId = await get().createTabInDirectory(directory, false, true)
 
+      // Pin the tier's model on the fresh conversation. setTabModel writes
+      // modelOverride on the active instance, which submit() then sends.
+      get().setTabModel(tabId, tier.model)
+
+      // Force auto mode regardless of the operator's default. The assist's
+      // whole job is to EXECUTE the rebase fix; a plan-mode default would
+      // park it writing a plan for work that was already requested verbatim.
+      applyPermissionModeForTab(set, get, tabId, 'auto', 'conflict_assist')
+
       get().submit(tabId, CONFLICT_ASSIST_PROMPT)
-      rInfo('git.conflicts', 'assist prompt submitted', { directory, tab_id: tabId.slice(0, 8) })
+      rInfo('git.conflicts', 'assist prompt submitted', {
+        directory,
+        tab_id: tabId.slice(0, 8),
+        model: tier.model,
+      })
       return tabId
     },
   }

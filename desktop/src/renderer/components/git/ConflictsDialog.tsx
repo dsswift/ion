@@ -201,11 +201,17 @@ export function ConflictsDialog({
           <button
             data-testid="conflict-ai-assist"
             onClick={() => {
-              // One forwarded store action (ATV rule): focus-or-create the
-              // conversation and submit the fixed prompt.
+              // One forwarded store action (ATV rule): a fresh conversation in
+              // the directory with the fixed prompt, on the standard tier, in
+              // auto mode. The dialog stays open until the action succeeds so
+              // a refusal (no standard tier configured) lands in the error
+              // banner instead of vanishing with the dialog.
               void useSessionStore.getState().openConflictAssist(directory)
-                .catch((err) => rError('git.conflicts', 'assist failed', { error: String(err) }))
-              onClose()
+                .then(() => onClose())
+                .catch((err) => {
+                  rError('git.conflicts', 'assist failed', { error: String(err) })
+                  setError(err instanceof Error ? err.message : String(err))
+                })
             }}
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 5,

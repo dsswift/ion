@@ -258,6 +258,7 @@ const api: IonAPI = {
 
   // ─── Model & provider management ───
   listModels: () => ipcRenderer.invoke(IPC.LIST_MODELS),
+  resolveModelTier: (tier: string) => ipcRenderer.invoke(IPC.MODEL_TIER_RESOLVE, { tier }),
   storeCredential: (provider, credential) => ipcRenderer.invoke(IPC.STORE_CREDENTIAL, { provider, credential }),
   refreshModels: (provider) => ipcRenderer.invoke(IPC.REFRESH_MODELS, { provider }),
 

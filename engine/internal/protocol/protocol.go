@@ -278,8 +278,13 @@ var validCommands = map[string]bool{
 	"query_session_status": true,
 	"migrate_conversation": true,
 	"list_models":          true,
-	"store_credential":     true,
-	"refresh_models":       true,
+	// resolve_model_tier: map a tier name from ~/.ion/models.json to its
+	// configured model + fallback chain. Consumers gate tier-dependent
+	// features on this (e.g. "requires a standard tier") instead of parsing
+	// models.json themselves — the engine owns the file's semantics.
+	"resolve_model_tier": true,
+	"store_credential":   true,
+	"refresh_models":     true,
 	// provider_login / provider_login_cancel / provider_logout: delegated-CLI
 	// (codex/claude-code/grok/cursor) interactive auth lifecycle. The engine
 	// drives the CLI login/logout and broadcasts engine_provider_login stage
@@ -546,6 +551,9 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "text") && hasNonEmptyString(raw, "message")
 	case "list_models":
 		return true
+	case "resolve_model_tier":
+		// The tier name rides in `text`.
+		return hasNonEmptyString(raw, "text")
 	case "store_credential":
 		return hasNonEmptyString(raw, "provider") && hasString(raw, "credential")
 	case "provider_login", "provider_login_cancel", "provider_logout":

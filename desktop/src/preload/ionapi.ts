@@ -297,6 +297,7 @@ export interface IonAPI extends AtvApi {
 
   // ─── Model & provider management ───
   listModels(): Promise<{ models: import('../shared/types-models').ModelEntry[]; providers: import('../shared/types-models').ProviderEntry[] }>
+  resolveModelTier(tier: string): Promise<{ tier: string; model: string; fallbacks: string[]; configured: boolean }>
   storeCredential(provider: string, credential: string): Promise<{ ok: boolean; error?: string }>
   refreshModels(provider?: string): Promise<{ ok: boolean; error?: string }>
 

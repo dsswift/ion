@@ -16,6 +16,22 @@ export async function listModels(bridge: EngineBridge): Promise<{ models: any[];
   return result.data || { models: [], providers: [] }
 }
 
+/**
+ * Resolve a model tier from ~/.ion/models.json to its configured chain.
+ * `configured=false` means the tier is not defined — the engine echoes an
+ * unknown name back, and consumers gating features on a tier existing (the
+ * conflict assist requires `standard`) need that fact, not the echo.
+ */
+export async function resolveModelTier(bridge: EngineBridge, tier: string): Promise<{
+  tier: string; model: string; fallbacks: string[]; configured: boolean
+}> {
+  await bridge.connect()
+  const result = await bridge._sendWithData<{ tier: string; model: string; fallbacks: string[]; configured: boolean }>(
+    { cmd: 'resolve_model_tier', text: tier },
+  )
+  return result.data ?? { tier, model: tier, fallbacks: [], configured: false }
+}
+
 export async function storeCredential(bridge: EngineBridge, provider: string, credential: string): Promise<{ ok: boolean; error?: string }> {
   await bridge.connect()
   return bridge._sendWithResult({ cmd: 'store_credential', provider, credential })
