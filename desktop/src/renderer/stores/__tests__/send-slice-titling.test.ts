@@ -69,6 +69,7 @@ import { seedMainPane } from './helpers/conversation-test-helpers'
 const mockGenerateTitle = vi.fn(async () => '')
 const mockSaveSessionLabel = vi.fn(async () => {})
 const mockTabMetaChanged = vi.fn()
+const mockWorktreeAutotitle = vi.fn(async () => ({ ok: false, reason: 'not-a-worktree' as const }))
 
 ;(globalThis as any).window = {
   ion: {
@@ -78,6 +79,7 @@ const mockTabMetaChanged = vi.fn()
     generateTitle: mockGenerateTitle,
     saveSessionLabel: mockSaveSessionLabel,
     tabMetaChanged: mockTabMetaChanged,
+    gitWorktreeAutotitle: mockWorktreeAutotitle,
   },
   crypto: { randomUUID: () => 'uuid-1234' },
 }
@@ -277,5 +279,102 @@ describe('send-slice — send-time tab titling', () => {
     state.submitRemotePrompt('tab-1', '/align some args')
 
     expect(mockGenerateTitle).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * Worktree titling rides the same send-time signal as tab titling, but with a
+ * DIFFERENT guard: it fires on every send, not only the first.
+ *
+ * The distinction is the whole point. A worktree's identifiers are machine
+ * strings, and a conversation re-opened into an existing worktree has a tab
+ * title already while the worktree may still be nameless — so gating worktree
+ * naming on `needsTitle` would leave those worktrees permanently unnamed.
+ * Idempotency lives in the main process, which no-ops when the registry already
+ * has a title.
+ *
+ * Regression direction: moving the maybeTitleWorktree call inside the
+ * `needsTitle && !isBusy` guard in send-slice.ts turns the "already-titled tab"
+ * case red.
+ */
+describe('send-slice — worktree titling', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(usePreferencesStore.getState).mockReturnValue(defaultPrefs() as any)
+  })
+
+  it('asks the main process to name the worktree, passing the working directory and prompt', () => {
+    const { state } = buildHarness(makeTab({ title: 'New Tab', workingDirectory: '/wt/ion-a3f1' }))
+
+    state.submit('tab-1', 'fix the token expiry check')
+
+    expect(mockWorktreeAutotitle).toHaveBeenCalledTimes(1)
+    expect(mockWorktreeAutotitle).toHaveBeenCalledWith('/wt/ion-a3f1', 'fix the token expiry check')
+  })
+
+  // THE case that distinguishes worktree titling from tab titling.
+  it('still fires when the TAB already has a title', () => {
+    const { state } = buildHarness(
+      makeTab({ title: 'An existing tab title', workingDirectory: '/wt/ion-a3f1' }),
+    )
+
+    state.submit('tab-1', 'a later prompt in a re-opened worktree conversation')
+
+    expect(mockGenerateTitle).not.toHaveBeenCalled()
+    expect(mockWorktreeAutotitle).toHaveBeenCalledTimes(1)
+  })
+
+  it('skips a slash command, which describes an invocation rather than the work', () => {
+    const { state } = buildHarness(makeTab({ title: 'New Tab', workingDirectory: '/wt/ion-a3f1' }))
+
+    state.submit('tab-1', '/align')
+
+    expect(mockWorktreeAutotitle).not.toHaveBeenCalled()
+  })
+
+  it('respects the aiGeneratedTitles preference', () => {
+    vi.mocked(usePreferencesStore.getState).mockReturnValue(
+      defaultPrefs({ aiGeneratedTitles: false }) as any,
+    )
+    const { state } = buildHarness(makeTab({ title: 'New Tab', workingDirectory: '/wt/ion-a3f1' }))
+
+    state.submit('tab-1', 'plain prose that would normally trigger titling')
+
+    expect(mockWorktreeAutotitle).not.toHaveBeenCalled()
+  })
+
+  it('does not fire for a tab with no directory at all', () => {
+    // '~' is the "no project root" sentinel, not a place. Everything else —
+    // including a resolved home path — goes to the main process, which owns
+    // the "is this a registered worktree?" decision against the registry
+    // rather than having each renderer guess from the path shape.
+    const { state } = buildHarness(
+      makeTab({ title: 'New Tab', workingDirectory: '~', hasChosenDirectory: true }),
+    )
+
+    state.submit('tab-1', 'plain prose with no project root')
+
+    expect(mockWorktreeAutotitle).not.toHaveBeenCalled()
+  })
+
+  it('lets the main process answer for an ordinary project directory', () => {
+    const { state } = buildHarness(
+      makeTab({ title: 'New Tab', workingDirectory: '/home/test/src/ion' }),
+    )
+
+    state.submit('tab-1', 'plain prose in a normal project tab')
+
+    // Fired, and the main process replies `not-a-worktree` — one registry
+    // lookup, no LLM call. Deciding here instead would mean each window
+    // guessing from its own possibly-stale inventory snapshot.
+    expect(mockWorktreeAutotitle).toHaveBeenCalledWith('/home/test/src/ion', 'plain prose in a normal project tab')
+  })
+
+  it('fires on the iOS send path too', () => {
+    const { state } = buildHarness(makeTab({ title: 'New Tab', workingDirectory: '/wt/ion-a3f1' }))
+
+    state.submitRemotePrompt('tab-1', 'ios user described the work')
+
+    expect(mockWorktreeAutotitle).toHaveBeenCalledWith('/wt/ion-a3f1', 'ios user described the work')
   })
 })

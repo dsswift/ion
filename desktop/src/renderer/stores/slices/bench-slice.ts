@@ -12,6 +12,7 @@
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import type { BenchRebuildResult, IntegrationWorkspace } from '../../../shared/types'
 import { rInfo, rWarn, rDebug } from '../../rendererLogger'
+import { collectDirConversations, pickNextConversation } from '../../../shared/worktree-conversations'
 
 export function createBenchSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -45,7 +46,8 @@ export function createBenchSlice(set: StoreSet, get: StoreGet): Partial<State> {
      * or type the `~/.ion/integration/...` path.
      *
      * Focuses an existing bench tab rather than stacking duplicates, matching
-     * the worktree re-entry behaviour.
+     * the worktree re-entry behaviour — including the rotation when several
+     * conversations are open in the bench.
      */
     openBenchConversation: async (repoPath, sourceBranch) => {
       const workspaces = get().benchWorkspaces.get(repoPath) ?? []
@@ -55,11 +57,16 @@ export function createBenchSlice(set: StoreSet, get: StoreGet): Partial<State> {
         return null
       }
 
-      const existing = get().tabs.find((t) => t.workingDirectory === ws.benchPath)
-      if (existing) {
-        rInfo('bench', 'focusing existing bench conversation', { tab_id: existing.id.slice(0, 8) })
-        get().selectTab(existing.id)
-        return existing.id
+      const matches = collectDirConversations(get().tabs, ws.benchPath)
+      const next = pickNextConversation(matches, get().activeTabId)
+      if (next) {
+        rInfo('bench', 'focusing existing bench conversation', {
+          match_count: matches.length,
+          from_tab: (get().activeTabId ?? 'none').slice(0, 8),
+          to_tab: next.tabId.slice(0, 8),
+        })
+        get().selectTab(next.tabId)
+        return next.tabId
       }
 
       // The bench worktree may not exist on disk until the first rebuild, so

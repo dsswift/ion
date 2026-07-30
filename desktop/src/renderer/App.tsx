@@ -36,7 +36,7 @@ import { useUpdateStore } from './stores/update-store'
 import { setupModelSync } from './stores/model-store'
 import { initActiveTabNotifier } from './lib/active-tab-notifier'
 import { initRemoteProjectionPush } from './stores/remote-projection-push'
-import { rWarn, rError } from './rendererLogger'
+import { rWarn, rError, rInfo } from './rendererLogger'
 
 
 const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] as const }
@@ -75,6 +75,19 @@ export default function App() {
     return window.ion.onRemoteOpenBenchConversation(({ repoPath, sourceBranch }) => {
       void useSessionStore.getState().openBenchConversation(repoPath, sourceBranch)
         .catch((err) => rError('remote', 'open bench conversation failed', { error: String(err) }))
+    })
+  }, [])
+
+  // A worktree was named (generated from its first prompt, or renamed by the
+  // operator). Re-read the inventory so the row shows the name immediately
+  // rather than at the next panel refresh. Both windows subscribe — the event
+  // arrives via broadcast(), so the overlay and the ATV mirror rename together.
+  useEffect(() => {
+    return window.ion.onWorktreeTitled(({ repoPath, worktreePath, title }) => {
+      rInfo('worktree', 'worktree titled', { repo_path: repoPath, worktree_path: worktreePath, title })
+      if (!repoPath) return
+      void useSessionStore.getState().refreshWorktreeInventory(repoPath)
+        .catch((err) => rError('worktree', 'inventory refresh after titling failed', { error: String(err) }))
     })
   }, [])
 

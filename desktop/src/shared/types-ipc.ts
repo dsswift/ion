@@ -186,6 +186,13 @@ export const IPC = {
   // to describe and act on them (the re-entry surface after a tab close).
   GIT_WORKTREE_INVENTORY: 'ion:git-worktree-inventory',
   GIT_WORKTREE_APPRAISE: 'ion:git-worktree-appraise',
+  // Worktree naming. A worktree's own identifiers (`ion-03e81090`,
+  // `wt/ion-03e81090`) describe nothing about the work, so a worktree earns a
+  // human title from the first prompt sent inside it (AUTOTITLE, which decides
+  // in the main process whether one is needed) and the operator can override it
+  // (SET_TITLE).
+  GIT_WORKTREE_AUTOTITLE: 'ion:git-worktree-autotitle',
+  GIT_WORKTREE_SET_TITLE: 'ion:git-worktree-set-title',
   // Re-run provisioning for a worktree whose dependency state the operator
   // believes is wrong. Same code path as creation.
   GIT_WORKTREE_REPROVISION: 'ion:git-worktree-reprovision',

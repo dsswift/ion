@@ -18,8 +18,11 @@ import { ArrowsClockwise, ChatCircle, CircleNotch, Plus, X } from '@phosphor-ico
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { Tooltip } from './git/Tooltip'
+import { HoverCard } from './git/HoverCard'
+import { WorktreeConversationsCard } from './WorktreeConversationsCard'
 import { BenchMemberRow } from './BenchMemberRow'
 import { rError } from '../rendererLogger'
+import { collectDirConversations, describeOpenConversations } from '../../shared/worktree-conversations'
 import type { IntegrationMember, IntegrationWorkspace } from '../../shared/types'
 
 /**
@@ -49,6 +52,7 @@ export function IntegrationSection({
   const tips = useSessionStore((s) => s.benchSourceTips.get(repoPath))
   const inventory = useSessionStore((s) => s.worktreeInventory.get(repoPath))
   const retired = useSessionStore((s) => s.benchRetired.get(repoPath)) ?? EMPTY_RETIRED
+  const tabs = useSessionStore((s) => s.tabs)
   const [busy, setBusy] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
 
@@ -97,6 +101,10 @@ export function IntegrationSection({
   // retired member's row disappears, and a row vanishing with no explanation is
   // what made absorption read as the bench eating a worktree.
   const absorbed = retired.get(active.sourceBranch) ?? []
+  // Conversations living in the bench directory itself, as distinct from those
+  // in its members' worktrees.
+  const benchConversations = collectDirConversations(tabs, active.benchPath)
+  const benchOpenLabel = describeOpenConversations(benchConversations)
 
   const run = (key: string, fn: () => Promise<unknown>) => {
     setBusy(key)
@@ -132,9 +140,35 @@ export function IntegrationSection({
 
       {/* Bench header: what it is built from, and how current that is. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 6px' }}>
-        <span style={{ fontSize: 10, color: colors.textSecondary, fontFamily: 'monospace' }}>
-          {active.benchBranch}
-        </span>
+        {/* The bench branch is a machine string like every other identifier
+            here, so it gets the same hover treatment: what is layered on it and
+            which conversations are running in it. */}
+        <HoverCard
+          maxWidth={320}
+          fallbackTitle={`Bench branch ${active.benchBranch}`}
+          content={
+            <WorktreeConversationsCard
+              heading={`Bench · ${active.sourceBranch}`}
+              identifiers={[
+                { label: 'branch', value: active.benchBranch },
+                { label: 'base', value: active.baseSha ? active.baseSha.slice(0, 7) : 'never built' },
+                { label: 'members', value: `${active.members.filter((m) => m.enabled).length} enabled of ${active.members.length}` },
+                { label: 'path', value: active.benchPath },
+              ]}
+              conversations={benchConversations}
+              emptyNoun="bench"
+            />
+          }
+        >
+          <span style={{ fontSize: 10, color: colors.textSecondary, fontFamily: 'monospace' }}>
+            {active.benchBranch}
+          </span>
+        </HoverCard>
+        {benchOpenLabel && (
+          <span data-testid="bench-open-label" style={{ fontSize: 9, color: colors.accent, flexShrink: 0 }}>
+            {benchOpenLabel}
+          </span>
+        )}
         {active.baseSha && (
           <Tooltip text={baseDrifted
             ? `${active.sourceBranch} has moved since this build — rebuild to pick it up`
@@ -242,6 +276,10 @@ export function IntegrationSection({
           <BenchMemberRow
             key={m.worktreePath}
             member={m}
+            // Resolved from the inventory this section already loads. Storing a
+            // copy on the member record would drift on the next rename.
+            title={(inventory ?? []).find((w) => w.worktreePath === m.worktreePath)?.title}
+            openConversations={collectDirConversations(tabs, m.worktreePath)}
             busy={busy === m.worktreePath}
             onToggleEnabled={() => run(m.worktreePath, async () => {
               await useSessionStore.getState()
@@ -285,7 +323,7 @@ function AddMemberPicker({
 }: {
   repoPath: string
   workspace: IntegrationWorkspace
-  candidates: Array<{ worktreePath: string; branchName: string; label: string }>
+  candidates: Array<{ worktreePath: string; branchName: string; label: string; title?: string }>
   onAdded(): void
 }): React.JSX.Element | null {
   const colors = useColors()
@@ -327,7 +365,9 @@ function AddMemberPicker({
           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.surfaceHover }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
         >
-          <span>{c.label}</span>
+          {/* Same title-first rule as every other worktree surface: picking a
+              worktree to enrol should read as picking WORK, not a hex slug. */}
+          <span>{c.title || c.label}</span>
           <span style={{ fontSize: 9, color: colors.textTertiary }}>{c.branchName}</span>
         </button>
       ))}

@@ -5,7 +5,7 @@ import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId, cancelDoneGroupMove } from '../session-store-helpers'
 import { activeInstance, commitInstance, effectivePermissionMode, effectiveThinkingEffort } from '../conversation-instance'
 import { applyActiveGroupMove } from './event-slice-running-move'
-import { maybeSendTimeTitle } from './event-slice-titling'
+import { maybeSendTimeTitle, maybeTitleWorktree } from './event-slice-titling'
 import { parseSlash } from '../../../main/slash-parse'
 import { rDebug, rInfo, rWarn } from '../../rendererLogger'
 import { createSendBashSlice } from './send-slice-bash'
@@ -248,6 +248,13 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         maybeSendTimeTitle(tabId, text, get().renameTab)
       }
 
+      // Name the WORKTREE from the same prompt. Deliberately outside the
+      // needsTitle guard: a conversation re-opened into an existing worktree
+      // has a tab title already while the worktree may still be nameless. The
+      // main process no-ops when it is already named, so this is at most one
+      // extra round-trip per worktree.
+      maybeTitleWorktree(resolvedPath, text)
+
       if (isBusy && !implementationPhase) {
         window.ion.steer(tabId, fullPrompt)
         return
@@ -440,6 +447,8 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       if (needsTitle && !isBusy) {
         maybeSendTimeTitle(tabId, prompt, get().renameTab)
       }
+      // ...and the same worktree naming, on every send. See submit().
+      maybeTitleWorktree(resolvedPath, prompt)
 
       if (isBusy) {
         window.ion.steer(tabId, prompt)

@@ -8,19 +8,26 @@
  * Clicking the row OPENS OR FOCUSES a conversation in the worktree. That is the
  * re-entry path: closing a worktree tab no longer destroys anything, so the
  * operator needs a way back in without knowing the `~/.ion/worktrees/...` path.
+ * When several conversations are open there, each click advances to the next.
  */
 import React from 'react'
 import { ArrowsClockwise, CircleNotch, DotsThree, Warning } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { Tooltip } from './git/Tooltip'
+import { HoverCard } from './git/HoverCard'
+import { WorktreeConversationsCard } from './WorktreeConversationsCard'
+import { describeOpenConversations, type DirConversation } from '../../shared/worktree-conversations'
 import type { WorktreeInventoryEntry } from '../../shared/types'
 
 export interface WorktreeRowProps {
   entry: WorktreeInventoryEntry
-  /** Id of a tab already open on this worktree, when one exists. */
-  openTabId?: string
-  /** 1-based display index of that tab, for the "open in tab 3" hint. */
-  openTabIndex?: number
+  /**
+   * Every conversation currently open in this worktree, in tab order. Empty
+   * when none are. This used to be a single `openTabId`/`openTabIndex` pair,
+   * which could name only the FIRST conversation — so a worktree hosting three
+   * of them advertised one and hid the rest.
+   */
+  openConversations?: readonly DirConversation[]
   /** True while a sync is in flight for this worktree. */
   syncing?: boolean
   onOpen(): void
@@ -32,11 +39,18 @@ export interface WorktreeRowProps {
 
 export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
   const colors = useColors()
-  const { entry, openTabId, openTabIndex, syncing } = props
+  const { entry, syncing } = props
+  const openConversations = props.openConversations ?? []
 
   // Dirty state as a filled/hollow dot: the most glanceable signal, and the one
   // that tells the operator whether walking away costs anything.
   const dotColor = entry.isDirty ? colors.worktreeGreen : colors.textTertiary
+
+  // The human title when the worktree has earned one, else the directory slug.
+  // The slug is never a good name -- it is just the only one available before
+  // the first prompt names the work.
+  const displayName = entry.title || entry.label
+  const openLabel = describeOpenConversations(openConversations)
 
   return (
     <div
@@ -72,25 +86,44 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
           />
         </Tooltip>
 
-        {/* ONE identifier. The branch is `wt/<label>` by construction (see
-            GIT_WORKTREE_ADD), so printing both was redundant — and worse, the
-            two used to be unrelated random hex, which made the prominent text
-            useless for finding the branch every git verb actually names. */}
-        <Tooltip text={`Branch ${entry.branchName}`}>
-          <span style={{ fontSize: 11, color: colors.textPrimary, fontWeight: 500, flexShrink: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {entry.label}
+        {/* ONE identifier on the row, and it is the human one when it exists.
+            The machine strings (branch, slug, path) move into the hover card:
+            they are what git verbs name, so they must stay reachable, but they
+            describe nothing about the work and so do not earn the row. */}
+        <HoverCard
+          maxWidth={320}
+          fallbackTitle={`Branch ${entry.branchName}`}
+          content={
+            <WorktreeConversationsCard
+              heading={displayName}
+              identifiers={[
+                { label: 'branch', value: entry.branchName },
+                { label: 'dir', value: entry.label },
+                { label: 'path', value: entry.worktreePath },
+              ]}
+              conversations={openConversations}
+            />
+          }
+        >
+          <span
+            data-testid={`worktree-name-${entry.branchName}`}
+            style={{ fontSize: 11, color: colors.textPrimary, fontWeight: 500, flexShrink: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          >
+            {displayName}
           </span>
-        </Tooltip>
+        </HoverCard>
 
         {/* Open-or-focus sits next to the name it qualifies. On the second line
             it read as an attribute of the commit subject rather than of the
-            worktree. */}
-        {openTabId && (
+            worktree. With several conversations open it names the COUNT, not
+            one of the tabs: "open in tab 3" would be true of one of them and
+            false of the row. */}
+        {openLabel && (
           <span
             data-testid={`worktree-open-${entry.branchName}`}
             style={{ fontSize: 9, color: colors.accent, flexShrink: 0 }}
           >
-            {openTabIndex ? `open in tab ${openTabIndex}` : 'open'}
+            {openLabel}
           </span>
         )}
 

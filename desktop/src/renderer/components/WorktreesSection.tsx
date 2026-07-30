@@ -25,6 +25,7 @@ import { WorktreeRow } from './WorktreeRow'
 import { ConflictsDialog } from './git/ConflictsDialog'
 import { WorktreeRowMenu } from './WorktreeRowMenu'
 import { rError } from '../rendererLogger'
+import { collectDirConversations } from '../../shared/worktree-conversations'
 import type { WorktreeInventoryEntry } from '../../shared/types'
 
 export function WorktreesSection({
@@ -70,13 +71,15 @@ export function WorktreesSection({
         </div>
       ) : (
         entries.map((entry) => {
-          const openIdx = tabs.findIndex((t) => t.workingDirectory === entry.worktreePath)
+          // EVERY conversation in this worktree, not just the first. The row
+          // needs the count for its label and the list for its hover card, and
+          // the click rotation happens in the store action.
+          const openConversations = collectDirConversations(tabs, entry.worktreePath)
           return (
             <WorktreeRow
               key={entry.worktreePath}
               entry={entry}
-              openTabId={openIdx >= 0 ? tabs[openIdx].id : undefined}
-              openTabIndex={openIdx >= 0 ? openIdx + 1 : undefined}
+              openConversations={openConversations}
               syncing={syncing === entry.worktreePath}
               onOpen={() => {
                 void useSessionStore.getState()

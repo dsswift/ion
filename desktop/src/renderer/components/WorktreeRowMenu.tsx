@@ -9,7 +9,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { ArrowLineDown, ArrowsClockwise, Flask, FolderOpen, Package, Trash } from '@phosphor-icons/react'
+import { ArrowLineDown, ArrowsClockwise, Flask, FolderOpen, Package, PencilSimple, Trash } from '@phosphor-icons/react'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
@@ -37,6 +37,10 @@ export function WorktreeRowMenu({
   const ref = useRef<HTMLDivElement>(null)
   const benchWorkspaces = useSessionStore((s) => s.benchWorkspaces.get(repoPath))
   const [confirmRetire, setConfirmRetire] = useState<string | null>(null)
+  // Inline rename state. The generated title is a good default, not an
+  // authority — the operator must be able to correct one that missed.
+  const [renaming, setRenaming] = useState(false)
+  const [draftTitle, setDraftTitle] = useState(entry.title ?? entry.label)
   // A land refusal (diverged branch, conflict) is actionable and must be shown,
   // not swallowed into the log while the menu closes as if it had worked.
   const [landError, setLandError] = useState<string | null>(null)
@@ -93,7 +97,34 @@ export function WorktreeRowMenu({
         requireFastForward: flags.requireFastForward,
       })
       if (!result.ok) {
-        rWarn('worktree.menu', 'land refused', { branch: entry.branchName, error: result.error ?? '' })
+        rWarn('worktree.menu', 'land refused', {
+          branch: entry.branchName,
+          has_conflicts: !!result.hasConflicts,
+          error: result.error ?? '',
+        })
+        // A CONFLICT is not the same as a refusal. A refusal (diverged branch,
+        // dirty tree) is answered by this dialog and nothing is left behind; a
+        // conflict stops the merge halfway and leaves a checkout that needs
+        // resolving, which must reach the toast and the row badge exactly as a
+        // conflicted sync does. Without this the land path repeated the defect
+        // the sync path was fixed for: an actionable failure visible only in
+        // the log.
+        //
+        // Keyed on the directory the LAND reported, not on this worktree: the
+        // merge runs in whichever checkout holds the source branch (usually the
+        // base repo), and only a pre-sync conflict lands in the worktree.
+        // Pointing the resolution dialog at the wrong directory would open it
+        // on a clean tree.
+        if (result.hasConflicts && result.conflictDirectory) {
+          useSessionStore.getState().recordConflictAlert(result.conflictDirectory, {
+            source: 'land',
+            kind: 'conflict',
+            message: result.error,
+            label: result.conflictDirectory === entry.worktreePath
+              ? (entry.title || entry.label)
+              : result.conflictDirectory.split('/').filter(Boolean).pop(),
+          })
+        }
         // A refusal is actionable (sync first, resolve a conflict) and must not
         // vanish: surface it rather than leaving the operator to wonder why the
         // branch did not move.
@@ -175,7 +206,52 @@ export function WorktreeRowMenu({
     }
   }
 
+  /**
+   * Apply an operator-supplied title. Empty input is a cancel, not a clear:
+   * blanking the name would drop the row back to its hex slug, which is never
+   * what someone typing into a rename field is asking for.
+   */
+  async function doRename(): Promise<void> {
+    const next = draftTitle.trim()
+    if (!next || next === (entry.title ?? '')) {
+      setRenaming(false)
+      onClose()
+      return
+    }
+    setBusy(true)
+    try {
+      const result = await window.ion.gitWorktreeSetTitle({
+        worktreePath: entry.worktreePath,
+        repoPath,
+        title: next,
+      })
+      if (!result.ok) {
+        rWarn('worktree.menu', 'rename refused', {
+          worktree_path: entry.worktreePath, error: result.error ?? '',
+        })
+      } else {
+        rInfo('worktree.menu', 'worktree renamed', { worktree_path: entry.worktreePath, title: next })
+      }
+      onRefresh()
+    } finally {
+      setBusy(false)
+      setRenaming(false)
+      onClose()
+    }
+  }
+
   const items: Array<{ label: string; icon: React.ReactNode; disabled?: boolean; hint?: string; run(): void }> = [
+    {
+      label: entry.title ? 'Rename worktree' : 'Name this worktree',
+      icon: <PencilSimple size={12} color={colors.textSecondary} />,
+      // Named lazily from the first prompt, so a worktree that has not been
+      // prompted in yet still needs a manual way to get a name.
+      hint: entry.title ? '' : 'Not named yet',
+      run: () => {
+        setDraftTitle(entry.title ?? '')
+        setRenaming(true)
+      },
+    },
     {
       label: alreadyInBench ? 'Already in the bench' : 'Add to integration bench',
       icon: <Flask size={12} color={alreadyInBench || !entry.sourceBranch ? colors.textTertiary : colors.accent} />,
@@ -258,7 +334,41 @@ export function WorktreeRowMenu({
           boxShadow: colors.popoverShadow,
         }}
       >
-        {items.map((item) => (
+        {renaming ? (
+          /* Inline, in the menu that opened it: a separate modal for a single
+             text field would be a second dialog to dismiss for a one-word edit. */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '6px 10px', minWidth: 220 }}>
+            <span style={{ fontSize: 9, color: colors.textTertiary }}>
+              Describe what this worktree is for
+            </span>
+            <input
+              data-testid="worktree-rename-input"
+              autoFocus
+              value={draftTitle}
+              placeholder={entry.label}
+              disabled={busy}
+              onChange={(e) => setDraftTitle(e.target.value)}
+              onKeyDown={(e) => {
+                e.stopPropagation()
+                if (e.key === 'Enter') {
+                  void doRename().catch((err) => rError('worktree.menu', 'rename threw', { error: String(err) }))
+                } else if (e.key === 'Escape') {
+                  setRenaming(false)
+                  onClose()
+                }
+              }}
+              style={{
+                fontSize: 11, padding: '3px 6px', borderRadius: 4,
+                background: colors.surfacePrimary,
+                border: `1px solid ${colors.containerBorder}`,
+                color: colors.textPrimary, outline: 'none',
+              }}
+            />
+            <span style={{ fontSize: 9, color: colors.textTertiary }}>
+              Enter to save · Esc to cancel
+            </span>
+          </div>
+        ) : items.map((item) => (
           <button
             key={item.label}
             disabled={item.disabled || busy}

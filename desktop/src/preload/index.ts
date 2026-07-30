@@ -87,6 +87,16 @@ const api: IonAPI = {
     ipcRenderer.on('ion:remote-open-bench-conversation', handler)
     return () => ipcRenderer.removeListener('ion:remote-open-bench-conversation', handler)
   },
+  // A worktree earned (or was given) a human title. Both windows listen so the
+  // overlay and the ATV mirror rename the row at the same moment.
+  onWorktreeTitled: (callback) => {
+    const handler = (
+      _e: Electron.IpcRendererEvent,
+      arg: { repoPath: string; worktreePath: string; title: string },
+    ) => callback(arg)
+    ipcRenderer.on('ion:worktree-titled', handler)
+    return () => ipcRenderer.removeListener('ion:worktree-titled', handler)
+  },
   executeBash: (id, command, cwd) => ipcRenderer.invoke(IPC.EXECUTE_BASH, { id, command, cwd }),
   cancelBash: (id) => ipcRenderer.send(IPC.CANCEL_BASH, id),
   sendRemote: (event) => ipcRenderer.send(IPC.REMOTE_SEND, event),
@@ -187,7 +197,10 @@ const api: IonAPI = {
   gitWorktreeLand: (args) => ipcRenderer.invoke(IPC.GIT_WORKTREE_LAND, args),
   gitWorktreeSync: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_SYNC, { worktreePath, sourceBranch }),
   gitWorktreeBaseStatus: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_BASE_STATUS, { worktreePath, sourceBranch }),
-  gitWorktreeInventory: (repoPath) => ipcRenderer.invoke(IPC.GIT_WORKTREE_INVENTORY, { repoPath }),
+  gitWorktreeInventory: (repoPath, backfillTitles) => ipcRenderer.invoke(IPC.GIT_WORKTREE_INVENTORY, { repoPath, backfillTitles }),
+  gitWorktreeAutotitle: (workingDirectory, text) =>
+    ipcRenderer.invoke(IPC.GIT_WORKTREE_AUTOTITLE, { workingDirectory, text }),
+  gitWorktreeSetTitle: (args) => ipcRenderer.invoke(IPC.GIT_WORKTREE_SET_TITLE, args),
   benchList: (repoPath) => ipcRenderer.invoke(IPC.BENCH_LIST, { repoPath }),
   benchEnsure: (repoPath, sourceBranch) => ipcRenderer.invoke(IPC.BENCH_ENSURE, { repoPath, sourceBranch }),
   benchAddMember: (args) => ipcRenderer.invoke(IPC.BENCH_ADD_MEMBER, args),

@@ -50,6 +50,8 @@ export interface IonAPI extends AtvApi {
   onRemoteOpenWorktreeConversation(callback: (worktreePath: string) => void): () => void
   /** iOS asked to open (or focus) a conversation in the integration bench. */
   onRemoteOpenBenchConversation(callback: (arg: { repoPath: string; sourceBranch: string }) => void): () => void
+  /** A worktree was named (generated or renamed). Both windows re-read the row. */
+  onWorktreeTitled(callback: (arg: { repoPath: string; worktreePath: string; title: string }) => void): () => void
   /** Reveal a directory in the OS file manager. */
   revealPath(path: string): Promise<boolean>
 
@@ -189,7 +191,21 @@ export interface IonAPI extends AtvApi {
   gitWorktreeLand(args: { repoPath: string; worktreePath: string; worktreeBranch: string; sourceBranch: string; noFf?: boolean; syncFirst?: boolean; requireFastForward?: boolean }): Promise<LandResult>
   gitWorktreeSync(worktreePath: string, sourceBranch: string): Promise<{ ok: boolean; error?: string; hasConflicts?: boolean; refusedDirty?: boolean }>
   /** Every managed worktree for a repo, with state for describing and acting on it. */
-  gitWorktreeInventory(repoPath: string): Promise<{ worktrees: WorktreeInventoryEntry[] }>
+  gitWorktreeInventory(repoPath: string, backfillTitles?: boolean): Promise<{ worktrees: WorktreeInventoryEntry[] }>
+  /**
+   * Ask the main process to name a worktree from a prompt, if it needs one.
+   *
+   * Fire-and-forget from the renderer's point of view: the main process decides
+   * whether the directory is a worktree at all and whether it is already named,
+   * so callers pass every send and let the answer come back as a no-op reason.
+   */
+  gitWorktreeAutotitle(workingDirectory: string, text: string): Promise<{
+    ok: boolean
+    title?: string
+    reason?: 'empty-input' | 'not-a-worktree' | 'already-titled' | 'generation-failed' | 'empty-title'
+  }>
+  /** Operator override for a worktree's title. */
+  gitWorktreeSetTitle(args: { worktreePath: string; repoPath?: string; title: string }): Promise<{ ok: boolean; title?: string; error?: string }>
   /** What would be lost if this worktree were removed right now. */
   gitWorktreeAppraise(worktreePath: string, sourceBranch: string): Promise<WorktreeAppraisalWire>
   // ── Integration workspace (the bench) ──

@@ -68,9 +68,12 @@ export function registerWorktreeLifecycleIpc(): void {
   // never mutate anything.
   ipcMain.handle(
     IPC.GIT_WORKTREE_INVENTORY,
-    async (_event, { repoPath }: { repoPath: string }) => {
-      const worktrees = await inventoryWorktrees(repoPath)
-      log('inventory', { repo_path: repoPath, count: worktrees.length })
+    async (_event, { repoPath, backfillTitles }: { repoPath: string; backfillTitles?: boolean }) => {
+      // backfillTitles is renderer-opt-in (the aiGeneratedTitles preference
+      // lives in the renderer store); absent means off, so remote-triggered
+      // reads never fire titling LLM calls.
+      const worktrees = await inventoryWorktrees(repoPath, { backfillTitles: backfillTitles === true })
+      log('inventory', { repo_path: repoPath, count: worktrees.length, backfill_titles: backfillTitles === true })
       return { worktrees }
     },
   )
