@@ -7,9 +7,21 @@ import { IPC } from '../../shared/types'
 import type { WorktreeInfo, WorktreeStatus } from '../../shared/types'
 import { runGit } from '../git-runner'
 import { landWorktree } from '../worktree/integrate'
-import { registerWorktree, unregisterWorktree } from '../worktree/inventory'
+import {
+  lookupWorktreeRegistration,
+  registerWorktree,
+  setWorktreeTitle,
+  unregisterWorktree,
+} from '../worktree/inventory'
 import { provisionWorktree } from '../worktree/provision'
 import { setProvisionState, clearProvisionState } from '../worktree/provision-state'
+import { engineBridge } from '../state'
+import { announceWorktreeTitle, MAX_TITLE_INPUT_CHARS } from '../worktree/title-announce'
+import { log as _log, warn as _warn } from '../logger'
+
+const TAG = 'worktree.title'
+function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
+function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, msg, fields) }
 
 export function registerWorktreeIpc(): void {
   ipcMain.handle(IPC.GIT_WORKTREE_ADD, async (_event, { repoPath, sourceBranch }: { repoPath: string; sourceBranch: string }) => {
@@ -93,6 +105,104 @@ export function registerWorktreeIpc(): void {
         setProvisionState(worktreePath, state, detail)
       })
       return { ok: outcome.state === 'ready', state: outcome.state, error: outcome.error }
+    },
+  )
+
+  /**
+   * Give a worktree a human title, generated from the first prompt sent inside
+   * it. Called by the renderer on every send; the DECISION lives here.
+   *
+   * ── Why the main process decides ────────────────────────────────────────
+   * "Is this directory a worktree, and has it been named yet?" is answered by
+   * the registry, which is main-process state. A renderer-side check would read
+   * the inventory snapshot it happens to hold — stale in the ATV mirror, absent
+   * in a window that never opened the git panel — and would fire a duplicate
+   * LLM call from each window on the same send. Deciding here means the answer
+   * is read from the one authoritative record, and a worktree costs at most one
+   * titling round-trip ever.
+   *
+   * Three no-op paths, each logged so the decision is reconstructable:
+   *   - the directory is not a registered worktree (an ordinary project tab),
+   *   - it already has a title (the common case after the first prompt),
+   *   - the prompt carries no usable text.
+   *
+   * Failure is never fatal to the prompt that triggered it: the row keeps
+   * showing its machine slug and the next prompt tries again.
+   */
+  ipcMain.handle(
+    IPC.GIT_WORKTREE_AUTOTITLE,
+    async (_event, { workingDirectory, text }: { workingDirectory: string; text: string }) => {
+      if (!workingDirectory || !text.trim()) {
+        log('autotitle skipped: nothing to work from', {
+          worktree_path: workingDirectory, text_len: text?.length ?? 0,
+        })
+        return { ok: false, reason: 'empty-input' as const }
+      }
+
+      const registration = lookupWorktreeRegistration(workingDirectory)
+      if (!registration) {
+        log('autotitle skipped: not a registered worktree', { dir: workingDirectory })
+        return { ok: false, reason: 'not-a-worktree' as const }
+      }
+      if (registration.title) {
+        log('autotitle skipped: already titled', {
+          worktree_path: workingDirectory, title: registration.title,
+        })
+        return { ok: false, reason: 'already-titled' as const, title: registration.title }
+      }
+
+      log('autotitle generating', {
+        worktree_path: workingDirectory,
+        repo_path: registration.repoPath,
+        branch: registration.branchName,
+        text_len: text.length,
+      })
+      let title = ''
+      try {
+        title = (await engineBridge.generateTitle(text.slice(0, MAX_TITLE_INPUT_CHARS))).trim()
+      } catch (err) {
+        warn('autotitle generation failed; the worktree keeps its slug', {
+          worktree_path: workingDirectory, error: String(err),
+        })
+        return { ok: false, reason: 'generation-failed' as const }
+      }
+      if (!title) {
+        // The engine returns "" when no titling model is configured. That is a
+        // legitimate configuration, not an error — say so and move on.
+        log('autotitle produced no title (no titling model configured?)', {
+          worktree_path: workingDirectory,
+        })
+        return { ok: false, reason: 'empty-title' as const }
+      }
+
+      setWorktreeTitle(workingDirectory, title)
+      log('autotitle applied', { worktree_path: workingDirectory, title })
+      await announceWorktreeTitle(registration.repoPath, workingDirectory, title)
+      return { ok: true, title }
+    },
+  )
+
+  /**
+   * Operator override for a worktree's title — the escape hatch when the
+   * generated one is wrong. Upserts, so a hand-created worktree with no
+   * registry entry can still be named (it is recorded with an unknown source
+   * branch rather than a guessed one).
+   */
+  ipcMain.handle(
+    IPC.GIT_WORKTREE_SET_TITLE,
+    async (_event, { worktreePath, repoPath, title }: { worktreePath: string; repoPath?: string; title: string }) => {
+      const trimmed = title.trim()
+      const registration = lookupWorktreeRegistration(worktreePath)
+      const resolvedRepo = repoPath || registration?.repoPath || ''
+      if (!trimmed) {
+        warn('rename refused: an empty title would leave the row unnamed', { worktree_path: worktreePath })
+        return { ok: false, error: 'A title cannot be empty.' }
+      }
+
+      setWorktreeTitle(worktreePath, trimmed, { repoPath: resolvedRepo })
+      log('worktree renamed by the operator', { worktree_path: worktreePath, title: trimmed })
+      await announceWorktreeTitle(resolvedRepo, worktreePath, trimmed)
+      return { ok: true, title: trimmed }
     },
   )
 

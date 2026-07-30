@@ -90,6 +90,16 @@ export interface LandResult {
   error?: string
   /** True when the failure was a merge conflict (distinct from a refusal). */
   hasConflicts?: boolean
+  /**
+   * The checkout left holding the conflict, when `hasConflicts` is set.
+   *
+   * Required because a land can conflict in either of two places: the optional
+   * pre-sync conflicts in the WORKTREE, while the merge itself conflicts in
+   * whichever checkout holds the source branch (often the base repo). A client
+   * that assumed the worktree would point its resolution UI at a clean
+   * directory half the time.
+   */
+  conflictDirectory?: string
 }
 
 /** Result of retiring or re-attaching a worktree. */
@@ -142,6 +152,17 @@ export interface WorktreeInventoryEntry {
   branchName: string
   /** Display label, derived from the worktree directory name. */
   label: string
+  /**
+   * Human-readable description of what this worktree is FOR, generated from the
+   * first prompt sent in it or set by the operator.
+   *
+   * Absent until a worktree has been named. Every other identifier a worktree
+   * carries (`ion-03e81090`, `wt/ion-03e81090`, a commit sha) is a machine
+   * string that says nothing about the work, so clients render this in the
+   * primary position and keep the machine strings for the hover detail. Falling
+   * back to `label` when absent is the client's job.
+   */
+  title?: string
   /**
    * Null when Ion did not create this worktree and cannot know what it was cut
    * from. Land/sync/staleness are unanswerable in that case, so clients must

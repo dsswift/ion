@@ -263,7 +263,14 @@ export async function landWorktreeUnqueued(opts: LandOptions): Promise<LandResul
   if (syncFirst) {
     const synced = await syncWorktreeFromSource(worktreePath, sourceBranch)
     if (!synced.ok) {
-      return { ok: false, error: `Sync from ${sourceBranch} failed: ${synced.error}`, hasConflicts: synced.hasConflicts }
+      // A pre-sync conflict is left in the WORKTREE, not in the source
+      // branch's holder — name it so the caller resolves the right checkout.
+      return {
+        ok: false,
+        error: `Sync from ${sourceBranch} failed: ${synced.error}`,
+        hasConflicts: synced.hasConflicts,
+        conflictDirectory: synced.hasConflicts ? worktreePath : undefined,
+      }
     }
   }
 
@@ -353,6 +360,9 @@ export async function landWorktreeUnqueued(opts: LandOptions): Promise<LandResul
       return {
         ok: false,
         hasConflicts: true,
+        // The merge runs in whichever checkout holds the source branch, so the
+        // conflict is there — usually the base repo, never this worktree.
+        conflictDirectory: holder.path,
         error: `Merge conflict landing ${worktreeBranch} into ${sourceBranch}. Resolve it in ${holder.path}, then land again.`,
       }
     }

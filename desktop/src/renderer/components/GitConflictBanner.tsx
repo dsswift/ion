@@ -13,6 +13,7 @@ import { Warning } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { ConflictsDialog } from './git/ConflictsDialog'
+import { isWithinRepo } from '../../shared/repo-containment'
 
 export function GitConflictBanner({ repoPath }: { repoPath: string }): React.JSX.Element | null {
   const colors = useColors()
@@ -27,7 +28,7 @@ export function GitConflictBanner({ repoPath }: { repoPath: string }): React.JSX
     if (wt.operationState) conflicted.set(wt.worktreePath, wt.label)
   }
   for (const [dir, alert] of alerts) {
-    if (!conflicted.has(dir) && (dir === repoPath || dir.includes(repoPath) || alert.operationState)) {
+    if (!conflicted.has(dir) && (isWithinRepo(dir, repoPath) || alert.operationState)) {
       conflicted.set(dir, alert.label ?? dir.split('/').filter(Boolean).pop() ?? dir)
     }
   }

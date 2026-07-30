@@ -13,6 +13,17 @@ vi.mock('../../rendererLogger', () => ({
   rInfo: vi.fn(), rDebug: vi.fn(), rWarn: vi.fn(), rError: vi.fn(), rTrace: vi.fn(),
 }))
 
+// This file imports the worktree-inventory slice (for the refresh-driven alert
+// lifecycle below), and that slice reads the aiGeneratedTitles preference. The
+// real preferences module applies the theme at import time, which touches
+// `document` — absent in this node-environment test, and the resulting
+// ReferenceError silently reduced the whole file to "no tests" rather than
+// failing a single assertion. Same mock, same reason, as
+// worktree-inventory-slice.test.ts.
+vi.mock('../../preferences', () => ({
+  usePreferencesStore: { getState: () => ({ aiGeneratedTitles: false }) },
+}))
+
 const applyPermissionModeForTab = vi.fn()
 vi.mock('../slices/tab-slice-permission-mode', () => ({
   applyPermissionModeForTab: (...args: unknown[]) => applyPermissionModeForTab(...args),
@@ -289,5 +300,73 @@ describe('openConflictAssist', () => {
     expect(applyPermissionModeForTab).toHaveBeenCalledWith(
       expect.anything(), expect.anything(), 'tab-new', 'auto', 'conflict_assist',
     )
+  })
+})
+
+/**
+ * A failed LAND must be as visible as a failed sync.
+ *
+ * `LandResult.hasConflicts` was produced by the land path and rendered by the
+ * toast ("Land hit conflicts"), but nothing ever recorded it — so a land that
+ * stopped halfway through a merge was visible only in the log file, which is
+ * the exact defect the sync path was fixed for.
+ *
+ * The directory matters and is not the worktree. A land merges in whichever
+ * checkout holds the source branch (usually the base repo); only an optional
+ * pre-sync conflict lands in the worktree. Keying the alert on the worktree
+ * would open the resolution dialog on a clean tree.
+ *
+ * Regression direction: removing the `recordConflictAlert` call from
+ * WorktreeRowMenu.doLand turns these red. They exercise the same store action
+ * that component calls.
+ */
+describe('a failed land records a visible alert', () => {
+  const HOLDER = '/repo'
+
+  it('keys the alert on the holder checkout the merge conflicted in', () => {
+    const h = harness()
+
+    h.slice.recordConflictAlert!(HOLDER, {
+      source: 'land',
+      kind: 'conflict',
+      message: 'Merge conflict landing wt/a1 into josh. Resolve it in /repo, then land again.',
+      label: 'repo',
+    })
+
+    const alert = h.alerts().get(HOLDER)
+    expect(alert).toBeDefined()
+    expect(alert!.source).toBe('land')
+    expect(alert!.kind).toBe('conflict')
+    expect(alert!.message).toContain('Merge conflict landing')
+    // Not dismissed: a fresh failure raises the toast.
+    expect(alert!.dismissed).toBe(false)
+    // The worktree itself is clean — no alert belongs there.
+    expect(h.alerts().has(WT)).toBe(false)
+  })
+
+  it('keys a pre-sync land conflict on the worktree, which is where it happened', () => {
+    const h = harness()
+
+    h.slice.recordConflictAlert!(WT, {
+      source: 'land',
+      kind: 'conflict',
+      message: 'Sync from josh failed: conflict',
+      label: 'proj-a1',
+    })
+
+    expect(h.alerts().get(WT)!.source).toBe('land')
+    expect(h.alerts().has(HOLDER)).toBe(false)
+  })
+
+  it('offers Resolve for a land conflict, unlike a dirty refusal', () => {
+    const h = harness()
+
+    h.slice.recordConflictAlert!(HOLDER, { source: 'land', kind: 'conflict' })
+    h.slice.recordConflictAlert!(WT, { source: 'sync', kind: 'refusal' })
+
+    // `kind` is what the toast switches on to decide whether Resolve makes
+    // sense: a conflict has an operation to resolve, a refusal never started.
+    expect(h.alerts().get(HOLDER)!.kind).toBe('conflict')
+    expect(h.alerts().get(WT)!.kind).toBe('refusal')
   })
 })
