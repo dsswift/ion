@@ -336,6 +336,14 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		tierName := cmd.Text
 		model, fallbacks := modelconfig.ResolveTierChain(tierName)
 		configured := model != tierName
+		// A tier with no fallbacks yields a nil slice, which marshals to JSON
+		// `null` — so a consumer reading `data.fallbacks.length` would fault on
+		// the common case (a plain-string tier). Normalize to an empty array so
+		// the field is always a list, which is what the documented shape
+		// (`fallbacks: string[]`) promises.
+		if fallbacks == nil {
+			fallbacks = []string{}
+		}
 		utils.LogWithFields(utils.LevelInfo, "server", "resolve_model_tier", map[string]any{
 			"tier":       tierName,
 			"model":      model,

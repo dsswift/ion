@@ -945,3 +945,32 @@ Clear the provider CLI's stored credential and re-probe so the provider reflects
 ```
 
 **Response:** `ServerResult` with `data: { ok: true }`. The logout itself runs in the background and is bounded, so the result acknowledges dispatch rather than completion. A completed logout emits no login-stage event — `engine_providers_updated` is the only signal, so consumers must handle it to notice.
+
+---
+
+### resolve_model_tier
+
+Resolve a tier name from [`~/.ion/models.json`](../configuration/models.md#tiers) to the model it is configured for, plus that tier's fallback chain.
+
+The engine owns that file's semantics, so consumers ask rather than parsing it themselves. This matters most for a consumer that *gates a feature* on a tier existing: resolution is a pass-through for an unrecognised name (an undefined `standard` resolves to the literal string `"standard"`, which then fails to route at dispatch time), so the resolved value alone cannot distinguish "configured" from "unknown". The `configured` flag is that distinction.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"resolve_model_tier"` | yes | Command discriminator |
+| `text` | string | yes | Tier name to resolve (case-insensitive) |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"resolve_model_tier","text":"standard","requestId":"r51"}
+```
+
+**Response:** `ServerResult` with `data: { tier: string, model: string, fallbacks: string[], configured: boolean }`.
+
+| Field | Meaning |
+|-------|---------|
+| `tier` | The requested name, echoed back |
+| `model` | The configured model, or the tier name itself when the tier is not defined |
+| `fallbacks` | Ordered fallback models, when the tier is declared in object form. Always a list — empty for a plain string tier and for an unconfigured one |
+| `configured` | `false` when no such tier is defined. Treat `model` as meaningless in that case and refuse the gated operation, rather than dispatching a run that cannot route |
+
+The command is rejected at parse time when `text` is absent or empty: the tier name is the entire request.

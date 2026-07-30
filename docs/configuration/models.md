@@ -83,6 +83,8 @@ A flat map of tier name to concrete model identifier. Tier names are case-insens
 
 After this is in place, calling `--model fast` runs `qwen2.5:7b` on Ollama, `--model smart` runs `claude-sonnet-4-6` on Anthropic, and so on.
 
+A client can ask the engine to resolve a tier rather than reading this file itself — see [`resolve_model_tier`](../protocol/client-commands.md#resolve_model_tier). That is the supported way to check whether a tier is configured at all, because an undefined tier name passes through unchanged and only the command's `configured` flag distinguishes the two cases.
+
 ### `providers.<id>.models.<name>`
 
 Register a model under a specific provider. Each entry sets the routing target plus optional metadata used for budget tracking, context-window enforcement, and capability flags.
