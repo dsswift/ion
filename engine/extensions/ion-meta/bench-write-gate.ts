@@ -68,7 +68,7 @@ export interface MemberOwner {
   hunks: string[]
 }
 
-interface BenchMember {
+export interface BenchMember {
   worktreePath: string
   branchName: string
   label?: string
@@ -76,7 +76,7 @@ interface BenchMember {
   pinnedSha?: string
 }
 
-interface BenchWorkspace {
+export interface BenchWorkspace {
   benchPath: string
   sourceBranch: string
   baseSha?: string
@@ -131,7 +131,7 @@ export function gateBenchWrite(info: ToolCallInfo, cwd: string): BenchWriteDecis
  * merely begins with the bench path (`…/ion-josh-other` against `…/ion-josh`)
  * must not be refused. Same rule as bench-guard.ts:resolveBenchFor.
  */
-function resolveWorkspaceFor(path: string): BenchWorkspace | null {
+export function resolveWorkspaceFor(path: string): BenchWorkspace | null {
   for (const ws of loadWorkspaces()) {
     if (!ws.benchPath) continue
     if (path === ws.benchPath || path.startsWith(ws.benchPath + sep)) return ws
@@ -146,7 +146,7 @@ function resolveWorkspaceFor(path: string): BenchWorkspace | null {
  * falls back to the generic message. Attribution improves a refusal; it must
  * never be able to turn one into a pass.
  */
-function attributeToMembers(ws: BenchWorkspace, target: string): MemberOwner[] {
+export function attributeToMembers(ws: BenchWorkspace, target: string): MemberOwner[] {
   const base = ws.baseSha
   if (!base || !ws.members?.length) return []
 
@@ -215,7 +215,7 @@ function git(cwd: string, args: string[]): string {
  * every error: a false refusal where the operator is working is worse than a
  * briefly missing guard, and the desktop enforces the same rule independently.
  */
-function loadWorkspaces(): BenchWorkspace[] {
+export function loadWorkspaces(): BenchWorkspace[] {
   if (workspaceCache !== null) return workspaceCache
 
   const file = join(homedir(), '.ion', 'integration-workspaces.json')
@@ -276,6 +276,9 @@ export function formatBenchWriteReason(
     )
   }
 
-  head.push('Reading, building, and testing in the bench are unaffected.')
+  head.push(
+    'Reading, building, and testing in the bench are unaffected.',
+    'Use the ion_bench_locate tool to check which member owns a path BEFORE editing.',
+  )
   return head.join(' ')
 }

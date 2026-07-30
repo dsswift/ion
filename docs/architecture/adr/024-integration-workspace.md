@@ -303,6 +303,37 @@ Staging, discarding, and patch-applying stay allowed in a bench, unchanged —
 they touch the index rather than history, `--discard-changes` already resets
 them, and blocking them would stop the operator tidying a bench tree.
 
+### Bench conversations are briefed, not just gated
+
+The two gates above are reactive: they refuse a wrong write after the model has
+already planned it. A plan-mode session in a bench can therefore produce an
+entire plan whose every edit targets bench paths — wrong before implementation
+starts, and the operator has to intervene twice (once to explain the bench,
+once to redo the plan). That happened verbatim in a live bench conversation,
+which is why the harness now teaches proactively as well:
+
+- **A bench briefing rides the system prompt.** ion-meta's `before_prompt`
+  handler detects a bench cwd (`bench-briefing.ts`, same workspace resolution
+  as the write gate) and appends the bench's nature (rebuildable, never edit
+  here), its live member composition (label, branch, worktree path, pin), the
+  routing rule (fix in the owning member worktree, commit there, update the
+  member), and the plan-mode corollary (plans must be born targeting member
+  paths). Rebuilt per prompt so mid-session member changes are reflected;
+  fail-open like the gates.
+- **Two bench-only tools** (`tools/bench-tools.ts`), suppressed at
+  `session_start` for any non-bench conversation (the Agent-tool suppression
+  pattern): `ion_bench_info` re-reads the composition, and `ion_bench_locate`
+  answers "which member owns this file" with changed line ranges — the same
+  per-member diff attribution the write gate uses for refusals, exposed
+  BEFORE an edit is attempted. Both are plan-mode safe, because routing
+  decisions are made while planning. The write gate's refusal message points
+  at `ion_bench_locate`, so even the reactive path teaches the proactive tool.
+
+This lives in the harness (ion-meta), not the engine: the bench is a
+desktop/harness-level concern the engine has no concept of, and every seam used
+(`before_prompt` systemPrompt injection, tool registration + per-session
+suppression) is existing SDK surface.
+
 ### A worktree refuses writes outside itself
 
 The bench rule above has a sibling that applies to ordinary worktrees. A worktree
