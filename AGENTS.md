@@ -11,17 +11,7 @@
 
 Engine, desktop, and iOS each have their own `AGENTS.md` with subsystem-specific rules.
 
-## Extension SDK source location
-
-The TypeScript SDK that extensions import lives in **two places**:
-
-| Location | Role |
-|----------|------|
-| `engine/extensions/sdk/ion-sdk/` | **Source of truth.** Edit here. |
-| `~/.ion/extensions/sdk/ion-sdk/` | **Installed copy.** Overwritten at build time. Never edit. |
-
-The build process copies the repo source to the installed location. Any edit made only to `~/.ion/extensions/sdk/` will be lost on the next build. **Always edit `engine/extensions/sdk/ion-sdk/`** for SDK changes (types, runtime, or any other SDK file). The installed copy at `~/.ion/` is read-only from the agent's perspective.
-
+SDK edits have a source-of-truth split (repo source vs. build-overwritten installed copy) — moved to [`engine/AGENTS.md`](engine/AGENTS.md) § "Extension SDK source location". Read it before changing any file under `engine/extensions/sdk/ion-sdk/` or touching `~/.ion/extensions/sdk/`.
 ## File-size caps (CI hard-fails above)
 
 | Language | Cap |
