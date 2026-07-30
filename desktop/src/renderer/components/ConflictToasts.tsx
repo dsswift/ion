@@ -55,27 +55,36 @@ export function ConflictToasts(): React.JSX.Element | null {
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '7px 10px', borderRadius: 6, pointerEvents: 'auto',
                 background: colors.containerBg,
-                border: `1px solid ${colors.dangerFg}`,
+                border: `1px solid ${alert.kind === 'refusal' ? colors.warningFg : colors.dangerFg}`,
                 boxShadow: colors.containerShadow,
                 maxWidth: 420,
               }}
             >
-              <Warning size={13} color={colors.dangerFg} style={{ flexShrink: 0 }} />
+              <Warning size={13} color={alert.kind === 'refusal' ? colors.warningFg : colors.dangerFg} style={{ flexShrink: 0 }} />
               <span style={{ fontSize: 11, color: colors.textPrimary, minWidth: 0 }}>
-                {alert.source === 'sync' ? 'Sync hit conflicts' : alert.source === 'land' ? 'Land hit conflicts' : 'Conflicts detected'}
-                {' in '}
-                <strong>{alert.label ?? directory.split('/').filter(Boolean).pop()}</strong>
+                {alert.kind === 'refusal'
+                  ? <>Sync refused for <strong>{alert.label ?? directory.split('/').filter(Boolean).pop()}</strong>{alert.message ? ` — ${alert.message}` : ''}</>
+                  : <>
+                    {alert.source === 'sync' ? 'Sync hit conflicts' : alert.source === 'land' ? 'Land hit conflicts' : 'Conflicts detected'}
+                    {' in '}
+                    <strong>{alert.label ?? directory.split('/').filter(Boolean).pop()}</strong>
+                  </>}
               </span>
-              <button
-                data-testid="conflict-toast-resolve"
-                onClick={() => setResolving(directory)}
-                style={{
-                  fontSize: 10, padding: '2px 8px', borderRadius: 3, cursor: 'pointer', flexShrink: 0,
-                  border: `1px solid ${colors.dangerFg}`, background: 'transparent', color: colors.dangerFg,
-                }}
-              >
-                Resolve
-              </button>
+              {/* A refusal has no in-progress operation to resolve — the
+                  remediation is in the message (commit or stash), so offering
+                  Resolve would open a dialog with nothing in it. */}
+              {alert.kind !== 'refusal' && (
+                <button
+                  data-testid="conflict-toast-resolve"
+                  onClick={() => setResolving(directory)}
+                  style={{
+                    fontSize: 10, padding: '2px 8px', borderRadius: 3, cursor: 'pointer', flexShrink: 0,
+                    border: `1px solid ${colors.dangerFg}`, background: 'transparent', color: colors.dangerFg,
+                  }}
+                >
+                  Resolve
+                </button>
+              )}
               <button
                 data-testid="conflict-toast-dismiss"
                 onClick={() => useSessionStore.getState().dismissConflictAlert(directory)}

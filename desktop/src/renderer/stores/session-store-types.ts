@@ -1,7 +1,19 @@
-/** One conflicted directory, as the alert surfaces see it. */
+/** One conflicted or refused directory, as the alert surfaces see it. */
 export interface GitConflictAlert {
   /** What raised it: a failed sync, a failed land, or an inventory detection. */
   source: 'sync' | 'land' | 'detected'
+  /**
+   * What kind of failure this is. `conflict` (the default when absent) means
+   * an operation is stuck mid-way and the ConflictsDialog can resolve it.
+   * `refusal` means the verb declined to start — a dirty worktree refusing a
+   * sync — so there is NO in-progress operation to resolve; the remediation
+   * is in `message` (commit or stash), and the toast offers no Resolve.
+   *
+   * Lifecycle differs too: a conflict clears when the inventory sees the
+   * operation finish, a refusal clears when the worktree goes clean or the
+   * next sync succeeds (there is no git state that says "was refused").
+   */
+  kind?: 'conflict' | 'refusal'
   /** The in-progress operation, when known. */
   operationState?: 'rebasing' | 'merging' | 'cherry-picking'
   /** Operator-facing message from the failing verb, when there was one. */

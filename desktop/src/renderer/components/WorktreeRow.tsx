@@ -133,24 +133,39 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
         {/* Base staleness: the feature branch moved ahead and a sync would
             genuinely change this worktree. Never shown when a sync would be a
             no-op -- a badge nothing can clear teaches the operator to ignore
-            all badges. */}
+            all badges.
+
+            A DIRTY worktree cannot sync (the verb refuses rather than rebasing
+            over uncommitted work), so the affordance says that up front: the
+            icon renders in the disabled colour with the remediation in its
+            tooltip. Clicking still fires the sync — the refusal toast carries
+            the same message — but the row no longer looks like a working
+            button that silently does nothing. */}
         {entry.needsSync && (
-          <Tooltip text={entry.sourceBranch
-            ? `Base moved: sync from ${entry.sourceBranch}`
-            : 'Base moved'}>
+          <Tooltip text={entry.isDirty
+            ? 'Base moved, but this worktree has uncommitted changes. Commit or stash them, then sync.'
+            : entry.sourceBranch
+              ? `Base moved: sync from ${entry.sourceBranch}`
+              : 'Base moved'}>
             <button
               data-testid={`worktree-sync-${entry.branchName}`}
               onClick={(e) => { e.stopPropagation(); props.onSync() }}
               disabled={syncing}
               style={{
-                display: 'inline-flex', alignItems: 'center', padding: 0,
+                display: 'inline-flex', alignItems: 'center', gap: 2, padding: 0,
                 background: 'transparent', border: 'none',
-                color: colors.warningFg, cursor: syncing ? 'default' : 'pointer', flexShrink: 0,
+                color: entry.isDirty ? colors.textTertiary : colors.warningFg,
+                cursor: syncing ? 'default' : 'pointer', flexShrink: 0,
               }}
             >
               {syncing
                 ? <CircleNotch size={11} className="animate-spin" />
                 : <ArrowsClockwise size={11} />}
+              {entry.isDirty && !syncing && (
+                <span data-testid={`worktree-sync-blocked-${entry.branchName}`} style={{ fontSize: 8 }}>
+                  blocked
+                </span>
+              )}
             </button>
           </Tooltip>
         )}

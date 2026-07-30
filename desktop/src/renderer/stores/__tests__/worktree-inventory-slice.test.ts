@@ -40,6 +40,11 @@ function harness(initial: { tabs?: Array<{ id: string; workingDirectory: string 
   const state: Record<string, any> = {
     tabs: initial.tabs ?? [],
     worktreeInventory: new Map<string, WorktreeInventoryEntry[]>(),
+    // Conflict/refusal alert plumbing the slice feeds on sync failures and
+    // inventory refreshes (owned by git-conflict-slice in the real store).
+    gitConflictAlerts: new Map(),
+    recordConflictAlert: vi.fn(),
+    clearConflictAlert: vi.fn(),
     selectTab: vi.fn(),
     createTabInDirectory: vi.fn(async (dir: string) => {
       const id = `tab-${state.tabs.length + 1}`

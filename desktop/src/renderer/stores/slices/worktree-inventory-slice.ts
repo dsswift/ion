@@ -28,10 +28,14 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
         set((s) => ({
           worktreeInventory: new Map(s.worktreeInventory).set(repoPath, worktrees),
         }))
-        // Conflict alerts ride the same refresh: a worktree reporting an
-        // in-progress operation is recorded (covers conflicts raised outside a
-        // sync click — a restart, a manual rebase), and a directory whose
-        // operation finished has its alert cleared so nothing goes stale.
+        // Alerts ride the same refresh, with kind-aware lifecycles:
+        //  - conflicts: recorded while an operation is in progress (covers
+        //    conflicts raised outside a sync click — a restart, a manual
+        //    rebase), cleared when the operation finishes;
+        //  - refusals ("dirty worktree, sync declined"): no git state says
+        //    "was refused", so they clear when the worktree goes CLEAN or a
+        //    sync succeeds — clearing them on "no operation" would wipe the
+        //    alert on the very refresh that follows the refusal.
         for (const wt of worktrees) {
           if (wt.operationState) {
             get().recordConflictAlert(wt.worktreePath, {
@@ -40,7 +44,12 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
               label: wt.label,
             })
           } else {
-            get().clearConflictAlert(wt.worktreePath)
+            const alert = get().gitConflictAlerts.get(wt.worktreePath)
+            if (alert?.kind === 'refusal') {
+              if (!wt.isDirty) get().clearConflictAlert(wt.worktreePath)
+            } else {
+              get().clearConflictAlert(wt.worktreePath)
+            }
           }
         }
         rDebug('worktree.inventory', 'refreshed', { repo_path: repoPath, count: worktrees.length })
@@ -204,13 +213,24 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
           has_conflicts: !!result.hasConflicts,
           error: result.error ?? '',
         })
-        // A conflicted sync used to fail into the log and nowhere else; the
+        // A failed sync used to fail into the log and nowhere else; the
         // operator believed it succeeded. Record it so the toast and the row
-        // badge fire at the moment of failure.
+        // badge fire at the moment of failure. Two shapes:
+        //  - conflicts: an operation is stuck; the ConflictsDialog resolves it;
+        //  - dirty refusals: nothing started; the remediation is the message
+        //    (commit or stash) and there is nothing to "resolve".
         if (result.hasConflicts) {
           get().recordConflictAlert(worktreePath, {
             source: 'sync',
+            kind: 'conflict',
             operationState: 'rebasing',
+            message: result.error,
+            label: worktreePath.split('/').filter(Boolean).pop(),
+          })
+        } else if (result.refusedDirty) {
+          get().recordConflictAlert(worktreePath, {
+            source: 'sync',
+            kind: 'refusal',
             message: result.error,
             label: worktreePath.split('/').filter(Boolean).pop(),
           })

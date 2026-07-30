@@ -86,16 +86,53 @@ describe('a failed sync records a visible alert', () => {
     expect(alert!.dismissed).toBe(false)
   })
 
-  it('records nothing for a non-conflict refusal (dirty worktree)', async () => {
+  it('records a REFUSAL alert for a dirty worktree, with the remediation message', async () => {
+    // The live incident: sync refused (dirty), logged, and nothing shown — the
+    // spinner stopped and the operator was left guessing. A refusal is now an
+    // alert of kind 'refusal': toast with the message, no Resolve button
+    // (nothing is in progress to resolve).
     const h = harness()
     ;(globalThis as unknown as { window: Record<string, unknown> }).window = {
       ion: {
-        gitWorktreeSync: vi.fn().mockResolvedValue({ ok: false, refusedDirty: true, error: 'dirty' }),
+        gitWorktreeSync: vi.fn().mockResolvedValue({
+          ok: false, refusedDirty: true,
+          error: 'This worktree has uncommitted changes, so it cannot be synced.',
+        }),
         gitWorktreeInventory: vi.fn().mockResolvedValue({ worktrees: [] }),
       },
     }
     await h.slice.syncWorktree!(WT, 'josh', '/repo')
-    expect(h.alerts().get(WT)).toBeUndefined()
+
+    const alert = h.alerts().get(WT)
+    expect(alert).toBeDefined()
+    expect(alert!.kind).toBe('refusal')
+    expect(alert!.source).toBe('sync')
+    expect(alert!.operationState).toBeUndefined()
+    expect(alert!.message).toContain('uncommitted changes')
+  })
+
+  it('clears a refusal alert only when the worktree goes CLEAN', async () => {
+    // No git state says "was refused", so the refusal must survive the very
+    // next inventory refresh (which reports no operation in progress) while
+    // the worktree is still dirty — and clear once it is clean.
+    const entry = (isDirty: boolean) => ({
+      worktreePath: WT, branchName: 'wt/a1', label: 'proj-a1', sourceBranch: 'josh',
+      head: 'abc', lastCommitSubject: 'x', isDirty, unlandedCommitCount: 0,
+      needsSync: true, safeToDiscard: false,
+    })
+    const h = harness()
+    h.slice.recordConflictAlert!(WT, { source: 'sync', kind: 'refusal', message: 'dirty' })
+
+    ;(globalThis as unknown as { window: Record<string, unknown> }).window = {
+      ion: { gitWorktreeInventory: vi.fn().mockResolvedValue({ worktrees: [entry(true)] }) },
+    }
+    await h.slice.refreshWorktreeInventory!('/repo')
+    expect(h.alerts().get(WT)?.kind).toBe('refusal') // survives while dirty
+
+    ;(globalThis as unknown as { window: { ion: Record<string, unknown> } }).window.ion
+      .gitWorktreeInventory = vi.fn().mockResolvedValue({ worktrees: [entry(false)] })
+    await h.slice.refreshWorktreeInventory!('/repo')
+    expect(h.alerts().has(WT)).toBe(false) // clean clears it
   })
 })
 
