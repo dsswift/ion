@@ -99,7 +99,11 @@ final class WorktreeWireTests: XCTestCase {
               "needsSync": true,
               "safeToDiscard": false,
               "provisionState": "building",
-              "openTabId": "tab-1"
+              "title": "Fix the token expiry check",
+              "openConversations": [
+                {"tabId": "tab-1", "title": "Fix the parser", "status": "running", "index": 2},
+                {"tabId": "tab-2", "title": "Add tests", "status": "idle", "index": 4}
+              ]
             }],
             "benches": [{
               "repoPath": "/repo",
@@ -116,9 +120,16 @@ final class WorktreeWireTests: XCTestCase {
                 "enabled": true,
                 "pinnedSha": "9c2b17e1111",
                 "status": "stale",
+                "title": "Rework the relay auth",
                 "conflictPaths": ["src/a.ts"],
-                "conflictsWith": ["wt/7b0c"]
-              }]
+                "conflictsWith": ["wt/7b0c"],
+                "openConversations": [
+                  {"tabId": "tab-3", "title": "Relay auth work", "status": "idle", "index": 5}
+                ]
+              }],
+              "openConversations": [
+                {"tabId": "tab-9", "title": "Bench build", "status": "idle", "index": 9}
+              ]
             }]
           }]
         }
@@ -138,7 +149,16 @@ final class WorktreeWireTests: XCTestCase {
         XCTAssertTrue(wt.needsSync)
         XCTAssertFalse(wt.safeToDiscard)
         XCTAssertEqual(wt.provisionState, .building)
-        XCTAssertEqual(wt.openTabId, "tab-1")
+        // The human title, and the display rule that prefers it over the slug.
+        XCTAssertEqual(wt.title, "Fix the token expiry check")
+        XCTAssertEqual(wt.displayName, "Fix the token expiry check")
+        // Every conversation, named and indexed -- not a single opaque tab id.
+        XCTAssertEqual(wt.openConversations.count, 2)
+        XCTAssertEqual(wt.openConversations[0].tabId, "tab-1")
+        XCTAssertEqual(wt.openConversations[0].title, "Fix the parser")
+        XCTAssertEqual(wt.openConversations[0].status, "running")
+        XCTAssertEqual(wt.openConversations[0].index, 2)
+        XCTAssertEqual(wt.openConversations[1].title, "Add tests")
 
         let bench = try XCTUnwrap(state.benches.first)
         XCTAssertEqual(bench.benchBranch, "ion/bench/josh")
@@ -146,12 +166,51 @@ final class WorktreeWireTests: XCTestCase {
         XCTAssertTrue(bench.hasBeenBuilt)
         XCTAssertEqual(bench.staleMemberCount, 1)
         XCTAssertEqual(bench.enabledMemberCount, 1)
+        XCTAssertEqual(bench.openConversations.map(\.tabId), ["tab-9"])
 
         let member = try XCTUnwrap(bench.members.first)
         XCTAssertEqual(member.status, .stale)
         XCTAssertEqual(member.pinnedSha, "9c2b17e1111")
         XCTAssertEqual(member.conflictPaths, ["src/a.ts"])
         XCTAssertEqual(member.conflictsWith, ["wt/7b0c"])
+        // The member title is resolved by the desktop from the worktree
+        // inventory, never stored twice -- iOS just renders what arrives.
+        XCTAssertEqual(member.title, "Rework the relay auth")
+        XCTAssertEqual(member.displayName, "Rework the relay auth")
+        // A member's conversations live in the MEMBER's worktree, not the bench.
+        XCTAssertEqual(member.openConversations.map(\.tabId), ["tab-3"])
+    }
+
+    /// A desktop that has not shipped the naming change yet sends neither
+    /// `title` nor `openConversations`. Both must decode to their empty forms
+    /// rather than failing: one missing field would otherwise blank the entire
+    /// worktree list on a mismatched pair.
+    func testAbsentTitleAndConversationsDecodeToEmptyForms() throws {
+        let json = """
+        {"type":"desktop_worktree_state","states":[{"repoPath":"/repo","worktrees":[{
+          "worktreePath":"/wt/x","branchName":"wt/x","label":"x","sourceBranch":"josh",
+          "head":"abc","lastCommitSubject":"","isDirty":false,"unlandedCommitCount":0,
+          "needsSync":false,"safeToDiscard":false}],"benches":[{
+          "repoPath":"/repo","sourceBranch":"josh","benchPath":"/bench",
+          "benchBranch":"ion/bench/josh","baseSha":"aaa","lastBuiltAt":0,"baseDrifted":false,
+          "members":[{"worktreePath":"/wt/y","branchName":"wt/y","label":"y","enabled":true,
+          "pinnedSha":"bbb","status":"integrated"}]}]}]}
+        """.data(using: .utf8)!
+
+        let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
+
+        guard case let .worktreeState(states) = event else { return XCTFail("wrong case") }
+        let wt = states[0].worktrees[0]
+        XCTAssertNil(wt.title)
+        XCTAssertEqual(wt.openConversations, [])
+        // With no title the slug is what the row shows -- never a placeholder.
+        XCTAssertEqual(wt.displayName, "x")
+
+        let bench = states[0].benches[0]
+        XCTAssertEqual(bench.openConversations, [])
+        XCTAssertNil(bench.members[0].title)
+        XCTAssertEqual(bench.members[0].openConversations, [])
+        XCTAssertEqual(bench.members[0].displayName, "y")
     }
 
     /// A worktree Ion did not create has no knowable source branch. It must

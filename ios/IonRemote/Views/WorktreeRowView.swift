@@ -35,7 +35,11 @@ struct WorktreeRowView: View {
                         .strokeBorder(worktree.isDirty ? Color.green : Color.secondary, lineWidth: 1)
                         .frame(width: 8, height: 8)
 
-                    Text(worktree.label)
+                    // Title-first: the desktop names a worktree from the
+                    // first prompt sent inside it, and that is the only string
+                    // here that says what the work is about. The branch stays
+                    // beside it because every git verb names the branch.
+                    Text(worktree.displayName)
                         .font(.subheadline.weight(.medium))
                         .lineLimit(1)
 
@@ -98,8 +102,12 @@ struct WorktreeRowView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                    if worktree.openTabId != nil {
-                        Text("open")
+                    // Names the COUNT when several conversations live in the
+                    // worktree. A single "open" could not distinguish one from
+                    // four, which is exactly what the operator wants to know.
+                    if !worktree.openConversations.isEmpty {
+                        Text(worktree.openConversations.count == 1
+                             ? "open" : "open · \(worktree.openConversations.count)")
                             .font(.caption2)
                             .foregroundStyle(.tint)
                     }
@@ -130,8 +138,17 @@ struct WorktreeRowView: View {
             Button {
                 onOpen()
             } label: {
-                Label(worktree.openTabId == nil ? "Open conversation" : "Go to conversation",
+                Label(worktree.openConversations.isEmpty ? "Open conversation" : "Go to conversation",
                       systemImage: "bubble.left")
+            }
+            // The conversations by name: the phone has no hover, so the menu
+            // is where "what is actually running in here" belongs.
+            if !worktree.openConversations.isEmpty {
+                Section("Open here") {
+                    ForEach(worktree.openConversations) { conversation in
+                        Text(conversation.title)
+                    }
+                }
             }
             if worktree.sourceBranch != nil {
                 Button {
@@ -174,7 +191,9 @@ struct BenchMemberRowView: View {
                 .buttonStyle(.plain)
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(member.label)
+                    // Same title-first rule as the worktree rows: a bench of
+                    // hex slugs says nothing about what is being integrated.
+                    Text(member.displayName)
                         .font(.subheadline.weight(.medium))
                         .lineLimit(1)
                     Text(member.branchName)
@@ -184,6 +203,12 @@ struct BenchMemberRowView: View {
 
                 Spacer(minLength: 4)
 
+                if !member.openConversations.isEmpty {
+                    Text(member.openConversations.count == 1
+                         ? "open" : "open · \(member.openConversations.count)")
+                        .font(.caption2)
+                        .foregroundStyle(.tint)
+                }
                 statusLabel
                 if busy { ProgressView().controlSize(.mini) }
             }
