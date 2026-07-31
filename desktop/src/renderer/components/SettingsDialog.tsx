@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { X, GearSix, GitBranch, Columns, PaintBrush, WifiHigh, Lightning, Brain, Faders, MagnifyingGlass, Bell, Keyboard, Buildings } from '@phosphor-icons/react'
+import { X, GearSix, GitBranch, Columns, PaintBrush, WifiHigh, Lightning, Brain, Faders, MagnifyingGlass, Bell, Keyboard, Buildings, Plugs } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
@@ -17,6 +17,7 @@ import { RemoteCategory } from './settings/RemoteCategory'
 import { AdvancedCategory } from './settings/AdvancedCategory'
 import { KeyboardShortcutsCategory } from './settings/KeyboardShortcutsCategory'
 import { EntraCategory } from './settings/EntraCategory'
+import { McpCategory } from './settings/McpCategory'
 import { searchSettings } from './settings/settings-search-index'
 import type { Icon } from '@phosphor-icons/react'
 
@@ -37,6 +38,7 @@ const CATEGORIES: Category[] = [
   { id: 'shortcuts', label: 'Keyboard', icon: Keyboard, component: KeyboardShortcutsCategory },
   { id: 'notifications', label: 'Notifications', icon: Bell, component: NotificationsCategory },
   { id: 'remote', label: 'Remote', icon: WifiHigh, component: RemoteCategory },
+  { id: 'mcp', label: 'MCP Servers', icon: Plugs, component: McpCategory },
   { id: 'advanced', label: 'Advanced', icon: Faders, component: AdvancedCategory },
   { id: 'entra', label: 'Enterprise Auth', icon: Buildings, component: EntraCategory },
 ]

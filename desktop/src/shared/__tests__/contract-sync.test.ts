@@ -273,6 +273,19 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
     'userCode',
     'verificationUrl',
   ],
+  // One configured MCP server carried inside engine_mcp_servers snapshots.
+  // connected and authenticated are independent by design — see the
+  // McpServerStatus doc comment in types-engine-event.ts.
+  McpServerStatus: [
+    'authenticated',
+    'command',
+    'connected',
+    'lastError',
+    'name',
+    'toolCount',
+    'transport',
+    'url',
+  ],
   // Slash-command listing carried inside engine_command_registry snapshots.
   // The desktop's prompt pipeline reads this off the wire to populate a
   // routing-hint cache keyed by session — see desktop/src/main/prompt-pipeline.ts.

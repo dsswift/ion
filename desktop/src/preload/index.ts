@@ -269,6 +269,13 @@ const api: IonAPI = {
   pluginList: () => ipcRenderer.invoke('plugin:list'),
   pluginRemove: (name) => ipcRenderer.invoke('plugin:remove', name),
 
+  // ─── MCP server administration ───
+  mcpList: () => ipcRenderer.invoke(IPC.MCP_LIST),
+  mcpAdd: (request) => ipcRenderer.invoke(IPC.MCP_ADD, request),
+  mcpRemove: (name) => ipcRenderer.invoke(IPC.MCP_REMOVE, name),
+  mcpLogin: (name, scope) => ipcRenderer.invoke(IPC.MCP_LOGIN, { name, scope }),
+  mcpLogout: (name) => ipcRenderer.invoke(IPC.MCP_LOGOUT, name),
+
   // ─── Model & provider management ───
   listModels: () => ipcRenderer.invoke(IPC.LIST_MODELS),
   resolveModelTier: (tier: string) => ipcRenderer.invoke(IPC.MODEL_TIER_RESOLVE, { tier }),

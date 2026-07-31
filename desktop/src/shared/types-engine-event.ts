@@ -33,6 +33,30 @@ export interface ProviderLoginUpdate {
   loginId?: string
 }
 
+/**
+ * One configured MCP server and what the engine currently knows about it.
+ * Carried by the engine_mcp_servers event; mirrors Go McpServerStatus.
+ *
+ * `connected` and `authenticated` are independent. A server can be connected
+ * without authentication (it requires none), or authenticated but not connected
+ * (a token is stored and the last connect attempt still failed). Rendering them
+ * as one combined "ok" state would hide the case an operator must act on: a
+ * stored token that is not getting them in. `lastError` carries the most recent
+ * connection failure, which is how a client with no access to the engine host's
+ * log file can explain why a configured server is absent.
+ */
+export interface McpServerStatus {
+  name: string
+  /** http | sse | ws | stdio */
+  transport?: string
+  url?: string
+  command?: string
+  connected: boolean
+  authenticated: boolean
+  toolCount?: number
+  lastError?: string
+}
+
 export type EngineEvent =
   | { type: 'engine_agent_state'; agents: AgentStateUpdate[] }
   | { type: 'engine_status'; fields: StatusFields; metadata?: Record<string, unknown> }
@@ -96,6 +120,17 @@ export type EngineEvent =
   // identity view with the payload; claim fields are absent when signed
   // out.
   | { type: 'engine_oidc_identity'; oidcSignedIn: boolean; oidcProvider?: string; oidcSubject?: string; oidcUsername?: string; oidcDisplayName?: string }
+  // engine_mcp_login_url — delivered to the client that issued mcp_login.
+  // mcpAuthorizationUrl is opened in a browser; the engine's loopback callback
+  // completes the code exchange and persists the token. mcpServerName says
+  // which server it authorizes, since more than one login can be in flight.
+  | { type: 'engine_mcp_login_url'; mcpServerName?: string; mcpAuthorizationUrl?: string }
+  // engine_mcp_servers — complete SNAPSHOT of the configured MCP servers with
+  // their connection and authorization state. Broadcast on every transition
+  // (add, remove, login, logout) and answered to mcp_list queries. Consumers
+  // REPLACE their local server view with the payload; never merge. An absent or
+  // empty array is the authoritative "no MCP servers configured" signal.
+  | { type: 'engine_mcp_servers'; mcpServers?: McpServerStatus[] }
   // engine_plan_file_written fires when a Write/Edit lands on the canonical
   // plan file during plan mode — the accurate trigger for the "plan created /
   // updated" conversation marker (the file now exists with content, so the

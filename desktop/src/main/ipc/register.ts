@@ -20,6 +20,7 @@ import { registerBenchIpc } from './bench'
 import { registerSettingsIpc } from './settings'
 import { registerRemoteControlIpc } from './remote-control'
 import { registerModelsIpc } from './models'
+import { registerMcpIpc } from './mcp'
 import { registerOAuthIpc } from './oauth'
 import { registerProvidersIpc } from './providers'
 import { registerConversationBackupIpc } from './conversation-backup'
@@ -51,6 +52,7 @@ export function registerAllIpc(): void {
   registerRemoteControlIpc()
   registerModelsIpc()
   registerOAuthIpc()
+  registerMcpIpc()
   registerProvidersIpc()
   registerConversationBackupIpc()
   registerLogIpc()

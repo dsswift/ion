@@ -311,6 +311,29 @@ export interface IonAPI extends AtvApi {
   /** Remove an installed plugin by name. */
   pluginRemove(name: string): Promise<{ ok: boolean; error?: string; data?: { removed: string } }>
 
+  // ─── MCP server administration ───
+  /** List configured MCP servers with their connection and authorization state. */
+  mcpList(): Promise<{ ok: boolean; servers?: import('../shared/types-engine-event').McpServerStatus[]; error?: string }>
+  /** Add an MCP server. Omitting `transport` lets the engine infer it: a url
+   *  means http, a command means stdio. */
+  mcpAdd(request: {
+    name: string
+    transport?: string
+    url?: string
+    command?: string
+    args?: string[]
+    headers?: Record<string, string>
+    env?: Record<string, string>
+  }): Promise<{ ok: boolean; error?: string }>
+  /** Remove a server and its stored credentials. */
+  mcpRemove(name: string): Promise<{ ok: boolean; error?: string }>
+  /** Authorize a server via OAuth. Opens the system browser and resolves only
+   *  after the operator completes the flow (or it times out), so callers must
+   *  keep their pending UI state until it settles. */
+  mcpLogin(name: string, scope?: string): Promise<{ ok: boolean; authorizationUrl?: string; error?: string }>
+  /** Drop a server's stored credentials, leaving its configuration in place. */
+  mcpLogout(name: string): Promise<{ ok: boolean; error?: string }>
+
   // ─── Model & provider management ───
   listModels(): Promise<{ models: import('../shared/types-models').ModelEntry[]; providers: import('../shared/types-models').ProviderEntry[] }>
   resolveModelTier(tier: string): Promise<{ tier: string; model: string; fallbacks: string[]; configured: boolean }>

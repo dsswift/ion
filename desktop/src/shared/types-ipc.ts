@@ -326,6 +326,16 @@ export const IPC = {
   OAUTH_DEVICE_POLL: 'ion:oauth-device-poll',
 
   // Entra OIDC (telemetry auth — Feature 0001 Part F)
+  // MCP server administration. The engine owns the mechanism (engine.json CRUD,
+  // OAuth discovery, dynamic client registration, PKCE, token storage); these
+  // channels forward to it. MCP_LOGIN resolves only after the operator finishes
+  // the browser step, so its caller must tolerate a long-running invoke.
+  MCP_LIST: 'ion:mcp-list',
+  MCP_ADD: 'ion:mcp-add',
+  MCP_REMOVE: 'ion:mcp-remove',
+  MCP_LOGIN: 'ion:mcp-login',
+  MCP_LOGOUT: 'ion:mcp-logout',
+
   ENTRA_SIGN_IN: 'ion:entra-sign-in',
   ENTRA_SIGN_OUT: 'ion:entra-sign-out',
   ENTRA_IDENTITY: 'ion:entra-identity',
