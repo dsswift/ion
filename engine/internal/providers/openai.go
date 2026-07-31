@@ -110,6 +110,12 @@ func (p *openaiProvider) doStream(ctx context.Context, opts types.LlmStreamOptio
 		keySource = "registry:" + p.id
 	}
 	utils.LogWithFields(utils.LevelInfo, "OpenAI", "do stream auth resolved", map[string]any{"provider": p.id, "reason": keySource, "count": len(apiKey), "status": p.authHeader})
+	// Fail fast on a keyless request to the canonical hosted endpoint — a
+	// guaranteed 401; see requireKeyForHost (auth.go). Custom base URLs
+	// (gateways, local runtimes) may be legitimately keyless and pass.
+	if pe := requireKeyForHost(req.URL.Host, p.id, apiKey); pe != nil {
+		return pe
+	}
 	setAuthHeader(req, p.authHeader, apiKey)
 	req.Header.Set("Accept", "text/event-stream")
 
