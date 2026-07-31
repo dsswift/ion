@@ -225,18 +225,3 @@ The build process copies the repo source to the installed location. Any edit mad
 **Always edit `engine/extensions/sdk/ion-sdk/`** for SDK changes — types, runtime, or any other SDK file. The installed copy at `~/.ion/` is read-only from the agent's perspective.
 
 Corollary for harness work: a harness that consumes a brand-new SDK field may need a structural-typing shim until the operator rebuilds the engine/SDK, because the installed copy does not carry the field until that rebuild happens.
-
-## Extension SDK source location
-
-The TypeScript SDK that extensions import lives in **two places**:
-
-| Location | Role |
-|----------|------|
-| `engine/extensions/sdk/ion-sdk/` | **Source of truth.** Edit here. |
-| `~/.ion/extensions/sdk/ion-sdk/` | **Installed copy.** Overwritten at build time. Never edit. |
-
-The build process copies the repo source to the installed location. Any edit made only to `~/.ion/extensions/sdk/` will be lost on the next build.
-
-**Always edit `engine/extensions/sdk/ion-sdk/`** for SDK changes — types, runtime, or any other SDK file. The installed copy at `~/.ion/` is read-only from the agent's perspective.
-
-Corollary for harness work: a harness that consumes a brand-new SDK field may need a structural-typing shim until the operator rebuilds the engine/SDK, because the installed copy does not carry the field until that rebuild happens.
