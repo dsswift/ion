@@ -99,6 +99,14 @@ func (r *tokenResolver) Token() (string, error) {
 		return bearerValue(tok), nil
 	}
 
+	// A grant the provider has permanently rejected cannot be revived by trying
+	// again, so re-presenting it costs a network round trip per request and
+	// returns the same answer. classifyGrantFailure already decided this is
+	// terminal; honouring that decision here is what keeps the cost bounded.
+	if dead := lastGrantFailure(r.serverName); dead != nil {
+		return "", fmt.Errorf("refresh token for %s: %w", r.serverName, dead)
+	}
+
 	unlock := r.lockRefresh()
 	defer unlock()
 
@@ -107,6 +115,13 @@ func (r *tokenResolver) Token() (string, error) {
 	// expiries into ONE refresh plus N-1 cache hits.
 	if tok := store.GetToken(r.serverName); tok != nil {
 		return bearerValue(tok), nil
+	}
+
+	// Re-check the death marker under the lock too: the caller that held the
+	// lock before this one may have just proven the grant dead, and without
+	// this every waiter on that lock still issues its own doomed refresh.
+	if dead := lastGrantFailure(r.serverName); dead != nil {
+		return "", fmt.Errorf("refresh token for %s: %w", r.serverName, dead)
 	}
 
 	utils.LogWithFields(utils.LevelInfo, "mcp.oauth", "access token expired; refreshing before request", map[string]any{
@@ -146,6 +161,14 @@ func (r *tokenResolver) ForceRefresh(rejected string) (string, error) {
 			"serverName": r.serverName,
 		})
 		return bearerValue(tok), nil
+	}
+
+	// The 401 that drove this retry is expected when the grant is already known
+	// dead: no token was sent, so the server refused an unauthenticated request.
+	// Refreshing cannot change that, and doing it here is what turned one dead
+	// credential into three failed token-endpoint calls per connect.
+	if dead := lastGrantFailure(r.serverName); dead != nil {
+		return "", fmt.Errorf("force refresh token for %s: %w", r.serverName, dead)
 	}
 
 	utils.LogWithFields(utils.LevelInfo, "mcp.oauth", "server rejected the token; forcing a refresh", map[string]any{

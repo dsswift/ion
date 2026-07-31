@@ -170,7 +170,18 @@ func fetchWellKnown(serverName, wellKnownURL string, out any) (bool, error) {
 // for an MCP endpoint URL. Returns an error when neither probe yields a
 // document naming at least one authorization server — the caller then knows
 // the server is not discovery-capable and an explicit oauth block is required.
+//
+// Memoized per resource URL for the process lifetime (discovery_cache.go): the
+// document is deployment config, and this runs on both the connect path and the
+// 401-annotation path, so an uncached call meant two fetches per connect.
 func DiscoverProtectedResource(serverName, resourceURL string) (*ProtectedResourceMetadata, error) {
+	return cachedProtectedResource(serverName, resourceURL, func() (*ProtectedResourceMetadata, error) {
+		return fetchProtectedResource(serverName, resourceURL)
+	})
+}
+
+// fetchProtectedResource performs the actual probe sequence, uncached.
+func fetchProtectedResource(serverName, resourceURL string) (*ProtectedResourceMetadata, error) {
 	candidates, err := wellKnownCandidates(resourceURL, "oauth-protected-resource")
 	if err != nil {
 		return nil, fmt.Errorf("mcp discovery %s: %w", serverName, err)
@@ -206,7 +217,16 @@ func DiscoverProtectedResource(serverName, resourceURL string) (*ProtectedResour
 // issuer, falling back to the OIDC discovery document. Both probe forms of
 // each spelling are tried (see wellKnownCandidates), so an issuer with a path
 // component (https://host/auth/v1) resolves either way its provider serves it.
+//
+// Memoized per issuer for the process lifetime (discovery_cache.go).
 func DiscoverAuthServer(serverName, issuer string) (*ServerMetadata, error) {
+	return cachedAuthServer(serverName, issuer, func() (*ServerMetadata, error) {
+		return fetchAuthServer(serverName, issuer)
+	})
+}
+
+// fetchAuthServer performs the actual probe sequence, uncached.
+func fetchAuthServer(serverName, issuer string) (*ServerMetadata, error) {
 	var probed []string
 	for _, suffix := range []string{"oauth-authorization-server", "openid-configuration"} {
 		candidates, err := wellKnownCandidates(issuer, suffix)
@@ -255,7 +275,18 @@ func DiscoverAuthServer(serverName, issuer string) (*ServerMetadata, error) {
 // The returned scope is the resource's advertised scope set (space-joined),
 // which is what the authorization request should ask for when the operator
 // has expressed no preference.
+//
+// Memoized per resource URL for the process lifetime (discovery_cache.go).
 func DiscoverForServer(serverName, resourceURL string) (meta *ServerMetadata, scope string, err error) {
+	return cachedForServer(serverName, resourceURL, func() (*ServerMetadata, string, error) {
+		return fetchForServer(serverName, resourceURL)
+	})
+}
+
+// fetchForServer performs the actual two-hop discovery, uncached. Its two hops
+// are themselves memoized, so a miss here can still be served without network
+// I/O when the individual documents were already fetched by login.go.
+func fetchForServer(serverName, resourceURL string) (*ServerMetadata, string, error) {
 	resource, err := DiscoverProtectedResource(serverName, resourceURL)
 	if err != nil {
 		return nil, "", err

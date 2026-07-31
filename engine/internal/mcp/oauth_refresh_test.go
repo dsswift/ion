@@ -15,6 +15,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -661,5 +662,104 @@ func TestForceRefreshAdoptsAnotherCallersToken(t *testing.T) {
 	}
 	if results[0] != results[1] {
 		t.Errorf("resolvers disagree on the token (%q vs %q); both must converge on one credential", results[0], results[1])
+	}
+}
+
+// TestDeadGrantRefreshedOnlyOnce is the regression pin for the connect-path
+// cost of a permanently rejected grant.
+//
+// A refresh token the provider has spent or revoked cannot be revived, and
+// classifyGrantFailure already recognizes that. But the resolver did not READ
+// that verdict: every Token() and every ForceRefresh() issued its own doomed
+// token-endpoint POST. With one dead credential that turned each MCP request
+// into three failed network round trips, and on a machine restoring many
+// conversations it dominated the whole restore.
+//
+// The pin: after the first refresh proves the grant dead, no subsequent
+// resolution contacts the token endpoint at all.
+func TestDeadGrantRefreshedOnlyOnce(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	resetStoresForTest()
+
+	fix := newRefreshFixture(t, "original")
+	// Expired, so every resolution wants a refresh...
+	fix.seedStores("original", time.Now().Add(-1*time.Minute))
+	// ...and the provider rejects the grant as permanently spent. invalid_grant
+	// is in unrecoverableGrantCodes, so this is a terminal classification.
+	fix.refreshStatus.Store(http.StatusBadRequest)
+
+	resolver := newTokenResolver("srv", nil)
+	if resolver == nil {
+		t.Fatal("expected a resolver for a server with a stored registration")
+	}
+
+	if _, err := resolver.Token(); err == nil {
+		t.Fatal("Token() must fail when the grant is permanently rejected")
+	}
+	if got := fix.refreshCalls.Load(); got != 1 {
+		t.Fatalf("first Token() issued %d refresh calls, want exactly 1", got)
+	}
+
+	// Every subsequent resolution must be answered locally from the recorded
+	// verdict. This is the assertion that fails on the unfixed resolver, where
+	// each of these issues another POST.
+	for i := 0; i < 5; i++ {
+		if _, err := resolver.Token(); err == nil {
+			t.Fatalf("Token() call %d must keep failing for a dead grant", i+2)
+		}
+	}
+	if _, err := resolver.ForceRefresh("Bearer original"); err == nil {
+		t.Fatal("ForceRefresh must fail for a dead grant")
+	}
+	if got := fix.refreshCalls.Load(); got != 1 {
+		t.Errorf("token endpoint was contacted %d times; want 1 — the dead grant must be cached, not re-presented", got)
+	}
+
+	// The returned error must still carry the terminal classification, so the
+	// caller (and the operator reading the log) learns re-login is the fix
+	// rather than seeing a generic refresh failure.
+	_, err := resolver.Token()
+	if !errors.Is(err, ErrGrantUnrecoverable) {
+		t.Errorf("cached error = %v; want it to wrap ErrGrantUnrecoverable", err)
+	}
+}
+
+// TestSuccessfulLoginClearsDeadGrant pins the recovery path: the negative cache
+// must not outlive the credential it describes. A completed `ion mcp login`
+// stores a fresh token and clears the verdict, so the next resolution uses the
+// new credential instead of replaying the old failure forever.
+func TestSuccessfulLoginClearsDeadGrant(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	resetStoresForTest()
+
+	fix := newRefreshFixture(t, "original")
+	fix.seedStores("original", time.Now().Add(-1*time.Minute))
+	fix.refreshStatus.Store(http.StatusBadRequest)
+
+	resolver := newTokenResolver("srv", nil)
+	if resolver == nil {
+		t.Fatal("expected a resolver")
+	}
+	if _, err := resolver.Token(); err == nil {
+		t.Fatal("precondition: the grant must be rejected")
+	}
+	if lastGrantFailure("srv") == nil {
+		t.Fatal("precondition: the failure must be recorded")
+	}
+
+	// What a completed login does: store a working token and drop the verdict.
+	fix.refreshStatus.Store(0)
+	getOAuthStore().SetToken("srv", &OAuthToken{
+		AccessToken: "fresh", RefreshToken: "rt-new", TokenType: "bearer",
+		ExpiresAt: time.Now().Add(time.Hour),
+	})
+	clearGrantFailure("srv")
+
+	tok, err := resolver.Token()
+	if err != nil {
+		t.Fatalf("Token() after a fresh login: %v", err)
+	}
+	if tok != "Bearer fresh" {
+		t.Errorf("token = %q, want the freshly stored credential", tok)
 	}
 }

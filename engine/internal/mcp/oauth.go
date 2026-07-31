@@ -137,10 +137,26 @@ func (s *OAuthStore) RefreshToken(serverName string, config *OAuthConfig) (*OAut
 		if readErr != nil {
 			utils.LogWithFields(utils.LevelInfo, "mcp.oauth", "refresh error body read failed", map[string]any{"serverName": serverName, "error": readErr.Error()})
 		}
-		utils.LogWithFields(utils.LevelError, "mcp.oauth", "refresh token rejected by provider", map[string]any{
-			"serverName": serverName, "status": resp.StatusCode, "tokenUrl": config.TokenURL, "body": string(body),
-		})
-		return nil, fmt.Errorf("refresh token failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+
+		// Classify before returning. A spent or revoked grant is not the same
+		// failure as a 500, and reporting both as "refresh token failed with
+		// status N" sends the operator to retry a thing that will never work.
+		grantErr := classifyGrantFailure(serverName, resp.StatusCode, body)
+		fields := map[string]any{
+			"serverName": serverName, "status": resp.StatusCode, "tokenUrl": config.TokenURL,
+			"oauthErrorCode": grantErr.Code, "unrecoverable": grantErr.Unrecoverable,
+			"body": string(body),
+		}
+		if grantErr.Unrecoverable {
+			// The operator has to act, and this log line is the only place a
+			// headless engine can tell them so.
+			fields["remediation"] = "run `ion mcp login " + serverName + "` to re-authorize"
+			utils.LogWithFields(utils.LevelError, "mcp.oauth", "stored authorization can no longer be renewed; interactive re-login required", fields)
+		} else {
+			utils.LogWithFields(utils.LevelError, "mcp.oauth", "refresh token rejected by provider; may succeed on retry", fields)
+		}
+		recordGrantFailure(serverName, grantErr)
+		return nil, grantErr
 	}
 
 	var tokenResp struct {
@@ -167,6 +183,9 @@ func (s *OAuthStore) RefreshToken(serverName string, config *OAuthConfig) (*OAut
 	}
 
 	s.SetToken(serverName, token)
+	// The grant works: forget any recorded death so a stale reason cannot
+	// outlive the problem it described.
+	clearGrantFailure(serverName)
 	return token, nil
 }
 

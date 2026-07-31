@@ -173,6 +173,17 @@ func resetStoresForTest() {
 	globalClientStoreOnce.Do(func() {})
 	globalOAuthStore = NewOAuthStore()
 	globalOAuthStoreOnce.Do(func() {})
+	// In-memory auth state must be cleared alongside the on-disk stores. A
+	// recorded grant failure or a held refresh lock surviving a reset leaks
+	// between tests, and the leak is not test-only: both maps are keyed by
+	// server name and live for the process, so anything that fails to clear an
+	// entry misreports one server using another's state.
+	lastGrantErrors.Range(func(k, _ any) bool { lastGrantErrors.Delete(k); return true })
+	refreshLocks.Range(func(k, _ any) bool { refreshLocks.Delete(k); return true })
+	// Memoized discovery documents are process-global for the same reason and
+	// leak the same way: a fixture's answer for one server URL would otherwise
+	// be served to the next test that probes it.
+	resetDiscoveryCaches()
 }
 
 // storeErrUnwritable is returned when a registration cannot be persisted; the

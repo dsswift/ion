@@ -219,6 +219,13 @@ func ResolveClient(serverName string, cfg types.McpServerConfig, scopeOverride, 
 // The engine never blocks on the user here: the caller surfaces
 // AuthorizationURL and watches Done/Err.
 func BeginLogin(serverName string, cfg types.McpServerConfig, scopeOverride string) (*LoginResult, error) {
+	// An interactive login is the moment a previously-undiscoverable server can
+	// become discoverable — a corrected URL, a proxy fixed, a provider that was
+	// down when the engine first probed. Dropping the memoized documents here
+	// means the login re-probes rather than reusing a cached failure the
+	// operator is actively trying to resolve.
+	invalidateDiscovery(cfg.URL, "")
+
 	// Reuse the registered redirect port when one is stored, so a repeat login
 	// presents the byte-identical redirect_uri the client was registered with.
 	port := 0
@@ -288,6 +295,7 @@ func BeginLogin(serverName string, cfg types.McpServerConfig, scopeOverride stri
 		case tok := <-flow.Token:
 			store := getOAuthStore()
 			store.SetToken(serverName, tokenFromGrant(tok))
+			clearGrantFailure(serverName)
 			// Persist the endpoints the grant was minted against so a later
 			// refresh needs neither discovery nor engine.json.
 			persistRegistrationFromLogin(serverName, reg)
@@ -361,6 +369,9 @@ func persistRegistrationFromLogin(serverName string, reg *ClientRegistration) {
 func Logout(serverName string) {
 	getOAuthStore().DeleteToken(serverName)
 	getClientStore().Delete(serverName)
+	// Drop any recorded grant death: the credential it described is gone, so
+	// keeping the reason would misreport a freshly-logged-out server as broken.
+	clearGrantFailure(serverName)
 	utils.LogWithFields(utils.LevelInfo, "mcp.login", "logged out; token and client registration removed", map[string]any{
 		"serverName": serverName,
 	})
@@ -370,6 +381,24 @@ func Logout(serverName string) {
 // server. Consumers render this; the engine holds no opinion about how.
 func IsAuthenticated(serverName string) bool {
 	return getOAuthStore().GetToken(serverName) != nil
+}
+
+// GrantExpiredReason returns a human-readable reason when a server's stored
+// authorization has permanently failed to renew, or "" when it has not.
+//
+// This is the distinction a consumer needs to tell "never authorized" from
+// "authorization died": both render as authenticated=false, but only the second
+// means the operator previously logged in and must do so again. Clients decide
+// how to present it; the engine only reports it.
+func GrantExpiredReason(serverName string) string {
+	grantErr := lastGrantFailure(serverName)
+	if grantErr == nil {
+		return ""
+	}
+	if grantErr.Code != "" {
+		return grantErr.Code
+	}
+	return "the stored authorization could not be renewed"
 }
 
 // annotateAuthFailure enriches a connect-path error that is really an
@@ -408,9 +437,27 @@ func annotateAuthFailure(serverName string, config types.McpServerConfig, err er
 		}
 	}
 
+	// A grant that failed to renew is the most specific explanation available,
+	// and it changes the advice: logout-then-login rather than a bare login,
+	// because the stored refresh token is spent rather than merely stale.
+	deadGrant := lastGrantFailure(serverName)
+	if deadGrant != nil {
+		fields["grantErrorCode"] = deadGrant.Code
+		fields["grantUnrecoverable"] = true
+	}
+
 	utils.LogWithFields(utils.LevelError, "mcp", "server rejected the connection as unauthorized", fields)
 
 	switch {
+	case deadGrant != nil:
+		// Name the provider's own reason. "already used" tells the operator their
+		// grant was consumed, which a generic "requires authorization" does not.
+		reason := deadGrant.Code
+		if reason == "" {
+			reason = "the stored authorization could not be renewed"
+		}
+		return fmt.Errorf("%w — the stored authorization for %q can no longer be renewed (%s); run `ion mcp login %s` to re-authorize",
+			err, serverName, reason, serverName)
 	case authenticated:
 		// A stored token was sent and still rejected: re-login is the fix, not
 		// a first login. Saying "run login" without this distinction would

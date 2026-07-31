@@ -12,6 +12,7 @@ package session
 //     next daemon restart.
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 
@@ -126,6 +127,16 @@ func (m *Manager) McpServerStatuses(projectDir string) []types.McpServerStatus {
 		}
 		if !isConnected {
 			status.LastError = mcpConnectError(name)
+			// A permanently-failed grant outranks whatever the last connect
+			// attempt happened to say: "already used" is the actionable cause,
+			// while the 401 it produced is only the symptom. Consumers that
+			// render LastError then show the operator the reason they must
+			// re-authorize instead of a bare status code.
+			if reason := mcp.GrantExpiredReason(name); reason != "" {
+				status.LastError = fmt.Sprintf(
+					"stored authorization can no longer be renewed (%s) — run `ion mcp login %s` to re-authorize",
+					reason, name)
+			}
 		}
 		statuses = append(statuses, status)
 	}
