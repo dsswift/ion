@@ -300,6 +300,18 @@ type EngineEvent struct {
 	OidcUsername    string `json:"oidcUsername,omitempty"`
 	OidcDisplayName string `json:"oidcDisplayName,omitempty"`
 
+	// engine_mcp_login_url — delivered to the client that issued mcp_login.
+	// McpAuthorizationURL is what the consumer opens in a browser;
+	// McpServerName identifies which server it authorizes, since a consumer
+	// may have more than one login in flight.
+	McpAuthorizationURL string `json:"mcpAuthorizationUrl,omitempty"`
+	McpServerName       string `json:"mcpServerName,omitempty"`
+
+	// engine_mcp_servers — complete snapshot of the configured MCP servers
+	// with their connection and authorization state. Consumers REPLACE their
+	// local view with this payload; never merge. Nil on every other event.
+	McpServers []McpServerStatus `json:"mcpServers,omitempty"`
+
 	// engine_command_registry — complete snapshot of slash commands exposed by
 	// the session's currently-loaded extensions. Emitted at session_start (after
 	// extensions wire up) and on every subsequent change to the command map

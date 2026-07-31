@@ -17,6 +17,27 @@ When MCP servers are configured, their tools and resources become available to t
 
 If an MCP server fails to start or connect, the engine logs the error and continues without that server. Other MCP servers and built-in tools are unaffected.
 
+### When a server needs authorization
+
+A remote server that rejects the connection as unauthorized (HTTP 401, or 403
+for an insufficient scope) is the common first-run case, and the engine names
+the remedy rather than reporting a bare status:
+
+```
+mcp initialize mobbin: HTTP error (status 401) — "mobbin" requires authorization
+from https://auth.example.com; run `ion mcp login mobbin`
+```
+
+Run that command (or click Authorize in the desktop under Settings → MCP
+Servers) and the server connects on the next conversation. When the login
+completes, the engine also reconnects the server across every live session, so
+an already-open conversation picks up its tools without a restart.
+
+If the message instead says the *stored* token was rejected, the grant has been
+revoked or its scope has changed: `ion mcp logout <name>` then
+`ion mcp login <name>`. `ion mcp list` distinguishes the two cases — a server
+showing `AUTH: yes` with `CONNECTED: no` has a token the server is refusing.
+
 ## MCP tools
 
 Tools registered by MCP servers appear in the LLM's tool list alongside the engine's built-in tools (Read, Write, Bash, etc.). The LLM invokes them based on their name and description, just like any other tool.

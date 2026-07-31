@@ -420,6 +420,21 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "oidc_token":
 		s.dispatchOidcToken(conn, cmd)
 
+	case "mcp_list":
+		s.dispatchMcpList(conn, cmd)
+
+	case "mcp_add":
+		s.dispatchMcpAdd(conn, cmd)
+
+	case "mcp_remove":
+		s.dispatchMcpRemove(conn, cmd)
+
+	case "mcp_login":
+		s.dispatchMcpLogin(conn, cmd)
+
+	case "mcp_logout":
+		s.dispatchMcpLogout(conn, cmd)
+
 	case "provider_login":
 		s.dispatchProviderLogin(conn, cmd)
 

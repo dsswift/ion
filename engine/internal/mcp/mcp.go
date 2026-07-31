@@ -57,6 +57,24 @@ func registerConnection(name string, conn *Connection) {
 	connRegistry[name] = conn
 }
 
+// Register (re)points the package-level registry at a connection.
+//
+// Connect already registers, so this exists for one specific ordering problem:
+// replacing a connection means closing the old one, and Close unregisters by
+// NAME — which evicts the new connection's entry, because both share the name.
+// A caller that closes a superseded connection after opening its replacement
+// calls this to restore the live entry. Without it, ListMcpResources and
+// ReadMcpResource would report the server as not connected.
+func Register(conn *Connection) {
+	if conn == nil {
+		return
+	}
+	registerConnection(conn.name, conn)
+	utils.LogWithFields(utils.LevelDebug, "mcp", "connection re-registered in package registry", map[string]any{
+		"serverName": conn.name,
+	})
+}
+
 // unregisterConnection removes a connection from the registry.
 func unregisterConnection(name string) {
 	connRegistryMu.Lock()
@@ -92,6 +110,11 @@ func ReadMcpResource(serverName, uri string) (*McpResourceContent, error) {
 	defer cancel()
 	return conn.ReadResource(ctx, uri)
 }
+
+// mcpProtocolVersion is the MCP protocol revision this client speaks. Sent in
+// the initialize handshake, and advisory on the OAuth metadata fetches in
+// discovery.go (some gateways route on the header).
+const mcpProtocolVersion = "2024-11-05"
 
 const mcpCallTimeoutDefault = 60 * time.Second
 
@@ -168,8 +191,14 @@ func Connect(name string, config types.McpServerConfig) (*Connection, error) {
 	for k, v := range config.Headers {
 		headers[k] = v
 	}
+	// Token resolution runs whether or not an explicit `oauth` block exists:
+	// a server authenticated via `ion mcp login` (dynamic registration, no
+	// engine.json oauth block) has its client stored, and resolveOAuthHeaders
+	// finds it there. Gating this on config.OAuth != nil would make every
+	// discovery-authenticated server connect unauthenticated.
+	var oauthCfg *OAuthConfig
 	if config.OAuth != nil {
-		oauthCfg := &OAuthConfig{
+		oauthCfg = &OAuthConfig{
 			ClientID:     config.OAuth.ClientID,
 			ClientSecret: config.OAuth.ClientSecret,
 			AuthURL:      config.OAuth.AuthURL,
@@ -178,10 +207,10 @@ func Connect(name string, config types.McpServerConfig) (*Connection, error) {
 			RedirectURI:  config.OAuth.RedirectURI,
 			UsePKCE:      config.OAuth.UsePKCE,
 		}
-		if authHeaders := resolveOAuthHeaders(name, oauthCfg); authHeaders != nil {
-			for k, v := range authHeaders {
-				headers[k] = v
-			}
+	}
+	if authHeaders := resolveOAuthHeaders(name, oauthCfg); authHeaders != nil {
+		for k, v := range authHeaders {
+			headers[k] = v
 		}
 	}
 
@@ -244,7 +273,7 @@ func Connect(name string, config types.McpServerConfig) (*Connection, error) {
 		if closeErr := transport.Close(); closeErr != nil {
 			utils.LogWithFields(utils.LevelInfo, "mcp", "transport close after initialize failure", map[string]any{"tool": name, "error": closeErr.Error()})
 		}
-		return nil, fmt.Errorf("mcp initialize %s: %w", name, err)
+		return nil, annotateAuthFailure(name, config, fmt.Errorf("mcp initialize %s: %w", name, err))
 	}
 
 	// Discover tools.
@@ -253,7 +282,7 @@ func Connect(name string, config types.McpServerConfig) (*Connection, error) {
 		if closeErr := transport.Close(); closeErr != nil {
 			utils.LogWithFields(utils.LevelInfo, "mcp", "transport close after list tools failure", map[string]any{"tool": name, "error": closeErr.Error()})
 		}
-		return nil, fmt.Errorf("mcp list tools %s: %w", name, err)
+		return nil, annotateAuthFailure(name, config, fmt.Errorf("mcp list tools %s: %w", name, err))
 	}
 	conn.tools = tools
 
@@ -267,7 +296,7 @@ func (c *Connection) initialize() error {
 	ctx, cancel := context.WithTimeout(context.Background(), DefaultMetadataTimeout)
 	defer cancel()
 	resp, err := c.call(ctx, "initialize", map[string]any{
-		"protocolVersion": "2024-11-05",
+		"protocolVersion": mcpProtocolVersion,
 		"capabilities":    map[string]any{},
 		"clientInfo": map[string]any{
 			"name":    "ion-engine",

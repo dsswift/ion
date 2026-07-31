@@ -281,6 +281,104 @@ Diagnostic output goes to stderr. The process exits when the socket connection c
 
 ---
 
+### `ion mcp`
+
+Manage MCP (Model Context Protocol) servers. Subcommands: `add`, `list`,
+`remove`, `login`, `logout`.
+
+Every subcommand is a client of the engine's `mcp_*` wire commands, so the CLI,
+the desktop (Settings → MCP Servers), and any third-party client drive the same
+mechanism. Servers are written to `~/.ion/engine.json`.
+
+#### `ion mcp add <name> <url>`
+
+Add a server. The transport is inferred — a URL means `http`, a command means
+`stdio` — so the common case needs no flags.
+
+```bash
+ion mcp add mobbin https://api.mobbin.com/mcp
+```
+
+| Flag | Description |
+|------|-------------|
+| `--transport TYPE` | `http`, `sse`, `ws`, or `stdio`. Inferred when omitted. |
+| `--url URL` | Endpoint, as an alternative to the positional form. |
+| `--command CMD` | Executable for a stdio server. |
+| `--arg VALUE` | Argument for a stdio server. Repeatable. |
+| `--header K=V` | Static HTTP header. Repeatable. For pre-shared tokens; a server using OAuth needs none. |
+| `--env K=V` | Environment variable for a stdio server's subprocess. Repeatable. |
+| `--scope user` | Config layer to write. `user` is the only supported value. |
+
+A local server:
+
+```bash
+ion mcp add filesystem --command npx \
+  --arg -y --arg @modelcontextprotocol/server-filesystem --arg /home/user/docs
+```
+
+The engine resolves the server map fresh at each session start, so a server
+added while the daemon is running connects on the next conversation with no
+restart.
+
+#### `ion mcp list`
+
+List configured servers with their connection and authorization state.
+
+```bash
+ion mcp list
+```
+
+```
+NAME    TRANSPORT  ENDPOINT                    CONNECTED  AUTH  TOOLS
+mobbin  http       https://api.mobbin.com/mcp  yes        yes   6
+```
+
+`CONNECTED` and `AUTH` are independent. A server that is authorized but not
+connected has a stored token the server is refusing; the last connection failure
+prints beneath the table when there is one.
+
+#### `ion mcp login <name>`
+
+Authorize a server via OAuth. Opens your browser, then waits for the flow to
+complete.
+
+```bash
+ion mcp login mobbin
+```
+
+The engine discovers the server's authorization server (RFC 9728 + RFC 8414),
+registers itself as a public client if the provider supports dynamic
+registration (RFC 7591), and runs the authorization-code + PKCE exchange on a
+loopback callback it owns. The authorization URL is always printed, so you can
+open it by hand if the browser opens in the wrong profile or the host has none.
+
+| Flag | Description |
+|------|-------------|
+| `--scope SCOPE` | OAuth scope to request, overriding what the server advertises. |
+| `--no-browser` | Print the URL instead of opening a browser. |
+
+#### `ion mcp logout <name>`
+
+Drop a server's stored token and client registration, leaving its configuration
+in place. A later `login` registers a fresh client rather than reusing one you
+believed was revoked.
+
+```bash
+ion mcp logout mobbin
+```
+
+#### `ion mcp remove <name>`
+
+Remove a server from `engine.json`, along with its stored credentials.
+
+```bash
+ion mcp remove mobbin
+```
+
+Full configuration reference: [MCP Configuration](../mcp/configuration.md).
+
+---
+
 ### `ion version`
 
 Print the engine version.

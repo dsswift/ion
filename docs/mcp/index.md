@@ -19,12 +19,12 @@ The engine acts as an MCP client. It connects to one or more MCP servers at sess
 
 ## Transport types
 
-The engine supports two MCP transport mechanisms:
-
 | Transport | How it works | Use case |
 |-----------|-------------|----------|
 | **stdio** | Engine spawns the MCP server as a subprocess and communicates via stdin/stdout | Local tools, filesystem access, CLI wrappers |
-| **SSE** | Engine connects to a remote MCP server via HTTP Server-Sent Events | Remote APIs, shared services, cloud-hosted tools |
+| **http** | Engine connects to a remote server over StreamableHTTP | Remote APIs and hosted services; the current MCP network transport |
+| **sse** | Engine connects over HTTP Server-Sent Events | Remote servers still speaking the older protocol |
+| **ws** | Engine speaks MCP over a WebSocket (alias: `websocket`) | Servers exposing a socket endpoint |
 
 ## Built-in MCP tools
 
@@ -39,7 +39,26 @@ MCP tools registered by servers are automatically added to the LLM's tool set. T
 
 ## Quick example
 
-Add an MCP server to your engine config:
+Add a remote server and authorize it:
+
+```bash
+ion mcp add mobbin https://api.mobbin.com/mcp
+ion mcp login mobbin
+```
+
+`ion mcp login` opens your browser; the engine discovers the server's
+authorization server, registers itself as a client if the provider supports
+dynamic registration, completes the PKCE exchange, and stores the grant. The
+same operations are available in the desktop under Settings → MCP Servers.
+
+A local server needs no authorization:
+
+```bash
+ion mcp add filesystem --command npx --arg -y \
+  --arg @modelcontextprotocol/server-filesystem --arg /home/user/docs
+```
+
+Either form writes to `~/.ion/engine.json`, which you can also edit directly:
 
 ```json
 {
@@ -53,10 +72,12 @@ Add an MCP server to your engine config:
 }
 ```
 
-The engine spawns the filesystem MCP server at session start. The LLM can then list and read files from `/home/user/docs` through the MCP protocol.
+The engine reads the server map fresh at each session start, so a server added
+while the daemon is running connects on the next conversation — no restart.
 
 ## Next steps
 
-- [Configuration](configuration.md) -- full config reference for stdio, SSE, and OAuth
+- [Configuration](configuration.md) -- full config reference for every transport, plus OAuth discovery and dynamic registration
+- [`ion mcp`](../cli/reference.md#ion-mcp) -- the command-line surface
 - [Usage](usage.md) -- how MCP tools and resources work in sessions
 - [Enterprise controls](enterprise-controls.md) -- allowlists, denylists, and governance

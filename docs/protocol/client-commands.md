@@ -974,3 +974,109 @@ The engine owns that file's semantics, so consumers ask rather than parsing it t
 | `configured` | `false` when no such tier is defined. Treat `model` as meaningless in that case and refuse the gated operation, rather than dispatching a run that cannot route |
 
 The command is rejected at parse time when `text` is absent or empty: the tier name is the entire request.
+
+---
+
+### mcp_list
+
+List configured MCP servers with their connection and authorization state.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"mcp_list"` | yes | Command discriminator |
+| `path` | string | no | Project directory. Scopes the project config layer; global servers always resolve. |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"mcp_list","requestId":"r60"}
+```
+
+**Response.** An `engine_mcp_servers` event is delivered to the requesting client. The `ServerResult` payload mirrors it: `{ servers: McpServerStatus[] }`.
+
+`connected` and `authenticated` are independent flags. A server that is authenticated but not connected has a stored token the server is refusing — consumers should not collapse the two into a single state.
+
+---
+
+### mcp_add
+
+Add an MCP server to `~/.ion/engine.json`. Replaces any entry already stored under the same name. Only the `mcpServers` key is rewritten; every other key in the file, including keys newer than the running engine, is preserved.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"mcp_add"` | yes | Command discriminator |
+| `mcpName` | string | yes | Server name (the key under `mcpServers`). Must not contain whitespace or `"__"`, which separates server and tool names. |
+| `mcpTransport` | string | no | `http`, `sse`, `ws`, or `stdio`. Inferred when omitted: a URL means `http`, a command means `stdio`. |
+| `mcpUrl` | string | network only | Endpoint for `http`/`sse`/`ws`. |
+| `mcpCommand` | string | stdio only | Executable for a stdio server. |
+| `mcpArgs` | string[] | no | Arguments for a stdio server. |
+| `mcpEnv` | map[string]string | no | Environment variables for a stdio server's subprocess. |
+| `mcpHeaders` | map[string]string | no | Static HTTP headers for a network transport. |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"mcp_add","mcpName":"mobbin","mcpUrl":"https://api.mobbin.com/mcp","requestId":"r61"}
+```
+
+**Response:** `ServerResult` with `data: { name, transport }`, then an `engine_mcp_servers` snapshot broadcast to every client.
+
+Rejected with an error when the transport and endpoint contradict each other, or when enterprise policy (`mcpDenylist` / `mcpAllowlist`, including its URL-host globs) forbids the server. The policy check runs **before** the write, so a refused server is never persisted.
+
+---
+
+### mcp_remove
+
+Remove a server from `engine.json` along with its stored credentials.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"mcp_remove"` | yes | Command discriminator |
+| `mcpName` | string | yes | Server to remove |
+| `path` | string | no | Project directory for the follow-up snapshot |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"mcp_remove","mcpName":"mobbin","requestId":"r62"}
+```
+
+**Response:** `ServerResult` with `data: { name }`, then an `engine_mcp_servers` broadcast. Removing a name that is not configured is an error rather than a silent success.
+
+---
+
+### mcp_login
+
+Start the interactive OAuth flow for a server. **Returns immediately** with the authorization URL; the engine completes the exchange on a background goroutine, so the dispatch never holds the client's read loop while a human is in a browser.
+
+The engine resolves the client in precedence order: an explicit `oauth` block in `engine.json`, then a stored dynamic registration, then discovery (RFC 9728 protected-resource metadata → RFC 8414 authorization-server metadata) followed by RFC 7591 dynamic client registration. It then runs authorization-code + PKCE against a loopback callback it owns and persists the grant.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"mcp_login"` | yes | Command discriminator |
+| `mcpName` | string | yes | Server to authorize |
+| `mcpScope` | string | no | OAuth scope to request, overriding what the server's metadata advertises |
+| `path` | string | no | Project directory used to resolve the server |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"mcp_login","mcpName":"mobbin","requestId":"r63"}
+```
+
+**Response.** An `engine_mcp_login_url` event is delivered to the requesting client, and the `ServerResult` payload mirrors it: `{ name, authorizationUrl }`. The consumer opens that URL. When the flow settles, the engine reconnects the server across every live session and broadcasts `engine_mcp_servers` — on failure too, since the snapshot's `authenticated` flag is how a consumer learns the attempt left the server unauthorized.
+
+---
+
+### mcp_logout
+
+Drop a server's stored token and client registration, leaving its configuration in place. The client registration goes too, so a later login registers fresh rather than reusing a client the operator believes was revoked.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"mcp_logout"` | yes | Command discriminator |
+| `mcpName` | string | yes | Server to log out of |
+| `path` | string | no | Project directory for the follow-up snapshot |
+| `requestId` | string | no | Correlates with ServerResult |
+
+```json
+{"cmd":"mcp_logout","mcpName":"mobbin","requestId":"r64"}
+```
+
+**Response:** `ServerResult` with `data: { name }`, then an `engine_mcp_servers` broadcast.

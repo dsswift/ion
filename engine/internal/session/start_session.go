@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	ionconfig "github.com/dsswift/ion/engine/internal/config"
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/extension"
 	"github.com/dsswift/ion/engine/internal/mcp"
@@ -367,21 +368,34 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 	// Load and wire Claude Code-compatible plugins (SessionStart hooks + UserPromptSubmit hooks).
 	m.loadAndWirePlugins(s, key)
 
-	// Connect MCP servers from config (outside lock)
-	if m.config != nil && len(m.config.McpServers) > 0 {
+	// Connect MCP servers (outside lock).
+	//
+	// Resolved FRESH from engine.json rather than read from the boot-cached
+	// m.config: the engine is a long-lived launchd daemon, so a server added by
+	// `ion mcp add` (or a client's mcp_add) after startup would otherwise need a
+	// daemon restart to connect — and a restart kills every live conversation.
+	// Resolution runs the full layered merge plus enterprise enforcement, so
+	// denylisted and non-allowlisted servers are already pruned here.
+	mcpServers := ionconfig.ResolveMcpServers(config.WorkingDirectory)
+	if len(mcpServers) > 0 {
 		m.emit(key, types.EngineEvent{
 			Type:         "engine_working_message",
 			EventMessage: "Connecting MCP servers...",
 		})
-		for name, mcpCfg := range m.config.McpServers {
+		for name, mcpCfg := range mcpServers {
 			conn, err := mcp.Connect(name, mcpCfg)
 			if err != nil {
 				// A whole server's tools going away is an error, not info, and
 				// missed by ERROR-level log sweeps at Info. Key by serverName;
 				// stringify the error so it serializes as a message not an object.
 				utils.LogWithFields(utils.LevelError, "session", "mcp connect failed", map[string]any{"serverName": name, "error": utils.ErrStr(err)})
+				// Recorded so a client can render WHY a configured server is
+				// absent. Without this the only account of the failure is the
+				// engine's log file, which no remote consumer can read.
+				m.recordMcpConnectError(name, err)
 				continue
 			}
+			m.clearMcpConnectError(name)
 			m.mu.Lock()
 			// Guard against session disposal/replacement while Connect() was
 			// blocking. If the session is gone or has been replaced, close the

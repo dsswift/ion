@@ -219,7 +219,15 @@ func ExchangeDeviceCode(clientID, deviceCode, tokenURL string) (*TokenResponse, 
 
 // PKCEFlowConfig holds OAuth PKCE configuration.
 type PKCEFlowConfig struct {
-	ClientID     string
+	ClientID string
+	// ClientSecret is sent on the token exchange when non-empty. PKCE is
+	// designed for public clients that hold no secret, and the engine
+	// registers itself as one — but some authorization servers issue a
+	// secret anyway (and some operators configure a confidential client for
+	// an MCP server), and those servers reject a token exchange that omits
+	// it. Empty means "public client": no client_secret is sent, which is
+	// the correct request for a PKCE-only grant.
+	ClientSecret string
 	AuthURL      string // authorization endpoint
 	TokenURL     string // token exchange endpoint
 	Scope        string
@@ -455,6 +463,9 @@ func exchangeCodeForToken(cfg PKCEFlowConfig, code, verifier, redirectURI string
 		"code":          {code},
 		"code_verifier": {verifier},
 		"redirect_uri":  {redirectURI},
+	}
+	if cfg.ClientSecret != "" {
+		form.Set("client_secret", cfg.ClientSecret)
 	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
