@@ -291,6 +291,28 @@ type BackgroundTaskCompletedInfo struct {
 	RemainingTaskIDs []string `json:"remaining_task_ids,omitempty"`
 }
 
+// DispatchLostInfo carries the payload for the dispatch_lost hook: a
+// dispatch that was running when the engine process died and is therefore
+// unrecoverable after restart. Field semantics mirror the typed
+// engine_dispatch_lost event (types.DispatchLostEvent); this is the hook-side
+// shape delivered to extension handlers during dispatch-state rehydration.
+type DispatchLostInfo struct {
+	// DispatchID is the lost dispatch's collision-safe unique ID.
+	DispatchID string `json:"dispatch_id"`
+	// AgentName is the dispatched agent's name.
+	AgentName string `json:"agent_name"`
+	// Task is the task brief the dispatch was running.
+	Task string `json:"task,omitempty"`
+	// ParentDispatchID names the dispatch that spawned this one; empty for
+	// top-level dispatches.
+	ParentDispatchID string `json:"parent_dispatch_id,omitempty"`
+	// Depth is the persisted nesting depth attribution.
+	Depth int `json:"depth,omitempty"`
+	// ChildConversationID is the child session's conversation ID when known —
+	// the handle for harvesting the partial transcript from disk.
+	ChildConversationID string `json:"child_conversation_id,omitempty"`
+}
+
 // ElicitationRequestInfo carries details about an elicitation request.
 type ElicitationRequestInfo struct {
 	RequestID string                 `json:"request_id"`

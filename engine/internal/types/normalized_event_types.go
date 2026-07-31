@@ -66,6 +66,10 @@ const (
 	// with notify_on_complete reaches a terminal state. See
 	// BackgroundTaskCompleteEvent in normalized_event_run_signals.go.
 	EventBackgroundTaskComplete = "background_task_complete"
+	// EventDispatchLost fires once per dispatch that was running when the
+	// engine process died and is therefore unrecoverable after restart. See
+	// DispatchLostEvent in normalized_event_run_signals.go.
+	EventDispatchLost = "dispatch_lost"
 	// EventPlanContent is emitted in response to a get_plan_content command.
 	// It carries a bounded byte-range window of a plan file so remote clients
 	// can page through large plans without filesystem access to the engine host.

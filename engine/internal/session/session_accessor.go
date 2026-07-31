@@ -201,6 +201,13 @@ func (a *sessionAccessor) EmitDispatchCountStatus(reason string) {
 	a.m.emitDispatchCountStatus(a.s, reason)
 }
 
+// PersistDispatchRegistered writes the `running` durability record for a
+// freshly-registered dispatch. Delegates to Manager.persistDispatchRegistered
+// (dispatch_rehydrate.go). Best-effort by contract; see the interface doc.
+func (a *sessionAccessor) PersistDispatchRegistered(agentID, agentName, displayName, task, model, parentDispatchID string, depth int) {
+	a.m.persistDispatchRegistered(a.key, a.s.conversationID, agentID, agentName, displayName, task, model, parentDispatchID, depth)
+}
+
 func (a *sessionAccessor) EngineConfig() *types.EngineRuntimeConfig { return a.m.config }
 
 // ClaudeCompat reports the session's Claude-compatibility setting, sourced from

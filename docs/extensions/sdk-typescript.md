@@ -367,6 +367,20 @@ await ctx.dispatchAgent({
 })
 ```
 
+**Park-on-children (default) vs `detached`.** A background dispatch holds its *dispatching* agent open by default: when the dispatcher's run ends its turn while this child is still running, the engine parks the dispatcher (status `suspended`, visible in `listDispatchState`) and revives it when the child completes — so the dispatcher consumes the child's result and finishes its own work instead of reporting completion with work still in flight. Pass `detached: true` for genuine fire-and-forget: the parent's run completes at its turn boundary regardless of this child.
+
+**Sub-agent governance.** `allowedSubAgents` is the set of agent names the *dispatched* agent may dispatch in turn (the engine enforces membership on its nested dispatches). `subAgentPolicy` selects the enforcement mode: unset keeps the historic semantics (enforced only when the list is non-empty), `'allowlist'` enforces even an **empty** list (an empty list denies all nested dispatch — how a harness declares a leaf agent), and `'unrestricted'` opts out. The engine's self-dispatch rail applies in every mode.
+
+```typescript
+await ctx.dispatchAgent({
+  name: 'ios-dev',            // a leaf specialist
+  task: 'Fix the rig assembly',
+  background: true,
+  allowedSubAgents: [],       // no children...
+  subAgentPolicy: 'allowlist' // ...and the empty list is ENFORCED: it may dispatch nothing
+})
+```
+
 Lifecycle callbacks provide real-time visibility into a dispatched agent's progress. They fire for both foreground and background dispatches:
 
 - **`onToolStart(info)`** — a tool invocation began in the child session

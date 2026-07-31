@@ -100,6 +100,19 @@ type SessionAccessor interface {
 	// (e.g. "dispatch_deregister"). No-op when the session or registry is
 	// not available.
 	EmitDispatchCountStatus(reason string)
+
+	// PersistDispatchRegistered writes a `running` agent_dispatch record for
+	// a freshly-registered dispatch into the parent conversation file. This
+	// is the durability half of dispatch-loss detection: a dispatch that is
+	// running when the engine process dies leaves this record behind, and
+	// the next start's rehydration marks it lost (error + typed
+	// engine_dispatch_lost + dispatch_lost hook) instead of the loss being
+	// invisible. The terminal persist (persistTerminalDispatches) later
+	// supersedes the record with the real outcome — the persistence layer is
+	// status-aware, so registration-then-completion never reads as a loss.
+	// Best-effort: failures are logged, never propagated (a dispatch must
+	// not fail because its durability record could not be written).
+	PersistDispatchRegistered(agentID, agentName, displayName, task, model, parentDispatchID string, depth int)
 	EngineConfig() *types.EngineRuntimeConfig
 
 	// ClaudeCompat reports the parent session's Claude-compatibility setting.
@@ -460,13 +473,18 @@ func NewExtContext(sa SessionAccessor, args ...interface{}) *extension.Context {
 			entries := make([]extension.DispatchStateEntry, len(snap))
 			for i, s := range snap {
 				entries[i] = extension.DispatchStateEntry{
-					DispatchID:       s.DispatchID,
-					Name:             s.Name,
-					Status:           s.Status,
-					ParentDispatchID: s.ParentDispatchID,
-					Depth:            s.Depth,
-					StartedAt:        s.StartedAt.UTC().Format(time.RFC3339Nano),
-					ElapsedMs:        s.ElapsedMs,
+					DispatchID:          s.DispatchID,
+					Name:                s.Name,
+					Status:              s.Status,
+					ParentDispatchID:    s.ParentDispatchID,
+					Depth:               s.Depth,
+					StartedAt:           s.StartedAt.UTC().Format(time.RFC3339Nano),
+					ElapsedMs:           s.ElapsedMs,
+					ToolCount:           s.ToolCount,
+					LastWork:            s.LastWork,
+					LastActivityMs:      s.LastActivityMs,
+					ChildConversationID: s.ChildConversationID,
+					PendingChildren:     s.PendingChildren,
 				}
 			}
 			return entries, nil

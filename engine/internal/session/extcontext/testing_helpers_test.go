@@ -13,11 +13,15 @@ import (
 
 // noopPluginMethods provides zero-value implementations of the two plugin
 // accessor methods added to SessionAccessor. Embed this in test accessor
-// structs to satisfy the interface without duplicating stub code.
+// structs to satisfy the interface without duplicating stub code. Also
+// carries the no-op PersistDispatchRegistered durability stub (a persistence
+// side effect no dispatch-path unit test asserts on).
 type noopPluginMethods struct{}
 
 func (noopPluginMethods) PluginSessionMessages() []types.LlmMessage      { return nil }
 func (noopPluginMethods) PluginTurnMessages(_ string) []types.LlmMessage { return nil }
+func (noopPluginMethods) PersistDispatchRegistered(_, _, _, _, _, _ string, _ int) {
+}
 
 // noopSA is a minimal SessionAccessor used in tests that only care about
 // RunOptions fields unrelated to plugins. It satisfies the interface by

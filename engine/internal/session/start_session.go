@@ -296,6 +296,13 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 		m.loadAndWireExtensions(s, key, config)
 	}
 
+	// Announce any dispatches rehydration resolved as lost (persisted as
+	// running/suspended but dead with the previous engine process). Ordered
+	// AFTER extension load so the dispatch_lost hook reaches a live
+	// extension group; the typed engine_dispatch_lost event rides the
+	// session stream regardless. No-op when rehydration queued nothing.
+	m.announceLostDispatches(s, key)
+
 	// Load skills from default paths. The project root resolves against the
 	// session's working directory (not the daemon cwd) via IonSkillPathsFor.
 	//

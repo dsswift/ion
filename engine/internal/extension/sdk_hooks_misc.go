@@ -72,6 +72,14 @@ func (s *SDK) FireBackgroundTaskCompleted(ctx *Context, info BackgroundTaskCompl
 	s.fire(HookBackgroundTaskCompleted, ctx, info)
 }
 
+// FireDispatchLost fires the dispatch_lost hook for a dispatch that was
+// running when the engine process died (unrecoverable after restart).
+// Observe-only: the typed engine_dispatch_lost event has already been
+// emitted and the agent-state row marked "error" by the time handlers run.
+func (s *SDK) FireDispatchLost(ctx *Context, info DispatchLostInfo) {
+	s.fire(HookDispatchLost, ctx, info)
+}
+
 // FireElicitationRequest fires the elicitation_request hook.
 // Returns the first non-nil response from handlers.
 func (s *SDK) FireElicitationRequest(ctx *Context, info ElicitationRequestInfo) (map[string]interface{}, error) {

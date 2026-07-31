@@ -236,7 +236,12 @@ func asSteerMarkerData(data any) *SteerMarkerData {
 	return nil
 }
 
-func asAgentDispatchData(data any) *AgentDispatchData {
+// AsAgentDispatchData coerces a SessionEntry's Data into *AgentDispatchData,
+// tolerating the typed forms (set in-process) and the map form (a JSON decode
+// round-trip through the conversation file). Returns nil when the data is not
+// a dispatch record. Exported for the session package's status-aware dispatch
+// persistence (persistTerminalDispatches / persistDispatchRegistered).
+func AsAgentDispatchData(data any) *AgentDispatchData {
 	switch d := data.(type) {
 	case AgentDispatchData:
 		return &d
@@ -260,7 +265,7 @@ func AgentDispatchEntries(conv *Conversation) []AgentDispatchData {
 		if e.Type != EntryAgentDispatch {
 			continue
 		}
-		if ad := asAgentDispatchData(e.Data); ad != nil {
+		if ad := AsAgentDispatchData(e.Data); ad != nil {
 			dispatches = append(dispatches, *ad)
 		}
 	}

@@ -159,3 +159,40 @@ type BackgroundTaskCompleteEvent struct {
 }
 
 func (BackgroundTaskCompleteEvent) eventType() string { return EventBackgroundTaskComplete }
+
+// DispatchLostEvent fires once per dispatch that was recorded as running (or
+// suspended) in the conversation file but is provably dead: the engine
+// process restarted, the dispatch registry is process memory, and every
+// in-flight dispatched child died with the old process — no terminal
+// callback (OnComplete/OnError/OnRecall) ever fired for it. Emitted on the
+// owning session's stream during dispatch-state rehydration at session
+// start.
+//
+// This is the engine's complete signaling obligation for the loss (see the
+// typed-event corollary): the engine does not resurrect the child's LLM run
+// — resuming half-finished work is a conversation-level decision the
+// consumer owns. A consumer may redispatch, harvest partial work from the
+// child's conversation file (ChildConversationID), notify an orchestrator,
+// or ignore the event. The rehydrated agent-state row is independently
+// marked "error" so no panel shows a dead dispatch as running.
+type DispatchLostEvent struct {
+	// DispatchID is the lost dispatch's collision-safe unique ID.
+	DispatchID string `json:"dispatchId"`
+	// AgentName is the dispatched agent's name (e.g. "dev-lead").
+	AgentName string `json:"agentName"`
+	// Task is the task brief the dispatch was running, so a consumer can
+	// redispatch without reconstructing it.
+	Task string `json:"task,omitempty"`
+	// ParentDispatchID is the dispatch ID of the parent that spawned this
+	// dispatch; empty for a top-level dispatch.
+	ParentDispatchID string `json:"parentDispatchId,omitempty"`
+	// Depth is the dispatch's nesting depth (0/1 = top-level per the
+	// persisted attribution, matching the agent-state metadata).
+	Depth int `json:"depth,omitempty"`
+	// ChildConversationID is the child session's conversation ID when it was
+	// captured before the loss. The child's partial transcript survives on
+	// disk under this ID even though its run is gone — the harvest handle.
+	ChildConversationID string `json:"childConversationId,omitempty"`
+}
+
+func (DispatchLostEvent) eventType() string { return EventDispatchLost }

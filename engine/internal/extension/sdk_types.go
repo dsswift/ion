@@ -469,16 +469,18 @@ type HistoryMatch struct {
 	ToolUseID string `json:"toolUseId,omitempty"`
 }
 
-// DispatchStateEntry is a point-in-time snapshot of a single active dispatch,
-// returned by Context.ListDispatchState. Status is always "running" because
-// the registry only tracks in-flight dispatches — terminal entries are
-// deregistered on completion and therefore absent from the snapshot.
+// DispatchStateEntry is a point-in-time snapshot of a single in-flight
+// dispatch, returned by Context.ListDispatchState. Terminal entries are
+// deregistered on completion and therefore absent; in-flight spans two
+// states — "running" (actively working) and "suspended" (parked waiting on
+// children or a revive).
 type DispatchStateEntry struct {
 	// DispatchID is the collision-safe unique ID for this dispatch instance.
 	DispatchID string `json:"dispatchId"`
 	// Name is the agent name (e.g. "code-reviewer").
 	Name string `json:"name"`
-	// Status is always "running" for entries returned by this method.
+	// Status is "running" for an active dispatch or "suspended" for a
+	// parked one (waiting on child dispatches or a revive message).
 	Status string `json:"status"`
 	// ParentDispatchID is the dispatch ID of the parent dispatch, empty for
 	// top-level dispatches (depth 1 whose parent is the depth-0 orchestrator).
@@ -490,6 +492,25 @@ type DispatchStateEntry struct {
 	StartedAt string `json:"startedAt"`
 	// ElapsedMs is the milliseconds elapsed since StartedAt at snapshot time.
 	ElapsedMs int64 `json:"elapsedMs"`
+	// ToolCount is the cumulative number of tool calls the dispatched child
+	// has executed.
+	ToolCount int `json:"toolCount"`
+	// LastWork is the truncated most-recent activity snippet (streamed text
+	// or "Using <tool>...").
+	LastWork string `json:"lastWork,omitempty"`
+	// LastActivityMs is the milliseconds since the child's last observed
+	// event at snapshot time — the liveness discriminator: small and stable
+	// means producing; large and growing means wedged. Zero when no
+	// activity has been observed yet.
+	LastActivityMs int64 `json:"lastActivityMs"`
+	// ChildConversationID is the child session's conversation ID once known.
+	// Lets a consumer read the child's live transcript (or harvest partial
+	// work) directly from the conversation store.
+	ChildConversationID string `json:"childConversationId,omitempty"`
+	// PendingChildren lists the child dispatch IDs a suspended parent is
+	// waiting on. Non-empty only when Status is "suspended" with awaited
+	// children; empty for a bare suspend.
+	PendingChildren []string `json:"pendingChildren,omitempty"`
 }
 
 // ContextUsage reports current context window utilization.

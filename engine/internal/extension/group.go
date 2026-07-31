@@ -660,3 +660,12 @@ func (g *ExtensionGroup) FireBackgroundTaskCompleted(ctx *Context, info Backgrou
 		h.SDK().FireBackgroundTaskCompleted(ctx, info)
 	}
 }
+
+// FireDispatchLost fans the dispatch_lost hook out to every host in the
+// group. Called once per orphaned dispatch during dispatch-state rehydration
+// after an engine restart.
+func (g *ExtensionGroup) FireDispatchLost(ctx *Context, info DispatchLostInfo) {
+	for _, h := range g.hosts {
+		h.SDK().FireDispatchLost(ctx, info)
+	}
+}

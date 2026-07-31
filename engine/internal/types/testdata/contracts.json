@@ -273,6 +273,7 @@
     "dispatchExitCode",
     "dispatchId",
     "dispatchInputTokens",
+    "dispatchLost",
     "dispatchModel",
     "dispatchOutputTokens",
     "dispatchParentId",

@@ -573,6 +573,15 @@ type EngineEvent struct {
 	// field semantics.
 	BackgroundTaskComplete *BackgroundTaskCompletePayload `json:"backgroundTaskComplete,omitempty"`
 
+	// engine_dispatch_lost — a dispatch that was running when the engine
+	// process died is unrecoverable after restart; one event per orphan,
+	// emitted during dispatch-state rehydration. Nested payload (same
+	// treatment as BackgroundTaskComplete). See DispatchLostEvent for the
+	// normalized variant and full field semantics. Consumers may redispatch,
+	// harvest the child's partial transcript via the payload's
+	// childConversationId, or ignore the event.
+	DispatchLost *DispatchLostPayload `json:"dispatchLost,omitempty"`
+
 	// --- Notification events (D-009) ---
 	//
 	// engine_notification: emitted when an extension calls ctx.Notify.
@@ -702,4 +711,16 @@ type BackgroundTaskCompletePayload struct {
 	Tail             string   `json:"tail,omitempty"`
 	Command          string   `json:"command,omitempty"`
 	RemainingTaskIDs []string `json:"remainingTaskIds,omitempty"`
+}
+
+// DispatchLostPayload is the nested wire payload for engine_dispatch_lost
+// events. Mirrors the internal DispatchLostEvent field-for-field; see that
+// type (normalized_event_run_signals.go) for full semantics.
+type DispatchLostPayload struct {
+	DispatchID          string `json:"dispatchId"`
+	AgentName           string `json:"agentName"`
+	Task                string `json:"task,omitempty"`
+	ParentDispatchID    string `json:"parentDispatchId,omitempty"`
+	Depth               int    `json:"depth,omitempty"`
+	ChildConversationID string `json:"childConversationId,omitempty"`
 }

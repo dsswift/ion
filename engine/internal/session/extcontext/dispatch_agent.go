@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
@@ -135,7 +136,24 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		// placeholder in place (no collision warning). No-op when registry is nil.
 		if registry != nil {
 			registry.Reserve(agentID, agentName, currentDispatchId, childDepth)
+			// Stamp the detached flag on the reservation immediately so the
+			// parent's park set (ChildIDsOf) never counts a fire-and-forget
+			// child, even in the window before registerDispatch upgrades the
+			// placeholder. RegisterWithID preserves the flag across the
+			// upgrade.
+			if opts.Detached {
+				registry.MarkDetached(agentID)
+			}
 		}
+		// Persist the `running` durability record now, at registration — the
+		// registry is process memory, so this on-disk record is the ONLY
+		// thing that lets the next engine start detect that this dispatch
+		// was in flight when the process died and announce the loss
+		// (engine_dispatch_lost + dispatch_lost hook) instead of the
+		// orchestrator polling an empty registry and guessing. The terminal
+		// persist later supersedes it status-aware, so a normal completion
+		// never reads as a loss. Best-effort by contract.
+		sa.PersistDispatchRegistered(agentID, agentName, displayName, opts.Task, model, currentDispatchId, childDepth)
 		sa.AppendOrUpdateAgentState(types.AgentStateUpdate{
 			Name:   agentName,
 			ID:     agentID,
@@ -195,6 +213,14 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				state.Metadata["lastWork"] = work
 			})
 			sa.EmitAgentSnapshot("dispatch_progress")
+			// Mirror the snippet + liveness stamp onto the registry entry so
+			// ext/list_dispatch_state answers "alive or wedged?" with real
+			// data (Snapshot's LastWork / LastActivityMs). Same throttle
+			// cadence as the agent-panel update above — no new hot path.
+			// toolCount -1 = keep (the lifecycle counter owns it).
+			if registry != nil {
+				registry.UpdateActivity(agentID, -1, work)
+			}
 		}
 
 		// Live intra-turn transcript forwarding. The emitter pushes the child's
@@ -294,6 +320,22 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		// engine Agent tool (see dispatch_child_spawner.go for rationale).
 		childCfg.AgentSpawner = BuildChildAgentSpawner(sa, registry, childDepth, agentID)
 
+		// Park-on-children: report this child's own live (non-detached)
+		// dispatches at ITS turn boundary, so a lead that fire-and-forgets a
+		// specialist and ends its turn parks (suspend shape) instead of
+		// completing with work still in flight. The registry read is live —
+		// the child dispatches mid-turn — and scoped to direct children
+		// (ChildIDsOf; transitive liveness composes because each layer holds
+		// its own parent open). Nil registry (tests) leaves the seam unwired
+		// and the child completes exactly as before.
+		if registry != nil {
+			capturedRegistry := registry
+			capturedAgentID := agentID
+			childCfg.OutstandingChildDispatches = func() []string {
+				return capturedRegistry.ChildIDsOf(capturedAgentID)
+			}
+		}
+
 		// Wire OnInitialMessages so the child receives per-turn plugin
 		// reinforcement (UserPromptSubmit hook output) the same way the root
 		// session does. This ensures installed plugins affect dispatched agents
@@ -328,12 +370,28 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		// the extension called ctx.suspend() or ctx.suspendUntilAll(). runChild
 		// resets it before each LLM run so a previous suspend does not carry over.
 		var suspendSig *types.TaskSuspendEvent
+		// childExitCancelled is set by the OnExit callback when the child run
+		// exited via an engine-initiated cancel that was NOT a recall (e.g.
+		// the run-progress watchdog's "run stalled" kill). childExitCode
+		// carries a non-zero exit code the same way. runChild maps both to a
+		// non-zero result so the dispatcher sees an error, never a silent
+		// success (root cause J). Atomics because OnExit fires on the child
+		// backend's goroutine.
+		var childExitCancelled atomic.Bool
+		var childExitCode atomic.Int64
 		var childDone sync.WaitGroup
 		childDone.Add(1)
-		// childDoneOnce guards childDone.Done() against double-invocation:
-		// emitExit can fire on both the error path and the cancel path, and a
-		// negative WaitGroup counter is fatal.
-		var childDoneOnce sync.Once
+		// childDoneArmed guards childDone.Done() against double-invocation
+		// (emitExit can fire on both the error path and the cancel path, and
+		// a negative WaitGroup counter is fatal) while remaining re-armable
+		// across suspend/revive iterations. A sync.Once cannot do this: it is
+		// consumed by the FIRST run's exit, so the revived run's exit would
+		// never release childDone and the dispatch would hang (the bug that
+		// made every parked dispatch time out after its first revive).
+		// runChild sets it to 1 (armed) each iteration; the OnExit callback
+		// releases only on a 1→0 swap.
+		var childDoneArmed atomic.Int32
+		childDoneArmed.Store(1)
 		// childToolServer is set at startChild time when this child routes to a
 		// delegated-CLI backend and needs its ion tools bridged over MCP. It is
 		// Stopped in the child's OnExit below so the per-child Unix socket does
@@ -400,13 +458,38 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		var recallReason string
 
 		child.OnNormalized(func(_ string, ev types.NormalizedEvent) {
-			// Report child liveness to the parent run's progress watchdog.
-			// A genuine child event proves the dispatch is alive; the parent
-			// run is parked in the deadline-exempt Agent tool call and emits
-			// no progress of its own, so without this it could be flagged as
-			// stalled once the self-emitted ToolStalledEvent advisory stopped
-			// counting as progress. See sessionAccessor.BumpParentProgress.
-			sa.BumpParentProgress()
+			// Report child liveness to the run that is actually blocked on
+			// this dispatch. Two cases (root cause I of the dispatch-lifecycle
+			// incident):
+			//
+			//   - currentDispatchId == "": the dispatcher is the ROOT session
+			//     (depth-0 orchestrator). Its main-loop run is parked in the
+			//     deadline-exempt Agent tool call; BumpParentProgress reaches
+			//     exactly that run. (The historic behavior, preserved.)
+			//   - currentDispatchId != "": the dispatcher is ITSELF a
+			//     dispatched agent (a lead blocked in a synchronous
+			//     wait/fan-out). Its run is the registry entry's
+			//     Child+ChildRunID — NOT the root main-loop run. Crediting
+			//     only the root (the historic bug) starved the lead's own
+			//     watchdog clock, which killed every blocking lead at the
+			//     10-minute stall threshold while its specialist was
+			//     mid-stream.
+			//
+			// A genuine child event proves the dispatch is alive; without the
+			// credit the blocked dispatcher emits no progress of its own. See
+			// sessionAccessor.BumpParentProgress and
+			// DispatchRegistry.BumpProgressForID.
+			if currentDispatchId != "" && registry != nil {
+				if !registry.BumpProgressForID(currentDispatchId) {
+					// Parent dispatch gone or not bumpable (already
+					// deregistered, or a delegated-CLI parent with no
+					// in-process watchdog): fall back to the root bump so
+					// the credit is never silently dropped on the floor.
+					sa.BumpParentProgress()
+				}
+			} else {
+				sa.BumpParentProgress()
+			}
 
 			ee := sa.TranslateEvent(ev, 0)
 			if ee.Type != "" {
@@ -422,7 +505,20 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			lifecycleMu.Lock()
 			fireLifecycleCallbacks(&opts, ev, agentID, toolNames, &toolCount, &accumulatedText,
 				&cumulativeInputTokens, &cumulativeOutputTokens, &cumulativeCost)
+			currentToolCount := toolCount
 			lifecycleMu.Unlock()
+
+			// Mirror the cumulative tool count + a liveness stamp onto the
+			// registry entry (Snapshot's ToolCount / LastActivityMs) on tool
+			// boundaries only — a natural throttle that avoids a registry
+			// lock on every streamed text chunk. lastWork "" = keep (the
+			// progress emitter owns the snippet).
+			if registry != nil {
+				switch ev.Data.(type) {
+				case *types.ToolCallEvent, *types.ToolResultEvent:
+					registry.UpdateActivity(agentID, currentToolCount, "")
+				}
+			}
 
 			// Live progress forwarding for the agent panel.
 			switch e := ev.Data.(type) {
@@ -530,8 +626,47 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 				})
 			}
 		})
-		child.OnExit(func(_ string, _ *int, _ *string, _ string) {
-			childDoneOnce.Do(childDone.Done)
+		child.OnExit(func(_ string, code *int, signal *string, _ string) {
+			// Capture the exit's code and signal BEFORE releasing runChild
+			// (root cause J of the dispatch-lifecycle incident): a run the
+			// engine cancelled (watchdog "run stalled", abort, any
+			// engine-initiated cancel) exits code 0 with the "cancelled"
+			// signal, and discarding that signal let runChild build a clean
+			// ExitCode:0 result — the harness marked the dispatch done and
+			// the orchestrator heard "[completed]" for a run the engine
+			// itself had just killed. Map a non-recall cancel to childErr so
+			// the OnError callback fires with the reason instead. A non-zero
+			// exit CODE is the same signal-loss family: a backend that
+			// reports failure through the exit code alone (without an
+			// OnError callback) must not read as success either.
+			//
+			// "suspended" is the park-exit signal (drainSuspend /
+			// parkForChildDispatches) — expected, not an error; suspendSig
+			// makes runChild park. Recall cancels are handled by the
+			// recalled flag (runChild's ctx.Done branch), not here.
+			switch {
+			case signal != nil && *signal == "cancelled":
+				childExitCancelled.Store(true)
+				utils.LogWithFields(utils.LevelWarn, "server", "child run exited via engine cancel (not recall); will surface as error", map[string]any{
+					"model": opts.Name, "run_id": childReqID, "session_id": key,
+				})
+			case code != nil && *code != 0:
+				childExitCode.Store(int64(*code))
+				utils.LogWithFields(utils.LevelWarn, "server", "child run exited non-zero; will surface as error", map[string]any{
+					"model": opts.Name, "run_id": childReqID, "status": *code, "session_id": key,
+				})
+			default:
+				sigStr := ""
+				if signal != nil {
+					sigStr = *signal
+				}
+				utils.LogWithFields(utils.LevelDebug, "server", "child run exited", map[string]any{
+					"model": opts.Name, "run_id": childReqID, "reason": sigStr,
+				})
+			}
+			if childDoneArmed.CompareAndSwap(1, 0) {
+				childDone.Done()
+			}
 		})
 		child.OnError(func(_ string, err error) {
 			childErr = err
@@ -609,9 +744,11 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		// and in a goroutine for background dispatches.
 		runChild := func() *extension.DispatchAgentResult {
 			for {
-				// Reset suspend signal before each LLM run so a previous
-				// suspend does not carry over into the revived run.
+				// Reset per-iteration signals so a previous run's suspend or
+				// cancel does not carry over into the revived run.
 				suspendSig = nil
+				childExitCancelled.Store(false)
+				childExitCode.Store(0)
 
 				// Re-arm childDone for this run iteration. The first iteration
 				// was already Add(1)'d at declaration; subsequent iterations
@@ -661,22 +798,65 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 					})
 					sa.EmitAgentSnapshot("dispatch_suspend")
 
-					// Arm the revive channel in the registry.
+					// Arm the revive channel in the registry. A false return
+					// means every awaited child already completed in the
+					// window between the park emission and this arming
+					// (their NotifyChildComplete fired against a nil
+					// ReviveCh and will never fire again) — self-signal so
+					// the select below takes the revive branch immediately
+					// instead of parking forever on a satisfied wait.
 					reviveCh := make(chan struct{}, 1)
 					if registry != nil {
-						registry.SetSuspendedState(agentID, reviveCh, suspendSig.AwaitingDispatchIDs)
+						if !registry.SetSuspendedState(agentID, reviveCh, suspendSig.AwaitingDispatchIDs) {
+							reviveCh <- struct{}{}
+						}
 					}
 
 					// Block until revived (or recalled).
 					select {
 					case <-reviveCh:
-						// Revived — loop to restart the LLM run.
-						utils.LogWithFields(utils.LevelInfo, "server", "dispatch revived, restarting LLM run", map[string]any{"model": opts.Name, "session_id": key})
+						// Revived — restart the LLM run as a RESUME, never a
+						// replay. Two mutations on runOpts before the loop
+						// re-enters startChild (root cause K, the
+						// 1785418884327 incident — a revived lead replayed
+						// its original task from the top, re-dispatched its
+						// specialist, and looped indefinitely):
+						//
+						//  1. ConversationID pins the child's own
+						//     conversation, so the revived run loads the
+						//     history where the agent already did its
+						//     pre-park work. On the first run this was empty
+						//     (fresh conversation) unless the caller passed
+						//     sessionId; childSessionID was captured from
+						//     the run's SessionInitEvent.
+						//  2. Prompt becomes the revive message: the awaited
+						//     children's actual results (drained from the
+						//     registry, recorded on every child terminal
+						//     path), replacing the original task — which is
+						//     already in the conversation history as turn 1.
+						if childSessionID != "" {
+							runOpts.ConversationID = childSessionID
+						}
+						var drained []ChildResultRecord
+						if registry != nil {
+							drained = registry.DrainChildResults(agentID)
+						}
+						runOpts.Prompt = buildReviveResumePrompt(drained)
+						utils.LogWithFields(utils.LevelInfo, "server", "dispatch revived, resuming LLM run with child results", map[string]any{
+							"model":           opts.Name,
+							"session_id":      key,
+							"conversation_id": runOpts.ConversationID,
+							"count":           len(drained),
+						})
 						if registry != nil {
 							registry.ClearSuspendedState(agentID)
 						}
-						// Re-arm childDone for the next run.
+						// Re-arm childDone AND the release guard for the next
+						// run. Order matters: the WaitGroup must be re-armed
+						// before the guard flips to 1, or a stray late exit
+						// could release a zero-count WaitGroup.
 						childDone.Add(1)
+						childDoneArmed.Store(1)
 						// Update agent state back to "running".
 						sa.UpdateAgentStateByID(agentID, func(state *types.AgentStateUpdate) {
 							state.Status = "running"
@@ -720,7 +900,20 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			// swept) closes that window. See the Deregister block after
 			// EmitAgentSnapshot("dispatch_end").
 
-			// Build the result.
+			// Build the result. An engine-initiated cancel that was not a
+			// recall (childExitCancelled — e.g. the run-progress watchdog's
+			// "run stalled" kill) or a non-zero exit code surfaces as
+			// childErr so the result is a non-zero exit and OnError fires;
+			// before this mapping the cancel's signal and the exit code were
+			// discarded and the dispatcher received a clean "completion" for
+			// a killed run (root cause J).
+			if childErr == nil && !recalled {
+				if childExitCancelled.Load() {
+					childErr = fmt.Errorf("run cancelled by engine (not recalled): the child run was terminated before completing — likely the run-progress watchdog (run stalled) or a session abort; partial output: %.200s", resultText)
+				} else if ec := childExitCode.Load(); ec != 0 {
+					childErr = fmt.Errorf("child run exited with code %d; partial output: %.200s", ec, resultText)
+				}
+			}
 			exitCode := 0
 			output := resultText
 			if recalled {
@@ -868,7 +1061,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 			registerDispatch(registry, agentID, opts.Name, func() {
 				recallReason = "recall_agent"
 				cancelFn()
-			}, child, key, currentDispatchId, childDepth, childReqID, opts.AllowedSubAgents)
+			}, child, key, currentDispatchId, childDepth, childReqID, opts.AllowedSubAgents, opts.SubAgentPolicy)
 
 			// Launch the child in a goroutine and return a stub immediately.
 			//
@@ -939,16 +1132,35 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 					if opts.OnComplete != nil {
 						opts.OnComplete(*result)
 					}
-					// Notify the parent dispatch registry that this child
-					// completed. If the parent is suspended via suspendUntilAll
-					// and this was one of its awaited children, the registry
-					// decrements the pending set and signals reviveCh when
-					// the set empties. This is the engine-side complement to
-					// registry.SignalReviveForSession (which handles bare
-					// suspend() revives triggered by sendPrompt).
-					if registry != nil && currentDispatchId != "" {
-						registry.NotifyChildComplete(currentDispatchId, agentID)
-					}
+				}
+				// Notify the parent dispatch registry that this child reached
+				// a terminal state — on EVERY terminal path (complete, error,
+				// recall), not only success. If the parent is suspended via
+				// suspendUntilAll and this was one of its awaited children,
+				// the registry decrements the pending set and signals
+				// reviveCh when the set empties. A parent waiting on a child
+				// must be revived whether the child succeeded or failed
+				// (root cause C: notifying only on success left a parent
+				// whose child errored or was recalled parked until its
+				// timeout — the pending set never emptied). The child's
+				// outcome is already carried in the result the parent reads.
+				// This is the engine-side complement to
+				// registry.SignalReviveForSession (which handles bare
+				// suspend() revives triggered by sendPrompt).
+				if registry != nil && currentDispatchId != "" {
+					// Record the child's outcome on the parent's registry
+					// entry BEFORE the notify: NotifyChildComplete may signal
+					// the parent's revive, and the revive prompt drains these
+					// records — the ordering is what guarantees a revived
+					// parent always sees the result it was waiting for
+					// (root cause K).
+					registry.RecordChildResult(currentDispatchId, ChildResultRecord{
+						ChildID:  agentID,
+						Name:     opts.Name,
+						Output:   result.Output,
+						ExitCode: result.ExitCode,
+					})
+					registry.NotifyChildComplete(currentDispatchId, agentID)
 				}
 			}()
 
@@ -967,7 +1179,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		registerDispatch(registry, agentID, opts.Name, func() {
 			recallReason = "recall_agent"
 			cancelFn()
-		}, child, key, currentDispatchId, childDepth, childReqID, opts.AllowedSubAgents)
+		}, child, key, currentDispatchId, childDepth, childReqID, opts.AllowedSubAgents, opts.SubAgentPolicy)
 
 		defer cancelFn() // clean up the context
 		// Release the per-child CLI tool-server socket on every return path.

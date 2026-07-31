@@ -367,6 +367,25 @@ type RunConfig struct {
 	// event, but nothing holds the session for them.
 	RegisterOutstandingBackgroundTask func(taskID, command string)
 
+	// OutstandingChildDispatches reports the run's live child dispatches
+	// (background agents this run dispatched that are still running) at the
+	// moment it is called. The run loop consults it at the turn boundary,
+	// after the background-bash park check: a non-empty set parks the run in
+	// the SUSPEND shape (TaskSuspendEvent with the dispatch IDs, no exit) so
+	// the dispatched parent's runChild loop holds the dispatch open and
+	// revives it when the children complete. This is what lets a dispatched
+	// lead fire-and-forget a specialist and stay alive to consume its result
+	// instead of completing with work still in flight.
+	//
+	// A FUNCTION for the same reason as OutstandingBackgroundTasks: the set
+	// is registry-scoped and mutates during the run (the model dispatches
+	// mid-turn), so a snapshot taken at run start would be stale exactly when
+	// the park decision reads it. Nil means this run has no child-dispatch
+	// notion and never parks for children (root sessions and pre-existing
+	// consumers are unaffected). Wired on dispatched-child RunConfigs only —
+	// root sessions keep the wake-on-sendPrompt completion delivery.
+	OutstandingChildDispatches func() []string
+
 	// Shell carries EngineRuntimeConfig.Shell so the Bash tool can run
 	// commands through the user's login shell when Shell.UseLoginShell is
 	// set. Nil means "use the default non-login bash -c path".

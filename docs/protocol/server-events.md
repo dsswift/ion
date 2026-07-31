@@ -911,6 +911,20 @@ A background bash command started with `Bash(run_in_background: true, notify_on_
 | `command` | string | The command that ran |
 | `remainingTaskIds` | string[] | Task IDs still outstanding for the session after this completion |
 
+#### engine_dispatch_lost
+
+A dispatch that was running when the engine process died is unrecoverable after restart. The dispatch registry is process memory: every in-flight dispatched agent dies with the engine, and no terminal callback ever fires for it. During dispatch-state rehydration at session start, the engine resolves each persisted dispatch's last status; one still `running`/`suspended` is provably dead, its agent-state row is marked `error`, and this event is emitted — one per orphan. The typed event is the engine's complete signaling obligation: the engine never resurrects the lost run. Consumers may redispatch the task, harvest the child's partial transcript from the conversation store via `dispatchLost.childConversationId`, notify an orchestrator, or ignore the event. The `dispatch_lost` hook fires with the same payload for extension consumers. Not retained or replayed on reconnect.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_dispatch_lost"` | Event type |
+| `dispatchLost.dispatchId` | string | The lost dispatch's collision-safe unique ID |
+| `dispatchLost.agentName` | string | The dispatched agent's name |
+| `dispatchLost.task` | string | The task brief the dispatch was running |
+| `dispatchLost.parentDispatchId` | string | Dispatch ID of the parent that spawned it; empty for top-level |
+| `dispatchLost.depth` | number | Persisted nesting-depth attribution |
+| `dispatchLost.childConversationId` | string | Child session's conversation ID when known — the partial-transcript harvest handle |
+
 #### engine_capability_unsupported
 
 Workflow signal emitted when a requested feature (e.g. plan mode) is not supported by the backend that would serve the run, and the engine declined the prompt cleanly instead of dispatching a run that would fail. No run starts and the session stays idle and immediately usable for the next prompt. The engine reports; the consumer decides — reroute the prompt to a capable model, surface the reason, or ignore the event. Not retained or replayed on reconnect.

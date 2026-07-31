@@ -150,6 +150,28 @@ func (b *ApiBackend) dispatchStopReason(
 			return true
 		}
 
+		// Child-dispatch park, ordered after the bash park: if this run (a
+		// dispatched agent) still has child dispatches in flight, park in the
+		// SUSPEND shape instead of completing. The runChild goroutine that
+		// owns this dispatch observes the TaskSuspendEvent, holds the
+		// dispatch open as "suspended", and restarts the LLM run when the
+		// children complete — so a lead that fire-and-forgets a specialist
+		// and ends its turn stays alive to consume the result instead of
+		// reporting completion for work still in flight. No exit is emitted
+		// here (see parkForChildDispatches for why that differs from the
+		// root-session bash park above). Nil seam ⇒ empty set ⇒ this branch
+		// never fires (root sessions, pre-existing consumers).
+		if outstanding := b.outstandingChildDispatchIDs(run); len(outstanding) > 0 {
+			b.parkForChildDispatches(run, conv, outstanding)
+			return true
+		}
+		// Both outstanding sets empty: fall through to normal completion.
+		// DEBUG (not silent) so the park decision's negative branch is
+		// reconstructible from logs alongside the positive branches above.
+		utils.LogWithFields(utils.LevelDebug, "backend.runloop", "turn boundary: no outstanding background tasks or child dispatches, completing", map[string]any{
+			"run_id": run.requestID,
+		})
+
 		// Save conversation
 		if err := conversation.Save(conv, ""); err != nil {
 			utils.LogWithFields(utils.LevelInfo, "backend.runloop", "failed to save conversation", map[string]any{

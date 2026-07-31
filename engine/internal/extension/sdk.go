@@ -139,6 +139,16 @@ const (
 	// per-completion hook decision.
 	HookBackgroundTaskCompleted = "background_task_completed"
 
+	// HookDispatchLost fires once per dispatch that was running when the
+	// engine process died and is therefore unrecoverable after restart,
+	// during dispatch-state rehydration at session start. Observe-only: the
+	// engine has already emitted the typed engine_dispatch_lost event and
+	// marked the rehydrated agent-state row "error" by the time handlers
+	// run. A harness may redispatch, harvest the child's partial transcript
+	// (the payload carries the child conversation ID), or notify its
+	// orchestrator.
+	HookDispatchLost = "dispatch_lost"
+
 	// Elicitation hooks
 	HookElicitationRequest = "elicitation_request"
 	HookElicitationResult  = "elicitation_result"

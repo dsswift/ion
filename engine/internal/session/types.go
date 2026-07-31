@@ -164,6 +164,12 @@ type engineSession struct {
 	planModeAllowedBashCommands []string
 	planFilePath                string
 	planModePromptSent          bool
+	// lostDispatches queues the dispatches rehydrateDispatchState resolved as
+	// lost (persisted status running/suspended with a fresh, empty registry —
+	// they died with the previous engine process). announceLostDispatches
+	// drains it in startSession once extensions are loaded, emitting one
+	// engine_dispatch_lost + one dispatch_lost hook firing per orphan.
+	lostDispatches []conversation.AgentDispatchData
 	// compactInFlight is true while an async user-initiated /compact goroutine
 	// is running for this session (dispatchCompact Path A). It serves two
 	// guards, both read/written under m.mu:

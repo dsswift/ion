@@ -10,14 +10,18 @@ import (
 
 // DispatchStateEntry is a point-in-time snapshot of a single active dispatch.
 // Returned by DispatchRegistry.Snapshot for the ext/list_dispatch_state RPC.
-// Only active (running) dispatches appear; terminal entries are deregistered
-// and therefore absent.
+// Only in-flight dispatches appear (terminal entries are deregistered), but
+// "in-flight" spans two states: actively running, and parked ("suspended")
+// waiting on children or a revive.
 type DispatchStateEntry struct {
 	// DispatchID is the collision-safe unique ID for this dispatch instance.
 	DispatchID string `json:"dispatchId"`
 	// Name is the agent name (e.g. "code-reviewer").
 	Name string `json:"name"`
-	// Status is always "running" — the registry only holds active dispatches.
+	// Status is "running" for an active dispatch or "suspended" for a
+	// parked one (runChild blocked on ReviveCh — waiting on children or a
+	// revive message). Terminal states never appear; Deregister removes
+	// entries on completion.
 	Status string `json:"status"`
 	// ParentDispatchID is the dispatch ID of the parent that spawned this
 	// dispatch. Empty for top-level dispatches (depth 1 whose parent is the
@@ -30,6 +34,27 @@ type DispatchStateEntry struct {
 	StartedAt time.Time `json:"startedAt"`
 	// ElapsedMs is the milliseconds elapsed since StartedAt at snapshot time.
 	ElapsedMs int64 `json:"elapsedMs"`
+	// ToolCount is the cumulative number of tool calls the dispatched child
+	// has executed, mirrored from the dispatch's lifecycle accumulators.
+	ToolCount int `json:"toolCount"`
+	// LastWork is the truncated most-recent activity snippet (streamed text
+	// or "Using <tool>..."), same content the agent panel's lastWork shows.
+	LastWork string `json:"lastWork,omitempty"`
+	// LastActivityMs is the milliseconds since the child's last observed
+	// event at snapshot time. THE liveness discriminator: a small value
+	// means the child is producing right now; a large, growing one means it
+	// is wedged. Zero when no activity has been observed yet (child still
+	// starting).
+	LastActivityMs int64 `json:"lastActivityMs"`
+	// ChildConversationID is the child session's conversation ID once known
+	// (from its SessionInitEvent). Lets a consumer read the child's live
+	// transcript from disk while the dispatch runs — and harvest partial
+	// work if the dispatch is lost.
+	ChildConversationID string `json:"childConversationId,omitempty"`
+	// PendingChildren lists the child dispatch IDs a suspended parent is
+	// waiting on. Non-empty only when Status is "suspended" with a
+	// suspendUntilAll-style park; empty for a bare suspend.
+	PendingChildren []string `json:"pendingChildren,omitempty"`
 }
 
 // DispatchRegistry is a thread-safe registry of active background dispatches,
@@ -128,6 +153,41 @@ type activeDispatch struct {
 	// Used by Snapshot to compute ElapsedMs without per-entry timers.
 	StartedAt time.Time
 
+	// Detached marks a dispatch excluded from its parent's park set
+	// (ChildIDsOf skips it). Set via MarkDetached when the caller passed
+	// DispatchAgentOpts.Detached — explicit fire-and-forget intent. See
+	// dispatch_registry_activity.go.
+	Detached bool
+
+	// SubAgentPolicy is the carry-forward enforcement mode for THIS
+	// dispatch's own nested dispatches: "" (historic: allowlist enforced
+	// only when non-empty), "allowlist" (enforce even when empty), or
+	// "unrestricted" (opt out). Set via SetSubAgentPolicy alongside
+	// AllowedSubAgents; read by checkDispatchEligibility.
+	SubAgentPolicy string
+
+	// Suspended marks a parked dispatch (runChild is blocked on ReviveCh).
+	// Set by SetSuspendedState, cleared by ClearSuspendedState. Snapshot
+	// reports it as status "suspended" so consumers can tell a parked
+	// parent from a working one.
+	Suspended bool
+
+	// ToolCount / LastWork / LastActivityAt are live activity telemetry
+	// mirrored from the dispatch's lifecycle accumulators via
+	// UpdateActivity (dispatch_registry_activity.go). LastActivityAt is
+	// the field that distinguishes "composing for 8 minutes" (recent)
+	// from "wedged" (stale) in Snapshot / ext/list_dispatch_state.
+	ToolCount      int
+	LastWork       string
+	LastActivityAt time.Time
+
+	// CompletedChildResults accumulates the outcomes of THIS dispatch's
+	// completed children (RecordChildResult) so a parked parent's revive
+	// injects the actual results instead of restarting the parent blind.
+	// Drained by runChild on revive (DrainChildResults). See
+	// dispatch_registry_activity.go.
+	CompletedChildResults []ChildResultRecord
+
 	// reserved marks an entry that was created by Reserve before the full
 	// dispatch bookkeeping (cancel, child, childRunID) was known. A reserved
 	// entry is a real member of ActiveIDs/ActiveNames — its whole purpose is to
@@ -194,14 +254,15 @@ func (r *DispatchRegistry) RegisterWithID(id, name string, cancel func(), child 
 
 	r.totalRegistrations++
 
-	if existing, exists := r.dispatches[id]; exists && !existing.reserved {
+	existing, exists := r.dispatches[id]
+	if exists && !existing.reserved {
 		// A non-reserved entry with this id already exists: a genuine
 		// collision worth flagging. Upgrading a Reserve() placeholder is
 		// expected, not a collision, so it is not warned.
 		utils.LogWithFields(utils.LevelWarn, "session.extcontext.dispatch_registry", "register overwriting existing dispatch", map[string]any{"run_id": id, "model": name, "session_id": sessionID})
 	}
 
-	r.dispatches[id] = &activeDispatch{
+	entry := &activeDispatch{
 		ID:        id,
 		Name:      name,
 		Cancel:    cancel,
@@ -211,6 +272,17 @@ func (r *DispatchRegistry) RegisterWithID(id, name string, cancel func(), child 
 		Depth:     depth,
 		StartedAt: time.Now(),
 	}
+	// Preserve flags stamped onto the Reserve() placeholder (MarkDetached,
+	// SetSubAgentPolicy, UpdateActivity run between Reserve and this
+	// upgrade); a wholesale replace would silently drop them.
+	if exists {
+		entry.Detached = existing.Detached
+		entry.SubAgentPolicy = existing.SubAgentPolicy
+		entry.ToolCount = existing.ToolCount
+		entry.LastWork = existing.LastWork
+		entry.LastActivityAt = existing.LastActivityAt
+	}
+	r.dispatches[id] = entry
 	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "register", map[string]any{"run_id": id, "model": name, "session_id": sessionID, "count": depth, "max": len(r.dispatches)})
 }
 
@@ -661,10 +733,11 @@ func (r *DispatchRegistry) LiveConvIDs() []string {
 	return ids
 }
 
-// Snapshot returns a point-in-time copy of every currently active dispatch as
-// a slice of DispatchStateEntry values. Entries are always status="running"
-// because the registry only holds in-flight dispatches (Deregister removes
-// entries on completion). Thread-safe; safe to call from any goroutine.
+// Snapshot returns a point-in-time copy of every currently in-flight dispatch
+// as a slice of DispatchStateEntry values. Status is "running" for active
+// entries and "suspended" for parked ones (see DispatchStateEntry.Status).
+// Terminal entries never appear (Deregister removes them on completion).
+// Thread-safe; safe to call from any goroutine.
 func (r *DispatchRegistry) Snapshot() []DispatchStateEntry {
 	now := time.Now()
 	r.mu.Lock()
@@ -672,14 +745,31 @@ func (r *DispatchRegistry) Snapshot() []DispatchStateEntry {
 
 	entries := make([]DispatchStateEntry, 0, len(r.dispatches))
 	for _, d := range r.dispatches {
+		status := "running"
+		var pending []string
+		if d.Suspended {
+			status = "suspended"
+			for cid := range d.PendingChildren {
+				pending = append(pending, cid)
+			}
+		}
+		var lastActivityMs int64
+		if !d.LastActivityAt.IsZero() {
+			lastActivityMs = now.Sub(d.LastActivityAt).Milliseconds()
+		}
 		entries = append(entries, DispatchStateEntry{
-			DispatchID:       d.ID,
-			Name:             d.Name,
-			Status:           "running",
-			ParentDispatchID: d.ParentID,
-			Depth:            d.Depth,
-			StartedAt:        d.StartedAt,
-			ElapsedMs:        now.Sub(d.StartedAt).Milliseconds(),
+			DispatchID:          d.ID,
+			Name:                d.Name,
+			Status:              status,
+			ParentDispatchID:    d.ParentID,
+			Depth:               d.Depth,
+			StartedAt:           d.StartedAt,
+			ElapsedMs:           now.Sub(d.StartedAt).Milliseconds(),
+			ToolCount:           d.ToolCount,
+			LastWork:            d.LastWork,
+			LastActivityMs:      lastActivityMs,
+			ChildConversationID: d.ChildConvID,
+			PendingChildren:     pending,
 		})
 	}
 	return entries
