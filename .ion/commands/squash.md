@@ -1,5 +1,6 @@
 ---
 description: Squash the current branch into clean conventional commits. Resolves the branch's true base first (a worktree's source branch, else main), creates a backup branch, reads all commits to understand logical groupings, generates a squash plan, then rebuilds the branch from a soft reset into one commit per scope per feature. Never rewrites the source branch. Does not push.
+model: standard
 ---
 
 You are running the `/squash` command. Your job is to collapse the current branch's commits into clean conventional commits — one per code scope per logical feature — by rebuilding the branch from a soft reset (Step 7). You create a backup branch first, generate a squash plan for review, and execute it.
