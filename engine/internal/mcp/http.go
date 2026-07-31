@@ -30,6 +30,13 @@ type httpTransport struct {
 	// mid-session; per-request resolution rides the identity manager's
 	// cache + silent refresh instead.
 	userToken func() (string, error)
+	// oauth, when non-nil, resolves this server's own OAuth token per request
+	// for the same reason userToken is resolved per request: an MCP connection
+	// routinely outlives its access token (Mobbin's last an hour), so a header
+	// baked in at connect time turns every later tool call into a 401 with the
+	// stored refresh token going unused. It also drives the one-shot retry on a
+	// rejection, for a token the provider revoked before its stated expiry.
+	oauth *tokenResolver
 }
 
 func newHTTPTransport(baseURL string, headers map[string]string, userToken func() (string, error)) (*httpTransport, error) {
@@ -43,6 +50,28 @@ func newHTTPTransport(baseURL string, headers map[string]string, userToken func(
 		respCh:    make(chan json.RawMessage, 64),
 		userToken: userToken,
 	}, nil
+}
+
+// applyOAuthToken stamps this server's OAuth bearer token, refreshing it first
+// when it has expired. Applied after the static headers so a freshly-refreshed
+// token wins over the value captured at connect time.
+//
+// A resolution failure is logged and the request proceeds without the header:
+// the server's 401 then carries the connect-path remediation, which tells the
+// operator what to run. Aborting the request instead would surface a refresh
+// error in place of that guidance.
+func (t *httpTransport) applyOAuthToken(req *http.Request) {
+	if t.oauth == nil {
+		return
+	}
+	value, err := t.oauth.Token()
+	if err != nil {
+		utils.LogWithFields(utils.LevelError, "mcp.http", "oauth token unavailable; sending request without authorization", map[string]any{
+			"url": t.baseURL, "error": err.Error(),
+		})
+		return
+	}
+	req.Header.Set("Authorization", value)
 }
 
 // applyUserToken stamps the operator bearer token when forwarding is
@@ -61,9 +90,78 @@ func (t *httpTransport) applyUserToken(req *http.Request) error {
 }
 
 func (t *httpTransport) Send(msg json.RawMessage) error {
+	status, body, contentType, sentAuth, err := t.doRequest(msg)
+	if err != nil {
+		return err
+	}
+
+	// One-shot retry on an authorization rejection.
+	//
+	// The stored token can be refused while the engine still believes it is
+	// valid: the provider revoked or rotated it, or the clocks disagree. The
+	// expiry-driven refresh in applyOAuthToken cannot see that, so without this
+	// the connection stays wedged on a dead credential until the session is
+	// restarted. Retried exactly once — a second 401 after a successful refresh
+	// means the grant itself is no longer good, and looping would hammer the
+	// provider's token endpoint.
+	if isHTTPAuthRejection(status) && t.oauth != nil && t.oauth.HasCredentials() {
+		utils.LogWithFields(utils.LevelWarn, "mcp.http", "request rejected as unauthorized; refreshing token and retrying once", map[string]any{
+			"url": t.baseURL, "status": status,
+		})
+		if _, refreshErr := t.oauth.ForceRefresh(sentAuth); refreshErr != nil {
+			utils.LogWithFields(utils.LevelError, "mcp.http", "token refresh after rejection failed", map[string]any{
+				"url": t.baseURL, "error": refreshErr.Error(),
+			})
+			return fmt.Errorf("HTTP error (status %d): %s", status, string(body))
+		}
+		status, body, contentType, _, err = t.doRequest(msg)
+		if err != nil {
+			return err
+		}
+		if isHTTPAuthRejection(status) {
+			utils.LogWithFields(utils.LevelError, "mcp.http", "still unauthorized after a successful token refresh; the grant is no longer valid", map[string]any{
+				"url": t.baseURL, "status": status,
+			})
+		}
+	}
+
+	if status >= 400 {
+		return fmt.Errorf("HTTP error (status %d): %s", status, string(body))
+	}
+
+	// A StreamableHTTP server answers with EITHER a bare JSON object or an SSE
+	// stream, its choice per request — which is why the Accept header advertises
+	// both. Handling only raw JSON meant an SSE-framed reply failed json.Valid
+	// and was silently discarded, so the caller waited on a response that had
+	// already arrived and the call died at its timeout with no diagnostic.
+	// api.mobbin.com replies this way for every request.
+	frames := decodeHTTPResponseFrames(contentType, body)
+	if len(frames) == 0 && len(body) > 0 {
+		// Undecodable non-empty body: log it rather than dropping the response,
+		// which would present as an unexplained timeout.
+		utils.LogWithFields(utils.LevelWarn, "mcp.http", "response body carried no decodable JSON-RPC frame", map[string]any{
+			"contentType": contentType,
+			"bodyPrefix":  truncateForLog(body, 200),
+		})
+	}
+	for _, frame := range frames {
+		if t.closed.Load() {
+			break
+		}
+		t.respCh <- frame
+	}
+
+	return nil
+}
+
+// doRequest performs one POST of msg and returns the status, body, and
+// Content-Type. Split out of Send so the authorization retry can replay the
+// identical request after refreshing the token — msg is re-read from the caller's
+// buffer each time rather than from a consumed reader.
+func (t *httpTransport) doRequest(msg json.RawMessage) (status int, body []byte, contentType string, sentAuth string, err error) {
 	req, err := http.NewRequest(http.MethodPost, t.baseURL, bytes.NewReader(msg))
 	if err != nil {
-		return fmt.Errorf("create request: %w", err)
+		return 0, nil, "", "", fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	// StreamableHTTP requires BOTH media types: the server chooses per request
@@ -83,17 +181,23 @@ func (t *httpTransport) Send(msg json.RawMessage) error {
 	}
 	t.mu.Unlock()
 
-	if err := t.applyUserToken(req); err != nil {
-		return err
+	// Per-request token resolution. Order matters: the OAuth token is applied
+	// after the static headers so a refreshed value replaces the one captured at
+	// connect, and the operator token last because forwardUserToken is the
+	// explicit override.
+	t.applyOAuthToken(req)
+	if tokenErr := t.applyUserToken(req); tokenErr != nil {
+		return 0, nil, "", "", tokenErr
 	}
+	sentAuth = req.Header.Get("Authorization")
 
 	resp, err := t.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("http send: %w", err)
+		return 0, nil, "", "", fmt.Errorf("http send: %w", err)
 	}
 	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			utils.LogWithFields(utils.LevelInfo, "mcp.http", "response body close failed", map[string]any{"error": err.Error()})
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			utils.LogWithFields(utils.LevelInfo, "mcp.http", "response body close failed", map[string]any{"error": closeErr.Error()})
 		}
 	}()
 
@@ -104,39 +208,18 @@ func (t *httpTransport) Send(msg json.RawMessage) error {
 		t.mu.Unlock()
 	}
 
-	if resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort read of error-response body
-		return fmt.Errorf("HTTP error (status %d): %s", resp.StatusCode, string(body))
-	}
-
-	body, err := io.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("read response: %w", err)
+		return 0, nil, "", "", fmt.Errorf("read response: %w", err)
 	}
+	return resp.StatusCode, body, resp.Header.Get("Content-Type"), sentAuth, nil
+}
 
-	// A StreamableHTTP server answers with EITHER a bare JSON object or an SSE
-	// stream, its choice per request — which is why the Accept header above
-	// advertises both. Handling only raw JSON meant an SSE-framed reply failed
-	// json.Valid and was silently discarded, so the caller waited on a response
-	// that had already arrived and the call died at its timeout with no
-	// diagnostic. api.mobbin.com replies this way for every request.
-	frames := decodeHTTPResponseFrames(resp.Header.Get("Content-Type"), body)
-	if len(frames) == 0 && len(body) > 0 {
-		// Undecodable non-empty body: log it rather than dropping the response,
-		// which would present as an unexplained timeout.
-		utils.LogWithFields(utils.LevelWarn, "mcp.http", "response body carried no decodable JSON-RPC frame", map[string]any{
-			"contentType": resp.Header.Get("Content-Type"),
-			"bodyPrefix":  truncateForLog(body, 200),
-		})
-	}
-	for _, frame := range frames {
-		if t.closed.Load() {
-			break
-		}
-		t.respCh <- frame
-	}
-
-	return nil
+// isHTTPAuthRejection reports whether a status means "your credential was not
+// accepted". 403 is included alongside 401: an insufficient-scope rejection is
+// also resolved by presenting a fresh token.
+func isHTTPAuthRejection(status int) bool {
+	return status == http.StatusUnauthorized || status == http.StatusForbidden
 }
 
 // decodeHTTPResponseFrames extracts JSON-RPC frames from a StreamableHTTP
