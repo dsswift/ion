@@ -61,6 +61,89 @@ func mcpConnectError(name string) string {
 	return mcpConnectErrors[name]
 }
 
+// ensureMcpConnections lazily establishes the session's MCP connections,
+// exactly once per session. Called at prompt dispatch, before the RunConfig is
+// built from s.mcpConns.
+//
+// Lazy rather than eager because session start must not pay for network I/O the
+// session may never use: a desktop rehydrating dozens of tabs starts every one
+// of them, but only tabs the user actually prompts need a live MCP connection.
+// Eager connects made rehydration O(tabs × servers × RTT) — measured at 20 tabs
+// × ~1.7s = 32s against one healthy server, and up to two 30-second metadata
+// timeouts per tab per unreachable server.
+//
+// The connect itself is the same loop StartSession used to run, preserving its
+// properties: servers resolve FRESH from engine.json (so `ion mcp add` applies
+// to the next prompt with no daemon restart), failures record per-server state
+// for the snapshot and never fail the dispatch (a broken server costs its
+// tools, not the conversation), and the disposal guard closes the connection
+// rather than leaking it when the session vanished mid-connect.
+//
+// Single-flighted by s.mcpConnectOnce: concurrent dispatches (a prompt racing a
+// queued prompt drain) must not connect twice. Later dispatches see the result
+// through s.mcpConns as before. The "Connecting MCP servers..." working message
+// is emitted only when there are servers to connect, so promptless sessions and
+// MCP-less configs emit nothing.
+func (m *Manager) ensureMcpConnections(s *engineSession, key string) {
+	s.mcpConnectOnce.Do(func() {
+		defer func() {
+			m.mu.Lock()
+			s.mcpConnectDone = true
+			m.mu.Unlock()
+		}()
+
+		// Resolved FRESH from engine.json rather than read from the boot-cached
+		// m.config: the engine is a long-lived launchd daemon, so a server
+		// added by `ion mcp add` (or a client's mcp_add) after startup must not
+		// need a daemon restart. Resolution runs the full layered merge plus
+		// enterprise enforcement, so denylisted and non-allowlisted servers are
+		// already pruned here.
+		mcpServers := ionconfig.ResolveMcpServers(s.config.WorkingDirectory)
+		if len(mcpServers) == 0 {
+			return
+		}
+
+		m.emit(key, types.EngineEvent{
+			Type:         "engine_working_message",
+			EventMessage: "Connecting MCP servers...",
+		})
+		defer m.emit(key, types.EngineEvent{
+			Type:         "engine_working_message",
+			EventMessage: "",
+		})
+
+		for name, mcpCfg := range mcpServers {
+			conn, err := mcp.Connect(name, mcpCfg)
+			if err != nil {
+				// A whole server's tools going away is an error, not info, and
+				// missed by ERROR-level log sweeps at Info. Key by serverName;
+				// stringify the error so it serializes as a message not an object.
+				utils.LogWithFields(utils.LevelError, "session", "mcp connect failed", map[string]any{"serverName": name, "error": utils.ErrStr(err)})
+				// Recorded so a client can render WHY a configured server is
+				// absent. Without this the only account of the failure is the
+				// engine's log file, which no remote consumer can read.
+				m.recordMcpConnectError(name, err)
+				continue
+			}
+			m.clearMcpConnectError(name)
+			m.mu.Lock()
+			// Guard against session disposal/replacement while Connect() was
+			// blocking. If the session is gone or has been replaced, close the
+			// freshly-opened connection immediately to avoid a file-descriptor
+			// leak.
+			if cur, ok := m.sessions[key]; !ok || cur != s {
+				m.mu.Unlock()
+				conn.Close() //nolint:errcheck // resource close
+				utils.LogWithFields(utils.LevelInfo, "session", "mcp: session disposed during connect — closing leaked conn", map[string]any{"serverName": name, "key": key})
+				continue
+			}
+			s.mcpConns = append(s.mcpConns, conn)
+			m.mu.Unlock()
+			utils.LogWithFields(utils.LevelInfo, "session", "mcp server connected", map[string]any{"serverName": name, "key": key, "toolCount": len(conn.Tools())})
+		}
+	})
+}
+
 // mcpConnectionsFor returns the live MCP connections for a session key, or nil
 // when the session does not exist. The slice is copied so a caller cannot
 // mutate the session's own state.
@@ -182,11 +265,24 @@ func (m *Manager) ReconnectMcpServer(name string) int {
 		m.mu.RLock()
 		s, ok := m.sessions[key]
 		var workingDir string
+		var everConnected bool
 		if ok {
 			workingDir = s.config.WorkingDirectory
+			everConnected = s.mcpConnectDone
 		}
 		m.mu.RUnlock()
 		if !ok {
+			continue
+		}
+		if !everConnected {
+			// This session has never run its lazy connect — it is an idle tab.
+			// Its first dispatch will connect with the freshly-stored credential
+			// anyway, so reconnecting it here would only reintroduce the eager
+			// per-tab network cost the lazy connect exists to avoid (dozens of
+			// rehydrated tabs × one connect each, on every login).
+			utils.LogWithFields(utils.LevelDebug, "session", "mcp reconnect skipped; session has not connected yet", map[string]any{
+				"serverName": name, "key": key,
+			})
 			continue
 		}
 

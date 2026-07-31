@@ -10,7 +10,7 @@ When MCP servers are configured, their tools and resources become available to t
 
 ## Server lifecycle
 
-1. **Session start**: The engine connects to all configured MCP servers. stdio servers are spawned as subprocesses. SSE servers receive an HTTP connection.
+1. **First prompt**: The engine connects to all configured MCP servers lazily, at a session's first prompt dispatch — not at session start. A client rehydrating many sessions at launch therefore pays no MCP network cost; only sessions that actually run a prompt connect. stdio servers are spawned as subprocesses; network servers receive an HTTP connection.
 2. **Discovery**: The engine queries each server for its available tools and resources.
 3. **Registration**: MCP tools are added to the LLM's tool set. Resources are made available through the built-in `ListMcpResources` and `ReadMcpResource` tools.
 4. **Session end**: stdio servers are terminated. SSE connections are closed.

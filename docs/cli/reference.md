@@ -316,9 +316,9 @@ ion mcp add filesystem --command npx \
   --arg -y --arg @modelcontextprotocol/server-filesystem --arg /home/user/docs
 ```
 
-The engine resolves the server map fresh at each session start, so a server
-added while the daemon is running connects on the next conversation with no
-restart.
+The engine resolves the server map fresh at each session's first prompt, so a
+server added while the daemon is running connects on the very next prompt in a
+new conversation — no restart.
 
 #### `ion mcp list`
 
@@ -333,9 +333,15 @@ NAME    TRANSPORT  ENDPOINT                    CONNECTED  AUTH  TOOLS
 mobbin  http       https://api.mobbin.com/mcp  yes        yes   6
 ```
 
-`CONNECTED` and `AUTH` are independent. A server that is authorized but not
-connected has a stored token the server is refusing; the last connection failure
-prints beneath the table when there is one.
+Servers connect lazily, at a session's first prompt — so on an idle daemon,
+`CONNECTED: no` with no error printed is the normal resting state of a healthy
+server, not a failure.
+
+`CONNECTED` and `AUTH` are independent, and the failure signal is the error
+line: `AUTH: yes` with `CONNECTED: no` **plus a last-connection failure printed
+beneath the table** means a stored token the server is refusing — resolved by
+`ion mcp logout <name>` then `ion mcp login <name>`. Without an error line, the
+server simply has not been used yet.
 
 #### `ion mcp login <name>`
 

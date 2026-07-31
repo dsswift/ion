@@ -248,6 +248,14 @@ func (a *sessionAccessor) PermissionCheck(toolName string, input map[string]inte
 }
 
 func (a *sessionAccessor) McpConnections() []*mcp.Connection {
+	// Connections are established lazily at first prompt dispatch, but an
+	// extension can dispatch an MCP tool from a hook that fires before any
+	// prompt (session_start, a schedule, a webhook). Ensure here so that path
+	// sees real connections instead of an empty slice that reads as "server
+	// not connected". No-op after the first call (single-flighted per session)
+	// and cheap when no servers are configured.
+	a.m.ensureMcpConnections(a.s, a.key)
+
 	a.m.mu.RLock()
 	defer a.m.mu.RUnlock()
 	return a.s.mcpConns

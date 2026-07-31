@@ -15,7 +15,7 @@ MCP servers expose two things:
 - **Resources**: data the LLM can read (files, database records, API responses, documentation)
 - **Tools**: actions the LLM can invoke (query a database, create a ticket, fetch a web page)
 
-The engine acts as an MCP client. It connects to one or more MCP servers at session start, discovers what they offer, and presents those capabilities to the LLM alongside the engine's built-in tools.
+The engine acts as an MCP client. It connects to the configured MCP servers at a session's first prompt (lazily, so idle sessions cost nothing), discovers what they offer, and presents those capabilities to the LLM alongside the engine's built-in tools.
 
 ## Transport types
 
@@ -72,8 +72,9 @@ Either form writes to `~/.ion/engine.json`, which you can also edit directly:
 }
 ```
 
-The engine reads the server map fresh at each session start, so a server added
-while the daemon is running connects on the next conversation — no restart.
+The engine reads the server map fresh at each session's first prompt, so a
+server added while the daemon is running connects on the very next prompt in a
+new conversation — no restart.
 
 ## Next steps
 
