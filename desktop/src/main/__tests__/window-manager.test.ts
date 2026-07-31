@@ -96,7 +96,9 @@ vi.mock('../terminal-manager-instance', () => ({
   terminalManager: { destroyAll: vi.fn() },
 }))
 
-const mockRestartEngineDaemon = vi.fn().mockReturnValue(true)
+// Resolves rather than returns: restartEngineDaemon shells out to launchctl
+// asynchronously so the tray click never blocks the main thread.
+const mockRestartEngineDaemon = vi.fn().mockResolvedValue(true)
 vi.mock('../engine-bootstrap', () => ({
   restartEngineDaemon: mockRestartEngineDaemon,
 }))

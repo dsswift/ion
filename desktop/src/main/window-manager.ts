@@ -293,8 +293,13 @@ export function createTray(): void {
       // respawns it immediately with fresh config. Distinct from Quit All (which
       // boots the daemon out) and Quit Desktop (which leaves it running).
       { label: 'Restart Engine', click: () => {
-        const ok = restartEngineDaemon()
-        log('tray: restart engine requested', { issued: ok })
+        // Awaited off the click handler: restartEngineDaemon shells out to
+        // launchctl, which is async so the main thread (and every renderer IPC
+        // reply) stays live while it runs. void + catch because a menu click
+        // handler cannot itself be async without floating the promise.
+        void restartEngineDaemon()
+          .then((ok) => { log('tray: restart engine requested', { issued: ok }) })
+          .catch((err: unknown) => { error('tray: restart engine failed', { error: String(err) }) })
       } },
       { type: 'separator' },
       { label: 'Quit', click: () => { app.quit() } },
