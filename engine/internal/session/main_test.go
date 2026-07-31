@@ -13,9 +13,9 @@ package session
 //
 // TestOnEvent_ReplaceCallback caught this by asserting an exact event count: it
 // passed in CI and on a clean machine, and failed on a machine with an MCP
-// server configured. Rather than adding t.Setenv("HOME", ...) to the ~40 test
-// files that call StartSession — which leaves the next new test exposed to the
-// same trap — HOME is redirected once here, for the whole package.
+// server configured. Rather than adding t.Setenv("HOME", ...) to every test file
+// that calls StartSession — which leaves the next new test exposed to the same
+// trap — HOME is redirected once here, for the whole package.
 //
 // Individual tests that need their own HOME still call t.Setenv("HOME", ...);
 // that continues to work and takes precedence for the duration of the test.
