@@ -984,6 +984,32 @@ final class ContractSyncTests: XCTestCase {
         XCTAssert(unhandled.isEmpty, "Go ProviderLoginUpdate has fields not tracked in Swift test: \(unhandled.sorted())")
     }
 
+    /// Tracks the engine_mcp_servers payload (EngineEvent.mcpServers). MCP
+    /// server administration is a desktop-only flow: adding a server writes the
+    /// engine host's engine.json, and authorizing one requires a browser on the
+    /// engine host to complete the OAuth redirect. Neither has a meaningful
+    /// mobile interaction model, so iOS renders no MCP admin surface — but the
+    /// test pins awareness of every Go field so a future consumer starts from
+    /// truth rather than a stale guess.
+    ///
+    /// Note the two independent state flags: `connected` and `authenticated` are
+    /// deliberately separate, because a stored token that is being rejected
+    /// (authenticated, not connected) is exactly the case an operator must see.
+    /// A future iOS surface must not collapse them into one indicator.
+    func testMcpServerStatus() throws {
+        let manifest = try loadManifest()
+        guard let goFields = manifest.sharedTypes["McpServerStatus"] else {
+            XCTFail("McpServerStatus not found in Go manifest")
+            return
+        }
+        let swiftHandled: Set<String> = [
+            "name", "transport", "url", "command",
+            "connected", "authenticated", "toolCount", "lastError",
+        ]
+        let unhandled = Set(goFields).subtracting(swiftHandled)
+        XCTAssert(unhandled.isEmpty, "Go McpServerStatus has fields not tracked in Swift test: \(unhandled.sorted())")
+    }
+
     /// Drift-detection gate for ResourceLimits (D-007). iOS does not decode
     /// ResourceLimits directly — the engine enforces the caps server-side and
     /// the desktop consumes the policy blob. The test ensures that if Go renames
