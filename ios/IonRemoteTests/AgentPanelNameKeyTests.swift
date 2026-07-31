@@ -181,6 +181,21 @@ final class AgentHeaderBreakdownTests: XCTestCase {
         XCTAssertEqual(b.done, 1, "only done agents are done — error/idle fold into neither")
     }
 
+    /// Dispatch-lifecycle parity: a suspended (parked) dispatch is ALIVE —
+    /// waiting on its children or a revive — and must count as active, never
+    /// as finished. Mirrors the desktop AgentPanel headerCounts change; a
+    /// live tree once read "3 done" while its specialist still worked.
+    func test_breakdown_suspendedCountsAsActive() {
+        let agents = [
+            agent("lead", status: "suspended"),
+            agent("spec", status: "running"),
+            agent("old", status: "done"),
+        ]
+        let b = agents.agentHeaderBreakdown
+        XCTAssertEqual(b.active, 2, "suspended (parked) agents are active, not finished")
+        XCTAssertEqual(b.done, 1)
+    }
+
     func test_breakdown_empty() {
         let b = [AgentStateUpdate]().agentHeaderBreakdown
         XCTAssertEqual(b.total, 0)

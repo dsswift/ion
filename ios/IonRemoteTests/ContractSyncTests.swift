@@ -1039,6 +1039,20 @@ final class ContractSyncTests: XCTestCase {
         )
     }
 
+    /// Pins that the engine_dispatch_lost nested payload field is present in
+    /// the Go EngineEvent manifest. iOS does not yet decode the event (the
+    /// desktop's snapshot carries the corrected agent state, which is what
+    /// iOS renders); this gate exists so its removal from the Go wire — a
+    /// breaking change for loss-surfacing consumers — is caught at PR time.
+    func testEngineDispatchLostFieldInManifest() throws {
+        let manifest = try loadManifest()
+        let goEventFields = Set(manifest.engineEvent)
+        XCTAssert(
+            goEventFields.contains("dispatchLost"),
+            "EngineEvent manifest is missing the dispatchLost payload field (engine_dispatch_lost)"
+        )
+    }
+
     // MARK: - context_breakdown normalized-event field coverage
 
     /// Pins that every field the Go engine declares on the context_breakdown
