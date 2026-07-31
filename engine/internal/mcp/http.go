@@ -1,11 +1,13 @@
 package mcp
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -64,7 +66,13 @@ func (t *httpTransport) Send(msg json.RawMessage) error {
 		return fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
+	// StreamableHTTP requires BOTH media types: the server chooses per request
+	// whether to answer with a single JSON object or an SSE stream, so a client
+	// advertising only one is non-conformant. Servers that enforce this reject
+	// the request outright — api.mobbin.com answers 406 "Client must accept both
+	// application/json and text/event-stream" — which strands every tool on the
+	// server behind a failed initialize.
+	req.Header.Set("Accept", "application/json, text/event-stream")
 
 	t.mu.Lock()
 	if t.sessionID != "" {
@@ -106,13 +114,85 @@ func (t *httpTransport) Send(msg json.RawMessage) error {
 		return fmt.Errorf("read response: %w", err)
 	}
 
-	if len(body) > 0 && json.Valid(body) {
-		if !t.closed.Load() {
-			t.respCh <- json.RawMessage(body)
+	// A StreamableHTTP server answers with EITHER a bare JSON object or an SSE
+	// stream, its choice per request — which is why the Accept header above
+	// advertises both. Handling only raw JSON meant an SSE-framed reply failed
+	// json.Valid and was silently discarded, so the caller waited on a response
+	// that had already arrived and the call died at its timeout with no
+	// diagnostic. api.mobbin.com replies this way for every request.
+	frames := decodeHTTPResponseFrames(resp.Header.Get("Content-Type"), body)
+	if len(frames) == 0 && len(body) > 0 {
+		// Undecodable non-empty body: log it rather than dropping the response,
+		// which would present as an unexplained timeout.
+		utils.LogWithFields(utils.LevelWarn, "mcp.http", "response body carried no decodable JSON-RPC frame", map[string]any{
+			"contentType": resp.Header.Get("Content-Type"),
+			"bodyPrefix":  truncateForLog(body, 200),
+		})
+	}
+	for _, frame := range frames {
+		if t.closed.Load() {
+			break
 		}
+		t.respCh <- frame
 	}
 
 	return nil
+}
+
+// decodeHTTPResponseFrames extracts JSON-RPC frames from a StreamableHTTP
+// response body, accepting both shapes the transport can receive:
+//
+//   - a bare JSON object (Content-Type: application/json)
+//   - an SSE stream (Content-Type: text/event-stream), whose `data:` lines each
+//     carry one frame
+//
+// The Content-Type is a hint, not a gate: some servers return SSE framing under
+// a generic or absent content type, so a body that looks like an event stream is
+// parsed as one regardless of what the header claims.
+func decodeHTTPResponseFrames(contentType string, body []byte) []json.RawMessage {
+	if len(body) == 0 {
+		return nil
+	}
+
+	// Fast path: a plain JSON body.
+	if json.Valid(body) {
+		return []json.RawMessage{json.RawMessage(body)}
+	}
+
+	isEventStream := strings.Contains(strings.ToLower(contentType), "text/event-stream") ||
+		bytes.Contains(body, []byte("data:"))
+	if !isEventStream {
+		return nil
+	}
+
+	var frames []json.RawMessage
+	scanner := bufio.NewScanner(bytes.NewReader(body))
+	// SSE data lines can carry a full JSON-RPC payload, which for a tools/list
+	// on a large server exceeds the default 64 KB token limit.
+	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		// Only `data:` carries payload; `event:`, `id:`, `retry:`, comments
+		// (`:`), and blank separators are framing.
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if payload == "" || !json.Valid([]byte(payload)) {
+			continue
+		}
+		frames = append(frames, json.RawMessage(payload))
+	}
+	return frames
+}
+
+// truncateForLog bounds a body prefix so a diagnostic log line cannot dump a
+// multi-megabyte response into engine.jsonl.
+func truncateForLog(body []byte, max int) string {
+	if len(body) <= max {
+		return string(body)
+	}
+	return string(body[:max]) + "…"
 }
 
 func (t *httpTransport) Receive() (json.RawMessage, error) {
