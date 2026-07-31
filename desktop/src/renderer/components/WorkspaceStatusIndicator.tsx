@@ -1,11 +1,13 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { ListChecks, Robot } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
 import { anyEngineInstanceHasRunningChildren, anyEngineInstanceHasRunningShells, getWaitingState } from './TabStripShared'
-import { activeInstance } from '../stores/conversation-instance'
+import { activeInstance, effectivePermissionMode } from '../stores/conversation-instance'
 import { Tooltip } from './git/Tooltip'
+import { Chevron } from './Chevron'
 import type { TabState } from '../../shared/types'
 
 // ─── WorkspaceStatusIndicator ───────────────────────────────────────────────
@@ -44,10 +46,14 @@ export function globalRunningTier(tabs: TabState[]): 'running' | 'waiting' | 'id
   return hasWaiting ? 'waiting' : 'idle'
 }
 
-/** Identity of a single tab surfaced as a clickable name in the popover. */
+/** Identity of a single tab surfaced as a clickable name in the popover.
+ *  `mode` is the tab's authoritative permission mode (plan vs auto/build),
+ *  resolved at collection time so every name row can render a glance icon
+ *  showing whether the tab is planning or implementing. */
 export interface WorkspaceTabRef {
   id: string
   title: string
+  mode: 'plan' | 'auto'
 }
 
 /** Display name for a tab, mirroring TabStripTabPill's `displayTitle`
@@ -57,14 +63,16 @@ function tabDisplayTitle(tab: TabState): string {
 }
 
 /** Count tabs in each named bucket for the popover breakdown, and collect the
- *  actual tab identities for the two ACTIVE-WORK buckets only: running/connecting
- *  (foreground work) and waitingChildren (background agents). Those two lists are
- *  rendered as clickable names so the user can jump straight to an actively-working
- *  tab regardless of which group buries it. Idle-ish buckets (question, plan-ready,
- *  bash, unread, idle, dead) stay count-only — they are plentiful and not "working".
+ *  actual tab identities for EVERY bucket. The two ACTIVE-WORK buckets —
+ *  running/connecting (foreground work) and waitingChildren (background agents)
+ *  — render their names always-visible so the user can jump straight to an
+ *  actively-working tab regardless of which group buries it. The idle-ish
+ *  buckets (question, plan-ready, bash, unread, idle, dead) collect names too,
+ *  rendered behind a collapsible header that defaults collapsed — they are
+ *  plentiful and not "working", but still navigable on demand.
  *
- *  Each identity is pushed in the exact same branch that increments its count, so
- *  the list and the count can never drift.
+ *  Each identity is pushed in the exact same branch that increments its count,
+ *  so the list and the count can never drift.
  *
  *  Exported for unit testing (pure folding logic). */
 export function computeStatusCounts(tabs: TabState[]): {
@@ -81,6 +89,12 @@ export function computeStatusCounts(tabs: TabState[]): {
   runningTabs: WorkspaceTabRef[]
   waitingTabs: WorkspaceTabRef[]
   waitingShellTabs: WorkspaceTabRef[]
+  questionTabs: WorkspaceTabRef[]
+  planReadyTabs: WorkspaceTabRef[]
+  bashTabs: WorkspaceTabRef[]
+  unreadTabs: WorkspaceTabRef[]
+  idleTabs: WorkspaceTabRef[]
+  deadTabs: WorkspaceTabRef[]
 } {
   const conversationPanes = useSessionStore.getState().conversationPanes
   const c = {
@@ -88,28 +102,61 @@ export function computeStatusCounts(tabs: TabState[]): {
     runningTabs: [] as WorkspaceTabRef[],
     waitingTabs: [] as WorkspaceTabRef[],
     waitingShellTabs: [] as WorkspaceTabRef[],
+    questionTabs: [] as WorkspaceTabRef[],
+    planReadyTabs: [] as WorkspaceTabRef[],
+    bashTabs: [] as WorkspaceTabRef[],
+    unreadTabs: [] as WorkspaceTabRef[],
+    idleTabs: [] as WorkspaceTabRef[],
+    deadTabs: [] as WorkspaceTabRef[],
   }
+  /** Build the clickable ref for a tab, resolving its plan/build mode through
+   *  the single authoritative seam (effectivePermissionMode — same resolver
+   *  the status-bar mode picker reads). */
+  const ref = (tab: TabState): WorkspaceTabRef => ({
+    id: tab.id,
+    title: tabDisplayTitle(tab),
+    mode: effectivePermissionMode(tab, conversationPanes),
+  })
   for (const tab of tabs) {
     if (tab.isTerminalOnly) continue
-    if (tab.status === 'dead' || tab.status === 'failed') { c.dead++; continue }
-    if (tab.status === 'running') { c.running++; c.runningTabs.push({ id: tab.id, title: tabDisplayTitle(tab) }); continue }
-    if (tab.status === 'connecting') { c.connecting++; c.runningTabs.push({ id: tab.id, title: tabDisplayTitle(tab) }); continue }
-    if (anyEngineInstanceHasRunningChildren(tab.id)) { c.waitingChildren++; c.waitingTabs.push({ id: tab.id, title: tabDisplayTitle(tab) }); continue }
+    if (tab.status === 'dead' || tab.status === 'failed') { c.dead++; c.deadTabs.push(ref(tab)); continue }
+    if (tab.status === 'running') { c.running++; c.runningTabs.push(ref(tab)); continue }
+    if (tab.status === 'connecting') { c.connecting++; c.runningTabs.push(ref(tab)); continue }
+    if (anyEngineInstanceHasRunningChildren(tab.id)) { c.waitingChildren++; c.waitingTabs.push(ref(tab)); continue }
     // Background bash commands the session is holding for. Ranked directly
     // after agents, matching getTabStatusColor's cascade.
-    if (anyEngineInstanceHasRunningShells(tab.id)) { c.waitingShells++; c.waitingShellTabs.push({ id: tab.id, title: tabDisplayTitle(tab) }); continue }
+    if (anyEngineInstanceHasRunningShells(tab.id)) { c.waitingShells++; c.waitingShellTabs.push(ref(tab)); continue }
     // Check questions/plan-ready BEFORE bash/unread — matches getTabStatusColor's cascade
     // where plan-ready/question outrank bash/unread.
     const inst = activeInstance(conversationPanes, tab.id)
     const permissionQueueLength = inst?.permissionQueue.length ?? 0
     const waitingState = getWaitingState(tab, conversationPanes)
-    if (permissionQueueLength > 0 || waitingState === 'question') { c.questions++; continue }
-    if (waitingState === 'plan-ready') { c.planReady++; continue }
-    if (tab.bashExecuting) { c.bash++; continue }
-    if (tab.hasUnread) { c.unread++; continue }
-    c.idle++
+    if (permissionQueueLength > 0 || waitingState === 'question') { c.questions++; c.questionTabs.push(ref(tab)); continue }
+    if (waitingState === 'plan-ready') { c.planReady++; c.planReadyTabs.push(ref(tab)); continue }
+    if (tab.bashExecuting) { c.bash++; c.bashTabs.push(ref(tab)); continue }
+    if (tab.hasUnread) { c.unread++; c.unreadTabs.push(ref(tab)); continue }
+    c.idle++; c.idleTabs.push(ref(tab))
   }
   return c
+}
+
+// ─── Sticky category expansion (process-scoped) ──────────────────────────────
+//
+// The idle-ish categories are collapsed by default; when the user expands one,
+// the expansion must survive closing and reopening the popover — but reset on
+// app quit. Module scope gives exactly that lifetime: it outlives component
+// unmounts (popover close, TabStrip remount) and dies with the renderer
+// process. No persistence, no store slice, no IPC. Each window (overlay, ATV)
+// gets its own module instance, so expansion is per-window — acceptable for a
+// glance affordance, not synced state.
+
+export type WorkspaceCategoryId = 'question' | 'plan-ready' | 'bash' | 'unread' | 'idle' | 'dead'
+
+const expandedCategories = new Set<WorkspaceCategoryId>()
+
+/** Test seam: clear sticky expansion so test cases stay order-independent. */
+export function resetWorkspaceCategoryExpansion(): void {
+  expandedCategories.clear()
 }
 
 export function WorkspaceStatusIndicator() {
@@ -127,6 +174,9 @@ export function WorkspaceStatusIndicator() {
 
   const [open, setOpen] = useState(false)
   const [pos, setPos] = useState({ top: 0, left: 0 })
+  // Version counter re-rendering the popover when the module-level expansion
+  // Set mutates (the Set itself is not reactive).
+  const [, setExpansionVersion] = useState(0)
   const dotRef = useRef<HTMLButtonElement>(null)
   // Ref on the portaled popover so the outside-click handler can exclude it.
   // The popover renders into PopoverLayer, NOT inside dotRef, so without this a
@@ -171,6 +221,14 @@ export function WorkspaceStatusIndicator() {
     setOpen(false)
   }, [])
 
+  // Toggle an idle-ish category's expansion. Mutates the module-level Set
+  // (sticky for the process) and bumps the version counter to re-render.
+  const handleToggleCategory = useCallback((id: WorkspaceCategoryId) => {
+    if (expandedCategories.has(id)) expandedCategories.delete(id)
+    else expandedCategories.add(id)
+    setExpansionVersion((v) => v + 1)
+  }, [])
+
   const popover = open && counts && popoverLayer && createPortal(
     <div
       ref={popoverRef}
@@ -201,7 +259,7 @@ export function WorkspaceStatusIndicator() {
       <WorkspaceCountRow label="Running" count={counts.running} color={colors.statusRunning} colors={colors} />
       <WorkspaceCountRow label="Connecting" count={counts.connecting} color={colors.statusRunning} colors={colors} />
       {/* Clickable names for actively-working (foreground) tabs — running + connecting.
-          Only these active buckets get name lists; idle buckets stay count-only. */}
+          Active buckets stay always-expanded: they are the "working now" signal. */}
       {counts.runningTabs.map((t) => (
         <WorkspaceTabRow key={t.id} tab={t} onNavigate={handleNavigate} colors={colors} />
       ))}
@@ -215,12 +273,14 @@ export function WorkspaceStatusIndicator() {
       {counts.waitingShellTabs.map((t) => (
         <WorkspaceTabRow key={t.id} tab={t} onNavigate={handleNavigate} colors={colors} />
       ))}
-      <WorkspaceCountRow label="Question" count={counts.questions} color={colors.statusQuestion} colors={colors} />
-      <WorkspaceCountRow label="Awaiting plan" count={counts.planReady} color={colors.statusComplete} colors={colors} />
-      <WorkspaceCountRow label="Bash" count={counts.bash} color={colors.statusBash} colors={colors} />
-      <WorkspaceCountRow label="Unread" count={counts.unread} color={colors.statusComplete} colors={colors} />
-      <WorkspaceCountRow label="Idle" count={counts.idle} color={colors.statusIdle} colors={colors} />
-      {counts.dead > 0 && <WorkspaceCountRow label="Dead/failed" count={counts.dead} color={colors.statusError} colors={colors} />}
+      {/* Idle-ish buckets: collapsible, collapsed by default, expansion sticky
+          for the process (module-level Set above). Rows with count 0 render null. */}
+      <WorkspaceCollapsibleRow categoryId="question" label="Question" count={counts.questions} color={colors.statusQuestion} colors={colors} tabs={counts.questionTabs} onToggle={handleToggleCategory} onNavigate={handleNavigate} />
+      <WorkspaceCollapsibleRow categoryId="plan-ready" label="Awaiting plan" count={counts.planReady} color={colors.statusComplete} colors={colors} tabs={counts.planReadyTabs} onToggle={handleToggleCategory} onNavigate={handleNavigate} />
+      <WorkspaceCollapsibleRow categoryId="bash" label="Bash" count={counts.bash} color={colors.statusBash} colors={colors} tabs={counts.bashTabs} onToggle={handleToggleCategory} onNavigate={handleNavigate} />
+      <WorkspaceCollapsibleRow categoryId="unread" label="Unread" count={counts.unread} color={colors.statusComplete} colors={colors} tabs={counts.unreadTabs} onToggle={handleToggleCategory} onNavigate={handleNavigate} />
+      <WorkspaceCollapsibleRow categoryId="idle" label="Idle" count={counts.idle} color={colors.statusIdle} colors={colors} tabs={counts.idleTabs} onToggle={handleToggleCategory} onNavigate={handleNavigate} />
+      <WorkspaceCollapsibleRow categoryId="dead" label="Dead/failed" count={counts.dead} color={colors.statusError} colors={colors} tabs={counts.deadTabs} onToggle={handleToggleCategory} onNavigate={handleNavigate} />
     </div>,
     popoverLayer,
   )
@@ -285,13 +345,81 @@ function WorkspaceCountRow({ label, count, color, colors }: WorkspaceCountRowPro
   )
 }
 
+// ─── WorkspaceCollapsibleRow ──────────────────────────────────────────────────
+//
+// A count row for an idle-ish bucket that discloses its tab names on demand.
+// The whole header is a button toggling the category in the module-level
+// expansion Set; the Chevron (repo-standard disclosure glyph) rotates with
+// state. Expanded categories render their tabs with the same WorkspaceTabRow
+// the active buckets use, so navigation behaves identically everywhere.
+
+interface WorkspaceCollapsibleRowProps {
+  categoryId: WorkspaceCategoryId
+  label: string
+  count: number
+  color: string
+  colors: ReturnType<typeof useColors>
+  tabs: WorkspaceTabRef[]
+  onToggle: (id: WorkspaceCategoryId) => void
+  onNavigate: (tabId: string) => void
+}
+
+function WorkspaceCollapsibleRow({ categoryId, label, count, color, colors, tabs, onToggle, onNavigate }: WorkspaceCollapsibleRowProps) {
+  const [hover, setHover] = useState(false)
+  if (count === 0) return null
+  const expanded = expandedCategories.has(categoryId)
+  return (
+    <div style={{ marginBottom: 4 }}>
+      <button
+        onClick={() => onToggle(categoryId)}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        aria-expanded={expanded}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          width: '100%',
+          gap: 8,
+          padding: '1px 2px',
+          border: 'none',
+          borderRadius: 4,
+          cursor: 'pointer',
+          background: hover ? colors.surfaceHover : 'transparent',
+          color: colors.textSecondary,
+          fontSize: 12,
+          textAlign: 'left',
+        }}
+      >
+        <span
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            background: color,
+            flexShrink: 0,
+          }}
+        />
+        <span style={{ flex: 1 }}>{label}</span>
+        <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: colors.textPrimary }}>{count}</span>
+        <Chevron open={expanded} color={colors.textTertiary} />
+      </button>
+      {expanded && tabs.map((t) => (
+        <WorkspaceTabRow key={t.id} tab={t} onNavigate={onNavigate} colors={colors} />
+      ))}
+    </div>
+  )
+}
+
 // ─── WorkspaceTabRow ──────────────────────────────────────────────────────────
 //
-// A clickable tab name nested under the Running / Awaiting-agents category.
-// Clicking routes through selectTab (via onNavigate) to switch to the tab and
-// close the popover. Indented under the category header; long titles truncate
-// with an ellipsis and a Tooltip carries the full name (native `title` renders
-// behind the Electron overlay — desktop AGENTS.md).
+// A clickable tab name nested under a category. Clicking routes through
+// selectTab (via onNavigate) to switch to the tab and close the popover.
+// Indented under the category header; long titles truncate with an ellipsis
+// and a Tooltip carries the full name (native `title` renders behind the
+// Electron overlay — desktop AGENTS.md). A leading glyph shows the tab's
+// permission mode at a glance: ListChecks = plan mode (same glyph the
+// status-bar mode picker uses for Plan), Robot = build/auto mode (matches the
+// repo's agent/AI iconography).
 
 interface WorkspaceTabRowProps {
   tab: WorkspaceTabRef
@@ -325,6 +453,13 @@ function WorkspaceTabRow({ tab, onNavigate, colors }: WorkspaceTabRowProps) {
             textAlign: 'left',
           }}
         >
+          {/* Mode glyph — plan vs build. Same color pair as the status-bar
+              mode picker (modeAcceptEdits for plan, textTertiary for auto). */}
+          <span aria-hidden style={{ display: 'inline-flex', flexShrink: 0 }} data-mode={tab.mode}>
+            {tab.mode === 'plan'
+              ? <ListChecks size={11} weight="bold" color={colors.modeAcceptEdits} />
+              : <Robot size={11} weight="fill" color={colors.textTertiary} />}
+          </span>
           <span
             style={{
               flex: 1,

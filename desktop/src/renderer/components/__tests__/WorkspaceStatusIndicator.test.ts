@@ -32,6 +32,10 @@ const waitingStateMap = new Map<string, 'plan-ready' | 'question' | null>()
 // Control permissionQueue length per tab ID.
 const permissionQueueMap = new Map<string, number>()
 
+// Control the tab's permission mode (plan vs auto) per tab ID. Tabs absent
+// from the map resolve to 'auto' — mirrors effectivePermissionMode's fallback.
+const permissionModeMap = new Map<string, 'plan' | 'auto'>()
+
 vi.mock('../TabStripShared', () => ({
   anyEngineInstanceHasRunningChildren: (tabId: string) => runningChildrenIds.has(tabId),
   anyEngineInstanceHasRunningShells: (tabId: string) => runningShellIds.has(tabId),
@@ -43,6 +47,7 @@ vi.mock('../../stores/conversation-instance', () => ({
     const qLen = permissionQueueMap.get(tabId) ?? 0
     return { permissionQueue: new Array(qLen) }
   },
+  effectivePermissionMode: (tab: any) => permissionModeMap.get(tab.id) ?? 'auto',
 }))
 
 vi.mock('@phosphor-icons/react', () => ({}))
@@ -123,6 +128,7 @@ describe('WorkspaceStatusIndicator.computeStatusCounts', () => {
     runningShellIds.clear()
     waitingStateMap.clear()
     permissionQueueMap.clear()
+    permissionModeMap.clear()
   })
 
   it('all zeros for an empty tab list', () => {
@@ -309,13 +315,100 @@ describe('WorkspaceStatusIndicator.computeStatusCounts', () => {
   it('customTitle wins over title in the name list', () => {
     const tabs = [makeTab('t1', 'running', { title: 'auto-name', customTitle: 'My Tab' })]
     const c = computeStatusCounts(tabs)
-    expect(c.runningTabs[0]).toEqual({ id: 't1', title: 'My Tab' })
+    expect(c.runningTabs[0]).toEqual({ id: 't1', title: 'My Tab', mode: 'auto' })
   })
 
   it('falls back to title when customTitle is null', () => {
     const tabs = [makeTab('t1', 'connecting', { title: 'auto-name', customTitle: null })]
     const c = computeStatusCounts(tabs)
     expect(c.runningTabs[0].title).toBe('auto-name')
+  })
+
+  // ── name lists for idle-ish (collapsible) buckets ──────────────────────────
+  //
+  // Every bucket now collects tab identities, pushed in the exact branch that
+  // increments its count — list length and count can never drift. These pin
+  // each idle-ish bucket's list from both directions (right tabs in, wrong
+  // tabs out) plus the shared invariants (customTitle, terminal-only).
+
+  it('questionTabs collects question-waiting and permission-queued tabs, in order', () => {
+    waitingStateMap.set('t1', 'question')
+    permissionQueueMap.set('t3', 1)
+    const tabs = [makeTab('t1', 'idle'), makeTab('t2', 'idle'), makeTab('t3', 'idle')]
+    const c = computeStatusCounts(tabs)
+    expect(c.questionTabs.map((t) => t.id)).toEqual(['t1', 't3'])
+    expect(c.questions).toBe(c.questionTabs.length)
+  })
+
+  it('planReadyTabs collects plan-ready tabs', () => {
+    waitingStateMap.set('t2', 'plan-ready')
+    const c = computeStatusCounts([makeTab('t1', 'idle'), makeTab('t2', 'idle')])
+    expect(c.planReadyTabs.map((t) => t.id)).toEqual(['t2'])
+    expect(c.planReady).toBe(c.planReadyTabs.length)
+  })
+
+  it('bashTabs collects bash-executing tabs', () => {
+    const c = computeStatusCounts([makeTab('t1', 'idle', { bashExecuting: true }), makeTab('t2', 'idle')])
+    expect(c.bashTabs.map((t) => t.id)).toEqual(['t1'])
+    expect(c.bash).toBe(c.bashTabs.length)
+  })
+
+  it('unreadTabs collects unread tabs', () => {
+    const c = computeStatusCounts([makeTab('t1', 'idle'), makeTab('t2', 'idle', { hasUnread: true })])
+    expect(c.unreadTabs.map((t) => t.id)).toEqual(['t2'])
+    expect(c.unread).toBe(c.unreadTabs.length)
+  })
+
+  it('idleTabs collects idle tabs only', () => {
+    waitingStateMap.set('t2', 'question')
+    const c = computeStatusCounts([makeTab('t1', 'idle'), makeTab('t2', 'idle'), makeTab('t3', 'completed')])
+    expect(c.idleTabs.map((t) => t.id)).toEqual(['t1', 't3'])
+    expect(c.idle).toBe(c.idleTabs.length)
+  })
+
+  it('deadTabs collects dead and failed tabs', () => {
+    const c = computeStatusCounts([makeTab('t1', 'dead'), makeTab('t2', 'idle'), makeTab('t3', 'failed')])
+    expect(c.deadTabs.map((t) => t.id)).toEqual(['t1', 't3'])
+    expect(c.dead).toBe(c.deadTabs.length)
+  })
+
+  it('customTitle wins in idle-ish lists too', () => {
+    waitingStateMap.set('t1', 'question')
+    const c = computeStatusCounts([makeTab('t1', 'idle', { title: 'auto', customTitle: 'Named' })])
+    expect(c.questionTabs[0].title).toBe('Named')
+  })
+
+  it('terminal-only tabs are excluded from idle-ish lists', () => {
+    const c = computeStatusCounts([makeTab('t1', 'idle', { isTerminalOnly: true })])
+    expect(c.idleTabs).toEqual([])
+  })
+
+  // ── mode resolution (plan vs build) ─────────────────────────────────────────
+
+  it('resolves mode: plan when the active instance is in plan mode', () => {
+    permissionModeMap.set('t1', 'plan')
+    const c = computeStatusCounts([makeTab('t1', 'running')])
+    expect(c.runningTabs[0].mode).toBe('plan')
+  })
+
+  it('resolves mode: auto by default (build mode)', () => {
+    const c = computeStatusCounts([makeTab('t1', 'running')])
+    expect(c.runningTabs[0].mode).toBe('auto')
+  })
+
+  it('mode rides refs in idle-ish buckets too', () => {
+    permissionModeMap.set('t1', 'plan')
+    waitingStateMap.set('t1', 'question')
+    const c = computeStatusCounts([makeTab('t1', 'idle')])
+    expect(c.questionTabs[0].mode).toBe('plan')
+  })
+
+  it('mixed modes on running tabs are resolved per tab', () => {
+    permissionModeMap.set('t1', 'plan')
+    permissionModeMap.set('t3', 'auto')
+    const tabs = [makeTab('t1', 'running'), makeTab('t2', 'running'), makeTab('t3', 'connecting')]
+    const c = computeStatusCounts(tabs)
+    expect(c.runningTabs.map((t) => t.mode)).toEqual(['plan', 'auto', 'auto'])
   })
 })
 
@@ -344,7 +437,7 @@ describe('WorkspaceStatusIndicator — background-shell branch', () => {
     runningShellIds.add('t1')
     const c = computeStatusCounts([makeTab('t1', 'idle', { customTitle: 'Builder' })])
     expect(c.waitingShells).toBe(1)
-    expect(c.waitingShellTabs).toEqual([{ id: 't1', title: 'Builder' }])
+    expect(c.waitingShellTabs).toEqual([{ id: 't1', title: 'Builder', mode: 'auto' }])
     // Not double-counted into the agent bucket.
     expect(c.waitingChildren).toBe(0)
     expect(c.idle).toBe(0)
