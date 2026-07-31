@@ -185,15 +185,22 @@ export interface StatusDot {
  * Map an agent's status to the platform's standardized status-dot vocabulary,
  * the same cascade `StatusDot` (TabStripStatusDot.tsx) and the status bar use:
  *
- *   error            → solid statusError
- *   running + running child(ren) → pulsing yellow statusWaitingChildren + glow
- *   running          → pulsing orange statusRunning
- *   done             → solid green statusComplete
- *   else (idle/…)    → solid statusIdle
+ *   error                     → solid statusError
+ *   any non-error + running child(ren) → pulsing yellow statusWaitingChildren + glow
+ *   suspended (parked)        → pulsing yellow statusWaitingChildren + glow
+ *   running                   → pulsing orange statusRunning
+ *   done                      → solid green statusComplete
+ *   else (idle/…)             → solid statusIdle
  *
- * `hasRunningChildren` is only consulted in the running branch (an idle agent is
- * never "waiting on children" in this surface). Kept pure — the caller resolves
- * `colors` from `useColors()` and the child-running flag from `childAgentsOf`.
+ * `hasRunningChildren` is consulted BEFORE the terminal branches: a parent
+ * marked done/suspended while a child dispatch still runs must read as
+ * "waiting on children", never as a solid green done dot — the tree is not
+ * finished (the Infra Engineer incident: a lead rendered complete while its
+ * terraform specialist worked). `suspended` is the engine's park state
+ * (dispatch waiting on children or a revive) and reads the same yellow even
+ * when the child set is not visible to this client. Kept pure — the caller
+ * resolves `colors` from `useColors()` and the child-running flag from
+ * `childAgentsOf`.
  */
 export function getStatusDot(
   agent: AgentStateUpdate,
@@ -203,10 +210,10 @@ export function getStatusDot(
   if (agent.status === 'error') {
     return { bg: colors.statusError, pulse: false, glowColor: '' }
   }
+  if (hasRunningChildren || agent.status === 'suspended') {
+    return { bg: colors.statusWaitingChildren, pulse: true, glowColor: colors.statusWaitingChildrenGlow }
+  }
   if (agent.status === 'running') {
-    if (hasRunningChildren) {
-      return { bg: colors.statusWaitingChildren, pulse: true, glowColor: colors.statusWaitingChildrenGlow }
-    }
     return { bg: colors.statusRunning, pulse: true, glowColor: '' }
   }
   if (agent.status === 'done') {

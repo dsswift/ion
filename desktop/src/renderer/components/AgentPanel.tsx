@@ -113,12 +113,15 @@ export function AgentPanel({ agents, dispatchTelemetry, isFullscreen, onToggleFu
   // stays honest against the rows below it. Ephemeral agents drop out of
   // `visible` when they finish, so `done` counts only the always/sticky agents
   // that completed and remain clickable in the list. `error` folds into neither
-  // active nor done — it is surfaced by its own red row dot.
+  // active nor done — it is surfaced by its own red row dot. `suspended`
+  // counts as ACTIVE: a parked dispatch is alive (waiting on children or a
+  // revive), and counting it as finished is how a live tree once read
+  // "3 done" while its specialist still worked.
   const headerCounts = React.useMemo(() => {
     let active = 0
     let done = 0
     for (const a of visible) {
-      if (a.status === 'running') active++
+      if (a.status === 'running' || a.status === 'suspended') active++
       else if (a.status === 'done') done++
     }
     return { total: visible.length, active, done }

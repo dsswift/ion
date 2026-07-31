@@ -95,4 +95,38 @@ describe('getStatusDot', () => {
     const dot = lib.getStatusDot(agentWith('idle'), DOT_COLORS, false)
     expect(dot).toEqual({ bg: DOT_COLORS.statusIdle, pulse: false, glowColor: '' })
   })
+
+  // ── Waiting-on-children precedes terminal states (dispatch-lifecycle F) ──
+  // A parent marked done while a child dispatch still runs must NOT render a
+  // solid green done dot: the tree is not finished (the Infra Engineer
+  // incident — a lead read complete while its terraform specialist worked).
+  // Revert bar: gating hasRunningChildren inside the running branch turns
+  // these red.
+
+  it('done with a running child → pulsing statusWaitingChildren + glow (never solid green)', () => {
+    const dot = lib.getStatusDot(agentWith('done'), DOT_COLORS, true)
+    expect(dot).toEqual({
+      bg: DOT_COLORS.statusWaitingChildren,
+      pulse: true,
+      glowColor: DOT_COLORS.statusWaitingChildrenGlow,
+    })
+  })
+
+  it('suspended (parked dispatch) → pulsing statusWaitingChildren + glow', () => {
+    const dot = lib.getStatusDot(agentWith('suspended'), DOT_COLORS, false)
+    expect(dot).toEqual({
+      bg: DOT_COLORS.statusWaitingChildren,
+      pulse: true,
+      glowColor: DOT_COLORS.statusWaitingChildrenGlow,
+    })
+  })
+
+  it('idle with a running child → pulsing statusWaitingChildren (live tree wins over idle)', () => {
+    const dot = lib.getStatusDot(agentWith('idle'), DOT_COLORS, true)
+    expect(dot).toEqual({
+      bg: DOT_COLORS.statusWaitingChildren,
+      pulse: true,
+      glowColor: DOT_COLORS.statusWaitingChildrenGlow,
+    })
+  })
 })

@@ -285,7 +285,16 @@ export interface ConversationPane {
 export interface AgentStateUpdate {
   name: string
   id?: string
-  status: 'idle' | 'running' | 'done' | 'error'
+  /**
+   * Agent lifecycle status. `suspended` is a live (non-terminal) state: the
+   * dispatch is parked waiting on child completions or a revive message
+   * (engine dispatch_agent.go sets it on park; agents/registry.go ranks it
+   * above terminal states). `cancelled` is terminal (user/parent/system
+   * abort). Consumers should degrade gracefully on unknown values per
+   * docs/architecture/agent-state.md — this union mirrors the engine's
+   * documented vocabulary, it does not gate it.
+   */
+  status: 'idle' | 'running' | 'suspended' | 'done' | 'error' | 'cancelled'
   metadata?: Record<string, any>
 }
 

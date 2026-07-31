@@ -180,6 +180,24 @@ export type EngineEvent =
         remainingTaskIds?: string[]
       }
     }
+  // engine_dispatch_lost — a dispatch that was running when the engine
+  // process died is unrecoverable after restart. One event per orphan,
+  // emitted on the owning session's stream during dispatch-state
+  // rehydration; the rehydrated agent-state row is independently marked
+  // "error" so no panel shows a dead dispatch as running. Consumers may
+  // redispatch, harvest the child's partial transcript via
+  // childConversationId, or ignore the event.
+  | {
+      type: 'engine_dispatch_lost'
+      dispatchLost?: {
+        dispatchId: string
+        agentName: string
+        task?: string
+        parentDispatchId?: string
+        depth?: number
+        childConversationId?: string
+      }
+    }
   // engine_model_fallback — workflow signal emitted by the engine when
   // it fell back to its configured defaultModel because the requested
   // model didn't resolve to a provider. Mirrors the underlying

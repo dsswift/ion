@@ -504,5 +504,14 @@ describe('Contract sync: EngineEvent dispatch fields', () => {
       `Go EngineEvent is missing dispatch fields consumed by desktop/iOS: ${missing.join(', ')}`,
     ).toEqual([])
   })
+
+  it('the engine_dispatch_lost payload field is present in the Go EngineEvent manifest', () => {
+    // engine_dispatch_lost carries a nested DispatchLostPayload under the
+    // `dispatchLost` key (mirrored in types-engine-event.ts). Its absence
+    // from the manifest means the engine stopped emitting the loss event —
+    // a breaking change for consumers that surface lost dispatches.
+    const goFields = new Set(manifest.engineEvent)
+    expect(goFields.has('dispatchLost'), 'Go EngineEvent is missing the dispatchLost payload field').toBe(true)
+  })
 })
 
