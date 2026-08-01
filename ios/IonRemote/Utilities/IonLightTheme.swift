@@ -16,7 +16,7 @@ struct IonLightTheme: AppTheme {
     let background = Color(hex: 0xFBFBFC)                     // containerBg
     let textPrimary = Color(hex: 0x18181B)                    // textPrimary
     let textSecondary = Color(hex: 0x4B4B52)                  // textSecondary
-    let statusRunning = Color(hex: 0x3F86A6)                  // statusRunning (steel-teal, distinct from accent)
+    let statusRunning = Color(hex: 0xD97757)                  // statusRunning (terracotta orange, shared with Ion Dark + Classic)
     let statusDone = Color(hex: 0x059669)                     // statusComplete
     let statusError = Color(hex: 0xDC2626)                    // statusError
     let statusPending = Color(hex: 0x74747C)                  // statusIdle

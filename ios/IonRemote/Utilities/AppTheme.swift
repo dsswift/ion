@@ -27,7 +27,7 @@ protocol AppTheme {
     /// amber pulsing dot on the parent tab pill, sub-tab pill, and
     /// footer state label. Mirrors the desktop's
     /// `statusWaitingChildren` token in `theme-tokens.ts`. Distinct
-    /// from `statusRunning` (teal = foreground) so foreground vs.
+    /// from `statusRunning` (terracotta orange = foreground) so foreground vs.
     /// background activity is visually disambiguated. See
     /// `ConversationStatusBar.swift` and `TabRowView.swift` for the
     /// render sites.

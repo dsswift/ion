@@ -27,7 +27,11 @@ final class TabRowStatusPriorityTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private let yellowHex: UInt = 0xF59E0B  // statusWaitingChildren
+    // Read the cascade's own constants rather than re-literalling the hexes:
+    // a palette edit must be able to move a dot's value without silently
+    // invalidating a pinned number here. What these suites pin is the
+    // *priority ordering*, not the specific hex.
+    private let yellowColor = TabStatusRollup.childrenYellow
     private let greenColor = Color.green
 
     /// Build a minimal RemoteTabState with the fields the test varies.
@@ -81,11 +85,11 @@ final class TabRowStatusPriorityTests: XCTestCase {
         )
         let info = statusInfo(for: tab)
 
-        // Must be yellow (0xF59E0B), not green.
+        // Must be childrenYellow, not green.
         XCTAssertEqual(
             info.color,
-            Color(hex: yellowHex),
-            "hasRunningChildren must outrank planReady: expected yellow (0xF59E0B) but got a different color"
+            yellowColor,
+            "hasRunningChildren must outrank planReady: expected the childrenYellow dot but got a different color"
         )
         // Must pulse.
         XCTAssertTrue(
@@ -126,8 +130,8 @@ final class TabRowStatusPriorityTests: XCTestCase {
 
         XCTAssertEqual(
             info.color,
-            Color(hex: yellowHex),
-            "hasRunningChildren alone must resolve yellow (0xF59E0B)"
+            yellowColor,
+            "hasRunningChildren alone must resolve childrenYellow"
         )
         XCTAssertTrue(info.pulse, "hasRunningChildren state must pulse")
     }
@@ -143,8 +147,8 @@ final class TabRowStatusPriorityTests: XCTestCase {
 
         XCTAssertEqual(
             info.color,
-            Color(hex: 0x8A8A80),
-            "No active flags must resolve default gray (0x8A8A80)"
+            TabStatusRollup.idleGray,
+            "No active flags must resolve the default idleGray"
         )
         XCTAssertFalse(info.pulse, "Default gray must not pulse")
     }
@@ -176,7 +180,7 @@ final class TabRowStatusPriorityTests: XCTestCase {
 
         XCTAssertEqual(
             info.color,
-            Color(hex: yellowHex),
+            yellowColor,
             "hasRunningChildren must outrank planReady on .completed status too"
         )
         XCTAssertTrue(info.pulse)

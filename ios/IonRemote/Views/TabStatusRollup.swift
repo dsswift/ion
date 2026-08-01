@@ -12,8 +12,8 @@ import SwiftUI
 // ─── Priority cascade (mirrors desktop TabStripGroupStatus.ts) ──────────────
 //
 //   9 = error            (dead/failed — red)
-//   8 = permission       (generic tool permission — orange glow)
-//   7 = running          (running/connecting — teal pulse)
+//   8 = permission       (generic tool permission — amber glow)
+//   7 = running          (running/connecting — orange pulse)
 //   6 = running-children (background agents — yellow pulse)
 //   5 = bash-background  (background shell commands — pink pulse)
 //   4 = plan-ready       (ExitPlanMode denial — green glow)
@@ -67,14 +67,21 @@ enum TabStatusRollup {
     static let priorityIdle = 0
 
     // ─── Palette ─────────────────────────────────────────────────────────────
-    // Theme-independent tab-dot constants. Running and question mirror the
-    // desktop Ion Dark intent — steel-teal running (statusRunning #5EA9C9) and
-    // purple question (statusQuestion #A78BFA) — kept legibly distinct from each
-    // other, from the accent blue, and from the orange permission dot.
-    static let errorColor = Color(hex: 0xC47060)
-    static let permissionOrange = Color(hex: 0xE8854A)
-    static let childrenYellow = Color(hex: 0xF59E0B)
-    static let runningTeal = Color(hex: 0x5EA9C9)
+    // Theme-independent tab-dot constants, mirroring the desktop Ion Dark
+    // palette token-for-token (palette-dark.ts). Mirroring the whole block
+    // rather than a couple of tokens is what keeps the cascade's hues
+    // separable: the running dot is Ion Classic's terracotta #D97757, which
+    // sits within ~5-8° of hue of the Classic-era error (#C47060) and
+    // permission (#E8854A) values this block used to carry. Those two moved
+    // to their Ion Dark counterparts — a clear red error and an amber
+    // permission — so "dead session", "blocked on you", and "working" stay
+    // three distinguishable signals. The closest remaining pair is
+    // permission vs children (~6° apart), which is exactly the separation
+    // Ion Dark already ships between those same two tokens.
+    static let errorColor = Color(hex: 0xF87171)
+    static let permissionAmber = Color(hex: 0xF59E0B)
+    static let childrenYellow = Color(hex: 0xFBBF24)
+    static let runningOrange = Color(hex: 0xD97757)
     static let questionPurple = Color(hex: 0xA78BFA)
     /// Blaze pink for the shell-activity dot. Mirrors the desktop Ion Dark
     /// `statusBash` (#ff2d95). Like every constant in this block the value is
@@ -84,7 +91,7 @@ enum TabStatusRollup {
     /// Deliberately far from errorColor so "a shell is running" never reads as
     /// an error.
     static let shellPink = Color(hex: 0xFF2D95)
-    static let idleGray = Color(hex: 0x8A8A80)
+    static let idleGray = Color(hex: 0x818188)
 
     /// Classify a single tab into its status info. This is the exact cascade
     /// `TabRowView.statusInfo` renders — that computed property delegates here
@@ -109,28 +116,28 @@ enum TabStatusRollup {
         let hasPlanReady = tab.permissionQueue.contains { $0.toolName == "ExitPlanMode" }
         let hasQuestion = tab.permissionQueue.contains { $0.toolName == "AskUserQuestion" }
 
-        // 2. Generic tool permission → orange glow (blocked, steady).
+        // 2. Generic tool permission → amber glow (blocked, steady).
         if hasGenericPermission {
             return GroupTabStatus(
                 priority: priorityPermission,
-                color: permissionOrange,
+                color: permissionAmber,
                 shouldPulse: false,
                 glow: true,
-                glowColor: permissionOrange
+                glowColor: permissionAmber
             )
         }
 
-        // 3. Running / connecting → teal pulse (foreground active). Wins over
-        //    the passive plan/question waits below. Teal (not the orange
-        //    permission color) so a pulsing running dot and a steady permission
-        //    dot never read as the same signal.
+        // 3. Running / connecting → terracotta-orange pulse (foreground
+        //    active). Wins over the passive plan/question waits below. The
+        //    amber permission dot sits ~23° of hue away, so a pulsing running
+        //    dot and a steady permission dot never read as the same signal.
         if tab.status == .running || tab.status == .connecting {
             return GroupTabStatus(
                 priority: priorityRunning,
-                color: runningTeal,
+                color: runningOrange,
                 shouldPulse: true,
                 glow: true,
-                glowColor: runningTeal
+                glowColor: runningOrange
             )
         }
 

@@ -8,7 +8,9 @@ struct ActivityIndicatorView: View {
     var dotColorOverride: Color? = nil
 
     private let dotSize: CGFloat = 5 // matches desktop 4×4px dots (bumped to 5 for mobile)
-    private let defaultDotColor = Color(hex: 0xE8854A) // matches desktop statusRunning
+    // Terracotta orange — the shared `statusRunning` value across Ion Dark,
+    // Ion Light, and Ion Classic (see TabStatusRollup.runningOrange).
+    private let defaultDotColor = TabStatusRollup.runningOrange
 
     private var dotColor: Color { dotColorOverride ?? defaultDotColor }
 

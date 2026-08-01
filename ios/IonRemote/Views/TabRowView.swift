@@ -284,8 +284,8 @@ struct TabRowView: View {
         case TabStatusRollup.priorityQuestion:
             return TabStatusRollup.questionPurple
         default:
-            if tab.status == .failed || tab.status == .dead { return Color(hex: 0xC47060) }
-            return Color(hex: 0x8A8A80)
+            if tab.status == .failed || tab.status == .dead { return TabStatusRollup.errorColor }
+            return TabStatusRollup.idleGray
         }
     }
 

@@ -2,28 +2,15 @@ import SwiftUI
 
 // MARK: - IonTheme
 
-/// Centralized design tokens — legacy static palette.
+/// Centralized design tokens — spacing, radii, animations, typography.
 ///
-/// Color tokens here reflect the retired system-adaptive palette (the
-/// pre-cross-platform "Ion Default" look) and are kept only for backward
-/// compatibility with views that reference `IonTheme.accent` directly.
-/// Theme-aware views should read colors from the `appTheme` environment
-/// value instead (see `AppTheme.swift`).
+/// Color tokens do NOT live here. Every view reads colors from the
+/// `appTheme` environment value (see `AppTheme.swift`), and the tab-status
+/// dot cascade reads the theme-independent constants on
+/// `TabStatusRollup`. The retired system-adaptive "Ion Default" color
+/// block that used to sit in this enum had no remaining references and was
+/// removed rather than left to drift out of step with the real palettes.
 enum IonTheme {
-
-    // MARK: Colors
-    // These also available via @Environment(\.appTheme) for theme-aware views.
-
-    static let accent = Color(hex: 0x4ECDC4)
-    static let accentSubtle = Color(hex: 0x4ECDC4, opacity: 0.12)
-    static let surfaceElevated = Color(.tertiarySystemBackground)
-    static let codeBg = Color(.secondarySystemFill).opacity(0.7)
-    static let userBubbleTint = Color(hex: 0x4ECDC4).opacity(0.08)
-
-    static let statusRunning = Color(hex: 0xE8854A)
-    static let statusDone = Color.green
-    static let statusError = Color.red
-    static let statusPending = Color.orange
 
     // MARK: Spacing
 
