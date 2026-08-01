@@ -72,6 +72,35 @@ type DispatchAgentOpts struct {
 	// it get the prior behavior (self-rail only).
 	AllowedSubAgents []string `json:"allowedSubAgents,omitempty"`
 
+	// SubAgentPolicy selects how AllowedSubAgents is enforced for THIS
+	// dispatch's own nested dispatches:
+	//
+	//   ""             — historic semantics: the allowlist is enforced only
+	//                    when non-empty (an empty list means no restriction).
+	//   "allowlist"    — membership is enforced even when the list is empty:
+	//                    an empty AllowedSubAgents denies ALL nested
+	//                    dispatch. This is how a harness expresses "this
+	//                    agent is a leaf and may dispatch nothing", which the
+	//                    historic semantics cannot say.
+	//   "unrestricted" — explicitly opt out of the allowlist layer (the
+	//                    self-dispatch rail still applies).
+	//
+	// Additive and non-breaking: the zero value preserves the historic
+	// behavior exactly.
+	SubAgentPolicy string `json:"subAgentPolicy,omitempty"`
+
+	// Detached excludes this dispatch from its PARENT's park-on-children
+	// set. By default (false) a background dispatch holds its dispatcher
+	// open: when the dispatcher's run ends its turn with this child still
+	// running, the engine parks the dispatcher (suspend shape) and revives
+	// it when the child completes, so the dispatcher consumes the child's
+	// result instead of completing with work in flight. Set Detached for
+	// genuine fire-and-forget: the parent's run completes at its turn
+	// boundary regardless of this child, and the child's completion routes
+	// wherever the harness's callbacks send it. Additive; the zero value is
+	// the park (the corrected default).
+	Detached bool `json:"detached,omitempty"`
+
 	// ImplementationPhase marks this dispatch as the "implement" half of a
 	// plan-then-implement flow: the plan is already approved and the child
 	// must execute it directly. When true, the engine skips injecting the

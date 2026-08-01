@@ -670,6 +670,29 @@ func TestParseClientCommand_ListModelsNoRequestId(t *testing.T) {
 	}
 }
 
+func TestParseClientCommand_ResolveModelTier(t *testing.T) {
+	raw := `{"cmd":"resolve_model_tier","requestId":"r5","text":"standard"}`
+	cmd := ParseClientCommand(raw)
+	if cmd == nil {
+		t.Fatal("expected valid command")
+	}
+	if cmd.Cmd != "resolve_model_tier" {
+		t.Errorf("expected cmd 'resolve_model_tier', got %q", cmd.Cmd)
+	}
+	if cmd.Text != "standard" {
+		t.Errorf("expected text 'standard', got %q", cmd.Text)
+	}
+}
+
+func TestParseClientCommand_ResolveModelTierMissingName(t *testing.T) {
+	// The tier name is the whole request; without it there is nothing to
+	// resolve and the command must be rejected at parse time.
+	raw := `{"cmd":"resolve_model_tier","requestId":"r6"}`
+	if cmd := ParseClientCommand(raw); cmd != nil {
+		t.Errorf("expected nil for resolve_model_tier without a tier name, got %+v", cmd)
+	}
+}
+
 func TestParseClientCommand_StoreCredential(t *testing.T) {
 	raw := `{"cmd":"store_credential","requestId":"r2","provider":"openai","credential":"sk-test123"}`
 	cmd := ParseClientCommand(raw)

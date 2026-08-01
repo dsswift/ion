@@ -80,6 +80,9 @@ export const FORWARDED_ACTIONS: Record<string, ForwardedActionSpec> = {
   benchAddMember: { minArgs: 4, maxArgs: 4 },
   benchRemoveMember: { minArgs: 3, maxArgs: 3 },
   benchSetEnabled: { minArgs: 4, maxArgs: 4 },
+  // AI-assisted conflict resolution creates a tab and submits a prompt —
+  // owner-durable twice over; a mirror-local run would fork the conversation.
+  openConflictAssist: { minArgs: 1, maxArgs: 1 },
   forceRecoverTab: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
   autoRecoverStuckTab: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
   resumeSession: { minArgs: 1, maxArgs: 3 },
@@ -128,6 +131,16 @@ export const MIRROR_LOCAL_ACTIONS: Record<string, string> = {
   markResourceRead: 'pass-through: mark_read delta via engine broker + local read-state',
   markAllResourcesRead: 'pass-through: mark_read deltas via engine broker + local read-state',
   deleteResource: 'local view of resource list; producer owns persistence',
+  // Dismissing the absorbed-into-base notice is per-window UI state: the bench
+  // record itself is untouched, and each window's operator dismisses their own
+  // notice. Forwarding it would clear the overlay's notice from the ATV.
+  clearBenchRetired: 'per-window notice dismissal; no bench mutation',
+  // Conflict-alert bookkeeping mutates no git state. record/clear are driven by
+  // each window's own inventory refresh and sync results (both windows observe
+  // the same main-process truth), and dismissing a toast is per-window UI.
+  recordConflictAlert: 'ingestion: derived from inventory/sync results each window already receives',
+  clearConflictAlert: 'ingestion: derived from inventory refresh; no git mutation',
+  dismissConflictAlert: 'per-window toast dismissal; badges derive from live inventory state',
   runQuickTool: 'pass-through: one-shot tool run',
   // Event-stream ingestion (mirror consumes the same normalized stream).
   handleNormalizedEvent: 'ingestion: normalized-event reducer',

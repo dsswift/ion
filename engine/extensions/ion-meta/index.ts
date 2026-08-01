@@ -27,6 +27,7 @@
 
 import { createIon, log } from '../sdk/ion-sdk'
 import { loadPersona } from './persona'
+import { buildBenchBriefing } from './bench-briefing'
 import {
   emitInitialSnapshot,
   emitAgentRunning,
@@ -53,6 +54,9 @@ import {
   readConversationTool,
   listConversationsTool,
   searchLogsTool,
+  benchInfoTool,
+  benchLocateTool,
+  isBenchCwd,
 } from './tools'
 
 const ion = createIon()
@@ -74,6 +78,26 @@ ion.on('session_start', (ctx) => {
     ctx.suppressTool('Agent')
   } catch (err) {
     log.error('ion-meta: failed to suppress Agent tool', { err: (err as Error).message })
+  }
+  // Bench tools are for bench conversations only: everywhere else they are
+  // noise in the tool list and an invitation to call them pointlessly. Both
+  // branches log so "why does/doesn't this session have bench tools?" is
+  // answerable from the log alone.
+  const inBench = isBenchCwd(ctx.cwd)
+  if (!inBench) {
+    try {
+      ctx.suppressTool('ion_bench_info')
+      ctx.suppressTool('ion_bench_locate')
+      log.debug('ion-meta: bench tools suppressed (cwd not in a bench)', {
+        cwd: ctx.cwd, sessionKey: ctx.sessionKey,
+      })
+    } catch (err) {
+      log.error('ion-meta: failed to suppress bench tools', { err: (err as Error).message })
+    }
+  } else {
+    log.info('ion-meta: bench conversation detected, bench tools active', {
+      cwd: ctx.cwd, sessionKey: ctx.sessionKey,
+    })
   }
   // Dispatched child sessions (ctx.depth > 0) fire session_start on their
   // own extension host too. Suppressing the Agent tool above applies to
@@ -145,7 +169,20 @@ ion.on('session_start', (ctx) => {
 ion.on('before_prompt', (ctx, _prompt) => {
   // Inject the persona on every prompt. The persona is cached per
   // extensionDir so this is cheap after the first call.
-  return { systemPrompt: loadPersona(ctx.config.extensionDir) }
+  //
+  // A bench conversation additionally gets the bench briefing: what the bench
+  // is, its live member composition, and the rule that edits belong in member
+  // worktrees. Rebuilt per prompt (workspace membership changes mid-session)
+  // and composed HERE rather than in a second before_prompt handler, because
+  // before_prompt merges are last-writer-wins across handlers — a separate
+  // handler would clobber the persona instead of extending it.
+  const persona = loadPersona(ctx.config.extensionDir)
+  const briefing = buildBenchBriefing(ctx.cwd)
+  if (briefing) {
+    log.debug('ion-meta: bench briefing injected', { cwd: ctx.cwd, sessionKey: ctx.sessionKey })
+    return { systemPrompt: `${persona}\n\n${briefing}` }
+  }
+  return { systemPrompt: persona }
 })
 
 // Context-breakdown consumer: after each LLM message ends the engine has
@@ -396,6 +433,22 @@ ion.on('tool_call', (ctx, info) => {
     }
     // Pass-case at debug: every write-class call reaches this branch, so info
     // would be noise. The block case above is the audit signal.
+    //
+    // The exception is a Bash command carrying a destination-changing construct
+    // the gate could not resolve literally (`cd "$TARGET"`, `cd $(...)`). That
+    // passes by design, but it is the one shape that could still write outside
+    // the worktree unseen, so it is logged at WARN — the residual gap is then
+    // queryable in ~/.ion/engine.jsonl instead of invisible.
+    if (worktreeDecision.unresolvedDestination !== undefined) {
+      log.warn('ion-meta: worktree-gate could not resolve a bash destination', {
+        tool: info?.toolName,
+        toolId: info?.toolId,
+        worktreePath: worktreeDecision.worktreePath,
+        unresolvedDestination: worktreeDecision.unresolvedDestination,
+        command: String(info?.input?.command ?? '').slice(0, 120),
+        sessionKey: ctx.sessionKey,
+      })
+    }
     log.debug('ion-meta: worktree-gate passed tool call', {
       tool: info?.toolName,
       toolId: info?.toolId,
@@ -454,6 +507,11 @@ ion.on('session_end', (ctx) => {
 // ─── Tool registration ────────────────────────────────────────────────────
 
 ion.registerTool(scaffoldTool)
+// Bench-only tools: registered unconditionally (registration is global to the
+// extension), then suppressed per session in session_start for any
+// conversation whose cwd is not inside an integration bench.
+ion.registerTool(benchInfoTool)
+ion.registerTool(benchLocateTool)
 ion.registerTool(validateAgentTool)
 ion.registerTool(listHooksTool)
 ion.registerTool(listExtensionsTool)

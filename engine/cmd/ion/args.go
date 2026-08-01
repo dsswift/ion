@@ -10,10 +10,18 @@ import (
 var boolFlags = map[string]bool{
 	"no-extensions": true,
 	"attach":        true,
+	"no-browser":    true,
 }
 
 // multiFlags lists flags that can be specified multiple times.
-var multiFlags = map[string]bool{"extension": true}
+// header/env/arg carry `ion mcp add` server definitions (one HTTP header,
+// environment variable, or stdio argument per occurrence).
+var multiFlags = map[string]bool{
+	"extension": true,
+	"header":    true,
+	"env":       true,
+	"arg":       true,
+}
 
 // parseArgs extracts command, flags, list flags, and positional args from os.Args.
 func parseArgs() (command string, flags map[string]string, listFlags map[string][]string, positional []string) {

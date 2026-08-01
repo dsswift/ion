@@ -35,6 +35,7 @@ import { makeWorkspace, makeMember } from '../integration/bench-store'
 import { landWorktree } from '../worktree/integrate'
 import { retireWorktree } from '../worktree/relocate'
 import type { IntegrationWorkspace, IntegrationMember } from '../../shared/types'
+import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf-8' })
@@ -92,8 +93,14 @@ function workspaceFor(members: IntegrationMember[] = []): IntegrationWorkspace {
 }
 
 async function enroll(wt: { path: string; branch: string }): Promise<IntegrationMember> {
-  const c = await captureContribution(wt.path)
-  return makeMember({ worktreePath: wt.path, branchName: wt.branch, pinnedSha: c.sha, pinnedTreeHash: c.treeHash })
+  const c = await captureContribution(wt.path, FEATURE, wt.branch)
+  return makeMember({
+    worktreePath: wt.path,
+    branchName: wt.branch,
+    pinnedSha: c.sha,
+    pinnedTreeHash: c.treeHash,
+    pinnedBaseSha: c.baseSha,
+  })
 }
 
 function benchMergeCount(benchPath: string): number {
@@ -206,7 +213,7 @@ describe('landed absorption — the member worktree is never modified', () => {
     // Both rounds of work are present in the bench.
     expect(existsSync(join(ws.benchPath, 'first.txt'))).toBe(true)
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('landed member absorption', () => {
   it('keeps landed content in the bench with no merge commit, and retires the member', async () => {
@@ -338,7 +345,7 @@ describe('landed member absorption', () => {
     expect(result.workspace!.members.map((m) => m.branchName)).toEqual(['wt/a'])
     expect(existsSync(join(ws.benchPath, 'a2.txt'))).toBe(true)
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('landed absorption — rewritten history (squash, rebase, cherry-pick)', () => {
   // THE case a sha-based check misses. The operator produces dozens of
@@ -471,4 +478,21 @@ describe('landed absorption — rewritten history (squash, rebase, cherry-pick)'
     expect(git(a.path, 'status', '--porcelain')).toBe(statusBefore)
     expect(git(repo, 'branch', '--list', a.branch).trim()).toContain(a.branch)
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
+
+/**
+ * A member enrolled before it has committed anything.
+ *
+ * ── The defect ──────────────────────────────────────────────────────────────
+ * A worktree cut from the feature branch and enrolled before its first commit
+ * has a HEAD identical to the feature-branch tip. Every landed-detection tier
+ * then answers "landed": the pinned commit IS an ancestor of the source branch,
+ * the pinned tree IS in its history, and the branch does NOT differ from it. So
+ * the member was absorbed and retired on every rebuild, and the operator could
+ * never keep it enrolled.
+ *
+ * Landing and never-started are indistinguishable by any live git query, which
+ * is why the contribution is recorded as a RANGE at pin time. These tests pin
+ * both halves: the empty member survives, and a genuinely landed member is still
+ * retired.
+ */

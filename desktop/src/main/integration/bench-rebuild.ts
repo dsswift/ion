@@ -24,6 +24,12 @@
  * function NEVER advances a pin — pin advancement is the caller's explicit act
  * (see bench-update.ts).
  *
+ * A contribution is a RANGE (`pinnedBaseSha..pinnedSha`), not a tip. A member
+ * whose range is empty has committed nothing of its own and is reported
+ * `pending`: kept in the list, merged into nothing, never retired. That case is
+ * indistinguishable from a landed member by any live git query, which is why the
+ * range is recorded at pin time — see resolveContribution below.
+ *
  * ── Never `git clean -x` ────────────────────────────────────────────────────
  * `switch -C ... --discard-changes` resets tracked files and LEAVES ignored
  * build output (node_modules, dist, Go caches) in place. That single decision
@@ -100,6 +106,78 @@ async function describeConflict(
     }
   }
   return { paths, conflictsWith }
+}
+
+/**
+ * Whether a member's pin carries any commits of its own, and the merge base that
+ * proves it.
+ *
+ * ── Why this is asked from a RECORDED range, not a live query ────────────────
+ * "This member has not committed anything yet" and "this member's work has
+ * landed" are indistinguishable at rebuild time. In both cases `pinnedSha` is an
+ * ancestor of the source branch and `sourceBranch..pinnedSha` is empty, so every
+ * available git question answers the same way. The bench read the first case as
+ * the second and silently retired the member — a worktree enrolled before its
+ * first commit disappeared from the list on every rebuild.
+ *
+ * The separating fact is where the contribution STARTS, which is why the merge
+ * base is captured when the pin is taken (`bench-snapshot.captureContribution`)
+ * and stored as `pinnedBaseSha`. `pinnedBaseSha === pinnedSha` means empty, and
+ * that survives the source branch moving underneath it.
+ *
+ * ── Legacy records ──────────────────────────────────────────────────────────
+ * A record written before the range was tracked has `pinnedBaseSha === ''`, which
+ * means UNKNOWN. It is resolved once, factually, against the member branch rather
+ * than guessed: a branch with commits beyond the source branch gets its real
+ * merge base backfilled and behaves exactly as before, and a branch with none is
+ * empty. An unresolvable branch (deleted after a Land & retire) stays unknown and
+ * falls through to the landed tiers, which is what correctly retires it.
+ */
+async function resolveContribution(
+  benchPath: string,
+  member: IntegrationMember,
+  sourceBranch: string,
+): Promise<{ empty: boolean; baseSha: string }> {
+  if (member.pinnedBaseSha) {
+    const empty = member.pinnedBaseSha === member.pinnedSha
+    log('contribution range known', {
+      branch: member.branchName,
+      base: member.pinnedBaseSha.slice(0, 7),
+      sha: member.pinnedSha.slice(0, 7),
+      empty,
+    })
+    return { empty, baseSha: member.pinnedBaseSha }
+  }
+
+  // Unknown: a record from before the range was tracked. Resolve it from the
+  // member branch, which is the only place the answer still exists.
+  try {
+    const count = (await runGit(benchPath, ['rev-list', '--count', `${sourceBranch}..${member.branchName}`])).trim()
+    if (count === '0') {
+      log('contribution range backfilled: empty', {
+        branch: member.branchName,
+        source_branch: sourceBranch,
+        note: 'legacy record, member branch carries no commits beyond source',
+      })
+      return { empty: true, baseSha: member.pinnedSha }
+    }
+    const base = (await runGit(benchPath, ['merge-base', member.pinnedSha, sourceBranch])).trim()
+    log('contribution range backfilled: carries commits', {
+      branch: member.branchName,
+      commits: count,
+      base: base.slice(0, 7),
+    })
+    return { empty: false, baseSha: base }
+  } catch (err) {
+    // Branch gone (the normal Land & retire outcome) or an unreadable range.
+    // Stay unknown so the landed tiers below decide, which is what retires a
+    // landed-and-deleted member instead of parking it as pending forever.
+    log('contribution range unresolved, deferring to landed detection', {
+      branch: member.branchName,
+      detail: String(err).slice(0, 120),
+    })
+    return { empty: false, baseSha: '' }
+  }
 }
 
 /**
@@ -257,6 +335,36 @@ export async function rebuildBenchUnqueued(ws: IntegrationWorkspace): Promise<Be
   const retired: IntegrationMember[] = []
 
   for (const member of ws.members) {
+    // ── Empty contribution ────────────────────────────────────────────────
+    // Checked BEFORE landed absorption, because the two are indistinguishable
+    // by any live git query and the landed check would claim this member. A pin
+    // that carries no commits has nothing to merge and nothing to absorb: the
+    // member is simply enrolled ahead of its first commit, which is the natural
+    // way to start work you intend to integrate.
+    //
+    // Reported as `pending` and KEPT. Retiring it was the defect: the member
+    // vanished from the list on every rebuild, so it could never be integrated.
+    const contribution = await resolveContribution(ws.benchPath, member, ws.sourceBranch)
+    if (contribution.empty) {
+      log('rebuild: member pending, nothing to merge', {
+        branch: member.branchName,
+        sha: member.pinnedSha.slice(0, 7),
+        base: contribution.baseSha.slice(0, 7),
+        source_branch: ws.sourceBranch,
+        note: 'enrolled with no commits of its own; commit then Update to integrate',
+      })
+      updatedMembers.push({
+        ...member,
+        // Backfilled for a legacy record so the next rebuild answers from the
+        // record instead of re-deriving it.
+        pinnedBaseSha: contribution.baseSha || member.pinnedBaseSha,
+        status: 'pending',
+        conflictPaths: undefined,
+        conflictsWith: undefined,
+      })
+      continue
+    }
+
     // ── Landed absorption ─────────────────────────────────────────────────
     // Checked BEFORE `enabled`, on purpose. Once a member's work is contained
     // in the source branch it arrives with the bench's base and there is no
@@ -311,6 +419,8 @@ export async function rebuildBenchUnqueued(ws: IntegrationWorkspace): Promise<Be
       merged.push(member)
       updatedMembers.push({
         ...member,
+        // Backfilled for a legacy record so the range is present from now on.
+        pinnedBaseSha: contribution.baseSha || member.pinnedBaseSha,
         // Merged at the pin: by definition current with respect to what is
         // integrated. Staleness re-evaluates against the worktree separately.
         status: member.currentTreeHash && member.currentTreeHash !== member.pinnedTreeHash ? 'stale' : 'integrated',
@@ -354,6 +464,7 @@ export async function rebuildBenchUnqueued(ws: IntegrationWorkspace): Promise<Be
     base_sha: baseSha.slice(0, 7),
     merged: merged.length,
     landed_retired: retired.length,
+    pending: updatedMembers.filter((m) => m.status === 'pending').length,
     conflicted: updatedMembers.filter((m) => m.status === 'conflicted').length,
     missing: updatedMembers.filter((m) => m.status === 'missing').length,
     excluded: updatedMembers.filter((m) => m.status === 'excluded').length,

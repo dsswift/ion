@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"sync"
 
 	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/conversation"
@@ -164,6 +165,12 @@ type engineSession struct {
 	planModeAllowedBashCommands []string
 	planFilePath                string
 	planModePromptSent          bool
+	// lostDispatches queues the dispatches rehydrateDispatchState resolved as
+	// lost (persisted status running/suspended with a fresh, empty registry —
+	// they died with the previous engine process). announceLostDispatches
+	// drains it in startSession once extensions are loaded, emitting one
+	// engine_dispatch_lost + one dispatch_lost hook firing per orphan.
+	lostDispatches []conversation.AgentDispatchData
 	// compactInFlight is true while an async user-initiated /compact goroutine
 	// is running for this session (dispatchCompact Path A). It serves two
 	// guards, both read/written under m.mu:
@@ -191,6 +198,27 @@ type engineSession struct {
 	procRegistry   *extension.ProcessRegistry
 	pending        *pending.Broker
 	resourceBroker *resource.Broker
+
+	// mcpConnectOnce single-flights the lazy MCP connect for this session, and
+	// mcpConnectDone records (under m.mu) that it has run.
+	//
+	// Connections are deliberately NOT established in StartSession: a desktop
+	// rehydrating dozens of tabs calls StartSession once per tab, serially, and
+	// each eager connect cost a full network round trip per configured server
+	// (~1.7s each against a healthy server, measured 20 tabs × 32s at one
+	// rehydration; up to 2×30s metadata timeouts per DEAD server) before the
+	// session was usable. Nothing reads mcpConns before the first prompt
+	// dispatch — the RunConfig is rebuilt from it per dispatch — so the connect
+	// is deferred to ensureMcpConnections at that seam, where its cost lands
+	// only on sessions that actually run a prompt.
+	//
+	// mcpConnectDone exists because a sync.Once cannot be queried:
+	// ReconnectMcpServer must skip sessions that never connected (they will
+	// pick the refreshed credential up at their own first dispatch), or a
+	// post-login sweep would eagerly connect every idle tab and reintroduce
+	// the rehydration stall this field exists to prevent.
+	mcpConnectOnce sync.Once
+	mcpConnectDone bool
 
 	// fsWatcherRelease releases this session's share of the pooled workspace
 	// watcher. The underlying watcher closes when the last session sharing

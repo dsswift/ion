@@ -273,6 +273,19 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
     'userCode',
     'verificationUrl',
   ],
+  // One configured MCP server carried inside engine_mcp_servers snapshots.
+  // connected and authenticated are independent by design — see the
+  // McpServerStatus doc comment in types-engine-event.ts.
+  McpServerStatus: [
+    'authenticated',
+    'command',
+    'connected',
+    'lastError',
+    'name',
+    'toolCount',
+    'transport',
+    'url',
+  ],
   // Slash-command listing carried inside engine_command_registry snapshots.
   // The desktop's prompt pipeline reads this off the wire to populate a
   // routing-hint cache keyed by session — see desktop/src/main/prompt-pipeline.ts.
@@ -503,6 +516,15 @@ describe('Contract sync: EngineEvent dispatch fields', () => {
       missing,
       `Go EngineEvent is missing dispatch fields consumed by desktop/iOS: ${missing.join(', ')}`,
     ).toEqual([])
+  })
+
+  it('the engine_dispatch_lost payload field is present in the Go EngineEvent manifest', () => {
+    // engine_dispatch_lost carries a nested DispatchLostPayload under the
+    // `dispatchLost` key (mirrored in types-engine-event.ts). Its absence
+    // from the manifest means the engine stopped emitting the loss event —
+    // a breaking change for consumers that surface lost dispatches.
+    const goFields = new Set(manifest.engineEvent)
+    expect(goFields.has('dispatchLost'), 'Go EngineEvent is missing the dispatchLost payload field').toBe(true)
   })
 })
 

@@ -111,6 +111,14 @@ func (p *anthropicProvider) doStream(ctx context.Context, opts types.LlmStreamOp
 	if apiKey == "" {
 		apiKey = GetProviderKey(p.id)
 	}
+	// Fail fast on a keyless request to the canonical hosted endpoint: it is
+	// a guaranteed 401 and burning a turn to learn that wastes the run (the
+	// 1785287375912 incident — the engine logged "no key for provider" and
+	// sent the request anyway). Custom base URLs (gateways, proxies) may be
+	// legitimately keyless and are never gated. See requireKeyForHost.
+	if pe := requireKeyForHost(req.URL.Host, p.id, apiKey); pe != nil {
+		return pe
+	}
 	setAuthHeader(req, p.authHeader, apiKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
 	req.Header.Set("Accept", "text/event-stream")

@@ -19,13 +19,26 @@
  * All steps are idempotent. A no-op on Linux/Windows (daemon is macOS-only).
  */
 
-import { execFileSync, execSync } from 'child_process'
+import { execFileSync, execFile } from 'child_process'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, copyFileSync, chmodSync, renameSync } from 'fs'
 import { createHash } from 'crypto'
 import { createConnection } from 'net'
 import { homedir } from 'os'
 import { join } from 'path'
+import { promisify } from 'util'
 import { log as _log, error as _error } from './logger'
+
+/**
+ * Promisified execFile for the launchctl calls on this path.
+ *
+ * Why not execSync: this module runs on the Electron main thread, and a
+ * synchronous launchctl call blocks it entirely — including the renderer's IPC
+ * replies. A kickstart routinely takes seconds while the agent namespace
+ * settles, and the watchdog measured a 5029ms main-thread stall spanning
+ * exactly this call. Awaiting instead keeps the event loop live, so restore IPC
+ * continues while launchctl works.
+ */
+const execFileAsync = promisify(execFile)
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('bootstrap', msg, fields)
@@ -44,7 +57,7 @@ const ENGINE_SOCKET_PATH = join(homedir(), '.ion', 'engine.sock')
  * callers use the defaults.
  */
 export interface DaemonReadinessOpts {
-  /** execSync timeout for each launchctl kickstart attempt. */
+  /** Timeout for each launchctl kickstart attempt. */
   kickstartTimeoutMs?: number
   /** Attempts per kickstart round (launchctl can transiently hang or refuse
    *  while a just-booted-out agent is still tearing down). */
@@ -78,14 +91,17 @@ function sleep(ms: number): Promise<void> {
  * swallowed failure here left the engine down for the whole app session
  * (nothing retried, nothing verified), so every retry is logged and the
  * outcome is returned for the caller's verify step.
+ *
+ * Runs via awaited execFile, never execSync: this is the main thread, and a
+ * synchronous launchctl call freezes the renderer's IPC for its whole duration.
  */
 async function kickstartDaemon(uid: number, force: boolean, opts: Required<DaemonReadinessOpts>): Promise<boolean> {
-  const cmd = force
-    ? `launchctl kickstart -k gui/${uid}/${PLIST_LABEL}`
-    : `launchctl kickstart gui/${uid}/${PLIST_LABEL}`
+  const args = force
+    ? ['kickstart', '-k', `gui/${uid}/${PLIST_LABEL}`]
+    : ['kickstart', `gui/${uid}/${PLIST_LABEL}`]
   for (let attempt = 1; attempt <= opts.kickstartAttempts; attempt++) {
     try {
-      execSync(cmd, { timeout: opts.kickstartTimeoutMs })
+      await execFileAsync('launchctl', args, { timeout: opts.kickstartTimeoutMs })
       log('engine_bootstrap: launchctl kickstart succeeded', { force_restart: force, attempt })
       return true
     } catch (err: any) {
@@ -324,9 +340,10 @@ export async function ensureEngineDaemon(readiness: DaemonReadinessOpts = {}): P
 
   // Bootstrap loads the plist into the launchd namespace. It fails with
   // exit code 5 (or "service already loaded") if already loaded, which is
-  // expected on subsequent launches.
+  // expected on subsequent launches. Awaited for the same reason as the
+  // kickstart below: a synchronous launchctl call blocks the main thread.
   try {
-    execSync(`launchctl bootstrap gui/${uid} ${plistDest}`, { timeout: 5000 })
+    await execFileAsync('launchctl', ['bootstrap', `gui/${uid}`, plistDest], { timeout: 5000 })
     log('launchctl bootstrap succeeded')
   } catch (err: any) {
     // Exit 5 = "service already loaded" on macOS. Not an error.
@@ -398,10 +415,10 @@ export { findPlistTemplate, findBundledBinary, hashBinary, PLIST_LABEL, PLIST_FI
  * untouched). Here the daemon is intentionally recycled and immediately
  * respawned by launchd.
  *
- * No-op on non-macOS (the daemon is macOS-only). Returns true when the kickstart
+ * No-op on non-macOS (the daemon is macOS-only). Resolves true when the kickstart
  * command was issued successfully.
  */
-export function restartEngineDaemon(): boolean {
+export async function restartEngineDaemon(): Promise<boolean> {
   if (process.platform !== 'darwin') {
     log('restartEngineDaemon: not macOS, skipping')
     return false
@@ -409,10 +426,11 @@ export function restartEngineDaemon(): boolean {
   const uid = process.getuid?.() ?? 501
   try {
     // 10s timeout: launchctl transiently hangs past the old 5s budget while
-    // the agent namespace is busy (see kickstartDaemon). This path stays a
-    // single synchronous attempt — it runs on a tray click and must not block
-    // the main process through a multi-attempt retry ladder.
-    execSync(`launchctl kickstart -k gui/${uid}/${PLIST_LABEL}`, { timeout: 10000 })
+    // the agent namespace is busy (see kickstartDaemon). A single attempt, not
+    // a retry ladder — it runs on a tray click, and the operator can click
+    // again. Awaited rather than synchronous so the click does not freeze the
+    // main thread (and with it every renderer IPC reply) for up to 10s.
+    await execFileAsync('launchctl', ['kickstart', '-k', `gui/${uid}/${PLIST_LABEL}`], { timeout: 10000 })
     log('restartEngineDaemon: launchctl kickstart -k succeeded (daemon recycled, re-reading engine.json)')
     return true
   } catch (err: any) {

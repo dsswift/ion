@@ -42,7 +42,7 @@ function plainTab(id: string): TabState {
     sessionVersion: null, queuedPrompts: [], workingDirectory: '~',
     hasChosenDirectory: false, additionalDirs: [], bashResults: [],
     bashExecuting: false, bashExecId: null, pillColor: null, pillIcon: null,
-    forkedFromSessionId: null, hasFileActivity: false, worktree: null,
+    forkedFromSessionId: null, worktree: null,
     pendingWorktreeSetup: false, groupId: null, groupPinned: false,
     contextTokens: null, contextWindow: null,
     isCompacting: false, isTerminalOnly: false, engineProfileId: null,

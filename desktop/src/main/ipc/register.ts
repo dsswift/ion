@@ -13,12 +13,14 @@ import { registerFilesIpc } from './files'
 import { registerGitIpc } from './git'
 import { registerGitExtrasIpc } from './git-extras'
 import { registerGitRebaseIpc } from './git-rebase'
+import { registerGitConflictsIpc } from './git-conflicts'
 import { registerWorktreeIpc } from './worktree'
 import { registerWorktreeLifecycleIpc } from './worktree-lifecycle'
 import { registerBenchIpc } from './bench'
 import { registerSettingsIpc } from './settings'
 import { registerRemoteControlIpc } from './remote-control'
 import { registerModelsIpc } from './models'
+import { registerMcpIpc } from './mcp'
 import { registerOAuthIpc } from './oauth'
 import { registerProvidersIpc } from './providers'
 import { registerConversationBackupIpc } from './conversation-backup'
@@ -42,6 +44,7 @@ export function registerAllIpc(): void {
   registerGitIpc()
   registerGitExtrasIpc()
   registerGitRebaseIpc()
+  registerGitConflictsIpc()
   registerWorktreeIpc()
   registerWorktreeLifecycleIpc()
   registerBenchIpc()
@@ -49,6 +52,7 @@ export function registerAllIpc(): void {
   registerRemoteControlIpc()
   registerModelsIpc()
   registerOAuthIpc()
+  registerMcpIpc()
   registerProvidersIpc()
   registerConversationBackupIpc()
   registerLogIpc()

@@ -20,34 +20,70 @@ import {
   listWorkspaces, rebuildWorkspace, updateMember, updateAllStale,
   setMemberEnabled, addMember, removeMember, refreshStaleness, sourceBranchTip,
 } from '../../integration/bench-ops'
-import type { RemoteCommand, RemoteWorktreeState, RemoteBench } from '../protocol'
+import {
+  collectDirConversations,
+  type DirConversation,
+  type DirConversationSource,
+} from '../../../shared/worktree-conversations'
+import type { RemoteCommand, RemoteWorktreeState, RemoteWorktree, RemoteBench } from '../protocol'
 
 const TAG = 'remote.worktree'
 function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
 function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, msg, fields) }
 
-/** Tab ids by working directory, so iOS can focus instead of duplicating. */
-async function openTabsByDirectory(): Promise<Map<string, string>> {
-  const map = new Map<string, string>()
+/**
+ * The conversations open in each directory, so iOS can focus one instead of
+ * duplicating — and can say WHICH conversations a worktree holds.
+ *
+ * Built with the same `collectDirConversations` the desktop rows use, so the
+ * three surfaces cannot disagree about what is open where.
+ */
+async function conversationsByDirectory(): Promise<(dir: string) => DirConversation[]> {
+  let tabs: DirConversationSource[] = []
   try {
     const { getRemoteTabStates } = await import('../snapshot')
     const snapshot = await getRemoteTabStates()
-    for (const t of snapshot.tabs) {
-      if (t.workingDirectory) map.set(t.workingDirectory, t.id)
-    }
+    tabs = snapshot.tabs.map((t) => ({
+      id: t.id,
+      title: t.title,
+      customTitle: t.customTitle ?? null,
+      status: t.status,
+      workingDirectory: t.workingDirectory ?? '',
+    }))
   } catch (err) {
-    // Losing this only costs the "already open" hint, never correctness.
-    warn('could not resolve open tabs', { error: String(err) })
+    // Losing this costs the "already open" hint and the conversation names,
+    // never correctness of the worktree state itself.
+    warn('could not resolve open conversations', { error: String(err) })
   }
-  return map
+  return (dir: string) => collectDirConversations(tabs, dir)
 }
 
 /** Build the per-repo worktree + bench projection for iOS. */
 export async function buildWorktreeState(repoPath: string): Promise<RemoteWorktreeState> {
-  const openTabs = await openTabsByDirectory()
-  const worktrees = (await inventoryWorktrees(repoPath)).map((w) => ({
-    ...w,
-    openTabId: openTabs.get(w.worktreePath),
+  const openIn = await conversationsByDirectory()
+  const inventory = await inventoryWorktrees(repoPath)
+  // Projected field by field rather than spread: `conflictedPaths` is a
+  // desktop-only field (only the desktop can resolve conflicts, so only it has
+  // a surface for the paths), and a spread would ship the array to a client
+  // that reads nothing but the count. iOS gets `conflictedCount` — the number
+  // its row badge actually renders.
+  const worktrees: RemoteWorktree[] = inventory.map((w) => ({
+    worktreePath: w.worktreePath,
+    branchName: w.branchName,
+    label: w.label,
+    title: w.title,
+    sourceBranch: w.sourceBranch,
+    head: w.head,
+    lastCommitSubject: w.lastCommitSubject,
+    isDirty: w.isDirty,
+    unlandedCommitCount: w.unlandedCommitCount,
+    needsSync: w.needsSync,
+    safeToDiscard: w.safeToDiscard,
+    provisionState: w.provisionState,
+    provisionError: w.provisionError,
+    operationState: w.operationState,
+    conflictedCount: w.conflictedPaths?.length,
+    openConversations: openIn(w.worktreePath),
   }))
 
   const benches: RemoteBench[] = []
@@ -62,16 +98,21 @@ export async function buildWorktreeState(repoPath: string): Promise<RemoteWorktr
       baseSha: refreshed.baseSha,
       lastBuiltAt: refreshed.lastBuiltAt,
       baseDrifted: !!tip && !!refreshed.baseSha && tip !== refreshed.baseSha,
-      openTabId: openTabs.get(refreshed.benchPath),
+      openConversations: openIn(refreshed.benchPath),
       members: refreshed.members.map((m) => ({
         worktreePath: m.worktreePath,
         branchName: m.branchName,
         label: m.label,
+        // Resolved from the worktree inventory rather than stored on the member
+        // record: one worktree has one title, and a second copy would drift the
+        // moment the worktree is renamed.
+        title: inventory.find((w) => w.worktreePath === m.worktreePath)?.title,
         enabled: m.enabled,
         pinnedSha: m.pinnedSha,
         status: m.status,
         conflictPaths: m.conflictPaths,
         conflictsWith: m.conflictsWith,
+        openConversations: openIn(m.worktreePath),
       })),
     })
   }
@@ -79,7 +120,14 @@ export async function buildWorktreeState(repoPath: string): Promise<RemoteWorktr
   return { repoPath, worktrees, benches }
 }
 
-async function pushState(repoPath: string): Promise<void> {
+/**
+ * Push the current worktree + bench state for a repo to iOS.
+ *
+ * Exported because the titling path renames a worktree outside any iOS command
+ * and must push the new name; without that the phone shows the slug until its
+ * next manual refresh.
+ */
+export async function pushWorktreeState(repoPath: string): Promise<void> {
   const stateForRepo = await buildWorktreeState(repoPath)
   state.remoteTransport?.send({ type: 'desktop_worktree_state', states: [stateForRepo] })
   log('pushed worktree state', {
@@ -106,7 +154,7 @@ function sendResult(
 export async function handleWorktreeCommand(cmd: RemoteCommand): Promise<boolean> {
   switch (cmd.type) {
     case 'desktop_worktree_refresh':
-      await pushState(cmd.repoPath)
+      await pushWorktreeState(cmd.repoPath)
       return true
 
     case 'desktop_worktree_open_conversation': {
@@ -131,7 +179,7 @@ export async function handleWorktreeCommand(cmd: RemoteCommand): Promise<boolean
     case 'desktop_worktree_sync': {
       const result = await syncWorktreeFromSource(cmd.worktreePath, cmd.sourceBranch)
       sendResult('sync', result)
-      await pushState(cmd.repoPath)
+      await pushWorktreeState(cmd.repoPath)
       return true
     }
 
@@ -143,46 +191,46 @@ export async function handleWorktreeCommand(cmd: RemoteCommand): Promise<boolean
         sourceBranch: cmd.sourceBranch,
       })
       sendResult('land', result)
-      await pushState(cmd.repoPath)
+      await pushWorktreeState(cmd.repoPath)
       return true
     }
 
     case 'desktop_bench_rebuild': {
       const result = await rebuildWorkspace(cmd.repoPath, cmd.sourceBranch)
       sendResult('rebuild', result)
-      await pushState(cmd.repoPath)
+      await pushWorktreeState(cmd.repoPath)
       return true
     }
 
     case 'desktop_bench_update_member': {
       const result = await updateMember(cmd.repoPath, cmd.sourceBranch, cmd.worktreePath)
       sendResult('update', result)
-      await pushState(cmd.repoPath)
+      await pushWorktreeState(cmd.repoPath)
       return true
     }
 
     case 'desktop_bench_update_all': {
       const result = await updateAllStale(cmd.repoPath, cmd.sourceBranch)
       sendResult('update_all', result)
-      await pushState(cmd.repoPath)
+      await pushWorktreeState(cmd.repoPath)
       return true
     }
 
     case 'desktop_bench_set_enabled':
       setMemberEnabled(cmd.repoPath, cmd.sourceBranch, cmd.worktreePath, cmd.enabled)
-      await pushState(cmd.repoPath)
+      await pushWorktreeState(cmd.repoPath)
       return true
 
     case 'desktop_bench_add_member': {
       const result = await addMember(cmd.repoPath, cmd.sourceBranch, cmd.worktreePath, cmd.branchName)
       if (!result.ok) warn('add member refused', { branch: cmd.branchName, error: result.error ?? '' })
-      await pushState(cmd.repoPath)
+      await pushWorktreeState(cmd.repoPath)
       return true
     }
 
     case 'desktop_bench_remove_member':
       removeMember(cmd.repoPath, cmd.sourceBranch, cmd.worktreePath)
-      await pushState(cmd.repoPath)
+      await pushWorktreeState(cmd.repoPath)
       return true
 
     default:

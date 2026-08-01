@@ -14,6 +14,18 @@ struct WorktreeRowView: View {
     let onSync: () -> Void
     let onLand: () -> Void
 
+    /// "2 conflicts" when the count is known, otherwise the operation name.
+    private var conflictChipText: String {
+        if let count = worktree.conflictedCount, count > 0 {
+            return count == 1 ? "1 conflict" : "\(count) conflicts"
+        }
+        switch worktree.operationState {
+        case .merging: return "merging"
+        case .cherryPicking: return "cherry-picking"
+        default: return "rebasing"
+        }
+    }
+
     var body: some View {
         Button(action: onOpen) {
             VStack(alignment: .leading, spacing: 2) {
@@ -23,7 +35,11 @@ struct WorktreeRowView: View {
                         .strokeBorder(worktree.isDirty ? Color.green : Color.secondary, lineWidth: 1)
                         .frame(width: 8, height: 8)
 
-                    Text(worktree.label)
+                    // Title-first: the desktop names a worktree from the
+                    // first prompt sent inside it, and that is the only string
+                    // here that says what the work is about. The branch stays
+                    // beside it because every git verb names the branch.
+                    Text(worktree.displayName)
                         .font(.subheadline.weight(.medium))
                         .lineLimit(1)
 
@@ -33,6 +49,20 @@ struct WorktreeRowView: View {
                         .lineLimit(1)
 
                     Spacer(minLength: 4)
+
+                    // An in-progress conflicted operation outranks every other
+                    // badge: the worktree is mid-rebase and its other numbers
+                    // are conservative defaults. Resolution is desktop-only;
+                    // this chip keeps the state visible instead of the worktree
+                    // looking healthy (or vanishing, as it once did).
+                    if worktree.operationState != nil {
+                        HStack(spacing: 2) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                            Text(conflictChipText)
+                        }
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                    }
 
                     if worktree.unlandedCommitCount > 0 {
                         Text("\(worktree.unlandedCommitCount)↑")
@@ -72,8 +102,12 @@ struct WorktreeRowView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                    if worktree.openTabId != nil {
-                        Text("open")
+                    // Names the COUNT when several conversations live in the
+                    // worktree. A single "open" could not distinguish one from
+                    // four, which is exactly what the operator wants to know.
+                    if !worktree.openConversations.isEmpty {
+                        Text(worktree.openConversations.count == 1
+                             ? "open" : "open · \(worktree.openConversations.count)")
                             .font(.caption2)
                             .foregroundStyle(.tint)
                     }
@@ -91,7 +125,7 @@ struct WorktreeRowView: View {
         }
         .buttonStyle(.plain)
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            if worktree.needsSync && worktree.sourceBranch != nil {
+            if worktree.needsSync && worktree.sourceBranch != nil && worktree.operationState == nil {
                 Button {
                     onSync()
                 } label: {
@@ -104,8 +138,17 @@ struct WorktreeRowView: View {
             Button {
                 onOpen()
             } label: {
-                Label(worktree.openTabId == nil ? "Open conversation" : "Go to conversation",
+                Label(worktree.openConversations.isEmpty ? "Open conversation" : "Go to conversation",
                       systemImage: "bubble.left")
+            }
+            // The conversations by name: the phone has no hover, so the menu
+            // is where "what is actually running in here" belongs.
+            if !worktree.openConversations.isEmpty {
+                Section("Open here") {
+                    ForEach(worktree.openConversations) { conversation in
+                        Text(conversation.title)
+                    }
+                }
             }
             if worktree.sourceBranch != nil {
                 Button {
@@ -113,14 +156,14 @@ struct WorktreeRowView: View {
                 } label: {
                     Label("Sync from \(worktree.sourceBranch ?? "source")", systemImage: "arrow.triangle.pull")
                 }
-                .disabled(worktree.isDirty)
+                .disabled(worktree.isDirty || worktree.operationState != nil)
 
                 Button {
                     onLand()
                 } label: {
                     Label("Land into \(worktree.sourceBranch ?? "source")", systemImage: "arrow.down.to.line")
                 }
-                .disabled(worktree.isDirty || worktree.unlandedCommitCount == 0)
+                .disabled(worktree.isDirty || worktree.unlandedCommitCount == 0 || worktree.operationState != nil)
             }
         }
     }
@@ -148,7 +191,9 @@ struct BenchMemberRowView: View {
                 .buttonStyle(.plain)
 
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(member.label)
+                    // Same title-first rule as the worktree rows: a bench of
+                    // hex slugs says nothing about what is being integrated.
+                    Text(member.displayName)
                         .font(.subheadline.weight(.medium))
                         .lineLimit(1)
                     Text(member.branchName)
@@ -158,6 +203,12 @@ struct BenchMemberRowView: View {
 
                 Spacer(minLength: 4)
 
+                if !member.openConversations.isEmpty {
+                    Text(member.openConversations.count == 1
+                         ? "open" : "open · \(member.openConversations.count)")
+                        .font(.caption2)
+                        .foregroundStyle(.tint)
+                }
                 statusLabel
                 if busy { ProgressView().controlSize(.mini) }
             }
@@ -193,6 +244,10 @@ struct BenchMemberRowView: View {
         case .integrated:
             Label("@\(String(member.pinnedSha.prefix(7)))", systemImage: "checkmark.circle.fill")
                 .font(.caption2).labelStyle(.titleOnly).foregroundStyle(.green)
+        case .pending:
+            // No sha: the pin carries no commits, so showing one would claim the
+            // bench holds a contribution that does not exist.
+            Text("no commits yet").font(.caption2).foregroundStyle(.secondary)
         case .landed:
             Label("landed", systemImage: "arrow.down.to.line")
                 .font(.caption2).labelStyle(.titleOnly).foregroundStyle(.green)

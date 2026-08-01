@@ -107,7 +107,7 @@ struct WorktreeListView: View {
                     viewModel.openBenchConversation(repoPath: repoPath, sourceBranch: bench.sourceBranch)
                     Haptic.medium()
                 } label: {
-                    Label(bench.openTabId == nil ? "Open conversation" : "Go to conversation",
+                    Label(bench.openConversations.isEmpty ? "Open conversation" : "Go to conversation",
                           systemImage: "bubble.left")
                         .font(.caption)
                 }

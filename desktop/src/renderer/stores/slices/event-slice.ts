@@ -357,10 +357,6 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                 if (usePreferencesStore.getState().expandToolResults && ['Write', 'Edit', 'NotebookEdit'].includes(targetTool.toolName || '')) {
                   targetTool.autoExpandResult = true
                 }
-                const FILE_WRITE_TOOLS = ['Write', 'Edit', 'NotebookEdit', 'MultiEdit']
-                if (!event.isError && FILE_WRITE_TOOLS.includes(targetTool.toolName || '')) {
-                  updated.hasFileActivity = true
-                }
               }
               messages = msgs3
               break

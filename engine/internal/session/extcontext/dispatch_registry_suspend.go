@@ -8,18 +8,52 @@ import (
 // reviveCh is the channel runChild blocks on; a send on it causes the loop to
 // restart the LLM run. pendingChildIDs is the set of child dispatch IDs the
 // agent is waiting on (empty for bare suspend() — revives on the next
-// sendPrompt regardless of origin). Thread-safe.
-func (r *DispatchRegistry) SetSuspendedState(id string, reviveCh chan struct{}, pendingChildIDs []string) {
+// sendPrompt regardless of origin).
+//
+// Pending IDs are pruned against the entry's already-recorded child results:
+// a child that completed in the window between the parent's park emission and
+// this arming has already fired its NotifyChildComplete (a no-op — ReviveCh
+// was nil) and will never notify again, so counting it as pending would park
+// the parent forever. Returns false when the prune empties a non-empty
+// pending set — the wait is already satisfied and the caller must revive
+// immediately instead of blocking. Returns true when the dispatch is parked
+// (or unknown, the historical no-op). Thread-safe.
+func (r *DispatchRegistry) SetSuspendedState(id string, reviveCh chan struct{}, pendingChildIDs []string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	d, ok := r.dispatches[id]
 	if !ok {
 		utils.LogWithFields(utils.LevelWarn, "session.extcontext.dispatch_registry", "setsuspendedstate: dispatch not found (no-op)", map[string]any{"run_id": id})
-		return
+		return true
+	}
+
+	// Prune children that already completed (their results are recorded on
+	// this entry); they will never notify again.
+	if len(pendingChildIDs) > 0 && len(d.CompletedChildResults) > 0 {
+		done := make(map[string]struct{}, len(d.CompletedChildResults))
+		for _, rec := range d.CompletedChildResults {
+			done[rec.ChildID] = struct{}{}
+		}
+		pruned := pendingChildIDs[:0:0]
+		for _, cid := range pendingChildIDs {
+			if _, completed := done[cid]; completed {
+				utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "setsuspendedstate: pending child already completed, pruned", map[string]any{"run_id": id, "reason": cid})
+				continue
+			}
+			pruned = append(pruned, cid)
+		}
+		if len(pruned) == 0 {
+			// Every awaited child already finished: the park is already
+			// satisfied. Do not arm; the caller revives immediately.
+			utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "setsuspendedstate: all awaited children already complete, immediate revive", map[string]any{"run_id": id, "count": len(pendingChildIDs)})
+			return false
+		}
+		pendingChildIDs = pruned
 	}
 
 	d.ReviveCh = reviveCh
+	d.Suspended = true
 	if len(pendingChildIDs) > 0 {
 		d.PendingChildren = make(map[string]struct{}, len(pendingChildIDs))
 		for _, cid := range pendingChildIDs {
@@ -29,6 +63,7 @@ func (r *DispatchRegistry) SetSuspendedState(id string, reviveCh chan struct{}, 
 		d.PendingChildren = nil
 	}
 	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "setsuspendedstate: dispatch parked", map[string]any{"run_id": id, "count": len(pendingChildIDs)})
+	return true
 }
 
 // ClearSuspendedState removes the suspend state from a dispatch entry after
@@ -44,6 +79,7 @@ func (r *DispatchRegistry) ClearSuspendedState(id string) {
 	}
 	d.ReviveCh = nil
 	d.PendingChildren = nil
+	d.Suspended = false
 }
 
 // NotifyChildComplete removes childID from a suspended dispatch's pending set.
@@ -93,36 +129,42 @@ func (r *DispatchRegistry) NotifyChildComplete(dispatchID, childID string) bool 
 	return true
 }
 
-// SignalReviveForSession signals the reviveCh of any suspended dispatch whose
-// session ID matches sessionID. This is the hook that sendPrompt calls after
-// queueing a new user message on a session that may host a suspended dispatch.
-// For bare suspend() calls (PendingChildren nil), the revive fires immediately
-// because the new message is already in the conversation. Thread-safe.
+// SignalReviveForSession signals the reviveCh of EVERY suspended dispatch
+// whose session ID matches sessionID and whose park is a bare suspend
+// (PendingChildren nil). This is the hook that sendPrompt calls after
+// queueing a new user message on a session that may host suspended
+// dispatches. For bare suspend() calls the revive fires immediately because
+// the new message is already in the conversation; fan-out parks
+// (PendingChildren non-nil) are deliberately skipped — only
+// NotifyChildComplete may drive those. Returns true when at least one
+// dispatch was signalled. All matches are woken (not just the first): two
+// bare-parked dispatches on one session must both see the prompt, and
+// leaving one parked strands it until timeout. Thread-safe.
 func (r *DispatchRegistry) SignalReviveForSession(sessionID string) bool {
 	r.mu.Lock()
 
-	var matched *activeDispatch
+	var matched []*activeDispatch
+	var channels []chan struct{}
 	for _, d := range r.dispatches {
 		if d.SessionID == sessionID && d.ReviveCh != nil && d.PendingChildren == nil {
-			matched = d
-			break
+			matched = append(matched, d)
+			channels = append(channels, d.ReviveCh)
+			d.ReviveCh = nil
 		}
 	}
+	r.mu.Unlock()
 
-	if matched == nil {
-		r.mu.Unlock()
+	if len(matched) == 0 {
 		return false
 	}
 
-	ch := matched.ReviveCh
-	matched.ReviveCh = nil
-	r.mu.Unlock()
-
-	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "signalreviveforsession: reviving suspended dispatch", map[string]any{"run_id": matched.ID, "model": matched.Name, "session_id": sessionID})
-	select {
-	case ch <- struct{}{}:
-	default:
-		utils.LogWithFields(utils.LevelWarn, "session.extcontext.dispatch_registry", "signalreviveforsession: revive channel full", map[string]any{"run_id": matched.ID})
+	for i, d := range matched {
+		utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "signalreviveforsession: reviving suspended dispatch", map[string]any{"run_id": d.ID, "model": d.Name, "session_id": sessionID, "count": len(matched)})
+		select {
+		case channels[i] <- struct{}{}:
+		default:
+			utils.LogWithFields(utils.LevelWarn, "session.extcontext.dispatch_registry", "signalreviveforsession: revive channel full", map[string]any{"run_id": d.ID})
+		}
 	}
 	return true
 }

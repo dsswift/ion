@@ -87,6 +87,34 @@ func checkDispatchEligibility(
 		utils.LogWithFields(utils.LevelWarn, "server", "eligibility guard: dispatcher not found for allowlist; skipping allowlist check", map[string]any{"current_dispatch_id": currentDispatchId, "session_key": sa.SessionKey()})
 		return nil
 	}
+	policy, _ := registry.SubAgentPolicyForID(currentDispatchId) //nolint:errcheck // found above guarantees the entry exists; a racing deregister degrades to "" (historic semantics), which is the safe default
+	switch policy {
+	case "unrestricted":
+		// Explicit opt-out: the allowlist layer is inert for this dispatcher
+		// (the self-dispatch rail above still applied). Logged so the branch
+		// taken is reconstructible.
+		utils.LogWithFields(utils.LevelInfo, "server", "eligibility guard: allowlist skipped (policy=unrestricted)", map[string]any{"requested_name": requestedName, "current_dispatch_id": currentDispatchId, "session_key": sa.SessionKey()})
+		return nil
+	case "allowlist":
+		// Enforce membership even when the list is empty: an empty
+		// AllowedSubAgents under this policy means the dispatcher is a LEAF
+		// and may dispatch nothing. This is the semantics the historic
+		// non-empty-only check could not express — a harness that derives
+		// the allowlist from its agent graph hands a leaf an empty list
+		// intending "no children", and without the policy the engine read
+		// that as "unrestricted" (the goat-conversation depth-cap wedge:
+		// a leaf specialist re-dispatched its own lead).
+		if !nameInList(requestedName, allowedSubAgents) {
+			utils.LogWithFields(utils.LevelWarn, "server", "eligibility guard: blocked dispatch (policy=allowlist)", map[string]any{"requested_name": requestedName, "allowed_sub_agents": allowedSubAgents, "current_dispatch_id": currentDispatchId, "session_key": sa.SessionKey()})
+			if len(allowedSubAgents) == 0 {
+				return fmt.Errorf("%w: agent may not dispatch any sub-agents (its allowed sub-agent list is empty under the allowlist policy — it is a leaf)", ErrSubAgentNotAllowed)
+			}
+			return fmt.Errorf("%w: agent %q is not in the dispatcher's allowed sub-agents %v", ErrSubAgentNotAllowed, requestedName, allowedSubAgents)
+		}
+		utils.LogWithFields(utils.LevelInfo, "server", "eligibility guard: allowed dispatch (policy=allowlist)", map[string]any{"requested_name": requestedName, "current_dispatch_id": currentDispatchId, "session_key": sa.SessionKey()})
+		return nil
+	}
+	// Historic semantics (policy ""): enforce only when the list is non-empty.
 	if len(allowedSubAgents) > 0 {
 		if !nameInList(requestedName, allowedSubAgents) {
 			utils.LogWithFields(utils.LevelWarn, "server", "eligibility guard: blocked dispatch not in dispatcher's", map[string]any{"requested_name": requestedName, "allowed_sub_agents": allowedSubAgents, "current_dispatch_id": currentDispatchId, "session_key": sa.SessionKey()})
@@ -134,6 +162,7 @@ func registerDispatch(
 	childDepth int,
 	childRunID string,
 	allowedSubAgents []string,
+	subAgentPolicy string,
 ) {
 	if registry == nil {
 		return
@@ -141,4 +170,5 @@ func registerDispatch(
 	registry.RegisterWithID(agentID, name, cancel, child, sessionKey, parentDispatchID, childDepth)
 	registry.SetChildRunID(agentID, childRunID)
 	registry.SetAllowedSubAgents(agentID, allowedSubAgents)
+	registry.SetSubAgentPolicy(agentID, subAgentPolicy)
 }

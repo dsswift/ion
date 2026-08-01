@@ -87,6 +87,16 @@ const api: IonAPI = {
     ipcRenderer.on('ion:remote-open-bench-conversation', handler)
     return () => ipcRenderer.removeListener('ion:remote-open-bench-conversation', handler)
   },
+  // A worktree earned (or was given) a human title. Both windows listen so the
+  // overlay and the ATV mirror rename the row at the same moment.
+  onWorktreeTitled: (callback) => {
+    const handler = (
+      _e: Electron.IpcRendererEvent,
+      arg: { repoPath: string; worktreePath: string; title: string },
+    ) => callback(arg)
+    ipcRenderer.on('ion:worktree-titled', handler)
+    return () => ipcRenderer.removeListener('ion:worktree-titled', handler)
+  },
   executeBash: (id, command, cwd) => ipcRenderer.invoke(IPC.EXECUTE_BASH, { id, command, cwd }),
   cancelBash: (id) => ipcRenderer.send(IPC.CANCEL_BASH, id),
   sendRemote: (event) => ipcRenderer.send(IPC.REMOTE_SEND, event),
@@ -153,13 +163,15 @@ const api: IonAPI = {
   gitRevert: (directory: string, hash: string) => ipcRenderer.invoke(IPC.GIT_REVERT, { directory, hash }),
   gitReset: (directory: string, hash: string, mode: 'soft' | 'mixed' | 'hard') => ipcRenderer.invoke(IPC.GIT_RESET, { directory, hash, mode }),
   gitBlame: (directory: string, path: string) => ipcRenderer.invoke(IPC.GIT_BLAME, { directory, path }),
-  gitConflicts: (directory: string) => ipcRenderer.invoke(IPC.GIT_CONFLICTS, { directory }),
-  gitConflictFile: (directory: string, path: string) => ipcRenderer.invoke(IPC.GIT_CONFLICT_FILE, { directory, path }),
   gitResolveConflict: (directory: string, path: string, content: string) => ipcRenderer.invoke(IPC.GIT_RESOLVE_CONFLICT, { directory, path, content }),
   gitRebaseTodo: (directory: string, onto: string) => ipcRenderer.invoke(IPC.GIT_REBASE_TODO, { directory, onto }),
   gitRebaseExec: (directory: string, onto: string, commits: Array<{ hash: string; action: string }>) => ipcRenderer.invoke(IPC.GIT_REBASE_EXEC, { directory, onto, commits }),
   gitRebaseAbort: (directory: string) => ipcRenderer.invoke(IPC.GIT_REBASE_ABORT, { directory }),
   gitRebaseContinue: (directory: string) => ipcRenderer.invoke(IPC.GIT_REBASE_CONTINUE, { directory }),
+  gitOpState: (directory: string) => ipcRenderer.invoke(IPC.GIT_OP_STATE, { directory }),
+  gitConflictStages: (directory: string, path: string) => ipcRenderer.invoke(IPC.GIT_CONFLICT_STAGES, { directory, path }),
+  gitConflictAccept: (directory: string, path: string, side: 'ours' | 'theirs') =>
+    ipcRenderer.invoke(IPC.GIT_CONFLICT_ACCEPT, { directory, path, side }),
   gitSubscribe: (directory) => ipcRenderer.invoke(IPC.GIT_SUBSCRIBE, { directory }),
   gitUnsubscribe: (directory) => ipcRenderer.invoke(IPC.GIT_UNSUBSCRIBE, { directory }),
   gitRefresh: (directory) => ipcRenderer.invoke(IPC.GIT_REFRESH, { directory }),
@@ -185,7 +197,10 @@ const api: IonAPI = {
   gitWorktreeLand: (args) => ipcRenderer.invoke(IPC.GIT_WORKTREE_LAND, args),
   gitWorktreeSync: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_SYNC, { worktreePath, sourceBranch }),
   gitWorktreeBaseStatus: (worktreePath, sourceBranch) => ipcRenderer.invoke(IPC.GIT_WORKTREE_BASE_STATUS, { worktreePath, sourceBranch }),
-  gitWorktreeInventory: (repoPath) => ipcRenderer.invoke(IPC.GIT_WORKTREE_INVENTORY, { repoPath }),
+  gitWorktreeInventory: (repoPath, backfillTitles) => ipcRenderer.invoke(IPC.GIT_WORKTREE_INVENTORY, { repoPath, backfillTitles }),
+  gitWorktreeAutotitle: (workingDirectory, text) =>
+    ipcRenderer.invoke(IPC.GIT_WORKTREE_AUTOTITLE, { workingDirectory, text }),
+  gitWorktreeSetTitle: (args) => ipcRenderer.invoke(IPC.GIT_WORKTREE_SET_TITLE, args),
   benchList: (repoPath) => ipcRenderer.invoke(IPC.BENCH_LIST, { repoPath }),
   benchEnsure: (repoPath, sourceBranch) => ipcRenderer.invoke(IPC.BENCH_ENSURE, { repoPath, sourceBranch }),
   benchAddMember: (args) => ipcRenderer.invoke(IPC.BENCH_ADD_MEMBER, args),
@@ -254,8 +269,16 @@ const api: IonAPI = {
   pluginList: () => ipcRenderer.invoke('plugin:list'),
   pluginRemove: (name) => ipcRenderer.invoke('plugin:remove', name),
 
+  // ─── MCP server administration ───
+  mcpList: () => ipcRenderer.invoke(IPC.MCP_LIST),
+  mcpAdd: (request) => ipcRenderer.invoke(IPC.MCP_ADD, request),
+  mcpRemove: (name) => ipcRenderer.invoke(IPC.MCP_REMOVE, name),
+  mcpLogin: (name, scope) => ipcRenderer.invoke(IPC.MCP_LOGIN, { name, scope }),
+  mcpLogout: (name) => ipcRenderer.invoke(IPC.MCP_LOGOUT, name),
+
   // ─── Model & provider management ───
   listModels: () => ipcRenderer.invoke(IPC.LIST_MODELS),
+  resolveModelTier: (tier: string) => ipcRenderer.invoke(IPC.MODEL_TIER_RESOLVE, { tier }),
   storeCredential: (provider, credential) => ipcRenderer.invoke(IPC.STORE_CREDENTIAL, { provider, credential }),
   refreshModels: (provider) => ipcRenderer.invoke(IPC.REFRESH_MODELS, { provider }),
 

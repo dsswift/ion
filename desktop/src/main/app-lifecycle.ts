@@ -255,7 +255,7 @@ export function setupAppLifecycle(): void {
     // install-assets, and kickstarts the daemon. On non-macOS this is a no-op.
     await ensureEngineDaemon()
     if (backendConfigChanged) {
-      restartEngineDaemon()
+      await restartEngineDaemon()
     }
 
     // Configure egress forwarder from engine.json before connecting — that

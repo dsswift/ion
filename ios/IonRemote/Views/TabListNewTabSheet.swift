@@ -106,7 +106,7 @@ extension TabListNewTabSheet {
                                 Spacer()
                                 Text("\(bench.enabledMemberCount) member\(bench.enabledMemberCount == 1 ? "" : "s")")
                                     .font(.caption2).foregroundStyle(.secondary)
-                                if bench.openTabId != nil {
+                                if !bench.openConversations.isEmpty {
                                     Text("open").font(.caption2).foregroundStyle(.tint)
                                 }
                             }
@@ -120,7 +120,9 @@ extension TabListNewTabSheet {
                             HStack(spacing: 8) {
                                 Image(systemName: "arrow.triangle.branch")
                                     .foregroundStyle(.green)
-                                Text(wt.label).lineLimit(1)
+                                // Title-first, matching every other worktree
+                                // surface on both clients.
+                                Text(wt.displayName).lineLimit(1)
                                 Spacer()
                                 if wt.isDirty {
                                     Text("dirty").font(.caption2).foregroundStyle(.green)
@@ -128,7 +130,7 @@ extension TabListNewTabSheet {
                                 if wt.needsSync {
                                     Text("base moved").font(.caption2).foregroundStyle(.orange)
                                 }
-                                if wt.openTabId != nil {
+                                if !wt.openConversations.isEmpty {
                                     Text("open").font(.caption2).foregroundStyle(.tint)
                                 }
                             }

@@ -83,6 +83,38 @@ type ClientCommand struct {
 	// provider's configured default audience.
 	OidcAudience string `json:"oidcAudience,omitempty"`
 
+	// mcp_add / mcp_remove / mcp_login / mcp_logout: which configured MCP
+	// server the command applies to. Matches the key under engine.json's
+	// mcpServers map.
+	McpName string `json:"mcpName,omitempty"`
+
+	// mcp_add: transport for the new server. One of "http", "sse", "ws"
+	// (aliases: "websocket"), or "stdio". Empty is resolved by the engine
+	// from the other fields — a server with a URL defaults to "http", one
+	// with a command to "stdio" — so a consumer that knows only the endpoint
+	// need not restate the obvious.
+	McpTransport string `json:"mcpTransport,omitempty"`
+
+	// mcp_add: endpoint for a network transport (http/sse/ws).
+	McpURL string `json:"mcpUrl,omitempty"`
+
+	// mcp_add: executable and arguments for the stdio transport. The engine
+	// spawns McpCommand with McpArgs and speaks MCP over its stdin/stdout.
+	McpCommand string   `json:"mcpCommand,omitempty"`
+	McpArgs    []string `json:"mcpArgs,omitempty"`
+
+	// mcp_add: environment variables for a stdio server's subprocess, and
+	// static HTTP headers for a network transport. Headers are the
+	// pre-shared-token path; a server using OAuth needs none of them (see
+	// mcp_login).
+	McpEnv     map[string]string `json:"mcpEnv,omitempty"`
+	McpHeaders map[string]string `json:"mcpHeaders,omitempty"`
+
+	// mcp_login: OAuth scope to request, overriding whatever the server's
+	// protected-resource metadata advertises. Empty uses the discovered
+	// (or operator-configured) scope, which is the right default.
+	McpScope string `json:"mcpScope,omitempty"`
+
 	// list_directory: absolute path to enumerate on the engine's host.
 	// Empty or "~" resolves to the engine user's home directory. ShowHidden
 	// includes dotfiles in the result.
@@ -278,8 +310,13 @@ var validCommands = map[string]bool{
 	"query_session_status": true,
 	"migrate_conversation": true,
 	"list_models":          true,
-	"store_credential":     true,
-	"refresh_models":       true,
+	// resolve_model_tier: map a tier name from ~/.ion/models.json to its
+	// configured model + fallback chain. Consumers gate tier-dependent
+	// features on this (e.g. "requires a standard tier") instead of parsing
+	// models.json themselves — the engine owns the file's semantics.
+	"resolve_model_tier": true,
+	"store_credential":   true,
+	"refresh_models":     true,
 	// provider_login / provider_login_cancel / provider_logout: delegated-CLI
 	// (codex/claude-code/grok/cursor) interactive auth lifecycle. The engine
 	// drives the CLI login/logout and broadcasts engine_provider_login stage
@@ -313,6 +350,18 @@ var validCommands = map[string]bool{
 	// the engine keeps the refresh token; clients pull ephemeral access
 	// tokens on demand.
 	"oidc_token":     true,
+	// mcp_list / mcp_add / mcp_remove / mcp_login / mcp_logout: MCP server
+	// administration. The engine owns the mechanism — engine.json CRUD, OAuth
+	// metadata discovery, dynamic client registration, the PKCE exchange, and
+	// token storage — so every consumer drives the same surface instead of
+	// reimplementing it. mcp_login returns an authorization URL immediately and
+	// completes the exchange on a background goroutine; state transitions
+	// broadcast engine_mcp_servers (a complete snapshot) to all clients.
+	"mcp_list":       true,
+	"mcp_add":        true,
+	"mcp_remove":     true,
+	"mcp_login":      true,
+	"mcp_logout":     true,
 	"get_host_info":  true,
 	"list_directory": true,
 	// clear_conversation_file: wipes the LLM-visible Messages on a stored
@@ -546,6 +595,9 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "text") && hasNonEmptyString(raw, "message")
 	case "list_models":
 		return true
+	case "resolve_model_tier":
+		// The tier name rides in `text`.
+		return hasNonEmptyString(raw, "text")
 	case "store_credential":
 		return hasNonEmptyString(raw, "provider") && hasString(raw, "credential")
 	case "provider_login", "provider_login_cancel", "provider_logout":
@@ -609,6 +661,17 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		return true
 	case "plugin_remove":
 		return hasNonEmptyString(raw, "label")
+	case "mcp_list":
+		// Stateless read. path (project directory) is optional and only scopes
+		// the project config layer; global servers always resolve.
+		return true
+	case "mcp_add":
+		// mcpName is required; the transport and its endpoint are validated in
+		// the dispatch, which can explain WHICH combination is wrong rather
+		// than rejecting the frame as unparseable.
+		return hasNonEmptyString(raw, "mcpName")
+	case "mcp_remove", "mcp_login", "mcp_logout":
+		return hasNonEmptyString(raw, "mcpName")
 	}
 	return false
 }

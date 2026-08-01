@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -57,6 +56,24 @@ func registerConnection(name string, conn *Connection) {
 	connRegistry[name] = conn
 }
 
+// Register (re)points the package-level registry at a connection.
+//
+// Connect already registers, so this exists for one specific ordering problem:
+// replacing a connection means closing the old one, and Close unregisters by
+// NAME — which evicts the new connection's entry, because both share the name.
+// A caller that closes a superseded connection after opening its replacement
+// calls this to restore the live entry. Without it, ListMcpResources and
+// ReadMcpResource would report the server as not connected.
+func Register(conn *Connection) {
+	if conn == nil {
+		return
+	}
+	registerConnection(conn.name, conn)
+	utils.LogWithFields(utils.LevelDebug, "mcp", "connection re-registered in package registry", map[string]any{
+		"serverName": conn.name,
+	})
+}
+
 // unregisterConnection removes a connection from the registry.
 func unregisterConnection(name string) {
 	connRegistryMu.Lock()
@@ -92,6 +109,11 @@ func ReadMcpResource(serverName, uri string) (*McpResourceContent, error) {
 	defer cancel()
 	return conn.ReadResource(ctx, uri)
 }
+
+// mcpProtocolVersion is the MCP protocol revision this client speaks. Sent in
+// the initialize handshake, and advisory on the OAuth metadata fetches in
+// discovery.go (some gateways route on the header).
+const mcpProtocolVersion = "2024-11-05"
 
 const mcpCallTimeoutDefault = 60 * time.Second
 
@@ -168,8 +190,14 @@ func Connect(name string, config types.McpServerConfig) (*Connection, error) {
 	for k, v := range config.Headers {
 		headers[k] = v
 	}
+	// Token resolution runs whether or not an explicit `oauth` block exists:
+	// a server authenticated via `ion mcp login` (dynamic registration, no
+	// engine.json oauth block) has its client stored, and resolveOAuthHeaders
+	// finds it there. Gating this on config.OAuth != nil would make every
+	// discovery-authenticated server connect unauthenticated.
+	var oauthCfg *OAuthConfig
 	if config.OAuth != nil {
-		oauthCfg := &OAuthConfig{
+		oauthCfg = &OAuthConfig{
 			ClientID:     config.OAuth.ClientID,
 			ClientSecret: config.OAuth.ClientSecret,
 			AuthURL:      config.OAuth.AuthURL,
@@ -178,10 +206,15 @@ func Connect(name string, config types.McpServerConfig) (*Connection, error) {
 			RedirectURI:  config.OAuth.RedirectURI,
 			UsePKCE:      config.OAuth.UsePKCE,
 		}
-		if authHeaders := resolveOAuthHeaders(name, oauthCfg); authHeaders != nil {
-			for k, v := range authHeaders {
-				headers[k] = v
-			}
+	}
+	// Build a per-server OAuth resolver. The http transport consults it on
+	// every request so a refreshed token reaches the wire mid-session; the SSE
+	// and WebSocket transports have no per-request seam here, so they still take
+	// a connect-time header (see the notes at their construction below).
+	oauthResolver := newTokenResolver(name, oauthCfg)
+	if authHeaders := resolveOAuthHeaders(name, oauthCfg); authHeaders != nil {
+		for k, v := range authHeaders {
+			headers[k] = v
 		}
 	}
 
@@ -207,14 +240,40 @@ func Connect(name string, config types.McpServerConfig) (*Connection, error) {
 	case "stdio", "":
 		transport, err = newStdioTransport(name, config)
 	case "sse":
-		transport, err = newSSETransport(name, config, headers, userToken)
+		var sseTr *sseTransport
+		sseTr, err = newSSETransport(name, config, headers, userToken)
+		if sseTr != nil {
+			sseTr.oauth = oauthResolver
+			transport = sseTr
+		}
 	case "http":
-		transport, err = newHTTPTransport(config.URL, headers, userToken)
+		var httpTr *httpTransport
+		httpTr, err = newHTTPTransport(config.URL, headers, userToken)
+		if httpTr != nil {
+			// Per-request OAuth resolution + the 401 retry. Without this the
+			// Authorization header would stay frozen at its connect-time value
+			// and every tool call after the token's expiry would 401 while the
+			// stored refresh token went unused.
+			httpTr.oauth = oauthResolver
+			transport = httpTr
+		}
 	case "ws", "websocket":
-		// WebSocket headers apply once at dial time; a forwarded token is
-		// resolved fresh here and rides the upgrade request. Refreshing it
-		// requires a reconnect -- prefer the http transport for
-		// token-forwarded servers.
+		// WebSocket headers apply once at dial time, so neither an operator
+		// token nor this server's OAuth token can be refreshed per request the
+		// way http and sse refresh theirs. Both are resolved fresh here and ride
+		// the upgrade request; renewing either requires a reconnect. Prefer the
+		// http transport for any server whose credential expires -- the
+		// connect-time header on a long-lived socket is exactly the staleness the
+		// resolver exists to avoid.
+		if oauthResolver != nil {
+			if value, tokenErr := oauthResolver.Token(); tokenErr != nil {
+				utils.LogWithFields(utils.LevelError, "mcp", "oauth token unavailable for websocket dial", map[string]any{
+					"serverName": name, "error": tokenErr.Error(),
+				})
+			} else {
+				headers["Authorization"] = value
+			}
+		}
 		if userToken != nil {
 			token, tokenErr := userToken()
 			if tokenErr != nil {
@@ -244,7 +303,7 @@ func Connect(name string, config types.McpServerConfig) (*Connection, error) {
 		if closeErr := transport.Close(); closeErr != nil {
 			utils.LogWithFields(utils.LevelInfo, "mcp", "transport close after initialize failure", map[string]any{"tool": name, "error": closeErr.Error()})
 		}
-		return nil, fmt.Errorf("mcp initialize %s: %w", name, err)
+		return nil, annotateAuthFailure(name, config, fmt.Errorf("mcp initialize %s: %w", name, err))
 	}
 
 	// Discover tools.
@@ -253,7 +312,7 @@ func Connect(name string, config types.McpServerConfig) (*Connection, error) {
 		if closeErr := transport.Close(); closeErr != nil {
 			utils.LogWithFields(utils.LevelInfo, "mcp", "transport close after list tools failure", map[string]any{"tool": name, "error": closeErr.Error()})
 		}
-		return nil, fmt.Errorf("mcp list tools %s: %w", name, err)
+		return nil, annotateAuthFailure(name, config, fmt.Errorf("mcp list tools %s: %w", name, err))
 	}
 	conn.tools = tools
 
@@ -267,7 +326,7 @@ func (c *Connection) initialize() error {
 	ctx, cancel := context.WithTimeout(context.Background(), DefaultMetadataTimeout)
 	defer cancel()
 	resp, err := c.call(ctx, "initialize", map[string]any{
-		"protocolVersion": "2024-11-05",
+		"protocolVersion": mcpProtocolVersion,
 		"capabilities":    map[string]any{},
 		"clientInfo": map[string]any{
 			"name":    "ion-engine",
@@ -589,183 +648,5 @@ func (t *stdioTransport) Close() error {
 	// Wait reaps the child process to prevent zombies. The error from Wait is
 	// always non-nil after Kill, so we ignore it.
 	t.cmd.Wait() //nolint:errcheck // process teardown
-	return nil
-}
-
-// --- SSE transport ---
-
-type sseTransport struct {
-	baseURL   string
-	headers   map[string]string
-	msgCh     chan json.RawMessage
-	client    *http.Client
-	done      chan struct{}
-	closeOnce sync.Once
-	wg        sync.WaitGroup
-	// userToken mirrors httpTransport.userToken: per-request operator
-	// bearer resolution when config.forwardUserToken is set. Each message
-	// POST re-resolves so a long-lived stream doesn't pin an expiring
-	// token on the send path; the stream GET carries the token minted at
-	// stream open.
-	userToken func() (string, error)
-	// serverName is carried for log correlation on the stream goroutine.
-	serverName string
-}
-
-func newSSETransport(serverName string, config types.McpServerConfig, headers map[string]string, userToken func() (string, error)) (*sseTransport, error) {
-	if config.URL == "" {
-		return nil, fmt.Errorf("SSE transport requires URL")
-	}
-
-	t := &sseTransport{
-		baseURL:    strings.TrimRight(config.URL, "/"),
-		headers:    headers,
-		msgCh:      make(chan json.RawMessage, 64),
-		client:     &http.Client{},
-		done:       make(chan struct{}),
-		userToken:  userToken,
-		serverName: serverName,
-	}
-
-	// Start SSE event stream reader goroutine.
-	t.wg.Add(1)
-	go t.readEventStream()
-
-	return t, nil
-}
-
-// applyHeaders stamps the configured static headers and, when forwarding
-// is configured, the operator bearer token (which wins over any static
-// Authorization value).
-func (t *sseTransport) applyHeaders(req *http.Request) error {
-	for k, v := range t.headers {
-		req.Header.Set(k, v)
-	}
-	if t.userToken != nil {
-		token, err := t.userToken()
-		if err != nil {
-			return fmt.Errorf("resolve operator token: %w", err)
-		}
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-	return nil
-}
-
-// readEventStream connects to the SSE endpoint and reads events into msgCh.
-func (t *sseTransport) readEventStream() {
-	defer t.wg.Done()
-
-	req, err := http.NewRequest(http.MethodGet, t.baseURL, nil)
-	if err != nil {
-		return
-	}
-	req.Header.Set("Accept", "text/event-stream")
-	if err := t.applyHeaders(req); err != nil {
-		utils.LogWithFields(utils.LevelError, "mcp.sse", "event stream header resolution failed", map[string]any{"serverName": t.serverName, "error": err.Error()})
-		return
-	}
-
-	resp, err := t.client.Do(req)
-	if err != nil {
-		// Connect failure: the goroutine exits, msgCh is never fed, and every
-		// tool on this server becomes unresolvable. Log so this is not silent.
-		utils.LogWithFields(utils.LevelError, "mcp.sse", "event stream connect failed", map[string]any{"serverName": t.serverName, "url": t.baseURL, "error": err.Error()})
-		return
-	}
-	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // resource close
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// A non-2xx status (401/403/500) returns a body with no `data:` lines;
-		// without this check an auth rejection looks like a healthy empty
-		// stream and downstream sees only a timeout.
-		utils.LogWithFields(utils.LevelError, "mcp.sse", "event stream non-2xx status", map[string]any{"serverName": t.serverName, "url": t.baseURL, "status": resp.StatusCode})
-		return
-	}
-
-	scanner := bufio.NewScanner(resp.Body)
-	for scanner.Scan() {
-		select {
-		case <-t.done:
-			return
-		default:
-		}
-
-		line := scanner.Text()
-		if !strings.HasPrefix(line, "data: ") {
-			continue
-		}
-		data := strings.TrimPrefix(line, "data: ")
-		data = strings.TrimSpace(data)
-		if len(data) == 0 || !json.Valid([]byte(data)) {
-			continue
-		}
-
-		select {
-		case t.msgCh <- json.RawMessage(data):
-		case <-t.done:
-			return
-		}
-	}
-}
-
-func (t *sseTransport) Send(msg json.RawMessage) error {
-	select {
-	case <-t.done:
-		return fmt.Errorf("SSE transport closed")
-	default:
-	}
-
-	req, err := http.NewRequest(http.MethodPost, t.baseURL+"/message", strings.NewReader(string(msg)))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if err := t.applyHeaders(req); err != nil {
-		return err
-	}
-
-	resp, err := t.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // resource close
-
-	if resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(resp.Body) //nolint:errcheck // best-effort read of error-response body
-		return fmt.Errorf("SSE send error (status %d): %s", resp.StatusCode, string(body))
-	}
-
-	// Some MCP servers return inline JSON-RPC responses in the POST body
-	// rather than via the event stream. Queue them like stream events.
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil // Send succeeded; read failure is non-fatal.
-	}
-	if len(body) > 0 && json.Valid(body) {
-		select {
-		case t.msgCh <- json.RawMessage(body):
-		case <-t.done:
-		}
-	}
-
-	return nil
-}
-
-func (t *sseTransport) Receive() (json.RawMessage, error) {
-	msg, ok := <-t.msgCh
-	if !ok {
-		return nil, io.EOF
-	}
-	return msg, nil
-}
-
-func (t *sseTransport) Close() error {
-	t.closeOnce.Do(func() {
-		close(t.done)
-		// Wait for the reader goroutine to exit before closing msgCh
-		// to prevent send-on-closed-channel panic.
-		t.wg.Wait()
-		close(t.msgCh)
-	})
 	return nil
 }

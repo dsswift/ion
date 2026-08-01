@@ -1,5 +1,6 @@
 ---
-description: Squash the current branch into clean conventional commits. Creates a backup branch first, reads all commits to understand logical groupings, generates a squash plan, then rebuilds the branch from a soft reset into one commit per scope per feature. Does not push.
+description: Squash the current branch into clean conventional commits. Resolves the branch's true base first (a worktree's source branch, else main), creates a backup branch, reads all commits to understand logical groupings, generates a squash plan, then rebuilds the branch from a soft reset into one commit per scope per feature. Never rewrites the source branch. Does not push.
+model: standard
 ---
 
 You are running the `/squash` command. Your job is to collapse the current branch's commits into clean conventional commits — one per code scope per logical feature — by rebuilding the branch from a soft reset (Step 7). You create a backup branch first, generate a squash plan for review, and execute it.
@@ -19,6 +20,7 @@ Any point where the protocol needs a human decision MUST be a single `AskUserQue
 **Hard rules.**
 
 - Never run on `main`. Abort immediately if the current branch is `main`.
+- **Squash only against the branch's own base, never `main` by default.** The base is the resolved `{base}` from Step 0 — the worktree's `sourceBranch` when the checkout is a registered worktree, otherwise `main`. Every range operation in this command (`git log`, `git diff`, the scope check, and above all `git reset --soft`) uses `{base}`. Treating `main` as the base inside a worktree cut from a feature branch would swallow that feature branch's commits into the squash and **rewrite history the source branch owns** — which every other worktree cut from that same source also shares. That is a destructive, cross-worktree corruption, not a local mistake. Never hardcode `main` in a range.
 - Never run `git push`. Report that changes are ready to push.
 - Preserve the full unsquashed history in the backup branch before squashing.
 - Never fabricate commit messages. Every squashed commit message must be grounded in the actual commits being squashed.
@@ -27,6 +29,63 @@ Any point where the protocol needs a human decision MUST be a single `AskUserQue
 - **Code scope isolation is mandatory; documentation may ride anywhere.** The scope-isolation rule applies to **code** files under a versioned component directory (`engine/`, `desktop/`, `relay/`, `ios/`): a commit scoped `engine` must not contain `desktop/` *code*, a commit scoped `desktop` must not contain `engine/` *code*, and so on. **Documentation files (`*.md`, anything under `docs/`) are exempt** — they do not trigger releases and may ride in any commit. Feature documentation bundles into its feature's commit (a `docs/` file under a `feat(engine)` commit is correct); only documentation *not* associated with a feature (e.g. cross-cutting `AGENTS.md` behavior changes) becomes a standalone `docs(repo)` commit, which may span directories.
 
   **Why the distinction exists.** Scopes exist *only* to drive independent component builds and version bumps. A `feat(engine)` + `feat(desktop)` pair triggers both the engine build and the desktop build to produce new releases. A `docs`-type (or `repo`-type) commit triggers no build and no version bump — it does not touch the release pipeline at all. So documentation cannot build or version anything, which means its placement relative to commit scope is irrelevant to the only thing scopes are for. The single failure mode the rule guards against is a *code* file under a versioned component directory riding in a commit whose scope doesn't match that directory — that is what makes a component's build fail to trigger (the CI/CD release pipeline, Release Damnit, uses commit scopes to detect which components changed). A bundled `docs/` file never causes that.
+
+---
+
+## Step 0: Resolve the squash base
+
+**Every range in this command is relative to `{base}`, resolved here. Do not assume `main`.**
+
+A checkout under `~/.ion/worktrees/` is a worktree cut from some **source branch** — frequently a long-lived feature branch (`josh`), not `main`. Its own new work is `{source}..HEAD`; everything before that belongs to the source branch and is shared with every other worktree cut from it.
+
+Resolve the source branch from the worktree registry, keyed by the checkout's root path:
+
+```bash
+ROOT=$(git rev-parse --show-toplevel)
+python3 -c "
+import json, os
+reg = os.path.expanduser('~/.ion/worktree-registry.json')
+root = os.path.realpath('$ROOT')
+try:
+    entries = json.load(open(reg)).get('entries', [])
+except Exception:
+    entries = []
+for e in entries:
+    if os.path.realpath(e.get('worktreePath', '')) == root:
+        print(e.get('sourceBranch') or '')
+        break
+"
+```
+
+- **Non-empty result** → that is `{base}`. This checkout is a registered worktree.
+- **Empty result / no registry / not registered** → `{base}` is `main`. This is the primary clone or an unregistered checkout.
+
+Verify the resolved base exists as a ref before using it (`git rev-parse --verify {base}`). If the registry names a branch that no longer exists locally, do **not** silently fall back to `main` — that is the exact substitution this step exists to prevent. Stop and report:
+
+> The worktree registry names source branch `{base}`, which does not exist in this checkout. Cannot determine a safe squash base. Resolve the missing branch (`git fetch`, or correct the registry) and re-run.
+
+Report the resolution before continuing:
+
+> Squash base: `{base}` (worktree source branch | primary clone default).
+
+### Guard: never rewrite the source branch
+
+Before any history rewrite, confirm the base is not itself the branch being squashed, and that the range does not extend into the source branch's own history:
+
+```bash
+git rev-parse --abbrev-ref HEAD            # current branch
+git rev-parse HEAD {base}                  # tip SHAs
+git rev-list --count {base}..HEAD          # commits to squash
+```
+
+Stop immediately, without touching history, if either holds:
+
+- **`{base}` resolves to the current branch name.** There is no range to squash and a reset would be meaningless.
+- **`HEAD` and `{base}` point at the same SHA** (`git rev-list --count {base}..HEAD` is `0`). The worktree's work is already merged into or identical to its source. Report:
+
+  > Nothing to squash — this worktree is even with its source branch `{base}`. Its commits are already part of `{base}`; squashing here would rewrite history that `{base}` and every worktree cut from it share.
+
+This guard is the last line of defence for the failure this step prevents: a squash that appears to target "the branch's commits" but is actually rewriting the shared source branch underneath every sibling worktree.
 
 ---
 
@@ -92,19 +151,25 @@ Report: "Backup branch `backup--{branch_name}` is now pointing to `{HEAD SHA}`."
 
 ---
 
-## Step 4: Count commits ahead of main
+## Step 4: Count commits ahead of the base
 
 Run:
 
 ```bash
-git log main..HEAD --oneline
+git log {base}..HEAD --oneline
 ```
 
-Count the commits. If there is exactly one commit, stop:
+Count the commits. This count is the branch's **own** work — commits it added on top of `{base}`. It is not "commits ahead of `main`", and inside a worktree the two numbers are usually very different.
 
-> Nothing to squash — the branch has a single commit. No action taken.
+If there are zero commits, stop:
 
-Print the list of commits so the user can see what's on the branch.
+> Nothing to squash — this branch is even with its base `{base}`. No action taken.
+
+If there is exactly one commit, stop:
+
+> Nothing to squash — the branch has a single commit on top of `{base}`. No action taken.
+
+Print the list of commits so the user can see what's on the branch. If the count looks implausibly large for the work in this worktree, re-check the Step 0 resolution before continuing — a range that sweeps in a source branch's history is the signature of a mis-resolved base.
 
 ---
 
@@ -113,7 +178,7 @@ Print the list of commits so the user can see what's on the branch.
 Run:
 
 ```bash
-git log main..HEAD --format=fuller --no-merges
+git log {base}..HEAD --format=fuller --no-merges
 ```
 
 Read every commit message in full: subject, body, and trailers. The commit messages are the source of truth for understanding the logical groupings. Do not infer groupings from file paths alone — read the messages.
@@ -152,7 +217,7 @@ Documentation does not build or version anything, so where a doc file sits relat
 To verify, run this check against every commit on the branch (including commits that won't be squashed):
 
 ```bash
-for sha in $(git log main..HEAD --format="%H"); do
+for sha in $(git log {base}..HEAD --format="%H"); do
   subject=$(git log -1 --format="%s" $sha)
   scope=$(echo "$subject" | sed 's/[^(]*(\([^)]*\)).*/\1/')
   dirs=$(git diff-tree --no-commit-id --name-only -r $sha | awk -F/ '{print $1}' | sort -u | tr '\n' ',' | sed 's/,$//')
@@ -178,9 +243,9 @@ Detect shared files: for every file changed on the branch, list which source com
 ```bash
 # For each changed file, show the source commits that touched it.
 # A file listed under commits from different feature groups is shared.
-for f in $(git diff --name-only main..HEAD); do
+for f in $(git diff --name-only {base}..HEAD); do
   echo "=== $f ==="
-  git log main..HEAD --oneline -- "$f"
+  git log {base}..HEAD --oneline -- "$f"
 done
 ```
 
@@ -203,6 +268,7 @@ Note in the plan which files are shared and, for each, whether its hunks are spl
 Present the squash plan to the user. **Output the structured block only — no narrative, no reasoning, no commentary before or after the block.** The user wants the outcome, not the analysis.
 
 ```
+Base: {base} ({worktree source branch|primary clone default})
 {N} source commits → {F} features → {M} result commits. {squash count} squash(es), {split count} split(s).
 
 Features (counting unit — one line per feature, regardless of scope span):
@@ -225,6 +291,7 @@ Collapsed scope commits (feature touched the scope only via shared files a later
   (omit if none)
 
 Backup: backup--{branch_name} at {HEAD SHA}
+Reset target: {base} at {base SHA}
 ```
 
 After presenting the plan, call `AskUserQuestion` with the question "Proceed with the squash as planned?" and options: `Proceed`, `Adjust`, `Abort`. Do not begin the rebuild until the user selects `Proceed`.
@@ -237,17 +304,17 @@ When the user selects `Proceed` (or after making any requested adjustments to th
 
 ### Method: rebuild from a soft reset, do not replay history
 
-**The execution method is `git reset --soft main` followed by rebuilding each result commit forward in plan order. This is the primary method, not a fallback.** Do **not** use `git rebase -i main` to replay and squash the original commits.
+**The execution method is `git reset --soft {base}` followed by rebuilding each result commit forward in plan order. This is the primary method, not a fallback.** Do **not** use `git rebase -i {base}` to replay and squash the original commits.
 
-This is a deliberate choice grounded in how this repository works. Nearly all work here is **interleaved multi-scope features**: a single feature touches `engine/`, `desktop/`, `ios/`, `relay/`, and `docs/`, and several features in flight at once edit the **same merge-hostile files** — `ios/IonRemote.xcodeproj/project.pbxproj`, `desktop/src/main/remote/protocol.ts`, the Go event/type files, the iOS event-handler switches. An interactive rebase *replays* the original commits in a new order, so it stops to hand-resolve a conflict in those shared files at nearly every reorder boundary — dozens of error-prone manual resolutions, each a chance to silently corrupt the tree. The soft-reset rebuild **reorders nothing and replays nothing**: the final tree is already correct on the branch tip, so you reset the branch pointer back to `main` with the working tree untouched, then carve that single known-correct tree into clean commits moving forward. There are no conflicts to resolve because there is no replay. The Step 8 `git diff backup--{branch_name}` check proves the rebuild reproduced the tip tree exactly.
+This is a deliberate choice grounded in how this repository works. Nearly all work here is **interleaved multi-scope features**: a single feature touches `engine/`, `desktop/`, `ios/`, `relay/`, and `docs/`, and several features in flight at once edit the **same merge-hostile files** — `ios/IonRemote.xcodeproj/project.pbxproj`, `desktop/src/main/remote/protocol.ts`, the Go event/type files, the iOS event-handler switches. An interactive rebase *replays* the original commits in a new order, so it stops to hand-resolve a conflict in those shared files at nearly every reorder boundary — dozens of error-prone manual resolutions, each a chance to silently corrupt the tree. The soft-reset rebuild **reorders nothing and replays nothing**: the final tree is already correct on the branch tip, so you reset the branch pointer back to `{base}` with the working tree untouched, then carve that single known-correct tree into clean commits moving forward. There are no conflicts to resolve because there is no replay. The Step 8 `git diff backup--{branch_name}` check proves the rebuild reproduced the tip tree exactly.
 
 Execute:
 
 ```bash
-git reset --soft main
+git reset --soft {base}
 ```
 
-This moves the branch pointer to `main` and stages every net change from the whole branch, with the working tree byte-identical to the pre-squash tip. Nothing is lost; the backup branch holds the original history regardless.
+This moves the branch pointer to `{base}` and stages every net change the branch added on top of it, with the working tree byte-identical to the pre-squash tip. Nothing is lost; the backup branch holds the original history regardless.
 
 Now build the result commits **in plan order (oldest feature first)**. The staging index currently holds everything; you will unstage it and add back precisely what each commit owns:
 
@@ -292,7 +359,7 @@ A file edited by two or more features (detected in Step 6) carries one of two tr
 
 **Linear/high-value files → hunk-split.** Divide the file's hunks between those features' commits; each hunk rides in the commit of the feature that authored it. Because commits are built forward in feature order, `git add -p <shared-file>` at each feature's turn stages only that feature's hunks; the rest wait in the working tree for later features. By the last feature that touches the file, its remaining hunks are all that's left to stage. **Attribute by authorship, never by "whoever staged it last."**
 
-**Cyclic/generated/low-value files → whole-file to last-toucher.** Do not attempt to hunk-split. Leave the file unstaged at every earlier feature's turn; when the **last feature (in result-commit order) that touches it** builds its commit, stage the whole file (`git add <path>`). Its content is already the final version in the working tree (the rebuild started from a tree identical to the tip), so a whole-file `git add` lands exactly the target content. A deletion vs `main` is staged with `git rm <path>` at its last-toucher's turn instead.
+**Cyclic/generated/low-value files → whole-file to last-toucher.** Do not attempt to hunk-split. Leave the file unstaged at every earlier feature's turn; when the **last feature (in result-commit order) that touches it** builds its commit, stage the whole file (`git add <path>`). Its content is already the final version in the working tree (the rebuild started from a tree identical to the tip), so a whole-file `git add` lands exactly the target content. A deletion vs `{base}` is staged with `git rm <path>` at its last-toucher's turn instead.
 
 Whichever treatment a file takes, attribution changes only *which commit* owns the content; it never changes the final tree, which the Step 8 `git diff backup--{branch_name}` identity check guarantees. If applying the last-toucher rule empties a feature's scope slice (every file it would have carried is now owned by a later feature), that scope commit **collapses** — do not create an empty commit; the feature simply produces fewer scoped commits than it touched scopes.
 
@@ -311,13 +378,13 @@ If hunk attribution is genuinely ambiguous (a single hunk plausibly belongs to t
 After the rebuild is complete:
 
 ```bash
-git log main..HEAD --oneline
+git log {base}..HEAD --oneline
 ```
 
 Verify the output matches the squash plan: correct number of commits, correct subjects.
 
 ```bash
-git log main..HEAD --format=fuller
+git log {base}..HEAD --format=fuller
 ```
 
 Verify trailers are present on each commit that had an issue association.
@@ -327,7 +394,7 @@ Verify trailers are present on each commit that had an issue association.
 Run the scope check against every result commit:
 
 ```bash
-for sha in $(git log main..HEAD --format="%H"); do
+for sha in $(git log {base}..HEAD --format="%H"); do
   subject=$(git log -1 --format="%s" $sha)
   scope=$(echo "$subject" | sed 's/[^(]*(\([^)]*\)).*/\1/')
   dirs=$(git diff-tree --no-commit-id --name-only -r $sha | awk -F/ '{print $1}' | sort -u | tr '\n' ',' | sed 's/,$//')
@@ -365,6 +432,7 @@ If this produces any output, the squash changed the code — which is a bug. Abo
 Squash complete.
 
 Branch: {branch name}
+Base:   {base}
 Before: {N} commits  After: {M} commits ({F} features across {M} scoped commits)
 
 {short SHA} {subject}

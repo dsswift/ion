@@ -107,6 +107,23 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 			},
 		}
 
+	case *types.DispatchLostEvent:
+		// A dispatch that was running when the engine process died is
+		// unrecoverable after restart. One event per orphan, emitted during
+		// dispatch-state rehydration; the rehydrated agent-state row is
+		// independently marked "error" so no panel shows it as running.
+		return types.EngineEvent{
+			Type: "engine_dispatch_lost",
+			DispatchLost: &types.DispatchLostPayload{
+				DispatchID:          e.DispatchID,
+				AgentName:           e.AgentName,
+				Task:                e.Task,
+				ParentDispatchID:    e.ParentDispatchID,
+				Depth:               e.Depth,
+				ChildConversationID: e.ChildConversationID,
+			},
+		}
+
 	case *types.ErrorEvent:
 		return types.EngineEvent{
 			Type:          "engine_error",

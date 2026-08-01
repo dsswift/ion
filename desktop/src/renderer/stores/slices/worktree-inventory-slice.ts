@@ -11,7 +11,9 @@
  */
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { rInfo, rWarn, rDebug } from '../../rendererLogger'
+import { usePreferencesStore } from '../../preferences'
 import { setTabWorkingDirectory } from './tab-working-directory'
+import { collectDirConversations, pickNextConversation } from '../../../shared/worktree-conversations'
 
 export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -24,10 +26,39 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
     refreshWorktreeInventory: async (repoPath) => {
       if (!repoPath || repoPath === '~') return
       try {
-        const { worktrees } = await window.ion.gitWorktreeInventory(repoPath)
+        // Pass the AI-titles preference so the main process may backfill
+        // titles for worktrees that predate auto-titling (autotitle-backfill
+        // .ts). Renderer-driven because the preference lives in this window's
+        // preferences store; the main process treats absent as off.
+        const aiTitles = usePreferencesStore.getState().aiGeneratedTitles
+        const { worktrees } = await window.ion.gitWorktreeInventory(repoPath, aiTitles)
         set((s) => ({
           worktreeInventory: new Map(s.worktreeInventory).set(repoPath, worktrees),
         }))
+        // Alerts ride the same refresh, with kind-aware lifecycles:
+        //  - conflicts: recorded while an operation is in progress (covers
+        //    conflicts raised outside a sync click — a restart, a manual
+        //    rebase), cleared when the operation finishes;
+        //  - refusals ("dirty worktree, sync declined"): no git state says
+        //    "was refused", so they clear when the worktree goes CLEAN or a
+        //    sync succeeds — clearing them on "no operation" would wipe the
+        //    alert on the very refresh that follows the refusal.
+        for (const wt of worktrees) {
+          if (wt.operationState) {
+            get().recordConflictAlert(wt.worktreePath, {
+              source: 'detected',
+              operationState: wt.operationState,
+              label: wt.label,
+            })
+          } else {
+            const alert = get().gitConflictAlerts.get(wt.worktreePath)
+            if (alert?.kind === 'refusal') {
+              if (!wt.isDirty) get().clearConflictAlert(wt.worktreePath)
+            } else {
+              get().clearConflictAlert(wt.worktreePath)
+            }
+          }
+        }
         rDebug('worktree.inventory', 'refreshed', { repo_path: repoPath, count: worktrees.length })
       } catch (err) {
         rWarn('worktree.inventory', 'refresh failed', { repo_path: repoPath, error: String(err) })
@@ -35,22 +66,32 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
     },
 
     /**
-     * Open a conversation in a worktree — the re-entry path after a tab close.
+     * Open a conversation in a worktree — the re-entry path after a tab close,
+     * and the way to cycle through the conversations already living there.
      *
-     * If a tab is ALREADY open on that worktree, focus it instead of creating a
-     * second conversation in the same directory. Without this the operator
-     * accumulates duplicate conversations in one worktree, which is the problem
-     * the inventory exists to solve, not a new one to create.
+     * If conversations are ALREADY open on that worktree, focus one instead of
+     * creating another: without this the operator accumulates duplicates in one
+     * worktree, which is the problem the inventory exists to solve.
+     *
+     * When SEVERAL are open, each click advances to the next one (wrapping).
+     * This used to `find(...)` the first match and re-select it forever, so
+     * every conversation after the first was unreachable from the row. The
+     * rotation is stateless — it reads the currently active tab and steps past
+     * it — so there is no cursor for the overlay and the ATV mirror to disagree
+     * about, and closing a tab cannot leave it dangling.
      */
     openWorktreeConversation: async (worktreePath) => {
-      const existing = get().tabs.find((t) => t.workingDirectory === worktreePath)
-      if (existing) {
+      const matches = collectDirConversations(get().tabs, worktreePath)
+      const next = pickNextConversation(matches, get().activeTabId)
+      if (next) {
         rInfo('worktree.inventory', 'focusing existing conversation for worktree', {
           worktree_path: worktreePath,
-          tab_id: existing.id.slice(0, 8),
+          match_count: matches.length,
+          from_tab: (get().activeTabId ?? 'none').slice(0, 8),
+          to_tab: next.tabId.slice(0, 8),
         })
-        get().selectTab(existing.id)
-        return existing.id
+        get().selectTab(next.tabId)
+        return next.tabId
       }
 
       rInfo('worktree.inventory', 'opening new conversation in worktree', { worktree_path: worktreePath })
@@ -189,6 +230,28 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
           has_conflicts: !!result.hasConflicts,
           error: result.error ?? '',
         })
+        // A failed sync used to fail into the log and nowhere else; the
+        // operator believed it succeeded. Record it so the toast and the row
+        // badge fire at the moment of failure. Two shapes:
+        //  - conflicts: an operation is stuck; the ConflictsDialog resolves it;
+        //  - dirty refusals: nothing started; the remediation is the message
+        //    (commit or stash) and there is nothing to "resolve".
+        if (result.hasConflicts) {
+          get().recordConflictAlert(worktreePath, {
+            source: 'sync',
+            kind: 'conflict',
+            operationState: 'rebasing',
+            message: result.error,
+            label: worktreePath.split('/').filter(Boolean).pop(),
+          })
+        } else if (result.refusedDirty) {
+          get().recordConflictAlert(worktreePath, {
+            source: 'sync',
+            kind: 'refusal',
+            message: result.error,
+            label: worktreePath.split('/').filter(Boolean).pop(),
+          })
+        }
       }
       await get().refreshWorktreeInventory(repoPath)
       return result

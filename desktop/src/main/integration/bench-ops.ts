@@ -76,16 +76,23 @@ export async function addMember(
     return { ok: false, error: 'This worktree is already a member of the bench.' }
   }
   try {
-    const contribution = await captureContribution(worktreePath)
+    const contribution = await captureContribution(worktreePath, sourceBranch, branchName)
     const member = makeMember({
       worktreePath,
       branchName,
       pinnedSha: contribution.sha,
       pinnedTreeHash: contribution.treeHash,
+      pinnedBaseSha: contribution.baseSha,
     })
     const next = { ...ws, members: [...ws.members, member] }
     persist(next)
-    log('member added', { branch: branchName, sha: contribution.sha.slice(0, 7), source_branch: sourceBranch })
+    log('member added', {
+      branch: branchName,
+      sha: contribution.sha.slice(0, 7),
+      base: contribution.baseSha ? contribution.baseSha.slice(0, 7) : 'unknown',
+      source_branch: sourceBranch,
+      status: member.status,
+    })
     return { ok: true, workspace: next }
   } catch (err) {
     warn('add member failed', { worktree_path: worktreePath, error: String(err) })
@@ -198,7 +205,7 @@ export async function updateMember(
 
   let contribution
   try {
-    contribution = await captureContribution(worktreePath)
+    contribution = await captureContribution(worktreePath, sourceBranch, member.branchName)
   } catch (err) {
     warn('update member failed to read contribution', { worktree_path: worktreePath, error: String(err) })
     return { ok: false, error: `Could not read that worktree: ${String(err)}` }
@@ -207,10 +214,20 @@ export async function updateMember(
   const next: IntegrationWorkspace = {
     ...ws,
     members: ws.members.map((m) => (m.worktreePath === worktreePath
-      ? { ...m, pinnedSha: contribution.sha, pinnedTreeHash: contribution.treeHash, currentTreeHash: contribution.treeHash }
+      ? {
+        ...m,
+        pinnedSha: contribution.sha,
+        pinnedTreeHash: contribution.treeHash,
+        pinnedBaseSha: contribution.baseSha,
+        currentTreeHash: contribution.treeHash,
+      }
       : m)),
   }
-  log('member pin advanced', { branch: member.branchName, sha: contribution.sha.slice(0, 7) })
+  log('member pin advanced', {
+    branch: member.branchName,
+    sha: contribution.sha.slice(0, 7),
+    base: contribution.baseSha ? contribution.baseSha.slice(0, 7) : 'unknown',
+  })
   return rebuildAndPersist(next)
 }
 
@@ -232,11 +249,12 @@ export async function updateAllStale(
     const current = await contributedTreeHash(m)
     if (!current || current === m.pinnedTreeHash) continue
     try {
-      const contribution = await captureContribution(m.worktreePath)
+      const contribution = await captureContribution(m.worktreePath, sourceBranch, m.branchName)
       members[i] = {
         ...m,
         pinnedSha: contribution.sha,
         pinnedTreeHash: contribution.treeHash,
+        pinnedBaseSha: contribution.baseSha,
         currentTreeHash: contribution.treeHash,
       }
       advanced++
@@ -286,7 +304,13 @@ export async function refreshStaleness(
       // that would send the operator to press Update expecting it to help.
       status: m.status === 'conflicted' ? m.status
         : !m.enabled ? ('excluded' as const)
-          : stale ? ('stale' as const) : ('integrated' as const),
+          : stale ? ('stale' as const)
+            // An unchanged member whose pin carries no commits is still pending.
+            // Painting it `integrated` with a pinned sha would claim content the
+            // bench does not hold — there is no merge behind that sha. It leaves
+            // `pending` via the `stale` arm above the moment it commits.
+            : m.status === 'pending' ? ('pending' as const)
+              : ('integrated' as const),
     })
   }
   const next = { ...ws, members }

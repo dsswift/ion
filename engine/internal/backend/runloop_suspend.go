@@ -20,11 +20,27 @@ type suspendSignal struct {
 }
 
 // drainSuspend performs a non-blocking check of the run's suspendCh. When a
-// suspend signal is present it emits TaskSuspendEvent and returns
-// (true, signal). The caller (runLoop) should exit immediately after, without
-// calling the normal TaskCompleteEvent path — the dispatch stays alive and
-// runChild loops to restart the LLM run on revive. Returns (false, {}) when
-// no suspend is pending.
+// suspend signal is present it emits TaskSuspendEvent, emits the run's exit
+// with the distinct "suspended" signal, and returns (true, signal). The
+// caller (runLoop) should exit immediately after, without calling the normal
+// TaskCompleteEvent path — the dispatch stays alive and runChild loops to
+// restart the LLM run on revive.
+//
+// The exit emission is REQUIRED, not optional, on both suspend consumers:
+//
+//   - A dispatched child's runChild goroutine waits on childDone, which is
+//     released only by the child backend's OnExit callback
+//     (session/extcontext/dispatch_agent.go). Without the exit, runChild
+//     blocks forever before it can observe the suspend and park — the
+//     original wiring omitted it and the suspend feature deadlocked.
+//   - A root session parked via ParkSelfMainLoop → SignalParkForBackgroundTasks
+//     needs handleRunExit to clear the session's requestID, exactly as the
+//     automatic parkForBackgroundTasks path does; without it the parked
+//     session still looks busy and the wake path steers into a dead run.
+//
+// The signal string "suspended" distinguishes a park-exit from a completion
+// (nil) and a cancellation ("cancelled") so exit consumers can branch.
+// Returns (false, {}) when no suspend is pending.
 //
 // Call sites mirror drainSteer:
 //   - Top of each agent-loop iteration: catches a suspend that arrived while
@@ -37,11 +53,13 @@ func (b *ApiBackend) drainSuspend(run *activeRun, conv *conversation.Conversatio
 		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "suspend signal received, emitting task_suspend and exiting run", map[string]any{
 			"run_id":                run.requestID,
 			"awaiting_dispatch_ids": sig.AwaitingDispatchIDs,
+			"awaiting_task_ids":     sig.AwaitingTaskIDs,
 		})
 		b.emit(run, types.NormalizedEvent{Data: &types.TaskSuspendEvent{
 			AwaitingDispatchIDs: sig.AwaitingDispatchIDs,
 			AwaitingTaskIDs:     sig.AwaitingTaskIDs,
 		}})
+		b.emitExit(run.requestID, intPtr(0), strPtr("suspended"), conv.ID)
 		return true, sig
 	default:
 		return false, suspendSignal{}
@@ -71,9 +89,11 @@ func (b *ApiBackend) drainSuspend(run *activeRun, conv *conversation.Conversatio
 // silently dropped — the session is never woken for it. The park is reported as
 // a clean exit (code 0, no signal) because that is what it is: the run ended
 // deliberately, the conversation is intact, and the session is immediately
-// reusable. Note this differs from the extension-driven dispatch suspend
-// (drainSuspend), which must NOT emit an exit — a dispatched child's parked
-// runChild goroutine still owns its run and revives it in place.
+// reusable. The suspend paths (drainSuspend, parkForChildDispatches) emit
+// their exits with the distinct "suspended" signal for the same load-bearing
+// reason — a dispatched child's runChild goroutine waits on the child
+// backend's OnExit, and a root ParkSelfMainLoop park needs handleRunExit —
+// while the signal string lets exit consumers tell a park from a completion.
 func (b *ApiBackend) parkForBackgroundTasks(run *activeRun, conv *conversation.Conversation, taskIDs []string) {
 	// Persist first: the woken run reloads the conversation from disk, so an
 	// unsaved final turn would be lost across the park.
@@ -105,6 +125,57 @@ func (b *ApiBackend) outstandingBackgroundTaskIDs(run *activeRun) []string {
 		return nil
 	}
 	return run.cfg.OutstandingBackgroundTasks()
+}
+
+// outstandingChildDispatchIDs reads the run's live outstanding child
+// dispatches through the RunConfig seam — the child-dispatch analogue of
+// outstandingBackgroundTaskIDs. A live read for the same reason: the model
+// dispatches agents DURING the run, so the park decision at the turn
+// boundary must see the current set. Nil config or nil seam means "this run
+// has no child-dispatch notion" (root sessions, tests, pre-existing
+// consumers) and the child park never fires.
+func (b *ApiBackend) outstandingChildDispatchIDs(run *activeRun) []string {
+	if run.cfg == nil || run.cfg.OutstandingChildDispatches == nil {
+		return nil
+	}
+	return run.cfg.OutstandingChildDispatches()
+}
+
+// parkForChildDispatches ends the current LLM run at a turn boundary because
+// the run still has child dispatches in flight. It emits TaskSuspendEvent
+// carrying the child dispatch IDs, then the run's exit with the "suspended"
+// signal — deliberately the exact emission sequence drainSuspend produces for
+// an extension-driven ctx.suspend(), so the two park entrances are
+// indistinguishable to the consumer that matters:
+//
+// A dispatched child's park is owned by its runChild goroutine
+// (session/extcontext/dispatch_agent.go). runChild observes the
+// TaskSuspendEvent (setting its suspend flag), then blocks on childDone,
+// which is released ONLY by the child backend's OnExit callback. The exit
+// emission is therefore load-bearing here exactly as it is in drainSuspend:
+// without it runChild never wakes to park the dispatch. The child backend's
+// OnExit is wired to the runChild closure — not to the session manager's
+// handleRunExit — so this exit cannot be mistaken for a root-session
+// terminal event.
+//
+// The conversation is saved first so the revived run — which reloads from
+// disk — sees the final turn that decided to park.
+func (b *ApiBackend) parkForChildDispatches(run *activeRun, conv *conversation.Conversation, dispatchIDs []string) {
+	if err := conversation.Save(conv, ""); err != nil {
+		utils.LogWithFields(utils.LevelWarn, "backend.runloop", "failed to save conversation before child-dispatch park", map[string]any{
+			"run_id": run.requestID,
+			"error":  utils.ErrStr(err),
+		})
+	}
+	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "parking run: child dispatches still outstanding", map[string]any{
+		"run_id":       run.requestID,
+		"count":        len(dispatchIDs),
+		"dispatch_ids": dispatchIDs,
+	})
+	b.emit(run, types.NormalizedEvent{Data: &types.TaskSuspendEvent{
+		AwaitingDispatchIDs: dispatchIDs,
+	}})
+	b.emitExit(run.requestID, intPtr(0), strPtr("suspended"), conv.ID)
 }
 
 // SignalParkForBackgroundTasks asks an active run to park on the given

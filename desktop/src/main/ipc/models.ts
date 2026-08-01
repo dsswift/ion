@@ -59,6 +59,18 @@ export async function refreshModelCache(): Promise<void> {
 }
 
 export function registerModelsIpc(): void {
+  ipcMain.handle(IPC.MODEL_TIER_RESOLVE, async (_e, { tier }: { tier: string }) => {
+    debug('IPC MODEL_TIER_RESOLVE', { tier })
+    try {
+      return await engineBridge.resolveModelTier(tier)
+    } catch (err) {
+      log('model_tier: resolve failed', { tier, error: (err as Error).message })
+      // Unreachable engine reads as unconfigured: the gated feature refuses
+      // with its remediation message rather than proceeding on a guess.
+      return { tier, model: tier, fallbacks: [], configured: false }
+    }
+  })
+
   ipcMain.handle(IPC.LIST_MODELS, async () => {
     debug('IPC LIST_MODELS')
     const result = await engineBridge.listModels()

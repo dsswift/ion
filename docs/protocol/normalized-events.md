@@ -417,6 +417,24 @@ Emitted once per completion, before the engine resolves delivery. This is the en
 
 ---
 
+### dispatch_lost
+
+Fires once per dispatch that was running when the engine process died and is therefore unrecoverable after restart. Emitted on the owning session's stream during dispatch-state rehydration at session start; the rehydrated agent-state row is independently marked `error` so no consumer shows a dead dispatch as running. The engine never resurrects the lost run — resuming half-finished work is a consumer decision (redispatch, harvest the child's partial transcript via `childConversationId`, notify an orchestrator, or ignore).
+
+| Field                 | Value              | Description |
+|-----------------------|--------------------|-------------|
+| `type`                | `"dispatch_lost"`  | Event type |
+| `dispatchId`          | string             | The lost dispatch's collision-safe unique ID |
+| `agentName`           | string             | The dispatched agent's name |
+| `task`                | string             | The task brief the dispatch was running |
+| `parentDispatchId`    | string             | Dispatch ID of the parent that spawned it; empty for top-level |
+| `depth`               | number             | Persisted nesting-depth attribution |
+| `childConversationId` | string             | Child session's conversation ID when known — the partial-transcript harvest handle |
+
+**Produced from:** `DispatchLostEvent` in [`engine/internal/types/normalized_event_run_signals.go`](https://github.com/dsswift/ion/blob/main/engine/internal/types/normalized_event_run_signals.go). Wire name: `engine_dispatch_lost`.
+
+---
+
 ## Normalization Pipeline
 
 The normalizer processes raw events by inspecting the top-level `type` field:

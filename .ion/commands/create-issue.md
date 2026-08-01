@@ -4,7 +4,7 @@ allowed_bash_commands:
   - gh issue create
   - gh issue list
   - gh issue view
-model: smart
+model: standard
 ---
 
 Open a GitHub issue on the `dsswift/ion` repository based on the current conversation. The issue must contain enough context for Ion engine developers to understand what to implement and how it should behave — without leaking any details about the consumer project that surfaced the need.

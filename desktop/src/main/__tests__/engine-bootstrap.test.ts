@@ -55,13 +55,20 @@ vi.mock('net', () => ({
 }))
 
 vi.mock('child_process', () => ({
-  execSync: vi.fn((cmd: string) => {
+  // launchctl now runs through execFile (async) rather than execSync: a
+  // synchronous call would block the Electron main thread, which is the stall
+  // this path was fixed for. Invocations are still recorded as joined command
+  // strings so the existing command-shape assertions read unchanged.
+  execFile: vi.fn((file: string, args: string[], _opts: any, cb?: (err: Error | null, stdout?: string, stderr?: string) => void) => {
+    const cmd = [file, ...args].join(' ')
     execSyncCalls.push(cmd)
+    const done = typeof _opts === 'function' ? (_opts as typeof cb) : cb
     if (cmd.includes('kickstart') && kickstartFailuresRemaining > 0) {
       kickstartFailuresRemaining--
-      throw new Error('spawnSync /bin/sh ETIMEDOUT')
+      done?.(new Error('spawnSync /bin/sh ETIMEDOUT'))
+      return
     }
-    return ''
+    done?.(null, '', '')
   }),
   execFileSync: vi.fn((file: string, args: string[], _opts?: any) => {
     execFileSyncCalls.push({ file, args })
@@ -374,9 +381,9 @@ describe('engine-bootstrap', () => {
 })
 
 describe('restartEngineDaemon', () => {
-  it('force-restarts the daemon with kickstart -k so it re-reads engine.json', () => {
+  it('force-restarts the daemon with kickstart -k so it re-reads engine.json', async () => {
     // darwin is pinned in beforeEach.
-    const ok = restartEngineDaemon()
+    const ok = await restartEngineDaemon()
 
     expect(ok).toBe(true)
     const kickstartCall = execSyncCalls.find((c) => c.includes('launchctl kickstart'))
@@ -389,14 +396,39 @@ describe('restartEngineDaemon', () => {
     expect(execSyncCalls.some((c) => c.includes('bootout'))).toBe(false)
   })
 
-  it('is a no-op on non-darwin platforms', () => {
+  it('is a no-op on non-darwin platforms', async () => {
     Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
     platformOverride = 'linux'
 
-    const ok = restartEngineDaemon()
+    const ok = await restartEngineDaemon()
 
     expect(ok).toBe(false)
     expect(execSyncCalls.length).toBe(0)
+  })
+
+  // REGRESSION: the watchdog measured a 5029ms main-thread stall spanning the
+  // launchctl kickstart, because it ran through execSync. On the Electron main
+  // thread that blocks the event loop outright, so every renderer IPC reply —
+  // including the restore sequence's — waits for launchctl to return.
+  //
+  // The pin: launchctl is invoked through the ASYNC child_process surface. A
+  // synchronous implementation cannot satisfy this, because the mock exposes no
+  // execSync at all and the module would fail to import.
+  it('REGRESSION: shells out asynchronously so the main thread is never blocked', async () => {
+    const { execFile } = await import('child_process')
+
+    const pending = restartEngineDaemon()
+    // The call returns a promise: control is back on the event loop before
+    // launchctl has been accounted for. A blocking execSync would have already
+    // finished by this point, with nothing left to await.
+    expect(pending).toBeInstanceOf(Promise)
+    expect(await pending).toBe(true)
+
+    expect(vi.mocked(execFile)).toHaveBeenCalled()
+    const [file, args] = vi.mocked(execFile).mock.calls[0]
+    expect(file).toBe('launchctl')
+    // Argv form, not a shell string: no interpolated command line to quote.
+    expect(args).toEqual(['kickstart', '-k', expect.stringContaining(PLIST_LABEL)])
   })
 })
 

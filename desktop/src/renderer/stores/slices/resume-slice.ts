@@ -214,17 +214,24 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
       try {
         const { tabId } = await window.ion.createTab()
 
+        // One attempt, no retry ladder. An empty history is a VALID answer — a
+        // brand-new conversation has no rows on disk — not a transient state
+        // worth waiting on. The old code looped three times with 2s and 4s
+        // backoff whenever `history.length === 0`, so every restore of a fresh
+        // conversation slept 6 seconds before the tab appeared, and on the
+        // boot-active tab that delay preceded the whole restore sequence.
+        // loadSkeletonMessages already made this call once for the same reason
+        // ("the engine is already running and the files are on disk"); this is
+        // the sibling path that kept the ladder.
+        //
+        // A genuine IPC throw still lands in the outer catch, which builds the
+        // empty-pane fallback tab, so a real failure is not silently treated as
+        // an empty conversation.
         let history: any[] = []
-        for (let attempt = 0; attempt < 3; attempt++) {
-          try {
-            history = await window.ion.loadSession(sessionId, defaultDir, encodedDir || undefined)
-            if (history.length > 0) break
-          } catch (err) {
-            rWarn('session.resume', 'loadSession attempt failed', { attempt: attempt + 1, error: String(err) })
-          }
-          if (attempt < 2) {
-            await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)))
-          }
+        try {
+          history = await window.ion.loadSession(sessionId, defaultDir, encodedDir || undefined)
+        } catch (err) {
+          rWarn('session.resume', 'loadSession failed', { session_id: sessionId.slice(0, 24), error: String(err) })
         }
         // Map engine history rows → client Messages via the shared mapper,
         // which also converts system-role marker rows (compaction/plan/steer)

@@ -270,16 +270,19 @@ struct AgentStateUpdate: Codable, Identifiable, Sendable {
 extension Array where Element == AgentStateUpdate {
     /// The (total, active, done) breakdown rendered in the agent-panel header,
     /// derived over the VISIBLE agent set (the same set the panel list renders).
-    /// Mirrors the desktop AgentPanel header memo: `active` counts running
-    /// agents, `done` counts completed agents, and `error`/`idle` fold into
-    /// neither count — those states are surfaced by the row's own status dot,
-    /// not a header segment. Deriving over the visible set (not the raw agent
-    /// array) keeps the header honest against the rows shown below it.
+    /// Mirrors the desktop AgentPanel header memo: `active` counts running AND
+    /// suspended agents — a suspended (parked) dispatch is alive, waiting on
+    /// its children or a revive, and counting it as finished is how a live
+    /// tree once read "3 done" while its specialist still worked. `done`
+    /// counts completed agents; `error`/`idle` fold into neither count —
+    /// those states are surfaced by the row's own status dot, not a header
+    /// segment. Deriving over the visible set (not the raw agent array) keeps
+    /// the header honest against the rows shown below it.
     var agentHeaderBreakdown: (total: Int, active: Int, done: Int) {
         var active = 0
         var done = 0
         for agent in self {
-            if agent.status == "running" { active += 1 }
+            if agent.status == "running" || agent.status == "suspended" { active += 1 }
             else if agent.status == "done" { done += 1 }
         }
         return (total: count, active: active, done: done)

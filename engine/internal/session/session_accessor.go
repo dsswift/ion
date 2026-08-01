@@ -201,6 +201,13 @@ func (a *sessionAccessor) EmitDispatchCountStatus(reason string) {
 	a.m.emitDispatchCountStatus(a.s, reason)
 }
 
+// PersistDispatchRegistered writes the `running` durability record for a
+// freshly-registered dispatch. Delegates to Manager.persistDispatchRegistered
+// (dispatch_rehydrate.go). Best-effort by contract; see the interface doc.
+func (a *sessionAccessor) PersistDispatchRegistered(agentID, agentName, displayName, task, model, parentDispatchID string, depth int) {
+	a.m.persistDispatchRegistered(a.key, a.s.conversationID, agentID, agentName, displayName, task, model, parentDispatchID, depth)
+}
+
 func (a *sessionAccessor) EngineConfig() *types.EngineRuntimeConfig { return a.m.config }
 
 // ClaudeCompat reports the session's Claude-compatibility setting, sourced from
@@ -241,6 +248,14 @@ func (a *sessionAccessor) PermissionCheck(toolName string, input map[string]inte
 }
 
 func (a *sessionAccessor) McpConnections() []*mcp.Connection {
+	// Connections are established lazily at first prompt dispatch, but an
+	// extension can dispatch an MCP tool from a hook that fires before any
+	// prompt (session_start, a schedule, a webhook). Ensure here so that path
+	// sees real connections instead of an empty slice that reads as "server
+	// not connected". No-op after the first call (single-flighted per session)
+	// and cheap when no servers are configured.
+	a.m.ensureMcpConnections(a.s, a.key)
+
 	a.m.mu.RLock()
 	defer a.m.mu.RUnlock()
 	return a.s.mcpConns

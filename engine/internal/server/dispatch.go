@@ -17,6 +17,7 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/conversation"
+	"github.com/dsswift/ion/engine/internal/modelconfig"
 	"github.com/dsswift/ion/engine/internal/plugins"
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/providers"
@@ -326,6 +327,36 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		// Implementation in dispatch_data.go.
 		s.dispatchListModels(conn, cmd)
 
+	case "resolve_model_tier":
+		// Map a tier name (cmd.Text) from ~/.ion/models.json to its configured
+		// model + fallback chain. `configured` distinguishes "the user defined
+		// this tier" from ResolveTierChain's pass-through behavior, which
+		// returns an unrecognized name as-is — a consumer gating a feature on
+		// a tier existing needs that distinction, not the echo.
+		tierName := cmd.Text
+		model, fallbacks := modelconfig.ResolveTierChain(tierName)
+		configured := model != tierName
+		// A tier with no fallbacks yields a nil slice, which marshals to JSON
+		// `null` — so a consumer reading `data.fallbacks.length` would fault on
+		// the common case (a plain-string tier). Normalize to an empty array so
+		// the field is always a list, which is what the documented shape
+		// (`fallbacks: string[]`) promises.
+		if fallbacks == nil {
+			fallbacks = []string{}
+		}
+		utils.LogWithFields(utils.LevelInfo, "server", "resolve_model_tier", map[string]any{
+			"tier":       tierName,
+			"model":      model,
+			"configured": configured,
+			"fallbacks":  len(fallbacks),
+		})
+		s.sendResult(conn, cmd, nil, map[string]interface{}{
+			"tier":       tierName,
+			"model":      model,
+			"fallbacks":  fallbacks,
+			"configured": configured,
+		})
+
 	case "get_host_info":
 		s.sendResult(conn, cmd, nil, computeHostInfo())
 
@@ -388,6 +419,21 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 
 	case "oidc_token":
 		s.dispatchOidcToken(conn, cmd)
+
+	case "mcp_list":
+		s.dispatchMcpList(conn, cmd)
+
+	case "mcp_add":
+		s.dispatchMcpAdd(conn, cmd)
+
+	case "mcp_remove":
+		s.dispatchMcpRemove(conn, cmd)
+
+	case "mcp_login":
+		s.dispatchMcpLogin(conn, cmd)
+
+	case "mcp_logout":
+		s.dispatchMcpLogout(conn, cmd)
 
 	case "provider_login":
 		s.dispatchProviderLogin(conn, cmd)

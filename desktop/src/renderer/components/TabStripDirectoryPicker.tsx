@@ -180,7 +180,11 @@ export function DirectoryPicker({
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent' }}
           >
             <GitBranch size={14} color={colors.worktreeGreen} style={{ flexShrink: 0, marginRight: 8 }} />
-            <span style={{ whiteSpace: 'nowrap', flex: 1 }}>{entry.label}</span>
+            {/* Title-first, like every other worktree surface. The slug stays
+                reachable through the row's `title` attribute (the worktree
+                path), which is what the operator needs when picking a
+                directory rather than picking work. */}
+            <span style={{ whiteSpace: 'nowrap', flex: 1 }}>{entry.title || entry.label}</span>
             {entry.isDirty && (
               <span style={{ fontSize: 10, color: colors.worktreeGreen, marginRight: 6 }}>dirty</span>
             )}

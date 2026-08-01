@@ -1,6 +1,6 @@
 import { usePreferencesStore } from '../../preferences'
 import { parseSlash } from '../../../main/slash-parse'
-import { rDebug } from '../../rendererLogger'
+import { rDebug, rWarn } from '../../rendererLogger'
 
 /**
  * Tab-title generation at send time.
@@ -58,4 +58,59 @@ export function maybeSendTimeTitle(
       renameTab(tabId, title)
     }
   }).catch(() => { /* keep truncated fallback */ })
+}
+
+/**
+ * Worktree-title generation at send time.
+ *
+ * ── Why a worktree needs its own title ──────────────────────────────────────
+ * Every identifier a worktree has is a machine string: the directory
+ * (`ion-03e81090`), the branch (`wt/ion-03e81090`), a commit sha. A panel full
+ * of those tells the operator nothing about which work is which. The first
+ * prompt sent inside a worktree describes the work exactly, and it is the same
+ * signal the tab title is already derived from — so the worktree is named from
+ * it too, through the same engine round-trip.
+ *
+ * ── Why this is NOT under the tab's `needsTitle` guard ──────────────────────
+ * `needsTitle` means "this TAB has no title yet". A conversation re-opened into
+ * an existing worktree has a tab title already while the worktree may still
+ * have none, so gating on it would leave old worktrees permanently unnamed —
+ * the exact case the lazy backfill exists to cover. Idempotency comes from the
+ * main process instead, which checks the registry and no-ops when the worktree
+ * is already named. That check is also why calling this on EVERY send is cheap:
+ * a worktree costs at most one titling round-trip, ever.
+ *
+ * Slash commands are skipped for the same reason tab titling skips them: the
+ * text is a command invocation, not a description of the work.
+ *
+ * Fire-and-forget. A failure leaves the row showing its slug, and the next
+ * prompt tries again; the main process logs every outcome.
+ */
+export function maybeTitleWorktree(workingDirectory: string, text: string): void {
+  if (!usePreferencesStore.getState().aiGeneratedTitles) {
+    return
+  }
+  if (!workingDirectory || workingDirectory === '~') {
+    return
+  }
+
+  const slash = parseSlash(text.trim())
+  if (slash) {
+    rDebug('event.title', 'slash command, skipping worktree titling', { command: slash.command })
+    return
+  }
+
+  window.ion.gitWorktreeAutotitle(workingDirectory, text).then((result) => {
+    // Both branches log: the no-op reason is what makes "why is this row still
+    // a slug?" answerable from the renderer log alone.
+    if (result.ok) {
+      rDebug('event.title', 'worktree titled', { dir: workingDirectory, title: result.title ?? '' })
+    } else {
+      rDebug('event.title', 'worktree titling was a no-op', {
+        dir: workingDirectory, reason: result.reason ?? 'unknown',
+      })
+    }
+  }).catch((err) => {
+    rWarn('event.title', 'worktree titling call failed', { dir: workingDirectory, error: String(err) })
+  })
 }

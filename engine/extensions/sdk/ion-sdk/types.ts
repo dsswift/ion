@@ -145,9 +145,40 @@ export interface DispatchAgentOpts {
    * allowlist layer is inert -- but the engine's self-dispatch rail (an agent
    * may not dispatch its own name) still applies regardless. The harness owns
    * this: it knows its agent graph (e.g. a lead's parent-derived children) and
-   * passes the permitted set per dispatch.
+   * passes the permitted set per dispatch. See `subAgentPolicy` to make an
+   * EMPTY list mean "may dispatch nothing" instead of "unrestricted".
    */
   allowedSubAgents?: string[]
+
+  /**
+   * How `allowedSubAgents` is enforced for this dispatch's own nested
+   * dispatches:
+   *
+   * - unset — historic semantics: the allowlist is enforced only when
+   *   non-empty (an empty list means no restriction).
+   * - `'allowlist'` — membership is enforced even when the list is empty: an
+   *   empty `allowedSubAgents` denies ALL nested dispatch. This is how a
+   *   harness expresses "this agent is a leaf and may dispatch nothing",
+   *   which the historic semantics cannot say — under them a leaf handed an
+   *   empty list could dispatch anything (including re-dispatching its own
+   *   lead into the depth cap).
+   * - `'unrestricted'` — explicitly opt out of the allowlist layer (the
+   *   self-dispatch rail still applies).
+   */
+  subAgentPolicy?: 'allowlist' | 'unrestricted'
+
+  /**
+   * Excludes this dispatch from its PARENT's park-on-children set. By
+   * default (false/unset) a background dispatch holds its dispatcher open:
+   * when the dispatcher's run ends its turn with this child still running,
+   * the engine parks the dispatcher (status `suspended`) and revives it when
+   * the child completes, so the dispatcher consumes the child's result and
+   * finishes its own work instead of reporting completion with work still in
+   * flight. Set `detached: true` for genuine fire-and-forget: the parent's
+   * run completes at its turn boundary regardless of this child, and the
+   * child's completion routes wherever your lifecycle callbacks send it.
+   */
+  detached?: boolean
 
   /**
    * Marks this dispatch as the "implement" half of a plan-then-implement
@@ -499,14 +530,16 @@ export interface HistoryMatch {
 }
 
 /**
- * A single active dispatch entry returned by {@link IonContext.listDispatchState}.
+ * A single in-flight dispatch entry returned by {@link IonContext.listDispatchState}.
  *
  * - `dispatchId`: collision-safe unique ID for this dispatch instance. Use this
  *   to address {@link IonContext.recallAgent} / {@link IonContext.steerDispatch}
  *   when multiple dispatches of the same agent name may be running.
  * - `name`: the agent name (e.g. `"code-reviewer"`).
- * - `status`: always `"running"` — the registry only tracks in-flight dispatches.
- *   Terminal entries are deregistered on completion and absent from the snapshot.
+ * - `status`: `"running"` for an actively working dispatch, `"suspended"` for
+ *   a parked one (waiting on child dispatches or a revive message — alive,
+ *   not terminal). Terminal entries are deregistered on completion and absent
+ *   from the snapshot.
  * - `parentDispatchId`: the dispatch ID of the parent that spawned this dispatch.
  *   Empty for top-level dispatches (depth 1) whose parent is the depth-0
  *   orchestrator (which has no dispatch ID).
@@ -515,15 +548,32 @@ export interface HistoryMatch {
  * - `startedAt`: UTC ISO-8601 timestamp (RFC3339Nano) when the dispatch was
  *   registered in the engine registry.
  * - `elapsedMs`: milliseconds elapsed since `startedAt` at snapshot time.
+ * - `toolCount`: cumulative tool calls the dispatched child has executed.
+ * - `lastWork`: truncated most-recent activity snippet (streamed text or
+ *   `"Using <tool>..."`).
+ * - `lastActivityMs`: milliseconds since the child's last observed event at
+ *   snapshot time — THE liveness discriminator. Small and stable means the
+ *   child is producing right now; large and growing means it is wedged. `0`
+ *   means no activity observed yet (child still starting).
+ * - `childConversationId`: the child session's conversation ID once known.
+ *   Read the child's live transcript (or harvest partial work) from the
+ *   conversation store by this ID.
+ * - `pendingChildren`: the child dispatch IDs a suspended parent is waiting
+ *   on. Non-empty only when `status` is `"suspended"` with awaited children.
  */
 export interface DispatchEntry {
   dispatchId: string
   name: string
-  status: 'running'
+  status: 'running' | 'suspended'
   parentDispatchId?: string
   depth: number
   startedAt: string
   elapsedMs: number
+  toolCount: number
+  lastWork?: string
+  lastActivityMs: number
+  childConversationId?: string
+  pendingChildren?: string[]
 }
 
 /**
@@ -1749,6 +1799,39 @@ export interface BackgroundTaskCompletedInfo {
   remaining_task_ids?: string[]
 }
 
+/**
+ * Payload for `dispatch_lost`.
+ *
+ * Reports a dispatch that was running when the engine process died and is
+ * therefore unrecoverable after restart: the dispatch registry is process
+ * memory, so every in-flight dispatched child died with the old process and
+ * no terminal callback (onComplete/onError/onRecall) ever fired for it.
+ * Fires once per orphan during dispatch-state rehydration at session start.
+ *
+ * Observe-only: by the time handlers run, the engine has already emitted the
+ * typed `engine_dispatch_lost` event and marked the rehydrated agent-state
+ * row `error`. A harness may redispatch the task, harvest the child's
+ * partial transcript from the conversation store (`child_conversation_id`),
+ * or notify its orchestrator.
+ */
+export interface DispatchLostInfo {
+  /** The lost dispatch's collision-safe unique ID. */
+  dispatch_id: string
+  /** The dispatched agent's name. */
+  agent_name: string
+  /** The task brief the dispatch was running. */
+  task?: string
+  /** Dispatch ID of the parent that spawned it; empty for top-level. */
+  parent_dispatch_id?: string
+  /** Persisted nesting-depth attribution. */
+  depth?: number
+  /**
+   * The child session's conversation ID when known — the handle for
+   * harvesting the partial transcript from disk.
+   */
+  child_conversation_id?: string
+}
+
 /** Payload for `elicitation_request`. */
 export interface ElicitationRequestInfo {
   request_id: string
@@ -2195,6 +2278,9 @@ export interface HookPayloadMap {
 
   // Background shell commands
   background_task_completed: BackgroundTaskCompletedInfo
+
+  // Dispatch loss (engine restart while dispatches were in flight)
+  dispatch_lost: DispatchLostInfo
 
   // Elicitation (2)
   elicitation_request: ElicitationRequestInfo

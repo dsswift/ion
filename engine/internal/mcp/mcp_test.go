@@ -308,30 +308,12 @@ func TestIsExpired(t *testing.T) {
 	}
 }
 
-func TestGeneratePKCEChallenge(t *testing.T) {
-	verifier, challenge, err := GeneratePKCEChallenge()
-	if err != nil {
-		t.Fatalf("GeneratePKCEChallenge: %v", err)
-	}
-	if verifier == "" {
-		t.Error("verifier should not be empty")
-	}
-	if challenge == "" {
-		t.Error("challenge should not be empty")
-	}
-	if verifier == challenge {
-		t.Error("verifier and challenge should differ")
-	}
-
-	// Calling twice should produce different values.
-	v2, c2, _ := GeneratePKCEChallenge()
-	if v2 == verifier {
-		t.Error("two PKCE calls should produce different verifiers")
-	}
-	if c2 == challenge {
-		t.Error("two PKCE calls should produce different challenges")
-	}
-}
+// PKCE verifier/challenge generation is not tested here: this package no
+// longer implements it. auth.StartPKCEFlow owns the whole authorization-code +
+// PKCE grant (verifier, S256 challenge, loopback callback, code exchange), and
+// login_test.go pins that the authorization URL MCP login produces carries
+// code_challenge_method=S256. The former GeneratePKCEChallenge here had no
+// production caller and would have drifted from the real implementation.
 
 func TestHTTPTransport_SessionIDTracking(t *testing.T) {
 	ht := &httpTransport{

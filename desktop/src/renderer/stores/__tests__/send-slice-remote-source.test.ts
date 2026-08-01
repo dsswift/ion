@@ -101,7 +101,6 @@ function makeTab(overrides: Partial<TabState> = {}): TabState {
     pillColor: null,
     pillIcon: null,
     forkedFromSessionId: null,
-    hasFileActivity: false,
     worktree: null,
     pendingWorktreeSetup: false,
     groupId: null,

@@ -460,6 +460,7 @@ export class EngineBridge extends EventEmitter {
   // Model / credential / delegated-CLI provider RPCs delegate to
   // engine-bridge-providers.ts (file-size cap).
   async listModels(): Promise<{ models: any[]; providers: any[] }> { return prov.listModels(this) }
+  async resolveModelTier(tier: string): Promise<{ tier: string; model: string; fallbacks: string[]; configured: boolean }> { return prov.resolveModelTier(this, tier) }
   async storeCredential(provider: string, credential: string): Promise<{ ok: boolean; error?: string }> { return prov.storeCredential(this, provider, credential) }
   async refreshModels(provider?: string): Promise<{ ok: boolean; error?: string }> { return prov.refreshModels(this, provider) }
   async providerLogin(provider: string): Promise<{ ok: boolean; error?: string }> { return prov.providerLogin(this, provider) }

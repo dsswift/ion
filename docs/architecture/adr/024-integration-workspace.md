@@ -135,6 +135,97 @@ Absorption is bookkeeping on the bench's member list. It runs **no git command
 against the member worktree**: the branch, its commits, and its working tree are
 untouched and remain fully usable.
 
+### A contribution is a range, so "not started" is not "landed"
+
+All three landed tiers above answer *yes* for a member that has committed
+**nothing**. A worktree cut from the feature branch and enrolled before its first
+commit has a HEAD identical to the feature-branch tip, so the pinned commit is an
+ancestor of the source branch, the pinned tree is in its history, and the branch
+does not differ from it. The bench read that as landed and retired the member on
+every rebuild — a worktree could not stay enrolled before its first commit, which
+is precisely when an operator wants to enroll it.
+
+No query at rebuild time can separate the two cases, because after the fact they
+are identical: in both, `sourceBranch..pinnedSha` is empty. The separating fact is
+where the contribution **starts**, so a pin records it: `pinnedBaseSha` is the
+merge base of `pinnedSha` and the source branch, captured when the pin is taken.
+A contribution is therefore the range `pinnedBaseSha..pinnedSha`, and an equal
+pair means empty — a fact that survives the source branch moving underneath it.
+
+An empty contribution is reported `pending`: kept in the member list, merged into
+nothing, never retired. It is not terminal and not an error. The member becomes
+`stale` the moment the worktree commits, and Update pins the real work. Absorption
+now applies only to a pin that carried commits in the first place.
+
+Records written before the range was tracked carry `pinnedBaseSha: ""`, which
+means **unknown**, never empty. Rebuild resolves it once against the member branch
+and backfills it: a branch with commits beyond the source branch behaves exactly
+as before, a branch with none is `pending`, and a branch that no longer exists
+(the normal *Land & retire* outcome) stays unknown and falls through to the tiers
+above, which correctly retire it.
+
+### A pin reads the branch ref, never HEAD
+
+A member's identity is its **branch**, not whatever its worktree has checked
+out. The two differ exactly when it matters most: a conflicted rebase (the sync
+verb's failure mode) leaves the worktree in detached HEAD at the rebase's
+transient position, while the branch ref still points at the member's real tip —
+git only moves the branch when the operation completes. An earlier
+`captureContribution` read HEAD, so a member stranded mid-rebase was pinned at
+the source tip with an empty range and reported `no commits yet` for a branch
+holding real commits. Both `captureContribution` and `contributedTreeHash` now
+resolve `member.branchName`, which is correct at every moment with no
+mid-operation mode split.
+
+### A conflicted sync is surfaced and resolvable, never silent
+
+The sync verb rebases the worktree onto its source branch, and a real conflict
+stops that rebase halfway: HEAD detaches, the worktree drops out of every
+appraisal, and — before this was fixed — the failure went to the log file only
+while the panel showed nothing. The operator believed the sync succeeded.
+
+Three surfaces now carry the state, all fed by the same probe
+(`main/git/operation-state.ts`, which resolves rebase/merge/cherry-pick state
+via `rev-parse --git-path` so linked worktrees are read correctly):
+
+- the inventory keeps a mid-operation worktree visible, with `operationState`
+  and its conflicted paths (the branch is recovered from
+  `rebase-merge/head-name` while HEAD is detached);
+- a toast fires at the moment a sync or land fails with conflicts, and the
+  worktree row shows `conflict · Resolve`; dismissing the toast never hides the
+  row badge, which derives from live repository state;
+- the ConflictsDialog lists each conflicted file with its shape (both
+  modified, both added, delete/modify) and resolves it by Accept Yours, Accept
+  Theirs, or a 3-way merge editor (`merge-model.ts` implements the diff3
+  alignment; one-sided changes auto-apply, only contested chunks demand a
+  decision). Ours/theirs are always labelled with branch names, because a
+  rebase inverts git's sides and bare "ours" mid-rebase means the branch being
+  rebased ONTO — precisely the confusion a resolution UI must remove.
+
+The dialog's AI Assisted button opens a FRESH conversation in the conflicted
+directory (never an existing one — a live thread would be interrupted and its
+context could sway the fix) and submits
+`Please fix my currently in-progress rebase.` verbatim — one forwarded store
+action, per the ATV multi-step rule. The assist requires the `standard` tier in
+`~/.ion/models.json` and refuses with a remediation message when it is absent
+(resolved through the engine's `resolve_model_tier` command; the engine owns
+the file's semantics). The fresh conversation is pinned to that tier's model
+and forced into auto mode regardless of the operator's default — a plan-mode
+default would park the fix writing a plan. Abort and Continue drive the
+underlying rebase; Continue enables only when nothing is left unmerged.
+Resolution is desktop-only; iOS renders `operationState` and a conflicted-file
+count so a mid-rebase worktree neither vanishes nor looks healthy on the phone.
+
+### Retirement is surfaced, never silent
+
+A retired member's row disappears. A row vanishing with no explanation is
+indistinguishable from the bench losing a worktree, which is how the `pending`
+defect above was first reported. `BenchRebuildResult.retired` carries the absorbed
+members and the git panel names them ("… landed into `<branch>` and is now part of
+the base") until the operator dismisses the notice. Dismissal is per-window UI
+state: it mutates no bench record, which is why it is mirror-local rather than
+forwarded.
+
 ### Never `git clean -x`
 
 `switch -C ... --discard-changes` resets tracked files and **leaves ignored
@@ -212,6 +303,37 @@ Staging, discarding, and patch-applying stay allowed in a bench, unchanged —
 they touch the index rather than history, `--discard-changes` already resets
 them, and blocking them would stop the operator tidying a bench tree.
 
+### Bench conversations are briefed, not just gated
+
+The two gates above are reactive: they refuse a wrong write after the model has
+already planned it. A plan-mode session in a bench can therefore produce an
+entire plan whose every edit targets bench paths — wrong before implementation
+starts, and the operator has to intervene twice (once to explain the bench,
+once to redo the plan). That happened verbatim in a live bench conversation,
+which is why the harness now teaches proactively as well:
+
+- **A bench briefing rides the system prompt.** ion-meta's `before_prompt`
+  handler detects a bench cwd (`bench-briefing.ts`, same workspace resolution
+  as the write gate) and appends the bench's nature (rebuildable, never edit
+  here), its live member composition (label, branch, worktree path, pin), the
+  routing rule (fix in the owning member worktree, commit there, update the
+  member), and the plan-mode corollary (plans must be born targeting member
+  paths). Rebuilt per prompt so mid-session member changes are reflected;
+  fail-open like the gates.
+- **Two bench-only tools** (`tools/bench-tools.ts`), suppressed at
+  `session_start` for any non-bench conversation (the Agent-tool suppression
+  pattern): `ion_bench_info` re-reads the composition, and `ion_bench_locate`
+  answers "which member owns this file" with changed line ranges — the same
+  per-member diff attribution the write gate uses for refusals, exposed
+  BEFORE an edit is attempted. Both are plan-mode safe, because routing
+  decisions are made while planning. The write gate's refusal message points
+  at `ion_bench_locate`, so even the reactive path teaches the proactive tool.
+
+This lives in the harness (ion-meta), not the engine: the bench is a
+desktop/harness-level concern the engine has no concept of, and every seam used
+(`before_prompt` systemPrompt injection, tool registration + per-session
+suppression) is existing SDK surface.
+
 ### A worktree refuses writes outside itself
 
 The bench rule above has a sibling that applies to ordinary worktrees. A worktree
@@ -242,6 +364,31 @@ carries the `worktreePath → repoPath` mapping. When cwd is not a registered
 worktree the gate passes everything, so an ordinary repo conversation is
 completely unaffected. It fails open on a missing or corrupt registry, for the
 same reason the bench guards do.
+
+**A `Bash` call is judged by its command text, not only its cwd.** A single
+command can leave the worktree and commit elsewhere, and for a while this is
+exactly what happened: a conversation whose cwd was its worktree ran 115 commands
+prefixed `cd <base repo> &&` and landed two commits on the base repo's branch,
+because the gate resolved a `Bash` call to the session cwd and never read the
+command. So `engine/extensions/ion-meta/bash-destination.ts` splits the command on
+`&&`, `||`, `;`, `|`, and `&` (respecting quotes, so a `&&` inside a commit
+message is not a separator) and resolves every destination-changing construct it
+can read as a **literal** path: `cd`, `pushd`, `git -C`, `--git-dir`,
+`--work-tree`. `cd` is applied sequentially, because everything after it runs in
+the new directory. Each resolved destination is then checked by the same policy as
+any other target.
+
+A destination is only ever resolved when it is literal. `cd "$TARGET"`,
+`cd $(git rev-parse --show-toplevel)`, and a path built inside an invoked script
+are **not** resolved: the call passes and the construct is logged at WARN
+(`ion-meta: worktree-gate could not resolve a bash destination`) so the residual
+gap is queryable rather than invisible. That asymmetry is the design — a refusal
+requires a positively-resolved literal path, which makes a false refusal in the
+operator's own worktree structurally impossible. Refusing on unresolved
+destinations was rejected: it would block `cd $(...)`, per-directory loops, and
+any script that changes directory internally, all legitimate work, while `eval`
+and `bash -c` defeat any command-string parser regardless. Closing that remainder
+needs process-level containment, which is a different mechanism.
 
 **What this gate does not catch.** Its predicate is "is my cwd a registered
 worktree", so it is silent on the failure that motivated it — there the sessions'

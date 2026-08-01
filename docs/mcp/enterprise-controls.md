@@ -20,7 +20,7 @@ When `mcpAllowlist` is set, only the listed MCP server names are permitted. Any 
 }
 ```
 
-With this config, a user who adds a `shell-exec` MCP server to their personal config will find it silently removed at session start. Only `filesystem`, `github`, and `internal-docs` servers are allowed.
+With this config, a user who adds a `shell-exec` MCP server to their personal config will find it pruned when servers resolve (at `ion mcp add` time, and again at each session's first prompt). Only `filesystem`, `github`, and `internal-docs` servers are allowed.
 
 ### How names are matched
 

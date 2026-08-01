@@ -273,6 +273,7 @@
     "dispatchExitCode",
     "dispatchId",
     "dispatchInputTokens",
+    "dispatchLost",
     "dispatchModel",
     "dispatchOutputTokens",
     "dispatchParentId",
@@ -331,6 +332,9 @@
     "llmCallModel",
     "llmCallOutputTokens",
     "llmCallProvider",
+    "mcpAuthorizationUrl",
+    "mcpServerName",
+    "mcpServers",
     "message",
     "messagesAfter",
     "messagesBefore",
@@ -483,6 +487,16 @@
     "McpServerInfo": [
       "name",
       "status"
+    ],
+    "McpServerStatus": [
+      "authenticated",
+      "command",
+      "connected",
+      "lastError",
+      "name",
+      "toolCount",
+      "transport",
+      "url"
     ],
     "MessageEndUsage": [
       "contextPercent",

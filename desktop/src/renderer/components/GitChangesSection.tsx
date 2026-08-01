@@ -8,7 +8,7 @@ import { Tooltip } from './git/Tooltip'
 import type { GitChangedFile } from '../../shared/types'
 import { buildFileTree, type FileTreeNode } from './GitPanelTypes'
 import { useRepoGroups } from '../stores/git'
-import { ConflictResolver } from './git/ConflictResolver'
+import { ConflictsDialog } from './git/ConflictsDialog'
 import { SectionBlock } from './git/SectionBlock'
 import { rError, rDebug } from '../rendererLogger'
 
@@ -34,7 +34,6 @@ export function GitChangesSection({
   const [lastClickedPath, setLastClickedPath] = useState<string | null>(null)
   const [stashes, setStashes] = useState<Array<{ ref: string; message: string; date: string }>>([])
   const [stashExpanded, setStashExpanded] = useState(false)
-  const [conflicts, setConflicts] = useState<string[]>([])
   const [showResolver, setShowResolver] = useState(false)
 
   // Load stashes
@@ -46,14 +45,6 @@ export function GitChangesSection({
   }, [directory])
 
   useEffect(() => { void loadStashes().catch((err) => rDebug('git-changes', 'load stashes failed', { error: String(err) })) }, [loadStashes])
-
-  // Detect merge conflicts
-  useEffect(() => {
-    window.ion.gitConflicts(directory).then(r => {
-      if (r.ok) setConflicts(r.files)
-      else setConflicts([])
-    }).catch(() => setConflicts([]))
-  }, [directory, files])
 
   const handleStashSave = async () => {
     const result = await window.ion.gitStashSave(directory)
@@ -445,13 +436,12 @@ export function GitChangesSection({
         </FloatingPanel>
       )}
 
-      {/* Conflict resolver */}
-      {showResolver && conflicts.length > 0 && (
-        <ConflictResolver
+      {/* Conflict resolution: the 3-way dialog (one resolution UI everywhere —
+          the same dialog the worktree rows and conflict toasts open). */}
+      {showResolver && (
+        <ConflictsDialog
           directory={directory}
-          files={conflicts}
-          onClose={() => setShowResolver(false)}
-          onResolved={() => { setShowResolver(false); setConflicts([]); onRefresh() }}
+          onClose={() => { setShowResolver(false); onRefresh() }}
         />
       )}
     </>

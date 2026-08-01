@@ -123,6 +123,11 @@ func buildManifest() contractManifest {
 		"ProviderEntry":       reflect.TypeOf(ProviderEntry{}),
 		"ProviderCliStatus":   reflect.TypeOf(ProviderCliStatus{}),
 		"ProviderLoginUpdate": reflect.TypeOf(ProviderLoginUpdate{}),
+		// MCP server administration. Carried inside engine_mcp_servers events
+		// as a complete snapshot, so cross-language mirrors must track every
+		// field a consumer renders (connection vs. authorization state are
+		// independent — see the type comment).
+		"McpServerStatus": reflect.TypeOf(McpServerStatus{}),
 		// Slash-command registry. Emitted inside engine_command_registry events
 		// so consumers can populate a routing-hint cache without parsing
 		// engine internals. Snapshot semantics — see types.go comment.

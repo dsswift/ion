@@ -43,6 +43,7 @@ import { makeWorkspace, makeMember } from '../integration/bench-store'
 import { landWorktree } from '../worktree/integrate'
 import { retireWorktree } from '../worktree/relocate'
 import type { IntegrationWorkspace, IntegrationMember } from '../../shared/types'
+import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
 
 const TRUNK = 'main'
 const FEATURE = 'josh'
@@ -84,8 +85,14 @@ function makeWorktree(name: string): { path: string; branch: string } {
 }
 
 async function enroll(wt: { path: string; branch: string }): Promise<IntegrationMember> {
-  const c = await captureContribution(wt.path)
-  return makeMember({ worktreePath: wt.path, branchName: wt.branch, pinnedSha: c.sha, pinnedTreeHash: c.treeHash })
+  const c = await captureContribution(wt.path, FEATURE, wt.branch)
+  return makeMember({
+    worktreePath: wt.path,
+    branchName: wt.branch,
+    pinnedSha: c.sha,
+    pinnedTreeHash: c.treeHash,
+    pinnedBaseSha: c.baseSha,
+  })
 }
 
 function workspaceFor(members: IntegrationMember[]): IntegrationWorkspace {
@@ -268,4 +275,4 @@ describe('operator scenario: two worktrees, squash one, land it, bench re-layers
     expect(readFileSync(join(repo, 'app.txt'), 'utf-8')).toBe('local edits in flight\n')
     expect(commitsAhead(repo, TRUNK, FEATURE)).toHaveLength(0)
   })
-})
+}, GIT_FIXTURE_TIMEOUT)

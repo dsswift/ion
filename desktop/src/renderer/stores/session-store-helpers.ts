@@ -105,7 +105,6 @@ export function makeLocalTab(): TabState {
     pillColor: null,
     pillIcon: null,
     forkedFromSessionId: null,
-    hasFileActivity: false,
     worktree: null,
     pendingWorktreeSetup: false,
     groupId: null,

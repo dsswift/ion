@@ -11,17 +11,7 @@
 
 Engine, desktop, and iOS each have their own `AGENTS.md` with subsystem-specific rules.
 
-## Extension SDK source location
-
-The TypeScript SDK that extensions import lives in **two places**:
-
-| Location | Role |
-|----------|------|
-| `engine/extensions/sdk/ion-sdk/` | **Source of truth.** Edit here. |
-| `~/.ion/extensions/sdk/ion-sdk/` | **Installed copy.** Overwritten at build time. Never edit. |
-
-The build process copies the repo source to the installed location. Any edit made only to `~/.ion/extensions/sdk/` will be lost on the next build. **Always edit `engine/extensions/sdk/ion-sdk/`** for SDK changes (types, runtime, or any other SDK file). The installed copy at `~/.ion/` is read-only from the agent's perspective.
-
+SDK edits have a source-of-truth split (repo source vs. build-overwritten installed copy) — moved to [`engine/AGENTS.md`](engine/AGENTS.md) § "Extension SDK source location". Read it before changing any file under `engine/extensions/sdk/ion-sdk/` or touching `~/.ion/extensions/sdk/`.
 ## File-size caps (CI hard-fails above)
 
 | Language | Cap |
@@ -175,7 +165,7 @@ These are the gates to run **during normal development** — they are cheap, fas
 | Status-writer check | `make check-status-writers` — run when touching code that emits `engine_status` or `engine_session_status` |
 | Logging standards | `make check-logging` — enforces ADR-019: no interpolated `msg`, no `console.*` in renderer, no non-canonical field keys. |
 | Engine lint | `cd engine && golangci-lint run` (scope to touched packages while iterating: `golangci-lint run ./internal/<pkg>/...`) |
-| Engine tests (scoped) | `cd engine && go test ./internal/<touched-pkg>/...` — run the packages you changed, with `-race` when concurrency is involved. Do **not** routinely run the full `go test ./...` sweep while iterating. |
+| Engine tests (scoped) | `cd engine && go test ./internal/<touched-pkg>/...` — run the packages you changed, with `-race` when concurrency is involved. Do **not** routinely run the full `go test ./...` sweep while iterating. **Package scoping is not always enough:** some packages are internally slow because their tests wait on real timers (`internal/server` runs ~150s wall-clock — socket lifecycle, reap/heartbeat waits). In a known-slow package, scope further with `-run <TestPrefix>` to the arms your change touches; the package's full run happens once at PR time, not in the dev loop. |
 | Desktop typecheck | `cd desktop && npm run typecheck` |
 | Desktop tests (scoped) | `cd desktop && npm test -- <pattern>` for the area you touched. The full `npm test` run belongs to the pre-PR sweep. |
 
@@ -846,7 +836,14 @@ repo it was cut from, nor into a sibling worktree of the same repo
 `/tmp`, `~/.ion`, and unrelated repos all stay writable, and a conversation that
 is not in a worktree is unaffected. The rule exists because cross-worktree writes
 interleave several conversations in one dirty checkout, and review cannot
-attribute the hunks afterwards.
+attribute the hunks afterwards. A `Bash` call is judged by its command text, not
+only its cwd: every literal `cd` / `pushd` / `git -C` / `--work-tree` destination
+in the chain is checked (`bash-destination.ts`), because a command that `cd`s into
+the base repo and commits there is the exact way two commits once landed on the
+wrong branch. A dynamic destination (`cd "$VAR"`, `cd $(...)`) cannot be resolved,
+so it passes and is logged at WARN rather than guessed at — a refusal requires a
+literal path, which is what makes a false refusal in your own worktree
+impossible.
 
 Closing a conversation never removes a worktree. Removal is only the explicit
 Retire verb, which appraises what would be lost, refuses when the answer is work,

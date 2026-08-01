@@ -100,6 +100,10 @@ export const PROJECTABLE_SETTINGS: readonly ProjectableSetting[] = PROJECTABLE_S
  *   - `advanced` is not projected today (its desktop subsections —
  *     Presets, Migration, Developer — are not yet meaningful as remote
  *     surfaces; adding `applyPreset` here is the obvious follow-up).
+ *   - `mcp` is not projected (credential-bearing server administration:
+ *     adding a server writes the engine host's engine.json, and OAuth
+ *     authorization requires a browser on the engine host to complete the
+ *     redirect — no mobile interaction model).
  *
  * iOS renders one section per group in this order.
  */

@@ -602,13 +602,22 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	// died" for a perfectly recoverable run).
 	//
 	// engine_dead is reserved for ABNORMAL termination: a non-zero exit code,
-	// or any signal other than the cooperative "cancelled" (e.g. SIGKILL,
-	// SIGSEGV, or the watchdog's "cancelled-forced" hard kill). Those are real
-	// deaths a consumer must surface. Narrowing engine_dead's trigger set is a
-	// contract change ratified by ADR-013 (docs/architecture/adr/
-	// 013-engine-dead-clean-cancel.md); see also ADR-003 for the precedent.
+	// or any signal other than the cooperative "cancelled" / "suspended"
+	// (e.g. SIGKILL, SIGSEGV, or the watchdog's "cancelled-forced" hard
+	// kill). Those are real deaths a consumer must surface. Narrowing
+	// engine_dead's trigger set is a contract change ratified by ADR-013
+	// (docs/architecture/adr/013-engine-dead-clean-cancel.md); see also
+	// ADR-003 for the precedent.
+	//
+	// "suspended" is the park-exit signal (drainSuspend /
+	// parkForChildDispatches): the run ended deliberately at a turn boundary
+	// with work still in flight, and something will revive it. It is neither
+	// a death nor a cancel — descendants must NOT be reaped (the children
+	// being awaited are exactly the descendants) and engine_dead must not
+	// fire.
 	cleanCancel := (code == nil || *code == 0) && signal != nil && *signal == "cancelled"
-	abnormalExit := (code != nil && *code != 0) || (signal != nil && *signal != "cancelled")
+	suspendedExit := (code == nil || *code == 0) && signal != nil && *signal == "suspended"
+	abnormalExit := (code != nil && *code != 0) || (signal != nil && *signal != "cancelled" && *signal != "suspended")
 
 	// Descendant teardown runs for ANY non-normal exit (clean cancel OR
 	// abnormal death), independent of whether we emit engine_dead. A clean
@@ -630,6 +639,12 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 		})
 	} else if cleanCancel {
 		utils.LogWithFields(utils.LevelInfo, "session", "clean cancel (no engine_dead)", map[string]any{"key": key, "code_str": codeStr, "sig_str": sigStr})
+	} else if suspendedExit {
+		// Park exit: the run ended deliberately with children or background
+		// work in flight. No descendant reaping (the awaited children ARE
+		// the descendants), no engine_dead. Logged so the park's exit branch
+		// is reconstructible next to the cancel/death branches above.
+		utils.LogWithFields(utils.LevelInfo, "session", "suspended exit (park; no reap, no engine_dead)", map[string]any{"key": key, "code_str": codeStr, "sig_str": sigStr})
 	}
 
 	// Auto-respawn any extension hosts whose subprocess died during the

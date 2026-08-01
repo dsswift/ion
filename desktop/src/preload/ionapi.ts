@@ -50,6 +50,8 @@ export interface IonAPI extends AtvApi {
   onRemoteOpenWorktreeConversation(callback: (worktreePath: string) => void): () => void
   /** iOS asked to open (or focus) a conversation in the integration bench. */
   onRemoteOpenBenchConversation(callback: (arg: { repoPath: string; sourceBranch: string }) => void): () => void
+  /** A worktree was named (generated or renamed). Both windows re-read the row. */
+  onWorktreeTitled(callback: (arg: { repoPath: string; worktreePath: string; title: string }) => void): () => void
   /** Reveal a directory in the OS file manager. */
   revealPath(path: string): Promise<boolean>
 
@@ -138,13 +140,31 @@ export interface IonAPI extends AtvApi {
   gitRevert(directory: string, hash: string): Promise<{ ok: boolean; error?: string }>
   gitReset(directory: string, hash: string, mode: 'soft' | 'mixed' | 'hard'): Promise<{ ok: boolean; error?: string }>
   gitBlame(directory: string, path: string): Promise<{ lines: Array<{ hash: string; author: string; date: string; lineNo: number; content: string }>; ok: boolean; error?: string }>
-  gitConflicts(directory: string): Promise<{ files: string[]; ok: boolean; error?: string }>
-  gitConflictFile(directory: string, path: string): Promise<{ content: string; ok: boolean; error?: string }>
   gitResolveConflict(directory: string, path: string, content: string): Promise<{ ok: boolean; error?: string }>
   gitRebaseTodo(directory: string, onto: string): Promise<{ commits: Array<{ hash: string; subject: string; action: string }>; ok: boolean; error?: string }>
   gitRebaseExec(directory: string, onto: string, commits: Array<{ hash: string; action: string }>): Promise<{ ok: boolean; error?: string }>
   gitRebaseAbort(directory: string): Promise<{ ok: boolean; error?: string }>
   gitRebaseContinue(directory: string): Promise<{ ok: boolean; error?: string }>
+  gitOpState(directory: string): Promise<{
+    ok: boolean
+    error?: string
+    state?: 'rebasing' | 'merging' | 'cherry-picking' | null
+    branch?: string | null
+    onto?: string | null
+    oursLabel?: string
+    theirsLabel?: string
+    files?: Array<{ path: string; shape: string; hasBase: boolean; hasOurs: boolean; hasTheirs: boolean }>
+  }>
+  gitConflictStages(directory: string, path: string): Promise<{
+    ok: boolean
+    error?: string
+    base?: string | null
+    ours?: string | null
+    theirs?: string | null
+    oursLabel?: string
+    theirsLabel?: string
+  }>
+  gitConflictAccept(directory: string, path: string, side: 'ours' | 'theirs'): Promise<{ ok: boolean; error?: string }>
   gitSubscribe(directory: string): Promise<{ snapshot: RepoSnapshot | null }>
   gitUnsubscribe(directory: string): Promise<{ ok: boolean }>
   gitRefresh(directory: string): Promise<{ ok: boolean }>
@@ -171,7 +191,21 @@ export interface IonAPI extends AtvApi {
   gitWorktreeLand(args: { repoPath: string; worktreePath: string; worktreeBranch: string; sourceBranch: string; noFf?: boolean; syncFirst?: boolean; requireFastForward?: boolean }): Promise<LandResult>
   gitWorktreeSync(worktreePath: string, sourceBranch: string): Promise<{ ok: boolean; error?: string; hasConflicts?: boolean; refusedDirty?: boolean }>
   /** Every managed worktree for a repo, with state for describing and acting on it. */
-  gitWorktreeInventory(repoPath: string): Promise<{ worktrees: WorktreeInventoryEntry[] }>
+  gitWorktreeInventory(repoPath: string, backfillTitles?: boolean): Promise<{ worktrees: WorktreeInventoryEntry[] }>
+  /**
+   * Ask the main process to name a worktree from a prompt, if it needs one.
+   *
+   * Fire-and-forget from the renderer's point of view: the main process decides
+   * whether the directory is a worktree at all and whether it is already named,
+   * so callers pass every send and let the answer come back as a no-op reason.
+   */
+  gitWorktreeAutotitle(workingDirectory: string, text: string): Promise<{
+    ok: boolean
+    title?: string
+    reason?: 'empty-input' | 'not-a-worktree' | 'already-titled' | 'generation-failed' | 'empty-title'
+  }>
+  /** Operator override for a worktree's title. */
+  gitWorktreeSetTitle(args: { worktreePath: string; repoPath?: string; title: string }): Promise<{ ok: boolean; title?: string; error?: string }>
   /** What would be lost if this worktree were removed right now. */
   gitWorktreeAppraise(worktreePath: string, sourceBranch: string): Promise<WorktreeAppraisalWire>
   // ── Integration workspace (the bench) ──
@@ -277,8 +311,32 @@ export interface IonAPI extends AtvApi {
   /** Remove an installed plugin by name. */
   pluginRemove(name: string): Promise<{ ok: boolean; error?: string; data?: { removed: string } }>
 
+  // ─── MCP server administration ───
+  /** List configured MCP servers with their connection and authorization state. */
+  mcpList(): Promise<{ ok: boolean; servers?: import('../shared/types-engine-event').McpServerStatus[]; error?: string }>
+  /** Add an MCP server. Omitting `transport` lets the engine infer it: a url
+   *  means http, a command means stdio. */
+  mcpAdd(request: {
+    name: string
+    transport?: string
+    url?: string
+    command?: string
+    args?: string[]
+    headers?: Record<string, string>
+    env?: Record<string, string>
+  }): Promise<{ ok: boolean; error?: string }>
+  /** Remove a server and its stored credentials. */
+  mcpRemove(name: string): Promise<{ ok: boolean; error?: string }>
+  /** Authorize a server via OAuth. Opens the system browser and resolves only
+   *  after the operator completes the flow (or it times out), so callers must
+   *  keep their pending UI state until it settles. */
+  mcpLogin(name: string, scope?: string): Promise<{ ok: boolean; authorizationUrl?: string; error?: string }>
+  /** Drop a server's stored credentials, leaving its configuration in place. */
+  mcpLogout(name: string): Promise<{ ok: boolean; error?: string }>
+
   // ─── Model & provider management ───
   listModels(): Promise<{ models: import('../shared/types-models').ModelEntry[]; providers: import('../shared/types-models').ProviderEntry[] }>
+  resolveModelTier(tier: string): Promise<{ tier: string; model: string; fallbacks: string[]; configured: boolean }>
   storeCredential(provider: string, credential: string): Promise<{ ok: boolean; error?: string }>
   refreshModels(provider?: string): Promise<{ ok: boolean; error?: string }>
 

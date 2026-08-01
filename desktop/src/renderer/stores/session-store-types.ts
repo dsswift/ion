@@ -1,4 +1,31 @@
-import type { TabState, NormalizedEvent, EnrichedError, Attachment, FileAttachment, TerminalPaneState, ConversationPane, ImageAttachmentPayload, WorktreeInventoryEntry, WorktreeProvisionState, IntegrationWorkspace, BenchRebuildResult } from '../../shared/types'
+/** One conflicted or refused directory, as the alert surfaces see it. */
+export interface GitConflictAlert {
+  /** What raised it: a failed sync, a failed land, or an inventory detection. */
+  source: 'sync' | 'land' | 'detected'
+  /**
+   * What kind of failure this is. `conflict` (the default when absent) means
+   * an operation is stuck mid-way and the ConflictsDialog can resolve it.
+   * `refusal` means the verb declined to start — a dirty worktree refusing a
+   * sync — so there is NO in-progress operation to resolve; the remediation
+   * is in `message` (commit or stash), and the toast offers no Resolve.
+   *
+   * Lifecycle differs too: a conflict clears when the inventory sees the
+   * operation finish, a refusal clears when the worktree goes clean or the
+   * next sync succeeds (there is no git state that says "was refused").
+   */
+  kind?: 'conflict' | 'refusal'
+  /** The in-progress operation, when known. */
+  operationState?: 'rebasing' | 'merging' | 'cherry-picking'
+  /** Operator-facing message from the failing verb, when there was one. */
+  message?: string
+  /** Display label for the directory (worktree label or basename). */
+  label?: string
+  /** True when the operator closed the toast. Badges ignore this. */
+  dismissed: boolean
+  recordedAt: number
+}
+
+import type { TabState, NormalizedEvent, EnrichedError, Attachment, FileAttachment, TerminalPaneState, ConversationPane, ImageAttachmentPayload, WorktreeInventoryEntry, WorktreeProvisionState, IntegrationWorkspace, IntegrationMember, BenchRebuildResult } from '../../shared/types'
 import type { ResourceItem } from '../../shared/types-engine'
 
 export interface StaticInfo {
@@ -84,6 +111,21 @@ export interface State {
   benchWorkspaces: Map<string, IntegrationWorkspace[]>
   /** Current source-branch tips per repo, keyed by branch name. */
   benchSourceTips: Map<string, Record<string, string>>
+  /**
+   * Members the last rebuild absorbed into the base, per repo then per source
+   * branch. Retiring a member removes its row, and a row vanishing with no
+   * explanation is indistinguishable from the bench losing a worktree — this is
+   * what lets the UI say what happened. Cleared by the operator dismissing it.
+   */
+  benchRetired: Map<string, Map<string, IntegrationMember[]>>
+  /**
+   * Directories with a conflicted git operation in progress, keyed by
+   * directory. Fed by sync/land failures carrying `hasConflicts` and by
+   * inventory refreshes that find an in-progress operation. The toast reads
+   * `dismissed`; row badges and banners derive from live inventory state so
+   * the truth outlives a dismissal.
+   */
+  gitConflictAlerts: Map<string, GitConflictAlert>
 
   engineWorkingMessages: Map<string, string>
   engineNotifications: Map<string, Array<{ id: string; message: string; level: string; timestamp: number }>>
@@ -340,6 +382,16 @@ export interface State {
   benchAddMember: (repoPath: string, sourceBranch: string, worktreePath: string, branchName: string) => Promise<{ ok: boolean; error?: string }>
   benchRemoveMember: (repoPath: string, sourceBranch: string, worktreePath: string) => Promise<void>
   benchSetEnabled: (repoPath: string, sourceBranch: string, worktreePath: string, enabled: boolean) => Promise<void>
+  /** Dismiss the absorbed-into-base notice for one workspace. */
+  clearBenchRetired: (repoPath: string, sourceBranch: string) => void
+  /** Record a conflicted directory (sync/land failure or detected mid-operation). */
+  recordConflictAlert: (directory: string, alert: Omit<GitConflictAlert, 'dismissed' | 'recordedAt'>) => void
+  /** Drop a directory's conflict alert — its operation completed or aborted. */
+  clearConflictAlert: (directory: string) => void
+  /** Hide the toast for a directory; the badge stays until actually resolved. */
+  dismissConflictAlert: (directory: string) => void
+  /** Open (or focus) a conversation in the conflicted directory and submit the assist prompt. */
+  openConflictAssist: (directory: string) => Promise<string>
   /**
    * Unified tab + engine-instance creation entry point (Phase 2, #256).
    * Both plain and engine tabs are created through this path. The extension

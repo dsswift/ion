@@ -52,14 +52,18 @@ export function AgentRow({
   onToggle,
   onSelectDispatch,
 }: Props) {
-  // Yellow "waiting on children" derivation: a running agent whose own activity
-  // is idle because a dispatched child is still running. Match children by the
-  // agent's selected dispatch id.
+  // Yellow "waiting on children" derivation: an agent with a live dispatched
+  // child, whatever the agent's OWN status. Deliberately not gated on
+  // status === 'running': a parent marked done (or suspended/parked) while a
+  // child still runs must read as waiting-on-children, never as a solid green
+  // done dot — the tree is not finished. Match children by the agent's
+  // selected dispatch id; live child statuses are running or suspended
+  // (a parked child is alive, merely waiting on its own children).
   const selDispatch = dispatches[dispIdx]
   const selDispatchId = selDispatch?.id ?? ''
   const hasRunningChildren =
-    agent.status === 'running' &&
-    childAgentsOf(allAgents, selDispatchId).some((c) => c.status === 'running')
+    agent.status !== 'error' &&
+    childAgentsOf(allAgents, selDispatchId).some((c) => c.status === 'running' || c.status === 'suspended')
   const dot = getStatusDot(agent, colors, hasRunningChildren)
   // Duration source mirrors the expanded view: the selected dispatch's clock
   // when present, else the agent's own metadata. DurationDisplay live-ticks

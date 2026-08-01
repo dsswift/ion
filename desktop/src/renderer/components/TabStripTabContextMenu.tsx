@@ -15,7 +15,7 @@ import { zoomRect, zoomViewport, useAnchoredPopoverPosition } from './TabStripSh
 import { ContextMenuItem } from './ContextMenuItem'
 import { MoveToGroupSubmenu } from './TabStripMoveToGroupSubmenu'
 import { ConfirmDialog } from './git/ConfirmDialog'
-import { rDebug, rInfo, rError } from '../rendererLogger'
+import { rDebug, rInfo, rError, rWarn } from '../rendererLogger'
 
 interface TabContextMenuProps {
   anchor: { x: number; y: number }
@@ -80,12 +80,48 @@ export function TabContextMenu({
 
   const showMoveAll = groupTabs && groupTabs.length > 1
   const [isGitRepo, setIsGitRepo] = useState(false)
+  const [uncommitted, setUncommitted] = useState<boolean | 'checking'>('checking')
 
   useEffect(() => {
-    if (tab.workingDirectory && !tab.worktree) {
-      window.ion.gitIsRepo(tab.workingDirectory).then(({ isRepo }) => setIsGitRepo(isRepo)).catch(() => setIsGitRepo(false))
+    let cancelled = false
+    if (!tab.workingDirectory || tab.worktree) {
+      setIsGitRepo(false)
+      return () => { cancelled = true }
     }
-  }, [tab.workingDirectory, tab.worktree])
+
+    setUncommitted('checking')
+    void window.ion.gitIsRepo(tab.workingDirectory).then(({ isRepo }) => {
+      if (cancelled) return
+      setIsGitRepo(isRepo)
+      if (!isRepo) {
+        setUncommitted(false)
+        return
+      }
+      return window.ion.gitChanges(tab.workingDirectory).then((result) => {
+        if (!cancelled) setUncommitted(result.files.length > 0)
+      }).catch((err) => {
+        if (!cancelled) {
+          rWarn('tab-context-menu', 'convert-to-worktree dirtiness probe failed; allowing conversion', {
+            tab_id: tab.id,
+            working_directory: tab.workingDirectory,
+            error: String(err),
+          })
+          setUncommitted(false)
+        }
+      })
+    }).catch((err) => {
+      if (!cancelled) {
+        rWarn('tab-context-menu', 'git repository probe failed; hiding convert-to-worktree action', {
+          tab_id: tab.id,
+          working_directory: tab.workingDirectory,
+          error: String(err),
+        })
+        setIsGitRepo(false)
+      }
+    })
+
+    return () => { cancelled = true }
+  }, [tab.id, tab.workingDirectory, tab.worktree])
 
   useEffect(() => {
     if (showNewGroupInput) newGroupInputRef.current?.focus()
@@ -114,7 +150,7 @@ export function TabContextMenu({
   // measures the menu after mount and flips it upward when the
   // anchor is near the bottom edge. Items that conditionally render
   // (worktree-only "Finish work", manual-mode rows, "Move all to
-  // group", git-detection "Convert to worktree", and the inline
+  // group", git-detection and dirtiness-gated "Convert to worktree", and the inline
   // "showNewGroupInput") all change the rendered height — include
   // every one in `deps` so the hook re-measures on each transition.
   const pos = useAnchoredPopoverPosition(anchor, {
@@ -125,6 +161,7 @@ export function TabContextMenu({
       !!tab.workingDirectory,
       !!tab.worktree,
       isGitRepo,
+      uncommitted,
       tabGroupMode,
       showMoveAll,
       // Submenu state toggles aren't expected to change outer
@@ -185,11 +222,11 @@ export function TabContextMenu({
       )}
       {!tab.worktree && isGitRepo && (
         <ContextMenuItem
-          disabled={tab.hasFileActivity}
+          disabled={uncommitted !== false}
           onClick={() => { void useSessionStore.getState().convertToWorktree(tab.id).catch((err) => rError('tabs', 'convert to worktree failed', { error: String(err) })); window.dispatchEvent(new CustomEvent('ion:close-group-pickers')); onClose() }}
         >
-          <GitBranch size={14} color={tab.hasFileActivity ? colors.textTertiary : colors.textSecondary} />
-          <span>Convert to worktree</span>
+          <GitBranch size={14} color={uncommitted !== false ? colors.textTertiary : colors.textSecondary} />
+          <span>{uncommitted === 'checking' ? 'Convert to worktree (checking...)' : uncommitted ? 'Convert to worktree (uncommitted changes)' : 'Convert to worktree'}</span>
         </ContextMenuItem>
       )}
       {tab.worktree && (

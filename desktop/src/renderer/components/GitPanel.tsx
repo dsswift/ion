@@ -13,6 +13,7 @@ import { useRepoState } from '../stores/git'
 import { GitChangesSection } from './GitChangesSection'
 import { GitGraphSection } from './GitGraphSection'
 import { WorktreesSection } from './WorktreesSection'
+import { GitConflictBanner } from './GitConflictBanner'
 import { IntegrationSection } from './IntegrationSection'
 import { CommitForm } from './git/CommitForm'
 import {
@@ -317,6 +318,11 @@ export function GitPanel() {
           <ArrowsClockwise size={11} />
         </PanelIconButton>
       </div>
+
+      {/* Conflict banner: any directory of this project mid-operation with
+          conflicts. Lives above the bench banner because a conflict blocks
+          everything else the panel offers. */}
+      <GitConflictBanner repoPath={repoRootPath} />
 
       {/* Bench banner: names WHICH bench, so the operator can tell without
           opening Integration. Only rendered in a bench. */}

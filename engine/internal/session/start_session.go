@@ -9,7 +9,6 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/extension"
-	"github.com/dsswift/ion/engine/internal/mcp"
 	"github.com/dsswift/ion/engine/internal/permissions"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/resource"
@@ -296,6 +295,13 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 		m.loadAndWireExtensions(s, key, config)
 	}
 
+	// Announce any dispatches rehydration resolved as lost (persisted as
+	// running/suspended but dead with the previous engine process). Ordered
+	// AFTER extension load so the dispatch_lost hook reaches a live
+	// extension group; the typed engine_dispatch_lost event rides the
+	// session stream regardless. No-op when rehydration queued nothing.
+	m.announceLostDispatches(s, key)
+
 	// Load skills from default paths. The project root resolves against the
 	// session's working directory (not the daemon cwd) via IonSkillPathsFor.
 	//
@@ -360,37 +366,17 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 	// Load and wire Claude Code-compatible plugins (SessionStart hooks + UserPromptSubmit hooks).
 	m.loadAndWirePlugins(s, key)
 
-	// Connect MCP servers from config (outside lock)
-	if m.config != nil && len(m.config.McpServers) > 0 {
-		m.emit(key, types.EngineEvent{
-			Type:         "engine_working_message",
-			EventMessage: "Connecting MCP servers...",
-		})
-		for name, mcpCfg := range m.config.McpServers {
-			conn, err := mcp.Connect(name, mcpCfg)
-			if err != nil {
-				// A whole server's tools going away is an error, not info, and
-				// missed by ERROR-level log sweeps at Info. Key by serverName;
-				// stringify the error so it serializes as a message not an object.
-				utils.LogWithFields(utils.LevelError, "session", "mcp connect failed", map[string]any{"serverName": name, "error": utils.ErrStr(err)})
-				continue
-			}
-			m.mu.Lock()
-			// Guard against session disposal/replacement while Connect() was
-			// blocking. If the session is gone or has been replaced, close the
-			// freshly-opened connection immediately to avoid a file-descriptor
-			// leak.
-			if cur, ok := m.sessions[key]; !ok || cur != s {
-				m.mu.Unlock()
-				conn.Close() //nolint:errcheck // resource close
-				utils.LogWithFields(utils.LevelInfo, "session", "mcp : session disposed during connect — closing leaked conn", map[string]any{"model": name, "key": key})
-				continue
-			}
-			s.mcpConns = append(s.mcpConns, conn)
-			m.mu.Unlock()
-			utils.LogWithFields(utils.LevelInfo, "session", "mcp server connected ( tools)", map[string]any{"model": name, "count": len(conn.Tools())})
-		}
-	}
+	// MCP servers are NOT connected here — see ensureMcpConnections.
+	//
+	// This used to be an eager, serial connect loop, and it made session start
+	// O(configured servers × network RTT): a desktop rehydrating dozens of tabs
+	// calls StartSession once per tab, and one healthy remote server cost each
+	// tab ~1.7s (measured: 20 tabs, 32s of blocked rehydration), while an
+	// UNREACHABLE server cost each tab up to two 30-second metadata timeouts.
+	// Nothing consumes the connections before the first prompt dispatch — the
+	// RunConfig is rebuilt from s.mcpConns at every dispatch — so the connect
+	// now happens lazily at that seam and only sessions that actually run a
+	// prompt pay it.
 
 	m.emit(key, types.EngineEvent{
 		Type:         "engine_working_message",

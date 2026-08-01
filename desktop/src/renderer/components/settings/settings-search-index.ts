@@ -16,6 +16,11 @@ const SEARCH_INDEX: SearchEntry[] = [
   { categoryId: 'general', label: 'AI Tab Titles', keywords: 'ai tab titles generate automatic name' },
   { categoryId: 'general', label: 'Clear Context on Implement', keywords: 'clear context implement plan mode history' },
 
+  // MCP Servers
+  { categoryId: 'mcp', label: 'MCP Servers', keywords: 'mcp model context protocol server tools resources external add remote stdio' },
+  { categoryId: 'mcp', label: 'Authorize MCP Server', keywords: 'mcp authorize oauth login sign in token authenticate browser mobbin' },
+  { categoryId: 'mcp', label: 'Add MCP Server', keywords: 'mcp add server url command npx http sse stdio endpoint' },
+
   // AI & Models
   { categoryId: 'ai', label: 'Default Conversation Model', keywords: 'model conversation default opus sonnet haiku' },
   { categoryId: 'ai', label: 'Default Engine Model', keywords: 'model engine default opus sonnet haiku' },

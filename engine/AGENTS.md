@@ -15,6 +15,7 @@ make build                                                # -> bin/ion
 make build-linux                                          # cross-compile linux/amd64
 make docker                                               # Docker image from scratch
 go test ./internal/<pkg>/...                              # scoped unit (dev loop; add -race for concurrency)
+go test -run <TestPrefix> ./internal/<slow-pkg>/          # further scoping for slow packages (see note below)
 golangci-lint run ./internal/<pkg>/...                    # scoped lint (dev loop)
 go test -race ./...                                       # FULL unit suite — heavy, PR-time only (see root AGENTS.md)
 go test -race -tags integration ./tests/integration/...   # integration — heavy, PR-time only
@@ -28,6 +29,32 @@ govulncheck ./...                                         # vuln scan — heavy,
 ## E2E config
 
 `tests/e2e/testconfig.json` is gitignored. Copy from `testconfig.example.json`. Resolution: `apiKey` field > `apiKeyEnv` env var. Tests skip if no key.
+
+## Never run a throwaway probe against the operator's live credentials
+
+Verifying engine work against a real external service is legitimate and often the only way to prove a fix — a mock cannot tell you that a provider enforces an `Accept` header or rotates a refresh token on use. **Point every such probe at a throwaway `HOME`, never at `~/.ion`.**
+
+```go
+t.Setenv("HOME", t.TempDir())   // in-test isolation
+```
+
+```bash
+# For an out-of-test probe: isolate HOME *and* the socket, so the run cannot
+# touch the operator's daemon, config, or stored tokens.
+export TH=$(mktemp -d)
+HOME="$TH" ION_SOCKET_PATH="$TH/engine.sock" ION_PID_PATH="$TH/engine.pid" \
+  ./bin/ion mcp add ...
+```
+
+`~/.ion` holds live OAuth grants, provider API keys, and conversation state. A probe that reads it will also *write* it, and some writes are irreversible from the engine's side:
+
+- **A refresh-token grant is single-use at most providers.** Refreshing rotates the token and invalidates the previous one. A test that exercises a real refresh consumes the operator's grant; when the rotated value is not the one the provider ends up honoring, the stored credential is permanently spent and the only recovery is a fresh interactive login. This has happened here: a live concurrency probe against `api.mobbin.com` consumed the operator's Mobbin grant, and the next session two days later failed with `refresh_token_already_used`. The engine behaved correctly; the credential was gone.
+- Writing a server into `~/.ion/engine.json` changes what every subsequent conversation on the machine connects to.
+- Starting a daemon on the default socket path competes with the operator's running one.
+
+The rule is not "avoid live testing." It is: **a live probe is disposable, so its state must be disposable too.** Isolate, run, verify, delete the temp dir. If a probe genuinely cannot work without the operator's real credential — proving a specific stored grant is valid, for instance — say so and ask first, because the cost of being wrong is an account the operator has to re-authorize by hand.
+
+The same applies to any test that reads `HOME` implicitly. `internal/session` redirects it once in `TestMain` for exactly this reason (see the comment there): resolving config fresh at session start made every test that starts a session machine-dependent, and one of them began failing only on a machine that had an MCP server configured.
 
 ## Test helpers
 
@@ -205,7 +232,22 @@ Observability is the most important property of the engine's mechanical implemen
 
 While developing, run only the **scoped** gates for what you touched — see root [`AGENTS.md`](../AGENTS.md) § "Quality gates (run while developing)". Do **not** run the full `go test -race ./...` sweep, integration tests, or `govulncheck` mid-development; those are heavy gates that run at PR time — CI is authoritative, and `/create-pr` runs the Linux parity subset once before pushing.
 
-1. `go test ./internal/<touched-pkg>/...` passes (add `-race` when concurrency is involved). Run the packages you changed, not the whole tree.
+1. `go test ./internal/<touched-pkg>/...` passes (add `-race` when concurrency is involved). Run the packages you changed, not the whole tree. **In a known-slow package, scope further with `-run <TestPrefix>`** — some packages wait on real timers and a full package run costs minutes of wall-clock the dev loop should not pay (`internal/server` is ~150s: socket lifecycle, reap/heartbeat waits, per-test broadcast windows). Run the test functions covering the arms you touched; the package's full run happens once at PR time via CI. Do not sit through a multi-minute package sweep to validate a one-handler change.
 2. `golangci-lint run ./internal/<touched-pkg>/...` clean for the packages you touched.
 3. `make check-file-sizes` passes.
 4. Don't `git push`. The full race suite, integration tests, and `govulncheck` run at PR time (CI is authoritative; `/create-pr` runs the Linux subset) — not here.
+
+## Extension SDK source location
+
+The TypeScript SDK that extensions import lives in **two places**:
+
+| Location | Role |
+|----------|------|
+| `engine/extensions/sdk/ion-sdk/` | **Source of truth.** Edit here. |
+| `~/.ion/extensions/sdk/ion-sdk/` | **Installed copy.** Overwritten at build time. Never edit. |
+
+The build process copies the repo source to the installed location. Any edit made only to `~/.ion/extensions/sdk/` will be lost on the next build.
+
+**Always edit `engine/extensions/sdk/ion-sdk/`** for SDK changes — types, runtime, or any other SDK file. The installed copy at `~/.ion/` is read-only from the agent's perspective.
+
+Corollary for harness work: a harness that consumes a brand-new SDK field may need a structural-typing shim until the operator rebuilds the engine/SDK, because the installed copy does not carry the field until that rebuild happens.

@@ -22,8 +22,10 @@ import { Plus } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { WorktreeRow } from './WorktreeRow'
+import { ConflictsDialog } from './git/ConflictsDialog'
 import { WorktreeRowMenu } from './WorktreeRowMenu'
 import { rError } from '../rendererLogger'
+import { collectDirConversations } from '../../shared/worktree-conversations'
 import type { WorktreeInventoryEntry } from '../../shared/types'
 
 export function WorktreesSection({
@@ -38,6 +40,7 @@ export function WorktreesSection({
   const tabs = useSessionStore((s) => s.tabs)
   const [syncing, setSyncing] = useState<string | null>(null)
   const [menu, setMenu] = useState<{ entry: WorktreeInventoryEntry; anchor: { x: number; y: number } } | null>(null)
+  const [resolving, setResolving] = useState<string | null>(null)
 
   const refresh = useCallback(() => {
     void useSessionStore.getState().refreshWorktreeInventory(repoPath)
@@ -68,13 +71,15 @@ export function WorktreesSection({
         </div>
       ) : (
         entries.map((entry) => {
-          const openIdx = tabs.findIndex((t) => t.workingDirectory === entry.worktreePath)
+          // EVERY conversation in this worktree, not just the first. The row
+          // needs the count for its label and the list for its hover card, and
+          // the click rotation happens in the store action.
+          const openConversations = collectDirConversations(tabs, entry.worktreePath)
           return (
             <WorktreeRow
               key={entry.worktreePath}
               entry={entry}
-              openTabId={openIdx >= 0 ? tabs[openIdx].id : undefined}
-              openTabIndex={openIdx >= 0 ? openIdx + 1 : undefined}
+              openConversations={openConversations}
               syncing={syncing === entry.worktreePath}
               onOpen={() => {
                 void useSessionStore.getState()
@@ -83,6 +88,7 @@ export function WorktreesSection({
               }}
               onSync={() => handleSync(entry)}
               onMenu={(anchor) => setMenu({ entry, anchor })}
+              onResolve={() => setResolving(entry.worktreePath)}
             />
           )
         })
@@ -110,6 +116,13 @@ export function WorktreesSection({
         <Plus size={10} />
         <span>New worktree</span>
       </button>
+
+      {resolving && (
+        <ConflictsDialog
+          directory={resolving}
+          onClose={() => { setResolving(null); refresh() }}
+        />
+      )}
 
       {menu && (
         <WorktreeRowMenu

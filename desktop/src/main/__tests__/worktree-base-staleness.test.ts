@@ -36,6 +36,7 @@ import { captureContribution } from '../integration/bench-snapshot'
 import { rebuildBench } from '../integration/bench-rebuild'
 import { makeWorkspace, makeMember } from '../integration/bench-store'
 import type { IntegrationMember, IntegrationWorkspace } from '../../shared/types'
+import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
 
 const FEATURE = 'josh'
 
@@ -162,7 +163,7 @@ describe('appraiseBase — detects a stale base', () => {
     expect(base.needsSync).toBe(false)
     expect(base.appraisalFailed).toBe(true)
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('syncWorktreeFromSource — resolves base staleness', () => {
   it('clears the stale signal and brings in the landed work', async () => {
@@ -218,7 +219,7 @@ describe('syncWorktreeFromSource — resolves base staleness', () => {
     expect(result.hasConflicts).toBe(true)
     expect(result.error).toMatch(/rebase --abort/)
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('the two staleness directions are independent', () => {
   // Both can be true at once and each has its own resolution. Proving they do
@@ -230,8 +231,14 @@ describe('the two staleness directions are independent', () => {
     commitIn(b.path, 'b.txt', 'b v1\n', 'b work')
 
     async function enroll(wt: { path: string; branch: string }): Promise<IntegrationMember> {
-      const c = await captureContribution(wt.path)
-      return makeMember({ worktreePath: wt.path, branchName: wt.branch, pinnedSha: c.sha, pinnedTreeHash: c.treeHash })
+      const c = await captureContribution(wt.path, FEATURE, wt.branch)
+      return makeMember({
+        worktreePath: wt.path,
+        branchName: wt.branch,
+        pinnedSha: c.sha,
+        pinnedTreeHash: c.treeHash,
+        pinnedBaseSha: c.baseSha,
+      })
     }
     const wsBase = makeWorkspace(repo, FEATURE)
     const ws: IntegrationWorkspace = {
@@ -245,7 +252,7 @@ describe('the two staleness directions are independent', () => {
     // Direction 1 — B commits more: BENCH is stale for B, base is not.
     commitIn(b.path, 'b.txt', 'b v2\n', 'b more work')
     const bMember = built.members.find((m) => m.branchName === b.branch)!
-    const bNow = await captureContribution(b.path)
+    const bNow = await captureContribution(b.path, FEATURE, b.branch)
     expect(bNow.treeHash).not.toBe(bMember.pinnedTreeHash)   // bench stale
     expect((await appraiseBase(b.path, FEATURE)).needsSync).toBe(false)  // base fine
 
@@ -259,7 +266,7 @@ describe('the two staleness directions are independent', () => {
     const synced = await syncWorktreeFromSource(b.path, FEATURE)
     expect(synced.ok).toBe(true)
     expect((await appraiseBase(b.path, FEATURE)).needsSync).toBe(false)
-    const bAfterSync = await captureContribution(b.path)
+    const bAfterSync = await captureContribution(b.path, FEATURE, b.branch)
     expect(bAfterSync.treeHash).not.toBe(bMember.pinnedTreeHash)  // still bench-stale
 
     // Resolving BENCH staleness (re-pin + rebuild) integrates B's new work.
@@ -273,4 +280,4 @@ describe('the two staleness directions are independent', () => {
     expect(result.ok).toBe(true)
     expect(readFileSync(join(ws.benchPath, 'b.txt'), 'utf-8')).toBe('b v2\n')
   })
-})
+}, GIT_FIXTURE_TIMEOUT)

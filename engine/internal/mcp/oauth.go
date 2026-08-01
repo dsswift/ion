@@ -1,13 +1,10 @@
 package mcp
 
 import (
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -15,8 +12,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/network"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
+
+// tokenRefreshTimeout bounds a refresh_token exchange. A refresh runs inline
+// on the connect path, so a hung token endpoint would stall session start.
+const tokenRefreshTimeout = 30 * time.Second
 
 // OAuthToken holds an OAuth 2.0 access token and optional refresh token.
 type OAuthToken struct {
@@ -97,6 +99,12 @@ func (s *OAuthStore) RefreshToken(serverName string, config *OAuthConfig) (*OAut
 	if existing == nil || existing.RefreshToken == "" {
 		return nil, fmt.Errorf("no refresh token available for %s", serverName)
 	}
+	if config.TokenURL == "" {
+		// Without a token endpoint the refresh cannot be attempted at all.
+		// Naming the remediation here keeps the failure self-explaining in
+		// engine.jsonl instead of surfacing as a bare POST error to "".
+		return nil, fmt.Errorf("no token endpoint known for %s; run `ion mcp login %s` or set mcpServers.%s.oauth.token_url", serverName, serverName, serverName)
+	}
 
 	form := url.Values{
 		"grant_type":    {"refresh_token"},
@@ -107,7 +115,11 @@ func (s *OAuthStore) RefreshToken(serverName string, config *OAuthConfig) (*OAut
 		form.Set("client_secret", config.ClientSecret)
 	}
 
-	resp, err := http.PostForm(config.TokenURL, form)
+	// Routed through the shared client so an enterprise proxy / custom CA
+	// applies (D-018); http.PostForm would bypass the configured transport.
+	client := *network.GetHTTPClient()
+	client.Timeout = tokenRefreshTimeout
+	resp, err := client.Post(config.TokenURL, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("refresh token request: %w", err)
 	}
@@ -118,7 +130,33 @@ func (s *OAuthStore) RefreshToken(serverName string, config *OAuthConfig) (*OAut
 	}()
 
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("refresh token failed with status %d", resp.StatusCode)
+		// The provider's error body names the actual cause (expired or revoked
+		// refresh token, unknown client, scope change). Dropping it leaves only
+		// a status code, which is not enough to act on.
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		if readErr != nil {
+			utils.LogWithFields(utils.LevelInfo, "mcp.oauth", "refresh error body read failed", map[string]any{"serverName": serverName, "error": readErr.Error()})
+		}
+
+		// Classify before returning. A spent or revoked grant is not the same
+		// failure as a 500, and reporting both as "refresh token failed with
+		// status N" sends the operator to retry a thing that will never work.
+		grantErr := classifyGrantFailure(serverName, resp.StatusCode, body)
+		fields := map[string]any{
+			"serverName": serverName, "status": resp.StatusCode, "tokenUrl": config.TokenURL,
+			"oauthErrorCode": grantErr.Code, "unrecoverable": grantErr.Unrecoverable,
+			"body": string(body),
+		}
+		if grantErr.Unrecoverable {
+			// The operator has to act, and this log line is the only place a
+			// headless engine can tell them so.
+			fields["remediation"] = "run `ion mcp login " + serverName + "` to re-authorize"
+			utils.LogWithFields(utils.LevelError, "mcp.oauth", "stored authorization can no longer be renewed; interactive re-login required", fields)
+		} else {
+			utils.LogWithFields(utils.LevelError, "mcp.oauth", "refresh token rejected by provider; may succeed on retry", fields)
+		}
+		recordGrantFailure(serverName, grantErr)
+		return nil, grantErr
 	}
 
 	var tokenResp struct {
@@ -145,6 +183,9 @@ func (s *OAuthStore) RefreshToken(serverName string, config *OAuthConfig) (*OAut
 	}
 
 	s.SetToken(serverName, token)
+	// The grant works: forget any recorded death so a stale reason cannot
+	// outlive the problem it described.
+	clearGrantFailure(serverName)
 	return token, nil
 }
 
@@ -154,20 +195,6 @@ func IsExpired(token *OAuthToken) bool {
 		return true
 	}
 	return time.Now().After(token.ExpiresAt.Add(-60 * time.Second))
-}
-
-// GeneratePKCEChallenge creates a PKCE code_verifier and SHA256 code_challenge.
-func GeneratePKCEChallenge() (verifier string, challenge string, err error) {
-	buf := make([]byte, 32)
-	if _, err := rand.Read(buf); err != nil {
-		return "", "", fmt.Errorf("generate PKCE verifier: %w", err)
-	}
-	verifier = base64.RawURLEncoding.EncodeToString(buf)
-
-	hash := sha256.Sum256([]byte(verifier))
-	challenge = base64.RawURLEncoding.EncodeToString(hash[:])
-
-	return verifier, challenge, nil
 }
 
 func (s *OAuthStore) save() {
@@ -219,9 +246,38 @@ func getOAuthStore() *OAuthStore {
 }
 
 // resolveOAuthHeaders returns auth headers for a server, refreshing if needed.
+//
+// oauthConfig is the operator's explicit engine.json `oauth` block, or nil.
+// When nil, a stored client registration (from `ion mcp login`, which may have
+// been created by dynamic registration) supplies the refresh endpoints — that
+// is what lets a zero-config `mcpServers` entry carry a token at all. Before
+// the login path existed, a nil config meant "no auth possible"; now it means
+// "no auth CONFIGURED", which is not the same thing.
+//
+// Returns nil when no token is available, which is not necessarily an error:
+// a server that requires no auth is the common case. Connect proceeds, and a
+// server that does require auth answers 401 with the remediation Connect adds.
 func resolveOAuthHeaders(serverName string, oauthConfig *OAuthConfig) map[string]string {
-	if oauthConfig == nil {
-		return nil
+	effective := oauthConfig
+	if effective == nil {
+		// No explicit block: fall back to what a completed login stored.
+		reg := getClientStore().Get(serverName)
+		if reg == nil {
+			utils.LogWithFields(utils.LevelDebug, "mcp.oauth", "no oauth config and no stored client registration; connecting unauthenticated", map[string]any{"serverName": serverName})
+			return nil
+		}
+		effective = &OAuthConfig{
+			ClientID:     reg.ClientID,
+			ClientSecret: reg.ClientSecret,
+			AuthURL:      reg.AuthURL,
+			TokenURL:     reg.TokenURL,
+			Scope:        reg.Scope,
+			RedirectURI:  reg.RedirectURI,
+			UsePKCE:      true,
+		}
+		utils.LogWithFields(utils.LevelDebug, "mcp.oauth", "using stored client registration for token resolution", map[string]any{
+			"serverName": serverName, "clientId": reg.ClientID,
+		})
 	}
 
 	store := getOAuthStore()
@@ -230,7 +286,7 @@ func resolveOAuthHeaders(serverName string, oauthConfig *OAuthConfig) map[string
 	// Try refresh if token is expired but refresh token exists.
 	if token == nil {
 		var err error
-		token, err = store.RefreshToken(serverName, oauthConfig)
+		token, err = store.RefreshToken(serverName, effective)
 		if err != nil {
 			// Refresh failure: the connection proceeds unauthenticated, the
 			// server 401s, and every tool disappears. Log so this is not silent.
@@ -254,6 +310,10 @@ func resolveOAuthHeaders(serverName string, oauthConfig *OAuthConfig) map[string
 	if len(tokenType) > 0 {
 		tokenType = strings.ToUpper(tokenType[:1]) + tokenType[1:]
 	}
+	utils.LogWithFields(utils.LevelInfo, "mcp.oauth", "resolved oauth authorization header", map[string]any{
+		"serverName": serverName, "tokenType": tokenType,
+		"expiresAt": token.ExpiresAt.Format(time.RFC3339),
+	})
 	return map[string]string{
 		"Authorization": tokenType + " " + token.AccessToken,
 	}

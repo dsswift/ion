@@ -176,8 +176,13 @@ struct AgentBarRow: View {
     }
 
     private var statusColor: Color {
+        // Mirrors the desktop getStatusDot vocabulary (agent-helpers.ts):
+        // suspended (a parked dispatch, alive and waiting on children or a
+        // revive) renders the waiting-on-children yellow, never the idle
+        // grey and never done green — the tree is not finished.
         switch agent.status {
         case "running": return theme.statusRunning
+        case "suspended": return theme.statusWaitingChildren
         case "done": return theme.statusDone
         case "error": return theme.statusError
         default: return theme.textSecondary.opacity(0.5)

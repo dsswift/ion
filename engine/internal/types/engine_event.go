@@ -300,6 +300,18 @@ type EngineEvent struct {
 	OidcUsername    string `json:"oidcUsername,omitempty"`
 	OidcDisplayName string `json:"oidcDisplayName,omitempty"`
 
+	// engine_mcp_login_url — delivered to the client that issued mcp_login.
+	// McpAuthorizationURL is what the consumer opens in a browser;
+	// McpServerName identifies which server it authorizes, since a consumer
+	// may have more than one login in flight.
+	McpAuthorizationURL string `json:"mcpAuthorizationUrl,omitempty"`
+	McpServerName       string `json:"mcpServerName,omitempty"`
+
+	// engine_mcp_servers — complete snapshot of the configured MCP servers
+	// with their connection and authorization state. Consumers REPLACE their
+	// local view with this payload; never merge. Nil on every other event.
+	McpServers []McpServerStatus `json:"mcpServers,omitempty"`
+
 	// engine_command_registry — complete snapshot of slash commands exposed by
 	// the session's currently-loaded extensions. Emitted at session_start (after
 	// extensions wire up) and on every subsequent change to the command map
@@ -573,6 +585,15 @@ type EngineEvent struct {
 	// field semantics.
 	BackgroundTaskComplete *BackgroundTaskCompletePayload `json:"backgroundTaskComplete,omitempty"`
 
+	// engine_dispatch_lost — a dispatch that was running when the engine
+	// process died is unrecoverable after restart; one event per orphan,
+	// emitted during dispatch-state rehydration. Nested payload (same
+	// treatment as BackgroundTaskComplete). See DispatchLostEvent for the
+	// normalized variant and full field semantics. Consumers may redispatch,
+	// harvest the child's partial transcript via the payload's
+	// childConversationId, or ignore the event.
+	DispatchLost *DispatchLostPayload `json:"dispatchLost,omitempty"`
+
 	// --- Notification events (D-009) ---
 	//
 	// engine_notification: emitted when an extension calls ctx.Notify.
@@ -702,4 +723,16 @@ type BackgroundTaskCompletePayload struct {
 	Tail             string   `json:"tail,omitempty"`
 	Command          string   `json:"command,omitempty"`
 	RemainingTaskIDs []string `json:"remainingTaskIds,omitempty"`
+}
+
+// DispatchLostPayload is the nested wire payload for engine_dispatch_lost
+// events. Mirrors the internal DispatchLostEvent field-for-field; see that
+// type (normalized_event_run_signals.go) for full semantics.
+type DispatchLostPayload struct {
+	DispatchID          string `json:"dispatchId"`
+	AgentName           string `json:"agentName"`
+	Task                string `json:"task,omitempty"`
+	ParentDispatchID    string `json:"parentDispatchId,omitempty"`
+	Depth               int    `json:"depth,omitempty"`
+	ChildConversationID string `json:"childConversationId,omitempty"`
 }

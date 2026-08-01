@@ -410,9 +410,21 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	extGroup := s.extGroup
 	permEng := s.permEngine
 	telemCollector := s.telemetry
-	mcpConns := s.mcpConns
 	m.mu.Unlock()
 	utils.LogWithFields(utils.LevelInfo, "session", "sendprompt[]: lock released", map[string]any{"key": key})
+
+	// Lazily connect MCP servers, once per session, now that the lock is
+	// released (the connect is network I/O). This is the seam that replaced the
+	// eager connect in StartSession: it runs on the first prompt only, so a
+	// desktop rehydrating dozens of idle tabs pays nothing, and the first
+	// prompt of a session that does use MCP pays one connect instead of every
+	// tab paying it at launch. Must precede the s.mcpConns read below — the
+	// RunConfig for THIS dispatch is built from whatever connected here.
+	m.ensureMcpConnections(s, key)
+
+	m.mu.Lock()
+	mcpConns := s.mcpConns
+	m.mu.Unlock()
 
 	// context: fork — run the resolved command's expanded body as a forked
 	// sub-agent instead of inlining it into this conversation. The parent

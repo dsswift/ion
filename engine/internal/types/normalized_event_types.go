@@ -66,6 +66,10 @@ const (
 	// with notify_on_complete reaches a terminal state. See
 	// BackgroundTaskCompleteEvent in normalized_event_run_signals.go.
 	EventBackgroundTaskComplete = "background_task_complete"
+	// EventDispatchLost fires once per dispatch that was running when the
+	// engine process died and is therefore unrecoverable after restart. See
+	// DispatchLostEvent in normalized_event_run_signals.go.
+	EventDispatchLost = "dispatch_lost"
 	// EventPlanContent is emitted in response to a get_plan_content command.
 	// It carries a bounded byte-range window of a plan file so remote clients
 	// can page through large plans without filesystem access to the engine host.
@@ -84,6 +88,20 @@ const (
 	// delivered to the requester of an oidc_identity command. Consumers
 	// replace their local identity view with the payload.
 	EventOidcIdentity = "engine_oidc_identity"
+	// EventMcpLoginURL is delivered to the client that issued an mcp_login
+	// command. It carries the authorization URL that consumer must open in a
+	// browser, plus the server name it belongs to (a consumer may have several
+	// logins in flight). The engine owns the rest of the flow: its loopback
+	// callback server completes the code exchange and persists the token
+	// without further client involvement.
+	EventMcpLoginURL = "engine_mcp_login_url"
+	// EventMcpServers is a complete snapshot of the configured MCP servers and
+	// their current connection/authorization state. Broadcast on every change
+	// (add, remove, login completion, logout) and delivered to the requester of
+	// an mcp_list command. Consumers REPLACE their local server view with the
+	// payload; they do not merge. An empty slice is the authoritative "no MCP
+	// servers configured" signal.
+	EventMcpServers = "engine_mcp_servers"
 	// Extended-thinking events surface the model's reasoning activity as a
 	// first-class signal (issue #158). The engine receives Anthropic
 	// thinking_delta stream events; these variants make them observable so

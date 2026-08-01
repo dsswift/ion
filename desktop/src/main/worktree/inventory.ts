@@ -35,6 +35,8 @@ import { parseWorktreeList } from './integrate'
 import { appraiseWorktree } from './safety'
 import { appraiseBase } from './base-staleness'
 import { getProvisionState } from './provision-state'
+import { maybeBackfillWorktreeTitles, type BackfillCandidate } from './autotitle-backfill'
+import { probeOperationState } from '../git/operation-state'
 import type { WorktreeInventoryEntry } from '../../shared/types'
 
 const TAG = 'worktree.inventory'
@@ -50,8 +52,25 @@ interface RegistryEntry {
   worktreePath: string
   repoPath: string
   branchName: string
-  /** The branch this worktree was cut from — not recoverable from git. */
-  sourceBranch: string
+  /**
+   * The branch this worktree was cut from — not recoverable from git.
+   *
+   * Null for a worktree Ion knows about but did not cut (a hand-created one
+   * that has since been given a title, see `setWorktreeTitle`). Recording a
+   * title must never require inventing a source branch: a wrong one would make
+   * `land` merge into the wrong place, which is exactly what the unknown-source
+   * path exists to prevent.
+   */
+  sourceBranch: string | null
+  /**
+   * Human-readable description of what this worktree is FOR, generated from the
+   * first prompt sent in it (see the autotitle IPC) or set by the operator.
+   *
+   * Absent until then. Every other identifier a worktree has — `ion-03e81090`,
+   * `wt/ion-03e81090`, a commit sha — is a machine string that tells the
+   * operator nothing about the work, which is what this field fixes.
+   */
+  title?: string
   createdAt: number
 }
 
@@ -67,7 +86,12 @@ function loadRegistry(): RegistryEntry[] {
     const parsed = JSON.parse(readFileSync(file, 'utf-8')) as Partial<RegistryFile>
     return Array.isArray(parsed.entries)
       ? parsed.entries.filter((e): e is RegistryEntry =>
-        !!e && typeof e.worktreePath === 'string' && typeof e.sourceBranch === 'string')
+        // sourceBranch may legitimately be null: a hand-created worktree that
+        // has been titled is registered with an unknown source rather than a
+        // guessed one. Requiring a string here would silently drop those
+        // entries on the next read, losing the title.
+        !!e && typeof e.worktreePath === 'string'
+        && (typeof e.sourceBranch === 'string' || e.sourceBranch === null))
       : []
   } catch (err) {
     warn('registry unreadable, treating as empty', { path: file, error: String(err) })
@@ -89,6 +113,11 @@ function saveRegistry(entries: RegistryEntry[]): void {
 /**
  * Record a worktree's source branch. Called from every path that creates a
  * worktree, so the lifecycle verbs always know where it lands.
+ *
+ * An existing TITLE survives re-registration. Re-registering happens when a
+ * worktree is re-attached at the same path, and the description of what the
+ * work is about is still true — dropping it would silently un-name the row and
+ * force another titling round-trip.
  */
 export function registerWorktree(args: {
   worktreePath: string
@@ -96,14 +125,91 @@ export function registerWorktree(args: {
   branchName: string
   sourceBranch: string
 }): void {
+  const previous = loadRegistry().find((e) => e.worktreePath === args.worktreePath)
   const entries = loadRegistry().filter((e) => e.worktreePath !== args.worktreePath)
-  entries.push({ ...args, createdAt: Date.now() })
+  entries.push({ ...args, title: previous?.title, createdAt: Date.now() })
   saveRegistry(entries)
   log('registered worktree', {
     worktree_path: args.worktreePath,
     branch: args.branchName,
     source_branch: args.sourceBranch,
+    retained_title: previous?.title ?? '',
   })
+}
+
+/**
+ * Give a worktree a human-readable title, creating a registry entry when one
+ * does not exist yet.
+ *
+ * The upsert matters: a worktree created by hand on the command line has no
+ * registry entry, but it still shows up in the inventory and still deserves a
+ * name. Such an entry records `sourceBranch: null` — Ion genuinely does not
+ * know what it was cut from, and the lifecycle verbs must keep asking rather
+ * than acting on a fabricated answer.
+ *
+ * `repoPath` and `branchName` are optional because a titling caller may not
+ * know them; they are only filled in when creating a new entry, never used to
+ * overwrite what an existing registration already recorded.
+ */
+export function setWorktreeTitle(
+  worktreePath: string,
+  title: string,
+  fallback?: { repoPath?: string; branchName?: string },
+): void {
+  const entries = loadRegistry()
+  const existing = entries.find((e) => e.worktreePath === worktreePath)
+  if (existing) {
+    const previous = existing.title
+    existing.title = title
+    saveRegistry(entries)
+    log('worktree title set', { worktree_path: worktreePath, title, replaced: previous ?? '' })
+    return
+  }
+
+  entries.push({
+    worktreePath,
+    repoPath: fallback?.repoPath ?? '',
+    branchName: fallback?.branchName ?? '',
+    // Unknown, and deliberately not guessed. See the field comment.
+    sourceBranch: null,
+    title,
+    createdAt: Date.now(),
+  })
+  saveRegistry(entries)
+  log('worktree title set on a new registry entry', {
+    worktree_path: worktreePath,
+    title,
+    repo_path: fallback?.repoPath ?? '',
+    source_branch: 'unknown',
+  })
+}
+
+/** A worktree's recorded title, or null when it has never been named. */
+export function lookupWorktreeTitle(worktreePath: string): string | null {
+  return loadRegistry().find((e) => e.worktreePath === worktreePath)?.title ?? null
+}
+
+/**
+ * The full registration for a worktree, or null when Ion has no record.
+ *
+ * Callers that must decide "is this directory a worktree Ion manages, and which
+ * repo does it belong to" read this rather than inferring from the path shape —
+ * a path can look like a worktree without being one.
+ */
+export function lookupWorktreeRegistration(worktreePath: string): {
+  repoPath: string
+  branchName: string
+  sourceBranch: string | null
+  title: string | null
+} | null {
+  const entry = loadRegistry().find((e) => e.worktreePath === worktreePath)
+  if (!entry) return null
+  return {
+    repoPath: entry.repoPath,
+    branchName: entry.branchName,
+    sourceBranch: entry.sourceBranch,
+    title: entry.title ?? null,
+  }
 }
 
 /** Drop a worktree's registry entry (after a retire). */
@@ -140,7 +246,19 @@ export type { WorktreeInventoryEntry } from '../../shared/types'
  * The bench worktree and the repo's own root are excluded: they are not feature
  * worktrees and offering them here would be misleading.
  */
-export async function inventoryWorktrees(repoPath: string): Promise<WorktreeInventoryEntry[]> {
+export async function inventoryWorktrees(
+  repoPath: string,
+  opts?: {
+    /**
+     * Fire the title backfill for untitled registered worktrees after the
+     * read. Opt-in and renderer-driven: the `aiGeneratedTitles` preference
+     * lives in the renderer's preferences store, so only the renderer's
+     * inventory refresh may set this — remote/iOS-triggered reads never fire
+     * LLM calls the operator did not opt into.
+     */
+    backfillTitles?: boolean
+  },
+): Promise<WorktreeInventoryEntry[]> {
   let listed: ReturnType<typeof parseWorktreeList>
   try {
     listed = parseWorktreeList(await runGit(repoPath, ['worktree', 'list', '--porcelain']))
@@ -150,13 +268,37 @@ export async function inventoryWorktrees(repoPath: string): Promise<WorktreeInve
   }
 
   const entries: WorktreeInventoryEntry[] = []
+  const backfillCandidates: BackfillCandidate[] = []
   for (const wt of listed) {
     // Skip the repo root itself and the integration bench.
     if (wt.path === repoPath) continue
     if (wt.branch.startsWith('ion/bench/')) continue
-    if (!wt.branch) continue // detached HEAD — not a managed feature worktree
+
+    // A detached HEAD is usually not a managed feature worktree — but a
+    // conflicted rebase detaches HEAD too, and dropping the entry in that state
+    // made two mid-rebase worktrees vanish from the panel at the exact moment
+    // the operator needed to see them. Probe for an in-progress operation and
+    // recover the branch git recorded (rebase-merge/head-name) before skipping.
+    let branchName = wt.branch
+    const operation = await probeOperationState(wt.path)
+    if (!branchName) {
+      if (operation.state && operation.branch) {
+        branchName = operation.branch
+        log('recovered mid-operation worktree', {
+          worktree_path: wt.path,
+          branch: branchName,
+          operation: operation.state,
+          conflicted: operation.conflictedPaths.length,
+        })
+      } else {
+        // Genuinely detached (operator checkout, bisect artifact) — not ours.
+        log('skipping detached worktree with no recorded operation', { worktree_path: wt.path })
+        continue
+      }
+    }
 
     const sourceBranch = lookupSourceBranch(wt.path)
+    const title = lookupWorktreeTitle(wt.path)
 
     let lastCommitSubject = ''
     try {
@@ -166,18 +308,25 @@ export async function inventoryWorktrees(repoPath: string): Promise<WorktreeInve
     }
 
     // Without a known source branch the land-relative facts are unanswerable.
-    // Report what IS knowable and leave the rest conservative.
+    // Report what IS knowable and leave the rest conservative. A mid-operation
+    // worktree also skips the appraisals: unlanded counts and needsSync are
+    // meaningless halfway through a rebase, and their git reads can fail — the
+    // operation itself is the state worth reporting.
     let unlandedCommitCount = 0
     let safeToDiscard = false
     let needsSync = false
     let isDirty = false
-    if (sourceBranch) {
+    let unlandedSubjects: string[] = []
+    if (sourceBranch && !operation.state) {
       const appraisal = await appraiseWorktree(wt.path, sourceBranch)
       isDirty = appraisal.hasUncommittedChanges
       unlandedCommitCount = appraisal.unlandedCommitCount
       safeToDiscard = appraisal.safeToDiscard
+      // Kept OUT of the wire entry (nobody renders subjects); carried only to
+      // the title backfill below, which describes a worktree by its work.
+      unlandedSubjects = appraisal.unlandedSubjects
       needsSync = (await appraiseBase(wt.path, sourceBranch)).needsSync
-    } else {
+    } else if (!operation.state) {
       try {
         isDirty = (await runGit(wt.path, ['status', '--porcelain'])).trim().length > 0
       } catch (err) {
@@ -190,10 +339,18 @@ export async function inventoryWorktrees(repoPath: string): Promise<WorktreeInve
     // omits the field rather than claiming a state it cannot know.
     const provision = getProvisionState(wt.path)
 
+    backfillCandidates.push({
+      worktreePath: wt.path,
+      title: title ?? undefined,
+      operationState: operation.state,
+      unlandedSubjects,
+    })
+
     entries.push({
       worktreePath: wt.path,
-      branchName: wt.branch,
-      label: wt.path.split('/').filter(Boolean).pop() || wt.branch,
+      branchName,
+      label: wt.path.split('/').filter(Boolean).pop() || branchName,
+      title: title ?? undefined,
       sourceBranch,
       head: wt.head.slice(0, 7),
       lastCommitSubject,
@@ -201,11 +358,23 @@ export async function inventoryWorktrees(repoPath: string): Promise<WorktreeInve
       unlandedCommitCount,
       needsSync,
       safeToDiscard,
+      operationState: operation.state,
+      conflictedPaths: operation.conflictedPaths.length > 0 ? operation.conflictedPaths : undefined,
       provisionState: provision?.state,
       provisionError: provision?.error,
     })
   }
 
   log('inventoried worktrees', { repo_path: repoPath, count: entries.length })
+
+  // Title backfill, fire-and-forget: the inventory read stays fast and
+  // read-only, and titles are announced (broadcast + iOS push) when they land.
+  // See autotitle-backfill.ts for the skip table and the once-per-run guard.
+  if (opts?.backfillTitles) {
+    void maybeBackfillWorktreeTitles(repoPath, backfillCandidates).catch((err) => {
+      warn('title backfill pass failed', { repo_path: repoPath, error: String(err) })
+    })
+  }
+
   return entries
 }

@@ -911,6 +911,20 @@ A background bash command started with `Bash(run_in_background: true, notify_on_
 | `command` | string | The command that ran |
 | `remainingTaskIds` | string[] | Task IDs still outstanding for the session after this completion |
 
+#### engine_dispatch_lost
+
+A dispatch that was running when the engine process died is unrecoverable after restart. The dispatch registry is process memory: every in-flight dispatched agent dies with the engine, and no terminal callback ever fires for it. During dispatch-state rehydration at session start, the engine resolves each persisted dispatch's last status; one still `running`/`suspended` is provably dead, its agent-state row is marked `error`, and this event is emitted — one per orphan. The typed event is the engine's complete signaling obligation: the engine never resurrects the lost run. Consumers may redispatch the task, harvest the child's partial transcript from the conversation store via `dispatchLost.childConversationId`, notify an orchestrator, or ignore the event. The `dispatch_lost` hook fires with the same payload for extension consumers. Not retained or replayed on reconnect.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_dispatch_lost"` | Event type |
+| `dispatchLost.dispatchId` | string | The lost dispatch's collision-safe unique ID |
+| `dispatchLost.agentName` | string | The dispatched agent's name |
+| `dispatchLost.task` | string | The task brief the dispatch was running |
+| `dispatchLost.parentDispatchId` | string | Dispatch ID of the parent that spawned it; empty for top-level |
+| `dispatchLost.depth` | number | Persisted nesting-depth attribution |
+| `dispatchLost.childConversationId` | string | Child session's conversation ID when known — the partial-transcript harvest handle |
+
 #### engine_capability_unsupported
 
 Workflow signal emitted when a requested feature (e.g. plan mode) is not supported by the backend that would serve the run, and the engine declined the prompt cleanly instead of dispatching a run that would fail. No run starts and the session stays idle and immediately usable for the next prompt. The engine reports; the consumer decides — reroute the prompt to a capable model, surface the reason, or ignore the event. Not retained or replayed on reconnect.
@@ -970,6 +984,36 @@ Complete operator identity snapshot. **Snapshot-replace semantics:** consumers r
 | `oidcSubject` | string | Subject claim (present when signed in) |
 | `oidcUsername` | string | Username / preferred-username claim (present when signed in) |
 | `oidcDisplayName` | string | Display name claim (present when signed in) |
+
+#### engine_mcp_login_url
+
+Emitted to the **requesting client only** (requester-scoped, not broadcast) after `mcp_login` starts a flow. Carries the authorization URL the consumer must open and the name of the server it authorizes — a consumer may have more than one login in flight. The engine owns the rest: its loopback callback server completes the code exchange and persists the grant with no further client involvement. Not retained or replayed on reconnect.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_mcp_login_url"` | Event type |
+| `mcpServerName` | string | Server being authorized |
+| `mcpAuthorizationUrl` | string | Authorization URL for the consumer to open |
+
+#### engine_mcp_servers
+
+Complete MCP server snapshot. **Snapshot-replace semantics:** consumers replace their local server list with this payload and never merge. An absent or empty `mcpServers` array is the authoritative "no MCP servers configured" signal.
+
+Broadcast to all clients on every state transition — `mcp_add`, `mcp_remove`, `mcp_logout`, and both the success and failure paths of `mcp_login` (the failure broadcast is how a consumer learns the attempt left the server unauthorized). An `mcp_list` request also delivers it requester-scoped.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_mcp_servers"` | Event type |
+| `mcpServers[].name` | string | Server name (the key under `mcpServers` in `engine.json`) |
+| `mcpServers[].transport` | string | `http` \| `sse` \| `ws` \| `stdio` |
+| `mcpServers[].url` | string | Endpoint for a network transport (optional) |
+| `mcpServers[].command` | string | Executable for a stdio server (optional) |
+| `mcpServers[].connected` | boolean | Whether at least one live session holds a connection |
+| `mcpServers[].authenticated` | boolean | Whether a usable (unexpired) OAuth token is stored |
+| `mcpServers[].toolCount` | int | Tools the live connection exposed; `0` when not connected (optional) |
+| `mcpServers[].lastError` | string | Most recent connection failure (optional) |
+
+**`connected` and `authenticated` are independent — do not collapse them.** A server can be connected without authentication (it requires none), or authenticated but not connected, which means a stored token is being refused. That second combination is precisely the state an operator must act on, and a single derived "ok" indicator would hide it. `lastError` is what makes a failing server diagnosable from a client with no access to the engine host's log file.
 
 #### engine_provider_login
 

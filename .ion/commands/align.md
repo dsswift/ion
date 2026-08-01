@@ -1,5 +1,6 @@
 ---
-description: Context-aware alignment. In plan mode: injects Ion quality standards into the current plan, then updates the plan with the alignment amendments. Outside plan mode: reviews all branch changes against Ion quality gates and principles, then enters planning mode and authors a fix plan for the findings — and after the operator approves the plan, may implement the fixes and commit them. Supports PR mode (`in PR #N`, or bare `287` / `#287` / `PR 287` / `PR #287` — reviews the pull request pending merge to main, ignores the local branch entirely, and lands fixes as commits on top of the PR's head branch in a dedicated worktree), branch mode (in branch <name>), and optional focus narrowing. Fixes for defects introduced by commits on the active branch are amended into those commits by default, so the history reads as though the defect never shipped; published history (main, remotes, PRs) is only ever appended to. Never squashes, splits, reorders, pushes, or opens PRs.
+description: Context-aware alignment. In plan mode: injects Ion quality standards into the current plan, then updates the plan with the alignment amendments. Outside plan mode: reviews all branch changes against Ion quality gates and principles, then enters planning mode and authors a fix plan for the findings — and after the operator approves the plan, may implement the fixes and commit them. Supports PR mode (`in PR #N`, or bare `287` / `#287` / `PR 287` / `PR #287` — reviews the pull request pending merge to main, ignores the local branch entirely, and lands fixes as commits on top of the PR's head branch in a dedicated worktree), branch mode (in branch <name>), and optional focus narrowing. Reviews against the branch's true base (a worktree's source branch, else main), never sweeping the source branch into the review surface. Fixes for defects introduced by commits on the active branch are amended into those commits by default, so the history reads as though the defect never shipped; the source branch, published history, remotes, and PRs are only ever appended to. Never squashes, splits, reorders, pushes, or opens PRs.
+model: reasoning
 allowed_bash_commands: [ls, stat, git, gh pr view, gh pr diff, gh pr list, gh pr checks, gh pr checkout]
 ---
 
@@ -15,9 +16,9 @@ If the block above is empty, the command was invoked with no arguments. Everywhe
 
 **Hard rules. These apply in both modes.**
 
-- **Review the whole target; never ask the operator to narrow scope by size.** The review surface is fixed by the mode and arguments, not by how large it is: Mode A audits the attached plan in full; Mode B (Local) reviews the entire `main...HEAD` diff in full; Mode B (PR/branch) reviews the entire target diff in full. A large diff — any number of commits, files, or scopes — is reviewed completely; it is never a reason to stop and ask the operator which slice to review. The **only** scope narrowing that exists is explicit operator input parsed in B-Step 1 (a `<focus>` instruction, or a PR / branch target — explicit `in PR` / `in branch`, or a bare PR reference like `287` / `#287` / `PR 287`). Absent that input, there is no scope question. Do not emit an `AskUserQuestion` (or any prose prompt) asking the operator to pick a subset, confirm scope, or choose between "recent commits" and "whole branch" — proceed and review everything. A genuinely enormous diff yields a large report, not a smaller review.
+- **Review the whole target; never ask the operator to narrow scope by size.** The review surface is fixed by the mode and arguments, not by how large it is: Mode A audits the attached plan in full; Mode B (Local) reviews the entire `{base}...HEAD` diff in full; Mode B (PR/branch) reviews the entire target diff in full. A large diff — any number of commits, files, or scopes — is reviewed completely; it is never a reason to stop and ask the operator which slice to review. The **only** scope narrowing that exists is explicit operator input parsed in B-Step 1 (a `<focus>` instruction, or a PR / branch target — explicit `in PR` / `in branch`, or a bare PR reference like `287` / `#287` / `PR 287`). Absent that input, there is no scope question. Do not emit an `AskUserQuestion` (or any prose prompt) asking the operator to pick a subset, confirm scope, or choose between "recent commits" and "whole branch" — proceed and review everything. A genuinely enormous diff yields a large report, not a smaller review.
 - You will not squash, re-cut, split, reorder, or force-push commits, and you will not push or open/modify a PR. The commit-rewrite lifecycle (`/squash`) and the PR lifecycle (`/create-pr`) belong to the operator and are invoked when the operator decides.
-- **Amending in place is the default delivery mechanism for a finding whose defect originated in a commit on the active branch** — see B-Step 6. Amending a branch-local commit is not a commit rewrite in the `/squash` sense: the commit count, order, and scope seams are unchanged; only the content of the commit that introduced the defect changes, so the branch's history reads as though the defect never shipped. This applies **only** to commits that originated on the active branch and have not been pushed. Never amend a commit that exists on `main`, on a remote, or in a PR's published history.
+- **Amending in place is the default delivery mechanism for a finding whose defect originated in a commit on the active branch** — see B-Step 6. Amending a branch-local commit is not a commit rewrite in the `/squash` sense: the commit count, order, and scope seams are unchanged; only the content of the commit that introduced the defect changes, so the branch's history reads as though the defect never shipped. This applies **only** to commits that originated on the active branch (present in `{base}..HEAD`, where `{base}` is the resolved review base — a worktree's source branch, else `main`) and have not been pushed. Never amend a commit that exists on `{base}`, on `main`, on a remote, or in a PR's published history.
 - You will not run `gh pr create`, `gh pr merge`, `gh pr review`, `gh pr comment`, `git push`, `git push --force`, or any other remote-mutating command. `git commit --amend` and a `git rebase -i` limited to `edit`-ing branch-local commits are permitted **only** as the B-Step 6 amend mechanism described above; a rebase that reorders, squashes, drops, or rewords beyond the fix is not.
 - **Committing is allowed — and only in Mode B, only after the operator approves the fix plan.** When Mode B implements an approved fix plan (B-Step 6), it delivers the completed work into the branch's history: **amended into the originating commit** when the defect came from a commit on the active branch, or as a new conventional, correctly-scoped commit when it did not (see root `AGENTS.md` § "Commits"). In PR mode fixes always land as **new** commits on top of the PR's head branch in a dedicated worktree (see B-Step 6) — that history is published, so it is never amended; local commits on the PR branch are not "modifying the PR", and only pushing updates the PR, which stays the operator's. It never squashes commits together, never reorders or splits them, and never pushes — the operator handles squashing and PRs. Mode A never commits (no code exists yet — there is nothing to commit). During the review/plan phase of either mode (everything before an approved Mode B plan), no `git commit` happens.
 - **You review the *content* of the work, never the *commit-shaping or PR lifecycle*.** You will not author findings, amendments, recommendations, plan steps, or open items that direct the operator to squash, split/re-cut/reorder commits, choose a merge strategy, or open/sequence a pull request. Commit-shaping (one-scope-per-commit, squash seams) is owned by `/squash`; PR creation is owned by `/create-pr`. Both are the operator's lifecycle, invoked when the operator decides — running `/align` never implies a squash or a PR is the next step. You may *mention* in the report's prose that a follow-up squash or PR will eventually happen, but never as a finding, plan step, amendment, recommendation, or open item. Amending a fix into its originating branch-local commit is a *delivery* decision made in B-Step 6, not a commit-shaping finding — it never appears as a finding either.
@@ -39,13 +40,13 @@ If the block above is empty, the command was invoked with no arguments. Everywhe
 
 **Mode B (Post-Changes Alignment)** runs when the conversation is not in plan mode.
 
-**Step zero — parse ARGS for a target BEFORE any local git check.** Parse ARGS for target and focus (see the argument grammar in Mode B). **PR-target arguments force Mode B (PR mode) regardless of plan-mode state and regardless of local branch state.** A PR target is either the explicit `in PR` prefix or a bare PR reference: `287`, `#287`, `PR 287`, `PR #287`, or a comma/whitespace-separated list of these. When the operator passes a PR reference, they are asking for alignment of *that pull request* — not the local checkout. Do not review, diff, or even orient against the local branch; go straight to Mode B Step 1B. Likewise, `in branch` forces Mode B (Branch mode). **When ARGS carries a PR or branch target, every check below this paragraph is skipped** — the local branch being even with `main`, dirty, or clean carries zero signal about the target, and the "Nothing to align" stop-rule below never applies to a targeted run.
+**Step zero — parse ARGS for a target BEFORE any local git check.** Parse ARGS for target and focus (see the argument grammar in Mode B). **PR-target arguments force Mode B (PR mode) regardless of plan-mode state and regardless of local branch state.** A PR target is either the explicit `in PR` prefix or a bare PR reference: `287`, `#287`, `PR 287`, `PR #287`, or a comma/whitespace-separated list of these. When the operator passes a PR reference, they are asking for alignment of *that pull request* — not the local checkout. Do not review, diff, or even orient against the local branch; go straight to Mode B Step 1B. Likewise, `in branch` forces Mode B (Branch mode). **When ARGS carries a PR or branch target, every check below this paragraph is skipped** — the local branch being even with its base, dirty, or clean carries zero signal about the target, and the "Nothing to align" stop-rule below never applies to a targeted run.
 
-Only when ARGS carries **no** PR or branch target, and the conversation is **not** in plan mode, check the local branch: `git log main..HEAD --oneline`
+Only when ARGS carries **no** PR or branch target, and the conversation is **not** in plan mode, check the local branch against its resolved base (see B-Step 1's "Resolve the review base"): `git log {base}..HEAD --oneline`
 
-**A branch ahead of `main` (or a dirty tree) outside plan mode is NOT ambiguous — it is the standard Mode B case. Run Mode B over the branch without asking.** This is the common steady state: the user runs `/align` to review the work on their branch. Never ask the user which mode to run; the binary rule above already decided.
+**A branch ahead of its base (or a dirty tree) outside plan mode is NOT ambiguous — it is the standard Mode B case. Run Mode B over the branch without asking.** This is the common steady state: the user runs `/align` to review the work on their branch. Never ask the user which mode to run; the binary rule above already decided.
 
-If none of the above applies (no PR/branch target in ARGS, not in plan mode, branch is even with `main`, no uncommitted work), report: "Nothing to align — not in plan mode and branch is even with `main`." and stop. This stop-rule exists for the *untargeted* invocation only; it is unreachable when ARGS names a PR or branch, and it never applies in plan mode (where the plan is the target).
+If none of the above applies (no PR/branch target in ARGS, not in plan mode, branch is even with its base, no uncommitted work), report: "Nothing to align — not in plan mode and branch is even with its base `{base}`." and stop. This stop-rule exists for the *untargeted* invocation only; it is unreachable when ARGS names a PR or branch, and it never applies in plan mode (where the plan is the target).
 
 
 ---
@@ -499,21 +500,53 @@ git branch --show-current
 
 If the result is `main`, stop: "Review is meaningless on `main`. Switch to a feature branch and rerun, or pass PR numbers to review specific pull requests." Do nothing else.
 
+#### Resolve the review base before diffing
+
+**The review range is relative to `{base}`, not `main`.** A checkout under `~/.ion/worktrees/` is a worktree cut from a **source branch** — frequently a long-lived feature branch (`josh`), not `main`. Its own work is `{base}..HEAD`; everything before that belongs to the source branch and is shared with every other worktree cut from it. Reviewing against `main` inside such a worktree pulls the entire source branch into the review surface, so the report audits dozens of commits the operator did not write, and — far worse — the amend-delivery table in B-Step 6 nominates *source-branch* commits as amend targets, rewriting landed history that every sibling worktree shares.
+
+Resolve the source branch from the worktree registry, keyed by the checkout's root path:
+
+```bash
+ROOT=$(git rev-parse --show-toplevel)
+python3 -c "
+import json, os
+reg = os.path.expanduser('~/.ion/worktree-registry.json')
+root = os.path.realpath('$ROOT')
+try:
+    entries = json.load(open(reg)).get('entries', [])
+except Exception:
+    entries = []
+for e in entries:
+    if os.path.realpath(e.get('worktreePath', '')) == root:
+        print(e.get('sourceBranch') or '')
+        break
+"
+```
+
+- **Non-empty result** → that is `{base}`. This checkout is a registered worktree.
+- **Empty result / no registry / not registered** → `{base}` is `main`. This is the primary clone or an unregistered checkout.
+
+Verify the resolved base exists (`git rev-parse --verify {base}`). If the registry names a branch that no longer exists locally, do **not** silently fall back to `main` — that substitution is the defect this step prevents. Stop and report:
+
+> The worktree registry names source branch `{base}`, which does not exist in this checkout. Cannot determine a safe review base. Resolve the missing branch (`git fetch`, or correct the registry) and re-run.
+
+State the resolved base in the orientation paragraph and in the report header.
+
 ```bash
 git status --porcelain
 git diff
 git diff --staged
-git log main..HEAD --oneline
-git log main..HEAD --format=fuller --no-merges
-git diff main...HEAD --stat
-git diff main...HEAD
+git log {base}..HEAD --oneline
+git log {base}..HEAD --format=fuller --no-merges
+git diff {base}...HEAD --stat
+git diff {base}...HEAD
 ```
 
-If `git log main..HEAD --oneline` is empty AND there are no uncommitted changes, stop: "Nothing to review — branch is even with `main` and the working tree is clean."
+If `git log {base}..HEAD --oneline` is empty AND there are no uncommitted changes, stop: "Nothing to review — branch is even with its base `{base}` and the working tree is clean."
 
-Print a one-paragraph orientation: branch name, number of commits ahead of `main`, number of files changed, scopes touched (engine/desktop/relay/ios/docs/repo), focus instruction (if any).
+Print a one-paragraph orientation: branch name, resolved base `{base}`, number of commits ahead of `{base}`, number of files changed, scopes touched (engine/desktop/relay/ios/docs/repo), focus instruction (if any).
 
-> **Review the WHOLE branch. Never ask the operator to narrow scope by size.** The review surface in Local mode is the entire `main...HEAD` diff — every commit, every file, every scope — no matter how large. A branch that is 5 commits or 50 commits, 10 files or 500 files, is reviewed in full at this depth. A large diff is **not** a reason to stop and ask "this is too big, which slice should I review?" — that question is **forbidden**. The operator invoked `/align` with no focus argument precisely because they want the whole branch reviewed; second-guessing that with a scope-narrowing prompt contradicts the command's contract (see the description: "reviews all branch changes"). The **only** ways scope is ever narrowed are explicit operator inputs already parsed in B-Step 1: a `<focus>` instruction in ARGS, or `in PR` / `in branch` targets. Absent those, there is no narrowing and no scope question — proceed to grounding (Step 2) and review everything. If the diff is genuinely enormous, that is a large report, not a smaller review; produce the large report.
+> **Review the WHOLE branch. Never ask the operator to narrow scope by size.** The review surface in Local mode is the entire `{base}...HEAD` diff — every commit, every file, every scope — no matter how large. A branch that is 5 commits or 50 commits, 10 files or 500 files, is reviewed in full at this depth. A large diff is **not** a reason to stop and ask "this is too big, which slice should I review?" — that question is **forbidden**. The operator invoked `/align` with no focus argument precisely because they want the whole branch reviewed; second-guessing that with a scope-narrowing prompt contradicts the command's contract (see the description: "reviews all branch changes"). The **only** ways scope is ever narrowed are explicit operator inputs already parsed in B-Step 1: a `<focus>` instruction in ARGS, or `in PR` / `in branch` targets. Absent those, there is no narrowing and no scope question — proceed to grounding (Step 2) and review everything. If the diff is genuinely enormous, that is a large report, not a smaller review; produce the large report.
 
 
 ### Step 1B: PR mode
@@ -528,26 +561,42 @@ For each parsed PR number:
 
 Print a one-paragraph orientation: how many PRs are being reviewed, their numbers and titles, total files changed, scopes touched, focus instruction (if any).
 
-In PR mode, do not run `git status`, `git diff`, or `git log main..HEAD` against the local checkout — the PR's own diff is the source of truth. The local branch may be mid-flight on unrelated work; it is out of scope by definition.
+In PR mode, do not run `git status`, `git diff`, or `git log {base}..HEAD` against the local checkout — the PR's own diff is the source of truth. The local branch may be mid-flight on unrelated work; it is out of scope by definition.
 
 If ARGS contained PR numbers but every one failed to resolve via `gh`, stop and report the failures. Do not fall back to local mode.
 
 ### Step 1C: Branch mode
 
 1. Verify the branch exists: `git rev-parse --verify <name>`. If that fails, try `git rev-parse --verify origin/<name>`. If both fail, stop: "Branch `<name>` not found locally or on origin."
-2. Run:
+2. Resolve `{base}` for the **named branch**, not the current checkout. Look the branch up in the worktree registry by its `branchName`; if an entry matches, its `sourceBranch` is `{base}`, otherwise `{base}` is `main`:
    ```bash
-   git log main..<branch> --oneline
-   git log main..<branch> --format=fuller --no-merges
-   git diff main...<branch> --stat
-   git diff main...<branch>
+   python3 -c "
+   import json, os
+   reg = os.path.expanduser('~/.ion/worktree-registry.json')
+   try:
+       entries = json.load(open(reg)).get('entries', [])
+   except Exception:
+       entries = []
+   for e in entries:
+       if e.get('branchName') == '<branch>':
+           print(e.get('sourceBranch') or '')
+           break
+   "
+   ```
+   Verify the result exists as a ref; on a missing ref, stop rather than falling back to `main` (same rule as Local mode).
+3. Run:
+   ```bash
+   git log {base}..<branch> --oneline
+   git log {base}..<branch> --format=fuller --no-merges
+   git diff {base}...<branch> --stat
+   git diff {base}...<branch>
    ```
 
 Do **not** run `git status`, `git diff`, or `git diff --staged` — those are working-tree concepts irrelevant to a named branch.
 
-If `git log main..<branch> --oneline` is empty, stop: "Nothing to review — branch `<name>` is even with `main`."
+If `git log {base}..<branch> --oneline` is empty, stop: "Nothing to review — branch `<name>` is even with its base `{base}`."
 
-Print a one-paragraph orientation: branch name, number of commits ahead of `main`, number of files changed, scopes touched, focus instruction (if any).
+Print a one-paragraph orientation: branch name, resolved base, number of commits ahead of `{base}`, number of files changed, scopes touched, focus instruction (if any).
 
 ## B-Step 2: Ground in the principles
 
@@ -713,7 +762,7 @@ Render sections in this exact order, top-to-bottom:
 ```
 Mode: local
 Branch: <name>
-Range: main..HEAD (<N> commits)
+Range: {base}..HEAD (<N> commits)
 Files changed: <N>
 Scopes touched: <comma-separated list>
 Uncommitted changes: yes/no
@@ -725,7 +774,7 @@ Focus: <quoted instruction or "none">
 ```
 Mode: branch
 Branch: <name>
-Range: main..<branch> (<N> commits)
+Range: {base}..<branch> (<N> commits)
 Files changed: <N>
 Scopes touched: <comma-separated list>
 Focus: <quoted instruction or "none">
@@ -927,12 +976,20 @@ Classify every fix before landing anything:
 
 | The defect being fixed… | Delivery |
 |---|---|
-| was introduced by a commit on the active branch (present in `git log main..HEAD`, not pushed) | **Amend** that commit |
+| was introduced by a commit on the active branch (present in `git log {base}..HEAD`, not pushed) | **Amend** that commit |
 | spans several branch-local commits | Amend **each** originating commit with its own portion |
-| pre-dates the branch (exists on `main`), or is in a PR's published history | **New commit** — never amend published history |
+| pre-dates the branch (exists on `{base}`, or on `main`), or is in a PR's published history | **New commit** — never amend published history |
 | is genuinely new work the plan adds (a doc that never existed, a test for untested pre-existing code) | **New commit** at its own scope seam |
 
-Determine the originating commit from evidence, not assumption: `git log main..HEAD --oneline -- <path>` for the file, and `git log -L<start>,<end>:<path>` or `git blame` when several branch commits touched it.
+**`{base}` is the resolved review base, not `main`.** In a worktree, a commit that is reachable from the source branch is **not** branch-local, no matter that it is absent from `main`. Amending it rewrites history the source branch owns and every sibling worktree cut from that source shares. Before amending any commit, confirm it is in `{base}..HEAD`:
+
+```bash
+git merge-base --is-ancestor <target-sha> {base} && echo "ON BASE — do not amend" || echo "branch-local"
+```
+
+If that reports `ON BASE`, the fix lands as a **new commit**; the commit is not yours to rewrite.
+
+Determine the originating commit from evidence, not assumption: `git log {base}..HEAD --oneline -- <path>` for the file, and `git log -L<start>,<end>:<path>` or `git blame` when several branch commits touched it. A file whose only history lies below `{base}` has no branch-local originating commit — that is the "pre-dates the branch" row, not an invitation to amend the source branch's commit.
 
 **Mechanics.** For the newest commit, `git commit --amend`. For an earlier one, a non-interactive `rebase -i` marking only that commit `edit`:
 
@@ -953,7 +1010,7 @@ Rules that make this safe:
 - **Verify the amend landed the content.** `git show --stat HEAD` (or `git show <sha>`) after the rebase completes. An amend that silently no-ops (empty editor, wrong stash, an unstaged path) is a real failure mode.
 - **Leave no rebase artifacts or stashes.** After the sequence: `git status` clean, `git stash list` empty of the align stash, no `.git/rebase-merge` or `.git/rebase-apply`.
 - **If the rebase conflicts**, resolve it in favor of the plan's intended end state and continue. If it cannot be resolved cleanly, abort (`git rebase --abort`), land the fix as a new commit instead, and say so in the final report. A stuck rebase is never left mid-flight.
-- **Never amend across a push boundary.** If any branch commit is already on a remote (`git log @{u}..HEAD` does not contain it, or `git branch -r --contains <sha>` finds it), that commit is published — append instead.
+- **Never amend across a push boundary, or below the base.** If any branch commit is already on a remote (`git log @{u}..HEAD` does not contain it, or `git branch -r --contains <sha>` finds it), that commit is published — append instead. Likewise if it is reachable from `{base}` (`git merge-base --is-ancestor <sha> {base}`), it belongs to the source branch — append instead.
 
 When the operator approves:
 
@@ -961,6 +1018,6 @@ When the operator approves:
 2. **Run the scoped quality gates for what you touched** (root `AGENTS.md` § "Quality gates (run while developing)"): scoped Go tests + `golangci-lint` for touched engine packages, `npm run typecheck` + scoped `npm test` for touched desktop areas, `make check-file-sizes`, `make check-contracts` when a shared type changed, `make check-logging` when logging-adjacent code changed, `make check-atv-parity` when main-process event pushes or the ATV shell changed, and `make check-status-writers` when `engine_status` / `engine_session_status` emitters changed. Do **not** run the heavy PR-time gates (`make test-linux`, full `go test -race ./...`, `govulncheck`, full `npm test`, `make ios-check`) — those are the operator's `/create-pr` gate.
 3. **For a bug-fix finding, confirm the test fails on the unfixed code** before claiming it pins the fix (revert the fix mentally or temporarily, watch the test go red). A test that passes with the fix reverted does not pin the fix.
 4. **Land the completed work** per the delivery table above — amended into each originating branch-local commit, or as a new conventional, correctly-scoped commit where no branch-local commit introduced the defect. New commits follow root `AGENTS.md` § "Commits": `type(scope): subject`, scope matching the primary path, subject ≤ 65 chars, body wrapped ≤ 100 chars (commitlint enforces this), and the issue trailer (`Fixes #N` / `Closes #N` + ` (#N)` subject suffix) when the work came from an issue. Split new commits at clean scope seams when the fixes span scopes (e.g. one `chore(engine)`, one `chore(desktop)`, one `docs(repo)`). An amended commit keeps its existing scope and trailer; update its body when the fix changed what the commit does.
-5. **Never** squash, split, reorder, drop, force-push, push, or open/modify a PR, and never amend a commit that exists on `main`, on a remote, or in a PR's published history. Amending a branch-local commit is the sanctioned delivery mechanism (see above); every other form of history rewriting belongs to the operator's `/squash` and `/create-pr`.
+5. **Never** squash, split, reorder, drop, force-push, push, or open/modify a PR, and never amend a commit that exists on `{base}`, on `main`, on a remote, or in a PR's published history. Amending a genuinely branch-local commit (one in `{base}..HEAD`) is the sanctioned delivery mechanism (see above); every other form of history rewriting belongs to the operator's `/squash` and `/create-pr`.
 
 After landing the work, report what changed (which commits were amended and which are new, and the gates that passed) and stop. Tell the operator the work is in the branch's history and ready, and that you have not squashed, pushed, or opened a PR. In PR mode, additionally report the worktree path and head branch carrying the fix commits, and that pushing the branch (which updates the PR) and closing the PR are the operator's next moves. Do not run `/squash` or `/create-pr` and do not suggest them as a next step you will take — they are the operator's to invoke.

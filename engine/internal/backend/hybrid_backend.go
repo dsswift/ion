@@ -229,6 +229,19 @@ func (h *HybridBackend) InnerApi() *ApiBackend {
 	return nil
 }
 
+// BumpRunProgress forwards a run-progress watchdog refresh to the inner
+// ApiBackend, which owns the activeRuns map and the watchdog clock. Satisfies
+// the progressBumpable interface (session and extcontext packages) directly
+// on the hybrid wrapper so callers holding a dispatch registry's Child
+// backend — which is a *HybridBackend under the hybrid manager — can credit a
+// nested parent's run without unwrapping. No-op when the run is not on the
+// API inner (delegated-CLI runs have no in-process watchdog).
+func (h *HybridBackend) BumpRunProgress(requestID string) {
+	if api := h.InnerApi(); api != nil {
+		api.BumpRunProgress(requestID)
+	}
+}
+
 // InnerClaudeCode returns the inner *ClaudeCodeBackend, constructing it if
 // necessary. Used by the session package's resolvedBackend helper for the
 // Claude Code path. Returns nil if the "claude-code" inner had to fall back

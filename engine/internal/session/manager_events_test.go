@@ -678,11 +678,14 @@ func TestOnEvent_ReplaceCallback(t *testing.T) {
 	_, _ = mgr.StartSession("s2", defaultConfig())
 
 	// StartSession emits per-session:
-	//   engine_status(starting) → mirrored to engine_session_status
-	//   engine_working_message("")
-	//   engine_status(idle)     → mirrored to engine_session_status
-	// = 5 events per StartSession. Phase 3 of the state-management
-	// overhaul added the mirror; before Phase 3 this number was 3.
+	//   engine_status(starting)   → mirrored to engine_session_status
+	//   engine_working_message("") (the unconditional clear before idle)
+	//   engine_status(idle)       → mirrored to engine_session_status
+	// = 5 events per StartSession. Phase 3 of the state-management overhaul
+	// added the mirror (before it, this number was 3). MCP connect emissions
+	// ("Connecting MCP servers...") no longer occur at session start — they
+	// moved to the first prompt dispatch (ensureMcpConnections) — so this
+	// count no longer varies with the machine's configured MCP servers.
 	if firstCount != 5 {
 		t.Errorf("first callback expected 5 calls (2 status + 1 working + 2 status-mirror), got %d", firstCount)
 	}

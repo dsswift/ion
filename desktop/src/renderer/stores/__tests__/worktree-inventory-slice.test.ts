@@ -8,6 +8,13 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
+// The slice reads the aiGeneratedTitles preference to opt the inventory read
+// into title backfill; the real preferences module touches localStorage/DOM,
+// which this node-environment test does not have.
+vi.mock('../../preferences', () => ({
+  usePreferencesStore: { getState: () => ({ aiGeneratedTitles: false }) },
+}))
+
 vi.mock('../../rendererLogger', () => ({
   rInfo: vi.fn(), rDebug: vi.fn(), rWarn: vi.fn(), rError: vi.fn(), rTrace: vi.fn(),
 }))
@@ -36,14 +43,25 @@ function entry(over: Partial<WorktreeInventoryEntry> = {}): WorktreeInventoryEnt
 }
 
 /** Minimal store harness: the slice only needs these members. */
-function harness(initial: { tabs?: Array<{ id: string; workingDirectory: string }> } = {}) {
+function harness(initial: {
+  tabs?: Array<{ id: string; workingDirectory: string }>
+  activeTabId?: string | null
+} = {}) {
   const state: Record<string, any> = {
-    tabs: initial.tabs ?? [],
+    // Tabs carry the fields collectDirConversations reads; the tests supply
+    // only id + directory, so fill the display fields in here.
+    tabs: (initial.tabs ?? []).map((t) => ({ title: 'New Tab', customTitle: null, status: 'idle', ...t })),
+    activeTabId: initial.activeTabId ?? null,
     worktreeInventory: new Map<string, WorktreeInventoryEntry[]>(),
-    selectTab: vi.fn(),
+    // Conflict/refusal alert plumbing the slice feeds on sync failures and
+    // inventory refreshes (owned by git-conflict-slice in the real store).
+    gitConflictAlerts: new Map(),
+    recordConflictAlert: vi.fn(),
+    clearConflictAlert: vi.fn(),
+    selectTab: vi.fn((id: string) => { state.activeTabId = id }),
     createTabInDirectory: vi.fn(async (dir: string) => {
       const id = `tab-${state.tabs.length + 1}`
-      state.tabs = [...state.tabs, { id, workingDirectory: dir, worktree: null }]
+      state.tabs = [...state.tabs, { id, workingDirectory: dir, worktree: null, title: 'New Tab', customTitle: null, status: 'idle' }]
       return id
     }),
   }
@@ -163,6 +181,52 @@ describe('openWorktreeConversation', () => {
 
     expect(state.tabs.find((t: any) => t.id === id).worktree).toBeNull()
   })
+
+  // ── Rotation across several conversations in one worktree ──
+  //
+  // Regression direction: reverting the action to `tabs.find(...)` +
+  // selectTab(first) turns every test below red — it would return 'wt-1' on
+  // every click, leaving the second and third conversations unreachable from
+  // the row.
+  describe('with several conversations open in the same worktree', () => {
+    const threeTabs = [
+      { id: 'wt-1', workingDirectory: WT_A },
+      { id: 'other', workingDirectory: WT_B },
+      { id: 'wt-2', workingDirectory: WT_A },
+      { id: 'wt-3', workingDirectory: WT_A },
+    ]
+
+    it('advances to the next conversation on each click, wrapping at the end', async () => {
+      const { state, slice } = harness({ tabs: threeTabs, activeTabId: 'wt-1' })
+
+      // selectTab updates activeTabId in the harness, exactly as the real store
+      // does — which is what makes the stateless rotation advance.
+      expect(await slice.openWorktreeConversation!(WT_A)).toBe('wt-2')
+      expect(await slice.openWorktreeConversation!(WT_A)).toBe('wt-3')
+      expect(await slice.openWorktreeConversation!(WT_A)).toBe('wt-1')
+
+      expect(state.createTabInDirectory).not.toHaveBeenCalled()
+      expect(state.selectTab).toHaveBeenNthCalledWith(1, 'wt-2')
+      expect(state.selectTab).toHaveBeenNthCalledWith(2, 'wt-3')
+      expect(state.selectTab).toHaveBeenNthCalledWith(3, 'wt-1')
+    })
+
+    it('starts at the first conversation when the operator is elsewhere', async () => {
+      const { state, slice } = harness({ tabs: threeTabs, activeTabId: 'other' })
+
+      expect(await slice.openWorktreeConversation!(WT_A)).toBe('wt-1')
+      expect(state.createTabInDirectory).not.toHaveBeenCalled()
+    })
+
+    it('never creates a duplicate while any conversation is open there', async () => {
+      const { state, slice } = harness({ tabs: threeTabs, activeTabId: 'wt-3' })
+
+      await slice.openWorktreeConversation!(WT_A)
+
+      expect(state.createTabInDirectory).not.toHaveBeenCalled()
+      expect(state.tabs).toHaveLength(4)
+    })
+  })
 })
 
 describe('syncWorktree', () => {
@@ -173,7 +237,7 @@ describe('syncWorktree', () => {
 
     expect(result.ok).toBe(true)
     expect(ion.gitWorktreeSync).toHaveBeenCalledWith(WT_A, 'josh')
-    expect(ion.gitWorktreeInventory).toHaveBeenCalledWith(REPO)
+    expect(ion.gitWorktreeInventory).toHaveBeenCalledWith(REPO, false)
   })
 
   // A refused sync must still refresh: the refusal reason (dirty tree) is state
@@ -186,6 +250,6 @@ describe('syncWorktree', () => {
 
     expect(result.ok).toBe(false)
     expect(result.refusedDirty).toBe(true)
-    expect(ion.gitWorktreeInventory).toHaveBeenCalledWith(REPO)
+    expect(ion.gitWorktreeInventory).toHaveBeenCalledWith(REPO, false)
   })
 })

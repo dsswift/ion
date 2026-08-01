@@ -143,8 +143,6 @@ export const IPC = {
   GIT_REVERT: 'git:revert',
   GIT_RESET: 'git:reset',
   GIT_BLAME: 'ion:git-blame',
-  GIT_CONFLICTS: 'ion:git-conflicts',
-  GIT_CONFLICT_FILE: 'ion:git-conflict-file',
   GIT_RESOLVE_CONFLICT: 'ion:git-resolve-conflict',
   GIT_APPLY_PATCH: 'ion:git-apply-patch',
   GIT_TAG_CREATE: 'ion:git-tag-create',
@@ -162,6 +160,11 @@ export const IPC = {
   GIT_REBASE_EXEC: 'ion:git-rebase-exec',
   GIT_REBASE_ABORT: 'ion:git-rebase-abort',
   GIT_REBASE_CONTINUE: 'ion:git-rebase-continue',
+
+  // Conflict resolution (3-way merge, accept-side, operation labels)
+  GIT_CONFLICT_STAGES: 'ion:git-conflict-stages',
+  GIT_CONFLICT_ACCEPT: 'ion:git-conflict-accept',
+  GIT_OP_STATE: 'ion:git-op-state',
 
   // Git worktree operations
   GIT_WORKTREE_ADD: 'ion:git-worktree-add',
@@ -183,6 +186,13 @@ export const IPC = {
   // to describe and act on them (the re-entry surface after a tab close).
   GIT_WORKTREE_INVENTORY: 'ion:git-worktree-inventory',
   GIT_WORKTREE_APPRAISE: 'ion:git-worktree-appraise',
+  // Worktree naming. A worktree's own identifiers (`ion-03e81090`,
+  // `wt/ion-03e81090`) describe nothing about the work, so a worktree earns a
+  // human title from the first prompt sent inside it (AUTOTITLE, which decides
+  // in the main process whether one is needed) and the operator can override it
+  // (SET_TITLE).
+  GIT_WORKTREE_AUTOTITLE: 'ion:git-worktree-autotitle',
+  GIT_WORKTREE_SET_TITLE: 'ion:git-worktree-set-title',
   // Re-run provisioning for a worktree whose dependency state the operator
   // believes is wrong. Same code path as creation.
   GIT_WORKTREE_REPROVISION: 'ion:git-worktree-reprovision',
@@ -297,6 +307,7 @@ export const IPC = {
 
   // Model & provider management
   LIST_MODELS: 'ion:list-models',
+  MODEL_TIER_RESOLVE: 'ion:model-tier-resolve',
   STORE_CREDENTIAL: 'ion:store-credential',
   REFRESH_MODELS: 'ion:refresh-models',
 
@@ -315,6 +326,16 @@ export const IPC = {
   OAUTH_DEVICE_POLL: 'ion:oauth-device-poll',
 
   // Entra OIDC (telemetry auth — Feature 0001 Part F)
+  // MCP server administration. The engine owns the mechanism (engine.json CRUD,
+  // OAuth discovery, dynamic client registration, PKCE, token storage); these
+  // channels forward to it. MCP_LOGIN resolves only after the operator finishes
+  // the browser step, so its caller must tolerate a long-running invoke.
+  MCP_LIST: 'ion:mcp-list',
+  MCP_ADD: 'ion:mcp-add',
+  MCP_REMOVE: 'ion:mcp-remove',
+  MCP_LOGIN: 'ion:mcp-login',
+  MCP_LOGOUT: 'ion:mcp-logout',
+
   ENTRA_SIGN_IN: 'ion:entra-sign-in',
   ENTRA_SIGN_OUT: 'ion:entra-sign-out',
   ENTRA_IDENTITY: 'ion:entra-identity',

@@ -44,13 +44,23 @@
 // When cwd is not a registered worktree the gate passes everything, so an
 // ordinary repo conversation is completely unaffected.
 //
-// Honest limitation
-// -----------------
-// The predicate is "is my cwd a registered worktree". It therefore does NOT
-// catch the original defect, where the session's cwd WAS the base repo (the gate
-// concludes "not a worktree conversation" and passes). The fix for that is the
-// desktop's create-order + reconciler work; this gate is the net for the next
-// way a directory drifts, not a substitute for pointing sessions correctly.
+// Honest limitations
+// ------------------
+// 1. The predicate is "is my cwd a registered worktree". It therefore does NOT
+//    catch the original defect, where the session's cwd WAS the base repo (the
+//    gate concludes "not a worktree conversation" and passes). The fix for that
+//    is the desktop's create-order + reconciler work; this gate is the net for
+//    the next way a directory drifts, not a substitute for pointing sessions
+//    correctly.
+// 2. A `Bash` destination is resolved from the command text only when it is
+//    written as a LITERAL path (see bash-destination.ts). A dynamic destination
+//    — `cd "$TARGET"`, `cd $(git rev-parse --show-toplevel)`, a path built
+//    inside an invoked script — is not resolved, so such a command passes. It is
+//    logged as an unresolved destination by the caller so the gap is queryable
+//    rather than invisible. Refusing on unresolved destinations was rejected: it
+//    would refuse legitimate work in the operator's own worktree, and `eval` and
+//    `bash -c` defeat any command-string parser anyway. Closing that gap needs
+//    process-level containment, which is a different mechanism.
 //
 // Why this duplicates the desktop's registry read
 // -----------------------------------------------
@@ -63,6 +73,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, sep } from 'node:path'
 import { extractTargetPath } from './git-gate'
+import { resolveBashDestination } from './bash-destination'
 
 /**
  * Tool-call info shape the gate consumes. Mirrors the SDK's `ToolCallInfo`,
@@ -84,6 +95,16 @@ export interface WorktreeGateDecision {
   /** What the target belongs to, for the message. */
   targetKind?: 'base repo' | 'sibling worktree'
   reason?: string
+  /**
+   * A destination-changing construct in a `Bash` command that could not be
+   * resolved literally. Set on PASSING decisions only — the call is allowed and
+   * this records that the gate could not see where it goes.
+   *
+   * The caller logs it at WARN so the residual gap is queryable. See the
+   * honest-limitations note in the header for why this passes rather than
+   * refuses.
+   */
+  unresolvedDestination?: string
 }
 
 /**
@@ -103,11 +124,12 @@ export interface WorktreeContainment {
  * reason: these are the calls that put bytes on disk. Read and dispatch tools
  * cannot violate worktree containment.
  *
- * `Bash` is gated on the session cwd rather than a parsed target, which is the
- * best deterministic signal available at gate time (see git-gate's
- * extractTargetPath). A `Bash` call whose cwd is the worktree therefore passes —
- * this gate cannot see a `cd` mid-command, and guessing would produce false
- * refusals in the operator's own working directory.
+ * `Bash` is resolved from the command text, not just the session cwd: every
+ * literal `cd` / `pushd` / `git -C` destination in the command is checked (see
+ * bash-destination.ts). A command that stays in the worktree passes; one that
+ * `cd`s into the base repo is refused, which is the case that let two commits
+ * land on the wrong branch. Dynamic destinations are not resolved and pass —
+ * see the honest-limitations note in the header.
  */
 const GATED_TOOLS: ReadonlySet<string> = new Set([
   'Write',
@@ -143,11 +165,43 @@ export function gateWorktreeWrite(info: ToolCallInfo, cwd: string): WorktreeGate
   const containment = resolveWorktreeContainment(cwd)
   if (!containment) return { block: false }
 
+  // `Bash` is checked against every destination the command can be PROVEN to
+  // operate in, because a single command can `cd` out of the worktree and commit
+  // elsewhere. Every other tool has one target path.
+  if (info.toolName === 'Bash') {
+    const command = typeof info.input.command === 'string' ? info.input.command : ''
+    const destination = resolveBashDestination(command, cwd)
+    for (const path of destination.paths) {
+      const verdict = classifyTarget(path, containment)
+      if (verdict) return verdict
+    }
+    // Passing. Carry the unresolved construct (when there was one) so the caller
+    // can log the residual gap rather than losing it.
+    return destination.unresolvedHint !== undefined
+      ? { block: false, worktreePath: containment.worktreePath, unresolvedDestination: destination.unresolvedHint }
+      : { block: false }
+  }
+
   const target = extractTargetPath(info.toolName, info.input, cwd)
   if (!target) return { block: false }
 
+  return classifyTarget(target, containment) ?? { block: false }
+}
+
+/**
+ * Classify one absolute path against the session's containment, returning a
+ * refusal or null when the path is allowed.
+ *
+ * Shared by the `Bash` multi-destination loop and the single-target tools so
+ * both apply exactly the same policy — a second copy would be a place for the
+ * two to drift.
+ */
+function classifyTarget(
+  target: string,
+  containment: WorktreeContainment,
+): WorktreeGateDecision | null {
   // Inside the session's own worktree: the normal, correct case.
-  if (isWithin(target, containment.worktreePath)) return { block: false }
+  if (isWithin(target, containment.worktreePath)) return null
 
   // The base repo. Checked before siblings because a sibling worktree is NOT
   // physically inside the repo directory (Ion stores worktrees under
@@ -175,8 +229,9 @@ export function gateWorktreeWrite(info: ToolCallInfo, cwd: string): WorktreeGate
     }
   }
 
-  // Anywhere else — /tmp, ~/.ion, an unrelated repo. Not this gate's business.
-  return { block: false }
+  // Anywhere else — /tmp, ~/.ion, Downloads, an unrelated repo. A worktree
+  // conversation legitimately reads and writes there. Not this gate's business.
+  return null
 }
 
 /**
