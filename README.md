@@ -906,20 +906,6 @@ Both do the same thing. Set `ION_WEBHOOK_URL` and every session sends live updat
 
 See the full [extension reference](docs/extensions/index.md) for init handshake format, hook data shapes, and protocol details. The [hook reference](docs/hooks/reference.md) is the complete, authoritative catalog.
 
-### Ion Meta: build harnesses with a harness
-
-Ion ships with a meta-extension for building new extensions. Ion Meta is both a working example of a multi-agent extension and a practical tool for scaffolding your own.
-
-```bash
-# Start a session with ion-meta loaded
-ion prompt --extension ~/.ion/extensions/ion-meta.ts \
-  "/ion-meta scaffold a new extension for monitoring Kubernetes pods"
-```
-
-Ion Meta includes specialist agents (extension architect, agent designer, hook specialist, testing guide) and tools for scaffolding, validation, and hook discovery.
-
-See the [ion-meta README](engine/extensions/ion-meta/README.md) for the full walkthrough.
-
 ## Security You Control
 
 The engine ships security primitives. It does not enforce them by default. Your harness decides what gets enabled.
