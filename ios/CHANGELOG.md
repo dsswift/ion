@@ -10,6 +10,19 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.54.0](https://github.com/dsswift/ion/compare/ios-v1.53.0...ios-v1.54.0) (2026-08-01)
+
+### Features
+
+* **ios:** match the terracotta active status dot ([549be89](https://github.com/dsswift/ion/commit/549be8905ec7bedf0eeeced86c0e34f65e48e147))
+* **ios:** provider-grouped model picker with search ([5f27cf0](https://github.com/dsswift/ion/commit/5f27cf0966d409bbc5db9125056ff4aa2e1ff79d))
+* **ios:** bench and worktree parity with desktop ([f614fb6](https://github.com/dsswift/ion/commit/f614fb62929ef53802d01b9e18941f2611183034))
+
+### Bug Fixes
+
+* **ios:** read engine occupancy on the context surfaces ([defb872](https://github.com/dsswift/ion/commit/defb872e3fa987e9887751daceb7f72ee11c9acf))
+* **ios:** share the injection-suppression policy ([732e19d](https://github.com/dsswift/ion/commit/732e19d7c2918d16e5d6b3a0661695376d09424d))
+
 ## [1.53.0](https://github.com/dsswift/ion/compare/ios-v1.52.0...ios-v1.53.0) (2026-08-01)
 
 ### Features

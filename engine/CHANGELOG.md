@@ -13,6 +13,18 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.61.0](https://github.com/dsswift/ion/compare/engine-v1.60.0...engine-v1.61.0) (2026-08-01)
+
+### Features
+
+* **engine:** publish context occupancy on the breakdown event ([a8c596b](https://github.com/dsswift/ion/commit/a8c596bf120128cbec426908d2ebbd1fdef4255d))
+* **engine:** containment and ion-meta removal ([f551f28](https://github.com/dsswift/ion/commit/f551f28e239811f131ef9caae23ae68bead56a28))
+* **engine:** enumerate injection kinds and publish machineAuthored ([ed7c1e1](https://github.com/dsswift/ion/commit/ed7c1e121dfc20c6144e29aae8207de49d539724))
+
+### Bug Fixes
+
+* **engine:** thread injection kind through every injection path ([175c71e](https://github.com/dsswift/ion/commit/175c71e4947a85d8290cf2afbf80020a80ab4333))
+
 ## [1.60.0](https://github.com/dsswift/ion/compare/engine-v1.59.1...engine-v1.60.0) (2026-08-01)
 
 ### Features

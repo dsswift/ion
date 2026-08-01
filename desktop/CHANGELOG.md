@@ -10,6 +10,29 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.73.0](https://github.com/dsswift/ion/compare/desktop-v1.72.0...desktop-v1.73.0) (2026-08-01)
+
+### Features
+
+* **desktop:** use Classic terracotta for the active status dot ([65d5f1f](https://github.com/dsswift/ion/commit/65d5f1f535e0139e094c667833a966790b1d69bc))
+* **desktop:** project provider label and custom flag to ios models ([b357895](https://github.com/dsswift/ion/commit/b357895322f2c236d01262e3220232d95971b091))
+* **desktop:** add conversation timeline minimap ([2002648](https://github.com/dsswift/ion/commit/20026486a4bac0b740c50e75b6cd0ed023d1d7b5))
+* **desktop:** render full history with memoized transcript rows ([659b2f1](https://github.com/dsswift/ion/commit/659b2f1f7db0934034aac25bb0c70119e152bb13))
+* **desktop:** bench and worktree panel redesign ([ad53944](https://github.com/dsswift/ion/commit/ad539441a580d77cb3a1f7dc6424d876620c7434))
+
+### Bug Fixes
+
+* **desktop:** resolve context occupancy from the engine ([2dd3865](https://github.com/dsswift/ion/commit/2dd3865f6d1b7506b32e8fc5876f273405eb8905))
+* **desktop:** return the owner's value from mirror forwarders ([9bd7243](https://github.com/dsswift/ion/commit/9bd7243057ef7e625b74b5f952f8fb226f3b537d))
+* **desktop:** snapshot a forced retire to a recovery ref ([702d7aa](https://github.com/dsswift/ion/commit/702d7aa8737fff1a326e490ad395a70bbe7e0fa5))
+* **desktop:** repair menu confirm dialogs and the retire flow ([5cd46ed](https://github.com/dsswift/ion/commit/5cd46ed60aa7614f808388b5615e924367acc97b))
+* **desktop:** point the auth spinner at a keyframe that exists ([c5fc9eb](https://github.com/dsswift/ion/commit/c5fc9eb014e2b2b7b8908f53cabed7451a20b322))
+* **desktop:** drop the removed unlandedSubjects from appraisal fixtures ([d814764](https://github.com/dsswift/ion/commit/d814764b81cae753da1d2702078b1b2bc2515a56))
+* **desktop:** stub every menu icon so the row-menu suites run ([5e2d60a](https://github.com/dsswift/ion/commit/5e2d60a21f3256de8f9f9121a4dd0b718aaec908))
+* **desktop:** split the worktree row menu under the size cap ([376aefe](https://github.com/dsswift/ion/commit/376aefe202b5ab9eea4fdd1f6d070219ba9b5e1e))
+* **desktop:** one injection-suppression policy, drop prose matching ([b5364da](https://github.com/dsswift/ion/commit/b5364dad1234ffba16eec7be38ddf7ee70f15b4c))
+* **ios:** share the injection-suppression policy ([732e19d](https://github.com/dsswift/ion/commit/732e19d7c2918d16e5d6b3a0661695376d09424d))
+
 ## [1.72.0](https://github.com/dsswift/ion/compare/desktop-v1.71.0...desktop-v1.72.0) (2026-08-01)
 
 ### Features
