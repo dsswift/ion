@@ -13,6 +13,27 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.60.0](https://github.com/dsswift/ion/compare/engine-v1.59.1...engine-v1.60.0) (2026-08-01)
+
+### Features
+
+* **engine:** resolve_model_tier command and standard-tier conflict assist ([26b4bcd](https://github.com/dsswift/ion/commit/26b4bcd3902128afe60c66867c3f5a1e6d986668))
+* **engine:** bench briefing and routing tools for bench conversations ([d1d353f](https://github.com/dsswift/ion/commit/d1d353fbf7253279ce209140258b9eb4941807e3))
+* **engine:** resolve_model_tier client command ([14e766a](https://github.com/dsswift/ion/commit/14e766a669ea2dd84b9b4c7faad5e96623541a2e))
+* **engine:** add MCP server administration with OAuth login ([1b6140c](https://github.com/dsswift/ion/commit/1b6140c28691077e991c5e1321a3ec07f4deefec))
+
+### Bug Fixes
+
+* **engine:** resolve bash cd targets in the worktree gate ([9f8fa03](https://github.com/dsswift/ion/commit/9f8fa03f871cd5b3f1b7fa873448facb82f12e9a))
+* **engine:** dispatch lifecycle — park, revive, credit, and loss ([d98fd20](https://github.com/dsswift/ion/commit/d98fd20452568986a7e6038c91ccc0ad95cf4f16))
+* **engine:** fail fast on keyless requests to canonical providers ([a7fc344](https://github.com/dsswift/ion/commit/a7fc344ac0360d74b366cf4cde0103ce0abed39a))
+* **engine:** remove duplicate sdk source location section ([46620f6](https://github.com/dsswift/ion/commit/46620f6ce471e0bbbd59e2a24cc0470f6d7a310d))
+* **engine:** make the MCP StreamableHTTP transport spec-conformant ([9e0e626](https://github.com/dsswift/ion/commit/9e0e62604f7992118f9cbcde9f62e8000b5cb000))
+* **engine:** refresh MCP tokens per request, once per server ([73a41d8](https://github.com/dsswift/ion/commit/73a41d862991527d8b621416aac438da86bec614))
+* **engine:** surface dead MCP grants and stop retrying them ([eb34111](https://github.com/dsswift/ion/commit/eb34111a168a475d9d29a35f2cd4e85937ff70af))
+* **engine:** connect MCP servers lazily at first prompt ([3872113](https://github.com/dsswift/ion/commit/387211352a676c0c0af2a8bab3efaa1a551bd68f))
+* **engine:** release the pkce callback port on wind-down ([3e41999](https://github.com/dsswift/ion/commit/3e419995e5cefed34562bde7eb8d9b608e13d743))
+
 ## [1.59.1](https://github.com/dsswift/ion/compare/engine-v1.59.0...engine-v1.59.1) (2026-07-28)
 
 ### Bug Fixes

@@ -10,6 +10,19 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.53.0](https://github.com/dsswift/ion/compare/ios-v1.52.0...ios-v1.53.0) (2026-08-01)
+
+### Features
+
+* **desktop:** conflict detection, 3-way resolution, and AI assist ([e4ea68d](https://github.com/dsswift/ion/commit/e4ea68dc21c90ff2ac5422cc9eb3661474fe8030))
+* **ios:** show worktree titles and open conversations ([d8d218d](https://github.com/dsswift/ion/commit/d8d218d244a6a2ac3432ea64d6052f2fc7980906))
+* **ios:** pin MCP server status contract fields ([8bb94d8](https://github.com/dsswift/ion/commit/8bb94d8ed03f697620cca3ddbb796d633a8905ee))
+
+### Bug Fixes
+
+* **desktop:** keep a bench member whose pin carries no commits ([595f357](https://github.com/dsswift/ion/commit/595f3570a04c11753d42c528f2bd8c7f6f6258ed))
+* **ios:** dispatch lifecycle parity — suspended dispatches live ([a6706db](https://github.com/dsswift/ion/commit/a6706db6636c0c2d69ff89e939f50c89e75b72f2))
+
 ## [1.52.0](https://github.com/dsswift/ion/compare/ios-v1.51.0...ios-v1.52.0) (2026-07-28)
 
 ### Features

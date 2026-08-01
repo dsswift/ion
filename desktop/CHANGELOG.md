@@ -10,6 +10,34 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.72.0](https://github.com/dsswift/ion/compare/desktop-v1.71.0...desktop-v1.72.0) (2026-08-01)
+
+### Features
+
+* **desktop:** conflict detection, 3-way resolution, and AI assist ([e4ea68d](https://github.com/dsswift/ion/commit/e4ea68dc21c90ff2ac5422cc9eb3661474fe8030))
+* **engine:** resolve_model_tier command and standard-tier conflict assist ([26b4bcd](https://github.com/dsswift/ion/commit/26b4bcd3902128afe60c66867c3f5a1e6d986668))
+* **engine:** bench briefing and routing tools for bench conversations ([d1d353f](https://github.com/dsswift/ion/commit/d1d353fbf7253279ce209140258b9eb4941807e3))
+* **desktop:** conflict detection, 3-way resolution, and AI assist ([fee26b6](https://github.com/dsswift/ion/commit/fee26b652d429a150849497be10f71acc7f59967))
+* **desktop:** name worktrees and list their conversations ([60a2487](https://github.com/dsswift/ion/commit/60a2487212e8548816643a9d26c7d129aca99643))
+* **desktop:** add MCP servers settings category ([070d398](https://github.com/dsswift/ion/commit/070d398716164e885c347dd6143bcd210b9d0db6))
+* **desktop:** collapsible workspace categories with mode icons ([00dccae](https://github.com/dsswift/ion/commit/00dccae2947be3060750eee05c63b3ba294aec38))
+
+### Bug Fixes
+
+* **engine:** resolve bash cd targets in the worktree gate ([9f8fa03](https://github.com/dsswift/ion/commit/9f8fa03f871cd5b3f1b7fa873448facb82f12e9a))
+* **desktop:** keep a bench member whose pin carries no commits ([595f357](https://github.com/dsswift/ion/commit/595f3570a04c11753d42c528f2bd8c7f6f6258ed))
+* **desktop:** keep mid-rebase worktrees visible and pin the branch ref ([41c8265](https://github.com/dsswift/ion/commit/41c8265be3400ad063aed994ed8a39149c31f3b3))
+* **desktop:** per-side merge controls, readable diff colors, clickable toast ([dc9eb08](https://github.com/dsswift/ion/commit/dc9eb081cd94315841f1eddcc914853400d776dc))
+* **desktop:** align the three merge panes in one shared scroller ([b09067a](https://github.com/dsswift/ion/commit/b09067ae5ab4a4f3d7e43982025f0f132f4b268c))
+* **desktop:** give the conflict assist a fresh conversation, not the live one ([550e3ea](https://github.com/dsswift/ion/commit/550e3eaaa28eaa1cd48c2413002632ab8a83d735))
+* **desktop:** gate worktree conversion on repo state ([09ba81d](https://github.com/dsswift/ion/commit/09ba81dda9e0e0056b7edc128551f46826816580))
+* **desktop:** surface dirty-worktree sync refusals in toast and row ([ba62fca](https://github.com/dsswift/ion/commit/ba62fca6f3483bbf01eaf1e27fab7a42a487ad2e))
+* **desktop:** scope bonjour orphan sweep and respawn dead dns-sd ([33be13a](https://github.com/dsswift/ion/commit/33be13ac56955c8eedebfa91b2ff0d717bf1a351))
+* **desktop:** dispatch lifecycle parity — suspended dot and loss ([4dc55aa](https://github.com/dsswift/ion/commit/4dc55aa52d9ab0d203206907f14ef1e1cbe0b006))
+* **desktop:** stop retrying an empty conversation on resume ([d516d79](https://github.com/dsswift/ion/commit/d516d7903de77301b6a02af19aadd55e58456258))
+* **desktop:** run launchctl off the Electron main thread ([be321ec](https://github.com/dsswift/ion/commit/be321ec66e223544e45f68bde71fdbe09dfc21dc))
+* **desktop:** give real-git fixture tests a fitting timeout ([c19b1c6](https://github.com/dsswift/ion/commit/c19b1c6627cebcd44b70ded00dc8c62e8d1c7d34))
+
 ## [1.71.0](https://github.com/dsswift/ion/compare/desktop-v1.70.0...desktop-v1.71.0) (2026-07-28)
 
 ### Features
