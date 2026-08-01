@@ -707,13 +707,18 @@ Request an on-demand context breakdown for a session. The engine reconstructs th
 |-------|------|-------------|
 | `categories` | array | Per-category token rows. Each row has `name`, `kind`, `tokens`, `tier` ("exact"/"local"/"approximate"), and optional `path`. |
 | `contextWindow` | number | Maximum token budget for the model. |
-| `totalTokens` | number | Sum of all category token counts. |
-| `apiReportedTotal` | number? | Provider-reported input token count. Zero until after-first-turn reconciliation. |
+| `occupancyTokens` | number? | **The engine's authoritative context-window occupancy — divide this by `contextWindow` to render "how full is the context".** The same figure `StatusFields.contextTokens` carries and the same input the engine's proactive-compaction gate measures against its limit. Absent when the engine has no occupancy figure for the conversation. See "Which token count to use" below. |
+| `totalTokens` | number | The **itemized** sum of all category token counts — an independent per-category estimate for *attribution* ("what is taking up the space"), not occupancy. Over-reports relative to `occupancyTokens`: it counts content the provider did not bill for this turn. |
+| `apiReportedTotal` | number? | Provider-reported input token count for the most recent turn. Zero until after-first-turn reconciliation. Under-reports mid-turn: it excludes messages appended since that turn (e.g. tool results not yet sent). |
 | `unaccounted` | number? | `apiReportedTotal - totalTokens`. Non-zero after reconciliation. |
 | `cacheReadTokens` | number? | Provider-reported cache-read tokens. Annotation only — NOT included in `totalTokens`. |
 | `cacheCreationTokens` | number? | Provider-reported cache-creation tokens. Annotation only — NOT included in `totalTokens`. |
 | `model` | string | Model identifier used for tokenization. |
 | `aggregateCostUsd` | number? | Sum of this session's LLM cost **plus every descendant dispatch session's cost**, walked on demand from the conversation tree. Absent for sessions with no dispatches or no cost yet. See "Aggregate cost model" below. |
+
+**Which token count to use.** Three fields carry token totals and they answer different questions. For a context-fullness indicator (a ring, a bar, a percentage) use **`occupancyTokens`** — it is what the engine itself measures for compaction, so a consumer rendering it agrees with `engine_status` by construction. Use `totalTokens` and the `categories` rows for attribution UI, where the `unaccounted` row makes the itemized sum's drift from the provider total explicit. Use `apiReportedTotal` when you specifically want the provider's own last-turn accounting.
+
+Deriving occupancy from either of the other two produces a wrong figure in opposite directions: `totalTokens` over-reports (one conversation occupying 26% of a 1M window itemized at ~103% of it), and `apiReportedTotal` under-reports for the duration of any in-flight turn.
 
 **Aggregate cost model.** `aggregateCostUsd` is recomputed on every `get_context_breakdown` request — no accumulator, no persistence. The engine reads each session's persisted `totalCost` from its `.llm.jsonl` header, then recursively follows `AgentDispatchData.ConversationIDs` entries in the parent's `.tree.jsonl` to collect every descendant dispatch session. In-flight background dispatches (not yet written to `.tree.jsonl`) are also included via the live dispatch registry, as of their last cost flush. Each conversation ID is counted at most once (cycle/dup guard). A mid-turn child may undercount by its unflushed turn — this self-heals on the next drawer-open after the child's next flush.
 

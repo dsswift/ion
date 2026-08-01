@@ -36,6 +36,7 @@
       "contextWindow",
       "model",
       "modelBreakdown",
+      "occupancyTokens",
       "totalTokens",
       "unaccounted"
     ],
@@ -436,6 +437,7 @@
       "contextWindow",
       "model",
       "modelBreakdown",
+      "occupancyTokens",
       "totalTokens",
       "unaccounted"
     ],

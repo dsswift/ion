@@ -10,6 +10,7 @@ package backend
 import (
 	"context"
 
+	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -22,12 +23,20 @@ import (
 // context_breakdown event; the session layer translates it to
 // engine_context_breakdown. Subsequent turns are no-ops (run.contextBreakdown
 // is non-nil), so the breakdown is emitted exactly once at assembly time.
+//
+// conv and contextWindow supply the engine's authoritative occupancy figure,
+// which rides on the event alongside the itemized sum so a consumer computing
+// "how full is the context" from a breakdown agrees with one computing it from
+// engine_status. The builder cannot derive occupancy itself — providers must not
+// import conversation — so it is resolved here and set on the result.
 func (b *ApiBackend) maybeEmitContextBreakdown(
 	ctx context.Context,
 	run *activeRun,
 	model string,
 	provider providers.LlmProvider,
 	streamOpts *types.LlmStreamOptions,
+	conv *conversation.Conversation,
+	contextWindow int,
 ) {
 	if run.contextBreakdown != nil {
 		return
@@ -45,6 +54,23 @@ func (b *ApiBackend) maybeEmitContextBreakdown(
 	}
 	if bd == nil {
 		return
+	}
+	// Occupancy is the same figure engine_status publishes as ContextTokens and
+	// the same input the compaction gate reads, so every surface agrees by
+	// construction. Distinct from the reconciliation baseline set later, which
+	// must match the provider's raw report and therefore excludes messages
+	// appended since it.
+	if conv != nil {
+		usage := conversation.GetContextUsage(conv, contextWindow)
+		bd.SetOccupancy(usage.Tokens)
+		utils.LogWithFields(utils.LevelDebug, "backend.runloop", "context breakdown: occupancy resolved", map[string]any{
+			"run_id": run.requestID, "occupancy_tokens": usage.Tokens,
+			"context_window": usage.Limit, "percent": usage.Percent, "estimated": usage.Estimated,
+		})
+	} else {
+		utils.LogWithFields(utils.LevelDebug, "backend.runloop", "context breakdown: no conversation, emitting without occupancy", map[string]any{
+			"run_id": run.requestID,
+		})
 	}
 	run.contextBreakdown = bd
 	b.emit(run, types.NormalizedEvent{Data: bd.ToNormalizedEvent()})

@@ -695,6 +695,19 @@ type ContextBreakdownPayload struct {
 	CacheReadTokens     int    `json:"cacheReadTokens,omitempty"`
 	CacheCreationTokens int    `json:"cacheCreationTokens,omitempty"`
 	Model               string `json:"model"`
+	// OccupancyTokens is the engine's authoritative context-window occupancy —
+	// the same figure carried by StatusFields.ContextTokens and the same input
+	// the proactive-compaction gate measures. Divide it by ContextWindow to
+	// render "how full is the context".
+	//
+	// Distinct from its two neighbours by design: TotalTokens is the itemized
+	// per-category sum (an independent estimate, for attribution), and
+	// APIReportedTotal is the raw provider input_tokens for the last turn with
+	// nothing added for messages appended since. See the field comment on
+	// ContextBreakdownEvent for the full contract.
+	//
+	// Zero when the engine has no occupancy figure for the conversation.
+	OccupancyTokens int `json:"occupancyTokens,omitempty"`
 	// AggregateCostUsd is the sum of this session's cost plus every descendant
 	// dispatch session's cost, computed on demand. Zero for sessions with no
 	// dispatches or no cost yet.

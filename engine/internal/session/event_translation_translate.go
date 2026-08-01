@@ -376,6 +376,7 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 				CacheReadTokens:     e.CacheReadTokens,
 				CacheCreationTokens: e.CacheCreationTokens,
 				Model:               e.Model,
+				OccupancyTokens:     e.OccupancyTokens,
 				AggregateCostUsd:    e.AggregateCostUsd,
 				ModelBreakdown:      e.ModelBreakdown,
 			},

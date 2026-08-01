@@ -432,7 +432,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		// Build and emit the per-category context breakdown once per run, on
 		// the first turn that has assembled stream options. See
 		// runloop_context_breakdown.go for the build/emit + reconcile helpers.
-		b.maybeEmitContextBreakdown(ctx, run, model, provider, &streamOpts)
+		b.maybeEmitContextBreakdown(ctx, run, model, provider, &streamOpts, conv, contextWindow)
 
 		// Call provider with retry (with telemetry span)
 		runIDCopy, turnCopy := run.requestID, turn

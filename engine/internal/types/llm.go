@@ -154,6 +154,26 @@ type ImageSource struct {
 	Data      string `json:"data"`
 }
 
+// ImageBlockTokenEstimate is the fixed token cost charged for a single image
+// content block, regardless of its base64 byte length. Vision providers bill an
+// image at a roughly fixed cost (≈1.5K tokens for a full-resolution image); this
+// conservative upper-bound keeps a token estimate honest without re-deriving
+// per-provider tiling formulas.
+//
+// Byte length must NEVER drive an image's token estimate. The wire form of an
+// image block carries the full base64 payload in source.data, which can be
+// megabytes, while the provider charges a roughly fixed per-image cost. Naively
+// marshaling an image block and dividing its byte length by 3.5 (or 4) counts a
+// 1MB image as hundreds of thousands of tokens, which catastrophically
+// over-estimates context (observed: a 55K-token context estimated at 1.08M, and
+// a 256K-token conversation itemized at 1.03M, both because of image bytes).
+//
+// This lives in `types` because it is consumed by two packages that cannot
+// import each other: `conversation` (EstimateTokens, the compaction-trigger
+// numerator) and `providers` (BuildContextBreakdown, the per-category itemizer).
+// A single constant here is what keeps the two estimates from drifting.
+const ImageBlockTokenEstimate = 1600
+
 // ImageAttachment carries pre-encoded attachment bytes (images or PDF
 // documents, keyed by MediaType) supplied alongside a user prompt. The engine
 // does not parse any client-side marker syntax; clients that want the LLM to

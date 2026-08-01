@@ -21,6 +21,16 @@ package session
 //   - For a historical session conversation.Load restores the full LLM-visible
 //     message list; the breakdown carries those conversation tokens.
 //
+//   - The emitted breakdown is reconciled against the provider's own reported
+//     usage (conversation.LastAssistantUsage) before emission, mirroring what
+//     backend.maybeReconcileContextBreakdown does on the in-run path's first
+//     usage event. The itemized per-category sum is an independent estimate; the
+//     provider's input_tokens is truth. Reconciliation records the delta as an
+//     explicit "unaccounted" row and sets APIReportedTotal so a consumer can
+//     always distinguish the two. A conversation with no API response yet has
+//     nothing to reconcile against and emits the itemized total with
+//     APIReportedTotal == 0.
+//
 //   - For a ClaudeCodeBackend session (nil provider) BuildContextBreakdown falls back
 //     to local BPE / char4 and still emits.
 //
@@ -194,6 +204,54 @@ func (m *Manager) ComputeAndEmitContextBreakdown(key string) {
 		return
 	}
 
+	// Publish the engine's authoritative occupancy figure alongside the itemized
+	// sum. This is the same value engine_status carries as ContextTokens and the
+	// same input the compaction gate measures, so a consumer rendering "how full
+	// is the context" from the breakdown lands on the identical number as one
+	// rendering it from a status event.
+	//
+	// GetContextUsage is used rather than LastAssistantUsage below because
+	// occupancy must include messages appended since the last provider response
+	// (tool results from an in-flight turn). The reconciliation baseline below
+	// deliberately does NOT include those — it has to match what the provider
+	// actually reported — which is exactly why the two figures are separate
+	// fields instead of one.
+	occupancy := conversation.GetContextUsage(conv, snap.contextWindow)
+	bd.SetOccupancy(occupancy.Tokens)
+	utils.LogWithFields(utils.LevelInfo, "session", "computeandemitcontextbreakdown: occupancy resolved", map[string]any{
+		"key": key, "run_id": snap.conversationID,
+		"occupancy_tokens": occupancy.Tokens, "context_window": occupancy.Limit,
+		"percent": occupancy.Percent, "estimated": occupancy.Estimated,
+	})
+
+	// Reconcile the itemized sum against the provider's own accounting before
+	// emitting, exactly as the in-run path does on its first usage event (see
+	// backend.maybeReconcileContextBreakdown). Without this the event carries a
+	// raw itemized estimate with APIReportedTotal == 0, and no consumer can
+	// tell an estimate from provider truth — which is how a 256K-token
+	// conversation was reported to clients as 1.03M.
+	//
+	// The summation is byte-identical to the in-run path's (runloop.go): input +
+	// cache_read + cache_creation is what the model actually carried.
+	if usage := conversation.LastAssistantUsage(conv); usage != nil {
+		apiTotal := usage.InputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens
+		itemized := bd.TotalTokens
+		providers.ReconcileBreakdown(bd, apiTotal, usage.CacheReadInputTokens, usage.CacheCreationInputTokens)
+		utils.LogWithFields(utils.LevelInfo, "session", "computeandemitcontextbreakdown: reconciled against provider usage", map[string]any{
+			"key": key, "run_id": snap.conversationID,
+			"itemized_total": itemized, "api_reported_total": apiTotal,
+			"unaccounted": bd.Unaccounted,
+		})
+	} else {
+		// Expected for a conversation with no API response yet (a fresh session,
+		// or one whose only turns came from a backend that reports no usage).
+		// The itemized sum is the only figure available; leaving
+		// APIReportedTotal zero is the honest signal that nothing reconciled it.
+		utils.LogWithFields(utils.LevelInfo, "session", "computeandemitcontextbreakdown: no persisted assistant usage, emitting unreconciled itemized total", map[string]any{
+			"key": key, "run_id": snap.conversationID, "itemized_total": bd.TotalTokens,
+		})
+	}
+
 	// Compute aggregate cost: this session + all descendant dispatches,
 	// with per-model breakdown for cost visibility.
 	liveIDs := m.liveChildConvIDs(key)
@@ -202,7 +260,11 @@ func (m *Manager) ComputeAndEmitContextBreakdown(key string) {
 		utils.LogWithFields(utils.LevelWarn, "session", "computeandemitcontextbreakdown: aggregate cost failed", map[string]any{"key": key, "error": err})
 	}
 
-	utils.LogWithFields(utils.LevelInfo, "session", "computeandemitcontextbreakdown: emitting", map[string]any{"key": key, "model": opts.Model, "count": len(bd.Categories), "count_3": bd.TotalTokens, "aggregate_cost": aggregateCost})
+	utils.LogWithFields(utils.LevelInfo, "session", "computeandemitcontextbreakdown: emitting", map[string]any{
+		"key": key, "model": opts.Model, "count": len(bd.Categories), "count_3": bd.TotalTokens,
+		"api_reported_total": bd.APIReportedTotal, "unaccounted": bd.Unaccounted,
+		"aggregate_cost": aggregateCost,
+	})
 
 	bdEvent := bd.ToNormalizedEvent()
 	if bdEvent != nil {

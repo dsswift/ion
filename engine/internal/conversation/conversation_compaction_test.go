@@ -898,6 +898,104 @@ func TestGetContextUsage_FallbackIncludesSystemPrompt(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// LastAssistantUsage
+// ---------------------------------------------------------------------------
+//
+// LastAssistantUsage exposes the provider's own accounting so callers outside
+// this package (session.ComputeAndEmitContextBreakdown) can reconcile an
+// independently-derived estimate against provider truth. It shares its backward
+// scan with GetContextUsage via lastAssistantUsageLocked, so the compaction
+// numerator and the reconciliation baseline cannot drift apart.
+
+func TestLastAssistantUsage_ReturnsMostRecent(t *testing.T) {
+	conv := CreateConversation("test", "sys", "model")
+	AddUserMessage(conv, "turn 1")
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "reply 1"}},
+		types.LlmUsage{InputTokens: 10000})
+	AddUserMessage(conv, "turn 2")
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "reply 2"}},
+		types.LlmUsage{InputTokens: 2, CacheReadInputTokens: 20000, CacheCreationInputTokens: 500})
+
+	got := LastAssistantUsage(conv)
+	if got == nil {
+		t.Fatal("LastAssistantUsage = nil, want the most recent assistant usage")
+	}
+	if got.InputTokens != 2 || got.CacheReadInputTokens != 20000 || got.CacheCreationInputTokens != 500 {
+		t.Errorf("LastAssistantUsage = %+v, want the SECOND assistant's usage", *got)
+	}
+}
+
+// The accessor must agree with GetContextUsage's numerator, since both are
+// derived from the same scan. A divergence here is the drift the shared helper
+// exists to prevent.
+func TestLastAssistantUsage_AgreesWithGetContextUsage(t *testing.T) {
+	conv := CreateConversation("test", "sys", "model")
+	AddUserMessage(conv, "hello")
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "hi"}},
+		types.LlmUsage{InputTokens: 2, CacheReadInputTokens: 253804, CacheCreationInputTokens: 396})
+
+	u := LastAssistantUsage(conv)
+	if u == nil {
+		t.Fatal("LastAssistantUsage = nil")
+	}
+	summed := u.InputTokens + u.CacheReadInputTokens + u.CacheCreationInputTokens
+	info := GetContextUsage(conv, 1_000_000)
+	if info.Tokens != summed {
+		t.Errorf("GetContextUsage.Tokens = %d but LastAssistantUsage sums to %d; the two must not diverge",
+			info.Tokens, summed)
+	}
+}
+
+func TestLastAssistantUsage_NilWhenNoAssistantUsage(t *testing.T) {
+	conv := CreateConversation("test", "sys", "model")
+	AddUserMessage(conv, "hello")
+
+	if got := LastAssistantUsage(conv); got != nil {
+		t.Errorf("LastAssistantUsage = %+v, want nil (no assistant turn)", *got)
+	}
+	// A nil conversation is a caller bug, not a panic.
+	if got := LastAssistantUsage(nil); got != nil {
+		t.Errorf("LastAssistantUsage(nil) = %+v, want nil", *got)
+	}
+}
+
+// A branch that discards the newer assistant turn must move the accessor's
+// answer back with it — the same invariant TestGetContextUsage_BackwardScanAfterBranch
+// pins for the compaction numerator.
+func TestLastAssistantUsage_FollowsBranch(t *testing.T) {
+	conv := CreateConversation("test", "sys", "model")
+	AddUserMessage(conv, "turn 1")
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "reply 1"}},
+		types.LlmUsage{InputTokens: 10000})
+	AddUserMessage(conv, "turn 2")
+	AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "reply 2"}},
+		types.LlmUsage{InputTokens: 20000})
+
+	var firstAssistantEntryID string
+	for _, e := range conv.Entries {
+		md := asMessageData(e.Data)
+		if md != nil && md.Role == "assistant" {
+			firstAssistantEntryID = e.ID
+			break
+		}
+	}
+	if firstAssistantEntryID == "" {
+		t.Fatal("no assistant entry found")
+	}
+	if _, err := Branch(conv, firstAssistantEntryID); err != nil {
+		t.Fatalf("Branch: %v", err)
+	}
+
+	got := LastAssistantUsage(conv)
+	if got == nil {
+		t.Fatal("LastAssistantUsage = nil after branch")
+	}
+	if got.InputTokens != 10000 {
+		t.Errorf("LastAssistantUsage.InputTokens = %d, want 10000 (the surviving assistant)", got.InputTokens)
+	}
+}
+
 func TestGetContextUsage_BackwardScanAfterBranch(t *testing.T) {
 	conv := CreateConversation("test", "sys", "model")
 	AddUserMessage(conv, "turn 1")
