@@ -198,7 +198,9 @@ extension RemoteEvent {
             let tabId = try container.decode(String.self, forKey: .tabId)
             let instanceId = try container.decodeIfPresent(String.self, forKey: .instanceId)
             let entryId = try container.decodeIfPresent(String.self, forKey: .userTurnEntryId) ?? ""
-            return .engineUserTurnPersisted(tabId: tabId, instanceId: instanceId, entryId: entryId)
+            let slashModelAlias = try container.decodeIfPresent(String.self, forKey: .userTurnSlashModelAlias)
+            let slashModelEffective = try container.decodeIfPresent(String.self, forKey: .userTurnSlashModelEffective)
+            return .engineUserTurnPersisted(tabId: tabId, instanceId: instanceId, entryId: entryId, slashModelAlias: slashModelAlias, slashModelEffective: slashModelEffective)
 
         case .engineDead:
             let tabId = try container.decode(String.self, forKey: .tabId)

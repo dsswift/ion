@@ -172,6 +172,76 @@ final class SlashPillOptimisticTests: XCTestCase {
         XCTAssertEqual(result?.args, "the auth flow")
     }
 
+    func testLivePersistedTurnStampsModelProvenance() {
+        let vm = SessionViewModel()
+        vm.tabs = [makeTab(id: "tab-model")]
+        vm.submit(tabId: "tab-model", text: "/align")
+
+        vm.handleEngineUserTurnPersisted(
+            tabId: "tab-model",
+            instanceId: nil,
+            entryId: "entry-align",
+            slashModelAlias: "standard",
+            slashModelEffective: "dci-marketing/gpt-5.6-terra"
+        )
+
+        let message = vm.conversationMessages("tab-model").first
+        XCTAssertEqual(message?.id, "entry-align")
+        XCTAssertEqual(message?.slashModelAlias, "standard")
+        XCTAssertEqual(message?.slashModelEffective, "dci-marketing/gpt-5.6-terra")
+        XCTAssertEqual(message?.slashModelDisplay, "Standard · GPT 5.6 Terra")
+    }
+
+    func testSlashWithoutConfiguredModelHasNoProvenanceDisplay() {
+        var message = Message(
+            id: "engine-turn-no-model",
+            role: .user,
+            content: "/clear",
+            timestamp: 1_700_000_000_000
+        )
+        message.slashCommand = "/clear"
+        message.slashArgs = ""
+
+        XCTAssertNil(message.slashModelDisplay)
+    }
+
+    func testSlashModelDisplayNormalizesProviderModelIDs() {
+        var message = Message(
+            id: "engine-turn-labels",
+            role: .user,
+            content: "/align",
+            timestamp: 1_700_000_000_000
+        )
+
+        message.slashModelEffective = "claude-opus-4-6"
+        XCTAssertEqual(message.slashModelDisplay, "Opus 4.6")
+
+        message.slashModelEffective = "claude-sonnet-4-6-20260101"
+        XCTAssertEqual(message.slashModelDisplay, "Sonnet 4.6")
+
+        message.slashModelEffective = "gpt-5.6-terra"
+        XCTAssertEqual(message.slashModelDisplay, "GPT 5.6 Terra")
+    }
+
+    func testSlashModelDisplayUsesAttachmentCapsule() throws {
+        let iosRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sourceURL = iosRoot
+            .appendingPathComponent("IonRemote")
+            .appendingPathComponent("Views")
+            .appendingPathComponent("EngineMessageRow+SlashBubble.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        guard let marker = source.range(of: ".accessibilityIdentifier(\"slash-model-pill\")") else {
+            XCTFail("Slash model pill must retain its stable accessibility identifier")
+            return
+        }
+        let capsuleBlock = source[source.index(marker.lowerBound, offsetBy: -700)..<marker.upperBound]
+        XCTAssertTrue(capsuleBlock.contains("Image(systemName: \"brain\")"))
+        XCTAssertTrue(capsuleBlock.contains(".background(Color(.secondarySystemFill))"))
+        XCTAssertTrue(capsuleBlock.contains(".clipShape(Capsule())"))
+    }
+
     // MARK: - Test 7: fallback parser does NOT pill non-slash content
 
     func testFallbackParserDoesNotPillNonSlash() {

@@ -182,8 +182,18 @@ extension DiagnosticLog {
         case .engineMessageEnd(let tabId, let instId, let inTok, _, let ctxPct, _, let entryId, _):
             log("EVENT: engineMessageEnd tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") tokens=\(inTok) ctx=\(String(format: "%.0f", ctxPct))% entryId=\(entryId?.prefix(12) ?? "nil")", tag: "session", level: .info)
 
-        case .engineUserTurnPersisted(let tabId, let instId, let entryId):
-            log("EVENT: engineUserTurnPersisted tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") entryId=\(entryId.prefix(12))", tag: "session", level: .info)
+        case .engineUserTurnPersisted(let tabId, _, let entryId, let slashModelAlias, let slashModelEffective):
+            var fields = [
+                "tab_id": String(tabId.prefix(8)),
+                "entry_id": String(entryId.prefix(12))
+            ]
+            if let slashModelAlias, !slashModelAlias.isEmpty {
+                fields["model_alias"] = slashModelAlias
+            }
+            if let slashModelEffective, !slashModelEffective.isEmpty {
+                fields["model"] = slashModelEffective
+            }
+            log("EVENT: engineUserTurnPersisted", tag: "session", level: .info, fields: fields)
 
         case .engineDead(let tabId, let instId, let exitCode, let signal, _):
             log("EVENT: engineDead tabId=\(tabId.prefix(8)) inst=\(instId?.prefix(8) ?? "nil") exit=\(exitCode ?? -1) sig=\(signal ?? "nil")", tag: "session", level: .info)
