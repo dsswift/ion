@@ -3,8 +3,6 @@ package telemetry
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -303,16 +301,19 @@ func (b *OtelBridge) Close() error {
 	return b.Flush()
 }
 
-// genTraceID generates a 16-byte random hex trace ID.
+// genTraceID generates a 16-byte W3C trace-context compliant trace ID.
+// Delegates to utils.NewTraceID so the crypto/rand failure path produces a
+// spec-valid non-zero value (W3C §3.2.2.3 requires consumers to reject an
+// all-zero trace-id) and logs the entropy failure, rather than silently
+// discarding the error and emitting zeros.
 func genTraceID() string {
-	b := make([]byte, 16)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
+	return utils.NewTraceID()
 }
 
-// genSpanID generates an 8-byte random hex span ID.
+// genSpanID generates an 8-byte random hex span ID. Delegates to
+// utils.RandomID for the same reason genTraceID delegates: an all-zero
+// span-id is invalid under W3C §3.2.2.4, and a discarded rand error is a
+// silent failure.
 func genSpanID() string {
-	b := make([]byte, 8)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
+	return utils.RandomID()
 }
