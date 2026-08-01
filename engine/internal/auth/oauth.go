@@ -6,12 +6,14 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/utils"
@@ -319,6 +321,29 @@ func StartPKCEFlow(cfg PKCEFlowConfig) (*PKCEFlowResult, error) {
 	mux := http.NewServeMux()
 	server := &http.Server{Handler: mux}
 
+	// Winding the flow down must release the loopback port before it returns.
+	// server.Shutdown alone does not guarantee that: Serve runs on a goroutine
+	// below and closes the listener via its own defer, so a Shutdown that wins
+	// the race against Serve leaves the port bound for an indeterminate window
+	// after the caller believes the flow is over. The registered redirect port
+	// is reused across logins (RFC 7591 binds it), so that window is exactly
+	// when the next login tries to bind and fails with "address already in
+	// use". Closing the listener here makes the release synchronous with the
+	// wind-down call.
+	//
+	// sync.Once because every wind-down path can fire — a callback branch, the
+	// context watcher, and the caller's Cancel — and a second Close on the same
+	// listener returns an error rather than being a no-op.
+	var windDownOnce sync.Once
+	windDown := func(reason string) {
+		windDownOnce.Do(func() {
+			shutdownAndLog(server, reason)
+			if closeErr := listener.Close(); closeErr != nil && !errors.Is(closeErr, net.ErrClosed) {
+				utils.LogWithFields(utils.LevelInfo, "auth.oauth", "pkce listener close failed", map[string]any{"reason": reason, "error": closeErr.Error()})
+			}
+		})
+	}
+
 	mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 
@@ -329,14 +354,14 @@ func StartPKCEFlow(cfg PKCEFlowConfig) (*PKCEFlowResult, error) {
 			if _, err := fmt.Fprintf(w, "<html><body><p>Authorization failed. You can close this tab.</p></body></html>"); err != nil {
 				utils.LogWithFields(utils.LevelInfo, "auth.oauth", "pkce write failure page", map[string]any{"error": err.Error()})
 			}
-			go shutdownAndLog(server, "auth-error")
+			go windDown("auth-error")
 			return
 		}
 
 		if q.Get("state") != state {
 			errCh <- fmt.Errorf("state mismatch")
 			http.Error(w, "state mismatch", http.StatusBadRequest)
-			go shutdownAndLog(server, "state-mismatch")
+			go windDown("state-mismatch")
 			return
 		}
 
@@ -344,7 +369,7 @@ func StartPKCEFlow(cfg PKCEFlowConfig) (*PKCEFlowResult, error) {
 		if code == "" {
 			errCh <- fmt.Errorf("no authorization code in callback")
 			http.Error(w, "missing code", http.StatusBadRequest)
-			go shutdownAndLog(server, "missing-code")
+			go windDown("missing-code")
 			return
 		}
 
@@ -355,7 +380,7 @@ func StartPKCEFlow(cfg PKCEFlowConfig) (*PKCEFlowResult, error) {
 			if _, err := fmt.Fprintf(w, "<html><body><p>Token exchange failed. You can close this tab.</p></body></html>"); err != nil {
 				utils.LogWithFields(utils.LevelInfo, "auth.oauth", "pkce write exchange-failure page", map[string]any{"error": err.Error()})
 			}
-			go shutdownAndLog(server, "exchange-error")
+			go windDown("exchange-error")
 			return
 		}
 
@@ -364,12 +389,16 @@ func StartPKCEFlow(cfg PKCEFlowConfig) (*PKCEFlowResult, error) {
 		if _, err := fmt.Fprintf(w, "<html><body><p>Authorization complete. You can close this tab.</p></body></html>"); err != nil {
 			utils.LogWithFields(utils.LevelInfo, "auth.oauth", "pkce write success page", map[string]any{"error": err.Error()})
 		}
-		go shutdownAndLog(server, "success")
+		go windDown("success")
 	})
 
 	// Run server in background; shut down on context cancellation.
 	go func() {
-		if serveErr := server.Serve(listener); serveErr != nil && serveErr != http.ErrServerClosed {
+		serveErr := server.Serve(listener)
+		// Both are the expected outcome of a deliberate wind-down:
+		// ErrServerClosed when Shutdown got there first, net.ErrClosed when the
+		// explicit listener close did. Neither is a flow failure.
+		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) && !errors.Is(serveErr, net.ErrClosed) {
 			errCh <- fmt.Errorf("pkce: callback server: %w", serveErr)
 		}
 	}()
@@ -379,7 +408,7 @@ func StartPKCEFlow(cfg PKCEFlowConfig) (*PKCEFlowResult, error) {
 		if ctx.Err() == context.DeadlineExceeded {
 			errCh <- fmt.Errorf("pkce: flow timed out after 5 minutes")
 		}
-		shutdownAndLog(server, "ctx-done")
+		windDown("ctx-done")
 	}()
 
 	return &PKCEFlowResult{
@@ -388,7 +417,7 @@ func StartPKCEFlow(cfg PKCEFlowConfig) (*PKCEFlowResult, error) {
 		Err:              errCh,
 		Cancel: func() {
 			cancel()
-			shutdownAndLog(server, "cancel")
+			windDown("cancel")
 		},
 	}, nil
 }

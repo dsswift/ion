@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -151,6 +152,81 @@ func TestStartPKCEFlow_RedirectHostAndPath(t *testing.T) {
 	}
 	if u.Path != "/auth/done" {
 		t.Errorf("redirect path = %q, want /auth/done", u.Path)
+	}
+}
+
+// TestStartPKCEFlow_CancelReleasesPortImmediately pins that Cancel has
+// released the loopback port by the time it returns, so the next flow can bind
+// the same port.
+//
+// This is not a theoretical tidiness property. RFC 7591 registration binds the
+// redirect_uri, so a repeat login MUST present the byte-identical URI — which
+// means re-binding the exact port the previous flow used. When the wind-down
+// left the port held (Shutdown racing Serve, with only Serve's deferred close
+// releasing the listener), the next login failed with
+// "bind: address already in use".
+//
+// The bind is attempted with no retry and no sleep on purpose: a poll loop
+// would pass against the very defect this pins, since the port does come free
+// eventually. "Released before Cancel returns" is the actual contract.
+func TestStartPKCEFlow_CancelReleasesPortImmediately(t *testing.T) {
+	flow, err := StartPKCEFlow(PKCEFlowConfig{
+		ClientID: "client-1",
+		AuthURL:  "https://login.example.com/authorize",
+		TokenURL: "https://login.example.com/token",
+	})
+	if err != nil {
+		t.Fatalf("StartPKCEFlow: %v", err)
+	}
+
+	authURL, err := url.Parse(flow.AuthorizationURL)
+	if err != nil {
+		t.Fatalf("parse auth url: %v", err)
+	}
+	redirect, err := url.Parse(authURL.Query().Get("redirect_uri"))
+	if err != nil {
+		t.Fatalf("parse redirect uri: %v", err)
+	}
+	port := redirect.Port()
+	if port == "" {
+		t.Fatalf("redirect uri %q carries no port", redirect)
+	}
+
+	flow.Cancel()
+
+	listener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", port))
+	if err != nil {
+		t.Fatalf("port %s still bound after Cancel returned: %v", port, err)
+	}
+	if closeErr := listener.Close(); closeErr != nil {
+		t.Errorf("close probe listener: %v", closeErr)
+	}
+}
+
+// TestStartPKCEFlow_CancelIsIdempotent pins that the wind-down tolerates being
+// driven more than once. Every flow has several paths that can wind it down —
+// a callback branch, the 5-minute context watcher, and the caller's Cancel —
+// and a caller that defers Cancel after an already-completed flow is the normal
+// shape, not an error case.
+func TestStartPKCEFlow_CancelIsIdempotent(t *testing.T) {
+	flow, err := StartPKCEFlow(PKCEFlowConfig{
+		ClientID: "client-1",
+		AuthURL:  "https://login.example.com/authorize",
+		TokenURL: "https://login.example.com/token",
+	})
+	if err != nil {
+		t.Fatalf("StartPKCEFlow: %v", err)
+	}
+
+	flow.Cancel()
+	flow.Cancel()
+	flow.Cancel()
+
+	// A wind-down must never be reported to the caller as a flow failure.
+	select {
+	case flowErr := <-flow.Err:
+		t.Errorf("wind-down surfaced an error to the caller: %v", flowErr)
+	case <-time.After(200 * time.Millisecond):
 	}
 }
 
