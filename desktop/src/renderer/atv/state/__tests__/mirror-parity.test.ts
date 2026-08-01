@@ -47,7 +47,10 @@ describe('applyMirrorOverrides', () => {
     const forwarded: Array<{ action: string; args: unknown[] }> = []
     ;(window as unknown as { ion: unknown }).ion = {
       ...(window as unknown as { ion?: object }).ion,
-      atvForwardAction: (action: string, args: unknown[]) => forwarded.push({ action, args }),
+      atvCallAction: (action: string, args: unknown[]) => {
+        forwarded.push({ action, args })
+        return Promise.resolve({ ok: true, value: undefined })
+      },
     }
     const { useSessionStore } = await import('../../../stores/sessionStore')
     const { applyMirrorOverrides } = await import('../secondary-store')
@@ -59,12 +62,116 @@ describe('applyMirrorOverrides', () => {
 
     const after = useSessionStore.getState() as unknown as Record<string, unknown>
     // A forwarded action now routes over IPC instead of mutating locally.
-    ;(after.selectTab as (id: string) => void)('tab-123')
+    await (after.selectTab as (id: string) => Promise<unknown>)('tab-123')
     expect(forwarded).toEqual([{ action: 'selectTab', args: ['tab-123'] }])
     // Mirror-local actions are untouched.
     expect(after.toggleGitPanel).toBe(localBefore)
     // Idempotent: a second call swaps nothing.
     expect(applyMirrorOverrides()).toEqual([])
+  })
+
+  /**
+   * EVERY forwarded override must return a thenable.
+   *
+   * The real store actions are async and call sites chain on that signature:
+   * `.then()`, `.catch()`, `.finally()`, `await`. A void-returning override
+   * turns each into `TypeError: Cannot read properties of undefined (reading
+   * 'then')` inside a click handler — and TypeScript cannot catch it, because
+   * the overrides are installed via `setState(... as never)` so every call site
+   * still sees the store's promise-returning types.
+   *
+   * That was live: the AI-assisted conflict resolver's `.catch` — the branch
+   * that puts a refusal in the error banner — never ran in the ATV window, and
+   * the dialog neither closed nor reported. Roughly a dozen other call sites
+   * across WorktreesSection / IntegrationSection / WorktreeRowMenu had the same
+   * shape.
+   *
+   * Iterating FORWARDED_ACTIONS rather than a hardcoded list is deliberate: a
+   * newly-forwarded async action is covered the moment it joins the table.
+   *
+   * Red on revert: drop `return Promise.resolve(undefined)` from the forwarder
+   * in secondary-store.ts and every action here fails.
+   */
+  it('returns a thenable from every forwarded override', async () => {
+    ;(window as unknown as { ion: unknown }).ion = {
+      ...(window as unknown as { ion?: object }).ion,
+      atvCallAction: () => Promise.resolve({ ok: true, value: undefined }),
+    }
+    const { useSessionStore } = await import('../../../stores/sessionStore')
+    const { applyMirrorOverrides } = await import('../secondary-store')
+    applyMirrorOverrides()
+    const after = useSessionStore.getState() as unknown as Record<string, unknown>
+
+    const notThenable: string[] = []
+    for (const [name, spec] of Object.entries(FORWARDED_ACTIONS)) {
+      const fn = after[name]
+      if (typeof fn !== 'function') continue
+      // Placeholder args satisfying the declared arity. A forwarder ignores
+      // their content — it only serializes them onto the wire.
+      const args = Array.from({ length: spec.minArgs }, (_, i) =>
+        i === spec.tabIdAt ? 'tab-1' : 'x')
+      const ret = (fn as (...a: unknown[]) => unknown)(...args)
+      if (typeof (ret as { then?: unknown } | undefined)?.then !== 'function') {
+        notThenable.push(name)
+      }
+    }
+    expect(
+      notThenable,
+      'forwarded overrides whose return value cannot be chained — a .then/.catch/await on these throws in the ATV window',
+    ).toEqual([])
+  })
+
+  /**
+   * The forwarder resolves the OWNER'S actual return value.
+   *
+   * This is what makes `const result = await store.retireWorktree(…)` work in
+   * the mirror. A resolved-but-empty promise fixed the TypeError above but left
+   * every await-and-inspect call site reading fields off `undefined`, so the
+   * round trip has to carry the value back.
+   *
+   * Red on revert: return `undefined` (or a bare resolve) from the forwarder
+   * instead of `reply.value` and this fails.
+   */
+  it("resolves the owner's return value", async () => {
+    const ownerResult = { ok: false, error: 'worktree has uncommitted changes' }
+    ;(window as unknown as { ion: unknown }).ion = {
+      ...(window as unknown as { ion?: object }).ion,
+      atvCallAction: () => Promise.resolve({ ok: true, value: ownerResult }),
+    }
+    const { useSessionStore } = await import('../../../stores/sessionStore')
+    const { applyMirrorOverrides } = await import('../secondary-store')
+    applyMirrorOverrides()
+    const after = useSessionStore.getState() as unknown as Record<string, unknown>
+
+    const result = await (after.retireWorktree as (...a: unknown[]) => Promise<unknown>)(
+      '/repo', '/repo/wt', 'branch',
+    )
+    // The domain result arrives intact — a refusal reads as a refusal, not as
+    // an absent answer.
+    expect(result).toEqual(ownerResult)
+  })
+
+  /**
+   * A transport fault resolves `undefined` rather than rejecting.
+   *
+   * "No owner window" and "the owner never replied" are not failures a click
+   * handler can recover from beyond reporting "no result", and throwing would
+   * hijack a `.catch` written for the action's own domain errors. The mirror
+   * logs the fault; the caller sees the same shape a valueless action produces.
+   */
+  it('resolves undefined when the round trip fails, without rejecting', async () => {
+    ;(window as unknown as { ion: unknown }).ion = {
+      ...(window as unknown as { ion?: object }).ion,
+      atvCallAction: () => Promise.resolve({ ok: false, error: 'no owner window' }),
+    }
+    const { useSessionStore } = await import('../../../stores/sessionStore')
+    const { applyMirrorOverrides } = await import('../secondary-store')
+    applyMirrorOverrides()
+    const after = useSessionStore.getState() as unknown as Record<string, unknown>
+
+    await expect(
+      (after.selectTab as (id: string) => Promise<unknown>)('tab-123'),
+    ).resolves.toBeUndefined()
   })
 })
 

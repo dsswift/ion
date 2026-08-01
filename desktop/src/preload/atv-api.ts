@@ -39,13 +39,26 @@ export interface AtvApi {
   /** Main-renderer side: ATV window opened/closed (launcher-button indicator). */
   onAtvWindowState(callback: (open: boolean) => void): () => void
   /**
-   * Mirror-store forwarding (ATV window): route an owner-durable store
-   * action to the overlay renderer for execution. Action must be in
-   * FORWARDED_ACTIONS; args must be structured-cloneable.
+   * Mirror-store forwarding (ATV window): route an owner-durable store action
+   * to the overlay renderer for execution AND return what it produced. Action
+   * must be in FORWARDED_ACTIONS; args must be structured-cloneable.
+   *
+   * The envelope's `ok` describes the ROUND TRIP, not the action's own success:
+   * `ok: true` carries the owner's return value in `value` (which may itself be
+   * a `{ ok: false }` domain result), and `ok: false` means the call never
+   * concluded — rejected, no owner window, or no reply before the deadline.
+   * It never rejects.
    */
-  atvForwardAction(action: string, args: unknown[]): void
-  /** Owner-renderer side: forwarded actions arriving from the ATV mirror. */
-  onAtvExecAction(callback: (action: string, args: unknown[]) => void): () => void
+  atvCallAction(action: string, args: unknown[]): Promise<{ ok: boolean; value?: unknown; error?: string }>
+  /**
+   * Owner-renderer side: forwarded actions arriving from the ATV mirror.
+   *
+   * `callId` is present only for `atvCallAction` round trips; when set, the
+   * owner must reply exactly once via `atvActionResult(callId, value)`.
+   */
+  onAtvExecAction(callback: (action: string, args: unknown[], callId?: string) => void): () => void
+  /** Owner-renderer side: return a called action's value to the waiting mirror. */
+  atvActionResult(callId: string, value: unknown): void
   /** Owner-renderer side: publish the persisted tabs snapshot for the mirror. */
   atvPublishTabsSync(snapshot: unknown): void
   /** ATV side: boot pull of the last published tabs snapshot (null = none yet). */
@@ -108,7 +121,7 @@ export const atvApi: AtvApi = {
     ipcRenderer.on(IPC.ATV_WINDOW_STATE, handler)
     return () => ipcRenderer.removeListener(IPC.ATV_WINDOW_STATE, handler)
   },
-  atvForwardAction: (action, args) => ipcRenderer.send(IPC.ATV_FORWARD_ACTION, action, args),
+  atvCallAction: (action, args) => ipcRenderer.invoke(IPC.ATV_CALL_ACTION, action, args),
   atvShowOverlay: () => ipcRenderer.send(IPC.ATV_SHOW_OVERLAY),
   atvExportImage: (png) => ipcRenderer.invoke(IPC.ATV_EXPORT_IMAGE, png),
   atvGetAllStatus: () => ipcRenderer.invoke(IPC.ATV_GET_ALL_STATUS),
@@ -138,11 +151,12 @@ export const atvApi: AtvApi = {
     return () => ipcRenderer.removeListener(IPC.ATV_PERMISSION_RESOLVED, handler)
   },
   onAtvExecAction: (callback) => {
-    const handler = (_e: Electron.IpcRendererEvent, action: string, args: unknown[]) =>
-      callback(action, Array.isArray(args) ? args : [])
+    const handler = (_e: Electron.IpcRendererEvent, action: string, args: unknown[], callId?: string) =>
+      callback(action, Array.isArray(args) ? args : [], callId)
     ipcRenderer.on(IPC.ATV_EXEC_ACTION, handler)
     return () => ipcRenderer.removeListener(IPC.ATV_EXEC_ACTION, handler)
   },
+  atvActionResult: (callId, value) => ipcRenderer.send(IPC.ATV_ACTION_RESULT, callId, value),
   atvListThemes: () => ipcRenderer.invoke(IPC.ATV_LIST_THEMES),
   atvReadThemeBundle: (packId) => ipcRenderer.invoke(IPC.ATV_READ_THEME_BUNDLE, packId),
   atvReadThemeAsset: (packId, relPath) =>

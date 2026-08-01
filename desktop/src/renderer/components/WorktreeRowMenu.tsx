@@ -16,7 +16,7 @@ import { useSessionStore } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
 import { landFlagsForStrategy, describeLandStrategy } from '../../shared/worktree-land-strategy'
 import { ConfirmDialog } from './git/ConfirmDialog'
-import { rError, rInfo, rWarn } from '../rendererLogger'
+import { rDebug, rError, rInfo, rWarn } from '../rendererLogger'
 import type { WorktreeInventoryEntry } from '../../shared/types'
 
 export function WorktreeRowMenu({
@@ -167,7 +167,17 @@ export function WorktreeRowMenu({
         entry.worktreePath,
         entry.branchName,
       )
-      if (!result.ok) {
+      // In the ATV window this is a FORWARDED action: the owner executes it and
+      // its return value rides back over the round trip, so `result` is the
+      // owner's real answer (see applyMirrorOverrides). It is absent only when
+      // the round trip itself failed — no owner window, or no reply before
+      // main's deadline — which is "no answer available", not "it failed", so
+      // that case is logged rather than read as a refusal.
+      if (!result) {
+        rDebug('worktree.menu', 'retire returned no result (owner round trip did not complete)', {
+          branch: entry.branchName,
+        })
+      } else if (!result.ok) {
         rWarn('worktree.menu', 'retire failed', { branch: entry.branchName, error: result.error ?? '' })
       }
       onRefresh()
@@ -194,7 +204,13 @@ export function WorktreeRowMenu({
     try {
       const result = await useSessionStore.getState()
         .benchAddMember(repoPath, entry.sourceBranch, entry.worktreePath, entry.branchName)
-      if (!result.ok) {
+      // Same round-trip caveat as doRetire: absent only when the forwarded call
+      // never concluded, never merely because the mirror ran it.
+      if (!result) {
+        rDebug('worktree.menu', 'add to bench returned no result (owner round trip did not complete)', {
+          branch: entry.branchName,
+        })
+      } else if (!result.ok) {
         rWarn('worktree.menu', 'add to bench refused', { branch: entry.branchName, error: result.error ?? '' })
       } else {
         rInfo('worktree.menu', 'added to bench', { branch: entry.branchName, source_branch: entry.sourceBranch })

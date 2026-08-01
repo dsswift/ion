@@ -94,6 +94,36 @@ export function initUserMessageEcho(): () => void {
 /**
  * Swap forwarded actions for IPC forwarders. Idempotent. Returns the list of
  * swapped action names (for logging/tests).
+ *
+ * ── The forwarder's return contract ─────────────────────────────────────────
+ * Every override returns a PROMISE that resolves to the OWNER'S actual return
+ * value, so a forwarded action behaves in the mirror the way its signature says
+ * it does. The round trip is `atvCallAction`: main mints a callId, relays it to
+ * the owner renderer, and resolves when the owner replies with the value its
+ * store action produced.
+ *
+ * Both halves of that matter, and both were once wrong:
+ *
+ *   - Returning a promise at all. The real store actions are `async` and call
+ *     sites chain on that — `.then()`, `.catch()`, `.finally()`, `await`. A
+ *     `void`-returning override turned each into `TypeError: Cannot read
+ *     properties of undefined (reading 'then')` inside a click handler, and
+ *     TypeScript could not catch it because the overrides are installed through
+ *     `setState(... as never)`, so every call site still saw the store's
+ *     promise-returning types. Observed on the AI-assisted conflict resolver:
+ *     its `.catch` — the branch that surfaces a refusal in the error banner —
+ *     never ran, and the dialog neither closed nor reported.
+ *   - Resolving the real VALUE. A resolved-but-empty promise fixed the crash
+ *     but left `const result = await store.retireWorktree(…)` reading fields off
+ *     `undefined`, so an await-and-inspect call site still could not work in the
+ *     mirror. Now it can.
+ *
+ * The promise never rejects. A transport fault (no owner window, owner did not
+ * reply before main's deadline) resolves `undefined` and is logged here, because
+ * "the round trip failed" and "the action returned nothing" are the same thing
+ * from a caller's perspective: no answer is available. Domain failures are
+ * unaffected — an action that returns `{ ok: false, error }` delivers exactly
+ * that, and the caller reads it normally.
  */
 export function applyMirrorOverrides(): string[] {
   if (applied) return []
@@ -106,9 +136,20 @@ export function applyMirrorOverrides(): string[] {
       missing.push(name)
       continue
     }
-    overrides[name] = (...args: unknown[]) => {
+    overrides[name] = async (...args: unknown[]): Promise<unknown> => {
       rDebug('atv.mirror', 'forwarding action to owner', { action: name, arg_count: args.length })
-      window.ion.atvForwardAction(name, args)
+      const reply = await window.ion.atvCallAction(name, args)
+      if (!reply.ok) {
+        // Transport-level: the call never reached a conclusion. Warn rather
+        // than throw — the caller's `.catch` is for the action's own failures,
+        // and a wedged owner window is not something a click handler can
+        // meaningfully recover from beyond reporting "no result".
+        rWarn('atv.mirror', 'forwarded action did not complete', {
+          action: name, error: reply.error ?? '',
+        })
+        return undefined
+      }
+      return reply.value
     }
   }
   if (missing.length > 0) {

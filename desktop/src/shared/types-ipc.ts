@@ -383,9 +383,16 @@ export const IPC = {
   // launcher button's active indicator).
   ATV_WINDOW_STATE: 'atv:window-state',
   // Mirror-store action forwarding: ATV renderer → main (validated against
-  // FORWARDED_ACTIONS) → overlay renderer, which executes on the owner store.
-  ATV_FORWARD_ACTION: 'atv:forward-action',
+  // FORWARDED_ACTIONS) → overlay renderer, which executes on the owner store
+  // and replies with the action's return value.
+  //
+  // Request/response, not fire-and-forget: a mirror caller does
+  // `const result = await store.retireWorktree(…)` and needs the owner's real
+  // answer. Main mints a callId, relays it with the action on ATV_EXEC_ACTION,
+  // and the owner replies once on ATV_ACTION_RESULT.
+  ATV_CALL_ACTION: 'atv:call-action',
   ATV_EXEC_ACTION: 'atv:exec-action',
+  ATV_ACTION_RESULT: 'atv:action-result',
   // Owner-published tab-metadata snapshot: owner renderer → main (publish),
   // main → ATV window (push), ATV → main (boot pull).
   ATV_PUBLISH_TABS_SYNC: 'atv:publish-tabs-sync',

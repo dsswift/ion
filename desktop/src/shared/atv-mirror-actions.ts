@@ -7,14 +7,16 @@
  *
  *   - FORWARDED_ACTIONS: mutations of owner-durable state (tabs, groups,
  *     worktrees, the prompt pipeline). In the mirror these are swapped for
- *     IPC forwarders — the OWNER (overlay renderer) executes them, and the
- *     resulting state returns to the mirror via events / sync pushes.
+ *     IPC forwarders — the OWNER (overlay renderer) executes them and replies
+ *     with the action's return value, so a forwarded action behaves the way its
+ *     signature says it does; the resulting state also returns to the mirror
+ *     via events / sync pushes.
  *   - MIRROR_LOCAL_ACTIONS: safe to run in the mirror — per-window UI state,
  *     stateless engine pass-throughs, or event-stream ingestion.
  *
  * The mirror-parity test enumerates the store at runtime and fails when an
  * action is unclassified or double-classified: adding a store action forces
- * an explicit parity decision. Main-process validation of atv:forward-action
+ * an explicit parity decision. Main-process validation of atv:call-action
  * derives from FORWARDED_ACTIONS — one source of truth.
  */
 
