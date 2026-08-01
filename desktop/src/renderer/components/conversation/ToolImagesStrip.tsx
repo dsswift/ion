@@ -1,5 +1,6 @@
 import React from 'react'
-import { InlineMessageImages, deriveMessageImages } from './InlineMessageImages'
+import { deriveMessageImages } from './InlineMessageImages'
+import { ImageGallery, type GalleryImage } from './ImageGallery'
 import { rInfo } from '../../rendererLogger'
 import type { Message } from '../../../shared/types'
 
@@ -26,10 +27,13 @@ import type { Message } from '../../../shared/types'
  * no longer renders images (it would double-render when expanded); this strip
  * is the single seam that paints tool images.
  *
- * Rendering is per-tool-row (one InlineMessageImages per tool that has images)
- * so each image keeps its owning-tool association and paths are not deduped
- * across rows — mirroring what the expanded ToolRow view showed, minus the
- * collapse gate.
+ * Every row's images flatten into ONE gallery for the group. Per-row galleries
+ * were what made a many-image turn unusable: a group of 21 tools each holding
+ * a few screens produced 21 stacked lists. One gallery gives the whole group a
+ * single bounded rail. Entries are keyed `${tool.id}:${path}` and are NOT
+ * deduped across rows — a path returned by two different tools stays two
+ * entries, each labelled with its producing tool, preserving the owning-tool
+ * association the per-row rendering carried.
  */
 export const ToolImagesStrip = React.memo(function ToolImagesStrip({ tools }: { tools: Message[] }) {
   // Tool images arrive exclusively as FileAttachment objects placed by
@@ -41,28 +45,24 @@ export const ToolImagesStrip = React.memo(function ToolImagesStrip({ tools }: { 
   // produces false-positive image pills from paths that don't exist and were
   // never meant to be images. The content-scan path in deriveMessageImages is
   // for user message restoration only.
-  const withImages = tools.filter((t) => deriveMessageImages('', t.attachments).length > 0)
-  if (withImages.length === 0) return null
-
-  const total = withImages.reduce(
-    (n, t) => n + deriveMessageImages('', t.attachments).length,
-    0,
+  const items: GalleryImage[] = tools.flatMap((tool) =>
+    deriveMessageImages('', tool.attachments).map((img) => ({
+      ...img,
+      key: `${tool.id}:${img.key}`,
+      caption: tool.toolName,
+    })),
   )
+  if (items.length === 0) return null
+
   // Observability: a render with zero painted images despite attachments in the
   // store would be a regression of the exact #224 defect. Log the count so the
   // NEXT failure is diagnosable from desktop.jsonl alone (per logging policy).
-  rInfo('conversation', 'rendering tool image strip', { rows: withImages.length, images: total })
+  const rows = tools.filter((t) => deriveMessageImages('', t.attachments).length > 0).length
+  rInfo('conversation', 'rendering tool image strip', { rows, images: items.length })
 
   return (
     <div className="mt-1 flex flex-col items-start gap-1">
-      {withImages.map((tool) => (
-        <InlineMessageImages
-          key={`toolimg-${tool.id}`}
-          content=""
-          attachments={tool.attachments}
-          align="start"
-        />
-      ))}
+      <ImageGallery items={items} align="start" />
     </div>
   )
 })

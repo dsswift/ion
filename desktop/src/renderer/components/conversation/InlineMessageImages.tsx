@@ -1,6 +1,5 @@
-import React, { useState } from 'react'
-import { useColors } from '../../theme'
-import { ImageViewer, useImageDataUrl } from '../ImageViewer'
+import React from 'react'
+import { ImageGallery } from './ImageGallery'
 import type { Attachment, FileAttachment } from '../../../shared/types'
 
 const ATTACHED_IMAGE_RE = /\[Attached image: ([^\]]+)\]/g
@@ -44,69 +43,13 @@ export function deriveMessageImages(content: string, attachments?: Attachment[])
 }
 
 /**
- * Renders image attachments as inline thumbnails above the user-message bubble.
- * Clicking opens an ImageViewer floating panel with save-as and reveal actions.
+ * Renders a message's image attachments as an ImageGallery above the bubble.
+ * One image keeps the large inline thumbnail; two or more become a paged rail
+ * so a many-image turn cannot stretch the transcript. Clicking a tile opens
+ * the ImageViewer floating panel with save-as, reveal, and paging.
  */
 export function InlineMessageImages({ content, attachments, align = 'end' }: { content: string; attachments?: Attachment[]; align?: 'start' | 'end' }) {
   const images = deriveMessageImages(content, attachments)
-  const [previewImage, setPreviewImage] = useState<{ path: string; name: string } | null>(null)
-
   if (images.length === 0) return null
-
-  return (
-    <>
-      <div className={`flex flex-col gap-1 mb-1 ${align === 'end' ? 'items-end' : 'items-start'}`}>
-        {images.map((img) => (
-          <InlineImage
-            key={img.key}
-            path={img.path}
-            name={img.name}
-            dataUrl={img.dataUrl}
-            onPreview={() => setPreviewImage({ path: img.path, name: img.name })}
-          />
-        ))}
-      </div>
-      {previewImage && (
-        <ImageViewer
-          filePath={previewImage.path}
-          fileName={previewImage.name}
-          onClose={() => setPreviewImage(null)}
-        />
-      )}
-    </>
-  )
-}
-
-function InlineImage({ path, name, dataUrl: initialDataUrl, onPreview }: { path: string; name: string; dataUrl?: string; onPreview: () => void }) {
-  const colors = useColors()
-  const dataUrl = useImageDataUrl(path, initialDataUrl)
-
-  if (!dataUrl) {
-    return (
-      <div
-        className="text-[11px] px-2 py-1 rounded"
-        style={{ background: colors.surfacePrimary, color: colors.textTertiary, border: `1px solid ${colors.surfaceSecondary}` }}
-        title={path}
-      >
-        {name}
-      </div>
-    )
-  }
-
-  return (
-    <button
-      type="button"
-      className="block rounded-lg overflow-hidden border cursor-pointer"
-      style={{ borderColor: colors.toolBorder, background: colors.surfacePrimary, maxWidth: 280 }}
-      onClick={onPreview}
-      title={name}
-    >
-      <img
-        src={dataUrl}
-        alt={name}
-        className="block w-full max-h-[260px] object-contain"
-        loading="lazy"
-      />
-    </button>
-  )
+  return <ImageGallery items={images} align={align} />
 }

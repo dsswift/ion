@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { DownloadSimple, FolderOpen } from '@phosphor-icons/react'
+import { DownloadSimple, FolderOpen, CaretLeft, CaretRight } from '@phosphor-icons/react'
 import { FloatingPanel } from './FloatingPanel'
 import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
@@ -18,8 +18,15 @@ const dataUrlCache = new Map<string, string>()
  * the cache entry (idempotent). If the file is gone (e.g. a pre-fix tmpdir
  * paste from a prior session), the seeded value persists and the image renders
  * from the stored base64.
+ *
+ * `enabled` gates only the IPC read, not the cache lookup. A gallery with
+ * dozens of tiles passes `false` for tiles that have never scrolled into the
+ * rail viewport: reading fifty base64 data URLs over IPC to paint the eight
+ * that are actually on screen is pure waste, and every one of them stays
+ * resident in the module cache afterwards. A cache hit still resolves
+ * synchronously while disabled, because that costs nothing.
  */
-function useImageDataUrl(path: string, initialDataUrl?: string): string | null {
+function useImageDataUrl(path: string, initialDataUrl?: string, enabled = true): string | null {
   // Seed the module-level cache eagerly from initialDataUrl so sibling
   // components referencing the same path share it without an IPC round-trip.
   if (initialDataUrl && !dataUrlCache.has(path)) {
@@ -33,6 +40,7 @@ function useImageDataUrl(path: string, initialDataUrl?: string): string | null {
       setDataUrl(dataUrlCache.get(path) ?? null)
       return
     }
+    if (!enabled) return
     let cancelled = false
     window.ion.readImageDataUrl(path).then((res) => {
       if (cancelled) return
@@ -42,7 +50,7 @@ function useImageDataUrl(path: string, initialDataUrl?: string): string | null {
       }
     }).catch((err) => rError('ImageViewer', 'readImageDataUrl failed', { path, error: String(err) }))
     return () => { cancelled = true }
-  }, [path])
+  }, [path, enabled])
 
   return dataUrl
 }
@@ -54,9 +62,21 @@ interface ImageViewerProps {
   filePath: string
   fileName: string
   onClose: () => void
+  /**
+   * The full set the viewed image belongs to, when it was opened from a
+   * gallery. Present so a fifty-image turn can be walked without closing and
+   * reopening the panel for every image. Omitted by single-image callers
+   * (FileExplorer, StatusBarAttachmentsButton), which then render no nav
+   * chrome at all — the prop is additive and changes nothing for them.
+   */
+  siblings?: Array<{ path: string; name: string }>
+  /** Index of the current image within `siblings`. */
+  index?: number
+  /** Asks the owner to select another index. The owner drives filePath/fileName. */
+  onNavigate?: (index: number) => void
 }
 
-export function ImageViewer({ filePath, fileName, onClose }: ImageViewerProps) {
+export function ImageViewer({ filePath, fileName, onClose, siblings, index = 0, onNavigate }: ImageViewerProps) {
   const colors = useColors()
   const dataUrl = useImageDataUrl(filePath)
   const linkRef = useRef<HTMLAnchorElement>(null)
@@ -67,6 +87,29 @@ export function ImageViewer({ filePath, fileName, onClose }: ImageViewerProps) {
     (geo: { x: number; y: number; w: number; h: number }) => setImageGeometry(geo),
     [setImageGeometry],
   )
+
+  const total = siblings?.length ?? 0
+  const canPage = total > 1 && !!onNavigate
+  const goPrev = useCallback(() => {
+    if (!canPage || !onNavigate) return
+    onNavigate((index - 1 + total) % total)
+  }, [canPage, onNavigate, index, total])
+  const goNext = useCallback(() => {
+    if (!canPage || !onNavigate) return
+    onNavigate((index + 1) % total)
+  }, [canPage, onNavigate, index, total])
+
+  // Arrow-key paging. Sits alongside FloatingPanel's own Escape handler rather
+  // than inside it: paging is the viewer's concern, closing is the panel's.
+  useEffect(() => {
+    if (!canPage) return
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') { e.preventDefault(); goPrev() }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); goNext() }
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [canPage, goPrev, goNext])
 
   const handleSaveAs = useCallback(async () => {
     if (!dataUrl) return
@@ -129,6 +172,36 @@ export function ImageViewer({ filePath, fileName, onClose }: ImageViewerProps) {
           <FolderOpen size={12} />
           <span>Reveal</span>
         </button>
+
+        {/* Paging chrome — only when the viewer was opened from a multi-image
+            gallery. Single-image callers get the toolbar they always had. */}
+        {canPage && (
+          <div className="flex items-center gap-1 ml-auto">
+            <button
+              onClick={goPrev}
+              className="flex items-center px-1 py-0.5 rounded transition-colors"
+              style={{ color: colors.textTertiary, cursor: 'pointer' }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = colors.accent }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = colors.textTertiary }}
+              aria-label="Previous image"
+            >
+              <CaretLeft size={12} />
+            </button>
+            <span className="text-[10px] tabular-nums" style={{ color: colors.textTertiary }}>
+              {index + 1} / {total}
+            </span>
+            <button
+              onClick={goNext}
+              className="flex items-center px-1 py-0.5 rounded transition-colors"
+              style={{ color: colors.textTertiary, cursor: 'pointer' }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = colors.accent }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = colors.textTertiary }}
+              aria-label="Next image"
+            >
+              <CaretRight size={12} />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Image display */}
