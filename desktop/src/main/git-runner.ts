@@ -72,11 +72,25 @@ function withNoOptionalLocks(args: string[]): string[] {
   return ['--no-optional-locks', ...args]
 }
 
-export async function runGit(directory: string, args: string[]): Promise<string> {
+/**
+ * Run a git command in `directory` and return its stdout.
+ *
+ * `env` is optional and ADDITIVE: when omitted the child inherits the parent
+ * environment exactly as before. It exists for plumbing that must run against a
+ * scratch index via `GIT_INDEX_FILE` (see worktree/recovery.ts) — writing a
+ * snapshot commit must never disturb the operator's real index, and the env var
+ * is git's only mechanism for that.
+ */
+export async function runGit(
+  directory: string,
+  args: string[],
+  env?: NodeJS.ProcessEnv,
+): Promise<string> {
   try {
     const { stdout } = await gitExec('git', withNoOptionalLocks(args), {
       cwd: directory,
       maxBuffer: 10 * 1024 * 1024,
+      ...(env ? { env } : {}),
     })
     return stdout
   } catch (err: any) {

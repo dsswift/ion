@@ -12,7 +12,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
-import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync, realpathSync } from 'fs'
+import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync, readdirSync, realpathSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -29,6 +29,8 @@ vi.mock('os', async () => {
 
 import { landWorktree, syncWorktreeFromSource, findWorktreeForBranch, parseWorktreeList } from '../worktree/integrate'
 import { retireWorktree, reattachWorktree } from '../worktree/relocate'
+import * as recovery from '../worktree/recovery'
+import { writeRecoveryRef } from '../worktree/recovery'
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf-8' })
@@ -48,6 +50,15 @@ function makeRepo(): string {
   git(dir, 'add', '-A')
   git(dir, 'commit', '-m', 'base')
   return dir
+}
+
+/**
+ * Scratch index files the recovery snapshot may have left in the repo's git dir.
+ * Named with a timestamp, so a leak accumulates rather than overwrites.
+ */
+function recoveryIndexFiles(): string[] {
+  const gitDir = git(repo, 'rev-parse', '--absolute-git-dir').trim()
+  return readdirSync(gitDir).filter((f) => f.startsWith('ion-recovery-index-'))
 }
 
 /** Add a worktree on a new branch cut from `from`, with one commit in it. */
@@ -241,6 +252,124 @@ describe('retireWorktree', () => {
 
     expect(result.ok).toBe(true)
     expect(existsSync(a.path)).toBe(false)
+  })
+
+  // The retire confirmation promises "Work is preserved to a recovery ref
+  // first". Nothing implemented that: a forced retire ran
+  // `git worktree remove --force` and the uncommitted work was destroyed while
+  // the dialog said it had been saved. These pin the promise.
+  //
+  // Regression direction: drop the writeRecoveryRef call from retireWorktree and
+  // the first two go red (no ref written, content unrecoverable).
+  it('preserves uncommitted work to a recovery ref before a forced removal', async () => {
+    const a = makeWorktree('a')
+    // A tracked modification, a staged change, and an untracked file — all three
+    // are destroyed by `worktree remove --force`.
+    writeFileSync(join(a.path, 'a.txt'), 'modified in place\n')
+    writeFileSync(join(a.path, 'staged.txt'), 'staged content\n')
+    git(a.path, 'add', 'staged.txt')
+    writeFileSync(join(a.path, 'untracked.txt'), 'never added\n')
+
+    const result = await retireWorktree({ repoPath: repo, worktreePath: a.path, branchName: a.branch, force: true })
+
+    expect(result.ok).toBe(true)
+    expect(existsSync(a.path)).toBe(false)
+    expect(result.recoveryRef).toMatch(/^refs\/ion\/recovery\//)
+
+    // The ref lives in the PARENT repo, so it outlives the deleted directory.
+    const sha = git(repo, 'rev-parse', result.recoveryRef!).trim()
+    expect(sha).toMatch(/^[0-9a-f]{40}$/)
+
+    // Every lost file is recoverable, with its exact content.
+    const tree = git(repo, 'ls-tree', '-r', '--name-only', result.recoveryRef!)
+    expect(tree).toContain('a.txt')
+    expect(tree).toContain('staged.txt')
+    expect(tree).toContain('untracked.txt')
+    expect(git(repo, 'show', `${result.recoveryRef!}:a.txt`)).toBe('modified in place\n')
+    expect(git(repo, 'show', `${result.recoveryRef!}:staged.txt`)).toBe('staged content\n')
+    expect(git(repo, 'show', `${result.recoveryRef!}:untracked.txt`)).toBe('never added\n')
+  })
+
+  it('writes no recovery ref when a forced retire has nothing to preserve', async () => {
+    const a = makeWorktree('a')
+    await landWorktree({ repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: 'main' })
+
+    const result = await retireWorktree({ repoPath: repo, worktreePath: a.path, branchName: a.branch, force: true })
+
+    // An empty snapshot would be noise the operator has to reason about later.
+    expect(result.ok).toBe(true)
+    expect(result.recoveryRef).toBeUndefined()
+    expect(git(repo, 'for-each-ref', '--format=%(refname)', 'refs/ion/recovery').trim()).toBe('')
+  })
+
+  it('leaves the operator index untouched when snapshotting', async () => {
+    const a = makeWorktree('a')
+    writeFileSync(join(a.path, 'staged.txt'), 'staged content\n')
+    git(a.path, 'add', 'staged.txt')
+    const before = git(a.path, 'status', '--porcelain')
+
+    // Snapshot alone, without removing the worktree: the temp-index plumbing
+    // must not disturb a staged-but-uncommitted state the operator is building.
+    const snapshot = await writeRecoveryRef({ repoPath: repo, worktreePath: a.path, branchName: a.branch })
+
+    expect(snapshot.snapshot).toBeDefined()
+    expect(git(a.path, 'status', '--porcelain')).toBe(before)
+  })
+
+  // Git never cleans up a GIT_INDEX_FILE -- the creator owns it -- and the name
+  // carries a timestamp, so a missing unlink accumulates one orphan index per
+  // forced retire rather than overwriting a single file.
+  //
+  // Regression direction: drop the `finally` in writeRecoveryRef and both go red.
+  it('leaves no scratch index behind after a snapshot', async () => {
+    const a = makeWorktree('a')
+    writeFileSync(join(a.path, 'unsaved.txt'), 'work\n')
+
+    const snapshot = await writeRecoveryRef({ repoPath: repo, worktreePath: a.path, branchName: a.branch })
+
+    expect(snapshot.snapshot).toBeDefined()
+    // The snapshot is durable in the object store, so the scratch index has no
+    // further purpose.
+    expect(recoveryIndexFiles()).toEqual([])
+  })
+
+  it('leaves no scratch index behind when the snapshot fails', async () => {
+    const a = makeWorktree('a')
+    writeFileSync(join(a.path, 'unsaved.txt'), 'work\n')
+
+    // A real failure, not an injected one, and specifically a LATE one. The
+    // branch name is only used for the commit message and the ref slug, so
+    // `wt/a..b` slugs to `wt-a..b` and `git update-ref` refuses the `..` --
+    // after read-tree, update-index, write-tree and commit-tree have all run and
+    // the scratch index is on disk. That is precisely the window the `finally`
+    // covers. (An unborn HEAD would fail at read-tree, before the index exists,
+    // and would pass this assertion without proving anything.)
+    const result = await writeRecoveryRef({ repoPath: repo, worktreePath: a.path, branchName: 'wt/a..b' })
+
+    expect(result.error).toBeDefined()
+    expect(recoveryIndexFiles()).toEqual([])
+  })
+
+  // A snapshot failure must not become a silent data-loss path: the retire
+  // refuses and the worktree (with its work) survives.
+  it('refuses the forced retire when the recovery snapshot cannot be written', async () => {
+    const a = makeWorktree('a')
+    writeFileSync(join(a.path, 'unsaved.txt'), 'precious\n')
+
+    const failure = vi.spyOn(recovery, 'writeRecoveryRef')
+      .mockResolvedValue({ error: 'object store is read-only' })
+    try {
+      const result = await retireWorktree({ repoPath: repo, worktreePath: a.path, branchName: a.branch, force: true })
+
+      expect(result.ok).toBe(false)
+      expect(result.error).toMatch(/read-only/)
+      expect(result.error).toMatch(/kept/i)
+      // The whole point: the work is still there.
+      expect(existsSync(a.path)).toBe(true)
+      expect(readFileSync(join(a.path, 'unsaved.txt'), 'utf-8')).toBe('precious\n')
+    } finally {
+      failure.mockRestore()
+    }
   })
 })
 

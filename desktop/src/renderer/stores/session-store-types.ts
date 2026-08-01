@@ -25,7 +25,7 @@ export interface GitConflictAlert {
   recordedAt: number
 }
 
-import type { TabState, NormalizedEvent, EnrichedError, Attachment, FileAttachment, TerminalPaneState, ConversationPane, ImageAttachmentPayload, WorktreeInventoryEntry, WorktreeProvisionState, IntegrationWorkspace, IntegrationMember, BenchRebuildResult } from '../../shared/types'
+import type { TabState, NormalizedEvent, EnrichedError, Attachment, FileAttachment, TerminalPaneState, ConversationPane, ImageAttachmentPayload, WorktreeInventoryEntry, WorktreeProvisionState, IntegrationWorkspace, IntegrationMember, BenchRebuildResult, WorktreeMoveResult } from '../../shared/types'
 import type { ResourceItem } from '../../shared/types-engine'
 
 export interface StaticInfo {
@@ -366,8 +366,12 @@ export interface State {
    * Retire a worktree, relocating any conversation inside it first so the tab is
    * never left pointed at a deleted directory. Callers must confirm against
    * `gitWorktreeAppraise` before invoking: this forces removal.
+   *
+   * Returns the full `WorktreeMoveResult` so callers can surface `recoveryRef` —
+   * the ref holding any uncommitted work the forced removal preserved. A caller
+   * that cannot see it cannot tell the operator where their work went.
    */
-  retireWorktree: (repoPath: string, worktreePath: string, branchName: string) => Promise<{ ok: boolean; error?: string; workingDirectory?: string }>
+  retireWorktree: (repoPath: string, worktreePath: string, branchName: string) => Promise<WorktreeMoveResult>
   /**
    * Re-run provisioning for a worktree whose dependency state looks wrong
    * (missing node_modules, a half-finished install). Same path creation uses.
