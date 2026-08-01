@@ -10,7 +10,17 @@
 
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=ios/commands/xcodebuild-output.sh
+source "$SCRIPT_DIR/xcodebuild-output.sh"
+
+BUILD_LOG=""
+cleanup_build_log() {
+  [[ -z "$BUILD_LOG" ]] || rm -f "$BUILD_LOG"
+}
+trap cleanup_build_log EXIT
+
+cd "$SCRIPT_DIR/.."
 
 # ── Preflight ──
 #
@@ -265,21 +275,23 @@ echo
 echo "═══ Building $SCHEME ($CONFIGURATION) ═══"
 echo
 
-xcodebuild \
+BUILD_LOG=$(mktemp /tmp/ion-ios-build.XXXXXX.log)
+if xcodebuild \
   -project "$PROJECT" \
   -scheme "$SCHEME" \
   -configuration "$CONFIGURATION" \
   -destination "$DESTINATION" \
   -allowProvisioningUpdates \
   DEVELOPMENT_TEAM="$TEAM_ID" \
-  build 2>&1 | tail -5
-
-BUILD_EXIT=${PIPESTATUS[0]}
-
-if [[ $BUILD_EXIT -ne 0 ]]; then
+  build 2>&1 | tee "$BUILD_LOG" | tail -5; then
+  :
+else
+  BUILD_EXIT=${PIPESTATUS[0]}
+  echo
+  print_xcodebuild_failure "$BUILD_LOG"
   echo
   echo "✗ Build failed."
-  exit 1
+  exit "$BUILD_EXIT"
 fi
 
 # ── Install ──

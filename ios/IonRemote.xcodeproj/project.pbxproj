@@ -115,6 +115,7 @@
 		RUNDURROW00000000000001 /* RunDurationRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = RUNDURROW00000000000002 /* RunDurationRow.swift */; };
 		RUNDURROW00000000000003 /* RunDurationRowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RUNDURROW00000000000004 /* RunDurationRowTests.swift */; };
 		RUNDURSTATE000000000001 /* RunDurationStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RUNDURSTATE000000000002 /* RunDurationStateTests.swift */; };
+		CHATANCH000000000000A1 /* ChatScrollAnchoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = CHATANCH000000000000A2 /* ChatScrollAnchoring.swift */; };
 		DTELACC000000000000A1 /* SessionViewModel+DispatchTelemetryAccessors.swift in Sources */ = {isa = PBXBuildFile; fileRef = DTELACC000000000000A2 /* SessionViewModel+DispatchTelemetryAccessors.swift */; };
 		DTELENTRY0000000000A1 /* DispatchTelemetryEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = DTELENTRY0000000000A2 /* DispatchTelemetryEntry.swift */; };
 		BCRUMBT0000000000001 /* BreadcrumbDispatchLoadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCRUMBT0000000000002 /* BreadcrumbDispatchLoadTests.swift */; };
@@ -179,6 +180,8 @@
 		CSRECON00000000000000007 /* ConversationStalenessReconcileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CSRECON00000000000000008 /* ConversationStalenessReconcileTests.swift */; };
 		TABMETAVOL0000000000001 /* TabMetaVolatileFieldsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TABMETAVOL0000000000002 /* TabMetaVolatileFieldsTests.swift */; };
 		CONVHISTR000000000000001 /* ConversationHistoryReplaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CONVHISTR000000000000002 /* ConversationHistoryReplaceTests.swift */; };
+		CHATANCHT00000000000001 /* ChatScrollAnchoringTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CHATANCHT00000000000002 /* ChatScrollAnchoringTests.swift */; };
+		GRPITEMHSH0000000000001 /* GroupedItemContentHashTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = GRPITEMHSH0000000000002 /* GroupedItemContentHashTests.swift */; };
 		GRPPARITY000000000000001 /* GroupingParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = GRPPARITY000000000000002 /* GroupingParityTests.swift */; };
 		MSGIDMAP0000000000000004 /* DispatchSnapshotIdMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MSGIDMAP0000000000000003 /* DispatchSnapshotIdMappingTests.swift */; };
 		DISPINVAL000000000000007 /* SessionViewModel+DispatchCacheInvalidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = DISPINVAL000000000000008 /* SessionViewModel+DispatchCacheInvalidation.swift */; };
@@ -599,6 +602,7 @@
 		RUNDURROW00000000000002 /* RunDurationRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunDurationRow.swift; sourceTree = "<group>"; };
 		RUNDURROW00000000000004 /* RunDurationRowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunDurationRowTests.swift; sourceTree = "<group>"; };
 		RUNDURSTATE000000000002 /* RunDurationStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunDurationStateTests.swift; sourceTree = "<group>"; };
+		CHATANCH000000000000A2 /* ChatScrollAnchoring.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatScrollAnchoring.swift; sourceTree = "<group>"; };
 		DTELACC000000000000A2 /* SessionViewModel+DispatchTelemetryAccessors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+DispatchTelemetryAccessors.swift"; sourceTree = "<group>"; };
 		DTELENTRY0000000000A2 /* DispatchTelemetryEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchTelemetryEntry.swift; sourceTree = "<group>"; };
 		BCRUMBT0000000000002 /* BreadcrumbDispatchLoadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BreadcrumbDispatchLoadTests.swift; sourceTree = "<group>"; };
@@ -663,6 +667,8 @@
 		CSRECON00000000000000008 /* ConversationStalenessReconcileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationStalenessReconcileTests.swift; sourceTree = "<group>"; };
 		TABMETAVOL0000000000002 /* TabMetaVolatileFieldsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabMetaVolatileFieldsTests.swift; sourceTree = "<group>"; };
 		CONVHISTR000000000000002 /* ConversationHistoryReplaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationHistoryReplaceTests.swift; sourceTree = "<group>"; };
+		CHATANCHT00000000000002 /* ChatScrollAnchoringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatScrollAnchoringTests.swift; sourceTree = "<group>"; };
+		GRPITEMHSH0000000000002 /* GroupedItemContentHashTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupedItemContentHashTests.swift; sourceTree = "<group>"; };
 		GRPPARITY000000000000002 /* GroupingParityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupingParityTests.swift; sourceTree = "<group>"; };
 		MSGIDMAP0000000000000003 /* DispatchSnapshotIdMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchSnapshotIdMappingTests.swift; sourceTree = "<group>"; };
 		DISPINVAL000000000000008 /* SessionViewModel+DispatchCacheInvalidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+DispatchCacheInvalidation.swift"; sourceTree = "<group>"; };
@@ -1173,6 +1179,7 @@
 				DBSTATE00000000000000A2 /* DispatchBodyState.swift */,
 				TRNSCRPT000000000000A2 /* Transcript.swift */,
 				RUNDURROW00000000000002 /* RunDurationRow.swift */,
+				CHATANCH000000000000A2 /* ChatScrollAnchoring.swift */,
 				A1B2C3D4E5F600010000E5AA /* AgentDetailFullScreenView.swift */,
 				STATUSDWR0000000000002 /* StatusDrawerView.swift */,
 				STATUSDWRBRK000000002 /* StatusDrawerBreakdown.swift */,
@@ -1353,6 +1360,8 @@
 				CSRECON00000000000000008 /* ConversationStalenessReconcileTests.swift */,
 				TABMETAVOL0000000000002 /* TabMetaVolatileFieldsTests.swift */,
 				CONVHISTR000000000000002 /* ConversationHistoryReplaceTests.swift */,
+				CHATANCHT00000000000002 /* ChatScrollAnchoringTests.swift */,
+				GRPITEMHSH0000000000002 /* GroupedItemContentHashTests.swift */,
 				GRPPARITY000000000000002 /* GroupingParityTests.swift */,
 				MSGIDMAP0000000000000003 /* DispatchSnapshotIdMappingTests.swift */,
 				DISPACT0000000000000008 /* DispatchActivityFoldTests.swift */,
@@ -1884,6 +1893,7 @@
 				DBSTATE00000000000000A1 /* DispatchBodyState.swift in Sources */,
 				TRNSCRPT000000000000A1 /* Transcript.swift in Sources */,
 				RUNDURROW00000000000001 /* RunDurationRow.swift in Sources */,
+				CHATANCH000000000000A1 /* ChatScrollAnchoring.swift in Sources */,
 				DTELACC000000000000A1 /* SessionViewModel+DispatchTelemetryAccessors.swift in Sources */,
 				DTELENTRY0000000000A1 /* DispatchTelemetryEntry.swift in Sources */,
 				A1B2C3D4E5F600010000E4AA /* AgentDetailFullScreenView.swift in Sources */,
@@ -2058,6 +2068,8 @@
 				CSRECON00000000000000007 /* ConversationStalenessReconcileTests.swift in Sources */,
 				TABMETAVOL0000000000001 /* TabMetaVolatileFieldsTests.swift in Sources */,
 				CONVHISTR000000000000001 /* ConversationHistoryReplaceTests.swift in Sources */,
+				CHATANCHT00000000000001 /* ChatScrollAnchoringTests.swift in Sources */,
+				GRPITEMHSH0000000000001 /* GroupedItemContentHashTests.swift in Sources */,
 				GRPPARITY000000000000001 /* GroupingParityTests.swift in Sources */,
 				MSGIDMAP0000000000000004 /* DispatchSnapshotIdMappingTests.swift in Sources */,
 				DISPACT0000000000000007 /* DispatchActivityFoldTests.swift in Sources */,

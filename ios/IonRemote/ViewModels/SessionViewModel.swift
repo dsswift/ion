@@ -113,7 +113,6 @@ final class SessionViewModel {
     /// load_conversation requests; the bypass is granted at most once per
     /// reconnectReloadDebounce window. See SessionViewModel+Snapshot.swift.
     var lastReconnectReconcileAt: Date?
-    var suppressScrollToBottom = false
     var conversationLoadRetryCount: [String: Int] = [:]
     var conversationLoadTimers: [String: Task<Void, Never>] = [:]
     /// Tracks dismissed restored special cards (ExitPlanMode/AskUserQuestion from history)

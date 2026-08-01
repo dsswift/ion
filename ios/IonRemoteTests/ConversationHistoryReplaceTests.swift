@@ -183,8 +183,6 @@ final class ConversationHistoryReplaceTests: XCTestCase {
 
         XCTAssertEqual(vm.conversationMessages(tabId).map { $0.id }, ["e1", "e2", "e3", "e4"],
             "pagination prepends only unseen ids above the current transcript")
-        XCTAssertTrue(vm.suppressScrollToBottom,
-            "pagination must suppress the scroll-to-bottom the count change would trigger")
     }
 
     // MARK: - (d) message_end canonical-id re-key

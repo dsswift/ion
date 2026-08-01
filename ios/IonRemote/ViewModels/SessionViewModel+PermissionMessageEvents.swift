@@ -135,9 +135,10 @@ extension SessionViewModel {
         if before != nil {
             // Older-page pagination (user scrolled up): prepend only rows the
             // local list doesn't already hold, above the existing transcript.
-            // Suppress the scroll-to-bottom the list would otherwise perform
-            // on a count change — the user is reading older history.
-            suppressScrollToBottom = true
+            // The view keeps the user's reading position steady across this
+            // prepend by anchoring on the topmost visible row (see
+            // ChatCollectionVC.captureAnchor / restoreAnchor) — there is no
+            // view-model flag involved, and none is needed.
             let currentIds = Set(current.map { $0.id })
             let newRows = incoming.filter { !currentIds.contains($0.id) }
             setConversationMessages(tabId: tabId, newRows + current)
