@@ -35,8 +35,12 @@ const mocks = vi.hoisted(() => ({
   recordConflictAlert: vi.fn(),
 }))
 
+// Every icon the menu renders must be stubbed. A missing name is not a partial
+// mock — vi.mock replaces the module wholesale, so the first unstubbed import
+// throws at render and every test in the file fails at once.
 vi.mock('@phosphor-icons/react', () => ({
-  ArrowLineDown: () => null, ArrowsClockwise: () => null, Flask: () => null,
+  ArrowLineDown: () => null, ArrowsClockwise: () => null, Bug: () => null,
+  ChatCircle: () => null, Check: () => null, Flask: () => null,
   FolderOpen: () => null, Package: () => null, PencilSimple: () => null, Trash: () => null,
 }))
 
