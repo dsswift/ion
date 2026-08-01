@@ -295,6 +295,11 @@ export function wireEngineBridgeEvents(): void {
         cacheReadTokens: event.contextBreakdown.cacheReadTokens,
         cacheCreationTokens: event.contextBreakdown.cacheCreationTokens,
         model: event.contextBreakdown.model ?? '',
+        // The engine's authoritative occupancy figure. Forwarded so the renderer
+        // reads one number for "how full is the context" instead of choosing
+        // between the itemized sum (over-reports) and the last turn's provider
+        // total (under-reports mid-turn).
+        occupancyTokens: event.contextBreakdown.occupancyTokens,
         aggregateCostUsd: event.contextBreakdown.aggregateCostUsd,
         modelBreakdown: event.contextBreakdown.modelBreakdown,
       })

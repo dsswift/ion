@@ -8,7 +8,7 @@ import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import { activeInstance } from '../stores/conversation-instance'
 import { ContextRadial } from './StatusBarContextRadial'
-import { resolveContextDisplay, formatTokens } from './context-usage'
+import { resolveContextDisplay, resolveContextInputs, formatTokens } from './context-usage'
 
 /* ─── Context Usage Indicator ─── */
 
@@ -20,20 +20,18 @@ export function ContextIndicator() {
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const preferredModel = usePreferencesStore((s) => s.preferredModel)
-  const { contextTokens, modelOverride, sessionModel } = useSessionStore(
+  const { contextTokens, engineWindow, modelOverride, sessionModel } = useSessionStore(
     useShallow((s) => {
       const tab = s.tabs.find((t) => t.id === s.activeTabId)
       // Per-conversation state (model + engine status) lives on the active
-      // instance. statusFields.contextTokens is the single numerator: the
-      // engine writes it on every status snapshot — seeded at session start
-      // from the persisted conversation, updated per turn from the
-      // occupancy usage event, and recomputed from disk at run exit. There
-      // is no second "live" source to prefer over it; preferring one is
-      // what let a cumulative-billing figure mask a 227k-token
-      // conversation as 0%.
+      // instance. resolveContextInputs picks the occupancy numerator and the
+      // engine-window fallback; the drawer calls the same helper, so the two
+      // surfaces cannot read different fields or order them differently.
       const inst = tab ? activeInstance(s.conversationPanes, tab.id) : null
+      const { tokens, engineWindow } = resolveContextInputs(inst)
       return {
-        contextTokens: inst?.statusFields?.contextTokens ?? null,
+        contextTokens: tokens,
+        engineWindow,
         modelOverride: inst?.modelOverride ?? null,
         sessionModel: inst?.sessionModel ?? null,
       }
@@ -47,8 +45,11 @@ export function ContextIndicator() {
 
   // Effective picker-model: per-tab override > session model > global
   // preferred. This is the denominator, always — see resolveContextDisplay.
+  // The engine-reported window backs it up for models neither the dynamic
+  // store nor the static catalog knows, so an unrecognized id can no longer
+  // silently divide by the 200k floor.
   const effectiveModel = modelOverride || sessionModel || preferredModel
-  const windowSize = getDynamicContextWindow(effectiveModel)
+  const windowSize = getDynamicContextWindow(effectiveModel, engineWindow)
 
   const display = resolveContextDisplay(contextTokens, windowSize)
   if (display === null) return null

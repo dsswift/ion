@@ -565,10 +565,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
             case 'context_breakdown':
               // Cache the per-category breakdown on the instance so the Status
-              // Drawer can render it synchronously on open. The breakdown is
-              // the most precise occupancy figure available (the engine
-              // reassembles system prompt + tools + messages to produce it),
-              // so its totalTokens supersedes the streamed usage figure.
+              // Drawer can render it synchronously on open.
               instPatch = {
                 ...instPatch,
                 contextBreakdown: {
@@ -580,20 +577,43 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                   cacheReadTokens: event.cacheReadTokens,
                   cacheCreationTokens: event.cacheCreationTokens,
                   model: event.model ?? '',
+                  occupancyTokens: event.occupancyTokens,
                   aggregateCostUsd: event.aggregateCostUsd,
                   modelBreakdown: event.modelBreakdown,
                 },
               }
-              // Mirror the breakdown's authoritative figures onto statusFields
-              // (the indicator's numerator) and onto the tab (the iOS snapshot
-              // carrier), so every surface reads the same number.
+              // Four distinct quantities travel on this event, and only one of
+              // them is occupancy:
+              //
+              //   occupancyTokens  — the ENGINE'S authoritative "how full is the
+              //                      context". Same figure engine_status carries
+              //                      as contextTokens, same input the compaction
+              //                      gate reads. This is what surfaces render.
+              //   totalTokens      — the ITEMIZED per-category sum. An
+              //                      independent estimate for attribution.
+              //   apiReportedTotal — the provider's raw input_tokens for the last
+              //                      turn, with nothing added for messages
+              //                      appended since.
+              //   contextTokens    — (statusFields) the streaming-path copy of
+              //                      occupancy, written by the `usage` arm.
+              //
+              // totalTokens must NOT be written to contextTokens. They measure
+              // different things, and mirroring the estimate over the reported
+              // figure made the indicator flip between the two depending on
+              // which event landed last — a conversation occupying 26% of a 1M
+              // window read as 103% whenever the itemized sum arrived last.
+              //
+              // occupancyTokens is not written to contextTokens either, and does
+              // not need to be: the engine derives both from the same
+              // GetContextUsage call, so the `usage` arm's value and this one
+              // agree. The drawer reads occupancyTokens off the cached breakdown
+              // above, which keeps this arm a pure cache write.
+              //
+              // contextWindow IS mirrored: the engine knows the window of the
+              // model it actually ran, and that is a strictly better
+              // denominator than any client-side guess.
               if (event.contextWindow) {
                 updated.contextWindow = event.contextWindow
-              }
-              if (event.totalTokens) {
-                updated.contextTokens = event.totalTokens
-              }
-              if (event.totalTokens || event.contextWindow) {
                 // Same synthesize-a-base rule as the `usage` arm above, for
                 // the same reason: statusFields is null until the first
                 // engine_status and the indicator reads only that field.
@@ -601,8 +621,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                   ...instPatch,
                   statusFields: {
                     ...(inst0?.statusFields ?? baseStatusFields()),
-                    ...(event.totalTokens ? { contextTokens: event.totalTokens } : {}),
-                    ...(event.contextWindow ? { contextWindow: event.contextWindow } : {}),
+                    contextWindow: event.contextWindow,
                   },
                 }
               }

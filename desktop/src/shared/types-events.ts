@@ -294,4 +294,4 @@ export type NormalizedEvent =
   // the first usage event. Desktop-internal: translated from the engine wire in
   // event-wiring.ts and stored on the active instance (event-slice.ts case
   // 'context_breakdown') so the Status Drawer can render it synchronously.
-  | { type: 'context_breakdown'; categories: import('./types-engine').ContextBreakdownCategory[]; contextWindow: number; totalTokens: number; apiReportedTotal?: number; unaccounted?: number; cacheReadTokens?: number; cacheCreationTokens?: number; model: string; aggregateCostUsd?: number; modelBreakdown?: import('./types-engine').ModelBreakdown[] }
+  | { type: 'context_breakdown'; categories: import('./types-engine').ContextBreakdownCategory[]; contextWindow: number; totalTokens: number; apiReportedTotal?: number; unaccounted?: number; cacheReadTokens?: number; cacheCreationTokens?: number; model: string; occupancyTokens?: number; aggregateCostUsd?: number; modelBreakdown?: import('./types-engine').ModelBreakdown[] }

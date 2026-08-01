@@ -530,6 +530,24 @@ export interface ContextBreakdownPayload {
   cacheCreationTokens?: number
   model: string
   /**
+   * The engine's authoritative context-window occupancy — the same figure
+   * `StatusFields.contextTokens` carries and the same input the engine's
+   * proactive-compaction gate measures. Divide by `contextWindow` to render
+   * "how full is the context".
+   *
+   * Prefer this over the two neighbouring counts, which measure different
+   * things and both drift as an occupancy proxy:
+   *   - `totalTokens` is the ITEMIZED per-category sum, an independent estimate
+   *     meant for attribution ("what is taking up the space"). It over-reports,
+   *     counting content the provider did not bill for this turn.
+   *   - `apiReportedTotal` is the raw provider input_tokens for the last turn
+   *     with nothing added for messages appended since, so it under-reports
+   *     mid-turn (tool results not yet sent).
+   *
+   * Absent when the engine has no occupancy figure for the conversation.
+   */
+  occupancyTokens?: number
+  /**
    * Sum of this session's LLM cost plus every descendant dispatch session's
    * cost, computed on demand from the conversation tree. Zero / absent for
    * sessions with no dispatches or no cost yet.

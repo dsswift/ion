@@ -108,22 +108,114 @@ describe('usage arm writes occupancy to one place', () => {
   })
 })
 
-describe('context_breakdown supersedes the streamed figure', () => {
-  it('writes the breakdown total onto statusFields and the tab', () => {
+/**
+ * The `context_breakdown` event carries three different quantities, and only
+ * some of them belong in the occupancy cell:
+ *
+ *   totalTokens      — the engine's ITEMIZED per-category sum. An independent
+ *                      estimate (system + files + tools + conversation, each
+ *                      counted separately), NOT a provider figure.
+ *   apiReportedTotal — the provider's own input-token count, populated once the
+ *                      engine reconciles the itemized sum against it.
+ *   contextWindow    — the window of the model the engine actually ran.
+ *
+ * `totalTokens` must never be written to `statusFields.contextTokens`, whose
+ * contract is provider-reported occupancy. It used to be, which made the
+ * indicator flip between two different quantities depending on which event
+ * landed last: a conversation the provider billed at 255,897 tokens was
+ * itemized at 1,034,443, so the ring alternated between 26% and 103% of a 1M
+ * window. `contextWindow` IS mirrored — the engine knows the real window and
+ * that beats any client-side guess.
+ */
+describe('context_breakdown does not overwrite provider-reported occupancy', () => {
+  it('leaves contextTokens at the usage figure when the itemized total arrives after it', () => {
+    const { state, slice } = buildHarness()
+
+    // The provider's own accounting for this turn.
+    slice.handleNormalizedEvent('tab1', {
+      type: 'usage',
+      usage: { input_tokens: 2, output_tokens: 169, cache_read_input_tokens: 253_804, cache_creation_input_tokens: 2_091 },
+    } as any)
+
+    const inst0 = activeInstance(state.conversationPanes, 'tab1')
+    expect(inst0?.statusFields?.contextTokens).toBe(255_897)
+
+    // The engine's itemized sum for the same conversation — 4x larger, because
+    // it counts content the provider never billed for this turn.
+    slice.handleNormalizedEvent('tab1', {
+      type: 'context_breakdown',
+      categories: [],
+      contextWindow: 1_000_000,
+      totalTokens: 1_034_443,
+    } as any)
+
+    const inst = activeInstance(state.conversationPanes, 'tab1')
+    expect(inst?.statusFields?.contextTokens).toBe(255_897)
+    expect(state.tabs[0].contextTokens).toBe(255_897)
+  })
+
+  it('caches occupancyTokens so the drawer and bar read one engine figure', () => {
+    // occupancyTokens is the engine's authoritative occupancy. Both surfaces
+    // prefer it off the cached breakdown, so it has to survive the store write
+    // — and it must stay distinct from the itemized totalTokens on the same
+    // event, which is what previously reached the ring as 103%.
     const { state, slice } = buildHarness()
 
     slice.handleNormalizedEvent('tab1', {
       type: 'context_breakdown',
       categories: [],
       contextWindow: 1_000_000,
-      totalTokens: 228_500,
+      totalTokens: 1_034_443,
+      apiReportedTotal: 255_897,
+      occupancyTokens: 255_897,
     } as any)
 
     const inst = activeInstance(state.conversationPanes, 'tab1')
-    expect(inst?.statusFields?.contextTokens).toBe(228_500)
+    expect(inst?.contextBreakdown?.occupancyTokens).toBe(255_897)
+    expect(inst?.contextBreakdown?.occupancyTokens).not.toBe(inst?.contextBreakdown?.totalTokens)
+    // Still never written into the occupancy cell — the `usage` arm owns that,
+    // and the engine derives both from the same call so they already agree.
+    expect(inst?.statusFields?.contextTokens).not.toBe(1_034_443)
+  })
+
+  it('still mirrors the engine-reported window and caches the breakdown', () => {
+    const { state, slice } = buildHarness()
+
+    slice.handleNormalizedEvent('tab1', {
+      type: 'context_breakdown',
+      categories: [{ name: 'system', kind: 'system', tokens: 28_500, tier: 'local' }],
+      contextWindow: 1_000_000,
+      totalTokens: 1_034_443,
+      apiReportedTotal: 255_897,
+      unaccounted: -778_546,
+    } as any)
+
+    const inst = activeInstance(state.conversationPanes, 'tab1')
+    // The window is a legitimate correction from the engine.
     expect(inst?.statusFields?.contextWindow).toBe(1_000_000)
-    expect(state.tabs[0].contextTokens).toBe(228_500)
     expect(state.tabs[0].contextWindow).toBe(1_000_000)
+    // The breakdown itself is cached for the drawer, reconciled fields intact.
+    expect(inst?.contextBreakdown?.totalTokens).toBe(1_034_443)
+    expect(inst?.contextBreakdown?.apiReportedTotal).toBe(255_897)
+    expect(inst?.contextBreakdown?.unaccounted).toBe(-778_546)
+    expect(inst?.contextBreakdown?.categories).toHaveLength(1)
+  })
+
+  it('does not invent an occupancy figure when only a breakdown has arrived', () => {
+    // No usage event: the itemized sum must not stand in for one.
+    const { state, slice } = buildHarness({
+      label: '', state: 'running', model: '', contextPercent: 0, contextWindow: 0, contextTokens: 0,
+    })
+
+    slice.handleNormalizedEvent('tab1', {
+      type: 'context_breakdown',
+      categories: [],
+      contextWindow: 1_000_000,
+      totalTokens: 1_034_443,
+    } as any)
+
+    const inst = activeInstance(state.conversationPanes, 'tab1')
+    expect(inst?.statusFields?.contextTokens).toBe(0)
   })
 })
 
@@ -159,7 +251,7 @@ describe('occupancy writes survive a null statusFields (pre-first-status window)
     expect(state.tabs[0].contextTokens).toBe(227_099)
   })
 
-  it('context_breakdown synthesizes statusFields rather than dropping the write', () => {
+  it('context_breakdown synthesizes statusFields for the window it does own', () => {
     const { state, slice } = buildHarness(null)
 
     slice.handleNormalizedEvent('tab1', {
@@ -170,8 +262,10 @@ describe('occupancy writes survive a null statusFields (pre-first-status window)
     } as any)
 
     const inst = activeInstance(state.conversationPanes, 'tab1')
-    expect(inst?.statusFields?.contextTokens).toBe(228_500)
+    // The window write must not be dropped just because statusFields was null.
     expect(inst?.statusFields?.contextWindow).toBe(1_000_000)
-    expect(state.tabs[0].contextTokens).toBe(228_500)
+    expect(state.tabs[0].contextWindow).toBe(1_000_000)
+    // The itemized total is still not occupancy, even with nothing to overwrite.
+    expect(inst?.statusFields?.contextTokens ?? 0).toBe(0)
   })
 })
