@@ -110,15 +110,20 @@ export function handleStreamSignalEvent(
       // on a user turn no client submitted. Forward the full text so live
       // transcripts can render the turn — without this, clients watch the
       // model respond to a message that exists only in the conversation file.
-      // injectedPromptKind classifies the injection: "agent_completion" means
-      // this is a machine-to-machine dispatch callback (child agent result
-      // routed to parent) — clients must NOT render these as user bubbles.
-      log('prompt_injected', { tab_id: tabId, prompt_len: event.injectedPrompt?.length ?? 0, origin: event.injectedPromptOrigin ?? '', kind: event.injectedPromptKind ?? '' })
+      //
+      // injectedPromptKind classifies the injection and
+      // injectedPromptMachineAuthored is the engine's derived verdict on
+      // whether an engine-side actor authored it. Both are forwarded; the
+      // renderer decides via suppressesInjection (shared/injection-policy.ts).
+      // Forwarding only the kind would force the renderer back to matching
+      // strings, which is the pattern that kept drifting.
+      log('prompt_injected', { tab_id: tabId, prompt_len: event.injectedPrompt?.length ?? 0, origin: event.injectedPromptOrigin ?? '', kind: event.injectedPromptKind ?? '', machine_authored: event.injectedPromptMachineAuthored ?? false })
       ctx.emit('event', tabId, {
         type: 'prompt_injected',
         prompt: event.injectedPrompt,
         origin: event.injectedPromptOrigin,
         kind: event.injectedPromptKind,
+        machineAuthored: event.injectedPromptMachineAuthored,
       } as NormalizedEvent)
       return true
   }

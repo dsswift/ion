@@ -201,7 +201,7 @@ export type NormalizedEvent =
   // fields mirror the engine's internal NormalizedEvent shape and are the
   // contract the manifest pins.
   | { type: 'task_suspend'; awaitingDispatchIds?: string[]; awaitingTaskIds?: string[] }
-  | { type: 'prompt_injected'; prompt: string; origin?: string; kind?: string }
+  | { type: 'prompt_injected'; prompt: string; origin?: string; kind?: string; machineAuthored?: boolean }
   | { type: 'model_fallback'; requestedModel: string; fallbackModel: string; reason: string }
   // capability_unsupported — a requested feature (e.g. plan mode) is not
   // supported by the backend that would serve the run; the engine declined

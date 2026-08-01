@@ -635,6 +635,14 @@ export interface SessionLoadMessage {
    * legacy history rows, which correctly read as ordinary turns.
    */
   injectionKind?: string
+  /**
+   * Engine-derived: an engine-side actor authored this turn, not a user.
+   * Read by `suppressesInjection` (shared/injection-policy.ts) so the reload
+   * filter and the live-event filter classify from the SAME field and cannot
+   * disagree. Absent on rows persisted before the flag existed, where the
+   * kind remains the fallback.
+   */
+  machineAuthored?: boolean
 }
 
 // ─── Terminal Multiplexing ───

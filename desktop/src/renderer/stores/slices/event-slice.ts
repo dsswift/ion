@@ -10,6 +10,7 @@ import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId, totalInputTokens } from '../session-store-helpers'
 import { formatSteerAppliedDivider } from '../../../shared/clear-divider'
+import { suppressesInjection } from '../../../shared/injection-policy'
 import { buildCompactionMarkerContent, buildManualCompactionNoOpNotice } from '../../../shared/compaction-marker'
 import { captureSessionInitId } from './session-init-capture'
 import { activeInstance, commitInstance, baseStatusFields } from '../conversation-instance'
@@ -251,28 +252,16 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               // transcript (this closes the "ATV shows [Agent X completed]
               // turns the overlay never displayed" divergence).
               //
-              // Exceptions — engine-classified injections that must NOT render
-              // as user bubbles:
-              //   - "agent_completion": a machine-to-machine dispatch callback
-              //     (a child agent's result routed back to its parent). Internal
-              //     signal, not a user-authored turn.
-              //   - "slash_command": the expanded body of a slash command whose
-              //     display turn is the command pill. The engine already persists
-              //     the raw invocation as the display entry (rendered as a pill
-              //     via the optimistic insert + reload), so the multi-KB expansion
-              //     body is redundant — rendering it puts the whole command
-              //     template on screen as a second user message.
-              //   - "background_task_completion": a finished background bash
-              //     command's result, routed back to wake a parked session
-              //     (ADR-023). Machine-to-machine like agent_completion — the
-              //     engine is reporting an exit code and output tail to the
-              //     model, not relaying something the user said. Rendering it
-              //     puts raw command output on screen as a user bubble.
-              if (
-                event.kind !== 'agent_completion' &&
-                event.kind !== 'slash_command' &&
-                event.kind !== 'background_task_completion'
-              ) {
+              // Machine-to-machine injections are suppressed. The engine
+              // classifies; suppressesInjection is the desktop's single
+              // opinion about that classification, shared with the history
+              // mapper so live and reload CANNOT disagree. This used to be
+              // three hardcoded kind strings here and two in the mapper —
+              // they had already drifted apart. See shared/injection-policy.ts.
+              if (!suppressesInjection({
+                machineAuthored: event.machineAuthored,
+                injectionKind: event.kind,
+              })) {
                 messages = [
                   ...messages,
                   { id: nextMsgId(), role: 'user' as const, content: event.prompt, timestamp: Date.now() },

@@ -14,12 +14,6 @@ export type GroupedItem =
   | { kind: 'thinking'; message: Message }
   | { kind: 'compaction'; message: Message }
 
-// ─── Hidden system messages ───
-
-const HIDDEN_MESSAGES = [
-  'Plan mode is not active. Do not create plans or call ExitPlanMode. Implement the requested changes directly using Edit, Write, and Bash tools.',
-]
-
 // ─── Steer relocation ───
 
 /**
@@ -66,16 +60,14 @@ function flushHeldSteers(
 
 interface GroupOptions {
   includeUser?: boolean
-  hiddenMessages?: string[]
   unifiedTurnView?: boolean
 }
 
 export function groupMessages(messages: Message[], opts?: GroupOptions): GroupedItem[] {
   const includeUser = opts?.includeUser ?? true
-  const hidden = opts?.hiddenMessages ?? HIDDEN_MESSAGES
 
   if (opts?.unifiedTurnView) {
-    return groupMessagesUnified(messages, includeUser, hidden)
+    return groupMessagesUnified(messages, includeUser)
   }
 
   const result: GroupedItem[] = []
@@ -92,7 +84,6 @@ export function groupMessages(messages: Message[], opts?: GroupOptions): Grouped
   }
 
   for (const msg of messages) {
-    if (msg.role === 'assistant' && hidden.includes((msg.content || '').trim())) continue
     if (msg.role === 'tool') {
       toolBuf.push(msg)
     } else if (msg.role === 'thinking') {
@@ -144,7 +135,6 @@ export function groupMessages(messages: Message[], opts?: GroupOptions): Grouped
 function groupMessagesUnified(
   messages: Message[],
   includeUser: boolean,
-  hidden: string[],
 ): GroupedItem[] {
   const result: GroupedItem[] = []
   let turnTools: Message[] = []
@@ -194,7 +184,6 @@ function groupMessagesUnified(
   }
 
   for (const msg of messages) {
-    if (msg.role === 'assistant' && hidden.includes((msg.content || '').trim())) continue
 
     if (msg.role === 'user') {
       // An applied steer belongs at its divider, not at its send position, so
