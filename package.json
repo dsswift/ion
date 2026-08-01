@@ -1,4 +1,5 @@
 {
+  "name": "ion",
   "private": true,
   "scripts": {
     "prepare": "husky"
