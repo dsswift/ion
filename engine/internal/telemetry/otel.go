@@ -184,14 +184,12 @@ func (b *OtelBridge) RecordEvent(event Event) {
 	}
 }
 
-// RecordSpan records a timed span directly. When attrs carries an explicit
-// "trace_id" the span joins that trace; otherwise it gets its own. Callers
-// inside a run pass the run's trace ID so the span joins the run's trace.
-func (b *OtelBridge) RecordSpan(name string, startMs, endMs int64, attrs map[string]any) {
-	var eventTraceID string
-	if attrs != nil {
-		eventTraceID, _ = attrs["trace_id"].(string) //nolint:errcheck // best-effort; failure not actionable here
-	}
+// RecordSpan records a timed span directly. The attrs map becomes span
+// attributes; ctx carries correlation separately, matching StartSpanCtx. When
+// ctx carries a valid run trace_id the span joins that trace, otherwise it gets
+// its own independent trace.
+func (b *OtelBridge) RecordSpan(name string, startMs, endMs int64, attrs, ctx map[string]any) {
+	eventTraceID := traceIDFromCorrelationContext(ctx)
 	span := otlpSpan{
 		TraceID:    b.resolveTraceID(eventTraceID),
 		SpanID:     genSpanID(),

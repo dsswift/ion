@@ -103,7 +103,7 @@ func (m *Manager) ComputeAndEmitContextBreakdown(key string) {
 	}
 	m.mu.RUnlock()
 
-	utils.LogWithFields(utils.LevelInfo, "session", "computeandemitcontextbreakdown", map[string]any{"key": key, "model": snap.model, "run_id": snap.conversationID})
+	utils.LogWithFields(utils.LevelInfo, "session", "computeandemitcontextbreakdown", map[string]any{"key": key, "model": snap.model, "conversation_id": snap.conversationID})
 
 	// --- Phase 2: load conversation outside the lock (disk I/O). ---
 	var conv *conversation.Conversation
@@ -219,7 +219,7 @@ func (m *Manager) ComputeAndEmitContextBreakdown(key string) {
 	occupancy := conversation.GetContextUsage(conv, snap.contextWindow)
 	bd.SetOccupancy(occupancy.Tokens)
 	utils.LogWithFields(utils.LevelInfo, "session", "computeandemitcontextbreakdown: occupancy resolved", map[string]any{
-		"key": key, "run_id": snap.conversationID,
+		"key": key, "conversation_id": snap.conversationID,
 		"occupancy_tokens": occupancy.Tokens, "context_window": occupancy.Limit,
 		"percent": occupancy.Percent, "estimated": occupancy.Estimated,
 	})
@@ -238,7 +238,7 @@ func (m *Manager) ComputeAndEmitContextBreakdown(key string) {
 		itemized := bd.TotalTokens
 		providers.ReconcileBreakdown(bd, apiTotal, usage.CacheReadInputTokens, usage.CacheCreationInputTokens)
 		utils.LogWithFields(utils.LevelInfo, "session", "computeandemitcontextbreakdown: reconciled against provider usage", map[string]any{
-			"key": key, "run_id": snap.conversationID,
+			"key": key, "conversation_id": snap.conversationID,
 			"itemized_total": itemized, "api_reported_total": apiTotal,
 			"unaccounted": bd.Unaccounted,
 		})
@@ -248,7 +248,7 @@ func (m *Manager) ComputeAndEmitContextBreakdown(key string) {
 		// The itemized sum is the only figure available; leaving
 		// APIReportedTotal zero is the honest signal that nothing reconciled it.
 		utils.LogWithFields(utils.LevelInfo, "session", "computeandemitcontextbreakdown: no persisted assistant usage, emitting unreconciled itemized total", map[string]any{
-			"key": key, "run_id": snap.conversationID, "itemized_total": bd.TotalTokens,
+			"key": key, "conversation_id": snap.conversationID, "itemized_total": bd.TotalTokens,
 		})
 	}
 

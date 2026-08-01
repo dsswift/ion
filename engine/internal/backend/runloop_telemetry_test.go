@@ -1,10 +1,12 @@
 package backend
 
 import (
+	"context"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // TestBuildTelemCtxAndCorrelationCtxAgreeOnSessionID is the regression test for
@@ -203,5 +205,43 @@ func TestBuildTelemCtx_ExtensionAttributionOmittedWhenAbsent(t *testing.T) {
 	}
 	if _, ok := ctx["extension_version"]; ok {
 		t.Errorf("extension_version must be absent for non-extension runs; got %v", ctx["extension_version"])
+	}
+}
+
+// TestBuildTelemCtxCarriesRunTraceID pins the backend half of run-scoped
+// tracing. The session layer threads the trace ID through RunOptions.ParentCtx;
+// buildTelemCtx must preserve it in the correlation map used by llm.call,
+// tool.execute, and every other tier-4 telemetry event. RED on the unfixed
+// code, which emitted run_id/session_id/conversation_id but dropped trace_id.
+func TestBuildTelemCtxCarriesRunTraceID(t *testing.T) {
+	const traceID = "4bf92f3577b34da6a3ce929d0e0e4736"
+	run := &activeRun{
+		requestID: "run-trace-test",
+		conv:      &conversation.Conversation{ID: "1780000000000-aabbccddeeff"},
+		opts: &types.RunOptions{
+			SessionKey: "session-trace-test",
+			ParentCtx:  utils.WithTraceID(context.Background(), traceID),
+		},
+	}
+
+	ctx := buildTelemCtx(run)
+	if got := ctx["trace_id"]; got != traceID {
+		t.Errorf("buildTelemCtx trace_id = %v, want run trace %q", got, traceID)
+	}
+}
+
+// TestBuildTelemCtxOmitsTraceIDWithoutRunContext ensures a direct backend run
+// that has no session ParentCtx stays honest: it has no run trace to export,
+// so the key must be absent rather than an empty or synthetic value.
+func TestBuildTelemCtxOmitsTraceIDWithoutRunContext(t *testing.T) {
+	run := &activeRun{
+		requestID: "run-no-trace",
+		conv:      &conversation.Conversation{ID: "1780000000000-aabbccddeeff"},
+		opts:      &types.RunOptions{SessionKey: "session-no-trace"},
+	}
+
+	ctx := buildTelemCtx(run)
+	if got, present := ctx["trace_id"]; present {
+		t.Errorf("buildTelemCtx trace_id = %v, want key omitted without a run context", got)
 	}
 }

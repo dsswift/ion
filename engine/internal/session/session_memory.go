@@ -222,7 +222,7 @@ func (sm *SessionMemory) Start() {
 	ctx, cancel := context.WithCancel(context.Background())
 	sm.ctx = ctx
 	sm.cancel = cancel
-	utils.LogWithFields(utils.LevelDebug, "session.memory", "started for conversation", map[string]any{"run_id": sm.convID})
+	utils.LogWithFields(utils.LevelDebug, "session.memory", "started for conversation", map[string]any{"conversation_id": sm.convID})
 }
 
 // Stop cancels any in-flight background summarization and waits for it
@@ -232,7 +232,7 @@ func (sm *SessionMemory) Stop() {
 		sm.cancel()
 	}
 	sm.wg.Wait()
-	utils.LogWithFields(utils.LevelInfo, "session.memory", "stopped for conversation", map[string]any{"run_id": sm.convID})
+	utils.LogWithFields(utils.LevelInfo, "session.memory", "stopped for conversation", map[string]any{"conversation_id": sm.convID})
 }
 
 // OnTurnEnd is called after each model response. It checks whether an

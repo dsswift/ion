@@ -13,7 +13,7 @@ The TypeScript SDK lives at `engine/extensions/sdk/ion-sdk/` (a directory with `
 Factory function that creates an SDK instance and begins listening for engine requests on the next tick.
 
 ```typescript
-import { createIon } from './sdk/ion-sdk'
+import { createIon, log } from './sdk/ion-sdk'
 
 const ion = createIon()
 ```
@@ -322,7 +322,7 @@ ion.on('before_tool_call', async (ctx, info) => {
     }),
   })
   if (res.status >= 400) {
-    ion.log.warn('audit post failed', { status: res.status, traceId: ctx.traceId })
+    log.warn('audit post failed', { status: res.status, traceId: ctx.traceId })
   }
 })
 ```

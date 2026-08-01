@@ -101,7 +101,7 @@ func (s *Scheduler) recordLastRunByName(name string, job extension.ScheduleJob, 
 		utils.LogWithFields(utils.LevelWarn, "scheduling", "record last run write failed", map[string]any{"path": path, "error": err.Error()})
 		return
 	}
-	utils.LogWithFields(utils.LevelDebug, "scheduling", "record last run wrote", map[string]any{"model": name, "run_id": job.JobID, "path": path})
+	utils.LogWithFields(utils.LevelDebug, "scheduling", "record last run wrote", map[string]any{"model": name, "schedule_job_id": job.JobID, "path": path})
 }
 
 // recordFirstSeenByName writes a marker with FirstSeenUtc=now only when no
@@ -134,7 +134,7 @@ func (s *Scheduler) recordFirstSeenByName(name string, job extension.ScheduleJob
 		utils.LogWithFields(utils.LevelWarn, "scheduling", "record first seen write failed", map[string]any{"path": path, "error": err.Error()})
 		return
 	}
-	utils.LogWithFields(utils.LevelDebug, "scheduling", "record first seen wrote", map[string]any{"model": name, "run_id": job.JobID, "path": path})
+	utils.LogWithFields(utils.LevelDebug, "scheduling", "record first seen wrote", map[string]any{"model": name, "schedule_job_id": job.JobID, "path": path})
 }
 
 // readLastRunByName reads the marker if it exists and returns the
