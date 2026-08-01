@@ -3,6 +3,7 @@ package providers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -62,6 +63,46 @@ func resetBreakdownCache() {
 		breakdownCache.Delete(k)
 		return true
 	})
+}
+
+type contextAwareCountProvider struct {
+	started chan struct{}
+}
+
+func (p *contextAwareCountProvider) ID() string { return "context-aware-count" }
+
+func (p *contextAwareCountProvider) Stream(_ context.Context, _ types.LlmStreamOptions) (<-chan types.LlmStreamEvent, <-chan error) {
+	events := make(chan types.LlmStreamEvent)
+	errs := make(chan error, 1)
+	close(events)
+	close(errs)
+	return events, errs
+}
+
+func (p *contextAwareCountProvider) CountTokens(ctx context.Context, _ CountTokensRequest) (int, error) {
+	close(p.started)
+	<-ctx.Done()
+	return 0, ctx.Err()
+}
+
+func TestBuildContextBreakdownCancellationDoesNotFallback(t *testing.T) {
+	resetBreakdownCache()
+	ctx, cancel := context.WithCancel(context.Background())
+	provider := &contextAwareCountProvider{started: make(chan struct{})}
+	result := make(chan error, 1)
+	go func() {
+		_, err := BuildContextBreakdown(ctx, "gpt-4o", provider, &types.LlmStreamOptions{
+			Model:  "gpt-4o",
+			System: "must not be locally counted after cancellation",
+		}, nil, nil, "")
+		result <- err
+	}()
+	<-provider.started
+	cancel()
+
+	if err := <-result; !errors.Is(err, context.Canceled) {
+		t.Fatalf("BuildContextBreakdown error = %v, want context.Canceled", err)
+	}
 }
 
 func TestBuildContextBreakdown_ThreeTierLabels(t *testing.T) {

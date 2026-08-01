@@ -23,15 +23,10 @@ import (
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
-// serveContext returns a context cancelled when the server shuts down,
-// bounding background flows (device-code polling) to the server lifetime.
+// serveContext returns the server-lifetime context, cancelled during shutdown.
+// Background flows derive their own child contexts when they need a deadline.
 func (s *Server) serveContext() context.Context {
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		<-s.done
-		cancel()
-	}()
-	return ctx
+	return s.shutdownCtx
 }
 
 // SetIdentityManager installs the operator identity manager. Nil (the

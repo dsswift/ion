@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,6 +24,25 @@ import (
 //      token count is non-zero (messages loaded from disk).
 //
 //   3. Unknown key: does not panic and emits no event.
+
+func TestComputeAndEmitContextBreakdown_CancelledContextEmitsNothing(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	mgr.SetConfig(&types.EngineRuntimeConfig{DefaultModel: "claude-opus-4-5"})
+	ec := newEventCollector(mgr)
+	if _, err := mgr.StartSession("cancelled", types.EngineConfig{ProfileID: "test", WorkingDirectory: t.TempDir()}); err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := mgr.ComputeAndEmitContextBreakdownContext(ctx, "cancelled"); err == nil {
+		t.Fatal("expected canceled context error")
+	}
+	if got := ec.byType("engine_context_breakdown"); len(got) != 0 {
+		t.Fatalf("canceled breakdown emitted %d events, want 0", len(got))
+	}
+}
 
 // TestComputeAndEmitContextBreakdown_FreshSession checks that an empty
 // conversation produces a non-nil breakdown with zero conversation tokens.
