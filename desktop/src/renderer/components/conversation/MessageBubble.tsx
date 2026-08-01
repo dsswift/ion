@@ -6,6 +6,7 @@ import { useColors } from '../../theme'
 import { useNavigableText, NavigableText, NavigableCode } from '../../hooks/useNavigableLinks'
 import { CopyButton } from './CopyButton'
 import { InlineMessageImages, deriveMessageImages } from './InlineMessageImages'
+import { stripAttachmentMarkers } from './message-text'
 import type { Message } from '../../../shared/types'
 import { rWarn } from '../../rendererLogger'
 
@@ -23,10 +24,7 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
   const { onOpenFile, onOpenUrl } = useNavigableText()
   const onOpenFileVoid = useCallback((path: string) => { void onOpenFile(path).catch((err) => rWarn('conversation', 'open file failed', { error: String(err) })) }, [onOpenFile])
 
-  const displayContent = (message.content || '')
-    .replace(/^\[Attached (?:image|file): [^\]]+\]\n*/gm, '')
-    .replace(/^\[Attachment: [^\]]+ \(content attached\)\]\n*/gm, '')
-    .trim()
+  const displayContent = stripAttachmentMarkers(message.content || '').trim()
 
   const inlineImages = deriveMessageImages(message.content || '', message.attachments)
   const hasInlineImages = inlineImages.length > 0
@@ -107,7 +105,15 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
   )
 
   if (skipMotion) {
-    return <div className="flex justify-end py-1.5">{content}</div>
+    return (
+      <div
+        className="flex justify-end py-1.5"
+        data-message-id={message.id}
+        data-message-role="user"
+      >
+        {content}
+      </div>
+    )
   }
 
   return (
@@ -116,6 +122,8 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.15 }}
       className="flex justify-end py-1.5"
+      data-message-id={message.id}
+      data-message-role="user"
     >
       {content}
     </motion.div>
