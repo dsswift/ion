@@ -432,6 +432,21 @@ func (m *Manager) takePendingBackgroundCompletions(key string) []backgroundCompl
 	return out
 }
 
+// backgroundTaskParkable is the local interface satisfied by any backend that
+// can park an active run on its outstanding background bash commands.
+// *ApiBackend implements it directly; *HybridBackend forwards to the inner
+// backend recorded for the requestID, so an api-routed hybrid run resolves.
+// Delegated-CLI backends and test stubs do not implement it, and ParkMainLoop
+// refuses for them.
+//
+// This local interface is the mechanism that keeps SignalParkForBackgroundTasks
+// off the public RunBackend interface — adding it there would be a contract
+// change. Mirrors the compactable pattern in command_dispatch.go and the
+// steerable pattern in agent.go.
+type backgroundTaskParkable interface {
+	SignalParkForBackgroundTasks(requestID string, taskIDs []string) bool
+}
+
 // ParkMainLoop parks the session's active main run on its outstanding
 // background bash commands, ending the run without completing it.
 //
@@ -469,12 +484,10 @@ func (m *Manager) ParkMainLoop(key string) bool {
 		return false
 	}
 
-	parker, ok := m.backend.(interface {
-		SignalParkForBackgroundTasks(requestID string, taskIDs []string) bool
-	})
+	parker, ok := m.backend.(backgroundTaskParkable)
 	if !ok {
 		utils.LogWithFields(utils.LevelWarn, "session.bgtask", "park refused: backend does not support parking", map[string]any{
-			"session_id": key, "run_id": rid,
+			"session_id": key, "run_id": rid, "backend": fmt.Sprintf("%T", m.backend),
 		})
 		return false
 	}

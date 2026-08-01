@@ -242,17 +242,34 @@ type compactable interface {
 //	clear/export behavior so a /compact on a fresh tab does not return
 //	an error event.
 func (m *Manager) dispatchCompact(s *engineSession, key string) {
-	if s.conversationID == "" {
+	// Snapshot the two fields the routing decision needs under the read lock,
+	// then release it before resolving the backend. resolvedBackend can reach
+	// the keychain (HybridBackend.kindFor → HasKey), so it must not run under
+	// m.mu. Same snapshot-then-I/O discipline as refreshContextUsage.
+	m.mu.RLock()
+	convID := s.conversationID
+	model := s.lastModel
+	m.mu.RUnlock()
+
+	if convID == "" {
 		utils.LogWithFields(utils.LevelDebug, "session", "compact: no conversationid set on session", map[string]any{"key": key})
 		// Empty-session compact is a no-op success — mirrors clear's behavior.
 		m.emitCommandResult(key, "compact", nil)
 		return
 	}
 
-	// Path A: backend supports engine-side compaction. ApiBackend
-	// (and HybridBackend when its run is API-routed) implements
-	// compactable; the assertion fails for ClaudeCodeBackend, which falls
-	// through to Path B.
+	// Path A: the backend that actually SERVES this session's model supports
+	// engine-side compaction. Resolution goes through resolvedBackend, not
+	// m.backend: under the hybrid backend m.backend is the *HybridBackend
+	// itself, which has no CompactNow, so asserting on it sent every
+	// api-routed session down Path B and refused the command. resolvedBackend
+	// collapses the hybrid case to the inner backend for this model and
+	// returns m.backend unchanged for plain ApiBackend / ClaudeCodeBackend.
+	//
+	// The assertion therefore succeeds for an api-routed model (engine-side
+	// compaction, below) and fails for a claude-code-routed one, which
+	// correctly falls through to Path B so the subprocess that owns that
+	// conversation runs its own /compact.
 	//
 	// This path runs asynchronously: CompactNow performs an LLM
 	// summarization that can take many seconds, and SendCommand is invoked
@@ -262,7 +279,9 @@ func (m *Manager) dispatchCompact(s *engineSession, key string) {
 	// compacting, bind the synthetic runID for event routing, and launch
 	// CompactNow on a goroutine that emits the single command_result at
 	// completion.
-	if cb, ok := m.backend.(compactable); ok {
+	serving := m.resolvedBackend(model)
+	if cb, ok := serving.(compactable); ok {
+		utils.LogWithFields(utils.LevelDebug, "session", "compact: serving backend supports engine-side compaction", map[string]any{"key": key, "model": model})
 		m.mu.Lock()
 		// Guard 1 (double-run): reject a second /compact while one is in
 		// flight rather than launching a concurrent CompactNow that would
@@ -294,8 +313,10 @@ func (m *Manager) dispatchCompact(s *engineSession, key string) {
 			})
 			return
 		}
-		convID := s.conversationID
-		model := s.lastModel
+		// convID and model come from the snapshot taken above, deliberately
+		// not re-read here: the backend was resolved from that same model, so
+		// re-reading could compact under a model the routing decision never
+		// saw. The guards above are what this lock protects.
 		runID := fmt.Sprintf("user-compact-%s", convID)
 		s.compactInFlight = true
 		// Bind the synthetic runID -> key so the CompactingEvent progress
@@ -354,13 +375,18 @@ func (m *Manager) dispatchCompact(s *engineSession, key string) {
 		return
 	}
 
-	// Path B: CLI backend — forward to the Claude Code subprocess.
+	// Path B: the serving backend is a delegated CLI — forward to the
+	// subprocess that owns this conversation. Reached when the resolved
+	// backend for this model does not implement compactable (a plain
+	// ClaudeCodeBackend, or a hybrid session whose model routes to one).
 	// Without an active run there's no stdin pipe to write to, so we
 	// surface an informational error the consumer can render as a
 	// system message ("send /compact as a normal prompt instead").
+	m.mu.RLock()
 	rid := s.requestID
+	m.mu.RUnlock()
 	if rid == "" {
-		utils.LogWithFields(utils.LevelInfo, "session", "compact: backend does not support engine-side compaction and no active run;", map[string]any{"key": key})
+		utils.LogWithFields(utils.LevelInfo, "session", "compact: serving backend has no engine-side compaction and no active run to forward to", map[string]any{"key": key, "model": model, "backend": fmt.Sprintf("%T", serving)})
 		m.emit(key, types.EngineEvent{
 			Type:         "engine_command_result",
 			Command:      "compact",

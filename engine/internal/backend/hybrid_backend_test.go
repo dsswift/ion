@@ -284,6 +284,85 @@ func TestHybrid_Steer_UnknownRunID_ReturnsFalse(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// SignalSuspend / SignalParkForBackgroundTasks: the same routing contract as
+// Steer. These forwarders exist because the session and extcontext layers
+// assert these capabilities on the backend they hold; under the hybrid backend
+// that is the *HybridBackend itself, so without forwarding every assertion
+// failed and the capability silently degraded (child suspend fell back to the
+// root-park closure; ParkMainLoop refused outright).
+// ---------------------------------------------------------------------------
+
+func TestHybrid_SignalSuspend_ApiRouted_ReachesInner(t *testing.T) {
+	registerHybridTestModels(t)
+	h := NewHybridBackend()
+	api := h.InnerApi()
+	h.recordRun("req-api", api, "api", "gpt-test-4o")
+	// Inner ApiBackend has no activeRun with id "req-api", so the inner
+	// returns false — the assertion is that the call reached the inner
+	// *ApiBackend rather than being short-circuited at the hybrid layer.
+	_ = h.SignalSuspend("req-api", []string{"dispatch-1"})
+	if got, _ := h.lookup("req-api"); got != api {
+		t.Fatalf("SignalSuspend should not mutate routing table; got %T", got)
+	}
+}
+
+func TestHybrid_SignalSuspend_ClaudeCodeRouted_ReturnsFalse(t *testing.T) {
+	registerHybridTestModels(t)
+	h := NewHybridBackend()
+	h.recordRun("req-cc", h.InnerClaudeCode(), "claude-code", "claude-test-sonnet")
+	if h.SignalSuspend("req-cc", []string{"dispatch-1"}) {
+		t.Fatalf("expected SignalSuspend to return false for claude-code-routed run (no suspend primitive)")
+	}
+}
+
+func TestHybrid_SignalSuspend_UnknownRunID_ReturnsFalse(t *testing.T) {
+	h := NewHybridBackend()
+	if h.SignalSuspend("never-started", []string{"dispatch-1"}) {
+		t.Fatalf("expected SignalSuspend to return false for unknown requestID")
+	}
+}
+
+func TestHybrid_SignalPark_ApiRouted_ReachesInner(t *testing.T) {
+	registerHybridTestModels(t)
+	h := NewHybridBackend()
+	api := h.InnerApi()
+	h.recordRun("req-api", api, "api", "gpt-test-4o")
+	_ = h.SignalParkForBackgroundTasks("req-api", []string{"bash-1"})
+	if got, _ := h.lookup("req-api"); got != api {
+		t.Fatalf("SignalParkForBackgroundTasks should not mutate routing table; got %T", got)
+	}
+}
+
+func TestHybrid_SignalPark_ClaudeCodeRouted_ReturnsFalse(t *testing.T) {
+	registerHybridTestModels(t)
+	h := NewHybridBackend()
+	h.recordRun("req-cc", h.InnerClaudeCode(), "claude-code", "claude-test-sonnet")
+	if h.SignalParkForBackgroundTasks("req-cc", []string{"bash-1"}) {
+		t.Fatalf("expected SignalParkForBackgroundTasks to return false for claude-code-routed run")
+	}
+}
+
+func TestHybrid_SignalPark_UnknownRunID_ReturnsFalse(t *testing.T) {
+	h := NewHybridBackend()
+	if h.SignalParkForBackgroundTasks("never-started", []string{"bash-1"}) {
+		t.Fatalf("expected SignalParkForBackgroundTasks to return false for unknown requestID")
+	}
+}
+
+// Compile-time assertions that *HybridBackend satisfies the capability shapes
+// the session and extcontext layers assert on. If either stops compiling, the
+// corresponding consumer silently degrades rather than failing to build, which
+// is exactly the defect these forwarders fixed.
+var (
+	_ interface {
+		SignalSuspend(requestID string, awaitingDispatchIDs []string) bool
+	} = (*HybridBackend)(nil)
+	_ interface {
+		SignalParkForBackgroundTasks(requestID string, taskIDs []string) bool
+	} = (*HybridBackend)(nil)
+)
+
+// ---------------------------------------------------------------------------
 // NewChild: auth resolver + preference propagation
 // ---------------------------------------------------------------------------
 

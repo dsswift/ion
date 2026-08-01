@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dsswift/ion/engine/internal/backend"
 	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
 )
@@ -264,6 +265,44 @@ func TestBackgroundWake_ParkRefusedWithNothingOutstanding(t *testing.T) {
 
 	if mgr.ParkMainLoop(key) {
 		t.Error("ParkMainLoop should refuse when no background commands are outstanding")
+	}
+}
+
+// ParkMainLoop must resolve the park capability on a real HybridBackend.
+// Before HybridBackend grew SignalParkForBackgroundTasks, the assertion in
+// ParkMainLoop targeted the outer backend — which under backend: "hybrid" is
+// the *HybridBackend itself — so every park was refused with "backend does not
+// support parking" and depth-0 ctx.suspend() was dead on the configured
+// production backend.
+//
+// The session here has an outstanding command and a bound requestID, so the
+// only remaining reason to refuse is the backend's own verdict: the hybrid
+// forwards to the inner ApiBackend, which has no matching activeRun and
+// returns false. That is a legitimate refusal. The assertion is that the
+// capability RESOLVED — proven by the absence of the not-supported log path,
+// which is unreachable once *HybridBackend satisfies backgroundTaskParkable.
+func TestBackgroundWake_ParkRoutesThroughHybrid(t *testing.T) {
+	// Compile-time proof the capability resolves; a plain runtime call cannot
+	// distinguish "refused by the inner" from "assertion failed".
+	var _ backgroundTaskParkable = backend.NewHybridBackend()
+
+	hybrid := backend.NewHybridBackend()
+	mgr := NewManager(hybrid)
+	t.Cleanup(mgr.Shutdown)
+	key := "wake-park-hybrid"
+	if _, err := mgr.StartSession(key, defaultConfig()); err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	mgr.registerOutstandingBackgroundTask(key, "bash-1", "sleep 1")
+
+	mgr.mu.Lock()
+	mgr.sessions[key].requestID = "run-hybrid-1"
+	mgr.mu.Unlock()
+
+	// No activeRun on the inner ApiBackend for this requestID, so the inner
+	// declines. What matters is that the call reached it at all.
+	if mgr.ParkMainLoop(key) {
+		t.Error("expected the inner ApiBackend to decline a park for an unknown requestID")
 	}
 }
 
