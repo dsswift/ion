@@ -110,17 +110,18 @@ extension SessionViewModel {
         //
         // iOS rendering opinion: filter out engine-injected user turns that are
         // machine-to-machine signals the user never authored and should not see
-        // in conversation scrollback:
-        //   - "agent_completion" — a dispatch callback (a child agent's result
-        //     delivered to its parent).
-        //   - "background_task_completion" — a finished background bash
-        //     command's result, routed back to wake a parked session (ADR-023).
+        // in conversation scrollback — a dispatch callback, a background
+        // command's result, a scheduled check-in, or a slash-command expansion
+        // whose display turn is persisted separately.
+        //
         // The engine faithfully persists and surfaces the classification; iOS
-        // chooses to suppress. Mirrors the desktop's mapSessionHistory filter in
-        // session-message-mapper.ts, and must stay in sync with the live-event
-        // filter in SessionViewModel+EventHandlers.swift.
-        let suppressedInjectionKinds: Set<String> = ["agent_completion", "background_task_completion"]
-        let filtered = newMessages.filter { !suppressedInjectionKinds.contains($0.injectionKind ?? "") }
+        // chooses to suppress. That choice lives in InjectionPolicy, shared with
+        // the live-event filter in SessionViewModel+EventHandlers.swift and
+        // mirroring the desktop's shared/injection-policy.ts. It used to be two
+        // hand-copied kind lists that had drifted: this one filtered two kinds
+        // while the live filter filtered three, so a slash_command injection was
+        // hidden while streaming and then appeared on history reload.
+        let filtered = newMessages.filter { !InjectionPolicy.suppresses($0) }
         let incoming = deduplicateMessages(filtered)
         let incomingIds = Set(incoming.map { $0.id })
         let current = conversationMessages(tabId)

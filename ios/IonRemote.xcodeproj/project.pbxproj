@@ -61,6 +61,7 @@
 		DEDUPIMG00000000000001 /* DedupAndImageAttachTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEDUPIMG00000000000002 /* DedupAndImageAttachTests.swift */; };
 		LIVEBND00000000000001 /* LiveBoundaryMarkingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LIVEBND00000000000002 /* LiveBoundaryMarkingTests.swift */; };
 		PROMPTINJ00000000000001 /* PromptInjectedSuppressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PROMPTINJ00000000000002 /* PromptInjectedSuppressionTests.swift */; };
+		INJPOLTEST0000000000001 /* InjectionPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = INJPOLTEST0000000000002 /* InjectionPolicyTests.swift */; };
 		A1B2C3D4E5F60001000090AA /* Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000091AA /* Message.swift */; };
 		PENDINGCARD0000000000001 /* PendingCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = PENDINGCARD0000000000002 /* PendingCard.swift */; };
 		PLANCARDGATE000000000001 /* PlanCardGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLANCARDGATE000000000002 /* PlanCardGate.swift */; };
@@ -206,6 +207,7 @@
 		A1B2C3D4E5F60001000600AA /* DiscoveredSlashCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000601AA /* DiscoveredSlashCommand.swift */; };
 		A1B2C3D4E5F60001000602AA /* SlashCommandMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000603AA /* SlashCommandMenu.swift */; };
 		A1B2C3D4E5F60001000704AA /* ToolGrouping.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000705AA /* ToolGrouping.swift */; };
+		INJPOLICY00000000000001 /* InjectionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = INJPOLICY00000000000002 /* InjectionPolicy.swift */; };
 		A1B2C3D4E5F60001000800AA /* ActivityIndicatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000801AA /* ActivityIndicatorView.swift */; };
 		A1B2C3D4E5F60001000900AA /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000901AA /* AppDelegate.swift */; };
 		A1B2C3D4E5F60001000902AA /* SessionViewModel+Snapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000903AA /* SessionViewModel+Snapshot.swift */; };
@@ -465,6 +467,7 @@
 		DEDUPIMG00000000000002 /* DedupAndImageAttachTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DedupAndImageAttachTests.swift; sourceTree = "<group>"; };
 		LIVEBND00000000000002 /* LiveBoundaryMarkingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveBoundaryMarkingTests.swift; sourceTree = "<group>"; };
 		PROMPTINJ00000000000002 /* PromptInjectedSuppressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptInjectedSuppressionTests.swift; sourceTree = "<group>"; };
+		INJPOLTEST0000000000002 /* InjectionPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InjectionPolicyTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002EAA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100002FAA /* IonRemote.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = IonRemote.entitlements; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000032AA /* IonRemote.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = IonRemote.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -613,6 +616,7 @@
 		A1B2C3D4E5F60001000601AA /* DiscoveredSlashCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveredSlashCommand.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000603AA /* SlashCommandMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlashCommandMenu.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000705AA /* ToolGrouping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolGrouping.swift; sourceTree = "<group>"; };
+		INJPOLICY00000000000002 /* InjectionPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InjectionPolicy.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000801AA /* ActivityIndicatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityIndicatorView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000901AA /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000903AA /* SessionViewModel+Snapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Snapshot.swift"; sourceTree = "<group>"; };
@@ -1220,6 +1224,7 @@
 				DEDUPIMG00000000000002 /* DedupAndImageAttachTests.swift */,
 				LIVEBND00000000000002 /* LiveBoundaryMarkingTests.swift */,
 				PROMPTINJ00000000000002 /* PromptInjectedSuppressionTests.swift */,
+				INJPOLTEST0000000000002 /* InjectionPolicyTests.swift */,
 				HRNSBDG0000000000000004 /* EngineHarnessBadgeTests.swift */,
 				HRNMSGRELO0000000000002 /* HarnessMessageRelocateTests.swift */,
 				PLANCARD0000000000000002 /* PlanApprovalCardContentTests.swift */,
@@ -1294,6 +1299,7 @@
 				A1B2C3D4E5F600010000D3AA /* AnsiParser.swift */,
 				A1B2C3D4E5F600010000F7AA /* MarkdownFormatter.swift */,
 				A1B2C3D4E5F60001000705AA /* ToolGrouping.swift */,
+				INJPOLICY00000000000002 /* InjectionPolicy.swift */,
 				A1B2C3D4E5F60001001001AA /* LayoutCache.swift */,
 				A1B2C3D4E5F60001001007AA /* DiagnosticLog.swift */,
 				A1B2C3D4E5F60001007002AA /* CrashReporter.swift */,
@@ -1641,6 +1647,7 @@
 				A1B2C3D4E5F60001001100AA /* RemoteModelEntry.swift in Sources */,
 				A1B2C3D4E5F60001000602AA /* SlashCommandMenu.swift in Sources */,
 				A1B2C3D4E5F60001000704AA /* ToolGrouping.swift in Sources */,
+				INJPOLICY00000000000001 /* InjectionPolicy.swift in Sources */,
 				A1B2C3D4E5F60001000800AA /* ActivityIndicatorView.swift in Sources */,
 				A1B2C3D4E5F60001005200AA /* VoicePlaybackBar.swift in Sources */,
 				A1B2C3D4E5F60001004009AA /* CompactionRowView.swift in Sources */,
@@ -1832,6 +1839,7 @@
 				DEDUPIMG00000000000001 /* DedupAndImageAttachTests.swift in Sources */,
 				LIVEBND00000000000001 /* LiveBoundaryMarkingTests.swift in Sources */,
 				PROMPTINJ00000000000001 /* PromptInjectedSuppressionTests.swift in Sources */,
+				INJPOLTEST0000000000001 /* InjectionPolicyTests.swift in Sources */,
 				HRNSBDG0000000000000003 /* EngineHarnessBadgeTests.swift in Sources */,
 				HRNMSGRELO0000000000001 /* HarnessMessageRelocateTests.swift in Sources */,
 				PLANCARD0000000000000001 /* PlanApprovalCardContentTests.swift in Sources */,

@@ -802,10 +802,12 @@ final class ContractSyncTests: XCTestCase {
             // Decoded by Message(engineJSON:) (markerKind + markerPlanFilePath
             // fallback for plan-divider links).
             "markerKind", "markerPlanFilePath",
-            // Decoded: classifies engine-injected user turns. "agent_completion"
-            // rows are filtered out of handleConversationHistory so dispatch
-            // completion messages never render as user bubbles on history load.
-            "injectionKind",
+            // Decoded: classifies engine-injected user turns, and the engine's
+            // derived verdict on whether an engine-side actor authored the turn.
+            // InjectionPolicy reads both to filter machine-to-machine rows out
+            // of handleConversationHistory, so a dispatch completion or a
+            // scheduled check-in never renders as a user bubble on reload.
+            "injectionKind", "machineAuthored",
             // Tracked but not decoded: the desktop history mapper folds these
             // marker payload details into the rendered divider content before
             // iOS sees the row; the engineJSON path routes markers by their

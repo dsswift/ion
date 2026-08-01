@@ -84,7 +84,8 @@ extension RemoteEvent {
             let prompt = try container.decodeIfPresent(String.self, forKey: .injectedPrompt) ?? ""
             let origin = try container.decodeIfPresent(String.self, forKey: .injectedPromptOrigin)
             let kind = try container.decodeIfPresent(String.self, forKey: .injectedPromptKind)
-            return .enginePromptInjected(tabId: tabId, instanceId: instanceId, prompt: prompt, origin: origin, kind: kind)
+            let machineAuthored = try container.decodeIfPresent(Bool.self, forKey: .injectedPromptMachineAuthored)
+            return .enginePromptInjected(tabId: tabId, instanceId: instanceId, prompt: prompt, origin: origin, kind: kind, machineAuthored: machineAuthored)
 
         case .engineToolUpdate, .engineToolComplete, .engineScheduleFired, .engineLlmCall:
             let tabId = try container.decode(String.self, forKey: .tabId)

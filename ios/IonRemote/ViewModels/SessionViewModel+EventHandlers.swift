@@ -228,23 +228,19 @@ extension SessionViewModel {
         case .engineSteerInjected(let tabId, let instanceId, let messageLength):
             handleEngineSteerInjected(tabId: tabId, instanceId: instanceId, messageLength: messageLength)
 
-        case .enginePromptInjected(let tabId, let instanceId, let prompt, _, let kind):
-            // Engine-classified injections that must NOT render as user messages:
-            //   - "agent_completion": a machine-to-machine dispatch callback (a
-            //     child agent's result routed to its parent). Internal signal.
-            //   - "slash_command": the expanded body of a slash command whose
-            //     display turn is the command pill. The engine persists the raw
-            //     invocation as the display entry, so the multi-KB expansion body
-            //     is redundant — rendering it puts the whole command template on
-            //     screen as a second user message.
-            //   - "background_task_completion": a finished background bash
-            //     command's result, routed back to wake a parked session
-            //     (ADR-023). Machine-to-machine like agent_completion — the
-            //     engine is reporting an exit code and output tail to the model,
-            //     not relaying anything the user said.
-            guard kind != "agent_completion",
-                  kind != "slash_command",
-                  kind != "background_task_completion" else { break }
+        case .enginePromptInjected(let tabId, let instanceId, let prompt, _, let kind, let machineAuthored):
+            // A machine-to-machine injection is not a turn the user authored —
+            // a dispatch callback, a background command's result, a scheduled
+            // check-in, or the expanded body of a slash command whose display
+            // turn is persisted separately. The model sees them all in its
+            // context; rendering them puts internal signalling on screen as
+            // user messages.
+            //
+            // The verdict comes from InjectionPolicy, shared with the history
+            // filter in SessionViewModel+PermissionMessageEvents so live and
+            // reload CANNOT disagree. This used to be three hardcoded kind
+            // strings here and two there — they had already drifted.
+            guard !InjectionPolicy.suppresses(machineAuthored: machineAuthored, injectionKind: kind) else { break }
             handleEnginePromptInjected(tabId: tabId, instanceId: instanceId, prompt: prompt)
 
         // Extended-thinking events (issue #158). A thinking block is OPTIONAL

@@ -326,7 +326,13 @@ export type RemoteEvent =
   // ctx.sendPrompt — no client submitted this user turn, so no client did an
   // optimistic insert; clients append it to the transcript from this event.
   // Field names carried verbatim from the engine ({...event} spread).
-  | { type: 'desktop_prompt_injected'; tabId: string; instanceId?: string | null; injectedPrompt: string; injectedPromptOrigin?: string }
+  //
+  // injectedPromptKind classifies the injection and
+  // injectedPromptMachineAuthored is the engine's derived verdict on whether
+  // an engine-side actor authored it. Both were already reaching iOS through
+  // the spread; declaring them here makes the wire contract match what is
+  // actually sent, so a client author can see the fields exist.
+  | { type: 'desktop_prompt_injected'; tabId: string; instanceId?: string | null; injectedPrompt: string; injectedPromptOrigin?: string; injectedPromptKind?: string; injectedPromptMachineAuthored?: boolean }
   // desktop_image_content: explicitly projected from engine_image_content by
   // the engine-event forwarder in event-wiring.ts. The raw engine event carries
   // image-prefixed field names (imagePath/imageMediaType/imageSource/imageToolId
