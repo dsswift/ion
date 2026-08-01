@@ -46,7 +46,7 @@ func (h *Host) handleLLMCallRPC(ctx *Context, id int64, raw []byte) {
 		h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "llmCall not available outside an active session"})
 		return
 	}
-	utils.LogWithFields(utils.LevelDebug, "extension", "ext/llm_call: dispatching", map[string]any{"run_id": id, "model": req.Params.Model, "count": len(req.Params.System), "count_3": len(req.Params.Prompt), "j_s_o_n_mode": req.Params.JSONMode, "max_tokens": req.Params.MaxTokens, "temperature_set": req.Params.TemperatureSet, "temperature": req.Params.Temperature})
+	utils.LogWithFields(utils.LevelDebug, "extension", "ext/llm_call: dispatching", map[string]any{"run_id": id, "model": req.Params.Model, "system_len": len(req.Params.System), "prompt_len": len(req.Params.Prompt), "j_s_o_n_mode": req.Params.JSONMode, "max_tokens": req.Params.MaxTokens, "temperature_set": req.Params.TemperatureSet, "temperature": req.Params.Temperature})
 
 	// Per-call cancellation context, registered under the RPC id.
 	callCtx, callCancel := context.WithCancel(context.Background())

@@ -20,7 +20,7 @@ func (m *Manager) SendDialogResponse(key, dialogID string, value interface{}) {
 		return
 	}
 	if !s.pending.ResolveDialog(dialogID, value) {
-		utils.LogWithFields(utils.LevelInfo, "session", "no pending dialog for session", map[string]any{"run_id": dialogID, "key": key})
+		utils.LogWithFields(utils.LevelInfo, "session", "no pending dialog for session", map[string]any{"dialog_id": dialogID, "key": key})
 	}
 }
 
@@ -86,12 +86,12 @@ func (m *Manager) elicit(s *engineSession, key string, info extension.Elicitatio
 			timer := time.NewTimer(d)
 			defer timer.Stop()
 			timerCh = timer.C
-			utils.LogWithFields(utils.LevelInfo, "session", "elicit : finite human-wait", map[string]any{"run_id": requestID, "d": d})
+			utils.LogWithFields(utils.LevelInfo, "session", "elicit : finite human-wait", map[string]any{"elicit_request_id": requestID, "d": d})
 		} else {
-			utils.LogWithFields(utils.LevelInfo, "session", "elicit : indefinite human-wait (waiting for user/extension)", map[string]any{"run_id": requestID})
+			utils.LogWithFields(utils.LevelInfo, "session", "elicit : indefinite human-wait (waiting for user/extension)", map[string]any{"elicit_request_id": requestID})
 		}
 	} else {
-		utils.LogWithFields(utils.LevelInfo, "session", "elicit : indefinite human-wait (no timeouts config)", map[string]any{"run_id": requestID})
+		utils.LogWithFields(utils.LevelInfo, "session", "elicit : indefinite human-wait (no timeouts config)", map[string]any{"elicit_request_id": requestID})
 	}
 
 	// Session-lifecycle cancellation. rootCtx is cancelled by SendAbort and
@@ -128,10 +128,10 @@ func (m *Manager) elicit(s *engineSession, key string, info extension.Elicitatio
 	case reply := <-hookCh:
 		return reply.Response, false, nil
 	case <-doneCh:
-		utils.LogWithFields(utils.LevelInfo, "session", "elicit : cancelled by session teardown/abort", map[string]any{"run_id": requestID})
+		utils.LogWithFields(utils.LevelInfo, "session", "elicit : cancelled by session teardown/abort", map[string]any{"elicit_request_id": requestID})
 		return nil, true, fmt.Errorf("elicitation %s cancelled", requestID)
 	case <-timerCh:
-		utils.LogWithFields(utils.LevelInfo, "session", "elicit : finite human-wait expired, returning cancelled", map[string]any{"run_id": requestID})
+		utils.LogWithFields(utils.LevelInfo, "session", "elicit : finite human-wait expired, returning cancelled", map[string]any{"elicit_request_id": requestID})
 		return nil, true, fmt.Errorf("elicitation %s timed out", requestID)
 	}
 }
@@ -147,6 +147,6 @@ func (m *Manager) HandleElicitationResponse(key, requestID string, response map[
 		return
 	}
 	if !s.pending.ResolveElicit(requestID, pending.ElicitReply{Response: response, Cancelled: cancelled}) {
-		utils.LogWithFields(utils.LevelInfo, "session", "no pending elicitation for session", map[string]any{"run_id": requestID, "key": key})
+		utils.LogWithFields(utils.LevelInfo, "session", "no pending elicitation for session", map[string]any{"elicit_request_id": requestID, "key": key})
 	}
 }

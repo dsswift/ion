@@ -139,7 +139,7 @@ func (sm *SessionMemory) LoadMemory() bool {
 
 	sm.memory = content
 	sm.mu.Unlock()
-	utils.LogWithFields(utils.LevelInfo, "session.memory", "loaded memory file: ( bytes, content bytes)", map[string]any{"path": path, "count": len(data), "count_2": len(content)})
+	utils.LogWithFields(utils.LevelInfo, "session.memory", "loaded memory file: ( bytes, content bytes)", map[string]any{"path": path, "data_len": len(data), "content_len": len(content)})
 	return true
 }
 
@@ -257,7 +257,7 @@ func (sm *SessionMemory) OnTurnEnd(conv *conversation.Conversation, turnNumber i
 		return
 	}
 
-	utils.LogWithFields(utils.LevelInfo, "session.memory", "onturnend: triggering background summary ( )", map[string]any{"turn_number": turnNumber, "current_tokens": currentTokens, "current_tokens_last_tokens": currentTokens-lastTokens})
+	utils.LogWithFields(utils.LevelInfo, "session.memory", "onturnend: triggering background summary ( )", map[string]any{"turn_number": turnNumber, "current_tokens": currentTokens, "current_tokens_last_tokens": currentTokens - lastTokens})
 
 	// Capture the entry boundary BEFORE spawning the goroutine. This is
 	// the newest entry that the summary will cover. CurrentLeafID reads the

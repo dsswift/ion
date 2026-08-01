@@ -99,10 +99,10 @@ func (b *ApiBackend) performCompact(p performCompactParams) {
 	scanSlice := conversation.MessagesAfterLastCompactBoundary(p.conv)
 	facts := compaction.ExtractFacts(scanSlice)
 	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "compact: extracted facts from -message scan slice (full )", map[string]any{
-		"trigger": p.trigger,
-		"count":   len(facts),
-		"count_2": len(scanSlice),
-		"conv":    msgBefore,
+		"trigger":          p.trigger,
+		"fact_count":       len(facts),
+		"scan_slice_count": len(scanSlice),
+		"conv":             msgBefore,
 	})
 
 	// Step 1: MicroCompact — protect only the most recent N turns (default 3).
@@ -521,9 +521,9 @@ func (b *ApiBackend) compactReactive(ctx context.Context, run *activeRun, conv *
 	scanSlice := conversation.MessagesAfterLastCompactBoundary(conv)
 	facts := compaction.ExtractFacts(scanSlice)
 	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "reactive compact: extracted facts from -message scan slice (full )", map[string]any{
-		"count":   len(facts),
-		"count_2": len(scanSlice),
-		"conv":    msgBefore,
+		"fact_count":       len(facts),
+		"scan_slice_count": len(scanSlice),
+		"conv":             msgBefore,
 	})
 
 	// Step 1: micro-compact (tool results, then assistant text)

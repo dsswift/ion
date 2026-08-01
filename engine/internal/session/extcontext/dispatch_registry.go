@@ -454,7 +454,7 @@ func (r *DispatchRegistry) Recall(name string, reason string) bool {
 		}
 	}
 
-	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recall: cancelling", map[string]any{"found_i_d": foundID, "model": name, "session_id": found.SessionID, "reason": reason, "count": len(descDispatches), "count_5": r.Count()})
+	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recall: cancelling", map[string]any{"dispatch_id": foundID, "agent_name": name, "session_id": found.SessionID, "reason": reason, "descendant_count": len(descDispatches), "registry_count": r.Count()})
 
 	if found.Cancel != nil {
 		found.Cancel()
@@ -508,7 +508,7 @@ func (r *DispatchRegistry) RecallByID(id string, reason string) bool {
 		}
 	}
 
-	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recallbyid: cancelling", map[string]any{"run_id": id, "model": d.Name, "session_id": d.SessionID, "reason": reason, "count": len(descDispatches), "count_5": r.Count()})
+	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "recallbyid: cancelling", map[string]any{"dispatch_id": id, "agent_name": d.Name, "session_id": d.SessionID, "reason": reason, "descendant_count": len(descDispatches), "registry_count": r.Count()})
 
 	if d.Cancel != nil {
 		d.Cancel()
@@ -682,7 +682,7 @@ func (r *DispatchRegistry) SteerByIDWithKind(dispatchID, message, kind string) S
 		outcome = SteerOutcomeNoRun
 	}
 
-	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "steerbyid", map[string]any{"run_id": dispatchID, "model": name, "run_id_2": childRunID, "count": len(message), "result": result, "outcome": outcome})
+	utils.LogWithFields(utils.LevelInfo, "session.extcontext.dispatch_registry", "steerbyid", map[string]any{"dispatch_id": dispatchID, "agent_name": name, "child_run_id": childRunID, "count": len(message), "result": result, "outcome": outcome})
 	return outcome
 }
 
@@ -724,7 +724,7 @@ func (r *DispatchRegistry) SetChildConvID(id, convID string) {
 		return
 	}
 	d.ChildConvID = convID
-	utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "setchildconvid", map[string]any{"run_id": id, "run_id_1": convID})
+	utils.LogWithFields(utils.LevelDebug, "session.extcontext.dispatch_registry", "setchildconvid", map[string]any{"dispatch_id": id, "conversation_id": convID})
 }
 
 // LiveConvIDs returns the child conversation IDs of all currently active

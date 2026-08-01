@@ -508,7 +508,7 @@ func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID str
 			MessageCount: len(messages),
 			Messages:     messages,
 		})
-		utils.LogWithFields(utils.LevelDebug, "session", "compact_summary_request bridge", map[string]any{"strategy": strategy, "count": len(messages), "ok": ok, "count_3": len(summary)})
+		utils.LogWithFields(utils.LevelDebug, "session", "compact_summary_request bridge", map[string]any{"strategy": strategy, "message_count": len(messages), "ok": ok, "summary_len": len(summary)})
 		return summary, ok
 	}
 	runCfg.Hooks.OnSessionCompact = func(_ string, info interface{}) {

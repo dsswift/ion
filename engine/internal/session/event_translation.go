@@ -108,7 +108,7 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 		m.mu.RLock()
 		if s2, ok2 := m.sessions[key]; ok2 && s2.conversationID != "" {
 			if ee.Fields.SessionID != s2.conversationID {
-				utils.LogWithFields(utils.LevelDebug, "session", "task_complete status: substituting ion for backend", map[string]any{"run_id": s2.conversationID, "run_id_1": ee.Fields.SessionID, "key": key})
+				utils.LogWithFields(utils.LevelDebug, "session", "task_complete status: substituting ion for backend", map[string]any{"conversation_id": s2.conversationID, "session_id": ee.Fields.SessionID, "key": key})
 			}
 			ee.Fields.SessionID = s2.conversationID
 		}
@@ -413,7 +413,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	if signal != nil {
 		sigStr = *signal
 	}
-	utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit", map[string]any{"key": key, "run_id": runID, "code_str": codeStr, "sig_str": sigStr, "run_id_4": sessionID})
+	utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit", map[string]any{"key": key, "run_id": runID, "code_str": codeStr, "sig_str": sigStr, "session_id": sessionID})
 
 	var nextPrompt *pendingPrompt
 	var bgCount int
@@ -481,7 +481,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 		if sessionID != "" && sessionID != s.conversationID &&
 			s.runCaps.ContextModel == backend.ContextModelNativeSession && s.runCaps.Resume {
 			captureCursorKind = s.runCaps.Kind
-			utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit: native session id reported, capturing cursor", map[string]any{"run_id": sessionID, "key": key, "kind": captureCursorKind, "run_id_2": s.conversationID})
+			utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit: native session id reported, capturing cursor", map[string]any{"session_id": sessionID, "key": key, "kind": captureCursorKind, "conversation_id": s.conversationID})
 		} else {
 			utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit: no native session id to capture", map[string]any{"key": key, "reported_session_id": sessionID, "kind": s.runCaps.Kind})
 		}

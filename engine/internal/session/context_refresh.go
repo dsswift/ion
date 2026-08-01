@@ -50,7 +50,7 @@ func (m *Manager) refreshContextUsage(key, reason string) {
 	}
 
 	utils.LogWithFields(utils.LevelDebug, "session", "refreshcontextusage: recomputing from persisted conversation", map[string]any{
-		"key": key, "reason": reason, "run_id": convID, "model": model, "ctx_window": ctxWindow,
+		"key": key, "reason": reason, "conversation_id": convID, "model": model, "ctx_window": ctxWindow,
 	})
 
 	conv, err := conversation.Load(convID, "")
@@ -60,7 +60,7 @@ func (m *Manager) refreshContextUsage(key, reason string) {
 		// Retain the prior values rather than zeroing a figure we cannot
 		// currently verify.
 		utils.LogWithFields(utils.LevelInfo, "session", "refreshcontextusage: conversation load failed, retaining prior values", map[string]any{
-			"key": key, "reason": reason, "run_id": convID, "error": err,
+			"key": key, "reason": reason, "conversation_id": convID, "error": err,
 		})
 		return
 	}
@@ -76,7 +76,7 @@ func (m *Manager) refreshContextUsage(key, reason string) {
 	m.mu.Unlock()
 
 	utils.LogWithFields(utils.LevelInfo, "session", "refreshcontextusage: refreshed", map[string]any{
-		"key": key, "reason": reason, "run_id": convID, "model": model,
+		"key": key, "reason": reason, "conversation_id": convID, "model": model,
 		"ctx_window": ctxWindow, "tokens": usage.Tokens, "pct": usage.Percent, "estimated": usage.Estimated,
 	})
 }

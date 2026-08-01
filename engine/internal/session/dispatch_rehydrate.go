@@ -31,13 +31,13 @@ func (m *Manager) rehydrateDispatchState(s *engineSession, key string) *conversa
 	if err != nil {
 		// No conversation file yet — first run on this session ID.
 		// Nothing to rehydrate; this is the normal path for new sessions.
-		utils.LogWithFields(utils.LevelDebug, "session", "rehydratedispatchstate: no conversation file for (expected for new sessions)", map[string]any{"key": key, "run_id": s.conversationID})
+		utils.LogWithFields(utils.LevelDebug, "session", "rehydratedispatchstate: no conversation file for (expected for new sessions)", map[string]any{"key": key, "conversation_id": s.conversationID})
 		return nil
 	}
 
 	dispatches := conversation.AgentDispatchEntries(conv)
 	if len(dispatches) == 0 {
-		utils.LogWithFields(utils.LevelDebug, "session", "rehydratedispatchstate: no dispatch entries", map[string]any{"key": key, "run_id": s.conversationID})
+		utils.LogWithFields(utils.LevelDebug, "session", "rehydratedispatchstate: no dispatch entries", map[string]any{"key": key, "conversation_id": s.conversationID})
 		return conv
 	}
 
@@ -196,11 +196,11 @@ func (m *Manager) rehydrateDispatchState(s *engineSession, key string) *conversa
 		})
 	}
 	if len(lost) == 0 {
-		utils.LogWithFields(utils.LevelDebug, "session", "rehydratedispatchstate: no lost dispatches", map[string]any{"key": key, "run_id": s.conversationID})
+		utils.LogWithFields(utils.LevelDebug, "session", "rehydratedispatchstate: no lost dispatches", map[string]any{"key": key, "conversation_id": s.conversationID})
 	}
 	s.lostDispatches = lost
 
-	utils.LogWithFields(utils.LevelInfo, "session", "rehydratedispatchstate: loaded dispatch entries", map[string]any{"count": len(dispatches), "key": key, "run_id": s.conversationID})
+	utils.LogWithFields(utils.LevelInfo, "session", "rehydratedispatchstate: loaded dispatch entries", map[string]any{"count": len(dispatches), "key": key, "conversation_id": s.conversationID})
 	return conv
 }
 
@@ -425,7 +425,7 @@ func (m *Manager) persistTerminalDispatches(key, convID string) {
 
 	conv, err := conversation.Load(convID, "")
 	if err != nil {
-		utils.LogWithFields(utils.LevelInfo, "session", "persistterminaldispatches: load failed", map[string]any{"run_id": convID, "error": err})
+		utils.LogWithFields(utils.LevelInfo, "session", "persistterminaldispatches: load failed", map[string]any{"conversation_id": convID, "error": err})
 		return
 	}
 
@@ -479,11 +479,11 @@ func (m *Manager) persistTerminalDispatches(key, convID string) {
 	}
 
 	if err := conversation.Save(conv, ""); err != nil {
-		utils.LogWithFields(utils.LevelInfo, "session", "persistterminaldispatches: save failed", map[string]any{"run_id": convID, "error": err})
+		utils.LogWithFields(utils.LevelInfo, "session", "persistterminaldispatches: save failed", map[string]any{"conversation_id": convID, "error": err})
 		return
 	}
 
-	utils.LogWithFields(utils.LevelInfo, "session", "persistterminaldispatches: persisted dispatch entries", map[string]any{"added": added, "run_id": convID, "key": key})
+	utils.LogWithFields(utils.LevelInfo, "session", "persistterminaldispatches: persisted dispatch entries", map[string]any{"added": added, "conversation_id": convID, "key": key})
 }
 
 // persistDispatchRegistered writes a `running` agent_dispatch record for a
@@ -511,7 +511,7 @@ func (m *Manager) persistDispatchRegistered(key, convID, agentID, agentName, dis
 	}
 	conv, err := conversation.Load(convID, "")
 	if err != nil {
-		utils.LogWithFields(utils.LevelWarn, "session", "persistdispatchregistered: load failed", map[string]any{"run_id": convID, "error": utils.ErrStr(err)})
+		utils.LogWithFields(utils.LevelWarn, "session", "persistdispatchregistered: load failed", map[string]any{"conversation_id": convID, "error": utils.ErrStr(err)})
 		return
 	}
 	// Skip when this dispatch already has a persisted record (an engine-side
@@ -542,7 +542,7 @@ func (m *Manager) persistDispatchRegistered(key, convID, agentID, agentName, dis
 		},
 	})
 	if err := conversation.Save(conv, ""); err != nil {
-		utils.LogWithFields(utils.LevelWarn, "session", "persistdispatchregistered: save failed", map[string]any{"run_id": convID, "error": utils.ErrStr(err)})
+		utils.LogWithFields(utils.LevelWarn, "session", "persistdispatchregistered: save failed", map[string]any{"conversation_id": convID, "error": utils.ErrStr(err)})
 		return
 	}
 	utils.LogWithFields(utils.LevelInfo, "session", "persistdispatchregistered: running record persisted", map[string]any{"run_id": agentID, "model": agentName, "key": key, "conversation_id": convID})

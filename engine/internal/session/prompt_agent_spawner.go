@@ -142,10 +142,10 @@ func (m *Manager) buildRootAgentSpawner(s *engineSession, key string, parentMode
 		if childModel != "" {
 			resolved, fallbacks := modelconfig.ResolveTierChain(childModel)
 			if resolved != childModel {
-				utils.LogWithFields(utils.LevelInfo, "session", "agent tier resolved: -> ()", map[string]any{"model": childModel, "resolved": resolved, "fallbacks": fallbacks, "model_3": agentName})
+				utils.LogWithFields(utils.LevelInfo, "session", "agent tier resolved: -> ()", map[string]any{"model": childModel, "resolved": resolved, "fallbacks": fallbacks, "agent_name": agentName})
 				childModel = resolved
 			} else {
-				utils.LogWithFields(utils.LevelDebug, "session", "agent tier passthrough", map[string]any{"model": childModel, "model_1": agentName})
+				utils.LogWithFields(utils.LevelDebug, "session", "agent tier passthrough", map[string]any{"model": childModel, "agent_name": agentName})
 			}
 			childFallbacks = fallbacks
 		}

@@ -104,7 +104,7 @@ func (m *Manager) requestEarlyStopDecisionViaWire(
 		EarlyStopIsSubagent:            info.IsSubagent,
 	})
 
-	utils.LogWithFields(utils.LevelDebug, "session", "requestearlystopdecisionviawire: emitted — awaiting consumer", map[string]any{"run_id": requestID, "run_id_1": info.RunID, "turn_number": info.TurnNumber, "would_continue": info.WouldContinue})
+	utils.LogWithFields(utils.LevelDebug, "session", "requestearlystopdecisionviawire: emitted — awaiting consumer", map[string]any{"early_stop_request_id": requestID, "run_id": info.RunID, "turn_number": info.TurnNumber, "would_continue": info.WouldContinue})
 
 	select {
 	case reply := <-ch:
@@ -123,7 +123,7 @@ func (m *Manager) requestEarlyStopDecisionViaWire(
 			ContinueMessage:      reply.ContinueMessage,
 		}
 	case <-time.After(earlyStopWireTimeout):
-		utils.LogWithFields(utils.LevelInfo, "session", "requestearlystopdecisionviawire: timeout after — proceeding with no opinion", map[string]any{"early_stop_wire_timeout": earlyStopWireTimeout, "run_id": requestID, "run_id_2": info.RunID})
+		utils.LogWithFields(utils.LevelInfo, "session", "requestearlystopdecisionviawire: timeout after — proceeding with no opinion", map[string]any{"early_stop_wire_timeout": earlyStopWireTimeout, "early_stop_request_id": requestID, "run_id": info.RunID})
 		return nil
 	}
 }

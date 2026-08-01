@@ -263,7 +263,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// and the desktop loses its engineModelOverrides. The user can still
 	// explicitly override by selecting a different model in the picker.
 	if s.lastModel != "" && m.config != nil && opts.Model == m.config.DefaultModel && opts.Model != s.lastModel {
-		utils.LogWithFields(utils.LevelInfo, "session", "prompt_dispatch: overriding default model with conversation model", map[string]any{"key": key, "model": opts.Model, "model_2": s.lastModel})
+		utils.LogWithFields(utils.LevelInfo, "session", "prompt_dispatch: overriding default model with conversation model", map[string]any{"key": key, "model": opts.Model, "conversation_model": s.lastModel})
 		opts.Model = s.lastModel
 	}
 

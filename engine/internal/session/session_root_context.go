@@ -50,7 +50,7 @@ func (s *engineSession) newSessionRootContext() {
 	}
 	s.rootCtx = utils.WithTraceID(s.rootCtx, s.traceID)
 
-	utils.LogWithFields(utils.LevelDebug, "session", "newsessionrootcontext: root cancellation context created key= trace_id=", map[string]any{"key": s.key, "run_id": s.traceID})
+	utils.LogWithFields(utils.LevelDebug, "session", "newsessionrootcontext: root cancellation context created", map[string]any{"key": s.key, "trace_id": s.traceID})
 }
 
 // rootContext returns the session's cancellation root. Never returns nil:

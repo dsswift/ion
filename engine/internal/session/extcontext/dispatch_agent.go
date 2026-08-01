@@ -74,7 +74,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 
 		start := time.Now()
 
-		utils.LogWithFields(utils.LevelInfo, "server", "starting dispatch", map[string]any{"model": opts.Name, "truncate": truncate(opts.Task, 80), "model_2": opts.Model, "count": len(opts.SystemPrompt), "background": opts.Background, "plan_mode": opts.PlanMode, "session_key": sa.SessionKey()})
+		utils.LogWithFields(utils.LevelInfo, "server", "starting dispatch", map[string]any{"agent_name": opts.Name, "task_preview": truncate(opts.Task, 80), "model": opts.Model, "system_prompt_len": len(opts.SystemPrompt), "background": opts.Background, "plan_mode": opts.PlanMode, "session_key": sa.SessionKey()})
 
 		// Determine model and project path.
 		model := opts.Model
@@ -310,7 +310,7 @@ func BuildDispatchAgentFunc(sa SessionAccessor, registry *DispatchRegistry, curr
 		} else if childCfg.DefaultModel == "" {
 			childCfg.DefaultModel = dispatchDefaultModel
 		}
-		utils.LogWithFields(utils.LevelInfo, "session", "child run config: source=dispatch", map[string]any{"model": dispatchDefaultModel, "session_key": sa.SessionKey(), "model_2": model})
+		utils.LogWithFields(utils.LevelInfo, "session", "child run config: source=dispatch", map[string]any{"dispatch_default_model": dispatchDefaultModel, "session_key": sa.SessionKey(), "model": model})
 
 		// Attribute background Bash tasks started by the dispatched child to
 		// the parent session so StopSession kills them with the session.

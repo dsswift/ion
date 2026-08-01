@@ -407,7 +407,7 @@ func (r *Registry) MergedSnapshot() []types.AgentStateUpdate {
 	// representative row (representative chosen with empty dispatches[]),
 	// consumers receive a row with no per-dispatch detail.
 	// Log the merge shape so that failure is a one-line log read, not a trace.
-	utils.LogWithFields(utils.LevelDebug, "session.agents", "mergedsnapshot", map[string]any{"count": len(r.lastExtStates), "count_1": len(r.states), "count_2": len(superseded), "kept_ext": keptExt, "count_4": len(grouped), "count_5": len(merged)})
+	utils.LogWithFields(utils.LevelDebug, "session.agents", "mergedsnapshot", map[string]any{"ext_state_count": len(r.lastExtStates), "engine_state_count": len(r.states), "superseded_count": len(superseded), "kept_ext": keptExt, "grouped_count": len(grouped), "merged_count": len(merged)})
 	return merged
 }
 
@@ -574,7 +574,7 @@ func groupByName(states []types.AgentStateUpdate) []types.AgentStateUpdate {
 		if isDispatchBearing(representative.Metadata) && len(mergedDispatches) == 0 {
 			utils.LogWithFields(utils.LevelDebug, "session.agents", "groupbyname: merged dispatches[] is empty despite dispatch task (consumers cannot expand per-dispatch detail)", map[string]any{"model": name, "count": len(indices), "status": representative.Status})
 		} else {
-			utils.LogWithFields(utils.LevelDebug, "session.agents", "groupbyname", map[string]any{"model": name, "count": len(indices), "status": representative.Status, "count_3": len(mergedDispatches)})
+			utils.LogWithFields(utils.LevelDebug, "session.agents", "groupbyname", map[string]any{"agent_name": name, "index_count": len(indices), "status": representative.Status, "merged_dispatch_count": len(mergedDispatches)})
 		}
 
 		out = append(out, representative)

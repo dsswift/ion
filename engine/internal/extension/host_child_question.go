@@ -60,11 +60,11 @@ func (h *Host) makeOnChildQuestion(agentName string) func(DispatchChildQuestionI
 		}
 		data, err := json.Marshal(payload)
 		if err != nil {
-			utils.LogWithFields(utils.LevelInfo, "extension", "makeonchildquestion: marshal failed", map[string]any{"run_id": info.DispatchID, "error": err})
+			utils.LogWithFields(utils.LevelInfo, "extension", "makeonchildquestion: marshal failed", map[string]any{"dispatch_id": info.DispatchID, "error": err})
 			return "", true, err
 		}
 
-		utils.LogWithFields(utils.LevelInfo, "extension", "dispatch_child_question blocking for answer", map[string]any{"agent_name": agentName, "run_id": info.DispatchID, "count": info.Depth, "run_id_3": requestID, "truncate_str": truncateStr(info.Question, 80)})
+		utils.LogWithFields(utils.LevelInfo, "extension", "dispatch_child_question blocking for answer", map[string]any{"agent_name": agentName, "dispatch_id": info.DispatchID, "depth": info.Depth, "question_request_id": requestID, "truncate_str": truncateStr(info.Question, 80)})
 		h.sendNotification("dispatch_child_question", data)
 
 		// Block until the dispatcher answers or the subprocess dies. h.deadCh
@@ -73,13 +73,13 @@ func (h *Host) makeOnChildQuestion(agentName string) func(DispatchChildQuestionI
 		// cancelled reply terminate the child run.
 		select {
 		case reply := <-replyCh:
-			utils.LogWithFields(utils.LevelInfo, "extension", "dispatch_child_question answered", map[string]any{"agent_name": agentName, "run_id": info.DispatchID, "run_id_2": requestID, "cancelled": reply.Cancelled, "count": len(reply.Answer)})
+			utils.LogWithFields(utils.LevelInfo, "extension", "dispatch_child_question answered", map[string]any{"agent_name": agentName, "dispatch_id": info.DispatchID, "question_request_id": requestID, "cancelled": reply.Cancelled, "count": len(reply.Answer)})
 			if reply.Cancelled {
 				return "", true, nil
 			}
 			return reply.Answer, false, nil
 		case <-h.deadCh:
-			utils.LogWithFields(utils.LevelInfo, "extension", "dispatch_child_question: subprocess died before answering ; cancelling", map[string]any{"agent_name": agentName, "run_id": info.DispatchID, "run_id_2": requestID})
+			utils.LogWithFields(utils.LevelInfo, "extension", "dispatch_child_question: subprocess died before answering ; cancelling", map[string]any{"agent_name": agentName, "dispatch_id": info.DispatchID, "question_request_id": requestID})
 			return "", true, nil
 		}
 	}

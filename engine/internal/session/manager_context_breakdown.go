@@ -261,7 +261,7 @@ func (m *Manager) ComputeAndEmitContextBreakdown(key string) {
 	}
 
 	utils.LogWithFields(utils.LevelInfo, "session", "computeandemitcontextbreakdown: emitting", map[string]any{
-		"key": key, "model": opts.Model, "count": len(bd.Categories), "count_3": bd.TotalTokens,
+		"key": key, "model": opts.Model, "category_count": len(bd.Categories), "total_tokens": bd.TotalTokens,
 		"api_reported_total": bd.APIReportedTotal, "unaccounted": bd.Unaccounted,
 		"aggregate_cost": aggregateCost,
 	})

@@ -98,9 +98,9 @@ func (m *Manager) clearConversationCore(conversationID, preferKey string) (clear
 	}
 	if ownerKey != "" {
 		res.sessionKey, res.deniedCleared = m.clearSessionDenials(ownerKey)
-		utils.LogWithFields(utils.LevelInfo, "session", "clearcore: owned by live session", map[string]any{"run_id": conversationID, "session_key": res.sessionKey, "denied_cleared": res.deniedCleared})
+		utils.LogWithFields(utils.LevelInfo, "session", "clearcore: owned by live session", map[string]any{"conversation_id": conversationID, "session_key": res.sessionKey, "denied_cleared": res.deniedCleared})
 	} else {
-		utils.LogWithFields(utils.LevelInfo, "session", "clearcore: has no live session (file-only wipe)", map[string]any{"run_id": conversationID})
+		utils.LogWithFields(utils.LevelInfo, "session", "clearcore: has no live session (file-only wipe)", map[string]any{"conversation_id": conversationID})
 	}
 
 	conv, err := conversation.Load(conversationID, "")
@@ -109,10 +109,10 @@ func (m *Manager) clearConversationCore(conversationID, preferKey string) (clear
 			// Pre-minted id with no prompt sent yet — file doesn't exist.
 			// Treat as already-empty: a semantic success with nothing to
 			// wipe. The denial clear above (if any) still applied.
-			utils.LogWithFields(utils.LevelDebug, "session", "clearcore: file not found, treating as already-empty", map[string]any{"run_id": conversationID})
+			utils.LogWithFields(utils.LevelDebug, "session", "clearcore: file not found, treating as already-empty", map[string]any{"conversation_id": conversationID})
 			return res, nil
 		}
-		utils.LogWithFields(utils.LevelInfo, "session", "clearcore: load failed", map[string]any{"run_id": conversationID, "error": err})
+		utils.LogWithFields(utils.LevelInfo, "session", "clearcore: load failed", map[string]any{"conversation_id": conversationID, "error": err})
 		return res, fmt.Errorf("load conversation %q: %w", conversationID, err)
 	}
 
@@ -142,11 +142,11 @@ func (m *Manager) clearConversationCore(conversationID, preferKey string) (clear
 	}
 	conversation.AppendEntry(conv, conversation.EntryCleared, conversation.ClearedData{})
 	if err := conversation.Save(conv, ""); err != nil {
-		utils.LogWithFields(utils.LevelInfo, "session", "clearcore: save failed", map[string]any{"run_id": conversationID, "error": err})
+		utils.LogWithFields(utils.LevelInfo, "session", "clearcore: save failed", map[string]any{"conversation_id": conversationID, "error": err})
 		return res, fmt.Errorf("save conversation %q: %w", conversationID, err)
 	}
 	res.wiped = true
-	utils.LogWithFields(utils.LevelInfo, "session", "clearcore: wiped messages, appended /clear invocation + cleared entry (entries preserved in tree)", map[string]any{"run_id": conversationID, "count": len(conv.Entries), "clear_entry_id": res.clearEntryID, "session_key": res.sessionKey, "denied_cleared": res.deniedCleared})
+	utils.LogWithFields(utils.LevelInfo, "session", "clearcore: wiped messages, appended /clear invocation + cleared entry (entries preserved in tree)", map[string]any{"conversation_id": conversationID, "count": len(conv.Entries), "clear_entry_id": res.clearEntryID, "session_key": res.sessionKey, "denied_cleared": res.deniedCleared})
 	return res, nil
 }
 

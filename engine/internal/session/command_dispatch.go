@@ -154,11 +154,11 @@ func (m *Manager) dispatchClear(s *engineSession, key string) {
 	// session_start re-fire is sequenced correctly relative to the signal.
 	res, err := m.clearConversationCore(s.conversationID, key)
 	if err != nil {
-		utils.LogWithFields(utils.LevelInfo, "session", "clear: core failed", map[string]any{"key": key, "run_id": s.conversationID, "error": err})
+		utils.LogWithFields(utils.LevelInfo, "session", "clear: core failed", map[string]any{"key": key, "conversation_id": s.conversationID, "error": err})
 		m.emitCommandResult(key, "clear", err)
 		return
 	}
-	utils.LogWithFields(utils.LevelInfo, "session", "clear: core done", map[string]any{"key": key, "run_id": s.conversationID, "wiped": res.wiped, "clear_entry_id": res.clearEntryID, "denied_cleared": res.deniedCleared})
+	utils.LogWithFields(utils.LevelInfo, "session", "clear: core done", map[string]any{"key": key, "conversation_id": s.conversationID, "wiped": res.wiped, "clear_entry_id": res.clearEntryID, "denied_cleared": res.deniedCleared})
 
 	// Announce the canonical id of the persisted `/clear` invocation row so
 	// consumers can re-key their optimistic `/clear` entry to it (and a history
@@ -269,7 +269,7 @@ func (m *Manager) dispatchCompact(s *engineSession, key string) {
 		// clobber the first's load-mutate-save cycle.
 		if s.compactInFlight {
 			m.mu.Unlock()
-			utils.LogWithFields(utils.LevelInfo, "session", "compact: rejected — already in flight", map[string]any{"key": key, "run_id": s.conversationID})
+			utils.LogWithFields(utils.LevelInfo, "session", "compact: rejected — already in flight", map[string]any{"key": key, "conversation_id": s.conversationID})
 			m.emit(key, types.EngineEvent{
 				Type:         "engine_command_result",
 				Command:      "compact",
@@ -320,7 +320,7 @@ func (m *Manager) dispatchCompact(s *engineSession, key string) {
 			Model:          model,
 			RequestID:      runID,
 		}
-		utils.LogWithFields(utils.LevelInfo, "session", "compact: launching async compactnow", map[string]any{"key": key, "run_id": convID, "model": model, "run_id_3": runID})
+		utils.LogWithFields(utils.LevelInfo, "session", "compact: launching async compactnow", map[string]any{"key": key, "conversation_id": convID, "model": model, "run_id": runID})
 		go func() {
 			// Cleanup + result invariant. The deferred func always runs: it
 			// emits a failure result on panic (preserving exactly-one-result
@@ -340,7 +340,7 @@ func (m *Manager) dispatchCompact(s *engineSession, key string) {
 				// the consumer can render a friendlier message. ErrNotFound
 				// is wrapped inside CompactNow's load failure; unwrap to test.
 				if errors.Is(err, conversation.ErrNotFound) {
-					utils.LogWithFields(utils.LevelDebug, "session", "compact: conversation not found, treating as empty success", map[string]any{"run_id": convID})
+					utils.LogWithFields(utils.LevelDebug, "session", "compact: conversation not found, treating as empty success", map[string]any{"conversation_id": convID})
 					m.emitCommandResult(key, "compact", nil)
 					return
 				}
@@ -444,11 +444,11 @@ func (m *Manager) dispatchExport(s *engineSession, key, args string) {
 	conv, err := conversation.Load(s.conversationID, "")
 	if err != nil {
 		if errors.Is(err, conversation.ErrNotFound) {
-			utils.LogWithFields(utils.LevelDebug, "session", "export: conversation not found, nothing to export", map[string]any{"run_id": s.conversationID})
+			utils.LogWithFields(utils.LevelDebug, "session", "export: conversation not found, nothing to export", map[string]any{"conversation_id": s.conversationID})
 			m.emitCommandResult(key, "export", nil)
 			return
 		}
-		utils.LogWithFields(utils.LevelInfo, "session", "export: failed to load conversation", map[string]any{"run_id": s.conversationID, "error": err})
+		utils.LogWithFields(utils.LevelInfo, "session", "export: failed to load conversation", map[string]any{"conversation_id": s.conversationID, "error": err})
 		m.emitCommandResult(key, "export", err)
 		return
 	}
