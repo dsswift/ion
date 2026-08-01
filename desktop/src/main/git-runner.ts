@@ -3,13 +3,91 @@ import { existsSync, readdirSync, rmSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { promisify } from 'util'
-import { log as _log } from './logger'
+import { log as _log, warn as _warn } from './logger'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
 }
+function warn(msg: string, fields?: Record<string, unknown>): void {
+  _warn('main', msg, fields)
+}
 
 export const gitExec = promisify(execFileCb)
+
+/**
+ * Global cap on concurrent git subprocesses spawned through `runGit`.
+ *
+ * ── Why a semaphore exists here ─────────────────────────────────────────────
+ * `posix_spawn` runs on the Electron main thread's event loop (libuv), so an
+ * unbounded caller — a poller storm, an inventory crawl over dozens of
+ * worktrees, several windows refreshing at once — saturates the loop with
+ * spawn syscalls and starves IPC and window commands. That is exactly what
+ * froze the overlay: overlapping worktree-inventory crawls piled up until the
+ * main process spent 73% CPU inside uv_spawn and hide/show took minutes.
+ *
+ * The cap turns any future caller storm into an ordered queue that the event
+ * loop drains at a sustainable rate. It is a BACKSTOP: callers are still
+ * expected to coalesce their own work (see worktree/inventory-service.ts); the
+ * semaphore is what keeps the UI alive when one of them fails to.
+ *
+ * Deliberately NOT applied to `gitExec` direct users: those are one-off or
+ * potentially long-running commands (interactive rebase, merge-tree dry runs,
+ * startup cleanup) where holding a shared slot for the duration would starve
+ * the short read probes this queue exists to protect.
+ */
+const MAX_CONCURRENT_GIT = 6
+/** Queue depth at which the backstop starts announcing itself. */
+const QUEUE_WARN_DEPTH = 16
+/** Minimum interval between queue-depth warnings, so a storm logs a heartbeat rather than a flood. */
+const QUEUE_WARN_INTERVAL_MS = 5000
+
+let activeGitSlots = 0
+const gitSlotWaiters: Array<() => void> = []
+let lastQueueWarnAt = 0
+
+async function acquireGitSlot(): Promise<void> {
+  if (activeGitSlots < MAX_CONCURRENT_GIT) {
+    activeGitSlots++
+    return
+  }
+  const depth = gitSlotWaiters.length + 1
+  const now = Date.now()
+  if (depth >= QUEUE_WARN_DEPTH && now - lastQueueWarnAt >= QUEUE_WARN_INTERVAL_MS) {
+    lastQueueWarnAt = now
+    warn('git_runner: spawn queue backed up — a caller is issuing more git than the cap drains', {
+      queued: depth,
+      max_concurrent: MAX_CONCURRENT_GIT,
+    })
+  }
+  await new Promise<void>((resolve) => gitSlotWaiters.push(resolve))
+}
+
+function releaseGitSlot(): void {
+  const next = gitSlotWaiters.shift()
+  // Hand the slot to the next waiter directly rather than decrementing and
+  // re-incrementing, so the count can never transiently over-admit.
+  if (next) next()
+  else activeGitSlots--
+}
+
+/**
+ * Run `fn` while holding one of the shared git-subprocess slots.
+ *
+ * Exported so callers that must spawn git outside `runGit` (a scratch-index
+ * invocation with GIT_INDEX_FILE, see worktree/safety.ts) count against the
+ * same global cap instead of bypassing it.
+ *
+ * `fn` must not itself call `runGit`/`withGitSlot` — a holder awaiting a
+ * second slot while every slot waits on holders is the textbook deadlock.
+ */
+export async function withGitSlot<T>(fn: () => Promise<T>): Promise<T> {
+  await acquireGitSlot()
+  try {
+    return await fn()
+  } finally {
+    releaseGitSlot()
+  }
+}
 
 /**
  * Git subcommands that only read repository state.
@@ -87,11 +165,11 @@ export async function runGit(
   env?: NodeJS.ProcessEnv,
 ): Promise<string> {
   try {
-    const { stdout } = await gitExec('git', withNoOptionalLocks(args), {
+    const { stdout } = await withGitSlot(() => gitExec('git', withNoOptionalLocks(args), {
       cwd: directory,
       maxBuffer: 10 * 1024 * 1024,
       ...(env ? { env } : {}),
-    })
+    }))
     return stdout
   } catch (err: any) {
     throw new Error(err.stderr?.trim() || err.message)

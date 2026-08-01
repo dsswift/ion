@@ -62,8 +62,10 @@ async function loadBuilder() {
   vi.resetModules()
   vi.doMock('../state', () => ({ state: { remoteTransport: null } }))
   vi.doMock('../broadcast', () => ({ broadcast: vi.fn() }))
-  vi.doMock('../worktree/inventory', () => ({
-    inventoryWorktrees: vi.fn(async () => mocks.worktrees),
+  // The handler reads through the caching service, not the raw crawl; mocking
+  // the service keeps each test in control of exactly what the handler sees.
+  vi.doMock('../worktree/inventory-service', () => ({
+    getWorktreeInventory: vi.fn(async () => mocks.worktrees),
   }))
   vi.doMock('../worktree/integrate', () => ({
     syncWorktreeFromSource: vi.fn(), landWorktree: vi.fn(),
@@ -193,7 +195,7 @@ describe('buildWorktreeState — worktrees', () => {
     vi.resetModules()
     vi.doMock('../state', () => ({ state: { remoteTransport: null } }))
     vi.doMock('../broadcast', () => ({ broadcast: vi.fn() }))
-    vi.doMock('../worktree/inventory', () => ({ inventoryWorktrees: vi.fn(async () => mocks.worktrees) }))
+    vi.doMock('../worktree/inventory-service', () => ({ getWorktreeInventory: vi.fn(async () => mocks.worktrees) }))
     vi.doMock('../worktree/integrate', () => ({ syncWorktreeFromSource: vi.fn(), landWorktree: vi.fn() }))
     vi.doMock('../integration/bench-ops', () => ({
       listWorkspaces: vi.fn(() => []), refreshStaleness: vi.fn(), sourceBranchTip: vi.fn(),

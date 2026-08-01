@@ -46,6 +46,7 @@ import { runGit } from '../git-runner'
 import { repositoryManager } from '../git/repositoryManager'
 import { log as _log, warn as _warn } from '../logger'
 import { markWorktreeLanded } from './inventory'
+import { invalidateWorktreeInventoryCache } from './inventory-cache'
 import type { LandResult } from '../../shared/types'
 
 const TAG = 'worktree.land'
@@ -197,6 +198,9 @@ export async function syncWorktreeFromSource(
 
   try {
     await runGit(worktreePath, ['rebase', sourceBranch])
+    // The rebase moved this worktree's HEAD; a cached crawl would keep showing
+    // the pre-sync badge for a TTL after the operator just cleared it.
+    invalidateWorktreeInventoryCache('worktree synced')
     log('sync: done', { worktree_path: worktreePath, source_branch: sourceBranch })
     return { ok: true }
   } catch (err) {

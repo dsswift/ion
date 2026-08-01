@@ -10,20 +10,29 @@
  * mid-operation with no explanation — the checkout was not unmanaged, it was
  * mid-rebase, and the panel had no way to say so.
  *
- * ── Why `--git-path`, not a hardcoded `.git/...` join ───────────────────────
+ * ── Why the `.git` pointer file, not a hardcoded `.git/...` join ────────────
  * `GitRepository.detectMergeState()` probes `<repo>/.git/rebase-merge` etc.,
  * which is correct for a primary checkout only. A WORKTREE's state dirs live
  * under `<repo>/.git/worktrees/<id>/`, and its `.git` is a file pointer, so a
- * path join misses every worktree operation. `git rev-parse --git-path X`
- * resolves per-worktree correctly for both layouts, which is why this module
- * asks git instead of joining paths.
+ * naive path join misses every worktree operation. This module resolves the
+ * real gitdir the same way git itself does — `.git` as a directory IS the
+ * gitdir; `.git` as a file names it via a `gitdir: <path>` line — and joins
+ * state names onto that. The operation markers probed here (`rebase-merge`,
+ * `rebase-apply`, `MERGE_HEAD`, `CHERRY_PICK_HEAD`) all live in the
+ * PER-WORKTREE gitdir, never the shared commondir, so the join is exact for
+ * both layouts.
+ *
+ * This used to shell out to `git rev-parse --git-path <name>` per probe —
+ * correct, but 2–4 subprocess spawns per worktree per inventory crawl, which
+ * multiplied into the spawn storm that froze the overlay. The pointer-file
+ * read answers the same question with zero spawns.
  *
  * All probes are read-only and fail open (state `none` / empty lists): an
  * unreadable probe must degrade to "no operation detected", never block an
  * inventory or invent an operation that is not happening.
  */
-import { readFileSync, existsSync } from 'fs'
-import { isAbsolute, resolve } from 'path'
+import { readFileSync, existsSync, statSync } from 'fs'
+import { isAbsolute, join, resolve } from 'path'
 import { log as _log } from '../logger'
 import { runGit } from '../git-runner'
 import type { GitOperationState } from '../../shared/types'
@@ -48,15 +57,20 @@ export interface OperationProbe {
 }
 
 /**
- * Resolve a git state path for `directory`, absolute.
+ * Resolve the real gitdir for `directory` without spawning git.
  *
- * `--git-path` answers relative to the WORKING TREE for a primary checkout
- * (`.git/rebase-merge`) and absolute for a linked worktree — so a relative
- * answer must be resolved against `directory`, never the process cwd.
+ * A primary checkout's `.git` is the gitdir itself. A linked worktree's `.git`
+ * is a one-line pointer file (`gitdir: <path>`, absolute or relative to the
+ * working tree) — the same record git consults. Null when the directory is not
+ * a git checkout or the pointer is unreadable (fail open).
  */
-async function statePath(directory: string, name: string): Promise<string | null> {
+function resolveGitDir(directory: string): string | null {
+  const dotGit = join(directory, '.git')
   try {
-    const p = (await runGit(directory, ['rev-parse', '--git-path', name])).trim()
+    if (statSync(dotGit).isDirectory()) return dotGit
+    const match = readFileSync(dotGit, 'utf-8').match(/^gitdir:\s*(.+)\s*$/m)
+    if (!match) return null
+    const p = match[1].trim()
     return isAbsolute(p) ? p : resolve(directory, p)
   } catch {
     return null
@@ -64,12 +78,21 @@ async function statePath(directory: string, name: string): Promise<string | null
 }
 
 /**
- * Read a git state file for `directory`, or null when it does not exist.
- * `--git-path` is what makes this worktree-correct.
+ * A git state path for `directory`, absolute, or null when the directory is
+ * not a checkout. Pure path arithmetic — see the module header for why this
+ * is exact for both primary and linked-worktree layouts.
  */
-async function readStateFile(directory: string, name: string): Promise<string | null> {
+function statePath(directory: string, name: string): string | null {
+  const gitDir = resolveGitDir(directory)
+  return gitDir ? join(gitDir, name) : null
+}
+
+/**
+ * Read a git state file for `directory`, or null when it does not exist.
+ */
+function readStateFile(directory: string, name: string): string | null {
   try {
-    const p = await statePath(directory, name)
+    const p = statePath(directory, name)
     if (!p) return null
     return readFileSync(p, 'utf-8').trim()
   } catch {
@@ -80,8 +103,8 @@ async function readStateFile(directory: string, name: string): Promise<string | 
 }
 
 /** True when the state path exists (file or directory). */
-async function stateExists(directory: string, name: string): Promise<boolean> {
-  const p = await statePath(directory, name)
+function stateExists(directory: string, name: string): boolean {
+  const p = statePath(directory, name)
   return p !== null && existsSync(p)
 }
 
@@ -115,13 +138,13 @@ export async function unmergedPaths(directory: string): Promise<string[]> {
  */
 export async function probeOperationState(directory: string): Promise<OperationProbe> {
   // Order matters only for reporting; the states are mutually exclusive in git.
-  if (await stateExists(directory, 'rebase-merge') || await stateExists(directory, 'rebase-apply')) {
+  if (stateExists(directory, 'rebase-merge') || stateExists(directory, 'rebase-apply')) {
     const headName =
-      (await readStateFile(directory, 'rebase-merge/head-name')) ??
-      (await readStateFile(directory, 'rebase-apply/head-name'))
+      readStateFile(directory, 'rebase-merge/head-name') ??
+      readStateFile(directory, 'rebase-apply/head-name')
     const onto =
-      (await readStateFile(directory, 'rebase-merge/onto')) ??
-      (await readStateFile(directory, 'rebase-apply/onto'))
+      readStateFile(directory, 'rebase-merge/onto') ??
+      readStateFile(directory, 'rebase-apply/onto')
     const branch = headName?.replace(/^refs\/heads\//, '')
     const conflictedPaths = await unmergedPaths(directory)
     log('operation detected', {
@@ -133,13 +156,13 @@ export async function probeOperationState(directory: string): Promise<OperationP
     return { state: 'rebasing', branch, onto: onto?.slice(0, 7), conflictedPaths }
   }
 
-  if (await stateExists(directory, 'MERGE_HEAD')) {
+  if (stateExists(directory, 'MERGE_HEAD')) {
     const conflictedPaths = await unmergedPaths(directory)
     log('operation detected', { directory, state: 'merging', conflicted: conflictedPaths.length })
     return { state: 'merging', conflictedPaths }
   }
 
-  if (await stateExists(directory, 'CHERRY_PICK_HEAD')) {
+  if (stateExists(directory, 'CHERRY_PICK_HEAD')) {
     const conflictedPaths = await unmergedPaths(directory)
     log('operation detected', { directory, state: 'cherry-picking', conflicted: conflictedPaths.length })
     return { state: 'cherry-picking', conflictedPaths }

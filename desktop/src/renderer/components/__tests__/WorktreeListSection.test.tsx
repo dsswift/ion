@@ -321,26 +321,59 @@ describe('WorktreeListSection — polls while open', () => {
   // committing in a worktree, a land elsewhere), and none of those paths bump
   // `refreshKey` — so without a poll the dirty dots and unlanded counts sit
   // stale until the operator touches the panel.
-  it('refreshes inventory and bench on an interval, and stops on unmount', () => {
+  it('refreshes inventory and bench on an interval, and stops on unmount', async () => {
     vi.useFakeTimers()
     try {
       render()
+      // Let the mount refresh settle: each tick only fires when the previous
+      // flight has resolved (see the single-flight test below), so the
+      // interval assertions must flush microtasks between advances.
+      await act(async () => {})
       const baseInventory = (storeState.refreshWorktreeInventory as ReturnType<typeof vi.fn>).mock.calls.length
       const baseBench = (storeState.refreshBench as ReturnType<typeof vi.fn>).mock.calls.length
 
-      act(() => { vi.advanceTimersByTime(5000) })
+      await act(async () => { vi.advanceTimersByTime(5000) })
       expect(storeState.refreshWorktreeInventory).toHaveBeenCalledTimes(baseInventory + 1)
       expect(storeState.refreshBench).toHaveBeenCalledTimes(baseBench + 1)
 
-      act(() => { vi.advanceTimersByTime(10000) })
+      await act(async () => { vi.advanceTimersByTime(5000) })
+      await act(async () => { vi.advanceTimersByTime(5000) })
       expect(storeState.refreshWorktreeInventory).toHaveBeenCalledTimes(baseInventory + 3)
 
       // Unmount stops the poll: a closed panel must not scan git forever.
       h.teardown()
       h.setup()
       const afterUnmount = (storeState.refreshWorktreeInventory as ReturnType<typeof vi.fn>).mock.calls.length
-      act(() => { vi.advanceTimersByTime(15000) })
+      await act(async () => { vi.advanceTimersByTime(15000) })
       expect(storeState.refreshWorktreeInventory).toHaveBeenCalledTimes(afterUnmount)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // The spawn-storm regression: a tick used to start another full crawl while
+  // the previous one was still running, and under load the overlap compounded
+  // every 5s until the main process froze. A tick that fires mid-flight must
+  // be DROPPED, and the poll must resume once the slow fetch settles.
+  it('drops interval ticks while a refresh is still in flight', async () => {
+    vi.useFakeTimers()
+    try {
+      let releaseFirst!: () => void
+      const inventoryMock = storeState.refreshWorktreeInventory as ReturnType<typeof vi.fn>
+      inventoryMock.mockImplementationOnce(
+        () => new Promise<void>((resolve) => { releaseFirst = resolve }),
+      )
+      render()
+      expect(inventoryMock).toHaveBeenCalledTimes(1)
+
+      // Three poll periods pass while the first fetch hangs: no new calls.
+      await act(async () => { vi.advanceTimersByTime(15000) })
+      expect(inventoryMock).toHaveBeenCalledTimes(1)
+
+      // The slow fetch settles; the next tick polls again.
+      await act(async () => { releaseFirst() })
+      await act(async () => { vi.advanceTimersByTime(5000) })
+      expect(inventoryMock).toHaveBeenCalledTimes(2)
     } finally {
       vi.useRealTimers()
     }

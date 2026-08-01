@@ -14,7 +14,7 @@
 import { state } from '../../state'
 import { broadcast } from '../../broadcast'
 import { log as _log, warn as _warn } from '../../logger'
-import { inventoryWorktrees } from '../../worktree/inventory'
+import { getWorktreeInventory } from '../../worktree/inventory-service'
 import { syncWorktreeFromSource, landWorktree } from '../../worktree/integrate'
 import {
   listWorkspaces, assembleWorkspace, updateMember, updateAllStale,
@@ -105,7 +105,9 @@ function projectMembership(
  */
 export async function buildWorktreeState(repoPath: string): Promise<RemoteWorktreeState> {
   const { tabs, openIn } = await readTabsForProjection()
-  const inventory = await inventoryWorktrees(repoPath)
+  // Through the service so an iOS refresh rides the same cached crawl the
+  // desktop panels just ran instead of starting a competing one.
+  const inventory = await getWorktreeInventory(repoPath)
 
   // Staleness is refreshed BEFORE the join so the memberships attached below are
   // the current ones, not the values from the last build.

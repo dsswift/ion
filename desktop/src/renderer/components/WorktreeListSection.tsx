@@ -15,6 +15,7 @@
  * The bench is visible AS an ordered stack of worktrees, which is what it is.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { singleFlight } from '../utils/single-flight'
 import { Plus } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
@@ -74,11 +75,23 @@ export function WorktreeListSection({
   const [benchConflict, setBenchConflict] = useState<{ member: IntegrationMember; sourceBranch: string } | null>(null)
   const [selectedBench, setSelectedBench] = useState<string | null>(null)
 
-  const refresh = useCallback(() => {
+  // One refresh in flight at a time (see singleFlight). Without this, a tick
+  // that fires while the previous fetch is still running queues another full
+  // crawl behind it — under load that compounds every 5s and is exactly how
+  // overlapping inventory crawls once piled up until the main process froze
+  // (the main-process service coalesces too; this stops the redundant IPC at
+  // the source). A trigger that lands mid-flight is dropped, not deferred:
+  // the next interval tick re-reads at most 5s later, the same staleness
+  // bound the poll already accepts.
+  const refresh = useMemo(() => singleFlight(() => {
     const store = useSessionStore.getState()
-    void store.refreshWorktreeInventory(repoPath)
-    void store.refreshBench(repoPath)
-  }, [repoPath])
+    // allSettled: both refresh actions log their own failures; the flight
+    // must settle no matter how they end, or the panel never refreshes again.
+    return Promise.allSettled([
+      store.refreshWorktreeInventory(repoPath),
+      store.refreshBench(repoPath),
+    ])
+  }), [repoPath])
 
   // Refresh on mount, on directory change, and whenever the panel's git state
   // moves (a land, commit, or branch change alters pins and staleness).
