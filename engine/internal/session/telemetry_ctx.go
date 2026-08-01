@@ -48,3 +48,30 @@ func correlationCtxExt(sessionKey, conversationID, extName, extVersion string) m
 	}
 	return ctx
 }
+
+// withRunCorrelation stamps the run-scoped identifiers onto a correlation
+// context built by correlationCtx / correlationCtxExt.
+//
+// run_id and trace_id are both run-scoped, so they belong on events emitted
+// for a specific run (run.complete, cache.savings) and must be absent from
+// events that are not (extension load/unload, session lifecycle). Both are
+// omit-when-empty: a caller that has no run in flight passes "" and the key
+// simply does not appear, which is the honest encoding of "no transaction was
+// active" rather than a zero value a consumer would have to special-case.
+//
+// trace_id here is the same value the run's log lines carry (the session mints
+// it in SendPrompt and threads it onto the run context), so a telemetry event
+// joins the surrounding log narrative on one identifier. See
+// docs/observability/log-schema.md § Correlation-ID vocabulary.
+func withRunCorrelation(ctx map[string]any, runID, traceID string) map[string]any {
+	if ctx == nil {
+		return nil
+	}
+	if runID != "" {
+		ctx["run_id"] = runID
+	}
+	if traceID != "" {
+		ctx["trace_id"] = traceID
+	}
+	return ctx
+}

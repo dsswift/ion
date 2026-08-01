@@ -33,17 +33,23 @@ import (
 //     Present only for extension-hosted runs; absent for direct API runs.
 //   - extension_version: the hosting extension's manifest version,
 //     omit-when-empty. Present only when the manifest declares a version.
-//
-// trace_id is intentionally omitted here: activeRun does not retain its goroutine
-// context, and the OtelBridge reconstructs a stable per-session trace ID from
-// session_id, so a run-level event still correlates with the rest of its
-// session's spans.
+//   - trace_id: the run's W3C trace-context trace-id, read from the run's
+//     context (the session layer threads it onto RunOptions.ParentCtx when it
+//     mints the run). Omit-when-empty so a run dispatched without one — the
+//     direct API-backend path, which has no session layer — is unaffected.
+//     Same value the run's log lines carry, so a telemetry event and the log
+//     narrative around it join on one identifier.
 func buildTelemCtx(run *activeRun) map[string]any {
 	if run == nil {
 		return nil
 	}
 	ctx := map[string]any{
 		"run_id": run.requestID,
+	}
+	if run.opts != nil && run.opts.ParentCtx != nil {
+		if traceID := utils.TraceIDFromContext(run.opts.ParentCtx); traceID != "" {
+			ctx["trace_id"] = traceID
+		}
 	}
 	if run.conv != nil {
 		// session_id = engine session key (opts.SessionKey, the client-supplied

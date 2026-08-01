@@ -1,7 +1,6 @@
 package session
 
 import (
-
 	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/telemetry"
 	"github.com/dsswift/ion/engine/internal/types"
@@ -27,7 +26,11 @@ import (
 // and the billed cost agree on the same per-model cache-read rate.
 //
 // Nil-safe on telem. Emits nothing when there were no cache tokens.
-func emitCacheSavings(telem *telemetry.Collector, model string, usage types.UsageData, key, conversationID, extName, extVersion string) {
+//
+// runID / traceID identify the run this saving was realized on; both are
+// omit-when-empty (see withRunCorrelation), so a caller with no run in flight
+// simply produces an event without them.
+func emitCacheSavings(telem *telemetry.Collector, model string, usage types.UsageData, key, conversationID, extName, extVersion, runID, traceID string) {
 	if telem == nil {
 		return
 	}
@@ -67,6 +70,6 @@ func emitCacheSavings(telem *telemetry.Collector, model string, usage types.Usag
 		"cache_read_price_per_1k": cacheReadPricePer1k,
 		"savings_usd":             savingsUsd,
 		"pricing_source":          pricingSource,
-	}, correlationCtxExt(key, conversationID, extName, extVersion))
+	}, withRunCorrelation(correlationCtxExt(key, conversationID, extName, extVersion), runID, traceID))
 	utils.LogWithFields(utils.LevelDebug, "session", "cache.savings telemetry emitted", map[string]any{"key": key, "model": model, "cache_read_tokens": cacheReadTokens, "savings_usd": savingsUsd})
 }
