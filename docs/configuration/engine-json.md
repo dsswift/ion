@@ -445,6 +445,7 @@ Context window compaction controls how the engine manages conversation length. T
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `redactSecrets` | bool | `false` | When enabled, the engine scans tool output for secrets and redacts them before returning to the model. |
+| `workspaceContainment` | bool | enabled when absent | Baseline worktree/bench containment, checked in the tool loop: a conversation whose working directory is a registered worktree may not write into the base repository it was cut from or into a sibling worktree, and an integration bench refuses file writes and git history commands. Absent or `null` means enabled — this is a safety default, so only an explicit `false` disables it. |
 
 ## relay
 

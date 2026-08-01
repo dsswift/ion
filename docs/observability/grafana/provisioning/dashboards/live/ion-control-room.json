@@ -451,7 +451,7 @@
     {
       "id": 7,
       "type": "stat",
-      "title": "ion-meta",
+      "title": "extensions",
       "gridPos": {
         "h": 4,
         "w": 4,
@@ -537,7 +537,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(count_over_time({component=\"extension\", tag=\"ion-meta\"}[5m]))",
+          "expr": "sum(count_over_time({component=\"extension\"}[5m]))",
           "queryType": "instant",
           "refId": "A",
           "__ionClass": "accumulation",

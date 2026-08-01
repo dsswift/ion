@@ -30,11 +30,13 @@ without landing anything.
 |---|---|
 | **member worktree** | A `wt/…` worktree where a feature is being built. |
 | **source branch** | The feature branch worktrees are cut from and land into (`josh`, `beta`, …). Never the trunk. |
-| **bench** / integration workspace | A rebuildable worktree holding the source branch plus selected members, for combined testing. |
-| **bench branch** | `ion/bench/<slug>` — recreated from scratch on every rebuild. |
+| **bench** / integration workspace | A reassemblable worktree holding the source branch plus selected members, for combined testing. |
+| **bench branch** | `ion/bench/<slug>` — recreated from scratch on every assembly. |
 | **member** | A worktree enrolled in a bench. |
 | **pin** | The exact commit of a member that is currently integrated. |
-| **stale (member)** | The worktree has committed work newer than its pin. |
+| **behind (member)** | The worktree has committed work newer than its pin. |
+| **excluded (member)** | Enrolled in the bench but skipped in the merge. Independent of whether it is behind. |
+| **review verdict** | Your judgement on a member's *current pin*. Cleared automatically when the pin advances. |
 | **stale (base)** | The source branch has moved ahead of where a worktree was cut from. |
 | **land** | Integrate a worktree's work into the source branch. |
 | **retire** | Remove a worktree, keeping the conversation. |
@@ -63,7 +65,29 @@ tree out from under a running build.
 
 **Closing a tab never destroys a worktree.** Close is safe and reversible. If
 the worktree still holds uncommitted or unlanded work you are told so, and told
-where to find it. To get back in, open the Worktrees list and click the row.
+where to find it. To get back in, open the Worktrees list and click the row (or
+its speech-bubble control). If nothing is open on that worktree a conversation
+is created; if something is, you are taken to it — and when several
+conversations live in one worktree, clicking again moves to the next, so none of
+them is stranded.
+
+### Reviewing what the bench holds
+
+Each bench member carries an optional verdict on its **current pin**: a check for
+reviewed-good, a bug for a problem found. The pair sits on the lower line of the
+row, under the gutter, so it is present and clickable on every member regardless
+of what else the row is reporting. Clicking the verdict already set clears it.
+
+Two properties make this trustworthy rather than decorative:
+
+- **Unreviewed is visible.** The buttons render greyed rather than hidden, so
+  "nobody has looked at this" is a state you can see while scanning, not an
+  absence you have to infer. They are also the *only* indicator of the verdict —
+  the row's state slot deliberately does not repeat it, because a second mark per
+  reviewed row is what makes a list of them hard to read.
+- **A verdict belongs to a contribution, not a worktree.** Advancing the pin
+  (Update, or Update all) clears it, because the reviewed content is gone. An
+  Update that finds nothing new keeps it — the reviewed thing has not changed.
 
 ## Two directions of staleness
 
@@ -72,8 +96,20 @@ make both meaningless.
 
 | Signal | Meaning | Fix |
 |---|---|---|
-| **Member stale** | The worktree committed work newer than the bench holds. | **Update** the member. |
+| **Member behind** | The worktree committed work newer than the bench holds. | **Update** the member. |
 | **Base stale** | The source branch moved ahead of the worktree. | **Sync** the worktree. |
+
+**When both are true, sync first.** A sync is a rebase, so it rewrites every
+commit in the worktree — any pin taken beforehand is stale the moment the sync
+lands, it costs a bench assembly to take, and in the window between the two it
+publishes pre-rebase content to anyone who reassembles the bench.
+
+Both clients enforce the same order. The base-moved control ranks above the
+update-pin control and stays there even when the worktree is dirty and the sync
+cannot run yet: it renders disabled with the reason on hover, rather than
+reordering itself around a fact you may not have noticed. On iOS the pin badge is
+suppressed while a sync is pending and **Update pin** is disabled in the row
+menu, for the same reason. Clean the worktree, sync, then update the pin.
 
 Base staleness fires constantly in parallel work: every land by another worktree
 advances the source branch, as does a teammate's push or a direct commit to it.
@@ -89,16 +125,32 @@ can clear teaches you to ignore every badge.
 
 ### Enrolling — the bench appears when you need it
 
-There is no "create a bench" step. Open a worktree's row menu in the Worktrees
-section and choose **Add to integration bench**: the bench is created on that
-first enrollment. Creating it writes a record, not a directory — the bench
-worktree itself is materialised by the first rebuild — so there is nothing to
-commit to and nothing to choose.
+There is no "create a bench" step, and no separate list to manage. Click the
+diamond at the start of a worktree's row — or use **Add to integration bench**
+in its row menu — and the bench is created on that first enrollment. Creating it
+writes a record, not a directory (the bench worktree is materialised by the
+first assembly), so there is nothing to commit to and nothing to choose.
 
 Which bench a worktree joins is fully determined by its repo and source branch,
-so there is no picker. Once a bench exists you can also add further members from
-the Integration section's **Add worktree to bench**, which offers only worktrees
-cut from that bench's source branch.
+so there is no picker.
+
+The diamond has three readings, and the middle one matters:
+
+| Diamond | Meaning |
+|---|---|
+| hollow, grey | Not in the bench. |
+| solid, accent | In the bench and merged. |
+| accent with a slash | In the bench but **excluded** from the merge. |
+
+An excluded diamond keeps the bench's colour on purpose: it *is* a member, just
+one the merge currently skips. Only the grey hollow diamond means "not a
+member".
+
+Excluding is how you bisect a broken build without dismantling the member set:
+⌥click the diamond to flip include/exclude, and a plain click to leave the bench
+entirely. An excluded member keeps its pin, so it still tells you whether the
+worktree has moved on since — re-including it will not silently merge stale
+work.
 
 Each bench is keyed by `(repo, source branch)`, so different projects and
 different feature branches always get separate benches. They cannot blend.
@@ -132,36 +184,86 @@ nowhere in history — unreproducible, unreviewable, unlandable, and if the buil
 fails there is no commit to point at. Committing is how you declare a unit of
 work coherent, and that is exactly the judgement the bench needs.
 
-### Nothing rebuilds on its own
+### Nothing assembles on its own
 
-The bench never changes until you say so. Members go **stale** when their
+The bench never changes until you say so. Members go **behind** when their
 worktree commits new work; the bench itself does not move. This is deliberate:
-a change may need two commits to build, and a rebuild firing between them would
+a change may need two commits to build, and an assembly firing between them would
 put a broken state in the bench that is nobody's real state.
 
-- **Update** (per member) — advance that member's pin and rebuild.
-- **Update all & rebuild** — advance every stale member at once.
-- **Rebuild** — re-merge the existing pins. Advances nothing, so it is always
+- **Update** (per member) — advance that member's pin and assemble. When the
+  new pin will collide with another member, the update proceeds and a warning
+  names the files — warn, never gate.
+- **Update all & assemble** — advance every member that is behind, at once.
+- **Assemble** — re-merge the existing pins. Advances nothing, so it is always
   safe to press.
 
-The pin is why this works. Rebuilding to pick up member A cannot drag in member
+The pin is why this works. Reassembling to pick up member A cannot drag in member
 B's half-finished pair, because B stays at the commit it was pinned to.
+
+### Assembly is all-or-nothing, and a conflict is resolved once
+
+The bench presents the exact enrolled combination or nothing. When a member's
+contribution will not merge, the whole assembly fails and the bench is wiped to
+an empty tree — a terminal opened there finds nothing to falsely test, instead
+of a partial combination that silently omits one member's work. The bench bar
+says `assembly failed` and names the collision; the member's row badge opens a
+dialog listing the conflicting files and which member they collide with.
+
+Two ways out, both in that dialog:
+
+- **Resolve once.** The machinery re-creates the failed merge in the bench and
+  leaves it open; the normal conflict resolver (accept a side, 3-way merge,
+  AI Assisted) finishes it. Completing the merge records the resolution
+  (`git rerere`, stored in the main repo — wiping the bench cannot lose it),
+  and every later assembly replays it automatically. You resolve a given
+  collision exactly once; it only asks again if either side's conflicting
+  lines genuinely change.
+- **Open the member worktree.** The durable fix: rework the collision where it
+  can be committed, then Update that member and reassemble.
+
+Excluding the conflicted member also works — that is the explicit,
+partial-on-purpose subset the exclude toggle exists for.
 
 ### Testing in the bench
 
-Click **Open conversation** in the Integration header to start a conversation in
-the bench directory. Run the build, run tests, ask an agent to diagnose a
-cross-feature failure — it can see all the members at once, which is the whole
-reason the bench exists.
+**Open terminal** gives you a shell in the bench — build, run development
+tools, test the combined result. It is one dedicated tab per bench: press it
+again from anywhere and you return to the same tab and the same scrollback,
+rather than accumulating identical shells. Use the `+` in the terminal strip
+to run several commands side by side inside that one tab — a build in one, a
+test watcher in another. Closing the tab is a complete reset; the next press
+opens a fresh one.
+
+The button builds the bench first if its directory is not there — on a bench
+you have never built, and on one whose directory was removed outside Ion.
+
+A shell is deliberately the only way in. Conversations are not offered in a
+bench: a conversation invites development work, and anything written in a
+bench is destroyed by the next assembly. The conversation about fixing a
+failure belongs in the member worktree that owns the file — the fix lands
+there, the bench rebuilds with it. The one exception is machine-created: the
+AI-assisted conflict-resolution flow opens a conversation in the bench to
+complete an in-progress resolution merge, and that conversation is
+input-locked — it accepts no follow-up prompts, so it cannot grow into
+development work.
 
 The bench refuses any git command that writes history — `commit`, `push`,
 `pull`, `merge`, `rebase`, `cherry-pick`, `revert`, `reset`, `stash`, `tag`, and
 branch mutation — both from the git panel and from agents. A commit there would
-be destroyed by the next rebuild, and a push would publish a synthetic merge of
+be destroyed by the next assembly, and a push would publish a synthetic merge of
 other people's in-flight work. Reading, building, testing, and staging all stay
 available, so reviewing a diff or running a build in the bench works normally.
 When you find a fix, apply it in the **member worktree that owns the file**,
 commit it there, then Update that member.
+
+That applies to the terminal as much as to an agent: an assembly recreates the
+bench branch from the feature branch plus each member's pinned commit, so
+anything you commit in the bench shell is destroyed the next time the bench
+builds. The shell is for running things, not for recording them.
+
+Both verbs are on the phone too, in the bench header on the Worktrees screen,
+labelled "Go to conversation" / "Go to terminal" once something is already open.
 
 ### When a member breaks the build
 
@@ -175,7 +277,7 @@ of the bench still builds. A bad member never costs you the working bench.
 ### After a land
 
 When a member's work lands into the source branch it becomes part of the bench's
-base permanently. The bench rebuilds from the source tip, so the work arrives
+base permanently. The bench reassembles from the source tip, so the work arrives
 with the base and the member is retired from the list. Nothing is lost: the
 content is in the feature branch, which is where a pull request into the trunk
 reads from.
@@ -190,11 +292,11 @@ landing, and even after **Land & retire** deletes the branch.
 3. Both rack up commits. Members show **stale**; the bench stays put.
 4. Worktree 1 is done. Squash its commits into one tight commit.
 5. **Land** it into `josh`. `josh` is now one commit ahead of `main`.
-6. Rebuild. Worktree 1 is absorbed into the base and retired; only worktree 2 is
+6. Assemble. Worktree 1 is absorbed into the base and retired; only worktree 2 is
    layered on top. The bench content is unchanged — worktree 1's work now comes
    from the base instead of a merge.
 7. Worktree 2 keeps iterating. Sync it so it develops against the updated `josh`.
-8. When it is ready: squash, land, rebuild. The bench equals `josh`.
+8. When it is ready: squash, land, assemble. The bench equals `josh`.
 9. Open a pull request from `josh` into `main`.
 
 ## Reading member status
@@ -203,7 +305,7 @@ landing, and even after **Land & retire** deletes the branch.
 |---|---|---|
 | `@9c2b17e` | Integrated at that commit. | — |
 | `@9c2b17e · stale` | Worktree has newer commits. | Update. |
-| `conflict` | Could not merge; skipped. | Resolve the collision, then Update. |
+| `conflict` | Could not merge; the assembly failed and the bench is empty. | Resolve once (recorded and replayed), rework in the member worktree, or exclude the member. |
 | `missing` | Branch or worktree is gone. | Remove from the bench. |
 | `excluded` | Disabled by you. | Re-check it. |
 
@@ -216,15 +318,20 @@ landing, and even after **Land & retire** deletes the branch.
 | Land refused: cannot fast-forward | Source branch moved on. | Sync the worktree, then land. |
 | Sync refused | The worktree is dirty. Your changes are untouched. | Commit or stash, then sync. |
 | The bench "didn't pick up my work" | Integration is manual. | Update the member. |
-| No bench exists yet | Benches appear on first enrollment. | Worktrees row menu → Add to integration bench. |
+| No bench exists yet | Benches appear on first enrollment. | Click the diamond at the start of a worktree row. |
 | A bench vanished | Its last member was retired, so it was pruned. | Enroll a worktree; it comes back. |
-| A member shows `stale` and Update changes nothing | You amended or reworded — same content, new sha. | Nothing to do; the badge clears on the next evaluation. |
-| Rebuild refused | The bench tree is dirty or a bench conversation is running. | Discard the bench edits or export them to the member. |
+| A member shows `behind` and Update changes nothing | You amended or reworded — same content, new sha. | Nothing to do; the badge clears on the next evaluation. |
+| The header says fewer are "building" than have diamonds | Excluded members are enrolled but skipped, so they are not in the build. | Expected. The badge reports the size of the build; hover it for the excluded count. |
+| A worktree I just landed is still at the top of the list | Fixed. Landedness now outranks bench membership: a member whose work reached the source branch sinks even before the next assembly retires it. | Nothing to do. |
+| A worktree I have never committed in is not under Landed | Correct: landed means work *reached the source branch*. An empty worktree has shipped nothing. | Nothing to do. It joins the band the first time you land from it. |
+| A worktree I landed long ago is not under Landed | Landing is recorded when the land verb runs, and yours predates that. It cannot be recovered afterwards — git cannot tell "never started" from "landed". | Nothing to do; it will show as active until you retire it. |
+| A row shows both `excluded` and `behind` | Both are true: it is skipped in the merge AND holds newer work than its pin. | Expected. Re-including it will merge the old pin until you Update. |
+| Assemble refused | The bench tree is dirty or a bench conversation is running. | Discard the bench edits or export them to the member. |
 | A worktree is missing from the list | It was created outside Ion. | It still appears, but with "source unknown" — land and sync are disabled because Ion cannot know what it was cut from. |
 | Two benches for one repo | You integrate into two source branches. | Expected; each branch gets its own. |
-| Bench build is slow | The first build after creating a bench is cold. | Later rebuilds are incremental — ignored build output is preserved. |
-| The bench directory was deleted | Removed outside Ion. | It self-heals on the next rebuild. |
-| An edit in the bench was refused | Edits there are destroyed by the next rebuild. | The refusal names the member worktree that owns the file — edit and commit there, then Update that member. |
+| Bench build is slow | The first build after creating a bench is cold. | Later assemblies are incremental — ignored build output is preserved. |
+| The bench directory was deleted | Removed outside Ion. | It self-heals on the next assembly. |
+| An edit in the bench was refused | Edits there are destroyed by the next assembly. | The refusal names the member worktree that owns the file — edit and commit there, then Update that member. |
 | The refusal listed several members | More than one member changes that file, so no single owner is the honest answer. | Pick the member whose listed line ranges cover the region you are editing. |
 | The bench panel has no Changes or Graph | Deliberate: a bench must hold no uncommitted changes, and its history is synthetic. | Use the member worktrees for both. |
 | A new worktree has no `node_modules` | The repo has no `.ion/worktree.json`, or the seed entry is missing. | Add the manifest; existing worktrees get it via Re-provision. |
@@ -303,18 +410,51 @@ the Re-provision verb.
 | Path | Contents | If deleted |
 |---|---|---|
 | `~/.ion/worktrees/` | Member worktrees. | Real work — do not delete by hand. |
-| `~/.ion/integration/<repo>-<slug>/` | Bench worktrees. | Recreated on the next rebuild. |
+| `~/.ion/integration/<repo>-<slug>/` | Bench worktrees. | Recreated on the next assembly. |
 | `~/.ion/integration-workspaces.json` | Member sets and pins. | Loses the member set only, never code. |
 | `~/.ion/worktree-registry.json` | Which branch each worktree was cut from. | Land/sync fall back to "source unknown". |
 | `refs/ion/discarded/…` | Work preserved before a forced discard. | Recover with a normal checkout. |
 
 ## Where the controls are
 
-**Desktop** — the git panel carries a **Worktrees** section (list, re-entry,
-per-row sync/land/retire) and an **Integration** section (bench header with
-Open conversation / Rebuild, member rows with pins and status). Land verbs are
-also on the tab context menu, and worktrees and benches appear in the new-tab
-directory picker.
+**Desktop** — the git panel carries **one** Worktrees section listing every
+worktree once, whether or not it is in a bench. The list is identical from a
+worktree conversation and from a bench conversation: opening the panel inside a
+bench resolves the owning repo through the bench record, so it shows that repo's
+worktrees with their real memberships and merge order rather than the bench's own
+raw checkout set. Enrolled worktrees sort to the
+top under the bench bar (bench branch, base drift, build age, Open terminal,
+Assemble), joined by a rail that numbers them in merge order; drag a
+row within that group to reorder the merge, or use **Move earlier / later** in the
+row menu.
+
+Every per-row control — the bench diamond, the activity dot, the dirty marker,
+the unlanded count, the state indicator — sits in a fixed-width gutter at the
+START of the row, with the worktree name trailing and ellipsising.
+
+The **activity dot** is the aggregate status of the conversations living in that
+worktree, in the same colour vocabulary the tab and group pills use: it pulses
+while something is running, shows the waiting colour when a conversation is
+blocked on background work, greys when everything is idle, and renders as a
+hollow ring when no conversation is open there at all. The **dirty marker** is a
+small red `!` beside it — the `git status` convention, which is what lets it use
+the danger hue without reading as a failure. They are two facts and two
+indicators; the dot used to try to be both, in green, which said "success" about
+a worktree full of unsaved work. Clicking a row opens its
+conversation, or cycles when several are open; **right-click** anywhere on the
+row for its menu, where **New conversation here** creates an additional one.
+
+The gutter deliberately carries no conversation button and no `⋯` button. The
+first duplicated the row click while wearing the same glyph as the bench bar's
+Open-conversation button; the second duplicated right-click. Both spent
+permanently reserved width that the worktree name needs. A second gutter column on the row's lower line carries the **review
+verdict** pair for bench members (see below). No name length can push a control out of reach, and every name and
+control lines up down the list. The section fills its pane, so its scrollbar
+sits at the pane's bottom edge rather than floating above dead space. Drag the
+panel's top edge to make it taller for the current session.
+
+Land verbs are also on the tab context menu, and worktrees and benches appear in
+the new-tab directory picker.
 
 **ATV** — the side dock has a Worktrees tab mounting the same two sections.
 

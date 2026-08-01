@@ -292,7 +292,7 @@ Or scoped to one component:
 
 **One extension** — all logs from a specific extension:
 ```logql
-{component="extension", tag="ion-meta"}
+{component="extension", tag="my-extension"}
 ```
 
 **Trace correlation** — all logs sharing a trace_id found in Tempo:

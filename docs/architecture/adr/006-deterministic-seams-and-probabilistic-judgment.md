@@ -23,7 +23,7 @@ shape — decides what each seam means. The engine itself ships no policy
 produce the user-visible product.
 
 There is a recurring authoring question across every harness we have built
-(ion-meta, chief-of-staff, ion-canary, the desktop, Chris's mixed Python/TS
+(private harnesses, ion-canary, the desktop, mixed Python/TS
 Jarvis harness, the routines-daemon, the geek-tech-live agentHarness): for
 any given behavior, **should this be code or should this be the LLM?**
 
@@ -69,14 +69,15 @@ within the space the deterministic gates allow.
 
 ### Worked examples
 
-**Example 1 — ion-meta's git-gate.** The `extension-improver` and
-`extension-builder` agents have `Edit` and `Write` tools. The user may
-ask them to "edit my file at /tmp/foo.ts." Should the harness allow this?
+**Example 1 — a harness git-gate.** A code-improver harness has `Edit`
+and `Write` tools. The user may ask it to "edit my file at /tmp/foo.ts."
+Should the harness allow this?
 
 - Deterministic part: the harness registers a `tool_call` hook that walks
   up from `file_path` looking for `.git/`. If none is found, the call is
   blocked with `{ block: true, reason: "..." }`. The reason explains
-  exactly why and offers three remediations.
+  exactly why and offers remediations — an edit outside a git working
+  tree has no `git diff` to review and no `git checkout` to back out.
 - Probabilistic part: the LLM decides *what* edit to make, *which* file
   to target, and *how* to phrase the refusal back to the user when the
   gate fires.
@@ -160,32 +161,22 @@ it wants the LLM with hooks for the bright-line cases at the edges.
 - **Cross-link with ADR-001.** ADR-001 answers "engine or harness?";
   ADR-006 answers "within the harness, code or LLM?". Most harness
   design questions resolve to one of these two framings. When a user
-  asks ion-meta "how should I structure this?", the right teaching move
-  is to identify which framing applies and cite the relevant ADR.
+  asks "how should I structure this?", the right teaching move is to
+  identify which framing applies and cite the relevant ADR.
 
 ## Implementation notes
 
-- The canonical example landed first in ion-meta itself: the git-gate
-  in `engine/extensions/ion-meta/git-gate.ts` and its `tool_call` hook
-  wiring in `engine/extensions/ion-meta/index.ts`. The agents
-  (`extension-improver`, `extension-builder`) make probabilistic
-  decisions; the gate makes the deterministic ruling about whether the
-  target is safe to edit at all.
-
-- ion-meta's `ion-tutor` agent persona references this ADR explicitly:
-  when users ask "where should this logic live?" questions, the tutor
-  cites ADR-001 (engine vs harness) and/or ADR-006 (deterministic code
-  vs LLM) rather than answering the surface question.
-
-- The principle is also embedded in ion-meta's persona generator
-  (`engine/extensions/ion-meta/persona.ts`, `sectionDeterministicSeams()`)
-  so every dispatched ion-meta agent carries the framing without having
-  to re-derive it.
+- The canonical engine-side example is workspace containment
+  (`engine/internal/workspaces`, checked in the tool loop beside the
+  permission engine): the LLM makes the probabilistic decisions about
+  what to edit; the containment makes the deterministic ruling about
+  whether the target may be written at all. Harness-side, any extension
+  can register the same shape of ruling through the `tool_call` hook —
+  the gate decides, the model works within what the gate allows.
 
 ## References
 
 - [ADR-001: Engine vs Harness Delegation](./001-engine-vs-harness.md)
 - [Agent state snapshot contract](../agent-state.md)
 - [Hook reference](../../hooks/reference.md)
-- ion-meta git-gate: `engine/extensions/ion-meta/git-gate.ts`
-- ion-meta persona generator: `engine/extensions/ion-meta/persona.ts`
+- Workspace containment: `engine/internal/workspaces`

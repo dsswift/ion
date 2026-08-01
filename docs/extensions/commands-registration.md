@@ -134,6 +134,6 @@ The extension responds with null:
 
 ## Naming conventions
 
-- Use lowercase kebab-case for command names (e.g., `deploy`, `run-tests`, `ion-meta`)
+- Use lowercase kebab-case for command names (e.g., `deploy`, `run-tests`, `my-extension`)
 - Keep names short. Users type them manually.
 - The description is shown in command listings and help text.

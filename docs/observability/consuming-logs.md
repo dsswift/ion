@@ -191,7 +191,7 @@ jq -c 'select(.level=="ERROR")' ~/.ion/*.jsonl
 One extension's lines:
 
 ```bash
-jq -c 'select(.component=="extension" and .tag=="ion-meta")' ~/.ion/engine.jsonl
+jq -c 'select(.component=="extension" and .tag=="my-extension")' ~/.ion/engine.jsonl
 ```
 
 Time-bounded (RFC3339 strings compare lexicographically, so string comparison is correct):
@@ -250,7 +250,7 @@ LogQL Explore recipes (Grafana → Explore → Loki):
 {component="engine", level="ERROR"}
 
 # One extension
-{component="extension", tag="ion-meta"}
+{component="extension", tag="my-extension"}
 
 # Count a constant message over time (works because msg is never interpolated)
 count_over_time({component="engine"} |= "session started" [1h])
