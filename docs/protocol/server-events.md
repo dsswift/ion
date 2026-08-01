@@ -1067,7 +1067,7 @@ Advisory nudge that provider auth state or the available-model listing may have 
 
 ## Slash-Command Provenance on Message Events
 
-When a user turn originates from a slash-command invocation, the engine persists the **raw** invocation (the `/name args` the user typed) as the displayed turn, while the model sees the expanded template body. Three provenance fields travel with that message wherever it appears on the wire.
+When a user turn originates from a slash-command invocation, the engine persists the **raw** invocation (the `/name args` the user typed) as the displayed turn, while the model sees the expanded template body. Slash provenance travels with that message wherever it appears on the wire.
 
 ### `load_session_history` — SessionMessage
 
@@ -1075,18 +1075,24 @@ The `load_session_history` response includes these fields on user-role `SessionM
 
 | Field          | Type   | Description |
 |----------------|--------|-------------|
-| `slashCommand` | string | The full command as the user typed it, including the leading slash (e.g. `/spec`). Present only on turns that originated from a slash invocation. |
-| `slashArgs`    | string | The argument text that followed the command name. May be empty. |
-| `slashSource`  | string | Where the command was resolved: `"ion"` (`.ion/commands`), `"claude"` (`.claude/commands`), `"skill"`, or `"extension"` (registered via `RegisterCommand`). |
+| `slashCommand`  | string | The full command as the user typed it, including the leading slash (e.g. `/spec`). Present only on turns that originated from a slash invocation. |
+| `slashArgs`     | string | The argument text that followed the command name. May be empty. |
+| `slashSource`   | string | Where the command was resolved: `"ion"` (`.ion/commands`), `"claude"` (`.claude/commands`), `"skill"`, or `"extension"` (registered via `RegisterCommand`). |
+| `slashModelAlias` | string | The model alias requested by the command's frontmatter `model:` field (e.g. `"standard"`, `"reasoning"`, `"fast"`). Present only when the command specifies a per-run model. |
+| `slashModelEffective` | string | The concrete provider-qualified model ID the engine resolved for this invocation (e.g. `"dci-marketing/gpt-5.6-terra"`). Present only when `slashModelAlias` is set. |
 
 ### `desktop_message_added` / `desktop_conversation_history` — RemoteMessage
 
-The same three fields appear on `RemoteMessage` objects sent to paired iOS clients via `desktop_message_added` and `desktop_conversation_history` remote events. When `slashCommand` is non-empty, the iOS client renders a pill showing the command name; `slashArgs` and `slashSource` supply the pill's detail text and badge.
+The same fields appear on `RemoteMessage` objects sent to paired iOS clients via `desktop_message_added` and `desktop_conversation_history` remote events. When `slashCommand` is non-empty, the iOS client renders a pill showing the command name; `slashArgs` and `slashSource` supply the pill's detail text and badge.
 
-| Field          | Type   | Description |
-|----------------|--------|-------------|
-| `slashCommand` | string | Full slash invocation (e.g. `/spec`). |
-| `slashArgs`    | string | Arguments following the command name. |
-| `slashSource`  | string | Resolution origin: `"ion"`, `"claude"`, `"skill"`, or `"extension"`. |
+| Field            | Type   | Description |
+|------------------|--------|-------------|
+| `slashCommand`   | string | Full slash invocation (e.g. `/spec`). |
+| `slashArgs`      | string | Arguments following the command name. |
+| `slashSource`    | string | Resolution origin: `"ion"`, `"claude"`, `"skill"`, or `"extension"`. |
+| `slashModelAlias` | string | Optional model alias from command frontmatter (e.g. `"standard"`). |
+| `slashModelEffective` | string | Optional provider-qualified model ID resolved for this invocation. |
+
+The engine also adds the same model provenance to `engine_user_turn_persisted` as `userTurnSlashModelAlias` and `userTurnSlashModelEffective`. This pre-stream signal lets clients stamp the optimistic slash bubble before history reload. The fields describe only that invocation's run and never change the conversation-level model shown by a status bar.
 
 The engine sets these fields via the session layer's slash-stash mechanism (see `pendingSlashInvocation` in `engine/internal/session/types.go`). For extension-dispatched prompts, the stash is written by `dispatchCommand` and consumed by `SendPrompt`; for direct `send_prompt` invocations the engine resolves the command inline when `resolveSlash` is `true` on the command.
