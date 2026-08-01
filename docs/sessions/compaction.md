@@ -10,10 +10,11 @@ Compaction reduces the token count of a conversation's message history. As conve
 
 ## When compaction runs
 
-Compaction fires in two modes:
+Compaction fires in three modes:
 
 1. **Proactive** — before each LLM call, the engine checks whether context usage exceeds the auto-compact token limit (derived from the context window minus output headroom and summary reserve). If so, compaction runs automatically.
 2. **Reactive** — when the provider responds with `prompt_too_long` or `overloaded_error`, the engine runs a progressively more aggressive compaction (target budget shrinks with each retry, up to 3 attempts).
+3. **User-forced** — `/compact` compacts an idle API-backed conversation immediately. Its target is a percentage of the currently truncatable message estimate, so it produces useful reduction even when the conversation is below the model window's normal auto threshold. If the safety floor leaves nothing removable, it succeeds as a no-op without a summary call or persisted marker.
 
 ### CompactEnabled gate
 
@@ -27,7 +28,7 @@ After compaction, the `session_compact` hook fires with the strategy used, messa
 
 ## Compaction flow
 
-Both proactive and reactive compaction follow the same two-step flow:
+All compaction triggers use the same two-step flow:
 
 ### Step 1: MicroCompact
 
@@ -37,11 +38,12 @@ After micro-compaction, the engine re-checks context usage. If below the limit, 
 
 ### Step 2: Token-budget truncation with summary
 
-When micro-compaction is insufficient, the engine hard-truncates to a target token budget (default 50% of context window, configurable via `targetPercent`). Before truncation drops messages, a summary is generated using the **three-tier fallback**:
+When micro-compaction is insufficient, the engine hard-truncates to a target token budget. Proactive and reactive compaction interpret `targetPercent` against the context window (default 50%). Explicit `/compact` interprets it against the currently truncatable message estimate so a user-forced pass always targets removable material. Before truncation drops messages, a summary is generated using the **four-tier fallback**:
 
-1. **Session memory** — if the background session memory summarizer has produced a summary, use it (zero-cost, no LLM call).
-2. **LLM summary** — send the message text to an LLM for summarization (costs one additional LLM call). Enabled by default; disable with `summaryEnabled: false`.
-3. **Regex fact extraction** — extract structured facts via pattern matching (no LLM call). Used as a last resort when both session memory and LLM summarization are unavailable.
+1. **Session memory** — if the background session memory summarizer has produced a current summary, use it (zero-cost, no LLM call).
+2. **LLM summary** — send only the message prefix being dropped to an LLM for summarization (costs one additional LLM call). Enabled by default; disable with `summaryEnabled: false`.
+3. **Extension hook** — `compact_summary_request` may supply a consumer-owned summary.
+4. **Regex fact extraction** — extract structured facts via pattern matching (no LLM call). Used as the final fallback.
 
 `CompactToTokenBudget` then drops the oldest messages, respecting turn boundaries (never orphans a tool_result from its tool_use, never splits a user/assistant pair). A minimum keep-turns floor (default 2, configurable via `keepTurns`) ensures at least that many user turns are preserved even if they exceed the budget. Token estimates use a conservative padding multiplier (default 1.33×) to avoid re-triggering compaction immediately.
 
@@ -49,7 +51,7 @@ For reactive compaction, the target budget shrinks with each retry (`targetPerce
 
 ## Post-compaction artifacts
 
-After truncation, the engine injects a **transient user message** containing:
+After truncation, the engine injects a **typed compact-boundary user message** containing:
 
 - A `[SYSTEM] Context compaction completed` notice with cleared-block count
 - The summary (if generated), under `[Extracted facts from compacted context]`
@@ -57,7 +59,7 @@ After truncation, the engine injects a **transient user message** containing:
 - The full transcript path: `{convDir}/{convID}.tree.jsonl` — so the model can read pre-compaction history if needed
 - Instructions to use SearchHistory or re-read files rather than recapping
 
-Transient messages are appended to `conv.Messages` but **not** to the session entry list (`conv.Entries`). They appear in the current LLM call but are not persisted to disk or shown in session history on reload.
+The boundary is persisted as an `EntryCompaction`; `.llm.jsonl` reconstructs it followed by the exact retained message suffix. The full pre-compaction tree remains available for history and search, while the active LLM path restarts at the boundary.
 
 ### Immediate persistence
 
@@ -65,7 +67,7 @@ After compaction, the engine calls `conversation.Save` immediately so the compac
 
 ## Session memory
 
-The background session memory summarizer maintains a running summary of the conversation in a `.memory.md` file alongside the conversation's `.tree.jsonl` and `.llm.jsonl`. This summary is the first choice in the three-tier fallback — when it exists, compaction avoids an extra LLM call entirely.
+The background session memory summarizer maintains a running summary of the conversation in a `.memory.md` file alongside the conversation's `.tree.jsonl` and `.llm.jsonl`. This summary is the first choice in the four-tier fallback — when it exists, compaction avoids an extra LLM call entirely.
 
 ### How it works
 

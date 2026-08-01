@@ -499,9 +499,9 @@ func (m *Manager) wireExtensionHooks(s *engineSession, key string, requestID str
 		// Fan out to the extension group. The hook is observe+respond:
 		// returning ("", false) means "no opinion", which the runloop
 		// reads as a signal to fall back to the regex fact extractor.
-		// Strategy is "auto" (proactive token-limit driven) or "reactive"
-		// (prompt_too_long retry) — handlers branch on it to tune their
-		// summariser to the trigger (e.g. shorter output on reactive
+		// Strategy is "auto" (proactive token-limit driven), "reactive"
+		// (prompt_too_long retry), or "user" (explicit /compact). Handlers can
+		// tune their summariser to the trigger (e.g. shorter output on reactive
 		// because the provider just rejected the prompt).
 		summary, ok := extGroup.FireCompactSummaryRequest(ctx, extension.CompactSummaryRequestInfo{
 			Strategy:     strategy,

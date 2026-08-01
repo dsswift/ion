@@ -15,12 +15,10 @@ import (
 // from session state (conversation ID, last-known model, generated request
 // ID) and passed verbatim into ApiBackend.CompactNow.
 //
-// All fields are required EXCEPT RunConfig, which may be nil. When nil,
-// CompactNow falls back to the ApiBackend's lastRunConfig (the config
-// captured at the last StartRunWithConfig call). When both are nil the
-// compaction proceeds with an empty hook set — observability still fires
-// (CompactingEvent, tree entry, save) but the session-memory tier and the
-// session_compact hook are skipped because their plumbing is not wired up.
+// ConversationID, Model, and RequestID are required. RunConfig and RunOptions
+// are optional for direct Go callers: nil/zero values use the compatibility
+// fallbacks. Session callers always pass both explicitly so shared-backend state
+// cannot leak across conversations.
 //
 // Adding new fields here is non-breaking — zero-valued defaults work
 // because every consumer constructs the struct in-process; this is not a
@@ -45,11 +43,14 @@ type CompactRequest struct {
 	// layer typically generates one with a "user-compact-" prefix.
 	RequestID string
 
-	// RunConfig optionally overrides the backend's cached config. When nil,
-	// CompactNow uses ApiBackend.lastRunConfig (set by StartRunWithConfig).
-	// Tests and headless consumers may set this to a constructed
-	// RunConfig{} to exercise specific hook scenarios.
+	// RunConfig is the target session's explicit state. Session callers MUST set
+	// it so hooks/memory/telemetry cannot bleed from another session through the
+	// shared backend cache. Nil retains the direct-Go-caller fallback.
 	RunConfig *RunConfig
+
+	// RunOptions carries the target session's effective compaction policy after
+	// engine.json defaults. Zero value retains built-in defaults.
+	RunOptions types.RunOptions
 }
 
 // CompactNow runs user-initiated compaction on the given conversation
@@ -64,11 +65,11 @@ type CompactRequest struct {
 //     "nothing to compact" message rather than a stack trace.
 //   - Resolve the model's context window via resolveContextWindow.
 //     Unknown and zero-window models fall back to conversation.DefaultContext (logged).
-//   - Resolve RunConfig (req.RunConfig → b.lastRunConfig → empty).
-//   - Build compactParams from RunConfig's defaults and session-memory
-//     accessors — mirroring buildCompactParams's role in the agent loop
-//     but populated from the RunConfig's GetSessionMemory /
-//     GetLastSummarizedEntryID / ResetMemoryTracking helpers when present.
+//   - Resolve RunConfig (explicit request → compatibility cache → empty) and
+//     RunOptions (explicit request → built-in defaults).
+//   - Build compactParams from RunOptions, then attach the RunConfig's
+//     GetSessionMemory / GetLastSummarizedEntryID / ResetMemoryTracking
+//     accessors when present.
 //   - Construct a minimal synthetic activeRun (just enough for b.emit to
 //     route events through the runID-keyed callback).
 //   - Fire session_before_compact hook; honour cancellation.
@@ -82,9 +83,9 @@ type CompactRequest struct {
 //     shouldn't share that budget.
 //
 // Returns an error only on hard failures (conversation not found,
-// session_before_compact hook cancellation, save failure). A successful
-// compaction returns nil even if every summary tier produced an empty
-// result — the boundary block injection and event emission still happen.
+// session_before_compact hook cancellation, tree-commit mismatch, save failure).
+// A forced pass with nothing removable succeeds as a non-destructive no-op: it
+// emits the completion edge but creates no summary, boundary, or tree entry.
 func (b *ApiBackend) CompactNow(ctx context.Context, req CompactRequest) error {
 	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "CompactNow", map[string]any{
 		"conversation_id": req.ConversationID,
@@ -136,7 +137,7 @@ func (b *ApiBackend) CompactNow(ctx context.Context, req CompactRequest) error {
 	// supply RunOptions because there's no run; we use built-in
 	// defaults from the conversation package, which is what buildCompactParams
 	// would do for a no-override case).
-	opts := types.RunOptions{}
+	opts := req.RunOptions
 	cp := buildCompactParams(&opts, "")
 	if cfg != nil {
 		// Thread session-memory plumbing the same way StartRunWithConfig's
@@ -184,7 +185,7 @@ func (b *ApiBackend) CompactNow(ctx context.Context, req CompactRequest) error {
 	// payload and logs show what the proactive system would have used.
 	tokenLimit := conversation.AutoCompactTokenLimit(contextWindow, opts.MaxTokens)
 
-	b.performCompact(performCompactParams{
+	return b.performCompact(performCompactParams{
 		ctx:           ctx,
 		run:           run,
 		conv:          conv,
@@ -194,10 +195,4 @@ func (b *ApiBackend) CompactNow(ctx context.Context, req CompactRequest) error {
 		cp:            cp,
 		trigger:       "user",
 	})
-
-	utils.LogWithFields(utils.LevelInfo, "backend.runloop", "CompactNow COMPLETE", map[string]any{
-		"conversation_id": req.ConversationID,
-		"request_id":      req.RequestID,
-	})
-	return nil
 }

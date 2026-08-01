@@ -332,6 +332,10 @@ func (m *Manager) dispatchCompact(s *engineSession, key string) {
 		// newSessionRootContext.
 		rootCtx := s.rootCtx
 		m.mu.Unlock()
+		// Build the target session's compaction-only config after releasing m.mu:
+		// extension context construction and config resolution may take their own
+		// locks. compactInFlight now prevents a run from racing this snapshot.
+		runCfg, runOpts := m.buildManualCompactState(s, key, runID, model)
 		if rootCtx == nil {
 			rootCtx = context.Background()
 		}
@@ -340,6 +344,8 @@ func (m *Manager) dispatchCompact(s *engineSession, key string) {
 			ConversationID: convID,
 			Model:          model,
 			RequestID:      runID,
+			RunConfig:      runCfg,
+			RunOptions:     runOpts,
 		}
 		utils.LogWithFields(utils.LevelInfo, "session", "compact: launching async compactnow", map[string]any{"key": key, "conversation_id": convID, "model": model, "run_id": runID})
 		go func() {

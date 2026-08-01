@@ -1,52 +1,68 @@
 package conversation
 
-// rehydrateMessageUsage assigns Usage pointers from the entry tree onto the
-// corresponding assistant messages in conv.Messages. It is called once at load
-// time (by loadSplit and loadFromJSONL) so that GetContextUsage can perform its
-// backward scan without needing the legacy LastInputTokens scalar.
+import (
+	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/utils"
+)
+
+// rehydrateMessageUsage restores internal message metadata that is deliberately
+// absent from .llm.jsonl: EntryID (json:"-") and assistant Usage (also
+// json:"-"). The split file is authoritative for message CONTENT, while the
+// active tree path is authoritative for identity and usage.
 //
-// The matching is by order-of-appearance: the k-th assistant entry with non-nil
-// Usage corresponds to the k-th assistant message in conv.Messages. Both lists
-// are in chronological order (BuildContextPath emits messages in path order;
-// entries are appended in order), so a single forward pass suffices.
-//
-// Entries without Usage (user messages, non-message entries) are skipped.
-// Messages that have no corresponding entry (e.g. legacy conversations that
-// predate Usage tracking on entries) keep Usage == nil and fall through to the
-// heuristic path in GetContextUsage.
+// Matching is positional on the LLM-visible active path, not by content. Content
+// cannot be used: a resolved slash stores raw invocation text in EntryMessage
+// while .llm.jsonl stores the expanded prompt. DisplayOnly entries are skipped,
+// and an EntryCompaction resets the path exactly as BuildContextPath does.
 func rehydrateMessageUsage(conv *Conversation) {
 	if len(conv.Messages) == 0 || len(conv.Entries) == 0 {
 		return
 	}
 
-	// Collect assistant entries with non-nil Usage, in path order.
-	pathEntries := getContextPathEntries(conv)
-	var assistantUsages []MessageData
-	for _, e := range pathEntries {
-		if e.Type != EntryMessage {
-			continue
+	type metadata struct {
+		entryID string
+		role    string
+		usage   *types.LlmUsage
+	}
+	path := getContextPathEntries(conv)
+	var expected []metadata
+	for _, entry := range path {
+		switch entry.Type {
+		case EntryCompaction:
+			// BuildContextPath discards everything before the newest boundary.
+			expected = []metadata{{entryID: entry.ID, role: "user"}}
+		case EntryMessage:
+			md := asMessageData(entry.Data)
+			if md == nil || md.DisplayOnly {
+				continue
+			}
+			expected = append(expected, metadata{entryID: entry.ID, role: md.Role, usage: md.Usage})
 		}
-		md := asMessageData(e.Data)
-		if md == nil || md.Role != "assistant" || md.Usage == nil {
-			continue
-		}
-		assistantUsages = append(assistantUsages, *md)
 	}
 
-	if len(assistantUsages) == 0 {
+	if len(expected) != len(conv.Messages) {
+		utils.LogWithFields(utils.LevelWarn, "conversation", "rehydrate metadata path/message count mismatch", map[string]any{
+			"conversation_id": conv.ID,
+			"path_count":      len(expected),
+			"message_count":   len(conv.Messages),
+		})
 		return
 	}
-
-	// Match by position: k-th assistant message gets k-th assistant entry's Usage.
-	k := 0
 	for i := range conv.Messages {
-		if conv.Messages[i].Role != "assistant" {
-			continue
+		if conv.Messages[i].Role != expected[i].role {
+			utils.LogWithFields(utils.LevelWarn, "conversation", "rehydrate metadata role mismatch", map[string]any{
+				"conversation_id": conv.ID,
+				"index":           i,
+				"message_role":    conv.Messages[i].Role,
+				"entry_role":      expected[i].role,
+			})
+			return
 		}
-		if k >= len(assistantUsages) {
-			break
+	}
+	for i := range conv.Messages {
+		conv.Messages[i].EntryID = expected[i].entryID
+		if expected[i].usage != nil {
+			conv.Messages[i].Usage = expected[i].usage
 		}
-		conv.Messages[i].Usage = assistantUsages[k].Usage
-		k++
 	}
 }
