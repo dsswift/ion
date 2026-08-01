@@ -44,17 +44,13 @@ export function entry(over: Partial<WorktreeInventoryEntry> = {}): WorktreeInven
  * a way production never would.
  *
  * Every field of `WorktreeAppraisalWire` is spelled out, including the ones no
- * test asserts on. `unlandedSubjects` in particular is required and is live
- * production data — `main/worktree/safety.ts` fills it from
- * `git log --format=%s` and `main/worktree/autotitle-backfill.ts` reads it to
- * generate worktree titles — so deleting it here to quiet a reader would break
- * `tsc` while the tests still passed, because vitest does not typecheck.
+ * test asserts on, so a field added to the wire fails `tsc` here rather than
+ * silently going untested — vitest does not typecheck.
  */
 export const DIRTY_APPRAISAL: WorktreeAppraisalWire = {
   hasUncommittedChanges: true,
   uncommittedPaths: ['src/a.ts'],
   unlandedCommitCount: 0,
-  unlandedSubjects: [],
   fullyLanded: false,
   safeToDiscard: false,
   reason: 'It holds 1 uncommitted file.',
@@ -64,7 +60,6 @@ export const CLEAN_APPRAISAL: WorktreeAppraisalWire = {
   hasUncommittedChanges: false,
   uncommittedPaths: [],
   unlandedCommitCount: 0,
-  unlandedSubjects: [],
   fullyLanded: true,
   safeToDiscard: true,
 }
