@@ -11,7 +11,7 @@
  *   - command-handler switch does not dispatch on old type strings
  */
 
-import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 // ─── Hoisted mock state ──────────────────────────────────────────────────────
 // vi.hoisted runs before all imports and vi.mock factories.
@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   processIncomingPromptMock: vi.fn().mockResolvedValue(undefined),
   readSettingsMock: vi.fn().mockReturnValue({ defaultBaseDirectory: '/home/test' }),
   getRemoteTabStatesMock: vi.fn().mockResolvedValue({ tabs: [] }),
+  refreshRendererCacheMock: vi.fn().mockResolvedValue({ tabs: [], resourceManifest: {} }),
   encodeAttachmentsMock: vi.fn().mockReturnValue({ encoded: [], rewrittenText: '' }),
   getVoiceSystemPromptMock: vi.fn().mockReturnValue(undefined),
 }))
@@ -75,6 +76,11 @@ vi.mock('../settings-store', () => ({
 
 vi.mock('../remote/snapshot', () => ({
   getRemoteTabStates: (...args: any[]) => mocks.getRemoteTabStatesMock(...args),
+  // The tab-created echo force-refreshes the projection before reading it, so
+  // the cache provably contains the just-minted tab (no 500ms timer, no
+  // silent miss). The refresh's own return value is unused by the echo — it
+  // re-reads through getRemoteTabStates for the mapped wire shape.
+  refreshRendererSnapshotCache: (...args: any[]) => mocks.refreshRendererCacheMock(...args),
 }))
 
 vi.mock('../remote/handlers/diagnostics', () => ({
@@ -265,7 +271,6 @@ describe('handleCreateTab', () => {
 describe('handleCreateTab: clientCmdId reliability', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.useFakeTimers()
     mocks.executeJsMock.mockResolvedValue('tab-cc')
     mocks.getRemoteTabStatesMock.mockResolvedValue({
       tabs: [{
@@ -277,11 +282,9 @@ describe('handleCreateTab: clientCmdId reliability', () => {
     })
     mocks.readSettingsMock.mockReturnValue({ defaultBaseDirectory: '/home/test' })
   })
-  afterEach(() => { vi.useRealTimers() })
 
   it('echoes clientCmdId on the desktop_tab_created event', async () => {
     await handleCreateTab({ type: 'desktop_create_tab', workingDirectory: '/home/test', clientCmdId: 'cc-echo-1' })
-    await vi.advanceTimersByTimeAsync(600)  // notifyTabCreated fires on a 500ms timeout
 
     const created = mocks.remoteSendMock.mock.calls
       .map((c) => c[0])
@@ -293,14 +296,20 @@ describe('handleCreateTab: clientCmdId reliability', () => {
 
   it('dedupes a resent create by clientCmdId: re-emits the existing tab, no second creation', async () => {
     await handleCreateTab({ type: 'desktop_create_tab', workingDirectory: '/home/test', clientCmdId: 'cc-dup-1' })
-    await vi.advanceTimersByTimeAsync(600)
     const afterFirst = mocks.executeJsMock.mock.calls
       .filter((c) => String(c[0]).includes('createTabInDirectory')).length
 
     // Resend with the same clientCmdId (simulating the client's confirm-or-resend
     // firing because the first desktop_tab_created echo was lost in transit).
     await handleCreateTab({ type: 'desktop_create_tab', workingDirectory: '/home/test', clientCmdId: 'cc-dup-1' })
-    await vi.advanceTimersByTimeAsync(600)
+    // The dedup path echoes fire-and-forget (its caller returns a synchronous
+    // boolean), so yield once for that promise to settle.
+    await vi.waitFor(() => {
+      const n = mocks.remoteSendMock.mock.calls
+        .map((c) => c[0])
+        .filter((m) => m?.type === 'desktop_tab_created' && m.clientCmdId === 'cc-dup-1').length
+      expect(n).toBe(2)
+    })
     const afterSecond = mocks.executeJsMock.mock.calls
       .filter((c) => String(c[0]).includes('createTabInDirectory')).length
 
@@ -479,7 +488,17 @@ describe('protocol contract: removed command strings', () => {
 
   it('desktop_create_tab with profileId routes to engine tab creation via command-handler', async () => {
     mocks.executeJsMock.mockResolvedValue('new-tab')
-    mocks.getRemoteTabStatesMock.mockResolvedValue({ tabs: [] })
+    // The renderer holds the tab the store call just minted, so the created
+    // echo resolves on its first refresh. Returning an empty list here would
+    // exercise the echo's retry ladder instead of this test's routing concern.
+    mocks.getRemoteTabStatesMock.mockResolvedValue({
+      tabs: [{
+        id: 'new-tab', title: 'New Tab', status: 'idle',
+        workingDirectory: '/tmp', permissionMode: 'auto',
+        permissionQueue: [], lastMessage: null, contextTokens: null,
+        contextWindow: null, messageCount: 0, queuedPrompts: [], customTitle: null,
+      }],
+    })
     mocks.readSettingsMock.mockReturnValue({ defaultBaseDirectory: '/tmp' })
 
     await handleRemoteCommand(

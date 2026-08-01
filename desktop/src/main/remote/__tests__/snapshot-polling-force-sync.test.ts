@@ -139,7 +139,10 @@ vi.mock('../handlers/tabs-session-chain', () => ({
   toRemoteMessage: vi.fn(),
 }))
 vi.mock('../../../shared/session-message-mapper', () => ({ mapSessionHistory: vi.fn() }))
-vi.mock('../handlers/load-conversation-gate', () => ({ shouldServeLoad: vi.fn() }))
+vi.mock('../handlers/load-conversation-gate', () => ({
+  decideLoad: vi.fn().mockReturnValue({ action: 'serve' }),
+  recordLoadResponse: vi.fn(),
+}))
 vi.mock('../client-msg-id-map', () => ({ lookupClientMsgId: vi.fn(), clearClientMsgIdsForTab: vi.fn() }))
 vi.mock('../../prompt-pipeline', () => ({ processIncomingPrompt: vi.fn() }))
 

@@ -41,7 +41,7 @@ vi.mock('../../event-wiring-resources', () => ({
   isResourceRead: (id: string) => mockIsResourceRead(id),
 }))
 
-import { getRemoteTabStates, RENDERER_CACHE_MAX_AGE_MS, _setPollRendererTabStatesForTest } from '../snapshot'
+import { getRemoteTabStates, refreshRendererSnapshotCache, RENDERER_CACHE_MAX_AGE_MS, _setPollRendererTabStatesForTest } from '../snapshot'
 import { state } from '../../state'
 import type { RemoteTabStatesPayload, ProjectedRendererTab } from '../../../shared/remote-projection-types'
 
@@ -172,5 +172,75 @@ describe('getRemoteTabStates — renderer-push cache + legacy-poll fallback', ()
     // …but the cached object is untouched (a mutated cache would leak
     // main-only read state into renderer-push fingerprint comparisons).
     expect(cachedManifest.briefing[0].read).toBe(false)
+  })
+})
+
+/**
+ * refreshRendererSnapshotCache — the read-your-write escape hatch.
+ *
+ * `getRemoteTabStates` serves any cache younger than RENDERER_CACHE_MAX_AGE_MS
+ * without checking whether it holds the row the caller asked about. That is
+ * correct for a periodic snapshot and WRONG for the tab-created echo, which
+ * must observe a tab minted milliseconds ago while the renderer's projection
+ * push is still inside its 250ms debounce. This function bypasses the age gate
+ * outright.
+ */
+describe('refreshRendererSnapshotCache — bypasses the age gate', () => {
+  let pollMock: ReturnType<typeof vi.fn<() => Promise<RemoteTabStatesPayload>>>
+
+  beforeEach(() => {
+    pollMock = vi.fn(async (): Promise<RemoteTabStatesPayload> => ({ tabs: [], resourceManifest: {} }))
+    _setPollRendererTabStatesForTest(pollMock)
+    state.rendererSnapshotCache = null
+  })
+
+  afterEach(() => {
+    _setPollRendererTabStatesForTest(null)
+    state.rendererSnapshotCache = null
+    vi.restoreAllMocks()
+  })
+
+  it('polls and overwrites even when the existing cache is "fresh"', async () => {
+    // A cache that getRemoteTabStates would happily serve — and which predates
+    // the tab we are about to look for.
+    state.rendererSnapshotCache = {
+      tabs: [projectedTab('t-stale-but-fresh')],
+      resourceManifest: {},
+      receivedAt: Date.now(),
+    }
+    pollMock.mockResolvedValue({ tabs: [projectedTab('t-just-created')], resourceManifest: {} })
+
+    const payload = await refreshRendererSnapshotCache()
+
+    expect(pollMock).toHaveBeenCalledTimes(1)
+    expect(payload.tabs.map((t) => t.id)).toEqual(['t-just-created'])
+    expect(state.rendererSnapshotCache?.tabs.map((t) => t.id)).toEqual(['t-just-created'])
+  })
+
+  it('makes the subsequent getRemoteTabStates read a cache hit (one renderer round-trip)', async () => {
+    pollMock.mockResolvedValue({ tabs: [projectedTab('t-new')], resourceManifest: {} })
+
+    await refreshRendererSnapshotCache()
+    const { tabs } = await getRemoteTabStates()
+
+    expect(tabs.map((t) => t.id)).toEqual(['t-new'])
+    // The refresh polled; the read served from the cache it wrote.
+    expect(pollMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('writes an empty result too — an empty renderer is a real observation', async () => {
+    state.rendererSnapshotCache = {
+      tabs: [projectedTab('t-old')],
+      resourceManifest: {},
+      receivedAt: Date.now(),
+    }
+    pollMock.mockResolvedValue({ tabs: [], resourceManifest: {} })
+
+    const payload = await refreshRendererSnapshotCache()
+
+    expect(payload.tabs).toHaveLength(0)
+    // Unlike the fallback inside getRemoteTabStates, which keeps the old cache
+    // when a poll comes back empty, a forced refresh records what it saw.
+    expect(state.rendererSnapshotCache?.tabs).toHaveLength(0)
   })
 })

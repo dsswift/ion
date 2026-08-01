@@ -1,23 +1,25 @@
 import { readFile } from 'fs/promises'
-import { homedir } from 'os'
 import { IPC } from '../../../shared/types'
 import { log as _log, warn as _warn } from '../../logger'
 import { state, sessionPlane, engineBridge, activeAssistantMessages, lastMessagePreview, lastForwardedTabStatus, extensionCommandRegistry } from '../../state'
 import { broadcast } from '../../broadcast'
 import { terminalManager } from '../../terminal-manager-instance'
-import { readSettings, readClaudeCompat } from '../../settings-store'
-import { getRemoteTabStates } from '../snapshot'
+import { readClaudeCompat } from '../../settings-store'
 import { autoPullDiagnosticLogs } from './diagnostics'
 import { sendSync } from './tabs-sync'
 import { evaluateRemoteCloseGuard, formatRemoteCloseGuardRefusal } from './tabs-close-guard'
 import { resolveTabSessionChain, paginateHistory, planPathFromHistory, toRemoteMessage } from './tabs-session-chain'
 import { mapSessionHistory } from '../../../shared/session-message-mapper'
-import { shouldServeLoad } from './load-conversation-gate'
+import { decideLoad, recordLoadResponse } from './load-conversation-gate'
 import { resolveDiscoveryWorkingDir } from '../../ipc-validation'
 import { lookupClientMsgId, clearClientMsgIdsForTab } from '../client-msg-id-map'
-import type { RemoteCommand } from '../protocol'
+import type { RemoteCommand, RemoteEvent } from '../protocol'
 
 export { handlePrompt, handleCancel } from './tabs-prompt'
+// Tab creation (and its desktop_tab_created echo) lives in tabs-create-echo.ts;
+// re-exported here so command-handler.ts and the wire tests keep one import
+// site for the whole tab-command surface.
+export { handleCreateTab, handleCreateTerminalTab } from './tabs-create-echo'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -111,192 +113,6 @@ export async function handleSync(deviceId: string): Promise<void> {
   log('handle_sync: forcing single snapshot', { device_id: deviceId })
   await sendSync((event) => state.remoteTransport?.sendToDevice(deviceId, event), [deviceId])
   autoPullDiagnosticLogs(deviceId)
-}
-
-async function createTabFromCommand(
-  cmd: { workingDirectory?: string },
-  storeMethod: string,
-  defaultArgs: string[] = [],
-): Promise<string | null> {
-  let dir = cmd.workingDirectory
-  if (!dir) {
-    const s = readSettings()
-    dir = s.defaultBaseDirectory || homedir() || ''
-  }
-  if (!dir) return null
-  try {
-    const escaped = dir.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    const args = ["'" + escaped + "'", ...defaultArgs].join(', ')
-    // The store creators (createTabInDirectory / createTerminalTab) are async.
-    // await INSIDE the IIFE so the activeTabId restore runs after the tab id is
-    // minted rather than racing the unresolved promise; executeJavaScript
-    // resolves the returned promise to the string id.
-    const tabId = await state.mainWindow?.webContents.executeJavaScript(`
-      (async function() {
-        var store = window.__Ion_SESSION_STORE__;
-        if (!store) return null;
-        var prev = store.getState().activeTabId;
-        var id = await store.getState().${storeMethod}(${args});
-        store.setState({ activeTabId: prev });
-        return id;
-      })()
-    `)
-    return tabId || null
-  } catch (err) {
-    log('store_method error', { error: (err as Error).message })
-    return null
-  }
-}
-
-function notifyTabCreated(tabId: string, clientCmdId?: string): void {
-  setTimeout(() => {
-    void (async () => {
-    try {
-      const { tabs } = await getRemoteTabStates()
-      const newTab = tabs.find((t: any) => t.id === tabId)
-      if (newTab) state.remoteTransport?.send({ type: 'desktop_tab_created', tab: newTab, clientCmdId })
-    } catch (err) {
-      // If this echo never sends, iOS's confirm-or-resend loop resends the
-      // create command indefinitely with no desktop-side explanation. Log it.
-      warn('remote: tab_created notify failed', { tab_id: tabId, error: String(err) })
-    }
-    })()
-  }, 500)
-}
-
-// Idempotency for the iOS confirm-or-resend loop. iOS attaches a `clientCmdId`
-// to each create command and resends it if no `desktop_tab_created` echo comes
-// back (its transport can silently wedge after a background/resume cycle, so a
-// locally-successful send is not proof of delivery). Without dedup a resend of
-// a create that actually landed would spawn a duplicate tab. We remember the
-// clientCmdId→tabId mapping and, on a repeat, re-emit the existing tab instead
-// of creating another. Bounded FIFO so the map can't grow unbounded across a
-// long-lived desktop session.
-const recentCreatesByClientCmdId = new Map<string, string>()
-const RECENT_CREATES_CAP = 256
-
-function rememberCreate(clientCmdId: string, tabId: string): void {
-  recentCreatesByClientCmdId.set(clientCmdId, tabId)
-  while (recentCreatesByClientCmdId.size > RECENT_CREATES_CAP) {
-    const oldest = recentCreatesByClientCmdId.keys().next().value
-    if (oldest === undefined) break
-    recentCreatesByClientCmdId.delete(oldest)
-  }
-}
-
-// Returns true if this is a duplicate delivery of a create we already served.
-// On a duplicate we re-emit the created tab (the client's confirmation was
-// lost, not its request) and the caller returns without creating a new tab.
-function handleDuplicateCreate(clientCmdId: string | undefined): boolean {
-  if (!clientCmdId) return false
-  const existing = recentCreatesByClientCmdId.get(clientCmdId)
-  if (!existing) return false
-  log('handle_create_tab: duplicate clientCmdId, re-emitting existing tab', { client_cmd_id: clientCmdId, tab_id: existing })
-  notifyTabCreated(existing, clientCmdId)
-  return true
-}
-
-export async function handleCreateTab(cmd: Extract<RemoteCommand, { type: 'desktop_create_tab' }>): Promise<void> {
-  // Idempotency: a resend of a create we already served re-emits the existing
-  // tab rather than making a duplicate. See handleDuplicateCreate.
-  if (handleDuplicateCreate(cmd.clientCmdId)) return
-
-  // When profileId is present the iOS client wants an extension-hosted
-  // conversation. Route through createConversationTab with profileId in opts.
-  // When absent, create a plain CLI tab.
-  if (cmd.profileId) {
-    let dir = cmd.workingDirectory
-    if (!dir) {
-      const s = readSettings()
-      dir = s.defaultBaseDirectory || homedir() || ''
-    }
-    if (!dir) return
-    try {
-      const escaped = dir.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-      const profileArg = `'${cmd.profileId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
-      log('handle_create_tab: extension tab', { profile_id: cmd.profileId })
-      // createConversationTab is async; await it INSIDE the IIFE so the
-      // activeTabId restore runs AFTER the real tab id is minted, not before
-      // the promise resolves. executeJavaScript resolves the returned promise.
-      const tabId = await state.mainWindow?.webContents.executeJavaScript(`
-        (async function() {
-          var store = window.__Ion_SESSION_STORE__;
-          if (!store) return null;
-          var prev = store.getState().activeTabId;
-          var id = await store.getState().createConversationTab('${escaped}', { profileId: ${profileArg} });
-          store.setState({ activeTabId: prev });
-          return id;
-        })()
-      `)
-      if (tabId) {
-        if (cmd.clientCmdId) rememberCreate(cmd.clientCmdId, tabId)
-        notifyTabCreated(tabId, cmd.clientCmdId)
-      }
-    } catch (err) {
-      log('handle_create_tab: engine error', { error: (err as Error).message })
-    }
-    return
-  }
-
-  // Plain CLI tab (legacy path).
-  // When the iOS client requests pinning into a specific group (e.g. the
-  // per-group "+" button next to a group header), forward the group id as
-  // the 4th positional argument to createTabInDirectory. The renderer-side
-  // store action treats this as an explicit pin and sets groupPinned=true
-  // from the start so the first sendMessage's auto-movement skips this tab.
-  // We single-quote the group id (matching how `dir` is escaped above) so
-  // the value flows safely through executeJavaScript.
-  const defaultArgs: string[] = ['false', 'true']
-  if (cmd.pinToGroupId) {
-    const escaped = cmd.pinToGroupId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    defaultArgs.push("'" + escaped + "'")
-    log('handle_create_tab: pinToGroupId, forwarding as explicit-pin', { pin_to_group: cmd.pinToGroupId })
-  } else {
-    log('handleCreateTab: no pinToGroupId (default-group placement)')
-  }
-  const tabId = await createTabFromCommand(cmd, 'createTabInDirectory', defaultArgs)
-  if (tabId) {
-    if (cmd.clientCmdId) rememberCreate(cmd.clientCmdId, tabId)
-    notifyTabCreated(tabId, cmd.clientCmdId)
-  }
-}
-
-export async function handleCreateTerminalTab(cmd: Extract<RemoteCommand, { type: 'desktop_create_terminal_tab' }>): Promise<void> {
-  // Idempotency: a resend re-emits the existing terminal tab, not a duplicate.
-  if (handleDuplicateCreate(cmd.clientCmdId)) return
-  const tabId = await createTabFromCommand(cmd, 'createTerminalTab')
-  if (tabId) {
-    // Eagerly create a terminal instance + PTY so remote clients can use it
-    // without waiting for the desktop renderer to navigate to this tab.
-    try {
-      const escaped = tabId.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-      const instance = await state.mainWindow?.webContents.executeJavaScript(`
-        (function() {
-          var store = window.__Ion_SESSION_STORE__;
-          if (!store) return null;
-          var id = store.getState().addTerminalInstance('${escaped}', 'user');
-          var pane = store.getState().terminalPanes.get('${escaped}');
-          if (!pane) return null;
-          var inst = pane.instances.find(function(i) { return i.id === id; });
-          if (!inst) return null;
-          return { id: inst.id, label: inst.label, kind: inst.kind, cwd: inst.cwd || '' };
-        })()
-      `)
-      if (instance) {
-        const key = `${tabId}:${instance.id}`
-        terminalManager.create(key, instance.cwd || cmd.workingDirectory || '~')
-        state.remoteTransport?.send({
-          type: 'desktop_terminal_instance_added',
-          tabId,
-          instance: { id: instance.id, label: instance.label || 'Shell', kind: instance.kind || 'user', readOnly: false, cwd: instance.cwd || '' },
-        })
-      }
-    } catch (err) {
-      log('create_terminal_tab: instance creation error', { error: (err as Error).message })
-    }
-    if (cmd.clientCmdId) rememberCreate(cmd.clientCmdId, tabId)
-    notifyTabCreated(tabId, cmd.clientCmdId)
-  }
 }
 
 export function handleCloseTab(cmd: Extract<RemoteCommand, { type: 'desktop_close_tab' }>): void {
@@ -419,11 +235,25 @@ export async function handleSetThinkingEffort(cmd: Extract<RemoteCommand, { type
 }
 
 export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type: 'desktop_load_conversation' }>, deviceId: string): Promise<void> {
-  // Drop redundant identical reloads (same device, tab, and cursor) that arrive
-  // faster than the coalesce window. A flapping iOS client can otherwise fire
-  // this 60-120x/sec per conversation and back up the relay send path. Distinct
-  // pagination steps advance `before`, so they key differently and pass through.
-  if (!shouldServeLoad(deviceId, cmd.tabId, cmd.before)) return
+  // Coalesce redundant identical reloads (same device, tab, and cursor) that
+  // arrive faster than the coalesce window. A flapping iOS client can otherwise
+  // fire this 60-120x/sec per conversation and back up the relay send path.
+  // Distinct pagination steps advance `before`, so they key differently and pass
+  // through. A duplicate is ANSWERED from the cached page where one exists
+  // rather than dropped in silence — see the gate module doc.
+  const verdict = decideLoad(deviceId, cmd.tabId, cmd.before)
+  if (verdict.action === 'drop') return
+  if (verdict.action === 'replay') {
+    state.remoteTransport?.sendToDevice(deviceId, verdict.event)
+    return
+  }
+  // Send a terminal history response AND cache it, so a duplicate inside the
+  // window replays these exact bytes instead of going unanswered. Every exit
+  // path below (no-chain, success, error) routes through here.
+  const sendHistory = (event: Extract<RemoteEvent, { type: 'desktop_conversation_history' }>): void => {
+    recordLoadResponse(deviceId, cmd.tabId, cmd.before, event)
+    state.remoteTransport?.sendToDevice(deviceId, event)
+  }
   try {
     // History is served from the ENGINE — the same `load_session_history`
     // source the overlay and ATV hydrate from — so every client renders one
@@ -434,7 +264,7 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
     const chain = await resolveTabSessionChain(cmd.tabId)
     if (!chain) {
       log('load_conversation: no session chain for tab', { tab_id: cmd.tabId })
-      state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_conversation_history', tabId: cmd.tabId, messages: [], hasMore: false, before: cmd.before ?? null })
+      sendHistory({ type: 'desktop_conversation_history', tabId: cmd.tabId, messages: [], hasMore: false, before: cmd.before ?? null })
       return
     }
 
@@ -498,7 +328,7 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
       }
     }
 
-    state.remoteTransport?.sendToDevice(deviceId, {
+    sendHistory({
       type: 'desktop_conversation_history',
       tabId: cmd.tabId,
       messages: msgs,
@@ -521,7 +351,7 @@ export async function handleLoadConversation(cmd: Extract<RemoteCommand, { type:
     }
   } catch (err) {
     log('load_conversation error', { error: (err as Error).message })
-    state.remoteTransport?.sendToDevice(deviceId, { type: 'desktop_conversation_history', tabId: cmd.tabId, messages: [], hasMore: false, before: cmd.before ?? null })
+    sendHistory({ type: 'desktop_conversation_history', tabId: cmd.tabId, messages: [], hasMore: false, before: cmd.before ?? null })
   }
 }
 
