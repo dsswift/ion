@@ -48,6 +48,7 @@ struct ConversationStatusBar: View {
     var onSelectThinkingEffort: (String) -> Void = { _ in }
 
     @State private var showModeConfirm = false
+    @State private var showModelPicker = false
 
     /// Engine-derived inputs for the status bar, resolved nil-safely from an
     /// optional `StatusFields`. The bar must ALWAYS render for engine tabs (like
@@ -316,23 +317,15 @@ struct ConversationStatusBar: View {
                     .frame(height: 12)
             }
 
-            // Model picker menu
-            Menu {
-                ForEach(availableModels) { model in
-                    Button {
-                        onSelectModel(model.id)
-                    } label: {
-                        HStack {
-                            Text(model.label)
-                            if model.modelKind == "image" {
-                                Text("image gen")
-                            }
-                            if model.id == effectiveModel {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                }
+            // Model picker trigger. Opens the provider-grouped sheet
+            // (ModelPickerSheet) — at parity with the desktop popover, which a
+            // flat Menu could not reach: no search, no collapsible provider
+            // sections, no visible-but-disabled rows for unconfigured
+            // providers. Disabled while the conversation is running, matching
+            // the desktop's busy gate (a mid-run switch would not apply to the
+            // turn in flight).
+            Button {
+                showModelPicker = true
             } label: {
                 HStack(spacing: 2) {
                     Text(displayLabel)
@@ -343,6 +336,8 @@ struct ConversationStatusBar: View {
                 .foregroundStyle(.secondary)
                 .opacity(isRunning ? 0.5 : 1.0)
             }
+            .buttonStyle(.plain)
+            .disabled(isRunning)
 
             Spacer()
 
@@ -454,6 +449,17 @@ struct ConversationStatusBar: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("The extension controls this tab's planning mode. Changing it manually may interfere with the extension's workflow.")
+        }
+        .sheet(isPresented: $showModelPicker) {
+            ModelPickerSheet(
+                models: availableModels,
+                selectedModelId: effectiveModel,
+                // The star marks the GLOBAL default, which is what
+                // `preferredModel` carries; `effectiveModel` above folds in the
+                // per-conversation override and is marked with the checkmark.
+                preferredModelId: preferredModel,
+                onSelect: onSelectModel,
+            )
         }
     }
 }

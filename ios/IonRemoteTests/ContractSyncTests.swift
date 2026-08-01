@@ -870,14 +870,19 @@ final class ContractSyncTests: XCTestCase {
         let _ = try JSONSerialization.data(withJSONObject: json)
         // ModelEntry is a contract type but iOS uses RemoteModelEntry for the wire.
         // We verify that we can decode the Go-side fields that matter to iOS.
-        // RemoteModelEntry covers: id, providerId, contextWindow, label, hasAuth.
-        // The remaining Go fields (costPer1kInput, etc.) are not needed on iOS.
+        // RemoteModelEntry covers: id, providerId, contextWindow, label, hasAuth,
+        // providerLabel (desktop-resolved provider display name), modelKind,
+        // thinkingMode, thinkingEfforts, and isCustom. The remaining Go fields
+        // (costPer1kInput, etc.) are not needed on iOS.
 
         let swiftHandled: Set<String> = [
             "id", "providerId", "contextWindow",
             "costPer1kInput", "costPer1kOutput",
             "supportsCaching", "supportsThinking", "supportsImages",
             "thinkingMode", "thinkingEfforts",
+            // Operator-defined model (engine.json `models` entry) rather than
+            // one the provider's catalog reported. Consumed: drives the
+            // `custom` badge in ModelPickerSheet.
             "isCustom",
             "modelKind",   // consumed: gates the image-model banner (ConversationView+InputBar, ConversationStatusBar)
             "tokenizer",   // engine field; iOS does not consume it (thin client)
@@ -920,8 +925,9 @@ final class ContractSyncTests: XCTestCase {
 
         let _ = try JSONSerialization.data(withJSONObject: json)
         // ProviderEntry is a Go contract type. iOS doesn't decode it directly
-        // (it uses RemoteModelEntry which flattens hasAuth per model), but we
-        // verify awareness of all Go fields.
+        // (it uses RemoteModelEntry, onto which the desktop flattens hasAuth
+        // and the resolved provider display name per model), but we verify
+        // awareness of all Go fields.
 
         let swiftHandled: Set<String> = [
             "id", "hasAuth", "authSource",
@@ -932,10 +938,11 @@ final class ContractSyncTests: XCTestCase {
             "backend", "cli",
             // Operator-configured human-friendly provider name (engine.json
             // provider displayName). iOS does not decode ProviderEntry — the
-            // desktop flattens per-model auth into RemoteModelEntry and iOS
-            // groups models by providerId — so there is no iOS surface that
-            // renders a provider display name today. Tracked for awareness; a
-            // future iOS provider list would consume it via the snapshot.
+            // desktop flattens per-provider data onto each model, so this
+            // resolved name arrives as RemoteModelEntry.providerLabel (see
+            // desktop/src/main/ipc/models.ts updateCache) and is rendered as
+            // the section header in the provider-grouped model picker
+            // (ModelPickerGrouping.providerLabel / ModelPickerSheet).
             "displayName",
         ]
         let goSet = Set(goFields)
