@@ -2,7 +2,7 @@ import { ipcMain, BrowserWindow } from 'electron'
 import { IPC } from '../../shared/types'
 import { log as _log, debug as _debug } from '../logger'
 import { engineBridge, modelCache, enterprisePolicyCache } from '../state'
-import { getModelDisplayLabel } from '../../shared/types-models'
+import { getModelDisplayLabel, getProviderDisplayName } from '../../shared/types-models'
 import type { ModelEntry, ProviderEntry } from '../../shared/types-models'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -36,12 +36,20 @@ function updateCache(result: { models: any[]; providers: any[] }): void {
   modelCache.models = models.map((m) => ({
     id: m.id,
     providerId: m.providerId,
+    // Resolved here, once, rather than on each client: getProviderDisplayName
+    // folds the operator's engine.json `displayName` over the built-in name
+    // map. iOS never receives ProviderEntry (it consumes the flattened
+    // RemoteModelEntry), so without this projection the phone's picker could
+    // only ever show a raw provider id and would silently ignore the
+    // operator's configured name.
+    providerLabel: getProviderDisplayName(m.providerId, providers),
     label: getModelDisplayLabel(m),
     contextWindow: m.contextWindow,
     hasAuth: providerAuth.get(m.providerId) ?? false,
     thinkingMode: m.thinkingMode,
     thinkingEfforts: m.thinkingEfforts,
     modelKind: m.modelKind,
+    isCustom: m.isCustom,
   }))
   modelCache.lastFetched = Date.now()
 }
