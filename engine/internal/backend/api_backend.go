@@ -135,7 +135,7 @@ func (b *ApiBackend) StartRunWithConfig(requestID string, options types.RunOptio
 		requestID:    requestID,
 		cancel:       cancel,
 		startTime:    time.Now(),
-		steerCh:      make(chan string, 4),
+		steerCh:      make(chan steerMessage, 4),
 		suspendCh:    make(chan suspendSignal, 1),
 		planMode:     options.PlanMode,
 		planFilePath: options.PlanFilePath,
@@ -339,6 +339,21 @@ func (b *ApiBackend) Steer(requestID, message string) bool {
 // Every branch logs (engine-grounding §7): the no-run rejection, the
 // channel-full rejection, and the successful buffer.
 func (b *ApiBackend) SteerWithReason(requestID, message string) SteerResult {
+	return b.SteerWithKind(requestID, message, "")
+}
+
+// SteerWithKind is the classification-carrying variant of SteerWithReason.
+//
+// kind is a types.InjectionKind wire value describing who authored the
+// message. Empty means a client-originated steer — a human typing into a
+// running turn — which is the case SteerWithReason preserves. A machine
+// originator (a dispatch callback, a scheduled check-in) passes its kind so
+// drainSteer persists the injected turn as machine-authored instead of as an
+// unclassified user turn.
+//
+// Every branch logs (engine-grounding §7): the no-run rejection, the
+// channel-full rejection, and the successful buffer.
+func (b *ApiBackend) SteerWithKind(requestID, message, kind string) SteerResult {
 	b.mu.Lock()
 	run, ok := b.activeRuns[requestID]
 	b.mu.Unlock()
@@ -346,20 +361,23 @@ func (b *ApiBackend) SteerWithReason(requestID, message string) SteerResult {
 		utils.LogWithFields(utils.LevelWarn, "backend.runloop", "Steer rejected, no active run", map[string]any{
 			"run_id":  requestID,
 			"msg_len": len(message),
+			"kind":    kind,
 		})
 		return SteerResultNoRun
 	}
 	select {
-	case run.steerCh <- message:
+	case run.steerCh <- steerMessage{text: message, kind: kind}:
 		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "Steer buffered on steer channel", map[string]any{
 			"run_id":  requestID,
 			"msg_len": len(message),
+			"kind":    kind,
 		})
 		return SteerResultDelivered
 	default:
 		utils.LogWithFields(utils.LevelWarn, "backend.runloop", "Steer rejected, channel full", map[string]any{
 			"run_id":  requestID,
 			"msg_len": len(message),
+			"kind":    kind,
 		})
 		return SteerResultChannelFull
 	}

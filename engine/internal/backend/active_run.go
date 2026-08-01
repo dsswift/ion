@@ -30,7 +30,7 @@ type activeRun struct {
 	turnCount         atomic.Int64
 	totalCost         float64
 	startTime         time.Time
-	steerCh           chan string
+	steerCh           chan steerMessage
 	// suspendCh carries the suspend signal from ext/task_suspend. When the
 	// extension calls ctx.suspend() or ctx.suspendUntilAll(), the RPC handler
 	// sends a suspendSignal here. runLoop drains it at the next turn boundary

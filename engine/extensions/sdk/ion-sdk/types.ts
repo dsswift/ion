@@ -320,6 +320,50 @@ export interface RecallAgentOpts {
   reason?: string
 }
 
+/**
+ * Semantic classification of an engine-side injected turn.
+ *
+ * The engine publishes the classification and derives a `machineAuthored`
+ * flag from it; it never dictates what a consumer does with either. Whether a
+ * machine-authored turn is hidden, dimmed, or rendered verbatim is the
+ * consumer's policy.
+ *
+ * - `agent_completion` — a dispatch callback: a child agent's result routed
+ *   back to the parent that dispatched it.
+ * - `slash_command` — the expanded body of a slash command whose display turn
+ *   is persisted separately as the raw invocation.
+ * - `background_task_completion` — a finished background bash command's
+ *   result, routed back to wake a parked session.
+ * - `checkin` — a scheduled heartbeat delivered to a session that went idle
+ *   with work still running.
+ * - `revive` — waking an idle session for a reason that is neither a
+ *   completion payload nor a periodic check-in.
+ * - `steer` — a message steered onto a live run. Not machine-authored by
+ *   default: the common case is a human typing mid-turn.
+ *
+ * The union stays open (`| string`) so a consumer may define its own kinds.
+ * The engine treats a kind it does not recognise as user-authored, because it
+ * cannot vouch for a classification it did not make.
+ */
+export type InjectionKind =
+  | 'agent_completion'
+  | 'slash_command'
+  | 'background_task_completion'
+  | 'checkin'
+  | 'revive'
+  | 'steer'
+  | string
+
+/** Options for {@link IonContext.steerSelf}. */
+export interface SteerSelfOpts {
+  /**
+   * Classification for the injected turn. Supply this for any
+   * machine-to-machine message; omit it only when the message genuinely is a
+   * user turn.
+   */
+  kind?: InjectionKind
+}
+
 /** Result of {@link IonContext.steerDispatch} and {@link IonContext.steerSelf}. */
 export interface SteerDispatchResult {
   /** True when the message reached a run (steered or sent). */
@@ -1017,10 +1061,18 @@ export interface IonContext {
    * depth N it is this dispatch's own child run. The engine resolves the run;
    * the caller never names it.
    *
+   * Pass `opts.kind` whenever the message is machine-to-machine (a dispatch
+   * completion, a scheduled check-in, a revive). The engine threads the kind
+   * through BOTH delivery arms and marks the turn machine-authored, so
+   * consumers can classify it. Omitting the kind on a machine message leaves
+   * the turn indistinguishable from something the user typed, and every client
+   * renders it as a user bubble.
+   *
    * @param message - The message to deliver to the owning run.
+   * @param opts    - Optional classification for the injected turn.
    * @returns A result describing the delivery outcome (`'steered'` or `'sent'`).
    */
-  steerSelf(message: string): Promise<SteerDispatchResult>
+  steerSelf(message: string, opts?: SteerSelfOpts): Promise<SteerDispatchResult>
   discoverAgents(opts?: DiscoverAgentsOpts): Promise<DiscoveredAgent[]>
   /**
    * Wrap a shell command with platform-appropriate sandbox restrictions.
@@ -1359,17 +1411,21 @@ export interface SendPromptOpts {
   bashAllowlistAdditions?: string[]
 
   /**
-   * Semantic classification of this injection.
+   * Semantic classification of this injection. See {@link InjectionKind} for
+   * the set the engine defines and what each one means.
    *
-   * `"agent_completion"` means this is a machine-to-machine dispatch callback:
-   * a completed child agent's result being routed back to its parent. The
-   * injected prompt is not a turn the user authored; it is an internal signal
-   * between engine-side actors. Consumers interpret the classification however
-   * they choose — the engine carries no opinion about what any consumer should
-   * do with it. Empty (the default) means the injection is a genuine
-   * extension-initiated turn with no special classification.
+   * Supply this for any machine-to-machine injection — a dispatch callback, a
+   * scheduled check-in, a revive. The engine derives a `machineAuthored` flag
+   * from it and publishes both; consumers read the flag to tell an internal
+   * signal from a turn the user authored. Omitting it on a machine message
+   * leaves the injection indistinguishable from something the user typed.
+   *
+   * Empty (the default) means a genuine extension-initiated turn with no
+   * special classification. Consumers interpret the classification however
+   * they choose — the engine carries no opinion about what any consumer
+   * should do with it.
    */
-  kind?: string
+  kind?: InjectionKind
 }
 
 export interface ElicitOptions {

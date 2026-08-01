@@ -632,6 +632,7 @@ const (
 // different package) can type-assert against it.
 type Steerable interface {
 	SteerWithReason(requestID, message string) backend.SteerResult
+	SteerWithKind(requestID, message, kind string) backend.SteerResult
 }
 
 // SteerByID delivers a steering message to a running background dispatch
@@ -641,6 +642,15 @@ type Steerable interface {
 // SteerResult is mapped to a SteerDispatchOutcome so the caller gets a
 // four-value verdict: delivered, channel_full, no_run, or not_found.
 func (r *DispatchRegistry) SteerByID(dispatchID, message string) SteerDispatchOutcome {
+	return r.SteerByIDWithKind(dispatchID, message, "")
+}
+
+// SteerByIDWithKind is the classification-carrying variant of SteerByID.
+//
+// kind is a types.InjectionKind wire value naming who authored the message, so
+// a completion or check-in steered into a live child run is persisted as the
+// machine-to-machine turn it is rather than as an unclassified user turn.
+func (r *DispatchRegistry) SteerByIDWithKind(dispatchID, message, kind string) SteerDispatchOutcome {
 	r.mu.Lock()
 	entry, ok := r.dispatches[dispatchID]
 	if !ok {
@@ -659,7 +669,7 @@ func (r *DispatchRegistry) SteerByID(dispatchID, message string) SteerDispatchOu
 		return SteerOutcomeNoRun
 	}
 
-	result := s.SteerWithReason(childRunID, message)
+	result := s.SteerWithKind(childRunID, message, kind)
 	var outcome SteerDispatchOutcome
 	switch result {
 	case backend.SteerResultDelivered:

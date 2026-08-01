@@ -56,15 +56,27 @@ func loadChildExtension(sa SessionAccessor, registry *DispatchRegistry, opts *ex
 	// on child hosts (only the root host gets it wired in start_session.go) —
 	// and returns "sendPrompt not available: no active session", silently
 	// dropping the delivery and leaving the child run blocked until timeout.
-	// Mirrors the root wiring in start_session.go exactly: route through
-	// sa.SendPrompt so the delivery lands on the root session's run loop.
+	//
+	// Forwards the FULL payload, matching the root wiring in start_session.go
+	// and the late-load wiring in prompt_extensions.go. This site used to call
+	// the three-arg SendPrompt, which hardcodes an empty kind, so payload.Kind
+	// was discarded: an extension delivering from a dispatched child context
+	// with kind "agent_completion" still emitted kind "" and every consumer
+	// rendered the machine-to-machine turn as a user bubble. The three wiring
+	// sites must not diverge — that divergence WAS the defect.
+	//
+	// The callback BODY is mirrored by childSendPromptCallback in
+	// dispatch_child_kind_test.go, which is what the regression tests drive
+	// (constructing a real child host would require loading an extension
+	// subprocess from disk). Keep the two in step: a change here that is not
+	// reflected there would leave the tests green while production regressed.
 	capturedSA := sa
 	childExtHost.SetOnSendMessage(func(payload extension.SendPromptPayload) {
 		// The callback signature is void — the error cannot be propagated. Log
 		// it instead so a dropped delivery (e.g. "no active session") is
 		// visible in the engine log, rather than silently stalling the child.
-		if err := capturedSA.SendPrompt(payload.Text, payload.Model, payload.BashAllowlistAdditions); err != nil {
-			utils.LogWithFields(utils.LevelWarn, "session", "child dispatch sendPrompt failed", map[string]any{"error": err.Error(), "session_key": capturedSA.SessionKey()})
+		if err := capturedSA.SendPromptWithKind(payload.Text, payload.Model, payload.BashAllowlistAdditions, payload.Kind); err != nil {
+			utils.LogWithFields(utils.LevelWarn, "session", "child dispatch sendPrompt failed", map[string]any{"error": err.Error(), "kind": payload.Kind, "session_key": capturedSA.SessionKey()})
 		}
 	})
 

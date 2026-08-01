@@ -42,7 +42,7 @@ func newParkTestHarness(t *testing.T, outstanding func() []string) *parkTestHarn
 		requestID: "park-test",
 		conv:      h.conv,
 		startTime: time.Now(),
-		steerCh:   make(chan string, 4),
+		steerCh:   make(chan steerMessage, 4),
 		suspendCh: make(chan suspendSignal, 1),
 		cfg: &RunConfig{
 			OutstandingBackgroundTasks: outstanding,
@@ -161,7 +161,7 @@ func TestTurnBoundary_NilReaderNeverParks(t *testing.T) {
 // nothing left to do this turn.
 func TestTurnBoundary_SteerBeatsPark(t *testing.T) {
 	h := newParkTestHarness(t, func() []string { return []string{"bash-1"} })
-	h.run.steerCh <- "actually, also check the logs"
+	h.run.steerCh <- steerMessage{text: "actually, also check the logs"}
 
 	if done := h.endTurn(t); done {
 		t.Fatal("a drained steer should continue the run, not finish it")

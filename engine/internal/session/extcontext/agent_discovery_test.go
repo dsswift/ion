@@ -36,6 +36,7 @@ func (a *agentDiscoveryTestAccessor) SendPromptWithKind(_, _ string, _ []string,
 	return nil
 }
 func (a *agentDiscoveryTestAccessor) SteerSelfMainLoop(_ string) bool { return false }
+func (a *agentDiscoveryTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
 func (a *agentDiscoveryTestAccessor) ParkSelfMainLoop() bool          { return false }
 func (a *agentDiscoveryTestAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil

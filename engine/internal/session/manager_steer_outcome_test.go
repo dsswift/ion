@@ -43,6 +43,10 @@ type steerableMockBackend struct {
 type steerCall struct {
 	requestID string
 	message   string
+	// kind is the injection classification the session layer forwarded.
+	// Recorded so a test can assert the kind survived the hop to the backend,
+	// not merely that the message did.
+	kind string
 }
 
 func newSteerableMockBackend(result backend.SteerResult) *steerableMockBackend {
@@ -92,11 +96,20 @@ func (m *steerableMockBackend) OnNormalized(fn func(string, types.NormalizedEven
 func (m *steerableMockBackend) OnExit(fn func(string, *int, *string, string)) { m.onExitF = fn }
 func (m *steerableMockBackend) OnError(fn func(string, error))                { m.onErrF = fn }
 
-// SteerWithReason satisfies the session-local `steerable` interface. It records
-// the call and returns the configured result.
+// SteerWithReason / SteerWithKind satisfy the session-local `steerable`
+// interface. They record the call and return the configured result.
+//
+// BOTH must be present: `steerable` requires the kind-aware method, and a mock
+// implementing only the older one silently fails the type assertion, sending
+// every steer down the stdin fallback instead — which looks like a behaviour
+// change rather than an incomplete mock.
 func (m *steerableMockBackend) SteerWithReason(requestID, message string) backend.SteerResult {
+	return m.SteerWithKind(requestID, message, "")
+}
+
+func (m *steerableMockBackend) SteerWithKind(requestID, message, kind string) backend.SteerResult {
 	m.mu.Lock()
-	m.steerCalls = append(m.steerCalls, steerCall{requestID: requestID, message: message})
+	m.steerCalls = append(m.steerCalls, steerCall{requestID: requestID, message: message, kind: kind})
 	res := m.result
 	m.mu.Unlock()
 	return res

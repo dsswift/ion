@@ -381,16 +381,28 @@ func (h *HybridBackend) Steer(requestID, message string) bool {
 // routed run it returns SteerResultNoRun, which the session layer treats as
 // "not API-steerable, fall back to the stdin pipe".
 func (h *HybridBackend) SteerWithReason(requestID, message string) SteerResult {
-	inner, kind := h.lookup(requestID)
+	return h.SteerWithKind(requestID, message, "")
+}
+
+// SteerWithKind is the classification-carrying variant of SteerWithReason,
+// forwarding the injection kind to the API-routed inner backend. See
+// ApiBackend.SteerWithKind.
+//
+// The local `backendKind` name avoids shadowing: `kind` here is the routing
+// kind of the inner backend (api / cli), which is a different concept from the
+// injection kind being threaded through.
+func (h *HybridBackend) SteerWithKind(requestID, message, injectionKind string) SteerResult {
+	inner, backendKind := h.lookup(requestID)
 	api, ok := inner.(*ApiBackend)
 	if !ok {
 		utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "SteerWithReason: not API-routed, falling back to stdin", map[string]any{
-			"request_id": requestID,
-			"kind":       kind,
+			"request_id":     requestID,
+			"kind":           backendKind,
+			"injection_kind": injectionKind,
 		})
 		return SteerResultNoRun
 	}
-	return api.SteerWithReason(requestID, message)
+	return api.SteerWithKind(requestID, message, injectionKind)
 }
 
 // FlushConversations forwards to every constructed inner backend. ApiBackend

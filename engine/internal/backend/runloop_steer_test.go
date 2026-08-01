@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dsswift/ion/engine/internal/conversation"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -283,7 +284,7 @@ func TestSteerWithReason_ChannelFull(t *testing.T) {
 	// the default branch (channel full).
 	run := &activeRun{
 		requestID: requestID,
-		steerCh:   make(chan string), // cap 0, no drainer
+		steerCh:   make(chan steerMessage), // cap 0, no drainer
 	}
 	b.mu.Lock()
 	b.activeRuns[requestID] = run
@@ -299,4 +300,137 @@ func TestSteerWithReason_ChannelFull(t *testing.T) {
 	b.mu.Lock()
 	delete(b.activeRuns, requestID)
 	b.mu.Unlock()
+}
+
+// ─── drainSteer classification ───
+//
+// The defect: drainSteer called conversation.AddUserMessage, which stamps no
+// kind, so a MACHINE-originated steer (a dispatch completion or a scheduled
+// check-in bubbled into a live turn) was persisted as an ordinary user turn.
+// The steer channel itself was `chan string`, so there was nowhere for a kind
+// to travel and the drain point had nothing to read.
+//
+// These tests reach drainSteer directly with a conversation whose Entries slice
+// is initialised, so the persisted MessageData is inspectable without touching
+// the filesystem. conversation.Save writes to the default directory when given
+// "" and its failure is logged rather than fatal, so the entry is asserted from
+// memory.
+
+// newSteerDrainRun builds an activeRun with a buffered steer channel and a
+// conversation ready to receive entries.
+func newSteerDrainRun(requestID string) (*activeRun, *conversation.Conversation) {
+	run := &activeRun{
+		requestID: requestID,
+		steerCh:   make(chan steerMessage, 4),
+	}
+	conv := &conversation.Conversation{
+		ID:      "conv-" + requestID,
+		Entries: []conversation.SessionEntry{},
+	}
+	return run, conv
+}
+
+// findUserMessageEntry returns the first user-role message entry, which is the
+// turn drainSteer injected.
+func findUserMessageEntry(t *testing.T, conv *conversation.Conversation) conversation.MessageData {
+	t.Helper()
+	for _, e := range conv.Entries {
+		if e.Type != conversation.EntryMessage {
+			continue
+		}
+		md, ok := e.Data.(conversation.MessageData)
+		if !ok {
+			continue
+		}
+		if md.Role == "user" {
+			return md
+		}
+	}
+	t.Fatalf("no user message entry found among %d entries", len(conv.Entries))
+	return conversation.MessageData{}
+}
+
+// TestDrainSteer_MachineSteerPersistsKind is the root-cause-3 regression. A
+// steer carrying a kind must persist as that kind and be marked machine
+// authored. Reverting drainSteer to AddUserMessage turns this red.
+func TestDrainSteer_MachineSteerPersistsKind(t *testing.T) {
+	b := NewApiBackend()
+	run, conv := newSteerDrainRun("steer-kind-machine")
+
+	run.steerCh <- steerMessage{
+		text: "[SYSTEM] Dispatch check-in",
+		kind: string(types.InjectionKindCheckIn),
+	}
+
+	if !b.drainSteer(run, conv) {
+		t.Fatal("drainSteer reported no message consumed")
+	}
+
+	md := findUserMessageEntry(t, conv)
+	if md.InjectionKind != string(types.InjectionKindCheckIn) {
+		t.Errorf("persisted InjectionKind = %q, want %q. An unclassified row here is the "+
+			"defect: the steer reloads as a user turn.", md.InjectionKind, types.InjectionKindCheckIn)
+	}
+	if !md.MachineAuthored {
+		t.Error("persisted MachineAuthored = false on a checkin steer, want true")
+	}
+}
+
+// TestDrainSteer_ClientSteerStaysUnclassified pins the boundary that keeps a
+// HUMAN steer rendering exactly as before.
+//
+// A person typing into a running turn is as user-authored as a turn gets. If
+// the kind defaulted to something machine-authored, every mid-turn steer the
+// operator typed would vanish from the transcript — a far worse bug than the
+// one being fixed.
+func TestDrainSteer_ClientSteerStaysUnclassified(t *testing.T) {
+	b := NewApiBackend()
+	run, conv := newSteerDrainRun("steer-kind-client")
+
+	run.steerCh <- steerMessage{text: "actually, check the logs first"}
+
+	if !b.drainSteer(run, conv) {
+		t.Fatal("drainSteer reported no message consumed")
+	}
+
+	md := findUserMessageEntry(t, conv)
+	if md.InjectionKind != "" {
+		t.Errorf("client steer persisted InjectionKind = %q, want empty", md.InjectionKind)
+	}
+	if md.MachineAuthored {
+		t.Error("client steer persisted MachineAuthored = true; a human steer is a user turn")
+	}
+}
+
+// TestDrainSteer_CarriesKindFromSteerWithKind covers the full path a caller
+// actually takes: SteerWithKind buffers, drainSteer persists. Pins that the
+// kind survives the channel hop rather than only the drain point handling it.
+func TestDrainSteer_CarriesKindFromSteerWithKind(t *testing.T) {
+	b := NewApiBackend()
+	const requestID = "steer-kind-endtoend"
+	run, conv := newSteerDrainRun(requestID)
+
+	b.mu.Lock()
+	b.activeRuns[requestID] = run
+	b.mu.Unlock()
+	defer func() {
+		b.mu.Lock()
+		delete(b.activeRuns, requestID)
+		b.mu.Unlock()
+	}()
+
+	if got := b.SteerWithKind(requestID, "child result", string(types.InjectionKindAgentCompletion)); got != SteerResultDelivered {
+		t.Fatalf("SteerWithKind = %s, want delivered", got)
+	}
+	if !b.drainSteer(run, conv) {
+		t.Fatal("drainSteer reported no message consumed")
+	}
+
+	md := findUserMessageEntry(t, conv)
+	if md.InjectionKind != string(types.InjectionKindAgentCompletion) {
+		t.Errorf("InjectionKind = %q, want %q", md.InjectionKind, types.InjectionKindAgentCompletion)
+	}
+	if !md.MachineAuthored {
+		t.Error("MachineAuthored = false on an agent_completion steer, want true")
+	}
 }

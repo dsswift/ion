@@ -532,13 +532,22 @@ type mockSteerableBackend struct {
 	result      backend.SteerResult
 	lastRunID   string
 	lastMessage string
-	called      bool
+	// lastKind records the injection kind the registry forwarded. Recorded
+	// so a test can prove the classification survived the hop rather than
+	// only that the message did.
+	lastKind string
+	called   bool
 }
 
 func (m *mockSteerableBackend) SteerWithReason(requestID, message string) backend.SteerResult {
+	return m.SteerWithKind(requestID, message, "")
+}
+
+func (m *mockSteerableBackend) SteerWithKind(requestID, message, kind string) backend.SteerResult {
 	m.called = true
 	m.lastRunID = requestID
 	m.lastMessage = message
+	m.lastKind = kind
 	return m.result
 }
 
