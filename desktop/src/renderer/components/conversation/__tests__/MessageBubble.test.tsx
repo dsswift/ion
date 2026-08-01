@@ -52,8 +52,8 @@ beforeAll(() => {
 const LONG_UNBREAKABLE =
   'https://example.com/' + 'a'.repeat(400) + '/path/that/never/wraps?q=' + 'z'.repeat(200)
 
-function userMessage(content: string): Message {
-  return { id: 'm1', role: 'user', content, timestamp: 0 }
+function userMessage(content: string, fields: Partial<Message> = {}): Message {
+  return { id: 'm1', role: 'user', content, timestamp: 0, ...fields }
 }
 
 let container: HTMLDivElement | null = null
@@ -121,6 +121,44 @@ describe('MessageBubble — attachment marker stripping', () => {
     // displayContent trims to empty string → bubble does not render the text div.
     const prose = el.querySelector('.prose-cloud')
     expect(prose).toBeNull()
+  })
+})
+
+describe('MessageBubble — slash model provenance', () => {
+  it('renders configured slash model as a separate attachment-style pill', () => {
+    const el = renderBubble(userMessage('/align review changes', {
+      slashCommand: '/align',
+      slashArgs: 'review changes',
+      slashModelAlias: 'standard',
+      slashModelEffective: 'dci-marketing/gpt-5.6-terra',
+    }))
+
+    const modelPill = el.querySelector('[data-slash-model-pill]')
+    expect(modelPill).not.toBeNull()
+    expect(modelPill?.textContent).toBe('Standard · GPT 5.6 Terra')
+    expect(modelPill?.querySelector('svg')).not.toBeNull()
+    expect((modelPill as HTMLElement).style.borderRadius).toBe('10px')
+    expect(modelPill?.parentElement?.firstElementChild).not.toBe(modelPill)
+  })
+
+  it('renders model pill when live event stamps provenance before slash metadata', () => {
+    const el = renderBubble(userMessage('/align', {
+      slashModelAlias: 'standard',
+      slashModelEffective: 'gpt-5.6-terra',
+    }))
+
+    const modelPill = el.querySelector('[data-slash-model-pill]')
+    expect(modelPill).not.toBeNull()
+    expect(modelPill?.textContent).toBe('Standard · GPT 5.6 Terra')
+  })
+
+  it('omits model pill when slash command has no model provenance', () => {
+    const el = renderBubble(userMessage('/clear', {
+      slashCommand: '/clear',
+      slashArgs: '',
+    }))
+
+    expect(el.querySelector('[data-slash-model-pill]')).toBeNull()
   })
 })
 

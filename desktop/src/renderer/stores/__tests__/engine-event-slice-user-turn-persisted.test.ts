@@ -93,6 +93,44 @@ describe('user_turn_persisted re-keys the optimistic user row', () => {
     expect(userRows[0].id).toBe('old-user')
   })
 
+  it('re-keys and stamps slash model provenance atomically', () => {
+    const { state, slice } = buildHarness([
+      { id: 'client-msg-uuid', role: 'user', content: '/align', timestamp: 1 },
+    ])
+
+    slice.handleNormalizedEvent('tab1', {
+      type: 'user_turn_persisted',
+      entryId: 'entry-align',
+      slashModelAlias: 'standard',
+      slashModelEffective: 'dci-marketing/gpt-5.6-terra',
+    })
+
+    const message = activeInstance(state.conversationPanes, 'tab1')!.messages[0]
+    expect(message).toMatchObject({
+      id: 'entry-align',
+      slashModelAlias: 'standard',
+      slashModelEffective: 'dci-marketing/gpt-5.6-terra',
+    })
+  })
+
+  it('stamps provenance when row already carries canonical id', () => {
+    const { state, slice } = buildHarness([
+      { id: 'entry-align', role: 'user', content: '/align', timestamp: 1 },
+    ])
+
+    slice.handleNormalizedEvent('tab1', {
+      type: 'user_turn_persisted',
+      entryId: 'entry-align',
+      slashModelAlias: 'standard',
+      slashModelEffective: 'dci-marketing/gpt-5.6-terra',
+    })
+
+    expect(activeInstance(state.conversationPanes, 'tab1')!.messages[0]).toMatchObject({
+      slashModelAlias: 'standard',
+      slashModelEffective: 'dci-marketing/gpt-5.6-terra',
+    })
+  })
+
   it('is a no-op when the row already carries the canonical id', () => {
     const { state, slice } = buildHarness([
       { id: 'entry-canonical-7', role: 'user', content: 'hi', timestamp: 1 },

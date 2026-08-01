@@ -1,5 +1,6 @@
 import React, { useMemo, useCallback } from 'react'
 import { motion } from 'framer-motion'
+import { Brain } from '@phosphor-icons/react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useColors } from '../../theme'
@@ -9,6 +10,7 @@ import { CollapsibleUserBody } from './CollapsibleUserBody'
 import { CopyButton } from './CopyButton'
 import { InlineMessageImages, deriveMessageImages } from './InlineMessageImages'
 import { stripAttachmentMarkers } from './message-text'
+import { resolveSlashPill } from './slash-pill'
 import type { Message } from '../../../shared/types'
 import { rWarn } from '../../rendererLogger'
 
@@ -27,6 +29,7 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
   const onOpenFileVoid = useCallback((path: string) => { void onOpenFile(path).catch((err) => rWarn('conversation', 'open file failed', { error: String(err) })) }, [onOpenFile])
 
   const displayContent = stripAttachmentMarkers(message.content || '').trim()
+  const slashPill = useMemo(() => resolveSlashPill(message, displayContent), [message, displayContent])
 
   const inlineImages = deriveMessageImages(message.content || '', message.attachments)
   const hasInlineImages = inlineImages.length > 0
@@ -81,11 +84,53 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
               borderRadius: '14px 14px 4px 14px',
             }}
           >
-            <div className="prose-cloud prose-cloud-user min-w-0 overflow-hidden">
-              <Markdown remarkPlugins={REMARK_PLUGINS} components={userMarkdownComponents}>
-                {displayContent}
-              </Markdown>
-            </div>
+            {slashPill ? (
+              <div className="flex flex-col items-start gap-1">
+                <div>
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      background: colors.accentSoft,
+                      color: colors.accent,
+                      borderRadius: 6,
+                      padding: '1px 7px',
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                      fontWeight: 500,
+                      marginRight: slashPill.args ? 6 : 0,
+                    }}
+                  >
+                    {slashPill.command}
+                  </span>
+                  {slashPill.args && <span>{slashPill.args}</span>}
+                </div>
+                {slashPill.modelDisplay && (
+                  <span
+                    data-slash-model-pill
+                    className="inline-flex items-center gap-1"
+                    style={{
+                      background: colors.surfacePrimary,
+                      border: `1px solid ${colors.surfaceSecondary}`,
+                      borderRadius: 10,
+                      padding: '2px 7px',
+                      maxWidth: '100%',
+                      fontSize: 10,
+                      color: colors.textSecondary,
+                      fontWeight: 500,
+                    }}
+                  >
+                    <Brain size={12} className="flex-shrink-0" style={{ color: colors.textTertiary }} />
+                    <span className="truncate">{slashPill.modelDisplay}</span>
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="prose-cloud prose-cloud-user min-w-0 overflow-hidden">
+                <Markdown remarkPlugins={REMARK_PLUGINS} components={userMarkdownComponents}>
+                  {displayContent}
+                </Markdown>
+              </div>
+            )}
           </div>
         </CollapsibleUserBody>
       )}

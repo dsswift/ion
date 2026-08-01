@@ -186,6 +186,8 @@ export function toRemoteMessage(m: Message): RemoteMessage {
     slashCommand: m.slashCommand,
     slashArgs: m.slashArgs,
     slashSource: m.slashSource,
+    slashModelAlias: m.slashModelAlias,
+    slashModelEffective: m.slashModelEffective,
     planFilePath: m.planFilePath,
     attachments: (m.attachments || []).map((a) => ({
       id: a.id,

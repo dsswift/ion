@@ -124,6 +124,8 @@ export function mapSessionMessage(m: SessionLoadMessage, makeId: () => string): 
     slashCommand: m.slashCommand,
     slashArgs: m.slashArgs,
     slashSource: m.slashSource,
+    slashModelAlias: m.slashModelAlias,
+    slashModelEffective: m.slashModelEffective,
     attachments: m.attachments,
     timestamp: m.timestamp,
   }

@@ -174,6 +174,21 @@ describe('mapSessionMessage — ordinary rows', () => {
     expect(msg.slashSource).toBe('ion')
   })
 
+  it('carries slash model provenance through history mapping', () => {
+    const row: SessionLoadMessage = {
+      role: 'user',
+      content: '/align',
+      timestamp: 6001,
+      slashCommand: '/align',
+      slashModelAlias: 'standard',
+      slashModelEffective: 'dci-marketing/gpt-5.6-terra',
+    }
+
+    const msg = mapSessionMessage(row, makeId)!
+    expect(msg.slashModelAlias).toBe('standard')
+    expect(msg.slashModelEffective).toBe('dci-marketing/gpt-5.6-terra')
+  })
+
   it('carries engine-replayed image attachments on a reloaded tool row', () => {
     // The engine's flattenEntries replays a persisted tool-result image as a
     // SessionMessage.Attachments entry on the owning tool row (image support,

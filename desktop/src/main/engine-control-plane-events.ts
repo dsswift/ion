@@ -11,7 +11,7 @@
 // This file retains the tool/text/message/error/permission/notify/dialog/
 // elicitation/export/compaction/stall/steer arms plus handleStatusEvent and
 // handleDeadEvent.
-import type { EngineEvent, NormalizedEvent, EnrichedError, EngineConfig } from '../shared/types'
+import type { EngineEvent, NormalizedEvent, EngineConfig } from '../shared/types'
 import { log as _log, debug as _debug, warn as _warn, error as _error, trace as _trace } from './logger'
 import { handleExportEvent } from './engine-export-handler'
 import { handleThinkingEvent } from './engine-control-plane-thinking'
@@ -19,6 +19,7 @@ import { handlePlanEvent } from './engine-control-plane-plan'
 import { handleDispatchEvent } from './engine-control-plane-dispatch'
 import { handleExtensionEvent } from './engine-control-plane-extension'
 import { handleStreamSignalEvent } from './engine-control-plane-stream'
+import { handleDeadEvent } from './engine-control-plane-dead'
 import { conversationExists } from './session-meta'
 import { toolGateSessionConfig } from './tool-gate-responder'
 import { mark, Activity } from './watchdog'
@@ -153,10 +154,17 @@ export function handleEngineEvent(
       // mid-stream never reaches a message_end, and without this the
       // un-re-keyed optimistic row duplicates against the persisted turn on
       // the next history load.
-      log('user_turn_persisted', { tab_id: tabId, entry_id: event.userTurnEntryId })
+      log('user_turn_persisted', {
+        tab_id: tabId,
+        entry_id: event.userTurnEntryId,
+        model_alias: event.userTurnSlashModelAlias,
+        model: event.userTurnSlashModelEffective,
+      })
       ctx.emit('event', tabId, {
         type: 'user_turn_persisted',
         entryId: event.userTurnEntryId,
+        slashModelAlias: event.userTurnSlashModelAlias,
+        slashModelEffective: event.userTurnSlashModelEffective,
       } as NormalizedEvent)
       // RC-9: also record here — a cancelled/failed run never reaches message_end.
       recordClientMsgId(tabId, event.userTurnEntryId, tab.activeRequestId)
@@ -565,36 +573,4 @@ function handleStatusEvent(
     tab.lastSurfacedProposalSig = null
     ctx.setStatus(tabId, 'running')
   }
-}
-
-function handleDeadEvent(
-  ctx: EventEmitterContext,
-  tabId: string,
-  tab: TabEntry,
-  event: Extract<EngineEvent, { type: 'engine_dead' }>,
-): void {
-  log('engine_dead', { tab_id: tabId, exit_code: event.exitCode, signal: event.signal })
-  if (event.exitCode === 0 || event.exitCode === null || event.exitCode === undefined) {
-    tab.activeRequestId = null
-    if (!event.signal) {
-      tab.engineSessionStarted = false
-    }
-    if (tab.status !== 'completed') {
-      ctx.setStatus(tabId, 'idle')
-    }
-    ctx.checkDrain()
-    return
-  }
-  const durationMs = tab.startedAt ? Date.now() - tab.startedAt : 0
-  ctx.emit('error', tabId, {
-    message: `Engine process exited with code ${event.exitCode}`,
-    stderrTail: event.stderrTail || [],
-    exitCode: event.exitCode ?? null,
-    elapsedMs: durationMs,
-    toolCallCount: tab.toolCallCount,
-    sawPermissionRequest: tab.sawPermissionRequest,
-  } as EnrichedError)
-  tab.activeRequestId = null
-  ctx.setStatus(tabId, 'dead')
-  ctx.checkDrain()
 }

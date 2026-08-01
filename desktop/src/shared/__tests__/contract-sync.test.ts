@@ -120,7 +120,7 @@ const TS_NORMALIZED_EVENTS: Record<string, string[]> = {
   thinking_block_end: ['elapsedSeconds', 'redacted', 'totalTokens'],
   // Extension-surface events (WI-001: single-path collapse)
   message_end: ['contextPercent', 'cost', 'entryId', 'inputTokens', 'outputTokens', 'userEntryId'],
-  user_turn_persisted: ['entryId'],
+  user_turn_persisted: ['entryId', 'slashModelAlias', 'slashModelEffective'],
   agent_state: ['agents'],
   harness_message: ['dedupKey', 'dedupMode', 'message', 'source'],
   working_message: ['message'],
@@ -342,6 +342,8 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
     'role',
     'slashArgs',
     'slashCommand',
+    'slashModelAlias',
+    'slashModelEffective',
     'slashSource',
     'timestamp',
     'toolId',

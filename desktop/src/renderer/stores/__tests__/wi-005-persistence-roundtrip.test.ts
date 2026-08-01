@@ -56,6 +56,7 @@ vi.mock('../../stores/session-store-persistence', () => ({
 import {
   serializeConversationPane,
   collectExternalInstanceMessages,
+  serializePersistedMessages,
 } from '../../stores/serialize-conversation-pane'
 import { buildPopulatedInstance } from '../../hooks/useTabRestoration-engine'
 import { seedContextStatusFields } from '../../hooks/useTabRestoration-helpers'
@@ -92,6 +93,25 @@ function makeInstance(overrides: Partial<ConversationInstance & ConversationRef>
 function makePane(inst: ConversationInstance & ConversationRef): ConversationPane {
   return { instances: [inst], activeInstanceId: inst.id } as any
 }
+
+describe('serializePersistedMessages — slash provenance', () => {
+  it('preserves live provenance before slash metadata arrives', () => {
+    const [persisted] = serializePersistedMessages([{
+      role: 'user',
+      content: '/align',
+      timestamp: 1,
+      slashModelAlias: 'standard',
+      slashModelEffective: 'dci-marketing/gpt-5.6-terra',
+    }])
+
+    expect(persisted).toMatchObject({
+      content: '/align',
+      slashModelAlias: 'standard',
+      slashModelEffective: 'dci-marketing/gpt-5.6-terra',
+    })
+    expect(persisted.slashCommand).toBeUndefined()
+  })
+})
 
 // ─── 3 & 4. Round-trip: persist → restore ────────────────────────────────────
 

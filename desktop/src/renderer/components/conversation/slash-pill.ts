@@ -10,6 +10,7 @@
  * gate. None of these functions read preferences or store state.
  */
 
+import { getModelDisplayLabel } from '../../stores/model-labels'
 import type { Message } from '../../../shared/types'
 import { parseSlash } from '../../../main/slash-parse'
 
@@ -51,20 +52,46 @@ export function stripSlashLabel(content: string, label: string): string {
  *      `/command args`; the body is `slashArgs` when present, else the raw
  *      content with the label stripped.
  *   2. Fallback content parse: messages whose `content` still literally
- *      starts with `/` but carry no metadata yet (extension commands,
- *      optimistic send-slice bubbles before any engine round-trip).
+ *      starts with `/` but carry no command metadata yet (extension commands,
+ *      optimistic send-slice bubbles before any engine round-trip). Model
+ *      provenance may arrive first on `user_turn_persisted`; preserve it so
+ *      live optimistic rows render the same model pill as restored history.
  *
- * Returns `{ command, args } | null` (null = render as plain text).
+ * Returns `{ command, args, modelDisplay } | null` (null = render as plain text).
  */
 export function resolveSlashPill(
-  message: Pick<Message, 'slashCommand' | 'slashArgs'>,
+  message: Pick<Message, 'slashCommand' | 'slashArgs' | 'slashModelAlias' | 'slashModelEffective'>,
   displayContent: string,
-): { command: string; args: string } | null {
+): { command: string; args: string; modelDisplay: string | null } | null {
   if (message.slashCommand) {
     return {
       command: message.slashCommand,
       args: message.slashArgs ?? stripSlashLabel(displayContent, message.slashCommand),
+      modelDisplay: formatSlashModelDisplay(message.slashModelAlias, message.slashModelEffective),
     }
   }
-  return parseSlashCommand(displayContent)
+  const parsed = parseSlashCommand(displayContent)
+  if (!parsed) return null
+  return {
+    ...parsed,
+    modelDisplay: formatSlashModelDisplay(message.slashModelAlias, message.slashModelEffective),
+  }
+}
+
+/**
+ * Format the per-run model provenance badge text from the engine-resolved
+ * tier and model name. Returns e.g. "Standard · GPT-5.6 Terra" when
+ * both are present, just the tier or model alone when only one is set,
+ * or null when neither is available.
+ */
+export function formatSlashModelDisplay(tier?: string, model?: string): string | null {
+  const tierLabel = tier ? tier[0].toUpperCase() + tier.slice(1) : ''
+  const bareModel = model?.split('/').pop() || ''
+  const gptVariant = bareModel.match(/^gpt-(\d+)[.-](\d+)-([a-z][a-z0-9-]*)$/i)
+  const modelLabel = gptVariant
+    ? `GPT ${gptVariant[1]}.${gptVariant[2]} ${gptVariant[3][0].toUpperCase()}${gptVariant[3].slice(1)}`
+    : bareModel ? getModelDisplayLabel(bareModel) : ''
+  if (!tierLabel && !modelLabel) return null
+  if (tierLabel && modelLabel) return `${tierLabel} · ${modelLabel}`
+  return tierLabel || modelLabel || null
 }

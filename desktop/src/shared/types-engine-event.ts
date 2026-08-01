@@ -86,7 +86,7 @@ export type EngineEvent =
   // their optimistic user row to this id so history loads dedup against it
   // even when the run never reaches a message_end (cancel, mid-stream
   // failure). Mirror of Go EngineEvent.UserTurnEntryID.
-  | { type: 'engine_user_turn_persisted'; userTurnEntryId: string }
+  | { type: 'engine_user_turn_persisted'; userTurnEntryId: string; userTurnSlashModelAlias?: string; userTurnSlashModelEffective?: string }
   | { type: 'engine_tool_start'; toolName: string; toolId: string }
   | { type: 'engine_tool_end'; toolId: string; result?: string; isError?: boolean }
   // engine_image_content — a single image produced during a run, either

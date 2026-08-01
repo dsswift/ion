@@ -274,10 +274,19 @@ export function handleExtensionSurfaceEvent(ctx: ExtensionSurfaceCtx, event: Nor
         for (let i = ctx.messages.length - 1; i >= 0; i--) {
           const m = ctx.messages[i]
           if (m.role === 'user') {
-            if (m.id !== event.entryId) {
+            if (
+              m.id !== event.entryId ||
+              (event.slashModelAlias && m.slashModelAlias !== event.slashModelAlias) ||
+              (event.slashModelEffective && m.slashModelEffective !== event.slashModelEffective)
+            ) {
               ctx.messages = [
                 ...ctx.messages.slice(0, i),
-                { ...m, id: event.entryId },
+                {
+                  ...m,
+                  id: event.entryId,
+                  ...(event.slashModelAlias ? { slashModelAlias: event.slashModelAlias } : {}),
+                  ...(event.slashModelEffective ? { slashModelEffective: event.slashModelEffective } : {}),
+                },
                 ...ctx.messages.slice(i + 1),
               ]
             }
