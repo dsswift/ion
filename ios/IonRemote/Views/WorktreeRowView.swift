@@ -6,13 +6,54 @@ import SwiftUI
 // unlanded-commit count, a base-moved indicator, and the last commit subject
 // for telling worktrees apart. The desktop computes all of it; this only
 // renders.
+//
+// ONE row for enrolled and unenrolled worktrees alike. There used to be a
+// second `BenchMemberRowView` describing the same object -- a bench member IS a
+// worktree -- so an enrolled one appeared in two sections with two vocabularies
+// for the same facts. Membership is now a leading badge plus a few trailing
+// ones, exactly as the desktop expresses it.
 
 struct WorktreeRowView: View {
+    @Environment(\.appTheme) private var theme
     let worktree: RemoteWorktree
     let busy: Bool
     let onOpen: () -> Void
     let onSync: () -> Void
     let onLand: () -> Void
+    /// Bench verbs. Absent (no-op) when the surface offers no bench actions,
+    /// such as the new-tab sheet.
+    var onToggleEnrollment: (() -> Void)?
+    var onToggleIncluded: (() -> Void)?
+    var onUpdatePin: (() -> Void)?
+    var onSetReview: ((RemoteMembership.Review?) -> Void)?
+    /// Create an additional conversation here, as distinct from `onOpen`, which
+    /// focuses or cycles the ones that exist.
+    var onNewConversation: (() -> Void)?
+
+    private var membership: RemoteMembership? { worktree.membership }
+
+    /// Aggregate status of the conversations in this worktree, or nil when none
+    /// are open.
+    ///
+    /// Nil is a different fact from idle -- "nothing open" versus "open, all
+    /// idle" -- and renders as a hollow ring rather than a filled grey dot.
+    /// Mirrors the desktop's `getGroupStatusColor` fold: highest-priority state
+    /// across the conversations, using the same status tokens both clients share.
+    private var activityColor: Color? {
+        let statuses = worktree.openConversations.map(\.status)
+        if statuses.isEmpty { return nil }
+        if statuses.contains("error") { return theme.statusError }
+        if statuses.contains("running") || statuses.contains("connecting") { return theme.statusRunning }
+        if statuses.contains("waiting") { return theme.statusWaitingChildren }
+        return theme.statusIdle
+    }
+
+    /// One line-2 membership word, styled consistently.
+    private func benchWord(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+    }
 
     /// "2 conflicts" when the count is known, otherwise the operation name.
     private var conflictChipText: String {
@@ -30,10 +71,50 @@ struct WorktreeRowView: View {
         Button(action: onOpen) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
+                    // Bench membership leads: it is the only state that changes
+                    // what the BUILD contains. The three readings differ by SHAPE
+                    // and HUE, not by opacity -- `excluded` was a dimmed grey
+                    // diamond and `none` drew nothing, which at this size made an
+                    // excluded member read as one that was never enrolled. An
+                    // excluded member keeps the accent because the fact it must
+                    // convey is "IS a member, currently skipped".
+                    switch worktree.enrollment {
+                    case .included:
+                        Image(systemName: "diamond.fill")
+                            .font(.system(size: 7))
+                            .foregroundStyle(Color.accentColor)
+                    case .excluded:
+                        Image(systemName: "diamond.bottomhalf.filled")
+                            .font(.system(size: 7))
+                            .foregroundStyle(Color.accentColor)
+                    case .none:
+                        Image(systemName: "diamond")
+                            .font(.system(size: 7))
+                            .foregroundStyle(Color.secondary)
+                    }
+
+                    // Activity: the aggregate of this worktree's conversations,
+                    // in the app's existing dot vocabulary. This circle used to
+                    // report DIRTY in green -- claiming success about a worktree
+                    // holding unsaved work, and saying nothing about whether
+                    // anything was running in it. Dirty is its own marker below.
                     Circle()
-                        .fill(worktree.isDirty ? Color.green : Color.clear)
-                        .strokeBorder(worktree.isDirty ? Color.green : Color.secondary, lineWidth: 1)
+                        .fill(activityColor ?? Color.clear)
+                        .strokeBorder(activityColor == nil ? Color.secondary : Color.clear, lineWidth: 1)
                         .frame(width: 8, height: 8)
+
+                    // Uncommitted work, as an exclamation rather than a filled
+                    // shape. That is what lets it borrow the danger hue without
+                    // reading as a failure: `git status` has trained everyone
+                    // that a terse mark beside a path means "this has changes",
+                    // and next to the commit count that is how it reads. It also
+                    // differs from the activity dot by SHAPE, which a colour
+                    // difference alone cannot do at this size.
+                    if worktree.isDirty {
+                        Text("!")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(theme.worktreeDirty)
+                    }
 
                     // Title-first: the desktop names a worktree from the
                     // first prompt sent inside it, and that is the only string
@@ -62,6 +143,35 @@ struct WorktreeRowView: View {
                         }
                         .font(.caption2)
                         .foregroundStyle(.red)
+                    }
+
+                    // A bench merge conflict is a different failure from an
+                    // in-worktree one: the contribution is not in the build at
+                    // all. Both can be true, so both are shown.
+                    if membership?.merge == .conflicted {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.red)
+                    }
+                    if let review = membership?.review {
+                        Image(systemName: review == .good ? "checkmark.circle.fill" : "ant.fill")
+                            .font(.caption2)
+                            .foregroundStyle(review == .good ? Color.green : Color.red)
+                    }
+                    // The bench holds older content than this worktree.
+                    //
+                    // Suppressed while a sync is pending, matching the desktop's
+                    // priority exactly: sync is a rebase, so a pin taken before it
+                    // is stale the moment the sync lands. Showing both badges
+                    // would invite the operator to act on the one that must come
+                    // second. Same rule, same order, both clients -- this row has
+                    // more horizontal room than the desktop's single-slot gutter,
+                    // but room is not a reason to give the two clients different
+                    // advice about what to do next.
+                    if membership?.pin == .behind && !worktree.needsSync {
+                        Image(systemName: "arrow.up.circle")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
                     }
 
                     if worktree.unlandedCommitCount > 0 {
@@ -111,6 +221,21 @@ struct WorktreeRowView: View {
                             .font(.caption2)
                             .foregroundStyle(.tint)
                     }
+                    // Membership words. The badges above are a summary; these
+                    // carry what a summary cannot, which is why three axes exist
+                    // rather than one collapsed status.
+                    if let m = membership {
+                        if !m.enabled { benchWord("excluded") }
+                        switch m.pin {
+                        case .empty: benchWord("no commits yet")
+                        case .absorbed: benchWord("landed")
+                        case .gone: benchWord("worktree gone")
+                        case .behind, .current: EmptyView()
+                        }
+                        Text("#\(m.order)")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
                     if worktree.sourceBranch == nil {
                         // Ion did not create this worktree, so land and sync
                         // are unanswerable: guessing the source branch would
@@ -141,12 +266,87 @@ struct WorktreeRowView: View {
                 Label(worktree.openConversations.isEmpty ? "Open conversation" : "Go to conversation",
                       systemImage: "bubble.left")
             }
+            if let onNewConversation {
+                Button {
+                    onNewConversation()
+                } label: {
+                    Label("New conversation here", systemImage: "plus.bubble")
+                }
+            }
             // The conversations by name: the phone has no hover, so the menu
             // is where "what is actually running in here" belongs.
             if !worktree.openConversations.isEmpty {
                 Section("Open here") {
                     ForEach(worktree.openConversations) { conversation in
                         Text(conversation.title)
+                    }
+                }
+            }
+            // Bench verbs. Resolution and reordering stay desktop-only (a
+            // 3-pane merge and a drag rail do not translate to a phone), but
+            // enrollment and review are one tap and belong here.
+            if let onToggleEnrollment {
+                Button {
+                    onToggleEnrollment()
+                } label: {
+                    Label(membership == nil ? "Add to integration bench" : "Remove from bench",
+                          systemImage: membership == nil ? "diamond" : "diamond.fill")
+                }
+                .disabled(worktree.sourceBranch == nil)
+            }
+            if let m = membership {
+                // The bench conflict's detail. Resolution is desktop-only (a
+                // 3-pane merge does not translate to a phone), but the FACTS —
+                // which files, which member — ride the wire already, and a bare
+                // red triangle with no explanation was the parity gap: the
+                // desktop names them, so the phone does too.
+                if m.merge == .conflicted {
+                    Section("Bench conflict — assembly failed") {
+                        ForEach(m.conflictPaths ?? [], id: \.self) { path in
+                            Text(path)
+                        }
+                        if let colliders = m.conflictsWith, !colliders.isEmpty {
+                            Text("Collides with \(colliders.joined(separator: ", "))")
+                        } else {
+                            Text("Collides with the base branch")
+                        }
+                        Text("The bench is empty until this is resolved on the desktop.")
+                    }
+                }
+                if let onToggleIncluded {
+                    Button {
+                        onToggleIncluded()
+                    } label: {
+                        Label(m.enabled ? "Exclude from the merge" : "Include in the merge",
+                              systemImage: m.enabled ? "minus.circle" : "plus.circle")
+                    }
+                }
+                if let onUpdatePin, m.pin == .behind {
+                    Button {
+                        onUpdatePin()
+                    } label: {
+                        Label(worktree.needsSync ? "Update pin (sync first)" : "Update pin & assemble",
+                              systemImage: "arrow.up.circle")
+                    }
+                    // Disabled while a sync is pending, for the same reason the
+                    // desktop ranks Sync above Update-pin: sync rebases the
+                    // worktree, so a pin taken first is stale the moment the sync
+                    // lands -- and it publishes pre-rebase content to anyone who
+                    // reassembles the bench in between.
+                    .disabled(worktree.needsSync)
+                }
+                if let onSetReview {
+                    Button {
+                        onSetReview(m.review == .good ? nil : .good)
+                    } label: {
+                        Label(m.review == .good ? "Clear reviewed good" : "Mark reviewed good",
+                              systemImage: "checkmark.circle")
+                    }
+                    Button {
+                        onSetReview(m.review == .issue ? nil : .issue)
+                    } label: {
+                        Label(m.review == .issue ? "Clear review issue" : "Mark review issue",
+                              systemImage: "ant")
                     }
                 }
             }
@@ -166,111 +366,5 @@ struct WorktreeRowView: View {
                 .disabled(worktree.isDirty || worktree.unlandedCommitCount == 0 || worktree.operationState != nil)
             }
         }
-    }
-}
-
-// MARK: - One bench member row (iOS)
-
-struct BenchMemberRowView: View {
-    let member: RemoteBenchMember
-    let busy: Bool
-    let onToggle: () -> Void
-    let onUpdate: () -> Void
-    let onRemove: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 8) {
-                // Excluding keeps the member in the list but skips its merge,
-                // so a broken build can be bisected without dismantling the
-                // member set.
-                Button(action: onToggle) {
-                    Image(systemName: member.enabled ? "checkmark.square.fill" : "square")
-                        .foregroundStyle(member.enabled ? Color.accentColor : Color.secondary)
-                }
-                .buttonStyle(.plain)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    // Same title-first rule as the worktree rows: a bench of
-                    // hex slugs says nothing about what is being integrated.
-                    Text(member.displayName)
-                        .font(.subheadline.weight(.medium))
-                        .lineLimit(1)
-                    Text(member.branchName)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 4)
-
-                if !member.openConversations.isEmpty {
-                    Text(member.openConversations.count == 1
-                         ? "open" : "open · \(member.openConversations.count)")
-                        .font(.caption2)
-                        .foregroundStyle(.tint)
-                }
-                statusLabel
-                if busy { ProgressView().controlSize(.mini) }
-            }
-
-            if member.status == .conflicted, let paths = member.conflictPaths, !paths.isEmpty {
-                // Inline, not behind a tap: the conflict detail is most needed
-                // exactly when the row appears.
-                Text(conflictSummary(paths))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .padding(.leading, 26)
-            }
-        }
-        .opacity(member.enabled ? 1 : 0.55)
-        .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            if member.status == .stale {
-                Button(action: onUpdate) {
-                    Label("Update", systemImage: "arrow.clockwise")
-                }
-                .tint(.orange)
-            }
-        }
-        .swipeActions(edge: .trailing) {
-            Button(role: .destructive, action: onRemove) {
-                Label("Remove", systemImage: "minus.circle")
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var statusLabel: some View {
-        switch member.status {
-        case .integrated:
-            Label("@\(String(member.pinnedSha.prefix(7)))", systemImage: "checkmark.circle.fill")
-                .font(.caption2).labelStyle(.titleOnly).foregroundStyle(.green)
-        case .pending:
-            // No sha: the pin carries no commits, so showing one would claim the
-            // bench holds a contribution that does not exist.
-            Text("no commits yet").font(.caption2).foregroundStyle(.secondary)
-        case .landed:
-            Label("landed", systemImage: "arrow.down.to.line")
-                .font(.caption2).labelStyle(.titleOnly).foregroundStyle(.green)
-        case .stale:
-            // The pinned sha stays visible next to `stale`: what the bench
-            // HOLDS and what the worktree HAS are different facts.
-            Text("@\(String(member.pinnedSha.prefix(7))) · stale")
-                .font(.caption2).foregroundStyle(.orange)
-        case .conflicted:
-            Text("conflict").font(.caption2).foregroundStyle(.red)
-        case .missing:
-            Text("missing").font(.caption2).foregroundStyle(.secondary)
-        case .excluded:
-            Text("excluded").font(.caption2).foregroundStyle(.secondary)
-        }
-    }
-
-    private func conflictSummary(_ paths: [String]) -> String {
-        let shown = paths.prefix(3).joined(separator: ", ")
-        let extra = paths.count > 3 ? " +\(paths.count - 3) more" : ""
-        let with = (member.conflictsWith?.isEmpty == false)
-            ? " · conflicts with \(member.conflictsWith!.joined(separator: ", "))"
-            : ""
-        return shown + extra + with
     }
 }

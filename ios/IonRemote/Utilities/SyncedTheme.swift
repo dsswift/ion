@@ -29,6 +29,8 @@ struct SyncedTheme: AppTheme {
     let statusWaitingChildren: Color
     let statusBash: Color
     let statusWarning: Color
+    let statusIdle: Color
+    let worktreeDirty: Color
     let surfaceElevated: Color
     let codeBg: Color
     let userBubbleTint: Color
@@ -75,6 +77,8 @@ struct SyncedTheme: AppTheme {
         statusWaitingChildren = color("statusWaitingChildren", fallback.statusWaitingChildren)
         statusBash = color("statusBash", fallback.statusBash)
         statusWarning = color("statusWarning", fallback.statusWarning)
+        statusIdle = color("statusIdle", fallback.statusIdle)
+        worktreeDirty = color("worktreeDirty", fallback.worktreeDirty)
         surfaceElevated = color("surfaceElevated", fallback.surfaceElevated)
         codeBg = color("codeBg", fallback.codeBg)
         userBubbleTint = color("userBubbleTint", fallback.userBubbleTint)

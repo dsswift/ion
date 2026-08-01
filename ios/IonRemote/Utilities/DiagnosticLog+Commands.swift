@@ -21,22 +21,28 @@ extension DiagnosticLog {
         // ── Worktree + integration bench ──
         case .worktreeRefresh(let repoPath):
             log("CMD: worktreeRefresh repo=\(repoPath.suffix(30))", tag: "ipc", level: .debug)
-        case .worktreeOpenConversation(let worktreePath):
-            log("CMD: worktreeOpenConversation wt=\(worktreePath.suffix(30))", tag: "ipc", level: .info)
+        case .worktreeOpenConversation(let worktreePath, let newConversation):
+            log("CMD: worktreeOpenConversation wt=\(worktreePath.suffix(30)) new=\(newConversation)", tag: "ipc", level: .info)
         case .worktreeSync(let worktreePath, let sourceBranch, _):
             log("CMD: worktreeSync wt=\(worktreePath.suffix(30)) source=\(sourceBranch)", tag: "ipc", level: .info)
         case .worktreeLand(_, let worktreePath, let worktreeBranch, let sourceBranch):
             log("CMD: worktreeLand wt=\(worktreePath.suffix(30)) branch=\(worktreeBranch) source=\(sourceBranch)", tag: "ipc", level: .info)
         case .benchOpenConversation(_, let sourceBranch):
             log("CMD: benchOpenConversation source=\(sourceBranch)", tag: "ipc", level: .info)
-        case .benchRebuild(_, let sourceBranch):
-            log("CMD: benchRebuild source=\(sourceBranch)", tag: "ipc", level: .info)
+        case .benchOpenTerminal(_, let sourceBranch):
+            log("CMD: benchOpenTerminal source=\(sourceBranch)", tag: "ipc", level: .info)
+        case .benchAssemble(_, let sourceBranch):
+            log("CMD: benchAssemble source=\(sourceBranch)", tag: "ipc", level: .info)
         case .benchUpdateMember(_, let sourceBranch, let worktreePath):
             log("CMD: benchUpdateMember source=\(sourceBranch) wt=\(worktreePath.suffix(30))", tag: "ipc", level: .info)
         case .benchUpdateAll(_, let sourceBranch):
             log("CMD: benchUpdateAll source=\(sourceBranch)", tag: "ipc", level: .info)
         case .benchSetEnabled(_, let sourceBranch, let worktreePath, let enabled):
             log("CMD: benchSetEnabled source=\(sourceBranch) wt=\(worktreePath.suffix(30)) enabled=\(enabled)", tag: "ipc", level: .info)
+        case .benchSetReview(_, let sourceBranch, let worktreePath, let review):
+            log("CMD: benchSetReview source=\(sourceBranch) wt=\(worktreePath.suffix(30)) review=\(review ?? "none")", tag: "ipc", level: .info)
+        case .benchReorderMember(_, let sourceBranch, let worktreePath, let toIndex):
+            log("CMD: benchReorderMember source=\(sourceBranch) wt=\(worktreePath.suffix(30)) to=\(toIndex)", tag: "ipc", level: .info)
         case .benchAddMember(_, let sourceBranch, _, let branchName):
             log("CMD: benchAddMember source=\(sourceBranch) branch=\(branchName)", tag: "ipc", level: .info)
         case .benchRemoveMember(_, let sourceBranch, let worktreePath):

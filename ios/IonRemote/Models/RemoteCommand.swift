@@ -133,14 +133,29 @@ enum RemoteCommand: Codable, Sendable {
     case gitCommitFileDiff(directory: String, hash: String, path: String)
     // ── Worktree + integration bench (see Models/WorktreeTypes.swift) ──
     case worktreeRefresh(repoPath: String)
-    case worktreeOpenConversation(worktreePath: String)
+    /// `newConversation: true` creates an ADDITIONAL conversation; false (the
+    /// default) opens or cycles the existing ones, which is what tapping a row
+    /// does. One command, two verbs -- a parallel case would duplicate the relay
+    /// and the owner-window routing behind it.
+    case worktreeOpenConversation(worktreePath: String, newConversation: Bool)
     case worktreeSync(worktreePath: String, sourceBranch: String, repoPath: String)
     case worktreeLand(repoPath: String, worktreePath: String, worktreeBranch: String, sourceBranch: String)
     case benchOpenConversation(repoPath: String, sourceBranch: String)
-    case benchRebuild(repoPath: String, sourceBranch: String)
+    /// Open (or focus) the bench's ONE dedicated terminal tab. Distinct from
+    /// `benchOpenConversation`: a shell and a conversation are different things
+    /// to want, and the desktop keeps exactly one terminal per bench rather than
+    /// stacking a new one per press.
+    case benchOpenTerminal(repoPath: String, sourceBranch: String)
+    case benchAssemble(repoPath: String, sourceBranch: String)
     case benchUpdateMember(repoPath: String, sourceBranch: String, worktreePath: String)
     case benchUpdateAll(repoPath: String, sourceBranch: String)
     case benchSetEnabled(repoPath: String, sourceBranch: String, worktreePath: String, enabled: Bool)
+    /// Record or clear the operator's verdict on a member's current pin. A nil
+    /// review clears it, so re-selecting an active verdict un-sets it.
+    case benchSetReview(repoPath: String, sourceBranch: String, worktreePath: String, review: String?)
+    /// Move a member in the merge order. Order is array position on the desktop,
+    /// so this is an index rather than a stored rank.
+    case benchReorderMember(repoPath: String, sourceBranch: String, worktreePath: String, toIndex: Int)
     case benchAddMember(repoPath: String, sourceBranch: String, worktreePath: String, branchName: String)
     case benchRemoveMember(repoPath: String, sourceBranch: String, worktreePath: String)
     case fsListDir(directory: String, includeHidden: Bool = false)
@@ -303,10 +318,13 @@ enum RemoteCommand: Codable, Sendable {
         case worktreeSync = "desktop_worktree_sync"
         case worktreeLand = "desktop_worktree_land"
         case benchOpenConversation = "desktop_bench_open_conversation"
-        case benchRebuild = "desktop_bench_rebuild"
+        case benchOpenTerminal = "desktop_bench_open_terminal"
+        case benchAssemble = "desktop_bench_assemble"
         case benchUpdateMember = "desktop_bench_update_member"
         case benchUpdateAll = "desktop_bench_update_all"
         case benchSetEnabled = "desktop_bench_set_enabled"
+        case benchSetReview = "desktop_bench_set_review"
+        case benchReorderMember = "desktop_bench_reorder_member"
         case benchAddMember = "desktop_bench_add_member"
         case benchRemoveMember = "desktop_bench_remove_member"
         case fsListDir = "desktop_fs_list_dir"
@@ -357,7 +375,7 @@ enum RemoteCommand: Codable, Sendable {
         // checked against the full enum above before adding.
         case oldPath, newPath
         case attachments, dataUrl, name, correlationId, orderedIds, implementationPhase
-        case enabled, systemPrompt
+        case enabled, systemPrompt, review, toIndex, newConversation
         case logs, pairingId, nextSeq
         case sourceTabId, targetTabId
         case customName, customIcon, updatedAt

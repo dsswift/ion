@@ -19,7 +19,7 @@ struct WorktreeUIState {
     var states: [String: RemoteWorktreeState] = [:]
     /// Worktree path with an operation in flight, for a per-row spinner.
     var busyPath: String?
-    /// A bench-level operation (rebuild / update-all) is in flight.
+    /// A bench-level operation (assemble / update-all) is in flight.
     var benchBusy = false
 }
 

@@ -37,6 +37,18 @@ extension SessionViewModel {
     ///   attachments are present (data), independent of tab type.
     @MainActor
     func submit(tabId: String, text: String, attachments: [CommandAttachment]? = nil) {
+        // A locked conversation (auto-generated conflict fix) accepts no
+        // further prompts. The input bar is already replaced with a notice
+        // (ConversationView+InputBar); this guard covers every other entry
+        // point (voice, keyboard shortcut, future callers), mirroring the
+        // desktop's submit() guard. The desktop refuses too — this just
+        // avoids an optimistic bubble for a message that will be dropped.
+        if tab(for: tabId)?.inputLocked == true {
+            DiagnosticLog.log("submit blocked: conversation is input-locked", tag: "session", level: .warn,
+                              fields: ["tab_id": String(tabId.prefix(8))])
+            return
+        }
+
         // DATA, not a type branch: nil for a plain CLI tab (no instanceId on
         // the wire ⇒ desktop CLI pipeline), the active conversation-instance id
         // for an extension-backed tab (instanceId present ⇒ desktop engine

@@ -44,6 +44,9 @@ struct RemoteTabState: Codable, Identifiable, Sendable {
     var convFingerprint: String?
     var queuedPrompts: [String]?
     var isTerminalOnly: Bool?
+    /// Input-locked conversation (auto-generated conflict fix): the input bar
+    /// is replaced with a notice and no prompt can be sent. Nil decodes false.
+    var inputLocked: Bool?
     var hasEngineExtension: Bool?
     var terminalInstances: [TerminalInstanceInfo]?
     var activeTerminalInstanceId: String?

@@ -82,4 +82,22 @@ final class RemoteTabStateDecodeTests: XCTestCase {
         XCTAssertEqual(tab.convFingerprint, "fp-1")
         XCTAssertEqual(tab.engineProfileId, "prof-2")
     }
+
+    // MARK: - inputLocked (auto-generated conflict-fix conversations)
+
+    func testInputLockedDecodesTrue() throws {
+        let data = minimalTab(extra: #""inputLocked": true"#)
+        let tab = try decoder.decode(RemoteTabState.self, from: data)
+        XCTAssertEqual(tab.inputLocked, true,
+            "inputLocked should decode from the 'inputLocked' JSON key")
+    }
+
+    /// A desktop that omits the field (every tab today except assist tabs, and
+    /// every pre-fix desktop) must decode as unlocked, not fail the payload.
+    func testInputLockedNilWhenAbsent() throws {
+        let data = minimalTab()
+        let tab = try decoder.decode(RemoteTabState.self, from: data)
+        XCTAssertNil(tab.inputLocked,
+            "inputLocked should be nil when key is absent (back-compat, reads as unlocked)")
+    }
 }

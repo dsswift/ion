@@ -27,15 +27,17 @@ extension RemoteEvent {
             let error = try container.decodeIfPresent(String.self, forKey: .error)
             let refusedDirty = try container.decodeIfPresent(Bool.self, forKey: .refusedDirty)
             let hasConflicts = try container.decodeIfPresent(Bool.self, forKey: .hasConflicts)
+            let warning = try container.decodeIfPresent(String.self, forKey: .warning)
             return .worktreeOpResult(result: RemoteWorktreeOpResult(
                 ok: ok,
                 // An unrecognised operation from a newer desktop degrades to
-                // `.rebuild` rather than failing the decode: the operator still
+                // `.assemble` rather than failing the decode: the operator still
                 // sees the ok/error outcome, which is the actionable part.
-                operation: RemoteWorktreeOpResult.Operation(rawValue: rawOp) ?? .rebuild,
+                operation: RemoteWorktreeOpResult.Operation(rawValue: rawOp) ?? .assemble,
                 error: error,
                 refusedDirty: refusedDirty,
-                hasConflicts: hasConflicts))
+                hasConflicts: hasConflicts,
+                warning: warning))
 
         default:
             return nil
@@ -58,6 +60,7 @@ extension RemoteEvent {
             try container.encodeIfPresent(result.error, forKey: .error)
             try container.encodeIfPresent(result.refusedDirty, forKey: .refusedDirty)
             try container.encodeIfPresent(result.hasConflicts, forKey: .hasConflicts)
+            try container.encodeIfPresent(result.warning, forKey: .warning)
             return true
 
         default:

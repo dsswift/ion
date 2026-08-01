@@ -70,7 +70,38 @@ extension ConversationView {
 
     // MARK: - Engine input bar
 
+    /// Whether this tab's conversation is input-locked (an auto-generated
+    /// conflict-fix conversation). Mirrors the desktop InputBar: the input
+    /// surface is replaced with a static notice, because the tab's entire
+    /// instruction is the one machine-sent prompt and follow-ups are refused
+    /// by the desktop's submit guard anyway. Reads the snapshot field, so the
+    /// phone and the desktop agree from the first frame.
+    var isInputLocked: Bool {
+        viewModel.tab(for: tabId)?.inputLocked == true
+    }
+
+    @ViewBuilder
     var engineInputBar: some View {
+        if isInputLocked {
+            HStack(spacing: 6) {
+                Image(systemName: "lock")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                Text("Automated fix conversation — input is disabled. Continue the work in its worktree.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .accessibilityIdentifier("input-locked-notice")
+        } else {
+            engineInputBarUnlocked
+        }
+    }
+
+    private var engineInputBarUnlocked: some View {
         VStack(spacing: 0) {
             if let filter = slashFilter, !slashCommands.isEmpty {
                 SlashCommandMenu(
