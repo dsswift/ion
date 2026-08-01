@@ -139,6 +139,7 @@
     ],
     "prompt_injected": [
       "kind",
+      "machineAuthored",
       "origin",
       "prompt"
     ],
@@ -318,6 +319,7 @@
     "index",
     "injectedPrompt",
     "injectedPromptKind",
+    "injectedPromptMachineAuthored",
     "injectedPromptOrigin",
     "interceptLevel",
     "interceptMessage",
@@ -582,6 +584,7 @@
       "injectionKind",
       "internal",
       "isError",
+      "machineAuthored",
       "markerClearedBlocks",
       "markerKind",
       "markerMessageLength",

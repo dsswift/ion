@@ -256,6 +256,14 @@ func flattenEntries(conv *Conversation) []types.SessionMessage {
 					// classify the turn on historical reload without inspecting
 					// the raw entry file.
 					InjectionKind: md.InjectionKind,
+					// MachineAuthored rides along so a consumer's reload filter
+					// reads the same field its live-event filter does. Legacy
+					// rows predate the persisted flag, so re-derive from the
+					// kind rather than reporting a stored false as authoritative
+					// — otherwise every pre-existing agent_completion row would
+					// reload as a user-authored turn.
+					MachineAuthored: md.MachineAuthored ||
+						types.InjectionKind(md.InjectionKind).IsMachineToMachine(),
 					// Prompt attachments (client-sent images/documents) replayed
 					// onto the user row so history loads carry the same
 					// structured references the live echo did. Empty for

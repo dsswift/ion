@@ -83,7 +83,11 @@ func (m *Manager) dispatchSendPromptPayload(key, origin string, payload extensio
 // distinguish the redundant expansion from a genuine user turn and interpret it
 // however it chooses (the reference clients suppress it). The persisted display
 // entry is unaffected; it carries no injection kind and reloads identically.
-const SlashCommandInjectionKind = "slash_command"
+//
+// Aliases types.InjectionKindSlashCommand — the enumerated set in
+// types/injection_kind.go is the definition. This name is retained because it
+// is SDK-adjacent surface that external consumers may reference.
+const SlashCommandInjectionKind = string(types.InjectionKindSlashCommand)
 
 // resolvePromptInjectedKind derives the kind to stamp on the emitted
 // engine_prompt_injected event. An explicit extension-provided kind always wins
@@ -118,13 +122,15 @@ func (m *Manager) resolvePromptInjectedKind(key, extKind string) string {
 // (sessionAccessor.SendPromptWithKind and dispatchSendPromptPayload), after
 // m.SendPrompt accepted the prompt.
 //
-// kind classifies the injection for consumers. "agent_completion" means this is
-// a machine-to-machine dispatch callback (a child agent's result routed to its
-// parent) rather than a user-authored turn. "slash_command"
-// (SlashCommandInjectionKind) means the injection is the expanded body of a
-// slash command whose display turn is persisted separately — the expansion is
-// redundant with it. Empty means a genuine extension-initiated user turn with no
-// special classification. Consumers interpret each kind however they choose.
+// kind classifies the injection for consumers. See types.InjectionKind for the
+// enumerated set. Empty means a genuine extension-initiated turn with no
+// special classification.
+//
+// The event also carries MachineAuthored, derived from the kind HERE — this is
+// the single emit seam for extension injections, so the derivation happens once
+// rather than in each consumer. Consumers read the boolean instead of matching
+// kind strings, which is what lets a new kind reach every client with no
+// client-side edit.
 func (m *Manager) emitPromptInjected(key, text, kind string) {
 	m.mu.RLock()
 	origin := ""
@@ -132,8 +138,15 @@ func (m *Manager) emitPromptInjected(key, text, kind string) {
 		origin = s.extensionName
 	}
 	m.mu.RUnlock()
-	utils.LogWithFields(utils.LevelInfo, "session", "prompt injected by extension, emitting engine_prompt_injected", map[string]any{"key": key, "origin": origin, "prompt_len": len(text), "kind": kind})
-	m.emit(key, types.EngineEvent{Type: "engine_prompt_injected", InjectedPrompt: text, InjectedPromptOrigin: origin, InjectedPromptKind: kind})
+	machineAuthored := types.InjectionKind(kind).IsMachineToMachine()
+	utils.LogWithFields(utils.LevelInfo, "session", "prompt injected by extension, emitting engine_prompt_injected", map[string]any{"key": key, "origin": origin, "prompt_len": len(text), "kind": kind, "machine_authored": machineAuthored})
+	m.emit(key, types.EngineEvent{
+		Type:                          "engine_prompt_injected",
+		InjectedPrompt:                text,
+		InjectedPromptOrigin:          origin,
+		InjectedPromptKind:            kind,
+		InjectedPromptMachineAuthored: machineAuthored,
+	})
 }
 
 func buildRunOptions(s *engineSession, text string, overrides *PromptOverrides) types.RunOptions {

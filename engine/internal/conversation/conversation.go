@@ -83,12 +83,18 @@ type MessageData struct {
 	DisplayOnly bool `json:"displayOnly,omitempty"`
 
 	// InjectionKind classifies the origin of an engine-side injected user
-	// turn. "agent_completion" marks a machine-to-machine dispatch callback
-	// (a child agent's result routed to its parent) rather than a turn the
-	// user authored. Empty means an ordinary user turn with no special
-	// classification. Additive (omitempty): absent on every legacy entry,
-	// which correctly reads as an ordinary turn.
+	// turn. See types.InjectionKind for the enumerated set. Empty means an
+	// ordinary user turn with no special classification. Additive (omitempty):
+	// absent on every legacy entry, which correctly reads as an ordinary turn.
 	InjectionKind string `json:"injectionKind,omitempty"`
+
+	// MachineAuthored reports whether an engine-side actor authored this turn
+	// rather than a user, derived from InjectionKind at write time. Persisted
+	// (rather than re-derived on read) so a consumer reloading history reads
+	// the same classification the live event carried, without needing to know
+	// the engine's kind taxonomy. Additive (omitempty): absent on legacy rows,
+	// where the kind remains available as the fallback.
+	MachineAuthored bool `json:"machineAuthored,omitempty"`
 }
 
 // CompactionData holds metadata about a compaction event. The enriched fields
@@ -318,10 +324,10 @@ func AddUserMessage(conv *Conversation, content any) *SessionEntry {
 }
 
 // AddUserMessageWithKind is the kind-aware variant of AddUserMessage. It
-// stamps InjectionKind on the persisted entry so consumers can classify the
-// injection on historical reload (e.g. "agent_completion" marks a
-// machine-to-machine dispatch callback rather than a user-authored turn).
-// An empty kind is identical to calling AddUserMessage.
+// stamps InjectionKind on the persisted entry, plus the MachineAuthored flag
+// derived from it, so consumers can classify the injection on historical
+// reload without knowing the engine's kind taxonomy. An empty kind is
+// identical to calling AddUserMessage.
 func AddUserMessageWithKind(conv *Conversation, content any, kind string) *SessionEntry {
 	if kind == "" {
 		return AddUserMessage(conv, content)
@@ -333,7 +339,16 @@ func AddUserMessageWithKind(conv *Conversation, content any, kind string) *Sessi
 	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: blocks})
 
 	if conv.Entries != nil {
-		return appendEntryLocked(conv, EntryMessage, MessageData{Role: "user", Content: blocks, InjectionKind: kind}, "")
+		return appendEntryLocked(conv, EntryMessage, MessageData{
+			Role:    "user",
+			Content: blocks,
+
+			InjectionKind: kind,
+			// Derived once here, at the single write seam for classified
+			// injections, rather than by each reader re-deriving it from the
+			// kind string.
+			MachineAuthored: types.InjectionKind(kind).IsMachineToMachine(),
+		}, "")
 	}
 	return nil
 }

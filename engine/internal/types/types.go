@@ -481,12 +481,22 @@ type SessionMessage struct {
 	MarkerMessageLength int `json:"markerMessageLength,omitempty"`
 
 	// InjectionKind classifies an engine-side injected user turn on historical
-	// reload. "agent_completion" marks a machine-to-machine dispatch callback
-	// (a child agent's result routed to its parent) rather than a turn the user
-	// authored. Empty means an ordinary user turn with no special classification.
+	// reload. See InjectionKind (injection_kind.go) for the enumerated set.
+	// Empty means an ordinary user turn with no special classification.
 	// Additive (omitempty): absent on legacy rows, which correctly read as
 	// ordinary turns. Propagated from MessageData.InjectionKind by flattenEntries.
 	InjectionKind string `json:"injectionKind,omitempty"`
+
+	// MachineAuthored reports whether an engine-side actor authored this turn
+	// rather than a user, derived from InjectionKind. Carried on reload so a
+	// consumer's history filter and its live-event filter can read the SAME
+	// field and cannot disagree — a kind suppressed live but not on reload
+	// makes the transcript change shape when history rehydrates, which is the
+	// exact divergence this field removes.
+	//
+	// Absent on rows persisted before this field existed. Consumers that must
+	// classify those rows fall back to the kind, which is still present.
+	MachineAuthored bool `json:"machineAuthored,omitempty"`
 
 	// Attachments carries engine-produced image references replayed on
 	// historical reload. Set (on a tool-role row) when flattenEntries encounters
