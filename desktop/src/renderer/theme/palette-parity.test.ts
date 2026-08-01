@@ -24,12 +24,32 @@ describe('palette parity', () => {
   // Running / question status dots must stay legibly distinct from each other
   // and from the accent blue. Ion Dark/Light previously set the running dot to
   // the accent hex and the question dot to a near-identical lighter blue, which
-  // read as one color. These pins guard the teal-running / purple-question split.
-  it('running dot is a distinct teal, decoupled from the accent blue (dark + light)', () => {
-    expect(darkColors.statusRunning).toBe('#5EA9C9')
+  // read as one color. These pins guard the orange-running / purple-question
+  // split. The running value is deliberately shared verbatim across all three
+  // built-ins — Ion Classic's terracotta is the canonical "working" hue.
+  it('running dot is Classic terracotta in every built-in, decoupled from the accent blue', () => {
+    expect(darkColors.statusRunning).toBe('#d97757')
+    expect(lightColors.statusRunning).toBe('#d97757')
+    expect(classicColors.statusRunning).toBe('#d97757')
     expect(darkColors.statusRunning).not.toBe(darkColors.accent)
-    expect(lightColors.statusRunning).toBe('#3F86A6')
     expect(lightColors.statusRunning).not.toBe(lightColors.accent)
+  })
+
+  // Warm-hue separation in the tab-dot cascade. With running on terracotta,
+  // the dots that sit next to it in the priority order must not collapse into
+  // one warm smear: "working", "blocked on you", and "dead" have to stay three
+  // readable signals. Classic intentionally shares one terracotta between
+  // running and permission (its whole palette is earthy and it predates this
+  // split), so it is exempt from the permission clause.
+  it('running stays distinct from the permission and error dots', () => {
+    for (const [name, palette] of Object.entries({ dark: darkColors, light: lightColors })) {
+      const p = palette as Record<string, string>
+      expect(p.statusRunning, `${name}: running vs permission`).not.toBe(p.statusPermission)
+      expect(p.statusRunning, `${name}: running vs error`).not.toBe(p.statusError)
+      expect(p.statusRunning, `${name}: running vs waiting-children`).not.toBe(
+        p.statusWaitingChildren,
+      )
+    }
   })
 
   it('question dot has a dedicated purple token, independent of the shared infoText blue', () => {

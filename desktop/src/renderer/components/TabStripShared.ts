@@ -418,7 +418,7 @@ export function getTabStatusColor(
     bg = colors.statusPermission; glow = true
     priority = 8 // STATUS_PRIORITY_PERMISSION
   } else if (tab.status === 'connecting' || tab.status === 'running' || isAnyEngineInstanceRunning(tab.id)) {
-    // Teal "foreground running" wins over amber "background only" —
+    // Orange "foreground running" wins over amber "background only" —
     // the orchestrator's own activity is the strongest signal. Amber
     // "awaiting children" fires below for the case where orchestrator
     // is idle but dispatched agents are still executing. Data-driven: the
@@ -429,7 +429,7 @@ export function getTabStatusColor(
   } else if (anyEngineInstanceHasRunningChildren(tab.id)) {
     // Yellow "awaiting children" — orchestrator idle, dispatched
     // background agents still running. Visually distinct from the
-    // teal running state so users can tell at a glance whether
+    // terracotta running state so users can tell at a glance whether
     // foreground or background work is in flight. Glow uses the
     // matching amber tint so the rim around the pill stays in palette.
     // Outranks plan-ready: active background work is a stronger signal

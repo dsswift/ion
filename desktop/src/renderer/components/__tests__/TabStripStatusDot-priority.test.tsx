@@ -147,13 +147,13 @@ describe('StatusDot — hasRunningChildren outranks plan-ready', () => {
   })
 
   it('foreground running still outranks running children', () => {
-    // Teal wins over amber — running/connecting is the highest active signal.
+    // Orange wins over amber — running/connecting is the highest active signal.
     const color = renderDotColor({ ...BASE, status: 'running', hasRunningChildren: true })
     expect(color).toBe(hex2rgb(C.statusRunning))
   })
 
-  it('running dot uses the dedicated statusRunning (teal), not the question color', () => {
-    // Pins the teal/purple split: the running dot must not borrow the
+  it('running dot uses the dedicated statusRunning (orange), not the question color', () => {
+    // Pins the orange/purple split: the running dot must not borrow the
     // question color, and vice-versa.
     const color = renderDotColor({ ...BASE, status: 'running' })
     expect(color).toBe(hex2rgb(C.statusRunning))

@@ -60,10 +60,13 @@ export const lightColors: ColorPalette = {
 
   // Status dots
   statusIdle: '#74747c',
-  // Steel-teal running dot, distinct from the blue `accent` (deeper than the
-  // dark theme's #5EA9C9 for contrast on the light background).
-  statusRunning: '#3F86A6',
-  statusRunningBg: 'rgba(63, 134, 166, 0.10)',
+  // Terracotta-orange running dot, shared verbatim with Ion Dark and Ion
+  // Classic (see palette-dark.ts for the rationale). This is the one status
+  // token that is NOT deepened for the light surface: the value is shared
+  // across all three built-ins by design, and #d97757 on #FBFBFC clears the
+  // WCAG 1.4.11 non-text 3:1 minimum.
+  statusRunning: '#d97757',
+  statusRunningBg: 'rgba(217, 119, 87, 0.10)',
   statusCompacting: '#3b82f6',
   statusCompactingBg: 'rgba(59, 130, 246, 0.1)',
   statusComplete: '#059669',
