@@ -9,15 +9,15 @@
 import React, { useCallback, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { ArrowLineDown, ArrowsClockwise, Bug, ChatCircle, Check, Flask, FolderOpen, Package, PencilSimple, Trash } from '@phosphor-icons/react'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
 import { useOutsideDismiss } from '../hooks/useOutsideDismiss'
-import { landFlagsForStrategy, describeLandStrategy } from '../../shared/worktree-land-strategy'
+import { landFlagsForStrategy } from '../../shared/worktree-land-strategy'
 import { findMembership } from '../../shared/worktree-list'
 import { ConfirmDialog } from './git/ConfirmDialog'
+import { buildWorktreeMenuItems } from './WorktreeRowMenu.items'
 import { rDebug, rError, rInfo, rWarn } from '../rendererLogger'
 import type { WorktreeInventoryEntry } from '../../shared/types'
 
@@ -79,18 +79,6 @@ export function WorktreeRowMenu({
   // finder so the menu, the row, and the wire projection agree about which
   // bench a worktree belongs to.
   const enrolled = findMembership(benchWorkspaces ?? [], entry.worktreePath)
-
-  // Without a known source branch the land/sync verbs are unanswerable: git
-  // does not record what a worktree was cut from, and guessing would land work
-  // in the wrong branch. Disable rather than guess.
-  const canLand = !!entry.sourceBranch && entry.unlandedCommitCount > 0 && !entry.isDirty
-  const landReason = !entry.sourceBranch
-    ? 'Source branch unknown'
-    : entry.isDirty
-      ? 'Commit changes first'
-      : entry.unlandedCommitCount === 0
-        ? 'Nothing to land'
-        : ''
 
   async function doLand(): Promise<void> {
     if (!entry.sourceBranch) return
@@ -325,40 +313,19 @@ export function WorktreeRowMenu({
     onClose()
   }
 
-  /**
-   * The menu's verbs.
-   *
-   * ── Dismissal is uniform and declared here, not inside each handler ────────
-   * Clicking an enabled item ALWAYS withdraws the menu immediately, before the
-   * verb runs. That was previously each handler's own business, and the seven
-   * items had four different behaviours: sync and reveal closed immediately,
-   * add-to-bench and re-provision closed only after their await resolved (so
-   * the menu sat open for the duration), land never closed at all on success,
-   * and retire waited on the appraisal round-trip before its dialog replaced
-   * the menu. A menu still on screen after a click reads as "the click did
-   * nothing" — which is exactly what was reported for retire.
-   *
-   * `keepsMenuOpen` is the single opt-out, for items that REPLACE the menu body
-   * with their own UI rather than dismissing it. Rename swaps in an inline
-   * editor; retire withdraws the body behind its confirmation but must stay
-   * mounted because it owns the dialog state and the busy guard.
-   */
-  const items: Array<{
-    label: string
-    icon: React.ReactNode
-    disabled?: boolean
-    hint?: string
-    /** Item renders its own UI in place of the menu; it handles its own exit. */
-    keepsMenuOpen?: boolean
-    run(): void
-  }> = [
-    {
-      // The row CLICK opens or cycles existing conversations; this creates an
-      // additional one. Two distinct verbs, so the second gets a menu entry
-      // rather than a second gutter button that looks like the first.
-      label: 'New conversation here',
-      icon: <ChatCircle size={12} color={colors.accent} />,
-      run: () => {
+  // The menu's verbs. Built in WorktreeRowMenu.items.tsx — WHAT the verbs are
+  // and when each is available lives there; the operations they invoke and the
+  // dialogs they raise stay here.
+  const items = buildWorktreeMenuItems({
+    entry,
+    colors,
+    strategy,
+    enrolled,
+    benchIndex,
+    benchSize,
+    alreadyInBench,
+    actions: {
+      onNewConversation: () => {
         // The store action, NOT createTabInDirectory. Creating the tab is only
         // half the job: it must also be given its worktree metadata, or the git
         // panel cannot resolve which repo's worktrees to list and falls back to
@@ -370,106 +337,35 @@ export function WorktreeRowMenu({
           .catch((err) => rError('worktree.menu', 'new conversation failed', { error: String(err) }))
         onClose()
       },
-    },
-    {
-      label: entry.title ? 'Rename worktree' : 'Name this worktree',
-      icon: <PencilSimple size={12} color={colors.textSecondary} />,
-      // Named lazily from the first prompt, so a worktree that has not been
-      // prompted in yet still needs a manual way to get a name.
-      hint: entry.title ? '' : 'Not named yet',
-      // Swaps the menu body for the inline editor.
-      keepsMenuOpen: true,
-      run: () => {
+      onBeginRename: () => {
         setDraftTitle(entry.title ?? '')
         setRenaming(true)
       },
-    },
-    {
-      label: alreadyInBench ? 'Already in the bench' : 'Add to integration bench',
-      icon: <Flask size={12} color={alreadyInBench || !entry.sourceBranch ? colors.textTertiary : colors.accent} />,
-      disabled: alreadyInBench || !entry.sourceBranch,
-      hint: !entry.sourceBranch ? 'Source branch unknown' : '',
-      run: () => { void doAddToBench().catch((err) => rError('worktree.menu', 'add to bench threw', { error: String(err) })) },
-    },
-    // Review verdicts. These live in the row's state slot only when nothing more
-    // urgent needs it, so the menu is where they are always reachable -- and
-    // where a verdict can be cleared by selecting the one already set.
-    ...(enrolled ? [
-      {
-        label: enrolled.membership.review === 'good' ? 'Clear reviewed good' : 'Mark reviewed good',
-        icon: <Check size={12} color={enrolled.membership.review === 'good' ? colors.worktreeGreen : colors.textSecondary} />,
-        run: () => {
-          void useSessionStore.getState()
-            .benchSetReview(repoPath, enrolled.sourceBranch, entry.worktreePath,
-              enrolled.membership.review === 'good' ? null : 'good')
-            .catch((err) => rError('worktree.menu', 'set review failed', { error: String(err) }))
-          onClose()
-        },
+      onAddToBench: () => {
+        void doAddToBench().catch((err) => rError('worktree.menu', 'add to bench threw', { error: String(err) }))
       },
-      {
-        label: enrolled.membership.review === 'issue' ? 'Clear review issue' : 'Mark review issue',
-        icon: <Bug size={12} color={enrolled.membership.review === 'issue' ? colors.dangerFg : colors.textSecondary} />,
-        run: () => {
-          void useSessionStore.getState()
-            .benchSetReview(repoPath, enrolled.sourceBranch, entry.worktreePath,
-              enrolled.membership.review === 'issue' ? null : 'issue')
-            .catch((err) => rError('worktree.menu', 'set review failed', { error: String(err) }))
-          onClose()
-        },
+      onSetReview: (verdict) => {
+        if (!enrolled) return
+        void useSessionStore.getState()
+          .benchSetReview(repoPath, enrolled.sourceBranch, entry.worktreePath, verdict)
+          .catch((err) => rError('worktree.menu', 'set review failed', { error: String(err) }))
+        onClose()
       },
-      // Keyboard-reachable reorder. Dragging the rail is the direct gesture, but
-      // a drag is not available to every operator or every input device.
-      {
-        label: 'Move earlier in the merge',
-        icon: <ArrowLineDown size={12} color={colors.textSecondary} style={{ transform: 'rotate(180deg)' }} />,
-        disabled: benchIndex <= 0,
-        hint: benchIndex <= 0 ? 'Already first' : '',
-        run: () => { moveInBench(benchIndex - 1) },
-      },
-      {
-        label: 'Move later in the merge',
-        icon: <ArrowLineDown size={12} color={colors.textSecondary} />,
-        disabled: benchIndex < 0 || benchIndex >= benchSize - 1,
-        hint: benchIndex >= benchSize - 1 ? 'Already last' : '',
-        run: () => { moveInBench(benchIndex + 1) },
-      },
-    ] : []),
-    {
-      label: `Sync from ${entry.sourceBranch ?? 'source'}`,
-      icon: <ArrowsClockwise size={12} color={colors.textSecondary} />,
-      disabled: !entry.sourceBranch || entry.isDirty,
-      hint: !entry.sourceBranch ? 'Source branch unknown' : entry.isDirty ? 'Commit changes first' : '',
-      run: () => {
+      onMoveInBench: moveInBench,
+      onSync: () => {
         if (!entry.sourceBranch) return
         void useSessionStore.getState()
           .syncWorktree(entry.worktreePath, entry.sourceBranch, repoPath)
           .catch((err) => rError('worktree.menu', 'sync failed', { error: String(err) }))
       },
-    },
-    {
-      label: `Land into ${entry.sourceBranch ?? 'source'}`,
-      icon: <ArrowLineDown size={12} color={canLand ? colors.worktreeGreen : colors.textTertiary} />,
-      disabled: !canLand,
-      // Name the strategy that will actually run, so the operator is not
-      // guessing which of the three shapes this click produces.
-      hint: landReason ?? (entry.sourceBranch ? describeLandStrategy(strategy, entry.sourceBranch) : undefined),
-      // A land REFUSAL raises an error dialog owned by this component, so the
-      // menu must survive the click; `doLand` closes it on the success path.
-      keepsMenuOpen: true,
-      run: () => { void doLand().catch((err) => rError('worktree.menu', 'land threw', { error: String(err) })) },
-    },
-    {
-      label: 'Reveal in Finder',
-      icon: <FolderOpen size={12} color={colors.textSecondary} />,
-      run: () => {
+      onLand: () => {
+        void doLand().catch((err) => rError('worktree.menu', 'land threw', { error: String(err) }))
+      },
+      onReveal: () => {
         void window.ion.revealPath(entry.worktreePath)
           .catch((err: unknown) => rError('worktree.menu', 'reveal failed', { error: String(err) }))
       },
-    },
-    {
-      label: 'Re-provision',
-      icon: <Package size={12} color={colors.textSecondary} />,
-      run: () => {
+      onReprovision: () => {
         void useSessionStore.getState()
           .reprovisionWorktree(repoPath, entry.worktreePath)
           .then((result) => {
@@ -482,16 +378,11 @@ export function WorktreeRowMenu({
           })
           .catch((err) => rError('worktree.menu', 'reprovision threw', { error: String(err) }))
       },
+      onRequestRetire: () => {
+        void requestRetire().catch((err) => rError('worktree.menu', 'retire appraisal threw', { error: String(err) }))
+      },
     },
-    {
-      label: 'Retire worktree',
-      icon: <Trash size={12} color={colors.textSecondary} />,
-      // Owns the confirmation dialog and the busy guard, so it stays mounted;
-      // the body is withdrawn by `dialogUp` below.
-      keepsMenuOpen: true,
-      run: () => { void requestRetire().catch((err) => rError('worktree.menu', 'retire appraisal threw', { error: String(err) })) },
-    },
-  ]
+  })
 
   // A dialog raised BY this menu replaces it. The menu is the thing that asked
   // the question; leaving it open behind its own confirmation reads as "the
