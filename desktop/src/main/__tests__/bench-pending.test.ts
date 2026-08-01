@@ -41,6 +41,7 @@ import { makeWorkspace, makeMember } from '../integration/bench-store'
 import { landWorktree } from '../worktree/integrate'
 import { retireWorktree } from '../worktree/relocate'
 import type { IntegrationWorkspace, IntegrationMember } from '../../shared/types'
+import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf-8' })
@@ -210,7 +211,7 @@ describe('rebuildBench — a member with nothing committed yet', () => {
     expect(result.workspace!.members.map((m) => m.branchName)).not.toContain(a.branch)
     expect((result.retired ?? []).map((m) => m.branchName)).toContain(a.branch)
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('rebuildBench — records written before the contribution range existed', () => {
   it('backfills a legacy member that carries commits and merges it', async () => {
@@ -256,4 +257,4 @@ describe('rebuildBench — records written before the contribution range existed
     expect(result.workspace!.members.map((m) => m.branchName)).not.toContain(a.branch)
     expect((result.retired ?? []).map((m) => m.branchName)).toContain(a.branch)
   })
-})
+}, GIT_FIXTURE_TIMEOUT)

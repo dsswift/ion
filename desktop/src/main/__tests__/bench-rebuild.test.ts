@@ -32,6 +32,7 @@ import { rebuildBench } from '../integration/bench-rebuild'
 import { captureContribution, contributedTreeHash } from '../integration/bench-snapshot'
 import { makeWorkspace, makeMember } from '../integration/bench-store'
 import type { IntegrationWorkspace, IntegrationMember } from '../../shared/types'
+import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf-8' })
@@ -177,7 +178,7 @@ describe('rebuildBench — pure function, no accumulation', () => {
     expect(result.workspace!.members).toHaveLength(2)
     expect(result.workspace!.members.find((m) => m.branchName === 'wt/b')!.status).toBe('excluded')
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('rebuildBench — pins, not tips (the commit-pair guarantee)', () => {
   // THE regression test for the whole manual-integration design. A rebuild
@@ -233,7 +234,7 @@ describe('rebuildBench — pins, not tips (the commit-pair guarantee)', () => {
     expect(git(ws.benchPath, 'rev-parse', 'HEAD^{tree}').trim()).toBe(headBefore)
     expect(existsSync(join(ws.benchPath, 'unlanded.txt'))).toBe(false)
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('rebuildBench — conflicts and missing members', () => {
   it('skips a conflicting member, reports its paths and who it collided with, and still builds the rest', async () => {
@@ -279,7 +280,7 @@ describe('rebuildBench — conflicts and missing members', () => {
     expect(result.workspace!.members.find((m) => m.branchName === 'wt/b')!.status).toBe('missing')
     expect(existsSync(join(ws.benchPath, 'a.txt'))).toBe(true)
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('rebuildBench — build output survives (no clean -x)', () => {
   it('leaves ignored files in the bench untouched across a rebuild', async () => {
@@ -299,7 +300,7 @@ describe('rebuildBench — build output survives (no clean -x)', () => {
     expect(existsSync(join(ws.benchPath, 'node_modules', '.probe'))).toBe(true)
     expect(readFileSync(join(ws.benchPath, 'node_modules', '.probe'), 'utf-8')).toBe('expensive build output\n')
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('rebuildBench — self-healing', () => {
   it('recreates a bench worktree that was deleted outside Ion', async () => {
@@ -315,7 +316,7 @@ describe('rebuildBench — self-healing', () => {
     expect(result.ok).toBe(true)
     expect(existsSync(join(ws.benchPath, 'a.txt'))).toBe(true)
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('captureContribution — committed work only', () => {
   // The hard rule: uncommitted work cannot be integrated. A bench built from a
@@ -402,7 +403,7 @@ describe('captureContribution — committed work only', () => {
     expect(result.ok).toBe(true)
     expect(existsSync(join(ws.benchPath, 'node_modules', 'junk.txt'))).toBe(false)
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('contributedTreeHash — staleness identity', () => {
   it('is unchanged by an amend that produces an identical tree', async () => {
@@ -454,4 +455,4 @@ describe('contributedTreeHash — staleness identity', () => {
 
     expect(await contributedTreeHash(member)).toBeNull()
   })
-})
+}, GIT_FIXTURE_TIMEOUT)

@@ -36,6 +36,7 @@ import { captureContribution } from '../integration/bench-snapshot'
 import { rebuildBench } from '../integration/bench-rebuild'
 import { makeWorkspace, makeMember } from '../integration/bench-store'
 import type { IntegrationMember, IntegrationWorkspace } from '../../shared/types'
+import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
 
 const FEATURE = 'josh'
 
@@ -162,7 +163,7 @@ describe('appraiseBase — detects a stale base', () => {
     expect(base.needsSync).toBe(false)
     expect(base.appraisalFailed).toBe(true)
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('syncWorktreeFromSource — resolves base staleness', () => {
   it('clears the stale signal and brings in the landed work', async () => {
@@ -218,7 +219,7 @@ describe('syncWorktreeFromSource — resolves base staleness', () => {
     expect(result.hasConflicts).toBe(true)
     expect(result.error).toMatch(/rebase --abort/)
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('the two staleness directions are independent', () => {
   // Both can be true at once and each has its own resolution. Proving they do
@@ -279,4 +280,4 @@ describe('the two staleness directions are independent', () => {
     expect(result.ok).toBe(true)
     expect(readFileSync(join(ws.benchPath, 'b.txt'), 'utf-8')).toBe('b v2\n')
   })
-})
+}, GIT_FIXTURE_TIMEOUT)

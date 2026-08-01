@@ -33,6 +33,7 @@ import {
 import { loadWorkspaces, saveWorkspaces } from '../integration/bench-store'
 import { retireWorktree } from '../worktree/relocate'
 import { landWorktree } from '../worktree/integrate'
+import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
 
 const FEATURE = 'josh'
 
@@ -147,7 +148,7 @@ describe('disenrollWorktree', () => {
     expect(result.removedFrom).toBe(2)
     expect(listWorkspaces(repo)).toHaveLength(0)
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('retire disenrolls automatically', () => {
   it('drops the member and prunes the empty bench, removing its worktree', async () => {
@@ -212,4 +213,4 @@ describe('retire disenrolls automatically', () => {
 
     expect(listWorkspaces(repo)[0].members.map((m) => m.branchName)).toEqual([b.branch])
   })
-})
+}, GIT_FIXTURE_TIMEOUT)

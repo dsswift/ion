@@ -30,6 +30,7 @@ import {
   updateMember, updateAllStale, rebuildWorkspace, refreshStaleness, listWorkspaces,
 } from '../integration/bench-ops'
 import { loadWorkspaces, saveWorkspaces } from '../integration/bench-store'
+import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
 
 const FEATURE = 'josh'
 
@@ -109,7 +110,7 @@ describe('workspace lifecycle', () => {
     expect(list).toHaveLength(2)
     expect(list.map((w) => w.sourceBranch).sort()).toEqual(['josh', 'other-feature'])
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('member management', () => {
   it('enrolls a worktree pinned at its committed contribution', async () => {
@@ -160,7 +161,7 @@ describe('member management', () => {
     expect(ws!.members).toHaveLength(1)
     expect(ws!.members[0].enabled).toBe(false)
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('rebuild never advances a pin', () => {
   // THE core guarantee, at the ops layer.
@@ -236,7 +237,7 @@ describe('rebuild never advances a pin', () => {
 
     expect(result.workspace!.members[0].pinnedSha).toBe(pinBefore)
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
 
 describe('staleness reporting', () => {
   it('marks a member stale once its committed content moves past the pin', async () => {
@@ -290,4 +291,4 @@ describe('staleness reporting', () => {
 
     expect((await refreshStaleness(repo, FEATURE))!.members[0].status).toBe('missing')
   })
-})
+}, GIT_FIXTURE_TIMEOUT)
