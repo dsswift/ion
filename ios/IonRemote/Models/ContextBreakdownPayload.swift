@@ -79,6 +79,18 @@ struct ContextBreakdownPayload: Codable, Sendable {
     let unaccounted: Int?
     /// Model that produced this breakdown (e.g. "claude-sonnet-4-6").
     let model: String
+    /// The engine's authoritative context-window occupancy — the same figure
+    /// `StatusFields.contextTokens` carries and the same input the engine's
+    /// proactive-compaction gate measures. Divide by `contextWindow` to render
+    /// "how full is the context".
+    ///
+    /// Prefer this over the two counts above, which measure different things and
+    /// both drift as an occupancy proxy: `totalTokens` is the itemized
+    /// per-category estimate (for attribution) and over-reports content the
+    /// provider did not bill this turn, while `apiReportedTotal` is the raw
+    /// last-turn provider figure and under-reports mid-turn (tool results not
+    /// yet sent). Nil when the engine has no occupancy figure.
+    let occupancyTokens: Int?
     /// Provider-reported cache-read (served) tokens. Non-additive annotation on
     /// the total — surfaces how much of the context was served from the prompt
     /// cache rather than freshly tokenized. Zero / absent until reconciliation.

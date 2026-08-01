@@ -83,6 +83,7 @@
 		ACTLROW00000000000001 /* ActiveToolRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACTLROW00000000000002 /* ActiveToolRow.swift */; };
 		CTXBDPAY0000000000001 /* ContextBreakdownPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = CTXBDPAY0000000000002 /* ContextBreakdownPayload.swift */; };
 		CTXBDTST0000000000001 /* ContextBreakdownDecodeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CTXBDTST0000000000002 /* ContextBreakdownDecodeTests.swift */; };
+		CTXOCCTST00000000001 /* ContextOccupancyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CTXOCCTST00000000002 /* ContextOccupancyTests.swift */; };
 		REQCTXBD0000000000001 /* RequestContextBreakdownTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = REQCTXBD0000000000002 /* RequestContextBreakdownTests.swift */; };
 		DBSTATE00000000000000A1 /* DispatchBodyState.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBSTATE00000000000000A2 /* DispatchBodyState.swift */; };
 		TRNSCRPT000000000000A1 /* Transcript.swift in Sources */ = {isa = PBXBuildFile; fileRef = TRNSCRPT000000000000A2 /* Transcript.swift */; };
@@ -483,6 +484,7 @@
 		ACTLROW00000000000002 /* ActiveToolRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveToolRow.swift; sourceTree = "<group>"; };
 		CTXBDPAY0000000000002 /* ContextBreakdownPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextBreakdownPayload.swift; sourceTree = "<group>"; };
 		CTXBDTST0000000000002 /* ContextBreakdownDecodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextBreakdownDecodeTests.swift; sourceTree = "<group>"; };
+		CTXOCCTST00000000002 /* ContextOccupancyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextOccupancyTests.swift; sourceTree = "<group>"; };
 		REQCTXBD0000000000002 /* RequestContextBreakdownTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestContextBreakdownTests.swift; sourceTree = "<group>"; };
 		DBSTATE00000000000000A2 /* DispatchBodyState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispatchBodyState.swift; sourceTree = "<group>"; };
 		TRNSCRPT000000000000A2 /* Transcript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transcript.swift; sourceTree = "<group>"; };
@@ -1163,6 +1165,7 @@
 				E11C17CA0001F00013AB0001 /* ElicitationCodecTests.swift */,
 				RTSDECODE000000000002 /* RemoteTabStateDecodeTests.swift */,
 				CTXBDTST0000000000002 /* ContextBreakdownDecodeTests.swift */,
+				CTXOCCTST00000000002 /* ContextOccupancyTests.swift */,
 				REQCTXBD0000000000002 /* RequestContextBreakdownTests.swift */,
 				B1B2C3D4E5F60001CC000002 /* ConversationStatusBarContextTests.swift */,
 				B1B2C3D4E5F60001CC0000E2 /* ContextUsageRingTests.swift */,
@@ -1767,6 +1770,7 @@
 				E11C17CA0001F00012AB0001 /* ElicitationCodecTests.swift in Sources */,
 				RTSDECODE000000000001 /* RemoteTabStateDecodeTests.swift in Sources */,
 				CTXBDTST0000000000001 /* ContextBreakdownDecodeTests.swift in Sources */,
+				CTXOCCTST00000000001 /* ContextOccupancyTests.swift in Sources */,
 				REQCTXBD0000000000001 /* RequestContextBreakdownTests.swift in Sources */,
 				B1B2C3D4E5F60001CC000001 /* ConversationStatusBarContextTests.swift in Sources */,
 				B1B2C3D4E5F60001CC0000E1 /* ContextUsageRingTests.swift in Sources */,

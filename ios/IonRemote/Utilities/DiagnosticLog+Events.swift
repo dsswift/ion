@@ -372,11 +372,17 @@ extension DiagnosticLog {
             log("EVENT: planContent qId=\(questionId.prefix(12)) path=\(planFilePath.suffix(30)) offset=\(offset) contentLen=\(content.count) totalBytes=\(totalBytes) hasMore=\(hasMore)", tag: "session", level: .info)
 
         case .desktopContextBreakdown(let tabId, let instanceId, let payload):
-            // Context-breakdown diagnostics: log category count, total token sum, and
-            // whether this is a post-reconciliation update (apiReportedTotal present).
+            // Context-breakdown diagnostics. Both token quantities are logged
+            // because they answer different questions and are easy to confuse:
+            // `occupancy` is the engine's authoritative "how full is the context"
+            // (what every surface renders), while `total` is the itemized
+            // per-category sum used for attribution, which over-reports. An
+            // operator diagnosing a context-percentage complaint needs the
+            // former; one diagnosing a category attribution needs the latter.
             let reconciled = payload.apiReportedTotal != nil ? "reconciled" : "pre"
             let unaccounted = payload.unaccounted.map { " unaccounted=\($0)" } ?? ""
-            log("EVENT: desktopContextBreakdown tab=\(tabId.prefix(8)) inst=\(instanceId?.prefix(8) ?? "nil") cats=\(payload.categories.count) total=\(payload.totalTokens)/\(payload.contextWindow) \(reconciled)\(unaccounted)", tag: "session", level: .info)
+            let occupancy = payload.occupancyTokens.map(String.init) ?? "nil"
+            log("EVENT: desktopContextBreakdown tab=\(tabId.prefix(8)) inst=\(instanceId?.prefix(8) ?? "nil") cats=\(payload.categories.count) occupancy=\(occupancy)/\(payload.contextWindow) total=\(payload.totalTokens) \(reconciled)\(unaccounted)", tag: "session", level: .info)
         }
     }
 }

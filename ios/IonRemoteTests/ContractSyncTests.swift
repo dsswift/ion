@@ -1096,7 +1096,8 @@ final class ContractSyncTests: XCTestCase {
         // Fields decoded by ContextBreakdownPayload / ContextBreakdownCategory on iOS.
         let swiftHandled: Set<String> = [
             "aggregateCostUsd", "apiReportedTotal", "cacheCreationTokens", "cacheReadTokens",
-            "categories", "contextWindow", "model", "modelBreakdown", "totalTokens", "unaccounted",
+            "categories", "contextWindow", "model", "modelBreakdown", "occupancyTokens",
+            "totalTokens", "unaccounted",
         ]
         let goSet = Set(goFields)
         let unhandled = goSet.subtracting(swiftHandled)

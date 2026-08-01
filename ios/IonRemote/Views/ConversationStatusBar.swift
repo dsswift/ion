@@ -168,6 +168,42 @@ struct ConversationStatusBar: View {
         return nil
     }
 
+    /// The absolute occupancy figure to divide by the window — the NUMERATOR
+    /// counterpart to `windowForModel`'s denominator. Static for the same reason
+    /// as the two resolvers around it: every iOS surface that shows context usage
+    /// resolves one number from one implementation, so they cannot disagree.
+    ///
+    /// A context breakdown carries three token quantities that are easy to
+    /// confuse, and only one of them is occupancy:
+    ///
+    ///   - `breakdownOccupancy` (`occupancyTokens`) — the engine's authoritative
+    ///     occupancy. The same figure `StatusFields.contextTokens` carries and the
+    ///     same input the engine's proactive-compaction gate measures. THIS is
+    ///     what divides by the context window.
+    ///   - `breakdownTotal` (`totalTokens`) — the ITEMIZED per-category sum. An
+    ///     independent estimate meant for attribution ("what is taking up the
+    ///     space"). It OVER-reports, counting content the provider did not bill
+    ///     for this turn, so it must never be read as occupancy: doing so
+    ///     rendered a conversation occupying 26% of a 1M window as ~103%.
+    ///   - `apiReportedTotal` (not accepted here) — the raw provider
+    ///     input_tokens for the last turn, with nothing added for messages
+    ///     appended since, so it UNDER-reports mid-turn.
+    ///
+    /// `breakdownTotal` is a parameter purely so this contract is stated at the
+    /// one place the decision is made. It is deliberately never returned — a
+    /// caller that has it in hand passes it here and gets back the right number.
+    static func resolveContextTokens(
+        breakdownOccupancy: Int?,
+        breakdownTotal: Int?,
+        fieldsTokens: Int?,
+        instanceTokens: Int?,
+    ) -> Int? {
+        if let t = breakdownOccupancy, t > 0 { return t }
+        if let t = fieldsTokens, t > 0 { return t }
+        if let t = instanceTokens, t > 0 { return t }
+        return nil
+    }
+
     /// Context window of a named model from the catalog, falling back to the
     /// engine's reported window. Static so non-bar surfaces can resolve the
     /// same denominator.
