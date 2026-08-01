@@ -6,7 +6,7 @@
  * path (main/worktree/safety.ts) and refuses when work would be lost, so this
  * menu cannot destroy anything on its own.
  */
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { ArrowLineDown, ArrowsClockwise, Flask, FolderOpen, Package, PencilSimple, Trash } from '@phosphor-icons/react'
@@ -14,6 +14,7 @@ import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
+import { useOutsideDismiss } from '../hooks/useOutsideDismiss'
 import { landFlagsForStrategy, describeLandStrategy } from '../../shared/worktree-land-strategy'
 import { ConfirmDialog } from './git/ConfirmDialog'
 import { rDebug, rError, rInfo, rWarn } from '../rendererLogger'
@@ -44,21 +45,27 @@ export function WorktreeRowMenu({
   // A land refusal (diverged branch, conflict) is actionable and must be shown,
   // not swallowed into the log while the menu closes as if it had worked.
   const [landError, setLandError] = useState<string | null>(null)
+  // The retire outcome the operator must read: either the recovery ref that now
+  // holds their uncommitted work, or the reason the worktree was kept.
+  const [retireOutcome, setRetireOutcome] = useState<string | null>(null)
   const strategy = usePreferencesStore((s) => s.worktreeCompletionStrategy)
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
-    }
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('mousedown', onDown)
-    window.addEventListener('keydown', onKey)
-    return () => {
-      window.removeEventListener('mousedown', onDown)
-      window.removeEventListener('keydown', onKey)
-    }
-  }, [onClose])
+  // Dismissal goes through the shared hook so the retire/land confirm dialogs
+  // this menu raises are exempt from click-outside. A local handler here is what
+  // made the Retire confirm button inert: the dialog is a sibling of `ref`, so
+  // its mousedown read as "outside" and unmounted the menu mid-click.
+  //
+  // The `busy` guard closes the remaining hole. `ConfirmDialog` suppressing its
+  // own Escape is not enough — this hook's Escape listener is a separate
+  // `window` handler, and `onClose` unmounts the menu AND the dialog with it,
+  // mid-operation, leaving the outcome (including a recovery ref that exists
+  // nowhere else) with nothing to render into.
+  const dismiss = useCallback(() => {
+    if (busy) return
+    onClose()
+  }, [busy, onClose])
+  useOutsideDismiss([ref], dismiss)
 
   if (!popoverLayer) return null
 
@@ -133,6 +140,10 @@ export function WorktreeRowMenu({
       }
       rInfo('worktree.menu', 'landed', { branch: entry.branchName, mode: result.mode ?? '' })
       onRefresh()
+      // Success dismisses the menu. The refusal path above returns early and
+      // leaves it mounted on purpose, because the error dialog it raised is a
+      // child of this component and would go with it.
+      onClose()
     } finally {
       setBusy(false)
     }
@@ -142,6 +153,15 @@ export function WorktreeRowMenu({
    * Retire asks the appraisal first and surfaces exactly what would be lost.
    * The appraisal fails CLOSED, so an unreadable worktree is never presented as
    * safe to remove.
+   *
+   * The appraisal decides what the confirmation SAYS. It never decides whether
+   * to confirm. This used to run the retire immediately when `safeToDiscard` was
+   * true, so a landed worktree was deleted on a single menu click with no prompt
+   * and no menu dismissal — the operator saw a context menu still sitting open,
+   * then the row vanished two seconds later. Removing a checkout is destructive
+   * whether or not the work is recoverable, and "nothing would be lost" is the
+   * appraisal's opinion about git state, not the operator's confirmation that
+   * they meant to click it.
    */
   async function requestRetire(): Promise<void> {
     if (!entry.sourceBranch) {
@@ -149,10 +169,18 @@ export function WorktreeRowMenu({
       return
     }
     const appraisal = await window.ion.gitWorktreeAppraise(entry.worktreePath, entry.sourceBranch)
+    rInfo('worktree.menu', 'retire appraised', {
+      branch: entry.branchName,
+      safe_to_discard: appraisal.safeToDiscard,
+      uncommitted: appraisal.uncommittedPaths.length,
+      unlanded: appraisal.unlandedCommitCount,
+    })
+    // Both arms confirm. Only the wording differs: a fully-landed worktree is
+    // reported as costing nothing, which is information the operator wants
+    // BEFORE deciding, not a reason to skip asking.
     setConfirmRetire(appraisal.safeToDiscard
-      ? null
+      ? 'Everything in this worktree has landed, so nothing would be lost.'
       : appraisal.reason ?? 'This worktree may still hold work.')
-    if (appraisal.safeToDiscard) await doRetire()
   }
 
   async function doRetire(): Promise<void> {
@@ -179,12 +207,33 @@ export function WorktreeRowMenu({
         })
       } else if (!result.ok) {
         rWarn('worktree.menu', 'retire failed', { branch: entry.branchName, error: result.error ?? '' })
+        // A refusal is actionable — most often "the recovery snapshot could not
+        // be written, so the worktree was kept". Leaving it in the log while the
+        // menu closes is what made the original defect look like a dead button.
+        setRetireOutcome(result.error ?? 'Retire failed.')
+        onRefresh()
+        return
       }
+      // Name the recovery ref. The confirmation promised the work was preserved;
+      // a ref the operator never sees is indistinguishable from one that was
+      // never written.
+      if (result.recoveryRef) {
+        rInfo('worktree.menu', 'retired with recovery ref', {
+          branch: entry.branchName, recovery_ref: result.recoveryRef,
+        })
+        setRetireOutcome(
+          `Retired. Uncommitted work was preserved to ${result.recoveryRef} in the repo. ` +
+          `Recover it with: git checkout -b recovered ${result.recoveryRef}`,
+        )
+        onRefresh()
+        return
+      }
+      rInfo('worktree.menu', 'retired', { branch: entry.branchName })
       onRefresh()
-    } finally {
-      setBusy(false)
       setConfirmRetire(null)
       onClose()
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -200,26 +249,24 @@ export function WorktreeRowMenu({
    */
   async function doAddToBench(): Promise<void> {
     if (!entry.sourceBranch) return
-    setBusy(true)
-    try {
-      const result = await useSessionStore.getState()
-        .benchAddMember(repoPath, entry.sourceBranch, entry.worktreePath, entry.branchName)
-      // Same round-trip caveat as doRetire: absent only when the forwarded call
-      // never concluded, never merely because the mirror ran it.
-      if (!result) {
-        rDebug('worktree.menu', 'add to bench returned no result (owner round trip did not complete)', {
-          branch: entry.branchName,
-        })
-      } else if (!result.ok) {
-        rWarn('worktree.menu', 'add to bench refused', { branch: entry.branchName, error: result.error ?? '' })
-      } else {
-        rInfo('worktree.menu', 'added to bench', { branch: entry.branchName, source_branch: entry.sourceBranch })
-      }
-      onRefresh()
-    } finally {
-      setBusy(false)
-      onClose()
+    // No setBusy / onClose here: this item is not `keepsMenuOpen`, so the click
+    // handler has already withdrawn the menu and this component is unmounting.
+    // Setting state afterwards would be a no-op, and calling onClose again would
+    // be a second dismissal of an already-dismissed menu.
+    const result = await useSessionStore.getState()
+      .benchAddMember(repoPath, entry.sourceBranch, entry.worktreePath, entry.branchName)
+    // Same round-trip caveat as doRetire: absent only when the forwarded call
+    // never concluded, never merely because the mirror ran it.
+    if (!result) {
+      rDebug('worktree.menu', 'add to bench returned no result (owner round trip did not complete)', {
+        branch: entry.branchName,
+      })
+    } else if (!result.ok) {
+      rWarn('worktree.menu', 'add to bench refused', { branch: entry.branchName, error: result.error ?? '' })
+    } else {
+      rInfo('worktree.menu', 'added to bench', { branch: entry.branchName, source_branch: entry.sourceBranch })
     }
+    onRefresh()
   }
 
   /**
@@ -256,13 +303,41 @@ export function WorktreeRowMenu({
     }
   }
 
-  const items: Array<{ label: string; icon: React.ReactNode; disabled?: boolean; hint?: string; run(): void }> = [
+  /**
+   * The menu's verbs.
+   *
+   * ── Dismissal is uniform and declared here, not inside each handler ────────
+   * Clicking an enabled item ALWAYS withdraws the menu immediately, before the
+   * verb runs. That was previously each handler's own business, and the seven
+   * items had four different behaviours: sync and reveal closed immediately,
+   * add-to-bench and re-provision closed only after their await resolved (so
+   * the menu sat open for the duration), land never closed at all on success,
+   * and retire waited on the appraisal round-trip before its dialog replaced
+   * the menu. A menu still on screen after a click reads as "the click did
+   * nothing" — which is exactly what was reported for retire.
+   *
+   * `keepsMenuOpen` is the single opt-out, for items that REPLACE the menu body
+   * with their own UI rather than dismissing it. Rename swaps in an inline
+   * editor; retire withdraws the body behind its confirmation but must stay
+   * mounted because it owns the dialog state and the busy guard.
+   */
+  const items: Array<{
+    label: string
+    icon: React.ReactNode
+    disabled?: boolean
+    hint?: string
+    /** Item renders its own UI in place of the menu; it handles its own exit. */
+    keepsMenuOpen?: boolean
+    run(): void
+  }> = [
     {
       label: entry.title ? 'Rename worktree' : 'Name this worktree',
       icon: <PencilSimple size={12} color={colors.textSecondary} />,
       // Named lazily from the first prompt, so a worktree that has not been
       // prompted in yet still needs a manual way to get a name.
       hint: entry.title ? '' : 'Not named yet',
+      // Swaps the menu body for the inline editor.
+      keepsMenuOpen: true,
       run: () => {
         setDraftTitle(entry.title ?? '')
         setRenaming(true)
@@ -285,7 +360,6 @@ export function WorktreeRowMenu({
         void useSessionStore.getState()
           .syncWorktree(entry.worktreePath, entry.sourceBranch, repoPath)
           .catch((err) => rError('worktree.menu', 'sync failed', { error: String(err) }))
-        onClose()
       },
     },
     {
@@ -295,6 +369,9 @@ export function WorktreeRowMenu({
       // Name the strategy that will actually run, so the operator is not
       // guessing which of the three shapes this click produces.
       hint: landReason ?? (entry.sourceBranch ? describeLandStrategy(strategy, entry.sourceBranch) : undefined),
+      // A land REFUSAL raises an error dialog owned by this component, so the
+      // menu must survive the click; `doLand` closes it on the success path.
+      keepsMenuOpen: true,
       run: () => { void doLand().catch((err) => rError('worktree.menu', 'land threw', { error: String(err) })) },
     },
     {
@@ -303,14 +380,12 @@ export function WorktreeRowMenu({
       run: () => {
         void window.ion.revealPath(entry.worktreePath)
           .catch((err: unknown) => rError('worktree.menu', 'reveal failed', { error: String(err) }))
-        onClose()
       },
     },
     {
       label: 'Re-provision',
       icon: <Package size={12} color={colors.textSecondary} />,
       run: () => {
-        setBusy(true)
         void useSessionStore.getState()
           .reprovisionWorktree(repoPath, entry.worktreePath)
           .then((result) => {
@@ -322,18 +397,29 @@ export function WorktreeRowMenu({
             onRefresh()
           })
           .catch((err) => rError('worktree.menu', 'reprovision threw', { error: String(err) }))
-          .finally(() => { setBusy(false); onClose() })
       },
     },
     {
       label: 'Retire worktree',
       icon: <Trash size={12} color={colors.textSecondary} />,
+      // Owns the confirmation dialog and the busy guard, so it stays mounted;
+      // the body is withdrawn by `dialogUp` below.
+      keepsMenuOpen: true,
       run: () => { void requestRetire().catch((err) => rError('worktree.menu', 'retire appraisal threw', { error: String(err) })) },
     },
   ]
 
+  // A dialog raised BY this menu replaces it. The menu is the thing that asked
+  // the question; leaving it open behind its own confirmation reads as "the
+  // click did nothing", which is exactly what the operator reported — a context
+  // menu still sitting there while a retire ran behind it. The menu stays
+  // MOUNTED (it owns the dialog state and the busy guard); only its body is
+  // withdrawn.
+  const dialogUp = confirmRetire !== null || retireOutcome !== null || landError !== null
+
   return createPortal(
     <>
+      {!dialogUp && (
       <motion.div
         ref={ref}
         data-ion-ui
@@ -388,7 +474,15 @@ export function WorktreeRowMenu({
           <button
             key={item.label}
             disabled={item.disabled || busy}
-            onClick={item.run}
+            /* ONE dismissal point for every item. Fire the verb, then withdraw
+               the menu in the same tick unless the item replaces the menu with
+               its own UI. Ordering matters: `run()` first, because a handler
+               that opens a dialog must set that state before this callback
+               returns, and `onClose` is the parent's unmount. */
+            onClick={() => {
+              item.run()
+              if (!item.keepsMenuOpen) onClose()
+            }}
             style={{
               display: 'flex', alignItems: 'center', gap: 6, width: '100%',
               padding: '4px 10px', background: 'transparent', border: 'none',
@@ -409,25 +503,41 @@ export function WorktreeRowMenu({
           </button>
         ))}
       </motion.div>
+      )}
 
       {landError !== null && (
         <ConfirmDialog
           title="Land did not complete"
           message={landError}
-          confirmLabel="OK"
-          cancelLabel="Dismiss"
+          acknowledge
           onConfirm={() => { setLandError(null); onClose() }}
           onCancel={() => { setLandError(null); onClose() }}
         />
       )}
 
-      {confirmRetire !== null && (
+      {retireOutcome !== null && (
+        <ConfirmDialog
+          title="Retire"
+          message={retireOutcome}
+          acknowledge
+          onConfirm={() => { setRetireOutcome(null); setConfirmRetire(null); onClose() }}
+          onCancel={() => { setRetireOutcome(null); setConfirmRetire(null); onClose() }}
+        />
+      )}
+
+      {retireOutcome === null && confirmRetire !== null && (
         <ConfirmDialog
           title="Retire this worktree?"
           message={`${confirmRetire} Retiring removes the directory and its branch. Work is preserved to a recovery ref first, but this is not a routine action.`}
           confirmLabel="Retire"
           cancelLabel="Keep it"
           danger
+          /* The retire takes seconds (appraise, snapshot the work to a recovery
+             ref, delete the directory, relocate conversations). This dialog stays
+             mounted across that await, so the same dialog reports the operation
+             in place and the success path then swaps it for the outcome. */
+          busy={busy}
+          busyLabel="Retiring the worktree…"
           onConfirm={() => { void doRetire().catch((err) => rError('worktree.menu', 'retire threw', { error: String(err) })) }}
           onCancel={() => { setConfirmRetire(null); onClose() }}
         />

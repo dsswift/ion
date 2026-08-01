@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useRef, useState } from 'react'
 import { useViewportClamp } from '../hooks/useViewportClamp'
+import { useOutsideDismiss } from '../hooks/useOutsideDismiss'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { Check } from '@phosphor-icons/react'
@@ -32,20 +33,10 @@ export function FinishWorkContextMenu({ anchor, worktree, onClose }: {
   // the one with no prompt. Hold the choice until it is confirmed.
   const [pending, setPending] = useState<WorktreeCompletionStrategy | null>(null)
 
-  useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
-    }
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('mousedown', handleClick)
-    window.addEventListener('keydown', handleKey)
-    return () => {
-      window.removeEventListener('mousedown', handleClick)
-      window.removeEventListener('keydown', handleKey)
-    }
-  }, [onClose])
+  // Shared dismissal: the finish-work confirm dialog is a sibling of `ref`, so a
+  // local click-outside handler would unmount it on the mousedown of its own
+  // confirm button and the land would never run.
+  useOutsideDismiss([ref], onClose)
 
   if (!popoverLayer) return null
 

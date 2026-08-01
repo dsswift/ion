@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useViewportClamp } from '../hooks/useViewportClamp'
+import { useOutsideDismiss } from '../hooks/useOutsideDismiss'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import { Plus, CaretDown, Rows, ArrowRight } from '@phosphor-icons/react'
@@ -45,24 +46,11 @@ export function InactiveGroupMenu({
   const [newGroupName, setNewGroupName] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   const [pendingMoveAll, setPendingMoveAll] = useState<{ groupId: string; label: string } | null>(null)
-  const confirmDialogRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node) &&
-          (!submenuRef.current || !submenuRef.current.contains(e.target as Node)) &&
-          (!confirmDialogRef.current || !confirmDialogRef.current.contains(e.target as Node))) { setMoveSubmenu(null); onClose() }
-    }
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setMoveSubmenu(null); onClose() }
-    }
-    window.addEventListener('mousedown', handleClick)
-    window.addEventListener('keydown', handleKey)
-    return () => {
-      window.removeEventListener('mousedown', handleClick)
-      window.removeEventListener('keydown', handleKey)
-    }
-  }, [onClose])
+  // Confirm dialogs are exempted structurally by the hook (via
+  // `[data-ion-confirm]`), so this menu no longer threads a ref for them.
+  const dismiss = useCallback(() => { setMoveSubmenu(null); onClose() }, [onClose])
+  useOutsideDismiss([ref, submenuRef], dismiss)
 
   useEffect(() => {
     if (showNewGroupInput) inputRef.current?.focus()
@@ -160,7 +148,6 @@ export function InactiveGroupMenu({
       )}
       </motion.div>
       {pendingMoveAll && (
-        <div ref={confirmDialogRef}>
         <ConfirmDialog
           title="Move all tabs?"
           message={`Move all ${group.tabs.length} tab${group.tabs.length !== 1 ? 's' : ''} to "${pendingMoveAll.label}"? This will move every tab in the current group.`}
@@ -179,7 +166,6 @@ export function InactiveGroupMenu({
             onClose()
           }}
         />
-        </div>
       )}
     </>,
     popoverLayer,

@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useViewportClamp } from '../hooks/useViewportClamp'
+import { useOutsideDismiss } from '../hooks/useOutsideDismiss'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import {
@@ -76,7 +77,6 @@ export function TabContextMenu({
   const [newGroupName, setNewGroupName] = useState('')
   const newGroupInputRef = useRef<HTMLInputElement>(null)
   const [pendingMoveAll, setPendingMoveAll] = useState<{ groupId: string; label: string } | null>(null)
-  const confirmDialogRef = useRef<HTMLDivElement>(null)
 
   const showMoveAll = groupTabs && groupTabs.length > 1
   const [isGitRepo, setIsGitRepo] = useState(false)
@@ -127,24 +127,12 @@ export function TabContextMenu({
     if (showNewGroupInput) newGroupInputRef.current?.focus()
   }, [showNewGroupInput])
 
-  useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node) &&
-          (!submenuRef.current || !submenuRef.current.contains(e.target as Node)) &&
-          (!movePinSubmenuRef.current || !movePinSubmenuRef.current.contains(e.target as Node)) &&
-          (!moveAllSubmenuRef.current || !moveAllSubmenuRef.current.contains(e.target as Node)) &&
-          (!confirmDialogRef.current || !confirmDialogRef.current.contains(e.target as Node))) { setMoveSubmenu(null); setMovePinSubmenu(null); setMoveAllSubmenu(null); onClose() }
-    }
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setMoveSubmenu(null); setMovePinSubmenu(null); setMoveAllSubmenu(null); onClose() }
-    }
-    window.addEventListener('mousedown', handleClick)
-    window.addEventListener('keydown', handleKey)
-    return () => {
-      window.removeEventListener('mousedown', handleClick)
-      window.removeEventListener('keydown', handleKey)
-    }
+  // Confirm dialogs are exempted structurally by the hook (via
+  // `[data-ion-confirm]`), so this menu no longer threads a ref for them.
+  const dismiss = useCallback(() => {
+    setMoveSubmenu(null); setMovePinSubmenu(null); setMoveAllSubmenu(null); onClose()
   }, [onClose])
+  useOutsideDismiss([ref, submenuRef, movePinSubmenuRef, moveAllSubmenuRef], dismiss)
 
   // Position the outer menu so it never falls off-screen. The hook
   // measures the menu after mount and flips it upward when the
@@ -386,7 +374,6 @@ export function TabContextMenu({
       )}
     </motion.div>
     {pendingMoveAll && groupTabs && (
-      <div ref={confirmDialogRef}>
       <ConfirmDialog
         title="Move all tabs?"
         message={`Move all ${groupTabs.length} tab${groupTabs.length !== 1 ? 's' : ''} to "${pendingMoveAll.label}"? This will move every tab in the current group.`}
@@ -405,7 +392,6 @@ export function TabContextMenu({
           onClose()
         }}
       />
-      </div>
     )}
     </>,
     popoverLayer,
