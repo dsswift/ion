@@ -176,46 +176,5 @@ if [[ -d "$SDK_SRC" ]]; then
     cp -r "$SDK_SRC"/* "$SDK_DST/"
 fi
 
-# Install ion-meta extension
-META_SRC="$SCRIPT_DIR/extensions/ion-meta"
-META_DST="$ION_HOME/extensions/ion-meta"
-if [[ -d "$META_SRC" ]]; then
-    echo "==> Installing ion-meta extension to $META_DST..."
-    mkdir -p "$META_DST"
-    cp -r "$META_SRC"/* "$META_DST/"
-fi
-
-# Ship canonical Ion documentation into ion-meta so the bundled
-# `ion_read_doc` tool can serve them without any repo-relative path
-# resolution. The four allow-listed namespaces match what the tool
-# accepts: extensions/, hooks/, agents/, architecture/.
-#
-# Layout written:
-#   ~/.ion/extensions/ion-meta/docs/canonical/extensions/...
-#   ~/.ion/extensions/ion-meta/docs/canonical/hooks/...
-#   ~/.ion/extensions/ion-meta/docs/canonical/agents/...
-#   ~/.ion/extensions/ion-meta/docs/canonical/architecture/adr/...
-#
-# Re-copied on every install so renames and deletions propagate (cp -r
-# alone leaves orphans). We delete the canonical/ tree first.
-REPO_DOCS="$SCRIPT_DIR/../docs"
-CANON_DST="$META_DST/docs/canonical"
-if [[ -d "$META_DST" && -d "$REPO_DOCS" ]]; then
-    echo "==> Bundling canonical docs into $CANON_DST..."
-    rm -rf "$CANON_DST"
-    mkdir -p "$CANON_DST"
-    for ns in extensions hooks agents; do
-        if [[ -d "$REPO_DOCS/$ns" ]]; then
-            cp -r "$REPO_DOCS/$ns" "$CANON_DST/$ns"
-        fi
-    done
-    # ADRs sit under architecture/adr; ship the whole architecture tree
-    # so the orchestration-designer specialist can cite ADR-001..003 and
-    # the agent-state doc by path.
-    if [[ -d "$REPO_DOCS/architecture" ]]; then
-        cp -r "$REPO_DOCS/architecture" "$CANON_DST/architecture"
-    fi
-fi
-
 VERSION=$("$BIN_DIR/ion" version 2>/dev/null || echo "unknown")
 echo "==> Ion Engine $VERSION installed at $BIN_DIR/ion"

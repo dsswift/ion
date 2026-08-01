@@ -31,8 +31,8 @@ func TestCheckExtensionAllowlist_EmptyMeansNoRestriction(t *testing.T) {
 // TestCheckExtensionAllowlist_AllowedByName pins that a listed identifier with
 // no pinned hash loads.
 func TestCheckExtensionAllowlist_AllowedByName(t *testing.T) {
-	allow := []types.ExtensionAllowlistEntry{{ID: "ion-meta"}}
-	if err := checkExtensionAllowlist("ion-meta", "/whatever", allow); err != nil {
+	allow := []types.ExtensionAllowlistEntry{{ID: "example-ext"}}
+	if err := checkExtensionAllowlist("example-ext", "/whatever", allow); err != nil {
 		t.Errorf("listed extension must load, got %v", err)
 	}
 }
@@ -40,7 +40,7 @@ func TestCheckExtensionAllowlist_AllowedByName(t *testing.T) {
 // TestCheckExtensionAllowlist_NotListedBlocked pins that an unlisted identifier
 // is blocked with ErrExtensionBlocked (reason name).
 func TestCheckExtensionAllowlist_NotListedBlocked(t *testing.T) {
-	allow := []types.ExtensionAllowlistEntry{{ID: "ion-meta"}}
+	allow := []types.ExtensionAllowlistEntry{{ID: "example-ext"}}
 	err := checkExtensionAllowlist("rogue-ext", "/whatever", allow)
 	if err == nil {
 		t.Fatal("unlisted extension must be blocked")
@@ -109,9 +109,9 @@ func TestCheckExtensionAllowlist_CaseInsensitiveHash(t *testing.T) {
 // TestCheckExtensionAllowlist_ListedNoHashSkipsVerification pins that a listed
 // entry without a SHA256 loads regardless of file content.
 func TestCheckExtensionAllowlist_ListedNoHashSkipsVerification(t *testing.T) {
-	allow := []types.ExtensionAllowlistEntry{{ID: "ion-meta"}}
+	allow := []types.ExtensionAllowlistEntry{{ID: "example-ext"}}
 	// entryPath is never read when no hash is pinned.
-	if err := checkExtensionAllowlist("ion-meta", "/does/not/exist", allow); err != nil {
+	if err := checkExtensionAllowlist("example-ext", "/does/not/exist", allow); err != nil {
 		t.Errorf("listed extension without a pinned hash must load, got %v", err)
 	}
 }

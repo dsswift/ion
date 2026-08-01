@@ -1443,7 +1443,7 @@ export interface RunOnceResult<T = void> {
  *
  * Pick a `type` value that won't collide with current or future engine-
  * emitted events. Convention: prefix with your extension name, e.g.
- * `jarvis_inbox_update` or `ion-meta_persona_loaded`.
+ * `jarvis_inbox_update` or `my-extension_persona_loaded`.
  */
 export type EngineEvent =
   | { type: 'engine_agent_state'; agents: any[] }
@@ -1454,7 +1454,7 @@ export type EngineEvent =
   // to clients. The desktop renderer honors `metadata.dedupKey` on harness
   // messages to suppress repeated emissions within a single engine-instance
   // scrollback — useful for "fire on every session_start" patterns like
-  // ion-meta's welcome. See docs/protocol/server-events.md for the
+  // a per-session welcome message. See docs/protocol/server-events.md for the
   // well-known metadata keys. The convention is renderer-honored, not
   // engine-enforced; any extension may pick its own keys (namespace as
   // `<extensionName>:<messageKey>`).

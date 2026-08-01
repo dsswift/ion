@@ -150,7 +150,7 @@ export function doRegisterAgentTools(
     // Before this fix the helper passed only `{ name, task }`, silently
     // dropping the systemPrompt / model parsed above — the dispatched
     // specialist then ran as an unconfigured generic LLM. See plan:
-    // "Fix ion-meta agent dispatches".
+    // "Fix extension agent dispatches".
     const dispatchSystemPrompt = agent.systemPrompt
     const dispatchModel = agent.model
     const metaKeyCount = Object.keys(meta).length

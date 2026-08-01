@@ -241,7 +241,7 @@ func TestReDispatch_UpdatesExistingEntry(t *testing.T) {
 // --- Full lifecycle: extension roster + engine dispatch + completion ---
 
 // TestFullLifecycle_ExtensionRosterPlusDispatch simulates the complete
-// ion-meta flow: extension caches a roster, engine dispatches one
+// extension flow: extension caches a roster, engine dispatches one
 // specialist, progress updates flow, agent completes with conversationId.
 func TestFullLifecycle_ExtensionRosterPlusDispatch(t *testing.T) {
 	r := NewRegistry()

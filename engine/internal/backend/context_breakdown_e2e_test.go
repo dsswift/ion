@@ -13,7 +13,7 @@ import (
 // emitted end-to-end (it is translated to engine_context_breakdown by the
 // session layer; here we assert at the normalized-event seam the runloop emits).
 //
-// This replaces the ion-meta extension consumer originally scoped for this
+// This replaces the extension consumer originally scoped for this
 // work: the extension SDK's `ion.on` accepts only hook names, not arbitrary
 // outbound engine wire events, so an extension cannot subscribe to
 // engine_context_breakdown. The engine's own event stream is the authoritative

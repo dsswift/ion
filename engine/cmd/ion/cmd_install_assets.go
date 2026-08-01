@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 )
 
-// cmdInstallAssets replicates the SDK / ion-meta / canonical-docs sections of
-// commands/install.command for the DMG/package install route, which has no
-// shell installer. It must be called after the engine binary is in place
-// (e.g. by the macOS installer package post-install script).
+// cmdInstallAssets replicates the SDK section of commands/install.command for
+// the DMG/package install route, which has no shell installer. It must be
+// called after the engine binary is in place (e.g. by the macOS installer
+// package post-install script).
 //
 // Source asset resolution:
 //  1. Relative to the directory containing the running executable — this is
@@ -20,12 +20,7 @@ import (
 //     "extensions" directory, to support repo-relative dev builds where the
 //     binary lives at engine/bin/ion and extensions live at engine/extensions/.
 //
-// Actions (mirrors install.command lines 74-122):
-//  1. Copy extensions/sdk       → ~/.ion/extensions/sdk
-//  2. Copy extensions/ion-meta  → ~/.ion/extensions/ion-meta
-//  3. Rebuild canonical docs in ~/.ion/extensions/ion-meta/docs/canonical/
-//     from docs/{extensions,hooks,agents,architecture} — delete first so
-//     renames/deletions propagate.
+// Action: copy extensions/sdk → ~/.ion/extensions/sdk (replace semantics).
 func cmdInstallAssets() {
 	exeDir, err := resolveExeDir()
 	if err != nil {
@@ -46,7 +41,7 @@ func cmdInstallAssets() {
 	}
 	ionHome := filepath.Join(home, ".ion")
 
-	// 1. Install SDK — replace, don't merge. The installed copy is
+	// Install SDK — replace, don't merge. The installed copy is
 	// "overwritten at build time" by contract (root CLAUDE.md § Extension
 	// SDK source location); a merge-copy leaves orphaned files (deleted or
 	// renamed SDK modules, stray nested directories from older staging
@@ -58,37 +53,6 @@ func cmdInstallAssets() {
 		os.Exit(1)
 	}
 	fmt.Printf("==> Installed extension SDK to %s\n", sdkDst)
-
-	// 2. Install ion-meta — same replace semantics: it ships with the
-	// engine and holds no user state (runtime state lives outside the
-	// extension dir), so renames/deletions must propagate like the
-	// canonical docs below.
-	metaSrc := filepath.Join(assetRoot, "extensions", "ion-meta")
-	metaDst := filepath.Join(ionHome, "extensions", "ion-meta")
-	if err := replaceDirContents(metaSrc, metaDst); err != nil {
-		fmt.Fprintf(os.Stderr, "install-assets: install ion-meta: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Printf("==> Installed ion-meta extension to %s\n", metaDst)
-
-	// 3. Rebuild canonical docs.
-	// Docs source: one level above assetRoot for the packaged layout
-	// (assetRoot = .app/.../MacOS, docs would be next to the app), but in
-	// practice for the package route the docs are not shipped separately —
-	// they are embedded in the ion-meta extension itself if present. For the
-	// dev/repo layout we resolve from assetRoot/../../../docs.
-	// Try the sibling-of-assetRoot path first, then repo-relative fallback.
-	docsRoot := findDocsRoot(assetRoot)
-	canonDst := filepath.Join(metaDst, "docs", "canonical")
-	if docsRoot != "" {
-		if err := rebuildCanonicalDocs(docsRoot, canonDst); err != nil {
-			fmt.Fprintf(os.Stderr, "install-assets: canonical docs: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("==> Bundled canonical docs into %s\n", canonDst)
-	} else {
-		fmt.Println("==> No docs source found; skipping canonical docs (ok for packaged builds)")
-	}
 
 	fmt.Println("==> install-assets complete")
 }
@@ -128,30 +92,6 @@ func findAssetRoot(startDir string) (string, error) {
 	return "", fmt.Errorf("extensions directory not found starting from %s (checked up to %d parents)", startDir, 3)
 }
 
-// findDocsRoot locates the repo docs/ directory.  In a dev build the repo
-// root is typically two to four levels above the binary directory. Returns ""
-// when not found (packaged build without a separate docs tree).
-func findDocsRoot(assetRoot string) string {
-	dir := assetRoot
-	for i := 0; i <= 4; i++ {
-		candidate := filepath.Join(dir, "docs")
-		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-			// Confirm it has at least one of the expected namespaces.
-			for _, ns := range []string{"extensions", "hooks", "agents", "architecture"} {
-				if sub, err := os.Stat(filepath.Join(candidate, ns)); err == nil && sub.IsDir() {
-					return candidate
-				}
-			}
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-	return ""
-}
-
 // copyDirContents copies all contents of src into dst, creating dst if it
 // does not exist. Mirrors `mkdir -p "$DST" && cp -r "$SRC"/* "$DST/"`.
 // Returns a non-nil error if src does not exist (the install.command uses an
@@ -159,7 +99,7 @@ func findDocsRoot(assetRoot string) string {
 // callers know the asset was not bundled).
 // replaceDirContents deletes dst then copies src into place, so the
 // destination is an exact mirror of the source. Used for engine-shipped
-// assets (SDK, ion-meta) where merge-copy semantics would leave orphaned
+// assets (the SDK) where merge-copy semantics would leave orphaned
 // files behind across upgrades.
 func replaceDirContents(src, dst string) error {
 	if _, err := os.Stat(src); err != nil {
@@ -196,31 +136,6 @@ func copyDirContents(src, dst string) error {
 		}
 		return copyFile(path, target)
 	})
-}
-
-// rebuildCanonicalDocs deletes canonDst and repopulates it from the four
-// allow-listed namespaces in docsRoot. Mirrors install.command lines 109-122.
-func rebuildCanonicalDocs(docsRoot, canonDst string) error {
-	// Delete first so renames/deletions in the source propagate.
-	if err := os.RemoveAll(canonDst); err != nil {
-		return fmt.Errorf("remove canonical tree: %w", err)
-	}
-	if err := os.MkdirAll(canonDst, 0o755); err != nil {
-		return fmt.Errorf("create canonical dir: %w", err)
-	}
-
-	namespaces := []string{"extensions", "hooks", "agents", "architecture"}
-	for _, ns := range namespaces {
-		srcNs := filepath.Join(docsRoot, ns)
-		if info, err := os.Stat(srcNs); err != nil || !info.IsDir() {
-			continue // namespace absent — skip silently (mirrors the bash `if [[ -d ]]` guard)
-		}
-		dstNs := filepath.Join(canonDst, ns)
-		if err := copyDirContents(srcNs, dstNs); err != nil {
-			return fmt.Errorf("copy namespace %q: %w", ns, err)
-		}
-	}
-	return nil
 }
 
 // copyFile copies a single regular file from src to dst, preserving
