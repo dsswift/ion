@@ -37,7 +37,7 @@ vi.mock('os', async () => {
   return { ...actual, homedir: () => process.env.ION_TEST_HOME_BENCH_SCENARIO || actual.homedir() }
 })
 
-import { rebuildBench } from '../integration/bench-rebuild'
+import { assembleBench } from '../integration/bench-assemble'
 import { captureContribution } from '../integration/bench-snapshot'
 import { makeWorkspace, makeMember } from '../integration/bench-store'
 import { landWorktree } from '../worktree/integrate'
@@ -137,7 +137,7 @@ describe('operator scenario: two worktrees, squash one, land it, bench re-layers
 
     // ── Beat 3: both are bench members; the bench points at josh ────────────
     const ws = workspaceFor([await enroll(wt1), await enroll(wt2)])
-    const built = (await rebuildBench(ws)).workspace!
+    const built = (await assembleBench(ws)).workspace!
     expect(built.sourceBranch).toBe(FEATURE)
     // Both features present, one merge commit each.
     expect(existsSync(join(ws.benchPath, 'feature-one.txt'))).toBe(true)
@@ -179,12 +179,12 @@ describe('operator scenario: two worktrees, squash one, land it, bench re-layers
       ...built,
       members: built.members.map((m) => (m.branchName === wt2.branch ? { ...m, ...wt2Advanced } : m)),
     }
-    const result = await rebuildBench(beforeRebuild)
+    const result = await assembleBench(beforeRebuild)
     expect(result.ok).toBe(true)
 
     // wt1 was absorbed into the base and retired from the member list …
     expect(result.retired!.map((m) => m.branchName)).toEqual([wt1.branch])
-    expect(result.retired![0].status).toBe('landed')
+    expect(result.retired![0].pin).toBe('absorbed')
     // … leaving exactly one member to layer.
     expect(result.workspace!.members.map((m) => m.branchName)).toEqual([wt2.branch])
 
@@ -218,11 +218,11 @@ describe('operator scenario: two worktrees, squash one, land it, bench re-layers
     git(wt2.path, 'commit', '-m', 'wt2 work')
 
     const ws = workspaceFor([await enroll(wt1), await enroll(wt2)])
-    let state = (await rebuildBench(ws)).workspace!
+    let state = (await assembleBench(ws)).workspace!
 
     // Land wt1, rebuild: absorbed.
     await landWorktree({ repoPath: repo, worktreePath: wt1.path, worktreeBranch: wt1.branch, sourceBranch: FEATURE })
-    state = (await rebuildBench(state)).workspace!
+    state = (await assembleBench(state)).workspace!
     expect(state.members.map((m) => m.branchName)).toEqual([wt2.branch])
 
     // Keep iterating wt2, then squash and land it too.
@@ -238,7 +238,7 @@ describe('operator scenario: two worktrees, squash one, land it, bench re-layers
     git(wt2.path, 'commit', '-m', 'feat: feature two, complete')
     await landWorktree({ repoPath: repo, worktreePath: wt2.path, worktreeBranch: wt2.branch, sourceBranch: FEATURE })
 
-    const final = await rebuildBench(state)
+    const final = await assembleBench(state)
 
     // Both features are now in josh; the bench has no members left and its
     // content equals the feature branch.

@@ -45,6 +45,7 @@
 import { runGit } from '../git-runner'
 import { repositoryManager } from '../git/repositoryManager'
 import { log as _log, warn as _warn } from '../logger'
+import { markWorktreeLanded } from './inventory'
 import type { LandResult } from '../../shared/types'
 
 const TAG = 'worktree.land'
@@ -220,7 +221,7 @@ export async function syncWorktreeFromSource(
  * Land a worktree's branch into its source branch.
  *
  * Serialized on the repo's mutation queue, so concurrent lands from several
- * tabs (or a land racing a bench rebuild) never interleave git mutations in
+ * tabs (or a land racing a bench assembly) never interleave git mutations in
  * the same repository.
  */
 export async function landWorktree(opts: LandOptions): Promise<LandResult> {
@@ -290,6 +291,10 @@ export async function landWorktreeUnqueued(opts: LandOptions): Promise<LandResul
       await runGit(repoPath, ['fetch', '.', `${worktreeBranch}:${sourceBranch}`])
       const sha = (await runGit(repoPath, ['rev-parse', sourceBranch])).trim()
       log('land: ref advanced', { source_branch: sourceBranch, sha: sha.slice(0, 7) })
+      // The only moment this is knowable. See the `landedAt` field comment:
+      // after the fact, a landed worktree and one that never committed are
+      // indistinguishable to git.
+      markWorktreeLanded(worktreePath)
       return { ok: true, mode: 'ref-advance', sha }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -347,6 +352,7 @@ export async function landWorktreeUnqueued(opts: LandOptions): Promise<LandResul
       no_ff: !!noFf,
       require_fast_forward: !!requireFastForward,
     })
+    markWorktreeLanded(worktreePath)
     return { ok: true, mode: requireFastForward ? 'fast-forward' : 'merge', sha }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)

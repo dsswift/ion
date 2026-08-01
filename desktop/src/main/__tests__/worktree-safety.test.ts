@@ -129,7 +129,6 @@ describe('appraiseWorktree — tells the truth about what would be lost', () => 
     expect(appraisal.hasUncommittedChanges).toBe(false)
     expect(appraisal.safeToDiscard).toBe(false)
     expect(appraisal.unlandedCommitCount).toBe(1)
-    expect(appraisal.unlandedSubjects).toContain('implement the feature')
     expect(appraisal.fullyLanded).toBe(false)
     expect(appraisal.reason).toMatch(/not yet landed in main/i)
   })

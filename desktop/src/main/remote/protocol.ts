@@ -47,7 +47,7 @@ export type { RemoteTabState, TerminalInstanceInfo, RemoteMessage, RemoteAttachm
 
 // ─── Worktree + integration bench wire members (extracted for line cap) ───
 export type {
-  RemoteWorktree, RemoteBenchMember, RemoteBench, RemoteWorktreeState,
+  RemoteWorktree, RemoteMembership, RemoteBench, RemoteWorktreeState,
   RemoteWorktreeCommand, RemoteWorktreeEvent,
 } from './protocol-worktree'
 import type { RemoteWorktreeCommand, RemoteWorktreeEvent } from './protocol-worktree'

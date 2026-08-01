@@ -22,6 +22,12 @@ interface TabContextMenuProps {
   anchor: { x: number; y: number }
   tab: TabState
   onRename?: () => void
+  /**
+   * Rename the tab AND its worktree together. Only offered for a worktree tab;
+   * the ordinary Rename above leaves the worktree alone, which is the default
+   * because a worktree's topic does not follow every conversation relabelling.
+   */
+  onRenameWithWorktree?: () => void
   onForkTab?: () => void
   onNewTabInDir: () => void
   onFinishWork: () => void
@@ -35,6 +41,7 @@ export function TabContextMenu({
   anchor,
   tab,
   onRename,
+  onRenameWithWorktree,
   onForkTab,
   onNewTabInDir,
   onFinishWork,
@@ -145,6 +152,7 @@ export function TabContextMenu({
     prefer: 'below',
     deps: [
       !!onRename,
+      !!onRenameWithWorktree,
       !!onForkTab,
       !!tab.workingDirectory,
       !!tab.worktree,
@@ -194,6 +202,14 @@ export function TabContextMenu({
         <ContextMenuItem onClick={() => { onRename(); onClose() }}>
           <PencilSimple size={14} color={colors.textSecondary} />
           <span>Rename</span>
+        </ContextMenuItem>
+      )}
+      {/* Worktree tabs only: the deliberate "change both names" verb. Absent
+          for an ordinary tab, which has no second name to change. */}
+      {onRenameWithWorktree && tab.worktree && (
+        <ContextMenuItem onClick={() => { onRenameWithWorktree(); onClose() }}>
+          <PencilSimple size={14} color={colors.textSecondary} />
+          <span>Rename tab and worktree</span>
         </ContextMenuItem>
       )}
       {onForkTab && (

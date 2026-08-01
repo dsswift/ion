@@ -173,6 +173,16 @@ export interface ReattachOptions {
   repoPath: string
   /** Branch to cut the new worktree from; its CURRENT tip is used. */
   sourceBranch: string
+  /**
+   * Name of the conversation being re-attached, carried onto the new worktree.
+   *
+   * Re-attach always serves a LIVE conversation — one that has been running at
+   * the repo root and now needs isolation again — so it virtually always has a
+   * name already. Omitting it would leave the row on a hex slug and make the
+   * "indistinguishable from an originally-created one" promise below false,
+   * since the create path seeds its name too.
+   */
+  title?: string
 }
 
 /**
@@ -182,10 +192,10 @@ export interface ReattachOptions {
  * Mirrors the naming and layout of the original worktree-add path
  * (`~/.ion/worktrees/<repo>-<id>` on a `wt/<hex>` branch) so a re-attached
  * worktree is indistinguishable from an originally-created one to every other
- * part of the system.
+ * part of the system — including the title it carries.
  */
 export async function reattachWorktree(opts: ReattachOptions): Promise<WorktreeMoveResult> {
-  const { repoPath, sourceBranch } = opts
+  const { repoPath, sourceBranch, title } = opts
   const repo = repositoryManager.get(repoPath)
   return repo.queue.enqueueMutation(async () => {
     log('reattach: starting', { repo_path: repoPath, source_branch: sourceBranch })
@@ -198,9 +208,15 @@ export async function reattachWorktree(opts: ReattachOptions): Promise<WorktreeM
       await runGit(repoPath, ['worktree', 'add', '-b', branchName, worktreePath, sourceBranch])
       const worktree: WorktreeInfo = { worktreePath, branchName, sourceBranch, repoPath }
       // A re-attached worktree must be indistinguishable from an originally
-      // created one, so it registers its source branch the same way.
-      registerWorktree({ worktreePath, repoPath, branchName, sourceBranch })
-      log('reattach: created', { worktree_path: worktreePath, branch: branchName, source_branch: sourceBranch })
+      // created one, so it registers its source branch the same way — and
+      // carries the conversation's name the same way.
+      registerWorktree({ worktreePath, repoPath, branchName, sourceBranch, title })
+      log('reattach: created', {
+        worktree_path: worktreePath,
+        branch: branchName,
+        source_branch: sourceBranch,
+        title: title ?? '',
+      })
       return { ok: true, workingDirectory: worktreePath, worktree }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

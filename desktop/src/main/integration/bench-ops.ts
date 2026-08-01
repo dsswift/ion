@@ -1,16 +1,16 @@
 /**
  * Bench operations — the workspace-level actions behind the Integration UI.
  *
- * The bench engine (rebuild, pinning, absorption) lives in bench-rebuild.ts.
+ * The bench engine (assembly, pinning, absorption) lives in bench-assemble.ts.
  * This module owns the WORKSPACE lifecycle around it: finding or creating a
- * workspace, mutating the member set, advancing pins, and persisting the
- * result.
+ * workspace, mutating the member set, advancing pins, resolving a bench
+ * conflict once, and persisting the result.
  *
  * ── Pins advance only here ──────────────────────────────────────────────────
- * `rebuildBench` deliberately never advances a pin. Every pin advance is an
+ * `assembleBench` deliberately never advances a pin. Every pin advance is an
  * explicit operator act and lives in this file: enrollment (`addMember`) and
  * Update (`updateMember` / `updateAllStale`). That separation is what makes
- * "rebuild" safe to press at any time — it re-merges exactly what was already
+ * "assemble" safe to press at any time — it re-merges exactly what was already
  * integrated and cannot pull in a half-finished change.
  */
 import { runGit } from '../git-runner'
@@ -18,10 +18,11 @@ import { log as _log, warn as _warn } from '../logger'
 import {
   loadWorkspaces, saveWorkspaces, findWorkspace, makeWorkspace, makeMember, workspacesForRepo,
 } from './bench-store'
-import { rebuildBench } from './bench-rebuild'
+import { assembleBench } from './bench-assemble'
+import { dryRunCollision } from './bench-dry-run'
 import { captureContribution, contributedTreeHash } from './bench-snapshot'
 import { isInsideBench } from './bench-guard'
-import type { IntegrationWorkspace, BenchRebuildResult } from '../../shared/types'
+import type { IntegrationWorkspace, BenchAssembleResult, PinState } from '../../shared/types'
 
 const TAG = 'bench.ops'
 function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
@@ -45,7 +46,7 @@ export function listWorkspaces(repoPath: string): IntegrationWorkspace[] {
  * Find or create the workspace for a `(repo, sourceBranch)` pair.
  *
  * Creating is cheap and non-destructive: it writes a record, not a worktree.
- * The bench directory is materialised lazily by the first rebuild.
+ * The bench directory is materialised lazily by the first assembly.
  */
 export function ensureWorkspace(repoPath: string, sourceBranch: string): IntegrationWorkspace {
   const all = loadWorkspaces()
@@ -91,7 +92,7 @@ export async function addMember(
       sha: contribution.sha.slice(0, 7),
       base: contribution.baseSha ? contribution.baseSha.slice(0, 7) : 'unknown',
       source_branch: sourceBranch,
-      status: member.status,
+      pin: member.pin,
     })
     return { ok: true, workspace: next }
   } catch (err) {
@@ -179,6 +180,10 @@ export function setMemberEnabled(
   if (!ws) return null
   const next = {
     ...ws,
+    // Only the enrollment axis moves. The pin keeps saying how fresh the
+    // contribution is, so re-enabling an excluded member that moved on still
+    // reports `behind` — under the collapsed enum that fact was erased by the
+    // exclusion and the operator got a silent stale merge.
     members: ws.members.map((m) => (m.worktreePath === worktreePath ? { ...m, enabled } : m)),
   }
   persist(next)
@@ -187,17 +192,118 @@ export function setMemberEnabled(
 }
 
 /**
- * Advance one member's pin to its current committed contribution, then rebuild.
+ * Record or clear the operator's verdict on a member.
+ *
+ * The two verdicts make different statements with different lifetimes:
+ * `good` says "I reviewed the feature and it works" — a statement about the
+ * feature that stays true across assemblies, syncs, and pin advances, so only
+ * the operator changes it. `issue` says "THIS contribution has a bug" — a
+ * statement about the pinned content, cleared when the pin advances because
+ * new content is a clean slate to retest (see `nextReview`). `null` clears
+ * either one, so selecting an active verdict again un-sets it.
+ */
+export function setMemberReview(
+  repoPath: string,
+  sourceBranch: string,
+  worktreePath: string,
+  review: 'good' | 'issue' | null,
+): IntegrationWorkspace | null {
+  const ws = findWorkspace(loadWorkspaces(), repoPath, sourceBranch)
+  if (!ws) return null
+  const next = {
+    ...ws,
+    members: ws.members.map((m) => (m.worktreePath === worktreePath ? { ...m, review: review ?? undefined } : m)),
+  }
+  persist(next)
+  log('member review changed', { worktree_path: worktreePath, review: review ?? 'none' })
+  return next
+}
+
+/**
+ * Move a member to a new position in the merge order.
+ *
+ * Order IS array position — assembly iterates the array — so this is a splice
+ * rather than a write to a stored index. An explicit `order` field would be a
+ * second source of truth that could disagree with the array the merge actually
+ * walks.
+ *
+ * The target index is clamped rather than rejected: a drag that overshoots the
+ * end of the list means "last", which is what the operator saw when they let go.
+ */
+export function setMemberOrder(
+  repoPath: string,
+  sourceBranch: string,
+  worktreePath: string,
+  toIndex: number,
+): IntegrationWorkspace | null {
+  const ws = findWorkspace(loadWorkspaces(), repoPath, sourceBranch)
+  if (!ws) return null
+  const from = ws.members.findIndex((m) => m.worktreePath === worktreePath)
+  if (from < 0) {
+    warn('reorder skipped: not a member', { worktree_path: worktreePath, source_branch: sourceBranch })
+    return null
+  }
+  const to = Math.max(0, Math.min(ws.members.length - 1, toIndex))
+  if (to === from) return ws
+
+  const members = [...ws.members]
+  const [moved] = members.splice(from, 1)
+  members.splice(to, 0, moved)
+  const next = { ...ws, members }
+  persist(next)
+  log('member order changed', {
+    worktree_path: worktreePath, source_branch: sourceBranch, from_index: from, to_index: to,
+  })
+  return next
+}
+
+/**
+ * True when advancing to `contribution` would change what the pin holds.
+ *
+ * Gates issue-clearing: an `issue` verdict belongs to a specific contribution,
+ * so it survives an assembly or an Update that re-pins the identical content
+ * (the bug is still in there), and is dropped the moment the content actually
+ * moves. A `good` verdict is never gated by this — see `nextReview`.
+ */
+function pinChanged(
+  member: IntegrationWorkspace['members'][number],
+  contribution: { sha: string; treeHash: string; baseSha: string },
+): boolean {
+  return member.pinnedSha !== contribution.sha ||
+    member.pinnedTreeHash !== contribution.treeHash ||
+    member.pinnedBaseSha !== contribution.baseSha
+}
+
+/**
+ * The verdict a member carries after its pin advances (or does not).
+ *
+ * `good` is sticky: it records that the operator reviewed the FEATURE and it
+ * works, a statement that stays valid across assemblies, syncs, and pin
+ * advances — once earned it is only ever changed by the operator. `issue`
+ * records that the reviewed contribution had a bug, so advancing the pin
+ * clears it: the new content is a clean slate for retesting, and the operator
+ * re-flags it if the bug survived or marks it good if the fix landed.
+ */
+function nextReview(
+  review: 'good' | 'issue' | undefined,
+  advanced: boolean,
+): 'good' | 'issue' | undefined {
+  return advanced && review === 'issue' ? undefined : review
+}
+
+/**
+ * Advance one member's pin to its current committed contribution, then
+ * assemble.
  *
  * This is the Update verb: the single place a member's integrated content
- * changes. Other members keep their pins, which is what stops a rebuild for one
- * member from pulling in another's half-finished pair.
+ * changes. Other members keep their pins, which is what stops an assembly for
+ * one member from pulling in another's half-finished pair.
  */
 export async function updateMember(
   repoPath: string,
   sourceBranch: string,
   worktreePath: string,
-): Promise<BenchRebuildResult> {
+): Promise<BenchAssembleResult> {
   const ws = findWorkspace(loadWorkspaces(), repoPath, sourceBranch)
   if (!ws) return { ok: false, error: 'No integration workspace for this branch.' }
   const member = ws.members.find((m) => m.worktreePath === worktreePath)
@@ -211,6 +317,13 @@ export async function updateMember(
     return { ok: false, error: `Could not read that worktree: ${String(err)}` }
   }
 
+  // Warn-early dry-run: predicted collision rides the result as a warning;
+  // the update itself always proceeds.
+  const warning = await dryRunCollision(ws, {
+    worktreePath, branchName: member.branchName, sha: contribution.sha,
+  })
+
+  const advanced = pinChanged(member, contribution)
   const next: IntegrationWorkspace = {
     ...ws,
     members: ws.members.map((m) => (m.worktreePath === worktreePath
@@ -220,6 +333,15 @@ export async function updateMember(
         pinnedTreeHash: contribution.treeHash,
         pinnedBaseSha: contribution.baseSha,
         currentTreeHash: contribution.treeHash,
+        // The pin now matches the branch by construction, whatever it was
+        // before. An empty contribution stays empty.
+        pin: (contribution.baseSha !== '' && contribution.baseSha === contribution.sha
+          ? 'empty'
+          : 'current') as PinState,
+        // An `issue` verdict describes the contribution that was reviewed, so
+        // new content invalidates it; a `good` verdict describes the feature
+        // and survives the advance. Re-pinning identical content keeps both.
+        review: nextReview(m.review, advanced),
       }
       : m)),
   }
@@ -227,20 +349,25 @@ export async function updateMember(
     branch: member.branchName,
     sha: contribution.sha.slice(0, 7),
     base: contribution.baseSha ? contribution.baseSha.slice(0, 7) : 'unknown',
+    pin_changed: advanced,
+    review_cleared: advanced && member.review === 'issue',
+    collision_predicted: !!warning,
   })
-  return rebuildAndPersist(next)
+  const result = await assembleAndPersist(next)
+  return warning ? { ...result, warning } : result
 }
 
-/** Advance every ENABLED STALE member's pin, then rebuild once. */
+/** Advance every ENABLED member whose pin is behind, then assemble once. */
 export async function updateAllStale(
   repoPath: string,
   sourceBranch: string,
-): Promise<BenchRebuildResult> {
+): Promise<BenchAssembleResult> {
   const ws = findWorkspace(loadWorkspaces(), repoPath, sourceBranch)
   if (!ws) return { ok: false, error: 'No integration workspace for this branch.' }
 
   const members = [...ws.members]
   let advanced = 0
+  const warnings: string[] = []
   for (let i = 0; i < members.length; i++) {
     const m = members[i]
     // Disabled members keep their pins: the operator excluded them
@@ -250,36 +377,57 @@ export async function updateAllStale(
     if (!current || current === m.pinnedTreeHash) continue
     try {
       const contribution = await captureContribution(m.worktreePath, sourceBranch, m.branchName)
+      const moved = pinChanged(m, contribution)
+      const warning = await dryRunCollision(ws, {
+        worktreePath: m.worktreePath, branchName: m.branchName, sha: contribution.sha,
+      })
+      if (warning) warnings.push(warning)
       members[i] = {
         ...m,
         pinnedSha: contribution.sha,
         pinnedTreeHash: contribution.treeHash,
         pinnedBaseSha: contribution.baseSha,
         currentTreeHash: contribution.treeHash,
+        pin: (contribution.baseSha !== '' && contribution.baseSha === contribution.sha
+          ? 'empty'
+          : 'current') as PinState,
+        review: nextReview(m.review, moved),
       }
       advanced++
     } catch (err) {
       warn('update-all skipped a member', { branch: m.branchName, error: String(err) })
     }
   }
-  log('update all stale', { source_branch: sourceBranch, advanced })
-  return rebuildAndPersist({ ...ws, members })
+  log('update all stale', { source_branch: sourceBranch, advanced, collisions_predicted: warnings.length })
+  const result = await assembleAndPersist({ ...ws, members })
+  return warnings.length > 0 ? { ...result, warning: warnings.join(' ') } : result
 }
 
-/** Rebuild from existing pins. Changes no pin. */
-export async function rebuildWorkspace(
+/** Assemble from existing pins. Changes no pin. */
+export async function assembleWorkspace(
   repoPath: string,
   sourceBranch: string,
-): Promise<BenchRebuildResult> {
+): Promise<BenchAssembleResult> {
   const ws = findWorkspace(loadWorkspaces(), repoPath, sourceBranch)
   if (!ws) return { ok: false, error: 'No integration workspace for this branch.' }
-  return rebuildAndPersist(ws)
+  return assembleAndPersist(ws)
 }
 
 /**
  * Re-evaluate staleness for every member. Read-only with respect to git and to
  * pins: it only records what each member's content is NOW so the UI can compare
  * it against what is integrated.
+ *
+ * ── Only the pin axis is written here ───────────────────────────────────────
+ * This function used to compute a single collapsed `status`, which forced a
+ * priority ladder: a conflict verdict had to be preserved by hand, exclusion
+ * outranked staleness, and whichever fact lost the ordering was destroyed. The
+ * concrete damage was an excluded member that had also moved on — it reported
+ * only `excluded`, so re-enabling it merged a stale pin with no warning.
+ *
+ * Now staleness owns exactly one axis. `merge` belongs to assembly and `enabled`
+ * belongs to the operator, so neither can be clobbered by an evaluation that
+ * has nothing to say about them.
  */
 export async function refreshStaleness(
   repoPath: string,
@@ -289,38 +437,51 @@ export async function refreshStaleness(
   if (!ws) return null
 
   const members = []
+  let moved = 0
   for (const m of ws.members) {
     const current = await contributedTreeHash(m)
     if (current === null) {
-      members.push({ ...m, status: 'missing' as const })
+      // The worktree or branch is gone. That is a PIN fact: what the bench holds
+      // can no longer be compared to anything. The merge verdict from the last
+      // build stays as it was — it is still the truth about that build.
+      if (m.pin !== 'gone') moved++
+      members.push({ ...m, pin: 'gone' as const })
       continue
     }
-    const stale = current !== m.pinnedTreeHash
-    members.push({
-      ...m,
-      currentTreeHash: current,
-      // Never overwrite a conflict verdict with a staleness verdict: a
-      // conflicted member that also moved on is still conflicted, and hiding
-      // that would send the operator to press Update expecting it to help.
-      status: m.status === 'conflicted' ? m.status
-        : !m.enabled ? ('excluded' as const)
-          : stale ? ('stale' as const)
-            // An unchanged member whose pin carries no commits is still pending.
-            // Painting it `integrated` with a pinned sha would claim content the
-            // bench does not hold — there is no merge behind that sha. It leaves
-            // `pending` via the `stale` arm above the moment it commits.
-            : m.status === 'pending' ? ('pending' as const)
-              : ('integrated' as const),
-    })
+    // An empty pin stays empty until the member commits something of its own.
+    // Painting it `current` would claim content the bench does not hold: there
+    // is no merge behind that sha.
+    const emptyPin = m.pinnedBaseSha !== '' && m.pinnedBaseSha === m.pinnedSha
+    const pin: PinState = emptyPin && current === m.pinnedTreeHash
+      ? 'empty'
+      : current !== m.pinnedTreeHash ? 'behind' : 'current'
+    if (pin !== m.pin || current !== m.currentTreeHash) moved++
+    members.push({ ...m, currentTreeHash: current, pin })
   }
   const next = { ...ws, members }
-  persist(next)
+  // Persist and log only when the evaluation actually changed something. This
+  // runs on a poll while the worktree panel is open (every few seconds), and
+  // an unconditional write turned that poll into an endless stream of
+  // identical file writes and INFO lines for a bench nothing touched.
+  if (moved > 0) {
+    persist(next)
+    log('staleness refreshed', {
+      source_branch: sourceBranch,
+      changed: moved,
+      behind: members.filter((m) => m.pin === 'behind').length,
+      gone: members.filter((m) => m.pin === 'gone').length,
+      // Logged separately from `behind` precisely because the old model could not
+      // report both at once.
+      excluded: members.filter((m) => !m.enabled).length,
+      conflicted: members.filter((m) => m.merge === 'conflicted').length,
+    })
+  }
   return next
 }
 
-/** Rebuild, persist the resulting statuses, and return the outcome. */
-async function rebuildAndPersist(ws: IntegrationWorkspace): Promise<BenchRebuildResult> {
-  const result = await rebuildBench(ws)
+/** Assemble, persist the resulting statuses, and return the outcome. */
+async function assembleAndPersist(ws: IntegrationWorkspace): Promise<BenchAssembleResult> {
+  const result = await assembleBench(ws)
   if (result.ok && result.workspace) persist(result.workspace)
   return result
 }

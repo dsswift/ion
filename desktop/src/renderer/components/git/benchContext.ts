@@ -10,15 +10,15 @@
  * answer is available on the first render rather than after a fetch.
  *
  * ── What it is for ──────────────────────────────────────────────────────────
- * A bench is a REBUILDABLE worktree: its branch is recreated from the source
- * branch plus each member's pinned commit on every rebuild. Two consequences
+ * A bench is a REASSEMBLABLE worktree: its branch is recreated from the source
+ * branch plus each member's pinned commit on every assembly. Two consequences
  * drive the UI:
  *
  *   - It must never have uncommitted changes. Anything edited there is
  *     destroyed by the next `switch -C … --discard-changes`, so presenting a
  *     Changes section invites exactly the edit that will be lost.
  *   - Its history is synthetic — one merge commit per member, recreated every
- *     rebuild — so a commit graph of it tells the operator nothing real.
+ *     assembly — so a commit graph of it tells the operator nothing real.
  *
  * Both sections are therefore hidden in a bench, and the panel says which bench
  * you are in instead.
@@ -55,6 +55,32 @@ export interface BenchContext {
   repoPath: string
   /** Members currently layered onto the bench. */
   members: IntegrationMember[]
+}
+
+/**
+ * Resolve which bench contains `directory`, searching EVERY repo's workspaces.
+ *
+ * A bench conversation's tab carries no `worktree` metadata (a bench is
+ * deliberately not enrolled as a member of itself), so the panel cannot resolve
+ * its owning repo from the tab and falls back to the bench directory. Looking
+ * the workspaces up by that path finds nothing -- `benchWorkspaces` is keyed by
+ * REPO -- so the panel concluded it was not in a bench at all, showed the Graph
+ * section a bench must hide, and listed the bench's own raw `git worktree list`
+ * (main clone included, no registry, no memberships).
+ *
+ * Searching all loaded repos is what makes the bench self-identifying: the
+ * answer no longer depends on already knowing which repo to ask about.
+ */
+export function resolveBenchContextAcrossRepos(
+  directory: string,
+  byRepo: ReadonlyMap<string, IntegrationWorkspace[]>,
+): BenchContext | null {
+  if (!directory) return null
+  for (const workspaces of byRepo.values()) {
+    const hit = resolveBenchContext(directory, workspaces)
+    if (hit) return hit
+  }
+  return null
 }
 
 /**

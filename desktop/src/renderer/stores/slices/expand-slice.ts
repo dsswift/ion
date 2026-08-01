@@ -29,6 +29,7 @@ export function createExpandSlice(set: StoreSet, get: StoreGet): Partial<State> 
     closeSettings: () => set({ settingsOpen: false, settingsInitialTab: null }),
 
     incOpenFloatingPanelCount: () => set((s) => ({ openFloatingPanelCount: s.openFloatingPanelCount + 1 })),
+
     decOpenFloatingPanelCount: () => set((s) => ({ openFloatingPanelCount: Math.max(0, s.openFloatingPanelCount - 1) })),
 
     toggleGitPanel: () => {

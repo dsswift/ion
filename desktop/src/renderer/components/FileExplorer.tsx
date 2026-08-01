@@ -8,6 +8,7 @@ import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { transitions } from '../theme-tokens'
 import { usePreferencesStore } from '../preferences'
+import { usePanelVerticalResize } from '../hooks/usePanelVerticalResize'
 import { FileExplorerContextMenu, type ContextMenuState } from './FileExplorerContextMenu'
 import { FileExplorerTreeRow, FileExplorerInlineInput } from './FileExplorerTreeRow'
 import { ImageViewer } from './ImageViewer'
@@ -353,13 +354,21 @@ export function FileExplorer() {
   }, [dirCache, explorerState, inlineInput, renaming, handleInlineSubmit, handleRenameSubmit, handleRenameCancel, handleToggleDir, handleFileClick, handleContextMenu, isIgnored, colors])
 
   const expandedUI = usePreferencesStore((s) => s.expandedUI)
+  // Declared BEFORE the early return: hooks must run on every render. The same
+  // hook the git panel uses, so the two cannot drift apart in either their
+  // default height or their drag behaviour -- this used to be the same
+  // arithmetic copied into both with a comment asking readers to keep them
+  // matching.
+  const { height: panelHeight, renderHandle } = usePanelVerticalResize({
+    panelId: 'file-explorer',
+    expandedUI,
+    override: usePreferencesStore((s) => s.fileExplorerHeight),
+    onCommit: usePreferencesStore((s) => s.setFileExplorerHeight),
+  })
 
   if (!workingDir) return null
 
   const projectName = workingDir.split('/').pop()?.toUpperCase() || 'PROJECT'
-  // Match git panel height: bodyMaxHeight + 82 (tabStrip + border + gap + input pill)
-  const bodyMaxHeight = expandedUI ? 520 : 400
-  const panelHeight = bodyMaxHeight + 82
 
   return (
     <div
@@ -375,8 +384,12 @@ export function FileExplorer() {
         borderRadius: 16,
         boxShadow: colors.cardShadow,
         overflow: 'hidden',
+        // The drag handle is absolutely positioned against this box.
+        position: 'relative',
       }}
     >
+      {renderHandle()}
+
       {/* Header */}
       <div
         style={{

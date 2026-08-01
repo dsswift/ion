@@ -49,7 +49,7 @@ export interface Contribution {
    * That distinction is what separates "this member has not committed anything
    * yet" from "this member's work has landed". Both leave `pinnedSha` as an
    * ancestor of the source branch with an empty `sourceBranch..pinnedSha`, so no
-   * question asked at rebuild time can tell them apart — the bench used to call
+   * question asked at assembly time can tell them apart — the bench used to call
    * the first case landed and silently retire the member. When `baseSha` equals
    * `sha` the contribution is empty by construction, and that fact survives the
    * source branch moving underneath it.

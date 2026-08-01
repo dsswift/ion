@@ -35,7 +35,6 @@ import { parseWorktreeList } from './integrate'
 import { appraiseWorktree } from './safety'
 import { appraiseBase } from './base-staleness'
 import { getProvisionState } from './provision-state'
-import { maybeBackfillWorktreeTitles, type BackfillCandidate } from './autotitle-backfill'
 import { probeOperationState } from '../git/operation-state'
 import type { WorktreeInventoryEntry } from '../../shared/types'
 
@@ -63,8 +62,13 @@ interface RegistryEntry {
    */
   sourceBranch: string | null
   /**
-   * Human-readable description of what this worktree is FOR, generated from the
-   * first prompt sent in it (see the autotitle IPC) or set by the operator.
+   * Human-readable description of what this worktree is FOR.
+   *
+   * Seeded from the conversation that started the worktree: either the name it
+   * already had when it was converted into one, or the title generated for its
+   * first real prompt (see the seed IPC). Written ONCE — later conversations
+   * opened in the same worktree never change it, because a worktree's topic is
+   * set by the work it was cut for. The operator can override it explicitly.
    *
    * Absent until then. Every other identifier a worktree has — `ion-03e81090`,
    * `wt/ion-03e81090`, a commit sha — is a machine string that tells the
@@ -72,6 +76,28 @@ interface RegistryEntry {
    */
   title?: string
   createdAt: number
+  /**
+   * When this worktree's commits were landed into its source branch.
+   *
+   * ── Why this is STORED and not derived ──────────────────────────────────
+   * "Has landed" cannot be answered by any git query after the fact. A worktree
+   * that never committed anything and one whose work landed both end up clean,
+   * with zero commits in `sourceBranch..branch`, and a tip equal to their merge
+   * base with the source. Fork-point, ancestry and merge-base probes all
+   * collapse to the same answer for both.
+   *
+   * This is the same trap `IntegrationMember.pinnedBaseSha` documents for bench
+   * members, where the bench once read "never started" as "landed" and deleted
+   * the member. The fix there was also a stored fact captured at the moment it
+   * was still knowable.
+   *
+   * The land verb is the only code that witnesses the transition, so it is the
+   * only place this is written. Absent means NOT landed -- never "unknown, guess"
+   * -- which is what keeps a freshly created empty worktree out of the landed
+   * band. A worktree landed before this field existed reads as active until it
+   * is retired; that degrades honestly, where inferring would not.
+   */
+  landedAt?: number
 }
 
 interface RegistryFile {
@@ -114,27 +140,78 @@ function saveRegistry(entries: RegistryEntry[]): void {
  * Record a worktree's source branch. Called from every path that creates a
  * worktree, so the lifecycle verbs always know where it lands.
  *
- * An existing TITLE survives re-registration. Re-registering happens when a
- * worktree is re-attached at the same path, and the description of what the
- * work is about is still true — dropping it would silently un-name the row and
- * force another titling round-trip.
+ * An existing TITLE survives re-registration, and always wins over the `title`
+ * argument. Re-registering happens when a worktree is re-attached at the same
+ * path, and the description of what the work is about is still true — dropping
+ * it would silently un-name the row.
+ *
+ * `title` is the SEED: the name of the conversation this worktree was cut for,
+ * passed by the creation paths that already have one (converting a named
+ * conversation into a worktree, re-attaching a live one). A worktree cut before
+ * its conversation has any name — the panel's "New worktree" button, a fresh
+ * tab — passes nothing and is named later by its first prompt. Because a
+ * stored title always wins, a seed can never overwrite a name the worktree
+ * already carries.
  */
 export function registerWorktree(args: {
   worktreePath: string
   repoPath: string
   branchName: string
   sourceBranch: string
+  title?: string
 }): void {
   const previous = loadRegistry().find((e) => e.worktreePath === args.worktreePath)
   const entries = loadRegistry().filter((e) => e.worktreePath !== args.worktreePath)
-  entries.push({ ...args, title: previous?.title, createdAt: Date.now() })
+  const seeded = args.title?.trim() || undefined
+  // `landedAt` is carried across a re-registration: the same directory being
+  // re-registered has not un-landed its history.
+  entries.push({
+    worktreePath: args.worktreePath,
+    repoPath: args.repoPath,
+    branchName: args.branchName,
+    sourceBranch: args.sourceBranch,
+    title: previous?.title ?? seeded,
+    landedAt: previous?.landedAt,
+    createdAt: Date.now(),
+  })
   saveRegistry(entries)
   log('registered worktree', {
     worktree_path: args.worktreePath,
     branch: args.branchName,
     source_branch: args.sourceBranch,
     retained_title: previous?.title ?? '',
+    seeded_title: previous?.title ? '' : (seeded ?? ''),
   })
+}
+
+/**
+ * Record that a worktree's commits reached its source branch.
+ *
+ * Called only from the land path, which is the only code that can witness the
+ * transition -- see the `landedAt` field comment for why it cannot be derived
+ * afterwards. Idempotent: landing twice keeps the FIRST timestamp, because that
+ * is when the work actually arrived.
+ *
+ * A worktree with no registry entry is not created here. Landing one implies it
+ * was registered, and inventing an entry with a fabricated `sourceBranch` is the
+ * failure mode the registry's null-source rule exists to prevent.
+ */
+export function markWorktreeLanded(worktreePath: string): void {
+  const entries = loadRegistry()
+  const existing = entries.find((e) => e.worktreePath === worktreePath)
+  if (!existing) {
+    warn('cannot mark landed, no registry entry', { worktree_path: worktreePath })
+    return
+  }
+  if (existing.landedAt) {
+    log('worktree already marked landed', {
+      worktree_path: worktreePath, landed_at: existing.landedAt,
+    })
+    return
+  }
+  existing.landedAt = Date.now()
+  saveRegistry(entries)
+  log('worktree marked landed', { worktree_path: worktreePath, landed_at: existing.landedAt })
 }
 
 /**
@@ -187,6 +264,11 @@ export function setWorktreeTitle(
 /** A worktree's recorded title, or null when it has never been named. */
 export function lookupWorktreeTitle(worktreePath: string): string | null {
   return loadRegistry().find((e) => e.worktreePath === worktreePath)?.title ?? null
+}
+
+/** When this worktree's work landed, or null when it has not (or Ion has no record). */
+export function lookupWorktreeLandedAt(worktreePath: string): number | null {
+  return loadRegistry().find((e) => e.worktreePath === worktreePath)?.landedAt ?? null
 }
 
 /**
@@ -248,16 +330,6 @@ export type { WorktreeInventoryEntry } from '../../shared/types'
  */
 export async function inventoryWorktrees(
   repoPath: string,
-  opts?: {
-    /**
-     * Fire the title backfill for untitled registered worktrees after the
-     * read. Opt-in and renderer-driven: the `aiGeneratedTitles` preference
-     * lives in the renderer's preferences store, so only the renderer's
-     * inventory refresh may set this — remote/iOS-triggered reads never fire
-     * LLM calls the operator did not opt into.
-     */
-    backfillTitles?: boolean
-  },
 ): Promise<WorktreeInventoryEntry[]> {
   let listed: ReturnType<typeof parseWorktreeList>
   try {
@@ -268,10 +340,16 @@ export async function inventoryWorktrees(
   }
 
   const entries: WorktreeInventoryEntry[] = []
-  const backfillCandidates: BackfillCandidate[] = []
-  for (const wt of listed) {
-    // Skip the repo root itself and the integration bench.
-    if (wt.path === repoPath) continue
+  for (const [index, wt] of listed.entries()) {
+    // Skip the repo's main working tree and the integration bench: neither is
+    // a feature worktree, and offering them navigates the operator to the
+    // wrong place. Git guarantees the MAIN worktree is listed first, which is
+    // the identity check that holds no matter which checkout ran the query.
+    // The previous check compared against `repoPath` — but this inventory is
+    // also queried from inside a worktree or bench tab, where `repoPath` is
+    // that checkout's own path: the main clone slipped through as a stray row,
+    // and a worktree would have dropped ITSELF from its own panel.
+    if (index === 0) continue
     if (wt.branch.startsWith('ion/bench/')) continue
 
     // A detached HEAD is usually not a managed feature worktree — but a
@@ -299,6 +377,7 @@ export async function inventoryWorktrees(
 
     const sourceBranch = lookupSourceBranch(wt.path)
     const title = lookupWorktreeTitle(wt.path)
+    const landedAt = lookupWorktreeLandedAt(wt.path)
 
     let lastCommitSubject = ''
     try {
@@ -316,15 +395,11 @@ export async function inventoryWorktrees(
     let safeToDiscard = false
     let needsSync = false
     let isDirty = false
-    let unlandedSubjects: string[] = []
     if (sourceBranch && !operation.state) {
       const appraisal = await appraiseWorktree(wt.path, sourceBranch)
       isDirty = appraisal.hasUncommittedChanges
       unlandedCommitCount = appraisal.unlandedCommitCount
       safeToDiscard = appraisal.safeToDiscard
-      // Kept OUT of the wire entry (nobody renders subjects); carried only to
-      // the title backfill below, which describes a worktree by its work.
-      unlandedSubjects = appraisal.unlandedSubjects
       needsSync = (await appraiseBase(wt.path, sourceBranch)).needsSync
     } else if (!operation.state) {
       try {
@@ -339,13 +414,6 @@ export async function inventoryWorktrees(
     // omits the field rather than claiming a state it cannot know.
     const provision = getProvisionState(wt.path)
 
-    backfillCandidates.push({
-      worktreePath: wt.path,
-      title: title ?? undefined,
-      operationState: operation.state,
-      unlandedSubjects,
-    })
-
     entries.push({
       worktreePath: wt.path,
       branchName,
@@ -358,6 +426,7 @@ export async function inventoryWorktrees(
       unlandedCommitCount,
       needsSync,
       safeToDiscard,
+      landedAt: landedAt ?? undefined,
       operationState: operation.state,
       conflictedPaths: operation.conflictedPaths.length > 0 ? operation.conflictedPaths : undefined,
       provisionState: provision?.state,
@@ -366,15 +435,6 @@ export async function inventoryWorktrees(
   }
 
   log('inventoried worktrees', { repo_path: repoPath, count: entries.length })
-
-  // Title backfill, fire-and-forget: the inventory read stays fast and
-  // read-only, and titles are announced (broadcast + iOS push) when they land.
-  // See autotitle-backfill.ts for the skip table and the once-per-run guard.
-  if (opts?.backfillTitles) {
-    void maybeBackfillWorktreeTitles(repoPath, backfillCandidates).catch((err) => {
-      warn('title backfill pass failed', { repo_path: repoPath, error: String(err) })
-    })
-  }
 
   return entries
 }

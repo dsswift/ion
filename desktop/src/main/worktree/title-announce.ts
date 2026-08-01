@@ -2,10 +2,10 @@
  * Worktree title announcement — the one path a new title takes to every
  * surface.
  *
- * Extracted from ipc/worktree.ts so the first-prompt titling path and the
- * inventory-driven backfill (autotitle-backfill.ts) share a single announcer:
- * two copies of "broadcast + push to iOS" would drift the moment one grows a
- * new surface.
+ * Extracted from ipc/worktree.ts so the seed path (the title generated for the
+ * conversation that started the worktree) and the operator's explicit rename
+ * share a single announcer: two copies of "broadcast + push to iOS" would drift
+ * the moment one grows a new surface.
  *
  * Broadcast (not webContents.send): both renderer windows must repaint their
  * rows — the git panel and the ATV mirror would otherwise disagree, one
@@ -20,15 +20,6 @@ import { log as _log, warn as _warn } from '../logger'
 const TAG = 'worktree.title'
 function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
 function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, msg, fields) }
-
-/**
- * Longest prompt/subject text the titling round-trip is given.
- *
- * The engine truncates on its side too; trimming here keeps a pasted stack
- * trace out of the IPC payload rather than shipping it across the bridge to be
- * discarded.
- */
-export const MAX_TITLE_INPUT_CHARS = 2000
 
 /** Announce a worktree's new title to every renderer and to iOS. */
 export async function announceWorktreeTitle(

@@ -11,7 +11,6 @@
  */
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { rInfo, rWarn, rDebug } from '../../rendererLogger'
-import { usePreferencesStore } from '../../preferences'
 import { setTabWorkingDirectory } from './tab-working-directory'
 import { collectDirConversations, pickNextConversation } from '../../../shared/worktree-conversations'
 
@@ -26,12 +25,7 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
     refreshWorktreeInventory: async (repoPath) => {
       if (!repoPath || repoPath === '~') return
       try {
-        // Pass the AI-titles preference so the main process may backfill
-        // titles for worktrees that predate auto-titling (autotitle-backfill
-        // .ts). Renderer-driven because the preference lives in this window's
-        // preferences store; the main process treats absent as off.
-        const aiTitles = usePreferencesStore.getState().aiGeneratedTitles
-        const { worktrees } = await window.ion.gitWorktreeInventory(repoPath, aiTitles)
+        const { worktrees } = await window.ion.gitWorktreeInventory(repoPath)
         set((s) => ({
           worktreeInventory: new Map(s.worktreeInventory).set(repoPath, worktrees),
         }))
@@ -66,6 +60,77 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
     },
 
     /**
+     * Create an ADDITIONAL conversation in a worktree, always a new one.
+     *
+     * ── Why this is a store action and not a component handler ───────────────
+     * Creating the tab is only half the job: the tab must also be given its
+     * `worktree` metadata, or it reads as a plain directory conversation. That
+     * matters well beyond the lifecycle verbs — the git panel resolves which
+     * repo's worktrees to list THROUGH that metadata, so a tab without it lists
+     * the worktree's own `git worktree list` (main clone included, no registry,
+     * no bench) instead of the repo's worktrees.
+     *
+     * The row menu's "New conversation here" originally called
+     * `createTabInDirectory` directly and skipped the attachment, which produced
+     * exactly that: a second conversation in a worktree showed a different, wrong
+     * worktree panel from the first. Both paths now share this one action, so the
+     * attachment cannot be forgotten by a caller again.
+     */
+    newWorktreeConversation: async (worktreePath) => {
+      rInfo('worktree.inventory', 'opening new conversation in worktree', { worktree_path: worktreePath })
+      // createTabInDirectory with useWorktree=false: the worktree already
+      // exists, so this must NOT create another one inside it.
+      // skipDuplicateCheck=true: an additional conversation here is the request.
+      const tabId = await get().createTabInDirectory(worktreePath, false, true)
+
+      // Attach the worktree metadata so the tab gets the worktree affordances
+      // (land, sync, retire) AND so the git panel can resolve its owning repo.
+      //
+      // ── Ask the REGISTRY, never the inventory cache ─────────────────────────
+      // This used to derive `repoPath` by scanning `worktreeInventory.keys()` for
+      // a map whose value list contained this worktree. That map is a DISPLAY
+      // cache keyed by whatever path the panel last queried -- and from a bench
+      // conversation, that key is the BENCH path. So the scan happily returned
+      // the bench as this worktree's owning repo and wrote it onto the tab.
+      //
+      // The symptom was three conversations in one worktree disagreeing about
+      // what the worktree panel should show: one correct, one claiming the bench
+      // as its repo, one with no metadata at all. A wrong repoPath is worse than
+      // a missing one, because the panel then confidently lists that directory's
+      // own `git worktree list` -- main clone included.
+      //
+      // The registry records the true repo at creation and is the only
+      // authoritative source. A heuristic scan over a cache keyed for display is
+      // exactly the substitution that drifts.
+      const { registration } = await window.ion.gitWorktreeRegistration(worktreePath)
+      const repoPath = registration?.repoPath
+      const entry = registration
+      if (repoPath && entry?.sourceBranch) {
+        set((s) => ({
+          tabs: s.tabs.map((t) => t.id === tabId
+            ? {
+                ...t,
+                worktree: {
+                  worktreePath,
+                  branchName: entry.branchName,
+                  sourceBranch: entry.sourceBranch!,
+                  repoPath,
+                },
+              }
+            : t),
+        }))
+      } else {
+        // Without a known source branch the lifecycle verbs are unanswerable.
+        // Leave `worktree` unset rather than inventing a source branch: the tab
+        // still works as a directory conversation, and the UI asks.
+        rWarn('worktree.inventory', 'opened worktree conversation without known source branch', {
+          worktree_path: worktreePath,
+        })
+      }
+      return tabId
+    },
+
+    /**
      * Open a conversation in a worktree — the re-entry path after a tab close,
      * and the way to cycle through the conversations already living there.
      *
@@ -94,41 +159,7 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
         return next.tabId
       }
 
-      rInfo('worktree.inventory', 'opening new conversation in worktree', { worktree_path: worktreePath })
-      // createTabInDirectory with useWorktree=false: the worktree already
-      // exists, so this must NOT create another one inside it.
-      const tabId = await get().createTabInDirectory(worktreePath, false, true)
-
-      // Attach the worktree metadata so the tab gets the worktree affordances
-      // (land, sync, retire) rather than reading as a plain directory tab.
-      const repoPath = [...get().worktreeInventory.keys()].find((repo) =>
-        (get().worktreeInventory.get(repo) ?? []).some((w) => w.worktreePath === worktreePath))
-      const entry = repoPath
-        ? (get().worktreeInventory.get(repoPath) ?? []).find((w) => w.worktreePath === worktreePath)
-        : undefined
-      if (repoPath && entry?.sourceBranch) {
-        set((s) => ({
-          tabs: s.tabs.map((t) => t.id === tabId
-            ? {
-                ...t,
-                worktree: {
-                  worktreePath,
-                  branchName: entry.branchName,
-                  sourceBranch: entry.sourceBranch!,
-                  repoPath,
-                },
-              }
-            : t),
-        }))
-      } else {
-        // Without a known source branch the lifecycle verbs are unanswerable.
-        // Leave `worktree` unset rather than inventing a source branch: the tab
-        // still works as a directory conversation, and the UI asks.
-        rWarn('worktree.inventory', 'opened worktree conversation without known source branch', {
-          worktree_path: worktreePath,
-        })
-      }
-      return tabId
+      return get().newWorktreeConversation(worktreePath)
     },
 
     /**

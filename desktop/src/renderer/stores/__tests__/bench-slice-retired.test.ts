@@ -1,14 +1,14 @@
 /**
  * Bench slice — the absorbed-into-base notice.
  *
- * `BenchRebuildResult.retired` exists so the UI can say what a rebuild absorbed
+ * `BenchAssembleResult.retired` exists so the UI can say what an assembly absorbed
  * "rather than having rows vanish silently" (its own doc comment). Nothing
  * consumed it: the IPC layer logged a count and the renderer discarded the value,
  * so a member retiring looked exactly like the bench losing a worktree. That is
  * how the pending-member defect was first reported.
  *
- * These tests pin the notice's lifecycle: recorded on rebuild and on both Update
- * verbs, scoped per source branch, cleared when a later rebuild absorbs nothing,
+ * These tests pin the notice's lifecycle: recorded on assembly and on both Update
+ * verbs, scoped per source branch, cleared when a later assembly absorbs nothing,
  * and dismissible.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
@@ -19,7 +19,7 @@ vi.mock('../../rendererLogger', () => ({
 
 import { createBenchSlice } from '../slices/bench-slice'
 import type { State } from '../session-store-types'
-import type { IntegrationMember, BenchRebuildResult } from '../../../shared/types'
+import type { IntegrationMember, BenchAssembleResult } from '../../../shared/types'
 
 const REPO = '/Users/test/project'
 
@@ -27,13 +27,13 @@ function member(branchName: string): IntegrationMember {
   return {
     worktreePath: `/wt/${branchName}`,
     branchName,
-    label: branchName,
     enabled: true,
     pinnedSha: 'abc1234',
     pinnedTreeHash: 'tree1',
     pinnedBaseSha: 'base1',
     currentTreeHash: 'tree1',
-    status: 'landed',
+    pin: 'absorbed',
+    merge: 'skipped',
   }
 }
 
@@ -41,7 +41,7 @@ function member(branchName: string): IntegrationMember {
  * Minimal store harness. The slice only needs `set`, `get`, and the two Maps it
  * touches; a full store would obscure which state the action actually writes.
  */
-function harness(rebuildResult: BenchRebuildResult) {
+function harness(assembleResult: BenchAssembleResult) {
   let state: Record<string, unknown> = {
     benchRetired: new Map<string, Map<string, IntegrationMember[]>>(),
     benchWorkspaces: new Map(),
@@ -54,9 +54,9 @@ function harness(rebuildResult: BenchRebuildResult) {
 
   ;(globalThis as unknown as { window: Record<string, unknown> }).window = {
     ion: {
-      benchRebuild: vi.fn().mockResolvedValue(rebuildResult),
-      benchUpdateMember: vi.fn().mockResolvedValue(rebuildResult),
-      benchUpdateAll: vi.fn().mockResolvedValue(rebuildResult),
+      benchAssemble: vi.fn().mockResolvedValue(assembleResult),
+      benchUpdateMember: vi.fn().mockResolvedValue(assembleResult),
+      benchUpdateAll: vi.fn().mockResolvedValue(assembleResult),
       benchList: vi.fn().mockResolvedValue({ workspaces: [], tips: {} }),
       benchRefreshStaleness: vi.fn().mockResolvedValue({ workspace: null }),
     },
@@ -82,16 +82,16 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
-describe('benchRebuild — recording what was absorbed', () => {
+describe('benchAssemble — recording what was absorbed', () => {
   it('records the retired members for the workspace that rebuilt', async () => {
     const { slice, retiredFor } = harness({ ok: true, retired: [member('wt/a')] })
-    await slice.benchRebuild!(REPO, 'josh')
+    await slice.benchAssemble!(REPO, 'josh')
     expect(retiredFor('josh').map((m) => m.branchName)).toEqual(['wt/a'])
   })
 
   it('records nothing when the rebuild absorbed nothing', async () => {
     const { slice, retiredFor } = harness({ ok: true, retired: [] })
-    await slice.benchRebuild!(REPO, 'josh')
+    await slice.benchAssemble!(REPO, 'josh')
     expect(retiredFor('josh')).toEqual([])
   })
 
@@ -99,7 +99,7 @@ describe('benchRebuild — recording what was absorbed', () => {
     // A refusal (dirty bench) carries no `retired` at all; it must not throw and
     // must not leave a stale notice.
     const { slice, retiredFor } = harness({ ok: false, error: 'dirty' })
-    await slice.benchRebuild!(REPO, 'josh')
+    await slice.benchAssemble!(REPO, 'josh')
     expect(retiredFor('josh')).toEqual([])
   })
 
@@ -107,12 +107,12 @@ describe('benchRebuild — recording what was absorbed', () => {
     // Otherwise the notice outlives the event it describes and the operator sees
     // a member named as absorbed on every subsequent build.
     const first = harness({ ok: true, retired: [member('wt/a')] })
-    await first.slice.benchRebuild!(REPO, 'josh')
+    await first.slice.benchAssemble!(REPO, 'josh')
     expect(first.retiredFor('josh')).toHaveLength(1)
 
     ;(globalThis as unknown as { window: { ion: Record<string, unknown> } })
-      .window.ion.benchRebuild = vi.fn().mockResolvedValue({ ok: true, retired: [] })
-    await first.slice.benchRebuild!(REPO, 'josh')
+      .window.ion.benchAssemble = vi.fn().mockResolvedValue({ ok: true, retired: [] })
+    await first.slice.benchAssemble!(REPO, 'josh')
     expect(first.retiredFor('josh')).toEqual([])
   })
 
@@ -120,7 +120,7 @@ describe('benchRebuild — recording what was absorbed', () => {
     // A repo integrating into two feature branches has two benches; one
     // absorbing a member must not annotate the other.
     const { slice, retiredFor } = harness({ ok: true, retired: [member('wt/a')] })
-    await slice.benchRebuild!(REPO, 'josh')
+    await slice.benchAssemble!(REPO, 'josh')
     expect(retiredFor('josh')).toHaveLength(1)
     expect(retiredFor('other')).toEqual([])
   })
@@ -144,8 +144,8 @@ describe('the Update verbs record absorption too', () => {
 describe('clearBenchRetired — dismissal', () => {
   it('drops the notice for one branch and leaves the other', async () => {
     const { slice, retiredFor } = harness({ ok: true, retired: [member('wt/a')] })
-    await slice.benchRebuild!(REPO, 'josh')
-    await slice.benchRebuild!(REPO, 'other')
+    await slice.benchAssemble!(REPO, 'josh')
+    await slice.benchAssemble!(REPO, 'other')
     expect(retiredFor('josh')).toHaveLength(1)
     expect(retiredFor('other')).toHaveLength(1)
 

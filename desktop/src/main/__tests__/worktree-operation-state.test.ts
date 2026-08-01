@@ -167,6 +167,25 @@ describe('inventory — a mid-rebase worktree stays visible (Defect A)', () => {
     expect(entry!.operationState).toBeUndefined()
     expect(entry!.conflictedPaths).toBeUndefined()
   })
+
+  it('never lists the main clone, whichever checkout asks (the stray-repo row)', async () => {
+    // RED before the fix: the main-clone skip compared against the QUERYING
+    // path (`wt.path === repoPath`), which only worked when the query came
+    // from the main clone itself. The picker also queries from worktree and
+    // bench tabs — `git worktree list` answers identically there, and the
+    // main clone slipped through as a bogus row that navigates the operator
+    // to the source checkout. The fix keys on porcelain order (git lists the
+    // main worktree first), which holds regardless of the querying path.
+    const wt = makeConflictingWorktree('a')
+
+    const fromMain = await inventoryWorktrees(repo)
+    const fromWorktree = await inventoryWorktrees(wt.path)
+
+    expect(fromMain.find((e) => e.worktreePath === repo)).toBeUndefined()
+    expect(fromWorktree.find((e) => e.worktreePath === repo)).toBeUndefined()
+    // The real worktree is still present from both vantage points.
+    expect(fromWorktree.find((e) => e.worktreePath === wt.path)).toBeDefined()
+  })
 })
 
 describe('bench capture — the branch ref, not HEAD (Defect B)', () => {
@@ -190,9 +209,9 @@ describe('bench capture — the branch ref, not HEAD (Defect B)', () => {
     await strandMidRebase(wt)
 
     const member = {
-      worktreePath: wt.path, branchName: wt.branch, label: 'a', enabled: true,
+      worktreePath: wt.path, branchName: wt.branch, enabled: true,
       pinnedSha: 'x', pinnedTreeHash: 'x', pinnedBaseSha: 'x', currentTreeHash: 'x',
-      status: 'integrated' as const,
+      pin: 'current' as const, merge: 'merged' as const,
     }
     expect(await contributedTreeHash(member)).toBe(branchTree)
   })
@@ -212,7 +231,7 @@ describe('bench capture — the branch ref, not HEAD (Defect B)', () => {
     const member = refreshed!.members.find((m) => m.branchName === wt.branch)!
     // The branch has not moved, so the member is exactly as integrated as it
     // was at enrollment — the rebase in the working tree changes nothing.
-    expect(member.status).toBe('integrated')
+    expect(member.pin).toBe('current')
     expect(member.currentTreeHash).toBe(member.pinnedTreeHash)
 
     // Update mid-rebase still pins the branch contribution, never the

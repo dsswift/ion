@@ -190,6 +190,8 @@ export interface PersistedTab {
   /** Per-engine-instance unsent input text, keyed by `instanceId`. Only non-empty values. */
   engineDrafts?: Record<string, string>
   isTerminalOnly?: boolean
+  /** Input-locked conversation (auto-generated conflict fix). See TabState.inputLocked. */
+  inputLocked?: boolean
   /**
    * Unified conversation state for this tab (the post-migration shape). When
    * present, the loader reads conversation instances from here and IGNORES the

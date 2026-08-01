@@ -113,6 +113,7 @@ function makeTab(overrides: Partial<TabState> = {}): TabState {
     contextWindow: null,
     isCompacting: false,
     isTerminalOnly: false,
+    inputLocked: false,
     // Extension-backed by default in this suite: a resolvable profile id is the
     // ONLY thing that distinguishes an extension tab from a plain one.
     engineProfileId: 'profile-1',

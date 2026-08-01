@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { createPortal } from 'react-dom'
+import { Warning } from '@phosphor-icons/react'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
@@ -11,11 +12,18 @@ const TRANSITION = { duration: 0.26, ease: [0.4, 0, 0.1, 1] as const }
 export function CloseTabConfirmDialog({
   title,
   directory,
+  warning,
   onConfirm,
   onCancel,
 }: {
   title: string
   directory: string
+  /**
+   * What the operator is walking away from, or null when the close is
+   * uneventful. Resolved by `requestCloseTab` before this dialog mounts, so it
+   * is correct on first render rather than appearing a beat later.
+   */
+  warning: string | null
   onConfirm: () => void
   onCancel: () => void
 }) {
@@ -77,6 +85,30 @@ export function CloseTabConfirmDialog({
           <div style={{ fontWeight: 500 }}>{title}</div>
           <div style={{ color: colors.textTertiary, marginTop: 2 }}>{directory}</div>
         </div>
+        {/* The worktree warning. Informational, not a refusal: closing never
+            removes a worktree, so the copy says what remains and where, and the
+            confirm button is unchanged. Rendered only when there is something
+            to say — an empty box would train the operator to ignore it. */}
+        {warning && (
+          <div
+            data-testid="close-tab-warning"
+            style={{
+              fontSize: 11,
+              color: colors.textSecondary,
+              lineHeight: 1.5,
+              display: 'flex',
+              gap: 8,
+              alignItems: 'flex-start',
+              background: colors.surfacePrimary,
+              border: `1px solid ${colors.containerBorder}`,
+              borderRadius: 8,
+              padding: '8px 10px',
+            }}
+          >
+            <Warning size={13} weight="fill" color={colors.worktreeGreen} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>{warning}</span>
+          </div>
+        )}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
           <button
             onClick={onCancel}

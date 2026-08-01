@@ -196,6 +196,16 @@ export interface TabState {
   /** Terminal-focused tab with no conversation */
   isTerminalOnly: boolean
   /**
+   * When true, the operator cannot type into this conversation. Set on the
+   * auto-generated conflict-resolution conversations (the AI Assisted rebase /
+   * merge fixes): their entire instruction is the one machine-sent prompt, and
+   * a follow-up message would graft an open-ended conversation onto a tab
+   * whose working directory — often an integration bench — is not where
+   * development work belongs. The fix conversation stays readable and
+   * abortable; it just refuses new prompts.
+   */
+  inputLocked: boolean
+  /**
    * Engine profile ID used for this tab (references EngineProfile.id).
    * Non-null/non-empty means the tab has extensions loaded (derived via
    * `tabHasExtensions()` from shared/tab-predicates.ts).
@@ -228,7 +238,7 @@ export interface Message {
    * key's message list, the new event is dropped instead of pushed.
    * Persists with the message so dedup survives app restart and rehydrate.
    * Other roles ignore this field; only harness messages opt in.
-   * Convention: `<extensionName>:<messageKey>` (e.g. `ion-meta:welcome`).
+   * Convention: `<extensionName>:<messageKey>` (e.g. `my-extension:welcome`).
    * See engine-event-slice.ts for the consumer logic and
    * docs/protocol/server-events.md for the well-known-keys table.
    */
@@ -663,7 +673,8 @@ export type {
   GitConflictKind, GitChangedFile, GitChangesData, GitBranchInfo,
   LandMode, LandResult, WorktreeMoveResult, WorktreeInventoryEntry, WorktreeAppraisalWire,
   WorktreeProvisionState, GitOperationState,
-  MemberStatus, IntegrationMember, IntegrationWorkspace, BenchRebuildResult,
+  EnrollmentState, PinState, MergeOutcome,
+  IntegrationMember, IntegrationWorkspace, BenchAssembleResult,
 } from './types-git'
 
 // ─── Worktree Types ───

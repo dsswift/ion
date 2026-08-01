@@ -29,7 +29,7 @@ vi.mock('../slices/tab-slice-permission-mode', () => ({
   applyPermissionModeForTab: (...args: unknown[]) => applyPermissionModeForTab(...args),
 }))
 
-import { createGitConflictSlice, CONFLICT_ASSIST_PROMPT, CONFLICT_ASSIST_TIER } from '../slices/git-conflict-slice'
+import { createGitConflictSlice, conflictAssistPrompt, CONFLICT_ASSIST_PROMPT, CONFLICT_ASSIST_TIER } from '../slices/git-conflict-slice'
 import { createWorktreeInventorySlice } from '../slices/worktree-inventory-slice'
 import type { State, GitConflictAlert } from '../session-store-types'
 
@@ -273,6 +273,50 @@ describe('openConflictAssist', () => {
     await expect(h.slice.openConflictAssist!(WT)).rejects.toThrow(/standard.*models\.json/s)
     expect(createTabInDirectory).not.toHaveBeenCalled()
     expect(submit).not.toHaveBeenCalled()
+  })
+
+  it('names the operation actually in progress: a merge gets the merge prompt', async () => {
+    // The bench resolve-once flow leaves a MERGE in progress; telling the
+    // model to fix a rebase that does not exist sent it hunting for the wrong
+    // operation. The prompt is derived from the live op state.
+    ionWith()
+    ;(globalThis as unknown as { window: { ion: Record<string, unknown> } }).window.ion.gitOpState =
+      vi.fn().mockResolvedValue({ ok: true, state: 'merging' })
+    const submit = vi.fn()
+    const setTabModel = vi.fn()
+    const createTabInDirectory = vi.fn().mockResolvedValue('tab-new')
+    const h = harness({ submit, setTabModel, createTabInDirectory, tabs: [], activeTabId: null })
+
+    await h.slice.openConflictAssist!(WT)
+
+    expect(submit).toHaveBeenCalledWith('tab-new', 'Please fix my currently in-progress merge.')
+    expect(conflictAssistPrompt('merging')).toBe('Please fix my currently in-progress merge.')
+    expect(conflictAssistPrompt('cherry-picking')).toBe('Please fix my currently in-progress cherry-pick.')
+    expect(conflictAssistPrompt(null)).toBe(CONFLICT_ASSIST_PROMPT)
+  })
+
+  it('locks the conversation input after the machine prompt is sent', async () => {
+    // The fix conversation's entire instruction is the one machine-sent
+    // prompt: locking prevents follow-ups from grafting an open-ended
+    // conversation onto a checkout (often a bench) where development work
+    // does not belong. The lock lands AFTER submit(), so the machine prompt
+    // itself is never blocked by the guard in send-slice.
+    ionWith()
+    const submit = vi.fn()
+    const setTabModel = vi.fn()
+    const createTabInDirectory = vi.fn().mockResolvedValue('tab-new')
+    const h = harness({
+      submit, setTabModel, createTabInDirectory,
+      tabs: [{ id: 'tab-new', inputLocked: false }],
+      activeTabId: null,
+    })
+
+    await h.slice.openConflictAssist!(WT)
+
+    const tabs = h.state().tabs as Array<{ id: string; inputLocked: boolean }>
+    expect(tabs.find((t) => t.id === 'tab-new')?.inputLocked).toBe(true)
+    // Order matters: the prompt went through before the lock was applied.
+    expect(submit).toHaveBeenCalledWith('tab-new', CONFLICT_ASSIST_PROMPT)
   })
 
   it('pins the tier model on the fresh conversation', async () => {

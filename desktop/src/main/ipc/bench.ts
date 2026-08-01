@@ -2,7 +2,7 @@
  * IPC surface for the integration workspace (the bench).
  *
  * Every mutation is operator-triggered: nothing here runs on a timer or in
- * response to a file change. Rebuild re-merges existing pins; only the Update
+ * response to a file change. Assemble re-merges existing pins; only the Update
  * verbs advance a pin. See main/integration/bench-ops.ts for that split.
  */
 import { ipcMain } from 'electron'
@@ -10,8 +10,10 @@ import { IPC } from '../../shared/types'
 import { log as _log, warn as _warn } from '../logger'
 import {
   listWorkspaces, ensureWorkspace, addMember, removeMember, setMemberEnabled,
-  updateMember, updateAllStale, rebuildWorkspace, refreshStaleness, sourceBranchTip,
+  setMemberReview, setMemberOrder,
+  updateMember, updateAllStale, assembleWorkspace, refreshStaleness, sourceBranchTip,
 } from '../integration/bench-ops'
+import { prepareConflictResolution } from '../integration/bench-resolve'
 
 const TAG = 'bench.ipc'
 function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
@@ -62,6 +64,22 @@ export function registerBenchIpc(): void {
   )
 
   ipcMain.handle(
+    IPC.BENCH_SET_REVIEW,
+    async (_e, { repoPath, sourceBranch, worktreePath, review }:
+      { repoPath: string; sourceBranch: string; worktreePath: string; review: 'good' | 'issue' | null }) => {
+      return { workspace: setMemberReview(repoPath, sourceBranch, worktreePath, review) }
+    },
+  )
+
+  ipcMain.handle(
+    IPC.BENCH_SET_ORDER,
+    async (_e, { repoPath, sourceBranch, worktreePath, toIndex }:
+      { repoPath: string; sourceBranch: string; worktreePath: string; toIndex: number }) => {
+      return { workspace: setMemberOrder(repoPath, sourceBranch, worktreePath, toIndex) }
+    },
+  )
+
+  ipcMain.handle(
     IPC.BENCH_UPDATE_MEMBER,
     async (_e, { repoPath, sourceBranch, worktreePath }:
       { repoPath: string; sourceBranch: string; worktreePath: string }) => {
@@ -83,18 +101,29 @@ export function registerBenchIpc(): void {
   )
 
   ipcMain.handle(
-    IPC.BENCH_REBUILD,
+    IPC.BENCH_ASSEMBLE,
     async (_e, { repoPath, sourceBranch }: { repoPath: string; sourceBranch: string }) => {
-      log('rebuild', { source_branch: sourceBranch })
-      const result = await rebuildWorkspace(repoPath, sourceBranch)
-      if (!result.ok) warn('rebuild failed', { source_branch: sourceBranch, error: result.error ?? '' })
+      log('assemble', { source_branch: sourceBranch })
+      const result = await assembleWorkspace(repoPath, sourceBranch)
+      if (!result.ok) warn('assemble failed', { source_branch: sourceBranch, error: result.error ?? '' })
       else {
-        log('rebuild ok', {
+        log('assemble ok', {
           source_branch: sourceBranch,
+          outcome: result.workspace?.lastAssembly ?? 'unknown',
           retired: (result.retired ?? []).length,
           members: result.workspace?.members.length ?? 0,
         })
       }
+      return result
+    },
+  )
+
+  ipcMain.handle(
+    IPC.BENCH_RESOLVE_CONFLICT,
+    async (_e, { repoPath, sourceBranch }: { repoPath: string; sourceBranch: string }) => {
+      log('resolve conflict requested', { source_branch: sourceBranch })
+      const result = await prepareConflictResolution(repoPath, sourceBranch)
+      if (!result.ok) warn('resolve conflict preparation failed', { source_branch: sourceBranch, error: result.error ?? '' })
       return result
     },
   )

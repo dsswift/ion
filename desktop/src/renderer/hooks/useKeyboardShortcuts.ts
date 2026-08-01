@@ -94,12 +94,6 @@ export function handleNewConversationShortcut(
   }
 }
 
-interface CloseConfirmTab {
-  id: string
-  title: string
-  directory: string
-}
-
 /**
  * Global keyboard shortcuts. Mounted once at the App root.
  *
@@ -127,14 +121,15 @@ interface CloseConfirmTab {
  *                 conversation.findPrev (Cmd+Shift+G) · permission.togglePlanAuto (Shift+Tab)
  *   App: settings.open (Cmd+,)
  *
- * The Cmd+W flow asks the host App to render a confirmation dialog by
- * invoking `setCloseConfirmTab` with the active tab metadata.
+ * The Cmd+W flow calls `requestCloseTab`, which resolves any worktree warning
+ * and raises the store's `closeIntent`; App renders the one close dialog from
+ * that. Every other close entry point calls the same action.
  *
  * Conflict resolution: when two commands resolve to the same chord (possible
  * via user overrides), the first-in-catalog-order command wins and a warning
  * is logged. See resolveBindings() in shortcut-catalog.ts.
  */
-export function useKeyboardShortcuts(setCloseConfirmTab: (t: CloseConfirmTab | null) => void) {
+export function useKeyboardShortcuts() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       // Resolve bindings fresh on each event so override changes take effect
@@ -299,14 +294,9 @@ export function useKeyboardShortcuts(setCloseConfirmTab: (t: CloseConfirmTab | n
       }
       if (matchesChord(e, bindings.get('tab.close') ?? null)) {
         e.preventDefault()
-        const { tabs, activeTabId } = useSessionStore.getState()
-        const tab = tabs.find((t) => t.id === activeTabId)
-        if (tab) {
-          setCloseConfirmTab({
-            id: tab.id,
-            title: tab.customTitle || tab.title || 'Untitled',
-            directory: tab.workingDirectory,
-          })
+        const { activeTabId, requestCloseTab } = useSessionStore.getState()
+        if (activeTabId) {
+          void requestCloseTab(activeTabId).catch((err) => rError('shortcuts', 'requestCloseTab threw', { tab_id: activeTabId.slice(0, 8), error: String(err) }))
         }
       }
       if (matchesChord(e, bindings.get('tab.scratch') ?? null)) {
@@ -384,5 +374,5 @@ export function useKeyboardShortcuts(setCloseConfirmTab: (t: CloseConfirmTab | n
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [setCloseConfirmTab])
+  }, [])
 }

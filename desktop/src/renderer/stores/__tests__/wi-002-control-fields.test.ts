@@ -45,7 +45,8 @@ function plainTab(id: string): TabState {
     forkedFromSessionId: null, worktree: null,
     pendingWorktreeSetup: false, groupId: null, groupPinned: false,
     contextTokens: null, contextWindow: null,
-    isCompacting: false, isTerminalOnly: false, engineProfileId: null,
+    isCompacting: false, isTerminalOnly: false,
+    inputLocked: false, engineProfileId: null,
     lastMessagePreview: null,
   }
 }

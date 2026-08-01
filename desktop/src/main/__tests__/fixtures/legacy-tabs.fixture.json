@@ -281,7 +281,7 @@
             "role": "harness",
             "timestamp": 1780771534154,
             "content": "[fictional harness #114]",
-            "dedupKey": "ion-meta:welcome"
+            "dedupKey": "my-extension:welcome"
           },
           {
             "role": "user",
@@ -322,7 +322,7 @@
             "role": "harness",
             "timestamp": 1780801056566,
             "content": "[fictional harness #846]",
-            "dedupKey": "ion-meta:welcome"
+            "dedupKey": "my-extension:welcome"
           },
           {
             "role": "user",
@@ -359,7 +359,7 @@
             "role": "harness",
             "timestamp": 1781204683722,
             "content": "[fictional harness #545]",
-            "dedupKey": "ion-meta:welcome"
+            "dedupKey": "my-extension:welcome"
           },
           {
             "role": "user",
@@ -396,7 +396,7 @@
             "role": "harness",
             "timestamp": 1781439783968,
             "content": "[fictional harness #949]",
-            "dedupKey": "ion-meta:welcome"
+            "dedupKey": "my-extension:welcome"
           },
           {
             "role": "user",
@@ -433,7 +433,7 @@
             "role": "harness",
             "timestamp": 1781440740710,
             "content": "[fictional harness #788]",
-            "dedupKey": "ion-meta:welcome"
+            "dedupKey": "my-extension:welcome"
           },
           {
             "role": "user",

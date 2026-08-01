@@ -3,9 +3,9 @@
  *
  * The property that matters: the OPERATOR cannot write git history inside an
  * integration bench from the git panel, because the next rebuild recreates the
- * branch and destroys the commit. ion-meta's bench-gate covers the same rule
- * for AGENT-driven Bash calls (ion-meta-bench-gate.test.ts); this covers the
- * IPC surface the buttons call.
+ * branch and destroys the commit. The engine's workspace containment
+ * (internal/workspaces) covers the same rule for AGENT tool calls; this
+ * covers the IPC surface the buttons call.
  *
  * Reading, building, staging, and patch-applying must stay unblocked — that is
  * the entire purpose of the bench — so over-blocking is as much a defect as
@@ -45,6 +45,21 @@ let home: string
 // the tests prove the refusal happened BEFORE any git command ran, rather than
 // after git already mutated the repository.
 const gitCalls: Array<{ cwd: string; args: string[] }> = []
+
+/**
+ * The calls that would actually change the repository. Abort/continue probe
+ * the in-progress operation state first (`rev-parse --git-path`, reads of
+ * MERGE_HEAD) to name the right verb and to allow the bench resolve-once
+ * carve-out — those reads are expected even on a refused call, so the
+ * assertion that matters is "no MUTATION ran", not "no git ran".
+ */
+const READ_ONLY = new Set(['rev-parse', 'ls-files', 'status', 'log', 'diff', 'show', 'config'])
+function mutatingGitCalls(): Array<{ cwd: string; args: string[] }> {
+  return gitCalls.filter((c) => {
+    const sub = c.args.find((a) => !a.startsWith('-') && a !== 'true')
+    return sub !== undefined && !READ_ONLY.has(sub)
+  })
+}
 
 vi.mock('../git-runner', () => ({
   runGit: async (cwd: string, args: string[]) => {
@@ -143,7 +158,7 @@ describe('history writes are refused inside a bench', () => {
 
     expect(result.ok).toBe(false)
     expect(result.error).toMatch(/integration bench/i)
-    expect(gitCalls).toEqual([])
+    expect(mutatingGitCalls()).toEqual([])
   })
 })
 
@@ -212,8 +227,8 @@ describe('reading and building in a bench stay unblocked', () => {
 
 describe('the guard fails open when bench state is unreadable', () => {
   // A false refusal would block legitimate commits in an ordinary worktree,
-  // which is worse than missing the guard until the file is readable. ion-meta
-  // enforces the same rule independently for agent-driven writes.
+  // which is worse than missing the guard until the file is readable. The
+  // engine enforces the same rule independently for agent-driven writes.
   it('allows a commit when the workspace file is missing', async () => {
     rmSync(join(home, '.ion', 'integration-workspaces.json'))
 

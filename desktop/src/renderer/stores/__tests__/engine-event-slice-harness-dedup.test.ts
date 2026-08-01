@@ -73,22 +73,22 @@ describe('harness_message dedupKey convention (WI-001 normalized path)', () => {
     slice.handleNormalizedEvent('tab1', {
       type: 'harness_message',
       message: 'Welcome to Ion Meta',
-      dedupKey: 'ion-meta:welcome',
-      source: 'ion-meta',
+      dedupKey: 'my-extension:welcome',
+      source: 'my-extension',
     } as any)
 
     slice.handleNormalizedEvent('tab1', {
       type: 'harness_message',
       message: 'Welcome to Ion Meta',
-      dedupKey: 'ion-meta:welcome',
-      source: 'ion-meta',
+      dedupKey: 'my-extension:welcome',
+      source: 'my-extension',
     } as any)
 
     const msgs = getMessages(state)
     expect(msgs).toHaveLength(1)
     expect(msgs[0].role).toBe('harness')
     expect(msgs[0].content).toBe('Welcome to Ion Meta')
-    expect((msgs[0] as any).dedupKey).toBe('ion-meta:welcome')
+    expect((msgs[0] as any).dedupKey).toBe('my-extension:welcome')
   })
 
   it('pushes both emissions when dedupKey values differ', () => {
@@ -132,7 +132,7 @@ describe('harness_message dedupKey convention (WI-001 normalized path)', () => {
         role: 'harness',
         content: 'Welcome to Ion Meta',
         timestamp: 1000,
-        dedupKey: 'ion-meta:welcome',
+        dedupKey: 'my-extension:welcome',
       },
     ]
 
@@ -140,14 +140,14 @@ describe('harness_message dedupKey convention (WI-001 normalized path)', () => {
     slice.handleNormalizedEvent('tab1', {
       type: 'harness_message',
       message: 'Welcome to Ion Meta',
-      dedupKey: 'ion-meta:welcome',
-      source: 'ion-meta',
+      dedupKey: 'my-extension:welcome',
+      source: 'my-extension',
     } as any)
 
     // Duplicate must be suppressed — count stays at 1.
     const msgs = getMessages(state)
     expect(msgs).toHaveLength(1)
-    expect((msgs[0] as any).dedupKey).toBe('ion-meta:welcome')
+    expect((msgs[0] as any).dedupKey).toBe('my-extension:welcome')
   })
 })
 
@@ -157,23 +157,23 @@ describe('harness_message relocate dedup mode', () => {
 
     slice.handleNormalizedEvent('tab1', {
       type: 'harness_message',
-      message: 'Session bootstrapped: ion-meta v1',
-      dedupKey: 'ion-meta:bootstrap',
+      message: 'Session bootstrapped: my-extension v1',
+      dedupKey: 'my-extension:bootstrap',
       dedupMode: 'relocate',
-      source: 'ion-meta',
+      source: 'my-extension',
     } as any)
 
     slice.handleNormalizedEvent('tab1', {
       type: 'harness_message',
-      message: 'Session bootstrapped: ion-meta v1',
-      dedupKey: 'ion-meta:bootstrap',
+      message: 'Session bootstrapped: my-extension v1',
+      dedupKey: 'my-extension:bootstrap',
       dedupMode: 'relocate',
-      source: 'ion-meta',
+      source: 'my-extension',
     } as any)
 
     const msgs = getMessages(state)
     expect(msgs).toHaveLength(1)
-    expect((msgs[0] as any).dedupKey).toBe('ion-meta:bootstrap')
+    expect((msgs[0] as any).dedupKey).toBe('my-extension:bootstrap')
   })
 
   it('marker relocates past intervening non-bootstrap messages on third emission', () => {
@@ -182,10 +182,10 @@ describe('harness_message relocate dedup mode', () => {
     // First bootstrap marker
     slice.handleNormalizedEvent('tab1', {
       type: 'harness_message',
-      message: 'Session bootstrapped: ion-meta v1',
-      dedupKey: 'ion-meta:bootstrap',
+      message: 'Session bootstrapped: my-extension v1',
+      dedupKey: 'my-extension:bootstrap',
       dedupMode: 'relocate',
-      source: 'ion-meta',
+      source: 'my-extension',
     } as any)
 
     // Intervening assistant message
@@ -205,18 +205,18 @@ describe('harness_message relocate dedup mode', () => {
     // Second bootstrap emission (engine restart)
     slice.handleNormalizedEvent('tab1', {
       type: 'harness_message',
-      message: 'Session bootstrapped: ion-meta v1',
-      dedupKey: 'ion-meta:bootstrap',
+      message: 'Session bootstrapped: my-extension v1',
+      dedupKey: 'my-extension:bootstrap',
       dedupMode: 'relocate',
-      source: 'ion-meta',
+      source: 'my-extension',
     } as any)
 
     const msgs = getMessages(state)
     // Still exactly one bootstrap marker — relocated to end, past assistant msg
-    const bootstrapMsgs = msgs.filter((m) => (m as any).dedupKey === 'ion-meta:bootstrap')
+    const bootstrapMsgs = msgs.filter((m) => (m as any).dedupKey === 'my-extension:bootstrap')
     expect(bootstrapMsgs).toHaveLength(1)
     // Marker must be the last message
-    expect((msgs[msgs.length - 1] as any).dedupKey).toBe('ion-meta:bootstrap')
+    expect((msgs[msgs.length - 1] as any).dedupKey).toBe('my-extension:bootstrap')
   })
 
   it('default suppress-later path unchanged when dedupMode absent', () => {
@@ -225,19 +225,19 @@ describe('harness_message relocate dedup mode', () => {
     slice.handleNormalizedEvent('tab1', {
       type: 'harness_message',
       message: 'Welcome to Ion Meta',
-      dedupKey: 'ion-meta:welcome',
-      source: 'ion-meta',
+      dedupKey: 'my-extension:welcome',
+      source: 'my-extension',
     } as any)
 
     slice.handleNormalizedEvent('tab1', {
       type: 'harness_message',
       message: 'Welcome to Ion Meta',
-      dedupKey: 'ion-meta:welcome',
-      source: 'ion-meta',
+      dedupKey: 'my-extension:welcome',
+      source: 'my-extension',
     } as any)
 
     const msgs = getMessages(state)
     expect(msgs).toHaveLength(1)
-    expect((msgs[0] as any).dedupKey).toBe('ion-meta:welcome')
+    expect((msgs[0] as any).dedupKey).toBe('my-extension:welcome')
   })
 })

@@ -16,6 +16,30 @@ interface DirectoryPickerProps {
   onClose: () => void
 }
 
+/**
+ * Collapse the multi-key aliasing in the inventory maps down to one row per
+ * directory.
+ *
+ * `openRepoPaths` is keyed by whatever directory each tab REPORTS, and a tab
+ * living inside a worktree or a bench (terminal tabs, tabs without worktree
+ * metadata) reports that directory as its "repo". `git worktree list` from
+ * inside a worktree returns the same repo's worktrees, so the inventory map
+ * holds identical entry sets under several keys and a plain flatMap renders
+ * every worktree once per key — the duplicate-list bug, plus duplicate React
+ * keys. A directory's identity is its path; dedupe on it, keeping the first
+ * occurrence (repo-key order is the tab order, which is stable within a
+ * render).
+ */
+export function dedupeByPath<T>(entries: readonly T[], pathOf: (e: T) => string): T[] {
+  const seen = new Set<string>()
+  return entries.filter((e) => {
+    const path = pathOf(e)
+    if (seen.has(path)) return false
+    seen.add(path)
+    return true
+  })
+}
+
 /** Popover that lists recent base directories (sorted by usage) and a "Choose directory..." action. */
 export function DirectoryPicker({
   anchor,
@@ -58,17 +82,26 @@ export function DirectoryPicker({
     }
   }, [openRepoPaths])
 
+  // See dedupeByPath: several repo keys can hold the same inventory, and a
+  // worktree or bench must render exactly once regardless of how many open
+  // tabs surfaced it.
   const worktreeEntries = useMemo(
-    () => openRepoPaths.flatMap((repo) =>
-      (worktreeInventory.get(repo) ?? []).map((w) => ({ repo, entry: w }))),
+    () => dedupeByPath(
+      openRepoPaths.flatMap((repo) =>
+        (worktreeInventory.get(repo) ?? []).map((w) => ({ repo, entry: w }))),
+      ({ entry }) => entry.worktreePath,
+    ),
     [openRepoPaths, worktreeInventory],
   )
   const benchEntries = useMemo(
-    () => openRepoPaths.flatMap((repo) =>
-      (benchWorkspaces.get(repo) ?? [])
-        // Only benches that have been built have a directory to open.
-        .filter((ws) => ws.lastBuiltAt > 0)
-        .map((ws) => ({ repo, ws }))),
+    () => dedupeByPath(
+      openRepoPaths.flatMap((repo) =>
+        (benchWorkspaces.get(repo) ?? [])
+          // Only benches that have been built have a directory to open.
+          .filter((ws) => ws.lastBuiltAt > 0)
+          .map((ws) => ({ repo, ws }))),
+      ({ ws }) => ws.benchPath,
+    ),
     [openRepoPaths, benchWorkspaces],
   )
 
@@ -138,7 +171,11 @@ export function DirectoryPicker({
       }}
     >
       {/* Benches first: distinct from feature worktrees, and the surface an
-          operator reaches for when a combined build is failing. */}
+          operator reaches for when a combined build is failing. A bench row
+          opens the bench TERMINAL, not a conversation: bench work is shell
+          work (build, run, test), operator conversations are deliberately
+          not offered in a bench (see BenchBar), and the one-terminal-per-
+          bench action lands on the existing tab instead of stacking one. */}
       {benchEntries.map(({ repo, ws }) => (
         <div
           key={ws.benchPath}
@@ -147,8 +184,8 @@ export function DirectoryPicker({
           style={{ fontSize: 12, color: colors.textPrimary, cursor: 'pointer' }}
           title={ws.benchPath}
           onClick={() => {
-            void useSessionStore.getState().openBenchConversation(repo, ws.sourceBranch)
-              .catch((err) => rError('tabs', 'open bench conversation failed', { error: String(err) }))
+            void useSessionStore.getState().openBenchTerminal(repo, ws.sourceBranch)
+              .catch((err) => rError('tabs', 'open bench terminal failed', { error: String(err) }))
             onClose()
           }}
           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = colors.tabActive }}

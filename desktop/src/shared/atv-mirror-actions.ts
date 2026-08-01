@@ -57,12 +57,20 @@ export const FORWARDED_ACTIONS: Record<string, ForwardedActionSpec> = {
   convertToWorktree: { minArgs: 1, maxArgs: 2, tabIdAt: 0 },
   setupWorktree: { minArgs: 1, maxArgs: 2, tabIdAt: 0 },
   cancelWorktreeSetup: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
+  // Renames a tab and then resolves that tab's worktree to rename it too,
+  // reading store state between the two mutations. Owner-only for the same
+  // reason as the flows below: a mirror-local run would read its own possibly
+  // stale tab record to decide WHICH worktree to rename.
+  renameTabAndWorktree: { minArgs: 2, maxArgs: 2, tabIdAt: 0 },
   // Worktree inventory actions. openWorktreeConversation is a multi-step flow
   // (find-existing / create tab / attach worktree metadata) that reads store
   // state between mutations, so it MUST be one forwarded action rather than a
   // component handler -- in the mirror a handler would mix forwarded and local
   // calls and decide against stale mirror state.
   openWorktreeConversation: { minArgs: 1, maxArgs: 1 },
+  // Same reasoning as openWorktreeConversation: creates a tab and then reads
+  // store state to attach the worktree metadata, so it must run in the owner.
+  newWorktreeConversation: { minArgs: 1, maxArgs: 1 },
   syncWorktree: { minArgs: 3, maxArgs: 3 },
   // Retire destroys a directory and relocates the conversation that lived in it,
   // reading store state between the two steps. Owner-only: a mirror-local run
@@ -73,15 +81,25 @@ export const FORWARDED_ACTIONS: Record<string, ForwardedActionSpec> = {
   // Owner-only: a mirror-local run would start a second `npm ci` against the
   // same tree while the owner's is still going.
   reprovisionWorktree: { minArgs: 2, maxArgs: 2 },
-  // Bench mutations are owner-durable: they advance pins and rebuild a shared
+  // Bench mutations are owner-durable: they advance pins and reassemble a shared
   // worktree, so the mirror must never run them locally.
   openBenchConversation: { minArgs: 2, maxArgs: 2 },
-  benchRebuild: { minArgs: 2, maxArgs: 2 },
+  // Creates a tab, then reads store state to name it — and may assemble the bench
+  // on disk on the way. Owner-only for the same reason as the flows above: a
+  // mirror-local run would decide whether a bench terminal already exists from
+  // possibly stale mirror tabs, and two windows could each open one.
+  openBenchTerminal: { minArgs: 2, maxArgs: 2 },
+  benchAssemble: { minArgs: 2, maxArgs: 2 },
+  // Resolve-once prepares an in-progress merge on disk and may reassemble —
+  // owner-durable git mutations, so the mirror must never run it locally.
+  benchResolveConflict: { minArgs: 2, maxArgs: 2 },
   benchUpdateMember: { minArgs: 3, maxArgs: 3 },
   benchUpdateAll: { minArgs: 2, maxArgs: 2 },
   benchAddMember: { minArgs: 4, maxArgs: 4 },
   benchRemoveMember: { minArgs: 3, maxArgs: 3 },
   benchSetEnabled: { minArgs: 4, maxArgs: 4 },
+  benchSetReview: { minArgs: 4, maxArgs: 4 },
+  benchSetOrder: { minArgs: 4, maxArgs: 4 },
   // AI-assisted conflict resolution creates a tab and submits a prompt —
   // owner-durable twice over; a mirror-local run would fork the conversation.
   openConflictAssist: { minArgs: 1, maxArgs: 1 },
@@ -144,6 +162,19 @@ export const MIRROR_LOCAL_ACTIONS: Record<string, string> = {
   clearConflictAlert: 'ingestion: derived from inventory refresh; no git mutation',
   dismissConflictAlert: 'per-window toast dismissal; badges derive from live inventory state',
   runQuickTool: 'pass-through: one-shot tool run',
+  // ── Close confirmation ──
+  // The close DIALOG is per-window: the operator who clicked X in a given
+  // window is the one who must answer, and forwarding the intent would pop a
+  // dialog in the other window instead of (or as well as) the one being used.
+  // Only the durable half is forwarded, and it already is: confirmCloseTab
+  // delegates to `closeTab`, which the mirror has swapped for its forwarder, so
+  // the tab teardown still executes in the owner. requestCloseTab's own reads
+  // are safe in the mirror — the tab list is hydrated from the owner snapshot
+  // and the appraisal is a read-only main-process git call over the same
+  // preload both windows share.
+  requestCloseTab: 'per-window close dialog; read-only appraisal, durable close delegates to forwarded closeTab',
+  confirmCloseTab: 'per-window dialog dismissal; the durable close routes through forwarded closeTab',
+  cancelCloseTab: 'per-window dialog dismissal; no durable state touched',
   // Event-stream ingestion (mirror consumes the same normalized stream).
   handleNormalizedEvent: 'ingestion: normalized-event reducer',
   handleStatusChange: 'ingestion: tab-status reducer',

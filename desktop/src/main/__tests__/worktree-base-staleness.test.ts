@@ -33,7 +33,7 @@ vi.mock('os', async () => {
 import { appraiseBase } from '../worktree/base-staleness'
 import { syncWorktreeFromSource, landWorktree } from '../worktree/integrate'
 import { captureContribution } from '../integration/bench-snapshot'
-import { rebuildBench } from '../integration/bench-rebuild'
+import { assembleBench } from '../integration/bench-assemble'
 import { makeWorkspace, makeMember } from '../integration/bench-store'
 import type { IntegrationMember, IntegrationWorkspace } from '../../shared/types'
 import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
@@ -247,7 +247,7 @@ describe('the two staleness directions are independent', () => {
       benchBranch: `ion/bench/${FEATURE}`,
       members: [await enroll(a), await enroll(b)],
     }
-    const built = (await rebuildBench(ws)).workspace!
+    const built = (await assembleBench(ws)).workspace!
 
     // Direction 1 — B commits more: BENCH is stale for B, base is not.
     commitIn(b.path, 'b.txt', 'b v2\n', 'b more work')
@@ -276,7 +276,7 @@ describe('the two staleness directions are independent', () => {
         ? { ...m, pinnedSha: bAfterSync.sha, pinnedTreeHash: bAfterSync.treeHash }
         : m)),
     }
-    const result = await rebuildBench(updated)
+    const result = await assembleBench(updated)
     expect(result.ok).toBe(true)
     expect(readFileSync(join(ws.benchPath, 'b.txt'), 'utf-8')).toBe('b v2\n')
   })

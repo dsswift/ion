@@ -25,7 +25,27 @@ export interface GitConflictAlert {
   recordedAt: number
 }
 
-import type { TabState, NormalizedEvent, EnrichedError, Attachment, FileAttachment, TerminalPaneState, ConversationPane, ImageAttachmentPayload, WorktreeInventoryEntry, WorktreeProvisionState, IntegrationWorkspace, IntegrationMember, BenchRebuildResult, WorktreeMoveResult } from '../../shared/types'
+/**
+ * A pending close request, resolved and awaiting the operator's answer.
+ *
+ * Raised only by `requestCloseTab`, which resolves `warning` BEFORE setting
+ * this — so the dialog is complete on first render (desktop/AGENTS.md § "View
+ * readiness principle") rather than growing a warning line after it opens.
+ */
+export interface CloseIntent {
+  tabId: string
+  /** Resolved display title, so the dialog needs no second lookup. */
+  title: string
+  directory: string
+  /**
+   * What the operator is walking away from, or null when the close is
+   * uneventful. Null for every plain conversation (no second lifetime) and for
+   * a worktree that is clean and fully landed.
+   */
+  warning: string | null
+}
+
+import type { TabState, NormalizedEvent, EnrichedError, Attachment, FileAttachment, TerminalPaneState, ConversationPane, ImageAttachmentPayload, WorktreeInventoryEntry, WorktreeProvisionState, IntegrationWorkspace, IntegrationMember, BenchAssembleResult, WorktreeMoveResult } from '../../shared/types'
 import type { ResourceItem } from '../../shared/types-engine'
 
 export interface StaticInfo {
@@ -112,7 +132,7 @@ export interface State {
   /** Current source-branch tips per repo, keyed by branch name. */
   benchSourceTips: Map<string, Record<string, string>>
   /**
-   * Members the last rebuild absorbed into the base, per repo then per source
+   * Members the last assembly absorbed into the base, per repo then per source
    * branch. Retiring a member removes its row, and a row vanishing with no
    * explanation is indistinguishable from the bench losing a worktree — this is
    * what lets the UI say what happened. Cleared by the operator dismissing it.
@@ -210,6 +230,21 @@ export interface State {
   createTabInDirectory: (dir: string, useWorktree?: boolean, skipDuplicateCheck?: boolean, pinToGroupId?: string) => Promise<string>
   selectTab: (tabId: string) => void
   closeTab: (tabId: string) => void
+  /**
+   * The pending close request. Every confirm surface reads this one field, so
+   * there is exactly one close dialog regardless of which entry point raised it.
+   */
+  closeIntent: CloseIntent | null
+  /**
+   * Ask to close a tab. Resolves the worktree warning (fresh appraisal) and
+   * then raises `closeIntent`. This is the ONLY way a close dialog appears —
+   * entry points call this rather than opening a dialog themselves.
+   */
+  requestCloseTab: (tabId: string) => Promise<void>
+  /** Answer the pending close intent: closes the tab. */
+  confirmCloseTab: () => void
+  /** Dismiss the pending close intent without closing. */
+  cancelCloseTab: () => void
   reorderTabs: (reorderedTabs: TabState[]) => void
   renameTab: (tabId: string, customTitle: string | null) => void
   setTabModel: (tabId: string, model: string) => void
@@ -331,6 +366,14 @@ export interface State {
   setupWorktree: (tabId: string, sourceBranch: string, setAsDefault: boolean) => Promise<void>
   convertToWorktree: (tabId: string) => Promise<void>
   cancelWorktreeSetup: (tabId: string) => void
+  /**
+   * Rename a conversation AND the worktree it lives in, to the same name.
+   *
+   * The one path that changes both. Ordinary renames are independent by design
+   * (a worktree's topic does not follow every relabelling of a conversation in
+   * it), so this exists as an explicit operator verb rather than a heuristic.
+   */
+  renameTabAndWorktree: (tabId: string, title: string) => Promise<void>
   finishWorktreeTab: (tabId: string, strategyOverride?: 'merge-ff' | 'merge' | 'pr') => Promise<void>
   addAttachments: (attachments: FileAttachment[]) => void
   removeAttachment: (attachmentId: string) => void
@@ -361,6 +404,12 @@ export interface State {
   refreshWorktreeInventory: (repoPath: string) => Promise<void>
   /** Open (or focus) a conversation in an existing worktree. */
   openWorktreeConversation: (worktreePath: string) => Promise<string>
+  /**
+   * Create an ADDITIONAL conversation in a worktree, with its worktree metadata
+   * attached. Distinct from `openWorktreeConversation`, which focuses or cycles
+   * the ones that already exist.
+   */
+  newWorktreeConversation: (worktreePath: string) => Promise<string>
   syncWorktree: (worktreePath: string, sourceBranch: string, repoPath: string) => Promise<{ ok: boolean; error?: string; hasConflicts?: boolean; refusedDirty?: boolean }>
   /**
    * Retire a worktree, relocating any conversation inside it first so the tab is
@@ -380,12 +429,27 @@ export interface State {
   refreshBench: (repoPath: string) => Promise<void>
   /** Open (or focus) a conversation in the bench worktree. */
   openBenchConversation: (repoPath: string, sourceBranch: string) => Promise<string | null>
-  benchRebuild: (repoPath: string, sourceBranch: string) => Promise<BenchRebuildResult>
-  benchUpdateMember: (repoPath: string, sourceBranch: string, worktreePath: string) => Promise<BenchRebuildResult>
-  benchUpdateAll: (repoPath: string, sourceBranch: string) => Promise<BenchRebuildResult>
+  /**
+   * Open (or focus) the bench's ONE dedicated terminal tab, building the bench
+   * first when its directory is not there. Returns the tab id, or null when the
+   * workspace is unknown or the build failed.
+   */
+  openBenchTerminal: (repoPath: string, sourceBranch: string) => Promise<string | null>
+  benchAssemble: (repoPath: string, sourceBranch: string) => Promise<BenchAssembleResult>
+  /**
+   * Resolve-once: prepare the failed assembly merge in the bench (left in
+   * progress for the ConflictsDialog), or reassemble immediately when
+   * recordings already cover the conflict. Returns the bench path to open the
+   * dialog on, or null when nothing needed resolving / preparation failed.
+   */
+  benchResolveConflict: (repoPath: string, sourceBranch: string) => Promise<string | null>
+  benchUpdateMember: (repoPath: string, sourceBranch: string, worktreePath: string) => Promise<BenchAssembleResult>
+  benchUpdateAll: (repoPath: string, sourceBranch: string) => Promise<BenchAssembleResult>
   benchAddMember: (repoPath: string, sourceBranch: string, worktreePath: string, branchName: string) => Promise<{ ok: boolean; error?: string }>
   benchRemoveMember: (repoPath: string, sourceBranch: string, worktreePath: string) => Promise<void>
   benchSetEnabled: (repoPath: string, sourceBranch: string, worktreePath: string, enabled: boolean) => Promise<void>
+  benchSetReview: (repoPath: string, sourceBranch: string, worktreePath: string, review: 'good' | 'issue' | null) => Promise<void>
+  benchSetOrder: (repoPath: string, sourceBranch: string, worktreePath: string, toIndex: number) => Promise<void>
   /** Dismiss the absorbed-into-base notice for one workspace. */
   clearBenchRetired: (repoPath: string, sourceBranch: string) => void
   /** Record a conflicted directory (sync/land failure or detected mid-operation). */

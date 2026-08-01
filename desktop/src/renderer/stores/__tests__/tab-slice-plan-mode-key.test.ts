@@ -82,7 +82,8 @@ function makeTab(overrides: Partial<TabState> = {}): TabState {
     bashResults: [], bashExecuting: false, bashExecId: null, pillColor: null, pillIcon: null,
     forkedFromSessionId: null, worktree: null, pendingWorktreeSetup: false,
     groupId: null, groupPinned: false, contextTokens: null, contextWindow: null,
-    isCompacting: false, isTerminalOnly: false, engineProfileId: null, lastMessagePreview: null,
+    isCompacting: false, isTerminalOnly: false,
+    inputLocked: false, engineProfileId: null, lastMessagePreview: null,
     ...overrides,
   }
 }

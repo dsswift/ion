@@ -9,13 +9,14 @@
 import React, { useCallback, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
-import { ArrowLineDown, ArrowsClockwise, Flask, FolderOpen, Package, PencilSimple, Trash } from '@phosphor-icons/react'
+import { ArrowLineDown, ArrowsClockwise, Bug, ChatCircle, Check, Flask, FolderOpen, Package, PencilSimple, Trash } from '@phosphor-icons/react'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
 import { useOutsideDismiss } from '../hooks/useOutsideDismiss'
 import { landFlagsForStrategy, describeLandStrategy } from '../../shared/worktree-land-strategy'
+import { findMembership } from '../../shared/worktree-list'
 import { ConfirmDialog } from './git/ConfirmDialog'
 import { rDebug, rError, rInfo, rWarn } from '../rendererLogger'
 import type { WorktreeInventoryEntry } from '../../shared/types'
@@ -73,6 +74,11 @@ export function WorktreeRowMenu({
   // the store, but the menu should say so rather than offering a dead action.
   const alreadyInBench = (benchWorkspaces ?? []).some((ws) =>
     ws.members.some((m) => m.worktreePath === entry.worktreePath))
+
+  // The membership record and which bench holds it. Resolved through the shared
+  // finder so the menu, the row, and the wire projection agree about which
+  // bench a worktree belongs to.
+  const enrolled = findMembership(benchWorkspaces ?? [], entry.worktreePath)
 
   // Without a known source branch the land/sync verbs are unanswerable: git
   // does not record what a worktree was cut from, and guessing would land work
@@ -242,7 +248,7 @@ export function WorktreeRowMenu({
    *
    * The bench is created silently on FIRST ENROLLMENT rather than as its own
    * user-facing step: `ensureWorkspace` writes a record, not a worktree (the
-   * directory is materialised lazily by the first rebuild), so "create a bench"
+   * directory is materialised lazily by the first assembly), so "create a bench"
    * commits the operator to nothing and would be a meaningless extra click.
    * Which bench a worktree belongs to is fully determined by its repo and
    * source branch, so there is nothing to choose either.
@@ -303,6 +309,22 @@ export function WorktreeRowMenu({
     }
   }
 
+  // Merge order IS array position, so the menu reads and writes an index rather
+  // than a stored rank that could disagree with the array assembly walks.
+  const benchMembers = enrolled
+    ? (benchWorkspaces ?? []).find((w) => w.sourceBranch === enrolled.sourceBranch)?.members ?? []
+    : []
+  const benchIndex = benchMembers.findIndex((m) => m.worktreePath === entry.worktreePath)
+  const benchSize = benchMembers.length
+
+  function moveInBench(toIndex: number): void {
+    if (!enrolled) return
+    void useSessionStore.getState()
+      .benchSetOrder(repoPath, enrolled.sourceBranch, entry.worktreePath, toIndex)
+      .catch((err) => rError('worktree.menu', 'reorder failed', { error: String(err) }))
+    onClose()
+  }
+
   /**
    * The menu's verbs.
    *
@@ -331,6 +353,25 @@ export function WorktreeRowMenu({
     run(): void
   }> = [
     {
+      // The row CLICK opens or cycles existing conversations; this creates an
+      // additional one. Two distinct verbs, so the second gets a menu entry
+      // rather than a second gutter button that looks like the first.
+      label: 'New conversation here',
+      icon: <ChatCircle size={12} color={colors.accent} />,
+      run: () => {
+        // The store action, NOT createTabInDirectory. Creating the tab is only
+        // half the job: it must also be given its worktree metadata, or the git
+        // panel cannot resolve which repo's worktrees to list and falls back to
+        // the worktree's own `git worktree list`. Calling the raw create here was
+        // exactly that bug -- a second conversation in a worktree showed a
+        // different, wrong worktree panel from the first.
+        void useSessionStore.getState()
+          .newWorktreeConversation(entry.worktreePath)
+          .catch((err) => rError('worktree.menu', 'new conversation failed', { error: String(err) }))
+        onClose()
+      },
+    },
+    {
       label: entry.title ? 'Rename worktree' : 'Name this worktree',
       icon: <PencilSimple size={12} color={colors.textSecondary} />,
       // Named lazily from the first prompt, so a worktree that has not been
@@ -350,6 +391,49 @@ export function WorktreeRowMenu({
       hint: !entry.sourceBranch ? 'Source branch unknown' : '',
       run: () => { void doAddToBench().catch((err) => rError('worktree.menu', 'add to bench threw', { error: String(err) })) },
     },
+    // Review verdicts. These live in the row's state slot only when nothing more
+    // urgent needs it, so the menu is where they are always reachable -- and
+    // where a verdict can be cleared by selecting the one already set.
+    ...(enrolled ? [
+      {
+        label: enrolled.membership.review === 'good' ? 'Clear reviewed good' : 'Mark reviewed good',
+        icon: <Check size={12} color={enrolled.membership.review === 'good' ? colors.worktreeGreen : colors.textSecondary} />,
+        run: () => {
+          void useSessionStore.getState()
+            .benchSetReview(repoPath, enrolled.sourceBranch, entry.worktreePath,
+              enrolled.membership.review === 'good' ? null : 'good')
+            .catch((err) => rError('worktree.menu', 'set review failed', { error: String(err) }))
+          onClose()
+        },
+      },
+      {
+        label: enrolled.membership.review === 'issue' ? 'Clear review issue' : 'Mark review issue',
+        icon: <Bug size={12} color={enrolled.membership.review === 'issue' ? colors.dangerFg : colors.textSecondary} />,
+        run: () => {
+          void useSessionStore.getState()
+            .benchSetReview(repoPath, enrolled.sourceBranch, entry.worktreePath,
+              enrolled.membership.review === 'issue' ? null : 'issue')
+            .catch((err) => rError('worktree.menu', 'set review failed', { error: String(err) }))
+          onClose()
+        },
+      },
+      // Keyboard-reachable reorder. Dragging the rail is the direct gesture, but
+      // a drag is not available to every operator or every input device.
+      {
+        label: 'Move earlier in the merge',
+        icon: <ArrowLineDown size={12} color={colors.textSecondary} style={{ transform: 'rotate(180deg)' }} />,
+        disabled: benchIndex <= 0,
+        hint: benchIndex <= 0 ? 'Already first' : '',
+        run: () => { moveInBench(benchIndex - 1) },
+      },
+      {
+        label: 'Move later in the merge',
+        icon: <ArrowLineDown size={12} color={colors.textSecondary} />,
+        disabled: benchIndex < 0 || benchIndex >= benchSize - 1,
+        hint: benchIndex >= benchSize - 1 ? 'Already last' : '',
+        run: () => { moveInBench(benchIndex + 1) },
+      },
+    ] : []),
     {
       label: `Sync from ${entry.sourceBranch ?? 'source'}`,
       icon: <ArrowsClockwise size={12} color={colors.textSecondary} />,

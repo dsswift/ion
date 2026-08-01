@@ -14,6 +14,22 @@ export { getEffectiveTabGroups } from './preferences-persist'
 const saved = INITIAL_SAVED
 const _savedThemeId = localStorage.getItem('ion_selectedTheme') ?? 'ion-dark'
 
+/**
+ * Trailing-edge save for the panel-height setters. usePanelVerticalResize
+ * commits on every mousemove frame so the edge tracks the cursor; writing
+ * ~/.ion/settings.json per frame would turn one drag into hundreds of
+ * atomic file writes. The store updates synchronously above; the disk write
+ * fires once, shortly after the drag goes quiet.
+ */
+let panelHeightSaveTimer: ReturnType<typeof setTimeout> | null = null
+function schedulePanelHeightSave(get: () => PreferencesState): void {
+  if (panelHeightSaveTimer !== null) clearTimeout(panelHeightSaveTimer)
+  panelHeightSaveTimer = setTimeout(() => {
+    panelHeightSaveTimer = null
+    saveSettings(getAllSettings(get))
+  }, 400)
+}
+
 export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   selectedTheme: _savedThemeId,
   soundEnabled: saved.soundEnabled,
@@ -26,10 +42,11 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   expandOnTabSwitch: saved.expandOnTabSwitch,
   bashCommandEntry: saved.bashCommandEntry,
   gitPanelPaneProportions: saved.gitPanelPaneProportions,
+  gitPanelHeight: saved.gitPanelHeight,
+  fileExplorerHeight: saved.fileExplorerHeight,
   gitPanelChangesOpen: saved.gitPanelChangesOpen,
   gitPanelGraphOpen: saved.gitPanelGraphOpen,
   gitPanelWorktreesOpen: saved.gitPanelWorktreesOpen,
-  gitPanelIntegrationOpen: saved.gitPanelIntegrationOpen,
   expandToolResults: saved.expandToolResults,
   terminalFontFamily: saved.terminalFontFamily,
   terminalFontSize: saved.terminalFontSize,
@@ -182,6 +199,17 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     set({ gitPanelPaneProportions: proportions })
     saveSettings(getAllSettings(get))
   },
+  // Panel heights commit on every drag frame (usePanelVerticalResize), so the
+  // disk write must not ride every call — the store updates live and the
+  // save is deferred to the trailing edge of the drag.
+  setGitPanelHeight: (height) => {
+    set({ gitPanelHeight: height })
+    schedulePanelHeightSave(get)
+  },
+  setFileExplorerHeight: (height) => {
+    set({ fileExplorerHeight: height })
+    schedulePanelHeightSave(get)
+  },
   setGitPanelChangesOpen: (open) => {
     set({ gitPanelChangesOpen: open })
     saveSettings(getAllSettings(get))
@@ -194,10 +222,6 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     set({ gitPanelWorktreesOpen: open })
   },
 
-  setGitPanelIntegrationOpen: (open) => {
-    set({ gitPanelIntegrationOpen: open })
-    saveSettings(getAllSettings(get))
-  },
   setExpandToolResults: (enabled) => {
     set({ expandToolResults: enabled })
     saveSettings(getAllSettings(get))

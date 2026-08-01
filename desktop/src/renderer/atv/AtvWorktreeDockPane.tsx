@@ -1,11 +1,14 @@
 /**
  * AtvWorktreeDockPane — the worktree console inside the ATV dock.
  *
- * Mounts the OVERLAY's components (`WorktreesSection`, `IntegrationSection`) on
- * the mirror store rather than reimplementing them. Parity mechanism 1: a
- * shared surface is one component, one store. A bespoke ATV widget here would
- * be a second implementation of the pin/staleness vocabulary, free to drift
- * from the overlay's.
+ * Mounts the OVERLAY's `WorktreeListSection` on the mirror store rather than
+ * reimplementing it. Parity mechanism 1: a shared surface is one component, one
+ * store. A bespoke ATV widget here would be a second implementation of the
+ * pin/staleness vocabulary, free to drift from the overlay's.
+ *
+ * One section, not two: worktrees and bench members were the same object shown
+ * twice, so the bench is now the enrolled subset of the single list and its
+ * bar rides above those rows.
  *
  * The dock has no git panel, so this pane supplies the section chrome the panel
  * would otherwise provide, and resolves the repo root the same way: through the
@@ -14,8 +17,7 @@
 import React, { useMemo } from 'react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
-import { WorktreesSection } from '../components/WorktreesSection'
-import { IntegrationSection } from '../components/IntegrationSection'
+import { WorktreeListSection } from '../components/WorktreeListSection'
 
 export function AtvWorktreeDockPane(): React.JSX.Element {
   const colors = useColors()
@@ -38,11 +40,14 @@ export function AtvWorktreeDockPane(): React.JSX.Element {
   }
 
   return (
-    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+    // `overflow: hidden`, not `overflowY: auto`: both sections now grow to fill
+    // the space they are given and scroll themselves, so an outer scroller would
+    // fight them — the column would stretch to its content and neither section
+    // would ever reach its own scroll threshold. Same shape as the overlay's git
+    // panel, where each pane body clips and the section inside it scrolls.
+    <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <SectionHeading label="Worktrees" colors={colors} />
-      <WorktreesSection repoPath={repoPath} refreshKey={activeTabId ? 1 : 0} />
-      <SectionHeading label="Integration" colors={colors} />
-      <IntegrationSection repoPath={repoPath} refreshKey={activeTabId ? 1 : 0} />
+      <WorktreeListSection repoPath={repoPath} refreshKey={activeTabId ? 1 : 0} />
     </div>
   )
 }
@@ -57,6 +62,9 @@ function SectionHeading({ label, colors }: { label: string; colors: ReturnType<t
         color: colors.textSecondary,
         borderBottom: `1px solid ${colors.containerBorder}`,
         background: colors.surfacePrimary,
+        // The two sections below grow; the headings must not, or they would
+        // give up their height to them.
+        flexShrink: 0,
       }}
     >
       {label}

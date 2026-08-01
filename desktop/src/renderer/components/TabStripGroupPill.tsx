@@ -10,6 +10,7 @@ import { GroupStatusDot, GroupStatusDotStack } from './TabStripStatusDot'
 import { InlineRenameInput } from './TabStripInlineRenameInput'
 import { PillColorPicker } from './TabStripPillColorPicker'
 import { TabContextMenu } from './TabStripTabContextMenu'
+import { useRenameTabWorktree } from '../hooks/useRenameTabWorktree'
 import { InactiveGroupMenu } from './TabStripInactiveGroupMenu'
 import { GroupPickerDropdown } from './TabStripGroupPickerDropdown'
 import { newTabInDirectory } from './new-conversation-routing'
@@ -38,10 +39,10 @@ export function GroupPill({
   const [pickerAnchor, setPickerAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [mgmtMenu, setMgmtMenu] = useState<{ x: number; y: number } | null>(null)
   const [tabMenu, setTabMenu] = useState<{ x: number; y: number } | null>(null)
+  const renameWithWorktree = useRenameTabWorktree()
   const [colorPickerAnchor, setColorPickerAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [colorPickerOpen, setColorPickerOpen] = useState(false)
   const [renamingTitle, setRenamingTitle] = useState(false)
-  const [confirmingClose, setConfirmingClose] = useState(false)
   const pillRef = useRef<HTMLDivElement>(null)
   // Pointer states: pill surface, rename pencil, close-X. One hook per
   // element (all top-level — the buttons render conditionally but the hooks
@@ -158,10 +159,13 @@ export function GroupPill({
           pillState.handlers.onMouseDown()
           if (e.button === 1) {
             e.preventDefault()
-            if (!isActive || !selectedTab || selectedTab.worktree) return
+            // Worktree tabs are not excluded: close stopped removing worktrees
+            // when the lifecycles were split, so the old exclusion left them
+            // with no middle-click close for no remaining reason.
+            if (!isActive || !selectedTab) return
             const running = selectedTab.status === 'running' || selectedTab.status === 'connecting'
             if (!running && !selectedTab.bashExecuting) {
-              useSessionStore.getState().closeTab(selectedTab.id)
+              void useSessionStore.getState().requestCloseTab(selectedTab.id)
             }
           }
         }}
@@ -298,29 +302,16 @@ export function GroupPill({
           const tab = group.tabs[0]
           const isRunning = tab.status === 'running' || tab.status === 'connecting'
           if (isRunning || tab.bashExecuting) return null
-          if (confirmingClose) {
-            return (
-              <div className="flex items-center gap-0.5 text-[9px] flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                <button
-                  onClick={() => setConfirmingClose(false)}
-                  className="px-1 rounded ion-focusable"
-                  style={{ color: colors.textTertiary, background: 'none', border: 'none', cursor: 'pointer' }}
-                >
-                  No
-                </button>
-                <button
-                  onClick={() => { useSessionStore.getState().closeTab(tab.id); setConfirmingClose(false) }}
-                  className="px-1 rounded ion-focusable"
-                  style={{ color: colors.accent, background: 'none', border: 'none', cursor: 'pointer' }}
-                >
-                  Yes
-                </button>
-              </div>
-            )
-          }
+          // Confirmation is the shared CloseTabConfirmDialog, raised by
+          // requestCloseTab. The inline Yes/No that used to live here could not
+          // carry the worktree warning (it had ~40px), which is why one verb had
+          // two confirm behaviours depending on which pill you clicked.
           return (
             <button
-              onClick={(e) => { e.stopPropagation(); setConfirmingClose(true) }}
+              onClick={(e) => {
+                e.stopPropagation()
+                void useSessionStore.getState().requestCloseTab(tab.id)
+              }}
               className="flex-shrink-0 rounded-full w-4 h-4 flex items-center justify-center ion-focusable"
               style={{
                 opacity: closeBtnState.hover ? 1 : 0.5,
@@ -344,7 +335,7 @@ export function GroupPill({
             group={group}
             anchor={pickerAnchor}
             onSelectTab={(tabId) => { onSelect(tabId) }}
-            onCloseTab={(tabId) => useSessionStore.getState().closeTab(tabId)}
+            onCloseTab={(tabId) => { void useSessionStore.getState().requestCloseTab(tabId) }}
             onClose={() => setPickerOpen(false)}
           />
         )}
@@ -370,6 +361,7 @@ export function GroupPill({
               anchor={tabMenu}
               tab={tab}
               onRename={() => { setTabMenu(null); setRenamingTitle(true) }}
+              onRenameWithWorktree={() => { setTabMenu(null); renameWithWorktree.requestRename(tab) }}
               onForkTab={tab.conversationId ? () => { void useSessionStore.getState().forkTab(tab.id).catch((err) => rError('tabs', 'fork tab failed', { error: String(err) })) } : undefined}
               onNewTabInDir={() => {
                 // Lock-safe single path: cannot bypass the enterprise lock.
@@ -391,6 +383,8 @@ export function GroupPill({
           )
         })()}
       </AnimatePresence>
+
+      {renameWithWorktree.dialog}
 
       <AnimatePresence>
         {colorPickerOpen && group.tabs.length === 1 && (() => {

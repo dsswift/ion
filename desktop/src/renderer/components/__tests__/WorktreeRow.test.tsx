@@ -27,7 +27,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 vi.mock('@phosphor-icons/react', () => ({
-  ArrowsClockwise: () => null, CircleNotch: () => null,
+  ArrowsClockwise: () => null, ArrowCircleUp: () => null, Bug: () => null,
+  ChatCircle: () => null, Check: () => null, CircleNotch: () => null,
   DotsThree: () => null, Warning: () => null,
 }))
 
@@ -123,11 +124,15 @@ describe('WorktreeRow — primary name', () => {
 })
 
 describe('WorktreeRow — open-conversation hint', () => {
-  it('names the tab when exactly one conversation is open', () => {
+  it('says a conversation is open without naming a tab number', () => {
+    // The hint used to read `open in tab 3`. No surface in the app shows a tab
+    // number, so the operator could not act on it, and reordering tabs made it
+    // wrong. The hover card names the conversations instead.
     render({ entry: entry(), openConversations: [conv({ tabId: 'a', index: 3 })] })
 
-    expect(container.querySelector('[data-testid="worktree-open-wt/ion-a3f1"]')!.textContent)
-      .toBe('open in tab 3')
+    const label = container.querySelector('[data-testid="worktree-open-label-wt/ion-a3f1"]')!
+    expect(label.textContent).toBe('open')
+    expect(label.textContent).not.toMatch(/\d/)
   })
 
   it('names the COUNT when several are open', () => {
@@ -140,13 +145,20 @@ describe('WorktreeRow — open-conversation hint', () => {
       ],
     })
 
-    expect(container.querySelector('[data-testid="worktree-open-wt/ion-a3f1"]')!.textContent)
-      .toBe('open in 3 tabs')
+    expect(container.querySelector('[data-testid="worktree-open-label-wt/ion-a3f1"]')!.textContent)
+      .toBe('open ×3')
   })
 
   it('shows no hint at all when nothing is open', () => {
     render({ entry: entry(), openConversations: [] })
 
+    // The hint is absent; the open BUTTON stays, because it also creates the
+    // first conversation.
+    expect(container.querySelector('[data-testid="worktree-open-label-wt/ion-a3f1"]')).toBeNull()
+    // The row has NO conversation bubble: clicking the row already opens or
+    // cycles, and a bubble duplicated that with the same glyph the bench bar
+    // uses for a different verb. Creating an additional conversation lives in
+    // the row menu.
     expect(container.querySelector('[data-testid="worktree-open-wt/ion-a3f1"]')).toBeNull()
   })
 })
@@ -165,7 +177,7 @@ describe('WorktreeRow — hover card', () => {
     expect(card.textContent).toContain(WT)
   })
 
-  it('lists every open conversation by name and tab number', () => {
+  it('lists every open conversation by name', () => {
     render({
       entry: entry({ title: 'Fix the token expiry check' }),
       openConversations: [
@@ -177,10 +189,12 @@ describe('WorktreeRow — hover card', () => {
     hoverName('wt/ion-a3f1')
 
     const card = document.querySelector('[data-testid="hover-card"]')!
+    // By NAME. The card used to print a `tab N` index alongside each title --
+    // a number nothing in the app displays, and one that silently goes wrong
+    // when tabs are reordered.
     expect(card.textContent).toContain('Fix the parser')
-    expect(card.textContent).toContain('tab 2')
     expect(card.textContent).toContain('Add tests')
-    expect(card.textContent).toContain('tab 4')
+    expect(card.textContent).not.toMatch(/tab \d/)
   })
 
   it('says so plainly when no conversation is open there', () => {

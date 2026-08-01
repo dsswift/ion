@@ -107,6 +107,9 @@ export interface RemoteTabState {
   convFingerprint?: string
   queuedPrompts: string[]
   isTerminalOnly?: boolean
+  /** Input-locked conversation (auto-generated conflict fix): clients must
+   *  not offer a prompt input for this tab. See TabState.inputLocked. */
+  inputLocked?: boolean
   /** True when the conversation hosts an engine extension. Wire field consumed
    *  by iOS (RemoteTabState.swift). Not a backend flag. */
   hasEngineExtension?: boolean

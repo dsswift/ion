@@ -28,6 +28,14 @@ export interface WorktreeConversationsCardProps {
    */
   identifiers: Array<{ label: string; value: string }>
   conversations: readonly DirConversation[]
+  /**
+   * Footer naming the right-click menu.
+   *
+   * The row's `⋯` button was removed as a duplicate of the right-click gesture,
+   * so the card is where that gesture gets advertised -- a menu reachable only
+   * by a gesture nothing mentions is a menu most operators never find.
+   */
+  menuHint?: boolean
   /** Names what the conversations are open IN, e.g. 'worktree' or 'bench'. */
   emptyNoun?: string
 }
@@ -48,6 +56,7 @@ export function WorktreeConversationsCard({
   identifiers,
   conversations,
   emptyNoun = 'worktree',
+  menuHint = false,
 }: WorktreeConversationsCardProps): React.JSX.Element {
   const colors = useColors()
 
@@ -91,13 +100,22 @@ export function WorktreeConversationsCard({
               }}>
                 {c.title}
               </span>
-              <span style={{ fontSize: 9, color: colors.textTertiary, flexShrink: 0, marginLeft: 'auto' }}>
-                tab {c.index}
-              </span>
+              {/* The status dot is the only trailing detail worth the space.
+                  This used to print `tab {c.index}` -- a number the tab strip
+                  never shows, so the operator could not act on it, and one that
+                  goes wrong the moment tabs are reordered. Clicking the row goes
+                  to the conversation, which is what the number was standing in
+                  for. */}
             </div>
           ))
         )}
       </div>
+
+      {menuHint && (
+        <span style={{ fontSize: 9, color: colors.textTertiary, fontStyle: 'italic' }}>
+          Right-click for actions
+        </span>
+      )}
     </div>
   )
 }

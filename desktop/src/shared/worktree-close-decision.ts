@@ -1,12 +1,13 @@
 /**
- * Worktree close appraisal — what happens when a worktree conversation closes.
+ * Worktree close decision — what the operator is told when a worktree
+ * conversation closes.
  *
  * ── The defect this replaces ────────────────────────────────────────────────
- * `closeTab` called `gitWorktreeRemove(..., force = true)` unconditionally, and
- * the remove handler followed with `git branch -D`. Closing a worktree tab
- * therefore destroyed uncommitted changes AND made unlanded commits
- * unreachable, with no prompt and no recovery. An accidental tab close — a
- * stray Cmd+W — silently deleted work.
+ * `closeTab` called `gitWorktreeRemove(..., force = true)`, and the remove
+ * handler followed with `git branch -D`. Closing a worktree tab therefore
+ * destroyed uncommitted changes AND made unlanded commits unreachable, with no
+ * prompt and no recovery. An accidental tab close — a stray Cmd+W — silently
+ * deleted work.
  *
  * ── The rule now ───────────────────────────────────────────────────────────
  * **Closing a conversation never removes a worktree.** The two are separate
@@ -23,8 +24,16 @@
  * branch. Not to prevent the close — nothing is lost — but because "you are
  * walking away from 4 unlanded commits" is information the operator wants at
  * that moment, and the appraisal already knows it.
+ *
+ * ── Why this lives in shared/ ───────────────────────────────────────────────
+ * It was written under `main/worktree/` and had no caller for its whole life:
+ * the appraisal IPC shipped, this decision shipped, and the close call site was
+ * never written. The consumer is the renderer's close-intent action, and the
+ * renderer may not import from `main/` (desktop/AGENTS.md § IPC), so the pure
+ * decision moved here. It stays pure — no git, no IPC, no side effects — so it
+ * cannot itself destroy anything and is trivially testable.
  */
-import type { WorktreeAppraisal } from './safety'
+import type { WorktreeAppraisalWire } from './types-git'
 
 /** What the UI should do when a worktree conversation is closing. */
 export interface CloseWorktreeDecision {
@@ -45,8 +54,7 @@ export interface CloseWorktreeDecision {
 /**
  * Decide how to close a worktree conversation.
  *
- * Pure: takes an appraisal, returns a decision. No git, no side effects, so it
- * is trivially testable and cannot itself destroy anything.
+ * Pure: takes an appraisal, returns a decision.
  *
  * `appraisal` may be null when the appraisal could not be completed. That is
  * NOT treated as "nothing to warn about" — an unknown state warns, because the
@@ -55,7 +63,7 @@ export interface CloseWorktreeDecision {
  */
 export function decideWorktreeClose(
   worktreePath: string,
-  appraisal: WorktreeAppraisal | null,
+  appraisal: WorktreeAppraisalWire | null,
 ): CloseWorktreeDecision {
   if (!appraisal || appraisal.appraisalFailed) {
     return {

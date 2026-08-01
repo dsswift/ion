@@ -17,28 +17,41 @@ import { log as _log, warn as _warn } from '../../logger'
 import { inventoryWorktrees } from '../../worktree/inventory'
 import { syncWorktreeFromSource, landWorktree } from '../../worktree/integrate'
 import {
-  listWorkspaces, rebuildWorkspace, updateMember, updateAllStale,
-  setMemberEnabled, addMember, removeMember, refreshStaleness, sourceBranchTip,
+  listWorkspaces, assembleWorkspace, updateMember, updateAllStale,
+  setMemberEnabled, setMemberReview, setMemberOrder, addMember, removeMember,
+  refreshStaleness, sourceBranchTip,
 } from '../../integration/bench-ops'
 import {
   collectDirConversations,
+  pickDirTerminal,
+  benchTerminalTitle,
   type DirConversation,
   type DirConversationSource,
 } from '../../../shared/worktree-conversations'
-import type { RemoteCommand, RemoteWorktreeState, RemoteWorktree, RemoteBench } from '../protocol'
+import type { RemoteCommand, RemoteWorktreeState, RemoteWorktree, RemoteBench, RemoteMembership } from '../protocol'
+import type { IntegrationWorkspace } from '../../../shared/types'
 
 const TAG = 'remote.worktree'
 function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
 function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, msg, fields) }
 
 /**
- * The conversations open in each directory, so iOS can focus one instead of
- * duplicating — and can say WHICH conversations a worktree holds.
+ * The tabs the desktop currently holds, plus the per-directory conversation
+ * collector built over them.
  *
- * Built with the same `collectDirConversations` the desktop rows use, so the
- * three surfaces cannot disagree about what is open where.
+ * iOS needs two different answers from one snapshot: which conversations are
+ * open in each directory (so it can focus one instead of duplicating, and can
+ * say WHICH conversations a worktree holds), and which terminal belongs to a
+ * bench. Both derive from the same tab list, so it is read once and returned
+ * alongside the collector rather than fetched twice.
+ *
+ * Built with the same `collectDirConversations` / `pickDirTerminal` the desktop
+ * rows use, so the three surfaces cannot disagree about what is open where.
  */
-async function conversationsByDirectory(): Promise<(dir: string) => DirConversation[]> {
+async function readTabsForProjection(): Promise<{
+  tabs: DirConversationSource[]
+  openIn: (dir: string) => DirConversation[]
+}> {
   let tabs: DirConversationSource[] = []
   try {
     const { getRemoteTabStates } = await import('../snapshot')
@@ -49,19 +62,67 @@ async function conversationsByDirectory(): Promise<(dir: string) => DirConversat
       customTitle: t.customTitle ?? null,
       status: t.status,
       workingDirectory: t.workingDirectory ?? '',
+      // Carried so a terminal is never counted as a conversation, and so the
+      // bench terminal can be resolved at all.
+      isTerminalOnly: t.isTerminalOnly ?? false,
     }))
   } catch (err) {
-    // Losing this costs the "already open" hint and the conversation names,
-    // never correctness of the worktree state itself.
+    // Losing this costs the "already open" hint, the conversation names, and the
+    // bench terminal id — never correctness of the worktree state itself.
     warn('could not resolve open conversations', { error: String(err) })
   }
-  return (dir: string) => collectDirConversations(tabs, dir)
+  return { tabs, openIn: (dir: string) => collectDirConversations(tabs, dir) }
 }
 
-/** Build the per-repo worktree + bench projection for iOS. */
+/** One membership, wire-shaped. Order is the caller's array position. */
+function projectMembership(
+  m: IntegrationWorkspace['members'][number],
+  sourceBranch: string,
+  order: number,
+): RemoteMembership {
+  return {
+    sourceBranch,
+    enabled: m.enabled,
+    pin: m.pin,
+    merge: m.merge,
+    review: m.review,
+    pinnedSha: m.pinnedSha,
+    order,
+    conflictPaths: m.conflictPaths,
+    conflictsWith: m.conflictsWith,
+    mergeResolution: m.mergeResolution,
+  }
+}
+
+/**
+ * Build the per-repo worktree + bench projection for iOS.
+ *
+ * One worktree yields ONE wire record, with its bench membership attached when
+ * it has one. The bench used to re-send every member as a separate
+ * `RemoteBenchMember` carrying its own copy of the worktree's path, branch, and
+ * label -- so an enrolled worktree crossed the wire twice and iOS rendered it in
+ * two sections with two vocabularies.
+ */
 export async function buildWorktreeState(repoPath: string): Promise<RemoteWorktreeState> {
-  const openIn = await conversationsByDirectory()
+  const { tabs, openIn } = await readTabsForProjection()
   const inventory = await inventoryWorktrees(repoPath)
+
+  // Staleness is refreshed BEFORE the join so the memberships attached below are
+  // the current ones, not the values from the last build.
+  const workspaces: IntegrationWorkspace[] = []
+  for (const ws of listWorkspaces(repoPath)) {
+    workspaces.push((await refreshStaleness(repoPath, ws.sourceBranch)) ?? ws)
+  }
+
+  // Membership by worktree path, with its merge position. Array order IS merge
+  // order, so the index is read here rather than stored on the record.
+  const membershipOf = new Map<string, RemoteMembership>()
+  for (const ws of workspaces) {
+    ws.members.forEach((m, i) => {
+      membershipOf.set(m.worktreePath, projectMembership(m, ws.sourceBranch, i + 1))
+    })
+  }
+
   // Projected field by field rather than spread: `conflictedPaths` is a
   // desktop-only field (only the desktop can resolve conflicts, so only it has
   // a surface for the paths), and a spread would ship the array to a client
@@ -79,41 +140,40 @@ export async function buildWorktreeState(repoPath: string): Promise<RemoteWorktr
     unlandedCommitCount: w.unlandedCommitCount,
     needsSync: w.needsSync,
     safeToDiscard: w.safeToDiscard,
+    landedAt: w.landedAt,
     provisionState: w.provisionState,
     provisionError: w.provisionError,
     operationState: w.operationState,
     conflictedCount: w.conflictedPaths?.length,
     openConversations: openIn(w.worktreePath),
+    membership: membershipOf.get(w.worktreePath),
   }))
 
+  const present = new Set(inventory.map((w) => w.worktreePath))
   const benches: RemoteBench[] = []
-  for (const ws of listWorkspaces(repoPath)) {
-    const refreshed = (await refreshStaleness(repoPath, ws.sourceBranch)) ?? ws
+  for (const ws of workspaces) {
     const tip = await sourceBranchTip(repoPath, ws.sourceBranch)
+    // Derived from the tab's own state, never stored: absent means no terminal
+    // is open for this bench, which is what lets iOS say "Open" vs "Go to".
+    const terminal = pickDirTerminal(tabs, ws.benchPath, benchTerminalTitle(ws.sourceBranch))
     benches.push({
-      repoPath: refreshed.repoPath,
-      sourceBranch: refreshed.sourceBranch,
-      benchPath: refreshed.benchPath,
-      benchBranch: refreshed.benchBranch,
-      baseSha: refreshed.baseSha,
-      lastBuiltAt: refreshed.lastBuiltAt,
-      baseDrifted: !!tip && !!refreshed.baseSha && tip !== refreshed.baseSha,
-      openConversations: openIn(refreshed.benchPath),
-      members: refreshed.members.map((m) => ({
-        worktreePath: m.worktreePath,
-        branchName: m.branchName,
-        label: m.label,
-        // Resolved from the worktree inventory rather than stored on the member
-        // record: one worktree has one title, and a second copy would drift the
-        // moment the worktree is renamed.
-        title: inventory.find((w) => w.worktreePath === m.worktreePath)?.title,
-        enabled: m.enabled,
-        pinnedSha: m.pinnedSha,
-        status: m.status,
-        conflictPaths: m.conflictPaths,
-        conflictsWith: m.conflictsWith,
-        openConversations: openIn(m.worktreePath),
-      })),
+      repoPath: ws.repoPath,
+      sourceBranch: ws.sourceBranch,
+      benchPath: ws.benchPath,
+      benchBranch: ws.benchBranch,
+      baseSha: ws.baseSha,
+      lastBuiltAt: ws.lastBuiltAt,
+      lastAssembly: ws.lastAssembly,
+      lastAssemblyError: ws.lastAssemblyError,
+      baseDrifted: !!tip && !!ws.baseSha && tip !== ws.baseSha,
+      openConversations: openIn(ws.benchPath),
+      benchTerminalTabId: terminal?.id,
+      // Only the memberships with no worktree left. The rest ride their
+      // worktree record; sending them here too would restore the duplication
+      // this projection exists to remove.
+      orphans: ws.members
+        .filter((m) => !present.has(m.worktreePath))
+        .map((m, i) => projectMembership(m, ws.sourceBranch, i + 1)),
     })
   }
 
@@ -138,8 +198,8 @@ export async function pushWorktreeState(repoPath: string): Promise<void> {
 }
 
 function sendResult(
-  operation: 'sync' | 'land' | 'rebuild' | 'update' | 'update_all',
-  result: { ok: boolean; error?: string; refusedDirty?: boolean; hasConflicts?: boolean },
+  operation: 'sync' | 'land' | 'assemble' | 'update' | 'update_all',
+  result: { ok: boolean; error?: string; refusedDirty?: boolean; hasConflicts?: boolean; warning?: string },
 ): void {
   state.remoteTransport?.send({
     type: 'desktop_worktree_op_result',
@@ -148,6 +208,7 @@ function sendResult(
     error: result.error,
     refusedDirty: result.refusedDirty,
     hasConflicts: result.hasConflicts,
+    warning: result.warning,
   })
 }
 
@@ -162,14 +223,32 @@ export async function handleWorktreeCommand(cmd: RemoteCommand): Promise<boolean
       // so route through the owner window rather than duplicating that logic.
       // broadcast(), not webContents.send: the ATV mirror must see the same
       // event or its tab list silently diverges from the overlay's.
-      log('open worktree conversation', { worktree_path: cmd.worktreePath })
-      broadcast('ion:remote-open-worktree-conversation', cmd.worktreePath)
+      log('open worktree conversation', {
+        worktree_path: cmd.worktreePath,
+        new_conversation: !!cmd.newConversation,
+      })
+      broadcast('ion:remote-open-worktree-conversation', {
+        worktreePath: cmd.worktreePath,
+        newConversation: !!cmd.newConversation,
+      })
       return true
     }
 
     case 'desktop_bench_open_conversation': {
       log('open bench conversation', { source_branch: cmd.sourceBranch })
       broadcast('ion:remote-open-bench-conversation', {
+        repoPath: cmd.repoPath,
+        sourceBranch: cmd.sourceBranch,
+      })
+      return true
+    }
+
+    case 'desktop_bench_open_terminal': {
+      // Same routing as the conversation case: the renderer store owns tab
+      // creation and naming, and broadcast() (not webContents.send) so the ATV
+      // mirror sees the same event rather than diverging from the overlay.
+      log('open bench terminal', { source_branch: cmd.sourceBranch })
+      broadcast('ion:remote-open-bench-terminal', {
         repoPath: cmd.repoPath,
         sourceBranch: cmd.sourceBranch,
       })
@@ -195,9 +274,9 @@ export async function handleWorktreeCommand(cmd: RemoteCommand): Promise<boolean
       return true
     }
 
-    case 'desktop_bench_rebuild': {
-      const result = await rebuildWorkspace(cmd.repoPath, cmd.sourceBranch)
-      sendResult('rebuild', result)
+    case 'desktop_bench_assemble': {
+      const result = await assembleWorkspace(cmd.repoPath, cmd.sourceBranch)
+      sendResult('assemble', result)
       await pushWorktreeState(cmd.repoPath)
       return true
     }
@@ -218,6 +297,16 @@ export async function handleWorktreeCommand(cmd: RemoteCommand): Promise<boolean
 
     case 'desktop_bench_set_enabled':
       setMemberEnabled(cmd.repoPath, cmd.sourceBranch, cmd.worktreePath, cmd.enabled)
+      await pushWorktreeState(cmd.repoPath)
+      return true
+
+    case 'desktop_bench_set_review':
+      setMemberReview(cmd.repoPath, cmd.sourceBranch, cmd.worktreePath, cmd.review)
+      await pushWorktreeState(cmd.repoPath)
+      return true
+
+    case 'desktop_bench_reorder_member':
+      setMemberOrder(cmd.repoPath, cmd.sourceBranch, cmd.worktreePath, cmd.toIndex)
       await pushWorktreeState(cmd.repoPath)
       return true
 

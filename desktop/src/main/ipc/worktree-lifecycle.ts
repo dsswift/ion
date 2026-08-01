@@ -17,7 +17,7 @@ import { log as _log, warn as _warn } from '../logger'
 import { landWorktree, syncWorktreeFromSource } from '../worktree/integrate'
 import { retireWorktree, reattachWorktree } from '../worktree/relocate'
 import { appraiseBase } from '../worktree/base-staleness'
-import { inventoryWorktrees } from '../worktree/inventory'
+import { inventoryWorktrees, lookupWorktreeRegistration } from '../worktree/inventory'
 import { appraiseWorktree } from '../worktree/safety'
 
 const TAG = 'worktree.ipc'
@@ -66,14 +66,38 @@ export function registerWorktreeLifecycleIpc(): void {
   // Inventory — the answer to "what worktrees exist here, and how do I get
   // back into one?". Read-only; the re-entry surface depends on it, so it must
   // never mutate anything.
+  /**
+   * The registry's answer for one worktree: which repo it belongs to, what
+   * branch it is, and what it was cut from.
+   *
+   * Exists because the renderer's `worktreeInventory` map is a DISPLAY cache
+   * keyed by whatever path the panel last queried -- which, from a bench, is the
+   * bench path. Deriving a worktree's owning repo by scanning that map returned
+   * the bench, and that wrong repoPath was then written onto the tab. The
+   * registry is the authoritative record; this is the only correct source.
+   */
+  ipcMain.handle(
+    IPC.GIT_WORKTREE_REGISTRATION,
+    async (_event, { worktreePath }: { worktreePath: string }) => {
+      const registration = lookupWorktreeRegistration(worktreePath)
+      if (!registration) {
+        log('worktree registration lookup: no record', { worktree_path: worktreePath })
+        return { registration: null }
+      }
+      log('worktree registration lookup', {
+        worktree_path: worktreePath,
+        repo_path: registration.repoPath,
+        source_branch: registration.sourceBranch ?? 'unknown',
+      })
+      return { registration }
+    },
+  )
+
   ipcMain.handle(
     IPC.GIT_WORKTREE_INVENTORY,
-    async (_event, { repoPath, backfillTitles }: { repoPath: string; backfillTitles?: boolean }) => {
-      // backfillTitles is renderer-opt-in (the aiGeneratedTitles preference
-      // lives in the renderer store); absent means off, so remote-triggered
-      // reads never fire titling LLM calls.
-      const worktrees = await inventoryWorktrees(repoPath, { backfillTitles: backfillTitles === true })
-      log('inventory', { repo_path: repoPath, count: worktrees.length, backfill_titles: backfillTitles === true })
+    async (_event, { repoPath }: { repoPath: string }) => {
+      const worktrees = await inventoryWorktrees(repoPath)
+      log('inventory', { repo_path: repoPath, count: worktrees.length })
       return { worktrees }
     },
   )
@@ -130,9 +154,9 @@ export function registerWorktreeLifecycleIpc(): void {
 
   ipcMain.handle(
     IPC.GIT_WORKTREE_REATTACH,
-    async (_event, { repoPath, sourceBranch }: { repoPath: string; sourceBranch: string }) => {
-      log('reattach request', { repo_path: repoPath, source_branch: sourceBranch })
-      const result = await reattachWorktree({ repoPath, sourceBranch })
+    async (_event, { repoPath, sourceBranch, title }: { repoPath: string; sourceBranch: string; title?: string }) => {
+      log('reattach request', { repo_path: repoPath, source_branch: sourceBranch, title: title ?? '' })
+      const result = await reattachWorktree({ repoPath, sourceBranch, title })
       if (!result.ok) {
         warn('reattach failed', { repo_path: repoPath, source_branch: sourceBranch, error: result.error ?? '' })
       } else {

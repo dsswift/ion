@@ -57,7 +57,7 @@ describe('computePaneLayout — conservation', () => {
     const all = computePaneLayout({ height: HEIGHT, panes: panes(), proportions: {} })
     const one = computePaneLayout({
       height: HEIGHT,
-      panes: panes({ changes: false, worktrees: false, integration: false }),
+      panes: panes({ changes: false, worktrees: false }),
       proportions: {},
     })
 
@@ -72,7 +72,7 @@ describe('computePaneLayout — distribution', () => {
     // Defect 3.
     const layout = computePaneLayout({
       height: HEIGHT,
-      panes: panes({ changes: false, worktrees: false, integration: false }),
+      panes: panes({ changes: false, worktrees: false }),
       proportions: {},
     })
 
@@ -85,7 +85,7 @@ describe('computePaneLayout — distribution', () => {
   it('splits evenly between two open panes with no stored proportions', () => {
     const layout = computePaneLayout({
       height: HEIGHT,
-      panes: panes({ worktrees: false, integration: false }),
+      panes: panes({ worktrees: false }),
       proportions: {},
     })
 
@@ -106,7 +106,7 @@ describe('computePaneLayout — distribution', () => {
   it('honours stored proportions', () => {
     const layout = computePaneLayout({
       height: HEIGHT,
-      panes: panes({ worktrees: false, integration: false }),
+      panes: panes({ worktrees: false }),
       proportions: { changes: 0.75, graph: 0.25 },
     })
 
@@ -115,17 +115,17 @@ describe('computePaneLayout — distribution', () => {
     expect(changes.total).toBeGreaterThan(graph.total * 2)
   })
 
-  it('resizes Worktrees and Integration, which used to be pinned constants', () => {
-    // Defect 1: both were hardcoded to 132/148 and could never grow.
+  it('resizes Worktrees, which used to be a pinned constant', () => {
+    // Defect 1: it was hardcoded to 132px and could never grow.
     const small = computePaneLayout({
       height: HEIGHT,
-      panes: panes({ changes: false, graph: false }),
-      proportions: { worktrees: 0.2, integration: 0.8 },
+      panes: panes({ changes: true, graph: true }),
+      proportions: { worktrees: 0.2, changes: 0.4, graph: 0.4 },
     })
     const big = computePaneLayout({
       height: HEIGHT,
-      panes: panes({ changes: false, graph: false }),
-      proportions: { worktrees: 0.8, integration: 0.2 },
+      panes: panes({ changes: true, graph: true }),
+      proportions: { worktrees: 0.8, changes: 0.1, graph: 0.1 },
     })
 
     expect(big.sizes.find((p) => p.id === 'worktrees')!.total)
@@ -139,7 +139,7 @@ describe('computePaneLayout — bounds', () => {
       height: HEIGHT,
       panes: panes(),
       // Ask for something impossible: one pane taking essentially everything.
-      proportions: { changes: 0.97, worktrees: 0.01, integration: 0.01, graph: 0.01 },
+      proportions: { changes: 0.97, worktrees: 0.01, graph: 0.01 },
     })
 
     for (const size of layout.sizes) {
@@ -169,21 +169,45 @@ describe('computePaneLayout — bounds', () => {
       hidden: ['changes', 'graph'],
     })
 
-    expect(layout.sizes.map((p) => p.id)).toEqual(['worktrees', 'integration'])
+    expect(layout.sizes.map((p) => p.id)).toEqual(['worktrees'])
     expect(layout.total).toBe(HEIGHT)
+  })
+})
+
+describe('computePaneLayout — three panes', () => {
+  // The Integration pane was removed when the bench moved into the worktree
+  // list. This asserts the removal went through the MODEL rather than around it:
+  // the ported SplitView core does not care how many panes it has, so a correct
+  // removal needs no special-casing and still fills the panel exactly.
+  it('fills the panel exactly with all three panes expanded', () => {
+    const layout = computePaneLayout({ height: HEIGHT, panes: panes(), proportions: {} })
+
+    expect(layout.sizes).toHaveLength(3)
+    expect(layout.sizes.map((p) => p.id)).toEqual(['changes', 'worktrees', 'graph'])
+    expect(layout.total).toBe(HEIGHT)
+    expect(sum(layout.sizes, layout.sashes.length)).toBe(HEIGHT)
+  })
+
+  it('gives the freed budget to the remaining panes rather than shrinking the panel', () => {
+    // Merging two panes into one returns a header plus a minimum body to the
+    // pool. The panel height is fixed, so that space must land in the panes.
+    const layout = computePaneLayout({ height: HEIGHT, panes: panes(), proportions: {} })
+    const bodies = layout.sizes.reduce((a, p) => a + p.body, 0)
+
+    expect(bodies).toBe(HEIGHT - PANEL_HEADER - 3 * SECTION_HEADER - layout.sashes.length * SASH_SIZE)
   })
 })
 
 describe('computePaneLayout — sashes', () => {
   it('places a sash between each pair of adjacent expanded panes', () => {
     const layout = computePaneLayout({ height: HEIGHT, panes: panes(), proportions: {} })
-    expect(layout.sashes).toHaveLength(3)
+    expect(layout.sashes).toHaveLength(2)
   })
 
   it('places no sash next to a collapsed pane', () => {
     const layout = computePaneLayout({
       height: HEIGHT,
-      panes: panes({ worktrees: false, integration: false }),
+      panes: panes({ worktrees: false }),
       proportions: {},
     })
     // Only Changes and Graph are expanded, so exactly one boundary.
@@ -194,7 +218,7 @@ describe('computePaneLayout — sashes', () => {
   it('places no sash when only one pane is expanded', () => {
     const layout = computePaneLayout({
       height: HEIGHT,
-      panes: panes({ changes: false, worktrees: false, integration: false }),
+      panes: panes({ changes: false, worktrees: false }),
       proportions: {},
     })
     expect(layout.sashes).toHaveLength(0)
@@ -227,7 +251,7 @@ describe('resizePanes', () => {
 
     expect(after.sizes.find((p) => p.id === 'worktrees')!.body).toBe(MIN_BODY.worktrees)
     // A pane beyond the immediate neighbour also gave up space.
-    expect(after.sizes.find((p) => p.id === 'integration')!.body).toBe(MIN_BODY.integration)
+    expect(after.sizes.find((p) => p.id === 'graph')!.body).toBe(MIN_BODY.graph)
     expect(after.total).toBe(HEIGHT)
   })
 
@@ -261,7 +285,7 @@ describe('resizePanes', () => {
     // The complement of the test above, asserted rather than left implicit:
     // when the panel cannot honour the stored sizing, it still fills exactly
     // and no pane is starved to zero.
-    const lopsided = { changes: 0.9, worktrees: 0.04, integration: 0.03, graph: 0.03 }
+    const lopsided = { changes: 0.9, worktrees: 0.04, graph: 0.03 }
     const layout = computePaneLayout({ ...input, proportions: lopsided, height: 380 })
 
     expect(layout.total).toBe(380)

@@ -1,5 +1,6 @@
 /**
- * Closing a worktree conversation must NEVER destroy the worktree.
+ * Closing a worktree conversation must NEVER destroy the worktree, and must say
+ * what is being left behind.
  *
  * ── The defect ──────────────────────────────────────────────────────────────
  * `closeTab` called `gitWorktreeRemove(..., force = true)`, and the remove
@@ -12,20 +13,22 @@
  * accumulating messages, so message count is not a proxy for "contains no work".
  *
  * These tests fail against both old implementations.
+ *
+ * Moved here from `main/__tests__/` with the module: the consumer is the
+ * renderer's close-intent action, and the renderer may not import from `main/`.
  */
 import { describe, it, expect } from 'vitest'
 
-import { decideWorktreeClose } from '../worktree/close-appraisal'
-import type { WorktreeAppraisal } from '../worktree/safety'
+import { decideWorktreeClose } from '../worktree-close-decision'
+import type { WorktreeAppraisalWire } from '../types-git'
 
 const WT = '/Users/test/.ion/worktrees/ion-a3f1'
 
-function appraisal(over: Partial<WorktreeAppraisal> = {}): WorktreeAppraisal {
+function appraisal(over: Partial<WorktreeAppraisalWire> = {}): WorktreeAppraisalWire {
   return {
     hasUncommittedChanges: false,
     uncommittedPaths: [],
     unlandedCommitCount: 0,
-    unlandedSubjects: [],
     fullyLanded: true,
     safeToDiscard: true,
     ...over,
@@ -35,7 +38,7 @@ function appraisal(over: Partial<WorktreeAppraisal> = {}): WorktreeAppraisal {
 describe('decideWorktreeClose', () => {
   // The invariant, asserted directly for every input shape below.
   it('never removes the worktree, whatever the state', () => {
-    const inputs: Array<WorktreeAppraisal | null> = [
+    const inputs: Array<WorktreeAppraisalWire | null> = [
       appraisal(),
       appraisal({ hasUncommittedChanges: true, uncommittedPaths: ['a.ts'], safeToDiscard: false }),
       appraisal({ unlandedCommitCount: 4, fullyLanded: false, safeToDiscard: false }),
@@ -72,7 +75,6 @@ describe('decideWorktreeClose', () => {
   it('warns about unlanded commits', () => {
     const decision = decideWorktreeClose(WT, appraisal({
       unlandedCommitCount: 4,
-      unlandedSubjects: ['a', 'b', 'c', 'd'],
       fullyLanded: false,
       safeToDiscard: false,
     }))

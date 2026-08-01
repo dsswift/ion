@@ -72,7 +72,7 @@ async function loadBuilder() {
     listWorkspaces: vi.fn(() => mocks.workspaces),
     refreshStaleness: vi.fn(async () => null),
     sourceBranchTip: vi.fn(async () => ''),
-    rebuildWorkspace: vi.fn(), updateMember: vi.fn(), updateAllStale: vi.fn(),
+    assembleWorkspace: vi.fn(), updateMember: vi.fn(), updateAllStale: vi.fn(),
     setMemberEnabled: vi.fn(), addMember: vi.fn(), removeMember: vi.fn(),
   }))
   vi.doMock('../remote/snapshot', () => ({
@@ -197,7 +197,7 @@ describe('buildWorktreeState — worktrees', () => {
     vi.doMock('../worktree/integrate', () => ({ syncWorktreeFromSource: vi.fn(), landWorktree: vi.fn() }))
     vi.doMock('../integration/bench-ops', () => ({
       listWorkspaces: vi.fn(() => []), refreshStaleness: vi.fn(), sourceBranchTip: vi.fn(),
-      rebuildWorkspace: vi.fn(), updateMember: vi.fn(), updateAllStale: vi.fn(),
+      assembleWorkspace: vi.fn(), updateMember: vi.fn(), updateAllStale: vi.fn(),
       setMemberEnabled: vi.fn(), addMember: vi.fn(), removeMember: vi.fn(),
     }))
     vi.doMock('../remote/snapshot', () => ({
@@ -212,7 +212,7 @@ describe('buildWorktreeState — worktrees', () => {
   })
 })
 
-describe('buildWorktreeState — benches', () => {
+describe('buildWorktreeState — membership rides the worktree', () => {
   const workspace = {
     repoPath: REPO,
     sourceBranch: 'josh',
@@ -223,16 +223,20 @@ describe('buildWorktreeState — benches', () => {
     members: [{
       worktreePath: WT_B,
       branchName: 'wt/ion-7b0c',
-      label: 'ion-7b0c',
       enabled: true,
+      pin: 'current' as const,
+      merge: 'merged' as const,
       pinnedSha: 'bbbb222',
       pinnedTreeHash: 't1',
+      pinnedBaseSha: 'base1',
       currentTreeHash: 't1',
-      status: 'integrated' as const,
     }],
   }
 
-  it('resolves a member title from the worktree inventory, never a stored copy', async () => {
+  it('attaches membership to the worktree instead of sending a second record', async () => {
+    // One worktree, one wire record. The bench used to re-send every member
+    // with its own copy of the path, branch, and label, so an enrolled worktree
+    // crossed the wire twice and iOS drew it in two sections.
     mocks.worktrees = [
       inventoryEntry({ worktreePath: WT_B, branchName: 'wt/ion-7b0c', label: 'ion-7b0c', title: 'Rework the relay auth' }),
     ]
@@ -241,18 +245,80 @@ describe('buildWorktreeState — benches', () => {
 
     const state = await build(REPO)
 
-    expect(state.benches[0].members[0].title).toBe('Rework the relay auth')
+    expect(state.worktrees).toHaveLength(1)
+    expect(state.worktrees[0].title).toBe('Rework the relay auth')
+    expect(state.worktrees[0].membership).toMatchObject({
+      sourceBranch: 'josh', enabled: true, pin: 'current', merge: 'merged', order: 1,
+    })
+    // Nothing duplicated into the bench.
+    expect(state.benches[0].orphans).toEqual([])
   })
 
-  it('leaves the member title undefined when its worktree has no name yet', async () => {
-    mocks.worktrees = [inventoryEntry({ worktreePath: WT_B, label: 'ion-7b0c' })]
+  it('ships the three axes separately so none can mask another', async () => {
+    mocks.worktrees = [inventoryEntry({ worktreePath: WT_B, branchName: 'wt/ion-7b0c', label: 'ion-7b0c' })]
+    mocks.workspaces = [{
+      ...workspace,
+      members: [{
+        ...workspace.members[0],
+        enabled: false, pin: 'behind' as const, merge: 'conflicted' as const,
+        conflictPaths: ['x.ts'],
+      }],
+    }]
+    const build = await loadBuilder()
+
+    const membership = (await build(REPO)).worktrees[0].membership!
+
+    // The single `status` field could carry exactly one of these three.
+    expect(membership.enabled).toBe(false)
+    expect(membership.pin).toBe('behind')
+    expect(membership.merge).toBe('conflicted')
+  })
+
+  it('leaves membership absent for an unenrolled worktree', async () => {
+    // Absent is a different fact from `enabled: false`: not in the bench at all
+    // versus in the bench and skipped.
+    mocks.worktrees = [inventoryEntry({ worktreePath: '/wt/other', branchName: 'wt/other', label: 'other' })]
     mocks.workspaces = [workspace]
     const build = await loadBuilder()
 
-    expect((await build(REPO)).benches[0].members[0].title).toBeUndefined()
+    expect((await build(REPO)).worktrees[0].membership).toBeUndefined()
   })
 
-  it('projects conversations open in the bench and, separately, in each member', async () => {
+  it('numbers membership by merge position', async () => {
+    mocks.worktrees = [
+      inventoryEntry({ worktreePath: '/wt/first', branchName: 'wt/first', label: 'first' }),
+      inventoryEntry({ worktreePath: WT_B, branchName: 'wt/ion-7b0c', label: 'ion-7b0c' }),
+    ]
+    mocks.workspaces = [{
+      ...workspace,
+      members: [
+        { ...workspace.members[0], worktreePath: WT_B },
+        { ...workspace.members[0], worktreePath: '/wt/first', branchName: 'wt/first' },
+      ],
+    }]
+    const build = await loadBuilder()
+
+    const state = await build(REPO)
+    const byPath = (p: string) => state.worktrees.find((w) => w.worktreePath === p)!.membership!
+    expect(byPath(WT_B).order).toBe(1)
+    expect(byPath('/wt/first').order).toBe(2)
+  })
+
+  it('reports a membership whose worktree is gone as a bench orphan', async () => {
+    // No directory to open, so no row -- but the bench still says what it holds
+    // rather than the record vanishing without explanation.
+    mocks.worktrees = []
+    mocks.workspaces = [workspace]
+    const build = await loadBuilder()
+
+    const state = await build(REPO)
+
+    expect(state.worktrees).toEqual([])
+    expect(state.benches[0].orphans).toHaveLength(1)
+    expect(state.benches[0].orphans[0].sourceBranch).toBe('josh')
+  })
+
+  it('projects conversations open in the bench directory itself', async () => {
     mocks.worktrees = [inventoryEntry({ worktreePath: WT_B, label: 'ion-7b0c' })]
     mocks.workspaces = [workspace]
     mocks.tabs = [
@@ -266,9 +332,95 @@ describe('buildWorktreeState — benches', () => {
     expect(state.benches[0].openConversations).toEqual([
       { tabId: 'bench-1', title: 'Bench build', status: 'idle', index: 1 },
     ])
-    // A member's conversations live in the MEMBER's worktree, not the bench.
-    expect(state.benches[0].members[0].openConversations).toEqual([
+    // A member's conversations ride its WORKTREE record now, which is the only
+    // place that worktree appears.
+    expect(state.worktrees[0].openConversations).toEqual([
       { tabId: 'member-1', title: 'Relay auth work', status: 'idle', index: 2 },
     ])
+  })
+})
+
+describe('buildWorktreeState — the bench terminal', () => {
+  const workspace = {
+    repoPath: REPO,
+    sourceBranch: 'josh',
+    benchPath: BENCH,
+    benchBranch: 'ion/bench/josh',
+    baseSha: 'aaaa111',
+    lastBuiltAt: 1_700_000_000_000,
+    members: [],
+  }
+
+  it('names the bench terminal so iOS can say "Go to" instead of "Open"', async () => {
+    mocks.workspaces = [workspace]
+    mocks.tabs = [
+      tab({ id: 'shell', workingDirectory: BENCH, isTerminalOnly: true, customTitle: 'Bench · josh' }),
+    ]
+    const build = await loadBuilder()
+
+    expect((await build(REPO)).benches[0].benchTerminalTabId).toBe('shell')
+  })
+
+  it('adopts an untitled terminal in the bench directory', async () => {
+    // Tier 2 of the identity rule, projected: the phone must offer "Go to" for a
+    // shell the desktop has not named yet, or it would open a second one.
+    mocks.workspaces = [workspace]
+    mocks.tabs = [tab({ id: 'stray', workingDirectory: BENCH, isTerminalOnly: true })]
+    const build = await loadBuilder()
+
+    expect((await build(REPO)).benches[0].benchTerminalTabId).toBe('stray')
+  })
+
+  it('is absent when no terminal is open in the bench', async () => {
+    mocks.workspaces = [workspace]
+    mocks.tabs = [tab({ id: 'talk', workingDirectory: BENCH, title: 'Bench build' })]
+    const build = await loadBuilder()
+
+    expect((await build(REPO)).benches[0].benchTerminalTabId).toBeUndefined()
+  })
+
+  it('never reports a terminal from another directory', async () => {
+    mocks.workspaces = [workspace]
+    mocks.tabs = [tab({ id: 'elsewhere', workingDirectory: WT_A, isTerminalOnly: true, customTitle: 'Bench · josh' })]
+    const build = await loadBuilder()
+
+    expect((await build(REPO)).benches[0].benchTerminalTabId).toBeUndefined()
+  })
+
+  it('does not count a terminal as an open conversation, in a bench or a worktree', async () => {
+    // The wire seam of the same defect the shared helper fixes: a shell used to
+    // ride `openConversations`, so the phone offered "Go to conversation" for a
+    // directory holding only a terminal -- and landed the operator in it.
+    mocks.worktrees = [inventoryEntry()]
+    mocks.workspaces = [workspace]
+    mocks.tabs = [
+      tab({ id: 'bench-shell', workingDirectory: BENCH, isTerminalOnly: true }),
+      tab({ id: 'wt-shell', workingDirectory: WT_A, isTerminalOnly: true }),
+      tab({ id: 'wt-talk', workingDirectory: WT_A, title: 'Fix the parser' }),
+    ]
+    const build = await loadBuilder()
+
+    const state = await build(REPO)
+
+    expect(state.benches[0].openConversations).toEqual([])
+    expect(state.worktrees[0].openConversations).toEqual([
+      { tabId: 'wt-talk', title: 'Fix the parser', status: 'idle', index: 3 },
+    ])
+  })
+
+  it('keeps each bench on its own terminal', async () => {
+    mocks.workspaces = [
+      workspace,
+      { ...workspace, sourceBranch: 'main', benchPath: '/Users/dev/.ion/integration/ion-main', benchBranch: 'ion/bench/main' },
+    ]
+    mocks.tabs = [
+      tab({ id: 'josh-shell', workingDirectory: BENCH, isTerminalOnly: true, customTitle: 'Bench · josh' }),
+      tab({ id: 'main-shell', workingDirectory: '/Users/dev/.ion/integration/ion-main', isTerminalOnly: true, customTitle: 'Bench · main' }),
+    ]
+    const build = await loadBuilder()
+
+    const benches = (await build(REPO)).benches
+    expect(benches.find((b) => b.sourceBranch === 'josh')!.benchTerminalTabId).toBe('josh-shell')
+    expect(benches.find((b) => b.sourceBranch === 'main')!.benchTerminalTabId).toBe('main-shell')
   })
 })

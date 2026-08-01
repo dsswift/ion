@@ -1,14 +1,14 @@
 /**
- * Bench rebuild + contribution capture — against REAL git repositories.
+ * Bench assembly + contribution capture — against REAL git repositories.
  *
  * These pin the properties the whole design rests on:
  *   - the bench is a PURE FUNCTION of (source tip, ordered pinned members), so
- *     rebuilding never accumulates commits;
- *   - rebuild merges PINS, never current tips, which is what makes manual
+ *     reassembling never accumulates commits;
+ *   - assembly merges PINS, never current tips, which is what makes manual
  *     integration real (the commit-pair guarantee);
  *   - a `live` capture never writes to the member worktree;
  *   - a conflicting member is skipped and reported, never fatal;
- *   - ignored build output survives a rebuild (no `clean -x`).
+ *   - ignored build output survives an assembly (no `clean -x`).
  *
  * Real repos rather than mocks: the behavior under test is git's.
  */
@@ -25,10 +25,10 @@ vi.mock('../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error
 // concurrently in one process, so a shared name lets files clobber each other.
 vi.mock('os', async () => {
   const actual = await vi.importActual<typeof import('os')>('os')
-  return { ...actual, homedir: () => process.env.ION_TEST_HOME_BENCH_REBUILD || actual.homedir() }
+  return { ...actual, homedir: () => process.env.ION_TEST_HOME_BENCH_ASSEMBLE || actual.homedir() }
 })
 
-import { rebuildBench } from '../integration/bench-rebuild'
+import { assembleBench } from '../integration/bench-assemble'
 import { captureContribution, contributedTreeHash } from '../integration/bench-snapshot'
 import { makeWorkspace, makeMember } from '../integration/bench-store'
 import type { IntegrationWorkspace, IntegrationMember } from '../../shared/types'
@@ -92,27 +92,27 @@ beforeEach(() => {
   // realpath: macOS /var is a symlink to /private/var and git reports the
   // resolved form.
   root = realpathSync(mkdtempSync(join(tmpdir(), 'ion-bench-')))
-  process.env.ION_TEST_HOME_BENCH_REBUILD = join(root, 'home')
+  process.env.ION_TEST_HOME_BENCH_ASSEMBLE = join(root, 'home')
   repo = makeRepo()
 })
 
 afterEach(() => {
-  delete process.env.ION_TEST_HOME_BENCH_REBUILD
+  delete process.env.ION_TEST_HOME_BENCH_ASSEMBLE
   rmSync(root, { recursive: true, force: true })
 })
 
-describe('rebuildBench — pure function, no accumulation', () => {
-  it('produces exactly one merge commit per member, and rebuilding again does not add more', async () => {
+describe('assembleBench — pure function, no accumulation', () => {
+  it('produces exactly one merge commit per member, and assembling again does not add more', async () => {
     const a = makeWorktree('a')
     const b = makeWorktree('b')
     const ws = workspaceFor([await enroll(a), await enroll(b)])
 
-    const first = await rebuildBench(ws)
+    const first = await assembleBench(ws)
     expect(first.ok).toBe(true)
     expect(benchMergeCount(ws.benchPath)).toBe(2)
 
-    // Rebuilding the same set is idempotent in content AND in commit count.
-    const second = await rebuildBench(first.workspace!)
+    // Reassembling the same set is idempotent in content AND in commit count.
+    const second = await assembleBench(first.workspace!)
     expect(second.ok).toBe(true)
     expect(benchMergeCount(ws.benchPath)).toBe(2)
     expect(existsSync(join(ws.benchPath, 'a.txt'))).toBe(true)
@@ -123,10 +123,10 @@ describe('rebuildBench — pure function, no accumulation', () => {
     const a = makeWorktree('a')
     const b = makeWorktree('b')
     const ws = workspaceFor([await enroll(a), await enroll(b)])
-    const built = (await rebuildBench(ws)).workspace!
+    const built = (await assembleBench(ws)).workspace!
 
     const withoutB = { ...built, members: built.members.filter((m) => m.branchName !== 'wt/b') }
-    const result = await rebuildBench(withoutB)
+    const result = await assembleBench(withoutB)
 
     expect(result.ok).toBe(true)
     expect(benchMergeCount(ws.benchPath)).toBe(1)
@@ -138,7 +138,7 @@ describe('rebuildBench — pure function, no accumulation', () => {
     const a = makeWorktree('a')
     const b = makeWorktree('b')
     const ws = workspaceFor([await enroll(a), await enroll(b)])
-    const built = (await rebuildBench(ws)).workspace!
+    const built = (await assembleBench(ws)).workspace!
     expect(benchMergeCount(ws.benchPath)).toBe(2)
 
     // A does more work and its pin is advanced (an explicit Update).
@@ -151,7 +151,7 @@ describe('rebuildBench — pure function, no accumulation', () => {
       members: built.members.map((m) => (m.branchName === 'wt/a' ? { ...m, ...advanced } : m)),
     }
 
-    const result = await rebuildBench(updated)
+    const result = await assembleBench(updated)
 
     expect(result.ok).toBe(true)
     // Still exactly one merge per member — nothing stacked.
@@ -164,31 +164,35 @@ describe('rebuildBench — pure function, no accumulation', () => {
     const a = makeWorktree('a')
     const b = makeWorktree('b')
     const ws = workspaceFor([await enroll(a), await enroll(b)])
-    const built = (await rebuildBench(ws)).workspace!
+    const built = (await assembleBench(ws)).workspace!
 
     const disabled = {
       ...built,
       members: built.members.map((m) => (m.branchName === 'wt/b' ? { ...m, enabled: false } : m)),
     }
-    const result = await rebuildBench(disabled)
+    const result = await assembleBench(disabled)
 
     expect(result.ok).toBe(true)
     expect(benchMergeCount(ws.benchPath)).toBe(1)
     expect(existsSync(join(ws.benchPath, 'b.txt'))).toBe(false)
     expect(result.workspace!.members).toHaveLength(2)
-    expect(result.workspace!.members.find((m) => m.branchName === 'wt/b')!.status).toBe('excluded')
+    const excluded = result.workspace!.members.find((m) => m.branchName === 'wt/b')!
+    // Only the merge axis records the exclusion. The pin keeps saying how fresh
+    // the contribution is, which is what a re-enable needs to know.
+    expect(excluded.merge).toBe('skipped')
+    expect(excluded.enabled).toBe(false)
   })
 }, GIT_FIXTURE_TIMEOUT)
 
-describe('rebuildBench — pins, not tips (the commit-pair guarantee)', () => {
-  // THE regression test for the whole manual-integration design. A rebuild
+describe('assembleBench — pins, not tips (the commit-pair guarantee)', () => {
+  // THE regression test for the whole manual-integration design. An assembly
   // triggered to pick up member A must not drag in member B's half-finished
   // two-commit change.
   it('merges each member at its pinned contribution, not its current tip', async () => {
     const a = makeWorktree('a')
     const b = makeWorktree('b')
     const ws = workspaceFor([await enroll(a), await enroll(b)])
-    const built = (await rebuildBench(ws)).workspace!
+    const built = (await assembleBench(ws)).workspace!
 
     // B is mid-way through a two-commit change: commit 1 of 2 landed.
     writeFileSync(join(b.path, 'b-half.txt'), 'half of a pair\n')
@@ -205,7 +209,7 @@ describe('rebuildBench — pins, not tips (the commit-pair guarantee)', () => {
       members: built.members.map((m) => (m.branchName === 'wt/a' ? { ...m, ...advancedA } : m)),
     }
 
-    const result = await rebuildBench(updated)
+    const result = await assembleBench(updated)
 
     expect(result.ok).toBe(true)
     // A's new work is in …
@@ -215,10 +219,10 @@ describe('rebuildBench — pins, not tips (the commit-pair guarantee)', () => {
     expect(existsSync(join(ws.benchPath, 'b.txt'))).toBe(true)
   })
 
-  it('rebuild alone advances no pin and produces identical content when every member is stale', async () => {
+  it('assembly alone advances no pin and produces identical content when every member is stale', async () => {
     const a = makeWorktree('a')
     const ws = workspaceFor([await enroll(a)])
-    const built = (await rebuildBench(ws)).workspace!
+    const built = (await assembleBench(ws)).workspace!
     const pinBefore = built.members[0].pinnedSha
     const headBefore = git(ws.benchPath, 'rev-parse', 'HEAD^{tree}').trim()
 
@@ -227,7 +231,7 @@ describe('rebuildBench — pins, not tips (the commit-pair guarantee)', () => {
     git(a.path, 'add', '-A')
     git(a.path, 'commit', '-m', 'a moves on')
 
-    const result = await rebuildBench(built)
+    const result = await assembleBench(built)
 
     expect(result.ok).toBe(true)
     expect(result.workspace!.members[0].pinnedSha).toBe(pinBefore)
@@ -236,26 +240,68 @@ describe('rebuildBench — pins, not tips (the commit-pair guarantee)', () => {
   })
 }, GIT_FIXTURE_TIMEOUT)
 
-describe('rebuildBench — conflicts and missing members', () => {
-  it('skips a conflicting member, reports its paths and who it collided with, and still builds the rest', async () => {
-    // a and c both touch shared.txt; b is independent.
+describe('assembleBench — atomic conflicts and missing members', () => {
+  it('fails the whole assembly on a conflict: bench wiped empty, others unbuilt, failure recorded', async () => {
+    // a and c both touch shared.txt; b is independent and merged BEFORE the
+    // conflict is hit.
     const a = makeWorktree('a', 'shared.txt', 'from a\n')
     const b = makeWorktree('b')
     const c = makeWorktree('c', 'shared.txt', 'from c\n')
     const ws = workspaceFor([await enroll(a), await enroll(b), await enroll(c)])
 
-    const result = await rebuildBench(ws)
+    // An ignored build artifact must survive the atomic wipe (no clean -x):
+    // seed it via a first assembly of a alone, then add the conflicting set.
+    await assembleBench({ ...ws, members: [ws.members[0]] })
+    mkdirSync(join(ws.benchPath, 'node_modules'), { recursive: true })
+    writeFileSync(join(ws.benchPath, 'node_modules', '.probe'), 'expensive build output\n')
+
+    const result = await assembleBench(ws)
+
+    expect(result.ok).toBe(true)
+    const workspace = result.workspace!
+    expect(workspace.lastAssembly).toBe('failed')
+    expect(workspace.lastAssemblyError).toContain('wt/c')
+
+    const byBranch = Object.fromEntries(workspace.members.map((m) => [m.branchName, m]))
+    expect(byBranch['wt/c'].merge).toBe('conflicted')
+    expect(byBranch['wt/c'].conflictPaths).toContain('shared.txt')
+    expect(byBranch['wt/c'].conflictsWith).toContain('wt/a')
+    // Members that merged before the conflict are NOT in the bench after the
+    // wipe, so claiming `merged` would describe a tree that no longer exists.
+    expect(byBranch['wt/a'].merge).toBe('unbuilt')
+    expect(byBranch['wt/b'].merge).toBe('unbuilt')
+
+    // The bench presents NOTHING: tracked files gone, no member content.
+    expect(existsSync(join(ws.benchPath, 'a.txt'))).toBe(false)
+    expect(existsSync(join(ws.benchPath, 'b.txt'))).toBe(false)
+    expect(existsSync(join(ws.benchPath, 'shared.txt'))).toBe(false)
+    expect(existsSync(join(ws.benchPath, 'base.txt'))).toBe(false)
+    // … but ignored build output survives, exactly like a normal assembly.
+    expect(readFileSync(join(ws.benchPath, 'node_modules', '.probe'), 'utf-8')).toBe('expensive build output\n')
+  })
+
+  // THE regression test for tip-only attribution. The prior member's TIP
+  // commit touches only an unrelated file; the conflicting path was changed by
+  // an EARLIER commit in its range. `git show <tip>` misses it and reports no
+  // collider — the live defect: conflictsWith came back empty and the UI could
+  // name no counterpart. Range attribution (base..pin) finds it.
+  it('attributes a collision through the prior member\'s whole range, not its tip commit', async () => {
+    const a = makeWorktree('a', 'shared.txt', 'from a\n')
+    // Second commit: a's TIP no longer names shared.txt.
+    writeFileSync(join(a.path, 'a-docs.txt'), 'unrelated docs change\n')
+    git(a.path, 'add', '-A')
+    git(a.path, 'commit', '-m', 'a: unrelated tip commit')
+
+    const c = makeWorktree('c', 'shared.txt', 'from c\n')
+    const ws = workspaceFor([await enroll(a), await enroll(c)])
+
+    const result = await assembleBench(ws)
 
     expect(result.ok).toBe(true)
     const byBranch = Object.fromEntries(result.workspace!.members.map((m) => [m.branchName, m]))
-    expect(byBranch['wt/a'].status).toBe('integrated')
-    expect(byBranch['wt/b'].status).toBe('integrated')
-    expect(byBranch['wt/c'].status).toBe('conflicted')
+    expect(byBranch['wt/c'].merge).toBe('conflicted')
     expect(byBranch['wt/c'].conflictPaths).toContain('shared.txt')
     expect(byBranch['wt/c'].conflictsWith).toContain('wt/a')
-    // The bench still built the non-conflicting members.
-    expect(existsSync(join(ws.benchPath, 'b.txt'))).toBe(true)
-    expect(readFileSync(join(ws.benchPath, 'shared.txt'), 'utf-8')).toBe('from a\n')
   })
 
   it('reports a member whose branch is gone as missing and builds without it', async () => {
@@ -274,19 +320,101 @@ describe('rebuildBench — conflicts and missing members', () => {
     }
     expect(bPin).toBeTruthy()
 
-    const result = await rebuildBench(broken)
+    const result = await assembleBench(broken)
 
     expect(result.ok).toBe(true)
-    expect(result.workspace!.members.find((m) => m.branchName === 'wt/b')!.status).toBe('missing')
+    expect(result.workspace!.members.find((m) => m.branchName === 'wt/b')!.pin).toBe('gone')
     expect(existsSync(join(ws.benchPath, 'a.txt'))).toBe(true)
   })
 }, GIT_FIXTURE_TIMEOUT)
 
-describe('rebuildBench — build output survives (no clean -x)', () => {
-  it('leaves ignored files in the bench untouched across a rebuild', async () => {
+describe('assembleBench — rerere resolve once, replay forever', () => {
+  /**
+   * Resolve the conflict the way the resolve-once flow does: re-create the
+   * merge in the bench, write the resolution, commit — which records it in the
+   * MAIN repo's rr-cache (shared by the linked bench worktree).
+   */
+  function resolveOnceInBench(ws: IntegrationWorkspace, conflictedSha: string, resolution: string): void {
+    git(ws.benchPath, 'config', 'rerere.enabled', 'true')
+    git(ws.benchPath, 'config', 'rerere.autoUpdate', 'true')
+    git(ws.benchPath, 'switch', '-C', ws.benchBranch, 'main', '--discard-changes')
+    // Recreate the same context the assembly builds: prior members first.
+    for (const m of ws.members) {
+      if (m.pinnedSha === conflictedSha) break
+      git(ws.benchPath, 'merge', '--no-ff', '-m', `ion-bench: ${m.branchName}`, m.pinnedSha)
+    }
+    try {
+      git(ws.benchPath, 'merge', '--no-ff', '-m', 'resolve once', conflictedSha)
+      throw new Error('expected the merge to conflict')
+    } catch {
+      // In progress. Resolve and commit — this is what records the resolution.
+      writeFileSync(join(ws.benchPath, 'shared.txt'), resolution)
+      git(ws.benchPath, 'add', 'shared.txt')
+      git(ws.benchPath, '-c', 'core.editor=true', 'merge', '--continue')
+    }
+  }
+
+  it('replays a recorded resolution on the next assembly and reports it as replayed', async () => {
+    const a = makeWorktree('a', 'shared.txt', 'from a\n')
+    const c = makeWorktree('c', 'shared.txt', 'from c\n')
+    const ws = workspaceFor([await enroll(a), await enroll(c)])
+
+    // First assembly fails atomically (and enables rerere in the repo).
+    const failed = await assembleBench(ws)
+    expect(failed.workspace!.lastAssembly).toBe('failed')
+
+    // Resolve ONCE, the way the resolve-once flow does.
+    resolveOnceInBench(ws, ws.members[1].pinnedSha, 'from a and c, resolved\n')
+
+    // Reassemble: the recording replays, the assembly completes, and the
+    // member says so — a replayed resolution is not a clean merge.
+    const replayed = await assembleBench(ws)
+    expect(replayed.ok).toBe(true)
+    expect(replayed.workspace!.lastAssembly).toBe('assembled')
+    const member = replayed.workspace!.members.find((m) => m.branchName === 'wt/c')!
+    expect(member.merge).toBe('merged')
+    expect(member.mergeResolution).toBe('replayed')
+    expect(readFileSync(join(ws.benchPath, 'shared.txt'), 'utf-8')).toBe('from a and c, resolved\n')
+
+    // And it keeps replaying: assembly is still a pure function.
+    const again = await assembleBench(replayed.workspace!)
+    expect(again.workspace!.lastAssembly).toBe('assembled')
+    expect(again.workspace!.members.find((m) => m.branchName === 'wt/c')!.mergeResolution).toBe('replayed')
+  })
+
+  it('stops replaying when the conflicting lines genuinely change, and honestly conflicts again', async () => {
+    const a = makeWorktree('a', 'shared.txt', 'from a\n')
+    const c = makeWorktree('c', 'shared.txt', 'from c\n')
+    const ws = workspaceFor([await enroll(a), await enroll(c)])
+
+    await assembleBench(ws)
+    resolveOnceInBench(ws, ws.members[1].pinnedSha, 'from a and c, resolved\n')
+    expect((await assembleBench(ws)).workspace!.lastAssembly).toBe('assembled')
+
+    // c rewrites the conflicted lines: the recording's preimage no longer
+    // matches, so replaying it would be wrong — and does not happen.
+    writeFileSync(join(c.path, 'shared.txt'), 'from c, take two\n')
+    git(c.path, 'add', '-A')
+    git(c.path, 'commit', '-m', 'c: rework the conflicted region')
+    const advanced = await enroll(c)
+    const updated = {
+      ...ws,
+      members: ws.members.map((m) => (m.branchName === 'wt/c' ? { ...m, ...advanced } : m)),
+    }
+
+    const result = await assembleBench(updated)
+    expect(result.workspace!.lastAssembly).toBe('failed')
+    const member = result.workspace!.members.find((m) => m.branchName === 'wt/c')!
+    expect(member.merge).toBe('conflicted')
+    expect(member.mergeResolution).toBeUndefined()
+  })
+})
+
+describe('assembleBench — build output survives (no clean -x)', () => {
+  it('leaves ignored files in the bench untouched across an assembly', async () => {
     const a = makeWorktree('a')
     const ws = workspaceFor([await enroll(a)])
-    await rebuildBench(ws)
+    await assembleBench(ws)
 
     // Simulate an incremental build artifact in an ignored directory.
     mkdirSync(join(ws.benchPath, 'node_modules'), { recursive: true })
@@ -294,7 +422,7 @@ describe('rebuildBench — build output survives (no clean -x)', () => {
 
     const b = makeWorktree('b')
     const withB = { ...ws, members: [...ws.members, await enroll(b)] }
-    const result = await rebuildBench(withB)
+    const result = await assembleBench(withB)
 
     expect(result.ok).toBe(true)
     expect(existsSync(join(ws.benchPath, 'node_modules', '.probe'))).toBe(true)
@@ -302,16 +430,16 @@ describe('rebuildBench — build output survives (no clean -x)', () => {
   })
 }, GIT_FIXTURE_TIMEOUT)
 
-describe('rebuildBench — self-healing', () => {
+describe('assembleBench — self-healing', () => {
   it('recreates a bench worktree that was deleted outside Ion', async () => {
     const a = makeWorktree('a')
     const ws = workspaceFor([await enroll(a)])
-    await rebuildBench(ws)
+    await assembleBench(ws)
     expect(existsSync(ws.benchPath)).toBe(true)
 
     rmSync(ws.benchPath, { recursive: true, force: true })
 
-    const result = await rebuildBench(ws)
+    const result = await assembleBench(ws)
 
     expect(result.ok).toBe(true)
     expect(existsSync(join(ws.benchPath, 'a.txt'))).toBe(true)
@@ -334,7 +462,7 @@ describe('captureContribution — committed work only', () => {
     writeFileSync(join(a.path, 'base.txt'), 'MODIFIED but not committed\n')
     const ws = workspaceFor([await enroll(a)])
 
-    const result = await rebuildBench(ws)
+    const result = await assembleBench(ws)
 
     expect(result.ok).toBe(true)
     expect(existsSync(join(ws.benchPath, 'a.txt'))).toBe(true)
@@ -348,16 +476,16 @@ describe('captureContribution — committed work only', () => {
     const a = makeWorktree('a')
     writeFileSync(join(a.path, 'later.txt'), 'staged and committed\n')
     const ws = workspaceFor([await enroll(a)])
-    await rebuildBench(ws)
+    await assembleBench(ws)
     expect(existsSync(join(ws.benchPath, 'later.txt'))).toBe(false)
 
-    // Commit it, advance the pin (an explicit Update), rebuild.
+    // Commit it, advance the pin (an explicit Update), reassemble.
     git(a.path, 'add', '-A')
     git(a.path, 'commit', '-m', 'a: commit the rest')
     const advanced = await enroll(a)
     const updated = { ...ws, members: [{ ...ws.members[0], ...advanced }] }
 
-    const result = await rebuildBench(updated)
+    const result = await assembleBench(updated)
 
     expect(result.ok).toBe(true)
     expect(existsSync(join(ws.benchPath, 'later.txt'))).toBe(true)
@@ -398,7 +526,7 @@ describe('captureContribution — committed work only', () => {
     writeFileSync(join(a.path, 'node_modules', 'junk.txt'), 'should not be benched\n')
     const ws = workspaceFor([await enroll(a)])
 
-    const result = await rebuildBench(ws)
+    const result = await assembleBench(ws)
 
     expect(result.ok).toBe(true)
     expect(existsSync(join(ws.benchPath, 'node_modules', 'junk.txt'))).toBe(false)
