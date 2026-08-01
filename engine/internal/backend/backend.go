@@ -7,6 +7,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/sandbox"
 	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/workspaces"
 )
 
 // PermissionAskable is implemented by backends whose subprocess asks the engine
@@ -318,6 +319,14 @@ type RunConfig struct {
 	PermEngine    *permissions.Engine
 	SandboxCfg    *sandbox.Config
 	SecurityCfg   *types.SecurityConfig
+	// WorkspaceChecker enforces the engine's baseline workspace containment
+	// (worktree isolation, bench refusals — see internal/workspaces). Nil
+	// means disabled; the session layer threads it when
+	// SecurityConfig.WorkspaceContainment resolves enabled (the default).
+	// Checked in the tool loop beside the permission engine, before hooks and
+	// execution, so the refusal is deterministic regardless of which
+	// extensions are loaded.
+	WorkspaceChecker *workspaces.Checker
 	ExternalTools []types.LlmToolDef
 	// McpToolRouter routes MCP and extension-registered tool calls. The ctx is
 	// the per-tool-call context: it carries the DeadlineSuspender (see

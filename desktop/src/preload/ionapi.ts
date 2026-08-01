@@ -4,7 +4,7 @@
  * re-exports it (renderer/env.d.ts imports it from ../preload/index).
  */
 import type { AtvApi } from './atv-api'
-import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus, LandResult, WorktreeMoveResult, WorktreeInventoryEntry, WorktreeAppraisalWire, WorktreeProvisionState, IntegrationWorkspace, BenchRebuildResult, EngineConfig, EngineEvent, EngineHostInfo, EngineDirListing, RemoteTransportState, DiscoveredCommand, GitEvent, RepoSnapshot, NewConversationDefaultsPolicy } from '../shared/types'
+import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus, LandResult, WorktreeMoveResult, WorktreeInventoryEntry, WorktreeAppraisalWire, WorktreeProvisionState, IntegrationWorkspace, BenchAssembleResult, EngineConfig, EngineEvent, EngineHostInfo, EngineDirListing, RemoteTransportState, DiscoveredCommand, GitEvent, RepoSnapshot, NewConversationDefaultsPolicy } from '../shared/types'
 import type { EnterprisePolicy } from '../shared/types-engine'
 import type { CustomThemeForRenderer } from '../shared/theme-pack-types'
 
@@ -47,9 +47,11 @@ export interface IonAPI extends AtvApi {
   listCustomThemes(): Promise<CustomThemeForRenderer[]>
   openExternal(url: string): Promise<boolean>
   /** iOS asked to open (or focus) a conversation in a worktree. */
-  onRemoteOpenWorktreeConversation(callback: (worktreePath: string) => void): () => void
+  onRemoteOpenWorktreeConversation(callback: (arg: { worktreePath: string; newConversation: boolean }) => void): () => void
   /** iOS asked to open (or focus) a conversation in the integration bench. */
   onRemoteOpenBenchConversation(callback: (arg: { repoPath: string; sourceBranch: string }) => void): () => void
+  /** iOS asked to open (or focus) the integration bench's dedicated terminal. */
+  onRemoteOpenBenchTerminal(callback: (arg: { repoPath: string; sourceBranch: string }) => void): () => void
   /** A worktree was named (generated or renamed). Both windows re-read the row. */
   onWorktreeTitled(callback: (arg: { repoPath: string; worktreePath: string; title: string }) => void): () => void
   /** Reveal a directory in the OS file manager. */
@@ -191,18 +193,21 @@ export interface IonAPI extends AtvApi {
   gitWorktreeLand(args: { repoPath: string; worktreePath: string; worktreeBranch: string; sourceBranch: string; noFf?: boolean; syncFirst?: boolean; requireFastForward?: boolean }): Promise<LandResult>
   gitWorktreeSync(worktreePath: string, sourceBranch: string): Promise<{ ok: boolean; error?: string; hasConflicts?: boolean; refusedDirty?: boolean }>
   /** Every managed worktree for a repo, with state for describing and acting on it. */
-  gitWorktreeInventory(repoPath: string, backfillTitles?: boolean): Promise<{ worktrees: WorktreeInventoryEntry[] }>
+  gitWorktreeInventory(repoPath: string): Promise<{ worktrees: WorktreeInventoryEntry[] }>
   /**
-   * Ask the main process to name a worktree from a prompt, if it needs one.
+   * Seed a worktree's name with a title the renderer already generated for the
+   * conversation running inside it.
    *
-   * Fire-and-forget from the renderer's point of view: the main process decides
-   * whether the directory is a worktree at all and whether it is already named,
-   * so callers pass every send and let the answer come back as a no-op reason.
+   * A recording, not a generation — the string is produced once, by the tab
+   * titling path, so the two names cannot diverge. Fire-and-forget from the
+   * renderer's point of view: the main process decides whether the directory is
+   * a worktree at all and whether it is already named (first prompt wins), and
+   * the answer comes back as a no-op reason.
    */
-  gitWorktreeAutotitle(workingDirectory: string, text: string): Promise<{
+  gitWorktreeSeedTitle(worktreePath: string, title: string): Promise<{
     ok: boolean
     title?: string
-    reason?: 'empty-input' | 'not-a-worktree' | 'already-titled' | 'generation-failed' | 'empty-title'
+    reason?: 'empty-input' | 'not-a-worktree' | 'already-titled'
   }>
   /** Operator override for a worktree's title. */
   gitWorktreeSetTitle(args: { worktreePath: string; repoPath?: string; title: string }): Promise<{ ok: boolean; title?: string; error?: string }>
@@ -214,9 +219,26 @@ export interface IonAPI extends AtvApi {
   benchAddMember(args: { repoPath: string; sourceBranch: string; worktreePath: string; branchName: string }): Promise<{ ok: boolean; error?: string; workspace?: IntegrationWorkspace }>
   benchRemoveMember(args: { repoPath: string; sourceBranch: string; worktreePath: string }): Promise<{ workspace: IntegrationWorkspace | null }>
   benchSetEnabled(args: { repoPath: string; sourceBranch: string; worktreePath: string; enabled: boolean }): Promise<{ workspace: IntegrationWorkspace | null }>
-  benchUpdateMember(args: { repoPath: string; sourceBranch: string; worktreePath: string }): Promise<BenchRebuildResult>
-  benchUpdateAll(repoPath: string, sourceBranch: string): Promise<BenchRebuildResult>
-  benchRebuild(repoPath: string, sourceBranch: string): Promise<BenchRebuildResult>
+  /**
+   * The registry's record for a worktree. The authoritative answer for which
+   * repo owns it -- never derive that from the renderer's inventory cache, which
+   * is keyed by whatever path the panel last queried.
+   */
+  gitWorktreeRegistration(worktreePath: string): Promise<{
+    registration: { repoPath: string; branchName: string; sourceBranch: string | null; title: string | null } | null
+  }>
+  benchSetReview(args: { repoPath: string; sourceBranch: string; worktreePath: string; review: 'good' | 'issue' | null }): Promise<{ workspace: IntegrationWorkspace | null }>
+  benchSetOrder(args: { repoPath: string; sourceBranch: string; worktreePath: string; toIndex: number }): Promise<{ workspace: IntegrationWorkspace | null }>
+  benchUpdateMember(args: { repoPath: string; sourceBranch: string; worktreePath: string }): Promise<BenchAssembleResult>
+  benchUpdateAll(repoPath: string, sourceBranch: string): Promise<BenchAssembleResult>
+  benchAssemble(repoPath: string, sourceBranch: string): Promise<BenchAssembleResult>
+  /**
+   * Re-create the failed assembly merge in the bench and leave it in progress
+   * so the ConflictsDialog can resolve it once (rerere records the resolution).
+   * `branchName` names the conflicted member when a merge was left open;
+   * absent when everything now merges cleanly (recordings already cover it).
+   */
+  benchResolveConflict(repoPath: string, sourceBranch: string): Promise<{ ok: boolean; benchPath?: string; branchName?: string; error?: string }>
   benchRefreshStaleness(repoPath: string, sourceBranch: string): Promise<{ workspace: IntegrationWorkspace | null }>
   /** Base staleness: has the feature branch moved ahead of this worktree? */
   gitWorktreeBaseStatus(worktreePath: string, sourceBranch: string): Promise<{ behindCount: number; behindSubjects: string[]; needsSync: boolean; hasUncommittedChanges: boolean; appraisalFailed?: boolean }>
@@ -226,7 +248,7 @@ export interface IonAPI extends AtvApi {
    * Same code path as creation, so a repair cannot drift from a fresh provision.
    */
   gitWorktreeReprovision(args: { repoPath: string; worktreePath: string }): Promise<{ ok: boolean; state: WorktreeProvisionState; error?: string }>
-  gitWorktreeReattach(args: { repoPath: string; sourceBranch: string }): Promise<WorktreeMoveResult>
+  gitWorktreeReattach(args: { repoPath: string; sourceBranch: string; title?: string }): Promise<WorktreeMoveResult>
 
   // ─── Filesystem operations ───
   fsReadDir(directory: string): Promise<{ entries: FsEntry[]; error?: string }>

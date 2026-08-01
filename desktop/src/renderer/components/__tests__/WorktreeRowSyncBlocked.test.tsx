@@ -72,7 +72,7 @@ describe('WorktreeRow — sync affordance vs dirty state', () => {
   it('shows a plain sync control on a clean worktree', () => {
     render(entry({ isDirty: false }))
     expect(host.querySelector('[data-testid="worktree-sync-wt/a1"]')).not.toBeNull()
-    expect(host.querySelector('[data-testid="worktree-sync-blocked-wt/a1"]')).toBeNull()
+    expect(host.querySelector('[data-testid="worktree-word-wt/a1-sync-blocked"]')).toBeNull()
   })
 
   it('marks the sync as blocked on a dirty worktree, with the remediation in the tooltip', () => {
@@ -80,14 +80,38 @@ describe('WorktreeRow — sync affordance vs dirty state', () => {
     // button whose click was silently refused.
     render(entry({ isDirty: true }))
 
-    expect(host.querySelector('[data-testid="worktree-sync-blocked-wt/a1"]')).not.toBeNull()
+    expect(host.querySelector('[data-testid="worktree-word-wt/a1-sync-blocked"]')).not.toBeNull()
     const tips = Array.from(host.querySelectorAll('[data-tooltip]'))
       .map((n) => n.getAttribute('data-tooltip') ?? '')
     expect(tips.some((t) => t.includes('uncommitted changes') && t.includes('Commit or stash'))).toBe(true)
   })
 
-  it('still fires the sync on click when dirty — the refusal toast carries the message', () => {
+  // Reverses an earlier decision, deliberately. ba62fca6 let the click through
+  // so the refusal TOAST could deliver the remediation, which was right when the
+  // alternative was an inert button with no explanation. The row now carries that
+  // remediation in its tooltip before the click, so firing a verb guaranteed to
+  // refuse only spends a round trip restating what the row already says.
+  it('refuses the click when dirty, because the tooltip already carries the remediation', () => {
     render(entry({ isDirty: true }))
+
+    const btn = host.querySelector('[data-testid="worktree-sync-wt/a1"]') as HTMLButtonElement
+    act(() => { btn.click() })
+
+    expect(btn.disabled).toBe(true)
+    expect(onSync).not.toHaveBeenCalled()
+  })
+
+  it('keeps the tooltip reachable on the disabled control', () => {
+    // A disabled button fires no pointer events, so the hover has to land on the
+    // wrapper -- otherwise disabling it would also hide the reason.
+    render(entry({ isDirty: true }))
+
+    const btn = host.querySelector('[data-testid="worktree-sync-wt/a1"]') as HTMLElement
+    expect(btn.style.pointerEvents).toBe('none')
+  })
+
+  it('still fires the sync on a clean worktree', () => {
+    render(entry({ isDirty: false }))
     act(() => {
       (host.querySelector('[data-testid="worktree-sync-wt/a1"]') as HTMLButtonElement).click()
     })

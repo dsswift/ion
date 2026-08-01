@@ -33,7 +33,10 @@ struct StatusDrawerView: View {
     var onOpenDispatch: ((String) -> Void)? = nil
 
     @Environment(SessionViewModel.self) private var viewModel
-    @Environment(\.appTheme) private var theme
+    /// Internal (not private) so the Context Breakdown region in
+    /// StatusDrawerView+Breakdown.swift can read it — that region was split out
+    /// to keep both files under the 600-line Swift cap.
+    @Environment(\.appTheme) var theme
 
     /// Copy-feedback flag for the session-ID copy button. Flips to true for
     /// 1.5s after a successful copy (button icon: doc.on.doc → checkmark).
@@ -100,15 +103,23 @@ struct StatusDrawerView: View {
         return nil
     }
 
-    /// Absolute context tokens. Read straight from the engine's reported
-    /// occupancy (breakdown first, then status fields) rather than derived
-    /// from percent × window, which was lossy and disagreed with the status
-    /// bar whenever the picker differed from the engine's model.
+    /// Absolute context tokens — the engine's authoritative occupancy figure,
+    /// resolved through the same static helper the status bar and the header
+    /// strip use so no two iOS surfaces can report a different number.
+    ///
+    /// Occupancy comes from the breakdown's `occupancyTokens` first, then the
+    /// status fields. The breakdown's `totalTokens` is deliberately NOT a
+    /// candidate: it is the itemized per-category estimate and over-reports,
+    /// counting content the provider did not bill for this turn. Reading it as
+    /// occupancy is what rendered a conversation occupying 26% of a 1M window as
+    /// ~103%. See `ConversationStatusBar.resolveContextTokens`.
     private var contextTokens: Int? {
-        if let t = contextBreakdown?.totalTokens, t > 0 { return t }
-        if let t = fields?.contextTokens, t > 0 { return t }
-        if let t = inst?.statusFields?.contextTokens, t > 0 { return t }
-        return nil
+        ConversationStatusBar.resolveContextTokens(
+            breakdownOccupancy: contextBreakdown?.occupancyTokens,
+            breakdownTotal: contextBreakdown?.totalTokens,
+            fieldsTokens: fields?.contextTokens,
+            instanceTokens: inst?.statusFields?.contextTokens,
+        )
     }
 
     /// Run cost (prefer live fields, then instance, then snapshot-projected).
@@ -209,7 +220,9 @@ struct StatusDrawerView: View {
 
     // MARK: - Section header (small, uppercase, letter-spaced)
 
-    private func sectionHeader(_ label: String) -> some View {
+    /// Internal (not private) so the split-out Context Breakdown region can
+    /// reuse it — see StatusDrawerView+Breakdown.swift.
+    func sectionHeader(_ label: String) -> some View {
         Text(label.uppercased())
             .font(.system(size: 10, weight: .semibold))
             .tracking(1.2)
@@ -431,136 +444,6 @@ struct StatusDrawerView: View {
         }
     }
 
-    // MARK: - Section: Context Breakdown (own scroll region)
-
-    private func breakdownRegion(_ bd: ContextBreakdownPayload, window: Int) -> some View {
-        let groups = BreakdownGrouping.group(bd.categories)
-        let segments = BreakdownGrouping.graphSegments(groups: groups, contextWindow: window)
-        return VStack(alignment: .leading, spacing: 0) {
-            // Header + proportion graph fixed above the scroll.
-            VStack(alignment: .leading, spacing: 8) {
-                sectionHeader("Context Breakdown")
-                ProportionGraphView(segments: segments, contextWindow: window)
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-
-            // Scrollable rows.
-            ScrollView {
-                VStack(alignment: .leading, spacing: 3) {
-                    ForEach(groups, id: \.kind) { group in
-                        breakdownGroup(group, window: window)
-                    }
-
-                    // Unaccounted row (pre-total).
-                    if let unaccounted = bd.unaccounted, unaccounted != 0 {
-                        Divider().background(theme.textSecondary.opacity(0.15)).padding(.top, 2)
-                        HStack {
-                            Text("unaccounted")
-                                .font(.caption)
-                                .foregroundStyle(theme.textSecondary.opacity(0.6))
-                            Spacer()
-                            Text(unaccounted.formatted())
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(theme.textSecondary.opacity(0.6))
-                        }
-                    }
-
-                    // Total row (bold).
-                    Divider().background(theme.textSecondary.opacity(0.15)).padding(.top, 2)
-                    let totalPct = window > 0
-                        ? Int(round(Double(bd.totalTokens) / Double(window) * 100))
-                        : 0
-                    HStack {
-                        Text("total")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(theme.textSecondary)
-                        Spacer()
-                        Text(bd.totalTokens.formatted())
-                            .font(.caption.monospacedDigit().weight(.semibold))
-                            .foregroundStyle(theme.textPrimary)
-                        Text("\(totalPct)%")
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(theme.textSecondary)
-                            .frame(minWidth: 30, alignment: .trailing)
-                    }
-
-                    // Cache annotation (non-additive — annotation on the total).
-                    let cacheRead = bd.cacheReadTokens ?? 0
-                    let cacheWritten = bd.cacheCreationTokens ?? 0
-                    if cacheRead > 0 || cacheWritten > 0 {
-                        cacheAnnotation(read: cacheRead, written: cacheWritten)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-            }
-            .frame(minHeight: 0)
-        }
-    }
-
-    private func breakdownGroup(_ group: BreakdownGrouping.Group, window: Int) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            // Bucket header: color dot + kind label + bucket total.
-            HStack(spacing: 4) {
-                Circle()
-                    .fill(BreakdownKind.color(group.kind))
-                    .frame(width: 6, height: 6)
-                Text(BreakdownKind.label(group.kind).uppercased())
-                    .font(.system(size: 9, weight: .semibold))
-                    .tracking(0.8)
-                    .foregroundStyle(theme.textSecondary)
-                Text(group.total.formatted())
-                    .font(.system(size: 9).monospacedDigit())
-                    .foregroundStyle(theme.textSecondary.opacity(0.7))
-                Spacer()
-            }
-            .padding(.top, 4)
-
-            // Category rows (indented sub-rows when >1 in the bucket).
-            ForEach(Array(group.categories.enumerated()), id: \.offset) { _, cat in
-                BreakdownCategoryRow(
-                    cat: cat,
-                    contextWindow: window,
-                    indent: group.categories.count > 1
-                )
-            }
-        }
-    }
-
-    private func cacheAnnotation(read: Int, written: Int) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("of which, cached")
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(theme.accent)
-            if read > 0 {
-                HStack {
-                    Text("served (read)")
-                        .font(.system(size: 9))
-                        .foregroundStyle(theme.textSecondary)
-                    Spacer()
-                    Text(read.formatted())
-                        .font(.system(size: 9).monospacedDigit())
-                        .foregroundStyle(theme.textSecondary)
-                }
-            }
-            if written > 0 {
-                HStack {
-                    Text("written")
-                        .font(.system(size: 9))
-                        .foregroundStyle(theme.textSecondary)
-                    Spacer()
-                    Text(written.formatted())
-                        .font(.system(size: 9).monospacedDigit())
-                        .foregroundStyle(theme.textSecondary)
-                }
-            }
-        }
-        .padding(6)
-        .background(theme.accent.opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: 4))
-        .padding(.top, 4)
-    }
 }
 
 // MARK: - ElapsedTimerLabel

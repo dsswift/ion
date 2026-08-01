@@ -2,6 +2,8 @@ package extension
 
 import (
 	"encoding/json"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // handleSteerRPC dispatches the steer-family extension RPCs. It returns true
@@ -104,6 +106,10 @@ func (h *Host) handleSteerRPC(ctx *Context, method string, id int64, raw []byte)
 		var req struct {
 			Params struct {
 				Message string `json:"message"`
+				// Kind classifies who authored the message. Omitted by an SDK
+				// that predates the field, which decodes to "" and behaves
+				// exactly as before.
+				Kind string `json:"kind,omitempty"`
 			} `json:"params"`
 		}
 		if err := json.Unmarshal(raw, &req); err != nil {
@@ -112,7 +118,26 @@ func (h *Host) handleSteerRPC(ctx *Context, method string, id int64, raw []byte)
 		}
 		// Run async: same rationale as ext/steer_dispatch above.
 		go func() {
-			if ctx != nil && ctx.SteerSelf != nil {
+			// Prefer the kind-aware wiring so the classification reaches the
+			// steer channel and the idle-fallback prompt. Fall back to the
+			// kindless form only when the context predates it, so a caller
+			// that supplied a kind is never silently downgraded without the
+			// log saying so.
+			switch {
+			case ctx != nil && ctx.SteerSelfWithKind != nil:
+				result, err := ctx.SteerSelfWithKind(req.Params.Message, req.Params.Kind)
+				if err != nil {
+					h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
+					return
+				}
+				data, _ := json.Marshal(result) //nolint:errcheck // marshal of a local RPC struct
+				h.sendResponse(id, json.RawMessage(data), nil)
+			case ctx != nil && ctx.SteerSelf != nil:
+				if req.Params.Kind != "" {
+					utils.LogWithFields(utils.LevelWarn, "extension", "ext/steer_self: kind supplied but context has no kind-aware steer; delivering unclassified", map[string]any{
+						"kind": req.Params.Kind,
+					})
+				}
 				result, err := ctx.SteerSelf(req.Params.Message)
 				if err != nil {
 					h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: err.Error()})
@@ -120,7 +145,7 @@ func (h *Host) handleSteerRPC(ctx *Context, method string, id int64, raw []byte)
 				}
 				data, _ := json.Marshal(result) //nolint:errcheck // marshal of a local RPC struct
 				h.sendResponse(id, json.RawMessage(data), nil)
-			} else {
+			default:
 				h.sendResponse(id, nil, &jsonrpcError{Code: -32000, Message: "steer self not available"})
 			}
 		}()

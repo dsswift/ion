@@ -9,6 +9,7 @@ import type { TabGroupView } from '../hooks/useTabGroups'
 import { checkWorktreeUncommitted, shouldUseWorktree, zoomViewport } from './TabStripShared'
 import { PillColorPicker } from './TabStripPillColorPicker'
 import { TabContextMenu } from './TabStripTabContextMenu'
+import { useRenameTabWorktree } from '../hooks/useRenameTabWorktree'
 import { DropdownTabRow } from './TabStripDropdownTabRow'
 import { newTabInDirectory } from './new-conversation-routing'
 import { rError } from '../rendererLogger'
@@ -39,10 +40,10 @@ export function GroupPickerDropdown({
   const worktreeUncommittedMap = useSessionStore((s) => s.worktreeUncommittedMap)
 
   // Sub-interaction state
-  const [confirmingCloseId, setConfirmingCloseId] = useState<string | null>(null)
   const [colorPickerTabId, setColorPickerTabId] = useState<string | null>(null)
   const [colorPickerAnchor, setColorPickerAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [dirMenuTabId, setDirMenuTabId] = useState<string | null>(null)
+  const renameWithWorktree = useRenameTabWorktree()
   const [dirMenuAnchor, setDirMenuAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [editingTabId, setEditingTabId] = useState<string | null>(null)
   const [localTabs, setLocalTabs] = useState(group.tabs)
@@ -85,7 +86,6 @@ export function GroupPickerDropdown({
           setEditingTabId(null)
           return
         }
-        setConfirmingCloseId(null)
         onClose()
       }
     }
@@ -152,12 +152,10 @@ export function GroupPickerDropdown({
             isActive={tab.id === activeTabId}
             colors={colors}
             activeTabId={activeTabId}
-            confirmingCloseId={confirmingCloseId}
             editingTabId={editingTabId}
             onSelectTab={onSelectTab}
             onCloseTab={onCloseTab}
             onClose={onClose}
-            setConfirmingCloseId={setConfirmingCloseId}
             setColorPickerTabId={setColorPickerTabId}
             setColorPickerAnchor={setColorPickerAnchor}
             setDirMenuTabId={setDirMenuTabId}
@@ -198,6 +196,7 @@ export function GroupPickerDropdown({
               anchor={dirMenuAnchor}
               tab={menuTab}
               onRename={() => { setDirMenuTabId(null); setEditingTabId(menuTab.id) }}
+              onRenameWithWorktree={() => { setDirMenuTabId(null); renameWithWorktree.requestRename(menuTab) }}
               onForkTab={menuTab.conversationId ? () => {
                 void useSessionStore.getState().forkTab(menuTab.id).catch((err) => rError('tabs', 'fork tab failed', { error: String(err) }))
                 setDirMenuTabId(null)
@@ -226,6 +225,8 @@ export function GroupPickerDropdown({
           )
         })()}
       </AnimatePresence>
+
+      {renameWithWorktree.dialog}
 
     </motion.div>,
     popoverLayer,

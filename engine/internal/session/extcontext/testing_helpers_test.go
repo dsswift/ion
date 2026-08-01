@@ -40,6 +40,7 @@ func (noopSA) RootContext() context.Context                                     
 func (noopSA) SendPrompt(_ string, _ string, _ []string) error                   { return nil }
 func (noopSA) SendPromptWithKind(_ string, _ string, _ []string, _ string) error { return nil }
 func (noopSA) SteerSelfMainLoop(_ string) bool                                   { return false }
+func (noopSA) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
 func (noopSA) ParkSelfMainLoop() bool                                            { return false }
 func (noopSA) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil

@@ -25,6 +25,7 @@ import { DirectoryPicker } from './TabStripDirectoryPicker'
 import { GroupPill } from './TabStripGroupPill'
 import { TabPill } from './TabStripTabPill'
 import { WorkspaceStatusIndicator } from './WorkspaceStatusIndicator'
+import { useRenameTabWorktree } from '../hooks/useRenameTabWorktree'
 import { rError } from '../rendererLogger'
 
 export function TabStrip() {
@@ -39,7 +40,7 @@ export function TabStrip() {
   useSessionStore((s) => s.conversationPanes)
   const activeTabId = useSessionStore((s) => s.activeTabId)
   const selectTab = useSessionStore((s) => s.selectTab)
-  const closeTab = useSessionStore((s) => s.closeTab)
+  const requestCloseTab = useSessionStore((s) => s.requestCloseTab)
   const reorderTabs = useSessionStore((s) => s.reorderTabs)
   const renameTab = useSessionStore((s) => s.renameTab)
   const setTabPillColor = useSessionStore((s) => s.setTabPillColor)
@@ -55,7 +56,6 @@ export function TabStrip() {
   const { mode: groupMode, groups, ungrouped } = useTabGroups()
 
   const [editingTabId, setEditingTabId] = useState<string | null>(null)
-  const [confirmingCloseId, setConfirmingCloseId] = useState<string | null>(null)
   const [colorPickerTabId, setColorPickerTabId] = useState<string | null>(null)
   const [colorPickerAnchor, setColorPickerAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [dirMenuTabId, setDirMenuTabId] = useState<string | null>(null)
@@ -63,6 +63,7 @@ export function TabStrip() {
   const [dirPickerState, setDirPickerState] = useState<{ anchor: { x: number; y: number; bottom: number }; mode: 'conversation' | 'terminal' } | null>(null)
   const [convPickerState, setConvPickerState] = useState<{ anchor: { x: number; y: number; bottom: number }; dir: string } | null>(null)
   const [tabMenuId, setTabMenuId] = useState<string | null>(null)
+  const renameWithWorktree = useRenameTabWorktree()
   const [tabMenuAnchor, setTabMenuAnchor] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const plusButtonRef = useRef<HTMLButtonElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -134,15 +135,6 @@ export function TabStrip() {
     window.addEventListener('ion:open-recent-dirs', handler)
     return () => window.removeEventListener('ion:open-recent-dirs', handler)
   }, [])
-
-  // Scroll the confirming-close tab into view after it expands
-  useEffect(() => {
-    if (!confirmingCloseId) return
-    requestAnimationFrame(() => {
-      const el = tabRefs.current.get(confirmingCloseId)
-      el?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
-    })
-  }, [confirmingCloseId])
 
   // Auto-scroll the active tab into view when it changes
   useEffect(() => {
@@ -225,14 +217,11 @@ export function TabStrip() {
       tab={tab}
       isActive={tab.id === activeTabId}
       isEditing={editingTabId === tab.id}
-      isConfirmingClose={confirmingCloseId === tab.id}
       onSelect={() => selectTab(tab.id)}
-      onClose={() => closeTab(tab.id)}
+      onClose={() => { void requestCloseTab(tab.id) }}
       onStartEdit={() => setEditingTabId(tab.id)}
       onStopEdit={() => setEditingTabId(null)}
       onRename={(newValue) => renameTab(tab.id, newValue)}
-      onConfirmClose={() => setConfirmingCloseId(tab.id)}
-      onCancelClose={() => setConfirmingCloseId(null)}
       onSetPillColor={(color) => setTabPillColor(tab.id, color)}
       colorPickerTabId={colorPickerTabId}
       onOpenColorPicker={(tabId, anchor) => { setColorPickerTabId(tabId); setColorPickerAnchor(anchor) }}
@@ -425,6 +414,7 @@ export function TabStrip() {
               anchor={tabMenuAnchor}
               tab={menuTab}
               onRename={() => { setTabMenuId(null); setEditingTabId(menuTab.id) }}
+              onRenameWithWorktree={() => { setTabMenuId(null); renameWithWorktree.requestRename(menuTab) }}
               onForkTab={menuTab.conversationId ? () => { void useSessionStore.getState().forkTab(menuTab.id).catch((err) => rError('tabs', 'fork tab failed', { error: String(err) })) } : undefined}
               onNewTabInDir={() => {
                 if (menuTab.workingDirectory) {
@@ -440,6 +430,8 @@ export function TabStrip() {
           )
         })()}
       </AnimatePresence>
+
+      {renameWithWorktree.dialog}
 
       {(() => {
         const pendingTab = tabs.find((t) => t.pendingWorktreeSetup)

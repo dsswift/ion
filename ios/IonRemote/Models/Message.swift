@@ -118,10 +118,17 @@ struct Message: Codable, Identifiable, Sendable {
     /// Classifies engine-side injected user turns on historical reload.
     /// "agent_completion" marks a machine-to-machine dispatch callback (a child
     /// agent's result routed to its parent) rather than a turn the user authored.
-    /// Absent (or nil) means an ordinary user turn. iOS filters these rows in
-    /// handleConversationHistory to avoid rendering dispatch completion messages
-    /// as user bubbles. Additive/optional — absent on legacy history rows.
+    /// Absent (or nil) means an ordinary user turn. Additive/optional — absent
+    /// on legacy history rows. See `InjectionPolicy` for how it is interpreted.
     var injectionKind: String? = nil
+
+    /// Engine-derived: an engine-side actor authored this turn, not a user.
+    ///
+    /// Read by `InjectionPolicy.suppresses` so the history filter and the
+    /// live-event filter classify from the SAME field and cannot disagree.
+    /// Absent on rows persisted before the flag existed, where the kind is the
+    /// fallback. Additive/optional.
+    var machineAuthored: Bool? = nil
 
     // MARK: - Extended-thinking summary (issue #158)
     //
@@ -172,7 +179,7 @@ struct Message: Codable, Identifiable, Sendable {
         case isInternal = "internal"
         case slashCommand, slashArgs, slashSource
         case planFilePath, markerKind
-        case injectionKind
+        case injectionKind, machineAuthored
         // clientMsgId: desktop-local reconciliation key on history user rows (RC-9).
         case clientMsgId
         // dedupKey / dedupMode: decoded from the desktop history-replay wire
@@ -262,12 +269,13 @@ extension Message {
             planFilePath = try container.decodeIfPresent(String.self, forKey: .markerPlanFilePath)
         }
 
-        // injectionKind classifies engine-side injected user turns. "agent_completion"
-        // marks a machine-to-machine dispatch callback (a child agent's result routed
-        // to its parent) rather than a turn the user authored. Decoded so iOS can
-        // filter these rows in handleConversationHistory and avoid rendering dispatch
-        // completion messages as user bubbles on history load.
+        // injectionKind classifies engine-side injected user turns, and
+        // machineAuthored is the engine's derived verdict on whether an
+        // engine-side actor authored the turn. Both are decoded so
+        // InjectionPolicy can filter these rows in handleConversationHistory
+        // rather than rendering a dispatch completion as a user bubble.
         injectionKind = try container.decodeIfPresent(String.self, forKey: .injectionKind)
+        machineAuthored = try container.decodeIfPresent(Bool.self, forKey: .machineAuthored)
 
         // Engine SessionMessage carries image references on historical reload
         // in `attachments` (engine flattenEntries replays a persisted tool-result
@@ -288,7 +296,7 @@ extension Message {
         case isInternal = "internal"
         case slashCommand, slashArgs, slashSource
         case planFilePath
-        case markerKind, markerPlanFilePath, injectionKind
+        case markerKind, markerPlanFilePath, injectionKind, machineAuthored
         case attachments
     }
 

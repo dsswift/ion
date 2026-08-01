@@ -338,6 +338,7 @@ function projectTab(t: TabState, s: ProjectionStoreState): ProjectedRendererTab 
     messageCount: msgs.length > 0 ? msgs.length : (activeInst?.messageCount || 0),
     queuedPrompts: t.queuedPrompts || [],
     isTerminalOnly: t.isTerminalOnly || undefined,
+    inputLocked: t.inputLocked || undefined,
     hasEngineExtension: tabHasExtensions(t) || undefined,
     // iOS resolves the harness badge display name by matching engineProfileId
     // against the desktop_engine_profiles list. Without this field, the badge

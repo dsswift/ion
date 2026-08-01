@@ -34,6 +34,8 @@ struct JarvisArcReactorTheme: AppTheme {
     // "Mixed failure" — same amber as statusWaitingChildren so the
     // amber = advisory vocabulary holds across themes.
     let statusWarning = Color(red: 0xF5 / 255, green: 0x9E / 255, blue: 0x0B / 255)
+    let statusIdle = Color(red: 0x81 / 255, green: 0x81 / 255, blue: 0x88 / 255)
+    let worktreeDirty = Color(red: 0xC4 / 255, green: 0x70 / 255, blue: 0x60 / 255)
     let surfaceElevated = Color(red: 8 / 255, green: 24 / 255, blue: 44 / 255)
     let codeBg = Color(red: 4 / 255, green: 14 / 255, blue: 28 / 255).opacity(0.8)
     let userBubbleTint = Color(red: 10 / 255, green: 36 / 255, blue: 60 / 255)

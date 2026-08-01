@@ -112,6 +112,15 @@ export interface WorktreeMoveResult {
   workingDirectory?: string
   /** Populated on re-attach: the freshly created worktree. */
   worktree?: WorktreeInfo
+  /**
+   * Populated when a forced retire preserved uncommitted work: the full ref
+   * name in the parent repo (`refs/ion/recovery/...`) holding a snapshot commit.
+   * Absent when the worktree was clean, so there was nothing to preserve.
+   *
+   * Surfaced to the operator rather than only logged: a ref they cannot see is
+   * indistinguishable from work that was silently destroyed.
+   */
+  recoveryRef?: string
   error?: string
 }
 
@@ -176,6 +185,18 @@ export interface WorktreeInventoryEntry {
   needsSync: boolean
   safeToDiscard: boolean
   /**
+   * When this worktree's commits were landed into its source branch, or absent
+   * when they have not been.
+   *
+   * A STORED fact, written by the land verb. It cannot be derived afterwards: a
+   * worktree that never committed and one whose work landed both end up clean
+   * with zero unlanded commits and a tip equal to their merge base, so every
+   * git probe answers identically for both. Absent therefore means NOT landed,
+   * never "unknown" -- which is what keeps a freshly created empty worktree out
+   * of the landed group. See the registry field comment for the full reasoning.
+   */
+  landedAt?: number
+  /**
    * Set while a rebase/merge/cherry-pick is in progress in this worktree. A
    * conflicted sync stops mid-rebase with HEAD detached; the worktree used to
    * vanish from the inventory in that state (the detached-HEAD skip), which is
@@ -197,7 +218,6 @@ export interface WorktreeAppraisalWire {
   hasUncommittedChanges: boolean
   uncommittedPaths: string[]
   unlandedCommitCount: number
-  unlandedSubjects: string[]
   fullyLanded: boolean
   safeToDiscard: boolean
   reason?: string
@@ -207,34 +227,69 @@ export interface WorktreeAppraisalWire {
 // ─── Integration workspace (the "bench") ───
 
 /**
- * Per-member state, computed on rebuild and on staleness evaluation.
+ * ── Three orthogonal axes, not one enum ─────────────────────────────────────
  *
- * - `integrated` — the pinned contribution is merged and the member branch has
- *   not moved past it.
- * - `pending` — enrolled, but the pinned contribution is empty: the member
- *   branch carries no commits of its own beyond the source branch, so there is
- *   nothing to merge. NOT terminal and NOT an error — it is the honest state of
- *   a worktree enrolled before its first commit, which is the natural way to
- *   start work you intend to integrate. The member becomes `stale` the moment it
- *   commits, and Update pins the real work.
- * - `landed` — the contribution is now contained in the source branch itself,
- *   so it is part of the bench's base permanently and needs no merge. This is
- *   a terminal state: the member is retired from the list on the next rebuild.
- *   See `IntegrationWorkspace` for why landing is absorption, not removal.
- *   Distinguished from `pending` by the contribution range: absorption applies
- *   only to a pin that carried commits in the first place.
- * - `stale` — the member branch's committed content differs from what is
- *   pinned. Advisory only: nothing rebuilds until the operator says so.
- * - `conflicted` — the pinned contribution could not merge; the member was
- *   skipped and the rest of the bench still built.
- * - `missing` — the branch or worktree is gone.
- * - `excluded` — present in the member list but disabled, so skipped.
+ * A member's state used to be a single `MemberStatus` union mixing three
+ * INDEPENDENT questions: is it enrolled, how fresh is its pin, and what did the
+ * last merge do. A member can be excluded AND behind AND conflicted at the same
+ * time, and one enum can report only one of those — so every evaluation threw
+ * two facts away.
+ *
+ * That was not theoretical. `refreshStaleness` carried a priority ladder whose
+ * own comment admitted it ("never overwrite a conflict verdict with a staleness
+ * verdict"), and the ordering meant an excluded member that had also moved on
+ * reported only `excluded`: re-enabling it produced a silently stale merge with
+ * no warning anywhere. Three fields cannot mask each other, so the ladder is
+ * gone and every axis is always readable.
  */
-export type MemberStatus =
-  | 'integrated' | 'pending' | 'landed' | 'stale' | 'conflicted' | 'missing' | 'excluded'
 
 /**
- * One worktree enrolled in an integration workspace.
+ * Is this worktree in a bench, and does it take part in the merge?
+ *
+ * Derived for display (`none` when there is no membership record at all); the
+ * durable half is `WorktreeMembership.enabled`.
+ */
+export type EnrollmentState = 'none' | 'included' | 'excluded'
+
+/**
+ * How the bench's pinned contribution relates to the worktree's real content.
+ *
+ * - `empty` — the pin carries no commits: the member branch has nothing of its
+ *   own beyond the source branch, so there is nothing to merge. NOT terminal
+ *   and NOT an error — it is the honest state of a worktree enrolled before its
+ *   first commit, which is the natural way to start work you intend to
+ *   integrate. It becomes `behind` the moment it commits.
+ * - `current` — the pinned contribution matches what the member branch holds.
+ * - `behind` — the member branch's committed content has moved past the pin.
+ *   Advisory only: nothing reassembles until the operator says so.
+ * - `absorbed` — the contribution is now contained in the source branch itself,
+ *   so it is permanently part of the bench's base and needs no merge. Terminal;
+ *   the member retires on the next assembly. Distinguished from `empty` by the
+ *   contribution RANGE — absorption applies only to a pin that carried commits.
+ * - `gone` — the branch or worktree no longer exists.
+ */
+export type PinState = 'empty' | 'current' | 'behind' | 'absorbed' | 'gone'
+
+/**
+ * What the last assembly did with this member's pinned contribution.
+ *
+ * Owned by `bench-assemble.ts`, which is the only thing that merges. Staleness
+ * evaluation never touches it — that separation is what lets a conflicted
+ * member also report that it has moved on.
+ */
+export type MergeOutcome = 'unbuilt' | 'merged' | 'conflicted' | 'skipped'
+
+/**
+ * One worktree's membership in a bench: a PIN plus a VERDICT, keyed by worktree
+ * path.
+ *
+ * ── Why this holds no worktree fields ───────────────────────────────────────
+ * This record used to re-declare `worktreePath`, `branchName`, and `label`, and
+ * it still needed `title`, which it did not have — so the wire layer resolved
+ * the title by joining against the inventory and documented the join as a
+ * workaround. The join was already the truth; it was just done late, once, in
+ * one projection. Making membership a sidecar means every worktree fact arrives
+ * from the worktree itself and the two can never disagree.
  *
  * A member contributes its **committed** work only: the tree of its branch
  * HEAD. Uncommitted work in a worktree cannot reach the bench — see
@@ -244,13 +299,24 @@ export interface IntegrationMember {
   /** Absolute path of the member worktree. Identity within a workspace. */
   worktreePath: string
   branchName: string
-  /** Display label (defaults to the worktree directory name). */
-  label: string
-  /** False = kept in the list but skipped in the merge (`excluded`). */
+  /** False = kept in the list but skipped in the merge. */
   enabled: boolean
+  /** Pin freshness. Owned by staleness evaluation. */
+  pin: PinState
+  /** Last merge outcome. Owned by assembly. */
+  merge: MergeOutcome
   /**
-   * The exact contribution currently integrated. Rebuild merges THIS, never a
-   * fresh read of the member's tip -- that is what stops a rebuild triggered
+   * Operator verdict on the CURRENT pinned contribution.
+   *
+   * Scoped to the pin, not to the worktree: it answers "I reviewed THIS
+   * contribution", so advancing the pin clears it. Absent means unreviewed —
+   * distinct from reviewed-and-fine, which is why this is optional rather than
+   * a three-valued flag defaulting to neutral.
+   */
+  review?: 'good' | 'issue'
+  /**
+   * The exact contribution currently integrated. Assembly merges THIS, never a
+   * fresh read of the member's tip -- that is what stops an assembly triggered
    * for one member from dragging in another member's half-finished work.
    * Advanced only by an explicit act: enrollment, or Update on this member.
    */
@@ -262,14 +328,14 @@ export interface IntegrationMember {
    *
    * The contribution is the range `pinnedBaseSha..pinnedSha`, not the tip. That
    * matters because an equal pair means the member has committed nothing of its
-   * own, and no git query at rebuild time can recover that fact — a member that
+   * own, and no git query at assembly time can recover that fact — a member that
    * has not started and a member whose work has landed both leave `pinnedSha` an
    * ancestor of the source branch with an empty `sourceBranch..pinnedSha`. The
    * bench used to read the first case as the second and silently delete the
    * member.
    *
    * Empty means UNKNOWN (a record written before this was tracked, or a branch
-   * with no common ancestor), never "empty contribution". Rebuild resolves an
+   * with no common ancestor), never "empty contribution". Assembly resolves an
    * unknown value once against the member branch and backfills it.
    */
   pinnedBaseSha: string
@@ -281,15 +347,22 @@ export interface IntegrationMember {
    * commit (a missed stale).
    */
   currentTreeHash: string
-  status: MemberStatus
-  /** Populated when `status === 'conflicted'`. */
+  /** Populated when `merge === 'conflicted'`. */
   conflictPaths?: string[]
   /** Branch names of earlier-merged members this one collided with. */
   conflictsWith?: string[]
+  /**
+   * Set when `merge === 'merged'` and the merge succeeded only because a
+   * recorded conflict resolution was replayed (`git rerere`). Observable on
+   * purpose: a replayed resolution is deterministic but it is NOT the same
+   * fact as a clean merge, and hiding the difference would make a stale
+   * recording indistinguishable from conflict-free work.
+   */
+  mergeResolution?: 'replayed'
 }
 
 /**
- * An integration workspace: a rebuildable bench worktree whose contents are a
+ * An integration workspace: a reassemblable bench worktree whose contents are a
  * deterministic function of `(source tip, ordered member list)`.
  *
  * Keyed by `(repoPath, sourceBranch)`. That key is the mechanism that keeps
@@ -305,6 +378,14 @@ export interface IntegrationMember {
  * the operator already uses to decide a change is ready. There is no mode that
  * relaxes this.
  *
+ * **Assembly is atomic.** The bench presents either the exact enrolled
+ * combination or nothing: when any enabled member's merge cannot complete
+ * (including via a replayed rerere resolution), the whole assembly fails and
+ * the bench is wiped to an empty tree. A partial bench that silently omitted
+ * one member's work was the worse alternative — the operator tested a
+ * combination that misrepresented what was enrolled. Partial-on-purpose stays
+ * available through the per-member exclude toggle.
+ *
  * **Landing is absorption, not removal.** When a member's work lands into the
  * source branch it becomes part of the bench's BASE — permanently, and with no
  * option to exclude it. The bench is rebuilt from the source tip, so the landed
@@ -319,32 +400,41 @@ export interface IntegrationMember {
  * **Absorption applies only to a pin that carried commits.** A member whose
  * contribution is empty (`pinnedBaseSha === pinnedSha`) has not landed anything;
  * it has not started. Both cases look identical to every question asked at
- * rebuild time, so the empty case is decided from the recorded contribution range
+ * assembly time, so the empty case is decided from the recorded contribution range
  * and reported as `pending` rather than retired. Retiring it was a real defect:
  * a worktree enrolled before its first commit was deleted from the member list on
- * every rebuild.
+ * every assembly.
  */
 export interface IntegrationWorkspace {
   repoPath: string
   sourceBranch: string
   /** Bench worktree location (~/.ion/integration/<repo>-<slug>). */
   benchPath: string
-  /** Bench branch (ion/bench/<slug>), recreated from scratch on every build. */
+  /** Bench branch (ion/bench/<slug>), recreated from scratch on every assembly. */
   benchBranch: string
   /** Merge order. */
   members: IntegrationMember[]
-  /** Source-branch commit the last build started from. */
+  /** Source-branch commit the last assembly started from. */
   baseSha: string
-  /** Unix ms of the last successful rebuild; 0 when never built. */
+  /** Unix ms of the last assembly attempt; 0 when never assembled. */
   lastBuiltAt: number
+  /**
+   * Outcome of the last assembly. Absent on records written before atomic
+   * assembly existed — clients must treat absence as "unknown", not as a
+   * failure. `failed` means the bench was wiped to an empty tree and holds
+   * NO member content until the conflict is resolved and assembly succeeds.
+   */
+  lastAssembly?: 'assembled' | 'failed'
+  /** Operator-facing reason when `lastAssembly` is `failed`. */
+  lastAssemblyError?: string
 }
 
-/** Outcome of a rebuild attempt. */
-export interface BenchRebuildResult {
+/** Outcome of an assembly attempt. */
+export interface BenchAssembleResult {
   ok: boolean
   workspace?: IntegrationWorkspace
   /**
-   * Members retired during this rebuild because their work landed into the
+   * Members retired during this assembly because their work landed into the
    * source branch. Their content is now part of the bench's base permanently.
    * Surfaced so the UI can tell the operator what was absorbed rather than
    * having rows vanish silently.
@@ -352,8 +442,20 @@ export interface BenchRebuildResult {
   retired?: IntegrationMember[]
   /** Refusal reason (dirty bench, running conversation, git failure). */
   error?: string
-  /** Set when the refusal is a guard the operator can resolve. */
-  refusal?: 'dirty-bench' | 'conversation-running'
+  /**
+   * Set when the refusal is a guard the operator can resolve.
+   * `resolution-in-progress`: a resolve-once merge is open in the bench;
+   * assembling would destroy the very merge being resolved, so it refuses
+   * until the merge is completed or aborted.
+   */
+  refusal?: 'dirty-bench' | 'conversation-running' | 'resolution-in-progress'
+  /**
+   * Non-blocking collision warning from the pin-advance dry-run
+   * (`git merge-tree --write-tree`): the update proceeded, but the NEXT
+   * assembly will conflict. Warn, never gate — the operator decides whether
+   * to resolve now or keep working.
+   */
+  warning?: string
 }
 
 

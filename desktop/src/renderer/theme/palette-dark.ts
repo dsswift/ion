@@ -63,10 +63,13 @@ export const darkColors = {
 
   // Status dots
   statusIdle: '#818188',
-  // Running is a muted steel-teal, deliberately distinct from the blue
-  // `accent` so the pulsing "working" dot never reads as the accent color.
-  statusRunning: '#5EA9C9',
-  statusRunningBg: 'rgba(94, 169, 201, 0.12)',
+  // Running is Ion Classic's terracotta orange, shared verbatim by Ion Dark,
+  // Ion Light, and Ion Classic so the "working" dot is one recognizable hue
+  // across all three built-ins. Deliberately distinct from the blue `accent`
+  // so the pulsing dot never reads as the accent color, and warm against the
+  // cool palette so it carries at a glance.
+  statusRunning: '#d97757',
+  statusRunningBg: 'rgba(217, 119, 87, 0.12)',
   statusCompacting: '#60a5fa',
   statusCompactingBg: 'rgba(96, 165, 250, 0.1)',
   statusComplete: '#34d399',
@@ -89,14 +92,14 @@ export const darkColors = {
   // background agents are still executing. Amber ⇒ "in flight, not yet
   // done", consistent with the permission cards; amber-400 vs the
   // permission dot's amber-500 keeps the two attention states legible
-  // side by side, and both stay distinct from the blue statusRunning so
-  // a quick glance tells the user whether foreground or background work
-  // is active.
+  // side by side. Amber also stays separable from the terracotta
+  // statusRunning so a quick glance tells the user whether foreground or
+  // background work is active.
   statusWaitingChildren: '#fbbf24',
   statusWaitingChildrenGlow: 'rgba(251, 191, 36, 0.4)',
   // Question / "waiting on you" dot. Dedicated token (NOT `infoText`, which is
   // shared with info cards) so the dot's purple is independent of that blue and
-  // stays distinct from the teal running dot.
+  // stays distinct from the orange running dot.
   statusQuestion: '#A78BFA',
 
   // Tab
@@ -224,6 +227,32 @@ export const darkColors = {
 
   // Worktree branch indicator
   worktreeGreen: '#34d399',
+  /**
+   * Unlanded-commit count on a worktree row.
+   *
+   * Deliberately NOT worktreeGreen. Green is the panel's ATTENTION colour --
+   * the dirty dot and the reviewed-good check both use it -- and the commit
+   * counts wearing it made them the first thing the eye landed on. They are
+   * a fact worth reading, not the most urgent one in the row. A subdued
+   * violet stays legible without competing for first glance.
+   */
+  unlandedCount: '#a78bfa',
+
+  /**
+   * Uncommitted changes in a worktree.
+   *
+   * Rendered as a small `!` rather than a filled shape, which is what lets it
+   * borrow the danger hue without claiming a failure. `git status` has trained
+   * everyone to read a terse mark beside a path as "this file has changes", and
+   * at this size, next to the commit count, that is what it reads as -- not an
+   * error banner.
+   *
+   * Earlier attempts: worktreeGreen said SUCCESS about unsaved work, and a teal
+   * square landed between statusRunning (#5EA9C9) and statusComplete (#34d399),
+   * two cyan-greens already in this same gutter. Amber is unavailable -- it is
+   * the base-moved sync signal on the same row.
+   */
+  worktreeDirty: '#f87171',
 
   // Diff (inline edit diffs + git diff viewer)
   diffAddBg: 'rgba(16, 185, 129, 0.12)',

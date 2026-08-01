@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { useOutsideDismiss } from '../hooks/useOutsideDismiss'
 import { transitions } from '../theme-tokens'
 import { ConfirmDialog } from './git/ConfirmDialog'
 import { rError } from '../rendererLogger'
@@ -50,20 +51,10 @@ export function CommitContextMenu({ anchor, commit, directory, onRefresh, onClos
   const ref = useRef<HTMLDivElement>(null)
   const [confirmReset, setConfirmReset] = useState<'soft' | 'mixed' | 'hard' | null>(null)
 
-  useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
-    }
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('mousedown', handleClick)
-    window.addEventListener('keydown', handleKey)
-    return () => {
-      window.removeEventListener('mousedown', handleClick)
-      window.removeEventListener('keydown', handleKey)
-    }
-  }, [onClose])
+  // Shared dismissal: the hard-reset confirm dialog is a sibling of `ref`, so a
+  // local click-outside handler would unmount it on the mousedown of its own
+  // confirm button and the reset would never run.
+  useOutsideDismiss([ref], onClose)
 
   const items = [
     { label: 'Copy Commit Hash', action: () => navigator.clipboard.writeText(commit.fullHash) },

@@ -60,6 +60,7 @@ func (a *bumpCountingAccessor) SendPromptWithKind(_, _ string, _ []string, _ str
 	return nil
 }
 func (a *bumpCountingAccessor) SteerSelfMainLoop(_ string) bool { return false }
+func (a *bumpCountingAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
 func (a *bumpCountingAccessor) ParkSelfMainLoop() bool          { return false }
 func (a *bumpCountingAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil

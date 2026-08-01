@@ -50,9 +50,9 @@ export const PANEL_HEADER = 28
 export const SASH_SIZE = 4
 
 /** Stable identity for each pane. Order here is render order. */
-export type PaneId = 'changes' | 'worktrees' | 'integration' | 'graph'
+export type PaneId = 'changes' | 'worktrees' | 'graph'
 
-export const PANE_ORDER: readonly PaneId[] = ['changes', 'worktrees', 'integration', 'graph']
+export const PANE_ORDER: readonly PaneId[] = ['changes', 'worktrees', 'graph']
 
 /**
  * Smallest body height per pane, in pixels.
@@ -62,15 +62,16 @@ export const PANE_ORDER: readonly PaneId[] = ['changes', 'worktrees', 'integrati
  * which the operator controls; the minimum is only the floor.
  *
  * Sized for THIS panel, which is 400-520px tall. VS Code's PaneView defaults to
- * a 120px minimum body, but it lives in a full-height sidebar; four panes at
- * that floor need 512px of a 442px budget here, so every layout would overflow.
+ * a 120px minimum body, but it lives in a full-height sidebar; three panes at
+ * that floor need 384px of a 442px budget here, leaving nothing to distribute.
  * Graph keeps a slightly higher floor because a commit graph with fewer than a
  * few rows conveys nothing, while a file list is still readable at two.
  */
 export const MIN_BODY: Record<PaneId, number> = {
   changes: 56,
-  worktrees: 56,
-  integration: 56,
+  // Holds the bench bar plus the worktree rows, which used to be two panes with
+  // two floors and two headers for one concept.
+  worktrees: 72,
   graph: 72,
 }
 

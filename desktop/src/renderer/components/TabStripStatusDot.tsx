@@ -81,7 +81,7 @@ export function StatusDot(props: StatusDotAllProps) {
       bg = colors.statusPermission
       glow = true
     } else if (props.status === 'connecting' || props.status === 'running') {
-      // Teal "foreground running" wins over amber "background only" —
+      // Orange "foreground running" wins over amber "background only" —
       // see TabStripShared.getTabStatusColor for the rationale.
       bg = colors.statusRunning
       pulse = true

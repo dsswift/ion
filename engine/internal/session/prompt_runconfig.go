@@ -109,6 +109,21 @@ func (m *Manager) buildRunConfig(
 		runCfg.SecurityCfg = m.config.Security
 	}
 
+	// Workspace containment: the engine's baseline worktree/bench rules
+	// (internal/workspaces), enabled by default and disabled only by an
+	// explicit SecurityConfig.WorkspaceContainment=false. Threaded per-run
+	// like the permission engine so the tool loop's check is nil-safe. One
+	// checker per manager: its registry cache is mtime-validated, so sharing
+	// it across sessions is both safe and what keeps the stat cost at one per
+	// gated call.
+	var secCfg *types.SecurityConfig
+	if m.config != nil {
+		secCfg = m.config.Security
+	}
+	if secCfg.WorkspaceContainmentEnabled() {
+		runCfg.WorkspaceChecker = m.workspaceChecker()
+	}
+
 	// G07/D-009: Enterprise tool restrictions apply to EVERY session
 	// unconditionally — enterprise policy is not an extension concern, so
 	// the check is installed here rather than inside wireExtensionHooks.

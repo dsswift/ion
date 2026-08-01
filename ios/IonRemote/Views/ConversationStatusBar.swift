@@ -48,6 +48,7 @@ struct ConversationStatusBar: View {
     var onSelectThinkingEffort: (String) -> Void = { _ in }
 
     @State private var showModeConfirm = false
+    @State private var showModelPicker = false
 
     /// Engine-derived inputs for the status bar, resolved nil-safely from an
     /// optional `StatusFields`. The bar must ALWAYS render for engine tabs (like
@@ -168,6 +169,42 @@ struct ConversationStatusBar: View {
         return nil
     }
 
+    /// The absolute occupancy figure to divide by the window — the NUMERATOR
+    /// counterpart to `windowForModel`'s denominator. Static for the same reason
+    /// as the two resolvers around it: every iOS surface that shows context usage
+    /// resolves one number from one implementation, so they cannot disagree.
+    ///
+    /// A context breakdown carries three token quantities that are easy to
+    /// confuse, and only one of them is occupancy:
+    ///
+    ///   - `breakdownOccupancy` (`occupancyTokens`) — the engine's authoritative
+    ///     occupancy. The same figure `StatusFields.contextTokens` carries and the
+    ///     same input the engine's proactive-compaction gate measures. THIS is
+    ///     what divides by the context window.
+    ///   - `breakdownTotal` (`totalTokens`) — the ITEMIZED per-category sum. An
+    ///     independent estimate meant for attribution ("what is taking up the
+    ///     space"). It OVER-reports, counting content the provider did not bill
+    ///     for this turn, so it must never be read as occupancy: doing so
+    ///     rendered a conversation occupying 26% of a 1M window as ~103%.
+    ///   - `apiReportedTotal` (not accepted here) — the raw provider
+    ///     input_tokens for the last turn, with nothing added for messages
+    ///     appended since, so it UNDER-reports mid-turn.
+    ///
+    /// `breakdownTotal` is a parameter purely so this contract is stated at the
+    /// one place the decision is made. It is deliberately never returned — a
+    /// caller that has it in hand passes it here and gets back the right number.
+    static func resolveContextTokens(
+        breakdownOccupancy: Int?,
+        breakdownTotal: Int?,
+        fieldsTokens: Int?,
+        instanceTokens: Int?,
+    ) -> Int? {
+        if let t = breakdownOccupancy, t > 0 { return t }
+        if let t = fieldsTokens, t > 0 { return t }
+        if let t = instanceTokens, t > 0 { return t }
+        return nil
+    }
+
     /// Context window of a named model from the catalog, falling back to the
     /// engine's reported window. Static so non-bar surfaces can resolve the
     /// same denominator.
@@ -280,23 +317,15 @@ struct ConversationStatusBar: View {
                     .frame(height: 12)
             }
 
-            // Model picker menu
-            Menu {
-                ForEach(availableModels) { model in
-                    Button {
-                        onSelectModel(model.id)
-                    } label: {
-                        HStack {
-                            Text(model.label)
-                            if model.modelKind == "image" {
-                                Text("image gen")
-                            }
-                            if model.id == effectiveModel {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                }
+            // Model picker trigger. Opens the provider-grouped sheet
+            // (ModelPickerSheet) — at parity with the desktop popover, which a
+            // flat Menu could not reach: no search, no collapsible provider
+            // sections, no visible-but-disabled rows for unconfigured
+            // providers. Disabled while the conversation is running, matching
+            // the desktop's busy gate (a mid-run switch would not apply to the
+            // turn in flight).
+            Button {
+                showModelPicker = true
             } label: {
                 HStack(spacing: 2) {
                     Text(displayLabel)
@@ -307,6 +336,8 @@ struct ConversationStatusBar: View {
                 .foregroundStyle(.secondary)
                 .opacity(isRunning ? 0.5 : 1.0)
             }
+            .buttonStyle(.plain)
+            .disabled(isRunning)
 
             Spacer()
 
@@ -418,6 +449,17 @@ struct ConversationStatusBar: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("The extension controls this tab's planning mode. Changing it manually may interfere with the extension's workflow.")
+        }
+        .sheet(isPresented: $showModelPicker) {
+            ModelPickerSheet(
+                models: availableModels,
+                selectedModelId: effectiveModel,
+                // The star marks the GLOBAL default, which is what
+                // `preferredModel` carries; `effectiveModel` above folds in the
+                // per-conversation override and is marked with the checkmark.
+                preferredModelId: preferredModel,
+                onSelect: onSelectModel,
+            )
         }
     }
 }

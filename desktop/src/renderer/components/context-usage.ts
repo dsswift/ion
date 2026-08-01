@@ -18,6 +18,63 @@ export interface ContextDisplay {
 }
 
 /**
+ * The minimum shape `resolveContextInputs` reads off a conversation instance.
+ *
+ * Declared structurally rather than importing `ConversationInstance` so this
+ * module stays free of store imports (see the file header) — any object with
+ * these fields works, which is also what lets the tests pass plain literals.
+ */
+export interface ContextInstanceLike {
+  contextBreakdown?: { occupancyTokens?: number; totalTokens?: number } | null
+  statusFields?: { contextTokens?: number; contextWindow?: number } | null
+}
+
+/** The two engine-derived numbers every context surface needs. */
+export interface ContextInputs {
+  /** Occupancy numerator, or null when the engine has reported none. */
+  tokens: number | null
+  /** Engine-reported window for the model it actually ran, or null. */
+  engineWindow: number | null
+}
+
+/**
+ * Resolve the numerator and the engine-window fallback for a context surface.
+ *
+ * Both the status-bar ring and the status drawer call this, so the two cannot
+ * read different fields or order them differently. Assembling these by hand at
+ * each call site is what let the numerator and the denominator drift apart
+ * independently — the numerator agreed by construction while the denominator was
+ * still a per-call-site argument.
+ *
+ * Numerator priority — occupancy arrives on two paths carrying the SAME value,
+ * because the engine derives both from one `GetContextUsage` call:
+ *
+ *   1. `contextBreakdown.occupancyTokens` — published on every breakdown
+ *      emission. Preferred because a breakdown is present even for an idle
+ *      conversation whose `statusFields` have not been seeded.
+ *   2. `statusFields.contextTokens` — the streaming status path.
+ *
+ * `contextBreakdown.totalTokens` is deliberately NOT a candidate. It is the
+ * engine's ITEMIZED per-category estimate, meant for attribution ("what is
+ * taking up the space"), and it over-reports because it counts content the
+ * provider did not bill for this turn. Reading it as occupancy rendered a
+ * conversation occupying 26% of a 1M window as 103%.
+ *
+ * `engineWindow` is the window the engine reported for the model it actually
+ * ran. It is a *fallback* denominator, consulted by `getDynamicContextWindow`
+ * only when neither the dynamic model store nor the static catalog knows the
+ * selected model — never an override of the picker's selection.
+ */
+export function resolveContextInputs(inst: ContextInstanceLike | null | undefined): ContextInputs {
+  return {
+    tokens: inst?.contextBreakdown?.occupancyTokens
+      ?? inst?.statusFields?.contextTokens
+      ?? null,
+    engineWindow: inst?.statusFields?.contextWindow ?? null,
+  }
+}
+
+/**
  * Divide engine-reported occupancy by the SELECTED model's window.
  *
  * Why the selected model and not the engine's: there is no engine command to

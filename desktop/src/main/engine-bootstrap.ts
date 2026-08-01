@@ -10,7 +10,7 @@
  *      bundled template, substituting $HOME with the real home directory.
  *   2. Copy the bundled engine binary to ~/.ion/bin/ion if missing or
  *      content-changed (sha256 hash of the bytes — see hashBinary).
- *   3. Run `ion install-assets` to install SDK/ion-meta/canonical docs.
+ *   3. Run `ion install-assets` to install the extension SDK.
  *   4. `launchctl bootstrap` + `kickstart` the agent (kickstart retried —
  *      launchctl transiently fails while a booted-out agent tears down).
  *   5. Verify the daemon is actually up by connecting to its socket; if it

@@ -11,6 +11,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/tools"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
+	"github.com/dsswift/ion/engine/internal/workspaces"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -29,6 +30,7 @@ func (b *ApiBackend) executeTools(
 	// is safe because cfg is set once at StartRun and never mutated.
 	var hooks RunHooks
 	var permEng *permissions.Engine
+	var wsChecker *workspaces.Checker
 	var sbCfg *sandbox.Config
 	var mcpRouter func(context.Context, string, map[string]interface{}) (*types.ToolResult, error)
 	var telem TelemetryCollector
@@ -38,6 +40,7 @@ func (b *ApiBackend) executeTools(
 	if run.cfg != nil {
 		hooks = run.cfg.Hooks
 		permEng = run.cfg.PermEngine
+		wsChecker = run.cfg.WorkspaceChecker
 		sbCfg = run.cfg.SandboxCfg
 		mcpRouter = run.cfg.McpToolRouter
 		telem = run.cfg.Telemetry
@@ -183,43 +186,17 @@ func (b *ApiBackend) executeTools(
 				}
 			}
 
-			// Sandbox validation for Bash tool (Step 3)
-			if (block.Name == "Bash" || block.Name == "bash") && sbCfg != nil {
-				if cmd, ok := block.Input["command"].(string); ok {
-					safe, reason, patternSource := sandbox.ValidateWithConfig(cmd, *sbCfg)
-					if !safe {
-						if telem != nil {
-							// R11: event name is carried by Event.Name; payload.kind removed.
-							telem.Event("sandbox.block", map[string]any{
-								"tool":            block.Name,
-								"reason":          reason,
-								"pattern_source":  patternSource,
-								"command_preview": truncatePreview(cmd, telemPreviewLimit),
-							}, buildTelemCtx(run))
-						}
-						emitToolFailure(telem, run, toolFailureBlock{Name: block.Name, ID: block.ID}, "sandbox_blocked", reason)
-						results[i] = conversation.ToolResultEntry{
-							ToolUseID: block.ID,
-							Content:   "Sandbox blocked: " + reason,
-							IsError:   true,
-						}
-						b.emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
-							ToolID:  block.ID,
-							Content: results[i].Content,
-							IsError: true,
-						}})
-						return nil
-					}
-				}
+			// Workspace containment (beside the permission check, before hooks
+			// and execution). See checkWorkspaceContainment for the policy.
+			if done := b.checkWorkspaceContainment(gCtx, run, wsChecker, block, cwd, permDenyFn, telem, results, i); done {
+				return nil
 			}
 
-			// After sandbox validation passes, wrap if sandbox config exists
-			if (block.Name == "Bash" || block.Name == "bash") && sbCfg != nil {
-				if cmd, ok := block.Input["command"].(string); ok {
-					if wrapped, err := sandbox.WrapCommand(cmd, *sbCfg, ""); err == nil && wrapped != cmd {
-						block.Input["command"] = wrapped
-					}
-				}
+			// Sandbox validation + wrapping for Bash (Step 3). See
+			// checkAndWrapSandbox for the policy; a block records the result
+			// and stops processing this tool.
+			if done := b.checkAndWrapSandbox(run, sbCfg, &block, telem, results, i); done {
+				return nil
 			}
 
 			// Call onToolCall hook (extension hook). Race against gCtx so a

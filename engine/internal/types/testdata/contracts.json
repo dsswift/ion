@@ -36,6 +36,7 @@
       "contextWindow",
       "model",
       "modelBreakdown",
+      "occupancyTokens",
       "totalTokens",
       "unaccounted"
     ],
@@ -138,6 +139,7 @@
     ],
     "prompt_injected": [
       "kind",
+      "machineAuthored",
       "origin",
       "prompt"
     ],
@@ -317,6 +319,7 @@
     "index",
     "injectedPrompt",
     "injectedPromptKind",
+    "injectedPromptMachineAuthored",
     "injectedPromptOrigin",
     "interceptLevel",
     "interceptMessage",
@@ -436,6 +439,7 @@
       "contextWindow",
       "model",
       "modelBreakdown",
+      "occupancyTokens",
       "totalTokens",
       "unaccounted"
     ],
@@ -580,6 +584,7 @@
       "injectionKind",
       "internal",
       "isError",
+      "machineAuthored",
       "markerClearedBlocks",
       "markerKind",
       "markerMessageLength",

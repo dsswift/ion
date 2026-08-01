@@ -671,10 +671,28 @@ type CompactionConfig struct {
 
 // --- Security Config ---
 
-// SecurityConfig controls opt-in security features. All fields default to
-// disabled. Harness engineers enable what they need.
+// SecurityConfig controls security features.
 type SecurityConfig struct {
+	// RedactSecrets is opt-in and defaults to disabled.
 	RedactSecrets bool `json:"redactSecrets"`
+
+	// WorkspaceContainment controls the engine's baseline workspace rules:
+	// a conversation whose cwd is a registered worktree may not write into
+	// the base repository it was cut from or into a sibling worktree, and an
+	// integration bench refuses file writes and git history commands (see
+	// internal/workspaces). Nil/absent means ENABLED — the containment is
+	// safety mechanism, not an opt-in feature, so it is on by default and a
+	// consumer that genuinely wants raw behavior sets false explicitly.
+	WorkspaceContainment *bool `json:"workspaceContainment,omitempty"`
+}
+
+// WorkspaceContainmentEnabled resolves the pointer's default-enabled
+// semantics: nil means enabled.
+func (s *SecurityConfig) WorkspaceContainmentEnabled() bool {
+	if s == nil || s.WorkspaceContainment == nil {
+		return true
+	}
+	return *s.WorkspaceContainment
 }
 
 // --- Permission Types (from engine/src/permissions/types.ts) ---

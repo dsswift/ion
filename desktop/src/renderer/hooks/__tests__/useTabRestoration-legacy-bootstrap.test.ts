@@ -56,9 +56,9 @@ const NOOP_TAB: any = {
 describe('buildPopulatedInstance — legacy bootstrap marker removal', () => {
   it('drops legacy harness bootstrap markers (no dedupKey) on restore', () => {
     const inst = makePersistedInst([
-      { role: 'harness', content: 'Session bootstrapped: ion-meta v1', timestamp: 1000 },
-      { role: 'harness', content: 'Session bootstrapped: ion-meta v1', timestamp: 1001 },
-      { role: 'harness', content: 'Session bootstrapped: ion-meta v1', timestamp: 1002 },
+      { role: 'harness', content: 'Session bootstrapped: my-extension v1', timestamp: 1000 },
+      { role: 'harness', content: 'Session bootstrapped: my-extension v1', timestamp: 1001 },
+      { role: 'harness', content: 'Session bootstrapped: my-extension v1', timestamp: 1002 },
       { role: 'assistant', content: 'Hello', timestamp: 1003 },
     ])
 
@@ -75,8 +75,8 @@ describe('buildPopulatedInstance — legacy bootstrap marker removal', () => {
 
   it('preserves keyed harness messages (dedupKey present)', () => {
     const inst = makePersistedInst([
-      { role: 'harness', content: 'Session bootstrapped: ion-meta v1', timestamp: 1000, dedupKey: 'ion-meta:bootstrap' },
-      { role: 'harness', content: 'Session bootstrapped: ion-meta v1', timestamp: 1001 },
+      { role: 'harness', content: 'Session bootstrapped: my-extension v1', timestamp: 1000, dedupKey: 'my-extension:bootstrap' },
+      { role: 'harness', content: 'Session bootstrapped: my-extension v1', timestamp: 1001 },
     ])
 
     const result = buildPopulatedInstance(inst, 'tab1', NOOP_TAB)
@@ -84,13 +84,13 @@ describe('buildPopulatedInstance — legacy bootstrap marker removal', () => {
     // Keyed one kept, unkeyed one dropped
     const harnessAll = result.messages.filter((m) => m.role === 'harness')
     expect(harnessAll).toHaveLength(1)
-    expect((harnessAll[0] as any).dedupKey).toBe('ion-meta:bootstrap')
+    expect((harnessAll[0] as any).dedupKey).toBe('my-extension:bootstrap')
   })
 
   it('zero legacy markers survive — clean slate for relocate emission', () => {
     const inst = makePersistedInst([
-      { role: 'harness', content: 'Session bootstrapped: ion-meta v1', timestamp: 1000 },
-      { role: 'harness', content: 'Session bootstrapped: ion-meta v1', timestamp: 1001 },
+      { role: 'harness', content: 'Session bootstrapped: my-extension v1', timestamp: 1000 },
+      { role: 'harness', content: 'Session bootstrapped: my-extension v1', timestamp: 1001 },
     ])
 
     const result = buildPopulatedInstance(inst, 'tab1', NOOP_TAB)

@@ -11,7 +11,7 @@ import (
 // TestModelFallback_SwapsToDefaultAndEmitsEvent locks in the fix for the
 // "child agent dispatched with unresolved tier alias" bug. When a child run
 // starts with a model string that doesn't resolve to a registered provider
-// (the canonical case: ion-meta specialists declaring `model: standard`
+// (the canonical case: extension specialists declaring `model: standard`
 // when the user has no `tiers.standard` configured), the engine must:
 //
 //  1. Fall back to RunConfig.DefaultModel (already wired pre-fix).

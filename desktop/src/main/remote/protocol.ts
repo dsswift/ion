@@ -47,7 +47,7 @@ export type { RemoteTabState, TerminalInstanceInfo, RemoteMessage, RemoteAttachm
 
 // ─── Worktree + integration bench wire members (extracted for line cap) ───
 export type {
-  RemoteWorktree, RemoteBenchMember, RemoteBench, RemoteWorktreeState,
+  RemoteWorktree, RemoteMembership, RemoteBench, RemoteWorktreeState,
   RemoteWorktreeCommand, RemoteWorktreeEvent,
 } from './protocol-worktree'
 import type { RemoteWorktreeCommand, RemoteWorktreeEvent } from './protocol-worktree'
@@ -223,7 +223,7 @@ export type RemoteCommand =
 
 export type RemoteEvent =
   | RemoteWorktreeEvent
-  | { type: 'desktop_snapshot'; tabs: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }>; preferredModel?: string; engineDefaultModel?: string; availableModels?: Array<{ id: string; providerId: string; label: string; contextWindow: number; hasAuth: boolean; thinkingMode?: string; thinkingEfforts?: string[]; modelKind?: string }>; customName?: string | null; customIcon?: string | null; remoteDisplayUpdatedAt?: number; resources?: Record<string, Array<{ id: string; kind: string; title?: string; createdAt: string; read?: boolean; conversationId?: string }>> }
+  | { type: 'desktop_snapshot'; tabs: RemoteTabState[]; recentDirectories?: string[]; tabGroupMode?: 'off' | 'auto' | 'manual'; tabGroups?: Array<{ id: string; label: string; isDefault: boolean; order: number }>; preferredModel?: string; engineDefaultModel?: string; availableModels?: Array<{ id: string; providerId: string; providerLabel: string; label: string; contextWindow: number; hasAuth: boolean; thinkingMode?: string; thinkingEfforts?: string[]; modelKind?: string; isCustom?: boolean }>; customName?: string | null; customIcon?: string | null; remoteDisplayUpdatedAt?: number; resources?: Record<string, Array<{ id: string; kind: string; title?: string; createdAt: string; read?: boolean; conversationId?: string }>> }
   | { type: 'desktop_resource_content'; resourceId: string; kind: string; content: string }
   // `clientCmdId` echoes the id the iOS client attached to `desktop_create_tab`
   // / `desktop_create_terminal_tab` so the client's confirm-or-resend tracker
@@ -326,7 +326,13 @@ export type RemoteEvent =
   // ctx.sendPrompt — no client submitted this user turn, so no client did an
   // optimistic insert; clients append it to the transcript from this event.
   // Field names carried verbatim from the engine ({...event} spread).
-  | { type: 'desktop_prompt_injected'; tabId: string; instanceId?: string | null; injectedPrompt: string; injectedPromptOrigin?: string }
+  //
+  // injectedPromptKind classifies the injection and
+  // injectedPromptMachineAuthored is the engine's derived verdict on whether
+  // an engine-side actor authored it. Both were already reaching iOS through
+  // the spread; declaring them here makes the wire contract match what is
+  // actually sent, so a client author can see the fields exist.
+  | { type: 'desktop_prompt_injected'; tabId: string; instanceId?: string | null; injectedPrompt: string; injectedPromptOrigin?: string; injectedPromptKind?: string; injectedPromptMachineAuthored?: boolean }
   // desktop_image_content: explicitly projected from engine_image_content by
   // the engine-event forwarder in event-wiring.ts. The raw engine event carries
   // image-prefixed field names (imagePath/imageMediaType/imageSource/imageToolId

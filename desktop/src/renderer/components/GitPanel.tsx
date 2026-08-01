@@ -4,6 +4,9 @@ import {
 } from '@phosphor-icons/react'
 import { useShallow } from 'zustand/shallow'
 import { useSessionStore } from '../stores/sessionStore'
+import { usePanelVerticalResize } from '../hooks/usePanelVerticalResize'
+import { GIT_PANEL_WIDTH } from './panelGeometry'
+import { Tooltip } from './git/Tooltip'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { transitions } from '../theme-tokens'
@@ -12,9 +15,8 @@ import { usePreferencesStore } from '../preferences'
 import { useRepoState } from '../stores/git'
 import { GitChangesSection } from './GitChangesSection'
 import { GitGraphSection } from './GitGraphSection'
-import { WorktreesSection } from './WorktreesSection'
+import { WorktreeListSection } from './WorktreeListSection'
 import { GitConflictBanner } from './GitConflictBanner'
-import { IntegrationSection } from './IntegrationSection'
 import { CommitForm } from './git/CommitForm'
 import {
   computePaneLayout,
@@ -24,7 +26,7 @@ import {
   type PaneLayoutInput,
 } from './git/paneLayout'
 import { usePaneSash } from '../hooks/usePaneSash'
-import { resolveBenchContext } from './git/benchContext'
+import { resolveBenchContextAcrossRepos } from './git/benchContext'
 import { Sash } from './git/Sash'
 import { rDebug, rError } from '../rendererLogger'
 
@@ -133,8 +135,6 @@ export function GitPanel() {
   const setChangesOpen = usePreferencesStore((s) => s.setGitPanelChangesOpen)
   const graphOpen = usePreferencesStore((s) => s.gitPanelGraphOpen)
   const worktreesOpen = usePreferencesStore((s) => s.gitPanelWorktreesOpen)
-  const integrationOpen = usePreferencesStore((s) => s.gitPanelIntegrationOpen)
-  const setIntegrationOpen = usePreferencesStore((s) => s.setGitPanelIntegrationOpen)
   const setWorktreesOpen = usePreferencesStore((s) => s.setGitPanelWorktreesOpen)
   const setGraphOpen = usePreferencesStore((s) => s.setGitPanelGraphOpen)
   const repoState = useRepoState(directory)
@@ -179,23 +179,47 @@ export function GitPanel() {
     }
   }, [worktree, activeTabId, files])
 
-  // The repo root for worktree listing. When the active tab IS a worktree, its
-  // worktrees belong to the parent repo, not to the worktree directory -- so
-  // resolve through the worktree metadata rather than using `directory`.
-  const repoRootPath = worktree?.repoPath ?? directory
+  // ── Which repo's worktrees does this panel list? ─────────────────────────
+  // Three cases, and the bench one used to be wrong.
+  //
+  //  - A worktree conversation: its worktrees belong to the PARENT repo, read
+  //    from the tab's worktree metadata.
+  //  - A bench conversation: a bench is deliberately not a member of itself, so
+  //    the tab carries no worktree metadata. This fell back to `directory` --
+  //    the bench path -- and listed the bench's own `git worktree list`: the
+  //    main clone included, no registry behind it, so no source branches, no
+  //    memberships, every diamond hollow, and git's ordering instead of the
+  //    bench's. Resolved through the bench record instead, which names the repo.
+  //  - Anything else: the directory is the repo.
+  const allBenchWorkspaces = useSessionStore((s) => s.benchWorkspaces)
+  const benchContext = useMemo(
+    () => resolveBenchContextAcrossRepos(directory, allBenchWorkspaces),
+    [directory, allBenchWorkspaces],
+  )
+  const repoRootPath = worktree?.repoPath ?? benchContext?.repoPath ?? directory
   const worktreeEntries = useSessionStore((s) => s.worktreeInventory.get(repoRootPath))
   const worktreeCount = worktreeEntries?.length ?? 0
   const staleWorktreeCount = (worktreeEntries ?? []).filter((w) => w.needsSync).length
   const benchWorkspaces = useSessionStore((s) => s.benchWorkspaces.get(repoRootPath))
-  const benchMemberCount = (benchWorkspaces ?? []).reduce((n, w) => n + w.members.length, 0)
-  const benchStaleCount = (benchWorkspaces ?? [])
-    .reduce((n, w) => n + w.members.filter((m) => m.status === 'stale').length, 0)
+  // Counts the members that actually MERGE. `members.length` was accurate but
+  // misleading beside the problem counts either side of it: a bench of six with
+  // four excluded reported "6 in bench" while building two, so the badge
+  // overstated what the build contains. The enrolled-but-excluded rows say so
+  // individually; the header reports the size of the build.
+  const benchIncludedCount = (benchWorkspaces ?? [])
+    .reduce((n, w) => n + w.members.filter((m) => m.enabled).length, 0)
+  const benchExcludedCount = (benchWorkspaces ?? [])
+    .reduce((n, w) => n + w.members.filter((m) => !m.enabled).length, 0)
+  // Reads the PIN axis. Under the collapsed status this could not see a member
+  // that was both excluded and behind, so the header under-reported.
+  const benchBehindCount = (benchWorkspaces ?? [])
+    .reduce((n, w) => n + w.members.filter((m) => m.pin === 'behind').length, 0)
 
   // Is this panel looking AT a bench (rather than at a repo that owns one)?
-  // A bench is rebuilt from scratch on every rebuild, so it must never hold
+  // A bench is recreated from scratch on every assembly, so it must never hold
   // uncommitted changes and its history is synthetic — Changes and Graph are
-  // hidden rather than merely collapsed. See git/benchContext.ts.
-  const benchContext = resolveBenchContext(directory, benchWorkspaces)
+  // hidden rather than merely collapsed. See git/benchContext.ts. Resolved
+  // above, because `repoRootPath` depends on it.
   const inBench = benchContext !== null
 
   // Every pane's expanded state, in render order. Hidden panes (bench mode)
@@ -203,9 +227,8 @@ export function GitPanel() {
   const panes: PaneState[] = useMemo(() => ([
     { id: 'changes', expanded: changesOpen },
     { id: 'worktrees', expanded: worktreesOpen },
-    { id: 'integration', expanded: integrationOpen },
     { id: 'graph', expanded: graphOpen },
-  ]), [changesOpen, worktreesOpen, integrationOpen, graphOpen])
+  ]), [changesOpen, worktreesOpen, graphOpen])
 
   const hiddenPanes = useMemo<PaneId[]>(() => (inBench ? ['changes', 'graph'] : []), [inBench])
 
@@ -213,7 +236,12 @@ export function GitPanel() {
   // pane is redistributed to the expanded ones (distributeEmptySpace), never
   // left as slack and never taken off the panel — which is what previously made
   // it shrink and stranded the bottom of the screen.
-  const panelHeight = (expandedUI ? 520 : 400) + 82
+  const { height: panelHeight, renderHandle } = usePanelVerticalResize({
+    panelId: 'git-panel',
+    expandedUI,
+    override: usePreferencesStore((st) => st.gitPanelHeight),
+    onCommit: usePreferencesStore((st) => st.setGitPanelHeight),
+  })
 
   const layoutInput: PaneLayoutInput = useMemo(() => ({
     height: panelHeight,
@@ -249,7 +277,8 @@ export function GitPanel() {
     setPaneProportions,
   )
 
-  // Cursor override during drag
+  // Cursor override during a SASH drag. The panel-height drag sets its own,
+  // because it runs from a hook with no access to this effect.
   useEffect(() => {
     if (isDragging) {
       document.body.style.cursor = 'row-resize'
@@ -263,7 +292,7 @@ export function GitPanel() {
       data-ion-ui
       className="glass-surface rounded-xl flex flex-col"
       style={{
-        width: 320,
+        width: GIT_PANEL_WIDTH,
         // maxHeight, not height: the flex column shrink-wraps its sections, so
         // collapsing Changes and Graph shortens the panel instead of leaving an
         // unusable band at the bottom. No child may carry `flex: 1` -- a grow
@@ -272,8 +301,12 @@ export function GitPanel() {
         background: colors.containerBg,
         border: `1px solid ${colors.containerBorder}`,
         overflow: 'hidden',
+        // The drag handle is absolutely positioned against this box.
+        position: 'relative',
       }}
     >
+      {renderHandle()}
+
       {/* Panel header */}
       <div
         className="flex items-center justify-between px-2.5"
@@ -347,7 +380,7 @@ export function GitPanel() {
       )}
 
       {/* Changes section. Absent in a bench: a bench must never hold
-          uncommitted changes, because the next rebuild discards them, so
+          uncommitted changes, because the next assembly discards them, so
           offering the section would invite exactly the work that gets lost. */}
       {!inBench && (
       <div className="flex flex-col" style={{
@@ -449,7 +482,7 @@ export function GitPanel() {
         >
           <SectionToggleButton
             open={worktreesOpen}
-            label="Worktrees"
+            label={inBench ? 'Worktrees (Bench)' : 'Worktrees'}
             onClick={() => setWorktreesOpen(!worktreesOpen)}
             className="flex items-center gap-1"
             style={{ color: 'inherit', padding: 0, borderRadius: 4 }}
@@ -473,75 +506,48 @@ export function GitPanel() {
               {staleWorktreeCount} stale
             </span>
           )}
+          {/* Bench counts live on the worktrees header now: the bench is a
+              subset OF this list, not a separate list. */}
+          {benchIncludedCount > 0 && (
+            <Tooltip text={benchExcludedCount > 0
+              ? `${benchIncludedCount} merged into the bench, ${benchExcludedCount} enrolled but excluded`
+              : `${benchIncludedCount} merged into the bench`}>
+              <span
+                data-testid="bench-member-count"
+                className="text-[9px] px-1 rounded-full"
+                style={{ background: colors.accentLight, color: colors.accent }}
+              >
+                {benchIncludedCount} building
+              </span>
+            </Tooltip>
+          )}
+          {benchBehindCount > 0 && (
+            <span
+              data-testid="bench-stale-count"
+              className="text-[9px]"
+              style={{ color: colors.warningFg }}
+            >
+              {benchBehindCount} behind
+            </span>
+          )}
         </div>
         {worktreesOpen && (
           <div style={{ height: bodyOf('worktrees'), minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-            <WorktreesSection repoPath={repoRootPath} refreshKey={refreshKey} />
+            <WorktreeListSection
+              repoPath={repoRootPath}
+              refreshKey={refreshKey}
+              inBenchFor={benchContext?.sourceBranch}
+            />
           </div>
         )}
       </div>
 
       <Sash index={sashAfter('worktrees')} isDragging={isDragging} colors={colors} onSashMouseDown={onSashMouseDown} />
 
-      {/* Integration (bench) section — sized by the pane layout; formerly pinned
-          to a 148px constant. */}
-      <div className="flex flex-col" style={{
-        height: totalOf('integration'),
-        flexShrink: 0,
-        overflow: 'hidden',
-        borderTop: `1px solid ${colors.containerBorder}`,
-      }}>
-        <div
-          className="flex items-center gap-1 px-2.5"
-          style={{
-            height: SECTION_HEADER,
-            background: colors.surfacePrimary,
-            borderBottom: integrationOpen ? `1px solid ${colors.containerBorder}` : 'none',
-            color: colors.textSecondary,
-            fontSize: 11,
-            flexShrink: 0,
-          }}
-        >
-          <SectionToggleButton
-            open={integrationOpen}
-            label={inBench ? 'Integration (Bench)' : 'Integration'}
-            onClick={() => setIntegrationOpen(!integrationOpen)}
-            className="flex items-center gap-1"
-            style={{ color: 'inherit', padding: 0, borderRadius: 4 }}
-            colors={colors}
-          />
-          {benchMemberCount > 0 && (
-            <span
-              data-testid="bench-member-count"
-              className="text-[9px] px-1 rounded-full"
-              style={{ background: colors.accentLight, color: colors.accent }}
-            >
-              {benchMemberCount}
-            </span>
-          )}
-          {benchStaleCount > 0 && (
-            <span
-              data-testid="bench-stale-count"
-              className="text-[9px]"
-              style={{ color: colors.warningFg }}
-            >
-              {benchStaleCount} stale
-            </span>
-          )}
-        </div>
-        {integrationOpen && (
-          <div style={{ height: bodyOf('integration'), minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-            <IntegrationSection repoPath={repoRootPath} refreshKey={refreshKey} />
-          </div>
-        )}
-      </div>
-
-      <Sash index={sashAfter('integration')} isDragging={isDragging} colors={colors} onSashMouseDown={onSashMouseDown} />
-
       {/* Graph section. No `flex: 1` here (and no trailing spacer): the layout
           assigns every pixel, so a grow sink could only hold dead space.
           Absent in a bench: the history there is synthetic — one merge commit
-          per member, recreated from scratch on every rebuild — so reading it
+          per member, recreated from scratch on every assembly — so reading it
           tells the operator nothing about real history. */}
       {!inBench && (
       <div className="flex flex-col" style={{

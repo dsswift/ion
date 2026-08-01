@@ -18,14 +18,11 @@ interface TabPillProps {
   tab: TabState
   isActive: boolean
   isEditing: boolean
-  isConfirmingClose: boolean
   onSelect: () => void
   onClose: () => void
   onStartEdit: () => void
   onStopEdit: () => void
   onRename: (newValue: string | null) => void
-  onConfirmClose: () => void
-  onCancelClose: () => void
   onSetPillColor: (color: string | null) => void
   colorPickerTabId: string | null
   onOpenColorPicker: (tabId: string, anchor: { x: number; y: number }) => void
@@ -44,14 +41,11 @@ export function TabPill({
   tab,
   isActive,
   isEditing,
-  isConfirmingClose,
   onSelect,
   onClose,
   onStartEdit,
   onStopEdit,
   onRename,
-  onConfirmClose,
-  onCancelClose,
   onOpenColorPicker,
   onOpenDirMenu,
   onOpenTabMenu,
@@ -146,10 +140,17 @@ export function TabPill({
     // X button below — never allow middle-click to bypass the guard
     // when an orchestrator is running OR dispatched background agents
     // are still in flight.
-    if (e.button === 1) { e.preventDefault(); if (!tab.worktree && !closeBlocked && !tab.bashExecuting) onClose(); return }
+    //
+    // Worktree tabs are NOT excluded. They were, back when close ran
+    // gitWorktreeRemove(force=true) + `git branch -D` and a stray click
+    // destroyed work. Close has been non-destructive since the worktree
+    // lifecycle split (a worktree outlives its conversations; removal is the
+    // explicit Retire verb), so the exclusion was a guard for a defect that no
+    // longer exists — it just left worktree tabs with no close affordance.
+    if (e.button === 1) { e.preventDefault(); if (!closeBlocked && !tab.bashExecuting) onClose(); return }
     if (e.button !== 0) return
     onDragPointerDown(tab.id, e)
-  }, [onClose, onDragPointerDown, tab.id, tab.worktree, tab.bashExecuting, closeBlocked])
+  }, [onClose, onDragPointerDown, tab.id, tab.bashExecuting, closeBlocked])
 
   return (
     <div
@@ -160,12 +161,12 @@ export function TabPill({
       style={{ flexShrink: 0 }}
     >
       <div
-        onClick={() => { if (isDraggingRef.current) return; onCancelClose(); onSelect() }}
+        onClick={() => { if (isDraggingRef.current) return; onSelect() }}
         onPointerDown={onPointerDown}
         onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onOpenTabMenu(tab.id, { x: e.clientX, y: e.clientY }) }}
         {...pillState.handlers}
         className={`group flex items-center gap-1.5 cursor-pointer select-none ion-focusable ${
-          isEditing || isConfirmingClose ? '' : 'max-w-[240px]'
+          isEditing ? '' : 'max-w-[240px]'
         } ${waitingBorder ? 'animate-border-pulse' : ''}`}
         style={{
           '--border-waiting': waitingBorder ?? 'transparent',
@@ -307,32 +308,20 @@ export function TabPill({
           )}
         </span>
       )}
-      {tab.worktree ? null : isConfirmingClose ? (
-        <div className="flex items-center gap-0.5 text-[9px] flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-          <button
-            onClick={onCancelClose}
-            className="px-1 rounded ion-focusable"
-            style={{ color: colors.textTertiary }}
-          >
-            No
-          </button>
-          <button
-            onClick={() => { onClose(); onCancelClose() }}
-            className="px-1 rounded ion-focusable"
-            style={{ color: colors.accent }}
-          >
-            Yes
-          </button>
-        </div>
-      ) : !closeBlocked && (
+      {!closeBlocked && (
         // Hide the X close button while the orchestrator is running OR
         // dispatched background children are still executing. The user
         // must explicitly stop the tab (via the in-pane Interrupt
         // button or by waiting for completion) before close becomes
         // available. Mirrors the action-layer guard in tab-slice.ts
         // closeTab — UI and action layer enforce the same rule.
+        //
+        // Worktree tabs get the button too. It was suppressed for them while
+        // close still force-removed the worktree; close is non-destructive now,
+        // so the suppression only served to leave those tabs uncloseable from
+        // the strip.
         <button
-          onClick={(e) => { e.stopPropagation(); onConfirmClose() }}
+          onClick={(e) => { e.stopPropagation(); onClose() }}
           className="flex-shrink-0 rounded-full w-4 h-4 flex items-center justify-center transition-opacity ion-focusable"
           style={{
             opacity: closeState.hover ? 1 : isActive ? 0.5 : 0,

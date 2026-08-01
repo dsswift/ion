@@ -142,6 +142,7 @@ func (a *convIDRecordingAccessor) SendPromptWithKind(_, _ string, _ []string, _ 
 	return nil
 }
 func (a *convIDRecordingAccessor) SteerSelfMainLoop(_ string) bool { return false }
+func (a *convIDRecordingAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
 func (a *convIDRecordingAccessor) ParkSelfMainLoop() bool          { return false }
 func (a *convIDRecordingAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil

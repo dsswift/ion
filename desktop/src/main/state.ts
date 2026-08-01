@@ -96,9 +96,18 @@ export const state: MutableState = {
   rendererSnapshotCache: null,
 }
 
-/** Cached model list from engine, populated by LIST_MODELS IPC and included in remote snapshots. */
+/**
+ * Cached model list from engine, populated by LIST_MODELS IPC and included in
+ * remote snapshots.
+ *
+ * `providerLabel` is the resolved human-facing provider name (operator
+ * `engine.json` displayName > built-in name map > capitalized id), flattened
+ * onto each model at projection time the same way `hasAuth` is. iOS never
+ * receives `ProviderEntry`, so this is how the phone's provider-grouped model
+ * picker gets its section headers without duplicating the name table.
+ */
 export const modelCache = {
-  models: [] as Array<{ id: string; providerId: string; label: string; contextWindow: number; hasAuth: boolean; thinkingMode?: string; thinkingEfforts?: string[]; modelKind?: string }>,
+  models: [] as Array<{ id: string; providerId: string; providerLabel: string; label: string; contextWindow: number; hasAuth: boolean; thinkingMode?: string; thinkingEfforts?: string[]; modelKind?: string; isCustom?: boolean }>,
   lastFetched: 0,
 }
 

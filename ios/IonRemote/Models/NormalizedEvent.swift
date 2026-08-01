@@ -130,9 +130,12 @@ enum RemoteEvent: Sendable {
     /// append the prompt as a user message; the same content persists in the
     /// conversation file, so a history reload shows the identical transcript.
     /// Mirrors the Go PromptInjectedEvent / TS engine_prompt_injected.
-    /// kind="agent_completion" means this is a machine-to-machine dispatch
-    /// callback — iOS must NOT inject it as a user message.
-    case enginePromptInjected(tabId: String, instanceId: String?, prompt: String, origin: String?, kind: String?)
+    ///
+    /// `kind` classifies the injection and `machineAuthored` is the engine's
+    /// derived verdict on whether an engine-side actor authored the turn.
+    /// `InjectionPolicy` reads them; a machine-authored turn is not rendered
+    /// as a user message.
+    case enginePromptInjected(tabId: String, instanceId: String?, prompt: String, origin: String?, kind: String?, machineAuthored: Bool?)
     case engineScheduleFired(tabId: String, instanceId: String?)
     case engineLlmCall(tabId: String, instanceId: String?)
     /// A single image produced during a run, forwarded from the engine's
@@ -633,8 +636,9 @@ enum RemoteEvent: Sendable {
     enum CodingKeys: String, CodingKey {
         case type
         case tabs, tab, tabId, status, text, toolName, toolId
-        // Worktree + integration bench payload keys.
-        case states, operation, refusedDirty, hasConflicts
+        // Worktree + integration bench payload keys. `warning` carries the
+        // pin-update dry-run's collision prediction on desktop_worktree_op_result.
+        case states, operation, refusedDirty, hasConflicts, warning
         // desktop_tab_created echo of the iOS create command's correlation id,
         // consumed by the confirm-or-resend delivery loop (create-tab reliability).
         case clientCmdId
@@ -707,6 +711,7 @@ enum RemoteEvent: Sendable {
         case injectedPrompt
         case injectedPromptOrigin
         case injectedPromptKind
+        case injectedPromptMachineAuthored
         // Extended-thinking events (issue #158). The desktop projects the
         // engine's bare thinking field names (text / totalTokens /
         // elapsedSeconds / redacted) onto these prefixed wire keys when it

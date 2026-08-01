@@ -40,6 +40,18 @@ interface Props {
    * (`whiteSpace: nowrap`, no cap).
    */
   maxWidth?: number | null
+  /**
+   * Merged onto the wrapper span.
+   *
+   * The wrapper is the real flex/grid item wherever a tooltipped element sits
+   * in a flex row — the caller's own element is only its child. So a caller
+   * that sets `flexShrink: 1` + `overflow: hidden` on its text and expects an
+   * ellipsis gets neither: the wrapper's automatic minimum size is the child's
+   * full intrinsic width, and the row overflows instead. Passing
+   * `{ minWidth: 0, flex: 1, overflow: 'hidden' }` here is what makes the
+   * shrink actually reach the text.
+   */
+  style?: React.CSSProperties
 }
 
 /** Delay before a hover counts as intent. Shared by pointer and keyboard. */
@@ -51,6 +63,7 @@ export function HoverCard({
   children,
   position = 'above',
   maxWidth = null,
+  style,
 }: Props): React.JSX.Element {
   const popoverLayer = usePopoverLayer()
   const colors = useColors()
@@ -84,7 +97,7 @@ export function HoverCard({
     <>
       <span
         ref={spanRef}
-        style={{ display: 'inline-flex' }}
+        style={{ display: 'inline-flex', ...style }}
         onMouseEnter={show}
         onMouseLeave={hide}
         onFocus={show}

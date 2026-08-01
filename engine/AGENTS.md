@@ -131,6 +131,7 @@ Client --[Unix socket, NDJSON]--> Server
 | `internal/titling` | Conversation auto-titling |
 | `internal/watcher` | File/directory watcher for context includes |
 | `internal/webhooks` | Inbound webhook route registration and dispatch |
+| `internal/workspaces` | Workspace containment — worktree/bench write rules checked in the tool loop |
 
 `internal/` boundary is compiler-enforced. Outside consumers (desktop, ios, relay) can only reach the wire protocol.
 

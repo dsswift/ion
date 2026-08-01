@@ -97,6 +97,8 @@ export interface ProjectedRendererTab {
   messageCount: number
   queuedPrompts: string[]
   isTerminalOnly?: boolean
+  /** Input-locked conversation (auto-generated conflict fix). See TabState.inputLocked. */
+  inputLocked?: boolean
   hasEngineExtension?: boolean
   engineProfileId: string | null
   conversationInstances?: ProjectedConversationInstance[]

@@ -38,6 +38,7 @@ func (a *eligibilityTestAccessor) SendPromptWithKind(_, _ string, _ []string, _ 
 	return nil
 }
 func (a *eligibilityTestAccessor) SteerSelfMainLoop(_ string) bool { return false }
+func (a *eligibilityTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
 func (a *eligibilityTestAccessor) ParkSelfMainLoop() bool          { return false }
 func (a *eligibilityTestAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil

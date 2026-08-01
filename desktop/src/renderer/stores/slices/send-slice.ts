@@ -5,7 +5,7 @@ import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId, cancelDoneGroupMove } from '../session-store-helpers'
 import { activeInstance, commitInstance, effectivePermissionMode, effectiveThinkingEffort } from '../conversation-instance'
 import { applyActiveGroupMove } from './event-slice-running-move'
-import { maybeSendTimeTitle, maybeTitleWorktree } from './event-slice-titling'
+import { maybeSendTimeTitle, isPlaceholderTitle } from './event-slice-titling'
 import { parseSlash } from '../../../main/slash-parse'
 import { rDebug, rInfo, rWarn } from '../../rendererLogger'
 import { createSendBashSlice } from './send-slice-bash'
@@ -135,6 +135,18 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         return
       }
 
+      // A locked conversation accepts no further prompts, from ANY entry
+      // point — the InputBar hides itself, but the guard lives here so a
+      // remote command, a queued prompt, or a future caller cannot route
+      // around it. The lock is set after the machine-sent conflict-fix
+      // prompt, so that one submission has already passed through.
+      if (tab.inputLocked) {
+        rWarn('submit', 'blocked: conversation is input-locked (auto-generated fix conversation)', {
+          tab_id: tab.id.slice(0, 8), count: text.length, source: source ?? 'local',
+        })
+        return
+      }
+
       // Auto group movement (+ pending done-move cancel) — every tab moves
       // consistently. Reads the authoritative per-tab permission mode internally.
       get().applySendAutoGroupMove(tab.id)
@@ -169,7 +181,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // it, and every restore path restores it, while tab.title can lag on a
       // 'New Tab'/'Resumed Session' sentinel after an engine-tab restore. Gate
       // on customTitle so a mid-conversation prompt never re-fires titling.
-      const needsTitle = !tab.customTitle && (tab.title === 'New Tab' || tab.title === 'Resumed Session')
+      const needsTitle = !tab.customTitle && isPlaceholderTitle(tab.title)
       const title = needsTitle
         ? (text.length > 40 ? text.substring(0, 37) + '...' : text)
         : tab.title
@@ -244,16 +256,15 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // entirely from the user's first message, so there is no need to wait
       // for task_complete. Guard: only on the first send of a fresh tab
       // (needsTitle) and not on a mid-turn steer (isBusy).
+      //
+      // The one generated string names BOTH the tab and — when this
+      // conversation is running in a worktree that has no name yet — the
+      // worktree. The seed is refused by the main process once the worktree is
+      // named, so first prompt wins and a later conversation opened in the same
+      // worktree never re-titles it.
       if (needsTitle && !isBusy) {
-        maybeSendTimeTitle(tabId, text, get().renameTab)
+        maybeSendTimeTitle(tabId, text, get().renameTab, resolvedPath)
       }
-
-      // Name the WORKTREE from the same prompt. Deliberately outside the
-      // needsTitle guard: a conversation re-opened into an existing worktree
-      // has a tab title already while the worktree may still be nameless. The
-      // main process no-ops when it is already named, so this is at most one
-      // extra round-trip per worktree.
-      maybeTitleWorktree(resolvedPath, text)
 
       if (isBusy && !implementationPhase) {
         window.ion.steer(tabId, fullPrompt)
@@ -374,6 +385,17 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         return
       }
 
+      // Same lock as submit(): a remote prompt from iOS must not route around
+      // the input-locked guard on an auto-generated fix conversation. iOS
+      // hides its own input bar and guards its submit too, but the desktop is
+      // the authority on what reaches the engine.
+      if (tab.inputLocked) {
+        rWarn('submit.remote', 'blocked: conversation is input-locked (auto-generated fix conversation)', {
+          tab_id: tab.id.slice(0, 8), count: prompt.length,
+        })
+        return
+      }
+
       // Auto group movement (+ pending done-move cancel) — shared path; reads
       // the authoritative per-tab permission mode internally.
       get().applySendAutoGroupMove(tab.id)
@@ -391,7 +413,7 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
       // Gate on customTitle too — see submit() above. Prevents a mid-conversation
       // remote prompt from re-titling a tab that already has a real title.
-      const needsTitle = !tab.customTitle && (tab.title === 'New Tab' || tab.title === 'Resumed Session')
+      const needsTitle = !tab.customTitle && isPlaceholderTitle(tab.title)
       const title = needsTitle
         ? (prompt.length > 40 ? prompt.substring(0, 37) + '...' : prompt)
         : tab.title
@@ -443,12 +465,11 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         }
       })
 
-      // Same send-time title logic as submit() — fire in parallel, first send only.
+      // Same send-time title logic as submit() — fire in parallel, first send
+      // only, and the one generated string names the worktree too. See submit().
       if (needsTitle && !isBusy) {
-        maybeSendTimeTitle(tabId, prompt, get().renameTab)
+        maybeSendTimeTitle(tabId, prompt, get().renameTab, resolvedPath)
       }
-      // ...and the same worktree naming, on every send. See submit().
-      maybeTitleWorktree(resolvedPath, prompt)
 
       if (isBusy) {
         window.ion.steer(tabId, prompt)

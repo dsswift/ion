@@ -28,6 +28,7 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -78,6 +79,15 @@ type ContextBreakdown struct {
 	// Annotation only — not summed into TotalTokens.
 	CacheCreationTokens int    `json:"cacheCreationTokens,omitempty"`
 	Model               string `json:"model"`
+	// OccupancyTokens is the engine's authoritative context-window occupancy
+	// figure, supplied by the caller (the builder cannot derive it: occupancy
+	// comes from the conversation's persisted provider usage, and this package
+	// must not import conversation). Set via SetOccupancy.
+	//
+	// Distinct from TotalTokens (the itemized estimate this file computes) and
+	// from APIReportedTotal (the raw last-turn provider figure). See
+	// types.ContextBreakdownEvent.OccupancyTokens for the full contract.
+	OccupancyTokens int `json:"occupancyTokens,omitempty"`
 }
 
 // cachedCount stores a resolved count alongside the tier it was resolved at so
@@ -206,11 +216,131 @@ func appendToolRows(ctx context.Context, bd *ContextBreakdown, model string, pro
 	return nil
 }
 
+// messageCountableText renders one message's content as the text that may be
+// safely handed to a length-based token estimator, plus a separate fixed token
+// cost for any image blocks it carried.
+//
+// Image blocks are the reason this exists. Their wire form carries the full
+// base64 payload in source.data, which can be megabytes, while the provider
+// charges a roughly fixed per-image cost. Marshaling the block whole and
+// dividing its byte length by 4 counts a 1MB image as ~250K tokens. Observed:
+// a conversation the provider billed at 255,897 input tokens itemized at
+// 1,034,443 here, because 59% of its bytes were base64 inside image-bearing
+// messages. The heavy source is therefore stripped before marshaling and each
+// image contributes types.ImageBlockTokenEstimate instead.
+//
+// Both content shapes are handled: the typed []types.LlmContentBlock slice, and
+// the []any-of-map[string]any shape that content takes after a JSON round-trip
+// through disk. This mirrors conversation.estimateBlocksTokens /
+// estimateAnyBlockTokens, which solved the identical defect for the compaction
+// numerator; the shared fixed-cost constant lives in internal/types so the two
+// estimates cannot drift.
+//
+// A marshal failure yields the empty string for that element rather than
+// falling back to the raw value, so a base64 payload can never leak into the
+// counted text by way of an error path.
+func messageCountableText(msg types.LlmMessage) (string, int) {
+	switch c := msg.Content.(type) {
+	case string:
+		return c, 0
+	case []types.LlmContentBlock:
+		var sb strings.Builder
+		imageTokens := 0
+		for i := range c {
+			blk := c[i]
+			if blk.Type == "image" || blk.Source != nil {
+				imageTokens += types.ImageBlockTokenEstimate
+				// Drop the heavy source; the remaining metadata is small and
+				// still worth counting.
+				blk.Source = nil
+			}
+			b, err := json.Marshal(blk)
+			if err != nil {
+				utils.LogWithFields(utils.LevelWarn, "ContextBreakdown", "marshal content block failed, skipping from count", map[string]any{
+					"role": msg.Role, "block_type": blk.Type, "error": err.Error(),
+				})
+				continue
+			}
+			sb.Write(b)
+		}
+		return sb.String(), imageTokens
+	case []any:
+		var sb strings.Builder
+		imageTokens := 0
+		for _, el := range c {
+			text, imgTokens := anyBlockCountableText(el, msg.Role)
+			imageTokens += imgTokens
+			sb.WriteString(text)
+		}
+		return sb.String(), imageTokens
+	default:
+		b, err := json.Marshal(c)
+		if err != nil {
+			utils.LogWithFields(utils.LevelWarn, "ContextBreakdown", "marshal message content failed, skipping from count", map[string]any{
+				"role": msg.Role, "error": err.Error(),
+			})
+			return "", 0
+		}
+		return string(b), 0
+	}
+}
+
+// anyBlockCountableText is messageCountableText's per-element helper for content
+// that arrived as a JSON-decoded map[string]any (the disk-reload shape). An
+// image is detected by type=="image" or the presence of a "source" key, matching
+// conversation.estimateAnyBlockTokens.
+func anyBlockCountableText(el any, role string) (string, int) {
+	m, ok := el.(map[string]any)
+	if !ok {
+		// Unknown shape (e.g. a bare string element) — count it as-is.
+		b, err := json.Marshal(el)
+		if err != nil {
+			utils.LogWithFields(utils.LevelWarn, "ContextBreakdown", "marshal untyped content element failed, skipping from count", map[string]any{
+				"role": role, "error": err.Error(),
+			})
+			return "", 0
+		}
+		return string(b), 0
+	}
+
+	isImage := m["type"] == "image"
+	if _, hasSource := m["source"]; hasSource {
+		isImage = true
+	}
+	imageTokens := 0
+	if isImage {
+		imageTokens = types.ImageBlockTokenEstimate
+		stripped := make(map[string]any, len(m))
+		for k, v := range m {
+			if k == "source" {
+				continue
+			}
+			stripped[k] = v
+		}
+		m = stripped
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		utils.LogWithFields(utils.LevelWarn, "ContextBreakdown", "marshal content map failed, skipping from count", map[string]any{
+			"role": role, "error": err.Error(),
+		})
+		return "", imageTokens
+	}
+	return string(b), imageTokens
+}
+
 // appendConversationRow counts the conversation structurally via CountTokens —
 // passing the messages array exactly as Stream would send it — and appends a
 // single "conversation" row. Falls back to a per-message local count when the
 // provider has no count-tokens endpoint.
-func appendConversationRow(ctx context.Context, bd *ContextBreakdown, model string, provider LlmProvider, messages []types.LlmMessage) error {
+//
+// Returns nothing: a per-block marshal failure is logged and that block is
+// excluded from the count (see messageCountableText) rather than aborting the
+// whole breakdown. One unrepresentable content block should cost its own row's
+// accuracy, not the entire emission — and the previous error return, which
+// propagated such a failure all the way out of BuildContextBreakdown, is why a
+// single bad block could suppress the breakdown event entirely.
+func appendConversationRow(ctx context.Context, bd *ContextBreakdown, model string, provider LlmProvider, messages []types.LlmMessage) {
 	var conversationTokens int
 	var conversationTier TokenizerTier
 
@@ -226,34 +356,35 @@ func appendConversationRow(ctx context.Context, bd *ContextBreakdown, model stri
 	}
 
 	if conversationTier == "" {
-		// Fall back to a per-message local count.
+		// Fall back to a per-message local count. Image blocks contribute a
+		// fixed per-image cost and their base64 payload is excluded from the
+		// counted text — see messageCountableText. The provider-exact path
+		// above needs no such adjustment: the provider is authoritative about
+		// how it bills its own images.
+		imageTokens := 0
 		for _, msg := range messages {
-			var text string
-			switch v := msg.Content.(type) {
-			case string:
-				text = v
-			default:
-				b, err := json.Marshal(v)
-				if err != nil {
-					return err
-				}
-				text = string(b)
-			}
+			text, imgTokens := messageCountableText(msg)
+			imageTokens += imgTokens
 			n, t := countText(ctx, model, nil, text, "msg:"+msg.Role)
 			conversationTokens += n
 			if conversationTier == "" || (t == TierApproximate && conversationTier != TierApproximate) {
 				conversationTier = t
 			}
 		}
+		conversationTokens += imageTokens
 		if conversationTier == "" {
 			conversationTier = TierApproximate
+		}
+		if imageTokens > 0 {
+			utils.LogWithFields(utils.LevelDebug, "ContextBreakdown", "conversation row: counted image blocks at the fixed per-image estimate", map[string]any{
+				"model": model, "image_tokens": imageTokens, "total": conversationTokens,
+			})
 		}
 	}
 
 	bd.Categories = append(bd.Categories, BreakdownCategory{
 		Name: "conversation", Kind: "conversation", Tokens: conversationTokens, Tier: conversationTier,
 	})
-	return nil
 }
 
 // BuildContextBreakdown assembles a per-category token breakdown from the
@@ -324,11 +455,11 @@ func BuildContextBreakdown(
 	// passing opts.Messages as the real messages array, exactly as Stream would
 	// send them — rather than counting a marshaled JSON blob (which inflates the
 	// count with structural noise). Tools are counted separately in step 5, so
-	// this call passes messages only.
+	// this call passes messages only. Image blocks contribute a fixed per-image
+	// cost on the local-fallback path; their base64 payload is never counted by
+	// byte length.
 	if opts != nil && len(opts.Messages) > 0 {
-		if err := appendConversationRow(ctx, bd, model, provider, opts.Messages); err != nil {
-			return nil, err
-		}
+		appendConversationRow(ctx, bd, model, provider, opts.Messages)
 	}
 
 	// Total and context window.
@@ -343,6 +474,24 @@ func BuildContextBreakdown(
 
 	utils.LogWithFields(utils.LevelDebug, "ContextBreakdown", "built breakdown", map[string]any{"model": model, "count": len(bd.Categories), "max": total})
 	return bd, nil
+}
+
+// SetOccupancy records the engine's authoritative context-window occupancy on
+// the breakdown so the emitted event carries it alongside the itemized sum.
+//
+// The builder cannot compute this itself. Occupancy is derived from the
+// conversation's persisted provider usage (conversation.GetContextUsage), and
+// this package must not import conversation — the dependency runs the other
+// way. So the caller, which has the conversation in hand, supplies it.
+//
+// A non-positive value is ignored rather than written: zero means "the engine
+// has no occupancy figure", and that is already the field's zero value. This
+// keeps a caller with nothing to report from having to branch.
+func (bd *ContextBreakdown) SetOccupancy(tokens int) {
+	if bd == nil || tokens <= 0 {
+		return
+	}
+	bd.OccupancyTokens = tokens
 }
 
 // ReconcileBreakdown updates the breakdown with the provider's reported total
@@ -406,5 +555,6 @@ func (bd *ContextBreakdown) ToNormalizedEvent() *types.ContextBreakdownEvent {
 		CacheReadTokens:     bd.CacheReadTokens,
 		CacheCreationTokens: bd.CacheCreationTokens,
 		Model:               bd.Model,
+		OccupancyTokens:     bd.OccupancyTokens,
 	}
 }

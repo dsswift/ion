@@ -101,8 +101,17 @@ func (a *sessionAccessor) SendPromptWithKind(text string, model string, bashAllo
 // — the ctx.SteerSelf wiring then falls back to SendPrompt so the message is
 // delivered as a fresh prompt on the idle session.
 func (a *sessionAccessor) SteerSelfMainLoop(message string) bool {
-	outcome := a.m.SteerAgent(a.key, "", message)
-	utils.LogWithFields(utils.LevelInfo, "session", "sessionaccessor.steerselfmainloop", map[string]any{"session_id": a.key, "count": len(message), "outcome": outcome, "delivered": outcome.Delivered()})
+	return a.SteerSelfMainLoopWithKind(message, "")
+}
+
+// SteerSelfMainLoopWithKind is the classification-carrying variant. The kind
+// reaches the backend's steer channel so drainSteer persists a machine-
+// originated steer as machine-authored. Without it, a harness bubbling a
+// completion or check-in into a LIVE run produced an unclassified user turn —
+// the same defect as the idle path, one layer down.
+func (a *sessionAccessor) SteerSelfMainLoopWithKind(message, kind string) bool {
+	outcome := a.m.SteerAgentWithKind(a.key, "", message, kind)
+	utils.LogWithFields(utils.LevelInfo, "session", "sessionaccessor.steerselfmainloop", map[string]any{"session_id": a.key, "count": len(message), "kind": kind, "outcome": outcome, "delivered": outcome.Delivered()})
 	return outcome.Delivered()
 }
 

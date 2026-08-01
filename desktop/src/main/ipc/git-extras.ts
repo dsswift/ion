@@ -56,7 +56,7 @@ export function registerGitExtrasIpc(): void {
 
   // GIT_APPLY_PATCH is deliberately NOT bench-guarded. `git apply` writes only
   // the working tree and index — it creates no commit and moves no branch — and
-  // it is how hunk-level staging works in the git panel. A rebuild's
+  // it is how hunk-level staging works in the git panel. An assembly's
   // `--discard-changes` already resets what it touched, so nothing durable is
   // at risk, and refusing it would break diff review inside the bench, which is
   // the one thing the bench exists to serve.
@@ -78,7 +78,7 @@ export function registerGitExtrasIpc(): void {
     }
   })
 
-  // A tag OUTLIVES the rebuild that destroys the commit it points at, and it is
+  // A tag OUTLIVES the assembly that destroys the commit it points at, and it is
   // pushable — so it both anchors a synthetic bench commit indefinitely and can
   // publish other people's in-flight work. Guarded.
   ipcMain.handle(IPC.GIT_TAG_CREATE, async (_event, { directory, name, ref, message }: { directory: string; name: string; ref?: string; message?: string }) => {

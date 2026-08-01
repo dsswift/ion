@@ -117,7 +117,9 @@ struct GitPaneView: View {
         let state = viewModel.worktreeState(for: directory)
         let worktreeCount = state?.worktrees.count ?? 0
         let staleBases = state?.staleBaseCount ?? 0
-        let benchStale = (state?.benches ?? []).reduce(0) { $0 + $1.staleMemberCount }
+        // Derived from the worktrees, because membership rides the worktree
+        // record -- there is no separate member list to count.
+        let benchStale = (state?.benches ?? []).reduce(0) { $0 + (state?.behindMemberCount(of: $1) ?? 0) }
 
         return NavigationLink {
             WorktreeListView(repoPath: directory)

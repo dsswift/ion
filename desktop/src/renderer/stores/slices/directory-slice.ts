@@ -3,6 +3,7 @@ import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { activeInstance, instanceMessageCount } from '../conversation-instance'
 import { rInfo, rWarn } from '../../rendererLogger'
 import { resolveWorktreeForNewTab } from './tab-slice-worktree-resolve'
+import { seedWorktreeFromTab } from './event-slice-titling'
 import { setTabWorkingDirectory } from './tab-working-directory'
 
 export function createDirectorySlice(set: StoreSet, get: StoreGet): Partial<State> {
@@ -103,6 +104,11 @@ export function createDirectorySlice(set: StoreSet, get: StoreGet): Partial<Stat
         // unnecessary.
         void resolveWorktreeForNewTab(dir, true).then(async (resolved) => {
           if (resolved.worktree) {
+            // This tab may already be named — the operator can repoint an
+            // in-flight conversation at a new base directory. Carry that name
+            // onto the worktree cut for it, exactly as convertToWorktree does.
+            const tab = get().tabs.find((t) => t.id === activeTabId)
+            if (tab) seedWorktreeFromTab(tab, resolved.worktree.worktreePath)
             await setTabWorkingDirectory(set, get, activeTabId, resolved.dir, {
               worktree: resolved.worktree,
               pendingWorktreeSetup: false,

@@ -31,7 +31,7 @@ built and tested without landing anything.
 ### The bench is a pure function, never an accumulator
 
 Bench contents are recomputed from `(feature-branch tip, ordered member list)`.
-Nothing is merged *into* an existing bench incrementally. Every rebuild throws
+Nothing is merged *into* an existing bench incrementally. Every assembly throws
 the branch away and recreates it:
 
 ```
@@ -50,17 +50,17 @@ Consequences that make this cheap to own:
 Rejected: incremental merge-into-bench. It accumulates commits, requires
 un-merge logic, and permits drift that no test can pin.
 
-### Members are pinned; rebuild never advances a pin
+### Members are pinned; assembly never advances a pin
 
 Each member records the exact contribution currently integrated
-(`pinnedSha`, `pinnedTreeHash`). Rebuild merges the **pins**, never a fresh read
+(`pinnedSha`, `pinnedTreeHash`). Assembly merges the **pins**, never a fresh read
 of a member's current tip. Pins advance only by an explicit act: enrollment, or
 *Update* on that member.
 
 This is what makes manual integration real. Members A and B are both stale; A is
-ready, B is one commit into a two-commit change. Update A and rebuild: A's work
+ready, B is one commit into a two-commit change. Update A and reassemble: A's work
 lands in the bench, and **B stays at its previously pinned commit**. Without
-pinning, a rebuild triggered for A would drag in B's half-finished pair, and
+pinning, an assembly triggered for A would drag in B's half-finished pair, and
 "manual" would still be all-or-nothing.
 
 ### Integration is manual; only staleness is automatic
@@ -80,7 +80,7 @@ Rejected triggers, each with its failure:
 
 Deliberately **not built**: a Hold toggle, a pending-update queue, deferred
 apply, auto-apply-when-clear, and settling heuristics. Each exists only to make
-unattended rebuilds safe; with the operator holding the only trigger, each is
+unattended assemblies safe; with the operator holding the only trigger, each is
 dead weight.
 
 ### Only committed work integrates
@@ -100,20 +100,92 @@ exactly one definition of a member's content.
 
 ### Staleness compares trees, not shas
 
-A member is stale when its contributed **tree hash** differs from its pinned
-tree hash. Sha comparison lies in both directions: an amend or reword yields a
+A member's pin is `behind` when its contributed **tree hash** differs from its
+pinned tree hash. Sha comparison lies in both directions: an amend or reword yields a
 new sha with an identical tree (a false stale, offering an Update that changes
 nothing), and a rebase changes content with no new commit (a missed stale).
 
 Staleness may be automatic *precisely because it is advisory*. It paints a badge
-and never merges, rebuilds, or advances a pin, so a late or briefly-wrong badge
+and never merges, assembles, or advances a pin, so a late or briefly-wrong badge
 costs nothing. That is what makes riding the existing debounced `GitRepository`
-watcher acceptable here and unacceptable as a rebuild trigger.
+watcher acceptable here and unacceptable as an assembly trigger.
+
+### Member state is three orthogonal axes, not one enum
+
+A member's state was a single `MemberStatus` union mixing three independent
+questions: is it enrolled (`excluded`), how fresh is its pin (`pending`,
+`integrated`, `stale`, `landed`), and what did the last merge do (`conflicted`,
+`missing`). A member can be all three at once, and one enum can report one.
+
+This was not a theoretical concern. The staleness evaluator carried a priority
+ladder whose own comment admitted the collision — *"never overwrite a conflict
+verdict with a staleness verdict"* — and the ordering meant an excluded member
+that had also moved on reported only `excluded`. Re-enabling it merged a stale
+pin with no warning on any surface, because the freshness fact had been
+destroyed at write time and no renderer could recover it.
+
+So the state is three fields with three owners:
+
+| Axis | Field | Owned by |
+|---|---|---|
+| Enrollment | `enabled` | the operator |
+| Pin freshness | `pin` (`empty`/`current`/`behind`/`absorbed`/`gone`) | staleness evaluation |
+| Merge outcome | `merge` (`unbuilt`/`merged`/`conflicted`/`skipped`) | assembly |
+
+No evaluation can clobber a fact it has nothing to say about, so the ladder is
+gone rather than reordered. Clients summarise the axes into one indicator when
+space is scarce, but the summary is a rendering choice made against complete
+data — not a lossy write.
+
+Persisted records migrate on read: the pins are operator intent, so resetting
+would silently re-pin everyone at their current tip. For `excluded` and
+`conflicted`, which carried no freshness information at all, the pin is
+recomputed from the tree hashes, recovering exactly what the old ladder threw
+away.
+
+### Membership is a sidecar, keyed by worktree path
+
+A member record used to re-declare `worktreePath`, `branchName`, and `label`,
+and it still needed `title`, which it did not have — so the wire layer resolved
+the title by joining against the inventory and documented the join as a
+workaround. The join was already the truth; it was performed late, once, in one
+projection no other consumer could reach.
+
+A member is therefore **a pin plus a verdict, keyed by worktree path**, holding
+no worktree fields at all. `shared/worktree-list.ts` performs the join for every
+surface, so the desktop list, the ATV mirror, and the iOS projection cannot
+disagree about what a worktree is or where it sorts.
+
+Merge order stays **array position**. Assembly iterates the member array, so an
+explicit `order` field would be a second source of truth able to disagree with
+the order the merge actually walks; the displayed sequence number is derived at
+join time and never stored.
+
+One consequence is visible in the UI: a worktree appears exactly once. The panel
+previously listed enrolled worktrees twice — once as a worktree, once as a bench
+member — in two components with two vocabularies for the same facts.
+
+### The two verdicts have different lifetimes
+
+The operator can mark a member `good` or `issue`, and the two make different
+statements. `good` says "I reviewed the feature and it works" — a statement
+about the **feature** that stays true across assemblies, syncs, and pin
+advances, so once earned it is only ever changed by the operator. `issue` says
+"this contribution has a bug that future changes must fix" — a statement about
+the **pinned contribution**, so advancing the pin clears it: the new content is
+a clean slate for retesting, and the operator re-flags it if the bug survived
+or marks it good once the fix lands. Re-pinning identical content (an Update
+that finds nothing new) keeps either verdict, because the reviewed thing has
+not changed.
+
+Absent means unreviewed, which is deliberately distinct from reviewed-and-fine —
+a three-valued flag defaulting to neutral would make "nobody has looked at this"
+indistinguishable from "someone looked and it was fine".
 
 ### Landing is absorption, not removal
 
 When a member's work lands into the feature branch it becomes part of the
-bench's **base**, permanently and without option. The bench rebuilds from the
+bench's **base**, permanently and without option. The bench reassembles from the
 feature-branch tip, so the landed work arrives with the base and needs no merge
 commit; git reports "Already up to date". The member record is then retired,
 because a member represents *pending* work and this work is no longer pending.
@@ -142,10 +214,10 @@ All three landed tiers above answer *yes* for a member that has committed
 commit has a HEAD identical to the feature-branch tip, so the pinned commit is an
 ancestor of the source branch, the pinned tree is in its history, and the branch
 does not differ from it. The bench read that as landed and retired the member on
-every rebuild — a worktree could not stay enrolled before its first commit, which
+every assembly — a worktree could not stay enrolled before its first commit, which
 is precisely when an operator wants to enroll it.
 
-No query at rebuild time can separate the two cases, because after the fact they
+No query at assembly time can separate the two cases, because after the fact they
 are identical: in both, `sourceBranch..pinnedSha` is empty. The separating fact is
 where the contribution **starts**, so a pin records it: `pinnedBaseSha` is the
 merge base of `pinnedSha` and the source branch, captured when the pin is taken.
@@ -158,7 +230,7 @@ nothing, never retired. It is not terminal and not an error. The member becomes
 now applies only to a pin that carried commits in the first place.
 
 Records written before the range was tracked carry `pinnedBaseSha: ""`, which
-means **unknown**, never empty. Rebuild resolves it once against the member branch
+means **unknown**, never empty. Assembly resolves it once against the member branch
 and backfills it: a branch with commits beyond the source branch behaves exactly
 as before, a branch with none is `pending`, and a branch that no longer exists
 (the normal *Land & retire* outcome) stays unknown and falls through to the tiers
@@ -204,23 +276,102 @@ via `rev-parse --git-path` so linked worktrees are read correctly):
 
 The dialog's AI Assisted button opens a FRESH conversation in the conflicted
 directory (never an existing one — a live thread would be interrupted and its
-context could sway the fix) and submits
-`Please fix my currently in-progress rebase.` verbatim — one forwarded store
-action, per the ATV multi-step rule. The assist requires the `standard` tier in
+context could sway the fix) and submits the fixed prompt naming the operation
+actually in progress (`Please fix my currently in-progress rebase.` for a sync,
+`…merge.` for a bench resolution) — one forwarded store action, per the ATV
+multi-step rule. The assist requires the `standard` tier in
 `~/.ion/models.json` and refuses with a remediation message when it is absent
 (resolved through the engine's `resolve_model_tier` command; the engine owns
 the file's semantics). The fresh conversation is pinned to that tier's model
 and forced into auto mode regardless of the operator's default — a plan-mode
 default would park the fix writing a plan. Abort and Continue drive the
-underlying rebase; Continue enables only when nothing is left unmerged.
-Resolution is desktop-only; iOS renders `operationState` and a conflicted-file
-count so a mid-rebase worktree neither vanishes nor looks healthy on the phone.
+underlying operation (probed live, so a merge gets `git merge --continue`, not
+a rebase verb that would fail); Continue enables only when nothing is left
+unmerged. Resolution is desktop-only; iOS renders `operationState` and a
+conflicted-file count so a mid-rebase worktree neither vanishes nor looks
+healthy on the phone.
+
+### Assembly is atomic: the whole combination or nothing
+
+A member whose pinned contribution will not merge fails the **entire**
+assembly. The failed merge is aborted, the conflict is recorded on the member
+(`conflictPaths`, plus `conflictsWith` attributed by diffing each prior
+member's **contribution range** — never its tip commit, which misses any
+collision introduced by an earlier commit in the range), and the bench branch
+is pointed at an empty-tree commit. Tracked files vanish; ignored build output
+survives, exactly as across a normal assembly. The workspace records
+`lastAssembly: 'failed'` and an operator-facing `lastAssemblyError`, which the
+bench bar (desktop) and bench header/footer (iOS) render in place of the age
+line.
+
+Rejected: skip the conflicted member and keep the rest (the original
+behaviour). It produced a silent partial bench — the operator tested a
+combination that misrepresented what was enrolled, and nothing said so. The
+members merged before the conflict even reported `merged` while their content
+sat in a tree that no longer existed. Partial-on-purpose remains available
+through the per-member exclude toggle, which is an *explicit* subset rather
+than an accidental one; every non-conflicted enabled member reports `unbuilt`
+after a failed assembly, because claiming anything else would describe a wiped
+tree.
+
+### A bench conflict is resolved once, then replayed (`git rerere`)
+
+A bench conflict differs from a conflicted sync in one structural way: the
+bench is ephemeral, so a resolution committed *in* the bench is destroyed by
+the next assembly, and the operator would re-resolve the same collision
+forever. The answer is git's own answer for its `seen` integration branch —
+**rerere** (reuse recorded resolution):
+
+- Assembly enables `rerere.enabled` + `rerere.autoUpdate` repo-locally (shared
+  through the common dir with every worktree, so the operator's own manual
+  rebases benefit too).
+- The **resolve-once flow** (`prepareConflictResolution`) re-runs the assembly
+  sequence and leaves the conflicted merge **in progress** in the bench. The
+  ConflictsDialog then operates on a real merge with real index stages —
+  Accept Yours/Theirs, the 3-way editor, and AI Assisted all work unchanged.
+  Completing the merge is what records the resolution, keyed by the conflict's
+  text, in the **main repo's** `rr-cache` — wiping the bench cannot lose it,
+  and unrelated repo activity cannot invalidate it.
+- Every later assembly hits the same conflict, replays the recording, commits
+  the merge, and reports the member `merged` with `mergeResolution:
+  'replayed'` — observable on the record, the wire, and the logs, because a
+  replayed resolution is deterministic but is **not** the same fact as a clean
+  merge.
+- When either side's conflicting lines genuinely change, the recording stops
+  matching and the assembly honestly fails again: one fresh resolution per
+  genuinely new conflict, the theoretical minimum.
+
+While the machinery-prepared merge is open, both enforcement halves carve out
+exactly the resolution surface and nothing else: the desktop guard passes the
+conflict-resolution IPC and merge continue/abort, and the engine's workspace
+containment passes `git merge --continue`/`--abort` plus `Write`/`Edit` on the
+**unmerged paths only** (an edit to a conflicted path during resolution *is*
+the reviewable artifact — it becomes the recording). Both carve-outs fail
+closed: an unreadable probe refuses as before, the conservative direction for
+a permission widening.
+
+The badge on a conflicted member opens the **BenchConflictDialog**, which reads
+the membership record (no operation probe — after the atomic wipe there is
+nothing in progress on disk) and offers the two exits: *Resolve once* (the flow
+above) and *open the member worktree* (the durable fix: rework the collision
+where it can be committed, then Update and reassemble). Routing this badge to
+the operation-state ConflictsDialog was the original defect: it probed a clean
+bench, listed no files, and disabled its own Abort.
+
+### Pin updates warn about the collision before it costs a bench
+
+`Update` and `Update all` dry-run the new pin against a simulation of the next
+assembly (`git merge-tree --write-tree` — in memory, no checkout) and attach a
+non-blocking warning naming the files when it will conflict. **Warn, never
+gate**: overlapping in-flight work is the bench's most valuable case, conflicts
+are not knowable at enrollment time anyway, and the operator decides whether to
+resolve now or keep working. The warning rides the op result to every client.
 
 ### Retirement is surfaced, never silent
 
 A retired member's row disappears. A row vanishing with no explanation is
 indistinguishable from the bench losing a worktree, which is how the `pending`
-defect above was first reported. `BenchRebuildResult.retired` carries the absorbed
+defect above was first reported. `BenchAssembleResult.retired` carries the absorbed
 members and the git panel names them ("… landed into `<branch>` and is now part of
 the base") until the operator dismisses the notice. Dismissal is per-window UI
 state: it mutates no bench record, which is why it is mirror-local rather than
@@ -230,7 +381,7 @@ forwarded.
 
 `switch -C ... --discard-changes` resets tracked files and **leaves ignored
 build output in place** (`node_modules`, `dist`, Go caches). That single
-decision is what makes a rebuild cost an incremental build instead of a cold
+decision is what makes an assembly cost an incremental build instead of a cold
 one, and it is the reason the feature is usable at all.
 
 ### The bench refuses history writes
@@ -238,20 +389,26 @@ one, and it is the reason the feature is usable at all.
 Git commands that write **history** are refused inside a bench: `commit`, `push`,
 `pull`, `merge`, `rebase`, `cherry-pick`, `revert`, `reset`, `stash`, `tag`, and
 branch mutation (`branch`, `checkout`, `switch`). A commit made there is
-destroyed by the next rebuild, and a push would publish a synthetic merge of
+destroyed by the next assembly, and a push would publish a synthetic merge of
 other people's in-flight work.
 
 The refusal has two independent halves, because there are two actors:
 
 | Actor | Enforcement | Where |
 |---|---|---|
-| Agent (Bash tool call) | `tool_call` hook returning `{ block, reason }` | `engine/extensions/ion-meta/bench-gate.ts` |
+| Agent (tool call) | Engine-core workspace containment, checked in the tool loop beside the permission engine | `engine/internal/workspaces` |
 | Operator (git panel button) | Early-return refusal in the git IPC handlers | `desktop/src/main/integration/bench-guard.ts` |
 
-They cannot share code — ion-meta ships as a standalone extension bundle with no
-desktop or engine imports — so the path-containment rule is stated in both
-places, and each carries a test pinning identical behaviour (root match,
-subdirectory match, sibling-prefix rejection).
+The agent half is engine core, not an extension: containment is pure mechanism
+(deterministic path rules over two JSON records plus git state), every
+consumer that uses benches needs it, and a tool call must be refusable
+regardless of which extensions are loaded. It is on by default and disabled
+only by an explicit `security.workspaceContainment: false`; the `tool_call`
+hook still fires before execution, so a harness can layer STRICTER policy but
+cannot loosen the baseline. The two halves cannot share code — Go and
+TypeScript on opposite sides of the socket — so the path-containment rule is
+stated in both places, and each carries a test pinning identical behaviour
+(root match, subdirectory match, sibling-prefix rejection).
 
 Both **fail open** when the workspace record is missing or corrupt. A false
 refusal would block legitimate commits in an ordinary worktree, which is worse
@@ -261,7 +418,7 @@ read failure in one does not leave the bench unguarded against the other.
 Reading, building, and testing are unaffected — they are the point. So are
 `add`, `restore`, `clean`, and `apply`: they touch the index and working tree
 rather than history, `--discard-changes` already resets them on the next
-rebuild, and `apply` in particular is how hunk-level staging works, so refusing
+assembly, and `apply` in particular is how hunk-level staging works, so refusing
 it would break diff review in the one place the bench exists to serve.
 Over-blocking here is as much a defect as under-blocking.
 
@@ -274,16 +431,18 @@ succeeded, looked successful, and was destroyed by the next
 `switch -C … --discard-changes`. Same invisible work-loss the history rule
 prevents, left open on the other axis.
 
-`engine/extensions/ion-meta/bench-write-gate.ts` closes it: a write-class tool
-call (`Write`, `Edit`, `ion_scaffold`) whose target is inside a bench is refused.
-`Bash` is deliberately excluded — gating it on cwd would refuse the builds and
-tests the bench exists to run.
+The engine's workspace containment closes it: a write-class tool call
+(`Write`, `Edit`, `NotebookEdit`) whose target is inside a bench is refused —
+judged by the TARGET, so a conversation running elsewhere that writes into a
+bench is refused too. `Bash` file-writes are deliberately not inferred —
+gating Bash on cwd would refuse the builds and tests the bench exists to run;
+its git invocations are covered by the history rule above.
 
 The desktop half is the panel itself: in a bench the git panel hides Changes and
 Graph entirely and titles the section `Integration (Bench)`
 (`desktop/src/renderer/components/git/benchContext.ts`). A Changes section in a
 bench is an invitation to lose work, and bench history is synthetic — one merge
-per member, recreated each rebuild.
+per member, recreated each assembly.
 
 **Attribution is per-member, never "who last touched it."** The obvious answer is
 `git log -1 -- <path>`, and it is wrong whenever more than one member touches a
@@ -303,44 +462,24 @@ Staging, discarding, and patch-applying stay allowed in a bench, unchanged —
 they touch the index rather than history, `--discard-changes` already resets
 them, and blocking them would stop the operator tidying a bench tree.
 
-### Bench conversations are briefed, not just gated
+### The refusal message is the teaching surface
 
-The two gates above are reactive: they refuse a wrong write after the model has
-already planned it. A plan-mode session in a bench can therefore produce an
-entire plan whose every edit targets bench paths — wrong before implementation
-starts, and the operator has to intervene twice (once to explain the bench,
-once to redo the plan). That happened verbatim in a live bench conversation,
-which is why the harness now teaches proactively as well:
-
-- **A bench briefing rides the system prompt.** ion-meta's `before_prompt`
-  handler detects a bench cwd (`bench-briefing.ts`, same workspace resolution
-  as the write gate) and appends the bench's nature (rebuildable, never edit
-  here), its live member composition (label, branch, worktree path, pin), the
-  routing rule (fix in the owning member worktree, commit there, update the
-  member), and the plan-mode corollary (plans must be born targeting member
-  paths). Rebuilt per prompt so mid-session member changes are reflected;
-  fail-open like the gates.
-- **Two bench-only tools** (`tools/bench-tools.ts`), suppressed at
-  `session_start` for any non-bench conversation (the Agent-tool suppression
-  pattern): `ion_bench_info` re-reads the composition, and `ion_bench_locate`
-  answers "which member owns this file" with changed line ranges — the same
-  per-member diff attribution the write gate uses for refusals, exposed
-  BEFORE an edit is attempted. Both are plan-mode safe, because routing
-  decisions are made while planning. The write gate's refusal message points
-  at `ion_bench_locate`, so even the reactive path teaches the proactive tool.
-
-This lives in the harness (ion-meta), not the engine: the bench is a
-desktop/harness-level concern the engine has no concept of, and every seam used
-(`before_prompt` systemPrompt injection, tool registration + per-session
-suppression) is existing SDK surface.
+The containment is reactive: it refuses a wrong write when the model attempts
+it. The refusal message therefore carries everything the model needs to
+redirect rather than retry — the offending path, what that path belongs to,
+the owning member(s) with changed line ranges for a bench write, and the
+worktree or member checkout where the work belongs. A harness that wants
+proactive teaching (a bench briefing in the system prompt, bench-introspection
+tools) can build it on existing SDK surface (`before_prompt` injection, tool
+registration); the engine baseline does not depend on one being loaded.
 
 ### A worktree refuses writes outside itself
 
 The bench rule above has a sibling that applies to ordinary worktrees. A worktree
 exists to isolate one conversation's work onto its own branch, so a write from a
 worktree conversation into the **base repo it was cut from**, or into a **sibling
-worktree of the same repo**, is refused: `engine/extensions/ion-meta/worktree-gate.ts`,
-wired into the same `tool_call` hook and checked before the git-gate.
+worktree of the same repo**, is refused by the same engine-core workspace
+containment, at the same tool-loop seam.
 
 The failure it prevents is not theoretical. Five worktree conversations once ran
 with their sessions pointed at the shared base checkout. Each one's `git status`
@@ -370,19 +509,18 @@ command can leave the worktree and commit elsewhere, and for a while this is
 exactly what happened: a conversation whose cwd was its worktree ran 115 commands
 prefixed `cd <base repo> &&` and landed two commits on the base repo's branch,
 because the gate resolved a `Bash` call to the session cwd and never read the
-command. So `engine/extensions/ion-meta/bash-destination.ts` splits the command on
-`&&`, `||`, `;`, `|`, and `&` (respecting quotes, so a `&&` inside a commit
-message is not a separator) and resolves every destination-changing construct it
-can read as a **literal** path: `cd`, `pushd`, `git -C`, `--git-dir`,
-`--work-tree`. `cd` is applied sequentially, because everything after it runs in
-the new directory. Each resolved destination is then checked by the same policy as
-any other target.
+command. So the containment splits the command on `&&`, `||`, `;`, `|`, and
+newlines (respecting quotes, so a `&&` inside a commit message is not a
+separator) and resolves every destination-changing construct it can read as a
+**literal** path: `cd`, `pushd`, `git -C`, `--work-tree`. `cd` is applied
+sequentially, because everything after it runs in the new directory. Each
+resolved destination is then checked by the same policy as any other target.
 
 A destination is only ever resolved when it is literal. `cd "$TARGET"`,
 `cd $(git rev-parse --show-toplevel)`, and a path built inside an invoked script
 are **not** resolved: the call passes and the construct is logged at WARN
-(`ion-meta: worktree-gate could not resolve a bash destination`) so the residual
-gap is queryable rather than invisible. That asymmetry is the design — a refusal
+(tag `workspaces`, "bash destination unresolved") so the residual gap is
+queryable rather than invisible. That asymmetry is the design — a refusal
 requires a positively-resolved literal path, which makes a false refusal in the
 operator's own worktree structurally impossible. Refusing on unresolved
 destinations was rejected: it would block `cd $(...)`, per-directory loops, and
@@ -437,7 +575,7 @@ not possible by construction rather than by a rule anyone enforces.
 ## Consequences
 
 - The bench converges when the operator says so, not while unattended. The cost
-  is one click, which *Update all & rebuild* collapses for the common case.
+  is one click, which *Update all & assemble* collapses for the common case.
 - One bench per `(repo, source branch)`, each with its own build tree and its
   own cold first build. Bench count is uncapped.
 - Bench edits are transient by design. The member set and its pins are the only

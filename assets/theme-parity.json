@@ -29,7 +29,7 @@
       },
       "statusRunning": {
         "desktopToken": "statusRunning",
-        "hex": "#5EA9C9FF"
+        "hex": "#D97757FF"
       },
       "statusDone": {
         "desktopToken": "statusComplete",
@@ -98,7 +98,7 @@
       },
       "statusRunning": {
         "desktopToken": "statusRunning",
-        "hex": "#3F86A6FF"
+        "hex": "#D97757FF"
       },
       "statusDone": {
         "desktopToken": "statusComplete",

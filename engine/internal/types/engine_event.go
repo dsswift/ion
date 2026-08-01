@@ -140,17 +140,20 @@ type EngineEvent struct {
 	// turn, so live clients must render it from this event (the text is
 	// also persisted as the run's user turn — a conversation reload shows
 	// the same content). InjectedPromptOrigin names the hosting extension
-	// when known. InjectedPromptKind classifies the injection semantically:
-	// "agent_completion" means this is a machine-to-machine dispatch callback
-	// (a completed child agent's result routed back to a parent agent) rather
-	// than a user-authored turn; "slash_command" means the injection is the
-	// expanded body of a slash command whose display turn is the command pill
-	// (clients suppress the redundant body). Empty means a genuine
-	// extension-initiated user turn with no special classification. See
+	// when known. InjectedPromptKind classifies the injection semantically —
+	// see InjectionKind (injection_kind.go) for the enumerated set and the
+	// wire string each carries; empty means a genuine extension-initiated
+	// user turn with no special classification.
+	//
+	// InjectedPromptMachineAuthored is derived from the kind and reports
+	// whether an engine-side actor authored the turn rather than a user.
+	// Consumers read it instead of matching kind strings, so a kind added to
+	// the engine reaches every client without a client-side edit. See
 	// PromptInjectedEvent for the normalized variant.
-	InjectedPrompt       string `json:"injectedPrompt,omitempty"`
-	InjectedPromptOrigin string `json:"injectedPromptOrigin,omitempty"`
-	InjectedPromptKind   string `json:"injectedPromptKind,omitempty"`
+	InjectedPrompt                string `json:"injectedPrompt,omitempty"`
+	InjectedPromptOrigin          string `json:"injectedPromptOrigin,omitempty"`
+	InjectedPromptKind            string `json:"injectedPromptKind,omitempty"`
+	InjectedPromptMachineAuthored bool   `json:"injectedPromptMachineAuthored,omitempty"`
 
 	// engine_task_suspended — a run ended without completing, because it is
 	// parked. Two producers. A dispatched agent that called ctx.suspend() or
@@ -695,6 +698,19 @@ type ContextBreakdownPayload struct {
 	CacheReadTokens     int    `json:"cacheReadTokens,omitempty"`
 	CacheCreationTokens int    `json:"cacheCreationTokens,omitempty"`
 	Model               string `json:"model"`
+	// OccupancyTokens is the engine's authoritative context-window occupancy —
+	// the same figure carried by StatusFields.ContextTokens and the same input
+	// the proactive-compaction gate measures. Divide it by ContextWindow to
+	// render "how full is the context".
+	//
+	// Distinct from its two neighbours by design: TotalTokens is the itemized
+	// per-category sum (an independent estimate, for attribution), and
+	// APIReportedTotal is the raw provider input_tokens for the last turn with
+	// nothing added for messages appended since. See the field comment on
+	// ContextBreakdownEvent for the full contract.
+	//
+	// Zero when the engine has no occupancy figure for the conversation.
+	OccupancyTokens int `json:"occupancyTokens,omitempty"`
 	// AggregateCostUsd is the sum of this session's cost plus every descendant
 	// dispatch session's cost, computed on demand. Zero for sessions with no
 	// dispatches or no cost yet.

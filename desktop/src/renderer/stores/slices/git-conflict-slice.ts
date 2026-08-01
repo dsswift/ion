@@ -39,8 +39,20 @@ import type { StoreSet, StoreGet, State, GitConflictAlert } from '../session-sto
 import { rInfo, rDebug, rWarn } from '../../rendererLogger'
 import { applyPermissionModeForTab } from './tab-slice-permission-mode'
 
-/** The exact prompt the AI Assisted button sends. Verbatim by specification. */
-export const CONFLICT_ASSIST_PROMPT = 'Please fix my currently in-progress rebase.'
+/**
+ * The exact prompt the AI Assisted button sends, parameterized by the
+ * operation actually in progress. Hardcoding "rebase" was wrong the moment the
+ * bench resolve-once flow started opening the dialog on an in-progress MERGE:
+ * the model was told to fix a rebase that did not exist.
+ */
+export function conflictAssistPrompt(operation: 'rebasing' | 'merging' | 'cherry-picking' | null): string {
+  const noun = operation === 'merging' ? 'merge'
+    : operation === 'cherry-picking' ? 'cherry-pick' : 'rebase'
+  return `Please fix my currently in-progress ${noun}.`
+}
+
+/** Back-compat name for the default (rebase) prompt. Verbatim by specification. */
+export const CONFLICT_ASSIST_PROMPT = conflictAssistPrompt(null)
 
 /**
  * The model tier the assist runs on. A rebase fix is bounded, mechanical work:
@@ -139,6 +151,21 @@ export function createGitConflictSlice(set: StoreSet, get: StoreGet): Partial<St
         directory,
         model: tier.model,
       })
+
+      // Name the operation actually in progress — a bench resolve-once leaves
+      // a MERGE, a conflicted sync leaves a rebase — so the model is not told
+      // to fix an operation that does not exist. Probe failure falls back to
+      // the rebase wording rather than blocking the assist.
+      let operation: 'rebasing' | 'merging' | 'cherry-picking' | null = null
+      try {
+        const op = await window.ion.gitOpState(directory)
+        if (op.ok) operation = op.state ?? null
+      } catch (err) {
+        rWarn('git.conflicts', 'assist could not probe operation state, defaulting to rebase wording', {
+          directory, error: String(err),
+        })
+      }
+
       // useWorktree=false: the directory IS the checkout to fix; a nested
       // worktree would point the conversation somewhere else entirely.
       // skipDuplicateCheck=true: a blank tab reuse is fine, but an existing
@@ -152,15 +179,30 @@ export function createGitConflictSlice(set: StoreSet, get: StoreGet): Partial<St
       get().setTabModel(tabId, tier.model)
 
       // Force auto mode regardless of the operator's default. The assist's
-      // whole job is to EXECUTE the rebase fix; a plan-mode default would
-      // park it writing a plan for work that was already requested verbatim.
+      // whole job is to EXECUTE the fix; a plan-mode default would park it
+      // writing a plan for work that was already requested verbatim.
       applyPermissionModeForTab(set, get, tabId, 'auto', 'conflict_assist')
 
-      get().submit(tabId, CONFLICT_ASSIST_PROMPT)
+      const prompt = conflictAssistPrompt(operation)
+      get().submit(tabId, prompt)
+
+      // Lock the conversation AFTER the machine prompt is in: this tab's
+      // entire instruction set is that one prompt. A follow-up message would
+      // graft an open-ended conversation onto a checkout that exists to be
+      // fixed — often an integration bench, where development conversations
+      // do not belong (the work belongs in the member worktree that owns the
+      // file). The conversation stays readable and abortable; submit() and
+      // the InputBar both honor the flag, and it persists across restarts.
+      set((s) => ({
+        tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, inputLocked: true } : t)),
+      }))
+
       rInfo('git.conflicts', 'assist prompt submitted', {
         directory,
         tab_id: tabId.slice(0, 8),
         model: tier.model,
+        operation: operation ?? 'unknown',
+        input_locked: true,
       })
       return tabId
     },

@@ -46,6 +46,7 @@ func (a *depthTestAccessor) SendPromptWithKind(text string, _ string, _ []string
 	return nil
 }
 func (a *depthTestAccessor) SteerSelfMainLoop(message string) bool { return false }
+func (a *depthTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
 func (a *depthTestAccessor) ParkSelfMainLoop() bool                { return false }
 func (a *depthTestAccessor) Elicit(info extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil

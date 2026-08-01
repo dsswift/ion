@@ -211,6 +211,32 @@ export const hudColors: ColorPalette = {
 
   // Worktree branch indicator
   worktreeGreen: '#4ade80',
+  /**
+   * Unlanded-commit count on a worktree row.
+   *
+   * Deliberately NOT worktreeGreen. Green is the panel's ATTENTION colour --
+   * the dirty dot and the reviewed-good check both use it -- and the commit
+   * counts wearing it made them the first thing the eye landed on. They are
+   * a fact worth reading, not the most urgent one in the row. A subdued
+   * violet stays legible without competing for first glance.
+   */
+  unlandedCount: '#a78bfa',
+
+  /**
+   * Uncommitted changes in a worktree.
+   *
+   * Rendered as a small `!` rather than a filled shape, which is what lets it
+   * borrow the danger hue without claiming a failure. `git status` has trained
+   * everyone to read a terse mark beside a path as "this file has changes", and
+   * at this size, next to the commit count, that is what it reads as -- not an
+   * error banner.
+   *
+   * Earlier attempts: worktreeGreen said SUCCESS about unsaved work, and a teal
+   * square landed between statusRunning (#5EA9C9) and statusComplete (#34d399),
+   * two cyan-greens already in this same gutter. Amber is unavailable -- it is
+   * the base-moved sync signal on the same row.
+   */
+  worktreeDirty: '#c47060',
 
   // Diff (inline edit diffs + git diff viewer)
   diffAddBg: 'rgba(122, 172, 140, 0.12)',

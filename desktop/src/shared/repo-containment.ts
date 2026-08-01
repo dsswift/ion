@@ -7,8 +7,8 @@
  * path — so a project at `/src/ion` claimed conflicts belonging to
  * `/src/ion-other` and raised a banner for an unrelated repository.
  *
- * The correct rule already existed three times in the tree (`isWithin` in
- * ion-meta's worktree-gate.ts, `resolveBenchFor` in bench-guard.ts, the
+ * The correct rule already existed elsewhere in the tree (`isWithin` in the
+ * engine's internal/workspaces, `resolveBenchFor` in bench-guard.ts, the
  * realpath checks in theme-packs.ts), each with a comment explaining that a
  * bare prefix test matches `ion-a33725460` against `ion-a3372546`. This is that
  * rule in `shared/`, where a renderer component and a main-process module can

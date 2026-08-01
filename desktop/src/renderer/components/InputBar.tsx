@@ -434,6 +434,21 @@ export function InputBar() {
 
   const sendVisible = canSend && voiceState !== 'recording'
 
+  // A locked conversation (auto-generated conflict fix) accepts no further
+  // prompts: its entire instruction is the one machine-sent message. Replace
+  // the whole input surface with a static notice — rendering a disabled
+  // textarea would look like a transient state the operator can wait out.
+  // The store's submit() guard is the enforcement; this is the honest UI.
+  if (tab?.inputLocked) {
+    return (
+      <div ref={wrapperRef} data-ion-ui data-testid="input-locked-notice" className="flex items-center w-full" style={{ minHeight: 50 }}>
+        <span style={{ fontSize: 12, color: colors.textTertiary, paddingLeft: 2 }}>
+          Automated fix conversation — input is disabled. Continue the work in its worktree.
+        </span>
+      </div>
+    )
+  }
+
   return (
     <div ref={wrapperRef} data-ion-ui className="flex flex-col w-full relative">
       {/* Slash command menu */}

@@ -225,6 +225,23 @@ type Context struct {
 	// never names it. Nil when steer support is not wired (no registry).
 	SteerSelf func(message string) (SteerDispatchResult, error)
 
+	// SteerSelfWithKind is the classification-carrying variant of SteerSelf.
+	//
+	// kind is a types.InjectionKind wire value naming who authored the
+	// message ("agent_completion", "checkin", "revive", ...). The engine
+	// threads it through BOTH delivery arms — the steer channel when the
+	// owning run is live, and the fresh prompt when it is idle — so the turn
+	// is recorded as machine-authored either way, and consumers can classify
+	// it without guessing from the text.
+	//
+	// SteerSelf is the kindless alias: it delivers identically but leaves the
+	// turn unclassified, which is correct only when the message genuinely is a
+	// user turn. A harness delivering a dispatch completion, a scheduled
+	// check-in, or a revive should use this method — a machine-to-machine
+	// message with no kind is rendered as a user bubble by every consumer that
+	// reads the classification.
+	SteerSelfWithKind func(message, kind string) (SteerDispatchResult, error)
+
 	// Elicit raises an elicitation request that fans out to: (a) every
 	// connected client as an engine_elicitation_request event for UI render,
 	// and (b) the elicitation_request extension hook so other extensions can

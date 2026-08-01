@@ -10,9 +10,14 @@
  * hosts them and decide against stale mirror state.
  */
 import type { StoreSet, StoreGet, State } from '../session-store-types'
-import type { BenchRebuildResult, IntegrationWorkspace } from '../../../shared/types'
+import type { BenchAssembleResult, IntegrationWorkspace } from '../../../shared/types'
 import { rInfo, rWarn, rDebug } from '../../rendererLogger'
-import { collectDirConversations, pickNextConversation } from '../../../shared/worktree-conversations'
+import {
+  collectDirConversations,
+  pickNextConversation,
+  pickDirTerminal,
+  benchTerminalTitle,
+} from '../../../shared/worktree-conversations'
 
 export function createBenchSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -69,18 +74,10 @@ export function createBenchSlice(set: StoreSet, get: StoreGet): Partial<State> {
         return next.tabId
       }
 
-      // The bench worktree may not exist on disk until the first rebuild, so
+      // The bench worktree may not exist on disk until the first assembly, so
       // materialise it before opening a conversation that would otherwise land
       // in a missing directory.
-      if (ws.lastBuiltAt === 0) {
-        rInfo('bench', 'bench never built; building before opening', { source_branch: sourceBranch })
-        const built = await window.ion.benchRebuild(repoPath, sourceBranch)
-        if (!built.ok) {
-          rWarn('bench', 'cannot open conversation, build failed', { error: built.error ?? '' })
-          return null
-        }
-        await get().refreshBench(repoPath)
-      }
+      if (!(await ensureBenchDirectory(repoPath, ws, get))) return null
 
       rInfo('bench', 'opening bench conversation', { bench_path: ws.benchPath })
       // useWorktree=false: the bench IS a worktree already and must never get
@@ -89,19 +86,107 @@ export function createBenchSlice(set: StoreSet, get: StoreGet): Partial<State> {
       return get().createTabInDirectory(ws.benchPath, false, true)
     },
 
-    benchRebuild: async (repoPath, sourceBranch) => {
-      rInfo('bench', 'rebuild requested', { source_branch: sourceBranch })
-      const result = await window.ion.benchRebuild(repoPath, sourceBranch)
-      if (!result.ok) rWarn('bench', 'rebuild failed', { error: result.error ?? '' })
+    /**
+     * Open (or focus) the bench's ONE dedicated terminal tab.
+     *
+     * Development in a bench is mostly shell work — build, test, run — and the
+     * generic new-terminal path stacks a fresh tab per use, so the operator
+     * accumulates identical shells and loses the scrollback they were reading.
+     * This always lands on the same tab for a given bench, and the terminal
+     * strip's `+` multiplexes inside it, so one tab hosts as many shells as the
+     * work needs.
+     *
+     * Identity is derived, never stored: see `pickDirTerminal`. The consequence
+     * worth naming is that closing the tab is a complete reset — the next press
+     * opens a fresh one, with nothing to reconcile.
+     */
+    openBenchTerminal: async (repoPath, sourceBranch) => {
+      const workspaces = get().benchWorkspaces.get(repoPath) ?? []
+      const ws = workspaces.find((w) => w.sourceBranch === sourceBranch)
+      if (!ws) {
+        rWarn('bench', 'no workspace for terminal', { repo_path: repoPath, source_branch: sourceBranch })
+        return null
+      }
+
+      const title = benchTerminalTitle(sourceBranch)
+      const existing = pickDirTerminal(get().tabs, ws.benchPath, title)
+      if (existing) {
+        rInfo('bench', 'focusing existing bench terminal', {
+          bench_path: ws.benchPath,
+          tab_id: existing.id.slice(0, 8),
+          adopted: String(existing.customTitle !== title),
+        })
+        get().selectTab(existing.id)
+        // Tier-2 hit: a terminal that was already in the bench directory but
+        // not named by Ion. Name it so the next press matches on tier 1 — but
+        // only when the operator has not titled it themselves, because their
+        // name is the one thing here we must never overwrite.
+        if (!existing.customTitle) get().renameTab(existing.id, title)
+        return existing.id
+      }
+
+      // No terminal yet, so the directory has to be real before one opens in
+      // it. A shell whose cwd does not exist is the defect, not a fallback.
+      if (!(await ensureBenchDirectory(repoPath, ws, get))) return null
+
+      const tabId = await get().createTerminalTab(ws.benchPath)
+      get().renameTab(tabId, title)
+      rInfo('bench', 'opened bench terminal', {
+        bench_path: ws.benchPath,
+        tab_id: tabId.slice(0, 8),
+      })
+      return tabId
+    },
+
+    benchAssemble: async (repoPath, sourceBranch) => {
+      rInfo('bench', 'assemble requested', { source_branch: sourceBranch })
+      const result = await window.ion.benchAssemble(repoPath, sourceBranch)
+      if (!result.ok) {
+        // A typed refusal is the machinery protecting an in-flight state (an
+        // open resolution merge, a dirty bench) — expected, not a failure.
+        if (result.refusal) rInfo('bench', 'assemble refused', { refusal: result.refusal, detail: result.error ?? '' })
+        else rWarn('bench', 'assemble failed', { error: result.error ?? '' })
+      } else if (result.workspace?.lastAssembly === 'failed') {
+        rWarn('bench', 'assembly failed atomically', { error: result.workspace.lastAssemblyError ?? '' })
+      }
       recordRetired(set, repoPath, sourceBranch, result)
       await get().refreshBench(repoPath)
       return result
+    },
+
+    /**
+     * Resolve-once flow (ATV multi-step rule: ONE forwarded action). The main
+     * process re-creates the failed assembly merge and leaves it in progress;
+     * the returned bench path is where the caller opens the ConflictsDialog.
+     * When recordings already cover every hunk, nothing is left to resolve —
+     * reassemble instead and return null so no dialog opens over a clean bench.
+     */
+    benchResolveConflict: async (repoPath, sourceBranch) => {
+      rInfo('bench', 'resolve conflict requested', { source_branch: sourceBranch })
+      const prepared = await window.ion.benchResolveConflict(repoPath, sourceBranch)
+      if (!prepared.ok) {
+        rWarn('bench', 'resolve preparation failed', { error: prepared.error ?? '' })
+        return null
+      }
+      if (!prepared.branchName) {
+        // No merge was left open: recordings (or a pin change) already cover
+        // the conflict, so a plain assembly completes the job.
+        rInfo('bench', 'no conflict remains, reassembling', { source_branch: sourceBranch })
+        await get().benchAssemble(repoPath, sourceBranch)
+        return null
+      }
+      rInfo('bench', 'merge left in progress for resolution', {
+        bench_path: prepared.benchPath ?? '',
+        branch: prepared.branchName,
+      })
+      return prepared.benchPath ?? null
     },
 
     benchUpdateMember: async (repoPath, sourceBranch, worktreePath) => {
       rInfo('bench', 'update member', { worktree_path: worktreePath })
       const result = await window.ion.benchUpdateMember({ repoPath, sourceBranch, worktreePath })
       if (!result.ok) rWarn('bench', 'update member failed', { error: result.error ?? '' })
+      if (result.warning) rWarn('bench', 'update predicts a collision', { warning: result.warning })
       recordRetired(set, repoPath, sourceBranch, result)
       await get().refreshBench(repoPath)
       return result
@@ -111,6 +196,7 @@ export function createBenchSlice(set: StoreSet, get: StoreGet): Partial<State> {
       rInfo('bench', 'update all stale', { source_branch: sourceBranch })
       const result = await window.ion.benchUpdateAll(repoPath, sourceBranch)
       if (!result.ok) rWarn('bench', 'update all failed', { error: result.error ?? '' })
+      if (result.warning) rWarn('bench', 'update-all predicts a collision', { warning: result.warning })
       recordRetired(set, repoPath, sourceBranch, result)
       await get().refreshBench(repoPath)
       return result
@@ -134,6 +220,18 @@ export function createBenchSlice(set: StoreSet, get: StoreGet): Partial<State> {
       await get().refreshBench(repoPath)
     },
 
+    benchSetReview: async (repoPath, sourceBranch, worktreePath, review) => {
+      rInfo('bench', 'member review set', { worktree_path: worktreePath, review: review ?? 'none' })
+      await window.ion.benchSetReview({ repoPath, sourceBranch, worktreePath, review })
+      await get().refreshBench(repoPath)
+    },
+
+    benchSetOrder: async (repoPath, sourceBranch, worktreePath, toIndex) => {
+      rInfo('bench', 'member order set', { worktree_path: worktreePath, to_index: toIndex })
+      await window.ion.benchSetOrder({ repoPath, sourceBranch, worktreePath, toIndex })
+      await get().refreshBench(repoPath)
+    },
+
     clearBenchRetired: (repoPath, sourceBranch) => {
       rDebug('bench', 'absorbed notice dismissed', { repo_path: repoPath, source_branch: sourceBranch })
       set((s) => {
@@ -148,7 +246,52 @@ export function createBenchSlice(set: StoreSet, get: StoreGet): Partial<State> {
 }
 
 /**
- * Record the members a rebuild absorbed into the base so the section can say what
+ * Make sure the bench directory exists on disk, building it when it does not.
+ *
+ * Returns false when the bench could not be materialised, which the callers
+ * treat as "do not open anything" — landing a conversation or a shell in a
+ * directory that is not there produces an engine session with a dead cwd, which
+ * fails later and further from the cause.
+ *
+ * ── Two reasons the directory can be missing ────────────────────────────────
+ * `lastBuiltAt === 0` is the first-run case: enrollment creates the workspace
+ * RECORD, and the first assembly is what creates the directory. That check alone
+ * was the previous behaviour and it is not sufficient — a bench that HAS been
+ * built can still have its directory removed out from under Ion (deleted by
+ * hand, pruned with `git worktree prune`, a wiped `~/.ion/integration`), and the
+ * record keeps its build timestamp. So existence is checked too, and either
+ * answer triggers the same assembly.
+ */
+async function ensureBenchDirectory(
+  repoPath: string,
+  ws: IntegrationWorkspace,
+  get: StoreGet,
+): Promise<boolean> {
+  const neverBuilt = ws.lastBuiltAt === 0
+  // Only worth an IPC round trip when the record claims a build happened.
+  const missing = neverBuilt || !(await window.ion.fsExists(ws.benchPath)).exists
+  if (!missing) return true
+
+  rInfo('bench', 'materialising bench directory before use', {
+    repo_path: repoPath,
+    source_branch: ws.sourceBranch,
+    bench_path: ws.benchPath,
+    reason: neverBuilt ? 'never_built' : 'directory_gone',
+  })
+  const built = await window.ion.benchAssemble(repoPath, ws.sourceBranch)
+  if (!built.ok) {
+    rWarn('bench', 'bench build failed; nothing opened', {
+      source_branch: ws.sourceBranch,
+      error: built.error ?? '',
+    })
+    return false
+  }
+  await get().refreshBench(repoPath)
+  return true
+}
+
+/**
+ * Record the members an assembly absorbed into the base so the section can say what
  * happened.
  *
  * A retired member's row disappears from the list, and a row vanishing with no
@@ -161,7 +304,7 @@ function recordRetired(
   set: StoreSet,
   repoPath: string,
   sourceBranch: string,
-  result: BenchRebuildResult,
+  result: BenchAssembleResult,
 ): void {
   const absorbed = result.retired ?? []
   if (absorbed.length > 0) {

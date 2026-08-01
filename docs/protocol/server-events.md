@@ -408,7 +408,7 @@ A message from the extension harness.
 
 | Key | Type | Purpose |
 |---|---|---|
-| `dedupKey` | string | Renderer-side dedup tag. The desktop session store suppresses repeated harness messages with the same `dedupKey` within a single engine-instance scrollback, so a re-emitted welcome on every `session_start` (e.g. across app restart with no intervening user turn) renders at most once per tab. Namespace convention: `<extensionName>:<messageKey>` (e.g. `ion-meta:welcome`). iOS receives the key on the wire but does not currently honor it; future iOS-side dedup is forward-compatible without a protocol change. The key persists with the message so the renderer's dedup table survives restart and rehydrate. |
+| `dedupKey` | string | Renderer-side dedup tag. The desktop session store suppresses repeated harness messages with the same `dedupKey` within a single engine-instance scrollback, so a re-emitted welcome on every `session_start` (e.g. across app restart with no intervening user turn) renders at most once per tab. Namespace convention: `<extensionName>:<messageKey>` (e.g. `my-extension:welcome`). iOS receives the key on the wire but does not currently honor it; future iOS-side dedup is forward-compatible without a protocol change. The key persists with the message so the renderer's dedup table survives restart and rehydrate. |
 
 #### engine_dialog
 

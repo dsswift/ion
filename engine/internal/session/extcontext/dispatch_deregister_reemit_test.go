@@ -125,6 +125,7 @@ func (a *dispatchCountSpyAccessor) SendPromptWithKind(_, _ string, _ []string, _
 	return nil
 }
 func (a *dispatchCountSpyAccessor) SteerSelfMainLoop(_ string) bool { return false }
+func (a *dispatchCountSpyAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
 func (a *dispatchCountSpyAccessor) ParkSelfMainLoop() bool          { return false }
 func (a *dispatchCountSpyAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil

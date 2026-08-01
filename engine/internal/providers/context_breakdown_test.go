@@ -3,6 +3,7 @@ package providers
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -233,6 +234,180 @@ func TestBuildContextBreakdown_StructuredVsBlob(t *testing.T) {
 	blobCount, _, _ := LocalTokenCount("gpt-4o", string(blobJSON))
 	if blobCount <= structured {
 		t.Fatalf("test precondition failed: blob count %d not larger than structured %d", blobCount, structured)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Image blocks must not be counted by base64 byte length
+// ---------------------------------------------------------------------------
+//
+// An image block's wire form carries its full base64 payload in source.data,
+// which can be megabytes, while the provider charges a roughly fixed per-image
+// cost. Counting the payload by length inflated one real conversation from the
+// 255,897 tokens the provider billed to an itemized 1,034,443 — 59% of its bytes
+// were base64 — which a client then rendered as >100% context on a 1M window.
+//
+// These exercise the LOCAL-FALLBACK path (nil provider). The provider-exact path
+// needs no adjustment: the provider is authoritative about how it bills images.
+
+// TestBuildContextBreakdown_ImageBytesNotCountedAsText pins that the
+// conversation row does not scale with a large base64 payload, in the typed
+// []LlmContentBlock shape.
+//
+// Fails before the fix: the row scales with the payload (a ~600KB base64 string
+// counts as ~150K tokens instead of the fixed per-image estimate).
+func TestBuildContextBreakdown_ImageBytesNotCountedAsText(t *testing.T) {
+	resetBreakdownCache()
+
+	// Large enough that byte-length counting is unmistakable — ~60K chars of
+	// base64 is ~15K tokens at char/4, an order of magnitude above the ceiling
+	// below — while staying small enough that the BPE precondition encode below
+	// runs in milliseconds rather than minutes.
+	bigPayload := strings.Repeat("A", 60_000)
+
+	opts := &types.LlmStreamOptions{
+		Model: "gpt-4o",
+		Messages: []types.LlmMessage{
+			{Role: "user", Content: []types.LlmContentBlock{
+				{Type: "text", Text: "describe this screenshot"},
+				{Type: "image", Source: &types.ImageSource{
+					Type: "base64", MediaType: "image/png", Data: bigPayload,
+				}},
+			}},
+		},
+	}
+
+	// nil provider forces the local-fallback path under test.
+	bd, err := BuildContextBreakdown(context.Background(), "gpt-4o", nil, opts, nil, nil, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var convRow *BreakdownCategory
+	for i := range bd.Categories {
+		if bd.Categories[i].Kind == "conversation" {
+			convRow = &bd.Categories[i]
+		}
+	}
+	if convRow == nil {
+		t.Fatal("expected a conversation row")
+	}
+
+	// The payload must contribute the fixed per-image cost, not its length.
+	// A generous ceiling keeps this from being brittle about the small
+	// surrounding text and block metadata while still failing hard on any
+	// byte-length counting.
+	const ceiling = types.ImageBlockTokenEstimate + 2000
+	if convRow.Tokens > ceiling {
+		t.Errorf("conversation tokens = %d, want <= %d — the image's base64 payload is being counted by byte length",
+			convRow.Tokens, ceiling)
+	}
+	// The image is still counted; it is not silently dropped.
+	if convRow.Tokens < types.ImageBlockTokenEstimate {
+		t.Errorf("conversation tokens = %d, want >= %d (the fixed per-image estimate)",
+			convRow.Tokens, types.ImageBlockTokenEstimate)
+	}
+
+	// Precondition: byte-length counting really would be catastrophic here, so
+	// a future regression cannot pass this test by coincidence.
+	naive, _, _ := LocalTokenCount("gpt-4o", bigPayload)
+	if naive <= ceiling {
+		t.Fatalf("test precondition failed: naive payload count %d is not above the ceiling %d", naive, ceiling)
+	}
+}
+
+// TestBuildContextBreakdown_ImageBytesNotCountedAsText_DiskShape is the same
+// assertion for the []any-of-map[string]any shape content takes after a JSON
+// round-trip through disk — which is exactly the shape the on-demand breakdown
+// sees, because it loads the conversation from .llm.jsonl.
+func TestBuildContextBreakdown_ImageBytesNotCountedAsText_DiskShape(t *testing.T) {
+	resetBreakdownCache()
+
+	bigPayload := strings.Repeat("B", 60_000)
+
+	opts := &types.LlmStreamOptions{
+		Model: "gpt-4o",
+		Messages: []types.LlmMessage{
+			{Role: "user", Content: []any{
+				map[string]any{"type": "text", "text": "describe this screenshot"},
+				map[string]any{"type": "image", "source": map[string]any{
+					"type": "base64", "media_type": "image/png", "data": bigPayload,
+				}},
+			}},
+		},
+	}
+
+	bd, err := BuildContextBreakdown(context.Background(), "gpt-4o", nil, opts, nil, nil, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var convRow *BreakdownCategory
+	for i := range bd.Categories {
+		if bd.Categories[i].Kind == "conversation" {
+			convRow = &bd.Categories[i]
+		}
+	}
+	if convRow == nil {
+		t.Fatal("expected a conversation row")
+	}
+
+	const ceiling = types.ImageBlockTokenEstimate + 2000
+	if convRow.Tokens > ceiling {
+		t.Errorf("disk-shape conversation tokens = %d, want <= %d — base64 counted by byte length",
+			convRow.Tokens, ceiling)
+	}
+	if convRow.Tokens < types.ImageBlockTokenEstimate {
+		t.Errorf("disk-shape conversation tokens = %d, want >= %d (fixed per-image estimate)",
+			convRow.Tokens, types.ImageBlockTokenEstimate)
+	}
+}
+
+// TestBuildContextBreakdown_ImageEstimateMatchesCompaction pins that the
+// breakdown itemizer and the compaction numerator charge an image the same
+// amount. These are two independent estimators in packages that cannot import
+// each other; they agree only because both read
+// types.ImageBlockTokenEstimate. A divergence here means a conversation would
+// be reported at one size and compacted against another.
+func TestBuildContextBreakdown_ImageEstimateMatchesCompaction(t *testing.T) {
+	resetBreakdownCache()
+
+	// Two images, so the assertion pins per-image scaling rather than a
+	// coincidentally-correct single-image constant.
+	payload := strings.Repeat("C", 60_000)
+	opts := &types.LlmStreamOptions{
+		Model: "gpt-4o",
+		Messages: []types.LlmMessage{
+			{Role: "user", Content: []types.LlmContentBlock{
+				{Type: "image", Source: &types.ImageSource{Type: "base64", MediaType: "image/png", Data: payload}},
+				{Type: "image", Source: &types.ImageSource{Type: "base64", MediaType: "image/png", Data: payload}},
+			}},
+		},
+	}
+
+	bd, err := BuildContextBreakdown(context.Background(), "gpt-4o", nil, opts, nil, nil, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var convRow *BreakdownCategory
+	for i := range bd.Categories {
+		if bd.Categories[i].Kind == "conversation" {
+			convRow = &bd.Categories[i]
+		}
+	}
+	if convRow == nil {
+		t.Fatal("expected a conversation row")
+	}
+
+	wantFloor := 2 * types.ImageBlockTokenEstimate
+	if convRow.Tokens < wantFloor {
+		t.Errorf("two-image conversation tokens = %d, want >= %d (%d per image)",
+			convRow.Tokens, wantFloor, types.ImageBlockTokenEstimate)
+	}
+	if convRow.Tokens > wantFloor+2000 {
+		t.Errorf("two-image conversation tokens = %d, want ~%d — payload bytes are leaking into the count",
+			convRow.Tokens, wantFloor)
 	}
 }
 

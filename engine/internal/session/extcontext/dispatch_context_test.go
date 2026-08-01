@@ -43,6 +43,7 @@ func (a *dispatchContextTestAccessor) SendPromptWithKind(_, _ string, _ []string
 	return nil
 }
 func (a *dispatchContextTestAccessor) SteerSelfMainLoop(message string) bool { return false }
+func (a *dispatchContextTestAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
 func (a *dispatchContextTestAccessor) ParkSelfMainLoop() bool                { return false }
 func (a *dispatchContextTestAccessor) Elicit(info extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil

@@ -2,6 +2,7 @@ import React, { useEffect, useCallback, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Paperclip, Camera, Lightning } from '@phosphor-icons/react'
 import { GitPanel } from './components/GitPanel'
+import { GIT_PANEL_WIDTH, PANEL_GAP, statusDrawerOffset } from './components/panelGeometry'
 import { StatusDrawer } from './components/StatusDrawer'
 import { TabStrip } from './components/TabStrip'
 import { ConversationView } from './components/ConversationView'
@@ -65,9 +66,17 @@ export default function App() {
   // iOS asked to open a conversation in a worktree or the bench. The store
   // actions own the open-or-focus decision, so both clients behave identically.
   useEffect(() => {
-    return window.ion.onRemoteOpenWorktreeConversation((worktreePath) => {
-      void useSessionStore.getState().openWorktreeConversation(worktreePath)
-        .catch((err) => rError('remote', 'open worktree conversation failed', { error: String(err) }))
+    return window.ion.onRemoteOpenWorktreeConversation(({ worktreePath, newConversation }) => {
+      const store = useSessionStore.getState()
+      // Two verbs, one command. Open-or-cycle is the default; the explicit
+      // "new conversation" path skips the duplicate check because a SECOND
+      // conversation in the same worktree is precisely what was asked for.
+      const opened = newConversation
+        ? store.newWorktreeConversation(worktreePath)
+        : store.openWorktreeConversation(worktreePath)
+      void opened.catch((err) => rError('remote', 'open worktree conversation failed', {
+        error: String(err), new_conversation: String(!!newConversation),
+      }))
     })
   }, [])
 
@@ -75,6 +84,16 @@ export default function App() {
     return window.ion.onRemoteOpenBenchConversation(({ repoPath, sourceBranch }) => {
       void useSessionStore.getState().openBenchConversation(repoPath, sourceBranch)
         .catch((err) => rError('remote', 'open bench conversation failed', { error: String(err) }))
+    })
+  }, [])
+
+  // A shell in the bench, rather than a conversation about it. The store action
+  // owns the one-terminal-per-bench decision, so the phone and the git panel
+  // land on the same tab.
+  useEffect(() => {
+    return window.ion.onRemoteOpenBenchTerminal(({ repoPath, sourceBranch }) => {
+      void useSessionStore.getState().openBenchTerminal(repoPath, sourceBranch)
+        .catch((err) => rError('remote', 'open bench terminal failed', { error: String(err) }))
     })
   }, [])
 
@@ -170,8 +189,12 @@ export default function App() {
     void useRemoteFsStore.getState().init()
   }, [])
 
-  const [closeConfirmTab, setCloseConfirmTab] = useState<{ id: string; title: string; directory: string } | null>(null)
-  useKeyboardShortcuts(setCloseConfirmTab)
+  // The close dialog is driven entirely by the store's closeIntent: every entry
+  // point (pill X, group pill, middle-click, Cmd+W) calls requestCloseTab, which
+  // resolves the worktree warning and raises the intent. One confirm surface,
+  // so a new entry point cannot introduce a third close behaviour.
+  const closeIntent = useSessionStore((s) => s.closeIntent)
+  useKeyboardShortcuts()
 
   const settingsOpen = useSessionStore((s) => s.settingsOpen)
   const settingsInitialTab = useSessionStore((s) => s.settingsInitialTab)
@@ -305,15 +328,13 @@ export default function App() {
             )}
           </AnimatePresence>
 
-          {closeConfirmTab && (
+          {closeIntent && (
             <CloseTabConfirmDialog
-              title={closeConfirmTab.title}
-              directory={closeConfirmTab.directory}
-              onConfirm={() => {
-                useSessionStore.getState().closeTab(closeConfirmTab.id)
-                setCloseConfirmTab(null)
-              }}
-              onCancel={() => setCloseConfirmTab(null)}
+              title={closeIntent.title}
+              directory={closeIntent.directory}
+              warning={closeIntent.warning}
+              onConfirm={() => useSessionStore.getState().confirmCloseTab()}
+              onCancel={() => useSessionStore.getState().cancelCloseTab()}
             />
           )}
 
@@ -508,8 +529,10 @@ export default function App() {
                   position: 'absolute',
                   left: '100%',
                   bottom: 60,
-                  marginLeft: 8,
-                  width: 280,
+                  marginLeft: PANEL_GAP,
+                  // The wrapper matches the panel it holds. It used to say 280
+                  // while the panel said 320, so the panel overflowed it by 40px.
+                  width: GIT_PANEL_WIDTH,
                   zIndex: 25,
                 }}
               >
@@ -530,7 +553,10 @@ export default function App() {
                   position: 'absolute',
                   left: '100%',
                   bottom: 60,
-                  marginLeft: gitPanelOpen ? 296 : 8,
+                  // COMPUTED from the panel width. The hand-typed 296 was
+                  // derived from the WRAPPER's 280, not the panel's 320, so the
+                  // drawer (one z-index above) overlapped the panel by 32px.
+                  marginLeft: statusDrawerOffset(gitPanelOpen),
                   zIndex: 26,
                 }}
               >

@@ -408,4 +408,4 @@ ion.registerCommand('inbox-refresh', {
 
 The desktop renderer subscribes to the event by `type` string and updates its custom Inbox panel. Renderers that don't subscribe to `jarvis_inbox_update` simply ignore it.
 
-Pick a unique prefix for your custom types (`jarvis_*`, `ion-meta_*`) so future engine event names don't collide with yours.
+Pick a unique prefix for your custom types (`jarvis_*`, `myext_*`) so future engine event names don't collide with yours.

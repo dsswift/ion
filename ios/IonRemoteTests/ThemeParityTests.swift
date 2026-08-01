@@ -147,4 +147,60 @@ final class ThemeParityTests: XCTestCase {
         // ThemeManager migration rewrites it before lookup in normal use).
         XCTAssertEqual(ThemeRegistry.theme(for: "ion-default").id, "ion-dark")
     }
+
+    // MARK: - Tab-dot constants mirror Ion Dark
+
+    /// `TabStatusRollup`'s dot constants are theme-independent literals, so
+    /// nothing in the fixture pipeline pins them — they can silently drift
+    /// away from the palette they claim to mirror. That drift is exactly what
+    /// let the running dot sit ~5° of hue from the error dot when running
+    /// moved to Ion Classic's terracotta. This test pins the block's stated
+    /// invariant: every constant equals its Ion Dark theme token.
+    ///
+    /// `runningOrange` is the deliberate exception in one direction only: its
+    /// value is shared verbatim by Ion Dark, Ion Light, and Ion Classic, so
+    /// asserting it against Ion Dark also asserts it against the other two.
+    func testTabDotConstantsMatchIonDarkTokens() throws {
+        let dark = IonDarkTheme()
+        let pairs: [(String, Color, Color)] = [
+            ("errorColor/statusError", TabStatusRollup.errorColor, dark.statusError),
+            ("permissionAmber/statusWarning", TabStatusRollup.permissionAmber, dark.statusWarning),
+            ("childrenYellow/statusWaitingChildren", TabStatusRollup.childrenYellow, dark.statusWaitingChildren),
+            ("runningOrange/statusRunning", TabStatusRollup.runningOrange, dark.statusRunning),
+            ("shellPink/statusBash", TabStatusRollup.shellPink, dark.statusBash),
+            ("idleGray/statusPending", TabStatusRollup.idleGray, dark.statusPending),
+        ]
+        for (label, constant, token) in pairs {
+            XCTAssertEqual(
+                try rgbaHex(constant), try rgbaHex(token),
+                "TabStatusRollup.\(label) must equal its Ion Dark token"
+            )
+        }
+    }
+
+    /// The running dot must never collapse into the warm dots that sit beside
+    /// it in the cascade. Terracotta running is close to a warm error red and
+    /// an amber permission dot, and "working" reading as "dead" or "blocked"
+    /// is the most misleading confusion the tab dot can produce. Inequality
+    /// alone is too weak a guard for near hues, so this asserts a minimum
+    /// hue separation.
+    func testRunningDotStaysHueSeparatedFromWarmNeighbors() throws {
+        func hue(_ color: Color) -> CGFloat {
+            var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            UIColor(color).getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+            return h * 360
+        }
+        let running = hue(TabStatusRollup.runningOrange)
+        for (label, other) in [
+            ("error", TabStatusRollup.errorColor),
+            ("permission", TabStatusRollup.permissionAmber),
+            ("children", TabStatusRollup.childrenYellow),
+        ] {
+            let delta = abs(running - hue(other))
+            XCTAssertGreaterThan(
+                delta, 10,
+                "running vs \(label) hue separation is only \(delta)° — too close to read apart"
+            )
+        }
+    }
 }

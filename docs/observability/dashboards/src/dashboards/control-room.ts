@@ -61,7 +61,7 @@ export function controlRoomDashboard(): Dashboard {
     lamp(4, 'relay', { h: 4, w: 4, x: 6, y: 2 }, componentLamp('relay', '5m')),
     lamp(5, 'engine', { h: 4, w: 4, x: 10, y: 2 }, componentLamp('engine', '5m'), true),
     lamp(6, 'ion-dev', { h: 4, w: 3, x: 14, y: 2 }, componentLamp('extension', '5m', 'ion-dev'), true),
-    lamp(7, 'ion-meta', { h: 4, w: 4, x: 17, y: 2 }, componentLamp('extension', '5m', 'ion-meta'), true),
+    lamp(7, 'extensions', { h: 4, w: 4, x: 17, y: 2 }, componentLamp('extension', '5m'), true),
     lamp(8, 'chief-of-staff', { h: 4, w: 3, x: 21, y: 2 }, componentLamp('extension', '5m', 'chief-of-staff'), true),
     // Tool lamps (row y=6)
     lamp(9, 'Bash', { h: 4, w: 3, x: 0, y: 6 }, toolLamp('Bash', '5m')),

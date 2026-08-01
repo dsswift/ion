@@ -31,10 +31,12 @@ import (
 // check parks it again. That cycle repeats until the set empties.
 
 // BackgroundTaskCompletionInjectionKind classifies a wake prompt carrying a
-// background command's result. Mirrors the "agent_completion" kind used for
-// dispatch callbacks: it marks a machine-to-machine injection rather than a
-// user-authored turn, so consumers can render or filter it accordingly.
-const BackgroundTaskCompletionInjectionKind = "background_task_completion"
+// background command's result. It marks a machine-to-machine injection rather
+// than a user-authored turn, so consumers can render or filter it accordingly.
+//
+// Aliases types.InjectionKindBackgroundTaskCompletion — the enumerated set in
+// types/injection_kind.go is the definition.
+const BackgroundTaskCompletionInjectionKind = string(types.InjectionKindBackgroundTaskCompletion)
 
 // parkedRun records that a session's run exited at a turn boundary because it
 // had outstanding background commands, and is waiting to be woken.

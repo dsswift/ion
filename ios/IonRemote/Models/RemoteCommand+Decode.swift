@@ -423,7 +423,10 @@ extension RemoteCommand {
             self = .worktreeRefresh(repoPath: try container.decode(String.self, forKey: .repoPath))
 
         case .worktreeOpenConversation:
-            self = .worktreeOpenConversation(worktreePath: try container.decode(String.self, forKey: .worktreePath))
+            self = .worktreeOpenConversation(
+                worktreePath: try container.decode(String.self, forKey: .worktreePath),
+                // Absent means open-or-cycle: an older desktop sends no flag.
+                newConversation: try container.decodeIfPresent(Bool.self, forKey: .newConversation) ?? false)
 
         case .worktreeSync:
             self = .worktreeSync(
@@ -443,8 +446,13 @@ extension RemoteCommand {
                 repoPath: try container.decode(String.self, forKey: .repoPath),
                 sourceBranch: try container.decode(String.self, forKey: .sourceBranch))
 
-        case .benchRebuild:
-            self = .benchRebuild(
+        case .benchOpenTerminal:
+            self = .benchOpenTerminal(
+                repoPath: try container.decode(String.self, forKey: .repoPath),
+                sourceBranch: try container.decode(String.self, forKey: .sourceBranch))
+
+        case .benchAssemble:
+            self = .benchAssemble(
                 repoPath: try container.decode(String.self, forKey: .repoPath),
                 sourceBranch: try container.decode(String.self, forKey: .sourceBranch))
 
@@ -465,6 +473,21 @@ extension RemoteCommand {
                 sourceBranch: try container.decode(String.self, forKey: .sourceBranch),
                 worktreePath: try container.decode(String.self, forKey: .worktreePath),
                 enabled: try container.decode(Bool.self, forKey: .enabled))
+
+        case .benchSetReview:
+            self = .benchSetReview(
+                repoPath: try container.decode(String.self, forKey: .repoPath),
+                sourceBranch: try container.decode(String.self, forKey: .sourceBranch),
+                worktreePath: try container.decode(String.self, forKey: .worktreePath),
+                // decodeIfPresent, because an explicit null CLEARS the verdict.
+                review: try container.decodeIfPresent(String.self, forKey: .review))
+
+        case .benchReorderMember:
+            self = .benchReorderMember(
+                repoPath: try container.decode(String.self, forKey: .repoPath),
+                sourceBranch: try container.decode(String.self, forKey: .sourceBranch),
+                worktreePath: try container.decode(String.self, forKey: .worktreePath),
+                toIndex: try container.decode(Int.self, forKey: .toIndex))
 
         case .benchAddMember:
             self = .benchAddMember(

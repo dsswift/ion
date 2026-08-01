@@ -76,10 +76,15 @@ final class TabListGroupHeaderTests: XCTestCase {
         let running = TabStatusRollup.classify(makeTab(status: .running))
         XCTAssertEqual(running.priority, TabStatusRollup.priorityRunning)
         XCTAssertTrue(running.shouldPulse)
-        // Running is the steel-teal dot, NOT the orange permission color — a
-        // pulsing running dot and a steady permission dot must never share a hue.
-        XCTAssertEqual(running.color, TabStatusRollup.runningTeal)
-        XCTAssertNotEqual(running.color, TabStatusRollup.permissionOrange)
+        // Running is the terracotta-orange dot, NOT the amber permission color
+        // — a pulsing running dot and a steady permission dot must never share
+        // a hue. This inequality is the guard that forced the permission dot
+        // to Ion Dark's amber when running took over Classic's terracotta.
+        XCTAssertEqual(running.color, TabStatusRollup.runningOrange)
+        XCTAssertNotEqual(running.color, TabStatusRollup.permissionAmber)
+        // The running dot must also stay clear of the error dot: both are warm,
+        // and "working" reading as "dead" is the worst confusion in the cascade.
+        XCTAssertNotEqual(running.color, TabStatusRollup.errorColor)
         XCTAssertEqual(TabStatusRollup.classify(makeTab(status: .connecting)).priority, TabStatusRollup.priorityRunning)
     }
 
@@ -161,10 +166,10 @@ final class TabListGroupHeaderTests: XCTestCase {
     func testClassifyQuestion() {
         let s = TabStatusRollup.classify(makeTab(status: .idle, permissionQueue: [questionEntry()]))
         XCTAssertEqual(s.priority, TabStatusRollup.priorityQuestion)
-        // Dedicated purple, distinct from the teal running dot — the two-blues
-        // collision this replaced is guarded by the inequality below.
+        // Dedicated purple, distinct from the orange running dot — the
+        // two-blues collision this replaced is guarded by the inequality below.
         XCTAssertEqual(s.color, TabStatusRollup.questionPurple)
-        XCTAssertNotEqual(s.color, TabStatusRollup.runningTeal)
+        XCTAssertNotEqual(s.color, TabStatusRollup.runningOrange)
         XCTAssertTrue(s.glow)
     }
 

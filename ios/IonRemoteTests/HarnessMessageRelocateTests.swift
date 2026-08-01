@@ -43,7 +43,7 @@ final class HarnessMessageRelocateTests: XCTestCase {
     /// one message with that key exists in the transcript, at the trailing position.
     func testRelocate_secondEmissionReplacesFirst() async {
         let vm = makeViewModel()
-        let key = "ion-meta:bootstrap"
+        let key = "my-extension:bootstrap"
 
         // First emission.
         vm.handleEngineHarnessMessage(
@@ -107,7 +107,7 @@ final class HarnessMessageRelocateTests: XCTestCase {
             tabId: tabId,
             instanceId: instanceId,
             message: "Session bootstrapped",
-            dedupKey: "ion-meta:bootstrap",
+            dedupKey: "my-extension:bootstrap",
             dedupMode: "relocate"
         )
 
@@ -122,7 +122,7 @@ final class HarnessMessageRelocateTests: XCTestCase {
     /// Only the FIRST message survives.
     func testSuppressLater_duplicateDropped() async {
         let vm = makeViewModel()
-        let key = "ion-meta:welcome"
+        let key = "my-extension:welcome"
 
         vm.handleEngineHarnessMessage(
             tabId: tabId,
@@ -183,7 +183,7 @@ final class HarnessMessageRelocateTests: XCTestCase {
           "tabId": "tab-1",
           "instanceId": "inst-1",
           "message": "Session bootstrapped",
-          "dedupKey": "ion-meta:bootstrap",
+          "dedupKey": "my-extension:bootstrap",
           "dedupMode": "relocate"
         }
         """.data(using: .utf8)!
@@ -194,7 +194,7 @@ final class HarnessMessageRelocateTests: XCTestCase {
             return
         }
         XCTAssertEqual(message, "Session bootstrapped")
-        XCTAssertEqual(dk, "ion-meta:bootstrap",
+        XCTAssertEqual(dk, "my-extension:bootstrap",
             "dedupKey must decode from top-level wire field")
         XCTAssertEqual(dm, "relocate",
             "dedupMode must decode from top-level wire field")
@@ -209,13 +209,13 @@ final class HarnessMessageRelocateTests: XCTestCase {
           "role": "harness",
           "content": "Session bootstrapped",
           "timestamp": 1700000000000,
-          "dedupKey": "ion-meta:bootstrap",
+          "dedupKey": "my-extension:bootstrap",
           "dedupMode": "relocate"
         }
         """.data(using: .utf8)!
 
         let msg = try JSONDecoder().decode(Message.self, from: json)
-        XCTAssertEqual(msg.dedupKey, "ion-meta:bootstrap",
+        XCTAssertEqual(msg.dedupKey, "my-extension:bootstrap",
             "dedupKey must decode from history-replay message payload")
         XCTAssertEqual(msg.dedupMode, "relocate",
             "dedupMode must decode from history-replay message payload")

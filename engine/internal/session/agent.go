@@ -125,11 +125,16 @@ func (m *Manager) AbortAgent(key, agentName string, subtree bool) {
 // boolean-only caller; the session layer uses the richer method so no steer
 // outcome is ever collapsed into an unexplained false.
 //
+// SteerWithKind additionally carries the injection kind, so a machine-
+// originated steer is persisted as the machine-to-machine turn it is rather
+// than as an unclassified user turn.
+//
 // This local interface is the mechanism that keeps the steer methods off the
 // public RunBackend interface — adding them there would be a contract change.
 // See docs/engine-grounding.md §3.
 type steerable interface {
 	SteerWithReason(requestID, message string) backend.SteerResult
+	SteerWithKind(requestID, message, kind string) backend.SteerResult
 }
 
 // SteerAgent sends a message to a running agent's stdin, or steers the main
@@ -139,7 +144,17 @@ type steerable interface {
 // delivered vanished without a trace. Every branch logs the attempt and its
 // outcome (engine-grounding §7).
 func (m *Manager) SteerAgent(key, agentName, message string) SteerOutcome {
-	utils.LogWithFields(utils.LevelInfo, "session", "steeragent: attempt", map[string]any{"session_id": key, "agent_name": agentName, "count": len(message)})
+	return m.SteerAgentWithKind(key, agentName, message, "")
+}
+
+// SteerAgentWithKind is the classification-carrying variant of SteerAgent.
+//
+// kind is a types.InjectionKind wire value naming who authored the message.
+// Empty — what SteerAgent passes — means a client-originated steer, a human
+// typing into a running turn. A machine originator passes its own kind so the
+// persisted turn records that no user authored it.
+func (m *Manager) SteerAgentWithKind(key, agentName, message, kind string) SteerOutcome {
+	utils.LogWithFields(utils.LevelInfo, "session", "steeragent: attempt", map[string]any{"session_id": key, "agent_name": agentName, "count": len(message), "kind": kind})
 
 	m.mu.RLock()
 	s, ok := m.sessions[key]
@@ -163,7 +178,7 @@ func (m *Manager) SteerAgent(key, agentName, message string) SteerOutcome {
 		// API-steerable" (no run), the latter falling through to the stdin
 		// pipe path used by Claude Code subprocesses.
 		if steer, ok := m.backend.(steerable); ok {
-			switch res := steer.SteerWithReason(rid, message); res {
+			switch res := steer.SteerWithKind(rid, message, kind); res {
 			case backend.SteerResultDelivered:
 				utils.LogWithFields(utils.LevelInfo, "session", "steeragent: delivered to main loop via channel", map[string]any{"session_id": key, "rid": rid, "count": len(message), "steer_delivered": SteerDelivered})
 				return SteerDelivered

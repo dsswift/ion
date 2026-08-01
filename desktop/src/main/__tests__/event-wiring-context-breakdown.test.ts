@@ -87,6 +87,7 @@ function breakdownEvent(overrides: Record<string, any> = {}): any {
       cacheReadTokens: 3000,
       cacheCreationTokens: 500,
       model: 'claude-opus-4',
+      occupancyTokens: 255897,
       aggregateCostUsd: 1.64,
       modelBreakdown: MODEL_BREAKDOWN,
       ...overrides,
@@ -129,6 +130,30 @@ describe('wireEngineBridgeEvents — engine_context_breakdown renderer forwardin
     expect(ev.model).toBe('claude-opus-4')
     expect(ev.aggregateCostUsd).toBe(1.64)
     expect(ev.modelBreakdown).toEqual(MODEL_BREAKDOWN)
+  })
+
+  it('forwards occupancyTokens, the field every surface renders as occupancy', () => {
+    // occupancyTokens is the engine's authoritative "how full is the context"
+    // figure. Dropping it in the reconstruction would silently push the drawer
+    // and the status bar back onto their fallbacks (and, before this field
+    // existed, onto the itemized totalTokens — which read 103% for a
+    // conversation occupying 26% of its window).
+    emit('tab1:inst1', breakdownEvent())
+
+    const [ev] = normalizedBreakdownEvents()
+    expect(ev.occupancyTokens).toBe(255897)
+    // It must not be confused with the itemized sum on the same event.
+    expect(ev.occupancyTokens).not.toBe(ev.totalTokens)
+  })
+
+  it('leaves occupancyTokens undefined when the engine omits it', () => {
+    // The engine omits the field (omitempty) when it has no occupancy figure —
+    // a fresh conversation with no provider response yet. The renderer must see
+    // undefined so its fallback chain engages, not a fabricated zero.
+    emit('tab1:inst1', breakdownEvent({ occupancyTokens: undefined }))
+
+    const [ev] = normalizedBreakdownEvents()
+    expect(ev.occupancyTokens).toBeUndefined()
   })
 
   it('preserves an empty modelBreakdown array (runloop-emitted breakdowns)', () => {

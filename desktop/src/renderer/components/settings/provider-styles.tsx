@@ -31,5 +31,8 @@ export function DeviceCodeDisplay({ deviceCode, colors }: { deviceCode: DeviceCo
 export function Spinner({ size = 14 }: { size?: number }) {
   const colors = useColors()
   // Spinner track: the on-accent foreground at 30% alpha (no translucent on-accent track token exists).
-  return <span style={{ display: 'inline-block', width: size, height: size, border: '2px solid rgba(255,255,255,0.3)' /* hardcoded-ok: on-accent spinner track */, borderTopColor: colors.textOnAccent, borderRadius: '50%', animation: 'ion-spin 0.6s linear infinite', flexShrink: 0 }} />
+  // `spin` is the keyframe that exists (index.css). This named `ion-spin`, which
+  // is defined nowhere — repo, Tailwind, or any dependency — so every provider
+  // auth spinner rendered as a motionless ring next to "Waiting for…".
+  return <span style={{ display: 'inline-block', width: size, height: size, border: '2px solid rgba(255,255,255,0.3)' /* hardcoded-ok: on-accent spinner track */, borderTopColor: colors.textOnAccent, borderRadius: '50%', animation: 'spin 0.6s linear infinite', flexShrink: 0 }} />
 }

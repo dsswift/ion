@@ -50,9 +50,10 @@ extension RemoteCommand {
             try container.encode(TypeKey.worktreeRefresh, forKey: .type)
             try container.encode(repoPath, forKey: .repoPath)
 
-        case .worktreeOpenConversation(let worktreePath):
+        case .worktreeOpenConversation(let worktreePath, let newConversation):
             try container.encode(TypeKey.worktreeOpenConversation, forKey: .type)
             try container.encode(worktreePath, forKey: .worktreePath)
+            try container.encode(newConversation, forKey: .newConversation)
 
         case .worktreeSync(let worktreePath, let sourceBranch, let repoPath):
             try container.encode(TypeKey.worktreeSync, forKey: .type)
@@ -72,8 +73,13 @@ extension RemoteCommand {
             try container.encode(repoPath, forKey: .repoPath)
             try container.encode(sourceBranch, forKey: .sourceBranch)
 
-        case .benchRebuild(let repoPath, let sourceBranch):
-            try container.encode(TypeKey.benchRebuild, forKey: .type)
+        case .benchOpenTerminal(let repoPath, let sourceBranch):
+            try container.encode(TypeKey.benchOpenTerminal, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+            try container.encode(sourceBranch, forKey: .sourceBranch)
+
+        case .benchAssemble(let repoPath, let sourceBranch):
+            try container.encode(TypeKey.benchAssemble, forKey: .type)
             try container.encode(repoPath, forKey: .repoPath)
             try container.encode(sourceBranch, forKey: .sourceBranch)
 
@@ -94,6 +100,22 @@ extension RemoteCommand {
             try container.encode(sourceBranch, forKey: .sourceBranch)
             try container.encode(worktreePath, forKey: .worktreePath)
             try container.encode(enabled, forKey: .enabled)
+
+        case .benchSetReview(let repoPath, let sourceBranch, let worktreePath, let review):
+            try container.encode(TypeKey.benchSetReview, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+            try container.encode(sourceBranch, forKey: .sourceBranch)
+            try container.encode(worktreePath, forKey: .worktreePath)
+            // Explicit null clears the verdict, so encodeIfPresent would be
+            // wrong: an absent key would read as "no change" on the desktop.
+            try container.encode(review, forKey: .review)
+
+        case .benchReorderMember(let repoPath, let sourceBranch, let worktreePath, let toIndex):
+            try container.encode(TypeKey.benchReorderMember, forKey: .type)
+            try container.encode(repoPath, forKey: .repoPath)
+            try container.encode(sourceBranch, forKey: .sourceBranch)
+            try container.encode(worktreePath, forKey: .worktreePath)
+            try container.encode(toIndex, forKey: .toIndex)
 
         case .benchAddMember(let repoPath, let sourceBranch, let worktreePath, let branchName):
             try container.encode(TypeKey.benchAddMember, forKey: .type)

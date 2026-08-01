@@ -10,6 +10,7 @@ import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId, totalInputTokens } from '../session-store-helpers'
 import { formatSteerAppliedDivider } from '../../../shared/clear-divider'
+import { suppressesInjection } from '../../../shared/injection-policy'
 import { buildCompactionMarkerContent, buildManualCompactionNoOpNotice } from '../../../shared/compaction-marker'
 import { captureSessionInitId } from './session-init-capture'
 import { activeInstance, commitInstance, baseStatusFields } from '../conversation-instance'
@@ -251,28 +252,16 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               // transcript (this closes the "ATV shows [Agent X completed]
               // turns the overlay never displayed" divergence).
               //
-              // Exceptions — engine-classified injections that must NOT render
-              // as user bubbles:
-              //   - "agent_completion": a machine-to-machine dispatch callback
-              //     (a child agent's result routed back to its parent). Internal
-              //     signal, not a user-authored turn.
-              //   - "slash_command": the expanded body of a slash command whose
-              //     display turn is the command pill. The engine already persists
-              //     the raw invocation as the display entry (rendered as a pill
-              //     via the optimistic insert + reload), so the multi-KB expansion
-              //     body is redundant — rendering it puts the whole command
-              //     template on screen as a second user message.
-              //   - "background_task_completion": a finished background bash
-              //     command's result, routed back to wake a parked session
-              //     (ADR-023). Machine-to-machine like agent_completion — the
-              //     engine is reporting an exit code and output tail to the
-              //     model, not relaying something the user said. Rendering it
-              //     puts raw command output on screen as a user bubble.
-              if (
-                event.kind !== 'agent_completion' &&
-                event.kind !== 'slash_command' &&
-                event.kind !== 'background_task_completion'
-              ) {
+              // Machine-to-machine injections are suppressed. The engine
+              // classifies; suppressesInjection is the desktop's single
+              // opinion about that classification, shared with the history
+              // mapper so live and reload CANNOT disagree. This used to be
+              // three hardcoded kind strings here and two in the mapper —
+              // they had already drifted apart. See shared/injection-policy.ts.
+              if (!suppressesInjection({
+                machineAuthored: event.machineAuthored,
+                injectionKind: event.kind,
+              })) {
                 messages = [
                   ...messages,
                   { id: nextMsgId(), role: 'user' as const, content: event.prompt, timestamp: Date.now() },
@@ -565,10 +554,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
             case 'context_breakdown':
               // Cache the per-category breakdown on the instance so the Status
-              // Drawer can render it synchronously on open. The breakdown is
-              // the most precise occupancy figure available (the engine
-              // reassembles system prompt + tools + messages to produce it),
-              // so its totalTokens supersedes the streamed usage figure.
+              // Drawer can render it synchronously on open.
               instPatch = {
                 ...instPatch,
                 contextBreakdown: {
@@ -580,20 +566,43 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                   cacheReadTokens: event.cacheReadTokens,
                   cacheCreationTokens: event.cacheCreationTokens,
                   model: event.model ?? '',
+                  occupancyTokens: event.occupancyTokens,
                   aggregateCostUsd: event.aggregateCostUsd,
                   modelBreakdown: event.modelBreakdown,
                 },
               }
-              // Mirror the breakdown's authoritative figures onto statusFields
-              // (the indicator's numerator) and onto the tab (the iOS snapshot
-              // carrier), so every surface reads the same number.
+              // Four distinct quantities travel on this event, and only one of
+              // them is occupancy:
+              //
+              //   occupancyTokens  — the ENGINE'S authoritative "how full is the
+              //                      context". Same figure engine_status carries
+              //                      as contextTokens, same input the compaction
+              //                      gate reads. This is what surfaces render.
+              //   totalTokens      — the ITEMIZED per-category sum. An
+              //                      independent estimate for attribution.
+              //   apiReportedTotal — the provider's raw input_tokens for the last
+              //                      turn, with nothing added for messages
+              //                      appended since.
+              //   contextTokens    — (statusFields) the streaming-path copy of
+              //                      occupancy, written by the `usage` arm.
+              //
+              // totalTokens must NOT be written to contextTokens. They measure
+              // different things, and mirroring the estimate over the reported
+              // figure made the indicator flip between the two depending on
+              // which event landed last — a conversation occupying 26% of a 1M
+              // window read as 103% whenever the itemized sum arrived last.
+              //
+              // occupancyTokens is not written to contextTokens either, and does
+              // not need to be: the engine derives both from the same
+              // GetContextUsage call, so the `usage` arm's value and this one
+              // agree. The drawer reads occupancyTokens off the cached breakdown
+              // above, which keeps this arm a pure cache write.
+              //
+              // contextWindow IS mirrored: the engine knows the window of the
+              // model it actually ran, and that is a strictly better
+              // denominator than any client-side guess.
               if (event.contextWindow) {
                 updated.contextWindow = event.contextWindow
-              }
-              if (event.totalTokens) {
-                updated.contextTokens = event.totalTokens
-              }
-              if (event.totalTokens || event.contextWindow) {
                 // Same synthesize-a-base rule as the `usage` arm above, for
                 // the same reason: statusFields is null until the first
                 // engine_status and the indicator reads only that field.
@@ -601,8 +610,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
                   ...instPatch,
                   statusFields: {
                     ...(inst0?.statusFields ?? baseStatusFields()),
-                    ...(event.totalTokens ? { contextTokens: event.totalTokens } : {}),
-                    ...(event.contextWindow ? { contextWindow: event.contextWindow } : {}),
+                    contextWindow: event.contextWindow,
                   },
                 }
               }

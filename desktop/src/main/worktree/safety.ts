@@ -68,8 +68,6 @@ export interface WorktreeAppraisal {
    * i.e. work that would become unreachable if the branch were deleted.
    */
   unlandedCommitCount: number
-  /** Subjects of the unlanded commits (capped for display). */
-  unlandedSubjects: string[]
   /** True when the branch's commits are all contained in the source branch. */
   fullyLanded: boolean
   /**
@@ -83,7 +81,7 @@ export interface WorktreeAppraisal {
   appraisalFailed?: boolean
 }
 
-/** Cap on the number of paths/subjects reported, so a huge diff stays readable. */
+/** Cap on the number of paths reported, so a huge diff stays readable. */
 const DISPLAY_CAP = 20
 
 /**
@@ -102,7 +100,6 @@ export async function appraiseWorktree(
     hasUncommittedChanges: false,
     uncommittedPaths: [],
     unlandedCommitCount: 0,
-    unlandedSubjects: [],
     fullyLanded: false,
     safeToDiscard: false,
     reason: 'Could not determine what this worktree contains, so it is not safe to discard.',
@@ -121,14 +118,12 @@ export async function appraiseWorktree(
     return unknown
   }
 
-  let unlandedSubjects: string[] = []
   let unlandedCommitCount = 0
   try {
     // Commits on HEAD not reachable from the source branch. This is the exact
     // question "what would `branch -D` make unreachable".
     const raw = await runGit(worktreePath, ['log', '--format=%s', `${sourceBranch}..HEAD`])
-    unlandedSubjects = raw.split('\n').map((s) => s.trim()).filter(Boolean)
-    unlandedCommitCount = unlandedSubjects.length
+    unlandedCommitCount = raw.split('\n').map((s) => s.trim()).filter(Boolean).length
   } catch (err) {
     // A missing source branch means we cannot know what has landed. Refuse
     // rather than treating "no answer" as "nothing to lose".
@@ -156,7 +151,6 @@ export async function appraiseWorktree(
     hasUncommittedChanges,
     uncommittedPaths: uncommittedPaths.slice(0, DISPLAY_CAP),
     unlandedCommitCount,
-    unlandedSubjects: unlandedSubjects.slice(0, DISPLAY_CAP),
     fullyLanded,
     safeToDiscard,
     reason: reasons.length > 0 ? `This worktree has ${reasons.join(' and ')}.` : undefined,

@@ -39,6 +39,25 @@ func (r SteerResult) String() string {
 	}
 }
 
+// steerMessage is one buffered steer: the text plus the classification of who
+// authored it.
+//
+// The kind rides WITH the message rather than being resolved at the drain
+// point, because only the caller knows where the steer came from. A human
+// typing into a running turn and a harness bubbling a dispatch completion into
+// that same turn arrive through the identical channel and are indistinguishable
+// once buffered. The channel used to be a bare `chan string`, so drainSteer had
+// nowhere to read a kind from and persisted every steer — including a
+// machine-to-machine one — as an unclassified user turn.
+//
+// Internal to the backend; not a wire or SDK type.
+type steerMessage struct {
+	text string
+	// kind is a types.InjectionKind wire value. Empty for a client-originated
+	// steer, which is a genuine user turn.
+	kind string
+}
+
 // drainSteer performs a non-blocking check of the run's steer channel.
 // If a steer message is present it is injected into the conversation as a
 // user message, persisted, logged, and a SteerInjectedEvent is emitted so
@@ -55,13 +74,16 @@ func (r SteerResult) String() string {
 func (b *ApiBackend) drainSteer(run *activeRun, conv *conversation.Conversation) bool {
 	select {
 	case steerMsg := <-run.steerCh:
-		conversation.AddUserMessage(conv, steerMsg)
+		// Classified through the kind-aware append so a machine-originated
+		// steer persists as the machine-to-machine turn it is. A client steer
+		// carries no kind and reaches the same plain user turn as before.
+		conversation.AddUserMessageWithKind(conv, steerMsg.text, steerMsg.kind)
 		// Persist a steer marker immediately after the injected user message so
 		// the steer marker survives reload (SteerInjectedEvent is not persisted).
 		// Appended before the existing Save so it rides the same write.
 		if conv.Entries != nil {
 			conversation.AppendEntry(conv, conversation.EntrySteerMarker, conversation.SteerMarkerData{
-				MessageLength: len(steerMsg),
+				MessageLength: len(steerMsg.text),
 			})
 		}
 		if err := conversation.Save(conv, ""); err != nil {
@@ -72,10 +94,11 @@ func (b *ApiBackend) drainSteer(run *activeRun, conv *conversation.Conversation)
 		}
 		utils.LogWithFields(utils.LevelInfo, "backend.runloop", "steer message injected into conversation", map[string]any{
 			"run_id":  run.requestID,
-			"msg_len": len(steerMsg),
+			"msg_len": len(steerMsg.text),
+			"kind":    steerMsg.kind,
 		})
 		b.emit(run, types.NormalizedEvent{Data: &types.SteerInjectedEvent{
-			MessageLength: len(steerMsg),
+			MessageLength: len(steerMsg.text),
 		}})
 		return true
 	default:

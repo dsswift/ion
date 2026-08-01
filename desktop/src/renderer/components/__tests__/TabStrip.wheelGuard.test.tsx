@@ -205,6 +205,7 @@ vi.mock('../../stores/sessionStore', () => ({
       staticInfo: { homePath: '/Users/test' },
       selectTab: () => {},
       closeTab: () => {},
+      requestCloseTab: async () => {},
       reorderTabs: () => {},
       renameTab: () => {},
       setTabPillColor: () => {},

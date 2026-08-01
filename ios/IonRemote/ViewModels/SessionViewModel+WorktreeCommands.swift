@@ -68,9 +68,16 @@ extension SessionViewModel {
     /// Open (or focus) a conversation in a worktree. The desktop focuses an
     /// existing tab rather than stacking a duplicate.
     func openWorktreeConversation(worktreePath: String) {
-        DiagnosticLog.log("open worktree conversation", tag: "worktree",
-                          fields: ["worktree_path": worktreePath])
-        send(.worktreeOpenConversation(worktreePath: worktreePath), intent: .userInitiated)
+        send(.worktreeOpenConversation(worktreePath: worktreePath, newConversation: false),
+             intent: .userInitiated)
+    }
+
+    /// Create an ADDITIONAL conversation in a worktree, rather than focusing one
+    /// that already exists. Tapping a row does the latter; this is the row menu's
+    /// explicit verb, matching the desktop's "New conversation here".
+    func newWorktreeConversation(worktreePath: String) {
+        send(.worktreeOpenConversation(worktreePath: worktreePath, newConversation: true),
+             intent: .userInitiated)
     }
 
     /// Open (or focus) a conversation in the integration bench.
@@ -78,6 +85,18 @@ extension SessionViewModel {
         DiagnosticLog.log("open bench conversation", tag: "worktree",
                           fields: ["repo_path": repoPath, "source_branch": sourceBranch])
         send(.benchOpenConversation(repoPath: repoPath, sourceBranch: sourceBranch), intent: .userInitiated)
+    }
+
+    /// Open (or focus) the bench's ONE dedicated terminal tab.
+    ///
+    /// A shell rather than a conversation: building and testing the integrated
+    /// stack is what the bench is for. The desktop keeps exactly one terminal per
+    /// bench, so pressing this repeatedly returns to the same tab and its
+    /// scrollback rather than stacking shells.
+    func openBenchTerminal(repoPath: String, sourceBranch: String) {
+        DiagnosticLog.log("open bench terminal", tag: "worktree",
+                          fields: ["repo_path": repoPath, "source_branch": sourceBranch])
+        send(.benchOpenTerminal(repoPath: repoPath, sourceBranch: sourceBranch), intent: .userInitiated)
     }
 
     // MARK: - Worktree verbs
@@ -110,9 +129,9 @@ extension SessionViewModel {
 
     // MARK: - Bench verbs
 
-    func rebuildBench(repoPath: String, sourceBranch: String) {
+    func assembleBench(repoPath: String, sourceBranch: String) {
         benchBusy = true
-        send(.benchRebuild(repoPath: repoPath, sourceBranch: sourceBranch), intent: .userInitiated)
+        send(.benchAssemble(repoPath: repoPath, sourceBranch: sourceBranch), intent: .userInitiated)
     }
 
     func updateBenchMember(repoPath: String, sourceBranch: String, worktreePath: String) {
@@ -129,6 +148,20 @@ extension SessionViewModel {
     func setBenchMemberEnabled(repoPath: String, sourceBranch: String, worktreePath: String, enabled: Bool) {
         send(.benchSetEnabled(repoPath: repoPath, sourceBranch: sourceBranch,
                               worktreePath: worktreePath, enabled: enabled),
+             intent: .userInitiated)
+    }
+
+    /// Record or clear a verdict on a member's current pin. `nil` clears it.
+    func setBenchMemberReview(repoPath: String, sourceBranch: String, worktreePath: String, review: String?) {
+        send(.benchSetReview(repoPath: repoPath, sourceBranch: sourceBranch,
+                             worktreePath: worktreePath, review: review),
+             intent: .userInitiated)
+    }
+
+    /// Move a member in the merge order.
+    func reorderBenchMember(repoPath: String, sourceBranch: String, worktreePath: String, toIndex: Int) {
+        send(.benchReorderMember(repoPath: repoPath, sourceBranch: sourceBranch,
+                                 worktreePath: worktreePath, toIndex: toIndex),
              intent: .userInitiated)
     }
 
@@ -160,7 +193,16 @@ extension SessionViewModel {
         worktreeBusyPath = nil
         benchBusy = false
         if result.ok {
-            gitToast = GitToast(message: Self.successMessage(for: result.operation), isError: false)
+            // A dry-run collision prediction outranks the plain success line:
+            // the operation worked, but the next assembly will conflict, and
+            // the operator decides now whether to resolve or keep working.
+            if let warning = result.warning, !warning.isEmpty {
+                gitToast = GitToast(message: warning, isError: true)
+                DiagnosticLog.log("pin update predicts a collision", tag: "worktree", level: .warn,
+                                  fields: ["operation": result.operation.rawValue, "warning": warning])
+            } else {
+                gitToast = GitToast(message: Self.successMessage(for: result.operation), isError: false)
+            }
             return
         }
         // A refusal the operator can fix reads differently from a hard failure,
@@ -180,9 +222,9 @@ extension SessionViewModel {
         switch op {
         case .sync: return "Synced from the source branch."
         case .land: return "Landed into the source branch."
-        case .rebuild: return "Bench rebuilt."
-        case .update: return "Member updated and bench rebuilt."
-        case .updateAll: return "All stale members updated and bench rebuilt."
+        case .assemble: return "Bench assembled."
+        case .update: return "Member updated and bench assembled."
+        case .updateAll: return "All stale members updated and bench assembled."
         }
     }
 }

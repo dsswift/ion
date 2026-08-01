@@ -71,7 +71,6 @@ final class ContextBreakdownDecodeTests: XCTestCase {
     }
 
     // MARK: - 1b. No instanceId — decodes with nil instanceId
-
     func test_desktopContextBreakdown_nilInstanceId() throws {
         let json = """
         {
@@ -142,6 +141,7 @@ final class ContextBreakdownDecodeTests: XCTestCase {
                 apiReportedTotal: nil,
                 unaccounted: nil,
                 model: "claude-opus-4",
+                occupancyTokens: nil,
                 cacheReadTokens: nil,
                 cacheCreationTokens: nil,
                 aggregateCostUsd: nil,
@@ -452,6 +452,7 @@ final class ContextBreakdownDecodeTests: XCTestCase {
             apiReportedTotal: nil,
             unaccounted: nil,
             model: "claude-sonnet-4-6",
+            occupancyTokens: nil,
             cacheReadTokens: nil,
             cacheCreationTokens: nil,
             aggregateCostUsd: nil,

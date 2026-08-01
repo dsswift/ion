@@ -24,6 +24,8 @@ struct IonClassicTheme: AppTheme {
     let statusWaitingChildren = Color(hex: 0xF59E0B)          // statusWaitingChildren
     let statusBash = Color(hex: 0xE0559B)                     // statusBash
     let statusWarning = Color(hex: 0xF59E0B)                  // statusWarning
+    let statusIdle = Color(hex: 0x76766E)                     // statusIdle
+    let worktreeDirty = Color(hex: 0xC47060)                  // worktreeDirty (git-status `!`)
     let surfaceElevated = Color(hex: 0x353530)                // surfacePrimary
     let codeBg = Color(hex: 0x1A1A18)                         // codeBg
     let userBubbleTint = Color(hex: 0x353530)                 // userBubble

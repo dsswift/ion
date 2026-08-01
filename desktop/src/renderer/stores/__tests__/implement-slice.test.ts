@@ -148,6 +148,7 @@ function makeTab(overrides: Partial<TabState> = {}): TabState {
     contextWindow: null,
     isCompacting: false,
     isTerminalOnly: false,
+    inputLocked: false,
     engineProfileId: null,
     lastMessagePreview: null,
     ...overrides,

@@ -201,7 +201,7 @@ export type NormalizedEvent =
   // fields mirror the engine's internal NormalizedEvent shape and are the
   // contract the manifest pins.
   | { type: 'task_suspend'; awaitingDispatchIds?: string[]; awaitingTaskIds?: string[] }
-  | { type: 'prompt_injected'; prompt: string; origin?: string; kind?: string }
+  | { type: 'prompt_injected'; prompt: string; origin?: string; kind?: string; machineAuthored?: boolean }
   | { type: 'model_fallback'; requestedModel: string; fallbackModel: string; reason: string }
   // capability_unsupported — a requested feature (e.g. plan mode) is not
   // supported by the backend that would serve the run; the engine declined
@@ -294,4 +294,4 @@ export type NormalizedEvent =
   // the first usage event. Desktop-internal: translated from the engine wire in
   // event-wiring.ts and stored on the active instance (event-slice.ts case
   // 'context_breakdown') so the Status Drawer can render it synchronously.
-  | { type: 'context_breakdown'; categories: import('./types-engine').ContextBreakdownCategory[]; contextWindow: number; totalTokens: number; apiReportedTotal?: number; unaccounted?: number; cacheReadTokens?: number; cacheCreationTokens?: number; model: string; aggregateCostUsd?: number; modelBreakdown?: import('./types-engine').ModelBreakdown[] }
+  | { type: 'context_breakdown'; categories: import('./types-engine').ContextBreakdownCategory[]; contextWindow: number; totalTokens: number; apiReportedTotal?: number; unaccounted?: number; cacheReadTokens?: number; cacheCreationTokens?: number; model: string; occupancyTokens?: number; aggregateCostUsd?: number; modelBreakdown?: import('./types-engine').ModelBreakdown[] }

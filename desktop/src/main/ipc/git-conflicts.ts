@@ -22,7 +22,7 @@
  * speaks in branch names, never bare ours/theirs.
  *
  * Mutating channels are bench-guarded like git-rebase.ts: resolving conflicts
- * inside an integration bench writes to a tree the next rebuild recreates.
+ * inside an integration bench writes to a tree the next assembly recreates.
  */
 import { ipcMain } from 'electron'
 import { IPC } from '../../shared/types'

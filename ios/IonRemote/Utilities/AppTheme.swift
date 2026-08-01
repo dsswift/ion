@@ -27,7 +27,7 @@ protocol AppTheme {
     /// amber pulsing dot on the parent tab pill, sub-tab pill, and
     /// footer state label. Mirrors the desktop's
     /// `statusWaitingChildren` token in `theme-tokens.ts`. Distinct
-    /// from `statusRunning` (teal = foreground) so foreground vs.
+    /// from `statusRunning` (terracotta orange = foreground) so foreground vs.
     /// background activity is visually disambiguated. See
     /// `ConversationStatusBar.swift` and `TabRowView.swift` for the
     /// render sites.
@@ -42,6 +42,16 @@ protocol AppTheme {
     /// triangle. Distinct from `statusError` (all failed) so partial
     /// failure is visually differentiated from total failure.
     var statusWarning: Color { get }
+    /// No activity in a conversation. Mirrors the desktop `statusIdle` token.
+    var statusIdle: Color { get }
+    /// Uncommitted changes in a worktree, drawn as a small `!`.
+    ///
+    /// The glyph is what lets this borrow the danger hue without claiming a
+    /// failure -- `git status` has trained everyone to read a terse mark beside a
+    /// path as "this has changes". Green said the opposite (success) and a teal
+    /// fill collided with statusRunning and statusComplete; amber is unavailable,
+    /// being the base-moved sync signal on the same row.
+    var worktreeDirty: Color { get }
     var surfaceElevated: Color { get }
     var codeBg: Color { get }
     var userBubbleTint: Color { get }
@@ -240,6 +250,8 @@ final class ThemeManager: AppTheme {
     var statusWaitingChildren: Color { _currentTheme.statusWaitingChildren }
     var statusBash: Color { _currentTheme.statusBash }
     var statusWarning: Color { _currentTheme.statusWarning }
+    var statusIdle: Color { _currentTheme.statusIdle }
+    var worktreeDirty: Color { _currentTheme.worktreeDirty }
     var surfaceElevated: Color { _currentTheme.surfaceElevated }
     var codeBg: Color { _currentTheme.codeBg }
     var userBubbleTint: Color { _currentTheme.userBubbleTint }

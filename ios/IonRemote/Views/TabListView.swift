@@ -45,6 +45,9 @@ struct TabListView: View {
     @State var conversationPickerPinToGroupId: String? = nil
     @State private var renamingTabId: String?
     @State private var renameText: String = ""
+    /// A close held for confirmation because the tab's worktree still holds work.
+    /// Nil for every uneventful close, which proceeds without a prompt.
+    @State private var pendingCloseWarning: PendingCloseWarning?
     @State var collapsedGroupIds: Set<String> = {
         Set(UserDefaults.standard.stringArray(forKey: "collapsedGroupIds") ?? [])
     }()
@@ -182,6 +185,29 @@ struct TabListView: View {
             }
         } message: {
             Text("Enter a new name for this tab.")
+        }
+        // Close confirmation for a worktree conversation that still holds work.
+        //
+        // Only raised when there is something to say (see WorktreeCloseWarning):
+        // a plain conversation, and a worktree that is clean and fully landed,
+        // still close straight from the swipe with no extra tap. Closing is never
+        // destructive — the worktree outlives its conversations — so this informs
+        // rather than guards, which is why the confirm is not `.destructive`.
+        .alert("Close conversation?", isPresented: .init(
+            get: { pendingCloseWarning != nil },
+            set: { if !$0 { pendingCloseWarning = nil } }
+        )) {
+            Button("Close") {
+                if let pending = pendingCloseWarning {
+                    viewModel.closeTab(pending.tabId)
+                }
+                pendingCloseWarning = nil
+            }
+            Button("Cancel", role: .cancel) {
+                pendingCloseWarning = nil
+            }
+        } message: {
+            Text(pendingCloseWarning?.summary ?? "")
         }
     }
 
@@ -485,9 +511,9 @@ struct TabListView: View {
                         ))
                     }
                     .onDelete { offsets in
-                        let ids = offsets.map { group.tabs[$0].id }
-                        for id in ids {
-                            viewModel.closeTab(id)
+                        let tabs = offsets.map { group.tabs[$0] }
+                        for tab in tabs {
+                            requestCloseTab(tab)
                         }
                     }
                 }
@@ -495,6 +521,25 @@ struct TabListView: View {
                 groupHeader(group)
             }
         }
+    }
+
+    /// Close a tab, pausing for confirmation only when its worktree still holds
+    /// work the operator should know about.
+    ///
+    /// Mirrors the desktop's `requestCloseTab`: every close goes through one
+    /// place, so the warning cannot be bypassed by a future entry point that
+    /// calls `closeTab` directly. Silent for the uneventful case, so the common
+    /// swipe-to-close keeps its single-gesture feel.
+    private func requestCloseTab(_ tab: RemoteTabState) {
+        if let summary = WorktreeCloseWarning.summary(for: tab, worktreeStates: viewModel.worktreeStates) {
+            DiagnosticLog.log("close held for worktree warning", tag: "tabs", fields: [
+                "tab_id": String(tab.id.prefix(8)),
+                "directory": tab.workingDirectory,
+            ])
+            pendingCloseWarning = PendingCloseWarning(tabId: tab.id, summary: summary)
+            return
+        }
+        viewModel.closeTab(tab.id)
     }
 
     /// Returns the resolved Color for a tab's pill color when the Show Tab Colors

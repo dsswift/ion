@@ -28,7 +28,7 @@ import type { AgentStateUpdate } from '../../shared/types'
 import type { ContextBreakdownCategory, DispatchInfo } from '../../shared/types-engine'
 import { getDynamicContextWindow } from '../stores/model-labels'
 import { usePreferencesStore } from '../preferences'
-import { resolveContextDisplay } from './context-usage'
+import { resolveContextDisplay, resolveContextInputs } from './context-usage'
 
 // Presentational parts live in StatusDrawerParts.tsx — this file is under an
 // explicit size cap and the parts are pure (data + colors in, JSX out). The
@@ -100,15 +100,22 @@ export function StatusDrawer() {
   const contextBreakdown = activeInstance?.contextBreakdown ?? null
 
   // The drawer and the status bar MUST agree, so both read the same numerator
-  // (engine-reported occupancy tokens) and the same denominator (the SELECTED
-  // model's window via resolveContextDisplay). Deriving tokens from
-  // percent × window — the old shape — was lossy and produced a figure that
-  // disagreed with the bar whenever the picker differed from the engine.
-  const contextTokens = contextBreakdown?.totalTokens
-    || statusFields?.contextTokens
-    || null
+  // and the same denominator (the SELECTED model's window via
+  // resolveContextDisplay). Deriving tokens from percent × window — the old
+  // shape — was lossy and produced a figure that disagreed with the bar
+  // whenever the picker differed from the engine.
+  //
+  // The numerator and the engine-window fallback both come from
+  // resolveContextInputs, which the status-bar ring also calls — that shared
+  // helper is what makes the two surfaces agree by construction rather than by
+  // each assembling the same fields by hand. It documents why occupancy wins and
+  // why the itemized totalTokens is never a candidate.
+  //
+  // The itemized sum still drives the per-category grid below, where the
+  // `unaccounted` row makes its drift from the provider total explicit.
+  const { tokens: contextTokens, engineWindow } = resolveContextInputs(activeInstance)
   const effectiveModel = activeInstance?.modelOverride || activeInstance?.sessionModel || preferredModel
-  const selectedWindow = getDynamicContextWindow(effectiveModel)
+  const selectedWindow = getDynamicContextWindow(effectiveModel, engineWindow)
   const contextDisplay = resolveContextDisplay(contextTokens, selectedWindow)
   const contextPercent = contextDisplay?.pct ?? 0
   const runCostUsd = statusFields?.runCostUsd ?? null

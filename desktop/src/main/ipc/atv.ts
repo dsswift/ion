@@ -30,6 +30,46 @@ function log(msg: string, fields?: Record<string, unknown>): void {
  */
 const ATV_SETTING_KEYS = new Set(['atvTheme', 'atvPinned', 'atvZoom', 'atvSeed', 'atvDockPresence', 'atvAutoDrawer', 'atvHeat', 'atvBeacon', 'atvSound', 'atvLayout'])
 
+/**
+ * How long a mirror-initiated action call waits for the owner renderer's reply.
+ *
+ * Generous on purpose: a forwarded action can open a confirm dialog or run git,
+ * so this is a "the owner is gone or wedged" backstop rather than a latency
+ * budget. The mirror caller gets a resolved refusal at the deadline instead of a
+ * promise that never settles.
+ */
+const ATV_CALL_TIMEOUT_MS = 30_000
+
+/**
+ * How long the reply listener lingers past the deadline so a late reply can be
+ * logged before the listener is released.
+ *
+ * The value is not delivered — the caller was already resolved — but the fact
+ * that a reply arrived just too late is the signal that ATV_CALL_TIMEOUT_MS is
+ * too tight for that action, which in the log is otherwise indistinguishable
+ * from an owner that never answered at all.
+ */
+const ATV_LATE_REPLY_GRACE_MS = 10_000
+
+/**
+ * Reply envelope for ATV_CALL_ACTION.
+ *
+ * `ok` describes the ROUND TRIP, not the action's own success: `ok: true` means
+ * the owner ran the action and `value` is whatever it returned (which may itself
+ * be a `{ ok: false }` domain result). `ok: false` means the call never reached
+ * a conclusion — rejected, no owner window, or no reply before the deadline.
+ * Collapsing the two would make "the worktree refused to retire" and "the owner
+ * window is gone" indistinguishable at the call site.
+ */
+interface AtvActionReply {
+  ok: boolean
+  value?: unknown
+  error?: string
+}
+
+/** Monotonic correlation id source for ATV_CALL_ACTION round trips. */
+let atvCallSeq = 0
+
 export function registerAtvIpc(): void {
   ipcMain.on(IPC.ATV_OPEN, () => {
     log('atv_ipc: open requested')
@@ -112,22 +152,101 @@ export function registerAtvIpc(): void {
   })
   ipcMain.handle(IPC.ATV_GET_TABS_SYNC, () => tabsSyncSnapshot)
 
-  // Mirror-store action forwarding: the ATV window routes owner-durable
-  // store mutations here; validation is derived from FORWARDED_ACTIONS (the
-  // single classification source of truth), then the call is relayed to the
-  // overlay renderer, which executes it on the owner store.
-  ipcMain.on(IPC.ATV_FORWARD_ACTION, (_event, action: unknown, args: unknown) => {
+  // Mirror-store action forwarding: the ATV window routes owner-durable store
+  // mutations here; validation is derived from FORWARDED_ACTIONS (the single
+  // classification source of truth), then the call is relayed to the overlay
+  // renderer, which executes it on the owner store and replies with whatever
+  // the action returned.
+  //
+  // Request/response rather than fire-and-forget because a mirror caller does
+  // `const result = await store.retireWorktree(…)` and must get the owner's
+  // real answer. The call is correlated by a main-minted callId and resolves on
+  // the owner's ATV_ACTION_RESULT.
+  //
+  // Why main owns the correlation rather than the renderers doing it directly:
+  // main is already the validation choke point for forwarded actions, and it is
+  // the only party that knows whether an owner window exists. It also means a
+  // dead or slow owner produces a resolved refusal instead of a mirror caller
+  // hanging on a promise that can never settle.
+  ipcMain.handle(IPC.ATV_CALL_ACTION, async (_event, action: unknown, args: unknown) => {
     if (!validForwardedAction(action, args)) {
-      log('atv_ipc: forward-action rejected', { action: String(action).slice(0, 64) })
-      return
+      log('atv_ipc: call-action rejected', { action: String(action).slice(0, 64) })
+      return { ok: false, error: 'action not permitted' }
     }
     const main = state.mainWindow
     if (!main || main.isDestroyed()) {
-      log('atv_ipc: forward-action dropped, no owner window', { action })
-      return
+      log('atv_ipc: call-action dropped, no owner window', { action })
+      return { ok: false, error: 'no owner window' }
     }
-    log('atv_ipc: forwarding action to owner', { action, arg_count: (args as unknown[]).length })
-    main.webContents.send(IPC.ATV_EXEC_ACTION, action, args)
+    const callId = `atv-call-${++atvCallSeq}`
+    // Pin the owner's webContents id at dispatch time. The reply is accepted
+    // only from THIS sender: ATV_ACTION_RESULT is an ipcMain.on listener, so
+    // any renderer holding the preload bridge can send on it, and the callId is
+    // a predictable counter. Without the check a non-owner window could settle
+    // a pending call with a forged value — and the mirror would treat it as the
+    // owner's real return, so a fabricated `{ ok: true }` would read as a
+    // succeeded retire. Every other input on this channel is validated
+    // (validForwardedAction gates action + args); sender identity is the last
+    // one, and it is the only input that decides WHOSE answer this is.
+    const ownerSenderId = main.webContents.id
+    log('atv_ipc: calling action on owner', {
+      action, call_id: callId, arg_count: (args as unknown[]).length,
+    })
+
+    return await new Promise<AtvActionReply>((resolve) => {
+      // Set once the call concludes (reply or timeout) so a late reply is
+      // logged rather than silently dropped — see the post-settle branch below.
+      let settled = false
+      // A single-shot listener keyed by callId AND sender. Removed on reply and
+      // on timeout, so no path leaves a listener behind.
+      const onReply = (event: Electron.IpcMainEvent, replyId: unknown, payload: unknown): void => {
+        if (replyId !== callId) return
+        if (event.sender.id !== ownerSenderId) {
+          // A reply for a live callId from something other than the owner
+          // window. Refuse it and keep waiting for the real one.
+          log('atv_ipc: call-action reply rejected, sender is not the owner window', {
+            action, call_id: callId, sender_id: event.sender.id, owner_id: ownerSenderId,
+          })
+          return
+        }
+        if (settled) {
+          // Arrived after the deadline already resolved the caller. The value
+          // cannot be delivered, but the near-miss must be visible: it means
+          // ATV_CALL_TIMEOUT_MS is too tight for this action, which is
+          // otherwise indistinguishable from a wedged owner in the log.
+          log('atv_ipc: call-action reply arrived after timeout, dropped', {
+            action, call_id: callId, timeout_ms: ATV_CALL_TIMEOUT_MS,
+          })
+          return
+        }
+        settled = true
+        cleanup()
+        log('atv_ipc: call-action replied', { action, call_id: callId })
+        resolve({ ok: true, value: payload })
+      }
+      const timer = setTimeout(() => {
+        settled = true
+        // The listener stays registered briefly so a late reply can be logged
+        // by the branch above; removeListener happens there or on teardown.
+        clearTimeout(timer)
+        // Not a silent drop: the owner may be mid-dialog or wedged, and the
+        // mirror caller must be told rather than left pending forever.
+        log('atv_ipc: call-action timed out waiting for owner', {
+          action, call_id: callId, timeout_ms: ATV_CALL_TIMEOUT_MS,
+        })
+        resolve({ ok: false, error: 'owner did not reply' })
+        // Bounded grace window for the late-reply log, then release the
+        // listener. Without this the handler would leak one listener per
+        // timed-out call for the life of the process.
+        setTimeout(() => ipcMain.removeListener(IPC.ATV_ACTION_RESULT, onReply), ATV_LATE_REPLY_GRACE_MS)
+      }, ATV_CALL_TIMEOUT_MS)
+      function cleanup(): void {
+        clearTimeout(timer)
+        ipcMain.removeListener(IPC.ATV_ACTION_RESULT, onReply)
+      }
+      ipcMain.on(IPC.ATV_ACTION_RESULT, onReply)
+      main!.webContents.send(IPC.ATV_EXEC_ACTION, action, args, callId)
+    })
   })
 
   // State backfill for the ATV renderer: called on window open and consumed

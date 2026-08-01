@@ -28,6 +28,7 @@ import { repositoryManager } from '../git/repositoryManager'
 import { log as _log, warn as _warn } from '../logger'
 import { registerWorktree, unregisterWorktree } from './inventory'
 import { disenrollWorktree } from '../integration/bench-ops'
+import { writeRecoveryRef } from './recovery'
 import type { WorktreeInfo, WorktreeMoveResult } from '../../shared/types'
 
 const TAG = 'worktree.move'
@@ -52,6 +53,13 @@ export interface RetireOptions {
  * Refuses by default when the worktree is dirty — the whole point of retiring
  * is that the work has already landed, so uncommitted changes mean something
  * is off and the operator should look.
+ *
+ * `force` skips that refusal, and the confirmation the operator sees promises
+ * the work is "preserved to a recovery ref first". That promise is kept here:
+ * a forced retire of a DIRTY worktree writes a recovery snapshot before
+ * removing anything, and REFUSES when the snapshot cannot be written. Refusing
+ * is the only honest failure mode — destroying work after telling the operator
+ * it was saved is the defect this guards.
  */
 export async function retireWorktree(opts: RetireOptions): Promise<WorktreeMoveResult> {
   const { repoPath, worktreePath, branchName, force } = opts
@@ -59,6 +67,7 @@ export async function retireWorktree(opts: RetireOptions): Promise<WorktreeMoveR
   return repo.queue.enqueueMutation(async () => {
     log('retire: starting', { repo_path: repoPath, worktree_path: worktreePath, branch: branchName, force: !!force })
 
+    let recoveryRef: string | undefined
     if (!force) {
       try {
         const status = await runGit(worktreePath, ['status', '--porcelain'])
@@ -69,11 +78,37 @@ export async function retireWorktree(opts: RetireOptions): Promise<WorktreeMoveR
             error: 'This worktree has uncommitted changes. Commit or discard them before retiring it.',
           }
         }
+        log('retire: worktree clean, no snapshot needed', { worktree_path: worktreePath })
       } catch (err) {
         // The worktree directory may already be gone (removed outside Ion).
         // That is not a reason to refuse — proceed to the removal, which
         // handles the already-absent case via `git worktree remove`/prune.
         log('retire: status probe failed, continuing to removal', { worktree_path: worktreePath, error: String(err) })
+      }
+    } else {
+      // Forced: the operator confirmed against an appraisal that said work
+      // would be lost, and the dialog promised a recovery ref. Write it before
+      // anything is destroyed.
+      const recovery = await writeRecoveryRef({ repoPath, worktreePath, branchName })
+      if (recovery.error) {
+        warn('retire: refused, could not write recovery ref', {
+          worktree_path: worktreePath, branch: branchName, error: recovery.error,
+        })
+        return {
+          ok: false,
+          error: `${recovery.error} The worktree was kept so nothing is lost.`,
+        }
+      }
+      if (recovery.snapshot) {
+        recoveryRef = recovery.snapshot.ref
+        log('retire: uncommitted work preserved', {
+          worktree_path: worktreePath,
+          ref: recovery.snapshot.ref,
+          sha: recovery.snapshot.sha,
+          files: recovery.snapshot.paths.length,
+        })
+      } else {
+        log('retire: forced but worktree clean, no snapshot written', { worktree_path: worktreePath })
       }
     }
 
@@ -129,8 +164,8 @@ export async function retireWorktree(opts: RetireOptions): Promise<WorktreeMoveR
 
     pruneEmptyParent(worktreePath)
 
-    log('retire: done', { worktree_path: worktreePath, relocate_to: repoPath })
-    return { ok: true, workingDirectory: repoPath }
+    log('retire: done', { worktree_path: worktreePath, relocate_to: repoPath, recovery_ref: recoveryRef ?? '' })
+    return { ok: true, workingDirectory: repoPath, recoveryRef }
   })
 }
 
@@ -138,6 +173,16 @@ export interface ReattachOptions {
   repoPath: string
   /** Branch to cut the new worktree from; its CURRENT tip is used. */
   sourceBranch: string
+  /**
+   * Name of the conversation being re-attached, carried onto the new worktree.
+   *
+   * Re-attach always serves a LIVE conversation — one that has been running at
+   * the repo root and now needs isolation again — so it virtually always has a
+   * name already. Omitting it would leave the row on a hex slug and make the
+   * "indistinguishable from an originally-created one" promise below false,
+   * since the create path seeds its name too.
+   */
+  title?: string
 }
 
 /**
@@ -147,10 +192,10 @@ export interface ReattachOptions {
  * Mirrors the naming and layout of the original worktree-add path
  * (`~/.ion/worktrees/<repo>-<id>` on a `wt/<hex>` branch) so a re-attached
  * worktree is indistinguishable from an originally-created one to every other
- * part of the system.
+ * part of the system — including the title it carries.
  */
 export async function reattachWorktree(opts: ReattachOptions): Promise<WorktreeMoveResult> {
-  const { repoPath, sourceBranch } = opts
+  const { repoPath, sourceBranch, title } = opts
   const repo = repositoryManager.get(repoPath)
   return repo.queue.enqueueMutation(async () => {
     log('reattach: starting', { repo_path: repoPath, source_branch: sourceBranch })
@@ -163,9 +208,15 @@ export async function reattachWorktree(opts: ReattachOptions): Promise<WorktreeM
       await runGit(repoPath, ['worktree', 'add', '-b', branchName, worktreePath, sourceBranch])
       const worktree: WorktreeInfo = { worktreePath, branchName, sourceBranch, repoPath }
       // A re-attached worktree must be indistinguishable from an originally
-      // created one, so it registers its source branch the same way.
-      registerWorktree({ worktreePath, repoPath, branchName, sourceBranch })
-      log('reattach: created', { worktree_path: worktreePath, branch: branchName, source_branch: sourceBranch })
+      // created one, so it registers its source branch the same way — and
+      // carries the conversation's name the same way.
+      registerWorktree({ worktreePath, repoPath, branchName, sourceBranch, title })
+      log('reattach: created', {
+        worktree_path: worktreePath,
+        branch: branchName,
+        source_branch: sourceBranch,
+        title: title ?? '',
+      })
       return { ok: true, workingDirectory: worktreePath, worktree }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

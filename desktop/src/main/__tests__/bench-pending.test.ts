@@ -35,7 +35,7 @@ vi.mock('os', async () => {
   return { ...actual, homedir: () => process.env.ION_TEST_HOME_BENCH_PENDING || actual.homedir() }
 })
 
-import { rebuildBench } from '../integration/bench-rebuild'
+import { assembleBench } from '../integration/bench-assemble'
 import { captureContribution } from '../integration/bench-snapshot'
 import { makeWorkspace, makeMember } from '../integration/bench-store'
 import { landWorktree } from '../worktree/integrate'
@@ -125,20 +125,20 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true })
 })
 
-describe('rebuildBench — a member with nothing committed yet', () => {
+describe('assembleBench — a member with nothing committed yet', () => {
   it('keeps the member as pending instead of retiring it', async () => {
     // makeBareWorktree has NO seed commit, so its HEAD is the FEATURE tip —
     // exactly the shape that used to be misread as landed.
     const a = makeBareWorktree('a')
     const ws = workspaceFor([await enroll(a)])
 
-    const result = await rebuildBench(ws)
+    const result = await assembleBench(ws)
     expect(result.ok).toBe(true)
 
     // The assertion that goes red without the fix: the member is retired there.
     const member = result.workspace!.members.find((m) => m.branchName === a.branch)
     expect(member).toBeDefined()
-    expect(member!.status).toBe('pending')
+    expect(member!.pin).toBe('empty')
     expect((result.retired ?? []).map((m) => m.branchName)).not.toContain(a.branch)
   })
 
@@ -148,9 +148,9 @@ describe('rebuildBench — a member with nothing committed yet', () => {
     const a = makeBareWorktree('a')
     let ws = workspaceFor([await enroll(a)])
     for (let i = 0; i < 3; i++) {
-      const result = await rebuildBench(ws)
+      const result = await assembleBench(ws)
       expect(result.workspace!.members).toHaveLength(1)
-      expect(result.workspace!.members[0].status).toBe('pending')
+      expect(result.workspace!.members[0].pin).toBe('empty')
       ws = result.workspace!
     }
   })
@@ -158,7 +158,7 @@ describe('rebuildBench — a member with nothing committed yet', () => {
   it('contributes no merge commit while pending', async () => {
     // Pending means "nothing to merge", not "merge an empty change".
     const a = makeBareWorktree('a')
-    const built = (await rebuildBench(workspaceFor([await enroll(a)]))).workspace!
+    const built = (await assembleBench(workspaceFor([await enroll(a)]))).workspace!
     expect(benchMergeCount(built.benchPath)).toBe(0)
   })
 
@@ -167,10 +167,10 @@ describe('rebuildBench — a member with nothing committed yet', () => {
     const real = makeWorktree('real')
     const ws = workspaceFor([await enroll(empty), await enroll(real)])
 
-    const built = (await rebuildBench(ws)).workspace!
+    const built = (await assembleBench(ws)).workspace!
 
-    expect(built.members.find((m) => m.branchName === empty.branch)!.status).toBe('pending')
-    expect(built.members.find((m) => m.branchName === real.branch)!.status).toBe('integrated')
+    expect(built.members.find((m) => m.branchName === empty.branch)!.pin).toBe('empty')
+    expect(built.members.find((m) => m.branchName === real.branch)!.merge).toBe('merged')
     expect(benchMergeCount(built.benchPath)).toBe(1)
     expect(existsSync(join(built.benchPath, 'real.txt'))).toBe(true)
   })
@@ -179,21 +179,21 @@ describe('rebuildBench — a member with nothing committed yet', () => {
     // The full lifecycle: pending is not terminal. This is the path the operator
     // actually walks after enrolling a fresh worktree.
     const a = makeBareWorktree('a')
-    const built = (await rebuildBench(workspaceFor([await enroll(a)]))).workspace!
-    expect(built.members[0].status).toBe('pending')
+    const built = (await assembleBench(workspaceFor([await enroll(a)]))).workspace!
+    expect(built.members[0].pin).toBe('empty')
 
     writeFileSync(join(a.path, 'a.txt'), 'a work\n')
     git(a.path, 'add', '-A')
     git(a.path, 'commit', '-m', 'a: first real commit')
 
     // Re-pin exactly as the Update verb does, then rebuild.
-    const rebuilt = (await rebuildBench({
+    const rebuilt = (await assembleBench({
       ...built,
       members: [await enroll(a)],
     })).workspace!
 
     const member = rebuilt.members.find((m) => m.branchName === a.branch)!
-    expect(member.status).toBe('integrated')
+    expect(member.merge).toBe('merged')
     expect(member.pinnedBaseSha).not.toBe(member.pinnedSha)
     expect(benchMergeCount(rebuilt.benchPath)).toBe(1)
     expect(existsSync(join(rebuilt.benchPath, 'a.txt'))).toBe(true)
@@ -203,27 +203,27 @@ describe('rebuildBench — a member with nothing committed yet', () => {
     // The behaviour that must NOT regress: absorption is still absorption when
     // the pin actually carried commits.
     const a = makeWorktree('a')
-    const built = (await rebuildBench(workspaceFor([await enroll(a)]))).workspace!
+    const built = (await assembleBench(workspaceFor([await enroll(a)]))).workspace!
     await landWorktree({ repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: FEATURE })
 
-    const result = await rebuildBench(built)
+    const result = await assembleBench(built)
 
     expect(result.workspace!.members.map((m) => m.branchName)).not.toContain(a.branch)
     expect((result.retired ?? []).map((m) => m.branchName)).toContain(a.branch)
   })
 }, GIT_FIXTURE_TIMEOUT)
 
-describe('rebuildBench — records written before the contribution range existed', () => {
+describe('assembleBench — records written before the contribution range existed', () => {
   it('backfills a legacy member that carries commits and merges it', async () => {
     const a = makeWorktree('a')
     const legacy = { ...(await enroll(a)), pinnedBaseSha: '' }
     const ws = workspaceFor([legacy])
 
-    const built = (await rebuildBench(ws)).workspace!
+    const built = (await assembleBench(ws)).workspace!
     const member = built.members.find((m) => m.branchName === a.branch)!
 
     // Unchanged behaviour for the common case, and the range is now recorded.
-    expect(member.status).toBe('integrated')
+    expect(member.merge).toBe('merged')
     expect(member.pinnedBaseSha).not.toBe('')
     expect(member.pinnedBaseSha).not.toBe(member.pinnedSha)
     expect(benchMergeCount(built.benchPath)).toBe(1)
@@ -234,11 +234,11 @@ describe('rebuildBench — records written before the contribution range existed
     const a = makeBareWorktree('a')
     const legacy = { ...(await enroll(a)), pinnedBaseSha: '' }
 
-    const result = await rebuildBench(workspaceFor([legacy]))
+    const result = await assembleBench(workspaceFor([legacy]))
     const member = result.workspace!.members.find((m) => m.branchName === a.branch)
 
     expect(member).toBeDefined()
-    expect(member!.status).toBe('pending')
+    expect(member!.pin).toBe('empty')
     expect(member!.pinnedBaseSha).toBe(member!.pinnedSha)
     expect((result.retired ?? [])).toHaveLength(0)
   })
@@ -247,12 +247,12 @@ describe('rebuildBench — records written before the contribution range existed
     // An unresolvable range must fall through to the landed tiers rather than
     // parking the member as pending forever.
     const a = makeWorktree('a')
-    const built = (await rebuildBench(workspaceFor([await enroll(a)]))).workspace!
+    const built = (await assembleBench(workspaceFor([await enroll(a)]))).workspace!
     await landWorktree({ repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: FEATURE })
     await retireWorktree({ repoPath: repo, worktreePath: a.path, branchName: a.branch })
 
     const legacy = built.members.map((m) => ({ ...m, pinnedBaseSha: '' }))
-    const result = await rebuildBench({ ...built, members: legacy })
+    const result = await assembleBench({ ...built, members: legacy })
 
     expect(result.workspace!.members.map((m) => m.branchName)).not.toContain(a.branch)
     expect((result.retired ?? []).map((m) => m.branchName)).toContain(a.branch)

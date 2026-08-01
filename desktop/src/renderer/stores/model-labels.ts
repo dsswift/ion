@@ -45,10 +45,31 @@ export function getFilteredModels(allowedModels?: string[] | null): readonly Ava
   return AVAILABLE_MODELS.filter((m) => allowed.has(m.id))
 }
 
-export function getModelContextWindow(modelId: string): number {
+/**
+ * Find a model in the static catalog, matching an exact id or an id that
+ * extends a catalog entry with a dated suffix (`claude-opus-4-7-20260101`).
+ *
+ * Shared by getModelContextWindow and isKnownModel so "which window does the
+ * catalog give this id" and "does the catalog know this id at all" can never
+ * answer from different match rules.
+ */
+function findCatalogModel(modelId: string): AvailableModel | undefined {
   const normalizedId = normalizeModelId(modelId)
-  const known = AVAILABLE_MODELS.find((m) => normalizedId === m.id || normalizedId.startsWith(m.id + '-'))
-  return known?.contextWindow ?? 200_000
+  return AVAILABLE_MODELS.find((m) => normalizedId === m.id || normalizedId.startsWith(m.id + '-'))
+}
+
+/**
+ * True when the static catalog carries a window for this id, i.e. when
+ * getModelContextWindow returns real metadata rather than its 200k floor.
+ * getDynamicContextWindow uses this to tell "the catalog knows better" apart
+ * from "the catalog is guessing".
+ */
+function isKnownModel(modelId: string): boolean {
+  return findCatalogModel(modelId) !== undefined
+}
+
+export function getModelContextWindow(modelId: string): number {
+  return findCatalogModel(modelId)?.contextWindow ?? 200_000
 }
 
 function normalizeModelId(modelId: string): string {
@@ -85,9 +106,32 @@ export function getModelDisplayLabel(modelId: string): string {
   return has1MContext ? `${normalizedId} (1M)` : normalizedId
 }
 
-/** Get context window for a model, checking dynamic model store first. */
-export function getDynamicContextWindow(modelId: string): number {
+/**
+ * Get context window for a model.
+ *
+ * Resolution order:
+ *   1. The dynamic model store — live metadata the engine discovered from the
+ *      provider. Always the best answer when present.
+ *   2. `engineWindow` — the window the ENGINE reported for the model it
+ *      actually ran (`statusFields.contextWindow`). Consulted before the
+ *      static catalog because it is observed fact rather than a compiled-in
+ *      guess, and it is populated on every status event.
+ *   3. The static `AVAILABLE_MODELS` catalog, then its 200k floor.
+ *
+ * Step 2 exists because steps 1 and 3 can both miss. The dynamic store is
+ * empty until the first `listModels` resolves (cold start), and the static
+ * catalog only knows the models compiled into it — a model id absent from both
+ * silently fell back to 200k, which rendered a 1M-window conversation at 128%
+ * with no indication anything had been guessed.
+ *
+ * A model the catalog DOES know still overrides `engineWindow`. That is
+ * load-bearing for the picker: selecting a 200k model for a conversation the
+ * engine last ran at 1M must immediately read as over-budget, and only
+ * client-side arithmetic against the selected model can do that.
+ */
+export function getDynamicContextWindow(modelId: string, engineWindow?: number | null): number {
   const entry = useModelStore.getState().findModel(modelId)
   if (entry) return entry.contextWindow
+  if (!isKnownModel(modelId) && engineWindow && engineWindow > 0) return engineWindow
   return getModelContextWindow(modelId)
 }

@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { useViewportClamp } from '../hooks/useViewportClamp'
+import { useOutsideDismiss } from '../hooks/useOutsideDismiss'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import {
@@ -21,6 +22,12 @@ interface TabContextMenuProps {
   anchor: { x: number; y: number }
   tab: TabState
   onRename?: () => void
+  /**
+   * Rename the tab AND its worktree together. Only offered for a worktree tab;
+   * the ordinary Rename above leaves the worktree alone, which is the default
+   * because a worktree's topic does not follow every conversation relabelling.
+   */
+  onRenameWithWorktree?: () => void
   onForkTab?: () => void
   onNewTabInDir: () => void
   onFinishWork: () => void
@@ -34,6 +41,7 @@ export function TabContextMenu({
   anchor,
   tab,
   onRename,
+  onRenameWithWorktree,
   onForkTab,
   onNewTabInDir,
   onFinishWork,
@@ -76,7 +84,6 @@ export function TabContextMenu({
   const [newGroupName, setNewGroupName] = useState('')
   const newGroupInputRef = useRef<HTMLInputElement>(null)
   const [pendingMoveAll, setPendingMoveAll] = useState<{ groupId: string; label: string } | null>(null)
-  const confirmDialogRef = useRef<HTMLDivElement>(null)
 
   const showMoveAll = groupTabs && groupTabs.length > 1
   const [isGitRepo, setIsGitRepo] = useState(false)
@@ -127,24 +134,12 @@ export function TabContextMenu({
     if (showNewGroupInput) newGroupInputRef.current?.focus()
   }, [showNewGroupInput])
 
-  useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node) &&
-          (!submenuRef.current || !submenuRef.current.contains(e.target as Node)) &&
-          (!movePinSubmenuRef.current || !movePinSubmenuRef.current.contains(e.target as Node)) &&
-          (!moveAllSubmenuRef.current || !moveAllSubmenuRef.current.contains(e.target as Node)) &&
-          (!confirmDialogRef.current || !confirmDialogRef.current.contains(e.target as Node))) { setMoveSubmenu(null); setMovePinSubmenu(null); setMoveAllSubmenu(null); onClose() }
-    }
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setMoveSubmenu(null); setMovePinSubmenu(null); setMoveAllSubmenu(null); onClose() }
-    }
-    window.addEventListener('mousedown', handleClick)
-    window.addEventListener('keydown', handleKey)
-    return () => {
-      window.removeEventListener('mousedown', handleClick)
-      window.removeEventListener('keydown', handleKey)
-    }
+  // Confirm dialogs are exempted structurally by the hook (via
+  // `[data-ion-confirm]`), so this menu no longer threads a ref for them.
+  const dismiss = useCallback(() => {
+    setMoveSubmenu(null); setMovePinSubmenu(null); setMoveAllSubmenu(null); onClose()
   }, [onClose])
+  useOutsideDismiss([ref, submenuRef, movePinSubmenuRef, moveAllSubmenuRef], dismiss)
 
   // Position the outer menu so it never falls off-screen. The hook
   // measures the menu after mount and flips it upward when the
@@ -157,6 +152,7 @@ export function TabContextMenu({
     prefer: 'below',
     deps: [
       !!onRename,
+      !!onRenameWithWorktree,
       !!onForkTab,
       !!tab.workingDirectory,
       !!tab.worktree,
@@ -206,6 +202,14 @@ export function TabContextMenu({
         <ContextMenuItem onClick={() => { onRename(); onClose() }}>
           <PencilSimple size={14} color={colors.textSecondary} />
           <span>Rename</span>
+        </ContextMenuItem>
+      )}
+      {/* Worktree tabs only: the deliberate "change both names" verb. Absent
+          for an ordinary tab, which has no second name to change. */}
+      {onRenameWithWorktree && tab.worktree && (
+        <ContextMenuItem onClick={() => { onRenameWithWorktree(); onClose() }}>
+          <PencilSimple size={14} color={colors.textSecondary} />
+          <span>Rename tab and worktree</span>
         </ContextMenuItem>
       )}
       {onForkTab && (
@@ -386,7 +390,6 @@ export function TabContextMenu({
       )}
     </motion.div>
     {pendingMoveAll && groupTabs && (
-      <div ref={confirmDialogRef}>
       <ConfirmDialog
         title="Move all tabs?"
         message={`Move all ${groupTabs.length} tab${groupTabs.length !== 1 ? 's' : ''} to "${pendingMoveAll.label}"? This will move every tab in the current group.`}
@@ -405,7 +408,6 @@ export function TabContextMenu({
           onClose()
         }}
       />
-      </div>
     )}
     </>,
     popoverLayer,

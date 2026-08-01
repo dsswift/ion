@@ -50,6 +50,14 @@ struct RemoteWorktree: Codable, Identifiable, Hashable {
     /// clear teaches the operator to ignore every badge.
     var needsSync: Bool
     var safeToDiscard: Bool
+    /// When this worktree's commits reached its source branch, or nil when they
+    /// have not.
+    ///
+    /// The only honest signal for "finished". `safeToDiscard` means "nothing to
+    /// lose", which is equally true of a worktree that has never committed
+    /// anything -- grouping on it files every fresh empty worktree as if work had
+    /// shipped. Set by the land verb; it cannot be recovered afterwards.
+    var landedAt: Double?
     /// Where this worktree is in the dependency-provisioning lifecycle
     /// (node_modules, hooks, build caches -- the gitignored state git never
     /// carries). Nil means Ion has no record: a worktree created before
@@ -72,6 +80,9 @@ struct RemoteWorktree: Codable, Identifiable, Hashable {
     var operationState: OperationState?
     /// Number of conflicted files when the operation is conflicted.
     var conflictedCount: Int?
+    /// This worktree's bench membership, when it belongs to one. Nil for an
+    /// unenrolled worktree.
+    var membership: RemoteMembership?
 
     /// The name to show: the human title when there is one, else the slug.
     var displayName: String { title?.isEmpty == false ? title! : label }
@@ -120,59 +131,102 @@ struct RemoteWorktree: Codable, Identifiable, Hashable {
         unlandedCommitCount = try c.decode(Int.self, forKey: .unlandedCommitCount)
         needsSync = try c.decode(Bool.self, forKey: .needsSync)
         safeToDiscard = try c.decode(Bool.self, forKey: .safeToDiscard)
+        landedAt = try c.decodeIfPresent(Double.self, forKey: .landedAt)
         provisionState = try c.decodeIfPresent(ProvisionState.self, forKey: .provisionState)
         provisionError = try c.decodeIfPresent(String.self, forKey: .provisionError)
         openConversations = try c.decodeIfPresent([RemoteOpenConversation].self, forKey: .openConversations) ?? []
         operationState = try c.decodeIfPresent(OperationState.self, forKey: .operationState)
         conflictedCount = try c.decodeIfPresent(Int.self, forKey: .conflictedCount)
+        membership = try c.decodeIfPresent(RemoteMembership.self, forKey: .membership)
+    }
+
+    /// True when this worktree's work has landed and nothing new is waiting.
+    ///
+    /// Enrollment deliberately does NOT veto this. A member's pin is an
+    /// obligation only while it holds unlanded work; once the work is in the
+    /// source branch the bench takes that content from its base, and the desktop's
+    /// assembly retires the member outright.
+    var isLanded: Bool { landedAt != nil && unlandedCommitCount == 0 }
+
+    /// Enrollment as one value, for a row that renders three visually distinct
+    /// states. Nil membership is `none` -- NOT the same as `excluded`, which is
+    /// enrolled and skipped.
+    enum Enrollment { case none, included, excluded }
+
+    var enrollment: Enrollment {
+        guard let m = membership else { return .none }
+        return m.enabled ? .included : .excluded
     }
 }
 
-/// One worktree layered onto the bench.
-struct RemoteBenchMember: Codable, Identifiable, Hashable {
-    enum Status: String, Codable {
-        /// `pending` — enrolled but the pin carries no commits of its own, so
-        /// there is nothing to merge yet. Not an error and not terminal: the
-        /// member becomes `stale` as soon as the worktree commits.
-        case integrated, pending, landed, stale, conflicted, missing, excluded
+/// One worktree's bench membership.
+///
+/// Carries NO worktree fields. This used to be a whole `RemoteBenchMember` that
+/// re-sent `worktreePath`, `branchName`, `label`, and a `title` the desktop had
+/// to resolve by joining against the inventory -- so an enrolled worktree
+/// crossed the wire twice, in two shapes, and this app drew it in two sections
+/// with two vocabularies. Membership now decorates the worktree it belongs to.
+struct RemoteMembership: Codable, Hashable {
+    /// How the bench's pinned contribution relates to the worktree's content.
+    ///
+    /// - `empty` — the pin carries no commits of its own, so there is nothing to
+    ///   merge yet. Not an error and not terminal: it becomes `behind` as soon
+    ///   as the worktree commits.
+    /// - `absorbed` — the contribution landed into the source branch, so it is
+    ///   part of the bench's base permanently.
+    enum Pin: String, Codable {
+        case empty, current, behind, absorbed, gone
     }
 
-    var worktreePath: String
-    var branchName: String
-    var label: String
-    /// The member worktree's human title, resolved by the desktop from the
-    /// worktree inventory. Nil until that worktree has been named.
-    var title: String?
+    /// What the last assembly did with this contribution.
+    enum Merge: String, Codable {
+        case unbuilt, merged, conflicted, skipped
+    }
+
+    /// The operator's verdict. Nil means unreviewed, which is a different fact
+    /// from reviewed-and-fine. `good` ("the feature works") survives pin
+    /// advances; `issue` ("this contribution has a bug") is cleared by the
+    /// desktop when the pin advances — a clean slate to retest.
+    enum Review: String, Codable {
+        case good, issue
+    }
+
+    /// Which bench: the source branch this integrates into.
+    var sourceBranch: String
     var enabled: Bool
-    /// The contribution currently integrated. Shown separately from staleness:
-    /// what the bench HOLDS and what the worktree HAS are different facts.
+    /// Three independent axes. A member can be excluded AND behind AND
+    /// conflicted at once; the single `status` they replaced could report only
+    /// one of those, so two facts were lost on every evaluation.
+    var pin: Pin
+    var merge: Merge
+    var review: Review?
+    /// The contribution currently integrated. Shown separately from the pin
+    /// state: what the bench HOLDS and what the worktree HAS are different facts.
     var pinnedSha: String
-    var status: Status
+    /// 1-based merge position, so the bench reads as the ordered stack it is.
+    var order: Int
     var conflictPaths: [String]?
     var conflictsWith: [String]?
-    /// Conversations open in the MEMBER's worktree (not in the bench).
-    var openConversations: [RemoteOpenConversation] = []
+    /// Set when the merge succeeded only by replaying a recorded conflict
+    /// resolution (git rerere on the desktop). Deterministic, but a different
+    /// fact from a clean merge; nil from an older desktop reads as absent.
+    var mergeResolution: String?
 
-    /// The name to show: the human title when there is one, else the slug.
-    var displayName: String { title?.isEmpty == false ? title! : label }
-
-    var id: String { worktreePath }
-
-    /// Decode defensively: an unknown status from a newer desktop degrades to
-    /// `.stale` rather than failing the whole payload decode.
+    /// Decode defensively: an unknown value from a newer desktop degrades to the
+    /// conservative reading rather than failing the whole payload decode.
+    /// `current` + `unbuilt` cannot be mistaken for a successful integration.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        worktreePath = try c.decode(String.self, forKey: .worktreePath)
-        branchName = try c.decode(String.self, forKey: .branchName)
-        label = try c.decode(String.self, forKey: .label)
-        title = try c.decodeIfPresent(String.self, forKey: .title)
+        sourceBranch = try c.decode(String.self, forKey: .sourceBranch)
         enabled = try c.decode(Bool.self, forKey: .enabled)
+        pin = Pin(rawValue: try c.decode(String.self, forKey: .pin)) ?? .current
+        merge = Merge(rawValue: try c.decode(String.self, forKey: .merge)) ?? .unbuilt
+        review = (try c.decodeIfPresent(String.self, forKey: .review)).flatMap(Review.init(rawValue:))
         pinnedSha = try c.decode(String.self, forKey: .pinnedSha)
-        let raw = try c.decode(String.self, forKey: .status)
-        status = Status(rawValue: raw) ?? .stale
+        order = try c.decodeIfPresent(Int.self, forKey: .order) ?? 0
         conflictPaths = try c.decodeIfPresent([String].self, forKey: .conflictPaths)
         conflictsWith = try c.decodeIfPresent([String].self, forKey: .conflictsWith)
-        openConversations = try c.decodeIfPresent([RemoteOpenConversation].self, forKey: .openConversations) ?? []
+        mergeResolution = try c.decodeIfPresent(String.self, forKey: .mergeResolution)
     }
 }
 
@@ -182,20 +236,36 @@ struct RemoteBench: Codable, Identifiable, Hashable {
     var sourceBranch: String
     var benchPath: String
     var benchBranch: String
-    var members: [RemoteBenchMember]
+    /// Memberships whose worktree is no longer in the inventory (absorbed into
+    /// the source branch, or retired). They have no directory to open, so they
+    /// are a footnote rather than rows -- but letting them vanish is what made
+    /// absorption look like the bench eating a worktree.
+    var orphans: [RemoteMembership]
     var baseSha: String
     var lastBuiltAt: Double
-    /// The feature branch has moved past the bench's base, so a rebuild would
+    /// Outcome of the last assembly. `failed` means the desktop wiped the bench
+    /// to an empty tree (atomic assembly) and it holds NO member content until
+    /// the conflict is resolved. Nil from an older desktop reads as unknown,
+    /// never as a failure.
+    var lastAssembly: String?
+    /// Operator-facing reason when `lastAssembly` is `failed`.
+    var lastAssemblyError: String?
+    /// The feature branch has moved past the bench's base, so an assembly would
     /// pick up work that landed since.
     var baseDrifted: Bool
     /// Conversations open in the bench directory, in tab order.
     var openConversations: [RemoteOpenConversation] = []
+    /// The bench's dedicated terminal tab, when one is open.
+    ///
+    /// One tab per bench, so this is a single id rather than a list. The desktop
+    /// derives it from the tab's own persisted state rather than storing an id,
+    /// so it is absent exactly when no such tab exists -- and absent on an older
+    /// desktop that does not send it, which reads as "not open" rather than as
+    /// an error.
+    var benchTerminalTabId: String?
 
     var id: String { benchPath }
 
-    var enabledMemberCount: Int { members.filter(\.enabled).count }
-    var staleMemberCount: Int { members.filter { $0.status == .stale }.count }
-    var conflictedMemberCount: Int { members.filter { $0.status == .conflicted }.count }
     var hasBeenBuilt: Bool { lastBuiltAt > 0 }
 
     init(from decoder: Decoder) throws {
@@ -204,11 +274,14 @@ struct RemoteBench: Codable, Identifiable, Hashable {
         sourceBranch = try c.decode(String.self, forKey: .sourceBranch)
         benchPath = try c.decode(String.self, forKey: .benchPath)
         benchBranch = try c.decode(String.self, forKey: .benchBranch)
-        members = try c.decode([RemoteBenchMember].self, forKey: .members)
+        orphans = try c.decodeIfPresent([RemoteMembership].self, forKey: .orphans) ?? []
         baseSha = try c.decode(String.self, forKey: .baseSha)
         lastBuiltAt = try c.decode(Double.self, forKey: .lastBuiltAt)
+        lastAssembly = try c.decodeIfPresent(String.self, forKey: .lastAssembly)
+        lastAssemblyError = try c.decodeIfPresent(String.self, forKey: .lastAssemblyError)
         baseDrifted = try c.decode(Bool.self, forKey: .baseDrifted)
         openConversations = try c.decodeIfPresent([RemoteOpenConversation].self, forKey: .openConversations) ?? []
+        benchTerminalTabId = try c.decodeIfPresent(String.self, forKey: .benchTerminalTabId)
     }
 }
 
@@ -224,12 +297,41 @@ struct RemoteWorktreeState: Codable, Identifiable, Hashable {
     /// operator does not have to drill into the git pane to discover they are
     /// building against stale code.
     var staleBaseCount: Int { worktrees.filter(\.needsSync).count }
+
+    // Bench counts are derived from the WORKTREES now, because membership rides
+    // the worktree record. There is no separate member list to count, which is
+    // the point: one object, counted once.
+
+    /// Worktrees enrolled in `bench`, in merge order.
+    func members(of bench: RemoteBench) -> [RemoteWorktree] {
+        worktrees
+            .filter { $0.membership?.sourceBranch == bench.sourceBranch }
+            .sorted { ($0.membership?.order ?? 0) < ($1.membership?.order ?? 0) }
+    }
+
+    func enabledMemberCount(of bench: RemoteBench) -> Int {
+        members(of: bench).filter { $0.membership?.enabled == true }.count
+    }
+
+    /// Members holding work newer than the bench's pin.
+    func behindMemberCount(of bench: RemoteBench) -> Int {
+        members(of: bench).filter { $0.membership?.pin == .behind }.count
+    }
+
+    func conflictedMemberCount(of bench: RemoteBench) -> Int {
+        members(of: bench).filter { $0.membership?.merge == .conflicted }.count
+    }
+
+    /// Worktrees in no bench at all, for the enrollment picker.
+    func unenrolled() -> [RemoteWorktree] {
+        worktrees.filter { $0.membership == nil }
+    }
 }
 
 /// Result of a worktree/bench verb, so a toast can attribute the outcome.
 struct RemoteWorktreeOpResult: Codable, Hashable {
     enum Operation: String, Codable {
-        case sync, land, rebuild, update
+        case sync, land, assemble, update
         case updateAll = "update_all"
     }
 
@@ -240,4 +342,8 @@ struct RemoteWorktreeOpResult: Codable, Hashable {
     /// hard failure -- the message and the recovery differ.
     var refusedDirty: Bool?
     var hasConflicts: Bool?
+    /// Non-blocking collision prediction from the desktop's pin-update dry-run:
+    /// the operation SUCCEEDED, but the next assembly will conflict. Nil from
+    /// an older desktop reads as no prediction.
+    var warning: String?
 }

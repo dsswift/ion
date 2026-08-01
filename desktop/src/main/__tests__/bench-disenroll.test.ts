@@ -28,7 +28,7 @@ vi.mock('os', async () => {
 })
 
 import {
-  ensureWorkspace, addMember, disenrollWorktree, listWorkspaces, rebuildWorkspace,
+  ensureWorkspace, addMember, disenrollWorktree, listWorkspaces, assembleWorkspace,
 } from '../integration/bench-ops'
 import { loadWorkspaces, saveWorkspaces } from '../integration/bench-store'
 import { retireWorktree } from '../worktree/relocate'
@@ -155,7 +155,7 @@ describe('retire disenrolls automatically', () => {
     localBench()
     const a = makeWorktree('a')
     await addMember(repo, FEATURE, a.path, a.branch)
-    await rebuildWorkspace(repo, FEATURE)
+    await assembleWorkspace(repo, FEATURE)
     expect(existsSync(join(root, 'bench'))).toBe(true)
 
     // Land first so the retire is not refused for unlanded work.
@@ -174,7 +174,7 @@ describe('retire disenrolls automatically', () => {
     const b = makeWorktree('b')
     await addMember(repo, FEATURE, a.path, a.branch)
     await addMember(repo, FEATURE, b.path, b.branch)
-    await rebuildWorkspace(repo, FEATURE)
+    await assembleWorkspace(repo, FEATURE)
 
     await landWorktree({ repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: FEATURE })
     await retireWorktree({ repoPath: repo, worktreePath: a.path, branchName: a.branch })

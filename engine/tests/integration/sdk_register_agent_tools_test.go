@@ -3,7 +3,7 @@
 package integration
 
 // Integration test for the SDK's registerAgentTools() helper, verified
-// through the ion-meta extension (its canonical user).
+// through a self-contained fixture extension built in a temp dir.
 //
 // Regression background: before the fix, the SDK's registerAgentTools()
 // helper registered one dispatch tool per `agents/*.md` file, but the
@@ -11,26 +11,27 @@ package integration
 // — silently dropping the systemPrompt (the persona body below the
 // frontmatter) and the per-agent model override. The dispatched specialist
 // then ran as an unconfigured generic LLM and produced unrelated output,
-// which the orchestrator surfaced to the user as a failed dispatch. See
-// the "Fix ion-meta agent dispatches" plan for the full trace.
+// which the orchestrator surfaced to the user as a failed dispatch.
 //
 // What this test asserts:
 //
-//   1. ion-meta registers a `dispatch_<name>` tool for every specialist
-//      `.md` file under `agents/` (parent != "" filter; orchestrator
-//      excluded by default).
-//   2. When one of those tools is invoked, the DispatchAgentOpts that
-//      reach the engine carry BOTH a non-empty systemPrompt (the persona
-//      body) AND the model string declared in the agent's frontmatter.
-//      These are the load-bearing assertions — the fix is the persona
-//      reaching the child session.
+//  1. The helper registers a `dispatch_<name>` tool for every specialist
+//     `.md` file under `agents/` with a parent, and excludes root agents
+//     (no parent) via the default filter.
+//  2. When one of those tools is invoked, the DispatchAgentOpts that
+//     reach the engine carry BOTH a non-empty systemPrompt (the persona
+//     body) AND the model string declared in the agent's frontmatter.
+//     These are the load-bearing assertions — the fix is the persona
+//     reaching the child session.
 //
 // We exercise the real extension subprocess (esbuild transpile + load),
 // then intercept ctx.DispatchAgent on the engine side so we can inspect
 // what the SDK helper actually sent over the `ext/dispatch_agent` wire.
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -38,41 +39,73 @@ import (
 	"github.com/dsswift/ion/engine/internal/extension"
 )
 
-// TestSDKRegisterAgentTools_IonMetaWiresDispatchTools is the directory-walk
-// half of the contract: every specialist .md file produces a registered
-// dispatch tool. If the SDK helper drops files or mis-names them this test
-// fails loudly.
-func TestSDKRegisterAgentTools_IonMetaWiresDispatchTools(t *testing.T) {
+// writeAgentToolsFixture builds a minimal extension in a temp dir: an index.ts
+// that calls registerAgentTools(), plus an agents/ directory with one root
+// agent (must be filtered out) and one specialist (must be wired). The SDK is
+// imported from the repo source, which is what the subprocess host resolves.
+func writeAgentToolsFixture(t *testing.T) (extDir, entry string) {
+	t.Helper()
+	extDir = t.TempDir()
+
+	sdkPath, err := filepath.Abs(filepath.Join("..", "..", "extensions", "sdk", "ion-sdk"))
+	if err != nil {
+		t.Fatalf("resolve sdk path: %v", err)
+	}
+	indexTs := "import { createIon } from '" + sdkPath + "'\n" +
+		"const ion = createIon()\n" +
+		"ion.registerAgentTools()\n"
+	entry = filepath.Join(extDir, "index.ts")
+	if err := os.WriteFile(entry, []byte(indexTs), 0o644); err != nil {
+		t.Fatalf("write index.ts: %v", err)
+	}
+
+	agentsDir := filepath.Join(extDir, "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatalf("mkdir agents: %v", err)
+	}
+
+	// Root agent: no parent — the default filter must exclude it.
+	root := `---
+name: coordinator
+description: routes work
+---
+Root persona body. Not a dispatch target.
+`
+	if err := os.WriteFile(filepath.Join(agentsDir, "coordinator.md"), []byte(root), 0o644); err != nil {
+		t.Fatalf("write coordinator.md: %v", err)
+	}
+
+	// Specialist: parent + model + a persona body long enough that a helper
+	// dropping it is unambiguous.
+	persona := strings.Repeat("The specialist persona explains one subsystem in depth. ", 20)
+	specialist := `---
+name: doc-writer
+parent: coordinator
+description: documentation writing
+model: standard
+---
+` + persona + "\n"
+	if err := os.WriteFile(filepath.Join(agentsDir, "doc-writer.md"), []byte(specialist), 0o644); err != nil {
+		t.Fatalf("write doc-writer.md: %v", err)
+	}
+	return extDir, entry
+}
+
+// TestSDKRegisterAgentTools_WiresDispatchTools is the directory-walk half of
+// the contract: every specialist .md file produces a registered dispatch
+// tool, and root agents are filtered out.
+func TestSDKRegisterAgentTools_WiresDispatchTools(t *testing.T) {
 	requireEsbuild(t)
-	metaDir := ionMetaDir(t)
-	entry := ionMetaEntry(t)
+	extDir, entry := writeAgentToolsFixture(t)
 
 	host := extension.NewHost()
 	t.Cleanup(func() { host.Dispose() })
 
 	if err := host.Load(entry, &extension.ExtensionConfig{
-		ExtensionDir:     metaDir,
+		ExtensionDir:     extDir,
 		WorkingDirectory: "/tmp",
 	}); err != nil {
-		t.Fatalf("Load ion-meta: %v", err)
-	}
-
-	// Every specialist with a parent must have a dispatch_<name> tool.
-	// The orchestrator (no parent) is excluded by the helper's default
-	// filter, so it MUST NOT appear in the tool list.
-	mustHave := []string{
-		"dispatch_ion_tutor",
-		"dispatch_extension_improver",
-		"dispatch_extension_builder",
-		"dispatch_extension_architect",
-		"dispatch_agent_designer",
-		"dispatch_skill_author",
-		"dispatch_hook_specialist",
-		"dispatch_testing_guide",
-		"dispatch_orchestration_designer",
-	}
-	mustNotHave := []string{
-		"dispatch_orchestrator", // root agent — filtered out by default
+		t.Fatalf("Load fixture extension: %v", err)
 	}
 
 	tools := host.Tools()
@@ -80,65 +113,48 @@ func TestSDKRegisterAgentTools_IonMetaWiresDispatchTools(t *testing.T) {
 	for _, td := range tools {
 		have[td.Name] = struct{}{}
 	}
-	for _, want := range mustHave {
-		if _, ok := have[want]; !ok {
-			t.Errorf("missing dispatch tool %q. registered: %v", want, toolNames(tools))
-		}
+	if _, ok := have["dispatch_doc_writer"]; !ok {
+		t.Errorf("missing dispatch tool for the specialist. registered: %v", toolNames(tools))
 	}
-	for _, banned := range mustNotHave {
-		if _, ok := have[banned]; ok {
-			t.Errorf("orchestrator (no parent) should be filtered out, but %q was registered. "+
-				"This means the default filter ((a) => !!a.parent) regressed in the SDK helper "+
-				"or the orchestrator.md gained a `parent:` field by mistake.", banned)
-		}
+	if _, ok := have["dispatch_coordinator"]; ok {
+		t.Errorf("root agent (no parent) should be filtered out, but dispatch_coordinator was registered. "+
+			"This means the default filter ((a) => !!a.parent) regressed in the SDK helper. registered: %v", toolNames(tools))
 	}
 }
 
 // TestSDKRegisterAgentTools_DispatchCarriesPersonaAndModel is the load-
-// bearing assertion of the fix. We invoke the registered tool for ion-tutor
-// and assert the DispatchAgentOpts that arrive at ctx.DispatchAgent carry:
-//
-//   - opts.Name == "ion-tutor"
-//   - opts.Task == the task we passed
-//   - opts.SystemPrompt is non-empty (the persona body)
-//   - opts.Model is non-empty (the model declared in the frontmatter)
-//
-// Before the fix, SystemPrompt and Model were both empty strings — the
-// helper silently dropped them. If this test fails after a future SDK
-// edit, the regression is the same one this fix repaired.
+// bearing assertion of the fix: the DispatchAgentOpts that arrive at
+// ctx.DispatchAgent carry the persona body and the frontmatter model, not
+// just the name and task.
 func TestSDKRegisterAgentTools_DispatchCarriesPersonaAndModel(t *testing.T) {
 	requireEsbuild(t)
-	metaDir := ionMetaDir(t)
-	entry := ionMetaEntry(t)
+	extDir, entry := writeAgentToolsFixture(t)
 
 	host := extension.NewHost()
 	t.Cleanup(func() { host.Dispose() })
 
 	if err := host.Load(entry, &extension.ExtensionConfig{
-		ExtensionDir:     metaDir,
+		ExtensionDir:     extDir,
 		WorkingDirectory: "/tmp",
 	}); err != nil {
-		t.Fatalf("Load ion-meta: %v", err)
+		t.Fatalf("Load fixture extension: %v", err)
 	}
 
-	// Find the dispatch_ion_tutor tool. The walk order is deterministic
-	// per-platform (readdirSync) but the absolute order isn't part of
-	// the contract, so we look up by name.
-	var dispatchTutor *extension.ToolDefinition
+	var dispatchTool *extension.ToolDefinition
 	for i, td := range host.Tools() {
-		if td.Name == "dispatch_ion_tutor" {
-			dispatchTutor = &host.Tools()[i]
+		if td.Name == "dispatch_doc_writer" {
+			dispatchTool = &host.Tools()[i]
 			break
 		}
 	}
-	if dispatchTutor == nil {
-		t.Fatalf("dispatch_ion_tutor tool not registered. registered: %v", toolNames(host.Tools()))
+	if dispatchTool == nil {
+		t.Fatalf("dispatch_doc_writer tool not registered. registered: %v", toolNames(host.Tools()))
 	}
 
 	// Capture the DispatchAgentOpts the SDK helper sends over the
 	// `ext/dispatch_agent` RPC. The host_rpc handler invokes
-	// ctx.DispatchAgent with the deserialized opts — by wiring our own
-	// closure we get the exact wire payload (post-JSON-roundtrip).
+	// ctx.DispatchAgent with the deserialized opts — wiring our own closure
+	// yields the exact wire payload (post-JSON-roundtrip).
 	var (
 		captureMu     sync.Mutex
 		capturedOpts  extension.DispatchAgentOpts
@@ -147,11 +163,6 @@ func TestSDKRegisterAgentTools_DispatchCarriesPersonaAndModel(t *testing.T) {
 	ctx := &extension.Context{
 		SessionKey: "sdk-register-agent-tools-test",
 		Cwd:        "/tmp",
-		// DispatchAgent is the seam: when the SDK helper's execute()
-		// closure calls ctx.dispatchAgent({ name, task, systemPrompt,
-		// model }), the JSON crosses the JSON-RPC stdio bridge and lands
-		// here. We snapshot the opts and return a synthetic success result
-		// so the calling tool's promise resolves.
 		DispatchAgent: func(opts extension.DispatchAgentOpts) (*extension.DispatchAgentResult, error) {
 			captureMu.Lock()
 			capturedOpts = opts
@@ -167,28 +178,20 @@ func TestSDKRegisterAgentTools_DispatchCarriesPersonaAndModel(t *testing.T) {
 		},
 	}
 
-	// Execute the dispatch tool. params is what the LLM would pass —
-	// just the task; the agent name is captured on the SDK-side
-	// closure (this is the whole point of registerAgentTools()).
-	const taskText = "Explain how before_prompt fires."
-	result, err := dispatchTutor.Execute(map[string]interface{}{
+	const taskText = "Document how before_prompt fires."
+	result, err := dispatchTool.Execute(map[string]interface{}{
 		"task": taskText,
 	}, ctx)
 	if err != nil {
-		t.Fatalf("dispatchTutor.Execute: %v", err)
+		t.Fatalf("dispatchTool.Execute: %v", err)
 	}
 	if result == nil {
-		t.Fatal("dispatchTutor.Execute returned nil result")
+		t.Fatal("dispatchTool.Execute returned nil result")
 	}
 	if result.IsError {
 		t.Errorf("expected non-error result, got IsError=true, content=%q", result.Content)
 	}
 
-	// Wait briefly for the dispatch to have fired — the SDK helper's
-	// execute() is async, and the host_rpc handler runs DispatchAgent
-	// in a goroutine. The Execute call above only returns after the
-	// RPC response, so the goroutine has run by then; this select is
-	// a defensive belt-and-suspenders against future refactors.
 	select {
 	case <-dispatchFired:
 	case <-time.After(2 * time.Second):
@@ -199,41 +202,28 @@ func TestSDKRegisterAgentTools_DispatchCarriesPersonaAndModel(t *testing.T) {
 	captureMu.Lock()
 	defer captureMu.Unlock()
 
-	if capturedOpts.Name != "ion-tutor" {
-		t.Errorf("DispatchAgentOpts.Name: expected %q, got %q",
-			"ion-tutor", capturedOpts.Name)
+	if capturedOpts.Name != "doc-writer" {
+		t.Errorf("DispatchAgentOpts.Name: expected %q, got %q", "doc-writer", capturedOpts.Name)
 	}
 	if capturedOpts.Task != taskText {
-		t.Errorf("DispatchAgentOpts.Task: expected %q, got %q",
-			taskText, capturedOpts.Task)
+		t.Errorf("DispatchAgentOpts.Task: expected %q, got %q", taskText, capturedOpts.Task)
 	}
 
-	// The persona body for ion-tutor is thousands of characters — if it
-	// arrives empty (or under a few hundred chars) the SDK helper has
-	// regressed to the pre-fix behavior of dropping the body. We assert
-	// a generous lower bound rather than an exact length so persona
-	// edits don't break the test.
+	// The fixture persona is ~1100 chars — if it arrives empty (or tiny) the
+	// SDK helper has regressed to the pre-fix behavior of dropping the body.
 	if got := len(capturedOpts.SystemPrompt); got < 500 {
-		t.Errorf("DispatchAgentOpts.SystemPrompt: expected the ion-tutor "+
-			"persona body (~thousands of chars), got %d chars. "+
-			"This means the SDK helper dropped the .md body — the exact "+
-			"regression the fix repaired. content=%q",
+		t.Errorf("DispatchAgentOpts.SystemPrompt: expected the persona body "+
+			"(~1100 chars), got %d chars. The SDK helper dropped the .md body — "+
+			"the exact regression the fix repaired. content=%q",
 			got, capturedOpts.SystemPrompt)
 	}
 
-	// Model must be the literal string from ion-tutor.md's frontmatter
-	// (`model: standard`). The engine's ResolveTier maps tier names to
-	// concrete model ids at runOpts assembly time; the SDK helper's job
-	// is just to pass the literal through.
+	// Model must be the literal frontmatter string; the engine's ResolveTier
+	// maps tier names to concrete model ids later. The helper's job is only
+	// to pass the literal through.
 	if capturedOpts.Model != "standard" {
-		t.Errorf("DispatchAgentOpts.Model: expected %q (from ion-tutor.md "+
-			"frontmatter), got %q. If the frontmatter changed the test should "+
-			"be updated; if it didn't, the SDK helper regressed.",
+		t.Errorf("DispatchAgentOpts.Model: expected %q (from the fixture "+
+			"frontmatter), got %q — the SDK helper dropped the model.",
 			"standard", capturedOpts.Model)
 	}
-
-	// Sanity: file paths in error messages should reference the live
-	// extension directory so a regression is debuggable. (No assertion
-	// — this is for human readers of failing test output.)
-	_ = filepath.Join(metaDir, "agents", "ion-tutor.md")
 }

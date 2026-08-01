@@ -58,6 +58,11 @@ type SessionAccessor interface {
 	// dispatch's child run through the DispatchRegistry instead.
 	SteerSelfMainLoop(message string) bool
 
+	// SteerSelfMainLoopWithKind is the Kind-aware variant. The kind reaches
+	// the backend's steer channel so a machine-originated steer is persisted
+	// as machine-authored rather than as an unclassified user turn.
+	SteerSelfMainLoopWithKind(message, kind string) bool
+
 	// ParkSelfMainLoop parks the session's OWN main run loop (the depth-0 /
 	// orchestrator run) on its outstanding background bash commands. Returns
 	// true when a live main run was signalled to park; false when there is no
@@ -508,30 +513,19 @@ func NewExtContext(sa SessionAccessor, args ...interface{}) *extension.Context {
 	//
 	// "steered" outcome ⇒ injected onto a live run's steer channel.
 	// "sent" outcome    ⇒ delivered as a fresh prompt (owning run was idle).
+	//
+	// The kind is threaded through EVERY arm. It used to be threaded through
+	// none of them: SteerSelf took no kind, and its idle fallback called the
+	// three-arg SendPrompt, which hardcodes an empty kind. A harness delivering
+	// a completion or a check-in through steerSelf was therefore structurally
+	// unable to classify the turn, and an idle session rendered the injection
+	// as a user bubble. Both the live arm (steer channel) and the idle arm
+	// (fresh prompt) now carry it.
 	ctx.SteerSelf = func(message string) (extension.SteerDispatchResult, error) {
-		if depth > 0 && registry != nil && dispatchId != "" {
-			// Depth-N: steer this dispatch's own child run.
-			outcome := registry.SteerByID(dispatchId, message)
-			if outcome == SteerOutcomeDelivered {
-				return extension.SteerDispatchResult{Delivered: true, Outcome: "steered"}, nil
-			}
-			// Child run not live (no_run / not_found / channel_full) — fall
-			// back to a fresh prompt on the owning session so the completion
-			// is never silently dropped.
-			if err := sa.SendPrompt(message, "", nil); err != nil {
-				return extension.SteerDispatchResult{Delivered: false, Outcome: string(outcome)}, err
-			}
-			return extension.SteerDispatchResult{Delivered: true, Outcome: "sent"}, nil
-		}
-
-		// Depth-0: steer the session's main loop when it is live, else send.
-		if sa.SteerSelfMainLoop(message) {
-			return extension.SteerDispatchResult{Delivered: true, Outcome: "steered"}, nil
-		}
-		if err := sa.SendPrompt(message, "", nil); err != nil {
-			return extension.SteerDispatchResult{Delivered: false, Outcome: "sent"}, err
-		}
-		return extension.SteerDispatchResult{Delivered: true, Outcome: "sent"}, nil
+		return steerSelfWithKind(sa, registry, depth, dispatchId, message, "")
+	}
+	ctx.SteerSelfWithKind = func(message, kind string) (extension.SteerDispatchResult, error) {
+		return steerSelfWithKind(sa, registry, depth, dispatchId, message, kind)
 	}
 
 	// Wire the lightweight one-shot inference primitive. Always available
@@ -635,4 +629,50 @@ func NewExtContext(sa SessionAccessor, args ...interface{}) *extension.Context {
 	ctx.DiscoverAgents = BuildDiscoverAgentsFunc(sa)
 
 	return ctx
+}
+
+// steerSelfWithKind is the shared body behind ctx.SteerSelf and
+// ctx.SteerSelfWithKind. One implementation, so the kindless alias cannot drift
+// from the kind-aware form — the two-implementations-of-one-thing hazard that
+// produced the original defect.
+//
+// Depth-aware resolution:
+//   - depth N (a dispatched agent's own context): the owning run is THIS
+//     dispatch's child run, addressed by dispatchId through the registry.
+//   - depth 0 (orchestrator): the owning run is the session's main loop.
+//
+// Both depths fall back to a fresh prompt when the owning run is not live, so
+// the message is never silently dropped, and both carry the kind into that
+// fallback.
+func steerSelfWithKind(
+	sa SessionAccessor,
+	registry *DispatchRegistry,
+	depth int,
+	dispatchId string,
+	message string,
+	kind string,
+) (extension.SteerDispatchResult, error) {
+	if depth > 0 && registry != nil && dispatchId != "" {
+		// Depth-N: steer this dispatch's own child run.
+		outcome := registry.SteerByIDWithKind(dispatchId, message, kind)
+		if outcome == SteerOutcomeDelivered {
+			return extension.SteerDispatchResult{Delivered: true, Outcome: "steered"}, nil
+		}
+		// Child run not live (no_run / not_found / channel_full) — fall
+		// back to a fresh prompt on the owning session so the completion
+		// is never silently dropped.
+		if err := sa.SendPromptWithKind(message, "", nil, kind); err != nil {
+			return extension.SteerDispatchResult{Delivered: false, Outcome: string(outcome)}, err
+		}
+		return extension.SteerDispatchResult{Delivered: true, Outcome: "sent"}, nil
+	}
+
+	// Depth-0: steer the session's main loop when it is live, else send.
+	if sa.SteerSelfMainLoopWithKind(message, kind) {
+		return extension.SteerDispatchResult{Delivered: true, Outcome: "steered"}, nil
+	}
+	if err := sa.SendPromptWithKind(message, "", nil, kind); err != nil {
+		return extension.SteerDispatchResult{Delivered: false, Outcome: "sent"}, err
+	}
+	return extension.SteerDispatchResult{Delivered: true, Outcome: "sent"}, nil
 }

@@ -227,7 +227,7 @@ describe('engine-bootstrap', () => {
     expect(copiedFiles.length).toBe(0)
 
     // install-assets must still run from the BUNDLED binary even when the
-    // installed copy is content-matched (it installs SDK/ion-meta, not just binary).
+    // installed copy is content-matched (it installs the SDK, not just binary).
     const installAssetsCall = execFileSyncCalls.find((c) => c.args[0] === 'install-assets')
     expect(installAssetsCall).toBeDefined()
     expect(installAssetsCall!.file).toBe(bundledBinaryPath)
@@ -278,7 +278,7 @@ describe('engine-bootstrap', () => {
 
   it('runs install-assets from the bundled binary, not the installed binary', async () => {
     // This pins the root-cause fix: install-assets resolves its asset root (extensions/
-    // SDK and ion-meta) by walking up from the executable directory. The extensions/
+    // SDK) by walking up from the executable directory. The extensions/
     // tree ships at Contents/Resources/engine/extensions/ — adjacent to srcBinary —
     // but NOT next to destBinary (~/.ion/bin/ion). Running from destBinary would cause
     // install-assets to fail to find any assets to install.

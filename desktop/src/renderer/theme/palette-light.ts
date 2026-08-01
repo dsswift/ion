@@ -60,10 +60,13 @@ export const lightColors: ColorPalette = {
 
   // Status dots
   statusIdle: '#74747c',
-  // Steel-teal running dot, distinct from the blue `accent` (deeper than the
-  // dark theme's #5EA9C9 for contrast on the light background).
-  statusRunning: '#3F86A6',
-  statusRunningBg: 'rgba(63, 134, 166, 0.10)',
+  // Terracotta-orange running dot, shared verbatim with Ion Dark and Ion
+  // Classic (see palette-dark.ts for the rationale). This is the one status
+  // token that is NOT deepened for the light surface: the value is shared
+  // across all three built-ins by design, and #d97757 on #FBFBFC clears the
+  // WCAG 1.4.11 non-text 3:1 minimum.
+  statusRunning: '#d97757',
+  statusRunningBg: 'rgba(217, 119, 87, 0.10)',
   statusCompacting: '#3b82f6',
   statusCompactingBg: 'rgba(59, 130, 246, 0.1)',
   statusComplete: '#059669',
@@ -211,6 +214,32 @@ export const lightColors: ColorPalette = {
 
   // Worktree branch indicator
   worktreeGreen: '#059669',
+  /**
+   * Unlanded-commit count on a worktree row.
+   *
+   * Deliberately NOT worktreeGreen. Green is the panel's ATTENTION colour --
+   * the dirty dot and the reviewed-good check both use it -- and the commit
+   * counts wearing it made them the first thing the eye landed on. They are
+   * a fact worth reading, not the most urgent one in the row. A subdued
+   * violet stays legible without competing for first glance.
+   */
+  unlandedCount: '#7c3aed',
+
+  /**
+   * Uncommitted changes in a worktree.
+   *
+   * Rendered as a small `!` rather than a filled shape, which is what lets it
+   * borrow the danger hue without claiming a failure. `git status` has trained
+   * everyone to read a terse mark beside a path as "this file has changes", and
+   * at this size, next to the commit count, that is what it reads as -- not an
+   * error banner.
+   *
+   * Earlier attempts: worktreeGreen said SUCCESS about unsaved work, and a teal
+   * square landed between statusRunning (#5EA9C9) and statusComplete (#34d399),
+   * two cyan-greens already in this same gutter. Amber is unavailable -- it is
+   * the base-moved sync signal on the same row.
+   */
+  worktreeDirty: '#dc2626',
 
   // Diff (inline edit diffs + git diff viewer)
   diffAddBg: 'rgba(5, 150, 105, 0.10)',

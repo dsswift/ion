@@ -107,14 +107,11 @@ function renderPill(tab: TabState, isActive: boolean): { pill: HTMLElement; unmo
         tab={tab}
         isActive={isActive}
         isEditing={false}
-        isConfirmingClose={false}
         onSelect={noop}
         onClose={noop}
         onStartEdit={noop}
         onStopEdit={noop}
         onRename={noop}
-        onConfirmClose={noop}
-        onCancelClose={noop}
         onSetPillColor={noop}
         colorPickerTabId={null}
         onOpenColorPicker={noop}

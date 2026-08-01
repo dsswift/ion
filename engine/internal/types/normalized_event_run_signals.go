@@ -68,17 +68,29 @@ type PromptInjectedEvent struct {
 	// Origin names the injector when known — the hosting extension's name.
 	// Empty when the session has no extension identity.
 	Origin string `json:"origin,omitempty"`
-	// Kind classifies the injection semantically. "agent_completion" means
-	// this is a machine-to-machine dispatch callback (a completed child
-	// agent's result being routed back to a parent agent) rather than a
-	// turn the user authored. "slash_command" means the injection is the
-	// expanded body of a slash command whose display turn is the command
-	// pill (the engine persists the raw invocation via
-	// AddUserMessageWithInvocation); the body is redundant with the pill and
-	// clients suppress it. Empty (the default) means the injection is a
-	// genuine extension-initiated turn with no special classification.
-	// Consumers interpret the classification however they choose.
+	// Kind classifies the injection semantically. See InjectionKind
+	// (injection_kind.go) for the enumerated set the engine defines and the
+	// exact wire string each carries. Empty (the default) means the injection
+	// is a genuine extension-initiated turn with no special classification.
+	// The field is a bare string on the wire so a consumer may define its own
+	// kinds; the engine only vouches for the ones it enumerates.
 	Kind string `json:"kind,omitempty"`
+	// MachineAuthored reports whether this turn was authored by an engine-side
+	// actor (a dispatch callback, a scheduled check-in, a slash expansion)
+	// rather than by a user. It is derived from Kind via
+	// InjectionKind.IsMachineToMachine.
+	//
+	// It exists so consumers stop re-deriving the same fact from a hand-copied
+	// list of kind strings. Matching kinds client-side meant every new kind
+	// required editing every client, nothing failed when one was missed, and
+	// the lists drifted apart. Reading this boolean means a kind added to the
+	// engine reaches every consumer with no client-side change.
+	//
+	// The engine publishes the classification and nothing more. What a consumer
+	// DOES with a machine-authored turn — hide it, dim it, render it verbatim —
+	// is that consumer's policy, and consumers legitimately differ. See
+	// ADR-017 and injection_kind.go.
+	MachineAuthored bool `json:"machineAuthored,omitempty"`
 }
 
 func (PromptInjectedEvent) eventType() string { return EventPromptInjected }

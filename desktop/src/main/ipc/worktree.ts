@@ -15,8 +15,7 @@ import {
 } from '../worktree/inventory'
 import { provisionWorktree } from '../worktree/provision'
 import { setProvisionState, clearProvisionState } from '../worktree/provision-state'
-import { engineBridge } from '../state'
-import { announceWorktreeTitle, MAX_TITLE_INPUT_CHARS } from '../worktree/title-announce'
+import { announceWorktreeTitle } from '../worktree/title-announce'
 import { log as _log, warn as _warn } from '../logger'
 
 const TAG = 'worktree.title'
@@ -109,76 +108,73 @@ export function registerWorktreeIpc(): void {
   )
 
   /**
-   * Give a worktree a human title, generated from the first prompt sent inside
-   * it. Called by the renderer on every send; the DECISION lives here.
+   * Record a worktree's human title, seeded from the conversation that named
+   * itself first. Called by the renderer once per generated tab title; the
+   * DECISION about whether it applies lives here.
+   *
+   * ── A recording, not a generation ────────────────────────────────────────
+   * This handler used to call `generateTitle` itself, on the same prompt text
+   * the renderer had just used to title the tab. Two round-trips over one
+   * prompt produced two independently-worded names for one piece of work, and
+   * they drifted from the moment they were written. The renderer now generates
+   * ONCE and passes the resulting string here, so the tab and the worktree
+   * carry the same name at the same moment. Nothing on this path talks to a
+   * model.
    *
    * ── Why the main process decides ────────────────────────────────────────
    * "Is this directory a worktree, and has it been named yet?" is answered by
    * the registry, which is main-process state. A renderer-side check would read
    * the inventory snapshot it happens to hold — stale in the ATV mirror, absent
-   * in a window that never opened the git panel — and would fire a duplicate
-   * LLM call from each window on the same send. Deciding here means the answer
-   * is read from the one authoritative record, and a worktree costs at most one
-   * titling round-trip ever.
+   * in a window that never opened the git panel — and both windows would race
+   * on the same send. Deciding here means the answer is read from the one
+   * authoritative record.
+   *
+   * That record is also what makes "FIRST PROMPT WINS" true by construction.
+   * Several conversations routinely share one worktree; each of their first
+   * sends reaches this handler. The already-titled guard refuses every seed
+   * after the first, so a worktree's topic never changes because a second tab
+   * was opened in it to chase a bug.
    *
    * Three no-op paths, each logged so the decision is reconstructable:
    *   - the directory is not a registered worktree (an ordinary project tab),
    *   - it already has a title (the common case after the first prompt),
-   *   - the prompt carries no usable text.
+   *   - the seed carries no usable text.
    *
    * Failure is never fatal to the prompt that triggered it: the row keeps
-   * showing its machine slug and the next prompt tries again.
+   * showing its machine slug and the next fresh conversation seeds it.
    */
   ipcMain.handle(
-    IPC.GIT_WORKTREE_AUTOTITLE,
-    async (_event, { workingDirectory, text }: { workingDirectory: string; text: string }) => {
-      if (!workingDirectory || !text.trim()) {
-        log('autotitle skipped: nothing to work from', {
-          worktree_path: workingDirectory, text_len: text?.length ?? 0,
+    IPC.GIT_WORKTREE_SEED_TITLE,
+    async (_event, { worktreePath, title }: { worktreePath: string; title: string }) => {
+      const trimmed = title?.trim() ?? ''
+      if (!worktreePath || !trimmed) {
+        log('seed skipped: nothing to work from', {
+          worktree_path: worktreePath, title_len: title?.length ?? 0,
         })
         return { ok: false, reason: 'empty-input' as const }
       }
 
-      const registration = lookupWorktreeRegistration(workingDirectory)
+      const registration = lookupWorktreeRegistration(worktreePath)
       if (!registration) {
-        log('autotitle skipped: not a registered worktree', { dir: workingDirectory })
+        log('seed skipped: not a registered worktree', { dir: worktreePath })
         return { ok: false, reason: 'not-a-worktree' as const }
       }
       if (registration.title) {
-        log('autotitle skipped: already titled', {
-          worktree_path: workingDirectory, title: registration.title,
+        log('seed skipped: already titled', {
+          worktree_path: worktreePath, title: registration.title,
         })
         return { ok: false, reason: 'already-titled' as const, title: registration.title }
       }
 
-      log('autotitle generating', {
-        worktree_path: workingDirectory,
+      setWorktreeTitle(worktreePath, trimmed)
+      log('seed applied', {
+        worktree_path: worktreePath,
         repo_path: registration.repoPath,
         branch: registration.branchName,
-        text_len: text.length,
+        title: trimmed,
       })
-      let title = ''
-      try {
-        title = (await engineBridge.generateTitle(text.slice(0, MAX_TITLE_INPUT_CHARS))).trim()
-      } catch (err) {
-        warn('autotitle generation failed; the worktree keeps its slug', {
-          worktree_path: workingDirectory, error: String(err),
-        })
-        return { ok: false, reason: 'generation-failed' as const }
-      }
-      if (!title) {
-        // The engine returns "" when no titling model is configured. That is a
-        // legitimate configuration, not an error — say so and move on.
-        log('autotitle produced no title (no titling model configured?)', {
-          worktree_path: workingDirectory,
-        })
-        return { ok: false, reason: 'empty-title' as const }
-      }
-
-      setWorktreeTitle(workingDirectory, title)
-      log('autotitle applied', { worktree_path: workingDirectory, title })
-      await announceWorktreeTitle(registration.repoPath, workingDirectory, title)
-      return { ok: true, title }
+      await announceWorktreeTitle(registration.repoPath, worktreePath, trimmed)
+      return { ok: true, title: trimmed }
     },
   )
 

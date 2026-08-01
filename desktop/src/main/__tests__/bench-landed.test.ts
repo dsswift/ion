@@ -29,7 +29,7 @@ vi.mock('os', async () => {
   return { ...actual, homedir: () => process.env.ION_TEST_HOME_BENCH_LANDED || actual.homedir() }
 })
 
-import { rebuildBench } from '../integration/bench-rebuild'
+import { assembleBench } from '../integration/bench-assemble'
 import { captureContribution } from '../integration/bench-snapshot'
 import { makeWorkspace, makeMember } from '../integration/bench-store'
 import { landWorktree } from '../worktree/integrate'
@@ -135,7 +135,7 @@ describe('landed absorption — the member worktree is never modified', () => {
       git(a.path, 'commit', '-m', `commit ${n}`)
     }
     const ws = workspaceFor([await enroll(a)])
-    const built = (await rebuildBench(ws)).workspace!
+    const built = (await assembleBench(ws)).workspace!
 
     const headBefore = git(a.path, 'rev-parse', 'HEAD').trim()
     const logBefore = git(a.path, 'log', '--format=%s', `${FEATURE}..HEAD`)
@@ -143,10 +143,10 @@ describe('landed absorption — the member worktree is never modified', () => {
     const reflogBefore = git(a.path, 'reflog', 'show', a.branch)
 
     await landWorktree({ repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: FEATURE })
-    const result = await rebuildBench(built)
+    const result = await assembleBench(built)
 
     // The bench retired the member record …
-    expect(result.retired!.map((m) => m.status)).toEqual(['landed'])
+    expect(result.retired!.map((m) => m.pin)).toEqual(['absorbed'])
     // … and the worktree is completely unchanged.
     expect(existsSync(a.path)).toBe(true)
     expect(git(a.path, 'rev-parse', 'HEAD').trim()).toBe(headBefore)
@@ -175,13 +175,13 @@ describe('landed absorption — the member worktree is never modified', () => {
     git(a.path, 'add', '-A')
     git(a.path, 'commit', '-m', 'ready work')
     const ws = workspaceFor([await enroll(a)])
-    const built = (await rebuildBench(ws)).workspace!
+    const built = (await assembleBench(ws)).workspace!
 
     // The agent keeps working after the land.
     writeFileSync(join(a.path, 'in-progress.txt'), 'still editing\n')
 
     await landWorktree({ repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: FEATURE })
-    await rebuildBench(built)
+    await assembleBench(built)
 
     expect(readFileSync(join(a.path, 'in-progress.txt'), 'utf-8')).toBe('still editing\n')
     expect(git(a.path, 'status', '--porcelain')).toContain('in-progress.txt')
@@ -193,10 +193,10 @@ describe('landed absorption — the member worktree is never modified', () => {
     git(a.path, 'add', '-A')
     git(a.path, 'commit', '-m', 'first')
     const ws = workspaceFor([await enroll(a)])
-    const built = (await rebuildBench(ws)).workspace!
+    const built = (await assembleBench(ws)).workspace!
 
     await landWorktree({ repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: FEATURE })
-    const afterLand = (await rebuildBench(built)).workspace!
+    const afterLand = (await assembleBench(built)).workspace!
     expect(afterLand.members).toHaveLength(0)
 
     // The worktree is still fully usable: commit more work and re-enroll it.
@@ -205,7 +205,7 @@ describe('landed absorption — the member worktree is never modified', () => {
     git(a.path, 'commit', '-m', 'second round')
     const reEnrolled = { ...afterLand, members: [await enroll(a)] }
 
-    const result = await rebuildBench(reEnrolled)
+    const result = await assembleBench(reEnrolled)
 
     expect(result.ok).toBe(true)
     expect(result.workspace!.members.map((m) => m.branchName)).toEqual(['wt/a'])
@@ -220,7 +220,7 @@ describe('landed member absorption', () => {
     const a = makeWorktree('a')
     const b = makeWorktree('b')
     const ws = workspaceFor([await enroll(a), await enroll(b)])
-    const built = (await rebuildBench(ws)).workspace!
+    const built = (await assembleBench(ws)).workspace!
     expect(benchMergeCount(ws.benchPath)).toBe(2)
 
     // Land A into main (the "Land & retire" path).
@@ -229,7 +229,7 @@ describe('landed member absorption', () => {
     })
     expect(landed.ok).toBe(true)
 
-    const result = await rebuildBench(built)
+    const result = await assembleBench(built)
 
     expect(result.ok).toBe(true)
     // A's content is still in the bench — it arrived with the base.
@@ -239,7 +239,7 @@ describe('landed member absorption', () => {
     // A is retired from the member list and reported as landed.
     expect(result.workspace!.members.map((m) => m.branchName)).toEqual(['wt/b'])
     expect(result.retired!.map((m) => m.branchName)).toEqual(['wt/a'])
-    expect(result.retired![0].status).toBe('landed')
+    expect(result.retired![0].pin).toBe('absorbed')
   })
 
   // The "without option" part of the requirement: once landed, the work is part
@@ -247,33 +247,33 @@ describe('landed member absorption', () => {
   it('cannot be removed by disabling the member', async () => {
     const a = makeWorktree('a')
     const ws = workspaceFor([await enroll(a)])
-    const built = (await rebuildBench(ws)).workspace!
+    const built = (await assembleBench(ws)).workspace!
 
     await landWorktree({ repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: FEATURE })
 
     // Operator disables the member and rebuilds.
     const disabled = { ...built, members: built.members.map((m) => ({ ...m, enabled: false })) }
-    const result = await rebuildBench(disabled)
+    const result = await assembleBench(disabled)
 
     expect(result.ok).toBe(true)
     // Content is still there: it is part of the base now.
     expect(existsSync(join(ws.benchPath, 'a.txt'))).toBe(true)
     // It reports `landed`, not `excluded` — reporting excluded would be a lie
     // about content that is demonstrably present.
-    expect(result.retired!.map((m) => m.status)).toEqual(['landed'])
+    expect(result.retired!.map((m) => m.pin)).toEqual(['absorbed'])
     expect(result.workspace!.members).toHaveLength(0)
   })
 
   it('absorbs a member landed via a no-ff merge commit', async () => {
     const a = makeWorktree('a')
     const ws = workspaceFor([await enroll(a)])
-    const built = (await rebuildBench(ws)).workspace!
+    const built = (await assembleBench(ws)).workspace!
 
     await landWorktree({
       repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: FEATURE, noFf: true,
     })
 
-    const result = await rebuildBench(built)
+    const result = await assembleBench(built)
 
     expect(result.ok).toBe(true)
     expect(existsSync(join(ws.benchPath, 'a.txt'))).toBe(true)
@@ -287,20 +287,20 @@ describe('landed member absorption', () => {
     const a = makeWorktree('a')
     const b = makeWorktree('b')
     const ws = workspaceFor([await enroll(a), await enroll(b)])
-    const built = (await rebuildBench(ws)).workspace!
+    const built = (await assembleBench(ws)).workspace!
 
     await landWorktree({ repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: FEATURE })
     const retiredWt = await retireWorktree({ repoPath: repo, worktreePath: a.path, branchName: a.branch })
     expect(retiredWt.ok).toBe(true)
     expect(existsSync(a.path)).toBe(false)
 
-    const result = await rebuildBench(built)
+    const result = await assembleBench(built)
 
     expect(result.ok).toBe(true)
     // Landed content survives the worktree AND the branch being deleted,
     // because it lives in the source branch now — not reported `missing`.
     expect(existsSync(join(ws.benchPath, 'a.txt'))).toBe(true)
-    expect(result.retired!.map((m) => m.status)).toEqual(['landed'])
+    expect(result.retired!.map((m) => m.pin)).toEqual(['absorbed'])
     expect(result.workspace!.members.map((m) => m.branchName)).toEqual(['wt/b'])
   })
 
@@ -308,15 +308,15 @@ describe('landed member absorption', () => {
     const a = makeWorktree('a')
     const b = makeWorktree('b')
     const ws = workspaceFor([await enroll(a), await enroll(b)])
-    const built = (await rebuildBench(ws)).workspace!
+    const built = (await assembleBench(ws)).workspace!
 
     await landWorktree({ repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: FEATURE })
 
-    const result = await rebuildBench(built)
+    const result = await assembleBench(built)
 
     // B is untouched: still a member, still merged, still pinned where it was.
     const bAfter = result.workspace!.members.find((m) => m.branchName === 'wt/b')!
-    expect(bAfter.status).toBe('integrated')
+    expect(bAfter.merge).toBe('merged')
     expect(bAfter.pinnedSha).toBe(built.members.find((m) => m.branchName === 'wt/b')!.pinnedSha)
     expect(existsSync(join(ws.benchPath, 'b.txt'))).toBe(true)
   })
@@ -328,7 +328,7 @@ describe('landed member absorption', () => {
     const a = makeWorktree('a')
     const firstPin = await enroll(a)
     const ws = workspaceFor([firstPin])
-    await rebuildBench(ws)
+    await assembleBench(ws)
 
     // Land the first commit, then do more work and advance the pin.
     await landWorktree({ repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: FEATURE })
@@ -338,7 +338,7 @@ describe('landed member absorption', () => {
     const advanced = await enroll(a)
     const updated = { ...ws, members: [{ ...ws.members[0], ...advanced }] }
 
-    const result = await rebuildBench(updated)
+    const result = await assembleBench(updated)
 
     expect(result.ok).toBe(true)
     expect(result.retired ?? []).toHaveLength(0)
@@ -363,7 +363,7 @@ describe('landed absorption — rewritten history (squash, rebase, cherry-pick)'
       git(a.path, 'commit', '-m', `wip ${n}`)
     }
     const ws = workspaceFor([await enroll(a)])
-    const built = (await rebuildBench(ws)).workspace!
+    const built = (await assembleBench(ws)).workspace!
     const prePin = built.members[0].pinnedSha
 
     // Squash into one tight commit, then land it.
@@ -373,10 +373,10 @@ describe('landed absorption — rewritten history (squash, rebase, cherry-pick)'
     expect(squashedSha).not.toBe(prePin)
     await landWorktree({ repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: FEATURE })
 
-    const result = await rebuildBench(built)
+    const result = await assembleBench(built)
 
     // Absorbed despite the pinned sha no longer existing in the feature branch.
-    expect(result.retired!.map((m) => m.status)).toEqual(['landed'])
+    expect(result.retired!.map((m) => m.pin)).toEqual(['absorbed'])
     expect(result.workspace!.members).toHaveLength(0)
     // The content is present, and it came from the BASE — no merge commit.
     expect(readFileSync(join(ws.benchPath, 'feature.txt'), 'utf-8')).toBe('revision 6\n')
@@ -389,7 +389,7 @@ describe('landed absorption — rewritten history (squash, rebase, cherry-pick)'
     git(a.path, 'add', '-A')
     git(a.path, 'commit', '-m', 'my work')
     const ws = workspaceFor([await enroll(a)])
-    const built = (await rebuildBench(ws)).workspace!
+    const built = (await assembleBench(ws)).workspace!
 
     // The feature branch moves on, the member rebases onto it (new sha), lands.
     const other = makeWorktree('other')
@@ -397,7 +397,7 @@ describe('landed absorption — rewritten history (squash, rebase, cherry-pick)'
     git(a.path, 'rebase', FEATURE)
     await landWorktree({ repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: FEATURE })
 
-    const result = await rebuildBench(built)
+    const result = await assembleBench(built)
 
     const retiredBranches = result.retired!.map((m) => m.branchName)
     expect(retiredBranches).toContain('wt/a')
@@ -410,16 +410,16 @@ describe('landed absorption — rewritten history (squash, rebase, cherry-pick)'
     git(a.path, 'add', '-A')
     git(a.path, 'commit', '-m', 'picked work')
     const ws = workspaceFor([await enroll(a)])
-    const built = (await rebuildBench(ws)).workspace!
+    const built = (await assembleBench(ws)).workspace!
 
     // Land by cherry-pick: a different sha carrying the same patch.
     const featureWt = join(root, 'feature-checkout')
     git(repo, 'worktree', 'add', featureWt, FEATURE)
     git(featureWt, 'cherry-pick', a.branch)
 
-    const result = await rebuildBench(built)
+    const result = await assembleBench(built)
 
-    expect(result.retired!.map((m) => m.status)).toEqual(['landed'])
+    expect(result.retired!.map((m) => m.pin)).toEqual(['absorbed'])
     expect(readFileSync(join(ws.benchPath, 'feature.txt'), 'utf-8')).toBe('picked work\n')
   })
 
@@ -434,14 +434,14 @@ describe('landed absorption — rewritten history (squash, rebase, cherry-pick)'
     }
     const b = makeWorktree('b')
     const ws = workspaceFor([await enroll(a), await enroll(b)])
-    const built = (await rebuildBench(ws)).workspace!
+    const built = (await assembleBench(ws)).workspace!
     const treeBefore = git(ws.benchPath, 'rev-parse', 'HEAD^{tree}').trim()
 
     git(a.path, 'reset', '--soft', FEATURE)
     git(a.path, 'commit', '-m', 'feat: squashed')
     await landWorktree({ repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: FEATURE })
 
-    const result = await rebuildBench(built)
+    const result = await assembleBench(built)
 
     expect(result.ok).toBe(true)
     // Identical CONTENT — the whole point: functionally the same bench, now
@@ -462,7 +462,7 @@ describe('landed absorption — rewritten history (squash, rebase, cherry-pick)'
       git(a.path, 'commit', '-m', `wip ${n}`)
     }
     const ws = workspaceFor([await enroll(a)])
-    const built = (await rebuildBench(ws)).workspace!
+    const built = (await assembleBench(ws)).workspace!
 
     git(a.path, 'reset', '--soft', FEATURE)
     git(a.path, 'commit', '-m', 'feat: squashed')
@@ -471,7 +471,7 @@ describe('landed absorption — rewritten history (squash, rebase, cherry-pick)'
     const headBefore = git(a.path, 'rev-parse', 'HEAD').trim()
     const statusBefore = git(a.path, 'status', '--porcelain')
 
-    await rebuildBench(built)
+    await assembleBench(built)
 
     expect(existsSync(a.path)).toBe(true)
     expect(git(a.path, 'rev-parse', 'HEAD').trim()).toBe(headBefore)

@@ -28,8 +28,10 @@ final class TabRowSubtitlePriorityTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private let yellowHex: UInt = 0xF59E0B   // childrenYellow
-    private let purpleHex: UInt = 0xA78BFA   // questionPurple
+    // Read the cascade's own constants rather than re-literalling the hexes —
+    // these suites pin the priority ordering, not the specific palette values.
+    private let yellowColor = TabStatusRollup.childrenYellow
+    private let purpleColor = TabStatusRollup.questionPurple
 
     /// A fixed now/since pair so `relativeTime` is deterministic. 2h apart →
     /// the elapsed suffix is always "2h ago".
@@ -106,8 +108,8 @@ final class TabRowSubtitlePriorityTests: XCTestCase {
         )
         XCTAssertEqual(
             subtitleColor(for: tab),
-            Color(hex: yellowHex),
-            "running-children subtitle must be yellow (0xF59E0B), not green"
+            yellowColor,
+            "running-children subtitle must be childrenYellow, not green"
         )
     }
 
@@ -134,7 +136,7 @@ final class TabRowSubtitlePriorityTests: XCTestCase {
         )
 
         XCTAssertEqual(subtitle(for: tab), "Waiting on you · \(elapsedSuffix)")
-        XCTAssertEqual(subtitleColor(for: tab), Color(hex: purpleHex))
+        XCTAssertEqual(subtitleColor(for: tab), purpleColor)
     }
 
     /// idle + hasRunningChildren, empty queue → running-children label.
@@ -146,6 +148,6 @@ final class TabRowSubtitlePriorityTests: XCTestCase {
         )
 
         XCTAssertEqual(subtitle(for: tab), "Working… · \(elapsedSuffix)")
-        XCTAssertEqual(subtitleColor(for: tab), Color(hex: yellowHex))
+        XCTAssertEqual(subtitleColor(for: tab), yellowColor)
     }
 }

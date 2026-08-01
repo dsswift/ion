@@ -234,19 +234,48 @@ export function useEngineEvents() {
     // session-store OWNER, so owner-durable mutations execute here (main
     // already validated the action against FORWARDED_ACTIONS). The resulting
     // state flows back to the mirror via events and sync pushes.
-    const unsubExecAction = window.ion.onAtvExecAction((action, args) => {
+    const unsubExecAction = window.ion.onAtvExecAction((action, args, callId) => {
+      // A round-trip call (callId set) must ALWAYS get exactly one reply, on
+      // every path — including the two rejections below. A mirror caller is
+      // awaiting it, and main only unblocks them on a reply or a timeout, so a
+      // silent return here would cost them 30s of hang for a fault we already
+      // know about right now.
+      const reply = (value: unknown): void => {
+        if (callId) window.ion.atvActionResult(callId, value)
+      }
       if (!(action in FORWARDED_ACTIONS)) {
         rWarn('event.atv', 'exec-action outside the forwarded set', { action })
+        reply(undefined)
         return
       }
       const store = useSessionStore.getState() as unknown as Record<string, unknown>
       const fn = store[action]
       if (typeof fn !== 'function') {
         rWarn('event.atv', 'exec-action has no store implementation', { action })
+        reply(undefined)
         return
       }
-      rDebug('event.atv', 'executing forwarded action', { action, arg_count: args.length })
-      void (fn as (...a: unknown[]) => unknown)(...args)
+      rDebug('event.atv', 'executing forwarded action', {
+        action, arg_count: args.length, call_id: callId ?? '',
+      })
+      // Fire-and-forget (no callId) keeps its existing `void` shape. A round
+      // trip resolves the action and returns its value — including a rejection,
+      // which becomes `undefined` rather than an unhandled rejection here: the
+      // owner logs the throw, and the mirror sees "no value", which is the same
+      // shape a non-returning action produces.
+      const ret = (fn as (...a: unknown[]) => unknown)(...args)
+      if (!callId) {
+        void ret
+        return
+      }
+      Promise.resolve(ret)
+        .then((value) => reply(value))
+        .catch((err) => {
+          rWarn('event.atv', 'forwarded action threw; replying with no value', {
+            action, call_id: callId, error: String(err),
+          })
+          reply(undefined)
+        })
     })
 
     return () => {

@@ -16,6 +16,7 @@
 
 import type { Message, SessionLoadMessage } from './types'
 import { buildCompactionMarkerContent } from './compaction-marker'
+import { suppressesInjection } from './injection-policy'
 import {
   formatClearDivider,
   formatPlanCreatedDivider,
@@ -135,21 +136,20 @@ export function mapSessionMessage(m: SessionLoadMessage, makeId: () => string): 
  * content. Convenience wrapper over `mapSessionMessage` for the common
  * `history.filter(...).map(...)` shape the load paths repeat.
  *
- * Desktop rendering opinion: two injection kinds are machine-to-machine
- * signals the agent receives in its LLM context but the user never authored and
- * should not see in conversation scrollback:
- *
- *   - "agent_completion" — a dispatch callback (a child agent's result
- *     delivered to its parent).
- *   - "background_task_completion" — a finished background bash command's
- *     result, routed back to wake a parked session (ADR-023). The engine is
- *     reporting an exit code and output tail to the model; rendering it puts
- *     raw command output in the transcript as a user turn.
+ * Desktop rendering opinion: a machine-to-machine injection is a signal the
+ * agent receives in its LLM context but the user never authored and should not
+ * see in the scrollback — a dispatch callback, a background command's exit code
+ * and output tail, a scheduled check-in, or the expanded body of a slash
+ * command whose display turn is persisted separately as the raw invocation.
  *
  * The engine faithfully persists and surfaces the classification; the desktop
- * chooses to suppress. Must stay in sync with the live-event filter in
- * stores/slices/event-slice.ts — a kind suppressed live but not on reload
- * (or vice versa) makes the transcript change shape when history rehydrates.
+ * chooses to suppress. That choice lives in ONE place — `suppressesInjection`
+ * in shared/injection-policy.ts — shared with the live-event filter in
+ * stores/slices/event-slice.ts. It used to be two hand-copied kind lists that
+ * had drifted: this mapper filtered two kinds while the live reducer filtered
+ * three, so a `slash_command` injection was hidden while streaming and then
+ * appeared when history rehydrated. Sharing the function makes that class of
+ * divergence unrepresentable.
  */
 export function mapSessionHistory(
   history: readonly SessionLoadMessage[],
@@ -158,8 +158,7 @@ export function mapSessionHistory(
   const out: Message[] = []
   for (const m of history) {
     if (m.internal) continue
-    if (m.injectionKind === 'agent_completion') continue
-    if (m.injectionKind === 'background_task_completion') continue
+    if (suppressesInjection(m)) continue
     const mapped = mapSessionMessage(m, makeId)
     if (mapped) out.push(mapped)
   }

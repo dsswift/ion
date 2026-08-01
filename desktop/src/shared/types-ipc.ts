@@ -187,12 +187,14 @@ export const IPC = {
   GIT_WORKTREE_INVENTORY: 'ion:git-worktree-inventory',
   GIT_WORKTREE_APPRAISE: 'ion:git-worktree-appraise',
   // Worktree naming. A worktree's own identifiers (`ion-03e81090`,
-  // `wt/ion-03e81090`) describe nothing about the work, so a worktree earns a
-  // human title from the first prompt sent inside it (AUTOTITLE, which decides
-  // in the main process whether one is needed) and the operator can override it
-  // (SET_TITLE).
-  GIT_WORKTREE_AUTOTITLE: 'ion:git-worktree-autotitle',
+  // `wt/ion-03e81090`) describe nothing about the work, so a worktree is SEEDED
+  // with the name of the conversation that started it (SEED_TITLE, which
+  // decides in the main process whether the seed applies — first prompt wins,
+  // and a worktree that already has a name keeps it) and the operator can
+  // override it (SET_TITLE).
+  GIT_WORKTREE_SEED_TITLE: 'ion:git-worktree-seed-title',
   GIT_WORKTREE_SET_TITLE: 'ion:git-worktree-set-title',
+  GIT_WORKTREE_REGISTRATION: 'ion:git-worktree-registration',
   // Re-run provisioning for a worktree whose dependency state the operator
   // believes is wrong. Same code path as creation.
   GIT_WORKTREE_REPROVISION: 'ion:git-worktree-reprovision',
@@ -200,16 +202,21 @@ export const IPC = {
   // which deliberately rejects non-http(s) URLs.
   REVEAL_PATH: 'ion:reveal-path',
   // Integration workspace (the bench): read the workspace list, mutate the
-  // member set, and rebuild. Rebuild is always operator-triggered.
+  // member set, and assemble. Assembly is always operator-triggered.
   BENCH_LIST: 'ion:bench-list',
   BENCH_ENSURE: 'ion:bench-ensure',
   BENCH_ADD_MEMBER: 'ion:bench-add-member',
   BENCH_REMOVE_MEMBER: 'ion:bench-remove-member',
   BENCH_SET_ENABLED: 'ion:bench-set-enabled',
+  BENCH_SET_REVIEW: 'ion:bench-set-review',
+  BENCH_SET_ORDER: 'ion:bench-set-order',
   BENCH_UPDATE_MEMBER: 'ion:bench-update-member',
   BENCH_UPDATE_ALL: 'ion:bench-update-all',
-  BENCH_REBUILD: 'ion:bench-rebuild',
+  BENCH_ASSEMBLE: 'ion:bench-assemble',
   BENCH_REFRESH_STALENESS: 'ion:bench-refresh-staleness',
+  // Resolve-once: re-create the failed assembly merge and leave it in
+  // progress so the ConflictsDialog can resolve it (and rerere record it).
+  BENCH_RESOLVE_CONFLICT: 'ion:bench-resolve-conflict',
 
   // Filesystem operations
   FS_READ_DIR: 'ion:fs-read-dir',
@@ -383,9 +390,16 @@ export const IPC = {
   // launcher button's active indicator).
   ATV_WINDOW_STATE: 'atv:window-state',
   // Mirror-store action forwarding: ATV renderer → main (validated against
-  // FORWARDED_ACTIONS) → overlay renderer, which executes on the owner store.
-  ATV_FORWARD_ACTION: 'atv:forward-action',
+  // FORWARDED_ACTIONS) → overlay renderer, which executes on the owner store
+  // and replies with the action's return value.
+  //
+  // Request/response, not fire-and-forget: a mirror caller does
+  // `const result = await store.retireWorktree(…)` and needs the owner's real
+  // answer. Main mints a callId, relays it with the action on ATV_EXEC_ACTION,
+  // and the owner replies once on ATV_ACTION_RESULT.
+  ATV_CALL_ACTION: 'atv:call-action',
   ATV_EXEC_ACTION: 'atv:exec-action',
+  ATV_ACTION_RESULT: 'atv:action-result',
   // Owner-published tab-metadata snapshot: owner renderer → main (publish),
   // main → ATV window (push), ATV → main (boot pull).
   ATV_PUBLISH_TABS_SYNC: 'atv:publish-tabs-sync',

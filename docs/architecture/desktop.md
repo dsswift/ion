@@ -220,10 +220,10 @@ rejected alternatives are in
 | Land / sync preflight and primitives | `main/worktree/integrate.ts` |
 | Retire / re-attach | `main/worktree/relocate.ts` |
 | Discard appraisal + work preservation | `main/worktree/safety.ts` |
-| Close decision (never destructive) | `main/worktree/close-appraisal.ts` |
+| Close decision (never destructive) | `shared/worktree-close-decision.ts` |
 | Base staleness | `main/worktree/base-staleness.ts` |
 | Worktree inventory + source-branch registry | `main/worktree/inventory.ts` |
-| Bench rebuild (the pure function) | `main/integration/bench-rebuild.ts` |
+| Bench assembly (the pure function) | `main/integration/bench-assemble.ts` |
 | Bench workspace ops (pins advance here) | `main/integration/bench-ops.ts` |
 | Bench persistence | `main/integration/bench-store.ts` |
 | Bench write guard (history writes refused) | `main/integration/bench-guard.ts` |
@@ -231,7 +231,8 @@ rejected alternatives are in
 | IPC | `main/ipc/worktree-lifecycle.ts`, `main/ipc/bench.ts` |
 | iOS wire | `main/remote/protocol-worktree.ts`, `main/remote/handlers/worktree.ts` |
 | Renderer state | `renderer/stores/slices/worktree-inventory-slice.ts`, `bench-slice.ts` |
-| UI | `renderer/components/WorktreesSection.tsx`, `IntegrationSection.tsx`, `WorktreeRow.tsx`, `BenchMemberRow.tsx` |
+| UI | `renderer/components/WorktreeListSection.tsx`, `BenchBar.tsx`, `WorktreeRow.tsx`, `worktreeRowState.ts` |
+| Join | `shared/worktree-list.ts` (worktrees × memberships, one ordered list) |
 
 ### State flow
 
@@ -252,17 +253,17 @@ mounts the overlay's own components rather than bespoke widgets.
 
 ### Invariants worth knowing before changing this code
 
-- **Rebuild merges pins, never tips**, and never advances a pin. Only
+- **Assembly merges pins, never tips**, and never advances a pin. Only
   `updateMember` / `updateAllStale` in `bench-ops.ts` advance one. Breaking this
-  means a rebuild for one member drags in another's half-finished work.
-- **Never add `git clean -x`** to the rebuild. Preserving ignored build output
-  is what makes a rebuild incremental instead of cold.
+  means an assembly for one member drags in another's half-finished work.
+- **Never add `git clean -x`** to the assembly. Preserving ignored build output
+  is what makes an assembly incremental instead of cold.
 - **Closing a conversation never removes a worktree.** A structural test
   (`worktree-close-no-destroy.test.ts`) asserts no renderer slice calls
   `gitWorktreeRemove` at all.
 - **A new history-writing git IPC handler must call `benchGuard`.** Committing,
   pushing, or rewriting a branch inside a bench loses the work on the next
-  rebuild. Index and working-tree channels (`stage`, `unstage`, `discard`,
+  assembly. Index and working-tree channels (`stage`, `unstage`, `discard`,
   `apply`) are deliberately NOT guarded — blocking them would break diff review
   in the bench. `bench-guard.test.ts` drives the real handlers, so a handler that
   forgets the guard fails there rather than passing a helper-only test.
@@ -270,7 +271,7 @@ mounts the overlay's own components rather than bespoke widgets.
   is it, and `bench-ops.isBenchDirectory` delegates to it. It matches a bench
   root or a separator-prefixed descendant, never a bare string prefix — a
   sibling named `<bench>-other` is not a bench.
-- **Serialization**: land and rebuild both run on the per-repo
+- **Serialization**: land and assembly both run on the per-repo
   `OperationQueue` (`git/repository.ts`), so concurrent operations in one repo
   never interleave, while separate projects proceed in parallel.
 

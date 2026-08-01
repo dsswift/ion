@@ -397,7 +397,7 @@ func TestMergeEnterprisePartial_ExtensionAllowlist(t *testing.T) {
 	base := &types.EnterpriseConfig{}
 	overlay := &types.EnterpriseConfig{
 		ExtensionAllowlist: []types.ExtensionAllowlistEntry{
-			{ID: "ion-meta"},
+			{ID: "example-ext"},
 			{ID: "chief-of-staff", SHA256: "abc123"},
 		},
 	}

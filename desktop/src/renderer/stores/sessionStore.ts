@@ -8,6 +8,7 @@ import { makeLocalTab, initialModelOverride } from './session-store-helpers'
 import { makeMainPane } from './conversation-instance'
 import { parseSessionKey } from '../../shared/session-key'
 import { createTabSlice } from './slices/tab-slice'
+import { createCloseIntentSlice } from './slices/close-intent-slice'
 import { createResumeSlice } from './slices/resume-slice'
 import { createExpandSlice } from './slices/expand-slice'
 import { createTerminalSlice } from './slices/terminal-slice'
@@ -47,6 +48,7 @@ const initialState = {
   isExpanded: false,
   staticInfo: null,
   gitPanelOpen: false,
+  // Null = use the default height, which is also the floor for a drag.
   statusDrawerOpen: false,
   statusDrawerDispatchId: null,
   terminalOpenTabIds: new Set<string>(),
@@ -96,6 +98,7 @@ export const useSessionStore = create<State>((set, get) => {
   return {
     ...initialState,
     ...createTabSlice(_set, _get),
+    ...createCloseIntentSlice(_set, _get),
     ...createResumeSlice(_set, _get),
     ...createExpandSlice(_set, _get),
     ...createTerminalSlice(_set, _get),

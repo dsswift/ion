@@ -8,9 +8,8 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
-// The slice reads the aiGeneratedTitles preference to opt the inventory read
-// into title backfill; the real preferences module touches localStorage/DOM,
-// which this node-environment test does not have.
+// The real preferences module touches localStorage/DOM, which this
+// node-environment test does not have.
 vi.mock('../../preferences', () => ({
   usePreferencesStore: { getState: () => ({ aiGeneratedTitles: false }) },
 }))
@@ -78,12 +77,19 @@ function harness(initial: {
 const ion = {
   gitWorktreeInventory: vi.fn(),
   gitWorktreeSync: vi.fn(),
+  // The REGISTRY lookup, which is where a worktree's owning repo comes from.
+  // Deliberately returns a repo that is NOT a key in the inventory cache, so a
+  // test cannot pass by accidentally scanning that cache instead.
+  gitWorktreeRegistration: vi.fn(),
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
   ;(globalThis as any).window = { ion }
   ion.gitWorktreeInventory.mockResolvedValue({ worktrees: [entry()] })
+  ion.gitWorktreeRegistration.mockResolvedValue({
+    registration: { repoPath: REPO, branchName: 'wt/a3f1', sourceBranch: 'josh', title: null },
+  })
   ion.gitWorktreeSync.mockResolvedValue({ ok: true })
 })
 
@@ -174,7 +180,12 @@ describe('openWorktreeConversation', () => {
   // wrong place.
   it('leaves worktree metadata unset when the source branch is unknown', async () => {
     const { state, slice } = harness()
-    ion.gitWorktreeInventory.mockResolvedValueOnce({ worktrees: [entry({ sourceBranch: null })] })
+    // The REGISTRY is what carries the source branch now. A hand-created
+    // worktree has a registration with sourceBranch null -- Ion genuinely does
+    // not know what it was cut from and must not invent one.
+    ion.gitWorktreeRegistration.mockResolvedValueOnce({
+      registration: { repoPath: REPO, branchName: 'wt/a3f1', sourceBranch: null, title: null },
+    })
     await slice.refreshWorktreeInventory!(REPO)
 
     const id = await slice.openWorktreeConversation!(WT_A)
@@ -229,6 +240,70 @@ describe('openWorktreeConversation', () => {
   })
 })
 
+/**
+ * newWorktreeConversation — the explicit "another conversation here" verb.
+ *
+ * The defect these pin: the row menu called `createTabInDirectory` directly and
+ * skipped the metadata attachment, so the new tab had no `worktree`. The git
+ * panel resolves which repo's worktrees to list THROUGH that metadata, so the
+ * second conversation in a worktree showed the worktree's own `git worktree
+ * list` -- the main clone as a row, "source unknown", no bench -- while the first
+ * conversation in the same worktree showed the correct panel.
+ */
+describe('newWorktreeConversation', () => {
+  it('always creates, even when a conversation is already open here', async () => {
+    const { state, slice } = harness({ tabs: [{ id: 'tab-existing', workingDirectory: WT_A }] })
+    await slice.refreshWorktreeInventory!(REPO)
+
+    const id = await slice.newWorktreeConversation!(WT_A)
+
+    expect(id).not.toBe('tab-existing')
+    expect(state.createTabInDirectory).toHaveBeenCalledWith(WT_A, false, true)
+  })
+
+  it('attaches the worktree metadata, which is what the git panel resolves through', async () => {
+    // RED before the fix: the tab was created with no `worktree`, so the panel
+    // fell back to the worktree directory and listed the wrong repo.
+    const { state, slice } = harness()
+    await slice.refreshWorktreeInventory!(REPO)
+
+    const id = await slice.newWorktreeConversation!(WT_A)
+
+    expect(state.tabs.find((t: any) => t.id === id).worktree).toEqual({
+      worktreePath: WT_A,
+      branchName: 'wt/a3f1',
+      sourceBranch: 'josh',
+      repoPath: REPO,
+    })
+  })
+
+  it('gives the second conversation the same metadata as the first', async () => {
+    // The symptom as reported: two conversations in one worktree disagreed about
+    // what the worktree panel should show.
+    const { state, slice } = harness()
+    await slice.refreshWorktreeInventory!(REPO)
+
+    const first = await slice.openWorktreeConversation!(WT_A)
+    const second = await slice.newWorktreeConversation!(WT_A)
+
+    const byId = (id: string) => state.tabs.find((t: any) => t.id === id).worktree
+    expect(second).not.toBe(first)
+    expect(byId(second)).toEqual(byId(first))
+  })
+
+  it('leaves metadata unset when the source branch is unknown', async () => {
+    const { state, slice } = harness()
+    ion.gitWorktreeRegistration.mockResolvedValueOnce({
+      registration: { repoPath: REPO, branchName: 'wt/a3f1', sourceBranch: null, title: null },
+    })
+    await slice.refreshWorktreeInventory!(REPO)
+
+    const id = await slice.newWorktreeConversation!(WT_A)
+
+    expect(state.tabs.find((t: any) => t.id === id).worktree).toBeNull()
+  })
+})
+
 describe('syncWorktree', () => {
   it('refreshes the inventory after a successful sync so the badge clears', async () => {
     const { slice } = harness()
@@ -237,7 +312,7 @@ describe('syncWorktree', () => {
 
     expect(result.ok).toBe(true)
     expect(ion.gitWorktreeSync).toHaveBeenCalledWith(WT_A, 'josh')
-    expect(ion.gitWorktreeInventory).toHaveBeenCalledWith(REPO, false)
+    expect(ion.gitWorktreeInventory).toHaveBeenCalledWith(REPO)
   })
 
   // A refused sync must still refresh: the refusal reason (dirty tree) is state
@@ -250,6 +325,6 @@ describe('syncWorktree', () => {
 
     expect(result.ok).toBe(false)
     expect(result.refusedDirty).toBe(true)
-    expect(ion.gitWorktreeInventory).toHaveBeenCalledWith(REPO, false)
+    expect(ion.gitWorktreeInventory).toHaveBeenCalledWith(REPO)
   })
 })

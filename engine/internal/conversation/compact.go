@@ -66,12 +66,13 @@ func EstimateTokens(content any) int {
 }
 
 // ImageBlockTokenEstimate is the fixed token cost charged for a single image
-// content block, regardless of its base64 byte length. Vision providers bill an
-// image at a roughly fixed cost (≈1.5K tokens for a full-resolution image); this
-// conservative upper-bound keeps the context estimate honest without re-deriving
-// per-provider tiling formulas. See EstimateTokens for why byte length must
-// never drive the image estimate.
-const ImageBlockTokenEstimate = 1600
+// content block, regardless of its base64 byte length. Re-exported from
+// types.ImageBlockTokenEstimate so this package's long-standing name keeps
+// working while there is exactly ONE value shared with providers'
+// BuildContextBreakdown (which cannot import this package). See the doc comment
+// on types.ImageBlockTokenEstimate, and EstimateTokens above for why byte
+// length must never drive the image estimate.
+const ImageBlockTokenEstimate = types.ImageBlockTokenEstimate
 
 // estimateBlocksTokens estimates a typed []LlmContentBlock slice, counting image
 // blocks at the fixed ImageBlockTokenEstimate and everything else by its
@@ -171,6 +172,47 @@ func AutoCompactTokenLimit(window, maxOutputTokens int) int {
 	return result
 }
 
+// lastAssistantUsageLocked scans conv.Messages backward for the most recent
+// assistant message carrying API-reported Usage and returns its index, or -1
+// when no such message exists. Callers must hold conv.mu.
+//
+// Extracted so GetContextUsage (which needs the index, to estimate messages
+// appended after it) and LastAssistantUsage (which needs only the usage) share
+// one scan. Duplicating the loop is how the compaction numerator and the
+// breakdown reconciliation baseline would silently drift apart.
+func lastAssistantUsageLocked(conv *Conversation) int {
+	for i := len(conv.Messages) - 1; i >= 0; i-- {
+		if conv.Messages[i].Role == "assistant" && conv.Messages[i].Usage != nil {
+			return i
+		}
+	}
+	return -1
+}
+
+// LastAssistantUsage returns the API-reported token usage from the most recent
+// assistant message that carries it, or nil when the conversation has none (a
+// conversation that has not yet had an API response, or one loaded from a
+// legacy file that predates usage tracking on entries).
+//
+// This is the provider's own accounting of what the model actually carried —
+// the same figure GetContextUsage builds its Tokens on. Callers that need to
+// reconcile an independently-derived estimate against provider truth use this
+// as the baseline; see session.ComputeAndEmitContextBreakdown.
+//
+// The returned pointer aliases the message's Usage; treat it as read-only.
+func LastAssistantUsage(conv *Conversation) *types.LlmUsage {
+	if conv == nil {
+		return nil
+	}
+	conv.lock()
+	defer conv.unlock()
+	idx := lastAssistantUsageLocked(conv)
+	if idx < 0 {
+		return nil
+	}
+	return conv.Messages[idx].Usage
+}
+
 // GetContextUsage computes context window consumption. It scans conv.Messages
 // backward for the most recent assistant message that carries API-reported
 // Usage (set by AddAssistantMessage and rehydrated from entries at load time),
@@ -198,13 +240,7 @@ func GetContextUsage(conv *Conversation, contextWindow int) ContextUsageInfo {
 	}
 
 	// Backward scan: find the last assistant message with API-reported usage.
-	lastUsageIdx := -1
-	for i := len(conv.Messages) - 1; i >= 0; i-- {
-		if conv.Messages[i].Role == "assistant" && conv.Messages[i].Usage != nil {
-			lastUsageIdx = i
-			break
-		}
-	}
+	lastUsageIdx := lastAssistantUsageLocked(conv)
 
 	if lastUsageIdx >= 0 {
 		u := conv.Messages[lastUsageIdx].Usage

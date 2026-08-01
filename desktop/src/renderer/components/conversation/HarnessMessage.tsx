@@ -8,7 +8,7 @@ import type { Message } from '../../../shared/types'
 import { rWarn } from '../../rendererLogger'
 
 // Harness messages are markdown-formatted by convention. Extensions like
-// ion-meta emit multi-paragraph welcome/help content with headers,
+// extensions emit multi-paragraph welcome/help content with headers,
 // bullets, and inline code; plain-text content (e.g. one-line clear
 // dividers from other paths) also renders correctly as markdown because
 // it is a strict superset. Render with the same remark/gfm pipeline the

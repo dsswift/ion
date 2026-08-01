@@ -56,6 +56,7 @@ import type {
   SandboxWrapResult,
   SendPromptOpts,
   SteerDispatchResult,
+  SteerSelfOpts,
   ToolDef,
   WalkContextFilesOpts,
 } from './types'
@@ -404,14 +405,24 @@ function buildContext(ctxData: any): IonContext {
     async answerDispatchQuestion(dispatchId: string, requestId: string, answer: string | undefined, cancelled: boolean): Promise<void> {
       await request('ext/answer_dispatch_question', { dispatchId, requestId, answer, cancelled })
     },
-    async steerSelf(message: string): Promise<SteerDispatchResult> {
+    async steerSelf(message: string, opts?: SteerSelfOpts): Promise<SteerDispatchResult> {
       // Deliver `message` to the run that owns this context. The engine picks
       // the mechanism: a live owning run is steered (outcome "steered"); an
       // idle one receives a fresh prompt (outcome "sent"). This is how a
       // background dispatch's completion reaches its dispatching agent without
       // the agent polling — a busy parent is steered mid-run instead of the
       // completion queueing behind the live run until it happens to go idle.
-      const result = await request('ext/steer_self', { message })
+      //
+      // `kind` rides along only when supplied, so the engine's omitempty
+      // contract holds and an unclassified steer stays byte-identical to what
+      // an older SDK sent. The engine threads it through both delivery arms,
+      // so a machine-to-machine message is recorded as machine-authored
+      // whether the owning run was live or idle.
+      const params: { message: string; kind?: string } = { message }
+      if (opts?.kind) {
+        params.kind = opts.kind
+      }
+      const result = await request('ext/steer_self', params)
       return { delivered: !!result?.delivered, outcome: result?.outcome ?? 'not_found' }
     },
     async listDispatchState(): Promise<DispatchEntry[]> {

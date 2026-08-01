@@ -31,8 +31,8 @@ type dispatchOutcome struct {
 
 // TestLiveMultiAgentDispatchConversation verifies conversation integrity across
 // multiple agents dispatched multiple times via the extension dispatch path
-// (ctx.DispatchAgent). This is the code path used by ion-meta and other
-// extensions, as opposed to the LLM-initiated spawner path.
+// (ctx.DispatchAgent). This is the code path extension-driven orchestration
+// uses, as opposed to the LLM-initiated spawner path.
 //
 // The test dispatches 4 agents (2 names × 2 dispatches each) with trivially
 // verifiable tasks. After all dispatches complete, it asserts:

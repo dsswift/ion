@@ -112,6 +112,7 @@ func (a *activityRecordingAccessor) SendPromptWithKind(_, _ string, _ []string, 
 	return nil
 }
 func (a *activityRecordingAccessor) SteerSelfMainLoop(_ string) bool { return false }
+func (a *activityRecordingAccessor) SteerSelfMainLoopWithKind(_, _ string) bool { return false }
 func (a *activityRecordingAccessor) ParkSelfMainLoop() bool          { return false }
 func (a *activityRecordingAccessor) Elicit(_ extension.ElicitationRequestInfo) (map[string]interface{}, bool, error) {
 	return nil, false, nil
