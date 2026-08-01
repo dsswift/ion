@@ -1,4 +1,4 @@
-<img src="assets/images/ion-engine-hero-web.png" width="100%">
+<img src="assets/images/ion-engine-hero-web.jpg" width="100%">
 
 A headless agent runtime. One binary. Zero opinions. Seventy-three hooks to make it yours.
 
