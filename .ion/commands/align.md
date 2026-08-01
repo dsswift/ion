@@ -438,6 +438,8 @@ End with:
 
 Stop. Do not offer to implement. Do not start implementation.
 
+**Mode A completion invariant.** Mode A never edits source, never commits, never implements. The only file it writes is the plan (folding in amendments). If you find yourself about to run `git commit`, edit a source file, or execute a plan step, you are violating Mode A. Stop and re-read this section.
+
 ---
 
 ---
@@ -952,6 +954,10 @@ PR mode:
 > Review complete and a fix plan addressing the findings across the reviewed PR(s) has been authored in planning mode. I have not edited, commented on, approved, requested changes on, or merged any of these pull requests, and I have not touched your local branch. Review and approve the plan through the normal flow; once you approve, I check out each PR's head branch in a dedicated worktree, implement the fixes, and commit them on top of the PR (I will not squash, push, or merge — you push the branch and close the PR when you're satisfied). If there was nothing to fix, the plan is empty — close the tab and move on.
 
 After authoring the plan, stop and wait for operator approval. Do not implement, edit source, commit, or run further mutating commands before approval. Once the operator approves the plan, proceed to B-Step 6.
+
+**Mode B completion invariant (pre-approval).** Before operator approval, Mode B writes only the plan file. It never edits source, never commits, never amends, never pushes, and never runs quality gates against uncommitted fixes. If you find yourself about to edit a source file or run `git commit` before the operator has approved the plan, you are violating Mode B. Stop and re-read B-Step 5.
+
+**Mode B completion invariant (post-approval).** After operator approval, Mode B implements the approved plan and lands the result per B-Step 6. It implements every plan step, runs scoped quality gates, and commits. It never squashes, reorders, pushes, or opens a PR. When all fixes are landed, it reports and stops.
 
 ## B-Step 6: Implement the approved fix plan and commit (post-approval only)
 
