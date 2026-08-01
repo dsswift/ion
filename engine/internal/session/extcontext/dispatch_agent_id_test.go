@@ -84,6 +84,8 @@ func (a *idTestAccessor) SessionKey() string                                    
 func (a *idTestAccessor) ExtensionName() string                                      { return "" }
 func (a *idTestAccessor) ExtensionVersion() string                                   { return "" }
 func (a *idTestAccessor) ConversationID() string                                     { return "" }
+func (a *idTestAccessor) RunID() string                                              { return "" }
+func (a *idTestAccessor) TraceID() string                                            { return "" }
 func (a *idTestAccessor) WorkingDirectory() string                                   { return "/tmp" }
 func (a *idTestAccessor) SendAbort()                                                 {}
 func (a *idTestAccessor) SendPrompt(_, _ string, _ []string) error                   { return nil }

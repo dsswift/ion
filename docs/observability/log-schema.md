@@ -18,7 +18,7 @@ top-level fields outside this schema; additional context goes into `fields`.
 | `msg` | string | YES | Human-readable message. No structured data embedded here; use `fields`. |
 | `session_id` | string | NO | The engine session key: the opaque, client-supplied key that identifies the current engine session. For desktop clients this is the tab UUID (`ClientCommand.Key`). For external consumers it may be any string the client chose. This is NOT the conversation ID. Omit (never `""`) when not in a session context. |
 | `conversation_id` | string | NO | The engine-minted conversation-file identity, format `{unix-millis}-{12-hex-chars}` (e.g. `1780093348767-c1c03e998388`). This is the durable identity of the persisted conversation tree at `~/.ion/conversations/<id>.tree.jsonl`. A single conversation spans multiple sessions and runs. Omit (never `""`) when not associated with a conversation. |
-| `trace_id` | string | NO | OpenTelemetry-compatible 32-hex trace ID. Omit when no trace is active. All events in one session share one trace ID. |
+| `trace_id` | string | NO | W3C trace-context trace-id: 32 lowercase hex chars. Scoped to **one prompt-to-completion run** — see § "Correlation-ID vocabulary". Omit when no run is in flight. |
 | `span_id` | string | NO | OpenTelemetry-compatible 16-hex span ID. Omit when no span is active. |
 | `fields` | object | YES | Open key/value map for structured context. Always present; use `{}` when empty. Values can be any JSON scalar, array, or object. |
 
@@ -58,6 +58,40 @@ All variable context goes into typed keys in the `fields` object — never into 
 (`session_id`, `conversation_id`, `trace_id`, `span_id`) stay top-level, never nested inside `fields`.
 A log line is the pair (constant `msg`, structured `fields`): the message says *what happened*, the
 fields say *to what, with which IDs, and how long it took*.
+
+### Correlation-ID vocabulary
+
+Ion emits five correlation identifiers. They are not interchangeable, and picking the wrong one is
+the most common source of unusable traces. Each answers a different question:
+
+| ID | Scope | Lifetime | Use it for |
+|---|---|---|---|
+| `conversation_id` | One persisted conversation tree | Durable — survives engine restarts, reattaches, and days of wall-clock | Long-term conversation tracking, audit trails, resource scoping. The ID a human means by "that conversation". |
+| `trace_id` | **One prompt-to-completion run** | The run | **Distributed tracing.** The `operation_Id` in Application Insights, the trace-id in a `traceparent` header, the trace in Jaeger/Tempo. |
+| `run_id` | The same single run | The run | Joining Ion's own logs to Ion's own telemetry for one run. Engine-native, **not** W3C-shaped. |
+| `session_id` | One engine session | The session — one client connection/tab, spanning many runs | Grouping the runs that shared a live session. This is the ID that used to be `trace_id`'s scope. |
+| `dispatch_id` + `depth` | One sub-agent within a run | The dispatch | Locating a child agent inside its parent's trace. `depth` is 0 for the root session. |
+
+**Why `trace_id` is run-scoped.** A trace represents one logical transaction. A session can stay
+open for hours across hundreds of prompts, so a session-lifetime trace produced a single unreadable
+"trace" and could not serve as an APM operation id. Scoping it to the run makes each prompt a
+transaction, which is what every OTLP backend expects. If you want the old session-wide pivot, query
+`session_id` — it is on every line and always was.
+
+**Lines emitted outside a run carry no `trace_id`.** Session start/stop, extension load, and
+schedule/webhook deliveries have no run in flight, so the key is absent rather than empty (see
+§ "Empty-string rule"). Those lines remain joinable by `session_id` and `conversation_id`.
+
+**Consuming `trace_id` from an extension.** `ctx.traceId` is valid to place directly in a
+`traceparent` header, so a downstream API call joins the engine's trace:
+
+```
+traceparent: 00-<ctx.traceId>-<span id the extension mints>-01
+```
+
+The extension mints its own span id — its span *is* a new span, so it becomes the parent-id for the
+callee. See [`docs/extensions/sdk-typescript.md`](../extensions/sdk-typescript.md) § "Tracing and
+correlation" for the full recipe.
 
 ### Canonical field vocabulary
 
@@ -151,7 +185,7 @@ populated-capable `user` carrier — v2 consumers decode v3 lines unchanged):
 | `user` | string | Omit-when-absent (R20). Populated via the OIDC identity seam (`SetUserIdentity`) whenever a user is signed in; restamped live on sign-in/sign-out. Absent on installs with no signed-in identity. |
 | `payload` | object | Event-specific fields (all snake_case). |
 | `context` | object | Correlation context: `session_id`, `conversation_id`, `run_id`. Extension attribution fields `extension` and `extension_version` are additive within this object — see § "Extension attribution" below. |
-| `trace_id` | string | OTEL-compatible 32-hex trace ID. Omit when no trace is active. |
+| `trace_id` | string | W3C trace-context trace-id, 32 lowercase hex chars. Scoped to one run — see § "Correlation-ID vocabulary". Omit when no run is in flight. |
 
 > **Dashboard consumers.** The identity fields power the audience packs: **Ion Fleet** aggregates by `host`, `install_id`, and `version` (hosts reporting, installs per host, version drift); **Ion Users** aggregates by `user` (spend, runs, tool failures, trust posture), coalescing lines without an identity into an "unassigned" bucket. `host` and `user` are not Alloy-promoted, so those dashboards parse with `| json` — see `docs/observability/dashboards/src/queries-fleet.ts`.
 

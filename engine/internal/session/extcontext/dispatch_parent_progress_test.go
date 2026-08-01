@@ -52,6 +52,8 @@ func (a *bumpCountingAccessor) SessionKey() string                       { retur
 func (a *bumpCountingAccessor) ExtensionName() string                    { return "" }
 func (a *bumpCountingAccessor) ExtensionVersion() string                 { return "" }
 func (a *bumpCountingAccessor) ConversationID() string                   { return "" }
+func (a *bumpCountingAccessor) RunID() string                            { return "" }
+func (a *bumpCountingAccessor) TraceID() string                          { return "" }
 func (a *bumpCountingAccessor) WorkingDirectory() string                 { return "/tmp" }
 func (a *bumpCountingAccessor) Emit(_ types.EngineEvent)                 {}
 func (a *bumpCountingAccessor) SendAbort()                               {}

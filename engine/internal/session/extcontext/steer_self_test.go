@@ -39,6 +39,8 @@ func (a *steerSelfAccessor) SessionKey() string           { return "steer-self-t
 func (a *steerSelfAccessor) ExtensionName() string        { return "" }
 func (a *steerSelfAccessor) ExtensionVersion() string     { return "" }
 func (a *steerSelfAccessor) ConversationID() string       { return "conv-steer" }
+func (a *steerSelfAccessor) RunID() string                { return "" }
+func (a *steerSelfAccessor) TraceID() string              { return "" }
 func (a *steerSelfAccessor) WorkingDirectory() string     { return "/tmp" }
 func (a *steerSelfAccessor) Emit(ev types.EngineEvent)    {}
 func (a *steerSelfAccessor) SendAbort()                   {}

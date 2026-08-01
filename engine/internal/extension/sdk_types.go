@@ -24,6 +24,36 @@ type Context struct {
 	// reattaches. Empty when no conversation is active.
 	ConversationID string
 
+	// RunID identifies the prompt-to-completion run in flight when the hook
+	// fired. Empty when no run is active (session_start, a schedule or
+	// webhook delivery, extension load).
+	//
+	// This is the engine-native run identity — the same value that appears as
+	// run_id in the engine's own logs and telemetry, so it is the key to join
+	// an extension's records against Ion's. For distributed tracing across
+	// process boundaries use TraceID instead: run IDs are not W3C-shaped.
+	RunID string
+
+	// TraceID is the W3C trace-context trace-id of the run in flight: 32
+	// lowercase hex characters, scoped to ONE prompt-to-completion run. Empty
+	// when no run is active.
+	//
+	// Every engine log line and telemetry event emitted during the run carries
+	// this same value, so an extension that exports its own spans can parent
+	// them to the engine's trace and have the two streams correlate. It is
+	// valid to place directly in a traceparent header for a downstream call:
+	//
+	//	traceparent: 00-<ctx.TraceID>-<span id you mint>-01
+	//
+	// The extension mints its own span id — its span IS a new span, so it is
+	// the parent-id for the callee, not a value the engine supplies.
+	//
+	// Scope is the run rather than the session or conversation because a trace
+	// represents one logical transaction. For long-lived correlation use
+	// ConversationID; for the engine session use SessionKey. See
+	// docs/observability/log-schema.md § Correlation-ID vocabulary.
+	TraceID string
+
 	// Depth is the dispatch depth of the session that fired the hook: 0 for
 	// the root (orchestrator) session, 1 for a directly dispatched child,
 	// 2 for a grandchild, and so on. This is the explicit root-vs-child

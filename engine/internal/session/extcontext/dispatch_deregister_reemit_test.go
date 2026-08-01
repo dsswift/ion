@@ -113,6 +113,8 @@ func (a *dispatchCountSpyAccessor) SessionKey() string       { return "spy-sessi
 func (a *dispatchCountSpyAccessor) ExtensionName() string    { return "" }
 func (a *dispatchCountSpyAccessor) ExtensionVersion() string { return "" }
 func (a *dispatchCountSpyAccessor) ConversationID() string   { return "" }
+func (a *dispatchCountSpyAccessor) RunID() string            { return "" }
+func (a *dispatchCountSpyAccessor) TraceID() string          { return "" }
 func (a *dispatchCountSpyAccessor) WorkingDirectory() string { return "/tmp" }
 func (a *dispatchCountSpyAccessor) Emit(ev types.EngineEvent) {
 	a.mu.Lock()

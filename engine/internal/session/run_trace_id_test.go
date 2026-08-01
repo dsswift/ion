@@ -140,3 +140,51 @@ func TestSessionRootCarriesNoTraceID(t *testing.T) {
 		t.Errorf("session root session_id = %q, want %q (session-scoped IDs stay on the root)", got, key)
 	}
 }
+
+// TestExtContextCarriesRunIdentity is the end-to-end assertion for the
+// extension-facing half: the trace ID the session minted for the live run must
+// reach the hook context an extension actually receives.
+//
+// This is the join that makes cross-process tracing work — an extension reads
+// ctx.TraceID, puts it in a traceparent header, and its downstream spans land
+// in the same trace as the engine's own log lines. RED on the unfixed code,
+// where Context had no TraceID/RunID field at all.
+func TestExtContextCarriesRunIdentity(t *testing.T) {
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	const key = "trace-extctx"
+	if _, err := mgr.StartSession(key, defaultConfig()); err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+
+	// Idle: no run in flight, so the context carries no run identity.
+	mgr.mu.Lock()
+	idle := mgr.newExtContext(mgr.sessions[key], key)
+	mgr.mu.Unlock()
+	if idle.TraceID != "" {
+		t.Errorf("idle ext context trace id = %q, want empty", idle.TraceID)
+	}
+	if idle.RunID != "" {
+		t.Errorf("idle ext context run id = %q, want empty", idle.RunID)
+	}
+
+	if err := mgr.SendPrompt(key, "hello", nil); err != nil {
+		t.Fatalf("SendPrompt: %v", err)
+	}
+
+	mgr.mu.Lock()
+	s := mgr.sessions[key]
+	wantTrace, wantRun := s.runTraceID, s.requestID
+	inRun := mgr.newExtContext(s, key)
+	mgr.mu.Unlock()
+
+	if inRun.TraceID != wantTrace {
+		t.Errorf("ext context trace id = %q, want %q", inRun.TraceID, wantTrace)
+	}
+	if inRun.RunID != wantRun {
+		t.Errorf("ext context run id = %q, want %q", inRun.RunID, wantRun)
+	}
+	if !w3cTraceID.MatchString(inRun.TraceID) {
+		t.Errorf("ext context trace id %q is not a valid W3C trace-id; it must be usable verbatim in a traceparent header", inRun.TraceID)
+	}
+}

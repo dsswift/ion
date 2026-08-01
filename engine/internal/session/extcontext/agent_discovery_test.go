@@ -27,6 +27,8 @@ func (a *agentDiscoveryTestAccessor) SessionKey() string                       {
 func (a *agentDiscoveryTestAccessor) ExtensionName() string                    { return "" }
 func (a *agentDiscoveryTestAccessor) ExtensionVersion() string                 { return "" }
 func (a *agentDiscoveryTestAccessor) ConversationID() string                   { return "" }
+func (a *agentDiscoveryTestAccessor) RunID() string                            { return "" }
+func (a *agentDiscoveryTestAccessor) TraceID() string                          { return "" }
 func (a *agentDiscoveryTestAccessor) WorkingDirectory() string                 { return "/tmp" }
 func (a *agentDiscoveryTestAccessor) Emit(ev types.EngineEvent)                {}
 func (a *agentDiscoveryTestAccessor) SendAbort()                               {}

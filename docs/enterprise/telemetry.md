@@ -176,14 +176,27 @@ reference and consumer guide.
 
 ### Correlation model
 
-Every log line and every telemetry span that belongs to a session carries the same `session_id` and `trace_id`. This means you can move between the two streams without losing the thread:
+Every log line and every telemetry event emitted during a run carries the same `trace_id`, and every
+line belonging to a session carries the same `session_id`. That lets you move between the two streams
+without losing the thread:
 
 1. Find an error in Loki: `{level="ERROR"} | json | session_id = "01932abc1234"`
-2. Copy the `trace_id` from that log line
-3. Open Tempo and search by that `trace_id` to see the full span tree for the session
-4. Drill back into Loki from any Tempo span using the derived-field link (pre-configured in the provisioned datasource)
+2. Copy the `trace_id` from that log line — it identifies the single run the error occurred in
+3. Pull every line from that run across all surfaces:
+   `{component=~".+"} | json | trace_id = "..."`, or open the span tree in whichever OTLP backend the
+   run's spans were exported to
+4. Widen to the whole conversation with `conversation_id` when you need the history around the failure
 
-The `trace_id` field is an OpenTelemetry-compatible 32-hex trace ID. The `span_id` field is a 16-hex span ID. Both are omitted when no trace is active.
+**Pick the ID that matches the granularity you want.** `trace_id` is scoped to **one
+prompt-to-completion run** — it is the APM operation id and the value that belongs in a
+`traceparent` header for a downstream call. `conversation_id` is the durable thread across restarts.
+`session_id` groups the runs that shared one live session. `run_id` is the engine-native form of the
+same run `trace_id` names, for joining Ion's own two streams. Full table:
+[`log-schema.md`](../observability/log-schema.md) § "Correlation-ID vocabulary".
+
+The `trace_id` field is a W3C trace-context trace-id (32 lowercase hex). The `span_id` field is a
+16-hex span ID. Both are omitted when no run is in flight — a session-lifecycle line or an async
+delivery has no transaction to trace, so it carries neither.
 
 ### Schema reference
 

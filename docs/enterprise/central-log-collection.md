@@ -72,6 +72,15 @@ config shapes are deliberately parallel (they share `OtelConfig`), so both strea
 at the same endpoint and be joined downstream through the shared correlation vocabulary
 (`session_id`, `conversation_id`, `run_id`, `trace_id`).
 
+**`trace_id` is the one to build APM on.** It is a W3C trace-context trace-id scoped to a single
+prompt-to-completion run, so it maps directly onto whatever your backend calls a trace — an
+Application Insights `operation_Id`, a Jaeger/Tempo trace. Because it is W3C-shaped, an extension
+can forward it in a `traceparent` header and stitch Ion's runs to the APIs and microservices they
+call, giving one end-to-end trace from the originating prompt through every downstream hop. The
+other three IDs answer different questions: `conversation_id` for the durable thread,
+`session_id` for one client session, `run_id` for joining Ion's own two streams. Full table:
+[`log-schema.md`](../observability/log-schema.md) § "Correlation-ID vocabulary".
+
 ---
 
 ## Per-component shipping guide

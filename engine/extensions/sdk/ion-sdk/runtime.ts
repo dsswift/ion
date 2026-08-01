@@ -191,6 +191,12 @@ function buildContext(ctxData: any): IonContext {
   return {
     sessionKey: typeof ctxData?.sessionKey === 'string' ? ctxData.sessionKey : '',
     conversationId: typeof ctxData?.conversationId === 'string' ? ctxData.conversationId : '',
+    // Run identity: the engine omits both keys when no run is in flight, so
+    // '' IS the no-active-run shape (same additive pattern as dispatch identity
+    // below). traceId is W3C-shaped and safe to put straight into a
+    // traceparent header; runId is the engine-native join key.
+    runId: typeof ctxData?.runId === 'string' ? ctxData.runId : '',
+    traceId: typeof ctxData?.traceId === 'string' ? ctxData.traceId : '',
     // Dispatch identity: the engine omits both keys for root sessions, so
     // the defaults (0 / '') ARE the root-session shape.
     depth: typeof ctxData?.depth === 'number' ? ctxData.depth : 0,

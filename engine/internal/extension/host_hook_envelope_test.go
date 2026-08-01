@@ -44,6 +44,47 @@ func TestBuildHookEnvelope_DispatchIdentity(t *testing.T) {
 	}
 }
 
+// TestBuildHookEnvelope_RunIdentity pins the `_ctx` wire shape for run
+// identity. A hook that fires with no run in flight (session_start, a schedule
+// or webhook delivery, extension load) must omit both keys, so the SDK's ”
+// default reads as "no transaction was active" rather than as a real ID. A
+// hook firing inside a run must carry both.
+//
+// traceId is the value an extension puts in a traceparent header to parent its
+// own spans to the engine's trace, so its presence mid-run is the contract
+// that makes cross-process correlation possible; runId is the engine-native
+// join key for the same run. RED on the unfixed code, which published neither.
+func TestBuildHookEnvelope_RunIdentity(t *testing.T) {
+	h := NewHost()
+
+	idle := h.buildHookEnvelope(&Context{
+		Cwd:        "/tmp",
+		SessionKey: "sess-idle",
+	}, nil)
+	idleCtx := idle["_ctx"].(map[string]interface{})
+	if _, present := idleCtx["runId"]; present {
+		t.Errorf("idle envelope must omit runId, got %v", idleCtx["runId"])
+	}
+	if _, present := idleCtx["traceId"]; present {
+		t.Errorf("idle envelope must omit traceId, got %v", idleCtx["traceId"])
+	}
+
+	const wantTrace = "4bf92f3577b34da6a3ce929d0e0e4736"
+	running := h.buildHookEnvelope(&Context{
+		Cwd:        "/tmp",
+		SessionKey: "sess-running",
+		RunID:      "sess-running-1730000000000",
+		TraceID:    wantTrace,
+	}, nil)
+	runCtx := running["_ctx"].(map[string]interface{})
+	if got := runCtx["runId"]; got != "sess-running-1730000000000" {
+		t.Errorf("in-run envelope runId = %v, want sess-running-1730000000000", got)
+	}
+	if got := runCtx["traceId"]; got != wantTrace {
+		t.Errorf("in-run envelope traceId = %v, want %s", got, wantTrace)
+	}
+}
+
 // TestBuildHookEnvelope_BaseFieldsAndPayloadMerge pins the pre-existing
 // envelope behavior through the extracted seam: base `_ctx` keys appear when
 // set, and a map payload merges into the top level alongside `_ctx`.

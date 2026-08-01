@@ -105,6 +105,8 @@ func (a *activityRecordingAccessor) SessionKey() string                       { 
 func (a *activityRecordingAccessor) ExtensionName() string                    { return "" }
 func (a *activityRecordingAccessor) ExtensionVersion() string                 { return "" }
 func (a *activityRecordingAccessor) ConversationID() string                   { return "" }
+func (a *activityRecordingAccessor) RunID() string                            { return "" }
+func (a *activityRecordingAccessor) TraceID() string                          { return "" }
 func (a *activityRecordingAccessor) WorkingDirectory() string                 { return "/tmp" }
 func (a *activityRecordingAccessor) SendAbort()                               {}
 func (a *activityRecordingAccessor) SendPrompt(_, _ string, _ []string) error { return nil }

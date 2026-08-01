@@ -80,7 +80,7 @@ versioned event stream. Every line self-identifies its schema generation via the
 | `user` | string | omit when absent | Authenticated identity when an enterprise OIDC auth context is present; absent on default installs |
 | `payload` | object | always | Event-specific fields, all snake_case |
 | `context` | object | when in scope | Correlation: `session_id`, `conversation_id`, `run_id` |
-| `trace_id` | string | omit when no trace | OTEL-compatible 32-hex trace ID; all events in one session share one |
+| `trace_id` | string | omit when no run in flight | W3C trace-context trace-id, 32 lowercase hex. Scoped to one prompt-to-completion run — see § "Correlation model" |
 
 Version history: v2 introduced the unified contract (RFC3339Nano `ts`, snake_case payloads,
 `schema`/`component`/`install_id`/`host`/`version` envelope); v3 added the additive attribution
@@ -384,28 +384,46 @@ vocabulary to join them downstream.
 
 Both streams carry the same join keys. This is the contract that makes cross-stream forensics work:
 
-| Key | Operational log | Telemetry | Meaning |
-|---|---|---|---|
-| `session_id` | top-level | `context.session_id` | Client-supplied engine session key (desktop: tab UUID) |
-| `conversation_id` | top-level | `context.conversation_id` | Durable conversation-file identity; spans multiple sessions and runs |
-| `run_id` | in `fields` where relevant | `context.run_id` | One prompt-to-completion run |
-| `trace_id` | top-level | top-level | OTEL 32-hex; all events in one session share one |
-| `span_id` | top-level | n/a (spans become events) | OTEL 16-hex |
+| Key | Operational log | Telemetry | Scope | Reach for it when |
+|---|---|---|---|---|
+| `session_id` | top-level | `context.session_id` | One engine session (desktop: tab UUID), spanning many runs | You want every run that shared a live session |
+| `conversation_id` | top-level | `context.conversation_id` | Durable conversation-file identity; spans sessions and runs | You want the whole conversation over its lifetime — audit, resource scoping |
+| `run_id` | in `fields` where relevant | `context.run_id` | One prompt-to-completion run | You are joining Ion's logs to Ion's telemetry for one run |
+| `trace_id` | top-level | top-level, and `context` on run-scoped events | **One prompt-to-completion run** | You are doing distributed tracing — APM operation id, `traceparent` for a downstream call |
+| `span_id` | top-level | n/a (spans become events) | One operation | You are correlating a single span |
+
+`trace_id` and `run_id` identify the same run: `trace_id` is the W3C-shaped 32-hex form that travels
+across process boundaries, `run_id` is the engine-native form. Use `trace_id` when the other side of
+the join is an OTLP backend, `run_id` when both sides are Ion's own streams.
+
+> **`trace_id` is scoped to one run, not one session.** A trace represents one logical transaction,
+> and a session can stay open for hours across hundreds of prompts. Lines emitted with no run in
+> flight (session start/stop, schedule and webhook deliveries) carry no `trace_id` at all — join
+> those by `session_id` or `conversation_id`. Full vocabulary:
+> [`log-schema.md`](log-schema.md) § "Correlation-ID vocabulary".
 
 The pivot workflow (from [`docs/enterprise/telemetry.md`](../enterprise/telemetry.md#correlation-model)):
 
 1. Find an error in the operational stream: `{level="ERROR"} | json | session_id = "..."`.
-2. Copy its `trace_id` and open the span tree in Tempo, or query the telemetry stream for the same
-   `context.session_id` to see the run's cost, turns, and tool timings.
-3. From any telemetry event, take `context.conversation_id` and pull the full operational narrative:
-   `{component=~".+"} | json | conversation_id = "..."`.
+2. Copy its `trace_id` — that is the single run the error happened in. Pull every line from that run
+   across all surfaces: `{component=~".+"} | json | trace_id = "..."`. The same value opens the span
+   tree in any OTLP backend the run's spans were exported to.
+3. Widen from the run to the whole conversation: take `conversation_id` off any of those lines and
+   query `{component=~".+"} | json | conversation_id = "..."`.
+
+Step 2 narrows to the failing transaction; step 3 widens to its history. That is the reason both IDs
+exist — `trace_id` isolates one run, `conversation_id` gives it context.
 
 The same joins work with plain `jq` — the keys are in the lines, not in any stack:
 
 ```bash
-# From a telemetry run.complete, pull the operational lines for that session
-SID=$(jq -r 'select(.name=="run.complete") | .context.session_id' ~/.ion/telemetry.jsonl | tail -1)
-jq -c --arg sid "$SID" 'select(.session_id==$sid)' ~/.ion/*.jsonl
+# From a telemetry run.complete, pull the operational lines for that exact run
+TID=$(jq -r 'select(.name=="run.complete") | .trace_id' ~/.ion/telemetry.jsonl | tail -1)
+jq -c --arg tid "$TID" 'select(.trace_id==$tid)' ~/.ion/*.jsonl
+
+# Widen to every run in the same conversation
+CID=$(jq -r 'select(.name=="run.complete") | .context.conversation_id' ~/.ion/telemetry.jsonl | tail -1)
+jq -c --arg cid "$CID" 'select(.conversation_id==$cid)' ~/.ion/*.jsonl
 ```
 
 ---
