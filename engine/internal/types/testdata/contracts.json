@@ -230,7 +230,9 @@
       "userEntryId"
     ],
     "user_turn_persisted": [
-      "entryId"
+      "entryId",
+      "slashModelAlias",
+      "slashModelEffective"
     ],
     "working_message": [
       "message"
@@ -422,7 +424,9 @@
     "type",
     "url",
     "usage",
-    "userTurnEntryId"
+    "userTurnEntryId",
+    "userTurnSlashModelAlias",
+    "userTurnSlashModelEffective"
   ],
   "sharedTypes": {
     "AgentStateUpdate": [
@@ -621,6 +625,8 @@
       "role",
       "slashArgs",
       "slashCommand",
+      "slashModelAlias",
+      "slashModelEffective",
       "slashSource",
       "timestamp",
       "toolId",

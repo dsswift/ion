@@ -221,11 +221,11 @@ func (m *Manager) resolveSlashIntoOpts(s *engineSession, key string, opts *types
 	opts.ResolvedSlashSource = res.Source
 	opts.ResolvedSlashContext = res.Context
 
-	// Apply frontmatter model hint (no-stomp: explicit per-prompt override wins).
-	if res.Model != "" && opts.Model == "" {
-		opts.Model = res.Model
-		utils.LogWithFields(utils.LevelInfo, "session.slash", "applied frontmatter", map[string]any{"model": res.Model, "key": key})
-	}
+	// Capture and apply the command's explicit model hint. Effective model is
+	// recorded later, after tier resolution and conversation continuity choose
+	// the model that will actually serve the run.
+	applySlashModelHint(opts, res.Model)
+
 	// Apply frontmatter allowed-bash additions for this run (union, transient).
 	if len(res.AllowedBashCommands) > 0 {
 		opts.BashAllowlistAdditionsForThisPrompt = unionStrings(
@@ -235,6 +235,13 @@ func (m *Manager) resolveSlashIntoOpts(s *engineSession, key string, opts *types
 
 	utils.LogWithFields(utils.LevelInfo, "session.slash", "resolved into opts", map[string]any{"session_id": key, "reason": res.Command, "status": res.Source, "count": len(res.ExpandedBody)})
 	return true, ""
+}
+
+func applySlashModelHint(opts *types.RunOptions, frontmatterModel string) {
+	opts.ResolvedSlashModelAlias = frontmatterModel
+	if frontmatterModel != "" && opts.Model == "" {
+		opts.Model = frontmatterModel
+	}
 }
 
 // fireSlashResolved fires the slash_command_resolved hook so an extension can

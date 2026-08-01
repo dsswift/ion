@@ -52,6 +52,12 @@ func (MessageEndEvent) eventType() string { return EventMessageEnd }
 type UserTurnPersistedEvent struct {
 	// EntryID is the canonical persisted tree-entry id of the user turn.
 	EntryID string `json:"entryId"`
+	// SlashModelAlias is the model string from the slash command's frontmatter.
+	// Empty for non-slash turns or when the command declared no model hint.
+	SlashModelAlias string `json:"slashModelAlias,omitempty"`
+	// SlashModelEffective is the model the engine resolved for this run.
+	// Empty for non-slash turns or when no model was resolved.
+	SlashModelEffective string `json:"slashModelEffective,omitempty"`
 }
 
 func (UserTurnPersistedEvent) eventType() string { return EventUserTurnPersisted }

@@ -500,9 +500,11 @@ type SessionMessage struct {
 	// resolved and expanded. Content holds the raw invocation for display; the
 	// LLM-visible expanded body lives in the .llm.jsonl, not here. Consumers
 	// render a command pill from these fields. Empty for ordinary messages.
-	SlashCommand string `json:"slashCommand,omitempty"`
-	SlashArgs    string `json:"slashArgs,omitempty"`
-	SlashSource  string `json:"slashSource,omitempty"`
+	SlashCommand        string `json:"slashCommand,omitempty"`
+	SlashArgs           string `json:"slashArgs,omitempty"`
+	SlashSource         string `json:"slashSource,omitempty"`
+	SlashModelAlias     string `json:"slashModelAlias,omitempty"`
+	SlashModelEffective string `json:"slashModelEffective,omitempty"`
 
 	// Marker payload fields (additive, omitempty). Set only when Role=="system"
 	// and this row represents a persisted marker entry (compaction, plan, steer)

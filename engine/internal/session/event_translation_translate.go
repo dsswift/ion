@@ -165,8 +165,10 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 
 	case *types.UserTurnPersistedEvent:
 		return types.EngineEvent{
-			Type:            "engine_user_turn_persisted",
-			UserTurnEntryID: e.EntryID,
+			Type:                        "engine_user_turn_persisted",
+			UserTurnEntryID:             e.EntryID,
+			UserTurnSlashModelAlias:     e.SlashModelAlias,
+			UserTurnSlashModelEffective: e.SlashModelEffective,
 		}
 
 	case *types.SessionDeadEvent:

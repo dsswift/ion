@@ -269,6 +269,11 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		opts.ResolvedSlashCommand = s.pendingSlashInvocation.Command
 		opts.ResolvedSlashArgs = s.pendingSlashInvocation.Args
 		opts.ResolvedSlashSource = s.pendingSlashInvocation.Source
+		// Extension commands carry command frontmatter through ctx.sendPrompt's
+		// explicit per-prompt model override. Preserve alias before resolution.
+		if overrides != nil && overrides.Model != "" {
+			opts.ResolvedSlashModelAlias = overrides.Model
+		}
 		utils.LogWithFields(utils.LevelInfo, "session", "send prompt applied pending slash invocation", map[string]any{"session_id": key, "reason": opts.ResolvedSlashCommand, "count": len(opts.ResolvedSlashArgs)})
 		s.pendingSlashInvocation = nil
 	} else if s.pendingSlashInvocation != nil {
@@ -287,6 +292,8 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		utils.LogWithFields(utils.LevelInfo, "session", "prompt_dispatch: overriding default model with conversation model", map[string]any{"key": key, "model": opts.Model, "conversation_model": s.lastModel})
 		opts.Model = s.lastModel
 	}
+
+	finalizeSlashModelProvenance(&opts, key)
 
 	// Plan-file allocation: now that opts.Model is final, resolve the serving
 	// backend for this model so the directory choice is correct. For the api

@@ -69,6 +69,13 @@ type MessageData struct {
 	// "extension" | "ion" | "claude" | "skill" | "project". Display provenance
 	// only; lets a consumer label the pill by origin. Empty for ordinary prompts.
 	SlashSource string `json:"slashSource,omitempty"`
+	// SlashModelAlias is the model string from the slash command's frontmatter
+	// (`model:` key). Provenance only. Empty when no model hint was declared.
+	SlashModelAlias string `json:"slashModelAlias,omitempty"`
+	// SlashModelEffective is the model the engine resolved for this run after
+	// applying the frontmatter hint (no-stomp: explicit per-prompt override
+	// wins). Provenance only. Empty when no model was resolved.
+	SlashModelEffective string `json:"slashModelEffective,omitempty"`
 
 	// DisplayOnly marks an entry that belongs in the tree/scrollback (so the
 	// user sees it and it survives reload) but must NOT be reconstructed into
@@ -401,6 +408,12 @@ type SlashInvocation struct {
 	// Source records where the template resolved from: "extension" | "ion" |
 	// "claude" | "skill" | "project".
 	Source string
+	// ModelAlias is the model string from the command's frontmatter (`model:`).
+	// Empty when the command declared no model hint.
+	ModelAlias string
+	// ModelEffective is the model the engine resolved for this run after
+	// applying the frontmatter hint. Empty when no model was resolved.
+	ModelEffective string
 }
 
 // AddUserMessageWithInvocation appends a user turn whose LLM-visible content
@@ -440,12 +453,14 @@ func AddUserMessageWithInvocation(conv *Conversation, expandedContent any, inv S
 			display = inv.Command + " " + inv.Args
 		}
 		entry := appendEntryLocked(conv, EntryMessage, MessageData{
-			Role:         "user",
-			Content:      []types.LlmContentBlock{textBlock(display)},
-			LlmContent:   expandedBlocks,
-			SlashCommand: inv.Command,
-			SlashArgs:    inv.Args,
-			SlashSource:  inv.Source,
+			Role:                "user",
+			Content:             []types.LlmContentBlock{textBlock(display)},
+			LlmContent:          expandedBlocks,
+			SlashCommand:        inv.Command,
+			SlashArgs:           inv.Args,
+			SlashSource:         inv.Source,
+			SlashModelAlias:     inv.ModelAlias,
+			SlashModelEffective: inv.ModelEffective,
 		}, "")
 		conv.Messages[len(conv.Messages)-1].EntryID = entry.ID
 		return entry

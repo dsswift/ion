@@ -273,9 +273,11 @@ func appendInboundUserMessage(conv *conversation.Conversation, opts *types.RunOp
 	switch {
 	case opts.ResolvedSlashCommand != "":
 		return conversation.AddUserMessageWithInvocation(conv, opts.Prompt, conversation.SlashInvocation{
-			Command: opts.ResolvedSlashCommand,
-			Args:    opts.ResolvedSlashArgs,
-			Source:  opts.ResolvedSlashSource,
+			Command:       opts.ResolvedSlashCommand,
+			Args:          opts.ResolvedSlashArgs,
+			Source:        opts.ResolvedSlashSource,
+			ModelAlias:    opts.ResolvedSlashModelAlias,
+			ModelEffective: opts.ResolvedSlashModelEffective,
 		})
 	case len(opts.Attachments) > 0:
 		return conversation.AddUserMessage(conv, buildUserContentBlocks(opts.Prompt, opts.Attachments))

@@ -444,6 +444,18 @@ func resolveModelTier(opts *types.RunOptions) {
 	}
 }
 
+func finalizeSlashModelProvenance(opts *types.RunOptions, key string) {
+	if opts.ResolvedSlashModelAlias == "" {
+		return
+	}
+	opts.ResolvedSlashModelEffective = opts.Model
+	utils.LogWithFields(utils.LevelInfo, "session.slash", "model provenance resolved", map[string]any{
+		"session_id":  key,
+		"model_alias": opts.ResolvedSlashModelAlias,
+		"model":       opts.ResolvedSlashModelEffective,
+	})
+}
+
 // injectContextFiles discovers Ion-native instruction files (AGENTS.md,
 // ION.md, .ion/*) plus the user's ~/.ion root, and—when the session's
 // ClaudeCompat flag is set—Claude-compat files (CLAUDE.md, .claude/*) and the

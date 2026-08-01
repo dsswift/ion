@@ -339,6 +339,15 @@ type RunOptions struct {
 	// the expanded body as a forked sub-agent with its own context/token budget).
 	// In-process run field. Empty for non-slash prompts.
 	ResolvedSlashContext string `json:"-"`
+	// ResolvedSlashModelAlias is the model string from the slash command's
+	// frontmatter (`model:` key) -- the alias the command author requested.
+	// Empty when the command declared no model hint. In-process run field.
+	ResolvedSlashModelAlias string `json:"-"`
+	// ResolvedSlashModelEffective is the model that the engine actually uses
+	// for this run after applying the frontmatter hint (no-stomp: an explicit
+	// per-prompt override wins over the frontmatter alias). Empty when no
+	// model was resolved. In-process run field.
+	ResolvedSlashModelEffective string `json:"-"`
 
 	// InjectionKind classifies an engine-side injected user turn so the
 	// backend can stamp it on the persisted conversation entry. "agent_completion"

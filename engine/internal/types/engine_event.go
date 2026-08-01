@@ -74,7 +74,9 @@ type EngineEvent struct {
 	// their optimistic user row to this id so history loads dedup against it
 	// even when the run never reaches a message_end (cancel, mid-stream
 	// failure). Never carries content. See types.UserTurnPersistedEvent.
-	UserTurnEntryID string `json:"userTurnEntryId,omitempty"`
+	UserTurnEntryID             string `json:"userTurnEntryId,omitempty"`
+	UserTurnSlashModelAlias     string `json:"userTurnSlashModelAlias,omitempty"`
+	UserTurnSlashModelEffective string `json:"userTurnSlashModelEffective,omitempty"`
 
 	// engine_tool_start
 	ToolName string `json:"toolName,omitempty"`

@@ -174,7 +174,9 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 	// turns — see the comment above appendInboundUserMessage).
 	if runUserEntryID != "" {
 		b.emit(run, types.NormalizedEvent{Data: &types.UserTurnPersistedEvent{
-			EntryID: runUserEntryID,
+			EntryID:             runUserEntryID,
+			SlashModelAlias:     opts.ResolvedSlashModelAlias,
+			SlashModelEffective: opts.ResolvedSlashModelEffective,
 		}})
 	}
 
