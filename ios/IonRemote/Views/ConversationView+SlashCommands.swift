@@ -3,9 +3,11 @@ import SwiftUI
 // MARK: - ConversationView slash-command autocomplete
 
 /// Slash-command autocomplete: filesystem-discovered + `/clear` builtin +
-/// extension-registered commands, plus the filter-text matcher and the
-/// discovery trigger. Split from ConversationView.swift at the 600-line size
-/// cap, mirroring the ConversationView+Presentation extraction.
+/// extension-registered commands, plus the filter-text matcher. Split from
+/// ConversationView.swift at the 600-line size cap, mirroring the
+/// ConversationView+Presentation extraction. The discovery trigger
+/// (`fetchCommandsIfNeeded`) lives in ConversationView+Lifecycle.swift
+/// alongside the other appear-time helpers.
 extension ConversationView {
     /// Merged slash commands for autocomplete: filesystem-discovered + /clear builtin + extension-registered.
     var slashCommands: [DiscoveredSlashCommand] {
@@ -42,11 +44,5 @@ extension ConversationView {
         } else {
             slashFilter = nil
         }
-    }
-
-    func fetchCommandsIfNeeded() {
-        let dir = workingDirectory
-        guard !dir.isEmpty, viewModel.discoveredCommands[dir] == nil else { return }
-        viewModel.discoverCommands(directory: dir)
     }
 }

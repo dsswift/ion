@@ -110,6 +110,7 @@
 		700180B7333F5A03BE7F8C17 /* SessionViewModel+EventHandlerMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9612EDB59ED764A140EADED /* SessionViewModel+EventHandlerMap.swift */; };
 		A1B2C3D4E5F60001000202AA /* SessionViewModel+Pairing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */; };
 		A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */; };
+		A1B2C3D4E5F60001000204FE /* SessionViewModel+ConversationLoadGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001000205FE /* SessionViewModel+ConversationLoadGate.swift */; };
 		A1B2C3D4E5F6000100049A03 /* SessionViewModel+WorktreeCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039A03 /* SessionViewModel+WorktreeCommands.swift */; };
 		A1B2C3D4E5F6000100049A04 /* SessionViewModel+WorktreeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100039A04 /* SessionViewModel+WorktreeState.swift */; };
 		A1B2C3D4E5F600010002049A /* SessionViewModel+GitCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */; };
@@ -128,6 +129,7 @@
 		RSNDCOTST0000000000001 /* TransportResendCoalesceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RSNDCOTST0000000000002 /* TransportResendCoalesceTests.swift */; };
 		PLNAUTTST0000000000001 /* TransportPlaintextAuthResultTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PLNAUTTST0000000000002 /* TransportPlaintextAuthResultTests.swift */; };
 		LOADCONV000000000000007 /* SessionViewModelLoadConversationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LOADCONV000000000000008 /* SessionViewModelLoadConversationTests.swift */; };
+		LOADGATE00000000000007 /* ConversationLoadGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = LOADGATE00000000000008 /* ConversationLoadGateTests.swift */; };
 		WATCHDOG00000000000007 /* LANLivenessWatchdogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = WATCHDOG00000000000008 /* LANLivenessWatchdogTests.swift */; };
 		THINKFORK00000000000007 /* ThinkingEffortStorageForkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = THINKFORK00000000000008 /* ThinkingEffortStorageForkTests.swift */; };
 		TGHOIST000000000000007 /* ToolGroupingHoistTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TGHOIST000000000000008 /* ToolGroupingHoistTests.swift */; };
@@ -267,6 +269,7 @@
 		CVSLASH0000000000000007 /* ConversationView+SlashCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = CVSLASH0000000000000008 /* ConversationView+SlashCommands.swift */; };
 		CVGROUP00000000000000007 /* ConversationView+Grouping.swift in Sources */ = {isa = PBXBuildFile; fileRef = CVGROUP00000000000000008 /* ConversationView+Grouping.swift */; };
 		CVAGENT00000000000000007 /* ConversationView+Agents.swift in Sources */ = {isa = PBXBuildFile; fileRef = CVAGENT00000000000000008 /* ConversationView+Agents.swift */; };
+		CONVLIFE000000000000007 /* ConversationView+Lifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = CONVLIFE000000000000008 /* ConversationView+Lifecycle.swift */; };
 		CVINPUT00000000000000007 /* ConversationView+InputBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = CVINPUT00000000000000008 /* ConversationView+InputBar.swift */; };
 		A1B2C3D4E5F6000100400FAA /* ConversationStatusBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100400EAA /* ConversationStatusBar.swift */; };
 		A1B2C3D4E5F6000100400FDD /* ContextUsageRing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100400EDD /* ContextUsageRing.swift */; };
@@ -537,6 +540,7 @@
 		F9612EDB59ED764A140EADED /* SessionViewModel+EventHandlerMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+EventHandlerMap.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Pairing.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+Commands.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60001000205FE /* SessionViewModel+ConversationLoadGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+ConversationLoadGate.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100039A03 /* SessionViewModel+WorktreeCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+WorktreeCommands.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100039A04 /* SessionViewModel+WorktreeState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+WorktreeState.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+GitCommands.swift"; sourceTree = "<group>"; };
@@ -555,6 +559,7 @@
 		RSNDCOTST0000000000002 /* TransportResendCoalesceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportResendCoalesceTests.swift; sourceTree = "<group>"; };
 		PLNAUTTST0000000000002 /* TransportPlaintextAuthResultTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransportPlaintextAuthResultTests.swift; sourceTree = "<group>"; };
 		LOADCONV000000000000008 /* SessionViewModelLoadConversationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionViewModelLoadConversationTests.swift; sourceTree = "<group>"; };
+		LOADGATE00000000000008 /* ConversationLoadGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationLoadGateTests.swift; sourceTree = "<group>"; };
 		WATCHDOG00000000000008 /* LANLivenessWatchdogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANLivenessWatchdogTests.swift; sourceTree = "<group>"; };
 		THINKFORK00000000000008 /* ThinkingEffortStorageForkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingEffortStorageForkTests.swift; sourceTree = "<group>"; };
 		TGHOIST000000000000008 /* ToolGroupingHoistTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolGroupingHoistTests.swift; sourceTree = "<group>"; };
@@ -685,6 +690,7 @@
 		CVSLASH0000000000000008 /* ConversationView+SlashCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConversationView+SlashCommands.swift"; sourceTree = "<group>"; };
 		CVGROUP00000000000000008 /* ConversationView+Grouping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConversationView+Grouping.swift"; sourceTree = "<group>"; };
 		CVAGENT00000000000000008 /* ConversationView+Agents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConversationView+Agents.swift"; sourceTree = "<group>"; };
+		CONVLIFE000000000000008 /* ConversationView+Lifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConversationView+Lifecycle.swift"; sourceTree = "<group>"; };
 		CVINPUT00000000000000008 /* ConversationView+InputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConversationView+InputBar.swift"; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100400EAA /* ConversationStatusBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationStatusBar.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100400EDD /* ContextUsageRing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextUsageRing.swift; sourceTree = "<group>"; };
@@ -1009,6 +1015,7 @@
 				CVSLASH0000000000000008 /* ConversationView+SlashCommands.swift */,
 				CVGROUP00000000000000008 /* ConversationView+Grouping.swift */,
 				CVAGENT00000000000000008 /* ConversationView+Agents.swift */,
+				CONVLIFE000000000000008 /* ConversationView+Lifecycle.swift */,
 				CVINPUT00000000000000008 /* ConversationView+InputBar.swift */,
 				A1B2C3D4E5F6000100001CAA /* PermissionCardView.swift */,
 				E11C17CA0001000000000C01 /* ElicitationCardView.swift */,
@@ -1107,6 +1114,7 @@
 				A1B2C3D4E5F60001000203AA /* SessionViewModel+Pairing.swift */,
 				A1B2C3D4E5F60001009200AA /* SessionViewModel+RemoteDisplay.swift */,
 				A1B2C3D4E5F60001000205AA /* SessionViewModel+Commands.swift */,
+				A1B2C3D4E5F60001000205FE /* SessionViewModel+ConversationLoadGate.swift */,
 				A1B2C3D4E5F6000100039A03 /* SessionViewModel+WorktreeCommands.swift */,
 				A1B2C3D4E5F6000100039A04 /* SessionViewModel+WorktreeState.swift */,
 				A1B2C3D4E5F600010002059A /* SessionViewModel+GitCommands.swift */,
@@ -1318,6 +1326,7 @@
 			isa = PBXGroup;
 			children = (
 				LOADCONV000000000000008 /* SessionViewModelLoadConversationTests.swift */,
+				LOADGATE00000000000008 /* ConversationLoadGateTests.swift */,
 				LANTRANSVM0000000000002 /* SessionViewModelLanAuthTransientTests.swift */,
 				LANREJVMT00000000000002 /* SessionViewModelLanAuthRejectedTests.swift */,
 			);
@@ -1573,6 +1582,7 @@
 				CVSLASH0000000000000007 /* ConversationView+SlashCommands.swift in Sources */,
 				CVGROUP00000000000000007 /* ConversationView+Grouping.swift in Sources */,
 				CVAGENT00000000000000007 /* ConversationView+Agents.swift in Sources */,
+				CONVLIFE000000000000007 /* ConversationView+Lifecycle.swift in Sources */,
 				CVINPUT00000000000000007 /* ConversationView+InputBar.swift in Sources */,
 				A1B2C3D4E5F6000100001BAA /* PermissionCardView.swift in Sources */,
 				E11C17CA0001000000000B01 /* ElicitationCardView.swift in Sources */,
@@ -1593,6 +1603,7 @@
 				A1B2C3D4E5F60001000202AA /* SessionViewModel+Pairing.swift in Sources */,
 				A1B2C3D4E5F60001009201AA /* SessionViewModel+RemoteDisplay.swift in Sources */,
 				A1B2C3D4E5F60001000204AA /* SessionViewModel+Commands.swift in Sources */,
+				A1B2C3D4E5F60001000204FE /* SessionViewModel+ConversationLoadGate.swift in Sources */,
 				A1B2C3D4E5F6000100049A03 /* SessionViewModel+WorktreeCommands.swift in Sources */,
 				A1B2C3D4E5F6000100049A04 /* SessionViewModel+WorktreeState.swift in Sources */,
 				A1B2C3D4E5F600010002049A /* SessionViewModel+GitCommands.swift in Sources */,
@@ -1806,6 +1817,7 @@
 				LANTRANSVM0000000000001 /* SessionViewModelLanAuthTransientTests.swift in Sources */,
 				LANREJVMT00000000000001 /* SessionViewModelLanAuthRejectedTests.swift in Sources */,
 				LOADCONV000000000000007 /* SessionViewModelLoadConversationTests.swift in Sources */,
+				LOADGATE00000000000007 /* ConversationLoadGateTests.swift in Sources */,
 				A1B2C3D4E5F60001000240AA /* NormalizedEventStreamTests.swift in Sources */,
 				A1B2C3D4E5F60001000242AA /* NormalizedEventPermissionTests.swift in Sources */,
 				PLAN0IMPLEMENT00001 /* PlanImplementWireTests.swift in Sources */,
