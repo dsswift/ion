@@ -154,3 +154,71 @@ func TestMergeTimeouts_ElicitationMs_ReassertIndefinite(t *testing.T) {
 		t.Errorf("HumanWait for ElicitationMs=0 reported finite, want indefinite")
 	}
 }
+
+// TestBashMax_TenMinuteDefault pins the shipped ceiling for a per-call Bash
+// `timeout`: unset/zero BashMaxMs → 10min enabled; positive → that value;
+// negative → disabled (the sign carries the disable signal, like StreamIdle).
+// Revert-check: removing the ceiling makes the default case report disabled.
+func TestBashMax_TenMinuteDefault(t *testing.T) {
+	if d, enabled := (*TimeoutsConfig)(nil).BashMax(); !enabled || d != 10*time.Minute {
+		t.Errorf("nil BashMax() = (%s, %v), want (10m, true)", d, enabled)
+	}
+	if d, enabled := (&TimeoutsConfig{}).BashMax(); !enabled || d != 10*time.Minute {
+		t.Errorf("empty BashMax() = (%s, %v), want (10m, true)", d, enabled)
+	}
+	if d, enabled := (&TimeoutsConfig{BashMaxMs: 5000}).BashMax(); !enabled || d != 5*time.Second {
+		t.Errorf("configured BashMax() = (%s, %v), want (5s, true)", d, enabled)
+	}
+	if _, enabled := (&TimeoutsConfig{BashMaxMs: -1}).BashMax(); enabled {
+		t.Error("negative BashMaxMs must disable the ceiling")
+	}
+}
+
+// TestBashBlockingSleep_TwoSecondDefault pins the leading-sleep gate
+// threshold: unset/zero → 2s enabled; positive → that value; negative →
+// disabled. Below the threshold a sleep is pacing, not waiting.
+func TestBashBlockingSleep_TwoSecondDefault(t *testing.T) {
+	if d, enabled := (*TimeoutsConfig)(nil).BashBlockingSleep(); !enabled || d != 2*time.Second {
+		t.Errorf("nil BashBlockingSleep() = (%s, %v), want (2s, true)", d, enabled)
+	}
+	if d, enabled := (&TimeoutsConfig{}).BashBlockingSleep(); !enabled || d != 2*time.Second {
+		t.Errorf("empty BashBlockingSleep() = (%s, %v), want (2s, true)", d, enabled)
+	}
+	if d, enabled := (&TimeoutsConfig{BashBlockingSleepMs: 60000}).BashBlockingSleep(); !enabled || d != time.Minute {
+		t.Errorf("configured BashBlockingSleep() = (%s, %v), want (1m, true)", d, enabled)
+	}
+	if _, enabled := (&TimeoutsConfig{BashBlockingSleepMs: -1}).BashBlockingSleep(); enabled {
+		t.Error("negative BashBlockingSleepMs must disable the gate")
+	}
+}
+
+// TestMergeTimeouts_BashCeilingAndSleepGate pins both new fields in the merge:
+// non-zero src overrides, zero src preserves dst, and the negative disable
+// sentinel survives a merge (it is non-zero, so it wins — the same escape
+// hatch ElicitationMs documents).
+func TestMergeTimeouts_BashCeilingAndSleepGate(t *testing.T) {
+	dst := &TimeoutsConfig{BashMaxMs: 1000, BashBlockingSleepMs: 1000}
+	MergeTimeouts(dst, &TimeoutsConfig{BashMaxMs: 2000, BashBlockingSleepMs: 3000})
+	if dst.BashMaxMs != 2000 {
+		t.Errorf("BashMaxMs after merge = %d, want 2000", dst.BashMaxMs)
+	}
+	if dst.BashBlockingSleepMs != 3000 {
+		t.Errorf("BashBlockingSleepMs after merge = %d, want 3000", dst.BashBlockingSleepMs)
+	}
+
+	preserve := &TimeoutsConfig{BashMaxMs: 1000, BashBlockingSleepMs: 1000}
+	MergeTimeouts(preserve, &TimeoutsConfig{})
+	if preserve.BashMaxMs != 1000 || preserve.BashBlockingSleepMs != 1000 {
+		t.Errorf("no-op merge changed values: max=%d sleep=%d, want 1000/1000",
+			preserve.BashMaxMs, preserve.BashBlockingSleepMs)
+	}
+
+	disable := &TimeoutsConfig{BashMaxMs: 600000, BashBlockingSleepMs: 2000}
+	MergeTimeouts(disable, &TimeoutsConfig{BashMaxMs: -1, BashBlockingSleepMs: -1})
+	if _, enabled := disable.BashMax(); enabled {
+		t.Error("negative BashMaxMs overlay did not survive the merge")
+	}
+	if _, enabled := disable.BashBlockingSleep(); enabled {
+		t.Error("negative BashBlockingSleepMs overlay did not survive the merge")
+	}
+}

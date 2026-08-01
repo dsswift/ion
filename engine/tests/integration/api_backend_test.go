@@ -285,9 +285,15 @@ func TestApiBackendCancellation(t *testing.T) {
 	mp := setupMockProvider(t)
 
 	// Return a response that takes some time (the mock delivers instantly,
-	// but the tool execution might take a moment)
+	// but the tool execution might take a moment).
+	//
+	// The command is a shell loop rather than a bare `sleep 10`: a LEADING
+	// `sleep N` is refused by the Bash tool's blocking-sleep gate before
+	// execution, which would make the tool return instantly and stop this
+	// test from exercising cancellation of an in-flight tool. A sleep inside
+	// a loop body is never inspected by the gate.
 	mp.SetResponse(helpers.ToolCallResponse("Bash", "tool_bash_cancel", map[string]interface{}{
-		"command": "sleep 10",
+		"command": "while true; do sleep 1; done",
 	}))
 
 	b := backend.NewApiBackend()

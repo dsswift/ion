@@ -11,17 +11,46 @@ import (
 // The struct is nil-safe: all accessors accept a nil receiver and return the
 // hardcoded default.
 type TimeoutsConfig struct {
-	ToolDefaultMs  int64 `json:"toolDefaultMs,omitempty"`  // default: 3600000 (60min)
-	ToolStallMs    int64 `json:"toolStallMs,omitempty"`    // default: 30000
-	BashDefaultMs  int64 `json:"bashDefaultMs,omitempty"`  // default: 120000
-	McpCallMs      int64 `json:"mcpCallMs,omitempty"`      // default: 60000
-	McpMetadataMs  int64 `json:"mcpMetadataMs,omitempty"`  // default: 30000
-	McpWriteMs     int64 `json:"mcpWriteMs,omitempty"`     // default: 30000
-	WebFetchMs     int64 `json:"webFetchMs,omitempty"`     // default: 30000
-	GlobMs         int64 `json:"globMs,omitempty"`         // default: 60000
-	SshDefaultMs   int64 `json:"sshDefaultMs,omitempty"`   // default: 120000
-	ExtensionRpcMs int64 `json:"extensionRpcMs,omitempty"` // default: 30000
-	HookDefaultMs  int64 `json:"hookDefaultMs,omitempty"`  // default: 30000
+	ToolDefaultMs int64 `json:"toolDefaultMs,omitempty"` // default: 3600000 (60min)
+	ToolStallMs   int64 `json:"toolStallMs,omitempty"`   // default: 30000
+	BashDefaultMs int64 `json:"bashDefaultMs,omitempty"` // default: 120000
+	// BashMaxMs is the ceiling a per-call Bash `timeout` argument is clamped
+	// to. Without it the model's requested timeout passes through unbounded
+	// and only the far looser ToolDefault() deadline applies, so a single
+	// call can hold a foreground shell for the better part of an hour (a
+	// 5400000ms request was observed in production). The clamp is silent to
+	// the shell but not to the model: the Bash tool reports the clamp on the
+	// tool result so the next call is made against the real ceiling.
+	//
+	// Zero (the default) means "use the compiled default 600000 (10min)". A
+	// NEGATIVE value disables the ceiling entirely — the per-tool
+	// ToolDefaultMs deadline still bounds the call. Like ElicitationMs and
+	// StreamIdleMs, the sign carries meaning the magnitude cannot, because
+	// MergeTimeouts treats 0 as "field absent".
+	BashMaxMs int64 `json:"bashMaxMs,omitempty"` // default: 600000 (10min)
+	// BashBlockingSleepMs is the threshold at which a LEADING `sleep N` in a
+	// foreground Bash command is refused rather than executed.
+	//
+	// The engine already carries a complete mechanism for waiting on a long
+	// command: `run_in_background` + `notify_on_complete` parks the session
+	// and wakes it with the result (ADR-023). A foreground `sleep` defeats
+	// that mechanism — it holds a shell, burns wall-clock, and produces
+	// nothing — so the engine refuses it and names the alternative instead of
+	// letting the guidance be advisory.
+	//
+	// Zero (the default) means "use the compiled default 2000 (2s)": sleeps
+	// shorter than that are deliberate pacing (rate limiting, a settle
+	// window), not waiting. A NEGATIVE value disables the gate entirely for
+	// consumers whose workflow legitimately blocks on the shell.
+	BashBlockingSleepMs int64 `json:"bashBlockingSleepMs,omitempty"` // default: 2000 (2s)
+	McpCallMs           int64 `json:"mcpCallMs,omitempty"`           // default: 60000
+	McpMetadataMs       int64 `json:"mcpMetadataMs,omitempty"`       // default: 30000
+	McpWriteMs          int64 `json:"mcpWriteMs,omitempty"`          // default: 30000
+	WebFetchMs          int64 `json:"webFetchMs,omitempty"`          // default: 30000
+	GlobMs              int64 `json:"globMs,omitempty"`              // default: 60000
+	SshDefaultMs        int64 `json:"sshDefaultMs,omitempty"`        // default: 120000
+	ExtensionRpcMs      int64 `json:"extensionRpcMs,omitempty"`      // default: 30000
+	HookDefaultMs       int64 `json:"hookDefaultMs,omitempty"`       // default: 30000
 	// ElicitationMs is the human-wait timeout. It governs BOTH elicitation
 	// requests (ctx.elicit) AND permission dialogs that block on a user
 	// decision — both are "the engine is blocked waiting for a person to
@@ -118,6 +147,44 @@ func (t *TimeoutsConfig) ToolStall() time.Duration {
 // BashDefault returns the default bash command timeout (default 120s).
 func (t *TimeoutsConfig) BashDefault() time.Duration {
 	return t.durationOr(t.field(func(c *TimeoutsConfig) int64 { return c.BashDefaultMs }), 120000)
+}
+
+// BashMax returns the ceiling for a per-call Bash `timeout` argument and
+// whether the ceiling is enabled. See TimeoutsConfig.BashMaxMs.
+//
+// Returns (10min, true) for an unset field / nil receiver (the shipped
+// default). Returns (d, true) for a positive override. Returns (0, false) for
+// a NEGATIVE value, which explicitly disables the ceiling — like HumanWait and
+// StreamIdle, the sign carries meaning the duration alone cannot, so the
+// enabled-bool reports the disable case rather than collapsing it into a zero
+// duration that would read as "clamp everything to zero".
+func (t *TimeoutsConfig) BashMax() (time.Duration, bool) {
+	ms := t.field(func(c *TimeoutsConfig) int64 { return c.BashMaxMs })
+	if ms < 0 {
+		return 0, false
+	}
+	if ms == 0 {
+		return 600000 * time.Millisecond, true
+	}
+	return time.Duration(ms) * time.Millisecond, true
+}
+
+// BashBlockingSleep returns the leading-`sleep` refusal threshold for
+// foreground Bash commands and whether the gate is enabled. See
+// TimeoutsConfig.BashBlockingSleepMs.
+//
+// Returns (2s, true) for an unset field / nil receiver (the shipped default),
+// (d, true) for a positive override, and (0, false) for a NEGATIVE value,
+// which disables the gate. Same sign-carries-meaning rationale as BashMax.
+func (t *TimeoutsConfig) BashBlockingSleep() (time.Duration, bool) {
+	ms := t.field(func(c *TimeoutsConfig) int64 { return c.BashBlockingSleepMs })
+	if ms < 0 {
+		return 0, false
+	}
+	if ms == 0 {
+		return 2000 * time.Millisecond, true
+	}
+	return time.Duration(ms) * time.Millisecond, true
 }
 
 // McpCall returns the MCP tool call timeout (default 60s).
@@ -286,6 +353,12 @@ func MergeTimeouts(dst, src *TimeoutsConfig) *TimeoutsConfig {
 	}
 	if src.BashDefaultMs != 0 {
 		dst.BashDefaultMs = src.BashDefaultMs
+	}
+	if src.BashMaxMs != 0 {
+		dst.BashMaxMs = src.BashMaxMs
+	}
+	if src.BashBlockingSleepMs != 0 {
+		dst.BashBlockingSleepMs = src.BashBlockingSleepMs
 	}
 	if src.McpCallMs != 0 {
 		dst.McpCallMs = src.McpCallMs

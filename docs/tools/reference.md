@@ -54,11 +54,13 @@ Execute a bash command and return its output.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `command` | string | yes | The bash command to execute |
-| `timeout` | number | no | Timeout in milliseconds (default: 120000). Ignored when `run_in_background` is true |
+| `timeout` | number | no | Timeout in milliseconds (default: 120000). Values above `timeouts.bashMaxMs` (default 600000) are clamped, and the clamp is reported on the result. Ignored when `run_in_background` is true |
 | `run_in_background` | boolean | no | Run the command in the background and return immediately with a task ID and output-file path |
 | `notify_on_complete` | boolean | no | Only meaningful with `run_in_background`. Deliver the command's result back to the session when it finishes, instead of requiring polling |
 
-Runs through the pluggable `BashOperations` backend. Returns stdout and stderr. Non-zero exit codes are reported as tool errors. The backend supports sandboxing via Seatbelt (macOS) or bubblewrap (Linux).
+Runs through the pluggable `BashOperations` backend. Returns stdout and stderr. Non-zero exit codes are reported as tool errors. The backend supports sandboxing via Seatbelt (macOS) or bubblewrap (Linux). A command killed for exceeding its timeout is reported as such — the result names the deadline and the background alternative rather than surfacing a bare `signal: killed` — and any output produced before the kill is preserved.
+
+A **leading** `sleep N` is refused rather than executed when the command runs in the foreground and `N` is at or above `timeouts.bashBlockingSleepMs` (default 2 s). Blocking the shell to wait is what `run_in_background` + `notify_on_complete` exists to replace, so the refusal names that path; it does not run the command. The check is deliberately narrow, inspecting only the leading segment (the text before the first `;`, `&&`, `||`, or `|`) and only a bare integer duration. `sleep 0.5`, `make && sleep 5`, `while true; do sleep 5; done`, and `bash -c "sleep 30"` all run normally, as does any sleep under `run_in_background: true`. Set `bashBlockingSleepMs` negative to disable the gate.
 
 With `run_in_background: true`, the command starts detached from the tool call in its own process group and the tool returns immediately with a `bash-<n>` task ID and an output file under `~/.ion/tasks/` capturing interleaved stdout+stderr. The task registers in the tasks registry: `TaskGet` shows status, exit code, output path, and a bounded tail of recent output; `TaskStop` kills the process group. When the owning session stops, its running background tasks are killed. The Task tools are harness opt-in — without them, the model reads the output file directly (the result says which hint applies). Backends advertise support via the `BackgroundBashOperations` capability interface; only the local backend implements it today, and unsupported backends return a clean error.
 
