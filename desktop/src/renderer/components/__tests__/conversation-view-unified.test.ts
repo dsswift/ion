@@ -36,8 +36,8 @@ describe('conversation view is unified — structural guards', () => {
     expect(app).not.toMatch(/\bisEngine\b/)
     expect(app).not.toMatch(/\bisEngineTall\b/)
     // The single conversation mount is data-agnostic (keyed on activeTabId so
-    // React remounts on tab switch, resetting local state). key={activeTabId}
-    // is part of the fix for the tab-switch stale-renderOffset bug.
+    // React remounts on tab switch, resetting local state like scroll and
+    // search).
     expect(app).toContain('<ConversationView key={activeTabId} tabId={activeTabId} />')
   })
 

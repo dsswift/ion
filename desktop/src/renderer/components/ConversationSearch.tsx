@@ -9,13 +9,11 @@ import type { ConversationSearchState, ConversationSearchActions } from '../hook
 interface Props {
   state: ConversationSearchState
   actions: ConversationSearchActions
-  hiddenCount: number
-  onLoadAllOlder: () => void
 }
 
 // ─── Component ───
 
-export function ConversationSearch({ state, actions, hiddenCount, onLoadAllOlder }: Props) {
+export function ConversationSearch({ state, actions }: Props) {
   const colors = useColors()
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -156,7 +154,6 @@ export function ConversationSearch({ state, actions, hiddenCount, onLoadAllOlder
               alignItems: 'center',
               gap: 4,
               padding: '5px 6px 5px 10px',
-              borderBottom: hiddenCount > 0 ? `1px solid ${colors.toolBorder}` : 'none',
             }}
           >
             {/* Input with tinted border on no-match */}
@@ -223,37 +220,6 @@ export function ConversationSearch({ state, actions, hiddenCount, onLoadAllOlder
               <X size={13} />
             </button>
           </div>
-
-          {/* Older messages hint */}
-          {hiddenCount > 0 && (
-            <div
-              style={{
-                padding: '4px 10px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 8,
-              }}
-            >
-              <span style={{ fontSize: 10, color: colors.textTertiary }}>
-                +{hiddenCount} older messages not searched
-              </span>
-              <button
-                style={{
-                  fontSize: 10,
-                  color: colors.accent,
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: 0,
-                  flexShrink: 0,
-                }}
-                onClick={onLoadAllOlder}
-              >
-                Load all
-              </button>
-            </div>
-          )}
         </motion.div>
       )}
     </AnimatePresence>

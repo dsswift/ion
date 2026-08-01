@@ -17,6 +17,8 @@ import { useConversationSearch } from '../hooks/useConversationSearch'
 import { useScrollFollow } from './conversation/useScrollFollow'
 import { ScrollToBottomButton } from './conversation/ScrollToBottomButton'
 import { TranscriptRows } from './conversation/TranscriptRows'
+import { TimelineMinimap } from './conversation/TimelineMinimap'
+import { deriveTimelineMinimapItems } from './conversation/TimelineMinimap.logic'
 import { rDebug, rInfo, rError } from '../rendererLogger'
 import {
   groupMessages,
@@ -32,9 +34,6 @@ const EMPTY_NOTIFICATIONS: any[] = []
 const EMPTY_MESSAGES: any[] = []
 const EMPTY_AGENTS: any[] = []
 const EMPTY_TELEMETRY: import('../../shared/types-engine').DispatchTelemetryEntry[] = []
-
-const INITIAL_RENDER_CAP = 100
-const PAGE_SIZE = 100
 
 // ─── Main Component ───
 //
@@ -116,7 +115,6 @@ export function ConversationView({ tabId }: ConversationViewProps) {
   })
   const [agentPanelFullscreen, setAgentPanelFullscreen] = useState(false)
   const [agentPanelHeights, setAgentPanelHeights] = useState<Map<string, number>>(new Map())
-  const [renderOffset, setRenderOffset] = useState(0)
 
   // Scroll-follow via shared hook.
   const { scrollRef, isNearBottomRef: _isNearBottomRef, showScrollBtn, handleScroll, scrollToBottom } = useScrollFollow([
@@ -137,18 +135,13 @@ export function ConversationView({ tabId }: ConversationViewProps) {
     if (lastUserMsg) submit(tabId, lastUserMsg.content)
   }, [messages, submit, tabId])
 
-  // Reset pagination when switching engine instances
-  useEffect(() => { setRenderOffset(0) }, [tabId])
+  // Full history renders — no pagination. Rows are memoized in
+  // TranscriptRows, so a streaming chunk re-renders only the affected row;
+  // the rest of the transcript (and its markdown parses) are skipped.
+  const grouped = useMemo(() => groupMessages(messages, { includeUser: true, unifiedTurnView }), [messages, unifiedTurnView])
+  const minimapItems = useMemo(() => deriveTimelineMinimapItems(messages), [messages])
 
-  // Pagination
-  const totalCount = messages.length
-  const startIndex = Math.max(0, totalCount - INITIAL_RENDER_CAP - renderOffset * PAGE_SIZE)
-  const visibleMessages = startIndex > 0 ? messages.slice(startIndex) : messages
-  const hasOlder = startIndex > 0
-  const hiddenCount = totalCount - visibleMessages.length
-  const grouped = useMemo(() => groupMessages(visibleMessages, { includeUser: true, unifiedTurnView }), [visibleMessages, unifiedTurnView])
-
-  const hasContent = visibleMessages.some(m => m.role === 'assistant' && (m.content || '').length > 0)
+  const hasContent = messages.some(m => m.role === 'assistant' && (m.content || '').length > 0)
   const showThinkingForeground = isRunning && !hasContent && runningChildCount === 0
   const showWaitingChildren = !isRunning && hasRunningChildren
   const showThinking = showThinkingForeground || showWaitingChildren
@@ -204,8 +197,6 @@ export function ConversationView({ tabId }: ConversationViewProps) {
       .catch((err) => rError('conversation', 'implement-and-unpin failed', { tab_id: tabId.slice(0, 8), error: String(err) }))
   }, [tabId])
 
-  const handleLoadOlder = useCallback(() => { setRenderOffset((o) => o + 1) }, [])
-
   // Per-message actions renderer (rewind/fork menu on user bubbles).
   const renderActions = useCallback((msg: import('../../shared/types-session').Message) => (
     <MessageActions message={msg} variant="user" engineContext={{ tabId, instanceId: activeInstanceId }} />
@@ -243,15 +234,16 @@ export function ConversationView({ tabId }: ConversationViewProps) {
         </div>
       )}
 
-      {/* Scrollable conversation area */}
-      <div style={{ flex: agentPanelFullscreen ? 0 : 1, maxHeight: agentPanelFullscreen ? 100 : undefined, position: 'relative', overflow: 'hidden' }}>
+      {/* Scrollable conversation area (with reserved minimap gutter on the left) */}
+      <div style={{ flex: agentPanelFullscreen ? 0 : 1, maxHeight: agentPanelFullscreen ? 100 : undefined, position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'row' }}>
         <ConversationSearch
           state={searchState}
           actions={searchActions}
-          hiddenCount={hiddenCount}
-          onLoadAllOlder={() => setRenderOffset(Math.ceil(totalCount / INITIAL_RENDER_CAP))}
         />
-        <div ref={scrollRef} onScroll={handleScroll} style={{ height: '100%', overflowY: 'auto', padding: '8px 12px', ['--ion-conv-font-size' as string]: `${conversationFontSize}px` } as React.CSSProperties}>
+        {/* Dedicated timeline gutter — reserved layout space, so the
+            transcript can never render underneath the history rail. */}
+        <TimelineMinimap items={minimapItems} scrollRef={scrollRef} />
+        <div ref={scrollRef} onScroll={handleScroll} style={{ flex: 1, minWidth: 0, height: '100%', overflowY: 'auto', padding: '8px 12px 8px 4px', ['--ion-conv-font-size' as string]: `${conversationFontSize}px` } as React.CSSProperties}>
           {messages.length === 0 && !isRunning && <EmptyState />}
           {/* Thinking indicator */}
           <AnimatePresence>
@@ -281,19 +273,6 @@ export function ConversationView({ tabId }: ConversationViewProps) {
               </motion.div>
             )}
           </AnimatePresence>
-
-          {/* Load older messages (pagination) */}
-          {hasOlder && (
-            <div className="flex justify-center py-2">
-              <button
-                onClick={handleLoadOlder}
-                className="text-[11px] px-3 py-1 rounded-full transition-colors"
-                style={{ color: colors.textTertiary, border: `1px solid ${colors.toolBorder}` }}
-              >
-                Load {Math.min(PAGE_SIZE, hiddenCount)} older messages ({hiddenCount} hidden)
-              </button>
-            </div>
-          )}
 
           {/* Grouped conversation messages via shared TranscriptRows */}
           <TranscriptRows grouped={grouped} actions={renderActions} />

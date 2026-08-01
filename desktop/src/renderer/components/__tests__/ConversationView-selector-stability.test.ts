@@ -158,33 +158,29 @@ describe('ConversationView selector — shallow stability (#185 regression)', ()
 
 // ─── Tab-switch reset guards ──────────────────────────────────────────────────
 //
-// Pins two structural fixes that reset ConversationView state on tab switch:
+// Pins two structural decisions about ConversationView state on tab switch:
 //
-//   1. `useEffect(() => { setRenderOffset(0) }, [tabId])` — resets the
-//      pagination offset when tabId changes. Pre-fix the dep array was
-//      [activeInstanceId], which only fired on engine-instance change; switching
-//      to a different tab with the same instance left renderOffset at a stale
-//      non-zero value and showed a partial transcript on the new tab.
+//   1. Pagination is REMOVED. The transcript renders the full message history;
+//      per-row memoization in TranscriptRows (groupedItemsEqual) is what keeps
+//      streaming cheap. The old renderOffset/INITIAL_RENDER_CAP mechanism (and
+//      its tab-switch stale-offset bug class) must not return.
 //
 //   2. `key={activeTabId}` on <ConversationView> in App.tsx — forces React to
 //      unmount/remount the component on tab switch, resetting all component
 //      state (scroll position, search state, etc.) to initial values.
 //
-// Revert contract: restoring [activeInstanceId] or removing key={activeTabId}
-// causes the corresponding assertion to fail immediately.
+// Revert contract: reintroducing renderOffset/pagination or removing
+// key={activeTabId} causes the corresponding assertion to fail immediately.
 
 describe('ConversationView tab-switch reset — structural guards', () => {
-  it('[STRUCTURAL] useEffect pagination reset uses [tabId] dep array (not [activeInstanceId])', () => {
-    // This assertion goes red when the dep array is changed back to [activeInstanceId].
-    // The comment "Reset pagination when switching engine instances" is intentionally
-    // retained in source as documentation of the pre-fix intent; we only guard the
-    // dep array value, not the comment.
-    expect(conversationViewSrc).toContain('useEffect(() => { setRenderOffset(0) }, [tabId])')
-
-    // Negative: the pre-fix dep array must no longer be present in the pagination reset.
-    // (activeInstanceId is still used in OTHER useEffect deps in the file — we scope
-    // the check to the setRenderOffset(0) line only by checking for the exact old form.)
-    expect(conversationViewSrc).not.toContain('useEffect(() => { setRenderOffset(0) }, [activeInstanceId])')
+  it('[STRUCTURAL] pagination is removed — full history renders with memoized rows', () => {
+    // The stale-renderOffset bug class is eliminated by eliminating the offset:
+    // no pagination state, no render cap, no "Load older" button.
+    expect(conversationViewSrc).not.toContain('renderOffset')
+    expect(conversationViewSrc).not.toContain('INITIAL_RENDER_CAP')
+    expect(conversationViewSrc).not.toContain('Load older')
+    // The full messages array feeds grouping directly (no visibleMessages slice).
+    expect(conversationViewSrc).toContain('groupMessages(messages')
   })
 
   it('[STRUCTURAL] App.tsx mounts ConversationView with key={activeTabId}', () => {
