@@ -327,9 +327,6 @@ When a local extension or harness is referenced during investigation as the **so
 
 This holds regardless of where the harness lives or who owns it:
 
-- **In-repo** harnesses that ship with the engine, when any exist.
-- The primary **engine-development harness** I use most (`ion-dev`) — a private extension at `~/.ion/extensions/ion-dev/`, not part of the Ion repository, but the active extension I use to find bugs, exercise new engine/SDK surface, and test the engine inside the desktop.
-- Fully **private** harnesses with no relation to Ion development beyond consuming the engine (e.g. `chief-of-staff`).
 - **Any other harness installed under `~/.ion/extensions/`** that is what we are troubleshooting or enhancing.
 
 If the harness is on the machine and it is what we are troubleshooting or enhancing, its upgrade is in the plan and gets implemented and committed (at its own scope seam, in its own working tree) alongside the engine/SDK change.
@@ -384,7 +381,7 @@ Desktop and iOS are co-equal clients. When a desktop change touches a feature th
 | Model fallback indicator (EngineStatusBar per-instance ⚠) | Model fallback indicator (EngineInstanceBar per-instance ⚠) | `snapshot.ts` → `RemoteTabState.conversationInstances[i].modelFallback`. Desktop populates `engineModelFallbacks` from the `engine_model_fallback` event; the snapshot poller projects each entry onto the corresponding `conversationInstances[i]` and iOS reads it from the snapshot. Cleared on the next idle transition (per-instance). |
 | Worktrees list (git panel WorktreesSection) | Worktrees & Bench screen (WorktreeListView) + new-tab sheet rows | `desktop_worktree_state` → `RemoteWorktreeState.worktrees`. The desktop computes dirty/unlanded/needsSync; clients render, never derive. |
 | Integration bench (git panel IntegrationSection) | Bench sections in WorktreeListView | `desktop_worktree_state` → `RemoteWorktreeState.benches`. Pins, staleness, and conflict attribution are all main-process values. |
-| Worktree lifecycle verbs (land / sync) | Tab-row context menu + worktree row swipe actions | `desktop_worktree_*` / `desktop_bench_*` commands; results ride `desktop_worktree_op_result` so a refusal reads differently from a failure. Retire is desktop-only: there is no `desktop_worktree_retire` command and no iOS affordance for it. Destroying a checkout is a deliberate desk action, and the desktop path depends on an appraisal dialog the phone has no room to present. |
+| Worktree lifecycle verbs (land / sync / retire) | Tab-row context menu + worktree row swipe actions | `desktop_worktree_*` / `desktop_bench_*` commands; results ride `desktop_worktree_op_result` so a refusal reads differently from a failure. |
 | Base-moved indicator (WorktreeRow) | Tab row indicator (TabRowView) | `RemoteWorktree.needsSync`. Only set when a sync would actually change the worktree — never for a no-op. |
 | Theme registry + picker (AppearanceCategory) | Theme picker (SettingsAppearanceView) | Built-in themes are compiled into both clients and pinned identical by the parity fixture (`assets/theme-parity.json`, asserted by `theme-parity.test.ts` on desktop and `ThemeParityTests.swift` on iOS) — a shared-theme palette edit must update the fixture and the Swift theme in the same change. Custom theme packs sync their iOS components via `desktop_theme_manifest` (sendSync + on pack-set change) with lazy asset fetch (`desktop_request_theme_asset`); enterprise lock rides `desktop_settings_snapshot.themePolicy`. Theme selection is per-device (never synced). Authoring guide: `docs/design/theme-packs.md`. |
 
@@ -544,7 +541,7 @@ jq -c 'select(.session_id=="<id>")' ~/.ion/*.jsonl
 
 **Filter one extension** (by name):
 ```bash
-jq -c 'select(.component=="extension" and .tag=="my-extension")' ~/.ion/engine.jsonl
+jq -c 'select(.component=="extension" and .tag=="ion-meta")' ~/.ion/engine.jsonl
 ```
 
 **Filter by time range** (logs after a given timestamp):
@@ -564,7 +561,7 @@ jq -c 'select(.level=="ERROR")' ~/.ion/*.jsonl
 | One conversation | `{component=~".+"} \| json \| conversation_id = "<id>"` |
 | One session across surfaces | `{component=~".+"} \| json \| session_id = "<id>"` |
 | Errors in time range | `{level="ERROR"}` (use Grafana time picker) |
-| One extension | `{component="extension", tag="my-extension"}` |
+| One extension | `{component="extension", tag="ion-meta"}` |
 | Trace correlation | `{component=~".+"} \| json \| trace_id = "<32-hex-id>"` |
 
 ### Rules
@@ -645,52 +642,11 @@ You are not breaking functionality by correcting a comment, a doc, or a test; yo
 
 This generalizes "## Aspirational comments" (incomplete or lying comments are bugs), "## Volatile counts" (stale counts are lies), and the global "## Scope" rule (never defer ordered work).
 
-### Recognition is the step that fails: unexplained state is a finding
-
-Every rule above governs what to do **after** you have recognized that something is wrong. None of them governs the recognition itself, and recognition is where this fails in practice. An artifact only gets fixed if it is first classified as "wrong" rather than as ambient noise, so the live failure mode is not refusing to fix a known defect. It is filing a real defect under background static: a dirty lockfile, a stray untracked file, an unexpected hunk in `git status`, a warning that "always shows up", a test that "is flaky".
-
-**Unexplained working-tree or build state is a finding, not scenery.** If `git status` shows something you did not create, you owe an explanation for it before you proceed. Same for an unexpected diff, a staged file you did not stage, a modified file that "was already like that", a warning you did not cause, and a generated file that keeps coming back.
-
-**"Pre-existing", "unrelated", "already dirty", "not mine", and "probably just X" are conclusions, never reasons to skip a look.** Each is permitted only as the *output* of a diagnostic command, with the command cited. Reaching one of them from memory, or from a plausible prior about how repositories usually behave, is the defect. The diagnostic is nearly always a single command:
-
-```bash
-git diff -- <path>          # what actually changed
-git log -1 --oneline -- <path>   # who last touched it, and whether it is committed
-git status --porcelain      # the full, unexplained set
-```
-
-The cost asymmetry is the whole argument: seconds to run, against handing back a tree the operator cannot land, or a shared file carrying machine-local values into `main`.
-
-**State that predates your work is more interesting, not less.** "It was already dirty when I started" means something *systematic* produced it, which is a stronger reason to investigate than a one-off edit would be. When you catch yourself using that sentence as an exit, it is pointing at the answer.
-
-Worked example, and the reason this subsection exists. A worktree showed `M package-lock.json`. It was filed as ambient lockfile churn and left out of the commits, with the written justification "it was already modified before I started", which had never been checked. The one-line diff was `"name": "ion"` → `"name": "ion-846c474d"`: the root `package.json` had no `name` field, so npm inferred it from the worktree directory, and the `npm ci` in `.ion/worktree.json` re-dirtied the tree on **every** worktree at provisioning time. The operator was left with a worktree that could not be landed, and two other branches had already *committed* their directory name into the shared lockfile. Every rule needed to catch this was already in force. None fired, because the file was never classified as a problem.
-
-**This does not become hunting.** The boundary above still holds: this fires on state already in front of you, in the path of the work. It is not a mandate to audit the tree for latent issues, and `git status` output you *did* create needs no ceremony.
-
-### Scope separation is a filing rule, not an exemption
-
-"Commit separately when unrelated" is an instruction about **which commit** work lands in. It is never a reason for work to land in **no** commit. When an unrelated finding shows up mid-task, the resolution is a third commit at its own scope seam, not omission from the change set.
-
-This is the specific rationalization that produced the lockfile miss: the agent was in commit-hygiene mode, correctly avoiding entangling unrelated work, and used that valid rule as an exit from the good-citizen obligation. The two rules compose. Scope separation decides the seam; good citizen decides whether it gets fixed at all.
-
-## Operator premises — and your own — verify before acting
+## Operator premises — verify before acting
 
 Operator requests routinely contain **factual premises about the codebase** — "we only support X", "the only place that happens is Y", "this field is unused", "feature Z doesn't exist yet". These premises are frequently wrong. The author of this repository is wrong about them sometimes; new contributors are wrong about them more often. **Treat every premise as a claim to be verified, not as ground truth.**
 
 The failure mode this rule prevents: the operator states a premise, the agent silently accepts it, and the agent then refactors, deletes, restricts, or "fixes" code based on a misunderstanding the operator would have corrected if asked. By the time the operator sees the change, the wrong work is done.
-
-**The rule is symmetric: it governs the agent's own assertions with equal force.** Every factual claim *you* make about this codebase is a premise under this rule — in a commit message, a code comment, a PR description, a report back to the operator, or the private reasoning you act on. An unverified claim is not safer for having originated with you; it is more dangerous, because no one else is positioned to challenge it. The asymmetry to avoid is holding the operator's statements to a standard of evidence and exempting your own.
-
-Claims of yours that require a citation before you write or act on them:
-
-- **Provenance** — "this was already modified", "that predates my change", "the dev server wrote it", "this is unrelated to my work".
-- **Absence** — "nothing else calls this", "there is no consumer", "iOS has no equivalent", "no test covers this".
-- **Causation** — "this failure is caused by X", "that warning is harmless", "the drift comes from Y".
-- **Equivalence** — "this behaves the same as before", "the refactor is behaviour-preserving".
-
-Each is provable with one command (`git diff`, `git log`, a grep, a graph query, a test run). Write the claim only after the command, and prefer citing the evidence in the artifact: "verified the desktop still emits `X` at `path:line`" rather than "this is still used".
-
-This is the same discipline "## Dead code is not load-bearing until proven otherwise" already demands at step 2 ("Answer with a citation, not an assumption") and that "## Aspirational comments" demands of comments that assert behaviour. This section states it once, generally, so it is not something you infer only when deleting code.
 
 ### When this rule fires
 
@@ -702,7 +658,7 @@ Any operator request that asserts a concrete fact about the codebase. Common sig
 - "the file picker only accepts …" / "the engine only emits …" / "the SDK only exposes …"
 - Any naming, shape, count, or scope claim about events, fields, hooks, tools, file types, config keys, protocol messages, or supported inputs.
 
-The trigger is **the presence of a factual claim**, not the operator's tone or confidence. A confidently stated wrong premise is the most dangerous kind. It fires identically on a claim you are about to make yourself — the signals above are the operator's phrasings, but "it was already like that", "nothing uses this", and "that's unrelated" are the same claims in your own voice.
+The trigger is **the presence of a factual claim**, not the operator's tone or confidence. A confidently stated wrong premise is the most dangerous kind.
 
 ### What verification looks like
 
@@ -742,8 +698,6 @@ Only proceed once the operator confirms which version of reality the change shou
 - "I noticed the premise is wrong, but I implemented what they asked anyway and noted it in the response." — Too late. The wrong work is done. Surface the discrepancy *before* writing code, not after.
 - "I noticed the premise is wrong, so I implemented what I thought they really meant." — Also wrong. Confirm with the operator which version is correct; do not silently substitute your interpretation.
 - "The premise is *probably* right, I'll skip verification." — The premises that look most obviously right are the ones where verification is cheapest and the cost of being wrong is highest. Verify anyway.
-- "It was already like that when I started." — A provenance claim, stated from memory. `git diff` and `git log -1` settle it in seconds, and the answer routinely reveals a systematic cause worth fixing (see "## Good citizen" → "Recognition is the step that fails").
-- "This is unrelated to my change, so I'll note it and move on." — Two unverified claims at once (that it is unrelated, and that noting it discharges the obligation). Prove the first; the second is forbidden outright by "## Aspirational comments" → "The rule applies to plans".
 
 ## Solution quality — no cheap substitutes
 
@@ -786,7 +740,7 @@ You encounter a handler that logs and does nothing, a helper that returns its in
 When you find a no-op / vestigial / pass-through construct in the path of your work:
 
 1. **Identify every layer involved.** A "dead" event handler is usually three separable layers: the wire **TypeKey / decoder** (what makes the bytes parse), the **typed case / struct field** (the in-memory representation), and the **handler body** (what acts on it). A "dead" helper is its **signature** vs its **callers** vs its **body**. Name them explicitly; do not treat the cluster as one indivisible thing.
-2. **Find the real load-bearing layer by checking the producer/consumer in source — not from memory.** Grep the actual emitter (`desktop/src/`, the engine, the SDK), the actual callers, the actual decoder's failure mode. *"Does the live, in-repo producer still emit this? Does any caller still invoke it? What happens on the unhandled path — silent drop, or thrown error?"* Answer with a citation, not an assumption. (This is the "## Operator premises — and your own" rule applied to your *own* premise.)
+2. **Find the real load-bearing layer by checking the producer/consumer in source — not from memory.** Grep the actual emitter (`desktop/src/`, the engine, the SDK), the actual callers, the actual decoder's failure mode. *"Does the live, in-repo producer still emit this? Does any caller still invoke it? What happens on the unhandled path — silent drop, or thrown error?"* Answer with a citation, not an assumption. (This is the "## Operator premises" rule applied to your *own* premise.)
 3. **Delete every layer above the one that is genuinely required.** Keep only the minimum the producer/consumer actually forces you to keep, and say *why that exact layer* is required (with the source citation). If the wire decoder must stay because a live event would otherwise throw, keep the decoder and **delete the no-op handler** — do not keep both and call the handler "load-bearing."
 4. **If nothing is load-bearing, delete all of it.** A construct with no producer and no consumer is not "compat surface"; it is dead code. Remove it. The "## Good citizen" rule already puts this in scope when you encounter it.
 5. **Make every surviving comment true.** A comment asserting wire/caller behavior ("desktop no longer sends this", "kept for older clients") is a factual claim subject to "## Aspirational comments" and "## Volatile counts": if you did not grep it, do not write it, and if it is stale, fix it as part of the same change.
@@ -839,49 +793,34 @@ When a feature exists on one client and not another, or is implemented two diffe
 
 ### The forbidden completion claim
 
-Do not report a feature or fix as "done," "complete," or "verified" when the only verification performed is: it compiles, it type-checks, existing tests still pass, and the code reads correctly. Those are necessary but **not sufficient**. The sufficient condition is a test that exercises the new behavior and would fail without the change. If you are about to commit and there is no such test, the work is not done — write the test first.
+Claim a feature or fix as “done,” “complete,” or “verified” only after adding and running a test that exercises the new behavior and fails if the change is removed. Compilation, type-checking, passing existing tests, and code review are necessary baseline checks, but they do not prove that the new behavior works.
 
+Before committing, confirm that this behavior-specific test exists and passes. If it does not, write and run it first; meanwhile, describe the work as “implemented but not yet behavior-tested” rather than complete.
 ## Worktrees and benches refuse the writes that cannot be reviewed
 
 Two directory kinds under `~/.ion/` refuse a class of writes based on what the
-directory *is*. Both are enforced for the agent by the engine core
-(`engine/internal/workspaces`, checked in the tool loop beside the permission
-engine — deterministic regardless of which extensions are loaded, and
-disabled only by an explicit `security.workspaceContainment: false`) and (for
-benches) for the operator by the desktop's git IPC. Both fail open when their
-backing record is unreadable, because a false refusal where the operator is
+directory *is*. Both are enforced for the agent by ion-meta's `tool_call` hook
+and (for benches) for the operator by the desktop's git IPC. Both fail open when
+their backing record is unreadable, because a false refusal where the operator is
 working is worse than a briefly missing guard.
 
 **An integration bench refuses history writes.** A directory under
-`~/.ion/integration/` is a reassemblable bench: its branch is recreated from the
-feature branch plus each member's pinned commit on every assembly. A commit made
-there is destroyed by the next assembly, and a push would publish a synthetic
+`~/.ion/integration/` is a rebuildable bench: its branch is recreated from the
+feature branch plus each member's pinned commit on every rebuild. A commit made
+there is destroyed by the next rebuild, and a push would publish a synthetic
 merge of other people's in-flight work. So `commit`, `push`, `pull`, `merge`,
 `rebase`, `cherry-pick`, `revert`, `reset`, `stash`, `tag`, and branch mutation
-are refused by the desktop UI (`desktop/src/main/integration/bench-guard.ts`)
-for the operator and by the engine's workspace containment for the agent.
-Reading,
+are refused by the desktop UI (`desktop/src/main/integration/bench-guard.ts`) and
+by ion-meta's tool gate (`engine/extensions/ion-meta/bench-gate.ts`). Reading,
 building, testing, and staging are unaffected. A fix diagnosed in the bench
 belongs in the member worktree that owns the file: commit it there, then update
 that member in the bench.
 
-**Assembly is atomic, and a conflict is resolved once.** The bench presents the
-exact enrolled combination or nothing: a member whose pinned contribution will
-not merge fails the whole assembly and the bench is wiped to an empty tree
-(gitignored build output survives), so a terminal opened there finds nothing to
-falsely test. The conflict is resolved ONCE through the desktop's resolve flow —
-the machinery re-creates the failed merge and leaves it in progress, and while
-that merge is open both gates carve out exactly the resolution surface: edits to
-the unmerged paths and `git merge --continue`/`--abort`. Completing the merge
-records the resolution (`git rerere`, stored in the main repo's `rr-cache`, so
-wiping the bench never loses it), and every later assembly replays it
-deterministically until either side's conflicting lines genuinely change.
-
 **A bench refuses edits, and names where they belong.** The history rule above
-covers `commit`/`push`; a bench also refuses `Write`, `Edit`, and `NotebookEdit`
-(engine workspace containment), because an edit made there is destroyed by the
-next assembly. `Bash` stays open for builds — building and testing are what a
-bench is for, as do staging and discarding. The refusal names the member
+covers `commit`/`push`; a bench also refuses `Write`, `Edit`, and `ion_scaffold`
+(`engine/extensions/ion-meta/bench-write-gate.ts`), because an edit made there is
+destroyed by the next rebuild. `Bash` stays open — building and testing are what
+a bench is for, as do staging and discarding. The refusal names the member
 worktree that owns the file, resolved by diffing each member's pinned commit
 against the bench base rather than asking who last touched it: when several
 members change one file, all of them are listed with their changed line ranges
@@ -890,14 +829,14 @@ bench it hides Changes and Graph and titles the section `Integration (Bench)`.
 
 **A worktree refuses writes outside itself.** A conversation whose cwd is a
 registered worktree (`~/.ion/worktree-registry.json`) may not write into the base
-repo it was cut from, nor into a sibling worktree of the same repo (engine
-workspace containment). This is **not** a cwd jail:
+repo it was cut from, nor into a sibling worktree of the same repo
+(`engine/extensions/ion-meta/worktree-gate.ts`). This is **not** a cwd jail:
 `/tmp`, `~/.ion`, and unrelated repos all stay writable, and a conversation that
 is not in a worktree is unaffected. The rule exists because cross-worktree writes
 interleave several conversations in one dirty checkout, and review cannot
 attribute the hunks afterwards. A `Bash` call is judged by its command text, not
 only its cwd: every literal `cd` / `pushd` / `git -C` / `--work-tree` destination
-in the chain is checked, because a command that `cd`s into
+in the chain is checked (`bash-destination.ts`), because a command that `cd`s into
 the base repo and commits there is the exact way two commits once landed on the
 wrong branch. A dynamic destination (`cd "$VAR"`, `cd $(...)`) cannot be resolved,
 so it passes and is logged at WARN rather than guessed at — a refusal requires a
