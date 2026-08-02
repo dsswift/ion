@@ -93,6 +93,26 @@ while its cost is unbounded. `build` is also more correct: it reconciles against
 *that worktree's* lockfile rather than snapshotting whatever state the source
 happened to be in. Copy exists only for directories with no way to rebuild them.
 
+### Cache-first npm installs
+
+npm stores downloaded package archives in its user-level content-addressable
+cache, normally `~/.npm`, outside every worktree. Place an `.npmrc` in each
+npm project directory that runs an install, including nested projects such as
+`desktop/`, and set `prefer-offline=true`. Root and nested `npm ci` commands then
+reuse a cached archive before checking the registry. npm still fetches from the
+configured registry when an archive is absent, so a fresh worktree can provision
+normally.
+
+```ini
+# .npmrc and desktop/.npmrc
+prefer-offline=true
+```
+
+Do not set `offline=true` for normal worktree provisioning. That setting rejects
+cache misses, which makes a first install or newly introduced dependency fail.
+The cache shares package archives; every worktree still receives its own
+independent `node_modules` tree through the provisioning ladder.
+
 ### Clones are safe to write to
 
 A reflink shares physical blocks but is a separate file. The first write to
