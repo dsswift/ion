@@ -1,6 +1,8 @@
 package session
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -66,7 +68,7 @@ func TestApplySlashModelHint(t *testing.T) {
 		opts := &types.RunOptions{
 			Prompt: "/test-cmd",
 		}
-		applySlashModelHint(opts, "claude-sonnet")
+		applySlashModelHint(opts, "claude-sonnet", false)
 
 		if opts.ResolvedSlashModelAlias != "claude-sonnet" {
 			t.Errorf("ResolvedSlashModelAlias = %q, want %q", opts.ResolvedSlashModelAlias, "claude-sonnet")
@@ -79,18 +81,18 @@ func TestApplySlashModelHint(t *testing.T) {
 		}
 	})
 
-	t.Run("explicit per-prompt override wins over frontmatter", func(t *testing.T) {
+	t.Run("explicit per-prompt model wins over command frontmatter", func(t *testing.T) {
 		opts := &types.RunOptions{
 			Prompt: "/test-cmd",
 			Model:  "claude-opus",
 		}
-		applySlashModelHint(opts, "claude-sonnet")
+		applySlashModelHint(opts, "claude-sonnet", true)
 
 		if opts.ResolvedSlashModelAlias != "claude-sonnet" {
 			t.Errorf("ResolvedSlashModelAlias = %q, want %q", opts.ResolvedSlashModelAlias, "claude-sonnet")
 		}
 		if opts.Model != "claude-opus" {
-			t.Errorf("Model = %q, want %q (explicit override should win)", opts.Model, "claude-opus")
+			t.Errorf("Model = %q, want %q (explicit per-prompt override must win)", opts.Model, "claude-opus")
 		}
 		if opts.ResolvedSlashModelEffective != "" {
 			t.Errorf("ResolvedSlashModelEffective = %q, want empty before final resolution", opts.ResolvedSlashModelEffective)
@@ -102,7 +104,7 @@ func TestApplySlashModelHint(t *testing.T) {
 			Prompt: "/test-cmd",
 			Model:  "claude-opus",
 		}
-		applySlashModelHint(opts, "")
+		applySlashModelHint(opts, "", false)
 
 		if opts.ResolvedSlashModelAlias != "" {
 			t.Errorf("ResolvedSlashModelAlias = %q, want empty", opts.ResolvedSlashModelAlias)
@@ -116,7 +118,7 @@ func TestApplySlashModelHint(t *testing.T) {
 		opts := &types.RunOptions{
 			Prompt: "/test-cmd",
 		}
-		applySlashModelHint(opts, "")
+		applySlashModelHint(opts, "", false)
 
 		if opts.ResolvedSlashModelAlias != "" {
 			t.Errorf("ResolvedSlashModelAlias = %q, want empty", opts.ResolvedSlashModelAlias)
@@ -125,6 +127,62 @@ func TestApplySlashModelHint(t *testing.T) {
 			t.Errorf("ResolvedSlashModelEffective = %q, want empty", opts.ResolvedSlashModelEffective)
 		}
 	})
+}
+
+func TestSlashModelProvenance_PromptPrecedence(t *testing.T) {
+	workingDir := t.TempDir()
+	commandsDir := filepath.Join(workingDir, ".ion", "commands")
+	if err := os.MkdirAll(commandsDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(commandsDir, "tier.md"), []byte("---\nmodel: standard\n---\ninspect $ARGUMENTS"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	mb := newMockBackend()
+	mgr := NewManager(mb)
+	mgr.SetConfig(&types.EngineRuntimeConfig{DefaultModel: "standard"})
+	if _, err := mgr.StartSession("slash-model", types.EngineConfig{ProfileID: "test", WorkingDirectory: workingDir}); err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+
+	if err := mgr.SendPrompt("slash-model", "/tier explicit", &PromptOverrides{Model: "explicit-model", ResolveSlash: true}); err != nil {
+		t.Fatalf("SendPrompt explicit: %v", err)
+	}
+	mgr.mu.RLock()
+	explicitRun := mgr.sessions["slash-model"].requestID
+	mgr.mu.RUnlock()
+	explicit, ok := mb.getStarted(explicitRun)
+	if !ok {
+		t.Fatal("explicit prompt never reached backend")
+	}
+	if explicit.Model != "explicit-model" {
+		t.Fatalf("explicit prompt model = %q, want explicit-model", explicit.Model)
+	}
+	if explicit.ResolvedSlashModelAlias != "standard" || explicit.ResolvedSlashModelEffective != "explicit-model" {
+		t.Fatalf("explicit provenance = (%q, %q), want (standard, explicit-model)", explicit.ResolvedSlashModelAlias, explicit.ResolvedSlashModelEffective)
+	}
+
+	mgr.handleRunExit(explicitRun, intPtr(0), nil, "")
+	mgr.mu.Lock()
+	mgr.sessions["slash-model"].lastModel = "previous-conversation-model"
+	mgr.mu.Unlock()
+	if err := mgr.SendPrompt("slash-model", "/tier continuity", &PromptOverrides{ResolveSlash: true}); err != nil {
+		t.Fatalf("SendPrompt frontmatter: %v", err)
+	}
+	mgr.mu.RLock()
+	frontmatterRun := mgr.sessions["slash-model"].requestID
+	mgr.mu.RUnlock()
+	frontmatter, ok := mb.getStarted(frontmatterRun)
+	if !ok {
+		t.Fatal("frontmatter prompt never reached backend")
+	}
+	if frontmatter.Model != "standard" {
+		t.Fatalf("frontmatter prompt model = %q, want standard", frontmatter.Model)
+	}
+	if frontmatter.ResolvedSlashModelAlias != "standard" || frontmatter.ResolvedSlashModelEffective != "standard" {
+		t.Fatalf("frontmatter provenance = (%q, %q), want (standard, standard)", frontmatter.ResolvedSlashModelAlias, frontmatter.ResolvedSlashModelEffective)
+	}
 }
 
 func TestFinalizeSlashModelProvenance(t *testing.T) {

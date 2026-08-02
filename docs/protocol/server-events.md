@@ -1065,6 +1065,24 @@ Advisory nudge that provider auth state or the available-model listing may have 
 
 ---
 
+### `engine_user_turn_persisted`
+
+Incremental pre-stream signal for the run-opening user turn. It fires after the
+engine persists that turn and before assistant streaming begins, including when
+the run later fails or is cancelled. Clients use `userTurnEntryId` to re-key
+their optimistic row to the durable tree-entry identity; they must merge the
+optional model provenance into that same row. This is not a history snapshot and
+contains no user content.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"engine_user_turn_persisted"` | Event type. |
+| `userTurnEntryId` | string | Canonical persisted tree-entry ID for the opening user turn. |
+| `userTurnSlashModelAlias` | string | Optional command-frontmatter model alias. |
+| `userTurnSlashModelEffective` | string | Optional resolved model ID, qualified or direct, used for this invocation. |
+
+See [Slash-Command Provenance on Message Events](#slash-command-provenance-on-message-events) for persistence and history replay fields.
+
 ## Slash-Command Provenance on Message Events
 
 When a user turn originates from a slash-command invocation, the engine persists the **raw** invocation (the `/name args` the user typed) as the displayed turn, while the model sees the expanded template body. Slash provenance travels with that message wherever it appears on the wire.
@@ -1079,7 +1097,7 @@ The `load_session_history` response includes these fields on user-role `SessionM
 | `slashArgs`     | string | The argument text that followed the command name. May be empty. |
 | `slashSource`   | string | Where the command was resolved: `"ion"` (`.ion/commands`), `"claude"` (`.claude/commands`), `"skill"`, or `"extension"` (registered via `RegisterCommand`). |
 | `slashModelAlias` | string | The model alias requested by the command's frontmatter `model:` field (e.g. `"standard"`, `"reasoning"`, `"fast"`). Present only when the command specifies a per-run model. |
-| `slashModelEffective` | string | The concrete provider-qualified model ID the engine resolved for this invocation (e.g. `"dci-marketing/gpt-5.6-terra"`). Present only when `slashModelAlias` is set. |
+| `slashModelEffective` | string | The resolved model ID used for this invocation (for example, `"dci-marketing/gpt-5.6-terra"` or an unqualified direct model ID). Present only when `slashModelAlias` is set. |
 
 ### `desktop_message_added` / `desktop_conversation_history` — RemoteMessage
 
@@ -1091,8 +1109,8 @@ The same fields appear on `RemoteMessage` objects sent to paired iOS clients via
 | `slashArgs`      | string | Arguments following the command name. |
 | `slashSource`    | string | Resolution origin: `"ion"`, `"claude"`, `"skill"`, or `"extension"`. |
 | `slashModelAlias` | string | Optional model alias from command frontmatter (e.g. `"standard"`). |
-| `slashModelEffective` | string | Optional provider-qualified model ID resolved for this invocation. |
+| `slashModelEffective` | string | Optional resolved model ID, qualified or direct, used for this invocation. |
 
-The engine also adds the same model provenance to `engine_user_turn_persisted` as `userTurnSlashModelAlias` and `userTurnSlashModelEffective`. This pre-stream signal lets clients stamp the optimistic slash bubble before history reload. The fields describe only that invocation's run and never change the conversation-level model shown by a status bar.
+The engine also carries these model fields on [`engine_user_turn_persisted`](#engine_user_turn_persisted) as `userTurnSlashModelAlias` and `userTurnSlashModelEffective`, letting clients stamp an optimistic slash bubble before history reload. The fields describe only that invocation's run and never change the conversation-level model shown by a status bar.
 
 The engine sets these fields via the session layer's slash-stash mechanism (see `pendingSlashInvocation` in `engine/internal/session/types.go`). For extension-dispatched prompts, the stash is written by `dispatchCommand` and consumed by `SendPrompt`; for direct `send_prompt` invocations the engine resolves the command inline when `resolveSlash` is `true` on the command.

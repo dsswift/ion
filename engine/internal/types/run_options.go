@@ -344,9 +344,10 @@ type RunOptions struct {
 	// Empty when the command declared no model hint. In-process run field.
 	ResolvedSlashModelAlias string `json:"-"`
 	// ResolvedSlashModelEffective is the model that the engine actually uses
-	// for this run after applying the frontmatter hint (no-stomp: an explicit
-	// per-prompt override wins over the frontmatter alias). Empty when no
-	// model was resolved. In-process run field.
+	// for this run after tier resolution and documented precedence: an explicit
+	// per-prompt model override wins; otherwise slash frontmatter can select the
+	// run model over conversation continuity. Empty when no model was resolved.
+	// In-process run field.
 	ResolvedSlashModelEffective string `json:"-"`
 
 	// InjectionKind classifies an engine-side injected user turn so the

@@ -73,8 +73,9 @@ type MessageData struct {
 	// (`model:` key). Provenance only. Empty when no model hint was declared.
 	SlashModelAlias string `json:"slashModelAlias,omitempty"`
 	// SlashModelEffective is the model the engine resolved for this run after
-	// applying the frontmatter hint (no-stomp: explicit per-prompt override
-	// wins). Provenance only. Empty when no model was resolved.
+	// applying tier resolution and documented precedence. It is provenance only;
+	// an explicit per-prompt model override wins over slash frontmatter. Empty
+	// when no model was resolved.
 	SlashModelEffective string `json:"slashModelEffective,omitempty"`
 
 	// DisplayOnly marks an entry that belongs in the tree/scrollback (so the

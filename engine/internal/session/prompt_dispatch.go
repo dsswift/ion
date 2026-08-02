@@ -238,6 +238,11 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// write plans to <project>/.ion/plans/.
 	opts := buildRunOptions(s, text, overrides)
 
+	// An explicit send_prompt.model is a published per-prompt override. Preserve
+	// it over slash frontmatter and conversation continuity; only its value, not
+	// model equality, proves caller intent.
+	hasExplicitModel := overrides != nil && overrides.Model != ""
+
 	// Slash-command resolution + expansion. When the client flagged this prompt
 	// as a slash invocation, resolve the template across the conventional roots
 	// and rewrite opts.Prompt to the EXPANDED body; the runloop persists the raw
@@ -247,7 +252,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// handled here — those route through SendCommand; this path owns the
 	// .md/skill/template resolution that was formerly a per-consumer fallback.
 	if overrides != nil && overrides.ResolveSlash {
-		resolved, failedCmd := m.resolveSlashIntoOpts(s, key, &opts)
+		resolved, failedCmd := m.resolveSlashIntoOpts(s, key, &opts, hasExplicitModel)
 		if !resolved {
 			m.mu.Unlock()
 			s.requestID = ""
@@ -288,7 +293,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// preserves the model across desktop restarts where the tab UUID changes
 	// and the desktop loses its engineModelOverrides. The user can still
 	// explicitly override by selecting a different model in the picker.
-	if s.lastModel != "" && m.config != nil && opts.Model == m.config.DefaultModel && opts.Model != s.lastModel {
+	if s.lastModel != "" && !hasExplicitModel && opts.ResolvedSlashModelAlias == "" && m.config != nil && opts.Model == m.config.DefaultModel && opts.Model != s.lastModel {
 		utils.LogWithFields(utils.LevelInfo, "session", "prompt_dispatch: overriding default model with conversation model", map[string]any{"key": key, "model": opts.Model, "conversation_model": s.lastModel})
 		opts.Model = s.lastModel
 	}

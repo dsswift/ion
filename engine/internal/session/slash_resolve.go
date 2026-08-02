@@ -180,9 +180,10 @@ func resolveSlashCommand(name, args, workingDir string, claudeCompat bool) (*Res
 // resolveSlashIntoOpts resolves the slash invocation carried in opts.Prompt and,
 // on success, rewrites opts.Prompt to the EXPANDED body and records the raw
 // invocation on opts (ResolvedSlash* fields) so the runloop persists the
-// invocation as the display turn. Frontmatter model / allowed-bash hints are
-// applied with a no-stomp policy (an explicit per-prompt override wins). On
-// failure (not a parseable invocation, or no template found) it emits an
+// invocation as the display turn. hasExplicitModel records whether the client
+// supplied `send_prompt.model`; that public per-prompt override wins over
+// command frontmatter. Allowed-bash hints are unioned for this run. On failure
+// (not a parseable invocation, or no template found) it emits an
 // unknown_command result and returns false so SendPrompt aborts the prompt
 // without starting a run.
 //
@@ -193,7 +194,7 @@ func resolveSlashCommand(name, args, workingDir string, claudeCompat bool) (*Res
 // failedCommand is the string to pass to emitUnknownCommand. The caller is
 // responsible for emitting the unknown-command event AFTER releasing m.mu,
 // because emit acquires m.mu.RLock which deadlocks under a held write lock.
-func (m *Manager) resolveSlashIntoOpts(s *engineSession, key string, opts *types.RunOptions) (bool, string) {
+func (m *Manager) resolveSlashIntoOpts(s *engineSession, key string, opts *types.RunOptions, hasExplicitModel bool) (bool, string) {
 	name, args, ok := parseSlashInvocation(opts.Prompt)
 	if !ok {
 		utils.LogWithFields(utils.LevelInfo, "session.slash", "resolveslash set but prompt is not a slash invocation", map[string]any{"key": key})
@@ -221,10 +222,9 @@ func (m *Manager) resolveSlashIntoOpts(s *engineSession, key string, opts *types
 	opts.ResolvedSlashSource = res.Source
 	opts.ResolvedSlashContext = res.Context
 
-	// Capture and apply the command's explicit model hint. Effective model is
-	// recorded later, after tier resolution and conversation continuity choose
-	// the model that will actually serve the run.
-	applySlashModelHint(opts, res.Model)
+	// Capture the command's model hint for provenance. It selects the model
+	// only when the client did not explicitly set send_prompt.model.
+	applySlashModelHint(opts, res.Model, hasExplicitModel)
 
 	// Apply frontmatter allowed-bash additions for this run (union, transient).
 	if len(res.AllowedBashCommands) > 0 {
@@ -237,9 +237,9 @@ func (m *Manager) resolveSlashIntoOpts(s *engineSession, key string, opts *types
 	return true, ""
 }
 
-func applySlashModelHint(opts *types.RunOptions, frontmatterModel string) {
+func applySlashModelHint(opts *types.RunOptions, frontmatterModel string, hasExplicitModel bool) {
 	opts.ResolvedSlashModelAlias = frontmatterModel
-	if frontmatterModel != "" && opts.Model == "" {
+	if frontmatterModel != "" && !hasExplicitModel {
 		opts.Model = frontmatterModel
 	}
 }
