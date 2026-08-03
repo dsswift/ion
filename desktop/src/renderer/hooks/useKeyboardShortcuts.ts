@@ -107,7 +107,11 @@ export function handleNewConversationShortcut(
  * Shortcut groups:
  *   Navigation: tab.prev (Cmd+H) · tab.next (Cmd+L) · tab.close (Cmd+W)
  *   Panels: panel.explorer (Cmd+1) · panel.terminal (Cmd+2) · panel.git (Cmd+3) ·
- *           panel.editor (Cmd+E) · terminal.toggle (Ctrl+`) · terminal.addShell (Ctrl+Shift+`)
+ *           panel.statusDrawer (Cmd+4) · panel.editor (Cmd+E) ·
+ *           terminal.toggle (Ctrl+`) · terminal.addShell (Ctrl+Shift+`)
+ *     panel.git and panel.statusDrawer are mutually exclusive by store
+ *     invariant, not by anything here: the handler just toggles, and
+ *     expand-slice closes whichever right-side panel the other one displaces.
  *   Layout: layout.collapse (Cmd+J) · layout.expand (Cmd+K) · layout.tall (Cmd+Y)
  *   Tabs: tab.new (Cmd+T) · tab.newHere (Cmd+Shift+T) · tab.recentDirs (Cmd+R) ·
  *         tab.scratch (Cmd+N)
@@ -180,6 +184,10 @@ export function useKeyboardShortcuts() {
       if (matchesChord(e, bindings.get('panel.git') ?? null)) {
         e.preventDefault()
         useSessionStore.getState().toggleGitPanel()
+      }
+      if (matchesChord(e, bindings.get('panel.statusDrawer') ?? null)) {
+        e.preventDefault()
+        useSessionStore.getState().toggleStatusDrawer()
       }
 
       // — Layout ————————————————————————————————————————————————————
