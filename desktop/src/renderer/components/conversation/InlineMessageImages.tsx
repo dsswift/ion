@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { ImageGallery } from './ImageGallery'
 import type { Attachment, FileAttachment } from '../../../shared/types'
 
@@ -47,9 +47,16 @@ export function deriveMessageImages(content: string, attachments?: Attachment[])
  * One image keeps the large inline thumbnail; two or more become a paged rail
  * so a many-image turn cannot stretch the transcript. Clicking a tile opens
  * the ImageViewer floating panel with save-as, reveal, and paging.
+ *
+ * `images` is memoized on [content, attachments]. ImageGallery's
+ * IntersectionObserver effect and its `siblings` memo both key on the
+ * identity of the items array, and this component sits on the streaming
+ * transcript's hot path — a parent re-render on every chunk would otherwise
+ * hand the gallery a freshly allocated array each time, tearing down and
+ * re-observing every visible tile and defeating the sibling memo it feeds.
  */
 export function InlineMessageImages({ content, attachments, align = 'end' }: { content: string; attachments?: Attachment[]; align?: 'start' | 'end' }) {
-  const images = deriveMessageImages(content, attachments)
+  const images = useMemo(() => deriveMessageImages(content, attachments), [content, attachments])
   if (images.length === 0) return null
   return <ImageGallery items={images} align={align} />
 }

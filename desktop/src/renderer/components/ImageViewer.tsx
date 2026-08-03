@@ -101,9 +101,24 @@ export function ImageViewer({ filePath, fileName, onClose, siblings, index = 0, 
 
   // Arrow-key paging. Sits alongside FloatingPanel's own Escape handler rather
   // than inside it: paging is the viewer's concern, closing is the panel's.
+  //
+  // ImageViewer is a FloatingPanel, which is non-modal (no backdrop — it
+  // portals a single positioned div), so the composer textarea stays focused
+  // and reachable behind the panel. Without a focus check, ArrowLeft/ArrowRight
+  // typed into that textarea would page the gallery and preventDefault would
+  // swallow the caret move, making it impossible to move the cursor while a
+  // gallery viewer is open. Skip paging when the key originated in an
+  // editable element, mirroring the same check in useKeyboardShortcuts.ts.
   useEffect(() => {
     if (!canPage) return
     const handleKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      const isEditable = !!target && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable
+      )
+      if (isEditable) return
       if (e.key === 'ArrowLeft') { e.preventDefault(); goPrev() }
       else if (e.key === 'ArrowRight') { e.preventDefault(); goNext() }
     }

@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { deriveMessageImages } from './InlineMessageImages'
 import { ImageGallery, type GalleryImage } from './ImageGallery'
 import { rInfo } from '../../rendererLogger'
@@ -45,19 +45,32 @@ export const ToolImagesStrip = React.memo(function ToolImagesStrip({ tools }: { 
   // produces false-positive image pills from paths that don't exist and were
   // never meant to be images. The content-scan path in deriveMessageImages is
   // for user message restoration only.
-  const items: GalleryImage[] = tools.flatMap((tool) =>
-    deriveMessageImages('', tool.attachments).map((img) => ({
-      ...img,
-      key: `${tool.id}:${img.key}`,
-      caption: tool.toolName,
-    })),
-  )
+  //
+  // Single pass over `tools`: derive each row's images once, fold them into
+  // the flattened gallery list, and count rows-with-images alongside it —
+  // rather than a second deriveMessageImages sweep purely for the log field.
+  // Memoized on [tools] because ImageGallery's IntersectionObserver effect and
+  // its `siblings` memo both key on this array's identity, and this component
+  // sits on the streaming transcript's hot path.
+  const { items, rows } = useMemo(() => {
+    const flattened: GalleryImage[] = []
+    let rowsWithImages = 0
+    for (const tool of tools) {
+      const images = deriveMessageImages('', tool.attachments)
+      if (images.length === 0) continue
+      rowsWithImages += 1
+      for (const img of images) {
+        flattened.push({ ...img, key: `${tool.id}:${img.key}`, caption: tool.toolName })
+      }
+    }
+    return { items: flattened, rows: rowsWithImages }
+  }, [tools])
+
   if (items.length === 0) return null
 
   // Observability: a render with zero painted images despite attachments in the
   // store would be a regression of the exact #224 defect. Log the count so the
   // NEXT failure is diagnosable from desktop.jsonl alone (per logging policy).
-  const rows = tools.filter((t) => deriveMessageImages('', t.attachments).length > 0).length
   rInfo('conversation', 'rendering tool image strip', { rows, images: items.length })
 
   return (

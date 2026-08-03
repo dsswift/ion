@@ -125,6 +125,26 @@ describe('ImageViewer paging', () => {
     view.unmount()
   })
 
+  it('does not page when arrow keys originate in a focused text field', async () => {
+    // ImageViewer is a FloatingPanel, which is non-modal (no backdrop) — the
+    // composer textarea stays focused and reachable behind the panel. Without
+    // this guard, typing ArrowRight to move the caret would instead page the
+    // gallery and swallow the keystroke (preventDefault), leaving the caret
+    // stuck. Dispatch the key FROM a focused textarea (not from `document`,
+    // which has no notion of "target") so the handler's target check is
+    // actually exercised.
+    const view = await render(<PagingHost start={0} />)
+    const input = document.createElement('textarea')
+    document.body.appendChild(input)
+    input.focus()
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    })
+    expect(view.src()).toContain('STUB_a.png')
+    document.body.removeChild(input)
+    view.unmount()
+  })
+
   it('shows the position counter', async () => {
     const view = await render(<PagingHost start={1} />)
     expect(view.container.textContent).toContain('2 / 3')

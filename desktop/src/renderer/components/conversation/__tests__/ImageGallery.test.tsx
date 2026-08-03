@@ -18,6 +18,8 @@
 import React from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -61,6 +63,20 @@ beforeEach(() => {
 })
 
 import { ImageGallery, galleryLayout, GALLERY_RAIL_CAP, type GalleryImage } from '../ImageGallery'
+
+// Cross-platform parity: GALLERY_RAIL_CAP must match the fixture iOS's
+// MessageAttachmentGalleryTests.swift asserts against, or the same
+// many-image conversation folds at a different point per device. See
+// assets/gallery-parity.json and the "Parity is part of the contract"
+// discipline in root AGENTS.md.
+const parityFixturePath = join(__dirname, '../../../../../../assets/gallery-parity.json')
+const galleryParityFixture = JSON.parse(readFileSync(parityFixturePath, 'utf-8')) as { railCap: number }
+
+describe('gallery cap cross-platform parity', () => {
+  it('GALLERY_RAIL_CAP matches assets/gallery-parity.json (shared with iOS)', () => {
+    expect(GALLERY_RAIL_CAP).toBe(galleryParityFixture.railCap)
+  })
+})
 
 function items(n: number): GalleryImage[] {
   return Array.from({ length: n }, (_, i) => ({ key: `k${i}`, path: `/c/img${i}.png`, name: `img${i}.png` }))
