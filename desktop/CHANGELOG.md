@@ -10,6 +10,17 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.74.0](https://github.com/dsswift/ion/compare/desktop-v1.73.1...desktop-v1.74.0) (2026-08-03)
+
+### Features
+
+* **desktop:** bench verify, purge verbs, singleton, auto-fix lifecycle ([af18fa3](https://github.com/dsswift/ion/commit/af18fa3fe661ad95f537366c9a86fccacafd1884))
+
+### Bug Fixes
+
+* **desktop:** validate bench resolutions ([0eaa0b1](https://github.com/dsswift/ion/commit/0eaa0b1a84e304f5c7d207f50f84f33c369a20b8))
+* **desktop:** restore worktree tab identity ([a1cf405](https://github.com/dsswift/ion/commit/a1cf4051541b91e3aad438816b4d6ee7c0a06074))
+
 ## [1.73.1](https://github.com/dsswift/ion/compare/desktop-v1.73.0...desktop-v1.73.1) (2026-08-03)
 
 ### Bug Fixes

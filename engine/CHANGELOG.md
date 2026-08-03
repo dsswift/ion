@@ -13,6 +13,17 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.63.0](https://github.com/dsswift/ion/compare/engine-v1.62.0...engine-v1.63.0) (2026-08-03)
+
+### Features
+
+* **engine:** workspace context, attribution, completion reason ([a85b2ca](https://github.com/dsswift/ion/commit/a85b2ca39a628aa6463321cb92bf3630e4944522))
+
+### Bug Fixes
+
+* **engine:** guard bench merge completion ([ca5e07e](https://github.com/dsswift/ion/commit/ca5e07e6c6b5bbc78a9bbfd758118485fb53cfad))
+* **engine:** honor PlanModeSafe in plan mode tool tests ([a7d1613](https://github.com/dsswift/ion/commit/a7d1613a73fdd4e3be9264880af276c271320022))
+
 ## [1.62.0](https://github.com/dsswift/ion/compare/engine-v1.61.0...engine-v1.62.0) (2026-08-03)
 
 ### Features

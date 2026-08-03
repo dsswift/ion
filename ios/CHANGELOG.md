@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.55.0](https://github.com/dsswift/ion/compare/ios-v1.54.0...ios-v1.55.0) (2026-08-03)
+
+### Features
+
+* **ios:** bench conversation navigation and completion reason ([9dd5271](https://github.com/dsswift/ion/commit/9dd5271ad649ed7fa044c3fd085f7c168ee62f6b))
+
 ## [1.54.0](https://github.com/dsswift/ion/compare/ios-v1.53.0...ios-v1.54.0) (2026-08-01)
 
 ### Features
