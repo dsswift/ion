@@ -13,6 +13,19 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.62.0](https://github.com/dsswift/ion/compare/engine-v1.61.0...engine-v1.62.0) (2026-08-03)
+
+### Features
+
+* **engine:** scope trace_id to the run, not the session ([1720941](https://github.com/dsswift/ion/commit/1720941d0d38728e1f18fc9deccebeb039d0e657))
+* **engine:** publish run and trace identity to extensions ([5934733](https://github.com/dsswift/ion/commit/5934733a217b031712a143e4483631699c00ecaa))
+
+### Bug Fixes
+
+* **engine:** correct misused canonical log field keys ([462e867](https://github.com/dsswift/ion/commit/462e86728d2134677a2f83e03536cc5752c36119))
+* **engine:** stop minting spec-invalid all-zero correlation ids ([29a6fc4](https://github.com/dsswift/ion/commit/29a6fc4b50821bb674322378aee2387a4b0837a4))
+* **engine:** propagate run traces through OTLP telemetry ([a875216](https://github.com/dsswift/ion/commit/a875216d742f613f593213088201c39ecfe1352b))
+
 ## [1.61.0](https://github.com/dsswift/ion/compare/engine-v1.60.0...engine-v1.61.0) (2026-08-01)
 
 ### Features

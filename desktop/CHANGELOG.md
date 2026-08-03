@@ -10,6 +10,14 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.73.1](https://github.com/dsswift/ion/compare/desktop-v1.73.0...desktop-v1.73.1) (2026-08-03)
+
+### Bug Fixes
+
+* **desktop:** coalesce concurrent history hydration ([8257760](https://github.com/dsswift/ion/commit/825776017971c94a01ab655269ac022ae4b5249b))
+* **desktop:** make preload off() actually remove the listener ([59d3800](https://github.com/dsswift/ion/commit/59d3800c091dd45dbb8297382288434f4a581a2b))
+* **desktop:** coalesce and cheapen worktree inventory crawls ([c8b9df1](https://github.com/dsswift/ion/commit/c8b9df165e8b8820c929ed40dc48f7b0ef7134b4))
+
 ## [1.73.0](https://github.com/dsswift/ion/compare/desktop-v1.72.0...desktop-v1.73.0) (2026-08-01)
 
 ### Features
