@@ -230,9 +230,13 @@ describe('openConflictAssist', () => {
 
     expect(tabId).toBe('tab-new')
     expect(createTabInDirectory).toHaveBeenCalledWith(WT, false, true)
-    // The prompt is specified verbatim; any drift is a defect.
-    expect(submit).toHaveBeenCalledWith('tab-new', 'Please fix my currently in-progress rebase.')
-    expect(CONFLICT_ASSIST_PROMPT).toBe('Please fix my currently in-progress rebase.')
+    const prompt = conflictAssistPrompt(null)
+    expect(submit).toHaveBeenCalledWith('tab-new', prompt)
+    expect(CONFLICT_ASSIST_PROMPT).toBe(prompt)
+    expect(prompt).toContain('currently in-progress rebase')
+    expect(prompt).toContain('Do not abort the rebase')
+    expect(prompt).toContain('separate standalone call containing only git rebase --continue')
+    expect(prompt).toContain('Done only when the operation has ended')
   })
 
   it('creates a FRESH conversation even when one already exists in the directory', async () => {
@@ -289,9 +293,11 @@ describe('openConflictAssist', () => {
 
     await h.slice.openConflictAssist!(WT)
 
-    expect(submit).toHaveBeenCalledWith('tab-new', 'Please fix my currently in-progress merge.')
-    expect(conflictAssistPrompt('merging')).toBe('Please fix my currently in-progress merge.')
-    expect(conflictAssistPrompt('cherry-picking')).toBe('Please fix my currently in-progress cherry-pick.')
+    const mergePrompt = conflictAssistPrompt('merging')
+    expect(submit).toHaveBeenCalledWith('tab-new', mergePrompt)
+    expect(mergePrompt).toContain('currently in-progress merge')
+    expect(mergePrompt).toContain('git merge --continue')
+    expect(conflictAssistPrompt('cherry-picking')).toContain('git cherry-pick --continue')
     expect(conflictAssistPrompt(null)).toBe(CONFLICT_ASSIST_PROMPT)
   })
 

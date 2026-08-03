@@ -816,6 +816,24 @@ building, testing, and staging are unaffected. A fix diagnosed in the bench
 belongs in the member worktree that owns the file: commit it there, then update
 that member in the bench.
 
+**Assembly is atomic, and a conflict is resolved once.** The bench presents the
+exact enrolled combination or nothing: a member whose pinned contribution will
+not merge fails the whole assembly and the bench is wiped to an empty tree
+(gitignored build output survives), so a terminal opened there finds nothing to
+falsely test. The conflict is resolved ONCE through the desktop's resolve flow —
+the machinery re-creates the failed merge and leaves it in progress, and while
+that merge is open both gates carve out exactly the resolution surface: edits to
+the unmerged paths, plus standalone merge-driver calls. `git merge --continue`
+passes only after every unmerged path is staged and `git diff --cached --check`
+accepts staged resolution; `git merge --abort` remains available while merge is
+open. Continue cannot share tool call or model response with other work, so a
+failed edit, formatter, test, or stage command cannot be masked by later merge
+completion. Completing validated merge records resolution (`git rerere`, stored
+in main repo's `rr-cache`, so wiping bench never loses it), and every later
+assembly validates replay before committing it. Invalid replay is forgotten and
+same real conflict is reopened instead of poisoning bench history. Replay stays
+deterministic until either side's conflicting lines genuinely change.
+
 **A bench refuses edits, and names where they belong.** The history rule above
 covers `commit`/`push`; a bench also refuses `Write`, `Edit`, and `ion_scaffold`
 (`engine/extensions/ion-meta/bench-write-gate.ts`), because an edit made there is

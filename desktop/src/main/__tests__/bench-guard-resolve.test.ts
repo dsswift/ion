@@ -16,7 +16,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { execFileSync } from 'child_process'
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'fs'
+import { chmodSync, mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -41,24 +41,24 @@ let home: string
 let bench: string
 let IPC: typeof import('../../shared/types').IPC
 
-/** A repo at the bench path with a CONFLICTED merge available on `feature`. */
-function makeConflictableRepo(): void {
-  mkdirSync(bench, { recursive: true })
-  execFileSync('git', ['init', '-b', 'main', bench], { encoding: 'utf-8' })
-  git(bench, 'config', 'user.email', 'dev@example.com')
-  git(bench, 'config', 'user.name', 'Dev')
-  git(bench, 'config', 'commit.gpgsign', 'false')
-  writeFileSync(join(bench, 'shared.txt'), 'base\n')
-  git(bench, 'add', '-A')
-  git(bench, 'commit', '-m', 'base')
-  git(bench, 'switch', '-c', 'feature')
-  writeFileSync(join(bench, 'shared.txt'), 'from feature\n')
-  git(bench, 'add', '-A')
-  git(bench, 'commit', '-m', 'feature change')
-  git(bench, 'switch', 'main')
-  writeFileSync(join(bench, 'shared.txt'), 'from main\n')
-  git(bench, 'add', '-A')
-  git(bench, 'commit', '-m', 'main change')
+/** A repo at the target path with a CONFLICTED merge available on `feature`. */
+function makeConflictableRepo(target = bench): void {
+  mkdirSync(target, { recursive: true })
+  execFileSync('git', ['init', '-b', 'main', target], { encoding: 'utf-8' })
+  git(target, 'config', 'user.email', 'dev@example.com')
+  git(target, 'config', 'user.name', 'Dev')
+  git(target, 'config', 'commit.gpgsign', 'false')
+  writeFileSync(join(target, 'shared.txt'), 'base\n')
+  git(target, 'add', '-A')
+  git(target, 'commit', '-m', 'base')
+  git(target, 'switch', '-c', 'feature')
+  writeFileSync(join(target, 'shared.txt'), 'from feature\n')
+  git(target, 'add', '-A')
+  git(target, 'commit', '-m', 'feature change')
+  git(target, 'switch', 'main')
+  writeFileSync(join(target, 'shared.txt'), 'from main\n')
+  git(target, 'add', '-A')
+  git(target, 'commit', '-m', 'main change')
 }
 
 beforeEach(async () => {
@@ -103,14 +103,45 @@ async function invoke(channel: string, args: Record<string, unknown>): Promise<{
   return (await handler({}, args)) as { ok?: boolean; error?: string }
 }
 
-function startConflictedMerge(): void {
+function startConflictedMerge(target = bench): void {
   try {
-    git(bench, 'merge', '--no-ff', '-m', 'ion-bench: test', 'feature')
+    git(target, 'merge', '--no-ff', '-m', 'ion-bench: test', 'feature')
     throw new Error('expected the merge to conflict')
   } catch {
     // In progress — MERGE_HEAD exists, shared.txt is unmerged.
   }
 }
+
+async function blockRepositoryMutationQueue(): Promise<{
+  release: () => void
+  blocker: Promise<void>
+}> {
+  const { repositoryManager } = await import('../git/repositoryManager')
+  let release!: () => void
+  const blocker = repositoryManager.get(join(home, 'repo')).queue.enqueueMutation(
+    () => new Promise<void>((resolve) => { release = resolve }),
+  )
+  return { release, blocker }
+}
+
+describe('ordinary repositories keep direct conflict behavior', () => {
+  it('accepts and aborts without entering bench repository queue', async () => {
+    const ordinary = join(home, 'ordinary')
+    makeConflictableRepo(ordinary)
+    startConflictedMerge(ordinary)
+
+    const accept = await invoke(
+      IPC.GIT_CONFLICT_ACCEPT,
+      { directory: ordinary, path: 'shared.txt', side: 'ours' },
+    )
+    expect(accept.ok).toBe(true)
+    expect(git(ordinary, 'ls-files', '--unmerged').trim()).toBe('')
+
+    const abort = await invoke(IPC.GIT_REBASE_ABORT, { directory: ordinary })
+    expect(abort.ok).toBe(true)
+    expect(git(ordinary, 'status', '--porcelain').trim()).toBe('')
+  })
+})
 
 describe('resolution verbs are refused while NO merge is in progress', () => {
   it('refuses continue, abort, and accept on a quiescent bench', async () => {
@@ -129,6 +160,105 @@ describe('resolution verbs are refused while NO merge is in progress', () => {
 })
 
 describe('resolution verbs pass while a merge IS in progress', () => {
+  it('refuses continue while unmerged paths remain', async () => {
+    startConflictedMerge()
+
+    const cont = await invoke(IPC.GIT_REBASE_CONTINUE, { directory: bench })
+    expect(cont.ok).toBe(false)
+    expect(cont.error).toMatch(/resolve and stage all merge conflicts/i)
+    expect(git(bench, 'diff', '--name-only', '--diff-filter=U').trim()).toBe('shared.txt')
+  })
+
+  it('refuses staged conflict markers before git can commit them', async () => {
+    startConflictedMerge()
+    writeFileSync(join(bench, 'shared.txt'), '<<<<<<< HEAD\nfrom main\n=======\nfrom feature\n>>>>>>> feature\n')
+    git(bench, 'add', 'shared.txt')
+
+    const before = git(bench, 'rev-parse', 'HEAD').trim()
+    const cont = await invoke(IPC.GIT_REBASE_CONTINUE, { directory: bench })
+
+    expect(cont.ok).toBe(false)
+    expect(cont.error).toMatch(/git diff --cached --check/i)
+    expect(git(bench, 'rev-parse', 'HEAD').trim()).toBe(before)
+  })
+
+  it('serializes preflight, continue, and postcheck on repository mutation queue', async () => {
+    startConflictedMerge()
+    writeFileSync(join(bench, 'shared.txt'), 'resolved\n')
+    git(bench, 'add', 'shared.txt')
+    const before = git(bench, 'rev-parse', 'HEAD').trim()
+
+    const { release, blocker } = await blockRepositoryMutationQueue()
+    const continuing = invoke(IPC.GIT_REBASE_CONTINUE, { directory: bench })
+    await new Promise((resolve) => setTimeout(resolve, 25))
+
+    expect(git(bench, 'rev-parse', 'HEAD').trim()).toBe(before)
+    expect(git(bench, 'rev-parse', '--verify', 'MERGE_HEAD').trim()).not.toBe('')
+
+    release()
+    await blocker
+    expect((await continuing).ok).toBe(true)
+    expect(git(bench, 'rev-parse', 'HEAD').trim()).not.toBe(before)
+  })
+
+  it('rolls back invalid committed delta and restores recoverable conflict', async () => {
+    startConflictedMerge()
+    git(bench, 'config', 'rerere.enabled', 'true')
+    writeFileSync(join(bench, 'shared.txt'), 'resolved\n')
+    git(bench, 'add', 'shared.txt')
+    const before = git(bench, 'rev-parse', 'HEAD').trim()
+    const hooks = join(bench, '.git', 'hooks')
+    const hook = join(hooks, 'pre-commit')
+    writeFileSync(hook, [
+      '#!/bin/sh',
+      'rm "$0"',
+      "printf 'invalid trailing whitespace   \\n' > injected.txt",
+      'git add injected.txt',
+      '',
+    ].join('\n'))
+    chmodSync(hook, 0o755)
+
+    const cont = await invoke(IPC.GIT_REBASE_CONTINUE, { directory: bench })
+
+    expect(cont.ok).toBe(false)
+    expect(cont.error).toMatch(/conflict.*recover/i)
+    expect(git(bench, 'rev-parse', 'HEAD').trim()).toBe(before)
+    expect(git(bench, 'rev-parse', '--verify', 'MERGE_HEAD').trim()).not.toBe('')
+    expect(git(bench, 'diff', '--name-only', '--diff-filter=U').trim()).toBe('shared.txt')
+  })
+
+  it('queues accepting a side behind active repository mutation', async () => {
+    startConflictedMerge()
+    const before = git(bench, 'ls-files', '--unmerged')
+    const { release, blocker } = await blockRepositoryMutationQueue()
+
+    const accepting = invoke(
+      IPC.GIT_CONFLICT_ACCEPT,
+      { directory: bench, path: 'shared.txt', side: 'theirs' },
+    )
+    await new Promise((resolve) => setTimeout(resolve, 25))
+
+    expect(git(bench, 'ls-files', '--unmerged')).toBe(before)
+    release()
+    await blocker
+    expect((await accepting).ok).toBe(true)
+    expect(git(bench, 'ls-files', '--unmerged').trim()).toBe('')
+  })
+
+  it('queues abort behind active repository mutation', async () => {
+    startConflictedMerge()
+    const { release, blocker } = await blockRepositoryMutationQueue()
+
+    const aborting = invoke(IPC.GIT_REBASE_ABORT, { directory: bench })
+    await new Promise((resolve) => setTimeout(resolve, 25))
+
+    expect(git(bench, 'rev-parse', '--verify', 'MERGE_HEAD').trim()).not.toBe('')
+    release()
+    await blocker
+    expect((await aborting).ok).toBe(true)
+    expect(() => git(bench, 'rev-parse', '--verify', 'MERGE_HEAD')).toThrow()
+  })
+
   it('accepts a side and continues the merge to completion', async () => {
     startConflictedMerge()
 

@@ -48,7 +48,13 @@ import { applyPermissionModeForTab } from './tab-slice-permission-mode'
 export function conflictAssistPrompt(operation: 'rebasing' | 'merging' | 'cherry-picking' | null): string {
   const noun = operation === 'merging' ? 'merge'
     : operation === 'cherry-picking' ? 'cherry-pick' : 'rebase'
-  return `Please fix my currently in-progress ${noun}.`
+  return [
+    `Resolve my currently in-progress ${noun}.`,
+    'Inspect every conflict, resolve files, run relevant formatters and tests, then stage resolved files.',
+    `Do not abort the ${noun}. Do not combine continue with resolution, formatting, testing, or staging commands.`,
+    `Only after those steps succeed, make a separate standalone call containing only git ${noun} --continue.`,
+    'Done only when the operation has ended and git status reports no unmerged paths.',
+  ].join(' ')
 }
 
 /** Back-compat name for the default (rebase) prompt. Verbatim by specification. */

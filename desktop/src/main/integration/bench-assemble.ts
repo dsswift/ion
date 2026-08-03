@@ -67,6 +67,7 @@ import { log as _log, warn as _warn } from '../logger'
 import { integrationRoot } from './bench-store'
 import { benchMergeInProgress } from './bench-guard'
 import { resolveContribution, isLandedIntoSource } from './bench-contribution'
+import { ensureRerereEnabled, tryReplayResolution } from './bench-assembly-rerere'
 import { parseWorktreeList } from '../worktree/integrate'
 import type { IntegrationWorkspace, IntegrationMember, BenchAssembleResult } from '../../shared/types'
 
@@ -145,66 +146,6 @@ async function describeConflict(
     }
   }
   return { paths, conflictsWith }
-}
-
-/**
- * Enable `git rerere` for the repository that hosts the bench.
- *
- * Repo-local (`--local` is the default scope for `git config` writes), set on
- * the bench worktree but stored in the shared common dir, so every worktree of
- * the repo — including the operator's own manual rebases — records and replays
- * resolutions. `rerere.autoUpdate` also stages a replayed path, which is what
- * lets an assembly commit a fully replayed merge without hand-adding files.
- *
- * Idempotent and cheap (two config writes), so it runs on every assembly
- * rather than tracking a "configured once" flag that could go stale when the
- * repo's config is wiped.
- */
-async function ensureRerereEnabled(benchPath: string): Promise<void> {
-  try {
-    await runGit(benchPath, ['config', 'rerere.enabled', 'true'])
-    await runGit(benchPath, ['config', 'rerere.autoUpdate', 'true'])
-    log('rerere enabled for repository', { bench_path: benchPath })
-  } catch (err) {
-    // Assembly still works without rerere — conflicts just always need a fresh
-    // resolution — so this degrades rather than fails.
-    warn('could not enable rerere', { bench_path: benchPath, error: String(err) })
-  }
-}
-
-/**
- * Try to complete a conflicted merge from recorded rerere resolutions.
- *
- * `git merge` already invoked rerere on conflict (when enabled), so by the
- * time this runs a matching recording has been replayed into the working tree
- * and — via `rerere.autoUpdate` — staged. The question left is only "did the
- * replay cover EVERY unmerged path?". If yes, commit the merge and report
- * success; if not, leave the merge in progress for the caller to abort and
- * report.
- */
-async function tryReplayResolution(
-  benchPath: string,
-  message: string,
-  branchName: string,
-): Promise<boolean> {
-  try {
-    const unmerged = (await runGit(benchPath, ['diff', '--name-only', '--diff-filter=U'])).trim()
-    if (unmerged) {
-      log('rerere replay incomplete, conflict stands', {
-        branch: branchName,
-        unmerged_paths: unmerged.split('\n').length,
-      })
-      return false
-    }
-    // Everything was replayed and staged. Commit the merge that `git merge`
-    // could not finish; `--no-edit` keeps the ion-bench message it prepared.
-    await runGit(benchPath, ['commit', '--no-edit', '-m', message])
-    log('merge completed from recorded resolution', { branch: branchName })
-    return true
-  } catch (err) {
-    warn('rerere replay commit failed, conflict stands', { branch: branchName, error: String(err) })
-    return false
-  }
 }
 
 /**
@@ -446,7 +387,7 @@ export async function assembleBenchUnqueued(ws: IntegrationWorkspace): Promise<B
       // unmerged path was covered, the merge commits and the member reports
       // `merged` — flagged as replayed so the difference from a clean merge
       // stays observable in the record, the wire, and the logs.
-      if (await tryReplayResolution(ws.benchPath, message, member.branchName)) {
+      if (await tryReplayResolution(ws.benchPath, message, member.branchName, member.pinnedSha)) {
         merged.push(member)
         updatedMembers.push({
           ...member,

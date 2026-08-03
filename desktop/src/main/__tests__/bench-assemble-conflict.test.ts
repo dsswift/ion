@@ -268,6 +268,29 @@ describe('assembleBench — rerere resolve once, replay forever', () => {
     expect(again.workspace!.members.find((m) => m.branchName === 'wt/c')!.mergeResolution).toBe('replayed')
   })
 
+  it('rejects and forgets a replay whose recorded postimage contains conflict markers', async () => {
+    const a = makeWorktree('a', 'shared.txt', 'from a\n')
+    const c = makeWorktree('c', 'shared.txt', 'from c\n')
+    const ws = workspaceFor([await enroll(a), await enroll(c)])
+
+    await assembleBench(ws)
+    const poisoned = '<<<<<<< HEAD\nfrom a\n=======\nfrom c\n>>>>>>> wt/c\n'
+    resolveOnceInBench(ws, ws.members[1].pinnedSha, poisoned)
+
+    const result = await assembleBench(ws)
+
+    expect(result.workspace!.lastAssembly).toBe('failed')
+    expect(result.workspace!.members.find((m) => m.branchName === 'wt/c')!.merge).toBe('conflicted')
+    expect(existsSync(join(ws.benchPath, 'shared.txt'))).toBe(false)
+
+    // Recording was forgotten while merge context still existed. Recreating
+    // same conflict exposes real unmerged state instead of replaying poison.
+    git(ws.benchPath, 'switch', '-C', ws.benchBranch, 'main', '--discard-changes')
+    git(ws.benchPath, 'merge', '--no-ff', '-m', 'prior', ws.members[0].pinnedSha)
+    expect(() => git(ws.benchPath, 'merge', '--no-ff', '-m', 'conflict again', ws.members[1].pinnedSha)).toThrow()
+    expect(git(ws.benchPath, 'diff', '--name-only', '--diff-filter=U').trim()).toBe('shared.txt')
+  })
+
   it('stops replaying when the conflicting lines genuinely change, and honestly conflicts again', async () => {
     const a = makeWorktree('a', 'shared.txt', 'from a\n')
     const c = makeWorktree('c', 'shared.txt', 'from c\n')

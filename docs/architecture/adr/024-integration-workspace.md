@@ -342,13 +342,27 @@ forever. The answer is git's own answer for its `seen` integration branch —
   genuinely new conflict, the theoretical minimum.
 
 While the machinery-prepared merge is open, both enforcement halves carve out
-exactly the resolution surface and nothing else: the desktop guard passes the
-conflict-resolution IPC and merge continue/abort, and the engine's workspace
-containment passes `git merge --continue`/`--abort` plus `Write`/`Edit` on the
-**unmerged paths only** (an edit to a conflicted path during resolution *is*
-the reviewable artifact — it becomes the recording). Both carve-outs fail
-closed: an unreadable probe refuses as before, the conservative direction for
-a permission widening.
+exactly the resolution surface and nothing else. The desktop guard passes the
+conflict-resolution IPC and merge abort. Engine workspace containment passes
+`Write`/`Edit` on **unmerged paths only** because an edit to a conflicted path
+during resolution is the reviewable artifact that becomes the recording. Merge
+completion has a stricter invariant: `git merge --continue` must be a standalone
+call in the model response, the index must contain no unmerged entries, and
+`git diff --cached --check` must accept the staged resolution. This prevents a
+failed edit, formatter, test, or staging command from being masked by a later
+Continue in the same shell or parallel tool batch.
+
+Automatic rerere replay obeys the same staged-content validation before the
+machinery commits it. An invalid replay is never treated as "nothing left to
+resolve": Ion captures the exact rerere paths while the conflict context exists,
+forgets the bad recording, and recreates the same real merge for fresh
+resolution. If capture or forget fails, the flow stops visibly rather than
+claiming recovery. Desktop Continue also runs its preflight, mutation, and
+postcondition checks under the repository mutation queue; success requires that
+the operation ended, HEAD advanced, and the resulting delta passes
+`git diff --check`. A bad resulting commit is rolled back and the original
+conflict is recreated. Both carve-outs fail closed: an unreadable probe refuses
+as before, the conservative direction for a permission widening.
 
 The badge on a conflicted member opens the **BenchConflictDialog**, which reads
 the membership record (no operation probe — after the atomic wipe there is

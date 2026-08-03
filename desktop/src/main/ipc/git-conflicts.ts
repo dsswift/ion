@@ -29,6 +29,7 @@ import { IPC } from '../../shared/types'
 import { log as _log, warn as _warn } from '../logger'
 import { runGit } from '../git-runner'
 import { benchGuard } from '../integration/bench-guard'
+import { benchMutationQueue } from '../integration/bench-mutation-queue'
 import { probeOperationState } from '../git/operation-state'
 
 const TAG = 'git.conflicts'
@@ -176,25 +177,35 @@ export function registerGitConflictsIpc(): void {
     async (_event, { directory, path, side }: { directory: string; path: string; side: 'ours' | 'theirs' }) => {
       const refusal = benchGuard(directory, 'resolve a conflict')
       if (refusal) return refusal
-      try {
-        const presence = (await stagePresence(directory)).get(path)
-        if (!presence) {
-          return { ok: false, error: `${path} is not conflicted.` }
+      const acceptConflict = async (): Promise<{ ok: boolean; error?: string }> => {
+        try {
+          const presence = (await stagePresence(directory)).get(path)
+          if (!presence) {
+            return { ok: false, error: `${path} is not conflicted.` }
+          }
+          const sideExists = side === 'ours' ? presence.ours : presence.theirs
+          if (sideExists) {
+            await runGit(directory, ['checkout', `--${side}`, '--', path])
+            await runGit(directory, ['add', '--', path])
+          } else {
+            // Accepting a deletion: the file goes away and the removal is staged.
+            await runGit(directory, ['rm', '--', path])
+          }
+          log('conflict accepted', { directory, path, side, side_deleted: !sideExists })
+          return { ok: true }
+        } catch (err) {
+          warn('conflict accept failed', { directory, path, side, error: String(err) })
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
         }
-        const sideExists = side === 'ours' ? presence.ours : presence.theirs
-        if (sideExists) {
-          await runGit(directory, ['checkout', `--${side}`, '--', path])
-          await runGit(directory, ['add', '--', path])
-        } else {
-          // Accepting a deletion: the file goes away and the removal is staged.
-          await runGit(directory, ['rm', '--', path])
-        }
-        log('conflict accepted', { directory, path, side, side_deleted: !sideExists })
-        return { ok: true }
-      } catch (err) {
-        warn('conflict accept failed', { directory, path, side, error: String(err) })
-        return { ok: false, error: err instanceof Error ? err.message : String(err) }
       }
+
+      const queue = benchMutationQueue(directory)
+      if (queue) {
+        // Callback is deliberately unqueued. Entering same queue again here
+        // would deadlock behind this active mutation.
+        return queue.enqueueMutation(acceptConflict)
+      }
+      return acceptConflict()
     },
   )
 }
