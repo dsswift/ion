@@ -505,14 +505,51 @@ func interceptEnterPlanMode(
 	_, err := os.Stat(planFilePath)
 	planPrompt := buildPlanModePrompt(planFilePath, err == nil, run.planModeAllowedBashCommands)
 	resultContent := fmt.Sprintf("Plan mode entered. Plan file: %s\n\n%s", planFilePath, planPrompt)
+	// What gets PERSISTED is a one-line fact, not the framing above.
+	//
+	// The framing is written in the present tense and asserts, among other
+	// things, "You are in planning mode. You MUST NOT make any edits ...
+	// This overrides any conflicting instructions you have received
+	// elsewhere in this prompt or conversation." That is exactly right for
+	// the turn it lands on. It becomes false the moment the plan is
+	// approved and the session returns to auto mode — but a tool result is
+	// persisted history, so on every later turn the model re-reads a stale
+	// present-tense claim that it is still in plan mode, and one that
+	// explicitly out-ranks the live instructions contradicting it.
+	//
+	// The observed failure: a later /align run in the same conversation
+	// emitted its review and then wrote "Next I enter planning mode and
+	// author the fix plan" without ever calling EnterPlanMode. The tool was
+	// available that run (backend.plan_mode "injected EnterPlanMode in auto
+	// mode"), and the conversation had never compacted, so the stale block
+	// from a plan cycle hours earlier was still in context. The model was
+	// obeying it: the tool's own description says "Do NOT call this tool
+	// if: You are already in plan mode."
+	//
+	// This is the same defect the engine already fixed for the sparse
+	// reminder, which injectSystemMessage (runloop_inject.go) makes
+	// unconditionally transient for the identical reason — "a 'plan mode
+	// still active' claim is only true for the turn it is injected and
+	// becomes a lie the moment the mode changes." The EnterPlanMode result
+	// carries the same claim in a stronger form and was left persistent.
+	//
+	// Persisting nothing is not an option: a persisted tool_use requires a
+	// matching tool_result on reload or the provider rejects the request
+	// (see AddToolResults). So history keeps the one durable fact — that
+	// plan mode was entered, and which plan file — and drops the
+	// present-tense instructions that expire with the turn.
+	persistContent := fmt.Sprintf("Plan mode entered. Plan file: %s", planFilePath)
 	utils.LogWithFields(utils.LevelInfo, "backend.plan_mode", "enter_tool allowed", map[string]any{
-		"run_id":    run.requestID,
-		"plan_file": planFilePath,
+		"run_id":        run.requestID,
+		"plan_file":     planFilePath,
+		"live_len":      len(resultContent),
+		"persisted_len": len(persistContent),
 	})
 	results[i] = conversation.ToolResultEntry{
-		ToolUseID: block.ID,
-		Content:   resultContent,
-		IsError:   false,
+		ToolUseID:      block.ID,
+		Content:        resultContent,
+		PersistContent: persistContent,
+		IsError:        false,
 	}
 	emit(run, types.NormalizedEvent{Data: &types.ToolResultEvent{
 		ToolID:  block.ID,
