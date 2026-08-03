@@ -33,24 +33,26 @@ import (
 func (s *engineSession) newSessionRootContext() {
 	s.rootCtx, s.rootCancel = context.WithCancel(context.Background())
 
-	// Mint one stable trace ID per session (idempotent across re-arms: keep
-	// the existing ID if this root is being re-created after an abort, so the
-	// whole session shares a single trace).
-	if s.traceID == "" {
-		s.traceID = utils.NewTraceID()
-	}
-
-	// Thread the correlation IDs into the root so every descendant operation
-	// that logs via utils.LogCtx(ctx, ...) automatically stamps session_id,
-	// conversation_id, and trace_id. Omitted IDs (empty conversationID before
-	// binding) are simply not carried; LogCtx omits absent IDs per the schema.
+	// Thread the session-lifetime correlation IDs into the root so every
+	// descendant operation that logs via utils.LogCtx(ctx, ...) automatically
+	// stamps session_id and conversation_id. Omitted IDs (empty conversationID
+	// before binding) are simply not carried; LogCtx omits absent IDs per the
+	// schema.
+	//
+	// trace_id is deliberately NOT set here. A trace is one logical
+	// transaction — one prompt-to-completion run — so it is minted per run in
+	// SendPrompt and threaded onto the run's own context. A session outlives
+	// any single run, so a trace ID rooted here would span every run in the
+	// session and be useless as an APM operation id. Lines emitted outside any
+	// run (session start/stop) therefore carry no trace_id, which is honest:
+	// there is no transaction in flight. They remain joinable by session_id
+	// and conversation_id.
 	s.rootCtx = utils.WithSessionID(s.rootCtx, s.key)
 	if s.conversationID != "" {
 		s.rootCtx = utils.WithConversationID(s.rootCtx, s.conversationID)
 	}
-	s.rootCtx = utils.WithTraceID(s.rootCtx, s.traceID)
 
-	utils.LogWithFields(utils.LevelDebug, "session", "newsessionrootcontext: root cancellation context created key= trace_id=", map[string]any{"key": s.key, "run_id": s.traceID})
+	utils.LogWithFields(utils.LevelDebug, "session", "newsessionrootcontext: root cancellation context created", map[string]any{"key": s.key})
 }
 
 // rootContext returns the session's cancellation root. Never returns nil:

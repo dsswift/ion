@@ -38,6 +38,8 @@ func (a *llmCallTestAccessor) SessionKey() string       { return "test-session" 
 func (a *llmCallTestAccessor) ExtensionName() string    { return "" }
 func (a *llmCallTestAccessor) ExtensionVersion() string { return "" }
 func (a *llmCallTestAccessor) ConversationID() string   { return "" }
+func (a *llmCallTestAccessor) RunID() string            { return "" }
+func (a *llmCallTestAccessor) TraceID() string          { return "" }
 func (a *llmCallTestAccessor) WorkingDirectory() string { return "/tmp" }
 func (a *llmCallTestAccessor) Emit(ev types.EngineEvent) {
 	a.mu.Lock()

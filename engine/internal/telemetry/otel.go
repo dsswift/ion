@@ -3,8 +3,6 @@ package telemetry
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -30,11 +28,6 @@ type OtelBridge struct {
 	spans  []otlpSpan
 	client *http.Client
 	done   chan struct{}
-	// traceIDs maps a session ID to its stable trace ID so that every span
-	// emitted for one session shares a single trace ID. Populated via
-	// SessionTraceID; consulted by RecordEvent/RecordSpan when an event does
-	// not carry its own TraceID. Guarded by mu.
-	traceIDs map[string]string
 }
 
 // otlpSpan is a simplified OTLP span for export.
@@ -98,52 +91,30 @@ func NewOtelBridge(config OtelConfig) *OtelBridge {
 	}
 
 	b := &OtelBridge{
-		config:   config,
-		spans:    make([]otlpSpan, 0, config.BatchSize),
-		client:   &http.Client{Timeout: 10 * time.Second},
-		done:     make(chan struct{}),
-		traceIDs: make(map[string]string),
+		config: config,
+		spans:  make([]otlpSpan, 0, config.BatchSize),
+		client: &http.Client{Timeout: 10 * time.Second},
+		done:   make(chan struct{}),
 	}
 
 	go b.flushLoop()
 	return b
 }
 
-// SessionTraceID registers the trace ID for a session so that every span the
-// bridge emits for that session shares one trace ID. Idempotent; a repeat call
-// with the same session ID overwrites the mapping. Pass an empty traceID to
-// forget the session (e.g. on session end).
-func (b *OtelBridge) SessionTraceID(sessionID, traceID string) {
-	if sessionID == "" {
-		return
-	}
-	b.mu.Lock()
-	if traceID == "" {
-		delete(b.traceIDs, sessionID)
-	} else {
-		b.traceIDs[sessionID] = traceID
-	}
-	b.mu.Unlock()
-}
-
 // resolveTraceID picks the trace ID for a span. Precedence:
-//  1. an explicit trace ID stamped on the event/caller (eventTraceID),
-//  2. the session's registered trace ID (looked up via sessionID),
-//  3. a freshly generated per-span trace ID (legacy fallback).
+//  1. an explicit trace ID stamped on the event/caller (eventTraceID) — the
+//     normal path, since the session layer mints a trace ID per run and stamps
+//     it on every event emitted during that run,
+//  2. a freshly generated trace ID for an event that carries none (an emission
+//     with no run in flight).
 //
-// This fixes the correlation defect where genTraceID() ran per event, giving
-// every span in a session a different trace ID.
-func (b *OtelBridge) resolveTraceID(eventTraceID, sessionID string) string {
+// A per-session trace-ID registry used to sit between these two. It was
+// removed with the move to run-scoped tracing: nothing ever populated it (its
+// only setter had no caller in the tree), and reconstructing one trace per
+// session is the exact behaviour run scoping replaced.
+func (b *OtelBridge) resolveTraceID(eventTraceID string) string {
 	if eventTraceID != "" {
 		return eventTraceID
-	}
-	if sessionID != "" {
-		b.mu.Lock()
-		id := b.traceIDs[sessionID]
-		b.mu.Unlock()
-		if id != "" {
-			return id
-		}
 	}
 	return genTraceID()
 }
@@ -189,13 +160,12 @@ func (b *OtelBridge) RecordEvent(event Event) {
 		status = &otlpStatus{Code: 2, Message: errMsg}
 	}
 
-	// Session-aware trace ID so all spans in a session correlate. Prefer an
-	// explicit TraceID on the event, then the session's registered trace ID
-	// (via ctx.session_id), then a fresh fallback.
-	sessionID, _ := event.Context["session_id"].(string) //nolint:errcheck // best-effort; failure not actionable here
-
+	// Prefer the trace ID the emitter stamped on the event. The session layer
+	// mints one per run and stamps every event emitted during that run, so
+	// spans belonging to one run share a trace without the bridge tracking
+	// anything itself.
 	span := otlpSpan{
-		TraceID:    b.resolveTraceID(event.TraceID, sessionID),
+		TraceID:    b.resolveTraceID(event.TraceID),
 		SpanID:     genSpanID(),
 		Name:       event.Name,
 		StartTime:  ts,
@@ -214,17 +184,14 @@ func (b *OtelBridge) RecordEvent(event Event) {
 	}
 }
 
-// RecordSpan records a timed span directly. When attrs carries "session_id"
-// (or an explicit "trace_id"), the span is stamped with the session's stable
-// trace ID so it correlates with the session's other spans.
-func (b *OtelBridge) RecordSpan(name string, startMs, endMs int64, attrs map[string]any) {
-	var eventTraceID, sessionID string
-	if attrs != nil {
-		eventTraceID, _ = attrs["trace_id"].(string) //nolint:errcheck // best-effort; failure not actionable here
-		sessionID, _ = attrs["session_id"].(string)  //nolint:errcheck // best-effort; failure not actionable here
-	}
+// RecordSpan records a timed span directly. The attrs map becomes span
+// attributes; ctx carries correlation separately, matching StartSpanCtx. When
+// ctx carries a valid run trace_id the span joins that trace, otherwise it gets
+// its own independent trace.
+func (b *OtelBridge) RecordSpan(name string, startMs, endMs int64, attrs, ctx map[string]any) {
+	eventTraceID := traceIDFromCorrelationContext(ctx)
 	span := otlpSpan{
-		TraceID:    b.resolveTraceID(eventTraceID, sessionID),
+		TraceID:    b.resolveTraceID(eventTraceID),
 		SpanID:     genSpanID(),
 		Name:       name,
 		StartTime:  startMs * 1_000_000,
@@ -303,16 +270,19 @@ func (b *OtelBridge) Close() error {
 	return b.Flush()
 }
 
-// genTraceID generates a 16-byte random hex trace ID.
+// genTraceID generates a 16-byte W3C trace-context compliant trace ID.
+// Delegates to utils.NewTraceID so the crypto/rand failure path produces a
+// spec-valid non-zero value (W3C §3.2.2.3 requires consumers to reject an
+// all-zero trace-id) and logs the entropy failure, rather than silently
+// discarding the error and emitting zeros.
 func genTraceID() string {
-	b := make([]byte, 16)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
+	return utils.NewTraceID()
 }
 
-// genSpanID generates an 8-byte random hex span ID.
+// genSpanID generates an 8-byte random hex span ID. Delegates to
+// utils.RandomID for the same reason genTraceID delegates: an all-zero
+// span-id is invalid under W3C §3.2.2.4, and a discarded rand error is a
+// silent failure.
 func genSpanID() string {
-	b := make([]byte, 8)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
+	return utils.RandomID()
 }

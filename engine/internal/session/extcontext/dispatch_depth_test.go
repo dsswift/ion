@@ -29,6 +29,8 @@ type depthTestAccessor struct {
 
 func (a *depthTestAccessor) SessionKey() string       { return "depth-test" }
 func (a *depthTestAccessor) ConversationID() string   { return "conv-depth" }
+func (a *depthTestAccessor) RunID() string            { return "" }
+func (a *depthTestAccessor) TraceID() string          { return "" }
 func (a *depthTestAccessor) ExtensionName() string    { return "" }
 func (a *depthTestAccessor) ExtensionVersion() string { return "" }
 func (a *depthTestAccessor) WorkingDirectory() string { return "/tmp" }

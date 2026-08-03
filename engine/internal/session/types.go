@@ -149,12 +149,23 @@ type engineSession struct {
 	// through handleNormalizedEvent, for the same CLI-turn persistence.
 	// Guarded by m.mu.
 	pendingCliAssistantText string
-	// traceID is a stable per-session OpenTelemetry-compatible 32-hex trace ID.
-	// Generated once in newSessionRootContext and threaded into rootCtx via
-	// utils.WithTraceID so every log line and telemetry span emitted for this
-	// session shares one trace ID. Not a wire-contract surface; internal
-	// observability correlation only.
-	traceID                     string
+	// runTraceID is the W3C trace-context trace-id for the CURRENTLY ACTIVE
+	// run: 32 lowercase hex chars, minted in SendPrompt under the same m.mu
+	// hold that assigns requestID, and cleared wherever requestID is cleared
+	// so the two can never disagree. Empty when no run is in flight.
+	//
+	// Scope is deliberately the run, not the session. A trace is one logical
+	// transaction; a session can span hours and hundreds of runs, so a
+	// session-scoped trace ID produced a single unusable "trace" and could
+	// not serve as an APM operation id. Consumers wanting the old
+	// session-wide pivot use session_id, which is on every line already.
+	// See docs/observability/log-schema.md § Correlation-ID vocabulary.
+	//
+	// This IS a wire-contract surface: it is published to extensions on the
+	// hook context (Context.TraceID / ctx.traceId) so a consumer can parent
+	// its own OTLP spans to the engine's trace, and it is stamped on every
+	// log line and telemetry event emitted during the run.
+	runTraceID                  string
 	agents                      *agents.Registry
 	extensionName               string // friendly name broadcast by the extension
 	extensionVersion            string // version from extension.json manifest (empty when absent)

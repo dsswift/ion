@@ -13,6 +13,7 @@
  * provisioning existed.
  */
 import { log as _log } from '../logger'
+import { invalidateWorktreeInventoryCache } from './inventory-cache'
 import type { WorktreeProvisionState } from '../../shared/types'
 
 const TAG = 'worktree.provision'
@@ -40,6 +41,9 @@ export function setProvisionState(
     states.set(worktreePath, { state, detail })
   }
   log('provision state', { worktree_path: worktreePath, from: prior ?? 'none', to: state, detail: detail ?? '' })
+  // The inventory projects this state onto its rows; a cached crawl must not
+  // keep reporting `building` after the run finished.
+  invalidateWorktreeInventoryCache('provision state changed')
 }
 
 /** Current state, or undefined when this worktree has no provisioning record. */

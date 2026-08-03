@@ -179,7 +179,7 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 	if !s.bindingPending {
 		saveBinding(bindingsPath(), key, convID)
 	} else {
-		utils.LogWithFields(utils.LevelInfo, "session", "startsession: deferring binding for pre-minted until first save", map[string]any{"key": key, "run_id": convID})
+		utils.LogWithFields(utils.LevelInfo, "session", "startsession: deferring binding for pre-minted until first save", map[string]any{"key": key, "conversation_id": convID})
 	}
 
 	// Rehydrate agent dispatch state from the conversation file if the
@@ -253,10 +253,10 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 			utils.LogWithFields(utils.LevelInfo, "session", "startsession: seeded from", map[string]any{
 				"key": key, "model": convModel, "window_model": windowModel, "ctx_window": ctxWindow,
 				"seeded_pct": usage.Percent, "seeded_tokens": usage.Tokens, "estimated": usage.Estimated,
-				"run_id": s.conversationID,
+				"conversation_id": s.conversationID,
 			})
 		} else {
-			utils.LogWithFields(utils.LevelDebug, "session", "startsession: no conversation to seed context from", map[string]any{"key": key, "run_id": s.conversationID})
+			utils.LogWithFields(utils.LevelDebug, "session", "startsession: no conversation to seed context from", map[string]any{"key": key, "conversation_id": s.conversationID})
 		}
 
 		// Initialize session memory for resumed conversations. The memory
@@ -270,7 +270,7 @@ func (m *Manager) StartSession(key string, config types.EngineConfig) (*StartSes
 			convDir := conversation.DefaultConversationsDir()
 			sm := NewSessionMemory(s.conversationID, convDir, nil)
 			if sm.LoadMemory() {
-				utils.LogWithFields(utils.LevelInfo, "session", "startsession: loaded session memory for", map[string]any{"key": key, "run_id": s.conversationID})
+				utils.LogWithFields(utils.LevelInfo, "session", "startsession: loaded session memory for", map[string]any{"key": key, "conversation_id": s.conversationID})
 			}
 			sm.Start()
 			m.mu.Lock()

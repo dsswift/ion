@@ -17,7 +17,8 @@ import { log as _log, warn as _warn } from '../logger'
 import { landWorktree, syncWorktreeFromSource } from '../worktree/integrate'
 import { retireWorktree, reattachWorktree } from '../worktree/relocate'
 import { appraiseBase } from '../worktree/base-staleness'
-import { inventoryWorktrees, lookupWorktreeRegistration } from '../worktree/inventory'
+import { lookupWorktreeRegistration } from '../worktree/inventory'
+import { getWorktreeInventory } from '../worktree/inventory-service'
 import { appraiseWorktree } from '../worktree/safety'
 
 const TAG = 'worktree.ipc'
@@ -96,7 +97,10 @@ export function registerWorktreeLifecycleIpc(): void {
   ipcMain.handle(
     IPC.GIT_WORKTREE_INVENTORY,
     async (_event, { repoPath }: { repoPath: string }) => {
-      const worktrees = await inventoryWorktrees(repoPath)
+      // Through the service, never the raw crawl: both renderer windows poll
+      // this channel on an interval, and the service is what coalesces them
+      // into one bounded crawl (see worktree/inventory-service.ts).
+      const worktrees = await getWorktreeInventory(repoPath)
       log('inventory', { repo_path: repoPath, count: worktrees.length })
       return { worktrees }
     },

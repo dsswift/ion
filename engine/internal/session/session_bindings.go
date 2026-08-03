@@ -77,7 +77,7 @@ func saveBinding(path, key, conversationID string) {
 		utils.LogWithFields(utils.LevelInfo, "session-bindings", "rename", map[string]any{"error": err})
 		return
 	}
-	utils.LogWithFields(utils.LevelInfo, "session-bindings", "saved", map[string]any{"key": key, "run_id": conversationID})
+	utils.LogWithFields(utils.LevelInfo, "session-bindings", "saved", map[string]any{"key": key, "conversation_id": conversationID})
 }
 
 // lookupBinding returns the previously persisted conversationId for the given
@@ -145,7 +145,7 @@ func (m *Manager) flushPendingBinding(key, convID string) {
 	}
 
 	if !conversation.Exists(convID, "") {
-		utils.LogWithFields(utils.LevelDebug, "session", "flushpendingbinding: not yet saved — leaving binding deferred", map[string]any{"key": key, "run_id": convID})
+		utils.LogWithFields(utils.LevelDebug, "session", "flushpendingbinding: not yet saved — leaving binding deferred", map[string]any{"key": key, "conversation_id": convID})
 		return
 	}
 
@@ -156,7 +156,7 @@ func (m *Manager) flushPendingBinding(key, convID string) {
 		s.bindingPending = false
 	}
 	m.mu.Unlock()
-	utils.LogWithFields(utils.LevelInfo, "session", "flushpendingbinding: wrote deferred binding for (file now present)", map[string]any{"key": key, "run_id": convID})
+	utils.LogWithFields(utils.LevelInfo, "session", "flushpendingbinding: wrote deferred binding for (file now present)", map[string]any{"key": key, "conversation_id": convID})
 }
 
 // resolveConversationID decides which conversation a StartSession should use,
@@ -210,7 +210,7 @@ func resolveConversationID(path, key string, config types.EngineConfig) string {
 		// conversation. (#231)
 		deleteBinding(path, key)
 		convID := conversation.NewConversationID()
-		utils.LogWithFields(utils.LevelInfo, "session", "startsession: forced new conversation, cleared stale binding (new binding deferred until save)", map[string]any{"key": key, "old": old, "run_id": convID})
+		utils.LogWithFields(utils.LevelInfo, "session", "startsession: forced new conversation, cleared stale binding (new binding deferred until save)", map[string]any{"key": key, "old": old, "conversation_id": convID})
 		return convID
 	}
 	if bound := lookupBinding(path, key); bound != "" {
@@ -223,6 +223,6 @@ func resolveConversationID(path, key string, config types.EngineConfig) string {
 		utils.LogWithFields(utils.LevelInfo, "session", "startsession: bound has no backing file — ignoring phantom binding, minting fresh", map[string]any{"key": key, "bound": bound})
 	}
 	convID := conversation.NewConversationID()
-	utils.LogWithFields(utils.LevelInfo, "session", "startsession: pre-minted (no usable binding)", map[string]any{"key": key, "run_id": convID})
+	utils.LogWithFields(utils.LevelInfo, "session", "startsession: pre-minted (no usable binding)", map[string]any{"key": key, "conversation_id": convID})
 	return convID
 }

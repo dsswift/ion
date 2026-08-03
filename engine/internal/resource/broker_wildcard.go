@@ -54,7 +54,7 @@ func (b *Broker) SubscribeWildcard(filter types.ResourceFilter, deliver func(Res
 	}
 	b.mu.Unlock()
 
-	utils.LogWithFields(utils.LevelInfo, "resource", "subscribe wildcard", map[string]any{"run_id": subID, "count": len(producers)})
+	utils.LogWithFields(utils.LevelInfo, "resource", "subscribe wildcard", map[string]any{"subscription_id": subID, "count": len(producers)})
 
 	// Deliver one snapshot per registered kind, each carrying the real kind.
 	for _, entry := range producers {
@@ -62,7 +62,7 @@ func (b *Broker) SubscribeWildcard(filter types.ResourceFilter, deliver func(Res
 		kindFilter.Kind = entry.kind
 		items, err := entry.host.HandleQuery(kindFilter)
 		if err != nil {
-			utils.LogWithFields(utils.LevelInfo, "resource", "subscribe wildcard handle query failed", map[string]any{"reason": entry.kind, "run_id": subID, "error": err.Error()})
+			utils.LogWithFields(utils.LevelInfo, "resource", "subscribe wildcard handle query failed", map[string]any{"reason": entry.kind, "subscription_id": subID, "error": err.Error()})
 			items = nil
 		}
 		deliver(ResourceMessage{
@@ -71,7 +71,7 @@ func (b *Broker) SubscribeWildcard(filter types.ResourceFilter, deliver func(Res
 			SubID: subID,
 			Items: items,
 		})
-		utils.LogWithFields(utils.LevelDebug, "resource", "subscribe wildcard snapshot", map[string]any{"reason": entry.kind, "run_id": subID, "count": len(items)})
+		utils.LogWithFields(utils.LevelDebug, "resource", "subscribe wildcard snapshot", map[string]any{"reason": entry.kind, "subscription_id": subID, "count": len(items)})
 	}
 	return sub
 }
@@ -92,7 +92,7 @@ func (b *Broker) SubscribeDirectWildcard(filter types.ResourceFilter, deliver fu
 	b.subscribers[WildcardKind] = append(b.subscribers[WildcardKind], sub)
 	b.subsByID[subID] = sub
 	b.mu.Unlock()
-	utils.LogWithFields(utils.LevelInfo, "resource", "subscribe direct wildcard", map[string]any{"run_id": subID})
+	utils.LogWithFields(utils.LevelInfo, "resource", "subscribe direct wildcard", map[string]any{"subscription_id": subID})
 	return sub
 }
 

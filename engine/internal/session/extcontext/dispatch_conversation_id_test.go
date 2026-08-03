@@ -134,6 +134,8 @@ func (a *convIDRecordingAccessor) SessionKey() string                       { re
 func (a *convIDRecordingAccessor) ExtensionName() string                    { return "" }
 func (a *convIDRecordingAccessor) ExtensionVersion() string                 { return "" }
 func (a *convIDRecordingAccessor) ConversationID() string                   { return "" }
+func (a *convIDRecordingAccessor) RunID() string                            { return "" }
+func (a *convIDRecordingAccessor) TraceID() string                          { return "" }
 func (a *convIDRecordingAccessor) WorkingDirectory() string                 { return "/tmp" }
 func (a *convIDRecordingAccessor) Emit(_ types.EngineEvent)                 {}
 func (a *convIDRecordingAccessor) SendAbort()                               {}

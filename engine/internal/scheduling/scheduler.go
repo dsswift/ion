@@ -64,14 +64,14 @@ type SessionResolver func(host *extension.Host) (*extension.Context, error)
 type Scheduler struct {
 	cfg Config
 
-	mu       sync.RWMutex
-	hosts    []*extension.Host
-	emit     func(types.EngineEvent)
-	resolve  SessionResolver
-	running  bool
-	stopCh   chan struct{}
-	doneCh   chan struct{}
-	nextRun  map[hostJobKey]time.Time
+	mu      sync.RWMutex
+	hosts   []*extension.Host
+	emit    func(types.EngineEvent)
+	resolve SessionResolver
+	running bool
+	stopCh  chan struct{}
+	doneCh  chan struct{}
+	nextRun map[hostJobKey]time.Time
 	// extNextRun tracks the most recent nextRun value by logical job identity
 	// (extensionName + jobID) independent of host pointer. Updated whenever a
 	// host-keyed nextRun entry is set, and consulted by bootstrapNextRun when
@@ -256,7 +256,7 @@ func (s *Scheduler) RemoveHost(h *extension.Host) {
 	// Emit unhosted events outside the lock (publish acquires s.mu.RLock).
 	for _, job := range unhostingJobs {
 		utils.LogWithFields(utils.LevelWarn, "scheduling", "schedule group unhosted — no alive hosts remain", map[string]any{
-			"model": h.Name(), "run_id": job.JobID, "kind": string(job.Kind),
+			"model": h.Name(), "schedule_job_id": job.JobID, "kind": string(job.Kind),
 		})
 		s.emitScheduleUnhosted(job)
 	}
@@ -353,7 +353,7 @@ func (s *Scheduler) tickOnce() {
 				// A declaration registered under KindSchedule that is not a
 				// ScheduleJob can never fire. Log so the misregistration is
 				// visible instead of being silently skipped every tick.
-				utils.LogWithFields(utils.LevelError, "scheduling", "tick skip: declaration is not a ScheduleJob", map[string]any{"run_id": d.ID(), "model": h.Name()})
+				utils.LogWithFields(utils.LevelError, "scheduling", "tick skip: declaration is not a ScheduleJob", map[string]any{"schedule_job_id": d.ID(), "model": h.Name()})
 				continue
 			}
 			key := extensionJobKey{name: h.Name(), id: job.JobID}
@@ -390,7 +390,7 @@ func (s *Scheduler) tickOnce() {
 				// Every host owning this schedule is dead — the job silently
 				// stops firing. Log so the dead-group gap is visible instead of
 				// the schedule vanishing without a trace.
-				utils.LogWithFields(utils.LevelWarn, "scheduling", "schedule not fired: all hosts dead", map[string]any{"run_id": entries[0].job.JobID, "extension": entries[0].host.Name(), "count": len(entries)})
+				utils.LogWithFields(utils.LevelWarn, "scheduling", "schedule not fired: all hosts dead", map[string]any{"schedule_job_id": entries[0].job.JobID, "extension": entries[0].host.Name(), "count": len(entries)})
 			}
 		}
 	}
@@ -426,7 +426,7 @@ func (s *Scheduler) tickOnce() {
 		}
 		delete(s.extNextRun, extKey)
 		utils.LogWithFields(utils.LevelDebug, "scheduling", "prune orphaned extNextRun entry", map[string]any{
-			"model": extKey.name, "run_id": extKey.id,
+			"model": extKey.name, "schedule_job_id": extKey.id,
 		})
 	}
 	s.mu.Unlock()
@@ -454,13 +454,13 @@ func (s *Scheduler) maybeFire(h *extension.Host, job extension.ScheduleJob, now 
 	if _, busy := s.inFlight.LoadOrStore(key, struct{}{}); busy {
 		// A previous fire is still running; skip this tick to avoid
 		// overlap. Log so the operator sees the overlap.
-		utils.LogWithFields(utils.LevelInfo, "scheduling", "maybe fire skip previous in flight", map[string]any{"model": h.Name(), "run_id": job.JobID})
+		utils.LogWithFields(utils.LevelInfo, "scheduling", "maybe fire skip previous in flight", map[string]any{"model": h.Name(), "schedule_job_id": job.JobID})
 		return
 	}
 	if resolve == nil {
 		s.inFlight.Delete(key)
 		s.emitScheduleSkipped(job, "no_resolver")
-		utils.LogWithFields(utils.LevelError, "scheduling", "maybe fire no resolver wired", map[string]any{"model": h.Name(), "run_id": job.JobID})
+		utils.LogWithFields(utils.LevelError, "scheduling", "maybe fire no resolver wired", map[string]any{"model": h.Name(), "schedule_job_id": job.JobID})
 		s.advanceNextRun(key, job, now)
 		return
 	}
@@ -500,7 +500,7 @@ func (s *Scheduler) fireJob(h *extension.Host, job extension.ScheduleJob, key ho
 		if err != nil {
 			errMsg = err.Error()
 		}
-		utils.LogWithFields(utils.LevelInfo, "scheduling", "fire job session resolve failed", map[string]any{"model": h.Name(), "run_id": job.JobID, "error": errMsg})
+		utils.LogWithFields(utils.LevelInfo, "scheduling", "fire job session resolve failed", map[string]any{"model": h.Name(), "schedule_job_id": job.JobID, "error": errMsg})
 		// For once jobs a session-resolve failure is not a spent shot —
 		// leave the next-run entry in place so the job retries next tick.
 		// For repeating jobs the next-run has already been advanced above.
@@ -512,20 +512,20 @@ func (s *Scheduler) fireJob(h *extension.Host, job extension.ScheduleJob, key ho
 	if job.EnabledRefName != "" {
 		enabled, err := s.resolveEnabledPredicate(h, job)
 		if err != nil {
-			utils.LogWithFields(utils.LevelError, "scheduling", "fire job enabled predicate failed", map[string]any{"model": h.Name(), "run_id": job.JobID, "error": err.Error()})
+			utils.LogWithFields(utils.LevelError, "scheduling", "fire job enabled predicate failed", map[string]any{"model": h.Name(), "schedule_job_id": job.JobID, "error": err.Error()})
 			// Treat predicate failure as "skipped, reason=predicate_error".
 			s.emitScheduleSkipped(job, "predicate_error")
 			return
 		}
 		if !enabled {
 			s.emitScheduleSkipped(job, "disabled")
-			utils.LogWithFields(utils.LevelDebug, "scheduling", "fire job skipped disabled", map[string]any{"model": h.Name(), "run_id": job.JobID})
+			utils.LogWithFields(utils.LevelDebug, "scheduling", "fire job skipped disabled", map[string]any{"model": h.Name(), "schedule_job_id": job.JobID})
 			return
 		}
 	}
 
 	timeout := s.fireTimeoutForJob(job)
-	utils.LogWithFields(utils.LevelInfo, "scheduling", "fire job", map[string]any{"model": h.Name(), "run_id": job.JobID, "reason": job.Kind, "duration_ms": timeout.Milliseconds()})
+	utils.LogWithFields(utils.LevelInfo, "scheduling", "fire job", map[string]any{"model": h.Name(), "schedule_job_id": job.JobID, "reason": job.Kind, "duration_ms": timeout.Milliseconds()})
 	startTs := s.now()
 	payload := map[string]interface{}{
 		"firedAt": startTs.UTC().Format(time.RFC3339),
@@ -534,14 +534,14 @@ func (s *Scheduler) fireJob(h *extension.Host, job extension.ScheduleJob, key ho
 	elapsed := s.now().Sub(startTs)
 	if err != nil {
 		s.emitScheduleFailed(job, err.Error(), elapsed)
-		utils.LogWithFields(utils.LevelError, "scheduling", "fire job handler error", map[string]any{"model": h.Name(), "run_id": job.JobID, "error": err.Error(), "duration_ms": elapsed.Milliseconds()})
+		utils.LogWithFields(utils.LevelError, "scheduling", "fire job handler error", map[string]any{"model": h.Name(), "schedule_job_id": job.JobID, "error": err.Error(), "duration_ms": elapsed.Milliseconds()})
 		// Handler failed — for once jobs, still deregister: the shot was
 		// spent (handler was invoked, even though it errored). Fall through
 		// to the once-deregister block below.
 	} else {
 		s.recordLastRun(h, job, startTs)
 		s.emitScheduleFired(job, elapsed)
-		utils.LogWithFields(utils.LevelInfo, "scheduling", "fire job completed", map[string]any{"model": h.Name(), "run_id": job.JobID, "duration_ms": elapsed.Milliseconds()})
+		utils.LogWithFields(utils.LevelInfo, "scheduling", "fire job completed", map[string]any{"model": h.Name(), "schedule_job_id": job.JobID, "duration_ms": elapsed.Milliseconds()})
 	}
 
 	// Once jobs self-deregister after the handler has run (whether it
@@ -559,11 +559,11 @@ func (s *Scheduler) fireJob(h *extension.Host, job extension.ScheduleJob, key ho
 			delete(s.extNextRun, extensionJobKey{name: h.Name(), id: job.JobID})
 			s.mu.Unlock()
 			s.emitScheduleDeregistered(job, "once_complete")
-			utils.LogWithFields(utils.LevelInfo, "scheduling", "fire job once deregistered", map[string]any{"model": h.Name(), "run_id": job.JobID})
+			utils.LogWithFields(utils.LevelInfo, "scheduling", "fire job once deregistered", map[string]any{"model": h.Name(), "schedule_job_id": job.JobID})
 		} else {
 			// Registry entry was already gone (concurrent deregister by the
 			// extension itself). Log but don't treat as an error.
-			utils.LogWithFields(utils.LevelError, "scheduling", "fire job once deregister returned false already gone", map[string]any{"model": h.Name(), "run_id": job.JobID})
+			utils.LogWithFields(utils.LevelError, "scheduling", "fire job once deregister returned false already gone", map[string]any{"model": h.Name(), "schedule_job_id": job.JobID})
 		}
 	}
 }
@@ -646,7 +646,7 @@ func (s *Scheduler) FireScheduleNow(h *extension.Host, jobID string) error {
 	key := hostJobKey{host: target, id: jobID}
 	if _, busy := s.inFlight.LoadOrStore(key, struct{}{}); busy {
 		// Already in-flight: benign, not an error.
-		utils.LogWithFields(utils.LevelInfo, "scheduling", "fire schedule now skipped already in flight", map[string]any{"model": target.Name(), "run_id": jobID})
+		utils.LogWithFields(utils.LevelInfo, "scheduling", "fire schedule now skipped already in flight", map[string]any{"model": target.Name(), "schedule_job_id": jobID})
 		return nil
 	}
 
@@ -680,7 +680,7 @@ func (s *Scheduler) fireJobWithMeta(h *extension.Host, job extension.ScheduleJob
 		if err != nil {
 			errMsg = err.Error()
 		}
-		utils.LogWithFields(utils.LevelInfo, "scheduling", "fire job with meta session resolve failed", map[string]any{"model": h.Name(), "run_id": job.JobID, "error": errMsg})
+		utils.LogWithFields(utils.LevelInfo, "scheduling", "fire job with meta session resolve failed", map[string]any{"model": h.Name(), "schedule_job_id": job.JobID, "error": errMsg})
 		return
 	}
 
@@ -688,7 +688,7 @@ func (s *Scheduler) fireJobWithMeta(h *extension.Host, job extension.ScheduleJob
 		enabled, err := s.resolveEnabledPredicate(h, job)
 		if err != nil {
 			s.emitScheduleSkipped(job, "predicate_error")
-			utils.LogWithFields(utils.LevelError, "scheduling", "fire job with meta predicate failed", map[string]any{"model": h.Name(), "run_id": job.JobID, "error": err.Error()})
+			utils.LogWithFields(utils.LevelError, "scheduling", "fire job with meta predicate failed", map[string]any{"model": h.Name(), "schedule_job_id": job.JobID, "error": err.Error()})
 			return
 		}
 		if !enabled {
@@ -698,7 +698,7 @@ func (s *Scheduler) fireJobWithMeta(h *extension.Host, job extension.ScheduleJob
 	}
 
 	timeout := s.fireTimeoutForJob(job)
-	utils.LogWithFields(utils.LevelInfo, "scheduling", "fire job with meta", map[string]any{"model": h.Name(), "run_id": job.JobID, "backfill": backfill})
+	utils.LogWithFields(utils.LevelInfo, "scheduling", "fire job with meta", map[string]any{"model": h.Name(), "schedule_job_id": job.JobID, "backfill": backfill})
 	startTs := s.now()
 	payload := map[string]interface{}{
 		"firedAt": startTs.UTC().Format(time.RFC3339),
@@ -713,11 +713,11 @@ func (s *Scheduler) fireJobWithMeta(h *extension.Host, job extension.ScheduleJob
 	elapsed := s.now().Sub(startTs)
 	if err != nil {
 		s.emitScheduleFailed(job, err.Error(), elapsed)
-		utils.LogWithFields(utils.LevelError, "scheduling", "fire job with meta handler error", map[string]any{"model": h.Name(), "run_id": job.JobID, "error": err.Error(), "duration_ms": elapsed.Milliseconds()})
+		utils.LogWithFields(utils.LevelError, "scheduling", "fire job with meta handler error", map[string]any{"model": h.Name(), "schedule_job_id": job.JobID, "error": err.Error(), "duration_ms": elapsed.Milliseconds()})
 	} else {
 		s.recordLastRun(h, job, startTs)
 		s.emitScheduleFired(job, elapsed)
-		utils.LogWithFields(utils.LevelInfo, "scheduling", "fire job with meta completed", map[string]any{"model": h.Name(), "run_id": job.JobID, "duration_ms": elapsed.Milliseconds()})
+		utils.LogWithFields(utils.LevelInfo, "scheduling", "fire job with meta completed", map[string]any{"model": h.Name(), "schedule_job_id": job.JobID, "duration_ms": elapsed.Milliseconds()})
 	}
 
 	if job.Kind == extension.ScheduleOnce {

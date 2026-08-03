@@ -29,6 +29,8 @@ func (a *eligibilityTestAccessor) ClaudeCompat() bool                           
 func (a *eligibilityTestAccessor) GetDispatchContextDefaults() *extension.ContextPolicy { return nil }
 
 func (a *eligibilityTestAccessor) ConversationID() string                   { return "" }
+func (a *eligibilityTestAccessor) RunID() string                            { return "" }
+func (a *eligibilityTestAccessor) TraceID() string                          { return "" }
 func (a *eligibilityTestAccessor) WorkingDirectory() string                 { return "/tmp" }
 func (a *eligibilityTestAccessor) Emit(_ types.EngineEvent)                 {}
 func (a *eligibilityTestAccessor) SendAbort()                               {}

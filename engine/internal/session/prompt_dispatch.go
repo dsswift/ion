@@ -162,6 +162,20 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 
 	requestID := fmt.Sprintf("%s-%d", key, time.Now().UnixMilli())
 	s.requestID = requestID
+	// Mint this run's trace ID under the same lock hold that assigns
+	// requestID, so the two identities for one run can never disagree. Scope
+	// is the run because a trace is one logical transaction: every log line
+	// and telemetry event emitted between here and run exit shares this ID,
+	// and it is what an extension parents its own OTLP spans to. Cleared
+	// wherever requestID is cleared. See engineSession.runTraceID.
+	//
+	// Captured into a local as well: the struct field is guarded by m.mu and
+	// may be cleared by a concurrent run-exit before this frame reaches the
+	// ParentCtx assignment below, but the context this run carries must keep
+	// the ID it was dispatched with.
+	runTraceID := utils.NewTraceID()
+	s.runTraceID = runTraceID
+	utils.LogWithFields(utils.LevelDebug, "session", "sendprompt: minted run trace id", map[string]any{"key": key, "run_id": requestID, "trace_id": runTraceID})
 	// A run is starting, so the session is no longer parked on outstanding
 	// background commands. Clear any park record here — under the same lock
 	// that assigns requestID — so the two can never disagree. This covers
@@ -231,6 +245,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 		if !resolved {
 			m.mu.Unlock()
 			s.requestID = ""
+			s.runTraceID = "" // run over: the trace ends with it
 			m.unbindRun(requestID)
 			m.emitUnknownCommand(key, failedCmd)
 			return nil
@@ -263,7 +278,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// and the desktop loses its engineModelOverrides. The user can still
 	// explicitly override by selecting a different model in the picker.
 	if s.lastModel != "" && m.config != nil && opts.Model == m.config.DefaultModel && opts.Model != s.lastModel {
-		utils.LogWithFields(utils.LevelInfo, "session", "prompt_dispatch: overriding default model with conversation model", map[string]any{"key": key, "model": opts.Model, "model_2": s.lastModel})
+		utils.LogWithFields(utils.LevelInfo, "session", "prompt_dispatch: overriding default model with conversation model", map[string]any{"key": key, "model": opts.Model, "conversation_model": s.lastModel})
 		opts.Model = s.lastModel
 	}
 
@@ -318,6 +333,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	caps := m.resolvedBackend(opts.Model).Capabilities()
 	if opts.PlanMode && !caps.PlanMode {
 		s.requestID = ""
+		s.runTraceID = "" // run over: the trace ends with it
 		m.unbindRunLocked(requestID)
 		m.mu.Unlock()
 		reason := fmt.Sprintf("plan mode is not supported on the %s backend", caps.Kind)
@@ -435,6 +451,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	if opts.ResolvedSlashContext == "fork" {
 		m.forkResolvedSlash(s, key, &opts)
 		s.requestID = ""
+		s.runTraceID = "" // run over: the trace ends with it
 		// Forked to a sub-agent — no inline run started on the parent, so
 		// clear the routing binding set at dispatch.
 		m.unbindRun(requestID)
@@ -518,7 +535,13 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// context.WithCancel(opts.ParentCtx); nil would fall back to
 	// Background, so we set it unconditionally for the main session run.
 	// See session_root_context.go and backend ParentCtx handling.
-	opts.ParentCtx = s.rootContext()
+	//
+	// The run's trace ID rides on this context (the session root carries
+	// session_id/conversation_id but deliberately no trace_id), so every
+	// utils.LogCtx call made anywhere beneath this run — backend loop, tool
+	// execution, provider streaming — stamps trace_id automatically without
+	// each site having to thread it by hand.
+	opts.ParentCtx = utils.WithTraceID(s.rootContext(), runTraceID)
 
 	// Resume-vs-bridge decision for delegated-CLI backends: resume the
 	// backend's native session when this session holds a still-valid cursor

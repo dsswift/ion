@@ -21,6 +21,13 @@ import (
 type SessionAccessor interface {
 	SessionKey() string
 	ConversationID() string
+	// RunID returns the requestID of the run in flight, or empty when the
+	// session is idle. Published to extensions as Context.RunID.
+	RunID() string
+	// TraceID returns the W3C trace-id of the run in flight, or empty when
+	// the session is idle. Published to extensions as Context.TraceID so a
+	// consumer can parent its own spans to the engine's trace.
+	TraceID() string
 	// ExtensionName returns the hosting extension's friendly name, or empty
 	// when the session is not extension-hosted. Used to attribute
 	// dispatch.agent telemetry spans with "extension" context.
@@ -327,6 +334,11 @@ func NewExtContext(sa SessionAccessor, args ...interface{}) *extension.Context {
 	ctx := &extension.Context{
 		SessionKey:     sa.SessionKey(),
 		ConversationID: sa.ConversationID(),
+		// Run identity: both empty when no run is in flight (session_start, a
+		// schedule or webhook delivery), which is the honest encoding — there
+		// is no transaction to correlate against.
+		RunID:   sa.RunID(),
+		TraceID: sa.TraceID(),
 		// Dispatch identity travels on the context so every hook fired in a
 		// child session (session_start included, whose payload is nil) can
 		// discriminate root (Depth 0) from dispatched children (Depth > 0).

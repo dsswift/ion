@@ -30,6 +30,8 @@ func (a *dispatchContextTestAccessor) SessionKey() string        { return "ctx-t
 func (a *dispatchContextTestAccessor) ExtensionName() string     { return "" }
 func (a *dispatchContextTestAccessor) ExtensionVersion() string  { return "" }
 func (a *dispatchContextTestAccessor) ConversationID() string    { return "conv-ctx" }
+func (a *dispatchContextTestAccessor) RunID() string             { return "" }
+func (a *dispatchContextTestAccessor) TraceID() string           { return "" }
 func (a *dispatchContextTestAccessor) WorkingDirectory() string  { return "/tmp" }
 func (a *dispatchContextTestAccessor) Emit(ev types.EngineEvent) {}
 func (a *dispatchContextTestAccessor) SendAbort()                {}

@@ -443,3 +443,128 @@ describe('rehydrateFailedHistory', () => {
     expect(inst.historyHydrated).toBe(true)
   })
 })
+
+// ─── Concurrent-hydration coalescing ──────────────────────────────────────────
+//
+// REGRESSION PIN for the "message renders several times, fixed by leaving the
+// tab and coming back" bug.
+//
+// loadSkeletonMessages is fired from four independent places that can target
+// the same tab in one tick (selectTab, rehydrateFailedHistory, the ATV dock,
+// and the iOS desktop_load_attachments handler via executeJavaScript). It is
+// async and its first write lands only after an awaited IPC round-trip, so the
+// gates at the top (externalContentStatus / needsHistoryHydration) are read
+// before any marker is written: every racing caller passes them, every caller
+// loads the same history, and every caller appends it. commitInstance is a
+// pure functional update, so the second write does not overwrite the first —
+// it appends a SECOND FULL COPY and the transcript renders every row twice.
+//
+// Re-entering the tab appeared to "fix" it because hydration then
+// short-circuited on historyHydrated:true and re-rendered the last clean copy.
+//
+// These tests fail on the unguarded code (rows appear 2x) and pass with the
+// per-tab in-flight promise registry in resume-slice-hydration.ts.
+
+describe('concurrent loadSkeletonMessages (in-flight coalescing)', () => {
+  const mockLoadTabContent = vi.fn()
+
+  beforeEach(() => {
+    mockLoadTabContent.mockReset()
+    mockLoadChainHistory.mockReset()
+    ;(globalThis as { window?: { ion?: object } }).window!.ion = {
+      loadChainHistory: mockLoadChainHistory,
+      loadTabContent: mockLoadTabContent,
+    } as never
+  })
+
+  it('external-content pane: two overlapping loads produce ONE copy of the history', async () => {
+    const h = makeHarness({ messages: [], messageCount: 2, externalContentStatus: 'pending' })
+    mockLoadTabContent.mockResolvedValue({
+      tabId: 'tab-1', instanceId: 'main', schemaVersion: 4,
+      messages: [{ role: 'harness', content: 'banner', timestamp: 1 }],
+    })
+    mockLoadChainHistory.mockResolvedValue([
+      { id: 'e1', role: 'user', content: 'hello', timestamp: 2 },
+      { id: 'e2', role: 'assistant', content: 'hi', timestamp: 3 },
+    ])
+
+    // Both fired BEFORE either resolves — the real race.
+    await Promise.all([h.load(), h.load()])
+
+    expect(h.inst().messages.map((m) => m.content)).toEqual(['banner', 'hello', 'hi'])
+    expect(h.inst().messageCount).toBe(3)
+    // The second caller joined the in-flight load instead of starting its own.
+    expect(mockLoadTabContent).toHaveBeenCalledTimes(1)
+    expect(mockLoadChainHistory).toHaveBeenCalledTimes(1)
+  })
+
+  it('engine-chain pane with legacy rows (no canonical ids) is not duplicated', async () => {
+    // Rows without an engine id fall back to a freshly minted id per load, so
+    // the id-based liveTail filter cannot dedup them — only the in-flight
+    // guard prevents the double append.
+    const h = makeHarness({ messages: [], messageCount: 2, historyHydrated: false })
+    mockLoadChainHistory.mockResolvedValue([
+      { role: 'user', content: 'hello', timestamp: 2 },
+      { role: 'assistant', content: 'hi', timestamp: 3 },
+    ])
+
+    await Promise.all([h.load(), h.load()])
+
+    expect(h.inst().messages.map((m) => m.content)).toEqual(['hello', 'hi'])
+    expect(mockLoadChainHistory).toHaveBeenCalledTimes(1)
+  })
+
+  it('a load AFTER the first completes still short-circuits (guard is not sticky)', async () => {
+    const h = makeHarness({ messages: [], messageCount: 2, historyHydrated: false })
+    mockLoadChainHistory.mockResolvedValue([
+      { id: 'e1', role: 'user', content: 'hello', timestamp: 2 },
+    ])
+
+    await h.load()
+    expect(h.inst().historyHydrated).toBe(true)
+    mockLoadChainHistory.mockClear()
+
+    // Sequential re-entry: the registry entry was released, and the
+    // historyHydrated gate is what stops the reload.
+    await h.load()
+    expect(mockLoadChainHistory).not.toHaveBeenCalled()
+    expect(h.inst().messages.map((m) => m.content)).toEqual(['hello'])
+  })
+
+  it('a failed load releases the guard so a later retry can run', async () => {
+    const h = makeHarness({ messages: [], messageCount: 3, historyHydrated: false })
+    mockLoadChainHistory.mockRejectedValueOnce(new Error('engine down'))
+
+    await Promise.all([h.load(), h.load()])
+    expect(h.inst().historyHydrationFailed).toBe(true)
+
+    // The rejection must not strand the in-flight entry; rehydrate re-arms and
+    // the retry actually issues a new load.
+    mockLoadChainHistory.mockResolvedValue([
+      { id: 'e1', role: 'user', content: 'recovered', timestamp: 1 },
+    ])
+    h.rehydrate()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(h.inst().messages.map((m) => m.content)).toEqual(['recovered'])
+  })
+
+  it('external pane: a live row that the reload also returns is not duplicated', async () => {
+    // A turn that completes DURING the load appears both in the reloaded
+    // history and as the live row already on the pane. The external branch
+    // previously kept both (no id filter), unlike the engine-chain branch.
+    const h = makeHarness({ messages: [], messageCount: 1, externalContentStatus: 'pending' })
+    mockLoadTabContent.mockResolvedValue({
+      tabId: 'tab-1', instanceId: 'main', schemaVersion: 4, messages: [],
+    })
+    mockLoadChainHistory.mockImplementation(async () => {
+      // The live row carries the canonical engine id it re-keyed to at
+      // message_end — the same id the history row below has.
+      h.appendLive({ id: 'e1', role: 'assistant', content: 'the turn', timestamp: 2 })
+      return [{ id: 'e1', role: 'assistant', content: 'the turn', timestamp: 2 }]
+    })
+
+    await h.load()
+
+    expect(h.inst().messages.map((m) => m.content)).toEqual(['the turn'])
+  })
+})

@@ -26,12 +26,13 @@ type agentLimitSA struct {
 	cfg *types.EngineRuntimeConfig
 }
 
-func (a *agentLimitSA) SessionKey() string                                    { return "limit-test" }
-func (a *agentLimitSA) EngineConfig() *types.EngineRuntimeConfig              { return a.cfg }
+func (a *agentLimitSA) SessionKey() string                                       { return "limit-test" }
+func (a *agentLimitSA) EngineConfig() *types.EngineRuntimeConfig                 { return a.cfg }
 func (a *agentLimitSA) AppendOrUpdateAgentState(_ types.AgentStateUpdate) string { return "" }
+
 // NewChildBackend must return a real backend so dispatch paths that proceed
 // past the guards don't panic on a nil child.
-func (a *agentLimitSA) NewChildBackend() backend.RunBackend                   { return backend.NewApiBackend() }
+func (a *agentLimitSA) NewChildBackend() backend.RunBackend { return backend.NewApiBackend() }
 
 // populateRegistry fills a DispatchRegistry with n placeholder active entries
 // (simulating n running dispatched agents) without going through the full

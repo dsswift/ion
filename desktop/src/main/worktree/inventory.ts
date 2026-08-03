@@ -32,8 +32,10 @@ import { atomicWriteFileSync } from '../utils/atomicWrite'
 import { log as _log, warn as _warn } from '../logger'
 import { runGit } from '../git-runner'
 import { parseWorktreeList } from './integrate'
-import { appraiseWorktree } from './safety'
-import { appraiseBase } from './base-staleness'
+import {
+  appraiseRefPair, commitSubject, pruneAppraisalCache, type AppraisalCounters,
+} from './inventory-appraise'
+import { invalidateWorktreeInventoryCache } from './inventory-cache'
 import { getProvisionState } from './provision-state'
 import { probeOperationState } from '../git/operation-state'
 import type { WorktreeInventoryEntry } from '../../shared/types'
@@ -175,6 +177,7 @@ export function registerWorktree(args: {
     createdAt: Date.now(),
   })
   saveRegistry(entries)
+  invalidateWorktreeInventoryCache('worktree registered')
   log('registered worktree', {
     worktree_path: args.worktreePath,
     branch: args.branchName,
@@ -211,6 +214,7 @@ export function markWorktreeLanded(worktreePath: string): void {
   }
   existing.landedAt = Date.now()
   saveRegistry(entries)
+  invalidateWorktreeInventoryCache('worktree landed')
   log('worktree marked landed', { worktree_path: worktreePath, landed_at: existing.landedAt })
 }
 
@@ -239,6 +243,7 @@ export function setWorktreeTitle(
     const previous = existing.title
     existing.title = title
     saveRegistry(entries)
+    invalidateWorktreeInventoryCache('worktree titled')
     log('worktree title set', { worktree_path: worktreePath, title, replaced: previous ?? '' })
     return
   }
@@ -253,6 +258,7 @@ export function setWorktreeTitle(
     createdAt: Date.now(),
   })
   saveRegistry(entries)
+  invalidateWorktreeInventoryCache('worktree titled')
   log('worktree title set on a new registry entry', {
     worktree_path: worktreePath,
     title,
@@ -300,6 +306,7 @@ export function unregisterWorktree(worktreePath: string): void {
   const after = before.filter((e) => e.worktreePath !== worktreePath)
   if (after.length !== before.length) {
     saveRegistry(after)
+    invalidateWorktreeInventoryCache('worktree unregistered')
     log('unregistered worktree', { worktree_path: worktreePath })
   }
 }
@@ -327,18 +334,67 @@ export type { WorktreeInventoryEntry } from '../../shared/types'
  *
  * The bench worktree and the repo's own root are excluded: they are not feature
  * worktrees and offering them here would be misleading.
+ *
+ * ── Crawl budget ────────────────────────────────────────────────────────────
+ * This is the desktop's most-repeated git surface (two windows poll it while
+ * the panel is open, plus the iOS projection), so its subprocess count is a
+ * first-class property: two fixed spawns (`worktree list`, `for-each-ref`)
+ * plus one `status --porcelain` per worktree, with the land-relative facts
+ * answered by the sha-keyed cache in inventory-appraise.ts (zero spawns until
+ * a ref actually moves). It previously ran ~8 spawns per worktree per crawl,
+ * which is what let overlapping crawls freeze the overlay. Callers should
+ * reach this through inventory-service.ts, which coalesces concurrent crawls.
  */
 export async function inventoryWorktrees(
   repoPath: string,
 ): Promise<WorktreeInventoryEntry[]> {
+  return (await inventoryWorktreesDetailed(repoPath)).entries
+}
+
+/**
+ * The crawl result plus the identity facts the caching service needs:
+ * `git worktree list` answers identically from ANY checkout of the repo, so
+ * every listed path is an alias for the same inventory and the MAIN worktree
+ * (always listed first) is its canonical cache key.
+ */
+export interface WorktreeInventoryResult {
+  /** The repo's main working-tree path, or null when the listing failed. */
+  canonicalRepoPath: string | null
+  /** Every listed checkout path (main, bench, features) — the alias set. */
+  aliasPaths: string[]
+  entries: WorktreeInventoryEntry[]
+}
+
+/** `inventoryWorktrees` with the canonical/alias identity attached. */
+export async function inventoryWorktreesDetailed(
+  repoPath: string,
+): Promise<WorktreeInventoryResult> {
+  const startedAt = Date.now()
   let listed: ReturnType<typeof parseWorktreeList>
   try {
     listed = parseWorktreeList(await runGit(repoPath, ['worktree', 'list', '--porcelain']))
   } catch (err) {
     warn('could not list worktrees', { repo_path: repoPath, error: String(err) })
-    return []
+    return { canonicalRepoPath: null, aliasPaths: [], entries: [] }
   }
 
+  // Every source branch's tip in one spawn. A worktree whose source branch is
+  // missing from this map gets no land-relative answers and fails CLOSED on
+  // `safeToDiscard` — same contract as the appraisal it replaces.
+  const branchTips = new Map<string, string>()
+  try {
+    const raw = await runGit(repoPath, ['for-each-ref', '--format=%(refname:short) %(objectname)', 'refs/heads'])
+    for (const line of raw.split('\n')) {
+      const sep = line.lastIndexOf(' ')
+      if (sep > 0) branchTips.set(line.slice(0, sep), line.slice(sep + 1).trim())
+    }
+  } catch (err) {
+    warn('could not read branch tips; land-relative facts will fail closed', {
+      repo_path: repoPath, error: String(err),
+    })
+  }
+
+  const counters: AppraisalCounters = { hits: 0, misses: 0 }
   const entries: WorktreeInventoryEntry[] = []
   for (const [index, wt] of listed.entries()) {
     // Skip the repo's main working tree and the integration bench: neither is
@@ -379,12 +435,10 @@ export async function inventoryWorktrees(
     const title = lookupWorktreeTitle(wt.path)
     const landedAt = lookupWorktreeLandedAt(wt.path)
 
-    let lastCommitSubject = ''
-    try {
-      lastCommitSubject = (await runGit(wt.path, ['log', '-1', '--format=%s'])).trim()
-    } catch (err) {
-      log('could not read last commit', { worktree_path: wt.path, error: String(err) })
-    }
+    // Subject is a pure function of the HEAD sha, so it caches under it. A
+    // listing entry without a HEAD (prunable/broken checkout) has no commit to
+    // describe — skip the lookup rather than handing git an empty sha.
+    const lastCommitSubject = wt.head ? await commitSubject(wt.path, wt.head) : ''
 
     // Without a known source branch the land-relative facts are unanswerable.
     // Report what IS knowable and leave the rest conservative. A mid-operation
@@ -395,18 +449,25 @@ export async function inventoryWorktrees(
     let safeToDiscard = false
     let needsSync = false
     let isDirty = false
-    if (sourceBranch && !operation.state) {
-      const appraisal = await appraiseWorktree(wt.path, sourceBranch)
-      isDirty = appraisal.hasUncommittedChanges
-      unlandedCommitCount = appraisal.unlandedCommitCount
-      safeToDiscard = appraisal.safeToDiscard
-      needsSync = (await appraiseBase(wt.path, sourceBranch)).needsSync
-    } else if (!operation.state) {
+    if (!operation.state) {
+      // The one per-worktree spawn that cannot be sha-cached: uncommitted
+      // state has no ref to key on.
       try {
-        isDirty = (await runGit(wt.path, ['status', '--porcelain'])).trim().length > 0
+        isDirty = (await runGit(wt.path, ['status', '--porcelain', '-uall'])).trim().length > 0
       } catch (err) {
         log('could not read status', { worktree_path: wt.path, error: String(err) })
       }
+    }
+    const sourceTip = sourceBranch ? branchTips.get(sourceBranch) : undefined
+    if (sourceBranch && sourceTip && wt.head && !operation.state) {
+      const pair = await appraiseRefPair(wt.path, wt.head, sourceTip, counters)
+      if (pair) {
+        unlandedCommitCount = pair.ahead
+        safeToDiscard = !isDirty && pair.ahead === 0
+        needsSync = pair.behind > 0 && pair.treesDiffer
+      }
+      // pair === null: appraisal failed → every value stays at its fail-closed
+      // default (`safeToDiscard: false`), matching appraiseWorktree's contract.
     }
 
     // Provisioning state is per-run and lives in memory, so a worktree with no
@@ -434,7 +495,24 @@ export async function inventoryWorktrees(
     })
   }
 
-  log('inventoried worktrees', { repo_path: repoPath, count: entries.length })
+  // Retired paths must not pin cached appraisals.
+  pruneAppraisalCache(new Set(listed.map((w) => w.path)))
 
-  return entries
+  const durationMs = Date.now() - startedAt
+  log('inventoried worktrees', {
+    repo_path: repoPath,
+    count: entries.length,
+    duration_ms: durationMs,
+    appraisal_cache_hits: counters.hits,
+    appraisal_cache_misses: counters.misses,
+  })
+  if (durationMs > 2000) {
+    warn('inventory crawl slow', { repo_path: repoPath, duration_ms: durationMs, count: entries.length })
+  }
+
+  return {
+    canonicalRepoPath: listed[0]?.path ?? null,
+    aliasPaths: listed.map((w) => w.path),
+    entries,
+  }
 }

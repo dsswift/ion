@@ -36,6 +36,8 @@ func (p *panicTestAccessor) SessionKey() string       { return "panic-test-sessi
 func (p *panicTestAccessor) ExtensionName() string    { return "" }
 func (p *panicTestAccessor) ExtensionVersion() string { return "" }
 func (p *panicTestAccessor) ConversationID() string   { return "" }
+func (p *panicTestAccessor) RunID() string            { return "" }
+func (p *panicTestAccessor) TraceID() string          { return "" }
 func (p *panicTestAccessor) WorkingDirectory() string { return "/tmp" }
 func (p *panicTestAccessor) Emit(ev types.EngineEvent) {
 	p.mu.Lock()

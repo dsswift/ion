@@ -117,11 +117,12 @@ type Event struct {
 	User    string         `json:"user,omitempty"`
 	Payload map[string]any `json:"payload"`
 	Context map[string]any `json:"context,omitempty"`
-	// TraceID, when non-empty, pins this event to an existing trace so that
-	// all events in one session share a single trace ID. When empty, the
-	// OtelBridge generates a fresh per-event trace ID (legacy behavior).
-	// Callers that hold a session context should stamp the session's trace ID
-	// here to make cross-event correlation possible.
+	// TraceID, when non-empty, pins this event to an existing W3C trace-context
+	// trace. It is scoped to one prompt-to-completion run, not a whole session:
+	// Collector.Event derives it from Context["trace_id"] so callers carrying
+	// run correlation do not have to stamp the same value twice. An event with
+	// no active run leaves it empty, and the OtelBridge mints an independent
+	// trace for that standalone emission.
 	TraceID string `json:"trace_id,omitempty"`
 }
 
@@ -167,13 +168,17 @@ func (s *SpanHandle) End(attrs map[string]any, errMsg ...string) {
 	}
 	s.collector.Event(s.name, payload, s.ctx)
 
-	// Forward span timing to OtelBridge if attached. The bridge expects
-	// integer-millisecond epoch timestamps for OTLP start/end conversion.
+	// Forward span timing to OtelBridge if attached. The bridge receives both
+	// payload and correlation context: trace_id lives in the latter, and losing
+	// it here used to make llm.call/tool.execute OTLP spans mint a fresh trace
+	// per event even while their JSONL telemetry correctly carried the run trace.
+	// Keep the two maps separate so correlation keys remain ctx.* attributes on
+	// the OTLP event path rather than silently colliding with payload keys.
 	s.collector.mu.Lock()
 	bridge := s.collector.otelBridge
 	s.collector.mu.Unlock()
 	if bridge != nil {
-		bridge.RecordSpan(s.name, s.start.UnixMilli(), end.UnixMilli(), payload)
+		bridge.RecordSpan(s.name, s.start.UnixMilli(), end.UnixMilli(), payload, s.ctx)
 	}
 }
 
@@ -365,6 +370,44 @@ func (c *Collector) Close() {
 	})
 }
 
+// traceIDFromCorrelationContext extracts the run-scoped trace ID from the
+// correlation map passed through telemetry emission sites. Context is the
+// canonical carrier for session_id/conversation_id/run_id/trace_id; Event's
+// top-level TraceID mirrors the same value solely because the OTLP bridge reads
+// that field when it builds a span. Keeping this one explicit seam prevents the
+// JSONL and OTLP representations of a run from drifting into separate traces.
+//
+// Empty/malformed values deliberately return "": the OtelBridge then mints an
+// independent trace for a standalone event rather than exporting a malformed
+// W3C traceparent. The session layer only supplies valid IDs, but this keeps
+// Collector.Event safe for all direct callers.
+func traceIDFromCorrelationContext(ctx map[string]any) string {
+	if ctx == nil {
+		return ""
+	}
+	traceID, _ := ctx["trace_id"].(string) //nolint:errcheck // non-string trace correlation is unusable; treat as absent
+	if !isValidTraceID(traceID) {
+		return ""
+	}
+	return traceID
+}
+
+// isValidTraceID applies the W3C trace-context trace-id constraints without
+// making the telemetry package depend on a third-party tracing SDK: exactly 16
+// bytes rendered as lowercase hex, and never all zero. Invalid input is never
+// exported as a parent trace because a conformant backend must reject it.
+func isValidTraceID(traceID string) bool {
+	if len(traceID) != 32 || traceID == "00000000000000000000000000000000" {
+		return false
+	}
+	for _, r := range traceID {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 // Event records a named event with payload and optional context.
 func (c *Collector) Event(name string, payload, ctx map[string]any) {
 	if !c.config.Enabled {
@@ -384,6 +427,7 @@ func (c *Collector) Event(name string, payload, ctx map[string]any) {
 		User:    resolvedUserIdentity(),
 		Payload: payload,
 		Context: ctx,
+		TraceID: traceIDFromCorrelationContext(ctx),
 	}
 	c.mu.Lock()
 	c.buffer = append(c.buffer, e)
@@ -645,4 +689,3 @@ func resolvedUserIdentity() string {
 func resolvedInstallID() string {
 	return utils.InstallID()
 }
-

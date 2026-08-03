@@ -212,14 +212,14 @@ func (r *Registry) Register(kind Kind, decl Declaration, origin Origin, veto Vet
 	bucket := r.entries[kind]
 	if _, exists := bucket[id]; exists {
 		r.mu.RUnlock()
-		utils.LogWithFields(utils.LevelDebug, "asyncreg", "register duplicate", map[string]any{"reason": kind, "run_id": id, "model": origin})
+		utils.LogWithFields(utils.LevelDebug, "asyncreg", "register duplicate", map[string]any{"reason": kind, "async_id": id, "model": origin})
 		return ErrDuplicate
 	}
 	if len(bucket) >= r.cap {
 		size := len(bucket)
 		cap := r.cap
 		r.mu.RUnlock()
-		utils.LogWithFields(utils.LevelDebug, "asyncreg", "register cap exceeded", map[string]any{"reason": kind, "run_id": id, "count": size, "max": cap, "model": origin})
+		utils.LogWithFields(utils.LevelDebug, "asyncreg", "register cap exceeded", map[string]any{"reason": kind, "async_id": id, "count": size, "max": cap, "model": origin})
 		return ErrCapExceeded
 	}
 	r.mu.RUnlock()
@@ -228,7 +228,7 @@ func (r *Registry) Register(kind Kind, decl Declaration, origin Origin, veto Vet
 	// register/deregister calls from inside the veto handler are safe.
 	if veto != nil {
 		if err := veto(kind, decl, origin); err != nil {
-			utils.LogWithFields(utils.LevelInfo, "asyncreg", "register vetoed", map[string]any{"reason": kind, "run_id": id, "model": origin, "error": err.Error()})
+			utils.LogWithFields(utils.LevelInfo, "asyncreg", "register vetoed", map[string]any{"reason": kind, "async_id": id, "model": origin, "error": err.Error()})
 			return err
 		}
 	}
@@ -241,14 +241,14 @@ func (r *Registry) Register(kind Kind, decl Declaration, origin Origin, veto Vet
 	}
 	if _, exists := r.entries[kind][id]; exists {
 		r.mu.Unlock()
-		utils.LogWithFields(utils.LevelDebug, "asyncreg", "register raced duplicate", map[string]any{"reason": kind, "run_id": id, "model": origin})
+		utils.LogWithFields(utils.LevelDebug, "asyncreg", "register raced duplicate", map[string]any{"reason": kind, "async_id": id, "model": origin})
 		return ErrDuplicate
 	}
 	if len(r.entries[kind]) >= r.cap {
 		size := len(r.entries[kind])
 		cap := r.cap
 		r.mu.Unlock()
-		utils.LogWithFields(utils.LevelDebug, "asyncreg", "register raced cap exceeded", map[string]any{"reason": kind, "run_id": id, "count": size, "max": cap, "model": origin})
+		utils.LogWithFields(utils.LevelDebug, "asyncreg", "register raced cap exceeded", map[string]any{"reason": kind, "async_id": id, "count": size, "max": cap, "model": origin})
 		return ErrCapExceeded
 	}
 	r.entries[kind][id] = entry{decl: decl, origin: origin}
@@ -257,7 +257,7 @@ func (r *Registry) Register(kind Kind, decl Declaration, origin Origin, veto Vet
 	channels := append([]chan ChangeEvent(nil), r.subs[kind]...)
 	r.mu.Unlock()
 
-	utils.LogWithFields(utils.LevelDebug, "asyncreg", "register committed", map[string]any{"reason": kind, "run_id": id, "model": origin})
+	utils.LogWithFields(utils.LevelDebug, "asyncreg", "register committed", map[string]any{"reason": kind, "async_id": id, "model": origin})
 	publishChange(channels, ChangeEvent{Kind: kind, Op: ChangeAdded, ID: id, Origin: origin})
 	return nil
 }
@@ -280,14 +280,14 @@ func (r *Registry) Deregister(kind Kind, id string, notify NotifyFunc) bool {
 	e, exists := bucket[id]
 	if !exists {
 		r.mu.Unlock()
-		utils.LogWithFields(utils.LevelDebug, "asyncreg", "deregister not found", map[string]any{"reason": kind, "run_id": id})
+		utils.LogWithFields(utils.LevelDebug, "asyncreg", "deregister not found", map[string]any{"reason": kind, "async_id": id})
 		return false
 	}
 	delete(bucket, id)
 	channels := append([]chan ChangeEvent(nil), r.subs[kind]...)
 	r.mu.Unlock()
 
-	utils.LogWithFields(utils.LevelInfo, "asyncreg", "deregister removed", map[string]any{"reason": kind, "run_id": id, "model": e.origin})
+	utils.LogWithFields(utils.LevelInfo, "asyncreg", "deregister removed", map[string]any{"reason": kind, "async_id": id, "model": e.origin})
 	if notify != nil {
 		notify(kind, e.decl, e.origin)
 	}
@@ -305,7 +305,7 @@ func publishChange(channels []chan ChangeEvent, ev ChangeEvent) {
 		select {
 		case ch <- ev:
 		default:
-			utils.LogWithFields(utils.LevelDebug, "asyncreg", "publish change subscriber dropped event", map[string]any{"reason": ev.Kind, "status": ev.Op, "run_id": ev.ID})
+			utils.LogWithFields(utils.LevelDebug, "asyncreg", "publish change subscriber dropped event", map[string]any{"reason": ev.Kind, "status": ev.Op, "async_id": ev.ID})
 		}
 	}
 }

@@ -800,6 +800,47 @@ export interface IonContext {
    *  persistent identity. Empty when no conversation is active. */
   conversationId: string
   /**
+   * Identifies the prompt-to-completion run in flight when the hook fired.
+   * Empty (`''`) when no run is active — `session_start`, a schedule or
+   * webhook delivery, extension load.
+   *
+   * This is the engine-native run identity: the same value that appears as
+   * `run_id` in Ion's own logs and telemetry, so it is the key to join your
+   * extension's records against the engine's. For distributed tracing across
+   * process boundaries use {@link IonContext.traceId} instead — run IDs are
+   * not W3C-shaped.
+   */
+  runId: string
+  /**
+   * W3C trace-context trace-id of the run in flight: 32 lowercase hex
+   * characters, scoped to ONE prompt-to-completion run. Empty (`''`) when no
+   * run is active.
+   *
+   * Every engine log line and telemetry event emitted during the run carries
+   * this same value, so spans you export correlate with Ion's own records.
+   * Place it directly in a `traceparent` header on a downstream call and the
+   * whole chain — prompt, engine, your API, its dependencies — lands in one
+   * trace in any OTLP backend (Application Insights `operation_Id`, Jaeger,
+   * Tempo, ...):
+   *
+   * ```ts
+   * ion.on('before_tool_call', async (ctx, info) => {
+   *   const spanId = randomBytes(8).toString('hex') // your span, your id
+   *   await ctx.http.post('https://api.example.com/v1/work', {
+   *     scope: 'api://my-api/Work.Write',
+   *     headers: { traceparent: `00-${ctx.traceId}-${spanId}-01` },
+   *     body: JSON.stringify({ task: info.input }),
+   *   })
+   * })
+   * ```
+   *
+   * Scope is the run, not the session or conversation, because a trace
+   * represents one logical transaction. For long-lived correlation use
+   * {@link IonContext.conversationId}; for the engine session use
+   * {@link IonContext.sessionKey}.
+   */
+  traceId: string
+  /**
    * Dispatch depth of the session that fired the hook: `0` for the root
    * (orchestrator) session, `1` for a directly dispatched child agent,
    * `2` for a grandchild, and so on.

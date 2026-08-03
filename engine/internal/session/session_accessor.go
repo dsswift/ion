@@ -33,6 +33,8 @@ type sessionAccessor struct {
 
 func (a *sessionAccessor) SessionKey() string       { return a.key }
 func (a *sessionAccessor) ConversationID() string   { return a.s.conversationID }
+func (a *sessionAccessor) RunID() string            { return a.s.requestID }
+func (a *sessionAccessor) TraceID() string          { return a.s.runTraceID }
 func (a *sessionAccessor) ExtensionName() string    { return a.s.extensionName }
 func (a *sessionAccessor) ExtensionVersion() string { return a.s.extensionVersion }
 func (a *sessionAccessor) WorkingDirectory() string { return a.s.config.WorkingDirectory }

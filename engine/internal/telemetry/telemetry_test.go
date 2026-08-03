@@ -162,6 +162,79 @@ func TestOtelBridge_RecordEvent(t *testing.T) {
 	}
 }
 
+// TestCollectorEventCarriesRunTraceToOTLP pins the full event path: run
+// correlation enters Collector.Event through ctx["trace_id"], is mirrored to
+// Event.TraceID, and arrives on the OTLP span unchanged. Before the fix,
+// Context held the right value but Event.TraceID stayed empty, so RecordEvent
+// minted a fresh unrelated trace per telemetry event.
+func TestCollectorEventCarriesRunTraceToOTLP(t *testing.T) {
+	bridge := NewOtelBridge(OtelConfig{Endpoint: "http://localhost:4318", BatchSize: 1000})
+	defer bridge.Close()
+
+	collector := NewCollector(types.TelemetryConfig{Enabled: true, Targets: []string{}})
+	collector.SetOtelBridge(bridge)
+	const traceID = "4bf92f3577b34da6a3ce929d0e0e4736"
+	collector.Event("run.complete", map[string]any{"cost": 1}, map[string]any{
+		"session_id": "session-1",
+		"run_id":     "run-1",
+		"trace_id":   traceID,
+	})
+
+	events := collector.BufferedEvents()
+	if len(events) != 1 {
+		t.Fatalf("Collector.Event buffered %d events, want 1", len(events))
+	}
+	if got := events[0].TraceID; got != traceID {
+		t.Errorf("Event.TraceID = %q, want run trace %q", got, traceID)
+	}
+	if got := events[0].Context["trace_id"]; got != traceID {
+		t.Errorf("Event.Context trace_id = %v, want %q", got, traceID)
+	}
+
+	bridge.mu.Lock()
+	if len(bridge.spans) != 1 {
+		bridge.mu.Unlock()
+		t.Fatalf("OTLP bridge recorded %d spans, want 1", len(bridge.spans))
+	}
+	span := bridge.spans[0]
+	bridge.mu.Unlock()
+	if got := span.TraceID; got != traceID {
+		t.Errorf("OTLP span TraceID = %q, want run trace %q", got, traceID)
+	}
+}
+
+// TestSpanHandleCarriesRunTraceToOTLP pins the timed-span path used by
+// llm.call and tool.execute. StartSpanCtx stores trace_id in the correlation
+// map; End must preserve it when it forwards timing to RecordSpan. Before the
+// fix End passed only payload attributes, so every timed span forked into a
+// random trace despite its JSONL event carrying the run trace.
+func TestSpanHandleCarriesRunTraceToOTLP(t *testing.T) {
+	bridge := NewOtelBridge(OtelConfig{Endpoint: "http://localhost:4318", BatchSize: 1000})
+	defer bridge.Close()
+
+	collector := NewCollector(types.TelemetryConfig{Enabled: true, Targets: []string{}})
+	collector.SetOtelBridge(bridge)
+	const traceID = "4bf92f3577b34da6a3ce929d0e0e4736"
+	collector.StartSpanCtx("tool.execute", map[string]any{"tool": "Read"}, map[string]any{
+		"session_id": "session-1",
+		"run_id":     "run-1",
+		"trace_id":   traceID,
+	}).End(nil)
+
+	bridge.mu.Lock()
+	if len(bridge.spans) != 2 {
+		bridge.mu.Unlock()
+		t.Fatalf("OTLP bridge recorded %d spans, want 2 (telemetry event + timed span)", len(bridge.spans))
+	}
+	spans := append([]otlpSpan(nil), bridge.spans...)
+	bridge.mu.Unlock()
+	for _, span := range spans {
+		if got := span.TraceID; got != traceID {
+			t.Errorf("OTLP timed span TraceID = %q, want run trace %q", got, traceID)
+		}
+	}
+}
+
 func TestOtelBridge_RecordEvent_ErrorStatus(t *testing.T) {
 	bridge := NewOtelBridge(OtelConfig{
 		Endpoint:  "http://localhost:4318",
@@ -201,7 +274,7 @@ func TestOtelBridge_RecordSpan(t *testing.T) {
 	startMs := time.Now().Add(-100 * time.Millisecond).UnixMilli()
 	endMs := time.Now().UnixMilli()
 
-	bridge.RecordSpan("test.span", startMs, endMs, map[string]any{"tool": "bash"})
+	bridge.RecordSpan("test.span", startMs, endMs, map[string]any{"tool": "bash"}, nil)
 
 	bridge.mu.Lock()
 	count := len(bridge.spans)
@@ -294,8 +367,8 @@ func TestOtelBridge_OTLPFormat(t *testing.T) {
 	defer bridge.Close()
 
 	bridge.RecordEvent(Event{
-		Name: SessionStart,
-		Ts:   time.Now().UTC().Format(time.RFC3339Nano),
+		Name:    SessionStart,
+		Ts:      time.Now().UTC().Format(time.RFC3339Nano),
 		Payload: map[string]any{"sessionId": "s1"},
 	})
 
@@ -731,5 +804,23 @@ func TestNormalizeTelemetryConfig_EmptyTargetsNoFlushLoop(t *testing.T) {
 		// Good — no deadlock.
 	case <-time.After(2 * time.Second):
 		t.Fatal("Close() did not return within 2 s — flush goroutine may have been started unexpectedly")
+	}
+}
+
+func TestCollectorEventOmitsInvalidCorrelationTraceID(t *testing.T) {
+	collector := NewCollector(types.TelemetryConfig{Enabled: true, Targets: []string{}})
+	for _, traceID := range []string{
+		"",
+		"00000000000000000000000000000000",
+		"4BF92F3577B34DA6A3CE929D0E0E4736",
+		"not-a-trace-id",
+	} {
+		collector.Event("standalone", nil, map[string]any{"trace_id": traceID})
+	}
+
+	for _, event := range collector.BufferedEvents() {
+		if event.TraceID != "" {
+			t.Errorf("Event.TraceID = %q for invalid correlation input, want omitted", event.TraceID)
+		}
 	}
 }

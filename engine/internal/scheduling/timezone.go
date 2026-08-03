@@ -212,7 +212,7 @@ func (s *Scheduler) bootstrapNextRun(h *extension.Host, job extension.ScheduleJo
 			s.extNextRun[extKey] = sibling
 			s.mu.Unlock()
 			utils.LogWithFields(utils.LevelDebug, "scheduling", "bootstrap next run inherited from sibling", map[string]any{
-				"model": name, "run_id": job.JobID, "inherited": sibling.String(),
+				"model": name, "schedule_job_id": job.JobID, "inherited": sibling.String(),
 			})
 			return
 		}
@@ -226,7 +226,7 @@ func (s *Scheduler) bootstrapNextRun(h *extension.Host, job extension.ScheduleJo
 	s.nextRun[key] = next
 	s.extNextRun[extKey] = next
 	s.mu.Unlock()
-	utils.LogWithFields(utils.LevelDebug, "scheduling", "bootstrap next run", map[string]any{"model": name, "run_id": job.JobID, "reason": next.String()})
+	utils.LogWithFields(utils.LevelDebug, "scheduling", "bootstrap next run", map[string]any{"model": name, "schedule_job_id": job.JobID, "reason": next.String()})
 
 	if decision != nil {
 		// Emit the engine_schedule_missed event.
@@ -245,7 +245,7 @@ func (s *Scheduler) bootstrapNextRun(h *extension.Host, job extension.ScheduleJo
 					if err != nil {
 						errMsg = err.Error()
 					}
-					utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap schedule missed hook resolve failed", map[string]any{"model": name, "run_id": job.JobID, "error": errMsg})
+					utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap schedule missed hook resolve failed", map[string]any{"model": name, "schedule_job_id": job.JobID, "error": errMsg})
 					return
 				}
 				info := extension.ScheduleMissedInfo{
@@ -256,7 +256,7 @@ func (s *Scheduler) bootstrapNextRun(h *extension.Host, job extension.ScheduleJo
 					RanWithinScope: s.lastRunWithinScopeByName(name, job, now, loc),
 				}
 				h.FireScheduleMissed(ctx, info)
-				utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap schedule missed hook fired", map[string]any{"model": name, "run_id": job.JobID, "slot": info.MissedSlotUtc})
+				utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap schedule missed hook fired", map[string]any{"model": name, "schedule_job_id": job.JobID, "slot": info.MissedSlotUtc})
 			}()
 		}
 	}
@@ -302,7 +302,7 @@ func (s *Scheduler) computeBootstrapNextRun(name string, job extension.ScheduleJ
 			return nextFromLast, nil
 		}
 		// Overdue across the restart — catch up soon.
-		utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap interval catch-up scheduled", map[string]any{"model": name, "run_id": job.JobID, "lastRun": lastRun.Format(time.RFC3339)})
+		utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap interval catch-up scheduled", map[string]any{"model": name, "schedule_job_id": job.JobID, "lastRun": lastRun.Format(time.RFC3339)})
 		return now.Add(CatchUpStagger), nil
 	}
 
@@ -320,7 +320,7 @@ func (s *Scheduler) computeBootstrapNextRun(name string, job extension.ScheduleJ
 		// The next restart with an elapsed slot will see the marker
 		// and know the job predates the slot.
 		s.recordFirstSeenByName(name, job, now)
-		utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap first sighting recorded", map[string]any{"model": name, "run_id": job.JobID})
+		utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap first sighting recorded", map[string]any{"model": name, "schedule_job_id": job.JobID})
 		return next, nil
 	}
 
@@ -330,21 +330,21 @@ func (s *Scheduler) computeBootstrapNextRun(name string, job extension.ScheduleJ
 		if t, err := time.Parse(time.RFC3339, marker.LastRunUtc); err == nil {
 			anchor = t
 		} else {
-			utils.LogWithFields(utils.LevelWarn, "scheduling", "bootstrap marker LastRunUtc unparseable", map[string]any{"model": name, "run_id": job.JobID, "last_run_utc": marker.LastRunUtc, "error": err.Error()})
+			utils.LogWithFields(utils.LevelWarn, "scheduling", "bootstrap marker LastRunUtc unparseable", map[string]any{"model": name, "schedule_job_id": job.JobID, "last_run_utc": marker.LastRunUtc, "error": err.Error()})
 		}
 	}
 	if anchor.IsZero() && marker.FirstSeenUtc != "" {
 		if t, err := time.Parse(time.RFC3339, marker.FirstSeenUtc); err == nil {
 			anchor = t
 		} else {
-			utils.LogWithFields(utils.LevelWarn, "scheduling", "bootstrap marker FirstSeenUtc unparseable", map[string]any{"model": name, "run_id": job.JobID, "first_seen_utc": marker.FirstSeenUtc, "error": err.Error()})
+			utils.LogWithFields(utils.LevelWarn, "scheduling", "bootstrap marker FirstSeenUtc unparseable", map[string]any{"model": name, "schedule_job_id": job.JobID, "first_seen_utc": marker.FirstSeenUtc, "error": err.Error()})
 		}
 	}
 	if anchor.IsZero() {
 		// Marker file exists but both timestamps are unparseable (or empty).
 		// Treat as first sighting — log so a corrupt marker abandoning
 		// catch-up is visible rather than silently missing the slot.
-		utils.LogWithFields(utils.LevelWarn, "scheduling", "bootstrap marker has no usable anchor; treating as first sighting", map[string]any{"model": name, "run_id": job.JobID, "last_run_utc": marker.LastRunUtc, "first_seen_utc": marker.FirstSeenUtc})
+		utils.LogWithFields(utils.LevelWarn, "scheduling", "bootstrap marker has no usable anchor; treating as first sighting", map[string]any{"model": name, "schedule_job_id": job.JobID, "last_run_utc": marker.LastRunUtc, "first_seen_utc": marker.FirstSeenUtc})
 		return next, nil
 	}
 
@@ -354,12 +354,12 @@ func (s *Scheduler) computeBootstrapNextRun(name string, job extension.ScheduleJ
 		hadMarker := marker.LastRunUtc != ""
 		if hasMissedHook {
 			// Extension decides: schedule normal next, emit decision.
-			utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap missed slot deferred to hook", map[string]any{"model": name, "run_id": job.JobID, "reason": lastSlot.String()})
+			utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap missed slot deferred to hook", map[string]any{"model": name, "schedule_job_id": job.JobID, "reason": lastSlot.String()})
 			return next, &scheduleMissedDecision{Slot: lastSlot, HadMarker: hadMarker}
 		}
 		// No hook: auto-catch-up (same opinion as before).
 		next = now.Add(CatchUpStagger)
-		utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap next run catch-up scheduled", map[string]any{"model": name, "run_id": job.JobID, "reason": lastSlot.String()})
+		utils.LogWithFields(utils.LevelInfo, "scheduling", "bootstrap next run catch-up scheduled", map[string]any{"model": name, "schedule_job_id": job.JobID, "reason": lastSlot.String()})
 		return next, nil
 	}
 	return next, nil
@@ -385,7 +385,7 @@ func (s *Scheduler) advanceNextRun(key hostJobKey, job extension.ScheduleJob, no
 	s.nextRun[key] = next
 	s.extNextRun[extKey] = next
 	s.mu.Unlock()
-	utils.LogWithFields(utils.LevelDebug, "scheduling", "advance next run", map[string]any{"model": key.host.Name(), "run_id": key.id, "reason": next.String()})
+	utils.LogWithFields(utils.LevelDebug, "scheduling", "advance next run", map[string]any{"model": key.host.Name(), "schedule_job_id": key.id, "reason": next.String()})
 }
 
 // lastScheduledSlotBefore returns the most recent scheduled slot

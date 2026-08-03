@@ -6,6 +6,21 @@ import type { IonAPI } from './ionapi'
 
 export type { IonAPI } from './ionapi'
 
+/**
+ * Wrapper registry for the generic `on`/`off` bridge below.
+ *
+ * `on` cannot hand the caller's raw callback to `ipcRenderer.on` (the IPC
+ * signature carries an `IpcRendererEvent` first argument that the wrapper
+ * forwards), so `off` needs a way back from the callback to the wrapper that
+ * was actually registered. Keyed callback → channel → wrapper. The outer
+ * WeakMap lets a callback whose owner unmounted be collected along with its
+ * wrappers.
+ */
+const ipcWrappers = new WeakMap<
+  (...args: any[]) => void,
+  Map<string, (_e: Electron.IpcRendererEvent, ...args: any[]) => void>
+>()
+
 const api: IonAPI = {
   // Agent Team Visualizer bridge (see preload/atv-api.ts)
   ...atvApi,
@@ -346,12 +361,40 @@ const api: IonAPI = {
     void ipcRenderer.invoke(IPC.LOG_WRITE, { level, tag, msg, fields: fields ?? {} })
   },
 
+  // `on` wraps the caller's callback, so `off` cannot pass the ORIGINAL
+  // callback to removeListener — ipcRenderer holds the wrapper, the identities
+  // differ, and the removal silently no-ops. That left every `on` registration
+  // permanently attached: an effect that re-ran (StrictMode double-invoke, a
+  // remount, a dependency change) added a second live listener for the same
+  // channel and the handler then fired N times per single main-process
+  // broadcast. For IPC.REMOTE_USER_MESSAGE that means N optimistic user
+  // bubbles for one iOS prompt.
+  //
+  // The registry keys wrapper-by-callback per channel so `off` can look up the
+  // exact wrapper it registered. A WeakMap on the callback keeps entries
+  // collectable when the caller's closure goes away, so a component that
+  // unmounts without calling `off` leaks nothing.
   on: (channel, callback) => {
     const handler = (_e: Electron.IpcRendererEvent, ...args: any[]) => callback(_e, ...args)
+    let perChannel = ipcWrappers.get(callback)
+    if (!perChannel) {
+      perChannel = new Map()
+      ipcWrappers.set(callback, perChannel)
+    }
+    // Re-registering the same callback on the same channel would otherwise
+    // orphan the previous wrapper (unremovable, still firing). Drop it first
+    // so `on` is idempotent per (channel, callback) pair.
+    const prior = perChannel.get(channel)
+    if (prior) ipcRenderer.removeListener(channel, prior)
+    perChannel.set(channel, handler)
     ipcRenderer.on(channel, handler)
   },
   off: (channel, callback) => {
-    ipcRenderer.removeListener(channel, callback)
+    const perChannel = ipcWrappers.get(callback)
+    const handler = perChannel?.get(channel)
+    if (!handler) return
+    ipcRenderer.removeListener(channel, handler)
+    perChannel!.delete(channel)
   },
 
   // ─── Window management ───

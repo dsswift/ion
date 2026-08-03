@@ -375,6 +375,7 @@ func (m *Manager) StopSession(key string) error {
 		// requestID, under the lock StopSession already holds.
 		m.unbindRunLocked(s.requestID)
 		s.requestID = ""
+		s.runTraceID = "" // run over: the trace ends with it
 	}
 
 	// Drop pending prompts
@@ -629,6 +630,7 @@ func (m *Manager) currentSessionStatus(s *engineSession) string {
 	if m.backend != nil && !m.backend.IsRunning(s.requestID) {
 		stale := s.requestID
 		s.requestID = ""
+		s.runTraceID = "" // run over: the trace ends with it
 		utils.LogWithFields(utils.LevelWarn, "session", "currentsessionstatus: clearing stale requestid (backend disclaims run); reporting state=idle", map[string]any{"session_id": s.key, "stale": stale})
 		return "idle"
 	}

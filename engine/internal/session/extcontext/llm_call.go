@@ -76,7 +76,7 @@ func BuildLLMCallFunc(sa SessionAccessor) func(extension.LLMCallOpts) (*extensio
 			utils.LogWithFields(utils.LevelInfo, "session.llm_call", "reject: no provider for model ( )", map[string]any{"session_key": sa.SessionKey(), "model": opts.Model})
 			return nil, fmt.Errorf("LLMCall: no provider registered for model %q", opts.Model)
 		}
-		utils.LogWithFields(utils.LevelInfo, "session.llm_call", "resolved provider ( )", map[string]any{"session_key": sa.SessionKey(), "model": opts.Model, "provider_i_d": providerID, "j_s_o_n_mode": opts.JSONMode, "max_tokens": opts.MaxTokens, "count": len(opts.System), "count_6": len(opts.Prompt)})
+		utils.LogWithFields(utils.LevelInfo, "session.llm_call", "resolved provider ( )", map[string]any{"session_key": sa.SessionKey(), "model": opts.Model, "provider_i_d": providerID, "j_s_o_n_mode": opts.JSONMode, "max_tokens": opts.MaxTokens, "system_len": len(opts.System), "prompt_len": len(opts.Prompt)})
 
 		// --- Build provider stream options ---
 		messages := []types.LlmMessage{

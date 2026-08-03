@@ -1,7 +1,6 @@
 package extension
 
 import (
-
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -47,7 +46,7 @@ func (g *ExtensionGroup) Tools() []ToolDefinition {
 		for _, t := range h.Tools() {
 			if idx, ok := seen[t.Name]; ok {
 				all[idx] = t
-				utils.LogWithFields(utils.LevelDebug, "extension.group", "duplicate tool from host , last-registered wins", map[string]any{"model": t.Name, "model_1": h.Name()})
+				utils.LogWithFields(utils.LevelDebug, "extension.group", "duplicate tool from host , last-registered wins", map[string]any{"tool_name": t.Name, "host_name": h.Name()})
 			} else {
 				seen[t.Name] = len(all)
 				all = append(all, t)

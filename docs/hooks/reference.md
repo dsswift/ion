@@ -40,6 +40,29 @@ All hooks grouped by category. For each hook: when it fires, what payload it rec
 > `AgentInfo.IsRoot` on `before_agent_start` (which discriminates
 > per-firing rather than per-session).
 
+### Context identifiers (every hook)
+
+Beyond the payload, every hook's context carries the correlation identifiers:
+
+| Field | Scope | Empty when |
+|---|---|---|
+| `ctx.sessionKey` | One engine session | Never, for a live session |
+| `ctx.conversationId` | The durable conversation, across restarts | No conversation bound |
+| `ctx.runId` | One prompt-to-completion run (engine-native form) | No run in flight |
+| `ctx.traceId` | The same run, as a W3C trace-context trace-id (32 hex) | No run in flight |
+| `ctx.depth` / `ctx.dispatchId` | Sub-agent position within a run | Root session (`0` / `''`) |
+
+`runId` and `traceId` are empty on hooks that fire outside a run — `session_start`,
+`session_end`, schedule and webhook deliveries, extension load — because no transaction is in
+flight. Hooks that fire during a run (`before_prompt`, `before_tool_call`, `turn_start`, ...)
+carry both.
+
+`traceId` is the value to forward in a `traceparent` header so downstream services join the
+engine's trace; see [`docs/extensions/sdk-typescript.md`](../extensions/sdk-typescript.md)
+§ "Tracing and correlation" for the recipe, and
+[`docs/observability/log-schema.md`](../observability/log-schema.md) § "Correlation-ID vocabulary"
+for which identifier answers which question.
+
 ### Payload Types
 
 **TurnInfo**

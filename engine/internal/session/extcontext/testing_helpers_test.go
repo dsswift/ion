@@ -31,6 +31,8 @@ type noopSA struct{ noopPluginMethods }
 
 func (noopSA) SessionKey() string                                                { return "" }
 func (noopSA) ConversationID() string                                            { return "" }
+func (noopSA) RunID() string                                                     { return "" }
+func (noopSA) TraceID() string                                                   { return "" }
 func (noopSA) ExtensionName() string                                             { return "" }
 func (noopSA) ExtensionVersion() string                                          { return "" }
 func (noopSA) WorkingDirectory() string                                          { return "" }

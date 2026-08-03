@@ -108,7 +108,7 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 		m.mu.RLock()
 		if s2, ok2 := m.sessions[key]; ok2 && s2.conversationID != "" {
 			if ee.Fields.SessionID != s2.conversationID {
-				utils.LogWithFields(utils.LevelDebug, "session", "task_complete status: substituting ion for backend", map[string]any{"run_id": s2.conversationID, "run_id_1": ee.Fields.SessionID, "key": key})
+				utils.LogWithFields(utils.LevelDebug, "session", "task_complete status: substituting ion for backend", map[string]any{"conversation_id": s2.conversationID, "session_id": ee.Fields.SessionID, "key": key})
 			}
 			ee.Fields.SessionID = s2.conversationID
 		}
@@ -371,7 +371,9 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 					"cache_read_input_tokens":     derefInt(tc.Usage.CacheReadInputTokens),
 					"cache_creation_input_tokens": derefInt(tc.Usage.CacheCreationInputTokens),
 				}
-				s2.telemetry.Event(telemetry.RunComplete, payload, correlationCtxExt(key, s2.conversationID, s2.extensionName, s2.extensionVersion))
+				s2.telemetry.Event(telemetry.RunComplete, payload, withRunCorrelation(
+					correlationCtxExt(key, s2.conversationID, s2.extensionName, s2.extensionVersion),
+					s2.requestID, s2.runTraceID))
 				utils.LogWithFields(utils.LevelInfo, "session", "run.complete telemetry emitted", map[string]any{"key": key, "model": s2.lastModel, "cost_usd": tc.CostUsd, "aggregate_cost": aggregateCost, "turn": tc.NumTurns})
 
 				// Context-economy telemetry (family 4c): emit a cache.savings
@@ -379,7 +381,7 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 				// track the dollar savings from cache reads. Computed from the
 				// model's input pricing and the cache-read token count. Nil-safe
 				// via the guarded collector above.
-				emitCacheSavings(s2.telemetry, s2.lastModel, tc.Usage, key, s2.conversationID, s2.extensionName, s2.extensionVersion)
+				emitCacheSavings(s2.telemetry, s2.lastModel, tc.Usage, key, s2.conversationID, s2.extensionName, s2.extensionVersion, s2.requestID, s2.runTraceID)
 			}
 		}
 		m.mu.Unlock()
@@ -413,7 +415,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	if signal != nil {
 		sigStr = *signal
 	}
-	utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit", map[string]any{"key": key, "run_id": runID, "code_str": codeStr, "sig_str": sigStr, "run_id_4": sessionID})
+	utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit", map[string]any{"key": key, "run_id": runID, "code_str": codeStr, "sig_str": sigStr, "session_id": sessionID})
 
 	var nextPrompt *pendingPrompt
 	var bgCount int
@@ -427,6 +429,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	m.unbindRunLocked(runID)
 	if s, ok := m.sessions[key]; ok {
 		s.requestID = ""
+		s.runTraceID = "" // run over: the trace ends with it
 		// Ion's durable conversation-file identity, captured under the lock
 		// for use in persistTerminalDispatches below. This is NOT the
 		// backend-reported sessionID (which is claude's UUID for the CLI
@@ -481,7 +484,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 		if sessionID != "" && sessionID != s.conversationID &&
 			s.runCaps.ContextModel == backend.ContextModelNativeSession && s.runCaps.Resume {
 			captureCursorKind = s.runCaps.Kind
-			utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit: native session id reported, capturing cursor", map[string]any{"run_id": sessionID, "key": key, "kind": captureCursorKind, "run_id_2": s.conversationID})
+			utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit: native session id reported, capturing cursor", map[string]any{"session_id": sessionID, "key": key, "kind": captureCursorKind, "conversation_id": s.conversationID})
 		} else {
 			utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit: no native session id to capture", map[string]any{"key": key, "reported_session_id": sessionID, "kind": s.runCaps.Kind})
 		}

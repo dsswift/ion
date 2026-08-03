@@ -307,6 +307,17 @@ func (h *Host) buildHookEnvelope(ctx *Context, payload interface{}) map[string]i
 	if ctx.ConversationID != "" {
 		ctxMeta["conversationId"] = ctx.ConversationID
 	}
+	// Run identity: omit-when-empty, so a hook firing with no run in flight
+	// (session_start, a schedule or webhook delivery) carries neither key and
+	// the SDK's "" default is the accurate reading. traceId is the W3C
+	// trace-id an extension parents its own OTLP spans to; runId is the
+	// engine-native join key for the same run. See Context.TraceID.
+	if ctx.RunID != "" {
+		ctxMeta["runId"] = ctx.RunID
+	}
+	if ctx.TraceID != "" {
+		ctxMeta["traceId"] = ctx.TraceID
+	}
 	// Dispatch identity: emitted only for child sessions (depth > 0) so the
 	// wire stays additive — SDK runtimes default depth to 0 / dispatchId to
 	// "" when the keys are absent, which is exactly the root-session shape.

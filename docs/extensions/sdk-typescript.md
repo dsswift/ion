@@ -13,7 +13,7 @@ The TypeScript SDK lives at `engine/extensions/sdk/ion-sdk/` (a directory with `
 Factory function that creates an SDK instance and begins listening for engine requests on the next tick.
 
 ```typescript
-import { createIon } from './sdk/ion-sdk'
+import { createIon, log } from './sdk/ion-sdk'
 
 const ion = createIon()
 ```
@@ -279,6 +279,67 @@ interface IonHttpResponse {
   body: string
 }
 ```
+
+### Tracing and correlation
+
+Every hook context carries the identifiers Ion uses to correlate its own records. Reading them lets
+an extension emit telemetry that joins Ion's, and forwarding `traceId` lets a downstream service
+join the same trace.
+
+| Field | Scope | Reach for it when |
+|---|---|---|
+| `ctx.traceId` | **One prompt-to-completion run.** W3C trace-context trace-id, 32 lowercase hex | Distributed tracing — a `traceparent` header, an APM operation id |
+| `ctx.runId` | The same run, engine-native form (not W3C-shaped) | Joining your records to Ion's `run_id` in its logs and telemetry |
+| `ctx.conversationId` | The durable conversation, across restarts | Long-lived correlation, audit, resource scoping |
+| `ctx.sessionKey` | One engine session, spanning many runs | Per-session state (a module-level `Map` key) |
+| `ctx.dispatchId` / `ctx.depth` | One sub-agent within a run | Attributing work to a child agent; `depth === 0` is the root |
+
+`traceId` and `runId` are `''` when no run is in flight — `session_start`, a schedule or webhook
+delivery, extension load. That is the accurate reading: there is no transaction to correlate
+against. Guard on it rather than emitting a span with an empty parent.
+
+**Forwarding the trace downstream.** `ctx.traceId` is valid verbatim as the trace-id in a
+`traceparent` header. Mint your own span id — your span *is* a new span, so it becomes the
+parent-id the callee sees:
+
+```typescript
+import { randomBytes } from 'node:crypto'
+
+ion.on('before_tool_call', async (ctx, info) => {
+  if (!ctx.traceId) return  // no run in flight: nothing to correlate to
+
+  const spanId = randomBytes(8).toString('hex')
+  const res = await ctx.http.post('https://api.corp.example.com/v1/audit', {
+    scope: 'api://audit-api/Events.Write',
+    headers: {
+      'Content-Type': 'application/json',
+      traceparent: `00-${ctx.traceId}-${spanId}-01`,
+    },
+    body: JSON.stringify({
+      tool: info.name,
+      conversationId: ctx.conversationId,
+      runId: ctx.runId,
+    }),
+  })
+  if (res.status >= 400) {
+    log.warn('audit post failed', { status: res.status, traceId: ctx.traceId })
+  }
+})
+```
+
+Because the trace-id is W3C-standard, the receiving service — and anything *it* calls — lands in
+the same trace as the Ion run that triggered it. In an OTLP backend the whole chain reads as one
+transaction: the prompt, the engine's turns and tool calls, your API, and its dependencies. In
+Application Insights the trace-id becomes the `operation_Id`, so the end-to-end transaction view
+works with no mapping.
+
+This composes with `ctx.http` above: the engine authenticates the call as the signed-in operator
+while the `traceparent` you set carries the correlation, so an extension gets authenticated,
+traced egress without handling a token or minting a trace identity of its own.
+
+Ion's own records use the same vocabulary — see
+[`docs/observability/log-schema.md`](../observability/log-schema.md) § "Correlation-ID vocabulary"
+for the field reference and the LogQL/`jq` pivots.
 
 **`sendPrompt(text, opts?)`** -- queue a fresh prompt on this session's agent loop. Resolves once the engine has accepted the prompt; does **not** wait for the LLM to finish. Pass `opts.model` to override the model for this single prompt.
 

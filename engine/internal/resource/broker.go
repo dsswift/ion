@@ -119,7 +119,7 @@ func (b *Broker) Subscribe(kind string, filter types.ResourceFilter, deliver fun
 	items, err := host.HandleQuery(filter)
 	if err != nil {
 		// Subscription is registered; snapshot failed. Log and deliver empty snapshot.
-		utils.LogWithFields(utils.LevelInfo, "resource", "handle query failed", map[string]any{"reason": kind, "run_id": subID, "error": err.Error()})
+		utils.LogWithFields(utils.LevelInfo, "resource", "handle query failed", map[string]any{"reason": kind, "subscription_id": subID, "error": err.Error()})
 		items = nil
 	}
 
@@ -129,7 +129,7 @@ func (b *Broker) Subscribe(kind string, filter types.ResourceFilter, deliver fun
 		SubID: subID,
 		Items: items,
 	})
-	utils.LogWithFields(utils.LevelDebug, "resource", "subscribed", map[string]any{"reason": kind, "run_id": subID, "count": len(items)})
+	utils.LogWithFields(utils.LevelDebug, "resource", "subscribed", map[string]any{"reason": kind, "subscription_id": subID, "count": len(items)})
 	return sub, nil
 }
 
@@ -175,7 +175,7 @@ func (b *Broker) Unsubscribe(subID string) {
 		}
 	}
 	b.subscribers[sub.Kind] = updated
-	utils.LogWithFields(utils.LevelDebug, "resource", "unsubscribed", map[string]any{"run_id": subID, "reason": sub.Kind})
+	utils.LogWithFields(utils.LevelDebug, "resource", "unsubscribed", map[string]any{"subscription_id": subID, "reason": sub.Kind})
 }
 
 // Publish fans a delta out to all subscribers of the given kind. Returns an
@@ -271,7 +271,7 @@ func (b *Broker) SubscribeDirect(kind string, filter types.ResourceFilter, deliv
 		SubID: subID,
 		Items: nil,
 	})
-	utils.LogWithFields(utils.LevelDebug, "resource", "subscribe direct", map[string]any{"reason": kind, "run_id": subID})
+	utils.LogWithFields(utils.LevelDebug, "resource", "subscribe direct", map[string]any{"reason": kind, "subscription_id": subID})
 	return sub
 }
 
@@ -344,7 +344,7 @@ func (b *Broker) RewireQueryHandlerAndResnapshot(kind string, handler func(types
 	for _, sub := range subs {
 		items, err := handler(sub.Filter)
 		if err != nil {
-			utils.LogWithFields(utils.LevelInfo, "resource", "rewire handle query failed", map[string]any{"reason": kind, "run_id": sub.ID, "error": err.Error()})
+			utils.LogWithFields(utils.LevelInfo, "resource", "rewire handle query failed", map[string]any{"reason": kind, "subscription_id": sub.ID, "error": err.Error()})
 			items = nil
 		}
 		sub.deliver(ResourceMessage{
@@ -353,6 +353,6 @@ func (b *Broker) RewireQueryHandlerAndResnapshot(kind string, handler func(types
 			SubID: sub.ID,
 			Items: items,
 		})
-		utils.LogWithFields(utils.LevelInfo, "resource", "rewire delivered snapshot", map[string]any{"reason": kind, "run_id": sub.ID, "count": len(items)})
+		utils.LogWithFields(utils.LevelInfo, "resource", "rewire delivered snapshot", map[string]any{"reason": kind, "subscription_id": sub.ID, "count": len(items)})
 	}
 }

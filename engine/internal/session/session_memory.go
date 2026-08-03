@@ -139,7 +139,7 @@ func (sm *SessionMemory) LoadMemory() bool {
 
 	sm.memory = content
 	sm.mu.Unlock()
-	utils.LogWithFields(utils.LevelInfo, "session.memory", "loaded memory file: ( bytes, content bytes)", map[string]any{"path": path, "count": len(data), "count_2": len(content)})
+	utils.LogWithFields(utils.LevelInfo, "session.memory", "loaded memory file: ( bytes, content bytes)", map[string]any{"path": path, "data_len": len(data), "content_len": len(content)})
 	return true
 }
 
@@ -222,7 +222,7 @@ func (sm *SessionMemory) Start() {
 	ctx, cancel := context.WithCancel(context.Background())
 	sm.ctx = ctx
 	sm.cancel = cancel
-	utils.LogWithFields(utils.LevelDebug, "session.memory", "started for conversation", map[string]any{"run_id": sm.convID})
+	utils.LogWithFields(utils.LevelDebug, "session.memory", "started for conversation", map[string]any{"conversation_id": sm.convID})
 }
 
 // Stop cancels any in-flight background summarization and waits for it
@@ -232,7 +232,7 @@ func (sm *SessionMemory) Stop() {
 		sm.cancel()
 	}
 	sm.wg.Wait()
-	utils.LogWithFields(utils.LevelInfo, "session.memory", "stopped for conversation", map[string]any{"run_id": sm.convID})
+	utils.LogWithFields(utils.LevelInfo, "session.memory", "stopped for conversation", map[string]any{"conversation_id": sm.convID})
 }
 
 // OnTurnEnd is called after each model response. It checks whether an
@@ -257,7 +257,7 @@ func (sm *SessionMemory) OnTurnEnd(conv *conversation.Conversation, turnNumber i
 		return
 	}
 
-	utils.LogWithFields(utils.LevelInfo, "session.memory", "onturnend: triggering background summary ( )", map[string]any{"turn_number": turnNumber, "current_tokens": currentTokens, "current_tokens_last_tokens": currentTokens-lastTokens})
+	utils.LogWithFields(utils.LevelInfo, "session.memory", "onturnend: triggering background summary ( )", map[string]any{"turn_number": turnNumber, "current_tokens": currentTokens, "current_tokens_last_tokens": currentTokens - lastTokens})
 
 	// Capture the entry boundary BEFORE spawning the goroutine. This is
 	// the newest entry that the summary will cover. CurrentLeafID reads the

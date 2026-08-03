@@ -24,28 +24,28 @@
  * Deliberately NOT a heuristic: "was anything written recently", "does the tab
  * look done", "did the agent say it committed". The appraisal asks git.
  */
-import { execFile } from 'child_process'
 import { mkdtempSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { promisify } from 'util'
-import { runGit } from '../git-runner'
+import { runGit, gitExec, withGitSlot } from '../git-runner'
 import { log as _log, warn as _warn } from '../logger'
-
-const execFileAsync = promisify(execFile)
 
 /**
  * Run git with an ISOLATED index file, so staging operations never touch the
  * worktree's real index. This is what makes capturing uncommitted work safe on
  * a worktree an agent is still using.
+ *
+ * Spawns through `withGitSlot` so scratch-index invocations count against the
+ * same global subprocess cap as every `runGit` call — a preserve pass must not
+ * be able to bypass the backstop that keeps the event loop responsive.
  */
 async function runGitWithIndex(cwd: string, indexFile: string, args: string[]): Promise<string> {
   try {
-    const { stdout } = await execFileAsync('git', args, {
+    const { stdout } = await withGitSlot(() => gitExec('git', args, {
       cwd,
       env: { ...process.env, GIT_INDEX_FILE: indexFile },
       maxBuffer: 10 * 1024 * 1024,
-    })
+    }))
     return stdout
   } catch (err) {
     const e = err as { stderr?: string; message?: string }
