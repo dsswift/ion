@@ -20,5 +20,8 @@
       }
     ],
     "setup": "make bootstrap"
+  },
+  "bench": {
+    "verify": "cd engine && go build ./... && cd ../desktop && npm run typecheck"
   }
 }
