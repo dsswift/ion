@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { evaluateCloseGuard, formatCloseGuardRefusal } from '../slices/tab-close-guard'
+import { evaluateCloseGuard, formatCloseGuardRefusal, describeCloseGuardReason } from '../slices/tab-close-guard'
 
 describe('evaluateCloseGuard', () => {
   it('does not block when pane is null/undefined (nothing to protect)', () => {
@@ -125,5 +125,75 @@ describe('formatCloseGuardRefusal', () => {
     expect(msg).toContain('orchestratorRunning=false')
     expect(msg).toContain('main-a:1')
     expect(msg).toContain('backgroundShells=0')
+  })
+})
+
+/**
+ * The OPERATOR-facing half of the same result. Quoted verbatim into the retire
+ * refusal dialog, so this is what someone reads when Ion declines to delete a
+ * worktree — it has to say something they can act on, and it must agree with the
+ * guard that did the blocking.
+ */
+describe('describeCloseGuardReason', () => {
+  it('says "running" for a busy orchestrator', () => {
+    const r = evaluateCloseGuard({ instances: [{ id: 'main', statusFields: { state: 'running' }, agentStates: [] }] })
+    expect(describeCloseGuardReason(r)).toBe('running')
+  })
+
+  it('counts dispatched background agents, pluralising correctly', () => {
+    const one = evaluateCloseGuard({
+      instances: [{ id: 'main', statusFields: { state: 'idle' }, agentStates: [{ status: 'running' }] }],
+    })
+    expect(describeCloseGuardReason(one)).toBe('1 background agent running')
+
+    const many = evaluateCloseGuard({
+      instances: [{
+        id: 'main',
+        statusFields: { state: 'idle' },
+        agentStates: [{ status: 'running' }, { status: 'running' }, { status: 'done' }],
+      }],
+    })
+    expect(describeCloseGuardReason(many)).toBe('2 background agents running')
+  })
+
+  it('counts outstanding background commands, pluralising correctly', () => {
+    const one = evaluateCloseGuard({
+      instances: [{ id: 'main', statusFields: { state: 'idle', backgroundShells: 1 }, agentStates: [] }],
+    })
+    expect(describeCloseGuardReason(one)).toBe('1 background command running')
+
+    const many = evaluateCloseGuard({
+      instances: [{ id: 'main', statusFields: { state: 'idle', backgroundShells: 3 }, agentStates: [] }],
+    })
+    expect(describeCloseGuardReason(many)).toBe('3 background commands running')
+  })
+
+  it('sums agents across instances', () => {
+    const r = evaluateCloseGuard({
+      instances: [
+        { id: 'a', statusFields: { state: 'idle' }, agentStates: [{ status: 'running' }] },
+        { id: 'b', statusFields: { state: 'idle' }, agentStates: [{ status: 'running' }] },
+      ],
+    })
+    expect(describeCloseGuardReason(r)).toBe('2 background agents running')
+  })
+
+  it('joins every blocking cause, so a refusal never understates the reason', () => {
+    const r = evaluateCloseGuard({
+      instances: [{
+        id: 'main',
+        statusFields: { state: 'running', backgroundShells: 2 },
+        agentStates: [{ status: 'running' }],
+      }],
+    })
+    expect(describeCloseGuardReason(r))
+      .toBe('running, 1 background agent running, 2 background commands running')
+  })
+
+  // An idle tab is not blocked, so there is no reason to state. Inventing one
+  // would put a false claim in front of the operator.
+  it('is empty for an idle tab', () => {
+    const r = evaluateCloseGuard({ instances: [{ id: 'main', statusFields: { state: 'idle' }, agentStates: [] }] })
+    expect(describeCloseGuardReason(r)).toBe('')
   })
 })

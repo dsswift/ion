@@ -250,6 +250,14 @@ export interface IonAPI extends AtvApi {
   gitWorktreeBaseStatus(worktreePath: string, sourceBranch: string): Promise<{ behindCount: number; behindSubjects: string[]; needsSync: boolean; hasUncommittedChanges: boolean; appraisalFailed?: boolean }>
   gitWorktreeRetire(args: { repoPath: string; worktreePath: string; branchName: string; force?: boolean }): Promise<WorktreeMoveResult>
   /**
+   * Read-only preview of a retire's blast radius: the bench directories the
+   * retire would remove because disenrolling this worktree empties them.
+   *
+   * Asked BEFORE the retire so the caller can refuse when a conversation living
+   * in one of those directories is still active. Mutates nothing.
+   */
+  gitWorktreeRetirePreview(worktreePath: string): Promise<{ prunedBenchPaths: string[] }>
+  /**
    * Re-run provisioning for a worktree whose dependency state looks wrong.
    * Same code path as creation, so a repair cannot drift from a fresh provision.
    */

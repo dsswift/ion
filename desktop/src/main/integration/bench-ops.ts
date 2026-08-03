@@ -116,6 +116,45 @@ export function removeMember(
 }
 
 /**
+ * True when disenrolling `worktreePath` from `ws` would leave it with no
+ * members — i.e. this bench is about to be pruned.
+ *
+ * ── Why this is its own exported predicate ──────────────────────────────────
+ * Two callers need the same answer at two different times. `disenrollWorktree`
+ * asks it while MUTATING (which benches am I removing?), and
+ * `predictPrunedBenches` asks it while PREDICTING, before anything is touched,
+ * so the retire pre-flight can refuse when an active conversation lives in a
+ * bench this retire would delete. Two copies of the emptiness rule is how the
+ * prediction and the mutation start disagreeing — and a prediction that misses
+ * a bench is a directory deleted under a running agent.
+ */
+function wouldPruneBench(ws: IntegrationWorkspace, worktreePath: string): boolean {
+  if (!ws.members.some((m) => m.worktreePath === worktreePath)) return false
+  return ws.members.every((m) => m.worktreePath === worktreePath)
+}
+
+/**
+ * The bench directories a retire of `worktreePath` WOULD remove, computed
+ * without mutating anything.
+ *
+ * Read-only counterpart to `disenrollWorktree`, for callers that must know the
+ * blast radius before committing to the retire. A bench worktree hosts real
+ * conversations and a terminal, so a retire that prunes a bench deletes their
+ * working directory too; the retire pre-flight uses this to include those tabs
+ * in its "is anything still active?" question.
+ *
+ * Shares `wouldPruneBench` with the mutation, so the predicted set and the
+ * removed set cannot drift.
+ */
+export function predictPrunedBenches(worktreePath: string): string[] {
+  const paths = loadWorkspaces()
+    .filter((ws) => wouldPruneBench(ws, worktreePath))
+    .map((ws) => ws.benchPath)
+  log('pruned-bench prediction', { worktree_path: worktreePath, pruned: paths.length })
+  return paths
+}
+
+/**
  * Drop a retired worktree from EVERY bench that holds it, then prune any bench
  * left with no members.
  *
@@ -144,8 +183,7 @@ export function disenrollWorktree(worktreePath: string): { removedFrom: number; 
       continue
     }
     removedFrom++
-    const members = ws.members.filter((m) => m.worktreePath !== worktreePath)
-    if (members.length === 0) {
+    if (wouldPruneBench(ws, worktreePath)) {
       // An empty bench holds nothing unique -- its content is exactly the
       // feature branch -- so keeping the record would accumulate one dead bench
       // per feature branch ever integrated into. Prune it; the next enrollment
@@ -157,6 +195,7 @@ export function disenrollWorktree(worktreePath: string): { removedFrom: number; 
       })
       continue
     }
+    const members = ws.members.filter((m) => m.worktreePath !== worktreePath)
     kept.push({ ...ws, members })
     log('member disenrolled', {
       worktree_path: worktreePath,

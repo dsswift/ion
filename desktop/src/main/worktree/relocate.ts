@@ -1,19 +1,20 @@
 /**
- * Worktree retire and re-attach — the two moves that let a conversation
- * outlive its worktree.
+ * Worktree retire and re-attach — the two moves that change where a
+ * conversation's work lives.
  *
  * Both are deliberately split from the CONVERSATION side of the operation.
- * These functions only do the git work and return the directory the caller
- * should relocate the conversation into; the caller then invokes
- * `relocateSession` (engine-control-plane-relocate.ts). Keeping them separate
- * means the git result and the conversation move are independently
- * observable, and a failed relocation never leaves a half-removed worktree
- * looking like a success.
+ * These functions only do the git work and report what they touched; the caller
+ * decides what happens to the conversations that were living there. Keeping
+ * them separate means the git result and the conversation-side effect are
+ * independently observable, and a failed conversation-side step never leaves a
+ * half-removed worktree looking like a success.
  *
- * - **Retire**: the work has landed, the worktree is no longer needed, but the
- *   CONVERSATION is not finished. Remove the worktree and its branch, and hand
- *   back the repo root so the conversation continues there. This is what the
- *   old fused "Finish work" could not do — it always closed the tab.
+ * - **Retire**: the work has landed or is being abandoned, and the worktree is
+ *   no longer needed. Remove the worktree and its branch, and report the repo
+ *   root plus any bench directories the disenrollment pruned. The renderer
+ *   CLOSES the conversations that lived in those directories (retire means
+ *   there is nothing left to continue), keeping the repo root only as the
+ *   relocation fallback for a tab it could not close.
  * - **Re-attach**: the conversation is alive at the repo root (or anywhere)
  *   and needs isolation again — typically a bug found after the merge. Cut a
  *   fresh worktree from the CURRENT source tip and hand back its path, so the
@@ -47,8 +48,8 @@ export interface RetireOptions {
 }
 
 /**
- * Remove a worktree and its branch, returning the repo root for the caller to
- * relocate the conversation into.
+ * Remove a worktree and its branch, reporting what the caller must clean up on
+ * the conversation side.
  *
  * Refuses by default when the worktree is dirty — the whole point of retiring
  * is that the work has already landed, so uncommitted changes mean something
@@ -164,8 +165,13 @@ export async function retireWorktree(opts: RetireOptions): Promise<WorktreeMoveR
 
     pruneEmptyParent(worktreePath)
 
-    log('retire: done', { worktree_path: worktreePath, relocate_to: repoPath, recovery_ref: recoveryRef ?? '' })
-    return { ok: true, workingDirectory: repoPath, recoveryRef }
+    log('retire: done', {
+      worktree_path: worktreePath,
+      relocate_to: repoPath,
+      recovery_ref: recoveryRef ?? '',
+      pruned_benches: prunedBenches.length,
+    })
+    return { ok: true, workingDirectory: repoPath, recoveryRef, prunedBenchPaths: prunedBenches }
   })
 }
 

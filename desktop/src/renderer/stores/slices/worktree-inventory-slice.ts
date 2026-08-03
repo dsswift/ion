@@ -11,7 +11,7 @@
  */
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { rInfo, rWarn, rDebug } from '../../rendererLogger'
-import { setTabWorkingDirectory } from './tab-working-directory'
+import { closeOccupants, resolveRetireBlockers } from './worktree-occupant-close'
 import { collectDirConversations, pickNextConversation } from '../../../shared/worktree-conversations'
 import { resolveRegisteredWorktree } from '../worktree-registration'
 
@@ -154,33 +154,68 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
     },
 
     /**
-     * Retire a worktree, first relocating any conversation living inside it.
+     * Retire a worktree: refuse while anything in it is still working, then
+     * close every conversation that lived there.
      *
      * ── Why this is a store action, not a component handler ─────────────────
-     * It reads store state between mutations (find the tab on this worktree,
-     * relocate it, then remove the directory). Per AGENTS.md § ATV shell rules a
+     * It reads store state between mutations (which tabs occupy this worktree,
+     * are any of them busy, then close them). Per AGENTS.md § ATV shell rules a
      * component handler doing that would mix forwarded and local calls in the
      * mirror and decide against stale mirror state.
      *
-     * ── Why the relocation comes first ──────────────────────────────────────
-     * `retireWorktree` deletes the directory. A conversation still pointed at it
-     * would be left with a working directory that does not exist — the engine
-     * would fail to start the session on the next prompt, and a later resume
-     * from the session browser would open into nothing. `retireWorktree` already
-     * returns the directory the conversation should move to (the repo root), and
-     * that return value was previously discarded.
+     * ── Why the guard check comes before the IPC ─────────────────────────────
+     * `closeTab` refuses a tab whose orchestrator is running, whose dispatched
+     * background agents are alive, or which has outstanding background bash
+     * commands — and there is deliberately no `force`, because forcing would
+     * SIGTERM those agents. So the check cannot come after the removal: the
+     * refusals would land once the directory was already gone, leaving live work
+     * writing into nothing. Instead the whole retire is refused while anything
+     * is active, and the refusal NAMES the tabs so the operator can go find
+     * them. Whether to interrupt or wait is theirs to decide; that work may
+     * matter and Ion does not get to end it on their behalf.
      *
-     * The relocation is best-effort: if it fails the retire is still attempted,
-     * because leaving the worktree behind AND the conversation pointed at it is
-     * strictly worse than a conversation whose next prompt gets reconciled by
-     * the main process. Both outcomes log.
+     * ── Why the conversations are CLOSED, not relocated ──────────────────────
+     * This used to relocate the first occupant to the repo root and ignore every
+     * other tab in the worktree. Both halves were wrong. `find` left the rest
+     * pointed at a deleted directory, and relocation is not what retire means:
+     * the work is done or abandoned and its place is gone, so there is nothing
+     * at the repo root for that conversation to continue. New work starts as a
+     * new conversation in a new worktree.
+     *
+     * The bench paths matter for the same reason — retiring the last member of a
+     * bench removes that bench's worktree too, and conversations live there. The
+     * pre-flight uses the PREDICTED set (before anything is touched) and the
+     * close uses the REAL set the retire reports.
      */
     retireWorktree: async (repoPath, worktreePath, branchName) => {
-      const occupant = get().tabs.find((t) => t.workingDirectory === worktreePath)
+      // Which OTHER directories would this retire delete? Asked of the main
+      // process rather than derived here: the emptiness rule lives with
+      // `disenrollWorktree`, and a second copy in the renderer would drift.
+      let benchPaths: string[] = []
+      try {
+        const preview = await window.ion.gitWorktreeRetirePreview(worktreePath)
+        benchPaths = preview.prunedBenchPaths ?? []
+      } catch (err) {
+        // Fail SAFE on the pre-flight's scope, not open: with no prediction the
+        // worktree's own occupants are still checked and closed. A bench tab
+        // could be missed, so this is logged at WARN rather than swallowed.
+        rWarn('worktree.inventory', 'retire preview failed; checking the worktree only', {
+          worktree_path: worktreePath, error: String(err),
+        })
+      }
+
+      const blockers = resolveRetireBlockers(get, worktreePath, benchPaths)
+      if (blockers) {
+        // Nothing on disk has been touched. Refresh so the row reflects current
+        // state, and hand the named refusal back for the caller to render.
+        await get().refreshWorktreeInventory(repoPath)
+        return { ok: false, error: blockers.error }
+      }
+
       rInfo('worktree.inventory', 'retire requested', {
         worktree_path: worktreePath,
         branch: branchName,
-        occupant_tab: occupant ? occupant.id.slice(0, 8) : 'none',
+        bench_paths: benchPaths.length,
       })
 
       const result = await window.ion.gitWorktreeRetire({
@@ -192,26 +227,22 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
       })
 
       if (!result.ok) {
-        rWarn('worktree.inventory', 'retire refused; nothing relocated', {
+        rWarn('worktree.inventory', 'retire refused; nothing closed', {
           worktree_path: worktreePath, error: result.error ?? '',
         })
         await get().refreshWorktreeInventory(repoPath)
         return result
       }
 
-      // The worktree is gone. Move its conversation to the directory the retire
-      // nominated (the repo root) so the tab is not pointed at a dead path.
-      const relocateTo = result.workingDirectory
-      if (occupant && relocateTo) {
-        await setTabWorkingDirectory(set, get, occupant.id, relocateTo, {
-          worktree: null,
-          pendingWorktreeSetup: false,
-        })
-      } else if (occupant) {
-        rWarn('worktree.inventory', 'retire returned no relocation target; tab left on a dead path', {
-          worktree_path: worktreePath, tab_id: occupant.id.slice(0, 8),
-        })
-      }
+      // The directories are gone. Close their conversations, keeping the repo
+      // root only as the fallback for a tab that became busy in the window
+      // between the pre-flight and the removal.
+      await closeOccupants(
+        set,
+        get,
+        [worktreePath, ...(result.prunedBenchPaths ?? [])],
+        result.workingDirectory,
+      )
 
       await get().refreshWorktreeInventory(repoPath)
       return result

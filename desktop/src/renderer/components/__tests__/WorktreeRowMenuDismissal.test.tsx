@@ -70,6 +70,11 @@ vi.mock('../../stores/sessionStore', () => ({
         reprovisionWorktree: mocks.reprovisionWorktree,
         benchAddMember: mocks.benchAddMember,
         recordConflictAlert: mocks.recordConflictAlert,
+        // The retire pre-flight reads these to answer "is anything in this
+        // worktree still working". No tabs open means nothing is active, which
+        // is the state every dismissal test wants.
+        tabs: [],
+        conversationPanes: new Map(),
       }),
     },
   ),
@@ -138,6 +143,8 @@ beforeEach(() => {
     gitWorktreeAppraise: mocks.appraise,
     revealPath: mocks.revealPath,
     gitWorktreeLand: mocks.gitWorktreeLand,
+    // Retire asks for its blast radius before offering the confirmation.
+    gitWorktreeRetirePreview: vi.fn(async () => ({ prunedBenchPaths: [] })),
   }
   container = document.createElement('div')
   document.body.appendChild(container)
