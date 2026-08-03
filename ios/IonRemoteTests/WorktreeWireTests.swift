@@ -252,6 +252,7 @@ final class WorktreeWireTests: XCTestCase {
               "openConversations": [
                 {"tabId": "tab-9", "title": "Bench build", "status": "idle", "index": 9}
               ],
+              "benchConversationTabId": "tab-talk",
               "benchTerminalTabId": "tab-term"
             }]
           }]
@@ -293,6 +294,7 @@ final class WorktreeWireTests: XCTestCase {
         XCTAssertEqual(bench.lastAssemblyError,
                        "wt/a3f1 conflicts on 1 file. The bench is empty until this is resolved.")
         XCTAssertEqual(bench.openConversations.map(\.tabId), ["tab-9"])
+        XCTAssertEqual(bench.benchConversationTabId, "tab-talk")
         XCTAssertTrue(bench.orphans.isEmpty)
         // The bench's dedicated terminal, which is what lets the row say
         // "Go to terminal" rather than offering to open a second one.
@@ -355,6 +357,7 @@ final class WorktreeWireTests: XCTestCase {
         // An older desktop sends no `orphans`; an empty list is the right
         // reading, never a decode failure that would blank the bench view.
         XCTAssertEqual(bench.orphans, [])
+        XCTAssertNil(bench.benchConversationTabId)
         // Likewise no `benchTerminalTabId`. Absent means "no terminal open",
         // which the row renders as "Open terminal" -- never as an error.
         XCTAssertNil(bench.benchTerminalTabId)

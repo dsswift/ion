@@ -10,6 +10,7 @@ import { lastPendingCardTool } from '../../shared/pending-card'
 import { mapSessionHistory } from '../../shared/session-message-mapper'
 import { parseToolInput, isSkeletonTab, normalizeLegacyTabFields, readMainInstance, seedContextStatusFields, reassertRestoredPlanMode, resolveBootActiveTabId, hydrateBootActiveTab } from './useTabRestoration-helpers'
 import { startRestoredSessions } from './useTabRestoration-sessions'
+import { resolveRegisteredWorktree } from '../stores/worktree-registration'
 import { persistedTabHasExtensions } from '../../shared/tab-predicates'
 import { rDebug, rWarn, rError } from '../rendererLogger'
 
@@ -61,7 +62,17 @@ export function useTabRestoration() {
         const worktreeAliveByIndex = new Map<number, boolean>()
         for (let i = 0; i < saved.tabs.length; i++) {
           useSessionStore.setState({ initProgress: `Restoring tab ${i + 1} of ${saved.tabs.length}…` })
-          const st = saved.tabs[i]
+          let st = saved.tabs[i]
+          // Heal legacy/additional tabs that persisted a managed worktree path
+          // without worktree metadata. Do this before routing any restore path:
+          // every path must render and start with one authoritative identity.
+          const registeredWorktree = st.isTerminalOnly
+            ? (st.worktree ?? null)
+            : await resolveRegisteredWorktree(st.workingDirectory, st.worktree)
+          if (!st.worktree && registeredWorktree) {
+            st = { ...st, worktree: registeredWorktree }
+            saved.tabs[i] = st
+          }
           if (st.conversationId && !persistedTabHasExtensions(st)) {
             // Determine if this is the active tab (loads messages eagerly)
             const isActiveTab = (saved.activeTabIndex !== undefined && saved.activeTabIndex !== null && i === saved.activeTabIndex) ||
@@ -127,6 +138,7 @@ export function useTabRestoration() {
                           pillColor: st.pillColor || null,
                           pillIcon: st.pillIcon || null,
                           inputLocked: st.inputLocked ?? false,
+                          tabRole: st.tabRole ?? null,
                           worktree: restoredWorktree,
                           historicalSessionIds: st.historicalSessionIds || [],
                           lastKnownSessionId: st.lastKnownSessionId || null,
@@ -181,6 +193,7 @@ export function useTabRestoration() {
                 pillColor: st.pillColor || null,
                 pillIcon: st.pillIcon || null,
                 inputLocked: st.inputLocked ?? false,
+                tabRole: st.tabRole ?? null,
                 forkedFromSessionId: st.forkedFromSessionId || null,
                 worktree: restoredWorktree,
                 groupId: st.groupId || null,
@@ -309,6 +322,7 @@ export function useTabRestoration() {
                         pillColor: st.pillColor || null,
                         pillIcon: st.pillIcon || null,
                         inputLocked: st.inputLocked ?? false,
+                        tabRole: st.tabRole ?? null,
                         forkedFromSessionId: st.forkedFromSessionId || null,
                         worktree: st.worktree || null,
                         historicalSessionIds: st.historicalSessionIds || [],

@@ -110,6 +110,11 @@ export interface RemoteTabState {
   /** Input-locked conversation (auto-generated conflict fix): clients must
    *  not offer a prompt input for this tab. See TabState.inputLocked. */
   inputLocked?: boolean
+  /** Explicit tab lifecycle role (see TabState.tabRole). Desktop-internal
+   *  policy: iOS does not switch on it — it rides the snapshot so the main
+   *  process can resolve the bench singleton and exclude auto-fix tabs from
+   *  the openConversations projection. Absent = default (null). */
+  tabRole?: 'bench-conversation' | 'conflict-auto-fix'
   /** True when the conversation hosts an engine extension. Wire field consumed
    *  by iOS (RemoteTabState.swift). Not a backend flag. */
   hasEngineExtension?: boolean

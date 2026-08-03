@@ -206,6 +206,23 @@ export interface TabState {
    */
   inputLocked: boolean
   /**
+   * Explicit lifecycle role for tabs that share one directory. A bench can
+   * simultaneously hold the persistent operator conversation, its dedicated
+   * terminal, and several ephemeral machine-driven fix conversations — the
+   * directory alone cannot distinguish them, so identity is stored, not
+   * inferred from paths or titles.
+   *
+   * - `'bench-conversation'`: the ONE persistent operator conversation for a
+   *   bench (the singleton slot). Focused, never duplicated, by every open
+   *   entry point (desktop git panel, ATV, iOS).
+   * - `'conflict-auto-fix'`: an ephemeral, input-locked machine conversation
+   *   created by the conflict assist. Closes itself only on a typed `normal`
+   *   completion; every failure shape is retained for diagnosis.
+   * - `null`/absent: every other tab (default). Terminal identity stays
+   *   derived via `isTerminalOnly` + `pickDirTerminal`, not a role.
+   */
+  tabRole?: 'bench-conversation' | 'conflict-auto-fix' | null
+  /**
    * Engine profile ID used for this tab (references EngineProfile.id).
    * Non-null/non-empty means the tab has extensions loaded (derived via
    * `tabHasExtensions()` from shared/tab-predicates.ts).

@@ -192,6 +192,8 @@ export interface PersistedTab {
   isTerminalOnly?: boolean
   /** Input-locked conversation (auto-generated conflict fix). See TabState.inputLocked. */
   inputLocked?: boolean
+  /** Explicit tab lifecycle role. See TabState.tabRole. Absent = null (default). */
+  tabRole?: 'bench-conversation' | 'conflict-auto-fix'
   /**
    * Unified conversation state for this tab (the post-migration shape). When
    * present, the loader reads conversation instances from here and IGNORES the

@@ -104,7 +104,14 @@ extension SessionViewModel {
     }
 
     @MainActor
-    func handleTaskComplete(tabId: String) {
+    func handleTaskComplete(tabId: String, reason: TaskCompletionReason? = nil) {
+        mutateEngineInstance(tabId: tabId, instanceId: nil) { instance in
+            instance.statusFields?.completionReason = reason
+        }
+        DiagnosticLog.log("task completion applied", tag: "session", fields: [
+            "tab_id": String(tabId.prefix(8)),
+            "reason": reason?.logValue ?? "absent"
+        ])
         // Capture liveText before it's cleared. liveText is the accumulator for
         // the legacy desktop_text_chunk path (only an OLDER desktop build emits
         // it; the current desktop forwards assistant text as desktop_text_delta,

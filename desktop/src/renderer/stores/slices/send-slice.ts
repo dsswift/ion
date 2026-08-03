@@ -138,9 +138,12 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // A locked conversation accepts no further prompts, from ANY entry
       // point — the InputBar hides itself, but the guard lives here so a
       // remote command, a queued prompt, or a future caller cannot route
-      // around it. The lock is set after the machine-sent conflict-fix
-      // prompt, so that one submission has already passed through.
-      if (tab.inputLocked) {
+      // around it. The one passage is `source: 'machine'`: the auto-fix flow
+      // tags role + lock atomically BEFORE submitting its single machine
+      // prompt (so a fast completion cannot race the lifecycle tagging), so
+      // that first machine-origin submission must pass the lock it itself
+      // installed. Operator and remote prompts never carry that source.
+      if (tab.inputLocked && source !== 'machine') {
         rWarn('submit', 'blocked: conversation is input-locked (auto-generated fix conversation)', {
           tab_id: tab.id.slice(0, 8), count: text.length, source: source ?? 'local',
         })
@@ -357,8 +360,10 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
         // Forward remote-source marker so the IPC.PROMPT handler skips the
         // redundant desktop_message_added echo — iOS already received the
         // canonical echo from tabs-prompt.ts and a second echo with a
-        // different id would cause a duplicate user bubble.
-        source,
+        // different id would cause a duplicate user bubble. 'machine' is a
+        // renderer-local marker (the auto-fix lock passage) and is NOT a
+        // remote origin, so it forwards as a local prompt.
+        source: source === 'remote' ? 'remote' : undefined,
         // Forward the engine-resolve-slash flag from REMOTE_ENGINE_PROMPT so
         // the pipeline short-circuits to submitAsPrompt instead of
         // re-dispatching the extension command (which corrupts the

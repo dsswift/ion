@@ -23,6 +23,7 @@ import {
 } from '../../integration/bench-ops'
 import {
   collectDirConversations,
+  pickBenchConversation,
   pickDirTerminal,
   benchTerminalTitle,
   type DirConversation,
@@ -49,10 +50,10 @@ function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, 
  * rows use, so the three surfaces cannot disagree about what is open where.
  */
 async function readTabsForProjection(): Promise<{
-  tabs: DirConversationSource[]
+  tabs: Array<DirConversationSource & { inputLocked?: boolean }>
   openIn: (dir: string) => DirConversation[]
 }> {
-  let tabs: DirConversationSource[] = []
+  let tabs: Array<DirConversationSource & { inputLocked?: boolean }> = []
   try {
     const { getRemoteTabStates } = await import('../snapshot')
     const snapshot = await getRemoteTabStates()
@@ -65,6 +66,10 @@ async function readTabsForProjection(): Promise<{
       // Carried so a terminal is never counted as a conversation, and so the
       // bench terminal can be resolved at all.
       isTerminalOnly: t.isTerminalOnly ?? false,
+      // Role + lock: the singleton is resolved by role, and auto-fix
+      // conversations are excluded from openConversations by the collector.
+      tabRole: t.tabRole ?? null,
+      inputLocked: t.inputLocked ?? false,
     }))
   } catch (err) {
     // Losing this costs the "already open" hint, the conversation names, and the
@@ -158,6 +163,12 @@ export async function buildWorktreeState(repoPath: string): Promise<RemoteWorktr
     // Derived from the tab's own state, never stored: absent means no terminal
     // is open for this bench, which is what lets iOS say "Open" vs "Go to".
     const terminal = pickDirTerminal(tabs, ws.benchPath, benchTerminalTitle(ws.sourceBranch))
+    // The persistent operator conversation, resolved by stored role. Only a
+    // role-tagged tab is projected (adopted: false); a legacy candidate is NOT
+    // projected as the singleton — adoption is an owner-store decision made at
+    // open time, and projecting a tab the store has not adopted would let iOS
+    // navigate to a conversation that the next desktop open might not choose.
+    const conversation = pickBenchConversation(tabs, ws.benchPath)
     benches.push({
       repoPath: ws.repoPath,
       sourceBranch: ws.sourceBranch,
@@ -169,6 +180,7 @@ export async function buildWorktreeState(repoPath: string): Promise<RemoteWorktr
       lastAssemblyError: ws.lastAssemblyError,
       baseDrifted: !!tip && !!ws.baseSha && tip !== ws.baseSha,
       openConversations: openIn(ws.benchPath),
+      benchConversationTabId: conversation && !conversation.adopted ? conversation.tab.id : undefined,
       benchTerminalTabId: terminal?.id,
       // Only the memberships with no worktree left. The rest ride their
       // worktree record; sending them here too would restore the duplication

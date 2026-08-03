@@ -49,6 +49,13 @@ export interface DirConversationSource {
    * structurally; absent reads as false.
    */
   isTerminalOnly?: boolean
+  /**
+   * Explicit lifecycle role (see TabState.tabRole). Optional for the same
+   * structural reason as `isTerminalOnly`; absent reads as null. Carried here
+   * so the collector can exclude machine-driven auto-fix conversations and so
+   * the bench singleton can be resolved by stored identity.
+   */
+  tabRole?: 'bench-conversation' | 'conflict-auto-fix' | null
 }
 
 /** One conversation open in a directory, as every surface renders it. */
@@ -92,6 +99,12 @@ export function collectDirConversations(
   tabs.forEach((tab, i) => {
     if (tab.workingDirectory !== dirPath) return
     if (tab.isTerminalOnly) return
+    // Machine-driven conflict auto-fix conversations are not operator
+    // conversations: they must not inflate the "open ×N" hint, appear in the
+    // hover card, ride the iOS openConversations projection, or be a
+    // rotation/focus target. Their lifecycle is owned by the auto-fix
+    // machinery (they self-close on clean completion).
+    if (tab.tabRole === 'conflict-auto-fix') return
     out.push({
       tabId: tab.id,
       title: tab.customTitle || tab.title,
@@ -100,6 +113,40 @@ export function collectDirConversations(
     })
   })
   return out
+}
+
+/**
+ * The bench's ONE persistent operator conversation, resolved by stored role.
+ *
+ * Identity is explicit (`tabRole === 'bench-conversation'`), never inferred
+ * from the directory: the same bench directory legitimately holds the
+ * singleton, the dedicated terminal, and any number of ephemeral auto-fix
+ * conversations at once, so "a conversation in this directory" is not a
+ * usable identity. Directory matching remains as the second condition so a
+ * role-tagged tab whose bench was retired and re-created for a different
+ * source branch cannot capture the new bench's slot.
+ *
+ * Legacy adoption (one, at most): a role-less, unlocked, non-terminal
+ * conversation already open in the bench directory — the shape the previous
+ * rotation flow created — is returned so the caller can adopt it (stamp the
+ * role) instead of stacking a duplicate beside it. Locked role-less tabs are
+ * excluded: before roles existed, the auto-fix flow was distinguishable only
+ * by its `inputLocked` flag, so a locked tab is a machine conversation, not
+ * an operator one.
+ */
+export function pickBenchConversation<T extends DirConversationSource & { inputLocked?: boolean }>(
+  tabs: readonly T[],
+  benchPath: string,
+): { tab: T; adopted: boolean } | null {
+  if (!benchPath) return null
+  const bySlot = tabs.find((t) => t.tabRole === 'bench-conversation' && t.workingDirectory === benchPath)
+  if (bySlot) return { tab: bySlot, adopted: false }
+  const legacy = tabs.find((t) =>
+    t.workingDirectory === benchPath &&
+    !t.isTerminalOnly &&
+    !t.inputLocked &&
+    (t.tabRole ?? null) === null)
+  return legacy ? { tab: legacy, adopted: true } : null
 }
 
 /**

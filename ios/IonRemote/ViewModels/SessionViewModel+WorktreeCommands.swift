@@ -80,11 +80,57 @@ extension SessionViewModel {
              intent: .userInitiated)
     }
 
-    /// Open (or focus) a conversation in the integration bench.
+    /// Focus existing singleton immediately. When missing, ask desktop to create
+    /// it and resolve navigation from later authoritative worktree snapshot.
     func openBenchConversation(repoPath: String, sourceBranch: String) {
-        DiagnosticLog.log("open bench conversation", tag: "worktree",
-                          fields: ["repo_path": repoPath, "source_branch": sourceBranch])
+        if let tabId = worktreeStates[repoPath]?.benches
+            .first(where: { $0.sourceBranch == sourceBranch })?.benchConversationTabId {
+            cancelPendingBenchConversation(reason: "superseded by existing singleton")
+            send(.benchOpenConversation(repoPath: repoPath, sourceBranch: sourceBranch), intent: .userInitiated)
+            navigateToTab(tabId)
+            DiagnosticLog.log("focused existing bench conversation", tag: "worktree",
+                              fields: ["repo_path": repoPath, "source_branch": sourceBranch, "tab_id": tabId])
+            return
+        }
+
+        cancelPendingBenchConversation(reason: "superseded by new request")
+        let requestId = UUID()
+        DiagnosticLog.log("creating bench conversation", tag: "worktree",
+                          fields: ["repo_path": repoPath,
+                                   "source_branch": sourceBranch,
+                                   "request_id": requestId.uuidString])
+        pendingBenchConversation = PendingBenchConversation(
+            requestId: requestId, repoPath: repoPath, sourceBranch: sourceBranch, timeoutTask: nil)
         send(.benchOpenConversation(repoPath: repoPath, sourceBranch: sourceBranch), intent: .userInitiated)
+        pendingBenchConversation?.timeoutTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: self?.benchConversationNavigationTimeout ?? .seconds(10))
+            } catch {
+                return // Cancellation is expected when snapshot resolves or lifecycle ends.
+            }
+            self?.timeoutPendingBenchConversation(requestId: requestId)
+        }
+    }
+
+    func timeoutPendingBenchConversation(requestId: UUID) {
+        guard let pending = pendingBenchConversation,
+              pending.requestId == requestId else { return }
+        pendingBenchConversation = nil
+        DiagnosticLog.log("bench conversation navigation timed out", tag: "worktree", level: .warn,
+                          fields: ["repo_path": pending.repoPath,
+                                   "source_branch": pending.sourceBranch,
+                                   "request_id": pending.requestId.uuidString])
+    }
+
+    func cancelPendingBenchConversation(reason: String) {
+        guard let pending = pendingBenchConversation else { return }
+        pending.timeoutTask?.cancel()
+        pendingBenchConversation = nil
+        DiagnosticLog.log("bench conversation navigation cancelled", tag: "worktree",
+                          fields: ["repo_path": pending.repoPath,
+                                   "source_branch": pending.sourceBranch,
+                                   "request_id": pending.requestId.uuidString,
+                                   "reason": reason])
     }
 
     /// Open (or focus) the bench's ONE dedicated terminal tab.
@@ -181,6 +227,18 @@ extension SessionViewModel {
     func handleWorktreeState(_ states: [RemoteWorktreeState]) {
         for state in states {
             worktreeStates[state.repoPath] = state
+        }
+        if let pending = pendingBenchConversation,
+           let tabId = states.first(where: { $0.repoPath == pending.repoPath })?.benches
+            .first(where: { $0.sourceBranch == pending.sourceBranch })?.benchConversationTabId {
+            pending.timeoutTask?.cancel()
+            pendingBenchConversation = nil
+            navigateToTab(tabId)
+            DiagnosticLog.log("bench conversation navigation resolved", tag: "worktree",
+                              fields: ["repo_path": pending.repoPath,
+                                       "source_branch": pending.sourceBranch,
+                                       "request_id": pending.requestId.uuidString,
+                                       "tab_id": tabId])
         }
         // Any state push means the operation that triggered it has finished.
         worktreeBusyPath = nil

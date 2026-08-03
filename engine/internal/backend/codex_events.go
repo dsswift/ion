@@ -135,6 +135,7 @@ func translateCodexNotification(run *codexRun, method string, params json.RawMes
 			)
 		}
 		events = append(events, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
+			Reason:    types.TaskCompletionReasonNormal,
 			Result:    run.lastText,
 			LastText:  run.lastText,
 			CostUsd:   0, // subscription-metered; codex reports usage, not cost

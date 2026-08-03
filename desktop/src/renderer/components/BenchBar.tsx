@@ -14,11 +14,12 @@
  * feature branch, because it decides which membership the rows below display.
  */
 import React from 'react'
-import { ArrowsClockwise, CircleNotch, Terminal, X } from '@phosphor-icons/react'
+import { ArrowsClockwise, ChatCircle, CircleNotch, Terminal, Trash, X } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { Tooltip } from './git/Tooltip'
 import { HoverCard } from './git/HoverCard'
 import { WorktreeConversationsCard } from './WorktreeConversationsCard'
+import { useSessionStore } from '../stores/sessionStore'
 import { describeOpenConversations, type DirConversation } from '../../shared/worktree-conversations'
 import type { IntegrationWorkspace, IntegrationMember } from '../../shared/types'
 import type { OrphanMembership } from '../../shared/worktree-list'
@@ -52,10 +53,18 @@ export interface BenchBarProps {
    * boolean rather than a count.
    */
   benchTerminalOpen: boolean
+  /**
+   * True when the bench's ONE persistent operator conversation (the singleton,
+   * tabRole 'bench-conversation') is already open, so the tooltip can say
+   * "go to" rather than "open".
+   */
+  benchConversationOpen: boolean
   busy: string | null
   onSelectWorkspace(sourceBranch: string): void
   onOpenTerminal(): void
+  onOpenConversation(): void
   onAssemble(): void
+  onDiscardRecordings(): void
   onDismissAbsorbed(): void
 }
 
@@ -106,6 +115,7 @@ export function BenchBar(props: BenchBarProps): React.JSX.Element {
                 { label: 'path', value: active.benchPath },
               ]}
               conversations={props.benchConversations}
+              onSelectConversation={(tabId) => useSessionStore.getState().selectTab(tabId)}
               emptyNoun="bench"
             />
           }
@@ -144,16 +154,30 @@ export function BenchBar(props: BenchBarProps): React.JSX.Element {
 
         <span style={{ flex: 1 }} />
 
-        {/* Open-conversation is deliberately HIDDEN, not removed. A
-            conversation in the bench is a gateway to doing development work
-            there, and bench work is destroyed by the next assembly — the
-            terminal button covers the legitimate need (build, run, test) and
-            fix conversations belong in the member worktree that owns the
-            file. The store action, IPC, and wire command all still work:
-            the auto-fix resolve flow creates bench conversations, and
-            navigation to an existing one (hover card, open label) stays. If
-            a real use for operator-initiated bench conversations appears,
-            re-render the button here — the plumbing is intact. */}
+        {/* The bench's ONE persistent operator conversation. This used to be
+            deliberately hidden (bench work is destroyed by the next assembly),
+            but the bench conversation is now a first-class singleton: build
+            failures are diagnosed here, attribution routes the fix to the
+            member worktree that owns it, and mechanical containment refuses
+            bench/source edits — so the conversation is safe to offer. One tab
+            per bench (tabRole 'bench-conversation'); every press focuses it. */}
+        <Tooltip text={props.benchConversationOpen
+          ? 'Go to the bench conversation'
+          : 'Open the bench conversation to diagnose builds and route fixes'}>
+          <button
+            data-testid="bench-open-conversation"
+            onClick={props.onOpenConversation}
+            disabled={busy !== null}
+            style={{
+              display: 'inline-flex', alignItems: 'center', padding: 2,
+              background: 'transparent', border: 'none',
+              color: props.benchConversationOpen ? colors.accent : colors.textTertiary,
+              cursor: busy ? 'default' : 'pointer',
+            }}
+          >
+            {busy === 'conversation' ? <CircleNotch size={12} className="animate-spin" /> : <ChatCircle size={12} />}
+          </button>
+        </Tooltip>
 
         {/* Building and testing in the bench is shell work, and the generic
             new-terminal path stacks a fresh tab per press. This always lands on
@@ -174,6 +198,17 @@ export function BenchBar(props: BenchBarProps): React.JSX.Element {
             }}
           >
             {busy === 'terminal' ? <CircleNotch size={12} className="animate-spin" /> : <Terminal size={12} />}
+          </button>
+        </Tooltip>
+
+        <Tooltip text="Discard all recorded conflict resolutions">
+          <button
+            data-testid="bench-discard-recordings"
+            onClick={props.onDiscardRecordings}
+            disabled={busy !== null}
+            style={{ display: 'inline-flex', alignItems: 'center', padding: 2, background: 'transparent', border: 'none', color: colors.textTertiary, cursor: busy ? 'default' : 'pointer' }}
+          >
+            <Trash size={12} />
           </button>
         </Tooltip>
 

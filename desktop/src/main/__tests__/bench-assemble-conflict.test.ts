@@ -65,6 +65,14 @@ function makeWorktree(name: string, file = `${name}.txt`, content = `${name}\n`)
   return { path, branch }
 }
 
+function declareBenchVerify(command: string): void {
+  mkdirSync(join(repo, '.ion'), { recursive: true })
+  writeFileSync(join(repo, '.ion', 'worktree.json'), JSON.stringify({
+    version: 1,
+    bench: { verify: command },
+  }))
+}
+
 /** Build a workspace whose bench lives inside the test root (not ~/.ion). */
 function workspaceFor(members: IntegrationMember[] = []): IntegrationWorkspace {
   const ws = makeWorkspace(repo, 'main')
@@ -266,6 +274,116 @@ describe('assembleBench — rerere resolve once, replay forever', () => {
     const again = await assembleBench(replayed.workspace!)
     expect(again.workspace!.lastAssembly).toBe('assembled')
     expect(again.workspace!.members.find((m) => m.branchName === 'wt/c')!.mergeResolution).toBe('replayed')
+  })
+
+  it('runs passing project verification and preserves replay status', async () => {
+    const a = makeWorktree('a', 'shared.txt', 'from a\n')
+    const c = makeWorktree('c', 'shared.txt', 'from c\n')
+    const ws = workspaceFor([await enroll(a), await enroll(c)])
+    await assembleBench(ws)
+    resolveOnceInBench(ws, ws.members[1].pinnedSha, 'from a and c, resolved\n')
+    declareBenchVerify('touch verify-ran')
+
+    const result = await assembleBench(ws)
+
+    expect(result.workspace!.lastAssembly).toBe('assembled')
+    expect(result.workspace!.members.find((member) => member.branchName === 'wt/c')!.mergeResolution).toBe('replayed')
+    expect(existsSync(join(ws.benchPath, 'verify-ran'))).toBe(true)
+  })
+
+  it('rejects replayed resolution when project verification fails', async () => {
+    const a = makeWorktree('a', 'shared.txt', 'from a\n')
+    const c = makeWorktree('c', 'shared.txt', 'from c\n')
+    const ws = workspaceFor([await enroll(a), await enroll(c)])
+    await assembleBench(ws)
+    resolveOnceInBench(ws, ws.members[1].pinnedSha, 'syntactically broken but whitespace-clean\n')
+    declareBenchVerify('exit 1')
+
+    const result = await assembleBench(ws)
+
+    expect(result.ok).toBe(true)
+    expect(result.workspace!.lastAssembly).toBe('failed')
+    expect(result.workspace!.lastAssemblyError).toContain('failed project verification')
+    expect(existsSync(join(ws.benchPath, 'shared.txt'))).toBe(false)
+    expect(result.workspace!.members.every((member) => member.mergeResolution === undefined)).toBe(true)
+
+    git(ws.benchPath, 'switch', '-C', ws.benchBranch, 'main', '--discard-changes')
+    git(ws.benchPath, 'merge', '--no-ff', '-m', 'prior', ws.members[0].pinnedSha)
+    expect(() => git(ws.benchPath, 'merge', '--no-ff', '-m', 'conflict again', ws.members[1].pinnedSha)).toThrow()
+    expect(git(ws.benchPath, 'diff', '--name-only', '--diff-filter=U').trim()).toBe('shared.txt')
+  })
+
+  /**
+   * The block that enables verification is itself reviewable content, so the
+   * assembly that first carries it is a MEMBER's assembly — the source branch
+   * has no bench block at all until that member lands. Verification must fire on
+   * that assembly, because it is exactly the one whose replayed resolution has
+   * never been checked by anything.
+   *
+   * This is the live defect: reading the manifest only from the source repo made
+   * the guard unreachable until its own enabling change landed, so a poisoned
+   * replay was committed while the log said "project declares no command".
+   */
+  it('honours a bench verify block a member introduces, with none on the source branch', async () => {
+    const a = makeWorktree('a', 'shared.txt', 'from a\n')
+    const c = makeWorktree('c', 'shared.txt', 'from c\n')
+    // The member commits the manifest alongside its conflicting change. The
+    // source branch (`main` here) never gets one.
+    mkdirSync(join(c.path, '.ion'), { recursive: true })
+    writeFileSync(join(c.path, '.ion', 'worktree.json'), JSON.stringify({
+      version: 1,
+      bench: { verify: 'exit 1' },
+    }))
+    git(c.path, 'add', '-A')
+    git(c.path, 'commit', '-m', 'c: declare bench verification')
+    expect(existsSync(join(repo, '.ion', 'worktree.json'))).toBe(false)
+
+    const ws = workspaceFor([await enroll(a), await enroll(c)])
+    await assembleBench(ws)
+    resolveOnceInBench(ws, ws.members[1].pinnedSha, 'whitespace-clean but broken\n')
+
+    const result = await assembleBench(ws)
+
+    // Verification ran and rejected the replay, so the bench is empty and the
+    // conflict is restored — not an assembled tree holding unchecked poison.
+    expect(result.workspace!.lastAssembly).toBe('failed')
+    expect(result.workspace!.lastAssemblyError).toContain('failed project verification')
+    expect(existsSync(join(ws.benchPath, 'shared.txt'))).toBe(false)
+  })
+
+  it('does not run project verification for clean merges', async () => {
+    const a = makeWorktree('a')
+    const ws = workspaceFor([await enroll(a)])
+    declareBenchVerify('touch verify-ran && exit 1')
+
+    const result = await assembleBench(ws)
+
+    expect(result.ok).toBe(true)
+    expect(result.workspace!.lastAssembly).toBe('assembled')
+    expect(existsSync(join(ws.benchPath, 'verify-ran'))).toBe(false)
+  })
+
+  it('rejects and forgets a replay whose recorded postimage contains conflict markers', async () => {
+    const a = makeWorktree('a', 'shared.txt', 'from a\n')
+    const c = makeWorktree('c', 'shared.txt', 'from c\n')
+    const ws = workspaceFor([await enroll(a), await enroll(c)])
+
+    await assembleBench(ws)
+    const poisoned = '<<<<<<< HEAD\nfrom a\n=======\nfrom c\n>>>>>>> wt/c\n'
+    resolveOnceInBench(ws, ws.members[1].pinnedSha, poisoned)
+
+    const result = await assembleBench(ws)
+
+    expect(result.workspace!.lastAssembly).toBe('failed')
+    expect(result.workspace!.members.find((m) => m.branchName === 'wt/c')!.merge).toBe('conflicted')
+    expect(existsSync(join(ws.benchPath, 'shared.txt'))).toBe(false)
+
+    // Recording was forgotten while merge context still existed. Recreating
+    // same conflict exposes real unmerged state instead of replaying poison.
+    git(ws.benchPath, 'switch', '-C', ws.benchBranch, 'main', '--discard-changes')
+    git(ws.benchPath, 'merge', '--no-ff', '-m', 'prior', ws.members[0].pinnedSha)
+    expect(() => git(ws.benchPath, 'merge', '--no-ff', '-m', 'conflict again', ws.members[1].pinnedSha)).toThrow()
+    expect(git(ws.benchPath, 'diff', '--name-only', '--diff-filter=U').trim()).toBe('shared.txt')
   })
 
   it('stops replaying when the conflicting lines genuinely change, and honestly conflicts again', async () => {

@@ -10,6 +10,7 @@ import (
 	"github.com/dsswift/ion/engine/internal/modelconfig"
 	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
+	"github.com/dsswift/ion/engine/internal/workspaces"
 )
 
 // buildPromptOverrides constructs the *PromptOverrides for a per-prompt
@@ -438,8 +439,41 @@ func injectContextFiles(s *engineSession, opts *types.RunOptions) {
 	}
 }
 
+// injectWorkspaceContext delivers registry-backed workspace facts through both
+// context hooks and model context. Hooks may replace or suppress generic prose.
+func (m *Manager) injectWorkspaceContext(s *engineSession, key string, opts *types.RunOptions) *workspaces.PromptContext {
+	if m.config != nil && !m.config.GetWorkspace().PromptContextEnabled() {
+		utils.LogWithFields(utils.LevelInfo, "session.workspace_context", "workspace prompt context suppressed by config", map[string]any{"key": key})
+		return nil
+	}
+	workspace := workspaces.SharedChecker().PromptContextFor(s.config.WorkingDirectory)
+	if workspace.Empty() {
+		return nil
+	}
+	text := workspace.Format()
+	if s.extGroup != nil && !s.extGroup.IsEmpty() {
+		ctx := m.newExtContext(s, key)
+		var suppress bool
+		text, suppress = s.extGroup.FireSystemInject(ctx, extension.SystemInjectInfo{
+			Kind: "workspace_context", DefaultText: text, Workspace: &workspace,
+		})
+		if suppress {
+			utils.LogWithFields(utils.LevelInfo, "session.workspace_context", "workspace prompt context suppressed by extension", map[string]any{"key": key, "kind": workspace.Kind})
+			return &workspace
+		}
+	}
+	if text != "" {
+		if opts.AppendSystemPrompt != "" {
+			opts.AppendSystemPrompt += "\n\n"
+		}
+		opts.AppendSystemPrompt += text
+	}
+	utils.LogWithFields(utils.LevelInfo, "session.workspace_context", "workspace prompt context delivered", map[string]any{"key": key, "kind": workspace.Kind, "chars": len(text)})
+	return &workspace
+}
+
 // injectExtensionContext fires context_inject and capability injection on each host.
-func (m *Manager) injectExtensionContext(s *engineSession, key string, opts *types.RunOptions) {
+func (m *Manager) injectExtensionContext(s *engineSession, key string, opts *types.RunOptions, workspace *workspaces.PromptContext) {
 	if s.extGroup == nil || s.extGroup.IsEmpty() {
 		return
 	}
@@ -458,6 +492,7 @@ func (m *Manager) injectExtensionContext(s *engineSession, key string, opts *typ
 	injected := s.extGroup.FireContextInject(ctx, extension.ContextInjectInfo{
 		WorkingDirectory: s.config.WorkingDirectory,
 		DiscoveredPaths:  discoveredPaths,
+		Workspace:        workspace,
 	})
 	for _, entry := range injected {
 		opts.AppendSystemPrompt += "\n# " + entry.Label + "\n" + entry.Content + "\n"

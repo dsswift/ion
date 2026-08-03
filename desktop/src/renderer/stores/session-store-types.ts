@@ -334,7 +334,7 @@ export interface State {
      *  renders inline previews and parseAttachmentsFromMessages populates the
      *  attachments panel on the desktop side. */
     remoteAttachments?: Array<{ type: string; name: string; path: string }>
-    source?: 'remote'
+    source?: 'remote' | 'machine'
     resolveSlash?: boolean
   }) => void
   submitRemotePrompt: (tabId: string, prompt: string, imageAttachments?: ImageAttachmentPayload[], resolveSlash?: boolean, remoteAttachments?: Array<{ type: string; name: string; path: string }>) => void
@@ -443,6 +443,9 @@ export interface State {
    * dialog on, or null when nothing needed resolving / preparation failed.
    */
   benchResolveConflict: (repoPath: string, sourceBranch: string) => Promise<string | null>
+  benchRerereCount: (directory: string) => Promise<number>
+  benchRerereForget: (directory: string, paths: string[]) => Promise<number>
+  benchRerereDiscardAll: (directory: string) => Promise<number>
   benchUpdateMember: (repoPath: string, sourceBranch: string, worktreePath: string) => Promise<BenchAssembleResult>
   benchUpdateAll: (repoPath: string, sourceBranch: string) => Promise<BenchAssembleResult>
   benchAddMember: (repoPath: string, sourceBranch: string, worktreePath: string, branchName: string) => Promise<{ ok: boolean; error?: string }>

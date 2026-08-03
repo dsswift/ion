@@ -317,6 +317,7 @@ struct StatusFields: Codable, Sendable {
     /// Cost of the most recent run in USD (cache-aware, descendants included).
     /// Replaces the former totalCostUsd; the rename makes the scope unambiguous.
     let runCostUsd: Double?
+    var completionReason: TaskCompletionReason? = nil
     /// Cumulative cost of the entire conversation (this session + all descendant
     /// dispatches) in USD. Absent when never-run.
     let conversationCostUsd: Double?

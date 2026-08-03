@@ -14,8 +14,13 @@
  * The persisted `workingDirectory` is only authoritative for a tab that never
  * had a worktree.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+
+vi.mock('../../rendererLogger', () => ({
+  rDebug: vi.fn(), rInfo: vi.fn(), rWarn: vi.fn(), rError: vi.fn(), rTrace: vi.fn(),
+}))
 import { resolveRestoredWorkingDirectory } from '../useTabRestoration-helpers'
+import { resolveRegisteredWorktree } from '../../stores/worktree-registration'
 import type { PersistedTab } from '../../../shared/types'
 
 const REPO = '/Users/test/project'
@@ -47,6 +52,24 @@ describe('resolveRestoredWorkingDirectory', () => {
 
   it('keeps the persisted directory for a tab that never had a worktree', () => {
     expect(resolveRestoredWorkingDirectory(tab({ workingDirectory: REPO }), false)).toBe(REPO)
+  })
+
+  it('repairs a persisted worktree path whose metadata is missing', async () => {
+    ;(globalThis as { window?: unknown }).window = {
+      ion: {
+        gitWorktreeRegistration: vi.fn().mockResolvedValue({ registration: {
+          repoPath: REPO, branchName: 'wt/a', sourceBranch: 'josh', title: null,
+        } }),
+      },
+    }
+    const persisted = tab({ workingDirectory: WORKTREE, worktree: null })
+
+    const repaired = await resolveRegisteredWorktree(persisted.workingDirectory, persisted.worktree)
+
+    expect(repaired).toEqual({
+      worktreePath: WORKTREE, branchName: 'wt/a', sourceBranch: 'josh', repoPath: REPO,
+    })
+    expect(resolveRestoredWorkingDirectory({ ...persisted, worktree: repaired }, true)).toBe(WORKTREE)
   })
 
   it('is a no-op when the persisted path already agrees with the worktree', () => {

@@ -207,6 +207,27 @@ Search the conversation history for content that may have been compacted or clea
 | `query` | string | yes | Search term to look for in conversation history. Case-insensitive keyword matching. |
 | `max_results` | number | no | Maximum number of results to return. Defaults to 20. Maximum 50. |
 
+### WorkspaceAttribution
+
+Read-only provenance for integration benches: maps a file (optionally a line
+range) in the **assembled** bench tree back to the source it came from — the
+contributing member worktree, the source branch, a recorded conflict
+resolution, several plausible owners (ambiguous), or unknown. Answers "which
+worktree owns the fix for this build failure" with evidence instead of a guess.
+
+Only meaningful when the session's working directory is inside a registered
+bench; outside one it returns a typed error. Available in plan mode (it writes
+nothing). Returns JSON: an overall outcome, every candidate owner with its
+pinned range and worktree path, per-candidate reasons, and warnings for
+degraded inputs (dirty or stale members, git errors) rather than silent
+omission.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `file` | string | yes | Path of the file in the bench, absolute or bench-relative. |
+| `line` | number | no | 1-based start line to attribute. Whole file when absent. |
+| `endLine` | number | no | 1-based end line (inclusive). Requires `line`. |
+
 ## Optional Tools
 
 These tools are not registered by default. Call `RegisterTaskTools()` from harness code to enable them. See [Task Tools](task-tools.md) for details.

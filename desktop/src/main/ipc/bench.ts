@@ -14,6 +14,7 @@ import {
   updateMember, updateAllStale, assembleWorkspace, refreshStaleness, sourceBranchTip,
 } from '../integration/bench-ops'
 import { prepareConflictResolution } from '../integration/bench-resolve'
+import { countRerereRecordings, discardAllRerereRecordings, forgetRerereRecordings } from '../integration/bench-rerere-purge'
 
 const TAG = 'bench.ipc'
 function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
@@ -127,6 +128,15 @@ export function registerBenchIpc(): void {
       return result
     },
   )
+
+  ipcMain.handle(IPC.BENCH_RERERE_COUNT, async (_e, { directory }: { directory: string }) =>
+    countRerereRecordings(directory))
+
+  ipcMain.handle(IPC.BENCH_RERERE_FORGET, async (_e, { directory, paths }:
+    { directory: string; paths: string[] }) => forgetRerereRecordings(directory, paths))
+
+  ipcMain.handle(IPC.BENCH_RERERE_DISCARD_ALL, async (_e, { directory }: { directory: string }) =>
+    discardAllRerereRecordings(directory))
 
   ipcMain.handle(
     IPC.BENCH_REFRESH_STALENESS,

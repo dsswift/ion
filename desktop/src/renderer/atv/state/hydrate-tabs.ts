@@ -99,6 +99,11 @@ export function tabsFromSnapshot(
       lastMessagePreview: st.lastMessagePreview || null,
       lastEventAt: st.lastEventAt ?? null,
       isTerminalOnly: st.isTerminalOnly ?? false,
+      // Lock + role ride the owner snapshot so the mirror renders the same
+      // affordances: a locked auto-fix tab must not offer a prompt input in
+      // the ATV, and role-aware surfaces (bench singleton) must agree.
+      inputLocked: st.inputLocked ?? false,
+      tabRole: st.tabRole ?? null,
       ...(st.engineProfileId ? { engineProfileId: st.engineProfileId } : {}),
     } as TabState)
   }

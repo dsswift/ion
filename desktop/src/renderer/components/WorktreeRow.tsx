@@ -35,6 +35,7 @@ import { useColors } from '../theme'
 import { Tooltip } from './git/Tooltip'
 import { HoverCard } from './git/HoverCard'
 import { WorktreeConversationsCard } from './WorktreeConversationsCard'
+import { useSessionStore } from '../stores/sessionStore'
 import { WorktreeStateSlot } from './WorktreeStateSlot'
 import { WorktreeEnrollmentSlot } from './WorktreeEnrollmentSlot'
 import { WorktreeReviewSlot } from './WorktreeReviewSlot'
@@ -323,6 +324,7 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
                 { label: 'path', value: entry.worktreePath },
               ]}
               conversations={openConversations}
+              onSelectConversation={(tabId) => useSessionStore.getState().selectTab(tabId)}
               menuHint
             />
           }

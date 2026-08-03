@@ -92,28 +92,34 @@ extension TabListNewTabSheet {
             let builtBenches = state.benches.filter(\.hasBeenBuilt)
             if !builtBenches.isEmpty || !state.worktrees.isEmpty {
                 Section(projectLabel(state.repoPath)) {
-                    // Only built benches: an unbuilt bench has no directory to
-                    // open a shell in. A bench row opens the bench TERMINAL,
-                    // not a conversation — operator conversations are
-                    // deliberately not offered in a bench (mirrors the
-                    // desktop's new-tab picker and bench bar): bench work is
-                    // shell work, and fix conversations belong in the member
-                    // worktree that owns the file.
+                    // Built bench exposes both singleton destinations: Talk for
+                    // conversation context and Terminal for shell work.
                     ForEach(builtBenches) { bench in
-                        Button {
-                            isPresented = false
-                            viewModel.openBenchTerminal(repoPath: state.repoPath,
-                                                        sourceBranch: bench.sourceBranch)
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "flask").foregroundStyle(.tint)
-                                Text("Bench · \(bench.sourceBranch)")
-                                Spacer()
-                                let members = state.enabledMemberCount(of: bench)
-                                Text("\(members) member\(members == 1 ? "" : "s")")
-                                    .font(.caption2).foregroundStyle(.secondary)
-                                if bench.benchTerminalTabId != nil {
-                                    Text("open").font(.caption2).foregroundStyle(.tint)
+                        HStack(spacing: 8) {
+                            Image(systemName: "flask").foregroundStyle(.tint)
+                            Text("Bench · \(bench.sourceBranch)").lineLimit(1)
+                            Spacer()
+                            ViewThatFits(in: .horizontal) {
+                                HStack(spacing: 6) {
+                                    benchAction(bench.benchConversationTabId == nil ? "Talk" : "Go to",
+                                                icon: "bubble.left") {
+                                        viewModel.openBenchConversation(repoPath: state.repoPath,
+                                                                        sourceBranch: bench.sourceBranch)
+                                    }
+                                    benchAction("Terminal", icon: "terminal") {
+                                        viewModel.openBenchTerminal(repoPath: state.repoPath,
+                                                                    sourceBranch: bench.sourceBranch)
+                                    }
+                                }
+                                HStack(spacing: 6) {
+                                    benchAction(nil, icon: "bubble.left") {
+                                        viewModel.openBenchConversation(repoPath: state.repoPath,
+                                                                        sourceBranch: bench.sourceBranch)
+                                    }
+                                    benchAction(nil, icon: "terminal") {
+                                        viewModel.openBenchTerminal(repoPath: state.repoPath,
+                                                                    sourceBranch: bench.sourceBranch)
+                                    }
                                 }
                             }
                         }
@@ -145,6 +151,23 @@ extension TabListNewTabSheet {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func benchAction(_ title: String?, icon: String, action: @escaping () -> Void) -> some View {
+        Button {
+            isPresented = false
+            action()
+        } label: {
+            if let title {
+                Label(title, systemImage: icon).font(.caption)
+            } else {
+                Image(systemName: icon)
+                    .font(.caption)
+                    .accessibilityLabel(icon == "terminal" ? "Terminal" : "Talk")
+            }
+        }
+        .buttonStyle(.bordered)
     }
 
     private func projectLabel(_ repoPath: String) -> String {

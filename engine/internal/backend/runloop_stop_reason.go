@@ -103,6 +103,7 @@ func (b *ApiBackend) dispatchStopReason(
 				"session_id":  conv.ID,
 			})
 			b.emit(run, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
+				Reason:            types.TaskCompletionReasonNormal,
 				Result:            "Plan mode auto-exited.",
 				LastText:          run.lastNonEmptyResultText,
 				CostUsd:           run.totalCost,
@@ -188,6 +189,7 @@ func (b *ApiBackend) dispatchStopReason(
 			"session_id":  conv.ID,
 		})
 		b.emit(run, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
+			Reason:            types.TaskCompletionReasonNormal,
 			Result:            resultText,
 			LastText:          run.lastNonEmptyResultText,
 			CostUsd:           run.totalCost,
@@ -270,6 +272,7 @@ func (b *ApiBackend) dispatchStopReason(
 				"session_id":  conv.ID,
 			})
 			b.emit(run, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
+				Reason:            types.TaskCompletionReasonNormal,
 				Result:            "Plan mode exited.",
 				LastText:          run.lastNonEmptyResultText,
 				CostUsd:           run.totalCost,

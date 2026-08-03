@@ -163,6 +163,8 @@ export interface UnknownEvent {
 }
 
 // ─── Canonical Events (normalized from raw stream) ───
+export type TaskCompletionReason = 'normal' | 'max_turns' | 'aborted' | 'backend_exit'
+
 export type NormalizedEvent =
   | { type: 'session_init'; sessionId: string; tools: string[]; model: string; mcpServers: Array<{ name: string; status: string }>; skills: string[]; version: string; isWarmup?: boolean }
   | { type: 'text_chunk'; text: string }
@@ -171,7 +173,7 @@ export type NormalizedEvent =
   | { type: 'tool_call_complete'; index: number }
   | { type: 'tool_result'; toolId: string; content: string; isError: boolean; images?: Array<{ path: string; mediaType: string; source?: string }> }
   | { type: 'task_update'; message: AssistantMessagePayload }
-  | { type: 'task_complete'; result: string; lastText?: string; costUsd: number; durationMs: number; numTurns: number; conversationTurns?: number; usage: UsageData; sessionId: string; permissionDenials?: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> }
+  | { type: 'task_complete'; reason?: TaskCompletionReason | (string & {}); result: string; lastText?: string; costUsd: number; durationMs: number; numTurns: number; conversationTurns?: number; usage: UsageData; sessionId: string; permissionDenials?: Array<{ toolName: string; toolUseId: string; toolInput?: Record<string, unknown> }> }
   | { type: 'error'; message: string; isError: boolean; sessionId?: string; errorCode?: string; retryable?: boolean; retryAfterMs?: number; httpStatus?: number; stderrTail?: string[] }
   | { type: 'session_dead'; exitCode: number | null; signal: string | null; stderrTail: string[] }
   | { type: 'rate_limit'; status: string; resetsAt: number; rateLimitType: string }

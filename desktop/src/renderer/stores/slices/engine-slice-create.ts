@@ -6,6 +6,7 @@ import { makeMainPane } from '../conversation-instance'
 import { formatSessionStartDivider } from '../../../shared/clear-divider'
 import { rError } from '../../rendererLogger'
 import { setTabStatus } from './tab-status-transition'
+import { resolveRegisteredWorktree } from '../worktree-registration'
 
 /**
  * Options for createConversationTab.
@@ -30,6 +31,8 @@ export interface CreateConversationTabOpts {
    * Brand-new tabs leave this unset and mint a fresh id via window.ion.createTab.
    */
   reuseTabId?: string
+  /** Restore-only identity already resolved from persisted state/registry. */
+  worktree?: import('../../../shared/types').WorktreeInfo | null
 }
 
 /**
@@ -62,6 +65,10 @@ export function createConversationTabAction(set: StoreSet, get: StoreGet) {
     const homeDir = s.staticInfo?.homePath || '~'
     const prefs = usePreferencesStore.getState()
     const workingDirectory = dir || prefs.defaultBaseDirectory || homeDir
+    // Resolve identity before creating state or starting engine session. GitPanel
+    // reads tab.worktree synchronously on first render to choose repo-scoped
+    // inventory and bench caches, so a later patch would expose false state.
+    const worktree = await resolveRegisteredWorktree(workingDirectory, opts.worktree)
 
     // Resolve extensions: explicit list > profile lookup > empty (plain tab)
     const { engineProfiles, tabGroupMode, tabGroups } = prefs
@@ -133,6 +140,7 @@ export function createConversationTabAction(set: StoreSet, get: StoreGet) {
       workingDirectory,
       hasChosenDirectory: true,
       groupId,
+      worktree,
       // engineProfileId is the derivation source for tabHasExtensions(). Set it
       // only when the tab actually runs with extensions (isEngine=true). When
       // extensions are provided without a profileId (direct extension list), use

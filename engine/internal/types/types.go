@@ -218,6 +218,9 @@ type StatusFields struct {
 	// included). Replaces the former totalCostUsd field; the rename makes
 	// the scope unambiguous — "run" not "conversation".
 	RunCostUsd float64 `json:"runCostUsd,omitempty"`
+	// CompletionReason is present only on idle status translated directly from
+	// TaskCompleteEvent. Empty preserves compatibility with older emitters.
+	CompletionReason TaskCompletionReason `json:"completionReason,omitempty"`
 	// ConversationCostUsd is the cumulative cost of the entire conversation
 	// (this session + all descendant dispatches) in USD. Computed on demand
 	// via the cost.ConversationCost dispatch-tree walk.

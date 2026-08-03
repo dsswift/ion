@@ -106,6 +106,24 @@ func (b *ApiBackend) executeTools(
 		})
 	}
 
+	var turnWorkspaceRefusals map[int]*workspaces.Refusal
+	if wsChecker != nil && len(toolUseBlocks) > 1 {
+		for i, block := range toolUseBlocks {
+			driver := wsChecker.ClassifyMergeDriver(block.Name, block.Input, cwd)
+			if driver.Driver != workspaces.MergeDriverContinue {
+				continue
+			}
+			if turnWorkspaceRefusals == nil {
+				turnWorkspaceRefusals = make(map[int]*workspaces.Refusal)
+			}
+			turnWorkspaceRefusals[i] = &workspaces.Refusal{
+				Kind:   workspaces.RefusalBenchHistory,
+				Target: driver.BenchPath,
+				Reason: "Refused: run `git merge --continue` in a turn with no sibling tool calls. Tool calls in one response run concurrently, so merge completion must wait for a separate turn after all resolution, validation, and staging calls finish.",
+			}
+		}
+	}
+
 	for i, block := range toolUseBlocks {
 		i, block := i, block
 		g.Go(func() error {
@@ -184,6 +202,11 @@ func (b *ApiBackend) executeTools(
 					}})
 					return nil
 				}
+			}
+
+			if refusal := turnWorkspaceRefusals[i]; refusal != nil {
+				b.recordWorkspaceRefusal(gCtx, run, block, cwd, refusal, permDenyFn, telem, results, i)
+				return nil
 			}
 
 			// Workspace containment (beside the permission check, before hooks

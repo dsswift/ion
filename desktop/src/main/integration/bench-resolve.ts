@@ -11,6 +11,11 @@ import { repositoryManager } from '../git/repositoryManager'
 import { log as _log, warn as _warn } from '../logger'
 import { loadWorkspaces, findWorkspace } from './bench-store'
 import { resolveContribution } from './bench-contribution'
+import {
+  currentRererePaths,
+  forgetRererePaths,
+  validateBenchResolution,
+} from './bench-resolution-validation'
 
 const TAG = 'bench.resolve'
 function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
@@ -74,20 +79,95 @@ export async function prepareConflictResolution(
       const message = `ion-bench: ${member.branchName}@${member.pinnedSha.slice(0, 7)}`
       try {
         await runGit(ws.benchPath, ['merge', '--no-ff', '-m', message, member.pinnedSha])
-      } catch {
-        // The conflicted member. Leave the merge IN PROGRESS — this state is
-        // the whole product of this function. Rerere has already replayed any
-        // matching recording; whatever is still unmerged is what the operator
-        // resolves.
-        const unmerged = (await runGit(ws.benchPath, ['diff', '--name-only', '--diff-filter=U'])).trim()
-        if (!unmerged) {
-          // A recording covered everything (recorded since the last assembly).
-          // Nothing to resolve: commit and keep walking toward a clean bench.
-          await runGit(ws.benchPath, ['commit', '--no-edit', '-m', message])
-          log('resolve-once: conflict fully replayed while preparing, continuing', {
+      } catch (err) {
+        // Capture rerere's exact paths before any abort/reset destroys conflict
+        // context. A fully replayed index is safe to commit only after Git's
+        // staged-content check accepts it.
+        const rerereCapture = await currentRererePaths(ws.benchPath)
+        if (!rerereCapture.ok) {
+          warn('resolve-once: could not capture rerere recovery context', {
             branch: member.branchName,
+            bench_path: ws.benchPath,
+            error: rerereCapture.error,
+          })
+          return { ok: false, error: `Could not capture conflict recovery state: ${rerereCapture.error}` }
+        }
+        const rererePaths = rerereCapture.paths
+        const validation = await validateBenchResolution(ws.benchPath, 'prepare-conflict-resolution')
+        if (validation.ok) {
+          await runGit(ws.benchPath, ['commit', '--no-edit', '-m', message])
+          log('resolve-once: valid conflict replay committed while preparing', {
+            branch: member.branchName,
+            bench_path: ws.benchPath,
+            rerere_paths: rererePaths,
           })
           continue
+        }
+
+        if (validation.probeError) {
+          warn('resolve-once: could not validate conflict index', {
+            branch: member.branchName,
+            bench_path: ws.benchPath,
+            error: validation.probeError,
+          })
+          return { ok: false, error: `Could not inspect conflict state: ${validation.probeError}` }
+        }
+
+        if (validation.unmergedPaths.length === 0) {
+          warn('resolve-once: invalid rerere replay rejected', {
+            branch: member.branchName,
+            bench_path: ws.benchPath,
+            rerere_paths: rererePaths,
+            staged_check_error: validation.stagedCheckError,
+            merge_error: String(err),
+          })
+          const forgotten = await forgetRererePaths(ws.benchPath, rererePaths)
+          if (!forgotten.ok) {
+            return {
+              ok: false,
+              error: `Could not forget invalid conflict recording for ${forgotten.path}: ${forgotten.error}`,
+            }
+          }
+          if (forgotten.forgottenPaths.length === 0) {
+            return { ok: false, error: 'Invalid replay was detected, but no rerere recording was forgotten.' }
+          }
+          // Forget while conflict context is active, then recreate same merge.
+          // Fresh unmerged entries prove poison no longer replays.
+          await runGit(ws.benchPath, ['merge', '--abort'])
+          try {
+            await runGit(ws.benchPath, ['merge', '--no-ff', '-m', message, member.pinnedSha])
+          } catch (recreateErr) {
+            const recreated = await validateBenchResolution(ws.benchPath, 'recreated-conflict')
+            if (recreated.ok || recreated.probeError ||
+                !forgotten.forgottenPaths.every((path) => recreated.unmergedPaths.includes(path))) {
+              warn('resolve-once: recreated merge did not expose forgotten paths', {
+                branch: member.branchName,
+                bench_path: ws.benchPath,
+                forgotten_paths: forgotten.forgottenPaths,
+                unmerged_paths: recreated.unmergedPaths,
+                probe_error: recreated.ok ? undefined : recreated.probeError,
+                recreate_error: String(recreateErr),
+              })
+              return { ok: false, error: 'Invalid replay was forgotten, but fresh conflict state could not be verified.' }
+            }
+            log('resolve-once: merge recreated after invalid replay', {
+              branch: member.branchName,
+              bench_path: ws.benchPath,
+              forgotten_paths: forgotten.forgottenPaths,
+              unmerged_paths: recreated.unmergedPaths,
+              recreate_error: String(recreateErr),
+            })
+          }
+        }
+
+        const unmerged = (await runGit(ws.benchPath, ['diff', '--name-only', '--diff-filter=U'])).trim()
+        if (!unmerged) {
+          warn('resolve-once: merge failed without a valid resolvable index', {
+            branch: member.branchName,
+            bench_path: ws.benchPath,
+            error: String(err),
+          })
+          return { ok: false, error: 'The conflict could not be recreated with a valid resolution state.' }
         }
         log('resolve-once: merge left in progress for resolution', {
           branch: member.branchName,

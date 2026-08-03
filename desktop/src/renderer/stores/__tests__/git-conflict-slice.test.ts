@@ -230,9 +230,13 @@ describe('openConflictAssist', () => {
 
     expect(tabId).toBe('tab-new')
     expect(createTabInDirectory).toHaveBeenCalledWith(WT, false, true)
-    // The prompt is specified verbatim; any drift is a defect.
-    expect(submit).toHaveBeenCalledWith('tab-new', 'Please fix my currently in-progress rebase.')
-    expect(CONFLICT_ASSIST_PROMPT).toBe('Please fix my currently in-progress rebase.')
+    const prompt = conflictAssistPrompt(null)
+    expect(submit).toHaveBeenCalledWith('tab-new', prompt, { source: 'machine' })
+    expect(CONFLICT_ASSIST_PROMPT).toBe(prompt)
+    expect(prompt).toContain('currently in-progress rebase')
+    expect(prompt).toContain('Do not abort the rebase')
+    expect(prompt).toContain('separate standalone call containing only git rebase --continue')
+    expect(prompt).toContain('Done only when the operation has ended')
   })
 
   it('creates a FRESH conversation even when one already exists in the directory', async () => {
@@ -258,7 +262,7 @@ describe('openConflictAssist', () => {
     // The existing conversation is untouched: not focused, nothing submitted.
     expect(selectTab).not.toHaveBeenCalled()
     expect(submit).not.toHaveBeenCalledWith('tab-existing', CONFLICT_ASSIST_PROMPT)
-    expect(submit).toHaveBeenCalledWith('tab-fresh', CONFLICT_ASSIST_PROMPT)
+    expect(submit).toHaveBeenCalledWith('tab-fresh', CONFLICT_ASSIST_PROMPT, { source: 'machine' })
   })
 
   it('refuses with a remediation message when the standard tier is not configured', async () => {
@@ -289,34 +293,47 @@ describe('openConflictAssist', () => {
 
     await h.slice.openConflictAssist!(WT)
 
-    expect(submit).toHaveBeenCalledWith('tab-new', 'Please fix my currently in-progress merge.')
-    expect(conflictAssistPrompt('merging')).toBe('Please fix my currently in-progress merge.')
-    expect(conflictAssistPrompt('cherry-picking')).toBe('Please fix my currently in-progress cherry-pick.')
+    const mergePrompt = conflictAssistPrompt('merging')
+    expect(submit).toHaveBeenCalledWith('tab-new', mergePrompt, { source: 'machine' })
+    expect(mergePrompt).toContain('currently in-progress merge')
+    expect(mergePrompt).toContain('git merge --continue')
+    expect(conflictAssistPrompt('cherry-picking')).toContain('git cherry-pick --continue')
     expect(conflictAssistPrompt(null)).toBe(CONFLICT_ASSIST_PROMPT)
   })
 
-  it('locks the conversation input after the machine prompt is sent', async () => {
+  it('locks + role-tags the conversation BEFORE the machine prompt is sent', async () => {
     // The fix conversation's entire instruction is the one machine-sent
     // prompt: locking prevents follow-ups from grafting an open-ended
     // conversation onto a checkout (often a bench) where development work
-    // does not belong. The lock lands AFTER submit(), so the machine prompt
-    // itself is never blocked by the guard in send-slice.
+    // does not belong. Role + lock land atomically BEFORE submit() so a fast
+    // completion cannot race ahead of the lifecycle tagging; the machine
+    // prompt passes the lock via its 'machine' source.
     ionWith()
-    const submit = vi.fn()
+    let lockedAtSubmit: boolean | undefined
+    let roleAtSubmit: string | null | undefined
     const setTabModel = vi.fn()
     const createTabInDirectory = vi.fn().mockResolvedValue('tab-new')
     const h = harness({
-      submit, setTabModel, createTabInDirectory,
+      setTabModel, createTabInDirectory,
       tabs: [{ id: 'tab-new', inputLocked: false }],
       activeTabId: null,
     })
+    const submit = vi.fn(() => {
+      const t = (h.state().tabs as Array<{ id: string; inputLocked: boolean; tabRole?: string | null }>).find((x) => x.id === 'tab-new')
+      lockedAtSubmit = t?.inputLocked
+      roleAtSubmit = t?.tabRole
+    })
+    ;(h.state() as { submit: unknown }).submit = submit
 
     await h.slice.openConflictAssist!(WT)
 
-    const tabs = h.state().tabs as Array<{ id: string; inputLocked: boolean }>
+    const tabs = h.state().tabs as Array<{ id: string; inputLocked: boolean; tabRole?: string | null }>
     expect(tabs.find((t) => t.id === 'tab-new')?.inputLocked).toBe(true)
-    // Order matters: the prompt went through before the lock was applied.
-    expect(submit).toHaveBeenCalledWith('tab-new', CONFLICT_ASSIST_PROMPT)
+    expect(tabs.find((t) => t.id === 'tab-new')?.tabRole).toBe('conflict-auto-fix')
+    // Order pinned: at submit time the tab was ALREADY locked and role-tagged.
+    expect(lockedAtSubmit).toBe(true)
+    expect(roleAtSubmit).toBe('conflict-auto-fix')
+    expect(submit).toHaveBeenCalledWith('tab-new', CONFLICT_ASSIST_PROMPT, { source: 'machine' })
   })
 
   it('pins the tier model on the fresh conversation', async () => {

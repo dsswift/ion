@@ -24,6 +24,7 @@ import { handlePlanModeEvent } from './event-slice-plan-mode'
 import { buildDispatchStartEntry, applyDispatchEnd } from './engine-event-slice-helpers'
 import { maybeApplyPlanModeGroupMove } from './event-slice-plan-mode-move'
 import { handleTaskEvent } from './event-slice-task'
+import { maybeCloseAutoFixTab, retryAutoFixCloseOnTerminalChildren } from './event-slice-auto-fix-lifecycle'
 import { handleErrorAction } from './event-slice-error'
 import { rTrace, rWarn } from '../../rendererLogger'
 
@@ -40,6 +41,10 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // flow through the normalized stream after WI-001. They are processed before
       // the per-tab reducer and do NOT touch conversation state.
       if (handleCrossNormalizedEvent(set, get, tabId, event)) return
+
+      // Auto-fix lifecycle evidence, captured inside the reducer (pre-clear)
+      // and consumed post-commit — see event-slice-auto-fix-lifecycle.ts.
+      let autoFixEvidence: import('./event-slice-auto-fix-lifecycle').AutoFixCompletionEvidence | undefined
 
       set((s) => {
         const { activeTabId } = s
@@ -370,7 +375,7 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               // `updated` patch, permissionQueue, instPatch/instTouched,
               // engineModelFallbacks) exactly as the inline cases did; read the
               // results back so the single commit below is unchanged.
-              const ctx = {
+              const ctx: import('./event-slice-task').TaskCtx = {
                 s,
                 get,
                 tabId,
@@ -387,10 +392,13 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
               }
               handleTaskEvent(ctx, event)
               messages = ctx.messages
-              permissionQueue = ctx.permissionQueue
-              elicitationQueue = ctx.elicitationQueue
+              // TaskCtx types the queues structurally (unknown[]); the values
+              // are the same arrays seeded above, so the narrow is safe.
+              permissionQueue = ctx.permissionQueue as typeof permissionQueue
+              elicitationQueue = ctx.elicitationQueue as typeof elicitationQueue
               instTouched = ctx.instTouched
               engineModelFallbacks = ctx.engineModelFallbacks
+              autoFixEvidence = ctx.autoFixEvidence
               break
             }
 
@@ -661,12 +669,20 @@ export function createEventSlice(set: StoreSet, get: StoreGet): Partial<State> {
         }
       })
       maybeApplyPlanModeGroupMove(tabId, event.type, get) // post-commit: re-evaluate group after plan-mode event
+      // Post-commit: auto-fix lifecycle. Decides close-vs-retain from the
+      // committed store plus the pre-clear evidence the reducer captured.
+      if (autoFixEvidence) {
+        maybeCloseAutoFixTab(tabId, autoFixEvidence, get)
+      }
       // Post-commit: re-evaluate auto-group placement when an agent_state
       // snapshot arrives. Closes two symmetric gaps — see event-slice-done-move.ts:
       //   Bug A: running children discovered in the done group → move back.
       //   Bug B: all children terminal while tab is idle → schedule done-move.
       if (event.type === 'agent_state') {
         maybeApplyAgentStateGroupMove(tabId, (event as { agents: import('../../../shared/types').AgentStateUpdate[] }).agents ?? [], get)
+        // A terminal child snapshot may unblock an auto-fix close that was
+        // deferred while children were running.
+        retryAutoFixCloseOnTerminalChildren(tabId, get)
       }
     },
 

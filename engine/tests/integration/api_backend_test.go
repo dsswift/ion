@@ -447,6 +447,25 @@ func TestApiBackendConversationPersistence(t *testing.T) {
 	_ = convDir // suppress unused
 }
 
+// addPlanModeSafeTools marks every registered tool carrying PlanModeSafe=true as
+// expected in a plan-mode tool list. buildToolDefs admits such tools through the
+// plan-mode filter regardless of the allowlist (`allowed[td.Name] ||
+// td.PlanModeSafe` in runloop_setup.go), which is the documented seam for a
+// strictly read-only tool — pinned by
+// TestBuildToolDefs_PlanModeSafe_AdditiveToDefaultTools.
+//
+// Derived from the registry rather than hand-listed: a hardcoded name set makes
+// every future PlanModeSafe tool fail this test for conforming to the contract,
+// which is exactly how WorkspaceAttribution first broke it.
+func addPlanModeSafeTools(expected map[string]bool) map[string]bool {
+	for _, td := range tools.GetAllTools() {
+		if td.PlanModeSafe {
+			expected[td.Name] = true
+		}
+	}
+	return expected
+}
+
 func TestApiBackendPlanMode(t *testing.T) {
 	mp := setupMockProvider(t)
 	mp.SetResponse(helpers.TextResponse("Here is my plan."))
@@ -472,7 +491,7 @@ func TestApiBackendPlanMode(t *testing.T) {
 
 	// Check that only allowed tools + Write/Edit + ExitPlanMode were passed
 	firstCall := calls[0]
-	allowedSet := map[string]bool{
+	allowedSet := addPlanModeSafeTools(map[string]bool{
 		"Read": true, "Grep": true, "Glob": true,
 		"Write": true, "Edit": true, "ExitPlanMode": true,
 		// AskUserQuestion is injected unconditionally by runloop_setup.go
@@ -481,7 +500,7 @@ func TestApiBackendPlanMode(t *testing.T) {
 		// mode. Mirrors the unit-test expectation in
 		// engine/internal/backend/runloop_setup_test.go.
 		"AskUserQuestion": true,
-	}
+	})
 	for _, tool := range firstCall.Tools {
 		if !allowedSet[tool.Name] {
 			t.Errorf("unexpected tool in plan mode: %s", tool.Name)
@@ -536,13 +555,15 @@ func TestApiBackendPlanModeDefaultTools(t *testing.T) {
 	// AskUserQuestion is also injected universally (see runloop_setup.go:144).
 	// Skill is part of defaultPlanModeTools (plan_mode_prompt.go): invoking a
 	// skill is read-only, and without it skills are unusable while planning.
-	expectedTools := map[string]bool{
+	// Registered PlanModeSafe tools are added by addPlanModeSafeTools — they
+	// survive the filter on the PlanModeSafe flag, not on the allowlist.
+	expectedTools := addPlanModeSafeTools(map[string]bool{
 		"Read": true, "Grep": true, "Glob": true,
 		"Agent": true, "WebFetch": true, "WebSearch": true,
 		"Skill": true,
 		"Write": true, "Edit": true, "ExitPlanMode": true,
 		"AskUserQuestion": true,
-	}
+	})
 	for _, tool := range calls[0].Tools {
 		if !expectedTools[tool.Name] {
 			t.Errorf("unexpected tool in default plan mode: %s", tool.Name)

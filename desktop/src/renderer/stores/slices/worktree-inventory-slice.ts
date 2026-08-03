@@ -13,6 +13,7 @@ import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { rInfo, rWarn, rDebug } from '../../rendererLogger'
 import { setTabWorkingDirectory } from './tab-working-directory'
 import { collectDirConversations, pickNextConversation } from '../../../shared/worktree-conversations'
+import { resolveRegisteredWorktree } from '../worktree-registration'
 
 export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -102,21 +103,11 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
       // The registry records the true repo at creation and is the only
       // authoritative source. A heuristic scan over a cache keyed for display is
       // exactly the substitution that drifts.
-      const { registration } = await window.ion.gitWorktreeRegistration(worktreePath)
-      const repoPath = registration?.repoPath
-      const entry = registration
-      if (repoPath && entry?.sourceBranch) {
+      const worktree = await resolveRegisteredWorktree(worktreePath)
+      if (worktree) {
         set((s) => ({
           tabs: s.tabs.map((t) => t.id === tabId
-            ? {
-                ...t,
-                worktree: {
-                  worktreePath,
-                  branchName: entry.branchName,
-                  sourceBranch: entry.sourceBranch!,
-                  repoPath,
-                },
-              }
+            ? { ...t, worktree }
             : t),
         }))
       } else {

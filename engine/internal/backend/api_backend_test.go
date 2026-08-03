@@ -575,11 +575,14 @@ func TestOnNormalizedReceivesEvents(t *testing.T) {
 	hasText := false
 	hasComplete := false
 	for _, ev := range c.normalized {
-		switch ev.Data.(type) {
+		switch event := ev.Data.(type) {
 		case *types.TextChunkEvent:
 			hasText = true
 		case *types.TaskCompleteEvent:
 			hasComplete = true
+			if event.Reason != types.TaskCompletionReasonNormal {
+				t.Errorf("completion reason = %q, want normal", event.Reason)
+			}
 		}
 	}
 	if !hasText {
@@ -1186,6 +1189,9 @@ func TestBudgetEnforcementStopsAtMaxTurns(t *testing.T) {
 		if tc, ok := ev.Data.(*types.TaskCompleteEvent); ok {
 			if tc.NumTurns > 3 {
 				t.Errorf("expected <= 3 turns, got %d", tc.NumTurns)
+			}
+			if tc.Reason != types.TaskCompletionReasonMaxTurns {
+				t.Errorf("completion reason = %q, want max_turns", tc.Reason)
 			}
 			if !strings.Contains(tc.Result, "max turns") {
 				t.Logf("task_complete result: %q", tc.Result)

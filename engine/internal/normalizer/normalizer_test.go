@@ -155,9 +155,11 @@ func TestNormalizeResult(t *testing.T) {
 					t.Errorf("expected ErrorEvent, got %T", events[0].Data)
 				}
 			} else {
-				_, ok := events[0].Data.(*types.TaskCompleteEvent)
+				taskComplete, ok := events[0].Data.(*types.TaskCompleteEvent)
 				if !ok {
 					t.Errorf("expected TaskCompleteEvent, got %T", events[0].Data)
+				} else if taskComplete.Reason != types.TaskCompletionReasonNormal {
+					t.Errorf("reason = %q, want normal", taskComplete.Reason)
 				}
 			}
 		})

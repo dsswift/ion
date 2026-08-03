@@ -29,8 +29,13 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { IPC } from '../../shared/types'
 import { runGit, gitExec } from '../git-runner'
-import { benchGuard } from '../integration/bench-guard'
+import { benchGuard, resolveBenchFor } from '../integration/bench-guard'
+import { benchMutationQueue } from '../integration/bench-mutation-queue'
+import { continueBenchMerge } from '../integration/bench-merge-continue'
 import { probeOperationState } from '../git/operation-state'
+import { warn } from '../logger'
+
+const TAG = 'git.rebase'
 
 /**
  * Resolve the in-progress operation to the git verb and the guard label for
@@ -86,10 +91,19 @@ export function registerGitRebaseIpc(): void {
     const op = await operationVerb(directory)
     const refusal = benchGuard(directory, `abort a ${op.label}`)
     if (refusal) return refusal
+    const benchPath = resolveBenchFor(directory)
+    const queue = op.verb === 'merge' ? benchMutationQueue(directory) : null
     try {
-      await runGit(directory, [op.verb, '--abort'])
+      if (queue) {
+        await queue.enqueueMutation(() => runGit(directory, [op.verb, '--abort']))
+      } else {
+        await runGit(directory, [op.verb, '--abort'])
+      }
       return { ok: true }
     } catch (err: any) {
+      warn(TAG, 'git operation abort failed', {
+        directory, operation: op.verb, bench_path: benchPath ?? '', error: err.message,
+      })
       return { ok: false, error: err.message }
     }
   })
@@ -98,17 +112,29 @@ export function registerGitRebaseIpc(): void {
     const op = await operationVerb(directory)
     const refusal = benchGuard(directory, `continue a ${op.label}`)
     if (refusal) return refusal
-    try {
-      // `--no-edit` for merge/cherry-pick: continuing must not park the main
-      // process on an editor that can never appear. Rebase keeps its own
-      // continue semantics (it opens no editor for a plain continue).
-      if (op.verb === 'merge') {
-        await runGit(directory, ['-c', 'core.editor=true', 'merge', '--continue'])
-      } else {
-        await runGit(directory, ['-c', 'core.editor=true', op.verb, '--continue'])
+    const benchPath = resolveBenchFor(directory)
+    const queue = op.verb === 'merge' ? benchMutationQueue(directory) : null
+    if (queue) {
+      try {
+        return await queue.enqueueMutation(() => continueBenchMerge(directory))
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        warn(TAG, 'queued bench merge continue failed', {
+          directory,
+          bench_path: benchPath,
+          error: message,
+        })
+        return { ok: false, error: message }
       }
+    }
+
+    try {
+      await runGit(directory, ['-c', 'core.editor=true', op.verb, '--continue'])
       return { ok: true }
     } catch (err: any) {
+      warn(TAG, 'git operation continue failed', {
+        directory, operation: op.verb, bench_path: benchPath ?? '', error: err.message,
+      })
       return { ok: false, error: err.message }
     }
   })

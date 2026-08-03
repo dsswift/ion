@@ -44,8 +44,8 @@ extension DiagnosticLog {
         case .toolResult(let tabId, let toolId, let content, let isError):
             log("EVENT: toolResult tabId=\(tabId.prefix(8)) toolId=\(toolId.prefix(8)) err=\(isError) len=\(content.count)", tag: "session", level: .info)
 
-        case .taskComplete(let tabId, _, let costUsd):
-            log("EVENT: taskComplete tabId=\(tabId.prefix(8)) cost=\(costUsd)", tag: "session", level: .info)
+        case .taskComplete(let tabId, _, let costUsd, let reason):
+            log("EVENT: taskComplete tabId=\(tabId.prefix(8)) cost=\(costUsd) reason=\(reason?.logValue ?? "absent")", tag: "session", level: .info)
 
         case .permissionRequest(let tabId, let instanceId, let qId, let toolName, _, let options):
             log("EVENT: permissionRequest tabId=\(tabId.prefix(8)) instanceId=\(instanceId?.prefix(8) ?? "nil") qId=\(qId.prefix(8)) tool=\(toolName) opts=\(options.count)", tag: "session", level: .info)

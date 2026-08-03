@@ -62,9 +62,10 @@ func GetToolDefs() []types.LlmToolDef {
 	defs := make([]types.LlmToolDef, 0, len(registry))
 	for _, t := range registry {
 		defs = append(defs, types.LlmToolDef{
-			Name:        t.Name,
-			Description: t.Description,
-			InputSchema: t.InputSchema,
+			Name:         t.Name,
+			Description:  t.Description,
+			InputSchema:  t.InputSchema,
+			PlanModeSafe: t.PlanModeSafe,
 		})
 	}
 	return defs
@@ -92,6 +93,7 @@ func registerBuiltinTools() {
 	RegisterTool(ListMcpResourcesTool())
 	RegisterTool(ReadMcpResourceTool())
 	RegisterTool(SearchHistoryTool())
+	RegisterTool(WorkspaceAttributionTool())
 	// ExitPlanMode is NOT registered globally. It is injected by api_backend
 	// only when PlanMode is active, and intercepted there before execution.
 }

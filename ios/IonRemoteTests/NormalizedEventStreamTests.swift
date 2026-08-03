@@ -65,15 +65,36 @@ final class NormalizedEventStreamTests: XCTestCase {
 
     func testDecodeTaskComplete() throws {
         let json = """
-        {"type":"desktop_task_complete","tabId":"t1","result":"success","costUsd":0.0042}
+        {"type":"desktop_task_complete","tabId":"t1","result":"success","costUsd":0.0042,"reason":"max_turns"}
         """.data(using: .utf8)!
         let event = try decoder.decode(RemoteEvent.self, from: json)
-        if case .taskComplete(let tabId, let result, let costUsd) = event {
+        if case .taskComplete(let tabId, let result, let costUsd, let reason) = event {
             XCTAssertEqual(tabId, "t1")
             XCTAssertEqual(result, "success")
             XCTAssertEqual(costUsd, 0.0042, accuracy: 0.0001)
+            XCTAssertEqual(reason, .maxTurns)
         } else {
             XCTFail("Expected taskComplete, got \(event)")
+        }
+    }
+
+    func testDecodeTaskCompleteCompatibility() throws {
+        let absentJSON = """
+        {"type":"desktop_task_complete","tabId":"t1","result":"done","costUsd":0}
+        """.data(using: .utf8)!
+        if case .taskComplete(_, _, _, let reason) = try decoder.decode(RemoteEvent.self, from: absentJSON) {
+            XCTAssertNil(reason)
+        } else {
+            XCTFail("Expected taskComplete with absent reason")
+        }
+
+        let unknownJSON = """
+        {"type":"desktop_task_complete","tabId":"t1","result":"done","costUsd":0,"reason":"future_reason"}
+        """.data(using: .utf8)!
+        if case .taskComplete(_, _, _, let reason) = try decoder.decode(RemoteEvent.self, from: unknownJSON) {
+            XCTAssertEqual(reason, .unknown("future_reason"))
+        } else {
+            XCTFail("Expected taskComplete with unknown reason")
         }
     }
 
@@ -119,13 +140,14 @@ final class NormalizedEventStreamTests: XCTestCase {
     }
 
     func testRoundTripTaskComplete() throws {
-        let original = RemoteEvent.taskComplete(tabId: "t7", result: "done", costUsd: 1.23)
+        let original = RemoteEvent.taskComplete(tabId: "t7", result: "done", costUsd: 1.23, reason: .normal)
         let data = try encoder.encode(original)
         let decoded = try decoder.decode(RemoteEvent.self, from: data)
-        if case .taskComplete(let tabId, let result, let costUsd) = decoded {
+        if case .taskComplete(let tabId, let result, let costUsd, let reason) = decoded {
             XCTAssertEqual(tabId, "t7")
             XCTAssertEqual(result, "done")
             XCTAssertEqual(costUsd, 1.23, accuracy: 0.001)
+            XCTAssertEqual(reason, .normal)
         } else {
             XCTFail("Round-trip taskComplete failed")
         }

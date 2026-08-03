@@ -232,9 +232,10 @@ func (b *CodexBackend) runTurn(requestID string, options types.RunOptions) {
 		})
 	}
 
+	prompt := transientPrompt(options.Prompt, options.AppendSystemPrompt)
 	turnID, err := b.client.TurnStart(ctx, codexrpc.TurnStartParams{
 		ThreadID:          threadID,
-		Input:             codexrpc.NewTextInput(options.Prompt),
+		Input:             codexrpc.NewTextInput(prompt),
 		Model:             options.Model,
 		ApprovalPolicy:    "on-request",
 		SandboxPolicy:     &codexrpc.SandboxPolicy{Type: "workspaceWrite"},

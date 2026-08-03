@@ -165,6 +165,16 @@ export interface RemoteBench {
   /** Conversations open in the bench directory, in tab order. */
   openConversations: RemoteOpenConversation[]
   /**
+   * The bench's ONE persistent operator conversation when it is open, so a
+   * client can focus it ("Go to") instead of creating another ("Talk").
+   * Resolved by the tab's stored role (`tabRole === 'bench-conversation'`),
+   * which is what distinguishes the singleton from the terminal and from
+   * ephemeral auto-fix conversations sharing the same directory. Absent when
+   * no singleton is open — and on any older desktop that does not send it,
+   * which clients must render as "not open" rather than as an error.
+   */
+  benchConversationTabId?: string
+  /**
    * The bench's dedicated terminal tab when one is open, so a client can say
    * "Go to terminal" instead of "Open terminal".
    *

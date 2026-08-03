@@ -297,6 +297,11 @@ func TestCodexBackend_PlanModeNativeCapture(t *testing.T) {
 	if strings.Join(order, ",") != strings.Join(want, ",") {
 		t.Fatalf("plan event order = %v, want %v", order, want)
 	}
+	for _, event := range r.events {
+		if complete, ok := event.Data.(*types.TaskCompleteEvent); ok && complete.Reason != types.TaskCompletionReasonNormal {
+			t.Fatalf("completion reason = %q, want normal", complete.Reason)
+		}
+	}
 	if c := r.exitCode["req-plan"]; c == nil || *c != 0 {
 		t.Fatalf("expected clean exit 0, got %v", c)
 	}

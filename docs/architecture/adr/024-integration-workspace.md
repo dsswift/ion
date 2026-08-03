@@ -342,13 +342,69 @@ forever. The answer is git's own answer for its `seen` integration branch —
   genuinely new conflict, the theoretical minimum.
 
 While the machinery-prepared merge is open, both enforcement halves carve out
-exactly the resolution surface and nothing else: the desktop guard passes the
-conflict-resolution IPC and merge continue/abort, and the engine's workspace
-containment passes `git merge --continue`/`--abort` plus `Write`/`Edit` on the
-**unmerged paths only** (an edit to a conflicted path during resolution *is*
-the reviewable artifact — it becomes the recording). Both carve-outs fail
-closed: an unreadable probe refuses as before, the conservative direction for
-a permission widening.
+exactly the resolution surface and nothing else. The desktop guard passes the
+conflict-resolution IPC and merge abort. Engine workspace containment passes
+`Write`/`Edit` on **unmerged paths only** because an edit to a conflicted path
+during resolution is the reviewable artifact that becomes the recording. Merge
+completion has a stricter invariant: `git merge --continue` must be a standalone
+call in the model response, the index must contain no unmerged entries, and
+`git diff --cached --check` must accept the staged resolution. This prevents a
+failed edit, formatter, test, or staging command from being masked by a later
+Continue in the same shell or parallel tool batch.
+
+Automatic rerere replay obeys the same staged-content validation before the
+machinery commits it. An invalid replay is never treated as "nothing left to
+resolve": Ion captures the exact rerere paths while the conflict context exists,
+forgets the bad recording, and recreates the same real merge for fresh
+resolution. If capture or forget fails, the flow stops visibly rather than
+claiming recovery. Desktop Continue also runs its preflight, mutation, and
+postcondition checks under the repository mutation queue; success requires that
+the operation ended, HEAD advanced, and the resulting delta passes
+`git diff --check`. A bad resulting commit is rolled back and the original
+conflict is recreated. Both carve-outs fail closed: an unreadable probe refuses
+as before, the conservative direction for a permission widening.
+
+### Text checks accept broken trees; the project's verify command decides
+
+`git diff --cached --check` and the unmerged-path probe are **text** checks: a
+resolution can pass both and still not compile (the live case: a recorded
+resolution carrying a duplicated `}, "")` line that git considered clean). A
+resolution is only correct when the project accepts the resulting tree, and Ion
+must not know Go from npm — so the project declares the check in the committed
+`.ion/worktree.json` as `bench.verify` (see
+[worktree-json.md](../../configuration/worktree-json.md) § "Bench verification").
+
+Two gates, one command:
+
+- **Record time.** Desktop Continue runs `verify` after its postconditions
+  pass. On failure the merge is rolled back through the existing
+  `restoreConflict` path — reset, recreate, forget the just-written recording,
+  re-verify fresh unmerged paths. Poison is never recorded.
+- **Replay time.** An assembly that replayed at least one recording runs
+  `verify` after the member loop. On failure the replayed recordings are
+  forgotten, the bench is wiped to the atomic-failure state, and the assembly
+  reports failed naming replay poison. Clean-merge-only assemblies skip the
+  gate: they contain exactly what the members committed, so a build failure
+  there is member breakage, not Ion-introduced state — and a bench exists to
+  build in-flight combinations that may legitimately not compile.
+
+### Recorded resolutions can be purged
+
+Prevention stops new poison; it cannot reach a recording already written, nor
+recordings the operator's own manual rebases produced outside Ion. Two verbs,
+both desktop-only (destroying resolution history is a deliberate desk action —
+the same posture as Retire):
+
+- **Forget resolutions for these files** — the targeted verb and the default.
+  Given the conflicting paths on the membership record, forget only the
+  recordings covering them. Costs one re-resolution, keeps the rest.
+- **Discard all recorded resolutions** — the blunt verb, behind a confirmation
+  naming the exact count of recordings that will be lost, because that count
+  is the entire decision. Every conflict ever resolved comes back.
+
+The cache path is always derived via `git rev-parse --git-common-dir` — never
+assembled by hand — and the deletion refuses any resolved path whose basename
+is not `rr-cache`.
 
 The badge on a conflicted member opens the **BenchConflictDialog**, which reads
 the membership record (no operation probe — after the atomic wipe there is

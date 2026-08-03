@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/dsswift/ion/engine/internal/types"
+	"github.com/dsswift/ion/engine/internal/workspaces"
 )
 
 // --- Fire method payload types ---
@@ -147,8 +148,9 @@ type ContextLoadInfo struct {
 
 // ContextInjectInfo is the payload for the context_inject hook.
 type ContextInjectInfo struct {
-	WorkingDirectory string   `json:"workingDirectory"`
-	DiscoveredPaths  []string `json:"discoveredPaths"`
+	WorkingDirectory string                    `json:"workingDirectory"`
+	DiscoveredPaths  []string                  `json:"discoveredPaths"`
+	Workspace        *workspaces.PromptContext `json:"workspace,omitempty"`
 }
 
 // ContextEntry is a single piece of context content to inject into the system prompt.
@@ -505,17 +507,18 @@ type BeforePromptResult struct {
 
 // PlanModePromptResult holds the optional overrides a plan_mode_prompt handler may return.
 type PlanModePromptResult struct {
-	Prompt        string   `json:"prompt,omitempty"`        // custom plan mode prompt; empty means use default
-	Tools         []string `json:"tools,omitempty"`         // custom allowed tools; nil means use default
-	SparseReminder string  `json:"sparseReminder,omitempty"` // custom sparse reminder text; empty means use default
+	Prompt         string   `json:"prompt,omitempty"`         // custom plan mode prompt; empty means use default
+	Tools          []string `json:"tools,omitempty"`          // custom allowed tools; nil means use default
+	SparseReminder string   `json:"sparseReminder,omitempty"` // custom sparse reminder text; empty means use default
 }
 
 // SystemInjectInfo is the payload for the system_inject hook.
 type SystemInjectInfo struct {
-	Kind        string `json:"kind"`        // "plan_mode_reminder", "turn_limit_warning", "max_token_continue"
-	DefaultText string `json:"defaultText"` // engine's default injection text
-	Turn        int    `json:"turn"`        // current turn number
-	MaxTurns    int    `json:"maxTurns"`    // configured max turns (0 = unlimited)
+	Kind        string                    `json:"kind"`        // "plan_mode_reminder", "turn_limit_warning", "max_token_continue", "workspace_context"
+	DefaultText string                    `json:"defaultText"` // engine's default injection text
+	Turn        int                       `json:"turn"`        // current turn number
+	MaxTurns    int                       `json:"maxTurns"`    // configured max turns (0 = unlimited)
+	Workspace   *workspaces.PromptContext `json:"workspace,omitempty"`
 }
 
 // SystemInjectResult holds the optional overrides a system_inject handler may return.

@@ -67,6 +67,7 @@ func translateToEngineEvent(event types.NormalizedEvent, contextWindow int) type
 				State:             "idle",
 				SessionID:         e.SessionID,
 				RunCostUsd:        e.CostUsd,
+				CompletionReason:  e.Reason,
 				ContextWindow:     contextWindow,
 				PermissionDenials: e.PermissionDenials,
 				NumTurns:          e.NumTurns,

@@ -41,6 +41,14 @@ export interface TaskCtx {
   instTouched: boolean
   /** Reassigned when a model-fallback entry must be cleared; else untouched. */
   engineModelFallbacks?: State['engineModelFallbacks']
+  /**
+   * Set by the task_complete arm for auto-fix tabs: the pre-clear evidence the
+   * post-commit lifecycle decision needs (the reducer clears the queues and
+   * denial state in the same set() that flips status, so the decision cannot
+   * re-read them afterwards). The parent hands this to maybeCloseAutoFixTab
+   * after committing.
+   */
+  autoFixEvidence?: import('./event-slice-auto-fix-lifecycle').AutoFixCompletionEvidence
 }
 
 /**
@@ -109,7 +117,19 @@ export function handleTaskEvent(ctx: TaskCtx, event: any): boolean {
     }
 
     case 'task_complete':
-      rInfo('event.task', 'task complete', { tab_id: tabId.slice(0, 8), prev_status: ctx.tab.status, prev_perm_mode: ctx.inst0?.permissionMode ?? 'auto', has_denials: !!(event.permissionDenials?.length) })
+      rInfo('event.task', 'task complete', { tab_id: tabId.slice(0, 8), prev_status: ctx.tab.status, prev_perm_mode: ctx.inst0?.permissionMode ?? 'auto', has_denials: !!(event.permissionDenials?.length), reason: event.reason ?? 'absent' })
+      // Auto-fix lifecycle evidence, captured BEFORE the clears below wipe it.
+      // hadPendingAsk covers a run that stopped mid-question: a non-empty
+      // permission or elicitation queue at completion means the model asked
+      // and nobody could answer in a locked tab.
+      if (ctx.tab.tabRole === 'conflict-auto-fix') {
+        ctx.autoFixEvidence = {
+          reason: event.reason,
+          hadDenials: !!(event.permissionDenials && event.permissionDenials.length > 0),
+          hadPendingAsk: ctx.permissionQueue.length > 0 || ctx.elicitationQueue.length > 0,
+          runRequestId: ctx.tab.activeRequestId,
+        }
+      }
       ctx.updated.status = 'completed'
       ctx.updated.activeRequestId = null
       ctx.updated.currentActivity = ''

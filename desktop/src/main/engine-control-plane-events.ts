@@ -519,6 +519,7 @@ function handleStatusEvent(
     ctx.emit('event', tabId, {
       type: 'task_complete',
       result: '',
+      reason: event.fields.completionReason,
       costUsd: event.fields.runCostUsd || 0,
       durationMs,
       numTurns: event.fields.numTurns ?? 1,

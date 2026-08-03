@@ -803,6 +803,15 @@ func TestTranslateToEngineEvent_UsageEntryIDs(t *testing.T) {
 	}
 }
 
+func TestTranslateToEngineEvent_TaskCompleteReason(t *testing.T) {
+	result := translateToEngineEvent(types.NormalizedEvent{Data: &types.TaskCompleteEvent{
+		Reason: types.TaskCompletionReasonMaxTurns,
+	}}, 200000)
+	if result.Fields == nil || result.Fields.CompletionReason != types.TaskCompletionReasonMaxTurns {
+		t.Fatalf("completion reason = %v, want max_turns", result.Fields)
+	}
+}
+
 func TestTranslateToEngineEvent_TaskCompleteSessionID(t *testing.T) {
 	result := translateToEngineEvent(types.NormalizedEvent{
 		Data: &types.TaskCompleteEvent{SessionID: "abc-123", CostUsd: 0.05},
