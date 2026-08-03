@@ -2,6 +2,8 @@ import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { ListChecks, Robot } from '@phosphor-icons/react'
 import { useSessionStore } from '../stores/sessionStore'
+import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
+import { zoomViewport } from '../viewport-zoom'
 import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
 import { anyEngineInstanceHasRunningChildren, anyEngineInstanceHasRunningShells, getWaitingState } from './TabStripShared'
@@ -173,10 +175,12 @@ export function WorkspaceStatusIndicator() {
   const tier = globalRunningTier(tabs)
 
   const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState({ top: 0, left: 0 })
+  // The trigger's own rect, captured on click. The measured on-screen position
+  // is derived from it by `useAnchoredPopover` below.
+  const [anchor, setAnchor] = useState({ x: 0, y: 0 })
   // Version counter re-rendering the popover when the module-level expansion
   // Set mutates (the Set itself is not reactive).
-  const [, setExpansionVersion] = useState(0)
+  const [expansionVersion, setExpansionVersion] = useState(0)
   const dotRef = useRef<HTMLButtonElement>(null)
   // Ref on the portaled popover so the outside-click handler can exclude it.
   // The popover renders into PopoverLayer, NOT inside dotRef, so without this a
@@ -195,7 +199,7 @@ export function WorkspaceStatusIndicator() {
   const handleClick = useCallback(() => {
     if (!dotRef.current) return
     const rect = dotRef.current.getBoundingClientRect()
-    setPos({ top: rect.bottom + 6, left: rect.left })
+    setAnchor({ x: rect.left, y: rect.bottom })
     setOpen((o) => !o)
   }, [])
 
@@ -212,6 +216,19 @@ export function WorkspaceStatusIndicator() {
   }, [open])
 
   const counts = open ? computeStatusCounts(tabs) : null
+
+  // Measured placement. The dot lives in the tab strip, which sits at the
+  // BOTTOM of the overlay glass and at the TOP of the ATV window, so a fixed
+  // "below the dot" placement is off-screen in one of the two. The popover
+  // grows with the tab list, so the counts drive a re-measure.
+  const pos = useAnchoredPopover(anchor, {
+    offsetY: 6,
+    // Every input that changes the popover's rendered height: whether it is
+    // open at all, how many tab rows the categories list, and which categories
+    // the operator has expanded.
+    deps: [open, tabs.length, expansionVersion],
+  })
+  const vp = zoomViewport()
 
   // Jump to a tab from the popover, then close it. selectTab is the single
   // activation path (tab-slice.ts) — same action the tab pills use — so this
@@ -231,7 +248,7 @@ export function WorkspaceStatusIndicator() {
 
   const popover = open && counts && popoverLayer && createPortal(
     <div
-      ref={popoverRef}
+      ref={(node) => { (popoverRef as React.MutableRefObject<HTMLDivElement | null>).current = node; pos.ref(node) }}
       // Marks this portaled popover as interactive UI. Without it, useClickThrough
       // (elementFromPoint().closest('[data-ion-ui]')) sees no UI under the cursor
       // and keeps the transparent overlay in OS click-through mode, so clicks on
@@ -241,6 +258,9 @@ export function WorkspaceStatusIndicator() {
         position: 'fixed',
         top: pos.top,
         left: pos.left,
+        visibility: pos.ready ? 'visible' : 'hidden',
+        maxHeight: vp.height - 16,
+        overflowY: 'auto',
         zIndex: 9999,
         pointerEvents: 'auto',
         background: colors.containerBg,

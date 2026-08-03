@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { useViewportClamp } from '../hooks/useViewportClamp'
 import { useOutsideDismiss } from '../hooks/useOutsideDismiss'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
@@ -12,7 +11,8 @@ import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
 import { usePreferencesStore, getEffectiveTabGroups } from '../preferences'
 import type { TabState } from '../../shared/types'
-import { zoomRect, zoomViewport, useAnchoredPopoverPosition } from './TabStripShared'
+import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
+import { zoomRect, zoomViewport } from '../viewport-zoom'
 import { ContextMenuItem } from './ContextMenuItem'
 import { MoveToGroupSubmenu } from './TabStripMoveToGroupSubmenu'
 import { ConfirmDialog } from './git/ConfirmDialog'
@@ -52,8 +52,6 @@ export function TabContextMenu({
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const ref = useRef<HTMLDivElement>(null)
-  // Keep the portaled popover inside the window (ATV top-anchored strip).
-  useViewportClamp(ref, true)
   const tabGroupMode = usePreferencesStore((s) => s.tabGroupMode)
   const tabGroups = usePreferencesStore((s) => s.tabGroups)
   const moveTabToGroup = useSessionStore((s) => s.moveTabToGroup)
@@ -148,7 +146,7 @@ export function TabContextMenu({
   // group", git-detection and dirtiness-gated "Convert to worktree", and the inline
   // "showNewGroupInput") all change the rendered height — include
   // every one in `deps` so the hook re-measures on each transition.
-  const pos = useAnchoredPopoverPosition(anchor, {
+  const pos = useAnchoredPopover(anchor, {
     prefer: 'below',
     deps: [
       !!onRename,
@@ -432,7 +430,7 @@ interface MoveAllToGroupInlineSubmenuProps {
 
 /**
  * Inline "Move all to group" submenu — extracted out of TabContextMenu
- * so it can call `useAnchoredPopoverPosition` (hooks can't run inside
+ * so it can call `useAnchoredPopover` (hooks can't run inside
  * an inline IIFE conditional render). Shares the same visual design
  * as `MoveToGroupSubmenu` but operates on a fixed group-target list
  * (no `pinAfter` semantics) and reports the chosen target via
@@ -466,7 +464,7 @@ function MoveAllToGroupInlineSubmenu({
     .filter((g) => g.id !== currentGroupId)
     .map((g) => ({ id: g.id, label: g.label }))
   const vp = zoomViewport()
-  const pos = useAnchoredPopoverPosition(anchor, {
+  const pos = useAnchoredPopover(anchor, {
     prefer: 'rightOf',
     parentRect,
     deps: [showNewGroupInput, targets.length],

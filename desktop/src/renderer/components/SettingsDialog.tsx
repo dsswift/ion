@@ -190,6 +190,7 @@ export function SettingsDialog({ onClose, initialTab }: SettingsDialogProps) {
       transition={TRANSITION}
       className="glass-surface"
       style={{
+        // viewport-ok: draggable dialog, centred on open from the live window size and bounded by the drag handler so a title bar always stays grabbable.
         position: 'fixed',
         left: pos.x,
         top: pos.y,

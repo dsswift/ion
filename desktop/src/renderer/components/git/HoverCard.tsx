@@ -22,6 +22,7 @@ import React, { useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { usePopoverLayer } from '../PopoverLayer'
 import { useColors } from '../../theme'
+import { useViewportClamp } from '../../hooks/useViewportClamp'
 
 interface Props {
   /** What the card shows. Rich content is the reason this component exists. */
@@ -70,6 +71,12 @@ export function HoverCard({
   const spanRef = useRef<HTMLSpanElement>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout>>(null)
   const [rect, setRect] = useState<DOMRect | null>(null)
+  // Edge-anchored card (grows out of the hovered span, above or below it) and
+  // centred with a translateX(-50%). The clamp writes `translate`, a separate
+  // property from `transform`, so the centring survives the correction — a
+  // card on a word near the window edge stays fully readable.
+  const cardRef = useRef<HTMLDivElement>(null)
+  useViewportClamp(cardRef, rect !== null)
 
   // Shared show/hide used for both pointer hover and keyboard focus of the
   // wrapped child (focus/blur bubble from a focusable child to this span in
@@ -108,6 +115,7 @@ export function HoverCard({
       </span>
       {popoverLayer && rect && createPortal(
         <div
+          ref={cardRef}
           data-testid="hover-card"
           style={{
             position: 'fixed',

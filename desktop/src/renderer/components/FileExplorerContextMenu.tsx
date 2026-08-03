@@ -4,6 +4,8 @@ import { Paperclip, Copy, FolderOpen as FolderOpenIcon, ArrowSquareOut, PencilSi
 import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
+import { zoomViewport } from '../viewport-zoom'
 import { transitions } from '../theme-tokens'
 import { maybeCloseExplorerBeforeExternal } from '../utils/externalLaunch'
 import { rError } from '../rendererLogger'
@@ -116,15 +118,24 @@ export function FileExplorerContextMenu({
     ]
   }, [menu.entry, workingDir, onRename, addAttachments])
 
+  // Measured placement: a right-click low in the file tree used to open a menu
+  // that ran off the bottom of the window. `items.length` is the only thing
+  // that changes the rendered height.
+  const pos = useAnchoredPopover({ x: menu.x, y: menu.y }, { deps: [items.length] })
+  const vp = zoomViewport()
+
   return createPortal(
     <div
-      ref={ref}
+      ref={(node) => { (ref as React.MutableRefObject<HTMLDivElement | null>).current = node; pos.ref(node) }}
       data-ion-ui
       className="glass-surface"
       style={{
         position: 'fixed',
-        left: menu.x,
-        top: menu.y,
+        left: pos.left,
+        top: pos.top,
+        visibility: pos.ready ? 'visible' : 'hidden',
+        maxHeight: vp.height - 16,
+        overflowY: 'auto',
         background: colors.popoverBg,
         border: `1px solid ${colors.popoverBorder}`,
         borderRadius: 8,

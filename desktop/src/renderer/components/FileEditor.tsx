@@ -95,6 +95,7 @@ export function FileEditor({ dir, tabId }: FileEditorProps) {
       className="glass-surface rounded-xl"
       onMouseDown={focusFileEditor}
       style={{
+        // viewport-ok: draggable panel with its own clamp — useFileEditorPanel clampToViewport() (hooks/useFileEditorPanel.ts:14) bounds x/y/w/h against the viewport on restore and on every drag.
         position: 'fixed',
         left: posRef.current.x,
         top: posRef.current.y,

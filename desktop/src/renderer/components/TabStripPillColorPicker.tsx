@@ -5,6 +5,8 @@ import { Prohibit } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
 import { PILL_COLOR_PRESETS, PILL_ICON_PRESETS, PILL_ICON_MAP } from './TabStripShared'
+import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
+import { zoomViewport } from '../viewport-zoom'
 
 interface PillColorPickerProps {
   anchor: { x: number; y: number }
@@ -27,6 +29,11 @@ export function PillColorPicker({
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const ref = useRef<HTMLDivElement>(null)
+  // Measured placement: the picker opens from a tab pill, and the pill strip
+  // sits at the bottom of the overlay, so "below the pill" is off-screen there
+  // without a flip. The icon row is optional and changes the height.
+  const pos = useAnchoredPopover(anchor, { deps: [!!onSelectIcon] })
+  const vp = zoomViewport()
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -47,7 +54,7 @@ export function PillColorPicker({
 
   return createPortal(
     <motion.div
-      ref={ref}
+      ref={(node) => { (ref as React.MutableRefObject<HTMLDivElement | null>).current = node; pos.ref(node) }}
       data-ion-ui
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
@@ -55,8 +62,11 @@ export function PillColorPicker({
       transition={{ duration: 0.12 }}
       style={{
         position: 'fixed',
-        left: anchor.x,
-        top: anchor.y + 8,
+        left: pos.left,
+        top: pos.top,
+        visibility: pos.ready ? 'visible' : 'hidden',
+        maxHeight: vp.height - 16,
+        overflowY: 'auto',
         pointerEvents: 'auto',
         background: colors.popoverBg,
         border: `1px solid ${colors.popoverBorder}`,

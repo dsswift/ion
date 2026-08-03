@@ -7,6 +7,7 @@ import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import { useSessionStore } from '../stores/sessionStore'
 import { useEdgeResize } from '../hooks/useEdgeResize'
+import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
 
 /**
  * Clamp a geometry so it fits within the current viewport: never larger than
@@ -166,6 +167,14 @@ export function FloatingPanel({
     }
   }, [titleCtxMenu])
 
+  // Measured placement for the title-bar context menu. The panel is draggable
+  // to any corner, so the right-click that opens this menu can land anywhere
+  // in the window. Hook runs unconditionally (the menu itself renders
+  // conditionally below) so hook order stays stable.
+  const titleMenuPos = useAnchoredPopover(titleCtxMenu ?? { x: 0, y: 0 }, {
+    deps: [!!titleCtxMenu],
+  })
+
   if (!popoverLayer) return null
 
   const panel = (
@@ -177,6 +186,7 @@ export function FloatingPanel({
       transition={{ duration: 0.15 }}
       className="glass-surface rounded-xl"
       style={{
+        // viewport-ok: draggable panel with its own clamp — clampToViewport() above bounds the restored geometry, and the drag handler bounds x/y on every move.
         position: 'fixed',
         left: pos.x,
         top: pos.y,
@@ -262,12 +272,14 @@ export function FloatingPanel({
 
   const contextMenu = titleCtxMenu && filePath ? (
     <div
+      ref={titleMenuPos.ref}
       data-ion-ui
       onMouseDown={(e) => e.stopPropagation()}
       style={{
         position: 'fixed',
-        left: titleCtxMenu.x,
-        top: titleCtxMenu.y,
+        left: titleMenuPos.left,
+        top: titleMenuPos.top,
+        visibility: titleMenuPos.ready ? 'visible' : 'hidden',
         background: colors.containerBg,
         border: `1px solid ${colors.containerBorder}`,
         borderRadius: 8,

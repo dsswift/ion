@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { useViewportClamp } from '../hooks/useViewportClamp'
 import { useOutsideDismiss } from '../hooks/useOutsideDismiss'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
@@ -10,7 +9,8 @@ import { usePopoverLayer } from './PopoverLayer'
 import { usePreferencesStore, getEffectiveTabGroups } from '../preferences'
 import type { TabGroupView } from '../hooks/useTabGroups'
 import type { TabGroupMode } from '../../shared/types-session'
-import { zoomRect, zoomViewport, useAnchoredPopoverPosition } from './TabStripShared'
+import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
+import { zoomRect, zoomViewport } from '../viewport-zoom'
 import { ContextMenuItem } from './ContextMenuItem'
 import { ConfirmDialog } from './git/ConfirmDialog'
 import { rDebug, rInfo } from '../rendererLogger'
@@ -30,8 +30,6 @@ export function InactiveGroupMenu({
   const colors = useColors()
   const popoverLayer = usePopoverLayer()
   const ref = useRef<HTMLDivElement>(null)
-  // Keep the portaled popover inside the window (ATV top-anchored strip).
-  useViewportClamp(ref, true)
   const tabGroupMode = usePreferencesStore((s) => s.tabGroupMode)
   const tabGroups = usePreferencesStore((s) => s.tabGroups)
   const moveTabToGroup = useSessionStore((s) => s.moveTabToGroup)
@@ -68,7 +66,7 @@ export function InactiveGroupMenu({
   // outer height (it's portaled), but we still re-measure on the
   // few toggles that *could* (none today; this keeps the deps
   // future-proof).
-  const outerPos = useAnchoredPopoverPosition(anchor, {
+  const outerPos = useAnchoredPopover(anchor, {
     prefer: 'below',
     deps: [tabGroupMode, moveSubmenu],
   })
@@ -191,7 +189,7 @@ interface InactiveGroupMoveAllSubmenuProps {
 /**
  * Move-all submenu used by `InactiveGroupMenu`. Identical structure
  * to the inline submenu in `TabContextMenu`, but extracted into its
- * own component so it can call `useAnchoredPopoverPosition` (hooks
+ * own component so it can call `useAnchoredPopover` (hooks
  * cannot run inside a conditional in the parent's render). Manages
  * its own portal and position.
  *
@@ -215,7 +213,7 @@ function InactiveGroupMoveAllSubmenu({
   onPickTarget,
 }: InactiveGroupMoveAllSubmenuProps) {
   const vp = zoomViewport()
-  const pos = useAnchoredPopoverPosition(anchor, {
+  const pos = useAnchoredPopover(anchor, {
     prefer: 'rightOf',
     parentRect,
     deps: [showNewGroupInput, targets.length, tabGroupMode],

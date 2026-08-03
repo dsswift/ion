@@ -5,6 +5,7 @@ import { Trash, PuzzlePiece, Broom, DownloadSimple } from '@phosphor-icons/react
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
 import { useInteractiveState } from '../hooks/useInteractiveState'
+import { useViewportClamp } from '../hooks/useViewportClamp'
 import { transitions } from '../theme-tokens'
 import { fuzzyFilterAndSort } from '../../shared/fuzzy-match'
 
@@ -122,6 +123,12 @@ function SlashCommandRow({ cmd, index, isSelected, onSelect }: {
 
 export function SlashCommandMenu({ filter, selectedIndex, onSelect, anchorRect, extraCommands = [] }: Props) {
   const listRef = useRef<HTMLDivElement>(null)
+  // Edge-anchored: the menu grows UPWARD out of the input row (`bottom:` is
+  // computed from the row's top), so it is the clamp's family rather than the
+  // anchored positioner's. Without this a long command list on a short window
+  // ran off the top edge.
+  const rootRef = useRef<HTMLDivElement>(null)
+  useViewportClamp(rootRef, true)
   const popoverLayer = usePopoverLayer()
   const filtered = getFilteredCommandsWithExtras(filter, extraCommands)
   const colors = useColors()
@@ -136,6 +143,7 @@ export function SlashCommandMenu({ filter, selectedIndex, onSelect, anchorRect, 
 
   return createPortal(
     <motion.div
+      ref={rootRef}
       data-ion-ui
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}

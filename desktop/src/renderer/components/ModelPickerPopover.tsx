@@ -213,6 +213,7 @@ export function ModelPickerPopover({ selectedModelId, onSelect, onClose, positio
       transition={{ duration: 0.12 }}
       className="rounded-xl"
       style={{
+        // viewport-ok: positioned AND clamped by its owner — StatusBarModelPicker computes `position` and passes `popoverRef`, which it hands to useViewportClamp (StatusBarModelPicker.tsx:74).
         position: 'fixed', bottom: position.bottom, left: position.left,
         width: 240, maxHeight: 360, overflowY: 'auto', pointerEvents: 'auto',
         background: colors.popoverBg, backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',

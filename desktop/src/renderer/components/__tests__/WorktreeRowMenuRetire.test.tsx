@@ -64,9 +64,15 @@ vi.mock('../../theme', () => ({
   useColors: () => new Proxy({}, { get: () => '#000000' }),
 }))
 
+// `getState` as well as the selector call: the menu's positioning hook reads
+// the operator's UI zoom through `usePreferencesStore.getState()` to convert
+// between measured viewport pixels and zoomed CSS pixels.
 vi.mock('../../preferences', () => ({
-  usePreferencesStore: (selector: (s: { worktreeCompletionStrategy: string }) => unknown) =>
-    selector({ worktreeCompletionStrategy: 'merge-ff' }),
+  usePreferencesStore: Object.assign(
+    (selector: (s: { worktreeCompletionStrategy: string }) => unknown) =>
+      selector({ worktreeCompletionStrategy: 'merge-ff' }),
+    { getState: () => ({ uiZoom: 1 }) },
+  ),
 }))
 
 vi.mock('../../stores/sessionStore', () => ({

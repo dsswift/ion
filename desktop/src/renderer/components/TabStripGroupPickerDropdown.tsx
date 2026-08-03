@@ -6,7 +6,9 @@ import { useColors } from '../theme'
 import { usePreferencesStore } from '../preferences'
 import { usePopoverLayer } from './PopoverLayer'
 import type { TabGroupView } from '../hooks/useTabGroups'
-import { checkWorktreeUncommitted, shouldUseWorktree, zoomViewport } from './TabStripShared'
+import { checkWorktreeUncommitted, shouldUseWorktree } from './TabStripShared'
+import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
+import { zoomViewport } from '../viewport-zoom'
 import { PillColorPicker } from './TabStripPillColorPicker'
 import { TabContextMenu } from './TabStripTabContextMenu'
 import { useRenameTabWorktree } from '../hooks/useRenameTabWorktree'
@@ -97,15 +99,17 @@ export function GroupPickerDropdown({
     }
   }, [onClose, hasSubPopover, editingTabId])
 
-  if (!popoverLayer) return null
-
+  // Measured placement. This used to clamp against hardcoded 300x280 numbers
+  // that had to be kept in sync by hand with the maxHeight/minWidth below —
+  // a guess, and wrong for any dropdown that renders shorter than its cap.
+  const pos = useAnchoredPopover(anchor, { deps: [localTabs.length, editingTabId] })
   const vp = zoomViewport()
-  const top = Math.min(anchor.y + 8, vp.height - 300)
-  const left = Math.min(anchor.x, vp.width - 280)
+
+  if (!popoverLayer) return null
 
   return createPortal(
     <motion.div
-      ref={ref}
+      ref={(node) => { (ref as React.MutableRefObject<HTMLDivElement | null>).current = node; pos.ref(node) }}
       data-ion-ui
       initial={{ opacity: 0, y: -4 }}
       animate={{ opacity: 1, y: 0 }}
@@ -113,8 +117,9 @@ export function GroupPickerDropdown({
       transition={{ duration: 0.12 }}
       style={{
         position: 'fixed',
-        left,
-        top,
+        left: pos.left,
+        top: pos.top,
+        visibility: pos.ready ? 'visible' : 'hidden',
         pointerEvents: 'auto',
         background: colors.popoverBg,
         border: `1px solid ${colors.popoverBorder}`,
@@ -123,7 +128,7 @@ export function GroupPickerDropdown({
         zIndex: 10000,
         minWidth: 220,
         maxWidth: 340,
-        maxHeight: 300,
+        maxHeight: Math.min(300, vp.height - 16),
         overflowY: 'auto',
         overscrollBehavior: 'contain',
       }}
