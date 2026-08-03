@@ -31,6 +31,14 @@ struct MessageAttachmentImages: View {
     /// Index into `images` the paged preview is open on, or nil when closed.
     @State private var galleryIndex: Int?
 
+    /// Forwarded into the paged-preview sheet. A sheet presents in a detached
+    /// view hierarchy and does NOT inherit @Environment from its presenter, so
+    /// every sheet in this app re-injects it explicitly (see
+    /// ConversationView+Presentation.swift). The preview's pages read
+    /// SessionViewModel to fetch cache-miss bytes from the desktop; without the
+    /// re-injection that is a runtime trap, not a compile error.
+    @Environment(SessionViewModel.self) private var viewModel
+
     private var images: [MessageAttachment] { attachments.filter { $0.type == .image } }
     private var others: [MessageAttachment] { attachments.filter { $0.type != .image } }
 
@@ -55,6 +63,7 @@ struct MessageAttachmentImages: View {
         )) {
             if let index = galleryIndex {
                 AttachmentImagePreview(attachments: images, startIndex: index)
+                    .environment(viewModel)
             }
         }
     }
