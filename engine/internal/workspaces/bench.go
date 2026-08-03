@@ -112,13 +112,15 @@ func (c *Checker) checkBashSegment(seg bashSegment, containment Containment, cwd
 		if !historyWritingSubcommands[sub] {
 			continue
 		}
-		// Resolve-once carve-out: while a merge is in progress in the bench,
-		// `git merge --continue|--abort` DRIVES that merge rather than
-		// creating one — completing it records the conflict resolution every
-		// later assembly replays. Scoped to the driver verbs only: a fresh
-		// `git merge <ref>` or any other history verb stays refused mid-merge.
-		if sub == "merge" && seg.MergeDriverOnly && c.mergeInProgress(bench.BenchPath) {
-			continue
+		// Resolve-once carve-out: only standalone merge drivers may act on an
+		// open bench merge. Continue additionally requires a resolved index and
+		// staged content that passes Git's whitespace/conflict-marker checks.
+		if sub == "merge" && seg.MergeDriver != "" {
+			if refusal := c.checkBenchMergeDriver(seg, bench); refusal == nil {
+				continue
+			} else {
+				return refusal
+			}
 		}
 		return &Refusal{
 			Kind:   RefusalBenchHistory,
@@ -127,6 +129,73 @@ func (c *Checker) checkBashSegment(seg bashSegment, containment Containment, cwd
 		}
 	}
 	return nil
+}
+
+func (c *Checker) checkBenchMergeDriver(seg bashSegment, bench *BenchWorkspace) *Refusal {
+	fields := map[string]any{
+		"bench_path":   bench.BenchPath,
+		"merge_driver": seg.MergeDriver,
+		"exact_call":   seg.MergeDriverExact,
+	}
+	refuse := func(reason, detail string) *Refusal {
+		fields["decision"] = "refuse"
+		fields["reason"] = reason
+		if detail != "" {
+			fields["detail"] = detail
+		}
+		utils.LogWithFields(utils.LevelWarn, logTag, "bench merge driver refused", fields)
+		return &Refusal{Kind: RefusalBenchHistory, Target: bench.BenchPath, Reason: detail}
+	}
+
+	if !seg.MergeDriverExact {
+		return refuse("not_exact_call", "Refused: run exactly `git merge --"+seg.MergeDriver+"` as a standalone Bash call. Git global options may precede `merge`; wrappers, grouping, shell control, redirections, backgrounding, command substitution, extra options, and extra operands are not allowed.")
+	}
+	if !c.mergeInProgress(bench.BenchPath) {
+		return refuse("no_merge", "Refused: no bench merge is open. Start conflict resolution through the bench resolve flow before running `git merge --"+seg.MergeDriver+"`.")
+	}
+	if seg.MergeDriver == "abort" {
+		fields["decision"] = "allow"
+		fields["reason"] = "merge_open_abort"
+		utils.LogWithFields(utils.LevelInfo, logTag, "bench merge driver allowed", fields)
+		return nil
+	}
+	if seg.MergeDriver != "continue" {
+		return refuse("unsupported_driver", benchHistoryReason("merge", bench))
+	}
+
+	unmerged, err := c.git(bench.BenchPath, "diff", "--name-only", "--diff-filter=U")
+	if err != nil {
+		fields["error"] = err.Error()
+		return refuse("unmerged_probe_failed", "Refused: could not verify whether bench merge conflicts remain. Resolve and stage every conflicted path, then retry standalone `git merge --continue`.")
+	}
+	paths := nonEmptyLines(unmerged)
+	fields["unmerged_count"] = len(paths)
+	if len(paths) > 0 {
+		return refuse("unmerged_paths", fmt.Sprintf("Refused: %d unmerged path(s) remain in the bench. Resolve and stage every conflicted path, then retry standalone `git merge --continue`.", len(paths)))
+	}
+
+	check, err := c.git(bench.BenchPath, "diff", "--cached", "--check")
+	if err != nil {
+		detail := strings.TrimSpace(check)
+		fields["error"] = err.Error()
+		fields["staged_check"] = "fail"
+		return refuse("staged_check_failed", "Refused: staged bench resolution failed `git diff --cached --check`. Fix and restage the reported conflict markers or whitespace errors, then retry standalone `git merge --continue`. Git detail: "+detail)
+	}
+	fields["staged_check"] = "pass"
+	fields["decision"] = "allow"
+	fields["reason"] = "resolution_ready"
+	utils.LogWithFields(utils.LevelInfo, logTag, "bench merge driver allowed", fields)
+	return nil
+}
+
+func nonEmptyLines(value string) []string {
+	var lines []string
+	for _, line := range strings.Split(value, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return lines
 }
 
 // mergeInProgress reports whether a merge is open in the bench (MERGE_HEAD
@@ -240,8 +309,8 @@ func (c *Checker) readHunks(benchPath, base, sha, rel string) []string {
 			ranges = append(ranges, "L"+start)
 		} else {
 			var s, n int
-			fmt.Sscanf(start, "%d", &s)         //nolint:errcheck // regexp guarantees digits
-			fmt.Sscanf(m[2], "%d", &n)          //nolint:errcheck // regexp guarantees digits
+			fmt.Sscanf(start, "%d", &s) //nolint:errcheck // regexp guarantees digits
+			fmt.Sscanf(m[2], "%d", &n)  //nolint:errcheck // regexp guarantees digits
 			ranges = append(ranges, fmt.Sprintf("L%d-%d", s, s+n-1))
 		}
 		if len(ranges) >= 6 {

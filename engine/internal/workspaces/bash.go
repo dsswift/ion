@@ -15,6 +15,14 @@ type bashSegment struct {
 	Dir string
 	// GitSubcommands are the git verbs the segment invokes, in order.
 	GitSubcommands []string
+	// MergeDriver is "continue" or "abort" when this segment drives an
+	// existing merge. Empty for every other command.
+	MergeDriver string
+	// MergeDriverExact is true only when complete Bash command matches safe
+	// merge-driver grammar parsed by parseExactMergeDriver. Detection of a
+	// driver attempt remains separate so malformed calls receive an actionable
+	// exact-call refusal instead of falling through to generic bench history.
+	MergeDriverExact bool
 	// MergeDriverOnly is true when every `git merge` in the segment is a
 	// `--continue` or `--abort` — the verbs that drive an existing merge
 	// rather than create one. A segment mixing a driver verb with a fresh
@@ -51,7 +59,8 @@ var valueTakingGitGlobals = map[string]bool{
 func resolveBashDestinations(command, cwd string) bashDestinations {
 	var out bashDestinations
 
-	for _, rawSegment := range splitShellSegments(command) {
+	rawSegments := splitShellSegments(command)
+	for _, rawSegment := range rawSegments {
 		tokens := tokenizeShell(rawSegment)
 		if len(tokens) == 0 {
 			continue
@@ -65,7 +74,7 @@ func resolveBashDestinations(command, cwd string) bashDestinations {
 		}
 
 		for i := 0; i < len(tokens); i++ {
-			tok := tokens[i]
+			tok := normalizeGroupingToken(tokens[i])
 
 			switch tok {
 			case "cd", "pushd":
@@ -143,8 +152,18 @@ func resolveBashDestinations(command, cwd string) bashDestinations {
 				rest := tokens[j+1:]
 				driver := false
 				for _, t := range rest {
-					if t == "--continue" || t == "--abort" || t == "--quit" {
+					t = strings.TrimRight(t, ")}")
+					switch t {
+					case "--continue":
 						driver = true
+						seg.MergeDriver = "continue"
+					case "--abort":
+						driver = true
+						seg.MergeDriver = "abort"
+					case "--quit":
+						driver = true
+					}
+					if driver {
 						break
 					}
 				}
@@ -159,6 +178,7 @@ func resolveBashDestinations(command, cwd string) bashDestinations {
 				out.Segments = append(out.Segments, bashSegment{
 					Dir:             gitDir,
 					GitSubcommands:  []string{sub},
+					MergeDriver:     seg.MergeDriver,
 					MergeDriverOnly: seg.MergeDriverOnly,
 				})
 				// Remove it from the ambient segment: it was judged above.
@@ -169,7 +189,126 @@ func resolveBashDestinations(command, cwd string) bashDestinations {
 
 		out.Segments = append(out.Segments, seg)
 	}
+	if !hasMergeDriverAttempt(out.Segments) {
+		if driver := detectQuotedMergeDriverAttempt(command); driver != "" {
+			out.Segments = append(out.Segments, bashSegment{
+				MergeDriver:     driver,
+				MergeDriverOnly: true,
+			})
+		}
+	}
+	for i := range out.Segments {
+		if out.Segments[i].MergeDriver != "" {
+			driver, exact := parseExactMergeDriver(command)
+			out.Segments[i].MergeDriverExact = exact && string(driver) == out.Segments[i].MergeDriver
+		}
+	}
 	return out
+}
+
+func hasMergeDriverAttempt(segments []bashSegment) bool {
+	for _, segment := range segments {
+		if segment.MergeDriver != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func detectQuotedMergeDriverAttempt(command string) string {
+	for _, marker := range []struct {
+		needle string
+		driver string
+	}{
+		{needle: "--continue", driver: "continue"},
+		{needle: "--abort", driver: "abort"},
+	} {
+		if strings.Contains(command, marker.needle) && strings.Contains(command, "merge") {
+			return marker.driver
+		}
+	}
+	return ""
+}
+
+// parseExactMergeDriver accepts only one simple shell command containing a git
+// executable, recognized git global options, `merge`, and exactly one driver
+// argument. Shell syntax is rejected before token parsing so quoting cannot hide
+// command substitution, redirection, backgrounding, grouping, or control flow.
+func parseExactMergeDriver(command string) (MergeDriver, bool) {
+	if strings.TrimSpace(command) == "" || containsUnsafeMergeDriverShell(command) {
+		return "", false
+	}
+	tokens := tokenizeShell(command)
+	if len(tokens) < 3 || !isGitExecutable(tokens[0]) {
+		return "", false
+	}
+
+	j := 1
+	for j < len(tokens) && strings.HasPrefix(tokens[j], "-") {
+		option := tokens[j]
+		if eq := strings.IndexByte(option, '='); eq > 0 {
+			if !valueTakingGitGlobals[option[:eq]] || eq == len(option)-1 {
+				return "", false
+			}
+			j++
+			continue
+		}
+		if valueTakingGitGlobals[option] {
+			if j+1 >= len(tokens) {
+				return "", false
+			}
+			j += 2
+			continue
+		}
+		// Git supports these value-free global options before its subcommand.
+		switch option {
+		case "--bare", "--no-pager", "--paginate", "-p", "--no-replace-objects", "--literal-pathspecs", "--glob-pathspecs", "--noglob-pathspecs", "--icase-pathspecs", "--no-optional-locks", "--no-advice":
+			j++
+		default:
+			return "", false
+		}
+	}
+	if j >= len(tokens) || tokens[j] != "merge" || len(tokens) != j+2 {
+		return "", false
+	}
+	switch tokens[j+1] {
+	case "--continue":
+		return MergeDriverContinue, true
+	case "--abort":
+		return MergeDriverAbort, true
+	default:
+		return "", false
+	}
+}
+
+func containsUnsafeMergeDriverShell(command string) bool {
+	var quote byte
+	for i := 0; i < len(command); i++ {
+		ch := command[i]
+		if quote == '\'' {
+			if ch == '\'' {
+				quote = 0
+			}
+			continue
+		}
+		if quote == '"' {
+			if ch == '"' {
+				quote = 0
+				continue
+			}
+			if ch == '$' || ch == '`' || ch == '\\' {
+				return true
+			}
+			continue
+		}
+		switch ch {
+		case '\'', '"':
+			quote = ch
+		case '$', '`', '\\', '&', '|', ';', '<', '>', '(', ')', '{', '}', '\n', '\r':
+			return true
+		}
+	}
+	return quote != 0
 }
 
 func effectiveDir(segDir, cwd string) string {
@@ -197,6 +336,10 @@ func isDynamicToken(tok string) bool {
 	return strings.ContainsAny(tok, "$`~*?")
 }
 
+func normalizeGroupingToken(token string) string {
+	return strings.TrimLeft(token, "({")
+}
+
 // isGitExecutable matches bare `git` and any path ending in /git
 // (`/usr/bin/git`). Matched on the exact basename so `gitleaks` or
 // `git-crypt` — different programs that do not take git subcommands — are not
@@ -209,9 +352,11 @@ func isGitExecutable(tok string) bool {
 	return filepath.Base(tok) == "git"
 }
 
-// splitShellSegments splits a command on the shell operators that sequence
-// commands (&&, ||, ;, |, newline), respecting single and double quotes so a
-// quoted operator (a commit message containing "&&") does not split.
+// splitShellSegments splits a command on shell operators that create command
+// boundaries (&&, ||, &, ;, |, newline), respecting single and double quotes.
+// Parentheses and braces are retained in segments: recognizing their complete
+// shell grammar safely requires a full parser, while operators inside them still
+// expose compound merge-driver calls conservatively.
 func splitShellSegments(command string) []string {
 	var segments []string
 	var cur strings.Builder
@@ -241,11 +386,9 @@ func splitShellSegments(command string) []string {
 		case '\n', ';':
 			flush()
 		case '&':
+			flush()
 			if i+1 < len(command) && command[i+1] == '&' {
-				flush()
 				i++
-			} else {
-				cur.WriteByte(ch)
 			}
 		case '|':
 			if i+1 < len(command) && command[i+1] == '|' {

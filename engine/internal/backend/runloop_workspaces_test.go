@@ -132,6 +132,87 @@ func TestExecuteTools_WorkspaceContainmentPassesOwnWorktree(t *testing.T) {
 	}
 }
 
+func TestExecuteTools_BenchContinueRefusedWithSiblingTool(t *testing.T) {
+	dir := t.TempDir()
+	bench := filepath.Join(dir, "integration", "bench")
+	if err := os.MkdirAll(bench, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	registryDir := t.TempDir()
+	payload := map[string]any{"version": 1, "workspaces": []map[string]any{{
+		"repoPath": filepath.Join(dir, "repo"), "sourceBranch": "main", "benchPath": bench,
+	}}}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(registryDir, "integration-workspaces.json"), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	b := NewApiBackend()
+	b.OnNormalized(func(_ string, _ types.NormalizedEvent) {})
+	run := &activeRun{
+		requestID: "bench-continue-sibling",
+		conv:      &conversation.Conversation{ID: "conv-bench-continue-sibling"},
+		cfg:       &RunConfig{Telemetry: &mockTelemetry{}, WorkspaceChecker: workspaces.NewCheckerAt(registryDir)},
+	}
+	blocks := []types.LlmContentBlock{
+		{Name: "Bash", ID: "continue", Input: map[string]interface{}{"command": "git merge --continue"}},
+		{Name: "Read", ID: "read", Input: map[string]interface{}{"file_path": filepath.Join(bench, "missing")}},
+	}
+
+	results, err := b.executeTools(context.Background(), run, blocks, bench)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !results[0].IsError || !strings.Contains(results[0].Content, "no sibling tool calls") {
+		t.Fatalf("continue must be refused before parallel dispatch: %+v", results[0])
+	}
+	if results[1].ToolUseID != "read" {
+		t.Fatalf("sibling tool must retain normal dispatch: %+v", results[1])
+	}
+}
+
+func TestExecuteTools_UnsafeBenchContinueRefusedWithSiblingTool(t *testing.T) {
+	dir := t.TempDir()
+	bench := filepath.Join(dir, "integration", "bench")
+	if err := os.MkdirAll(bench, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	registryDir := t.TempDir()
+	payload := map[string]any{"version": 1, "workspaces": []map[string]any{{
+		"repoPath": filepath.Join(dir, "repo"), "sourceBranch": "main", "benchPath": bench,
+	}}}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(registryDir, "integration-workspaces.json"), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	b := NewApiBackend()
+	b.OnNormalized(func(_ string, _ types.NormalizedEvent) {})
+	run := &activeRun{
+		requestID: "unsafe-bench-continue-sibling",
+		conv:      &conversation.Conversation{ID: "conv-unsafe-bench-continue-sibling"},
+		cfg:       &RunConfig{Telemetry: &mockTelemetry{}, WorkspaceChecker: workspaces.NewCheckerAt(registryDir)},
+	}
+	blocks := []types.LlmContentBlock{
+		{Name: "Bash", ID: "continue", Input: map[string]interface{}{"command": "git merge --continue >out"}},
+		{Name: "Read", ID: "read", Input: map[string]interface{}{"file_path": filepath.Join(bench, "missing")}},
+	}
+
+	results, err := b.executeTools(context.Background(), run, blocks, bench)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !results[0].IsError || !strings.Contains(results[0].Content, "no sibling tool calls") {
+		t.Fatalf("unsafe continue attempt must retain same-response refusal: %+v", results[0])
+	}
+}
+
 // TestExecuteTools_NilWorkspaceCheckerPassesEverything pins the disabled
 // state: SecurityConfig.WorkspaceContainment=false threads a nil checker and
 // the loop must not refuse anything.

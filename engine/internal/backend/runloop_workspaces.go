@@ -44,7 +44,21 @@ func (b *ApiBackend) checkWorkspaceContainment(
 	if refusal == nil {
 		return false
 	}
+	b.recordWorkspaceRefusal(gCtx, run, block, cwd, refusal, permDenyFn, telem, results, i)
+	return true
+}
 
+func (b *ApiBackend) recordWorkspaceRefusal(
+	gCtx context.Context,
+	run *activeRun,
+	block types.LlmContentBlock,
+	cwd string,
+	refusal *workspaces.Refusal,
+	permDenyFn func(runID string, info interface{}),
+	telem TelemetryCollector,
+	results []conversation.ToolResultEntry,
+	i int,
+) {
 	utils.LogWithFields(utils.LevelInfo, "workspaces", "tool call refused by workspace containment", map[string]any{
 		"tool":   block.Name,
 		"kind":   string(refusal.Kind),
@@ -81,7 +95,6 @@ func (b *ApiBackend) checkWorkspaceContainment(
 		Content: results[i].Content,
 		IsError: true,
 	}})
-	return true
 }
 
 // checkAndWrapSandbox validates a Bash command against the sandbox config and

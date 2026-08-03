@@ -10,6 +10,13 @@ import (
 // distinguish the containment classes without parsing prose.
 type RefusalKind string
 
+type MergeDriver string
+
+const (
+	MergeDriverContinue MergeDriver = "continue"
+	MergeDriverAbort    MergeDriver = "abort"
+)
+
 const (
 	// RefusalBaseRepo — a worktree conversation targeted the base repository
 	// it was cut from.
@@ -119,6 +126,34 @@ func (c *Checker) Resolve(dir string) Containment {
 		return Containment{Worktree: wc}
 	}
 	return Containment{}
+}
+
+type MergeDriverCall struct {
+	Driver    MergeDriver
+	BenchPath string
+}
+
+// ClassifyMergeDriver identifies a Bash call that drives a merge in a bench.
+// It performs command parsing only; merge state and resolution readiness remain
+// Check's responsibility immediately before execution.
+func (c *Checker) ClassifyMergeDriver(tool string, input map[string]interface{}, cwd string) MergeDriverCall {
+	if c == nil || !isBash(tool) {
+		return MergeDriverCall{}
+	}
+	command, ok := input["command"].(string)
+	if !ok || command == "" {
+		return MergeDriverCall{}
+	}
+	for _, segment := range resolveBashDestinations(command, cwd).Segments {
+		if segment.MergeDriver == "" {
+			continue
+		}
+		gitDir := effectiveDir(segment.Dir, cwd)
+		if bench := c.benchFor(gitDir); bench != nil {
+			return MergeDriverCall{Driver: MergeDriver(segment.MergeDriver), BenchPath: bench.BenchPath}
+		}
+	}
+	return MergeDriverCall{}
 }
 
 // Check is the single verdict function the tool loop calls before executing a

@@ -256,15 +256,48 @@ func TestWorkspaceBenchCarveOutLifecycle(t *testing.T) {
 
 	f.startConflictedMerge(t)
 
-	// Open: edits to the UNMERGED path and the driver verbs pass.
+	// Open: edits to unmerged path and abort pass. Continue must wait until
+	// resolution is fully staged and validated.
 	if r := f.checker.Check("Write", writeInput(filepath.Join(f.benchPath, "shared.txt")), f.benchPath); r != nil {
 		t.Fatalf("edit to the unmerged path IS the resolution and must pass: %+v", r)
 	}
-	if r := f.checker.Check("Bash", bashInput("git merge --continue"), f.benchPath); r != nil {
-		t.Fatalf("merge --continue drives the open merge and must pass: %+v", r)
+	if r := f.checker.Check("Bash", bashInput("git merge --continue"), f.benchPath); r == nil || !strings.Contains(r.Reason, "unmerged") {
+		t.Fatalf("premature continue must explain unresolved paths: %+v", r)
 	}
 	if r := f.checker.Check("Bash", bashInput("git merge --abort"), f.benchPath); r != nil {
 		t.Fatalf("merge --abort must pass mid-merge: %+v", r)
+	}
+	if r := f.checker.Check("Bash", bashInput("git add shared.txt && git merge --continue"), f.benchPath); r == nil || !strings.Contains(r.Reason, "exactly") {
+		t.Fatalf("compound continue must require exact standalone invocation: %+v", r)
+	}
+	unsafeDrivers := []string{
+		"git merge --continue &",
+		"git merge --continue >out",
+		"(git merge --continue)",
+		"env git merge --continue",
+		"git merge --continue extra",
+		"git merge --continue $(echo hidden)",
+	}
+	for _, command := range unsafeDrivers {
+		if r := f.checker.Check("Bash", bashInput(command), f.benchPath); r == nil || !strings.Contains(r.Reason, "run exactly") {
+			t.Fatalf("%q must receive actionable exact-call refusal: %+v", command, r)
+		}
+	}
+
+	if err := os.WriteFile(filepath.Join(f.benchPath, "shared.txt"), []byte("resolved\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, f.benchPath, "add", "shared.txt")
+	if r := f.checker.Check("Bash", bashInput("git merge --continue"), f.benchPath); r != nil {
+		t.Fatalf("valid staged resolution must allow standalone continue: %+v", r)
+	}
+
+	if err := os.WriteFile(filepath.Join(f.benchPath, "shared.txt"), []byte("<<<<<<< HEAD\nmain\n=======\nfeature\n>>>>>>> feature\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, f.benchPath, "add", "shared.txt")
+	if r := f.checker.Check("Bash", bashInput("git merge --continue"), f.benchPath); r == nil || !strings.Contains(r.Reason, "git diff --cached --check") {
+		t.Fatalf("staged conflict markers must block continue with actionable reason: %+v", r)
 	}
 
 	// Scoped tight: a CLEAN path stays refused, a FRESH merge stays refused,

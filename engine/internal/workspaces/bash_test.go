@@ -124,12 +124,12 @@ func TestWorkspaceBashSubcommandExtraction(t *testing.T) {
 		want    []string
 	}{
 		{"git commit -m x", []string{"commit"}},
-		{"git -C /repo commit -m x", []string{"commit"}},           // skips the -C pair
-		{"git -c user.name=X commit", []string{"commit"}},          // skips the -c pair
-		{"/usr/bin/git status", []string{"status"}},                // absolute git path
+		{"git -C /repo commit -m x", []string{"commit"}},             // skips the -C pair
+		{"git -c user.name=X commit", []string{"commit"}},            // skips the -c pair
+		{"/usr/bin/git status", []string{"status"}},                  // absolute git path
 		{"git add -A && git commit -m x", []string{"add", "commit"}}, // both, in order
-		{"npm run build", nil},                                     // no git call
-		{"gitleaks detect", nil},                                   // not git
+		{"npm run build", nil},                                       // no git call
+		{"gitleaks detect", nil},                                     // not git
 	}
 	for _, tc := range cases {
 		var got []string
@@ -149,20 +149,78 @@ func TestWorkspaceBashSubcommandExtraction(t *testing.T) {
 }
 
 func TestWorkspaceBashMergeDriverDetection(t *testing.T) {
-	// Driver-only invocations are distinguishable from fresh merges — the
-	// bench carve-out depends on it.
 	driver := resolveBashDestinations("git merge --continue", "/cwd")
-	if !driver.Segments[0].MergeDriverOnly {
-		t.Fatal("merge --continue must classify as driver-only")
+	if !driver.Segments[0].MergeDriverOnly || driver.Segments[0].MergeDriver != "continue" {
+		t.Fatal("merge --continue must classify as continue driver")
 	}
+	if !driver.Segments[0].MergeDriverExact {
+		t.Fatal("merge --continue must match exact grammar")
+	}
+
+	valid := []string{
+		"git merge --abort",
+		"/usr/bin/git merge --continue",
+		"git -C /cwd merge --continue",
+		"git --no-pager -c user.name=test merge --abort",
+		"git --git-dir=/tmp/repo.git merge --continue",
+	}
+	for _, command := range valid {
+		got := resolveBashDestinations(command, "/cwd")
+		if len(got.Segments) == 0 || got.Segments[0].MergeDriver == "" || !got.Segments[0].MergeDriverExact {
+			t.Fatalf("%q: valid exact driver not recognized: %+v", command, got)
+		}
+	}
+
+	unsafe := []string{
+		"git merge --continue && echo hidden",
+		"git merge --continue &",
+		"git merge --continue >out",
+		"git merge --continue <in",
+		"git merge --continue | cat",
+		"git merge --continue; true",
+		"(git merge --continue)",
+		"{ git merge --continue; }",
+		"env git merge --continue",
+		"sudo git merge --continue",
+		"git merge --continue extra",
+		"git merge --continue --quiet",
+		"git merge --continue $(echo hidden)",
+		"git merge --continue `echo hidden`",
+		"sh -c 'git merge --continue'",
+		"git merge \"--continue\"",
+		"git merge --continue\n",
+	}
+	for _, command := range unsafe {
+		got := resolveBashDestinations(command, "/cwd")
+		found := false
+		exact := false
+		for _, segment := range got.Segments {
+			found = found || segment.MergeDriver != ""
+			exact = exact || segment.MergeDriverExact
+		}
+		if !found {
+			t.Fatalf("%q: unsafe driver attempt must remain detectable", command)
+		}
+		if exact {
+			t.Fatalf("%q: unsafe driver matched exact grammar", command)
+		}
+	}
+
 	fresh := resolveBashDestinations("git merge feature", "/cwd")
 	if fresh.Segments[0].MergeDriverOnly {
 		t.Fatal("a fresh merge must not classify as driver-only")
 	}
-	mixed := resolveBashDestinations("git merge --continue && git merge other", "/cwd")
-	// The second segment carries the fresh merge and is not driver-only.
-	if mixed.Segments[1].MergeDriverOnly {
-		t.Fatal("a segment with a fresh merge must not classify as driver-only")
+}
+
+func TestWorkspaceClassifyMergeDriver(t *testing.T) {
+	f := newBenchFixture(t)
+
+	got := f.checker.ClassifyMergeDriver("Bash", bashInput("git merge --continue"), f.benchPath)
+	if got.Driver != MergeDriverContinue || got.BenchPath != f.benchPath {
+		t.Fatalf("continue classification = %+v", got)
+	}
+	if got := f.checker.ClassifyMergeDriver("Read", map[string]interface{}{}, f.benchPath); got.Driver != "" {
+		t.Fatalf("non-Bash tool classified as merge driver: %+v", got)
 	}
 }
 
