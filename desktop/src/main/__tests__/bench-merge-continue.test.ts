@@ -6,6 +6,7 @@ vi.mock('fs/promises', () => ({
 }))
 vi.mock('../git-runner', () => ({ runGit: vi.fn() }))
 vi.mock('../git/operation-state', () => ({ probeOperationState: vi.fn() }))
+vi.mock('../integration/bench-verify', () => ({ runBenchVerify: vi.fn() }))
 vi.mock('../integration/bench-resolution-validation', () => ({
   currentRererePaths: vi.fn(),
   forgetRererePaths: vi.fn(),
@@ -19,6 +20,7 @@ import {
   forgetRererePaths,
   validateBenchResolution,
 } from '../integration/bench-resolution-validation'
+import { runBenchVerify } from '../integration/bench-verify'
 import { continueBenchMerge } from '../integration/bench-merge-continue'
 
 const mockedRunGit = vi.mocked(runGit)
@@ -26,6 +28,7 @@ const mockedProbe = vi.mocked(probeOperationState)
 const mockedPaths = vi.mocked(currentRererePaths)
 const mockedForget = vi.mocked(forgetRererePaths)
 const mockedValidate = vi.mocked(validateBenchResolution)
+const mockedVerify = vi.mocked(runBenchVerify)
 
 function arrangeRecovery(postHeadFails: boolean): void {
   let headReads = 0
@@ -49,9 +52,39 @@ function arrangeRecovery(postHeadFails: boolean): void {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockedVerify.mockResolvedValue({ ran: false, ok: true, output: '' })
 })
 
 describe('continueBenchMerge postcondition recovery injection', () => {
+  it('restores and forgets resolution when project verification fails', async () => {
+    let headReads = 0
+    mockedRunGit.mockImplementation((_directory, args) => {
+      if (args[0] === 'rev-parse' && args[1] === 'HEAD') {
+        headReads++
+        return Promise.resolve(headReads === 1 ? 'old-head\n' : headReads === 2 ? 'new-head\n' : 'old-head\n')
+      }
+      if (args[0] === 'rev-parse' && args[1] === '--git-path') return Promise.resolve(args[2])
+      if (args[0] === 'merge' && args.includes('--no-ff')) return Promise.reject(new Error('conflict'))
+      return Promise.resolve('')
+    })
+    mockedPaths.mockResolvedValue({ ok: true, paths: ['shared.txt'] })
+    mockedForget.mockResolvedValue({ ok: true, forgottenPaths: ['shared.txt'] })
+    mockedValidate
+      .mockResolvedValueOnce({ ok: true, unmergedPaths: [] })
+      .mockResolvedValue({ ok: false, unmergedPaths: ['shared.txt'] })
+    mockedProbe
+      .mockResolvedValueOnce({ conflictedPaths: [] })
+      .mockResolvedValue({ state: 'merging', conflictedPaths: ['shared.txt'] })
+    mockedVerify.mockResolvedValue({ ran: true, ok: false, output: 'syntax error' })
+
+    const result = await continueBenchMerge('/bench')
+
+    expect(result.ok).toBe(false)
+    expect(mockedVerify).toHaveBeenCalledWith('/bench', '/bench')
+    expect(mockedForget).toHaveBeenCalledWith('/bench', ['shared.txt'])
+    expect(mockedValidate).toHaveBeenLastCalledWith('/bench', 'postcommit-recovery-proof')
+  })
+
   it('recovers exact unmerged path when operation-state probe fails', async () => {
     arrangeRecovery(false)
     mockedProbe

@@ -93,6 +93,8 @@ export const FORWARDED_ACTIONS: Record<string, ForwardedActionSpec> = {
   // Resolve-once prepares an in-progress merge on disk and may reassemble —
   // owner-durable git mutations, so the mirror must never run it locally.
   benchResolveConflict: { minArgs: 2, maxArgs: 2 },
+  benchRerereForget: { minArgs: 2, maxArgs: 2 },
+  benchRerereDiscardAll: { minArgs: 1, maxArgs: 1 },
   benchUpdateMember: { minArgs: 3, maxArgs: 3 },
   benchUpdateAll: { minArgs: 2, maxArgs: 2 },
   benchAddMember: { minArgs: 4, maxArgs: 4 },
@@ -155,6 +157,7 @@ export const MIRROR_LOCAL_ACTIONS: Record<string, string> = {
   // record itself is untouched, and each window's operator dismisses their own
   // notice. Forwarding it would clear the overlay's notice from the ATV.
   clearBenchRetired: 'per-window notice dismissal; no bench mutation',
+  benchRerereCount: 'read-only main-process query over shared git state',
   // Conflict-alert bookkeeping mutates no git state. record/clear are driven by
   // each window's own inventory refresh and sync results (both windows observe
   // the same main-process truth), and dismissing a toast is per-window UI.

@@ -60,6 +60,11 @@ export interface SeedEntry {
 }
 
 /** A project's full provisioning declaration. */
+export interface BenchVerifySpec {
+  verify: string
+  verifyTimeoutMs?: number
+}
+
 export interface ProvisionPlan {
   seed: SeedEntry[]
   /**
@@ -72,6 +77,62 @@ export interface ProvisionPlan {
 
 /** The empty plan. Returned for every failure mode; provisioning becomes a no-op. */
 const EMPTY_PLAN: ProvisionPlan = { seed: [] }
+
+function readManifestRoot(repoPath: string): { root?: Record<string, unknown>; file: string } {
+  const file = join(repoPath, MANIFEST_RELATIVE_PATH)
+  if (!existsSync(file)) {
+    log('no worktree manifest found', { repo_path: repoPath })
+    return { file }
+  }
+  try {
+    const parsed = JSON.parse(readFileSync(file, 'utf-8')) as unknown
+    if (!parsed || typeof parsed !== 'object') {
+      warn('manifest root is not an object', { path: file })
+      return { file }
+    }
+    const root = parsed as Record<string, unknown>
+    if (root.version !== undefined && root.version !== 1) {
+      warn('unsupported manifest version', { path: file, version: String(root.version) })
+      return { file }
+    }
+    return { root, file }
+  } catch (err) {
+    warn('manifest is not valid JSON', { path: file, error: String(err) })
+    return { file }
+  }
+}
+
+/** Read optional project verification for recorded bench resolutions. */
+export function readBenchVerify(repoPath: string): BenchVerifySpec | undefined {
+  const { root, file } = readManifestRoot(repoPath)
+  if (!root) return undefined
+  const bench = root.bench
+  if (bench === undefined) {
+    log('manifest has no bench verification block', { path: file })
+    return undefined
+  }
+  if (!bench || typeof bench !== 'object') {
+    warn('manifest bench block is not an object', { path: file })
+    return undefined
+  }
+  const raw = bench as { verify?: unknown; verifyTimeoutMs?: unknown }
+  if (typeof raw.verify !== 'string' || !raw.verify.trim()) {
+    warn('manifest bench verify command is not a non-empty string', { path: file })
+    return undefined
+  }
+  const timeout = raw.verifyTimeoutMs
+  const verifyTimeoutMs = typeof timeout === 'number' && Number.isFinite(timeout) && timeout > 0
+    ? timeout
+    : undefined
+  if (timeout !== undefined && verifyTimeoutMs === undefined) {
+    warn('manifest bench verify timeout is invalid; using default', { path: file, verify_timeout_ms: timeout })
+  }
+  log('bench verification manifest loaded', {
+    path: file,
+    has_custom_timeout: verifyTimeoutMs !== undefined,
+  })
+  return { verify: raw.verify.trim(), verifyTimeoutMs }
+}
 
 /**
  * Read and validate `<repoPath>/.ion/worktree.json`.

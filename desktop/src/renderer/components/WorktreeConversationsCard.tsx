@@ -38,6 +38,12 @@ export interface WorktreeConversationsCardProps {
   menuHint?: boolean
   /** Names what the conversations are open IN, e.g. 'worktree' or 'bench'. */
   emptyNoun?: string
+  /**
+   * Navigate to a conversation when its row is clicked. Optional because some
+   * hosts render the card purely informationally; when present, rows become
+   * real navigation targets (which is what the status-dot comment promises).
+   */
+  onSelectConversation?: (tabId: string) => void
 }
 
 /**
@@ -57,6 +63,7 @@ export function WorktreeConversationsCard({
   conversations,
   emptyNoun = 'worktree',
   menuHint = false,
+  onSelectConversation,
 }: WorktreeConversationsCardProps): React.JSX.Element {
   const colors = useColors()
 
@@ -89,7 +96,15 @@ export function WorktreeConversationsCard({
           </span>
         ) : (
           conversations.map((c) => (
-            <div key={c.tabId} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div
+              key={c.tabId}
+              data-testid={`hover-card-conversation-${c.tabId}`}
+              onClick={onSelectConversation ? () => onSelectConversation(c.tabId) : undefined}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                cursor: onSelectConversation ? 'pointer' : 'default',
+              }}
+            >
               <span style={{
                 width: 5, height: 5, borderRadius: 3, flexShrink: 0,
                 background: statusColor(c.status, colors),
@@ -104,8 +119,8 @@ export function WorktreeConversationsCard({
                   This used to print `tab {c.index}` -- a number the tab strip
                   never shows, so the operator could not act on it, and one that
                   goes wrong the moment tabs are reordered. Clicking the row goes
-                  to the conversation, which is what the number was standing in
-                  for. */}
+                  to the conversation (onSelectConversation), which is what the
+                  number was standing in for. */}
             </div>
           ))
         )}

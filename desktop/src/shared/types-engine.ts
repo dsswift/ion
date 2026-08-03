@@ -332,6 +332,8 @@ export interface StatusFields {
    *  Replaces the former totalCostUsd field; the rename makes the scope
    *  unambiguous — "run" not "conversation". */
   runCostUsd?: number
+  /** Why task completion occurred. Absent for older emitters and non-completion idle status. */
+  completionReason?: import('./types-events').TaskCompletionReason | (string & {})
   /** Cumulative cost of the entire conversation (this session + all descendant
    *  dispatches) in USD. Computed via the cost.ConversationCost dispatch-tree
    *  walk on every TaskComplete. */

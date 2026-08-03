@@ -217,6 +217,9 @@ export const IPC = {
   // Resolve-once: re-create the failed assembly merge and leave it in
   // progress so the ConflictsDialog can resolve it (and rerere record it).
   BENCH_RESOLVE_CONFLICT: 'ion:bench-resolve-conflict',
+  BENCH_RERERE_COUNT: 'ion:bench-rerere-count',
+  BENCH_RERERE_FORGET: 'ion:bench-rerere-forget',
+  BENCH_RERERE_DISCARD_ALL: 'ion:bench-rerere-discard-all',
 
   // Filesystem operations
   FS_READ_DIR: 'ion:fs-read-dir',

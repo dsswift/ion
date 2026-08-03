@@ -189,19 +189,25 @@ export function createGitConflictSlice(set: StoreSet, get: StoreGet): Partial<St
       // writing a plan for work that was already requested verbatim.
       applyPermissionModeForTab(set, get, tabId, 'auto', 'conflict_assist')
 
-      const prompt = conflictAssistPrompt(operation)
-      get().submit(tabId, prompt)
-
-      // Lock the conversation AFTER the machine prompt is in: this tab's
-      // entire instruction set is that one prompt. A follow-up message would
-      // graft an open-ended conversation onto a checkout that exists to be
-      // fixed — often an integration bench, where development conversations
-      // do not belong (the work belongs in the member worktree that owns the
-      // file). The conversation stays readable and abortable; submit() and
-      // the InputBar both honor the flag, and it persists across restarts.
+      // Tag role + lock BEFORE the machine prompt goes in: the auto-fix
+      // lifecycle (event-slice-auto-fix-lifecycle.ts) keys its close/retain
+      // decision on `tabRole === 'conflict-auto-fix'`, and a fast completion
+      // could otherwise race ahead of the tagging and be missed. The lock is
+      // part of the same atomic set: this tab's entire instruction set is the
+      // one prompt below. A follow-up message would graft an open-ended
+      // conversation onto a checkout that exists to be fixed — often an
+      // integration bench, where development conversations do not belong (the
+      // work belongs in the member worktree that owns the file). The
+      // conversation stays readable and abortable; submit() and the InputBar
+      // both honor the flag, and role + lock persist across restarts.
       set((s) => ({
-        tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, inputLocked: true } : t)),
+        tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, tabRole: 'conflict-auto-fix' as const, inputLocked: true } : t)),
       }))
+
+      const prompt = conflictAssistPrompt(operation)
+      // 'machine' source: the one submission allowed through the lock this
+      // flow just installed (see send-slice submit guard).
+      get().submit(tabId, prompt, { source: 'machine' })
 
       rInfo('git.conflicts', 'assist prompt submitted', {
         directory,

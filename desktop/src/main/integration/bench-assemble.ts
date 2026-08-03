@@ -68,6 +68,8 @@ import { integrationRoot } from './bench-store'
 import { benchMergeInProgress } from './bench-guard'
 import { resolveContribution, isLandedIntoSource } from './bench-contribution'
 import { ensureRerereEnabled, tryReplayResolution } from './bench-assembly-rerere'
+import { forgetRererePaths } from './bench-resolution-validation'
+import { runBenchVerify } from './bench-verify'
 import { parseWorktreeList } from '../worktree/integrate'
 import type { IntegrationWorkspace, IntegrationMember, BenchAssembleResult } from '../../shared/types'
 
@@ -258,6 +260,7 @@ export async function assembleBenchUnqueued(ws: IntegrationWorkspace): Promise<B
   const merged: IntegrationMember[] = []
   const updatedMembers: IntegrationMember[] = []
   const retired: IntegrationMember[] = []
+  const replayedRererePaths = new Set<string>()
 
   for (const member of ws.members) {
     // ── Empty contribution ────────────────────────────────────────────────
@@ -387,7 +390,9 @@ export async function assembleBenchUnqueued(ws: IntegrationWorkspace): Promise<B
       // unmerged path was covered, the merge commits and the member reports
       // `merged` — flagged as replayed so the difference from a clean merge
       // stays observable in the record, the wire, and the logs.
-      if (await tryReplayResolution(ws.benchPath, message, member.branchName, member.pinnedSha)) {
+      const replay = await tryReplayResolution(ws.benchPath, message, member.branchName, member.pinnedSha)
+      if (replay.replayed) {
+        for (const path of replay.rererePaths) replayedRererePaths.add(path)
         merged.push(member)
         updatedMembers.push({
           ...member,
@@ -458,6 +463,49 @@ export async function assembleBenchUnqueued(ws: IntegrationWorkspace): Promise<B
       // worktree, unresettable branch), where there is no outcome to record.
       return { ok: true, workspace: failed, retired }
     }
+  }
+
+  if (replayedRererePaths.size > 0) {
+    const verification = await runBenchVerify(ws.repoPath, ws.benchPath)
+    if (verification.ran && !verification.ok) {
+      const replayPaths = [...replayedRererePaths]
+      const forgotten = await forgetRererePaths(ws.benchPath, replayPaths)
+      const reason = 'recorded conflict resolution failed project verification'
+      warn('assemble: replayed resolution failed project verification', {
+        bench_path: ws.benchPath,
+        replayed_paths: replayPaths,
+        forgotten_paths: forgotten.forgottenPaths,
+        forget_ok: forgotten.ok,
+        forget_error: forgotten.ok ? undefined : forgotten.error,
+        output_tail: verification.output.slice(-1200),
+      })
+      await wipeBenchToEmpty(ws, reason)
+      const failureError = 'A recorded conflict resolution failed project verification and was discarded. The bench is empty until the conflict is resolved again.'
+      const failed: IntegrationWorkspace = {
+        ...ws,
+        members: updatedMembers.map((member) => ({
+          ...member,
+          merge: member.enabled ? 'unbuilt' : 'skipped',
+          conflictPaths: undefined,
+          conflictsWith: undefined,
+          mergeResolution: undefined,
+        })),
+        baseSha,
+        lastBuiltAt: Date.now(),
+        lastAssembly: 'failed',
+        lastAssemblyError: failureError,
+      }
+      return { ok: true, workspace: failed, retired }
+    }
+    log('assemble: replayed resolutions passed project verification', {
+      bench_path: ws.benchPath,
+      replayed_paths: [...replayedRererePaths],
+      verification_ran: verification.ran,
+    })
+  } else {
+    log('assemble: project verification skipped; no recorded resolution replayed', {
+      bench_path: ws.benchPath,
+    })
   }
 
   const result: IntegrationWorkspace = {

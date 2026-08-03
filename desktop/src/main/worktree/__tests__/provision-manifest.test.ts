@@ -14,7 +14,7 @@ import { join } from 'path'
 
 vi.mock('../../logger', () => ({ log: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 
-import { readProvisionManifest } from '../provision-manifest'
+import { readBenchVerify, readProvisionManifest } from '../provision-manifest'
 
 let repo: string
 
@@ -86,6 +86,31 @@ describe('readProvisionManifest — fails open, never throws', () => {
     const plan = readProvisionManifest(repo)
     expect(plan.seed).toEqual([])
     expect(plan.setup).toBe('make bootstrap')
+  })
+})
+
+describe('readBenchVerify', () => {
+  it('parses command and timeout', () => {
+    writeManifest(JSON.stringify({
+      version: 1,
+      bench: { verify: 'npm test', verifyTimeoutMs: 1234 },
+    }))
+    expect(readBenchVerify(repo)).toEqual({ verify: 'npm test', verifyTimeoutMs: 1234 })
+  })
+
+  it('returns undefined when block is missing', () => {
+    writeManifest(JSON.stringify({ version: 1, worktree: { seed: [] } }))
+    expect(readBenchVerify(repo)).toBeUndefined()
+  })
+
+  it('returns undefined for non-string command', () => {
+    writeManifest(JSON.stringify({ version: 1, bench: { verify: true } }))
+    expect(readBenchVerify(repo)).toBeUndefined()
+  })
+
+  it('returns undefined for malformed JSON without throwing', () => {
+    writeManifest('{ broken')
+    expect(readBenchVerify(repo)).toBeUndefined()
   })
 })
 

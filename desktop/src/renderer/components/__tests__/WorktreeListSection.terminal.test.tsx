@@ -111,16 +111,22 @@ describe('the bench terminal button', () => {
     storeState.benchWorkspaces = new Map([[REPO, [workspace([member('a')])]]])
   })
 
-  it('is the only open verb: the conversation button is hidden by design', () => {
-    // Deliberately HIDDEN, not removed (see BenchBar): a conversation in the
-    // bench invites development work the next assembly destroys. The store
-    // action and wire command stay for the auto-fix resolve flow; only the
-    // operator-facing affordance is gone. Red if someone re-renders it
-    // without a decision to re-enable the feature.
+  it('renders the conversation button beside the terminal button', () => {
+    // The bench conversation is a first-class singleton now: build failures
+    // are diagnosed there, attribution routes fixes to the owning member
+    // worktree, and containment refuses bench/source edits. Both verbs render.
     h.render()
 
-    expect(q('bench-open-conversation')).toBeNull()
+    expect(q('bench-open-conversation')).not.toBeNull()
     expect(q('bench-open-terminal')).not.toBeNull()
+  })
+
+  it('opens (or focuses) the bench conversation singleton on click', () => {
+    h.render()
+
+    const talk = q('bench-open-conversation')!
+    act(() => { talk.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+    expect(storeState.openBenchConversation).toHaveBeenCalledWith(REPO, 'josh')
   })
 
   it('sits in the bar and opens the bench terminal', () => {

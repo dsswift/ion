@@ -43,6 +43,10 @@ has to put them there.
       }
     ],
     "setup": "make bootstrap"
+  },
+  "bench": {
+    "verify": "cd engine && go build ./... && cd ../desktop && npm run typecheck",
+    "verifyTimeoutMs": 600000
   }
 }
 ```
@@ -54,6 +58,8 @@ has to put them there.
 | `version` | int | Manifest format version. Must be `1`. An unrecognised version disables provisioning rather than risking a misread. |
 | `worktree.seed` | array | Directories to materialise. See below. |
 | `worktree.setup` | string | Your project's own idempotent setup command, run once after all seeding. |
+| `bench.verify` | string | Project-declared command that decides whether a bench merge resolution produces an acceptable tree. See "Bench verification" below. |
+| `bench.verifyTimeoutMs` | int | Timeout for `bench.verify` in milliseconds. Optional; a sane default applies when absent. |
 
 ### Seed entries
 
@@ -126,6 +132,53 @@ Three mechanisms, in the order they usually apply:
    against the source. On divergence it runs `build` — this is what catches a
    sibling's dependency bump after a sync.
 3. **Re-provision.** A worktree row-menu verb that re-runs the whole ladder.
+
+## Bench verification (`bench.verify`)
+
+Git's own resolution checks are text checks: "no unmerged paths" plus
+`git diff --cached --check` accept any resolution that is textually clean, even
+one that does not compile. A recorded resolution (`git rerere`) that passes the
+text checks but breaks the build is *poison*: every later assembly replays it
+and commits the same broken content. `bench.verify` closes that gap — the
+project declares the command that decides whether the resulting tree is
+acceptable, because Ion must not know Go from npm (the same posture `seed[].build`
+and `setup` take).
+
+When it runs:
+
+- **Record time** — always. Completing a bench resolution merge (the desktop's
+  Continue) runs `verify` in the bench after the text checks pass. On failure
+  the merge is rolled back, the just-written recording is forgotten, and the
+  conflict is restored for an honest re-resolution. Poison is never recorded.
+- **Replay time** — only when at least one member merged from a recorded
+  resolution. A purely clean-merge assembly contains exactly what the members
+  committed, so Ion introduced nothing to distrust and no build cost is paid.
+  On failure the replayed recordings are forgotten, the bench is wiped to its
+  atomic-failure state, and the assembly is reported failed with a reason
+  naming replay poison.
+
+Fail-open: a missing or malformed `bench` block means no verification, logged
+with the reason — a project without the block behaves exactly as before.
+
+**Which manifest answers.** Assembly reads the `bench` block from the
+**assembled bench tree** first, and from the source branch only as a fallback.
+The bench tree is the enrolled combination, so it is the only place that
+describes what is actually being verified: a member whose own commits introduce
+the `bench` block is honoured on the assembly that carries it, rather than
+ignored until that block lands on the source branch. The command always runs in
+the bench regardless of which manifest answered, and the log line records
+`manifest_source` so it is never ambiguous which one did.
+
+That ordering is load-bearing rather than cosmetic. Reading only the source
+branch made this guard unreachable until its own enabling change landed — an
+assembly replayed a resolution that did not compile, committed it, and logged
+`bench verification skipped; project declares no command` while the block that
+would have caught it sat in the assembled tree.
+
+**A verify failure is not always Ion's fault.** A member whose own committed
+code is broken fails verify too when a replay was present; the cost is one
+honest re-resolution. The inverse (trusting a poisoned replay) repeats on every
+assembly forever.
 
 ## Examples
 

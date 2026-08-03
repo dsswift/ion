@@ -262,6 +262,11 @@ export async function pollRendererTabStates(): Promise<RemoteTabStatesPayload> {
               messageCount: (msgs.length > 0 ? msgs.length : (activeInst && activeInst.messageCount) || 0),
               queuedPrompts: t.queuedPrompts || [],
               isTerminalOnly: t.isTerminalOnly || undefined,
+              // Parity with snapshot-project.ts: a locked machine tab must not
+              // offer a prompt input on any client, including via this
+              // fallback projection.
+              inputLocked: t.inputLocked || undefined,
+              tabRole: t.tabRole || undefined,
               hasEngineExtension: tabHasExtensions(t) || undefined,
               // iOS resolves the harness badge display name by matching
               // engineProfileId against the desktop_engine_profiles list.

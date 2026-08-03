@@ -239,6 +239,9 @@ export interface IonAPI extends AtvApi {
    * absent when everything now merges cleanly (recordings already cover it).
    */
   benchResolveConflict(repoPath: string, sourceBranch: string): Promise<{ ok: boolean; benchPath?: string; branchName?: string; error?: string }>
+  benchRerereCount(directory: string): Promise<{ ok: boolean; count: number; error?: string }>
+  benchRerereForget(directory: string, paths: string[]): Promise<{ ok: boolean; count: number; error?: string }>
+  benchRerereDiscardAll(directory: string): Promise<{ ok: boolean; count: number; error?: string }>
   benchRefreshStaleness(repoPath: string, sourceBranch: string): Promise<{ workspace: IntegrationWorkspace | null }>
   /** Base staleness: has the feature branch moved ahead of this worktree? */
   gitWorktreeBaseStatus(worktreePath: string, sourceBranch: string): Promise<{ behindCount: number; behindSubjects: string[]; needsSync: boolean; hasUncommittedChanges: boolean; appraisalFailed?: boolean }>

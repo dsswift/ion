@@ -3,6 +3,7 @@ import { readFile } from 'fs/promises'
 import { runGit } from '../git-runner'
 import { probeOperationState } from '../git/operation-state'
 import { log as _log, warn as _warn } from '../logger'
+import { runBenchVerify } from './bench-verify'
 import {
   currentRererePaths,
   forgetRererePaths,
@@ -196,6 +197,17 @@ export async function continueBenchMerge(directory: string): Promise<ContinueRes
   } catch (err) {
     warn('bench merge continue postcondition failed: resulting delta invalid', {
       directory, pre_head: captured.head, post_head: postHead, error: String(err),
+    })
+    return restoreConflict(directory, captured)
+  }
+
+  const verification = await runBenchVerify(directory, directory)
+  if (verification.ran && !verification.ok) {
+    warn('bench merge continue project verification failed', {
+      directory,
+      pre_head: captured.head,
+      post_head: postHead,
+      output_tail: verification.output.slice(-1200),
     })
     return restoreConflict(directory, captured)
   }

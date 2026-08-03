@@ -13,11 +13,20 @@ import type { StoreSet, StoreGet, State } from '../session-store-types'
 import type { BenchAssembleResult, IntegrationWorkspace } from '../../../shared/types'
 import { rInfo, rWarn, rDebug } from '../../rendererLogger'
 import {
-  collectDirConversations,
-  pickNextConversation,
+  pickBenchConversation,
   pickDirTerminal,
   benchTerminalTitle,
 } from '../../../shared/worktree-conversations'
+
+/**
+ * In-flight singleton creation, keyed by bench path. Concurrent opens (overlay
+ * click + ATV click + iOS command landing in the same owner window) must not
+ * race past the "no singleton exists" check into two creations; the second
+ * caller awaits the first creation and focuses its result. Module-level, not
+ * store state: it is owner-window-local machinery (the same pattern as
+ * resume-slice-hydration), and the mirror never executes this action.
+ */
+const inflightBenchConversations = new Map<string, Promise<string | null>>()
 
 export function createBenchSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -43,16 +52,18 @@ export function createBenchSlice(set: StoreSet, get: StoreGet): Partial<State> {
     },
 
     /**
-     * Open (or focus) a conversation in the bench worktree.
+     * Open (or focus) the bench's ONE persistent operator conversation.
      *
-     * This is the "talk to the bench" entry point: run the build, diagnose a
-     * cross-feature failure, discuss. The bench is an ordinary directory, so a
-     * normal conversation works — but the operator should never have to know
-     * or type the `~/.ion/integration/...` path.
+     * Singleton semantics: every entry point (git panel button, ATV, iOS
+     * command) lands on the same tab, resolved by its stored role — never by
+     * rotation through whatever conversations share the directory. Closing the
+     * tab ends the singleton; the next open creates a fresh one. A pre-role
+     * legacy conversation already open in the bench is adopted (stamped with
+     * the role) at most once instead of duplicated.
      *
-     * Focuses an existing bench tab rather than stacking duplicates, matching
-     * the worktree re-entry behaviour — including the rotation when several
-     * conversations are open in the bench.
+     * Concurrent opens serialize per bench through `inflightBenchConversations`
+     * so two near-simultaneous requests cannot both observe "no singleton" and
+     * create twins.
      */
     openBenchConversation: async (repoPath, sourceBranch) => {
       const workspaces = get().benchWorkspaces.get(repoPath) ?? []
@@ -62,28 +73,66 @@ export function createBenchSlice(set: StoreSet, get: StoreGet): Partial<State> {
         return null
       }
 
-      const matches = collectDirConversations(get().tabs, ws.benchPath)
-      const next = pickNextConversation(matches, get().activeTabId)
-      if (next) {
-        rInfo('bench', 'focusing existing bench conversation', {
-          match_count: matches.length,
-          from_tab: (get().activeTabId ?? 'none').slice(0, 8),
-          to_tab: next.tabId.slice(0, 8),
+      const found = pickBenchConversation(get().tabs, ws.benchPath)
+      if (found) {
+        if (found.adopted) {
+          // Stamp the role so every later resolution is by identity, not by
+          // the legacy directory heuristic. One adoption maximum by
+          // construction: the next call resolves via the role.
+          set((s) => ({
+            tabs: s.tabs.map((t) => (t.id === found.tab.id ? { ...t, tabRole: 'bench-conversation' as const } : t)),
+          }))
+        }
+        rInfo('bench', 'focusing bench conversation', {
+          bench_path: ws.benchPath,
+          tab_id: found.tab.id.slice(0, 8),
+          adopted: String(found.adopted),
         })
-        get().selectTab(next.tabId)
-        return next.tabId
+        get().selectTab(found.tab.id)
+        return found.tab.id
       }
 
-      // The bench worktree may not exist on disk until the first assembly, so
-      // materialise it before opening a conversation that would otherwise land
-      // in a missing directory.
-      if (!(await ensureBenchDirectory(repoPath, ws, get))) return null
+      // Serialize creation per bench: a second caller arriving while the first
+      // is still creating awaits the same promise and focuses the result.
+      const inflight = inflightBenchConversations.get(ws.benchPath)
+      if (inflight) {
+        rInfo('bench', 'awaiting in-flight bench conversation creation', { bench_path: ws.benchPath })
+        const tabId = await inflight
+        if (tabId) get().selectTab(tabId)
+        return tabId
+      }
 
-      rInfo('bench', 'opening bench conversation', { bench_path: ws.benchPath })
-      // useWorktree=false: the bench IS a worktree already and must never get
-      // one nested inside it. It is also deliberately not enrolled as a member
-      // of itself.
-      return get().createTabInDirectory(ws.benchPath, false, true)
+      const creation = (async (): Promise<string | null> => {
+        // Re-check under the "lock": a singleton may have appeared between the
+        // first check and this task starting (e.g. restoration finishing).
+        const recheck = pickBenchConversation(get().tabs, ws.benchPath)
+        if (recheck) {
+          get().selectTab(recheck.tab.id)
+          return recheck.tab.id
+        }
+
+        // The bench worktree may not exist on disk until the first assembly, so
+        // materialise it before opening a conversation that would otherwise land
+        // in a missing directory.
+        if (!(await ensureBenchDirectory(repoPath, ws, get))) return null
+
+        rInfo('bench', 'creating bench conversation', { bench_path: ws.benchPath })
+        // useWorktree=false: the bench IS a worktree already and must never get
+        // one nested inside it. It is also deliberately not enrolled as a member
+        // of itself.
+        const tabId = await get().createTabInDirectory(ws.benchPath, false, true)
+        set((s) => ({
+          tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, tabRole: 'bench-conversation' as const } : t)),
+        }))
+        return tabId
+      })()
+
+      inflightBenchConversations.set(ws.benchPath, creation)
+      try {
+        return await creation
+      } finally {
+        inflightBenchConversations.delete(ws.benchPath)
+      }
     },
 
     /**
@@ -180,6 +229,26 @@ export function createBenchSlice(set: StoreSet, get: StoreGet): Partial<State> {
         branch: prepared.branchName,
       })
       return prepared.benchPath ?? null
+    },
+
+    benchRerereCount: async (directory) => {
+      const result = await window.ion.benchRerereCount(directory)
+      if (!result.ok) throw new Error(result.error ?? 'Could not count conflict recordings')
+      return result.count
+    },
+
+    benchRerereForget: async (directory, paths) => {
+      const result = await window.ion.benchRerereForget(directory, paths)
+      if (!result.ok) throw new Error(result.error ?? 'Could not forget conflict recordings')
+      rInfo('bench', 'forgot selected conflict recordings', { directory, count: result.count })
+      return result.count
+    },
+
+    benchRerereDiscardAll: async (directory) => {
+      const result = await window.ion.benchRerereDiscardAll(directory)
+      if (!result.ok) throw new Error(result.error ?? 'Could not discard conflict recordings')
+      rInfo('bench', 'discarded all conflict recordings', { directory, count: result.count })
+      return result.count
     },
 
     benchUpdateMember: async (repoPath, sourceBranch, worktreePath) => {

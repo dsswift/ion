@@ -114,6 +114,7 @@ export function makeLocalTab(): TabState {
     isCompacting: false,
     isTerminalOnly: false,
     inputLocked: false,
+    tabRole: null,
     engineProfileId: null,
   }
 }

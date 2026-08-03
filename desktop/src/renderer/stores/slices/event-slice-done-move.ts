@@ -155,8 +155,11 @@ export function maybeScheduleDoneMove(
  * tabs. Mirrors the fold in `anyEngineInstanceHasRunningChildren` (TabStripShared)
  * and the `evaluateCloseGuard` predicate (tab-close-guard), which use the same
  * signal to drive the tab-pill yellow dot and the Cmd+W hard-block respectively.
+ *
+ * Exported: the auto-fix lifecycle (event-slice-auto-fix-lifecycle.ts) reads
+ * the same signal to decide close-vs-retain-vs-retry.
  */
-function hasRunningAgents(panes: Map<string, ConversationPane>, tabId: string): boolean {
+export function hasRunningAgents(panes: Map<string, ConversationPane>, tabId: string): boolean {
   const pane = panes.get(tabId)
   if (!pane) return false
   for (const inst of pane.instances) {

@@ -21,20 +21,28 @@ export async function ensureRerereEnabled(benchPath: string): Promise<void> {
   }
 }
 
-/** Validate, commit, or safely purge one rerere replay. */
+export interface ReplayResolutionResult {
+  replayed: boolean
+  rererePaths: string[]
+}
+
+/**
+ * Validate and commit one rerere replay. Project verification runs once after
+ * assembly has combined every member, using returned paths for poison recovery.
+ */
 export async function tryReplayResolution(
   benchPath: string,
   message: string,
   branchName: string,
   mergeTarget: string,
-): Promise<boolean> {
+): Promise<ReplayResolutionResult> {
   try {
     const rerereCapture = await currentRererePaths(benchPath)
     if (!rerereCapture.ok) {
       warn('rerere replay recovery stopped because paths could not be captured', {
         branch: branchName, bench_path: benchPath, error: rerereCapture.error,
       })
-      return false
+      return { replayed: false, rererePaths: [] }
     }
     const rererePaths = rerereCapture.paths
     const validation = await validateBenchResolution(benchPath, 'assembly-rerere-replay')
@@ -43,19 +51,19 @@ export async function tryReplayResolution(
       log('merge completed from validated recorded resolution', {
         branch: branchName, bench_path: benchPath, rerere_paths: rererePaths,
       })
-      return true
+      return { replayed: true, rererePaths }
     }
     if (validation.unmergedPaths.length > 0) {
       log('rerere replay incomplete, conflict stands', {
         branch: branchName, unmerged_paths: validation.unmergedPaths,
       })
-      return false
+      return { replayed: false, rererePaths: [] }
     }
     if (validation.probeError) {
       warn('rerere replay validation probe failed', {
         branch: branchName, bench_path: benchPath, probe_error: validation.probeError,
       })
-      return false
+      return { replayed: false, rererePaths: [] }
     }
 
     warn('rerere replay failed staged validation, forgetting recording', {
@@ -69,13 +77,13 @@ export async function tryReplayResolution(
       warn('rerere replay recovery stopped because recording could not be forgotten', {
         branch: branchName, bench_path: benchPath, path: forgotten.path, error: forgotten.error,
       })
-      return false
+      return { replayed: false, rererePaths: [] }
     }
     if (forgotten.forgottenPaths.length === 0) {
       warn('rerere replay recovery found no recording to forget', {
         branch: branchName, bench_path: benchPath, rerere_paths: rererePaths,
       })
-      return false
+      return { replayed: false, rererePaths: [] }
     }
 
     try {
@@ -98,9 +106,9 @@ export async function tryReplayResolution(
         })
       }
     }
-    return false
+    return { replayed: false, rererePaths: [] }
   } catch (err) {
     warn('rerere replay commit failed, conflict stands', { branch: branchName, error: String(err) })
-    return false
+    return { replayed: false, rererePaths: [] }
   }
 }

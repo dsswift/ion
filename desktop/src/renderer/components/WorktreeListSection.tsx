@@ -23,9 +23,10 @@ import { WorktreeRow } from './WorktreeRow'
 import { BenchBar } from './BenchBar'
 import { ConflictsDialog } from './git/ConflictsDialog'
 import { BenchConflictDialog } from './git/BenchConflictDialog'
+import { ConfirmDialog } from './git/ConfirmDialog'
 import { WorktreeRowMenu } from './WorktreeRowMenu'
 import { rError } from '../rendererLogger'
-import { collectDirConversations, pickDirTerminal, benchTerminalTitle } from '../../shared/worktree-conversations'
+import { collectDirConversations, pickBenchConversation, pickDirTerminal, benchTerminalTitle } from '../../shared/worktree-conversations'
 import { buildWorktreeList } from '../../shared/worktree-list'
 import { getGroupStatusColor } from './TabStripShared'
 import { useBenchReorder } from '../hooks/useBenchReorder'
@@ -74,6 +75,7 @@ export function WorktreeListSection({
    */
   const [benchConflict, setBenchConflict] = useState<{ member: IntegrationMember; sourceBranch: string } | null>(null)
   const [selectedBench, setSelectedBench] = useState<string | null>(null)
+  const [discardCount, setDiscardCount] = useState<number | null>(null)
 
   // One refresh in flight at a time (see singleFlight). Without this, a tick
   // that fires while the previous fetch is still running queues another full
@@ -134,6 +136,16 @@ export function WorktreeListSection({
 
   const enrolledCount = items.filter((i) => i.order !== undefined).length
   const behindCount = items.filter((i) => i.membership?.pin === 'behind').length
+
+  // The bench's singleton operator conversation, resolved the same way the
+  // remote projection resolves it: only a ROLE-TAGGED tab counts as open.
+  // An adoptable legacy candidate is deliberately not "open" — adoption is a
+  // decision the store makes at open time, so treating it as open here would
+  // label the button "Go to" for a tab the next press might not choose.
+  // `benchPath ?? ''` is safe: pickBenchConversation returns null on an empty
+  // path, which is also the correct answer when no bench is selected.
+  const benchConversationFound = pickBenchConversation(tabs, active?.benchPath ?? '')
+  const benchConversationOpen = !!benchConversationFound && !benchConversationFound.adopted
 
   /**
    * Aggregate conversation status for one worktree, or undefined when nothing
@@ -226,10 +238,14 @@ export function WorktreeListSection({
           benchTerminalOpen={
             !!pickDirTerminal(tabs, active.benchPath, benchTerminalTitle(active.sourceBranch))
           }
+          benchConversationOpen={benchConversationOpen}
           busy={busy}
           onSelectWorkspace={setSelectedBench}
           onOpenTerminal={() => run('terminal', async () => {
             await useSessionStore.getState().openBenchTerminal(repoPath, active.sourceBranch)
+          })}
+          onOpenConversation={() => run('conversation', async () => {
+            await useSessionStore.getState().openBenchConversation(repoPath, active.sourceBranch)
           })}
           onAssemble={() => run('assemble', async () => {
             const store = useSessionStore.getState()
@@ -239,6 +255,11 @@ export function WorktreeListSection({
               ? store.benchUpdateAll(repoPath, active.sourceBranch)
               : store.benchAssemble(repoPath, active.sourceBranch))
           })}
+          onDiscardRecordings={() => {
+            void useSessionStore.getState().benchRerereCount(active.benchPath)
+              .then(setDiscardCount)
+              .catch((err) => rError('worktree.list', 'recording count failed', { error: String(err) }))
+          }}
           onDismissAbsorbed={() => useSessionStore.getState().clearBenchRetired(repoPath, active.sourceBranch)}
         />
       )}
@@ -357,6 +378,25 @@ export function WorktreeListSection({
         <Plus size={10} />
         <span>New worktree</span>
       </button>
+
+      {discardCount !== null && active && (
+        <ConfirmDialog
+          title="Discard recorded resolutions?"
+          message={discardCount === 0
+            ? 'No recorded conflict resolutions exist.'
+            : `Discard ${discardCount} recorded conflict resolution${discardCount === 1 ? '' : 's'}? Future conflicts must be resolved again.`}
+          confirmLabel={discardCount === 0 ? 'Close' : `Discard ${discardCount}`}
+          danger={discardCount > 0}
+          onCancel={() => setDiscardCount(null)}
+          onConfirm={() => {
+            if (discardCount === 0) { setDiscardCount(null); return }
+            run('discard-recordings', async () => {
+              await useSessionStore.getState().benchRerereDiscardAll(active.benchPath)
+              setDiscardCount(null)
+            })
+          }}
+        />
+      )}
 
       {resolving && (
         <ConflictsDialog
