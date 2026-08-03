@@ -29,6 +29,7 @@ const PRESETS: Preset[] = [
       keepExplorerOnCollapse: false,
       keepTerminalOnCollapse: false,
       keepGitPanelOnCollapse: false,
+      keepStatusDrawerOnCollapse: false,
     },
     summary: [
       'Permission mode: Auto',
@@ -55,6 +56,7 @@ const PRESETS: Preset[] = [
       keepExplorerOnCollapse: false,
       keepTerminalOnCollapse: true,
       keepGitPanelOnCollapse: false,
+      keepStatusDrawerOnCollapse: false,
     },
     summary: [
       'Permission mode: Plan',

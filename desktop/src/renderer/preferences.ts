@@ -72,6 +72,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   keepExplorerOnCollapse: saved.keepExplorerOnCollapse,
   keepTerminalOnCollapse: saved.keepTerminalOnCollapse,
   keepGitPanelOnCollapse: saved.keepGitPanelOnCollapse,
+  keepStatusDrawerOnCollapse: saved.keepStatusDrawerOnCollapse,
   tabGroupMode: saved.tabGroupMode,
   tabGroups: saved.tabGroups,
   autoGroupOrder: saved.autoGroupOrder,
@@ -322,6 +323,10 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   setKeepGitPanelOnCollapse: (enabled) => {
     set({ keepGitPanelOnCollapse: enabled })
+    saveSettings(getAllSettings(get))
+  },
+  setKeepStatusDrawerOnCollapse: (enabled) => {
+    set({ keepStatusDrawerOnCollapse: enabled })
     saveSettings(getAllSettings(get))
   },
   setTabGroupMode: (mode) => {

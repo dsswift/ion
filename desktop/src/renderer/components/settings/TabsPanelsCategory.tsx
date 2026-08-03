@@ -26,6 +26,8 @@ export function TabsPanelsCategory() {
   const setKeepTerminalOnCollapse = usePreferencesStore((s) => s.setKeepTerminalOnCollapse)
   const keepGitPanelOnCollapse = usePreferencesStore((s) => s.keepGitPanelOnCollapse)
   const setKeepGitPanelOnCollapse = usePreferencesStore((s) => s.setKeepGitPanelOnCollapse)
+  const keepStatusDrawerOnCollapse = usePreferencesStore((s) => s.keepStatusDrawerOnCollapse)
+  const setKeepStatusDrawerOnCollapse = usePreferencesStore((s) => s.setKeepStatusDrawerOnCollapse)
   const tabRecoveryEnabled = usePreferencesStore((s) => s.tabRecoveryEnabled)
   const setTabRecoveryEnabled = usePreferencesStore((s) => s.setTabRecoveryEnabled)
   const tabRecoveryTimeoutSec = usePreferencesStore((s) => s.tabRecoveryTimeoutSec)
@@ -482,6 +484,13 @@ export function TabsPanelsCategory() {
         description="Keep the git panel open when the conversation is minimized."
         checked={keepGitPanelOnCollapse}
         onChange={setKeepGitPanelOnCollapse}
+      />
+
+      <SettingToggle
+        label="Keep Status Drawer Open"
+        description="Keep the status drawer open when the conversation is minimized."
+        checked={keepStatusDrawerOnCollapse}
+        onChange={setKeepStatusDrawerOnCollapse}
       />
 
       <SettingHeading>Tab Recovery</SettingHeading>
