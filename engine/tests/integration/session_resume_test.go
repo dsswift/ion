@@ -29,14 +29,6 @@ func newResumeEventCollector(mgr *session.Manager) *resumeEventCollector {
 	return ec
 }
 
-func (ec *resumeEventCollector) all() []types.EngineEvent {
-	ec.mu.Lock()
-	defer ec.mu.Unlock()
-	out := make([]types.EngineEvent, len(ec.events))
-	copy(out, ec.events)
-	return out
-}
-
 func (ec *resumeEventCollector) byType(t string) []types.EngineEvent {
 	ec.mu.Lock()
 	defer ec.mu.Unlock()
