@@ -33,7 +33,8 @@ extension RemoteEvent {
             let tabId = try container.decode(String.self, forKey: .tabId)
             let result = try container.decode(String.self, forKey: .result)
             let costUsd = try container.decode(Double.self, forKey: .costUsd)
-            return .taskComplete(tabId: tabId, result: result, costUsd: costUsd)
+            let reason = try container.decodeIfPresent(TaskCompletionReason.self, forKey: .reason)
+            return .taskComplete(tabId: tabId, result: result, costUsd: costUsd, reason: reason)
 
         case .conversationHistory:
             let tabId = try container.decode(String.self, forKey: .tabId)
@@ -100,11 +101,12 @@ extension RemoteEvent {
             try container.encode(isError, forKey: .isError)
             return true
 
-        case .taskComplete(let tabId, let result, let costUsd):
+        case .taskComplete(let tabId, let result, let costUsd, let reason):
             try container.encode(TypeKey.taskComplete, forKey: .type)
             try container.encode(tabId, forKey: .tabId)
             try container.encode(result, forKey: .result)
             try container.encode(costUsd, forKey: .costUsd)
+            try container.encodeIfPresent(reason, forKey: .reason)
             return true
 
         case .conversationHistory(let tabId, let messages, let hasMore, let cursor, let before):

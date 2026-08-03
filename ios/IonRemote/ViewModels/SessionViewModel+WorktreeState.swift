@@ -21,6 +21,18 @@ struct WorktreeUIState {
     var busyPath: String?
     /// A bench-level operation (assemble / update-all) is in flight.
     var benchBusy = false
+    /// One unresolved bench-conversation request. Snapshot correlation resolves
+    /// it exactly once because each bench exposes one stable singleton tab ID.
+    var pendingBenchConversation: PendingBenchConversation?
+    /// Instance-configurable so timeout behavior can be tested without waiting.
+    var benchConversationNavigationTimeout: Duration = .seconds(10)
+}
+
+struct PendingBenchConversation {
+    let requestId: UUID
+    let repoPath: String
+    let sourceBranch: String
+    var timeoutTask: Task<Void, Never>?
 }
 
 extension SessionViewModel {
@@ -38,5 +50,15 @@ extension SessionViewModel {
     var benchBusy: Bool {
         get { worktreeUI.benchBusy }
         set { worktreeUI.benchBusy = newValue }
+    }
+
+    var pendingBenchConversation: PendingBenchConversation? {
+        get { worktreeUI.pendingBenchConversation }
+        set { worktreeUI.pendingBenchConversation = newValue }
+    }
+
+    var benchConversationNavigationTimeout: Duration {
+        get { worktreeUI.benchConversationNavigationTimeout }
+        set { worktreeUI.benchConversationNavigationTimeout = newValue }
     }
 }

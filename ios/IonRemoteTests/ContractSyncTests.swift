@@ -206,6 +206,7 @@ final class ContractSyncTests: XCTestCase {
             "contextWindow": 200000,
             "contextTokens": 84000,
             "runCostUsd": 1.23,
+            "completionReason": "normal",
             "conversationCostUsd": 2.34,
             "permissionDenials": [
                 ["toolName": "bash", "toolUseId": "tu-1"],
@@ -226,6 +227,7 @@ final class ContractSyncTests: XCTestCase {
         XCTAssertEqual(fields.contextTokens, 84000)
         XCTAssertEqual(fields.extensionName, "Chief of Staff")
         XCTAssertEqual(fields.runCostUsd, 1.23)
+        XCTAssertEqual(fields.completionReason, .normal)
         XCTAssertEqual(fields.conversationCostUsd, 2.34)
         XCTAssertEqual(fields.numTurns, 3)
         XCTAssertEqual(fields.conversationTurns, 210)
@@ -233,7 +235,7 @@ final class ContractSyncTests: XCTestCase {
         // Verify we know about all Go fields (document any intentional gaps)
         let swiftHandled: Set<String> = [
             "backgroundAgents", "backgroundShells", "label", "state", "sessionId", "team", "model",
-            "contextPercent", "contextWindow", "contextTokens", "runCostUsd", "conversationCostUsd",
+            "contextPercent", "contextWindow", "contextTokens", "runCostUsd", "completionReason", "conversationCostUsd",
             "permissionDenials", "extensionName", "numTurns", "conversationTurns",
         ]
         let goSet = Set(goFields)

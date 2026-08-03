@@ -410,6 +410,7 @@ extension SessionViewModel {
         // against the next one.
         clearPendingOnConnected()
         clearPendingEssential()
+        cancelPendingBenchConversation(reason: "session disconnect")
         tearDownTransport()
         wipeTransientState()
     }
@@ -453,6 +454,7 @@ extension SessionViewModel {
 
     /// Clear all transient state (tabs, messages, etc.) to prevent stale data.
     func wipeTransientState() {
+        cancelPendingBenchConversation(reason: "transient state reset")
         connectionState = .disconnected
         tabs = []
         tabIds = []

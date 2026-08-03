@@ -26,7 +26,7 @@ enum RemoteEvent: Sendable {
     case textChunk(tabId: String, text: String)
     case toolCall(tabId: String, toolName: String, toolId: String)
     case toolResult(tabId: String, toolId: String, content: String, isError: Bool)
-    case taskComplete(tabId: String, result: String, costUsd: Double)
+    case taskComplete(tabId: String, result: String, costUsd: Double, reason: TaskCompletionReason?)
     case permissionRequest(tabId: String, instanceId: String?, questionId: String, toolName: String, toolInput: [String: AnyCodable]?, options: [PermissionOption])
     case permissionResolved(tabId: String, questionId: String)
     /// `cursor` is the RESPONSE cursor: set on every page that has more
@@ -44,7 +44,6 @@ enum RemoteEvent: Sendable {
     case error(tabId: String, message: String)
     /// Desktop revoked this device's pairing -- clear local state.
     case unpair
-    /// Desktop pushed updated relay configuration.
     /// Desktop pushed updated relay configuration.
     /// `authMode` is `"psk"` or `"oidc"` (nil = pre-enterprise desktop).
     /// When `authMode == "oidc"`, `relayApiKey` carries a minted bearer token;
@@ -647,7 +646,7 @@ enum RemoteEvent: Sendable {
         // desktop's poll tick when they change so the full snapshot need not
         // re-ship per streamed delta. Names mirror RemoteTabState.
         case convFingerprint, lastActivityAt, lastMessage, messageCount
-        case content, isError, result, costUsd
+        case content, isError, result, costUsd, reason
         case sinceSeq  // desktop_request_diagnostic_logs incremental seq cursor
         case questionId, toolInput, options, message
         case messages, hasMore, cursor, messageId, prompts, relayUrl, relayApiKey

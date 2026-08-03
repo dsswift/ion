@@ -255,6 +255,9 @@ struct RemoteBench: Codable, Identifiable, Hashable {
     var baseDrifted: Bool
     /// Conversations open in the bench directory, in tab order.
     var openConversations: [RemoteOpenConversation] = []
+    /// Singleton conversation tab rooted in this bench, when one is open.
+    /// Absent on older desktops and before first creation.
+    var benchConversationTabId: String?
     /// The bench's dedicated terminal tab, when one is open.
     ///
     /// One tab per bench, so this is a single id rather than a list. The desktop
@@ -281,6 +284,7 @@ struct RemoteBench: Codable, Identifiable, Hashable {
         lastAssemblyError = try c.decodeIfPresent(String.self, forKey: .lastAssemblyError)
         baseDrifted = try c.decode(Bool.self, forKey: .baseDrifted)
         openConversations = try c.decodeIfPresent([RemoteOpenConversation].self, forKey: .openConversations) ?? []
+        benchConversationTabId = try c.decodeIfPresent(String.self, forKey: .benchConversationTabId)
         benchTerminalTabId = try c.decodeIfPresent(String.self, forKey: .benchTerminalTabId)
     }
 }

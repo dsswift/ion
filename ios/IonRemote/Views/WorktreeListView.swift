@@ -113,37 +113,40 @@ struct WorktreeListView: View {
         .padding(.vertical, 2)
     }
 
-    /// The two verbs that act on the whole bench: get a shell in it, assemble
-    /// it. Open-conversation is deliberately absent, mirroring the desktop
-    /// bench bar: a conversation in the bench invites development work that
-    /// the next assembly destroys, the terminal covers building and testing,
-    /// and fix conversations belong in the member worktree that owns the
-    /// file. The `openBenchConversation` command still exists on the wire —
-    /// only the operator-facing affordance is hidden.
-    ///
-    /// `ViewThatFits` because bordered buttons with full labels
-    /// ("Go to terminal" + "Update all & assemble") can exceed a narrow
-    /// phone. The first layout is tried and the icon-only fallback is used
-    /// when it does not fit, so a narrow device drops the words rather than
-    /// truncating them mid-label or clipping the assemble button off the
-    /// edge. The icon-only arm carries accessibility labels, which the
-    /// `Label` text supplies for free in the wide arm.
+    /// Bench actions stay compact on narrow phones. Full labels fit when space
+    /// allows; icon-only controls preserve all actions without truncation.
     @ViewBuilder
     private func benchVerbs(_ bench: RemoteBench) -> some View {
         let behind = state?.behindMemberCount(of: bench) ?? 0
-        let terminalTitle = bench.benchTerminalTabId == nil ? "Open terminal" : "Go to terminal"
+        let talkTitle = bench.benchConversationTabId == nil ? "Talk" : "Go to"
+        let terminalTitle = bench.benchTerminalTabId == nil ? "Terminal" : "Go to terminal"
         let assembleTitle = behind > 0 ? "Update all & assemble" : "Assemble"
 
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
+                benchConversationButton(bench, title: talkTitle, iconOnly: false)
                 benchTerminalButton(bench, title: terminalTitle, iconOnly: false)
                 benchAssembleButton(bench, title: assembleTitle, behind: behind, iconOnly: false)
             }
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
+                benchConversationButton(bench, title: talkTitle, iconOnly: true)
                 benchTerminalButton(bench, title: terminalTitle, iconOnly: true)
                 benchAssembleButton(bench, title: assembleTitle, behind: behind, iconOnly: true)
             }
         }
+    }
+
+    @ViewBuilder
+    private func benchConversationButton(
+        _ bench: RemoteBench, title: String, iconOnly: Bool,
+    ) -> some View {
+        Button {
+            viewModel.openBenchConversation(repoPath: repoPath, sourceBranch: bench.sourceBranch)
+            Haptic.medium()
+        } label: {
+            benchVerbLabel(title, systemImage: "bubble.left", iconOnly: iconOnly)
+        }
+        .buttonStyle(.bordered)
     }
 
     /// A shell in the bench rather than a conversation about it. One terminal per
