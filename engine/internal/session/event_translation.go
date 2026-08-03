@@ -41,6 +41,26 @@ func (m *Manager) handleNormalizedEvent(runID string, event types.NormalizedEven
 	// check below, but it is the signal for turn_end.
 	m.fireCliTurnHooks(s, key, sOk, event)
 
+	// A terminal ErrorEvent on a delegated-CLI run (the normalizer's
+	// translation of the CLI's is_error result — e.g. "Autocompact is
+	// thrashing…" before the process exits non-zero) marks this run's native
+	// session as unresumable. handleRunExit consumes the flag: it skips the
+	// cursor capture and invalidates the existing cursor for the kind, so the
+	// next prompt bridges from Ion's transcript instead of resuming the same
+	// saturated native session. pendingCliUserTurn is the "this run is
+	// CLI-served" discriminator (set at dispatch for native-session backends
+	// only).
+	if _, isErr := event.Data.(*types.ErrorEvent); isErr {
+		m.mu.Lock()
+		if s2, ok2 := m.sessions[key]; ok2 && s2.pendingCliUserTurn != "" {
+			s2.cliRunFailedTerminal = true
+			utils.LogWithFields(utils.LevelWarn, "session", "terminal error on delegated-cli run; native cursor will be invalidated at exit", map[string]any{
+				"key": key, "kind": s2.runCaps.Kind,
+			})
+		}
+		m.mu.Unlock()
+	}
+
 	// Capture the conversation/session ID as early as possible. The API
 	// backend emits a SessionInitEvent right after loadOrCreateConversation
 	// so the session manager learns the ID before any tool call or dispatch
@@ -421,6 +441,7 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	var bgCount int
 	var ionConvID string
 	var captureCursorKind string
+	var invalidateCursorKind string
 	m.mu.Lock()
 	// Authoritative terminal point: clear the runID -> key routing binding
 	// under the lock, unconditionally (even if the session was already torn
@@ -483,9 +504,26 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 		//     this run: only those hand back a resumable native id.
 		if sessionID != "" && sessionID != s.conversationID &&
 			s.runCaps.ContextModel == backend.ContextModelNativeSession && s.runCaps.Resume {
-			captureCursorKind = s.runCaps.Kind
-			utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit: native session id reported, capturing cursor", map[string]any{"session_id": sessionID, "key": key, "kind": captureCursorKind, "conversation_id": s.conversationID})
+			if s.cliRunFailedTerminal {
+				// The CLI reported a terminal error before exiting (e.g. its
+				// autocompactor thrashed until it gave up). Its native session
+				// is saturated; a cursor pointing at it would make the next
+				// prompt resume straight back into the failure. Skip capture
+				// and invalidate whatever cursor this kind already has.
+				invalidateCursorKind = s.runCaps.Kind
+				utils.LogWithFields(utils.LevelWarn, "session", "handlerunexit: terminal cli failure, invalidating native cursor instead of capturing", map[string]any{"key": key, "kind": invalidateCursorKind, "reported_session_id": sessionID})
+			} else {
+				captureCursorKind = s.runCaps.Kind
+				utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit: native session id reported, capturing cursor", map[string]any{"session_id": sessionID, "key": key, "kind": captureCursorKind, "conversation_id": s.conversationID})
+			}
 		} else {
+			// Even with no fresh cursor reported, a terminally-failed CLI run
+			// must not leave a PRIOR cursor armed — that cursor points at the
+			// same saturated native session the failed run resumed.
+			if s.cliRunFailedTerminal && s.runCaps.ContextModel == backend.ContextModelNativeSession {
+				invalidateCursorKind = s.runCaps.Kind
+				utils.LogWithFields(utils.LevelWarn, "session", "handlerunexit: terminal cli failure with no reported id, invalidating prior native cursor", map[string]any{"key": key, "kind": invalidateCursorKind})
+			}
 			utils.LogWithFields(utils.LevelInfo, "session", "handlerunexit: no native session id to capture", map[string]any{"key": key, "reported_session_id": sessionID, "kind": s.runCaps.Kind})
 		}
 		if len(s.promptQueue) > 0 {
@@ -531,6 +569,14 @@ func (m *Manager) handleRunExit(runID string, code *int, signal *string, session
 	// resilience) and mirrors onto s.nativeSessions (see native_session.go).
 	if captureCursorKind != "" {
 		m.captureNativeSessionCursor(key, ionConvID, captureCursorKind, sessionID)
+	}
+	// Invalidate the native cursor after a terminal CLI failure — the inverse
+	// of capture, through the same persistence funnel, so the next prompt
+	// bridges from Ion's transcript rather than resuming a saturated native
+	// session. Runs at the same post-write point as capture for the same
+	// leaf-tagging reason.
+	if invalidateCursorKind != "" {
+		m.invalidateNativeSessionCursor(key, ionConvID, invalidateCursorKind)
 	}
 
 	// Emit updated agent state snapshot after clearing running agents.

@@ -762,11 +762,11 @@ func TestAddToolResults_MultipleResults_ImageNotInterleaved(t *testing.T) {
 
 func TestEffectiveContextWindow(t *testing.T) {
 	tests := []struct {
-		name             string
-		window           int
-		maxOutputTokens  int
-		summaryReserve   int
-		want             int
+		name            string
+		window          int
+		maxOutputTokens int
+		summaryReserve  int
+		want            int
 	}{
 		{"defaults applied", 200000, 0, 0, 200000 - DefaultMaxOutputTokens - DefaultCompactSummaryReserve},
 		{"explicit reserves", 200000, 8000, 5000, 200000 - 8000 - 5000},
@@ -1031,4 +1031,52 @@ func TestGetContextUsage_BackwardScanAfterBranch(t *testing.T) {
 	if info.Tokens != 10000 {
 		t.Errorf("Tokens = %d, want 10000 (usage from first assistant only)", info.Tokens)
 	}
+}
+
+// TestGetContextUsage_ZeroUsageIsNotABaseline is the regression test for the
+// occupancy-poisoning defect: a delegated-CLI turn persisted into Ion's
+// transcript with a zero-valued LlmUsage{} was read by the backward scan as
+// "the provider says ~0 tokens", collapsing a ~292K-token conversation to a
+// 71-token reading (pct=0) and silently disarming auto-compaction.
+//
+// A non-nil all-zero usage must be skipped: with real usage earlier in the
+// history the scan lands there; with none at all the reading falls back to
+// honest estimation. Reverting the zero-skip in lastAssistantUsageLocked turns
+// both subtests red.
+func TestGetContextUsage_ZeroUsageIsNotABaseline(t *testing.T) {
+	t.Run("falls back to earlier real usage", func(t *testing.T) {
+		conv := CreateConversation("zero-usage-mid", "sys", "model")
+		AddUserMessage(conv, "real turn")
+		AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "real reply"}},
+			types.LlmUsage{InputTokens: 2, CacheReadInputTokens: 291_000})
+		// The poisoned shape: CLI-persisted turn annotated with LlmUsage{}.
+		AddUserMessage(conv, "cli turn")
+		AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "cli reply"}}, types.LlmUsage{})
+
+		info := GetContextUsage(conv, 1_000_000)
+		if info.Tokens < 291_002 {
+			t.Fatalf("Tokens = %d; zero-usage assistant was treated as the baseline instead of the earlier real usage", info.Tokens)
+		}
+		u := LastAssistantUsage(conv)
+		if u == nil || u.CacheReadInputTokens != 291_000 {
+			t.Fatalf("LastAssistantUsage = %+v, want the earlier REAL usage (shared scan must agree)", u)
+		}
+	})
+
+	t.Run("falls back to estimation when only zero usage exists", func(t *testing.T) {
+		conv := CreateConversation("zero-usage-only", "sys", "model")
+		AddUserMessage(conv, strings.Repeat("content ", 500))
+		AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: strings.Repeat("reply ", 500)}}, types.LlmUsage{})
+
+		info := GetContextUsage(conv, 1_000_000)
+		if !info.Estimated {
+			t.Fatal("expected Estimated=true: an all-zero usage must not count as provider accounting")
+		}
+		if info.Tokens < 500 {
+			t.Fatalf("Tokens = %d; expected an honest content estimate, not the zero baseline", info.Tokens)
+		}
+		if got := LastAssistantUsage(conv); got != nil {
+			t.Fatalf("LastAssistantUsage = %+v, want nil when the only usage is all-zero", *got)
+		}
+	})
 }

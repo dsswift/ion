@@ -141,7 +141,10 @@ func (m *Manager) persistCliTurn(key, convID string) {
 
 	conversation.AddUserMessage(conv, userText)
 	if assistantText != "" {
-		conversation.AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: assistantText}}, types.LlmUsage{})
+		// No usage annotation: the CLI reported no provider accounting for
+		// this turn, and a zero-valued LlmUsage{} would poison the occupancy
+		// backward scan (GetContextUsage) into reading ~0 tokens.
+		conversation.AddAssistantMessageNoUsage(conv, []types.LlmContentBlock{{Type: "text", Text: assistantText}})
 	}
 	if saveErr := conversation.Save(conv, ""); saveErr != nil {
 		utils.LogWithFields(utils.LevelWarn, "session.native_session", "persistCliTurn: save failed, turn dropped from Ion store", map[string]any{
@@ -213,6 +216,49 @@ func (m *Manager) captureNativeSessionCursor(key, convID, kind, cursor string) {
 	utils.LogWithFields(utils.LevelInfo, "session.native_session", "captured native session cursor", map[string]any{
 		"key": key, "conversation_id": convID, "kind": kind,
 		"cursor": cursor, "head_entry_id": leaf, "persisted": persisted,
+	})
+}
+
+// invalidateNativeSessionCursor deletes the native-session cursor for a
+// backend kind — the inverse of captureNativeSessionCursor, through the same
+// in-memory + persisted funnel. Called from handleRunExit when a delegated-CLI
+// run reported a terminal error (cliRunFailedTerminal): the native session the
+// cursor points at is saturated/broken, and handing it back to `--resume` /
+// ThreadResume would put the very next prompt into the same failure. With no
+// cursor, resolveCliContinuity bridges from Ion's transcript — Ion-owned
+// history that Ion's own compaction can manage.
+//
+// Best-effort on the persistence half, mirroring capture: a load/save failure
+// keeps the deletion in-memory only and logs it (the persisted cursor then
+// dies at the next successful capture or a restart re-bridge).
+func (m *Manager) invalidateNativeSessionCursor(key, convID, kind string) {
+	persisted := false
+	if convID != "" && conversation.Exists(convID, "") {
+		conv, err := conversation.Load(convID, "")
+		if err != nil {
+			utils.LogWithFields(utils.LevelWarn, "session.native_session", "invalidate: conversation load failed, deleting cursor in-memory only", map[string]any{
+				"key": key, "conversation_id": convID, "kind": kind, "error": err.Error(),
+			})
+		} else if _, has := conv.NativeSessions[kind]; has {
+			delete(conv.NativeSessions, kind)
+			if saveErr := conversation.Save(conv, ""); saveErr != nil {
+				utils.LogWithFields(utils.LevelWarn, "session.native_session", "invalidate: cursor delete persist failed, deleting in-memory only", map[string]any{
+					"key": key, "conversation_id": convID, "kind": kind, "error": saveErr.Error(),
+				})
+			} else {
+				persisted = true
+			}
+		}
+	}
+
+	m.mu.Lock()
+	if s, ok := m.sessions[key]; ok && s.nativeSessions != nil {
+		delete(s.nativeSessions, kind)
+	}
+	m.mu.Unlock()
+
+	utils.LogWithFields(utils.LevelWarn, "session.native_session", "invalidated native session cursor after terminal cli failure", map[string]any{
+		"key": key, "conversation_id": convID, "kind": kind, "persisted": persisted,
 	})
 }
 

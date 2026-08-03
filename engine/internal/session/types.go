@@ -149,6 +149,16 @@ type engineSession struct {
 	// through handleNormalizedEvent, for the same CLI-turn persistence.
 	// Guarded by m.mu.
 	pendingCliAssistantText string
+	// cliRunFailedTerminal marks the current delegated-CLI run as having
+	// reported a terminal error (an ErrorEvent from the CLI's result stream —
+	// e.g. its autocompactor thrashing until the process gives up). Set in
+	// handleNormalizedEvent, consumed in handleRunExit: a terminally-failed
+	// CLI run must NOT capture a fresh native-session cursor, and the
+	// existing cursor for that kind is invalidated so the next prompt bridges
+	// from Ion's transcript instead of `--resume`ing straight back into the
+	// same saturated native session. Cleared at dispatch alongside
+	// pendingCliUserTurn. Guarded by m.mu.
+	cliRunFailedTerminal bool
 	// runTraceID is the W3C trace-context trace-id for the CURRENTLY ACTIVE
 	// run: 32 lowercase hex chars, minted in SendPrompt under the same m.mu
 	// hold that assigns requestID, and cleared wherever requestID is cleared

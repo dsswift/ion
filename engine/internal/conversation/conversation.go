@@ -480,6 +480,24 @@ func AddAssistantMessage(conv *Conversation, blocks []types.LlmContentBlock, usa
 	AddAssistantMessageWithEntryID(conv, blocks, usage, "")
 }
 
+// AddAssistantMessageNoUsage appends an assistant message that carries NO
+// provider accounting. This is the correct funnel for turns Ion persists on a
+// backend's behalf without token data — delegated-CLI turns copied into Ion's
+// transcript at run exit. Annotating those with a zero-valued LlmUsage{} is
+// what poisoned GetContextUsage's backward scan (the zero struct read as "the
+// provider says ~0 tokens"), so this variant leaves Usage nil on both the
+// message and the persisted entry.
+func AddAssistantMessageNoUsage(conv *Conversation, blocks []types.LlmContentBlock) {
+	conv.lock()
+	defer conv.unlock()
+	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: blocks})
+
+	if conv.Entries != nil {
+		entry := appendEntryLocked(conv, EntryMessage, MessageData{Role: "assistant", Content: blocks}, "")
+		conv.Messages[len(conv.Messages)-1].EntryID = entry.ID
+	}
+}
+
 // AddAssistantMessageWithEntryID is AddAssistantMessage with a pre-minted
 // entry id. The runloop mints the id before emitting message_end so consumers
 // can re-key their live-streamed assistant rows to the canonical persisted
