@@ -28,7 +28,7 @@ import (
 // idempotent) auto-exit.
 //
 // See:
-//   - docs/architecture/adr/005-plan-mode-auto-exit.md for the design
+//   - docs/architecture/adr/007-plan-mode-auto-exit.md for the design
 //     rationale and the on-by-default decision.
 //   - docs/hooks/reference.md (Plan Mode group) for the hook contract.
 
