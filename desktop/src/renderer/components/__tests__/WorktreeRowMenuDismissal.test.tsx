@@ -35,14 +35,23 @@ const mocks = vi.hoisted(() => ({
   recordConflictAlert: vi.fn(),
 }))
 
-// Every icon the menu renders must be stubbed. A missing name is not a partial
-// mock — vi.mock replaces the module wholesale, so the first unstubbed import
-// throws at render and every test in the file fails at once.
-vi.mock('@phosphor-icons/react', () => ({
-  ArrowLineDown: () => null, ArrowsClockwise: () => null, Bug: () => null,
-  ChatCircle: () => null, Check: () => null, Flask: () => null,
-  FolderOpen: () => null, Package: () => null, PencilSimple: () => null, Trash: () => null,
-}))
+// Icons all stub to null -- none of them carry behaviour these tests assert on.
+//
+// The list must enumerate every icon the menu imports, and must track that
+// import as it changes. `vi.mock` replaces the module wholesale and its factory
+// result is inspected for named exports, so a missing name is not a partial
+// mock: the first unstubbed import throws at render and every test in the file
+// fails at once, which reads as a broken component rather than a stale mock.
+// A Proxy would sidestep the enumeration but cannot be used -- the factory
+// result must be a real module object.
+vi.mock('@phosphor-icons/react', () => {
+  const stub = (): null => null
+  return {
+    ArrowLineDown: stub, ArrowsClockwise: stub, Bug: stub, ChatCircle: stub,
+    Check: stub, Flask: stub, FolderOpen: stub, Package: stub,
+    PencilSimple: stub, Trash: stub,
+  }
+})
 
 vi.mock('framer-motion', () => ({
   motion: {
