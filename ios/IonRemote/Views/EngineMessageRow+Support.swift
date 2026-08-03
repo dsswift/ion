@@ -142,6 +142,16 @@ struct InlineAttachmentImage: View {
             if let fetched {
                 image = fetched
             } else {
+                // Genuinely-missing path or a transient transport hiccup —
+                // either way the row is stuck on the placeholder with no
+                // visible console on a paired device, so this is the only
+                // place the operator can ever see it.
+                DiagnosticLog.log(
+                    "inline attachment image fetch failed",
+                    tag: "view.inlineattachmentimage",
+                    level: .warn,
+                    fields: ["path": path]
+                )
                 failed = true
             }
         }

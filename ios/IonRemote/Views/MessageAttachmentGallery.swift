@@ -1,22 +1,5 @@
 import SwiftUI
 
-/// How many tiles the collapsed rail paints before the `+N more` slot takes
-/// over, and how many images that slot stands for.
-///
-/// Pure and free of SwiftUI so the cap arithmetic is unit-testable. Mirrors
-/// `galleryLayout` in `desktop/src/renderer/components/conversation/ImageGallery.tsx`
-/// — the two clients must fold the same set at the same point, or the same
-/// conversation reads differently depending on which screen it is on.
-///
-/// Past the cap the last visible slot is spent on the overflow tile itself, so
-/// the rail shows CAP-1 images plus the affordance rather than CAP images and a
-/// remainder the user has no way to reach.
-func galleryLayout(count: Int, expanded: Bool) -> (visible: Int, overflow: Int) {
-    let cap = MessageAttachmentGallery.railCap
-    if expanded || count <= cap { return (visible: count, overflow: 0) }
-    return (visible: cap - 1, overflow: count - (cap - 1))
-}
-
 /// MessageAttachmentGallery — bounded rendering for a message's image
 /// attachments.
 ///
@@ -36,7 +19,11 @@ func galleryLayout(count: Int, expanded: Bool) -> (visible: Int, overflow: Int) 
 /// pasted screenshot reads best large, and it costs no vertical space worth
 /// reclaiming.
 struct MessageAttachmentGallery: View {
-    /// Tiles shown in the collapsed rail. Matches the desktop's cap.
+    /// Tiles shown in the collapsed rail before the `+N more` slot takes over.
+    /// Must match the desktop's GALLERY_RAIL_CAP — both are pinned against the
+    /// shared fixture at assets/gallery-parity.json (MessageAttachmentGalleryTests
+    /// asserts this side; ImageGallery.test.tsx asserts the desktop side), so the
+    /// same many-image conversation folds at the same point on either screen.
     static let railCap = 12
     /// Rail tile edge, points.
     private static let railTile: CGFloat = 96
@@ -51,8 +38,21 @@ struct MessageAttachmentGallery: View {
 
     @State private var expanded = false
 
+    /// How many tiles the collapsed rail paints, and how many are folded into
+    /// the `+N more` slot.
+    ///
+    /// Pure and free of SwiftUI so the cap arithmetic is unit-testable without
+    /// mounting a view. When the set exceeds the cap the last visible slot is
+    /// spent on the overflow tile itself, so the rail shows CAP-1 images plus
+    /// the affordance rather than CAP images and a remainder the user has no
+    /// way to reach.
+    static func layout(count: Int, expanded: Bool) -> (visible: Int, overflow: Int) {
+        if expanded || count <= railCap { return (visible: count, overflow: 0) }
+        return (visible: railCap - 1, overflow: count - (railCap - 1))
+    }
+
     private var layout: (visible: Int, overflow: Int) {
-        galleryLayout(count: attachments.count, expanded: expanded)
+        Self.layout(count: attachments.count, expanded: expanded)
     }
 
     var body: some View {
@@ -175,6 +175,16 @@ private struct GalleryTile: View {
             if let fetched {
                 image = fetched
             } else {
+                // Genuinely-missing path (desktop rejected it) or a transient
+                // transport hiccup — either way the tile is stuck on the
+                // placeholder icon with no visible console on a paired device,
+                // so this is the only place the operator can ever see it.
+                DiagnosticLog.log(
+                    "gallery tile image fetch failed",
+                    tag: "view.messageattachmentgallery",
+                    level: .warn,
+                    fields: ["path": attachment.path, "attachmentId": attachment.id]
+                )
                 failed = true
             }
         }

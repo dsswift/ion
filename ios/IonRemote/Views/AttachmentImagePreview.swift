@@ -1,5 +1,35 @@
 import SwiftUI
 
+/// Per-page resolved-image store for the paged preview's share/save target.
+///
+/// ── Why this exists (the blocker this fixes) ────────────────────────────────
+/// The original design held a single `pagedImage: UIImage?` gated by
+/// `if pageIndex == index`. That drops the resolved image in two deterministic
+/// ways: (1) swipe forward then back to a page whose image already resolved —
+/// `loadIfNeeded` early-returns once `image != nil`, so it never calls
+/// `onResolve` again, and `pagedImage` keeps whatever the LAST page resolved,
+/// so Share exports a different image than what's on screen; (2) a cache-miss
+/// fetch that lands after the user has swiped away — the index check fails,
+/// the resolve is dropped, and because `loadIfNeeded` won't re-run, it is
+/// dropped permanently, leaving Share disabled for a page that is visibly
+/// rendered. Keying by index instead of gating on "is this the current page
+/// right now" fixes both: every page's resolve is recorded unconditionally,
+/// and the share target is read back by whichever index is current.
+struct PagedPreviewState {
+    private var resolved: [Int: UIImage] = [:]
+
+    /// Records a page's resolved image. Called unconditionally by every page,
+    /// regardless of whether it is the one currently visible.
+    mutating func record(_ image: UIImage, at index: Int) {
+        resolved[index] = image
+    }
+
+    /// The resolved image for `index`, or nil if that page hasn't resolved yet.
+    func current(index: Int) -> UIImage? {
+        resolved[index]
+    }
+}
+
 /// Fullscreen image preview with pinch-to-zoom, share, and save.
 ///
 /// Two modes, one chrome. The single-image mode is the original: a caller that
@@ -18,8 +48,8 @@ struct AttachmentImagePreview: View {
     @State private var showShareSheet = false
     /// Currently displayed page in paged mode.
     @State private var index: Int
-    /// Image resolved for the current page, used for share/save.
-    @State private var pagedImage: UIImage?
+    /// Every page's resolved image, keyed by index — see PagedPreviewState.
+    @State private var pageImages = PagedPreviewState()
 
     /// Single-image mode.
     init(image: UIImage, name: String = "") {
@@ -49,8 +79,12 @@ struct AttachmentImagePreview: View {
         return name.isEmpty ? "Preview" : name
     }
 
-    /// What the share sheet exports: the current page, or the single image.
-    private var shareImage: UIImage? { isPaged ? pagedImage : image }
+    /// What the share sheet exports: the CURRENT page's resolved image, or the
+    /// single image. Reading `pageImages.current(index:)` (rather than a
+    /// single stored value) means this always reflects whichever page is
+    /// actually on screen, even after swiping past pages that resolved out of
+    /// order.
+    private var shareImage: UIImage? { isPaged ? pageImages.current(index: index) : image }
 
     var body: some View {
         NavigationStack {
@@ -86,8 +120,12 @@ struct AttachmentImagePreview: View {
             TabView(selection: $index) {
                 ForEach(Array(attachments.enumerated()), id: \.element.id) { pageIndex, attachment in
                     PagedPreviewImage(attachment: attachment) { resolved in
-                        // Only the visible page owns the share target.
-                        if pageIndex == index { pagedImage = resolved }
+                        // Record unconditionally, regardless of whether this
+                        // page is the one currently visible — see
+                        // PagedPreviewState's doc comment for why the old
+                        // "only if pageIndex == index" gate silently dropped
+                        // resolves.
+                        pageImages.record(resolved, at: pageIndex)
                     }
                     .tag(pageIndex)
                 }
@@ -141,6 +179,16 @@ private struct PagedPreviewImage: View {
                 image = fetched
                 onResolve(fetched)
             } else {
+                // Genuinely-missing path or a transient transport hiccup —
+                // either way the page is stuck on the placeholder with no
+                // visible console on a paired device, so this is the only
+                // place the operator can ever see it.
+                DiagnosticLog.log(
+                    "paged preview image fetch failed",
+                    tag: "view.attachmentimagepreview",
+                    level: .warn,
+                    fields: ["path": attachment.path, "attachmentId": attachment.id]
+                )
                 failed = true
             }
         }
