@@ -179,6 +179,7 @@ export function ImageGallery({ items, align = 'start' }: { items: GalleryImage[]
             load
             maxWidth={SOLO_MAX_WIDTH}
             maxHeight={SOLO_MAX_HEIGHT}
+            snap={false}
             onOpen={() => setSelected(0)}
           />
         </div>
@@ -328,12 +329,26 @@ function GalleryTile({
   const dataUrl = useImageDataUrl(item.path, item.dataUrl, load)
   const label = item.caption ? `${item.name} · ${item.caption}` : item.name
 
+  // Tooltip wraps its child in its own inline-flex span (git/HoverCard.tsx),
+  // and THAT span — not the tile inside it — is the rail's flex item. So the
+  // sizing that makes the rail scroll has to live on the wrapper: a
+  // flex-shrink-0 on the inner element leaves the wrapper free to compress,
+  // the tiles squash instead of overflowing, and measure() then sees
+  // scrollWidth <= clientWidth and reports the rail as non-overflowing —
+  // silently disabling the chevrons and the edge fade as well. Same reasoning
+  // for scroll-snap-align: it applies to the scroll container's item.
+  // Tooltip's `style` prop exists for exactly this case.
+  const wrapperStyle: React.CSSProperties = {
+    flexShrink: 0,
+    scrollSnapAlign: snap ? 'start' : undefined,
+  }
+
   // Not yet loaded, or the file is gone with no persisted fallback: the same
   // name placeholder the pre-gallery tile showed, sized to hold the rail's
   // line so scroll geometry doesn't jump when the image lands.
   if (!dataUrl) {
     return (
-      <Tooltip text={label}>
+      <Tooltip text={label} style={wrapperStyle}>
         <div
           data-gallery-index={index}
           className="flex-shrink-0 flex items-center px-2 rounded-lg border text-[11px] truncate"
@@ -341,7 +356,6 @@ function GalleryTile({
             height: maxHeight,
             minWidth: 96,
             maxWidth: 160,
-            scrollSnapAlign: snap ? 'start' : undefined,
             background: colors.surfacePrimary,
             borderColor: colors.surfaceSecondary,
             color: colors.textTertiary,
@@ -354,7 +368,7 @@ function GalleryTile({
   }
 
   return (
-    <Tooltip text={label}>
+    <Tooltip text={label} style={wrapperStyle}>
       <button
         type="button"
         data-gallery-index={index}
@@ -362,7 +376,6 @@ function GalleryTile({
         style={{
           borderColor: colors.toolBorder,
           background: colors.surfacePrimary,
-          scrollSnapAlign: snap ? 'start' : undefined,
           maxWidth,
         }}
         onClick={onOpen}

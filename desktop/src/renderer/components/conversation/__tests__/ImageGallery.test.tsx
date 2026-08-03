@@ -44,10 +44,13 @@ vi.mock('../../ImageViewer', async () => {
       }),
   }
 })
-// Tooltip portals into PopoverLayer, which is not mounted here.
-vi.mock('../../git/Tooltip', () => ({
-  Tooltip: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
-}))
+// Tooltip is deliberately NOT mocked. It wraps every tile in its own
+// inline-flex span, and that span is the rail's actual flex item — the thing
+// the "non-shrinking flex items" test exists to pin. A passthrough mock erases
+// the wrapper and the test then passes against the broken layout, which is the
+// exact false coverage that let the defect ship. Tooltip renders fine without a
+// PopoverLayer: HoverCard falls back to the native `title` attribute and skips
+// the portal, so the wrapper (and its style) is still emitted here.
 
 const readImageDataUrl = vi.fn(async (path: string) => ({ dataUrl: `data:image/png;base64,STUB_${path.split('/').pop()}` }))
 
@@ -132,6 +135,27 @@ describe('ImageGallery', () => {
     const { container, unmount } = await render(<ImageGallery items={items(GALLERY_RAIL_CAP)} />)
     expect(container.querySelectorAll('img')).toHaveLength(GALLERY_RAIL_CAP)
     expect(overflowButton(container)).toBeUndefined()
+    unmount()
+  })
+
+  it('rail children are non-shrinking, snap-aligned flex items', async () => {
+    // The rail's scrolling depends on its DIRECT children refusing to shrink.
+    // Tiles are Tooltip-wrapped, and Tooltip renders its own inline-flex span
+    // (git/HoverCard.tsx) — so that span, not the tile inside it, is the flex
+    // item the rail lays out. Putting flex-shrink-0 and scroll-snap-align on
+    // the inner element leaves the wrapper free to compress: the tiles squash,
+    // scrollWidth never exceeds clientWidth, and measure() then reports
+    // overflowing: false, silently disabling the chevrons and the edge fade
+    // too. Assert the emitted inline style on the actual children — jsdom
+    // computes no layout, but it does record what we set.
+    const { container, unmount } = await render(<ImageGallery items={items(5)} />)
+    const rail = container.querySelector('[data-testid="image-gallery-rail"]') as HTMLElement
+    const children = Array.from(rail.children) as HTMLElement[]
+    expect(children.length).toBeGreaterThan(0)
+    for (const child of children) {
+      expect(child.style.flexShrink).toBe('0')
+      expect(child.style.scrollSnapAlign).toBe('start')
+    }
     unmount()
   })
 
