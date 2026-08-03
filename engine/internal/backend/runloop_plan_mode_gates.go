@@ -467,7 +467,12 @@ func interceptEnterPlanMode(
 	}
 	// Allowed: flip the run into plan mode so the write guard and
 	// sparse-reminder logic apply on subsequent turns. The plan-mode
-	// tool list will be rebuilt on the next call to buildToolDefs.
+	// tool list is rebuilt at the top of the next turn: runLoop compares
+	// run.planMode against run.toolDefsBuiltForPlanMode and calls
+	// buildToolDefs when they diverge (see runloop.go, just before
+	// streamOpts is constructed). Without that rebuild the provider would
+	// keep receiving the auto-mode list for the rest of the run — with
+	// ExitPlanMode absent, so the model could not finish the plan.
 	// Reset planModeReminderTurn so the first post-entry reminder
 	// is not silenced by stale throttle state from a prior plan
 	// mode session on this same run.
