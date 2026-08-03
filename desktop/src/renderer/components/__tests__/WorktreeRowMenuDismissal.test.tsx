@@ -35,23 +35,13 @@ const mocks = vi.hoisted(() => ({
   recordConflictAlert: vi.fn(),
 }))
 
-// Icons all stub to null -- none of them carry behaviour these tests assert on.
-//
-// The list must enumerate every icon the menu imports, and must track that
-// import as it changes. `vi.mock` replaces the module wholesale and its factory
-// result is inspected for named exports, so a missing name is not a partial
-// mock: the first unstubbed import throws at render and every test in the file
-// fails at once, which reads as a broken component rather than a stale mock.
-// A Proxy would sidestep the enumeration but cannot be used -- the factory
-// result must be a real module object.
-vi.mock('@phosphor-icons/react', () => {
-  const stub = (): null => null
-  return {
-    ArrowLineDown: stub, ArrowsClockwise: stub, Bug: stub, ChatCircle: stub,
-    Check: stub, Flask: stub, FolderOpen: stub, Package: stub,
-    PencilSimple: stub, Trash: stub,
-  }
-})
+// Icons are deliberately NOT mocked. The previous mock was a hand-maintained
+// allowlist of the icons the component used when the test was written, and it
+// broke the entire file the moment WorktreeRowMenu added one: vitest throws
+// "No <Name> export is defined on the mock" at render, which reads like a
+// component fault rather than a stale fixture, and every test in the file goes
+// red at once. Rendering the real Phosphor icons in jsdom is cheap, asserts
+// nothing about them, and cannot drift from the component.
 
 vi.mock('framer-motion', () => ({
   motion: {

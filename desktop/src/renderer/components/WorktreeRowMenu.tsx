@@ -16,8 +16,8 @@ import { usePreferencesStore } from '../preferences'
 import { useOutsideDismiss } from '../hooks/useOutsideDismiss'
 import { buildWorktreeRowActions } from './worktreeRowActions'
 import { findMembership } from '../../shared/worktree-list'
-import { ConfirmDialog } from './git/ConfirmDialog'
 import { buildWorktreeMenuItems } from './WorktreeRowMenu.items'
+import { WorktreeRowMenuDialogs, WorktreeRenameEditor } from './WorktreeRowMenuDialogs'
 import { rError, rWarn } from '../rendererLogger'
 import type { WorktreeInventoryEntry } from '../../shared/types'
 
@@ -199,39 +199,16 @@ export function WorktreeRowMenu({
         }}
       >
         {renaming ? (
-          /* Inline, in the menu that opened it: a separate modal for a single
-             text field would be a second dialog to dismiss for a one-word edit. */
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '6px 10px', minWidth: 220 }}>
-            <span style={{ fontSize: 9, color: colors.textTertiary }}>
-              Describe what this worktree is for
-            </span>
-            <input
-              data-testid="worktree-rename-input"
-              autoFocus
-              value={draftTitle}
-              placeholder={entry.label}
-              disabled={busy}
-              onChange={(e) => setDraftTitle(e.target.value)}
-              onKeyDown={(e) => {
-                e.stopPropagation()
-                if (e.key === 'Enter') {
-                  void doRename().catch((err) => rError('worktree.menu', 'rename threw', { error: String(err) }))
-                } else if (e.key === 'Escape') {
-                  setRenaming(false)
-                  onClose()
-                }
-              }}
-              style={{
-                fontSize: 11, padding: '3px 6px', borderRadius: 4,
-                background: colors.surfacePrimary,
-                border: `1px solid ${colors.containerBorder}`,
-                color: colors.textPrimary, outline: 'none',
-              }}
-            />
-            <span style={{ fontSize: 9, color: colors.textTertiary }}>
-              Enter to save · Esc to cancel
-            </span>
-          </div>
+          <WorktreeRenameEditor
+            draftTitle={draftTitle}
+            setDraftTitle={setDraftTitle}
+            placeholder={entry.label}
+            busy={busy}
+            doRename={doRename}
+            setRenaming={setRenaming}
+            onClose={onClose}
+            colors={colors as unknown as Record<string, string>}
+          />
         ) : items.map((item) => (
           <button
             key={item.label}
@@ -267,43 +244,17 @@ export function WorktreeRowMenu({
       </motion.div>
       )}
 
-      {landError !== null && (
-        <ConfirmDialog
-          title="Land did not complete"
-          message={landError}
-          acknowledge
-          onConfirm={() => { setLandError(null); onClose() }}
-          onCancel={() => { setLandError(null); onClose() }}
-        />
-      )}
-
-      {retireOutcome !== null && (
-        <ConfirmDialog
-          title="Retire"
-          message={retireOutcome}
-          acknowledge
-          onConfirm={() => { setRetireOutcome(null); setConfirmRetire(null); onClose() }}
-          onCancel={() => { setRetireOutcome(null); setConfirmRetire(null); onClose() }}
-        />
-      )}
-
-      {retireOutcome === null && confirmRetire !== null && (
-        <ConfirmDialog
-          title="Retire this worktree?"
-          message={`${confirmRetire} Retiring removes the directory and its branch. Work is preserved to a recovery ref first, but this is not a routine action.`}
-          confirmLabel="Retire"
-          cancelLabel="Keep it"
-          danger
-          /* The retire takes seconds (appraise, snapshot the work to a recovery
-             ref, delete the directory, relocate conversations). This dialog stays
-             mounted across that await, so the same dialog reports the operation
-             in place and the success path then swaps it for the outcome. */
-          busy={busy}
-          busyLabel="Retiring the worktree…"
-          onConfirm={() => { void doRetire().catch((err) => rError('worktree.menu', 'retire threw', { error: String(err) })) }}
-          onCancel={() => { setConfirmRetire(null); onClose() }}
-        />
-      )}
+      <WorktreeRowMenuDialogs
+        landError={landError}
+        setLandError={setLandError}
+        retireOutcome={retireOutcome}
+        setRetireOutcome={setRetireOutcome}
+        confirmRetire={confirmRetire}
+        setConfirmRetire={setConfirmRetire}
+        busy={busy}
+        doRetire={doRetire}
+        onClose={onClose}
+      />
     </>,
     popoverLayer,
   )

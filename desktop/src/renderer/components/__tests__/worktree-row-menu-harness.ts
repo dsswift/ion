@@ -44,11 +44,10 @@ export function entry(over: Partial<WorktreeInventoryEntry> = {}): WorktreeInven
  * a way production never would.
  *
  * Every field of `WorktreeAppraisalWire` is spelled out, including the ones no
- * test asserts on. The annotation is what does the work: it makes drift in
- * EITHER direction a `tsc` failure — a field added to the wire is missing here,
- * and a field removed from the wire is still set here. Neither shows up in the
- * suite, because vitest does not typecheck, so `npm run typecheck` is the gate
- * that catches it.
+ * test asserts on, so that a field added to the wire shape fails `tsc` here
+ * rather than silently leaving the fixture behind. Note that vitest does not
+ * typecheck, so `npm test` passing says nothing about these fixtures matching
+ * the type — only `npm run typecheck` does.
  */
 export const DIRTY_APPRAISAL: WorktreeAppraisalWire = {
   hasUncommittedChanges: true,
