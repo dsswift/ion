@@ -96,6 +96,7 @@ const mockIon = {
   engineStart: vi.fn(),
   ensureEngineSession: vi.fn(),
   setPermissionMode: vi.fn(),
+  gitWorktreeRegistration: vi.fn(),
 }
 ;(globalThis as any).window = (globalThis as any).window ?? {}
 ;(globalThis as any).window.ion = mockIon
@@ -143,6 +144,7 @@ describe('createConversationTab — plain tab (no extensions)', () => {
     mockIon.engineStart.mockResolvedValue({ ok: true })
     mockIon.ensureEngineSession.mockResolvedValue({ ok: true })
     mockIon.setPermissionMode.mockResolvedValue(undefined)
+    mockIon.gitWorktreeRegistration.mockResolvedValue({ registration: null })
     mockPrefs.engineProfiles = []
   })
 
@@ -165,6 +167,26 @@ describe('createConversationTab — plain tab (no extensions)', () => {
     const tab = state.tabs.find((t: any) => t.id === 'real-tab-id-abc123')
     expect(tab).toBeDefined()
     expect(tabHasExtensions(tab)).toBe(false)
+  })
+
+  it('attaches registered worktree identity before first render', async () => {
+    mockIon.gitWorktreeRegistration.mockResolvedValue({ registration: {
+      repoPath: '/tmp/project', branchName: 'wt/feature', sourceBranch: 'main', title: null,
+    } })
+    const { state, set, get } = buildHarness()
+    const createConversationTab = createConversationTabAction(set as any, get as any)
+
+    const tabId = await createConversationTab('/tmp/project-worktree')
+
+    expect(state.tabs.find((t: any) => t.id === tabId).worktree).toEqual({
+      worktreePath: '/tmp/project-worktree',
+      branchName: 'wt/feature',
+      sourceBranch: 'main',
+      repoPath: '/tmp/project',
+    })
+    expect(mockIon.ensureEngineSession).toHaveBeenCalledWith(
+      expect.objectContaining({ workingDirectory: '/tmp/project-worktree' }),
+    )
   })
 
   it('produces a single main pane with MAIN_INSTANCE_ID', async () => {
@@ -247,6 +269,7 @@ describe('createConversationTab — engine tab (with profileId)', () => {
     mockIon.engineStart.mockResolvedValue({ ok: true })
     mockIon.ensureEngineSession.mockResolvedValue({ ok: true })
     mockIon.setPermissionMode.mockResolvedValue(undefined)
+    mockIon.gitWorktreeRegistration.mockResolvedValue({ registration: null })
     mockPrefs.engineProfiles = [
       { id: 'profile-1', name: 'My Extension', extensions: ['ext-a', 'ext-b'] },
     ]
@@ -371,6 +394,7 @@ describe('createConversationTab — extension presence derived from engineProfil
     mockIon.engineStart.mockResolvedValue({ ok: true })
     mockIon.ensureEngineSession.mockResolvedValue({ ok: true })
     mockIon.setPermissionMode.mockResolvedValue(undefined)
+    mockIon.gitWorktreeRegistration.mockResolvedValue({ registration: null })
     mockPrefs.engineProfiles = [
       { id: 'empty-profile', name: 'Empty', extensions: [] },
       { id: 'full-profile', name: 'Full', extensions: ['ext-x'] },
@@ -438,6 +462,7 @@ describe('createConversationTab — IPC fallback', () => {
     vi.clearAllMocks()
     mockIon.createTab.mockRejectedValue(new Error('IPC offline'))
     mockIon.setPermissionMode.mockResolvedValue(undefined)
+    mockIon.gitWorktreeRegistration.mockResolvedValue({ registration: null })
 
     const { state, set, get } = buildHarness()
     const createConversationTab = createConversationTabAction(set as any, get as any)
@@ -472,6 +497,7 @@ describe('createConversationTab — reuseTabId (restore)', () => {
     mockIon.engineStart.mockResolvedValue({ ok: true })
     mockIon.ensureEngineSession.mockResolvedValue({ ok: true })
     mockIon.setPermissionMode.mockResolvedValue(undefined)
+    mockIon.gitWorktreeRegistration.mockResolvedValue({ registration: null })
     mockPrefs.engineProfiles = []
   })
 

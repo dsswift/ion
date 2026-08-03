@@ -39,6 +39,7 @@ import type { State } from '../session-store-types'
 const mockLoadSession = vi.fn()
 const mockCreateTab = vi.fn()
 const mockSetPermissionMode = vi.fn()
+const mockGitWorktreeRegistration = vi.fn()
 
 /** Minimal store harness: the real slice over a mutable fake state. */
 function makeHarness() {
@@ -64,12 +65,14 @@ beforeEach(() => {
   mockLoadSession.mockReset()
   mockCreateTab.mockReset().mockResolvedValue({ tabId: 'tab-1' })
   mockSetPermissionMode.mockReset()
+  mockGitWorktreeRegistration.mockReset().mockResolvedValue({ registration: null })
   ;(globalThis as { window?: unknown }).window = {
     ...(globalThis as { window?: object }).window,
     ion: {
       loadSession: mockLoadSession,
       createTab: mockCreateTab,
       setPermissionMode: mockSetPermissionMode,
+      gitWorktreeRegistration: mockGitWorktreeRegistration,
     },
   }
 })
@@ -92,6 +95,23 @@ describe('resumeSession', () => {
     expect(mockLoadSession).toHaveBeenCalledTimes(1)
     // No pending timer was scheduled — the ladder is gone, not merely shortened.
     expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('repairs worktree identity before resumed tab renders', async () => {
+    mockLoadSession.mockResolvedValue([])
+    mockGitWorktreeRegistration.mockResolvedValue({ registration: {
+      repoPath: '/repo', branchName: 'wt/feature', sourceBranch: 'main', title: null,
+    } })
+
+    const h = makeHarness()
+    await h.resume()
+
+    expect(h.state().tabs[0].worktree).toEqual({
+      worktreePath: '/repo',
+      branchName: 'wt/feature',
+      sourceBranch: 'main',
+      repoPath: '/repo',
+    })
   })
 
   it('loads a non-empty history in one call', async () => {

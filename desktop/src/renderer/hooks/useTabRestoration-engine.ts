@@ -301,6 +301,7 @@ async function restoreSingleInstanceTab(
   // engine conversation and split history across disjoint files).
   const tabId = await useSessionStore.getState().createConversationTab(st.workingDirectory, {
     profileId: st.engineProfileId || undefined,
+    worktree: st.worktree ?? null,
     ...(st.id ? { reuseTabId: st.id } : {}),
   })
   restoredTabIds.push({ tabId, sessionId: null, index: tabIndex })
@@ -354,10 +355,18 @@ async function restoreSingleInstanceTab(
         ? {
             ...t,
             customTitle: st.customTitle || null,
+            // Lock + role survive restart: a retained auto-fix conversation
+            // must stay input-locked and role-tagged, or the operator could
+            // type into a machine conversation after relaunch.
+            inputLocked: st.inputLocked ?? false,
+            tabRole: st.tabRole ?? null,
             pillColor: st.pillColor || null,
             groupId: st.groupId || null,
             groupPinned: st.groupPinned ?? false,
             conversationId: st.conversationId || null,
+            // Worktree identity was applied atomically by createConversationTab;
+            // keep persisted metadata explicit while replacing restore fields.
+            worktree: st.worktree ?? null,
             lastMessagePreview: st.lastMessagePreview || null,
             lastEventAt: st.lastEventAt ?? null,
             permissionMode: 'auto',

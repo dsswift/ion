@@ -7,6 +7,7 @@ import { mapSessionHistory, mapSessionMessage } from '../../../shared/session-me
 import { buildRestoredDenied } from '../restored-denied'
 import { loadSkeletonMessagesImpl } from '../resume-slice-hydration'
 import { rInfo, rWarn } from '../../rendererLogger'
+import { resolveRegisteredWorktree } from '../worktree-registration'
 
 export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -190,6 +191,9 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
 
     resumeSession: async (sessionId, title, projectPath, customTitle, encodedDir) => {
       const defaultDir = projectPath || get().staticInfo?.homePath || '~'
+      // HistoryPicker and boot restoration both enter here. Resolve before either
+      // success or fallback tab is written so first render has correct repo identity.
+      const worktree = await resolveRegisteredWorktree(defaultDir)
       try {
         const { tabId } = await window.ion.createTab()
 
@@ -234,6 +238,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
           workingDirectory: defaultDir,
           hasChosenDirectory: !!projectPath,
           groupId,
+          worktree,
         }
         // Seed the resumed tab's `main` pane with the loaded scrollback + denial.
         rInfo('session.resume', 'resume session', { tab_id: tab.id.slice(0, 8), count: messages.length, restored_denied: restoredDenied })
@@ -262,6 +267,7 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
         tab.workingDirectory = defaultDir
         tab.hasChosenDirectory = !!projectPath
         tab.groupId = groupId
+        tab.worktree = worktree
         // Seed an empty `main` pane even on the error path so the tab is usable.
         set((s) => ({
           tabs: [...s.tabs, tab],
