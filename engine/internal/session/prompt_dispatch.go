@@ -367,7 +367,8 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	}
 
 	injectContextFiles(s, &opts)
-	m.injectExtensionContext(s, key, &opts)
+	workspaceContext := m.injectWorkspaceContext(s, key, &opts)
+	m.injectExtensionContext(s, key, &opts, workspaceContext)
 	injectGitContext(s, &opts)
 	injectPluginContext(s, &opts)
 

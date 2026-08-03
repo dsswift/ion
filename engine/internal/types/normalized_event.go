@@ -243,9 +243,22 @@ type TaskUpdateEvent struct {
 
 func (TaskUpdateEvent) eventType() string { return EventTaskUpdate }
 
+// TaskCompletionReason classifies why a run emitted TaskCompleteEvent. Empty is
+// retained for backward compatibility with external emitters built before this
+// field existed. Consumers must also tolerate unknown future values.
+type TaskCompletionReason string
+
+const (
+	TaskCompletionReasonNormal      TaskCompletionReason = "normal"
+	TaskCompletionReasonMaxTurns    TaskCompletionReason = "max_turns"
+	TaskCompletionReasonAborted     TaskCompletionReason = "aborted"
+	TaskCompletionReasonBackendExit TaskCompletionReason = "backend_exit"
+)
+
 // TaskCompleteEvent signals the end of an engine run.
 type TaskCompleteEvent struct {
-	Result string `json:"result"`
+	Result string               `json:"result"`
+	Reason TaskCompletionReason `json:"reason,omitempty"`
 	// LastText is the last non-empty assistant text produced across all turns
 	// of this run. When the final turn produces only thinking blocks (pure
 	// reasoning), Result is empty but LastText carries the last substantive

@@ -144,7 +144,8 @@ func (m *Manager) ComputeAndEmitContextBreakdown(key string) {
 	m.mu.RUnlock()
 
 	injectContextFiles(sForInject, &opts)
-	m.injectExtensionContext(sForInject, key, &opts)
+	workspaceContext := m.injectWorkspaceContext(sForInject, key, &opts)
+	m.injectExtensionContext(sForInject, key, &opts, workspaceContext)
 	injectGitContext(sForInject, &opts)
 	injectPluginContext(sForInject, &opts)
 	if snap.sessionMemory != nil {

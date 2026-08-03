@@ -57,6 +57,11 @@ func newBenchFixture(t *testing.T) *benchFixture {
 	gitRun(t, benchPath, "config", "user.email", "dev@example.com")
 	gitRun(t, benchPath, "config", "user.name", "Dev")
 	gitRun(t, benchPath, "config", "commit.gpgsign", "false")
+	// Do not inherit the developer's global excludes: a ~/.gitignore entry
+	// matching a fixture filename would make this fixture behave differently on
+	// one machine than another, which is the class of failure a fixture exists
+	// to eliminate.
+	gitRun(t, benchPath, "config", "core.excludesFile", filepath.Join(root, "empty-global-excludes"))
 	if err := os.WriteFile(filepath.Join(benchPath, "shared.txt"), []byte("base\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

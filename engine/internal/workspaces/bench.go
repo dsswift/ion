@@ -1,6 +1,7 @@
 package workspaces
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -75,23 +76,33 @@ func (c *Checker) checkBash(command, cwd string, containment Containment) *Refus
 
 // checkBashSegment judges one shell segment operating in one proven directory.
 func (c *Checker) checkBashSegment(seg bashSegment, containment Containment, cwd string) *Refusal {
+	// Every literal destination is canonicalized before comparison, for the same
+	// reason write targets are: a `cd /tmp/...` on macOS resolves under
+	// /private, and an uncanonicalized comparison would classify the same
+	// directory two different ways depending on which side of the check it came
+	// from.
+	segDir := ""
+	if seg.Dir != "" {
+		segDir = canonicalizePath(seg.Dir)
+	}
+
 	// Worktree containment: a segment whose working directory is the base repo
 	// or a sibling is the exact way a command escapes isolation.
-	if wc := containment.Worktree; wc != nil && seg.Dir != "" {
-		if !isWithin(seg.Dir, wc.WorktreePath) {
-			if isWithin(seg.Dir, wc.RepoPath) {
+	if wc := containment.Worktree; wc != nil && segDir != "" {
+		if !c.within(segDir, wc.WorktreePath) {
+			if c.within(segDir, wc.RepoPath) {
 				return &Refusal{
 					Kind:   RefusalBaseRepo,
-					Target: seg.Dir,
-					Reason: worktreeReason(seg.Dir, "the base repository this worktree was cut from", wc.WorktreePath),
+					Target: segDir,
+					Reason: worktreeReason(segDir, "the base repository this worktree was cut from", wc.WorktreePath),
 				}
 			}
 			for _, sibling := range wc.SiblingPaths {
-				if isWithin(seg.Dir, sibling) {
+				if c.within(segDir, sibling) {
 					return &Refusal{
 						Kind:   RefusalSiblingWorktree,
-						Target: seg.Dir,
-						Reason: worktreeReason(seg.Dir, "a different worktree belonging to another conversation", wc.WorktreePath),
+						Target: segDir,
+						Reason: worktreeReason(segDir, "a different worktree belonging to another conversation", wc.WorktreePath),
 					}
 				}
 			}
@@ -100,12 +111,21 @@ func (c *Checker) checkBashSegment(seg bashSegment, containment Containment, cwd
 
 	// Bench history rules: judged for the directory the git invocation runs
 	// in, which is the segment dir when proven, else the session cwd.
-	gitDir := seg.Dir
+	gitDir := segDir
 	if gitDir == "" {
-		gitDir = cwd
+		gitDir = canonicalizePath(cwd)
 	}
 	bench := c.benchFor(gitDir)
 	if bench == nil {
+		// A bench conversation whose segment runs OUTSIDE the bench is judged by
+		// the bench-origin destination rules: history verbs in an enabled member
+		// worktree are the remediation the bench refusal names (commit the fix
+		// there), so they must pass, while the source checkout and non-member
+		// worktrees stay refused. Only history verbs are judged — a build or test
+		// command run elsewhere is not a containment concern.
+		if containment.Bench != nil && segDir != "" && segmentWritesHistory(seg) {
+			return c.benchOriginRefusal(containment.Bench, segDir)
+		}
 		return nil
 	}
 	for _, sub := range seg.GitSubcommands {
@@ -129,6 +149,17 @@ func (c *Checker) checkBashSegment(seg bashSegment, containment Containment, cwd
 		}
 	}
 	return nil
+}
+
+// segmentWritesHistory reports whether the segment invokes any history-writing
+// git verb.
+func segmentWritesHistory(seg bashSegment) bool {
+	for _, sub := range seg.GitSubcommands {
+		if historyWritingSubcommands[sub] {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Checker) checkBenchMergeDriver(seg bashSegment, bench *BenchWorkspace) *Refusal {
@@ -227,8 +258,8 @@ func (c *Checker) isUnmergedPath(benchPath, target string) bool {
 	if err != nil {
 		return false
 	}
-	rel, err := filepath.Rel(benchPath, target)
-	if err != nil || strings.HasPrefix(rel, "..") {
+	rel, _, rejection := resolveWithin(target, benchPath)
+	if rejection != "" {
 		return false
 	}
 	for _, line := range strings.Split(out, "\n") {
@@ -258,9 +289,15 @@ var hunkHeaderRe = regexp.MustCompile(`^@@ .* \+(\d+)(?:,(\d+))? @@`)
 // file. Best-effort: a member whose diff cannot be read is omitted, and the
 // refusal still fires — attribution improves the message, it never turns a
 // refusal into a pass.
+//
+// This is the REFUSAL-path answer: file-level, uncancellable, and cheap enough
+// to run inline while denying a tool call. The precise answer — line ranges,
+// blame under shifts, explicit source/resolution/ambiguous outcomes, every
+// candidate including the ones that failed to read — is Attribute(), which the
+// refusal message points the caller at.
 func (c *Checker) attributeOwners(bench *BenchWorkspace, target string) []BenchOwner {
-	rel, err := filepath.Rel(bench.BenchPath, target)
-	if err != nil || strings.HasPrefix(rel, "..") {
+	rel, _, rejection := resolveWithin(target, bench.BenchPath)
+	if rejection != "" {
 		return nil
 	}
 
@@ -323,6 +360,19 @@ func (c *Checker) readHunks(benchPath, base, sha, rel string) []string {
 // benchHistoryReason builds the refusal for a history verb inside a bench.
 func benchHistoryReason(subcommand string, bench *BenchWorkspace) string {
 	return fmt.Sprintf(
-		"Refused: `git %s` inside the integration bench %s. A bench branch is recreated from scratch on every assembly, so a commit made here is destroyed by the next assembly and a push would publish a synthetic merge of other people's in-flight work. Commit in the member worktree that owns the change, then update that member in the bench. Reading, building, testing, and staging are unaffected.",
-		subcommand, bench.BenchPath)
+		"Refused: `git %s` inside the integration bench %s. A bench branch is recreated from scratch on every assembly, so a commit made here is destroyed by the next assembly and a push would publish a synthetic merge of other people's in-flight work. Commit in the member worktree that owns the change — writes and commits in an enrolled, enabled member worktree are permitted from this bench conversation — then update that member in the bench. Reading, building, testing, and staging are unaffected.%s",
+		subcommand, bench.BenchPath, attributionHint)
+}
+
+// exitCode extracts a process exit status from an error, reporting whether the
+// error was an exit at all. `git merge-base --is-ancestor` communicates its
+// ANSWER through exit code 1, so distinguishing that from a real failure (128:
+// missing object, not a repository) is what keeps a legitimate "no" from being
+// reported as a git error and a real error from being reported as "no".
+func exitCode(err error) (int, bool) {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode(), true
+	}
+	return 0, false
 }

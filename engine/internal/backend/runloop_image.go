@@ -237,6 +237,7 @@ func (b *ApiBackend) runImageLoop(ctx context.Context, run *activeRun, opts type
 
 	durationMs := time.Since(start).Milliseconds()
 	b.emit(run, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
+		Reason: types.TaskCompletionReasonNormal,
 		Result: revisedPrompt,
 		// Per-image billing (e.g. FLUX on Azure Foundry): images × the model's
 		// CostPerImage rate. Zero for per-token image models / unknown pricing.

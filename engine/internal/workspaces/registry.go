@@ -40,10 +40,33 @@ const logTag = "workspaces"
 
 // WorktreeEntry is one registered worktree: the isolated checkout and the main
 // repository it was cut from.
+//
+// Everything past RepoPath is descriptive rather than load-bearing for
+// containment — the guard needs only the two paths. They are decoded because
+// workspace CONTEXT states facts about the worktrees an agent is working
+// across, and a fact the engine has to re-derive from git is a fact it can get
+// wrong. Unknown keys stay ignored: the desktop writes a superset and adding a
+// field on either side must never disturb the reader.
 type WorktreeEntry struct {
 	WorktreePath string `json:"worktreePath"`
 	RepoPath     string `json:"repoPath"`
+	// BranchName is the worktree's own branch, the ref a member contributes.
+	BranchName string `json:"branchName,omitempty"`
+	// SourceBranch is the branch the worktree was cut from.
+	SourceBranch string `json:"sourceBranch,omitempty"`
+	// Title is the operator-facing label for the worktree's work.
+	Title string `json:"title,omitempty"`
+	// CreatedAt / LandedAt are Unix ms; zero means absent. LandedAt being set
+	// is the difference between pending work and work already in the source
+	// branch, which changes what a redirect to that worktree would mean.
+	CreatedAt int64 `json:"createdAt,omitempty"`
+	LandedAt  int64 `json:"landedAt,omitempty"`
 }
+
+// Landed reports whether the worktree's work has already reached its source
+// branch. A landed worktree is a poor redirect target: its contribution is in
+// the base, so an edit there is no longer pending work.
+func (e WorktreeEntry) Landed() bool { return e.LandedAt > 0 }
 
 // BenchMember is one worktree enrolled in a bench, pinned at a contribution.
 // The pinned range (`pinnedBaseSha..pinnedSha`) is what owner attribution
@@ -54,6 +77,34 @@ type BenchMember struct {
 	Enabled      *bool  `json:"enabled,omitempty"`
 	PinnedSha    string `json:"pinnedSha,omitempty"`
 	PinnedBase   string `json:"pinnedBaseSha,omitempty"`
+	// PinnedTreeHash / CurrentTreeHash are compared as TREE hashes, so an
+	// amend or reword (new sha, identical tree) is not a false stale and a
+	// rebase (changed content, no new commit) is not a missed one. Attribution
+	// reports the difference as a warning: a stale member means the bench does
+	// NOT hold that worktree's current work, so a diagnosis made in the bench
+	// may already be answered in the member.
+	PinnedTreeHash  string `json:"pinnedTreeHash,omitempty"`
+	CurrentTreeHash string `json:"currentTreeHash,omitempty"`
+	// Pin is the freshness axis ("empty", "current", "behind", "absorbed",
+	// "gone"). Merge is the last assembly outcome for this member ("unbuilt",
+	// "merged", "conflicted", "skipped"). Decoded as strings, never as a Go
+	// enum: an unrecognized future value must pass through and be reported
+	// verbatim rather than collapse to a wrong known value.
+	Pin   string `json:"pin,omitempty"`
+	Merge string `json:"merge,omitempty"`
+	// Review is the operator verdict on the CURRENT pin ("good", "issue"), or
+	// empty for unreviewed.
+	Review string `json:"review,omitempty"`
+	// ConflictPaths / ConflictsWith are populated when Merge == "conflicted":
+	// the paths that did not merge and the earlier-merged member branches this
+	// one collided with.
+	ConflictPaths []string `json:"conflictPaths,omitempty"`
+	ConflictsWith []string `json:"conflictsWith,omitempty"`
+	// MergeResolution is "replayed" when a successful merge succeeded only
+	// because a recorded resolution (git rerere) was replayed. A replayed
+	// resolution is deterministic but it is not the same fact as a clean
+	// merge, so it is surfaced rather than hidden.
+	MergeResolution string `json:"mergeResolution,omitempty"`
 }
 
 // EnabledOrDefault reports whether the member takes part in the assembly.
@@ -62,14 +113,111 @@ func (m BenchMember) EnabledOrDefault() bool {
 	return m.Enabled == nil || *m.Enabled
 }
 
+// Stale reports whether the member's current work differs from what the bench
+// holds. Only answerable when BOTH tree hashes are recorded: an absent hash is
+// unknown, and unknown must not read as "current" — that would assert
+// freshness the record does not carry.
+func (m BenchMember) Stale() bool {
+	if m.PinnedTreeHash == "" || m.CurrentTreeHash == "" {
+		return false
+	}
+	return m.PinnedTreeHash != m.CurrentTreeHash
+}
+
+// StalenessKnown reports whether Stale() had the two hashes it needs.
+func (m BenchMember) StalenessKnown() bool {
+	return m.PinnedTreeHash != "" && m.CurrentTreeHash != ""
+}
+
+// PinnedRange renders the member's contribution range in git syntax, or ""
+// when the record cannot express one.
+func (m BenchMember) PinnedRange() string {
+	if m.PinnedBase == "" || m.PinnedSha == "" {
+		return ""
+	}
+	return m.PinnedBase + ".." + m.PinnedSha
+}
+
+// EmptyContribution reports whether the member has committed nothing of its
+// own. An equal base/tip pair is the one fact no git query at assembly time
+// can recover once the source branch moves, so it is read from the record.
+func (m BenchMember) EmptyContribution() bool {
+	return m.PinnedBase != "" && m.PinnedBase == m.PinnedSha
+}
+
+// Assembly outcomes as the writer records them. Absent is UNKNOWN — never
+// "failed" and never "assembled". A record written before atomic assembly
+// existed carries neither.
+const (
+	AssemblyAssembled = "assembled"
+	AssemblyFailed    = "failed"
+)
+
 // BenchWorkspace is one integration bench: a reassemblable worktree layering
 // pinned member contributions onto a source branch.
 type BenchWorkspace struct {
-	RepoPath     string        `json:"repoPath"`
-	SourceBranch string        `json:"sourceBranch"`
-	BenchPath    string        `json:"benchPath"`
-	BaseSha      string        `json:"baseSha,omitempty"`
-	Members      []BenchMember `json:"members,omitempty"`
+	RepoPath     string `json:"repoPath"`
+	SourceBranch string `json:"sourceBranch"`
+	BenchPath    string `json:"benchPath"`
+	// BenchBranch is the ref the assembly recreates from scratch every time.
+	// Named in context so an agent reading `git status` in a bench recognizes
+	// the branch it is on as disposable.
+	BenchBranch string `json:"benchBranch,omitempty"`
+	BaseSha     string `json:"baseSha,omitempty"`
+	// LastBuiltAt is Unix ms of the last assembly ATTEMPT; zero = never.
+	LastBuiltAt int64 `json:"lastBuiltAt,omitempty"`
+	// LastAssembly is "assembled", "failed", or empty for unknown.
+	// A failed assembly wiped the bench to an empty tree, so attribution and
+	// any build run there are answering questions about nothing — which is why
+	// the outcome and its error are read rather than inferred from the tree.
+	LastAssembly      string        `json:"lastAssembly,omitempty"`
+	LastAssemblyError string        `json:"lastAssemblyError,omitempty"`
+	Members           []BenchMember `json:"members,omitempty"`
+}
+
+// Assembled reports whether the last assembly is known to have succeeded.
+// Unknown (absent outcome) is NOT assembled and NOT failed.
+func (b BenchWorkspace) Assembled() bool { return b.LastAssembly == AssemblyAssembled }
+
+// AssemblyFailed reports whether the last assembly is known to have failed,
+// which means the bench holds no member content at all.
+func (b BenchWorkspace) AssemblyFailed() bool { return b.LastAssembly == AssemblyFailed }
+
+// EnabledMembers returns the members that take part in the assembly, in the
+// recorded merge order. Order is contract: it is the order the assembly merges
+// in, so it is the order in which collisions are attributed.
+func (b BenchWorkspace) EnabledMembers() []BenchMember {
+	var out []BenchMember
+	for _, m := range b.Members {
+		if m.EnabledOrDefault() {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// DisabledMembers returns the members kept in the list but skipped in the
+// merge, in recorded order. Reported separately, never merged into the enabled
+// list: their content is NOT in the bench, so treating them as contributors
+// would attribute assembled bytes to work the bench never received.
+func (b BenchWorkspace) DisabledMembers() []BenchMember {
+	var out []BenchMember
+	for _, m := range b.Members {
+		if !m.EnabledOrDefault() {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// MemberFor returns the enrolled member whose worktree contains path, or nil.
+func (b BenchWorkspace) MemberFor(path string) *BenchMember {
+	for i := range b.Members {
+		if isWithin(path, b.Members[i].WorktreePath) {
+			return &b.Members[i]
+		}
+	}
+	return nil
 }
 
 // Registry reads the two workspace records with mtime-validated caching.

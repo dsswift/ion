@@ -546,6 +546,29 @@ func TestAcpBackend_Cancel(t *testing.T) {
 	acpWaitFor(t, func() bool { return r.exitCount() == 1 }, "exit after cancel")
 }
 
+func TestAcpBackend_MaxTurnsCompletionReason(t *testing.T) {
+	b, agentCh := newTestAcpBackend(t)
+	r := newAcpRecorder()
+	r.attach(b)
+
+	agent := startAcp(t, b, agentCh, "req-max-turns", types.RunOptions{Model: "grok-code", Prompt: "hi"})
+	acpWaitFor(t, func() bool { return agent.sawMethod(acp.MethodSessionPrompt) }, "session/prompt")
+	agent.completePrompt("max_turn_requests")
+	acpWaitFor(t, func() bool { return r.exitCount() == 1 }, "exit after max turns")
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, event := range r.events {
+		if complete, ok := event.Data.(*types.TaskCompleteEvent); ok {
+			if complete.Reason != types.TaskCompletionReasonMaxTurns {
+				t.Fatalf("completion reason = %q, want max_turns", complete.Reason)
+			}
+			return
+		}
+	}
+	t.Fatal("missing task_complete event")
+}
+
 func TestAcpBackend_ResumeUsesLoad(t *testing.T) {
 	b, agentCh := newTestAcpBackend(t)
 	r := newAcpRecorder()

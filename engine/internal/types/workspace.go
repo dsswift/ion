@@ -39,6 +39,11 @@ type WorkspaceConfig struct {
 	// below the FD ceiling even with several watchers running concurrently.
 	// Zero means the compiled default (50000).
 	MaxWatchedDirs int `json:"maxWatchedDirs,omitempty"` // default: 50000
+
+	// PromptContext controls generic workspace context delivery. Nil defaults to
+	// enabled; false suppresses it. Pointer preserves explicit false across
+	// layered engine.json merges.
+	PromptContext *bool `json:"promptContext,omitempty"`
 }
 
 // SessionReapGrace returns the orphaned-session reap grace window
@@ -59,6 +64,12 @@ func (w *WorkspaceConfig) MaxWatchedDirsOr() int {
 	return w.MaxWatchedDirs
 }
 
+// PromptContextEnabled reports whether generic workspace context is delivered.
+// Default is enabled.
+func (w *WorkspaceConfig) PromptContextEnabled() bool {
+	return w == nil || w.PromptContext == nil || *w.PromptContext
+}
+
 // MergeWorkspace copies non-zero fields from src into dst. Both pointers may
 // be nil; returns the merged result (or nil if both are nil). Mirrors
 // MergeTimeouts.
@@ -75,6 +86,9 @@ func MergeWorkspace(dst, src *WorkspaceConfig) *WorkspaceConfig {
 	}
 	if src.MaxWatchedDirs != 0 {
 		dst.MaxWatchedDirs = src.MaxWatchedDirs
+	}
+	if src.PromptContext != nil {
+		dst.PromptContext = src.PromptContext
 	}
 	return dst
 }

@@ -319,6 +319,7 @@ Reports session-level status changes.
 | `contextWindow`     | number             | Context window size in tokens |
 | `contextTokens`     | number             | Absolute context-window occupancy in tokens. The numerator a consumer needs to recompute the percentage against a different model's window. |
 | `runCostUsd`        | number             | Per-run cost in USD (cache-aware, descendants included). Replaces former `totalCostUsd`. |
+| `completionReason`  | string             | Optional typed reason on status translated from task completion: `normal`, `max_turns`, `aborted`, or `backend_exit`. Absent for older external emitters and idle status unrelated to completion. Consumers must retain unknown future values as non-normal completion. |
 | `conversationCostUsd` | number           | Cumulative conversation cost (this session + all descendant dispatches) in USD. |
 | `backgroundAgents`  | number             | Dispatched background agents still running. |
 | `backgroundShells`  | number             | Outstanding background bash commands (`run_in_background` + `notify_on_complete`) the session is waiting on. When > 0 the orchestrator may be idle while real work is in flight. Commands started without `notify_on_complete` are not counted — nothing is waiting on them. |

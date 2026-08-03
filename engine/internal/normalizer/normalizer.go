@@ -179,6 +179,7 @@ func normalizeResult(raw json.RawMessage, subtype string) []types.NormalizedEven
 
 	return []types.NormalizedEvent{{
 		Data: &types.TaskCompleteEvent{
+			Reason:            resultCompletionReason(subtype),
 			Result:            re.Result,
 			CostUsd:           re.TotalCostUsd,
 			DurationMs:        re.DurationMs,
@@ -301,4 +302,17 @@ func extractContentString(raw json.RawMessage) string {
 	}
 	// Fallback: return raw string representation.
 	return string(raw)
+}
+
+func resultCompletionReason(subtype string) types.TaskCompletionReason {
+	switch subtype {
+	case "success":
+		return types.TaskCompletionReasonNormal
+	case "error_max_turns", "max_turns":
+		return types.TaskCompletionReasonMaxTurns
+	case "cancelled", "aborted":
+		return types.TaskCompletionReasonAborted
+	default:
+		return types.TaskCompletionReasonBackendExit
+	}
 }

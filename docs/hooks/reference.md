@@ -550,6 +550,7 @@ type SystemInjectInfo struct {
     DefaultText string `json:"defaultText"` // engine's default message text
     Turn        int    `json:"turn"`        // current turn number
     MaxTurns    int    `json:"maxTurns"`    // configured max turns (0 = unlimited)
+    Workspace   *workspaces.PromptContext `json:"workspace,omitempty"` // structured workspace facts (kind "workspace_context" only)
 }
 ```
 
@@ -561,6 +562,7 @@ type SystemInjectInfo struct {
 | `"turn_limit_warning"` | 2 turns before `maxTurns` | `[SYSTEM] You are approaching your turn limit...` |
 | `"max_token_continue"` | LLM response hits `max_tokens` | `Continue from where you left off.` |
 | `"early_stop_continue"` | Model emits `end_turn` below the configured token budget | harness-supplied (none by default) — see [ADR-002](../architecture/adr/002-engine-vs-harness-early-stop.md) |
+| `"workspace_context"` | Prompt assembly in a registered worktree/bench (when workspace context is enabled) | Generic workspace-facts prose; `Workspace` carries the structured payload so a handler can rewrite or suppress the default without re-deriving the facts |
 
 #### `SystemInjectResult`
 
@@ -698,6 +700,12 @@ sdk.On(extension.HookBeforeEarlyStopDecision, func(ctx *extension.Context, paylo
 type ContextInjectInfo struct {
     WorkingDirectory string
     DiscoveredPaths  []string
+    // Structured workspace facts when the session's working directory is a
+    // registered worktree or bench: bench/source/base identity, ordered
+    // enabled members with exact pinned ranges and worktree paths, and
+    // disabled-member facts. Nil outside a registered workspace. Lets a
+    // handler build its own workspace prose without re-deriving the facts.
+    Workspace *workspaces.PromptContext
 }
 ```
 

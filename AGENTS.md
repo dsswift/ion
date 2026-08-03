@@ -814,7 +814,15 @@ are refused by the desktop UI (`desktop/src/main/integration/bench-guard.ts`) an
 by ion-meta's tool gate (`engine/extensions/ion-meta/bench-gate.ts`). Reading,
 building, testing, and staging are unaffected. A fix diagnosed in the bench
 belongs in the member worktree that owns the file: commit it there, then update
-that member in the bench.
+that member in the bench. Use the read-only `WorkspaceAttribution` tool to map
+an assembled file (or line range) back to its owner before editing — it returns
+the contributing member(s) with pinned ranges and worktree paths, an ambiguous
+verdict when several plausibly own it, and warnings instead of silent guesses.
+The engine also injects the workspace facts (bench identity, ordered enabled
+members, exact pinned ranges) into bench-rooted conversations, so attribute
+first, then fix, validate, and commit in the owning worktree, then Update and
+reassemble. Never edit the bench or the source checkout directly — the one
+exception is completing a machinery-prepared merge resolution.
 
 **Assembly is atomic, and a conflict is resolved once.** The bench presents the
 exact enrolled combination or nothing: a member whose pinned contribution will

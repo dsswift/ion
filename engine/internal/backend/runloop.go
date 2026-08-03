@@ -750,6 +750,7 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 
 	elapsed := time.Since(run.startTime).Milliseconds()
 	b.emit(run, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
+		Reason:            types.TaskCompletionReasonMaxTurns,
 		Result:            fmt.Sprintf("Reached max turns (%d)", maxTurns),
 		LastText:          run.lastNonEmptyResultText,
 		CostUsd:           run.totalCost,

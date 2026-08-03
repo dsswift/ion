@@ -1,9 +1,12 @@
 package workspaces
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	"github.com/dsswift/ion/engine/internal/utils"
 )
 
 // RefusalKind names what the refused call targeted, so consumers and logs can
@@ -28,6 +31,10 @@ const (
 	RefusalBenchWrite RefusalKind = "bench_write"
 	// RefusalBenchHistory — a git history-writing command ran inside a bench.
 	RefusalBenchHistory RefusalKind = "bench_history"
+	// RefusalDisabledMember — a bench conversation targeted a member worktree
+	// that is enrolled but EXCLUDED from the assembly. Its content is not in
+	// the bench, so a failure observed there cannot originate from it.
+	RefusalDisabledMember RefusalKind = "disabled_member"
 )
 
 // Refusal is the typed verdict for a refused tool call. Reason is the complete
@@ -60,14 +67,25 @@ type WorktreeContainment struct {
 	SiblingPaths []string
 }
 
-// Checker answers "may this tool call proceed?" for workspace containment.
+// Checker answers "may this tool call proceed?" for workspace containment, and
+// owns the read-only context and attribution queries over the same records.
 // Nil-safe by convention at the call site (a nil *Checker means the feature is
 // disabled), mirroring how the permission engine is threaded through RunConfig.
 type Checker struct {
 	reg *Registry
 	// git runs a git command in a directory and returns stdout. Swappable for
-	// tests; defaults to the real subprocess runner in bench.go.
+	// tests; defaults to the real subprocess runner in bench.go. Deliberately
+	// NOT context-aware: it runs on the refusal path, where a cancellable guard
+	// is not a guard.
 	git gitRunner
+	// gitCtx is the cancellable runner attribution uses. Separate lifetime from
+	// git: a blame over a large file must abort when the model abandons the
+	// turn, which is the opposite requirement from the guard. nil means the real
+	// runner (attribution_git.go).
+	gitCtx ctxGitRunner
+	// canonical memoizes symlink resolution for the record's ROOTS, which are
+	// re-read on every gated call but only change when the records change.
+	canonical canonicalCache
 }
 
 // NewChecker returns a Checker over the default registry (~/.ion records).
@@ -78,6 +96,12 @@ func NewChecker() *Checker {
 // NewCheckerAt returns a Checker reading records from dir. Test seam.
 func NewCheckerAt(dir string) *Checker {
 	return &Checker{reg: NewRegistryAt(dir), git: runGit}
+}
+
+// SetAttributionGitForTest swaps the cancellable git runner attribution uses,
+// so a test can assert error surfacing without arranging a broken repository.
+func (c *Checker) SetAttributionGitForTest(run func(ctx context.Context, dir string, args ...string) (string, error)) {
+	c.gitCtx = run
 }
 
 // gatedTools is the set of tool names whose calls the checker inspects. These
@@ -100,21 +124,28 @@ var gatedTools = map[string]bool{
 // A bench is checked FIRST: a bench is itself a git worktree of the repo, so
 // worktree-style classification alone would mislabel it, and the bench rules
 // (history + write refusal with owner attribution) are the correct ones there.
+//
+// Both sides are canonicalized before comparison. On macOS this is not an edge
+// case: /tmp and /var are symlinks to /private/..., so a recorded path and a
+// resolved cwd routinely differ by spelling for the same directory — and a raw
+// string comparison would classify a bench as a plain directory and pass every
+// write it exists to refuse.
 func (c *Checker) Resolve(dir string) Containment {
 	if c == nil || dir == "" {
 		return Containment{}
 	}
+	canonicalDir := c.canonical.get(dir)
 
 	for i := range c.reg.Benches() {
 		b := c.reg.Benches()[i]
-		if isWithin(dir, b.BenchPath) {
+		if c.within(canonicalDir, b.BenchPath) {
 			return Containment{Bench: &b}
 		}
 	}
 
 	entries := c.reg.Worktrees()
 	for _, e := range entries {
-		if !isWithin(dir, e.WorktreePath) {
+		if !c.within(canonicalDir, e.WorktreePath) {
 			continue
 		}
 		wc := &WorktreeContainment{WorktreePath: e.WorktreePath, RepoPath: e.RepoPath}
@@ -126,6 +157,19 @@ func (c *Checker) Resolve(dir string) Containment {
 		return Containment{Worktree: wc}
 	}
 	return Containment{}
+}
+
+// within compares an already-canonical path against a record root, canonicalizing
+// the root through the cache. Both sides canonical is the invariant every
+// containment comparison in this package depends on.
+func (c *Checker) within(canonicalPath, root string) bool {
+	if canonicalPath == "" || root == "" {
+		return false
+	}
+	// Compare against the raw root too: a root that cannot be resolved (a bench
+	// whose directory was removed) still has to enforce, and its canonical form
+	// falls back to the lexical one anyway.
+	return isWithin(canonicalPath, c.canonical.get(root)) || isWithin(canonicalPath, filepath.Clean(root))
 }
 
 type MergeDriverCall struct {
@@ -201,55 +245,148 @@ func (c *Checker) Check(tool string, input map[string]interface{}, cwd string) *
 // containment plus the global bench set (a bench must refuse writes even from
 // a conversation running elsewhere).
 func (c *Checker) checkWriteTarget(target string, containment Containment) *Refusal {
+	canonicalTarget := canonicalizePath(target)
+
 	// Bench containment first — a bench is a worktree, so the ordering matters
 	// for naming the right rule (see Resolve).
-	if bench := c.benchFor(target); bench != nil {
+	if bench := c.benchFor(canonicalTarget); bench != nil {
 		// Resolve-once carve-out: an edit to a path that is UNMERGED in the
 		// bench's in-progress merge is the resolution itself — the artifact
 		// git rerere records when the merge commits.
-		if c.mergeInProgress(bench.BenchPath) && c.isUnmergedPath(bench.BenchPath, target) {
+		if c.mergeInProgress(bench.BenchPath) && c.isUnmergedPath(bench.BenchPath, canonicalTarget) {
 			return nil
 		}
-		owners := c.attributeOwners(bench, target)
+		owners := c.attributeOwners(bench, canonicalTarget)
 		return &Refusal{
 			Kind:   RefusalBenchWrite,
-			Target: target,
+			Target: canonicalTarget,
 			Owners: owners,
-			Reason: benchWriteReason(target, bench, owners),
+			Reason: benchWriteReason(canonicalTarget, bench, owners),
 		}
+	}
+
+	// A conversation whose cwd is a BENCH writes into the member worktrees the
+	// bench is assembled from. That is the entire remediation the bench refusal
+	// names, so it must be reachable — see benchOriginRefusal.
+	if containment.Bench != nil {
+		return c.benchOriginRefusal(containment.Bench, canonicalTarget)
 	}
 
 	wc := containment.Worktree
 	if wc == nil {
 		return nil
 	}
-	if isWithin(target, wc.WorktreePath) {
+	if c.within(canonicalTarget, wc.WorktreePath) {
 		return nil
 	}
-	if isWithin(target, wc.RepoPath) {
+	if c.within(canonicalTarget, wc.RepoPath) {
 		return &Refusal{
 			Kind:   RefusalBaseRepo,
-			Target: target,
-			Reason: worktreeReason(target, "the base repository this worktree was cut from", wc.WorktreePath),
+			Target: canonicalTarget,
+			Reason: worktreeReason(canonicalTarget, "the base repository this worktree was cut from", wc.WorktreePath),
 		}
 	}
 	for _, sibling := range wc.SiblingPaths {
-		if isWithin(target, sibling) {
+		if c.within(canonicalTarget, sibling) {
 			return &Refusal{
 				Kind:   RefusalSiblingWorktree,
-				Target: target,
-				Reason: worktreeReason(target, "a different worktree belonging to another conversation", wc.WorktreePath),
+				Target: canonicalTarget,
+				Reason: worktreeReason(canonicalTarget, "a different worktree belonging to another conversation", wc.WorktreePath),
 			}
 		}
 	}
 	return nil
 }
 
-// benchFor returns the bench containing path, or nil.
+// benchOriginRefusal decides a write from a BENCH conversation to a target
+// outside that bench.
+//
+// ── Why an enrolled member destination must pass ────────────────────────────
+// The bench write refusal names its own remediation: "make the change at
+// <member worktree>, commit it there, then update that member in the bench."
+// A conversation diagnosing an assembled failure runs IN the bench — that is
+// where the failing build is — so if bench-origin writes were refused
+// everywhere outside the bench, the remediation the guard prints would itself be
+// refused. The rule would then have no compliant path at all, which is how a
+// guard stops being a guard and becomes something to work around.
+//
+// ── Why only ENABLED and only ENROLLED ─────────────────────────────────────
+// The permission is scoped to exactly the worktrees whose content is in the
+// bench being diagnosed:
+//
+//   - An ENROLLED, ENABLED member owns bench content. A fix routed there is the
+//     fix reaching the code the bench actually built, and the next assembly
+//     carries it.
+//   - A DISABLED member is enrolled but excluded from the assembly. Its content
+//     is NOT in the bench, so a failure observed in the bench cannot originate
+//     there, and an edit routed to it would be a change to unrelated work
+//     justified by evidence that does not apply to it.
+//   - An ARBITRARY worktree of the same repo is not a member at all. Writing
+//     there from a bench conversation is the same interleaving defect the
+//     worktree rule exists to prevent: another conversation owns that checkout.
+//   - The SOURCE CHECKOUT (the main repository the bench was cut from) is never
+//     a valid destination. Landing work directly in the source branch bypasses
+//     the whole integration model, and every conversation sharing that checkout
+//     gets an unattributable dirty tree.
+//
+// Directories that are none of these — /tmp, ~/.ion, an unrelated repository —
+// pass, exactly as they do for a worktree conversation. This is not a cwd jail.
+func (c *Checker) benchOriginRefusal(bench *BenchWorkspace, target string) *Refusal {
+	// An enrolled member's worktree: allowed when enabled, refused when not.
+	for i := range bench.Members {
+		m := bench.Members[i]
+		if !c.within(target, m.WorktreePath) {
+			continue
+		}
+		if m.EnabledOrDefault() {
+			utils.LogWithFields(utils.LevelInfo, logTag, "bench-origin write into enrolled member allowed", map[string]any{
+				"bench_path":    bench.BenchPath,
+				"member_branch": m.BranchName,
+				"member_path":   m.WorktreePath,
+				"target":        target,
+			})
+			return nil
+		}
+		return &Refusal{
+			Kind:   RefusalDisabledMember,
+			Target: target,
+			Reason: disabledMemberReason(target, bench, m),
+		}
+	}
+
+	// The source checkout the bench integrates into.
+	if bench.RepoPath != "" && c.within(target, bench.RepoPath) {
+		return &Refusal{
+			Kind:   RefusalBaseRepo,
+			Target: target,
+			Reason: benchSourceCheckoutReason(target, bench),
+		}
+	}
+
+	// Any other worktree of the same repository: enrolled in nothing here, and
+	// owned by another conversation.
+	for _, e := range c.reg.Worktrees() {
+		if e.RepoPath != bench.RepoPath || !c.within(target, e.WorktreePath) {
+			continue
+		}
+		return &Refusal{
+			Kind:   RefusalSiblingWorktree,
+			Target: target,
+			Reason: nonMemberWorktreeReason(target, bench, e),
+		}
+	}
+
+	return nil
+}
+
+// benchFor returns the bench containing path, or nil. path is canonicalized
+// here so callers can pass a raw path safely; passing an already-canonical path
+// is a cache hit.
 func (c *Checker) benchFor(path string) *BenchWorkspace {
+	canonical := c.canonical.get(path)
 	for i := range c.reg.Benches() {
 		b := c.reg.Benches()[i]
-		if isWithin(path, b.BenchPath) {
+		if c.within(canonical, b.BenchPath) {
 			return &b
 		}
 	}
@@ -327,6 +464,43 @@ func benchWriteReason(target string, bench *BenchWorkspace, owners []BenchOwner)
 		}
 		b.WriteString(" edit in the member that owns those lines, commit there, then update that member in the bench.")
 	}
+	b.WriteString(" Writes into an enrolled, enabled member worktree are permitted from this bench conversation, so the redirect above needs no new conversation.")
+	b.WriteString(attributionHint)
 	b.WriteString(" Reading, building, and testing in the bench are unaffected.")
 	return b.String()
+}
+
+// attributionHint names the read-only tool that answers ownership precisely.
+// Every bench refusal carries it: the refusal states an owner derived from
+// file-level ranges, and a caller editing specific lines has a more exact
+// question available — one that accounts for line shifts and reports every
+// candidate rather than one guess.
+const attributionHint = " For a precise answer — including which member owns a specific line range, every candidate when more than one member changed the file, and whether the content came from the source branch or from a recorded conflict resolution — use the WorkspaceAttribution tool, which is read-only."
+
+// disabledMemberReason explains why an enrolled-but-excluded member is not a
+// valid destination for a fix diagnosed in the bench.
+func disabledMemberReason(target string, bench *BenchWorkspace, m BenchMember) string {
+	return fmt.Sprintf(
+		"Refused: %s is inside the member worktree %s (%s), which is enrolled in the bench %s but DISABLED. A disabled member is skipped during assembly, so none of its work is in the bench and a failure observed there cannot originate from it — an edit here would change unrelated work on evidence that does not apply to it. Attribute the failing content to an enabled member first; writes into enabled member worktrees are permitted from this bench conversation.%s",
+		target, m.WorktreePath, m.BranchName, bench.BenchPath, attributionHint)
+}
+
+// benchSourceCheckoutReason explains why the repository the bench integrates
+// into is never a write destination from a bench conversation.
+func benchSourceCheckoutReason(target string, bench *BenchWorkspace) string {
+	return fmt.Sprintf(
+		"Refused: %s is inside the source checkout %s that the bench %s integrates into. Writing there commits straight onto %s, bypassing the integration model entirely, and leaves every conversation sharing that checkout with a dirty tree no review can attribute. Route the change to the enabled member worktree that owns the content — those writes are permitted from this bench conversation — or, when the content comes from %s itself, to a worktree cut from %s.%s",
+		target, bench.RepoPath, bench.BenchPath, bench.SourceBranch, bench.SourceBranch, bench.SourceBranch, attributionHint)
+}
+
+// nonMemberWorktreeReason explains why an unenrolled worktree of the same
+// repository is not reachable from a bench conversation.
+func nonMemberWorktreeReason(target string, bench *BenchWorkspace, e WorktreeEntry) string {
+	label := e.BranchName
+	if label == "" {
+		label = e.WorktreePath
+	}
+	return fmt.Sprintf(
+		"Refused: %s is inside the worktree %s (%s), which is NOT enrolled as a member of the bench %s. It belongs to another conversation, and writing there would interleave two conversations' work in one checkout — the same defect worktree isolation exists to prevent. Only enrolled, enabled member worktrees of this bench are writable from here.%s",
+		target, e.WorktreePath, label, bench.BenchPath, attributionHint)
 }

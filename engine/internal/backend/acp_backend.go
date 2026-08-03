@@ -291,7 +291,8 @@ func (b *AcpBackend) runPrompt(requestID string, options types.RunOptions) {
 	b.emit(requestID, types.NormalizedEvent{Data: &types.SessionInitEvent{SessionID: sessionID, Model: options.Model}})
 
 	// session/prompt blocks until the turn ends; updates stream meanwhile.
-	res, err := client.SessionPrompt(ctx, sessionID, acp.NewTextPrompt(options.Prompt))
+	prompt := transientPrompt(options.Prompt, options.AppendSystemPrompt)
+	res, err := client.SessionPrompt(ctx, sessionID, acp.NewTextPrompt(prompt))
 	if err != nil {
 		b.emitError(requestID, fmt.Errorf("%s prompt: %w", b.spec.kind, err))
 		b.finish(requestID, intPtr(1), sessionID)
@@ -305,6 +306,7 @@ func (b *AcpBackend) runPrompt(requestID string, options types.RunOptions) {
 		b.finishPlanRun(run)
 	}
 	b.emit(requestID, types.NormalizedEvent{Data: &types.TaskCompleteEvent{
+		Reason:    acpTaskCompletionReason(res.StopReason),
 		Result:    b.runLastText(requestID),
 		LastText:  b.runLastText(requestID),
 		CostUsd:   0,
@@ -527,5 +529,18 @@ func (b *AcpBackend) onProcessClosed(err error) {
 	for reqID := range stale {
 		b.emitError(reqID, fmt.Errorf("%s agent exited", b.spec.kind))
 		b.emitExit(reqID, intPtr(1), nil, "")
+	}
+}
+
+func acpTaskCompletionReason(stopReason string) types.TaskCompletionReason {
+	switch stopReason {
+	case "end_turn":
+		return types.TaskCompletionReasonNormal
+	case "max_tokens", "max_turn_requests":
+		return types.TaskCompletionReasonMaxTurns
+	case "cancelled":
+		return types.TaskCompletionReasonAborted
+	default:
+		return types.TaskCompletionReasonBackendExit
 	}
 }

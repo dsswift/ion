@@ -1773,6 +1773,15 @@ export interface ContextLoadInfo {
 export interface ContextInjectInfo {
   workingDirectory: string
   discoveredPaths: string[]
+  /** Structured registry-backed workspace facts, when cwd is a worktree or bench. */
+  workspace?: WorkspacePromptContext
+}
+
+export interface WorkspacePromptContext {
+  kind: 'worktree' | 'bench' | string
+  cwd: string
+  worktree?: Record<string, unknown>
+  bench?: Record<string, unknown>
 }
 
 /** Return value from a `context_inject` handler. */
@@ -2277,6 +2286,8 @@ export interface SystemInjectInfo {
   turn: number
   /** Configured max turns (0 = unlimited). */
   maxTurns: number
+  /** Structured workspace facts for `workspace_context`. */
+  workspace?: WorkspacePromptContext
 }
 
 /**

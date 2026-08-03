@@ -5,6 +5,22 @@ import (
 	"time"
 )
 
+func TestWorkspaceConfigPromptContextDefaultsAndOverride(t *testing.T) {
+	var absent *WorkspaceConfig
+	if !absent.PromptContextEnabled() {
+		t.Fatal("absent workspace config must enable prompt context")
+	}
+	no := false
+	if (&WorkspaceConfig{PromptContext: &no}).PromptContextEnabled() {
+		t.Fatal("explicit false must suppress prompt context")
+	}
+	yes := true
+	merged := MergeWorkspace(&WorkspaceConfig{PromptContext: &no}, &WorkspaceConfig{PromptContext: &yes})
+	if !merged.PromptContextEnabled() {
+		t.Fatal("higher-precedence explicit true must replace false")
+	}
+}
+
 func TestWorkspaceConfig_DefaultsWhenNil(t *testing.T) {
 	var w *WorkspaceConfig // nil receiver
 	if got := w.SessionReapGrace(); got != 5*time.Minute {

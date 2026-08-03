@@ -177,6 +177,7 @@
       "lastText",
       "numTurns",
       "permissionDenials",
+      "reason",
       "result",
       "sessionId",
       "usage"
@@ -633,6 +634,7 @@
     "StatusFields": [
       "backgroundAgents",
       "backgroundShells",
+      "completionReason",
       "contextPercent",
       "contextTokens",
       "contextWindow",

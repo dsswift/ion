@@ -61,15 +61,20 @@ func TestRegistryGetTool(t *testing.T) {
 
 func TestGetAllTools(t *testing.T) {
 	all := GetAllTools()
-	if len(all) != 19 {
-		t.Errorf("expected 19 tools, got %d", len(all))
+	for _, name := range []string{"Read", "Write", "Edit", "Bash", WorkspaceAttributionName} {
+		if GetTool(name) == nil {
+			t.Errorf("expected built-in tool %q", name)
+		}
+	}
+	if len(all) != len(GetToolDefs()) {
+		t.Errorf("tool registry has %d tools but %d definitions", len(all), len(GetToolDefs()))
 	}
 }
 
 func TestGetToolDefs(t *testing.T) {
 	defs := GetToolDefs()
-	if len(defs) != 19 {
-		t.Errorf("expected 19 tool defs, got %d", len(defs))
+	if len(defs) != len(GetAllTools()) {
+		t.Errorf("tool definitions have %d entries but registry has %d", len(defs), len(GetAllTools()))
 	}
 	for _, d := range defs {
 		if d.Name == "" {
