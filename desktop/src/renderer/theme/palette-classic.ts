@@ -112,6 +112,8 @@ export const classicColors: ColorPalette = {
   timelineLine: '#353530',
   timelineNode: 'rgba(217, 119, 87, 0.2)',
   timelineNodeActive: '#d97757',
+  timelineSlashCommand: '#A855F7',
+  timelineSlashCommandActive: '#C084FC',
 
   // Scrollbar
   scrollThumb: 'rgba(255, 255, 255, 0.15)',

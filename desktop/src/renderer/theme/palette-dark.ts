@@ -123,6 +123,8 @@ export const darkColors = {
   timelineLine: '#26262c',
   timelineNode: 'rgba(54, 111, 251, 0.25)',
   timelineNodeActive: '#366FFB',
+  timelineSlashCommand: '#A855F7',
+  timelineSlashCommandActive: '#C084FC',
 
   // Scrollbar
   scrollThumb: 'rgba(255, 255, 255, 0.10)',

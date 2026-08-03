@@ -84,6 +84,19 @@ describe('theme pack scanning', () => {
     expect(packs[0].manifest.ios).toBeDefined()
   })
 
+  it('accepts slash-command timeline token overrides', () => {
+    const manifest = basicManifest('acme-corp')
+    ;(manifest.desktop as Record<string, unknown>).tokens = {
+      timelineSlashCommand: '#775599',
+      timelineSlashCommandActive: '#BB88EE',
+    }
+    writePack(userRoot, 'acme-corp', manifest)
+    expect(getThemePacks()[0].manifest.desktop?.tokens).toEqual({
+      timelineSlashCommand: '#775599',
+      timelineSlashCommandActive: '#BB88EE',
+    })
+  })
+
   it('skips invalid JSON and dirs without theme.json', () => {
     mkdirSync(join(userRoot, 'no-manifest'), { recursive: true })
     const dir = join(userRoot, 'broken-json')

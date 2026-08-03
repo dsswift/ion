@@ -109,6 +109,8 @@ export const hudColors: ColorPalette = {
   timelineLine: '#353530',
   timelineNode: 'rgba(217, 119, 87, 0.2)',
   timelineNodeActive: '#d97757',
+  timelineSlashCommand: '#c084fc',
+  timelineSlashCommandActive: '#e9d5ff',
 
   // Scrollbar
   scrollThumb: 'rgba(51, 195, 247, 0.20)',

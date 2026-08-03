@@ -7,7 +7,16 @@ import { describe, it, expect, vi, beforeAll } from 'vitest'
 ;(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 vi.mock('../../theme', () => ({
-  useColors: () => new Proxy({}, { get: () => '#000' }),
+  useColors: () => ({
+    textPrimary: '#111111',
+    textSecondary: '#222222',
+    textTertiary: '#333333',
+    timelineSlashCommand: '#664488',
+    timelineSlashCommandActive: '#aa66ee',
+    popoverBg: '#444444',
+    popoverBorder: '#555555',
+    popoverShadow: 'none',
+  }),
 }))
 
 const rWarn = vi.fn()
@@ -59,9 +68,9 @@ beforeAll(() => {
 })
 
 const ITEMS: TimelineMinimapItem[] = [
-  { id: 'u1', userText: 'first question', assistantText: 'first answer' },
-  { id: 'u2', userText: 'second question', assistantText: null },
-  { id: 'u3', userText: 'third question', assistantText: 'third answer' },
+  { id: 'u1', userText: 'first question', assistantText: 'first answer', isSlashCommand: false },
+  { id: 'u2', userText: '/align', assistantText: null, isSlashCommand: true },
+  { id: 'u3', userText: 'third question', assistantText: 'third answer', isSlashCommand: false },
 ]
 
 function renderMinimap(items: TimelineMinimapItem[], opts?: { omitAnchorIds?: string[] }) {
@@ -111,6 +120,10 @@ function renderMinimap(items: TimelineMinimapItem[], opts?: { omitAnchorIds?: st
   }
 }
 
+function strips(container: HTMLElement): HTMLSpanElement[] {
+  return Array.from(container.querySelectorAll<HTMLSpanElement>('[data-minimap-strip]'))
+}
+
 function mouseEvent(type: string, clientY: number) {
   return new MouseEvent(type, { bubbles: true, clientY })
 }
@@ -135,6 +148,41 @@ describe('TimelineMinimap', () => {
   it('renders one tick per item', () => {
     const { container, unmount } = renderMinimap(ITEMS)
     expect(container.querySelectorAll('[data-minimap-strip]').length).toBe(3)
+    unmount()
+  })
+
+  it('renders slash-command ticks subdued at rest and leaves ordinary ticks gray', () => {
+    const { container, unmount } = renderMinimap(ITEMS)
+    const [ordinary, slash] = strips(container)
+    expect(ordinary.dataset.tickKind).toBe('message')
+    expect(ordinary.style.backgroundColor).toBe('rgb(51, 51, 51)')
+    expect(slash.dataset.tickKind).toBe('slash-command')
+    expect(slash.dataset.emphasized).toBe('false')
+    expect(slash.style.backgroundColor).toBe('rgb(102, 68, 136)')
+    expect(slash.style.opacity).toBe('0.8')
+    expect(Number(slash.style.opacity)).toBeGreaterThan(Number(ordinary.style.opacity))
+    unmount()
+  })
+
+  it('brightens a slash-command tick while hovered', () => {
+    const { container, button, unmount } = renderMinimap(ITEMS)
+    act(() => { button!.dispatchEvent(mouseEvent('mousemove', 350)) })
+    const slash = strips(container)[1]
+    expect(slash.dataset.emphasized).toBe('true')
+    expect(slash.style.backgroundColor).toBe('rgb(170, 102, 238)')
+    unmount()
+  })
+
+  it('brightens a slash-command tick while its message is in view', () => {
+    const { container, io, unmount } = renderMinimap(ITEMS)
+    const observer = io()
+    const anchor = observer.observed.find(
+      (element) => (element as HTMLElement).dataset.messageId === 'u2',
+    )!
+    act(() => { observer.callback([{ target: anchor, isIntersecting: true }]) })
+    const slash = strips(container)[1]
+    expect(slash.dataset.emphasized).toBe('true')
+    expect(slash.style.backgroundColor).toBe('rgb(170, 102, 238)')
     unmount()
   })
 
@@ -224,7 +272,10 @@ describe('TimelineMinimap', () => {
     act(() => {
       button!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
     })
-    expect(container.querySelector('[data-minimap-preview]')?.textContent).toContain('second question')
+    expect(container.querySelector('[data-minimap-preview]')?.textContent).toContain('/align')
+    const focusedSlash = strips(container)[1]
+    expect(focusedSlash.dataset.emphasized).toBe('true')
+    expect(focusedSlash.style.backgroundColor).toBe('rgb(170, 102, 238)')
 
     act(() => {
       button!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
@@ -277,7 +328,7 @@ describe('TimelineMinimap', () => {
     const { container, button, unmount } = renderMinimap(ITEMS)
     act(() => { button!.dispatchEvent(mouseEvent('mousemove', 350)) })
     const preview = container.querySelector('[data-minimap-preview]')
-    expect(preview?.textContent).toContain('second question')
+    expect(preview?.textContent).toContain('/align')
     expect(preview?.textContent).not.toContain('answer')
     unmount()
   })

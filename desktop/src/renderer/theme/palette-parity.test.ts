@@ -21,6 +21,17 @@ describe('palette parity', () => {
     }
   })
 
+  it('slash-command timeline ticks use subdued and active purple per theme', () => {
+    expect(darkColors.timelineSlashCommand).toBe('#A855F7')
+    expect(darkColors.timelineSlashCommandActive).toBe('#C084FC')
+    expect(lightColors.timelineSlashCommand).toBe('#7E22CE')
+    expect(lightColors.timelineSlashCommandActive).toBe('#9333EA')
+    expect(classicColors.timelineSlashCommand).toBe('#A855F7')
+    expect(classicColors.timelineSlashCommandActive).toBe('#C084FC')
+    expect(hudColors.timelineSlashCommand).toBe('#c084fc')
+    expect(hudColors.timelineSlashCommandActive).toBe('#e9d5ff')
+  })
+
   // Running / question status dots must stay legibly distinct from each other
   // and from the accent blue. Ion Dark/Light previously set the running dot to
   // the accent hex and the question dot to a near-identical lighter blue, which
