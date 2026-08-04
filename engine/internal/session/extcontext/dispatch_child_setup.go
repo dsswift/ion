@@ -198,10 +198,15 @@ func wireChildExtensionTools(
 }
 
 // suspendableBackend is satisfied by backends that can park an in-flight run
-// without cancelling it (the suspend primitive). Both *ApiBackend and any
-// backend that wraps it implement this. ClaudeCodeBackend does not; dispatch children
-// always use ApiBackend via HybridBackend, so this is always resolvable for
-// dispatched children.
+// without cancelling it (the suspend primitive). *ApiBackend implements it
+// directly. *HybridBackend implements it by forwarding to the inner backend
+// recorded for the requestID, which is what makes a hybrid dispatch resolve —
+// a child backend built by HybridBackend.NewChild is itself a *HybridBackend,
+// so without that forwarder this assertion fails and suspendFn is left nil.
+// A nil suspendFn is not inert: NewExtContext substitutes the depth-0
+// root-park closure, so a dispatched child's ctx.suspend() would act on the
+// ROOT session instead of its own run. Delegated-CLI backends do not
+// implement it and correctly leave the capability unavailable.
 type suspendableBackend interface {
 	SignalSuspend(requestID string, awaitingDispatchIDs []string) bool
 }

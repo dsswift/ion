@@ -150,3 +150,103 @@ func TestListModelsEnrichmentFillIfZero(t *testing.T) {
 		t.Error("catalog enrichment did not fill CostPer1kInput for sparse discovered entry")
 	}
 }
+
+// TestListModels_CollidedGatewayModelEmitsQualifiedID is the regression test
+// for the model-identity collision that misrouted a gateway pick to the wrong
+// provider: a dci-marketing "claude-sonnet-4-6" selection dispatched as the
+// bare id, which the routing registry resolves to anthropic, which hybrid
+// routing sent to the delegated Claude CLI.
+//
+// storeResult registers gateway copies of collided models under the qualified
+// "<provider>/<model>" id only (dual-provider coexistence). ListModels must
+// advertise that same qualified id for the gateway's entry — never the bare id
+// the gateway's /models payload used, because that id does not route to the
+// gateway. Reverting the qualification branch in ListModels turns this red.
+func TestListModels_CollidedGatewayModelEmitsQualifiedID(t *testing.T) {
+	ResetDiscoveryCache()
+	t.Cleanup(ResetDiscoveryCache)
+
+	const gateway = "collide-gw"
+	// The bare id is owned by anthropic (embedded catalog). Simulate what
+	// storeResult does for a dialect-carrying gateway copy: the discovery
+	// cache holds the bare id under the gateway, and the registry holds the
+	// qualified alias routing to the gateway.
+	RegisterModel(gateway+"/claude-sonnet-4-6", types.ModelInfo{
+		ProviderID:    gateway,
+		ContextWindow: 1_000_000,
+		Dialect:       "anthropic",
+	})
+	t.Cleanup(func() { UnregisterModel(gateway + "/claude-sonnet-4-6") })
+	setDiscoveredOnly(gateway, []types.ModelEntry{{
+		ID: "claude-sonnet-4-6", ProviderID: gateway, ContextWindow: 1_000_000, Dialect: "anthropic",
+	}})
+
+	var gatewayIDs []string
+	bareStillAnthropicListed := false
+	for _, m := range ListModels() {
+		if m.ProviderID == gateway {
+			gatewayIDs = append(gatewayIDs, m.ID)
+		}
+		if m.ID == "claude-sonnet-4-6" && m.ProviderID == "anthropic" {
+			bareStillAnthropicListed = true
+		}
+	}
+	if len(gatewayIDs) != 1 || gatewayIDs[0] != gateway+"/claude-sonnet-4-6" {
+		t.Fatalf("gateway entry ids = %v, want exactly [%s/claude-sonnet-4-6] — a bare collided id advertises an identity that routes to anthropic", gatewayIDs, gateway)
+	}
+	if !bareStillAnthropicListed {
+		t.Error("anthropic's own bare claude-sonnet-4-6 disappeared from ListModels")
+	}
+}
+
+// TestListModels_NonCollidedDiscoveredIDStaysBare pins the inverse: a
+// discovered model whose bare id belongs to the same provider is emitted
+// unqualified, so ordinary providers see zero change from the collision fix.
+func TestListModels_NonCollidedDiscoveredIDStaysBare(t *testing.T) {
+	ResetDiscoveryCache()
+	t.Cleanup(ResetDiscoveryCache)
+
+	SetExternalModels("anthropic", []types.ModelEntry{{ID: "claude-sonnet-4-6", ProviderID: "anthropic"}})
+	for _, m := range ListModels() {
+		if m.ProviderID == "anthropic" && m.ID == "anthropic/claude-sonnet-4-6" {
+			t.Fatal("non-collided discovered id was qualified; same-provider ids must stay bare")
+		}
+	}
+}
+
+// TestListModels_CollidedWithoutQualifiedRegistrationEmitsBare covers the
+// config-gap arm: the bare id collides but no qualified alias exists in the
+// registry (a non-dialect payload storeResult does not qualify). There is no
+// id that routes to this provider, so ListModels emits the bare id (with a
+// WARN in the log) rather than inventing an id routing cannot resolve.
+func TestListModels_CollidedWithoutQualifiedRegistrationEmitsBare(t *testing.T) {
+	ResetDiscoveryCache()
+	t.Cleanup(ResetDiscoveryCache)
+
+	const gateway = "collide-noq"
+	setDiscoveredOnly(gateway, []types.ModelEntry{{ID: "claude-sonnet-4-6", ProviderID: gateway}})
+
+	sawBare := false
+	for _, m := range ListModels() {
+		if m.ProviderID == gateway {
+			if m.ID != "claude-sonnet-4-6" {
+				t.Fatalf("unexpected gateway id %q; without a qualified registration the bare id must pass through", m.ID)
+			}
+			sawBare = true
+		}
+	}
+	if !sawBare {
+		t.Fatal("gateway entry missing from ListModels")
+	}
+}
+
+// setDiscoveredOnly seeds the discovery cache without touching the model
+// registry — unlike SetExternalModels, which also registers bare ids. This is
+// the shape runDiscoveryAll/storeResult leaves for a COLLIDED model: cache
+// entry under the gateway, registry bare id still owned by the original
+// provider.
+func setDiscoveredOnly(providerID string, models []types.ModelEntry) {
+	discoveryMu.Lock()
+	discoveryCache[providerID] = &providerDiscovery{models: models}
+	discoveryMu.Unlock()
+}

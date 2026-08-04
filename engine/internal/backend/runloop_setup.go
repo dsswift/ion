@@ -341,8 +341,27 @@ func (b *ApiBackend) buildToolDefs(run *activeRun, opts types.RunOptions, provid
 		InputSchema: askDef.InputSchema,
 	})
 
-	// Filter tools if plan mode and inject ExitPlanMode
-	if opts.PlanMode {
+	// Filter tools if plan mode and inject ExitPlanMode.
+	//
+	// The predicate is the LIVE run state (run.planMode), not opts.PlanMode.
+	// opts is the immutable snapshot of how the run STARTED; plan mode can be
+	// entered mid-run when the model calls the EnterPlanMode sentinel, which
+	// sets run.planMode = true (interceptEnterPlanMode in
+	// runloop_plan_mode_gates.go). Gating on opts.PlanMode here meant a
+	// mid-run rebuild still produced the auto-mode list, so the model was
+	// handed the plan-mode prompt — "finish via ExitPlanMode" — while
+	// ExitPlanMode was absent from its tools for the rest of the run.
+	//
+	// run.planMode is initialised from options.PlanMode at run creation
+	// (api_backend.go), so a run that STARTS in plan mode is unaffected: the
+	// two agree on turn 1 and only diverge after a mid-run transition.
+	// run may be nil in narrow unit tests that exercise the web-search arms;
+	// fall back to opts.PlanMode so those call sites keep working.
+	planModeActive := opts.PlanMode
+	if run != nil {
+		planModeActive = run.planMode
+	}
+	if planModeActive {
 		planTools := opts.PlanModeTools
 		if len(planTools) == 0 {
 			planTools = defaultPlanModeTools

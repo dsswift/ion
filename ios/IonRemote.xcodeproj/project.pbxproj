@@ -284,6 +284,9 @@
 		A1B2C3D4E5F60001005210AA /* VoiceInputOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005211AA /* VoiceInputOverlay.swift */; };
 		A1B2C3D4E5F60001005300AA /* AttachmentImageCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005301AA /* AttachmentImageCache.swift */; };
 		A1B2C3D4E5F60001005302AA /* AttachmentImagePreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005303AA /* AttachmentImagePreview.swift */; };
+		GALLERY000000000000001 /* MessageAttachmentGallery.swift in Sources */ = {isa = PBXBuildFile; fileRef = GALLERY000000000000002 /* MessageAttachmentGallery.swift */; };
+		GALLERYT00000000000001 /* MessageAttachmentGalleryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = GALLERYT00000000000002 /* MessageAttachmentGalleryTests.swift */; };
+		PAGEDPREV0000000000001 /* PagedPreviewStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = PAGEDPREV0000000000002 /* PagedPreviewStateTests.swift */; };
 		A1B2C3D4E5F600010053E0AA /* MessageAttachmentImages.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010053E1AA /* MessageAttachmentImages.swift */; };
 		A1B2C3D4E5F600010053E2AA /* MessageImageAttachmentsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F600010053E3AA /* MessageImageAttachmentsTests.swift */; };
 		A1B2C3D4E5F60001005304AA /* RemoteImageFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001005305AA /* RemoteImageFetcher.swift */; };
@@ -686,6 +689,9 @@
 		A1B2C3D4E5F60001005211AA /* VoiceInputOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceInputOverlay.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005301AA /* AttachmentImageCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentImageCache.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005303AA /* AttachmentImagePreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentImagePreview.swift; sourceTree = "<group>"; };
+		GALLERY000000000000002 /* MessageAttachmentGallery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageAttachmentGallery.swift; sourceTree = "<group>"; };
+		GALLERYT00000000000002 /* MessageAttachmentGalleryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageAttachmentGalleryTests.swift; sourceTree = "<group>"; };
+		PAGEDPREV0000000000002 /* PagedPreviewStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PagedPreviewStateTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010053E1AA /* MessageAttachmentImages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageAttachmentImages.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F600010053E3AA /* MessageImageAttachmentsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageImageAttachmentsTests.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001005305AA /* RemoteImageFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteImageFetcher.swift; sourceTree = "<group>"; };
@@ -1039,6 +1045,7 @@
 				A1B2C3D4E5F60001003003AA /* EngineDialogSheet.swift */,
 				A1B2C3D4E5F60001004003AA /* AttachmentChipsView.swift */,
 				A1B2C3D4E5F60001005303AA /* AttachmentImagePreview.swift */,
+				GALLERY000000000000002 /* MessageAttachmentGallery.swift */,
 				A1B2C3D4E5F600010053E1AA /* MessageAttachmentImages.swift */,
 				A1B2C3D4E5F60001004005AA /* FilePickerSheet.swift */,
 				A1B2C3D4E5F60001004007AA /* EngineMessageRow.swift */,
@@ -1227,6 +1234,8 @@
 				IMGFETRT00000000000002 /* RemoteImageFetcherRetryTests.swift */,
 				TOOLLIFE00000000000002 /* ToolRowLifecycleTests.swift */,
 				TOOLDESC000000000000002 /* ToolDescriptionTests.swift */,
+				GALLERYT00000000000002 /* MessageAttachmentGalleryTests.swift */,
+				PAGEDPREV0000000000002 /* PagedPreviewStateTests.swift */,
 				DEDUPIMG00000000000002 /* DedupAndImageAttachTests.swift */,
 				LIVEBND00000000000002 /* LiveBoundaryMarkingTests.swift */,
 				PROMPTINJ00000000000002 /* PromptInjectedSuppressionTests.swift */,
@@ -1681,6 +1690,7 @@
 				A1B2C3D4E5F60001004002AA /* AttachmentChipsView.swift in Sources */,
 				A1B2C3D4E5F60001005300AA /* AttachmentImageCache.swift in Sources */,
 				A1B2C3D4E5F60001005302AA /* AttachmentImagePreview.swift in Sources */,
+				GALLERY000000000000001 /* MessageAttachmentGallery.swift in Sources */,
 				A1B2C3D4E5F600010053E0AA /* MessageAttachmentImages.swift in Sources */,
 				A1B2C3D4E5F60001005304AA /* RemoteImageFetcher.swift in Sources */,
 				A1B2C3D4E5F60001004004AA /* FilePickerSheet.swift in Sources */,
@@ -1844,6 +1854,8 @@
 				IMGFETRT00000000000001 /* RemoteImageFetcherRetryTests.swift in Sources */,
 				TOOLLIFE00000000000001 /* ToolRowLifecycleTests.swift in Sources */,
 				TOOLDESC000000000000001 /* ToolDescriptionTests.swift in Sources */,
+				GALLERYT00000000000001 /* MessageAttachmentGalleryTests.swift in Sources */,
+				PAGEDPREV0000000000001 /* PagedPreviewStateTests.swift in Sources */,
 				DEDUPIMG00000000000001 /* DedupAndImageAttachTests.swift in Sources */,
 				LIVEBND00000000000001 /* LiveBoundaryMarkingTests.swift in Sources */,
 				PROMPTINJ00000000000001 /* PromptInjectedSuppressionTests.swift in Sources */,

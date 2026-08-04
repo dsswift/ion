@@ -327,7 +327,7 @@ export function setupPersistence(useSessionStore: Store): void {
 
   useSessionStore.subscribe((state, prev) => {
     if (prev.isExpanded && !state.isExpanded) {
-      const { keepTerminalOnCollapse, keepExplorerOnCollapse, keepGitPanelOnCollapse } = usePreferencesStore.getState()
+      const { keepTerminalOnCollapse, keepExplorerOnCollapse, keepGitPanelOnCollapse, keepStatusDrawerOnCollapse } = usePreferencesStore.getState()
       const { activeTabId, terminalOpenTabIds, fileExplorerOpenDirs, tabs: currentTabs } = state
       const updates: Record<string, any> = {}
       if (!keepTerminalOnCollapse && terminalOpenTabIds.has(activeTabId)) {
@@ -343,6 +343,16 @@ export function setupPersistence(useSessionStore: Store): void {
       }
       if (!keepGitPanelOnCollapse && state.gitPanelOpen) {
         updates.gitPanelOpen = false
+      }
+      // The Status Drawer is the git panel's peer -- same right edge, same
+      // numbered shortcut row, and only one of the two may be open -- so it
+      // gets the same collapse treatment rather than staying pinned over a
+      // collapsed card. The dispatch deep-link is cleared alongside the flag,
+      // matching closeStatusDrawer: a stale selection must not survive to the
+      // next open.
+      if (!keepStatusDrawerOnCollapse && state.statusDrawerOpen) {
+        updates.statusDrawerOpen = false
+        updates.statusDrawerDispatchId = null
       }
       if (Object.keys(updates).length > 0) {
         useSessionStore.setState(updates)

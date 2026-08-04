@@ -2,6 +2,8 @@ package backend
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -176,16 +178,15 @@ func TestCompactNow_AppendsTreeEntry(t *testing.T) {
 			types.LlmUsage{},
 		)
 	}
+	beforeMessages := len(conv.Messages)
 	if err := conversation.Save(conv, ""); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-
-	err := b.CompactNow(context.Background(), CompactRequest{
+	if err := b.CompactNow(context.Background(), CompactRequest{
 		ConversationID: convID,
 		Model:          "claude-sonnet-4-6",
 		RequestID:      "tree-entry-req",
-	})
-	if err != nil {
+	}); err != nil {
 		t.Fatalf("CompactNow: %v", err)
 	}
 
@@ -203,6 +204,12 @@ func TestCompactNow_AppendsTreeEntry(t *testing.T) {
 	}
 	if !sawTreeEntry {
 		t.Errorf("expected at least one EntryCompaction in tree after CompactNow; got %d entries total", len(reloaded.Entries))
+	}
+	if len(reloaded.Messages) >= beforeMessages {
+		t.Fatalf("forced compaction did not reduce persisted messages: before=%d after=%d", beforeMessages, len(reloaded.Messages))
+	}
+	if len(reloaded.Messages) < 2 || !conversation.IsCompactBoundary(reloaded.Messages[0]) {
+		t.Fatalf("persisted context lost boundary/retained suffix: messages=%d", len(reloaded.Messages))
 	}
 }
 
@@ -315,6 +322,47 @@ func TestCompactNow_NoRunConfig(t *testing.T) {
 	// Load is the right contract surface to check.
 	if _, err := conversation.Load(convID, ""); err != nil {
 		t.Errorf("conversation should be re-loadable after CompactNow: %v", err)
+	}
+}
+
+func TestCompactNow_TinyNoOpLeavesFilesUntouched(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	b := NewApiBackend()
+	conv := conversation.CreateConversation("tiny-noop", "", "claude-sonnet-4-6")
+	conversation.AddUserMessage(conv, "small")
+	conversation.AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "answer"}}, types.LlmUsage{})
+	if err := conversation.Save(conv, ""); err != nil {
+		t.Fatal(err)
+	}
+	llmPath := filepath.Join(home, ".ion", "conversations", conv.ID+".llm.jsonl")
+	treePath := filepath.Join(home, ".ion", "conversations", conv.ID+".tree.jsonl")
+	llmBefore, _ := os.ReadFile(llmPath)
+	treeBefore, _ := os.ReadFile(treePath)
+	if err := b.CompactNow(context.Background(), CompactRequest{ConversationID: conv.ID, Model: conv.Model, RequestID: "tiny"}); err != nil {
+		t.Fatalf("CompactNow: %v", err)
+	}
+	llmAfter, _ := os.ReadFile(llmPath)
+	treeAfter, _ := os.ReadFile(treePath)
+	if string(llmAfter) != string(llmBefore) || string(treeAfter) != string(treeBefore) {
+		t.Fatal("no-op /compact changed conversation files")
+	}
+}
+
+func TestCompactNow_ExplicitConfigBeatsSharedCache(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	b := NewApiBackend()
+	b.lastRunConfig = &RunConfig{Hooks: RunHooks{OnSessionBeforeCompact: func(string) bool { return true }}}
+	conv := conversation.CreateConversation("explicit-cfg", "", "claude-sonnet-4-6")
+	conversation.AddUserMessage(conv, "small")
+	conversation.AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "answer"}}, types.LlmUsage{})
+	if err := conversation.Save(conv, ""); err != nil {
+		t.Fatal(err)
+	}
+	// Explicit target-session config has no cancelling hook. Reading the shared
+	// cache would return an error; honoring the request succeeds as a no-op.
+	if err := b.CompactNow(context.Background(), CompactRequest{ConversationID: conv.ID, Model: conv.Model, RequestID: "explicit", RunConfig: &RunConfig{}}); err != nil {
+		t.Fatalf("explicit config lost to shared cache: %v", err)
 	}
 }
 

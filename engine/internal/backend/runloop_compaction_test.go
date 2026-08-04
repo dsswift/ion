@@ -33,6 +33,13 @@ func testCompactParams() compactParams {
 	}
 }
 
+func mustPerformCompact(t *testing.T, b *ApiBackend, p performCompactParams) {
+	t.Helper()
+	if err := b.performCompact(p); err != nil {
+		t.Fatalf("performCompact: %v", err)
+	}
+}
+
 func TestCompactIfNeeded_CircuitBreaker(t *testing.T) {
 	b := NewApiBackend()
 	events := captureEvents(b, "circuit-test")
@@ -207,7 +214,7 @@ func TestPerformCompact_MicroOnlySignal(t *testing.T) {
 	// A high tokenLimit relative to post-micro usage guarantees step 2 is
 	// skipped. contextWindow is large; the trigger check is the caller's
 	// responsibility (performCompact always compacts), so we invoke it directly.
-	b.performCompact(performCompactParams{
+	mustPerformCompact(t, b, performCompactParams{
 		ctx:           context.Background(),
 		run:           run,
 		conv:          conv,
@@ -261,7 +268,7 @@ func TestPerformCompact_HardTruncateNotMicroOnly(t *testing.T) {
 	cp := testCompactParams()
 	cp.summaryEnabled = false
 
-	b.performCompact(performCompactParams{
+	mustPerformCompact(t, b, performCompactParams{
 		ctx:           context.Background(),
 		run:           run,
 		conv:          conv,
@@ -321,7 +328,7 @@ func TestPerformCompact_UserNoOpIsNonDestructive(t *testing.T) {
 	cp := testCompactParams()
 	cp.summaryEnabled = false // hermetic: no live provider call; no summary tier
 
-	b.performCompact(performCompactParams{
+	mustPerformCompact(t, b, performCompactParams{
 		ctx:           context.Background(),
 		run:           run,
 		conv:          conv,
@@ -400,7 +407,7 @@ func TestPerformCompact_UserRealCompactionStillRecords(t *testing.T) {
 	cp := testCompactParams()
 	cp.summaryEnabled = false // regex/fact tier still runs; keeps it hermetic
 
-	b.performCompact(performCompactParams{
+	mustPerformCompact(t, b, performCompactParams{
 		ctx:           context.Background(),
 		run:           run,
 		conv:          conv,
@@ -423,6 +430,63 @@ func TestPerformCompact_UserRealCompactionStillRecords(t *testing.T) {
 	slice := conversation.MessagesAfterLastCompactBoundary(conv)
 	if len(slice) == 0 || !conversation.IsCompactBoundary(slice[0]) {
 		t.Error("expected an injected boundary at the head of the kept slice after real compaction")
+	}
+}
+
+func TestPerformCompact_UserBelowHalfWindowStillDrops(t *testing.T) {
+	b := NewApiBackend()
+	events := captureEvents(b, "user-below-half")
+	conv := conversation.CreateConversation("user-below-half", "", "test")
+	body := strings.Repeat("x", 8000)
+	for i := 0; i < 40; i++ {
+		conversation.AddUserMessage(conv, body)
+		conversation.AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: body}}, types.LlmUsage{})
+	}
+	u := types.LlmUsage{InputTokens: 487_501}
+	conv.Messages[len(conv.Messages)-1].Usage = &u
+	before := len(conv.Messages)
+	cp := testCompactParams()
+	cp.summaryEnabled = false
+	summaryInput := -1
+	hooks := RunHooks{OnRequestCompactSummary: func(_ string, strategy string, messages []types.LlmMessage) (string, bool) {
+		if strategy != "user" {
+			t.Fatalf("strategy = %q, want user", strategy)
+		}
+		summaryInput = len(messages)
+		return "dropped-prefix summary", true
+	}}
+	if err := b.performCompact(performCompactParams{ctx: context.Background(), run: &activeRun{requestID: "user-below-half", conv: conv}, conv: conv, hooks: hooks, contextWindow: 1_000_000, tokenLimit: 967_000, cp: cp, trigger: "user"}); err != nil {
+		t.Fatalf("performCompact: %v", err)
+	}
+	done := lastCompactingDone(*events)
+	if done == nil || done.MessagesAfter >= before {
+		t.Fatalf("manual compaction did not reduce source messages: before=%d event=%+v", before, done)
+	}
+	if summaryInput != before-done.MessagesAfter {
+		t.Fatalf("summary input count = %d, want dropped prefix %d", summaryInput, before-done.MessagesAfter)
+	}
+}
+
+func TestPerformCompact_UserNoDropSkipsSummaryHook(t *testing.T) {
+	b := NewApiBackend()
+	_ = captureEvents(b, "user-no-drop")
+	conv := conversation.CreateConversation("user-no-drop", "", "test")
+	conversation.AddUserMessage(conv, "only turn")
+	conversation.AddAssistantMessage(conv, []types.LlmContentBlock{{Type: "text", Text: "answer"}}, types.LlmUsage{})
+	entriesBefore := len(conv.Entries)
+	hookCalls, compactCalls, resetCalls := 0, 0, 0
+	cp := testCompactParams()
+	cp.summaryEnabled = false
+	cp.resetMemoryTracking = func(int) { resetCalls++ }
+	hooks := RunHooks{OnRequestCompactSummary: func(string, string, []types.LlmMessage) (string, bool) { hookCalls++; return "summary", true }, OnSessionCompact: func(string, interface{}) { compactCalls++ }}
+	if err := b.performCompact(performCompactParams{ctx: context.Background(), run: &activeRun{requestID: "user-no-drop", conv: conv}, conv: conv, hooks: hooks, contextWindow: 1_000_000, tokenLimit: 967_000, cp: cp, trigger: "user"}); err != nil {
+		t.Fatalf("performCompact: %v", err)
+	}
+	if hookCalls != 0 || compactCalls != 0 || resetCalls != 0 {
+		t.Fatalf("no-op side effects: summary=%d compact=%d reset=%d", hookCalls, compactCalls, resetCalls)
+	}
+	if len(conv.Entries) != entriesBefore {
+		t.Fatalf("no-op appended tree entry: %d -> %d", entriesBefore, len(conv.Entries))
 	}
 }
 
@@ -453,6 +517,12 @@ func TestCompactReactive_HookReceivesFacts(t *testing.T) {
 		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: "filler q"})
 		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: "filler a"})
 	}
+
+	// A reactive prompt_too_long run necessarily reports pressure above the
+	// target. Prime provider usage so this fixture models that premise instead
+	// of a tiny under-budget conversation (which correctly no-ops).
+	u := types.LlmUsage{InputTokens: 180_000}
+	conv.Messages[len(conv.Messages)-1].Usage = &u
 
 	run := &activeRun{requestID: "reactive-facts", conv: conv}
 	ctx := context.Background()
@@ -558,6 +628,9 @@ func TestCompactReactive_HookEmptyFactsWhenNoPatterns(t *testing.T) {
 		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: "q"})
 		conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: "a"})
 	}
+
+	u := types.LlmUsage{InputTokens: 180_000}
+	conv.Messages[len(conv.Messages)-1].Usage = &u
 
 	run := &activeRun{requestID: "reactive-no-facts", conv: conv}
 	ctx := context.Background()

@@ -334,8 +334,32 @@ func ListModels() []types.ModelEntry {
 						dm.CostPerImage = catalog.CostPerImage
 					}
 				}
-				entries = append(entries, dm)
-				seen[dm.ID] = true
+				entry := dm
+				// Identity collision: this provider's discovered bare id is owned
+				// by a DIFFERENT provider in the routing registry (dual-provider
+				// coexistence in model_discovery.storeResult). Advertising the
+				// bare id here would let a consumer pick a model displayed under
+				// this provider whose id routes elsewhere — the exact misroute
+				// that sent a dci-marketing Sonnet pick to the anthropic CLI.
+				// Emit the provider-qualified alias instead, which storeResult
+				// registered for dialect-carrying gateway entries and which
+				// routing resolves to THIS provider.
+				if owner, owned := modelRegistry[dm.ID]; owned && owner.ProviderID != pid {
+					qualified := pid + "/" + dm.ID
+					if _, hasQualified := modelRegistry[qualified]; hasQualified {
+						entry.ID = qualified
+					} else {
+						// No qualified registration exists (non-dialect payload):
+						// there is no id that routes to this provider for this
+						// model. Emitting the bare id would be a lie; surface the
+						// gap loudly instead of silently misrouting picks.
+						utils.LogWithFields(utils.LevelWarn, "Providers", "list_models: collided model has no provider-qualified registration; emitting bare id that routes to another provider", map[string]any{
+							"provider": pid, "model": dm.ID, "routes_to": owner.ProviderID,
+						})
+					}
+				}
+				entries = append(entries, entry)
+				seen[entry.ID] = true
 			}
 		} else {
 			// Fallback to hardcoded catalog

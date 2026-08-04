@@ -15,6 +15,21 @@
  * The height math had the same shape: `(expandedUI ? 520 : 400) + 82` was
  * duplicated verbatim in `GitPanel` and `FileExplorer`, with a comment in the
  * second asking the reader to keep it matching the first.
+ *
+ * ── Why there is no `statusDrawerOffset` ────────────────────────────────────
+ * There used to be one: the Status Drawer is anchored to the same right edge as
+ * the git panel, so when both were open the drawer had to be pushed clear of the
+ * panel. That offset was hand-typed as `296` (`8 + 280 + 8`) derived from the
+ * WRAPPER's width while the panel itself said 320 -- so the drawer, one z-index
+ * above, overlapped the panel by 32px. It was then rewritten to compute from
+ * `GIT_PANEL_WIDTH`, which made the disagreement unrepresentable.
+ *
+ * The offset is gone entirely now, because the state it existed for is gone: at
+ * most one right-side panel can be open (see `toggleGitPanel` /
+ * `toggleStatusDrawer` / `openDispatchPreview` in `stores/slices/expand-slice.ts`),
+ * so the drawer always sits at `PANEL_GAP` and has nothing to clear. The history
+ * is recorded here because the lesson -- a width restated at a second site
+ * drifts from the first -- outlives the function that taught it.
  */
 
 /** Tab strip + border + gap + input pill: the chrome above and below a panel. */
@@ -38,6 +53,19 @@ export const PANEL_GAP = 8
  * space to the gutter. The extra 120px goes entirely to the name.
  */
 export const GIT_PANEL_WIDTH = 440
+
+/**
+ * File explorer width.
+ *
+ * 264 rather than 240: the operator asked for roughly 10% more room for paths
+ * that ellipsise in a deep tree.
+ *
+ * Unlike the git panel this constant is read at exactly ONE site -- the wrapper
+ * in `App.tsx` that positions the panel -- because `FileExplorer` itself renders
+ * at `width: '100%'` and inherits whatever the wrapper gives it. That is also
+ * why the ATV shell can mount the same component at its own dock width.
+ */
+export const FILE_EXPLORER_WIDTH = 264
 
 /** The panel height with no operator override. Also the FLOOR for a drag. */
 export function defaultPanelHeight(expandedUI: boolean): number {
@@ -71,15 +99,4 @@ export function resolvePanelHeight(
 ): number {
   const ceiling = maxPanelHeight(winHeight, defaultHeight)
   return Math.min(ceiling, Math.max(defaultHeight, override ?? defaultHeight))
-}
-
-/**
- * How far the Status Drawer must sit from the content column to clear the git
- * panel.
- *
- * Computed rather than hand-typed: this is the number that drifted from the
- * panel width and produced the overlap.
- */
-export function statusDrawerOffset(gitPanelOpen: boolean): number {
-  return gitPanelOpen ? PANEL_GAP + GIT_PANEL_WIDTH + PANEL_GAP : PANEL_GAP
 }

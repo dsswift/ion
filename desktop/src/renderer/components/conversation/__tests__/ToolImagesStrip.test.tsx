@@ -1,16 +1,23 @@
 // @vitest-environment jsdom
 /**
- * ToolImagesStrip — regression test for the #224 render-path fix.
+ * ToolImagesStrip — regression test for the #224 render-path fix, plus the
+ * one-gallery-per-group contract.
  *
- * The bug: tool-generated images attach to `role: 'tool'` messages, which
+ * The #224 bug: tool-generated images attach to `role: 'tool'` messages, which
  * render only inside ToolGroup / AgentTurnGroup — both collapse their tool
  * panel by default, so ToolRow (which used to render the images) never mounted
  * and the images never painted. The fix hoists tool images to this always-
  * rendered strip, decoupled from the collapse state.
  *
- * Revert contract: rendering images from ToolRow again (behind the collapse)
- * would make "renders an <img> per tool image regardless of collapse" fail,
- * because the strip is what mounts them unconditionally.
+ * The follow-on bug: the strip rendered one image list PER tool row, so a group
+ * of 21 image-returning tools produced 21 stacked lists and thousands of pixels
+ * of transcript. Every row's images now flatten into ONE ImageGallery.
+ *
+ * Revert contract:
+ *   - Rendering images from ToolRow again (behind the collapse) makes "renders
+ *     an <img> per tool image regardless of collapse" fail.
+ *   - Going back to per-row galleries makes "flattens every row into one
+ *     gallery" fail (it would find one rail per row).
  */
 import React from 'react'
 import { act } from 'react'
@@ -25,6 +32,10 @@ vi.mock('../../../theme', () => ({
 }))
 vi.mock('../../../rendererLogger', () => ({
   rInfo: vi.fn(),
+  rError: vi.fn(),
+}))
+vi.mock('../../git/Tooltip', () => ({
+  Tooltip: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
 }))
 
 const readImageDataUrl = vi.fn(async (path: string) => ({ dataUrl: `data:image/png;base64,STUB_${path.split('/').pop()}` }))
@@ -65,6 +76,22 @@ describe('ToolImagesStrip', () => {
     const tools = [toolMsg('t1', ['/c/a.png', '/c/b.png']), toolMsg('t2', ['/c/c.png'])]
     const { container, unmount } = await render(tools)
     expect(container.querySelectorAll('img')).toHaveLength(3)
+    unmount()
+  })
+
+  it('flattens every row into one gallery, not one per row', async () => {
+    const tools = [toolMsg('t1', ['/c/a.png', '/c/b.png']), toolMsg('t2', ['/c/c.png'])]
+    const { container, unmount } = await render(tools)
+    expect(container.querySelectorAll('[data-testid="image-gallery-rail"]')).toHaveLength(1)
+    unmount()
+  })
+
+  it('keeps duplicate paths from different tools as distinct entries', async () => {
+    // Two tools returning the same path is two deliverables, not one. Keys are
+    // scoped by tool id so React does not collapse them into a single tile.
+    const tools = [toolMsg('t1', ['/c/same.png']), toolMsg('t2', ['/c/same.png'])]
+    const { container, unmount } = await render(tools)
+    expect(container.querySelectorAll('img')).toHaveLength(2)
     unmount()
   })
 

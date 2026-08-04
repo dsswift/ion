@@ -128,3 +128,38 @@ describe('resolveBindings — conflict handling', () => {
     expect(bindings.has('tab.next')).toBe(false)
   })
 })
+
+// ── panel.statusDrawer (Cmd+4) ──────────────────────────────────────────────
+//
+// The drawer joins the numbered panel row: Cmd+1 explorer, Cmd+2 terminal,
+// Cmd+3 git, Cmd+4 drawer. Cmd+4 was genuinely free before this entry -- the
+// no-conflict assertion below is what proves it, since resolveBindings would
+// have dropped the loser and logged a warning had anything else claimed it.
+
+describe('panel.statusDrawer', () => {
+  it('is in the catalog, in the Panels group, bound to Mod+4', () => {
+    const entry = SHORTCUT_CATALOG.find((e) => e.id === 'panel.statusDrawer')
+    expect(entry).toBeDefined()
+    expect(entry!.defaultBinding).toBe('Mod+4')
+    expect(entry!.group).toBe('Panels')
+  })
+
+  it('resolves Mod+4 with no conflict, so nothing else already owned that chord', () => {
+    const bindings = resolveBindings({})
+    expect(bindings.get('panel.statusDrawer')).toMatchObject({ mod: true, key: '4' })
+    expect(rWarnMock).not.toHaveBeenCalled()
+  })
+
+  it('sits beside the other numbered panel commands', () => {
+    // Cmd+1/2/3 keep their bindings: the new entry displaced nothing.
+    const bindings = resolveBindings({})
+    expect(bindings.get('panel.explorer')).toMatchObject({ mod: true, key: '1' })
+    expect(bindings.get('panel.terminal')).toMatchObject({ mod: true, key: '2' })
+    expect(bindings.get('panel.git')).toMatchObject({ mod: true, key: '3' })
+  })
+
+  it('is rebindable like any other command', () => {
+    const bindings = resolveBindings({ 'panel.statusDrawer': 'Mod+9' })
+    expect(bindings.get('panel.statusDrawer')).toMatchObject({ mod: true, key: '9' })
+  })
+})

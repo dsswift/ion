@@ -405,6 +405,55 @@ func (h *HybridBackend) SteerWithKind(requestID, message, injectionKind string) 
 	return api.SteerWithKind(requestID, message, injectionKind)
 }
 
+// SignalSuspend satisfies the `suspendableBackend` interface the extcontext
+// package asserts on a dispatched child's backend. It parks an in-flight run
+// without cancelling it, so a child's ctx.suspend() reaches the ApiBackend
+// that actually serves the run.
+//
+// Routing is by recorded requestID, exactly as Cancel/WriteToStdin/Steer do:
+// the run is in the routing table because StartRunWithConfig called recordRun.
+// A non-API-routed run (a delegated CLI, which has no suspend primitive) or an
+// unknown requestID returns false and logs, so the caller sees a real verdict
+// rather than a silent drop.
+//
+// Not part of the RunBackend interface; it is additive. Without this forwarder
+// the extcontext assertion fails for every hybrid dispatch and the child's
+// suspend closure is left nil — which silently falls back to the depth-0
+// root-park path and acts on the wrong session.
+func (h *HybridBackend) SignalSuspend(requestID string, awaitingDispatchIDs []string) bool {
+	inner, kind := h.lookup(requestID)
+	api, ok := inner.(*ApiBackend)
+	if !ok {
+		utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "SignalSuspend: not API-routed, cannot suspend", map[string]any{
+			"request_id": requestID,
+			"kind":       kind,
+		})
+		return false
+	}
+	return api.SignalSuspend(requestID, awaitingDispatchIDs)
+}
+
+// SignalParkForBackgroundTasks satisfies the `backgroundTaskParkable`
+// interface the session package asserts in ParkMainLoop. It parks the run on
+// its outstanding background bash commands, ending the turn without completing
+// it, so a depth-0 ctx.suspend() reaches the serving ApiBackend.
+//
+// Same routing and failure semantics as SignalSuspend above: recorded
+// requestID, API-routed only, log-and-false otherwise. Also additive and off
+// the RunBackend interface.
+func (h *HybridBackend) SignalParkForBackgroundTasks(requestID string, taskIDs []string) bool {
+	inner, kind := h.lookup(requestID)
+	api, ok := inner.(*ApiBackend)
+	if !ok {
+		utils.LogWithFields(utils.LevelInfo, "backend.hybrid", "SignalParkForBackgroundTasks: not API-routed, cannot park", map[string]any{
+			"request_id": requestID,
+			"kind":       kind,
+		})
+		return false
+	}
+	return api.SignalParkForBackgroundTasks(requestID, taskIDs)
+}
+
 // FlushConversations forwards to every constructed inner backend. ApiBackend
 // persists in-flight conversations; subscription inners are no-ops (their
 // subprocess persists its own).

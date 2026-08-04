@@ -360,6 +360,7 @@ func (m *Manager) SendPrompt(key, text string, overrides *PromptOverrides) (retE
 	// the runloop, so they leave this empty. Reset both halves at dispatch so
 	// a prior turn's text can never leak into this one.
 	s.pendingCliAssistantText = ""
+	s.cliRunFailedTerminal = false
 	if caps.ContextModel == backend.ContextModelNativeSession {
 		s.pendingCliUserTurn = text
 	} else {

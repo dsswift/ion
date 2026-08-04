@@ -28,6 +28,7 @@ vi.mock('../../preferences', () => ({
       keepTerminalOnCollapse: false,
       keepExplorerOnCollapse: false,
       keepGitPanelOnCollapse: false,
+      keepStatusDrawerOnCollapse: false,
     }),
   },
 }))

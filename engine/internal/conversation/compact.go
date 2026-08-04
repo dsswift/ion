@@ -176,15 +176,29 @@ func AutoCompactTokenLimit(window, maxOutputTokens int) int {
 // assistant message carrying API-reported Usage and returns its index, or -1
 // when no such message exists. Callers must hold conv.mu.
 //
+// A non-nil but ALL-ZERO usage does not qualify. The zero struct is the
+// "no provider accounting" shape: delegated-CLI turns persisted into Ion's
+// transcript and failed runs historically annotated LlmUsage{} on the
+// assistant message. Treating that as the authoritative baseline collapsed a
+// ~292K-token conversation to a 71-token occupancy reading (pct=0), silently
+// disarming auto-compaction. Real provider responses always report non-zero
+// tokens, so skipping the zero shape only ever discards fabricated data and
+// lets GetContextUsage fall through to honest estimation.
+//
 // Extracted so GetContextUsage (which needs the index, to estimate messages
 // appended after it) and LastAssistantUsage (which needs only the usage) share
 // one scan. Duplicating the loop is how the compaction numerator and the
 // breakdown reconciliation baseline would silently drift apart.
 func lastAssistantUsageLocked(conv *Conversation) int {
 	for i := len(conv.Messages) - 1; i >= 0; i-- {
-		if conv.Messages[i].Role == "assistant" && conv.Messages[i].Usage != nil {
-			return i
+		if conv.Messages[i].Role != "assistant" || conv.Messages[i].Usage == nil {
+			continue
 		}
+		u := conv.Messages[i].Usage
+		if u.InputTokens+u.CacheReadInputTokens+u.CacheCreationInputTokens+u.OutputTokens == 0 {
+			continue
+		}
+		return i
 	}
 	return -1
 }
@@ -434,13 +448,37 @@ const DefaultEstimationPadding = 1.33
 // is a safety floor — at least that many user turns are preserved even if
 // they exceed the budget. padding is applied to each message's token
 // estimate (e.g. 1.33 for 33% conservative buffer).
-func CompactToTokenBudget(conv *Conversation, targetTokens, minKeepTurns int, padding float64) {
-	utils.LogWithFields(utils.LevelDebug, "conversation.compact", "compact to token budget entry", map[string]any{
-		"turn": targetTokens, "count": minKeepTurns, "max": len(conv.Messages),
-	})
-	if targetTokens <= 0 {
-		utils.LogWithFields(utils.LevelDebug, "conversation.compact", "compact to token budget target zero no-op", map[string]any{"turn": targetTokens})
-		return
+// TokenBudgetCut is a non-mutating truncation plan. CutIndex is the first
+// message retained; Dropped is the source-message count removed. EstimatedTokens
+// is the padded estimate of the complete input slice, computed with the exact
+// estimator the cut decision used.
+type TokenBudgetCut struct {
+	CutIndex        int
+	Dropped         int
+	EstimatedTokens int
+}
+
+// EstimateTokenBudgetInput returns the padded message estimate used by the cut
+// planner. Forced compaction derives its target from this exact token basis so
+// the target is always reachable by the message trimmer.
+func EstimateTokenBudgetInput(messages []types.LlmMessage, padding float64) int {
+	if padding <= 0 {
+		padding = DefaultEstimationPadding
+	}
+	total := 0
+	for i := range messages {
+		total += int(float64(EstimateTokens(messages[i].Content)) * padding)
+	}
+	return total
+}
+
+// PlanTokenBudgetCut computes the same turn-safe cut CompactToTokenBudget
+// applies, without mutating messages. Planning first lets callers avoid summary
+// work when no source message can be removed and summarize only the dropped
+// prefix when a cut exists.
+func PlanTokenBudgetCut(messages []types.LlmMessage, targetTokens, minKeepTurns int, padding float64) TokenBudgetCut {
+	if targetTokens <= 0 || len(messages) == 0 {
+		return TokenBudgetCut{}
 	}
 	if minKeepTurns <= 0 {
 		minKeepTurns = DefaultMinKeepTurns
@@ -449,48 +487,52 @@ func CompactToTokenBudget(conv *Conversation, targetTokens, minKeepTurns int, pa
 		padding = DefaultEstimationPadding
 	}
 
-	// Walk backward, accumulating token estimates and counting user turns.
+	total := EstimateTokenBudgetInput(messages, padding)
+	if total <= targetTokens {
+		return TokenBudgetCut{EstimatedTokens: total}
+	}
+
 	accumulated := 0
 	userTurns := 0
-	cutIdx := 0 // everything before cutIdx is dropped
-
-	for i := len(conv.Messages) - 1; i >= 0; i-- {
-		est := int(float64(EstimateTokens(conv.Messages[i].Content)) * padding)
-		accumulated += est
-
-		if conv.Messages[i].Role == "user" {
+	cutIdx := 0
+	for i := len(messages) - 1; i >= 0; i-- {
+		accumulated += int(float64(EstimateTokens(messages[i].Content)) * padding)
+		if messages[i].Role == "user" {
 			userTurns++
 		}
-
-		// Once we've exceeded the budget and met the minimum turn floor,
-		// find the cut point. We cut at the current position so everything
-		// from i onward is kept.
 		if accumulated > targetTokens && userTurns >= minKeepTurns {
 			cutIdx = i
-			utils.LogWithFields(utils.LevelDebug, "conversation.compact", "compact to token budget budget exceeded", map[string]any{
-				"count": i, "turn": accumulated, "max": userTurns,
-			})
 			break
 		}
 	}
-
-	// Adjust cut point to a turn boundary: advance forward until we hit a
-	// "user" message so we don't orphan an assistant reply or tool_result.
-	prevCutIdx := cutIdx
-	for cutIdx < len(conv.Messages) && conv.Messages[cutIdx].Role != "user" {
+	// Never orphan an assistant/tool-result suffix. The retained slice begins
+	// on the next user boundary.
+	for cutIdx < len(messages) && messages[cutIdx].Role != "user" {
 		cutIdx++
 	}
-	if cutIdx != prevCutIdx {
-		utils.LogWithFields(utils.LevelDebug, "conversation.compact", "compact to token budget turn boundary adjustment advanced cut index", map[string]any{"count": prevCutIdx, "max": cutIdx})
+	if cutIdx <= 0 || cutIdx >= len(messages) {
+		return TokenBudgetCut{EstimatedTokens: total}
 	}
+	return TokenBudgetCut{CutIndex: cutIdx, Dropped: cutIdx, EstimatedTokens: total}
+}
 
-	if cutIdx > 0 && cutIdx < len(conv.Messages) {
-		msgsBefore := len(conv.Messages)
-		conv.Messages = conv.Messages[cutIdx:]
-		utils.LogWithFields(utils.LevelDebug, "conversation.compact", "compact to token budget truncated", map[string]any{"count": msgsBefore, "max": len(conv.Messages)})
-	} else {
-		utils.LogWithFields(utils.LevelDebug, "conversation.compact", "compact to token budget no-op cut index", map[string]any{"count": cutIdx, "max": len(conv.Messages)})
+// CompactToTokenBudget applies PlanTokenBudgetCut. Existing callers retain the
+// mutation-only API while compaction orchestration can plan before paying for a
+// summary.
+func CompactToTokenBudget(conv *Conversation, targetTokens, minKeepTurns int, padding float64) {
+	conv.lock()
+	defer conv.unlock()
+	cut := PlanTokenBudgetCut(conv.Messages, targetTokens, minKeepTurns, padding)
+	utils.LogWithFields(utils.LevelDebug, "conversation.compact", "compact to token budget planned", map[string]any{
+		"target_tokens":    targetTokens,
+		"estimated_tokens": cut.EstimatedTokens,
+		"cut_index":        cut.CutIndex,
+		"dropped_messages": cut.Dropped,
+	})
+	if cut.Dropped == 0 {
+		return
 	}
+	conv.Messages = conv.Messages[cut.CutIndex:]
 }
 
 // MicroCompact progressively shrinks older messages to reduce context size.

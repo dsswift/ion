@@ -1,5 +1,6 @@
 import type { Message } from '../../../shared/types-session'
 import { stripAttachmentMarkers } from './message-text'
+import { resolveSlashPill } from './slash-pill'
 
 /**
  * Pure geometry + derivation helpers for the conversation timeline minimap.
@@ -38,6 +39,7 @@ export interface TimelineMinimapItem {
   readonly id: string
   readonly userText: string
   readonly assistantText: string | null
+  readonly isSlashCommand: boolean
 }
 
 /**
@@ -119,6 +121,7 @@ export function deriveTimelineMinimapItems(
       id: message.id,
       userText,
       assistantText: compactMinimapPreview(resolveFinalAssistantTextForTurn(messages, index)),
+      isSlashCommand: resolveSlashPill(message, message.content || '') !== null,
     })
   }
   return items

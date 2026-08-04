@@ -1,6 +1,7 @@
 package conversation
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -172,6 +173,38 @@ func TestCompactToTokenBudget_DefaultParams(t *testing.T) {
 	}
 	if userCount < DefaultMinKeepTurns {
 		t.Errorf("default minKeepTurns should apply: got %d user turns, want >= %d", userCount, DefaultMinKeepTurns)
+	}
+}
+
+func TestPlanTokenBudgetCut_UserRelativeTargetDropsHalf(t *testing.T) {
+	var messages []types.LlmMessage
+	for i := 0; i < 12; i++ {
+		messages = append(messages,
+			types.LlmMessage{Role: "user", Content: strings.Repeat("u", 4000)},
+			types.LlmMessage{Role: "assistant", Content: strings.Repeat("a", 4000)},
+		)
+	}
+	estimated := EstimateTokenBudgetInput(messages, 1)
+	cut := PlanTokenBudgetCut(messages, estimated/2, 2, 1)
+	if cut.Dropped == 0 {
+		t.Fatal("50% of truncatable message estimate planned no cut")
+	}
+	if messages[cut.CutIndex].Role != "user" {
+		t.Fatalf("cut starts at %q, want user boundary", messages[cut.CutIndex].Role)
+	}
+	copyMessages := append([]types.LlmMessage(nil), messages...)
+	conv := &Conversation{Messages: copyMessages}
+	CompactToTokenBudget(conv, estimated/2, 2, 1)
+	if !reflect.DeepEqual(conv.Messages, messages[cut.CutIndex:]) {
+		t.Fatal("planner and mutator selected different suffixes")
+	}
+}
+
+func TestPlanTokenBudgetCut_UnderBudgetIsNoOp(t *testing.T) {
+	messages := []types.LlmMessage{{Role: "user", Content: "small"}, {Role: "assistant", Content: "answer"}}
+	cut := PlanTokenBudgetCut(messages, 100_000, 2, 1)
+	if cut.Dropped != 0 || cut.CutIndex != 0 {
+		t.Fatalf("under-budget cut = %+v, want no-op", cut)
 	}
 }
 

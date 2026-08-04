@@ -52,6 +52,10 @@ type LlmStreamOptions struct {
 type LlmMessage struct {
 	Role    string `json:"role"`
 	Content any    `json:"content"` // string or []LlmContentBlock
+	// EntryID links this in-memory LLM message to its persisted SessionEntry.
+	// Internal-only: providers, disk, SDKs, and wire consumers never see it.
+	// Empty means the message is transient and has no tree entry.
+	EntryID string `json:"-"`
 	// Usage carries the API-reported token counts from the response that produced
 	// this message. Set only on assistant messages; nil on all other roles.
 	// Tagged json:"-" so it is excluded from JSON serialization (providers, disk,

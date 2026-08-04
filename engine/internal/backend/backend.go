@@ -271,7 +271,7 @@ type RunHooks struct {
 	// invoked during proactive / reactive compaction in place of the
 	// engine's built-in regex fact extractor. The handler receives the
 	// compaction strategy ("auto" for proactive token-limit driven,
-	// "reactive" for prompt_too_long retry) along with the pre-compaction
+	// "reactive" for prompt_too_long retry, or "user" for explicit /compact) along with the pre-compaction
 	// message slice (already filtered through
 	// MessagesAfterLastCompactBoundary so prior summaries are not in
 	// scope) and returns (summary, ok). When ok is true, summary is
@@ -316,9 +316,9 @@ type RunHooks struct {
 type RunConfig struct {
 	Hooks RunHooks
 
-	PermEngine    *permissions.Engine
-	SandboxCfg    *sandbox.Config
-	SecurityCfg   *types.SecurityConfig
+	PermEngine  *permissions.Engine
+	SandboxCfg  *sandbox.Config
+	SecurityCfg *types.SecurityConfig
 	// WorkspaceChecker enforces the engine's baseline workspace containment
 	// (worktree isolation, bench refusals — see internal/workspaces). Nil
 	// means disabled; the session layer threads it when
@@ -327,7 +327,7 @@ type RunConfig struct {
 	// execution, so the refusal is deterministic regardless of which
 	// extensions are loaded.
 	WorkspaceChecker *workspaces.Checker
-	ExternalTools []types.LlmToolDef
+	ExternalTools    []types.LlmToolDef
 	// McpToolRouter routes MCP and extension-registered tool calls. The ctx is
 	// the per-tool-call context: it carries the DeadlineSuspender (see
 	// types.WithDeadlineSuspender) so a tool that synchronously blocks on a

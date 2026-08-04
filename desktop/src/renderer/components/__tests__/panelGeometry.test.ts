@@ -1,20 +1,24 @@
 /**
- * panelGeometry — the derived height clamp and the single-source width.
+ * panelGeometry — the derived height clamp and the single-source widths.
  *
  * ── The width defect these pin ──────────────────────────────────────────────
  * The git panel's width was declared three times and the three disagreed: the
  * panel said 320, its positioning wrapper said 280, and the Status Drawer's
  * offset hand-typed 296 (`8 + 280 + 8`) computed from the WRAPPER. So the panel
  * overflowed its wrapper by 40px and the drawer -- one z-index above it --
- * overlapped the panel by 32px. `statusDrawerOffset` derives the offset from the
- * width, which makes that disagreement unrepresentable rather than merely
- * corrected.
+ * overlapped the panel by 32px.
+ *
+ * `statusDrawerOffset` is gone: at most one right-side panel is open now, so the
+ * drawer never has a git panel to clear. The width-restated-at-a-second-site
+ * defect is what the source scans below guard against instead.
  */
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import {
   PANEL_CHROME, PANEL_BODY_DEFAULT, PANEL_BODY_EXPANDED,
-  PANEL_BOTTOM_OFFSET, PANEL_TOP_RESERVE, PANEL_GAP, GIT_PANEL_WIDTH,
-  defaultPanelHeight, maxPanelHeight, resolvePanelHeight, statusDrawerOffset,
+  PANEL_BOTTOM_OFFSET, PANEL_TOP_RESERVE, GIT_PANEL_WIDTH, FILE_EXPLORER_WIDTH,
+  defaultPanelHeight, maxPanelHeight, resolvePanelHeight,
 } from '../panelGeometry'
 
 const TALL_WINDOW = 1400
@@ -70,20 +74,43 @@ describe('resolvePanelHeight — the clamp is the whole mechanism', () => {
   })
 })
 
-describe('statusDrawerOffset — the overlap fix', () => {
-  it('clears the git panel by a gap on each side when it is open', () => {
-    // This is the assertion that fails if either value is hand-edited out of
-    // agreement again.
-    expect(statusDrawerOffset(true)).toBe(GIT_PANEL_WIDTH + 2 * PANEL_GAP)
+describe('panel widths — one declaration each', () => {
+  const appSrc = readFileSync(join(__dirname, '../../App.tsx'), 'utf-8')
+  const explorerSrc = readFileSync(join(__dirname, '../FileExplorer.tsx'), 'utf-8')
+
+  it('the file explorer is 264, a ~10% widening of the previous 240', () => {
+    expect(FILE_EXPLORER_WIDTH).toBe(264)
   })
 
-  it('is just the gap when the panel is closed', () => {
-    expect(statusDrawerOffset(false)).toBe(PANEL_GAP)
+  it('App.tsx positions both panels from the constants, never a literal', () => {
+    expect(appSrc).toContain('FILE_EXPLORER_WIDTH')
+    expect(appSrc).toContain('GIT_PANEL_WIDTH')
+    // The explorer wrapper's old literal. Re-typing it is how a width restated
+    // at a second site drifts from the constant.
+    expect(appSrc).not.toContain('width: 240')
   })
 
-  it('leaves no overlap: the drawer starts past the panel edge', () => {
-    // The panel occupies [PANEL_GAP, PANEL_GAP + GIT_PANEL_WIDTH).
-    const panelRightEdge = PANEL_GAP + GIT_PANEL_WIDTH
-    expect(statusDrawerOffset(true)).toBeGreaterThanOrEqual(panelRightEdge)
+  it('FileExplorer fills its wrapper rather than restating a width', () => {
+    // This is why FILE_EXPLORER_WIDTH has exactly one reader, and why the ATV
+    // dock can mount the same component at a different width.
+    expect(explorerSrc).toContain("width: '100%'")
+  })
+
+  it('the git panel keeps its own width unchanged at 440', () => {
+    // Pinned so a future explorer tweak doesn't drag this one along with it.
+    expect(GIT_PANEL_WIDTH).toBe(440)
+  })
+})
+
+describe('statusDrawerOffset is retired, not merely unused', () => {
+  it('is no longer exported', async () => {
+    const mod = await import('../panelGeometry')
+    expect('statusDrawerOffset' in mod).toBe(false)
+  })
+
+  it('the drawer wrapper sits at the plain gap', () => {
+    const appSrc = readFileSync(join(__dirname, '../../App.tsx'), 'utf-8')
+    expect(appSrc).not.toContain('statusDrawerOffset')
+    expect(appSrc).toContain('marginLeft: PANEL_GAP')
   })
 })

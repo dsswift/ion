@@ -60,6 +60,7 @@ export const SHORTCUT_CATALOG: ShortcutEntry[] = [
   { id: 'panel.explorer',    group: 'Panels',       description: 'Toggle file explorer',        defaultBinding: 'Mod+1' },
   { id: 'panel.terminal',    group: 'Panels',       description: 'Toggle terminal',             defaultBinding: 'Mod+2' },
   { id: 'panel.git',         group: 'Panels',       description: 'Toggle git panel',            defaultBinding: 'Mod+3' },
+  { id: 'panel.statusDrawer', group: 'Panels',      description: 'Toggle status drawer',        defaultBinding: 'Mod+4' },
   { id: 'panel.editor',      group: 'Panels',       description: 'Toggle file editor',          defaultBinding: 'Mod+e' },
   { id: 'terminal.toggle',   group: 'Panels',       description: 'Toggle terminal (Ctrl)',       defaultBinding: 'Ctrl+`' },
   { id: 'terminal.addShell', group: 'Panels',       description: 'Add terminal shell instance', defaultBinding: 'Ctrl+Shift+`' },

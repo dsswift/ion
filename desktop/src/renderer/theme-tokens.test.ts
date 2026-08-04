@@ -40,6 +40,23 @@ describe('custom theme registry', () => {
     expect(Object.keys(def.colors).sort()).toEqual(Object.keys(darkColors).sort())
   })
 
+  it('inherits and allows overrides for slash-command timeline tokens', () => {
+    const inherited = resolveCustomThemeDefinition(acmePayload())
+    expect(inherited.colors.timelineSlashCommand).toBe(darkColors.timelineSlashCommand)
+    expect(inherited.colors.timelineSlashCommandActive).toBe(darkColors.timelineSlashCommandActive)
+
+    const overridden = resolveCustomThemeDefinition(
+      acmePayload({
+        tokens: {
+          timelineSlashCommand: '#775599',
+          timelineSlashCommandActive: '#BB88EE',
+        },
+      }),
+    )
+    expect(overridden.colors.timelineSlashCommand).toBe('#775599')
+    expect(overridden.colors.timelineSlashCommandActive).toBe('#BB88EE')
+  })
+
   it('ignores unknown token keys in the payload', () => {
     const def = resolveCustomThemeDefinition(
       acmePayload({ tokens: { accent: '#FF6600', notAKey: '#000' } }),

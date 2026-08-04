@@ -1,0 +1,4 @@
+{
+  "_comment": "Cross-platform image-gallery parity fixture. Pins the collapsed-rail tile cap that ImageGallery (desktop) and MessageAttachmentGallery (iOS) must fold a many-image turn at. Both clients derive the fold point from this single number so the same conversation reads identically on either screen. Asserted by desktop/src/renderer/components/conversation/__tests__/ImageGallery.test.tsx and ios/IonRemoteTests/MessageAttachmentGalleryTests.swift \u2014 drift on either side fails that side's build.",
+  "railCap": 12
+}

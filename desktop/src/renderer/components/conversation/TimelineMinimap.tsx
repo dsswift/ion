@@ -275,10 +275,15 @@ export function TimelineMinimap({ items, scrollRef }: TimelineMinimapProps) {
             const activeDistance =
               resolvedActiveIndex === null ? null : Math.abs(index - resolvedActiveIndex)
             const inView = inViewIds.has(item.id)
-            // Every chapter always shows a tick: in-view chapters bright,
-            // hovered tick emphasized, everything else dimmed — never hidden.
-            const backgroundColor =
-              activeDistance === 0
+            // Every chapter always shows a tick. Slash commands retain purple
+            // identity at rest and brighten when active or visible; ordinary
+            // chapters keep the existing gray hierarchy.
+            const emphasized = activeDistance === 0 || inView
+            const backgroundColor = item.isSlashCommand
+              ? emphasized
+                ? colors.timelineSlashCommandActive
+                : colors.timelineSlashCommand
+              : activeDistance === 0
                 ? colors.textSecondary
                 : inView
                   ? colors.textPrimary
@@ -288,6 +293,8 @@ export function TimelineMinimap({ items, scrollRef }: TimelineMinimapProps) {
                 aria-hidden="true"
                 data-minimap-strip
                 data-in-view={inView ? 'true' : 'false'}
+                data-tick-kind={item.isSlashCommand ? 'slash-command' : 'message'}
+                data-emphasized={emphasized ? 'true' : 'false'}
                 key={item.id}
                 style={{
                   position: 'absolute',
@@ -299,7 +306,7 @@ export function TimelineMinimap({ items, scrollRef }: TimelineMinimapProps) {
                   borderRadius: 999,
                   pointerEvents: 'none',
                   backgroundColor,
-                  opacity: activeDistance === 0 || inView ? 1 : 0.45,
+                  opacity: emphasized ? 1 : item.isSlashCommand ? 0.8 : 0.45,
                   transition: 'background-color 150ms, width 150ms, opacity 150ms',
                 }}
               />

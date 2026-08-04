@@ -66,7 +66,11 @@ func buildContextPathLocked(conv *Conversation) []types.LlmMessage {
 				if md.DisplayOnly {
 					continue
 				}
-				msg := types.LlmMessage{Role: md.Role, Content: md.Content}
+				content := md.Content
+				if md.LlmContent != nil {
+					content = md.LlmContent
+				}
+				msg := types.LlmMessage{Role: md.Role, Content: content, EntryID: entry.ID}
 				if md.Role == "assistant" && md.Usage != nil {
 					msg.Usage = md.Usage
 				}
@@ -92,11 +96,13 @@ func buildContextPathLocked(conv *Conversation) []types.LlmMessage {
 				// zero-valued — Trigger is unknown after a rebuild, the
 				// fact count is not persisted, etc. Consumers handle
 				// missing fields uniformly because they're all optional.
-				messages = append(messages, BuildCompactBoundaryMessage(CompactMeta{
+				boundary := BuildCompactBoundaryMessage(CompactMeta{
 					Trigger:      "auto", // historical reconstructions default to auto; original trigger is not persisted
 					Summary:      cd.Summary,
 					TokensBefore: cd.TokensBefore,
-				}))
+				})
+				boundary.EntryID = entry.ID
+				messages = append(messages, boundary)
 			}
 		}
 	}

@@ -2,7 +2,7 @@ import React, { useEffect, useCallback, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Paperclip, Camera, Lightning } from '@phosphor-icons/react'
 import { GitPanel } from './components/GitPanel'
-import { GIT_PANEL_WIDTH, PANEL_GAP, statusDrawerOffset } from './components/panelGeometry'
+import { FILE_EXPLORER_WIDTH, GIT_PANEL_WIDTH, PANEL_GAP } from './components/panelGeometry'
 import { StatusDrawer } from './components/StatusDrawer'
 import { TabStrip } from './components/TabStrip'
 import { ConversationView } from './components/ConversationView'
@@ -508,7 +508,7 @@ export default function App() {
                   right: '100%',
                   bottom: 60,
                   marginRight: 8,
-                  width: 240,
+                  width: FILE_EXPLORER_WIDTH,
                   zIndex: 25,
                 }}
               >
@@ -553,10 +553,9 @@ export default function App() {
                   position: 'absolute',
                   left: '100%',
                   bottom: 60,
-                  // COMPUTED from the panel width. The hand-typed 296 was
-                  // derived from the WRAPPER's 280, not the panel's 320, so the
-                  // drawer (one z-index above) overlapped the panel by 32px.
-                  marginLeft: statusDrawerOffset(gitPanelOpen),
+                  // Always just the gap: the store keeps at most one right-side
+                  // panel open, so there is never a git panel here to clear.
+                  marginLeft: PANEL_GAP,
                   zIndex: 26,
                 }}
               >

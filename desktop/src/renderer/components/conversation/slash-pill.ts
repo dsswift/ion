@@ -11,19 +11,20 @@
  */
 
 import type { Message } from '../../../shared/types'
+import { parseSlash } from '../../../main/slash-parse'
 
 /**
  * Parse a leading slash command from message content (the FALLBACK source).
  * Returns `{ command, args }` when content starts with `/cmd [args]`, or
  * `null` when no slash command is detected.
  *
- * The regex requires the command to start with a letter so that paths like
- * `/usr/bin/foo` (which contain multiple slashes) don't match.
+ * Canonical parser accepts identifier-shaped names and rejects paths like
+ * `/usr/bin/foo`, which contain multiple slashes.
  */
 export function parseSlashCommand(content: string): { command: string; args: string } | null {
-  const match = content.match(/^\/([a-zA-Z][a-zA-Z0-9_:-]*)\s*([\s\S]*)$/)
-  if (!match) return null
-  return { command: `/${match[1]}`, args: match[2] }
+  const parsed = parseSlash(content)
+  if (!parsed) return null
+  return { command: `/${parsed.command}`, args: parsed.args }
 }
 
 /**

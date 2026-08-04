@@ -3,7 +3,6 @@ package conversation
 import (
 	"strings"
 
-	"github.com/dsswift/ion/engine/internal/types"
 	"github.com/dsswift/ion/engine/internal/utils"
 )
 
@@ -233,25 +232,4 @@ func LeafUserText(conv *Conversation) string {
 		return strings.Join(parts, "\n")
 	}
 	return ""
-}
-
-// PrependMessage inserts a message at the head of conv.Messages. This is the
-// funnel for the compact-boundary injection (the boundary must be index 0 so
-// MessagesAfterLastCompactBoundary finds it as the most recent boundary), so
-// out-of-package callers never reassign conv.Messages directly.
-func PrependMessage(conv *Conversation, msg types.LlmMessage) {
-	conv.lock()
-	defer conv.unlock()
-	conv.Messages = append([]types.LlmMessage{msg}, conv.Messages...)
-}
-
-// FirstEntryID returns the id of the first tree entry, or "" when the tree is
-// empty. Read funnel for out-of-package callers.
-func FirstEntryID(conv *Conversation) string {
-	conv.lock()
-	defer conv.unlock()
-	if len(conv.Entries) == 0 {
-		return ""
-	}
-	return conv.Entries[0].ID
 }

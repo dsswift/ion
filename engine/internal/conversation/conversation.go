@@ -46,7 +46,8 @@ const (
 // MessageData holds a chat message entry.
 type MessageData struct {
 	Role       string          `json:"role"`
-	Content    any             `json:"content"` // string or []types.LlmContentBlock
+	Content    any             `json:"content"`              // display content: string or []types.LlmContentBlock
+	LlmContent any             `json:"llmContent,omitempty"` // provider-visible content when it differs from display
 	Usage      *types.LlmUsage `json:"usage,omitempty"`
 	Model      string          `json:"model,omitempty"`
 	StopReason string          `json:"stopReason,omitempty"`
@@ -257,10 +258,39 @@ type ContextUsageInfo struct {
 
 // ToolResultEntry is a tool result to add as a user message.
 type ToolResultEntry struct {
-	ToolUseID string               `json:"tool_use_id"`
-	Content   string               `json:"content"`
-	IsError   bool                 `json:"is_error,omitempty"`
-	Images    []*types.ImageSource `json:"images,omitempty"` // vision images to attach alongside text
+	ToolUseID string `json:"tool_use_id"`
+	Content   string `json:"content"`
+	// PersistContent, when non-empty, replaces Content in the persisted
+	// entry tree while Content is still what the provider sees for the
+	// current turn. Empty (the default) means "persist Content verbatim",
+	// which is the behavior every caller had before this field existed.
+	//
+	// This exists for tool results whose text is only TRUE for the turn
+	// that produced it. The motivating case is the EnterPlanMode sentinel
+	// (runloop_plan_mode_gates.go): its result carries the full plan-mode
+	// framing, including "You are in planning mode. You MUST NOT make any
+	// edits ... This overrides any conflicting instructions you have
+	// received elsewhere in this prompt or conversation." That is correct
+	// guidance for the turn it lands on, and a lie on every later turn
+	// after the mode has been exited — but it is persisted history, so the
+	// model re-reads it as ground truth and declines to re-enter plan mode
+	// ("Do NOT call this tool if: You are already in plan mode"), narrating
+	// the transition instead of invoking it.
+	//
+	// A tool result cannot simply be dropped from history the way a
+	// transient injected message can: every persisted tool_use requires a
+	// matching tool_result on reload, or the provider rejects the request
+	// (see the ordering contract on AddToolResults below). So the fix is to
+	// persist a SHORTER, still-true statement rather than nothing at all.
+	//
+	// Same reasoning as the AddUserMessage / AddTransientUserMessage split
+	// and the transient parameter on AddContextInjectionMessage: the engine
+	// already distinguishes "the model sees this now" from "this belongs in
+	// history". This field extends that distinction to tool results, which
+	// previously had no way to express it.
+	PersistContent string               `json:"persist_content,omitempty"`
+	IsError        bool                 `json:"is_error,omitempty"`
+	Images         []*types.ImageSource `json:"images,omitempty"` // vision images to attach alongside text
 }
 
 // ContextFile is a discovered context file on disk.
@@ -318,7 +348,9 @@ func AddUserMessage(conv *Conversation, content any) *SessionEntry {
 	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: blocks})
 
 	if conv.Entries != nil {
-		return appendEntryLocked(conv, EntryMessage, MessageData{Role: "user", Content: blocks}, "")
+		entry := appendEntryLocked(conv, EntryMessage, MessageData{Role: "user", Content: blocks}, "")
+		conv.Messages[len(conv.Messages)-1].EntryID = entry.ID
+		return entry
 	}
 	return nil
 }
@@ -339,7 +371,7 @@ func AddUserMessageWithKind(conv *Conversation, content any, kind string) *Sessi
 	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "user", Content: blocks})
 
 	if conv.Entries != nil {
-		return appendEntryLocked(conv, EntryMessage, MessageData{
+		entry := appendEntryLocked(conv, EntryMessage, MessageData{
 			Role:    "user",
 			Content: blocks,
 
@@ -349,6 +381,8 @@ func AddUserMessageWithKind(conv *Conversation, content any, kind string) *Sessi
 			// kind string.
 			MachineAuthored: types.InjectionKind(kind).IsMachineToMachine(),
 		}, "")
+		conv.Messages[len(conv.Messages)-1].EntryID = entry.ID
+		return entry
 	}
 	return nil
 }
@@ -405,13 +439,16 @@ func AddUserMessageWithInvocation(conv *Conversation, expandedContent any, inv S
 		if inv.Args != "" {
 			display = inv.Command + " " + inv.Args
 		}
-		return appendEntryLocked(conv, EntryMessage, MessageData{
+		entry := appendEntryLocked(conv, EntryMessage, MessageData{
 			Role:         "user",
 			Content:      []types.LlmContentBlock{textBlock(display)},
+			LlmContent:   expandedBlocks,
 			SlashCommand: inv.Command,
 			SlashArgs:    inv.Args,
 			SlashSource:  inv.Source,
 		}, "")
+		conv.Messages[len(conv.Messages)-1].EntryID = entry.ID
+		return entry
 	}
 	return nil
 }
@@ -462,13 +499,32 @@ func AddContextInjectionMessage(conv *Conversation, paths []string, renderedText
 	}
 	blocks, _ := msg.Content.([]types.LlmContentBlock) //nolint:errcheck // non-slice content yields nil blocks, handled below
 	if conv.Entries != nil {
-		appendEntryLocked(conv, EntryMessage, MessageData{Role: "user", Content: blocks}, "")
+		entry := appendEntryLocked(conv, EntryMessage, MessageData{Role: "user", Content: blocks}, "")
+		conv.Messages[len(conv.Messages)-1].EntryID = entry.ID
 	}
 }
 
 // AddAssistantMessage appends an assistant message with usage tracking.
 func AddAssistantMessage(conv *Conversation, blocks []types.LlmContentBlock, usage types.LlmUsage) {
 	AddAssistantMessageWithEntryID(conv, blocks, usage, "")
+}
+
+// AddAssistantMessageNoUsage appends an assistant message that carries NO
+// provider accounting. This is the correct funnel for turns Ion persists on a
+// backend's behalf without token data — delegated-CLI turns copied into Ion's
+// transcript at run exit. Annotating those with a zero-valued LlmUsage{} is
+// what poisoned GetContextUsage's backward scan (the zero struct read as "the
+// provider says ~0 tokens"), so this variant leaves Usage nil on both the
+// message and the persisted entry.
+func AddAssistantMessageNoUsage(conv *Conversation, blocks []types.LlmContentBlock) {
+	conv.lock()
+	defer conv.unlock()
+	conv.Messages = append(conv.Messages, types.LlmMessage{Role: "assistant", Content: blocks})
+
+	if conv.Entries != nil {
+		entry := appendEntryLocked(conv, EntryMessage, MessageData{Role: "assistant", Content: blocks}, "")
+		conv.Messages[len(conv.Messages)-1].EntryID = entry.ID
+	}
 }
 
 // AddAssistantMessageWithEntryID is AddAssistantMessage with a pre-minted
@@ -489,7 +545,8 @@ func AddAssistantMessageWithEntryID(conv *Conversation, blocks []types.LlmConten
 	conv.Messages[len(conv.Messages)-1].Usage = &usage
 
 	if conv.Entries != nil {
-		appendEntryLocked(conv, EntryMessage, MessageData{Role: "assistant", Content: blocks, Usage: &usage}, entryID)
+		entry := appendEntryLocked(conv, EntryMessage, MessageData{Role: "assistant", Content: blocks, Usage: &usage}, entryID)
+		conv.Messages[len(conv.Messages)-1].EntryID = entry.ID
 	}
 }
 
@@ -507,8 +564,20 @@ func AddAssistantMessageWithEntryID(conv *Conversation, blocks []types.LlmConten
 func AddToolResults(conv *Conversation, results []ToolResultEntry) {
 	var blocks []types.LlmContentBlock
 	var imageBlocks []types.LlmContentBlock
+	// persistOverrides maps a block index in `blocks` to the text that should
+	// be written to the entry tree instead of the block's live Content. Only
+	// populated for results that set PersistContent; nil-safe and empty for
+	// every existing caller, which keeps the persisted history byte-identical
+	// to what it was before this field existed.
+	var persistOverrides map[int]string
 	for _, r := range results {
 		isErr := r.IsError
+		if r.PersistContent != "" {
+			if persistOverrides == nil {
+				persistOverrides = make(map[int]string, 1)
+			}
+			persistOverrides[len(blocks)] = r.PersistContent
+		}
 		blocks = append(blocks, types.LlmContentBlock{
 			Type:      "tool_result",
 			ToolUseID: r.ToolUseID,
@@ -539,7 +608,16 @@ func AddToolResults(conv *Conversation, results []ToolResultEntry) {
 		// cannot corrupt the persisted entry history.
 		entryCopy := make([]types.LlmContentBlock, len(blocks))
 		copy(entryCopy, blocks)
-		appendEntryLocked(conv, EntryMessage, MessageData{Role: "user", Content: entryCopy}, "")
+		// Apply PersistContent overrides to the COPY only, so the provider
+		// still sees the full text on this turn while history stores the
+		// shorter, still-true statement. See the field comment on
+		// ToolResultEntry.PersistContent for why a tool result cannot simply
+		// be omitted from history the way a transient message can.
+		for idx, text := range persistOverrides {
+			entryCopy[idx].Content = text
+		}
+		entry := appendEntryLocked(conv, EntryMessage, MessageData{Role: "user", Content: entryCopy}, "")
+		conv.Messages[len(conv.Messages)-1].EntryID = entry.ID
 	}
 }
 

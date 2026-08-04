@@ -134,8 +134,8 @@ describe('deriveTimelineMinimapItems', () => {
       msg({ id: 'a3', role: 'assistant', content: 'second answer' }),
     ])
     expect(items).toEqual([
-      { id: 'u1', userText: 'first question', assistantText: 'final answer' },
-      { id: 'u2', userText: 'second question', assistantText: 'second answer' },
+      { id: 'u1', userText: 'first question', assistantText: 'final answer', isSlashCommand: false },
+      { id: 'u2', userText: 'second question', assistantText: 'second answer', isSlashCommand: false },
     ])
   })
 
@@ -145,8 +145,8 @@ describe('deriveTimelineMinimapItems', () => {
       msg({ id: 'u2', role: 'user', content: 'q2' }),
       msg({ id: 'a1', role: 'assistant', content: 'answer to q2' }),
     ])
-    expect(items[0]).toEqual({ id: 'u1', userText: 'q1', assistantText: null })
-    expect(items[1]).toEqual({ id: 'u2', userText: 'q2', assistantText: 'answer to q2' })
+    expect(items[0]).toEqual({ id: 'u1', userText: 'q1', assistantText: null, isSlashCommand: false })
+    expect(items[1]).toEqual({ id: 'u2', userText: 'q2', assistantText: 'answer to q2', isSlashCommand: false })
   })
 
   it('skips user messages whose compact text is empty', () => {
@@ -163,6 +163,30 @@ describe('deriveTimelineMinimapItems', () => {
       msg({ id: 'u1', role: 'user', content: '[Attached image: pic.png]\nlook at this' }),
     ])
     expect(items[0].userText).toBe('look at this')
+  })
+
+  it('classifies metadata and optimistic raw slash-command turns', () => {
+    const items = deriveTimelineMinimapItems([
+      msg({ id: 'u1', role: 'user', content: '/align', slashCommand: '/align' }),
+      msg({ id: 'u2', role: 'user', content: '/review current changes' }),
+      msg({ id: 'u3', role: 'user', content: 'ordinary message' }),
+    ])
+    expect(items.map((item) => item.isSlashCommand)).toEqual([true, true, false])
+  })
+
+  it('uses engine metadata even when displayed content is not parseable', () => {
+    const items = deriveTimelineMinimapItems([
+      msg({ id: 'u1', role: 'user', content: 'resolved command body', slashCommand: '/custom' }),
+    ])
+    expect(items[0].isSlashCommand).toBe(true)
+  })
+
+  it('does not classify filesystem paths or embedded slash text as commands', () => {
+    const items = deriveTimelineMinimapItems([
+      msg({ id: 'u1', role: 'user', content: '/usr/bin/env' }),
+      msg({ id: 'u2', role: 'user', content: 'please run /align' }),
+    ])
+    expect(items.map((item) => item.isSlashCommand)).toEqual([false, false])
   })
 
   it('ignores assistant messages with only whitespace content', () => {

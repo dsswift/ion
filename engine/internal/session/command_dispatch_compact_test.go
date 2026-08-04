@@ -1,11 +1,14 @@
-// Tests for the /compact dispatch path. dispatchCompact routes through
-// three code paths depending on backend capability and run state:
+// Tests for the /compact dispatch path. dispatchCompact resolves the backend
+// SERVING the session's last model (m.resolvedBackend, not m.backend — under
+// the hybrid backend the outer type has no CompactNow) and then routes through
+// three code paths depending on that backend's capability and the run state:
 //
-//   1. Backend implements compactable (ApiBackend, HybridBackend on API-routed
-//      runs) → CompactNow is called and the result event is emitted.
-//   2. Backend does NOT implement compactable + active run → forward /compact
-//      as a stream-json user message over WriteToStdin.
-//   3. Backend does NOT implement compactable + no active run → emit
+//   1. Serving backend implements compactable (ApiBackend directly; the inner
+//      ApiBackend an api-routed hybrid model resolves to) → CompactNow is
+//      called and the result event is emitted.
+//   2. Serving backend does NOT implement compactable + active run → forward
+//      /compact as a stream-json user message over WriteToStdin.
+//   3. Serving backend does NOT implement compactable + no active run → emit
 //      engine_command_result with CommandError="compact_requires_active_run"
 //      and an informational EventMessage.
 
@@ -19,6 +22,7 @@ import (
 	"time"
 
 	"github.com/dsswift/ion/engine/internal/backend"
+	"github.com/dsswift/ion/engine/internal/providers"
 	"github.com/dsswift/ion/engine/internal/types"
 )
 
@@ -339,6 +343,70 @@ func TestDispatchCompact_CLIPath_NoActiveRun(t *testing.T) {
 // stops compiling, the contract documented at compactable's declaration
 // is broken — every CompactNow consumer needs to know.
 var _ compactable = (*backend.ApiBackend)(nil)
+
+// TestDispatchCompact_HybridApiRouted_TakesEnginePath is the regression test
+// for the hybrid capability-blindness defect: /compact was refused with
+// compact_requires_active_run on an idle session whose every turn ran on the
+// API backend.
+//
+// The cause was the capability assertion targeting the OUTER backend
+// (m.backend), which under backend: "hybrid" is the *HybridBackend itself —
+// a type that has no CompactNow. The assertion failed, dispatch fell through
+// to the CLI path, and an idle session has no stdin pipe, so the engine
+// emitted the "must run inside an active conversation" refusal.
+//
+// The fix routes the assertion through resolvedBackend(model), which collapses
+// the hybrid case to the inner backend actually serving that model. With no
+// API key and no CLI auth probe the hybrid degrades every model to the api
+// inner (the safe missing-key default), so this session must take the engine
+// path.
+//
+// Reverting the seam change in dispatchCompact (assert on m.backend again)
+// turns this red with exactly the reported CommandError.
+func TestDispatchCompact_HybridApiRouted_TakesEnginePath(t *testing.T) {
+	// Register an anthropic model so resolvedBackend can resolve the provider.
+	// No API key and no CLI probe means routing lands on the api inner.
+	providers.RegisterModel("claude-compact-hybrid-test", types.ModelInfo{
+		ProviderID:    "anthropic",
+		ContextWindow: 200000,
+	})
+	t.Cleanup(func() { providers.UnregisterModel("claude-compact-hybrid-test") })
+
+	hybrid := backend.NewHybridBackend()
+	mgr := NewManager(hybrid)
+	t.Cleanup(mgr.Shutdown)
+	_, _ = mgr.StartSession("hybrid-compact", defaultConfig())
+
+	// Seed the session as a real idle post-run session would be: a persisted
+	// conversation and a last model, no active run.
+	mgr.mu.Lock()
+	s := mgr.sessions["hybrid-compact"]
+	s.conversationID = "conv-hybrid-compact"
+	s.lastModel = "claude-compact-hybrid-test"
+	s.requestID = ""
+	mgr.mu.Unlock()
+
+	ec := newEventCollector(mgr)
+	mgr.SendCommand("hybrid-compact", "compact", "")
+
+	// Path A is async. The conversation does not exist on disk, so CompactNow
+	// returns ErrNotFound, which dispatchCompact maps to a success result —
+	// either way exactly one command_result lands.
+	if !waitForCount(func() int { return len(ec.byType("engine_command_result")) }, 1) {
+		t.Fatalf("timed out waiting for engine_command_result")
+	}
+
+	results := ec.byType("engine_command_result")
+	if len(results) != 1 {
+		t.Fatalf("expected exactly 1 engine_command_result, got %d", len(results))
+	}
+	// The assertion that pins the fix: the hybrid session must NOT be told to
+	// go run /compact inside an active conversation.
+	if got := results[0].event.CommandError; got == "compact_requires_active_run" {
+		t.Fatalf("hybrid api-routed /compact was refused with %q; the capability "+
+			"assertion resolved the outer HybridBackend instead of the serving inner backend", got)
+	}
+}
 
 // TestDispatchCompact_BindsRunIDForEventRouting is the regression test for the
 // dropped-progress-events defect. The async compaction emits CompactingEvent
