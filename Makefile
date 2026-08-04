@@ -116,6 +116,11 @@ test-all: check-file-sizes check-contracts check-status-writers check-atv-parity
 #   - Desktop lint must run here too. `npm run typecheck` does NOT catch unused
 #     imports or react-hooks violations — those are ESLint rules, and CI runs
 #     them as a separate blocking job. Typecheck alone is not a substitute.
+#   - The engine/desktop images are prebaked (scripts/docker/*.Dockerfile) and
+#     Go module/build + npm caches ride named Docker volumes, so a repeat run
+#     skips both the `apt-get install nodejs`/`useradd` setup and a from-zero
+#     module download + full `-race` recompile. See the comment above
+#     ENGINE_IMAGE/DESKTOP_IMAGE below for the full rationale.
 #
 # When a job is added to .github/workflows/quality.yml that runs engine or
 # desktop tests, mirror it here. A gate that claims CI parity while running a
@@ -124,19 +129,68 @@ test-all: check-file-sizes check-contracts check-status-writers check-atv-parity
 
 GO_VERSION := $(shell awk '/^go / {print $$2}' engine/go.mod)
 
+# Prebaked-image + named-volume plumbing for the Linux parity gate.
+#
+# Two independent, compounding speedups over a stock `golang:$(GO_VERSION)` /
+# `node:22` container:
+#
+#  1. Prebaked images (scripts/docker/*.Dockerfile) bake in `nodejs` /
+#     `useradd ionci`, which previously ran fresh on every single invocation.
+#     `docker build` is called before every run, pointed at a source-free
+#     build context (scripts/docker/ only — no repo COPY), so Docker's own
+#     layer cache makes a rebuild an instant no-op except when the Dockerfile
+#     or base image tag actually changes.
+#  2. Named volumes (ion-golang-mod-cache, ion-golang-build-cache,
+#     ion-npm-cache) persist the Go module cache, Go build cache, and npm
+#     download cache across runs, instead of starting from zero inside a
+#     fresh `--rm` container every time. `node_modules` itself stays an
+#     anonymous per-run volume deliberately: a *named* volume there would
+#     persist a stale/incompatible install across dependency changes, where
+#     only the npm download cache benefits from persistence.
+#
+# Both are pure execution-speed changes — `make test-linux-engine` /
+# `make test-linux-desktop` / `make test-linux` keep their existing names and
+# pass/fail semantics, so no other caller needs to change.
+ENGINE_IMAGE := ion-test-linux-engine:$(GO_VERSION)
+DESKTOP_IMAGE := ion-test-linux-desktop:22
+
+# Linked-worktree support: a git worktree's .git is a *file* pointing at an
+# absolute host path under the base repo's .git/worktrees/<name>, which lives
+# outside $(PWD) and therefore outside the bind-mounted /src. Without an extra
+# mount at that same host path, every git invocation inside the container
+# (gitcontext tests shell out to real `git`; the gate itself needs
+# `git status`/`git diff` to work) fails with "fatal: not a git repository".
+# `git rev-parse --path-format=absolute --git-common-dir` resolves the real
+# .git for both a normal checkout (where it equals $(PWD)/.git — no extra
+# mount needed) and a linked worktree (where it's the base repo's .git — the
+# case this exists to fix). Mounting it at the SAME path inside the container
+# is what lets git's relative "gitdir: ../../.git/worktrees/<name>" pointer
+# resolve correctly on both sides.
+GIT_COMMON_DIR := $(shell git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+ifeq ($(GIT_COMMON_DIR),$(PWD)/.git)
+GIT_WORKTREE_MOUNT :=
+else ifeq ($(GIT_COMMON_DIR),)
+GIT_WORKTREE_MOUNT :=
+else
+GIT_WORKTREE_MOUNT := -v "$(GIT_COMMON_DIR)":"$(GIT_COMMON_DIR)"
+endif
+
 test-linux: test-linux-engine test-linux-desktop
 	@echo "✅ test-linux: engine unit+integration race, desktop lint+typecheck+test green on Linux (CI parity)"
 
 test-linux-engine:
 	@command -v docker >/dev/null 2>&1 || { echo "❌ docker not found — install Docker/Colima to run the Linux parity gate"; exit 1; }
-	@echo "▶ engine: go test -race ./... + integration on linux/amd64 (golang:$(GO_VERSION))"
-	@docker run --rm --platform linux/amd64 -v "$(PWD)":/src -w /src/engine golang:$(GO_VERSION) \
-		bash -c "apt-get update -qq && apt-get install -y -qq nodejs && \
-		         useradd -m -s /bin/bash ionci && \
-		         chmod -R a+rX /src 2>/dev/null || true && \
+	@echo "▶ engine: building prebaked Linux parity image ($(ENGINE_IMAGE))"
+	@docker build --platform linux/amd64 --build-arg GO_VERSION=$(GO_VERSION) \
+		-t $(ENGINE_IMAGE) -f scripts/docker/test-linux-engine.Dockerfile scripts/docker
+	@echo "▶ engine: go test -race ./... + integration on linux/amd64 ($(ENGINE_IMAGE))"
+	@docker run --rm --platform linux/amd64 -v "$(PWD)":/src $(GIT_WORKTREE_MOUNT) \
+		-v ion-golang-mod-cache:/home/ionci/go -v ion-golang-build-cache:/home/ionci/gocache \
+		-w /src/engine $(ENGINE_IMAGE) \
+		bash -c "chmod -R a+rX /src 2>/dev/null || true && \
 		         git config --global --add safe.directory /src && \
-		         su ionci -c 'mkdir -p /home/ionci/.ion /home/ionci/go /home/ionci/gocache && \
-		                      git config --global --add safe.directory /src && \
+		         su ionci -c 'git config --global --add safe.directory /src && \
+		                      git config --global --add safe.directory \"$(GIT_COMMON_DIR)\" && \
 		                      cd /src/engine && \
 		                      GOPATH=/home/ionci/go GOCACHE=/home/ionci/gocache \
 		                      go test -race ./... && \
@@ -152,14 +206,17 @@ test-linux-engine:
 # underlying go test exit code: 0 on full pass, non-zero on any failure.
 test-linux-engine-summary:
 	@command -v docker >/dev/null 2>&1 || { echo "❌ docker not found — install Docker/Colima to run the Linux parity gate"; exit 1; }
-	@echo "▶ engine: go test -race ./... on linux/amd64 (golang:$(GO_VERSION)) [summary]"
-	@docker run --rm --platform linux/amd64 -v "$(PWD)":/src -w /src/engine golang:$(GO_VERSION) \
-		bash -c "apt-get update -qq && apt-get install -y -qq nodejs && \
-		         useradd -m -s /bin/bash ionci && \
-		         chmod -R a+rX /src 2>/dev/null || true && \
+	@echo "▶ engine: building prebaked Linux parity image ($(ENGINE_IMAGE))"
+	@docker build --platform linux/amd64 --build-arg GO_VERSION=$(GO_VERSION) \
+		-t $(ENGINE_IMAGE) -f scripts/docker/test-linux-engine.Dockerfile scripts/docker
+	@echo "▶ engine: go test -race ./... on linux/amd64 ($(ENGINE_IMAGE)) [summary]"
+	@docker run --rm --platform linux/amd64 -v "$(PWD)":/src $(GIT_WORKTREE_MOUNT) \
+		-v ion-golang-mod-cache:/home/ionci/go -v ion-golang-build-cache:/home/ionci/gocache \
+		-w /src/engine $(ENGINE_IMAGE) \
+		bash -c "chmod -R a+rX /src 2>/dev/null || true && \
 		         git config --global --add safe.directory /src && \
-		         su ionci -c 'mkdir -p /home/ionci/.ion /home/ionci/go /home/ionci/gocache && \
-		                      git config --global --add safe.directory /src && \
+		         su ionci -c 'git config --global --add safe.directory /src && \
+		                      git config --global --add safe.directory \"$(GIT_COMMON_DIR)\" && \
 		                      cd /src/engine && \
 		                      GOPATH=/home/ionci/go GOCACHE=/home/ionci/gocache \
 		                      go test -race ./... 2>&1 | grep -E \"^(ok|FAIL|--- FAIL|--- PASS)\"; \
@@ -167,11 +224,16 @@ test-linux-engine-summary:
 
 test-linux-desktop:
 	@command -v docker >/dev/null 2>&1 || { echo "❌ docker not found — install Docker/Colima to run the Linux parity gate"; exit 1; }
-	@echo "▶ desktop: npm ci --ignore-scripts && npm run lint && npm run typecheck && npm test on linux (node:22)"
-	@docker run --rm --platform linux/amd64 -v "$(PWD)":/src -v /src/desktop/node_modules -w /src/desktop node:22 \
-		bash -c "useradd -m -s /bin/bash ionci && \
-		         chmod -R a+rX /src 2>/dev/null || true && \
+	@echo "▶ desktop: building prebaked Linux parity image ($(DESKTOP_IMAGE))"
+	@docker build --platform linux/amd64 -t $(DESKTOP_IMAGE) -f scripts/docker/test-linux-desktop.Dockerfile scripts/docker
+	@echo "▶ desktop: npm ci --ignore-scripts && npm run lint && npm run typecheck && npm test on linux ($(DESKTOP_IMAGE))"
+	@docker run --rm --platform linux/amd64 -v "$(PWD)":/src -v /src/desktop/node_modules $(GIT_WORKTREE_MOUNT) \
+		-v ion-npm-cache:/home/ionci/.npm \
+		-w /src/desktop $(DESKTOP_IMAGE) \
+		bash -c "chmod -R a+rX /src 2>/dev/null || true && \
 		         chown ionci:ionci /src/desktop/node_modules && \
+		         git config --global --add safe.directory /src && \
+		         git config --global --add safe.directory \"$(GIT_COMMON_DIR)\" && \
 		         su ionci -c 'cd /src/desktop && npm ci --ignore-scripts && npm run lint && npm run typecheck && npm test'"
 
 clean:

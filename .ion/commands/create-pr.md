@@ -69,21 +69,33 @@ If `docker` is not installed **or** `docker info` fails (daemon not running), ca
 
 When the user selects `Start Docker and continue`, wait for them to confirm Docker is running, then re-run from step 3c. When they select `Proceed without Docker`, skip to Step 4 and note the Linux gate was skipped in the final report.
 
-### 3c. Run the gate for touched components
+### 3c. Dispatch the gate for touched components — background, with notify
+
+`make test-linux-engine` and `make test-linux-desktop` run Docker containers that routinely take several minutes — well past the default 120s tool timeout. Running either as a plain foreground `Bash` call risks the tool call timing out while the container keeps running unattended: nothing wakes the conversation when it finishes, and the only way to un-stick it is for the user to intervene manually. **Never run these gates as a plain foreground `Bash` call.**
+
+Instead, dispatch each applicable gate with `Bash({ run_in_background: true, notify_on_complete: true })`:
 
 ```bash
 # engine touched:
 make test-linux-engine
 # desktop touched:
 make test-linux-desktop
-# (or `make test-linux` when both are touched)
 ```
+
+When **both** engine and desktop are touched, dispatch **both** in the same turn — two separate `run_in_background + notify_on_complete` calls — rather than the combined `make test-linux` target, so the two gates run concurrently in independent containers instead of serializing inside one long-running call.
+
+After dispatching, **end the turn**. Do not poll `TaskGet` in a loop and do not run a blocking `sleep`/wait. The engine parks the run at the turn boundary (`engine_task_suspended`) while the command is outstanding and automatically wakes it with the result when the container exits — see `docs/tools/task-tools.md` § "Background bash completion" and ADR-023. This is the mechanism to rely on; it requires no cooperation from the command being run.
+
+**Fallback — background execution not supported:** if a `Bash` call reports that background execution isn't available (non-local backend), fall back to the original synchronous invocation (plain `Bash` with no `run_in_background`) and note this in the Step 10 report so the user knows which path ran.
 
 ### 3d. Act on the result
 
-- **Gate passes** → proceed to Step 4.
-- **Gate fails** → **do not push. Do not open the PR.** Fix every failure the gate surfaced — including failures that reproduce on `main` (pre-existing) — then re-run the gate until green. A failure that is visible now blocks the PR now; its age and origin are irrelevant. Only abort back to the user when a failure genuinely cannot be fixed without a product decision the user must make.
+The woken run receives the completion result (exit code, command, and a bounded output tail) injected into the conversation. Evaluate it per gate:
+
+- **Gate passes** → once every dispatched gate has reported a pass, proceed to Step 4.
+- **Gate fails** → **do not push. Do not open the PR.** Fix every failure the gate surfaced — including failures that reproduce on `main` (pre-existing) — then re-dispatch the same gate the same way (background + notify) and wait for the next wake. A failure that is visible now blocks the PR now; its age and origin are irrelevant. Only abort back to the user when a failure genuinely cannot be fixed without a product decision the user must make.
 - **User opted to skip** (Docker down, proceed anyway) → proceed to Step 4; note in the final report that the Linux gate was skipped.
+- **Synchronous fallback used** (background unsupported) → act on the plain `Bash` return code the same way as above; note the fallback path in the final report.
 
 ---
 
@@ -191,7 +203,7 @@ gh pr create --base main --title "{title}" --body "{body}"
 ✅ PR #{number} created: {URL}
    {title}
    {N} commits, scopes: {list}
-   Linux parity gate: passed | skipped (Docker down, user opted to proceed) | n/a (no engine/desktop changes)
+   Linux parity gate: passed (background dispatch) | passed (synchronous fallback) | skipped (Docker down, user opted to proceed) | n/a (no engine/desktop changes)
 
 Next step: Wait for CI. When it passes, the PR is ready to merge.
 ```
@@ -202,5 +214,5 @@ If an existing PR was updated instead:
 ✅ PR #{number} updated: {URL}
    {title}
    {N} commits, scopes: {list}
-   Linux parity gate: passed | skipped | n/a
+   Linux parity gate: passed (background dispatch) | passed (synchronous fallback) | skipped | n/a
 ```
