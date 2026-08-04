@@ -6,11 +6,26 @@ import type { UsageData } from './types-events'
 // ─── Thinking ───
 
 /**
- * Per-conversation extended-thinking effort. 'off' = no thinking directive;
- * other levels map to the engine's effort dial (resolved per-model). Stored
- * per-tab and per-instance, applied live on the next prompt.
+ * Per-conversation extended-thinking effort.
+ *
+ *   'adaptive'            — request thinking but let the model choose its own
+ *                           depth per turn. The default for models whose
+ *                           `thinkingMode` is `adaptive` (Anthropic). The
+ *                           engine sends the thinking directive with NO effort,
+ *                           so the model self-regulates.
+ *   'low' | 'medium' | 'high' — pin the depth. On an adaptive model this
+ *                           overrides the model's own judgment on every turn,
+ *                           which is a deliberate choice, not a default.
+ *   'off'                 — no thinking directive at all.
+ *
+ * Which values a model actually offers is driven by its capability metadata:
+ * adaptive models show `Adaptive` in place of `Off` (they reason regardless,
+ * so "off" would be a lie), effort-based models show `Off`. See
+ * `thinkingOptionsForMode` in `shared/thinking-options.ts`.
+ *
+ * Stored per-instance, applied live on the next prompt.
  */
-export type ThinkingEffort = 'off' | 'low' | 'medium' | 'high'
+export type ThinkingEffort = 'off' | 'adaptive' | 'low' | 'medium' | 'high'
 
 // ─── Tab Grouping ───
 
@@ -436,7 +451,7 @@ export interface RunOptions {
   /**
    * Per-prompt extended-thinking effort for this CLI/conversation prompt.
    * 'off'/undefined → no thinking directive. Threaded to send_prompt as
-   * `thinkingEffort`; read from the tab's level, gated by thinkingEnabled.
+   * `thinkingEffort`; read from the conversation instance's level.
    */
   thinkingEffort?: string
   /**

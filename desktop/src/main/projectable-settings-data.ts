@@ -157,7 +157,7 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
     type: 'enum',
     group: 'ai',
     label: 'Default thinking level',
-    description: 'The reasoning level new conversations start at. Each conversation can still be changed individually from its status bar.',
+    description: 'The reasoning level new conversations start at on models that take an explicit level. Models with adaptive reasoning (Claude) choose their own depth and start on Adaptive. Each conversation can still be changed from its status bar.',
     defaultValue: 'high',
     choices: [
       { value: 'off', label: 'Off' },

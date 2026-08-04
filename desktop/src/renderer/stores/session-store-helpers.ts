@@ -1,5 +1,7 @@
 import type { TabState, ThinkingEffort } from '../../shared/types'
 import { usePreferencesStore } from '../preferences'
+import { useModelStore } from './model-store'
+import { defaultEffortForMode } from '../../shared/thinking-options'
 import notificationSrc from '../../../resources/notification.mp3'
 import type { FileEditorDirState } from './session-store-types'
 import { tabHasExtensions } from '../../shared/tab-predicates'
@@ -79,10 +81,26 @@ export function initialPermissionMode(): 'auto' | 'plan' {
  * Read the level a new conversation's thinking control should start at.
  * Used at tab/instance creation time to seed the instance, mirroring
  * `initialPermissionMode` above.
+ *
+ * Model-aware: a model whose capability mode is `adaptive` (Anthropic) starts
+ * at `adaptive`, meaning "reason, but choose your own depth". Pinning an
+ * explicit level on such a model overrides its per-turn judgment on EVERY
+ * turn — including trivial ones — which is a large latency cost for no
+ * quality gain, so it is a deliberate user choice rather than a default.
+ * Effort-based models (reasoning_effort / gemini / budget) have no
+ * self-regulation to defer to, so they take the user's configured default.
+ *
+ * `modelId` is the model the conversation will start on. When it is unknown or
+ * not yet in the registry the configured default applies; the picker repairs
+ * the value once the model resolves.
  */
-export function initialThinkingEffort(): ThinkingEffort {
+export function initialThinkingEffort(modelId?: string | null): ThinkingEffort {
   const prefs = usePreferencesStore.getState()
-  return prefs.defaultThinkingEffort ?? 'high'
+  const configured: ThinkingEffort = prefs.defaultThinkingEffort ?? 'high'
+  const id = modelId || prefs.preferredModel
+  if (!id) return configured
+  const entry = useModelStore.getState().findModel(id)
+  return defaultEffortForMode(entry?.thinkingMode, configured)
 }
 
 export function makeLocalTab(): TabState {

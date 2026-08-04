@@ -22,11 +22,12 @@ export interface RemoteTabState {
   permissionMode: 'auto' | 'plan'
   /**
    * Per-conversation extended-thinking effort (bare conversation / active
-   * instance). 'low' | 'medium' | 'high' when set; omitted when off. iOS
+   * instance). 'adaptive' | 'low' | 'medium' | 'high' when set; omitted when
+   * off. 'adaptive' means the model self-regulates depth. iOS
    * renders the per-conversation thinking control from this. Mirrors
    * TabState.thinkingEffort / ConversationInstance.thinkingEffort.
    */
-  thinkingEffort?: 'low' | 'medium' | 'high'
+  thinkingEffort?: 'adaptive' | 'low' | 'medium' | 'high'
   permissionQueue: PermissionRequest[]
   /**
    * Live extension elicitations (ctx.elicit) awaiting a user decision on the
@@ -131,7 +132,7 @@ export interface RemoteTabState {
     backgroundShellCount?: number
     modelFallback?: { requestedModel: string; fallbackModel: string }
     conversationIds?: string[]
-    thinkingEffort?: 'low' | 'medium' | 'high'
+    thinkingEffort?: 'adaptive' | 'low' | 'medium' | 'high'
     dispatchTelemetry?: DispatchTelemetryEntry[]
   }>
   activeConversationInstanceId?: string | null

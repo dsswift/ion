@@ -199,7 +199,7 @@ export function AIModelsCategory() {
 
       <SettingSection
         label="Default thinking level"
-        description="The reasoning level new conversations start at. Each conversation can still be changed individually from its status bar. Only models that support reasoning show the control."
+        description="The reasoning level new conversations start at on models that take an explicit level. Models with adaptive reasoning (Claude) choose their own depth and start on Adaptive. Each conversation can still be changed from its status bar; only models that support reasoning show the control."
       >
         <div
           style={{

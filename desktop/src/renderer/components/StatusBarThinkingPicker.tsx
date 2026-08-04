@@ -11,6 +11,7 @@ import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { activeInstance } from '../stores/conversation-instance'
 import type { ThinkingEffort } from '../../shared/types-session'
+import { thinkingOptionsForMode, resolveEffortForModel } from '../../shared/thinking-options'
 
 /* ─── Thinking Effort Picker ─── */
 
@@ -31,12 +32,6 @@ import type { ThinkingEffort } from '../../shared/types-session'
  * send_prompt as `thinkingEffort`.
  */
 
-const LEVELS: Array<{ value: ThinkingEffort; label: string }> = [
-  { value: 'off', label: 'Off' },
-  { value: 'low', label: 'Low' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'high', label: 'High' },
-]
 
 /** One row in the effort popover. A separate component so each row owns its
  * own useInteractiveState hook (rules-of-hooks: no hooks inside the
@@ -89,6 +84,11 @@ export function ThinkingPicker() {
   const modelEntry = activeModelId ? findModel(activeModelId) : undefined
   const allowedEfforts = modelEntry?.thinkingEfforts ?? []
   const modelSupportsThinking = allowedEfforts.length > 0
+  // Options are model-driven: an adaptive model shows `Adaptive` where an
+  // effort-based one shows `Off`, because an adaptive model reasons whether or
+  // not we ask and "Off" would misrepresent it. Shared with iOS via
+  // shared/thinking-options.
+  const options = thinkingOptionsForMode(modelEntry?.thinkingMode, allowedEfforts)
 
   const setThinkingEffort = useSessionStore((s) => s.setThinkingEffort)
   const activeTabId = useSessionStore((s) => s.activeTabId)
@@ -131,8 +131,18 @@ export function ThinkingPicker() {
     setOpen((o) => !o)
   }
 
-  const isActive = effort !== 'off'
-  const label = LEVELS.find((l) => l.value === effort)?.label ?? 'Off'
+  // The stored effort can be STALE for the current model: a conversation
+  // seeded 'adaptive' on a Claude model keeps that value after the user
+  // switches to an effort-based model, where 'adaptive' is not selectable.
+  // Resolve to what this model actually offers, defaulting to its neutral
+  // entry — otherwise the label (which falls back to options[0], "Off") and
+  // the active color (effort !== 'off', true for 'adaptive') disagree, and the
+  // control renders purple "Off".
+  const resolved: ThinkingEffort = resolveEffortForModel(effort, modelEntry?.thinkingMode, allowedEfforts)
+  // 'adaptive' IS active thinking — the model reasons, it just picks its own
+  // depth — so only a literal 'off' reads as inactive.
+  const isActive = resolved !== 'off'
+  const label = options.find((l) => l.value === resolved)?.label ?? 'Off'
   const color = isActive ? colors.modeThinking : colors.textTertiary
 
   return (
@@ -183,13 +193,11 @@ export function ThinkingPicker() {
           }}
         >
           <div className="py-1">
-            {LEVELS.map((lvl, i) => {
-              // Off is always available; other levels only when the model
-              // declares them. A model may, e.g., support low/high but not
-              // medium (grok-mini) — hide the levels it does not allow.
-              const available = lvl.value === 'off' || allowedEfforts.includes(lvl.value)
-              if (!available) return null
-              const selected = effort === lvl.value
+            {/* thinkingOptionsForMode already filters to the levels this
+                model advertises (a model may support low/high but not medium,
+                e.g. grok-mini), so every option here is selectable. */}
+            {options.map((lvl, i) => {
+              const selected = resolved === lvl.value
               return (
                 <React.Fragment key={lvl.value}>
                   {i > 0 && <div className="mx-2 my-0.5" style={{ height: 1, background: colors.popoverBorder }} />}

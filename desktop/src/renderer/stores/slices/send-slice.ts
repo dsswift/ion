@@ -4,6 +4,8 @@ import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { nextMsgId, cancelDoneGroupMove } from '../session-store-helpers'
 import { activeInstance, commitInstance, effectivePermissionMode, effectiveThinkingEffort } from '../conversation-instance'
+import { useModelStore } from '../model-store'
+import { resolveEffortForModel } from '../../../shared/thinking-options'
 import { applyActiveGroupMove } from './event-slice-running-move'
 import { maybeSendTimeTitle, isPlaceholderTitle } from './event-slice-titling'
 import { parseSlash } from '../../../main/slash-parse'
@@ -335,8 +337,20 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
       // means "no opinion, inherit the default". Omitting on 'off' would collapse
       // the last two — the off switch would stop working. See the engine's clear
       // arm in session/prompt_options.go (`eff == "off"` → Thinking = nil).
-      const instEffort = effectiveThinkingEffort(tab, get().conversationPanes)
-      const thinkingEffort = instEffort ?? 'off'
+      // Repaired against the model actually being used: a conversation seeded
+      // 'adaptive' on a Claude model keeps that value after switching to an
+      // effort-based model, where the engine resolves 'adaptive' to an EMPTY
+      // effort and drops the directive — silently no reasoning on a model where
+      // the level is the only way to get any. Resolve to the model's neutral
+      // entry instead, matching what the picker displays.
+      const sendModelId = sendInst?.modelOverride || sendInst?.sessionModel || preferredModel
+      const sendModelEntry = sendModelId ? useModelStore.getState().findModel(sendModelId) : undefined
+      const rawEffort = effectiveThinkingEffort(tab, get().conversationPanes)
+      const thinkingEffort = resolveEffortForModel(
+        rawEffort,
+        sendModelEntry?.thinkingMode,
+        sendModelEntry?.thinkingEfforts ?? [],
+      )
 
       window.ion.prompt(tabId, requestId, {
         prompt: fullPrompt,
