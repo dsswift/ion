@@ -29,6 +29,14 @@ struct IonDarkTheme: AppTheme {
     let surfaceElevated = Color(hex: 0x1E1E23)                // surfacePrimary
     let codeBg = Color(hex: 0x0E0E11)                         // codeBg
     let userBubbleTint = Color(hex: 0x1E1E23)                 // userBubble
+    let codeKeyword = Color(hex: 0xC792EA)                    // codeKeyword
+    let codeString = Color(hex: 0x98C379)                     // codeString
+    let codeNumber = Color(hex: 0xF59E0B)                     // codeNumber
+    let codeComment = Color(hex: 0x6B6B73)                    // codeComment
+    let codeFunction = Color(hex: 0x82AAFF)                   // codeFunction
+    let codeType = Color(hex: 0x4EC9B0)                       // codeType
+    let codeVariable = Color(hex: 0xE06C75)                   // codeVariable
+    let codeOperator = Color(hex: 0xB9B9C0)                   // codeOperator
 
     let preferredColorScheme: ColorScheme? = .dark
     let backgroundView: AnyView? = nil

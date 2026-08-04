@@ -29,6 +29,14 @@ struct IonClassicTheme: AppTheme {
     let surfaceElevated = Color(hex: 0x353530)                // surfacePrimary
     let codeBg = Color(hex: 0x1A1A18)                         // codeBg
     let userBubbleTint = Color(hex: 0x353530)                 // userBubble
+    let codeKeyword = Color(hex: 0xC99AC0)                    // codeKeyword
+    let codeString = Color(hex: 0x7AAC8C)                     // codeString
+    let codeNumber = Color(hex: 0xD9A05B)                     // codeNumber
+    let codeComment = Color(hex: 0x8A8A80)                    // codeComment
+    let codeFunction = Color(hex: 0xD97757)                   // codeFunction
+    let codeType = Color(hex: 0x7AAC8C)                       // codeType
+    let codeVariable = Color(hex: 0xC47060)                   // codeVariable
+    let codeOperator = Color(hex: 0xC0BDB2)                   // codeOperator
 
     let preferredColorScheme: ColorScheme? = .dark
     let backgroundView: AnyView? = nil

@@ -56,6 +56,22 @@ protocol AppTheme {
     var codeBg: Color { get }
     var userBubbleTint: Color { get }
 
+    /// Syntax-highlighting tokens for code blocks — the shared
+    /// cross-platform code color vocabulary: desktop maps TextMate scopes
+    /// onto them (ionShikiTheme.ts), iOS maps highlight.js classes onto them
+    /// (IonCodeTheme.swift). Ion Dark/Light/Classic values are pinned
+    /// identical to the desktop palettes by the parity fixture.
+    /// Protocol-extension defaults below keep future themes compiling; the
+    /// built-ins and SyncedTheme all supply real values.
+    var codeKeyword: Color { get }
+    var codeString: Color { get }
+    var codeNumber: Color { get }
+    var codeComment: Color { get }
+    var codeFunction: Color { get }
+    var codeType: Color { get }
+    var codeVariable: Color { get }
+    var codeOperator: Color { get }
+
     /// Forces the app into light or dark mode. Nil means follow system.
     var preferredColorScheme: ColorScheme? { get }
 
@@ -76,6 +92,18 @@ protocol AppTheme {
 
 extension AppTheme {
     var logoImage: UIImage? { nil }
+
+    // Fallbacks so a theme predating the code tokens still compiles and
+    // renders readable (accent for the strong roles, textSecondary for the
+    // quiet ones). Every shipped theme overrides every one of them.
+    var codeKeyword: Color { accent }
+    var codeString: Color { accent }
+    var codeNumber: Color { accent }
+    var codeComment: Color { textSecondary }
+    var codeFunction: Color { accent }
+    var codeType: Color { accent }
+    var codeVariable: Color { textPrimary }
+    var codeOperator: Color { textSecondary }
 }
 
 // MARK: - ThemeRegistry
@@ -255,6 +283,14 @@ final class ThemeManager: AppTheme {
     var surfaceElevated: Color { _currentTheme.surfaceElevated }
     var codeBg: Color { _currentTheme.codeBg }
     var userBubbleTint: Color { _currentTheme.userBubbleTint }
+    var codeKeyword: Color { _currentTheme.codeKeyword }
+    var codeString: Color { _currentTheme.codeString }
+    var codeNumber: Color { _currentTheme.codeNumber }
+    var codeComment: Color { _currentTheme.codeComment }
+    var codeFunction: Color { _currentTheme.codeFunction }
+    var codeType: Color { _currentTheme.codeType }
+    var codeVariable: Color { _currentTheme.codeVariable }
+    var codeOperator: Color { _currentTheme.codeOperator }
     var preferredColorScheme: ColorScheme? { _currentTheme.preferredColorScheme }
     var backgroundView: AnyView? { _currentTheme.backgroundView }
     var activityIndicator: ((Bool) -> AnyView)? { _currentTheme.activityIndicator }

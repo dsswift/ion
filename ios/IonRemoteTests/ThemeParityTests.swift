@@ -97,6 +97,14 @@ final class ThemeParityTests: XCTestCase {
         case "surfaceElevated": return theme.surfaceElevated
         case "codeBg": return theme.codeBg
         case "userBubbleTint": return theme.userBubbleTint
+        case "codeKeyword": return theme.codeKeyword
+        case "codeString": return theme.codeString
+        case "codeNumber": return theme.codeNumber
+        case "codeComment": return theme.codeComment
+        case "codeFunction": return theme.codeFunction
+        case "codeType": return theme.codeType
+        case "codeVariable": return theme.codeVariable
+        case "codeOperator": return theme.codeOperator
         default: throw ParityError.unknownToken(token)
         }
     }
