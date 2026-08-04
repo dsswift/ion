@@ -247,6 +247,25 @@ type EngineRuntimeConfig struct {
 	// continuation nudge. Pointer so engine.json can fully omit the block
 	// and inherit the built-in defaults. See types.EarlyStopDefaults().
 	EarlyStopContinue *EarlyStopContinueConfig `json:"earlyStopContinue,omitempty"`
+	// Thinking is the engine-wide DEFAULT extended-thinking configuration —
+	// the lowest layer of a three-layer precedence chain:
+	//
+	//	engine.json default  (this field, weakest)
+	//	  ← EngineConfig.Thinking   (per-session, set at start_session)
+	//	    ← send_prompt.thinkingEffort (per-prompt, strongest)
+	//
+	// Applied in Manager.applyConfigDefaults ONLY when the run has no
+	// thinking configuration from either stronger layer, exactly as
+	// DefaultModel / MaxTurns / MaxBudgetUsd resolve. A client that sends
+	// the explicit "off" sentinel on a prompt clears thinking for that run
+	// and this default does not resurrect it.
+	//
+	// Pointer so engine.json can omit the block entirely (nil = the engine
+	// emits no thinking directive unless a caller asks for one, which is
+	// the historical behavior). Per-model capability still governs: a model
+	// that declares no thinkingMode receives no directive regardless of
+	// this value — see providers.resolveThinking.
+	Thinking *ThinkingConfig `json:"thinking,omitempty"`
 	// Webhooks configures the inbound HTTP webhook listener that
 	// extensions register routes against. Pointer so engine.json can
 	// omit the block; the listener is OFF by default and auto-enables

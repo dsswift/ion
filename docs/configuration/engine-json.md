@@ -159,6 +159,39 @@ Harness engineers running the engine outside the Ion desktop are encouraged to c
 
 **Sub-agents are off by default.** Runs dispatched through the Agent tool have `IsSubagent=true` and the engine skips the feature for them automatically — sub-agents are summoned with a tight remit and should not be poked to keep working. Harness extensions can still force-on per dispatch via `RunOptions.EarlyStopEnabled = &true`.
 
+## thinking
+
+Engine-wide **default** for extended thinking (reasoning). Sets the baseline reasoning behavior for every run on the machine, so an operator can express "reason at medium by default" without every client having to ask for it on each prompt.
+
+This block is the **weakest** of three resolution layers. Each stronger layer overrides it:
+
+1. This block (`engine.json` — host-level default).
+2. `EngineConfig.thinking` on [`start_session`](../protocol/client-commands.md#start_session) — a per-session default supplied by the client.
+3. `thinkingEffort` on [`send_prompt`](../protocol/client-commands.md#send_prompt) — the per-prompt live control.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Whether runs carry a thinking directive by default. When false the engine emits none, which is the behavior when the block is omitted entirely. |
+| `effort` | string | `""` | Cross-provider reasoning level: `"low"`, `"medium"`, or `"high"`. The forward-compatible control the provider landscape has converged on; the engine maps it to each provider's mechanism (Anthropic adaptive `effort`, OpenAI `reasoning_effort`, Gemini `thinkingConfig` budget). |
+| `budgetTokens` | int | `0` | Legacy explicit thinking-token budget, used only by models whose capability mode is `budget` and only when `effort` is empty. Prefer `effort`. |
+| `streamDeltas` | bool (nullable) | `true` | Whether per-token `engine_thinking_delta` events reach the wire. Block-boundary events always emit, so turning this off keeps the liveness signal and the block summary. |
+| `persist` | bool (nullable) | `true` | Whether reasoning **text** is retained in conversation history for later display. Never affects provider re-submission — reasoning is always stripped before being sent back to the model. |
+
+```json
+{
+  "thinking": {
+    "enabled": true,
+    "effort": "medium"
+  }
+}
+```
+
+**Per-model capability still governs.** A model that declares no `thinkingMode` receives no thinking directive regardless of this block — the engine never forces reasoning onto a model that has not opted in. Declare `thinkingMode` and `thinkingEfforts` in [models.json](models.md#providersidmodelsname) to opt a model in.
+
+**Turning thinking off for one conversation.** A client sends `thinkingEffort: "off"` on `send_prompt`. That is an explicit clear and it beats this default — the engine distinguishes the literal `"off"` (clear thinking for this run) from an absent field (no opinion, inherit the default). A client that omitted the field instead of sending `"off"` would silently inherit whatever is configured here.
+
+**Cost note.** Reasoning tokens bill at output-token rates. Enabling a default here applies it to every run on the machine, including sub-agent dispatches, so the cost multiplies across a fan-out. This is why the engine ships with the block absent.
+
 ## workspaceWatchIgnore
 
 Override the engine's default ignore-glob list for the `workspace_file_changed` hook's recursive filesystem watcher. The watcher is rooted at the session `workingDirectory` and fires the hook for every non-ignored create / modify / delete event under the tree. The ignore list runs before fsnotify descriptors are attached, so ignored subtrees (e.g. `node_modules/**`) never consume inotify capacity in the first place.

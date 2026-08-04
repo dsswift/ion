@@ -357,6 +357,38 @@ func TestParseClientCommand_SetPlanModeValues(t *testing.T) {
 	}
 }
 
+// TestParseClientCommand_ThinkingEffortValues pins the three-state decode of
+// send_prompt's thinkingEffort field. The distinction between "off" and an
+// absent field is load-bearing: the session layer treats "off" as an explicit
+// CLEAR (overriding any engine.json or session default) and an absent field as
+// "no opinion — inherit the default". A decoder that collapsed the two would
+// make the clear arm unreachable, so a conversation with thinking switched off
+// would silently inherit a configured default.
+//
+// Revert proof: a decoder change that dropped "off" fails the second case.
+func TestParseClientCommand_ThinkingEffortValues(t *testing.T) {
+	cases := []struct {
+		name string
+		line string
+		want string
+	}{
+		{"level is carried verbatim", `{"cmd":"send_prompt","key":"s1","text":"hi","thinkingEffort":"high"}`, "high"},
+		{"off sentinel survives decode", `{"cmd":"send_prompt","key":"s1","text":"hi","thinkingEffort":"off"}`, "off"},
+		{"absent decodes to empty", `{"cmd":"send_prompt","key":"s1","text":"hi"}`, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := ParseClientCommand(tc.line)
+			if result == nil {
+				t.Fatal("expected non-nil result")
+			}
+			if result.ThinkingEffort != tc.want {
+				t.Errorf("thinkingEffort = %q, want %q", result.ThinkingEffort, tc.want)
+			}
+		})
+	}
+}
+
 func TestSerializeServerEvent(t *testing.T) {
 	event := json.RawMessage(`{"type":"engine_text_delta","text":"hello"}`)
 	result := SerializeServerEvent("s1", event)
