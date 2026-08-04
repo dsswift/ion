@@ -120,6 +120,8 @@ export function useTabRestoration() {
                   modelOverride: main?.modelOverride || null,
                   draftInput: main?.draftInput ?? '',
                   permissionMode: restoredMode,
+                  // Absent means 'off' — the serializer omits the default.
+                  thinkingEffort: main?.thinkingEffort ?? 'off',
                   // Persisted permissionDenied is authoritative over resumeSession reconstruction
                   ...(main?.permissionDenied ? { permissionDenied: main.permissionDenied } : {}),
                   ...(main?.planFilePath ? { planFilePath: main.planFilePath } : {}),
@@ -230,6 +232,8 @@ export function useTabRestoration() {
                 permissionDenied: main?.permissionDenied ?? null,
                 planFilePath: main?.planFilePath ?? null,
                 permissionMode: skeletonMode,
+                // Absent means 'off' — the serializer omits the default.
+                thinkingEffort: main?.thinkingEffort ?? 'off',
                 // Context occupancy so the indicator is correct on first
                 // paint, before any engine status arrives.
                 ...seedContextStatusFields({}, main),
@@ -305,6 +309,8 @@ export function useTabRestoration() {
               modelOverride: sessionlessMain?.modelOverride || null,
               draftInput: sessionlessMain?.draftInput ?? '',
               permissionMode: sessionlessMode,
+              // Absent means 'off' — the serializer omits the default.
+              thinkingEffort: sessionlessMain?.thinkingEffort ?? 'off',
             })
 
             useSessionStore.setState((s) => {

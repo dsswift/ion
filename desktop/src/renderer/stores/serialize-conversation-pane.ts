@@ -240,6 +240,10 @@ export function serializeConversationPane(
     if (inst.modelOverride) out.modelOverride = inst.modelOverride
     if (inst.sessionModel) out.sessionModel = inst.sessionModel
     if (inst.permissionMode && inst.permissionMode !== 'auto') out.permissionMode = inst.permissionMode
+    // Thinking effort: conditional-write like permissionMode above. 'off' is
+    // the default, so omitting it keeps the manifest small and an absent field
+    // restores to 'off'.
+    if (inst.thinkingEffort && inst.thinkingEffort !== 'off') out.thinkingEffort = inst.thinkingEffort
     if (inst.permissionDenied && inst.permissionDenied.tools.length > 0) {
       out.permissionDenied = { tools: inst.permissionDenied.tools }
     }

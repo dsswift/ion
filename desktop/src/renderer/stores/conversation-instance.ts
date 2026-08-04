@@ -31,7 +31,7 @@
 
 import { MAIN_INSTANCE_ID } from '../../shared/session-key'
 import type { ConversationRef, ConversationInstance, ConversationPane, StatusFields } from '../../shared/types-engine'
-import type { Message as _Message } from '../../shared/types-session'
+import type { Message as _Message, ThinkingEffort } from '../../shared/types-session'
 
 /** A fully-typed instance row as stored in `ConversationPane.instances`. */
 export type Instance = ConversationRef & ConversationInstance
@@ -156,7 +156,7 @@ export function effectivePermissionMode(
 export function effectiveThinkingEffort(
   tab: { id: string },
   conversationPanes: Map<string, ConversationPane>,
-): string {
+): ThinkingEffort {
   return activeInstance(conversationPanes, tab.id)?.thinkingEffort ?? 'off'
 }
 

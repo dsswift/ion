@@ -10,6 +10,7 @@ import { parseSessionKey } from '../../shared/session-key'
 import { createTabSlice } from './slices/tab-slice'
 import { createCloseIntentSlice } from './slices/close-intent-slice'
 import { createResumeSlice } from './slices/resume-slice'
+import { createForkSlice } from './slices/resume-slice-fork'
 import { createExpandSlice } from './slices/expand-slice'
 import { createTerminalSlice } from './slices/terminal-slice'
 import { createFileExplorerSlice } from './slices/file-explorer-slice'
@@ -100,6 +101,7 @@ export const useSessionStore = create<State>((set, get) => {
     ...createTabSlice(_set, _get),
     ...createCloseIntentSlice(_set, _get),
     ...createResumeSlice(_set, _get),
+    ...createForkSlice(_set, _get),
     ...createExpandSlice(_set, _get),
     ...createTerminalSlice(_set, _get),
     ...createFileExplorerSlice(_set, _get),

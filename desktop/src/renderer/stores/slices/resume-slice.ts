@@ -2,76 +2,16 @@ import type { TabState, Message } from '../../../shared/types'
 import { usePreferencesStore } from '../../preferences'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { makeLocalTab, nextMsgId } from '../session-store-helpers'
-import { makeMainPane, commitInstance, activeInstance, effectivePermissionMode } from '../conversation-instance'
+import { makeMainPane, commitInstance, activeInstance } from '../conversation-instance'
+import { buildRestoredDenied } from './resume-slice-restore-denied'
 import { mapSessionHistory, mapSessionMessage } from '../../../shared/session-message-mapper'
-import { buildRestoredDenied } from '../restored-denied'
 import { loadSkeletonMessagesImpl } from '../resume-slice-hydration'
 import { rInfo, rWarn } from '../../rendererLogger'
 import { resolveRegisteredWorktree } from '../worktree-registration'
 
+
 export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
-    forkTab: async (sourceTabId) => {
-      const source = get().tabs.find((t) => t.id === sourceTabId)
-      if (!source || !source.conversationId) return null
-      // Source scrollback lives on the source tab's active instance now.
-      const sourceInst = activeInstance(get().conversationPanes, sourceTabId)
-      if (!sourceInst) throw new Error('Cannot fork a tab whose conversation instance is missing')
-      try {
-        const { tabId } = await window.ion.createTab()
-
-        const messages: Message[] = sourceInst.messages.map((m) => ({
-          ...m,
-          id: nextMsgId(),
-        }))
-
-        const restoredDenied = buildRestoredDenied(messages)
-
-        const sourceDisplay = source.customTitle || source.title
-        const baseMatch = sourceDisplay.match(/^(.+?)\s*\(\d+\)$/)
-        const baseName = baseMatch ? baseMatch[1] : sourceDisplay
-        const allTitles = get().tabs.map((t) => t.customTitle || t.title)
-        let n = 1
-        while (allTitles.includes(`${baseName} (${n})`)) n++
-        const forkTitle = `${baseName} (${n})`
-
-        const tab: TabState = {
-          ...makeLocalTab(),
-          id: tabId,
-          conversationId: null,
-          forkedFromSessionId: source.conversationId,
-          title: source.title,
-          customTitle: forkTitle,
-          workingDirectory: source.workingDirectory,
-          hasChosenDirectory: source.hasChosenDirectory,
-          additionalDirs: [...source.additionalDirs],
-          pillColor: source.pillColor,
-          pillIcon: source.pillIcon,
-        }
-        // Carry the source instance's permission mode onto the new pane instance.
-        const forkMode = effectivePermissionMode(source, get().conversationPanes)
-        // Seed the forked tab's `main` pane with the carried-over scrollback +
-        // restored denial. modelOverride carries from the source instance.
-        rInfo('session.fork', 'fork tab', { source_tab: sourceTabId.slice(0, 8), new_tab: tab.id.slice(0, 8), count: messages.length, restored_denied: restoredDenied })
-        set((s) => ({
-          tabs: [...s.tabs, tab],
-          conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane({
-            messages,
-            messageCount: messages.length,
-            modelOverride: sourceInst.modelOverride,
-            permissionDenied: restoredDenied,
-            permissionMode: forkMode,
-          })),
-          activeTabId: tab.id,
-          isExpanded: true,
-        }))
-        window.ion.setPermissionMode(tabId, forkMode, 'tab_create')
-        return tabId
-      } catch {
-        return null
-      }
-    },
-
     rewindToMessage: (tabId, messageId) => {
       const tab = get().tabs.find((t) => t.id === tabId)
       if (!tab) return
@@ -121,72 +61,6 @@ export function createResumeSlice(set: StoreSet, get: StoreGet): Partial<State> 
         )
         return { tabs, conversationPanes }
       })
-    },
-
-    forkFromMessage: async (tabId, messageId) => {
-      const source = get().tabs.find((t) => t.id === tabId)
-      if (!source) return null
-      // Source scrollback lives on the source tab's active instance now.
-      const sourceInst = activeInstance(get().conversationPanes, tabId)
-      if (!sourceInst) throw new Error('Cannot fork from a tab whose conversation instance is missing')
-      const idx = sourceInst.messages.findIndex((m) => m.id === messageId)
-      if (idx < 0) return null
-
-      try {
-        const { tabId: newTabId } = await window.ion.createTab()
-        const targetMessage = sourceInst.messages[idx]
-        const messages: Message[] = sourceInst.messages.slice(0, idx).map((m) => ({
-          ...m,
-          id: nextMsgId(),
-        }))
-
-        const restoredDenied = buildRestoredDenied(messages)
-
-        const sourceDisplay = source.customTitle || source.title
-        const baseMatch = sourceDisplay.match(/^(.+?)\s*\(\d+\)$/)
-        const baseName = baseMatch ? baseMatch[1] : sourceDisplay
-        const allTitles = get().tabs.map((t) => t.customTitle || t.title)
-        let n = 1
-        while (allTitles.includes(`${baseName} (${n})`)) n++
-        const forkTitle = `${baseName} (${n})`
-
-        const tab: TabState = {
-          ...makeLocalTab(),
-          id: newTabId,
-          conversationId: null,
-          forkedFromSessionId: source.conversationId,
-          title: source.title,
-          customTitle: forkTitle,
-          workingDirectory: source.workingDirectory,
-          hasChosenDirectory: source.hasChosenDirectory,
-          additionalDirs: [...source.additionalDirs],
-          pillColor: source.pillColor,
-          pillIcon: source.pillIcon,
-          // pendingInput stays on the tab (one-shot InputBar pre-fill); draftInput
-          // is seeded onto the instance below.
-          pendingInput: targetMessage.content,
-        }
-        // Carry the source instance's permission mode onto the new pane instance.
-        const forkMode = effectivePermissionMode(source, get().conversationPanes)
-        rInfo('session.fork', 'fork from message', { source_tab: tabId.slice(0, 8), new_tab: tab.id.slice(0, 8), count: messages.length, restored_denied: restoredDenied })
-        set((s) => ({
-          tabs: [...s.tabs, tab],
-          conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane({
-            messages,
-            messageCount: messages.length,
-            modelOverride: sourceInst.modelOverride,
-            permissionDenied: restoredDenied,
-            draftInput: targetMessage.content,
-            permissionMode: forkMode,
-          })),
-          activeTabId: tab.id,
-          isExpanded: true,
-        }))
-        window.ion.setPermissionMode(newTabId, forkMode, 'tab_create')
-        return newTabId
-      } catch {
-        return null
-      }
     },
 
     resumeSession: async (sessionId, title, projectPath, customTitle, encodedDir) => {
