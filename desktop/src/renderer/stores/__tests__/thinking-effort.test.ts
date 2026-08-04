@@ -157,21 +157,25 @@ describe('sendMessage — thinking gating', () => {
     expect(opts.thinkingEffort).toBe('high')
   })
 
-  it('global OFF → thinkingEffort omitted even when tab level set', () => {
+  it("global OFF → thinkingEffort:'off' sentinel even when tab level set", () => {
     prefState.thinkingEnabled = false
     // thinkingEffort lives on the instance (WI-002) — pass as instanceOverride
     const { state } = buildHarness(makeTab(), { thinkingEffort: 'high' })
     state.submit('tab-1', 'hello')
     const opts = mockPrompt.mock.calls[0][2] as any
-    expect(opts.thinkingEffort).toBeUndefined()
+    // The EXPLICIT sentinel, never omission: the engine treats an absent field
+    // as "inherit the configured default" and only the literal 'off' clears
+    // thinking. Omitting here would let a conversation with thinking switched
+    // off inherit an engine.json default.
+    expect(opts.thinkingEffort).toBe('off')
   })
 
-  it('global ON + tab level off → thinkingEffort omitted', () => {
+  it("global ON + tab level off → thinkingEffort:'off' sentinel", () => {
     prefState.thinkingEnabled = true
     const { state } = buildHarness(makeTab(), { thinkingEffort: 'off' })
     state.submit('tab-1', 'hello')
     const opts = mockPrompt.mock.calls[0][2] as any
-    expect(opts.thinkingEffort).toBeUndefined()
+    expect(opts.thinkingEffort).toBe('off')
   })
 })
 
@@ -264,18 +268,18 @@ describe('sendMessage thinking-effort — WI-002 parity: plain == extension-host
     expect(plainOpts.thinkingEffort).toBe(extOpts.thinkingEffort)
   })
 
-  it('plain tab with off effort omits thinkingEffort (matches extension-hosted behavior)', () => {
+  it("plain tab with off effort sends the 'off' sentinel (matches extension-hosted behavior)", () => {
     const { state } = buildHarness(makePlainTab(), { thinkingEffort: 'off' })
     state.submit('tab-1', 'hello')
     const opts = mockPrompt.mock.calls[0][2] as any
-    expect(opts.thinkingEffort).toBeUndefined()
+    expect(opts.thinkingEffort).toBe('off')
   })
 
-  it('extension-hosted tab with off effort omits thinkingEffort (matches plain behavior)', () => {
+  it("extension-hosted tab with off effort sends the 'off' sentinel (matches plain behavior)", () => {
     const { state } = buildHarness(makeExtensionTab(), { thinkingEffort: 'off' })
     state.submit('tab-1', 'hello')
     const opts = mockPrompt.mock.calls[0][2] as any
-    expect(opts.thinkingEffort).toBeUndefined()
+    expect(opts.thinkingEffort).toBe('off')
   })
 })
 

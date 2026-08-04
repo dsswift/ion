@@ -329,9 +329,18 @@ export function createSendSlice(set: StoreSet, get: StoreGet): Partial<State> {
 
       // Thinking effort: read from the active instance via the unified seam
       // (effectiveThinkingEffort), gated by the global thinkingEnabled toggle.
+      //
+      // "Off" is sent as the EXPLICIT 'off' sentinel, not omitted. The engine
+      // distinguishes three states on the wire: a level ("low"/"medium"/"high")
+      // sets thinking for the run, the literal "off" CLEARS it (overriding any
+      // engine.json or session default), and an ABSENT field means "no opinion,
+      // inherit the default". Omitting on off would collapse the last two, so a
+      // conversation with thinking switched off would silently inherit a
+      // configured default — the off switch would stop working. See the engine's
+      // clear arm in session/prompt_options.go (`eff == "off"` → Thinking = nil).
       const thinkingEnabled = usePreferencesStore.getState().thinkingEnabled
       const instEffort = effectiveThinkingEffort(tab, get().conversationPanes)
-      const thinkingEffort = thinkingEnabled && instEffort && instEffort !== 'off' ? instEffort : undefined
+      const thinkingEffort = thinkingEnabled && instEffort && instEffort !== 'off' ? instEffort : 'off'
 
       window.ion.prompt(tabId, requestId, {
         prompt: fullPrompt,
