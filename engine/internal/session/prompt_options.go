@@ -216,17 +216,29 @@ func buildRunOptions(s *engineSession, text string, overrides *PromptOverrides) 
 		if overrides.ImplementationPhase {
 			opts.ImplementationPhase = true
 		}
-		// Per-prompt thinking effort (live per-conversation control). A
-		// non-empty, non-"off" level sets RunOptions.Thinking for this run;
-		// "off" explicitly clears it so the prompt carries no thinking
-		// directive even if a session or engine.json default existed. This is
-		// the single place the per-prompt effort lands on the run; the
+		// Per-prompt thinking effort (live per-conversation control). Four
+		// meaningful values:
+		//   "low"/"medium"/"high" — set thinking AND pin the depth
+		//   "adaptive"            — enable thinking, DO NOT pin depth: the
+		//                           model self-regulates (Anthropic adaptive
+		//                           models). Resolves to Effort:"" so the
+		//                           provider omits output_config/effort.
+		//   "off"                 — clear thinking entirely
+		// This is the single place the per-prompt effort lands on the run; the
 		// provider body-builders resolve the per-model mechanism downstream.
 		//
-		// ThinkingCleared distinguishes this deliberate clear from "no opinion"
+		// "adaptive" exists because pinning effort:"high" on a self-regulating
+		// model overrides its own judgment on EVERY turn, including turns that
+		// need no reasoning — which is a large latency regression, not a
+		// quality win. The engine carries the distinction; the client decides
+		// which value to send.
+		//
+		// ThinkingCleared distinguishes a deliberate "off" from "no opinion"
 		// — both leave Thinking nil, and applyConfigDefaults must not apply the
 		// engine-wide default over an explicit off.
-		if eff := overrides.ThinkingEffort; eff != "" && eff != "off" {
+		if eff := overrides.ThinkingEffort; eff == types.ThinkingEffortAdaptive {
+			opts.Thinking = &types.ThinkingConfig{Enabled: true}
+		} else if eff != "" && eff != "off" {
 			opts.Thinking = &types.ThinkingConfig{Enabled: true, Effort: eff}
 		} else if eff == "off" {
 			opts.Thinking = nil

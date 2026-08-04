@@ -95,6 +95,27 @@ type EngineConfig struct {
 	Pinned bool `json:"pinned,omitempty"`
 }
 
+// Per-prompt thinking-effort sentinels carried on
+// ClientCommand.ThinkingEffort / PromptOverrides.ThinkingEffort.
+//
+// These are WIRE values a client sends, not fields on ThinkingConfig. The
+// engine maps them onto a ThinkingConfig in session.buildRunOptions:
+//
+//	"off"                 → no thinking directive (clears any default)
+//	"adaptive"            → ThinkingConfig{Enabled:true} with NO Effort, so a
+//	                        self-regulating model picks its own depth
+//	"low"/"medium"/"high" → ThinkingConfig{Enabled:true, Effort:<level>}
+//
+// ThinkingEffortAdaptive exists because pinning an explicit effort on a model
+// whose ThinkingMode is "adaptive" overrides the model's own per-turn judgment
+// on EVERY turn, including trivial ones. That is a latency regression rather
+// than a quality win, so a client needs a way to say "reason, but decide the
+// depth yourself" that is distinct from both "off" and a pinned level.
+const (
+	ThinkingEffortOff      = "off"
+	ThinkingEffortAdaptive = "adaptive"
+)
+
 // ThinkingConfig controls extended thinking for API-backend runs.
 type ThinkingConfig struct {
 	Enabled bool `json:"enabled"`
@@ -104,8 +125,10 @@ type ThinkingConfig struct {
 	// Gemini `thinkingConfig` budget mapped from the level). Precedence with
 	// the legacy BudgetTokens field:
 	//   - Enabled && Effort != "" ⇒ effort-based resolution (preferred path).
-	//   - Enabled && Effort == "" ⇒ legacy budget path (back-compat only; used
-	//     for older models whose capability mode is "budget").
+	//   - Enabled && Effort == "" ⇒ adaptive/legacy path: an "adaptive" model
+	//     self-regulates depth (no output_config emitted), and a "budget"
+	//     model falls back to BudgetTokens. This is the shape a client
+	//     requests with thinkingEffort:"adaptive".
 	//   - !Enabled ⇒ no thinking directive emitted, regardless of other fields.
 	// The provider body-builders translate (mode, effort, budget) via the
 	// shared resolveThinking helper; see engine/internal/providers.

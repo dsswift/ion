@@ -225,3 +225,53 @@ func TestGoogleBuildRequestBody_ThinkingConfig(t *testing.T) {
 		t.Error("thinkingConfig present when config nil; want omitted")
 	}
 }
+
+// TestAnthropicBuildRequestBody_AdaptiveNoEffort pins the body shape for the
+// "adaptive" per-prompt sentinel: thinking is REQUESTED but depth is left to
+// the model. The presence of output_config is the whole difference — with it,
+// the model is pinned to a fixed effort on every turn regardless of how
+// trivial the prompt is, which is what produced multi-minute thinking streams
+// on simple questions when "high" was the default.
+//
+// Revert proof: emitting output_config unconditionally fails this test.
+func TestAnthropicBuildRequestBody_AdaptiveNoEffort(t *testing.T) {
+	registerThinkingTestModels()
+	p := &anthropicProvider{}
+	body := p.buildRequestBody(types.LlmStreamOptions{
+		Model:    "test-adaptive",
+		Thinking: &types.ThinkingConfig{Enabled: true}, // adaptive: no Effort
+	})
+
+	thinking, ok := body["thinking"].(map[string]any)
+	if !ok {
+		t.Fatalf("thinking directive missing; body=%v", body)
+	}
+	if thinking["type"] != "adaptive" {
+		t.Errorf("thinking.type = %v, want adaptive", thinking["type"])
+	}
+	if thinking["display"] != "summarized" {
+		t.Errorf("thinking.display = %v, want summarized (reasoning stays observable)", thinking["display"])
+	}
+	if _, present := body["output_config"]; present {
+		t.Errorf("output_config present = %v, want ABSENT so the model self-regulates depth", body["output_config"])
+	}
+}
+
+// The contrast case: an explicit level still pins depth via output_config, so
+// a user who deliberately picks "high" on a hard problem still gets it.
+func TestAnthropicBuildRequestBody_AdaptiveWithExplicitEffortStillPins(t *testing.T) {
+	registerThinkingTestModels()
+	p := &anthropicProvider{}
+	body := p.buildRequestBody(types.LlmStreamOptions{
+		Model:    "test-adaptive",
+		Thinking: enabledEffort("high"),
+	})
+
+	oc, ok := body["output_config"].(map[string]any)
+	if !ok {
+		t.Fatalf("output_config missing for an explicit effort; body=%v", body)
+	}
+	if oc["effort"] != "high" {
+		t.Errorf("output_config.effort = %v, want high", oc["effort"])
+	}
+}
