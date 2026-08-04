@@ -101,10 +101,17 @@ type EngineConfig struct {
 // These are WIRE values a client sends, not fields on ThinkingConfig. The
 // engine maps them onto a ThinkingConfig in session.buildRunOptions:
 //
-//	"off"                 → no thinking directive (clears any default)
-//	"adaptive"            → ThinkingConfig{Enabled:true} with NO Effort, so a
-//	                        self-regulating model picks its own depth
-//	"low"/"medium"/"high" → ThinkingConfig{Enabled:true, Effort:<level>}
+//	"off"      → no thinking directive (clears any default)
+//	"adaptive" → ThinkingConfig{Enabled:true} with NO Effort, so a
+//	             self-regulating model picks its own depth
+//	<level>    → ThinkingConfig{Enabled:true, Effort:<level>}
+//
+// The level ladder is "low" < "medium" < "high" < "xhigh" < "max". The engine
+// does NOT hardcode which levels exist per model: a level is accepted only when
+// the model advertises it in ThinkingEfforts (see providers.resolveThinking),
+// so a provider or gateway can introduce a new rung by declaring it. The
+// constants below name only the two non-level sentinels, which carry engine
+// semantics rather than being passed through to a provider.
 //
 // ThinkingEffortAdaptive exists because pinning an explicit effort on a model
 // whose ThinkingMode is "adaptive" overrides the model's own per-turn judgment

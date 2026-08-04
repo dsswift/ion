@@ -29,16 +29,26 @@ type ThinkingResolution struct {
 
 // effortBudgetTokens maps an effort level to a thinking-token budget for the
 // mechanisms that take a raw budget (Anthropic legacy `budget`, Gemini
-// `thinkingConfig`). The triple low/medium/high → 4k/10k/24k is the
-// reviewer-confirmed mapping from the plan. An unknown level falls back to the
-// medium budget so a malformed effort never disables thinking silently when
-// the caller explicitly asked for it.
+// `thinkingConfig`). low/medium/high → 4k/10k/24k is the reviewer-confirmed
+// mapping from the plan; xhigh and max extend the ladder for models that
+// advertise them.
+//
+// An unknown level falls back to the medium budget so a malformed effort never
+// disables thinking silently when the caller explicitly asked for it. That
+// fallback is why every level the engine accepts must appear here: a level
+// missing from this switch would be silently served a MEDIUM budget on the
+// budget/gemini mechanisms while behaving correctly on the effort-passthrough
+// ones, which is a difference no consumer could see.
 func effortBudgetTokens(effort string) int {
 	switch effort {
 	case "low":
 		return 4000
 	case "high":
 		return 24000
+	case "xhigh":
+		return 48000
+	case "max":
+		return 64000
 	case "medium":
 		return 10000
 	default:

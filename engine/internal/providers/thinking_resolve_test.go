@@ -98,3 +98,78 @@ func TestValidateThinkingBudget(t *testing.T) {
 		})
 	}
 }
+
+// TestEffortBudgetTokens_FullLadder pins the effort→budget mapping for every
+// level the engine accepts, INCLUDING the extended rungs.
+//
+// The mapping matters only for the mechanisms that take a raw token budget
+// (Anthropic legacy `budget`, Gemini `thinkingConfig`); the effort-passthrough
+// mechanisms (adaptive, reasoning_effort) send the level verbatim. That split
+// is exactly why a missing rung here is dangerous: a level absent from the
+// switch falls through to the MEDIUM budget, so xhigh/max would behave
+// correctly on an OpenAI model and silently under-reason on a Gemini or legacy
+// Anthropic one — a discrepancy no consumer could observe.
+//
+// Revert proof: removing the xhigh or max case drops it to 10000 and fails.
+func TestEffortBudgetTokens_FullLadder(t *testing.T) {
+	cases := []struct {
+		effort string
+		want   int
+	}{
+		{"low", 4000},
+		{"medium", 10000},
+		{"high", 24000},
+		{"xhigh", 48000},
+		{"max", 64000},
+	}
+	for _, tc := range cases {
+		if got := effortBudgetTokens(tc.effort); got != tc.want {
+			t.Errorf("effortBudgetTokens(%q) = %d, want %d", tc.effort, got, tc.want)
+		}
+	}
+
+	// The ladder must be strictly increasing: a higher effort that bought
+	// fewer thinking tokens would be an outright inversion of the control.
+	prev := 0
+	for _, tc := range cases {
+		got := effortBudgetTokens(tc.effort)
+		if got <= prev {
+			t.Errorf("ladder not strictly increasing at %q: %d follows %d", tc.effort, got, prev)
+		}
+		prev = got
+	}
+
+	// An unknown level falls back to medium rather than disabling thinking,
+	// because the caller explicitly asked for reasoning.
+	if got := effortBudgetTokens("bogus"); got != 10000 {
+		t.Errorf("effortBudgetTokens(unknown) = %d, want the medium fallback 10000", got)
+	}
+}
+
+// A model that advertises an extended level must resolve it through, and one
+// that does not must still reject it — the engine never hardcodes which levels
+// a model supports, it defers to ThinkingEfforts.
+func TestResolveThinking_ExtendedLevelsFollowModelDeclaration(t *testing.T) {
+	RegisterModel("test-extended", types.ModelInfo{
+		ProviderID:      "openai",
+		ThinkingMode:    "reasoning_effort",
+		ThinkingEfforts: []string{"low", "medium", "high", "xhigh"},
+	})
+	RegisterModel("test-basic", types.ModelInfo{
+		ProviderID:      "openai",
+		ThinkingMode:    "reasoning_effort",
+		ThinkingEfforts: []string{"low", "medium", "high"},
+	})
+
+	res := resolveThinking("test-extended", &types.ThinkingConfig{Enabled: true, Effort: "xhigh"})
+	if res.Mode != "reasoning_effort" || res.Effort != "xhigh" {
+		t.Errorf("advertised xhigh: got %+v, want reasoning_effort/xhigh", res)
+	}
+
+	// Not advertised → no directive, rather than sending a level the provider
+	// would reject.
+	res = resolveThinking("test-basic", &types.ThinkingConfig{Enabled: true, Effort: "xhigh"})
+	if res.Mode != "none" {
+		t.Errorf("unadvertised xhigh: got %+v, want none", res)
+	}
+}
