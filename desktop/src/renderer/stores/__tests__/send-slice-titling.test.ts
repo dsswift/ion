@@ -59,7 +59,6 @@ vi.mock('../../preferences', () => ({
       planModeModel: null,
       engineProfiles: [],
       engineDefaultModel: null,
-      thinkingEnabled: false,
       tabGroups: [],
     })),
   },

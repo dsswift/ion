@@ -65,18 +65,9 @@ export const SETTINGS_DEFAULTS = {
   // refreshes on focus, tab switch, and manual refresh. Supports ~ and $HOME
   // expansion. Default excludes ~/.ion (high-write log/conversation storage).
   gitWatcherIgnoredDirectories: ['~/.ion'] as string[],
-  // Global gate for extended thinking / reasoning. Default OFF — Ion is
-  // API-billed, where thinking tokens bill as output tokens at full rate and
-  // can multiply a turn's cost several-fold. When OFF, no prompt carries a
-  // thinking directive and the per-conversation thinking control is hidden on
-  // both clients. When ON, the per-conversation control appears and the
-  // selected effort rides on each prompt. See StatusBarThinkingPicker.tsx and
-  // the engine's resolveThinking helper.
-  thinkingEnabled: false,
-  // Level a NEW conversation's thinking control starts at, when the gate above
-  // is on. 'high' is the desktop's opinionated default; users can override in
-  // Settings. Only meaningful when thinkingEnabled is true — the gate hides
-  // the control entirely when false.
+  // Per-conversation thinking effort default. 'high' is the desktop's
+  // opinionated default; users can override in Settings. Per-conversation
+  // changes live on the instance (StatusBarThinkingPicker).
   defaultThinkingEffort: 'high' as 'off' | 'low' | 'medium' | 'high',
   // Agent Team Visualizer (desktop-only window; none of these keys are iOS
   // projectable). atvSeeds maps an extension scope (engineProfileId, or
@@ -178,19 +169,6 @@ export function shouldStreamThinkingToRemote(): boolean {
 }
 
 /**
- * Resolve the global `thinkingEnabled` gate from settings.json. Defaults to
- * `false` (thinking OFF) when the key is absent or not a boolean — matching
- * SETTINGS_DEFAULTS. This is the hard gate: when false the renderer hides the
- * per-conversation thinking control and never sends `thinkingEffort` on a
- * prompt. Not hot-path (read at prompt-submit time, not per-delta), so no
- * cache is needed.
- */
-export function shouldEnableThinking(): boolean {
-  const raw = readSettings()
-  return raw.thinkingEnabled === true
-}
-
-/**
  * Resolve the user's default per-conversation thinking effort from
  * settings.json. This is the level a NEW conversation starts at; the user can
  * still change any individual conversation with the status-bar picker.
@@ -230,10 +208,6 @@ export function readDefaultThinkingEffort(): ThinkingEffort {
  * desktop.
  */
 export function resolveSessionThinkingConfig(): ThinkingConfig | undefined {
-  if (!shouldEnableThinking()) {
-    log('thinking config: gate off, omitting session default')
-    return undefined
-  }
   const effort = readDefaultThinkingEffort()
   if (effort === 'off') {
     log('thinking config: enabled but default level off, omitting session default')

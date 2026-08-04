@@ -3,9 +3,8 @@
  *
  * Pins:
  *   1. setThinkingEffort isolates state per-tab (bare conversation).
- *   2. sendMessage includes thinkingEffort on window.ion.prompt ONLY when the
- *      global thinkingEnabled is on AND the tab's level is non-off.
- *   3. Global off → thinkingEffort omitted even when the tab has a level.
+ *   2. sendMessage passes the instance's thinkingEffort directly on the prompt.
+ *   3. 'off' tab level → the 'off' sentinel is sent (never omitted).
  *
  * WI-002 parity tests (added for #259 FIX 2):
  *   4. effectiveThinkingEffort reads the instance for both plain and
@@ -36,7 +35,6 @@ vi.mock('../session-store-helpers', () => ({
   scheduleDoneGroupMove: vi.fn(),
 }))
 
-// Mutable preference state the mock reads; tests flip thinkingEnabled.
 const prefState = {
   autoGroupMovement: false,
   tabGroupMode: 'manual',
@@ -53,7 +51,6 @@ const prefState = {
   engineProfiles: [] as unknown[],
   engineDefaultModel: null,
   tabGroups: [{ id: 'group-default', label: 'Default', isDefault: true, order: 0 }],
-  thinkingEnabled: false,
 }
 
 vi.mock('../../preferences', () => ({
@@ -126,7 +123,7 @@ function buildHarness(initialTab: TabState, instanceOverrides: Record<string, un
 }
 
 describe('setThinkingEffort — per-conversation isolation', () => {
-  beforeEach(() => { vi.clearAllMocks(); prefState.thinkingEnabled = false })
+  beforeEach(() => { vi.clearAllMocks() })
 
   it('writes the effort onto the active conversation instance', () => {
     const { state } = buildHarness(makeTab())
@@ -144,11 +141,10 @@ describe('setThinkingEffort — per-conversation isolation', () => {
   })
 })
 
-describe('sendMessage — thinking gating', () => {
-  beforeEach(() => { vi.clearAllMocks(); mockPrompt.mockResolvedValue(undefined); prefState.thinkingEnabled = false })
+describe('sendMessage — thinking effort on prompt', () => {
+  beforeEach(() => { vi.clearAllMocks(); mockPrompt.mockResolvedValue(undefined) })
 
-  it('global ON + tab level high → thinkingEffort:high on prompt', () => {
-    prefState.thinkingEnabled = true
+  it('tab level high → thinkingEffort:high on prompt', () => {
     // thinkingEffort lives on the instance (WI-002) — pass as instanceOverride
     const { state } = buildHarness(makeTab(), { thinkingEffort: 'high' })
     state.submit('tab-1', 'hello')
@@ -157,21 +153,11 @@ describe('sendMessage — thinking gating', () => {
     expect(opts.thinkingEffort).toBe('high')
   })
 
-  it("global OFF → thinkingEffort:'off' sentinel even when tab level set", () => {
-    prefState.thinkingEnabled = false
-    // thinkingEffort lives on the instance (WI-002) — pass as instanceOverride
-    const { state } = buildHarness(makeTab(), { thinkingEffort: 'high' })
-    state.submit('tab-1', 'hello')
-    const opts = mockPrompt.mock.calls[0][2] as any
-    // The EXPLICIT sentinel, never omission: the engine treats an absent field
-    // as "inherit the configured default" and only the literal 'off' clears
-    // thinking. Omitting here would let a conversation with thinking switched
-    // off inherit an engine.json default.
-    expect(opts.thinkingEffort).toBe('off')
-  })
-
-  it("global ON + tab level off → thinkingEffort:'off' sentinel", () => {
-    prefState.thinkingEnabled = true
+  it("tab level off → thinkingEffort:'off' sentinel (explicit, never omitted)", () => {
+    // The engine distinguishes three wire states: a level sets thinking, the
+    // literal 'off' CLEARS it (overriding any engine.json or session default),
+    // and an absent field means "inherit the default". Omitting on 'off' would
+    // let the conversation silently inherit a configured default.
     const { state } = buildHarness(makeTab(), { thinkingEffort: 'off' })
     state.submit('tab-1', 'hello')
     const opts = mockPrompt.mock.calls[0][2] as any
@@ -236,7 +222,7 @@ describe('effectiveThinkingEffort — WI-002 parity (no tab-type fork)', () => {
 })
 
 describe('sendMessage thinking-effort — WI-002 parity: plain == extension-hosted', () => {
-  beforeEach(() => { vi.clearAllMocks(); mockPrompt.mockResolvedValue(undefined); prefState.thinkingEnabled = true })
+  beforeEach(() => { vi.clearAllMocks(); mockPrompt.mockResolvedValue(undefined) })
 
   it('plain tab with high effort sends thinkingEffort:high', () => {
     const { state } = buildHarness(makePlainTab(), { thinkingEffort: 'high' })

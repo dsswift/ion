@@ -13,7 +13,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('../../preferences', () => ({
   usePreferencesStore: {
-    getState: () => ({ thinkingEnabled: false, preferredModel: null, engineProfiles: [] }),
+    getState: () => ({ preferredModel: null, engineProfiles: [] }),
   },
 }))
 

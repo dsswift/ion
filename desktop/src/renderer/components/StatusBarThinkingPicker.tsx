@@ -22,12 +22,9 @@ import type { ThinkingEffort } from '../../shared/types-session'
  * for EVERY tab type. `TabState.thinkingEffort` is gone (WI-002). Both
  * default to 'off'.
  *
- * Visibility gate (two conditions, both required):
- * 1. The global `thinkingEnabled` preference is ON. When off, the whole
- *    feature is disabled and this control does not render.
- * 2. The active model declares a non-empty `thinkingEfforts` set. A model
- *    that does not support reasoning hides the control (rendering it would
- *    let the user pick a level the engine would then drop).
+ * Visibility gate: the active model must declare a non-empty `thinkingEfforts`
+ * set. A model that does not support reasoning hides the control (rendering it
+ * would let the user pick a level the engine would silently drop).
  *
  * The selected level is applied LIVE on the next prompt — there is no engine
  * call here; the prompt-submit path reads the level and rides it on
@@ -72,8 +69,6 @@ function ThinkingLevelRow({ colors, selected, level, onSelect }: {
 }
 
 export function ThinkingPicker() {
-  const thinkingEnabled = usePreferencesStore((s) => s.thinkingEnabled)
-
   // Per-conversation effort (default 'off') read from the active instance for
   // EVERY tab type — the unified home for the per-conversation thinking effort
   // (matches the unified submit, which reads it from the instance). No
@@ -129,9 +124,6 @@ export function ThinkingPicker() {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
-
-  // Global gate: feature off → render nothing.
-  if (!thinkingEnabled) return null
 
   const handleToggle = () => {
     if (!modelSupportsThinking) return

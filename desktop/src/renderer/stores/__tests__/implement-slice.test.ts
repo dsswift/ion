@@ -56,7 +56,6 @@ function resetPrefs(): void {
     planModelSplitEnabled: false,
     planModeModel: null,
     implementModeModel: null,
-    thinkingEnabled: false,
     engineProfiles: [],
     engineDefaultModel: null,
     tabGroups: [{ id: 'group-default', label: 'Default', isDefault: true, order: 0 }],

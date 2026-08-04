@@ -92,7 +92,6 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   lanServerPort: saved.lanServerPort,
   pairedDevices: saved.pairedDevices,
   streamThinkingToRemote: saved.streamThinkingToRemote,
-  thinkingEnabled: saved.thinkingEnabled,
   defaultThinkingEffort: saved.defaultThinkingEffort,
   remoteDisplay: saved.remoteDisplay,
   engineDefaultModel: saved.engineDefaultModel,
@@ -456,10 +455,6 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   setStreamThinkingToRemote: (enabled) => {
     set({ streamThinkingToRemote: enabled })
-    saveSettings(getAllSettings(get))
-  },
-  setThinkingEnabled: (enabled) => {
-    set({ thinkingEnabled: enabled })
     saveSettings(getAllSettings(get))
   },
   setDefaultThinkingEffort: (effort) => {

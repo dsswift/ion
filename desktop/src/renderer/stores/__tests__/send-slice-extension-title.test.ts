@@ -54,7 +54,6 @@ vi.mock('../../preferences', () => ({
       // An extension profile so an engine tab can resolve its extensions.
       engineProfiles: [{ id: 'profile-1', name: 'Ion', extensions: ['ext-a'] }],
       engineDefaultModel: null,
-      thinkingEnabled: false,
       tabGroups: [],
     })),
   },
