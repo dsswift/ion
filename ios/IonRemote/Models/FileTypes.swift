@@ -26,31 +26,12 @@ struct FsEntry: Codable, Identifiable, Sendable {
         return ext
     }
 
-    /// SF Symbol name based on file extension.
+    /// SF Symbol name based on file extension. Delegates to the shared
+    /// `FileIcon` map (also used by markdown file-path chips) so the file
+    /// explorer and inline chips stay visually consistent.
     var iconName: String {
         if isDirectory { return "folder.fill" }
-        switch fileExtension {
-        case "swift", "ts", "tsx", "js", "jsx", "go", "py", "rb", "rs", "c", "cpp", "h", "java", "kt":
-            return "chevron.left.forwardslash.chevron.right"
-        case "json", "yaml", "yml", "toml", "xml", "plist":
-            return "gearshape"
-        case "md", "txt", "rtf", "doc", "docx":
-            return "doc.text"
-        case "png", "jpg", "jpeg", "gif", "svg", "webp", "ico":
-            return "photo"
-        case "pdf":
-            return "doc.richtext"
-        case "zip", "tar", "gz", "bz2", "7z", "rar":
-            return "doc.zipper"
-        case "sh", "bash", "zsh", "fish":
-            return "terminal"
-        case "css", "scss", "less":
-            return "paintbrush"
-        case "html", "htm":
-            return "globe"
-        default:
-            return "doc"
-        }
+        return FileIcon.symbol(forExtension: fileExtension)
     }
 }
 

@@ -23,6 +23,10 @@ struct Transcript: View {
     /// Optional plan-tap handler. When non-nil, plan-lifecycle divider
     /// slug links become tappable.
     var onTapPlan: ((String) -> Void)?
+    /// Optional file-path-tap handler. When non-nil, `ion-file://` links in
+    /// assistant markdown (inline code spans FilePathDetector recognizes)
+    /// open the file preview. Nil at call sites without one (dispatch popup).
+    var onOpenFile: ((String) -> Void)?
     /// RC-15: fired when the user scrolls near the top, so the host can page in
     /// older history. Nil at call sites that don't paginate (dispatch popup).
     var onReachedTop: (() -> Void)?
@@ -109,9 +113,9 @@ struct Transcript: View {
                                 }
                             } else {
                                 if let tapPlan = onTapPlan {
-                                    EngineMessageRow(message: msg, onTapPlan: tapPlan)
+                                    EngineMessageRow(message: msg, onTapPlan: tapPlan, onOpenFile: onOpenFile)
                                 } else {
-                                    EngineMessageRow(message: msg)
+                                    EngineMessageRow(message: msg, onOpenFile: onOpenFile)
                                 }
                             }
                         case .toolGroup(let tools):

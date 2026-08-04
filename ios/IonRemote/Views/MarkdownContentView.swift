@@ -6,6 +6,10 @@ import SwiftUI
 struct MarkdownContentView: View {
     @Environment(\.appTheme) private var theme
     let blocks: [MarkdownBlock]
+    /// When set, `ion-file://` links emitted by the formatter's file-path
+    /// detection (see MarkdownFormatter + FilePathDetector) route here with
+    /// the decoded path; every other URL falls through to the system.
+    var onOpenFile: ((String) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -14,6 +18,21 @@ struct MarkdownContentView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .environment(\.openURL, OpenURLAction { url in
+            if let path = FilePathDetector.path(from: url) {
+                if let onOpenFile {
+                    onOpenFile(path)
+                } else {
+                    // No handler at this call site (compact/engine rows) —
+                    // swallow rather than hand an internal scheme to iOS.
+                    DiagnosticLog.log("file link tapped with no handler", tag: "markdown", fields: [
+                        "path": path
+                    ])
+                }
+                return .handled
+            }
+            return .systemAction
+        })
     }
 
     // MARK: - Block dispatch
@@ -91,6 +110,9 @@ struct MarkdownContentView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 if let lang = language, !lang.isEmpty {
+                    Image(systemName: FileIcon.symbol(forExtension: lang.lowercased()))
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                     Text(lang)
                         .font(.caption2.monospaced())
                         .foregroundStyle(.tertiary)
@@ -102,16 +124,10 @@ struct MarkdownContentView: View {
             .padding(.top, 8)
             .padding(.bottom, 4)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                Text(code)
-                    .font(.system(.callout, design: .monospaced))
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-            }
+            HighlightedCodeView(code: code, language: language)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemFill).opacity(0.7))
+        .background(theme.codeBg)
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 

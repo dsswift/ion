@@ -31,6 +31,12 @@ struct EngineMessageRow: View {
     /// the plan file path (the conversation view opens the plan preview).
     /// Mirrors the `onRewind` callback pattern.
     var onTapPlan: ((String) -> Void)? = nil
+    /// Tap handler for `ion-file://` file-path links inside markdown (inline
+    /// code spans that FilePathDetector recognizes). When set, tapping a
+    /// path chip opens the file preview (the conversation view presents
+    /// FileEditorView). Nil at compact/engine call sites — the tap is then
+    /// logged and swallowed by MarkdownContentView.
+    var onOpenFile: ((String) -> Void)? = nil
 
     // Shared state
     @State private var previewImage: UIImage?
@@ -276,34 +282,9 @@ struct EngineMessageRow: View {
         }
     }
 
-    @ViewBuilder
-    private func userBubbleContent(text: String, isBash: Bool) -> some View {
-        Text(text)
-            .textSelection(.enabled)
-            .padding(.leading, 14)
-            .padding(.trailing, 12)
-            .padding(.vertical, 8)
-            .background(
-                ZStack {
-                    Color(.tertiarySystemBackground)
-                    theme.userBubbleTint
-                }
-            )
-            .clipShape(RoundedRectangle(cornerRadius: IonTheme.Radius.large))
-            .overlay(alignment: .leading) {
-                Rectangle()
-                    .fill(theme.accent)
-                    .frame(width: 2.5)
-                    .padding(.vertical, 4)
-                    .padding(.leading, 1)
-            }
-            .overlay(
-                isBash
-                    ? RoundedRectangle(cornerRadius: IonTheme.Radius.large)
-                        .stroke(Color(hex: 0xF472B6, opacity: 0.5), lineWidth: 2)
-                    : nil
-            )
-    }
+    /// User-bubble content builders (collapsible wrapper + bubble core)
+    /// live in EngineMessageRow+UserBubble.swift — extracted at the size cap,
+    /// mirroring the SlashBubble split below.
 
     /// Slash-command bubble: see EngineMessageRow+SlashBubble.swift for
     /// the `userBubbleContentWithSlash` implementation and the
@@ -335,7 +316,8 @@ struct EngineMessageRow: View {
                     VStack(alignment: .leading, spacing: 4) {
                         if !message.content.isEmpty {
                             MarkdownContentView(
-                                blocks: MarkdownBlockCache.shared.blocks(for: message.content)
+                                blocks: MarkdownBlockCache.shared.blocks(for: message.content),
+                                onOpenFile: onOpenFile
                             )
                             .textSelection(.enabled)
                         }
@@ -458,7 +440,8 @@ struct EngineMessageRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 MarkdownContentView(
-                    blocks: MarkdownBlockCache.shared.blocks(for: message.content)
+                    blocks: MarkdownBlockCache.shared.blocks(for: message.content),
+                    onOpenFile: onOpenFile
                 )
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
