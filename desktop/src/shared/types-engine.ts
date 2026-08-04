@@ -38,50 +38,52 @@ export interface DispatchTelemetryEntry {
   cost?: number
 }
 
-// ─── Resource subsystem types (D-007) ───
-
-export interface ResourceItem {
-  id: string
-  kind: string
-  title?: string
-  content: string
-  createdAt: string
-  conversationId?: string
-  metadata?: Record<string, unknown>
-  updatedAt?: string
-  read?: boolean
-}
-
-export interface ResourceDelta {
-  op: 'create' | 'update' | 'delete' | 'mark_read'
-  item: ResourceItem
-}
-
-export interface ResourceFilter {
-  kind: string
-  conversationId?: string
-  since?: string
-  limit?: number
-}
-
-// ─── Notification types (D-009) ───
-
-export interface NotifyOpts {
-  kind: string
-  resourceId?: string
-  title: string
-  body: string
-  sound?: string
-  scope?: 'user' | 'device' | 'all'
-  conversationId?: string
-  targetSessionKey?: string
-}
+// ─── Resource subsystem + notifications ───
+// Extracted to types-resource.ts (file-size cap); re-exported here so every
+// existing `from './types-engine'` import keeps resolving unchanged.
+export type { ResourceItem, ResourceDelta, ResourceFilter, NotifyOpts } from './types-resource'
 
 export interface EngineProfile {
   id: string
   name: string
   extensions: string[]
   defaultMode?: 'auto' | 'plan'
+}
+
+/**
+ * Extended-thinking configuration. Mirrors the Go `types.ThinkingConfig`
+ * (engine/internal/types/types.go) field for field.
+ *
+ * Carried on `EngineConfig.thinking` as a per-session default, which sits
+ * between the engine-wide `engine.json` default and the per-prompt
+ * `thinkingEffort` in the precedence chain:
+ *
+ *   engine.json ← EngineConfig.thinking ← send_prompt.thinkingEffort
+ */
+export interface ThinkingConfig {
+  /** Whether runs carry a thinking directive by default. */
+  enabled: boolean
+  /**
+   * Cross-provider reasoning level: 'low' | 'medium' | 'high'. The preferred
+   * control — the engine maps it onto each provider's mechanism. Takes
+   * precedence over `budgetTokens`.
+   */
+  effort?: string
+  /**
+   * Legacy explicit thinking-token budget. Used only by models whose
+   * capability mode is `budget`, and only when `effort` is empty.
+   */
+  budgetTokens?: number
+  /**
+   * Whether per-token `engine_thinking_delta` events reach the wire.
+   * Absent means ON — block-boundary events emit regardless.
+   */
+  streamDeltas?: boolean
+  /**
+   * Whether reasoning TEXT is retained in conversation history for later
+   * display. Absent means ON. Never affects provider re-submission.
+   */
+  persist?: boolean
 }
 
 export interface EngineConfig {
@@ -91,7 +93,7 @@ export interface EngineConfig {
   sessionId?: string
   model?: string
   maxTokens?: number
-  thinking?: { enabled: boolean; budgetTokens?: number }
+  thinking?: ThinkingConfig
   systemHint?: string
   /**
    * Override the engine's default ignore-glob list for the

@@ -413,8 +413,8 @@ export interface RunOptions {
   source?: 'desktop' | 'remote'
   /** Max output tokens per LLM turn */
   maxTokens?: number
-  /** Extended thinking config */
-  thinking?: { enabled: boolean; budgetTokens?: number }
+  /** Extended thinking config (per-session default). See ThinkingConfig. */
+  thinking?: import('./types-engine').ThinkingConfig
   /** Extension entry points for engine tabs (resolved from engine profile) */
   extensions?: string[]
   /**

@@ -5,6 +5,8 @@ import { log as _log, warn as _warn } from './logger'
 import { atomicWriteFileSync } from './utils/atomicWrite'
 import { encryptSensitiveSettings, decryptSensitiveSettings } from './utils/secretStore'
 import { expandHome } from './git/ignore-paths'
+import type { ThinkingConfig } from '../shared/types-engine'
+import type { ThinkingEffort } from '../shared/types-session'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -71,6 +73,11 @@ export const SETTINGS_DEFAULTS = {
   // selected effort rides on each prompt. See StatusBarThinkingPicker.tsx and
   // the engine's resolveThinking helper.
   thinkingEnabled: false,
+  // Level a NEW conversation's thinking control starts at, when the gate above
+  // is on. 'off' preserves the historical behavior (every conversation starts
+  // with no thinking until the user raises it). Only meaningful when
+  // thinkingEnabled is true — the gate hides the control entirely when false.
+  defaultThinkingEffort: 'off' as 'off' | 'low' | 'medium' | 'high',
   // Agent Team Visualizer (desktop-only window; none of these keys are iOS
   // projectable). atvSeeds maps an extension scope (engineProfileId, or
   // 'local' for plain tabs) to a user-chosen office seed string.
@@ -181,6 +188,61 @@ export function shouldStreamThinkingToRemote(): boolean {
 export function shouldEnableThinking(): boolean {
   const raw = readSettings()
   return raw.thinkingEnabled === true
+}
+
+/**
+ * Resolve the user's default per-conversation thinking effort from
+ * settings.json. This is the level a NEW conversation starts at; the user can
+ * still change any individual conversation with the status-bar picker.
+ *
+ * Defaults to 'off' when absent or not one of the four valid levels, matching
+ * SETTINGS_DEFAULTS and preserving the historical behavior for anyone who
+ * never touches the setting.
+ */
+export function readDefaultThinkingEffort(): ThinkingEffort {
+  const raw = readSettings()
+  const v = raw.defaultThinkingEffort
+  if (v === 'low' || v === 'medium' || v === 'high' || v === 'off') return v
+  return 'off'
+}
+
+/**
+ * Resolve the per-session thinking config the desktop hands the engine on
+ * `start_session` (`EngineConfig.thinking`).
+ *
+ * Returns `undefined` when the global gate is off, which is deliberate rather
+ * than a `{enabled:false}` block: an omitted field leaves the engine's own
+ * `engine.json` default in play for anything that is not this desktop's
+ * conversation, whereas the per-prompt `thinkingEffort` the renderer sends on
+ * every submit is what actually decides each run. The session default exists
+ * so a run dispatched WITHOUT a per-prompt effort — an extension's
+ * `ctx.sendPrompt`, a scheduled job, a resumed session's first engine-side
+ * turn — still reflects the user's setting instead of silently falling back
+ * to the host-wide default.
+ *
+ * `streamDeltas` is deliberately left UNSET so the engine's default-ON
+ * emission stands. It is tempting to wire it to the `streamThinkingToRemote`
+ * preference, but the two gate different hops: `streamDeltas` suppresses the
+ * engine's per-token emission on the engine socket itself
+ * (`runloop_stream.go`), which is the feed the desktop's OWN thinking display
+ * renders from, whereas `streamThinkingToRemote` drops the delta only at the
+ * desktop→iOS forward path (`event-wiring.ts`). Wiring them together would
+ * mean a user trimming phone bandwidth silently loses live thinking on their
+ * desktop.
+ */
+export function resolveSessionThinkingConfig(): ThinkingConfig | undefined {
+  if (!shouldEnableThinking()) {
+    log('thinking config: gate off, omitting session default')
+    return undefined
+  }
+  const effort = readDefaultThinkingEffort()
+  if (effort === 'off') {
+    log('thinking config: enabled but default level off, omitting session default')
+    return undefined
+  }
+  const cfg: ThinkingConfig = { enabled: true, effort }
+  log('thinking config: resolved session default', { reason: effort })
+  return cfg
 }
 
 /**

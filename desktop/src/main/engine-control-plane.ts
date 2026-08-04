@@ -10,10 +10,11 @@ import { sendPromptWithRecovery, bridgeSendAdapter } from './engine-control-plan
 import { buildHealthReport, anyTabRunning } from './engine-control-plane-status'
 import { performUnifiedInterrupt } from './engine-control-plane-interrupt'
 import * as historyReads from './engine-control-plane-history'
-import { readSettings, SETTINGS_DEFAULTS } from './settings-store'
+import { readSettings, SETTINGS_DEFAULTS, resolveSessionThinkingConfig } from './settings-store'
 import { resolveAtvPermission } from './atv-state-cache'
 import type {
   EngineConfig,
+  ThinkingConfig,
   EngineEvent,
   RunOptions,
   TabStatus,
@@ -259,7 +260,7 @@ export class EngineControlPlane extends EventEmitter {
       extensions?: string[]
       model?: string
       maxTokens?: number
-      thinking?: { enabled: boolean; budgetTokens?: number }
+      thinking?: ThinkingConfig
     },
   ): Promise<{ ok: boolean; error?: string }> {
     this.ensureTab(tabId)
@@ -292,7 +293,12 @@ export class EngineControlPlane extends EventEmitter {
       sessionId: opts.conversationId || tab.conversationId || undefined,
       model: opts.model,
       maxTokens: opts.maxTokens,
-      thinking: opts.thinking,
+      // Session thinking default. Resolved HERE rather than threaded from the
+      // caller so every start site gets it — the relocate, cwd-reconcile, and
+      // eager-restore paths all call ensureSession without a thinking opinion,
+      // and a caller-threaded value would silently omit it on those three. An
+      // explicit opts.thinking still wins for a caller that has one.
+      thinking: opts.thinking ?? resolveSessionThinkingConfig(),
       claudeCompat: (() => {
         try { return readSettings().enableClaudeCompat ?? SETTINGS_DEFAULTS.enableClaudeCompat }
         catch { return SETTINGS_DEFAULTS.enableClaudeCompat }
@@ -356,7 +362,10 @@ export class EngineControlPlane extends EventEmitter {
       workingDirectory: options.projectPath,
       sessionId: options.sessionId || tab.conversationId || undefined,
       maxTokens: options.maxTokens,
-      thinking: options.thinking,
+      // Same resolution as ensureSession: this config is what the send path
+      // hands ensureSession, so it must carry the session default too or a
+      // first-prompt start would omit what a later relocate would include.
+      thinking: options.thinking ?? resolveSessionThinkingConfig(),
       claudeCompat: (() => {
         try { return readSettings().enableClaudeCompat ?? SETTINGS_DEFAULTS.enableClaudeCompat }
         catch { return SETTINGS_DEFAULTS.enableClaudeCompat }
