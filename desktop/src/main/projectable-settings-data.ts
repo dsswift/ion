@@ -164,6 +164,8 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
       { value: 'low', label: 'Low' },
       { value: 'medium', label: 'Medium' },
       { value: 'high', label: 'High' },
+      { value: 'xhigh', label: 'Extra High' },
+      { value: 'max', label: 'Max' },
     ],
   },
   {

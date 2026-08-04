@@ -12,6 +12,7 @@ import { useAllowedModels } from '../../stores/use-allowed-models'
 import { useModelStore } from '../../stores/model-store'
 import { getProviderDisplayName } from '../../../shared/types-models'
 import { rWarn } from '../../rendererLogger'
+import { thinkingEffortLabel } from '../../../shared/thinking-options'
 
 export function AIModelsCategory() {
   const colors = useColors()
@@ -210,7 +211,7 @@ export function AIModelsCategory() {
             overflow: 'hidden',
           }}
         >
-          {(['off', 'low', 'medium', 'high'] as const).map((level) => (
+          {(['off', 'low', 'medium', 'high', 'xhigh', 'max'] as const).map((level) => (
             <button
               key={level}
               onClick={() => setDefaultThinkingEffort(level)}
@@ -227,7 +228,7 @@ export function AIModelsCategory() {
                 transition: 'background 0.15s, color 0.15s',
               }}
             >
-              {level}
+              {thinkingEffortLabel(level)}
             </button>
           ))}
         </div>

@@ -11,10 +11,8 @@ import {
   handleSetThinkingEffort,
   handleLoadConversation,
   handleDiscoverCommands,
-  handleSetTabModel,
-  handleSetPreferredModel,
-  handleSetEngineDefaultModel,
 } from './handlers/tabs'
+import { handleSetTabModel, handleSetPreferredModel, handleSetEngineDefaultModel } from './handlers/tabs-models'
 import {
   handleSetTabGroupMode,
   handleMoveTabToGroup,

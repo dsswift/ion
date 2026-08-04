@@ -27,7 +27,7 @@ export interface RemoteTabState {
    * renders the per-conversation thinking control from this. Mirrors
    * TabState.thinkingEffort / ConversationInstance.thinkingEffort.
    */
-  thinkingEffort?: 'adaptive' | 'low' | 'medium' | 'high'
+  thinkingEffort?: 'adaptive' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   permissionQueue: PermissionRequest[]
   /**
    * Live extension elicitations (ctx.elicit) awaiting a user decision on the
@@ -132,7 +132,7 @@ export interface RemoteTabState {
     backgroundShellCount?: number
     modelFallback?: { requestedModel: string; fallbackModel: string }
     conversationIds?: string[]
-    thinkingEffort?: 'adaptive' | 'low' | 'medium' | 'high'
+    thinkingEffort?: 'adaptive' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
     dispatchTelemetry?: DispatchTelemetryEntry[]
   }>
   activeConversationInstanceId?: string | null

@@ -2,6 +2,7 @@ import type { TabGroup, TabGroupMode, QuickTool, RemotePairedDevice, EngineProfi
 import { DEFAULT_TAB_GROUP_LABELS } from '../shared/types'
 import type { PreferencesState } from './preferences-types'
 import { SETTINGS_DEFAULTS } from './preferences-types'
+import { isThinkingEffort } from '../shared/thinking-options'
 import { rError } from './rendererLogger'
 
 export function saveSettings(s: Record<string, unknown>): void {
@@ -117,11 +118,16 @@ export function loadPersistedSettings(
     // Default true.
     const streamThinkingToRemote = typeof disk.streamThinkingToRemote === 'boolean' ? disk.streamThinkingToRemote : true
     // defaultThinkingEffort: level a NEW conversation's thinking control starts
-    // at. Validated against the four known levels so a hand-edited settings.json
-    // cannot seed an effort the engine would reject. Default 'high'.
+    // at. Validated through the SHARED ladder guard rather than an inline list,
+    // so this validator cannot fall behind the ThinkingEffort union when a rung
+    // is added — an inline list here silently rewrote a saved 'xhigh'/'max' to
+    // 'high' on the next launch, and the following save wrote that back to disk.
+    // 'adaptive' is deliberately excluded (matching readDefaultThinkingEffort in
+    // main/settings-store.ts): this preference seeds effort-based models, while
+    // adaptive models derive their own default from capability metadata via
+    // defaultEffortForMode. Default 'high'.
     const defaultThinkingEffort: ThinkingEffort =
-      (disk.defaultThinkingEffort === 'low' || disk.defaultThinkingEffort === 'medium' ||
-       disk.defaultThinkingEffort === 'high' || disk.defaultThinkingEffort === 'off')
+      (isThinkingEffort(disk.defaultThinkingEffort) && disk.defaultThinkingEffort !== 'adaptive')
         ? disk.defaultThinkingEffort
         : 'high'
     const remoteDisplay = (disk.remoteDisplay && typeof disk.remoteDisplay === 'object' && !Array.isArray(disk.remoteDisplay))

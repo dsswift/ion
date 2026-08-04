@@ -63,7 +63,7 @@ export interface ProjectedConversationInstance {
   backgroundShellCount?: number
   modelFallback?: { requestedModel: string; fallbackModel: string }
   conversationIds?: string[]
-  thinkingEffort?: 'adaptive' | 'low' | 'medium' | 'high'
+  thinkingEffort?: 'adaptive' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   dispatchTelemetry?: import('./types-engine').DispatchTelemetryEntry[]
 }
 

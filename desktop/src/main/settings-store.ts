@@ -7,6 +7,7 @@ import { encryptSensitiveSettings, decryptSensitiveSettings } from './utils/secr
 import { expandHome } from './git/ignore-paths'
 import type { ThinkingConfig } from '../shared/types-engine'
 import type { ThinkingEffort } from '../shared/types-session'
+import { isThinkingEffort } from '../shared/thinking-options'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
   _log('main', msg, fields)
@@ -68,7 +69,7 @@ export const SETTINGS_DEFAULTS = {
   // Per-conversation thinking effort default. 'high' is the desktop's
   // opinionated default; users can override in Settings. Per-conversation
   // changes live on the instance (StatusBarThinkingPicker).
-  defaultThinkingEffort: 'high' as 'off' | 'low' | 'medium' | 'high',
+  defaultThinkingEffort: 'high' as ThinkingEffort,
   // Agent Team Visualizer (desktop-only window; none of these keys are iOS
   // projectable). atvSeeds maps an extension scope (engineProfileId, or
   // 'local' for plain tabs) to a user-chosen office seed string.
@@ -179,7 +180,11 @@ export function shouldStreamThinkingToRemote(): boolean {
 export function readDefaultThinkingEffort(): ThinkingEffort {
   const raw = readSettings()
   const v = raw.defaultThinkingEffort
-  if (v === 'low' || v === 'medium' || v === 'high' || v === 'off') return v
+  // 'adaptive' is deliberately NOT accepted here: this preference seeds
+  // effort-based models, and adaptive models derive their own default from
+  // capability metadata (see defaultEffortForMode). A hand-edited 'adaptive'
+  // would otherwise be sent to a model that cannot use it.
+  if (isThinkingEffort(v) && v !== 'adaptive') return v
   return 'high'
 }
 

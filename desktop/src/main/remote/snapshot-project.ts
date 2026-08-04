@@ -102,7 +102,7 @@ export function projectRendererTab(
     workingDirectory: t.workingDirectory || '',
     permissionMode: (t.permissionMode === 'plan' ? 'plan' : 'auto') as 'auto' | 'plan',
     thinkingEffort: (t.thinkingEffort && t.thinkingEffort !== 'off')
-      ? t.thinkingEffort as 'adaptive' | 'low' | 'medium' | 'high'
+      ? t.thinkingEffort as 'adaptive' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
       : undefined,
     permissionQueue: opts.permissionQueue,
     elicitationQueue: opts.elicitationQueue ?? [],

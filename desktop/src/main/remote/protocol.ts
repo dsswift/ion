@@ -89,7 +89,7 @@ export type RemoteCommand =
   // (tab.thinkingEffort or active instance.thinkingEffort), so the next prompt
   // from either client carries the level. 'off' clears thinking. Lockstep
   // desktop↔iOS wire — added to RemoteCommand.swift in the same change.
-  | { type: 'desktop_set_thinking_effort'; tabId: string; effort: 'off' | 'adaptive' | 'low' | 'medium' | 'high' }
+  | { type: 'desktop_set_thinking_effort'; tabId: string; effort: 'off' | 'adaptive' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' }
   | { type: 'desktop_reset_tab_session'; tabId: string }
   // Engine-instance counterpart to desktop_reset_tab_session: stops the engine
   // session keyed by `${tabId}:${instanceId}` and wipes the renderer-side

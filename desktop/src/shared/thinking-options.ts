@@ -45,15 +45,20 @@ export function thinkingOptionsForMode(
   thinkingMode: string | undefined,
   allowedEfforts: readonly string[] = [],
 ): ThinkingOption[] {
-  const levels: ThinkingOption[] = [
-    { value: 'low', label: 'Low' },
-    { value: 'medium', label: 'Medium' },
-    { value: 'high', label: 'High' },
-  ].filter((l) => allowedEfforts.includes(l.value)) as ThinkingOption[]
+  // Ascending ladder. Only the rungs a model advertises are offered — the
+  // engine rejects an effort outside the model's ThinkingEfforts, so an
+  // unadvertised level would render a control that silently does nothing.
+  const levels: ThinkingOption[] = ([
+    { value: 'low', label: thinkingEffortLabel('low') },
+    { value: 'medium', label: thinkingEffortLabel('medium') },
+    { value: 'high', label: thinkingEffortLabel('high') },
+    { value: 'xhigh', label: thinkingEffortLabel('xhigh') },
+    { value: 'max', label: thinkingEffortLabel('max') },
+  ] as ThinkingOption[]).filter((l) => allowedEfforts.includes(l.value))
 
   const neutral: ThinkingOption = thinkingMode === ADAPTIVE_THINKING_MODE
-    ? { value: 'adaptive', label: 'Adaptive' }
-    : { value: 'off', label: 'Off' }
+    ? { value: 'adaptive', label: thinkingEffortLabel('adaptive') }
+    : { value: 'off', label: thinkingEffortLabel('off') }
 
   return [neutral, ...levels]
 }
@@ -118,4 +123,43 @@ export function resolveEffortForModel(
   if (isEffortValidForMode(stored, thinkingMode, allowedEfforts)) return stored
   const opts = thinkingOptionsForMode(thinkingMode, allowedEfforts)
   return opts[0]?.value ?? 'off'
+}
+
+/**
+ * Every value the thinking control may carry, in ascending order after the two
+ * sentinels. Single source of truth for runtime validation, so a validator
+ * cannot silently fall behind the `ThinkingEffort` union — which is exactly how
+ * `adaptive` came to be rejected by the iOS command handler while the type
+ * accepted it everywhere else.
+ */
+export const THINKING_EFFORT_VALUES: readonly ThinkingEffort[] = [
+  'off',
+  'adaptive',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+]
+
+/** Runtime type guard for an untrusted effort value (wire input, settings file). */
+export function isThinkingEffort(v: unknown): v is ThinkingEffort {
+  return typeof v === 'string' && (THINKING_EFFORT_VALUES as readonly string[]).includes(v)
+}
+
+/**
+ * Display label for a single effort value. Shared so the settings picker, the
+ * status-bar control, and the iOS menu render the same words — plain
+ * capitalization would produce "Xhigh".
+ */
+export function thinkingEffortLabel(effort: ThinkingEffort): string {
+  switch (effort) {
+    case 'off': return 'Off'
+    case 'adaptive': return 'Adaptive'
+    case 'low': return 'Low'
+    case 'medium': return 'Medium'
+    case 'high': return 'High'
+    case 'xhigh': return 'Extra High'
+    case 'max': return 'Max'
+  }
 }

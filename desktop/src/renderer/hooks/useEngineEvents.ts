@@ -160,7 +160,7 @@ export function useEngineEvents() {
 
     // Remote thinking-effort change (from iOS).
     // WI-001: write thinkingEffort onto the active instance for all tab types.
-    const remoteSetThinkingHandler = (_e: any, data: { tabId: string; effort: 'off' | 'low' | 'medium' | 'high' }) => {
+    const remoteSetThinkingHandler = (_e: any, data: { tabId: string; effort: 'off' | 'adaptive' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' }) => {
       useSessionStore.setState((s) => {
         const conversationPanes = new Map(s.conversationPanes)
         const pane = conversationPanes.get(data.tabId)

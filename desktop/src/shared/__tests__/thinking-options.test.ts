@@ -4,6 +4,9 @@ import {
   defaultEffortForMode,
   isEffortValidForMode,
   resolveEffortForModel,
+  thinkingEffortLabel,
+  isThinkingEffort,
+  THINKING_EFFORT_VALUES,
 } from '../thinking-options'
 
 /**
@@ -159,5 +162,83 @@ describe('resolveEffortForModel', () => {
     expect(resolveEffortForModel('high', undefined, [])).toBe('high')
     expect(resolveEffortForModel('adaptive', undefined, [])).toBe('adaptive')
     expect(resolveEffortForModel('off', undefined, [])).toBe('off')
+  })
+})
+
+/**
+ * Extended rungs (xhigh, max).
+ *
+ * A gateway can advertise levels above "high"; the client must offer exactly
+ * what each model declares and no more. The engine rejects an effort outside a
+ * model's `thinkingEfforts`, so offering an unadvertised rung renders a control
+ * that silently does nothing.
+ */
+describe('extended effort levels', () => {
+  it('offers xhigh and max when the model advertises them', () => {
+    const values = thinkingOptionsForMode('reasoning_effort', ['low', 'medium', 'high', 'xhigh']).map((o) => o.value)
+    expect(values).toEqual(['off', 'low', 'medium', 'high', 'xhigh'])
+  })
+
+  it('offers the full ladder on an adaptive model that advertises it', () => {
+    const values = thinkingOptionsForMode('adaptive', ['low', 'medium', 'high', 'xhigh', 'max']).map((o) => o.value)
+    expect(values).toEqual(['adaptive', 'low', 'medium', 'high', 'xhigh', 'max'])
+  })
+
+  it('omits extended rungs a model does not advertise', () => {
+    const values = thinkingOptionsForMode('reasoning_effort', ['low', 'medium', 'high']).map((o) => o.value)
+    expect(values).not.toContain('xhigh')
+    expect(values).not.toContain('max')
+  })
+
+  it('keeps a stored extended level when the model advertises it', () => {
+    expect(resolveEffortForModel('max', 'adaptive', ['low', 'high', 'max'])).toBe('max')
+  })
+
+  it('repairs a stored extended level the model dropped', () => {
+    expect(resolveEffortForModel('max', 'reasoning_effort', ['low', 'medium', 'high'])).toBe('off')
+  })
+
+  // Plain capitalization would render "Xhigh".
+  it('labels xhigh as "Extra High" rather than capitalizing', () => {
+    expect(thinkingEffortLabel('xhigh')).toBe('Extra High')
+    expect(thinkingEffortLabel('max')).toBe('Max')
+    expect(thinkingEffortLabel('adaptive')).toBe('Adaptive')
+  })
+
+  it('labels every value in the ladder', () => {
+    for (const v of THINKING_EFFORT_VALUES) {
+      expect(thinkingEffortLabel(v)).toBeTruthy()
+    }
+  })
+})
+
+/**
+ * isThinkingEffort — the single runtime guard.
+ *
+ * Validators were previously inline lists, and one of them silently rejected
+ * 'adaptive' after it was added to the type: the iOS set-effort command was
+ * dropped with only a log line. Deriving validation from the shared ladder is
+ * what stops a validator falling behind the union again.
+ */
+describe('isThinkingEffort', () => {
+  it('accepts every value in the ladder', () => {
+    for (const v of THINKING_EFFORT_VALUES) {
+      expect(isThinkingEffort(v)).toBe(true)
+    }
+  })
+
+  it("accepts 'adaptive' (the value an inline validator dropped)", () => {
+    expect(isThinkingEffort('adaptive')).toBe(true)
+  })
+
+  it('accepts the extended rungs', () => {
+    expect(isThinkingEffort('xhigh')).toBe(true)
+    expect(isThinkingEffort('max')).toBe(true)
+  })
+
+  it('rejects unknown values and non-strings', () => {
+    for (const v of ['', 'HIGH', 'higher', 'none', null, undefined, 3, {}]) {
+      expect(isThinkingEffort(v)).toBe(false)
+    }
   })
 })

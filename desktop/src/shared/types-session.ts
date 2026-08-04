@@ -25,7 +25,7 @@ import type { UsageData } from './types-events'
  *
  * Stored per-instance, applied live on the next prompt.
  */
-export type ThinkingEffort = 'off' | 'adaptive' | 'low' | 'medium' | 'high'
+export type ThinkingEffort = 'off' | 'adaptive' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 // ─── Tab Grouping ───
 
