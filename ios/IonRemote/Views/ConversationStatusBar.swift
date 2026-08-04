@@ -274,7 +274,9 @@ struct ConversationStatusBar: View {
     /// Menu entries in display order: neutral first, then advertised levels.
     private var thinkingOptions: [String] {
         let neutral = isAdaptiveModel ? "adaptive" : "off"
-        return [neutral] + ["low", "medium", "high"].filter { thinkingEfforts.contains($0) }
+        // Ascending ladder; only the rungs this model advertises are offered.
+        // Mirrors thinkingOptionsForMode in shared/thinking-options.ts.
+        return [neutral] + ["low", "medium", "high", "xhigh", "max"].filter { thinkingEfforts.contains($0) }
     }
 
     /// The stored effort REPAIRED against the model in use. A conversation
@@ -293,12 +295,18 @@ struct ConversationStatusBar: View {
         return thinkingOptions.contains(thinkingEffort) ? thinkingEffort : (thinkingOptions.first ?? "off")
     }
 
-    private var thinkingLabel: String {
-        switch resolvedThinkingEffort {
+    private var thinkingLabel: String { Self.effortLabel(resolvedThinkingEffort) }
+
+    /// Display label for an effort value. Plain `.capitalized` would render
+    /// "Xhigh"; mirrors thinkingEffortLabel in shared/thinking-options.ts.
+    static func effortLabel(_ effort: String) -> String {
+        switch effort {
+        case "adaptive": return "Adaptive"
         case "low": return "Low"
         case "medium": return "Medium"
         case "high": return "High"
-        case "adaptive": return "Adaptive"
+        case "xhigh": return "Extra High"
+        case "max": return "Max"
         default: return "Off"
         }
     }
@@ -425,7 +433,7 @@ struct ConversationStatusBar: View {
                             onSelectThinkingEffort(level)
                         } label: {
                             HStack {
-                                Text(level.capitalized)
+                                Text(Self.effortLabel(level))
                                 if level == resolvedThinkingEffort {
                                     Image(systemName: "checkmark")
                                 }

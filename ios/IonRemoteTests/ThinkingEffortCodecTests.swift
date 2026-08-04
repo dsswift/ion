@@ -82,4 +82,32 @@ final class ThinkingEffortCodecTests: XCTestCase {
         let model = try decoder.decode(RemoteModelEntry.self, from: json)
         XCTAssertNil(model.thinkingEfforts)
     }
+
+    // MARK: - effortLabel display map
+
+    /// `ConversationStatusBar.effortLabel` is the iOS half of a label map whose
+    /// desktop twin lives in `shared/thinking-options.ts` (`thinkingEffortLabel`).
+    /// Two hand-maintained implementations of one map is a parity obligation:
+    /// the desktop side is pinned by `thinking-options.test.ts`, so this pins
+    /// the Swift side.
+    ///
+    /// `xhigh` is the case that matters. The helper exists precisely because a
+    /// plain `.capitalized` renders "Xhigh"; a regression to `.capitalized`
+    /// fails here and nowhere else.
+    func testEffortLabelRendersEveryRung() {
+        XCTAssertEqual(ConversationStatusBar.effortLabel("adaptive"), "Adaptive")
+        XCTAssertEqual(ConversationStatusBar.effortLabel("low"), "Low")
+        XCTAssertEqual(ConversationStatusBar.effortLabel("medium"), "Medium")
+        XCTAssertEqual(ConversationStatusBar.effortLabel("high"), "High")
+        XCTAssertEqual(ConversationStatusBar.effortLabel("xhigh"), "Extra High")
+        XCTAssertEqual(ConversationStatusBar.effortLabel("max"), "Max")
+    }
+
+    /// "off" and any unrecognised value fall through to "Off" — the neutral
+    /// label. An unknown rung must never render raw on the control.
+    func testEffortLabelFallsBackToOff() {
+        XCTAssertEqual(ConversationStatusBar.effortLabel("off"), "Off")
+        XCTAssertEqual(ConversationStatusBar.effortLabel("not-a-level"), "Off")
+        XCTAssertEqual(ConversationStatusBar.effortLabel(""), "Off")
+    }
 }
