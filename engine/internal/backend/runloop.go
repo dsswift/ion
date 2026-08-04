@@ -485,55 +485,10 @@ func (b *ApiBackend) runLoop(ctx context.Context, run *activeRun, opts types.Run
 		}
 
 		// Fire the before_provider_request extension hook immediately before
-		// the outbound call. Observe-only — handler return values are ignored
-		// and we never block the agent loop on this callback. Fires on every
-		// turn, including fallback hops, so handlers see the real wire request
-		// shape (post-fallback model, post-sanitization message list). Nil
-		// callback means no extensions are interested; the conditional is a
-		// pure read of an immutable struct field, so this is hot-path safe.
-		if hooks.OnBeforeProviderRequest != nil {
-			providerID := ""
-			if provider != nil {
-				providerID = provider.ID()
-			}
-			info := BeforeProviderRequestInfo{
-				Provider:        providerID,
-				Model:           streamOpts.Model,
-				TurnNumber:      turn,
-				MessageCount:    len(streamOpts.Messages),
-				ToolCount:       len(streamOpts.Tools),
-				HasSystemPrompt: streamOpts.System != "",
-				MaxTokens:       streamOpts.MaxTokens,
-			}
-			utils.LogWithFields(utils.LevelDebug, "backend.runloop", "OnBeforeProviderRequest", map[string]any{
-				"run_id":     run.requestID,
-				"provider":   info.Provider,
-				"model":      info.Model,
-				"turn":       info.TurnNumber,
-				"messages":   info.MessageCount,
-				"tools":      info.ToolCount,
-				"sys_prompt": info.HasSystemPrompt,
-				"max_tokens": info.MaxTokens,
-			})
-			func() {
-				// Defensive: a panicking handler must not crash the agent loop.
-				// The hook is observe-only; recover, log, and proceed.
-				defer func() {
-					if r := recover(); r != nil {
-						utils.LogWithFields(utils.LevelError, "backend.runloop", "OnBeforeProviderRequest panicked", map[string]any{
-							"run_id": run.requestID,
-							"panic":  r,
-						})
-					}
-				}()
-				hooks.OnBeforeProviderRequest(run.requestID, info)
-			}()
-		} else {
-			utils.LogWithFields(utils.LevelDebug, "backend.runloop", "OnBeforeProviderRequest: no callback registered, skipping", map[string]any{
-				"run_id": run.requestID,
-				"turn":   turn,
-			})
-		}
+		// the outbound call. Extracted to fireBeforeProviderRequest
+		// (runloop_before_provider_request.go) to keep this file under the
+		// file-size cap — same pattern as buildRetryConfig/dispatchStopReason.
+		fireBeforeProviderRequest(run, hooks, provider, &streamOpts, turn)
 
 		// Stash the run's telemetry correlation block on the streaming context
 		// so the provider stream-idle wrapper (sse_idle.go) can attribute
