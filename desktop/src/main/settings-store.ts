@@ -74,10 +74,10 @@ export const SETTINGS_DEFAULTS = {
   // the engine's resolveThinking helper.
   thinkingEnabled: false,
   // Level a NEW conversation's thinking control starts at, when the gate above
-  // is on. 'off' preserves the historical behavior (every conversation starts
-  // with no thinking until the user raises it). Only meaningful when
-  // thinkingEnabled is true — the gate hides the control entirely when false.
-  defaultThinkingEffort: 'off' as 'off' | 'low' | 'medium' | 'high',
+  // is on. 'high' is the desktop's opinionated default; users can override in
+  // Settings. Only meaningful when thinkingEnabled is true — the gate hides
+  // the control entirely when false.
+  defaultThinkingEffort: 'high' as 'off' | 'low' | 'medium' | 'high',
   // Agent Team Visualizer (desktop-only window; none of these keys are iOS
   // projectable). atvSeeds maps an extension scope (engineProfileId, or
   // 'local' for plain tabs) to a user-chosen office seed string.
@@ -195,15 +195,14 @@ export function shouldEnableThinking(): boolean {
  * settings.json. This is the level a NEW conversation starts at; the user can
  * still change any individual conversation with the status-bar picker.
  *
- * Defaults to 'off' when absent or not one of the four valid levels, matching
- * SETTINGS_DEFAULTS and preserving the historical behavior for anyone who
- * never touches the setting.
+ * Defaults to 'high' when absent or not one of the four valid levels, matching
+ * SETTINGS_DEFAULTS. 'high' is the desktop's opinionated default.
  */
 export function readDefaultThinkingEffort(): ThinkingEffort {
   const raw = readSettings()
   const v = raw.defaultThinkingEffort
   if (v === 'low' || v === 'medium' || v === 'high' || v === 'off') return v
-  return 'off'
+  return 'high'
 }
 
 /**

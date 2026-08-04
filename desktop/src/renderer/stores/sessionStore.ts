@@ -4,7 +4,7 @@ import { serializeTerminalBuffer } from '../components/TerminalInstance'
 import type { State, StoreSet, StoreGet } from './session-store-types'
 import type { ResourceItem } from '../../shared/types-engine'
 import { markResourcesRead } from './slices/resource-slice'
-import { makeLocalTab, initialModelOverride } from './session-store-helpers'
+import { makeLocalTab, initialModelOverride, initialThinkingEffort } from './session-store-helpers'
 import { makeMainPane } from './conversation-instance'
 import { parseSessionKey } from '../../shared/session-key'
 import { createTabSlice } from './slices/tab-slice'
@@ -40,7 +40,7 @@ const initialTab = makeLocalTab()
 // every tab — normal or engine — owns at least one ConversationInstance in
 // conversationPanes from creation, so no consumer ever sees a missing pane.
 const initialEnginePanes = new Map<string, ConversationPane>([
-  [initialTab.id, makeMainPane({ modelOverride: initialModelOverride() })],
+  [initialTab.id, makeMainPane({ modelOverride: initialModelOverride(), thinkingEffort: initialThinkingEffort() })],
 ])
 
 const initialState = {

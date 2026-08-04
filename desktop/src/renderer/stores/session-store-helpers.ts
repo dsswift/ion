@@ -1,4 +1,4 @@
-import type { TabState } from '../../shared/types'
+import type { TabState, ThinkingEffort } from '../../shared/types'
 import { usePreferencesStore } from '../preferences'
 import notificationSrc from '../../../resources/notification.mp3'
 import type { FileEditorDirState } from './session-store-types'
@@ -73,6 +73,22 @@ export async function playNotificationIfHidden(): Promise<void> {
  */
 export function initialPermissionMode(): 'auto' | 'plan' {
   return usePreferencesStore.getState().defaultPermissionMode ?? 'auto'
+}
+
+/**
+ * Read the level a new conversation's thinking control should start at.
+ * Used at tab/instance creation time to seed the instance, mirroring
+ * `initialPermissionMode` above.
+ *
+ * Returns 'off' when the global thinking gate is off, so a disabled feature
+ * can never seed a live level: the picker is hidden in that state, and a
+ * seeded non-off value would ride on prompts with no way for the user to see
+ * or change it.
+ */
+export function initialThinkingEffort(): ThinkingEffort {
+  const prefs = usePreferencesStore.getState()
+  if (!prefs.thinkingEnabled) return 'off'
+  return prefs.defaultThinkingEffort ?? 'high'
 }
 
 export function makeLocalTab(): TabState {

@@ -93,6 +93,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   pairedDevices: saved.pairedDevices,
   streamThinkingToRemote: saved.streamThinkingToRemote,
   thinkingEnabled: saved.thinkingEnabled,
+  defaultThinkingEffort: saved.defaultThinkingEffort,
   remoteDisplay: saved.remoteDisplay,
   engineDefaultModel: saved.engineDefaultModel,
   engineProfiles: saved.engineProfiles,
@@ -459,6 +460,10 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   setThinkingEnabled: (enabled) => {
     set({ thinkingEnabled: enabled })
+    saveSettings(getAllSettings(get))
+  },
+  setDefaultThinkingEffort: (effort) => {
+    set({ defaultThinkingEffort: effort })
     saveSettings(getAllSettings(get))
   },
   addPairedDevice: (device) => {

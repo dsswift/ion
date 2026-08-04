@@ -29,6 +29,8 @@ export function AIModelsCategory() {
   const setShowImplementClearContext = usePreferencesStore((s) => s.setShowImplementClearContext)
   const thinkingEnabled = usePreferencesStore((s) => s.thinkingEnabled)
   const setThinkingEnabled = usePreferencesStore((s) => s.setThinkingEnabled)
+  const defaultThinkingEffort = usePreferencesStore((s) => s.defaultThinkingEffort)
+  const setDefaultThinkingEffort = usePreferencesStore((s) => s.setDefaultThinkingEffort)
   // The plan-mode Bash allowlist is ENGINE POLICY, stored in engine.json
   // (limits.planModeAllowedBashCommands) — not a desktop preference. We read
   // it from / write it to engine.json via IPC rather than the preferences
@@ -203,6 +205,47 @@ export function AIModelsCategory() {
         checked={thinkingEnabled}
         onChange={setThinkingEnabled}
       />
+
+      {/* Only meaningful when the gate above is on — the per-conversation
+          control is hidden entirely when it is off, so a level chosen here
+          would seed nothing the user could see or change. */}
+      {thinkingEnabled && (
+        <SettingSection
+          label="Default thinking level"
+          description="The reasoning level new conversations start at. Each conversation can still be changed individually from its status bar."
+        >
+          <div
+            style={{
+              display: 'flex',
+              background: colors.surfacePrimary,
+              border: `1px solid ${colors.containerBorder}`,
+              borderRadius: 8,
+              overflow: 'hidden',
+            }}
+          >
+            {(['off', 'low', 'medium', 'high'] as const).map((level) => (
+              <button
+                key={level}
+                onClick={() => setDefaultThinkingEffort(level)}
+                style={{
+                  flex: 1,
+                  padding: '7px 0',
+                  background: defaultThinkingEffort === level ? colors.accent : 'transparent',
+                  color: defaultThinkingEffort === level ? colors.textOnAccent : colors.textSecondary,
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  fontWeight: defaultThinkingEffort === level ? 600 : 400,
+                  textTransform: 'capitalize',
+                  transition: 'background 0.15s, color 0.15s',
+                }}
+              >
+                {level}
+              </button>
+            ))}
+          </div>
+        </SettingSection>
+      )}
 
       <SettingHeading>Plan & Implement Models</SettingHeading>
 

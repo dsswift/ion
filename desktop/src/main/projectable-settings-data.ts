@@ -166,6 +166,24 @@ export const PROJECTABLE_SETTINGS_DATA: readonly ProjectableSetting[] = [
     defaultValue: false,
   },
   {
+    // Level a NEW conversation's thinking control starts at. Only meaningful
+    // when `thinkingEnabled` above is on — the gate hides the control
+    // entirely when off, so this seeds nothing. 'off' preserves the
+    // historical behavior (every conversation starts with no thinking).
+    key: 'defaultThinkingEffort',
+    type: 'enum',
+    group: 'ai',
+    label: 'Default thinking level',
+    description: 'The reasoning level new conversations start at. Only applies when extended thinking is enabled above. Each conversation can still be changed individually from its status bar.',
+    defaultValue: 'off',
+    choices: [
+      { value: 'off', label: 'Off' },
+      { value: 'low', label: 'Low' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'high', label: 'High' },
+    ],
+  },
+  {
     key: 'planModelSplitEnabled',
     type: 'boolean',
     group: 'ai',

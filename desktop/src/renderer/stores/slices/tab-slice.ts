@@ -2,7 +2,7 @@ import type { TabState } from '../../../shared/types'
 import { usePreferencesStore } from '../../preferences'
 import { destroyTerminalInstance } from '../../components/TerminalPanel'
 import type { StoreSet, StoreGet, State } from '../session-store-types'
-import { makeLocalTab, isReusableBlankConversationTab, initialModelOverride, initialPermissionMode } from '../session-store-helpers'
+import { makeLocalTab, isReusableBlankConversationTab, initialModelOverride, initialPermissionMode, initialThinkingEffort } from '../session-store-helpers'
 import { makeMainPane, commitInstance, activeInstance, instanceMessageCount, needsHistoryHydration } from '../conversation-instance'
 import { cleanupTabDeltas } from './engine-event-slice'
 import { applySetThinkingEffort } from './tab-slice-thinking'
@@ -109,7 +109,7 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
         // Seed the single-instance `main` pane so message/draft/model state has
         // a home from creation (2A invariant). Carry the plan-model split
         // override onto the instance since modelOverride no longer lives on the tab.
-        conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane({ modelOverride: initialModelOverride(), permissionMode: initialPermissionMode() })),
+        conversationPanes: new Map(s.conversationPanes).set(tab.id, makeMainPane({ modelOverride: initialModelOverride(), permissionMode: initialPermissionMode(), thinkingEffort: initialThinkingEffort() })),
         activeTabId: tab.id,
         tallViewTabId: usePreferencesStore.getState().defaultTallConversation ? tab.id : null,
         terminalTallTabId: null,
@@ -363,7 +363,7 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
             tabs: [newTab],
             activeTabId: newTab.id,
             gitPanelOpen: false,
-            conversationPanes: new Map(get().conversationPanes).set(newTab.id, makeMainPane({ modelOverride: initialModelOverride() })),
+            conversationPanes: new Map(get().conversationPanes).set(newTab.id, makeMainPane({ modelOverride: initialModelOverride(), thinkingEffort: initialThinkingEffort() })),
           })
           return
         }
