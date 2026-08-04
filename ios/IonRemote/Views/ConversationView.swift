@@ -313,7 +313,6 @@ struct ConversationView: View {
                 // `tabHasExtensions ? … : nil` gate was an illegitimate fork.
                 extensionName: engineInputs.extensionName,
                 runningAgentCount: runningAgentCount,
-                thinkingGloballyEnabled: viewModel.thinkingGloballyEnabled,
                 thinkingEffort: activeInst?.thinkingEffort ?? "off",
                 onSelectThinkingEffort: { level in
                     viewModel.setThinkingEffort(tabId: tabId, effort: level)
