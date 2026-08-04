@@ -3,7 +3,9 @@ import { motion } from 'framer-motion'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useColors } from '../../theme'
-import { useNavigableText, NavigableText, NavigableCode } from '../../hooks/useNavigableLinks'
+import { useNavigableText } from '../../hooks/useNavigableLinks'
+import { makeMarkdownComponents } from './markdownRenderers'
+import { CollapsibleUserBody } from './CollapsibleUserBody'
 import { CopyButton } from './CopyButton'
 import { InlineMessageImages, deriveMessageImages } from './InlineMessageImages'
 import { stripAttachmentMarkers } from './message-text'
@@ -29,21 +31,10 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
   const inlineImages = deriveMessageImages(message.content || '', message.attachments)
   const hasInlineImages = inlineImages.length > 0
 
-  const userMarkdownComponents = useMemo(() => ({
-    table: ({ children }: any) => <div className="overflow-x-auto max-w-full">{children}</div>,
-    a: ({ href, children }: any) => (
-      <button
-        type="button"
-        className="underline decoration-dotted underline-offset-2 cursor-pointer"
-        style={{ color: colors.accent }}
-        onClick={() => { if (href) void window.ion.openExternal(String(href)).catch((err) => rWarn('conversation', 'open link failed', { error: String(err) })) }}
-      >
-        {children}
-      </button>
-    ),
-    text: ({ children }: any) => <NavigableText onOpenFile={onOpenFileVoid} onOpenUrl={onOpenUrl}>{children}</NavigableText>,
-    code: ({ children, className, ...props }: any) => <NavigableCode className={className} onOpenFile={onOpenFileVoid} onOpenUrl={onOpenUrl} {...props}>{children}</NavigableCode>,
-  }), [colors, onOpenFileVoid, onOpenUrl])
+  const userMarkdownComponents = useMemo(
+    () => makeMarkdownComponents({ colors, onOpenFile: onOpenFileVoid, onOpenUrl, variant: 'user' }),
+    [colors, onOpenFileVoid, onOpenUrl],
+  )
 
   const defaultActions = <CopyButton text={displayContent} />
 
@@ -79,22 +70,24 @@ export function MessageBubble({ message, skipMotion, actions }: MessageBubblePro
       {steerTag}
       {hasInlineImages && <InlineMessageImages content={message.content || ''} attachments={message.attachments} />}
       {displayContent.trim() && (
-        <div
-          className="leading-[1.5] px-3 py-1.5"
-          style={{
-            fontSize: 'var(--ion-conv-font-size, 13px)',
-            background: colors.userBubble,
-            color: colors.userBubbleText,
-            border: isBashCmd ? `2px solid ${colors.bashModeRing}` : `1px solid ${colors.userBubbleBorder}`,
-            borderRadius: '14px 14px 4px 14px',
-          }}
-        >
-          <div className="prose-cloud prose-cloud-user min-w-0 overflow-hidden">
-            <Markdown remarkPlugins={REMARK_PLUGINS} components={userMarkdownComponents}>
-              {displayContent}
-            </Markdown>
+        <CollapsibleUserBody text={displayContent}>
+          <div
+            className="leading-[1.5] px-3 py-1.5 max-w-full min-w-0"
+            style={{
+              fontSize: 'var(--ion-conv-font-size, 13px)',
+              background: colors.userBubble,
+              color: colors.userBubbleText,
+              border: isBashCmd ? `2px solid ${colors.bashModeRing}` : `1px solid ${colors.userBubbleBorder}`,
+              borderRadius: '14px 14px 4px 14px',
+            }}
+          >
+            <div className="prose-cloud prose-cloud-user min-w-0 overflow-hidden">
+              <Markdown remarkPlugins={REMARK_PLUGINS} components={userMarkdownComponents}>
+                {displayContent}
+              </Markdown>
+            </div>
           </div>
-        </div>
+        </CollapsibleUserBody>
       )}
       {displayContent.trim() && (
         <div className="absolute -bottom-5 right-0 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-100">

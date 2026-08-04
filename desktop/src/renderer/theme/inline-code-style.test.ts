@@ -36,4 +36,11 @@ describe('inline code prose styling', () => {
     const body = ruleBody('.prose-cloud code')
     expect(body).toContain('color: var(--ion-text-primary)')
   })
+
+  it('carries a hairline border so the chip reads crisply', () => {
+    expect(ruleBody('.prose-cloud code')).toContain('border: 1px solid var(--ion-container-border)')
+    expect(ruleBody('.prose-cloud-user code')).toContain('border: 1px solid var(--ion-container-border)')
+    // Fenced blocks must not inherit the chip border — pre carries its own.
+    expect(ruleBody('.prose-cloud pre code')).toContain('border: none')
+  })
 })

@@ -233,6 +233,9 @@ export const IPC = {
   FS_REVEAL_IN_FINDER: 'ion:fs-reveal-in-finder',
   FS_OPEN_NATIVE: 'ion:fs-open-native',
   FS_EXISTS: 'ion:fs-exists',
+  // Fetch + cache a site favicon in the main process, returned as a data:
+  // URL so the renderer CSP (img-src 'self' data: blob:) stays untouched.
+  FAVICON_GET: 'ion:favicon-get',
   FS_WATCH_FILE: 'ion:fs-watch-file',
   FS_UNWATCH_FILE: 'ion:fs-unwatch-file',
   FS_FILE_CHANGED: 'ion:fs-file-changed',

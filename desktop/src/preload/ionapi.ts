@@ -46,6 +46,9 @@ export interface IonAPI extends AtvApi {
   /** Custom theme packs installed on disk (desktop components, resolved with inline asset data URLs). */
   listCustomThemes(): Promise<CustomThemeForRenderer[]>
   openExternal(url: string): Promise<boolean>
+  /** Main-process-cached site favicon as a data: URL (null = unavailable;
+   * renderer falls back to its Globe glyph). */
+  getFavicon(host: string): Promise<string | null>
   /** iOS asked to open (or focus) a conversation in a worktree. */
   onRemoteOpenWorktreeConversation(callback: (arg: { worktreePath: string; newConversation: boolean }) => void): () => void
   /** iOS asked to open (or focus) a conversation in the integration bench. */

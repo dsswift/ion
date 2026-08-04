@@ -112,3 +112,16 @@ export function escapeAppleScript(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 }
 
+/**
+ * Validate a hostname for the favicon fetch IPC (IPC.FAVICON_GET).
+ *
+ * The host is interpolated into a fetch URL query parameter, so this is the
+ * untrusted-input gate: RFC-1123-ish labels only (letters, digits, hyphens,
+ * dots), bounded length, no scheme/path/port/userinfo characters. Rejecting
+ * here (rather than sanitizing) keeps the cache keyed on real hostnames.
+ */
+export function isValidFaviconHost(host: string): boolean {
+  if (!host || host.length > 253) return false
+  return /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/.test(host)
+}
+

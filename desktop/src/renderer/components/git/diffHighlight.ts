@@ -9,7 +9,9 @@
 
 import type { BundledLanguage, BundledTheme, ThemedToken } from 'shiki'
 
-const EXT_TO_LANG: Record<string, BundledLanguage> = {
+// Exported: the conversation code-block highlighter (codeHighlight.ts) reuses
+// this map for fence-token and filename resolution.
+export const EXT_TO_LANG: Record<string, BundledLanguage> = {
   ts: 'typescript', tsx: 'tsx', js: 'javascript', jsx: 'jsx', mjs: 'javascript',
   go: 'go', rs: 'rust', py: 'python', rb: 'ruby', java: 'java', kt: 'kotlin',
   swift: 'swift', c: 'c', cpp: 'cpp', h: 'c', hpp: 'cpp', cs: 'csharp',

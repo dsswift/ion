@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useColors } from '../../theme'
-import { TableScrollWrapper } from './AssistantMessage'
+import { TableScrollWrapper } from './markdownRenderers'
 import type { Message } from '../../../shared/types'
 import { rWarn } from '../../rendererLogger'
 
