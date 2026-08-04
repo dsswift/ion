@@ -10,6 +10,22 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.75.0](https://github.com/dsswift/ion/compare/desktop-v1.74.0...desktop-v1.75.0) (2026-08-04)
+
+### Features
+
+* **desktop:** add Cmd+4 status drawer and one right-side panel at a time ([beb8541](https://github.com/dsswift/ion/commit/beb8541a87b8cd31b89b4a9cd9d35e4646ea26db))
+* **desktop:** make status drawer collapse behaviour configurable ([b3e92e3](https://github.com/dsswift/ion/commit/b3e92e3bfa11c4a560e0cb762826b7fb8db20c9d))
+* **desktop:** render inline images as a paged gallery ([04eebba](https://github.com/dsswift/ion/commit/04eebba2def4de3c7ac70c7ec54d81e80fac6f01))
+* **desktop:** mark slash commands in timeline ([75f66aa](https://github.com/dsswift/ion/commit/75f66aa83381c7eb48b18096eaa77da12a962216))
+
+### Bug Fixes
+
+* **desktop:** repair the worktree menu file size and test gates ([45343e7](https://github.com/dsswift/ion/commit/45343e7d104e70576886dbb3d718e8cccd2f32b0))
+* **desktop:** keep gallery rail tiles from compressing ([ee54e00](https://github.com/dsswift/ion/commit/ee54e00b9457d8ffa4ba0f1a8da38f7da7175351))
+* **desktop:** guard viewer paging and stabilize gallery churn ([f731cdf](https://github.com/dsswift/ion/commit/f731cdf18d2d977f9eb90b7a8191eb557549dbb0))
+* **desktop:** bump brace-expansion override to patched 5.0.9 ([b81a75f](https://github.com/dsswift/ion/commit/b81a75f26ea9ce1eb620b6ce24c9b34e49798102))
+
 ## [1.74.0](https://github.com/dsswift/ion/compare/desktop-v1.73.1...desktop-v1.74.0) (2026-08-03)
 
 ### Features

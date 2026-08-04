@@ -10,6 +10,17 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.56.0](https://github.com/dsswift/ion/compare/ios-v1.55.0...ios-v1.56.0) (2026-08-04)
+
+### Features
+
+* **ios:** render inline images as a paged gallery ([c64e449](https://github.com/dsswift/ion/commit/c64e44975029077fde68dbd06695c15d4e450f2e))
+
+### Bug Fixes
+
+* **ios:** inject view model into the paged preview sheet ([4c3dbcd](https://github.com/dsswift/ion/commit/4c3dbcdad9a7c5a0c5b1759cfcdde9d5871cac28))
+* **ios:** fix paged preview share target and log fetch failures ([51621e1](https://github.com/dsswift/ion/commit/51621e1a898ee9e67d42194bb425a5d64476b253))
+
 ## [1.55.0](https://github.com/dsswift/ion/compare/ios-v1.54.0...ios-v1.55.0) (2026-08-03)
 
 ### Features

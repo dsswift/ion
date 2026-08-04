@@ -13,6 +13,18 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.63.1](https://github.com/dsswift/ion/compare/engine-v1.63.0...engine-v1.63.1) (2026-08-04)
+
+### Bug Fixes
+
+* **engine:** resolve backend capabilities per run, not on the outer ([841aadd](https://github.com/dsswift/ion/commit/841aadd7527473f79c2d63e68609421d559e59a4))
+* **engine:** make forced compaction reclaim context ([9b624fd](https://github.com/dsswift/ion/commit/9b624fdfe913910358f8137831d1b09ca8818b7b))
+* **engine:** stop advertising gateway models under ids that route elsewhere ([ce204db](https://github.com/dsswift/ion/commit/ce204dbdab7e7534b96d47d0a918a02b2d6afe30))
+* **engine:** correct the auto-exit ADR citation ([51fa709](https://github.com/dsswift/ion/commit/51fa70904cd78470a7765bff86924c33a621f78f))
+* **engine:** honor mid-run plan mode in the provider tool list ([42beb2e](https://github.com/dsswift/ion/commit/42beb2e78fea9bc7055cf430fb66e048f35fd7d3))
+* **engine:** stop persisting the stale plan-mode claim ([e628d2f](https://github.com/dsswift/ion/commit/e628d2f29818332bfe5a394de23bb501c6ea86b2))
+* **engine:** reformat compact log call to escape check-logging blind spot ([4af5f02](https://github.com/dsswift/ion/commit/4af5f025039b3dbd7fb2c0a392357b16a190410d))
+
 ## [1.63.0](https://github.com/dsswift/ion/compare/engine-v1.62.0...engine-v1.63.0) (2026-08-03)
 
 ### Features
