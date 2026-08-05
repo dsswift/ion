@@ -8,7 +8,7 @@ import { cleanupTabDeltas } from './engine-event-slice'
 import { applySetThinkingEffort } from './tab-slice-thinking'
 import { applyPermissionModeForTab } from './tab-slice-permission-mode'
 import { createConversationTabAction } from './engine-slice-create'
-import { evaluateCloseGuard, formatCloseGuardRefusal } from './tab-close-guard'
+import { evaluateSessionBusyGuard, formatSessionBusyRefusal } from './session-busy-guard'
 import { forgetTabContentTracking } from '../tab-content-tracking'
 import { pickNextActiveTab } from './tab-slice-next-active'
 import { resolveWorktreeForNewTab } from './tab-slice-worktree-resolve'
@@ -235,13 +235,14 @@ export function createTabSlice(set: StoreSet, get: StoreGet): Partial<State> {
       const closingTab = get().tabs.find((t) => t.id === tabId)
       // Action-layer guard: hard-block close while the orchestrator or any
       // dispatched background agent is still running. TAB-TYPE-AGNOSTIC — see
-      // evaluateCloseGuard in tab-close-guard.ts for the full rationale (plain
-      // conversations can dispatch sub-agents too, so this is not engine-only).
+      // evaluateSessionBusyGuard in session-busy-guard.ts for the full rationale
+      // (plain conversations can dispatch sub-agents too, so this is not
+      // engine-only).
       if (closingTab) {
         const pane = get().conversationPanes.get(tabId)
-        const guard = evaluateCloseGuard(pane)
+        const guard = evaluateSessionBusyGuard(pane)
         if (guard.blocked) {
-          rWarn('tab.close', 'close blocked by guard', { tab_id: tabId, reason: formatCloseGuardRefusal(tabId, guard) })
+          rWarn('tab.close', 'close blocked by guard', { tab_id: tabId, reason: formatSessionBusyRefusal(tabId, guard, 'close the tab') })
           return
         }
       }

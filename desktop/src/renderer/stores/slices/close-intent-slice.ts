@@ -30,7 +30,7 @@
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { rInfo, rWarn, rDebug } from '../../rendererLogger'
 import { decideWorktreeClose } from '../../../shared/worktree-close-decision'
-import { evaluateCloseGuard, formatCloseGuardRefusal } from './tab-close-guard'
+import { evaluateSessionBusyGuard, formatSessionBusyRefusal } from './session-busy-guard'
 
 export function createCloseIntentSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -45,10 +45,10 @@ export function createCloseIntentSlice(set: StoreSet, get: StoreGet): Partial<St
 
       // Short-circuit a tab the guard would refuse anyway, so the operator gets
       // the refusal in the log rather than a dialog that does nothing.
-      const guard = evaluateCloseGuard(get().conversationPanes.get(tabId))
+      const guard = evaluateSessionBusyGuard(get().conversationPanes.get(tabId))
       if (guard.blocked) {
         rWarn('tab.close', 'close request refused by guard', {
-          tab_id: tabId, reason: formatCloseGuardRefusal(tabId, guard),
+          tab_id: tabId, reason: formatSessionBusyRefusal(tabId, guard, 'close the tab'),
         })
         return
       }

@@ -76,7 +76,7 @@ export function harness(initial: HarnessInit = {}) {
     tabs: (initial.tabs ?? []).map((t) => ({ title: 'New Tab', customTitle: null, status: 'idle', ...t })),
     activeTabId: initial.activeTabId ?? null,
     worktreeInventory: new Map<string, WorktreeInventoryEntry[]>(),
-    // Read by the retire pre-flight (evaluateCloseGuard). Absent pane = idle.
+    // Read by the retire pre-flight (evaluateSessionBusyGuard). Absent pane = idle.
     conversationPanes: initial.panes ?? new Map(),
     closeIntent: initial.closeIntent ?? null,
     // Conflict/refusal alert plumbing the slice feeds on sync failures and

@@ -153,7 +153,7 @@ export function maybeScheduleDoneMove(
  * background agent with `status === 'running'`. Folds across all instances so
  * it is correct for both plain (single-main-instance) and multi-instance engine
  * tabs. Mirrors the fold in `anyEngineInstanceHasRunningChildren` (TabStripShared)
- * and the `evaluateCloseGuard` predicate (tab-close-guard), which use the same
+ * and the `evaluateSessionBusyGuard` predicate (session-busy-guard), which use the same
  * signal to drive the tab-pill yellow dot and the Cmd+W hard-block respectively.
  *
  * Exported: the auto-fix lifecycle (event-slice-auto-fix-lifecycle.ts) reads

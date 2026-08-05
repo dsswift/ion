@@ -4,6 +4,7 @@ import { bumpMsgCounter } from '../session-store-helpers'
 import { commitInstance } from '../conversation-instance'
 import { rDebug, rInfo, rWarn } from '../../rendererLogger'
 import { seedWorktreeFromTab } from './event-slice-titling'
+import { evaluateSessionBusyGuard, formatSessionBusyRefusal } from './session-busy-guard'
 import { setTabWorkingDirectory } from './tab-working-directory'
 import { closeOccupants, resolveRetireBlockers } from './worktree-occupant-close'
 
@@ -43,11 +44,38 @@ export function createWorktreeSlice(set: StoreSet, get: StoreGet): Partial<State
       const tab = get().tabs.find((t) => t.id === tabId)
       if (!tab) return
 
+      // Action-layer guard, mirroring closeTab's. Conversion relocates the tab,
+      // and relocation restarts the engine session (setTabWorkingDirectory ->
+      // relocateTabSession -> restartTabEntry -> stopSession), so converting a
+      // busy tab aborts its in-flight run and kills its dispatched children and
+      // background shells. The context-menu row is already disabled for this,
+      // but the row is not the only entry point: convertToWorktree is a
+      // FORWARDED ATV mirror action, so it can be dispatched from the mirror
+      // window against state that has since moved.
+      const guard = evaluateSessionBusyGuard(get().conversationPanes.get(tabId))
+      const busy = tab.status === 'running' || tab.status === 'connecting' || tab.bashExecuting || guard.blocked
+      if (busy) {
+        rWarn('worktree', 'convert refused: tab busy', {
+          tab_id: tabId.slice(0, 8),
+          tab_status: tab.status,
+          bash_executing: tab.bashExecuting,
+          reason: formatSessionBusyRefusal(tabId, guard, 'convert the tab to a worktree'),
+        })
+        return
+      }
+
       const defaults = usePreferencesStore.getState().worktreeBranchDefaults
       const defaultBranch = defaults[tab.workingDirectory]
       if (defaultBranch) {
         const result = await window.ion.gitWorktreeAdd(tab.workingDirectory, defaultBranch)
         if (result.ok && result.worktree) {
+          rInfo('worktree', 'converting tab to a worktree', {
+            tab_id: tabId.slice(0, 8),
+            from: tab.workingDirectory,
+            to: result.worktree.worktreePath,
+            branch: result.worktree.branchName,
+            source_branch: defaultBranch,
+          })
           // The `abc` case: a named conversation becomes a worktree, and the
           // worktree carries that same name.
           seedWorktreeFromTab(tab, result.worktree.worktreePath)
@@ -158,7 +186,7 @@ export function createWorktreeSlice(set: StoreSet, get: StoreGet): Partial<State
      * ── Why the guard pre-flight is the FIRST thing here ─────────────────────
      * This action ends in a retire, which deletes the worktree directory. Every
      * conversation living there — not just this tab — is closed by that, and
-     * `closeTab` refuses a tab that is still running (see tab-close-guard.ts).
+     * `closeTab` refuses a tab that is still running (see session-busy-guard.ts).
      * Checking after the land would be too late in the worst way: the work would
      * already be merged into the source branch and the worktree half-removed,
      * with no way to answer "so is this finished or not?". So the check runs

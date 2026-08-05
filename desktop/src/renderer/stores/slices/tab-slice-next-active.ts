@@ -1,7 +1,7 @@
 /**
  * tab-slice-next-active — pure next-active-tab computation for closeTab.
  *
- * Extracted from tab-slice.ts (file-size cap), mirroring the tab-close-guard.ts
+ * Extracted from tab-slice.ts (file-size cap), mirroring the session-busy-guard.ts
  * extraction pattern. The closeTab action calls {@link pickNextActiveTab} when
  * the tab being closed is the active one and at least one tab remains, to decide
  * which remaining tab to activate.

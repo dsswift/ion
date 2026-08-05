@@ -198,7 +198,7 @@ describe('closeTab action-layer guard', () => {
     h.slice.closeTab!('tab1')
 
     expect(closeTabRpc).not.toHaveBeenCalled()
-    expect(h.warnSpy).toHaveBeenCalledWith('tab.close', 'close blocked by guard', expect.objectContaining({ reason: expect.stringContaining('refused tab close') }))
+    expect(h.warnSpy).toHaveBeenCalledWith('tab.close', 'close blocked by guard', expect.objectContaining({ reason: expect.stringContaining('refused to close the tab') }))
     expect(h.warnSpy).toHaveBeenCalledWith('tab.close', 'close blocked by guard', expect.objectContaining({ reason: expect.stringContaining('orchestratorRunning=true') }))
     h.warnSpy.mockClear()
   })
@@ -230,7 +230,7 @@ describe('closeTab action-layer guard', () => {
     h.slice.closeTab!('tab1')
 
     expect(closeTabRpc).not.toHaveBeenCalled()
-    expect(h.warnSpy).toHaveBeenCalledWith('tab.close', 'close blocked by guard', expect.objectContaining({ reason: expect.stringContaining('refused tab close') }))
+    expect(h.warnSpy).toHaveBeenCalledWith('tab.close', 'close blocked by guard', expect.objectContaining({ reason: expect.stringContaining('refused to close the tab') }))
     expect(h.warnSpy).toHaveBeenCalledWith('tab.close', 'close blocked by guard', expect.objectContaining({ reason: expect.stringContaining('inst1:1') }))
     h.warnSpy.mockClear()
   })
