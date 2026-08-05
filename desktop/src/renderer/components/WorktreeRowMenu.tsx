@@ -16,9 +16,9 @@ import { usePreferencesStore } from '../preferences'
 import { useOutsideDismiss } from '../hooks/useOutsideDismiss'
 import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
 import { zoomViewport } from '../viewport-zoom'
-import { buildWorktreeRowActions } from './worktreeRowActions'
 import { findMembership } from '../../shared/worktree-list'
 import { buildWorktreeMenuItems } from './WorktreeRowMenu.items'
+import { buildWorktreeRowActions } from './worktreeRowActions'
 import { WorktreeRowMenuDialogs, WorktreeRenameEditor } from './WorktreeRowMenuDialogs'
 import { rError, rWarn } from '../rendererLogger'
 import type { WorktreeInventoryEntry } from '../../shared/types'
@@ -41,10 +41,6 @@ export function WorktreeRowMenu({
   const ref = useRef<HTMLDivElement>(null)
   const benchWorkspaces = useSessionStore((s) => s.benchWorkspaces.get(repoPath))
   const [confirmRetire, setConfirmRetire] = useState<string | null>(null)
-  // Inline rename state. The generated title is a good default, not an
-  // authority — the operator must be able to correct one that missed.
-  const [renaming, setRenaming] = useState(false)
-  const [draftTitle, setDraftTitle] = useState(entry.title ?? entry.label)
   // A land refusal (diverged branch, conflict) is actionable and must be shown,
   // not swallowed into the log while the menu closes as if it had worked.
   const [landError, setLandError] = useState<string | null>(null)
@@ -53,6 +49,11 @@ export function WorktreeRowMenu({
   const [retireOutcome, setRetireOutcome] = useState<string | null>(null)
   const strategy = usePreferencesStore((s) => s.worktreeCompletionStrategy)
   const [busy, setBusy] = useState(false)
+  // Inline rename state. The generated title is a good default, not an
+  // authority — the operator must be able to correct one that missed. The
+  // commit itself is `doRename` from the verb factory below.
+  const [renaming, setRenaming] = useState(false)
+  const [draftTitle, setDraftTitle] = useState(entry.title ?? entry.label)
 
   // Dismissal goes through the shared hook so the retire/land confirm dialogs
   // this menu raises are exempt from click-outside. A local handler here is what
