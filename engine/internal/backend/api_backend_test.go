@@ -482,12 +482,28 @@ func TestCancelWatchdogForcesExitWhenRunGoroutineWedges(t *testing.T) {
 		t.Errorf("expected exit signal %q, got %q", "cancelled-forced", gotSignal)
 	}
 
-	// activeRuns must be empty after the watchdog runs.
-	b.mu.Lock()
-	_, stillThere := b.activeRuns["req-wedged"]
-	b.mu.Unlock()
-	if stillThere {
-		t.Error("watchdog left run in activeRuns")
+	// activeRuns must become empty after the watchdog runs. emitExit (which
+	// unblocks waitForExit above via the OnExit callback) and removeRun are
+	// two separate statements in cancelWatchdog, not one atomic step, so
+	// there is a genuine window between "exit signal observed" and "run
+	// removed from the registry". Poll for the removal instead of checking
+	// once immediately after waitForExit returns — an immediate single check
+	// is exactly what raced and failed under heavier goroutine scheduling
+	// (observed on the macOS CI runner).
+	deadline := time.After(2 * time.Second)
+	for {
+		b.mu.Lock()
+		_, stillThere := b.activeRuns["req-wedged"]
+		b.mu.Unlock()
+		if !stillThere {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("watchdog left run in activeRuns")
+		default:
+			time.Sleep(5 * time.Millisecond)
+		}
 	}
 }
 
