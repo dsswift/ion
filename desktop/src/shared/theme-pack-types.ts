@@ -25,10 +25,22 @@ export const BUILTIN_THEME_IDS = ['ion-dark', 'ion-light', 'ion-classic', 'jarvi
 export const THEME_PACK_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/
 
 /**
+ * The shared code-syntax tokens (Ion Dark/Light/Classic values are pinned
+ * identical to the desktop palettes by the parity fixture). These are
+ * spread into `IOS_THEME_TOKEN_KEYS` below, and separately used to build
+ * `OPTIONAL_IOS_THEME_TOKEN_KEYS` — one literal array, two derived views, so
+ * the two can never drift apart.
+ */
+const CODE_SYNTAX_TOKEN_KEYS = [
+  'codeKeyword', 'codeString', 'codeNumber', 'codeComment',
+  'codeFunction', 'codeType', 'codeVariable', 'codeOperator',
+] as const
+
+/**
  * The iOS AppTheme color-token contract. Mirrors the `AppTheme` protocol in
  * `ios/IonRemote/Utilities/AppTheme.swift` — a pack's iOS component must
- * supply every one of these keys or its iOS part is rejected (the desktop
- * part still loads). Keep in lockstep with the Swift protocol.
+ * supply every required key or its iOS part is rejected (the desktop part
+ * still loads). Keep in lockstep with the Swift protocol.
  */
 export const IOS_THEME_TOKEN_KEYS = [
   'accent',
@@ -47,9 +59,20 @@ export const IOS_THEME_TOKEN_KEYS = [
   'surfaceElevated',
   'codeBg',
   'userBubbleTint',
+  ...CODE_SYNTAX_TOKEN_KEYS,
 ] as const
 
 export type IosThemeTokenKey = (typeof IOS_THEME_TOKEN_KEYS)[number]
+
+/**
+ * Unlike the core `IOS_THEME_TOKEN_KEYS` set, the code-syntax tokens are
+ * **optional** on a pack's iOS component: `AppTheme.swift`'s
+ * protocol-extension defaults and `SyncedTheme`'s per-token fallback already
+ * render a readable derived color when one is absent, so a pack authored
+ * before these tokens existed keeps working instead of having its whole iOS
+ * component rejected.
+ */
+export const OPTIONAL_IOS_THEME_TOKEN_KEYS: ReadonlySet<IosThemeTokenKey> = new Set(CODE_SYNTAX_TOKEN_KEYS)
 
 /** The two asset slots a component may declare. `background` renders as a
  * full-surface backdrop; `logo` is a brand mark shown in the Settings
@@ -248,17 +271,30 @@ export function validateThemePackManifest(
       const invalid: string[] = []
       for (const key of IOS_THEME_TOKEN_KEYS) {
         const value = rawTokens[key]
+        const optional = OPTIONAL_IOS_THEME_TOKEN_KEYS.has(key)
         if (typeof value !== 'string') {
-          missing.push(key)
+          if (optional) {
+            warnings.push(`ios code token ${key} missing; iOS falls back to theme defaults`)
+          } else {
+            missing.push(key)
+          }
         } else if (!HEX_COLOR_RE.test(value)) {
-          invalid.push(key)
+          if (optional) {
+            warnings.push(`ios code token ${key} has invalid hex; iOS falls back to theme defaults`)
+          } else {
+            invalid.push(key)
+          }
         } else {
           tokens[key] = value
         }
       }
       if (missing.length > 0 || invalid.length > 0) {
-        // The iOS token set is all-or-nothing: a partial theme would render
-        // unreadable mixes of pack + fallback colors on the phone.
+        // The REQUIRED iOS tokens are all-or-nothing: a partial theme would
+        // render unreadable mixes of pack + fallback colors on the phone.
+        // The optional code-syntax tokens are exempt from this check above
+        // (they resolve to a readable derived color via AppTheme's
+        // protocol-extension defaults / SyncedTheme's per-token fallback),
+        // so a pack that omits them still gets a usable iOS component.
         warnings.push(
           `ios component rejected — missing tokens: [${missing.join(', ')}], invalid hex: [${invalid.join(', ')}]`,
         )

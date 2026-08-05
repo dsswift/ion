@@ -264,6 +264,7 @@
 		A1B2C3D4E5F60001004009AA /* CompactionRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60001004008AA /* CompactionRowView.swift */; };
 		A1B2C3D4E5F6000100400DAA /* ConversationView+Attachments.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000100400CAA /* ConversationView+Attachments.swift */; };
 		CVPRES000000000000000007 /* ConversationView+Presentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = CVPRES000000000000000008 /* ConversationView+Presentation.swift */; };
+		CVSLASH0000000000000007 /* ConversationView+SlashCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = CVSLASH0000000000000008 /* ConversationView+SlashCommands.swift */; };
 		CVGROUP00000000000000007 /* ConversationView+Grouping.swift in Sources */ = {isa = PBXBuildFile; fileRef = CVGROUP00000000000000008 /* ConversationView+Grouping.swift */; };
 		CVAGENT00000000000000007 /* ConversationView+Agents.swift in Sources */ = {isa = PBXBuildFile; fileRef = CVAGENT00000000000000008 /* ConversationView+Agents.swift */; };
 		CVINPUT00000000000000007 /* ConversationView+InputBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = CVINPUT00000000000000008 /* ConversationView+InputBar.swift */; };
@@ -405,6 +406,18 @@
 		EMRSUPP000000000000001 /* EngineMessageRow+Support.swift in Sources */ = {isa = PBXBuildFile; fileRef = EMRSUPP000000000000002 /* EngineMessageRow+Support.swift */; };
 		SSVMDT000000000000001 /* SessionViewModel+DispatchTranscript.swift in Sources */ = {isa = PBXBuildFile; fileRef = SSVMDT000000000000002 /* SessionViewModel+DispatchTranscript.swift */; };
 		RTSDECODE000000000001 /* RemoteTabStateDecodeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RTSDECODE000000000002 /* RemoteTabStateDecodeTests.swift */; };
+		C0DEC0DE000000000001 /* FileIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000000 /* FileIcon.swift */; };
+		C0DEC0DE000000000003 /* FilePathDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000002 /* FilePathDetector.swift */; };
+		C0DEC0DE000000000005 /* IonCodeTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000004 /* IonCodeTheme.swift */; };
+		C0DEC0DE000000000007 /* CodeHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000006 /* CodeHighlighter.swift */; };
+		C0DEC0DE000000000009 /* HighlightedCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000008 /* HighlightedCodeView.swift */; };
+		C0DEC0DE000000000011 /* CollapsibleUserText.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000010 /* CollapsibleUserText.swift */; };
+		C0DEC0DE000000000013 /* FilePathDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000012 /* FilePathDetectorTests.swift */; };
+		C0DEC0DE000000000015 /* CodeHighlighterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000014 /* CodeHighlighterTests.swift */; };
+		C0DEC0DE000000000017 /* CollapsibleUserTextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000016 /* CollapsibleUserTextTests.swift */; };
+		C0DEC0DE000000000101 /* EngineMessageRow+UserBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000100 /* EngineMessageRow+UserBubble.swift */; };
+		C0DEC0DE000000000111 /* highlight.min.js in Resources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000110 /* highlight.min.js */; };
+		C0DEC0DE000000000113 /* highlight.js-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = C0DEC0DE000000000112 /* highlight.js-LICENSE.txt */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -669,6 +682,7 @@
 		A1B2C3D4E5F60001004008AA /* CompactionRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompactionRowView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6000100400CAA /* ConversationView+Attachments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConversationView+Attachments.swift"; sourceTree = "<group>"; };
 		CVPRES000000000000000008 /* ConversationView+Presentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConversationView+Presentation.swift"; sourceTree = "<group>"; };
+		CVSLASH0000000000000008 /* ConversationView+SlashCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConversationView+SlashCommands.swift"; sourceTree = "<group>"; };
 		CVGROUP00000000000000008 /* ConversationView+Grouping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConversationView+Grouping.swift"; sourceTree = "<group>"; };
 		CVAGENT00000000000000008 /* ConversationView+Agents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConversationView+Agents.swift"; sourceTree = "<group>"; };
 		CVINPUT00000000000000008 /* ConversationView+InputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConversationView+InputBar.swift"; sourceTree = "<group>"; };
@@ -818,6 +832,18 @@
 		EMRSUPP000000000000002 /* EngineMessageRow+Support.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EngineMessageRow+Support.swift"; sourceTree = "<group>"; };
 		SSVMDT000000000000002 /* SessionViewModel+DispatchTranscript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SessionViewModel+DispatchTranscript.swift"; sourceTree = "<group>"; };
 		RTSDECODE000000000002 /* RemoteTabStateDecodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTabStateDecodeTests.swift; sourceTree = "<group>"; };
+		C0DEC0DE000000000000 /* FileIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileIcon.swift; sourceTree = "<group>"; };
+		C0DEC0DE000000000002 /* FilePathDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePathDetector.swift; sourceTree = "<group>"; };
+		C0DEC0DE000000000004 /* IonCodeTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IonCodeTheme.swift; sourceTree = "<group>"; };
+		C0DEC0DE000000000006 /* CodeHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeHighlighter.swift; sourceTree = "<group>"; };
+		C0DEC0DE000000000008 /* HighlightedCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightedCodeView.swift; sourceTree = "<group>"; };
+		C0DEC0DE000000000010 /* CollapsibleUserText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollapsibleUserText.swift; sourceTree = "<group>"; };
+		C0DEC0DE000000000012 /* FilePathDetectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePathDetectorTests.swift; sourceTree = "<group>"; };
+		C0DEC0DE000000000014 /* CodeHighlighterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeHighlighterTests.swift; sourceTree = "<group>"; };
+		C0DEC0DE000000000016 /* CollapsibleUserTextTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollapsibleUserTextTests.swift; sourceTree = "<group>"; };
+		C0DEC0DE000000000100 /* EngineMessageRow+UserBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EngineMessageRow+UserBubble.swift"; sourceTree = "<group>"; };
+		C0DEC0DE000000000110 /* highlight.min.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = highlight.min.js; sourceTree = "<group>"; };
+		C0DEC0DE000000000112 /* highlight.js-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "highlight.js-LICENSE.txt"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -873,6 +899,7 @@
 				A1B2C3D4E5F6000100002EAA /* Info.plist */,
 				A1B2C3D4E5F6000100002FAA /* IonRemote.entitlements */,
 				A1B2C3D4E5F600010000C4AA /* Fonts */,
+				C0DEC0DE000000000120 /* Highlight */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -979,6 +1006,7 @@
 				A1B2C3D4E5F60001005002AA /* ChatCollectionView.swift */,
 				A1B2C3D4E5F6000100400CAA /* ConversationView+Attachments.swift */,
 				CVPRES000000000000000008 /* ConversationView+Presentation.swift */,
+				CVSLASH0000000000000008 /* ConversationView+SlashCommands.swift */,
 				CVGROUP00000000000000008 /* ConversationView+Grouping.swift */,
 				CVAGENT00000000000000008 /* ConversationView+Agents.swift */,
 				CVINPUT00000000000000008 /* ConversationView+InputBar.swift */,
@@ -1001,6 +1029,9 @@
 				A1B2C3D4E5F6000100930AAA /* SettingsVoiceView.swift */,
 				A1B2C3D4E5F600010000F3AA /* KeyboardUtilityBar.swift */,
 				A1B2C3D4E5F600010000A3AA /* SwiftTermWrapper.swift */,
+				C0DEC0DE000000000008 /* HighlightedCodeView.swift */,
+				C0DEC0DE000000000100 /* EngineMessageRow+UserBubble.swift */,
+				C0DEC0DE000000000010 /* CollapsibleUserText.swift */,
 				A1B2C3D4E5F600010000A5AA /* RemoteTerminalView.swift */,
 				A1B2C3D4E5F600010000A7AA /* TerminalInstanceBar.swift */,
 				A1B2C3D4E5F600010000D1AA /* ConversationView.swift */,
@@ -1219,6 +1250,9 @@
 				A1B2C3D4E5F60001000028AA /* E2ECryptoTests.swift */,
 				A1B2C3D4E5F60001FF0004AA /* MarkdownFormatterFixtures.swift */,
 				A1B2C3D4E5F60001FF0006AA /* MarkdownFormatterTests.swift */,
+				C0DEC0DE000000000012 /* FilePathDetectorTests.swift */,
+				C0DEC0DE000000000014 /* CodeHighlighterTests.swift */,
+				C0DEC0DE000000000016 /* CollapsibleUserTextTests.swift */,
 				A1B2C3D4E5F60001FF0012AA /* FrontmatterSplitterTests.swift */,
 				A1B2C3D4E5F6000100002AAA /* TransportManagerTests.swift */,
 				A1B2C3D4E5F6000100002CAA /* RelayClientTests.swift */,
@@ -1308,11 +1342,24 @@
 			path = Fonts;
 			sourceTree = "<group>";
 		};
+		C0DEC0DE000000000120 /* Highlight */ = {
+			isa = PBXGroup;
+			children = (
+				C0DEC0DE000000000110 /* highlight.min.js */,
+				C0DEC0DE000000000112 /* highlight.js-LICENSE.txt */,
+			);
+			path = Highlight;
+			sourceTree = "<group>";
+		};
 		A1B2C3D4E5F600010000D4AA /* Utilities */ = {
 			isa = PBXGroup;
 			children = (
 				A1B2C3D4E5F600010000D3AA /* AnsiParser.swift */,
 				A1B2C3D4E5F600010000F7AA /* MarkdownFormatter.swift */,
+				C0DEC0DE000000000000 /* FileIcon.swift */,
+				C0DEC0DE000000000002 /* FilePathDetector.swift */,
+				C0DEC0DE000000000004 /* IonCodeTheme.swift */,
+				C0DEC0DE000000000006 /* CodeHighlighter.swift */,
 				A1B2C3D4E5F60001000705AA /* ToolGrouping.swift */,
 				INJPOLICY00000000000002 /* InjectionPolicy.swift */,
 				A1B2C3D4E5F60001001001AA /* LayoutCache.swift */,
@@ -1449,6 +1496,8 @@
 				A1B2C3D4E5F60001000023AA /* Assets.xcassets in Resources */,
 				A1B2C3D4E5F600010000C0AA /* JetBrainsMonoNLNerdFontMono-Regular.ttf in Resources */,
 				A1B2C3D4E5F600010000C2AA /* OFL.txt in Resources */,
+				C0DEC0DE000000000111 /* highlight.min.js in Resources */,
+				C0DEC0DE000000000113 /* highlight.js-LICENSE.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1521,6 +1570,7 @@
 				A1B2C3D4E5F60001005001AA /* ChatCollectionView.swift in Sources */,
 				A1B2C3D4E5F6000100400DAA /* ConversationView+Attachments.swift in Sources */,
 				CVPRES000000000000000007 /* ConversationView+Presentation.swift in Sources */,
+				CVSLASH0000000000000007 /* ConversationView+SlashCommands.swift in Sources */,
 				CVGROUP00000000000000007 /* ConversationView+Grouping.swift in Sources */,
 				CVAGENT00000000000000007 /* ConversationView+Agents.swift in Sources */,
 				CVINPUT00000000000000007 /* ConversationView+InputBar.swift in Sources */,
@@ -1654,6 +1704,13 @@
 				A1B2C3D4E5F600010000F0AA /* EngineProfile.swift in Sources */,
 				A1B2C3D4E5F600010000F2AA /* KeyboardUtilityBar.swift in Sources */,
 				A1B2C3D4E5F600010000F6AA /* MarkdownFormatter.swift in Sources */,
+				C0DEC0DE000000000001 /* FileIcon.swift in Sources */,
+				C0DEC0DE000000000003 /* FilePathDetector.swift in Sources */,
+				C0DEC0DE000000000005 /* IonCodeTheme.swift in Sources */,
+				C0DEC0DE000000000007 /* CodeHighlighter.swift in Sources */,
+				C0DEC0DE000000000009 /* HighlightedCodeView.swift in Sources */,
+				C0DEC0DE000000000101 /* EngineMessageRow+UserBubble.swift in Sources */,
+				C0DEC0DE000000000011 /* CollapsibleUserText.swift in Sources */,
 				A1B2C3D4E5F60001FF0011AA /* FrontmatterSplitter.swift in Sources */,
 				A1B2C3D4E5F600010000F8AA /* PlanFullScreenView.swift in Sources */,
 				A1B2C3D4E5F600010000FAAA /* MarkdownContentView.swift in Sources */,
@@ -1839,6 +1896,9 @@
 				A1B2C3D4E5F60001000027AA /* E2ECryptoTests.swift in Sources */,
 				A1B2C3D4E5F60001FF0005AA /* MarkdownFormatterFixtures.swift in Sources */,
 				A1B2C3D4E5F60001FF0007AA /* MarkdownFormatterTests.swift in Sources */,
+				C0DEC0DE000000000013 /* FilePathDetectorTests.swift in Sources */,
+				C0DEC0DE000000000015 /* CodeHighlighterTests.swift in Sources */,
+				C0DEC0DE000000000017 /* CollapsibleUserTextTests.swift in Sources */,
 				A1B2C3D4E5F60001FF0013AA /* FrontmatterSplitterTests.swift in Sources */,
 				A1B2C3D4E5F60001000029AA /* TransportManagerTests.swift in Sources */,
 				A1B2C3D4E5F6000100002BAA /* RelayClientTests.swift in Sources */,

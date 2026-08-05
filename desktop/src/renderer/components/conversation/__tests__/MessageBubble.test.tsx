@@ -45,6 +45,7 @@ beforeAll(() => {
   ;(globalThis as any).window.ion = {
     readImageDataUrl: () => Promise.resolve({ dataUrl: null }),
     openExternal: () => {},
+    getFavicon: () => Promise.resolve(null),
   }
 })
 
@@ -124,6 +125,44 @@ describe('MessageBubble — attachment marker stripping', () => {
 })
 
 // ─── Layout containment ───
+
+// A user message whose collapsible wrapper engages (>600 chars) AND carries a
+// wide fenced code block. This is the regression shape: the CodeBlock <pre>
+// renders white-space:pre + overflow-x:auto, which only scrolls when every
+// flex link above it clamps width (min-width:auto otherwise lets the code's
+// intrinsic width blow past the bubble column's max-w-[85%] cap and overflow
+// the conversation pane).
+const WIDE_CODE_LONG_MESSAGE = [
+  'Here is the problem I found:',
+  '```',
+  'model-x/one is aliased to gateway-y/two which resolves to provider-z/three-large-context-name. ' + 'wide '.repeat(80),
+  '```',
+  'x'.repeat(600),
+].join('\n')
+
+describe('MessageBubble — code block width containment (collapsible path)', () => {
+  it('clamps every wrapper between the bubble column and the code block with max-w-full + min-w-0', () => {
+    const el = renderBubble(userMessage(WIDE_CODE_LONG_MESSAGE))
+
+    // Collapsible wrapper engaged (long message) and clamped.
+    const collapsedBody = el.querySelector('[data-user-message-collapsed]') as HTMLElement
+    expect(collapsedBody).not.toBeNull()
+    expect(collapsedBody.className).toContain('max-w-full')
+    expect(collapsedBody.className).toContain('min-w-0')
+    const collapsibleColumn = collapsedBody.parentElement as HTMLElement
+    expect(collapsibleColumn.className).toContain('max-w-full')
+    expect(collapsibleColumn.className).toContain('min-w-0')
+
+    // The bubble div itself (the padded, bordered element) is clamped too.
+    const bubble = collapsedBody.querySelector('.px-3') as HTMLElement
+    expect(bubble).not.toBeNull()
+    expect(bubble.className).toContain('max-w-full')
+    expect(bubble.className).toContain('min-w-0')
+
+    // And the code block rendered (regression shape includes a fence).
+    expect(el.querySelector('pre')).not.toBeNull()
+  })
+})
 
 describe('MessageBubble — left-edge overflow containment', () => {
   it('caps the bubble column with max-w-[85%] AND min-w-0 so it cannot grow past the cap', () => {

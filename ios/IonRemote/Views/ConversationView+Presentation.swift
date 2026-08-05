@@ -113,6 +113,34 @@ extension ConversationView {
                 PlanContentView(path: item.path)
                     .environment(viewModel)
             }
+            // File-preview cover, opened when the user taps a file-path chip
+            // (an ion-file:// link) in assistant markdown. Mirrors the
+            // plan-preview path above.
+            .fullScreenCover(item: $selectedFilePath) { item in
+                NavigationStack {
+                    FileEditorView(
+                        filePath: item.path,
+                        fileName: (item.path as NSString).lastPathComponent
+                    )
+                    .environment(viewModel)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") { selectedFilePath = nil }
+                        }
+                    }
+                }
+            }
+    }
+
+    /// Resolve a tapped `ion-file://` path and present the file preview.
+    /// Relative paths resolve against the tab's working directory; absolute
+    /// paths pass through. Lives here (not ConversationView.swift) with the
+    /// cover it drives, keeping the main file under the size cap.
+    func openFilePreview(_ path: String) {
+        let resolved = path.hasPrefix("/")
+            ? path
+            : (workingDirectory as NSString).appendingPathComponent(path)
+        selectedFilePath = IdentifiablePath(path: resolved)
     }
 
     @ViewBuilder

@@ -375,10 +375,7 @@ enum MarkdownFormatter {
             return AttributedString(text.string)
 
         case let code as Markdown.InlineCode:
-            var a = AttributedString(code.code)
-            a.font = .system(.body, design: .monospaced)
-            a.backgroundColor = Color(.tertiarySystemFill)
-            return a
+            return renderInlineCode(code.code)
 
         case let emphasis as Markdown.Emphasis:
             var inner = renderInline(emphasis.inlineChildren)
@@ -411,6 +408,11 @@ enum MarkdownFormatter {
             return inner
 
         case let link as Markdown.Link:
+            // Platform difference (documented): desktop's markdownRenderers.tsx
+            // `FaviconLink` prefixes external links with a fetched site
+            // favicon. SwiftUI Text renders no image attachments from
+            // AttributedString (the same limit noted on renderInlineCode's
+            // file-icon gap below), so iOS links render text-only.
             var inner = renderInline(link.inlineChildren)
             if let dest = link.destination, let url = URL(string: dest) {
                 inner.runs.forEach { run in
@@ -457,6 +459,30 @@ enum MarkdownFormatter {
     }
 
     // MARK: - Helpers
+
+    /// Inline-code chip. Detected file paths additionally get an
+    /// `ion-file://` link (intercepted by MarkdownContentView's
+    /// OpenURLAction), staying one flowing AttributedString so wrapping,
+    /// taps, and selection all keep working.
+    ///
+    /// Platform differences (documented, both stem from AttributedString
+    /// limits inside SwiftUI Text):
+    ///   - the desktop chip carries a 1px border; AttributedString cannot
+    ///     stroke one, so iOS approximates the chip with the fill alone.
+    ///   - the desktop chip prefixes a file-type icon; SwiftUI Text renders
+    ///     no image attachments from AttributedString (only Text-level
+    ///     `\(Image(...))` interpolation, which cannot compose with the
+    ///     formatter's single-AttributedString contract), so iOS renders
+    ///     path text only. The block-level code badge does carry the icon.
+    private static func renderInlineCode(_ code: String) -> AttributedString {
+        var body = AttributedString(code)
+        body.font = .system(.body, design: .monospaced)
+        body.backgroundColor = Color(.tertiarySystemFill)
+        if let ref = FilePathDetector.detect(code), let url = FilePathDetector.url(for: ref) {
+            body.link = url
+        }
+        return body
+    }
 
     /// Flatten a sequence of blocks (e.g. the contents of a BlockQuote) into
     /// a single attributed string, joining nested blocks with newlines. This

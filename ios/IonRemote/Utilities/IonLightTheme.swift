@@ -28,6 +28,14 @@ struct IonLightTheme: AppTheme {
     let surfaceElevated = Color(hex: 0xF2F2F4)                // surfacePrimary
     let codeBg = Color(hex: 0xEEEEF1)                         // codeBg
     let userBubbleTint = Color(hex: 0xF2F2F4)                 // userBubble
+    let codeKeyword = Color(hex: 0x8E44AD)                    // codeKeyword
+    let codeString = Color(hex: 0x0A7A3E)                     // codeString
+    let codeNumber = Color(hex: 0xB7791F)                     // codeNumber
+    let codeComment = Color(hex: 0x8A8A93)                    // codeComment
+    let codeFunction = Color(hex: 0x2563EB)                   // codeFunction
+    let codeType = Color(hex: 0x0E7C86)                       // codeType
+    let codeVariable = Color(hex: 0xB4322A)                   // codeVariable
+    let codeOperator = Color(hex: 0x4B4B52)                   // codeOperator
 
     let preferredColorScheme: ColorScheme? = .light
     let backgroundView: AnyView? = nil

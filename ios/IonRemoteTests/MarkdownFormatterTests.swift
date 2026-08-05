@@ -242,6 +242,36 @@ final class MarkdownFormatterTests: XCTestCase {
         XCTAssertEqual(whitespace.count, 1, "whitespace input should return one block")
     }
 
+    // MARK: - Inline code chips + file-path links
+
+    func testInlineCodeCarriesBackgroundChip() {
+        let blocks = MarkdownFormatter.parse("some `hello` inline")
+        guard case .paragraph(let text) = blocks[0] else {
+            return XCTFail("expected paragraph, got \(blocks)")
+        }
+        let codeRun = text.runs.first { run in
+            String(text[run.range].characters) == "hello"
+        }
+        XCTAssertNotNil(codeRun, "the inline code run must exist")
+        XCTAssertNotNil(codeRun?.backgroundColor, "inline code must render as a background chip")
+        XCTAssertNil(codeRun?.link, "prose inline code must not carry a link")
+    }
+
+    func testInlineCodeFilePathCarriesIonFileLink() {
+        let blocks = MarkdownFormatter.parse("see `src/foo.ts:12` for details")
+        guard case .paragraph(let text) = blocks[0] else {
+            return XCTFail("expected paragraph, got \(blocks)")
+        }
+        let pathRun = text.runs.first { run in
+            String(text[run.range].characters) == "src/foo.ts:12"
+        }
+        XCTAssertNotNil(pathRun, "the file-path run must exist")
+        let link = pathRun?.link
+        XCTAssertEqual(link?.scheme, "ion-file", "detected file paths must link via ion-file://")
+        XCTAssertEqual(link.flatMap(FilePathDetector.path(from:)), "src/foo.ts")
+        XCTAssertNotNil(pathRun?.backgroundColor, "file-path chips keep the code chip background")
+    }
+
     // MARK: - Helpers
 
     /// Plain-text concatenation of every block's text for substring assertions.

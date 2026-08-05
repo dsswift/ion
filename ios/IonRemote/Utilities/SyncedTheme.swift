@@ -34,6 +34,14 @@ struct SyncedTheme: AppTheme {
     let surfaceElevated: Color
     let codeBg: Color
     let userBubbleTint: Color
+    let codeKeyword: Color
+    let codeString: Color
+    let codeNumber: Color
+    let codeComment: Color
+    let codeFunction: Color
+    let codeType: Color
+    let codeVariable: Color
+    let codeOperator: Color
 
     let preferredColorScheme: ColorScheme?
     let activityIndicator: ((Bool) -> AnyView)? = nil
@@ -82,6 +90,14 @@ struct SyncedTheme: AppTheme {
         surfaceElevated = color("surfaceElevated", fallback.surfaceElevated)
         codeBg = color("codeBg", fallback.codeBg)
         userBubbleTint = color("userBubbleTint", fallback.userBubbleTint)
+        codeKeyword = color("codeKeyword", fallback.codeKeyword)
+        codeString = color("codeString", fallback.codeString)
+        codeNumber = color("codeNumber", fallback.codeNumber)
+        codeComment = color("codeComment", fallback.codeComment)
+        codeFunction = color("codeFunction", fallback.codeFunction)
+        codeType = color("codeType", fallback.codeType)
+        codeVariable = color("codeVariable", fallback.codeVariable)
+        codeOperator = color("codeOperator", fallback.codeOperator)
 
         switch payload.preferredColorScheme {
         case "light": preferredColorScheme = .light

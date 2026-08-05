@@ -27,6 +27,7 @@ import { registerConversationBackupIpc } from './conversation-backup'
 import { registerLogIpc } from './log'
 import { registerAtvIpc } from './atv'
 import { registerThemesIpc } from './themes'
+import { registerFaviconIpc } from './favicon'
 
 export function registerAllIpc(): void {
   registerWindowIpc()
@@ -58,4 +59,5 @@ export function registerAllIpc(): void {
   registerLogIpc()
   registerAtvIpc()
   registerThemesIpc()
+  registerFaviconIpc()
 }

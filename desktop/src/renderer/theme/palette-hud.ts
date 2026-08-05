@@ -137,6 +137,16 @@ export const hudColors: ColorPalette = {
   codeBg: '#1a1a18',
   // Inline `code` chip — neutral subtle surface (not the accent tint).
   inlineCodeBg: 'rgba(255, 255, 255, 0.07)',
+  // Syntax highlighting — HUD cyan/amber family. jarvis-hud is intentionally
+  // absent from the parity fixture (two-part theme; see theme-parity.json).
+  codeKeyword: '#33C3F7',
+  codeString: '#7FD98C',
+  codeNumber: '#F5B942',
+  codeComment: '#5C6B73',
+  codeFunction: '#8AD8F8',
+  codeType: '#4EC9B0',
+  codeVariable: '#F2A9A2',
+  codeOperator: '#A8B8C0',
 
   // Mic button
   micBg: '#353530',

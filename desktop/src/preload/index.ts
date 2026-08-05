@@ -49,6 +49,7 @@ const api: IonAPI = {
   getEnterprisePolicyFull: () => ipcRenderer.invoke(IPC.GET_ENTERPRISE_POLICY_FULL),
   listCustomThemes: () => ipcRenderer.invoke(IPC.THEMES_LIST_CUSTOM),
   openExternal: (url) => ipcRenderer.invoke(IPC.OPEN_EXTERNAL, url),
+  getFavicon: (host) => ipcRenderer.invoke(IPC.FAVICON_GET, host),
   revealPath: (path) => ipcRenderer.invoke(IPC.REVEAL_PATH, path),
   attachFiles: () => ipcRenderer.invoke(IPC.ATTACH_FILES),
   attachFileByPath: (path) => ipcRenderer.invoke(IPC.ATTACH_FILE_BY_PATH, path),

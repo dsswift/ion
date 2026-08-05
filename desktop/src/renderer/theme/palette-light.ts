@@ -141,6 +141,15 @@ export const lightColors: ColorPalette = {
   codeBg: '#eeeef1',
   // Inline `code` chip — neutral subtle surface (not the accent tint).
   inlineCodeBg: 'rgba(0, 0, 0, 0.06)',
+  // Syntax highlighting — shared code tokens, parity-pinned (see palette-dark).
+  codeKeyword: '#8E44AD',
+  codeString: '#0A7A3E',
+  codeNumber: '#B7791F',
+  codeComment: '#8A8A93',
+  codeFunction: '#2563EB',
+  codeType: '#0E7C86',
+  codeVariable: '#B4322A',
+  codeOperator: '#4B4B52',
 
   // Mic button
   micBg: '#f2f2f4',

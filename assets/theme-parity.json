@@ -1,5 +1,5 @@
 {
-  "_comment": "Cross-platform theme parity fixture. Pins the iOS token values of the shared built-in themes (ion-dark, ion-light, ion-classic) to their desktop palette sources. desktopToken names the desktop ColorPalette key each iOS AppTheme token derives from; hex is the resolved #RRGGBBAA value both sides must render. Asserted by desktop/src/renderer/theme/theme-parity.test.ts and ios/IonRemoteTests/ThemeParityTests.swift \u2014 drift on either side fails that side's build. jarvis-hud is intentionally absent: its desktop and iOS parts are two renderings of one theme and do not share token values.",
+  "_comment": "Cross-platform theme parity fixture. Pins the iOS token values of the shared built-in themes (ion-dark, ion-light, ion-classic) to their desktop palette sources. desktopToken names the desktop ColorPalette key each iOS AppTheme token derives from; hex is the resolved #RRGGBBAA value both sides must render. Asserted by desktop/src/renderer/theme/theme-parity.test.ts and ios/IonRemoteTests/ThemeParityTests.swift — drift on either side fails that side's build. jarvis-hud is intentionally absent: its desktop and iOS parts are two renderings of one theme and do not share token values.",
   "ion-dark": {
     "preferredColorScheme": "dark",
     "tokens": {
@@ -66,6 +66,38 @@
       "userBubbleTint": {
         "desktopToken": "userBubble",
         "hex": "#1E1E23FF"
+      },
+      "codeKeyword": {
+        "desktopToken": "codeKeyword",
+        "hex": "#C792EAFF"
+      },
+      "codeString": {
+        "desktopToken": "codeString",
+        "hex": "#98C379FF"
+      },
+      "codeNumber": {
+        "desktopToken": "codeNumber",
+        "hex": "#F59E0BFF"
+      },
+      "codeComment": {
+        "desktopToken": "codeComment",
+        "hex": "#6B6B73FF"
+      },
+      "codeFunction": {
+        "desktopToken": "codeFunction",
+        "hex": "#82AAFFFF"
+      },
+      "codeType": {
+        "desktopToken": "codeType",
+        "hex": "#4EC9B0FF"
+      },
+      "codeVariable": {
+        "desktopToken": "codeVariable",
+        "hex": "#E06C75FF"
+      },
+      "codeOperator": {
+        "desktopToken": "codeOperator",
+        "hex": "#B9B9C0FF"
       }
     }
   },
@@ -135,6 +167,38 @@
       "userBubbleTint": {
         "desktopToken": "userBubble",
         "hex": "#F2F2F4FF"
+      },
+      "codeKeyword": {
+        "desktopToken": "codeKeyword",
+        "hex": "#8E44ADFF"
+      },
+      "codeString": {
+        "desktopToken": "codeString",
+        "hex": "#0A7A3EFF"
+      },
+      "codeNumber": {
+        "desktopToken": "codeNumber",
+        "hex": "#B7791FFF"
+      },
+      "codeComment": {
+        "desktopToken": "codeComment",
+        "hex": "#8A8A93FF"
+      },
+      "codeFunction": {
+        "desktopToken": "codeFunction",
+        "hex": "#2563EBFF"
+      },
+      "codeType": {
+        "desktopToken": "codeType",
+        "hex": "#0E7C86FF"
+      },
+      "codeVariable": {
+        "desktopToken": "codeVariable",
+        "hex": "#B4322AFF"
+      },
+      "codeOperator": {
+        "desktopToken": "codeOperator",
+        "hex": "#4B4B52FF"
       }
     }
   },
@@ -204,6 +268,38 @@
       "userBubbleTint": {
         "desktopToken": "userBubble",
         "hex": "#353530FF"
+      },
+      "codeKeyword": {
+        "desktopToken": "codeKeyword",
+        "hex": "#C99AC0FF"
+      },
+      "codeString": {
+        "desktopToken": "codeString",
+        "hex": "#7AAC8CFF"
+      },
+      "codeNumber": {
+        "desktopToken": "codeNumber",
+        "hex": "#D9A05BFF"
+      },
+      "codeComment": {
+        "desktopToken": "codeComment",
+        "hex": "#8A8A80FF"
+      },
+      "codeFunction": {
+        "desktopToken": "codeFunction",
+        "hex": "#D97757FF"
+      },
+      "codeType": {
+        "desktopToken": "codeType",
+        "hex": "#7AAC8CFF"
+      },
+      "codeVariable": {
+        "desktopToken": "codeVariable",
+        "hex": "#C47060FF"
+      },
+      "codeOperator": {
+        "desktopToken": "codeOperator",
+        "hex": "#C0BDB2FF"
       }
     }
   }

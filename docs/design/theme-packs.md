@@ -52,7 +52,9 @@ On Windows the system root is `%PROGRAMDATA%\Ion\themes`; on Linux, `/etc/ion/th
   },
   "ios": {
     "preferredColorScheme": "dark",  // optional; omitted = follow the system
-    "tokens": {                       // ALL 15 AppTheme tokens required, #RRGGBB or #RRGGBBAA
+    "tokens": {                       // every IOS_THEME_TOKEN_KEYS entry required, #RRGGBB or #RRGGBBAA
+                                      // (except the 8 code-syntax tokens below, which are optional —
+                                      // omitted ones fall back to readable theme-derived defaults on iOS)
       "accent": "#FF6600FF",
       "accentSubtle": "#FF66001F",
       "accentGlow": "#FF66002E",
@@ -64,10 +66,19 @@ On Windows the system root is `%PROGRAMDATA%\Ion\themes`; on Linux, `/etc/ion/th
       "statusError": "#F87171FF",
       "statusPending": "#818188FF",
       "statusWaitingChildren": "#FBBF24FF",
+      "statusBash": "#FF2D95FF",
       "statusWarning": "#F59E0BFF",
       "surfaceElevated": "#1E1E23FF",
       "codeBg": "#0E0E11FF",
-      "userBubbleTint": "#1E1E23FF"
+      "userBubbleTint": "#1E1E23FF",
+      "codeKeyword": "#C792EAFF",
+      "codeString": "#98C379FF",
+      "codeNumber": "#F59E0BFF",
+      "codeComment": "#6B6B73FF",
+      "codeFunction": "#82AAFFFF",
+      "codeType": "#4EC9B0FF",
+      "codeVariable": "#E06C75FF",
+      "codeOperator": "#B9B9C0FF"
     },
     "assets": {
       "background": "assets/bg-ios.png",

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback, useSyncExternalStore } from 'react'
 import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
+import { getFileIcon } from '../components/FileExplorerIcons'
 import { rDebug, rWarn } from '../rendererLogger'
 
 // ─── CMD key tracking (singleton — one listener pair for all components) ───
@@ -69,10 +70,15 @@ export const LinkSegment = React.memo(function LinkSegment({
   segment,
   onOpenFile,
   onOpenUrl,
+  asChip,
 }: {
   segment: TextSegment
   onOpenFile: (path: string) => void
   onOpenUrl: (url: string) => void
+  /** File segments render as an always-visible chip (icon + monospace pill)
+   * instead of plain text that only reveals itself on CMD. URLs and plain
+   * segments are unaffected. */
+  asChip?: boolean
 }) {
   const colors = useColors()
   const cmdHeld = useCmdHeld()
@@ -81,6 +87,38 @@ export const LinkSegment = React.memo(function LinkSegment({
   if (segment.type === 'plain') return <>{segment.value}</>
 
   const isUrl = segment.type === 'url'
+
+  if (asChip && !isUrl) {
+    const baseName = segment.value.split('/').pop() ?? segment.value
+    const iconInfo = getFileIcon(baseName.split(':')[0])
+    const ChipIcon = iconInfo.icon
+    return (
+      <span
+        role="link"
+        tabIndex={-1}
+        className="inline-flex items-center gap-1 px-1 py-px rounded align-baseline"
+        style={{
+          background: colors.inlineCodeBg,
+          border: `1px solid ${colors.containerBorder}`,
+          fontFamily: 'ui-monospace, monospace',
+          fontSize: '0.9em',
+          color: cmdHeld ? colors.accent : colors.textPrimary,
+          textDecoration: cmdHeld ? 'underline' : undefined,
+          textUnderlineOffset: 2,
+          cursor: cmdHeld ? 'pointer' : undefined,
+        }}
+        onClick={(e) => {
+          if (!e.metaKey) return
+          e.preventDefault()
+          e.stopPropagation()
+          onOpenFile(segment.value)
+        }}
+      >
+        <ChipIcon size={11} color={colors[iconInfo.colorKey]} aria-hidden="true" />
+        {segment.value}
+      </span>
+    )
+  }
 
   return (
     <span
@@ -171,25 +209,29 @@ export function useNavigableText() {
  * matter for large plans, where re-segmenting every text node on every render
  * caused scroll stutter.
  */
-export const NavigableText = React.memo(function NavigableText({ children, onOpenFile, onOpenUrl }: {
+export const NavigableText = React.memo(function NavigableText({ children, onOpenFile, onOpenUrl, chipFiles }: {
   children: any
   onOpenFile: (path: string) => void
   onOpenUrl: (url: string) => void
+  /** Render detected file paths as always-visible chips (see LinkSegment). */
+  chipFiles?: boolean
 }) {
   const text = typeof children === 'string' ? children : null
   // Hook order stays unconditional; segmentText only runs when the string changes.
   const segments = useMemo(() => (text === null ? null : segmentText(text)), [text])
   if (segments === null) return <>{children}</>
   if (segments.length === 1 && segments[0].type === 'plain') return <>{children}</>
-  return <>{segments.map((seg, i) => <LinkSegment key={i} segment={seg} onOpenFile={onOpenFile} onOpenUrl={onOpenUrl} />)}</>
+  return <>{segments.map((seg, i) => <LinkSegment key={i} segment={seg} onOpenFile={onOpenFile} onOpenUrl={onOpenUrl} asChip={chipFiles} />)}</>
 })
 
 /** Markdown `code` component — applies navigable links to inline code spans */
-export const NavigableCode = React.memo(function NavigableCode({ children, className, onOpenFile, onOpenUrl, ...props }: {
+export const NavigableCode = React.memo(function NavigableCode({ children, className, onOpenFile, onOpenUrl, chipFiles, ...props }: {
   children: any
   className?: string
   onOpenFile: (path: string) => void
   onOpenUrl: (url: string) => void
+  /** Render detected file paths as always-visible chips (see LinkSegment). */
+  chipFiles?: boolean
   [key: string]: any
 }) {
   // For inline code (no language-* className), apply link detection to the text
@@ -202,5 +244,11 @@ export const NavigableCode = React.memo(function NavigableCode({ children, class
   if (className) return <code className={className} {...props}>{children}</code>
   if (segments === null) return <code {...props}>{children}</code>
   if (segments.length === 1 && segments[0].type === 'plain') return <code {...props}>{children}</code>
-  return <code {...props}>{segments.map((seg, i) => <LinkSegment key={i} segment={seg} onOpenFile={onOpenFile} onOpenUrl={onOpenUrl} />)}</code>
+  // A single file segment covering the entire inline-code span in chip mode:
+  // render the chip bare (not nested inside the code chip styling) so the
+  // path doesn't get double-boxed.
+  if (chipFiles && segments.length === 1 && segments[0].type === 'file') {
+    return <LinkSegment segment={segments[0]} onOpenFile={onOpenFile} onOpenUrl={onOpenUrl} asChip />
+  }
+  return <code {...props}>{segments.map((seg, i) => <LinkSegment key={i} segment={seg} onOpenFile={onOpenFile} onOpenUrl={onOpenUrl} asChip={chipFiles} />)}</code>
 })

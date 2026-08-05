@@ -39,6 +39,18 @@ struct JarvisArcReactorTheme: AppTheme {
     let surfaceElevated = Color(red: 8 / 255, green: 24 / 255, blue: 44 / 255)
     let codeBg = Color(red: 4 / 255, green: 14 / 255, blue: 28 / 255).opacity(0.8)
     let userBubbleTint = Color(red: 10 / 255, green: 36 / 255, blue: 60 / 255)
+    // Syntax tokens — HUD cyan/amber family, mirroring the desktop
+    // palette-hud.ts values. jarvis-hud is intentionally absent from the
+    // parity fixture (two-part theme), but the two halves still share one
+    // code color vocabulary.
+    let codeKeyword = Color(red: 0x33 / 255, green: 0xC3 / 255, blue: 0xF7 / 255)
+    let codeString = Color(red: 0x7F / 255, green: 0xD9 / 255, blue: 0x8C / 255)
+    let codeNumber = Color(red: 0xF5 / 255, green: 0xB9 / 255, blue: 0x42 / 255)
+    let codeComment = Color(red: 0x5C / 255, green: 0x6B / 255, blue: 0x73 / 255)
+    let codeFunction = Color(red: 0x8A / 255, green: 0xD8 / 255, blue: 0xF8 / 255)
+    let codeType = Color(red: 0x4E / 255, green: 0xC9 / 255, blue: 0xB0 / 255)
+    let codeVariable = Color(red: 0xF2 / 255, green: 0xA9 / 255, blue: 0xA2 / 255)
+    let codeOperator = Color(red: 0xA8 / 255, green: 0xB8 / 255, blue: 0xC0 / 255)
 
     let preferredColorScheme: ColorScheme? = .dark
 

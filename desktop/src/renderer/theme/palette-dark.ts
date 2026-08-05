@@ -154,6 +154,19 @@ export const darkColors = {
   // inline code reads as a quiet chip instead of smattering accent blue
   // through prose. Text uses the primary text color.
   inlineCodeBg: 'rgba(255, 255, 255, 0.08)',
+  // Syntax highlighting — the shared code-syntax tokens. Pinned identical to
+  // the iOS themes by the parity fixture (assets/theme-parity.json); desktop
+  // maps TextMate scopes onto these (ionShikiTheme.ts), iOS maps highlight.js
+  // classes onto them (IonCodeTheme.swift). Base code fg/bg reuse
+  // textPrimary/codeBg.
+  codeKeyword: '#C792EA',
+  codeString: '#98C379',
+  codeNumber: '#F59E0B',
+  codeComment: '#6B6B73',
+  codeFunction: '#82AAFF',
+  codeType: '#4EC9B0',
+  codeVariable: '#E06C75',
+  codeOperator: '#B9B9C0',
 
   // Mic button
   micBg: '#1e1e23',

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   BUILTIN_THEME_IDS,
   IOS_THEME_TOKEN_KEYS,
+  OPTIONAL_IOS_THEME_TOKEN_KEYS,
   validateThemePackManifest,
 } from './theme-pack-types'
 
@@ -127,6 +128,35 @@ describe('validateThemePackManifest', () => {
     const r = validateThemePackManifest(m, 'acme-corp', DESKTOP_KEYS)
     expect(r.ok).toBe(true)
     expect(r.pack?.ios).toBeUndefined()
+  })
+
+  it('accepts an ios component that omits every optional code-syntax token (older pack)', () => {
+    const m = validManifest()
+    const tokens = fullIosTokens()
+    for (const key of OPTIONAL_IOS_THEME_TOKEN_KEYS) delete tokens[key]
+    ;(m.ios as Record<string, unknown>).tokens = tokens
+    const r = validateThemePackManifest(m, 'acme-corp', DESKTOP_KEYS)
+    expect(r.ok).toBe(true)
+    expect(r.pack?.ios).toBeDefined()
+    for (const key of OPTIONAL_IOS_THEME_TOKEN_KEYS) {
+      expect(r.pack?.ios?.tokens[key]).toBeUndefined()
+    }
+    // Every required token still made it through.
+    expect(r.pack?.ios?.tokens.accent).toBe('#FF6600FF')
+    expect(r.warnings.some((w) => w.includes('codeKeyword') && w.includes('falls back'))).toBe(true)
+  })
+
+  it('accepts an ios component with an invalid-hex optional code-syntax token, dropping just that token', () => {
+    const m = validManifest()
+    const tokens = fullIosTokens()
+    tokens.codeString = 'not-a-hex-color'
+    ;(m.ios as Record<string, unknown>).tokens = tokens
+    const r = validateThemePackManifest(m, 'acme-corp', DESKTOP_KEYS)
+    expect(r.ok).toBe(true)
+    expect(r.pack?.ios).toBeDefined()
+    expect(r.pack?.ios?.tokens.codeString).toBeUndefined()
+    expect(r.pack?.ios?.tokens.codeKeyword).toBe('#FF6600FF')
+    expect(r.warnings.some((w) => w.includes('codeString') && w.includes('invalid hex'))).toBe(true)
   })
 
   it('drops malformed asset refs but keeps valid ones', () => {
