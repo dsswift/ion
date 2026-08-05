@@ -64,8 +64,16 @@ vi.mock('../../theme', () => ({
 }))
 
 vi.mock('../../preferences', () => ({
-  usePreferencesStore: (selector: (s: { worktreeCompletionStrategy: string }) => unknown) =>
-    selector({ worktreeCompletionStrategy: 'merge-ff' }),
+  usePreferencesStore: Object.assign(
+    (selector: (s: { worktreeCompletionStrategy: string }) => unknown) =>
+      selector({ worktreeCompletionStrategy: 'merge-ff' }),
+    {
+      // Read by viewport-zoom.ts's zoomViewport(), called on the popover
+      // positioning path this menu uses. Without getState the menu throws
+      // during render and every test in this file fails at once.
+      getState: () => ({ uiZoom: 1 }),
+    },
+  ),
 }))
 
 vi.mock('../../stores/sessionStore', () => ({
