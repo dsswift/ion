@@ -16,9 +16,9 @@ import { usePreferencesStore } from '../preferences'
 import { useOutsideDismiss } from '../hooks/useOutsideDismiss'
 import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
 import { zoomViewport } from '../viewport-zoom'
-import { buildWorktreeRowActions } from './worktreeRowActions'
 import { findMembership } from '../../shared/worktree-list'
 import { buildWorktreeMenuItems } from './WorktreeRowMenu.items'
+import { buildWorktreeRowActions } from './worktreeRowActions'
 import { WorktreeRowMenuDialogs, WorktreeRenameEditor } from './WorktreeRowMenuDialogs'
 import { rError, rWarn } from '../rendererLogger'
 import type { WorktreeInventoryEntry } from '../../shared/types'
@@ -80,17 +80,23 @@ export function WorktreeRowMenu({
   // bench a worktree belongs to.
   const enrolled = findMembership(benchWorkspaces ?? [], entry.worktreePath)
 
-  // The verbs live in a co-located factory so this file stays under the
-  // 600-line cap. The split is behavioural-neutral: same handlers, same
-  // dismissal and busy-guard contract, just not inline. A plain function
-  // rather than a hook, because it runs after the early return above.
-  // See worktreeRowActions.ts.
-  const { doLand, requestRetire, doRetire, doAddToBench, doRename, moveInBench } =
-    buildWorktreeRowActions({
-      entry, repoPath, strategy, enrolled, draftTitle,
-      onClose, onRefresh,
-      setBusy, setRenaming, setLandError, setConfirmRetire, setRetireOutcome,
-    })
+  // The async verbs and the bench reorder live in worktreeRowActions.ts. They
+  // are built per render so they close over the current entry, draftTitle and
+  // strategy, exactly as the inline declarations they replaced did.
+  const { doLand, requestRetire, doRetire, doAddToBench, doRename, moveInBench } = buildWorktreeRowActions({
+    entry,
+    repoPath,
+    strategy,
+    draftTitle,
+    enrolled,
+    onClose,
+    onRefresh,
+    setBusy,
+    setLandError,
+    setConfirmRetire,
+    setRetireOutcome,
+    setRenaming,
+  })
 
   // Merge order IS array position, so the menu reads and writes an index rather
   // than a stored rank that could disagree with the array assembly walks.
@@ -132,11 +138,9 @@ export function WorktreeRowMenu({
         void doAddToBench().catch((err) => rError('worktree.menu', 'add to bench threw', { error: String(err) }))
       },
       onSetReview: (verdict) => {
-        if (!enrolled) return
         void useSessionStore.getState()
-          .benchSetReview(repoPath, enrolled.sourceBranch, entry.worktreePath, verdict)
+          .benchSetReview(repoPath, enrolled!.sourceBranch, entry.worktreePath, verdict)
           .catch((err) => rError('worktree.menu', 'set review failed', { error: String(err) }))
-        onClose()
       },
       onMoveInBench: moveInBench,
       onSync: () => {
