@@ -10,6 +10,13 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.76.0](https://github.com/dsswift/ion/compare/desktop-v1.75.0...desktop-v1.76.0) (2026-08-05)
+
+### Features
+
+* **desktop:** add code-syntax tokens to palettes and pack contract ([15ca115](https://github.com/dsswift/ion/commit/15ca1158709087254cdfd0cbfdc4fa239efe404f))
+* **desktop:** elevate conversation code and link rendering ([f30e2fb](https://github.com/dsswift/ion/commit/f30e2fb51dbfc78c68d357cca5c25ff833fb5bfb))
+
 ## [1.75.0](https://github.com/dsswift/ion/compare/desktop-v1.74.0...desktop-v1.75.0) (2026-08-04)
 
 ### Features

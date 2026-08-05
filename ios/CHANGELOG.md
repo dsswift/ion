@@ -10,6 +10,13 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.57.0](https://github.com/dsswift/ion/compare/ios-v1.56.0...ios-v1.57.0) (2026-08-05)
+
+### Features
+
+* **ios:** add code-syntax tokens to AppTheme and built-in themes ([1cba566](https://github.com/dsswift/ion/commit/1cba56602fa65b5360e8ccecb0f0fe44421c772a))
+* **ios:** syntax-highlighted code blocks with file-path links ([3dd4dc7](https://github.com/dsswift/ion/commit/3dd4dc79cb867c615e582801ef3453e7b0f71230))
+
 ## [1.56.0](https://github.com/dsswift/ion/compare/ios-v1.55.0...ios-v1.56.0) (2026-08-04)
 
 ### Features
