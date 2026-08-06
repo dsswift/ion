@@ -10,6 +10,15 @@ Demonstrates the engine's daemon architecture and multi-client broadcast.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.76.1](https://github.com/dsswift/ion/compare/desktop-v1.76.0...desktop-v1.76.1) (2026-08-06)
+
+### Bug Fixes
+
+* **desktop:** answer coalesced loads, echo tab creates without a timer ([5a633ae](https://github.com/dsswift/ion/commit/5a633ae51978440ba88925171171bb13fddea5a9))
+* **desktop:** retire refuses active work, closes all occupants ([679920c](https://github.com/dsswift/ion/commit/679920c1f23205ca0d9847a058ee895ce3737368))
+* **desktop:** clamp every anchored popover within window bounds ([7d457f6](https://github.com/dsswift/ion/commit/7d457f6be2c49982fb59d9653b2f446dae872caa))
+* **desktop:** mock usePreferencesStore.getState in worktree menu test ([5db465a](https://github.com/dsswift/ion/commit/5db465a22e266dba03bb37449442d701c9e1f6fb))
+
 ## [1.76.0](https://github.com/dsswift/ion/compare/desktop-v1.75.0...desktop-v1.76.0) (2026-08-05)
 
 ### Features

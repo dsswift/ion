@@ -10,6 +10,12 @@ through the relay to access remote engine instances.
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.57.1](https://github.com/dsswift/ion/compare/ios-v1.57.0...ios-v1.57.1) (2026-08-06)
+
+### Bug Fixes
+
+* **ios:** ask for conversation history once per surface ([7746948](https://github.com/dsswift/ion/commit/7746948eb7bce99779eb1d6faf6439b2a129f547))
+
 ## [1.57.0](https://github.com/dsswift/ion/compare/ios-v1.56.0...ios-v1.57.0) (2026-08-05)
 
 ### Features

@@ -13,6 +13,12 @@ permission engine).
 
 Subsequent versions will be auto-generated from conventional commit messages.
 
+## [1.63.2](https://github.com/dsswift/ion/compare/engine-v1.63.1...engine-v1.63.2) (2026-08-06)
+
+### Bug Fixes
+
+* **engine:** poll for watchdog run removal instead of one check ([21052df](https://github.com/dsswift/ion/commit/21052df8a94a1aab9b714fa93800df132958727c))
+
 ## [1.63.1](https://github.com/dsswift/ion/compare/engine-v1.63.0...engine-v1.63.1) (2026-08-04)
 
 ### Bug Fixes
