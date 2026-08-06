@@ -38,6 +38,7 @@ export function ConflictToasts(): React.JSX.Element | null {
       <div
         data-ion-ui
         style={{
+          // viewport-ok: pinned to the bottom-right corner by construction (bottom/right are constants, not an anchor), and pointerEvents:'none' means it never intercepts a click even if content overflowed.
           position: 'fixed', bottom: 32, right: 12, zIndex: 60,
           display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end',
           pointerEvents: 'none',

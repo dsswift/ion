@@ -25,6 +25,11 @@ vi.mock('../PopoverLayer', () => ({
 vi.mock('../../../shared/fuzzy-match', () => ({
   fuzzyFilterAndSort: (_: string, items: unknown[]) => items,
 }))
+// Same reason: the viewport clamp reads the operator's UI zoom from the
+// preferences store, which applies the theme to `document` at module load.
+vi.mock('../../hooks/useViewportClamp', () => ({
+  useViewportClamp: () => {},
+}))
 
 import { SLASH_COMMANDS, slashMenuEnterAction } from '../SlashCommandMenu'
 

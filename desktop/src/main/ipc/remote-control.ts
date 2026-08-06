@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { IPC } from '../../shared/types'
-import { log as _log, debug as _debug } from '../logger'
+import { log as _log, debug as _debug, error as _error } from '../logger'
 import { state, pairingManager, relayDiscovery } from '../state'
 import { readSettings } from '../settings-store'
 import { initRemoteTransport } from '../remote/transport-init'
@@ -9,6 +9,7 @@ import { requestLogsFromFirstDevice } from '../remote/handlers/diagnostics'
 import { setRemoteDisplay, readRemoteDisplay } from '../remote/handlers/display'
 import { isValidRemoteTabStatesPayload } from '../ipc-validation'
 import { probeRelayAuthConfig } from '../remote/relay-auth'
+import { pollSnapshotOnce } from '../remote/snapshot-polling'
 import type { RemoteTabStatesPayload } from '../../shared/remote-projection-types'
 import type { DiscoveredRelay } from '../remote/discovery'
 
@@ -18,6 +19,75 @@ function log(msg: string, fields?: Record<string, unknown>): void {
 
 function debug(msg: string, fields?: Record<string, unknown>): void {
   _debug('main', msg, fields)
+}
+
+function error(msg: string, fields?: Record<string, unknown>): void {
+  _error('main', msg, fields)
+}
+
+/**
+ * Debounce for the structural-change snapshot kick below. Matches the
+ * renderer's own projection-push debounce (PUSH_DEBOUNCE_MS) so a burst of
+ * store mutations that collapses into one push also collapses into one poll.
+ */
+const STRUCTURAL_POLL_DEBOUNCE_MS = 250
+
+/**
+ * Signature of the fields whose change means a client's tab LIST is wrong,
+ * as opposed to merely out of date.
+ *
+ * Deliberately excludes every volatile per-delta field (cost, token counts,
+ * convFingerprint, lastActivityAt, lastMessage, messageCount): those churn on
+ * every streamed chunk of an active run, and they already ride the poll tick's
+ * own `desktop_tab_meta` delta. Including them here would kick a full snapshot
+ * build on every token — the exact flood `hashInputForSnapshot` was written to
+ * prevent.
+ *
+ * What remains is structure: a tab appearing or disappearing, changing status,
+ * moving group, or flipping terminal-ness.
+ */
+function structuralSignature(tabs: RemoteTabStatesPayload['tabs']): string {
+  return tabs.map((t) => `${t.id}|${t.status}|${t.groupId ?? ''}|${t.isTerminalOnly ? 1 : 0}`).join(',')
+}
+
+let lastStructuralSignature: string | null = null
+let structuralPollTimer: ReturnType<typeof setTimeout> | null = null
+
+/**
+ * Kick a snapshot evaluation when the renderer's push shows a STRUCTURAL
+ * change, instead of waiting out the 5s poll tick.
+ *
+ * The renderer publishes a fresh projection within ~250ms of any store change,
+ * but nothing consumed that push as a send trigger — so a new tab reached a
+ * paired phone only when the periodic tick happened to come round, up to 5s
+ * later. That was the second half of the ~4s new-tab latency (the first half
+ * being the create echo's own timer).
+ *
+ * `pollSnapshotOnce` is already per-device hash-gated, so this cannot cause a
+ * redundant send: if the structural change does not alter the hashed
+ * projection, the poll builds the snapshot and sends nothing. The 5s interval
+ * stays as the backstop for anything that changes without a renderer push.
+ */
+function scheduleStructuralSnapshotPoll(tabs: RemoteTabStatesPayload['tabs']): void {
+  const signature = structuralSignature(tabs)
+  if (signature === lastStructuralSignature) return
+  lastStructuralSignature = signature
+  if (structuralPollTimer !== null) return // trailing debounce: burst collapses to one poll
+  structuralPollTimer = setTimeout(() => {
+    structuralPollTimer = null
+    void pollSnapshotOnce().catch((err) => {
+      error('structural_snapshot_poll: tick failed', { error: (err as Error).message })
+    })
+  }, STRUCTURAL_POLL_DEBOUNCE_MS)
+}
+
+/** Test-only: clear the structural-change gate between cases. */
+export function _resetStructuralSnapshotGate(): void {
+  lastStructuralSignature = null
+  if (structuralPollTimer !== null) {
+    clearTimeout(structuralPollTimer)
+    structuralPollTimer = null
+  }
 }
 
 export function registerRemoteControlIpc(): void {
@@ -45,6 +115,10 @@ export function registerRemoteControlIpc(): void {
       tab_count: p.tabs.length,
       resource_kinds: Object.keys(p.resourceManifest).length,
     })
+    // A structural change (new/closed tab, status, group, terminal-ness) must
+    // reach paired clients now, not on the next 5s tick. Hash-gated downstream,
+    // so an unchanged projection still sends nothing.
+    scheduleStructuralSnapshotPoll(p.tabs)
   })
 
   ipcMain.handle(IPC.REMOTE_GET_STATE, () => {

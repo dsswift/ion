@@ -1,5 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import { useColors } from '../theme'
+import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
+import { zoomViewport } from '../viewport-zoom'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { transitions } from '../theme-tokens'
 
@@ -96,18 +98,25 @@ export function FileEditorTabContextMenu({
     { label: 'Open in VS Code', action: () => exec(onOpenInVSCode), disabled: !filePath },
   ]
 
+  // Measured placement. This used to derive the menu height from
+  // `items.length * 28` — a guess that silently drifts the moment a row is
+  // added, a label wraps, or the font size changes, and the drift is invisible
+  // until the menu hangs off the screen edge again.
+  const pos = useAnchoredPopover({ x, y }, { deps: [items.length] })
+  const vp = zoomViewport()
+
   const menuW = 200
-  const menuH = items.length * 28
-  const left = Math.min(x, window.innerWidth - menuW - 8)
-  const top = Math.min(y, window.innerHeight - menuH - 8)
 
   return (
     <div
-      ref={menuRef}
+      ref={(node) => { (menuRef as React.MutableRefObject<HTMLDivElement | null>).current = node; pos.ref(node) }}
       style={{
         position: 'fixed',
-        left,
-        top,
+        left: pos.left,
+        top: pos.top,
+        visibility: pos.ready ? 'visible' : 'hidden',
+        maxHeight: vp.height - 16,
+        overflowY: 'auto',
         width: menuW,
         background: colors.containerBg,
         border: `1px solid ${colors.containerBorder}`,

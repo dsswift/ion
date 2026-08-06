@@ -147,30 +147,11 @@ struct ConversationView: View {
         return tab?.status == .running || tab?.status == .connecting
     }
 
-    /// Slash-command autocomplete cluster (`slashCommands`, `updateSlashFilter`,
-    /// `fetchCommandsIfNeeded`) lives in ConversationView+SlashCommands.swift —
-    /// extracted at the size cap, mirroring the +Presentation split.
-
-    func logAttachmentTaskEntry(tabId: String) {
-        let count = viewModel.tabAttachmentCache[tabId]?.count ?? -1
-        DiagnosticLog.log("conversation view attachment task", tag: "view.conversation", fields: [
-            "tab_id": String(tabId.prefix(8)),
-            "count": String(count)
-        ])
-    }
-
-    /// Load conversation history via the unified wire command.
-    /// WI-004 / #259: desktop_load_conversation handles every tab — plain and
-    /// extension-hosted alike. The former tabHasExtensions fork
-    /// (desktop_load_engine_conversation for engine tabs) is retired: with
-    /// WI-001/WI-002 landed all messages live on the active instance regardless
-    /// of backend, and the unified handler pushes live engine state when the
-    /// session is running. Extracted from the `.task` closures so the `body`
-    /// modifier chain stays within the Swift type-checker's complexity budget.
-    @MainActor
-    func loadConversationHistory() {
-        viewModel.loadConversation(tabId: tabId)
-    }
+    /// Slash-command autocomplete cluster (`slashCommands`, `updateSlashFilter`)
+    /// lives in ConversationView+SlashCommands.swift; the appear-time lifecycle
+    /// cluster (`fetchCommandsIfNeeded`, `logAttachmentTaskEntry`,
+    /// `loadConversationHistory`) lives in ConversationView+Lifecycle.swift —
+    /// both extracted at the size cap, mirroring the +Presentation split.
 
     /// First pending permission request for this tab. Two sources, in order:
     ///
@@ -523,8 +504,6 @@ struct ConversationView: View {
         }
         .task {
             logAttachmentTaskEntry(tabId: tabId)
-            loadConversationHistory()
-            viewModel.requestLoadAttachments(tabId: tabId)
             fetchCommandsIfNeeded()
             if viewModel.pendingGitPaneTabId == tabId {
                 viewModel.pendingGitPaneTabId = nil
@@ -532,12 +511,17 @@ struct ConversationView: View {
             }
         }
         .task(id: compoundKey) {
-            // Load immediately when switching to an instance that has no cached
-            // messages. The isEmpty guard prevents a redundant fetch when a
-            // desktop_conversation_history response is already in flight.
-            if engineMsgs.isEmpty {
-                loadConversationHistory()
-            }
+            // The SINGLE history/attachment load site for this view. This task
+            // runs on first appear AND whenever the conversation identity
+            // changes, so it covers everything the plain `.task` above used to
+            // duplicate — that block fired the same two requests on the same
+            // appear, and the desktop coalesced the second away unanswered.
+            //
+            // No isEmpty guard: `loadConversationIfNeeded` asks the precise
+            // question (has this tab ever loaded?), where `engineMsgs.isEmpty`
+            // stayed true forever on a conversation with no messages and
+            // re-requested history on every single appear.
+            loadConversationHistory()
             viewModel.requestLoadAttachments(tabId: tabId)
         }
         .modifier(ConversationPresentationLayers(host: self))

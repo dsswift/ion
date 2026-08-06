@@ -179,6 +179,10 @@ export const IPC = {
   GIT_WORKTREE_LAND: 'ion:git-worktree-land',
   GIT_WORKTREE_SYNC: 'ion:git-worktree-sync',
   GIT_WORKTREE_RETIRE: 'ion:git-worktree-retire',
+  // Read-only blast-radius preview for a retire: which bench directories would
+  // this retire remove? Asked BEFORE the retire, so the caller can refuse when
+  // an active conversation lives in a directory the retire would delete.
+  GIT_WORKTREE_RETIRE_PREVIEW: 'ion:git-worktree-retire-preview',
   GIT_WORKTREE_REATTACH: 'ion:git-worktree-reattach',
   // Base staleness: has the feature branch moved ahead of this worktree?
   GIT_WORKTREE_BASE_STATUS: 'ion:git-worktree-base-status',

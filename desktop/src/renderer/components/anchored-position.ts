@@ -1,12 +1,11 @@
 /**
  * Pure positioning math for anchored popovers, factored out of
- * `TabStripShared.ts` so it can be unit-tested in node without
- * pulling the React / theme / preferences chain (those depend on
- * `document` at module load).
+ * `hooks/useAnchoredPopover.ts` so it can be unit-tested in node
+ * without pulling the React / theme / preferences chain (those
+ * depend on `document` at module load).
  *
- * The runtime wrapper lives in `TabStripShared.ts` as
- * `useAnchoredPopoverPosition` and uses this function after
- * measuring the popover's bounding rect.
+ * The runtime wrapper is `useAnchoredPopover`, which uses this
+ * function after measuring the popover's bounding rect.
  */
 
 /** Inputs for the positioning math. All measurements are in

@@ -29,6 +29,7 @@ vi.mock('os', async () => {
 
 import {
   ensureWorkspace, addMember, disenrollWorktree, listWorkspaces, assembleWorkspace,
+  predictPrunedBenches,
 } from '../integration/bench-ops'
 import { loadWorkspaces, saveWorkspaces } from '../integration/bench-store'
 import { retireWorktree } from '../worktree/relocate'
@@ -212,5 +213,96 @@ describe('retire disenrolls automatically', () => {
     await retireWorktree({ repoPath: repo, worktreePath: a.path, branchName: a.branch, force: true })
 
     expect(listWorkspaces(repo)[0].members.map((m) => m.branchName)).toEqual([b.branch])
+  })
+}, GIT_FIXTURE_TIMEOUT)
+
+/**
+ * The retire REPORTS which benches it removed, and the preview PREDICTS the same
+ * set before anything is touched.
+ *
+ * ── Why both halves matter ──────────────────────────────────────────────────
+ * A bench directory hosts real conversations and a dedicated terminal. Retiring
+ * the last member of a bench deletes that directory, so a caller that closes the
+ * retired worktree's tabs but not the bench's would leave them pointed at a path
+ * that no longer exists — and a caller that cannot ask the question BEFORE the
+ * retire cannot refuse when one of those bench conversations is still running.
+ *
+ * The prediction and the mutation share `wouldPruneBench`, so the agreement
+ * asserted here is structural rather than coincidental. Regression direction:
+ * give `predictPrunedBenches` its own emptiness rule and the agreement tests go
+ * red as soon as the two definitions differ.
+ */
+describe('retire reports and predicts the benches it prunes', () => {
+  it('returns the pruned bench path from the retire', async () => {
+    localBench()
+    const a = makeWorktree('a')
+    await addMember(repo, FEATURE, a.path, a.branch)
+    await assembleWorkspace(repo, FEATURE)
+
+    await landWorktree({ repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: FEATURE })
+    const result = await retireWorktree({ repoPath: repo, worktreePath: a.path, branchName: a.branch })
+
+    expect(result.ok).toBe(true)
+    expect(result.prunedBenchPaths).toEqual([join(root, 'bench')])
+  })
+
+  it('predicts that same path BEFORE the retire runs, without mutating anything', async () => {
+    localBench()
+    const a = makeWorktree('a')
+    await addMember(repo, FEATURE, a.path, a.branch)
+
+    const predicted = predictPrunedBenches(a.path)
+
+    expect(predicted).toEqual([join(root, 'bench')])
+    // Read-only: the membership is untouched, so a preview can be called from a
+    // menu handler as often as it likes.
+    expect(listWorkspaces(repo)[0].members).toHaveLength(1)
+  })
+
+  it('predicts nothing for a bench that keeps another member', async () => {
+    localBench()
+    const a = makeWorktree('a')
+    const b = makeWorktree('b')
+    await addMember(repo, FEATURE, a.path, a.branch)
+    await addMember(repo, FEATURE, b.path, b.branch)
+
+    expect(predictPrunedBenches(a.path)).toEqual([])
+
+    await landWorktree({ repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: FEATURE })
+    const result = await retireWorktree({ repoPath: repo, worktreePath: a.path, branchName: a.branch })
+
+    // And the retire agrees: the bench survives, so nothing was removed.
+    expect(result.prunedBenchPaths).toEqual([])
+  })
+
+  it('predicts nothing for a worktree in no bench, and the retire reports none', async () => {
+    const a = makeWorktree('a')
+
+    expect(predictPrunedBenches(a.path)).toEqual([])
+
+    await landWorktree({ repoPath: repo, worktreePath: a.path, worktreeBranch: a.branch, sourceBranch: FEATURE })
+    const result = await retireWorktree({ repoPath: repo, worktreePath: a.path, branchName: a.branch })
+
+    expect(result.ok).toBe(true)
+    expect(result.prunedBenchPaths).toEqual([])
+  })
+
+  it('predicts every bench that holds the worktree alone', async () => {
+    // Two feature branches, each with a bench whose only member is this
+    // worktree: retiring it empties both.
+    localBench()
+    const a = makeWorktree('a')
+    await addMember(repo, FEATURE, a.path, a.branch)
+
+    const other = ensureWorkspace(repo, 'beta')
+    const all = loadWorkspaces()
+    const idx = all.findIndex((w) => w.repoPath === repo && w.sourceBranch === 'beta')
+    all[idx] = { ...other, benchPath: join(root, 'bench-beta') }
+    saveWorkspaces(all)
+    await addMember(repo, 'beta', a.path, a.branch)
+
+    expect(predictPrunedBenches(a.path).sort()).toEqual(
+      [join(root, 'bench'), join(root, 'bench-beta')].sort(),
+    )
   })
 }, GIT_FIXTURE_TIMEOUT)

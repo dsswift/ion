@@ -1,7 +1,8 @@
-import React from 'react'
+import React, { useRef } from 'react'
 import { motion } from 'framer-motion'
 import { GitBranch } from '@phosphor-icons/react'
 import { useColors } from '../theme'
+import { useViewportClamp } from '../hooks/useViewportClamp'
 import type { GitCommit, GitCommitDetail } from '../../shared/types'
 import { relativeDate } from './GitPanelTypes'
 
@@ -22,8 +23,14 @@ export function CommitPopup({ commit, rect, detail, panelRight, onMouseEnter, on
   // Position to the right of the panel edge, fall back to left
   const spaceRight = window.innerWidth - panelRight - GAP - POPUP_WIDTH
   const left = spaceRight >= 0 ? panelRight + GAP : rect.left - GAP - POPUP_WIDTH
-  // Vertically center on the row, clamp to viewport
-  const top = Math.max(8, Math.min(rect.top - 40, window.innerHeight - 200))
+  // Roughly centre on the hovered row. The exact fit is the clamp's job below:
+  // the previous `Math.min(rect.top - 40, innerHeight - 200)` guessed the
+  // popup's height at 200px, so a commit with a long body or many changed
+  // files still ran off the bottom.
+  const top = rect.top - 40
+
+  const ref = useRef<HTMLDivElement>(null)
+  useViewportClamp(ref, true)
 
   const absDate = new Date(commit.authorDate)
   const dateStr = absDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -31,6 +38,7 @@ export function CommitPopup({ commit, rect, detail, panelRight, onMouseEnter, on
 
   return (
     <motion.div
+      ref={ref}
       data-ion-ui
       initial={{ opacity: 0, x: spaceRight >= 0 ? -4 : 4 }}
       animate={{ opacity: 1, x: 0 }}

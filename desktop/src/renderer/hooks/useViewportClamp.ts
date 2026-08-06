@@ -12,20 +12,22 @@
  *
  * Attach to the popover's root element and pass `active` (open state).
  * Re-clamps on open, on resize, and on content growth (ResizeObserver).
+ *
+ * This is the primitive for EDGE-anchored popovers — the ones whose style
+ * computes `bottom:` / `right:` from a trigger rect so they grow upward or
+ * leftward out of the input pill. Popovers anchored to a POINT (a click
+ * coordinate, or "below this trigger") use `useAnchoredPopover` instead,
+ * which measures and places before paint. See desktop/AGENTS.md
+ * § "Popover positioning".
+ *
+ * The clamp math lives in `viewport-clamp-math.ts` so it can be unit-tested
+ * in node; this file is the React/preferences-bound wrapper.
  */
 import { useLayoutEffect, type RefObject } from 'react'
+import { usePreferencesStore } from '../preferences'
+import { clampDelta } from './viewport-clamp-math'
 
-const MARGIN = 8
-
-export function clampDelta(rect: DOMRect, vw: number, vh: number): { dx: number; dy: number } {
-  let dx = 0
-  let dy = 0
-  if (rect.right > vw - MARGIN) dx = vw - MARGIN - rect.right
-  if (rect.left + dx < MARGIN) dx = MARGIN - rect.left
-  if (rect.bottom > vh - MARGIN) dy = vh - MARGIN - rect.bottom
-  if (rect.top + dy < MARGIN) dy = MARGIN - rect.top
-  return { dx, dy }
-}
+export { clampDelta, MARGIN } from './viewport-clamp-math'
 
 /** How long to keep re-clamping after open — covers entrance animations. */
 const SETTLE_MS = 400
@@ -38,7 +40,10 @@ export function useViewportClamp(ref: RefObject<HTMLElement | null>, active: boo
       // Measure without our own correction so repeated clamps don't drift.
       el.style.translate = ''
       const rect = el.getBoundingClientRect()
-      const { dx, dy } = clampDelta(rect, window.innerWidth, window.innerHeight)
+      // Read the zoom at apply time, not at mount: the operator can change it
+      // while a popover is open, and the resize listener below re-runs this.
+      const zoom = usePreferencesStore.getState().uiZoom
+      const { dx, dy } = clampDelta(rect, window.innerWidth, window.innerHeight, zoom)
       if (dx !== 0 || dy !== 0) el.style.translate = `${dx}px ${dy}px`
     }
     apply()

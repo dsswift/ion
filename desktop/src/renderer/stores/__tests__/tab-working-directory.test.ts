@@ -13,6 +13,12 @@
  *
  * These tests assert the IPC relocation actually fires, which is what was
  * missing. A state-only assertion passes on the unfixed code.
+ *
+ * The retireWorktree arm has since changed contract: retire CLOSES its
+ * conversations rather than relocating them (the worktree is gone, so there is
+ * nothing to continue at the repo root). Relocation there is now only the
+ * fallback for a tab that becomes busy in the check-to-retire race. The
+ * setupWorktree / convertToWorktree relocations below are unchanged.
  */
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
@@ -39,7 +45,8 @@ const mockIon = {
     ok: true,
     worktree: { worktreePath: WORKTREE, branchName: 'wt/abc', sourceBranch: branch, repoPath: dir },
   })),
-  gitWorktreeRetire: vi.fn(async () => ({ ok: true, workingDirectory: REPO })),
+  gitWorktreeRetire: vi.fn(async () => ({ ok: true, workingDirectory: REPO, prunedBenchPaths: [] })),
+  gitWorktreeRetirePreview: vi.fn(async () => ({ prunedBenchPaths: [] as string[] })),
   gitWorktreeInventory: vi.fn(async () => ({ worktrees: [] })),
   relocateTabSession: vi.fn(async () => ({ ok: true, conversationId: 'conv-1' })),
 }
@@ -51,7 +58,18 @@ import { createWorktreeSlice } from '../slices/worktree-slice'
 import { createWorktreeInventorySlice } from '../slices/worktree-inventory-slice'
 
 function buildHarness(tabs: any[]) {
-  const state: any = { tabs, conversationPanes: new Map(), worktreeInventory: new Map() }
+  const state: any = {
+    tabs,
+    conversationPanes: new Map(),
+    worktreeInventory: new Map(),
+    closeIntent: null,
+    // Retire closes its occupants now, so the harness needs the action. No
+    // guard simulation here: these tabs are idle, and the guard's own behaviour
+    // is pinned in worktree-inventory-slice.test.ts.
+    closeTab: vi.fn((id: string) => {
+      state.tabs = state.tabs.filter((t: { id: string }) => t.id !== id)
+    }),
+  }
   const set = (updater: any) => {
     const patch = typeof updater === 'function' ? updater(state) : updater
     Object.assign(state, patch)
@@ -146,12 +164,21 @@ describe('worktree attach paths relocate the session', () => {
   })
 })
 
+/**
+ * retireWorktree — the worktree is gone, so its conversations CLOSE.
+ *
+ * These cases used to assert relocation to the repo root. That was the old
+ * contract and it was wrong twice over: it moved only the FIRST occupant (every
+ * other tab stayed pointed at a deleted directory) and relocation is not what
+ * retire means — the work is done or abandoned and its place no longer exists,
+ * so there is nothing at the repo root to continue. Relocation survives only as
+ * the fallback for a tab that turns busy in the check-to-retire race, which is
+ * pinned in worktree-inventory-slice.test.ts.
+ */
 describe('retireWorktree', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  // The conversation must not be left pointing at a directory that no longer
-  // exists. Before the fix this return value was discarded entirely.
-  it('relocates the occupying conversation to the repo before leaving it dead', async () => {
+  it('closes the occupying conversation instead of relocating it', async () => {
     const { state } = buildHarness([
       liveTab({ workingDirectory: WORKTREE, worktree: { worktreePath: WORKTREE } }),
     ])
@@ -159,12 +186,13 @@ describe('retireWorktree', () => {
     const res = await state.retireWorktree(REPO, WORKTREE, 'wt/abc')
 
     expect(res.ok).toBe(true)
-    expect(mockIon.relocateTabSession).toHaveBeenCalledWith('tab-1', REPO)
-    expect(state.tabs[0].workingDirectory).toBe(REPO)
-    expect(state.tabs[0].worktree).toBeNull()
+    expect(state.closeTab).toHaveBeenCalledWith('tab-1')
+    expect(state.tabs).toHaveLength(0)
+    // Nothing to relocate: the tab is gone, not moved.
+    expect(mockIon.relocateTabSession).not.toHaveBeenCalled()
   })
 
-  it('relocates nothing when the retire is refused', async () => {
+  it('closes nothing when the retire is refused', async () => {
     mockIon.gitWorktreeRetire.mockResolvedValueOnce({ ok: false, error: 'unlanded work' } as any)
     const { state } = buildHarness([liveTab({ workingDirectory: WORKTREE })])
 
@@ -172,16 +200,17 @@ describe('retireWorktree', () => {
 
     expect(res.ok).toBe(false)
     // The worktree still exists, so the conversation must stay in it.
-    expect(mockIon.relocateTabSession).not.toHaveBeenCalled()
+    expect(state.closeTab).not.toHaveBeenCalled()
     expect(state.tabs[0].workingDirectory).toBe(WORKTREE)
   })
 
-  it('retires a worktree with no open conversation without relocating anything', async () => {
+  it('retires a worktree with no open conversation without closing anything', async () => {
     const { state } = buildHarness([liveTab({ workingDirectory: REPO })])
 
     const res = await state.retireWorktree(REPO, WORKTREE, 'wt/abc')
 
     expect(res.ok).toBe(true)
+    expect(state.closeTab).not.toHaveBeenCalled()
     expect(mockIon.relocateTabSession).not.toHaveBeenCalled()
   })
 })

@@ -14,6 +14,8 @@ import { useColors } from '../theme'
 import { useSessionStore } from '../stores/sessionStore'
 import { usePreferencesStore } from '../preferences'
 import { useOutsideDismiss } from '../hooks/useOutsideDismiss'
+import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
+import { zoomViewport } from '../viewport-zoom'
 import { buildWorktreeRowActions } from './worktreeRowActions'
 import { findMembership } from '../../shared/worktree-list'
 import { buildWorktreeMenuItems } from './WorktreeRowMenu.items'
@@ -67,8 +69,6 @@ export function WorktreeRowMenu({
     onClose()
   }, [busy, onClose])
   useOutsideDismiss([ref], dismiss)
-
-  if (!popoverLayer) return null
 
   // Already a member of any bench for this repo? Enrolling twice is refused by
   // the store, but the menu should say so rather than offering a dead action.
@@ -179,18 +179,42 @@ export function WorktreeRowMenu({
   // withdrawn.
   const dialogUp = confirmRetire !== null || retireOutcome !== null || landError !== null
 
+  // Measured placement. `anchor` is the raw right-click point, and a row near
+  // the bottom of the git panel put most of the menu below the window edge —
+  // the reported defect. The hook measures the rendered menu and flips it above
+  // the click when opening downward would overflow.
+  //
+  // `deps` must name everything that changes the rendered height, or the menu
+  // stays placed for its first measurement: the inline rename panel swaps the
+  // whole body for a text field, and the verb list itself is state-gated (bench
+  // membership, sync/land availability) so its length changes between opens.
+  const pos = useAnchoredPopover(anchor, {
+    prefer: 'below',
+    deps: [renaming, items.length, dialogUp],
+  })
+  const vp = zoomViewport()
+
+  // Hooks are all above this line: an early return before them would change the
+  // hook order between renders (React error #185).
+  if (!popoverLayer) return null
+
   return createPortal(
     <>
       {!dialogUp && (
       <motion.div
-        ref={ref}
+        ref={(node) => { (ref as React.MutableRefObject<HTMLDivElement | null>).current = node; pos.ref(node) }}
         data-ion-ui
         data-testid="worktree-row-menu"
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.1 }}
         style={{
-          position: 'fixed', left: anchor.x, top: anchor.y,
+          position: 'fixed', left: pos.left, top: pos.top,
+          // Hidden for the one frame before measurement so the menu is never
+          // painted at the unmeasured anchor and then seen to jump.
+          visibility: pos.ready ? 'visible' : 'hidden',
+          maxHeight: vp.height - 16,
+          overflowY: 'auto',
           pointerEvents: 'auto',
           background: colors.popoverBg,
           border: `1px solid ${colors.popoverBorder}`,

@@ -16,6 +16,7 @@
  */
 import { useSessionStore } from '../stores/sessionStore'
 import { landFlagsForStrategy } from '../../shared/worktree-land-strategy'
+import { resolveRetireBlockers } from '../stores/slices/worktree-occupant-close'
 import { rDebug, rError, rInfo, rWarn } from '../rendererLogger'
 import type { WorktreeInventoryEntry, WorktreeCompletionStrategy } from '../../shared/types'
 import type { findMembership } from '../../shared/worktree-list'
@@ -116,20 +117,55 @@ export function buildWorktreeRowActions(deps: WorktreeRowActionsDeps): WorktreeR
   }
 
   /**
-   * Retire asks the appraisal first and surfaces exactly what would be lost.
-   * The appraisal fails CLOSED, so an unreadable worktree is never presented as
-   * safe to remove.
+   * Retire asks two questions before it raises anything: is this worktree still
+   * WORKING, and what would be lost.
    *
-   * The appraisal decides what the confirmation SAYS. It never decides whether
-   * to confirm. This used to run the retire immediately when `safeToDiscard` was
-   * true, so a landed worktree was deleted on a single menu click with no prompt
-   * and no menu dismissal — the operator saw a context menu still sitting open,
-   * then the row vanished two seconds later. Removing a checkout is destructive
-   * whether or not the work is recoverable, and "nothing would be lost" is the
-   * appraisal's opinion about git state, not the operator's confirmation that
-   * they meant to click it.
+   * ── The active-work check comes first, and it is not a confirmation ─────────
+   * A retire deletes the directory, so every conversation living there is closed
+   * by it — and a conversation that is running, has dispatched background
+   * agents, or has outstanding background commands cannot be closed (see
+   * tab-close-guard.ts, which has no `force` on purpose). That is not something
+   * to confirm past: the operator is told which conversations are active and
+   * decides for themselves whether to interrupt or wait. So this arm raises the
+   * acknowledge-only outcome dialog and never offers the Retire button at all.
+   *
+   * The store action re-checks the same thing — it is the enforcement point for
+   * every path, including the ATV round trip. This check exists so the operator
+   * is not shown a confirm button that is going to refuse (desktop/AGENTS.md
+   * § "View readiness principle").
+   *
+   * ── The appraisal decides what the confirmation SAYS ───────────────────────
+   * It never decides whether to confirm. This used to run the retire immediately
+   * when `safeToDiscard` was true, so a landed worktree was deleted on a single
+   * menu click with no prompt and no menu dismissal — the operator saw a context
+   * menu still sitting open, then the row vanished two seconds later. Removing a
+   * checkout is destructive whether or not the work is recoverable, and "nothing
+   * would be lost" is the appraisal's opinion about git state, not the
+   * operator's confirmation that they meant to click it.
    */
   async function requestRetire(): Promise<void> {
+    // Predicted blast radius: the worktree plus any bench this retire would
+    // empty. Bench directories host conversations too, and a retire that prunes
+    // one deletes their working directory.
+    let benchPaths: string[] = []
+    try {
+      const preview = await window.ion.gitWorktreeRetirePreview(entry.worktreePath)
+      benchPaths = preview.prunedBenchPaths ?? []
+    } catch (err) {
+      rWarn('worktree.menu', 'retire preview failed; checking the worktree only', {
+        worktree_path: entry.worktreePath, error: String(err),
+      })
+    }
+
+    const blockers = resolveRetireBlockers(useSessionStore.getState, entry.worktreePath, benchPaths)
+    if (blockers) {
+      rInfo('worktree.menu', 'retire not offered: active work in the worktree', {
+        branch: entry.branchName, active_count: blockers.active.length,
+      })
+      setRetireOutcome(blockers.error)
+      return
+    }
+
     if (!entry.sourceBranch) {
       setConfirmRetire('Ion cannot tell what this worktree still holds, because its source branch is unknown.')
       return

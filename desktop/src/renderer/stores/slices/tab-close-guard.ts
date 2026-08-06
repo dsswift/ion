@@ -112,3 +112,31 @@ export function formatCloseGuardRefusal(tabId: string, result: CloseGuardResult)
     ' — user must stop the tab (interrupt + wait for children and background commands) before closing'
   )
 }
+
+/**
+ * The OPERATOR-facing phrase for why a tab is busy — "running", "2 background
+ * agents running", or several joined together.
+ *
+ * Sibling of `formatCloseGuardRefusal`, which is the LOG line. Both live here,
+ * next to `evaluateCloseGuard`, because both are derived from its result shape:
+ * a caller that re-derived "why" from raw pane state would be a second
+ * definition of busy-ness that could disagree with the guard actually enforcing
+ * the close. The retire refusal quotes this, so the dialog the operator reads
+ * and the guard that blocked the close cannot tell different stories.
+ *
+ * Returns the empty string when nothing is blocking. Callers only reach this
+ * for a blocked result, but an empty answer is the honest one for an idle tab
+ * rather than an invented reason.
+ */
+export function describeCloseGuardReason(result: CloseGuardResult): string {
+  const parts: string[] = []
+  if (result.orchestratorRunning) parts.push('running')
+  const children = result.childCounts.reduce((sum, c) => sum + c.count, 0)
+  if (children > 0) {
+    parts.push(`${children} background ${children === 1 ? 'agent' : 'agents'} running`)
+  }
+  if (result.shellCount > 0) {
+    parts.push(`${result.shellCount} background ${result.shellCount === 1 ? 'command' : 'commands'} running`)
+  }
+  return parts.join(', ')
+}

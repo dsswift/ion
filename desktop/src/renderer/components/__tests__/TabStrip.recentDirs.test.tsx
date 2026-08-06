@@ -142,9 +142,15 @@ vi.mock('../../hooks/useManualReorder', () => ({
 vi.mock('../TabStripShared', () => ({
   checkWorktreeUncommitted: () => {},
   shouldUseWorktree: () => false,
-  zoomRect: (r: DOMRect) => r,
   anyEngineInstanceHasRunningChildren: () => false,
   anyEngineInstanceHasRunningShells: () => false,
+}))
+
+// The zoom helpers moved out of TabStripShared into renderer/viewport-zoom so
+// every popover can reach them without importing a tab-strip module.
+vi.mock('../../viewport-zoom', () => ({
+  zoomRect: (r: DOMRect) => r,
+  zoomViewport: () => ({ width: window.innerWidth, height: window.innerHeight }),
 }))
 
 vi.mock('../PopoverLayer', () => ({

@@ -5,6 +5,7 @@ import { useSessionStore } from '../stores/sessionStore'
 import { getDynamicContextWindow } from '../stores/model-labels'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
+import { useViewportClamp } from '../hooks/useViewportClamp'
 import { usePreferencesStore } from '../preferences'
 import { activeInstance } from '../stores/conversation-instance'
 import { ContextRadial } from './StatusBarContextRadial'
@@ -40,6 +41,11 @@ export function ContextIndicator() {
 
   const [hover, setHover] = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
+  // Edge-anchored tooltip (grows upward out of the status bar). Centred with a
+  // translateX(-50%), which the clamp's `translate` composes with rather than
+  // overwriting — so a radial near either window edge stays readable.
+  const tipRef = useRef<HTMLDivElement>(null)
+  useViewportClamp(tipRef, hover)
   const [pos, setPos] = useState({ bottom: 0, left: 0 })
   const toggleStatusDrawer = useSessionStore((s) => s.toggleStatusDrawer)
 
@@ -85,6 +91,7 @@ export function ContextIndicator() {
       </span>
       {popoverLayer && hover && createPortal(
         <div
+          ref={tipRef}
           style={{
             position: 'fixed',
             bottom: pos.bottom,

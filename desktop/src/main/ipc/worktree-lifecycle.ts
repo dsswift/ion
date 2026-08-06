@@ -20,6 +20,7 @@ import { appraiseBase } from '../worktree/base-staleness'
 import { lookupWorktreeRegistration } from '../worktree/inventory'
 import { getWorktreeInventory } from '../worktree/inventory-service'
 import { appraiseWorktree } from '../worktree/safety'
+import { predictPrunedBenches } from '../integration/bench-ops'
 
 const TAG = 'worktree.ipc'
 function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
@@ -150,9 +151,27 @@ export function registerWorktreeLifecycleIpc(): void {
       if (!result.ok) {
         warn('retire refused', { worktree_path: worktreePath, error: result.error ?? '' })
       } else {
-        log('retire ok', { worktree_path: worktreePath, relocate_to: result.workingDirectory ?? '' })
+        log('retire ok', {
+          worktree_path: worktreePath,
+          relocate_to: result.workingDirectory ?? '',
+          pruned_benches: (result.prunedBenchPaths ?? []).length,
+        })
       }
       return result
+    },
+  )
+
+  // Read-only: answers "what else would this retire delete?" so the caller can
+  // pre-flight its refusal before anything is destroyed. Separate from the
+  // retire itself because it must be safe to call when the operator has not
+  // committed to anything — it mutates nothing and can be called from a menu
+  // handler on every open.
+  ipcMain.handle(
+    IPC.GIT_WORKTREE_RETIRE_PREVIEW,
+    (_event, { worktreePath }: { worktreePath: string }) => {
+      const prunedBenchPaths = predictPrunedBenches(worktreePath)
+      log('retire preview', { worktree_path: worktreePath, pruned_benches: prunedBenchPaths.length })
+      return { prunedBenchPaths }
     },
   )
 

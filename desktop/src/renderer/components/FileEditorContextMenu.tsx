@@ -4,6 +4,8 @@ import { toggleComment } from '@codemirror/commands'
 import { gotoLine } from '@codemirror/search'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
+import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
+import { zoomViewport } from '../viewport-zoom'
 import { transitions } from '../theme-tokens'
 import { rWarn, rError } from '../rendererLogger'
 
@@ -167,19 +169,24 @@ export function FileEditorContextMenu({ x, y, isReadOnly, viewRef, onClose }: Fi
 
   const visibleItems = items.filter((it) => it === 'separator' || !it.hidden)
 
-  // Clamp menu position to viewport
   const menuW = 200
-  const menuH = visibleItems.length * 30
-  const left = Math.min(x, window.innerWidth - menuW - 8)
-  const top = Math.min(y, window.innerHeight - menuH - 8)
+  // Measured placement. This used to derive the menu height from
+  // `visibleItems.length * 30` — a guess that drifts the moment a row is added
+  // or a label wraps, and the drift is invisible until the menu hangs off the
+  // screen edge again. Read-only mode hides rows, so the count is a dep.
+  const pos = useAnchoredPopover({ x, y }, { deps: [visibleItems.length] })
+  const vp = zoomViewport()
 
   return (
     <div
-      ref={menuRef}
+      ref={(node) => { (menuRef as React.MutableRefObject<HTMLDivElement | null>).current = node; pos.ref(node) }}
       style={{
         position: 'fixed',
-        left,
-        top,
+        left: pos.left,
+        top: pos.top,
+        visibility: pos.ready ? 'visible' : 'hidden',
+        maxHeight: vp.height - 16,
+        overflowY: 'auto',
         width: menuW,
         background: colors.containerBg,
         border: `1px solid ${colors.containerBorder}`,

@@ -18,80 +18,9 @@ vi.mock('../../rendererLogger', () => ({
   rInfo: vi.fn(), rDebug: vi.fn(), rWarn: vi.fn(), rError: vi.fn(), rTrace: vi.fn(),
 }))
 
-import { createWorktreeInventorySlice } from '../slices/worktree-inventory-slice'
-import type { WorktreeInventoryEntry } from '../../../shared/types'
+import { harness, ion, entry, resetIon, REPO, WT_A, WT_B } from './helpers/worktree-inventory-harness'
 
-const REPO = '/Users/test/project'
-const WT_A = '/Users/test/.ion/worktrees/project-a3f1'
-const WT_B = '/Users/test/.ion/worktrees/project-7b0c'
-
-function entry(over: Partial<WorktreeInventoryEntry> = {}): WorktreeInventoryEntry {
-  return {
-    worktreePath: WT_A,
-    branchName: 'wt/a3f1',
-    label: 'project-a3f1',
-    sourceBranch: 'josh',
-    head: 'abc1234',
-    lastCommitSubject: 'fix token expiry',
-    isDirty: false,
-    unlandedCommitCount: 0,
-    needsSync: false,
-    safeToDiscard: true,
-    ...over,
-  }
-}
-
-/** Minimal store harness: the slice only needs these members. */
-function harness(initial: {
-  tabs?: Array<{ id: string; workingDirectory: string }>
-  activeTabId?: string | null
-} = {}) {
-  const state: Record<string, any> = {
-    // Tabs carry the fields collectDirConversations reads; the tests supply
-    // only id + directory, so fill the display fields in here.
-    tabs: (initial.tabs ?? []).map((t) => ({ title: 'New Tab', customTitle: null, status: 'idle', ...t })),
-    activeTabId: initial.activeTabId ?? null,
-    worktreeInventory: new Map<string, WorktreeInventoryEntry[]>(),
-    // Conflict/refusal alert plumbing the slice feeds on sync failures and
-    // inventory refreshes (owned by git-conflict-slice in the real store).
-    gitConflictAlerts: new Map(),
-    recordConflictAlert: vi.fn(),
-    clearConflictAlert: vi.fn(),
-    selectTab: vi.fn((id: string) => { state.activeTabId = id }),
-    createTabInDirectory: vi.fn(async (dir: string) => {
-      const id = `tab-${state.tabs.length + 1}`
-      state.tabs = [...state.tabs, { id, workingDirectory: dir, worktree: null, title: 'New Tab', customTitle: null, status: 'idle' }]
-      return id
-    }),
-  }
-  const get = () => state as any
-  const set = (patch: any) => {
-    const next = typeof patch === 'function' ? patch(state) : patch
-    Object.assign(state, next)
-  }
-  const slice = createWorktreeInventorySlice(set as any, get as any)
-  Object.assign(state, slice)
-  return { state, slice }
-}
-
-const ion = {
-  gitWorktreeInventory: vi.fn(),
-  gitWorktreeSync: vi.fn(),
-  // The REGISTRY lookup, which is where a worktree's owning repo comes from.
-  // Deliberately returns a repo that is NOT a key in the inventory cache, so a
-  // test cannot pass by accidentally scanning that cache instead.
-  gitWorktreeRegistration: vi.fn(),
-}
-
-beforeEach(() => {
-  vi.clearAllMocks()
-  ;(globalThis as any).window = { ion }
-  ion.gitWorktreeInventory.mockResolvedValue({ worktrees: [entry()] })
-  ion.gitWorktreeRegistration.mockResolvedValue({
-    registration: { repoPath: REPO, branchName: 'wt/a3f1', sourceBranch: 'josh', title: null },
-  })
-  ion.gitWorktreeSync.mockResolvedValue({ ok: true })
-})
+beforeEach(resetIon)
 
 describe('refreshWorktreeInventory', () => {
   it('stores the inventory keyed by repo path', async () => {

@@ -1,9 +1,8 @@
 /**
- * Tests for the pure positioning math behind
- * `useAnchoredPopoverPosition`. The hook itself is a thin wrapper
- * around `computeAnchoredPosition` that wires up DOM measurement and
- * a re-measure deps list — the placement decisions live in the pure
- * function and are exercised here.
+ * Tests for the pure positioning math behind `useAnchoredPopover`.
+ * The hook itself is a thin wrapper around `computeAnchoredPosition`
+ * that wires up DOM measurement and a re-measure deps list — the
+ * placement decisions live in the pure function and are exercised here.
  *
  * Why test the pure function rather than the hook: vitest is
  * configured to run in node (no DOM). Adding jsdom + testing-library
@@ -17,7 +16,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { computeAnchoredPosition } from '../tabstrip-anchored-position'
+import { computeAnchoredPosition } from '../anchored-position'
 
 // Reasonable defaults that match the hook's runtime defaults so the
 // numbers in expectations stay aligned with what callers actually see.
@@ -205,6 +204,42 @@ describe('computeAnchoredPosition', () => {
         viewport: { width: 1200, height: 800 },
       })
       expect(left).toBe(baseOpts.margin)
+    })
+  })
+
+  describe('right-click point anchors (context menus)', () => {
+    // The reported defect: right-clicking the bottom-most worktree row in the
+    // git panel opened a menu whose lower half hung off the screen, because
+    // the menu rendered at the raw click point with no measurement. These
+    // cases pin the placement a point-anchored context menu must produce.
+    it('keeps a menu opened at the very bottom edge fully on-screen', () => {
+      const viewport = { width: 1440, height: 900 }
+      const menu = { width: 190, height: 300 }
+      const { top } = computeAnchoredPosition({
+        ...baseOpts,
+        prefer: 'below',
+        anchor: { x: 300, y: 880 }, // 20px from the bottom
+        menu,
+        viewport,
+      })
+      expect(top).toBeGreaterThanOrEqual(baseOpts.margin)
+      expect(top + menu.height).toBeLessThanOrEqual(viewport.height - baseOpts.margin)
+    })
+
+    it('keeps a menu opened at the bottom-right corner fully on-screen', () => {
+      const viewport = { width: 1440, height: 900 }
+      const menu = { width: 190, height: 300 }
+      const { left, top } = computeAnchoredPosition({
+        ...baseOpts,
+        prefer: 'below',
+        anchor: { x: 1430, y: 895 },
+        menu,
+        viewport,
+      })
+      expect(left).toBeGreaterThanOrEqual(baseOpts.margin)
+      expect(left + menu.width).toBeLessThanOrEqual(viewport.width - baseOpts.margin)
+      expect(top).toBeGreaterThanOrEqual(baseOpts.margin)
+      expect(top + menu.height).toBeLessThanOrEqual(viewport.height - baseOpts.margin)
     })
   })
 })

@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { CaretDown, Plus, GitBranch, Trash, Check, MagnifyingGlass, Clock } from '@phosphor-icons/react'
 import { usePopoverLayer } from './PopoverLayer'
 import { useColors } from '../theme'
+import { useViewportClamp } from '../hooks/useViewportClamp'
 import type { GitBranchInfo } from '../../shared/types'
 
 function rank(name: string, query: string): number {
@@ -48,6 +49,11 @@ export function BranchPicker({
   const triggerRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ bottom: 0, left: 0 })
+  // Edge-anchored (opens upward from the branch button), so the clamp is the
+  // right primitive. It replaces a hardcoded `innerWidth - 220` horizontal
+  // clamp that assumed the popover's own declared width and did nothing at all
+  // for the vertical axis.
+  useViewportClamp(popoverRef, open)
 
   const loadBranches = useCallback(async () => {
     try {
@@ -162,7 +168,7 @@ export function BranchPicker({
           style={{
             position: 'fixed',
             bottom: pos.bottom,
-            left: Math.min(pos.left, window.innerWidth - 220),
+            left: pos.left,
             width: 210,
             maxHeight: 320,
             pointerEvents: 'auto',

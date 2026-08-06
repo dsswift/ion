@@ -6,7 +6,8 @@ import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { usePopoverLayer } from './PopoverLayer'
 import { usePreferencesStore, getEffectiveTabGroups } from '../preferences'
-import { useAnchoredPopoverPosition, zoomViewport } from './TabStripShared'
+import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
+import { zoomViewport } from '../viewport-zoom'
 
 interface MoveToGroupSubmenuProps {
   anchor: { x: number; y: number }
@@ -23,7 +24,7 @@ interface MoveToGroupSubmenuProps {
   pinAfter?: boolean
   /**
    * The bounding rect of the parent menu row that triggered this
-   * submenu. Used by `useAnchoredPopoverPosition` to flip the submenu
+   * submenu. Used by `useAnchoredPopover` to flip the submenu
    * to the left of the parent row when there isn't room to the right.
    * Optional — the hook falls back to flipping relative to `anchor.x`
    * when not provided, which is visually fine but slightly off.
@@ -109,7 +110,7 @@ export function MoveToGroupSubmenu({
   // expanding the inline input changes the submenu's rendered
   // height, and we want the menu to re-position so the input row
   // doesn't drop off the bottom edge.
-  const pos = useAnchoredPopoverPosition(anchor, {
+  const pos = useAnchoredPopover(anchor, {
     prefer: 'rightOf',
     parentRect,
     deps: [showNewGroupInput, targets.length],

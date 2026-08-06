@@ -54,9 +54,15 @@ vi.mock('../../theme', () => ({
   useColors: () => new Proxy({}, { get: () => '#000000' }),
 }))
 
+// `getState` as well as the selector call: the menu's positioning hook reads
+// the operator's UI zoom through `usePreferencesStore.getState()` to convert
+// between measured viewport pixels and zoomed CSS pixels.
 vi.mock('../../preferences', () => ({
-  usePreferencesStore: (selector: (s: { worktreeCompletionStrategy: string }) => unknown) =>
-    selector({ worktreeCompletionStrategy: 'merge-ff' }),
+  usePreferencesStore: Object.assign(
+    (selector: (s: { worktreeCompletionStrategy: string }) => unknown) =>
+      selector({ worktreeCompletionStrategy: 'merge-ff' }),
+    { getState: () => ({ uiZoom: 1 }) },
+  ),
 }))
 
 vi.mock('../../stores/sessionStore', () => ({
@@ -70,6 +76,11 @@ vi.mock('../../stores/sessionStore', () => ({
         reprovisionWorktree: mocks.reprovisionWorktree,
         benchAddMember: mocks.benchAddMember,
         recordConflictAlert: mocks.recordConflictAlert,
+        // The retire pre-flight reads these to answer "is anything in this
+        // worktree still working". No tabs open means nothing is active, which
+        // is the state every dismissal test wants.
+        tabs: [],
+        conversationPanes: new Map(),
       }),
     },
   ),
@@ -138,6 +149,8 @@ beforeEach(() => {
     gitWorktreeAppraise: mocks.appraise,
     revealPath: mocks.revealPath,
     gitWorktreeLand: mocks.gitWorktreeLand,
+    // Retire asks for its blast radius before offering the confirmation.
+    gitWorktreeRetirePreview: vi.fn(async () => ({ prunedBenchPaths: [] })),
   }
   container = document.createElement('div')
   document.body.appendChild(container)

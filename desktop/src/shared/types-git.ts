@@ -121,6 +121,17 @@ export interface WorktreeMoveResult {
    * indistinguishable from work that was silently destroyed.
    */
   recoveryRef?: string
+  /**
+   * Bench directories this retire REMOVED, because disenrolling the worktree
+   * left them with no members (`disenrollWorktree`).
+   *
+   * Reported rather than only logged because a bench directory hosts real
+   * conversations and a terminal: a caller that closes the retired worktree's
+   * tabs but not these would leave them pointed at a path that no longer
+   * exists. Empty (or absent) when the worktree belonged to no bench, or when
+   * every bench holding it retained other members.
+   */
+  prunedBenchPaths?: string[]
   error?: string
 }
 

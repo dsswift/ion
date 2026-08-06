@@ -65,6 +65,36 @@ export function _setPollRendererTabStatesForTest(fn: (() => Promise<RemoteTabSta
   pollImpl = fn ?? pollRendererTabStates
 }
 
+/**
+ * Force a renderer poll and overwrite the push cache with the result,
+ * IGNORING `RENDERER_CACHE_MAX_AGE_MS`.
+ *
+ * `getRemoteTabStates` serves any cache younger than the max age without
+ * checking whether it contains the row the caller is asking about. That is the
+ * right default for a periodic snapshot (a slightly stale tab list is
+ * self-correcting on the next tick), but it is wrong for a read-your-write:
+ * the tab-created echo must observe a tab that was minted milliseconds ago,
+ * and the renderer's projection push is 250ms-debounced, so the cache
+ * legitimately predates the tab while still counting as "fresh".
+ *
+ * This bypasses the age gate entirely: poll the renderer now, write the result,
+ * return it. Callers that need read-your-write consistency use this; everything
+ * periodic keeps using the cheap cached read. Unlike the fallback inside
+ * `getRemoteTabStates`, the cache is written even when the poll returns zero
+ * tabs — an empty renderer is a real observation here, not a reason to keep
+ * stale rows alive.
+ */
+export async function refreshRendererSnapshotCache(): Promise<RemoteTabStatesPayload> {
+  const payload = await pollImpl()
+  state.rendererSnapshotCache = {
+    tabs: payload.tabs,
+    resourceManifest: payload.resourceManifest,
+    receivedAt: Date.now(),
+  }
+  debug('desktop_snapshot', 'renderer cache force-refreshed', { tab_count: payload.tabs.length })
+  return payload
+}
+
 export async function getRemoteTabStates(): Promise<RemoteTabSnapshot> {
   // ── Primary: renderer-pushed cache ───────────────────────────────────────
   let rendererResult: RemoteTabStatesPayload = { tabs: [], resourceManifest: {} }

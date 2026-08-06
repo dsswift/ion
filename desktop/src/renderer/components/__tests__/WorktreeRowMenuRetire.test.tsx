@@ -33,10 +33,16 @@ const mocks = vi.hoisted(() => ({
   appraise: vi.fn<(worktreePath: string, sourceBranch: string) => Promise<WorktreeAppraisalWire>>(),
   revealPath: vi.fn(async () => undefined),
   gitWorktreeLand: vi.fn<(args: unknown) => Promise<{ ok: boolean; error?: string; mode?: string; hasConflicts?: boolean; conflictDirectory?: string }>>(),
+  retirePreview: vi.fn<(worktreePath: string) => Promise<{ prunedBenchPaths: string[] }>>(),
   syncWorktree: vi.fn(async () => ({ ok: true })),
   reprovisionWorktree: vi.fn<(repoPath: string, worktreePath: string) => Promise<{ ok: boolean; error?: string }>>(),
   benchAddMember: vi.fn<(...a: unknown[]) => Promise<{ ok: boolean; error?: string }>>(),
   recordConflictAlert: vi.fn(),
+  // Store state the retire pre-flight reads. Mutable per test so a suite can put
+  // an ACTIVE conversation in the worktree and assert the confirmation is never
+  // offered.
+  storeTabs: [] as unknown[],
+  storePanes: new Map<string, unknown>(),
 }))
 
 // Icons are deliberately NOT mocked. The previous mock was a hand-maintained
@@ -58,9 +64,15 @@ vi.mock('../../theme', () => ({
   useColors: () => new Proxy({}, { get: () => '#000000' }),
 }))
 
+// `getState` as well as the selector call: the menu's positioning hook reads
+// the operator's UI zoom through `usePreferencesStore.getState()` to convert
+// between measured viewport pixels and zoomed CSS pixels.
 vi.mock('../../preferences', () => ({
-  usePreferencesStore: (selector: (s: { worktreeCompletionStrategy: string }) => unknown) =>
-    selector({ worktreeCompletionStrategy: 'merge-ff' }),
+  usePreferencesStore: Object.assign(
+    (selector: (s: { worktreeCompletionStrategy: string }) => unknown) =>
+      selector({ worktreeCompletionStrategy: 'merge-ff' }),
+    { getState: () => ({ uiZoom: 1 }) },
+  ),
 }))
 
 vi.mock('../../stores/sessionStore', () => ({
@@ -74,6 +86,11 @@ vi.mock('../../stores/sessionStore', () => ({
         reprovisionWorktree: mocks.reprovisionWorktree,
         benchAddMember: mocks.benchAddMember,
         recordConflictAlert: mocks.recordConflictAlert,
+        // Read by the retire pre-flight (resolveRetireBlockers) to answer "is
+        // anything in this worktree still working". Read through the hoisted
+        // mock so a test can install an active conversation before pressing.
+        tabs: mocks.storeTabs,
+        conversationPanes: mocks.storePanes,
       }),
     },
   ),
@@ -146,10 +163,17 @@ beforeEach(() => {
   mocks.benchAddMember.mockClear()
   mocks.gitWorktreeLand.mockClear()
   mocks.gitWorktreeLand.mockResolvedValue({ ok: true, mode: 'fast-forward' })
+  mocks.retirePreview.mockClear()
+  mocks.retirePreview.mockResolvedValue({ prunedBenchPaths: [] })
+  // Default: no tabs open anywhere, so nothing is active and the retire is
+  // offered. The active-work suite installs its own tabs.
+  mocks.storeTabs = []
+  mocks.storePanes = new Map()
   ;(globalThis as unknown as { window: { ion: unknown } }).window.ion = {
     gitWorktreeAppraise: mocks.appraise,
     revealPath: mocks.revealPath,
     gitWorktreeLand: mocks.gitWorktreeLand,
+    gitWorktreeRetirePreview: mocks.retirePreview,
   }
   container = document.createElement('div')
   document.body.appendChild(container)
@@ -294,13 +318,6 @@ describe('WorktreeRowMenu — retiring a landed worktree', () => {
   })
 })
 
-/**
- * The menu must not sit open behind its own confirmation.
- *
- * Second half of the same report: "the context menu didn't even disappear when I
- * clicked the button". A menu still on screen after a click is the operator's
- * signal that the click did nothing.
- */
 describe('WorktreeRowMenu — menu withdrawal', () => {
   it('withdraws the menu body once a dialog is up', async () => {
     render()

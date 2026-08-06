@@ -82,6 +82,25 @@ The `PopoverLayer` has `pointerEvents: 'none'` so it doesn't block interaction w
 
 Context-menu components already do this on their `motion.div`. The `ConfirmDialog` component sets it on its backdrop. If you create a new overlay component that portals into `PopoverLayer`, add `pointerEvents: 'auto'` to its root — without it the component will render but be completely non-interactable with no visible error.
 
+## Popover positioning
+
+A `position: 'fixed'` element is placed in viewport coordinates, so nothing in the layout stops it rendering past the window edge. Every popover, dropdown, context menu, tooltip, and picker must land fully inside the window. Which primitive you use depends on how the element is anchored.
+
+| Anchor kind | Primitive | Examples |
+|---|---|---|
+| **A point** — a click coordinate, or "below this trigger". Anything with an `anchor: { x, y }` prop. | `useAnchoredPopover` (`hooks/useAnchoredPopover.ts`) | context menus, tab-group pickers, the worktree row menu |
+| **An edge** — `bottom:` / `right:` computed from a trigger rect so the popover grows upward or leftward out of the input pill | `useViewportClamp` (`hooks/useViewportClamp.ts`) | status-bar pickers, the slash-command menu, hover cards |
+
+`useAnchoredPopover` measures the rendered element in a layout effect and flips or clamps it *before paint*, so there is no visible jump. Gate the element on `visibility: pos.ready ? 'visible' : 'hidden'` and pass **everything that changes the rendered height** in `deps` (an inline rename panel, a state-gated verb list, an open submenu) — otherwise it stays placed for its first measurement and re-overflows when the content grows.
+
+`useViewportClamp` corrects after layout via the CSS `translate` property, which composes with (never fights) Framer Motion's `transform` and any `translateX(-50%)` centring. It re-clamps on resize and on content growth.
+
+**A guessed height is not a substitute for a measurement.** `items.length * 28`, a hardcoded `maxHeight` reused as a clamp bound, `innerHeight - 200` — each drifts the moment a row is added, a label wraps, or the font size changes, and the drift is invisible until a menu hangs off the screen edge again. Measure.
+
+Both primitives are zoom-aware. The operator's UI zoom is applied as `document.documentElement.style.zoom`, which means DOM measurements come back in real viewport pixels while CSS lengths are interpreted in the zoomed space. `viewport-zoom.ts` (`zoomRect` / `zoomViewport`) is the conversion; do not compare a raw `getBoundingClientRect()` against a CSS length without it.
+
+`components/__tests__/popover-bounds-scan.test.ts` enforces this structurally: every `position: 'fixed'` in `renderer/components` and `renderer/atv` must resolve to `inset: 0`, the anchored positioner's output, a clamped ref, or a `// viewport-ok: <reason>` tag. A tag is for an element that is genuinely bounded some other way (a draggable panel with its own clamp, a corner-pinned toast) and must cite what bounds it.
+
 ## Subprocess env
 
 - `CLAUDECODE` and similar leakage env vars are stripped before spawn (`main/cli-env.ts`). Don't bypass.

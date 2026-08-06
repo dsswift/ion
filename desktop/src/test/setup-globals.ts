@@ -47,5 +47,21 @@ function installScrollIntoViewStub(): void {
   }
 }
 
+// jsdom does not implement ResizeObserver. `useViewportClamp` constructs one to
+// re-clamp a popover when its content grows, so every jsdom test that renders a
+// popover would throw at layout-effect time without this. The stub is inert:
+// tests that need to assert re-clamping drive it through the resize listener or
+// a re-render instead.
+function installResizeObserverStub(): void {
+  const g = globalThis as unknown as { ResizeObserver?: unknown }
+  if (typeof g.ResizeObserver === 'function') return
+  g.ResizeObserver = class {
+    observe(): void { /* no-op in jsdom */ }
+    unobserve(): void { /* no-op in jsdom */ }
+    disconnect(): void { /* no-op in jsdom */ }
+  }
+}
+
 installLocalStorageShim()
 installScrollIntoViewStub()
+installResizeObserverStub()

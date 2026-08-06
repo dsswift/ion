@@ -3,6 +3,8 @@ import { motion } from 'framer-motion'
 import { useColors } from '../theme'
 import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState'
 import { useOutsideDismiss } from '../hooks/useOutsideDismiss'
+import { useAnchoredPopover } from '../hooks/useAnchoredPopover'
+import { zoomViewport } from '../viewport-zoom'
 import { transitions } from '../theme-tokens'
 import { ConfirmDialog } from './git/ConfirmDialog'
 import { rError } from '../rendererLogger'
@@ -56,6 +58,12 @@ export function CommitContextMenu({ anchor, commit, directory, onRefresh, onClos
   // confirm button and the reset would never run.
   useOutsideDismiss([ref], onClose)
 
+  // Measured placement. The graph scrolls, so a right-click on the last visible
+  // commit sits at the bottom of the panel and the menu used to open below the
+  // window edge. `onRebase` gates two extra rows, so it changes the height.
+  const pos = useAnchoredPopover(anchor, { deps: [!!onRebase] })
+  const vp = zoomViewport()
+
   const items = [
     { label: 'Copy Commit Hash', action: () => navigator.clipboard.writeText(commit.fullHash) },
     { label: 'Copy Commit Message', action: () => navigator.clipboard.writeText(commit.subject) },
@@ -93,15 +101,18 @@ export function CommitContextMenu({ anchor, commit, directory, onRefresh, onClos
   return (
     <>
       <motion.div
-        ref={ref}
+        ref={(node) => { (ref as React.MutableRefObject<HTMLDivElement | null>).current = node; pos.ref(node) }}
         data-ion-ui
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.12 }}
         style={{
           position: 'fixed',
-          left: anchor.x,
-          top: anchor.y,
+          left: pos.left,
+          top: pos.top,
+          visibility: pos.ready ? 'visible' : 'hidden',
+          maxHeight: vp.height - 16,
+          overflowY: 'auto',
           pointerEvents: 'auto',
           background: colors.popoverBg,
           backdropFilter: 'blur(20px)',

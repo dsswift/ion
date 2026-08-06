@@ -204,6 +204,21 @@ extension SessionViewModel {
         for tabId in draftInputByTab.keys where !mergedIds.contains(tabId) {
             clearTabDraft(tabId)
         }
+        // Capture the loads that were ALREADY in flight before this snapshot
+        // began processing. The resend block at the end of this method re-drives
+        // dropped loads across a transport gap — but the tab loop below also
+        // STARTS loads (loadConversation inserts into loadingConversation and
+        // sends immediately). Resending from the live set would therefore
+        // re-send every load this very pass just put on the wire: same tab, same
+        // cursor, same millisecond, hence the same desktop coalesce key. The
+        // desktop absorbed those as `coalesced duplicate load … age_ms: 0` on
+        // every snapshot that pre-loaded any tab, and each absorbed duplicate
+        // was a request that went unanswered.
+        //
+        // This is the in-flight-from-a-PREVIOUS-pass identity, not a debounce: a
+        // load started inside this pass needs no resend because it has not had a
+        // chance to be dropped yet.
+        let loadsInFlightBeforeSnapshot = loadingConversation
         // Populate terminal state from snapshot tab data
         for tab in merged {
             // DATA-driven, not tab-type-gated (same rationale as the
@@ -351,8 +366,18 @@ extension SessionViewModel {
         // Clear it before the re-send block so the next snapshot tick uses
         // normal (non-bypass) reconcile semantics.
         isReconnectSnapshot = false
-        // Re-send in-flight conversation loads that may have been dropped.
-        for tabId in loadingConversation {
+        // Re-send conversation loads that were in flight BEFORE this snapshot
+        // and may have been dropped in a transport gap. Deliberately not the
+        // live `loadingConversation` set: see loadsInFlightBeforeSnapshot above
+        // — a load this pass just started is already on the wire, and resending
+        // it here produced a same-millisecond duplicate that the desktop
+        // coalesced and left unanswered. The set arithmetic is pinned by
+        // SessionViewModel.conversationLoadsToResend.
+        let resendTargets = SessionViewModel.conversationLoadsToResend(
+            inFlightBefore: loadsInFlightBeforeSnapshot,
+            currentlyLoading: loadingConversation,
+        )
+        for tabId in resendTargets {
             send(.loadConversation(tabId: tabId, before: conversationCursor[tabId]), intent: .automaticEssential)
         }
 
