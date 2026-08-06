@@ -256,17 +256,19 @@ const conn = createConnection(SOCKET)
 
 // Send commands as NDJSON
 conn.write(JSON.stringify({ cmd: 'start_session', key: 's1', config: { model: 'qwen2.5:14b' } }) + '\n')
-conn.write(JSON.stringify({ cmd: 'prompt', key: 's1', text: 'What files are here?' }) + '\n')
+conn.write(JSON.stringify({ cmd: 'send_prompt', key: 's1', text: 'What files are here?' }) + '\n')
 
-// Receive events as NDJSON
+// Receive events as NDJSON. Each line is { key, event }, where key is the
+// session that produced it and event.type is an engine_-prefixed variant.
 let buffer = ''
 conn.on('data', (chunk) => {
   buffer += chunk.toString()
   let nl
   while ((nl = buffer.indexOf('\n')) !== -1) {
-    const event = JSON.parse(buffer.slice(0, nl))
+    const { key, event } = JSON.parse(buffer.slice(0, nl))
     buffer = buffer.slice(nl + 1)
-    // Render event.type: 'text', 'tool_use', 'tool_result', 'exit', ...
+    // engine_text_chunk, engine_tool_call, engine_tool_result,
+    // engine_task_complete, ...
   }
 })
 ```
