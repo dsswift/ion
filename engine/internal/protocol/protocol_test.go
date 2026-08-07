@@ -725,6 +725,31 @@ func TestParseClientCommand_ResolveModelTierMissingName(t *testing.T) {
 	}
 }
 
+func TestParseClientCommand_ModelTierAdministration(t *testing.T) {
+	set := ParseClientCommand(`{"cmd":"set_model_tier","text":"standard","model":"claude-sonnet-4-6","fallbacks":["claude-haiku-4-5"]}`)
+	if set == nil || set.Model != "claude-sonnet-4-6" || len(set.Fallbacks) != 1 {
+		t.Fatalf("set_model_tier parse = %+v", set)
+	}
+	if cmd := ParseClientCommand(`{"cmd":"list_model_tiers"}`); cmd == nil {
+		t.Fatal("list_model_tiers must accept an empty payload")
+	}
+	if cmd := ParseClientCommand(`{"cmd":"remove_model_tier","text":"standard"}`); cmd == nil {
+		t.Fatal("remove_model_tier must accept a tier name")
+	}
+}
+
+func TestParseClientCommand_SetModelTierRejectsInvalidFallbacks(t *testing.T) {
+	for _, raw := range []string{
+		`{"cmd":"set_model_tier","text":"standard","model":"claude-sonnet-4-6","fallbacks":"not-an-array"}`,
+		`{"cmd":"set_model_tier","text":"standard","model":"claude-sonnet-4-6","fallbacks":[1]}`,
+		`{"cmd":"set_model_tier","text":"standard"}`,
+	} {
+		if cmd := ParseClientCommand(raw); cmd != nil {
+			t.Errorf("invalid set_model_tier parsed: %+v", cmd)
+		}
+	}
+}
+
 func TestParseClientCommand_StoreCredential(t *testing.T) {
 	raw := `{"cmd":"store_credential","requestId":"r2","provider":"openai","credential":"sk-test123"}`
 	cmd := ParseClientCommand(raw)

@@ -123,6 +123,8 @@ func buildManifest() contractManifest {
 		"ProviderEntry":       reflect.TypeOf(ProviderEntry{}),
 		"ProviderCliStatus":   reflect.TypeOf(ProviderCliStatus{}),
 		"ProviderLoginUpdate": reflect.TypeOf(ProviderLoginUpdate{}),
+		// ModelTierEntry is carried in engine_model_tiers snapshots.
+		"ModelTierEntry": reflect.TypeOf(ModelTierEntry{}),
 		// MCP server administration. Carried inside engine_mcp_servers events
 		// as a complete snapshot, so cross-language mirrors must track every
 		// field a consumer renders (connection vs. authorization state are

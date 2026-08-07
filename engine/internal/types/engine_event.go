@@ -315,6 +315,11 @@ type EngineEvent struct {
 	// local view with this payload; never merge. Nil on every other event.
 	McpServers []McpServerStatus `json:"mcpServers,omitempty"`
 
+	// engine_model_tiers — complete snapshot of model tier aliases. Consumers
+	// replace their local view with this payload; every entry carries a list of
+	// fallback models, including an empty list for a tier without fallbacks.
+	ModelTiers []ModelTierEntry `json:"modelTiers,omitempty"`
+
 	// engine_command_registry — complete snapshot of slash commands exposed by
 	// the session's currently-loaded extensions. Emitted at session_start (after
 	// extensions wire up) and on every subsequent change to the command map

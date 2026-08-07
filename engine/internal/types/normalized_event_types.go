@@ -102,6 +102,9 @@ const (
 	// payload; they do not merge. An empty slice is the authoritative "no MCP
 	// servers configured" signal.
 	EventMcpServers = "engine_mcp_servers"
+	// EventModelTiers is a complete snapshot of configured model tier aliases.
+	// Consumers replace their local view; an empty slice means no tiers exist.
+	EventModelTiers = "engine_model_tiers"
 	// Extended-thinking events surface the model's reasoning activity as a
 	// first-class signal (issue #158). The engine receives Anthropic
 	// thinking_delta stream events; these variants make them observable so

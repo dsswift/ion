@@ -345,6 +345,7 @@
     "metadata",
     "method",
     "microOnly",
+    "modelTiers",
     "notifyBody",
     "notifyKind",
     "notifyResourceId",
@@ -536,6 +537,11 @@
       "thinkingEfforts",
       "thinkingMode",
       "tokenizer"
+    ],
+    "ModelTierEntry": [
+      "fallbacks",
+      "model",
+      "name"
     ],
     "PermissionOpt": [
       "id",

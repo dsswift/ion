@@ -957,7 +957,7 @@ Clear the provider CLI's stored credential and re-probe so the provider reflects
 
 Resolve a tier name from [`~/.ion/models.json`](../configuration/models.md#tiers) to the model it is configured for, plus that tier's fallback chain.
 
-The engine owns that file's semantics, so consumers ask rather than parsing it themselves. This matters most for a consumer that *gates a feature* on a tier existing: resolution is a pass-through for an unrecognised name (an undefined `standard` resolves to the literal string `"standard"`, which then fails to route at dispatch time), so the resolved value alone cannot distinguish "configured" from "unknown". The `configured` flag is that distinction.
+The engine owns that file's semantics, so consumers ask rather than parsing it themselves. This matters most for a consumer that *gates a feature* on a tier existing: resolution is a pass-through for an unrecognised name. When no provider resolves that name, a run falls back to its configured default model and emits `engine_model_fallback`; the resolved value alone still cannot distinguish "configured" from "unknown". The `configured` flag is that distinction.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -979,6 +979,49 @@ The engine owns that file's semantics, so consumers ask rather than parsing it t
 | `configured` | `false` when no such tier is defined. Treat `model` as meaningless in that case and refuse the gated operation, rather than dispatching a run that cannot route |
 
 The command is rejected at parse time when `text` is absent or empty: the tier name is the entire request.
+
+---
+
+### list_model_tiers
+
+Return a complete snapshot of configured model tiers. Each entry normalizes both supported `models.json` forms into `{ name, model, fallbacks }`; `fallbacks` is always a list.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"list_model_tiers"` | yes | Command discriminator |
+| `requestId` | string | no | Correlates with ServerResult |
+
+**Response:** `ServerResult` with `data: { tiers: Array<{ name: string, model: string, fallbacks: string[] }> }`. The requester also receives `engine_model_tiers`; it is a complete snapshot, so consumers replace local state rather than merge it.
+
+---
+
+### set_model_tier
+
+Create or replace one tier. Names are normalized to lowercase. A tier with no fallbacks persists in compact string form; a tier with fallbacks persists as `{ "model": "...", "fallbacks": [...] }`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"set_model_tier"` | yes | Command discriminator |
+| `text` | string | yes | Tier name |
+| `model` | string | yes | Primary model |
+| `fallbacks` | string[] | no | Ordered fallback models |
+| `requestId` | string | no | Correlates with ServerResult |
+
+Successful writes broadcast a complete `engine_model_tiers` snapshot to every connected client.
+
+---
+
+### remove_model_tier
+
+Remove one configured tier.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `cmd` | `"remove_model_tier"` | yes | Command discriminator |
+| `text` | string | yes | Tier name |
+| `requestId` | string | no | Correlates with ServerResult |
+
+Successful removals broadcast a complete `engine_model_tiers` snapshot to every connected client. Removing an unknown tier returns an error.
 
 ---
 

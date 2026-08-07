@@ -163,21 +163,7 @@ func (s *Server) dispatchListModels(conn net.Conn, cmd *protocol.ClientCommand) 
 		}
 	}
 	if len(customGatewayProviders) > 0 {
-		// Build set of discovered model IDs so we don't filter them out
-		discoveredIDs := make(map[string]bool)
-		for pid := range customGatewayProviders {
-			for _, dm := range providers.GetDiscoveredModels(pid) {
-				discoveredIDs[dm.ID] = true
-			}
-		}
-		filtered := make([]types.ModelEntry, 0, len(models))
-		for _, m := range models {
-			if customGatewayProviders[m.ProviderID] && !m.IsCustom && !discoveredIDs[m.ID] {
-				continue // skip hardcoded catalog models for custom gateway providers
-			}
-			filtered = append(filtered, m)
-		}
-		models = filtered
+		models = filterCustomGatewayModels(models, customGatewayProviders)
 	}
 	s.sendResult(conn, cmd, nil, map[string]interface{}{
 		"models":    models,

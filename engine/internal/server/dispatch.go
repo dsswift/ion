@@ -17,7 +17,6 @@ import (
 
 	"github.com/dsswift/ion/engine/internal/auth"
 	"github.com/dsswift/ion/engine/internal/conversation"
-	"github.com/dsswift/ion/engine/internal/modelconfig"
 	"github.com/dsswift/ion/engine/internal/plugins"
 	"github.com/dsswift/ion/engine/internal/protocol"
 	"github.com/dsswift/ion/engine/internal/providers"
@@ -328,34 +327,16 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 		s.dispatchListModels(conn, cmd)
 
 	case "resolve_model_tier":
-		// Map a tier name (cmd.Text) from ~/.ion/models.json to its configured
-		// model + fallback chain. `configured` distinguishes "the user defined
-		// this tier" from ResolveTierChain's pass-through behavior, which
-		// returns an unrecognized name as-is — a consumer gating a feature on
-		// a tier existing needs that distinction, not the echo.
-		tierName := cmd.Text
-		model, fallbacks := modelconfig.ResolveTierChain(tierName)
-		configured := model != tierName
-		// A tier with no fallbacks yields a nil slice, which marshals to JSON
-		// `null` — so a consumer reading `data.fallbacks.length` would fault on
-		// the common case (a plain-string tier). Normalize to an empty array so
-		// the field is always a list, which is what the documented shape
-		// (`fallbacks: string[]`) promises.
-		if fallbacks == nil {
-			fallbacks = []string{}
-		}
-		utils.LogWithFields(utils.LevelInfo, "server", "resolve_model_tier", map[string]any{
-			"tier":       tierName,
-			"model":      model,
-			"configured": configured,
-			"fallbacks":  len(fallbacks),
-		})
-		s.sendResult(conn, cmd, nil, map[string]interface{}{
-			"tier":       tierName,
-			"model":      model,
-			"fallbacks":  fallbacks,
-			"configured": configured,
-		})
+		s.dispatchResolveModelTier(conn, cmd)
+
+	case "list_model_tiers":
+		s.dispatchListModelTiers(conn, cmd)
+
+	case "set_model_tier":
+		s.dispatchSetModelTier(conn, cmd)
+
+	case "remove_model_tier":
+		s.dispatchRemoveModelTier(conn, cmd)
 
 	case "get_host_info":
 		s.sendResult(conn, cmd, nil, computeHostInfo())

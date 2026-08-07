@@ -1,9 +1,11 @@
 package modelconfig
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/dsswift/ion/engine/internal/types"
@@ -378,5 +380,145 @@ func TestUserModels_Empty(t *testing.T) {
 	})
 	if len(models) != 0 {
 		t.Errorf("expected 0 models when no models section, got %d", len(models))
+	}
+}
+
+func TestTierAdministrationPersistsNormalizedSnapshot(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+
+	entry, err := SetTier(" Standard ", "claude-sonnet-4-6", []string{"claude-haiku-4-5", "gpt-4o-mini"})
+	if err != nil {
+		t.Fatalf("SetTier: %v", err)
+	}
+	if entry.Name != "standard" || entry.Model != "claude-sonnet-4-6" {
+		t.Fatalf("entry = %+v", entry)
+	}
+
+	entries := ListTiers()
+	if len(entries) != 1 || !reflect.DeepEqual(entries[0], entry) {
+		t.Fatalf("ListTiers() = %+v, want [%+v]", entries, entry)
+	}
+
+	model, fallbacks := ResolveTierChain("STANDARD")
+	if model != entry.Model || len(fallbacks) != 2 || fallbacks[1] != "gpt-4o-mini" {
+		t.Fatalf("ResolveTierChain() = (%q, %v), want (%q, %v)", model, fallbacks, entry.Model, entry.Fallbacks)
+	}
+
+	removed, err := RemoveTier("STANDARD")
+	if err != nil || !removed {
+		t.Fatalf("RemoveTier() = (%v, %v), want (true, nil)", removed, err)
+	}
+	if got := ListTiers(); len(got) != 0 {
+		t.Fatalf("ListTiers after remove = %+v, want empty", got)
+	}
+}
+
+func TestSetTierWithoutFallbacksUsesCompactStringAndPreservesConfig(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	path := filepath.Join(dir, ".ion", "models.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	original := `{"defaultModel":"model-default","providers":{"test":{"models":{}}},"tiers":{"other":{"model":"other-model","fallbacks":["backup"]}}}`
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatalf("write models: %v", err)
+	}
+
+	if _, err := SetTier("fast", "fast-model", nil); err != nil {
+		t.Fatalf("SetTier: %v", err)
+	}
+	var saved map[string]any
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read models: %v", err)
+	}
+	if err := json.Unmarshal(data, &saved); err != nil {
+		t.Fatalf("decode models: %v", err)
+	}
+	tiers := saved["tiers"].(map[string]any)
+	if got := tiers["fast"]; got != "fast-model" {
+		t.Fatalf("compact fast tier = %#v, want string", got)
+	}
+	if !reflect.DeepEqual(tiers["other"], map[string]any{"model": "other-model", "fallbacks": []any{"backup"}}) {
+		t.Fatalf("unrelated fallback tier changed: %#v", tiers["other"])
+	}
+	if saved["defaultModel"] != "model-default" || saved["providers"] == nil {
+		t.Fatalf("unrelated model config changed: %#v", saved)
+	}
+}
+
+func TestSetTierRejectsEmptyFallbackWithoutWriting(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+
+	if _, err := SetTier("standard", "claude-sonnet-4-6", []string{""}); err == nil {
+		t.Fatal("SetTier accepted an empty fallback")
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".ion", "models.json")); !os.IsNotExist(err) {
+		t.Fatalf("invalid tier wrote models.json: %v", err)
+	}
+}
+
+func TestSetTierRejectsInvalidFallbacksWithoutWriting(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+
+	for _, fallbacks := range [][]string{{"primary"}, {"fallback", "fallback"}} {
+		if _, err := SetTier("standard", "primary", fallbacks); err == nil {
+			t.Fatalf("SetTier accepted invalid fallbacks %#v", fallbacks)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".ion", "models.json")); !os.IsNotExist(err) {
+		t.Fatalf("invalid fallback wrote models.json: %v", err)
+	}
+}
+
+func TestTierMutationRefusesCorruptConfig(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	path := filepath.Join(dir, ".ion", "models.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	original := []byte(`{"tiers":`)
+	if err := os.WriteFile(path, original, 0o600); err != nil {
+		t.Fatalf("write corrupt config: %v", err)
+	}
+
+	if _, err := SetTier("standard", "primary", nil); err == nil {
+		t.Fatal("SetTier accepted corrupt config")
+	}
+	if _, err := RemoveTier("standard"); err == nil {
+		t.Fatal("RemoveTier accepted corrupt config")
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read corrupt config: %v", err)
+	}
+	if !bytes.Equal(got, original) {
+		t.Fatalf("corrupt config changed: got %q, want %q", got, original)
+	}
+}
+
+func TestListTiersNormalizesLegacyStringShape(t *testing.T) {
+	dir := t.TempDir()
+	writeModels := filepath.Join(dir, ".ion", "models.json")
+	if err := os.MkdirAll(filepath.Dir(writeModels), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(writeModels, []byte(`{"tiers":{"zeta":"z-model","alpha":{"model":"a-model","fallbacks":["b-model"]}}}`), 0o600); err != nil {
+		t.Fatalf("write models: %v", err)
+	}
+	t.Setenv("HOME", dir)
+
+	got := ListTiers()
+	want := []types.ModelTierEntry{
+		{Name: "alpha", Model: "a-model", Fallbacks: []string{"b-model"}},
+		{Name: "zeta", Model: "z-model", Fallbacks: []string{}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ListTiers() = %#v, want %#v", got, want)
 	}
 }
