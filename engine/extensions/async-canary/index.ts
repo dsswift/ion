@@ -9,10 +9,115 @@
 //     post-init RPC path.
 //   async_canary_register_dynamic_schedule -> dynamically registers
 //     a second interval job.
+//   async_canary_arm_slow_handler -> configures the slow-handler
+//     schedule for the schedule-fire-timeout integration test.
 
 import { createIon, log } from '../sdk/ion-sdk'
 
 const ion = createIon()
+
+// ── Slow-handler probe: schedule-fire-timeout test fixture ────────────────────
+//
+// This schedule never auto-fires (intervalMs is enormous). The integration
+// test fires it manually via host.FireAsync with a short timeout. The handler
+// deliberately waits `slowHandlerDelayMs` milliseconds before making a
+// ctx.dispatchAgent() call, so the Go-side timeout fires BEFORE the handler
+// completes. After the timeout, the handler observes -32000 "dispatch not
+// available" because ctxStack.Current() is nil (the deferred Pop in FireAsync
+// already ran). The handler then emits a "sched_timeout_probe_result" event
+// whose EventMessage carries the error text and whose metadata carries
+// additional shape information about what the TS runtime actually exposed.
+//
+// Configuration is via module-level variables set by the
+// async_canary_arm_slow_handler tool, called once before each FireAsync.
+// This avoids any need to parse custom fields out of the fire payload.
+let slowHandlerDelayMs = 0
+let slowHandlerArmed = false
+
+ion.schedule.interval({
+  id: 'async-canary-slow-handler',
+  // intervalMs is a required field for interval schedules. Use a very large
+  // value so the scheduler never auto-fires this job during test runs.
+  intervalMs: 86400000, // 24 hours — never auto-fires in test windows
+  handler: async (ctx) => {
+    if (!slowHandlerArmed) {
+      // Not armed: skip silently. Should not happen in practice because the
+      // test arms the handler before every FireAsync, but guard defensively.
+      return
+    }
+
+    // Reset so a second unintended fire is a no-op.
+    slowHandlerArmed = false
+    const delayMs = slowHandlerDelayMs
+
+    // Deliberately pause so the Go-side timeout fires before we complete.
+    // The Go test issues FireAsync with a timeout shorter than delayMs,
+    // so by the time we wake up and call ctx.dispatchAgent, the deferred
+    // Pop in FireAsync has already run and ctxStack.Current() is nil.
+    await new Promise<void>((resolve) => setTimeout(resolve, delayMs))
+
+    // Now issue ctx.dispatchAgent. This sends ext/dispatch_agent to Go.
+    // Go's handleExtRequest calls ctxStack.Current() → nil → -32000.
+    // The TS runtime.ts:778 rejects the pending promise with:
+    //   new Error(msg.error.message || 'RPC error')
+    // so the code field (-32000) is dropped; only the message string survives.
+    let errorMessage = ''
+    let errorHasCodeProperty = false
+    let errorName = ''
+    let err: unknown
+    try {
+      await ctx.dispatchAgent({ name: 'test-agent-never-exists' })
+      // If we reach here the ctx was NOT nil — the defect did not trigger.
+      errorMessage = 'UNEXPECTED_SUCCESS'
+    } catch (caught: any) {
+      err = caught
+      errorMessage = String(caught?.message ?? caught ?? 'unknown error')
+      errorName = String(caught?.name ?? '')
+      // Check whether the -32000 code survived into the thrown Error object.
+      // runtime.ts:778 uses only msg.error.message, so code is lost.
+      errorHasCodeProperty = 'code' in Object(caught)
+    }
+
+    // Emit the result via ctx.emit. Because the Go-side ctxStack is empty
+    // at this point, the ext/emit notification is routed by Go's
+    // handleExtNotification to the persistentEmit fallback rather than
+    // the (absent) ctx.Emit. This means the Go integration test catches
+    // it via host.SetPersistentEmit. The routing itself proves ctxStack
+    // is empty — if a ctx were still on the stack, it would have been
+    // used instead.
+    ctx.emit({
+      type: 'sched_timeout_probe_result',
+      message: errorMessage,
+      metadata: {
+        errorName,
+        errorHasCodeProperty,
+        // If the error DID carry a code, record it.
+        errorCode: errorHasCodeProperty ? String((err as any)?.code ?? '') : '',
+      },
+    } as any)
+  },
+})
+
+// Tool to arm the slow-handler probe before a test fire. Call this once
+// immediately before the Go test issues host.FireAsync so the module-level
+// configuration is in place. The handler resets slowHandlerArmed to false
+// on entry so subsequent unintended fires are no-ops.
+ion.registerTool({
+  name: 'async_canary_arm_slow_handler',
+  description: 'Configure the slow-handler schedule for the fire-timeout integration test',
+  parameters: {
+    type: 'object',
+    properties: {
+      delayMs: { type: 'number', description: 'How long the handler pauses before issuing ctx.dispatchAgent' },
+    },
+    required: ['delayMs'],
+  },
+  execute: async (params: any) => {
+    slowHandlerDelayMs = Number(params?.delayMs ?? 50)
+    slowHandlerArmed = true
+    return { content: 'armed' }
+  },
+})
 
 // Static webhook registration. The handler simply echoes back the
 // JSON body. Token is read from process.env so secrets never sit in

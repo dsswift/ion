@@ -337,6 +337,17 @@ func (h *Host) Version() string {
 	return h.version
 }
 
+// CtxStackDepthForTest returns the current depth of the context stack.
+// Exposed for integration tests that need to assert the deferred Pop inside
+// FireAsync left the stack empty after a timeout return. Do not use in
+// production code — the stack is an internal implementation detail of the
+// fire-async path.
+func (h *Host) CtxStackDepthForTest() int {
+	h.ctxStack.mu.Lock()
+	defer h.ctxStack.mu.Unlock()
+	return len(h.ctxStack.stack)
+}
+
 // SetNameForTest sets the host's name without loading an extension.
 // Intended for unit tests in other packages that need hosts with
 // specific names for grouping/coordination testing.
