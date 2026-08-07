@@ -541,7 +541,7 @@ jq -c 'select(.session_id=="<id>")' ~/.ion/*.jsonl
 
 **Filter one extension** (by name):
 ```bash
-jq -c 'select(.component=="extension" and .tag=="ion-meta")' ~/.ion/engine.jsonl
+jq -c 'select(.component=="extension" and .tag=="ion-canary")' ~/.ion/engine.jsonl
 ```
 
 **Filter by time range** (logs after a given timestamp):
@@ -561,7 +561,7 @@ jq -c 'select(.level=="ERROR")' ~/.ion/*.jsonl
 | One conversation | `{component=~".+"} \| json \| conversation_id = "<id>"` |
 | One session across surfaces | `{component=~".+"} \| json \| session_id = "<id>"` |
 | Errors in time range | `{level="ERROR"}` (use Grafana time picker) |
-| One extension | `{component="extension", tag="ion-meta"}` |
+| One extension | `{component="extension", tag="ion-canary"}` |
 | Trace correlation | `{component=~".+"} \| json \| trace_id = "<32-hex-id>"` |
 
 ### Rules
@@ -799,10 +799,16 @@ Before committing, confirm that this behavior-specific test exists and passes. I
 ## Worktrees and benches refuse the writes that cannot be reviewed
 
 Two directory kinds under `~/.ion/` refuse a class of writes based on what the
-directory *is*. Both are enforced for the agent by ion-meta's `tool_call` hook
-and (for benches) for the operator by the desktop's git IPC. Both fail open when
-their backing record is unreadable, because a false refusal where the operator is
-working is worse than a briefly missing guard.
+directory *is*. Ownership follows the mechanism/opinion line: **worktree
+isolation is generic git mechanism, enforced in engine core**
+(`engine/internal/workspaces`, checked in the tool loop beside the permission
+engine); **the bench is Ion's desktop product, enforced by the desktop** — for
+the agent through the engine's client tool gate (`EngineConfig.toolGate`,
+answered by `desktop/src/main/tool-gate-responder.ts` over
+`desktop/src/main/integration/bench-tool-policy.ts`) and for the operator by
+the git IPC (`desktop/src/main/integration/bench-guard.ts`). Both fail open
+when their backing record is unreadable, because a false refusal where the
+operator is working is worse than a briefly missing guard.
 
 **An integration bench refuses history writes.** A directory under
 `~/.ion/integration/` is a rebuildable bench: its branch is recreated from the
@@ -810,15 +816,15 @@ feature branch plus each member's pinned commit on every rebuild. A commit made
 there is destroyed by the next rebuild, and a push would publish a synthetic
 merge of other people's in-flight work. So `commit`, `push`, `pull`, `merge`,
 `rebase`, `cherry-pick`, `revert`, `reset`, `stash`, `tag`, and branch mutation
-are refused by the desktop UI (`desktop/src/main/integration/bench-guard.ts`) and
-by ion-meta's tool gate (`engine/extensions/ion-meta/bench-gate.ts`). Reading,
+are refused by the desktop UI (`bench-guard.ts`) and by the desktop's tool-gate
+policy (`bench-tool-policy.ts`). Reading,
 building, testing, and staging are unaffected. A fix diagnosed in the bench
 belongs in the member worktree that owns the file: commit it there, then update
 that member in the bench. Use the read-only `WorkspaceAttribution` tool to map
 an assembled file (or line range) back to its owner before editing — it returns
 the contributing member(s) with pinned ranges and worktree paths, an ambiguous
 verdict when several plausibly own it, and warnings instead of silent guesses.
-The engine also injects the workspace facts (bench identity, ordered enabled
+The desktop also injects the workspace facts (bench identity, ordered enabled
 members, exact pinned ranges) into bench-rooted conversations, so attribute
 first, then fix, validate, and commit in the owning worktree, then Update and
 reassemble. Never edit the bench or the source checkout directly — the one
@@ -844,7 +850,7 @@ deterministic until either side's conflicting lines genuinely change.
 
 **A bench refuses edits, and names where they belong.** The history rule above
 covers `commit`/`push`; a bench also refuses `Write`, `Edit`, and `ion_scaffold`
-(`engine/extensions/ion-meta/bench-write-gate.ts`), because an edit made there is
+(the desktop's tool-gate policy), because an edit made there is
 destroyed by the next rebuild. `Bash` stays open — building and testing are what
 a bench is for, as do staging and discarding. The refusal names the member
 worktree that owns the file, resolved by diffing each member's pinned commit
@@ -856,13 +862,14 @@ bench it hides Changes and Graph and titles the section `Integration (Bench)`.
 **A worktree refuses writes outside itself.** A conversation whose cwd is a
 registered worktree (`~/.ion/worktree-registry.json`) may not write into the base
 repo it was cut from, nor into a sibling worktree of the same repo
-(`engine/extensions/ion-meta/worktree-gate.ts`). This is **not** a cwd jail:
+(engine-core workspace containment, `engine/internal/workspaces`). This is
+**not** a cwd jail:
 `/tmp`, `~/.ion`, and unrelated repos all stay writable, and a conversation that
 is not in a worktree is unaffected. The rule exists because cross-worktree writes
 interleave several conversations in one dirty checkout, and review cannot
 attribute the hunks afterwards. A `Bash` call is judged by its command text, not
 only its cwd: every literal `cd` / `pushd` / `git -C` / `--work-tree` destination
-in the chain is checked (`bash-destination.ts`), because a command that `cd`s into
+in the chain is checked, because a command that `cd`s into
 the base repo and commits there is the exact way two commits once landed on the
 wrong branch. A dynamic destination (`cd "$VAR"`, `cd $(...)`) cannot be resolved,
 so it passes and is logged at WARN rather than guessed at — a refusal requires a

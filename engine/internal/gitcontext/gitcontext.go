@@ -13,8 +13,6 @@ type GitContext struct {
 	MainBranch    string `json:"mainBranch,omitempty"`
 	Status        string `json:"status,omitempty"`
 	RecentCommits string `json:"recentCommits,omitempty"`
-	UserName      string `json:"userName,omitempty"`
-	UserEmail     string `json:"userEmail,omitempty"`
 }
 
 const maxStatusBytes = 2048
@@ -55,16 +53,6 @@ func GetGitContext(cwd string) *GitContext {
 		ctx.RecentCommits = strings.TrimSpace(out)
 	}
 
-	// User name
-	if out, err := runGit(cwd, "config", "user.name"); err == nil {
-		ctx.UserName = strings.TrimSpace(out)
-	}
-
-	// User email
-	if out, err := runGit(cwd, "config", "user.email"); err == nil {
-		ctx.UserEmail = strings.TrimSpace(out)
-	}
-
 	return ctx
 }
 
@@ -86,9 +74,6 @@ func FormatForPrompt(ctx *GitContext) string {
 	var parts []string
 	if ctx.Branch != "" {
 		parts = append(parts, "Branch: "+ctx.Branch)
-	}
-	if ctx.UserName != "" {
-		parts = append(parts, "User: "+ctx.UserName)
 	}
 	if ctx.Status != "" {
 		lines := strings.Split(ctx.Status, "\n")

@@ -59,10 +59,122 @@ func TestWorkspaceBashPassesWorkInsideOwnWorktree(t *testing.T) {
 		"git add -A && git commit -m 'own worktree work'",
 		"cd " + filepath.Join(minePath, "desktop") + " && npm test",
 		"make build",
-		"git -C " + minePath + " push origin HEAD",
 	} {
 		if r := c.Check("Bash", bashInput(cmd), minePath); r != nil {
 			t.Fatalf("%q is work in the conversation's own worktree and must pass: %+v", cmd, r)
+		}
+	}
+}
+
+func TestWorkspaceBashRefusesWorktreeIdentityChange(t *testing.T) {
+	c := worktreeChecker(t)
+
+	for _, command := range []string{
+		"git checkout --detach HEAD",
+		"git checkout -b other-branch",
+		"git checkout -B other-branch HEAD",
+		"git switch main",
+		"git switch --detach HEAD",
+		"git worktree remove /tmp/other",
+		"git worktree prune",
+		"git -C " + minePath + " switch main",
+		"cd " + minePath + " && git switch main",
+	} {
+		r := c.Check("Bash", bashInput(command), minePath)
+		if r == nil || r.Kind != RefusalWorktreeHistory {
+			t.Fatalf("%q changes worktree identity and must be refused, got %+v", command, r)
+		}
+	}
+}
+
+// The same guard against a REAL registered worktree, whose path is symlinked.
+//
+// The synthetic-path test above cannot catch the defect this one exists for. Its
+// `minePath` does not exist on disk, so canonicalization falls back to the
+// lexical form and a bare prefix comparison happens to work. A real worktree on
+// macOS lives under a temp dir that resolves /var -> /private/var, so the
+// recorded root and the resolved segment directory compare UNEQUAL lexically —
+// and the guard silently stopped firing for every real worktree while this
+// suite stayed green. Both sides must be canonicalized (Checker.within).
+func TestWorkspaceBashRefusesIdentityChangeInRealWorktree(t *testing.T) {
+	checker, worktree := attachmentFixture(t)
+
+	for _, command := range []string{
+		"git checkout --detach HEAD",
+		"git checkout -b other-branch",
+		"git switch main",
+		"git worktree remove /tmp/other",
+		"git worktree prune",
+	} {
+		r := checker.Check("Bash", bashInput(command), worktree)
+		if r == nil || r.Kind != RefusalWorktreeHistory {
+			t.Fatalf("%q must be refused in a real worktree (canonical-path comparison), got %+v", command, r)
+		}
+	}
+
+	// And the sanctioned verbs still pass there, so the fix cannot have been a
+	// blanket widening of the refusal.
+	for _, command := range []string{
+		"git rebase --continue",
+		"git reset --soft main",
+		"git commit --amend",
+		"git push -u origin HEAD",
+		"git branch -f backup HEAD",
+	} {
+		if r := checker.Check("Bash", bashInput(command), worktree); r != nil {
+			t.Fatalf("%q is sanctioned workflow and must pass in a real worktree: %s", command, r.Reason)
+		}
+	}
+}
+
+// The workflows the first revision of this guard broke. Each sequence is copied
+// from the operator's own commands: /align's amend mechanism (B-Step 6),
+// /squash's soft-reset rebuild (Step 7), and /create-pr's push (Step 4). A
+// regression here means the guard has started refusing sanctioned work again.
+func TestWorkspaceBashPassesOperatorGitWorkflows(t *testing.T) {
+	c := worktreeChecker(t)
+
+	for name, command := range map[string]string{
+		"align stash":            `git stash push -u -m "align-fixes" -- engine/x.go`,
+		"align rebase -i":        `GIT_SEQUENCE_EDITOR="sed -i '' '3s/^pick/edit/'" git rebase -i abc123^`,
+		"align amend":            "git stash pop && git add engine/x.go && git commit --amend",
+		"align rebase continue":  "git rebase --continue",
+		"align rebase abort":     "git rebase --abort",
+		"align pr worktree add":  "git worktree add ../ion-align-pr-287 feat/branch",
+		"squash backup branch":   "git branch backup--wt/feature HEAD",
+		"squash backup force":    "git branch -f backup--wt/feature HEAD",
+		"squash soft reset":      "git reset --soft josh",
+		"squash unstage":         "git reset",
+		"squash verify":          "git diff backup--wt/feature",
+		"create-pr push":         "git push -u origin wt/feature",
+		"cherry-pick":            "git cherry-pick deadbeef",
+		"revert":                 "git revert HEAD",
+		"restore staged":         "git restore --staged engine/x.go",
+		"clean force":            "git clean -fd",
+		"checkout file restore":  "git checkout engine/x.go",
+		"checkout conflict side": "git checkout --theirs engine/x.go",
+		"switch continue":        "git switch --continue",
+	} {
+		if r := c.Check("Bash", bashInput(command), minePath); r != nil {
+			t.Fatalf("%s (%q) is sanctioned workflow and must pass, got %+v", name, command, r)
+		}
+	}
+}
+
+func TestWorkspaceBashPassesSafeHistoryInsideOwnWorktree(t *testing.T) {
+	c := worktreeChecker(t)
+	for _, command := range []string{
+		"git status --short",
+		"git diff --cached",
+		"git add -A && git commit -m work",
+		"git log --oneline -5",
+		"git branch --show-current",
+		"git branch -d stale-branch",
+		"git clean -nfd",
+		"git worktree list",
+	} {
+		if r := c.Check("Bash", bashInput(command), minePath); r != nil {
+			t.Fatalf("%q must remain allowed, got %+v", command, r)
 		}
 	}
 }
@@ -148,79 +260,18 @@ func TestWorkspaceBashSubcommandExtraction(t *testing.T) {
 	}
 }
 
-func TestWorkspaceBashMergeDriverDetection(t *testing.T) {
-	driver := resolveBashDestinations("git merge --continue", "/cwd")
-	if !driver.Segments[0].MergeDriverOnly || driver.Segments[0].MergeDriver != "continue" {
-		t.Fatal("merge --continue must classify as continue driver")
+// Merge-driver flags are ordinary git arguments to the engine now (client
+// tool gates own any merge-driver policy); the extraction must still see
+// `git merge --continue` as a `merge` invocation with its arguments intact so
+// downstream policy consumers get the full operation.
+func TestWorkspaceBashMergeArgumentsSurviveExtraction(t *testing.T) {
+	got := resolveBashDestinations("git merge --continue", "/cwd")
+	if len(got.Segments) != 1 || len(got.Segments[0].GitOperations) != 1 {
+		t.Fatalf("merge --continue must extract one git operation: %+v", got.Segments)
 	}
-	if !driver.Segments[0].MergeDriverExact {
-		t.Fatal("merge --continue must match exact grammar")
-	}
-
-	valid := []string{
-		"git merge --abort",
-		"/usr/bin/git merge --continue",
-		"git -C /cwd merge --continue",
-		"git --no-pager -c user.name=test merge --abort",
-		"git --git-dir=/tmp/repo.git merge --continue",
-	}
-	for _, command := range valid {
-		got := resolveBashDestinations(command, "/cwd")
-		if len(got.Segments) == 0 || got.Segments[0].MergeDriver == "" || !got.Segments[0].MergeDriverExact {
-			t.Fatalf("%q: valid exact driver not recognized: %+v", command, got)
-		}
-	}
-
-	unsafe := []string{
-		"git merge --continue && echo hidden",
-		"git merge --continue &",
-		"git merge --continue >out",
-		"git merge --continue <in",
-		"git merge --continue | cat",
-		"git merge --continue; true",
-		"(git merge --continue)",
-		"{ git merge --continue; }",
-		"env git merge --continue",
-		"sudo git merge --continue",
-		"git merge --continue extra",
-		"git merge --continue --quiet",
-		"git merge --continue $(echo hidden)",
-		"git merge --continue `echo hidden`",
-		"sh -c 'git merge --continue'",
-		"git merge \"--continue\"",
-		"git merge --continue\n",
-	}
-	for _, command := range unsafe {
-		got := resolveBashDestinations(command, "/cwd")
-		found := false
-		exact := false
-		for _, segment := range got.Segments {
-			found = found || segment.MergeDriver != ""
-			exact = exact || segment.MergeDriverExact
-		}
-		if !found {
-			t.Fatalf("%q: unsafe driver attempt must remain detectable", command)
-		}
-		if exact {
-			t.Fatalf("%q: unsafe driver matched exact grammar", command)
-		}
-	}
-
-	fresh := resolveBashDestinations("git merge feature", "/cwd")
-	if fresh.Segments[0].MergeDriverOnly {
-		t.Fatal("a fresh merge must not classify as driver-only")
-	}
-}
-
-func TestWorkspaceClassifyMergeDriver(t *testing.T) {
-	f := newBenchFixture(t)
-
-	got := f.checker.ClassifyMergeDriver("Bash", bashInput("git merge --continue"), f.benchPath)
-	if got.Driver != MergeDriverContinue || got.BenchPath != f.benchPath {
-		t.Fatalf("continue classification = %+v", got)
-	}
-	if got := f.checker.ClassifyMergeDriver("Read", map[string]interface{}{}, f.benchPath); got.Driver != "" {
-		t.Fatalf("non-Bash tool classified as merge driver: %+v", got)
+	op := got.Segments[0].GitOperations[0]
+	if op.Subcommand != "merge" || len(op.Arguments) != 1 || op.Arguments[0] != "--continue" {
+		t.Fatalf("merge --continue must retain subcommand and arguments, got %+v", op)
 	}
 }
 
