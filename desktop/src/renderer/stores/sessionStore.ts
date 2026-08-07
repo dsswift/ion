@@ -18,7 +18,9 @@ import { createFileEditorSlice } from './slices/file-editor-slice'
 import { createDirectorySlice } from './slices/directory-slice'
 import { createWorktreeSlice } from './slices/worktree-slice'
 import { createWorktreeInventorySlice } from './slices/worktree-inventory-slice'
+import { createWorktreePipelineSlice } from './slices/worktree-pipeline-slice'
 import { createBenchSlice } from './slices/bench-slice'
+import { createBenchVerificationSlice } from './slices/bench-verification-slice'
 import { createGitConflictSlice } from './slices/git-conflict-slice'
 import { createAttachmentsSlice } from './slices/attachments-slice'
 import { createPermissionsSlice } from './slices/permissions-slice'
@@ -75,6 +77,7 @@ const initialState = {
   benchSourceTips: new Map(),
   benchRetired: new Map(),
   gitConflictAlerts: new Map(),
+  worktreePipeline: null,
   engineWorkingMessages: new Map(),
   engineNotifications: new Map(),
   engineDialogs: new Map(),
@@ -109,7 +112,9 @@ export const useSessionStore = create<State>((set, get) => {
     ...createDirectorySlice(_set, _get),
     ...createWorktreeSlice(_set, _get),
     ...createWorktreeInventorySlice(_set, _get),
+    ...createWorktreePipelineSlice(_set, _get),
     ...createBenchSlice(_set, _get),
+    ...createBenchVerificationSlice(_set, _get),
     ...createGitConflictSlice(_set, _get),
     ...createAttachmentsSlice(_set, _get),
     ...createPermissionsSlice(_set, _get),

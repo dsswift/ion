@@ -31,6 +31,7 @@ vi.mock('os', async () => {
 })
 
 import { assembleBench } from '../integration/bench-assemble'
+import { recordResolution } from '../integration/bench-resolution-journal'
 import { captureContribution } from '../integration/bench-snapshot'
 import { makeWorkspace, makeMember } from '../integration/bench-store'
 import type { IntegrationWorkspace, IntegrationMember } from '../../shared/types'
@@ -125,6 +126,10 @@ describe('assembleBench — atomic conflicts and missing members', () => {
     const workspace = result.workspace!
     expect(workspace.lastAssembly).toBe('failed')
     expect(workspace.lastAssemblyError).toContain('wt/c')
+    // Classified distinctly from a verification failure: this IS a merge
+    // conflict, and carries no verification evidence.
+    expect(workspace.lastAssemblyFailure).toBe('conflict')
+    expect(workspace.lastAssemblyVerification).toBeUndefined()
 
     const byBranch = Object.fromEntries(workspace.members.map((m) => [m.branchName, m]))
     expect(byBranch['wt/c'].merge).toBe('conflicted')
@@ -220,6 +225,51 @@ describe('assembleBench — refuses while a resolution merge is open', () => {
     // The merge is still open: unmerged paths survive the refused assembly.
     expect(git(ws.benchPath, 'diff', '--name-only', '--diff-filter=U').trim()).toBe('shared.txt')
   })
+
+  // The live defect this pins: the AI assist (or the operator via the merge
+  // editor) resolved and STAGED every conflicted path, but `merge --continue`
+  // never ran — the dialog closed, the assist tab was dismissed, or the
+  // desktop restarted. The merge sat open with zero unmerged paths, every
+  // Assemble press was refused, the refusal was invisible in the UI, and the
+  // bar showed a stale "assembly failed" forever. Nothing in that state needs
+  // a human: completing the merge is mechanical AND is the act that records
+  // the rerere resolution. The assembly must finish it and proceed.
+  it('completes a fully-staged open merge and assembles instead of refusing', async () => {
+    const a = makeWorktree('a', 'shared.txt', 'from a\n')
+    const c = makeWorktree('c', 'shared.txt', 'from c\n')
+    const ws = workspaceFor([await enroll(a), await enroll(c)])
+    await assembleBench(ws) // fails atomically, bench exists
+
+    // Re-create the resolve-once state, then resolve and stage EVERYTHING —
+    // but never run `merge --continue`. This is the stuck state.
+    git(ws.benchPath, 'switch', '-C', 'ion/bench/test', 'main', '--discard-changes')
+    git(ws.benchPath, 'merge', '--no-ff', '-m', 'prior', ws.members[0].pinnedSha)
+    try {
+      git(ws.benchPath, 'merge', '--no-ff', '-m', 'conflicted', ws.members[1].pinnedSha)
+      throw new Error('expected the merge to conflict')
+    } catch { /* in progress */ }
+    writeFileSync(join(ws.benchPath, 'shared.txt'), 'from a and c, resolved\n')
+    git(ws.benchPath, 'add', 'shared.txt')
+    expect(git(ws.benchPath, 'diff', '--name-only', '--diff-filter=U').trim()).toBe('')
+
+    // RED before the fix: refusal 'resolution-in-progress' despite nothing
+    // left to resolve. Now: the merge completes (recording the resolution)
+    // and the assembly runs — and the recorded resolution replays into it.
+    const result = await assembleBench(ws)
+
+    expect(result.refusal).toBeUndefined()
+    expect(result.ok).toBe(true)
+    expect(result.workspace!.lastAssembly).toBe('assembled')
+    // No merge left open (the bench is a linked worktree, so ask git for the
+    // per-worktree path rather than joining .git/MERGE_HEAD by hand), and the
+    // conflicted member landed by replay.
+    const mergeHead = git(ws.benchPath, 'rev-parse', '--git-path', 'MERGE_HEAD').trim()
+    expect(existsSync(join(ws.benchPath, mergeHead)) || existsSync(mergeHead)).toBe(false)
+    const member = result.workspace!.members.find((m) => m.branchName === 'wt/c')!
+    expect(member.merge).toBe('merged')
+    expect(member.mergeResolution).toBe('replayed')
+    expect(readFileSync(join(ws.benchPath, 'shared.txt'), 'utf-8')).toBe('from a and c, resolved\n')
+  })
 })
 
 describe('assembleBench — rerere resolve once, replay forever', () => {
@@ -291,7 +341,7 @@ describe('assembleBench — rerere resolve once, replay forever', () => {
     expect(existsSync(join(ws.benchPath, 'verify-ran'))).toBe(true)
   })
 
-  it('rejects replayed resolution when project verification fails', async () => {
+  it('rejects replayed resolution when project verification fails, and RETAINS the recording', async () => {
     const a = makeWorktree('a', 'shared.txt', 'from a\n')
     const c = makeWorktree('c', 'shared.txt', 'from c\n')
     const ws = workspaceFor([await enroll(a), await enroll(c)])
@@ -304,13 +354,30 @@ describe('assembleBench — rerere resolve once, replay forever', () => {
     expect(result.ok).toBe(true)
     expect(result.workspace!.lastAssembly).toBe('failed')
     expect(result.workspace!.lastAssemblyError).toContain('failed project verification')
+    // Classified distinctly from a merge conflict: nothing here failed to
+    // merge -- every merge (including the replay) completed, and the project's
+    // own verify command rejected the resulting tree.
+    expect(result.workspace!.lastAssemblyFailure).toBe('verification')
+    expect(result.workspace!.lastAssemblyVerification?.command).toBe('exit 1')
+    expect(result.workspace!.lastAssemblyVerification?.replayedBranches).toContain('wt/c')
     expect(existsSync(join(ws.benchPath, 'shared.txt'))).toBe(false)
     expect(result.workspace!.members.every((member) => member.mergeResolution === undefined)).toBe(true)
 
-    git(ws.benchPath, 'switch', '-C', ws.benchBranch, 'main', '--discard-changes')
-    git(ws.benchPath, 'merge', '--no-ff', '-m', 'prior', ws.members[0].pinnedSha)
-    expect(() => git(ws.benchPath, 'merge', '--no-ff', '-m', 'conflict again', ws.members[1].pinnedSha)).toThrow()
-    expect(git(ws.benchPath, 'diff', '--name-only', '--diff-filter=U').trim()).toBe('shared.txt')
+    // ── The recording is RETAINED, not forgotten ────────────────────────────
+    // The old behaviour called `forgetRererePaths` here, post-commit, where it
+    // was a silent no-op (no MERGE_HEAD to forget within) -- so the recording
+    // survived while the record claimed it was discarded. The corrected
+    // behaviour is honest about that instead of half-fixing it: forgetting
+    // ALL replayed recordings to punish one poisoned one is not this
+    // function's call (see bench-recording-recovery.ts for the operator's
+    // consented, targeted alternative). Reassembling replays the SAME
+    // recording and fails identically -- which is exactly the loop observed
+    // in production before this fix, now pinned as the expected shape of an
+    // unaddressed verification failure rather than a surprise.
+    const again = await assembleBench(result.workspace!)
+    expect(again.workspace!.lastAssembly).toBe('failed')
+    expect(again.workspace!.lastAssemblyFailure).toBe('verification')
+    expect(again.workspace!.lastAssemblyVerification?.replayedBranches).toContain('wt/c')
   })
 
   /**
@@ -411,5 +478,116 @@ describe('assembleBench — rerere resolve once, replay forever', () => {
     const member = result.workspace!.members.find((m) => m.branchName === 'wt/c')!
     expect(member.merge).toBe('conflicted')
     expect(member.mergeResolution).toBeUndefined()
+  })
+})
+
+/**
+ * A conflict report carries what was decided about the same paths before.
+ *
+ * The measured problem: the same file conflicting once per member, each
+ * resolution starting cold. rerere cannot help — its key is the conflict text,
+ * which differs per member — so the journal carries the reasoning instead, and
+ * the failure record is where a resolver will already be looking.
+ */
+describe('assembleBench — conflict reports carry prior resolutions', () => {
+  it('attaches journal entries for the conflicted paths, newest first', async () => {
+    const a = makeWorktree('a', 'shared.txt', 'from a\n')
+    const c = makeWorktree('c', 'shared.txt', 'from c\n')
+    const ws = workspaceFor([await enroll(a), await enroll(c)])
+
+    recordResolution({
+      repoPath: ws.repoPath,
+      sourceBranch: ws.sourceBranch,
+      benchBranch: ws.benchBranch,
+      path: 'shared.txt',
+      memberBranch: 'wt/earlier',
+      collidedWith: ['wt/a'],
+      baseSha: 'base',
+      memberPinnedSha: 'pin',
+      resolvedSha: 'res',
+      resolvedAt: 100,
+      verified: true,
+      rationale: 'kept a\'s structure and layered c\'s addition on top',
+    })
+    recordResolution({
+      repoPath: ws.repoPath,
+      sourceBranch: ws.sourceBranch,
+      benchBranch: ws.benchBranch,
+      path: 'shared.txt',
+      memberBranch: 'wt/later',
+      collidedWith: [],
+      baseSha: 'base',
+      memberPinnedSha: 'pin2',
+      resolvedSha: 'res2',
+      resolvedAt: 300,
+      verified: false,
+      rationale: 'second pass',
+    })
+
+    const result = await assembleBench(ws)
+
+    const conflicted = result.workspace!.members.find((m) => m.merge === 'conflicted')!
+    expect(conflicted.conflictPaths).toContain('shared.txt')
+    expect(conflicted.priorResolutions).toHaveLength(2)
+    // Newest first: the most recent decision about the file is read first.
+    expect(conflicted.priorResolutions!.map((r) => r.memberBranch)).toEqual(['wt/later', 'wt/earlier'])
+    expect(conflicted.priorResolutions![1].rationale).toContain("kept a's structure")
+    expect(conflicted.priorResolutions![1].verified).toBe(true)
+  })
+
+  it('leaves the field absent when the journal holds nothing for those paths', async () => {
+    const a = makeWorktree('a', 'shared.txt', 'from a\n')
+    const c = makeWorktree('c', 'shared.txt', 'from c\n')
+    const ws = workspaceFor([await enroll(a), await enroll(c)])
+
+    recordResolution({
+      repoPath: ws.repoPath,
+      sourceBranch: ws.sourceBranch,
+      benchBranch: ws.benchBranch,
+      // A different file: must not be offered for this conflict.
+      path: 'unrelated.ts',
+      memberBranch: 'wt/x',
+      collidedWith: [],
+      baseSha: 'base',
+      memberPinnedSha: 'pin',
+      resolvedSha: 'res',
+      resolvedAt: 100,
+      verified: true,
+      rationale: 'irrelevant',
+    })
+
+    const result = await assembleBench(ws)
+
+    const conflicted = result.workspace!.members.find((m) => m.merge === 'conflicted')!
+    // Absent, not an empty array: "no prior context" and "context that is empty"
+    // read differently to a consumer.
+    expect(conflicted.priorResolutions).toBeUndefined()
+  })
+
+  it('never attaches prior resolutions to the members that did not conflict', async () => {
+    const a = makeWorktree('a', 'shared.txt', 'from a\n')
+    const c = makeWorktree('c', 'shared.txt', 'from c\n')
+    const ws = workspaceFor([await enroll(a), await enroll(c)])
+
+    recordResolution({
+      repoPath: ws.repoPath,
+      sourceBranch: ws.sourceBranch,
+      benchBranch: ws.benchBranch,
+      path: 'shared.txt',
+      memberBranch: 'wt/earlier',
+      collidedWith: [],
+      baseSha: 'base',
+      memberPinnedSha: 'pin',
+      resolvedSha: 'res',
+      resolvedAt: 100,
+      verified: true,
+      rationale: 'prior',
+    })
+
+    const result = await assembleBench(ws)
+
+    for (const m of result.workspace!.members.filter((x) => x.merge !== 'conflicted')) {
+      expect(m.priorResolutions).toBeUndefined()
+    }
   })
 })

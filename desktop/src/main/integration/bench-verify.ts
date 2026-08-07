@@ -10,6 +10,14 @@ export interface BenchVerifyResult {
   ran: boolean
   ok: boolean
   output: string
+  /**
+   * The exact command that ran, or empty when `ran` is false (no manifest
+   * declared one). Callers that surface a verification failure to the
+   * operator (the bench-verification recovery dialog, the AI-assisted
+   * analysis prompt) need the literal command, not a re-read of the manifest
+   * at report time — the bench may already be wiped by then.
+   */
+  command: string
 }
 
 /**
@@ -39,7 +47,7 @@ export async function runBenchVerify(repoPath: string, benchPath: string): Promi
       repo_path: repoPath,
       bench_path: benchPath,
     })
-    return { ran: false, ok: true, output: '' }
+    return { ran: false, ok: true, output: '', command: '' }
   }
 
   log('bench verification starting', {
@@ -69,5 +77,5 @@ export async function runBenchVerify(repoPath: string, benchPath: string): Promi
       command: spec.verify,
     })
   }
-  return { ran: true, ok: result.ok, output: result.output }
+  return { ran: true, ok: result.ok, output: result.output, command: spec.verify }
 }

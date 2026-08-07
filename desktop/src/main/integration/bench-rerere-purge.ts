@@ -45,9 +45,24 @@ export async function discardAllRerereRecordings(directory: string): Promise<Rer
   }
 }
 
+/**
+ * Forget specific recordings by path, OUTSIDE any merge context.
+ *
+ * This is a targeted variant of the blunt `discardAllRerereRecordings` above,
+ * and it shares its constraint: `git rerere forget` can only act within an
+ * active merge (MERGE_HEAD present), so a caller with no merge open — which
+ * this one is, by construction, since it is invoked from IPC against an
+ * arbitrary bench directory — always gets `noContext` back. Kept here as the
+ * general-purpose IPC surface; the bench-verification recovery flow uses
+ * `forgetRecordingsForBranches` instead, which recreates the merge context
+ * this needs before calling into the same underlying helper.
+ */
 export async function forgetRerereRecordings(directory: string, paths: string[]): Promise<RererePurgeResult> {
   const result = await forgetRererePaths(directory, paths)
-  return result.ok
-    ? { ok: true, count: result.forgottenPaths.length }
-    : { ok: false, count: result.forgottenPaths.length, error: result.error }
+  if (result.ok) return { ok: true, count: result.forgottenPaths.length }
+  return {
+    ok: false,
+    count: result.forgottenPaths.length,
+    error: 'error' in result ? result.error : 'No merge is in progress in this directory to forget within.',
+  }
 }

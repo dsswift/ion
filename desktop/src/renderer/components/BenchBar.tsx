@@ -13,13 +13,15 @@
  * The workspace selector stays for a repo integrating into more than one
  * feature branch, because it decides which membership the rows below display.
  */
-import React from 'react'
-import { ArrowsClockwise, ChatCircle, CircleNotch, Terminal, Trash, X } from '@phosphor-icons/react'
+import React, { useRef, useState } from 'react'
+import { ArrowsClockwise, CaretDown, ChatCircle, CircleNotch, Terminal, Trash, X } from '@phosphor-icons/react'
 import { useColors } from '../theme'
 import { Tooltip } from './git/Tooltip'
 import { HoverCard } from './git/HoverCard'
 import { WorktreeConversationsCard } from './WorktreeConversationsCard'
+import { WorktreeRowGoToTabSubmenu } from './WorktreeRowGoToTabSubmenu'
 import { useSessionStore } from '../stores/sessionStore'
+import { zoomRect } from '../viewport-zoom'
 import { describeOpenConversations, type DirConversation } from '../../shared/worktree-conversations'
 import type { IntegrationWorkspace, IntegrationMember } from '../../shared/types'
 import type { OrphanMembership } from '../../shared/worktree-list'
@@ -39,6 +41,16 @@ export interface BenchBarProps {
   active: IntegrationWorkspace
   /** Conversations open in the BENCH directory, distinct from its members'. */
   benchConversations: readonly DirConversation[]
+  /**
+   * Every conversation open in the bench directory, ALL-INCLUSIVE — includes a
+   * `conflict-auto-fix` conversation (from bench-verification analysis) that
+   * `benchConversations` deliberately excludes. Feeds the "Go to tab" picker
+   * below the chat button; `benchConversations` keeps display surfaces
+   * (the "open ×N" hint, the hover card) operator-only. See the module
+   * doc-comment in `shared/worktree-conversations.ts` for why the two lists
+   * are kept separate.
+   */
+  allBenchConversations: readonly DirConversation[]
   /** True when the source branch has moved past the bench's base. */
   baseDrifted: boolean
   /** Memberships whose worktree is gone: rendered as a footnote, never as rows. */
@@ -66,12 +78,28 @@ export interface BenchBarProps {
   onAssemble(): void
   onDiscardRecordings(): void
   onDismissAbsorbed(): void
+  /**
+   * Open the verification-failure recovery dialog. Present only when
+   * `active.lastAssemblyFailure === 'verification'` — a plain merge-conflict
+   * failure has no dialog to open from the bar (its detail lives on the
+   * conflicted member's row instead).
+   */
+  onShowVerificationFailure?(): void
 }
 
 export function BenchBar(props: BenchBarProps): React.JSX.Element {
   const colors = useColors()
   const { workspaces, active, baseDrifted, busy, behindCount } = props
   const openLabel = describeOpenConversations(props.benchConversations)
+  // "Go to tab" picker anchored under the chat button — the only path to a
+  // conflict-auto-fix conversation running in the bench, which
+  // openBenchConversation's singleton resolution can never reach (see
+  // WorktreeRowGoToTabSubmenu's doc-comment on the two-collector split).
+  // Anchor is captured at click time (measured once, like WorktreeRowMenu's
+  // submenu anchors) rather than recomputed every render.
+  const [goToTabAnchor, setGoToTabAnchor] = useState<{ x: number; y: number } | null>(null)
+  const chatButtonRef = useRef<HTMLButtonElement>(null)
+  const allConversations = props.allBenchConversations
 
   return (
     <div style={{ flexShrink: 0 }}>
@@ -141,13 +169,33 @@ export function BenchBar(props: BenchBarProps): React.JSX.Element {
         {/* The outcome, not just the age. `failed` means the bench was wiped
             to an empty tree (atomic assembly) — an operator who switches to it
             and finds nothing must have been told why HERE, not by the empty
-            directory. Absent (legacy record) falls back to the age alone. */}
+            directory. Absent (legacy record) falls back to the age alone.
+            `verification` failures get distinct wording AND a clickable
+            surface: unlike a merge conflict (whose detail lives on the
+            conflicted member's row), nothing merged wrong here -- there is no
+            row to point at, so the bar itself is where the detail opens. */}
         {active.lastAssembly === 'failed' ? (
-          <Tooltip text={active.lastAssemblyError ?? 'The last assembly failed and the bench is empty until the conflict is resolved.'}>
-            <span data-testid="bench-assembly-failed" style={{ fontSize: 9, color: colors.dangerFg }}>
-              assembly failed
-            </span>
-          </Tooltip>
+          active.lastAssemblyFailure === 'verification' ? (
+            <Tooltip text={active.lastAssemblyError ?? 'Project verification rejected the assembled tree. Click for detail.'}>
+              <button
+                data-testid="bench-verification-failed"
+                onClick={props.onShowVerificationFailure}
+                disabled={busy !== null}
+                style={{
+                  fontSize: 9, color: colors.dangerFg, background: 'transparent', border: 'none',
+                  padding: 0, cursor: busy ? 'default' : 'pointer',
+                }}
+              >
+                verification failed
+              </button>
+            </Tooltip>
+          ) : (
+            <Tooltip text={active.lastAssemblyError ?? 'The last assembly failed and the bench is empty until the conflict is resolved.'}>
+              <span data-testid="bench-assembly-failed" style={{ fontSize: 9, color: colors.dangerFg }}>
+                assembly failed
+              </span>
+            </Tooltip>
+          )
         ) : (
           <span style={{ fontSize: 9, color: colors.textTertiary }}>{relativeTime(active.lastBuiltAt)}</span>
         )}
@@ -178,6 +226,39 @@ export function BenchBar(props: BenchBarProps): React.JSX.Element {
             {busy === 'conversation' ? <CircleNotch size={12} className="animate-spin" /> : <ChatCircle size={12} />}
           </button>
         </Tooltip>
+
+        {/* "Go to tab" picker — the only path to a bench-verification
+            conflict-auto-fix conversation. openBenchConversation's singleton
+            resolution can never find one (it matches only tabRole
+            'bench-conversation'), so without this the operator had no way
+            back into a diagnosis conversation running against the bench.
+            ALL-INCLUSIVE list (allBenchConversations), shown whenever
+            anything at all is open here -- same threshold the worktree row's
+            equivalent menu item uses. */}
+        {allConversations.length > 0 && (
+          <Tooltip text="Go to a conversation open in the bench">
+            <button
+              ref={chatButtonRef}
+              data-testid="bench-go-to-tab"
+              onClick={() => {
+                setGoToTabAnchor((prev) => {
+                  if (prev) return null
+                  const rect = chatButtonRef.current ? zoomRect(chatButtonRef.current.getBoundingClientRect()) : null
+                  return { x: rect?.left ?? 0, y: rect?.bottom ?? 0 }
+                })
+              }}
+              disabled={busy !== null}
+              style={{
+                display: 'inline-flex', alignItems: 'center', padding: 2,
+                background: 'transparent', border: 'none',
+                color: colors.textTertiary,
+                cursor: busy ? 'default' : 'pointer',
+              }}
+            >
+              <CaretDown size={10} />
+            </button>
+          </Tooltip>
+        )}
 
         {/* Building and testing in the bench is shell work, and the generic
             new-terminal path stacks a fresh tab per press. This always lands on
@@ -229,6 +310,15 @@ export function BenchBar(props: BenchBarProps): React.JSX.Element {
           </button>
         </Tooltip>
       </div>
+
+      {goToTabAnchor && (
+        <WorktreeRowGoToTabSubmenu
+          anchor={goToTabAnchor}
+          conversations={allConversations}
+          prefer="below"
+          onClose={() => setGoToTabAnchor(null)}
+        />
+      )}
 
       {props.absorbed.length > 0 && (
         <div

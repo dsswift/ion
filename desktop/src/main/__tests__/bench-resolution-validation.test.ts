@@ -58,6 +58,8 @@ describe('bench resolution validation failures', () => {
 
   it('stops at first rerere forget failure and reports completed forgets', async () => {
     mockedRunGit
+      // The MERGE_HEAD guard forgetRererePaths now checks before its loop.
+      .mockResolvedValueOnce('')
       .mockResolvedValueOnce('')
       .mockResolvedValueOnce('first.txt\n')
       .mockRejectedValueOnce(new Error('forget unavailable'))
@@ -68,6 +70,18 @@ describe('bench resolution validation failures', () => {
       path: 'second.txt',
       forgottenPaths: ['first.txt'],
     })
-    expect(mockedRunGit).toHaveBeenCalledTimes(3)
+    expect(mockedRunGit).toHaveBeenCalledTimes(4)
+  })
+
+  it('refuses to forget with no merge in progress, rather than silently forgetting nothing', async () => {
+    mockedRunGit.mockRejectedValueOnce(new Error('no MERGE_HEAD'))
+
+    await expect(forgetRererePaths('/bench', ['first.txt'])).resolves.toEqual({
+      ok: false,
+      noContext: true,
+      forgottenPaths: [],
+    })
+    // The loop never starts: only the MERGE_HEAD probe ran.
+    expect(mockedRunGit).toHaveBeenCalledTimes(1)
   })
 })

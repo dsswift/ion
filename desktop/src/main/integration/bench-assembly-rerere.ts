@@ -74,8 +74,14 @@ export async function tryReplayResolution(
     })
     const forgotten = await forgetRererePaths(benchPath, rererePaths)
     if (!forgotten.ok) {
+      // `noContext` cannot fire here in practice (this runs inside the live
+      // merge attempt, before any commit), but the type is a union and every
+      // branch must be handled explicitly rather than assumed away.
       warn('rerere replay recovery stopped because recording could not be forgotten', {
-        branch: branchName, bench_path: benchPath, path: forgotten.path, error: forgotten.error,
+        branch: branchName,
+        bench_path: benchPath,
+        path: 'path' in forgotten ? forgotten.path : undefined,
+        error: 'error' in forgotten ? forgotten.error : 'no merge in progress to forget within',
       })
       return { replayed: false, rererePaths: [] }
     }
@@ -88,6 +94,13 @@ export async function tryReplayResolution(
 
     try {
       await runGit(benchPath, ['merge', '--abort'])
+      // Same untracked-leftover hazard as every other bench reset (see
+      // `resetBenchToTree`'s doc comment): the abort just above can leave a
+      // rerere-autoUpdate-staged file behind untracked, which would otherwise
+      // block the immediate recreate attempt below with a confusing git
+      // error absorbed into "could not verify fresh unmerged paths" rather
+      // than surfacing as the correctly classified failure it actually is.
+      await runGit(benchPath, ['clean', '-fd'])
       await runGit(benchPath, ['merge', '--no-ff', '-m', message, mergeTarget])
       warn('rerere replay recovery unexpectedly merged cleanly after forget', {
         branch: branchName, bench_path: benchPath, forgotten_paths: forgotten.forgottenPaths,
