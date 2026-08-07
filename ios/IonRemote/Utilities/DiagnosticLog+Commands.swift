@@ -25,6 +25,8 @@ extension DiagnosticLog {
             log("CMD: worktreeOpenConversation wt=\(worktreePath.suffix(30)) new=\(newConversation)", tag: "ipc", level: .info)
         case .worktreeSync(let worktreePath, let sourceBranch, _):
             log("CMD: worktreeSync wt=\(worktreePath.suffix(30)) source=\(sourceBranch)", tag: "ipc", level: .info)
+        case .worktreeSyncAll(let repoPath):
+            log("CMD: worktreeSyncAll repo=\(repoPath.suffix(30))", tag: "ipc", level: .info)
         case .worktreeLand(_, let worktreePath, let worktreeBranch, let sourceBranch):
             log("CMD: worktreeLand wt=\(worktreePath.suffix(30)) branch=\(worktreeBranch) source=\(sourceBranch)", tag: "ipc", level: .info)
         case .benchOpenConversation(_, let sourceBranch):
@@ -39,8 +41,8 @@ extension DiagnosticLog {
             log("CMD: benchUpdateAll source=\(sourceBranch)", tag: "ipc", level: .info)
         case .benchSetEnabled(_, let sourceBranch, let worktreePath, let enabled):
             log("CMD: benchSetEnabled source=\(sourceBranch) wt=\(worktreePath.suffix(30)) enabled=\(enabled)", tag: "ipc", level: .info)
-        case .benchSetReview(_, let sourceBranch, let worktreePath, let review):
-            log("CMD: benchSetReview source=\(sourceBranch) wt=\(worktreePath.suffix(30)) review=\(review ?? "none")", tag: "ipc", level: .info)
+        case .worktreeSetStage(_, let worktreePath, let stage):
+            log("CMD: worktreeSetStage wt=\(worktreePath.suffix(30)) stage=\(stage ?? "none")", tag: "ipc", level: .info)
         case .benchReorderMember(_, let sourceBranch, let worktreePath, let toIndex):
             log("CMD: benchReorderMember source=\(sourceBranch) wt=\(worktreePath.suffix(30)) to=\(toIndex)", tag: "ipc", level: .info)
         case .benchAddMember(_, let sourceBranch, _, let branchName):

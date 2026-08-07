@@ -1,209 +1,13 @@
 import XCTest
 @testable import IonRemote
 
-/// Worktree + integration bench wire parity.
+/// Worktree + integration bench wire parity — EVENTS (desktop → iOS).
 ///
-/// The desktop owns this wire (ADR-008) and it is lockstep: a rename ships to
-/// both sides in one change. These tests pin the exact type strings and the
-/// decode of every field the UI renders, so a desktop-side change that misses
-/// Swift fails here rather than silently degrading at runtime.
+/// Split from the original WorktreeWireTests.swift (file-size cap): the
+/// command half now lives in WorktreeWireCommandTests.swift. This half pins
+/// the decode of every state field the UI renders. The desktop owns this wire
+/// (ADR-008) and it is lockstep: a rename ships to both sides in one change.
 final class WorktreeWireTests: XCTestCase {
-
-    // MARK: - Commands (iOS → desktop)
-
-    /// Every command's wire `type` string, asserted literally. A typo here is
-    /// invisible until the desktop ignores the frame.
-    func testCommandTypeStrings() throws {
-        let cases: [(RemoteCommand, String)] = [
-            (.worktreeRefresh(repoPath: "/repo"), "desktop_worktree_refresh"),
-            (.worktreeOpenConversation(worktreePath: "/wt", newConversation: false),
-             "desktop_worktree_open_conversation"),
-            (.worktreeSync(worktreePath: "/wt", sourceBranch: "josh", repoPath: "/repo"), "desktop_worktree_sync"),
-            (.worktreeLand(repoPath: "/repo", worktreePath: "/wt", worktreeBranch: "wt/a", sourceBranch: "josh"),
-             "desktop_worktree_land"),
-            (.benchOpenConversation(repoPath: "/repo", sourceBranch: "josh"), "desktop_bench_open_conversation"),
-            (.benchOpenTerminal(repoPath: "/repo", sourceBranch: "josh"), "desktop_bench_open_terminal"),
-            (.benchAssemble(repoPath: "/repo", sourceBranch: "josh"), "desktop_bench_assemble"),
-            (.benchUpdateMember(repoPath: "/repo", sourceBranch: "josh", worktreePath: "/wt"),
-             "desktop_bench_update_member"),
-            (.benchUpdateAll(repoPath: "/repo", sourceBranch: "josh"), "desktop_bench_update_all"),
-            (.benchSetEnabled(repoPath: "/repo", sourceBranch: "josh", worktreePath: "/wt", enabled: false),
-             "desktop_bench_set_enabled"),
-            (.benchSetReview(repoPath: "/repo", sourceBranch: "josh", worktreePath: "/wt", review: "good"),
-             "desktop_bench_set_review"),
-            (.benchReorderMember(repoPath: "/repo", sourceBranch: "josh", worktreePath: "/wt", toIndex: 0),
-             "desktop_bench_reorder_member"),
-            (.benchAddMember(repoPath: "/repo", sourceBranch: "josh", worktreePath: "/wt", branchName: "wt/a"),
-             "desktop_bench_add_member"),
-            (.benchRemoveMember(repoPath: "/repo", sourceBranch: "josh", worktreePath: "/wt"),
-             "desktop_bench_remove_member"),
-        ]
-
-        for (command, expected) in cases {
-            let data = try JSONEncoder().encode(command)
-            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-            XCTAssertEqual(json["type"] as? String, expected, "wrong type string for \(command)")
-        }
-    }
-
-    func testLandCommandCarriesEveryField() throws {
-        let cmd = RemoteCommand.worktreeLand(
-            repoPath: "/repo", worktreePath: "/wt/a", worktreeBranch: "wt/a3f1", sourceBranch: "josh")
-
-        let json = try XCTUnwrap(
-            JSONSerialization.jsonObject(with: try JSONEncoder().encode(cmd)) as? [String: Any])
-
-        XCTAssertEqual(json["repoPath"] as? String, "/repo")
-        XCTAssertEqual(json["worktreePath"] as? String, "/wt/a")
-        XCTAssertEqual(json["worktreeBranch"] as? String, "wt/a3f1")
-        XCTAssertEqual(json["sourceBranch"] as? String, "josh")
-    }
-
-    func testCommandsRoundTrip() throws {
-        let cmd = RemoteCommand.benchSetEnabled(
-            repoPath: "/repo", sourceBranch: "josh", worktreePath: "/wt/a", enabled: false)
-
-        let decoded = try JSONDecoder().decode(RemoteCommand.self, from: try JSONEncoder().encode(cmd))
-
-        guard case let .benchSetEnabled(repo, source, path, enabled) = decoded else {
-            return XCTFail("decoded to the wrong case: \(decoded)")
-        }
-        XCTAssertEqual(repo, "/repo")
-        XCTAssertEqual(source, "josh")
-        XCTAssertEqual(path, "/wt/a")
-        XCTAssertFalse(enabled)
-    }
-
-    /// A shell in the bench and a conversation about it are separate commands,
-    /// not one command with a flag: the desktop routes them to different store
-    /// actions, and the terminal one keeps exactly one tab per bench.
-    func testBenchTerminalCommandRoundTrips() throws {
-        let cmd = RemoteCommand.benchOpenTerminal(repoPath: "/repo", sourceBranch: "feat/thing")
-
-        let data = try JSONEncoder().encode(cmd)
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-        XCTAssertEqual(json["repoPath"] as? String, "/repo")
-        XCTAssertEqual(json["sourceBranch"] as? String, "feat/thing")
-
-        let decoded = try JSONDecoder().decode(RemoteCommand.self, from: data)
-        guard case let .benchOpenTerminal(repo, source) = decoded else {
-            return XCTFail("decoded to the wrong case: \(decoded)")
-        }
-        XCTAssertEqual(repo, "/repo")
-        XCTAssertEqual(source, "feat/thing")
-    }
-
-    /// The new-conversation flag distinguishes two verbs on one command: tapping
-    /// a row opens or cycles what exists, the row menu creates an additional one.
-    func testOpenConversationCarriesTheNewConversationFlag() throws {
-        for flag in [true, false] {
-            let cmd = RemoteCommand.worktreeOpenConversation(worktreePath: "/wt/a", newConversation: flag)
-
-            let json = try XCTUnwrap(
-                JSONSerialization.jsonObject(with: try JSONEncoder().encode(cmd)) as? [String: Any])
-            XCTAssertEqual(json["newConversation"] as? Bool, flag)
-
-            let decoded = try JSONDecoder().decode(RemoteCommand.self, from: try JSONEncoder().encode(cmd))
-            guard case let .worktreeOpenConversation(path, newConversation) = decoded else {
-                return XCTFail("decoded to the wrong case: \(decoded)")
-            }
-            XCTAssertEqual(path, "/wt/a")
-            XCTAssertEqual(newConversation, flag)
-        }
-    }
-
-    /// An older desktop sends no flag. Absent must read as open-or-cycle, never
-    /// as "create another" -- guessing wrong there stacks duplicate conversations.
-    func testAbsentNewConversationFlagDecodesAsOpenOrCycle() throws {
-        let json = #"{"type":"desktop_worktree_open_conversation","worktreePath":"/wt/a"}"#
-            .data(using: .utf8)!
-
-        let decoded = try JSONDecoder().decode(RemoteCommand.self, from: json)
-
-        guard case let .worktreeOpenConversation(_, newConversation) = decoded else {
-            return XCTFail("decoded to the wrong case: \(decoded)")
-        }
-        XCTAssertFalse(newConversation)
-    }
-
-    /// `landedAt` is the only honest signal for "finished". `safeToDiscard` is
-    /// "nothing to lose", equally true of a worktree that never committed, so
-    /// grouping on it files every fresh empty worktree as if work had shipped.
-    func testLandedAtDrivesTheFinishedGrouping() throws {
-        let json = """
-        {"type":"desktop_worktree_state","states":[{"repoPath":"/repo","worktrees":[{
-          "worktreePath":"/wt/fresh","branchName":"wt/fresh","label":"fresh","sourceBranch":"josh",
-          "head":"abc","lastCommitSubject":"","isDirty":false,"unlandedCommitCount":0,
-          "needsSync":false,"safeToDiscard":true},{
-          "worktreePath":"/wt/done","branchName":"wt/done","label":"done","sourceBranch":"josh",
-          "head":"def","lastCommitSubject":"","isDirty":false,"unlandedCommitCount":0,
-          "needsSync":false,"safeToDiscard":true,"landedAt":1700000000000}],"benches":[]}]}
-        """.data(using: .utf8)!
-
-        let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
-
-        guard case let .worktreeState(states) = event else { return XCTFail("wrong case") }
-        let byPath = { (p: String) in states[0].worktrees.first { $0.worktreePath == p }! }
-        // Both are discardable; only one has actually landed.
-        XCTAssertTrue(byPath("/wt/fresh").safeToDiscard)
-        XCTAssertFalse(byPath("/wt/fresh").isLanded)
-        XCTAssertTrue(byPath("/wt/done").isLanded)
-    }
-
-    /// A worktree that landed and then kept committing is active again.
-    func testCommittingAfterLandingLeavesTheFinishedGroup() throws {
-        let json = """
-        {"type":"desktop_worktree_state","states":[{"repoPath":"/repo","worktrees":[{
-          "worktreePath":"/wt/a","branchName":"wt/a","label":"a","sourceBranch":"josh",
-          "head":"abc","lastCommitSubject":"","isDirty":false,"unlandedCommitCount":3,
-          "needsSync":false,"safeToDiscard":false,"landedAt":1700000000000}],"benches":[]}]}
-        """.data(using: .utf8)!
-
-        let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
-
-        guard case let .worktreeState(states) = event else { return XCTFail("wrong case") }
-        XCTAssertFalse(states[0].worktrees[0].isLanded)
-    }
-
-    /// A cleared verdict must encode as an explicit null. `encodeIfPresent`
-    /// would omit the key, and an absent key reads as "no change" on the
-    /// desktop -- so clearing a verdict would silently do nothing.
-    func testClearedReviewEncodesAsExplicitNull() throws {
-        let cmd = RemoteCommand.benchSetReview(
-            repoPath: "/repo", sourceBranch: "josh", worktreePath: "/wt/a", review: nil)
-
-        let data = try JSONEncoder().encode(cmd)
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-
-        XCTAssertTrue(json.keys.contains("review"))
-        XCTAssertTrue(json["review"] is NSNull)
-    }
-
-    func testReviewAndReorderCommandsCarryEveryField() throws {
-        let review = RemoteCommand.benchSetReview(
-            repoPath: "/repo", sourceBranch: "josh", worktreePath: "/wt/a", review: "issue")
-        let reviewJSON = try XCTUnwrap(
-            JSONSerialization.jsonObject(with: try JSONEncoder().encode(review)) as? [String: Any])
-        XCTAssertEqual(reviewJSON["worktreePath"] as? String, "/wt/a")
-        XCTAssertEqual(reviewJSON["review"] as? String, "issue")
-
-        let reorder = RemoteCommand.benchReorderMember(
-            repoPath: "/repo", sourceBranch: "josh", worktreePath: "/wt/a", toIndex: 2)
-        let reorderJSON = try XCTUnwrap(
-            JSONSerialization.jsonObject(with: try JSONEncoder().encode(reorder)) as? [String: Any])
-        XCTAssertEqual(reorderJSON["toIndex"] as? Int, 2)
-    }
-
-    /// Only the read-only refresh dedupes. The mutating verbs are distinct
-    /// operator actions and must never collapse into one another.
-    func testOnlyRefreshHasAnEssentialKey() {
-        XCTAssertEqual(
-            RemoteCommand.worktreeRefresh(repoPath: "/repo").essentialKey,
-            "worktreeRefresh:/repo")
-        XCTAssertNil(RemoteCommand.benchAssemble(repoPath: "/repo", sourceBranch: "josh").essentialKey)
-        XCTAssertNil(RemoteCommand.worktreeLand(
-            repoPath: "/repo", worktreePath: "/wt", worktreeBranch: "wt/a", sourceBranch: "josh").essentialKey)
-    }
 
     // MARK: - Events (desktop → iOS)
 
@@ -226,13 +30,14 @@ final class WorktreeWireTests: XCTestCase {
               "safeToDiscard": false,
               "provisionState": "building",
               "title": "Fix the token expiry check",
+              "stage": "bug",
               "openConversations": [
                 {"tabId": "tab-1", "title": "Fix the parser", "status": "running", "index": 2},
                 {"tabId": "tab-2", "title": "Add tests", "status": "idle", "index": 4}
               ],
               "membership": {
                 "sourceBranch": "josh", "enabled": true,
-                "pin": "behind", "merge": "conflicted", "review": "issue",
+                "pin": "behind", "merge": "conflicted",
                 "pinnedSha": "9c2b17e1111", "order": 1,
                 "conflictPaths": ["src/a.ts"], "conflictsWith": ["wt/7b0c"],
                 "mergeResolution": "replayed"
@@ -316,7 +121,9 @@ final class WorktreeWireTests: XCTestCase {
         XCTAssertTrue(m.enabled)
         XCTAssertEqual(m.pin, .behind)
         XCTAssertEqual(m.merge, .conflicted)
-        XCTAssertEqual(m.review, .issue)
+        // The workflow stage rides the WORKTREE, not the membership: it is
+        // registry-scoped on the desktop and exists for unenrolled rows too.
+        XCTAssertEqual(wt.stage, .bug)
         // The bench derives its counts from the worktrees now: one object,
         // counted once.
         XCTAssertEqual(state.behindMemberCount(of: bench), 1)
@@ -361,6 +168,92 @@ final class WorktreeWireTests: XCTestCase {
         // Likewise no `benchTerminalTabId`. Absent means "no terminal open",
         // which the row renders as "Open terminal" -- never as an error.
         XCTAssertNil(bench.benchTerminalTabId)
+        // Likewise the verification-failure split: an older desktop sends
+        // neither key, which must decode to nil/unclassified rather than a
+        // decode failure or a defaulted `"conflict"`.
+        XCTAssertNil(bench.lastAssemblyFailure)
+        XCTAssertNil(bench.lastAssemblyVerification)
+    }
+
+    /// A bench whose last assembly failed VERIFICATION (not a merge conflict):
+    /// every merge succeeded, including a replayed rerere resolution, but the
+    /// project's own verify command rejected the resulting tree.
+    func testVerificationFailureBenchDecodes() throws {
+        let json = """
+        {"type":"desktop_worktree_state","states":[{"repoPath":"/repo","worktrees":[],"benches":[{
+          "repoPath":"/repo","sourceBranch":"josh","benchPath":"/bench",
+          "benchBranch":"ion/bench/josh","baseSha":"aaa","lastBuiltAt":1700000000000,
+          "lastAssembly":"failed",
+          "lastAssemblyError":"A recorded conflict resolution failed project verification.",
+          "lastAssemblyFailure":"verification",
+          "lastAssemblyVerification":{
+            "command":"cd engine && go build ./... && cd ../desktop && npm run typecheck",
+            "outputTail":"src/renderer/components/WorktreeRowMenu.tsx(122,8): error TS1109",
+            "replayedBranches":["wt/a","wt/c"]
+          },
+          "baseDrifted":false}]}]}
+        """.data(using: .utf8)!
+
+        let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
+
+        guard case let .worktreeState(states) = event else { return XCTFail("wrong case") }
+        let bench = states[0].benches[0]
+        XCTAssertEqual(bench.lastAssembly, "failed")
+        XCTAssertEqual(bench.lastAssemblyFailure, "verification")
+        let evidence = try XCTUnwrap(bench.lastAssemblyVerification)
+        XCTAssertEqual(evidence.command, "cd engine && go build ./... && cd ../desktop && npm run typecheck")
+        XCTAssertEqual(evidence.outputTail, "src/renderer/components/WorktreeRowMenu.tsx(122,8): error TS1109")
+        XCTAssertEqual(evidence.replayedBranches, ["wt/a", "wt/c"])
+    }
+
+    /// A plain merge-conflict failure classifies distinctly and carries no
+    /// verification evidence -- the two failure kinds must never be conflated.
+    func testConflictFailureClassifiesDistinctlyFromVerification() throws {
+        let json = """
+        {"type":"desktop_worktree_state","states":[{"repoPath":"/repo","worktrees":[],"benches":[{
+          "repoPath":"/repo","sourceBranch":"josh","benchPath":"/bench",
+          "benchBranch":"ion/bench/josh","baseSha":"aaa","lastBuiltAt":1700000000000,
+          "lastAssembly":"failed",
+          "lastAssemblyError":"wt/a conflicts on 1 file. The bench is empty until this is resolved.",
+          "lastAssemblyFailure":"conflict",
+          "baseDrifted":false}]}]}
+        """.data(using: .utf8)!
+
+        let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
+
+        guard case let .worktreeState(states) = event else { return XCTFail("wrong case") }
+        let bench = states[0].benches[0]
+        XCTAssertEqual(bench.lastAssemblyFailure, "conflict")
+        XCTAssertNil(bench.lastAssemblyVerification)
+    }
+
+    /// A merge failure that never reached conflict state (e.g. an untracked
+    /// file blocking git's own write) classifies as `obstructed` -- distinct
+    /// from both a content conflict and a verification failure, and likewise
+    /// carries no verification evidence. `lastAssemblyFailure` decodes as a
+    /// bare string (no fixed Swift enum), so a new wire value like this one
+    /// requires no iOS decode change -- confirmed by this test passing without
+    /// any model change alongside it.
+    func testObstructedFailureClassifiesDistinctlyAndSurfacesTheRealGitError() throws {
+        let json = """
+        {"type":"desktop_worktree_state","states":[{"repoPath":"/repo","worktrees":[],"benches":[{
+          "repoPath":"/repo","sourceBranch":"josh","benchPath":"/bench",
+          "benchBranch":"ion/bench/josh","baseSha":"aaa","lastBuiltAt":1700000000000,
+          "lastAssembly":"failed",
+          "lastAssemblyError":"wt/a3f1 could not be merged: error: The following untracked working tree files would be overwritten by merge:\\n\\tdesktop/src/main/worktree/sync.ts",
+          "lastAssemblyFailure":"obstructed",
+          "baseDrifted":false}]}]}
+        """.data(using: .utf8)!
+
+        let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
+
+        guard case let .worktreeState(states) = event else { return XCTFail("wrong case") }
+        let bench = states[0].benches[0]
+        XCTAssertEqual(bench.lastAssemblyFailure, "obstructed")
+        XCTAssertNil(bench.lastAssemblyVerification)
+        // The real git error, not the old bare "could not be merged" fallback.
+        XCTAssertTrue(bench.lastAssemblyError?.contains("would be overwritten by merge") == true)
+        XCTAssertTrue(bench.lastAssemblyError?.contains("desktop/src/main/worktree/sync.ts") == true)
     }
 
     /// A worktree Ion did not create has no knowable source branch. It must
@@ -513,28 +406,40 @@ final class WorktreeWireTests: XCTestCase {
         XCTAssertEqual(m.merge, .unbuilt)
     }
 
-    /// An unknown REVIEW value degrades to nil -- unreviewed -- rather than
-    /// inventing a verdict the operator never gave.
-    func testUnknownReviewDegradesToUnreviewed() throws {
-        let json = membershipJSON(pin: "current", merge: "merged", review: "\"maybe\"")
+    /// An unknown STAGE value degrades to nil -- no marker -- rather than
+    /// inventing a stage the operator never set. Guards a future desktop
+    /// shipping a stage this build does not know.
+    func testUnknownStageDegradesToNoStage() throws {
+        let json = membershipJSON(pin: "current", merge: "merged", stage: "\"shipping-it\"")
 
         let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
 
         guard case let .worktreeState(states) = event else { return XCTFail("wrong case") }
-        XCTAssertNil(states[0].worktrees[0].membership?.review)
+        XCTAssertNil(states[0].worktrees[0].stage)
+    }
+
+    /// Every stage the desktop can send decodes to its Swift case, pinning the
+    /// raw-value parity of the curated vocabulary.
+    func testEveryKnownStageDecodes() throws {
+        for stage in WorkStage.allCases {
+            let json = membershipJSON(pin: "current", merge: "merged", stage: "\"\(stage.rawValue)\"")
+            let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
+            guard case let .worktreeState(states) = event else { return XCTFail("wrong case") }
+            XCTAssertEqual(states[0].worktrees[0].stage, stage)
+        }
     }
 
     /// One worktree carrying a membership, for the axis tests above.
     private func membershipJSON(
-        pin: String, merge: String, enabled: Bool = true, review: String = "null"
+        pin: String, merge: String, enabled: Bool = true, stage: String = "null"
     ) -> Data {
         """
         {"type":"desktop_worktree_state","states":[{"repoPath":"/repo","worktrees":[{
           "worktreePath":"/wt/a","branchName":"wt/a","label":"a","sourceBranch":"josh",
           "head":"abc","lastCommitSubject":"","isDirty":false,"unlandedCommitCount":0,
-          "needsSync":false,"safeToDiscard":false,
+          "needsSync":false,"safeToDiscard":false,"stage":\(stage),
           "membership":{"sourceBranch":"josh","enabled":\(enabled),"pin":"\(pin)",
-            "merge":"\(merge)","review":\(review),"pinnedSha":"abc","order":1}}],
+            "merge":"\(merge)","pinnedSha":"abc","order":1}}],
           "benches":[]}]}
         """.data(using: .utf8)!
     }
