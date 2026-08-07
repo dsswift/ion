@@ -58,6 +58,12 @@ struct RemoteWorktree: Codable, Identifiable, Hashable {
     /// anything -- grouping on it files every fresh empty worktree as if work had
     /// shipped. Set by the land verb; it cannot be recovered afterwards.
     var landedAt: Double?
+    /// The operator's workflow stage, or nil when none is set. Registry-scoped
+    /// on the desktop (it describes the worktree's lifecycle, not one bench
+    /// pin), so unenrolled worktrees carry it too. The desktop owns the one
+    /// automatic transition (`bug` moves to `test` when the bench pin
+    /// advances); this app only renders and sets.
+    var stage: WorkStage?
     /// Where this worktree is in the dependency-provisioning lifecycle
     /// (node_modules, hooks, build caches -- the gitignored state git never
     /// carries). Nil means Ion has no record: a worktree created before
@@ -132,6 +138,9 @@ struct RemoteWorktree: Codable, Identifiable, Hashable {
         needsSync = try c.decode(Bool.self, forKey: .needsSync)
         safeToDiscard = try c.decode(Bool.self, forKey: .safeToDiscard)
         landedAt = try c.decodeIfPresent(Double.self, forKey: .landedAt)
+        // Lenient like ProvisionState: an unknown stage from a newer desktop
+        // decodes to nil (no marker) rather than failing the worktree list.
+        stage = (try c.decodeIfPresent(String.self, forKey: .stage)).flatMap(WorkStage.init(rawValue:))
         provisionState = try c.decodeIfPresent(ProvisionState.self, forKey: .provisionState)
         provisionError = try c.decodeIfPresent(String.self, forKey: .provisionError)
         openConversations = try c.decodeIfPresent([RemoteOpenConversation].self, forKey: .openConversations) ?? []
@@ -183,14 +192,6 @@ struct RemoteMembership: Codable, Hashable {
         case unbuilt, merged, conflicted, skipped
     }
 
-    /// The operator's verdict. Nil means unreviewed, which is a different fact
-    /// from reviewed-and-fine. `good` ("the feature works") survives pin
-    /// advances; `issue` ("this contribution has a bug") is cleared by the
-    /// desktop when the pin advances — a clean slate to retest.
-    enum Review: String, Codable {
-        case good, issue
-    }
-
     /// Which bench: the source branch this integrates into.
     var sourceBranch: String
     var enabled: Bool
@@ -199,7 +200,6 @@ struct RemoteMembership: Codable, Hashable {
     /// one of those, so two facts were lost on every evaluation.
     var pin: Pin
     var merge: Merge
-    var review: Review?
     /// The contribution currently integrated. Shown separately from the pin
     /// state: what the bench HOLDS and what the worktree HAS are different facts.
     var pinnedSha: String
@@ -221,7 +221,6 @@ struct RemoteMembership: Codable, Hashable {
         enabled = try c.decode(Bool.self, forKey: .enabled)
         pin = Pin(rawValue: try c.decode(String.self, forKey: .pin)) ?? .current
         merge = Merge(rawValue: try c.decode(String.self, forKey: .merge)) ?? .unbuilt
-        review = (try c.decodeIfPresent(String.self, forKey: .review)).flatMap(Review.init(rawValue:))
         pinnedSha = try c.decode(String.self, forKey: .pinnedSha)
         order = try c.decodeIfPresent(Int.self, forKey: .order) ?? 0
         conflictPaths = try c.decodeIfPresent([String].self, forKey: .conflictPaths)
@@ -250,6 +249,16 @@ struct RemoteBench: Codable, Identifiable, Hashable {
     var lastAssembly: String?
     /// Operator-facing reason when `lastAssembly` is `failed`.
     var lastAssemblyError: String?
+    /// Which gate produced the failure. `"conflict"` means a member's pinned
+    /// contribution would not merge; `"verification"` means every merge
+    /// succeeded but the project's own verify command rejected the resulting
+    /// tree. Nil on a record written before this split, or on an older
+    /// desktop -- read as unclassified, never defaulted to `"conflict"`.
+    var lastAssemblyFailure: String?
+    /// Evidence for a `"verification"` failure. Nil otherwise, and nil from an
+    /// older desktop. The recovery verbs (dismiss, discard-and-reassemble,
+    /// analyse) are desktop-only -- this is read-only detail for the footer.
+    var lastAssemblyVerification: RemoteBenchVerification?
     /// The feature branch has moved past the bench's base, so an assembly would
     /// pick up work that landed since.
     var baseDrifted: Bool
@@ -282,11 +291,22 @@ struct RemoteBench: Codable, Identifiable, Hashable {
         lastBuiltAt = try c.decode(Double.self, forKey: .lastBuiltAt)
         lastAssembly = try c.decodeIfPresent(String.self, forKey: .lastAssembly)
         lastAssemblyError = try c.decodeIfPresent(String.self, forKey: .lastAssemblyError)
+        lastAssemblyFailure = try c.decodeIfPresent(String.self, forKey: .lastAssemblyFailure)
+        lastAssemblyVerification = try c.decodeIfPresent(RemoteBenchVerification.self, forKey: .lastAssemblyVerification)
         baseDrifted = try c.decode(Bool.self, forKey: .baseDrifted)
         openConversations = try c.decodeIfPresent([RemoteOpenConversation].self, forKey: .openConversations) ?? []
         benchConversationTabId = try c.decodeIfPresent(String.self, forKey: .benchConversationTabId)
         benchTerminalTabId = try c.decodeIfPresent(String.self, forKey: .benchTerminalTabId)
     }
+}
+
+/// Evidence for a bench verification failure: what ran, what it said, and
+/// which members' merges came from a replayed rerere recording (the
+/// suspects). Read-only on iOS -- desktop-only recovery verbs act on it.
+struct RemoteBenchVerification: Codable, Hashable {
+    var command: String
+    var outputTail: String
+    var replayedBranches: [String]
 }
 
 /// Worktree + bench state for one project.
@@ -337,6 +357,7 @@ struct RemoteWorktreeOpResult: Codable, Hashable {
     enum Operation: String, Codable {
         case sync, land, assemble, update
         case updateAll = "update_all"
+        case syncAll = "sync_all"
     }
 
     var ok: Bool
@@ -350,4 +371,8 @@ struct RemoteWorktreeOpResult: Codable, Hashable {
     /// the operation SUCCEEDED, but the next assembly will conflict. Nil from
     /// an older desktop reads as no prediction.
     var warning: String?
+    /// Per-worktree counts for `sync_all`, pre-worded by the desktop so every
+    /// client renders the same sentence ("3 synced, 1 conflicted, ..."). Nil
+    /// on the single-target verbs and from an older desktop.
+    var summary: String?
 }

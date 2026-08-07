@@ -25,10 +25,16 @@ struct WorktreeRowView: View {
     var onToggleEnrollment: (() -> Void)?
     var onToggleIncluded: (() -> Void)?
     var onUpdatePin: (() -> Void)?
-    var onSetReview: ((RemoteMembership.Review?) -> Void)?
+    /// Set or clear the worktree's workflow stage. Worktree-scoped, so it is
+    /// offered on unenrolled rows too. Nil clears.
+    var onSetStage: ((WorkStage?) -> Void)?
     /// Create an additional conversation here, as distinct from `onOpen`, which
     /// focuses or cycles the ones that exist.
     var onNewConversation: (() -> Void)?
+    /// Focus a specific conversation from the "Open here" list in the context
+    /// menu. Absent (no-op row, just a name) when the host doesn't wire
+    /// navigation -- mirrors `onNewConversation`'s optionality.
+    var onSelectConversation: ((String) -> Void)?
 
     private var membership: RemoteMembership? { worktree.membership }
 
@@ -153,10 +159,13 @@ struct WorktreeRowView: View {
                             .font(.caption2)
                             .foregroundStyle(.red)
                     }
-                    if let review = membership?.review {
-                        Image(systemName: review == .good ? "checkmark.circle.fill" : "ant.fill")
+                    // The operator's workflow stage — same glyph vocabulary as
+                    // the desktop's gutter chip, set from the context menu.
+                    if let stage = worktree.stage {
+                        Image(systemName: stage.systemImage)
                             .font(.caption2)
-                            .foregroundStyle(review == .good ? Color.green : Color.red)
+                            .foregroundStyle(stage.color)
+                            .accessibilityLabel(stage.label)
                     }
                     // The bench holds older content than this worktree.
                     //
@@ -208,6 +217,23 @@ struct WorktreeRowView: View {
                 }
 
                 HStack(spacing: 6) {
+                    // The worktree ID leads the detail line, ahead of the commit
+                    // subject. This is the token shared with every other surface:
+                    // the directory name under ~/.ion/worktrees/ and the suffix of
+                    // the branch (`wt/<id>`), so a row can be correlated against a
+                    // conversation title that says something else entirely.
+                    //
+                    // Fixed (no lineLimit truncation pressure) and monospaced: it is
+                    // machine text being matched character by character against
+                    // another surface, and truncating the thing being correlated
+                    // would defeat the point. The subject yields width instead.
+                    Text(worktree.label)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                        .layoutPriority(1)
+                    Text("·")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                     Text(worktree.lastCommitSubject.isEmpty ? "no commits yet" : worktree.lastCommitSubject)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -274,17 +300,29 @@ struct WorktreeRowView: View {
                 }
             }
             // The conversations by name: the phone has no hover, so the menu
-            // is where "what is actually running in here" belongs.
+            // is where "what is actually running in here" belongs. Each row
+            // is tappable when the host wires `onSelectConversation` -- the
+            // desktop's equivalent (the row menu's hover card / "Go to tab"
+            // submenu) has always been able to focus a conversation by name;
+            // this closes that parity gap for iOS's `.contextMenu` shape.
             if !worktree.openConversations.isEmpty {
                 Section("Open here") {
                     ForEach(worktree.openConversations) { conversation in
-                        Text(conversation.title)
+                        if let onSelectConversation {
+                            Button {
+                                onSelectConversation(conversation.tabId)
+                            } label: {
+                                Text(conversation.title)
+                            }
+                        } else {
+                            Text(conversation.title)
+                        }
                     }
                 }
             }
             // Bench verbs. Resolution and reordering stay desktop-only (a
             // 3-pane merge and a drag rail do not translate to a phone), but
-            // enrollment and review are one tap and belong here.
+            // enrollment and the workflow stage are one tap and belong here.
             if let onToggleEnrollment {
                 Button {
                     onToggleEnrollment()
@@ -335,19 +373,36 @@ struct WorktreeRowView: View {
                     // reassembles the bench in between.
                     .disabled(worktree.needsSync)
                 }
-                if let onSetReview {
-                    Button {
-                        onSetReview(m.review == .good ? nil : .good)
-                    } label: {
-                        Label(m.review == .good ? "Clear reviewed good" : "Mark reviewed good",
-                              systemImage: "checkmark.circle")
+            }
+            // Workflow stage. Outside the membership block on purpose: the
+            // stage is worktree-scoped (the desktop stores it in the registry),
+            // so an unenrolled worktree carries it too — `plan` happens before
+            // any enrollment exists. Selecting the active stage clears it,
+            // matching the desktop's strip.
+            if let onSetStage {
+                Menu {
+                    ForEach(WorkStage.allCases, id: \.self) { stage in
+                        Button {
+                            onSetStage(worktree.stage == stage ? nil : stage)
+                        } label: {
+                            if worktree.stage == stage {
+                                Label(stage.label, systemImage: "checkmark")
+                            } else {
+                                Label(stage.label, systemImage: stage.systemImage)
+                            }
+                        }
                     }
-                    Button {
-                        onSetReview(m.review == .issue ? nil : .issue)
-                    } label: {
-                        Label(m.review == .issue ? "Clear review issue" : "Mark review issue",
-                              systemImage: "ant")
+                    if worktree.stage != nil {
+                        Divider()
+                        Button(role: .destructive) {
+                            onSetStage(nil)
+                        } label: {
+                            Label("Clear stage", systemImage: "xmark.circle")
+                        }
                     }
+                } label: {
+                    Label(worktree.stage.map { "Stage: \($0.label)" } ?? "Set stage",
+                          systemImage: worktree.stage?.systemImage ?? "circle.dashed")
                 }
             }
             if worktree.sourceBranch != nil {
