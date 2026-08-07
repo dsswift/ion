@@ -430,6 +430,14 @@ type LoggingConfig struct {
 	// Zero means use the compiled default (50 MB).
 	EgressSpoolMaxBytes int64 `json:"egressSpoolMaxBytes,omitempty"`
 
+	// EgressBufferMaxRecords caps the in-memory staging buffer of records
+	// awaiting their first flush. When the sink is unreachable the durable
+	// overflow path is the on-disk spool (EgressSpoolMaxBytes), so this cap
+	// exists to stop a dead sink from growing the engine's heap instead:
+	// overflow evicts oldest-first and is reported at ERROR on the next flush.
+	// Zero means use the compiled default (50000 records, ~17 MB).
+	EgressBufferMaxRecords int `json:"egressBufferMaxRecords,omitempty"`
+
 	// EgressManagedByClient suppresses the engine's OWN egress forwarder while
 	// leaving every other egress field (EgressTargets, EgressEndpoint,
 	// EgressOtel, ...) intact for a managing client to read.
