@@ -636,8 +636,9 @@ enum RemoteEvent: Sendable {
         case type
         case tabs, tab, tabId, status, text, toolName, toolId
         // Worktree + integration bench payload keys. `warning` carries the
-        // pin-update dry-run's collision prediction on desktop_worktree_op_result.
-        case states, operation, refusedDirty, hasConflicts, warning
+        // pin-update dry-run's collision prediction on desktop_worktree_op_result;
+        // `summary` carries sync_all's pre-worded per-worktree counts.
+        case states, operation, refusedDirty, hasConflicts, warning, summary
         // desktop_tab_created echo of the iOS create command's correlation id,
         // consumed by the confirm-or-resend delivery loop (create-tab reliability).
         case clientCmdId
