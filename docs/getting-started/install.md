@@ -67,7 +67,7 @@ cd ion/engine
 make build
 ```
 
-This produces `bin/ion` (~9MB, statically linked, stripped). To install to `/usr/local/bin`:
+This produces `bin/ion` (statically linked, stripped). To install to `/usr/local/bin`:
 
 ```bash
 make install
