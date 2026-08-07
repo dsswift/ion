@@ -84,6 +84,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   planningGroupId: saved.planningGroupId,
   autoGroupMovement: saved.autoGroupMovement,
   commitCommand: saved.commitCommand,
+  aiAssistPromptOverrides: saved.aiAssistPromptOverrides,
   gitChangesTreeView: saved.gitChangesTreeView,
   quickTools: saved.quickTools,
   uiZoom: saved.uiZoom,
@@ -404,6 +405,14 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   },
   setCommitCommand: (cmd) => {
     set({ commitCommand: cmd })
+    saveSettings(getAllSettings(get))
+  },
+  setAiAssistPromptOverride: (workflowId, prompt) => {
+    const next = { ...get().aiAssistPromptOverrides }
+    const normalized = prompt?.trim()
+    if (normalized) next[workflowId] = prompt!
+    else delete next[workflowId]
+    set({ aiAssistPromptOverrides: next })
     saveSettings(getAllSettings(get))
   },
   setGitChangesTreeView: (enabled) => {

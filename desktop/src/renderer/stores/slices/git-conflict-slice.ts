@@ -30,38 +30,84 @@
  * these calls would run in whichever window hosts it and decide against stale
  * mirror state.
  *
- * The assist requires the `standard` model tier (CONFLICT_ASSIST_TIER) and
- * refuses with a remediation message when it is not configured. The fresh
- * conversation is pinned to that tier's model and forced into auto mode —
- * a plan-mode default would park the fix writing a plan.
+ * The assist prefers the Desktop-managed `workbench-sync` tier and logs a
+ * fallback to `standard` when it is unconfigured. It refuses only when both
+ * are absent. The fresh conversation is pinned to the resolved model and
+ * forced into auto mode — a plan-mode default would park the fix writing a plan.
  */
 import type { StoreSet, StoreGet, State, GitConflictAlert } from '../session-store-types'
 import { rInfo, rDebug, rWarn } from '../../rendererLogger'
+import { usePreferencesStore } from '../../preferences'
 import { applyPermissionModeForTab } from './tab-slice-permission-mode'
+import { resolveWorkbenchTier } from '../resolve-workbench-tier'
+import {
+  aiAssistWorkflow,
+  effectiveAiAssistTemplate,
+  renderAiAssistTemplate,
+  type AiAssistWorkflowId,
+} from '../../../shared/ai-assist-workflows'
 
 /**
  * The exact prompt the AI Assisted button sends, parameterized by the
  * operation actually in progress. Hardcoding "rebase" was wrong the moment the
  * bench resolve-once flow started opening the dialog on an in-progress MERGE:
  * the model was told to fix a rebase that did not exist.
+ *
+ * ── The bench arm ───────────────────────────────────────────────────────────
+ * A conflict in an integration bench has context a conflict in a worktree does
+ * not: the bench knows which members contributed the file, what each one's
+ * pinned version says, and what was decided about the same file last time. Three
+ * read-only engine tools answer those, and they are offered ONLY in a bench — so
+ * the prompt names them only there. Naming them in a worktree rebase would point
+ * the model at tools it does not have.
+ *
+ * This is worth stating in the prompt rather than trusting discovery, because the
+ * measured failure was an agent that HAD attribution, used it once, and then
+ * spent twelve shell calls reading one file out of eight sibling worktrees
+ * anyway. The tool being available is not the same as it being reached for.
+ *
+ * The hard constraints are unchanged and stay verbatim: each was added for a
+ * recorded defect (an aborted operation, a `--continue` bundled with other work,
+ * a resolution left merely staged).
  */
-export function conflictAssistPrompt(operation: 'rebasing' | 'merging' | 'cherry-picking' | null): string {
-  const noun = operation === 'merging' ? 'merge'
-    : operation === 'cherry-picking' ? 'cherry-pick' : 'rebase'
-  return [
-    `Resolve my currently in-progress ${noun}.`,
-    'Inspect every conflict, resolve files, run relevant formatters and tests, then stage resolved files.',
-    `Do not abort the ${noun}. Do not combine continue with resolution, formatting, testing, or staging commands.`,
-    `Only after those steps succeed, make a separate standalone call containing only git ${noun} --continue.`,
-    'Done only when the operation has ended and git status reports no unmerged paths.',
-  ].join(' ')
+export function conflictAssistPrompt(
+  operation: 'rebasing' | 'merging' | 'cherry-picking' | null,
+  /** True when the conflicted directory is an integration bench. */
+  inBench = false,
+  directory = '.',
+): string {
+  const workflowId = conflictWorkflowId(operation)
+  const result = renderAiAssistTemplate(
+    workflowId,
+    aiAssistWorkflow(workflowId).defaultTemplate,
+    conflictTemplateValues(directory, inBench),
+  )
+  if (!result.ok) throw new Error(result.error)
+  return result.prompt
 }
 
-/** Back-compat name for the default (rebase) prompt. Verbatim by specification. */
+function conflictWorkflowId(operation: 'rebasing' | 'merging' | 'cherry-picking' | null): AiAssistWorkflowId {
+  if (operation === 'merging') return 'merge-resolution'
+  if (operation === 'cherry-picking') return 'cherry-pick-resolution'
+  return 'rebase-resolution'
+}
+
+function conflictTemplateValues(directory: string, inBench: boolean): Record<string, string> {
+  return {
+    directory,
+    benchContext: inBench
+      ? [
+          'This is an integration bench.',
+          'Before reasoning about the merge, call BenchResolutionHistory for the conflicted paths: the same file often conflicts once per member, and a previous resolution of it carries the reasoning git rerere cannot replay across members.',
+          'Read each side with BenchMemberFile rather than opening a member worktree directly, because a worktree holds work done since its pin and the bench merges the pin.',
+          'Use WorkspaceAttribution to decide which member owns a hunk when that is unclear.',
+        ].join(' ')
+      : '',
+  }
+}
+
+/** Back-compat name for the default (rebase) prompt. */
 export const CONFLICT_ASSIST_PROMPT = conflictAssistPrompt(null)
-
-import { CONFLICT_ASSIST_TIER } from '../../../shared/types-model-tiers'
-
 
 export function createGitConflictSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {
@@ -131,23 +177,12 @@ export function createGitConflictSlice(set: StoreSet, get: StoreGet): Partial<St
      * development conversation stays untouched.
      */
     openConflictAssist: async (directory) => {
-      // ── Gate: the standard tier must be configured ─────────────────────
-      // Resolved through the engine (it owns models.json semantics), before
-      // any tab exists, so a refusal creates nothing to clean up.
-      const tier = await window.ion.resolveModelTier(CONFLICT_ASSIST_TIER)
-      if (!tier.configured) {
-        rWarn('git.conflicts', 'assist refused: model tier not configured', {
-          directory,
-          tier: CONFLICT_ASSIST_TIER,
-        })
-        throw new Error(
-          `AI Assisted resolution needs a "${CONFLICT_ASSIST_TIER}" model tier. ` +
-          `Add one under "tiers" in ~/.ion/models.json (e.g. "standard": "<provider>/<model>") and try again.`,
-        )
-      }
+      const tier = await resolveWorkbenchTier({ workflow: 'conflict-resolution', directory })
+      if (!tier.ok) throw new Error(tier.error)
 
       rInfo('git.conflicts', 'assist: opening fresh conversation in conflicted directory', {
         directory,
+        tier: tier.tier,
         model: tier.model,
       })
 
@@ -164,6 +199,24 @@ export function createGitConflictSlice(set: StoreSet, get: StoreGet): Partial<St
           directory, error: String(err),
         })
       }
+
+      const inBench = [...get().benchWorkspaces.values()]
+        .some((list) => list.some((workspace) => workspace.benchPath === directory))
+      const workflowId = conflictWorkflowId(operation)
+      const { template, overridden } = effectiveAiAssistTemplate(
+        workflowId,
+        usePreferencesStore.getState().aiAssistPromptOverrides,
+      )
+      const rendered = renderAiAssistTemplate(workflowId, template, conflictTemplateValues(directory, inBench))
+      if (!rendered.ok) {
+        rWarn('git.conflicts', 'assist prompt validation failed', {
+          directory, workflow: workflowId, overridden, error: rendered.error,
+        })
+        throw new Error(`AI-assisted workflow prompt is invalid: ${rendered.error}`)
+      }
+      rInfo('git.conflicts', 'assist prompt rendered', {
+        directory, workflow: workflowId, overridden,
+      })
 
       // useWorktree=false: the directory IS the checkout to fix; a nested
       // worktree would point the conversation somewhere else entirely.
@@ -197,7 +250,7 @@ export function createGitConflictSlice(set: StoreSet, get: StoreGet): Partial<St
         tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, tabRole: 'conflict-auto-fix' as const, inputLocked: true } : t)),
       }))
 
-      const prompt = conflictAssistPrompt(operation)
+      const prompt = rendered.prompt
       // 'machine' source: the one submission allowed through the lock this
       // flow just installed (see send-slice submit guard).
       get().submit(tabId, prompt, { source: 'machine' })
@@ -207,6 +260,7 @@ export function createGitConflictSlice(set: StoreSet, get: StoreGet): Partial<St
         tab_id: tabId.slice(0, 8),
         model: tier.model,
         operation: operation ?? 'unknown',
+        in_bench: inBench,
         input_locked: true,
       })
       return tabId

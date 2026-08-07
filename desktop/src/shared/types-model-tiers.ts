@@ -5,9 +5,10 @@ export interface ModelTier {
   fallbacks: string[]
 }
 
-/** Built-in tier names with stable product meanings. */
-export const STANDARD_TIERS = ['reasoning', 'standard', 'fast'] as const
+/** Desktop-managed tier names with stable product meanings. */
+export const WORKBENCH_SYNC_TIER = 'workbench-sync' as const
+export const STANDARD_TIERS = ['reasoning', 'standard', 'fast', WORKBENCH_SYNC_TIER] as const
 export type StandardTierName = typeof STANDARD_TIERS[number]
 
-/** Tier used by bounded mechanical conflict-resolution assistance. */
+/** Fallback tier when workbench-sync has no explicit model. */
 export const CONFLICT_ASSIST_TIER = 'standard' satisfies StandardTierName

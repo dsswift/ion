@@ -29,6 +29,13 @@ const SEARCH_INDEX: SearchEntry[] = [
   { categoryId: 'ai', label: 'Backend Mode', keywords: 'backend mode api cli anthropic claude switch restart' },
   { categoryId: 'ai', label: 'Engine Profiles', keywords: 'engine profiles extensions configuration' },
 
+  // AI-Assisted Workflows
+  { categoryId: 'ai-assist', label: 'AI-Assisted Workflows', keywords: 'workbench prompt template assisted workflow custom model' },
+  { categoryId: 'ai-assist', label: 'Rebase Resolution', keywords: 'rebase conflict resolve sync prompt' },
+  { categoryId: 'ai-assist', label: 'Merge Resolution', keywords: 'merge conflict bench resolve prompt' },
+  { categoryId: 'ai-assist', label: 'Cherry-pick Resolution', keywords: 'cherry pick conflict resolve prompt' },
+  { categoryId: 'ai-assist', label: 'Bench Verification Analysis', keywords: 'bench verification rerere analysis prompt verdict' },
+
   // Appearance
   { categoryId: 'appearance', label: 'Full Width', keywords: 'full width expanded ui horizontal wide layout' },
   { categoryId: 'appearance', label: 'Ultra Wide', keywords: 'ultra wide monitor external display large' },

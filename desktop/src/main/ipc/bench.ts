@@ -10,11 +10,14 @@ import { IPC } from '../../shared/types'
 import { log as _log, warn as _warn } from '../logger'
 import {
   listWorkspaces, ensureWorkspace, addMember, removeMember, setMemberEnabled,
-  setMemberReview, setMemberOrder,
+  setMemberOrder,
   updateMember, updateAllStale, assembleWorkspace, refreshStaleness, sourceBranchTip,
 } from '../integration/bench-ops'
 import { prepareConflictResolution } from '../integration/bench-resolve'
+import { benchForPath } from '../integration/bench-attribution-support'
 import { countRerereRecordings, discardAllRerereRecordings, forgetRerereRecordings } from '../integration/bench-rerere-purge'
+import { prepareVerificationAnalysis, discardVerificationRecordingsAndReassemble } from '../integration/bench-ops'
+import { isValidProjectPath } from '../ipc-validation'
 
 const TAG = 'bench.ipc'
 function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
@@ -30,6 +33,25 @@ export function registerBenchIpc(): void {
       tips[ws.sourceBranch] = await sourceBranchTip(repoPath, ws.sourceBranch)
     }
     return { workspaces, tips }
+  })
+
+  ipcMain.handle(IPC.BENCH_RESOLVE_PATH, (_e, { directory }: { directory: string }) => {
+    if (!isValidProjectPath(directory)) {
+      warn('bench path resolution rejected invalid directory', { directory })
+      return { workspace: null }
+    }
+    const workspace = benchForPath(directory)
+    if (workspace) {
+      log('resolved bench path', {
+        directory,
+        repo_path: workspace.repoPath,
+        source_branch: workspace.sourceBranch,
+        bench_path: workspace.benchPath,
+      })
+    } else {
+      log('directory is not inside a bench', { directory })
+    }
+    return { workspace }
   })
 
   ipcMain.handle(IPC.BENCH_ENSURE, async (_e, { repoPath, sourceBranch }: { repoPath: string; sourceBranch: string }) => {
@@ -61,14 +83,6 @@ export function registerBenchIpc(): void {
     async (_e, { repoPath, sourceBranch, worktreePath, enabled }:
       { repoPath: string; sourceBranch: string; worktreePath: string; enabled: boolean }) => {
       return { workspace: setMemberEnabled(repoPath, sourceBranch, worktreePath, enabled) }
-    },
-  )
-
-  ipcMain.handle(
-    IPC.BENCH_SET_REVIEW,
-    async (_e, { repoPath, sourceBranch, worktreePath, review }:
-      { repoPath: string; sourceBranch: string; worktreePath: string; review: 'good' | 'issue' | null }) => {
-      return { workspace: setMemberReview(repoPath, sourceBranch, worktreePath, review) }
     },
   )
 
@@ -137,6 +151,27 @@ export function registerBenchIpc(): void {
 
   ipcMain.handle(IPC.BENCH_RERERE_DISCARD_ALL, async (_e, { directory }: { directory: string }) =>
     discardAllRerereRecordings(directory))
+
+  ipcMain.handle(
+    IPC.BENCH_PREPARE_VERIFICATION_ANALYSIS,
+    async (_e, { repoPath, sourceBranch }: { repoPath: string; sourceBranch: string }) => {
+      log('verification analysis requested', { source_branch: sourceBranch })
+      const result = await prepareVerificationAnalysis(repoPath, sourceBranch)
+      if (!result.ok) warn('verification analysis preparation failed', { source_branch: sourceBranch, error: result.error ?? '' })
+      return result
+    },
+  )
+
+  ipcMain.handle(
+    IPC.BENCH_DISCARD_VERIFICATION_RECORDINGS,
+    async (_e, { repoPath, sourceBranch, branchNames }:
+      { repoPath: string; sourceBranch: string; branchNames: string[] }) => {
+      log('discard verification recordings requested', { source_branch: sourceBranch, branches: branchNames })
+      const result = await discardVerificationRecordingsAndReassemble(repoPath, sourceBranch, branchNames)
+      if (!result.ok) warn('discard verification recordings failed', { source_branch: sourceBranch, error: result.error ?? '' })
+      return result
+    },
+  )
 
   ipcMain.handle(
     IPC.BENCH_REFRESH_STALENESS,

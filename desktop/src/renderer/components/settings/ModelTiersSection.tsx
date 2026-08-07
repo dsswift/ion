@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, ShieldCheck, Trash } from '@phosphor-icons/react'
-import { STANDARD_TIERS, type ModelTier } from '../../../shared/types-model-tiers'
+import { STANDARD_TIERS, WORKBENCH_SYNC_TIER, type ModelTier } from '../../../shared/types-model-tiers'
 import { rInfo, rWarn } from '../../rendererLogger'
 import { useColors } from '../../theme'
 import { useModelStore } from '../../stores/model-store'
@@ -108,7 +108,7 @@ export function ModelTiersSection() {
                 <strong style={{ color: colors.textPrimary, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis' }}>{tier.name}</strong>
                 {builtIn && <Tooltip text="Built-in tier. It stays available and needs an explicit primary model."><span style={{ display: 'inline-flex', color: colors.accent, flexShrink: 0 }}><ShieldCheck size={13} /></span></Tooltip>}
               </div>
-              <div style={cellStyle}><ModelSelect ariaLabel={`${tier.name} primary model`} value={tier.model} emptyLabel={builtIn ? 'Configure a primary model' : 'Select primary model'} choices={choices} onChange={(model) => updatePrimary(tier, model)} style={selectStyle} /></div>
+              <div style={cellStyle}><ModelSelect ariaLabel={`${tier.name} primary model`} value={tier.model} emptyLabel={tier.name === WORKBENCH_SYNC_TIER ? 'Default (uses standard tier)' : builtIn ? 'Configure a primary model' : 'Select primary model'} choices={choices} onChange={(model) => updatePrimary(tier, model)} style={selectStyle} /></div>
               <div style={cellStyle}><ModelSelect ariaLabel={`${tier.name} fallback model`} value={tier.fallbacks[0] ?? ''} emptyLabel="None" choices={choices} onChange={(model) => updateFallback(tier, model)} style={selectStyle} /></div>
               <div style={cellStyle}>{!builtIn && <button aria-label={`Remove ${tier.name} tier`} onClick={() => remove(tier.name)} style={iconStyle}><Trash size={16} /></button>}</div>
             </React.Fragment>

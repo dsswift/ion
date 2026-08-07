@@ -68,11 +68,13 @@ describe('ModelTiersSection', () => {
     await render()
 
     const labels = Array.from(container.querySelectorAll('strong')).map((element) => element.textContent)
-    expect(labels).toEqual(['reasoning', 'standard', 'fast', 'custom'])
+    expect(labels).toEqual(['reasoning', 'standard', 'fast', 'workbench-sync', 'custom'])
     expect(container.querySelectorAll('svg').length).toBeGreaterThan(0)
     expect(container.querySelector('[aria-label="Remove reasoning tier"]')).toBeNull()
     expect(container.querySelector('[aria-label="Remove standard tier"]')).toBeNull()
     expect(container.querySelector('[aria-label="Remove fast tier"]')).toBeNull()
+    expect(container.querySelector('[aria-label="Remove workbench-sync tier"]')).toBeNull()
+    expect(select('workbench-sync primary model').textContent).toContain('Default (uses standard tier)')
     expect(container.querySelector('[aria-label="Remove custom tier"]')).not.toBeNull()
   })
 

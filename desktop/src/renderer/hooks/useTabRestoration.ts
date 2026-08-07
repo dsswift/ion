@@ -6,7 +6,7 @@ import { setSavedBuffer } from '../components/TerminalInstance'
 import { restoreConversationTab } from './useTabRestoration-engine'
 import { makeLocalTab } from '../stores/session-store-helpers'
 import { makeMainPane, commitInstance } from '../stores/conversation-instance'
-import { normalizeLegacyTabFields, readMainInstance, seedContextStatusFields, reassertRestoredPlanMode, resolveBootActiveTabId, hydrateBootActiveTab } from './useTabRestoration-helpers'
+import { normalizeLegacyTabFields, readMainInstance, seedContextStatusFields, reassertRestoredPlanMode, resolveBootActiveTabId, hydrateBootActiveTab, hydrateBootWorkspace } from './useTabRestoration-helpers'
 import { startRestoredSessions } from './useTabRestoration-sessions'
 import { loadRestoredHistory } from './useTabRestoration-history'
 import { resolveRegisteredWorktree } from '../stores/worktree-registration'
@@ -370,7 +370,17 @@ export function useTabRestoration() {
         const bootActiveTabId = resolveBootActiveTabId(saved, restoredTabIds)
         if (bootActiveTabId) {
           useSessionStore.setState({ activeTabId: bootActiveTabId })
-          hydrateBootActiveTab(useSessionStore.getState(), bootActiveTabId)
+          const store = useSessionStore.getState()
+          hydrateBootActiveTab(store, bootActiveTabId)
+          const bootActiveTab = store.tabs.find((t) => t.id === bootActiveTabId)
+          // `tabsReady` stays false until this finishes. A restored bench tab has
+          // no worktree metadata, so exposing GitPanel before main resolves its
+          // owner makes the bench path look like a repo on the first frame.
+          await hydrateBootWorkspace(
+            bootActiveTab,
+            store.refreshWorkspaceViews,
+            window.ion.benchResolvePath,
+          )
         }
 
         // Remove the initial blank tab created by store constructor

@@ -286,6 +286,33 @@ describe('loadPersistedSettings applies forced-scheme theme by id on startup', (
   })
 })
 
+describe('loadPersistedSettings — AI-assisted prompt override validation', () => {
+  it('keeps known non-empty workflow prompts and drops unknown or malformed entries', async () => {
+    const originalIon = (globalThis as { window?: { ion?: unknown } }).window?.ion
+    ;(globalThis as { window?: { ion?: unknown } }).window = {
+      ion: { loadSettings: () => Promise.resolve({
+        aiAssistPromptOverrides: {
+          'rebase-resolution': 'custom {{directory}}',
+          'merge-resolution': '   ',
+          unknown: 'must drop',
+          'cherry-pick-resolution': 42,
+        },
+      }) },
+    } as unknown as Window & typeof globalThis
+    ;(globalThis as { document?: unknown }).document = {
+      documentElement: { style: {}, classList: { toggle: () => {}, add: () => {}, remove: () => {} } },
+    }
+    const setStateMock = vi.fn()
+    loadPersistedSettings(setStateMock, () => ({ _systemIsDark: false } as unknown as PreferencesState), vi.fn())
+    await new Promise((resolve) => setImmediate(resolve))
+
+    expect(setStateMock.mock.calls[0][0].aiAssistPromptOverrides).toEqual({
+      'rebase-resolution': 'custom {{directory}}',
+    })
+    ;(globalThis as { window?: { ion?: unknown } }).window = { ion: originalIon } as Window & typeof globalThis
+  })
+})
+
 /**
  * Produce a sentinel disk value for a given default. The sentinel must
  * distinct (so we can be sure the value flowed through hydration

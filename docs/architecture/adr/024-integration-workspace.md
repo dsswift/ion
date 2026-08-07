@@ -151,8 +151,8 @@ the title by joining against the inventory and documented the join as a
 workaround. The join was already the truth; it was performed late, once, in one
 projection no other consumer could reach.
 
-A member is therefore **a pin plus a verdict, keyed by worktree path**, holding
-no worktree fields at all. `shared/worktree-list.ts` performs the join for every
+A member is therefore **a pin, keyed by worktree path**, holding no worktree
+fields at all. `shared/worktree-list.ts` performs the join for every
 surface, so the desktop list, the ATV mirror, and the iOS projection cannot
 disagree about what a worktree is or where it sorts.
 
@@ -165,22 +165,37 @@ One consequence is visible in the UI: a worktree appears exactly once. The panel
 previously listed enrolled worktrees twice — once as a worktree, once as a bench
 member — in two components with two vocabularies for the same facts.
 
-### The two verdicts have different lifetimes
+### Work stages replace the two verdicts
 
-The operator can mark a member `good` or `issue`, and the two make different
-statements. `good` says "I reviewed the feature and it works" — a statement
-about the **feature** that stays true across assemblies, syncs, and pin
-advances, so once earned it is only ever changed by the operator. `issue` says
-"this contribution has a bug that future changes must fix" — a statement about
-the **pinned contribution**, so advancing the pin clears it: the new content is
-a clean slate for retesting, and the operator re-flags it if the bug survived
-or marks it good once the fix lands. Re-pinning identical content (an Update
-that finds nothing new) keeps either verdict, because the reviewed thing has
-not changed.
+The bench originally carried a per-pin review verdict (`good` | `issue`) on
+each member. Two states could not encode a real workflow, and the verdict lived
+on the bench member, so an unenrolled worktree had nowhere to hold a marker at
+all. Both problems resolved into one mechanism: an optional **work stage** on
+the worktree's registry entry (`~/.ion/worktree-registry.json`), from the
+curated vocabulary in `shared/types-git.ts` (`WORK_STAGES`): `plan`, `build`,
+`test`, `bug`, `verified`, `merge`, `ready`.
 
-Absent means unreviewed, which is deliberately distinct from reviewed-and-fine —
-a three-valued flag defaulting to neutral would make "nobody has looked at this"
-indistinguishable from "someone looked and it was fine".
+The mechanism is deliberately minimal — one optional marker plus one automatic
+transition — so any subset of the stages is a complete workflow and no ordering
+is enforced. No verb is gated on a stage; the marker is a note to the operator,
+not a state machine the app acts on.
+
+The one automatic transition preserves the old `issue` lifetime rule in
+generalized form: a worktree marked `bug` moves to `test` when its bench pin
+advances (`advanceWorktreeStageOnPinChange`, called from the Update verbs and
+gated on `pinChanged`). "There is an issue to fix" becomes "the fix is in,
+retest it" at exactly the moment new content reaches the bench. Re-pinning
+identical content keeps the flag, because the bug is still in there. Every
+other stage survives a pin advance — `verified` is a statement about the
+feature, not the pin, so only the operator moves it (the old `good`
+stickiness).
+
+Absent means unstaged, which is deliberately distinct from any set stage —
+the same reasoning as the verdicts' absent-means-unreviewed: a default value
+would make "nobody has marked this" indistinguishable from a deliberate mark.
+Legacy `review` verdicts migrate once at workspaces-file load (`good` →
+`verified`, `issue` → `bug`, never overwriting a stage the operator already
+set) and the key is stripped from the file so the migration cannot re-run.
 
 ### Landing is absorption, not removal
 
@@ -276,20 +291,26 @@ via `rev-parse --git-path` so linked worktrees are read correctly):
 
 The dialog's AI Assisted button opens a FRESH conversation in the conflicted
 directory (never an existing one — a live thread would be interrupted and its
-context could sway the fix) and submits the fixed prompt naming the operation
-actually in progress (`Please fix my currently in-progress rebase.` for a sync,
-`…merge.` for a bench resolution) — one forwarded store action, per the ATV
-multi-step rule. The assist requires the `standard` tier in
-`~/.ion/models.json` and refuses with a remediation message when it is absent
-(resolved through the engine's `resolve_model_tier` command; the engine owns
-the file's semantics). The fresh conversation is pinned to that tier's model
-and forced into auto mode regardless of the operator's default — a plan-mode
-default would park the fix writing a plan. Abort and Continue drive the
-underlying operation (probed live, so a merge gets `git merge --continue`, not
-a rebase verb that would fail); Continue enables only when nothing is left
-unmerged. Resolution is desktop-only; iOS renders `operationState` and a
-conflicted-file count so a mid-rebase worktree neither vanishes nor looks
-healthy on the phone.
+context could sway the fix) and submits the workflow prompt matching the live
+operation (rebase, merge, or cherry-pick) — one forwarded store action, per the
+ATV multi-step rule. Desktop resolves the managed `workbench-sync` model tier
+first; when absent it logs a warning and resolves `standard`, refusing before it
+creates a tab only when both are absent. Tier CRUD still runs through the
+engine's typed model-tier administration; this fallback order is Desktop policy,
+not an engine default.
+
+Every assisted operation has an independent complete prompt template under
+**Settings → AI Workflows**. Templates declare their dynamic placeholders and
+are validated before save and use; unknown placeholders never reach a model.
+Reset removes the persisted override and restores the current source default.
+These prompts remain Desktop-local because iOS cannot launch these assisted
+workflows. The fresh conversation is pinned to the resolved model and forced
+into auto mode regardless of the operator's default — a plan-mode default would
+park the fix writing a plan. Abort and Continue drive the underlying operation
+(probed live, so a merge gets `git merge --continue`, not a rebase verb that
+would fail); Continue enables only when nothing is left unmerged. Resolution is
+desktop-only; iOS renders `operationState` and a conflicted-file count so a
+mid-rebase worktree neither vanishes nor looks healthy on the phone.
 
 ### Assembly is atomic: the whole combination or nothing
 
@@ -297,7 +318,11 @@ A member whose pinned contribution will not merge fails the **entire**
 assembly. The failed merge is aborted, the conflict is recorded on the member
 (`conflictPaths`, plus `conflictsWith` attributed by diffing each prior
 member's **contribution range** — never its tip commit, which misses any
-collision introduced by an earlier commit in the range), and the bench branch
+collision introduced by an earlier commit in the range). Assembly also diffs
+the conflicted member's recorded base against the current source tip; when that
+range touched a conflicting path, `conflictsWith` names the source branch. This
+keeps single-member conflicts explainable instead of reporting an empty
+counterpart list. The bench branch
 is pointed at an empty-tree commit. Tracked files vanish; ignored build output
 survives, exactly as across a normal assembly. The workspace records
 `lastAssembly: 'failed'` and an operator-facing `lastAssemblyError`, which the
@@ -381,12 +406,62 @@ Two gates, one command:
   `restoreConflict` path — reset, recreate, forget the just-written recording,
   re-verify fresh unmerged paths. Poison is never recorded.
 - **Replay time.** An assembly that replayed at least one recording runs
-  `verify` after the member loop. On failure the replayed recordings are
-  forgotten, the bench is wiped to the atomic-failure state, and the assembly
-  reports failed naming replay poison. Clean-merge-only assemblies skip the
-  gate: they contain exactly what the members committed, so a build failure
-  there is member breakage, not Ion-introduced state — and a bench exists to
-  build in-flight combinations that may legitimately not compile.
+  `verify` after the member loop. On failure the recordings are **retained**
+  — not forgotten — and the assembly is classified `lastAssemblyFailure:
+  'verification'`, distinct from a merge `'conflict'`, with the verify
+  command, its output, and the replayed (suspect) branch names attached as
+  `lastAssemblyVerification`. The bench is wiped to the same atomic-failure
+  state a conflict produces. Clean-merge-only assemblies skip the gate: they
+  contain exactly what the members committed, so a build failure there is
+  member breakage, not Ion-introduced state — and a bench exists to build
+  in-flight combinations that may legitimately not compile.
+
+  Recordings are retained rather than auto-discarded because the assembly has
+  no way to attribute the failure to one specific replayed recording — a
+  bench holding several replays would otherwise lose every one of them to
+  punish a single poisoned resolution. (An earlier version *called* the
+  forget helper here; it silently forgot nothing, because `git rerere forget`
+  requires an open merge and every merge in this loop has already committed
+  by the time verification runs — the record then claimed a discard that
+  never happened. That call is removed rather than repaired to fire
+  automatically.) Discarding is instead the operator's explicit, consented
+  act, offered by the recovery dialog below.
+
+### The bench-verification recovery dialog, and AI-assisted analysis
+
+A `'verification'` failure has no conflicted member to route the operator
+to — every merge succeeded — so its own surface (**BenchVerificationDialog**,
+opened from a dedicated bar marker and from a per-member "suspect" badge on
+any replayed branch's row) names the verify command, its output, and the
+suspects, then offers three ways out:
+
+- **Dismiss** — closes. Nothing mutates.
+- **Discard recordings and reassemble** — the targeted, WORKING forget
+  (`forgetRecordingsForBranches`): for each named suspect it resets the bench,
+  replays up to that member, forces its conflict back open (recreating real
+  merge context), forgets the recording there, and proves the forget by
+  checking the path is unmerged again. Behind the same count-bearing confirm
+  the blunt discard-all verb uses.
+- **Analyse** — opens a locked, plan-mode conversation whose only job is a
+  verdict. Because the bench is empty by the time this failure is visible, the
+  analysis first **rebuilds the failing tree back into the bench**
+  (`prepareVerificationDiagnostic`) — the same reset-and-replay sequence
+  assembly uses, deliberately not wiped on completion — and re-verifies it
+  fresh. It refuses (leaving nothing to clean up) if a member no longer merges
+  the same way, because the bench state has moved since the failure. Plan
+  mode is the deliberate choice — not the `auto` mode `openConflictAssist`
+  uses for a real fix — because the deliverable here is a verdict, not a
+  diff: the agent cannot edit the bench, structurally, before the desktop's
+  write gate would refuse it anyway. The prompt requires exactly one of two
+  verdicts: **Mechanical** (a replayed recording is individually wrong; name
+  the member, discard its recording, re-resolve) or **Semantic** (two members
+  are each correct but jointly incompatible; no bench-local fix exists — the
+  recommended path is to disable one colliding member, verify the other in
+  isolation, land it, then sync the other upward against the new base). The
+  prompt explicitly forbids editing the bench or proposing a bench-local
+  shim: any such change is destroyed by the next reassembly and would be a
+  landing hazard if it were not. For the semantic case it requires a
+  paste-ready, standalone prompt for the owning member's own conversation.
 
 ### Recorded resolutions can be purged
 
@@ -413,6 +488,92 @@ above) and *open the member worktree* (the durable fix: rework the collision
 where it can be committed, then Update and reassemble). Routing this badge to
 the operation-state ConflictsDialog was the original defect: it probed a clean
 bench, listed no files, and disabled its own Abort.
+
+### rerere cannot cross members; the resolution journal carries the reasoning
+
+`rerere` replays a resolution whose **conflict text** matches. That is exactly
+right for the same collision recurring across assemblies, and it is why the
+section above works. It does nothing for the case that dominates a busy bench:
+the same FILE conflicting against a different member. Member A against the
+source branch and member B against the source branch produce different hunks, so
+the key differs, no recording matches, and the second resolution starts from
+nothing. The bench having been wiped on failure means even the tree the first
+resolution produced is not on disk to consult.
+
+Measured, on this repo's own bench: six merges in one hour, five of them on one
+file, each resolved cold. The longest ran fifteen minutes, most of it spent
+reading that one file out of eight sibling worktrees to reconstruct a decision an
+earlier conversation had already made.
+
+So Ion records the half rerere structurally cannot key — **why** the resolution
+went the way it did — in `~/.ion/integration-resolutions.json`, keyed by
+`(repoPath, sourceBranch, path)`:
+
+- **Written at the one proven-good point.** Desktop Continue records after its
+  postconditions AND `bench.verify` pass. Everything above that gate is
+  unproven, and every failure there rolls the merge back — so an earlier write
+  would describe discarded history. The conflicted paths are captured while the
+  merge is still open, because `--continue` clears the unmerged index and
+  afterwards a resolved path is indistinguishable from any other file in the
+  merge commit.
+- **Keyed by path, not by member.** That is the entire point: a decision made
+  while integrating one member has to reach whoever collides on the same file
+  integrating another. `collidedWith` records the original pairing so a reader
+  can judge how much of it transfers.
+- **Pruned by staleness, never by count.** An entry whose `baseSha` has left the
+  source history describes a reconciliation against a world that no longer
+  exists. A "keep the last N" cap would evict a live entry for a hot file while
+  retaining dead ones. A base the writer cannot judge is kept — a failed probe
+  is not evidence of staleness.
+- **Advisory, never applied.** Nothing reads the journal to change a merge
+  outcome. rerere stays the only mechanism that replays a resolution, because a
+  recording keyed by conflict text is verifiable and a paragraph of prose is
+  not. A failed assembly attaches matching entries to the conflicted member's
+  record so the surface reporting the conflict already carries the context for
+  resolving it.
+- **The rationale comes from the resolver.** Deriving it from the diff would be
+  a guess dressed as a record. An unrecorded rationale is empty, visibly.
+
+The desktop owns both the write (only it completes a bench merge) and the read
+(the journal reader shares one parse path with the writer in
+`bench-resolution-journal.ts`, and the `BenchResolutionHistory` client tool
+reads through it). The format is desktop-internal, pinned by the desktop's own
+schema test — a field renamed on one side of the writer/reader pair would
+otherwise decode to its zero value and report a resolution with no rationale,
+which looks like a working journal holding nothing useful.
+
+### Three read-only tools answer a bench conflict's questions
+
+Resolving a bench conflict asks three things in order, and until these existed
+the only way to answer any of them was a shell sweep across sibling worktrees:
+
+| Tool | Answers |
+|---|---|
+| `WorkspaceAttribution` | which member contributed this file, or this line range |
+| `BenchResolutionHistory` | what was decided about these paths before, and why |
+| `BenchMemberFile` | what does one member's pinned version of this file say |
+
+All three are read-only and plan-mode safe; every git invocation is a query.
+They are desktop-provided **client tools**: the desktop declares them on
+`EngineConfig.toolGate.clientTools`, the engine adds them to the session's
+tool list beside MCP and extension tools, and a call is fulfilled over the
+wire (`engine_tool_gate_request` kind `tool` → `tool_gate_response`).
+
+`BenchMemberFile` reads the **pinned contribution**, not the member worktree.
+That distinction is the reason it exists as a primitive: a worktree's files
+include work done since its pin, and the bench merges the pin — so reading the
+directory answers a subtly different question than the one the resolver is
+asking. Refusals are explicit and actionable: a disabled member is refused with
+the reason (its content is not in the bench), an unknown member is refused with
+the enabled set listed, and an absent path is an *answer* rather than a failure.
+
+The bench prompt context names all three together, in the order a conflict is
+worked. That matters more than it sounds: the agent in the fifteen-minute merge
+*had* attribution available, used it once, and read eight worktrees by hand
+anyway. A tool being offered is not the same as it being reached for, which is
+why the conflict-assist prompt also instructs consulting history **before**
+reasoning about the merge — consulting prior decisions afterwards is the
+expensive path this removes.
 
 ### Pin updates warn about the collision before it costs a bench
 
@@ -452,21 +613,30 @@ The refusal has two independent halves, because there are two actors:
 
 | Actor | Enforcement | Where |
 |---|---|---|
-| Agent (tool call) | Engine-core workspace containment, checked in the tool loop beside the permission engine | `engine/internal/workspaces` |
+| Agent (tool call) | The desktop's tool-gate policy, answered over the engine's client tool gate (`EngineConfig.toolGate` → `engine_tool_gate_request` / `tool_gate_response`) | `desktop/src/main/tool-gate-responder.ts`, `desktop/src/main/integration/bench-tool-policy.ts` |
 | Operator (git panel button) | Early-return refusal in the git IPC handlers | `desktop/src/main/integration/bench-guard.ts` |
 
-The agent half is engine core, not an extension: containment is pure mechanism
-(deterministic path rules over two JSON records plus git state), every
-consumer that uses benches needs it, and a tool call must be refusable
-regardless of which extensions are loaded. It is on by default and disabled
-only by an explicit `security.workspaceContainment: false`; the `tool_call`
-hook still fires before execution, so a harness can layer STRICTER policy but
-cannot loosen the baseline. The two halves cannot share code — Go and
-TypeScript on opposite sides of the socket — so the path-containment rule is
-stated in both places, and each carries a test pinning identical behaviour
-(root match, subdirectory match, sibling-prefix rejection).
+Both halves are **desktop-owned**, and that is the architectural point: the
+bench is Ion's own product, not a git concept, so no consumer gets bench rules
+unless it builds a bench. The engine owns only the generic mechanism — the
+tool-gate seam that lets any session-owning client refuse a tool call before
+it executes (the engine blocks the gated call, bounded by the client's declared
+timeout, and applies the client's declared fallback when no answer arrives).
+An earlier revision enforced the bench rules in engine core
+(`engine/internal/workspaces`) on the argument that a tool call must be
+refusable regardless of which extensions are loaded; that argument is real,
+but it justifies only the *universal* safety invariant — worktree isolation,
+which stays in engine core — not one product's workflow rules. The gate
+declaration is per-session opt-in, so a headless consumer with no bench sees
+no round-trip at all.
 
-Both **fail open** when the workspace record is missing or corrupt. A false
+The two operator/agent halves share the record reader and the attribution code
+(both TypeScript in the desktop main process), so the path-containment rule is
+stated once and both carry tests pinning the same behaviour (root match,
+subdirectory match, sibling-prefix rejection).
+
+Both **fail open** when the workspace record is missing or corrupt — and the
+gate itself fails open on timeout (`timeoutDecision: 'allow'`). A false
 refusal would block legitimate commits in an ordinary worktree, which is worse
 than briefly missing the guard; and because the two halves are independent, a
 read failure in one does not leave the bench unguarded against the other.
@@ -487,7 +657,7 @@ succeeded, looked successful, and was destroyed by the next
 `switch -C … --discard-changes`. Same invisible work-loss the history rule
 prevents, left open on the other axis.
 
-The engine's workspace containment closes it: a write-class tool call
+The desktop's tool-gate policy closes it: a write-class tool call
 (`Write`, `Edit`, `NotebookEdit`) whose target is inside a bench is refused —
 judged by the TARGET, so a conversation running elsewhere that writes into a
 bench is refused too. `Bash` file-writes are deliberately not inferred —
@@ -524,18 +694,22 @@ The containment is reactive: it refuses a wrong write when the model attempts
 it. The refusal message therefore carries everything the model needs to
 redirect rather than retry — the offending path, what that path belongs to,
 the owning member(s) with changed line ranges for a bench write, and the
-worktree or member checkout where the work belongs. A harness that wants
-proactive teaching (a bench briefing in the system prompt, bench-introspection
-tools) can build it on existing SDK surface (`before_prompt` injection, tool
-registration); the engine baseline does not depend on one being loaded.
+worktree or member checkout where the work belongs. The proactive half —
+the bench briefing in the system prompt and the three bench tools — is
+desktop-provided (per-prompt context append plus `toolGate.clientTools`);
+the refusal does not depend on either being delivered.
 
 ### A worktree refuses writes outside itself
 
-The bench rule above has a sibling that applies to ordinary worktrees. A worktree
+The bench rule above has a sibling that applies to ordinary worktrees — and
+unlike the bench rule, this one is engine core. A worktree
 exists to isolate one conversation's work onto its own branch, so a write from a
 worktree conversation into the **base repo it was cut from**, or into a **sibling
-worktree of the same repo**, is refused by the same engine-core workspace
-containment, at the same tool-loop seam.
+worktree of the same repo**, is refused by the engine's workspace
+containment (`engine/internal/workspaces`), checked in the tool loop beside
+the permission engine. It is a universal safety invariant, not a product
+workflow, which is why it stays engine-owned while the bench rules moved to
+the desktop.
 
 The failure it prevents is not theoretical. Five worktree conversations once ran
 with their sessions pointed at the shared base checkout. Each one's `git status`
@@ -627,6 +801,13 @@ pin/staleness vocabulary cannot drift between clients.
 The key is also the mechanism that keeps projects separate: two worktrees from
 different repos resolve to different workspaces, so cross-project blending is
 not possible by construction rather than by a rule anyone enforces.
+
+The resolution journal (`~/.ion/integration-resolutions.json`) is
+desktop-owned on both sides: the desktop writes it (only it completes a bench
+merge) and the desktop reads it (the `BenchResolutionHistory` client tool goes
+through the same `bench-resolution-journal.ts` parse path as the writer). The
+format is pinned by the desktop's own schema test so a rename cannot silently
+degrade the reader into reporting resolutions with no reasoning.
 
 ## Consequences
 

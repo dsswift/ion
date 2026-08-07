@@ -77,6 +77,8 @@ A flat map of tier name to a concrete model identifier or an object containing a
 
 Desktop users can edit tiers, their primary model, and ordered fallback chains from **Settings → AI & Models → Model Tiers**. Wire-protocol consumers can use `list_model_tiers`, `set_model_tier`, and `remove_model_tier`; these are the supported administrative surface, so consumers do not need to reimplement `models.json` semantics.
 
+Desktop also keeps a managed **Workbench Sync** row (`workbench-sync`) for its AI-assisted rebase, merge, cherry-pick, and bench-verification workflows. When that row has no primary model, Desktop logs the decision and uses the configured `standard` tier. If neither tier is configured, the assisted workflow refuses before creating a conversation and points back to Model Tiers. This fallback is Desktop product policy; the engine remains opinionless and defines no default tier mappings.
+
 ```json
 {
   "tiers": {
