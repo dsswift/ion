@@ -325,6 +325,10 @@ export const IPC = {
   // Model & provider management
   LIST_MODELS: 'ion:list-models',
   MODEL_TIER_RESOLVE: 'ion:model-tier-resolve',
+  LIST_MODEL_TIERS: 'ion:list-model-tiers',
+  SET_MODEL_TIER: 'ion:set-model-tier',
+  REMOVE_MODEL_TIER: 'ion:remove-model-tier',
+  MODEL_TIERS_UPDATED: 'ion:model-tiers-updated',
   STORE_CREDENTIAL: 'ion:store-credential',
   REFRESH_MODELS: 'ion:refresh-models',
 

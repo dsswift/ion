@@ -243,6 +243,8 @@ export type EngineEvent =
   // rather than as a live RemoteEvent. See CLAUDE.md §
   // "The typed-event corollary" for the broader rule.
   | { type: 'engine_model_fallback'; fallbackRequestedModel: string; fallbackModel: string; fallbackReason: string }
+  // engine_model_tiers is a complete snapshot. Consumers replace, never merge.
+  | { type: 'engine_model_tiers'; modelTiers: import('./types-model-tiers').ModelTier[] }
   // engine_capability_unsupported — workflow signal emitted when a requested
   // feature (e.g. plan mode) is not supported by the backend that would serve
   // the run; the engine declined the prompt cleanly instead of dispatching a

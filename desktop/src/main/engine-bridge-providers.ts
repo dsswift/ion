@@ -4,6 +4,7 @@
  * cap; the thin wrappers in engine-bridge.ts delegate here directly.
  */
 import type { EngineBridge } from './engine-bridge'
+import type { ModelTier } from '../shared/types-model-tiers'
 import { log as _log } from './logger'
 
 function log(msg: string, fields?: Record<string, unknown>): void {
@@ -67,4 +68,24 @@ export async function providerLoginCode(bridge: EngineBridge, provider: string, 
 export async function providerLogout(bridge: EngineBridge, provider: string): Promise<{ ok: boolean; error?: string }> {
   await bridge.connect()
   return bridge._sendWithResult({ cmd: 'provider_logout', provider })
+}
+
+
+export async function listModelTiers(bridge: EngineBridge): Promise<ModelTier[]> {
+  await bridge.connect()
+  const result = await bridge._sendWithData<{ tiers: ModelTier[] }>({ cmd: 'list_model_tiers' })
+  if (!result.ok) throw new Error(result.error || 'Could not list model tiers')
+  return result.data?.tiers ?? []
+}
+
+export async function setModelTier(bridge: EngineBridge, tier: ModelTier): Promise<{ ok: boolean; error?: string }> {
+  await bridge.connect()
+  log('set_model_tier', { tier: tier.name, model: tier.model, fallbackCount: tier.fallbacks.length })
+  return bridge._sendWithResult({ cmd: 'set_model_tier', text: tier.name, model: tier.model, fallbacks: tier.fallbacks })
+}
+
+export async function removeModelTier(bridge: EngineBridge, name: string): Promise<{ ok: boolean; error?: string }> {
+  await bridge.connect()
+  log('remove_model_tier', { tier: name })
+  return bridge._sendWithResult({ cmd: 'remove_model_tier', text: name })
 }

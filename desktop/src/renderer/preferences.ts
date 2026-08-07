@@ -7,6 +7,7 @@ import { bootstrapPreferences } from './preferences-bootstrap'
 import { parseChord } from './shortcuts/chord'
 import { SHORTCUT_CATALOG } from './shortcuts/shortcut-catalog'
 import { deriveEnterpriseThemePolicy } from '../shared/enterprise-theme-policy'
+import { normalizePreferencesModels } from './preferences-model-normalization'
 import { rWarn } from './rendererLogger'
 export type { PreferencesState } from './preferences-types'
 export { getEffectiveTabGroups } from './preferences-persist'
@@ -524,6 +525,7 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     set({ implementModeModel: model })
     saveSettings(getAllSettings(get))
   },
+  normalizeModelPreferences: (models) => normalizePreferencesModels(set, get, models),
   setGitWatcherIgnoredDirectories: (dirs) => {
     set({ gitWatcherIgnoredDirectories: dirs })
     saveSettings(getAllSettings(get))

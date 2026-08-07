@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { ModelEntry, ProviderEntry } from '../../shared/types-models'
 import { rDebug } from '../rendererLogger'
+import { usePreferencesStore } from '../preferences'
 
 /** Live state of an in-flight delegated-CLI login, keyed by provider id. */
 export interface ProviderLoginState {
@@ -44,12 +45,14 @@ export const useModelStore = create<ModelStoreState>((set, get) => ({
     set({ loading: true })
     try {
       const result = await window.ion.listModels()
+      const models = result.models || []
       set({
-        models: result.models || [],
+        models,
         providers: result.providers || [],
         lastFetched: Date.now(),
         loading: false,
       })
+      usePreferencesStore.getState().normalizeModelPreferences(models)
     } catch {
       set({ loading: false })
     }

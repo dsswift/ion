@@ -1,4 +1,5 @@
 import type { GitOpsMode, WorktreeCompletionStrategy, TabGroupMode, TabGroup, QuickTool, RemotePairedDevice, EngineProfile, NewConversationDefaultsPolicy, ThinkingEffort } from '../shared/types'
+import type { ModelEntry } from '../shared/types-models'
 import type { EnterprisePolicy } from '../shared/types-engine'
 
 
@@ -326,6 +327,8 @@ export interface PreferencesState {
   setPlanModelSplitEnabled: (enabled: boolean) => void
   setPlanModeModel: (model: string) => void
   setImplementModeModel: (model: string) => void
+  /** Atomically normalize persisted model preferences from live provider entries. */
+  normalizeModelPreferences: (models: ModelEntry[]) => void
   setGitWatcherIgnoredDirectories: (dirs: string[]) => void
   setExcludedResourceKinds: (kinds: string[]) => void
   setShowImplementClearContext: (enabled: boolean) => void

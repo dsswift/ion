@@ -29,7 +29,8 @@ vi.mock('../slices/tab-slice-permission-mode', () => ({
   applyPermissionModeForTab: (...args: unknown[]) => applyPermissionModeForTab(...args),
 }))
 
-import { createGitConflictSlice, conflictAssistPrompt, CONFLICT_ASSIST_PROMPT, CONFLICT_ASSIST_TIER } from '../slices/git-conflict-slice'
+import { createGitConflictSlice, conflictAssistPrompt, CONFLICT_ASSIST_PROMPT } from '../slices/git-conflict-slice'
+import { CONFLICT_ASSIST_TIER } from '../../../shared/types-model-tiers'
 import { createWorktreeInventorySlice } from '../slices/worktree-inventory-slice'
 import type { State, GitConflictAlert } from '../session-store-types'
 

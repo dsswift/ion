@@ -141,3 +141,18 @@ describe('EngineBridge.remapSession', () => {
     expect(entry.conversationId).toBe('conv-123')
   })
 })
+
+describe('EngineBridge global snapshots', () => {
+  it('forwards engine_model_tiers snapshots without a session key', () => {
+    const { bridge, events } = makeBridge()
+    ;(bridge as any)['_handleMessage'](JSON.stringify({
+      key: '',
+      event: { type: 'engine_model_tiers', modelTiers: [{ name: 'standard', model: 'provider/model', fallbacks: [] }] },
+    }))
+
+    expect(events).toEqual([{
+      key: '',
+      event: { type: 'engine_model_tiers', modelTiers: [{ name: 'standard', model: 'provider/model', fallbacks: [] }] },
+    }])
+  })
+})

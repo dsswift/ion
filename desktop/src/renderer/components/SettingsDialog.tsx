@@ -108,8 +108,8 @@ interface SettingsDialogProps {
   initialTab?: string | null
 }
 
-const DIALOG_WIDTH = 700
-const DIALOG_HEIGHT = 600
+const DIALOG_WIDTH = 910
+const DIALOG_HEIGHT = 780
 
 export function SettingsDialog({ onClose, initialTab }: SettingsDialogProps) {
   const colors = useColors()

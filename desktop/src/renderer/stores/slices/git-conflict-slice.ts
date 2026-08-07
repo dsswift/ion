@@ -60,15 +60,8 @@ export function conflictAssistPrompt(operation: 'rebasing' | 'merging' | 'cherry
 /** Back-compat name for the default (rebase) prompt. Verbatim by specification. */
 export const CONFLICT_ASSIST_PROMPT = conflictAssistPrompt(null)
 
-/**
- * The model tier the assist runs on. A rebase fix is bounded, mechanical work:
- * the operator's default is often a reasoning model, which is slower and more
- * expensive than this task warrants, and the highest/lowest tiers are the
- * wrong axis. The `standard` tier from ~/.ion/models.json is the deliberate
- * choice, and the assist REFUSES when it is not configured rather than
- * silently running on some other model.
- */
-export const CONFLICT_ASSIST_TIER = 'standard'
+import { CONFLICT_ASSIST_TIER } from '../../../shared/types-model-tiers'
+
 
 export function createGitConflictSlice(set: StoreSet, get: StoreGet): Partial<State> {
   return {

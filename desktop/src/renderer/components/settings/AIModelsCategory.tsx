@@ -7,7 +7,7 @@ import { SettingToggle } from './SettingToggle'
 import { EngineCategory } from './EngineCategory'
 import { ProvidersCategory } from './ProvidersCategory'
 import { BashAllowlistEditor } from './BashAllowlistEditor'
-import { getModelDisplayLabel } from '../../stores/model-labels'
+import { ModelTiersSection } from './ModelTiersSection'
 import { useAllowedModels } from '../../stores/use-allowed-models'
 import { useModelStore } from '../../stores/model-store'
 import { getProviderDisplayName } from '../../../shared/types-models'
@@ -136,7 +136,7 @@ export function AIModelsCategory() {
             {Array.from(grouped.entries()).map(([providerId, models]) => (
               <optgroup key={providerId} label={getProviderDisplayName(providerId, providers)}>
                 {models.map((m) => (
-                  <option key={m.id} value={m.id}>{getModelDisplayLabel(m.id)}</option>
+                  <option key={m.id} value={m.id}>{m.id}</option>
                 ))}
               </optgroup>
             ))}
@@ -170,7 +170,7 @@ export function AIModelsCategory() {
             {Array.from(grouped.entries()).map(([providerId, models]) => (
               <optgroup key={providerId} label={getProviderDisplayName(providerId, providers)}>
                 {models.map((m) => (
-                  <option key={m.id} value={m.id}>{getModelDisplayLabel(m.id)}</option>
+                  <option key={m.id} value={m.id}>{m.id}</option>
                 ))}
               </optgroup>
             ))}
@@ -195,6 +195,8 @@ export function AIModelsCategory() {
           </div>
         )}
       </SettingSection>
+
+      <ModelTiersSection />
 
       <SettingHeading>Extended Thinking</SettingHeading>
 
@@ -266,7 +268,7 @@ export function AIModelsCategory() {
                 {Array.from(grouped.entries()).map(([providerId, models]) => (
                   <optgroup key={providerId} label={getProviderDisplayName(providerId, providers)}>
                     {models.map((m) => (
-                      <option key={m.id} value={m.id}>{getModelDisplayLabel(m.id)}</option>
+                      <option key={m.id} value={m.id}>{m.id}</option>
                     ))}
                   </optgroup>
                 ))}
@@ -306,7 +308,7 @@ export function AIModelsCategory() {
                 {Array.from(grouped.entries()).map(([providerId, models]) => (
                   <optgroup key={providerId} label={getProviderDisplayName(providerId, providers)}>
                     {models.map((m) => (
-                      <option key={m.id} value={m.id}>{getModelDisplayLabel(m.id)}</option>
+                      <option key={m.id} value={m.id}>{m.id}</option>
                     ))}
                   </optgroup>
                 ))}

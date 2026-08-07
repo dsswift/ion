@@ -6,8 +6,7 @@ import { useInteractiveState, interactiveBg } from '../hooks/useInteractiveState
 import { transitions } from '../theme-tokens'
 import { useModelStore } from '../stores/model-store'
 import { usePreferencesStore } from '../preferences'
-import { getProviderDisplayName } from '../../shared/types-models'
-import { getModelDisplayLabel } from '../stores/model-labels'
+import { getProviderDisplayName, getModelDisplayLabel } from '../../shared/types-models'
 import type { ModelEntry } from '../../shared/types-models'
 
 const COLLAPSED_KEY = 'ion:model-picker-collapsed'
@@ -81,7 +80,7 @@ function ModelRow({ model, hasAuth, isSelected, isDefault, isDupe, onPick }: {
 }) {
   const colors = useColors()
   const { hover, pressed, handlers } = useInteractiveState()
-  const label = getModelDisplayLabel(model.id)
+  const label = model.id
   return (
     <button
       onClick={onPick}
@@ -171,7 +170,7 @@ export function ModelPickerPopover({ selectedModelId, onSelect, onClose, positio
     const lowered = search.toLowerCase()
     const filtered = models.filter((m) => {
       if (!isSearching) return authedProviderIds.has(m.providerId)
-      return m.id.toLowerCase().includes(lowered) || getModelDisplayLabel(m.id).toLowerCase().includes(lowered)
+      return m.id.toLowerCase().includes(lowered) || getModelDisplayLabel(m).toLowerCase().includes(lowered)
     })
     const groups = new Map<string, ModelEntry[]>()
     for (const m of filtered) {
@@ -191,7 +190,7 @@ export function ModelPickerPopover({ selectedModelId, onSelect, onClose, positio
     for (const [, providerModels] of grouped) {
       const seen = new Map<string, number>()
       for (const m of providerModels) {
-        const label = getModelDisplayLabel(m.id)
+        const label = m.id
         seen.set(label, (seen.get(label) || 0) + 1)
       }
       for (const [label, count] of seen) {
@@ -252,7 +251,7 @@ export function ModelPickerPopover({ selectedModelId, onSelect, onClose, positio
                   hasAuth={hasAuth}
                   isSelected={m.id === selectedModelId}
                   isDefault={m.id === preferredModel}
-                  isDupe={duplicateLabels.has(getModelDisplayLabel(m.id))}
+                  isDupe={duplicateLabels.has(m.id)}
                   onPick={() => { onSelect(m.id); onClose() }}
                 />
               ))}

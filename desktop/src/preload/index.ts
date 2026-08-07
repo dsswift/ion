@@ -311,6 +311,13 @@ const api: IonAPI = {
   // ─── Model & provider management ───
   listModels: () => ipcRenderer.invoke(IPC.LIST_MODELS),
   resolveModelTier: (tier: string) => ipcRenderer.invoke(IPC.MODEL_TIER_RESOLVE, { tier }),
+  listModelTiers: () => ipcRenderer.invoke(IPC.LIST_MODEL_TIERS),
+  setModelTier: (tier) => ipcRenderer.invoke(IPC.SET_MODEL_TIER, tier),
+  removeModelTier: (name) => ipcRenderer.invoke(IPC.REMOVE_MODEL_TIER, { name }),
+  onModelTiersUpdated: (callback) => {
+    ipcRenderer.on(IPC.MODEL_TIERS_UPDATED, callback)
+    return () => ipcRenderer.removeListener(IPC.MODEL_TIERS_UPDATED, callback)
+  },
   storeCredential: (provider, credential) => ipcRenderer.invoke(IPC.STORE_CREDENTIAL, { provider, credential }),
   refreshModels: (provider) => ipcRenderer.invoke(IPC.REFRESH_MODELS, { provider }),
 

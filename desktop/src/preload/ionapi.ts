@@ -6,6 +6,7 @@
 import type { AtvApi } from './atv-api'
 import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus, LandResult, WorktreeMoveResult, WorktreeInventoryEntry, WorktreeAppraisalWire, WorktreeProvisionState, IntegrationWorkspace, BenchAssembleResult, EngineConfig, EngineEvent, EngineHostInfo, EngineDirListing, RemoteTransportState, DiscoveredCommand, GitEvent, RepoSnapshot, NewConversationDefaultsPolicy } from '../shared/types'
 import type { EnterprisePolicy } from '../shared/types-engine'
+import type { ModelTier } from '../shared/types-model-tiers'
 import type { CustomThemeForRenderer } from '../shared/theme-pack-types'
 
 export interface IonAPI extends AtvApi {
@@ -373,6 +374,10 @@ export interface IonAPI extends AtvApi {
   // ─── Model & provider management ───
   listModels(): Promise<{ models: import('../shared/types-models').ModelEntry[]; providers: import('../shared/types-models').ProviderEntry[] }>
   resolveModelTier(tier: string): Promise<{ tier: string; model: string; fallbacks: string[]; configured: boolean }>
+  listModelTiers(): Promise<ModelTier[]>
+  setModelTier(tier: ModelTier): Promise<{ ok: boolean; error?: string }>
+  removeModelTier(name: string): Promise<{ ok: boolean; error?: string }>
+  onModelTiersUpdated(callback: () => void): () => void
   storeCredential(provider: string, credential: string): Promise<{ ok: boolean; error?: string }>
   refreshModels(provider?: string): Promise<{ ok: boolean; error?: string }>
 

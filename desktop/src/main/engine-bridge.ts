@@ -9,6 +9,7 @@ import { buildSendPromptMessage, buildSendPromptLogLine } from './engine-bridge-
 import * as conv from './engine-bridge-conversations'
 import * as prov from './engine-bridge-providers'
 import type { EngineConfig, EngineEvent, ImageAttachmentPayload, DiscoveredCommand } from '../shared/types'
+import type { ModelTier } from '../shared/types-model-tiers'
 
 const TAG = 'EngineBridge'
 function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
@@ -189,7 +190,7 @@ export class EngineBridge extends EventEmitter {
     }
 
     // Session event -- forward to IPC layer
-    if (msg.key && msg.event) {
+    if (typeof msg.key === 'string' && msg.event) {
       // Rewrite key if it has been remapped (client-side alias)
       const routedKey = this.keyAliases.get(msg.key) ?? msg.key
       // Phase 2 of the state-management overhaul: track the last
@@ -461,6 +462,9 @@ export class EngineBridge extends EventEmitter {
   // engine-bridge-providers.ts (file-size cap).
   async listModels(): Promise<{ models: any[]; providers: any[] }> { return prov.listModels(this) }
   async resolveModelTier(tier: string): Promise<{ tier: string; model: string; fallbacks: string[]; configured: boolean }> { return prov.resolveModelTier(this, tier) }
+  async listModelTiers(): Promise<ModelTier[]> { return prov.listModelTiers(this) }
+  async setModelTier(tier: ModelTier): Promise<{ ok: boolean; error?: string }> { return prov.setModelTier(this, tier) }
+  async removeModelTier(name: string): Promise<{ ok: boolean; error?: string }> { return prov.removeModelTier(this, name) }
   async storeCredential(provider: string, credential: string): Promise<{ ok: boolean; error?: string }> { return prov.storeCredential(this, provider, credential) }
   async refreshModels(provider?: string): Promise<{ ok: boolean; error?: string }> { return prov.refreshModels(this, provider) }
   async providerLogin(provider: string): Promise<{ ok: boolean; error?: string }> { return prov.providerLogin(this, provider) }
