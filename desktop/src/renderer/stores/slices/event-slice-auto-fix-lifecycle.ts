@@ -153,7 +153,64 @@ function scheduleClose(tabId: string, evidence: AutoFixCompletionEvidence, get: 
       return
     }
     rInfo('auto-fix.lifecycle', 'closing auto-fix tab after clean completion', { tab_id: tabId.slice(0, 8) })
+
+    // Resolve the repo whose worktree surfaces this fix changed, BEFORE closing:
+    // `closeTab` removes the tab from `tabs`, so reading it afterwards yields
+    // undefined and the refresh would be silently skipped.
+    //
+    // A bench auto-fix runs IN the bench directory, which is not a repo root and
+    // carries no `tab.worktree` — so the bench record supplies the repo. A
+    // worktree auto-fix has the metadata directly. Both end at the repo whose
+    // inventory and bench the row is joined from.
+    const repoPath = resolveRepoForRefresh(now, get)
+
     get().closeTab(tabId)
+
+    // The resolution just changed what the worktree row says: the conflict is
+    // gone, the operation state cleared, and the bench member's merge verdict
+    // moved. Without this the row keeps its red badge until the panel's 5s poll
+    // fires — and that poll is skipped entirely while the window is hidden, so a
+    // backgrounded overlay showed a stale conflict indefinitely.
+    //
+    // Refresh only; never reassemble. The operator decides when to rebuild.
+    if (repoPath) {
+      void get().refreshWorkspaceViews(repoPath)
+        .then(() => rInfo('auto-fix.lifecycle', 'refreshed worktree surfaces after resolution', {
+          tab_id: tabId.slice(0, 8), repo_path: repoPath,
+        }))
+        .catch((err) => rWarn('auto-fix.lifecycle', 'post-close workspace refresh failed', {
+          tab_id: tabId.slice(0, 8), repo_path: repoPath, error: String(err),
+        }))
+    } else {
+      rDebug('auto-fix.lifecycle', 'no repo resolved for post-close refresh', {
+        tab_id: tabId.slice(0, 8), directory: now.workingDirectory,
+      })
+    }
   }, CLOSE_DELAY_MS)
   pendingCloses.set(tabId, timer)
+}
+
+/**
+ * The repo whose worktree surfaces an auto-fix in this tab changed.
+ *
+ * Three sources, in order of directness:
+ *  1. the tab's own worktree metadata (a worktree auto-fix);
+ *  2. the bench record containing the tab's directory (a bench auto-fix, whose
+ *     directory is the bench and therefore has no worktree metadata);
+ *  3. nothing — the fix was in a plain checkout with no worktree surfaces to
+ *     refresh, which is not a failure.
+ *
+ * Never the working directory itself as a fallback: a worktree path is not a
+ * repo root, and `refreshWorktreeInventory` keyed by it would populate a cache
+ * under a key no surface reads while leaving the real one stale.
+ */
+function resolveRepoForRefresh(
+  tab: { workingDirectory: string; worktree?: { repoPath: string } | null },
+  get: () => State,
+): string | null {
+  if (tab.worktree?.repoPath) return tab.worktree.repoPath
+  for (const [repoPath, workspaces] of get().benchWorkspaces) {
+    if (workspaces.some((w) => w.benchPath === tab.workingDirectory)) return repoPath
+  }
+  return null
 }

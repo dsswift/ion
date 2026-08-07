@@ -13,6 +13,15 @@
  * swaps the sides (stage 2 is the branch rebased ONTO), which is exactly the
  * confusion this dialog exists to remove. The main process resolves labels
  * from the operation state and every button names the branch.
+ *
+ * ── Continue can re-conflict ────────────────────────────────────────────────
+ * A multi-commit rebase does not end when the currently-visible conflict
+ * clears: Continue commits that step and git keeps applying the remaining
+ * todo, which can stop again on a brand-new conflict several commits later.
+ * A failed Continue/Abort result therefore always re-probes GIT_OP_STATE (see
+ * `runFooter`) so `op` reflects whatever is ACTUALLY unmerged now, rather than
+ * leaving the stale "all resolved" state from the step that just finished
+ * sitting underneath the fresh failure message.
  */
 import React, { useCallback, useEffect, useState } from 'react'
 import { ArrowsClockwise, Robot, Warning, X } from '@phosphor-icons/react'
@@ -55,8 +64,12 @@ export function ConflictsDialog({
   const [confirmAbort, setConfirmAbort] = useState(false)
   const [footerBusy, setFooterBusy] = useState<'abort' | 'continue' | null>(null)
 
-  const refresh = useCallback(async () => {
-    const result = await window.ion.gitOpState(directory)
+  // Shared GIT_OP_STATE → OpState mapping. Used both by `refresh()` (clears
+  // any prior error on success) and by the post-continue/abort-failure probe
+  // in `runFooter` (which must NOT clear the error — the operation's own
+  // failure message is the useful thing on screen, and the freshly re-probed
+  // `op` is what stops it from being contradicted by a stale empty file list).
+  const applyOpStateResult = useCallback((result: Awaited<ReturnType<typeof window.ion.gitOpState>>): boolean => {
     if (result.ok) {
       setOp({
         state: result.state ?? null,
@@ -66,11 +79,19 @@ export function ConflictsDialog({
         theirsLabel: result.theirsLabel ?? 'incoming',
         files: result.files ?? [],
       })
+      return true
+    }
+    return false
+  }, [])
+
+  const refresh = useCallback(async () => {
+    const result = await window.ion.gitOpState(directory)
+    if (applyOpStateResult(result)) {
       setError(null)
     } else {
       setError(result.error ?? 'Could not read the repository state.')
     }
-  }, [directory])
+  }, [directory, applyOpStateResult])
 
   useEffect(() => {
     void refresh().catch((err) => rError('git.conflicts', 'op state load failed', { error: String(err) }))
@@ -101,6 +122,24 @@ export function ConflictsDialog({
       if (!result.ok) {
         rWarn('git.conflicts', 'operation verb failed', { verb, error: result.error ?? '' })
         setError(result.error ?? `${verb} failed.`)
+        // A failed continue can still have walked the rebase forward onto a
+        // BRAND NEW conflict further down the todo (git commits the resolved
+        // step, then keeps applying — see the module header). The stale `op`
+        // from before this call would otherwise keep showing an empty file
+        // list and "All conflicts are resolved" directly under this failure
+        // message. Re-probe and replace `op`, but deliberately do not touch
+        // `error` here — the operation's own failure text is what belongs on
+        // screen, not "state read OK".
+        try {
+          const opResult = await window.ion.gitOpState(directory)
+          if (!applyOpStateResult(opResult)) {
+            rWarn('git.conflicts', 'post-failure op state read failed', {
+              verb, error: opResult.error ?? '',
+            })
+          }
+        } catch (err) {
+          rWarn('git.conflicts', 'post-failure op state read threw', { verb, error: String(err) })
+        }
         return
       }
       rInfo('git.conflicts', 'operation verb succeeded', { verb, directory })
@@ -111,7 +150,7 @@ export function ConflictsDialog({
     } finally {
       setFooterBusy(null)
     }
-  }, [directory, onClose])
+  }, [directory, onClose, applyOpStateResult])
 
   const title = op?.state === 'rebasing' && op.branch
     ? `Conflicts — rebasing ${op.branch}${op.onto ? ` onto ${op.onto}` : ''}`

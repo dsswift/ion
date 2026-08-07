@@ -69,6 +69,7 @@ let root: ReturnType<typeof createRoot>
 function render(props: {
   entry: WorktreeInventoryEntry
   openConversations?: DirConversation[]
+  active?: boolean
 }): void {
   act(() => {
     root.render(
@@ -76,6 +77,7 @@ function render(props: {
         <WorktreeRow
           entry={props.entry}
           openConversations={props.openConversations}
+          active={props.active}
           onOpen={() => {}}
           onSync={() => {}}
           onMenu={() => {}}
@@ -216,5 +218,80 @@ describe('WorktreeRow — hover card', () => {
     act(() => { vi.advanceTimersByTime(100) })
 
     expect(document.querySelector('[data-testid="hover-card"]')).toBeNull()
+  })
+})
+
+/**
+ * Orientation: "where am I working?"
+ *
+ * With dozens of worktrees open, neither the tab strip (which tab is focused)
+ * nor the workspace indicator (which conversations are live) says which
+ * CHECKOUT the current conversation belongs to — and a worktree's registry title
+ * routinely differs from its conversation's title. These two additions are the
+ * panel's answer: a rail marking the current row, and the one identifier that
+ * correlates the panel against the tab strip and the branch name.
+ */
+describe('WorktreeRow — active worktree', () => {
+  it('marks the row when the active conversation is here', () => {
+    render({ entry: entry(), active: true })
+    expect(container.querySelector('[data-testid="worktree-active-wt/ion-a3f1"]')).toBeTruthy()
+  })
+
+  it('does not mark the row otherwise', () => {
+    render({ entry: entry(), active: false })
+    expect(container.querySelector('[data-testid="worktree-active-wt/ion-a3f1"]')).toBeFalsy()
+  })
+
+  it('carries the state in the hover card heading, not colour alone', () => {
+    // Colour must never be the only carrier of a state — an operator who cannot
+    // separate the hues still has to be able to read it.
+    render({ entry: entry(), active: true })
+    hoverName('wt/ion-a3f1')
+    expect(document.body.textContent).toContain('you are here')
+  })
+
+  it('composes the rail with the drag drop-target rule rather than replacing it', () => {
+    // Both facts can be true at once: this row is current AND a drop would land
+    // here. Choosing between them would hide one.
+    act(() => {
+      root.render(
+        <PopoverLayerProvider>
+          <WorktreeRow
+            entry={entry()}
+            active
+            dropTarget
+            onOpen={() => {}}
+            onSync={() => {}}
+            onMenu={() => {}}
+          />
+        </PopoverLayerProvider>,
+      )
+    })
+    const row = container.querySelector('[data-testid="worktree-row-wt/ion-a3f1"]') as HTMLElement
+    expect(row.style.boxShadow).toContain('inset 2px 0')
+    expect(row.style.boxShadow).toContain('inset 0 1px')
+  })
+})
+
+describe('WorktreeRow — worktree ID on line 2', () => {
+  it('shows the directory ID, the token shared with the branch and the path', () => {
+    render({ entry: entry() })
+    const id = container.querySelector('[data-testid="worktree-id-wt/ion-a3f1"]')
+    expect(id?.textContent).toBe('ion-a3f1')
+  })
+
+  it('keeps the ID when a long commit subject would otherwise consume the line', () => {
+    // The ID is the thing being correlated; truncating it defeats the purpose,
+    // so the subject yields width first (flexShrink: 0 on the ID).
+    render({ entry: entry({ lastCommitSubject: 'x'.repeat(400) }) })
+    const id = container.querySelector('[data-testid="worktree-id-wt/ion-a3f1"]') as HTMLElement
+    expect(id.textContent).toBe('ion-a3f1')
+    expect(id.style.flexShrink).toBe('0')
+  })
+
+  it('still shows the ID for a worktree with no commits', () => {
+    render({ entry: entry({ lastCommitSubject: '' }) })
+    expect(container.querySelector('[data-testid="worktree-id-wt/ion-a3f1"]')?.textContent).toBe('ion-a3f1')
+    expect(container.textContent).toContain('no commits yet')
   })
 })

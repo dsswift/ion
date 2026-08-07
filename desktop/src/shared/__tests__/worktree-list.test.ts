@@ -338,3 +338,60 @@ describe('findMembership', () => {
     expect(findMembership([wsJosh, wsMain], '/wt/none')).toBeUndefined()
   })
 })
+
+/**
+ * The active-worktree mark: "which checkout is the current conversation in?"
+ *
+ * Derived in this builder rather than in a component so the overlay panel, the
+ * ATV mirror, and the wire projection cannot disagree about which row is
+ * current — the same reason membership and order are joined here.
+ */
+describe('buildWorktreeList — active worktree', () => {
+  const two = [entry({ worktreePath: '/wt/a', branchName: 'wt/a', label: 'a' }),
+    entry({ worktreePath: '/wt/b', branchName: 'wt/b', label: 'b' })]
+
+  it('marks the worktree whose path is the active directory', () => {
+    const { items } = buildWorktreeList(two, [], null, '/wt/b')
+    expect(items.find((i) => i.entry.worktreePath === '/wt/b')?.active).toBe(true)
+  })
+
+  it('marks no more than one row', () => {
+    const { items } = buildWorktreeList(two, [], null, '/wt/b')
+    expect(items.filter((i) => i.active)).toHaveLength(1)
+  })
+
+  it('marks a sibling as inactive rather than leaving it undefined', () => {
+    const { items } = buildWorktreeList(two, [], null, '/wt/b')
+    // Explicitly false, not undefined: a renderer reading `item.active` must
+    // get a definite answer for every row.
+    expect(items.find((i) => i.entry.worktreePath === '/wt/a')?.active).toBe(false)
+  })
+
+  it('marks nothing when the active conversation is elsewhere', () => {
+    // A bench directory, the main clone, or an unrelated project. The bench has
+    // its own bar, so no worktree row should claim the operator is in it.
+    for (const elsewhere of ['/Users/x/.ion/integration/ion-josh', '/repo', '/somewhere/else']) {
+      const { items } = buildWorktreeList(two, [], null, elsewhere)
+      expect(items.some((i) => i.active)).toBe(false)
+    }
+  })
+
+  it('marks nothing when there is no active directory', () => {
+    for (const none of [null, undefined, '']) {
+      const { items } = buildWorktreeList(two, [], null, none)
+      expect(items.some((i) => i.active)).toBe(false)
+    }
+  })
+
+  it('never marks a worktree whose path merely prefixes the active one', () => {
+    // `ion-a3372546` vs `ion-a33725460`: a prefix test would highlight the
+    // wrong checkout, which is worse than highlighting none.
+    const prefixed = [
+      entry({ worktreePath: '/wt/ion-a3372546', branchName: 'wt/short', label: 'short' }),
+      entry({ worktreePath: '/wt/ion-a33725460', branchName: 'wt/long', label: 'long' }),
+    ]
+    const { items } = buildWorktreeList(prefixed, [], null, '/wt/ion-a33725460')
+    expect(items.find((i) => i.entry.branchName === 'wt/long')?.active).toBe(true)
+    expect(items.find((i) => i.entry.branchName === 'wt/short')?.active).toBe(false)
+  })
+})
