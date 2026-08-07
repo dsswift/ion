@@ -301,6 +301,24 @@ type RunHooks struct {
 	OnPermissionDenied  func(runID string, info interface{})
 
 	OnPermissionClassify func(toolName string, input map[string]interface{}) string
+
+	// OnToolGate consults the session's owning client before a gated tool
+	// call executes (types.ToolGateConfig — the client-owned tool gate).
+	// The session layer wires it only for sessions that opted in via
+	// EngineConfig.ToolGate, so a nil callback is the universal fast path.
+	// The implementation emits engine_tool_gate_request, blocks on the
+	// broker channel bounded by the declared timeout, and returns the
+	// resolved decision. siblings names the other tool calls in the same
+	// model turn (concurrent by construction), because turn-isolation
+	// policies cannot be evaluated from a single call. Returns (decision,
+	// reason): decision is
+	// types.GateDecisionAllow or types.GateDecisionDeny; reason is the
+	// model-facing message a deny carries into the tool result. The tool
+	// loop calls it AFTER the permission engine and workspace containment
+	// (a call those refuse never reaches the client) and BEFORE sandbox
+	// wrapping and extension tool_call hooks (the session owner's refusal
+	// preempts extension processing and never pays the sandbox cost).
+	OnToolGate func(toolName string, input map[string]interface{}, cwd string, siblings []string) (decision string, reason string)
 }
 
 // RunConfig packages all per-run state that varies between sessions. It is
@@ -320,7 +338,7 @@ type RunConfig struct {
 	SandboxCfg  *sandbox.Config
 	SecurityCfg *types.SecurityConfig
 	// WorkspaceChecker enforces the engine's baseline workspace containment
-	// (worktree isolation, bench refusals — see internal/workspaces). Nil
+	// (worktree isolation — see internal/workspaces). Nil
 	// means disabled; the session layer threads it when
 	// SecurityConfig.WorkspaceContainment resolves enabled (the default).
 	// Checked in the tool loop beside the permission engine, before hooks and

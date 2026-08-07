@@ -705,8 +705,7 @@ type SecurityConfig struct {
 
 	// WorkspaceContainment controls the engine's baseline workspace rules:
 	// a conversation whose cwd is a registered worktree may not write into
-	// the base repository it was cut from or into a sibling worktree, and an
-	// integration bench refuses file writes and git history commands (see
+	// the base repository it was cut from or into a sibling worktree (see
 	// internal/workspaces). Nil/absent means ENABLED — the containment is
 	// safety mechanism, not an opt-in feature, so it is on by default and a
 	// consumer that genuinely wants raw behavior sets false explicitly.

@@ -208,6 +208,32 @@ type EngineEvent struct {
 	PermToolInput map[string]any  `json:"permToolInput,omitempty"`
 	PermOptions   []PermissionOpt `json:"permOptions,omitempty"`
 
+	// engine_tool_gate_request — request/response wire protocol for the
+	// client-owned tool gate (types/tool_gate.go). Emitted only for sessions
+	// whose EngineConfig.ToolGate opted in; the gated tool call blocks until
+	// tool_gate_response arrives or the declared timeout applies the declared
+	// fallback. Deliberately a separate event from engine_permission_request:
+	// that event is a HUMAN ask that clients surface in approval UI, while
+	// this one is answered by client code. Sharing the event would put
+	// machine-policy questions in human permission queues.
+	GateRequestID string `json:"gateRequestId,omitempty"`
+	// GateKind distinguishes the two request kinds: "policy" (answer
+	// allow/deny) and "tool" (a client-declared tool call — answer with
+	// gateContent/gateIsError). Empty means "policy" for compatibility.
+	GateKind      string         `json:"gateKind,omitempty"`
+	GateToolName  string         `json:"gateToolName,omitempty"`
+	GateToolInput map[string]any `json:"gateToolInput,omitempty"`
+	// GateCwd is the working directory the tool call would execute in — the
+	// fact a policy client most often needs (path containment, workspace
+	// rules) without re-deriving session state.
+	GateCwd string `json:"gateCwd,omitempty"`
+	// GateSiblingTools names the OTHER tool calls in the same model turn
+	// (tool calls in one response run concurrently). A policy that requires
+	// an operation to run alone — e.g. a merge completion that must not
+	// share a turn with the edits that resolved it — needs this fact and
+	// cannot derive it from single-call requests.
+	GateSiblingTools []string `json:"gateSiblingTools,omitempty"`
+
 	// engine_plan_mode_changed
 	PlanModeEnabled  bool   `json:"planModeEnabled,omitempty"`
 	PlanModeFilePath string `json:"planFilePath,omitempty"`

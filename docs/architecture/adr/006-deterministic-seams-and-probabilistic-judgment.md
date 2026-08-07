@@ -172,7 +172,10 @@ it wants the LLM with hooks for the bright-line cases at the edges.
   what to edit; the containment makes the deterministic ruling about
   whether the target may be written at all. Harness-side, any extension
   can register the same shape of ruling through the `tool_call` hook —
-  the gate decides, the model works within what the gate allows.
+  the gate decides, the model works within what the gate allows. A
+  wire-protocol client gets the same shape of ruling through the client
+  tool gate ([ADR-025](./025-client-tool-gate.md)) — Ion's desktop uses
+  it for the bench rules.
 
 ## References
 
