@@ -19,9 +19,12 @@ import {
   loadWorkspaces, saveWorkspaces, findWorkspace, makeWorkspace, makeMember, workspacesForRepo,
 } from './bench-store'
 import { assembleBench } from './bench-assemble'
+import { prepareVerificationDiagnostic } from './bench-verification-diagnostic'
+import { forgetRecordingsForBranches } from './bench-recording-recovery'
 import { dryRunCollision } from './bench-dry-run'
 import { captureContribution, contributedTreeHash } from './bench-snapshot'
 import { isInsideBench } from './bench-guard'
+import { advanceWorktreeStageOnPinChange } from '../worktree/registry'
 import type { IntegrationWorkspace, BenchAssembleResult, PinState } from '../../shared/types'
 
 const TAG = 'bench.ops'
@@ -231,34 +234,6 @@ export function setMemberEnabled(
 }
 
 /**
- * Record or clear the operator's verdict on a member.
- *
- * The two verdicts make different statements with different lifetimes:
- * `good` says "I reviewed the feature and it works" — a statement about the
- * feature that stays true across assemblies, syncs, and pin advances, so only
- * the operator changes it. `issue` says "THIS contribution has a bug" — a
- * statement about the pinned content, cleared when the pin advances because
- * new content is a clean slate to retest (see `nextReview`). `null` clears
- * either one, so selecting an active verdict again un-sets it.
- */
-export function setMemberReview(
-  repoPath: string,
-  sourceBranch: string,
-  worktreePath: string,
-  review: 'good' | 'issue' | null,
-): IntegrationWorkspace | null {
-  const ws = findWorkspace(loadWorkspaces(), repoPath, sourceBranch)
-  if (!ws) return null
-  const next = {
-    ...ws,
-    members: ws.members.map((m) => (m.worktreePath === worktreePath ? { ...m, review: review ?? undefined } : m)),
-  }
-  persist(next)
-  log('member review changed', { worktree_path: worktreePath, review: review ?? 'none' })
-  return next
-}
-
-/**
  * Move a member to a new position in the merge order.
  *
  * Order IS array position — assembly iterates the array — so this is a splice
@@ -299,10 +274,10 @@ export function setMemberOrder(
 /**
  * True when advancing to `contribution` would change what the pin holds.
  *
- * Gates issue-clearing: an `issue` verdict belongs to a specific contribution,
- * so it survives an assembly or an Update that re-pins the identical content
- * (the bug is still in there), and is dropped the moment the content actually
- * moves. A `good` verdict is never gated by this — see `nextReview`.
+ * Gates the stage auto-transition: a `bug` stage belongs to the content that
+ * was tested, so it survives an assembly or an Update that re-pins the
+ * identical content (the bug is still in there), and moves to `test` the
+ * moment the content actually changes. See `advanceWorktreeStageOnPinChange`.
  */
 function pinChanged(
   member: IntegrationWorkspace['members'][number],
@@ -311,23 +286,6 @@ function pinChanged(
   return member.pinnedSha !== contribution.sha ||
     member.pinnedTreeHash !== contribution.treeHash ||
     member.pinnedBaseSha !== contribution.baseSha
-}
-
-/**
- * The verdict a member carries after its pin advances (or does not).
- *
- * `good` is sticky: it records that the operator reviewed the FEATURE and it
- * works, a statement that stays valid across assemblies, syncs, and pin
- * advances — once earned it is only ever changed by the operator. `issue`
- * records that the reviewed contribution had a bug, so advancing the pin
- * clears it: the new content is a clean slate for retesting, and the operator
- * re-flags it if the bug survived or marks it good if the fix landed.
- */
-function nextReview(
-  review: 'good' | 'issue' | undefined,
-  advanced: boolean,
-): 'good' | 'issue' | undefined {
-  return advanced && review === 'issue' ? undefined : review
 }
 
 /**
@@ -377,19 +335,20 @@ export async function updateMember(
         pin: (contribution.baseSha !== '' && contribution.baseSha === contribution.sha
           ? 'empty'
           : 'current') as PinState,
-        // An `issue` verdict describes the contribution that was reviewed, so
-        // new content invalidates it; a `good` verdict describes the feature
-        // and survives the advance. Re-pinning identical content keeps both.
-        review: nextReview(m.review, advanced),
       }
       : m)),
+  }
+  // A `bug` stage describes the content that was tested, so new content moves
+  // it to `test` (retest the fix); re-pinning identical content keeps it. The
+  // rule lives in the registry beside the stage itself.
+  if (advanced && !advanceWorktreeStageOnPinChange(worktreePath)) {
+    warn('pin advanced but stage auto-advance persist failed', { worktree_path: worktreePath })
   }
   log('member pin advanced', {
     branch: member.branchName,
     sha: contribution.sha.slice(0, 7),
     base: contribution.baseSha ? contribution.baseSha.slice(0, 7) : 'unknown',
     pin_changed: advanced,
-    review_cleared: advanced && member.review === 'issue',
     collision_predicted: !!warning,
   })
   const result = await assembleAndPersist(next)
@@ -430,7 +389,11 @@ export async function updateAllStale(
         pin: (contribution.baseSha !== '' && contribution.baseSha === contribution.sha
           ? 'empty'
           : 'current') as PinState,
-        review: nextReview(m.review, moved),
+      }
+      // Same rule as updateMember: new content moves a `bug` stage to `test`;
+      // identical content re-pinned keeps it.
+      if (moved && !advanceWorktreeStageOnPinChange(m.worktreePath)) {
+        warn('pin advanced but stage auto-advance persist failed', { worktree_path: m.worktreePath })
       }
       advanced++
     } catch (err) {
@@ -523,6 +486,58 @@ async function assembleAndPersist(ws: IntegrationWorkspace): Promise<BenchAssemb
   const result = await assembleBench(ws)
   if (result.ok && result.workspace) persist(result.workspace)
   return result
+}
+
+/**
+ * Materialise the bench-verification analysis diagnostic and persist the
+ * evidence, so the bar's "diagnosticTreeAt" state and the analysis
+ * conversation agree with what is on disk.
+ *
+ * Refuses (does not persist anything) when the bench state has moved since
+ * the failure being diagnosed — see prepareVerificationDiagnostic's own doc
+ * for why that is the correct response rather than describing a stale tree.
+ */
+export async function prepareVerificationAnalysis(
+  repoPath: string,
+  sourceBranch: string,
+): Promise<{ ok: boolean; benchPath?: string; error?: string }> {
+  const ws = findWorkspace(loadWorkspaces(), repoPath, sourceBranch)
+  if (!ws) return { ok: false, error: 'No integration workspace for this branch.' }
+  const result = await prepareVerificationDiagnostic(repoPath, sourceBranch, ws)
+  if (!result.ok || !result.workspace) return { ok: false, error: result.error }
+  persist(result.workspace)
+  return { ok: true, benchPath: ws.benchPath }
+}
+
+/**
+ * The bench-verification recovery dialog's "Discard recordings and
+ * reassemble" verb: forget the recordings for the named suspect branches,
+ * then run a normal assembly and persist its outcome.
+ */
+export async function discardVerificationRecordingsAndReassemble(
+  repoPath: string,
+  sourceBranch: string,
+  branchNames: string[],
+): Promise<BenchAssembleResult & { forgottenCount?: number }> {
+  const ws = findWorkspace(loadWorkspaces(), repoPath, sourceBranch)
+  if (!ws) return { ok: false, error: 'No integration workspace for this branch.' }
+
+  const forgotten = await forgetRecordingsForBranches(ws, branchNames)
+  if (!forgotten.ok) {
+    warn('discard-verification-recordings: forget failed', {
+      repo_path: repoPath, source_branch: sourceBranch, branches: branchNames, error: forgotten.error,
+    })
+    return { ok: false, error: forgotten.error }
+  }
+  log('discard-verification-recordings: forgot recordings, reassembling', {
+    repo_path: repoPath,
+    source_branch: sourceBranch,
+    branches: branchNames,
+    forgotten_paths: forgotten.forgottenPaths.length,
+    nothing_to_forget: forgotten.branchesWithNothingToForget,
+  })
+  const result = await assembleAndPersist(ws)
+  return { ...result, forgottenCount: forgotten.forgottenPaths.length }
 }
 
 /** Resolve the bench worktree path for a repo/branch, if a workspace exists. */

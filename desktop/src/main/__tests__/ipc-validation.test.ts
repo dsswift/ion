@@ -17,6 +17,7 @@ import {
   resolveDiscoveryWorkingDir,
   isValidRemoteTabStatesPayload,
 } from '../ipc-validation'
+import { workStageDescriptor, WORK_STAGES } from '../../shared/types-git'
 
 // ─── Fixtures ───
 
@@ -254,5 +255,28 @@ describe('isValidRemoteTabStatesPayload', () => {
     expect(isValidRemoteTabStatesPayload({ tabs: [], resourceManifest: null })).toBe(false)
     expect(isValidRemoteTabStatesPayload({ tabs: [], resourceManifest: [] })).toBe(false)
     expect(isValidRemoteTabStatesPayload({ tabs: [] })).toBe(false)
+  })
+})
+
+// ─── Stage path validation (GIT_WORKTREE_SET_STAGE / desktop_worktree_set_stage) ───
+// Both handlers gate on isValidProjectPath (tested above) and workStageDescriptor.
+// These tests pin the stage-value validation arm that the handlers share.
+
+describe('workStageDescriptor — stage value validation', () => {
+  it('returns a descriptor for every known stage', () => {
+    for (const stage of WORK_STAGES) {
+      const result = workStageDescriptor(stage.id)
+      expect(result, stage.id).toBeDefined()
+      expect(result!.id).toBe(stage.id)
+    }
+  })
+
+  it('rejects an unknown stage value', () => {
+    expect(workStageDescriptor('bogus')).toBeUndefined()
+    expect(workStageDescriptor('')).toBeUndefined()
+  })
+
+  it('rejects undefined', () => {
+    expect(workStageDescriptor(undefined)).toBeUndefined()
   })
 })

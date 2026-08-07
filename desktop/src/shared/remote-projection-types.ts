@@ -100,7 +100,7 @@ export interface ProjectedRendererTab {
   /** Input-locked conversation (auto-generated conflict fix). See TabState.inputLocked. */
   inputLocked?: boolean
   /** Explicit tab lifecycle role. See TabState.tabRole. */
-  tabRole?: 'bench-conversation' | 'conflict-auto-fix'
+  tabRole?: 'bench-conversation' | 'conflict-auto-fix' | 'verification-analysis'
   hasEngineExtension?: boolean
   engineProfileId: string | null
   conversationInstances?: ProjectedConversationInstance[]

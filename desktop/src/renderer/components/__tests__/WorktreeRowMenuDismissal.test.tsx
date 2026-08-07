@@ -33,6 +33,8 @@ const mocks = vi.hoisted(() => ({
   reprovisionWorktree: vi.fn<(repoPath: string, worktreePath: string) => Promise<{ ok: boolean; error?: string }>>(),
   benchAddMember: vi.fn<(...a: unknown[]) => Promise<{ ok: boolean; error?: string }>>(),
   recordConflictAlert: vi.fn(),
+  newWorktreeConversation: vi.fn(async () => undefined),
+  setWorktreeStage: vi.fn(async () => undefined),
 }))
 
 // Icons are deliberately NOT mocked. The previous mock was a hand-maintained
@@ -67,8 +69,8 @@ vi.mock('../../preferences', () => ({
 
 vi.mock('../../stores/sessionStore', () => ({
   useSessionStore: Object.assign(
-    (selector: (s: { benchWorkspaces: Map<string, never> }) => unknown) =>
-      selector({ benchWorkspaces: new Map<string, never>() }),
+    (selector: (s: { benchWorkspaces: Map<string, never>; tabs: never[] }) => unknown) =>
+      selector({ benchWorkspaces: new Map<string, never>(), tabs: [] }),
     {
       getState: () => ({
         retireWorktree: mocks.retireWorktree,
@@ -76,6 +78,8 @@ vi.mock('../../stores/sessionStore', () => ({
         reprovisionWorktree: mocks.reprovisionWorktree,
         benchAddMember: mocks.benchAddMember,
         recordConflictAlert: mocks.recordConflictAlert,
+        newWorktreeConversation: mocks.newWorktreeConversation,
+        setWorktreeStage: mocks.setWorktreeStage,
         // The retire pre-flight reads these to answer "is anything in this
         // worktree still working". No tabs open means nothing is active, which
         // is the state every dismissal test wants.
@@ -143,6 +147,8 @@ beforeEach(() => {
   mocks.reprovisionWorktree.mockClear()
   mocks.reprovisionWorktree.mockResolvedValue({ ok: true })
   mocks.benchAddMember.mockClear()
+  mocks.newWorktreeConversation.mockClear()
+  mocks.setWorktreeStage.mockClear()
   mocks.gitWorktreeLand.mockClear()
   mocks.gitWorktreeLand.mockResolvedValue({ ok: true, mode: 'fast-forward' })
   ;(globalThis as unknown as { window: { ion: unknown } }).window.ion = {
@@ -279,5 +285,25 @@ describe('WorktreeRowMenu — uniform dismissal', () => {
 
     expect(closed).toBe(0)
     expect(document.querySelector('[data-testid="worktree-rename-input"]')).not.toBeNull()
+  })
+
+  it('closes exactly once on New conversation here', async () => {
+    render()
+
+    await press('New conversation here')
+
+    expect(closed).toBe(1)
+    expect(menuGone()).toBe(true)
+    expect(mocks.newWorktreeConversation).toHaveBeenCalledWith(WT)
+  })
+
+  it('closes exactly once on a stage selection', async () => {
+    render()
+
+    await press('Stage: Building')
+
+    expect(closed).toBe(1)
+    expect(menuGone()).toBe(true)
+    expect(mocks.setWorktreeStage).toHaveBeenCalled()
   })
 })

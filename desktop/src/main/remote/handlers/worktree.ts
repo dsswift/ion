@@ -16,11 +16,14 @@ import { broadcast } from '../../broadcast'
 import { log as _log, warn as _warn } from '../../logger'
 import { getWorktreeInventory } from '../../worktree/inventory-service'
 import { syncWorktreeFromSource, landWorktree } from '../../worktree/integrate'
+import { syncAllWorktrees } from '../../worktree/sync-all'
 import {
   listWorkspaces, assembleWorkspace, updateMember, updateAllStale,
-  setMemberEnabled, setMemberReview, setMemberOrder, addMember, removeMember,
+  setMemberEnabled, setMemberOrder, addMember, removeMember,
   refreshStaleness, sourceBranchTip,
 } from '../../integration/bench-ops'
+import { setWorktreeStage } from '../../worktree/registry'
+import { workStageDescriptor } from '../../../shared/types-git'
 import {
   collectDirConversations,
   pickBenchConversation,
@@ -29,6 +32,7 @@ import {
   type DirConversation,
   type DirConversationSource,
 } from '../../../shared/worktree-conversations'
+import { isValidProjectPath } from '../../ipc-validation'
 import type { RemoteCommand, RemoteWorktreeState, RemoteWorktree, RemoteBench, RemoteMembership } from '../protocol'
 import type { IntegrationWorkspace } from '../../../shared/types'
 
@@ -90,7 +94,6 @@ function projectMembership(
     enabled: m.enabled,
     pin: m.pin,
     merge: m.merge,
-    review: m.review,
     pinnedSha: m.pinnedSha,
     order,
     conflictPaths: m.conflictPaths,
@@ -148,6 +151,7 @@ export async function buildWorktreeState(repoPath: string): Promise<RemoteWorktr
     needsSync: w.needsSync,
     safeToDiscard: w.safeToDiscard,
     landedAt: w.landedAt,
+    stage: w.stage,
     provisionState: w.provisionState,
     provisionError: w.provisionError,
     operationState: w.operationState,
@@ -178,6 +182,15 @@ export async function buildWorktreeState(repoPath: string): Promise<RemoteWorktr
       lastBuiltAt: ws.lastBuiltAt,
       lastAssembly: ws.lastAssembly,
       lastAssemblyError: ws.lastAssemblyError,
+      lastAssemblyFailure: ws.lastAssemblyFailure,
+      // Trimmed projection: `diagnosticTreeAt` is desktop-local state (whether
+      // the AI-assisted analysis has materialised the failing tree back into
+      // the bench) that iOS has no verb to act on and no use for.
+      lastAssemblyVerification: ws.lastAssemblyVerification && {
+        command: ws.lastAssemblyVerification.command,
+        outputTail: ws.lastAssemblyVerification.outputTail,
+        replayedBranches: ws.lastAssemblyVerification.replayedBranches,
+      },
       baseDrifted: !!tip && !!ws.baseSha && tip !== ws.baseSha,
       openConversations: openIn(ws.benchPath),
       benchConversationTabId: conversation && !conversation.adopted ? conversation.tab.id : undefined,
@@ -212,8 +225,9 @@ export async function pushWorktreeState(repoPath: string): Promise<void> {
 }
 
 function sendResult(
-  operation: 'sync' | 'land' | 'assemble' | 'update' | 'update_all',
+  operation: 'sync' | 'land' | 'assemble' | 'update' | 'update_all' | 'sync_all',
   result: { ok: boolean; error?: string; refusedDirty?: boolean; hasConflicts?: boolean; warning?: string },
+  summary?: string,
 ): void {
   state.remoteTransport?.send({
     type: 'desktop_worktree_op_result',
@@ -223,6 +237,7 @@ function sendResult(
     refusedDirty: result.refusedDirty,
     hasConflicts: result.hasConflicts,
     warning: result.warning,
+    summary,
   })
 }
 
@@ -270,13 +285,46 @@ export async function handleWorktreeCommand(cmd: RemoteCommand): Promise<boolean
     }
 
     case 'desktop_worktree_sync': {
+      if (!isValidProjectPath(cmd.worktreePath) || !isValidProjectPath(cmd.repoPath)) {
+        warn('sync refused: invalid path', { worktree_path: cmd.worktreePath })
+        sendResult('sync', { ok: false, error: 'Invalid path.' })
+        return true
+      }
       const result = await syncWorktreeFromSource(cmd.worktreePath, cmd.sourceBranch)
       sendResult('sync', result)
       await pushWorktreeState(cmd.repoPath)
       return true
     }
 
+    case 'desktop_worktree_sync_all': {
+      // The mechanical pass only — the desktop's AI escalation never runs from
+      // here (see the wire comment in protocol-worktree.ts). The summary is
+      // worded HERE so every client renders the same sentence.
+      const result = await syncAllWorktrees(cmd.repoPath)
+      const s = result.summary
+      const parts: string[] = []
+      if (s.synced > 0) parts.push(`${s.synced} synced`)
+      if (s.replayed > 0) parts.push(`${s.replayed} completed by replay`)
+      if (s.conflicted > 0) parts.push(`${s.conflicted} conflicted`)
+      if (s.skippedDirty > 0) parts.push(`${s.skippedDirty} skipped (dirty)`)
+      if (s.skippedUnknownSource > 0) parts.push(`${s.skippedUnknownSource} skipped (unknown source)`)
+      if (s.failed > 0) parts.push(`${s.failed} failed`)
+      const summary = parts.length > 0 ? parts.join(', ') : 'All worktrees already current'
+      sendResult('sync_all', {
+        ok: result.ok && s.failed === 0,
+        hasConflicts: s.conflicted > 0 || undefined,
+        error: result.error,
+      }, summary)
+      await pushWorktreeState(cmd.repoPath)
+      return true
+    }
+
     case 'desktop_worktree_land': {
+      if (!isValidProjectPath(cmd.worktreePath) || !isValidProjectPath(cmd.repoPath)) {
+        warn('land refused: invalid path', { worktree_path: cmd.worktreePath })
+        sendResult('land', { ok: false, error: 'Invalid path.' })
+        return true
+      }
       const result = await landWorktree({
         repoPath: cmd.repoPath,
         worktreePath: cmd.worktreePath,
@@ -296,6 +344,11 @@ export async function handleWorktreeCommand(cmd: RemoteCommand): Promise<boolean
     }
 
     case 'desktop_bench_update_member': {
+      if (!isValidProjectPath(cmd.worktreePath) || !isValidProjectPath(cmd.repoPath)) {
+        warn('update member refused: invalid path', { worktree_path: cmd.worktreePath })
+        sendResult('update', { ok: false, error: 'Invalid path.' })
+        return true
+      }
       const result = await updateMember(cmd.repoPath, cmd.sourceBranch, cmd.worktreePath)
       sendResult('update', result)
       await pushWorktreeState(cmd.repoPath)
@@ -310,21 +363,49 @@ export async function handleWorktreeCommand(cmd: RemoteCommand): Promise<boolean
     }
 
     case 'desktop_bench_set_enabled':
+      if (!isValidProjectPath(cmd.worktreePath) || !isValidProjectPath(cmd.repoPath)) {
+        warn('set enabled refused: invalid path', { worktree_path: cmd.worktreePath })
+        return true
+      }
       setMemberEnabled(cmd.repoPath, cmd.sourceBranch, cmd.worktreePath, cmd.enabled)
       await pushWorktreeState(cmd.repoPath)
       return true
 
-    case 'desktop_bench_set_review':
-      setMemberReview(cmd.repoPath, cmd.sourceBranch, cmd.worktreePath, cmd.review)
+    case 'desktop_worktree_set_stage':
+      if (!isValidProjectPath(cmd.worktreePath) || !isValidProjectPath(cmd.repoPath)) {
+        warn('set stage refused: invalid path', { worktree_path: cmd.worktreePath })
+        sendResult('update', { ok: false, error: 'Invalid path.' })
+        return true
+      }
+      if (cmd.stage !== null && !workStageDescriptor(cmd.stage)) {
+        warn('stage command refused: unknown value', {
+          worktree_path: cmd.worktreePath, stage: String(cmd.stage),
+        })
+        sendResult('update', { ok: false, error: 'Unknown work stage.' })
+        return true
+      }
+      if (!setWorktreeStage(cmd.worktreePath, cmd.stage, { repoPath: cmd.repoPath })) {
+        warn('remote stage set failed to persist', { worktree_path: cmd.worktreePath, stage: cmd.stage ?? 'none' })
+        sendResult('update', { ok: false, error: 'Could not save the registry.' })
+        return true
+      }
       await pushWorktreeState(cmd.repoPath)
       return true
 
     case 'desktop_bench_reorder_member':
+      if (!isValidProjectPath(cmd.worktreePath) || !isValidProjectPath(cmd.repoPath)) {
+        warn('reorder member refused: invalid path', { worktree_path: cmd.worktreePath })
+        return true
+      }
       setMemberOrder(cmd.repoPath, cmd.sourceBranch, cmd.worktreePath, cmd.toIndex)
       await pushWorktreeState(cmd.repoPath)
       return true
 
     case 'desktop_bench_add_member': {
+      if (!isValidProjectPath(cmd.worktreePath) || !isValidProjectPath(cmd.repoPath)) {
+        warn('add member refused: invalid path', { worktree_path: cmd.worktreePath })
+        return true
+      }
       const result = await addMember(cmd.repoPath, cmd.sourceBranch, cmd.worktreePath, cmd.branchName)
       if (!result.ok) warn('add member refused', { branch: cmd.branchName, error: result.error ?? '' })
       await pushWorktreeState(cmd.repoPath)
@@ -332,6 +413,10 @@ export async function handleWorktreeCommand(cmd: RemoteCommand): Promise<boolean
     }
 
     case 'desktop_bench_remove_member':
+      if (!isValidProjectPath(cmd.worktreePath) || !isValidProjectPath(cmd.repoPath)) {
+        warn('remove member refused: invalid path', { worktree_path: cmd.worktreePath })
+        return true
+      }
       removeMember(cmd.repoPath, cmd.sourceBranch, cmd.worktreePath)
       await pushWorktreeState(cmd.repoPath)
       return true

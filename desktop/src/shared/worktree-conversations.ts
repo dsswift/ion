@@ -17,6 +17,20 @@
  * plain data, so it is trivially testable and carries no store or Electron
  * dependency.
  *
+ * ── Two collectors, not one, because DISPLAY and NAVIGATION ask different
+ *    questions ─────────────────────────────────────────────────────────────
+ * `collectDirConversations` excludes machine-driven `conflict-auto-fix` tabs —
+ * correct for every DISPLAY surface (the "open ×N" hint, the hover card, the
+ * iOS wire projection, the bench singleton), which must never count or name a
+ * machine conversation as if the operator opened it. But the row-click CYCLE
+ * and the row menu's "Go to tab" submenu are navigation, not display: an
+ * auto-fix conversation is still open, might still need the operator's eyes
+ * (it moved tab groups, or the fix stalled), and the worktree row is the one
+ * place that knows it lives in this directory. `collectAllDirConversations`
+ * is the wider, role-inclusive twin used only for those two navigation paths
+ * — it must never feed a display surface, or the exclusion above is defeated.
+ *
+
  * ── Conversations and terminals are different questions ─────────────────────
  * A directory can hold both, and they are never interchangeable: a conversation
  * is something to talk to, a terminal is a shell. `collectDirConversations`
@@ -55,7 +69,7 @@ export interface DirConversationSource {
    * so the collector can exclude machine-driven auto-fix conversations and so
    * the bench singleton can be resolved by stored identity.
    */
-  tabRole?: 'bench-conversation' | 'conflict-auto-fix' | null
+  tabRole?: 'bench-conversation' | 'conflict-auto-fix' | 'verification-analysis' | null
 }
 
 /** One conversation open in a directory, as every surface renders it. */
@@ -99,12 +113,52 @@ export function collectDirConversations(
   tabs.forEach((tab, i) => {
     if (tab.workingDirectory !== dirPath) return
     if (tab.isTerminalOnly) return
-    // Machine-driven conflict auto-fix conversations are not operator
-    // conversations: they must not inflate the "open ×N" hint, appear in the
-    // hover card, ride the iOS openConversations projection, or be a
-    // rotation/focus target. Their lifecycle is owned by the auto-fix
-    // machinery (they self-close on clean completion).
-    if (tab.tabRole === 'conflict-auto-fix') return
+    // Machine-driven conversations (conflict auto-fix, verification analysis)
+    // are not operator conversations: they must not inflate the "open ×N" hint,
+    // appear in the hover card, ride the iOS openConversations projection, or
+    // be a rotation/focus target. Their lifecycle is owned by the machinery
+    // that created them.
+    if (tab.tabRole === 'conflict-auto-fix' || tab.tabRole === 'verification-analysis') return
+    out.push({
+      tabId: tab.id,
+      title: tab.customTitle || tab.title,
+      status: tab.status,
+      index: i + 1,
+    })
+  })
+  return out
+}
+
+/**
+ * Every tab open in `dirPath`, regardless of role — the NAVIGATION twin of
+ * `collectDirConversations`.
+ *
+ * Used exactly twice, both navigation: the worktree row's click-to-cycle
+ * (`openWorktreeConversation`) and the row menu's "Go to tab" submenu. Both
+ * need to be able to reach an in-progress `conflict-auto-fix` conversation —
+ * the operator's only way back into a rebase-fix conversation that moved tab
+ * groups or that they simply need to check on — which `collectDirConversations`
+ * deliberately hides from every DISPLAY surface (see the module doc-comment).
+ *
+ * Still skips terminal-only tabs: a terminal is never a conversation,
+ * regardless of role, for the same reason `collectDirConversations` skips
+ * them (a rotation into a shell is the exact defect that guard exists to
+ * prevent).
+ *
+ * Do not wire this into a display surface (hover card, "open ×N" hint, the
+ * iOS wire projection, the bench singleton). Those must stay on
+ * `collectDirConversations` or the auto-fix exclusion they depend on is
+ * silently defeated.
+ */
+export function collectAllDirConversations(
+  tabs: readonly DirConversationSource[],
+  dirPath: string,
+): DirConversation[] {
+  if (!dirPath) return []
+  const out: DirConversation[] = []
+  tabs.forEach((tab, i) => {
+    if (tab.workingDirectory !== dirPath) return
+    if (tab.isTerminalOnly) return
     out.push({
       tabId: tab.id,
       title: tab.customTitle || tab.title,

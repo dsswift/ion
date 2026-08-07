@@ -64,6 +64,15 @@ vi.mock('crypto', async () => {
 import { EngineControlPlane } from '../engine-control-plane'
 import { EngineBridge } from '../engine-bridge'
 
+vi.mock('../integration/bench-prompt-context', () => ({
+  benchClientWorkspaceContext: vi.fn(() => null),
+  benchPromptContext: vi.fn(() => ''),
+  BENCH_CONTEXT_MARKER: '## Workspace: integration bench',
+}))
+
+import { benchClientWorkspaceContext } from '../integration/bench-prompt-context'
+const mockBenchCtx = vi.mocked(benchClientWorkspaceContext)
+
 function makeRunOptions(overrides: Record<string, any> = {}): any {
   return { prompt: 'hello', projectPath: '/Users/test/project', sessionId: undefined, model: undefined, ...overrides }
 }
@@ -112,5 +121,41 @@ describe('EngineControlPlane.ensureSession', () => {
     const res = await cp.ensureSession(tabId, { workingDirectory: '/w', conversationId: 'c' })
     expect(res.ok).toBe(false)
     expect(res.error).toBe('boom')
+  })
+
+  it('passes clientWorkspaceContext to startSession when cwd is inside a bench', async () => {
+    const benchCtx = {
+      kind: 'bench',
+      cwd: '/Users/test/.ion/integration/my-bench',
+      bench: { benchPath: '/Users/test/.ion/integration/my-bench' } as Record<string, unknown>,
+      text: '## Workspace: integration bench\n\nBench prose.',
+    }
+    mockBenchCtx.mockReturnValue(benchCtx)
+
+    const tabId = cp.createTab()
+    await cp.ensureSession(tabId, {
+      workingDirectory: '/Users/test/.ion/integration/my-bench',
+      conversationId: 'conv-bench',
+    })
+
+    expect(mockBenchCtx).toHaveBeenCalledWith('/Users/test/.ion/integration/my-bench')
+    expect(mockBridge.startSession).toHaveBeenCalledWith(
+      tabId,
+      expect.objectContaining({ clientWorkspaceContext: benchCtx }),
+    )
+  })
+
+  it('omits clientWorkspaceContext when cwd is not inside a bench', async () => {
+    mockBenchCtx.mockReturnValue(null)
+
+    const tabId = cp.createTab()
+    await cp.ensureSession(tabId, {
+      workingDirectory: '/Users/test/regular-project',
+      conversationId: 'conv-regular',
+    })
+
+    expect(mockBenchCtx).toHaveBeenCalledWith('/Users/test/regular-project')
+    const config = mockBridge.startSession.mock.calls[0][1]
+    expect(config.clientWorkspaceContext).toBeUndefined()
   })
 })

@@ -9,6 +9,7 @@ import { buildSendPromptMessage, buildSendPromptLogLine } from './engine-bridge-
 import * as conv from './engine-bridge-conversations'
 import * as prov from './engine-bridge-providers'
 import type { EngineConfig, EngineEvent, ImageAttachmentPayload, DiscoveredCommand } from '../shared/types'
+import type { ClientWorkspaceContext } from '../shared/types-engine'
 import type { ModelTier } from '../shared/types-model-tiers'
 
 const TAG = 'EngineBridge'
@@ -323,12 +324,12 @@ export class EngineBridge extends EventEmitter {
     return entry ? { ...entry.config } : undefined
   }
 
-  async sendPrompt(key: string, text: string, model?: string, appendSystemPrompt?: string, imageAttachments?: ImageAttachmentPayload[], implementationPhase?: boolean, enterPlanModeDescription?: string, planModeSparseReminder?: string, planFilePath?: string, bashAllowlistAdditionsForThisPrompt?: string[], thinkingEffort?: string, resolveSlash?: boolean): Promise<{ ok: boolean; error?: string }> {
+  async sendPrompt(key: string, text: string, model?: string, appendSystemPrompt?: string, imageAttachments?: ImageAttachmentPayload[], implementationPhase?: boolean, enterPlanModeDescription?: string, planModeSparseReminder?: string, planFilePath?: string, bashAllowlistAdditionsForThisPrompt?: string[], thinkingEffort?: string, resolveSlash?: boolean, clientWorkspaceContext?: ClientWorkspaceContext): Promise<{ ok: boolean; error?: string }> {
     // Message construction and the diagnostic log line live in
     // engine-bridge-prompts.ts so this file stays under the 600-line cap
     // as the send_prompt wire surface grows. See that sibling for the
     // per-field omitempty pattern and the bash-additions log convention.
-    const args = { key, text, model, appendSystemPrompt, imageAttachments, implementationPhase, enterPlanModeDescription, planModeSparseReminder, planFilePath, bashAllowlistAdditionsForThisPrompt, thinkingEffort, resolveSlash }
+    const args = { key, text, model, appendSystemPrompt, imageAttachments, implementationPhase, enterPlanModeDescription, planModeSparseReminder, planFilePath, bashAllowlistAdditionsForThisPrompt, thinkingEffort, resolveSlash, clientWorkspaceContext }
     log(buildSendPromptLogLine(args))
     await this.connect()
     return this._sendWithResult(buildSendPromptMessage(args))

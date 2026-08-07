@@ -1,4 +1,5 @@
 import type { ImageAttachmentPayload } from '../shared/types'
+import type { ClientWorkspaceContext } from '../shared/types-engine'
 
 /**
  * Sibling helper for EngineBridge.sendPrompt — the prompt-message
@@ -42,6 +43,7 @@ export interface SendPromptArgs {
    * `resolveSlash` field).
    */
   resolveSlash?: boolean
+  clientWorkspaceContext?: ClientWorkspaceContext
 }
 
 /**
@@ -108,6 +110,7 @@ export function buildSendPromptMessage(args: SendPromptArgs): Record<string, unk
   // the engine's omitempty `resolveSlash` field round-trips cleanly and an
   // absent value means "plain message" (unchanged behavior).
   if (args.resolveSlash) msg.resolveSlash = true
+  if (args.clientWorkspaceContext) msg.clientWorkspaceContext = args.clientWorkspaceContext
   return msg
 }
 
@@ -125,5 +128,5 @@ export function buildSendPromptLogLine(args: SendPromptArgs): string {
   const descLen = args.enterPlanModeDescription?.length ?? 0
   const reminderLen = args.planModeSparseReminder?.length ?? 0
   const bashAddCount = args.bashAllowlistAdditionsForThisPrompt?.length ?? 0
-  return `sendPrompt: key=${args.key} len=${args.text.length} model=${args.model ?? 'default'} hasSysPrompt=${!!args.appendSystemPrompt} images=${attCount} implementationPhase=${args.implementationPhase ?? false} enterPlanModeDescLen=${descLen} planModeSparseReminderLen=${reminderLen} planFilePath=${args.planFilePath ?? 'none'} bashAdditions=${bashAddCount} resolveSlash=${args.resolveSlash ?? false}`
+  return `sendPrompt: key=${args.key} len=${args.text.length} model=${args.model ?? 'default'} hasSysPrompt=${!!args.appendSystemPrompt} images=${attCount} implementationPhase=${args.implementationPhase ?? false} enterPlanModeDescLen=${descLen} planModeSparseReminderLen=${reminderLen} planFilePath=${args.planFilePath ?? 'none'} bashAdditions=${bashAddCount} resolveSlash=${args.resolveSlash ?? false} clientWsCtx=${args.clientWorkspaceContext?.kind ?? 'none'}`
 }

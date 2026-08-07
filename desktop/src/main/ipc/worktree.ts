@@ -5,11 +5,14 @@ import { homedir } from 'os'
 import { basename, join } from 'path'
 import { IPC } from '../../shared/types'
 import type { WorktreeInfo, WorktreeStatus } from '../../shared/types'
+import { workStageDescriptor, type WorkStage } from '../../shared/types-git'
+import { isValidProjectPath } from '../ipc-validation'
 import { runGit } from '../git-runner'
-import { landWorktree } from '../worktree/integrate'
+import { landWorktree, syncWorktreeFromSource } from '../worktree/integrate'
 import {
   lookupWorktreeRegistration,
   registerWorktree,
+  setWorktreeStage,
   setWorktreeTitle,
   unregisterWorktree,
 } from '../worktree/inventory'
@@ -46,7 +49,24 @@ export function registerWorktreeIpc(): void {
       // was cut from, and every lifecycle verb (land, sync, base staleness)
       // needs it. Without this the inventory has to guess, and a wrong guess
       // would land work into the wrong branch.
-      registerWorktree({ worktreePath, repoPath, branchName, sourceBranch })
+      //
+      // The BASE (the source tip just checked out) is recorded for the same
+      // reason: it cannot be derived after the source branch is rebased, and
+      // the sync verb needs it to replay only this worktree's own commits.
+      // Read from the fresh worktree's HEAD — by construction it IS the source
+      // tip, and reading it locally cannot race a concurrent land advancing
+      // the branch. Failure to read it degrades to the plain-rebase fallback.
+      let baseSha: string | undefined
+      try {
+        baseSha = (await runGit(worktreePath, ['rev-parse', 'HEAD'])).trim()
+      } catch (err) {
+        warn('could not resolve base sha for new worktree', { worktree_path: worktreePath, error: String(err) })
+      }
+      let registryWarning: string | undefined
+      if (!registerWorktree({ worktreePath, repoPath, branchName, sourceBranch, baseSha })) {
+        registryWarning = 'Worktree created but registry persist failed.'
+        warn('worktree created but registry persist failed', { worktree_path: worktreePath })
+      }
 
       // Provisioning runs BEHIND the worktree, not in front of it: the operator
       // gets a usable directory immediately and watches the dependency state
@@ -63,7 +83,7 @@ export function registerWorktreeIpc(): void {
         setProvisionState(worktreePath, 'failed', String(err))
       })
 
-      return { ok: true, worktree }
+      return { ok: true, worktree, warning: registryWarning }
     } catch (err: any) {
       return { ok: false, error: err.message }
     }
@@ -75,7 +95,11 @@ export function registerWorktreeIpc(): void {
       if (force) removeArgs.push('--force')
       await runGit(repoPath, removeArgs)
       try { await runGit(repoPath, ['branch', '-D', branchName]) } catch { /* silent-ok: best-effort branch delete; worktree already removed */ }
-      unregisterWorktree(worktreePath)
+      let registryWarning: string | undefined
+      if (!unregisterWorktree(worktreePath)) {
+        registryWarning = 'Worktree removed but registry persist failed.'
+        warn('worktree removed but registry persist failed', { worktree_path: worktreePath })
+      }
       // Drop the provisioning record too: a future worktree reusing this path
       // must start with no state rather than inheriting a stale `failed`.
       clearProvisionState(worktreePath)
@@ -84,7 +108,7 @@ export function registerWorktreeIpc(): void {
         const entries = readdirSync(parent)
         if (entries.length === 0) rmSync(parent, { recursive: true })
       } catch { /* silent-ok: best-effort removal of the now-empty worktree parent dir */ }
-      return { ok: true }
+      return { ok: true, warning: registryWarning }
     } catch (err: any) {
       return { ok: false, error: err.message }
     }
@@ -153,6 +177,10 @@ export function registerWorktreeIpc(): void {
         })
         return { ok: false, reason: 'empty-input' as const }
       }
+      if (!isValidProjectPath(worktreePath)) {
+        warn('seed refused: invalid worktree path', { worktree_path: worktreePath })
+        return { ok: false, reason: 'invalid-path' as const }
+      }
 
       const registration = lookupWorktreeRegistration(worktreePath)
       if (!registration) {
@@ -166,7 +194,10 @@ export function registerWorktreeIpc(): void {
         return { ok: false, reason: 'already-titled' as const, title: registration.title }
       }
 
-      setWorktreeTitle(worktreePath, trimmed)
+      if (!setWorktreeTitle(worktreePath, trimmed)) {
+        warn('seed title failed to persist', { worktree_path: worktreePath, title: trimmed })
+        return { ok: false, reason: 'persist-failed' as const }
+      }
       log('seed applied', {
         worktree_path: worktreePath,
         repo_path: registration.repoPath,
@@ -187,6 +218,10 @@ export function registerWorktreeIpc(): void {
   ipcMain.handle(
     IPC.GIT_WORKTREE_SET_TITLE,
     async (_event, { worktreePath, repoPath, title }: { worktreePath: string; repoPath?: string; title: string }) => {
+      if (!isValidProjectPath(worktreePath) || (repoPath && !isValidProjectPath(repoPath))) {
+        warn('rename refused: invalid path', { worktree_path: worktreePath, repo_path: repoPath })
+        return { ok: false, error: 'Invalid path.' }
+      }
       const trimmed = title.trim()
       const registration = lookupWorktreeRegistration(worktreePath)
       const resolvedRepo = repoPath || registration?.repoPath || ''
@@ -195,10 +230,57 @@ export function registerWorktreeIpc(): void {
         return { ok: false, error: 'A title cannot be empty.' }
       }
 
-      setWorktreeTitle(worktreePath, trimmed, { repoPath: resolvedRepo })
+      if (!setWorktreeTitle(worktreePath, trimmed, { repoPath: resolvedRepo })) {
+        warn('rename failed to persist', { worktree_path: worktreePath, title: trimmed })
+        return { ok: false, error: 'Could not save the registry.' }
+      }
       log('worktree renamed by the operator', { worktree_path: worktreePath, title: trimmed })
       await announceWorktreeTitle(resolvedRepo, worktreePath, trimmed)
       return { ok: true, title: trimmed }
+    },
+  )
+
+  /**
+   * Set or clear the operator's workflow stage on a worktree. Upserts like
+   * SET_TITLE (a hand-created worktree can carry a stage; the new entry
+   * records an unknown source branch rather than a guessed one), and pushes
+   * the worktree state to iOS so the phone's row updates without waiting for
+   * its next manual refresh.
+   */
+  ipcMain.handle(
+    IPC.GIT_WORKTREE_SET_STAGE,
+    async (_event, { worktreePath, repoPath, stage }:
+      { worktreePath: string; repoPath?: string; stage: WorkStage | null }) => {
+      if (!isValidProjectPath(worktreePath) || (repoPath && !isValidProjectPath(repoPath))) {
+        warn('stage refused: invalid path', { worktree_path: worktreePath, repo_path: repoPath })
+        return { ok: false, error: 'Invalid path.' }
+      }
+      if (stage !== null && !workStageDescriptor(stage)) {
+        warn('stage refused: unknown value', { worktree_path: worktreePath, stage: String(stage) })
+        return { ok: false, error: 'Unknown work stage.' }
+      }
+      const registration = lookupWorktreeRegistration(worktreePath)
+      const resolvedRepo = repoPath || registration?.repoPath || ''
+      if (!setWorktreeStage(worktreePath, stage, { repoPath: resolvedRepo })) {
+        warn('stage set failed to persist', { worktree_path: worktreePath, stage: stage ?? 'none' })
+        return { ok: false, error: 'Could not save the registry.' }
+      }
+      log('worktree stage set by the operator', {
+        worktree_path: worktreePath, stage: stage ?? 'none',
+      })
+      if (resolvedRepo) {
+        try {
+          const { pushWorktreeState } = await import('../remote/handlers/worktree')
+          await pushWorktreeState(resolvedRepo)
+        } catch (err) {
+          // The desktop rows are already correct; only the phone is briefly
+          // stale, and its next refresh corrects it. Never fatal to the set.
+          warn('could not push worktree state after a stage change', {
+            repo_path: resolvedRepo, worktree_path: worktreePath, error: String(err),
+          })
+        }
+      }
+      return { ok: true, stage }
     },
   )
 
@@ -293,15 +375,23 @@ export function registerWorktreeIpc(): void {
     }
   })
 
+  // The rebase body DELEGATES to syncWorktreeFromSource rather than running its
+  // own `git rebase`. The original implementation detected conflicts with
+  // `msg.includes('CONFLICT')` — the exact string-match defect hasMergeConflict
+  // (worktree/integrate.ts) documents: git writes "CONFLICT (...)" lines to
+  // STDOUT, which the error path does not capture, so a genuine conflict was
+  // misreported as an unknown failure. Routing through the sync verb gives this
+  // channel the precise unmerged-index probe, the dirty-tree preflight, and
+  // every future sync improvement for free. The `fetch origin` stays: this
+  // channel's callers (the git graph's Pull-in-a-worktree) expect the remote to
+  // be refreshed before rebasing onto the source branch.
   ipcMain.handle(IPC.GIT_WORKTREE_REBASE, async (_event, { worktreePath, sourceBranch }: { worktreePath: string; sourceBranch: string }) => {
     try {
       await runGit(worktreePath, ['fetch', 'origin'])
-      await runGit(worktreePath, ['rebase', sourceBranch])
-      return { ok: true }
     } catch (err: any) {
-      const msg = err.message || ''
-      const hasConflicts = msg.includes('CONFLICT') || msg.includes('could not apply')
-      return { ok: false, error: msg, hasConflicts }
+      return { ok: false, error: err.message }
     }
+    const result = await syncWorktreeFromSource(worktreePath, sourceBranch)
+    return { ok: result.ok, error: result.error, hasConflicts: result.hasConflicts }
   })
 }

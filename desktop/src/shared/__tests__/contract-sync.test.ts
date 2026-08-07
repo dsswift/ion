@@ -188,8 +188,10 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
     'state',
     'stateSince',
   ],
+  ModelTierEntry: ['fallbacks', 'model', 'name'],
   EngineConfig: [
     'claudeCompat',
+    'clientWorkspaceContext',
     'extensions',
     'forceNewConversation',
     'maxTokens',
@@ -200,6 +202,7 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
     'sessionId',
     'systemHint',
     'thinking',
+    'toolGate',
     'workingDirectory',
     'workspaceWatchIgnore',
   ],
@@ -264,6 +267,8 @@ const TS_SHARED_TYPES: Record<string, string[]> = {
   // of EnterpriseConfig.ExtensionAllowlist, carried inside the
   // get_enterprise_policy blob. sha256 is omitempty in Go — TS-optional matches.
   ExtensionAllowlistEntry: ['id', 'sha256'],
+  // Client-supplied workspace context. Mirrors Go's ClientWorkspaceContext.
+  ClientWorkspaceContext: ['bench', 'cwd', 'data', 'kind', 'text'],
   // Payload of engine_provider_login (EngineEvent.providerLogin). Mirrors Go's
   // ProviderLoginUpdate.
   ProviderLoginUpdate: [
@@ -532,4 +537,3 @@ describe('Contract sync: EngineEvent dispatch fields', () => {
     expect(goFields.has('dispatchLost'), 'Go EngineEvent is missing the dispatchLost payload field').toBe(true)
   })
 })
-

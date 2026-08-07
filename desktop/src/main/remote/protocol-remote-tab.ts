@@ -115,7 +115,7 @@ export interface RemoteTabState {
    *  policy: iOS does not switch on it — it rides the snapshot so the main
    *  process can resolve the bench singleton and exclude auto-fix tabs from
    *  the openConversations projection. Absent = default (null). */
-  tabRole?: 'bench-conversation' | 'conflict-auto-fix'
+  tabRole?: 'bench-conversation' | 'conflict-auto-fix' | 'verification-analysis'
   /** True when the conversation hosts an engine extension. Wire field consumed
    *  by iOS (RemoteTabState.swift). Not a backend flag. */
   hasEngineExtension?: boolean

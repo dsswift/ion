@@ -103,6 +103,7 @@ import type { ImageAttachmentPayload } from '../shared/types'
 import { ENTER_PLAN_MODE_DESCRIPTION, PLAN_MODE_SPARSE_REMINDER } from './prompt-pipeline-prose'
 import { emitRemoteMessageAdded } from './prompt-pipeline-renderer'
 import { TURN_GROUPING_GUIDANCE } from './turn-grouping-guidance'
+import { benchClientWorkspaceContext } from './integration/bench-prompt-context'
 
 export { ENTER_PLAN_MODE_DESCRIPTION, PLAN_MODE_SPARSE_REMINDER } from './prompt-pipeline-prose'
 
@@ -291,6 +292,20 @@ function applyHarnessSystemPromptAddenda(p: IncomingPrompt): void {
   let didAppendPrimary = false
   let didAppendRun = false
 
+  // Bench workspace context: when the prompt's project directory is inside an
+  // integration bench, send structured bench facts via clientWorkspaceContext
+  // so the engine routes them through system_inject and context_inject hooks.
+  // The desktop owns the bench, so the desktop owns this data -- the engine
+  // injects only the generic worktree context from its own registry.
+  let didSetClientWsCtx = false
+  if (p.projectPath && p.runOptions && !p.runOptions.clientWorkspaceContext) {
+    const wsCtx = benchClientWorkspaceContext(p.projectPath)
+    if (wsCtx) {
+      p.runOptions.clientWorkspaceContext = wsCtx
+      didSetClientWsCtx = true
+    }
+  }
+
   if (!p.appendSystemPrompt || !p.appendSystemPrompt.endsWith(TURN_GROUPING_GUIDANCE)) {
     p.appendSystemPrompt = p.appendSystemPrompt
       ? `${p.appendSystemPrompt}\n\n${TURN_GROUPING_GUIDANCE}`
@@ -311,6 +326,7 @@ function applyHarnessSystemPromptAddenda(p: IncomingPrompt): void {
     tab_id: p.tabId,
     engine_field: didAppendPrimary ? `appended (${before}→${p.appendSystemPrompt?.length ?? 0})` : 'already-present (no-op)',
     run_options_field: p.runOptions ? (didAppendRun ? `appended (${beforeRun}→${p.runOptions.appendSystemPrompt?.length ?? 0})` : 'already-present (no-op)') : 'absent',
+    client_ws_ctx: didSetClientWsCtx ? p.runOptions?.clientWorkspaceContext?.kind ?? 'set' : 'none',
   })
 }
 

@@ -213,11 +213,12 @@ export interface TabState {
   /**
    * When true, the operator cannot type into this conversation. Set on the
    * auto-generated conflict-resolution conversations (the AI Assisted rebase /
-   * merge fixes): their entire instruction is the one machine-sent prompt, and
-   * a follow-up message would graft an open-ended conversation onto a tab
-   * whose working directory — often an integration bench — is not where
-   * development work belongs. The fix conversation stays readable and
-   * abortable; it just refuses new prompts.
+   * merge fixes) and on the bench-verification analysis conversation: their
+   * entire instruction is the one machine-sent prompt, and a follow-up message
+   * would graft an open-ended conversation onto a tab whose working directory
+   * — often an integration bench — is not where development work belongs. The
+   * fix/analysis conversation stays readable and abortable; it just refuses
+   * new prompts.
    */
   inputLocked: boolean
   /**
@@ -231,12 +232,16 @@ export interface TabState {
    *   bench (the singleton slot). Focused, never duplicated, by every open
    *   entry point (desktop git panel, ATV, iOS).
    * - `'conflict-auto-fix'`: an ephemeral, input-locked machine conversation
-   *   created by the conflict assist. Closes itself only on a typed `normal`
-   *   completion; every failure shape is retained for diagnosis.
+   *   created by the conflict assist, or by the bench-verification analysis
+   *   flow (which uses the same role deliberately: locked input, exclusion
+   *   from the operator-conversation count, and self-close on a clean
+   *   completion all apply identically to an analysis-only conversation).
+   *   Closes itself only on a typed `normal` completion; every failure shape
+   *   is retained for diagnosis.
    * - `null`/absent: every other tab (default). Terminal identity stays
    *   derived via `isTerminalOnly` + `pickDirTerminal`, not a role.
    */
-  tabRole?: 'bench-conversation' | 'conflict-auto-fix' | null
+  tabRole?: 'bench-conversation' | 'conflict-auto-fix' | 'verification-analysis' | null
   /**
    * Engine profile ID used for this tab (references EngineProfile.id).
    * Non-null/non-empty means the tab has extensions loaded (derived via
@@ -527,6 +532,13 @@ export interface RunOptions {
    * wire only when truthy (mirrors the engine's omitempty `resolveSlash`).
    */
   resolveSlash?: boolean
+  /**
+   * Client-supplied workspace descriptor for this prompt. When set, the
+   * engine uses this instead of its own worktree-registry-derived context.
+   * Per-prompt override: takes precedence over the session-level
+   * EngineConfig.clientWorkspaceContext value.
+   */
+  clientWorkspaceContext?: import('./types-engine').ClientWorkspaceContext
 }
 
 /** Pre-encoded image bytes that ride alongside a user prompt. */
@@ -712,7 +724,8 @@ export type {
   GitCommit, GitRef, GitCommitDetail, GitCommitFile, GitGraphData,
   GitConflictKind, GitChangedFile, GitChangesData, GitBranchInfo,
   LandMode, LandResult, WorktreeMoveResult, WorktreeInventoryEntry, WorktreeAppraisalWire,
-  WorktreeProvisionState, GitOperationState,
+  WorktreeProvisionState, GitOperationState, WorkStage, WorkStageDescriptor,
+  SyncAllResult, SyncAllWorktreeOutcome,
   EnrollmentState, PinState, MergeOutcome,
   IntegrationMember, IntegrationWorkspace, BenchAssembleResult,
 } from './types-git'

@@ -226,6 +226,7 @@ describe('retireWorktree', () => {
 
     expect(result.ok).toBe(true)
     expect(result.workingDirectory).toBe(repo)
+    expect(result.warning).toBeUndefined()
     expect(existsSync(a.path)).toBe(false)
     expect(git(repo, 'branch', '--list', a.branch).trim()).toBe('')
   })
@@ -383,6 +384,7 @@ describe('reattachWorktree', () => {
 
     expect(result.ok).toBe(true)
     expect(result.workingDirectory).toBeTruthy()
+    expect(result.warning).toBeUndefined()
     expect(result.worktree?.sourceBranch).toBe('main')
     expect(result.worktree?.branchName).toMatch(/^wt\//)
     // It was cut from the CURRENT tip, so the landed work is present.

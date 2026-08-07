@@ -4,7 +4,7 @@
  * re-exports it (renderer/env.d.ts imports it from ../preload/index).
  */
 import type { AtvApi } from './atv-api'
-import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus, LandResult, WorktreeMoveResult, WorktreeInventoryEntry, WorktreeAppraisalWire, WorktreeProvisionState, IntegrationWorkspace, BenchAssembleResult, EngineConfig, EngineEvent, EngineHostInfo, EngineDirListing, RemoteTransportState, DiscoveredCommand, GitEvent, RepoSnapshot, NewConversationDefaultsPolicy } from '../shared/types'
+import type { RunOptions, NormalizedEvent, HealthReport, EnrichedError, FileAttachment, SessionMeta, SessionLoadMessage, GitGraphData, GitChangesData, GitBranchInfo, GitCommitDetail, PersistedTabState, FsEntry, WorktreeInfo, WorktreeStatus, LandResult, SyncAllResult, WorktreeMoveResult, WorktreeInventoryEntry, WorktreeAppraisalWire, WorktreeProvisionState, WorkStage, IntegrationWorkspace, BenchAssembleResult, EngineConfig, EngineEvent, EngineHostInfo, EngineDirListing, RemoteTransportState, DiscoveredCommand, GitEvent, RepoSnapshot, NewConversationDefaultsPolicy } from '../shared/types'
 import type { EnterprisePolicy } from '../shared/types-engine'
 import type { ModelTier } from '../shared/types-model-tiers'
 import type { CustomThemeForRenderer } from '../shared/theme-pack-types'
@@ -195,7 +195,13 @@ export interface IonAPI extends AtvApi {
    * relocate the conversation into (see relocateTabSession).
    */
   gitWorktreeLand(args: { repoPath: string; worktreePath: string; worktreeBranch: string; sourceBranch: string; noFf?: boolean; syncFirst?: boolean; requireFastForward?: boolean }): Promise<LandResult>
-  gitWorktreeSync(worktreePath: string, sourceBranch: string): Promise<{ ok: boolean; error?: string; hasConflicts?: boolean; refusedDirty?: boolean }>
+  gitWorktreeSync(worktreePath: string, sourceBranch: string): Promise<{ ok: boolean; error?: string; hasConflicts?: boolean; refusedDirty?: boolean; replayed?: boolean; dropped?: number; warning?: string }>
+  /**
+   * Bulk sync: every managed worktree of a repo, sequentially, with rerere
+   * replay between them. The mechanical half of the sync-all pipeline — it
+   * never opens conversations or spends tokens.
+   */
+  gitWorktreeSyncAll(repoPath: string): Promise<SyncAllResult>
   /** Every managed worktree for a repo, with state for describing and acting on it. */
   gitWorktreeInventory(repoPath: string): Promise<{ worktrees: WorktreeInventoryEntry[] }>
   /**
@@ -215,10 +221,25 @@ export interface IonAPI extends AtvApi {
   }>
   /** Operator override for a worktree's title. */
   gitWorktreeSetTitle(args: { worktreePath: string; repoPath?: string; title: string }): Promise<{ ok: boolean; title?: string; error?: string }>
+  /** Set or clear the operator's workflow stage on a worktree. `null` clears. */
+  gitWorktreeSetStage(args: { worktreePath: string; repoPath?: string; stage: WorkStage | null }): Promise<{ ok: boolean; stage?: WorkStage | null; error?: string }>
+  /**
+   * @deprecated Compatibility shim over `gitWorktreeSetStage` for callers that
+   * predate the work-stage system: `good` maps to `verified`, `issue` to
+   * `bug`, `null` clears (the shared `legacyReviewToStage` table). The
+   * `sourceBranch` argument is accepted and ignored — stages are
+   * worktree-scoped, not bench-scoped. Removable once every sibling branch
+   * has migrated to `gitWorktreeSetStage`; as of this writing the unmigrated
+   * callers are wt/ion-98d550f3, wt/ion-d2101138, wt/ion-c151d648, and
+   * wt/ion-02804dd4 (WorktreeRowMenu.tsx).
+   */
+  benchSetReview(args: { repoPath: string; sourceBranch: string; worktreePath: string; review: 'good' | 'issue' | null }): Promise<{ ok: boolean; error?: string }>
   /** What would be lost if this worktree were removed right now. */
   gitWorktreeAppraise(worktreePath: string, sourceBranch: string): Promise<WorktreeAppraisalWire>
   // ── Integration workspace (the bench) ──
   benchList(repoPath: string): Promise<{ workspaces: IntegrationWorkspace[]; tips: Record<string, string> }>
+  /** Resolve a bench root or descendant to its persisted owning workspace. */
+  benchResolvePath(directory: string): Promise<{ workspace: IntegrationWorkspace | null }>
   benchEnsure(repoPath: string, sourceBranch: string): Promise<{ workspace: IntegrationWorkspace }>
   benchAddMember(args: { repoPath: string; sourceBranch: string; worktreePath: string; branchName: string }): Promise<{ ok: boolean; error?: string; workspace?: IntegrationWorkspace }>
   benchRemoveMember(args: { repoPath: string; sourceBranch: string; worktreePath: string }): Promise<{ workspace: IntegrationWorkspace | null }>
@@ -231,7 +252,6 @@ export interface IonAPI extends AtvApi {
   gitWorktreeRegistration(worktreePath: string): Promise<{
     registration: { repoPath: string; branchName: string; sourceBranch: string | null; title: string | null } | null
   }>
-  benchSetReview(args: { repoPath: string; sourceBranch: string; worktreePath: string; review: 'good' | 'issue' | null }): Promise<{ workspace: IntegrationWorkspace | null }>
   benchSetOrder(args: { repoPath: string; sourceBranch: string; worktreePath: string; toIndex: number }): Promise<{ workspace: IntegrationWorkspace | null }>
   benchUpdateMember(args: { repoPath: string; sourceBranch: string; worktreePath: string }): Promise<BenchAssembleResult>
   benchUpdateAll(repoPath: string, sourceBranch: string): Promise<BenchAssembleResult>
@@ -246,6 +266,20 @@ export interface IonAPI extends AtvApi {
   benchRerereCount(directory: string): Promise<{ ok: boolean; count: number; error?: string }>
   benchRerereForget(directory: string, paths: string[]): Promise<{ ok: boolean; count: number; error?: string }>
   benchRerereDiscardAll(directory: string): Promise<{ ok: boolean; count: number; error?: string }>
+  /**
+   * Rebuild the failing tree from a verification failure back into the bench,
+   * verified fresh, for the AI-assisted analysis conversation to read. Does
+   * NOT wipe on completion — that is the point. Refuses when the bench state
+   * has moved since the failure (a pin changed, a recording was forgotten).
+   */
+  benchPrepareVerificationAnalysis(repoPath: string, sourceBranch: string): Promise<{ ok: boolean; benchPath?: string; error?: string }>
+  /**
+   * The bench-verification recovery dialog's targeted discard: forget the
+   * recordings for the named suspect branches, then reassemble.
+   */
+  benchDiscardVerificationRecordings(
+    repoPath: string, sourceBranch: string, branchNames: string[],
+  ): Promise<BenchAssembleResult & { forgottenCount?: number }>
   benchRefreshStaleness(repoPath: string, sourceBranch: string): Promise<{ workspace: IntegrationWorkspace | null }>
   /** Base staleness: has the feature branch moved ahead of this worktree? */
   gitWorktreeBaseStatus(worktreePath: string, sourceBranch: string): Promise<{ behindCount: number; behindSubjects: string[]; needsSync: boolean; hasUncommittedChanges: boolean; appraisalFailed?: boolean }>
