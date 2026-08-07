@@ -1,20 +1,28 @@
 /**
- * Workspace-record schema parity — the desktop half of the shared-fixture pin.
+ * Workspace-record schema pins.
  *
- * The engine's workspace containment (engine/internal/workspaces) reads the
- * two records THIS process writes: ~/.ion/worktree-registry.json
- * (main/worktree/inventory.ts) and ~/.ion/integration-workspaces.json
- * (main/integration/bench-store.ts). Both sides fail open on mismatch, so a
- * field rename here would silently disable the engine's guard — no error, no
- * failing test, just an empty view and a passed write.
+ * Two records, two different consumers:
  *
- * These tests close that gap: they drive the REAL writers, then assert the
- * written JSON still carries every key the engine's shared fixtures
- * (engine/internal/workspaces/testdata/*.fixture.json) declare the engine
- * consumes. The engine asserts the same fixtures through its real read path
- * (registry_fixture_test.go), so the fixture is the single source of truth —
- * a rename on either side fails exactly one of the two suites and names the
- * drift.
+ * 1. `~/.ion/worktree-registry.json` (main/worktree/inventory.ts) is read by
+ *    the ENGINE's workspace containment (engine/internal/workspaces). Both
+ *    sides fail open on mismatch, so a field rename here would silently
+ *    disable the engine's guard — no error, no failing test, just an empty
+ *    view and a passed write. The shared fixture
+ *    (engine/internal/workspaces/testdata/worktree-registry.fixture.json) is
+ *    the single source of truth: the engine asserts it through its real read
+ *    path (registry_fixture_test.go) and this test asserts the live writer
+ *    still produces every key it declares. A rename on either side fails
+ *    exactly one of the two suites and names the drift.
+ *
+ * 2. `~/.ion/integration-workspaces.json` (main/integration/bench-store.ts)
+ *    is DESKTOP-INTERNAL: the engine no longer reads it (the bench agent
+ *    surface moved to the desktop's client tool gate — bench-tool-policy.ts
+ *    reads this record through loadWorkspaces). The schema question is now
+ *    "do this process's writer and reader agree", so the expected key set is
+ *    pinned locally below and asserted against both the written JSON and the
+ *    real reader's round-trip. Both still matter: the reader normalizes
+ *    defensively, so a renamed key would not throw — it would silently reset
+ *    pins, assembly outcomes, or member enablement to defaults.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, readFileSync } from 'fs'
@@ -31,9 +39,34 @@ vi.mock('os', async () => {
 })
 
 import { registerWorktree, worktreeRegistryFile } from '../worktree/inventory'
-import { saveWorkspaces, makeWorkspace, makeMember, workspacesFile } from '../integration/bench-store'
+import { saveWorkspaces, loadWorkspaces, makeWorkspace, makeMember, workspacesFile } from '../integration/bench-store'
 
 const FIXTURE_DIR = join(__dirname, '../../../../engine/internal/workspaces/testdata')
+
+/**
+ * Every key the integration-workspaces record must carry for the desktop's
+ * own readers (bench-tool-policy.ts, bench-ops.ts, the git panel) to answer
+ * correctly. Formerly declared by an engine-side fixture; now that the record
+ * is desktop-internal, this local pin is the schema's source of truth.
+ */
+const INTEGRATION_RECORD_KEYS = [
+  'workspaces.repoPath',
+  'workspaces.sourceBranch',
+  'workspaces.benchPath',
+  'workspaces.benchBranch',
+  'workspaces.baseSha',
+  'workspaces.lastBuiltAt',
+  'workspaces.lastAssembly',
+  'workspaces.members.worktreePath',
+  'workspaces.members.branchName',
+  'workspaces.members.enabled',
+  'workspaces.members.pin',
+  'workspaces.members.merge',
+  'workspaces.members.pinnedSha',
+  'workspaces.members.pinnedTreeHash',
+  'workspaces.members.pinnedBaseSha',
+  'workspaces.members.currentTreeHash',
+]
 
 /** Every key path present in `fixture`, as dot paths ("entries.worktreePath"). */
 function keyPaths(node: unknown, prefix = ''): Set<string> {
@@ -95,8 +128,8 @@ describe('worktree registry writer matches the engine fixture schema', () => {
   })
 })
 
-describe('integration workspaces writer matches the engine fixture schema', () => {
-  it('the live writer produces every key the engine consumes', () => {
+describe('integration workspaces writer and reader agree on the record schema', () => {
+  function saveOneWorkspace(): void {
     const ws = makeWorkspace('/repo/project', 'main')
     const member = makeMember({
       worktreePath: '/wt/project-aaa',
@@ -112,14 +145,44 @@ describe('integration workspaces writer matches the engine fixture schema', () =
       lastAssembly: 'assembled',
       members: [member],
     }])
+  }
+
+  it('the live writer produces every pinned key', () => {
+    saveOneWorkspace()
 
     const written = JSON.parse(readFileSync(workspacesFile(), 'utf-8')) as unknown
-    const fixture = JSON.parse(
-      readFileSync(join(FIXTURE_DIR, 'integration-workspaces.fixture.json'), 'utf-8'),
-    ) as unknown
-
     const writtenKeys = keyPaths(written)
-    const missing = [...keyPaths(fixture)].filter((k) => !writtenKeys.has(k))
-    expect(missing, `desktop writer no longer produces keys the engine reads: ${missing.join(', ')}`).toEqual([])
+    const missing = INTEGRATION_RECORD_KEYS.filter((k) => !writtenKeys.has(k))
+    expect(missing, `desktop writer no longer produces pinned record keys: ${missing.join(', ')}`).toEqual([])
+  })
+
+  it('the live reader decodes every pinned field to its written value', () => {
+    saveOneWorkspace()
+
+    // The REAL read path, including normalization — a renamed key would not
+    // throw here, it would silently collapse the field to its default, which
+    // is exactly the drift this assertion set exists to catch.
+    const loaded = loadWorkspaces()
+    expect(loaded).toHaveLength(1)
+    const w = loaded[0]
+    expect(w.repoPath).toBe('/repo/project')
+    expect(w.sourceBranch).toBe('main')
+    expect(w.benchPath).toBeTruthy()
+    expect(w.benchBranch).toBeTruthy()
+    expect(w.baseSha).toBe('0123456789abcdef0123456789abcdef01234567')
+    expect(w.lastBuiltAt).toBe(1700000200000)
+    expect(w.lastAssembly).toBe('assembled')
+
+    expect(w.members).toHaveLength(1)
+    const m = w.members[0]
+    expect(m.worktreePath).toBe('/wt/project-aaa')
+    expect(m.branchName).toBe('wt/project-aaa')
+    expect(m.enabled).toBe(true)
+    expect(m.pin).toBe('current')
+    expect(m.merge).toBe('unbuilt')
+    expect(m.pinnedSha).toBe('89abcdef0123456789abcdef0123456789abcdef')
+    expect(m.pinnedTreeHash).toBe('fedcba9876543210fedcba9876543210fedcba98')
+    expect(m.pinnedBaseSha).toBe('0123456789abcdef0123456789abcdef01234567')
+    expect(m.currentTreeHash).toBe('fedcba9876543210fedcba9876543210fedcba98')
   })
 })

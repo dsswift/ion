@@ -11,6 +11,7 @@
 export * from './types-events'
 export * from './types-session'
 export * from './types-engine'
+export * from './types-tool-gate'
 export * from './types-persistence'
 export * from './types-ipc'
 export * from './types-git-events'
