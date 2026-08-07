@@ -29,6 +29,7 @@ vi.mock('os', async () => {
 })
 
 import { loadWorkspaces, saveWorkspaces, workspacesFile } from '../integration/bench-store'
+import { setWorktreeStage, lookupWorktreeStage } from '../worktree/inventory'
 
 let root: string
 
@@ -183,14 +184,45 @@ describe('migration is one-way and runs once', () => {
     expect(second).toEqual(first)
   })
 
-  it('preserves a review verdict across the migration', () => {
+  it('migrates a good verdict into a verified work stage in the registry', () => {
     writeLegacy([legacyMember({ status: 'integrated', review: 'good' })])
-    expect(loadWorkspaces()[0].members[0].review).toBe('good')
+    const m = loadWorkspaces()[0].members[0]
+    // The verdict key is gone from the member shape...
+    expect('review' in m).toBe(false)
+    // ...and its meaning moved into the worktree registry.
+    expect(lookupWorktreeStage('/wt/a')).toBe('verified')
+  })
+
+  it('migrates an issue verdict into a bug work stage', () => {
+    writeLegacy([legacyMember({ review: 'issue' })])
+    loadWorkspaces()
+    expect(lookupWorktreeStage('/wt/a')).toBe('bug')
+  })
+
+  it('never overwrites a stage the operator already set', () => {
+    setWorktreeStage('/wt/a', 'ready')
+    writeLegacy([legacyMember({ review: 'issue' })])
+    loadWorkspaces()
+    // The registry is the live system; the verdict is the historical one.
+    expect(lookupWorktreeStage('/wt/a')).toBe('ready')
+  })
+
+  it('strips the migrated review key from the file so migration is one-time', () => {
+    writeLegacy([legacyMember({ review: 'issue' })])
+    loadWorkspaces()
+    // The load rewrites the file without the key; clearing the stage must not
+    // resurrect the verdict on the next load.
+    setWorktreeStage('/wt/a', null)
+    loadWorkspaces()
+    expect(lookupWorktreeStage('/wt/a')).toBeNull()
+    const raw = readFileSync(workspacesFile(), 'utf-8')
+    expect(raw.includes('"review"')).toBe(false)
   })
 
   it('ignores a review value that is not a known verdict', () => {
     writeLegacy([legacyMember({ review: 'maybe' })])
-    expect(loadWorkspaces()[0].members[0].review).toBeUndefined()
+    loadWorkspaces()
+    expect(lookupWorktreeStage('/wt/a')).toBeNull()
   })
 })
 

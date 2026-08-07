@@ -12,7 +12,8 @@
 import type { StoreSet, StoreGet, State } from '../session-store-types'
 import { rInfo, rWarn, rDebug } from '../../rendererLogger'
 import { closeOccupants, resolveRetireBlockers } from './worktree-occupant-close'
-import { collectDirConversations, pickNextConversation } from '../../../shared/worktree-conversations'
+import { legacyReviewToStage } from '../../../shared/types-git'
+import { collectAllDirConversations, pickNextConversation } from '../../../shared/worktree-conversations'
 import { resolveRegisteredWorktree } from '../worktree-registration'
 
 export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Partial<State> {
@@ -58,6 +59,46 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
       } catch (err) {
         rWarn('worktree.inventory', 'refresh failed', { repo_path: repoPath, error: String(err) })
       }
+    },
+
+    /**
+     * Re-read both worktree surfaces for a repo: the inventory and the bench.
+     *
+     * ── Why this exists as ONE named action ─────────────────────────────────
+     * Any flow that changes git state a worktree row describes has to refresh
+     * both caches, because the row is a join of them — the inventory carries
+     * dirty/unlanded/operationState, the bench record carries pin and merge
+     * verdicts, and a row showing a stale conflict badge after a resolution is
+     * the visible cost of refreshing only one. The auto-fix close path forgot
+     * both entirely (it called `closeTab` and nothing else), which left the red
+     * badge up until the panel's 5s poll happened to fire.
+     *
+     * Naming the pair keeps the next caller from re-deriving it: two ad-hoc
+     * call sites are two chances to refresh one and forget the other.
+     *
+     * Deliberately NOT a reassembly. Refreshing reads git and the records;
+     * reassembling MUTATES the bench and carries its own refusal semantics. A
+     * post-resolution refresh must never rebuild — the operator decides when a
+     * rebuild is the right move.
+     *
+     * `allSettled`: both actions log their own failures, and one failing must
+     * not skip the other. Read-only IPC into per-window derived caches, so it
+     * is mirror-local by classification (see atv-mirror-actions.ts).
+     */
+    refreshWorkspaceViews: async (repoPath) => {
+      if (!repoPath || repoPath === '~') {
+        rDebug('worktree.inventory', 'workspace refresh skipped: no repo path', { repo_path: repoPath })
+        return
+      }
+      const [inventory, bench] = await Promise.allSettled([
+        get().refreshWorktreeInventory(repoPath),
+        get().refreshBench(repoPath),
+      ])
+      rDebug('worktree.inventory', 'workspace views refreshed', {
+        repo_path: repoPath,
+        inventory: inventory.status,
+        bench: bench.status,
+      })
     },
 
     /**
@@ -135,9 +176,17 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
      * rotation is stateless — it reads the currently active tab and steps past
      * it — so there is no cursor for the overlay and the ATV mirror to disagree
      * about, and closing a tab cannot leave it dangling.
+     *
+     * The cycle is ALL-INCLUSIVE — `collectAllDirConversations`, not the
+     * operator-only `collectDirConversations` every display surface uses. A
+     * `conflict-auto-fix` conversation is still open work in this worktree; if
+     * it moved tab groups or the operator just needs to check it, the row click
+     * is the only path back in that does not require hunting through the
+     * strip. Excluding it here (as the display surfaces correctly do) would
+     * make it permanently unreachable from the worktree that owns it.
      */
     openWorktreeConversation: async (worktreePath) => {
-      const matches = collectDirConversations(get().tabs, worktreePath)
+      const matches = collectAllDirConversations(get().tabs, worktreePath)
       const next = pickNextConversation(matches, get().activeTabId)
       if (next) {
         rInfo('worktree.inventory', 'focusing existing conversation for worktree', {
@@ -267,6 +316,39 @@ export function createWorktreeInventorySlice(set: StoreSet, get: StoreGet): Part
       }
       await get().refreshWorktreeInventory(repoPath)
       return result
+    },
+
+    /**
+     * Set or clear the operator's workflow stage on a worktree, then refresh
+     * so every row shows the new marker.
+     *
+     * A store action (FORWARDED in the ATV mirror) rather than a component
+     * handler: the write must run in the owner window, and the refresh that
+     * follows must read owner truth, not stale mirror state.
+     */
+    setWorktreeStage: async (repoPath, worktreePath, stage) => {
+      rInfo('worktree.inventory', 'stage set', { worktree_path: worktreePath, stage: stage ?? 'none' })
+      const result = await window.ion.gitWorktreeSetStage({ worktreePath, repoPath, stage })
+      if (!result.ok) {
+        rWarn('worktree.inventory', 'stage set refused', {
+          worktree_path: worktreePath, stage: stage ?? 'none', error: result.error ?? '',
+        })
+      }
+      await get().refreshWorktreeInventory(repoPath)
+    },
+
+    /**
+     * Deprecated shim over `setWorktreeStage` — see session-store-types.ts for
+     * the contract and the removal condition (the four unmigrated sibling
+     * branches). The verdict→stage mapping is the shared `legacyReviewToStage`
+     * table, the same one the workspaces-file load migration uses, so the two
+     * cannot drift. `sourceBranch` is ignored: stages are worktree-scoped.
+     */
+    benchSetReview: async (repoPath, _sourceBranch, worktreePath, review) => {
+      rInfo('worktree.inventory', 'deprecated benchSetReview shim invoked', {
+        worktree_path: worktreePath, review: review ?? 'none',
+      })
+      await get().setWorktreeStage(repoPath, worktreePath, legacyReviewToStage(review) ?? null)
     },
 
     /**

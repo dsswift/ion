@@ -72,6 +72,16 @@ export const FORWARDED_ACTIONS: Record<string, ForwardedActionSpec> = {
   // store state to attach the worktree metadata, so it must run in the owner.
   newWorktreeConversation: { minArgs: 1, maxArgs: 1 },
   syncWorktree: { minArgs: 3, maxArgs: 3 },
+  // The sync-all pipeline is the canonical multi-step flow: it reads store
+  // state between mutations (tab status while agents run, the bench list for
+  // the assembly phase) and mutates worktrees on disk. Owner-only — a
+  // mirror-local run would launch a SECOND set of rebases and agents against
+  // the same repo. Cancel/dismiss ride along: they mutate the owner's
+  // pipeline record, which the mirror renders via state sync.
+  startWorktreePipeline: { minArgs: 1, maxArgs: 2 },
+  confirmWorktreePipelineAi: { minArgs: 0, maxArgs: 0 },
+  cancelWorktreePipeline: { minArgs: 0, maxArgs: 0 },
+  dismissWorktreePipeline: { minArgs: 0, maxArgs: 0 },
   // Retire destroys a directory and relocates the conversation that lived in it,
   // reading store state between the two steps. Owner-only: a mirror-local run
   // would relocate against stale mirror state, and a double retire would race
@@ -100,11 +110,25 @@ export const FORWARDED_ACTIONS: Record<string, ForwardedActionSpec> = {
   benchAddMember: { minArgs: 4, maxArgs: 4 },
   benchRemoveMember: { minArgs: 3, maxArgs: 3 },
   benchSetEnabled: { minArgs: 4, maxArgs: 4 },
+  // Registry write + inventory refresh — owner-durable; the mirror running it
+  // locally would write ~/.ion/worktree-registry.json from the wrong window
+  // and refresh against stale mirror state.
+  setWorktreeStage: { minArgs: 3, maxArgs: 3 },
+  // Deprecated shim over setWorktreeStage (see worktree-inventory-slice.ts).
+  // Forwarded for the same reason: unmigrated call sites invoke it directly,
+  // and in the mirror that invocation must ride to the owner, not delegate
+  // locally through a mirror-side setWorktreeStage.
   benchSetReview: { minArgs: 4, maxArgs: 4 },
   benchSetOrder: { minArgs: 4, maxArgs: 4 },
   // AI-assisted conflict resolution creates a tab and submits a prompt —
   // owner-durable twice over; a mirror-local run would fork the conversation.
   openConflictAssist: { minArgs: 1, maxArgs: 1 },
+  // Bench-verification analysis: rebuilds the failing tree on disk, THEN
+  // creates a tab and submits a prompt — owner-durable three times over, same
+  // reasoning as openConflictAssist plus a git mutation neither mirror may run.
+  openBenchVerificationAnalysis: { minArgs: 2, maxArgs: 2 },
+  // Targeted forget-then-reassemble — owner-durable git mutation.
+  benchDiscardVerificationRecordings: { minArgs: 3, maxArgs: 3 },
   forceRecoverTab: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
   autoRecoverStuckTab: { minArgs: 1, maxArgs: 1, tabIdAt: 0 },
   resumeSession: { minArgs: 1, maxArgs: 3 },
@@ -214,6 +238,7 @@ export const MIRROR_LOCAL_ACTIONS: Record<string, string> = {
   setWorktreeUncommitted: 'per-window derived cache',
   refreshWorktreeInventory: 'read-only IPC fetch into a per-window derived cache',
   refreshBench: 'read-only IPC fetch into a per-window derived cache',
+  refreshWorkspaceViews: 'read-only IPC fetch into a per-window derived cache (the inventory+bench pair)',
   // File explorer / editor (window-local workbench state).
   toggleFileExplorer: 'per-window UI',
   collapseAllExplorer: 'per-window UI',

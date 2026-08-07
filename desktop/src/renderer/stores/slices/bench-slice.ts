@@ -289,12 +289,6 @@ export function createBenchSlice(set: StoreSet, get: StoreGet): Partial<State> {
       await get().refreshBench(repoPath)
     },
 
-    benchSetReview: async (repoPath, sourceBranch, worktreePath, review) => {
-      rInfo('bench', 'member review set', { worktree_path: worktreePath, review: review ?? 'none' })
-      await window.ion.benchSetReview({ repoPath, sourceBranch, worktreePath, review })
-      await get().refreshBench(repoPath)
-    },
-
     benchSetOrder: async (repoPath, sourceBranch, worktreePath, toIndex) => {
       rInfo('bench', 'member order set', { worktree_path: worktreePath, to_index: toIndex })
       await window.ion.benchSetOrder({ repoPath, sourceBranch, worktreePath, toIndex })

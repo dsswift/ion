@@ -1,84 +1,20 @@
-/** One conflicted or refused directory, as the alert surfaces see it. */
-export interface GitConflictAlert {
-  /** What raised it: a failed sync, a failed land, or an inventory detection. */
-  source: 'sync' | 'land' | 'detected'
-  /**
-   * What kind of failure this is. `conflict` (the default when absent) means
-   * an operation is stuck mid-way and the ConflictsDialog can resolve it.
-   * `refusal` means the verb declined to start — a dirty worktree refusing a
-   * sync — so there is NO in-progress operation to resolve; the remediation
-   * is in `message` (commit or stash), and the toast offers no Resolve.
-   *
-   * Lifecycle differs too: a conflict clears when the inventory sees the
-   * operation finish, a refusal clears when the worktree goes clean or the
-   * next sync succeeds (there is no git state that says "was refused").
-   */
-  kind?: 'conflict' | 'refusal'
-  /** The in-progress operation, when known. */
-  operationState?: 'rebasing' | 'merging' | 'cherry-picking'
-  /** Operator-facing message from the failing verb, when there was one. */
-  message?: string
-  /** Display label for the directory (worktree label or basename). */
-  label?: string
-  /** True when the operator closed the toast. Badges ignore this. */
-  dismissed: boolean
-  recordedAt: number
-}
-
 /**
- * A pending close request, resolved and awaiting the operator's answer.
+ * session-store-types — the store's `State` shape and its action signatures.
  *
- * Raised only by `requestCloseTab`, which resolves `warning` BEFORE setting
- * this — so the dialog is complete on first render (desktop/AGENTS.md § "View
- * readiness principle") rather than growing a warning line after it opens.
+ * Small standalone interfaces (git-conflict alerts, the sync-all pipeline
+ * banner, close-confirmation intent, static app info, file-editor tab state)
+ * live in session-store-aux-types.ts (file-size cap) and are re-exported here
+ * so every existing `from '../session-store-types'` import keeps working.
  */
-export interface CloseIntent {
-  tabId: string
-  /** Resolved display title, so the dialog needs no second lookup. */
-  title: string
-  directory: string
-  /**
-   * What the operator is walking away from, or null when the close is
-   * uneventful. Null for every plain conversation (no second lifetime) and for
-   * a worktree that is clean and fully landed.
-   */
-  warning: string | null
-}
+export type {
+  GitConflictAlert, WorktreePipelineState, CloseIntent, StaticInfo, FileEditorTab, FileEditorDirState,
+} from './session-store-aux-types'
+import type {
+  GitConflictAlert, WorktreePipelineState, CloseIntent, StaticInfo, FileEditorTab, FileEditorDirState,
+} from './session-store-aux-types'
 
-import type { TabState, NormalizedEvent, EnrichedError, Attachment, FileAttachment, TerminalPaneState, ConversationPane, ImageAttachmentPayload, WorktreeInventoryEntry, WorktreeProvisionState, IntegrationWorkspace, IntegrationMember, BenchAssembleResult, WorktreeMoveResult } from '../../shared/types'
+import type { TabState, NormalizedEvent, EnrichedError, Attachment, FileAttachment, TerminalPaneState, ConversationPane, ImageAttachmentPayload, WorktreeInventoryEntry, WorktreeProvisionState, WorkStage, IntegrationWorkspace, IntegrationMember, BenchAssembleResult, WorktreeMoveResult } from '../../shared/types'
 import type { ResourceItem } from '../../shared/types-engine'
-
-export interface StaticInfo {
-  version: string
-  email: string | null
-  subscriptionType: string | null
-  projectPath: string
-  homePath: string
-}
-
-export interface FileEditorTab {
-  id: string
-  filePath: string | null
-  fileName: string
-  content: string
-  savedContent: string
-  isDirty: boolean
-  isReadOnly: boolean
-  isPreview: boolean
-  /**
-   * Set when the file's on-disk content could not be read (deleted or
-   * unreadable path). Restored non-dirty files reload from disk (schema v4
-   * drops their buffers from the tab file); a failed reload must surface as
-   * an explicit error, never a silent blank buffer the user might save over
-   * the real file. Runtime-only — never persisted.
-   */
-  readError?: string
-}
-
-export interface FileEditorDirState {
-  activeFileId: string | null
-  files: FileEditorTab[]
-}
 
 export interface State {
   tabs: TabState[]
@@ -146,6 +82,14 @@ export interface State {
    * the truth outlives a dismissal.
    */
   gitConflictAlerts: Map<string, GitConflictAlert>
+  /**
+   * The one running (or last finished) sync-all pipeline, or null when idle.
+   * A single slot, not a per-repo map: pipelines mutate the repo's shared
+   * rerere cache and mutation queue, so two at once would interleave — the
+   * start action refuses while one is running. Kept after completion so the
+   * banner can show the terminal summary until dismissed.
+   */
+  worktreePipeline: WorktreePipelineState | null
 
   engineWorkingMessages: Map<string, string>
   engineNotifications: Map<string, Array<{ id: string; message: string; level: string; timestamp: number }>>
@@ -402,6 +346,14 @@ export interface State {
   toggleTabGroupPin: (tabId: string) => void
   setWorktreeUncommitted: (tabId: string, hasChanges: boolean) => void
   refreshWorktreeInventory: (repoPath: string) => Promise<void>
+  /**
+   * Re-read both worktree surfaces (inventory + bench) for a repo.
+   *
+   * The pair, named once, for any flow that changes git state a worktree row
+   * describes — the row is a join of the two caches, so refreshing one leaves a
+   * half-stale row. Never reassembles; refreshing reads, assembly mutates.
+   */
+  refreshWorkspaceViews: (repoPath: string) => Promise<void>
   /** Open (or focus) a conversation in an existing worktree. */
   openWorktreeConversation: (worktreePath: string) => Promise<string>
   /**
@@ -410,7 +362,21 @@ export interface State {
    * the ones that already exist.
    */
   newWorktreeConversation: (worktreePath: string) => Promise<string>
-  syncWorktree: (worktreePath: string, sourceBranch: string, repoPath: string) => Promise<{ ok: boolean; error?: string; hasConflicts?: boolean; refusedDirty?: boolean }>
+  syncWorktree: (worktreePath: string, sourceBranch: string, repoPath: string) => Promise<{ ok: boolean; error?: string; hasConflicts?: boolean; refusedDirty?: boolean; replayed?: boolean }>
+  /**
+   * Phase 1 of the sync-all pipeline: the free mechanical pass over every
+   * worktree of the repo. Pauses at `awaiting-ai-confirm` when conflicts
+   * survive it — agents cost money, so launching them is the operator's
+   * explicit act (confirmWorktreePipelineAi) — and runs straight through to
+   * the bench phase when none do. See stores/slices/worktree-pipeline-slice.ts.
+   */
+  startWorktreePipeline: (repoPath: string, sourceBranch?: string | null) => Promise<void>
+  /** The confirm gate's Yes: sequential AI escalation with rerere replay between agents. */
+  confirmWorktreePipelineAi: () => Promise<void>
+  /** Stop between steps; never aborts an in-flight rebase or a running agent. */
+  cancelWorktreePipeline: () => void
+  /** Clear the finished pipeline banner. */
+  dismissWorktreePipeline: () => void
   /**
    * Retire a worktree, relocating any conversation inside it first so the tab is
    * never left pointed at a deleted directory. Callers must confirm against
@@ -446,11 +412,39 @@ export interface State {
   benchRerereCount: (directory: string) => Promise<number>
   benchRerereForget: (directory: string, paths: string[]) => Promise<number>
   benchRerereDiscardAll: (directory: string) => Promise<number>
+  /**
+   * AI-assisted analysis of a bench verification failure (never a fix — see
+   * git-conflict-slice.ts's openConflictAssist for the parallel conflict-fix
+   * flow this deliberately does NOT mirror on mode). ONE forwarded action:
+   * materialises the failing tree back into the bench, then opens a
+   * plan-mode, input-locked conversation there whose only job is to name
+   * whether the failure is a poisoned recording or a genuine cross-member
+   * incompatibility. Throws with a remediation message when the `standard`
+   * model tier is not configured, or when the diagnostic tree could not be
+   * rebuilt (the bench state moved since the failure).
+   */
+  openBenchVerificationAnalysis: (repoPath: string, sourceBranch: string) => Promise<string>
+  /**
+   * The bench-verification recovery dialog's targeted discard: forget the
+   * named suspect branches' recordings, then reassemble.
+   */
+  benchDiscardVerificationRecordings: (
+    repoPath: string, sourceBranch: string, branchNames: string[],
+  ) => Promise<BenchAssembleResult & { forgottenCount?: number }>
   benchUpdateMember: (repoPath: string, sourceBranch: string, worktreePath: string) => Promise<BenchAssembleResult>
   benchUpdateAll: (repoPath: string, sourceBranch: string) => Promise<BenchAssembleResult>
   benchAddMember: (repoPath: string, sourceBranch: string, worktreePath: string, branchName: string) => Promise<{ ok: boolean; error?: string }>
   benchRemoveMember: (repoPath: string, sourceBranch: string, worktreePath: string) => Promise<void>
   benchSetEnabled: (repoPath: string, sourceBranch: string, worktreePath: string, enabled: boolean) => Promise<void>
+  /** Set or clear the operator's workflow stage on a worktree. `null` clears. */
+  setWorktreeStage: (repoPath: string, worktreePath: string, stage: WorkStage | null) => Promise<void>
+  /**
+   * @deprecated Compatibility shim over `setWorktreeStage` for call sites that
+   * predate the work-stage system (`good` → `verified`, `issue` → `bug`,
+   * `null` clears; `sourceBranch` ignored — stages are worktree-scoped).
+   * Removable once every sibling branch has migrated to `setWorktreeStage`:
+   * wt/ion-98d550f3, wt/ion-d2101138, wt/ion-c151d648, wt/ion-02804dd4.
+   */
   benchSetReview: (repoPath: string, sourceBranch: string, worktreePath: string, review: 'good' | 'issue' | null) => Promise<void>
   benchSetOrder: (repoPath: string, sourceBranch: string, worktreePath: string, toIndex: number) => Promise<void>
   /** Dismiss the absorbed-into-base notice for one workspace. */

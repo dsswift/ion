@@ -21,16 +21,18 @@ import { useSessionStore } from '../stores/sessionStore'
 import { useColors } from '../theme'
 import { WorktreeRow } from './WorktreeRow'
 import { BenchBar } from './BenchBar'
+import { WorktreePipelinePanel } from './WorktreePipelinePanel'
 import { ConflictsDialog } from './git/ConflictsDialog'
 import { BenchConflictDialog } from './git/BenchConflictDialog'
+import { BenchVerificationDialog } from './git/BenchVerificationDialog'
 import { ConfirmDialog } from './git/ConfirmDialog'
 import { WorktreeRowMenu } from './WorktreeRowMenu'
 import { rError } from '../rendererLogger'
-import { collectDirConversations, pickBenchConversation, pickDirTerminal, benchTerminalTitle } from '../../shared/worktree-conversations'
+import { collectDirConversations, collectAllDirConversations, pickBenchConversation, pickDirTerminal, benchTerminalTitle } from '../../shared/worktree-conversations'
 import { buildWorktreeList } from '../../shared/worktree-list'
 import { getGroupStatusColor } from './TabStripShared'
 import { useBenchReorder } from '../hooks/useBenchReorder'
-import type { WorktreeInventoryEntry, IntegrationMember } from '../../shared/types'
+import type { WorktreeInventoryEntry, IntegrationMember, IntegrationWorkspace } from '../../shared/types'
 
 /** Stable empty map so the selector does not return a fresh object per render. */
 const EMPTY_RETIRED: ReadonlyMap<string, IntegrationMember[]> = new Map()
@@ -59,6 +61,7 @@ export function WorktreeListSection({
   const tips = useSessionStore((s) => s.benchSourceTips.get(repoPath))
   const retired = useSessionStore((s) => s.benchRetired.get(repoPath)) ?? EMPTY_RETIRED
   const tabs = useSessionStore((s) => s.tabs)
+  const activeTabId = useSessionStore((s) => s.activeTabId)
 
   const [syncing, setSyncing] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -74,6 +77,13 @@ export function WorktreeListSection({
    * rendered an empty list with a dead Abort.
    */
   const [benchConflict, setBenchConflict] = useState<{ member: IntegrationMember; sourceBranch: string } | null>(null)
+  /**
+   * The workspace whose verification-failure dialog is open. A verification
+   * failure has no conflicted MEMBER to key on (every merge succeeded), so
+   * this is keyed by the workspace itself rather than mirroring
+   * `benchConflict`'s per-member shape.
+   */
+  const [verificationFailure, setVerificationFailure] = useState<IntegrationWorkspace | null>(null)
   const [selectedBench, setSelectedBench] = useState<string | null>(null)
   const [discardCount, setDiscardCount] = useState<number | null>(null)
 
@@ -117,6 +127,22 @@ export function WorktreeListSection({
     return () => window.clearInterval(id)
   }, [refresh])
 
+  // Becoming visible again refreshes immediately.
+  //
+  // The poll above skips hidden windows, which is right — scanning git forever
+  // for nobody is waste. But without this listener the skip had no counterpart:
+  // a backgrounded panel returned showing rows as stale as the moment it was
+  // hidden, and the operator read a resolved conflict's red badge as live. The
+  // interval alone would clear it up to 5s later; this makes the first frame
+  // after return correct, which is what the view-readiness rule asks for.
+  useEffect(() => {
+    const onVisible = (): void => {
+      if (document.visibilityState === 'visible') refresh()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [refresh])
+
   const benches = useMemo(() => workspaces ?? [], [workspaces])
   // Default to the first bench; the selector in the bar switches it.
   // Explicit selection wins, then the bench we are standing in, then the first.
@@ -127,11 +153,25 @@ export function WorktreeListSection({
     [benches, selectedBench, inBenchFor],
   )
 
+  /**
+   * Where the ACTIVE conversation is standing, so one row can say "you are here".
+   *
+   * Prefers the tab's worktree metadata and falls back to its plain working
+   * directory: a conversation created through the worktree flow carries the
+   * former, one opened directly in the directory carries only the latter, and
+   * both are genuinely in the worktree. A bench or main-clone directory matches
+   * no row, which is correct — the bench has its own bar.
+   */
+  const activeDirectory = useMemo(() => {
+    const tab = tabs.find((t) => t.id === activeTabId)
+    return tab?.worktree?.worktreePath ?? tab?.workingDirectory ?? null
+  }, [tabs, activeTabId])
+
   // ONE function decides list order, shared with the ATV mirror and the wire
   // projection, so no surface can sort these differently.
   const { items, orphans } = useMemo(
-    () => buildWorktreeList(inventory ?? [], benches, active?.sourceBranch ?? null),
-    [inventory, benches, active],
+    () => buildWorktreeList(inventory ?? [], benches, active?.sourceBranch ?? null, activeDirectory),
+    [inventory, benches, active, activeDirectory],
   )
 
   const enrolledCount = items.filter((i) => i.order !== undefined).length
@@ -231,6 +271,7 @@ export function WorktreeListSection({
           workspaces={benches}
           active={active}
           benchConversations={collectDirConversations(tabs, active.benchPath)}
+          allBenchConversations={collectAllDirConversations(tabs, active.benchPath)}
           baseDrifted={!!tips?.[active.sourceBranch] && tips[active.sourceBranch] !== active.baseSha}
           orphans={orphans}
           absorbed={retired.get(active.sourceBranch) ?? []}
@@ -251,9 +292,18 @@ export function WorktreeListSection({
             const store = useSessionStore.getState()
             // Update-all when something is behind, plain assembly otherwise.
             // Assembly alone never advances a pin, so it is always safe.
-            await (behindCount > 0
+            const result = await (behindCount > 0
               ? store.benchUpdateAll(repoPath, active.sourceBranch)
               : store.benchAssemble(repoPath, active.sourceBranch))
+            // A resolution merge with real unmerged paths refuses the
+            // assembly — and a refusal the operator cannot see is a broken
+            // button (the live defect: repeated Assemble clicks against a
+            // silent refusal while the bar showed a stale failure). The
+            // ConflictsDialog on the bench IS the surface that resolves the
+            // state the refusal names, so open it.
+            if (result.refusal === 'resolution-in-progress') {
+              setResolving(active.benchPath)
+            }
           })}
           onDiscardRecordings={() => {
             void useSessionStore.getState().benchRerereCount(active.benchPath)
@@ -261,8 +311,17 @@ export function WorktreeListSection({
               .catch((err) => rError('worktree.list', 'recording count failed', { error: String(err) }))
           }}
           onDismissAbsorbed={() => useSessionStore.getState().clearBenchRetired(repoPath, active.sourceBranch)}
+          onShowVerificationFailure={() => setVerificationFailure(active)}
         />
       )}
+
+      {/* The sync-all verb + pipeline banner. Below the bench bar (the bench
+          is the headline of the section) and above the rows it acts on. */}
+      <WorktreePipelinePanel
+        repoPath={repoPath}
+        sourceBranch={active?.sourceBranch ?? null}
+        entries={inventory ?? []}
+      />
 
       {items.length === 0 ? (
         <div style={{ padding: '6px 8px', fontSize: 10, color: colors.textTertiary }}>
@@ -276,6 +335,14 @@ export function WorktreeListSection({
           // deliberate section rather than rows that happen to sit last.
           const startsLandedGroup = item.landed && !items[i - 1]?.landed
           const benchBranch = item.membership ? active?.sourceBranch : undefined
+          // A verification-suspect row: the active bench's last assembly
+          // failed VERIFICATION (not a merge conflict) and this member's merge
+          // came from the replayed recording under suspicion.
+          const verificationSuspect = active?.lastAssemblyFailure === 'verification'
+            && item.membership
+            && active.lastAssemblyVerification?.replayedBranches.includes(item.membership.branchName)
+            ? { command: active.lastAssemblyVerification.command }
+            : undefined
           return (
             <React.Fragment key={entry.worktreePath}>
               {startsLandedGroup && (
@@ -308,6 +375,7 @@ export function WorktreeListSection({
               // enrolled run.
               railStarts={enrolled && i > 0}
               railContinues={enrolled && i + 1 < enrolledCount}
+              active={item.active}
               syncing={syncing === entry.worktreePath}
               onOpen={() => {
                 void useSessionStore.getState()
@@ -338,12 +406,16 @@ export function WorktreeListSection({
                   setBenchConflict({ member: item.membership, sourceBranch: active.sourceBranch })
                 }
               }}
-              onSetReview={benchBranch ? (review) => {
+              verificationSuspect={verificationSuspect}
+              onShowVerificationFailure={() => {
+                if (active) setVerificationFailure(active)
+              }}
+              onSetStage={(stage) => {
                 run(entry.worktreePath, async () => {
                   await useSessionStore.getState()
-                    .benchSetReview(repoPath, benchBranch, entry.worktreePath, review)
+                    .setWorktreeStage(repoPath, entry.worktreePath, stage)
                 })
-              } : undefined}
+              }}
               dragHandlers={reorder.rowHandlers(i, enrolled)}
               dragging={reorder.draggingIndex === i}
               dropTarget={reorder.overIndex === i}
@@ -431,6 +503,14 @@ export function WorktreeListSection({
             setBenchConflict(null)
             setResolving(benchPath)
           }}
+        />
+      )}
+
+      {verificationFailure && (
+        <BenchVerificationDialog
+          repoPath={repoPath}
+          workspace={verificationFailure}
+          onClose={() => { setVerificationFailure(null); refresh() }}
         />
       )}
 

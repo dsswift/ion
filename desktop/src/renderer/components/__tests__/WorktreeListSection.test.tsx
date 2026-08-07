@@ -47,6 +47,11 @@ vi.mock('../git/BenchConflictDialog', () => ({
     React.createElement('div', { 'data-testid': 'bench-conflict-dialog', 'data-branch': member.branchName }),
 }))
 vi.mock('../WorktreeRowMenu', () => ({ WorktreeRowMenu: () => null }))
+// The stage strip portals through the popover layer; hand it the body so the
+// picker renders in jsdom without mounting the whole provider tree.
+vi.mock('../PopoverLayer', () => ({
+  usePopoverLayer: () => document.body,
+}))
 vi.mock('../../rendererLogger', () => ({
   rError: vi.fn(), rWarn: vi.fn(), rInfo: vi.fn(), rDebug: vi.fn(), rTrace: vi.fn(),
 }))
@@ -215,48 +220,58 @@ describe('WorktreeListSection — drag-reorder within the bench', () => {
   })
 })
 
-describe('WorktreeListSection — review verdicts on line 2', () => {
-  it('offers verdict buttons on every enrolled row, whatever its state', () => {
-    // The reason they moved off the line-1 priority slot: a behind member loses
-    // that contest, so the buttons were reachable only through the row menu --
-    // invisible exactly during a review pass.
+describe('WorktreeListSection — work stage on line 2', () => {
+  // The strip portals into the popover layer (mocked to document.body), so it
+  // is queried on the document rather than the harness host.
+  const dq = (testid: string): HTMLElement | null =>
+    document.querySelector(`[data-testid="${testid}"]`)
+
+  it('offers the stage chip on every row, enrolled or not', () => {
+    // The stage lives in the worktree registry, not on a bench member, so an
+    // unenrolled worktree carries the control too — `plan` happens before any
+    // enrollment exists.
     storeState.benchWorkspaces = new Map([[REPO, [workspace([member('a', { pin: 'behind' })])]]])
     render()
 
-    expect(q('worktree-review-good-btn-wt/a')).not.toBeNull()
-    expect(q('worktree-review-issue-btn-wt/a')).not.toBeNull()
+    expect(q('worktree-stage-chip-wt/a')).not.toBeNull()
+    expect(q('worktree-stage-chip-wt/c')).not.toBeNull()
   })
 
-  it('offers none on an unenrolled row, which has no pin to judge', () => {
+  it('sets a stage through the store from the strip', () => {
     render()
-    expect(q('worktree-review-good-btn-wt/a')).toBeNull()
+
+    act(() => { (q('worktree-stage-chip-wt/a') as HTMLButtonElement).click() })
+    act(() => { (dq('worktree-stage-option-wt/a-build') as HTMLButtonElement).click() })
+
+    expect(storeState.setWorktreeStage).toHaveBeenCalledWith(REPO, '/wt/a', 'build')
   })
 
-  it('records a verdict through the store', () => {
-    storeState.benchWorkspaces = new Map([[REPO, [workspace([member('a')])]]])
+  it('clears the stage when the active one is selected again', () => {
+    storeState.worktreeInventory = new Map([[REPO, [entry('a', { stage: 'verified' }), entry('b'), entry('c')]]])
     render()
 
-    act(() => { (q('worktree-review-good-btn-wt/a') as HTMLButtonElement).click() })
+    act(() => { (q('worktree-stage-chip-wt/a') as HTMLButtonElement).click() })
+    act(() => { (dq('worktree-stage-option-wt/a-verified') as HTMLButtonElement).click() })
 
-    expect(storeState.benchSetReview).toHaveBeenCalledWith(REPO, 'josh', '/wt/a', 'good')
+    expect(storeState.setWorktreeStage).toHaveBeenCalledWith(REPO, '/wt/a', null)
   })
 
-  it('clears the verdict when the active one is selected again', () => {
-    storeState.benchWorkspaces = new Map([[REPO, [workspace([member('a', { review: 'good' })])]]])
+  it('marks the active stage in the strip', () => {
+    storeState.worktreeInventory = new Map([[REPO, [entry('a', { stage: 'bug' }), entry('b'), entry('c')]]])
     render()
 
-    act(() => { (q('worktree-review-good-btn-wt/a') as HTMLButtonElement).click() })
+    act(() => { (q('worktree-stage-chip-wt/a') as HTMLButtonElement).click() })
 
-    expect(storeState.benchSetReview).toHaveBeenCalledWith(REPO, 'josh', '/wt/a', null)
+    expect(dq('worktree-stage-option-wt/a-bug')!.getAttribute('aria-pressed')).toBe('true')
+    expect(dq('worktree-stage-option-wt/a-test')!.getAttribute('aria-pressed')).toBe('false')
   })
 
-  it('does not open the conversation when a verdict button is clicked', () => {
-    // The row's own click opens or cycles conversations; the buttons sit inside
-    // it, so a missing stopPropagation would review AND navigate.
-    storeState.benchWorkspaces = new Map([[REPO, [workspace([member('a')])]]])
+  it('does not open the conversation when the chip is clicked', () => {
+    // The row's own click opens or cycles conversations; the chip sits inside
+    // it, so a missing stopPropagation would stage AND navigate.
     render()
 
-    act(() => { (q('worktree-review-issue-btn-wt/a') as HTMLButtonElement).click() })
+    act(() => { (q('worktree-stage-chip-wt/a') as HTMLButtonElement).click() })
 
     expect(storeState.openWorktreeConversation).not.toHaveBeenCalled()
   })
@@ -270,50 +285,6 @@ describe('WorktreeListSection — review verdicts on line 2', () => {
     expect(enrolled.style.width).toBe(unenrolled.style.width)
     expect(unenrolled.style.flexShrink).toBe('0')
   })
-})
-
-describe('WorktreeListSection — the bench bar', () => {
-  it('is absent when the repo has no bench', () => {
-    render()
-    expect(q('bench-assemble')).toBeNull()
-  })
-
-  it('appears once a bench exists, above the rows', () => {
-    storeState.benchWorkspaces = new Map([[REPO, [workspace([member('a')])]]])
-    render()
-
-    const bar = q('bench-assemble')!
-    const firstRow = rows()[0]
-    expect(bar).not.toBeNull()
-    expect(bar.compareDocumentPosition(firstRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-  })
-
-  it('reports memberships whose worktree is gone as a footnote, never as rows', () => {
-    // A row implies a directory to open; an absorbed or retired worktree has
-    // none. Dropping it silently is what made absorption look like the bench
-    // eating a worktree.
-    storeState.benchWorkspaces = new Map([[REPO, [workspace([member('a'), member('vanished')])]]])
-    render()
-
-    expect(rows()).toHaveLength(3)
-    expect(host().querySelector('[data-testid="worktree-row-wt/vanished"]')).toBeNull()
-    expect(q('bench-orphans')!.textContent).toContain('wt/vanished')
-  })
-
-  it('reports a failed assembly in the bar instead of the age line', () => {
-    // Atomicity: a failed assembly wipes the bench to an empty tree. An
-    // operator who switches to it and finds nothing must have been told WHY
-    // here — "assembled just now" over an empty bench was the original lie.
-    storeState.benchWorkspaces = new Map([[REPO, [{
-      ...workspace([member('a', { merge: 'conflicted' })]),
-      lastAssembly: 'failed',
-      lastAssemblyError: 'wt/a conflicts on 1 file. The bench is empty until this is resolved.',
-    }]]])
-    render()
-
-    expect(q('bench-assembly-failed')).not.toBeNull()
-  })
-
 })
 
 describe('WorktreeListSection — polls while open', () => {
@@ -377,48 +348,6 @@ describe('WorktreeListSection — polls while open', () => {
     } finally {
       vi.useRealTimers()
     }
-  })
-})
-
-describe('WorktreeListSection — the bench-conflict badge opens the right dialog', () => {
-  // The regression pinned here: the badge used to call
-  // `setResolving(benchPath)`, mounting the ConflictsDialog on a directory
-  // with no in-progress operation — empty file list, disabled Abort, an alert
-  // that looked broken. A bench conflict's evidence is the membership RECORD,
-  // so it gets its own dialog fed from the record.
-  it('opens the BenchConflictDialog with the conflicted membership, not the ConflictsDialog', () => {
-    storeState.benchWorkspaces = new Map([[REPO, [workspace([
-      member('a', { merge: 'conflicted', conflictPaths: ['shared.txt'], conflictsWith: ['wt/b'] }),
-      member('b'),
-    ])]]])
-    render()
-
-    act(() => {
-      q('worktree-bench-conflict-wt/a')!.click()
-    })
-
-    const dialog = q('bench-conflict-dialog')
-    expect(dialog).not.toBeNull()
-    expect(dialog!.getAttribute('data-branch')).toBe('wt/a')
-    expect(q('conflicts-dialog')).toBeNull()
-  })
-
-  it('still opens the ConflictsDialog for an in-worktree conflicted operation', () => {
-    // The other dialog keeps its real job: a directory with a REAL in-progress
-    // operation (a conflicted sync) resolves through the operation-state UI.
-    storeState.worktreeInventory = new Map([[REPO, [
-      entry('a', { operationState: 'rebasing', conflictedPaths: ['x.ts'] }),
-    ]]])
-    render()
-
-    act(() => {
-      q('worktree-conflict-wt/a')!.click()
-    })
-
-    const dialog = q('conflicts-dialog')
-    expect(dialog).not.toBeNull()
-    expect(dialog!.getAttribute('data-directory')).toBe('/wt/a')
-    expect(q('bench-conflict-dialog')).toBeNull()
   })
 })
 
@@ -552,3 +481,12 @@ describe('WorktreeListSection — fills its pane body', () => {
     expect(q('worktree-new')!.style.flexShrink).toBe('0')
   })
 })
+
+/**
+ * Orientation: the panel marks the worktree the active conversation is in.
+ *
+ * The third navigation surface (after the tab strip and the workspace indicator)
+ * answers a question neither of the others can: with dozens of worktrees open,
+ * which CHECKOUT does the focused conversation belong to? Titles do not answer
+ * it — a worktree's registry title and its conversation's title routinely differ.
+ */

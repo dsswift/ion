@@ -69,14 +69,14 @@ let root: ReturnType<typeof createRoot>
 const onToggleEnrollment = vi.fn()
 const onToggleIncluded = vi.fn()
 const onUpdatePin = vi.fn()
-const onSetReview = vi.fn()
+const onSetStage = vi.fn()
 
 function render(props: Partial<Parameters<typeof WorktreeRow>[0]> = {}): void {
   act(() => {
     root.render(React.createElement(WorktreeRow, {
       entry: entry(),
       onOpen: () => {}, onSync: () => {}, onMenu: () => {}, onResolve: () => {},
-      onToggleEnrollment, onToggleIncluded, onUpdatePin, onSetReview,
+      onToggleEnrollment, onToggleIncluded, onUpdatePin, onSetStage,
       ...props,
     }))
   })
@@ -244,7 +244,7 @@ describe('WorktreeRow — the gutter still aligns with six slots', () => {
     expect(gutter.style.width).toBe(`${WORKTREE_ROW_GUTTER_WIDTH}px`)
 
     // Line 2 mirrors the gutter as a real reserved column rather than a bare
-    // paddingLeft, so the review pair lands in a fixed position.
+    // paddingLeft, so the stage chip lands in a fixed position.
     const gutter2 = q(`worktree-gutter2-${BRANCH}`)!
     expect(gutter2.style.width).toBe(`${WORKTREE_ROW_GUTTER_WIDTH}px`)
     expect(gutter2.style.flexShrink).toBe('0')
@@ -363,13 +363,13 @@ describe('WorktreeRow — membership drives the state slot', () => {
     expect(q(`worktree-word-${BRANCH}-behind`)).not.toBeNull()
   })
 
-  it('does not duplicate the verdict into the gutter', () => {
-    // The line-2 buttons already show it; a gutter glyph made every reviewed row
-    // carry the same mark twice.
-    render({ membership: member({ review: 'good' }), order: 1 })
+  it('does not duplicate the stage into the line-1 gutter', () => {
+    // The line-2 chip already shows it; a line-1 glyph would make every staged
+    // row carry the same mark twice.
+    render({ entry: entry({ stage: 'verified' }), membership: member(), order: 1 })
 
     expect(q(`worktree-review-good-${BRANCH}`)).toBeNull()
-    // The button is the single indicator, and it reports the state it sets.
-    expect(q(`worktree-review-good-btn-${BRANCH}`)!.getAttribute('aria-pressed')).toBe('true')
+    // The chip is the single indicator, and it is present on line 2.
+    expect(q(`worktree-stage-chip-${BRANCH}`)).not.toBeNull()
   })
 })

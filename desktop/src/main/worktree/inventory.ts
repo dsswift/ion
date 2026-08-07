@@ -15,306 +15,49 @@
  * conversation directly into one. That is strictly better than forbidding close,
  * which would pin the operator to a single immortal conversation per worktree.
  *
- * ── Source-branch resolution ────────────────────────────────────────────────
- * Every lifecycle verb (land, sync, base staleness) needs to know which branch a
- * worktree was cut FROM, and git does not record that. A worktree created by
- * Ion registers itself here, so the answer is durable and exact.
- *
- * When a worktree has no registry entry — created before this existed, or by
- * hand on the command line — the source branch is REPORTED AS UNKNOWN rather
- * than guessed. A wrong source branch would make "land" merge into the wrong
- * place, which is far worse than asking. Callers surface a picker instead.
+ * The durable per-worktree record (source branch, base, title, stage,
+ * landedAt) lives in registry.ts; this module owns the live git crawl that
+ * joins those records onto what `git worktree list` reports, and re-exports
+ * the registry surface so existing import paths keep working.
  */
-import { existsSync, mkdirSync, readFileSync } from 'fs'
-import { homedir } from 'os'
-import { join } from 'path'
-import { atomicWriteFileSync } from '../utils/atomicWrite'
 import { log as _log, warn as _warn } from '../logger'
 import { runGit } from '../git-runner'
 import { parseWorktreeList } from './integrate'
 import {
   appraiseRefPair, commitSubject, pruneAppraisalCache, type AppraisalCounters,
 } from './inventory-appraise'
-import { invalidateWorktreeInventoryCache } from './inventory-cache'
 import { getProvisionState } from './provision-state'
 import { probeOperationState } from '../git/operation-state'
+import {
+  lookupSourceBranch, lookupWorktreeTitle, lookupWorktreeLandedAt, lookupWorktreeStage,
+} from './registry'
 import type { WorktreeInventoryEntry } from '../../shared/types'
 
 const TAG = 'worktree.inventory'
 function log(msg: string, fields?: Record<string, unknown>): void { _log(TAG, msg, fields) }
 function warn(msg: string, fields?: Record<string, unknown>): void { _warn(TAG, msg, fields) }
 
-// Resolved lazily, not captured at module load: a frozen path is unobservable
-// and would make a test that redirects HOME write to the real ~/.ion.
-function ionDir(): string { return join(homedir(), '.ion') }
-export function worktreeRegistryFile(): string { return join(ionDir(), 'worktree-registry.json') }
-
-interface RegistryEntry {
-  worktreePath: string
-  repoPath: string
-  branchName: string
-  /**
-   * The branch this worktree was cut from — not recoverable from git.
-   *
-   * Null for a worktree Ion knows about but did not cut (a hand-created one
-   * that has since been given a title, see `setWorktreeTitle`). Recording a
-   * title must never require inventing a source branch: a wrong one would make
-   * `land` merge into the wrong place, which is exactly what the unknown-source
-   * path exists to prevent.
-   */
-  sourceBranch: string | null
-  /**
-   * Human-readable description of what this worktree is FOR.
-   *
-   * Seeded from the conversation that started the worktree: either the name it
-   * already had when it was converted into one, or the title generated for its
-   * first real prompt (see the seed IPC). Written ONCE — later conversations
-   * opened in the same worktree never change it, because a worktree's topic is
-   * set by the work it was cut for. The operator can override it explicitly.
-   *
-   * Absent until then. Every other identifier a worktree has — `ion-03e81090`,
-   * `wt/ion-03e81090`, a commit sha — is a machine string that tells the
-   * operator nothing about the work, which is what this field fixes.
-   */
-  title?: string
-  createdAt: number
-  /**
-   * When this worktree's commits were landed into its source branch.
-   *
-   * ── Why this is STORED and not derived ──────────────────────────────────
-   * "Has landed" cannot be answered by any git query after the fact. A worktree
-   * that never committed anything and one whose work landed both end up clean,
-   * with zero commits in `sourceBranch..branch`, and a tip equal to their merge
-   * base with the source. Fork-point, ancestry and merge-base probes all
-   * collapse to the same answer for both.
-   *
-   * This is the same trap `IntegrationMember.pinnedBaseSha` documents for bench
-   * members, where the bench once read "never started" as "landed" and deleted
-   * the member. The fix there was also a stored fact captured at the moment it
-   * was still knowable.
-   *
-   * The land verb is the only code that witnesses the transition, so it is the
-   * only place this is written. Absent means NOT landed -- never "unknown, guess"
-   * -- which is what keeps a freshly created empty worktree out of the landed
-   * band. A worktree landed before this field existed reads as active until it
-   * is retired; that degrades honestly, where inferring would not.
-   */
-  landedAt?: number
-}
-
-interface RegistryFile {
-  version: 1
-  entries: RegistryEntry[]
-}
-
-function loadRegistry(): RegistryEntry[] {
-  const file = worktreeRegistryFile()
-  if (!existsSync(file)) return []
-  try {
-    const parsed = JSON.parse(readFileSync(file, 'utf-8')) as Partial<RegistryFile>
-    return Array.isArray(parsed.entries)
-      ? parsed.entries.filter((e): e is RegistryEntry =>
-        // sourceBranch may legitimately be null: a hand-created worktree that
-        // has been titled is registered with an unknown source rather than a
-        // guessed one. Requiring a string here would silently drop those
-        // entries on the next read, losing the title.
-        !!e && typeof e.worktreePath === 'string'
-        && (typeof e.sourceBranch === 'string' || e.sourceBranch === null))
-      : []
-  } catch (err) {
-    warn('registry unreadable, treating as empty', { path: file, error: String(err) })
-    return []
-  }
-}
-
-function saveRegistry(entries: RegistryEntry[]): void {
-  try {
-    const dir = ionDir()
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-    const payload: RegistryFile = { version: 1, entries }
-    atomicWriteFileSync(worktreeRegistryFile(), JSON.stringify(payload, null, 2), 0o644)
-  } catch (err) {
-    warn('failed to save worktree registry', { path: worktreeRegistryFile(), error: String(err) })
-  }
-}
-
-/**
- * Record a worktree's source branch. Called from every path that creates a
- * worktree, so the lifecycle verbs always know where it lands.
- *
- * An existing TITLE survives re-registration, and always wins over the `title`
- * argument. Re-registering happens when a worktree is re-attached at the same
- * path, and the description of what the work is about is still true — dropping
- * it would silently un-name the row.
- *
- * `title` is the SEED: the name of the conversation this worktree was cut for,
- * passed by the creation paths that already have one (converting a named
- * conversation into a worktree, re-attaching a live one). A worktree cut before
- * its conversation has any name — the panel's "New worktree" button, a fresh
- * tab — passes nothing and is named later by its first prompt. Because a
- * stored title always wins, a seed can never overwrite a name the worktree
- * already carries.
- */
-export function registerWorktree(args: {
-  worktreePath: string
-  repoPath: string
-  branchName: string
-  sourceBranch: string
-  title?: string
-}): void {
-  const previous = loadRegistry().find((e) => e.worktreePath === args.worktreePath)
-  const entries = loadRegistry().filter((e) => e.worktreePath !== args.worktreePath)
-  const seeded = args.title?.trim() || undefined
-  // `landedAt` is carried across a re-registration: the same directory being
-  // re-registered has not un-landed its history.
-  entries.push({
-    worktreePath: args.worktreePath,
-    repoPath: args.repoPath,
-    branchName: args.branchName,
-    sourceBranch: args.sourceBranch,
-    title: previous?.title ?? seeded,
-    landedAt: previous?.landedAt,
-    createdAt: Date.now(),
-  })
-  saveRegistry(entries)
-  invalidateWorktreeInventoryCache('worktree registered')
-  log('registered worktree', {
-    worktree_path: args.worktreePath,
-    branch: args.branchName,
-    source_branch: args.sourceBranch,
-    retained_title: previous?.title ?? '',
-    seeded_title: previous?.title ? '' : (seeded ?? ''),
-  })
-}
-
-/**
- * Record that a worktree's commits reached its source branch.
- *
- * Called only from the land path, which is the only code that can witness the
- * transition -- see the `landedAt` field comment for why it cannot be derived
- * afterwards. Idempotent: landing twice keeps the FIRST timestamp, because that
- * is when the work actually arrived.
- *
- * A worktree with no registry entry is not created here. Landing one implies it
- * was registered, and inventing an entry with a fabricated `sourceBranch` is the
- * failure mode the registry's null-source rule exists to prevent.
- */
-export function markWorktreeLanded(worktreePath: string): void {
-  const entries = loadRegistry()
-  const existing = entries.find((e) => e.worktreePath === worktreePath)
-  if (!existing) {
-    warn('cannot mark landed, no registry entry', { worktree_path: worktreePath })
-    return
-  }
-  if (existing.landedAt) {
-    log('worktree already marked landed', {
-      worktree_path: worktreePath, landed_at: existing.landedAt,
-    })
-    return
-  }
-  existing.landedAt = Date.now()
-  saveRegistry(entries)
-  invalidateWorktreeInventoryCache('worktree landed')
-  log('worktree marked landed', { worktree_path: worktreePath, landed_at: existing.landedAt })
-}
-
-/**
- * Give a worktree a human-readable title, creating a registry entry when one
- * does not exist yet.
- *
- * The upsert matters: a worktree created by hand on the command line has no
- * registry entry, but it still shows up in the inventory and still deserves a
- * name. Such an entry records `sourceBranch: null` — Ion genuinely does not
- * know what it was cut from, and the lifecycle verbs must keep asking rather
- * than acting on a fabricated answer.
- *
- * `repoPath` and `branchName` are optional because a titling caller may not
- * know them; they are only filled in when creating a new entry, never used to
- * overwrite what an existing registration already recorded.
- */
-export function setWorktreeTitle(
-  worktreePath: string,
-  title: string,
-  fallback?: { repoPath?: string; branchName?: string },
-): void {
-  const entries = loadRegistry()
-  const existing = entries.find((e) => e.worktreePath === worktreePath)
-  if (existing) {
-    const previous = existing.title
-    existing.title = title
-    saveRegistry(entries)
-    invalidateWorktreeInventoryCache('worktree titled')
-    log('worktree title set', { worktree_path: worktreePath, title, replaced: previous ?? '' })
-    return
-  }
-
-  entries.push({
-    worktreePath,
-    repoPath: fallback?.repoPath ?? '',
-    branchName: fallback?.branchName ?? '',
-    // Unknown, and deliberately not guessed. See the field comment.
-    sourceBranch: null,
-    title,
-    createdAt: Date.now(),
-  })
-  saveRegistry(entries)
-  invalidateWorktreeInventoryCache('worktree titled')
-  log('worktree title set on a new registry entry', {
-    worktree_path: worktreePath,
-    title,
-    repo_path: fallback?.repoPath ?? '',
-    source_branch: 'unknown',
-  })
-}
-
-/** A worktree's recorded title, or null when it has never been named. */
-export function lookupWorktreeTitle(worktreePath: string): string | null {
-  return loadRegistry().find((e) => e.worktreePath === worktreePath)?.title ?? null
-}
-
-/** When this worktree's work landed, or null when it has not (or Ion has no record). */
-export function lookupWorktreeLandedAt(worktreePath: string): number | null {
-  return loadRegistry().find((e) => e.worktreePath === worktreePath)?.landedAt ?? null
-}
-
-/**
- * The full registration for a worktree, or null when Ion has no record.
- *
- * Callers that must decide "is this directory a worktree Ion manages, and which
- * repo does it belong to" read this rather than inferring from the path shape —
- * a path can look like a worktree without being one.
- */
-export function lookupWorktreeRegistration(worktreePath: string): {
-  repoPath: string
-  branchName: string
-  sourceBranch: string | null
-  title: string | null
-} | null {
-  const entry = loadRegistry().find((e) => e.worktreePath === worktreePath)
-  if (!entry) return null
-  return {
-    repoPath: entry.repoPath,
-    branchName: entry.branchName,
-    sourceBranch: entry.sourceBranch,
-    title: entry.title ?? null,
-  }
-}
-
-/** Drop a worktree's registry entry (after a retire). */
-export function unregisterWorktree(worktreePath: string): void {
-  const before = loadRegistry()
-  const after = before.filter((e) => e.worktreePath !== worktreePath)
-  if (after.length !== before.length) {
-    saveRegistry(after)
-    invalidateWorktreeInventoryCache('worktree unregistered')
-    log('unregistered worktree', { worktree_path: worktreePath })
-  }
-}
-
-/** Look up a worktree's recorded source branch, or null when unknown. */
-export function lookupSourceBranch(worktreePath: string): string | null {
-  return loadRegistry().find((e) => e.worktreePath === worktreePath)?.sourceBranch ?? null
-}
+// The registry (the durable per-worktree record: source branch, base, title,
+// stage, landedAt) lives in registry.ts — extracted at the record/crawl seam
+// for the file-size cap. Re-exported here so existing import paths keep
+// working; this module owns the live git crawl that joins those records onto
+// what `git worktree list` reports.
+export {
+  worktreeRegistryFile,
+  registerWorktree,
+  markWorktreeLanded,
+  setWorktreeTitle,
+  lookupWorktreeTitle,
+  setWorktreeStage,
+  advanceWorktreeStageOnPinChange,
+  lookupWorktreeStage,
+  lookupWorktreeLandedAt,
+  lookupWorktreeRegistration,
+  unregisterWorktree,
+  lookupSourceBranch,
+  lookupWorktreeBase,
+  setWorktreeBase,
+} from './registry'
 
 /**
  * One worktree, with everything the UI needs to describe and act on it.
@@ -434,6 +177,7 @@ export async function inventoryWorktreesDetailed(
     const sourceBranch = lookupSourceBranch(wt.path)
     const title = lookupWorktreeTitle(wt.path)
     const landedAt = lookupWorktreeLandedAt(wt.path)
+    const stage = lookupWorktreeStage(wt.path)
 
     // Subject is a pure function of the HEAD sha, so it caches under it. A
     // listing entry without a HEAD (prunable/broken checkout) has no commit to
@@ -488,6 +232,7 @@ export async function inventoryWorktreesDetailed(
       needsSync,
       safeToDiscard,
       landedAt: landedAt ?? undefined,
+      stage: stage ?? undefined,
       operationState: operation.state,
       conflictedPaths: operation.conflictedPaths.length > 0 ? operation.conflictedPaths : undefined,
       provisionState: provision?.state,

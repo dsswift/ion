@@ -28,9 +28,10 @@ vi.mock('os', async () => {
 import {
   ensureWorkspace, addMember, removeMember, setMemberEnabled,
   updateMember, updateAllStale, assembleWorkspace, refreshStaleness, listWorkspaces,
-  setMemberReview, setMemberOrder,
+  setMemberOrder,
 } from '../integration/bench-ops'
 import { loadWorkspaces, saveWorkspaces } from '../integration/bench-store'
+import { setWorktreeStage, lookupWorktreeStage } from '../worktree/inventory'
 import { GIT_FIXTURE_TIMEOUT } from '../../test/git-fixture-timeout'
 
 const FEATURE = 'josh'
@@ -373,65 +374,52 @@ describe('staleness reporting', () => {
   })
 })
 
-describe('review verdicts', () => {
-  it('records and clears a verdict on the current pin', async () => {
+describe('work-stage auto-advance on pin change', () => {
+  it('a bug stage survives an Update that re-pins identical content', async () => {
     localBench()
     const a = makeWorktree('a')
     commitIn(a.path, 'a.txt', 'a\n', 'a work')
     await addMember(repo, FEATURE, a.path, a.branch)
+    setWorktreeStage(a.path, 'bug')
 
-    expect(setMemberReview(repo, FEATURE, a.path, 'good')!.members[0].review).toBe('good')
-    expect(setMemberReview(repo, FEATURE, a.path, 'issue')!.members[0].review).toBe('issue')
-    expect(setMemberReview(repo, FEATURE, a.path, null)!.members[0].review).toBeUndefined()
+    // Nothing new committed: the pin cannot move, so the flag still applies
+    // to exactly the content that was tested — the bug is still in there.
+    await updateMember(repo, FEATURE, a.path)
+
+    expect(lookupWorktreeStage(a.path)).toBe('bug')
   })
 
-  it('survives an Update that re-pins identical content', async () => {
+  it('moves bug to test when the pin actually advances', async () => {
     localBench()
     const a = makeWorktree('a')
     commitIn(a.path, 'a.txt', 'a\n', 'a work')
     await addMember(repo, FEATURE, a.path, a.branch)
-    setMemberReview(repo, FEATURE, a.path, 'issue')
+    setWorktreeStage(a.path, 'bug')
 
-    // Nothing new committed: the pin cannot move, so the verdict still applies
-    // to exactly the contribution that was reviewed. `issue` is the verdict
-    // that CAN be auto-cleared, so it is the one that pins the keep.
-    const result = await updateMember(repo, FEATURE, a.path)
+    commitIn(a.path, 'a.txt', 'a v2\n', 'a fix')
+    await updateMember(repo, FEATURE, a.path)
 
-    expect(result.workspace!.members[0].review).toBe('issue')
+    // "There is an issue to fix" becomes "the fix is in, retest it" at the
+    // moment new content reaches the bench.
+    expect(lookupWorktreeStage(a.path)).toBe('test')
   })
 
-  it('keeps a good verdict when the pin advances', async () => {
+  it('keeps a verified stage when the pin advances', async () => {
     localBench()
     const a = makeWorktree('a')
     commitIn(a.path, 'a.txt', 'a\n', 'a work')
     await addMember(repo, FEATURE, a.path, a.branch)
-    setMemberReview(repo, FEATURE, a.path, 'good')
+    setWorktreeStage(a.path, 'verified')
 
     commitIn(a.path, 'a.txt', 'a v2\n', 'a more')
-    const result = await updateMember(repo, FEATURE, a.path)
+    await updateMember(repo, FEATURE, a.path)
 
-    // `good` records that the FEATURE was reviewed and works — a statement
-    // that stays valid across pin advances. Only the operator changes it.
-    expect(result.workspace!.members[0].review).toBe('good')
+    // `verified` is a statement about the feature, not the pin. Only the
+    // operator moves it.
+    expect(lookupWorktreeStage(a.path)).toBe('verified')
   })
 
-  it('clears an issue verdict when the pin actually advances', async () => {
-    localBench()
-    const a = makeWorktree('a')
-    commitIn(a.path, 'a.txt', 'a\n', 'a work')
-    await addMember(repo, FEATURE, a.path, a.branch)
-    setMemberReview(repo, FEATURE, a.path, 'issue')
-
-    commitIn(a.path, 'a.txt', 'a v2\n', 'a more')
-    const result = await updateMember(repo, FEATURE, a.path)
-
-    // `issue` describes a contribution, not a worktree. New content is a
-    // clean slate for retesting; the operator re-flags it if the bug is
-    // still there, or marks it good if the fix landed.
-    expect(result.workspace!.members[0].review).toBeUndefined()
-  })
-
-  it('update-all clears only advanced issue verdicts, never good ones', async () => {
+  it('update-all advances only moved bug stages, never other stages', async () => {
     localBench()
     const a = makeWorktree('a')
     const b = makeWorktree('b')
@@ -442,19 +430,30 @@ describe('review verdicts', () => {
     await addMember(repo, FEATURE, a.path, a.branch)
     await addMember(repo, FEATURE, b.path, b.branch)
     await addMember(repo, FEATURE, c.path, c.branch)
-    setMemberReview(repo, FEATURE, a.path, 'issue')
-    setMemberReview(repo, FEATURE, b.path, 'issue')
-    setMemberReview(repo, FEATURE, c.path, 'good')
+    setWorktreeStage(a.path, 'bug')
+    setWorktreeStage(b.path, 'bug')
+    setWorktreeStage(c.path, 'verified')
 
-    // `a` and `c` move; `b` stays where it was reviewed.
+    // `a` and `c` move; `b` stays where it was tested.
     commitIn(a.path, 'a.txt', 'a v2\n', 'a more')
     commitIn(c.path, 'c.txt', 'c v2\n', 'c more')
-    const result = await updateAllStale(repo, FEATURE)
+    await updateAllStale(repo, FEATURE)
 
-    const byBranch = (br: string) => result.workspace!.members.find((m) => m.branchName === br)!
-    expect(byBranch(a.branch).review).toBeUndefined()
-    expect(byBranch(b.branch).review).toBe('issue')
-    expect(byBranch(c.branch).review).toBe('good')
+    expect(lookupWorktreeStage(a.path)).toBe('test')
+    expect(lookupWorktreeStage(b.path)).toBe('bug')
+    expect(lookupWorktreeStage(c.path)).toBe('verified')
+  })
+
+  it('an unregistered or unstaged worktree is a no-op on pin advance', async () => {
+    localBench()
+    const a = makeWorktree('a')
+    commitIn(a.path, 'a.txt', 'a\n', 'a work')
+    await addMember(repo, FEATURE, a.path, a.branch)
+    // No stage set: the advance must not invent one.
+    commitIn(a.path, 'a.txt', 'a v2\n', 'a more')
+    await updateMember(repo, FEATURE, a.path)
+
+    expect(lookupWorktreeStage(a.path)).toBeNull()
   })
 })
 

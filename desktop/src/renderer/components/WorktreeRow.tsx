@@ -38,10 +38,10 @@ import { WorktreeConversationsCard } from './WorktreeConversationsCard'
 import { useSessionStore } from '../stores/sessionStore'
 import { WorktreeStateSlot } from './WorktreeStateSlot'
 import { WorktreeEnrollmentSlot } from './WorktreeEnrollmentSlot'
-import { WorktreeReviewSlot } from './WorktreeReviewSlot'
+import { WorktreeStageSlot } from './WorktreeStageSlot'
 import { resolveRowState, resolveRowWords } from './worktreeRowState'
 import { describeOpenConversations, type DirConversation } from '../../shared/worktree-conversations'
-import type { WorktreeInventoryEntry, IntegrationMember, EnrollmentState } from '../../shared/types'
+import type { WorktreeInventoryEntry, IntegrationMember, EnrollmentState, WorkStage } from '../../shared/types'
 
 /**
  * Width of every gutter slot, and the gutter total.
@@ -100,6 +100,16 @@ export interface WorktreeRowProps {
    * should not invent a second vocabulary for the same question.
    */
   activity?: { bg: string; pulse: boolean; glow: boolean; glowColor: string }
+  /**
+   * The active conversation is standing in this worktree — "you are here".
+   *
+   * Answers a question no other navigation surface can. The tab strip shows
+   * which TAB is focused and the workspace indicator shows which conversations
+   * are live, but with dozens of worktrees open neither says which CHECKOUT the
+   * current conversation belongs to, and a worktree's registry title and its
+   * conversation's title routinely differ.
+   */
+  active?: boolean
   /** True while a sync is in flight for this worktree. */
   syncing?: boolean
   onOpen(): void
@@ -115,8 +125,16 @@ export interface WorktreeRowProps {
   onUpdatePin?(): void
   /** Reveal the bench's conflict detail for this member. */
   onShowBenchConflict?(): void
-  /** Record or clear the operator's verdict on this member's current pin. */
-  onSetReview?(review: 'good' | 'issue' | null): void
+  /**
+   * Set when the bench's last assembly failed VERIFICATION and this row's
+   * member merged from a replayed recording — a suspect, not an exclusion.
+   * Absent for every other row.
+   */
+  verificationSuspect?: { command: string }
+  /** Reveal the bench's verification-failure detail (this member is a suspect). */
+  onShowVerificationFailure?(): void
+  /** Set or clear the operator's workflow stage on this worktree. */
+  onSetStage?(stage: WorkStage | null): void
   /**
    * Native drag props for bench reordering, supplied only for enrolled rows.
    * Spread onto the row root rather than handled here: the ORDER lives in the
@@ -163,8 +181,8 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
 
   // WHICH indicator the state slot shows, and which facts it could not show,
   // are both decided by one pure function so the row and its tests agree.
-  const rowState = resolveRowState({ entry, membership: props.membership, syncing })
-  const words = resolveRowWords({ entry, membership: props.membership, syncing })
+  const rowState = resolveRowState({ entry, membership: props.membership, syncing, verificationSuspect: props.verificationSuspect })
+  const words = resolveRowWords({ entry, membership: props.membership, syncing, verificationSuspect: props.verificationSuspect })
   const enrollment: EnrollmentState = props.membership
     ? (props.membership.enabled ? 'included' : 'excluded')
     : 'none'
@@ -193,13 +211,29 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
         // top rule, so the destination is a LINE between rows rather than a
         // highlight that reads as "this row is selected".
         opacity: props.dragging ? 0.4 : 1,
-        boxShadow: props.dropTarget && !props.dragging
-          ? `inset 0 1px 0 0 ${colors.accent}`
-          : 'none',
+        // Two independent insets, composed rather than chosen between: the
+        // drop-target's TOP rule and the active row's LEFT rail answer different
+        // questions and can be true at once.
+        //
+        // A rail, not a background fill. Background is already spoken for twice
+        // in this row — hover sets it imperatively below, and a third meaning
+        // would be overwritten by the pointer entering the row it is trying to
+        // mark. An inset shadow survives hover and stacks with the drag rule.
+        boxShadow: [
+          props.dropTarget && !props.dragging ? `inset 0 1px 0 0 ${colors.accent}` : '',
+          props.active ? `inset 2px 0 0 0 ${colors.accent}` : '',
+        ].filter(Boolean).join(', ') || 'none',
       }}
       onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = colors.surfaceHover }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
     >
+      {props.active && (
+        <span
+          data-testid={`worktree-active-${entry.branchName}`}
+          aria-hidden
+          style={{ display: 'none' }}
+        />
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
         {/* ── Control gutter ──────────────────────────────────────────────
             Fixed width, never shrinks. Each slot keeps its width when it has
@@ -303,6 +337,7 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
               onSync={props.onSync}
               onUpdatePin={props.onUpdatePin}
               onShowBenchConflict={props.onShowBenchConflict}
+              onShowVerificationFailure={props.onShowVerificationFailure}
             />
           </Slot>
 
@@ -317,7 +352,7 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
           fallbackTitle={`Branch ${entry.branchName}`}
           content={
             <WorktreeConversationsCard
-              heading={displayName}
+              heading={props.active ? `${displayName} — you are here` : displayName}
               identifiers={[
                 { label: 'branch', value: entry.branchName },
                 { label: 'dir', value: entry.label },
@@ -359,9 +394,8 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
           than a generated slug does. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
         {/* Line 2 mirrors line 1's gutter instead of a bare paddingLeft, so the
-            review pair lands in a fixed column the pointer can rely on -- and so
-            the commit subject starts at the same x whether or not a row has
-            verdict buttons. */}
+            stage chip lands in a fixed column the pointer can rely on -- and so
+            the commit subject starts at the same x on every row. */}
         <div
           data-testid={`worktree-gutter2-${entry.branchName}`}
           style={{
@@ -370,10 +404,10 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
             justifyContent: 'flex-end',
           }}
         >
-          <WorktreeReviewSlot
-            membership={props.membership}
+          <WorktreeStageSlot
+            stage={entry.stage}
             branchName={entry.branchName}
-            onSetReview={props.onSetReview}
+            onSetStage={props.onSetStage}
           />
         </div>
         {words.map((word) => (
@@ -385,6 +419,26 @@ export function WorktreeRow(props: WorktreeRowProps): React.JSX.Element {
             {word}
           </span>
         ))}
+        {/* The worktree ID, ahead of the commit subject.
+            This is the string that correlates the panel against every other
+            surface: it is the directory name under ~/.ion/worktrees/, and it is
+            the suffix of the branch (`wt/<id>`) the tab strip and git verbs
+            name. Without it the panel and the strip shared no visible token, so
+            an operator bouncing between dozens of tabs could not tell which row
+            they were standing in even after finding it.
+
+            flexShrink: 0 — the subject yields width first. Truncating the thing
+            being correlated would defeat the purpose, and the ID is short.
+            Monospace because it is machine text being matched character by
+            character against another surface, which is exactly when monospace
+            earns its place over the row's prose font. */}
+        <span
+          data-testid={`worktree-id-${entry.branchName}`}
+          style={{ fontSize: 9, color: colors.textTertiary, fontFamily: 'monospace', flexShrink: 0 }}
+        >
+          {entry.label}
+        </span>
+        <span style={{ fontSize: 9, color: colors.textMuted, flexShrink: 0 }}>·</span>
         <span style={{ fontSize: 9, color: colors.textTertiary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 1, minWidth: 0 }}>
           {entry.lastCommitSubject || 'no commits yet'}
         </span>
@@ -428,7 +482,7 @@ function activityLabel(count: number, live: boolean): string {
  */
 function wordColor(word: string, colors: ReturnType<typeof useColors>): string {
   if (word.startsWith('conflict') || word === 'bench conflict' || word === 'setup failed') return colors.dangerFg
-  if (word === 'behind' || word === 'syncing') return colors.warningFg
+  if (word === 'behind' || word === 'syncing' || word === 'verify suspect') return colors.warningFg
   return colors.textTertiary
 }
 
