@@ -81,4 +81,52 @@ final class WorktreeOpResultWireTests: XCTestCase {
         guard case let .worktreeOpResult(result) = event else { return XCTFail("wrong case") }
         XCTAssertEqual(result.operation, .assemble)
     }
+
+    /// The bulk sync pass: `sync_all` decodes with its pre-worded summary, and
+    /// conflicts surviving the pass ride `hasConflicts` on an ok:true result
+    /// (the pass ran to completion; the conflicts are its honest outcome).
+    func testOpResultSyncAllCarriesSummary() throws {
+        let json = """
+        {"type":"desktop_worktree_op_result","ok":true,"operation":"sync_all",
+         "hasConflicts":true,"summary":"3 synced, 2 completed by replay, 1 conflicted"}
+        """.data(using: .utf8)!
+
+        let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
+
+        guard case let .worktreeOpResult(result) = event else { return XCTFail("wrong case") }
+        XCTAssertTrue(result.ok)
+        XCTAssertEqual(result.operation, .syncAll)
+        XCTAssertEqual(result.hasConflicts, true)
+        XCTAssertEqual(result.summary, "3 synced, 2 completed by replay, 1 conflicted")
+    }
+
+    /// Unknown-source worktrees are skipped by sync-all; the summary wording
+    /// must decode so the iOS toast renders the operator-facing sentence.
+    func testSyncAllWithUnknownSourceSkips() throws {
+        let json = """
+        {"type":"desktop_worktree_op_result","ok":true,"operation":"sync_all",
+         "summary":"2 synced, 1 skipped (unknown source)"}
+        """.data(using: .utf8)!
+
+        let event = try JSONDecoder().decode(RemoteEvent.self, from: json)
+
+        guard case let .worktreeOpResult(result) = event else { return XCTFail("wrong case") }
+        XCTAssertTrue(result.ok)
+        XCTAssertEqual(result.operation, .syncAll)
+        XCTAssertEqual(result.summary, "2 synced, 1 skipped (unknown source)")
+    }
+
+    /// The summary survives a round-trip, so a relayed frame loses nothing.
+    func testSyncAllSummaryRoundTrips() throws {
+        let original = RemoteEvent.worktreeOpResult(result: RemoteWorktreeOpResult(
+            ok: true, operation: .syncAll, error: nil, refusedDirty: nil,
+            hasConflicts: nil, warning: nil, summary: "All worktrees already current"))
+
+        let decoded = try JSONDecoder().decode(
+            RemoteEvent.self, from: try JSONEncoder().encode(original))
+
+        guard case let .worktreeOpResult(result) = decoded else { return XCTFail("wrong case") }
+        XCTAssertEqual(result.operation, .syncAll)
+        XCTAssertEqual(result.summary, "All worktrees already current")
+    }
 }
