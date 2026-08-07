@@ -93,6 +93,20 @@ type EngineConfig struct {
 	// short-lived CLI prompts) should leave it false so the leak-prevention
 	// reaper continues to protect them.
 	Pinned bool `json:"pinned,omitempty"`
+
+	// ToolGate is the client's opt-in declaration that it wants to be
+	// consulted (engine_tool_gate_request / tool_gate_response) before tool
+	// calls execute in this session. Nil means no gating — the default for
+	// every consumer that does not ask. See types/tool_gate.go.
+	ToolGate *ToolGateConfig `json:"toolGate,omitempty"`
+
+	// ClientWorkspaceContext is a client-supplied workspace descriptor that
+	// the engine routes through system_inject and context_inject hooks in
+	// place of its own worktree-registry-derived context. Nil means the
+	// engine derives context from its own registry (unchanged default).
+	// A per-prompt override on ClientCommand takes precedence over this
+	// session-level value.
+	ClientWorkspaceContext *ClientWorkspaceContext `json:"clientWorkspaceContext,omitempty"`
 }
 
 // Per-prompt thinking-effort sentinels carried on

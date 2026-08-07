@@ -144,7 +144,7 @@ func (m *Manager) ComputeAndEmitContextBreakdown(key string) {
 	m.mu.RUnlock()
 
 	injectContextFiles(sForInject, &opts)
-	workspaceContext := m.injectWorkspaceContext(sForInject, key, &opts)
+	workspaceContext := m.injectWorkspaceContext(sForInject, key, &opts, sForInject.config.ClientWorkspaceContext)
 	m.injectExtensionContext(sForInject, key, &opts, workspaceContext)
 	injectGitContext(sForInject, &opts)
 	injectPluginContext(sForInject, &opts)

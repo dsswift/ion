@@ -477,18 +477,37 @@ func injectContextFiles(s *engineSession, opts *types.RunOptions) {
 	}
 }
 
-// injectWorkspaceContext delivers registry-backed workspace facts through both
-// context hooks and model context. Hooks may replace or suppress generic prose.
-func (m *Manager) injectWorkspaceContext(s *engineSession, key string, opts *types.RunOptions) *workspaces.PromptContext {
+// injectWorkspaceContext delivers workspace facts through both context hooks
+// and model context. When clientCtx is non-nil the engine uses the client-
+// supplied descriptor instead of its own worktree-registry lookup; otherwise
+// the engine derives context from its registry (unchanged default). Hooks
+// may replace or suppress the generic prose in either case.
+func (m *Manager) injectWorkspaceContext(s *engineSession, key string, opts *types.RunOptions, clientCtx *types.ClientWorkspaceContext) *workspaces.PromptContext {
 	if m.config != nil && !m.config.GetWorkspace().PromptContextEnabled() {
 		utils.LogWithFields(utils.LevelInfo, "session.workspace_context", "workspace prompt context suppressed by config", map[string]any{"key": key})
 		return nil
 	}
-	workspace := workspaces.SharedChecker().PromptContextFor(s.config.WorkingDirectory)
-	if workspace.Empty() {
-		return nil
+
+	var workspace workspaces.PromptContext
+	var text string
+
+	if clientCtx != nil {
+		workspace = workspaces.PromptContext{
+			Kind:   workspaces.ContextKind(clientCtx.Kind),
+			Cwd:    clientCtx.Cwd,
+			Bench:  clientCtx.Bench,
+			Client: clientCtx.Data,
+		}
+		text = clientCtx.Text
+		utils.LogWithFields(utils.LevelInfo, "session.workspace_context", "using client-supplied workspace context", map[string]any{"key": key, "kind": clientCtx.Kind, "cwd": clientCtx.Cwd, "has_text": text != "", "has_bench": len(clientCtx.Bench) > 0, "has_data": len(clientCtx.Data) > 0})
+	} else {
+		workspace = workspaces.SharedChecker().PromptContextFor(s.config.WorkingDirectory)
+		if workspace.Empty() {
+			return nil
+		}
+		text = workspace.Format()
 	}
-	text := workspace.Format()
+
 	if s.extGroup != nil && !s.extGroup.IsEmpty() {
 		ctx := m.newExtContext(s, key)
 		var suppress bool

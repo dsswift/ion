@@ -58,6 +58,16 @@ func TestParseClientCommand_ValidCommands(t *testing.T) {
 			cmd:  "dialog_response",
 		},
 		{
+			name: "tool_gate_response deny with reason",
+			line: `{"cmd":"tool_gate_response","key":"s1","gateRequestId":"tool-gate-1-1","gateDecision":"deny","gateReason":"bench edit refused"}`,
+			cmd:  "tool_gate_response",
+		},
+		{
+			name: "tool_gate_response allow without decision",
+			line: `{"cmd":"tool_gate_response","key":"s1","gateRequestId":"tool-gate-1-2"}`,
+			cmd:  "tool_gate_response",
+		},
+		{
 			name: "command",
 			line: `{"cmd":"command","key":"s1","command":"status","args":"--verbose"}`,
 			cmd:  "command",
@@ -209,6 +219,14 @@ func TestParseClientCommand_MissingRequired(t *testing.T) {
 		{
 			name: "abort missing key",
 			line: `{"cmd":"abort"}`,
+		},
+		{
+			name: "tool_gate_response missing gateRequestId",
+			line: `{"cmd":"tool_gate_response","key":"s1","gateDecision":"deny"}`,
+		},
+		{
+			name: "tool_gate_response missing key",
+			line: `{"cmd":"tool_gate_response","gateRequestId":"tool-gate-1-3"}`,
 		},
 		{
 			name: "abort_agent missing key",
@@ -386,6 +404,59 @@ func TestParseClientCommand_ThinkingEffortValues(t *testing.T) {
 				t.Errorf("thinkingEffort = %q, want %q", result.ThinkingEffort, tc.want)
 			}
 		})
+	}
+}
+
+func TestParseClientCommand_SendPromptWithClientWorkspaceContext(t *testing.T) {
+	line := `{"cmd":"send_prompt","key":"s1","text":"hello","clientWorkspaceContext":{"kind":"bench","cwd":"/bench/project","bench":{"benchPath":"/bench/project","members":["a","b"]},"data":{"extra":"info"},"text":"bench prose"}}`
+	result := ParseClientCommand(line)
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if result.ClientWorkspaceContext == nil {
+		t.Fatal("expected clientWorkspaceContext parsed")
+	}
+	ctx := result.ClientWorkspaceContext
+	if ctx.Kind != "bench" {
+		t.Errorf("kind = %q, want %q", ctx.Kind, "bench")
+	}
+	if ctx.Cwd != "/bench/project" {
+		t.Errorf("cwd = %q, want %q", ctx.Cwd, "/bench/project")
+	}
+	if ctx.Bench == nil {
+		t.Fatal("expected bench field parsed")
+	}
+	if _, ok := ctx.Bench["benchPath"]; !ok {
+		t.Error("expected bench to contain 'benchPath' key")
+	}
+	if ctx.Data == nil {
+		t.Fatal("expected data field parsed")
+	}
+	if ctx.Text != "bench prose" {
+		t.Errorf("text = %q, want %q", ctx.Text, "bench prose")
+	}
+}
+
+func TestClientWorkspaceContext_JSONRoundTrip(t *testing.T) {
+	line := `{"kind":"bench","cwd":"/bench/project","bench":{"benchPath":"/bench/project"},"data":{"extra":"val"},"text":"prose"}`
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(line), &raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := raw["bench"]; !ok {
+		t.Error("bench field must be present in JSON")
+	}
+	if _, ok := raw["data"]; !ok {
+		t.Error("data field must be present in JSON")
+	}
+
+	lineNoBench := `{"kind":"worktree","cwd":"/wt/project"}`
+	var raw2 map[string]any
+	if err := json.Unmarshal([]byte(lineNoBench), &raw2); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := raw2["bench"]; ok {
+		t.Error("bench field must be absent when not set (omitempty)")
 	}
 }
 

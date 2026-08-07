@@ -48,7 +48,7 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "send_prompt":
 		var overrides *session.PromptOverrides
 		resolvedExts := cmd.ResolveExtensions()
-		if cmd.Model != "" || cmd.MaxTurns > 0 || cmd.MaxBudgetUsd > 0 || len(resolvedExts) > 0 || cmd.NoExtensions || cmd.AppendSystemPrompt != "" || len(cmd.Attachments) > 0 || cmd.ImplementationPhase || cmd.ThinkingEffort != "" || cmd.EnterPlanModeDescription != "" || cmd.PlanModeSparseReminder != "" || cmd.PlanFilePath != "" || len(cmd.BashAllowlistAdditionsForThisPrompt) > 0 || cmd.CompactTargetPercent > 0 || cmd.CompactMicroKeepTurns > 0 || cmd.CompactEnabled != nil || cmd.CompactSummaryEnabled != nil || cmd.CompactMemoryEnabled != nil || cmd.ResolveSlash {
+		if cmd.Model != "" || cmd.MaxTurns > 0 || cmd.MaxBudgetUsd > 0 || len(resolvedExts) > 0 || cmd.NoExtensions || cmd.AppendSystemPrompt != "" || len(cmd.Attachments) > 0 || cmd.ImplementationPhase || cmd.ThinkingEffort != "" || cmd.EnterPlanModeDescription != "" || cmd.PlanModeSparseReminder != "" || cmd.PlanFilePath != "" || len(cmd.BashAllowlistAdditionsForThisPrompt) > 0 || cmd.CompactTargetPercent > 0 || cmd.CompactMicroKeepTurns > 0 || cmd.CompactEnabled != nil || cmd.CompactSummaryEnabled != nil || cmd.CompactMemoryEnabled != nil || cmd.ResolveSlash || cmd.ClientWorkspaceContext != nil {
 			overrides = &session.PromptOverrides{
 				Model:                    cmd.Model,
 				MaxTurns:                 cmd.MaxTurns,
@@ -75,6 +75,7 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 				CompactSummaryEnabled:               cmd.CompactSummaryEnabled,
 				CompactMemoryEnabled:                cmd.CompactMemoryEnabled,
 				ResolveSlash:                        cmd.ResolveSlash,
+				ClientWorkspaceContext:              cmd.ClientWorkspaceContext,
 			}
 		}
 		err := s.manager.SendPrompt(cmd.Key, cmd.Text, overrides)
@@ -216,6 +217,15 @@ func (s *Server) dispatch(conn net.Conn, cmd *protocol.ClientCommand) {
 	case "permission_response":
 		// Fire-and-forget: no response sent (matches dialog_response pattern).
 		s.manager.SendPermissionResponse(cmd.Key, cmd.QuestionID, cmd.OptionID)
+
+	case "tool_gate_response":
+		// Fire-and-forget: no response sent. Resolves a pending client
+		// tool-gate request (engine_tool_gate_request) so the blocked tool
+		// call proceeds with the client's decision (policy kind) or result
+		// (tool kind). The tool loop has its own bounded timeout with a
+		// client-declared fallback, so a missing or late response is
+		// non-fatal — it is logged and dropped.
+		s.manager.HandleToolGateResponse(cmd.Key, cmd.GateRequestID, cmd.GateDecision, cmd.GateReason, cmd.GateContent, cmd.GateIsError)
 
 	case "elicitation_response":
 		// Fire-and-forget: no response sent. Resolves a pending elicitation

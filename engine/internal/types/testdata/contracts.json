@@ -310,6 +310,12 @@
     "fallbackReason",
     "fallbackRequestedModel",
     "fields",
+    "gateCwd",
+    "gateKind",
+    "gateRequestId",
+    "gateSiblingTools",
+    "gateToolInput",
+    "gateToolName",
     "hasMore",
     "httpStatus",
     "imageMediaType",
@@ -425,6 +431,13 @@
       "name",
       "status"
     ],
+    "ClientWorkspaceContext": [
+      "bench",
+      "cwd",
+      "data",
+      "kind",
+      "text"
+    ],
     "ContextBreakdownCategory": [
       "kind",
       "name",
@@ -451,6 +464,7 @@
     ],
     "EngineConfig": [
       "claudeCompat",
+      "clientWorkspaceContext",
       "extensions",
       "forceNewConversation",
       "maxTokens",
@@ -461,6 +475,7 @@
       "sessionId",
       "systemHint",
       "thinking",
+      "toolGate",
       "workingDirectory",
       "workspaceWatchIgnore"
     ],

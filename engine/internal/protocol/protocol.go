@@ -67,6 +67,21 @@ type ClientCommand struct {
 	EarlyStopOverrideThresholdPct int    `json:"earlyStopOverrideThresholdPct,omitempty"`
 	EarlyStopContinueMessage      string `json:"earlyStopContinueMessage,omitempty"`
 
+	// tool_gate_response: client reply to an engine_tool_gate_request event
+	// (the opt-in client tool gate — see types.ToolGateConfig). For a
+	// "policy" request, GateDecision is "allow" or "deny" (anything else
+	// resolves to allow, because an unrecognized decision must not invent a
+	// refusal) and GateReason is the model-facing message a deny carries into
+	// the tool result. For a "tool" request (a client-declared tool call),
+	// GateContent carries the tool result text and GateIsError marks it as a
+	// failure. A late reply (after the gate's declared timeout applied the
+	// declared fallback) is logged and dropped.
+	GateRequestID string `json:"gateRequestId,omitempty"`
+	GateDecision  string `json:"gateDecision,omitempty"`
+	GateReason    string `json:"gateReason,omitempty"`
+	GateContent   string `json:"gateContent,omitempty"`
+	GateIsError   bool   `json:"gateIsError,omitempty"`
+
 	// oidc_begin_login: which grant flow to start. "pkce" (default when
 	// empty) runs the interactive authorization-code + PKCE flow — the
 	// engine returns an authorization URL for the consumer to open and its
@@ -237,6 +252,12 @@ type ClientCommand struct {
 	// trivial check it already does to drive slash-command autocomplete).
 	ResolveSlash bool `json:"resolveSlash,omitempty"`
 
+	// ClientWorkspaceContext is a per-prompt client-supplied workspace
+	// descriptor that overrides both the session-level EngineConfig value
+	// and the engine's own worktree-registry-derived context for this
+	// prompt. Nil means "use session-level or engine-derived context."
+	ClientWorkspaceContext *types.ClientWorkspaceContext `json:"clientWorkspaceContext,omitempty"`
+
 	// Compaction overrides — per-prompt tuning of context compaction behavior.
 	CompactTargetPercent  float64 `json:"compactTargetPercent,omitempty"`
 	CompactMicroKeepTurns int     `json:"compactMicroKeepTurns,omitempty"`
@@ -303,6 +324,7 @@ var validCommands = map[string]bool{
 	"generate_title":               true,
 	"elicitation_response":         true,
 	"early_stop_decision_response": true,
+	"tool_gate_response":           true,
 	"health":                       true,
 	"reconcile_state":              true,
 	// query_session_status: on-demand counterpart to reconcile_state that
@@ -598,6 +620,11 @@ func validateRaw(cmd string, raw map[string]json.RawMessage) bool {
 		// Only key + earlyStopRequestId are required. All response fields
 		// are optional; an empty response is a valid "no opinion" reply.
 		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "earlyStopRequestId")
+	case "tool_gate_response":
+		// gateDecision is deliberately not required: an absent or
+		// unrecognized decision resolves to allow at the session layer, and
+		// requiring it here would turn a permissive reply into a dropped one.
+		return hasNonEmptyString(raw, "key") && hasNonEmptyString(raw, "gateRequestId")
 	case "reconcile_state":
 		return hasNonEmptyString(raw, "key")
 	case "query_session_status":

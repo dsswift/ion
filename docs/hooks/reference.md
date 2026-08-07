@@ -554,6 +554,22 @@ type SystemInjectInfo struct {
 }
 ```
 
+The `Workspace` payload is a `PromptContext`:
+
+```go
+type PromptContext struct {
+    Kind     ContextKind      `json:"kind"`
+    Cwd      string           `json:"cwd"`
+    Worktree *WorktreeContext `json:"worktree,omitempty"`
+    Bench    map[string]any   `json:"bench,omitempty"`
+    Client   map[string]any   `json:"client,omitempty"`
+}
+```
+
+- `Worktree` is populated when `kind` is `"worktree"` (engine-owned registry lookup).
+- `Bench` is populated when a client supplies `ClientWorkspaceContext.Bench` (e.g. Ion's desktop sends structured bench facts here).
+- `Client` is populated from `ClientWorkspaceContext.Data` for generic consumer-defined data.
+
 **Kind values:**
 
 | Kind | When injected | Default text pattern |
@@ -562,7 +578,7 @@ type SystemInjectInfo struct {
 | `"turn_limit_warning"` | 2 turns before `maxTurns` | `[SYSTEM] You are approaching your turn limit...` |
 | `"max_token_continue"` | LLM response hits `max_tokens` | `Continue from where you left off.` |
 | `"early_stop_continue"` | Model emits `end_turn` below the configured token budget | harness-supplied (none by default) — see [ADR-002](../architecture/adr/002-engine-vs-harness-early-stop.md) |
-| `"workspace_context"` | Prompt assembly in a registered worktree/bench (when workspace context is enabled) | Generic workspace-facts prose; `Workspace` carries the structured payload so a handler can rewrite or suppress the default without re-deriving the facts |
+| `"workspace_context"` | Prompt assembly when workspace context is available (worktree registry, client-supplied, or both) | Generic workspace-facts prose; `Workspace` carries the structured payload so a handler can rewrite or suppress the default without re-deriving the facts |
 
 #### `SystemInjectResult`
 
@@ -700,11 +716,11 @@ sdk.On(extension.HookBeforeEarlyStopDecision, func(ctx *extension.Context, paylo
 type ContextInjectInfo struct {
     WorkingDirectory string
     DiscoveredPaths  []string
-    // Structured workspace facts when the session's working directory is a
-    // registered worktree or bench: bench/source/base identity, ordered
-    // enabled members with exact pinned ranges and worktree paths, and
-    // disabled-member facts. Nil outside a registered workspace. Lets a
-    // handler build its own workspace prose without re-deriving the facts.
+    // Structured workspace facts: worktree context (engine registry),
+    // bench context (client-supplied via ClientWorkspaceContext.Bench),
+    // or generic client data (ClientWorkspaceContext.Data). Nil when no
+    // workspace context applies. Lets a handler build its own workspace
+    // prose without re-deriving the facts.
     Workspace *workspaces.PromptContext
 }
 ```

@@ -6,7 +6,7 @@ sidebar_position: 4
 
 # Normalized Events
 
-Normalized events are a simplified, canonical representation of the raw engine event stream. The normalizer collapses the various raw event types (system, stream_event, assistant, result, rate_limit_event, permission_request, user) into 15 flat event types that are easier for clients to consume.
+Normalized events are a simplified, canonical representation of the raw engine event stream. The normalizer collapses the various raw event types (system, stream_event, assistant, result, rate_limit_event, permission_request, user) into a flat set of event types that are easier for clients to consume.
 
 Each normalized event is a JSON object with a `type` field as the discriminator.
 

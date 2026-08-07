@@ -327,6 +327,27 @@ Handle these by checking the `method` field on incoming messages alongside the e
 5. **Parse the `_ctx` field** from hook and tool params if you need session context (`cwd`, `sessionKey`, `conversationId`, `model`, `config`, and — for dispatched child sessions only — `depth` and `dispatchId`; both keys are omitted for the root session, so treat absence as `depth: 0`).
 6. **Use unique IDs for outgoing requests.** Start from a high number (e.g., 100000) to avoid collisions with engine-assigned IDs.
 
+## Workspace Context
+
+Clients can supply workspace context via the `clientWorkspaceContext` field on `send_prompt` (per-prompt) or `start_session` (session-wide default) commands. The engine routes it to extensions through hook calls:
+
+- `hook/system_inject` with `kind: "workspace_context"` -- the `workspace` field carries structured bench/client data. Return `{"text": "..."}` to replace the default prose, or `{"suppress": true}` to suppress injection.
+- `hook/context_inject` -- the `workspace` field on the payload carries the same structure.
+
+The `workspace` object in hook payloads has this shape:
+
+```json
+{
+  "kind": "workspace_context",
+  "cwd": "/path/to/project",
+  "worktree": { "...engine-owned data..." },
+  "bench": { "...client-supplied bench facts..." },
+  "client": { "...generic consumer data..." }
+}
+```
+
+`bench` comes from `ClientWorkspaceContext.bench` on the client command; `client` comes from `ClientWorkspaceContext.data`. Both are opaque pass-through maps. See [client-commands.md](../protocol/client-commands.md) for the wire shape.
+
 ## Compiled binary extensions
 
 For compiled languages (Go, Rust, C, etc.), build a static binary named `main`:

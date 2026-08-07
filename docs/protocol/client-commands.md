@@ -34,6 +34,13 @@ Start a new engine session.
 | `maxTokens`        | number   | no       | Max output tokens per response       |
 | `thinking`         | object   | no       | Extended thinking config (`enabled`, `effort`, `budgetTokens`, `streamDeltas`, `persist`). A per-session default that overrides the engine-wide [`thinking` block in `engine.json`](../configuration/engine-json.md#thinking) and is itself overridden by a per-prompt `thinkingEffort`. |
 | `systemHint`       | string   | no       | Additional system prompt content     |
+| `workspaceWatchIgnore` | string[] | no   | Replace the engine's default watcher ignore globs |
+| `claudeCompat`     | boolean  | no       | Enable Claude Code compatibility (e.g. `~/.claude/skills/`) |
+| `forceNewConversation` | boolean | no    | Mint a new conversation even when the key has a stored binding |
+| `parentConversationId` | string | no     | Record descent from a prior conversation on a fresh file |
+| `pinned`           | boolean  | no       | Exempt this session from the orphaned-session reaper |
+| `clientWorkspaceContext` | object | no    | Client-supplied workspace context for the session. Overridden per-prompt by `send_prompt.clientWorkspaceContext`. Fields: `kind` (string), `cwd` (string), `bench` (object, structured bench facts), `data` (object, generic consumer data), `text` (string, prose for system prompt). |
+| `toolGate`         | object   | no       | Opt-in client tool gate: `{enabled, tools?, timeoutMs?, timeoutDecision?, clientTools?, clientToolTimeoutMs?}`. `clientTools` declares tools the client executes over the wire — the third tool provision path beside MCP servers and extensions. See [tool_gate_response](#tool_gate_response). |
 
 ```json
 {"cmd":"start_session","key":"abc-123","config":{"profileId":"default","extensions":["~/.ion/extensions/my-ext"],"workingDirectory":"/home/user/project"},"requestId":"r1"}
@@ -73,6 +80,7 @@ Send a user message to an active session.
 | `compactEnabled`            | boolean  | no       | Gate for proactive compaction on this prompt. `false` disables proactive compaction; reactive compaction still fires on provider errors. |
 | `compactSummaryEnabled`     | boolean  | no       | Whether LLM-based summarization is used during compaction for this prompt. |
 | `compactMemoryEnabled`      | boolean  | no       | Whether the background session memory summarizer is active for this prompt. |
+| `clientWorkspaceContext`    | object   | no       | Per-prompt workspace context override. Takes precedence over the session-level `EngineConfig.clientWorkspaceContext`. Fields: `kind` (string), `cwd` (string), `bench` (object, structured bench facts), `data` (object, generic consumer data), `text` (string, prose for system prompt). The engine routes `bench` to `PromptContext.Bench` and `data` to `PromptContext.Client` for hook payloads. |
 | `resolveSlash`              | boolean  | no       | When `true`, signals that `text` is a slash-command invocation (`/name args`) the engine should resolve and expand rather than treat as plain content. The engine looks the command up across the conventional roots in precedence order — `{workingDir}/.ion/commands`, `~/.ion/commands`, `{workingDir}/.ion/skills/<name>/SKILL.md`, `~/.ion/skills/<name>/SKILL.md`, then (only when Claude compatibility is enabled) `{workingDir}/.claude/commands`, `~/.claude/commands`, `~/.claude/skills/<name>/SKILL.md` — substitutes `$ARGUMENTS`, feeds the **expanded** body to the model (SKILL.md bodies are prefixed with their base directory so relative companion files resolve), and persists the **raw** invocation as the displayed user turn. Default `false`; existing clients sending `/`-prefixed content as ordinary text are unaffected because they do not set this flag. |
 
 ```json
@@ -373,6 +381,37 @@ Respond to a permission request from the engine. Fire-and-forget.
 
 ```json
 {"cmd":"permission_response","key":"abc-123","questionId":"q1","optionId":"allow_once"}
+```
+
+---
+
+### tool_gate_response
+
+Answer an `engine_tool_gate_request` event (the opt-in client tool gate — see `EngineConfig.toolGate` in [start_session](#start_session)). Fire-and-forget. This is a machine decision made by client code, not a human prompt.
+
+The request's `gateKind` selects which fields apply:
+
+- **`"policy"`** (or absent) — the engine asks whether a gated tool call may execute. Reply with `gateDecision` (and `gateReason` for a deny). A `gateDecision` of anything other than `"deny"` — including absent — resolves to allow: an unrecognized decision must not invent a refusal.
+- **`"tool"`** — the model called one of the session's declared `clientTools`; the client executes it and replies with the result in `gateContent` (`gateIsError` marks a failure).
+
+The blocked call waits until this response arrives or the session's declared timeout applies its fallback (`timeoutDecision` for policy; a tool error for client tools). A late response is logged and dropped.
+
+| Field           | Type                   | Required | Description                                                            |
+|-----------------|------------------------|----------|------------------------------------------------------------------------|
+| `cmd`           | `"tool_gate_response"` | yes      | Command discriminator                                                  |
+| `key`           | string                 | yes      | Session key                                                            |
+| `gateRequestId` | string                 | yes      | Correlator echoed from the `engine_tool_gate_request` event            |
+| `gateDecision`  | string                 | no       | Policy kind: `"allow"` or `"deny"`; anything else (or absent) resolves to allow |
+| `gateReason`    | string                 | no       | Policy kind: model-facing message a deny carries into the tool result  |
+| `gateContent`   | string                 | no       | Tool kind: the executed tool's result text                             |
+| `gateIsError`   | boolean                | no       | Tool kind: marks `gateContent` as a failure result                     |
+
+```json
+{"cmd":"tool_gate_response","key":"abc-123","gateRequestId":"tool-gate-1730000000000-1","gateDecision":"deny","gateReason":"Refused: this path is frozen during release week."}
+```
+
+```json
+{"cmd":"tool_gate_response","key":"abc-123","gateRequestId":"tool-gate-1730000000000-2","gateContent":"contents of src/x.go at pinned sha 89abcde","gateIsError":false}
 ```
 
 ---

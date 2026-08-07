@@ -649,6 +649,43 @@ interface ExtensionConfig {
 }
 ```
 
+## Workspace Context
+
+Clients can supply workspace context on `send_prompt` (per-prompt) or on `start_session` (session-wide default) via the `clientWorkspaceContext` field on the client command. The engine routes this context to extensions through two hooks:
+
+- **`system_inject`** with `kind: "workspace_context"` -- the `workspace` field carries a `PromptContext` with structured bench/client data. Return replacement text or `{ suppress: true }` to control what the model sees.
+- **`context_inject`** -- the `workspace` field on the payload carries the same `PromptContext`, letting handlers inject additional context entries based on workspace facts.
+
+### ClientWorkspaceContext shape
+
+```typescript
+interface ClientWorkspaceContext {
+  kind: string         // workspace type (e.g. "worktree", "bench", "project")
+  cwd: string          // working directory
+  bench?: Record<string, unknown>  // structured bench facts (desktop-specific)
+  data?: Record<string, unknown>   // generic consumer-defined data
+  text?: string        // pre-rendered prose for the model prompt
+}
+```
+
+### WorkspacePromptContext (hook payload)
+
+The `workspace` field on `system_inject` and `context_inject` payloads is a `PromptContext`:
+
+```typescript
+interface PromptContext {
+  kind: string                        // context kind
+  cwd: string                         // working directory
+  worktree?: WorktreeContext           // engine-owned registry data (when kind is "worktree")
+  bench?: Record<string, unknown>     // from ClientWorkspaceContext.bench
+  client?: Record<string, unknown>    // from ClientWorkspaceContext.data
+}
+```
+
+`bench` and `client` are pass-through: whatever the client sends in `ClientWorkspaceContext` arrives here unchanged. Extensions can read them to build workspace-aware behavior without depending on a specific client.
+
+See [client-commands.md](../protocol/client-commands.md) for the wire shape and [engine.json](../configuration/engine-json.md) § `promptContext` for session-wide defaults.
+
 ## EngineEvent
 
 Discriminated union of event types the extension can emit. The five named variants give autocomplete on the engine-recognised shapes; the open variant lets harnesses emit custom event types that the engine and desktop bridge pass through verbatim.

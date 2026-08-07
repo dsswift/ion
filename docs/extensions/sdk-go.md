@@ -384,6 +384,39 @@ enabled, planFilePath := ctx.GetPlanMode()
 
 **`DiscoverAgents(opts)`** -- list agents discoverable via the harness's configured search paths (extension agents, project agents, user agents). Returns a structured result the harness can filter and register via `RegisterAgent`.
 
+## Workspace Context
+
+Clients supply workspace context on `ClientCommand` (per-prompt) or on `EngineConfig` (session-wide default) via the `ClientWorkspaceContext` field. The engine routes it to extensions through:
+
+- **`system_inject`** with `Kind: "workspace_context"` -- the `Workspace` field carries a `workspaces.PromptContext`. Return replacement text or `Suppress: true`.
+- **`context_inject`** -- the `Workspace` field on `ContextInjectInfo` carries the same `PromptContext`.
+
+### ClientWorkspaceContext
+
+```go
+type ClientWorkspaceContext struct {
+    Kind  string         `json:"kind"`
+    Cwd   string         `json:"cwd"`
+    Bench map[string]any `json:"bench,omitempty"`
+    Data  map[string]any `json:"data,omitempty"`
+    Text  string         `json:"text,omitempty"`
+}
+```
+
+### PromptContext (hook payload)
+
+```go
+type PromptContext struct {
+    Kind     ContextKind      `json:"kind"`
+    Cwd      string           `json:"cwd"`
+    Worktree *WorktreeContext  `json:"worktree,omitempty"`
+    Bench    map[string]any   `json:"bench,omitempty"`  // from ClientWorkspaceContext.Bench
+    Client   map[string]any   `json:"client,omitempty"` // from ClientWorkspaceContext.Data
+}
+```
+
+See [client-commands.md](../protocol/client-commands.md) for the wire shape and [engine.json](../configuration/engine-json.md) § `promptContext` for session-wide defaults.
+
 ## Type definitions
 
 ### HookHandler
